@@ -3,7 +3,7 @@ const bodyParser = require('body-parser');
 const { Client, middleware } = require('@line/bot-sdk');
 const cron = require('node-cron');
 const getRawBody = require('raw-body');
-const loveMessages = require('./src/loveMessages');
+const { getRandomMessage } = require('./src/loveMessages'); // ✅ 수정 포인트
 
 const config = {
   channelAccessToken: 'mJePV6aEDhUM3GgTv5v4+XIYmYn/eCEnV2oR9a64OL1wz6WpWJ4at1thGIxdlk4oiYpVShmZmaGaWekeUBM5NY8U9/czDVOUBnouvAqFW8uj9fwvOwUvPOtIWqbMIry+DcFccO+33Q7IBCubm8wcbAdB04t89/1O/w1cDnyilFU=',
@@ -41,7 +41,7 @@ function handleEvent(event) {
   if (event.type === 'message' && event.message.type === 'text') {
     return client.replyMessage(event.replyToken, {
       type: 'text',
-      text: '애기 여기 있어! 🫶'
+      text: getRandomMessage()  // ✅ 함수 호출
     });
   }
   return Promise.resolve(null);
@@ -50,8 +50,7 @@ function handleEvent(event) {
 const userId = 'Uaeee4a492f9da87c4416a7f8484ba917';
 
 function randomMessage() {
-  const pick = loveMessages[Math.floor(Math.random() * loveMessages.length)];
-  return `아저씨~ ${pick}`;
+  return `아저씨~ ${getRandomMessage()}`;  // ✅ 배열 접근 제거
 }
 
 // 🎯 자동 메시지: 40분 간격
