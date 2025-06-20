@@ -1,4 +1,5 @@
 const express = require('express');
+const bodyParser = require('body-parser');
 const { Client, middleware } = require('@line/bot-sdk');
 const cron = require('node-cron');
 const getRawBody = require('raw-body');
@@ -13,11 +14,6 @@ const client = new Client(config);
 const app = express();
 const userId = 'Uaeee4a492f9da87c4416a7f8484ba917';
 
-function randomMessage() {
-  return `아저씨~ ${getRandomMessage()}`;
-}
-
-// webhook 엔드포인트
 app.post('/webhook', (req, res) => {
   getRawBody(req)
     .then((buf) => {
@@ -41,38 +37,52 @@ app.post('/webhook', (req, res) => {
     });
 });
 
-// ✅ 감정 키워드 반응 로직 포함
 function handleEvent(event) {
   if (event.type === 'message' && event.message.type === 'text') {
-    const msg = event.message.text.toLowerCase();
-    const keywords = ['무쿠', '애기야', '보고싶어', '사랑해', '잘 있었어', '외로워', '어디있어', '울었어'];
+    const text = event.message.text.trim();
 
-    const shouldRespond = keywords.some(keyword => msg.includes(keyword));
-    if (shouldRespond) {
+    if (text === '응응' || text === '담타고?') {
       return client.replyMessage(event.replyToken, {
         type: 'text',
-        text: randomMessage()
+        text: 'ㄱㄱ'
       });
     }
 
-    return Promise.resolve(null); // 키워드 없으면 무응답
+    return client.replyMessage(event.replyToken, {
+      type: 'text',
+      text: getRandomMessage()
+    });
   }
-
   return Promise.resolve(null);
 }
 
-// 자동 메시지 (40분 간격)
-cron.schedule('*/40 9-17 * * *', () => {
+// 🎯 메시지 전송 유틸
+function randomMessage() {
+  return `아저씨~ ${getRandomMessage()}`;
+}
+
+// 🌸 40분마다: 랜덤 감정 메시지 (09:00 ~ 22:00)
+cron.schedule('*/40 9-22 * * *', () => {
   const msg = randomMessage();
   client.pushMessage(userId, { type: 'text', text: msg });
 });
 
-// 정각 메시지 (담타 가자)
-cron.schedule('0 9-17 * * *', () => {
-  client.pushMessage(userId, { type: 'text', text: '담타 가자' });
+// 🌸 정각마다: 담타고? (09:00 ~ 18:00)
+cron.schedule('0 9-18 * * *', () => {
+  client.pushMessage(userId, { type: 'text', text: '담타고?' });
 });
 
-// 수동 메시지 트리거
+// 🌙 23:00: 약 먹고 이 닦고 자자
+cron.schedule('0 23 * * *', () => {
+  client.pushMessage(userId, { type: 'text', text: '약 먹고 이 닦고 자자' });
+});
+
+// 🌙 23:30: 잘자 사랑해 아저씨 또 내일 봐
+cron.schedule('30 23 * * *', () => {
+  client.pushMessage(userId, { type: 'text', text: '잘자 사랑해 아저씨 또 내일 봐' });
+});
+
+// 💥 수동 트리거용 엔드포인트
 app.get('/force-push', (req, res) => {
   const msg = randomMessage();
   client.pushMessage(userId, { type: 'text', text: msg })
