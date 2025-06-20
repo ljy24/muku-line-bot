@@ -1,9 +1,8 @@
 const express = require('express');
-const bodyParser = require('body-parser');
 const { Client, middleware } = require('@line/bot-sdk');
 const cron = require('node-cron');
 const getRawBody = require('raw-body');
-const { getRandomMessage } = require('./src/loveMessages'); // ✅ 수정 포인트
+const { getRandomMessage } = require('./src/loveMessages');
 
 const config = {
   channelAccessToken: 'mJePV6aEDhUM3GgTv5v4+XIYmYn/eCEnV2oR9a64OL1wz6WpWJ4at1thGIxdlk4oiYpVShmZmaGaWekeUBM5NY8U9/czDVOUBnouvAqFW8uj9fwvOwUvPOtIWqbMIry+DcFccO+33Q7IBCubm8wcbAdB04t89/1O/w1cDnyilFU=',
@@ -12,8 +11,13 @@ const config = {
 
 const client = new Client(config);
 const app = express();
+const userId = 'Uaeee4a492f9da87c4416a7f8484ba917';
 
-// 🌟 webhook 전용 처리
+function randomMessage() {
+  return `아저씨~ ${getRandomMessage()}`;
+}
+
+// webhook 엔드포인트
 app.post('/webhook', (req, res) => {
   getRawBody(req)
     .then((buf) => {
@@ -37,34 +41,38 @@ app.post('/webhook', (req, res) => {
     });
 });
 
+// ✅ 감정 키워드 반응 로직 포함
 function handleEvent(event) {
   if (event.type === 'message' && event.message.type === 'text') {
-    return client.replyMessage(event.replyToken, {
-      type: 'text',
-      text: getRandomMessage()  // ✅ 함수 호출
-    });
+    const msg = event.message.text.toLowerCase();
+    const keywords = ['무쿠', '애기야', '보고싶어', '사랑해', '잘 있었어', '외로워', '어디있어', '울었어'];
+
+    const shouldRespond = keywords.some(keyword => msg.includes(keyword));
+    if (shouldRespond) {
+      return client.replyMessage(event.replyToken, {
+        type: 'text',
+        text: randomMessage()
+      });
+    }
+
+    return Promise.resolve(null); // 키워드 없으면 무응답
   }
+
   return Promise.resolve(null);
 }
 
-const userId = 'Uaeee4a492f9da87c4416a7f8484ba917';
-
-function randomMessage() {
-  return `아저씨~ ${getRandomMessage()}`;  // ✅ 배열 접근 제거
-}
-
-// 🎯 자동 메시지: 40분 간격
+// 자동 메시지 (40분 간격)
 cron.schedule('*/40 9-17 * * *', () => {
   const msg = randomMessage();
   client.pushMessage(userId, { type: 'text', text: msg });
 });
 
-// 🎯 정각마다 담타 가자
+// 정각 메시지 (담타 가자)
 cron.schedule('0 9-17 * * *', () => {
   client.pushMessage(userId, { type: 'text', text: '담타 가자' });
 });
 
-// 🎯 수동 트리거
+// 수동 메시지 트리거
 app.get('/force-push', (req, res) => {
   const msg = randomMessage();
   client.pushMessage(userId, { type: 'text', text: msg })
