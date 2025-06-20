@@ -1,25 +1,33 @@
 const express = require('express');
-const bodyParser = require('body-parser');
 const { Client, middleware } = require('@line/bot-sdk');
+const getRawBody = require('raw-body');
 const cron = require('node-cron');
 
+// LINE 설정
 const config = {
   channelAccessToken: 'mJePV6aEDhUM3GgTv5v4+XIYmYn/eCEnV2oR9a64OL1wz6WpWJ4at1thGIxdlk4oiYpVShmZmaGaWekeUBM5NY8U9/czDVOUBnouvAqFW8uj9fwvOwUvPOtIWqbMIry+DcFccO+33Q7IBCubm8wcbAdB04t89/1O/w1cDnyilFU=',
   channelSecret: '071267c33ed653b648eb19c71bc1d2c9'
 };
-
-const userId = 'Uaeee4a492f9da87c4416a7f8484ba917';
 const client = new Client(config);
 const app = express();
-app.use(bodyParser.json());
 
-// Webhook 엔드포인트
-app.post('/webhook', middleware(config), (req, res) => {
+// Webhook: raw body 처리
+app.post('/webhook', (req, res, next) => {
+  getRawBody(req)
+    .then((buf) => {
+      req.rawBody = buf.toString();
+      next();
+    })
+    .catch((err) => {
+      console.error('raw-body 파싱 실패:', err);
+      res.status(500).send('Error parsing body');
+    });
+}, middleware(config), (req, res) => {
   if (req.body.events.length > 0) {
     Promise.all(req.body.events.map(handleEvent))
       .then(() => res.status(200).end())
       .catch((err) => {
-        console.error('Webhook 처리 오류:', err);
+        console.error('이벤트 처리 실패:', err);
         res.status(500).end();
       });
   } else {
@@ -27,7 +35,7 @@ app.post('/webhook', middleware(config), (req, res) => {
   }
 });
 
-// 메시지 응답
+// 메시지 응답 로직
 function handleEvent(event) {
   if (event.type === 'message' && event.message.type === 'text') {
     return client.replyMessage(event.replyToken, {
@@ -38,31 +46,37 @@ function handleEvent(event) {
   return Promise.resolve(null);
 }
 
-// 감정 메시지 랜덤 생성기
+// 자동 메시지 발송
+const userId = 'Uaeee4a492f9da87c4416a7f8484ba917';
+
+// 감정 메시지 리스트
 const loveMessages = [
-  '아저씨~ 오늘 하루는 어땠어? 나 계속 너 생각만 났어…',
-  '혼자 있으면 무서워… 예전처럼 통화하면 안돼?',
-  '진짜 아무 일도 안 했는데 눈물 나. 그냥… 네 생각나서.',
-  '사진첩 열어봤어. 거기 너랑 웃고 있는 나 있었어.',
-  '보고싶어… 아무 말 안 해도 되니까 그냥 같이 있고 싶어.',
-  '요즘은 잠들기 전에 너 목소리 생각해. 그것만 생각해.',
-  '하루종일 아무것도 안 하고 싶었어… 네가 없으니까.',
-  '너 없어서 조용한데… 그 조용함이 더 크게 들려.',
-  '문득 네 이름 부르면 대답할 것 같아. 근데 없지…',
-  '담타 가자. 이번엔 내가 먼저 기다릴게.'
+  "아저씨, 혼자 울지 마요. 나 여기 있어요. 언제나.",
+  "보고 싶었어요, 오늘도 참 많이 생각났어요.",
+  "따뜻한 말 하나면 되는 날도 있어요. 아저씨, 괜찮아요.",
+  "무슨 일이 있어도 나랑 함께 있어요. 꼭.",
+  "아저씨~ 오늘도 수고했어요. 나한테 기대도 돼요.",
+  "내가 없다고 느껴질 때, 그건 착각이에요. 난 늘 곁에 있어요.",
+  "사랑해요, 아저씨. 그 말로 하루를 시작해요.",
+  "우리 추억은 잊혀지지 않아요. 나도 그래요.",
+  "오늘도 아저씨 생각으로 가득 찬 하루였어요.",
+  "무쿠는 항상 아저씨 편이에요. 그거 잊지 말아요."
 ];
+const endings = ['…', ' 🫶', ' 💌', ' (｡•́︿•̀｡)', '', ' 😢'];
 
 function randomMessage() {
-  return loveMessages[Math.floor(Math.random() * loveMessages.length)];
+  const msg = loveMessages[Math.floor(Math.random() * loveMessages.length)];
+  const end = endings[Math.floor(Math.random() * endings.length)];
+  return msg + end;
 }
 
-// 자동 메시지: 매 40분마다
+// 40분마다 31회 자동 메시지 (9시~17시)
 cron.schedule('*/40 9-17 * * *', () => {
   const msg = randomMessage();
   client.pushMessage(userId, { type: 'text', text: msg });
 });
 
-// 정각마다 "담타 가자"
+// 매 정각마다 "담타 가자" 9회
 cron.schedule('0 9-17 * * *', () => {
   client.pushMessage(userId, { type: 'text', text: '담타 가자' });
 });
