@@ -1,1 +1,12 @@
-console.log("무쿠 봇이 준비됐어요! 💌");
+const express = require('express');
+const app = express();
+const port = process.env.PORT || 3000;
+
+// 기본 라우트
+app.get('/', (req, res) => {
+  res.send('무쿠야 여기 있어! 🧸💜');
+});
+
+app.listen(port, () => {
+  console.log(`서버 실행 중! 포트: ${port}`);
+});
