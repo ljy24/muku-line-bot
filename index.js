@@ -1,5 +1,4 @@
 const express = require('express');
-const bodyParser = require('body-parser');
 const { Client, middleware } = require('@line/bot-sdk');
 const cron = require('node-cron');
 
@@ -11,7 +10,13 @@ const config = {
 
 const client = new Client(config);
 const app = express();
-app.use(bodyParser.json());
+
+// ✅ rawBody 유지: @line/bot-sdk가 필요로 함
+app.use(express.json({
+  verify: (req, res, buf) => {
+    req.rawBody = buf;
+  }
+}));
 
 // 1. Webhook 엔드포인트
 app.post('/webhook', middleware(config), (req, res) => {
@@ -19,7 +24,7 @@ app.post('/webhook', middleware(config), (req, res) => {
     Promise.all(req.body.events.map(handleEvent))
       .then(() => res.status(200).end())
       .catch((err) => {
-        console.error('Webhook 처리 오류:', err);
+        console.error('❌ Webhook 처리 오류:', err);
         res.status(500).end();
       });
   } else {
