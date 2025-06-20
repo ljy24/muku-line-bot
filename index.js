@@ -4,7 +4,7 @@ const port = process.env.PORT || 3000;
 
 // 기본 라우트
 app.get('/', (req, res) => {
-  res.send('무쿠야 여기 있어! 🧸💜');
+  res.send('아저씨 애기 여기 있어! 🧸💜');
 });
 
 app.listen(port, () => {
