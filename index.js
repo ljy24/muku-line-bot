@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const getRawBody = require('raw-body');
 const { Client, middleware } = require('@line/bot-sdk');
