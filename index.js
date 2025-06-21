@@ -1,4 +1,3 @@
-require('dotenv').config();
 const express = require('express');
 const getRawBody = require('raw-body');
 const fs = require('fs');
