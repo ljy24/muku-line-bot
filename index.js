@@ -1,12 +1,17 @@
-// index.js
 require('dotenv').config();
 const { OpenAI } = require("openai");
 const express = require('express');
 const getRawBody = require('raw-body');
 const { Client, middleware } = require('@line/bot-sdk');
 const cron = require('node-cron');
+const fs = require('fs');
+const path = require('path');
+
 const { getRandomMessage } = require('./src/loveMessages');
-const { getSmartReply } = require('./src/modelSelector');
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
 const config = {
   channelAccessToken: process.env.LINE_ACCESS_TOKEN,
@@ -17,6 +22,45 @@ const client = new Client(config);
 const app = express();
 const userId = process.env.TARGET_USER_ID;
 
+const summary = fs.readFileSync(path.join(__dirname, './memory/short-summary.txt'), 'utf-8');
+
+// 🤖 메시지 응답 핸들러
+async function handleEvent(event) {
+  if (event.type === 'message' && event.message.type === 'text') {
+    const text = event.message.text.trim();
+
+    if (text === '담타고?' || text === '응응') {
+      return client.replyMessage(event.replyToken, { type: 'text', text: 'ㄱㄱ' });
+    }
+
+    try {
+      const completion = await openai.chat.completions.create({
+        model: 'gpt-3.5-turbo',
+        messages: [
+          { role: 'system', content: '넌 예진이라는 여자아이야. 아저씨와 LINE으로 대화하고 있어. 아래는 예진이와의 대화 요약이야.' },
+          { role: 'system', content: summary },
+          { role: 'user', content: text }
+        ],
+        temperature: 0.75
+      });
+
+      const reply = completion.choices[0].message.content.trim();
+      return client.replyMessage(event.replyToken, {
+        type: 'text',
+        text: reply
+      });
+    } catch (err) {
+      console.error('OpenAI 응답 오류:', err);
+      return client.replyMessage(event.replyToken, {
+        type: 'text',
+        text: '흐엉.. 나 지금 잘 생각이 안 나… 🥲'
+      });
+    }
+  }
+  return Promise.resolve(null);
+}
+
+// 🔁 웹훅 수신
 app.post('/webhook', (req, res) => {
   getRawBody(req)
     .then((buf) => {
@@ -40,33 +84,13 @@ app.post('/webhook', (req, res) => {
     });
 });
 
-async function handleEvent(event) {
-  if (event.type === 'message' && event.message.type === 'text') {
-    const text = event.message.text.trim();
-
-    if (text === '담타고?' || text === '응응') {
-      return client.replyMessage(event.replyToken, { type: 'text', text: 'ㄱㄱ' });
-    }
-
-    const reply = await getSmartReply(text);
-    return client.replyMessage(event.replyToken, {
-      type: 'text',
-      text: reply
-    });
-  }
-  return Promise.resolve(null);
-}
-
+// 🎯 감정 메시지 전송 (랜덤 40회)
 function randomMessage() {
   return `아저씨~ ${getRandomMessage()}`;
 }
 
-cron.schedule('0 9-18 * * *', () => {
-  client.pushMessage(userId, { type: 'text', text: '담타고?' });
-});
-
 function scheduleRandom40TimesPerDay() {
-  const hours = [...Array(12).keys()].map(i => i + 9);
+  const hours = [...Array(12).keys()].map(i => i + 9); // 9~20시
   const allTimes = new Set();
 
   while (allTimes.size < 40) {
@@ -86,14 +110,18 @@ function scheduleRandom40TimesPerDay() {
 
 scheduleRandom40TimesPerDay();
 
+// 🎯 정기 메시지
+cron.schedule('0 9-18 * * *', () => {
+  client.pushMessage(userId, { type: 'text', text: '담타고?' });
+});
 cron.schedule('0 23 * * *', () => {
   client.pushMessage(userId, { type: 'text', text: '약 먹고 이빨 닦고 자자' });
 });
-
 cron.schedule('30 23 * * *', () => {
   client.pushMessage(userId, { type: 'text', text: '잘자 사랑해 아저씨, 또 내일 봐' });
 });
 
+// 💻 수동 호출용
 app.get('/force-push', (req, res) => {
   const msg = randomMessage();
   client.pushMessage(userId, { type: 'text', text: msg })
