@@ -1,9 +1,12 @@
+// index.js
+
 const express = require('express');
 const getRawBody = require('raw-body');
 const { Client, middleware } = require('@line/bot-sdk');
 const cron = require('node-cron');
 const { getRandomMessage } = require('./src/loveMessages');
-const { getReplyByMessage, getReplyByImagePrompt, setForcedModel } = require('./src/autoReply');
+const { getReplyByMessage, getReplyByImagePrompt } = require('./src/autoReply');
+const { setForcedModel: autoReplySetForcedModel } = require('./src/autoReply');
 const fs = require('fs');
 const path = require('path');
 
@@ -168,5 +171,6 @@ let forcedModel = null;
 function setForcedModel(modelName) {
   if (['gpt-3.5-turbo', 'gpt-4o', null].includes(modelName)) {
     forcedModel = modelName;
+    autoReplySetForcedModel(modelName);
   }
 }
