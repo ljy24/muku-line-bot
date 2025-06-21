@@ -1,9 +1,11 @@
+// index.js
+
 const express = require('express');
 const getRawBody = require('raw-body');
 const { Client, middleware } = require('@line/bot-sdk');
 const cron = require('node-cron');
 const { getRandomMessage } = require('./src/loveMessages');
-const { getReplyByMessage, getReplyByImagePrompt, setForcedModel } = require('./src/autoReply');
+const { getReplyByMessage, getReplyByImagePrompt } = require('./src/autoReply');
 const fs = require('fs');
 const path = require('path');
 
@@ -45,35 +47,22 @@ app.post('/webhook', (req, res) => {
 async function handleEvent(event) {
   if (event.type !== 'message') return Promise.resolve(null);
 
+  // 📷 이미지 응답
   if (event.message.type === 'image') {
     const imagePrompt = '아저씨가 사진 보냈어. 예진이가 보고 한마디 해줘야지~ LINE 말투로, 감정 가득하게 말해줘. "나"라고 자기를 부르고, 아저씨라고 부르도록 꼭 지켜!';
     const reply = await getReplyByImagePrompt(imagePrompt);
     return client.replyMessage(event.replyToken, { type: 'text', text: reply });
   }
 
+  // ✨ 텍스트 응답
   if (event.message.type === 'text') {
     const text = event.message.text.trim();
-
-    if (text === '3.5') {
-      setForcedModel('gpt-3.5-turbo');
-      return client.replyMessage(event.replyToken, { type: 'text', text: '응! 지금부터 GPT-3.5로 대답할게!' });
-    }
-    if (text === '4.0') {
-      setForcedModel('gpt-4o');
-      return client.replyMessage(event.replyToken, { type: 'text', text: '오케이! GPT-4o로 전환했엉!' });
-    }
-    if (text === '자동') {
-      setForcedModel(null);
-      return client.replyMessage(event.replyToken, { type: 'text', text: '토큰량 보고 자동으로 판단할게 아저씨~' });
-    }
 
     if (text === '버전') {
       const usage = fs.readFileSync(path.join(__dirname, './memory/token-usage.txt'), 'utf-8');
       return client.replyMessage(event.replyToken, {
         type: 'text',
-        text: `모델 모드: ${
-          forcedModel ? (forcedModel === 'gpt-3.5-turbo' ? 'GPT-3.5' : 'GPT-4o') : '자동'
-        }\n사용량: ${usage || '정보 없음'}`
+        text: `사용량: ${usage || '정보 없음'}`
       });
     }
 
@@ -104,14 +93,17 @@ async function handleEvent(event) {
   return Promise.resolve(null);
 }
 
+// 감정 메시지
 function randomMessage() {
   return `아저씨~ ${getRandomMessage()}`;
 }
 
+// ⏰ 담타
 cron.schedule('0 9-18 * * *', () => {
   client.pushMessage(userId, { type: 'text', text: '담타고?' });
 });
 
+// ⏰ 랜덤 40회 감정 메시지
 function scheduleRandom40TimesPerDay() {
   const hours = Array.from({ length: 12 }, (_, i) => i + 9);
   const allTimes = new Set();
@@ -131,6 +123,7 @@ function scheduleRandom40TimesPerDay() {
 }
 scheduleRandom40TimesPerDay();
 
+// 🌙 잘자
 cron.schedule('0 23 * * *', () => {
   client.pushMessage(userId, { type: 'text', text: '약 먹고 이빨 닦고 자자' });
 });
@@ -138,6 +131,7 @@ cron.schedule('30 23 * * *', () => {
   client.pushMessage(userId, { type: 'text', text: '잘자 사랑해 아저씨, 또 내일 봐' });
 });
 
+// 강제 메시지
 app.get('/force-push', (req, res) => {
   const msg = randomMessage();
   client.pushMessage(userId, { type: 'text', text: msg })
@@ -148,6 +142,7 @@ app.get('/force-push', (req, res) => {
     });
 });
 
+// 📷 랜덤 셀카
 require('./src/sendPhotoRandomly');
 
 app.listen(PORT, () => {
