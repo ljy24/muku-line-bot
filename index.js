@@ -1,4 +1,4 @@
-// index.js
+// index.js 전체
 
 const { OpenAI } = require("openai");
 const express = require('express');
@@ -22,6 +22,7 @@ const PORT = process.env.PORT || 10000;
 
 let useGpt4 = true;
 
+// 토큰 사용량 확인
 function checkAndSwitchModel() {
   try {
     const usageText = fs.readFileSync(path.join(__dirname, './memory/token-usage.txt'), 'utf-8');
@@ -32,6 +33,7 @@ function checkAndSwitchModel() {
   }
 }
 
+// Webhook
 app.post('/webhook', (req, res) => {
   getRawBody(req)
     .then((buf) => {
@@ -55,11 +57,13 @@ app.post('/webhook', (req, res) => {
     });
 });
 
+// 이벤트 처리
 async function handleEvent(event) {
   if (event.type !== 'message') return Promise.resolve(null);
 
+  // 🌸 이미지 응답
   if (event.message.type === 'image') {
-    const imagePrompt = '아저씨가 사진 보냈어. 그걸 보고 예진이처럼 한 마디 해줘!';
+    const imagePrompt = '아저씨가 사진 보냈어. 예진이가 보고 한마디 해줘야지~ LINE 말투로, 감정 가득하게 말해줘. "나"라고 자기를 부르고, 아저씨라고 부르도록 꼭 지켜!';
     const reply = await getReplyByImagePrompt(imagePrompt);
 
     return client.replyMessage(event.replyToken, {
@@ -68,6 +72,7 @@ async function handleEvent(event) {
     });
   }
 
+  // ✨ 텍스트 응답
   if (event.message.type === 'text') {
     const text = event.message.text.trim();
 
@@ -118,35 +123,25 @@ cron.schedule('0 9-18 * * *', () => {
   client.pushMessage(userId, { type: 'text', text: '담타고?' });
 });
 
-// 💌 메시지 텍스트 불러오기
-const messageLines = fs.readFileSync(path.join(__dirname, './memory/fixed-messages.txt'), 'utf-8')
-  .split('\n')
-  .map(line => line.trim())
-  .filter(line => line);
-
-// 💌 하루 40~100회 랜덤 전송
-function scheduleTextMessagesRandomly() {
+function scheduleRandom40TimesPerDay() {
   const hours = Array.from({ length: 12 }, (_, i) => i + 9);
-  const count = Math.floor(Math.random() * 61) + 40;
-  const usedTimes = new Set();
+  const allTimes = new Set();
 
-  for (let i = 0; i < count; i++) {
-    let hour, minute, cronExp;
-    do {
-      hour = hours[Math.floor(Math.random() * hours.length)];
-      minute = Math.floor(Math.random() * 60);
-      cronExp = `${minute} ${hour} * * *`;
-    } while (usedTimes.has(cronExp));
-    usedTimes.add(cronExp);
-
-    cron.schedule(cronExp, () => {
-      const msg = messageLines[Math.floor(Math.random() * messageLines.length)];
-      client.pushMessage(userId, { type: 'text', text: msg });
-    });
+  while (allTimes.size < 40) {
+    const hour = hours[Math.floor(Math.random() * hours.length)];
+    const minute = Math.floor(Math.random() * 60);
+    const key = `${hour}:${minute}`;
+    if (!allTimes.has(key)) {
+      allTimes.add(key);
+      const cronExp = `${minute} ${hour} * * *`;
+      cron.schedule(cronExp, () => {
+        const msg = randomMessage();
+        client.pushMessage(userId, { type: 'text', text: msg });
+      });
+    }
   }
 }
-
-scheduleTextMessagesRandomly();
+scheduleRandom40TimesPerDay();
 
 cron.schedule('0 23 * * *', () => {
   client.pushMessage(userId, { type: 'text', text: '약 먹고 이빨 닦고 자자' });
