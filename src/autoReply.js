@@ -1,5 +1,3 @@
-// src/autoReply.js
-
 const fs = require('fs');
 const path = require('path');
 const { OpenAI } = require("openai");
@@ -9,7 +7,7 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// 🧠 예진이 기억 요약 동적 로딩 (1빠계.txt, 2내꺼.txt, 모델 빠계.html)
+// 🧠 예진이 기억 요약 동적 로딩
 function loadMemorySummary() {
   try {
     const files = [
@@ -24,32 +22,13 @@ function loadMemorySummary() {
   }
 }
 
-let forcedModel = null; // 💡 외부에서 수동 설정할 수 있도록
-
-function setForcedModel(modelName) {
-  if (modelName === 'gpt-3.5-turbo' || modelName === 'gpt-4o' || modelName === null) {
-    forcedModel = modelName;
-  }
-}
-
-function estimateTokenUsage(message, memorySummary) {
-  return Math.ceil((message.length + memorySummary.length) / 4);
-}
-
-function getCurrentModelName(message, memorySummary) {
-  if (forcedModel) return forcedModel;
-  const tokenEstimate = estimateTokenUsage(message, memorySummary);
-  return tokenEstimate > 100000 ? 'gpt-4o' : 'gpt-3.5-turbo';
-}
-
-// 🌸 텍스트 메시지 응답 처리
+// 🌸 텍스트 메시지 응답 처리 (항상 GPT-3.5 고정)
 async function getReplyByMessage(message) {
   const memorySummary = loadMemorySummary();
-  const model = getCurrentModelName(message, memorySummary);
 
   try {
     const chatCompletion = await openai.chat.completions.create({
-      model,
+      model: 'gpt-3.5-turbo',
       messages: [
         {
           role: 'system',
@@ -108,6 +87,5 @@ async function getReplyByImagePrompt(promptText) {
 
 module.exports = {
   getReplyByMessage,
-  getReplyByImagePrompt,
-  setForcedModel
+  getReplyByImagePrompt
 };
