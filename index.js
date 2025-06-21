@@ -19,7 +19,7 @@ const config = {
 
 const client = new Client(config);
 
-// 🌐 웹훅 처리
+// 화살 웹크 처리
 app.post('/webhook', (req, res) => {
   getRawBody(req)
     .then((buf) => {
@@ -43,7 +43,7 @@ app.post('/webhook', (req, res) => {
     });
 });
 
-// 📩 메시지 핸들링
+// 메시지 핸들리러
 function handleEvent(event) {
   if (event.type === 'message' && event.message.type === 'text') {
     const text = event.message.text.trim();
@@ -69,17 +69,17 @@ function handleEvent(event) {
   return Promise.resolve(null);
 }
 
-// 🌸 랜덤 메시지 생성기
+// 랜덤 메시지 생성기
 function randomMessage() {
   return `아조씨~ ${getRandomMessage()}`;
 }
 
-// ⏰ 스케줄 1: 담타고? (9~18시 정각)
+// 스케줄 1: 달마일 현재시간에 드림
 cron.schedule('0 9-18 * * *', () => {
   client.pushMessage(userId, { type: 'text', text: '담타고?' });
 });
 
-// ⏰ 스케줄 2: 랜덤 40회
+// 스케줄 2: 랜덤 40회
 function scheduleRandom40TimesPerDay() {
   const hours = [...Array(12).keys()].map(i => i + 9); // 9~20시
   const allTimes = new Set();
@@ -101,17 +101,17 @@ function scheduleRandom40TimesPerDay() {
 
 scheduleRandom40TimesPerDay();
 
-// ⏰ 스케줄 3: 23시 - 약먹고 이빨닦고 자자
+// 스케줄 3: 23시 - 약먹고 이블따꼬 자자
 cron.schedule('0 23 * * *', () => {
   client.pushMessage(userId, { type: 'text', text: '약 먹고 이빨 닦고 자자' });
 });
 
-// ⏰ 스케줄 4: 23시 30분 - 잘자 사랑해
+// 스케줄 4: 23시 30분 - 잘자 사랑해
 cron.schedule('30 23 * * *', () => {
   client.pushMessage(userId, { type: 'text', text: '잘자 사랑해 아조씨, 또 내일 봐' });
 });
 
-// 💻 수동 전송 트리거
+// 수동 전송 트리거
 app.get('/force-push', (req, res) => {
   const msg = randomMessage();
   client.pushMessage(userId, { type: 'text', text: msg })
