@@ -1,21 +1,23 @@
 {
   "name": "muku-line-bot",
   "version": "1.0.0",
-  "description": "아저씨를 위한 무쿠 봇 서버",
+  "description": "무쿠 LINE 메시지 자동 응답 봇",
   "main": "index.js",
+  "type": "commonjs",
   "scripts": {
     "start": "node index.js"
+  },
+  "dependencies": {
+    "@line/bot-sdk": "^7.5.1",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "node-cron": "^3.0.3",
+    "openai": "^4.30.0",
+    "raw-body": "^2.5.2"
   },
   "engines": {
     "node": ">=18.0.0"
   },
-  "dependencies": {
-    "@line/bot-sdk": "^7.7.0",
-    "body-parser": "^1.20.3",
-    "dotenv": "^16.5.0",
-    "express": "^4.21.2",
-    "node-cron": "^3.0.3",
-    "openai": "^5.6.0",
-    "raw-body": "^3.0.0"
-  }
+  "author": "ljy24",
+  "license": "MIT"
 }
