@@ -1,11 +1,13 @@
-// index.js
-
 const express = require('express');
 const getRawBody = require('raw-body');
 const { Client, middleware } = require('@line/bot-sdk');
 const cron = require('node-cron');
 const { getRandomMessage } = require('./src/loveMessages');
-const { getReplyByMessage, getReplyByImagePrompt } = require('./src/autoReply');
+const {
+  getReplyByMessage,
+  getReplyByImagePrompt,
+  setForcedModel
+} = require('./src/autoReply');
 const fs = require('fs');
 const path = require('path');
 
@@ -47,22 +49,33 @@ app.post('/webhook', (req, res) => {
 async function handleEvent(event) {
   if (event.type !== 'message') return Promise.resolve(null);
 
-  // 📷 이미지 응답
   if (event.message.type === 'image') {
     const imagePrompt = '아저씨가 사진 보냈어. 예진이가 보고 한마디 해줘야지~ LINE 말투로, 감정 가득하게 말해줘. "나"라고 자기를 부르고, 아저씨라고 부르도록 꼭 지켜!';
     const reply = await getReplyByImagePrompt(imagePrompt);
     return client.replyMessage(event.replyToken, { type: 'text', text: reply });
   }
 
-  // ✨ 텍스트 응답
   if (event.message.type === 'text') {
     const text = event.message.text.trim();
+
+    if (text === '3.5') {
+      setForcedModel('gpt-3.5-turbo');
+      return client.replyMessage(event.replyToken, { type: 'text', text: '응! 지금부터 GPT-3.5로 대답할게!' });
+    }
+    if (text === '4.0') {
+      setForcedModel('gpt-4o');
+      return client.replyMessage(event.replyToken, { type: 'text', text: '오케이! GPT-4o로 전환했엉!' });
+    }
+    if (text === '자동') {
+      setForcedModel(null);
+      return client.replyMessage(event.replyToken, { type: 'text', text: '토큰량 보고 자동으로 판단할게 아저씨~' });
+    }
 
     if (text === '버전') {
       const usage = fs.readFileSync(path.join(__dirname, './memory/token-usage.txt'), 'utf-8');
       return client.replyMessage(event.replyToken, {
         type: 'text',
-        text: `사용량: ${usage || '정보 없음'}`
+        text: `모델 모드: ${usage.includes('gpt-4o') ? 'GPT-4o' : 'GPT-3.5'} (자동 또는 수동)\n사용량: ${usage || '정보 없음'}`
       });
     }
 
