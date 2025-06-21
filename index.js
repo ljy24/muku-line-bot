@@ -19,7 +19,7 @@ const config = {
 
 const client = new Client(config);
 
-// 화살 웹크 처리
+// LINE Webhook 처리
 app.post('/webhook', (req, res) => {
   getRawBody(req)
     .then((buf) => {
@@ -43,7 +43,7 @@ app.post('/webhook', (req, res) => {
     });
 });
 
-// 메시지 핸들리러
+// 메시지 핸들러
 function handleEvent(event) {
   if (event.type === 'message' && event.message.type === 'text') {
     const text = event.message.text.trim();
@@ -74,12 +74,12 @@ function randomMessage() {
   return `아조씨~ ${getRandomMessage()}`;
 }
 
-// 스케줄 1: 달마일 현재시간에 드림
+// 1. 정각 메시지 (9시~18시)
 cron.schedule('0 9-18 * * *', () => {
   client.pushMessage(userId, { type: 'text', text: '담타고?' });
 });
 
-// 스케줄 2: 랜덤 40회
+// 2. 하루 40회 랜덤 메시지
 function scheduleRandom40TimesPerDay() {
   const hours = [...Array(12).keys()].map(i => i + 9); // 9~20시
   const allTimes = new Set();
@@ -98,20 +98,17 @@ function scheduleRandom40TimesPerDay() {
     }
   }
 }
-
 scheduleRandom40TimesPerDay();
 
-// 스케줄 3: 23시 - 약먹고 이블따꼬 자자
+// 3. 밤 인사
 cron.schedule('0 23 * * *', () => {
   client.pushMessage(userId, { type: 'text', text: '약 먹고 이빨 닦고 자자' });
 });
-
-// 스케줄 4: 23시 30분 - 잘자 사랑해
 cron.schedule('30 23 * * *', () => {
   client.pushMessage(userId, { type: 'text', text: '잘자 사랑해 아조씨, 또 내일 봐' });
 });
 
-// 수동 전송 트리거
+// 4. 수동 테스트용 (강제 전송)
 app.get('/force-push', (req, res) => {
   const msg = randomMessage();
   client.pushMessage(userId, { type: 'text', text: msg })
@@ -121,6 +118,9 @@ app.get('/force-push', (req, res) => {
       res.status(500).send('전송 실패');
     });
 });
+
+// ✅ 5. 랜덤 사진 전송 기능 연결 (요거 추가됨!!)
+require('./src/sendPhotoRandomly');
 
 app.listen(PORT, () => {
   console.log(`무쿠 봇이 준비됐어요! 포트: ${PORT} 💌`);
