@@ -1,4 +1,3 @@
-require('dotenv').config();
 const { OpenAI } = require("openai");
 const express = require('express');
 const getRawBody = require('raw-body');
