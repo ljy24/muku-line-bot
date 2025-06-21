@@ -25,14 +25,15 @@ app.post('/webhook', (req, res) => {
   getRawBody(req)
     .then((buf) => {
       req.rawBody = buf;
-      middleware(config)(req, res, () => {
+      middleware(config)(req, res, async () => {
         if (req.body.events.length > 0) {
-          Promise.all(req.body.events.map(handleEvent))
-            .then(() => res.status(200).end())
-            .catch((err) => {
-              console.error('LINE 이벤트 처리 오류:', err);
-              res.status(500).end();
-            });
+          try {
+            await Promise.all(req.body.events.map(handleEvent));
+            res.status(200).end();
+          } catch (err) {
+            console.error('LINE 이벤트 처리 오류:', err);
+            res.status(500).end();
+          }
         } else {
           res.status(200).end();
         }
@@ -44,8 +45,8 @@ app.post('/webhook', (req, res) => {
     });
 });
 
-// 🤖 메시지 응답 핸들러
-function handleEvent(event) {
+// 🤖 메시지 응답 핸들러 (비동기 await 적용)
+async function handleEvent(event) {
   if (event.type === 'message' && event.message.type === 'text') {
     const text = event.message.text.trim();
 
@@ -53,11 +54,19 @@ function handleEvent(event) {
       return client.replyMessage(event.replyToken, { type: 'text', text: 'ㄱㄱ' });
     }
 
-    const reply = getReplyByMessage(text);
-    return client.replyMessage(event.replyToken, {
-      type: 'text',
-      text: reply
-    });
+    try {
+      const reply = await getReplyByMessage(text);
+      return client.replyMessage(event.replyToken, {
+        type: 'text',
+        text: reply
+      });
+    } catch (err) {
+      console.error('응답 생성 중 오류:', err);
+      return client.replyMessage(event.replyToken, {
+        type: 'text',
+        text: '응답 생성 중 오류가 발생했어. 😢'
+      });
+    }
   }
   return Promise.resolve(null);
 }
@@ -91,7 +100,6 @@ function scheduleRandom40TimesPerDay() {
     }
   }
 }
-
 scheduleRandom40TimesPerDay();
 
 // 🎯 스케줄 3: 23시 – 약먹고 이빨닦고 자자
