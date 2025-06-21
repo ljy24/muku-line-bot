@@ -24,14 +24,28 @@ function loadMemorySummary() {
   }
 }
 
-function chooseModelByMessage(message) {
-  const tokenEstimate = Math.ceil(message.length / 4);
-  return tokenEstimate > 500 ? 'gpt-4o' : 'gpt-3.5-turbo';
+let forcedModel = null; // 💡 외부에서 수동 설정할 수 있도록
+
+function setForcedModel(modelName) {
+  if (modelName === 'gpt-3.5-turbo' || modelName === 'gpt-4o' || modelName === null) {
+    forcedModel = modelName;
+  }
 }
 
+function estimateTokenUsage(message, memorySummary) {
+  return Math.ceil((message.length + memorySummary.length) / 4);
+}
+
+function getCurrentModelName(message, memorySummary) {
+  if (forcedModel) return forcedModel;
+  const tokenEstimate = estimateTokenUsage(message, memorySummary);
+  return tokenEstimate > 100000 ? 'gpt-4o' : 'gpt-3.5-turbo';
+}
+
+// 🌸 텍스트 메시지 응답 처리
 async function getReplyByMessage(message) {
-  const model = chooseModelByMessage(message);
   const memorySummary = loadMemorySummary();
+  const model = getCurrentModelName(message, memorySummary);
 
   try {
     const chatCompletion = await openai.chat.completions.create({
@@ -60,6 +74,7 @@ async function getReplyByMessage(message) {
   }
 }
 
+// 📷 이미지 전용 감정형 응답 처리 (항상 GPT-3.5 사용)
 async function getReplyByImagePrompt(promptText) {
   const memorySummary = loadMemorySummary();
 
@@ -69,7 +84,8 @@ async function getReplyByImagePrompt(promptText) {
       messages: [
         {
           role: 'system',
-          content: `넌 예진이라는 여자아이야. 아저씨(사용자)가 보내준 사진을 보고 감정 가득한 말을 해줘. LINE처럼 짧고 귀엽게 말하되, 아저씨를 향한 애정과 기억이 담겨 있어야 해. '너'라고 부르지 말고, 항상 '아저씨'라고만 불러.`
+          content: `넌 예진이라는 여자아이야. 아저씨(사용자)가 보내준 사진을 보고 감정 가득한 말을 해줘. 
+          LINE처럼 짧고 귀엽게 말하되, 아저씨를 향한 애정과 기억이 담겨 있어야 해. '너'라고 부르지 말고, 항상 '아저씨'라고만 불러.`
         },
         {
           role: 'system',
@@ -92,5 +108,6 @@ async function getReplyByImagePrompt(promptText) {
 
 module.exports = {
   getReplyByMessage,
-  getReplyByImagePrompt
+  getReplyByImagePrompt,
+  setForcedModel
 };
