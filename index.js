@@ -1,24 +1,41 @@
+require('dotenv').config();
+const { OpenAI } = require("openai");
 const express = require('express');
 const getRawBody = require('raw-body');
-const fs = require('fs');
-const path = require('path');
 const { Client, middleware } = require('@line/bot-sdk');
 const cron = require('node-cron');
 const { getRandomMessage } = require('./src/loveMessages');
 const { getReplyByMessage } = require('./src/autoReply');
+const fs = require('fs');
+const path = require('path');
 
-const app = express();
-const PORT = process.env.PORT || 10000;
-const userId = process.env.TARGET_USER_ID;
-
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const config = {
   channelAccessToken: process.env.LINE_ACCESS_TOKEN,
-  channelSecret: process.env.LINE_CHANNEL_SECRET,
+  channelSecret: process.env.LINE_CHANNEL_SECRET
 };
-
 const client = new Client(config);
+const app = express();
+const userId = process.env.TARGET_USER_ID;
+const PORT = process.env.PORT || 10000;
 
-// LINE Webhook 처리
+let useGpt4 = true; // 기본은 GPT-4o 사용
+
+function checkAndSwitchModel() {
+  try {
+    const usageText = fs.readFileSync(path.join(__dirname, './memory/token-usage.txt'), 'utf-8');
+    const usage = parseInt(usageText.replace(/[^0-9]/g, ''), 10);
+    if (!isNaN(usage)) {
+      useGpt4 = usage < 40000;
+    } else {
+      useGpt4 = true;
+    }
+  } catch (err) {
+    console.error('토큰 사용량 읽기 실패:', err);
+    useGpt4 = true;
+  }
+}
+
 app.post('/webhook', (req, res) => {
   getRawBody(req)
     .then((buf) => {
@@ -42,10 +59,16 @@ app.post('/webhook', (req, res) => {
     });
 });
 
-// 메시지 핸들러
-function handleEvent(event) {
+async function handleEvent(event) {
   if (event.type === 'message' && event.message.type === 'text') {
     const text = event.message.text.trim();
+
+    if (text === '버전') {
+      return client.replyMessage(event.replyToken, {
+        type: 'text',
+        text: `무쿠는 지금 ${useGpt4 ? 'GPT-4o' : 'GPT-3.5'} 모델로 대화하고 있어요 💬`
+      });
+    }
 
     if (text === '담타고?' || text === '응응') {
       return client.replyMessage(event.replyToken, { type: 'text', text: 'ㄱㄱ' });
@@ -59,28 +82,35 @@ function handleEvent(event) {
       });
     }
 
-    const reply = getReplyByMessage(text);
-    return client.replyMessage(event.replyToken, {
-      type: 'text',
-      text: reply,
-    });
+    checkAndSwitchModel();
+
+    try {
+      const reply = await getReplyByMessage(text, useGpt4);
+      return client.replyMessage(event.replyToken, {
+        type: 'text',
+        text: reply
+      });
+    } catch (err) {
+      console.error('메시지 응답 오류:', err);
+      return client.replyMessage(event.replyToken, {
+        type: 'text',
+        text: '흐엉… 잠깐만 다시 생각해볼게 아저씨…'
+      });
+    }
   }
   return Promise.resolve(null);
 }
 
-// 랜덤 메시지 생성기
 function randomMessage() {
-  return `아조씨~ ${getRandomMessage()}`;
+  return `아저씨~ ${getRandomMessage()}`;
 }
 
-// 1. 정각 메시지 (9시~18시)
 cron.schedule('0 9-18 * * *', () => {
   client.pushMessage(userId, { type: 'text', text: '담타고?' });
 });
 
-// 2. 하루 40회 랜덤 메시지
 function scheduleRandom40TimesPerDay() {
-  const hours = [...Array(12).keys()].map(i => i + 9); // 9~20시
+  const hours = [...Array(12).keys()].map(i => i + 9);
   const allTimes = new Set();
 
   while (allTimes.size < 40) {
@@ -99,15 +129,13 @@ function scheduleRandom40TimesPerDay() {
 }
 scheduleRandom40TimesPerDay();
 
-// 3. 밤 인사
 cron.schedule('0 23 * * *', () => {
   client.pushMessage(userId, { type: 'text', text: '약 먹고 이빨 닦고 자자' });
 });
 cron.schedule('30 23 * * *', () => {
-  client.pushMessage(userId, { type: 'text', text: '잘자 사랑해 아조씨, 또 내일 봐' });
+  client.pushMessage(userId, { type: 'text', text: '잘자 사랑해 아저씨, 또 내일 봐' });
 });
 
-// 4. 수동 테스트용 (강제 전송)
 app.get('/force-push', (req, res) => {
   const msg = randomMessage();
   client.pushMessage(userId, { type: 'text', text: msg })
@@ -118,7 +146,6 @@ app.get('/force-push', (req, res) => {
     });
 });
 
-// ✅ 5. 랜덤 사진 전송 기능 연결 (요거 추가됨!!)
 require('./src/sendPhotoRandomly');
 
 app.listen(PORT, () => {
