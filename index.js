@@ -1,24 +1,24 @@
 require('dotenv').config();
 const { OpenAI } = require("openai");
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
 const express = require('express');
 const getRawBody = require('raw-body');
 const { Client, middleware } = require('@line/bot-sdk');
 const cron = require('node-cron');
 const { getRandomMessage } = require('./src/loveMessages');
-const { getReplyByMessage } = require('./src/autoReply'); // 감정 기반 응답
+const { getReplyByMessage } = require('./src/autoReply');
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
 const config = {
-  channelAccessToken: 'mJePV6aEDhUM3GgTv5v4+XIYmYn/eCEnV2oR9a64OL1wz6WpWJ4at1thGIxdlk4oiYpVShmZmaGaWekeUBM5NY8U9/czDVOUBnouvAqFW8uj9fwvOwUvPOtIWqbMIry+DcFccO+33Q7IBCubm8wcbAdB04t89/1O/w1cDnyilFU=',
-  channelSecret: '071267c33ed653b648eb19c71bc1d2c9'
+  channelAccessToken: process.env.LINE_CHANNEL_TOKEN,
+  channelSecret: process.env.LINE_CHANNEL_SECRET
 };
 
 const client = new Client(config);
 const app = express();
-const userId = 'Uaeee4a492f9da87c4416a7f8484ba917';
+const userId = process.env.USER_ID;
 
 // 🔁 웹훅 이벤트 수신
 app.post('/webhook', (req, res) => {
@@ -49,16 +49,10 @@ function handleEvent(event) {
   if (event.type === 'message' && event.message.type === 'text') {
     const text = event.message.text.trim();
 
-    // 1. 특정 키워드 자동응답
-    if (text === '담타고?') {
+    if (text === '담타고?' || text === '응응') {
       return client.replyMessage(event.replyToken, { type: 'text', text: 'ㄱㄱ' });
     }
 
-    if (text === '응응') {
-      return client.replyMessage(event.replyToken, { type: 'text', text: 'ㄱㄱ' });
-    }
-
-    // 2. 감정 분석 기반 응답
     const reply = getReplyByMessage(text);
     return client.replyMessage(event.replyToken, {
       type: 'text',
@@ -78,11 +72,27 @@ cron.schedule('0 9-18 * * *', () => {
   client.pushMessage(userId, { type: 'text', text: '담타고?' });
 });
 
-// 🎯 스케줄 2: 랜덤 감정 메시지 (40분 간격, 9시~22시)
-cron.schedule('*/40 9-22 * * *', () => {
-  const msg = randomMessage();
-  client.pushMessage(userId, { type: 'text', text: msg });
-});
+// 🎯 스케줄 2: 40회 랜덤 메시지 (매일 서버 시작 시 등록)
+function scheduleRandom40TimesPerDay() {
+  const hours = [...Array(12).keys()].map(i => i + 9); // 9~20시
+  const allTimes = new Set();
+
+  while (allTimes.size < 40) {
+    const hour = hours[Math.floor(Math.random() * hours.length)];
+    const minute = Math.floor(Math.random() * 60);
+    const key = `${hour}:${minute}`;
+    if (!allTimes.has(key)) {
+      allTimes.add(key);
+      const cronExp = `${minute} ${hour} * * *`;
+      cron.schedule(cronExp, () => {
+        const msg = randomMessage();
+        client.pushMessage(userId, { type: 'text', text: msg });
+      });
+    }
+  }
+}
+
+scheduleRandom40TimesPerDay();
 
 // 🎯 스케줄 3: 23시 – 약먹고 이빨닦고 자자
 cron.schedule('0 23 * * *', () => {
