@@ -32,4 +32,19 @@ function checkMonthlyBudget() {
   }
 }
 
-module.exports = { checkMonthlyBudget };
+function getRemainingBudgetMessage() {
+  const usagePath = path.join(__dirname, '../memory/usage-log.json');
+  if (!fs.existsSync(usagePath)) return '아직 사용 기록이 없어~';
+
+  const logs = JSON.parse(fs.readFileSync(usagePath, 'utf-8'));
+  const { cost35, cost4o, total } = estimateMonthlyCost(logs);
+
+  const left = 3000 - parseFloat(total);
+  if (left <= 0) {
+    return `헉..! 아저씨 이달 한도 초과했어 😢 (¥${total}엔 사용됨)`;
+  } else {
+    return `아직 ¥${left.toFixed(1)}엔 남았어! (이번 달 총 ¥${total}엔 썼어)`;
+  }
+}
+
+module.exports = { checkMonthlyBudget, getRemainingBudgetMessage };
