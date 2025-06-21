@@ -4,23 +4,23 @@ const express = require('express');
 const getRawBody = require('raw-body');
 const { Client, middleware } = require('@line/bot-sdk');
 const cron = require('node-cron');
-const path = require('path');
 const { getRandomMessage } = require('./src/loveMessages');
 const { getReplyByMessage } = require('./src/autoReply');
-const { getRemainingBudgetMessage } = require('./src/checkUsage');
+const fs = require('fs');
+const path = require('path');
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
 const config = {
   channelAccessToken: process.env.LINE_ACCESS_TOKEN,
   channelSecret: process.env.LINE_CHANNEL_SECRET
 };
-
 const client = new Client(config);
 const app = express();
 const userId = process.env.TARGET_USER_ID;
 
-// 웹훅
+let useGpt4 = false;
+
+// 🔁 웹훅 이벤트 수신
 app.post('/webhook', (req, res) => {
   getRawBody(req)
     .then((buf) => {
@@ -44,42 +44,52 @@ app.post('/webhook', (req, res) => {
     });
 });
 
-// 핸들러
+// 🤖 메시지 응답 핸들러
 async function handleEvent(event) {
   if (event.type === 'message' && event.message.type === 'text') {
     const text = event.message.text.trim();
+
+    if (text === '버전') {
+      return client.replyMessage(event.replyToken, {
+        type: 'text',
+        text: `무쿠는 지금 ${useGpt4 ? 'GPT-4o' : 'GPT-3.5'} 모델로 대화하고 있어요 💬`
+      });
+    }
 
     if (text === '담타고?' || text === '응응') {
       return client.replyMessage(event.replyToken, { type: 'text', text: 'ㄱㄱ' });
     }
 
-    if (text.includes('얼마')) {
-      const msg = getRemainingBudgetMessage();
-      return client.replyMessage(event.replyToken, { type: 'text', text: msg });
+    try {
+      const reply = await getReplyByMessage(text);
+      return client.replyMessage(event.replyToken, {
+        type: 'text',
+        text: reply
+      });
+    } catch (err) {
+      console.error('메시지 응답 오류:', err);
+      return client.replyMessage(event.replyToken, {
+        type: 'text',
+        text: '흐엉… 잠깐만 다시 생각해볼게 아저씨…'
+      });
     }
-
-    const reply = await getReplyByMessage(text);
-    return client.replyMessage(event.replyToken, {
-      type: 'text',
-      text: reply
-    });
   }
   return Promise.resolve(null);
 }
 
-// 랜덤 메시지
+// 🌸 랜덤 감정 메시지 생성
 function randomMessage() {
   return `아저씨~ ${getRandomMessage()}`;
 }
 
-// 스케줄 1: 담타고?
+// 🎯 스케줄 1: 담타고? (매일 9~18시 정각)
 cron.schedule('0 9-18 * * *', () => {
   client.pushMessage(userId, { type: 'text', text: '담타고?' });
 });
 
-// 스케줄 2: 랜덤 메시지 40회
+// 🎯 스케줄 2: 40회 랜덤 메시지
 function scheduleRandom40TimesPerDay() {
-  const hours = [...Array(12).keys()].map(i => i + 9);
+  const hours = [...Array(12).keys()].map(i => i + 9); // 9~20시
   const allTimes = new Set();
 
   while (allTimes.size < 40) {
@@ -98,17 +108,17 @@ function scheduleRandom40TimesPerDay() {
 }
 scheduleRandom40TimesPerDay();
 
-// 스케줄 3: 23시 약먹고 자자
+// 🎯 스케줄 3: 23시 – 약먹고 이빨닦고 자자
 cron.schedule('0 23 * * *', () => {
   client.pushMessage(userId, { type: 'text', text: '약 먹고 이빨 닦고 자자' });
 });
 
-// 스케줄 4: 23시 30분 잘자~
+// 🎯 스케줄 4: 23시 30분 – 잘자 사랑해 아저씨
 cron.schedule('30 23 * * *', () => {
   client.pushMessage(userId, { type: 'text', text: '잘자 사랑해 아저씨, 또 내일 봐' });
 });
 
-// 수동 전송 엔드포인트
+// 💻 수동 전송 트리거
 app.get('/force-push', (req, res) => {
   const msg = randomMessage();
   client.pushMessage(userId, { type: 'text', text: msg })
