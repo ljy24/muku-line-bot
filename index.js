@@ -1,3 +1,4 @@
+// index.js
 require('dotenv').config();
 const { OpenAI } = require("openai");
 const express = require('express');
@@ -5,23 +6,17 @@ const getRawBody = require('raw-body');
 const { Client, middleware } = require('@line/bot-sdk');
 const cron = require('node-cron');
 const { getRandomMessage } = require('./src/loveMessages');
-const { getReplyByMessage } = require('./src/autoReply');
+const { getSmartReply } = require('./src/modelSelector');
 
-// 💡 Render 환경 변수 이름에 맞춰서 정확하게 매핑!
 const config = {
   channelAccessToken: process.env.LINE_ACCESS_TOKEN,
   channelSecret: process.env.LINE_CHANNEL_SECRET
 };
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
-
 const client = new Client(config);
 const app = express();
 const userId = process.env.TARGET_USER_ID;
 
-// 📩 LINE 웹훅 이벤트 처리
 app.post('/webhook', (req, res) => {
   getRawBody(req)
     .then((buf) => {
@@ -45,7 +40,6 @@ app.post('/webhook', (req, res) => {
     });
 });
 
-// 💬 메시지 처리 로직
 async function handleEvent(event) {
   if (event.type === 'message' && event.message.type === 'text') {
     const text = event.message.text.trim();
@@ -54,7 +48,7 @@ async function handleEvent(event) {
       return client.replyMessage(event.replyToken, { type: 'text', text: 'ㄱㄱ' });
     }
 
-    const reply = await getReplyByMessage(text);
+    const reply = await getSmartReply(text);
     return client.replyMessage(event.replyToken, {
       type: 'text',
       text: reply
@@ -63,19 +57,16 @@ async function handleEvent(event) {
   return Promise.resolve(null);
 }
 
-// 🎀 랜덤 메시지 생성
 function randomMessage() {
   return `아저씨~ ${getRandomMessage()}`;
 }
 
-// ⏰ 정각마다 "담타고?"
 cron.schedule('0 9-18 * * *', () => {
   client.pushMessage(userId, { type: 'text', text: '담타고?' });
 });
 
-// ⏰ 하루 40회 랜덤 메시지 전송
 function scheduleRandom40TimesPerDay() {
-  const hours = [...Array(12).keys()].map(i => i + 9); // 9~20시
+  const hours = [...Array(12).keys()].map(i => i + 9);
   const allTimes = new Set();
 
   while (allTimes.size < 40) {
@@ -92,17 +83,17 @@ function scheduleRandom40TimesPerDay() {
     }
   }
 }
+
 scheduleRandom40TimesPerDay();
 
-// ⏰ 자기 전 메시지
 cron.schedule('0 23 * * *', () => {
   client.pushMessage(userId, { type: 'text', text: '약 먹고 이빨 닦고 자자' });
 });
+
 cron.schedule('30 23 * * *', () => {
   client.pushMessage(userId, { type: 'text', text: '잘자 사랑해 아저씨, 또 내일 봐' });
 });
 
-// 🖐 수동 트리거
 app.get('/force-push', (req, res) => {
   const msg = randomMessage();
   client.pushMessage(userId, { type: 'text', text: msg })
