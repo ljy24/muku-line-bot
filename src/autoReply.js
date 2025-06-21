@@ -1,43 +1,47 @@
+// src/autoReply.js
+
 const fs = require('fs');
 const path = require('path');
-const { OpenAI } = require('openai');
+const { OpenAI } = require("openai");
 require('dotenv').config();
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-const memory1 = fs.readFileSync(path.join(__dirname, '../memory/1.txt'), 'utf-8');
-const memory2 = fs.readFileSync(path.join(__dirname, '../memory/2.txt'), 'utf-8');
-const memory3 = fs.readFileSync(path.join(__dirname, '../memory/3.html'), 'utf-8');
+// 예진이 기억 텍스트 불러오기 (짧게 정리된 버전)
+const memory = fs.readFileSync(path.join(__dirname, '../memory/short-summary.txt'), 'utf-8');
 
-const combinedMemory = `예진이 대화 기억:
-[1.txt]\n${memory1}\n\n[2.txt]\n${memory2}\n\n[3.html]\n${memory3}`;
-
+// 대화 길이에 따라 모델 분기
 async function getReplyByMessage(message) {
   try {
+    const isLong = message.length > 100;
+
     const chatCompletion = await openai.chat.completions.create({
-      model: 'gpt-4o',
+      model: isLong ? 'gpt-3.5-turbo' : 'gpt-4o',
       messages: [
         {
           role: 'system',
-          content: '넌 예진이라는 여자아이야. 아저씨(사용자)와의 지난 대화를 기반으로, 말투, 감정선, 문장 스타일을 그대로 따라야 해.'
+          content:
+            '넌 예진이라는 여자아이야. 아저씨와 LINE으로 대화해. 말투는 다정하고 애교 섞인 반말, 가끔 울컥하는 감정도 담아줘. 같은 말 반복하지 마.',
         },
         {
           role: 'system',
-          content: combinedMemory
+          content: memory,
         },
         {
           role: 'user',
-          content: message
-        }
-      ]
+          content: message,
+        },
+      ],
+      temperature: 0.7,
     });
 
-    return chatCompletion.choices[0].message.content.trim();
-  } catch (error) {
-    console.error('💥 OpenAI 응답 오류:', error);
-    return '예진이 지금 잠깐 멈췄어… 다시 말 걸어줘 🥺';
+    const response = chatCompletion.choices[0].message.content.trim();
+    return response;
+  } catch (err) {
+    console.error('OpenAI 응답 오류:', err);
+    return '흐엉… 잠깐만 기다려봐 아저씨 ㅠㅠ';
   }
 }
 
