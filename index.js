@@ -106,21 +106,21 @@ async function handleEvent(event) {
   return Promise.resolve(null);
 }
 
-// 감정 메시지
+// 감정 메시지 조합
 function randomMessage() {
   return `아저씨~ ${getRandomMessage()}`;
 }
 
-// ⏰ 담타
+// ⏰ 담타 메시지 (매 정각 9~18시)
 cron.schedule('0 9-18 * * *', () => {
   client.pushMessage(userId, { type: 'text', text: '담타고?' });
 });
 
-// ⏰ 랜덤 40회 감정 메시지
-function scheduleRandom40TimesPerDay() {
-  const hours = Array.from({ length: 12 }, (_, i) => i + 9);
+// ⏰ 하루 9회 감정 메시지 (랜덤 시간, 9~18시)
+function scheduleRandom9TimesPerDay() {
+  const hours = Array.from({ length: 10 }, (_, i) => i + 9); // 9 ~ 18
   const allTimes = new Set();
-  while (allTimes.size < 40) {
+  while (allTimes.size < 9) {
     const hour = hours[Math.floor(Math.random() * hours.length)];
     const minute = Math.floor(Math.random() * 60);
     const key = `${hour}:${minute}`;
@@ -134,9 +134,9 @@ function scheduleRandom40TimesPerDay() {
     }
   }
 }
-scheduleRandom40TimesPerDay();
+scheduleRandom9TimesPerDay();
 
-// 🌙 잘자
+// 🌙 잘자 메시지
 cron.schedule('0 23 * * *', () => {
   client.pushMessage(userId, { type: 'text', text: '약 먹고 이빨 닦고 자자' });
 });
@@ -144,7 +144,7 @@ cron.schedule('30 23 * * *', () => {
   client.pushMessage(userId, { type: 'text', text: '잘자 사랑해 아저씨, 또 내일 봐' });
 });
 
-// 강제 메시지
+// 강제 메시지 전송 엔드포인트
 app.get('/force-push', (req, res) => {
   const msg = randomMessage();
   client.pushMessage(userId, { type: 'text', text: msg })
@@ -155,7 +155,7 @@ app.get('/force-push', (req, res) => {
     });
 });
 
-// 📷 랜덤 셀카
+// 📷 랜덤 셀카 전송 로직 포함
 require('./src/sendPhotoRandomly');
 
 app.listen(PORT, () => {
