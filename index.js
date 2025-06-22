@@ -63,26 +63,8 @@ async function getReplyByMessage(userInput) {
   return reply;
 }
 
-async function getReplyByImagePrompt(promptText, imageBase64) {
-  if (!imageBase64 || typeof imageBase64 !== 'string' || imageBase64.length < 100) {
-    return '아직 사진을 잘 못 봤어. 다시 한 번 보여줄래?';
-  }
-
-  try {
-    return await callOpenAI([
-      { role: 'system', content: `${compressedMemory}\n\n아저씨가 사진을 보냈어.\n예진이라면 어떻게 반응할까? 감정을 담아서 말해줘.` },
-      {
-        role: 'user',
-        content: [
-          { type: 'text', text: promptText },
-          { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${imageBase64}` } }
-        ]
-      }
-    ], 'gpt-4o', 400);
-  } catch (e) {
-    console.error('getReplyByImagePrompt 오류:', e.message);
-    return '사진 보는데 문제가 생겼어. 조금 있다가 다시 보여줄래?';
-  }
+async function getReplyByImagePrompt() {
+  return '사진은 지금은 말 없이 보여줄게.';
 }
 
 async function getBase64FromUrl(url) {
