@@ -10,9 +10,10 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
-const memory1 = fs.readFileSync(path.join(__dirname, '../memory/1.txt'), 'utf-8');
-const memory2 = fs.readFileSync(path.join(__dirname, '../memory/2.txt'), 'utf-8');
-const memory3 = fs.readFileSync(path.join(__dirname, '../memory/3.html'), 'utf-8');
+const memory1 = safeRead(path.resolve(__dirname, '../memory/1.txt'));
+const memory2 = safeRead(path.resolve(__dirname, '../memory/2.txt'));
+const memory3 = safeRead(path.resolve(__dirname, '../memory/3.html'));
+
 
 const compressedMemory = memory1.slice(-3000) + '\n' + memory2.slice(-3000) + '\n' + memory3.slice(-3000);
 
