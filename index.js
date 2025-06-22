@@ -1,5 +1,3 @@
-// index.js (전체 서버 코드)
-
 const express = require('express');
 const getRawBody = require('raw-body');
 const { Client, middleware } = require('@line/bot-sdk');
@@ -64,6 +62,20 @@ async function handleEvent(event) {
 
   if (event.message.type === 'text') {
     const text = event.message.text.trim();
+
+    // 🔹 사진 요청 처리 (📷 두 번째 기능 추가됨)
+    if (text.includes('사진') || text.includes('보여줘')) {
+      const photoListPath = path.join(__dirname, './memory/photo-list.txt');
+      const photoList = fs.readFileSync(photoListPath, 'utf-8').split('\n').filter(Boolean);
+      const randomPhoto = photoList[Math.floor(Math.random() * photoList.length)];
+      const imageUrl = `https://de-ji.net/yejin/${randomPhoto}`;
+
+      return client.replyMessage(event.replyToken, {
+        type: 'image',
+        originalContentUrl: imageUrl,
+        previewImageUrl: imageUrl
+      });
+    }
 
     if (text === '3.5') {
       setForcedModel('gpt-3.5-turbo');
