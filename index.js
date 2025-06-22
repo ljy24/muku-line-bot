@@ -144,15 +144,9 @@ cron.schedule('30 23 * * *', () => {
   client.pushMessage(userId, { type: 'text', text: '잘자 사랑해 아저씨, 또 내일 봐' });
 });
 
-// 강제 메시지 전송 엔드포인트
+// 강제 메시지 전송 엔드포인트 (서버 깨우기용)
 app.get('/force-push', (req, res) => {
-  const msg = randomMessage();
-  client.pushMessage(userId, { type: 'text', text: msg })
-    .then(() => res.status(200).send('메시지 전송됨'))
-    .catch((err) => {
-      console.error(err);
-      res.status(500).send('전송 실패');
-    });
+  res.status(200).send('서버만 깨웠엉. 무쿠는 조용히 있었어~');
 });
 
 // 📷 랜덤 셀카 전송 로직 포함
