@@ -39,7 +39,7 @@ function getAllLogs() {
     return [];
   }
 }
-a
+
 function saveLog(role, msg) {
   const all = getAllLogs();
   all.unshift({ date: new Date().toISOString(), role, msg });
