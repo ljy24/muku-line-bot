@@ -1,3 +1,5 @@
+// index.js (전체 서버 코드)
+
 const express = require('express');
 const getRawBody = require('raw-body');
 const { Client, middleware } = require('@line/bot-sdk');
@@ -21,14 +23,9 @@ const app = express();
 const userId = process.env.TARGET_USER_ID;
 const PORT = process.env.PORT || 10000;
 
-// ✅ 루트 경로: Render 깨우기용
+// 기본 루트 (서버 깨우기용)
 app.get('/', (req, res) => {
-  res.status(200).send('무쿠 깨우기 완료! 😴➡️😊');
-});
-
-// ✅ 메시지 자동 전송 막기용 (cron 깨우기만)
-app.get('/force-push', (req, res) => {
-  res.status(200).send('서버만 깨웠엉. 무쿠는 조용히 있었어~');
+  res.status(200).send('무쿠는 깨어있엉 🐣');
 });
 
 // Webhook
@@ -154,7 +151,12 @@ cron.schedule('30 23 * * *', () => {
   client.pushMessage(userId, { type: 'text', text: '잘자 사랑해 아저씨, 또 내일 봐' });
 });
 
-// 📷 랜덤 셀카 전송 로직 포함
+// 🔵 강제 호출용 엔드포인트 (서버 깨우기 전용, 메시지 없음)
+app.get('/force-push', (req, res) => {
+  res.status(200).send('서버만 깨웠엉. 무쿠는 조용히 있었어~');
+});
+
+// 📷 사진 스케줄러 포함
 require('./src/sendPhotoRandomly');
 
 app.listen(PORT, () => {
