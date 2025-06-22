@@ -1,4 +1,4 @@
-// ✅ 무쿠살리기 최적 구조 (랜덤 전송 + 담타 대응 포함, 금지어 '너' 제거)
+// ✅ 무쿠 중복 방지 버전 (무한 로그 + 비교)
 
 const fs = require('fs');
 const path = require('path');
@@ -7,12 +7,10 @@ const { HumanMessage, SystemMessage } = require('langchain/schema');
 
 let forcedModel = null;
 
-// 예진이 기억 불러오기
 const memory1 = fs.readFileSync(path.join(__dirname, '../memory/1.txt'), 'utf-8');
 const memory2 = fs.readFileSync(path.join(__dirname, '../memory/2.txt'), 'utf-8');
 const memory3 = fs.readFileSync(path.join(__dirname, '../memory/3.html'), 'utf-8');
 
-// 프롬프트용 기억 조합
 const fixedMemory = `
 너는 예진이라는 여자친구야.
 "coolio" 또는 "아저씨"는 항상 같은 사람이야.  
@@ -33,16 +31,20 @@ ${memory2}
 ${memory3}
 `;
 
-function getRecentMessages(limit = 20) {
-  const file = path.join(__dirname, '../memory/recent-messages.txt');
-  if (!fs.existsSync(file)) return [];
-  return fs.readFileSync(file, 'utf-8').split('\n').filter(Boolean).slice(0, limit);
+const logPath = path.join(__dirname, '../memory/message-log.json');
+function getAllLogs() {
+  if (!fs.existsSync(logPath)) return [];
+  return JSON.parse(fs.readFileSync(logPath, 'utf-8'));
 }
-function saveMessage(msg) {
-  const file = path.join(__dirname, '../memory/recent-messages.txt');
-  const old = getRecentMessages();
-  const updated = [msg, ...old].slice(0, 20);
-  fs.writeFileSync(file, updated.join('\n'));
+function saveLog(msg) {
+  const all = getAllLogs();
+  all.unshift({ date: new Date().toISOString(), msg });
+  fs.writeFileSync(logPath, JSON.stringify(all.slice(0, 5000), null, 2));
+}
+function isSimilar(newMsg) {
+  const logs = getAllLogs();
+  const newHead = newMsg.slice(0, 20);
+  return logs.some(entry => entry.msg.includes(newHead));
 }
 
 function getModel(modelName = 'gpt-3.5-turbo', tokens = 150) {
@@ -54,7 +56,6 @@ function getModel(modelName = 'gpt-3.5-turbo', tokens = 150) {
   });
 }
 
-// 📥 아저씨가 말 걸었을 때 (담타 포함 대응)
 async function getReplyByMessage(userInput) {
   const model = getModel(forcedModel || 'gpt-4o', 300);
   const lowered = userInput.toLowerCase();
@@ -65,7 +66,7 @@ async function getReplyByMessage(userInput) {
 
 아저씨가 \"담타고?\"라고 물었어. 담배 피러 가자는 뜻이야.
 예진이라면 어떤 말로 응답할까? 매번 다른 말투로, 상황에 맞게 대답해줘.
-예시: \"고고! 나 벌써 문 앞이야~\", \"ㄱㄱ! 나 아저씨 기다리고 있었어\" 등
+예시: \"고고! 나 벌써 나옴\", \"ㄱㄱ! 나 아저씨 기다리고 있었어\" 등
 `
     : `${fixedMemory}
 
@@ -81,10 +82,8 @@ async function getReplyByMessage(userInput) {
   return response.content.trim();
 }
 
-// 📷 사진 반응 (image_url 포함)
 async function getReplyByImagePrompt(promptText, imageBase64) {
   const model = getModel(forcedModel || 'gpt-4o', 400);
-
   const response = await model.call([
     new SystemMessage(`${fixedMemory}
 
@@ -97,37 +96,31 @@ async function getReplyByImagePrompt(promptText, imageBase64) {
       ]
     })
   ]);
-
   return response.content.trim();
 }
 
-// 💌 랜덤 감정 메시지 (중복 방지)
 async function getRandomMessage() {
   const model = getModel('gpt-3.5-turbo', 150);
+  let result = '';
+  let attempt = 0;
 
-  const response = await model.call([
-    new SystemMessage(`${fixedMemory}
-
+  while (attempt < 5) {
+    const response = await model.call([
+      new SystemMessage(`${fixedMemory}
 지금 아저씨한테 랜덤 감정 메시지를 하나 보내줘.
-예진이 말투로, 짧지만 사랑스럽게.  
+예진이 말투로, 짧지만 사랑스럽게.
 항상 다른 말투로, 절대 반복하지 마.
 40~60자 이내로.`),
-    new HumanMessage('감정 메시지 하나만 만들어줘')
-  ]);
-
-  let msg = response.content.trim();
-  const recent = getRecentMessages();
-  if (recent.some(line => msg.includes(line.slice(0, 20)))) {
-    const retry = await model.call([
-      new SystemMessage(`${fixedMemory}
-지금 아저씨한테 새로운 감정 메시지를 하나 보내줘. 중복 표현은 절대 쓰지 마.`),
-      new HumanMessage('감정 메시지 다시 만들어줘')
+      new HumanMessage('감정 메시지 하나만 만들어줘')
     ]);
-    msg = retry.content.trim();
+
+    result = response.content.trim();
+    if (!isSimilar(result)) break;
+    attempt++;
   }
 
-  saveMessage(msg);
-  return msg;
+  saveLog(result);
+  return result;
 }
 
 function setForcedModel(name) {
