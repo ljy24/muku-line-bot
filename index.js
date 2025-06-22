@@ -10,18 +10,31 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
+function safeRead(filePath, fallback = '') {
+  try {
+    return fs.readFileSync(filePath, 'utf-8');
+  } catch (err) {
+    console.warn(`⚠️ 파일을 찾을 수 없어요: ${filePath}`);
+    return fallback;
+  }
+}
+
 const memory1 = safeRead(path.resolve(__dirname, '../memory/1.txt'));
 const memory2 = safeRead(path.resolve(__dirname, '../memory/2.txt'));
 const memory3 = safeRead(path.resolve(__dirname, '../memory/3.html'));
 
-
 const compressedMemory = memory1.slice(-3000) + '\n' + memory2.slice(-3000) + '\n' + memory3.slice(-3000);
 
-const logPath = path.join(__dirname, '../memory/message-log.json');
+const logPath = path.resolve(__dirname, '../memory/message-log.json');
 
 function getAllLogs() {
   if (!fs.existsSync(logPath)) return [];
-  return JSON.parse(fs.readFileSync(logPath, 'utf-8'));
+  try {
+    return JSON.parse(fs.readFileSync(logPath, 'utf-8'));
+  } catch (err) {
+    console.warn('⚠️ 로그 파일 파싱 실패:', err.message);
+    return [];
+  }
 }
 
 function saveLog(role, msg) {
