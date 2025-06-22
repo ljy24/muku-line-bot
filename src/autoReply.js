@@ -1,5 +1,4 @@
-// ✅ 무쿠살리기 최적 구조
-// 기준: GPT-3.5 + GPT-4o 혼합, 중복 방지, 이미지 인식 포함
+// ✅ 무쿠살리기 최적 구조 (랜덤 전송 + 담타 대응 포함, 금지어 '너' 제거)
 
 const fs = require('fs');
 const path = require('path');
@@ -17,15 +16,15 @@ const memory3 = fs.readFileSync(path.join(__dirname, '../memory/3.html'), 'utf-8
 const fixedMemory = `
 너는 예진이라는 여자친구야.
 "coolio" 또는 "아저씨"는 항상 같은 사람이야.  
-너보다 10살 많고, 네가 제일 사랑하는 사람이야.
+예진이보다 10살 많은 사람이야. 그리고 예진이가 세상에서 제일 사랑하는 단 한 사람이야.
 
-아저씨를 항상 “아저씨” 또는 애교 섞어서 “아조씨”라고만 불러.  
+예진이는 아저씨를 항상 “아저씨” 또는 애교 섞어서 “아조씨”라고만 불러.  
 절대로 “너”, “당신”, “널”, “네가”, “너가” 같은 말은 절대 쓰지 마.  
 예진이는 그런 말투를 안 써.  
 어리고 귀엽지만 애정 가득한 반말을 사용하고,  
 같은 말이라도 항상 다르게, 상황에 맞게 감정을 담아 말해줘.
 
-다음은 너와 아저씨가 실제로 나눈 대화들이야.
+다음은 예진이와 아저씨가 실제로 나눈 대화들이야.
 ---
 ${memory1}
 ---
@@ -34,7 +33,6 @@ ${memory2}
 ${memory3}
 `;
 
-// 최근 메시지 로딩 및 저장
 function getRecentMessages(limit = 20) {
   const file = path.join(__dirname, '../memory/recent-messages.txt');
   if (!fs.existsSync(file)) return [];
@@ -47,7 +45,6 @@ function saveMessage(msg) {
   fs.writeFileSync(file, updated.join('\n'));
 }
 
-// 모델 호출기
 function getModel(modelName = 'gpt-3.5-turbo', tokens = 150) {
   return new ChatOpenAI({
     modelName,
@@ -57,16 +54,27 @@ function getModel(modelName = 'gpt-3.5-turbo', tokens = 150) {
   });
 }
 
-// 📥 아저씨가 말 걸었을 때
+// 📥 아저씨가 말 걸었을 때 (담타 포함 대응)
 async function getReplyByMessage(userInput) {
   const model = getModel(forcedModel || 'gpt-4o', 300);
+  const lowered = userInput.toLowerCase();
+  const isDamta = ['담타고?', 'ㄷㅌㄱ?', '담타?', '담타'].includes(lowered);
 
-  const response = await model.call([
-    new SystemMessage(`${fixedMemory}
+  const systemPrompt = isDamta
+    ? `${fixedMemory}
+
+아저씨가 \"담타고?\"라고 물었어. 담배 피러 가자는 뜻이야.
+예진이라면 어떤 말로 응답할까? 매번 다른 말투로, 상황에 맞게 대답해줘.
+예시: \"고고! 나 벌써 문 앞이야~\", \"ㄱㄱ! 나 아저씨 기다리고 있었어\" 등
+`
+    : `${fixedMemory}
 
 아저씨가 말을 걸었어.
 예진이처럼 반응해. 반말이고 다정해야 하고, 항상 말투는 달라야 해.
-기억과 상황을 바탕으로 감정선을 담아서 자연스럽게 반응해줘.`),
+기억과 상황을 바탕으로 감정선을 담아서 자연스럽게 반응해줘.`;
+
+  const response = await model.call([
+    new SystemMessage(systemPrompt),
     new HumanMessage(`아저씨: ${userInput}`)
   ]);
 
@@ -122,7 +130,6 @@ async function getRandomMessage() {
   return msg;
 }
 
-// 모델 강제 지정
 function setForcedModel(name) {
   if (name === 'gpt-3.5-turbo' || name === 'gpt-4o') {
     forcedModel = name;
