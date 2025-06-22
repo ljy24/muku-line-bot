@@ -1,4 +1,4 @@
-// ✅ 무쿠 autoReply.js – 중복 방지 + 감정 범주에 '사랑' 추가
+// ✅ 무쿠 autoReply.js – 감정 분석 3단계 기반 + 말투 유지
 
 const fs = require('fs');
 const path = require('path');
@@ -41,15 +41,18 @@ ${memory3}
 `;
 
 const logPath = path.join(__dirname, '../memory/message-log.json');
+
 function getAllLogs() {
   if (!fs.existsSync(logPath)) return [];
   return JSON.parse(fs.readFileSync(logPath, 'utf-8'));
 }
+
 function saveLog(msg) {
   const all = getAllLogs();
   all.unshift({ date: new Date().toISOString(), msg });
   fs.writeFileSync(logPath, JSON.stringify(all.slice(0, 5000), null, 2));
 }
+
 function isSimilar(newMsg) {
   const logs = getAllLogs();
   return logs.some(entry => stringSimilarity.compareTwoStrings(entry.msg, newMsg) > 0.75);
@@ -72,9 +75,9 @@ async function getReplyByMessage(userInput) {
   const systemPrompt = isDamta
     ? `${fixedMemory}
 
-아저씨가 \"담타고?\"라고 물었어. 담배 피러 가자는 뜻이야.
+아저씨가 "담타고?"라고 물었어. 담배 피러 가자는 뜻이야.
 예진이라면 어떤 말로 응답할까? 매번 다른 말투로, 상황에 맞게 대답해줘.
-예시: \"고고! 나 벌써 회사밑임\", \"ㄱㄱ! 나 아저씨 기다리고 있었어\" 등
+예시: "고고! 나 벌써 회사 밑임", "ㄱㄱ! 나 아저씨 기다리고 있었어" 등
 `
     : `${fixedMemory}
 
@@ -148,9 +151,50 @@ function setForcedModel(name) {
   }
 }
 
+// ✅ 감정 분석기 (3번 방식 – 기본 + 자유 감정 함께)
+async function analyzeEmotion(text) {
+  const model = getModel(forcedModel || 'gpt-3.5-turbo', 150);
+
+  // 기본 감정 6종
+  const basicPrompt = `
+너는 감정 분석 전문가야.
+다음 문장에서 느껴지는 주요 감정을 하나로 요약해줘.
+정답은 반드시 다음 중 하나여야 해: 기쁨, 슬픔, 분노, 걱정, 사랑, 놀람
+
+문장: ${text}
+답:
+  `.trim();
+
+  const basicResponse = await model.call([
+    new HumanMessage(basicPrompt)
+  ]);
+  const basicEmotion = basicResponse.content.trim();
+
+  // 자유 감정 1~2개
+  const nuancedPrompt = `
+다음 문장에서 느껴지는 감정을 자유롭게 1~2개 추출해줘.
+정답은 짧은 단어로만 표현하고, 너무 흔한 단어는 피하고, 감정선 중심으로 적어줘.
+예시: 설렘, 외로움, 애틋함, 투정, 질투, 기대, 회상, 속상함, 장난기, 따스함, 무기력 등
+
+문장: ${text}
+답:
+  `.trim();
+
+  const nuancedResponse = await model.call([
+    new HumanMessage(nuancedPrompt)
+  ]);
+  const nuancedEmotion = nuancedResponse.content.trim();
+
+  return {
+    basic: basicEmotion,
+    nuanced: nuancedEmotion
+  };
+}
+
 module.exports = {
   getReplyByMessage,
   getReplyByImagePrompt,
   getRandomMessage,
+  analyzeEmotion,
   setForcedModel
 };
