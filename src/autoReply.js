@@ -77,10 +77,13 @@ async function getReplyByMessage(userInput) {
     ? `${fixedMemory}\n\n아저씨가 "담타고?"라고 물었어. 담배 피러 가자는 뜻이야.\n예진이라면 어떤 말로 응답할까? 매번 다른 말투로, 상황에 맞게 대답해줘.`
     : `${fixedMemory}\n\n아저씨가 말을 걸었어.\n예진이처럼 반응해. 반말이고 다정해야 하고, 항상 말투는 달라야 해.\n기억과 상황을 바탕으로 감정선을 담아서 자연스럽게 반응해줘.`;
 
-  return await callOpenAI([
+  const reply = await callOpenAI([
     { role: 'system', content: systemPrompt },
     { role: 'user', content: `아저씨: ${userInput}` }
   ], 'gpt-4o', 300);
+
+  saveLog(reply); // ✅ 이 줄을 추가하세요
+  return reply;
 }
 
 async function getReplyByImagePrompt(promptText, imageBase64) {
