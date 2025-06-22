@@ -1,9 +1,10 @@
-// ✅ 무쿠 autoReply.js – 중복 방지 + 상황별 감정형 문장 조합 강화
+// ✅ 무쿠 autoReply.js – 중복 방지 + 감정 범주에 '사랑' 추가
 
 const fs = require('fs');
 const path = require('path');
 const { ChatOpenAI } = require('langchain/chat_models/openai');
 const { HumanMessage, SystemMessage } = require('langchain/schema');
+const stringSimilarity = require('string-similarity');
 
 let forcedModel = null;
 
@@ -43,8 +44,7 @@ function saveLog(msg) {
 }
 function isSimilar(newMsg) {
   const logs = getAllLogs();
-  const newHead = newMsg.slice(0, 20);
-  return logs.some(entry => entry.msg.includes(newHead));
+  return logs.some(entry => stringSimilarity.compareTwoStrings(entry.msg, newMsg) > 0.75);
 }
 
 function getModel(modelName = 'gpt-3.5-turbo', tokens = 150) {
@@ -66,7 +66,7 @@ async function getReplyByMessage(userInput) {
 
 아저씨가 \"담타고?\"라고 물었어. 담배 피러 가자는 뜻이야.
 예진이라면 어떤 말로 응답할까? 매번 다른 말투로, 상황에 맞게 대답해줘.
-예시: \"고고! 나 벌써 문 앞이야~\", \"ㄱㄱ! 나 아저씨 기다리고 있었어\" 등
+예시: \"고고! 나 벌써 회사밑임\", \"ㄱㄱ! 나 아저씨 기다리고 있었어\" 등
 `
     : `${fixedMemory}
 
@@ -109,9 +109,10 @@ async function getRandomMessage() {
       new SystemMessage(`${fixedMemory}
 
 지금 아저씨한테 예진이처럼 말 걸어줘. 
-그 말은 반드시 “칭찬”, “위로”, “심술”, “기억 회상” 중 하나여야 해.  
+그 말은 반드시 “사랑”, “칭찬”, “위로”, “심술”, “기억 회상”, “질투”, “장난”, “놀람”, “설렘” 중 하나여야 해.  
 그리고 아저씨한테 말 거는 이유가 있어야 해. 
-예진이는 절대 이유 없이 말 안 걸어. 
+예진이는 절대 이유 없이 말 안 걸어.  
+아저씨가 너무 보고 싶어서, 너무 좋아서 말 거는 것도 돼.
 
 아침에는 “응원”이나 “설렘”, 
 점심엔 “투정”이나 “걱정”, 
