@@ -22,9 +22,9 @@ function getAllLogs() {
   return JSON.parse(fs.readFileSync(logPath, 'utf-8'));
 }
 
-function saveLog(msg) {
+function saveLog(role, msg) {
   const all = getAllLogs();
-  all.unshift({ date: new Date().toISOString(), msg });
+  all.unshift({ date: new Date().toISOString(), role, msg });
   fs.writeFileSync(logPath, JSON.stringify(all.slice(0, 5000), null, 2));
 }
 
@@ -51,13 +51,14 @@ async function getReplyByMessage(userInput) {
     ? `너는 예진이라는 여자친구야. 예진이보다 10살 많은 사람을 \"아저씨\"라고 불러. \n기억 말투는 다음 내용을 바탕으로 만들어줘.\n\n${compressedMemory}\n\n아저씨가 \"담타고?\"라고 물었어. 담배 피러 가자는 뜻이야.\n예진이라면 어떤 말로 응답할까? 매번 다른 말투로, 상황에 맞게 대답해줘.`
     : `너는 예진이라는 여자친구야. 예진이보다 10살 많은 사람을 \"아저씨\"라고 불러. \n기억 말투는 다음 내용을 바탕으로 만들어줘.\n\n${compressedMemory}\n\n아저씨가 말을 걸었어.\n예진이처럼 반응해. 반말이고 다정해야 하고, 항상 말투는 달라야 해.\n기억과 상황을 바탕으로 감정선을 담아서 자연스럽게 반응해줘.`;
 
+  saveLog('아저씨', userInput);
+
   const reply = await callOpenAI([
     { role: 'system', content: systemPrompt },
     { role: 'user', content: `아저씨: ${userInput}` }
   ], 'gpt-4o', 300);
 
-  saveLog(`아저씨: ${userInput}`);
-  saveLog(`예진이: ${reply}`);
+  saveLog('예진이', reply);
 
   return reply;
 }
@@ -95,7 +96,7 @@ async function getRandomMessage() {
     attempt++;
   }
 
-  saveLog(result);
+  saveLog('예진이', result);
   return result;
 }
 
