@@ -21,7 +21,7 @@ function safeRead(filePath, fallback = '') {
 
 const memory1 = safeRead(path.resolve(__dirname, '../memory/1.txt'));
 const memory2 = safeRead(path.resolve(__dirname, '../memory/2.txt'));
-const memory3 = safeRead(path.resolve(__dirname, '../memory/3.html'));
+const memory3 = safeRead(path.resolve(__dirname, '../memory/3.txt'));
 
 const compressedMemory = memory1.slice(-3000) + '\n' + memory2.slice(-3000) + '\n' + memory3.slice(-3000);
 
