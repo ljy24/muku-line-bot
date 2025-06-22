@@ -1,16 +1,12 @@
-// ✅ 무쿠 autoReply.js – 감정 분석 3단계 기반 + 말투 유지
-
 const fs = require('fs');
 const path = require('path');
 const { ChatOpenAI } = require('langchain/chat_models/openai');
 const { HumanMessage, SystemMessage } = require('langchain/schema');
 const stringSimilarity = require('string-similarity');
 
-// ✅ 로그 저장 모듈 추가
-const saveMessageLog = require('./saveMessageLog');
-
 let forcedModel = null;
 
+// 메모리 파일 로딩
 const memory1 = fs.readFileSync(path.join(__dirname, '../memory/1.txt'), 'utf-8');
 const memory2 = fs.readFileSync(path.join(__dirname, '../memory/2.txt'), 'utf-8');
 const memory3 = fs.readFileSync(path.join(__dirname, '../memory/3.html'), 'utf-8');
@@ -43,24 +39,29 @@ ${memory2}
 ${memory3}
 `;
 
+// 로그 경로
 const logPath = path.join(__dirname, '../memory/message-log.json');
 
+// 로그 불러오기
 function getAllLogs() {
   if (!fs.existsSync(logPath)) return [];
   return JSON.parse(fs.readFileSync(logPath, 'utf-8'));
 }
 
+// 로그 저장
 function saveLog(msg) {
   const all = getAllLogs();
   all.unshift({ date: new Date().toISOString(), msg });
   fs.writeFileSync(logPath, JSON.stringify(all.slice(0, 5000), null, 2));
 }
 
+// 유사도 검사 (중복 방지)
 function isSimilar(newMsg) {
   const logs = getAllLogs();
   return logs.some(entry => stringSimilarity.compareTwoStrings(entry.msg, newMsg) > 0.75);
 }
 
+// 모델 호출
 function getModel(modelName = 'gpt-3.5-turbo', tokens = 150) {
   return new ChatOpenAI({
     modelName,
@@ -70,6 +71,7 @@ function getModel(modelName = 'gpt-3.5-turbo', tokens = 150) {
   });
 }
 
+// 일반 텍스트 응답
 async function getReplyByMessage(userInput) {
   const model = getModel(forcedModel || 'gpt-4o', 300);
   const lowered = userInput.toLowerCase();
@@ -93,14 +95,10 @@ async function getReplyByMessage(userInput) {
     new HumanMessage(`아저씨: ${userInput}`)
   ]);
 
-  const reply = response.content.trim();
-
-  // ✅ 로그 저장
-  saveMessageLog(userInput, reply);
-
-  return reply;
+  return response.content.trim();
 }
 
+// 이미지 기반 응답
 async function getReplyByImagePrompt(promptText, imageBase64) {
   const model = getModel(forcedModel || 'gpt-4o', 400);
   const response = await model.call([
@@ -115,14 +113,10 @@ async function getReplyByImagePrompt(promptText, imageBase64) {
       ]
     })
   ]);
-  const reply = response.content.trim();
-
-  // ✅ 로그 저장
-  saveMessageLog(`(사진) ${promptText}`, reply);
-
-  return reply;
+  return response.content.trim();
 }
 
+// 랜덤 메시지 생성
 async function getRandomMessage() {
   const model = getModel('gpt-3.5-turbo', 150);
   let result = '';
@@ -156,6 +150,7 @@ async function getRandomMessage() {
   return result;
 }
 
+// 모델 강제 지정
 function setForcedModel(name) {
   if (name === 'gpt-3.5-turbo' || name === 'gpt-4o') {
     forcedModel = name;
@@ -164,10 +159,11 @@ function setForcedModel(name) {
   }
 }
 
-// ✅ 감정 분석기 (3단계)
+// 감정 분석기
 async function analyzeEmotion(text) {
   const model = getModel(forcedModel || 'gpt-3.5-turbo', 150);
 
+  // 기본 감정
   const basicPrompt = `
 너는 감정 분석 전문가야.
 다음 문장에서 느껴지는 주요 감정을 하나로 요약해줘.
@@ -182,6 +178,7 @@ async function analyzeEmotion(text) {
   ]);
   const basicEmotion = basicResponse.content.trim();
 
+  // 자유 감정
   const nuancedPrompt = `
 다음 문장에서 느껴지는 감정을 자유롭게 1~2개 추출해줘.
 정답은 짧은 단어로만 표현하고, 너무 흔한 단어는 피하고, 감정선 중심으로 적어줘.
@@ -202,6 +199,7 @@ async function analyzeEmotion(text) {
   };
 }
 
+// 모듈 export
 module.exports = {
   getReplyByMessage,
   getReplyByImagePrompt,
