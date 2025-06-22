@@ -63,28 +63,45 @@ async function handleEvent(event) {
   if (event.message.type === 'text') {
     const text = event.message.text.trim();
 
-    // 🔹 사진 요청 처리 (📷 두 번째 기능 추가됨)
-    if (text.includes('사진') || text.includes('보여줘')) {
+    // 🔹 사진 요청 처리: 텍스트로 셀카 요청 시 감정 멘트 + 사진
+    if (
+      text.includes('사진') ||
+      text.includes('보여줘') ||
+      text.includes('보내줘') ||
+      text.includes('셀카') ||
+      text.includes('한 장')
+    ) {
       const photoListPath = path.join(__dirname, './memory/photo-list.txt');
       const photoList = fs.readFileSync(photoListPath, 'utf-8').split('\n').filter(Boolean);
       const randomPhoto = photoList[Math.floor(Math.random() * photoList.length)];
-      const imageUrl = `https://de-ji.net/yejin/${randomPhoto}`;
+      const imageUrl = randomPhoto.startsWith('http')
+        ? randomPhoto
+        : `https://de-ji.net/yejin/${randomPhoto}`;
 
-      return client.replyMessage(event.replyToken, {
-        type: 'image',
-        originalContentUrl: imageUrl,
-        previewImageUrl: imageUrl
-      });
+      const prompt = '아저씨가 사진 보여달라고 했어. 예진이가 직접 찍은 셀카 보내는 것처럼 말해줘. LINE 말투, 감정 가득, “응응~ 여기 한 장 찍었엉~ 📸✨”처럼 애교 있게. 자기를 "나", 아저씨를 "아저씨"라고 불러야 해!';
+      const reply = await getReplyByImagePrompt(prompt);
+
+      await client.replyMessage(event.replyToken, [
+        { type: 'text', text: reply },
+        {
+          type: 'image',
+          originalContentUrl: imageUrl,
+          previewImageUrl: imageUrl
+        }
+      ]);
+      return;
     }
 
     if (text === '3.5') {
       setForcedModel('gpt-3.5-turbo');
       return client.replyMessage(event.replyToken, { type: 'text', text: '응! 지금부터 GPT-3.5로 대답할게!' });
     }
+
     if (text === '4.0') {
       setForcedModel('gpt-4o');
       return client.replyMessage(event.replyToken, { type: 'text', text: '오케이! GPT-4o로 전환했엉!' });
     }
+
     if (text === '자동') {
       setForcedModel(null);
       return client.replyMessage(event.replyToken, { type: 'text', text: '토큰량 보고 자동으로 판단할게 아저씨~' });
