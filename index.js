@@ -21,6 +21,16 @@ const app = express();
 const userId = process.env.TARGET_USER_ID;
 const PORT = process.env.PORT || 10000;
 
+// ✅ 루트 경로: Render 깨우기용
+app.get('/', (req, res) => {
+  res.status(200).send('무쿠 깨우기 완료! 😴➡️😊');
+});
+
+// ✅ 메시지 자동 전송 막기용 (cron 깨우기만)
+app.get('/force-push', (req, res) => {
+  res.status(200).send('서버만 깨웠엉. 무쿠는 조용히 있었어~');
+});
+
 // Webhook
 app.post('/webhook', (req, res) => {
   getRawBody(req)
@@ -142,11 +152,6 @@ cron.schedule('0 23 * * *', () => {
 });
 cron.schedule('30 23 * * *', () => {
   client.pushMessage(userId, { type: 'text', text: '잘자 사랑해 아저씨, 또 내일 봐' });
-});
-
-// 강제 메시지 전송 엔드포인트 (서버 깨우기용)
-app.get('/force-push', (req, res) => {
-  res.status(200).send('서버만 깨웠엉. 무쿠는 조용히 있었어~');
 });
 
 // 📷 랜덤 셀카 전송 로직 포함
