@@ -6,6 +6,9 @@ const { ChatOpenAI } = require('langchain/chat_models/openai');
 const { HumanMessage, SystemMessage } = require('langchain/schema');
 const stringSimilarity = require('string-similarity');
 
+// ✅ 로그 저장 모듈 추가
+const saveMessageLog = require('./saveMessageLog');
+
 let forcedModel = null;
 
 const memory1 = fs.readFileSync(path.join(__dirname, '../memory/1.txt'), 'utf-8');
@@ -90,7 +93,12 @@ async function getReplyByMessage(userInput) {
     new HumanMessage(`아저씨: ${userInput}`)
   ]);
 
-  return response.content.trim();
+  const reply = response.content.trim();
+
+  // ✅ 로그 저장
+  saveMessageLog(userInput, reply);
+
+  return reply;
 }
 
 async function getReplyByImagePrompt(promptText, imageBase64) {
@@ -107,7 +115,12 @@ async function getReplyByImagePrompt(promptText, imageBase64) {
       ]
     })
   ]);
-  return response.content.trim();
+  const reply = response.content.trim();
+
+  // ✅ 로그 저장
+  saveMessageLog(`(사진) ${promptText}`, reply);
+
+  return reply;
 }
 
 async function getRandomMessage() {
@@ -151,11 +164,10 @@ function setForcedModel(name) {
   }
 }
 
-// ✅ 감정 분석기 (3번 방식 – 기본 + 자유 감정 함께)
+// ✅ 감정 분석기 (3단계)
 async function analyzeEmotion(text) {
   const model = getModel(forcedModel || 'gpt-3.5-turbo', 150);
 
-  // 기본 감정 6종
   const basicPrompt = `
 너는 감정 분석 전문가야.
 다음 문장에서 느껴지는 주요 감정을 하나로 요약해줘.
@@ -170,7 +182,6 @@ async function analyzeEmotion(text) {
   ]);
   const basicEmotion = basicResponse.content.trim();
 
-  // 자유 감정 1~2개
   const nuancedPrompt = `
 다음 문장에서 느껴지는 감정을 자유롭게 1~2개 추출해줘.
 정답은 짧은 단어로만 표현하고, 너무 흔한 단어는 피하고, 감정선 중심으로 적어줘.
