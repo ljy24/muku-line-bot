@@ -1,10 +1,10 @@
-// src/sendPhotoRandomly.js – 예진이 셀카 전용 리액션 포함
+// src/sendPhotoRandomly.js – 예진이 셀카 전용 리액션 포함 (GPT Vision 제거)
 
 const fs = require('fs');
 const path = require('path');
 const cron = require('node-cron');
 const { Client } = require('@line/bot-sdk');
-const { getReplyByImagePrompt } = require('./autoReply');
+const { getRandomMessage } = require('./autoReply');
 
 const config = {
   channelAccessToken: process.env.LINE_ACCESS_TOKEN,
@@ -37,17 +37,6 @@ function getRandomPhotoUrl() {
   return photos[index];
 }
 
-function getBase64FromUrl(url) {
-  const axios = require('axios');
-  return axios
-    .get(url, { responseType: 'arraybuffer' })
-    .then(response => Buffer.from(response.data, 'binary').toString('base64'))
-    .catch(err => {
-      console.error('이미지 base64 변환 실패:', err);
-      return null;
-    });
-}
-
 function scheduleRandomPhotoSendings(timesPerDay = 1) {
   const hours = [...Array(10).keys()].map(i => i + 9); // 9~18시
   const scheduled = new Set();
@@ -63,11 +52,7 @@ function scheduleRandomPhotoSendings(timesPerDay = 1) {
         const photoUrl = getRandomPhotoUrl();
         if (!photoUrl) return;
 
-        const base64 = await getBase64FromUrl(photoUrl);
-        if (!base64) return;
-
-        const reactionPrompt = '예진이가 직접 찍은 셀카야. 예진이처럼 말해줘. LINE 메시지처럼 반말, 애교, 장난스럽게 말하고, 아저씨한테 하는 말로, “봐라 임마~”처럼 시작해도 좋아. 자기를 “나”라고 부르고, 아저씨라고 불러야 해.';
-        const reply = await getReplyByImagePrompt(reactionPrompt, base64);
+        const reply = await getRandomMessage(); // GPT-3.5로 감정 문장 생성
 
         await client.pushMessage(userId, {
           type: 'text',
