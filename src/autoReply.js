@@ -82,7 +82,10 @@ async function getReplyByMessage(userInput) {
     { role: 'user', content: `아저씨: ${userInput}` }
   ], 'gpt-4o', 300);
 
-  saveLog(reply); // ✅ 이 줄을 추가하세요
+  // ✅ 대화 쌍을 저장
+  saveLog(`아저씨: ${userInput}`);
+  saveLog(`예진이: ${reply}`);
+
   return reply;
 }
 
