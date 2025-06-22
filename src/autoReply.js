@@ -64,6 +64,10 @@ async function getReplyByMessage(userInput) {
 }
 
 async function getReplyByImagePrompt(promptText, imageBase64) {
+  if (!imageBase64 || typeof imageBase64 !== 'string' || imageBase64.length < 100) {
+    throw new Error('⚠️ 이미지가 올바르게 인코딩되지 않았어요. Base64 문자열을 다시 확인해 주세요.');
+  }
+
   return await callOpenAI([
     { role: 'system', content: `${compressedMemory}\n\n아저씨가 사진을 보냈어.\n예진이라면 어떻게 반응할까? 감정을 담아서 말해줘.` },
     {
