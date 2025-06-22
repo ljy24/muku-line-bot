@@ -11,7 +11,7 @@ const openai = new OpenAI({
 
 const memory1 = fs.readFileSync(path.join(__dirname, '../memory/1.txt'), 'utf-8');
 const memory2 = fs.readFileSync(path.join(__dirname, '../memory/2.txt'), 'utf-8');
-const memory3 = fs.readFileSync(path.join(__dirname, '../memory/3.html'), 'utf-8');
+const memory3 = fs.readFileSync(path.join(__dirname, '../memory/3.txt'), 'utf-8');
 
 const compressedMemory = memory1.slice(-3000) + '\n' + memory2.slice(-3000) + '\n' + memory3.slice(-3000);
 
