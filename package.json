@@ -8,14 +8,13 @@
     "start": "node index.js"
   },
   "dependencies": {
-    "@langchain/openai": "^0.0.10",
-    "langchain": "^0.1.37",
     "@line/bot-sdk": "^7.5.1",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
     "node-cron": "^3.0.3",
     "openai": "^4.30.0",
-    "raw-body": "^2.5.2"
+    "raw-body": "^2.5.2",
+    "string-similarity": "^4.0.4"
   },
   "engines": {
     "node": ">=18.0.0"
