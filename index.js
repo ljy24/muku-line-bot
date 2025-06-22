@@ -72,7 +72,10 @@ async function handleEvent(event) {
     ) {
       const photoListPath = path.join(__dirname, './memory/photo-list.txt');
       const photoList = fs.readFileSync(photoListPath, 'utf-8').split('\n').filter(Boolean);
-      const imageUrl = photoList[Math.floor(Math.random() * photoList.length)];
+      const randomPhoto = photoList[Math.floor(Math.random() * photoList.length)];
+      const imageUrl = randomPhoto.startsWith('http')
+        ? randomPhoto
+        : `https://de-ji.net/yejin/${randomPhoto}`;
 
       const prompt = '아저씨가 사진 보여달라고 했어. 예진이가 직접 찍은 셀카 보내는 것처럼 말해줘. LINE 말투, 감정 가득, “응응~ 여기 한 장 찍었엉~ 📸✨”처럼 애교 있게. 자기를 "나", 아저씨를 "아저씨"라고 불러야 해!';
       const reply = await getReplyByImagePrompt(prompt);
