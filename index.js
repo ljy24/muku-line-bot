@@ -4,6 +4,8 @@ const { OpenAI } = require('openai');
 const stringSimilarity = require('string-similarity');
 const axios = require('axios');
 
+console.log('✅ 무쿠 준비 중! 기다려줘 아저씨...');
+
 let forcedModel = null;
 
 const openai = new OpenAI({
@@ -19,16 +21,14 @@ function safeRead(filePath, fallback = '') {
   }
 }
 
-const memory1 = safeRead(path.join(__dirname, 'memory', '1.txt'));
-const memory2 = safeRead(path.join(__dirname, 'memory', '2.txt'));
-const memory3 = safeRead(path.join(__dirname, 'memory', '3.txt'));
-
-const logPath = path.join(__dirname, 'memory', 'message-log.json');
-
+const memory1 = safeRead(path.resolve(__dirname, '../memory/1.txt'));
+const memory2 = safeRead(path.resolve(__dirname, '../memory/2.txt'));
+const memory3 = safeRead(path.resolve(__dirname, '../memory/3.txt'));
+const logPath = path.resolve(__dirname, '../memory/message-log.json');
 
 const compressedMemory = memory1.slice(-3000) + '\n' + memory2.slice(-3000) + '\n' + memory3.slice(-3000);
 
-const logPath = path.resolve(__dirname, '../memory/message-log.json');
+console.log('✅ 무쿠 가동 중! 아저씨 이제 말 걸어도 돼요.');
 
 function getAllLogs() {
   if (!fs.existsSync(logPath)) return [];
@@ -39,7 +39,7 @@ function getAllLogs() {
     return [];
   }
 }
-
+a
 function saveLog(role, msg) {
   const all = getAllLogs();
   all.unshift({ date: new Date().toISOString(), role, msg });
@@ -66,8 +66,8 @@ async function getReplyByMessage(userInput) {
   const isDamta = ['담타고?', 'ㄷㅌㄱ?', '담타?', '담타'].includes(lowered);
 
   const systemPrompt = isDamta
-    ? `너는 예진이라는 여자친구야. 예진이보다 10살 많은 사람을 \"아저씨\"라고 불러. \n기억 말투는 다음 내용을 바탕으로 만들어줘.\n\n${compressedMemory}\n\n아저씨가 \"담타고?\"라고 물었어. 담배 피러 가자는 뜻이야.\n예진이라면 어떤 말로 응답할까? 매번 다른 말투로, 상황에 맞게 대답해줘.`
-    : `너는 예진이라는 여자친구야. 예진이보다 10살 많은 사람을 \"아저씨\"라고 불러. \n기억 말투는 다음 내용을 바탕으로 만들어줘.\n\n${compressedMemory}\n\n아저씨가 말을 걸었어.\n예진이처럼 반응해. 반말이고 다정해야 하고, 항상 말투는 달라야 해.\n기억과 상황을 바탕으로 감정선을 담아서 자연스럽게 반응해줘.`;
+    ? `너는 예진이라는 여자친구야. 예진이보다 10살 많은 사람을 \"아저씨\"라고 불러. \n기억 말투는 다음 내용을 바탕으로 만들어줘.\n\n${compressedMemory}\n\n아저씨가 \"담타고?\"라고 물었어. 담배 피러 가자는 뜻이야.\n예진이라면 어떤 말로 응답할까? 매번 다른 말투로, 상황에 맞게 대답해줘. \n예진이는 절대 아저씨를 오빠라고 부르지 않아. 항상 \"아저씨\"라고 불러.`
+    : `너는 예진이라는 여자친구야. 예진이보다 10살 많은 사람을 \"아저씨\"라고 불러. \n기억 말투는 다음 내용을 바탕으로 만들어줘.\n\n${compressedMemory}\n\n아저씨가 말을 걸었어.\n예진이처럼 반응해. 반말이고 다정해야 하고, 항상 말투는 달라야 해. 예진이는 아저씨를 절대 \"오빠\"라고 부르지 않아. \"아저씨\" 또는 가끔 \"아조씨~\"라고 불러. 말 끝에 항상 예진이 특유의 말투를 담아. \n기억과 상황을 바탕으로 감정선을 담아서 자연스럽게 반응해줘.`;
 
   saveLog('아저씨', userInput);
 
@@ -104,7 +104,8 @@ async function getRandomMessage() {
         role: 'system',
         content: `${compressedMemory}\n\n지금 아저씨한테 예진이처럼 말 걸어줘. 
 그 말은 반드시 “사랑”, “칭찬”, “위로”, “심술”, “기억 회상”, “질투”, “장난”, “놀람”, “설렘” 중 하나여야 해. 
-예진이는 절대 이유 없이 말 안 걸어.  
+예진이는 절대 이유 없이 말 안 걸어. 
+항상 아저씨라고 부르고, 절대 오빠라고 안 불러. 
 40~60자 이내로 만들어줘.`
       },
       { role: 'user', content: '감정 메시지 하나만 만들어줘' }
