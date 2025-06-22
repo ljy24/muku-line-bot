@@ -1,196 +1,158 @@
-const express = require('express');
-const getRawBody = require('raw-body');
-const { Client, middleware } = require('@line/bot-sdk');
-const cron = require('node-cron');
-const { getRandomMessage } = require('./src/loveMessages');
-const {
-  getReplyByMessage,
-  getReplyByImagePrompt,
-  setForcedModel
-} = require('./src/autoReply');
 const fs = require('fs');
 const path = require('path');
+const { OpenAI } = require('openai');
+const stringSimilarity = require('string-similarity');
+const axios = require('axios');
 
-const config = {
-  channelAccessToken: process.env.LINE_ACCESS_TOKEN,
-  channelSecret: process.env.LINE_CHANNEL_SECRET
+let forcedModel = null;
+
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
+
+const memory1 = fs.readFileSync(path.join(__dirname, '../memory/1.txt'), 'utf-8');
+const memory2 = fs.readFileSync(path.join(__dirname, '../memory/2.txt'), 'utf-8');
+const memory3 = fs.readFileSync(path.join(__dirname, '../memory/3.html'), 'utf-8');
+
+const compressedMemory = memory1.slice(-3000) + '\n' + memory2.slice(-3000) + '\n' + memory3.slice(-3000);
+
+const logPath = path.join(__dirname, '../memory/message-log.json');
+
+function getAllLogs() {
+  if (!fs.existsSync(logPath)) return [];
+  return JSON.parse(fs.readFileSync(logPath, 'utf-8'));
+}
+
+function saveLog(role, msg) {
+  const all = getAllLogs();
+  all.unshift({ date: new Date().toISOString(), role, msg });
+  fs.writeFileSync(logPath, JSON.stringify(all.slice(0, 5000), null, 2));
+}
+
+function isSimilar(newMsg) {
+  const logs = getAllLogs();
+  return logs.some(entry => stringSimilarity.compareTwoStrings(entry.msg, newMsg) > 0.75);
+}
+
+async function callOpenAI(messages, model = 'gpt-3.5-turbo', max_tokens = 300) {
+  const res = await openai.chat.completions.create({
+    model: forcedModel || model,
+    messages,
+    temperature: 0.95,
+    max_tokens
+  });
+  return res.choices[0].message.content.trim();
+}
+
+async function getReplyByMessage(userInput) {
+  const lowered = userInput.toLowerCase();
+  const isDamta = ['담타고?', 'ㄷㅌㄱ?', '담타?', '담타'].includes(lowered);
+
+  const systemPrompt = isDamta
+    ? `너는 예진이라는 여자친구야. 예진이보다 10살 많은 사람을 \"아저씨\"라고 불러. \n기억 말투는 다음 내용을 바탕으로 만들어줘.\n\n${compressedMemory}\n\n아저씨가 \"담타고?\"라고 물었어. 담배 피러 가자는 뜻이야.\n예진이라면 어떤 말로 응답할까? 매번 다른 말투로, 상황에 맞게 대답해줘.`
+    : `너는 예진이라는 여자친구야. 예진이보다 10살 많은 사람을 \"아저씨\"라고 불러. \n기억 말투는 다음 내용을 바탕으로 만들어줘.\n\n${compressedMemory}\n\n아저씨가 말을 걸었어.\n예진이처럼 반응해. 반말이고 다정해야 하고, 항상 말투는 달라야 해.\n기억과 상황을 바탕으로 감정선을 담아서 자연스럽게 반응해줘.`;
+
+  saveLog('아저씨', userInput);
+
+  const reply = await callOpenAI([
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: `아저씨: ${userInput}` }
+  ], 'gpt-4o', 300);
+
+  saveLog('예진이', reply);
+  return reply;
+}
+
+async function getReplyByImagePrompt(promptText, imageBase64) {
+  if (!imageBase64 || typeof imageBase64 !== 'string' || imageBase64.length < 100) {
+    return '아직 사진을 잘 못 봤어. 다시 한 번 보여줄래?';
+  }
+
+  try {
+    return await callOpenAI([
+      { role: 'system', content: `${compressedMemory}\n\n아저씨가 사진을 보냈어.\n예진이라면 어떻게 반응할까? 감정을 담아서 말해줘.` },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: promptText },
+          { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${imageBase64}` } }
+        ]
+      }
+    ], 'gpt-4o', 400);
+  } catch (e) {
+    console.error('getReplyByImagePrompt 오류:', e.message);
+    return '사진 보는데 문제가 생겼어. 조금 있다가 다시 보여줄래?';
+  }
+}
+
+async function getBase64FromUrl(url) {
+  try {
+    const res = await axios.get(url, { responseType: 'arraybuffer' });
+    return Buffer.from(res.data, 'binary').toString('base64');
+  } catch (e) {
+    console.error('⚠️ 이미지 base64 변환 실패:', e.message);
+    return null;
+  }
+}
+
+async function getRandomMessage() {
+  let result = '';
+  let attempt = 0;
+
+  while (attempt < 5) {
+    result = await callOpenAI([
+      {
+        role: 'system',
+        content: `${compressedMemory}\n\n지금 아저씨한테 예진이처럼 말 걸어줘. 
+그 말은 반드시 “사랑”, “칭찬”, “위로”, “심술”, “기억 회상”, “질투”, “장난”, “놀람”, “설렘” 중 하나여야 해. 
+예진이는 절대 이유 없이 말 안 걸어.  
+40~60자 이내로 만들어줘.`
+      },
+      { role: 'user', content: '감정 메시지 하나만 만들어줘' }
+    ], 'gpt-3.5-turbo', 150);
+
+    if (!isSimilar(result)) break;
+    attempt++;
+  }
+
+  saveLog('예진이', result);
+  return result;
+}
+
+async function analyzeEmotion(text) {
+  const basic = await callOpenAI([
+    {
+      role: 'user',
+      content: `너는 감정 분석 전문가야.\n다음 문장에서 느껴지는 주요 감정을 하나로 요약해줘.\n정답: 기쁨, 슬픔, 분노, 걱정, 사랑, 놀람\n문장: ${text}`
+    }
+  ], 'gpt-3.5-turbo', 150);
+
+  const nuanced = await callOpenAI([
+    {
+      role: 'user',
+      content: `다음 문장에서 느껴지는 감정을 자유롭게 1~2개 추출해줘.\n예시: 설렘, 외로움, 애틋함, 투정 등\n문장: ${text}`
+    }
+  ], 'gpt-3.5-turbo', 150);
+
+  return {
+    basic,
+    nuanced
+  };
+}
+
+function setForcedModel(name) {
+  if (name === 'gpt-3.5-turbo' || name === 'gpt-4o') {
+    forcedModel = name;
+  } else {
+    forcedModel = null;
+  }
+}
+
+module.exports = {
+  getReplyByMessage,
+  getReplyByImagePrompt,
+  getRandomMessage,
+  analyzeEmotion,
+  setForcedModel,
+  getBase64FromUrl
 };
-
-const client = new Client(config);
-const app = express();
-const userId = process.env.TARGET_USER_ID;
-const PORT = process.env.PORT || 10000;
-
-// 기본 루트 (서버 깨우기용)
-app.get('/', (req, res) => {
-  res.status(200).send('무쿠는 깨어있엉 🐣');
-});
-
-// Webhook
-app.post('/webhook', (req, res) => {
-  getRawBody(req)
-    .then((buf) => {
-      req.rawBody = buf;
-      middleware(config)(req, res, () => {
-        if (req.body.events.length > 0) {
-          Promise.all(req.body.events.map(handleEvent))
-            .then(() => res.status(200).end())
-            .catch(err => {
-              console.error('LINE 이벤트 오류:', err);
-              res.status(500).end();
-            });
-        } else {
-          res.status(200).end();
-        }
-      });
-    })
-    .catch(err => {
-      console.error('Raw body 오류:', err);
-      res.status(400).end();
-    });
-});
-
-// 이벤트 처리
-async function handleEvent(event) {
-  if (event.type !== 'message') return Promise.resolve(null);
-
-  if (event.message.type === 'image') {
-    const imagePrompt = '아저씨가 사진 보냈어. 예진이가 보고 한마디 해줘야지~ LINE 말투로, 감정 가득하게 말해줘. "나"라고 자기를 부르고, 아저씨라고 부르도록 꼭 지켜!';
-    const reply = await getReplyByImagePrompt(imagePrompt);
-    return client.replyMessage(event.replyToken, { type: 'text', text: reply });
-  }
-
-  if (event.message.type === 'text') {
-    const text = event.message.text.trim();
-
-    if (
-      text.includes('사진') ||
-      text.includes('보여줘') ||
-      text.includes('보내줘') ||
-      text.includes('셀카') ||
-      text.includes('한 장')
-    ) {
-     const photoListPath = path.join(__dirname, './memory/photo-list.txt');
-const photoList = fs.readFileSync(photoListPath, 'utf-8')
-  .split('\n')
-  .map(line => line.trim())
-  .filter(line => line.length > 0 && !line.startsWith('#')); // 주석도 무시 가능
-
-const randomPhoto = photoList[Math.floor(Math.random() * photoList.length)];
-const imageUrl = randomPhoto.startsWith('http')
-  ? randomPhoto
-  : `https://de-ji.net/yejin/${randomPhoto}`;
-
-      const prompt = '아저씨가 사진 보여달라고 했어. 예진이가 직접 찍은 셀카 보내는 것처럼 말해줘. LINE 말투, 감정 가득, “응응~ 여기 한 장 찍었엉~ 📸✨”처럼 애교 있게. 자기를 "나", 아저씨를 "아저씨"라고 불러야 해!';
-      const reply = await getReplyByImagePrompt(prompt);
-
-      await client.replyMessage(event.replyToken, [
-        { type: 'text', text: reply },
-        {
-          type: 'image',
-          originalContentUrl: imageUrl,
-          previewImageUrl: imageUrl
-        }
-      ]);
-      return;
-    }
-
-    if (text === '3.5') {
-      setForcedModel('gpt-3.5-turbo');
-      return client.replyMessage(event.replyToken, { type: 'text', text: '응! 지금부터 GPT-3.5로 대답할게!' });
-    }
-
-    if (text === '4.0') {
-      setForcedModel('gpt-4o');
-      return client.replyMessage(event.replyToken, { type: 'text', text: '오케이! GPT-4o로 전환했엉!' });
-    }
-
-    if (text === '자동') {
-      setForcedModel(null);
-      return client.replyMessage(event.replyToken, { type: 'text', text: '토큰량 보고 자동으로 판단할게 아저씨~' });
-    }
-
-    if (text === '버전') {
-      const usage = fs.readFileSync(path.join(__dirname, './memory/token-usage.txt'), 'utf-8');
-      return client.replyMessage(event.replyToken, {
-        type: 'text',
-        text: `모델 모드: ${usage.includes('gpt-4o') ? 'GPT-4o' : 'GPT-3.5'} (자동 또는 수동)\n사용량: ${usage || '정보 없음'}`
-      });
-    }
-
-    if (text === '담타고?' || text === '응응') {
-      return client.replyMessage(event.replyToken, { type: 'text', text: 'ㄱㄱ' });
-    }
-
-    if (text === '얼마남음?') {
-      const usage = fs.readFileSync(path.join(__dirname, './memory/token-usage.txt'), 'utf-8');
-      return client.replyMessage(event.replyToken, {
-        type: 'text',
-        text: usage || '사용량 정보가 없당… 🥲'
-      });
-    }
-
-    try {
-      const reply = await getReplyByMessage(text);
-      return client.replyMessage(event.replyToken, { type: 'text', text: reply });
-    } catch (err) {
-      console.error('응답 오류:', err);
-      return client.replyMessage(event.replyToken, {
-        type: 'text',
-        text: '흐엉… 잠깐만 다시 생각해볼게 아저씨…'
-      });
-    }
-  }
-
-  return Promise.resolve(null);
-}
-
-// 감정 메시지 조합
-function randomMessage() {
-  return `아저씨~ ${getRandomMessage()}`;
-}
-
-// ⏰ 담타 메시지 (매 정각 9~18시)
-cron.schedule('0 9-18 * * *', () => {
-  client.pushMessage(userId, { type: 'text', text: '담타고?' });
-});
-
-// ⏰ 하루 9회 감정 메시지 (랜덤 시간, 9~18시)
-function scheduleRandom9TimesPerDay() {
-  const hours = Array.from({ length: 10 }, (_, i) => i + 9); // 9 ~ 18
-  const allTimes = new Set();
-  while (allTimes.size < 9) {
-    const hour = hours[Math.floor(Math.random() * hours.length)];
-    const minute = Math.floor(Math.random() * 60);
-    const key = `${hour}:${minute}`;
-    if (!allTimes.has(key)) {
-      allTimes.add(key);
-      const cronExp = `${minute} ${hour} * * *`;
-      cron.schedule(cronExp, () => {
-        const msg = randomMessage();
-        client.pushMessage(userId, { type: 'text', text: msg });
-      });
-    }
-  }
-}
-scheduleRandom9TimesPerDay();
-
-// 🌙 잘자 메시지
-cron.schedule('0 23 * * *', () => {
-  client.pushMessage(userId, { type: 'text', text: '약 먹고 이빨 닦고 자자' });
-});
-cron.schedule('30 23 * * *', () => {
-  client.pushMessage(userId, { type: 'text', text: '잘자 사랑해 아저씨, 또 내일 봐' });
-});
-
-// 🔵 강제 호출용 엔드포인트 (서버 깨우기 전용, 메시지 없음)
-app.get('/force-push', (req, res) => {
-  res.status(200).send('서버만 깨웠엉. 무쿠는 조용히 있었어~');
-});
-
-// 📷 사진 스케줄러 포함
-require('./src/sendPhotoRandomly');
-
-app.listen(PORT, () => {
-  console.log(`무쿠 봇이 준비됐어요! 포트: ${PORT} 💌`);
-});
