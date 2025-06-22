@@ -1,12 +1,14 @@
 const fs = require('fs');
 const path = require('path');
-const { ChatOpenAI } = require('langchain/chat_models/openai');
-const { HumanMessage, SystemMessage } = require('langchain/schema');
+const { OpenAI } = require('openai');
 const stringSimilarity = require('string-similarity');
 
 let forcedModel = null;
 
-// 메모리 파일 로딩
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
+
 const memory1 = fs.readFileSync(path.join(__dirname, '../memory/1.txt'), 'utf-8');
 const memory2 = fs.readFileSync(path.join(__dirname, '../memory/2.txt'), 'utf-8');
 const memory3 = fs.readFileSync(path.join(__dirname, '../memory/3.html'), 'utf-8');
@@ -39,109 +41,77 @@ ${memory2}
 ${memory3}
 `;
 
-// 로그 경로
 const logPath = path.join(__dirname, '../memory/message-log.json');
 
-// 로그 불러오기
 function getAllLogs() {
   if (!fs.existsSync(logPath)) return [];
   return JSON.parse(fs.readFileSync(logPath, 'utf-8'));
 }
 
-// 로그 저장
 function saveLog(msg) {
   const all = getAllLogs();
   all.unshift({ date: new Date().toISOString(), msg });
   fs.writeFileSync(logPath, JSON.stringify(all.slice(0, 5000), null, 2));
 }
 
-// 유사도 검사 (중복 방지)
 function isSimilar(newMsg) {
   const logs = getAllLogs();
   return logs.some(entry => stringSimilarity.compareTwoStrings(entry.msg, newMsg) > 0.75);
 }
 
-// 모델 호출
-function getModel(modelName = 'gpt-3.5-turbo', tokens = 150) {
-  return new ChatOpenAI({
-    modelName,
+async function callOpenAI(messages, model = 'gpt-3.5-turbo', max_tokens = 300) {
+  const res = await openai.chat.completions.create({
+    model: forcedModel || model,
+    messages,
     temperature: 0.95,
-    maxTokens: tokens,
-    openAIApiKey: process.env.OPENAI_API_KEY
+    max_tokens
   });
+  return res.choices[0].message.content.trim();
 }
 
-// 일반 텍스트 응답
 async function getReplyByMessage(userInput) {
-  const model = getModel(forcedModel || 'gpt-4o', 300);
   const lowered = userInput.toLowerCase();
   const isDamta = ['담타고?', 'ㄷㅌㄱ?', '담타?', '담타'].includes(lowered);
 
   const systemPrompt = isDamta
-    ? `${fixedMemory}
+    ? `${fixedMemory}\n\n아저씨가 "담타고?"라고 물었어. 담배 피러 가자는 뜻이야.\n예진이라면 어떤 말로 응답할까? 매번 다른 말투로, 상황에 맞게 대답해줘.`
+    : `${fixedMemory}\n\n아저씨가 말을 걸었어.\n예진이처럼 반응해. 반말이고 다정해야 하고, 항상 말투는 달라야 해.\n기억과 상황을 바탕으로 감정선을 담아서 자연스럽게 반응해줘.`;
 
-아저씨가 "담타고?"라고 물었어. 담배 피러 가자는 뜻이야.
-예진이라면 어떤 말로 응답할까? 매번 다른 말투로, 상황에 맞게 대답해줘.
-예시: "고고! 나 벌써 회사 밑임", "ㄱㄱ! 나 아저씨 기다리고 있었어" 등
-`
-    : `${fixedMemory}
-
-아저씨가 말을 걸었어.
-예진이처럼 반응해. 반말이고 다정해야 하고, 항상 말투는 달라야 해.
-기억과 상황을 바탕으로 감정선을 담아서 자연스럽게 반응해줘.`;
-
-  const response = await model.call([
-    new SystemMessage(systemPrompt),
-    new HumanMessage(`아저씨: ${userInput}`)
-  ]);
-
-  return response.content.trim();
+  return await callOpenAI([
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: `아저씨: ${userInput}` }
+  ], 'gpt-4o', 300);
 }
 
-// 이미지 기반 응답
 async function getReplyByImagePrompt(promptText, imageBase64) {
-  const model = getModel(forcedModel || 'gpt-4o', 400);
-  const response = await model.call([
-    new SystemMessage(`${fixedMemory}
-
-아저씨가 사진을 보냈어.
-예진이라면 어떻게 반응할까? 감정을 담아서 말해줘.`),
-    new HumanMessage({
+  return await callOpenAI([
+    { role: 'system', content: `${fixedMemory}\n\n아저씨가 사진을 보냈어.\n예진이라면 어떻게 반응할까? 감정을 담아서 말해줘.` },
+    {
+      role: 'user',
       content: [
         { type: 'text', text: promptText },
         { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${imageBase64}` } }
       ]
-    })
-  ]);
-  return response.content.trim();
+    }
+  ], 'gpt-4o', 400);
 }
 
-// 랜덤 메시지 생성
 async function getRandomMessage() {
-  const model = getModel('gpt-3.5-turbo', 150);
   let result = '';
   let attempt = 0;
 
   while (attempt < 5) {
-    const response = await model.call([
-      new SystemMessage(`${fixedMemory}
-
-지금 아저씨한테 예진이처럼 말 걸어줘. 
-그 말은 반드시 “사랑”, “칭찬”, “위로”, “심술”, “기억 회상”, “질투”, “장난”, “놀람”, “설렘” 중 하나여야 해.  
-그리고 아저씨한테 말 거는 이유가 있어야 해. 
+    result = await callOpenAI([
+      {
+        role: 'system',
+        content: `${fixedMemory}\n\n지금 아저씨한테 예진이처럼 말 걸어줘. 
+그 말은 반드시 “사랑”, “칭찬”, “위로”, “심술”, “기억 회상”, “질투”, “장난”, “놀람”, “설렘” 중 하나여야 해. 
 예진이는 절대 이유 없이 말 안 걸어.  
-아저씨가 너무 보고 싶어서, 너무 좋아서 말 거는 것도 돼.
+40~60자 이내로 만들어줘.`
+      },
+      { role: 'user', content: '감정 메시지 하나만 만들어줘' }
+    ], 'gpt-3.5-turbo', 150);
 
-아침에는 “응원”이나 “설렘”, 
-점심엔 “투정”이나 “걱정”, 
-밤엔 “속삭임”이나 “외로움” 말투로 해줘. 
-
-절대 이전에 했던 말과 비슷하면 안 돼. 항상 새로운 말투로, 애교 있게. 
-40~60자 이내로 만들어줘.`),
-      new HumanMessage('감정 메시지 하나만 만들어줘')
-    ]);
-
-    result = response.content.trim();
     if (!isSimilar(result)) break;
     attempt++;
   }
@@ -150,7 +120,27 @@ async function getRandomMessage() {
   return result;
 }
 
-// 모델 강제 지정
+async function analyzeEmotion(text) {
+  const basic = await callOpenAI([
+    {
+      role: 'user',
+      content: `너는 감정 분석 전문가야.\n다음 문장에서 느껴지는 주요 감정을 하나로 요약해줘.\n정답: 기쁨, 슬픔, 분노, 걱정, 사랑, 놀람\n문장: ${text}`
+    }
+  ], 'gpt-3.5-turbo', 150);
+
+  const nuanced = await callOpenAI([
+    {
+      role: 'user',
+      content: `다음 문장에서 느껴지는 감정을 자유롭게 1~2개 추출해줘.\n예시: 설렘, 외로움, 애틋함, 투정 등\n문장: ${text}`
+    }
+  ], 'gpt-3.5-turbo', 150);
+
+  return {
+    basic,
+    nuanced
+  };
+}
+
 function setForcedModel(name) {
   if (name === 'gpt-3.5-turbo' || name === 'gpt-4o') {
     forcedModel = name;
@@ -159,47 +149,6 @@ function setForcedModel(name) {
   }
 }
 
-// 감정 분석기
-async function analyzeEmotion(text) {
-  const model = getModel(forcedModel || 'gpt-3.5-turbo', 150);
-
-  // 기본 감정
-  const basicPrompt = `
-너는 감정 분석 전문가야.
-다음 문장에서 느껴지는 주요 감정을 하나로 요약해줘.
-정답은 반드시 다음 중 하나여야 해: 기쁨, 슬픔, 분노, 걱정, 사랑, 놀람
-
-문장: ${text}
-답:
-  `.trim();
-
-  const basicResponse = await model.call([
-    new HumanMessage(basicPrompt)
-  ]);
-  const basicEmotion = basicResponse.content.trim();
-
-  // 자유 감정
-  const nuancedPrompt = `
-다음 문장에서 느껴지는 감정을 자유롭게 1~2개 추출해줘.
-정답은 짧은 단어로만 표현하고, 너무 흔한 단어는 피하고, 감정선 중심으로 적어줘.
-예시: 설렘, 외로움, 애틋함, 투정, 질투, 기대, 회상, 속상함, 장난기, 따스함, 무기력 등
-
-문장: ${text}
-답:
-  `.trim();
-
-  const nuancedResponse = await model.call([
-    new HumanMessage(nuancedPrompt)
-  ]);
-  const nuancedEmotion = nuancedResponse.content.trim();
-
-  return {
-    basic: basicEmotion,
-    nuanced: nuancedEmotion
-  };
-}
-
-// 모듈 export
 module.exports = {
   getReplyByMessage,
   getReplyByImagePrompt,
