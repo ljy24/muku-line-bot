@@ -164,12 +164,10 @@ for (const t of times) {
 }
 
 // ----------- Express 서버 -----------
-app.use(express.json());
+// (!!! webhook에선 express.json() 사용 금지 !!!)
 
-// 1. 살아있는지 확인용
 app.get('/', (_, res) => res.send('무쿠 살아있엉 🐣'));
 
-// 2. Webhook 엔드포인트 (라인에서 꼭 필요)
 app.post('/webhook', middleware(config), async (req, res) => {
   try {
     const events = req.body.events || [];
@@ -182,15 +180,15 @@ app.post('/webhook', middleware(config), async (req, res) => {
     res.status(200).send('OK');
   } catch (err) {
     console.error('웹훅 처리 에러:', err);
-    res.status(200).send('OK'); // 에러여도 200 주면 일단 통과!
+    res.status(200).send('OK'); // 에러여도 200!
   }
 });
-// ----------- 서버 시작 -----------
+
 app.listen(process.env.PORT || 3000, () => {
   console.log('무쿠 서버 스타트!');
 });
 
-// ----------- 모듈 내보내기 (필요시) -----------
+// 필요시 내보내기
 module.exports = {
   getReplyByMessage,
   getRandomMessage,
