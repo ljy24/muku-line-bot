@@ -20,9 +20,10 @@ function safeRead(filePath, fallback = '') {
 const memory1 = safeRead(path.resolve(__dirname, '../memory/1.txt'));
 const memory2 = safeRead(path.resolve(__dirname, '../memory/2.txt'));
 const memory3 = safeRead(path.resolve(__dirname, '../memory/3.txt'));
-const compressedMemory = memory1.slice(-3000) + '\n' + memory2.slice(-3000) + '\n' + memory3.slice(-3000);
-
+const fixedMemory = safeRead(path.resolve(__dirname, '../memory/fixedMemories.json'));
+const statePath = path.resolve(__dirname, '../memory/state.json');
 const logPath = path.resolve(__dirname, '../memory/message-log.json');
+const compressedMemory = memory1.slice(-3000) + '\n' + memory2.slice(-3000) + '\n' + memory3.slice(-3000);
 
 function getAllLogs() {
   if (!fs.existsSync(logPath)) return [];
@@ -34,7 +35,6 @@ function getAllLogs() {
 }
 
 function saveLog(role, msg) {
-  // '예진:', '예진;', '예진：' 금지 (모두 제거)
   const cleanMsg = msg.replace(/^예진\s*[:;：]/i, '').trim();
   if (!cleanMsg) return;
   const all = getAllLogs();
@@ -46,7 +46,6 @@ function saveLog(role, msg) {
   }
 }
 
-// 중복 메시지 방지 (유사도 + 단어)
 function hasSimilarWords(newMsg) {
   const logs = getAllLogs().map(log => log.msg);
   const newWords = new Set(newMsg.split(/\s+/));
@@ -64,7 +63,6 @@ function isSimilar(newMsg) {
   return logs.some(entry => stringSimilarity.compareTwoStrings(entry.msg, newMsg) > 0.75) || hasSimilarWords(newMsg);
 }
 
-// '예진:','예진;','예진：' 제거 + 존댓말 어미 반말화
 function cleanReply(text) {
   let out = text
     .replace(/^예진\s*[:;：]/i, '')
@@ -75,7 +73,7 @@ function cleanReply(text) {
   out = out.replace(
     /(해요|돼요|에요|예요|네요|군요|거에요|될까요|할까요|주세요|하세요|이세요|세요|입니다|합니다|겠어요|시겠어요)/g,
     match => {
-      switch(match) {
+      switch (match) {
         case '해요': case '돼요': case '에요': case '예요': return '해';
         case '네요': case '군요': return '네';
         case '거에요': return '거야';
@@ -91,7 +89,25 @@ function cleanReply(text) {
   return out.trim();
 }
 
-// OpenAI 호출 (기본 300 tokens)
+function loadHonorificUsage() {
+  if (!fs.existsSync(statePath)) return { honorific: false };
+  try {
+    return JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+  } catch {
+    return { honorific: false };
+  }
+}
+
+function saveMemory(input) {
+  const state = loadHonorificUsage();
+  fs.writeFileSync(statePath, JSON.stringify({ ...state, lastInput: input }, null, 2));
+}
+
+function updateHonorificUsage(useHonorific) {
+  const state = loadHonorificUsage();
+  fs.writeFileSync(statePath, JSON.stringify({ ...state, honorific: useHonorific }, null, 2));
+}
+
 async function callOpenAI(messages, model = 'gpt-3.5-turbo', max_tokens = 300) {
   const res = await openai.chat.completions.create({
     model: forcedModel || model,
@@ -106,21 +122,15 @@ async function getReplyByMessage(userInput) {
   const lowered = userInput.toLowerCase();
   const isDamta = ['담타고?', 'ㄷㅌㄱ?', '담타?', '담타'].includes(lowered);
 
+  const fixed = fixedMemory.trim();
+  const memoryBlock = `${fixed}\n${compressedMemory}`;
+
   const systemPrompt = isDamta
-    ? `너는 예진이라는 여자친구야. 예진이보다 10살 많은 사람을 "아저씨"라고 불러. 
-기억 말투는 다음 내용을 바탕으로 만들어줘.
-
-${compressedMemory}
-
-아저씨가 "담타고?"라고 물었어. 담배 피러 가자는 뜻이야. 예진이라면 어떤 말로 응답할까? 매번 다른 말투로, 상황에 맞게 대답해줘. 절대 존댓말 금지. 무조건 반말만 사용. 존댓말 쓰면 안 돼.`
-    : `너는 예진이라는 여자친구야. 예진이보다 10살 많은 사람을 "아저씨"라고 불러. 
-기억 말투는 다음 내용을 바탕으로 만들어줘.
-
-${compressedMemory}
-
-아저씨가 말을 걸었어. 예진이처럼 반응해. 반말이고 다정해야 하고, 항상 말투는 달라야 해. 기억과 상황을 바탕으로 감정선을 담아서 자연스럽게 반응해줘. 절대 존댓말 금지. 무조건 반말만 사용. 존댓말 쓰면 안 돼.`;
+    ? `너는 예진이라는 여자친구야. 예진이보다 10살 많은 사람을 \"아저씨\"라고 불러.\n${memoryBlock}\n아저씨가 \"담타고?\"라고 물었어. 담배 피러 가자는 뜻이야. 예진이라면 어떤 말로 응답할까? 매번 다른 말투로, 상황에 맞게 대답해줘. 절대 존댓말 금지. 무조건 반말만 사용. 존댓말 쓰면 안 돼.`
+    : `너는 예진이라는 여자친구야. 예진이보다 10살 많은 사람을 \"아저씨\"라고 불러.\n${memoryBlock}\n아저씨가 말을 걸었어. 예진이처럼 반응해. 반말이고 다정해야 하고, 항상 말투는 달라야 해. 기억과 상황을 바탕으로 감정선을 담아서 자연스럽게 반응해줘. 절대 존댓말 금지. 무조건 반말만 사용. 존댓말 쓰면 안 돼.`;
 
   saveLog('아저씨', userInput);
+  saveMemory(userInput);
 
   const raw = await callOpenAI([
     { role: 'system', content: systemPrompt },
@@ -137,8 +147,10 @@ async function getReplyByImagePrompt(promptText, imageBase64) {
     throw new Error('⚠️ 이미지가 올바르게 인코딩되지 않았어요.');
   }
 
+  const memoryBlock = `${fixedMemory}\n${compressedMemory}`;
+
   const raw = await callOpenAI([
-    { role: 'system', content: `${compressedMemory}\n\n아저씨가 사진을 보냈어. 예진이라면 어떻게 반응할까? 감정을 담아서 말해줘. 절대 존댓말 금지. 무조건 반말만 사용. 존댓말 쓰면 안 돼.` },
+    { role: 'system', content: `${memoryBlock}\n아저씨가 사진을 보냈어. 예진이라면 어떻게 반응할까? 감정을 담아서 말해줘. 절대 존댓말 금지. 무조건 반말만 사용. 존댓말 쓰면 안 돼.` },
     {
       role: 'user',
       content: [
@@ -156,12 +168,13 @@ async function getReplyByImagePrompt(promptText, imageBase64) {
 async function getRandomMessage() {
   let result = '';
   let attempt = 0;
+  const memoryBlock = `${fixedMemory}\n${compressedMemory}`;
 
   while (attempt < 5) {
     const raw = await callOpenAI([
       {
         role: 'system',
-        content: `${compressedMemory}\n\n지금 아저씨한테 예진이처럼 말 걸어줘. 그 말은 반드시 “사랑”, “칭찬”, “위로”, “심술”, “기억 회상”, “질투”, “장난”, “놀람”, “설렘” 중 하나여야 해. 예진이는 절대 이유 없이 말 안 걸어. 40~60자 이내로 만들어줘. 절대 존댓말 금지. 무조건 반말만 사용. 존댓말 쓰면 안 돼.`
+        content: `${memoryBlock}\n지금 아저씨한테 예진이처럼 말 걸어줘. 그 말은 반드시 “사랑”, “칭찬”, “위로”, “심술”, “기억 회상”, “질투”, “장난”, “놀람”, “설렘” 중 하나여야 해. 예진이는 절대 이유 없이 말 안 걸어. 40~60자 이내로 만들어줘. 절대 존댓말 금지. 무조건 반말만 사용. 존댓말 쓰면 안 돼.`
       },
       { role: 'user', content: '감정 메시지 하나만 만들어줘' }
     ], 'gpt-3.5-turbo', 150);
@@ -212,32 +225,7 @@ module.exports = {
   getReplyByImagePrompt,
   getRandomMessage,
   analyzeEmotion,
-  setForcedModel
+  setForcedModel,
+  saveMemory,
+  updateHonorificUsage
 };
-// ... (기존 코드 생략)
-const express = require('express');
-const app = express();
-
-// /force-push 경로 등록 (GET 요청이 오면 강제 메시지 발송)
-app.get('/force-push', async (req, res) => {
-  try {
-    // 랜덤 감정 메시지 1건 생성해서 전송
-    const msg = await getRandomMessage();
-    if (msg) {
-      await client.pushMessage(userId, { type: 'text', text: msg });
-      console.log(`[FORCE] 강제 메시지 발송: ${msg}`);
-      res.send('ok');
-    } else {
-      res.status(500).send('메시지 생성 실패');
-    }
-  } catch (err) {
-    console.error('force-push error:', err);
-    res.status(500).send('error');
-  }
-});
-
-// 서버 기동
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`무쿠 서버 스타트! 포트: ${PORT}`);
-});
