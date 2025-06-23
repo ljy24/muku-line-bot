@@ -107,7 +107,7 @@ async function getRandomMessage() {
 
 // --- 사진 목록 셀카 처리 ---
 const BASE_URL = 'https://de-ji.net/yejin/';
-const PHOTO_LIST_PATH = path.join(__dirname, 'photo-list.txt');
+const PHOTO_LIST_PATH = path.join(__dirname, 'memory/photo-list.txt');
 function getPhotoList() {
   try { return fs.readFileSync(PHOTO_LIST_PATH, 'utf-8').split('\n').map(line => line.trim()).filter(Boolean); }
   catch { return []; }
