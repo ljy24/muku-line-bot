@@ -37,13 +37,11 @@ app.get('/force-push', async (req, res) => {
 });
 
 // 서버 시작 시 랜덤 메시지 1회 발송
-// 서버 시작 시 랜덤 메시지 1회 발송
 (async () => {
-  const msg = getStartupMessage(); // 고정 메시지로 변경
+  const msg = '아저씨~ 오늘도 무쿠 시작했어! 🐣';
   await client.pushMessage(userId, { type: 'text', text: msg });
   console.log(`[서버시작랜덤] ${msg}`);
 })();
-
 
 // webhook
 app.post('/webhook', middleware(config), async (req, res) => {
