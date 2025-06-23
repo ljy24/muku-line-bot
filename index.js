@@ -1,3 +1,4 @@
+// ==== 맨 위에 필요한 require 한 번만! ====
 const fs = require('fs');
 const path = require('path');
 const { OpenAI } = require('openai');
@@ -10,7 +11,7 @@ const app = express();
 
 console.log('✅ 무쿠 준비 중! 기다려줘 아저씨...');
 
-// ----------- 기본 세팅 -----------
+// ==== 기본 세팅 ====
 let forcedModel = null;
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -21,7 +22,7 @@ const config = {
 const client = new Client(config);
 const userId = process.env.TARGET_USER_ID;
 
-// ----------- 메모리/로그 -----------
+// ==== 기억/로그 ====
 function safeRead(filePath, fallback = '') {
   try {
     return fs.readFileSync(filePath, 'utf-8');
@@ -67,7 +68,7 @@ function cleanReply(text) {
     .trim();
 }
 
-// ----------- OpenAI -----------
+// ==== OpenAI ====
 async function callOpenAI(messages, model = 'gpt-3.5-turbo', max_tokens = 300) {
   const res = await openai.chat.completions.create({
     model: forcedModel || model,
@@ -135,7 +136,7 @@ function setForcedModel(name) {
   else forcedModel = null;
 }
 
-// ----------- CRON 자동 메시지 -----------
+// ==== CRON 자동 메시지 ====
 for (let h = 9; h <= 18; h++) {
   cron.schedule(`0 ${h} * * *`, async () => {
     const msg = h % 2 === 0 ? "담타고?" : "담타 가자";
@@ -163,13 +164,7 @@ for (const t of times) {
   });
 }
 
-// ----------- Express 서버 -----------
-// (!!! webhook에선 express.json() 사용 금지 !!!)
-
-app.get('/', (_, res) => res.send('무쿠 살아있엉 🐣'));
-
-const path = require('path');
-const fs = require('fs');
+// ==== 사진 목록에서 셀카 랜덤 ====
 const BASE_URL = 'https://de-ji.net/yejin/';
 const PHOTO_LIST_PATH = path.join(__dirname, 'photo-list.txt');
 
@@ -183,7 +178,6 @@ function getPhotoList() {
     return [];
   }
 }
-
 function getRandomPhotoUrl() {
   const list = getPhotoList();
   if (!list.length) return null;
@@ -191,7 +185,10 @@ function getRandomPhotoUrl() {
   return BASE_URL + pick;
 }
 
-// webhook 라우트 안에 아래처럼!
+// ==== Express 서버 ====
+// (webhook에서 express.json() 사용하면 에러! json 미들웨어 절대 안씀)
+app.get('/', (_, res) => res.send('무쿠 살아있엉 🐣'));
+
 app.post('/webhook', middleware(config), async (req, res) => {
   try {
     const events = req.body.events || [];
@@ -229,7 +226,7 @@ app.listen(process.env.PORT || 3000, () => {
   console.log('무쿠 서버 스타트!');
 });
 
-// 필요시 내보내기
+// === 필요시 내보내기 ===
 module.exports = {
   getReplyByMessage,
   getRandomMessage,
