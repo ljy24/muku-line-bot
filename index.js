@@ -29,7 +29,7 @@ app.get('/', (_, res) => res.send('무쿠 살아있엉 🐣'));
 app.get('/force-push', async (req, res) => {
   const msg = await getRandomMessage();
   if (msg) {
-    await client.pushMessage(userId, { type: 'text', text: msg });
+    await client.pushMessage(userId, { type: 'text', text: msg?.trim() || '음… 잠깐 생각 좀 하고 있었어 ㅎㅎ' });
     res.send(`랜덤 메시지 발송: ${msg}`);
   } else {
     res.send('메시지 생성 실패');
@@ -94,7 +94,8 @@ app.post('/webhook', middleware(config), async (req, res) => {
 
           // 일반 대화 처리
           const reply = await getReplyByMessage(text);
-          await client.replyMessage(event.replyToken, { type: 'text', text: reply });
+          const fallback = '음… 잠깐 생각 좀 하고 있었어 ㅎㅎ';
+          await client.replyMessage(event.replyToken, { type: 'text', text: reply?.trim() || fallback });
         }
 
         if (message.type === 'image') {
@@ -106,7 +107,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
             const buffer = Buffer.concat(chunks);
             const base64Image = buffer.toString('base64');
             const reply = await getReplyByImagePrompt('사진이 도착했어', base64Image);
-            await client.replyMessage(event.replyToken, { type: 'text', text: reply });
+            await client.replyMessage(event.replyToken, { type: 'text', text: reply?.trim() || '사진에 반응 못했어 ㅠㅠ' });
           } catch (err) {
             console.error('이미지 처리 오류:', err);
             await client.replyMessage(event.replyToken, { type: 'text', text: '이미지를 읽는 중 오류가 발생했어 ㅠㅠ' });
