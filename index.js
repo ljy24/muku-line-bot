@@ -68,7 +68,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
 
           // 사진 요청 키워드
           if (/사진|셀카|사진줘|셀카 보여줘|사진 보여줘|selfie/i.test(text)) {
-            const photoListPath = path.join(__dirname, 'src/memory/photo-list.txt');
+            const photoListPath = path.join(__dirname, 'memory/photo-list.txt');
             const BASE_URL = 'https://de-ji.net/yejin/';
             let list = [];
             try {
