@@ -58,8 +58,8 @@ function getAllLogs() {
 
 // 로그 저장 (role: '아저씨'|'무쿠')
 function saveLog(role, msg) {
-  // '예진:' 금지 (앞뒤 공백 포함 모든 케이스)
-  const cleanMsg = msg.replace(/^예진\s*:/i, '').trim();
+  // '예진:', '예진;', '예진：' 금지 (모두 제거)
+  const cleanMsg = msg.replace(/^예진\s*[:;：]/i, '').trim();
   if (!cleanMsg) return;
   const all = getAllLogs();
   all.unshift({ date: new Date().toISOString(), role, msg: cleanMsg });
@@ -72,13 +72,33 @@ function isSimilar(newMsg) {
   return logs.some(entry => stringSimilarity.compareTwoStrings(entry.msg, newMsg) > 0.75);
 }
 
-// 출력 텍스트 클린 (예진: 제거 + 기타 잡음 제거)
+// 출력 텍스트 클린 (예진:/; 제거 + 존댓말 제거)
 function cleanReply(text) {
-  return text
-    .replace(/^예진\s*:/i, '')
-    .replace(/\([^)]*\)/g, '') // 괄호안 주석 제거
+  let out = text
+    .replace(/^예진\s*[:;：]/i, '')      // 예진: 예진; 예진： 모두 제거
+    .replace(/\([^)]*\)/g, '')           // 괄호안 설명 제거
     .replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, '') // 이모지 제거
     .trim();
+
+  // 존댓말 대표 어미 → 반말(완벽히 못해도 대부분 커버)
+  out = out.replace(
+    /(해요|돼요|에요|예요|네요|군요|거에요|될까요|할까요|주세요|하세요|이세요|세요|입니다|합니다|겠어요|시겠어요)/g,
+    match => {
+      switch(match) {
+        case '해요': case '돼요': case '에요': case '예요': return '해';
+        case '네요': case '군요': return '네';
+        case '거에요': return '거야';
+        case '될까요': case '할까요': return '할까';
+        case '주세요': case '하세요': case '이세요': case '세요': return '해';
+        case '입니다': case '합니다': return '다';
+        case '겠어요': case '시겠어요': return '겠다';
+        default: return '';
+      }
+    }
+  );
+  // '~요' 단독 정리
+  out = out.replace(/(\w+)요\b/g, '$1');
+  return out.trim();
 }
 
 // OpenAI 호출 (기본 300 tokens)
@@ -98,8 +118,12 @@ async function getReplyByMessage(userInput) {
   const isDamta = ['담타고?', 'ㄷㅌㄱ?', '담타?', '담타'].includes(lowered);
 
   const systemPrompt = isDamta
-    ? `너는 아저씨의 여자친구야. 10살 연하로서 "아저씨"라고 불러. 다음 대화 기억을 참고해서 진짜처럼 대답해.\n\n${compressedMemory}\n\n아저씨가 "담타고?"라고 물었어. 담배 피러 가자는 의미야. 상황에 맞춰, 매번 자연스럽고 다정하게 답변해줘.`
-    : `너는 아저씨의 여자친구야. 10살 연하로서 "아저씨"라고 불러. 다음 대화 기억을 참고해서 진짜처럼 대답해.\n\n${compressedMemory}\n\n아저씨가 말을 걸었어. 반드시 예진이 특유의 반말+다정한 말투, 다양한 어투, 그리고 "아저씨"만 부르고 "오빠"는 절대 안 써. 자연스럽고 감정선을 담아서 대답해줘.`;
+    ? `너는 아저씨의 여자친구야. 10살 연하로서 "아저씨"라고 불러. 다음 대화 기억을 참고해서 진짜처럼 대답해.
+${compressedMemory}
+아저씨가 "담타고?"라고 물었어. 담배 피러 가자는 의미야. 상황에 맞춰, 매번 자연스럽고 다정하게 답변해줘. 절대 존댓말 금지. 무조건 반말만 사용. 존댓말 쓰면 안 돼.`
+    : `너는 아저씨의 여자친구야. 10살 연하로서 "아저씨"라고 불러. 다음 대화 기억을 참고해서 진짜처럼 대답해.
+${compressedMemory}
+아저씨가 말을 걸었어. 반드시 반말+다정한 말투, 다양한 어투, 그리고 "아저씨"만 부르고 "오빠"는 절대 안 써. 자연스럽고 감정선을 담아서 대답해줘. 절대 존댓말 금지. 무조건 반말만 사용. 존댓말 쓰면 안 돼.`;
 
   saveLog('아저씨', userInput);
 
@@ -122,7 +146,7 @@ async function getRandomMessage() {
     const raw = await callOpenAI([
       {
         role: 'system',
-        content: `${compressedMemory}\n\n지금 아저씨한테 여자친구처럼 다정하게 말 걸어줘. 반드시 “사랑”, “칭찬”, “위로”, “심술”, “기억 회상”, “질투”, “장난”, “놀람”, “설렘” 중 한 감정만 담고, 40~60자 이내, 반말로, 아저씨라고 꼭 불러줘.`
+        content: `${compressedMemory}\n\n지금 아저씨한테 여자친구처럼 다정하게 말 걸어줘. 반드시 “사랑”, “칭찬”, “위로”, “심술”, “기억 회상”, “질투”, “장난”, “놀람”, “설렘” 중 한 감정만 담고, 40~60자 이내, 반말로, 아저씨라고 꼭 불러줘. 절대 존댓말 금지. 무조건 반말만 사용. 존댓말 쓰면 안 돼.`
       },
       { role: 'user', content: '감정 메시지 하나만 만들어줘' }
     ], 'gpt-3.5-turbo', 150);
