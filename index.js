@@ -50,6 +50,23 @@ function cleanReply(text) {
     .replace(/\([^)]*\)/g, '').replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, '').trim();
 }
 
+// --- 모델 강제지정 함수 ---
+function setForcedModel(name) {
+  if (!name || name === 'auto' || name === '자동') {
+    forcedModel = null;
+    return '모델: 자동 전환(기본값)으로 변경!';
+  }
+  if (name === '3.5' || name === 'gpt-3.5') {
+    forcedModel = 'gpt-3.5-turbo';
+    return '모델: gpt-3.5-turbo로 고정!';
+  }
+  if (name === '4.0' || name === 'gpt-4' || name === 'gpt-4o') {
+    forcedModel = 'gpt-4o';
+    return '모델: gpt-4o로 고정!';
+  }
+  return '지원하지 않는 모델이야! (가능: 3.5, 4.0, 자동)';
+}
+
 // --- OpenAI 챗 ---
 async function callOpenAI(messages, model = 'gpt-3.5-turbo', max_tokens = 300) {
   const res = await openai.chat.completions.create({
@@ -166,12 +183,41 @@ cron.schedule('30 23 * * *', () => {
 
 // --- Express 서버/웹훅 ---
 app.get('/', (_, res) => res.send('무쿠 살아있엉 🐣'));
+
+// force-push: 랜덤 감정 메시지 즉시 발송
+app.get('/force-push', async (req, res) => {
+  const msg = await getRandomMessage();
+  if (msg) {
+    await client.pushMessage(userId, { type: 'text', text: msg });
+    res.send(`랜덤 메시지 발송: ${msg}`);
+  } else {
+    res.send('메시지 생성 실패');
+  }
+});
+
+// 라인 채팅 웹훅
 app.post('/webhook', middleware(config), async (req, res) => {
   try {
     const events = req.body.events || [];
     for (const event of events) {
       if (event.type === 'message' && event.message.type === 'text') {
         const text = event.message.text.trim();
+
+        // ---- 모델 전환 명령 체크 ----
+        if (/^(3\.?5|gpt-?3\.?5)$/i.test(text)) {
+          await client.replyMessage(event.replyToken, { type: 'text', text: setForcedModel('3.5') });
+          return res.status(200).send('OK');
+        }
+        if (/^(4\.?0|gpt-?4|gpt-?4o)$/i.test(text)) {
+          await client.replyMessage(event.replyToken, { type: 'text', text: setForcedModel('4.0') });
+          return res.status(200).send('OK');
+        }
+        if (/^(auto|자동)$/i.test(text)) {
+          await client.replyMessage(event.replyToken, { type: 'text', text: setForcedModel('auto') });
+          return res.status(200).send('OK');
+        }
+
+        // ---- 사진 요청 ----
         if (/사진|셀카|사진줘|셀카 보여줘|사진 보여줘|selfie/i.test(text)) {
           const photoUrl = getRandomPhotoUrl();
           if (photoUrl) {
@@ -187,6 +233,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
             });
           }
         } else {
+          // ---- 평소 대화 ----
           const reply = await getReplyByMessage(text);
           await client.replyMessage(event.replyToken, { type: 'text', text: reply });
         }
