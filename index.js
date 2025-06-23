@@ -4,16 +4,16 @@ const { OpenAI } = require('openai');
 const stringSimilarity = require('string-similarity');
 const axios = require('axios');
 const cron = require('node-cron');
-const { Client } = require('@line/bot-sdk');
+const { Client, middleware } = require('@line/bot-sdk');
+const express = require('express');
+const app = express();
 
 console.log('✅ 무쿠 준비 중! 기다려줘 아저씨...');
 
+// ----------- 기본 세팅 -----------
 let forcedModel = null;
-
-// OpenAI 클라이언트
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// LINE 설정
 const config = {
   channelAccessToken: process.env.LINE_ACCESS_TOKEN,
   channelSecret: process.env.LINE_CHANNEL_SECRET
@@ -21,32 +21,24 @@ const config = {
 const client = new Client(config);
 const userId = process.env.TARGET_USER_ID;
 
-// 안전하게 파일 읽기
+// ----------- 메모리/로그 -----------
 function safeRead(filePath, fallback = '') {
   try {
     return fs.readFileSync(filePath, 'utf-8');
   } catch {
-    console.warn(`⚠️ 파일을 찾을 수 없어요: ${filePath}`);
     return fallback;
   }
 }
-
-// 기억 파일 불러오기 (메모리)
 const memory1 = safeRead(path.resolve(__dirname, 'memory/1.txt'));
 const memory2 = safeRead(path.resolve(__dirname, 'memory/2.txt'));
 const memory3 = safeRead(path.resolve(__dirname, 'memory/3.txt'));
 const logPath = path.resolve(__dirname, 'memory/message-log.json');
-
-// 메모리 압축(최근 3000자씩만)
 const compressedMemory = [
   memory1.slice(-3000),
   memory2.slice(-3000),
   memory3.slice(-3000)
 ].join('\n');
 
-console.log('✅ 무쿠 가동 중! 아저씨 이제 말 걸어도 돼요.');
-
-// 로그 불러오기
 function getAllLogs() {
   if (!fs.existsSync(logPath)) return [];
   try {
@@ -55,33 +47,27 @@ function getAllLogs() {
     return [];
   }
 }
-
-// 로그 저장 (role: '아저씨'|'무쿠')
 function saveLog(role, msg) {
-  // 맨 앞에 "예진:", "예진이:", "애기:", "애기야:" 싹다 제거
+  // "예진:", "예진이:", "애기:", "애기야:" 제거
   const cleanMsg = msg.replace(/^(예진이|예진|애기야|애기)\s*[:;：]/gmi, '').trim();
   if (!cleanMsg) return;
   const all = getAllLogs();
   all.unshift({ date: new Date().toISOString(), role, msg: cleanMsg });
   fs.writeFileSync(logPath, JSON.stringify(all.slice(0, 5000), null, 2));
 }
-
-// 중복 메시지 방지 (유사도)
 function isSimilar(newMsg) {
   const logs = getAllLogs();
   return logs.some(entry => stringSimilarity.compareTwoStrings(entry.msg, newMsg) > 0.75);
 }
-
-// 출력 텍스트 클린 ("예진:", "애기:" 등 맨 앞 닉네임, 괄호, 이모지 제거)
 function cleanReply(text) {
   return text
-    .replace(/^(예진이|예진|애기야|애기)\s*[:;：]/gmi, '') // 맨 앞 닉네임 제거
-    .replace(/\([^)]*\)/g, '') // 괄호안 주석 제거
-    .replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, '') // 이모지 제거
+    .replace(/^(예진이|예진|애기야|애기)\s*[:;：]/gmi, '')
+    .replace(/\([^)]*\)/g, '')
+    .replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, '')
     .trim();
 }
 
-// OpenAI 호출 (기본 300 tokens)
+// ----------- OpenAI -----------
 async function callOpenAI(messages, model = 'gpt-3.5-turbo', max_tokens = 300) {
   const res = await openai.chat.completions.create({
     model: forcedModel || model,
@@ -91,8 +77,6 @@ async function callOpenAI(messages, model = 'gpt-3.5-turbo', max_tokens = 300) {
   });
   return res.choices[0].message.content.trim();
 }
-
-// 아저씨가 메시지 보낼 때 (예진이 말투 응답)
 async function getReplyByMessage(userInput) {
   const lowered = userInput.toLowerCase();
   const isDamta = ['담타고?', 'ㄷㅌㄱ?', '담타?', '담타'].includes(lowered);
@@ -112,12 +96,9 @@ async function getReplyByMessage(userInput) {
   saveLog('무쿠', reply);
   return reply;
 }
-
-// 자동 감정형 메시지 (랜덤, 중복 방지)
 async function getRandomMessage() {
   let result = '';
   let attempt = 0;
-
   while (attempt < 5) {
     const raw = await callOpenAI([
       {
@@ -134,17 +115,12 @@ async function getRandomMessage() {
     }
     attempt++;
   }
-
   if (result) saveLog('무쿠', result);
   return result;
 }
-
-// 이미지 프롬프트 응답(필요시)
 async function getReplyByImagePrompt() {
-  return '사진은 지금은 말 없이 보여줄게.'; // 예시
+  return '사진은 지금은 말 없이 보여줄게.';
 }
-
-// 외부 이미지 → base64 변환
 async function getBase64FromUrl(url) {
   try {
     const res = await axios.get(url, { responseType: 'arraybuffer' });
@@ -154,14 +130,12 @@ async function getBase64FromUrl(url) {
     return null;
   }
 }
-
-// 모델 강제 지정
 function setForcedModel(name) {
   if (['gpt-3.5-turbo', 'gpt-4o'].includes(name)) forcedModel = name;
   else forcedModel = null;
 }
 
-// 1. 9시~18시 정각마다 "담타고?", "담타 가자" 번갈아 전송
+// ----------- CRON 자동 메시지 -----------
 for (let h = 9; h <= 18; h++) {
   cron.schedule(`0 ${h} * * *`, async () => {
     const msg = h % 2 === 0 ? "담타고?" : "담타 가자";
@@ -169,8 +143,6 @@ for (let h = 9; h <= 18; h++) {
     console.log(`[담타메시지] ${h}시: ${msg}`);
   });
 }
-
-// 2. 하루 6번 랜덤 감정 메시지 (9~18시 사이 랜덤 시간에!)
 function randomUniqueTimes(count, start = 9, end = 18) {
   const slots = [];
   while (slots.length < count) {
@@ -181,7 +153,7 @@ function randomUniqueTimes(count, start = 9, end = 18) {
   }
   return slots;
 }
-const times = randomUniqueTimes(6); // 예: ["9:15", "11:48", ...]
+const times = randomUniqueTimes(6);
 for (const t of times) {
   const [hour, min] = t.split(':');
   cron.schedule(`${min} ${hour} * * *`, async () => {
@@ -191,16 +163,25 @@ for (const t of times) {
   });
 }
 
-// 3. (서버 깨우기용)
-const express = require('express');
-const app = express();
+// ----------- Express 서버 -----------
+app.use(express.json());
+
+// 1. 살아있는지 확인용
 app.get('/', (_, res) => res.send('무쿠 살아있엉 🐣'));
+
+// 2. Webhook 엔드포인트 (라인에서 꼭 필요)
+app.post('/webhook', middleware(config), async (req, res) => {
+  // 라인에서 들어오는 메시지 처리:  
+  // (아저씨가 말 걸면 여기서 getReplyByMessage 등 호출)
+  res.status(200).send('OK');
+});
+
+// ----------- 서버 시작 -----------
 app.listen(process.env.PORT || 3000, () => {
   console.log('무쿠 서버 스타트!');
 });
 
-
-// 모듈 내보내기 (테스트/확장용)
+// ----------- 모듈 내보내기 (필요시) -----------
 module.exports = {
   getReplyByMessage,
   getRandomMessage,
