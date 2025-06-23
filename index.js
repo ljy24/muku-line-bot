@@ -37,13 +37,13 @@ app.get('/force-push', async (req, res) => {
 });
 
 // 서버 시작 시 랜덤 메시지 1회 발송
+// 서버 시작 시 랜덤 메시지 1회 발송
 (async () => {
-  const msg = await getRandomMessage();
-  if (msg) {
-    await client.pushMessage(userId, { type: 'text', text: msg?.trim() || '음… 잠깐 생각 좀 하고 있었어 ㅎㅎ' });
-    console.log(`[서버시작랜덤] ${msg}`);
-  }
+  const msg = getStartupMessage(); // 고정 메시지로 변경
+  await client.pushMessage(userId, { type: 'text', text: msg });
+  console.log(`[서버시작랜덤] ${msg}`);
 })();
+
 
 // webhook
 app.post('/webhook', middleware(config), async (req, res) => {
