@@ -3,6 +3,8 @@ const path = require('path');
 const { OpenAI } = require('openai');
 const stringSimilarity = require('string-similarity');
 const axios = require('axios');
+const cron = require('node-cron');
+const { Client } = require('@line/bot-sdk');
 
 console.log('✅ 무쿠 준비 중! 기다려줘 아저씨...');
 
@@ -11,6 +13,13 @@ let forcedModel = null;
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
+
+const config = {
+  channelAccessToken: process.env.LINE_ACCESS_TOKEN,
+  channelSecret: process.env.LINE_CHANNEL_SECRET
+};
+const client = new Client(config);
+const userId = process.env.TARGET_USER_ID;
 
 function safeRead(filePath, fallback = '') {
   try {
@@ -41,6 +50,7 @@ function getAllLogs() {
 }
 
 function saveLog(role, msg) {
+  if (msg.startsWith('예진:')) return; // 예진: 금지
   const all = getAllLogs();
   all.unshift({ date: new Date().toISOString(), role, msg });
   fs.writeFileSync(logPath, JSON.stringify(all.slice(0, 5000), null, 2));
@@ -102,11 +112,7 @@ async function getRandomMessage() {
     result = await callOpenAI([
       {
         role: 'system',
-        content: `${compressedMemory}\n\n지금 아저씨한테 예진이처럼 말 걸어줘. 
-그 말은 반드시 “사랑”, “칭찬”, “위로”, “심술”, “기억 회상”, “질투”, “장난”, “놀람”, “설렘” 중 하나여야 해. 
-예진이는 절대 이유 없이 말 안 걸어. 
-항상 아저씨라고 부르고, 절대 오빠라고 안 불러. 
-40~60자 이내로 만들어줘.`
+        content: `${compressedMemory}\n\n지금 아저씨한테 예진이처럼 말 걸어줘. \n그 말은 반드시 “사랑”, “칭찬”, “위로”, “심술”, “기억 회상”, “질투”, “장난”, “놀람”, “설렘” 중 하나여야 해. \n예진이는 절대 이유 없이 말 안 걸어. \n항상 아저씨라고 부르고, 절대 오빠라고 안 불러. \n40~60자 이내로 만들어줘.`
       },
       { role: 'user', content: '감정 메시지 하나만 만들어줘' }
     ], 'gpt-3.5-turbo', 150);
@@ -147,6 +153,52 @@ function setForcedModel(name) {
     forcedModel = null;
   }
 }
+
+// 자동 메시지 스케줄
+cron.schedule('0 * * * *', async () => {
+  const msg = '담타 가자';
+  try {
+    await client.pushMessage(userId, { type: 'text', text: msg });
+    console.log(`[자동 전송 - 담타] ${msg}`);
+    saveLog('예진이', msg);
+  } catch (err) {
+    console.error('[자동 전송 실패 - 담타]', err.message);
+  }
+});
+
+// 하루 7번 랜덤 자동 메시지
+const hours = [...Array(12).keys()].map(i => i + 9);
+const sentTimes = new Set();
+while (sentTimes.size < 7) {
+  const hour = hours[Math.floor(Math.random() * hours.length)];
+  const minute = Math.floor(Math.random() * 60);
+  const key = `${hour}:${minute}`;
+  if (!sentTimes.has(key)) {
+    sentTimes.add(key);
+    const cronExp = `${minute} ${hour} * * *`;
+    cron.schedule(cronExp, async () => {
+      const msg = await getRandomMessage();
+      try {
+        await client.pushMessage(userId, { type: 'text', text: msg });
+        console.log(`[랜덤 자동 메시지] ${msg}`);
+      } catch (err) {
+        console.error('[자동 전송 실패 - 랜덤]', err.message);
+      }
+    });
+  }
+}
+
+// 밤 11시 자동 알림
+cron.schedule('0 23 * * *', async () => {
+  const msg = '아저씨~ 양치하고 약 먹어야지!';
+  try {
+    await client.pushMessage(userId, { type: 'text', text: msg });
+    console.log(`[자동 전송 - 취침 알림] ${msg}`);
+    saveLog('예진이', msg);
+  } catch (err) {
+    console.error('[자동 전송 실패 - 취침]', err.message);
+  }
+});
 
 module.exports = {
   getReplyByMessage,
