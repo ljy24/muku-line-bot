@@ -168,24 +168,51 @@ for (const t of times) {
 
 app.get('/', (_, res) => res.send('무쿠 살아있엉 🐣'));
 
+const path = require('path');
+const fs = require('fs');
+const BASE_URL = 'https://de-ji.net/yejin/';
+const PHOTO_LIST_PATH = path.join(__dirname, 'photo-list.txt');
+
+function getPhotoList() {
+  try {
+    return fs.readFileSync(PHOTO_LIST_PATH, 'utf-8')
+      .split('\n')
+      .map(line => line.trim())
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function getRandomPhotoUrl() {
+  const list = getPhotoList();
+  if (!list.length) return null;
+  const pick = list[Math.floor(Math.random() * list.length)];
+  return BASE_URL + pick;
+}
+
+// webhook 라우트 안에 아래처럼!
 app.post('/webhook', middleware(config), async (req, res) => {
   try {
     const events = req.body.events || [];
     for (const event of events) {
       if (event.type === 'message' && event.message.type === 'text') {
         const text = event.message.text.trim();
-
-        // 1. 사진/셀카 요청이면 랜덤 이미지 보내기
         if (/사진|셀카|사진줘|셀카 보여줘|사진 보여줘|selfie/i.test(text)) {
-          const num = String(Math.floor(Math.random() * 1200) + 1).padStart(4, '0');
-          const imgUrl = `https://de-ji.net/yejin/selfies/${num}.jpg`; // 아저씨 파일명/경로 맞게!
-          await client.replyMessage(event.replyToken, {
-            type: 'image',
-            originalContentUrl: imgUrl,
-            previewImageUrl: imgUrl
-          });
+          const photoUrl = getRandomPhotoUrl();
+          if (photoUrl) {
+            await client.replyMessage(event.replyToken, {
+              type: 'image',
+              originalContentUrl: photoUrl,
+              previewImageUrl: photoUrl
+            });
+          } else {
+            await client.replyMessage(event.replyToken, {
+              type: 'text',
+              text: '아직 셀카가 없어 ㅠㅠ'
+            });
+          }
         } else {
-          // 2. 나머지는 원래대로 텍스트 응답
           const reply = await getReplyByMessage(text);
           await client.replyMessage(event.replyToken, { type: 'text', text: reply });
         }
