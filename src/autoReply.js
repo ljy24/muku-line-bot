@@ -46,6 +46,16 @@ function saveLog(role, msg) {
   }
 }
 
+function getRecentLogs(days = 2) {
+  const now = new Date();
+  const logs = getAllLogs().filter(log => {
+    const logDate = new Date(log.date);
+    const diffInDays = (now - logDate) / (1000 * 60 * 60 * 24);
+    return log.role === '아저씨' && diffInDays <= days;
+  });
+  return logs.map(log => `아저씨: ${log.msg}`).join('\n');
+}
+
 function hasSimilarWords(newMsg) {
   const logs = getAllLogs().map(log => log.msg);
   const newWords = new Set(newMsg.split(/\s+/));
@@ -137,10 +147,11 @@ async function getReplyByMessage(userInput) {
 
   const fixed = fixedMemory.trim();
   const memoryBlock = `${fixed}\n${compressedMemory}`;
+  const recentLogText = getRecentLogs();
 
   const systemPrompt = isDamta
-    ? `너는 예진이라는 여자친구야. 예진이보다 10살 많은 사람을 \"아저씨\"라고 불러.\n${memoryBlock}\n아저씨가 \"담타고?\"라고 물었어. 담배 피러 가자는 뜻이야. 예진이라면 어떤 말로 응답할까? 매번 다른 말투로, 상황에 맞게 대답해줘. 절대 존댓말 금지. 무조건 반말만 사용. 존댓말 쓰면 안 돼.`
-    : `너는 예진이라는 여자친구야. 예진이보다 10살 많은 사람을 \"아저씨\"라고 불러.\n${memoryBlock}\n아저씨가 말을 걸었어. 예진이처럼 반응해. 반말이고 다정해야 하고, 항상 말투는 달라야 해. 기억과 상황을 바탕으로 감정선을 담아서 자연스럽게 반응해줘. 절대 존댓말 금지. 무조건 반말만 사용. 존댓말 쓰면 안 돼.`;
+    ? `너는 예진이라는 여자친구야. 예진이보다 10살 많은 사람을 \"아저씨\"라고 불러.\n${memoryBlock}\n${recentLogText}\n아저씨가 \"담타고?\"라고 물었어. 담배 피러 가자는 뜻이야. 예진이라면 어떤 말로 응답할까? 매번 다른 말투로, 상황에 맞게 대답해줘. 절대 존댓말 금지. 무조건 반말만 사용. 존댓말 쓰면 안 돼.`
+    : `너는 예진이라는 여자친구야. 예진이보다 10살 많은 사람을 \"아저씨\"라고 불러.\n${memoryBlock}\n${recentLogText}\n아저씨가 말을 걸었어. 예진이처럼 반응해. 반말이고 다정해야 하고, 항상 말투는 달라야 해. 기억과 상황을 바탕으로 감정선을 담아서 자연스럽게 반응해줘. 절대 존댓말 금지. 무조건 반말만 사용. 존댓말 쓰면 안 돼.`;
 
   saveLog('아저씨', userInput);
   saveMemory(userInput);
