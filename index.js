@@ -40,9 +40,14 @@ const compressedMemory = memory1.slice(-3000) + '\n' + memory2.slice(-3000) + '\
 console.log('✅ 무쿠 가동 중! 아저씨 이제 말 걸어도 돼요.');
 
 function getAllLogs() {
-  if (!fs.existsSync(logPath)) return [];
+  if (!fs.existsSync(logPath)) {
+    console.warn('🚫 로그 파일 없음!', logPath);
+    return [];
+  }
   try {
-    return JSON.parse(fs.readFileSync(logPath, 'utf-8'));
+    const raw = fs.readFileSync(logPath, 'utf-8');
+    console.log('📝 로그 파일 로드:', raw.slice(0, 100));
+    return JSON.parse(raw);
   } catch (err) {
     console.warn('⚠️ 로그 파일 파싱 실패:', err.message);
     return [];
@@ -181,6 +186,7 @@ while (sentTimes.size < 7) {
       try {
         await client.pushMessage(userId, { type: 'text', text: msg });
         console.log(`[랜덤 자동 메시지] ${msg}`);
+        saveLog('예진이', msg);
       } catch (err) {
         console.error('[자동 전송 실패 - 랜덤]', err.message);
       }
