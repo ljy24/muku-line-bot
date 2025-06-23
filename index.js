@@ -173,14 +173,28 @@ app.post('/webhook', middleware(config), async (req, res) => {
     const events = req.body.events || [];
     for (const event of events) {
       if (event.type === 'message' && event.message.type === 'text') {
-        const reply = await getReplyByMessage(event.message.text);
-        await client.replyMessage(event.replyToken, { type: 'text', text: reply });
+        const text = event.message.text.trim();
+
+        // 1. 사진/셀카 요청이면 랜덤 이미지 보내기
+        if (/사진|셀카|사진줘|셀카 보여줘|사진 보여줘|selfie/i.test(text)) {
+          const num = String(Math.floor(Math.random() * 1200) + 1).padStart(4, '0');
+          const imgUrl = `https://de-ji.net/yejin/selfies/${num}.jpg`; // 아저씨 파일명/경로 맞게!
+          await client.replyMessage(event.replyToken, {
+            type: 'image',
+            originalContentUrl: imgUrl,
+            previewImageUrl: imgUrl
+          });
+        } else {
+          // 2. 나머지는 원래대로 텍스트 응답
+          const reply = await getReplyByMessage(text);
+          await client.replyMessage(event.replyToken, { type: 'text', text: reply });
+        }
       }
     }
     res.status(200).send('OK');
   } catch (err) {
     console.error('웹훅 처리 에러:', err);
-    res.status(200).send('OK'); // 에러여도 200!
+    res.status(200).send('OK');
   }
 });
 
