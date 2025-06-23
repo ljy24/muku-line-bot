@@ -38,9 +38,11 @@ app.get('/force-push', async (req, res) => {
 
 // 서버 시작 시 랜덤 메시지 1회 발송
 (async () => {
-  const msg = '아저씨~ 오늘도 무쿠 시작했어! 🐣';
-  await client.pushMessage(userId, { type: 'text', text: msg });
-  console.log(`[서버시작랜덤] ${msg}`);
+  const msg = await getRandomMessage();
+  if (msg) {
+    await client.pushMessage(userId, { type: 'text', text: msg?.trim() || '무쿠 시작했어!' });
+    console.log(`[서버시작랜덤] ${msg}`);
+  }
 })();
 
 // webhook
@@ -56,15 +58,18 @@ app.post('/webhook', middleware(config), async (req, res) => {
 
           // 모델 고정 명령어 처리
           if (/^(3\.5|gpt-?3\.5)$/i.test(text)) {
-            await client.replyMessage(event.replyToken, { type: 'text', text: setForcedModel('gpt-3.5-turbo') });
+            const response = setForcedModel('gpt-3.5-turbo') || '모델이 gpt-3.5로 설정됐어!';
+            await client.replyMessage(event.replyToken, { type: 'text', text: response });
             return;
           }
           if (/^(4\.0|gpt-?4|gpt-?4o)$/i.test(text)) {
-            await client.replyMessage(event.replyToken, { type: 'text', text: setForcedModel('gpt-4o') });
+            const response = setForcedModel('gpt-4o') || '모델이 gpt-4o로 설정됐어!';
+            await client.replyMessage(event.replyToken, { type: 'text', text: response });
             return;
           }
           if (/^(auto|자동)$/i.test(text)) {
-            await client.replyMessage(event.replyToken, { type: 'text', text: setForcedModel(null) });
+            const response = setForcedModel(null) || '모델 자동 선택 모드로 전환했어!';
+            await client.replyMessage(event.replyToken, { type: 'text', text: response });
             return;
           }
 
