@@ -214,3 +214,30 @@ module.exports = {
   analyzeEmotion,
   setForcedModel
 };
+// ... (기존 코드 생략)
+const express = require('express');
+const app = express();
+
+// /force-push 경로 등록 (GET 요청이 오면 강제 메시지 발송)
+app.get('/force-push', async (req, res) => {
+  try {
+    // 랜덤 감정 메시지 1건 생성해서 전송
+    const msg = await getRandomMessage();
+    if (msg) {
+      await client.pushMessage(userId, { type: 'text', text: msg });
+      console.log(`[FORCE] 강제 메시지 발송: ${msg}`);
+      res.send('ok');
+    } else {
+      res.status(500).send('메시지 생성 실패');
+    }
+  } catch (err) {
+    console.error('force-push error:', err);
+    res.status(500).send('error');
+  }
+});
+
+// 서버 기동
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`무쿠 서버 스타트! 포트: ${PORT}`);
+});
