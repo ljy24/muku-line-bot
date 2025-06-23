@@ -102,7 +102,9 @@ app.post('/webhook', middleware(config), async (req, res) => {
           // 일반 대화 처리
           const reply = await getReplyByMessage(text);
           const fallback = '음… 잠깐 생각 좀 하고 있었어 ㅎㅎ';
-          await client.replyMessage(event.replyToken, { type: 'text', text: reply?.trim() || fallback });
+          const messageToSend = typeof reply === 'string' && reply.trim() ? reply.trim() : fallback;
+
+          await client.replyMessage(event.replyToken, { type: 'text', text: messageToSend });
         }
 
         if (message.type === 'image') {
