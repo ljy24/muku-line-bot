@@ -171,11 +171,20 @@ app.get('/', (_, res) => res.send('무쿠 살아있엉 🐣'));
 
 // 2. Webhook 엔드포인트 (라인에서 꼭 필요)
 app.post('/webhook', middleware(config), async (req, res) => {
-  // 라인에서 들어오는 메시지 처리:  
-  // (아저씨가 말 걸면 여기서 getReplyByMessage 등 호출)
-  res.status(200).send('OK');
+  try {
+    const events = req.body.events || [];
+    for (const event of events) {
+      if (event.type === 'message' && event.message.type === 'text') {
+        const reply = await getReplyByMessage(event.message.text);
+        await client.replyMessage(event.replyToken, { type: 'text', text: reply });
+      }
+    }
+    res.status(200).send('OK');
+  } catch (err) {
+    console.error('웹훅 처리 에러:', err);
+    res.status(200).send('OK'); // 에러여도 200 주면 일단 통과!
+  }
 });
-
 // ----------- 서버 시작 -----------
 app.listen(process.env.PORT || 3000, () => {
   console.log('무쿠 서버 스타트!');
