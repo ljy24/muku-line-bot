@@ -71,16 +71,29 @@ function cleanReply(text) {
     .trim();
 
   out = out.replace(
-    /(해요|돼요|에요|예요|네요|군요|거에요|될까요|할까요|주세요|하세요|이세요|세요|입니다|합니다|겠어요|시겠어요)/g,
+    /(고 싶어요|싶어요|했어요|했네요|하시겠어요|해주시겠어요|해주세요|주세요|세요|입니다|네요|겠어요|싶습니다|되네요|되겠어요|될까요|할까요|하시겠어요|해요|돼요|에요|예요)/g,
     match => {
       switch (match) {
-        case '해요': case '돼요': case '에요': case '예요': return '해';
-        case '네요': case '군요': return '네';
-        case '거에요': return '거야';
-        case '될까요': case '할까요': return '할까';
-        case '주세요': case '하세요': case '이세요': case '세요': return '해';
-        case '입니다': case '합니다': return '다';
-        case '겠어요': case '시겠어요': return '겠다';
+        case '고 싶어요':
+        case '싶어요': return '싶어';
+        case '했어요':
+        case '했네요': return '했어';
+        case '하시겠어요':
+        case '해주시겠어요': return '해줘';
+        case '해주세요':
+        case '주세요': return '줘';
+        case '네요':
+        case '되네요': return '네';
+        case '됩니다':
+        case '입니다': return '야';
+        case '할까요':
+        case '될까요': return '할까';
+        case '해요':
+        case '돼요':
+        case '에요':
+        case '예요': return '야';
+        case '겠어요':
+        case '되겠어요': return '겠다';
         default: return '';
       }
     }
