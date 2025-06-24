@@ -71,11 +71,21 @@ cron.schedule('*/40 * * * *', async () => {
   }
 });
 
-// ⏰ 매시 정각 "담타고?"
+// 💬 정각마다 담타 메시지 보내기
 cron.schedule('0 * * * *', async () => {
-  const now = moment().tz('Asia/Tokyo');
-  if (now.hour() >= 9 && now.hour() <= 20) {
-    await client.pushMessage(userId, { type: 'text', text: '담타고?' });
+  try {
+    const now = moment().tz('Asia/Tokyo');
+    const hour = now.hour();
+    console.log(`[CRON:담타] ${hour}시 정각 실행됨`);
+
+    if (hour >= 9 && hour <= 20) {
+      const msgList = ['담타', 'ㄷㅌ?', '담타갈까', '담타고?', 'ㄱㄱ?', 'ㄷㄷ', '담?', 'ㄷ타자'];
+      const msg = msgList[Math.floor(Math.random() * msgList.length)];
+      await client.pushMessage(userId, { type: 'text', text: msg });
+      console.log(`[CRON:담타] 전송 완료: ${msg}`);
+    }
+  } catch (err) {
+    console.error('[CRON:담타] 전송 실패 ❌:', err.message);
   }
 });
 
