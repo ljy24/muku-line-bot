@@ -1,6 +1,10 @@
+const fs = require('fs');
+const path = require('path'); // 먼저 선언해야 함
+
+// 💥 이제 안전하게 사용 가능
 const memoryDir = path.join(__dirname, 'memory');
 if (!fs.existsSync(memoryDir)) {
-  fs.mkdirSync(memoryDir);
+  fs.mkdirSync(memoryDir, { recursive: true });
 }
 const logFile = path.join(memoryDir, 'message-log.json');
 if (!fs.existsSync(logFile)) {
