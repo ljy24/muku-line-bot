@@ -18,10 +18,6 @@
     "string-similarity": "^4.0.4",
     "canvas": "^2.11.2",
     "moment-timezone": "^0.5.44"
-
-    // 얼굴 인식 관련 의존성 (잠시 비활성화)
-    // "@tensorflow/tfjs-node": "^4.16.0",
-    // "@vladmandic/face-api": "^1.0.3"
   },
   "engines": {
     "node": ">=18.0.0"
