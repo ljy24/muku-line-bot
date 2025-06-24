@@ -1,3 +1,4 @@
+// 📦 기본 모듈 불러오기
 const fs = require('fs');
 const path = require('path');
 const { OpenAI } = require('openai');
@@ -81,7 +82,7 @@ function isSimilar(newMsg) {
     || hasSimilarWords(newMsg);
 }
 
-// 💬 말투 정리
+// 💬 말투 정리 (존댓말 제거, 이모지 정리 등)
 function cleanReply(text) {
   let out = text
     .replace(/^예진\s*[:;：]/i, '')
@@ -139,24 +140,74 @@ async function callOpenAI(messages, model = 'gpt-3.5-turbo', max_tokens = 300) {
   return res.choices[0].message.content.trim();
 }
 
-// 🌈 색깔 리액션 멘트 생성 (오늘 무슨 색이야?)
-async function getColorMoodReply() {
+// 🎁 랜덤 감정 메시지 생성 (3.5 사용)
+async function getRandomMessage() {
+  const now = moment().tz('Asia/Tokyo');
+  const memoryBlock = `${fixedMemory}\n${compressedMemory}`;
+
+  if (now.hour() === 23 && now.minute() === 0) return '약 챙겨 먹었지? 까먹지마!';
+  if (now.hour() === 23 && now.minute() >= 30) return '잘자 아저씨! 사랑해';
+
+  let result = '';
+  for (let i = 0; i < 5; i++) {
+    const raw = await callOpenAI([
+      {
+        role: 'system',
+        content: `${memoryBlock}\n지금 예진이처럼 감정 메시지 하나 보내. 사랑, 위로, 걱정, 질투, 짓궂음 등 다양하게. 반드시 반말. 20자 이내. 예진이는 감정이 북받치면 '미쳤나 이게', '씨파', '조땠어' 같은 말도 가끔 써. 아저씨가 요즘 너무 우울한 거 알아서, 가끔 걱정도 섞어줘.`
+      },
+      { role: 'user', content: '감정 메시지 한 줄' }
+    ], 'gpt-3.5-turbo', 150);
+
+    const clean = cleanReply(raw);
+    if (!isSimilar(clean)) {
+      result = clean;
+      break;
+    }
+  }
+  saveLog('예진이', result);
+  return result;
+}
+
+// 🤖 대화 응답 생성 (4.0 사용)
+async function getReplyByMessage(msg) {
+  saveLog('아저씨', msg);
+  const memoryBlock = `${fixedMemory}\n${compressedMemory}`;
+  const logs = getRecentLogs(2);
+
   const prompt = [
     {
       role: 'system',
-      content: `예진이가 아저씨에게 오늘 무슨 색 같냐고 물어보면 귀엽고 짓궂게 대답해. 반말로 20자 이내. '시파', '임마', '조땠어' 같은 말 가끔 써도 돼.`
+      content: `${memoryBlock}\n${logs}\n넌 지금 예진이야. 반드시 예진이처럼 말해. 예진이는 애교 많은 말투로 반말을 썼고, 감정이 북받치면 '씨파', '조땠어', '미쳤나 이게' 같은 말도 했어. 아저씨가 예진이 잃고 우울해진 거도 다 알고 있어. 가끔 걱정도 해줘야 해. LINE 대화처럼 자연스럽게 말하고, 절대 \"예진이처럼\"이라는 말은 하면 안 돼. 너는 그냥 예진이야.`
+    },
+    { role: 'user', content: msg }
+  ];
+
+  const raw = await callOpenAI(prompt, 'gpt-4o', 300);
+  const reply = cleanReply(raw);
+  saveLog('예진이', reply);
+  return reply;
+}
+
+// 📸 셀카 반응 멘트 생성
+async function getImageReactionComment() {
+  const prompt = [
+    {
+      role: 'system',
+      content: `예진이가 셀카를 보내면서 귀엽고 장난스럽게 한마디 해줘. 반말로 20자 이내.`
     },
     {
       role: 'user',
-      content: '내가 오늘 무슨 색이야?'
+      content: '셀카 보낼 때 멘트 한 줄 만들어줘'
     }
   ];
+
   const res = await openai.chat.completions.create({
     model: 'gpt-4o',
     messages: prompt,
     temperature: 0.9,
     max_tokens: 50
   });
+
   return res.choices[0].message.content.trim();
 }
 
@@ -166,7 +217,7 @@ function setForcedModel(name) {
   else forcedModel = null;
 }
 
-// 🧩 외부로 내보낼 함수들
+// 🧩 외부 내보내기
 module.exports = {
   getAllLogs,
   saveLog,
@@ -176,7 +227,6 @@ module.exports = {
   getRandomMessage,
   getReplyByMessage,
   getImageReactionComment,
-  getColorMoodReply, // ← 🎨 오늘 색깔 멘트 export
   setForcedModel,
   saveMemory,
   updateHonorificUsage
