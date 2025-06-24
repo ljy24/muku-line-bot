@@ -216,7 +216,8 @@ module.exports = {
   callOpenAI,
   getRandomMessage,
   getReplyByMessage,
-  getColorMoodReply, // 🎨 색상 응답 추가
+  getColorMoodReply,      // 🎨 색상 응답 추가
+  getImageReactionComment, // ✅ 요거 추가!!
   setForcedModel,
   saveMemory,
   updateHonorificUsage
