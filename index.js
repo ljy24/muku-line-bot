@@ -138,26 +138,46 @@ app.post('/webhook', middleware(config), async (req, res) => {
             return;
           }
 
-          // 📷 셀카 요청 처리
-          if (/사진|셀카|selfie|사진줘|사진 보여줘/i.test(text)) {
-            const photoListPath = path.join(__dirname, 'memory/photo-list.txt');
-            const BASE_URL = 'https://de-ji.net/yejin/';
-            try {
-              const list = fs.readFileSync(photoListPath, 'utf-8').split('\n').map(l => l.trim()).filter(Boolean);
-              const pick = list[Math.floor(Math.random() * list.length)];
-              const url = BASE_URL + pick;
+// 📷 셀카 요청 처리
+if (/사진|셀카|사진줘|셀카 보여줘|사진 보여줘|selfie/i.test(text)) {
+  const photoListPath = path.join(__dirname, 'memory/photo-list.txt');
+  const BASE_URL = 'https://de-ji.net/yejin/';
+  let list = [];
 
-              // 🧠 셀카 멘트 생성
-              const comment = await getImageReactionComment();
-              await client.replyMessage(event.replyToken, [
-                { type: 'image', originalContentUrl: url, previewImageUrl: url },
-                { type: 'text', text: comment || '헤헷 셀카야~' }
-              ]);
-            } catch {
-              await client.replyMessage(event.replyToken, { type: 'text', text: '아직 셀카가 없어 ㅠㅠ' });
-            }
-            return;
-          }
+  try {
+    list = fs.readFileSync(photoListPath, 'utf-8')
+      .split('\n')
+      .map(l => l.trim())
+      .filter(Boolean);
+
+    if (list.length > 0) {
+      const pick = list[Math.floor(Math.random() * list.length)];
+      const url = BASE_URL + pick;
+
+      // 🧠 셀카 멘트 생성
+      const comment = await getImageReactionComment();
+
+      // 📤 이미지 + 멘트 전송
+      await client.replyMessage(event.replyToken, [
+        { type: 'image', originalContentUrl: url, previewImageUrl: url },
+        { type: 'text', text: comment || '헤헷 셀카야~' }
+      ]);
+    } else {
+      await client.replyMessage(event.replyToken, {
+        type: 'text',
+        text: '아직 셀카가 없어 ㅠㅠ'
+      });
+    }
+  } catch (err) {
+    console.error('📷 셀카 불러오기 실패:', err.message);
+    await client.replyMessage(event.replyToken, {
+      type: 'text',
+      text: '아직 셀카가 없어 ㅠㅠ'
+    });
+  }
+
+  return;
+}
 
           // 💬 일반 대화
           const reply = await getReplyByMessage(text);
