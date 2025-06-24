@@ -59,17 +59,42 @@ app.get('/force-push', async (req, res) => {
   await client.pushMessage(userId, { type: 'text', text: '아저씨 나왔어!' });
 })();
 
-// ⏰ 40분마다 랜덤 메시지 (9시~20시)
-cron.schedule('*/40 * * * *', async () => {
-  const now = moment().tz('Asia/Tokyo');
-  if (now.hour() >= 9 && now.hour() <= 20) {
-    const msg = await getRandomMessage();
-    if (msg) {
-      await client.pushMessage(userId, { type: 'text', text: msg });
-      saveLog('예진이', msg);
-    }
+// --- 도쿄 시간 기준 하루 8번, 짧은 감정 메시지 전송 ---
+function scheduleDailyShortMessages() {
+  const moment = require('moment-timezone');
+  const cron = require('node-cron');
+  const times = new Set();
+
+  // 도쿄시간 9시~20시 중 랜덤 8개 시간
+  while (times.size < 8) {
+    const hour = Math.floor(Math.random() * 12) + 9; // 9 ~ 20
+    const minute = Math.floor(Math.random() * 60);
+    const cronTime = `${minute} ${hour} * * *`;
+    times.add(cronTime);
   }
-});
+
+  for (const time of times) {
+    cron.schedule(
+      time,
+      async () => {
+        const now = moment().tz('Asia/Tokyo');
+        const msg = await getRandomMessage();
+        if (msg && msg.length <= 25) {
+          await client.pushMessage(userId, { type: 'text', text: msg });
+          console.log(`[도쿄 ${now.format('HH:mm')}] 감정 메시지: ${msg}`);
+        } else {
+          console.log(`[도쿄 ${now.format('HH:mm')}] 메시지 너무 길어서 패스`);
+        }
+      },
+      {
+        timezone: 'Asia/Tokyo'
+      }
+    );
+  }
+}
+
+// ✅ 서버 시작 시 등록
+scheduleDailyShortMessages();
 
 // 💬 정각마다 담타 메시지 보내기
 cron.schedule('0 * * * *', async () => {
