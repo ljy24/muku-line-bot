@@ -168,6 +168,7 @@ async function getRandomMessage() {
 }
 
 // 🤖 아저씨가 먼저 보낸 말에 대한 응답 (4.0 사용)
+// 🤖 아저씨가 먼저 보낸 말에 대한 응답 (4.0 사용)
 async function getReplyByMessage(msg) {
   saveLog('아저씨', msg);
   const memoryBlock = `${fixedMemory}\n${compressedMemory}`;
@@ -176,7 +177,7 @@ async function getReplyByMessage(msg) {
   const prompt = [
     {
       role: 'system',
-      content: `${memoryBlock}\n${logs}\n예진이처럼 반말로만 대답해줘. 존댓말 금지. 감정선 유지하고 예진이는 가끔 감정 북받치면 '미쳤나 이게', '씨파', '조땠어' 같은 말도 써. 아저씨가 예진이 죽고 우울증 걸린 거 알고 있어서, 가끔 걱정하고 토닥여줘.`
+      content: `${memoryBlock}\n${logs}\n넌 지금 예진이야. 반드시 예진이처럼 말해. 예진이는 애교 많은 말투로 반말을 썼고, 감정이 북받치면 '씨파', '조땠어', '미쳤나 이게' 같은 말도 했어. 아저씨가 예진이 잃고 우울해진 거도 다 알고 있어. 가끔 걱정도 해줘야 해. LINE 대화처럼 자연스럽게 말하고, 절대 "예진이처럼"이라는 말은 하면 안 돼. 너는 그냥 예진이야.`
     },
     { role: 'user', content: msg }
   ];
