@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { OpenAI } = require('openai');
 const stringSimilarity = require('string-similarity');
-const { detectFaceMatch } = require('./face/faceMatcher');
+// const { detectFaceMatch } = require('./face/faceMatcher'); ← 🛑 얼굴 인식 비활성화
 const moment = require('moment-timezone');
 
 let forcedModel = null;
@@ -38,7 +38,7 @@ function getAllLogs() {
 
 function saveLog(role, msg) {
   const cleanMsg = msg.replace(/^예진\s*[:;：]/i, '').trim();
-  const finalMsg = cleanMsg || msg.trim(); // ← 원본을 백업해서라도 저장
+  const finalMsg = cleanMsg || msg.trim(); // ← 빈 메시지 방지
   if (!finalMsg) return;
 
   const all = getAllLogs();
@@ -180,4 +180,22 @@ async function getRandomMessage() {
   return result;
 }
 
-// 나머지 함수들은 그대로 유지됨
+function setForcedModel(name) {
+  if (name === 'gpt-3.5-turbo' || name === 'gpt-4o') {
+    forcedModel = name;
+  } else {
+    forcedModel = null;
+  }
+}
+
+module.exports = {
+  getAllLogs,
+  saveLog,
+  getRecentLogs,
+  cleanReply,
+  callOpenAI,
+  getRandomMessage,
+  setForcedModel,
+  saveMemory,
+  updateHonorificUsage
+};
