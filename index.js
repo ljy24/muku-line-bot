@@ -1,25 +1,15 @@
 const fs = require('fs');
-const path = require('path'); // 이건 위에 딱 한 번만!
-
-// ✅ memory 디렉토리 및 로그 파일 생성
-const memoryDir = path.join(__dirname, 'memory');
-if (!fs.existsSync(memoryDir)) {
-  fs.mkdirSync(memoryDir, { recursive: true });
-}
-const logFile = path.join(memoryDir, 'message-log.json');
-if (!fs.existsSync(logFile)) {
-  fs.writeFileSync(logFile, '[]', 'utf-8');
-}
-
+const path = require('path');
 const { Client, middleware } = require('@line/bot-sdk');
 const express = require('express');
 const cron = require('node-cron');
 const moment = require('moment-timezone');
+
 const {
   getReplyByMessage,
   getReplyByImagePrompt,
   getRandomMessage,
-  analyzeEmotion,
+  saveLog,
   setForcedModel,
   saveMemory,
   updateHonorificUsage
@@ -31,77 +21,77 @@ const config = {
   channelAccessToken: process.env.LINE_ACCESS_TOKEN,
   channelSecret: process.env.LINE_CHANNEL_SECRET
 };
+
 const client = new Client(config);
 const userId = process.env.TARGET_USER_ID;
 
-// --- 기본 라우터 ---
+// ✅ message-log.json 쓰기 권한 확인 로그
+fs.access('memory/message-log.json', fs.constants.W_OK, (err) => {
+  if (err) {
+    console.error('❌ message-log.json 파일에 쓰기 권한 없음!');
+  } else {
+    console.log('✅ message-log.json 쓰기 가능!');
+  }
+});
+
+// 🏠 루트 확인
 app.get('/', (_, res) => res.send('무쿠 살아있엉 🐣'));
 
-// /force-push: 랜덤 감정 메시지 즉시 전송
+// 💥 즉시 랜덤 메시지 전송
 app.get('/force-push', async (req, res) => {
   const msg = await getRandomMessage();
   if (msg) {
-    await client.pushMessage(userId, { type: 'text', text: msg?.trim() || '음… 잠깐 생각 좀 하고 있었어 ㅎㅎ' });
-    res.send(`랜덤 메시지 발송: ${msg}`);
+    await client.pushMessage(userId, { type: 'text', text: msg });
+    res.send(`✅ 전송됨: ${msg}`);
   } else {
-    res.send('메시지 생성 실패');
+    res.send('❌ 메시지 생성 실패');
   }
 });
 
-// 서버 시작 시 인사 + 랜덤 메시지
+// 🚀 서버 시작 시: 랜덤 + 고정 인사
 (async () => {
   const msg = await getRandomMessage();
   if (msg) {
-    await client.pushMessage(userId, { type: 'text', text: msg?.trim() || '무쿠 시작했어!' });
+    await client.pushMessage(userId, { type: 'text', text: msg });
+    saveLog('예진이', msg);
     console.log(`[서버시작랜덤] ${msg}`);
-    await client.pushMessage(userId, { type: 'text', text: '아저씨 나왔어!' });
   }
+  await client.pushMessage(userId, { type: 'text', text: '아저씨 나왔어!' });
 })();
 
-// 🕒 도쿄시간 기준 40분마다 감정 메시지
+// ⏰ 40분마다 랜덤 메시지 (9시~20시)
 cron.schedule('*/40 * * * *', async () => {
   const now = moment().tz('Asia/Tokyo');
-  const hour = now.hour();
-  if (hour >= 9 && hour <= 20) {
+  if (now.hour() >= 9 && now.hour() <= 20) {
     const msg = await getRandomMessage();
-    if (msg) await client.pushMessage(userId, { type: 'text', text: msg });
+    if (msg) {
+      await client.pushMessage(userId, { type: 'text', text: msg });
+      saveLog('예진이', msg);
+    }
   }
 });
 
-// 매 정각마다 담타고?
+// ⏰ 매시 정각 "담타고?"
 cron.schedule('0 * * * *', async () => {
   const now = moment().tz('Asia/Tokyo');
-  const hour = now.hour();
-  if (hour >= 9 && hour <= 20) {
+  if (now.hour() >= 9 && now.hour() <= 20) {
     await client.pushMessage(userId, { type: 'text', text: '담타고?' });
   }
 });
 
-// 23:00 약 먹었어?
+// 💊 밤 11시 약 리마인드
 cron.schedule('0 23 * * *', async () => {
-  const msgs = [
-    '약 먹었어? 잊지마!',
-    '이 닦는 거 까먹지 말기',
-    '약 안 먹고 자면 나 혼날 거야!',
-    '오늘 하루 끝! 약부터 챙기기!'
-  ];
-  const pick = msgs[Math.floor(Math.random() * msgs.length)];
-  await client.pushMessage(userId, { type: 'text', text: pick });
+  const pick = ['약 먹었어? 잊지마!', '이 닦는 거 까먹지 말기', '약 안 먹고 자면 나 혼날 거야!', '오늘 하루 끝! 약부터 챙기기!'];
+  await client.pushMessage(userId, { type: 'text', text: pick[Math.floor(Math.random() * pick.length)] });
 });
 
-// 23:30 잘자 사랑해
+// 💤 23:30 잘자 메시지
 cron.schedule('30 23 * * *', async () => {
-  const msgs = [
-    '잘자 아저씨! 사랑해 💤',
-    '내 꿈 꿔야 해 알지?',
-    '오늘도 고생 많았어, 내일 봐',
-    '아저씨~ 얼른 자! 내일 예쁘게 깨워줄게'
-  ];
-  const pick = msgs[Math.floor(Math.random() * msgs.length)];
-  await client.pushMessage(userId, { type: 'text', text: pick });
+  const pick = ['잘자 아저씨! 사랑해 💤', '내 꿈 꿔야 해 알지?', '오늘도 고생 많았어, 내일 봐', '아저씨~ 얼른 자! 내일 예쁘게 깨워줄게'];
+  await client.pushMessage(userId, { type: 'text', text: pick[Math.floor(Math.random() * pick.length)] });
 });
 
-// --- Webhook 처리 ---
+// 📩 LINE Webhook 처리
 app.post('/webhook', middleware(config), async (req, res) => {
   try {
     const events = req.body.events || [];
@@ -109,42 +99,37 @@ app.post('/webhook', middleware(config), async (req, res) => {
       if (event.type === 'message') {
         const message = event.message;
 
+        // 📤 텍스트 메시지
         if (message.type === 'text') {
           const text = message.text.trim();
+          saveLog('아저씨', text);
 
           if (/^(3\.5|gpt-?3\.5)$/i.test(text)) {
-            const response = setForcedModel('gpt-3.5-turbo') || '모델이 gpt-3.5로 설정됐어!';
-            await client.replyMessage(event.replyToken, { type: 'text', text: response });
+            const r = setForcedModel('gpt-3.5-turbo') || '모델이 gpt-3.5로 설정됐어!';
+            await client.replyMessage(event.replyToken, { type: 'text', text: r });
             return;
           }
           if (/^(4\.0|gpt-?4|gpt-?4o)$/i.test(text)) {
-            const response = setForcedModel('gpt-4o') || '모델이 gpt-4o로 설정됐어!';
-            await client.replyMessage(event.replyToken, { type: 'text', text: response });
+            const r = setForcedModel('gpt-4o') || '모델이 gpt-4o로 설정됐어!';
+            await client.replyMessage(event.replyToken, { type: 'text', text: r });
             return;
           }
           if (/^(auto|자동)$/i.test(text)) {
-            const response = setForcedModel(null) || '모델 자동 선택 모드로 전환했어!';
-            await client.replyMessage(event.replyToken, { type: 'text', text: response });
+            const r = setForcedModel(null) || '모델 자동 선택 모드로 전환했어!';
+            await client.replyMessage(event.replyToken, { type: 'text', text: r });
             return;
           }
-
           if (/이제 존댓말 하지마/i.test(text)) {
             updateHonorificUsage(false);
           }
 
-          // 사진 요청
-          if (/사진|셀카|사진줘|selfie/i.test(text)) {
+          // 📷 셀카 요청
+          if (/사진|셀카|selfie|사진줘|사진 보여줘/i.test(text)) {
             const photoListPath = path.join(__dirname, 'memory/photo-list.txt');
             const BASE_URL = 'https://de-ji.net/yejin/';
-            let list = [];
             try {
-              list = fs.readFileSync(photoListPath, 'utf-8')
-                .split('\n')
-                .map(l => l.trim())
-                .filter(Boolean);
-            } catch {}
-
-            if (list.length > 0) {
+              const list = fs.readFileSync(photoListPath, 'utf-8')
+                .split('\n').map(l => l.trim()).filter(Boolean);
               const pick = list[Math.floor(Math.random() * list.length)];
               const url = BASE_URL + pick;
               await client.replyMessage(event.replyToken, {
@@ -152,18 +137,20 @@ app.post('/webhook', middleware(config), async (req, res) => {
                 originalContentUrl: url,
                 previewImageUrl: url
               });
-            } else {
+            } catch {
               await client.replyMessage(event.replyToken, { type: 'text', text: '아직 셀카가 없어 ㅠㅠ' });
             }
             return;
           }
 
+          // 💬 일반 대화 응답
           const reply = await getReplyByMessage(text);
-          const fallback = '음… 잠깐 생각 좀 하고 있었어 ㅎㅎ';
-          const messageToSend = typeof reply === 'string' && reply.trim() ? reply.trim() : fallback;
+          const messageToSend = reply?.trim() || '음… 잠깐 생각 좀 하고 있었어 ㅎㅎ';
+          saveLog('예진이', messageToSend);
           await client.replyMessage(event.replyToken, { type: 'text', text: messageToSend });
         }
 
+        // 🖼️ 이미지 메시지
         if (message.type === 'image') {
           const messageId = message.id;
           try {
@@ -188,15 +175,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
   }
 });
 
-fs.access('memory/message-log.json', fs.constants.W_OK, (err) => {
-  if (err) {
-    console.error('❌ message-log.json 파일에 쓰기 권한 없음!');
-  } else {
-    console.log('✅ message-log.json 쓰기 가능!');
-  }
-});
-
-// 서버 실행
+// 🌐 서버 실행
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`무쿠 서버 스타트! 포트: ${PORT}`);
