@@ -18,10 +18,11 @@
     "string-similarity": "^4.0.4",
     "@tensorflow/tfjs-node": "^4.16.0",
     "@vladmandic/face-api": "^1.0.3",
-    "canvas": "^2.11.2"
+    "canvas": "^2.11.2",
+    "moment-timezone": "^0.5.44"
   },
   "engines": {
-    "node": "20.x"
+    "node": ">=18.0.0"
   },
   "author": "ljy24",
   "license": "MIT"
