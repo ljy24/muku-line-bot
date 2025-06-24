@@ -158,25 +158,60 @@ app.post('/webhook', middleware(config), async (req, res) => {
             updateHonorificUsage(false);
           }
 
-          // 📷 셀카 요청
-          if (/사진|셀카|selfie|사진줘|사진 보여줘/i.test(text)) {
-            const photoListPath = path.join(__dirname, 'memory/photo-list.txt');
-            const BASE_URL = 'https://de-ji.net/yejin/';
-            try {
-              const list = fs.readFileSync(photoListPath, 'utf-8')
-                .split('\n').map(l => l.trim()).filter(Boolean);
-              const pick = list[Math.floor(Math.random() * list.length)];
-              const url = BASE_URL + pick;
-              await client.replyMessage(event.replyToken, {
-                type: 'image',
-                originalContentUrl: url,
-                previewImageUrl: url
-              });
-            } catch {
-              await client.replyMessage(event.replyToken, { type: 'text', text: '아직 셀카가 없어 ㅠㅠ' });
-            }
-            return;
-          }
+// 📷 셀카 요청
+if (/사진|셀카|selfie|사진줘|사진 보여줘/i.test(text)) {
+  const photoListPath = path.join(__dirname, 'memory/photo-list.txt');
+  const BASE_URL = 'https://de-ji.net/yejin/';
+  try {
+    const list = fs.readFileSync(photoListPath, 'utf-8')
+      .split('\n').map(l => l.trim()).filter(Boolean);
+    const pick = list[Math.floor(Math.random() * list.length)];
+    const url = BASE_URL + pick;
+
+    // 🧠 GPT-4o로 짓궂고 귀여운 한마디 생성
+    const reactionPrompt = [
+      {
+        role: 'system',
+        content: `예진이가 아저씨에게 셀카를 보여주면서 귀엽고 장난스럽게 한마디 해. 
+반말로, 너무 길지 않게. 20자 안팎. 예진이 말투로! 예를 들면 "어때 이쁘지? 히히", "심장 폭행이었지?" 이런 식으로.`
+      },
+      {
+        role: 'user',
+        content: '셀카 보여주면서 귀여운 멘트 해줘'
+      }
+    ];
+
+    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const res = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: reactionPrompt,
+      temperature: 0.9,
+      max_tokens: 50
+    });
+
+    const reaction = res.choices[0].message.content.trim();
+
+    // 이미지 + 멘트 같이 전송
+    await client.replyMessage(event.replyToken, [
+      {
+        type: 'image',
+        originalContentUrl: url,
+        previewImageUrl: url
+      },
+      {
+        type: 'text',
+        text: reaction || '헤헷 셀카야~'
+      }
+    ]);
+  } catch {
+    await client.replyMessage(event.replyToken, {
+      type: 'text',
+      text: '아직 셀카가 없어 ㅠㅠ'
+    });
+  }
+  return;
+}
+
 
           // 💬 일반 대화 응답
           const reply = await getReplyByMessage(text);
