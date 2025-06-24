@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { OpenAI } = require('openai');
 const stringSimilarity = require('string-similarity');
+const { detectFaceMatch } = require('./face/faceMatcher');
 
 let forcedModel = null;
 
@@ -173,12 +174,20 @@ async function getReplyByImagePrompt(promptText, imageBase64) {
 
   const memoryBlock = `${fixedMemory}\n${compressedMemory}`;
 
+  const detectedFace = await detectFaceMatch(imageBase64);
+  let context = promptText;
+  if (detectedFace === 'yejin') {
+    context = '예진이 얼굴이 보여! 너무 반가워';
+  } else if (detectedFace === 'uncle') {
+    context = '아저씨 얼굴이네? 흐흐 귀엽다';
+  }
+
   const raw = await callOpenAI([
     { role: 'system', content: `${memoryBlock}\n아저씨가 사진을 보냈어. 예진이라면 어떻게 반응할까? 감정을 담아서 말해줘. 절대 존댓말 금지. 무조건 반말만 사용. 존댓말 쓰면 안 돼.` },
     {
       role: 'user',
       content: [
-        { type: 'text', text: promptText },
+        { type: 'text', text: context },
         { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${imageBase64}` } }
       ]
     }
