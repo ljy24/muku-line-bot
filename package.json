@@ -5,7 +5,8 @@
   "main": "src/index.js",
   "type": "commonjs",
   "scripts": {
-    "start": "node src/index.js"
+    "start": "node src/index.js",
+    "register-face": "node registerFaceData.js"
   },
   "dependencies": {
     "@line/bot-sdk": "^7.5.1",
