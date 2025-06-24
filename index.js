@@ -13,6 +13,7 @@ const {
   getReplyByImagePrompt,
   getRandomMessage,
   getImageReactionComment, // ✅ 셀카 멘트 생성 함수
+  getColorMoodReply,       // ✅ 오늘 색 반응 함수 추가
   saveLog,
   setForcedModel,
   saveMemory,
@@ -129,6 +130,13 @@ app.post('/webhook', middleware(config), async (req, res) => {
           }
 
           if (/이제 존댓말 하지마/i.test(text)) updateHonorificUsage(false);
+
+          // 🌈 기분 색상 요청 처리
+          if (/무슨\s*색|기분.*색|오늘.*색/i.test(text)) {
+            const reply = await getColorMoodReply();
+            await client.replyMessage(event.replyToken, { type: 'text', text: reply });
+            return;
+          }
 
           // 📷 셀카 요청 처리
           if (/사진|셀카|selfie|사진줘|사진 보여줘/i.test(text)) {
