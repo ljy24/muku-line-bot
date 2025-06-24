@@ -1,7 +1,7 @@
 const fs = require('fs');
-const path = require('path'); // 먼저 선언해야 함
+const path = require('path'); // 이건 위에 딱 한 번만!
 
-// 💥 이제 안전하게 사용 가능
+// ✅ memory 디렉토리 및 로그 파일 생성
 const memoryDir = path.join(__dirname, 'memory');
 if (!fs.existsSync(memoryDir)) {
   fs.mkdirSync(memoryDir, { recursive: true });
@@ -10,8 +10,7 @@ const logFile = path.join(memoryDir, 'message-log.json');
 if (!fs.existsSync(logFile)) {
   fs.writeFileSync(logFile, '[]', 'utf-8');
 }
-const fs = require('fs');
-const path = require('path');
+
 const { Client, middleware } = require('@line/bot-sdk');
 const express = require('express');
 const cron = require('node-cron');
@@ -35,7 +34,7 @@ const config = {
 const client = new Client(config);
 const userId = process.env.TARGET_USER_ID;
 
-// --- Express 기본 라우터 ---
+// --- 기본 라우터 ---
 app.get('/', (_, res) => res.send('무쿠 살아있엉 🐣'));
 
 // /force-push: 랜덤 감정 메시지 즉시 전송
@@ -49,7 +48,7 @@ app.get('/force-push', async (req, res) => {
   }
 });
 
-// 서버 시작 시 랜덤 메시지 1회 발송
+// 서버 시작 시 인사 + 랜덤 메시지
 (async () => {
   const msg = await getRandomMessage();
   if (msg) {
@@ -59,7 +58,7 @@ app.get('/force-push', async (req, res) => {
   }
 })();
 
-// 자동 전송: 도쿄시간 기준 40분 간격 메시지 (하루 8회)
+// 🕒 도쿄시간 기준 40분마다 감정 메시지
 cron.schedule('*/40 * * * *', async () => {
   const now = moment().tz('Asia/Tokyo');
   const hour = now.hour();
@@ -78,7 +77,7 @@ cron.schedule('0 * * * *', async () => {
   }
 });
 
-// 23:00 약먹고 이 닦자
+// 23:00 약 먹었어?
 cron.schedule('0 23 * * *', async () => {
   const msgs = [
     '약 먹었어? 잊지마!',
@@ -102,7 +101,7 @@ cron.schedule('30 23 * * *', async () => {
   await client.pushMessage(userId, { type: 'text', text: pick });
 });
 
-// webhook
+// --- Webhook 처리 ---
 app.post('/webhook', middleware(config), async (req, res) => {
   try {
     const events = req.body.events || [];
@@ -113,7 +112,6 @@ app.post('/webhook', middleware(config), async (req, res) => {
         if (message.type === 'text') {
           const text = message.text.trim();
 
-          // 모델 고정 명령어 처리
           if (/^(3\.5|gpt-?3\.5)$/i.test(text)) {
             const response = setForcedModel('gpt-3.5-turbo') || '모델이 gpt-3.5로 설정됐어!';
             await client.replyMessage(event.replyToken, { type: 'text', text: response });
@@ -130,13 +128,12 @@ app.post('/webhook', middleware(config), async (req, res) => {
             return;
           }
 
-          // 존댓말 모드 해제
           if (/이제 존댓말 하지마/i.test(text)) {
             updateHonorificUsage(false);
           }
 
-          // 사진 요청 키워드
-          if (/사진|셀카|사진줘|셀카 보여줘|사진 보여줘|selfie/i.test(text)) {
+          // 사진 요청
+          if (/사진|셀카|사진줘|selfie/i.test(text)) {
             const photoListPath = path.join(__dirname, 'memory/photo-list.txt');
             const BASE_URL = 'https://de-ji.net/yejin/';
             let list = [];
@@ -161,11 +158,9 @@ app.post('/webhook', middleware(config), async (req, res) => {
             return;
           }
 
-          // 일반 대화 처리
           const reply = await getReplyByMessage(text);
           const fallback = '음… 잠깐 생각 좀 하고 있었어 ㅎㅎ';
           const messageToSend = typeof reply === 'string' && reply.trim() ? reply.trim() : fallback;
-
           await client.replyMessage(event.replyToken, { type: 'text', text: messageToSend });
         }
 
@@ -193,7 +188,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
   }
 });
 
-// --- 서버 실행 ---
+// 서버 실행
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`무쿠 서버 스타트! 포트: ${PORT}`);
