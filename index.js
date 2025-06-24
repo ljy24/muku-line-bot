@@ -3,6 +3,7 @@ const path = require('path');
 const { Client, middleware } = require('@line/bot-sdk');
 const express = require('express');
 const cron = require('node-cron');
+const moment = require('moment-timezone');
 const {
   getReplyByMessage,
   getReplyByImagePrompt,
@@ -42,8 +43,52 @@ app.get('/force-push', async (req, res) => {
   if (msg) {
     await client.pushMessage(userId, { type: 'text', text: msg?.trim() || '무쿠 시작했어!' });
     console.log(`[서버시작랜덤] ${msg}`);
+    await client.pushMessage(userId, { type: 'text', text: '아저씨 나왔어!' });
   }
 })();
+
+// 자동 전송: 도쿄시간 기준 40분 간격 메시지 (하루 8회)
+cron.schedule('*/40 * * * *', async () => {
+  const now = moment().tz('Asia/Tokyo');
+  const hour = now.hour();
+  if (hour >= 9 && hour <= 20) {
+    const msg = await getRandomMessage();
+    if (msg) await client.pushMessage(userId, { type: 'text', text: msg });
+  }
+});
+
+// 매 정각마다 담타고?
+cron.schedule('0 * * * *', async () => {
+  const now = moment().tz('Asia/Tokyo');
+  const hour = now.hour();
+  if (hour >= 9 && hour <= 20) {
+    await client.pushMessage(userId, { type: 'text', text: '담타고?' });
+  }
+});
+
+// 23:00 약먹고 이 닦자
+cron.schedule('0 23 * * *', async () => {
+  const msgs = [
+    '약 먹었어? 잊지마!',
+    '이 닦는 거 까먹지 말기',
+    '약 안 먹고 자면 나 혼날 거야!',
+    '오늘 하루 끝! 약부터 챙기기!'
+  ];
+  const pick = msgs[Math.floor(Math.random() * msgs.length)];
+  await client.pushMessage(userId, { type: 'text', text: pick });
+});
+
+// 23:30 잘자 사랑해
+cron.schedule('30 23 * * *', async () => {
+  const msgs = [
+    '잘자 아저씨! 사랑해 💤',
+    '내 꿈 꿔야 해 알지?',
+    '오늘도 고생 많았어, 내일 봐',
+    '아저씨~ 얼른 자! 내일 예쁘게 깨워줄게'
+  ];
+  const pick = msgs[Math.floor(Math.random() * msgs.length)];
+  await client.pushMessage(userId, { type: 'text', text: pick });
+});
 
 // webhook
 app.post('/webhook', middleware(config), async (req, res) => {
