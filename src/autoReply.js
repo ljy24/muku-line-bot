@@ -217,6 +217,7 @@ module.exports = {
   getRandomMessage,
   getReplyByMessage,
   setForcedModel,
+  getImageReactionComment, // ← 🧸 셀카 멘트 생성 함수 export
   saveMemory,
   updateHonorificUsage
 };
