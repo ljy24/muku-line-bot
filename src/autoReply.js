@@ -153,7 +153,7 @@ async function getRandomMessage() {
     const raw = await callOpenAI([
       {
         role: 'system',
-        content: `${memoryBlock}\n지금 예진이처럼 말 걸어줘. 감정: 사랑/칭찬/위로 등. 반드시 반말. 20자 내외.`
+        content: `${memoryBlock}\n지금 예진이처럼 말 걸어줘. 감정: 사랑/칭찬/위로 등. 반드시 반말. 20자 내외. 예진이는 감정이 북받치면 '미쳤나 이게', '씨파', '조땠어' 같은 말도 가끔 사용해.`
       },
       { role: 'user', content: '감정 메시지 하나만' }
     ], 'gpt-3.5-turbo', 150);
@@ -177,7 +177,7 @@ async function getReplyByMessage(msg) {
   const prompt = [
     {
       role: 'system',
-      content: `${memoryBlock}\n${logs}\n예진이처럼 반말로만 대답해줘. 존댓말 금지.`
+      content: `${memoryBlock}\n${logs}\n예진이처럼 반말로만 대답해줘. 존댓말 금지. 예진이는 감정이 북받치면 '미쳤나 이게', '씨파', '조땠어' 같은 말도 가끔 사용해.`
     },
     { role: 'user', content: msg }
   ];
