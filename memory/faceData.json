@@ -1,4 +1,4 @@
 {
-  "yejinFace": "memory/faces/yejin.jpg",
-  "uncleFace": "memory/faces/uncle.jpg"
+  "yejinFace": "faces/yejin/",
+  "uncleFace": "faces/uncle/"
 }
