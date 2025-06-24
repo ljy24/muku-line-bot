@@ -1,3 +1,11 @@
+const memoryDir = path.join(__dirname, 'memory');
+if (!fs.existsSync(memoryDir)) {
+  fs.mkdirSync(memoryDir);
+}
+const logFile = path.join(memoryDir, 'message-log.json');
+if (!fs.existsSync(logFile)) {
+  fs.writeFileSync(logFile, '[]', 'utf-8');
+}
 const fs = require('fs');
 const path = require('path');
 const { Client, middleware } = require('@line/bot-sdk');
