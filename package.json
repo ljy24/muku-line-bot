@@ -15,7 +15,7 @@
     "node-cron": "^3.0.3",
     "openai": "^4.30.0",
     "raw-body": "^2.5.2",
-    "string-similarity": "^4.0.4"
+    "string-similarity": "^4.0.4",
     "@tensorflow/tfjs-node": "^4.16.0"
   },
   "engines": {
