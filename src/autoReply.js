@@ -12,7 +12,7 @@ const {
   getReplyByImagePrompt,
   getRandomMessage,
   getImageReactionComment,
-  getColorComment, // ✅ 오늘 무슨 색이냐고 물어볼 때 반응 멘트
+  getColorMoodReply, // ✅ 오늘 무슨 색이냐고 물어볼 때 반응 멘트
   saveLog,
   setForcedModel,
   saveMemory,
@@ -151,7 +151,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
 
           // 🎨 색상 반응
           if (/무슨 ?색|무슨색이야|색 뭐야/i.test(text)) {
-            const reply = await getColorComment();
+            const reply = await getColorMoodReply();
             await client.replyMessage(event.replyToken, { type: 'text', text: reply });
             return;
           }
