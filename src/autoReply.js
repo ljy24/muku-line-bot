@@ -174,12 +174,16 @@ async function getReplyByImagePrompt(promptText, imageBase64) {
 
   const memoryBlock = `${fixedMemory}\n${compressedMemory}`;
 
-  const detectedFace = await detectFaceMatch(imageBase64);
   let context = promptText;
-  if (detectedFace === 'yejin') {
-    context = '예진이 얼굴이 보여! 너무 반가워';
-  } else if (detectedFace === 'uncle') {
-    context = '아저씨 얼굴이네? 흐흐 귀엽다';
+  try {
+    const detectedFace = await detectFaceMatch(imageBase64);
+    if (detectedFace === 'yejin') {
+      context = '예진이 얼굴이 보여! 너무 반가워';
+    } else if (detectedFace === 'uncle') {
+      context = '아저씨 얼굴이네? 흐흐 귀엽다';
+    }
+  } catch (err) {
+    console.warn('👀 얼굴 인식 실패:', err.message);
   }
 
   const raw = await callOpenAI([
