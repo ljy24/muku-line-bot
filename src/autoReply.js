@@ -38,9 +38,12 @@ function getAllLogs() {
 
 function saveLog(role, msg) {
   const cleanMsg = msg.replace(/^예진\s*[:;：]/i, '').trim();
-  if (!cleanMsg) return;
+  const finalMsg = cleanMsg || msg.trim(); // ← 원본을 백업해서라도 저장
+  if (!finalMsg) return;
+
   const all = getAllLogs();
-  all.unshift({ date: new Date().toISOString(), role, msg: cleanMsg });
+  all.unshift({ date: new Date().toISOString(), role, msg: finalMsg });
+
   try {
     fs.writeFileSync(logPath, JSON.stringify(all.slice(0, 5000), null, 2));
   } catch (err) {
