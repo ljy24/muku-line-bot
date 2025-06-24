@@ -188,6 +188,14 @@ app.post('/webhook', middleware(config), async (req, res) => {
   }
 });
 
+fs.access('memory/message-log.json', fs.constants.W_OK, (err) => {
+  if (err) {
+    console.error('❌ message-log.json 파일에 쓰기 권한 없음!');
+  } else {
+    console.log('✅ message-log.json 쓰기 가능!');
+  }
+});
+
 // 서버 실행
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
