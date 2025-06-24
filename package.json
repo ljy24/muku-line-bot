@@ -21,7 +21,7 @@
     "canvas": "^2.11.2"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": "20.x"
   },
   "author": "ljy24",
   "license": "MIT"
