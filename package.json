@@ -17,7 +17,8 @@
     "raw-body": "^2.5.2",
     "string-similarity": "^4.0.4",
     "@tensorflow/tfjs-node": "^4.16.0",
-    "@vladmandic/face-api": "^1.0.3"
+    "@vladmandic/face-api": "^1.0.3",
+    "canvas": "^2.11.2"
   },
   "engines": {
     "node": ">=18.0.0"
