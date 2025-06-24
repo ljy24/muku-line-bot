@@ -1,0 +1,22 @@
+name: Register Face Data
+
+on:
+  workflow_dispatch:
+
+jobs:
+  register-face:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Register Face Data
+        run: npm run register-face
