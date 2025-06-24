@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { OpenAI } = require('openai');
 const stringSimilarity = require('string-similarity');
-// const { detectFaceMatch } = require('./face/faceMatcher'); ← 🛑 얼굴 인식 비활성화
+// const { detectFaceMatch } = require('./face/faceMatcher'); ← 얼굴 인식 비활성화
 const moment = require('moment-timezone');
 
 let forcedModel = null;
@@ -38,7 +38,7 @@ function getAllLogs() {
 
 function saveLog(role, msg) {
   const cleanMsg = msg.replace(/^예진\s*[:;：]/i, '').trim();
-  const finalMsg = cleanMsg || msg.trim(); // ← 빈 메시지 방지
+  const finalMsg = cleanMsg || msg.trim();
   if (!finalMsg) return;
 
   const all = getAllLogs();
@@ -180,6 +180,26 @@ async function getRandomMessage() {
   return result;
 }
 
+async function getReplyByMessage(msg) {
+  saveLog('아저씨', msg);
+
+  const memoryBlock = `${fixedMemory}\n${compressedMemory}`;
+  const logs = getRecentLogs(2);
+
+  const prompt = [
+    {
+      role: 'system',
+      content: `${memoryBlock}\n${logs}\n예진이처럼 말해줘. 절대 존댓말 금지. 반말만 써줘.`
+    },
+    { role: 'user', content: msg }
+  ];
+
+  const raw = await callOpenAI(prompt, 'gpt-4o', 300);
+  const reply = cleanReply(raw);
+  saveLog('예진이', reply);
+  return reply;
+}
+
 function setForcedModel(name) {
   if (name === 'gpt-3.5-turbo' || name === 'gpt-4o') {
     forcedModel = name;
@@ -195,6 +215,7 @@ module.exports = {
   cleanReply,
   callOpenAI,
   getRandomMessage,
+  getReplyByMessage,
   setForcedModel,
   saveMemory,
   updateHonorificUsage
