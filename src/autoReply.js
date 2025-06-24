@@ -201,6 +201,21 @@ async function getColorMoodReply() {
   return reply;
 }
 
+// 📷 셀카에 반응하는 멘트 생성
+async function getImageReactionComment() {
+  const raw = await callOpenAI([
+    {
+      role: 'system',
+      content: '넌 지금 예진이야. 아저씨가 보낸 셀카를 보고 반응해줘. “나 예쁘지?”, “이거 나야~”처럼 귀엽고 짓궂게 반응하고, 꼭 반말로 해. 감정도 넣고, 예진이처럼 톤을 살려줘.'
+    },
+    { role: 'user', content: '이거 셀카야!' }
+  ], 'gpt-4o', 100);
+
+  const reply = cleanReply(raw);
+  saveLog('예진이', reply);
+  return reply;
+}
+
 // 🔧 모델 강제 설정
 function setForcedModel(name) {
   if (name === 'gpt-3.5-turbo' || name === 'gpt-4o') forcedModel = name;
@@ -217,7 +232,7 @@ module.exports = {
   getRandomMessage,
   getReplyByMessage,
   getColorMoodReply,      // 🎨 색상 응답 추가
-  getImageReactionComment, // ✅ 요거 추가!!
+  getImageReactionComment, // ✅ 셀카 반응 멘트 추가
   setForcedModel,
   saveMemory,
   updateHonorificUsage
