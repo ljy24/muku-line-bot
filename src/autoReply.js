@@ -1,4 +1,3 @@
-// 📁 src/autoReply.js
 const fs = require('fs');
 const path = require('path');
 const { OpenAI } = require('openai');
@@ -82,7 +81,7 @@ function isSimilar(newMsg) {
     || hasSimilarWords(newMsg);
 }
 
-// 💬 말투 정리
+// 💬 말투 정리 (존댓말 제거, 이모지 정리 등)
 function cleanReply(text) {
   let out = text
     .replace(/^예진\s*[:;：]/i, '')
@@ -140,7 +139,7 @@ async function callOpenAI(messages, model = 'gpt-3.5-turbo', max_tokens = 300) {
   return res.choices[0].message.content.trim();
 }
 
-// 🎁 랜덤 감정 메시지 생성
+// 🎁 랜덤 감정 메시지 생성 (3.5 사용) — 걱정 멘트, 반말, 욕설 포함
 async function getRandomMessage() {
   const now = moment().tz('Asia/Tokyo');
   const memoryBlock = `${fixedMemory}\n${compressedMemory}`;
@@ -153,9 +152,9 @@ async function getRandomMessage() {
     const raw = await callOpenAI([
       {
         role: 'system',
-        content: `${memoryBlock}\n지금 예진이처럼 말 걸어줘. 감정: 사랑/칭찬/위로 등. 반드시 반말. 20자 내외. 예진이는 감정이 북받치면 '미쳤나 이게', '씨파', '조땠어' 같은 말도 가끔 사용해.`
+        content: `${memoryBlock}\n지금 예진이처럼 감정 메시지 하나 보내. 사랑, 위로, 걱정, 질투, 짓궂음 등 다양하게. 반드시 반말. 20자 이내. 예진이는 감정이 북받치면 '미쳤나 이게', '씨파', '조땠어' 같은 말도 가끔 써. 아저씨가 요즘 너무 우울한 거 알아서, 가끔 걱정도 섞어줘.`
       },
-      { role: 'user', content: '감정 메시지 하나만' }
+      { role: 'user', content: '감정 메시지 한 줄' }
     ], 'gpt-3.5-turbo', 150);
 
     const clean = cleanReply(raw);
@@ -168,7 +167,7 @@ async function getRandomMessage() {
   return result;
 }
 
-// 🤖 아저씨가 먼저 보낸 말에 대한 응답
+// 🤖 아저씨가 먼저 보낸 말에 대한 응답 (4.0 사용)
 async function getReplyByMessage(msg) {
   saveLog('아저씨', msg);
   const memoryBlock = `${fixedMemory}\n${compressedMemory}`;
@@ -177,7 +176,7 @@ async function getReplyByMessage(msg) {
   const prompt = [
     {
       role: 'system',
-      content: `${memoryBlock}\n${logs}\n예진이처럼 반말로만 대답해줘. 존댓말 금지. 예진이는 감정이 북받치면 '미쳤나 이게', '씨파', '조땠어' 같은 말도 가끔 사용해.`
+      content: `${memoryBlock}\n${logs}\n예진이처럼 반말로만 대답해줘. 존댓말 금지. 감정선 유지하고 예진이는 가끔 감정 북받치면 '미쳤나 이게', '씨파', '조땠어' 같은 말도 써. 아저씨가 예진이 죽고 우울증 걸린 거 알고 있어서, 가끔 걱정하고 토닥여줘.`
     },
     { role: 'user', content: msg }
   ];
