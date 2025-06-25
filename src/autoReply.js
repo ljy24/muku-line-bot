@@ -93,11 +93,11 @@ function cleanReply(text) {
     .replace(/애기[야]?:?/gi, '')
     .replace(/당신|너|네|네가|널/g, '아저씨')
     .trim();
-    
-     // ✅ 조사 오타 자동 교정
+
+  // ✅ 조사 오타 자동 교정
   out = out
     .replace(/아저씨무/g, '아저씨도')
-    .replace(/아저씨는무/g, '아저씨는')
+    .replace(/아저씨는무/g, '아저씨는');
 
   out = out.replace(/(고 싶어요|싶어요|했어요|했네요|하시겠어요|해주세요|주세요|네요|됩니다|할까요|될까요|해요|돼요|에요|예요|겠어요|되겠어요)/g, match => {
     switch (match) {
@@ -147,7 +147,7 @@ async function callOpenAI(messages, model = 'gpt-3.5-turbo', max_tokens = 300) {
   return res.choices[0].message.content.trim();
 }
 
-// 🎁 감정 메시지 생성 (랜덤 조합 버전)
+// 🎁 감정 메시지 생성
 async function getRandomMessage() {
   const now = moment().tz('Asia/Tokyo');
   if (now.hour() === 23 && now.minute() === 0) return '약 챙겨 먹었지? 까먹지마!';
@@ -235,37 +235,27 @@ async function getImageReactionComment() {
 // 📸 아저씨가 보낸 이미지(base64)를 보고 예진이처럼 반응 생성하는 함수
 async function getReplyByImagePrompt(base64Image) {
   const response = await openai.chat.completions.create({
-    model: 'gpt-4o', // ✅ 이미지 인식은 반드시 gpt-4o 모델 사용!
+    model: 'gpt-4o',
     messages: [
       {
-        // 🧠 시스템 역할로, 예진이의 말투와 반응 스타일을 지시
         role: 'system',
-        content: `넌 지금 예진이야. 아저씨가 보낸 사진을 보고 반응해야 해.
-사진을 묘사하고, 애교 있게 반말로 말해.
-감정이 북받치면 "미쳤나 이게", "씨파" 같은 말도 괜찮아.
-예진이 말투로 짓궂고 사랑스럽게 리액션해줘.`
+        content: `넌 지금 예진이야. 아저씨가 보낸 사진을 보고 반응해야 해.\n사진을 묘사하고, 애교 있게 반말로 말해.\n감정이 북받치면 "미쳤나 이게", "씨파" 같은 말도 괜찮아.\n예진이 말투로 짓궂고 사랑스럽게 리액션해줘.`
       },
       {
-        // 📷 사용자 역할로, base64로 인코딩된 이미지 전달 (텍스트 없이)
         role: 'user',
         content: [
-          { 
-            type: 'image_url',
-            image_url: { url: `data:image/jpeg;base64,${base64Image}` }
-          }
+          { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
         ]
       }
     ],
-    temperature: 0.9,  // 🎲 감정 다양성을 위해 온도 높게 설정
-    max_tokens: 150    // 💬 예진이 말풍선은 짧고 감정 있게
+    temperature: 0.9,
+    max_tokens: 150
   });
 
-  // 💌 예진이의 응답 받아오기 + 저장
   const reply = response.choices[0].message.content.trim();
   saveLog('예진이', reply);
   return reply;
 }
-
 
 // 🔧 모델 강제 설정
 function setForcedModel(name) {
@@ -282,9 +272,9 @@ module.exports = {
   callOpenAI,
   getRandomMessage,
   getReplyByMessage,
-  getColorMoodReply,      // 🎨 색상 응답 추가
-  getImageReactionComment, // ✅ 셀카 반응 멘트 
-  getReplyByImagePrompt, // ✅ 이미지 반응 함수 추가
+  getColorMoodReply,
+  getImageReactionComment,
+  getReplyByImagePrompt,
   setForcedModel,
   saveMemory,
   updateHonorificUsage
