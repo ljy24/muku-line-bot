@@ -227,7 +227,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
             const chunks = [];
             for await (const chunk of stream) chunks.push(chunk);
             const buffer = Buffer.concat(chunks);
-            const reply = await getReplyByImagePrompt('사진이 도착했어', buffer.toString('base64'));
+            const reply = const reply = await getReplyByImagePrompt(buffer.toString('base64'));
             await client.replyMessage(event.replyToken, { type: 'text', text: reply?.trim() || '사진에 반응 못했어 ㅠㅠ' });
           } catch (err) {
             console.error('🖼️ 이미지 처리 실패:', err);
