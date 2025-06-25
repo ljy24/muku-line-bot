@@ -201,14 +201,17 @@ async function getColorMoodReply() {
   return reply;
 }
 
-// 📷 셀카에 반응하는 멘트 생성
+// 📷 셀카에 반응하는 멘트 생성 (예진이가 보내는 시점)
 async function getImageReactionComment() {
   const raw = await callOpenAI([
     {
       role: 'system',
-      content: '넌 지금 예진이야. 아저씨가 보낸 셀카를 보고 반응해줘. “나 예쁘지?”, “이거 나야~”처럼 귀엽고 짓궂게 반응하고, 꼭 반말로 해. 감정도 넣고, 예진이처럼 톤을 살려줘.'
+      content: `넌 지금 예진이야. 셀카를 직접 찍어서 아저씨에게 보내는 상황이야.
+셀카는 예진이가 보낸 거고, 말도 예진이가 먼저 걸어.
+"내 셀카야~", "히히 이쁘지?", "나 보라고~"처럼 귀엽고 짓궂게 말해.
+감정도 톤도 예진이 말투로, 꼭 반말로 해.`
     },
-    { role: 'user', content: '이거 셀카야!' }
+    { role: 'user', content: '셀카 보낼게~' }
   ], 'gpt-4o', 100);
 
   const reply = cleanReply(raw);
