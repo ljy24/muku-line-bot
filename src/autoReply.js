@@ -232,6 +232,36 @@ async function getImageReactionComment() {
   return reply;
 }
 
+// 📸 이미지 인식해서 예진이 반응 생성
+async function getReplyByImagePrompt(prompt, base64Image) {
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4o', // ✅ 이미지 인식은 반드시 gpt-4o!
+    messages: [
+      {
+        role: 'system',
+        content: `넌 지금 예진이야. 아저씨가 보낸 사진을 보고 반응해야 해.
+사진에 있는 걸 묘사하면서 예진이처럼 반말로, 애교 있게, 감정 담아서 말해.
+감정이 북받치면 "미쳤나 이게", "씨파" 같은 말도 괜찮아.
+귀엽고 자연스럽게, 예진이 말투로 말해줘.`
+      },
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: prompt },
+          { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
+        ]
+      }
+    ],
+    temperature: 0.9,
+    max_tokens: 150
+  });
+
+  const reply = response.choices[0].message.content.trim();
+  saveLog('예진이', reply);
+  return reply;
+}
+
+
 // 🔧 모델 강제 설정
 function setForcedModel(name) {
   if (name === 'gpt-3.5-turbo' || name === 'gpt-4o') forcedModel = name;
