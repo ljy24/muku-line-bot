@@ -283,7 +283,8 @@ module.exports = {
   getRandomMessage,
   getReplyByMessage,
   getColorMoodReply,      // 🎨 색상 응답 추가
-  getImageReactionComment, // ✅ 셀카 반응 멘트 추가
+  getImageReactionComment, // ✅ 셀카 반응 멘트 
+  getReplyByImagePrompt, // ✅ 이미지 반응 함수 추가
   setForcedModel,
   saveMemory,
   updateHonorificUsage
