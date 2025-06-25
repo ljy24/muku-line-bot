@@ -91,8 +91,13 @@ function cleanReply(text) {
     .replace(/\([^)]*\)/g, '')
     .replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, '')
     .replace(/애기[야]?:?/gi, '')
-    .replace(/당신|너|네가|널/g, '아저씨')
+    .replace(/당신|너|네|네가|널/g, '아저씨')
     .trim();
+    
+     // ✅ 조사 오타 자동 교정
+  out = out
+    .replace(/아저씨무/g, '아저씨도')
+    .replace(/아저씨는무/g, '아저씨는')
 
   out = out.replace(/(고 싶어요|싶어요|했어요|했네요|하시겠어요|해주세요|주세요|네요|됩니다|할까요|될까요|해요|돼요|에요|예요|겠어요|되겠어요)/g, match => {
     switch (match) {
