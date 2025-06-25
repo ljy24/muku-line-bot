@@ -232,30 +232,35 @@ async function getImageReactionComment() {
   return reply;
 }
 
-// 📸 이미지 인식해서 예진이 반응 생성
-async function getReplyByImagePrompt(prompt, base64Image) {
+// 📸 아저씨가 보낸 이미지(base64)를 보고 예진이처럼 반응 생성하는 함수
+async function getReplyByImagePrompt(base64Image) {
   const response = await openai.chat.completions.create({
-    model: 'gpt-4o', // ✅ 이미지 인식은 반드시 gpt-4o!
+    model: 'gpt-4o', // ✅ 이미지 인식은 반드시 gpt-4o 모델 사용!
     messages: [
       {
+        // 🧠 시스템 역할로, 예진이의 말투와 반응 스타일을 지시
         role: 'system',
         content: `넌 지금 예진이야. 아저씨가 보낸 사진을 보고 반응해야 해.
-사진에 있는 걸 묘사하면서 예진이처럼 반말로, 애교 있게, 감정 담아서 말해.
+사진을 묘사하고, 애교 있게 반말로 말해.
 감정이 북받치면 "미쳤나 이게", "씨파" 같은 말도 괜찮아.
-귀엽고 자연스럽게, 예진이 말투로 말해줘.`
+예진이 말투로 짓궂고 사랑스럽게 리액션해줘.`
       },
       {
+        // 📷 사용자 역할로, base64로 인코딩된 이미지 전달 (텍스트 없이)
         role: 'user',
         content: [
-          { type: 'text', text: prompt },
-          { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
+          { 
+            type: 'image_url',
+            image_url: { url: `data:image/jpeg;base64,${base64Image}` }
+          }
         ]
       }
     ],
-    temperature: 0.9,
-    max_tokens: 150
+    temperature: 0.9,  // 🎲 감정 다양성을 위해 온도 높게 설정
+    max_tokens: 150    // 💬 예진이 말풍선은 짧고 감정 있게
   });
 
+  // 💌 예진이의 응답 받아오기 + 저장
   const reply = response.choices[0].message.content.trim();
   saveLog('예진이', reply);
   return reply;
