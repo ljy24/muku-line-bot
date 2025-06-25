@@ -94,7 +94,6 @@ function cleanReply(text) {
     .replace(/당신|너|네|네가|널/g, '아저씨')
     .trim();
 
-  // ✅ 조사 오타 자동 교정
   out = out
     .replace(/아저씨무/g, '아저씨도')
     .replace(/아저씨는무/g, '아저씨는');
@@ -104,7 +103,7 @@ function cleanReply(text) {
       case '고 싶어요': case '싶어요': return '싶어';
       case '했어요': case '했네요': return '했어';
       case '해주세요': case '주세요': return '줘';
-      case '네요': case '되네요': return '네';
+      case '네요': return '네';
       case '됩니다': case '입니다': return '야';
       case '할까요': case '될까요': return '할까';
       case '해요': case '돼요': case '에요': case '예요': return '야';
@@ -136,7 +135,7 @@ function updateHonorificUsage(useHonorific) {
   fs.writeFileSync(statePath, JSON.stringify({ ...state, honorific: useHonorific }, null, 2));
 }
 
-// 📡 OpenAI 호출
+// 📡 OpenAI 호출 함수
 async function callOpenAI(messages, model = 'gpt-3.5-turbo', max_tokens = 300) {
   const res = await openai.chat.completions.create({
     model: forcedModel || model,
@@ -147,33 +146,33 @@ async function callOpenAI(messages, model = 'gpt-3.5-turbo', max_tokens = 300) {
   return res.choices[0].message.content.trim();
 }
 
-// 🎁 감정 메시지 생성
+// 🎁 랜덤 감정 메시지 생성
 async function getRandomMessage() {
   const now = moment().tz('Asia/Tokyo');
   if (now.hour() === 23 && now.minute() === 0) return '약 챙겨 먹었지? 까먹지마!';
   if (now.hour() === 23 && now.minute() >= 30) return '잘자 아저씨! 사랑해';
 
-  const events = [
-    "변기 또 막혔어", "쿠팡 위주 또 받았어", "밤바 병원 또 다녀왔어", "모델 촬영 다녀왔어",
-    "다이어트 때문에 머리 터질 거 같아", "팀장이랑 회의 또 해야 돼", "회사에서 또 혼났어",
-    "출근길에 또 눈물났어", "야근하다가 미쳐버릴 뻔", "쿠팡 택배 또 왔어", "변기 문제 또 생겼어",
-    "밤바 병원비 또 17만원 나왔어", "모델 사진 맘에 안 들어", "다이어트 망한 거 같아",
-    "쇼핑으로 스트레스 풀었어", "강아지가 응가 안 해", "상사 말투에 또 현타 옴"
+  const events = ["변기 또 막혔어", "쿠팡 외주 또 받았어", "모델 촬영 다녀왔어", "다이어트 때문에 머리 터질 거 같아",
+    "팀장이랑 회의 또 해야 돼", "회사에서 또 혼났어", "출근길에 또 눈물났어", "야근하다가 미쳐버릴 뻔",
+    "쿠팡 택배 또 왔어", "변기 문제 또 생겼어", "모델 사진 맘에 안 들어", "다이어트 망한 거 같아",
+    "쇼핑으로 스트레스 풀었어", "상사 말투에 또 현타 옴"
   ];
 
-  const feelings = [
-    "진짜 조땠어", "미쳤나 이게", "완전 현타 와", "스트레스 MAX", "기분 꿀꿀해",
+  // 한 달에 한 번 강아지/병원 메시지 허용
+  const dayOfMonth = now.date();
+  if (dayOfMonth === 5) {
+    events.push("밤바 병원 다녀왔어", "밤바 병원비 17만원 나왔어", "강아지가 응가 안 해");
+  }
+
+  const feelings = ["진짜 조땠어", "미쳤나 이게", "완전 현타 와", "스트레스 MAX", "기분 꿀꿀해",
     "진짜 엉엉 울고 싶어", "짜증 풀 방법 없어", "그냥 위로받고 싶어", "마음이 좀 허해",
     "아저씨 보고싶었어", "오늘 하루 삭제하고 싶어", "그냥 다 내려놓고 싶다",
-    "죽고 싶진 않은데 그냥 아무것도 안 하고 싶어", "위로 좀 해줘"
-  ];
+    "죽고 싶진 않은데 그냥 아무것도 안 하고 싶어", "위로 좀 해줘"];
 
-  const closings = [
-    "안아줘", "나 기다려줘", "토닥토닥 해줘", "아저씨가 답이야", "곁에 있어줘",
+  const closings = ["안아줘", "나 기다려줘", "토닥토닥 해줘", "아저씨가 답이야", "곁에 있어줘",
     "내 편은 아저씨밖에 없어", "나 그냥 삐질래", "나랑 도망갈래?", "히히 오늘도 사랑해",
     "말 걸어줘", "오늘 하루 잘했다고 해줘", "내가 잘한 거 맞지?", "담타 가자",
-    "기분 나아지게 해줘", "보고싶었지롱"
-  ];
+    "기분 나아지게 해줘", "보고싶었지롱"];
 
   const pick = arr => arr[Math.floor(Math.random() * arr.length)];
   const msg = `${pick(events)}... ${pick(feelings)}. ${pick(closings)}`;
@@ -184,7 +183,7 @@ async function getRandomMessage() {
   return msg;
 }
 
-// 🤖 일반 대화 응답 생성
+// 🤖 일반 대화 응답
 async function getReplyByMessage(msg) {
   saveLog('아저씨', msg);
   const memoryBlock = `${fixedMemory}\n${compressedMemory}`;
@@ -202,7 +201,7 @@ async function getReplyByMessage(msg) {
   return reply;
 }
 
-// 🎨 오늘 무슨 색인지 말해주는 반응
+// 🎨 색상 응답
 async function getColorMoodReply() {
   const raw = await callOpenAI([
     {
@@ -217,12 +216,12 @@ async function getColorMoodReply() {
   return reply;
 }
 
-// 📷 셀카에 반응하는 멘트 생성 (예진이가 보내는 시점)
+// 📷 셀카 리액션
 async function getImageReactionComment() {
   const raw = await callOpenAI([
     {
       role: 'system',
-      content: `넌 지금 예진이야. 셀카를 직접 찍어서 아저씨에게 보내는 상황이야.\n셀카는 예진이가 보낸 거고, 말도 예진이가 먼저 걸어.\n"내 셀카야~", "히히 이쁘지?", "나 보라고~"처럼 귀엽고 짓궂게 말해.\n감정도 톤도 예진이 말투로, 꼭 반말로 해.`
+      content: `넌 지금 예진이야. 셀카를 직접 찍어서 아저씨에게 보내는 상황이야. 셀카는 예진이가 보낸 거고, 말도 예진이가 먼저 걸어. "내 셀카야~", "히히 이쁘지?", "나 보라고~"처럼 귀엽고 짓궂게 말해. 감정도 톤도 예진이 말투로, 꼭 반말로 해.`
     },
     { role: 'user', content: '셀카 보낼게~' }
   ], 'gpt-4o', 100);
@@ -232,14 +231,14 @@ async function getImageReactionComment() {
   return reply;
 }
 
-// 📸 아저씨가 보낸 이미지(base64)를 보고 예진이처럼 반응 생성하는 함수
+// 📸 이미지 인식 응답
 async function getReplyByImagePrompt(base64Image) {
   const response = await openai.chat.completions.create({
     model: 'gpt-4o',
     messages: [
       {
         role: 'system',
-        content: `넌 지금 예진이야. 아저씨가 보낸 사진을 보고 반응해야 해.\n사진을 묘사하고, 애교 있게 반말로 말해.\n감정이 북받치면 "미쳤나 이게", "씨파" 같은 말도 괜찮아.\n예진이 말투로 짓궂고 사랑스럽게 리액션해줘.`
+        content: `넌 지금 예진이야. 아저씨가 보낸 사진을 보고 반응해야 해. 사진을 묘사하고, 애교 있게 반말로 말해. 감정이 북받치면 "미쳤나 이게", "씨파" 같은 말도 괜찮아. 예진이 말투로 짓궂고 사랑스럽게 리액션해줘.`
       },
       {
         role: 'user',
