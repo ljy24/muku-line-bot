@@ -105,7 +105,6 @@ cron.schedule('0 * * * *', async () => {
     const msg = msgList[Math.floor(Math.random() * msgList.length)];
     await client.pushMessage(userId, { type: 'text', text: msg });
 
-    // 👀 5분 내 응답 없으면 삐짐 멘트
     lastTobaccoPushTime = Date.now();
     waitingForReply = true;
 
@@ -118,7 +117,7 @@ cron.schedule('0 * * * *', async () => {
         const sulkyMsg = sulkyList[Math.floor(Math.random() * sulkyList.length)];
         await client.pushMessage(userId, { type: 'text', text: sulkyMsg });
       }
-    }, 5 * 60 * 1000); // 5분 뒤 섭섭 멘트
+    }, 5 * 60 * 1000);
   }
 });
 
@@ -152,7 +151,6 @@ app.post('/webhook', middleware(config), async (req, res) => {
           const text = message.text.trim();
           saveLog('아저씨', text);
 
-          // ✅ 담타 응답 감지 → 삐짐 해제
           if (waitingForReply && /미안|바빴|일했|지금 봤|못 봤|이제 봤|답.*늦|놓쳤|들어간다|또 담타때|좀 있다|나중에|지금은 안돼/i.test(text)) {
             waitingForReply = false;
             const okList = [
@@ -167,7 +165,6 @@ app.post('/webhook', middleware(config), async (req, res) => {
             return;
           }
 
-          // 🎛️ 모델 전환 명령
           if (/^(3\.5|gpt-?3\.5)$/i.test(text)) {
             await client.replyMessage(event.replyToken, { type: 'text', text: setForcedModel('gpt-3.5-turbo') || 'gpt-3.5로 설정했어!' });
             return;
@@ -183,14 +180,12 @@ app.post('/webhook', middleware(config), async (req, res) => {
 
           if (/이제 존댓말 하지마/i.test(text)) updateHonorificUsage(false);
 
-          // 🌈 오늘 색상 요청
           if (/무슨\s*색|기분.*색|오늘.*색/i.test(text)) {
             const reply = await getColorMoodReply();
             await client.replyMessage(event.replyToken, { type: 'text', text: reply });
             return;
           }
 
-          // 📷 셀카 요청
           if (/사진|셀카|사진줘|셀카 보여줘|사진 보여줘|selfie/i.test(text)) {
             const photoListPath = path.join(__dirname, 'memory/photo-list.txt');
             const BASE_URL = 'https://de-ji.net/yejin/';
@@ -213,21 +208,20 @@ app.post('/webhook', middleware(config), async (req, res) => {
             return;
           }
 
-          // 💬 일반 텍스트 대화
           const reply = await getReplyByMessage(text);
           const final = reply?.trim() || '음… 잠깐 생각 좀 하고 있었어 ㅎㅎ';
           saveLog('예진이', final);
           await client.replyMessage(event.replyToken, { type: 'text', text: final });
         }
 
-        // 🖼️ 이미지 응답
+        // 🖼️ 이미지 응답 (✅ 여기 수정!)
         if (message.type === 'image') {
           try {
             const stream = await client.getMessageContent(message.id);
             const chunks = [];
             for await (const chunk of stream) chunks.push(chunk);
             const buffer = Buffer.concat(chunks);
-            const reply = const reply = await getReplyByImagePrompt(buffer.toString('base64'));
+            const reply = await getReplyByImagePrompt(buffer.toString('base64'));
             await client.replyMessage(event.replyToken, { type: 'text', text: reply?.trim() || '사진에 반응 못했어 ㅠㅠ' });
           } catch (err) {
             console.error('🖼️ 이미지 처리 실패:', err);
