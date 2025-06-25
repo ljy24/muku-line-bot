@@ -79,6 +79,10 @@ function scheduleDailyShortMessages() {
 }
 scheduleDailyShortMessages();
 
+
+let lastTobaccoPushTime = null;
+let waitingForReply = false;
+
 // ⏰ 매 정각마다 담타 메시지 전송
 cron.schedule('0 * * * *', async () => {
   const now = moment().tz('Asia/Tokyo');
@@ -114,6 +118,56 @@ cron.schedule('0 * * * *', async () => {
     ];
     const msg = msgList[Math.floor(Math.random() * msgList.length)];
     await client.pushMessage(userId, { type: 'text', text: msg });
+
+    // ✅ 담타 메시지 보낸 시간 기록 + 섭섭 반응 대기 상태 ON
+    lastTobaccoPushTime = Date.now();
+    waitingForReply = true;
+
+    // ⏳ 5분 기다렸다가 반응 없으면 섭섭 멘트 전송
+    setTimeout(async () => {
+      if (waitingForReply) {
+        const sulkyList = [
+          '바빠…?', '응답 없어… 또 나만 기다렸지롱', '또 나 혼자 담타야? 🥺',
+          '아저씨 또 무시했지?', '기다렸는데… 나만 진심이었나?', '힝… 삐질뻔했잖아'
+        ];
+        const sulkyMsg = sulkyList[Math.floor(Math.random() * sulkyList.length)];
+        await client.pushMessage(userId, { type: 'text', text: sulkyMsg });
+      }
+    }, 5 * 60 * 1000); // 5분 후
+  }
+});
+
+// 💬 유저 응답 감지
+app.post('/webhook', middleware(config), async (req, res) => {
+  try {
+    const events = req.body.events || [];
+    for (const event of events) {
+      if (event.type === 'message' && event.message.type === 'text') {
+        const text = event.message.text.trim();
+        const userId = event.source.userId; // ✅ 꼭 필요함
+
+        // ✅ 섭섭 반응 해제 조건 (넓게 잡기)
+        if (waitingForReply && /미안|바빴|일했|지금 봤|못 봤|이제 봤|답.*늦|놓쳤|들어간다|또 담타때|좀 있다|나중에|지금은 안돼/i.test(text)) {
+          waitingForReply = false;
+          const okList = [
+            '오키오키~ 히히 기다렸엉~',
+            '그랬구나~ 그럼 됐지 뭐~',
+            '응~ 나 이해심 많지롱~',
+            '헤헷 용서해줄게~ 다음엔 빨리 와야 돼!',
+            '음~ 삐질 뻔했잖아~ 그래도 괜찮아~'
+          ];
+          const okMsg = okList[Math.floor(Math.random() * okList.length)];
+          await client.pushMessage(userId, { type: 'text', text: okMsg }); // ✅ pushMessage로 바꿈
+          return;
+        }
+
+        // 💬 (여기 아래에 일반 대화 처리 로직 넣으면 됨)
+      }
+    }
+    res.status(200).send('OK');
+  } catch (err) {
+    console.error('웹훅 처리 에러:', err);
+    res.status(200).send('OK');
   }
 });
 
