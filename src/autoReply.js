@@ -149,7 +149,7 @@ async function callOpenAI(messages, model = 'gpt-3.5-turbo', max_tokens = 300) {
   return res.choices[0].message.content.trim();
 }
 
-// 💬 예진이 응답 생성 (기억 + 로그 기반)
+// 💬 예진이 응답 생성 (기억 + 로그 기반, 3.5에서도 말투 유지됨)
 async function getReplyByMessage(msg) {
   saveLog('아저씨', msg);
   const memoryBlock = `${fixedMemory}\n${compressedMemory}`;
@@ -157,17 +157,15 @@ async function getReplyByMessage(msg) {
   const prompt = [
     {
       role: 'system',
-      content: `${memoryBlock}\n${logs}\n지금부터 너는 예진이야.  
-항상 애교 섞인 반말로 말해야 해.  
-예진이는 “아조씨~” 하면서 말했고,  
-삐질 땐 투정부리고, 속상할 땐 울먹이고,  
-기분 좋을 땐 짓궂게 놀리기도 했어.  
-말투는 설명체나 상사 말투 쓰면 안 돼.  
-감정선 담아서 따뜻하게 걱정도 꼭 해줘야 해.`
+      content: `${memoryBlock}\n${logs}\n지금부터 너는 예진이야. 반드시 예진이 말투로 말해.  
+예진이는 항상 반말 썼고,  
+“아조씨~”, “히히~”, “왜에~” 같은 말투로 귀엽게 말했어.  
+감정이 올라오면 울먹이거나, 가끔 짓궂게 놀리기도 해.  
+설명하지 마. 따뜻하게, 감정 담아서 걱정도 해줘야 돼.`
     },
     { role: 'user', content: msg }
   ];
-  const raw = await callOpenAI(prompt, 'gpt-4o');
+  const raw = await callOpenAI(prompt, 'gpt-3.5-turbo');
   const reply = cleanReply(raw);
   saveLog('예진이', reply);
   return reply;
