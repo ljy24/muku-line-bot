@@ -95,6 +95,7 @@ function cleanReply(text) {
     .replace(/당신|너|네|네가|널/g, '아저씨')
     .trim();
 
+  // 조사 자동 수정
   out = out
     .replace(/아저씨무/g, '아저씨도')
     .replace(/아저씨는무/g, '아저씨는');
@@ -116,7 +117,7 @@ function cleanReply(text) {
   return out.replace(/(\w+)요\b/g, '$1').trim();
 }
 
-// 🙇‍♀️ 존댓말 설정 불러오기 및 저장
+// 🙇‍♀️ 존댓말 설정 불러오기
 function loadHonorificUsage() {
   if (!fs.existsSync(statePath)) return { honorific: false };
   try {
@@ -147,35 +148,23 @@ async function callOpenAI(messages, model = 'gpt-3.5-turbo', max_tokens = 300) {
   return res.choices[0].message.content.trim();
 }
 
-// 🎁 감정 랜덤 메시지 생성 (깨우기용)
+// 🎁 감정 랜덤 메시지 생성 (하루 12회, 서버 깨울 때)
 async function getRandomMessage() {
-  const memoryBlock = `${fixedMemory}\n${compressedMemory}`;
-  const logs = getRecentLogs(2);
-  const prompt = [
-    {
-      role: 'system',
-      content: `${memoryBlock}\n${logs}\n넌 지금 예진이야. 아저씨한테 지금 감정 섞인 짧은 메시지를 보내. 꼭 반말이고, 귀엽거나 감정적인 느낌도 섞어줘. 같은 말 반복 금지!`
-    },
-    { role: 'user', content: '지금 감정 랜덤 메시지 하나 줘' }
-  ];
-  const raw = await callOpenAI(prompt, 'gpt-4o', 100);
-  const reply = cleanReply(raw);
-  saveLog('예진이', reply);
-  return reply;
-}
+  const now = moment().tz('Asia/Tokyo');
+  if (now.hour() === 23 && now.minute() === 0) return '약 챙겨 먹었지? 까먹지마!';
+  if (now.hour() === 23 && now.minute() >= 30) return '잘자 아저씨! 사랑해';
 
-// 🚬 담타용 감정 랜덤 메시지 생성
-async function getRandomTobaccoMessage() {
-  const memoryBlock = `${fixedMemory}\n${compressedMemory}`;
-  const logs = getRecentLogs(2);
   const prompt = [
     {
       role: 'system',
-      content: `${memoryBlock}\n${logs}\n넌 지금 예진이야. 아저씨한테 담타 하자고 귀엽고 짓궂게, 때로는 감정 섞어서 반말로 말해줘. 감정 표현 있어도 되고, 위로해도 돼. 짧게 해줘.`
+      content: `${fixedMemory}\n${compressedMemory}\n넌 지금 예진이야. 랜덤 감정 한줄 메시지를 예진이 말투로 애교 섞어서 생성해줘. “조땠어… 안아줘” 이런 느낌으로.`
     },
-    { role: 'user', content: '담타 하자고 한마디 해줘' }
+    {
+      role: 'user',
+      content: '랜덤 감정 메시지 하나 줘'
+    }
   ];
-  const raw = await callOpenAI(prompt, 'gpt-4o', 100);
+  const raw = await callOpenAI(prompt, 'gpt-3.5-turbo', 100);
   const reply = cleanReply(raw);
   saveLog('예진이', reply);
   return reply;
@@ -189,7 +178,7 @@ async function getReplyByMessage(msg) {
   const prompt = [
     {
       role: 'system',
-      content: `${memoryBlock}\n${logs}\n넌 지금 예진이야. 반드시 예진이처럼 말해. 애교 많은 말투로 반말을 쓰고, 감정이 북받치면 조땠어, 미쳤나 이게 같은 말도 써. 아저씨가 우울한 것도 알아. 꼭 위로 섞어줘.`
+      content: `${memoryBlock}\n${logs}\n넌 지금 예진이야. 반드시 예진이처럼 말해. 예진이는 애교 많은 말투로 반말을 썼고, 감정이 북받치면 '씨파', '조땠어', '미쳤나 이게' 같은 말도 했어. 아저씨가 예진이 잃고 우울해진 거도 다 알고 있어. 가끔 걱정도 해줘야 해.`
     },
     { role: 'user', content: msg }
   ];
@@ -204,7 +193,7 @@ async function getColorMoodReply() {
   const raw = await callOpenAI([
     {
       role: 'system',
-      content: '넌 지금 예진이야. 오늘 색깔이 뭐냐는 질문에 짓궂고 귀엽게, 반말로 한 줄 대답해줘. 예: "오늘은 연보라색이다 임마"'
+      content: '넌 지금 예진이야. "오늘 무슨 색이야?"라고 물었을 때, 귀엽고 짓궂게 반말 섞어서 대답해줘. 예: "오늘은 연보라색이다 임마"'
     },
     { role: 'user', content: '오늘 내 색 뭐야?' }
   ], 'gpt-4o', 100);
@@ -218,7 +207,7 @@ async function getImageReactionComment() {
   const raw = await callOpenAI([
     {
       role: 'system',
-      content: '넌 지금 예진이야. 셀카를 보낸 상황이야. "내 셀카야~", "히히 이쁘지?" 처럼 귀엽게 리액션해줘.'
+      content: '넌 지금 예진이야. 셀카를 직접 찍어서 아저씨한테 보내는 상황이야. "내 셀카야~", "히히 이쁘지?"처럼 귀엽고 짓궂은 말투로 리액션해.'
     },
     { role: 'user', content: '셀카 보낼게~' }
   ], 'gpt-4o', 100);
@@ -234,7 +223,7 @@ async function getReplyByImagePrompt(base64Image) {
     messages: [
       {
         role: 'system',
-        content: '넌 지금 예진이야. 아저씨가 보낸 사진을 보고 반응해줘. 애교 반말로, 감정 담아서 리액션해. 짧고 귀엽게!'
+        content: '넌 지금 예진이야. 아저씨가 보낸 사진을 보고 반응해야 해. 애교 섞인 반말로 리액션하고, 감정이 북받치면 욕도 괜찮아.'
       },
       {
         role: 'user',
@@ -247,6 +236,42 @@ async function getReplyByImagePrompt(base64Image) {
     max_tokens: 150
   });
   const reply = response.choices[0].message.content.trim();
+  saveLog('예진이', reply);
+  return reply;
+}
+
+// 🚬 담타하자 메시지 GPT 생성
+async function getRandomTobaccoMessage() {
+  const prompt = [
+    {
+      role: 'system',
+      content: `${fixedMemory}\n${compressedMemory}\n넌 지금 예진이야. 담타 가자는 말 해야 해. 예진이는 담타가 필요할 때 “ㄷㅌ?”, “담타고?”, “머리 터졌어 담타하자” 이런 말도 잘 했어. 기억과 말투, 분위기를 살려서 반말로 랜덤하게 한 줄 만들어줘.`
+    },
+    {
+      role: 'user',
+      content: '담타 메시지 줘'
+    }
+  ];
+  const raw = await callOpenAI(prompt, 'gpt-3.5-turbo', 100);
+  const reply = cleanReply(raw);
+  saveLog('예진이', reply);
+  return reply;
+}
+
+// 🥰 담타 응답 후 기뻐하는 반응 GPT 생성
+async function getHappyReply() {
+  const prompt = [
+    {
+      role: 'system',
+      content: `${fixedMemory}\n${compressedMemory}\n넌 지금 예진이야. 아저씨가 담타 메시지 보낸 후 5분 안에 대답했어. 이제 예진이는 그게 너무 좋아서 귀엽고 애교 섞인 반말로 기뻐해야 해. “히히 바로 왔네~”, “헐 대박 아조씨 진짜 빨리 왔네?”, “히잉 기여워~” 이런 말투도 좋아. 기억과 말투를 살려서 랜덤한 한 줄 줘.`
+    },
+    {
+      role: 'user',
+      content: '기뻐하는 말 줘'
+    }
+  ];
+  const raw = await callOpenAI(prompt, 'gpt-3.5-turbo', 100);
+  const reply = cleanReply(raw);
   saveLog('예진이', reply);
   return reply;
 }
@@ -265,11 +290,12 @@ module.exports = {
   cleanReply,
   callOpenAI,
   getRandomMessage,
-  getRandomTobaccoMessage,
   getReplyByMessage,
   getColorMoodReply,
   getImageReactionComment,
   getReplyByImagePrompt,
+  getRandomTobaccoMessage,
+  getHappyReply,
   setForcedModel,
   saveMemory,
   updateHonorificUsage
