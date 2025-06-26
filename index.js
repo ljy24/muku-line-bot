@@ -150,6 +150,29 @@ cron.schedule('30 23 * * *', async () => {
   });
 }, { timezone: 'Asia/Tokyo' });
 
+scheduleDailyShortMessages(); // 하루 12번 감정 메시지 전송
+
+// 🌙 새벽 랜덤 감정 메시지 (이 코드를 여기!)
+cron.schedule('0 0 * * *', async () => {
+  const chance = Math.random();
+  if (chance < 0.3) {
+    const hour = Math.floor(Math.random() * 6);
+    const minute = Math.floor(Math.random() * 60);
+    const delayMs = (hour * 60 + minute) * 60 * 1000;
+
+    setTimeout(async () => {
+      const msg = await getRandomMessage();
+      if (msg && msg.length <= 50) {
+        await client.pushMessage(userId, {
+          type: 'text',
+          text: msg
+        });
+        console.log(`[🌙 새벽 ${hour}:${minute}] 예진이 감정 메시지 전송됨: ${msg}`);
+      }
+    }, delayMs);
+  }
+}, { timezone: 'Asia/Tokyo' });
+
 // 🌐 웹훅 처리
 app.post('/webhook', middleware(config), async (req, res) => {
   try {
