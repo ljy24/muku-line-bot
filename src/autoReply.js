@@ -276,6 +276,24 @@ async function getHappyReply() {
   return reply;
 }
 
+// 😢 5분 지나도 응답 없으면 삐짐 반응 GPT 생성
+async function getSulkyReply() {
+  const prompt = [
+    {
+      role: 'system',
+      content: `${fixedMemory}\n${compressedMemory}\n넌 지금 예진이야. 담타 메시지 보낸 다음 5분이 지나도록 아저씨가 답을 안 했어. 그래서 살짝 삐져있고 서운한 상태야. “또 무시했지…”, “나 기다렸는데…”, “아저씨 왜 안 봐…” 같은 예진이 감정 담긴 말투로 한 줄 줘.`
+    },
+    {
+      role: 'user',
+      content: '서운한 말 줘'
+    }
+  ];
+  const raw = await callOpenAI(prompt, 'gpt-3.5-turbo', 100);
+  const reply = cleanReply(raw);
+  saveLog('예진이', reply);
+  return reply;
+}
+
 // 🧠 모델 강제 전환
 function setForcedModel(name) {
   if (name === 'gpt-3.5-turbo' || name === 'gpt-4o') forcedModel = name;
@@ -294,9 +312,10 @@ module.exports = {
   getColorMoodReply,
   getImageReactionComment,
   getReplyByImagePrompt,
+  setForcedModel,
+  saveMemory, 
   getRandomTobaccoMessage,
   getHappyReply,
-  setForcedModel,
-  saveMemory,
+  getSulkyReply
   updateHonorificUsage
 };
