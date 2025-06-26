@@ -214,6 +214,25 @@ async function getColorMoodReply() {
   return reply;
 }
 
+// 🖼️ 랜덤 셀카 이미지 URL 반환
+function getRandomSelfieImage() {
+  const photoListPath = path.join(__dirname, '../memory/photo-list.txt');
+  const BASE_URL = 'https://de-ji.net/yejin/';
+  try {
+    const list = fs.readFileSync(photoListPath, 'utf-8')
+      .split('\n')
+      .map(x => x.trim())
+      .filter(Boolean);
+    if (list.length === 0) return null;
+    const pick = list[Math.floor(Math.random() * list.length)];
+    return BASE_URL + pick;
+  } catch (err) {
+    console.error('📷 셀카 로딩 오류:', err.message);
+    return null;
+  }
+}
+
+
 // 📷 셀카 멘트 생성
 async function getImageReactionComment() {
   const raw = await callOpenAI([
@@ -272,5 +291,6 @@ module.exports = {
   getReplyByImagePrompt,
   setForcedModel,
   saveMemory,
+  getRandomSelfieImage,
   updateHonorificUsage
 };
