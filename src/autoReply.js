@@ -1,4 +1,4 @@
-해//autoReply
+//autoReply
 
 // 📦 기본 모듈 불러오기
 const fs = require('fs');
