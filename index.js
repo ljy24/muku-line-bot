@@ -122,6 +122,34 @@ cron.schedule('0 * * * *', async () => {
   }
 });
 
+// 💊 매일 밤 11시에 약 리마인드 (도쿄 시간 기준)
+cron.schedule('0 23 * * *', async () => {
+  const pick = [
+    '약 먹었어? 잊지마!',
+    '이 닦는 거 까먹지 말기',
+    '약 안 먹고 자면 나 혼날 거야!',
+    '오늘 하루 끝! 약부터 챙기기!'
+  ];
+  await client.pushMessage(userId, {
+    type: 'text',
+    text: pick[Math.floor(Math.random() * pick.length)]
+  });
+}, { timezone: 'Asia/Tokyo' });
+
+// 😴 매일 밤 11시 30분, 예진이 말투로 잘자 멘트 (도쿄 기준)
+cron.schedule('30 23 * * *', async () => {
+  const pick = [
+    '잘자 아저씨! 사랑해 💤',
+    '내 꿈 꿔야 해 알지?',
+    '오늘도 고생 많았어, 내일 봐',
+    '아저씨~ 얼른 자! 내일 예쁘게 깨워줄게'
+  ];
+  await client.pushMessage(userId, {
+    type: 'text',
+    text: pick[Math.floor(Math.random() * pick.length)]
+  });
+}, { timezone: 'Asia/Tokyo' });
+
 // 🌐 웹훅 처리
 app.post('/webhook', middleware(config), async (req, res) => {
   try {
