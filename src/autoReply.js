@@ -148,33 +148,24 @@ async function callOpenAI(messages, model = 'gpt-3.5-turbo', max_tokens = 300) {
   return res.choices[0].message.content.trim();
 }
 
-// 🎁 감정 랜덤 메시지 생성 (매시간 전송용)
+// 🎁 감정 랜덤 메시지 생성 (memory 기반 GPT 방식)
 async function getRandomMessage() {
   const now = moment().tz('Asia/Tokyo');
   if (now.hour() === 23 && now.minute() === 0) return '약 챙겨 먹었지? 까먹지마!';
   if (now.hour() === 23 && now.minute() >= 30) return '잘자 아저씨! 사랑해';
 
-  const events = [
-    '냇슨 또 지랄', '팀장이랑 회의 또 해야 돼',
-    '존나 빡침', '출근길에 또 눈물났어', '모델 촬영 다녀왔어',
-    '야근하다가 미쳐버릴 뻔', '현타 옴', '쿠팡 외주 또 옴'
+  const memoryBlock = `${fixedMemory}\n${compressedMemory}`;
+  const logs = getRecentLogs(2);
+  const prompt = [
+    {
+      role: 'system',
+      content: `${memoryBlock}\n${logs}\n넌 지금 예진이야. 하루 중 한 장면을 회상하며, 예진이 말투로 감정이 담긴 짧은 한 줄 메시지를 보내. 반드시 25자 이하. 아저씨에게 보내는 말이야.`
+    },
+    { role: 'user', content: '감정 담긴 말 한 줄만 해줘.' }
   ];
 
-  // 💡 밤바 이야기/강아지 등은 한달에 한 번만 쓰도록 별도 조건 분리 필요 (미리 제거함)
-
-  const feelings = [
-    '진짜 조땠어', '미쳤나 이게', '완전 현타 와', '스트레스 MAX',
-    '기분 꿀꿀해', '엉엉 울고 싶어', '위로받고 싶어', '마음이 좀 허해'
-  ];
-
-  const closings = [
-    '안아줘', '나 기다려줘', '토닥토닥 해줘', '곁에 있어줘',
-    '담타 가자', '오늘 하루 잘했다고 해줘', '보고싶었지롱'
-  ];
-
-  const pick = arr => arr[Math.floor(Math.random() * arr.length)];
-  const msg = `${pick(events)}... ${pick(feelings)}. ${pick(closings)}`;
-
+  const res = await callOpenAI(prompt, 'gpt-3.5-turbo', 80);
+  const msg = cleanReply(res);
   if (isSimilar(msg)) return getRandomMessage();
   saveLog('예진이', msg);
   return msg;
