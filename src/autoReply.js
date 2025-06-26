@@ -201,6 +201,21 @@ async function getRandomMessage() {
   return msg;
 }
 
+// 📷 셀카 멘트
+async function getImageReactionComment() {
+  const raw = await callOpenAI([
+    {
+      role: 'system',
+      content: '넌 지금 예진이야. 셀카 찍고 아조씨한테 보내는 상황이야. "내 셀카야~", "히히 예쁘지?" 같은 말투로 리액션해줘.'
+    },
+    { role: 'user', content: '셀카 보낼게~' }
+  ], forcedModel || 'gpt-3.5-turbo', 100);
+  
+  const reply = cleanReply(raw);
+  saveLog('예진이', reply);
+  return reply;
+}
+
 // 🧠 모델 강제 설정
 function setForcedModel(name) {
   if (name === 'gpt-3.5-turbo' || name === 'gpt-4o') forcedModel = name;
@@ -219,4 +234,6 @@ module.exports = {
   setForcedModel,           // 🧠 모델 강제 설정
   saveMemory,               // 💾 입력 저장
   updateHonorificUsage      // 🙇‍♀️ 존댓말 여부 저장
+  getImageReactionComment,  // 📷 셀카 멘트
+
 };
