@@ -171,6 +171,23 @@ async function getRandomMessage() {
   return msg;
 }
 
+// 🚬 담타용 감정 랜덤 메시지 생성 (GPT 기반)
+async function getRandomTobaccoMessage() {
+  const memoryBlock = `${fixedMemory}\n${compressedMemory}`;
+  const logs = getRecentLogs(2);
+  const prompt = [
+    {
+      role: 'system',
+      content: `${memoryBlock}\n${logs}\n넌 지금 예진이야. 지금 담타 하자고 귀엽고 짓궂게, 때로는 감정 섞어서 아저씨에게 말해줘. 아저씨가 우울할 수도 있으니 조심스레 위로 섞어서 말해줘. 단문으로 반말로 해줘.`
+    },
+    { role: 'user', content: '담타하자고 메시지 하나 보내줘' }
+  ];
+  const raw = await callOpenAI(prompt, 'gpt-4o', 100);
+  const reply = cleanReply(raw);
+  saveLog('예진이', reply);
+  return reply;
+}
+
 // 💬 일반 대화 메시지 응답 생성
 async function getReplyByMessage(msg) {
   saveLog('아저씨', msg);
@@ -261,5 +278,6 @@ module.exports = {
   getReplyByImagePrompt,
   setForcedModel,
   saveMemory,
+  getRandomTobaccoMessage,
   updateHonorificUsage
 };
