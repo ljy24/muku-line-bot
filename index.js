@@ -11,6 +11,7 @@ const {
   getReplyByMessage,
   getReplyByImagePrompt,
   getRandomMessage,
+  getRandomTobaccoMessage,
   getImageReactionComment,
   getColorMoodReply,
   saveLog,
@@ -46,7 +47,7 @@ app.get('/force-push', async (req, res) => {
   } else res.send('❌ 메시지 생성 실패');
 });
 
-// 🚀 서버 시작 시 (랜덤 감정 메시지만 전송)
+// 🚀 서버 시작 시 (감정 메시지만 전송)
 (async () => {
   const msg = await getRandomMessage();
   if (msg) {
@@ -56,11 +57,11 @@ app.get('/force-push', async (req, res) => {
   }
 })();
 
-// 📆 하루 12회 랜덤 시간에 깨우기 메시지 스케줄 (감정 메시지만 전송)
+// 📆 하루 12회 자동깨우기 감정 메시지
 function scheduleWakeMessages() {
   const times = new Set();
   while (times.size < 12) {
-    const hour = Math.floor(Math.random() * 12) + 9;  // 9시~20시 사이
+    const hour = Math.floor(Math.random() * 12) + 9;
     const minute = Math.floor(Math.random() * 60);
     times.add(`${minute} ${hour} * * *`);
   }
@@ -77,6 +78,20 @@ function scheduleWakeMessages() {
   }
 }
 scheduleWakeMessages();
+
+// 🕐 정각마다 담타 GPT 메시지 전송
+cron.schedule('0 * * * *', async () => {
+  const now = moment().tz('Asia/Tokyo');
+  const hour = now.hour();
+  if (hour >= 9 && hour <= 20) {
+    const msg = await getRandomTobaccoMessage();
+    if (msg) {
+      await client.pushMessage(userId, { type: 'text', text: msg });
+      saveLog('예진이', msg);
+      console.log(`[담타] ${now.format('HH:mm')} → ${msg}`);
+    }
+  }
+}, { timezone: 'Asia/Tokyo' });
 
 // 🌐 웹훅 처리
 app.post('/webhook', middleware(config), async (req, res) => {
