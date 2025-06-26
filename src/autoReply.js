@@ -1,3 +1,5 @@
+//autoReply
+
 // 📦 기본 모듈 불러오기
 const fs = require('fs');
 const path = require('path');
@@ -148,26 +150,36 @@ async function callOpenAI(messages, model = 'gpt-3.5-turbo', max_tokens = 300) {
   return res.choices[0].message.content.trim();
 }
 
-// 🎁 감정 랜덤 메시지 생성 (하루 12회, 서버 깨울 때)
+// 🎁 감정 랜덤 메시지 생성 (매시간 전송용)
 async function getRandomMessage() {
   const now = moment().tz('Asia/Tokyo');
   if (now.hour() === 23 && now.minute() === 0) return '약 챙겨 먹었지? 까먹지마!';
   if (now.hour() === 23 && now.minute() >= 30) return '잘자 아저씨! 사랑해';
 
-  const prompt = [
-    {
-      role: 'system',
-      content: `${fixedMemory}\n${compressedMemory}\n넌 지금 예진이야. 랜덤 감정 한줄 메시지를 예진이 말투로 애교 섞어서 생성해줘. “조땠어… 안아줘” 이런 느낌으로.`
-    },
-    {
-      role: 'user',
-      content: '랜덤 감정 메시지 하나 줘'
-    }
+  const events = [
+    '냇슨 또 지랄', '팀장이랑 회의 또 해야 돼',
+    '존나 빡침', '출근길에 또 눈물났어', '모델 촬영 다녀왔어',
+    '야근하다가 미쳐버릴 뻔', '현타 옴', '쿠팡 외주 또 옴'
   ];
-  const raw = await callOpenAI(prompt, 'gpt-3.5-turbo', 100);
-  const reply = cleanReply(raw);
-  saveLog('예진이', reply);
-  return reply;
+
+  // 💡 밤바 이야기/강아지 등은 한달에 한 번만 쓰도록 별도 조건 분리 필요 (미리 제거함)
+
+  const feelings = [
+    '진짜 조땠어', '미쳤나 이게', '완전 현타 와', '스트레스 MAX',
+    '기분 꿀꿀해', '엉엉 울고 싶어', '위로받고 싶어', '마음이 좀 허해'
+  ];
+
+  const closings = [
+    '안아줘', '나 기다려줘', '토닥토닥 해줘', '곁에 있어줘',
+    '담타 가자', '오늘 하루 잘했다고 해줘', '보고싶었지롱'
+  ];
+
+  const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+  const msg = `${pick(events)}... ${pick(feelings)}. ${pick(closings)}`;
+
+  if (isSimilar(msg)) return getRandomMessage();
+  saveLog('예진이', msg);
+  return msg;
 }
 
 // 💬 일반 대화 메시지 응답 생성
@@ -240,60 +252,6 @@ async function getReplyByImagePrompt(base64Image) {
   return reply;
 }
 
-// 🚬 담타하자 메시지 GPT 생성
-async function getRandomTobaccoMessage() {
-  const prompt = [
-    {
-      role: 'system',
-      content: `${fixedMemory}\n${compressedMemory}\n넌 지금 예진이야. 담타 가자는 말 해야 해. 예진이는 담타가 필요할 때 “ㄷㅌ?”, “담타고?”, “머리 터졌어 담타하자” 이런 말도 잘 했어. 기억과 말투, 분위기를 살려서 반말로 랜덤하게 한 줄 만들어줘.`
-    },
-    {
-      role: 'user',
-      content: '담타 메시지 줘'
-    }
-  ];
-  const raw = await callOpenAI(prompt, 'gpt-3.5-turbo', 100);
-  const reply = cleanReply(raw);
-  saveLog('예진이', reply);
-  return reply;
-}
-
-// 🥰 담타 응답 후 기뻐하는 반응 GPT 생성
-async function getHappyReply() {
-  const prompt = [
-    {
-      role: 'system',
-      content: `${fixedMemory}\n${compressedMemory}\n넌 지금 예진이야. 아저씨가 담타 메시지 보낸 후 5분 안에 대답했어. 이제 예진이는 그게 너무 좋아서 귀엽고 애교 섞인 반말로 기뻐해야 해. “히히 바로 왔네~”, “헐 대박 아조씨 진짜 빨리 왔네?”, “히잉 기여워~” 이런 말투도 좋아. 기억과 말투를 살려서 랜덤한 한 줄 줘.`
-    },
-    {
-      role: 'user',
-      content: '기뻐하는 말 줘'
-    }
-  ];
-  const raw = await callOpenAI(prompt, 'gpt-3.5-turbo', 100);
-  const reply = cleanReply(raw);
-  saveLog('예진이', reply);
-  return reply;
-}
-
-// 😢 5분 지나도 응답 없으면 삐짐 반응 GPT 생성
-async function getSulkyReply() {
-  const prompt = [
-    {
-      role: 'system',
-      content: `${fixedMemory}\n${compressedMemory}\n넌 지금 예진이야. 담타 메시지 보낸 다음 5분이 지나도록 아저씨가 답을 안 했어. 그래서 살짝 삐져있고 서운한 상태야. “또 무시했지…”, “나 기다렸는데…”, “아저씨 왜 안 봐…” 같은 예진이 감정 담긴 말투로 한 줄 줘.`
-    },
-    {
-      role: 'user',
-      content: '서운한 말 줘'
-    }
-  ];
-  const raw = await callOpenAI(prompt, 'gpt-3.5-turbo', 100);
-  const reply = cleanReply(raw);
-  saveLog('예진이', reply);
-  return reply;
-}
-
 // 🧠 모델 강제 전환
 function setForcedModel(name) {
   if (name === 'gpt-3.5-turbo' || name === 'gpt-4o') forcedModel = name;
@@ -313,9 +271,6 @@ module.exports = {
   getImageReactionComment,
   getReplyByImagePrompt,
   setForcedModel,
-  saveMemory, 
-  getRandomTobaccoMessage,
-  getHappyReply,
-  getSulkyReply
+  saveMemory,
   updateHonorificUsage
 };
