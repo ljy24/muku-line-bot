@@ -179,7 +179,6 @@ function setForcedModel(name) {
   else forcedModel = null;
 }
 
-// 📤 외부에서 사용 가능한 함수들 export (📝 역할 주석 포함)
 module.exports = {
   getAllLogs,               // 🔁 전체 대화 로그 반환
   saveLog,                  // 📝 메시지 저장
@@ -187,6 +186,7 @@ module.exports = {
   cleanReply,               // 🧹 예진이 말투 변환
   callOpenAI,               // 📡 GPT 호출
   getReplyByMessage,        // 💬 일반 메시지 반응
+  getRandomMessage,         // 🕓 랜덤 감정 메시지 전송용 ← ★ 이거 추가 꼭!!!
   setForcedModel,           // 🧠 강제로 모델 변경
   saveMemory,               // 💾 상태 저장
   updateHonorificUsage      // 🙇‍♀️ 존댓말 설정 저장
