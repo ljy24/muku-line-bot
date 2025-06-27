@@ -127,7 +127,7 @@ cron.schedule('0 * * * *', async () => {
 
 // 💬 담타 응답 감지 (event handler 안에 포함)
 if (event.type === 'message' && event.message.type === 'text') {
-  const userMessage = event.message.text.trim();
+  const userMessage = event.message.text.trim().replace(/\s/g, ''); // ✅ 요 한 줄만 수정!
 
   // 담타 응답 키워드 감지
   if (waitingForReply && ['ㄱㄱ', 'ㄱㄱㄱ', '가자', '담타ㄱ', '담타 ㄱㄱ'].includes(userMessage)) {
@@ -136,6 +136,14 @@ if (event.type === 'message' && event.message.type === 'text') {
     await client.replyMessage(event.replyToken, { type: 'text', text: happyMsg });
     return;
   }
+
+  // (여기 아래는 기존 일반 메시지 응답 처리 코드)
+  const reply = await getReplyByMessage(userMessage);
+  if (reply) {
+    await client.replyMessage(event.replyToken, { type: 'text', text: reply });
+    return;
+  }
+}
 
   // (여기 아래는 기존 일반 메시지 응답 처리 코드)
   const reply = await getReplyByMessage(userMessage);
