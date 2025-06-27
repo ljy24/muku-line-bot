@@ -272,5 +272,7 @@ module.exports = {
   getReplyByImagePrompt,
   setForcedModel,
   saveMemory,
+  getHappyReply,
+  getSulkyReply,
   updateHonorificUsage
 };
