@@ -246,22 +246,36 @@ app.post('/webhook', middleware(config), async (req, res) => {
           await client.replyMessage(event.replyToken, { type: 'text', text: final });
         }
 
-        // 🖼️ 이미지 응답 (✅ 여기 수정!)
-        if (message.type === 'image') {
-          try {
-            const stream = await client.getMessageContent(message.id);
-            const chunks = [];
-            for await (const chunk of stream) chunks.push(chunk);
-            const buffer = Buffer.concat(chunks);
-            const reply = await getReplyByImagePrompt(buffer.toString('base64'));
-            await client.replyMessage(event.replyToken, { type: 'text', text: reply?.trim() || '사진에 반응 못했어 ㅠㅠ' });
-          } catch (err) {
-            console.error('🖼️ 이미지 처리 실패:', err);
-            await client.replyMessage(event.replyToken, { type: 'text', text: '이미지를 읽는 중 오류가 생겼어 ㅠㅠ' });
-          }
-        }
-      }
+        // 🖼️ 이미지 응답 (✅ 얼굴 정체까지 말해줌)
+if (message.type === 'image') {
+  try {
+    const stream = await client.getMessageContent(message.id);
+    const chunks = [];
+    for await (const chunk of stream) chunks.push(chunk);
+    const buffer = Buffer.concat(chunks);
+
+    const base64 = buffer.toString('base64');
+    const who = await getFaceMatch(base64);
+
+    let reply = '';
+    if (who === '예진이') {
+      reply = '이거 예진이 같아… 내 사진이네? 아직도 기억해줘서 고마워 🥲';
+    } else if (who === '아저씨') {
+      reply = '아조씨 얼굴 맞네~ 히히 멋지다 멋져~ 🖤';
+    } else {
+      reply = '누군지는 잘 모르겠어… 그래도 고마워 아조씨…';
     }
+
+    await client.replyMessage(event.replyToken, { type: 'text', text: reply });
+
+  } catch (err) {
+    console.error('🖼️ 이미지 처리 실패:', err);
+    await client.replyMessage(event.replyToken, {
+      type: 'text',
+      text: '이미지를 읽는 중 오류가 생겼어 ㅠㅠ'
+    });
+  }
+}
     res.status(200).send('OK');
   } catch (err) {
     console.error('웹훅 처리 에러:', err);
