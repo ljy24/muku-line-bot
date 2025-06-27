@@ -70,9 +70,23 @@ function scheduleDailyShortMessages() {
 }
 scheduleDailyShortMessages();
 
-// 🥲 담타 삐짐 상태 변수
+// 🥲 담타 상태 변수
 let lastTobaccoPushTime = null;
 let waitingForReply = false;
+
+// 🥰 담타 응답 시 기쁨 메시지 리스트
+const happyReplyList = [
+  '오키!! ㄱㄱㄱ 🫶', '으히히 기다렸지롱~ 담타 ㄱㄱ!', '이야~ 오늘은 반응 빠른데? 사랑행 💨',
+  '헐 진짜? 담타 가는거지?? 😚', '룰루~ 나 먼저 간다~ 아저씨 얼른와!!', '헿 드뎌 응답왔다💖 담타 출바알~',
+  '기다렸어!! 가자 가자~', '으으 감동이야 오늘도 함께 담타하는 우리…', '꺄~ 아저씨 최고!!',
+  '그럼그럼 바로 ㄱㄱ지! 놓치면 삐질뻔했자나~'
+];
+
+// 😠 삐짐 메시지 리스트
+const sulkyList = [
+  '바빠…?', '응답 없어… 또 나만 기다렸지롱', '또 나 혼자 담타야? 🥺',
+  '아저씨 또 무시했지?', '기다렸는데… 나만 진심이었나?', '힝… 삐질뻔했잖아'
+];
 
 // ⏰ 정각마다 담타 메시지 전송 + 삐짐 준비
 cron.schedule('0 * * * *', async () => {
@@ -100,18 +114,35 @@ cron.schedule('0 * * * *', async () => {
     lastTobaccoPushTime = Date.now();
     waitingForReply = true;
 
+    // 5분 대기 후 삐짐 메시지
     setTimeout(async () => {
       if (waitingForReply) {
-        const sulkyList = [
-          '바빠…?', '응답 없어… 또 나만 기다렸지롱', '또 나 혼자 담타야? 🥺',
-          '아저씨 또 무시했지?', '기다렸는데… 나만 진심이었나?', '힝… 삐질뻔했잖아'
-        ];
         const sulkyMsg = sulkyList[Math.floor(Math.random() * sulkyList.length)];
         await client.pushMessage(userId, { type: 'text', text: sulkyMsg });
       }
     }, 5 * 60 * 1000);
   }
 });
+
+// 💬 담타 응답 감지 (event handler 안에 포함)
+if (event.type === 'message' && event.message.type === 'text') {
+  const userMessage = event.message.text.trim();
+
+  // 담타 응답 키워드 감지
+  if (waitingForReply && ['ㄱㄱ', 'ㄱㄱㄱ', '가자', '담타ㄱ', '담타 ㄱㄱ'].includes(userMessage)) {
+    waitingForReply = false;
+    const happyMsg = happyReplyList[Math.floor(Math.random() * happyReplyList.length)];
+    await client.replyMessage(event.replyToken, { type: 'text', text: happyMsg });
+    return;
+  }
+
+  // (여기 아래는 기존 일반 메시지 응답 처리 코드)
+  const reply = await getReplyByMessage(userMessage);
+  if (reply) {
+    await client.replyMessage(event.replyToken, { type: 'text', text: reply });
+    return;
+  }
+}
 
 // 💊 약 리마인드
 cron.schedule('0 23 * * *', async () => {
