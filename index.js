@@ -48,16 +48,6 @@ app.get('/force-push', async (req, res) => {
   } else res.send('❌ 메시지 생성 실패');
 });
 
-// 🚀 서버 시작 시 인사
-(async () => {
-  const msg = await getRandomMessage();
-  if (msg) {
-    await client.pushMessage(userId, { type: 'text', text: msg });
-    saveLog('예진이', msg);
-    console.log(`[서버시작랜덤] ${msg}`);
-  }
-  await client.pushMessage(userId, { type: 'text', text: '아저씨 나왔어!' });
-})();
 
 // 📆 감정 메시지 랜덤 8회 전송
 function scheduleDailyShortMessages() {
