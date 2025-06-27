@@ -70,6 +70,7 @@ function scheduleDailyShortMessages() {
 }
 scheduleDailyShortMessages();
 
+const { getHappyReply, getSulkyReply } = require('./autoReply');
 // 🥲 담타 상태 변수
 let lastTobaccoPushTime = null;
 let waitingForReply = false;
