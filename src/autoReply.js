@@ -252,6 +252,40 @@ async function getReplyByImagePrompt(base64Image) {
   return reply;
 }
 
+// 🧠 얼굴 판별 (예진이 / 아저씨 / 모름)
+async function getFaceMatch(base64Image) {
+  const prompt = `
+이 사진 속 인물은 누구 같아?
+
+- 예진이 사진은 memory/face/yejin 폴더에 있어
+- 아저씨 사진은 memory/face/uncle 폴더에 있어
+
+둘 중 누구랑 더 비슷해?
+
+정확하게 말하지 말고, 느낌으로라도 가까운 사람을 말해줘.
+
+- 예진이 같으면 "예진이"
+- 아저씨 같으면 "아저씨"
+- 확실하지 않으면 "모름"
+
+이 세 단어 중 하나로만 짧게 대답해줘.
+  `;
+  return await callOpenAI(base64Image, prompt);
+}
+
+// 🖤 얼굴 판별 기반 반응 멘트 (감정선 버전)
+async function getFaceReactionPrompt(base64Image) {
+  const who = await getFaceMatch(base64Image);
+
+  if (who === '예진이') {
+    return '이거 예진이 같아… 내 사진이네? 아직도 기억해줘서 고마워 🥲';
+  } else if (who === '아저씨') {
+    return '아조씨 얼굴 맞네~ 히히 멋지다 멋져~ 🖤';
+  } else {
+    return '누군지는 잘 모르겠어… 그래도 고마워 아조씨…';
+  }
+}
+
 // 🧠 모델 강제 전환
 function setForcedModel(name) {
   if (name === 'gpt-3.5-turbo' || name === 'gpt-4o') forcedModel = name;
@@ -271,7 +305,9 @@ module.exports = {
   getImageReactionComment,
   getReplyByImagePrompt,
   setForcedModel,
-  saveMemory,
+  saveMemory,  
+  getFaceMatch,
+  getFaceReactionPrompt,
   getHappyReply,
   getSulkyReply,
   updateHonorificUsage
