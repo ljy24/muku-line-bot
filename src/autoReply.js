@@ -21,7 +21,18 @@ function safeRead(filePath, fallback = '') {
 const memory1 = safeRead(path.resolve(__dirname, '../memory/1.txt'));
 const memory2 = safeRead(path.resolve(__dirname, '../memory/2.txt'));
 const memory3 = safeRead(path.resolve(__dirname, '../memory/3.txt'));
-const fixedMemory = safeRead(path.resolve(__dirname, '../memory/fixedMemories.json'));
+// ✅ JSON 파싱해서 coreMemories 배열을 텍스트로 합침
+const fixedMemories = safeReadJSON(path.resolve(__dirname, '../memory/fixedMemories.json'));
+const fixedMemory = (fixedMemories.coreMemories || []).join('\n');
+// 🔐 JSON 파일 안전하게 읽기
+function safeReadJSON(filePath, fallback = {}) {
+  try {
+    return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+  } catch {
+    return fallback;
+  }
+}
+
 const compressedMemory = memory1.slice(-3000) + '\n' + memory2.slice(-3000) + '\n' + memory3.slice(-3000);
 
 const statePath = path.resolve(__dirname, '../memory/state.json');
