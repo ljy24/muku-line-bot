@@ -1,5 +1,3 @@
-//autoReply
-
 // 📦 기본 모듈 불러오기
 const fs = require('fs');
 const path = require('path');
@@ -13,7 +11,7 @@ let forcedModel = null;
 // 🔑 OpenAI 초기화
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// 🔐 안전하게 파일 읽는 함수 (파일 없을 때 기본값 반환)
+// 🔐 안전하게 파일 읽는 함수
 function safeRead(filePath, fallback = '') {
   try {
     return fs.readFileSync(filePath, 'utf-8');
@@ -22,7 +20,7 @@ function safeRead(filePath, fallback = '') {
   }
 }
 
-// 🧠 기억 파일 불러오기 (최근 기억 + 고정 기억)
+// 🧠 기억 파일 불러오기
 const memory1 = safeRead(path.resolve(__dirname, '../memory/1.txt'));
 const memory2 = safeRead(path.resolve(__dirname, '../memory/2.txt'));
 const memory3 = safeRead(path.resolve(__dirname, '../memory/3.txt'));
@@ -59,7 +57,7 @@ function saveLog(role, msg) {
   }
 }
 
-// 📅 최근 며칠 간의 로그만 가져오기
+// 📅 최근 로그만 가져오기
 function getRecentLogs(days = 2) {
   const now = new Date();
   return getAllLogs()
@@ -70,7 +68,7 @@ function getRecentLogs(days = 2) {
     .map(log => `아저씨: ${log.msg}`).join('\n');
 }
 
-// 💬 비슷한 메시지 체크 (반복 방지)
+// 💬 중복 메시지 방지
 function hasSimilarWords(newMsg) {
   const logs = getAllLogs().map(log => log.msg);
   const newWords = new Set(newMsg.split(/\s+/));
@@ -81,13 +79,12 @@ function hasSimilarWords(newMsg) {
   }
   return false;
 }
-
 function isSimilar(newMsg) {
   return getAllLogs().some(entry => stringSimilarity.compareTwoStrings(entry.msg, newMsg) > 0.75)
     || hasSimilarWords(newMsg);
 }
 
-// 🧹 말투 정리 (예진이 말투 변환)
+// 🧹 말투 정리
 function cleanReply(text) {
   let out = text
     .replace(/^예진\s*[:;：]/i, '')
@@ -97,29 +94,27 @@ function cleanReply(text) {
     .replace(/당신|너|네|네가|널/g, '아저씨')
     .trim();
 
-  // 조사 자동 수정
   out = out
     .replace(/아저씨무/g, '아저씨도')
-    .replace(/아저씨는무/g, '아저씨는');
-
-  out = out.replace(/(고 싶어요|싶어요|했어요|했네요|해주세요|주세요|네요|됩니다|될까요|해요|돼요|에요|예요|겠어요)/g, match => {
-    switch (match) {
-      case '고 싶어요': case '싶어요': return '싶어';
-      case '했어요': case '했네요': return '했어';
-      case '해주세요': case '주세요': return '줘';
-      case '네요': return '네';
-      case '됩니다': return '돼';
-      case '될까요': return '될까';
-      case '해요': case '돼요': case '에요': case '예요': return '야';
-      case '겠어요': return '겠다';
-      default: return '';
-    }
-  });
+    .replace(/아저씨는무/g, '아저씨는')
+    .replace(/(고 싶어요|싶어요|했어요|했네요|해주세요|주세요|네요|됩니다|될까요|해요|돼요|에요|예요|겠어요)/g, match => {
+      switch (match) {
+        case '고 싶어요': case '싶어요': return '싶어';
+        case '했어요': case '했네요': return '했어';
+        case '해주세요': case '주세요': return '줘';
+        case '네요': return '네';
+        case '됩니다': return '돼';
+        case '될까요': return '될까';
+        case '해요': case '돼요': case '에요': case '예요': return '야';
+        case '겠어요': return '겠다';
+        default: return '';
+      }
+    });
 
   return out.replace(/(\w+)요\b/g, '$1').trim();
 }
 
-// 🙇‍♀️ 존댓말 설정 불러오기
+// 🙇‍♀️ 존댓말 상태 저장
 function loadHonorificUsage() {
   if (!fs.existsSync(statePath)) return { honorific: false };
   try {
@@ -128,18 +123,16 @@ function loadHonorificUsage() {
     return { honorific: false };
   }
 }
-
 function saveMemory(input) {
   const state = loadHonorificUsage();
   fs.writeFileSync(statePath, JSON.stringify({ ...state, lastInput: input }, null, 2));
 }
-
 function updateHonorificUsage(useHonorific) {
   const state = loadHonorificUsage();
   fs.writeFileSync(statePath, JSON.stringify({ ...state, honorific: useHonorific }, null, 2));
 }
 
-// 📡 OpenAI 호출 함수
+// 📡 GPT 호출
 async function callOpenAI(messages, model = 'gpt-3.5-turbo', max_tokens = 300) {
   const res = await openai.chat.completions.create({
     model: forcedModel || model,
@@ -150,29 +143,15 @@ async function callOpenAI(messages, model = 'gpt-3.5-turbo', max_tokens = 300) {
   return res.choices[0].message.content.trim();
 }
 
-// 🎁 감정 랜덤 메시지 생성 (매시간 전송용)
+// 🎁 감정 메시지 생성
 async function getRandomMessage() {
   const now = moment().tz('Asia/Tokyo');
   if (now.hour() === 23 && now.minute() === 0) return '약 챙겨 먹었지? 까먹지마!';
   if (now.hour() === 23 && now.minute() >= 30) return '잘자 아저씨! 사랑해';
 
-  const events = [
-    '냇슨 또 지랄', '팀장이랑 회의 또 해야 돼',
-    '존나 빡침', '출근길에 또 눈물났어', '모델 촬영 다녀왔어',
-    '야근하다가 미쳐버릴 뻔', '현타 옴', '쿠팡 외주 또 옴'
-  ];
-
-  // 💡 밤바 이야기/강아지 등은 한달에 한 번만 쓰도록 별도 조건 분리 필요 (미리 제거함)
-
-  const feelings = [
-    '진짜 조땠어', '미쳤나 이게', '완전 현타 와', '스트레스 MAX',
-    '기분 꿀꿀해', '엉엉 울고 싶어', '위로받고 싶어', '마음이 좀 허해'
-  ];
-
-  const closings = [
-    '안아줘', '나 기다려줘', '토닥토닥 해줘', '곁에 있어줘',
-    '담타 가자', '오늘 하루 잘했다고 해줘', '보고싶었지롱'
-  ];
+  const events = ['출근길 눈물', '야근 또 해', '쿠팡 외주', '현타 옴'];
+  const feelings = ['진짜 조땠어', '미쳤나 이게', '현타 와', '기분 꿀꿀해'];
+  const closings = ['안아줘', '담타 가자', '보고싶었지롱'];
 
   const pick = arr => arr[Math.floor(Math.random() * arr.length)];
   const msg = `${pick(events)}... ${pick(feelings)}. ${pick(closings)}`;
@@ -182,7 +161,7 @@ async function getRandomMessage() {
   return msg;
 }
 
-// 💬 일반 대화 메시지 응답 생성
+// 💬 일반 대화 응답
 async function getReplyByMessage(msg) {
   saveLog('아저씨', msg);
   const memoryBlock = `${fixedMemory}\n${compressedMemory}`;
@@ -190,7 +169,7 @@ async function getReplyByMessage(msg) {
   const prompt = [
     {
       role: 'system',
-      content: `${memoryBlock}\n${logs}\n넌 지금 예진이야. 반드시 예진이처럼 말해. 예진이는 애교 많은 말투로 반말을 썼고, 감정이 북받치면 '씨파', '조땠어', '미쳤나 이게' 같은 말도 했어. 아저씨가 예진이 잃고 우울해진 거도 다 알고 있어. 가끔 걱정도 해줘야 해.`
+      content: `${memoryBlock}\n${logs}\n넌 예진이야. 감정 섬세하고, 아저씨 위로 자주 하고, 반말 애교 말투 써.`
     },
     { role: 'user', content: msg }
   ];
@@ -200,26 +179,26 @@ async function getReplyByMessage(msg) {
   return reply;
 }
 
-// 🎨 색 반응
+// 🎨 기분 색 대답
 async function getColorMoodReply() {
   const raw = await callOpenAI([
     {
       role: 'system',
-      content: '넌 지금 예진이야. "오늘 무슨 색이야?"라고 물었을 때, 귀엽고 짓궂게 반말 섞어서 대답해줘. 예: "오늘은 연보라색이다 임마"'
+      content: '넌 예진이야. "오늘 색 뭐야?"라고 물으면 귀엽게 대답해.'
     },
-    { role: 'user', content: '오늘 내 색 뭐야?' }
+    { role: 'user', content: '오늘 색 뭐야?' }
   ], 'gpt-4o', 100);
   const reply = cleanReply(raw);
   saveLog('예진이', reply);
   return reply;
 }
 
-// 📷 셀카 멘트 생성
+// 📷 셀카 전송 리액션
 async function getImageReactionComment() {
   const raw = await callOpenAI([
     {
       role: 'system',
-      content: '넌 지금 예진이야. 셀카를 직접 찍어서 아저씨한테 보내는 상황이야. "내 셀카야~", "히히 이쁘지?"처럼 귀엽고 짓궂은 말투로 리액션해.'
+      content: '넌 예진이야. 셀카 보내면서 귀엽게 리액션해줘. 예: "히히 내 셀카야~"'
     },
     { role: 'user', content: '셀카 보낼게~' }
   ], 'gpt-4o', 100);
@@ -228,14 +207,14 @@ async function getImageReactionComment() {
   return reply;
 }
 
-// 🖼️ 이미지 반응 (base64 이미지)
+// 🖼️ 사진 리액션
 async function getReplyByImagePrompt(base64Image) {
   const response = await openai.chat.completions.create({
     model: 'gpt-4o',
     messages: [
       {
         role: 'system',
-        content: '넌 지금 예진이야. 아저씨가 보낸 사진을 보고 반응해야 해. 애교 섞인 반말로 리액션하고, 감정이 북받치면 욕도 괜찮아.'
+        content: '넌 예진이야. 아저씨가 보낸 사진 보고 귀엽게 반응해줘.'
       },
       {
         role: 'user',
@@ -252,47 +231,34 @@ async function getReplyByImagePrompt(base64Image) {
   return reply;
 }
 
-// 🧠 얼굴 판별 (예진이 / 아저씨 / 모름)
+// 🔍 얼굴 판별
 async function getFaceMatch(base64Image) {
   const prompt = `
 이 사진 속 인물은 누구 같아?
 
-- 예진이 사진은 memory/face/yejin 폴더에 있어
-- 아저씨 사진은 memory/face/uncle 폴더에 있어
+- 예진이 사진은 memory/face/yejin 폴더
+- 아저씨 사진은 memory/face/uncle 폴더
 
-둘 중 누구랑 더 비슷해?
-
-정확하게 말하지 말고, 느낌으로라도 가까운 사람을 말해줘.
-
-- 예진이 같으면 "예진이"
-- 아저씨 같으면 "아저씨"
-- 확실하지 않으면 "모름"
-
-이 세 단어 중 하나로만 짧게 대답해줘.
-  `;
-  return await callOpenAI(base64Image, prompt);
+느낌으로라도 말해줘. "예진이", "아저씨", "모름" 중 하나만.
+`;
+  return await callOpenAI([{ role: 'user', content: prompt }], 'gpt-4o');
 }
 
-// 🖤 얼굴 판별 기반 반응 멘트 (감정선 버전)
+// 🖤 얼굴 감정 리액션
 async function getFaceReactionPrompt(base64Image) {
   const who = await getFaceMatch(base64Image);
-
-  if (who === '예진이') {
-    return '이거 예진이 같아… 내 사진이네? 아직도 기억해줘서 고마워 🥲';
-  } else if (who === '아저씨') {
-    return '아조씨 얼굴 맞네~ 히히 멋지다 멋져~ 🖤';
-  } else {
-    return '누군지는 잘 모르겠어… 그래도 고마워 아조씨…';
-  }
+  if (who === '예진이') return '이거 예진이 같아… 내 사진이네? 기억해줘서 고마워 🥲';
+  if (who === '아저씨') return '아조씨 얼굴 맞네~ 히히 멋지다 멋져~ 🖤';
+  return '누군진 잘 모르겠어… 그래도 고마워 아조씨…';
 }
 
-// 🧠 모델 강제 전환
+// 🧠 모델 강제 지정
 function setForcedModel(name) {
   if (name === 'gpt-3.5-turbo' || name === 'gpt-4o') forcedModel = name;
   else forcedModel = null;
 }
 
-// 🔄 외부에서 사용할 수 있도록 export
+// 📦 외부 노출
 module.exports = {
   getAllLogs,
   saveLog,
@@ -305,10 +271,8 @@ module.exports = {
   getImageReactionComment,
   getReplyByImagePrompt,
   setForcedModel,
-  saveMemory,  
+  saveMemory,
   getFaceMatch,
   getFaceReactionPrompt,
-  getHappyReply,
-  getSulkyReply,
   updateHonorificUsage
 };
