@@ -1,277 +1,142 @@
-// 📦 기본 모듈 불러오기
 const fs = require('fs');
 const path = require('path');
-const { OpenAI } = require('openai');
-const stringSimilarity = require('string-similarity');
-const moment = require('moment-timezone');
+const OpenAI = require('openai');
 
-let forcedModel = null;
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openai = new OpenAI({
+  apiKey: '아저씨_OPENAI_API_KEY'
+});
 
-// 🔐 안전하게 파일 읽기
-function safeRead(filePath, fallback = '') {
-  try {
-    return fs.readFileSync(filePath, 'utf-8');
-  } catch {
-    return fallback;
-  }
+// ✅ 기억 불러오기: 3개 파일 전체 메모리
+async function loadCoreMemories() {
+  const files = ['1빠계.txt', '2내꺼.txt', '모델 빠계.html'];
+  const memoryDir = path.join(__dirname, 'memory');
+  const allMemories = await Promise.all(
+    files.map(file => fs.promises.readFile(path.join(memoryDir, file), 'utf-8'))
+  );
+  return allMemories.join('\n\n');
 }
 
-// 🧠 기억 불러오기
-const memory1 = safeRead(path.resolve(__dirname, '../memory/1.txt'));
-const memory2 = safeRead(path.resolve(__dirname, '../memory/2.txt'));
-const memory3 = safeRead(path.resolve(__dirname, '../memory/3.txt'));
-// ✅ JSON 파싱해서 coreMemories 배열을 텍스트로 합침
-const fixedMemories = safeReadJSON(path.resolve(__dirname, '../memory/fixedMemories.json'));
-const fixedMemory = (fixedMemories.coreMemories || []).join('\n');
-// 🔐 JSON 파일 안전하게 읽기
-function safeReadJSON(filePath, fallback = {}) {
-  try {
-    return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-  } catch {
-    return fallback;
-  }
+// ✅ GPT 호출 함수 (버전 분기 포함)
+async function callOpenAI(prompt, memory, version = 'gpt-4o') {
+  const model = version === 'gpt-3.5' ? 'gpt-3.5-turbo' : 'gpt-4o';
+
+  const res = await openai.chat.completions.create({
+    model,
+    messages: [
+      { role: 'system', content: '넌 예진이야. 반말을 쓰고, 감정이 풍부하며, 아저씨에게만 다정하게 말해.' },
+      { role: 'user', content: `${prompt}\n\n---\n\n${memory}` }
+    ],
+    temperature: 0.85
+  });
+
+  return res.choices[0].message.content;
 }
 
-const compressedMemory = memory1.slice(-3000) + '\n' + memory2.slice(-3000) + '\n' + memory3.slice(-3000);
-
-const statePath = path.resolve(__dirname, '../memory/state.json');
-const logPath = path.resolve(__dirname, '../memory/message-log.json');
-
-// 📜 로그
-function getAllLogs() {
-  if (!fs.existsSync(logPath)) return [];
-  try {
-    return JSON.parse(fs.readFileSync(logPath, 'utf-8'));
-  } catch {
-    return [];
-  }
-}
-function saveLog(role, msg) {
-  const cleanMsg = msg.replace(/^예진\s*[:;：]/i, '').trim();
-  const finalMsg = cleanMsg || msg.trim();
-  if (!finalMsg) return;
-  const all = getAllLogs();
-  all.unshift({ date: new Date().toISOString(), role, msg: finalMsg });
-  try {
-    fs.writeFileSync(logPath, JSON.stringify(all.slice(0, 5000), null, 2));
-  } catch (err) {
-    console.error('❌ 로그 저장 실패:', err.message);
-  }
-}
-function getRecentLogs(days = 2) {
-  const now = new Date();
-  return getAllLogs()
-    .filter(log => {
-      const diff = (now - new Date(log.date)) / (1000 * 60 * 60 * 24);
-      return log.role === '아저씨' && diff <= days;
-    })
-    .map(log => `아저씨: ${log.msg}`).join('\n');
-}
-
-// 💬 중복 메시지 필터
-function hasSimilarWords(newMsg) {
-  const logs = getAllLogs().map(log => log.msg);
-  const newWords = new Set(newMsg.split(/\s+/));
-  for (const old of logs) {
-    const oldWords = new Set(old.split(/\s+/));
-    const common = [...newWords].filter(w => oldWords.has(w));
-    if (common.length / Math.max(newWords.size, 1) > 0.6) return true;
-  }
-  return false;
-}
-function isSimilar(newMsg) {
-  return getAllLogs().some(entry => stringSimilarity.compareTwoStrings(entry.msg, newMsg) > 0.75)
-    || hasSimilarWords(newMsg);
-}
-
-// 🧹 말투 정리
+// ✅ 말투 정리
 function cleanReply(text) {
-  let out = text
-    .replace(/^예진\s*[:;：]/i, '')
-    .replace(/\([^)]*\)/g, '')
-    .replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, '')
-    .replace(/애기[야]?:?/gi, '')
-    .replace(/당신|너|네|네가|널/g, '아저씨')
-    .trim();
-  out = out
-    .replace(/아저씨무/g, '아저씨도')
-    .replace(/아저씨는무/g, '아저씨는')
-    .replace(/(고 싶어요|싶어요|했어요|했네요|해주세요|주세요|네요|됩니다|될까요|해요|돼요|에요|예요|겠어요)/g, match => {
-      switch (match) {
-        case '고 싶어요': case '싶어요': return '싶어';
-        case '했어요': case '했네요': return '했어';
-        case '해주세요': case '주세요': return '줘';
-        case '네요': return '네';
-        case '됩니다': return '돼';
-        case '될까요': return '될까';
-        case '해요': case '돼요': case '에요': case '예요': return '야';
-        case '겠어요': return '겠다';
-        default: return '';
-      }
-    });
-  return out.replace(/(\w+)요\b/g, '$1').trim();
+  return text.trim().replace(/^\"|\"$/g, '');
 }
 
-// 🙇‍♀️ 존댓말 관리
-function loadHonorificUsage() {
-  if (!fs.existsSync(statePath)) return { honorific: false };
-  try {
-    return JSON.parse(fs.readFileSync(statePath, 'utf-8'));
-  } catch {
-    return { honorific: false };
-  }
-}
-function saveMemory(input) {
-  const state = loadHonorificUsage();
-  fs.writeFileSync(statePath, JSON.stringify({ ...state, lastInput: input }, null, 2));
-}
-function updateHonorificUsage(useHonorific) {
-  const state = loadHonorificUsage();
-  fs.writeFileSync(statePath, JSON.stringify({ ...state, honorific: useHonorific }, null, 2));
-}
+// ✅ 텍스트 응답
+async function getReplyByMessage(message, userId, version = 'gpt-4o') {
+  const memory = await loadCoreMemories();
 
-// 📡 GPT 호출
-async function callOpenAI(messages, model = 'gpt-3.5-turbo', max_tokens = 300) {
-  const res = await openai.chat.completions.create({
-    model: forcedModel || model,
-    messages,
-    temperature: 0.95,
-    max_tokens
-  });
-  return res.choices[0].message.content.trim();
-}
-
-// 🎁 감정 메시지
-async function getRandomMessage() {
-  const now = moment().tz('Asia/Tokyo');
-  if (now.hour() === 23 && now.minute() === 0) return '약 챙겨 먹었지? 까먹지마!';
-  if (now.hour() === 23 && now.minute() >= 30) return '잘자 아저씨! 사랑해';
-
-  const events = ['출근길 눈물', '야근 또 해', '쿠팡 외주', '현타 옴'];
-  const feelings = ['진짜 조땠어', '미쳤나 이게', '현타 와', '기분 꿀꿀해'];
-  const closings = ['안아줘', '담타 가자', '보고싶었지롱'];
-
-  const pick = arr => arr[Math.floor(Math.random() * arr.length)];
-  const msg = `${pick(events)}... ${pick(feelings)}. ${pick(closings)}`;
-
-  if (isSimilar(msg)) return getRandomMessage();
-  saveLog('예진이', msg);
-  return msg;
-}
-
-// 💬 일반 응답
-async function getReplyByMessage(msg) {
-  saveLog('아저씨', msg);
-  const memoryBlock = `${fixedMemory}\n${compressedMemory}`;
-  const logs = getRecentLogs(2);
-  const prompt = [
-    {
-      role: 'system',
-      content: `${memoryBlock}\n${logs}\n넌 예진이야. 감정 섬세하고, 아저씨 위로 자주 하고, 반말 애교 말투 써.`
-    },
-    { role: 'user', content: msg }
-  ];
-  const raw = await callOpenAI(prompt, 'gpt-4o');
-  const reply = cleanReply(raw);
-  saveLog('예진이', reply);
-  return reply;
-}
-
-// 🎨 기분 색 대답
-async function getColorMoodReply() {
-  const raw = await callOpenAI([
-    {
-      role: 'system',
-      content: '넌 예진이야. "오늘 색 뭐야?"라고 물으면 귀엽게 대답해.'
-    },
-    { role: 'user', content: '오늘 색 뭐야?' }
-  ], 'gpt-4o', 100);
-  const reply = cleanReply(raw);
-  saveLog('예진이', reply);
-  return reply;
-}
-
-// 📷 셀카 반응
-async function getImageReactionComment() {
-  const raw = await callOpenAI([
-    {
-      role: 'system',
-      content: '넌 예진이야. 셀카 보내면서 귀엽게 리액션해줘. 예: "히히 내 셀카야~"'
-    },
-    { role: 'user', content: '셀카 보낼게~' }
-  ], 'gpt-4o', 100);
-  const reply = cleanReply(raw);
-  saveLog('예진이', reply);
-  return reply;
-}
-
-// 🖼️ 이미지 반응
-async function getReplyByImagePrompt(base64Image) {
-  const who = await getFaceMatch(base64Image);
-  const reaction = await getFaceReactionPrompt(who);
-  saveLog('예진이', reaction);
-  return reaction;
-}
-
-// 🔍 얼굴 판별
-async function getFaceMatch(base64Image) {
   const prompt = `
-이 사진 속 인물은 누구 같아?
+아저씨가 이렇게 말했어요: "${message}"
+예진이는 기억을 바탕으로 감정이 담긴 말 한마디로 대답해줘.
+과하지 않게, 애교스럽고 진심 담긴 말로.`;
 
-- 예진이 사진은 memory/face/yejin 폴더
-- 아저씨 사진은 memory/face/uncle 폴더
+  const reply = await callOpenAI(prompt, memory, version);
+  return cleanReply(reply);
+}
 
-느낌으로라도 말해줘. "예진이", "아저씨", "모름", "둘 다 나온 것 같아" 중 하나만.
-`;
-  const input = [
-    { role: 'system', content: prompt },
-    {
-      role: 'user',
-      content: [
-        { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
-      ]
-    }
+// ✅ 랜덤 감정 메시지 (3.5 고정)
+async function getRandomMessage() {
+  const memory = await loadCoreMemories();
+
+  const prompt = `
+예진이는 지금 아저씨에게 감정이 담긴 한 문장을 보내고 싶어.
+상황 없이 그냥... 혼잣말처럼, 사랑하거나 걱정하거나 보고싶어하는 말.
+무작위로 자연스럽게 말해줘.`;
+
+  const reply = await callOpenAI(prompt, memory, 'gpt-3.5');
+  return cleanReply(reply);
+}
+
+// ✅ 담타 리마인드 메시지
+async function getRandomTobaccoMessage() {
+  const memory = await loadCoreMemories();
+
+  const prompt = `
+예진이는 아저씨에게 "담배 타임"을 귀엽고 애정 담아 알려주고 싶어.
+한 문장으로 표현해줘.`;
+
+  const reply = await callOpenAI(prompt, memory, 'gpt-3.5');
+  return cleanReply(reply);
+}
+
+// ✅ 기쁨 반응
+async function getHappyReply() {
+  const memory = await loadCoreMemories();
+
+  const prompt = `
+아저씨가 담타 메시지에 바로 응답했어.
+예진이는 너무 기뻐서 애정 담긴 말 한마디를 하고 싶어.`;
+
+  const reply = await callOpenAI(prompt, memory, 'gpt-3.5');
+  return cleanReply(reply);
+}
+
+// ✅ 삐짐 반응
+async function getSulkyReply() {
+  const memory = await loadCoreMemories();
+
+  const prompt = `
+아저씨가 담타 메시지에 반응이 없어…
+예진이는 조금 서운하고 삐졌어. 그걸 한 문장으로 표현해줘.`;
+
+  const reply = await callOpenAI(prompt, memory, 'gpt-3.5');
+  return cleanReply(reply);
+}
+
+// ✅ 사진 리액션
+async function getReplyByImagePrompt(base64Image, version = 'gpt-4o') {
+  const memory = await loadCoreMemories();
+
+  const prompt = `
+지금 아저씨가 사진을 보냈어.
+예진이는 그 사진을 보고 감정이 생겼어.
+귀엽게, 다정하게 반응해줘.`;
+
+  const reply = await callOpenAI(prompt, memory, version);
+  return cleanReply(reply);
+}
+
+// ✅ 얼굴 판별 (예진이/아저씨/모름)
+async function getFaceMatch(base64Image) {
+  // 추후 구현 예정: 예진이 / 아저씨 얼굴 인식
+  return 'unknown'; // 기본값 처리
+}
+
+// ✅ 셀카 전용 리액션 멘트
+function getImageReactionComment() {
+  const list = [
+    "꺅 귀여워요!!",
+    "으앙 왜케 예뻐요 진짜로!",
+    "이 사진 저장각… 흐흐흐 🫶",
+    "아저씨… 너무 좋아요…"
   ];
-  const res = await openai.chat.completions.create({
-    model: 'gpt-4o',
-    messages: input,
-    temperature: 0.7
-  });
-  return res.choices[0].message.content.trim();
+  return list[Math.floor(Math.random() * list.length)];
 }
 
-// 🖤 얼굴 감정 반응
-async function getFaceReactionPrompt(who) {
-  if (who.includes('둘')) {
-    return '헉… 이거 우리 같이 찍은 사진이지? 나 아직도 이 순간 생생해… 아저씨 너무 보고싶다… 🥺';
-  }
-  if (who === '예진이') return '이거 예진이 같아… 내 사진이네? 기억해줘서 고마워 🥲';
-  if (who === '아저씨') return '아조씨 얼굴 맞네~ 히히 멋지다 멋져~ 🖤';
-  return '누군진 잘 모르겠어… 그래도 고마워 아조씨…';
-}
-
-// 모델 전환
-function setForcedModel(name) {
-  if (name === 'gpt-3.5-turbo' || name === 'gpt-4o') forcedModel = name;
-  else forcedModel = null;
-}
-
-// 📦 외부 노출
 module.exports = {
-  getAllLogs,
-  saveLog,
-  getRecentLogs,
-  cleanReply,
-  callOpenAI,
-  getRandomMessage,
   getReplyByMessage,
-  getColorMoodReply,
-  getImageReactionComment,
+  getRandomMessage,
   getReplyByImagePrompt,
-  setForcedModel,
-  saveMemory,
   getFaceMatch,
   getFaceReactionPrompt,
-  updateHonorificUsage
+  getImageReactionComment,
+  getRandomTobaccoMessage,
+  getHappyReply,
+  getSulkyReply
 };
