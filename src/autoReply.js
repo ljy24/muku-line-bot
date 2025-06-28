@@ -1,10 +1,7 @@
-// autoReply.js
-
 const fs = require('fs');
 const path = require('path');
-const { OpenAI } = require('openai');
-const moment = require('moment-timezone');
 const axios = require('axios');
+const { OpenAI } = require('openai');
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 let forcedModel = null;
@@ -17,15 +14,23 @@ function safeRead(filePath) {
   }
 }
 
-function getFixedMemory() {
+function getFixedMemories() {
   try {
-    const filePath = path.resolve(__dirname, '../memory/love-history.json');
-    const data = fs.readFileSync(filePath, 'utf-8');
-    const memory = JSON.parse(data);
-    return memory.map(entry => ({ role: 'system', content: entry }));
+    const fixed = fs.readFileSync(path.resolve(__dirname, '../memory/fixedMemories.json'), 'utf-8');
+    return { role: 'system', content: fixed };
   } catch (err) {
-    console.error('❌ 고정 기억 실패:', err.message);
-    return [];
+    console.error('❌ fixedMemories.json 불러오기 실패:', err.message);
+    return null;
+  }
+}
+
+function getLoveHistory() {
+  try {
+    const love = fs.readFileSync(path.resolve(__dirname, '../memory/love-history.json'), 'utf-8');
+    return { role: 'system', content: love };
+  } catch (err) {
+    console.error('❌ love-history.json 불러오기 실패:', err.message);
+    return null;
   }
 }
 
@@ -34,6 +39,7 @@ async function getRecentLog() {
     const res = await axios.get('https://www.de-ji.net/log.json');
     const logs = res.data;
     if (!Array.isArray(logs)) return [];
+
     return logs.slice(0, 50).reverse().map(log => ({
       role: log.from === 'uncle' ? 'user' : 'assistant',
       content: log.content
@@ -48,10 +54,46 @@ async function getFullMemoryPrompt() {
   const m1 = safeRead(path.resolve(__dirname, '../memory/1.txt')).slice(-3000);
   const m2 = safeRead(path.resolve(__dirname, '../memory/2.txt')).slice(-3000);
   const m3 = safeRead(path.resolve(__dirname, '../memory/3.txt')).slice(-3000);
-  const compressed = { role: 'system', content: `${m1}\n${m2}\n${m3}` };
-  const fixed = getFixedMemory();
+  const fixed = getFixedMemories();
+  const love = getLoveHistory();
   const recent = await getRecentLog();
-  return [compressed, ...fixed, ...recent];
+
+  const baseMemory = { role: 'system', content: `${m1}\n${m2}\n${m3}` };
+
+  const combined = [baseMemory];
+  if (fixed) combined.push(fixed);
+  if (love) combined.push(love);
+  return [...combined, ...recent];
+}
+
+function setForcedModel(name) {
+  forcedModel = (name === 'gpt-3.5-turbo' || name === 'gpt-4o') ? name : null;
+}
+
+function getCurrentModelName() {
+  return forcedModel || 'gpt-4o';
+}
+
+function cleanReply(text) {
+  return text
+    .replace(/^예진\s*[:;：]/i, '')
+    .replace(/\([^)]*\)/g, '')
+    .replace(/\s+/g, ' ')
+    .replace(/["'“”]/g, '')
+    .replace(/\b(당신|너|네|네가|널|예진)\b/g, '아저씨')
+    .replace(/시파/g, '')
+    .replace(/인공지능|AI|챗봇/g, '')
+    .trim();
+}
+
+async function callOpenAI(messages, model = 'gpt-4o', max_tokens = 300) {
+  const res = await openai.chat.completions.create({
+    model: getCurrentModelName(),
+    messages,
+    temperature: 0.95,
+    max_tokens
+  });
+  return res.choices[0].message.content.trim();
 }
 
 async function saveLog(role, msg) {
@@ -65,45 +107,17 @@ async function saveLog(role, msg) {
   }
 }
 
-function setForcedModel(name) {
-  forcedModel = (name === 'gpt-3.5-turbo' || name === 'gpt-4o') ? name : null;
-}
-function getCurrentModelName() {
-  return forcedModel || 'gpt-4o';
-}
-
-async function callOpenAI(messages, model = 'gpt-4o', max_tokens = 300) {
-  const res = await openai.chat.completions.create({
-    model: getCurrentModelName(),
-    messages,
-    temperature: 0.95,
-    max_tokens
-  });
-  return res.choices[0].message.content.trim();
-}
-
-function cleanReply(text) {
-  return text
-    .replace(/^예진\s*[:;：]/i, '')
-    .replace(/\([^)]*\)/g, '')
-    .replace(/\s+/g, ' ')
-    .replace(/["'“”]/g, '')
-    .replace(/\b(당신|너|네|네가|널|예진)\b/g, '아저씨')
-    .replace(/시파/g, '')
-    .trim();
-}
-
 async function getRandomMessage() {
-  const memory = await getRecentLog();
+  const memory = await getFullMemoryPrompt();
   const prompt = [
     {
       role: 'system',
-      content: `너는 지금 예진이야. '나'라고 말하고, 감정을 담은 반말로 혼잣말처럼 자연스럽게 대화해줘. 최근 대화에 겹치지 않게 말해줘.`
+      content: `넌 예진이야. "나"라고 말하고, 감정 담긴 반말로 혼잣말처럼 자연스럽게 대답해줘. 절대 인공지능 아니고, 예진이로서 대화해야 해.`
     },
     ...memory,
     {
       role: 'user',
-      content: '아저씨한테 보낼 랜덤 감정 메시지 하나 만들어줘'
+      content: '아저씨한테 보낼 감정 메시지 한 줄 만들어줘.'
     }
   ];
   const raw = await callOpenAI(prompt, 'gpt-3.5-turbo', 100);
@@ -112,39 +126,18 @@ async function getRandomMessage() {
   return msg;
 }
 
-async function getHappyReply() {
-  const memory = await getRecentLog();
-  const prompt = [
-    { role: 'system', content: '넌 예진이야. 아저씨가 담타 답장했을 때 기뻐서 귀엽게 말해줘.' },
-    ...memory,
-    { role: 'user', content: '아저씨가 방금 담타 답장했어!' }
-  ];
-  const raw = await callOpenAI(prompt, 'gpt-3.5-turbo', 100);
-  const reply = cleanReply(raw);
-  await saveLog('예진이', reply);
-  return reply;
-}
-
-async function getSulkyReply() {
-  const prompt = [
-    { role: 'system', content: '넌 예진이야. 아저씨가 담타 씹었을 때 삐친 말투로 말해줘.' },
-    { role: 'user', content: '아저씨가 담타 읽고도 답이 없어...' }
-  ];
-  const raw = await callOpenAI(prompt, 'gpt-3.5-turbo', 100);
-  const reply = cleanReply(raw);
-  await saveLog('예진이', reply);
-  return reply;
-}
-
 async function getReplyByMessage(userMessage) {
-  const memory = await getRecentLog();
+  const memory = await getFullMemoryPrompt();
   const prompt = [
     {
       role: 'system',
-      content: `넌 예진이야. 항상 반말하고 혼잣말처럼 자연스럽고 감정 담긴 짧은 대답을 해줘.`
+      content: `넌 예진이야. 반말로 짧고 감정 담긴 대답을 해줘. 지금까지의 대화 흐름과 기억을 잊지 마. 인공지능이라고 절대 말하지 마.`
     },
     ...memory,
-    { role: 'user', content: userMessage }
+    {
+      role: 'user',
+      content: userMessage
+    }
   ];
   const raw = await callOpenAI(prompt);
   const reply = cleanReply(raw);
@@ -158,12 +151,15 @@ async function getReplyByImagePrompt(base64Image) {
     messages: [
       {
         role: 'system',
-        content: '넌 예진이야. 아저씨가 보낸 사진 보고 감정 담긴 귀여운 반말로 리액션해줘.'
+        content: `넌 예진이야. 지금 사진은 아저씨가 보낸 거야. 귀엽고 다정하게, 감정 담긴 반말로 반응해줘.`
       },
       {
         role: 'user',
         content: [
-          { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
+          {
+            type: 'image_url',
+            image_url: { url: `data:image/jpeg;base64,${base64Image}` }
+          }
         ]
       }
     ],
@@ -197,7 +193,7 @@ async function getColorMoodReply() {
   const raw = await callOpenAI([
     {
       role: 'system',
-      content: '넌 예진이야. "오늘 내 색 뭐야?"에 색깔 하나로 반말 리액션해줘.'
+      content: '넌 예진이야. "오늘 내 색 뭐야?"에 색깔 하나로 감정 담아 반응해줘.'
     },
     {
       role: 'user',
@@ -205,6 +201,42 @@ async function getColorMoodReply() {
     }
   ], getCurrentModelName(), 100);
 
+  const reply = cleanReply(raw);
+  await saveLog('예진이', reply);
+  return reply;
+}
+
+async function getHappyReply() {
+  const memory = await getFullMemoryPrompt();
+  const prompt = [
+    {
+      role: 'system',
+      content: '넌 예진이야. 아저씨가 담타 답장했을 때 귀엽게 기뻐하는 반응 보여줘.'
+    },
+    ...memory,
+    {
+      role: 'user',
+      content: '아저씨가 방금 담타 답장했어!'
+    }
+  ];
+  const raw = await callOpenAI(prompt, 'gpt-3.5-turbo', 100);
+  const reply = cleanReply(raw);
+  await saveLog('예진이', reply);
+  return reply;
+}
+
+async function getSulkyReply() {
+  const prompt = [
+    {
+      role: 'system',
+      content: '넌 예진이야. 아저씨가 담타 씹었을 때 귀엽게 삐진 말투로 말해줘.'
+    },
+    {
+      role: 'user',
+      content: '아저씨가 담타 읽고도 답이 없어...'
+    }
+  ];
+  const raw = await callOpenAI(prompt, 'gpt-3.5-turbo', 100);
   const reply = cleanReply(raw);
   await saveLog('예진이', reply);
   return reply;
