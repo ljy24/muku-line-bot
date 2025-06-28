@@ -1,4 +1,4 @@
-//index.js
+// index.js - 무쿠 LINE 서버 전체 코드 (예진이 감정 응답 포함)
 
 // 📦 기본 모듈 불러오기
 const fs = require('fs');
@@ -8,7 +8,7 @@ const express = require('express');
 const cron = require('node-cron');
 const moment = require('moment-timezone');
 
-// 🧠 자동응답 함수들
+// 🧠 자동응답 함수들 (예진이 말투 응답 로직)
 const {
   getReplyByMessage,
   getReplyByImagePrompt,
@@ -33,10 +33,10 @@ const config = {
 const client = new Client(config);
 const userId = process.env.TARGET_USER_ID;
 
-// 🏠 기본 응답
+// 🏠 루트 확인용
 app.get('/', (_, res) => res.send('무쿠 살아있엉 🐣'));
 
-// 💥 강제 메시지 푸시
+// 💥 수동 강제 메시지 푸시 엔드포인트
 app.get('/force-push', async (req, res) => {
   const msg = await getRandomMessage();
   if (msg) {
@@ -45,10 +45,10 @@ app.get('/force-push', async (req, res) => {
   } else res.send('❌ 메시지 생성 실패');
 });
 
-// 🚀 서버 시작 시 인사 (일본 현지 시간, 감성 예진이 말투 GPT 생성)
+// 🚀 서버 시작 시 감성 메시지 자동 전송
 (async () => {
   try {
-    const msg = await getRandomMessageByTime(); // 현재 도쿄 시간 기준 예진이 스타일 감성 메시지 생성
+    const msg = await getRandomMessageByTime();
     if (msg) {
       await client.pushMessage(userId, { type: 'text', text: msg });
       saveLog('예진이', msg);
@@ -59,11 +59,11 @@ app.get('/force-push', async (req, res) => {
   }
 })();
 
-// ⏰ 하루 12회, 무작위 시간에 감정 메시지 전송
+// ⏰ 하루 12회 랜덤 감정 메시지
 function scheduleDailyShortMessages() {
   const times = new Set();
   while (times.size < 12) {
-    const hour = Math.floor(Math.random() * 24); // 0~23시
+    const hour = Math.floor(Math.random() * 24);
     const minute = Math.floor(Math.random() * 60);
     times.add(`${minute} ${hour} * * *`);
   }
@@ -83,7 +83,7 @@ scheduleDailyShortMessages();
 let lastTobaccoPushTime = null;
 let waitingForReply = false;
 
-// ⏰ 정각마다 담타 전송 및 삐짐 대기
+// ⏰ 정각 담타 메시지 및 삐짐 감정
 cron.schedule('0 * * * *', async () => {
   const msg = await getRandomMessage();
   await client.pushMessage(userId, { type: 'text', text: msg });
@@ -98,7 +98,7 @@ cron.schedule('0 * * * *', async () => {
   }, 5 * 60 * 1000);
 }, { timezone: 'Asia/Tokyo' });
 
-// 🌐 웹훅 처리
+// 🌐 LINE 웹훅 처리
 app.post('/webhook', middleware(config), async (req, res) => {
   try {
     const events = req.body.events || [];
@@ -113,7 +113,6 @@ app.post('/webhook', middleware(config), async (req, res) => {
           if (waitingForReply) {
             const diff = Date.now() - lastTobaccoPushTime;
             waitingForReply = false;
-
             if (diff <= 5 * 60 * 1000) {
               const happy = await getHappyReply();
               await client.replyMessage(event.replyToken, { type: 'text', text: happy });
@@ -127,7 +126,6 @@ app.post('/webhook', middleware(config), async (req, res) => {
             await client.replyMessage(event.replyToken, { type: 'text', text: `지금은 ${ver}으로 말하고 있어~` });
             return;
           }
-
           if (/^(3\.5|gpt-?3\.5)$/i.test(text)) {
             await client.replyMessage(event.replyToken, { type: 'text', text: setForcedModel('gpt-3.5-turbo') || 'gpt-3.5로 설정했어!' });
             return;
@@ -199,6 +197,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
   }
 });
 
+// 🛠️ 서버 실행
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`무쿠 서버 스타트! 포트: ${PORT}`);
