@@ -1,20 +1,19 @@
-// autoReply.js
-
 const fs = require('fs');
 const path = require('path');
 const { OpenAI } = require('openai');
 const moment = require('moment-timezone');
 const axios = require('axios');
 
+// 🔑 OpenAI 설정
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 let forcedModel = null;
 
-// ✅ 외부 서버 로그 저장 (/save 라우트로 role/msg/date 전송)
+// ✅ 외부 로그 저장 (🛠️ /log + date 포함)
 async function saveLog(role, msg) {
   try {
-    await axios.post('https://muku-line-log.onrender.com/save', {
-      role: role === '아저씨' ? 'uncle' : 'yejin',
-      msg,
+    await axios.post('https://muku-line-log.onrender.com/log', {
+      from: role === '아저씨' ? 'uncle' : 'yejin',
+      content: msg,
       date: new Date().toISOString()
     });
   } catch (err) {
@@ -22,15 +21,16 @@ async function saveLog(role, msg) {
   }
 }
 
+// GPT 모델 강제 전환
 function setForcedModel(name) {
   if (name === 'gpt-3.5-turbo' || name === 'gpt-4o') forcedModel = name;
   else forcedModel = null;
 }
-
 function getCurrentModelName() {
   return forcedModel || 'gpt-4o';
 }
 
+// GPT 호출
 async function callOpenAI(messages, model = 'gpt-4o', max_tokens = 300) {
   const response = await openai.chat.completions.create({
     model: forcedModel || model,
@@ -41,6 +41,7 @@ async function callOpenAI(messages, model = 'gpt-4o', max_tokens = 300) {
   return response.choices[0].message.content.trim();
 }
 
+// 말투 정리
 function cleanReply(text) {
   return text
     .replace(/^예진\s*[:;：]/i, '')
@@ -52,6 +53,7 @@ function cleanReply(text) {
     .trim();
 }
 
+// 랜덤 감정 메시지
 async function getRandomMessage() {
   const prompt = [
     {
@@ -69,6 +71,7 @@ async function getRandomMessage() {
   return msg;
 }
 
+// 담타 기쁨 반응
 async function getHappyReply() {
   const prompt = [
     {
@@ -86,6 +89,7 @@ async function getHappyReply() {
   return reply;
 }
 
+// 담타 삐짐 반응
 async function getSulkyReply() {
   const prompt = [
     {
@@ -103,6 +107,7 @@ async function getSulkyReply() {
   return reply;
 }
 
+// 일반 대화 응답
 async function getReplyByMessage(userMessage) {
   const prompt = [
     {
@@ -120,6 +125,7 @@ async function getReplyByMessage(userMessage) {
   return reply;
 }
 
+// 이미지 기반 리액션
 async function getReplyByImagePrompt(base64Image) {
   const response = await openai.chat.completions.create({
     model: 'gpt-4o',
@@ -143,6 +149,7 @@ async function getReplyByImagePrompt(base64Image) {
   return cleanReply(reply);
 }
 
+// 기분 색깔 응답
 async function getColorMoodReply() {
   const prompt = [
     {
@@ -160,6 +167,7 @@ async function getColorMoodReply() {
   return reply;
 }
 
+// 셀카 보낼 때 멘트
 async function getImageReactionComment() {
   const prompt = [
     {
@@ -177,6 +185,7 @@ async function getImageReactionComment() {
   return reply;
 }
 
+// ✅ export
 module.exports = {
   getReplyByMessage,
   getReplyByImagePrompt,
