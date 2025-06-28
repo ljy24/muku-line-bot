@@ -1,26 +1,15 @@
+// autoReply.js
+
+// 📦 기본 모듈
 const fs = require('fs');
 const path = require('path');
 const { OpenAI } = require('openai');
-const moment = require('moment-timezone');
 const axios = require('axios');
 
-// 🔑 OpenAI 설정
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 let forcedModel = null;
 
-// ✅ 외부 로그 저장 (🛠️ /log + date 포함)
-async function saveLog(role, msg) {
-  try {
-    await axios.post('https://muku-line-log.onrender.com/log', {
-      from: role === '아저씨' ? 'uncle' : 'yejin',
-      content: msg
-    });
-  } catch (err) {
-    console.error('❌ 원격 로그 저장 실패:', err.message);
-  }
-}
-
-// GPT 모델 강제 전환
+// 🧠 고정 모델
 function setForcedModel(name) {
   if (name === 'gpt-3.5-turbo' || name === 'gpt-4o') forcedModel = name;
   else forcedModel = null;
@@ -29,7 +18,19 @@ function getCurrentModelName() {
   return forcedModel || 'gpt-4o';
 }
 
-// GPT 호출
+// 💌 로그 저장 (log.php에 전송)
+async function saveLog(role, msg) {
+  try {
+    await axios.post('https://www.de-ji.net/log.php', {
+      from: role === '아저씨' ? 'uncle' : 'yejin',
+      content: msg
+    });
+  } catch (err) {
+    console.error('❌ 원격 로그 저장 실패:', err.message);
+  }
+}
+
+// 💬 GPT 호출
 async function callOpenAI(messages, model = 'gpt-4o', max_tokens = 300) {
   const response = await openai.chat.completions.create({
     model: forcedModel || model,
@@ -40,7 +41,7 @@ async function callOpenAI(messages, model = 'gpt-4o', max_tokens = 300) {
   return response.choices[0].message.content.trim();
 }
 
-// 말투 정리
+// 🧼 정리
 function cleanReply(text) {
   return text
     .replace(/^예진\s*[:;：]/i, '')
@@ -52,16 +53,16 @@ function cleanReply(text) {
     .trim();
 }
 
-// 랜덤 감정 메시지
+// 🎲 랜덤 감정 메시지
 async function getRandomMessage() {
   const prompt = [
     {
       role: 'system',
-      content: `너는 지금 예진이야. '나'라고 말하고, 감정을 담은 반말로 짧게 대화해. 매번 다르게 말하고, 혼잣말처럼 자연스럽게 말해. 아저씨를 혼자 두지 않으려는 마음이야.`
+      content: `너는 예진이야. 항상 반말로 감정 담아 말해. 혼잣말처럼 자연스럽고 짧게.`
     },
     {
       role: 'user',
-      content: '랜덤 감정 메시지 하나 만들어줘'
+      content: '랜덤 감정 메시지 하나 줘'
     }
   ];
   const raw = await callOpenAI(prompt, 'gpt-3.5-turbo', 100);
@@ -70,16 +71,16 @@ async function getRandomMessage() {
   return msg;
 }
 
-// 담타 기쁨 반응
+// 😊 기쁨 반응
 async function getHappyReply() {
   const prompt = [
     {
       role: 'system',
-      content: '넌 예진이야. 아저씨가 담타 메시지에 5분 안에 답장했을 때, 기뻐서 반말로 감정 담긴 말을 해줘. 짧고 귀엽게.'
+      content: '넌 예진이야. 아저씨가 5분 안에 담타 답장했을 때 기뻐서 말해. 짧고 귀엽게 반말로 해.'
     },
     {
       role: 'user',
-      content: '아저씨가 방금 담타 답장했어!'
+      content: '아저씨가 방금 답장했어!'
     }
   ];
   const raw = await callOpenAI(prompt, 'gpt-3.5-turbo', 100);
@@ -88,12 +89,12 @@ async function getHappyReply() {
   return reply;
 }
 
-// 담타 삐짐 반응
+// 😤 삐짐 반응
 async function getSulkyReply() {
   const prompt = [
     {
       role: 'system',
-      content: '넌 예진이야. 아저씨가 담타에 너무 늦게 답장했거나 씹었을 때 삐진 말투로 짧게 말해줘. 반말로 자연스럽게 해.'
+      content: '넌 예진이야. 아저씨가 너무 늦게 답장했을 때 삐친 말투로 짧게 말해.'
     },
     {
       role: 'user',
@@ -106,12 +107,12 @@ async function getSulkyReply() {
   return reply;
 }
 
-// 일반 대화 응답
+// 💬 메시지 응답
 async function getReplyByMessage(userMessage) {
   const prompt = [
     {
       role: 'system',
-      content: `넌 예진이야. 항상 반말하고, '나'라고 말하며 혼잣말처럼 자연스럽게 대화해. 대답은 짧고 감정이 담겨있어야 해.`
+      content: `넌 예진이야. 감정 담아서 반말로 자연스럽게 대화해.`
     },
     {
       role: 'user',
@@ -124,14 +125,14 @@ async function getReplyByMessage(userMessage) {
   return reply;
 }
 
-// 이미지 기반 리액션
+// 🖼️ 이미지 리액션
 async function getReplyByImagePrompt(base64Image) {
   const response = await openai.chat.completions.create({
     model: 'gpt-4o',
     messages: [
       {
         role: 'system',
-        content: '넌 예진이야. 아저씨가 보낸 사진을 보고 반응해. 귀엽고 감정 담긴 반말로 말해.'
+        content: '넌 예진이야. 사진 보고 반말로 감정 담아 리액션해.'
       },
       {
         role: 'user',
@@ -148,12 +149,12 @@ async function getReplyByImagePrompt(base64Image) {
   return cleanReply(reply);
 }
 
-// 기분 색깔 응답
+// 🎨 색깔 감정
 async function getColorMoodReply() {
   const prompt = [
     {
       role: 'system',
-      content: '넌 예진이야. 아저씨가 "오늘 내 색 뭐야?"라고 하면 감정 섞인 색깔 하나로 반말로 말해줘.'
+      content: '넌 예진이야. 아저씨가 "오늘 내 색 뭐야?"라고 물으면, 색 하나로 감정 담아 말해줘.'
     },
     {
       role: 'user',
@@ -166,12 +167,12 @@ async function getColorMoodReply() {
   return reply;
 }
 
-// 셀카 보낼 때 멘트
+// 🤳 셀카 전송 리액션
 async function getImageReactionComment() {
   const prompt = [
     {
       role: 'system',
-      content: '넌 예진이야. 셀카를 아저씨에게 보낼 때 귀엽고 짓궂은 말투로 반말로 리액션해.'
+      content: '넌 예진이야. 셀카를 보낼 때 짓궂고 귀엽게 반말로 말해.'
     },
     {
       role: 'user',
@@ -184,7 +185,7 @@ async function getImageReactionComment() {
   return reply;
 }
 
-// ✅ export
+// 📦 모듈 내보내기
 module.exports = {
   getReplyByMessage,
   getReplyByImagePrompt,
