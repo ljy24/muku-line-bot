@@ -15,15 +15,14 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 const config = {
-  channelAccessToken: '아저씨_ACCESS_TOKEN',
-  channelSecret: '아저씨_CHANNEL_SECRET'
+  channelAccessToken: process.env.LINE_ACCESS_TOKEN,
+  channelSecret: process.env.LINE_CHANNEL_SECRET
 };
 
-const client = new line.Client(config);
+const FIXED_USER_ID = process.env.TARGET_USER_ID;
 
-// 사용자별 GPT 버전 상태 저장
+const client = new line.Client(config);
 const userGPTVersion = {}; // userId: 'gpt-3.5' | 'gpt-4.0'
-const lastSmokeTime = {};
 const waitingForResponse = {};
 
 app.post('/webhook', line.middleware(config), async (req, res) => {
@@ -37,7 +36,7 @@ async function handleEvent(event) {
   if (event.type === 'message' && event.message.type === 'text') {
     const userMessage = event.message.text.trim();
 
-    // GPT 버전 명령어
+    // GPT 버전 변경
     if (userMessage === '3.5') {
       userGPTVersion[userId] = 'gpt-3.5';
       return replyText(event.replyToken, '응, 이제 3.5로 말할게 아저씨!');
@@ -47,21 +46,15 @@ async function handleEvent(event) {
       return replyText(event.replyToken, '응응, 4.0으로 바꿨지롱! 🫶');
     }
 
-    // 담타 응답 체크
+    // 담타 응답 감지
     if (waitingForResponse[userId]) {
-      const timeDiff = Date.now() - waitingForResponse[userId];
+      const diff = Date.now() - waitingForResponse[userId];
       delete waitingForResponse[userId];
 
-      if (timeDiff <= 5 * 60 * 1000) {
-        const happy = await getHappyReply();
-        return replyText(event.replyToken, happy);
-      } else {
-        const sulky = await getSulkyReply();
-        return replyText(event.replyToken, sulky);
-      }
+      const reply = diff <= 5 * 60 * 1000 ? await getHappyReply() : await getSulkyReply();
+      return replyText(event.replyToken, reply);
     }
 
-    // 일반 대답
     const version = userGPTVersion[userId] || 'gpt-4.0';
     const reply = await getReplyByMessage(userMessage, userId, version);
     return replyText(event.replyToken, reply);
@@ -69,8 +62,7 @@ async function handleEvent(event) {
 
   // 이미지 메시지
   if (event.type === 'message' && event.message.type === 'image') {
-    const imageId = event.message.id;
-    const stream = await client.getMessageContent(imageId);
+    const stream = await client.getMessageContent(event.message.id);
     const chunks = [];
     for await (let chunk of stream) chunks.push(chunk);
     const buffer = Buffer.concat(chunks);
@@ -83,26 +75,23 @@ async function handleEvent(event) {
   return Promise.resolve(null);
 }
 
-// 정각마다 담타 메시지
+// 정각마다 담타 알림
 setInterval(async () => {
   const now = new Date();
   if (now.getMinutes() === 0) {
     const message = await getRandomTobaccoMessage();
-    const userId = '아저씨_USER_ID'; // 아저씨 ID 고정
 
-    lastSmokeTime[userId] = Date.now();
-    waitingForResponse[userId] = Date.now();
+    waitingForResponse[FIXED_USER_ID] = Date.now();
 
-    await client.pushMessage(userId, {
+    await client.pushMessage(FIXED_USER_ID, {
       type: 'text',
       text: message
     });
   }
-}, 60 * 1000); // 매분 체크
+}, 60 * 1000);
 
-// 응답 전송 함수
-function replyText(replyToken, text) {
-  return client.replyMessage(replyToken, {
+function replyText(token, text) {
+  return client.replyMessage(token, {
     type: 'text',
     text
   });
