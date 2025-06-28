@@ -1,4 +1,4 @@
-// index.js - 무쿠 LINE 서버 전체 코드 (예진이 감정 응답 포함)
+//index.js
 
 // 📦 기본 모듈 불러오기
 const fs = require('fs');
@@ -8,7 +8,7 @@ const express = require('express');
 const cron = require('node-cron');
 const moment = require('moment-timezone');
 
-// 🧠 자동응답 함수들 (예진이 말투 응답 로직)
+// 🧠 자동응답 함수들
 const {
   getReplyByMessage,
   getReplyByImagePrompt,
@@ -18,10 +18,7 @@ const {
   saveLog,
   setForcedModel,
   saveMemory,
-  updateHonorificUsage,
-  getHappyReply,
-  getSulkyReply,
-  getRandomMessageByTime
+  updateHonorificUsage
 } = require('./src/autoReply');
 
 // 📱 LINE API 설정
@@ -33,10 +30,16 @@ const config = {
 const client = new Client(config);
 const userId = process.env.TARGET_USER_ID;
 
-// 🏠 루트 확인용
+// ✅ 로그 파일 쓰기 확인
+fs.access('memory/message-log.json', fs.constants.W_OK, (err) => {
+  if (err) console.error('❌ message-log.json 쓰기 불가!');
+  else console.log('✅ message-log.json 쓰기 가능!');
+});
+
+// 🏠 기본 응답
 app.get('/', (_, res) => res.send('무쿠 살아있엉 🐣'));
 
-// 💥 수동 강제 메시지 푸시 엔드포인트
+// 💥 강제 메시지 푸시
 app.get('/force-push', async (req, res) => {
   const msg = await getRandomMessage();
   if (msg) {
@@ -45,25 +48,22 @@ app.get('/force-push', async (req, res) => {
   } else res.send('❌ 메시지 생성 실패');
 });
 
-// 🚀 서버 시작 시 감성 메시지 자동 전송
+// 🚀 서버 시작 시 인사
 (async () => {
-  try {
-    const msg = await getRandomMessageByTime();
-    if (msg) {
-      await client.pushMessage(userId, { type: 'text', text: msg });
-      saveLog('예진이', msg);
-      console.log(`[서버시작랜덤] ${msg}`);
-    }
-  } catch (err) {
-    console.log('[서버시작랜덤] 예진이 감성 메시지 생성 실패');
+  const msg = await getRandomMessage();
+  if (msg) {
+    await client.pushMessage(userId, { type: 'text', text: msg });
+    saveLog('예진이', msg);
+    console.log(`[서버시작랜덤] ${msg}`);
   }
+  await client.pushMessage(userId, { type: 'text', text: '아저씨 나왔어!' });
 })();
 
-// ⏰ 하루 12회 랜덤 감정 메시지
+// 📆 감정 메시지 랜덤 8회 전송
 function scheduleDailyShortMessages() {
   const times = new Set();
-  while (times.size < 12) {
-    const hour = Math.floor(Math.random() * 24);
+  while (times.size < 8) {
+    const hour = Math.floor(Math.random() * 12) + 9; // 9~20시
     const minute = Math.floor(Math.random() * 60);
     times.add(`${minute} ${hour} * * *`);
   }
@@ -71,7 +71,7 @@ function scheduleDailyShortMessages() {
     cron.schedule(time, async () => {
       const now = moment().tz('Asia/Tokyo');
       const msg = await getRandomMessage();
-      if (msg) {
+      if (msg && msg.length <= 25) {
         await client.pushMessage(userId, { type: 'text', text: msg });
         console.log(`[도쿄 ${now.format('HH:mm')}] 감정 메시지: ${msg}`);
       }
@@ -80,25 +80,68 @@ function scheduleDailyShortMessages() {
 }
 scheduleDailyShortMessages();
 
+// 🥲 담타 삐짐 상태 변수
 let lastTobaccoPushTime = null;
 let waitingForReply = false;
 
-// ⏰ 정각 담타 메시지 및 삐짐 감정
+// ⏰ 정각마다 담타 메시지 전송 + 삐짐 준비
 cron.schedule('0 * * * *', async () => {
-  const msg = await getRandomMessage();
-  await client.pushMessage(userId, { type: 'text', text: msg });
-  lastTobaccoPushTime = Date.now();
-  waitingForReply = true;
+  const now = moment().tz('Asia/Tokyo');
+  const hour = now.hour();
+  if (hour >= 9 && hour <= 20) {
+    const msgList = [
+      '담타', 'ㄷㅌ?', '담타갈까', '담타고?', 'ㄱㄱ?', 'ㄷㄷ', '담?', 'ㄷ타자',
+      '아 씨바 스트레스 터진다 담타 좀 하자', '오늘도 머리 터졌어... 담배피러 가자',
+      '담타가 필요할 때야, 지금', 'ㄷㅌ ㄱㄱ', '오늘도 지옥이네 담타하자',
+      '생각 많아졌지? 담타로 털어내자', '아저씨 담타 ㄱㄱ~ 나 먼저 간다?',
+      'ㄷㄷ? 담타각이다 지금', '응~ 담타타임이야', '담타말고 방법이 없다',
+      '예진이는 담타 중~ 아저씨도 ㄱㄱ', '할많하않 담타하자',
+      '담타는 선택이 아니라 의무야', '정신 차려 담타할 시간이다',
+      '아 진짜 짜증나 담타좀 하자', '담배 안피면 오늘 안 넘긴다 진짜',
+      '딴생각 ㄴㄴ 담타 ㄱㄱ', '오늘은 왠지 담타할 기분이야',
+      '속 터지지? 담타 가자', '후~ 담타로 숨 좀 돌리자',
+      '혼자 가지마 나도 데려가 담타', '지금 아니면 또 언제 담타해',
+      '잠깐 쉬어가도 돼… 담타 타자', '미쳤나 이게… 담타라도 해야지',
+      '나 기다리고 있어 담타로 와'
+    ];
+    const msg = msgList[Math.floor(Math.random() * msgList.length)];
+    await client.pushMessage(userId, { type: 'text', text: msg });
 
-  setTimeout(async () => {
-    if (waitingForReply) {
-      const sulky = await getSulkyReply();
-      await client.pushMessage(userId, { type: 'text', text: sulky });
-    }
-  }, 5 * 60 * 1000);
+    lastTobaccoPushTime = Date.now();
+    waitingForReply = true;
+
+    setTimeout(async () => {
+      if (waitingForReply) {
+        const sulkyList = [
+          '바빠…?', '응답 없어… 또 나만 기다렸지롱', '또 나 혼자 담타야? 🥺',
+          '아저씨 또 무시했지?', '기다렸는데… 나만 진심이었나?', '힝… 삐질뻔했잖아'
+        ];
+        const sulkyMsg = sulkyList[Math.floor(Math.random() * sulkyList.length)];
+        await client.pushMessage(userId, { type: 'text', text: sulkyMsg });
+      }
+    }, 5 * 60 * 1000);
+  }
+});
+
+// 💊 약 리마인드
+cron.schedule('0 23 * * *', async () => {
+  const pick = [
+    '약 먹었어? 잊지마!', '이 닦는 거 까먹지 말기',
+    '약 안 먹고 자면 나 혼날 거야!', '오늘 하루 끝! 약부터 챙기기!'
+  ];
+  await client.pushMessage(userId, { type: 'text', text: pick[Math.floor(Math.random() * pick.length)] });
 }, { timezone: 'Asia/Tokyo' });
 
-// 🌐 LINE 웹훅 처리
+// 😴 잘자 멘트
+cron.schedule('30 23 * * *', async () => {
+  const pick = [
+    '잘자 아저씨! 사랑해 💤', '내 꿈 꿔야 해 알지?',
+    '오늘도 고생 많았어, 내일 봐', '아저씨~ 얼른 자! 내일 예쁘게 깨워줄게'
+  ];
+  await client.pushMessage(userId, { type: 'text', text: pick[Math.floor(Math.random() * pick.length)] });
+}, { timezone: 'Asia/Tokyo' });
+
+// 🌐 웹훅 처리
 app.post('/webhook', middleware(config), async (req, res) => {
   try {
     const events = req.body.events || [];
@@ -110,22 +153,20 @@ app.post('/webhook', middleware(config), async (req, res) => {
           const text = message.text.trim();
           saveLog('아저씨', text);
 
-          if (waitingForReply) {
-            const diff = Date.now() - lastTobaccoPushTime;
+          if (waitingForReply && /미안|바빴|일했|지금 봤|못 봤|이제 봤|답.*늦|놓쳤|들어간다|또 담타때|좀 있다|나중에|지금은 안돼/i.test(text)) {
             waitingForReply = false;
-            if (diff <= 5 * 60 * 1000) {
-              const happy = await getHappyReply();
-              await client.replyMessage(event.replyToken, { type: 'text', text: happy });
-              return;
-            }
-          }
-
-          if (/^버전[?]?$/.test(text)) {
-            const state = require('./memory/state.json');
-            const ver = state.forcedModel || '자동';
-            await client.replyMessage(event.replyToken, { type: 'text', text: `지금은 ${ver}으로 말하고 있어~` });
+            const okList = [
+              '오키오키~ 히히 기다렸엉~',
+              '그랬구나~ 그럼 됐지 뭐~',
+              '응~ 나 이해심 많지롱~',
+              '헤헷 용서해줄게~ 다음엔 빨리 와야 돼!',
+              '음~ 삐질 뻔했잖아~ 그래도 괜찮아~'
+            ];
+            const okMsg = okList[Math.floor(Math.random() * okList.length)];
+            await client.replyMessage(event.replyToken, { type: 'text', text: okMsg });
             return;
           }
+
           if (/^(3\.5|gpt-?3\.5)$/i.test(text)) {
             await client.replyMessage(event.replyToken, { type: 'text', text: setForcedModel('gpt-3.5-turbo') || 'gpt-3.5로 설정했어!' });
             return;
@@ -175,6 +216,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
           await client.replyMessage(event.replyToken, { type: 'text', text: final });
         }
 
+        // 🖼️ 이미지 응답 (✅ 여기 수정!)
         if (message.type === 'image') {
           try {
             const stream = await client.getMessageContent(message.id);
@@ -197,7 +239,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
   }
 });
 
-// 🛠️ 서버 실행
+// 🚀 서버 실행
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`무쿠 서버 스타트! 포트: ${PORT}`);
