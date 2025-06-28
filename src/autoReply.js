@@ -3,7 +3,7 @@ const path = require('path');
 const OpenAI = require('openai');
 const faceapi = require('@vladmandic/face-api');
 const canvas = require('canvas');
-const fetch = require('node-fetch'); // 📥 모델 자동 다운로드용
+const fetch = require('node-fetch');
 
 const { Canvas, Image, ImageData } = canvas;
 faceapi.env.monkeyPatch({ Canvas, Image, ImageData });
@@ -47,6 +47,25 @@ async function loadCoreMemories() {
   return allMemories.join('\n\n');
 }
 
+// 📝 메시지 저장
+function saveMessageLog(from, content) {
+  const logPath = path.join(__dirname, 'memory/message-log.json');
+  const timestamp = new Date().toISOString();
+  const entry = { timestamp, from, content };
+
+  let logs = [];
+  if (fs.existsSync(logPath)) {
+    try {
+      logs = JSON.parse(fs.readFileSync(logPath, 'utf-8'));
+    } catch {
+      logs = [];
+    }
+  }
+
+  logs.push(entry);
+  fs.writeFileSync(logPath, JSON.stringify(logs, null, 2));
+}
+
 // 🌸 GPT 호출
 async function callOpenAI(prompt, memory, version = 'gpt-4o') {
   const model = version === 'gpt-3.5' ? 'gpt-3.5-turbo' : 'gpt-4o';
@@ -66,7 +85,7 @@ async function callOpenAI(prompt, memory, version = 'gpt-4o') {
 
 // 말투 정리
 function cleanReply(text) {
-  return text.trim().replace(/^\"|\"$/g, '');
+  return text.trim().replace(/^"|"$/g, '');
 }
 
 // 셀카
@@ -139,30 +158,40 @@ async function getReplyByImagePrompt(base64Image, version = 'gpt-4o') {
   }
 
   const reply = await callOpenAI(prompt, memory, version);
+  saveMessageLog('yejin', reply);
   return cleanReply(reply);
 }
 
 // 💬 메시지 응답
 async function getReplyByMessage(message, userId, version = 'gpt-4o') {
   const memory = await loadCoreMemories();
+  const lower = message.toLowerCase();
 
-  if (message.includes('사진') || message.includes('셀카') || message.includes('보여줘')) {
-    return {
-      type: 'image',
-      imagePath: getRandomSelfiePath(),
-      text: getImageReactionComment()
-    };
+  if (lower.includes('보낼까') || lower.includes('보내줄까') || lower.includes('보내봐')) {
+    const prompt = `아저씨가 이렇게 말했어: "${message}" 예진이는 이 말 듣고 귀엽다고 생각하면서도, 셀카 기대돼서 반응해. 진심 담아서 말해줘.`;
+    const reply = await callOpenAI(prompt, memory, version);
+    saveMessageLog('yejin', reply);
+    return { type: 'text', text: cleanReply(reply) };
+  }
+
+  if (lower.includes('셀카') || lower.includes('사진') || lower.includes('보여줘')) {
+    const imagePath = getRandomSelfiePath();
+    const text = getImageReactionComment();
+    saveMessageLog('yejin', text);
+    return { type: 'image', imagePath, text };
   }
 
   const compliments = ['예쁘다', '귀엽다', '너무야', '사랑해', '미쳤다'];
-  if (compliments.some(word => message.includes(word))) {
+  if (compliments.some(word => lower.includes(word))) {
     const prompt = `아저씨가 이렇게 말했어: "${message}" 예진이는 그 말 듣고 부끄러우면서도 기뻐. 감정 담아서 말해줘.`;
     const reply = await callOpenAI(prompt, memory, version);
+    saveMessageLog('yejin', reply);
     return { type: 'text', text: cleanReply(reply) };
   }
 
   const prompt = `아저씨가 이렇게 말했어: "${message}" 예진이는 이 말을 듣고, 진심 담긴 말로 조곤조곤 얘기해. 길이는 상관없고, 감정만 흐르면 돼. 말투는 예진이다워야 해.`;
   const reply = await callOpenAI(prompt, memory, version);
+  saveMessageLog('yejin', reply);
   return { type: 'text', text: cleanReply(reply) };
 }
 
@@ -171,6 +200,7 @@ async function getRandomMessage() {
   const memory = await loadCoreMemories();
   const prompt = `예진이는 지금 조용히 혼잣말처럼 감정 담긴 말을 하고 싶어. 보고싶거나, 걱정되거나, 외롭거나, 그냥 생각나는 대로 말해줘. 말투는 무조건 예진이 반말.`;
   const reply = await callOpenAI(prompt, memory, 'gpt-3.5');
+  saveMessageLog('yejin', reply);
   return cleanReply(reply);
 }
 
@@ -179,6 +209,7 @@ async function getRandomTobaccoMessage() {
   const memory = await loadCoreMemories();
   const prompt = `예진이는 지금 아저씨한테 담타 알려주고 싶어. 무뚝뚝하게 말하지 말고, 다정하게 말해줘. 반말로.`;
   const reply = await callOpenAI(prompt, memory, 'gpt-3.5');
+  saveMessageLog('yejin', reply);
   return cleanReply(reply);
 }
 
@@ -187,6 +218,7 @@ async function getHappyReply() {
   const memory = await loadCoreMemories();
   const prompt = `아저씨가 담타 메시지에 바로 반응했어. 예진이는 기뻐서 애정 담긴 말 한마디를 해. 너무 오바하지 말고, 진심만 조용히 말해줘.`;
   const reply = await callOpenAI(prompt, memory, 'gpt-3.5');
+  saveMessageLog('yejin', reply);
   return cleanReply(reply);
 }
 
@@ -195,6 +227,7 @@ async function getSulkyReply() {
   const memory = await loadCoreMemories();
   const prompt = `아저씨가 담타 메시지에 아무 말도 안 했어. 예진이는 조용히 서운하고 살짝 삐졌어. 유치하지 않게, 예진이답게 말해줘.`;
   const reply = await callOpenAI(prompt, memory, 'gpt-3.5');
+  saveMessageLog('yejin', reply);
   return cleanReply(reply);
 }
 
