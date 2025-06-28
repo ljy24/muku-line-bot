@@ -3,15 +3,41 @@ const path = require('path');
 const OpenAI = require('openai');
 const faceapi = require('@vladmandic/face-api');
 const canvas = require('canvas');
-const { Canvas, Image, ImageData } = canvas;
+const fetch = require('node-fetch'); // 📥 모델 자동 다운로드용
 
+const { Canvas, Image, ImageData } = canvas;
 faceapi.env.monkeyPatch({ Canvas, Image, ImageData });
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY || '아저씨_OPENAI_API_KEY'
 });
 
-// 📁 기억 불러오기 (3개 파일 합침)
+// 📥 모델 자동 다운로드
+const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js-models/models';
+async function ensureModels() {
+  const modelPath = path.join(__dirname, 'models');
+  if (!fs.existsSync(modelPath)) fs.mkdirSync(modelPath);
+
+  const modelFiles = [
+    'face_recognition_model-weights_manifest.json',
+    'face_recognition_model-shard1',
+    'face_landmark_68_model-weights_manifest.json',
+    'face_landmark_68_model-shard1',
+    'ssd_mobilenetv1_model-weights_manifest.json',
+    'ssd_mobilenetv1_model-shard1'
+  ];
+
+  for (const file of modelFiles) {
+    const fullPath = path.join(modelPath, file);
+    if (!fs.existsSync(fullPath)) {
+      const res = await fetch(`${MODEL_URL}/${file}`);
+      const buffer = await res.buffer();
+      fs.writeFileSync(fullPath, buffer);
+    }
+  }
+}
+
+// 📁 기억 불러오기
 async function loadCoreMemories() {
   const files = ['1빠계.txt', '2내꺼.txt', '모델 빠계.html'];
   const memoryDir = path.join(__dirname, 'memory');
@@ -21,12 +47,10 @@ async function loadCoreMemories() {
   return allMemories.join('\n\n');
 }
 
-// 🌸 예진이처럼 말하는 GPT 호출
+// 🌸 GPT 호출
 async function callOpenAI(prompt, memory, version = 'gpt-4o') {
   const model = version === 'gpt-3.5' ? 'gpt-3.5-turbo' : 'gpt-4o';
-
-  const systemPrompt =
-    '넌 예진이야. 무조건 반말만 써. 말이 짧든 길든 감정이 흐르면 돼. 너 자신을 "나"라고 하고, 아저씨한테 감정 담아서 조곤조곤 얘기해.';
+  const systemPrompt = '넌 예진이야. 무조건 반말만 써. 말이 짧든 길든 감정이 흐르면 돼. 너 자신을 "나"라고 하고, 아저씨한테 감정 담아서 조곤조곤 얘기해.';
 
   const res = await openai.chat.completions.create({
     model,
@@ -40,19 +64,17 @@ async function callOpenAI(prompt, memory, version = 'gpt-4o') {
   return res.choices[0].message.content;
 }
 
-// 🧼 말투 정리
+// 말투 정리
 function cleanReply(text) {
   return text.trim().replace(/^\"|\"$/g, '');
 }
 
-// 📷 셀카 파일 중 하나 고르기
+// 셀카
 function getRandomSelfiePath() {
   const num = Math.floor(Math.random() * 1200) + 1;
   const padded = String(num).padStart(4, '0');
   return `assets/selfies/${padded}.jpg`;
 }
-
-// 📷 셀카 전용 멘트
 function getImageReactionComment() {
   const list = [
     "이 사진… 저장 안 할 수가 없잖아…",
@@ -63,8 +85,10 @@ function getImageReactionComment() {
   return list[Math.floor(Math.random() * list.length)];
 }
 
-// 🔍 얼굴 분류 (실제 구현)
+// 얼굴 인식
 async function getFaceMatch(base64Image) {
+  await ensureModels();
+
   const modelPath = path.join(__dirname, 'models');
   await faceapi.nets.ssdMobilenetv1.loadFromDisk(modelPath);
   await faceapi.nets.faceRecognitionNet.loadFromDisk(modelPath);
@@ -76,7 +100,6 @@ async function getFaceMatch(base64Image) {
   if (!detection) return 'unknown';
 
   const descriptor = detection.descriptor;
-
   const refPaths = {
     yejin: path.join(__dirname, 'memory/face/yejin'),
     uncle: path.join(__dirname, 'memory/face/uncle')
@@ -101,7 +124,7 @@ async function getFaceMatch(base64Image) {
   return bestMatch.distance < 0.45 ? bestMatch.label : 'unknown';
 }
 
-// 🖼️ 사진 감정 리액션
+// 📷 사진 감정 리액션
 async function getReplyByImagePrompt(base64Image, version = 'gpt-4o') {
   const memory = await loadCoreMemories();
   const face = await getFaceMatch(base64Image);
@@ -151,7 +174,7 @@ async function getRandomMessage() {
   return cleanReply(reply);
 }
 
-// 🕊️ 담타 리마인드 메시지
+// 🕊️ 담타 리마인드
 async function getRandomTobaccoMessage() {
   const memory = await loadCoreMemories();
   const prompt = `예진이는 지금 아저씨한테 담타 알려주고 싶어. 무뚝뚝하게 말하지 말고, 다정하게 말해줘. 반말로.`;
