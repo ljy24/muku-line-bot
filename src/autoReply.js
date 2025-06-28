@@ -12,25 +12,7 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY || '아저씨_OPENAI_API_KEY'
 });
 
-// 📝 메시지 저장 함수
-function saveMessageLog(from, content) {
-  try {
-    const filePath = path.join(__dirname, '../memory/message-log.json');
-    const logs = fs.existsSync(filePath)
-      ? JSON.parse(fs.readFileSync(filePath, 'utf-8'))
-      : [];
 
-    logs.push({
-      timestamp: new Date().toISOString(),
-      from,
-      content
-    });
-
-    fs.writeFileSync(filePath, JSON.stringify(logs, null, 2), 'utf-8');
-  } catch (err) {
-    console.error('[❌ 로그 저장 실패]', err);
-  }
-}
 
 // 📥 모델 자동 다운로드
 const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js-models/models';
