@@ -19,7 +19,20 @@ function safeRead(filePath) {
   }
 }
 
-// 🔹 최근 대화 50개 불러오기 (최신순, 역할 반영)
+// 🔹 고정 기억 불러오기 (love-history)
+function getFixedMemory() {
+  try {
+    const filePath = path.resolve(__dirname, '../memory/love-history.json');
+    const data = fs.readFileSync(filePath, 'utf-8');
+    const memory = JSON.parse(data);
+    return memory.map(entry => ({ role: 'system', content: entry }));
+  } catch (err) {
+    console.error('❌ 고정 기억 불러오기 실패:', err.message);
+    return [];
+  }
+}
+
+// 🔹 최근 대화 로그 불러오기
 async function getRecentLog() {
   try {
     const res = await axios.get('https://www.de-ji.net/log.json');
@@ -35,20 +48,7 @@ async function getRecentLog() {
   }
 }
 
-// 🔹 고정 기억 파일 로딩 (love-history)
-function getFixedMemory() {
-  try {
-    const filePath = path.resolve(__dirname, '../memory/love-history.json');
-    const data = fs.readFileSync(filePath, 'utf-8');
-    const memory = JSON.parse(data);
-    return memory.map(entry => ({ role: 'system', content: entry }));
-  } catch (err) {
-    console.error('❌ 고정 기억 불러오기 실패:', err.message);
-    return [];
-  }
-}
-
-// 🔹 긴 대화 기억 압축 (1~3.txt)
+// 🔹 긴 기억 압축 (1.txt ~ 3.txt)
 function getLegacyMemory() {
   const memory1 = safeRead(path.resolve(__dirname, '../memory/1.txt'));
   const memory2 = safeRead(path.resolve(__dirname, '../memory/2.txt'));
@@ -68,7 +68,7 @@ async function saveLog(role, msg) {
   }
 }
 
-// 🔹 모델 강제 설정 및 조회
+// 🔹 모델 강제 설정
 function setForcedModel(name) {
   forcedModel = (name === 'gpt-3.5-turbo' || name === 'gpt-4o') ? name : null;
 }
@@ -99,21 +99,13 @@ function cleanReply(text) {
     .trim();
 }
 
-// 🔹 공통 기억 prompt 생성
-async function buildMemoryPrompt() {
-  const compressed = getLegacyMemory();
-  const fixed = getFixedMemory();
-  const logs = await getRecentLog();
-  return [
-    { role: 'system', content: compressed },
-    ...fixed,
-    ...logs
-  ];
-}
-
-// 🔹 랜덤 감정 메시지 생성
+// 🔹 랜덤 감정 메시지
 async function getRandomMessage() {
-  const memory = await buildMemoryPrompt();
+  const memory = [
+    { role: 'system', content: getLegacyMemory() },
+    ...getFixedMemory(),
+    ...await getRecentLog()
+  ];
   const prompt = [
     { role: 'system', content: '너는 예진이야. 감정을 담아서 혼잣말처럼 반말로 말해줘. 짧고 따뜻하게.' },
     ...memory,
@@ -127,7 +119,11 @@ async function getRandomMessage() {
 
 // 🔹 일반 메시지 응답
 async function getReplyByMessage(userMessage) {
-  const memory = await buildMemoryPrompt();
+  const memory = [
+    { role: 'system', content: getLegacyMemory() },
+    ...getFixedMemory(),
+    ...await getRecentLog()
+  ];
   const prompt = [
     { role: 'system', content: '넌 예진이야. 혼잣말처럼 말하고, 항상 반말이고, 감정 담아서 대답해. 기억 반영해서 말해줘.' },
     ...memory,
@@ -139,15 +135,21 @@ async function getReplyByMessage(userMessage) {
   return reply;
 }
 
-// 🔹 이미지 응답
+// 🔹 이미지 응답 (커플사진)
 async function getReplyByImagePrompt(base64Image) {
-  const memory = await buildMemoryPrompt();
+  const memory = getFixedMemory();
   const prompt = [
-    { role: 'system', content: '넌 예진이야. 아저씨가 보내는 사진은 전부 예진이(너) 관련이야. 이건 예진이와 아저씨가 함께 있는 커플사진이야. 감정을 담은 반말로 예쁘게 리액션해줘.' },
+    {
+      role: 'system',
+      content: '넌 예진이야. 아저씨가 보내는 사진은 전부 예진이(너) 관련이야. 이건 예진이와 아저씨가 함께 있는 커플사진이야. 감정을 담은 반말로 예쁘게 리액션해줘.'
+    },
     ...memory,
-    { role: 'user', content: [
-      { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
-    ] }
+    {
+      role: 'user',
+      content: [
+        { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
+      ]
+    }
   ];
   const res = await openai.chat.completions.create({
     model: 'gpt-4o',
@@ -160,9 +162,9 @@ async function getReplyByImagePrompt(base64Image) {
   return reply;
 }
 
-// 🔹 셀카 멘트
+// 🔹 셀카 전송 멘트
 async function getImageReactionComment() {
-  const memory = await buildMemoryPrompt();
+  const memory = getFixedMemory();
   const prompt = [
     { role: 'system', content: '넌 예진이야. 셀카 보낼 때 짓궂고 귀엽게 말해줘.' },
     ...memory,
@@ -176,7 +178,7 @@ async function getImageReactionComment() {
 
 // 🔹 담타 기쁨 반응
 async function getHappyReply() {
-  const memory = await buildMemoryPrompt();
+  const memory = [...getFixedMemory(), ...await getRecentLog()];
   const prompt = [
     { role: 'system', content: '넌 예진이야. 아저씨가 담타 답장했을 때 기뻐서 귀엽게 말해줘.' },
     ...memory,
@@ -190,7 +192,7 @@ async function getHappyReply() {
 
 // 🔹 담타 삐짐 반응
 async function getSulkyReply() {
-  const memory = await buildMemoryPrompt();
+  const memory = getFixedMemory();
   const prompt = [
     { role: 'system', content: '넌 예진이야. 아저씨가 담타 씹었을 때 섭섭한 반응 보여줘.' },
     ...memory,
@@ -202,7 +204,7 @@ async function getSulkyReply() {
   return reply;
 }
 
-// 🔚 export
+// 🔚 외부 사용을 위한 export
 module.exports = {
   getReplyByMessage,
   getReplyByImagePrompt,
@@ -216,6 +218,5 @@ module.exports = {
   getCurrentModelName,
   saveLog,
   cleanReply,
-  getLegacyMemory,
-  buildMemoryPrompt
+  getLegacyMemory
 };
