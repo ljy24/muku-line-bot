@@ -22,7 +22,7 @@ const {
   getHappyReply,
   getSulkyReply,
   getRandomMessageByTime
-} = require('src/autoReply');
+} = require('./src/autoReply');
 
 // 📱 LINE API 설정
 const app = express();
