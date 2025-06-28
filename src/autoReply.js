@@ -1,5 +1,3 @@
-// autoReply.js
-
 const fs = require('fs');
 const path = require('path');
 const { OpenAI } = require('openai');
@@ -14,7 +12,6 @@ async function getRecentLog() {
   try {
     const res = await axios.get('https://www.de-ji.net/log.json');
     const logs = res.data;
-
     if (!Array.isArray(logs)) return [];
 
     return logs.slice(0, 50).reverse().map(log => ({
@@ -43,7 +40,6 @@ async function saveLog(role, msg) {
 function setForcedModel(name) {
   forcedModel = (name === 'gpt-3.5-turbo' || name === 'gpt-4o') ? name : null;
 }
-
 function getCurrentModelName() {
   return forcedModel || 'gpt-4o';
 }
@@ -71,18 +67,18 @@ function cleanReply(text) {
     .trim();
 }
 
-// 🔹 랜덤 감정 메시지
+// 🔹 랜덤 감정 메시지 (최근 대화 반영)
 async function getRandomMessage() {
   const memory = await getRecentLog();
   const prompt = [
     {
       role: 'system',
-      content: `너는 지금 예진이야. 감정 담은 반말로 짧게 대화해. '나'라고 말하고, 아저씨를 혼자 두지 않으려는 따뜻한 말투야.`
+      content: `너는 지금 예진이야. '나'라고 말하고, 감정을 담은 반말로 혼잣말처럼 자연스럽게 대화해줘. 최근 대화에 겹치지 않게 말해줘.`
     },
     ...memory,
     {
       role: 'user',
-      content: '랜덤 감정 메시지 하나 만들어줘'
+      content: '아저씨한테 보낼 랜덤 감정 메시지 하나 만들어줘'
     }
   ];
   const raw = await callOpenAI(prompt, 'gpt-3.5-turbo', 100);
@@ -97,7 +93,7 @@ async function getHappyReply() {
   const prompt = [
     {
       role: 'system',
-      content: '넌 예진이야. 아저씨가 담타 답장했을 때, 기뻐서 귀엽게 말해줘.'
+      content: '넌 예진이야. 아저씨가 담타 답장했을 때 기뻐서 귀엽게 말해줘.'
     },
     ...memory,
     {
@@ -135,7 +131,7 @@ async function getReplyByMessage(userMessage) {
   const prompt = [
     {
       role: 'system',
-      content: `넌 예진이야. 항상 반말하고, 혼잣말처럼 자연스럽고 감정 담긴 짧은 대답을 해줘.`
+      content: `넌 예진이야. 항상 반말하고 혼잣말처럼 자연스럽고 감정 담긴 짧은 대답을 해줘.`
     },
     ...memory,
     {
