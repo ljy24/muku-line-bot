@@ -1,8 +1,7 @@
-//autoReply
-
 // 📦 기본 모듈 불러오기
 const fs = require('fs');
 const path = require('path');
+const axios = require('axios');
 const { OpenAI } = require('openai');
 const stringSimilarity = require('string-similarity');
 const moment = require('moment-timezone');
@@ -22,7 +21,7 @@ function safeRead(filePath, fallback = '') {
   }
 }
 
-// 🧠 기억 파일 불러오기 (최근 기억 + 고정 기억)
+// 🧠 기억 파일 불러오기
 const memory1 = safeRead(path.resolve(__dirname, '../memory/1.txt'));
 const memory2 = safeRead(path.resolve(__dirname, '../memory/2.txt'));
 const memory3 = safeRead(path.resolve(__dirname, '../memory/3.txt'));
@@ -43,20 +42,38 @@ function getAllLogs() {
   }
 }
 
-// 📝 대화 로그 저장
+// 📝 대화 로그 저장 (로컬 + 외부 서버)
 function saveLog(role, msg) {
   const cleanMsg = msg.replace(/^예진\s*[:;：]/i, '').trim();
   const finalMsg = cleanMsg || msg.trim();
   if (!finalMsg) return;
 
+  const entry = {
+    date: new Date().toISOString(),
+    role,
+    msg: finalMsg
+  };
+
+  // 1. 로컬 저장
   const all = getAllLogs();
-  all.unshift({ date: new Date().toISOString(), role, msg: finalMsg });
+  all.unshift(entry);
 
   try {
     fs.writeFileSync(logPath, JSON.stringify(all.slice(0, 5000), null, 2));
   } catch (err) {
     console.error('❌ 로그 저장 실패:', err.message);
   }
+
+  // 2. 외부 로그 서버 전송
+  const payload = {
+    timestamp: entry.date,
+    from: role === '예진이' ? 'yejin' : 'uncle',
+    content: finalMsg
+  };
+
+  axios.post('https://muku-line-log.onrender.com/log', payload)
+    .then(() => console.log('[✅ 로그 서버 전송 완료]'))
+    .catch((err) => console.error('[❌ 로그 서버 전송 실패]', err.message));
 }
 
 // 📅 최근 며칠 간의 로그만 가져오기
@@ -87,7 +104,7 @@ function isSimilar(newMsg) {
     || hasSimilarWords(newMsg);
 }
 
-// 🧹 말투 정리 (예진이 말투 변환)
+// 🧹 말투 정리
 function cleanReply(text) {
   let out = text
     .replace(/^예진\s*[:;：]/i, '')
@@ -97,7 +114,6 @@ function cleanReply(text) {
     .replace(/당신|너|네|네가|널/g, '아저씨')
     .trim();
 
-  // 조사 자동 수정
   out = out
     .replace(/아저씨무/g, '아저씨도')
     .replace(/아저씨는무/g, '아저씨는');
@@ -119,7 +135,7 @@ function cleanReply(text) {
   return out.replace(/(\w+)요\b/g, '$1').trim();
 }
 
-// 🙇‍♀️ 존댓말 설정 불러오기
+// 🙇‍♀️ 존댓말 설정
 function loadHonorificUsage() {
   if (!fs.existsSync(statePath)) return { honorific: false };
   try {
@@ -139,7 +155,7 @@ function updateHonorificUsage(useHonorific) {
   fs.writeFileSync(statePath, JSON.stringify({ ...state, honorific: useHonorific }, null, 2));
 }
 
-// 📡 OpenAI 호출 함수
+// 📡 OpenAI 호출
 async function callOpenAI(messages, model = 'gpt-3.5-turbo', max_tokens = 300) {
   const res = await openai.chat.completions.create({
     model: forcedModel || model,
@@ -150,7 +166,7 @@ async function callOpenAI(messages, model = 'gpt-3.5-turbo', max_tokens = 300) {
   return res.choices[0].message.content.trim();
 }
 
-// 🎁 감정 랜덤 메시지 생성 (매시간 전송용)
+// 🎁 감정 메시지
 async function getRandomMessage() {
   const now = moment().tz('Asia/Tokyo');
   if (now.hour() === 23 && now.minute() === 0) return '약 챙겨 먹었지? 까먹지마!';
@@ -161,14 +177,10 @@ async function getRandomMessage() {
     '존나 빡침', '출근길에 또 눈물났어', '모델 촬영 다녀왔어',
     '야근하다가 미쳐버릴 뻔', '현타 옴', '쿠팡 외주 또 옴'
   ];
-
-  // 💡 밤바 이야기/강아지 등은 한달에 한 번만 쓰도록 별도 조건 분리 필요 (미리 제거함)
-
   const feelings = [
     '진짜 조땠어', '미쳤나 이게', '완전 현타 와', '스트레스 MAX',
     '기분 꿀꿀해', '엉엉 울고 싶어', '위로받고 싶어', '마음이 좀 허해'
   ];
-
   const closings = [
     '안아줘', '나 기다려줘', '토닥토닥 해줘', '곁에 있어줘',
     '담타 가자', '오늘 하루 잘했다고 해줘', '보고싶었지롱'
@@ -182,7 +194,7 @@ async function getRandomMessage() {
   return msg;
 }
 
-// 💬 일반 대화 메시지 응답 생성
+// 💬 일반 응답
 async function getReplyByMessage(msg) {
   saveLog('아저씨', msg);
   const memoryBlock = `${fixedMemory}\n${compressedMemory}`;
@@ -214,7 +226,7 @@ async function getColorMoodReply() {
   return reply;
 }
 
-// 📷 셀카 멘트 생성
+// 📷 셀카 리액션
 async function getImageReactionComment() {
   const raw = await callOpenAI([
     {
@@ -228,7 +240,7 @@ async function getImageReactionComment() {
   return reply;
 }
 
-// 🖼️ 이미지 반응 (base64 이미지)
+// 🖼️ 이미지 반응
 async function getReplyByImagePrompt(base64Image) {
   const response = await openai.chat.completions.create({
     model: 'gpt-4o',
@@ -258,7 +270,7 @@ function setForcedModel(name) {
   else forcedModel = null;
 }
 
-// 🔄 외부에서 사용할 수 있도록 export
+// 🔄 외부 노출
 module.exports = {
   getAllLogs,
   saveLog,
