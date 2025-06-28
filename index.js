@@ -24,7 +24,7 @@ const client = new line.Client(config);
 const userGPTVersion = {}; // userId: 'gpt-3.5' | 'gpt-4.0'
 const waitingForResponse = {};
 
-// 🌐 로그 저장 함수 (Render 서버로)
+// 🌐 로그 저장
 async function saveMessageToServer(from, content) {
   try {
     await axios.post('https://muku-line-log.onrender.com/log.php', { from, content });
@@ -46,16 +46,23 @@ async function handleEvent(event) {
 
     if (userMessage === '3.5') {
       userGPTVersion[userId] = 'gpt-3.5';
-      const versionMessage = '응, 이제 3.5로 말할게 아저씨!';
-      saveMessageToServer('yejin', versionMessage);
-      return replyText(event.replyToken, versionMessage);
+      const msg = '응, 이제 3.5로 말할게 아저씨!';
+      saveMessageToServer('yejin', msg);
+      return replyText(event.replyToken, msg);
     }
 
     if (userMessage === '4.0') {
       userGPTVersion[userId] = 'gpt-4.0';
-      const versionMessage = '응응, 4.0으로 바꿨지롱! 🫶';
-      saveMessageToServer('yejin', versionMessage);
-      return replyText(event.replyToken, versionMessage);
+      const msg = '응응, 4.0으로 바꿨지롱! 🫶';
+      saveMessageToServer('yejin', msg);
+      return replyText(event.replyToken, msg);
+    }
+
+    if (userMessage === '버전?') {
+      const currentVersion = userGPTVersion[userId] || 'gpt-4.0';
+      const msg = `지금은 ${currentVersion}이야!`;
+      saveMessageToServer('yejin', msg);
+      return replyText(event.replyToken, msg);
     }
 
     if (waitingForResponse[userId]) {
@@ -104,7 +111,7 @@ async function handleEvent(event) {
   return Promise.resolve(null);
 }
 
-// ⏰ 정각마다 담타 전송
+// ⏰ 정각마다 담타
 setInterval(async () => {
   const now = new Date();
   if (now.getMinutes() === 0) {
