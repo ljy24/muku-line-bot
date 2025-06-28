@@ -24,12 +24,12 @@ const client = new line.Client(config);
 const userGPTVersion = {}; // userId: 'gpt-3.5' | 'gpt-4.0'
 const waitingForResponse = {};
 
-// 🌐 서버에 로그 저장 함수
+// 🌐 로그 저장 함수 (Render 서버로)
 async function saveMessageToServer(from, content) {
   try {
-    await axios.post('https://de-ji.net/log.php', { from, content });
+    await axios.post('https://muku-line-log.onrender.com/log.php', { from, content });
   } catch (err) {
-    console.error('[❌ 서버 저장 실패]', err.message);
+    console.error('[❌ 로그 서버 저장 실패]', err.message);
   }
 }
 
@@ -50,6 +50,7 @@ async function handleEvent(event) {
       saveMessageToServer('yejin', versionMessage);
       return replyText(event.replyToken, versionMessage);
     }
+
     if (userMessage === '4.0') {
       userGPTVersion[userId] = 'gpt-4.0';
       const versionMessage = '응응, 4.0으로 바꿨지롱! 🫶';
@@ -103,6 +104,7 @@ async function handleEvent(event) {
   return Promise.resolve(null);
 }
 
+// ⏰ 정각마다 담타 전송
 setInterval(async () => {
   const now = new Date();
   if (now.getMinutes() === 0) {
