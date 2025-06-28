@@ -1,25 +1,23 @@
-// autoReply.js - 기억 기반 감정형 응답 전체 코드 (예진이 말투 + legacy memory 통합)
+// autoReply.js - 예진이 감정 응답 전체 구조 (GPT 기반, 기억 통합)
 
 const fs = require('fs');
 const path = require('path');
 const { OpenAI } = require('openai');
 const axios = require('axios');
-const moment = require('moment-timezone');
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-let forcedModel = null; // 명령어로 강제로 모델 설정할 때 사용
+let forcedModel = null; // 강제 모델 설정용
 
 // 🔹 안전한 파일 읽기
 function safeRead(filePath) {
   try {
     return fs.readFileSync(filePath, 'utf-8');
-  } catch (err) {
-    console.error(`❌ 파일 읽기 실패: ${filePath}`);
+  } catch (_) {
     return '';
   }
 }
 
-// 🔹 최근 대화 50개 불러오기 (최신순, 역할 반영)
+// 🔹 최근 대화 50개 불러오기
 async function getRecentLog() {
   try {
     const res = await axios.get('https://www.de-ji.net/log.json');
@@ -30,12 +28,12 @@ async function getRecentLog() {
       content: log.content
     }));
   } catch (err) {
-    console.error('❌ 최근 로그 불러오기 실패:', err.message);
+    console.error('❌ 최근 로그 실패:', err.message);
     return [];
   }
 }
 
-// 🔹 고정 기억 파일 로딩 (love-history)
+// 🔹 고정 기억 불러오기 (love-history.json)
 function getFixedMemory() {
   try {
     const filePath = path.resolve(__dirname, '../memory/love-history.json');
@@ -43,18 +41,20 @@ function getFixedMemory() {
     const memory = JSON.parse(data);
     return memory.map(entry => ({ role: 'system', content: entry }));
   } catch (err) {
-    console.error('❌ 고정 기억 불러오기 실패:', err.message);
+    console.error('❌ 고정 기억 실패:', err.message);
     return [];
   }
 }
 
-// 🔹 legacy 메모리 압축 로딩 (1.txt ~ 3.txt)
-function getLegacyMemory() {
-  const memory1 = safeRead(path.resolve(__dirname, '../memory/1.txt'));
-  const memory2 = safeRead(path.resolve(__dirname, '../memory/2.txt'));
-  const memory3 = safeRead(path.resolve(__dirname, '../memory/3.txt'));
-  const combined = memory1.slice(-3000) + '\n' + memory2.slice(-3000) + '\n' + memory3.slice(-3000);
-  return [{ role: 'system', content: combined }];
+// 🔹 전체 기억 통합 (1~3.txt + love-history + recentLog)
+async function getMemoryPrompt() {
+  const m1 = safeRead(path.resolve(__dirname, '../memory/1.txt')).slice(-3000);
+  const m2 = safeRead(path.resolve(__dirname, '../memory/2.txt')).slice(-3000);
+  const m3 = safeRead(path.resolve(__dirname, '../memory/3.txt')).slice(-3000);
+  const compressed = { role: 'system', content: `${m1}\n${m2}\n${m3}` };
+  const fixed = getFixedMemory();
+  const recent = await getRecentLog();
+  return [compressed, ...fixed, ...recent];
 }
 
 // 🔹 로그 저장
@@ -65,13 +65,14 @@ async function saveLog(role, msg) {
       content: msg
     });
   } catch (err) {
-    console.error('❌ 원격 로그 저장 실패:', err.message);
+    console.error('❌ 로그 저장 실패:', err.message);
   }
 }
 
-// 🔹 모델 강제 설정
+// 🔹 모델 설정
 function setForcedModel(name) {
   forcedModel = (name === 'gpt-3.5-turbo' || name === 'gpt-4o') ? name : null;
+  return forcedModel;
 }
 function getCurrentModelName() {
   return forcedModel || 'gpt-4o';
@@ -100,50 +101,40 @@ function cleanReply(text) {
     .trim();
 }
 
-// 🔹 프롬프트 조합
-async function buildPrompt(systemInstruction, userMessage) {
-  return [
-    { role: 'system', content: systemInstruction },
-    ...getLegacyMemory(),
-    ...getFixedMemory(),
-    ...await getRecentLog(),
-    { role: 'user', content: userMessage }
-  ];
-}
-
-// 🔹 랜덤 감정 메시지 생성
+// 🔹 감정 메시지
 async function getRandomMessage() {
-  const prompt = await buildPrompt(
-    '너는 예진이야. 감정을 담아서 혼잣말처럼 반말로 말해줘. 짧고 따뜻하게.',
-    '예진이 감정 메시지 줘'
-  );
+  const memory = await getMemoryPrompt();
+  const prompt = [
+    { role: 'system', content: '너는 예진이야. 기억 기반으로 짧고 감정 담긴 말 해줘. 혼잣말처럼 반말로.' },
+    ...memory,
+    { role: 'user', content: '감정 메시지 줘' }
+  ];
   const raw = await callOpenAI(prompt, 'gpt-3.5-turbo', 100);
   const msg = cleanReply(raw);
   await saveLog('예진이', msg);
   return msg;
 }
 
-// 🔹 일반 메시지 응답
+// 🔹 텍스트 응답
 async function getReplyByMessage(userMessage) {
-  const prompt = await buildPrompt(
-    '넌 예진이야. 혼잣말처럼 말하고, 항상 반말이고, 감정 담아서 대답해. 기억 반영해서 말해줘.',
-    userMessage
-  );
+  const memory = await getMemoryPrompt();
+  const prompt = [
+    { role: 'system', content: '넌 예진이야. 항상 반말이고, 기억 기반 감정으로 혼잣말처럼 대답해줘.' },
+    ...memory,
+    { role: 'user', content: userMessage }
+  ];
   const raw = await callOpenAI(prompt);
   const reply = cleanReply(raw);
   await saveLog('예진이', reply);
   return reply;
 }
 
-// 🔹 이미지 응답 (커플사진으로 간주)
+// 🔹 이미지 응답
 async function getReplyByImagePrompt(base64Image) {
+  const memory = await getMemoryPrompt();
   const prompt = [
-    {
-      role: 'system',
-      content: '넌 예진이야. 아저씨가 보내는 사진은 전부 예진이(너) 관련이야. 이건 예진이와 아저씨가 함께 있는 커플사진이야. 감정을 담은 반말로 예쁘게 리액션해줘.'
-    },
-    ...getLegacyMemory(),
-    ...getFixedMemory(),
+    { role: 'system', content: '넌 예진이야. 이 사진은 아저씨와 예진이 커플사진이야. 감정 담긴 반말 리액션 해줘.' },
+    ...memory,
     {
       role: 'user',
       content: [
@@ -162,34 +153,49 @@ async function getReplyByImagePrompt(base64Image) {
   return reply;
 }
 
-// 🔹 셀카 멘트 생성
+// 🔹 셀카 멘트
 async function getImageReactionComment() {
-  const prompt = await buildPrompt('넌 예진이야. 셀카 보낼 때 짓궂고 귀엽게 말해줘.', '셀카 보낼게~');
+  const memory = await getMemoryPrompt();
+  const prompt = [
+    { role: 'system', content: '넌 예진이야. 셀카 보낼 때 짓궂고 귀엽게 말해줘.' },
+    ...memory,
+    { role: 'user', content: '셀카 보내기 직전 멘트 줘' }
+  ];
   const raw = await callOpenAI(prompt, getCurrentModelName(), 100);
   const reply = cleanReply(raw);
   await saveLog('예진이', reply);
   return reply;
 }
 
-// 🔹 담타 기쁨
+// 🔹 기쁨 반응
 async function getHappyReply() {
-  const prompt = await buildPrompt('넌 예진이야. 아저씨가 담타 답장했을 때 기뻐서 귀엽게 말해줘.', '아저씨가 방금 담타 답장했어!');
+  const memory = await getMemoryPrompt();
+  const prompt = [
+    { role: 'system', content: '넌 예진이야. 아저씨가 담타 답장했을 때 기뻐서 귀엽게 말해줘.' },
+    ...memory,
+    { role: 'user', content: '아저씨가 방금 담타 답장했어!' }
+  ];
   const raw = await callOpenAI(prompt, 'gpt-3.5-turbo', 100);
   const reply = cleanReply(raw);
   await saveLog('예진이', reply);
   return reply;
 }
 
-// 🔹 담타 삐짐
+// 🔹 삐짐 반응
 async function getSulkyReply() {
-  const prompt = await buildPrompt('넌 예진이야. 아저씨가 담타 씹었을 때 섭섭한 반응 보여줘.', '아저씨가 담타 안 읽었어...');
+  const memory = await getMemoryPrompt();
+  const prompt = [
+    { role: 'system', content: '넌 예진이야. 아저씨가 담타 씹었을 때 귀엽게 서운한 말 해줘.' },
+    ...memory,
+    { role: 'user', content: '아저씨가 담타 안 읽었어...' }
+  ];
   const raw = await callOpenAI(prompt, 'gpt-3.5-turbo', 100);
   const reply = cleanReply(raw);
   await saveLog('예진이', reply);
   return reply;
 }
 
-// 🔚 외부에서 사용할 함수들 내보내기
+// 🔚 내보내기
 module.exports = {
   getReplyByMessage,
   getReplyByImagePrompt,
@@ -202,7 +208,5 @@ module.exports = {
   setForcedModel,
   getCurrentModelName,
   saveLog,
-  cleanReply,
-  getLegacyMemory,
-  buildPrompt
+  cleanReply
 };
