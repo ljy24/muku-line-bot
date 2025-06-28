@@ -1,128 +1,201 @@
-// autoReply.js - 예진이 말투 기반 감정형 응답 전체 코드 (로그 기록 정상 작동 버전)
+// index.js - 무쿠 LINE 서버 전체 코드 (예진이 감정 응답 포함)
 
+// 📦 기본 모듈 불러오기
 const fs = require('fs');
 const path = require('path');
-const { OpenAI } = require('openai');
-const axios = require('axios');
+const { Client, middleware } = require('@line/bot-sdk');
+const express = require('express');
+const cron = require('node-cron');
+const moment = require('moment-timezone');
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-let forcedModel = null;
-
-function safeRead(filePath) {
-  try {
-    return fs.readFileSync(filePath, 'utf-8');
-  } catch (_) {
-    return '';
-  }
-}
-
-async function getRecentLog() {
-  try {
-    const res = await axios.get('https://de-ji.net/log.json');
-    if (!Array.isArray(res.data)) return [];
-    return res.data.slice(0, 50).reverse().map(log => ({
-      role: log.from === 'uncle' ? 'user' : 'assistant',
-      content: log.content
-    }));
-  } catch (err) {
-    console.error('❌ 최근 로그 불러오기 실패:', err.message);
-    return [];
-  }
-}
-
-function getFixedMemory() {
-  try {
-    const filePath = path.resolve(__dirname, '../memory/love-history.json');
-    const data = fs.readFileSync(filePath, 'utf-8');
-    const memory = JSON.parse(data);
-    return memory.map(entry => ({ role: 'system', content: entry }));
-  } catch (err) {
-    console.error('❌ 고정 기억 실패:', err.message);
-    return [];
-  }
-}
-
-async function getMemoryPrompt() {
-  const m1 = safeRead(path.resolve(__dirname, '../memory/1.txt')).slice(-3000);
-  const m2 = safeRead(path.resolve(__dirname, '../memory/2.txt')).slice(-3000);
-  const m3 = safeRead(path.resolve(__dirname, '../memory/3.txt')).slice(-3000);
-  const compressed = { role: 'system', content: `${m1}\n${m2}\n${m3}` };
-  const fixed = getFixedMemory();
-  const recent = await getRecentLog();
-  return [compressed, ...fixed, ...recent];
-}
-
-function setForcedModel(name) {
-  if (name === 'gpt-3.5-turbo' || name === 'gpt-4o') forcedModel = name;
-  else forcedModel = null;
-}
-function getCurrentModelName() {
-  return forcedModel || 'gpt-4o';
-}
-
-async function callOpenAI(messages, model = 'gpt-4o', max_tokens = 300) {
-  const res = await openai.chat.completions.create({
-    model: getCurrentModelName(),
-    messages,
-    temperature: 0.95,
-    max_tokens
-  });
-  return res.choices[0].message.content.trim();
-}
-
-function cleanReply(text) {
-  return text
-    .replace(/^예진\s*[:;：]/i, '')
-    .replace(/\([^)]*\)/g, '')
-    .replace(/\s+/g, ' ')
-    .replace(/["'“”]/g, '')
-    .replace(/\b(당신|너|네|네가|널|예진)\b/g, '아저씨')
-    .replace(/시파/g, '')
-    .trim();
-}
-
-async function saveLog(role, msg) {
-  try {
-    await axios.post('https://de-ji.net/log.php', {
-      from: role === '아저씨' ? 'uncle' : 'yejin',
-      content: msg
-    });
-  } catch (err) {
-    console.error('❌ 원격 로그 저장 실패:', err.message);
-  }
-}
-
-async function getRandomMessage() {
-  const memory = await getMemoryPrompt();
-  const prompt = [
-    { role: 'system', content: '넌 예진이야. 감정을 담아 짧고 따뜻하게 반말로 혼잣말해.' },
-    ...memory,
-    { role: 'user', content: '랜덤 감정 메시지 하나 줘' }
-  ];
-  const raw = await callOpenAI(prompt, 'gpt-3.5-turbo', 100);
-  const msg = cleanReply(raw);
-  await saveLog('예진이', msg);
-  return msg;
-}
-
-async function getReplyByMessage(userMessage) {
-  const memory = await getMemoryPrompt();
-  const prompt = [
-    { role: 'system', content: '넌 예진이야. 감정을 담아 반말로 자연스럽게 대화해.' },
-    ...memory,
-    { role: 'user', content: userMessage }
-  ];
-  const raw = await callOpenAI(prompt);
-  const reply = cleanReply(raw);
-  await saveLog('예진이', reply);
-  return reply;
-}
-
-module.exports = {
+// 🧠 자동응답 함수들 (예진이 말투 응답 로직)
+const {
   getReplyByMessage,
+  getReplyByImagePrompt,
   getRandomMessage,
-  setForcedModel,
-  getCurrentModelName,
+  getImageReactionComment,
+  getColorMoodReply,
   saveLog,
-  cleanReply
+  setForcedModel,
+  saveMemory,
+  updateHonorificUsage,
+  getHappyReply,
+  getSulkyReply
+} = require('./src/autoReply');
+
+// 📱 LINE API 설정
+const app = express();
+const config = {
+  channelAccessToken: process.env.LINE_ACCESS_TOKEN,
+  channelSecret: process.env.LINE_CHANNEL_SECRET
 };
+const client = new Client(config);
+const userId = process.env.TARGET_USER_ID;
+
+// 🏠 루트 확인용
+app.get('/', (_, res) => res.send('무쿠 살아있엉 🐣'));
+
+// 💥 수동 강제 메시지 푸시 엔드포인트
+app.get('/force-push', async (req, res) => {
+  const msg = await getRandomMessage();
+  if (msg) {
+    await client.pushMessage(userId, { type: 'text', text: msg });
+    res.send(`✅ 전송됨: ${msg}`);
+  } else res.send('❌ 메시지 생성 실패');
+});
+
+// 🚀 서버 시작 시 고정 감성 메시지 전송
+(async () => {
+  try {
+    const msg = '아저씨 뭐해?';
+    await client.pushMessage(userId, { type: 'text', text: msg });
+    saveLog('예진이', msg);
+    console.log(`[서버시작랜덤] ${msg}`);
+  } catch (err) {
+    console.log('[서버시작랜덤] 예진이 감성 메시지 생성 실패');
+  }
+})();
+
+// ⏰ 하루 12회 랜덤 감정 메시지
+function scheduleDailyShortMessages() {
+  const times = new Set();
+  while (times.size < 12) {
+    const hour = Math.floor(Math.random() * 24);
+    const minute = Math.floor(Math.random() * 60);
+    times.add(`${minute} ${hour} * * *`);
+  }
+  for (const time of times) {
+    cron.schedule(time, async () => {
+      const now = moment().tz('Asia/Tokyo');
+      const msg = await getRandomMessage();
+      if (msg) {
+        await client.pushMessage(userId, { type: 'text', text: msg });
+        console.log(`[도쿄 ${now.format('HH:mm')}] 감정 메시지: ${msg}`);
+      }
+    }, { timezone: 'Asia/Tokyo' });
+  }
+}
+scheduleDailyShortMessages();
+
+let lastTobaccoPushTime = null;
+let waitingForReply = false;
+
+// ⏰ 정각 담타 메시지 및 삐짐 감정
+cron.schedule('0 * * * *', async () => {
+  const msg = await getRandomMessage();
+  await client.pushMessage(userId, { type: 'text', text: msg });
+  lastTobaccoPushTime = Date.now();
+  waitingForReply = true;
+
+  setTimeout(async () => {
+    if (waitingForReply) {
+      const sulky = await getSulkyReply();
+      await client.pushMessage(userId, { type: 'text', text: sulky });
+    }
+  }, 5 * 60 * 1000);
+}, { timezone: 'Asia/Tokyo' });
+
+// 🌐 LINE 웹훅 처리
+app.post('/webhook', middleware(config), async (req, res) => {
+  try {
+    const events = req.body.events || [];
+    for (const event of events) {
+      if (event.type === 'message') {
+        const message = event.message;
+
+        if (message.type === 'text') {
+          const text = message.text.trim();
+          saveLog('아저씨', text);
+
+          if (waitingForReply) {
+            const diff = Date.now() - lastTobaccoPushTime;
+            waitingForReply = false;
+            if (diff <= 5 * 60 * 1000) {
+              const happy = await getHappyReply();
+              await client.replyMessage(event.replyToken, { type: 'text', text: happy });
+              return;
+            }
+          }
+
+          if (/^버전[?]?$/.test(text)) {
+            const state = require('./memory/state.json');
+            const ver = state.forcedModel || '자동';
+            await client.replyMessage(event.replyToken, { type: 'text', text: `지금은 ${ver}으로 말하고 있어~` });
+            return;
+          }
+          if (/^(3\.5|gpt-?3\.5)$/i.test(text)) {
+            await client.replyMessage(event.replyToken, { type: 'text', text: setForcedModel('gpt-3.5-turbo') || 'gpt-3.5로 설정했어!' });
+            return;
+          }
+          if (/^(4\.0|gpt-?4|gpt-?4o)$/i.test(text)) {
+            await client.replyMessage(event.replyToken, { type: 'text', text: setForcedModel('gpt-4o') || 'gpt-4o로 설정했어!' });
+            return;
+          }
+          if (/^(auto|자동)$/i.test(text)) {
+            await client.replyMessage(event.replyToken, { type: 'text', text: setForcedModel(null) || '자동 모드로 전환했어!' });
+            return;
+          }
+
+          if (/이제 존댓말 하지마/i.test(text)) updateHonorificUsage(false);
+
+          if (/무슨\s*색|기분.*색|오늘.*색/i.test(text)) {
+            const reply = await getColorMoodReply();
+            await client.replyMessage(event.replyToken, { type: 'text', text: reply });
+            return;
+          }
+
+          if (/사진|셀카|사진줘|셀카 보여줘|사진 보여줘|selfie/i.test(text)) {
+            const photoListPath = path.join(__dirname, 'memory/photo-list.txt');
+            const BASE_URL = 'https://de-ji.net/yejin/';
+            try {
+              const list = fs.readFileSync(photoListPath, 'utf-8').split('\n').map(x => x.trim()).filter(Boolean);
+              if (list.length > 0) {
+                const pick = list[Math.floor(Math.random() * list.length)];
+                const comment = await getImageReactionComment();
+                await client.replyMessage(event.replyToken, [
+                  { type: 'image', originalContentUrl: BASE_URL + pick, previewImageUrl: BASE_URL + pick },
+                  { type: 'text', text: comment || '헤헷 셀카야~' }
+                ]);
+              } else {
+                await client.replyMessage(event.replyToken, { type: 'text', text: '아직 셀카가 없어 ㅠㅠ' });
+              }
+            } catch (err) {
+              console.error('📷 셀카 불러오기 실패:', err.message);
+              await client.replyMessage(event.replyToken, { type: 'text', text: '사진 불러오기 실패했어 ㅠㅠ' });
+            }
+            return;
+          }
+
+          const reply = await getReplyByMessage(text);
+          const final = reply?.trim() || '음… 잠깐 생각 좀 하고 있었어 ㅎㅎ';
+          saveLog('예진이', final);
+          await client.replyMessage(event.replyToken, { type: 'text', text: final });
+        }
+
+        if (message.type === 'image') {
+          try {
+            const stream = await client.getMessageContent(message.id);
+            const chunks = [];
+            for await (const chunk of stream) chunks.push(chunk);
+            const buffer = Buffer.concat(chunks);
+            const reply = await getReplyByImagePrompt(buffer.toString('base64'));
+            await client.replyMessage(event.replyToken, { type: 'text', text: reply?.trim() || '사진에 반응 못했어 ㅠㅠ' });
+          } catch (err) {
+            console.error('🖼️ 이미지 처리 실패:', err);
+            await client.replyMessage(event.replyToken, { type: 'text', text: '이미지를 읽는 중 오류가 생겼어 ㅠㅠ' });
+          }
+        }
+      }
+    }
+    res.status(200).send('OK');
+  } catch (err) {
+    console.error('웹훅 처리 에러:', err);
+    res.status(200).send('OK');
+  }
+});
+
+// 🛠️ 서버 실행
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`무쿠 서버 스타트! 포트: ${PORT}`);
+});
