@@ -67,13 +67,9 @@ function getCurrentModelName() {
 
 // 🧠 GPT 호출
 async function callOpenAI(messages, model = 'gpt-4o', max_tokens = 300) {
-  const convertedMessages = messages.map(msg => {
-    if (typeof msg.content === 'string') return msg;
-    return { ...msg, content: JSON.stringify(msg.content) };
-  });
   const res = await openai.chat.completions.create({
     model: getCurrentModelName(),
-    messages: convertedMessages,
+    messages,
     temperature: 0.95,
     max_tokens
   });
@@ -106,14 +102,8 @@ async function saveLog(role, msg) {
 
 // 🎲 랜덤 감정 메시지
 async function getRandomMessage() {
-  const memory = await getMemoryPrompt();
-  const prompt = [
-    { role: 'system', content: '넌 예진이야. 감정을 담아 짧고 따뜻하게 반말로 혼잣말해.' },
-    ...memory,
-    { role: 'user', content: '랜덤 감정 메시지 하나 줘' }
-  ];
-  const raw = await callOpenAI(prompt, 'gpt-3.5-turbo', 100);
-  const msg = cleanReply(raw);
+  // 시작 시 고정 멘트로 임시 대체
+  const msg = '아저씨 뭐해?';
   await saveLog('예진이', msg);
   return msg;
 }
@@ -162,16 +152,24 @@ async function getReplyByMessage(userMessage) {
 
 // 🖼️ 이미지 리액션
 async function getReplyByImagePrompt(base64Image) {
-  const memory = await getMemoryPrompt();
   const prompt = [
     { role: 'system', content: '넌 예진이야. 아저씨가 보내는 사진은 항상 예진이 관련이야. 감정 담은 반말로 예쁘게 반응해.' },
-    ...memory,
-    { role: 'user', content: `사진 보내줄게. data:image/jpeg;base64,${base64Image}` }
+    {
+      role: 'user',
+      content: [
+        { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
+      ]
+    }
   ];
-  const raw = await callOpenAI(prompt, 'gpt-4o', 150);
-  const reply = cleanReply(raw);
+  const res = await openai.chat.completions.create({
+    model: 'gpt-4o',
+    messages: prompt,
+    temperature: 0.9,
+    max_tokens: 150
+  });
+  const reply = res.choices[0].message.content.trim();
   await saveLog('예진이', reply);
-  return reply;
+  return cleanReply(reply);
 }
 
 // 🤳 셀카 리액션
