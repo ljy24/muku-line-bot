@@ -13,8 +13,7 @@ async function saveLog(role, msg) {
   try {
     await axios.post('https://muku-line-log.onrender.com/log', {
       from: role === '아저씨' ? 'uncle' : 'yejin',
-      content: msg,
-      date: new Date().toISOString()
+      content: msg
     });
   } catch (err) {
     console.error('❌ 원격 로그 저장 실패:', err.message);
