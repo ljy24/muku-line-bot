@@ -9,7 +9,7 @@ const {
   getRandomTobaccoMessage,
   getHappyReply,
   getSulkyReply
-} = require('./autoReply');
+} = require('./src/autoReply'); // ✅ 경로 수정!
 
 const app = express();
 const PORT = process.env.PORT || 3000;
