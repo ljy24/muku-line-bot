@@ -21,13 +21,13 @@ const config = {
 
 const FIXED_USER_ID = process.env.TARGET_USER_ID;
 const client = new line.Client(config);
-const userGPTVersion = {}; // userId: 'gpt-3.5' | 'gpt-4.0'
+const userGPTVersion = {};
 const waitingForResponse = {};
 
 // 🌐 로그 저장
 async function saveMessageToServer(from, content) {
   try {
-    await axios.post('https://muku-line-log.onrender.com/log.php', { from, content });
+    await axios.post('https://muku-line-log.onrender.com/log', { from, content });
   } catch (err) {
     console.error('[❌ 로그 서버 저장 실패]', err.message);
   }
