@@ -13,7 +13,7 @@ let forcedModel = null;
 async function saveLog(role, msg) {
   try {
     await axios.post('https://muku-line-log.onrender.com/save', {
-      role,
+      role: role === '아저씨' ? 'uncle' : 'yejin',
       msg,
       date: new Date().toISOString()
     });
