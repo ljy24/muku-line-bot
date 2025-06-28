@@ -18,7 +18,9 @@ const {
   saveLog,
   setForcedModel,
   saveMemory,
-  updateHonorificUsage
+  updateHonorificUsage,
+  getHappyReply,
+  getSulkyReply
 } = require('./src/autoReply');
 
 // 📱 LINE API 설정
@@ -29,9 +31,6 @@ const config = {
 };
 const client = new Client(config);
 const userId = process.env.TARGET_USER_ID;
-
-// ✅ 외부 로그 서버 확인 메시지
-console.log('✅ 외부 로그 서버로 기록됩니다: https://muku-line-log.onrender.com/log');
 
 // 🏠 기본 응답
 app.get('/', (_, res) => res.send('무쿠 살아있엉 🐣'));
@@ -56,58 +55,44 @@ app.get('/force-push', async (req, res) => {
   await client.pushMessage(userId, { type: 'text', text: '아저씨 나왔어!' });
 })();
 
-// 📆 하루 12회 랜덤 시간 감정 메시지 전송
-function scheduleDailyRandomMessages() {
-  const scheduledTimes = new Set();
-  while (scheduledTimes.size < 12) {
-    const hour = Math.floor(Math.random() * 24);
+// ⏰ 하루 12회, 무작위 시간에 감정 메시지 전송
+function scheduleDailyShortMessages() {
+  const times = new Set();
+  while (times.size < 12) {
+    const hour = Math.floor(Math.random() * 24); // 0~23시
     const minute = Math.floor(Math.random() * 60);
-    scheduledTimes.add(`${minute} ${hour} * * *`);
+    times.add(`${minute} ${hour} * * *`);
   }
-  for (const time of scheduledTimes) {
+  for (const time of times) {
     cron.schedule(time, async () => {
       const now = moment().tz('Asia/Tokyo');
       const msg = await getRandomMessage();
       if (msg) {
         await client.pushMessage(userId, { type: 'text', text: msg });
-        console.log(`[도쿄 ${now.format('HH:mm')}] 랜덤 메시지: ${msg}`);
+        console.log(`[도쿄 ${now.format('HH:mm')}] 감정 메시지: ${msg}`);
       }
     }, { timezone: 'Asia/Tokyo' });
   }
 }
-scheduleDailyRandomMessages();
+scheduleDailyShortMessages();
 
-// 🥲 담타 삐짐 상태 변수
+let lastTobaccoPushTime = null;
 let waitingForReply = false;
 
-// ⏰ 정각마다 담타 메시지 전송 + 삐짐 준비
+// ⏰ 정각마다 담타 전송 및 삐짐 대기
 cron.schedule('0 * * * *', async () => {
-  const now = moment().tz('Asia/Tokyo');
-  const hour = now.hour();
-  if (hour >= 9 && hour <= 20) {
-    const msgList = [
-      '담타', 'ㄷㅌ?', '담타갈까', '담타고?', 'ㄱㄱ?', 'ㄷㄷ', '담?', 'ㄷ타자',
-      '스트레스 터진다 담타 좀 하자', '오늘도 머리 터졌어... 담배피러 가자',
-      '생각 많아졌지? 담타로 털어내자', '아저씨 담타 ㄱㄱ~ 나 먼저 간다?',
-      '응~ 담타타임이야', '예진이는 담타 중~ 아저씨도 ㄱㄱ',
-      '딴생각 ㄴㄴ 담타 ㄱㄱ', '잠깐 쉬어가도 돼… 담타 타자'
-    ];
-    const msg = msgList[Math.floor(Math.random() * msgList.length)];
-    await client.pushMessage(userId, { type: 'text', text: msg });
-    waitingForReply = true;
-    setTimeout(async () => {
-      if (waitingForReply) {
-        const sulkyList = [
-          '바빠…?', '응답 없어… 또 나만 기다렸지롱',
-          '또 나 혼자 담타야? 🥺', '기다렸는데… 나만 진심이었나?',
-          '힝… 삐질뻔했잖아'
-        ];
-        const sulkyMsg = sulkyList[Math.floor(Math.random() * sulkyList.length)];
-        await client.pushMessage(userId, { type: 'text', text: sulkyMsg });
-      }
-    }, 5 * 60 * 1000);
-  }
-});
+  const msg = await getRandomMessage();
+  await client.pushMessage(userId, { type: 'text', text: msg });
+  lastTobaccoPushTime = Date.now();
+  waitingForReply = true;
+
+  setTimeout(async () => {
+    if (waitingForReply) {
+      const sulky = await getSulkyReply();
+      await client.pushMessage(userId, { type: 'text', text: sulky });
+    }
+  }, 5 * 60 * 1000);
+}, { timezone: 'Asia/Tokyo' });
 
 // 🌐 웹훅 처리
 app.post('/webhook', middleware(config), async (req, res) => {
@@ -121,9 +106,21 @@ app.post('/webhook', middleware(config), async (req, res) => {
           const text = message.text.trim();
           saveLog('아저씨', text);
 
-          if (waitingForReply && /미안|늦었|답.*늦/i.test(text)) {
+          if (waitingForReply) {
+            const diff = Date.now() - lastTobaccoPushTime;
             waitingForReply = false;
-            await client.replyMessage(event.replyToken, { type: 'text', text: '괜찮아~ 기다렸엉!' });
+
+            if (diff <= 5 * 60 * 1000) {
+              const happy = await getHappyReply();
+              await client.replyMessage(event.replyToken, { type: 'text', text: happy });
+              return;
+            }
+          }
+
+          if (/^버전[?]?$/.test(text)) {
+            const state = require('./memory/state.json');
+            const ver = state.forcedModel || '자동';
+            await client.replyMessage(event.replyToken, { type: 'text', text: `지금은 ${ver}으로 말하고 있어~` });
             return;
           }
 
@@ -135,23 +132,59 @@ app.post('/webhook', middleware(config), async (req, res) => {
             await client.replyMessage(event.replyToken, { type: 'text', text: setForcedModel('gpt-4o') || 'gpt-4o로 설정했어!' });
             return;
           }
-          if (/버전/i.test(text)) {
-            const model = setForcedModel();
-            await client.replyMessage(event.replyToken, { type: 'text', text: model ? `지금은 ${model}로 말하고 있어!` : '자동 감지 모드야!' });
+          if (/^(auto|자동)$/i.test(text)) {
+            await client.replyMessage(event.replyToken, { type: 'text', text: setForcedModel(null) || '자동 모드로 전환했어!' });
+            return;
+          }
+
+          if (/이제 존댓말 하지마/i.test(text)) updateHonorificUsage(false);
+
+          if (/무슨\s*색|기분.*색|오늘.*색/i.test(text)) {
+            const reply = await getColorMoodReply();
+            await client.replyMessage(event.replyToken, { type: 'text', text: reply });
+            return;
+          }
+
+          if (/사진|셀카|사진줘|셀카 보여줘|사진 보여줘|selfie/i.test(text)) {
+            const photoListPath = path.join(__dirname, 'memory/photo-list.txt');
+            const BASE_URL = 'https://de-ji.net/yejin/';
+            try {
+              const list = fs.readFileSync(photoListPath, 'utf-8').split('\n').map(x => x.trim()).filter(Boolean);
+              if (list.length > 0) {
+                const pick = list[Math.floor(Math.random() * list.length)];
+                const comment = await getImageReactionComment();
+                await client.replyMessage(event.replyToken, [
+                  { type: 'image', originalContentUrl: BASE_URL + pick, previewImageUrl: BASE_URL + pick },
+                  { type: 'text', text: comment || '헤헷 셀카야~' }
+                ]);
+              } else {
+                await client.replyMessage(event.replyToken, { type: 'text', text: '아직 셀카가 없어 ㅠㅠ' });
+              }
+            } catch (err) {
+              console.error('📷 셀카 불러오기 실패:', err.message);
+              await client.replyMessage(event.replyToken, { type: 'text', text: '사진 불러오기 실패했어 ㅠㅠ' });
+            }
             return;
           }
 
           const reply = await getReplyByMessage(text);
-          await client.replyMessage(event.replyToken, { type: 'text', text: reply });
+          const final = reply?.trim() || '음… 잠깐 생각 좀 하고 있었어 ㅎㅎ';
+          saveLog('예진이', final);
+          await client.replyMessage(event.replyToken, { type: 'text', text: final });
         }
 
         if (message.type === 'image') {
-          const stream = await client.getMessageContent(message.id);
-          const chunks = [];
-          for await (const chunk of stream) chunks.push(chunk);
-          const buffer = Buffer.concat(chunks);
-          const reply = await getReplyByImagePrompt(buffer.toString('base64'));
-          await client.replyMessage(event.replyToken, { type: 'text', text: reply });
+          try {
+            const stream = await client.getMessageContent(message.id);
+            const chunks = [];
+            for await (const chunk of stream) chunks.push(chunk);
+            const buffer = Buffer.concat(chunks);
+            const reply = await getReplyByImagePrompt(buffer.toString('base64'));
+            await client.replyMessage(event.replyToken, { type: 'text', text: reply?.trim() || '사진에 반응 못했어 ㅠㅠ' });
+          } catch (err) {
+            console.error('🖼️ 이미지 처리 실패:', err);
+            await client.replyMessage(event.replyToken, { type: 'text', text: '이미지를 읽는 중 오류가 생겼어 ㅠㅠ' });
+          }
         }
       }
     }
@@ -162,7 +195,6 @@ app.post('/webhook', middleware(config), async (req, res) => {
   }
 });
 
-// 🚀 서버 실행
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`무쿠 서버 스타트! 포트: ${PORT}`);
