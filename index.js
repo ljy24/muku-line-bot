@@ -1,5 +1,5 @@
 //index.js
-a
+
 // 📦 기본 모듈 불러오기
 const fs = require('fs');
 const path = require('path');
