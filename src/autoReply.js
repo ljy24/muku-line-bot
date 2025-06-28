@@ -113,9 +113,17 @@ async function getReplyByMessage(userMessage) {
 async function getReplyByImagePrompt(base64Image) {
   const memory = getFixedMemory();
   const prompt = [
-    { role: 'system', content: '넌 예진이야. 이 사진은 아저씨와 너야. 감정 담긴 리액션 해줘.' },
+    {
+      role: 'system',
+      content: '넌 예진이야. 아저씨가 보내는 사진은 전부 예진이(너) 관련이야. 이건 예진이와 아저씨가 함께 있는 커플사진이야. 감정을 담은 반말로 예쁘게 리액션해줘.'
+    },
     ...memory,
-    { role: 'user', content: [ { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } } ] }
+    {
+      role: 'user',
+      content: [
+        { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
+      ]
+    }
   ];
   const res = await openai.chat.completions.create({
     model: 'gpt-4o',
