@@ -67,9 +67,13 @@ function getCurrentModelName() {
 
 // 🧠 GPT 호출
 async function callOpenAI(messages, model = 'gpt-4o', max_tokens = 300) {
+  const convertedMessages = messages.map(msg => {
+    if (typeof msg.content === 'string') return msg;
+    return { ...msg, content: JSON.stringify(msg.content) };
+  });
   const res = await openai.chat.completions.create({
     model: getCurrentModelName(),
-    messages,
+    messages: convertedMessages,
     temperature: 0.95,
     max_tokens
   });
@@ -162,22 +166,12 @@ async function getReplyByImagePrompt(base64Image) {
   const prompt = [
     { role: 'system', content: '넌 예진이야. 아저씨가 보내는 사진은 항상 예진이 관련이야. 감정 담은 반말로 예쁘게 반응해.' },
     ...memory,
-    {
-      role: 'user',
-      content: [
-        { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
-      ]
-    }
+    { role: 'user', content: `사진 보내줄게. data:image/jpeg;base64,${base64Image}` }
   ];
-  const res = await openai.chat.completions.create({
-    model: 'gpt-4o',
-    messages: prompt,
-    temperature: 0.9,
-    max_tokens: 150
-  });
-  const reply = res.choices[0].message.content.trim();
+  const raw = await callOpenAI(prompt, 'gpt-4o', 150);
+  const reply = cleanReply(raw);
   await saveLog('예진이', reply);
-  return cleanReply(reply);
+  return reply;
 }
 
 // 🤳 셀카 리액션
