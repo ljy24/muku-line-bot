@@ -7,6 +7,38 @@ const axios = require('axios');
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 let forcedModel = null;
 
+function safeRead(filePath) {
+  try {
+    return fs.readFileSync(filePath, 'utf-8');
+  } catch (_) {
+    return '';
+  }
+}
+
+// 🔹 고정 기억 불러오기 (love-history.json)
+function getFixedMemory() {
+  try {
+    const filePath = path.resolve(__dirname, '../memory/love-history.json');
+    const data = fs.readFileSync(filePath, 'utf-8');
+    const memory = JSON.parse(data);
+    return memory.map(entry => ({ role: 'system', content: entry }));
+  } catch (err) {
+    console.error('❌ 고정 기억 실패:', err.message);
+    return [];
+  }
+}
+
+// 🔹 전체 기억 통합 (1~3.txt + love-history + 최근 대화)
+async function getFullMemoryPrompt() {
+  const m1 = safeRead(path.resolve(__dirname, '../memory/1.txt')).slice(-3000);
+  const m2 = safeRead(path.resolve(__dirname, '../memory/2.txt')).slice(-3000);
+  const m3 = safeRead(path.resolve(__dirname, '../memory/3.txt')).slice(-3000);
+  const compressed = { role: 'system', content: `${m1}\n${m2}\n${m3}` };
+  const fixed = getFixedMemory();
+  const recent = await getRecentLog();
+  return [compressed, ...fixed, ...recent];
+}
+
 // 🔹 최근 대화 50개 불러오기
 async function getRecentLog() {
   try {
