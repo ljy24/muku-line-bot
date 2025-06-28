@@ -20,7 +20,8 @@ const {
   saveMemory,
   updateHonorificUsage,
   getHappyReply,
-  getSulkyReply
+  getSulkyReply,
+  getRandomMessageByTime
 } = require('./src/autoReply');
 
 // 📱 LINE API 설정
@@ -44,15 +45,18 @@ app.get('/force-push', async (req, res) => {
   } else res.send('❌ 메시지 생성 실패');
 });
 
-// 🚀 서버 시작 시 인사
+// 🚀 서버 시작 시 인사 (일본 현지 시간, 감성 예진이 말투 GPT 생성)
 (async () => {
-  const msg = await getRandomMessage();
-  if (msg) {
-    await client.pushMessage(userId, { type: 'text', text: msg });
-    saveLog('예진이', msg);
-    console.log(`[서버시작랜덤] ${msg}`);
+  try {
+    const msg = await getRandomMessageByTime(); // 현재 도쿄 시간 기준 예진이 스타일 감성 메시지 생성
+    if (msg) {
+      await client.pushMessage(userId, { type: 'text', text: msg });
+      saveLog('예진이', msg);
+      console.log(`[서버시작랜덤] ${msg}`);
+    }
+  } catch (err) {
+    console.log('[서버시작랜덤] 예진이 감성 메시지 생성 실패');
   }
-  await client.pushMessage(userId, { type: 'text', text: '아저씨 나왔어!' });
 })();
 
 // ⏰ 하루 12회, 무작위 시간에 감정 메시지 전송
