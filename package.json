@@ -2,10 +2,10 @@
   "name": "muku-line-bot",
   "version": "1.0.0",
   "description": "무쿠 LINE 메시지 자동 응답 봇",
-  "main": "src/index.js",
+  "main": "index.js",
   "type": "commonjs",
   "scripts": {
-    "start": "node src/index.js",
+    "start": "node index.js",
     "register-face": "node registerFaceData.js"
   },
   "dependencies": {
