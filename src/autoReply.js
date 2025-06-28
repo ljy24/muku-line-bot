@@ -1,219 +1,120 @@
+// autoReply.js
+
+// 📦 기본 모듈 불러오기
 const fs = require('fs');
 const path = require('path');
-const OpenAI = require('openai');
-const faceapi = require('@vladmandic/face-api');
-const canvas = require('canvas');
-const fetch = require('node-fetch');
+const { OpenAI } = require('openai');
+const stringSimilarity = require('string-similarity');
+const moment = require('moment-timezone');
 
-const { Canvas, Image, ImageData } = canvas;
-faceapi.env.monkeyPatch({ Canvas, Image, ImageData });
+// GPT 모델 강제 설정용 변수
+let forcedModel = null;
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY || '아저씨_OPENAI_API_KEY'
-});
+// 🔑 OpenAI 초기화
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// 📥 모델 자동 다운로드
-const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js-models/models';
-async function ensureModels() {
-  const modelPath = path.join(__dirname, 'models');
-  if (!fs.existsSync(modelPath)) fs.mkdirSync(modelPath);
-
-  const modelFiles = [
-    'face_recognition_model-weights_manifest.json',
-    'face_recognition_model-shard1',
-    'face_landmark_68_model-weights_manifest.json',
-    'face_landmark_68_model-shard1',
-    'ssd_mobilenetv1_model-weights_manifest.json',
-    'ssd_mobilenetv1_model-shard1'
-  ];
-
-  for (const file of modelFiles) {
-    const fullPath = path.join(modelPath, file);
-    if (!fs.existsSync(fullPath)) {
-      const res = await fetch(`${MODEL_URL}/${file}`);
-      const buffer = await res.buffer();
-      fs.writeFileSync(fullPath, buffer);
-    }
+// 🔐 안전하게 파일 읽는 함수
+function safeRead(filePath, fallback = '') {
+  try {
+    return fs.readFileSync(filePath, 'utf-8');
+  } catch {
+    return fallback;
   }
 }
 
-// 📁 기억 불러오기
-async function loadCoreMemories() {
-  const files = ['1빠계.txt', '2내꺼.txt', '모델 빠계.html'];
-  const memoryDir = path.join(__dirname, 'memory');
-  const allMemories = await Promise.all(
-    files.map(file => fs.promises.readFile(path.join(memoryDir, file), 'utf-8'))
-  );
-  return allMemories.join('\n\n');
-}
+// 🧠 기억 파일 불러오기
+const memory1 = safeRead(path.resolve(__dirname, '../memory/1.txt'));
+const memory2 = safeRead(path.resolve(__dirname, '../memory/2.txt'));
+const memory3 = safeRead(path.resolve(__dirname, '../memory/3.txt'));
+const fixedMemory = safeRead(path.resolve(__dirname, '../memory/fixedMemories.json'));
+const compressedMemory = memory1.slice(-3000) + '\n' + memory2.slice(-3000) + '\n' + memory3.slice(-3000);
 
-// 🌸 GPT 호출
-async function callOpenAI(prompt, memory, version = 'gpt-4o') {
-  const model = version === 'gpt-3.5' ? 'gpt-3.5-turbo' : 'gpt-4o';
-  const systemPrompt = '넌 예진이야. 무조건 반말만 써. 말이 짧든 길든 감정이 흐르면 돼. 너 자신을 "나"라고 하고, 아저씨한테 감정 담아서 조곤조곤 얘기해.';
+// 📍 상태 및 로그 파일 경로
+const statePath = path.resolve(__dirname, '../memory/state.json');
+const logPath = path.resolve(__dirname, '../memory/message-log.json');
 
-  const res = await openai.chat.completions.create({
-    model,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: `${prompt}\n\n---\n\n${memory}` }
-    ],
-    temperature: 0.9
-  });
-
-  return res.choices[0].message.content;
-}
-
-// 말투 정리
-function cleanReply(text) {
-  return text.trim().replace(/^\"|\"$/g, '');
-}
-
-// 셀카
-function getRandomSelfiePath() {
-  const num = Math.floor(Math.random() * 1200) + 1;
-  const padded = String(num).padStart(4, '0');
-  return `assets/selfies/${padded}.jpg`;
-}
-function getImageReactionComment() {
-  const list = [
-    "이 사진… 저장 안 할 수가 없잖아…",
-    "아조씨… 왜 이렇게 예뻐해…",
-    "이거 방금 찍은 거지? 너무 심장 아파…",
-    "하… 이러면 또 보고싶어지잖아…"
-  ];
-  return list[Math.floor(Math.random() * list.length)];
-}
-
-// 얼굴 인식
-async function getFaceMatch(base64Image) {
-  await ensureModels();
-
-  const modelPath = path.join(__dirname, 'models');
-  await faceapi.nets.ssdMobilenetv1.loadFromDisk(modelPath);
-  await faceapi.nets.faceRecognitionNet.loadFromDisk(modelPath);
-  await faceapi.nets.faceLandmark68Net.loadFromDisk(modelPath);
-
-  const imgBuffer = Buffer.from(base64Image, 'base64');
-  const img = await canvas.loadImage(imgBuffer);
-  const detection = await faceapi.detectSingleFace(img).withFaceLandmarks().withFaceDescriptor();
-  if (!detection) return 'unknown';
-
-  const descriptor = detection.descriptor;
-  const refPaths = {
-    yejin: path.join(__dirname, 'memory/face/yejin'),
-    uncle: path.join(__dirname, 'memory/face/uncle')
-  };
-
-  let bestMatch = { label: 'unknown', distance: 1 };
-
-  for (const label of Object.keys(refPaths)) {
-    const files = fs.readdirSync(refPaths[label]);
-    for (const file of files) {
-      const refImg = await canvas.loadImage(path.join(refPaths[label], file));
-      const refDet = await faceapi.detectSingleFace(refImg).withFaceLandmarks().withFaceDescriptor();
-      if (!refDet) continue;
-
-      const dist = faceapi.euclideanDistance(descriptor, refDet.descriptor);
-      if (dist < bestMatch.distance) {
-        bestMatch = { label, distance: dist };
-      }
-    }
+// 📜 로그 불러오기
+function getAllLogs() {
+  if (!fs.existsSync(logPath)) return [];
+  try {
+    return JSON.parse(fs.readFileSync(logPath, 'utf-8'));
+  } catch {
+    return [];
   }
-
-  return bestMatch.distance < 0.45 ? bestMatch.label : 'unknown';
 }
 
-// 📷 사진 감정 리액션
-async function getReplyByImagePrompt(base64Image, version = 'gpt-4o') {
-  const memory = await loadCoreMemories();
-  const face = await getFaceMatch(base64Image);
+// 📝 로그 저장
+function saveLog(role, msg) {
+  const cleanMsg = msg.replace(/^예진\s*[:;：]/i, '').trim();
+  const finalMsg = cleanMsg || msg.trim();
+  if (!finalMsg) return;
 
-  let prompt = '';
-  if (face === 'yejin') {
-    prompt = `사진 속에 예진이 자신이 나왔어. 아저씨가 이 사진 보냈고, 예진이는 그걸 보고 감정이 올라왔어. 조용하게, 진심으로 말해줘.`;
-  } else if (face === 'uncle') {
-    prompt = `사진 속에 아저씨가 나왔어. 예진이는 그걸 보고 살짝 울컥했어. 감정이 올라오는 대로 조곤조곤 말해줘.`;
-  } else {
-    prompt = `아저씨가 사진을 보냈어. 예진이는 그걸 보고 마음속에서 감정이 올라왔어. 예쁜 말이든, 그리움이든, 아무 감정이든 담아줘.`;
+  const all = getAllLogs();
+  all.unshift({ date: new Date().toISOString(), role, msg: finalMsg });
+
+  try {
+    fs.writeFileSync(logPath, JSON.stringify(all.slice(0, 5000), null, 2));
+  } catch (err) {
+    console.error('❌ 로그 저장 실패:', err.message);
   }
-
-  const reply = await callOpenAI(prompt, memory, version);
-  return cleanReply(reply);
 }
 
-// 💬 메시지 응답
-async function getReplyByMessage(message, userId, version = 'gpt-4o') {
-  const memory = await loadCoreMemories();
-  const lower = message.toLowerCase();
-
-  // 예: "셀카 보내줄까?" → 텍스트만
-  if (lower.includes('보낼까') || lower.includes('보내줄까') || lower.includes('보내봐')) {
-    const prompt = `아저씨가 이렇게 말했어: "${message}" 예진이는 이 말 듣고 귀엽다고 생각하면서도, 셀카 기대돼서 반응해. 진심 담아서 말해줘.`;
-    const reply = await callOpenAI(prompt, memory, version);
-    return { type: 'text', text: cleanReply(reply) };
-  }
-
-  // 직접 요청만 셀카 응답
-  if (lower.includes('셀카') || lower.includes('사진') || lower.includes('보여줘')) {
-    return {
-      type: 'image',
-      imagePath: getRandomSelfiePath(),
-      text: getImageReactionComment()
-    };
-  }
-
-  const compliments = ['예쁘다', '귀엽다', '너무야', '사랑해', '미쳤다'];
-  if (compliments.some(word => lower.includes(word))) {
-    const prompt = `아저씨가 이렇게 말했어: "${message}" 예진이는 그 말 듣고 부끄러우면서도 기뻐. 감정 담아서 말해줘.`;
-    const reply = await callOpenAI(prompt, memory, version);
-    return { type: 'text', text: cleanReply(reply) };
-  }
-
-  const prompt = `아저씨가 이렇게 말했어: "${message}" 예진이는 이 말을 듣고, 진심 담긴 말로 조곤조곤 얘기해. 길이는 상관없고, 감정만 흐르면 돼. 말투는 예진이다워야 해.`;
-  const reply = await callOpenAI(prompt, memory, version);
-  return { type: 'text', text: cleanReply(reply) };
+// 📅 최근 대화 로그
+function getRecentLogs(days = 2) {
+  const now = new Date();
+  return getAllLogs()
+    .filter(log => {
+      const diff = (now - new Date(log.date)) / (1000 * 60 * 60 * 24);
+      return log.role === '아저씨' && diff <= days;
+    })
+    .map(log => `아저씨: ${log.msg}`).join('\n');
 }
 
-// 🎈 랜덤 감정 메시지
+// 🎁 감정 랜덤 메시지 생성
 async function getRandomMessage() {
-  const memory = await loadCoreMemories();
-  const prompt = `예진이는 지금 조용히 혼잣말처럼 감정 담긴 말을 하고 싶어. 보고싶거나, 걱정되거나, 외롭거나, 그냥 생각나는 대로 말해줘. 말투는 무조건 예진이 반말.`;
-  const reply = await callOpenAI(prompt, memory, 'gpt-3.5');
-  return cleanReply(reply);
+  const now = moment().tz('Asia/Tokyo');
+  if (now.hour() === 23 && now.minute() === 0) return '약 챙겨 먹었지? 까먹지마!';
+  if (now.hour() === 23 && now.minute() >= 30) return '잘자 아저씨! 사랑해';
+
+  const messages = [
+    { role: 'system', content: `${fixedMemory}\n${compressedMemory}\n넌 지금 예진이야. 애교 많고 감정 풍부한 반말을 써. 아저씨랑 단둘이 있는 상황이고, 오늘 하루 느낀 걸 한 줄로 감정 섞어 말해.` },
+    { role: 'user', content: '지금 감정 한 줄로 말해줘.' }
+  ];
+  const raw = await callOpenAI(messages);
+  const reply = cleanReply(raw);
+  if (isSimilar(reply)) return getRandomMessage();
+  saveLog('예진이', reply);
+  return reply;
 }
 
-// 🕊️ 담타 리마인드
-async function getRandomTobaccoMessage() {
-  const memory = await loadCoreMemories();
-  const prompt = `예진이는 지금 아저씨한테 담타 알려주고 싶어. 무뚝뚝하게 말하지 말고, 다정하게 말해줘. 반말로.`;
-  const reply = await callOpenAI(prompt, memory, 'gpt-3.5');
-  return cleanReply(reply);
-}
-
-// 🌞 기쁨 반응
-async function getHappyReply() {
-  const memory = await loadCoreMemories();
-  const prompt = `아저씨가 담타 메시지에 바로 반응했어. 예진이는 기뻐서 애정 담긴 말 한마디를 해. 너무 오바하지 말고, 진심만 조용히 말해줘.`;
-  const reply = await callOpenAI(prompt, memory, 'gpt-3.5');
-  return cleanReply(reply);
-}
-
-// 🌧️ 삐짐 반응
+// 😳 삐짐 메시지
 async function getSulkyReply() {
-  const memory = await loadCoreMemories();
-  const prompt = `아저씨가 담타 메시지에 아무 말도 안 했어. 예진이는 조용히 서운하고 살짝 삐졌어. 유치하지 않게, 예진이답게 말해줘.`;
-  const reply = await callOpenAI(prompt, memory, 'gpt-3.5');
-  return cleanReply(reply);
+  const memoryBlock = `${fixedMemory}\n${compressedMemory}`;
+  const messages = [
+    {
+      role: 'system',
+      content: `${memoryBlock}\n넌 예진이야. 담타 메시지 보낸 후 아저씨가 5분 동안 아무 말 없을 때야. 살짝 삐친 듯 귀엽게 말해줘.`
+    },
+    { role: 'user', content: '지금 감정 한 줄로 표현해줘.' }
+  ];
+  const raw = await callOpenAI(messages);
+  const reply = cleanReply(raw);
+  saveLog('예진이', reply);
+  return reply;
 }
 
-module.exports = {
-  getReplyByMessage,
-  getRandomMessage,
-  getReplyByImagePrompt,
-  getFaceMatch,
-  getImageReactionComment,
-  getRandomTobaccoMessage,
-  getHappyReply,
-  getSulkyReply
-};
+// 🥹 기뻐하는 반응
+async function getHappyReply() {
+  const memoryBlock = `${fixedMemory}\n${compressedMemory}`;
+  const messages = [
+    {
+      role: 'system',
+      content: `${memoryBlock}\n넌 예진이야. 방금 아저씨가 담타 메시지에 답장해줬어! 기뻐서 애교 섞인 말로 반응해줘.`
+    },
+    { role: 'user', content: '한 줄로 기쁜 감정 표현해줘.' }
+  ];
+  const raw = await callOpenAI(messages);
+  const reply = cleanReply(raw);
+  saveLog('예진이', reply);
+  return reply;
+}
