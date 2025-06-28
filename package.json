@@ -1,22 +1,22 @@
 {
-  "name": "muku-line-bot",                // 프로젝트 이름
-  "version": "1.0.0",                      // 현재 버전
-  "description": "무쿠 LINE 메시지 자동 응답 봇", // 설명 (Render 등에서 보임)
-  "main": "index.js",                      // 앱 시작점 파일
-  "type": "commonjs",                      // 모듈 타입 (require 방식 사용)
+  "name": "muku-line-bot",
+  "version": "1.0.0",
+  "description": "무쿠 LINE 메시지 자동 응답 봇",
+  "main": "index.js",
+  "type": "commonjs",
   "scripts": {
-    "start": "node index.js"               // npm start 시 실행할 명령어
+    "start": "node index.js"
   },
   "dependencies": {
-    "@line/bot-sdk": "^7.5.1",             // LINE 메시지 API 라이브러리
-    "axios": "^1.6.8",                     // HTTP 요청 보낼 때 사용 (로그 서버 등)
-    "dotenv": "^16.3.1",                   // .env 파일로 환경변수 관리할 때 사용
-    "express": "^4.18.2",                  // 웹서버 프레임워크
-    "openai": "^4.30.0"                    // GPT 호출용 OpenAI API 라이브러리
+    "@line/bot-sdk": "^7.5.1",
+    "axios": "^1.6.8",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "openai": "^4.30.0"
   },
   "engines": {
-    "node": ">=18.0.0"                     // 최소 Node.js 버전 (Render에서 유효)
+    "node": ">=18.0.0"
   },
-  "author": "ljy24",                       // 만든 사람 이름
-  "license": "MIT"                         // 오픈소스 라이센스
+  "author": "ljy24",
+  "license": "MIT"
 }
