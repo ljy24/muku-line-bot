@@ -1,6 +1,5 @@
 // autoReply.js
 
-// 📦 기본 모듈 불러오기
 const fs = require('fs');
 const path = require('path');
 const { OpenAI } = require('openai');
@@ -10,12 +9,13 @@ const axios = require('axios');
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 let forcedModel = null;
 
-// 외부 서버 로그 저장
+// ✅ 외부 서버 로그 저장 (/save 라우트로 role/msg/date 전송)
 async function saveLog(role, msg) {
   try {
     await axios.post('https://muku-line-log.onrender.com/save', {
-      from: role === '아저씨' ? 'uncle' : 'yejin',
-      content: msg
+      role,
+      msg,
+      date: new Date().toISOString()
     });
   } catch (err) {
     console.error('❌ 원격 로그 저장 실패:', err.message);
