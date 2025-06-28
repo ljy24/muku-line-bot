@@ -13,7 +13,7 @@ let forcedModel = null;
 // 외부 서버 로그 저장
 async function saveLog(role, msg) {
   try {
-    await axios.post('https://muku-line-log.onrender.com/log', {
+    await axios.post('https://muku-line-log.onrender.com/save', {
       from: role === '아저씨' ? 'uncle' : 'yejin',
       content: msg
     });
