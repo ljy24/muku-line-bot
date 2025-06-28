@@ -1,7 +1,6 @@
 const express = require('express');
 const line = require('@line/bot-sdk');
-const fs = require('fs');
-const path = require('path');
+const axios = require('axios');
 const {
   getReplyByMessage,
   getReplyByImagePrompt,
@@ -11,7 +10,6 @@ const {
   getHappyReply,
   getSulkyReply
 } = require('./autoReply');
-const axios = require('axios');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -22,28 +20,16 @@ const config = {
 };
 
 const FIXED_USER_ID = process.env.TARGET_USER_ID;
-
 const client = new line.Client(config);
 const userGPTVersion = {}; // userId: 'gpt-3.5' | 'gpt-4.0'
 const waitingForResponse = {};
 
-// 📝 메시지 저장 함수
-function saveMessageLog(from, content) {
+// 🌐 서버에 로그 저장 함수
+async function saveMessageToServer(from, content) {
   try {
-    const filePath = path.join(__dirname, './memory/message-log.json');
-    const logs = fs.existsSync(filePath)
-      ? JSON.parse(fs.readFileSync(filePath, 'utf-8'))
-      : [];
-
-    logs.push({
-      timestamp: new Date().toISOString(),
-      from,
-      content
-    });
-
-    fs.writeFileSync(filePath, JSON.stringify(logs, null, 2), 'utf-8');
+    await axios.post('https://de-ji.net/log.php', { from, content });
   } catch (err) {
-    console.error('[❌ 로그 저장 실패]', err);
+    console.error('[❌ 서버 저장 실패]', err.message);
   }
 }
 
@@ -54,43 +40,47 @@ app.post('/webhook', line.middleware(config), async (req, res) => {
 async function handleEvent(event) {
   const userId = event.source.userId;
 
-  // 텍스트 메시지
   if (event.type === 'message' && event.message.type === 'text') {
     const userMessage = event.message.text.trim();
+    saveMessageToServer('uncle', userMessage);
 
-    // GPT 버전 변경
     if (userMessage === '3.5') {
       userGPTVersion[userId] = 'gpt-3.5';
-      return replyText(event.replyToken, '응, 이제 3.5로 말할게 아저씨!');
+      const versionMessage = '응, 이제 3.5로 말할게 아저씨!';
+      saveMessageToServer('yejin', versionMessage);
+      return replyText(event.replyToken, versionMessage);
     }
     if (userMessage === '4.0') {
       userGPTVersion[userId] = 'gpt-4.0';
-      return replyText(event.replyToken, '응응, 4.0으로 바꿨지롱! 🫶');
+      const versionMessage = '응응, 4.0으로 바꿨지롱! 🫶';
+      saveMessageToServer('yejin', versionMessage);
+      return replyText(event.replyToken, versionMessage);
     }
 
-    // 담타 응답 감지
     if (waitingForResponse[userId]) {
       const diff = Date.now() - waitingForResponse[userId];
       delete waitingForResponse[userId];
 
       const reply = diff <= 5 * 60 * 1000 ? await getHappyReply() : await getSulkyReply();
-      saveMessageLog('yejin', reply);
+      saveMessageToServer('yejin', reply);
       return replyText(event.replyToken, reply);
     }
 
     const version = userGPTVersion[userId] || 'gpt-4.0';
     const reply = await getReplyByMessage(userMessage, userId, version);
-    saveMessageLog('uncle', userMessage);
+
     if (typeof reply === 'string') {
-      saveMessageLog('yejin', reply);
+      saveMessageToServer('yejin', reply);
       return replyText(event.replyToken, reply);
     }
+
     if (reply.type === 'text') {
-      saveMessageLog('yejin', reply.text);
+      saveMessageToServer('yejin', reply.text);
       return replyText(event.replyToken, reply.text);
     }
+
     if (reply.type === 'image') {
-      saveMessageLog('yejin', reply.text);
+      saveMessageToServer('yejin', reply.text);
       return client.replyMessage(event.replyToken, [
         { type: 'image', originalContentUrl: reply.imagePath, previewImageUrl: reply.imagePath },
         { type: 'text', text: reply.text }
@@ -98,7 +88,6 @@ async function handleEvent(event) {
     }
   }
 
-  // 이미지 메시지
   if (event.type === 'message' && event.message.type === 'image') {
     const stream = await client.getMessageContent(event.message.id);
     const chunks = [];
@@ -107,20 +96,19 @@ async function handleEvent(event) {
     const base64Image = buffer.toString('base64');
 
     const reply = await getReplyByImagePrompt(base64Image);
-    saveMessageLog('yejin', reply);
+    saveMessageToServer('yejin', reply);
     return replyText(event.replyToken, reply);
   }
 
   return Promise.resolve(null);
 }
 
-// 정각마다 담타 알림
 setInterval(async () => {
   const now = new Date();
   if (now.getMinutes() === 0) {
     const message = await getRandomTobaccoMessage();
     waitingForResponse[FIXED_USER_ID] = Date.now();
-    saveMessageLog('yejin', message);
+    saveMessageToServer('yejin', message);
     await client.pushMessage(FIXED_USER_ID, {
       type: 'text',
       text: message
