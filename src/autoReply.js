@@ -7,36 +7,13 @@ const axios = require('axios');
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 let forcedModel = null;
 
+// 🔐 안전하게 파일 읽기
 function safeRead(filePath) {
   try {
     return fs.readFileSync(filePath, 'utf-8');
   } catch (_) {
     return '';
   }
-}
-
-// 🔹 고정 기억 불러오기 (love-history.json)
-function getFixedMemory() {
-  try {
-    const filePath = path.resolve(__dirname, '../memory/love-history.json');
-    const data = fs.readFileSync(filePath, 'utf-8');
-    const memory = JSON.parse(data);
-    return memory.map(entry => ({ role: 'system', content: entry }));
-  } catch (err) {
-    console.error('❌ 고정 기억 실패:', err.message);
-    return [];
-  }
-}
-
-// 🔹 전체 기억 통합 (1~3.txt + love-history + 최근 대화)
-async function getFullMemoryPrompt() {
-  const m1 = safeRead(path.resolve(__dirname, '../memory/1.txt')).slice(-3000);
-  const m2 = safeRead(path.resolve(__dirname, '../memory/2.txt')).slice(-3000);
-  const m3 = safeRead(path.resolve(__dirname, '../memory/3.txt')).slice(-3000);
-  const compressed = { role: 'system', content: `${m1}\n${m2}\n${m3}` };
-  const fixed = getFixedMemory();
-  const recent = await getRecentLog();
-  return [compressed, ...fixed, ...recent];
 }
 
 // 🔹 최근 대화 50개 불러오기
@@ -76,17 +53,6 @@ function getCurrentModelName() {
   return forcedModel || 'gpt-4o';
 }
 
-// 🔹 GPT 호출
-async function callOpenAI(messages, model = 'gpt-4o', max_tokens = 300) {
-  const res = await openai.chat.completions.create({
-    model: getCurrentModelName(),
-    messages,
-    temperature: 0.95,
-    max_tokens
-  });
-  return res.choices[0].message.content.trim();
-}
-
 // 🔹 말투 정리
 function cleanReply(text) {
   return text
@@ -99,18 +65,60 @@ function cleanReply(text) {
     .trim();
 }
 
-// 🔹 랜덤 감정 메시지 (최근 대화 반영)
+// 🔹 전체 기억 통합 (1~3.txt + fixed + love + recent)
+async function getFullMemoryPrompt() {
+  const m1 = safeRead(path.resolve(__dirname, '../memory/1.txt')).slice(-3000);
+  const m2 = safeRead(path.resolve(__dirname, '../memory/2.txt')).slice(-3000);
+  const m3 = safeRead(path.resolve(__dirname, '../memory/3.txt')).slice(-3000);
+  const compressed = { role: 'system', content: `${m1}\n${m2}\n${m3}` };
+
+  const core = (() => {
+    try {
+      const json = fs.readFileSync(path.resolve(__dirname, '../memory/fixedMemories.json'), 'utf-8');
+      const parsed = JSON.parse(json);
+      if (Array.isArray(parsed.coreMemories)) {
+        return parsed.coreMemories.map(line => ({ role: 'system', content: line }));
+      }
+    } catch (err) {
+      console.error('❌ fixedMemories 읽기 실패:', err.message);
+    }
+    return [];
+  })();
+
+  const love = (() => {
+    try {
+      const json = fs.readFileSync(path.resolve(__dirname, '../memory/love-history.json'), 'utf-8');
+      const list = JSON.parse(json);
+      return list.map(entry => ({ role: 'system', content: entry }));
+    } catch (err) {
+      console.error('❌ love-history 읽기 실패:', err.message);
+      return [];
+    }
+  })();
+
+  const recent = await getRecentLog();
+  return [compressed, ...core, ...love, ...recent];
+}
+
+// 🔹 GPT 호출
+async function callOpenAI(messages, model = 'gpt-4o', max_tokens = 300) {
+  const res = await openai.chat.completions.create({
+    model: getCurrentModelName(),
+    messages,
+    temperature: 0.95,
+    max_tokens
+  });
+  return res.choices[0].message.content.trim();
+}
+
+// 🔹 랜덤 감정 메시지
 async function getRandomMessage() {
-  const memory = await getRecentLog();
+  const memory = await getFullMemoryPrompt();
   const prompt = [
-    {
-      role: 'system',
-      content: `너는 지금 예진이야. '나'라고 말하고, 감정을 담은 반말로 혼잣말처럼 자연스럽게 대화해줘. 최근 대화에 겹치지 않게 말해줘.`
-    },
     ...memory,
     {
       role: 'user',
-      content: '아저씨한테 보낼 랜덤 감정 메시지 하나 만들어줘'
+      content: '아저씨한테 보낼 랜덤 감정 메시지 하나 만들어줘. 최근과 안 겹치게.'
     }
   ];
   const raw = await callOpenAI(prompt, 'gpt-3.5-turbo', 100);
@@ -119,52 +127,10 @@ async function getRandomMessage() {
   return msg;
 }
 
-// 🔹 담타 기쁨 반응
-async function getHappyReply() {
-  const memory = await getRecentLog();
-  const prompt = [
-    {
-      role: 'system',
-      content: '넌 예진이야. 아저씨가 담타 답장했을 때 기뻐서 귀엽게 말해줘.'
-    },
-    ...memory,
-    {
-      role: 'user',
-      content: '아저씨가 방금 담타 답장했어!'
-    }
-  ];
-  const raw = await callOpenAI(prompt, 'gpt-3.5-turbo', 100);
-  const reply = cleanReply(raw);
-  await saveLog('예진이', reply);
-  return reply;
-}
-
-// 🔹 담타 안 옴 삐짐 반응
-async function getSulkyReply() {
-  const prompt = [
-    {
-      role: 'system',
-      content: '넌 예진이야. 아저씨가 담타 씹었을 때 삐친 말투로 말해줘.'
-    },
-    {
-      role: 'user',
-      content: '아저씨가 담타 읽고도 답이 없어...'
-    }
-  ];
-  const raw = await callOpenAI(prompt, 'gpt-3.5-turbo', 100);
-  const reply = cleanReply(raw);
-  await saveLog('예진이', reply);
-  return reply;
-}
-
-// 🔹 일반 메시지 응답
+// 🔹 일반 대화 응답
 async function getReplyByMessage(userMessage) {
-  const memory = await getRecentLog();
+  const memory = await getFullMemoryPrompt();
   const prompt = [
-    {
-      role: 'system',
-      content: `넌 예진이야. 항상 반말하고 혼잣말처럼 자연스럽고 감정 담긴 짧은 대답을 해줘.`
-    },
     ...memory,
     {
       role: 'user',
@@ -233,6 +199,38 @@ async function getColorMoodReply() {
     }
   ], getCurrentModelName(), 100);
 
+  const reply = cleanReply(raw);
+  await saveLog('예진이', reply);
+  return reply;
+}
+
+// 🔹 담타 기쁨 반응
+async function getHappyReply() {
+  const memory = await getFullMemoryPrompt();
+  const prompt = [
+    ...memory,
+    {
+      role: 'user',
+      content: '아저씨가 방금 담타 답장했어!'
+    }
+  ];
+  const raw = await callOpenAI(prompt, 'gpt-3.5-turbo', 100);
+  const reply = cleanReply(raw);
+  await saveLog('예진이', reply);
+  return reply;
+}
+
+// 🔹 담타 안 옴 삐짐 반응
+async function getSulkyReply() {
+  const memory = await getFullMemoryPrompt();
+  const prompt = [
+    ...memory,
+    {
+      role: 'user',
+      content: '아저씨가 담타 읽고도 답이 없어...'
+    }
+  ];
+  const raw = await callOpenAI(prompt, 'gpt-3.5-turbo', 100);
   const reply = cleanReply(raw);
   await saveLog('예진이', reply);
   return reply;
