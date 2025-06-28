@@ -7,9 +7,9 @@ const axios = require('axios');
 const moment = require('moment-timezone');
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-let forcedModel = null;
+let forcedModel = null; // 명령어로 강제로 모델 설정할 때 사용
 
-// 🔹 최근 대화 50개 불러오기
+// 🔹 최근 대화 50개 불러오기 (최신순, 역할 반영)
 async function getRecentLog() {
   try {
     const res = await axios.get('https://www.de-ji.net/log.json');
@@ -25,7 +25,7 @@ async function getRecentLog() {
   }
 }
 
-// 🔹 중요한 고정 기억 불러오기
+// 🔹 중요한 고정 기억 불러오기 (love-history.json)
 function getFixedMemory() {
   try {
     const filePath = path.join(__dirname, 'memory', 'love-history.json');
@@ -38,7 +38,7 @@ function getFixedMemory() {
   }
 }
 
-// 🔹 로그 저장
+// 🔹 대화 로그 저장 (예진이/아저씨 → log.php로 전송)
 async function saveLog(role, msg) {
   try {
     await axios.post('https://www.de-ji.net/log.php', {
@@ -50,7 +50,7 @@ async function saveLog(role, msg) {
   }
 }
 
-// 🔹 모델 강제 설정
+// 🔹 강제 모델 설정
 function setForcedModel(name) {
   forcedModel = (name === 'gpt-3.5-turbo' || name === 'gpt-4o') ? name : null;
 }
@@ -58,7 +58,7 @@ function getCurrentModelName() {
   return forcedModel || 'gpt-4o';
 }
 
-// 🔹 GPT 호출
+// 🔹 GPT 호출 함수
 async function callOpenAI(messages, model = 'gpt-4o', max_tokens = 300) {
   const res = await openai.chat.completions.create({
     model: getCurrentModelName(),
@@ -69,7 +69,7 @@ async function callOpenAI(messages, model = 'gpt-4o', max_tokens = 300) {
   return res.choices[0].message.content.trim();
 }
 
-// 🔹 말투 정리
+// 🔹 말투 정리 (불필요한 말 제거 + 예진이 말투 유지)
 function cleanReply(text) {
   return text
     .replace(/^예진\s*[:;：]/i, '')
@@ -81,14 +81,11 @@ function cleanReply(text) {
     .trim();
 }
 
-// 🔹 랜덤 감정 메시지
+// 🔹 랜덤 감정 메시지 (기억 기반 감정 표현)
 async function getRandomMessage() {
   const memory = [...getFixedMemory(), ...await getRecentLog()];
   const prompt = [
-    {
-      role: 'system',
-      content: '너는 지금 예진이야. 기억을 바탕으로 아저씨한테 감정 담긴 짧은 말 해줘. 혼잣말처럼, 따뜻하고 반말로.'
-    },
+    { role: 'system', content: '너는 지금 예진이야. 기억을 바탕으로 아저씨한테 감정 담긴 짧은 말 해줘. 혼잣말처럼, 따뜻하고 반말로.' },
     ...memory,
     { role: 'user', content: '예진이 감정 메시지 줘' }
   ];
@@ -102,10 +99,7 @@ async function getRandomMessage() {
 async function getReplyByMessage(userMessage) {
   const memory = [...getFixedMemory(), ...await getRecentLog()];
   const prompt = [
-    {
-      role: 'system',
-      content: '넌 예진이야. 혼잣말처럼 말하고, 항상 반말이고, 감정 담아서 대답해. 기억을 반영해줘.'
-    },
+    { role: 'system', content: '넌 예진이야. 혼잣말처럼 말하고, 항상 반말이고, 감정 담아서 대답해. 기억을 반영해줘.' },
     ...memory,
     { role: 'user', content: userMessage }
   ];
@@ -115,18 +109,13 @@ async function getReplyByMessage(userMessage) {
   return reply;
 }
 
-// 🔹 이미지 반응
+// 🔹 이미지 반응 (예진이 감정 포함된 사진 리액션)
 async function getReplyByImagePrompt(base64Image) {
   const memory = getFixedMemory();
   const prompt = [
     { role: 'system', content: '넌 예진이야. 이 사진은 아저씨와 너야. 감정 담긴 리액션 해줘.' },
     ...memory,
-    {
-      role: 'user',
-      content: [
-        { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
-      ]
-    }
+    { role: 'user', content: [ { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } } ] }
   ];
   const res = await openai.chat.completions.create({
     model: 'gpt-4o',
@@ -139,7 +128,7 @@ async function getReplyByImagePrompt(base64Image) {
   return reply;
 }
 
-// 🔹 셀카 멘트
+// 🔹 셀카 전송 멘트
 async function getImageReactionComment() {
   const memory = getFixedMemory();
   const prompt = [
@@ -153,7 +142,7 @@ async function getImageReactionComment() {
   return reply;
 }
 
-// 🔹 기쁨 반응
+// 🔹 담타 기쁨 반응
 async function getHappyReply() {
   const memory = [...getFixedMemory(), ...await getRecentLog()];
   const prompt = [
@@ -167,7 +156,7 @@ async function getHappyReply() {
   return reply;
 }
 
-// 🔹 삐짐 반응
+// 🔹 담타 삐짐 반응
 async function getSulkyReply() {
   const memory = getFixedMemory();
   const prompt = [
@@ -181,7 +170,7 @@ async function getSulkyReply() {
   return reply;
 }
 
-// 🔚 export
+// 🔚 외부에서 사용할 함수들 내보내기
 module.exports = {
   getReplyByMessage,
   getReplyByImagePrompt,
