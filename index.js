@@ -1,5 +1,7 @@
 const express = require('express');
 const line = require('@line/bot-sdk');
+const fs = require('fs');
+const path = require('path');
 const {
   getReplyByMessage,
   getReplyByImagePrompt,
@@ -24,6 +26,26 @@ const FIXED_USER_ID = process.env.TARGET_USER_ID;
 const client = new line.Client(config);
 const userGPTVersion = {}; // userId: 'gpt-3.5' | 'gpt-4.0'
 const waitingForResponse = {};
+
+// 📝 메시지 저장 함수
+function saveMessageLog(from, content) {
+  try {
+    const filePath = path.join(__dirname, './memory/message-log.json');
+    const logs = fs.existsSync(filePath)
+      ? JSON.parse(fs.readFileSync(filePath, 'utf-8'))
+      : [];
+
+    logs.push({
+      timestamp: new Date().toISOString(),
+      from,
+      content
+    });
+
+    fs.writeFileSync(filePath, JSON.stringify(logs, null, 2), 'utf-8');
+  } catch (err) {
+    console.error('[❌ 로그 저장 실패]', err);
+  }
+}
 
 app.post('/webhook', line.middleware(config), async (req, res) => {
   Promise.all(req.body.events.map(handleEvent)).then(() => res.end());
@@ -52,12 +74,28 @@ async function handleEvent(event) {
       delete waitingForResponse[userId];
 
       const reply = diff <= 5 * 60 * 1000 ? await getHappyReply() : await getSulkyReply();
+      saveMessageLog('yejin', reply);
       return replyText(event.replyToken, reply);
     }
 
     const version = userGPTVersion[userId] || 'gpt-4.0';
     const reply = await getReplyByMessage(userMessage, userId, version);
-    return replyText(event.replyToken, reply);
+    saveMessageLog('uncle', userMessage);
+    if (typeof reply === 'string') {
+      saveMessageLog('yejin', reply);
+      return replyText(event.replyToken, reply);
+    }
+    if (reply.type === 'text') {
+      saveMessageLog('yejin', reply.text);
+      return replyText(event.replyToken, reply.text);
+    }
+    if (reply.type === 'image') {
+      saveMessageLog('yejin', reply.text);
+      return client.replyMessage(event.replyToken, [
+        { type: 'image', originalContentUrl: reply.imagePath, previewImageUrl: reply.imagePath },
+        { type: 'text', text: reply.text }
+      ]);
+    }
   }
 
   // 이미지 메시지
@@ -69,6 +107,7 @@ async function handleEvent(event) {
     const base64Image = buffer.toString('base64');
 
     const reply = await getReplyByImagePrompt(base64Image);
+    saveMessageLog('yejin', reply);
     return replyText(event.replyToken, reply);
   }
 
@@ -80,9 +119,8 @@ setInterval(async () => {
   const now = new Date();
   if (now.getMinutes() === 0) {
     const message = await getRandomTobaccoMessage();
-
     waitingForResponse[FIXED_USER_ID] = Date.now();
-
+    saveMessageLog('yejin', message);
     await client.pushMessage(FIXED_USER_ID, {
       type: 'text',
       text: message
