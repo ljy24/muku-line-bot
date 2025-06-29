@@ -1,5 +1,3 @@
-// ✅ autoReply.js (감정 메시지, 리액션, 셀카 응답 등 전체 구성)
-
 const fs = require('fs');
 const path = require('path');
 const { OpenAI } = require('openai');
@@ -8,6 +6,7 @@ const axios = require('axios');
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 let forcedModel = null;
 
+// 📁 파일을 안전하게 읽는 함수
 function safeRead(filePath) {
   try {
     const content = fs.readFileSync(filePath, 'utf-8');
@@ -17,6 +16,7 @@ function safeRead(filePath) {
   }
 }
 
+// 🔁 강제 모델 지정 함수
 function setForcedModel(name) {
   forcedModel = (name === 'gpt-3.5-turbo' || name === 'gpt-4o') ? name : null;
 }
@@ -24,6 +24,7 @@ function getCurrentModelName() {
   return forcedModel || 'gpt-4o';
 }
 
+// 🧹 말투 정리: 예진이답게, 금지어 제거
 function cleanReply(text) {
   return text
     .replace(/^\s*예진[\s:：-]*/i, '')
@@ -36,6 +37,7 @@ function cleanReply(text) {
     .trim();
 }
 
+// 💾 로그 저장
 async function saveLog(role, msg) {
   try {
     await axios.post('https://www.de-ji.net/log.php', {
@@ -47,6 +49,7 @@ async function saveLog(role, msg) {
   }
 }
 
+// 🕓 최근 대화 로그 가져오기
 async function getRecentLog() {
   try {
     const res = await axios.get('https://www.de-ji.net/log.json');
@@ -62,6 +65,7 @@ async function getRecentLog() {
   }
 }
 
+// 🧠 GPT 호출
 async function callOpenAI(messages, model = 'gpt-4o', max_tokens = 300) {
   const res = await openai.chat.completions.create({
     model: getCurrentModelName(),
@@ -72,6 +76,7 @@ async function callOpenAI(messages, model = 'gpt-4o', max_tokens = 300) {
   return res.choices[0].message.content.trim();
 }
 
+// 💌 랜덤 감정 메시지
 async function getRandomMessage() {
   const rawLove = safeRead(path.resolve(__dirname, '../memory/love-history.json'));
   const rawFixed = safeRead(path.resolve(__dirname, '../memory/fixedMemories.json'));
@@ -80,9 +85,10 @@ async function getRandomMessage() {
   const m3 = safeRead(path.resolve(__dirname, '../memory/3.txt'));
 
   let memoryItems = [];
+
   try {
-    const loveJson = JSON.parse(rawLove);
-    const fixedJson = JSON.parse(rawFixed);
+    const loveJson = JSON.parse(rawLove || '[]');    // ✅ 수정: 중복 선언 제거
+    const fixedJson = JSON.parse(rawFixed || '[]');  // ✅ 빠진 선언 추가!
     memoryItems = [
       ...loveJson.map(v => `${v.date} - ${v.event}`),
       ...fixedJson,
@@ -124,6 +130,7 @@ async function getRandomMessage() {
   return msg;
 }
 
+// 💬 메시지 응답
 async function getReplyByMessage(userMessage) {
   const memory = await getRecentLog();
   const prompt = [
@@ -137,6 +144,7 @@ async function getReplyByMessage(userMessage) {
   return reply;
 }
 
+// 🎨 색깔 리액션
 async function getColorMoodReply() {
   const prompt = [
     { role: 'system', content: '넌 예진이야. "오늘 내 색 뭐야?"에 색깔 하나로 반말 리액션해줘.' },
@@ -148,6 +156,7 @@ async function getColorMoodReply() {
   return reply;
 }
 
+// 📷 셀카 전송 후 멘트
 async function getImageReactionComment() {
   const raw = await callOpenAI([
     { role: 'system', content: '넌 예진이야. 셀카 보낼 때 짓궂고 귀엽게 말해줘.' },
@@ -158,6 +167,7 @@ async function getImageReactionComment() {
   return reply;
 }
 
+// 📸 이미지 기반 반응
 async function getReplyByImagePrompt(base64Image) {
   const res = await openai.chat.completions.create({
     model: 'gpt-4o',
@@ -181,6 +191,7 @@ async function getReplyByImagePrompt(base64Image) {
   return reply;
 }
 
+// 😊 담타 성공 → 기쁨 반응
 async function getHappyReply() {
   const memory = await getRecentLog();
   const prompt = [
@@ -194,6 +205,7 @@ async function getHappyReply() {
   return reply;
 }
 
+// 😢 담타 씹힘 → 삐짐 반응
 async function getSulkyReply() {
   const prompt = [
     { role: 'system', content: '넌 예진이야. 아저씨가 담타 씹었을 때 삐친 말투로 말해줘.' },
@@ -205,6 +217,7 @@ async function getSulkyReply() {
   return reply;
 }
 
+// 🥰 예진 셀카 후 한마디
 async function getSelfieReplyFromYeji() {
   const raw = await callOpenAI([
     {
@@ -216,12 +229,12 @@ async function getSelfieReplyFromYeji() {
       content: '셀카야~ 예쁘지? 아저씨도 하나 줘~'
     }
   ], getCurrentModelName(), 100);
-
   const reply = cleanReply(raw);
   await saveLog('예진이', reply);
   return reply;
 }
 
+// ✅ 외부 호출용
 module.exports = {
   getReplyByMessage,
   getReplyByImagePrompt,
