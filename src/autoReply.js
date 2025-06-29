@@ -123,41 +123,31 @@ async function getSelfieReplyFromYeji() {
   return reply;
 }
 
+// 📦 고정 기억 불러오기
+function getFixedMemory() {
+  const fixed = safeRead(path.resolve(__dirname, '../memory/fixedMemories.json'));
+  try {
+    return JSON.parse(fixed || '[]').map(text => ({ role: 'system', content: text }));
+  } catch {
+    return [];
+  }
+}
+
+// 🧠 전체 기억 프롬프트 구성
+async function getFullMemoryPrompt() {
+  const m1 = safeRead(path.resolve(__dirname, '../memory/1.txt')).slice(-3000);
+  const m2 = safeRead(path.resolve(__dirname, '../memory/2.txt')).slice(-3000);
+  const m3 = safeRead(path.resolve(__dirname, '../memory/3.txt')).slice(-3000);
+  const compressed = { role: 'system', content: `${m1}\n${m2}\n${m3}` };
+  const fixed = getFixedMemory();
+  const recent = await getRecentLog();
+  return [compressed, ...fixed, ...recent];
+}
+
 // 🎲 랜덤 감정 메시지 생성
 async function getRandomMessage() {
-  const rawLove = safeRead(path.resolve(__dirname, '../memory/love-history.json'));
-  const rawFixed = safeRead(path.resolve(__dirname, '../memory/fixedMemories.json'));
-  const m1 = safeRead(path.resolve(__dirname, '../memory/1.txt'));
-  const m2 = safeRead(path.resolve(__dirname, '../memory/2.txt'));
-  const m3 = safeRead(path.resolve(__dirname, '../memory/3.txt'));
-
-  let memoryItems = [];
-  try {
-    const loveJson = JSON.parse(rawLove || '[]');
-    const fixedJson = JSON.parse(rawFixed || '[]');
-    memoryItems = [
-      ...loveJson.map(v => `${v.date} - ${v.event}`),
-      ...fixedJson,
-      m1, m2, m3
-    ].filter(Boolean);
-  } catch (err) {
-    console.error('❌ 추억 메모리 로드 실패:', err.message);
-  }
-
-  const useMemory = Math.random() < 0.85 && memoryItems.length > 0;
-  const memory = memoryItems[Math.floor(Math.random() * memoryItems.length)];
-  const messages = [];
-
-  if (useMemory && memory) {
-    messages.push({ role: 'system', content: `너는 예진이야. '나'라고 말하고 감정을 담아 혼잣말처럼 말해줘. 아래 추억을 바탕으로 자연스럽게 말 걸어. 최대한 예진이 말투를 지켜.` });
-    messages.push({ role: 'user', content: `아저씨… 나 그때 "${memory}" 그런 날이 있었잖아… 요즘 괜히 그 기억이 자꾸 생각나서... 마음이 또 이상해져… 아저씨는 기억나?` });
-  } else {
-    const recent = await getRecentLog();
-    messages.push({ role: 'system', content: `너는 지금 예진이야. '나'라고 말하고 감정을 담은 반말로 자연스럽게 말해줘. 최근 대화랑 겹치지 않게 하고, 아저씨 혼자 아니라고 느끼게 해.` });
-    messages.push(...recent);
-    messages.push({ role: 'user', content: '아저씨한테 보낼 감정 메시지 하나 만들어줘' });
-  }
-
+  const messages = await getFullMemoryPrompt();
+  messages.push({ role: 'user', content: '예진이처럼 감정 담긴 랜덤 메시지 하나 만들어줘. 혼잣말처럼 아저씨한테 말하는 식으로.' });
   const raw = await callOpenAI(messages, 'gpt-3.5-turbo', 400);
   const msg = cleanReply(raw);
   await saveLog('예진이', msg);
@@ -177,7 +167,7 @@ async function getReplyByMessage(userMessage) {
     return selfie;
   }
   await extractAndSaveMemory(userMessage);
-  const memory = await getRecentLog();
+  const memory = await getFullMemoryPrompt();
   const prompt = [
     { role: 'system', content: `넌 예진이야. 감정 담아 짧게 반말로 혼잣말처럼 대답해줘.` },
     ...memory,
@@ -187,48 +177,6 @@ async function getReplyByMessage(userMessage) {
   const reply = cleanReply(raw);
   await saveLog('예진이', reply);
   return reply;
-}
-
-// ⏰ 자동 감정 메시지 + 셀카 전송 스케줄러 (하루 5회 + 셀카 3회)
-function startMessageAndPhotoScheduler() {
-  const used = new Set();
-  const hours = Array.from({ length: 13 }, (_, i) => i + 9); // 9~21시
-
-  // 감정 메시지 5회
-  while (used.size < 5) {
-    const h = hours[Math.floor(Math.random() * hours.length)];
-    const m = Math.floor(Math.random() * 60);
-    const exp = `${m} ${h} * * *`;
-    if (!used.has(exp)) {
-      used.add(exp);
-      cron.schedule(exp, async () => {
-        const msg = await getRandomMessage();
-        await client.pushMessage(userId, { type: 'text', text: msg });
-        console.log(`[감정 메시지] ${exp} → ${msg}`);
-      });
-    }
-  }
-
-  // 셀카 3회
-  while (used.size < 8) {
-    const h = hours[Math.floor(Math.random() * hours.length)];
-    const m = Math.floor(Math.random() * 60);
-    const exp = `${m} ${h} * * *`;
-    if (!used.has(exp)) {
-      used.add(exp);
-      cron.schedule(exp, async () => {
-        const photoListPath = path.join(__dirname, '../memory/photo-list.txt');
-        const BASE_URL = 'https://de-ji.net/yejin/';
-        const list = fs.readFileSync(photoListPath, 'utf-8').split('\n').map(x => x.trim()).filter(Boolean);
-        if (list.length === 0) return;
-        const pick = list[Math.floor(Math.random() * list.length)];
-        const comment = await getSelfieReplyFromYeji();
-        await client.pushMessage(userId, { type: 'image', originalContentUrl: BASE_URL + pick, previewImageUrl: BASE_URL + pick });
-        if (comment) await client.pushMessage(userId, { type: 'text', text: comment });
-        console.log(`[셀카 전송] ${exp} → ${pick}`);
-      });
-    }
-  }
 }
 
 module.exports = {
@@ -242,5 +190,6 @@ module.exports = {
   setForcedModel,
   getCurrentModelName,
   getSelfieReplyFromYeji,
-  startMessageAndPhotoScheduler
+  getFixedMemory,
+  getFullMemoryPrompt
 };
