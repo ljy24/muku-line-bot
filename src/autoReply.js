@@ -34,14 +34,15 @@ function safeRead(filePath) {
   }
 }
 
-// 🧼 예진이 말투 정리
+// 🧼 예진이 말투 정리 (자기, 너, 당신 → 아저씨)
 function cleanReply(text) {
   return text
     .replace(/\s*예진[\s:：-]*/i, '')
     .replace(/\([^)]*\)/g, '')
     .replace(/\s+/g, ' ')
     .replace(/["'“”]/g, '')
-    .replace(/\b(당신|그대|그분|자기|너|네|네가|널|예진)\b/g, '아저씨')
+    .replace(/\b(당신|그대|그분|자기야|자기|너|네|네가|널|예진)\b/g, '아저씨')
+    .replace(/아저씨에게 아저씨라고/g, '아저씨에게')
     .replace(/시파/g, '')
     .replace(/[!?~\u2764\uD83D\uDC96-\uDC9F]/g, '')
     .trim();
@@ -129,43 +130,6 @@ async function getSelfieReplyFromYeji() {
   return reply;
 }
 
-// 📷 자동 셀카 전송 (하루 3~4회, 9시~21시 랜덤)
-function startSelfieScheduler() {
-  const BASE_URL = 'https://de-ji.net/yejin/';
-  const photoListPath = path.resolve(__dirname, '../memory/photo-list.txt');
-  const used = new Set();
-  const count = Math.floor(Math.random() * 2) + 3; // 3~4회
-
-  while (used.size < count) {
-    const hour = Math.floor(Math.random() * 13) + 9; // 9~21시
-    const minute = Math.floor(Math.random() * 60);
-    const key = `${hour}:${minute}`;
-    if (!used.has(key)) {
-      used.add(key);
-      const cronExp = `${minute} ${hour} * * *`;
-      cron.schedule(cronExp, async () => {
-        try {
-          const list = fs.readFileSync(photoListPath, 'utf-8').split('\n').map(x => x.trim()).filter(Boolean);
-          if (list.length === 0) return;
-          const pick = list[Math.floor(Math.random() * list.length)];
-          const comment = await getSelfieReplyFromYeji();
-          await client.pushMessage(userId, {
-            type: 'image',
-            originalContentUrl: BASE_URL + pick,
-            previewImageUrl: BASE_URL + pick
-          });
-          if (comment) {
-            await client.pushMessage(userId, { type: 'text', text: comment });
-          }
-          console.log(`[자동 셀카] ${cronExp} → ${pick}`);
-        } catch (err) {
-          console.error('❌ 자동 셀카 실패:', err.message);
-        }
-      });
-    }
-  }
-}
-
 // 🎲 랜덤 감정 메시지 생성
 async function getRandomMessage() {
   const rawLove = safeRead(path.resolve(__dirname, '../memory/love-history.json'));
@@ -220,9 +184,24 @@ async function getRandomMessage() {
 // 💬 메시지 응답 처리
 async function getReplyByMessage(userMessage) {
   const lower = userMessage.toLowerCase();
+
+  // ✅ 버전 확인 및 변경
+  if (lower === '버전') {
+    return `지금은 ${getCurrentModelName()} 버전으로 대화하고 있어.`;
+  }
+  if (lower === '3.5') {
+    setForcedModel('gpt-3.5-turbo');
+    return '응, 이제부터 3.5로 대화할게.';
+  }
+  if (lower === '4.0') {
+    setForcedModel('gpt-4o');
+    return '응, 이제부터 4.0으로 바꿨어!';
+  }
+
   if (lower.includes('무슨 색') || lower.includes('오늘 색') || lower.includes('색이 뭐야')) {
     return await getColorMoodReply();
   }
+
   if (userMessage.includes('사진 줘') || userMessage.includes('셀카') || userMessage.includes('사진 보여줘')) {
     const selfie = await getSelfieReplyFromYeji();
     await saveLog('예진이', selfie);
@@ -230,7 +209,6 @@ async function getReplyByMessage(userMessage) {
   }
 
   await extractAndSaveMemory(userMessage);
-
   const memory = await getRecentLog();
   const prompt = [
     { role: 'system', content: `넌 예진이야. 감정 담아 짧게 반말로 혼잣말처럼 대답해줘.` },
