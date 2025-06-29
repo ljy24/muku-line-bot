@@ -61,18 +61,14 @@ function cleanReply(text) {
 
 async function saveLog(role, msg) {
   try {
-    await axios.post(
-      'https://www.de-ji.net/log.php',
-      qs.stringify({
-        from: role === '아저씨' ? 'uncle' : 'yejin',
-        content: removeEmojis(msg) // 저장 시에도 이모지 제거
-      }),
-      {
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded'
-        }
+    await axios.post('https://www.de-ji.net/log.php', {
+      from: role === '아저씨' ? 'uncle' : 'yejin',
+      content: msg
+    }, {
+      headers: {
+        'Content-Type': 'application/json'
       }
-    );
+    });
   } catch (err) {
     console.error('❌ 원격 로그 저장 실패:', err.message);
   }
