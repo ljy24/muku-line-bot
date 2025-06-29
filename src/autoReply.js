@@ -9,6 +9,7 @@ const axios = require('axios');
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 let forcedModel = null;
 
+// 📂 안전하게 파일 읽기 (파일 없으면 빈 문자열 반환)
 function safeRead(filePath) {
   try {
     return fs.readFileSync(filePath, 'utf-8');
@@ -17,6 +18,7 @@ function safeRead(filePath) {
   }
 }
 
+// 🧠 고정 기억 로딩 (love-history.json + fixedMemories.json)
 function getFixedMemory() {
   try {
     const love = JSON.parse(safeRead(path.resolve(__dirname, '../memory/love-history.json')));
@@ -28,6 +30,7 @@ function getFixedMemory() {
   }
 }
 
+// 🕓 최근 대화 로그 불러오기 (log.json)
 async function getRecentLog() {
   try {
     const res = await axios.get('https://www.de-ji.net/log.json');
@@ -43,6 +46,7 @@ async function getRecentLog() {
   }
 }
 
+// 💡 강제로 모델 전환하기 (3.5 또는 4o)
 function setForcedModel(name) {
   forcedModel = (name === 'gpt-3.5-turbo' || name === 'gpt-4o') ? name : null;
 }
@@ -50,6 +54,7 @@ function getCurrentModelName() {
   return forcedModel || 'gpt-4o';
 }
 
+// 🤖 OpenAI 메시지 호출 함수
 async function callOpenAI(messages, model = 'gpt-4o', max_tokens = 300) {
   const res = await openai.chat.completions.create({
     model: getCurrentModelName(),
@@ -60,6 +65,7 @@ async function callOpenAI(messages, model = 'gpt-4o', max_tokens = 300) {
   return res.choices[0].message.content.trim();
 }
 
+// 🧼 출력 메시지 다듬기
 function cleanReply(text) {
   return text
     .replace(/^예진\s*[:;：]/i, '')
@@ -71,6 +77,7 @@ function cleanReply(text) {
     .trim();
 }
 
+// 💾 대화 로그 저장
 async function saveLog(role, msg) {
   try {
     await axios.post('https://www.de-ji.net/log.php', {
@@ -82,7 +89,7 @@ async function saveLog(role, msg) {
   }
 }
 
-// ✅ 기억 기반 랜덤 감정 메시지 생성
+// 💌 기억 기반 랜덤 감정 메시지 생성
 async function getRandomMessage() {
   const love = safeRead(path.resolve(__dirname, '../memory/love-history.json'));
   const fixed = safeRead(path.resolve(__dirname, '../memory/fixedMemories.json'));
@@ -135,7 +142,7 @@ async function getRandomMessage() {
   return msg;
 }
 
-// 나머지 함수는 동일하게 유지
+// ✨ [이하 나머지 함수는 기존 유지, index.js에서 불러감]
 module.exports = {
   getReplyByMessage,
   getReplyByImagePrompt,
