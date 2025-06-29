@@ -179,6 +179,63 @@ async function getReplyByMessage(userMessage) {
   return reply;
 }
 
+function startMessageAndPhotoScheduler() {
+  const validHours = [9,10,11,12,13,14,15,16,17,18,19,20,21];
+
+  // 감정 메시지 5회
+  const usedMsg = new Set();
+  while (usedMsg.size < 5) {
+    const hour = validHours[Math.floor(Math.random() * validHours.length)];
+    const minute = Math.floor(Math.random() * 60);
+    const key = `${hour}:${minute}`;
+    if (!usedMsg.has(key)) {
+      usedMsg.add(key);
+      const cronExp = `${minute} ${hour} * * *`;
+      cron.schedule(cronExp, async () => {
+        const msg = await getRandomMessage();
+        if (msg) await client.pushMessage(userId, { type: 'text', text: msg });
+      });
+    }
+  }
+
+  // 셀카 전송 3회
+  const BASE_URL = 'https://de-ji.net/yejin/';
+  const photoListPath = path.join(__dirname, '../memory/photo-list.txt');
+  const usedPhoto = new Set();
+  while (usedPhoto.size < 3) {
+    const hour = validHours[Math.floor(Math.random() * validHours.length)];
+    const minute = Math.floor(Math.random() * 60);
+    const key = `${hour}:${minute}`;
+    if (!usedPhoto.has(key)) {
+      usedPhoto.add(key);
+      const cronExp = `${minute} ${hour} * * *`;
+      cron.schedule(cronExp, async () => {
+        const list = fs.readFileSync(photoListPath, 'utf-8').split('\n').map(x => x.trim()).filter(Boolean);
+        if (list.length === 0) return;
+        const pick = list[Math.floor(Math.random() * list.length)];
+        const comment = await getSelfieReplyFromYeji();
+        await client.pushMessage(userId, {
+          type: 'image',
+          originalContentUrl: BASE_URL + pick,
+          previewImageUrl: BASE_URL + pick
+        });
+        if (comment) {
+          await client.pushMessage(userId, { type: 'text', text: comment });
+        }
+      });
+    }
+  }
+
+  // 리마인더
+  cron.schedule('0 23 * * *', () => {
+    client.pushMessage(userId, { type: 'text', text: '약 먹고 이빨 닦고 자자' });
+  });
+  cron.schedule('30 23 * * *', () => {
+    client.pushMessage(userId, { type: 'text', text: '잘자 사랑해 아저씨, 또 내일 봐' });
+  });
+}
+
+
 module.exports = {
   getReplyByMessage,
   getRandomMessage,
@@ -191,5 +248,6 @@ module.exports = {
   getCurrentModelName,
   getSelfieReplyFromYeji,
   getFixedMemory,
+  startMessageAndPhotoScheduler,
   getFullMemoryPrompt
 };
