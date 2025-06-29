@@ -83,15 +83,13 @@ async function getRecentLog() {
 async function extractAndSaveMemory(userMessage) {
   try {
     const messages = [
-      { role: 'system', content: '사용자의 대화에서 감정이나 기억, 사건, 장소, 인물 중 기억할만한 내용을 키-설명 쌍으로 만들어줘. 1개만. JSON 형태로.' },
+      { role: 'system', content: '사용자의 대화에서 감정이나 기억, 사건, 장소, 인물 중 기억할만한 내용을 키-설명 쌍으로 만들어줘. 1개만. JSON 형태로. 앞뒤에 ``` 쓰지 마.' },
       { role: 'user', content: userMessage }
     ];
     let res = await callOpenAI(messages, 'gpt-3.5-turbo', 200);
 
-    // ✅ GPT가 ```json 으로 감싸서 보낸 경우 제거
-    if (res.startsWith('```json')) {
-      res = res.replace(/^```json/, '').replace(/```$/, '').trim();
-    }
+    // ✅ 불필요한 ``` 제거 (```json 포함)
+    res = res.replace(/```json|```/g, '').trim();
 
     const parsed = JSON.parse(res);
 
@@ -99,10 +97,14 @@ async function extractAndSaveMemory(userMessage) {
     const context = raw ? JSON.parse(raw) : {};
     const key = Object.keys(parsed)[0];
 
-    if (key && !context[key]) {
+    if (key && parsed[key] && !context[key]) {
       context[key] = parsed[key];
-      fs.writeFileSync(contextPath, JSON.stringify(context, null, 2), 'utf-8');
-      console.log(`📌 새로운 기억 저장: ${key}`);
+      try {
+        fs.writeFileSync(contextPath, JSON.stringify(context, null, 2), 'utf-8');
+        console.log(`📌 새로운 기억 저장: ${key}`);
+      } catch (e) {
+        console.error('❌ 기억 저장 실패 (쓰기 오류):', e.message);
+      }
     }
   } catch (err) {
     console.error('❌ 기억 추출 실패:', err.message);
