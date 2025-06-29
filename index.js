@@ -132,7 +132,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
 });
 
 // ✅ 정각 담타 메시지 + 5분 반응 체크
-require('./src/tobacco')?.startTobaccoScheduler?.(client, userId);
+//require('./src/tobacco')?.startTobaccoScheduler?.(client, userId);
 
 // ✅ 포트 리스닝
 const PORT = process.env.PORT || 3000;
