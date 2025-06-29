@@ -62,21 +62,27 @@ async function saveLog(role, msg) {
   }
 }
 
-async function getRecentLog() {
+// 필요한 거면 이 함수 전체 교체해
+const qs = require('qs');
+
+async function saveLog(role, msg) {
   try {
-    const res = await axios.get('https://www.de-ji.net/log.json');
-    const logs = res.data;
-    if (!Array.isArray(logs)) return [];
-    return logs.slice(0, 50).reverse().map(log => ({
-      role: log.from === 'uncle' ? 'user' : 'assistant',
-      content: log.content
-    }));
+    await axios.post(
+      'https://www.de-ji.net/log.php',
+      qs.stringify({
+        from: role === '아저씨' ? 'uncle' : 'yejin',
+        content: msg
+      }),
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        }
+      }
+    );
   } catch (err) {
-    console.error('❌ 최근 로그 불러오기 실패:', err.message);
-    return [];
+    console.error('❌ 원격 로그 저장 실패:', err.message);
   }
 }
-
 async function callOpenAI(messages, model = 'gpt-4o', max_tokens = 300) {
   const res = await openai.chat.completions.create({
     model: getCurrentModelName(),
