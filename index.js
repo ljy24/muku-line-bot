@@ -1,4 +1,4 @@
-// index.js (담타 중복 삐짐 방지 포함)
+// index.js (담타 중복 삐짐 방지 + getSelfieReplyFromYeji 적용)
 
 const fs = require('fs');
 const path = require('path');
@@ -11,7 +11,7 @@ const {
   getReplyByMessage,
   getReplyByImagePrompt,
   getRandomMessage,
-  getImageReactionComment,
+  getSelfieReplyFromYeji, // 🔄 여기로 수정됨
   getColorMoodReply,
   saveLog,
   setForcedModel,
@@ -183,7 +183,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
               const list = fs.readFileSync(photoListPath, 'utf-8').split('\n').map(x => x.trim()).filter(Boolean);
               if (list.length > 0) {
                 const pick = list[Math.floor(Math.random() * list.length)];
-                const comment = await getImageReactionComment();
+                const comment = await getSelfieReplyFromYeji(); // 🔄 여기도 수정됨
                 await client.replyMessage(event.replyToken, [
                   { type: 'image', originalContentUrl: BASE_URL + pick, previewImageUrl: BASE_URL + pick },
                   { type: 'text', text: comment || '헤헷 셀카야~' }
