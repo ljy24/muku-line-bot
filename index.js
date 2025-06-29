@@ -1,19 +1,15 @@
 // 필수 라이브러리 로드
 const express = require('express');
 const { Client, middleware } = require('@line/bot-sdk');
-const dotenv = require('dotenv');
 const bodyParser = require('body-parser');
 const fs = require('fs');
 const path = require('path');
 
-dotenv.config(); // .env에서 환경변수 로드
-
-// ✅ 환경변수 키 이름 수정
+// LINE Messaging API 설정 (실제 토큰 직접 입력)
 const config = {
-  channelAccessToken: process.env.LINE_ACCESS_TOKEN,
-  channelSecret: process.env.LINE_CHANNEL_SECRET,
+  channelAccessToken: 'mJePV6aEDhUM3GgTv5v4+XIYmYn/eCEnV2oR9a64OL1wz6WpWJ4at1thGIxdlk4oiYpVShmZmaGaWekeUBM5NY8U9/czDVOUBnouvAqFW8uj9fwvOwUvPOtIWqbMIry+DcFccO+33Q7IBCubm8wcbAdB04t89/1O/w1cDnyilFU=',
+  channelSecret: '071267c33ed653b648eb19c71bc1d2c9',
 };
-
 const client = new Client(config);
 const app = express();
 app.use(bodyParser.json());
@@ -99,7 +95,7 @@ async function handleEvent(event) {
 app.get('/force-push', async (req, res) => {
   try {
     const msg = await autoReply.getRandomMessage();
-    const userId = process.env.TARGET_USER_ID; // ✅ ONLY_USER_ID → TARGET_USER_ID
+    const userId = 'Uaeee4a492f9da87c4416a7f8484ba917'; // 아저씨 ID
     await client.pushMessage(userId, { type: 'text', text: msg });
     res.send('✅ 메시지 전송 완료');
   } catch (err) {
