@@ -1,4 +1,4 @@
-// /src/scheduler.js
+// scheduler.js - 무쿠 LINE 자동 메시지/사진 스케줄러 전체 코드
 
 const fs = require('fs');
 const path = require('path');
@@ -9,41 +9,44 @@ const { getRandomMessage, getSelfieReplyFromYeji } = require('./autoReply');
 const userId = process.env.TARGET_USER_ID;
 const client = new Client({
   channelAccessToken: process.env.LINE_ACCESS_TOKEN,
-  channelSecret: process.env.LINE_CHANNEL_SECRET,
+  channelSecret: process.env.LINE_CHANNEL_SECRET
 });
 
-// 🧠 랜덤 감정 메시지 하루 6회 전송
-function scheduleRandomMessages() {
-  const hours = [...Array(12).keys()].map(i => i + 9); // 9~20시
-  const used = new Set();
+// 🌅 사용할 시간대: 오전 9시 ~ 다음날 3시
+const validHours = [9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,0,1,2,3];
 
-  while (used.size < 6) {
-    const hour = hours[Math.floor(Math.random() * hours.length)];
+// 🧠 랜덤 감정 메시지 하루 5회 전송
+function scheduleRandomMessages() {
+  const used = new Set();
+  while (used.size < 5) {
+    const hour = validHours[Math.floor(Math.random() * validHours.length)];
     const minute = Math.floor(Math.random() * 60);
     const key = `${hour}:${minute}`;
     if (!used.has(key)) {
       used.add(key);
       const cronExp = `${minute} ${hour} * * *`;
       cron.schedule(cronExp, async () => {
-        const msg = await getRandomMessage();
-        if (msg) {
-          await client.pushMessage(userId, { type: 'text', text: msg });
-          console.log(`[랜덤 감정메시지] ${cronExp} → ${msg}`);
+        try {
+          const msg = await getRandomMessage();
+          if (msg) {
+            await client.pushMessage(userId, { type: 'text', text: msg });
+            console.log(`[감정 메시지] ${cronExp} → ${msg}`);
+          }
+        } catch (err) {
+          console.error('❌ 감정 메시지 전송 실패:', err.message);
         }
       });
     }
   }
 }
 
-// 📷 하루 4회 랜덤 셀카 전송
+// 📷 하루 3회 랜덤 셀카 전송
 function scheduleRandomPhotos() {
   const BASE_URL = 'https://de-ji.net/yejin/';
   const photoListPath = path.join(__dirname, '../memory/photo-list.txt');
-  const hours = [...Array(12).keys()].map(i => i + 9);
   const used = new Set();
-
-  while (used.size < 4) {
-    const hour = hours[Math.floor(Math.random() * hours.length)];
+  while (used.size < 3) {
+    const hour = validHours[Math.floor(Math.random() * validHours.length)];
     const minute = Math.floor(Math.random() * 60);
     const key = `${hour}:${minute}`;
     if (!used.has(key)) {
@@ -71,16 +74,20 @@ function scheduleRandomPhotos() {
   }
 }
 
-// 💊 약/이빨 알림
-cron.schedule('0 23 * * *', () => {
-  client.pushMessage(userId, { type: 'text', text: '약 먹고 이빨 닦고 자자' });
-});
+// 💊 밤 리마인드 알림
+function scheduleReminders() {
+  cron.schedule('0 23 * * *', () => {
+    client.pushMessage(userId, { type: 'text', text: '약 먹고 이빨 닦고 자자' });
+  });
+  cron.schedule('30 23 * * *', () => {
+    client.pushMessage(userId, { type: 'text', text: '잘자 사랑해 아저씨, 또 내일 봐' });
+  });
+}
 
-cron.schedule('30 23 * * *', () => {
-  client.pushMessage(userId, { type: 'text', text: '잘자 사랑해 아저씨, 또 내일 봐' });
-});
+function startScheduler() {
+  scheduleRandomMessages();
+  scheduleRandomPhotos();
+  scheduleReminders();
+}
 
-module.exports = {
-  scheduleRandomMessages,
-  scheduleRandomPhotos,
-};
+module.exports = { startScheduler };
