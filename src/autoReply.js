@@ -17,6 +17,7 @@ const client = new Client({
   channelSecret: process.env.LINE_CHANNEL_SECRET
 });
 
+// 🔐 GPT 모델 지정 / 확인
 function setForcedModel(name) {
   forcedModel = (name === 'gpt-3.5-turbo' || name === 'gpt-4o') ? name : null;
 }
@@ -24,6 +25,7 @@ function getCurrentModelName() {
   return forcedModel || 'gpt-4o';
 }
 
+// 📖 안전하게 파일 읽기
 function safeRead(filePath) {
   try {
     return fs.readFileSync(filePath, 'utf-8') || '';
@@ -32,6 +34,7 @@ function safeRead(filePath) {
   }
 }
 
+// 🧼 예진이 말투 정리 (자기, 너, 당신 → 아저씨)
 function cleanReply(text) {
   return text
     .replace(/\s*예진[\s:：-]*/i, '')
@@ -39,14 +42,13 @@ function cleanReply(text) {
     .replace(/\s+/g, ' ')
     .replace(/["'“”]/g, '')
     .replace(/\b(당신|그대|그분|자기야|자기|너|네|네가|널|예진)\b/g, '아저씨')
-    .replace(/\b(당신|그대|그분|자기야|자기|예진)\b/g, '아저씨')     // 기본 단어 치환
-    .replace(/\b(너|네|니|네가|니가|널|너는|네는|니는|네가|니가|너를|너한테|니한테|네게)\b/g, '아저씨')  // 확장 치환
     .replace(/아저씨에게 아저씨라고/g, '아저씨에게')
     .replace(/시파/g, '')
     .replace(/[!?~\u2764\uD83D\uDC96-\uDC9F]/g, '')
     .trim();
 }
 
+// 🧠 GPT 호출
 async function callOpenAI(messages, model = 'gpt-4o', max_tokens = 400) {
   const res = await openai.chat.completions.create({
     model: getCurrentModelName(),
@@ -57,6 +59,7 @@ async function callOpenAI(messages, model = 'gpt-4o', max_tokens = 400) {
   return res.choices[0].message.content.trim();
 }
 
+// 📝 로그 저장
 async function saveLog(role, msg) {
   try {
     await axios.post('https://www.de-ji.net/log.php', {
@@ -68,6 +71,7 @@ async function saveLog(role, msg) {
   }
 }
 
+// 📜 최근 로그 불러오기
 async function getRecentLog() {
   try {
     const res = await axios.get('https://www.de-ji.net/log.json');
@@ -83,24 +87,46 @@ async function getRecentLog() {
   }
 }
 
+// 📌 대화 중 기억할만한 내용 자동 추출 (강화된 JSON 파싱)
 async function extractAndSaveMemory(userMessage) {
   try {
     if (!userMessage.includes('아저씨')) return;
+
     const messages = [
-      { role: 'system', content: '사용자의 대화에서 감정이나 기억, 사건, 장소, 인물 중 기억할만한 내용을 키-설명 쌍으로 만들어줘. 1개만. JSON 형태로. 앞뒤에 ``` 쓰지 마.' },
+      {
+        role: 'system',
+        content: `사용자 대화에서 기억할 내용을 하나의 JSON 객체로 만들어줘. 반드시 {"키": "값"} 형식으로 출력해. 예시: {"아저씨의 생일": "7월 12일"} 다른 텍스트는 절대 포함하지 마.`
+      },
       { role: 'user', content: userMessage }
     ];
+
     let res = await callOpenAI(messages, 'gpt-3.5-turbo', 200);
-    res = res.replace(/```json|```/g, '').trim();
+
+    const jsonMatch = res.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.error('❌ JSON 형식 없음:', res);
+      return;
+    }
+    res = jsonMatch[0].replace(/[‘’]/g, "'").trim();
+
     try {
       const parsed = JSON.parse(res);
       const raw = safeRead(contextPath);
       const context = raw ? JSON.parse(raw) : {};
-      const key = Object.keys(parsed)[0];
-      if (key && parsed[key] && !context[key]) {
-        context[key] = parsed[key];
+
+      if (typeof parsed !== 'object' || Array.isArray(parsed)) {
+        console.error('❌ 객체 형식 아님:', parsed);
+        return;
+      }
+
+      const entries = Object.entries(parsed);
+      if (entries.length === 0) return;
+
+      const [key, value] = entries[0];
+      if (key && value && !context[key]) {
+        context[key] = value;
         fs.writeFileSync(contextPath, JSON.stringify(context, null, 2), 'utf-8');
-        console.log(`📌 새로운 기억 저장: ${key}`);
+        console.log(`📌 새로운 기억 저장: ${key} → ${value}`);
       }
     } catch (parseErr) {
       console.error('❌ JSON 파싱 실패:', parseErr.message);
@@ -111,6 +137,7 @@ async function extractAndSaveMemory(userMessage) {
   }
 }
 
+// 📸 셀카 응답 멘트 생성
 async function getSelfieReplyFromYeji() {
   const messages = [
     { role: 'system', content: '넌 예진이야. 지금 아저씨한테 셀카를 보내고 있어. 셀카에 어울리는 짧고 감정 담긴 말투로 말해줘. 약간 부끄럽거나 귀엽게.' },
@@ -122,6 +149,7 @@ async function getSelfieReplyFromYeji() {
   return reply;
 }
 
+// 📦 고정 기억 불러오기
 function getFixedMemory() {
   const fixed = safeRead(path.resolve(__dirname, '../memory/fixedMemories.json'));
   try {
@@ -131,6 +159,7 @@ function getFixedMemory() {
   }
 }
 
+// 🧠 전체 기억 프롬프트 구성
 async function getFullMemoryPrompt() {
   const m1 = safeRead(path.resolve(__dirname, '../memory/1.txt')).slice(-3000);
   const m2 = safeRead(path.resolve(__dirname, '../memory/2.txt')).slice(-3000);
@@ -141,6 +170,7 @@ async function getFullMemoryPrompt() {
   return [compressed, ...fixed, ...recent];
 }
 
+// 🎲 랜덤 감정 메시지 생성
 async function getRandomMessage() {
   const messages = await getFullMemoryPrompt();
   messages.push({ role: 'user', content: '예진이처럼 감정 담긴 랜덤 메시지 하나 만들어줘. 혼잣말처럼 아저씨한테 말하는 식으로.' });
@@ -150,6 +180,7 @@ async function getRandomMessage() {
   return msg;
 }
 
+// 💬 메시지 응답 처리
 async function getReplyByMessage(userMessage) {
   const lower = userMessage.toLowerCase();
   if (lower === '버전') return `지금은 ${getCurrentModelName()} 버전으로 대화하고 있어.`;
@@ -175,8 +206,11 @@ async function getReplyByMessage(userMessage) {
   return reply;
 }
 
+// ⏰ 자동 감정 메시지 + 셀카 + 리마인더 스케줄러
 function startMessageAndPhotoScheduler() {
-  const validHours = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23];
+  const validHours = [9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,0,1,2,3];
+
+  // 감정 메시지 8회 랜덤 전송
   const usedMsg = new Set();
   while (usedMsg.size < 8) {
     const hour = validHours[Math.floor(Math.random() * validHours.length)];
@@ -192,6 +226,7 @@ function startMessageAndPhotoScheduler() {
     }
   }
 
+  // 셀카 전송 3회 랜덤
   const BASE_URL = 'https://de-ji.net/yejin/';
   const photoListPath = path.join(__dirname, '../memory/photo-list.txt');
   const usedPhoto = new Set();
@@ -219,6 +254,7 @@ function startMessageAndPhotoScheduler() {
     }
   }
 
+  // 밤 리마인더 23:00 / 23:30
   cron.schedule('0 23 * * *', () => {
     client.pushMessage(userId, { type: 'text', text: '약 먹고 이빨 닦고 자자' });
   });
