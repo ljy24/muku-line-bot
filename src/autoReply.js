@@ -1,4 +1,4 @@
-// autoReply.js - 무쿠 LINE 응답용 예진이 말투 + 감정기억 자동 저장 시스템 전체 코드
+""// autoReply.js - 무쿠 LINE 응답용 예진이 말투 + 감정기억 자동 저장 시스템 전체 코드
 
 const fs = require('fs');
 const path = require('path');
