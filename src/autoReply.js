@@ -156,6 +156,23 @@ async function classifyImageByGPT(base64Image) {
   return '모름';
 }
 
+// 📥 일반 메시지에 대한 응답 생성
+async function getReplyByMessage(userMessage) {
+  const memory = await getRecentLog();
+  const prompt = [
+    {
+      role: 'system',
+      content: `넌 예진이야. 항상 반말하고 혼잣말처럼 자연스럽고 감정 담긴 짧은 대답을 해줘.`
+    },
+    ...memory,
+    { role: 'user', content: userMessage }
+  ];
+  const raw = await callOpenAI(prompt, getCurrentModelName(), 150);
+  const reply = cleanReply(raw);
+  await saveLog('예진이', reply);
+  return reply;
+}
+
 // 📷 이미지 반응 생성
 async function getReplyByImagePrompt(base64Image) {
   const who = await classifyImageByGPT(base64Image);
