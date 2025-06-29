@@ -32,8 +32,6 @@ function cleanReply(text) {
     .replace(/["'“”]/g, '')
     .replace(/(당신[\w\s]*|그대|그분|자기|너|네가|널|예진)/gi, '아저씨')
     .replace(/시파/g, '')
-    .replace(/[!?~♡❤️💖💘💕💗💓💞]/g, '')
-    .replace(/�/g, '')
     .trim();
 
   if (cleaned.length > 100) {
