@@ -28,26 +28,24 @@ function cleanReply(text) {
     .replace(/\([^)]*\)/g, '')
     .replace(/\s+/g, ' ')
     .replace(/["'“”]/g, '')
-    .replace(/당신[은이의도는가]*\b/g, '아저씨')
-    .replace(/\b(그대|그분|자기|너|네|네가|널|예진)\b/g, '아저씨')
+    .replace(/(당신[\w\s]*|그대|그분|자기|너|네가|널|예진)/gi, '아저씨')
     .replace(/시파/g, '')
     .replace(/[!?~♡❤️💖💘💕💗💓💞]/g, '')
     .trim();
 
+  // 줄바꿈: 100자 넘어가면 공백 기준으로 줄 나눠줘
   if (cleaned.length > 100) {
     const words = cleaned.split(' ');
-    let result = '';
-    let line = '';
+    let line1 = '';
+    let line2 = '';
     for (const word of words) {
-      if ((line + ' ' + word).trim().length > 100) {
-        result += line.trim() + '\n';
-        line = word + ' ';
+      if ((line1 + ' ' + word).trim().length <= 100) {
+        line1 += ' ' + word;
       } else {
-        line += word + ' ';
+        line2 += ' ' + word;
       }
     }
-    result += line.trim();
-    return result;
+    return `${line1.trim()}\n${line2.trim()}`;
   }
 
   return cleaned;
