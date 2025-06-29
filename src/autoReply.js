@@ -1,3 +1,5 @@
+// ✅ autoReply.js (감정 메시지, 리액션, 셀카 응답 등 전체 구성)
+
 const fs = require('fs');
 const path = require('path');
 const { OpenAI } = require('openai');
@@ -76,7 +78,7 @@ async function callOpenAI(messages, model = 'gpt-4o', max_tokens = 300) {
   return res.choices[0].message.content.trim();
 }
 
-// 💌 랜덤 감정 메시지
+// 💌 랜덤 감정 메시지 (기억 기반 + 최근 대화 섞음)
 async function getRandomMessage() {
   const rawLove = safeRead(path.resolve(__dirname, '../memory/love-history.json'));
   const rawFixed = safeRead(path.resolve(__dirname, '../memory/fixedMemories.json'));
@@ -87,12 +89,21 @@ async function getRandomMessage() {
   let memoryItems = [];
 
   try {
-    const loveJson = JSON.parse(rawLove || '[]');    // ✅ 수정: 중복 선언 제거
-    const fixedJson = JSON.parse(rawFixed || '[]');  // ✅ 빠진 선언 추가!
+    const loveJson = JSON.parse(rawLove || '[]');
+    const fixedJson = JSON.parse(rawFixed || '[]');
+
+    // ✅ 최근 대화 로그도 감정 기억처럼 사용
+    const recentLog = await getRecentLog();
+    const recentMemories = recentLog
+      .filter(item => item.role === 'user' || item.role === 'assistant')
+      .map(item => item.content)
+      .filter(line => line.length > 10); // 짧은 문장 제외
+
     memoryItems = [
       ...loveJson.map(v => `${v.date} - ${v.event}`),
       ...fixedJson,
-      m1, m2, m3
+      m1, m2, m3,
+      ...recentMemories // ✅ 최근 대화 포함!
     ].filter(Boolean);
   } catch (err) {
     console.error('❌ 추억 메모리 로드 실패:', err.message);
@@ -234,7 +245,7 @@ async function getSelfieReplyFromYeji() {
   return reply;
 }
 
-// ✅ 외부 호출용
+// ✅ 외부에서 사용될 함수들
 module.exports = {
   getReplyByMessage,
   getReplyByImagePrompt,
