@@ -19,13 +19,17 @@ function safeRead(filePath) {
 function setForcedModel(name) {
   forcedModel = (name === 'gpt-3.5-turbo' || name === 'gpt-4o') ? name : null;
 }
-
 function getCurrentModelName() {
   return forcedModel || 'gpt-4o';
 }
 
+// 이모지 제거 정규식
+function removeEmojis(text) {
+  return text.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, '');
+}
+
 function cleanReply(text) {
-  const cleaned = text
+  let cleaned = text
     .replace(/^예진\s*[:;：]/i, '')
     .replace(/\([^)]*\)/g, '')
     .replace(/\s+/g, ' ')
@@ -34,6 +38,10 @@ function cleanReply(text) {
     .replace(/시파/g, '')
     .trim();
 
+  // 이모지 제거
+  cleaned = removeEmojis(cleaned);
+
+  // 줄바꿈: 100자 넘어가면 공백 기준 줄 나눔
   if (cleaned.length > 100) {
     const words = cleaned.split(' ');
     let line1 = '';
@@ -53,14 +61,18 @@ function cleanReply(text) {
 
 async function saveLog(role, msg) {
   try {
-    await axios.post('https://www.de-ji.net/log.php', {
-      from: role === '아저씨' ? 'uncle' : 'yejin',
-      content: msg
-    }, {
-      headers: {
-        'Content-Type': 'application/json; charset=UTF-8'
+    await axios.post(
+      'https://www.de-ji.net/log.php',
+      qs.stringify({
+        from: role === '아저씨' ? 'uncle' : 'yejin',
+        content: removeEmojis(msg) // 저장 시에도 이모지 제거
+      }),
+      {
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        }
       }
-    });
+    );
   } catch (err) {
     console.error('❌ 원격 로그 저장 실패:', err.message);
   }
@@ -73,7 +85,7 @@ async function getRecentLog() {
     if (!Array.isArray(logs)) return [];
     return logs.slice(0, 50).reverse().map(log => ({
       role: log.from === 'uncle' ? 'user' : 'assistant',
-      content: log.content
+      content: removeEmojis(log.content)
     }));
   } catch (err) {
     console.error('❌ 최근 로그 불러오기 실패:', err.message);
@@ -120,7 +132,7 @@ async function getRandomMessage() {
   if (useMemory && memory) {
     messages.push({
       role: 'system',
-      content: `너는 예진이야. 항상 '나'라고 말하고, 감정 담긴 반말로 혼잣말처럼 말해. 아래 추억을 바탕으로 자연스럽게 아저씨한테 다정하게 말 걸어줘.`
+      content: `너는 예진이야. 항상 '나'라고 말하고, 감정 담긴 반말로 혼잣말처럼 말해. 절대 이모지 쓰지 마. 아래 추억을 바탕으로 자연스럽게 아저씨한테 다정하게 말 걸어줘.`
     });
     messages.push({
       role: 'user',
@@ -130,7 +142,7 @@ async function getRandomMessage() {
     const recent = await getRecentLog();
     messages.push({
       role: 'system',
-      content: `너는 지금 예진이야. '나'라고 말하고, 감정을 담은 반말로 혼잣말처럼 자연스럽게 대화해줘. 최근 대화에 겹치지 않게 말해줘. 짧게 말해줘.`
+      content: `너는 지금 예진이야. 항상 '나'라고 말하고, 감정을 담은 반말로 혼잣말처럼 자연스럽게 대화해줘. 절대 이모지 쓰지 마. 최근 대화에 겹치지 않게 말해줘.`
     });
     messages.push(...recent);
     messages.push({
@@ -148,7 +160,7 @@ async function getRandomMessage() {
 async function getReplyByMessage(userMessage) {
   const memory = await getRecentLog();
   const prompt = [
-    { role: 'system', content: `넌 예진이야. 항상 반말하고 혼잣말처럼 자연스럽고 감정 담긴 짧은 대답을 해줘.` },
+    { role: 'system', content: `넌 예진이야. 항상 반말하고 혼잣말처럼 자연스럽고 감정 담긴 짧은 대답을 해줘. 절대 이모지 쓰지 마.` },
     ...memory,
     { role: 'user', content: userMessage }
   ];
@@ -160,7 +172,7 @@ async function getReplyByMessage(userMessage) {
 
 async function getColorMoodReply() {
   const prompt = [
-    { role: 'system', content: '넌 예진이야. "오늘 내 색 뭐야?"에 색깔 하나로 반말 리액션해줘.' },
+    { role: 'system', content: '넌 예진이야. "오늘 내 색 뭐야?"에 색깔 하나로 반말 리액션해줘. 절대 이모지 쓰지 마.' },
     { role: 'user', content: '오늘 내 색 뭐야?' }
   ];
   const raw = await callOpenAI(prompt, getCurrentModelName(), 100);
@@ -171,7 +183,7 @@ async function getColorMoodReply() {
 
 async function getImageReactionComment() {
   const raw = await callOpenAI([
-    { role: 'system', content: '넌 예진이야. 셀카 보낼 때 짓궂고 귀엽게 말해줘.' },
+    { role: 'system', content: '넌 예진이야. 셀카 보낼 때 짓궂고 귀엽게 말해줘. 절대 이모지 쓰지 마.' },
     { role: 'user', content: '셀카 보낼게~' }
   ], getCurrentModelName(), 100);
   const reply = cleanReply(raw);
@@ -185,7 +197,7 @@ async function getReplyByImagePrompt(base64Image) {
     messages: [
       {
         role: 'system',
-        content: '이 이미지를 보낸 사람이 남자면 "아저씨가 보낸 사진", 여성이면 "예진이 셀카"로 간주하고 각기 다른 반응을 해줘. 둘 다 있으면 "아저씨랑 예진이 사진"이야. 항상 반말이고 감정 담기!'
+        content: '이 이미지를 보낸 사람이 남자면 "아저씨가 보낸 사진", 여성이면 "예진이 셀카"로 간주하고 각기 다른 반응을 해줘. 둘 다 있으면 "아저씨랑 예진이 사진"이야. 항상 반말이고 감정 담기! 절대 이모지 쓰지 마.'
       },
       {
         role: 'user',
@@ -205,7 +217,7 @@ async function getReplyByImagePrompt(base64Image) {
 async function getHappyReply() {
   const memory = await getRecentLog();
   const prompt = [
-    { role: 'system', content: '넌 예진이야. 아저씨가 담타 답장했을 때 기뻐서 귀엽게 말해줘.' },
+    { role: 'system', content: '넌 예진이야. 아저씨가 담타 답장했을 때 기뻐서 귀엽게 말해줘. 절대 이모지 쓰지 마.' },
     ...memory,
     { role: 'user', content: '아저씨가 방금 담타 답장했어!' }
   ];
@@ -217,7 +229,7 @@ async function getHappyReply() {
 
 async function getSulkyReply() {
   const prompt = [
-    { role: 'system', content: '넌 예진이야. 아저씨가 담타 씹었을 때 삐친 말투로 말해줘.' },
+    { role: 'system', content: '넌 예진이야. 아저씨가 담타 씹었을 때 삐친 말투로 말해줘. 절대 이모지 쓰지 마.' },
     { role: 'user', content: '아저씨가 담타 읽고도 답이 없어...' }
   ];
   const raw = await callOpenAI(prompt, 'gpt-3.5-turbo', 100);
@@ -230,7 +242,7 @@ async function getSelfieReplyFromYeji() {
   const raw = await callOpenAI([
     {
       role: 'system',
-      content: '너는 예진이야. 셀카를 보낸 직후야. 사진 보낸 척하면서 귀엽고 짓궂게 한마디 해줘. 반말로.'
+      content: '너는 예진이야. 셀카를 보낸 직후야. 사진 보낸 척하면서 귀엽고 짓궂게 한마디 해줘. 반말로. 절대 이모지 쓰지 마.'
     },
     {
       role: 'user',
