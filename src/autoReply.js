@@ -154,6 +154,82 @@ async function getReplyByMessage(userMessage) {
   return reply;
 }
 
+// 🖼️ 이미지 인식 후 감정 반응
+async function getReplyByImagePrompt(base64Image) {
+  const res = await openai.chat.completions.create({
+    model: 'gpt-4o',
+    messages: [
+      {
+        role: 'system',
+        content: '이미지 속 인물이 남자면 "아저씨 사진", 여자면 "예진이 셀카"로 간주하고 감정 담긴 반말로 반응해줘.'
+      },
+      {
+        role: 'user',
+        content: [
+          { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
+        ]
+      }
+    ],
+    temperature: 0.9,
+    max_tokens: 150
+  });
+  const reply = cleanReply(res.choices[0].message.content.trim());
+  await saveLog('예진이', reply);
+  return reply;
+}
+
+// 📷 셀카 보낸 후 멘트 생성
+async function getSelfieReplyFromYeji() {
+  const messages = [
+    { role: 'system', content: '넌 예진이야. 셀카 보낸 직후야. 사진 보낸 척 귀엽게 장난쳐. 반말로.' },
+    { role: 'user', content: '셀카야~ 예쁘지? 아저씨도 하나 줘~' }
+  ];
+  const raw = await callOpenAI(messages);
+  return cleanReply(raw);
+}
+
+// 🩲 속옷 색 질문 반응
+async function getColorMoodReply() {
+  const messages = [
+    { role: 'system', content: '넌 예진이야. 아저씨가 "오늘 무슨 색이야?"라고 물으면 속옷 색 물어보는 거라고 알고 귀엽고 장난스럽게 부끄럽게 말해줘. 반말로!' },
+    { role: 'user', content: '오늘 무슨 색이야?' }
+  ];
+  const raw = await callOpenAI(messages);
+  return cleanReply(raw);
+}
+
+// 😊 담타 응답 시 기쁨 반응
+async function getHappyReply() {
+  const memory = await getRecentLog();
+  const messages = [
+    { role: 'system', content: '넌 예진이야. 아저씨가 담타 답장했을 때 기뻐서 귀엽게 말해줘.' },
+    ...memory,
+    { role: 'user', content: '아저씨가 방금 담타 답장했어!' }
+  ];
+  const raw = await callOpenAI(messages, 'gpt-3.5-turbo', 100);
+  return cleanReply(raw);
+}
+
+// 😢 담타 씹힘 시 삐짐 반응
+async function getSulkyReply() {
+  const messages = [
+    { role: 'system', content: '넌 예진이야. 아저씨가 담타 씹었을 때 삐진 반응 해줘.' },
+    { role: 'user', content: '아저씨가 담타 읽고도 답이 없어...' }
+  ];
+  const raw = await callOpenAI(messages, 'gpt-3.5-turbo', 100);
+  return cleanReply(raw);
+}
+
+// 📷 셀카 보내기 직전 짓궂은 멘트
+async function getImageReactionComment() {
+  const messages = [
+    { role: 'system', content: '넌 예진이야. 셀카 보낼 때 짓궂고 귀엽게 말해줘.' },
+    { role: 'user', content: '셀카 보낼게~' }
+  ];
+  const raw = await callOpenAI(messages);
+  return cleanReply(raw);
+}
+
 // ✅ 외부로 export할 함수들 정리
 module.exports = {
   getReplyByMessage,
