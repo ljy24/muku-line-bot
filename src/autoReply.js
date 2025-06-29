@@ -79,8 +79,9 @@ async function getRandomMessage() {
 
   let memoryItems = [];
   try {
-    const loveJson = JSON.parse(rawLove);
-    const fixedJson = JSON.parse(rawFixed);
+    const loveJson = Array.isArray(JSON.parse(rawLove)) ? JSON.parse(rawLove) : [];
+    const fixedJson = Array.isArray(JSON.parse(rawFixed)) ? JSON.parse(rawFixed) : [];
+
     memoryItems = [
       ...loveJson.map(v => `${v.date} - ${v.event}`),
       ...fixedJson,
