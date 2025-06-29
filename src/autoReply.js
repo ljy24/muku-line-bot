@@ -82,7 +82,6 @@ async function getRecentLog() {
 // 📌 대화 중 기억할만한 내용 자동 추출
 async function extractAndSaveMemory(userMessage) {
   try {
-    // ✅ 대화에 "아저씨" 포함되면 강제 추출 시도
     if (!userMessage.includes('아저씨')) return;
 
     const messages = [
@@ -91,9 +90,7 @@ async function extractAndSaveMemory(userMessage) {
     ];
     let res = await callOpenAI(messages, 'gpt-3.5-turbo', 200);
 
-    // ✅ 불필요한 ``` 제거 (```json 포함)
     res = res.replace(/```json|```/g, '').trim();
-
     const parsed = JSON.parse(res);
     const raw = safeRead(contextPath);
     const context = raw ? JSON.parse(raw) : {};
@@ -113,7 +110,19 @@ async function extractAndSaveMemory(userMessage) {
   }
 }
 
-// 🎲 랜덤 감정 메시지 생성 (기억 기반 + 대화 기반 혼합)
+// 📸 랜덤 셀카 전송 메시지 생성
+async function getSelfieReplyFromYeji() {
+  const messages = [
+    { role: 'system', content: '넌 예진이야. 지금 아저씨한테 셀카를 보내고 있어. 셀카에 어울리는 짧고 감정 담긴 말투로 말해줘. 약간 부끄럽거나 귀엽게.' },
+    { role: 'user', content: '셀카 보낼게! 코멘트 해줘.' }
+  ];
+  const raw = await callOpenAI(messages, 'gpt-3.5-turbo', 100);
+  const reply = cleanReply(raw);
+  await saveLog('예진이', reply);
+  return reply;
+}
+
+// 🎲 랜덤 감정 메시지 생성
 async function getRandomMessage() {
   const rawLove = safeRead(path.resolve(__dirname, '../memory/love-history.json'));
   const rawFixed = safeRead(path.resolve(__dirname, '../memory/fixedMemories.json'));
@@ -164,7 +173,7 @@ async function getRandomMessage() {
   return msg;
 }
 
-// 🧪 예진이 감정 반응
+// 💬 메시지 응답 처리
 async function getReplyByMessage(userMessage) {
   const lower = userMessage.toLowerCase();
   if (lower.includes('무슨 색') || lower.includes('오늘 색') || lower.includes('색이 뭐야')) {
@@ -176,7 +185,7 @@ async function getReplyByMessage(userMessage) {
     return selfie;
   }
 
-  await extractAndSaveMemory(userMessage); // ⬅️ 대화 기억 시도
+  await extractAndSaveMemory(userMessage);
 
   const memory = await getRecentLog();
   const prompt = [
@@ -200,5 +209,6 @@ module.exports = {
   getRecentLog,
   extractAndSaveMemory,
   setForcedModel,
-  getCurrentModelName
+  getCurrentModelName,
+  getSelfieReplyFromYeji
 };
