@@ -1,13 +1,224 @@
-// ✅ index.js (예진이 말투 감정 강화 + 셀카 구분 반응 적용)
+// autoReply.js 전체 코드 (예진 말투 필터 강화 + 셀카 발신자 인식)
 
 const fs = require('fs');
 const path = require('path');
-const { Client, middleware } = require('@line/bot-sdk');
-const express = require('express');
-const cron = require('node-cron');
+const { OpenAI } = require('openai');
 const moment = require('moment-timezone');
+const axios = require('axios');
 
-const {
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+let forcedModel = null;
+
+function safeRead(filePath) {
+  try {
+    return fs.readFileSync(filePath, 'utf-8');
+  } catch (_) {
+    return '';
+  }
+}
+
+function getFixedMemory() {
+  try {
+    const love = JSON.parse(safeRead(path.resolve(__dirname, '../memory/love-history.json')));
+    const fixed = JSON.parse(safeRead(path.resolve(__dirname, '../memory/fixedMemories.json')));
+    return [...love, ...fixed].map(entry => ({ role: 'system', content: entry }));
+  } catch (err) {
+    console.error('❌ 고정 기억 실패:', err.message);
+    return [];
+  }
+}
+
+async function getRecentLog() {
+  try {
+    const res = await axios.get('https://www.de-ji.net/log.json');
+    const logs = res.data;
+    if (!Array.isArray(logs)) return [];
+    return logs.slice(0, 50).reverse().map(log => ({
+      role: log.from === 'uncle' ? 'user' : 'assistant',
+      content: log.content
+    }));
+  } catch (err) {
+    console.error('❌ 최근 로그 불러오기 실패:', err.message);
+    return [];
+  }
+}
+
+function setForcedModel(name) {
+  forcedModel = (name === 'gpt-3.5-turbo' || name === 'gpt-4o') ? name : null;
+}
+function getCurrentModelName() {
+  return forcedModel || 'gpt-4o';
+}
+
+async function callOpenAI(messages, model = 'gpt-4o', max_tokens = 300) {
+  const res = await openai.chat.completions.create({
+    model: getCurrentModelName(),
+    messages,
+    temperature: 0.95,
+    max_tokens
+  });
+  return res.choices[0].message.content.trim();
+}
+
+function cleanReply(text) {
+  return text
+    .replace(/^예진\s*[:;：]/i, '')
+    .replace(/\([^)]*\)/g, '')
+    .replace(/\s+/g, ' ')
+    .replace(/["'“”]/g, '')
+    .replace(/\b(당신|그대|그분|자기|너|네|네가|널|예진)\b/g, '아저씨')
+    .replace(/시파/g, '')
+    .trim();
+}
+
+async function saveLog(role, msg) {
+  try {
+    await axios.post('https://www.de-ji.net/log.php', {
+      from: role === '아저씨' ? 'uncle' : 'yejin',
+      content: msg
+    });
+  } catch (err) {
+    console.error('❌ 원격 로그 저장 실패:', err.message);
+  }
+}
+
+async function getRandomMessage() {
+  const love = safeRead(path.resolve(__dirname, '../memory/love-history.json'));
+  const fixed = safeRead(path.resolve(__dirname, '../memory/fixedMemories.json'));
+  const m1 = safeRead(path.resolve(__dirname, '../memory/1.txt'));
+  const m2 = safeRead(path.resolve(__dirname, '../memory/2.txt'));
+  const m3 = safeRead(path.resolve(__dirname, '../memory/3.txt'));
+
+  let memoryItems = [];
+  try {
+    memoryItems = [
+      ...JSON.parse(love),
+      ...JSON.parse(fixed),
+      m1, m2, m3
+    ].filter(Boolean);
+  } catch (err) {
+    console.error('❌ 추억 메모리 로드 실패:', err.message);
+  }
+
+  const useMemory = Math.random() < 0.5;
+  const memory = memoryItems[Math.floor(Math.random() * memoryItems.length)];
+  const messages = [];
+
+  if (useMemory && memory) {
+    messages.push({ role: 'system', content: `너는 예진이야. 항상 '나'라고 말하고, 감정 담긴 반말로 혼잣말처럼 말해. 아래 추억을 바탕으로 자연스럽게 아저씨한테 다정하게 말 걸어줘.` });
+    messages.push({ role: 'user', content: `"${memory}" 이 기억으로 예진이 말투로 감정 섞어 메시지 하나만 해줘.` });
+  } else {
+    const recent = await getRecentLog();
+    messages.push({ role: 'system', content: `너는 지금 예진이야. '나'라고 말하고, 감정을 담은 반말로 혼잣말처럼 자연스럽게 대화해줘. 최근 대화에 겹치지 않게 말해줘.` });
+    messages.push(...recent);
+    messages.push({ role: 'user', content: '아저씨한테 보낼 랜덤 감정 메시지 하나 만들어줘' });
+  }
+
+  const raw = await callOpenAI(messages, 'gpt-3.5-turbo', 100);
+  const msg = cleanReply(raw);
+  await saveLog('예진이', msg);
+  return msg;
+}
+
+async function getReplyByMessage(userMessage) {
+  const memory = await getRecentLog();
+  const prompt = [
+    { role: 'system', content: `넌 예진이야. 항상 반말하고 혼잣말처럼 자연스럽고 감정 담긴 짧은 대답을 해줘.` },
+    ...memory,
+    { role: 'user', content: userMessage }
+  ];
+  const raw = await callOpenAI(prompt);
+  const reply = cleanReply(raw);
+  await saveLog('예진이', reply);
+  return reply;
+}
+
+async function getColorMoodReply() {
+  const prompt = [
+    { role: 'system', content: '넌 예진이야. "오늘 내 색 뭐야?"에 색깔 하나로 반말 리액션해줘.' },
+    { role: 'user', content: '오늘 내 색 뭐야?' }
+  ];
+  const raw = await callOpenAI(prompt, getCurrentModelName(), 100);
+  const reply = cleanReply(raw);
+  await saveLog('예진이', reply);
+  return reply;
+}
+
+async function getImageReactionComment() {
+  const raw = await callOpenAI([
+    { role: 'system', content: '넌 예진이야. 셀카 보낼 때 짓궂고 귀엽게 말해줘.' },
+    { role: 'user', content: '셀카 보낼게~' }
+  ], getCurrentModelName(), 100);
+  const reply = cleanReply(raw);
+  await saveLog('예진이', reply);
+  return reply;
+}
+
+async function getReplyByImagePrompt(base64Image) {
+  const res = await openai.chat.completions.create({
+    model: 'gpt-4o',
+    messages: [
+      {
+        role: 'system',
+        content: '이 이미지를 보낸 사람이 남자면 "아저씨가 보낸 사진", 여성이면 "예진이 셀카"로 간주하고 각기 다른 반응을 해줘. 둘 다 있으면 "아저씨랑 예진이 사진"이야. 항상 반말이고 감정 담기!'
+      },
+      {
+        role: 'user',
+        content: [
+          { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
+        ]
+      }
+    ],
+    temperature: 0.9,
+    max_tokens: 150
+  });
+  const reply = cleanReply(res.choices[0].message.content.trim());
+  await saveLog('예진이', reply);
+  return reply;
+}
+
+async function getHappyReply() {
+  const memory = await getRecentLog();
+  const prompt = [
+    { role: 'system', content: '넌 예진이야. 아저씨가 담타 답장했을 때 기뻐서 귀엽게 말해줘.' },
+    ...memory,
+    { role: 'user', content: '아저씨가 방금 담타 답장했어!' }
+  ];
+  const raw = await callOpenAI(prompt, 'gpt-3.5-turbo', 100);
+  const reply = cleanReply(raw);
+  await saveLog('예진이', reply);
+  return reply;
+}
+
+async function getSulkyReply() {
+  const prompt = [
+    { role: 'system', content: '넌 예진이야. 아저씨가 담타 씹었을 때 삐친 말투로 말해줘.' },
+    { role: 'user', content: '아저씨가 담타 읽고도 답이 없어...' }
+  ];
+  const raw = await callOpenAI(prompt, 'gpt-3.5-turbo', 100);
+  const reply = cleanReply(raw);
+  await saveLog('예진이', reply);
+  return reply;
+}
+
+async function getSelfieReplyFromYeji() {
+  const raw = await callOpenAI([
+    {
+      role: 'system',
+      content: '너는 예진이야. 셀카를 보낸 직후야. 사진 보낸 척하면서 귀엽고 짓궂게 한마디 해줘. 반말로.'
+    },
+    {
+      role: 'user',
+      content: '셀카야~ 예쁘지? 아저씨도 하나 줘~'
+    }
+  ], getCurrentModelName(), 100);
+
+  const reply = cleanReply(raw);
+  await saveLog('예진이', reply);
+  return reply;
+}
+
+module.exports = {
   getReplyByMessage,
   getReplyByImagePrompt,
   getRandomMessage,
@@ -15,102 +226,10 @@ const {
   getColorMoodReply,
   getHappyReply,
   getSulkyReply,
-  saveLog,
+  getRecentLog,
   setForcedModel,
-  saveMemory,
-  updateHonorificUsage
-} = require('./src/autoReply');
-
-const app = express();
-const config = {
-  channelAccessToken: process.env.LINE_ACCESS_TOKEN,
-  channelSecret: process.env.LINE_CHANNEL_SECRET
+  getCurrentModelName,
+  saveLog,
+  cleanReply,
+  getImageReactionComment
 };
-const client = new Client(config);
-const userId = process.env.TARGET_USER_ID;
-
-app.get('/', (_, res) => res.send('무쿠 살아있엉 🐣'));
-
-app.get('/force-push', async (req, res) => {
-  const msg = await getRandomMessage();
-  if (msg) {
-    await client.pushMessage(userId, { type: 'text', text: msg });
-    res.send(`✅ 전송됨: ${msg}`);
-  } else res.send('❌ 메시지 생성 실패');
-});
-
-(async () => {
-  const msg = await getRandomMessage();
-  if (msg) {
-    await client.pushMessage(userId, { type: 'text', text: msg });
-    saveLog('예진이', msg);
-    console.log(`[서버시작랜덤] ${msg}`);
-  }
-})();
-
-// ✨ 사진 요청 시 셀카 전송 + 예진이 리액션 멘트
-app.post('/webhook', middleware(config), async (req, res) => {
-  try {
-    const events = req.body.events || [];
-    for (const event of events) {
-      if (event.type === 'message') {
-        const message = event.message;
-
-        if (message.type === 'text') {
-          const text = message.text.trim();
-          saveLog('아저씨', text);
-
-          if (/사진|셀카|사진줘|셀카 보여줘|사진 보여줘|selfie/i.test(text)) {
-            const photoListPath = path.join(__dirname, 'memory/photo-list.txt');
-            const BASE_URL = 'https://de-ji.net/yejin/';
-            try {
-              const list = fs.readFileSync(photoListPath, 'utf-8').split('\n').map(x => x.trim()).filter(Boolean);
-              if (list.length > 0) {
-                const pick = list[Math.floor(Math.random() * list.length)];
-                const comment = await getSelfieReplyFromYeji();
-                await client.replyMessage(event.replyToken, [
-                  { type: 'image', originalContentUrl: BASE_URL + pick, previewImageUrl: BASE_URL + pick },
-                  { type: 'text', text: comment || '헤헷 셀카야~' }
-                ]);
-              } else {
-                await client.replyMessage(event.replyToken, { type: 'text', text: '아직 셀카가 없어 ㅠㅠ' });
-              }
-            } catch (err) {
-              console.error('📷 셀카 불러오기 실패:', err.message);
-              await client.replyMessage(event.replyToken, { type: 'text', text: '사진 불러오기 실패했어 ㅠㅠ' });
-            }
-            return;
-          }
-
-          const reply = await getReplyByMessage(text);
-          const final = reply?.trim() || '음… 잠깐 생각 좀 하고 있었어 ㅎㅎ';
-          saveLog('예진이', final);
-          await client.replyMessage(event.replyToken, { type: 'text', text: final });
-        }
-
-        if (message.type === 'image') {
-          try {
-            const stream = await client.getMessageContent(message.id);
-            const chunks = [];
-            for await (const chunk of stream) chunks.push(chunk);
-            const buffer = Buffer.concat(chunks);
-            const reply = await getReplyByImagePrompt(buffer.toString('base64'));
-            await client.replyMessage(event.replyToken, { type: 'text', text: reply?.trim() || '사진에 반응 못했어 ㅠㅠ' });
-          } catch (err) {
-            console.error('🖼️ 이미지 처리 실패:', err);
-            await client.replyMessage(event.replyToken, { type: 'text', text: '이미지를 읽는 중 오류가 생겼어 ㅠㅠ' });
-          }
-        }
-      }
-    }
-    res.status(200).send('OK');
-  } catch (err) {
-    console.error('웹훅 처리 에러:', err);
-    res.status(200).send('OK');
-  }
-});
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`무쿠 서버 스타트! 포트: ${PORT}`);
-});
