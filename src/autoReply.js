@@ -23,15 +23,34 @@ function getCurrentModelName() {
 }
 
 function cleanReply(text) {
-  return text
+  const cleaned = text
     .replace(/^예진\s*[:;：]/i, '')
     .replace(/\([^)]*\)/g, '')
     .replace(/\s+/g, ' ')
     .replace(/["'“”]/g, '')
-    .replace(/\b(당신|그대|그분|자기|너|네|네가|널|예진)\b/g, '아저씨')
+    .replace(/당신[은이의도는가]*\b/g, '아저씨')
+    .replace(/\b(그대|그분|자기|너|네|네가|널|예진)\b/g, '아저씨')
     .replace(/시파/g, '')
     .replace(/[!?~♡❤️💖💘💕💗💓💞]/g, '')
     .trim();
+
+  if (cleaned.length > 100) {
+    const words = cleaned.split(' ');
+    let result = '';
+    let line = '';
+    for (const word of words) {
+      if ((line + ' ' + word).trim().length > 100) {
+        result += line.trim() + '\n';
+        line = word + ' ';
+      } else {
+        line += word + ' ';
+      }
+    }
+    result += line.trim();
+    return result;
+  }
+
+  return cleaned;
 }
 
 async function saveLog(role, msg) {
