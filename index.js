@@ -8,7 +8,7 @@ const moment = require('moment-timezone');
 const cron = require('node-cron');
 
 const {
-  getReplyByMessage,
+  getReplyByMessage,a
   getRandomMessage,
   callOpenAI,
   cleanReply,
