@@ -1,12 +1,15 @@
+// autoReply.js - 무쿠 LINE 응답용 예진이 말투 자동응답 시스템 전체 코드
+
 const fs = require('fs');
 const path = require('path');
 const { OpenAI } = require('openai');
 const axios = require('axios');
 
+// OpenAI 인스턴스 생성 (API 키 필요)
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 let forcedModel = null;
 
-// 🔐 모델 강제 지정/조회
+// 🔐 GPT 모델 강제 지정 또는 현재 모델 확인
 function setForcedModel(name) {
   forcedModel = (name === 'gpt-3.5-turbo' || name === 'gpt-4o') ? name : null;
 }
@@ -14,7 +17,7 @@ function getCurrentModelName() {
   return forcedModel || 'gpt-4o';
 }
 
-// 📖 안전한 파일 읽기
+// 📖 파일 안전하게 읽기
 function safeRead(filePath) {
   try {
     return fs.readFileSync(filePath, 'utf-8') || '';
@@ -23,7 +26,7 @@ function safeRead(filePath) {
   }
 }
 
-// 🧼 예진이 말투 정리
+// 🧼 예진이 말투 정리 (불필요 표현 제거 및 감정선 유지)
 function cleanReply(text) {
   return text
     .replace(/^\s*예진[\s:：-]*/i, '')
@@ -47,7 +50,7 @@ async function callOpenAI(messages, model = 'gpt-4o', max_tokens = 300) {
   return res.choices[0].message.content.trim();
 }
 
-// 📝 로그 저장
+// 📝 대화 로그 저장
 async function saveLog(role, msg) {
   try {
     await axios.post('https://www.de-ji.net/log.php', {
@@ -59,7 +62,7 @@ async function saveLog(role, msg) {
   }
 }
 
-// 📜 최근 로그 불러오기
+// 📜 최근 대화 로그 불러오기
 async function getRecentLog() {
   try {
     const res = await axios.get('https://www.de-ji.net/log.json');
@@ -75,7 +78,7 @@ async function getRecentLog() {
   }
 }
 
-// 🎲 랜덤 감정 메시지 (기억 or 최근 대화 기반)
+// 🎲 랜덤 감정 메시지 생성
 async function getRandomMessage() {
   const rawLove = safeRead(path.resolve(__dirname, '../memory/love-history.json'));
   const rawFixed = safeRead(path.resolve(__dirname, '../memory/fixedMemories.json'));
@@ -97,7 +100,7 @@ async function getRandomMessage() {
     console.error('❌ 추억 메모리 로드 실패:', err.message);
   }
 
-  const useMemory = Math.random() < 0.85;
+  const useMemory = Math.random() < 0.85 && memoryItems.length > 0;
   const memory = memoryItems[Math.floor(Math.random() * memoryItems.length)];
   const messages = [];
 
@@ -108,7 +111,7 @@ async function getRandomMessage() {
     });
     messages.push({
       role: 'user',
-      content: `"${memory}" 이 기억으로 감정 섞어 메시지 하나만 해줘.`
+      content: `아저씨… 나 그때 "${memory}" 이런 일 있었잖아… 지금 생각나서 마음이 또 이상해졌어…`
     });
   } else {
     const recent = await getRecentLog();
@@ -125,15 +128,23 @@ async function getRandomMessage() {
   await saveLog('예진이', msg);
   return msg;
 }
-
-// 💬 대화 응답 처리 + 속옷색 리액션
+// 💬 일반 메시지 응답 처리
 async function getReplyByMessage(userMessage) {
-  // ✔️ 장난 질문 체크
   const lower = userMessage.toLowerCase();
+
+  // 🩲 장난 질문 (속옷 색) 대응
   if (lower.includes('무슨 색') || lower.includes('오늘 색') || lower.includes('색이 뭐야')) {
-    return await getColorMoodReply(); // 속옷색 반응
+    return await getColorMoodReply();
   }
 
+  // 📷 셀카 요청 대응
+  if (userMessage.includes('사진 줘') || userMessage.includes('셀카') || userMessage.includes('사진 보여줘')) {
+    const selfieMsg = await getSelfieReplyFromYeji();
+    await saveLog('예진이', selfieMsg);
+    return selfieMsg;
+  }
+
+  // 일반 대화 흐름
   const memory = await getRecentLog();
   const prompt = [
     { role: 'system', content: `넌 예진이야. 항상 반말하고 혼잣말처럼 감정 담긴 짧은 대답을 해줘.` },
@@ -146,7 +157,7 @@ async function getReplyByMessage(userMessage) {
   return reply;
 }
 
-// 🩲 장난스러운 속옷색 리액션
+// 🩲 속옷색 장난 반응
 async function getColorMoodReply() {
   const prompt = [
     {
@@ -164,7 +175,7 @@ async function getColorMoodReply() {
   return reply;
 }
 
-// 📷 셀카 전송 후 멘트
+// 📷 셀카 보낸 뒤 멘트
 async function getImageReactionComment() {
   const raw = await callOpenAI([
     { role: 'system', content: '넌 예진이야. 셀카 보낼 때 짓궂고 귀엽게 말해줘.' },
@@ -175,14 +186,14 @@ async function getImageReactionComment() {
   return reply;
 }
 
-// 🖼️ 이미지 인식 반응
+// 🖼️ 이미지 인식 후 감정 반응
 async function getReplyByImagePrompt(base64Image) {
   const res = await openai.chat.completions.create({
     model: 'gpt-4o',
     messages: [
       {
         role: 'system',
-        content: '이미지 속 인물이 남자면 "아저씨 사진", 여자면 "예진이 셀카", 둘 다 있으면 "아저씨랑 예진이 사진"으로 간주하고 감정 담긴 반말로 반응해줘.'
+        content: '이미지 속 인물이 남자면 "아저씨 사진", 여자면 "예진이 셀카"로 간주하고 감정 담긴 반말로 반응해줘.'
       },
       {
         role: 'user',
@@ -199,7 +210,7 @@ async function getReplyByImagePrompt(base64Image) {
   return reply;
 }
 
-// 😊 담타 성공 → 기쁨
+// 😊 담타 응답 시 기쁨 멘트
 async function getHappyReply() {
   const memory = await getRecentLog();
   const prompt = [
@@ -213,7 +224,7 @@ async function getHappyReply() {
   return reply;
 }
 
-// 😢 담타 씹힘 → 삐짐
+// 😢 담타 무시 시 삐짐 멘트
 async function getSulkyReply() {
   const prompt = [
     { role: 'system', content: '넌 예진이야. 아저씨가 담타 씹었을 때 삐진 반응 해줘.' },
@@ -225,7 +236,7 @@ async function getSulkyReply() {
   return reply;
 }
 
-// 🥰 셀카 보낸 뒤 장난 반응
+// 🥰 셀카 후 장난 멘트
 async function getSelfieReplyFromYeji() {
   const raw = await callOpenAI([
     {
@@ -242,7 +253,7 @@ async function getSelfieReplyFromYeji() {
   return reply;
 }
 
-// ✅ 외부로 내보낼 함수 목록
+// ✅ 외부로 export할 함수들 정리
 module.exports = {
   getReplyByMessage,
   getReplyByImagePrompt,
