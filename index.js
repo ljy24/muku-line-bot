@@ -1,10 +1,9 @@
-// ✅ index.js (예진이 말투 감정 강화 + 셀카 구분 반응 적용)
+// ✅ index.js (예진이 말투 감정 강화 + 셀카 구분 반응 적용 + 하루 랜덤 감정 메시지 스케줄러 연결)
 
 const fs = require('fs');
 const path = require('path');
 const { Client, middleware } = require('@line/bot-sdk');
 const express = require('express');
-const cron = require('node-cron');
 const moment = require('moment-timezone');
 
 const {
@@ -114,3 +113,6 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`무쿠 서버 스타트! 포트: ${PORT}`);
 });
+
+// ⏰ 랜덤 감정 메시지 스케줄러 연결
+require('./src/scheduler');
