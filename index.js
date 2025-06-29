@@ -8,10 +8,12 @@ const path = require('path');
 
 dotenv.config(); // .env에서 환경변수 로드
 
+// ✅ 환경변수 키 이름 수정
 const config = {
-  channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
+  channelAccessToken: process.env.LINE_ACCESS_TOKEN,
   channelSecret: process.env.LINE_CHANNEL_SECRET,
 };
+
 const client = new Client(config);
 const app = express();
 app.use(bodyParser.json());
@@ -97,7 +99,7 @@ async function handleEvent(event) {
 app.get('/force-push', async (req, res) => {
   try {
     const msg = await autoReply.getRandomMessage();
-    const userId = process.env.ONLY_USER_ID;
+    const userId = process.env.TARGET_USER_ID; // ✅ ONLY_USER_ID → TARGET_USER_ID
     await client.pushMessage(userId, { type: 'text', text: msg });
     res.send('✅ 메시지 전송 완료');
   } catch (err) {
