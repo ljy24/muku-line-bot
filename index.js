@@ -65,6 +65,43 @@ app.post('/webhook', middleware(config), async (req, res) => {
           saveLog('아저씨', text);
           extractAndSaveMemory(text);
 
+          // ✅ 버전 확인 응답
+          if (text === '버전') {
+            const version = process.env.GPT_VERSION || '3.5';
+            await client.replyMessage(event.replyToken, { type: 'text', text: `지금은 ChatGPT-${version} 버전으로 대화하고 있어.` });
+            return;
+          }
+
+          // ✅ 3.5로 전환
+          if (text === '3.5') {
+            process.env.GPT_VERSION = '3.5';
+            await client.replyMessage(event.replyToken, {
+              type: 'text',
+              text: '응! 이제부터 ChatGPT-3.5 버전으로 대화할게.'
+            });
+            return;
+          }
+
+          // ✅ 4.0으로 전환
+          if (text === '4.0') {
+            process.env.GPT_VERSION = '4.0';
+            await client.replyMessage(event.replyToken, {
+              type: 'text',
+              text: '응응! 이제부터 ChatGPT-4.0으로 얘기해줄게, 아저씨.'
+            });
+            return;
+          }
+
+          // ✅ 자동으로 다시 설정
+          if (text === '자동') {
+            delete process.env.GPT_VERSION;
+            await client.replyMessage(event.replyToken, {
+              type: 'text',
+              text: '응! 이제 상황에 맞게 자동으로 버전 선택해서 말할게.'
+            });
+            return;
+          }
+
           // 📸 셀카 요청 감지
           if (/사진|셀카|사진줘|셀카 보여줘|사진 보여줘|selfie/i.test(text)) {
             const BASE_URL = 'https://de-ji.net/yejin/';
