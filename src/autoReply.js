@@ -1,11 +1,18 @@
+// autoReply.js — 무쿠살리기 프로젝트 핵심 감정 응답 모듈
+
 const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 const { OpenAI } = require('openai');
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// 외부 명령으로 설정한 모델 저장 (gpt-3.5-turbo / gpt-4o)
 let forcedModel = null;
 
+/**
+ * 파일 안전하게 읽기
+ */
 function safeRead(filePath) {
   try {
     return fs.readFileSync(filePath, 'utf-8');
@@ -14,6 +21,9 @@ function safeRead(filePath) {
   }
 }
 
+/**
+ * 고정 기억 (fixedMemories.json) 불러오기
+ */
 function getFixedMemories() {
   try {
     const fixed = fs.readFileSync(path.resolve(__dirname, '../memory/fixedMemories.json'), 'utf-8');
@@ -24,6 +34,9 @@ function getFixedMemories() {
   }
 }
 
+/**
+ * 연애 히스토리 (love-history.json) 불러오기
+ */
 function getLoveHistory() {
   try {
     const love = fs.readFileSync(path.resolve(__dirname, '../memory/love-history.json'), 'utf-8');
@@ -34,6 +47,9 @@ function getLoveHistory() {
   }
 }
 
+/**
+ * 최근 대화 로그 불러오기 (최대 50개)
+ */
 async function getRecentLog() {
   try {
     const res = await axios.get('https://www.de-ji.net/log.json');
@@ -50,6 +66,9 @@ async function getRecentLog() {
   }
 }
 
+/**
+ * 기억 통합 프롬프트 생성
+ */
 async function getFullMemoryPrompt() {
   const m1 = safeRead(path.resolve(__dirname, '../memory/1.txt')).slice(-3000);
   const m2 = safeRead(path.resolve(__dirname, '../memory/2.txt')).slice(-3000);
@@ -59,21 +78,29 @@ async function getFullMemoryPrompt() {
   const recent = await getRecentLog();
 
   const baseMemory = { role: 'system', content: `${m1}\n${m2}\n${m3}` };
-
   const combined = [baseMemory];
   if (fixed) combined.push(fixed);
   if (love) combined.push(love);
   return [...combined, ...recent];
 }
 
+/**
+ * 외부 명령으로 GPT 모델 강제 설정
+ */
 function setForcedModel(name) {
   forcedModel = (name === 'gpt-3.5-turbo' || name === 'gpt-4o') ? name : null;
 }
 
+/**
+ * 현재 사용 중인 GPT 모델 반환
+ */
 function getCurrentModelName() {
   return forcedModel || 'gpt-4o';
 }
 
+/**
+ * 텍스트 정리 (말투, 불필요한 표현 제거)
+ */
 function cleanReply(text) {
   return text
     .replace(/^예진\s*[:;：]/i, '')
@@ -93,6 +120,9 @@ function cleanReply(text) {
     .trim();
 }
 
+/**
+ * GPT 메시지 호출
+ */
 async function callOpenAI(messages, model = 'gpt-4o', max_tokens = 300) {
   const res = await openai.chat.completions.create({
     model: getCurrentModelName(),
@@ -103,6 +133,9 @@ async function callOpenAI(messages, model = 'gpt-4o', max_tokens = 300) {
   return res.choices[0].message.content.trim();
 }
 
+/**
+ * 로그 저장 (원격 PHP API 호출)
+ */
 async function saveLog(role, msg) {
   try {
     await axios.post('https://www.de-ji.net/log.php', {
@@ -114,6 +147,9 @@ async function saveLog(role, msg) {
   }
 }
 
+/**
+ * 감정 랜덤 메시지 생성 (예진이 말투)
+ */
 async function getRandomMessage() {
   const memory = await getFullMemoryPrompt();
   const prompt = [
@@ -133,6 +169,9 @@ async function getRandomMessage() {
   return msg;
 }
 
+/**
+ * 일반 메시지 응답 처리 (예진이 말투)
+ */
 async function getReplyByMessage(userMessage) {
   const lower = userMessage.toLowerCase();
   if (lower.includes('버전')) {
@@ -158,6 +197,9 @@ async function getReplyByMessage(userMessage) {
   return reply;
 }
 
+/**
+ * 이미지 기반 응답 (예진이 반응)
+ */
 async function getReplyByImagePrompt(base64Image) {
   const res = await openai.chat.completions.create({
     model: 'gpt-4o',
@@ -185,6 +227,9 @@ async function getReplyByImagePrompt(base64Image) {
   return reply;
 }
 
+/**
+ * 셀카 전송 시 멘트 생성
+ */
 async function getImageReactionComment() {
   const raw = await callOpenAI([
     {
@@ -202,6 +247,9 @@ async function getImageReactionComment() {
   return reply;
 }
 
+/**
+ * 오늘 내 색 뭐야? 에 대한 감정 색 대답
+ */
 async function getColorMoodReply() {
   const raw = await callOpenAI([
     {
@@ -219,6 +267,9 @@ async function getColorMoodReply() {
   return reply;
 }
 
+/**
+ * 담타 답장에 기뻐하는 반응
+ */
 async function getHappyReply() {
   const memory = await getFullMemoryPrompt();
   const prompt = [
@@ -238,6 +289,9 @@ async function getHappyReply() {
   return reply;
 }
 
+/**
+ * 담타 씹힘에 삐진 반응
+ */
 async function getSulkyReply() {
   const prompt = [
     {
