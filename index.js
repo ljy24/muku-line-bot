@@ -30,6 +30,7 @@ const userId = process.env.TARGET_USER_ID;
 
 app.get('/', (_, res) => res.send('무쿠 살아있엉 🐣'));
 
+// 💬 수동 전송 확인용
 app.get('/force-push', async (req, res) => {
   const msg = await getRandomMessage();
   if (msg) {
@@ -38,6 +39,7 @@ app.get('/force-push', async (req, res) => {
   } else res.send('❌ 메시지 생성 실패');
 });
 
+// 🚀 서버 시작 시 1회 랜덤 감정 메시지 전송
 (async () => {
   const msg = await getRandomMessage();
   if (msg) {
@@ -47,7 +49,7 @@ app.get('/force-push', async (req, res) => {
   }
 })();
 
-// ✨ 사진 요청 시 셀카 전송 + 예진이 리액션 멘트
+// ✨ 웹훅 처리
 app.post('/webhook', middleware(config), async (req, res) => {
   try {
     const events = req.body.events || [];
@@ -59,6 +61,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
           const text = message.text.trim();
           saveLog('아저씨', text);
 
+          // 💡 셀카 요청 키워드
           if (/사진|셀카|사진줘|셀카 보여줘|사진 보여줘|selfie/i.test(text)) {
             const photoListPath = path.join(__dirname, 'memory/photo-list.txt');
             const BASE_URL = 'https://de-ji.net/yejin/';
@@ -81,12 +84,14 @@ app.post('/webhook', middleware(config), async (req, res) => {
             return;
           }
 
+          // 🤍 일반 대화 처리
           const reply = await getReplyByMessage(text);
           const final = reply?.trim() || '음… 잠깐 생각 좀 하고 있었어 ㅎㅎ';
           saveLog('예진이', final);
           await client.replyMessage(event.replyToken, { type: 'text', text: final });
         }
 
+        // 🖼️ 이미지 분석
         if (message.type === 'image') {
           try {
             const stream = await client.getMessageContent(message.id);
@@ -109,10 +114,35 @@ app.post('/webhook', middleware(config), async (req, res) => {
   }
 });
 
+// ⏰ 정각 담타 전송 + 5분 내 응답 체크 (1분마다 확인)
+cronCheck();
+
+function cronCheck() {
+  const cron = require('node-cron');
+  const lastSent = new Map();
+
+  cron.schedule('* * * * *', async () => {
+    const now = moment().tz('Asia/Tokyo');
+    if (now.minute() === 0 && now.hour() >= 9 && now.hour() <= 18) {
+      const msg = '담타고?';
+      await client.pushMessage(userId, { type: 'text', text: msg });
+      lastSent.set(now.format('HH:mm'), moment());
+    }
+
+    for (const [key, sentAt] of lastSent.entries()) {
+      if (moment().diff(sentAt, 'minutes') >= 5) {
+        const sulky = await getSulkyReply();
+        await client.pushMessage(userId, { type: 'text', text: sulky });
+        lastSent.delete(key);
+      }
+    }
+  });
+}
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`무쿠 서버 스타트! 포트: ${PORT}`);
 });
 
-// ⏰ 랜덤 감정 메시지 스케줄러 연결
+// ⏰ 랜덤 감정 메시지 + 셀카 전송 스케줄러 연결
 require('./src/scheduler');
