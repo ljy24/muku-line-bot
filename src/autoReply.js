@@ -1,5 +1,3 @@
-// ✅ autoReply.js (짧은 감정 메시지 + 이모지 제거 + 말투 유지)
-
 const fs = require('fs');
 const path = require('path');
 const { OpenAI } = require('openai');
@@ -54,7 +52,7 @@ function cleanReply(text) {
     .replace(/\([^)]*\)/g, '')
     .replace(/\s+/g, ' ')
     .replace(/["'“”]/g, '')
-    .replace(/\b(당신|그대|그분|자기|너|네|네가|널|예진)\b/g, '아저씨')
+    .replace(/\b(당신|그대|그분|자기|너|네가|네|널|예진)\b/g, '아저씨')
     .replace(/시파/g, '')
     .trim();
 }
@@ -70,21 +68,22 @@ async function saveLog(role, msg) {
   }
 }
 
-// ✅ 여기 수정됨: 날짜 포함한 기억 반영
+// ✅ 랜덤 감정 메시지 생성 (기억 기반 또는 최근 로그 기반)
 async function getRandomMessage() {
-  const love = safeRead(path.resolve(__dirname, '../memory/love-history.json'));
-  const fixed = safeRead(path.resolve(__dirname, '../memory/fixedMemories.json'));
-    console.log('[디버그] rawLove 타입:', typeof rawLove); // string인지 확인
-  console.log('[디버그] 내용:', rawLove.slice(0, 100)); // 내용 미리보기
+  const rawLove = safeRead(path.resolve(__dirname, '../memory/love-history.json'));
+  const rawFixed = safeRead(path.resolve(__dirname, '../memory/fixedMemories.json'));
   const m1 = safeRead(path.resolve(__dirname, '../memory/1.txt'));
   const m2 = safeRead(path.resolve(__dirname, '../memory/2.txt'));
   const m3 = safeRead(path.resolve(__dirname, '../memory/3.txt'));
 
+  console.log('[디버그] rawLove 타입:', typeof rawLove);
+  console.log('[디버그] 내용:', rawLove?.slice(0, 100));
+
   let memoryItems = [];
   try {
     memoryItems = [
-      ...JSON.parse(love).map(v => `${v.date} - ${v.event}`),
-      ...JSON.parse(fixed),
+      ...JSON.parse(rawLove).map(v => `${v.date} - ${v.event}`),
+      ...JSON.parse(rawFixed),
       m1, m2, m3
     ].filter(Boolean);
   } catch (err) {
