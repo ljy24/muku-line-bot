@@ -19,6 +19,7 @@ function safeRead(filePath) {
 function setForcedModel(name) {
   forcedModel = (name === 'gpt-3.5-turbo' || name === 'gpt-4o') ? name : null;
 }
+
 function getCurrentModelName() {
   return forcedModel || 'gpt-4o';
 }
@@ -32,6 +33,7 @@ function cleanReply(text) {
     .replace(/(당신[\w\s]*|그대|그분|자기|너|네가|널|예진)/gi, '아저씨')
     .replace(/시파/g, '')
     .replace(/[!?~♡❤️💖💘💕💗💓💞]/g, '')
+    .replace(/�/g, '')
     .trim();
 
   if (cleaned.length > 100) {
@@ -57,11 +59,11 @@ async function saveLog(role, msg) {
       'https://www.de-ji.net/log.php',
       qs.stringify({
         from: role === '아저씨' ? 'uncle' : 'yejin',
-        content: msg
+        content: encodeURIComponent(msg)
       }),
       {
         headers: {
-          'Content-Type': 'application/x-www-form-urlencoded'
+          'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8'
         }
       }
     );
