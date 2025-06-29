@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 const { OpenAI } = require('openai');
 const axios = require('axios');
+const qs = require('qs');
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 let forcedModel = null;
@@ -33,7 +34,6 @@ function cleanReply(text) {
     .replace(/[!?~♡❤️💖💘💕💗💓💞]/g, '')
     .trim();
 
-  // 줄바꿈: 100자 넘어가면 공백 기준으로 줄 나눠줘
   if (cleaned.length > 100) {
     const words = cleaned.split(' ');
     let line1 = '';
@@ -53,20 +53,6 @@ function cleanReply(text) {
 
 async function saveLog(role, msg) {
   try {
-    await axios.post('https://www.de-ji.net/log.php', {
-      from: role === '아저씨' ? 'uncle' : 'yejin',
-      content: msg
-    });
-  } catch (err) {
-    console.error('❌ 원격 로그 저장 실패:', err.message);
-  }
-}
-
-// 필요한 거면 이 함수 전체 교체해
-const qs = require('qs');
-
-async function saveLog(role, msg) {
-  try {
     await axios.post(
       'https://www.de-ji.net/log.php',
       qs.stringify({
@@ -83,6 +69,22 @@ async function saveLog(role, msg) {
     console.error('❌ 원격 로그 저장 실패:', err.message);
   }
 }
+
+async function getRecentLog() {
+  try {
+    const res = await axios.get('https://www.de-ji.net/log.json');
+    const logs = res.data;
+    if (!Array.isArray(logs)) return [];
+    return logs.slice(0, 50).reverse().map(log => ({
+      role: log.from === 'uncle' ? 'user' : 'assistant',
+      content: log.content
+    }));
+  } catch (err) {
+    console.error('❌ 최근 로그 불러오기 실패:', err.message);
+    return [];
+  }
+}
+
 async function callOpenAI(messages, model = 'gpt-4o', max_tokens = 300) {
   const res = await openai.chat.completions.create({
     model: getCurrentModelName(),
