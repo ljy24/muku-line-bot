@@ -5,6 +5,7 @@ const path = require('path');
 const { Client, middleware } = require('@line/bot-sdk');
 const express = require('express');
 const moment = require('moment-timezone');
+const cron = require('node-cron');
 
 const {
   getReplyByMessage,
@@ -14,10 +15,10 @@ const {
   getColorMoodReply,
   getHappyReply,
   getSulkyReply,
-  saveLog
+  saveLog,
+  extractAndSaveMemory,
+  startMessageAndPhotoScheduler
 } = require('./src/autoReply');
-
-require('./src/scheduler').startScheduler();
 
 const app = express();
 const config = {
@@ -62,6 +63,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
         if (message.type === 'text') {
           const text = message.text.trim();
           saveLog('아저씨', text);
+          extractAndSaveMemory(text);
 
           // 📸 셀카 요청 감지
           if (/사진|셀카|사진줘|셀카 보여줘|사진 보여줘|selfie/i.test(text)) {
@@ -131,9 +133,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
 });
 
 // ⏰ 정각마다 담타 메시지 + 5분 반응 체크
-const cron = require('node-cron');
 const lastSent = new Map();
-
 cron.schedule('* * * * *', async () => {
   const now = moment().tz('Asia/Tokyo');
   if (now.minute() === 0 && now.hour() >= 9 && now.hour() <= 18) {
@@ -141,7 +141,6 @@ cron.schedule('* * * * *', async () => {
     await client.pushMessage(userId, { type: 'text', text: msg });
     lastSent.set(now.format('HH:mm'), moment());
   }
-
   for (const [key, sentAt] of lastSent.entries()) {
     if (moment().diff(sentAt, 'minutes') >= 5) {
       const sulky = await getSulkyReply();
@@ -150,6 +149,9 @@ cron.schedule('* * * * *', async () => {
     }
   }
 });
+
+// ✅ 자동 감정 메시지/셀카 전송 시작
+startMessageAndPhotoScheduler();
 
 // ✅ 서버 리스닝 시작
 const PORT = process.env.PORT || 3000;
