@@ -84,16 +84,41 @@ async function callOpenAI(messages, model = 'gpt-4o', max_tokens = 300) {
 
 function cleanReply(text) {
   return text
-    .replace(/^예진\s*[:;：]/i, '')
+    .replace(/^예진\s*[:;\uff1a]/i, '')
     .replace(/\([^)]*\)/g, '')
     .replace(/\s+/g, ' ')
-    .replace(/["'“”]/g, '')
+    .replace(/["'\u201c\u201d]/g, '')
     .replace(/\b(당신|너|네|네가|널|예진)\b/g, '아저씨')
     .replace(/시파/g, '')
     .trim();
 }
 
 async function getRandomMessage() {
+  const useMemory = Math.random() < 0.5;
+
+  if (useMemory) {
+    const historyPath = path.resolve(__dirname, '../memory/love-history.json');
+    const fixedPath = path.resolve(__dirname, '../memory/fixedMemories.json');
+
+    const history = JSON.parse(fs.readFileSync(historyPath, 'utf-8') || '[]');
+    const fixed = JSON.parse(fs.readFileSync(fixedPath, 'utf-8') || '[]');
+
+    const all = [...history, ...fixed].filter(x => typeof x === 'string');
+    const picked = all[Math.floor(Math.random() * all.length)];
+
+    const prompt = [
+      {
+        role: 'system',
+        content: `넌 예진이야. 다음 기억을 바탕으로 감정 담긴 반말로 아저씨한테 혼잣말처럼 이야기해줘. 너무 길지 않게 자연스럽게: "${picked}"`
+      },
+      { role: 'user', content: '기억 기반 감정 메시지 줘' }
+    ];
+    const raw = await callOpenAI(prompt, 'gpt-3.5-turbo', 120);
+    const msg = cleanReply(raw);
+    await saveLog('예진이', msg);
+    return msg;
+  }
+
   const memory = await getRecentLog();
   const prompt = [
     {
