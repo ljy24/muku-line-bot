@@ -1,4 +1,4 @@
-// ✅ index.js (예진이 말투 감정 강화 + 셀카 구분 반응 적용 + 하루 랜덤 감정 메시지 스케줄러 연결)
+// ✅ index.js (예진이 말투 감정 강화 + 셀카 응답 + 이미지 분석 + 담타 반응 + 색깔 질문 포함)
 
 const fs = require('fs');
 const path = require('path');
@@ -28,9 +28,10 @@ const config = {
 const client = new Client(config);
 const userId = process.env.TARGET_USER_ID;
 
+// ✅ 헬스 체크
 app.get('/', (_, res) => res.send('무쿠 살아있엉 🐣'));
 
-// 💬 수동 전송 확인용
+// ✅ 강제 감정 메시지 수동 전송 (테스트용)
 app.get('/force-push', async (req, res) => {
   const msg = await getRandomMessage();
   if (msg) {
@@ -39,7 +40,7 @@ app.get('/force-push', async (req, res) => {
   } else res.send('❌ 메시지 생성 실패');
 });
 
-// 🚀 서버 시작 시 1회 랜덤 감정 메시지 전송
+// ✅ 서버 시작 시 1회 감정 메시지 전송
 (async () => {
   const msg = await getRandomMessage();
   if (msg) {
@@ -49,7 +50,7 @@ app.get('/force-push', async (req, res) => {
   }
 })();
 
-// ✨ 웹훅 처리
+// ✅ LINE Webhook 처리
 app.post('/webhook', middleware(config), async (req, res) => {
   try {
     const events = req.body.events || [];
@@ -61,7 +62,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
           const text = message.text.trim();
           saveLog('아저씨', text);
 
-          // 💡 셀카 요청 키워드
+          // 1️⃣ 셀카 요청 키워드 인식
           if (/사진|셀카|사진줘|셀카 보여줘|사진 보여줘|selfie/i.test(text)) {
             const photoListPath = path.join(__dirname, 'memory/photo-list.txt');
             const BASE_URL = 'https://de-ji.net/yejin/';
@@ -84,14 +85,21 @@ app.post('/webhook', middleware(config), async (req, res) => {
             return;
           }
 
-          // 🤍 일반 대화 처리
+          // 2️⃣ 오늘 색상 물어보는 질문 처리
+          if (/무슨\s*색|오늘\s*색/i.test(text)) {
+            const reply = await getColorMoodReply();
+            await client.replyMessage(event.replyToken, { type: 'text', text: reply });
+            return;
+          }
+
+          // 3️⃣ 일반 텍스트 메시지 처리
           const reply = await getReplyByMessage(text);
           const final = reply?.trim() || '음… 잠깐 생각 좀 하고 있었어 ㅎㅎ';
           saveLog('예진이', final);
           await client.replyMessage(event.replyToken, { type: 'text', text: final });
         }
 
-        // 🖼️ 이미지 분석
+        // 4️⃣ 이미지 메시지 처리 (사진 반응)
         if (message.type === 'image') {
           try {
             const stream = await client.getMessageContent(message.id);
@@ -114,9 +122,8 @@ app.post('/webhook', middleware(config), async (req, res) => {
   }
 });
 
-// ⏰ 정각 담타 전송 + 5분 내 응답 체크 (1분마다 확인)
+// ⏰ 정각마다 담타 전송 + 5분 내 응답 체크
 cronCheck();
-
 function cronCheck() {
   const cron = require('node-cron');
   const lastSent = new Map();
@@ -139,10 +146,11 @@ function cronCheck() {
   });
 }
 
+// ✅ 서버 시작
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`무쿠 서버 스타트! 포트: ${PORT}`);
 });
 
-// ⏰ 랜덤 감정 메시지 + 셀카 전송 스케줄러 연결
+// ✅ 감정 메시지 자동 전송 스케줄러
 require('./src/scheduler');
