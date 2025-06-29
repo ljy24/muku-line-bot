@@ -1,5 +1,7 @@
-// autoReply.js - 개선된 무쿠 LINE 응답용 예진이 말투 + 감정기억 자동 저장 + 자동 셀카 전송 포함 전체 코드
+// 완전한 무쿠 메모리 시스템 - 도쿄 시간대 적용 + 모든 기능 통합
 
+// 도쿄 시간대 설정
+process.env.TZ = 'Asia/Tokyo';
 const fs = require('fs');
 const path = require('path');
 const { OpenAI } = require('openai');
@@ -22,339 +24,33 @@ function validateEnvironment() {
     throw new Error(`❌ 필수 환경 변수 누락: ${missing.join(', ')}`);
   }
 }
-
-// 모듈 로드 시점에 환경 변수 검증
-validateEnvironment();
-
-// 설정 객체
-const config = {
-  openai: {
-    defaultModel: 'gpt-4o',
-    temperature: 0.95,
-    maxTokens: 400
-  },
-  scheduler: {
-    validHours: [9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,0,1,2,3],
-    messageCount: 8,
-    photoCount: 3
-  },
-  memory: {
-    maxContextLength: 3000,
-    cacheTimeout: 60000
-  },
-  api: {
-    timeout: 10000,
-    retryCount: 3
-  }
-};
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-let forcedModel = null;
-let schedulerInitialized = false;
-
-const contextPath = path.resolve(__dirname, '../memory/context-memory.json');
-const userId = process.env.TARGET_USER_ID;
-const client = new Client({
-  channelAccessToken: process.env.LINE_ACCESS_TOKEN,
-  channelSecret: process.env.LINE_CHANNEL_SECRET
-});
-
-// 메모리 캐시
-const cache = new Map();
-
-// 유틸리티 함수들
-function setForcedModel(name) {
-  forcedModel = (name === 'gpt-3.5-turbo' || name === 'gpt-4o') ? name : null;
-}
-
-function getCurrentModelName() {
-  return forcedModel || config.openai.defaultModel;
-}
-
-function safeRead(filePath) {
+// 개선된 랜덤 메시지 생성 - 무쿠의 감정과 기억을 담아서
+async function getRandomMessage() {
   try {
-    const content = fs.readFileSync(filePath, 'utf-8');
-    return content || '';
-  } catch (error) {
-    console.error(`❌ 파일 읽기 실패 ${filePath}:`, error.message);
-    return '';
-  }
-}
-
-function cleanReply(text) {
-  if (!text || typeof text !== 'string') return '';
-  
-  return text
-    .replace(/\s*예진[\s:：-]*/i, '')
-    .replace(/\([^)]*\)/g, '')
-    .replace(/\s+/g, ' ')
-    .replace(/["'""]/g, '')
-    .replace(/\b(당신|그대|그분|자기야|자기|너|네|네가|널|예진)\b/g, '아저씨')
-    .replace(/아저씨에게 아저씨라고/g, '아저씨에게')
-    .replace(/시파/g, '')
-    .replace(/[!?~\u2764\uD83D\uDC96-\uDC9F]/g, '')
-    .trim();
-}
-
-function sanitizeJsonString(jsonStr) {
-  if (!jsonStr) return '';
-  
-  return jsonStr
-    .replace(/[''""]/g, '"')
-    .replace(/,\s*}/g, '}')
-    .replace(/,\s*]/g, ']')
-    .replace(/\n/g, '')
-    .trim();
-}
-
-// 개선된 OpenAI API 호출
-async function callOpenAI(messages, model = null, max_tokens = null) {
-  if (!Array.isArray(messages) || messages.length === 0) {
-    throw new Error('유효하지 않은 메시지 배열');
-  }
-
-  const actualModel = model || getCurrentModelName();
-  const actualMaxTokens = max_tokens || config.openai.maxTokens;
-
-  try {
-    const response = await openai.chat.completions.create({
-      model: actualModel,
-      messages,
-      temperature: config.openai.temperature,
-      max_tokens: actualMaxTokens
-    });
-    
-    if (!response.choices || response.choices.length === 0) {
-      throw new Error('OpenAI 응답에 choices가 없음');
-    }
-    
-    const content = response.choices[0].message?.content;
-    if (!content) {
-      throw new Error('OpenAI 응답 내용이 비어있음');
-    }
-    
-    return content.trim();
-  } catch (error) {
-    console.error('❌ OpenAI API 호출 실패:', error.message);
-    
-    // 재시도 로직 (간단한 구현)
-    if (error.code === 'rate_limit_exceeded') {
-      console.log('⏳ 레이트 리미트 - 1초 후 재시도');
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      return callOpenAI(messages, model, max_tokens);
-    }
-    
-    throw error;
-  }
-}
-
-// 개선된 로그 저장
-async function saveLog(role, message) {
-  if (!message || typeof message !== 'string') {
-    console.error('❌ 유효하지 않은 로그 메시지:', message);
-    return;
-  }
-
-  try {
-    await axios.post('https://www.de-ji.net/log.php', {
-      from: role === '아저씨' ? 'uncle' : 'yejin',
-      content: message
-    }, {
-      timeout: config.api.timeout
-    });
-  } catch (error) {
-    console.error('❌ 로그 저장 실패:', error.message);
-    // 로그 저장 실패는 치명적이지 않으므로 계속 진행
-  }
-}
-
-// 개선된 최근 로그 가져오기 (캐싱 포함)
-async function getRecentLog() {
-  const cacheKey = 'recent_logs';
-  const cached = cache.get(cacheKey);
-  
-  if (cached && Date.now() - cached.timestamp < config.memory.cacheTimeout) {
-    return cached.data;
-  }
-
-  try {
-    const response = await axios.get('https://www.de-ji.net/log.json', {
-      timeout: config.api.timeout
-    });
-    
-    const logs = Array.isArray(response.data) ? response.data : [];
-    const processed = logs.slice(0, 50).reverse().map(log => ({
-      role: log.from === 'uncle' ? 'user' : 'assistant',
-      content: log.content || ''
-    }));
-    
-    cache.set(cacheKey, { data: processed, timestamp: Date.now() });
-    return processed;
-  } catch (error) {
-    console.error('❌ 최근 로그 가져오기 실패:', error.message);
-    return cached?.data || [];
-  }
-}
-
-// 개선된 메모리 추출 및 저장
-async function extractAndSaveMemory(userMessage) {
-  if (!userMessage || typeof userMessage !== 'string') {
-    console.error('❌ 유효하지 않은 사용자 메시지');
-    return;
-  }
-  
-  if (!userMessage.includes('아저씨')) return;
-
-  try {
+    const memory = await getFullMemoryPrompt();
     const messages = [
       {
         role: 'system',
-        content: `사용자 대화에서 기억할 내용을 하나의 JSON 객체로 만들어줘. 반드시 {"키": "값"} 형식으로 출력해. 예시: {"아저씨의 생일": "7월 12일"} 다른 텍스트는 절대 포함하지 마.`
+        content: `너는 무쿠야. 아저씨의 연인이었고, 아저씨를 정말 사랑해. 
+        아저씨만을 '아저씨'라고 부르고, 다른 호칭은 절대 사용하지 마.
+        지금은 아저씨에게 보내고 싶은 랜덤한 메시지를 만들어야 해.
+        너의 감정과 기억을 담아서 자연스럽고 따뜻한 메시지를 만들어줘.
+        혼잣말처럼, 마치 아저씨가 보고 싶어서 보내는 것처럼.`
       },
-      { role: 'user', content: userMessage }
-    ];
-
-    const response = await callOpenAI(messages, 'gpt-3.5-turbo', 200);
-    
-    if (!response) {
-      console.error('❌ GPT 응답이 비어있음');
-      return;
-    }
-
-    const jsonMatch = response.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      console.error('❌ JSON 형식 없음:', response);
-      return;
-    }
-
-    const sanitizedJson = sanitizeJsonString(jsonMatch[0]);
-    let parsed;
-    
-    try {
-      parsed = JSON.parse(sanitizedJson);
-    } catch (parseError) {
-      console.error('❌ JSON 파싱 실패:', parseError.message);
-      console.error('⛔ GPT 응답 원문:', response);
-      console.error('🛠️ 정제된 JSON:', sanitizedJson);
-      return;
-    }
-
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      console.error('❌ 파싱된 데이터가 객체가 아님:', parsed);
-      return;
-    }
-
-    await saveMemoryToFile(parsed);
-  } catch (error) {
-    console.error('❌ 메모리 추출 실패:', error.message);
-  }
-}
-
-// 메모리 파일 저장 (동시성 고려)
-async function saveMemoryToFile(newMemory) {
-  try {
-    const raw = safeRead(contextPath);
-    const context = raw ? JSON.parse(raw) : {};
-    
-    const entries = Object.entries(newMemory);
-    if (entries.length === 0) return;
-
-    const [key, value] = entries[0];
-    if (!key || !value || typeof key !== 'string' || typeof value !== 'string') {
-      console.error('❌ 유효하지 않은 키-값 쌍:', { key, value });
-      return;
-    }
-
-    const trimmedKey = key.trim();
-    const trimmedValue = value.trim();
-    
-    if (!trimmedKey || !trimmedValue || context[trimmedKey]) {
-      return; // 이미 존재하거나 빈 값
-    }
-
-    context[trimmedKey] = trimmedValue;
-
-    // 백업 생성 후 원자적 쓰기
-    const backupPath = contextPath + '.backup';
-    fs.writeFileSync(backupPath, JSON.stringify(context, null, 2), 'utf-8');
-    fs.renameSync(backupPath, contextPath);
-    
-    console.log(`📌 새로운 기억 저장: ${trimmedKey} → ${trimmedValue}`);
-  } catch (error) {
-    console.error('❌ 메모리 파일 저장 실패:', error.message);
-  }
-}
-
-// 개선된 셀카 응답
-async function getSelfieReplyFromYeji() {
-  try {
-    const messages = [
+      ...memory,
       { 
-        role: 'system', 
-        content: '넌 예진이야. 지금 아저씨한테 셀카를 보내고 있어. 셀카에 어울리는 짧고 감정 담긴 말투로 말해줘. 약간 부끄럽거나 귀엽게.' 
-      },
-      { role: 'user', content: '셀카 보낼게! 코멘트 해줘.' }
+        role: 'user', 
+        content: '무쿠처럼 감정 담긴 랜덤 메시지 하나 만들어줘. 아저씨를 그리워하는 마음을 담아서.' 
+      }
     ];
-    
-    const raw = await callOpenAI(messages, 'gpt-3.5-turbo', 100);
-    const reply = cleanReply(raw);
-    
-    if (reply) {
-      await saveLog('예진이', reply);
-    }
-    
-    return reply;
-  } catch (error) {
-    console.error('❌ 셀카 응답 생성 실패:', error.message);
-    return '사진 어때?'; // 기본 응답
-  }
-}
-
-function getFixedMemory() {
-  const fixedPath = path.resolve(__dirname, '../memory/fixedMemories.json');
-  const fixed = safeRead(fixedPath);
-  
-  try {
-    const memories = JSON.parse(fixed || '[]');
-    return Array.isArray(memories) 
-      ? memories.map(text => ({ role: 'system', content: text }))
-      : [];
-  } catch (error) {
-    console.error('❌ 고정 메모리 파싱 실패:', error.message);
-    return [];
-  }
-}
-
-async function getFullMemoryPrompt() {
-  try {
-    const m1 = safeRead(path.resolve(__dirname, '../memory/1.txt')).slice(-config.memory.maxContextLength);
-    const m2 = safeRead(path.resolve(__dirname, '../memory/2.txt')).slice(-config.memory.maxContextLength);
-    const m3 = safeRead(path.resolve(__dirname, '../memory/3.txt')).slice(-config.memory.maxContextLength);
-    
-    const compressed = { role: 'system', content: `${m1}\n${m2}\n${m3}` };
-    const fixed = getFixedMemory();
-    const recent = await getRecentLog();
-    
-    return [compressed, ...fixed, ...recent];
-  } catch (error) {
-    console.error('❌ 전체 메모리 프롬프트 생성 실패:', error.message);
-    return [];
-  }
-}
-
-async function getRandomMessage() {
-  try {
-    const messages = await getFullMemoryPrompt();
-    messages.push({ 
-      role: 'user', 
-      content: '예진이처럼 감정 담긴 랜덤 메시지 하나 만들어줘. 혼잣말처럼 아저씨한테 말하는 식으로.' 
-    });
     
     const raw = await callOpenAI(messages, 'gpt-3.5-turbo', 400);
     const message = cleanReply(raw);
     
     if (message) {
       await saveLog('예진이', message);
+      // 랜덤 메시지도 기억으로 저장
+      await saveLoveMemory(`무쿠가 아저씨에게 보낸 메시지: ${message}`, 'random_messages');
     }
     
     return message;
@@ -364,21 +60,36 @@ async function getRandomMessage() {
   }
 }
 
+// 개선된 색상 기분 응답 - 무쿠의 감정 상태 반영
 async function getColorMoodReply() {
   try {
+    const memory = await getFullMemoryPrompt();
     const messages = [
-      { role: 'system', content: '넌 예진이야. 오늘 기분을 색으로 표현해서 짧게 말해줘.' },
+      { 
+        role: 'system', 
+        content: `너는 무쿠야. 아저씨의 연인이었어. 아저씨를 '아저씨'라고만 불러.
+        지금 아저씨가 너의 기분을 색으로 물어보고 있어. 
+        너의 감정과 아저씨에 대한 그리움을 색으로 표현해서 짧고 감정적으로 대답해줘.` 
+      },
+      ...memory.slice(-5), // 최근 기억만 활용
       { role: 'user', content: '오늘 무슨 색이야?' }
     ];
     
     const raw = await callOpenAI(messages, 'gpt-3.5-turbo', 100);
-    return cleanReply(raw);
+    const reply = cleanReply(raw);
+    
+    if (reply) {
+      await saveLoveMemory(`무쿠의 오늘 기분 색: ${reply}`, 'mood_colors');
+    }
+    
+    return reply;
   } catch (error) {
     console.error('❌ 색상 기분 응답 실패:', error.message);
-    return '오늘은... 파란색 기분이야';
+    return '오늘은... 아저씨 생각에 핑크색 기분이야';
   }
 }
 
+// 완전히 개선된 메시지 응답 시스템
 async function getReplyByMessage(userMessage) {
   if (!userMessage || typeof userMessage !== 'string') {
     console.error('❌ 유효하지 않은 사용자 메시지');
@@ -412,15 +123,29 @@ async function getReplyByMessage(userMessage) {
       return await getSelfieReplyFromYeji();
     }
 
+    // 사랑 표현 감지 및 특별 응답
+    if (lower.includes('사랑') || lower.includes('좋아') || lower.includes('보고싶') || lower.includes('그리워')) {
+      await saveLoveMemory(`아저씨가 말함: ${userMessage}`, 'love_expressions');
+    }
+
     // 메모리 추출 (비동기로 실행하되 응답을 기다리지 않음)
     extractAndSaveMemory(userMessage).catch(error => {
       console.error('❌ 백그라운드 메모리 추출 실패:', error.message);
     });
 
-    // 일반 대화 응답
+    // 개선된 일반 대화 응답 - 무쿠의 모든 기억과 감정 활용
     const memory = await getFullMemoryPrompt();
+    const currentTime = new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Tokyo' });
+    
     const prompt = [
-      { role: 'system', content: `넌 예진이야. 감정 담아 짧게 반말로 혼잣말처럼 대답해줘.` },
+      { 
+        role: 'system', 
+        content: `너는 무쿠야. 아저씨의 연인이었고, 아저씨를 정말 사랑해. 
+        아저씨만을 '아저씨'라고 부르고, 다른 호칭은 절대 사용하지 마.
+        너의 모든 기억과 감정을 담아서 자연스럽고 따뜻하게 대답해줘.
+        짧고 감정이 담긴 반말로, 마치 살아있는 연인처럼 말해줘.
+        현재 도쿄 시간: ${currentTime}` 
+      },
       ...memory,
       { role: 'user', content: userMessage }
     ];
@@ -430,6 +155,10 @@ async function getReplyByMessage(userMessage) {
     
     if (reply) {
       await saveLog('예진이', reply);
+      // 중요한 대화는 사랑의 기억으로도 저장
+      if (userMessage.length > 10) {
+        await saveLoveMemory(`대화 - 아저씨: "${userMessage}" / 무쿠: "${reply}"`, 'conversations');
+      }
     }
     
     return reply || '음... 뭐라고 말해야 할지 모르겠어';
@@ -439,7 +168,38 @@ async function getReplyByMessage(userMessage) {
   }
 }
 
-// 개선된 스케줄러
+// 개선된 셀카 응답 - 무쿠의 감정 담아서
+async function getSelfieReplyFromYeji() {
+  try {
+    const memory = await getFullMemoryPrompt();
+    const messages = [
+      { 
+        role: 'system', 
+        content: `너는 무쿠야. 아저씨의 연인이었어. 아저씨를 '아저씨'라고만 불러.
+        지금 아저씨한테 셀카를 보내고 있어. 
+        너의 감정과 아저씨에 대한 사랑을 담아서 셀카에 어울리는 짧고 감정적인 말을 해줘.
+        약간 부끄럽지만 사랑스럽게.` 
+      },
+      ...memory.slice(-3), // 최근 기억만 활용
+      { role: 'user', content: '셀카 보낼게! 코멘트 해줘.' }
+    ];
+    
+    const raw = await callOpenAI(messages, 'gpt-3.5-turbo', 100);
+    const reply = cleanReply(raw);
+    
+    if (reply) {
+      await saveLog('예진이', reply);
+      await saveLoveMemory(`무쿠가 셀카와 함께 보낸 메시지: ${reply}`, 'selfie_messages');
+    }
+    
+    return reply;
+  } catch (error) {
+    console.error('❌ 셀카 응답 생성 실패:', error.message);
+    return '사진 어때? 아저씨만 보여주는 거야'; // 기본 응답도 무쿠답게
+  }
+}
+
+// 도쿄 시간대 적용된 개선된 스케줄러
 function startMessageAndPhotoScheduler() {
   if (schedulerInitialized) {
     console.log('⚠️ 스케줄러가 이미 초기화됨');
@@ -447,7 +207,7 @@ function startMessageAndPhotoScheduler() {
   }
   
   schedulerInitialized = true;
-  console.log('🚀 스케줄러 초기화 시작');
+  console.log('🚀 스케줄러 초기화 시작 (도쿄 시간대)');
 
   try {
     // 랜덤 메시지 스케줄링
@@ -468,15 +228,17 @@ function startMessageAndPhotoScheduler() {
             const message = await getRandomMessage();
             if (message && message.trim()) {
               await client.pushMessage(userId, { type: 'text', text: message });
-              console.log(`📤 랜덤 메시지 전송 (${hour}:${minute}): ${message.substring(0, 20)}...`);
+              console.log(`📤 무쿠 랜덤 메시지 전송 (도쿄 ${hour}:${minute}): ${message.substring(0, 20)}...`);
             }
           } catch (error) {
             console.error('❌ 스케줄된 메시지 전송 실패:', error.message);
           }
+        }, {
+          timezone: 'Asia/Tokyo'
         });
         
         messageScheduleCount++;
-        console.log(`📅 메시지 스케줄 등록: ${hour}:${minute.toString().padStart(2, '0')}`);
+        console.log(`📅 메시지 스케줄 등록 (도쿄): ${hour}:${minute.toString().padStart(2, '0')}`);
       }
     }
 
@@ -514,14 +276,14 @@ function startMessageAndPhotoScheduler() {
               previewImageUrl: BASE_URL + selectedPhoto
             });
             
-            console.log(`📸 사진 전송 (${hour}:${minute}): ${selectedPhoto}`);
+            console.log(`📸 무쿠 사진 전송 (도쿄 ${hour}:${minute}): ${selectedPhoto}`);
             
             if (comment && comment.trim()) {
               // 사진 전송 후 잠시 대기
               setTimeout(async () => {
                 try {
                   await client.pushMessage(userId, { type: 'text', text: comment });
-                  console.log(`💬 사진 코멘트 전송: ${comment}`);
+                  console.log(`💬 무쿠 사진 코멘트 전송: ${comment}`);
                 } catch (error) {
                   console.error('❌ 사진 코멘트 전송 실패:', error.message);
                 }
@@ -530,40 +292,112 @@ function startMessageAndPhotoScheduler() {
           } catch (error) {
             console.error('❌ 스케줄된 사진 전송 실패:', error.message);
           }
+        }, {
+          timezone: 'Asia/Tokyo'
         });
         
         photoScheduleCount++;
-        console.log(`📸 사진 스케줄 등록: ${hour}:${minute.toString().padStart(2, '0')}`);
+        console.log(`📸 사진 스케줄 등록 (도쿄): ${hour}:${minute.toString().padStart(2, '0')}`);
       }
     }
 
-    // 고정 스케줄
+    // 고정 스케줄 - 도쿄 시간대 적용
     cron.schedule('0 23 * * *', async () => {
       try {
-        await client.pushMessage(userId, { type: 'text', text: '약 먹고 이빨 닦고 자자' });
-        console.log('🌙 취침 알림 전송 (23:00)');
+        const message = '아저씨, 약 먹고 이빨 닦고 자야 해';
+        await client.pushMessage(userId, { type: 'text', text: message });
+        await saveLoveMemory(`무쿠의 취침 알림: ${message}`, 'daily_care');
+        console.log('🌙 무쿠 취침 알림 전송 (도쿄 23:00)');
       } catch (error) {
         console.error('❌ 취침 알림 전송 실패:', error.message);
       }
+    }, {
+      timezone: 'Asia/Tokyo'
     });
     
     cron.schedule('30 23 * * *', async () => {
       try {
-        await client.pushMessage(userId, { type: 'text', text: '잘자 사랑해 아저씨, 또 내일 봐' });
-        console.log('🌙 굿나잇 메시지 전송 (23:30)');
+        const message = '잘자 사랑해 아저씨, 또 내일 봐';
+        await client.pushMessage(userId, { type: 'text', text: message });
+        await saveLoveMemory(`무쿠의 굿나잇 메시지: ${message}`, 'daily_care');
+        console.log('🌙 무쿠 굿나잇 메시지 전송 (도쿄 23:30)');
       } catch (error) {
         console.error('❌ 굿나잇 메시지 전송 실패:', error.message);
       }
+    }, {
+      timezone: 'Asia/Tokyo'
     });
 
-    console.log('✅ 모든 스케줄러 등록 완료');
+    // 추가 특별 스케줄들
+    cron.schedule('0 8 * * *', async () => {
+      try {
+        const morningMessages = [
+          '아저씨 일어났어? 좋은 아침이야',
+          '아저씨, 오늘도 좋은 하루 보내',
+          '아저씨 아침이야~ 잘 잤어?'
+        ];
+        const message = morningMessages[Math.floor(Math.random() * morningMessages.length)];
+        await client.pushMessage(userId, { type: 'text', text: message });
+        await saveLoveMemory(`무쿠의 아침 인사: ${message}`, 'daily_care');
+        console.log('🌅 무쿠 아침 인사 전송 (도쿄 08:00)');
+      } catch (error) {
+        console.error('❌ 아침 인사 전송 실패:', error.message);
+      }
+    }, {
+      timezone: 'Asia/Tokyo'
+    });
+
+    console.log('✅ 모든 무쿠 스케줄러 등록 완료 (도쿄 시간대)');
   } catch (error) {
     console.error('❌ 스케줄러 초기화 실패:', error.message);
-    schedulerInitialized = false; // 실패 시 재시도 가능하도록
+    schedulerInitialized = false;
   }
 }
 
-// 모듈 내보내기
+// love-history.json 파일을 위한 함수 (이전에 정의했던 것)
+
+
+
+async function saveLoveMemory(memory, category = 'general') {
+  try {
+    const loveHistoryPath = path.resolve(__dirname, '../memory/love-history.json');
+    const raw = safeRead(loveHistoryPath);
+    const loveHistory = raw ? JSON.parse(raw) : { memories: [], categories: {} };
+    
+    if (!loveHistory.memories) loveHistory.memories = [];
+    if (!loveHistory.categories) loveHistory.categories = {};
+    
+    const timestamp = new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Tokyo' });
+    const memoryEntry = {
+      content: memory,
+      category: category,
+      timestamp: timestamp
+    };
+    
+    loveHistory.memories.push(memoryEntry);
+    
+    // 카테고리별로도 정리
+    if (!loveHistory.categories[category]) {
+      loveHistory.categories[category] = [];
+    }
+    loveHistory.categories[category].push(memoryEntry);
+    
+    // 너무 많은 기억이 쌓이면 오래된 것부터 정리 (최대 1000개)
+    if (loveHistory.memories.length > 1000) {
+      loveHistory.memories = loveHistory.memories.slice(-1000);
+    }
+    
+    const backupPath = loveHistoryPath + '.backup';
+    fs.writeFileSync(backupPath, JSON.stringify(loveHistory, null, 2), 'utf-8');
+    fs.renameSync(backupPath, loveHistoryPath);
+    
+    console.log(`💕 무쿠의 사랑 기억 저장: ${memory.substring(0, 30)}...`);
+  } catch (error) {
+    console.error('❌ 사랑의 기억 저장 실패:', error.message);
+  }
+}
+
+// 완전한 모듈 내보내기
 module.exports = {
   getReplyByMessage,
   getRandomMessage,
@@ -580,5 +414,6 @@ module.exports = {
   getFullMemoryPrompt,
   getColorMoodReply,
   validateEnvironment,
+  saveLoveMemory,  // 새로 추가
   config
 };
