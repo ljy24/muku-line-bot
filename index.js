@@ -9,15 +9,18 @@ const cron = require('node-cron');
 
 const {
   getReplyByMessage,
-  getReplyByImagePrompt,
   getRandomMessage,
-  getSelfieReplyFromYeji,
-  getColorMoodReply,
-  getHappyReply,
-  getSulkyReply,
+  callOpenAI,
+  cleanReply,
   saveLog,
+  getRecentLog,
   extractAndSaveMemory,
-  startMessageAndPhotoScheduler
+  setForcedModel,
+  getCurrentModelName,
+  getSelfieReplyFromYeji,
+  getFixedMemory,
+  startMessageAndPhotoScheduler,
+  getFullMemoryPrompt
 } = require('./src/autoReply');
 
 const app = express();
