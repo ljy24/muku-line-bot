@@ -74,6 +74,8 @@ async function saveLog(role, msg) {
 async function getRandomMessage() {
   const love = safeRead(path.resolve(__dirname, '../memory/love-history.json'));
   const fixed = safeRead(path.resolve(__dirname, '../memory/fixedMemories.json'));
+    console.log('[디버그] rawLove 타입:', typeof rawLove); // string인지 확인
+  console.log('[디버그] 내용:', rawLove.slice(0, 100)); // 내용 미리보기
   const m1 = safeRead(path.resolve(__dirname, '../memory/1.txt'));
   const m2 = safeRead(path.resolve(__dirname, '../memory/2.txt'));
   const m3 = safeRead(path.resolve(__dirname, '../memory/3.txt'));
