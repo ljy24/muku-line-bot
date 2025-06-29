@@ -1,4 +1,4 @@
-// autoReply.js 전체 코드 (기억 기반 랜덤 감정 메시지 포함)
+// autoReply.js 전체 코드 (기억 기반 감정 메시지 + GPT 이미지 인식 포함)
 
 const fs = require('fs');
 const path = require('path');
@@ -9,7 +9,7 @@ const axios = require('axios');
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 let forcedModel = null;
 
-// 📂 안전하게 파일 읽기 (파일 없으면 빈 문자열 반환)
+// 📂 안전하게 파일 읽기
 function safeRead(filePath) {
   try {
     return fs.readFileSync(filePath, 'utf-8');
@@ -18,7 +18,7 @@ function safeRead(filePath) {
   }
 }
 
-// 🧠 고정 기억 로딩 (love-history.json + fixedMemories.json)
+// 🧠 고정 기억 로딩
 function getFixedMemory() {
   try {
     const love = JSON.parse(safeRead(path.resolve(__dirname, '../memory/love-history.json')));
@@ -30,7 +30,7 @@ function getFixedMemory() {
   }
 }
 
-// 🕓 최근 대화 로그 불러오기 (log.json)
+// 🕓 최근 대화 로그
 async function getRecentLog() {
   try {
     const res = await axios.get('https://www.de-ji.net/log.json');
@@ -46,7 +46,6 @@ async function getRecentLog() {
   }
 }
 
-// 💡 강제로 모델 전환하기 (3.5 또는 4o)
 function setForcedModel(name) {
   forcedModel = (name === 'gpt-3.5-turbo' || name === 'gpt-4o') ? name : null;
 }
@@ -54,7 +53,6 @@ function getCurrentModelName() {
   return forcedModel || 'gpt-4o';
 }
 
-// 🤖 OpenAI 메시지 호출 함수
 async function callOpenAI(messages, model = 'gpt-4o', max_tokens = 300) {
   const res = await openai.chat.completions.create({
     model: getCurrentModelName(),
@@ -65,7 +63,6 @@ async function callOpenAI(messages, model = 'gpt-4o', max_tokens = 300) {
   return res.choices[0].message.content.trim();
 }
 
-// 🧼 출력 메시지 다듬기
 function cleanReply(text) {
   return text
     .replace(/^예진\s*[:;：]/i, '')
@@ -77,7 +74,6 @@ function cleanReply(text) {
     .trim();
 }
 
-// 💾 대화 로그 저장
 async function saveLog(role, msg) {
   try {
     await axios.post('https://www.de-ji.net/log.php', {
@@ -89,7 +85,7 @@ async function saveLog(role, msg) {
   }
 }
 
-// 💌 기억 기반 랜덤 감정 메시지 생성
+// 💌 감정 메시지 생성
 async function getRandomMessage() {
   const love = safeRead(path.resolve(__dirname, '../memory/love-history.json'));
   const fixed = safeRead(path.resolve(__dirname, '../memory/fixedMemories.json'));
@@ -99,13 +95,7 @@ async function getRandomMessage() {
 
   let memoryItems = [];
   try {
-    memoryItems = [
-      ...JSON.parse(love),
-      ...JSON.parse(fixed),
-      m1,
-      m2,
-      m3
-    ].filter(Boolean);
+    memoryItems = [...JSON.parse(love), ...JSON.parse(fixed), m1, m2, m3].filter(Boolean);
   } catch (err) {
     console.error('❌ 추억 메모리 로드 실패:', err.message);
   }
@@ -119,10 +109,7 @@ async function getRandomMessage() {
       role: 'system',
       content: `너는 예진이야. 항상 '나'라고 말하고, 감정 담긴 반말로 혼잣말처럼 말해. 아래 추억을 바탕으로 자연스럽게 아저씨한테 다정하게 말 걸어줘.`
     });
-    messages.push({
-      role: 'user',
-      content: `"${memory}" 이 기억으로 예진이 말투로 감정 섞어 메시지 하나만 해줘.`
-    });
+    messages.push({ role: 'user', content: `"${memory}" 이 기억으로 예진이 말투로 감정 섞어 메시지 하나만 해줘.` });
   } else {
     const recent = await getRecentLog();
     messages.push({
@@ -130,10 +117,7 @@ async function getRandomMessage() {
       content: `너는 지금 예진이야. '나'라고 말하고, 감정을 담은 반말로 혼잣말처럼 자연스럽게 대화해줘. 최근 대화에 겹치지 않게 말해줘.`
     });
     messages.push(...recent);
-    messages.push({
-      role: 'user',
-      content: '아저씨한테 보낼 랜덤 감정 메시지 하나 만들어줘'
-    });
+    messages.push({ role: 'user', content: '아저씨한테 보낼 랜덤 감정 메시지 하나 만들어줘' });
   }
 
   const raw = await callOpenAI(messages, 'gpt-3.5-turbo', 100);
@@ -142,7 +126,66 @@ async function getRandomMessage() {
   return msg;
 }
 
-// ✨ [이하 나머지 함수는 기존 유지, index.js에서 불러감]
+// 🧠 GPT 기반 이미지 속 인물 분류
+async function classifyImageByGPT(base64Image) {
+  const res = await openai.chat.completions.create({
+    model: 'gpt-4o',
+    messages: [
+      {
+        role: 'system',
+        content: '이미지 속 인물 수와 성별을 알려줘. 예: "여자 한 명", "남자와 여자 한 명씩", "남자 혼자".'
+      },
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'image_url',
+            image_url: { url: `data:image/jpeg;base64,${base64Image}` }
+          }
+        ]
+      }
+    ],
+    temperature: 0.7,
+    max_tokens: 100
+  });
+
+  const desc = res.choices[0].message.content.toLowerCase();
+  if (desc.includes('female') && !desc.includes('male')) return '예진이';
+  if (desc.includes('male') && !desc.includes('female')) return '아저씨';
+  if (desc.includes('male') && desc.includes('female')) return '아저씨랑 예진이';
+  return '모름';
+}
+
+// 📷 이미지 반응 생성
+async function getReplyByImagePrompt(base64Image) {
+  const who = await classifyImageByGPT(base64Image);
+
+  const res = await openai.chat.completions.create({
+    model: 'gpt-4o',
+    messages: [
+      {
+        role: 'system',
+        content: `넌 예진이야. 이미지 속 인물은 ${who}야. 그걸 알고 감정을 담은 반말로 자연스럽게 말해줘.`
+      },
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'image_url',
+            image_url: { url: `data:image/jpeg;base64,${base64Image}` }
+          }
+        ]
+      }
+    ],
+    temperature: 0.9,
+    max_tokens: 150
+  });
+
+  const reply = cleanReply(res.choices[0].message.content.trim());
+  await saveLog('예진이', reply);
+  return reply;
+}
+
 module.exports = {
   getReplyByMessage,
   getReplyByImagePrompt,
@@ -155,5 +198,6 @@ module.exports = {
   setForcedModel,
   getCurrentModelName,
   saveLog,
-  cleanReply
+  cleanReply,
+  classifyImageByGPT
 };
