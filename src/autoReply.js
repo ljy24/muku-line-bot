@@ -86,7 +86,13 @@ async function extractAndSaveMemory(userMessage) {
       { role: 'system', content: '사용자의 대화에서 감정이나 기억, 사건, 장소, 인물 중 기억할만한 내용을 키-설명 쌍으로 만들어줘. 1개만. JSON 형태로.' },
       { role: 'user', content: userMessage }
     ];
-    const res = await callOpenAI(messages, 'gpt-3.5-turbo', 200);
+    let res = await callOpenAI(messages, 'gpt-3.5-turbo', 200);
+
+    // ✅ GPT가 ```json 으로 감싸서 보낸 경우 제거
+    if (res.startsWith('```json')) {
+      res = res.replace(/^```json/, '').replace(/```$/, '').trim();
+    }
+
     const parsed = JSON.parse(res);
 
     const raw = safeRead(contextPath);
