@@ -82,6 +82,9 @@ async function getRecentLog() {
 // 📌 대화 중 기억할만한 내용 자동 추출
 async function extractAndSaveMemory(userMessage) {
   try {
+    // ✅ 대화에 "아저씨" 포함되면 강제 추출 시도
+    if (!userMessage.includes('아저씨')) return;
+
     const messages = [
       { role: 'system', content: '사용자의 대화에서 감정이나 기억, 사건, 장소, 인물 중 기억할만한 내용을 키-설명 쌍으로 만들어줘. 1개만. JSON 형태로. 앞뒤에 ``` 쓰지 마.' },
       { role: 'user', content: userMessage }
@@ -92,7 +95,6 @@ async function extractAndSaveMemory(userMessage) {
     res = res.replace(/```json|```/g, '').trim();
 
     const parsed = JSON.parse(res);
-
     const raw = safeRead(contextPath);
     const context = raw ? JSON.parse(raw) : {};
     const key = Object.keys(parsed)[0];
