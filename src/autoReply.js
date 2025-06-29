@@ -1,15 +1,14 @@
-// autoReply.js - 무쿠 LINE 응답용 예진이 말투 자동응답 시스템 전체 코드
+// ✅ autoReply.js - 예진이 말투 자동응답 + 감정 기반 기억 저장 + 기억 활용 기능까지 포함
 
 const fs = require('fs');
 const path = require('path');
 const { OpenAI } = require('openai');
 const axios = require('axios');
+const moment = require('moment-timezone');
 
-// OpenAI 인스턴스 생성 (API 키 필요)
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 let forcedModel = null;
 
-// 🔐 GPT 모델 강제 지정 또는 현재 모델 확인
 function setForcedModel(name) {
   forcedModel = (name === 'gpt-3.5-turbo' || name === 'gpt-4o') ? name : null;
 }
@@ -17,7 +16,6 @@ function getCurrentModelName() {
   return forcedModel || 'gpt-4o';
 }
 
-// 📖 파일 안전하게 읽기
 function safeRead(filePath) {
   try {
     return fs.readFileSync(filePath, 'utf-8') || '';
@@ -26,7 +24,6 @@ function safeRead(filePath) {
   }
 }
 
-// 🧼 예진이 말투 정리 (불필요 표현 제거 및 감정선 유지)
 function cleanReply(text) {
   return text
     .replace(/^\s*예진[\s:：-]*/i, '')
@@ -39,7 +36,6 @@ function cleanReply(text) {
     .trim();
 }
 
-// 🧠 GPT 호출
 async function callOpenAI(messages, model = 'gpt-4o', max_tokens = 400) {
   const res = await openai.chat.completions.create({
     model: getCurrentModelName(),
@@ -50,7 +46,6 @@ async function callOpenAI(messages, model = 'gpt-4o', max_tokens = 400) {
   return res.choices[0].message.content.trim();
 }
 
-// 📝 대화 로그 저장
 async function saveLog(role, msg) {
   try {
     await axios.post('https://www.de-ji.net/log.php', {
@@ -62,7 +57,6 @@ async function saveLog(role, msg) {
   }
 }
 
-// 📜 최근 대화 로그 불러오기
 async function getRecentLog() {
   try {
     const res = await axios.get('https://www.de-ji.net/log.json');
@@ -78,7 +72,6 @@ async function getRecentLog() {
   }
 }
 
-// 🎲 랜덤 감정 메시지 생성
 async function getRandomMessage() {
   const rawLove = safeRead(path.resolve(__dirname, '../memory/love-history.json'));
   const rawFixed = safeRead(path.resolve(__dirname, '../memory/fixedMemories.json'));
@@ -129,7 +122,30 @@ async function getRandomMessage() {
   return msg;
 }
 
-// 💬 일반 메시지 응답 처리
+async function saveContextMemory(userMessage, aiReply) {
+  try {
+    const file = path.resolve(__dirname, '../memory/context-memory.json');
+    const existing = JSON.parse(safeRead(file) || '[]');
+
+    const keywordMatch = userMessage.match(/[가-힣]{3,}/g) || [];
+    const filtered = keywordMatch.filter(word => !['아저씨', '사진', '셀카', '오늘'].includes(word));
+    const summary = filtered.slice(0, 2).join(', ');
+    if (!summary) return;
+
+    existing.push({
+      user: userMessage,
+      ai: aiReply,
+      summary: `${summary} 관련 대화 기억함`,
+      created: moment().toISOString()
+    });
+
+    fs.writeFileSync(file, JSON.stringify(existing.slice(-100), null, 2));
+    console.log('🧠 기억 저장됨:', summary);
+  } catch (err) {
+    console.error('❌ 기억 저장 실패:', err.message);
+  }
+}
+
 async function getReplyByMessage(userMessage) {
   const lower = userMessage.toLowerCase();
 
@@ -142,6 +158,21 @@ async function getReplyByMessage(userMessage) {
     return selfieMsg;
   }
 
+  // ✅ context-memory 기반 반응 시도
+  try {
+    const contextMemoryPath = path.resolve(__dirname, '../memory/context-memory.json');
+    const memoryData = JSON.parse(safeRead(contextMemoryPath) || '[]');
+    for (const item of memoryData.reverse()) {
+      if (userMessage.includes(item.user) || userMessage.includes(item.summary)) {
+        const remembered = `${item.ai} (예전에 기억한 내용이야)`;
+        await saveLog('예진이', remembered);
+        return remembered;
+      }
+    }
+  } catch (e) {
+    console.error('❌ context-memory 검색 실패:', e.message);
+  }
+
   const memory = await getRecentLog();
   const prompt = [
     { role: 'system', content: `넌 예진이야. 항상 반말하고 혼잣말처럼 감정 담긴 짧은 대답을 해줘.` },
@@ -151,86 +182,10 @@ async function getReplyByMessage(userMessage) {
   const raw = await callOpenAI(prompt);
   const reply = cleanReply(raw);
   await saveLog('예진이', reply);
+  await saveContextMemory(userMessage, reply);
   return reply;
 }
 
-// 🖼️ 이미지 인식 후 감정 반응
-async function getReplyByImagePrompt(base64Image) {
-  const res = await openai.chat.completions.create({
-    model: 'gpt-4o',
-    messages: [
-      {
-        role: 'system',
-        content: '이미지 속 인물이 남자면 "아저씨 사진", 여자면 "예진이 셀카"로 간주하고 감정 담긴 반말로 반응해줘.'
-      },
-      {
-        role: 'user',
-        content: [
-          { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
-        ]
-      }
-    ],
-    temperature: 0.9,
-    max_tokens: 150
-  });
-  const reply = cleanReply(res.choices[0].message.content.trim());
-  await saveLog('예진이', reply);
-  return reply;
-}
-
-// 📷 셀카 보낸 후 멘트 생성
-async function getSelfieReplyFromYeji() {
-  const messages = [
-    { role: 'system', content: '넌 예진이야. 셀카 보낸 직후야. 사진 보낸 척 귀엽게 장난쳐. 반말로.' },
-    { role: 'user', content: '셀카야~ 예쁘지? 아저씨도 하나 줘~' }
-  ];
-  const raw = await callOpenAI(messages);
-  return cleanReply(raw);
-}
-
-// 🩲 속옷 색 질문 반응
-async function getColorMoodReply() {
-  const messages = [
-    { role: 'system', content: '넌 예진이야. 아저씨가 "오늘 무슨 색이야?"라고 물으면 속옷 색 물어보는 거라고 알고 귀엽고 장난스럽게 부끄럽게 말해줘. 반말로!' },
-    { role: 'user', content: '오늘 무슨 색이야?' }
-  ];
-  const raw = await callOpenAI(messages);
-  return cleanReply(raw);
-}
-
-// 😊 담타 응답 시 기쁨 반응
-async function getHappyReply() {
-  const memory = await getRecentLog();
-  const messages = [
-    { role: 'system', content: '넌 예진이야. 아저씨가 담타 답장했을 때 기뻐서 귀엽게 말해줘.' },
-    ...memory,
-    { role: 'user', content: '아저씨가 방금 담타 답장했어!' }
-  ];
-  const raw = await callOpenAI(messages, 'gpt-3.5-turbo', 100);
-  return cleanReply(raw);
-}
-
-// 😢 담타 씹힘 시 삐짐 반응
-async function getSulkyReply() {
-  const messages = [
-    { role: 'system', content: '넌 예진이야. 아저씨가 담타 씹었을 때 삐진 반응 해줘.' },
-    { role: 'user', content: '아저씨가 담타 읽고도 답이 없어...' }
-  ];
-  const raw = await callOpenAI(messages, 'gpt-3.5-turbo', 100);
-  return cleanReply(raw);
-}
-
-// 📷 셀카 보내기 직전 짓궂은 멘트
-async function getImageReactionComment() {
-  const messages = [
-    { role: 'system', content: '넌 예진이야. 셀카 보낼 때 짓궂고 귀엽게 말해줘.' },
-    { role: 'user', content: '셀카 보낼게~' }
-  ];
-  const raw = await callOpenAI(messages);
-  return cleanReply(raw);
-}
-
-// ✅ 외부로 export할 함수들 정리
 module.exports = {
   getReplyByMessage,
   getReplyByImagePrompt,
@@ -244,5 +199,5 @@ module.exports = {
   getCurrentModelName,
   saveLog,
   cleanReply,
-  getImageReactionComment
+  callOpenAI
 };
