@@ -197,6 +197,23 @@ async function getSulkyReply() {
   return reply;
 }
 
+async function getSelfieReplyFromYeji() {
+  const raw = await callOpenAI([
+    {
+      role: 'system',
+      content: '너는 예진이야. 셀카를 보낸 직후야. 사진 보낸 척하면서 귀엽고 짓궂게 한마디 해줘. 반말로.'
+    },
+    {
+      role: 'user',
+      content: '셀카야~ 예쁘지? 아저씨도 하나 줘~'
+    }
+  ], getCurrentModelName(), 100);
+
+  const reply = cleanReply(raw);
+  await saveLog('예진이', reply);
+  return reply;
+}
+
 module.exports = {
   getReplyByMessage,
   getReplyByImagePrompt,
@@ -209,5 +226,6 @@ module.exports = {
   setForcedModel,
   getCurrentModelName,
   saveLog,
-  cleanReply
+  cleanReply,
+  getImageReactionComment
 };
