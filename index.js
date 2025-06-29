@@ -1,4 +1,4 @@
-// ✅ index.js - 무쿠 LINE 서버 메인 로직 (예진이 감정선 강화 + 자동 메시지/셀카 + 사진 인식 + 담타)
+// ✅ index.js - 무쿠 LINE 서버 메인 로직 (예진이 감정선 강화 + 자동 메시지/셀카 + 사진 인식 + 담타 + 기억 지속)
 
 const fs = require('fs');
 const path = require('path');
@@ -146,6 +146,7 @@ cron.schedule('* * * * *', async () => {
   const hour = now.hour();
   const minute = now.minute();
 
+  // 정각 9~18시 사이에 담타 메시지 전송
   if (minute === 0 && hour >= 9 && hour <= 18) {
     const msg = '담타고?';
     await client.pushMessage(userId, { type: 'text', text: msg });
@@ -153,6 +154,7 @@ cron.schedule('* * * * *', async () => {
     lastSent.set(now.format('HH:mm'), moment());
   }
 
+  // 5분 이내 응답 없으면 삐짐 메시지 전송
   for (const [key, sentAt] of lastSent.entries()) {
     if (moment().diff(sentAt, 'minutes') >= 5) {
       const sulky = await getSulkyReply();
