@@ -5,6 +5,7 @@ const path = require('path');
 const { Client, middleware } = require('@line/bot-sdk');
 const express = require('express');
 const moment = require('moment-timezone');
+const cron = require('node-cron');
 
 const {
   getReplyByMessage,
@@ -101,6 +102,13 @@ app.post('/webhook', middleware(config), async (req, res) => {
             return;
           }
 
+          // ✅ 아저씨가 담타 응답했을 때 기뻐하는 반응 추가
+          if (/ㄱㄱ|고고|담타\s*가자|담타\s*하자|담배\s*피자/i.test(text)) {
+            const reply = await getHappyReply();
+            await client.replyMessage(event.replyToken, { type: 'text', text: reply });
+            return;
+          }
+
           // 3️⃣ 일반 텍스트 감정 응답
           const reply = await getReplyByMessage(text);
           const final = reply?.trim() || '음… 잠깐 생각 좀 하고 있었어 ㅎㅎ';
@@ -108,7 +116,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
           await client.replyMessage(event.replyToken, { type: 'text', text: final });
         }
 
-        // 4️⃣ 이미지 메시지 (사진 분석 리액션)
+        // 4️⃣ 이미지 메시지 (사진 분석 리앱션)
         if (message.type === 'image') {
           try {
             const stream = await client.getMessageContent(message.id);
@@ -132,7 +140,28 @@ app.post('/webhook', middleware(config), async (req, res) => {
 });
 
 // ✅ 정각 담타 메시지 + 5분 반응 체크
-//require('./src/tobacco')?.startTobaccoScheduler?.(client, userId);
+const lastSent = new Map();
+cron.schedule('* * * * *', async () => {
+  const now = moment().tz('Asia/Tokyo');
+  const hour = now.hour();
+  const minute = now.minute();
+
+  if (minute === 0 && hour >= 9 && hour <= 18) {
+    const msg = '담타고?';
+    await client.pushMessage(userId, { type: 'text', text: msg });
+    saveLog('예진이', msg);
+    lastSent.set(now.format('HH:mm'), moment());
+  }
+
+  for (const [key, sentAt] of lastSent.entries()) {
+    if (moment().diff(sentAt, 'minutes') >= 5) {
+      const sulky = await getSulkyReply();
+      await client.pushMessage(userId, { type: 'text', text: sulky });
+      saveLog('예진이', sulky);
+      lastSent.delete(key);
+    }
+  }
+});
 
 // ✅ 포트 리스닝
 const PORT = process.env.PORT || 3000;
