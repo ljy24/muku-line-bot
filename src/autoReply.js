@@ -97,7 +97,7 @@ async function getRandomMessage() {
     console.error('❌ 추억 메모리 로드 실패:', err.message);
   }
 
-  const useMemory = Math.random() < 0.5;
+  const useMemory = Math.random() < 0.85;
   const memory = memoryItems[Math.floor(Math.random() * memoryItems.length)];
   const messages = [];
 
