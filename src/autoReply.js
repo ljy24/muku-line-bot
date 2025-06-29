@@ -8,9 +8,40 @@ let forcedModel = null;
 
 function safeRead(filePath) {
   try {
-    return fs.readFileSync(filePath, 'utf-8');
+    const content = fs.readFileSync(filePath, 'utf-8');
+    return content || '';
   } catch (_) {
     return '';
+  }
+}
+
+function setForcedModel(name) {
+  forcedModel = (name === 'gpt-3.5-turbo' || name === 'gpt-4o') ? name : null;
+}
+function getCurrentModelName() {
+  return forcedModel || 'gpt-4o';
+}
+
+function cleanReply(text) {
+  return text
+    .replace(/^예진\s*[:;：]/i, '')
+    .replace(/\([^)]*\)/g, '')
+    .replace(/\s+/g, ' ')
+    .replace(/["'“”]/g, '')
+    .replace(/\b(당신|그대|그분|자기|너|네|네가|널|예진)\b/g, '아저씨')
+    .replace(/시파/g, '')
+    .replace(/[!?~♡❤️💖💘💕💗💓💞]/g, '')
+    .trim();
+}
+
+async function saveLog(role, msg) {
+  try {
+    await axios.post('https://www.de-ji.net/log.php', {
+      from: role === '아저씨' ? 'uncle' : 'yejin',
+      content: msg
+    });
+  } catch (err) {
+    console.error('❌ 원격 로그 저장 실패:', err.message);
   }
 }
 
@@ -29,13 +60,6 @@ async function getRecentLog() {
   }
 }
 
-function setForcedModel(name) {
-  forcedModel = (name === 'gpt-3.5-turbo' || name === 'gpt-4o') ? name : null;
-}
-function getCurrentModelName() {
-  return forcedModel || 'gpt-4o';
-}
-
 async function callOpenAI(messages, model = 'gpt-4o', max_tokens = 300) {
   const res = await openai.chat.completions.create({
     model: getCurrentModelName(),
@@ -46,29 +70,6 @@ async function callOpenAI(messages, model = 'gpt-4o', max_tokens = 300) {
   return res.choices[0].message.content.trim();
 }
 
-function cleanReply(text) {
-  return text
-    .replace(/^예진\s*[:;：]/i, '')
-    .replace(/\([^)]*\)/g, '')
-    .replace(/\s+/g, ' ')
-    .replace(/["'“”]/g, '')
-    .replace(/\b(당신|그대|그분|자기|너|네가|네|널|예진)\b/g, '아저씨')
-    .replace(/시파/g, '')
-    .trim();
-}
-
-async function saveLog(role, msg) {
-  try {
-    await axios.post('https://www.de-ji.net/log.php', {
-      from: role === '아저씨' ? 'uncle' : 'yejin',
-      content: msg
-    });
-  } catch (err) {
-    console.error('❌ 원격 로그 저장 실패:', err.message);
-  }
-}
-
-// ✅ 랜덤 감정 메시지 생성 (기억 기반 또는 최근 로그 기반)
 async function getRandomMessage() {
   const rawLove = safeRead(path.resolve(__dirname, '../memory/love-history.json'));
   const rawFixed = safeRead(path.resolve(__dirname, '../memory/fixedMemories.json'));
@@ -76,15 +77,16 @@ async function getRandomMessage() {
   const m2 = safeRead(path.resolve(__dirname, '../memory/2.txt'));
   const m3 = safeRead(path.resolve(__dirname, '../memory/3.txt'));
 
-  console.log('[디버그] rawLove 타입:', typeof rawLove);
-  console.log('[디버그] 내용:', rawLove?.slice(0, 100));
-
   let memoryItems = [];
   try {
+    const loveJson = JSON.parse(rawLove);
+    const fixedJson = JSON.parse(rawFixed);
     memoryItems = [
-      ...JSON.parse(rawLove).map(v => `${v.date} - ${v.event}`),
-      ...JSON.parse(rawFixed),
-      m1, m2, m3
+      ...loveJson.map(v => `${v.date} - ${v.event}`),
+      ...fixedJson,
+      m1,
+      m2,
+      m3
     ].filter(Boolean);
   } catch (err) {
     console.error('❌ 추억 메모리 로드 실패:', err.message);
