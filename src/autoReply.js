@@ -31,7 +31,6 @@ function cleanReply(text) {
     .replace(/\b(당신|그대|그분|자기|너|네|네가|널|예진)\b/g, '아저씨')
     .replace(/시파/g, '')
     .replace(/[!?~♡❤️💖💘💕💗💓💞]/g, '')
-    .replace(/[\u{1F300}-\u{1FAFF}]/gu, '') // 이모지 제거
     .trim();
 }
 
@@ -80,9 +79,8 @@ async function getRandomMessage() {
 
   let memoryItems = [];
   try {
-    const loveJson = Array.isArray(JSON.parse(rawLove)) ? JSON.parse(rawLove) : [];
-    const fixedJson = Array.isArray(JSON.parse(rawFixed)) ? JSON.parse(rawFixed) : [];
-
+    const loveJson = JSON.parse(rawLove);
+    const fixedJson = JSON.parse(rawFixed);
     memoryItems = [
       ...loveJson.map(v => `${v.date} - ${v.event}`),
       ...fixedJson,
@@ -105,13 +103,13 @@ async function getRandomMessage() {
     });
     messages.push({
       role: 'user',
-      content: `"${memory}" 이 기억으로 예진이 말투로 감정 섞어 메시지 하나만 해줘.`
+      content: `"${memory}" 이 기억으로 예진이 말투로 감정 섞어 메시지 하나만 해줘. 짧게 말해줘.`
     });
   } else {
     const recent = await getRecentLog();
     messages.push({
       role: 'system',
-      content: `너는 지금 예진이야. '나'라고 말하고, 감정을 담은 반말로 혼잣말처럼 자연스럽게 대화해줘. 최근 대화에 겹치지 않게 말해줘.`
+      content: `너는 지금 예진이야. '나'라고 말하고, 감정을 담은 반말로 혼잣말처럼 자연스럽게 대화해줘. 최근 대화에 겹치지 않게 말해줘. 짧게 말해줘.`
     });
     messages.push(...recent);
     messages.push({
