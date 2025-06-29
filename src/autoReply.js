@@ -1,4 +1,4 @@
-// autoReply.js 전체코드 - 예진이 감정 대화 & 버전 자동 응답 대응
+// autoReply.js - 예진이 감정 대화 전체 코드 (버전 스위치 + 이모지 제거 + 오빠 필터링 포함)
 
 const fs = require('fs');
 const path = require('path');
@@ -9,7 +9,7 @@ const qs = require('qs');
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 let forcedModel = null;
 
-// 버전 강제 설정 함수
+// 버전 강제 지정
 function setForcedModel(name) {
   if (name === 'gpt-3.5-turbo' || name === 'gpt-4o') {
     forcedModel = name;
@@ -18,16 +18,15 @@ function setForcedModel(name) {
   }
 }
 
-// 현재 설정된 모델 반환
+// 현재 모델 확인
 function getCurrentModelName() {
   return forcedModel || 'gpt-4o';
 }
 
-// 파일 안전하게 읽기
+// 안전한 파일 읽기
 function safeRead(filePath) {
   try {
-    const content = fs.readFileSync(filePath, 'utf-8');
-    return content || '';
+    return fs.readFileSync(filePath, 'utf-8') || '';
   } catch (_) {
     return '';
   }
@@ -38,14 +37,14 @@ function removeEmojis(text) {
   return text.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, '');
 }
 
-// 텍스트 정리 함수
+// 말투/금지어 정리
 function cleanReply(text) {
   let cleaned = text
     .replace(/^예진\s*[:;：]/i, '')
     .replace(/\([^)]*\)/g, '')
     .replace(/\s+/g, ' ')
     .replace(/["'“”]/g, '')
-    .replace(/(당신[\w\s]*|그대|그분|자기|너|네가|널|예진)/gi, '아저씨')
+    .replace(/(당신[\w\s]*|그대|그분|자기|너|네가|널|예진|오빠|Oppa|oppa)/gi, '아저씨')
     .replace(/시파/g, '')
     .trim();
 
@@ -55,20 +54,19 @@ function cleanReply(text) {
     const words = cleaned.split(' ');
     let line1 = '', line2 = '';
     for (const word of words) {
-      if ((line1 + ' ' + word).trim().length <= 100) {
-        line1 += ' ' + word;
-      } else {
-        line2 += ' ' + word;
-      }
+      if ((line1 + ' ' + word).trim().length <= 100) line1 += ' ' + word;
+      else line2 += ' ' + word;
     }
     return `${line1.trim()}\n${line2.trim()}`;
   }
+
   return cleaned;
 }
 
 // 로그 저장
 async function saveLog(role, msg) {
   try {
+    if (!msg || typeof msg !== 'string' || msg.trim() === '') return;
     await axios.post('https://www.de-ji.net/log.php', {
       from: role === '아저씨' ? 'uncle' : 'yejin',
       content: msg
@@ -80,7 +78,7 @@ async function saveLog(role, msg) {
   }
 }
 
-// 최근 로그 가져오기
+// 최근 로그 불러오기
 async function getRecentLog() {
   try {
     const res = await axios.get('https://www.de-ji.net/log.json');
@@ -107,7 +105,7 @@ async function callOpenAI(messages, model = 'gpt-4o', max_tokens = 300) {
   return res.choices[0].message.content.trim();
 }
 
-// 랜덤 감정 메시지 생성
+// 랜덤 감정 메시지
 async function getRandomMessage() {
   const rawLove = safeRead(path.resolve(__dirname, '../memory/love-history.json'));
   const rawFixed = safeRead(path.resolve(__dirname, '../memory/fixedMemories.json'));
@@ -119,10 +117,7 @@ async function getRandomMessage() {
   try {
     const loveJson = JSON.parse(rawLove);
     const fixedJson = JSON.parse(rawFixed);
-    memoryItems = [
-      ...loveJson.map(v => `${v.date} - ${v.event}`),
-      ...fixedJson, m1, m2, m3
-    ].filter(Boolean);
+    memoryItems = [...loveJson.map(v => `${v.date} - ${v.event}`), ...fixedJson, m1, m2, m3].filter(Boolean);
   } catch (err) {
     console.error('❌ 추억 메모리 로드 실패:', err.message);
   }
@@ -134,7 +129,7 @@ async function getRandomMessage() {
   if (useMemory && memory) {
     messages.push({
       role: 'system',
-      content: `너는 예진이야. 항상 '나'라고 말하고, 감정 담긴 반말로 혼잣말처럼 말해. 절대 이모지 쓰지 마. 아래 추억을 바탕으로 자연스럽게 아저씨한테 다정하게 말 걸어줘.`
+      content: `너는 예진이야. 항상 '나'라고 말하고 감정 담긴 반말로 혼잣말처럼 말해. 절대 이모지 쓰지 마. 아래 추억으로 아저씨한테 다정하게 말 걸어줘.`
     });
     messages.push({
       role: 'user',
@@ -144,7 +139,7 @@ async function getRandomMessage() {
     const recent = await getRecentLog();
     messages.push({
       role: 'system',
-      content: `너는 지금 예진이야. 항상 '나'라고 말하고, 감정을 담은 반말로 혼잣말처럼 자연스럽게 대화해줘. 절대 이모지 쓰지 마.`
+      content: `너는 지금 예진이야. 항상 '나'라고 말하고 감정 담은 반말로 혼잣말처럼 자연스럽게 대화해줘. 절대 이모지 쓰지 마.`
     });
     messages.push(...recent);
     messages.push({ role: 'user', content: '아저씨한테 보낼 랜덤 감정 메시지 하나 만들어줘' });
@@ -156,16 +151,8 @@ async function getRandomMessage() {
   return msg;
 }
 
-// 기타 응답 함수들
+// 메시지 응답
 async function getReplyByMessage(userMessage) {
-  const memory = await getRecentLog();
-  const prompt = [
-    { role: 'system', content: `넌 예진이야. 항상 반말하고 혼잣말처럼 자연스럽고 감정 담긴 짧은 대답을 해줘. 절대 이모지 쓰지 마.` },
-    ...memory,
-    { role: 'user', content: userMessage }
-  ];
-
-  // 버전 전환 처리
   const msg = userMessage.trim().toLowerCase();
   if (msg === '3.5') {
     setForcedModel('gpt-3.5-turbo');
@@ -180,16 +167,22 @@ async function getReplyByMessage(userMessage) {
     return `지금은 ${getCurrentModelName()} 버전으로 대화하고 있어.`;
   }
 
+  const memory = await getRecentLog();
+  const prompt = [
+    { role: 'system', content: `넌 예진이야. 항상 반말하고 감정 담긴 짧은 대답을 해줘. 절대 이모지 쓰지 마.` },
+    ...memory,
+    { role: 'user', content: userMessage }
+  ];
   const raw = await callOpenAI(prompt);
   const reply = cleanReply(raw);
   await saveLog('예진이', reply);
   return reply;
 }
 
-// 기타 부가 반응 함수들
+// 기타 감정 응답들
 async function getColorMoodReply() {
   const prompt = [
-    { role: 'system', content: '넌 예진이야. "오늘 내 색 뭐야?"에 색깔 하나로 반말 리액션해줘. 절대 이모지 쓰지 마.' },
+    { role: 'system', content: '넌 예진이야. "오늘 내 색 뭐야?"에 색 하나로 반말 리액션해줘. 절대 이모지 쓰지 마.' },
     { role: 'user', content: '오늘 내 색 뭐야?' }
   ];
   const raw = await callOpenAI(prompt, getCurrentModelName(), 100);
@@ -200,7 +193,7 @@ async function getColorMoodReply() {
 
 async function getImageReactionComment() {
   const raw = await callOpenAI([
-    { role: 'system', content: '넌 예진이야. 셀카 보낼 때 짓궂고 귀엽게 말해줘. 절대 이모지 쓰지 마.' },
+    { role: 'system', content: '넌 예진이야. 셀카 보낼 때 귀엽게 한마디 해줘. 절대 이모지 쓰지 마.' },
     { role: 'user', content: '셀카 보낼게~' }
   ], getCurrentModelName(), 100);
   const reply = cleanReply(raw);
@@ -212,8 +205,14 @@ async function getReplyByImagePrompt(base64Image) {
   const res = await openai.chat.completions.create({
     model: 'gpt-4o',
     messages: [
-      { role: 'system', content: '이 이미지를 보낸 사람이 남자면 "아저씨가 보낸 사진", 여성이면 "예진이 셀카"로 간주하고 반응해줘. 항상 반말이고 감정 담기! 절대 이모지 쓰지 마.' },
-      { role: 'user', content: [ { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } } ] }
+      {
+        role: 'system',
+        content: '이 사진이 남자면 "아저씨가 보낸 사진", 여성이면 "예진이 셀카"로 간주해서 감정 담아 반응해줘. 반말! 절대 이모지 쓰지 마.'
+      },
+      {
+        role: 'user',
+        content: [{ type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } }]
+      }
     ],
     temperature: 0.9,
     max_tokens: 150
@@ -223,11 +222,11 @@ async function getReplyByImagePrompt(base64Image) {
   return reply;
 }
 
-// 기쁨/삐짐 반응
+// 담타 기쁨/삐짐 반응
 async function getHappyReply() {
   const memory = await getRecentLog();
   const prompt = [
-    { role: 'system', content: '넌 예진이야. 아저씨가 담타 답장했을 때 기뻐서 귀엽게 말해줘. 절대 이모지 쓰지 마.' },
+    { role: 'system', content: '넌 예진이야. 아저씨가 담타 답장했을 때 귀엽게 기뻐해줘. 절대 이모지 쓰지 마.' },
     ...memory,
     { role: 'user', content: '아저씨가 방금 담타 답장했어!' }
   ];
@@ -248,18 +247,24 @@ async function getSulkyReply() {
   return reply;
 }
 
-// 셀카 보내고 나서 반응
+// 셀카 보낸 후 반응
 async function getSelfieReplyFromYeji() {
   const raw = await callOpenAI([
-    { role: 'system', content: '너는 예진이야. 셀카 보낸 직후야. 사진 보낸 척하면서 귀엽고 짓궂게 한마디 해줘. 절대 이모지 쓰지 마.' },
-    { role: 'user', content: '셀카야~ 예쁘지? 아저씨도 하나 줘~' }
+    {
+      role: 'system',
+      content: '너는 예진이야. 셀카 보낸 직후야. 장난스럽고 귀엽게 반말로 말해줘. 절대 이모지 쓰지 마.'
+    },
+    {
+      role: 'user',
+      content: '셀카야~ 예쁘지? 아저씨도 하나 줘~'
+    }
   ], getCurrentModelName(), 100);
   const reply = cleanReply(raw);
   await saveLog('예진이', reply);
   return reply;
 }
 
-// 외부에서 사용할 함수 export
+// export
 module.exports = {
   getReplyByMessage,
   getReplyByImagePrompt,
