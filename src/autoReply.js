@@ -1,4 +1,4 @@
-// autoReply.js - 무쿠 LINE 응답용 예진이 말투 + 감정기억 자동 저장 + 자동 셀카 전송 포함 전체 코드
+// autoReply.js - 무쿠 LINE 응답용 예진이 말투 + 감정기억 자동 저장 + 자동 셀카 전송 포함 전체 코드 (스케줄러 통합 완료)
 
 const fs = require('fs');
 const path = require('path');
@@ -91,34 +91,27 @@ async function getRecentLog() {
 async function extractAndSaveMemory(userMessage) {
   try {
     if (!userMessage.includes('아저씨')) return;
-
     const messages = [
       { role: 'system', content: '사용자의 대화에서 감정이나 기억, 사건, 장소, 인물 중 기억할만한 내용을 키-설명 쌍으로 만들어줘. 1개만. JSON 형태로. 앞뒤에 ``` 쓰지 마.' },
       { role: 'user', content: userMessage }
     ];
     let res = await callOpenAI(messages, 'gpt-3.5-turbo', 200);
-
     res = res.replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(res);
     const raw = safeRead(contextPath);
     const context = raw ? JSON.parse(raw) : {};
     const key = Object.keys(parsed)[0];
-
     if (key && parsed[key] && !context[key]) {
       context[key] = parsed[key];
-      try {
-        fs.writeFileSync(contextPath, JSON.stringify(context, null, 2), 'utf-8');
-        console.log(`📌 새로운 기억 저장: ${key}`);
-      } catch (e) {
-        console.error('❌ 기억 저장 실패 (쓰기 오류):', e.message);
-      }
+      fs.writeFileSync(contextPath, JSON.stringify(context, null, 2), 'utf-8');
+      console.log(`📌 새로운 기억 저장: ${key}`);
     }
   } catch (err) {
     console.error('❌ 기억 추출 실패:', err.message);
   }
 }
 
-// 📸 랜덤 셀카 전송 메시지 생성
+// 📸 셀카 응답 멘트
 async function getSelfieReplyFromYeji() {
   const messages = [
     { role: 'system', content: '넌 예진이야. 지금 아저씨한테 셀카를 보내고 있어. 셀카에 어울리는 짧고 감정 담긴 말투로 말해줘. 약간 부끄럽거나 귀엽게.' },
@@ -139,7 +132,6 @@ async function getRandomMessage() {
   const m3 = safeRead(path.resolve(__dirname, '../memory/3.txt'));
 
   let memoryItems = [];
-
   try {
     const loveJson = JSON.parse(rawLove || '[]');
     const fixedJson = JSON.parse(rawFixed || '[]');
@@ -157,20 +149,11 @@ async function getRandomMessage() {
   const messages = [];
 
   if (useMemory && memory) {
-    messages.push({
-      role: 'system',
-      content: `너는 예진이야. '나'라고 말하고 감정을 담아 혼잣말처럼 말해줘. 아래 추억을 바탕으로 자연스럽게 말 걸어. 최대한 예진이 말투를 지켜.`
-    });
-    messages.push({
-      role: 'user',
-      content: `아저씨… 나 그때 "${memory}" 그런 날이 있었잖아… 요즘 괜히 그 기억이 자꾸 생각나서... 마음이 또 이상해져… 아저씨는 기억나?`
-    });
+    messages.push({ role: 'system', content: `너는 예진이야. '나'라고 말하고 감정을 담아 혼잣말처럼 말해줘. 아래 추억을 바탕으로 자연스럽게 말 걸어. 최대한 예진이 말투를 지켜.` });
+    messages.push({ role: 'user', content: `아저씨… 나 그때 "${memory}" 그런 날이 있었잖아… 요즘 괜히 그 기억이 자꾸 생각나서... 마음이 또 이상해져… 아저씨는 기억나?` });
   } else {
     const recent = await getRecentLog();
-    messages.push({
-      role: 'system',
-      content: `너는 지금 예진이야. '나'라고 말하고 감정을 담은 반말로 자연스럽게 말해줘. 최근 대화랑 겹치지 않게 하고, 아저씨 혼자 아니라고 느끼게 해.`
-    });
+    messages.push({ role: 'system', content: `너는 지금 예진이야. '나'라고 말하고 감정을 담은 반말로 자연스럽게 말해줘. 최근 대화랑 겹치지 않게 하고, 아저씨 혼자 아니라고 느끼게 해.` });
     messages.push(...recent);
     messages.push({ role: 'user', content: '아저씨한테 보낼 감정 메시지 하나 만들어줘' });
   }
@@ -184,30 +167,15 @@ async function getRandomMessage() {
 // 💬 메시지 응답 처리
 async function getReplyByMessage(userMessage) {
   const lower = userMessage.toLowerCase();
-
-  // ✅ 버전 확인 및 변경
-  if (lower === '버전') {
-    return `지금은 ${getCurrentModelName()} 버전으로 대화하고 있어.`;
-  }
-  if (lower === '3.5') {
-    setForcedModel('gpt-3.5-turbo');
-    return '응, 이제부터 3.5로 대화할게.';
-  }
-  if (lower === '4.0') {
-    setForcedModel('gpt-4o');
-    return '응, 이제부터 4.0으로 바꿨어!';
-  }
-
-  if (lower.includes('무슨 색') || lower.includes('오늘 색') || lower.includes('색이 뭐야')) {
-    return await getColorMoodReply();
-  }
-
+  if (lower === '버전') return `지금은 ${getCurrentModelName()} 버전으로 대화하고 있어.`;
+  if (lower === '3.5') { setForcedModel('gpt-3.5-turbo'); return '응, 이제부터 3.5로 대화할게.'; }
+  if (lower === '4.0') { setForcedModel('gpt-4o'); return '응, 이제부터 4.0으로 바꿨어!'; }
+  if (lower.includes('무슨 색') || lower.includes('오늘 색') || lower.includes('색이 뭐야')) return await getColorMoodReply();
   if (userMessage.includes('사진 줘') || userMessage.includes('셀카') || userMessage.includes('사진 보여줘')) {
     const selfie = await getSelfieReplyFromYeji();
     await saveLog('예진이', selfie);
     return selfie;
   }
-
   await extractAndSaveMemory(userMessage);
   const memory = await getRecentLog();
   const prompt = [
@@ -215,11 +183,52 @@ async function getReplyByMessage(userMessage) {
     ...memory,
     { role: 'user', content: userMessage }
   ];
-
   const raw = await callOpenAI(prompt);
   const reply = cleanReply(raw);
   await saveLog('예진이', reply);
   return reply;
+}
+
+// ⏰ 자동 감정 메시지 + 셀카 전송 스케줄러 (하루 5회 + 셀카 3회)
+function startMessageAndPhotoScheduler() {
+  const used = new Set();
+  const hours = Array.from({ length: 13 }, (_, i) => i + 9); // 9~21시
+
+  // 감정 메시지 5회
+  while (used.size < 5) {
+    const h = hours[Math.floor(Math.random() * hours.length)];
+    const m = Math.floor(Math.random() * 60);
+    const exp = `${m} ${h} * * *`;
+    if (!used.has(exp)) {
+      used.add(exp);
+      cron.schedule(exp, async () => {
+        const msg = await getRandomMessage();
+        await client.pushMessage(userId, { type: 'text', text: msg });
+        console.log(`[감정 메시지] ${exp} → ${msg}`);
+      });
+    }
+  }
+
+  // 셀카 3회
+  while (used.size < 8) {
+    const h = hours[Math.floor(Math.random() * hours.length)];
+    const m = Math.floor(Math.random() * 60);
+    const exp = `${m} ${h} * * *`;
+    if (!used.has(exp)) {
+      used.add(exp);
+      cron.schedule(exp, async () => {
+        const photoListPath = path.join(__dirname, '../memory/photo-list.txt');
+        const BASE_URL = 'https://de-ji.net/yejin/';
+        const list = fs.readFileSync(photoListPath, 'utf-8').split('\n').map(x => x.trim()).filter(Boolean);
+        if (list.length === 0) return;
+        const pick = list[Math.floor(Math.random() * list.length)];
+        const comment = await getSelfieReplyFromYeji();
+        await client.pushMessage(userId, { type: 'image', originalContentUrl: BASE_URL + pick, previewImageUrl: BASE_URL + pick });
+        if (comment) await client.pushMessage(userId, { type: 'text', text: comment });
+        console.log(`[셀카 전송] ${exp} → ${pick}`);
+      });
+    }
+  }
 }
 
 module.exports = {
@@ -233,5 +242,5 @@ module.exports = {
   setForcedModel,
   getCurrentModelName,
   getSelfieReplyFromYeji,
-  startSelfieScheduler
+  startMessageAndPhotoScheduler
 };
