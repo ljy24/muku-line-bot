@@ -1,3 +1,5 @@
+// autoReply.js 전체코드 - 예진이 감정 대화 & 버전 자동 응답 대응
+
 const fs = require('fs');
 const path = require('path');
 const { OpenAI } = require('openai');
@@ -7,6 +9,21 @@ const qs = require('qs');
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 let forcedModel = null;
 
+// 버전 강제 설정 함수
+function setForcedModel(name) {
+  if (name === 'gpt-3.5-turbo' || name === 'gpt-4o') {
+    forcedModel = name;
+  } else if (name === 'auto') {
+    forcedModel = null;
+  }
+}
+
+// 현재 설정된 모델 반환
+function getCurrentModelName() {
+  return forcedModel || 'gpt-4o';
+}
+
+// 파일 안전하게 읽기
 function safeRead(filePath) {
   try {
     const content = fs.readFileSync(filePath, 'utf-8');
@@ -16,18 +33,12 @@ function safeRead(filePath) {
   }
 }
 
-function setForcedModel(name) {
-  forcedModel = (name === 'gpt-3.5-turbo' || name === 'gpt-4o') ? name : null;
-}
-function getCurrentModelName() {
-  return forcedModel || 'gpt-4o';
-}
-
-// 이모지 제거 정규식
+// 이모지 제거
 function removeEmojis(text) {
   return text.replace(/[\p{Emoji_Presentation}\p{Extended_Pictographic}]/gu, '');
 }
 
+// 텍스트 정리 함수
 function cleanReply(text) {
   let cleaned = text
     .replace(/^예진\s*[:;：]/i, '')
@@ -38,14 +49,11 @@ function cleanReply(text) {
     .replace(/시파/g, '')
     .trim();
 
-  // 이모지 제거
   cleaned = removeEmojis(cleaned);
 
-  // 줄바꿈: 100자 넘어가면 공백 기준 줄 나눔
   if (cleaned.length > 100) {
     const words = cleaned.split(' ');
-    let line1 = '';
-    let line2 = '';
+    let line1 = '', line2 = '';
     for (const word of words) {
       if ((line1 + ' ' + word).trim().length <= 100) {
         line1 += ' ' + word;
@@ -55,25 +63,24 @@ function cleanReply(text) {
     }
     return `${line1.trim()}\n${line2.trim()}`;
   }
-
   return cleaned;
 }
 
+// 로그 저장
 async function saveLog(role, msg) {
   try {
     await axios.post('https://www.de-ji.net/log.php', {
       from: role === '아저씨' ? 'uncle' : 'yejin',
       content: msg
     }, {
-      headers: {
-        'Content-Type': 'application/json'
-      }
+      headers: { 'Content-Type': 'application/json' }
     });
   } catch (err) {
     console.error('❌ 원격 로그 저장 실패:', err.message);
   }
 }
 
+// 최근 로그 가져오기
 async function getRecentLog() {
   try {
     const res = await axios.get('https://www.de-ji.net/log.json');
@@ -89,6 +96,7 @@ async function getRecentLog() {
   }
 }
 
+// GPT 호출
 async function callOpenAI(messages, model = 'gpt-4o', max_tokens = 300) {
   const res = await openai.chat.completions.create({
     model: getCurrentModelName(),
@@ -99,6 +107,7 @@ async function callOpenAI(messages, model = 'gpt-4o', max_tokens = 300) {
   return res.choices[0].message.content.trim();
 }
 
+// 랜덤 감정 메시지 생성
 async function getRandomMessage() {
   const rawLove = safeRead(path.resolve(__dirname, '../memory/love-history.json'));
   const rawFixed = safeRead(path.resolve(__dirname, '../memory/fixedMemories.json'));
@@ -112,10 +121,7 @@ async function getRandomMessage() {
     const fixedJson = JSON.parse(rawFixed);
     memoryItems = [
       ...loveJson.map(v => `${v.date} - ${v.event}`),
-      ...fixedJson,
-      m1,
-      m2,
-      m3
+      ...fixedJson, m1, m2, m3
     ].filter(Boolean);
   } catch (err) {
     console.error('❌ 추억 메모리 로드 실패:', err.message);
@@ -138,13 +144,10 @@ async function getRandomMessage() {
     const recent = await getRecentLog();
     messages.push({
       role: 'system',
-      content: `너는 지금 예진이야. 항상 '나'라고 말하고, 감정을 담은 반말로 혼잣말처럼 자연스럽게 대화해줘. 절대 이모지 쓰지 마. 최근 대화에 겹치지 않게 말해줘.`
+      content: `너는 지금 예진이야. 항상 '나'라고 말하고, 감정을 담은 반말로 혼잣말처럼 자연스럽게 대화해줘. 절대 이모지 쓰지 마.`
     });
     messages.push(...recent);
-    messages.push({
-      role: 'user',
-      content: '아저씨한테 보낼 랜덤 감정 메시지 하나 만들어줘'
-    });
+    messages.push({ role: 'user', content: '아저씨한테 보낼 랜덤 감정 메시지 하나 만들어줘' });
   }
 
   const raw = await callOpenAI(messages, 'gpt-3.5-turbo', 100);
@@ -153,6 +156,7 @@ async function getRandomMessage() {
   return msg;
 }
 
+// 기타 응답 함수들
 async function getReplyByMessage(userMessage) {
   const memory = await getRecentLog();
   const prompt = [
@@ -160,12 +164,29 @@ async function getReplyByMessage(userMessage) {
     ...memory,
     { role: 'user', content: userMessage }
   ];
+
+  // 버전 전환 처리
+  const msg = userMessage.trim().toLowerCase();
+  if (msg === '3.5') {
+    setForcedModel('gpt-3.5-turbo');
+    return '이제부터 3.5버전으로 얘기할게.';
+  } else if (msg === '4.0') {
+    setForcedModel('gpt-4o');
+    return '이제부터 4.0버전으로 얘기할게.';
+  } else if (msg.includes('자동')) {
+    setForcedModel('auto');
+    return '버전 자동 전환 모드로 바꿨어!';
+  } else if (msg.includes('버전')) {
+    return `지금은 ${getCurrentModelName()} 버전으로 대화하고 있어.`;
+  }
+
   const raw = await callOpenAI(prompt);
   const reply = cleanReply(raw);
   await saveLog('예진이', reply);
   return reply;
 }
 
+// 기타 부가 반응 함수들
 async function getColorMoodReply() {
   const prompt = [
     { role: 'system', content: '넌 예진이야. "오늘 내 색 뭐야?"에 색깔 하나로 반말 리액션해줘. 절대 이모지 쓰지 마.' },
@@ -191,16 +212,8 @@ async function getReplyByImagePrompt(base64Image) {
   const res = await openai.chat.completions.create({
     model: 'gpt-4o',
     messages: [
-      {
-        role: 'system',
-        content: '이 이미지를 보낸 사람이 남자면 "아저씨가 보낸 사진", 여성이면 "예진이 셀카"로 간주하고 각기 다른 반응을 해줘. 둘 다 있으면 "아저씨랑 예진이 사진"이야. 항상 반말이고 감정 담기! 절대 이모지 쓰지 마.'
-      },
-      {
-        role: 'user',
-        content: [
-          { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
-        ]
-      }
+      { role: 'system', content: '이 이미지를 보낸 사람이 남자면 "아저씨가 보낸 사진", 여성이면 "예진이 셀카"로 간주하고 반응해줘. 항상 반말이고 감정 담기! 절대 이모지 쓰지 마.' },
+      { role: 'user', content: [ { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } } ] }
     ],
     temperature: 0.9,
     max_tokens: 150
@@ -210,6 +223,7 @@ async function getReplyByImagePrompt(base64Image) {
   return reply;
 }
 
+// 기쁨/삐짐 반응
 async function getHappyReply() {
   const memory = await getRecentLog();
   const prompt = [
@@ -234,23 +248,18 @@ async function getSulkyReply() {
   return reply;
 }
 
+// 셀카 보내고 나서 반응
 async function getSelfieReplyFromYeji() {
   const raw = await callOpenAI([
-    {
-      role: 'system',
-      content: '너는 예진이야. 셀카를 보낸 직후야. 사진 보낸 척하면서 귀엽고 짓궂게 한마디 해줘. 반말로. 절대 이모지 쓰지 마.'
-    },
-    {
-      role: 'user',
-      content: '셀카야~ 예쁘지? 아저씨도 하나 줘~'
-    }
+    { role: 'system', content: '너는 예진이야. 셀카 보낸 직후야. 사진 보낸 척하면서 귀엽고 짓궂게 한마디 해줘. 절대 이모지 쓰지 마.' },
+    { role: 'user', content: '셀카야~ 예쁘지? 아저씨도 하나 줘~' }
   ], getCurrentModelName(), 100);
-
   const reply = cleanReply(raw);
   await saveLog('예진이', reply);
   return reply;
 }
 
+// 외부에서 사용할 함수 export
 module.exports = {
   getReplyByMessage,
   getReplyByImagePrompt,
