@@ -1,14 +1,21 @@
-// autoReply.js - 무쿠 LINE 응답용 예진이 말투 + 감정기억 자동 저장 시스템 전체 코드
+// autoReply.js - 무쿠 LINE 응답용 예진이 말투 + 감정기억 자동 저장 + 자동 셀카 전송 포함 전체 코드
 
 const fs = require('fs');
 const path = require('path');
 const { OpenAI } = require('openai');
 const axios = require('axios');
+const cron = require('node-cron');
+const { Client } = require('@line/bot-sdk');
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 let forcedModel = null;
-
 const contextPath = path.resolve(__dirname, '../memory/context-memory.json');
+
+const userId = process.env.TARGET_USER_ID;
+const client = new Client({
+  channelAccessToken: process.env.LINE_ACCESS_TOKEN,
+  channelSecret: process.env.LINE_CHANNEL_SECRET
+});
 
 // 🔐 GPT 모델 지정 / 확인
 function setForcedModel(name) {
@@ -122,6 +129,43 @@ async function getSelfieReplyFromYeji() {
   return reply;
 }
 
+// 📷 자동 셀카 전송 (하루 3~4회, 9시~21시 랜덤)
+function startSelfieScheduler() {
+  const BASE_URL = 'https://de-ji.net/yejin/';
+  const photoListPath = path.resolve(__dirname, '../memory/photo-list.txt');
+  const used = new Set();
+  const count = Math.floor(Math.random() * 2) + 3; // 3~4회
+
+  while (used.size < count) {
+    const hour = Math.floor(Math.random() * 13) + 9; // 9~21시
+    const minute = Math.floor(Math.random() * 60);
+    const key = `${hour}:${minute}`;
+    if (!used.has(key)) {
+      used.add(key);
+      const cronExp = `${minute} ${hour} * * *`;
+      cron.schedule(cronExp, async () => {
+        try {
+          const list = fs.readFileSync(photoListPath, 'utf-8').split('\n').map(x => x.trim()).filter(Boolean);
+          if (list.length === 0) return;
+          const pick = list[Math.floor(Math.random() * list.length)];
+          const comment = await getSelfieReplyFromYeji();
+          await client.pushMessage(userId, {
+            type: 'image',
+            originalContentUrl: BASE_URL + pick,
+            previewImageUrl: BASE_URL + pick
+          });
+          if (comment) {
+            await client.pushMessage(userId, { type: 'text', text: comment });
+          }
+          console.log(`[자동 셀카] ${cronExp} → ${pick}`);
+        } catch (err) {
+          console.error('❌ 자동 셀카 실패:', err.message);
+        }
+      });
+    }
+  }
+}
+
 // 🎲 랜덤 감정 메시지 생성
 async function getRandomMessage() {
   const rawLove = safeRead(path.resolve(__dirname, '../memory/love-history.json'));
@@ -210,5 +254,6 @@ module.exports = {
   extractAndSaveMemory,
   setForcedModel,
   getCurrentModelName,
-  getSelfieReplyFromYeji
+  getSelfieReplyFromYeji,
+  startSelfieScheduler
 };
