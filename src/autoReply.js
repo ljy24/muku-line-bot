@@ -201,7 +201,7 @@ module.exports = {
   getReplyByMessage,
   getReplyByImagePrompt,
   getRandomMessage,
-  getImageReactionComment,
+  getSelfieReplyFromYeji,
   getColorMoodReply,
   getHappyReply,
   getSulkyReply,
