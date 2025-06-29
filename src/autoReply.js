@@ -1,4 +1,4 @@
-// autoReply.js 전체 코드 (예진 말투 필터 강화 + 셀카 발신자 인식)
+// autoReply.js (예진 말투 필터 강화 + 셀카 발신자 인식 + JSON 구조 보완)
 
 const fs = require('fs');
 const path = require('path');
@@ -17,10 +17,13 @@ function safeRead(filePath) {
   }
 }
 
+// ✅ 고정 기억 로딩 (coreMemories 지원)
 function getFixedMemory() {
   try {
-    const love = JSON.parse(safeRead(path.resolve(__dirname, '../memory/love-history.json')));
-    const fixed = JSON.parse(safeRead(path.resolve(__dirname, '../memory/fixedMemories.json')));
+    const loveRaw = JSON.parse(safeRead(path.resolve(__dirname, '../memory/love-history.json')));
+    const fixedRaw = JSON.parse(safeRead(path.resolve(__dirname, '../memory/fixedMemories.json')));
+    const love = Array.isArray(loveRaw) ? loveRaw : (loveRaw.coreMemories || []);
+    const fixed = Array.isArray(fixedRaw) ? fixedRaw : (fixedRaw.coreMemories || []);
     return [...love, ...fixed].map(entry => ({ role: 'system', content: entry }));
   } catch (err) {
     console.error('❌ 고정 기억 실패:', err.message);
@@ -60,6 +63,7 @@ async function callOpenAI(messages, model = 'gpt-4o', max_tokens = 300) {
   return res.choices[0].message.content.trim();
 }
 
+// ✅ 예진 말투 필터 강화
 function cleanReply(text) {
   return text
     .replace(/^예진\s*[:;：]/i, '')
@@ -83,25 +87,18 @@ async function saveLog(role, msg) {
 }
 
 async function getRandomMessage() {
-  const love = safeRead(path.resolve(__dirname, '../memory/love-history.json'));
-  const fixed = safeRead(path.resolve(__dirname, '../memory/fixedMemories.json'));
+  const fixedMemory = getFixedMemory();
   const m1 = safeRead(path.resolve(__dirname, '../memory/1.txt'));
   const m2 = safeRead(path.resolve(__dirname, '../memory/2.txt'));
   const m3 = safeRead(path.resolve(__dirname, '../memory/3.txt'));
 
-  let memoryItems = [];
-  try {
-    memoryItems = [
-      ...JSON.parse(love),
-      ...JSON.parse(fixed),
-      m1, m2, m3
-    ].filter(Boolean);
-  } catch (err) {
-    console.error('❌ 추억 메모리 로드 실패:', err.message);
-  }
+  const memories = [
+    ...fixedMemory.map(e => e.content),
+    m1, m2, m3
+  ].filter(Boolean);
 
   const useMemory = Math.random() < 0.5;
-  const memory = memoryItems[Math.floor(Math.random() * memoryItems.length)];
+  const memory = memories[Math.floor(Math.random() * memories.length)];
   const messages = [];
 
   if (useMemory && memory) {
@@ -231,5 +228,6 @@ module.exports = {
   getCurrentModelName,
   saveLog,
   cleanReply,
-  getImageReactionComment
+  getImageReactionComment,
+  getFixedMemory
 };
