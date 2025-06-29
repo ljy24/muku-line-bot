@@ -1,14 +1,16 @@
-// ✅ autoReply.js - 예진이 말투 자동응답 + 감정 기반 기억 저장 + 기억 활용 기능까지 포함
+// autoReply.js - 무쿠 LINE 응답용 예진이 말투 + 감정기억 자동 저장 시스템 전체 코드
 
 const fs = require('fs');
 const path = require('path');
 const { OpenAI } = require('openai');
 const axios = require('axios');
-const moment = require('moment-timezone');
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 let forcedModel = null;
 
+const contextPath = path.resolve(__dirname, '../memory/context-memory.json');
+
+// 🔐 GPT 모델 지정 / 확인
 function setForcedModel(name) {
   forcedModel = (name === 'gpt-3.5-turbo' || name === 'gpt-4o') ? name : null;
 }
@@ -16,6 +18,7 @@ function getCurrentModelName() {
   return forcedModel || 'gpt-4o';
 }
 
+// 📖 안전하게 파일 읽기
 function safeRead(filePath) {
   try {
     return fs.readFileSync(filePath, 'utf-8') || '';
@@ -24,9 +27,10 @@ function safeRead(filePath) {
   }
 }
 
+// 🧼 예진이 말투 정리
 function cleanReply(text) {
   return text
-    .replace(/^\s*예진[\s:：-]*/i, '')
+    .replace(/\s*예진[\s:：-]*/i, '')
     .replace(/\([^)]*\)/g, '')
     .replace(/\s+/g, ' ')
     .replace(/["'“”]/g, '')
@@ -36,6 +40,7 @@ function cleanReply(text) {
     .trim();
 }
 
+// 🧠 GPT 호출
 async function callOpenAI(messages, model = 'gpt-4o', max_tokens = 400) {
   const res = await openai.chat.completions.create({
     model: getCurrentModelName(),
@@ -46,6 +51,7 @@ async function callOpenAI(messages, model = 'gpt-4o', max_tokens = 400) {
   return res.choices[0].message.content.trim();
 }
 
+// 📝 로그 저장
 async function saveLog(role, msg) {
   try {
     await axios.post('https://www.de-ji.net/log.php', {
@@ -53,10 +59,11 @@ async function saveLog(role, msg) {
       content: msg
     });
   } catch (err) {
-    console.error('❌ 원격 로그 저장 실패:', err.message);
+    console.error('❌ 로그 저장 실패:', err.message);
   }
 }
 
+// 📜 최근 로그 불러오기
 async function getRecentLog() {
   try {
     const res = await axios.get('https://www.de-ji.net/log.json');
@@ -67,11 +74,36 @@ async function getRecentLog() {
       content: log.content
     }));
   } catch (err) {
-    console.error('❌ 최근 로그 불러오기 실패:', err.message);
+    console.error('❌ 최근 로그 실패:', err.message);
     return [];
   }
 }
 
+// 📌 대화 중 기억할만한 내용 자동 추출
+async function extractAndSaveMemory(userMessage) {
+  try {
+    const messages = [
+      { role: 'system', content: '사용자의 대화에서 감정이나 기억, 사건, 장소, 인물 중 기억할만한 내용을 키-설명 쌍으로 만들어줘. 1개만. JSON 형태로.' },
+      { role: 'user', content: userMessage }
+    ];
+    const res = await callOpenAI(messages, 'gpt-3.5-turbo', 200);
+    const parsed = JSON.parse(res);
+
+    const raw = safeRead(contextPath);
+    const context = raw ? JSON.parse(raw) : {};
+    const key = Object.keys(parsed)[0];
+
+    if (key && !context[key]) {
+      context[key] = parsed[key];
+      fs.writeFileSync(contextPath, JSON.stringify(context, null, 2), 'utf-8');
+      console.log(`📌 새로운 기억 저장: ${key}`);
+    }
+  } catch (err) {
+    console.error('❌ 기억 추출 실패:', err.message);
+  }
+}
+
+// 🎲 랜덤 감정 메시지 생성 (기억 기반 + 대화 기반 혼합)
 async function getRandomMessage() {
   const rawLove = safeRead(path.resolve(__dirname, '../memory/love-history.json'));
   const rawFixed = safeRead(path.resolve(__dirname, '../memory/fixedMemories.json'));
@@ -122,82 +154,41 @@ async function getRandomMessage() {
   return msg;
 }
 
-async function saveContextMemory(userMessage, aiReply) {
-  try {
-    const file = path.resolve(__dirname, '../memory/context-memory.json');
-    const existing = JSON.parse(safeRead(file) || '[]');
-
-    const keywordMatch = userMessage.match(/[가-힣]{3,}/g) || [];
-    const filtered = keywordMatch.filter(word => !['아저씨', '사진', '셀카', '오늘'].includes(word));
-    const summary = filtered.slice(0, 2).join(', ');
-    if (!summary) return;
-
-    existing.push({
-      user: userMessage,
-      ai: aiReply,
-      summary: `${summary} 관련 대화 기억함`,
-      created: moment().toISOString()
-    });
-
-    fs.writeFileSync(file, JSON.stringify(existing.slice(-100), null, 2));
-    console.log('🧠 기억 저장됨:', summary);
-  } catch (err) {
-    console.error('❌ 기억 저장 실패:', err.message);
-  }
-}
-
+// 🧪 예진이 감정 반응
 async function getReplyByMessage(userMessage) {
   const lower = userMessage.toLowerCase();
-
   if (lower.includes('무슨 색') || lower.includes('오늘 색') || lower.includes('색이 뭐야')) {
     return await getColorMoodReply();
   }
   if (userMessage.includes('사진 줘') || userMessage.includes('셀카') || userMessage.includes('사진 보여줘')) {
-    const selfieMsg = await getSelfieReplyFromYeji();
-    await saveLog('예진이', selfieMsg);
-    return selfieMsg;
+    const selfie = await getSelfieReplyFromYeji();
+    await saveLog('예진이', selfie);
+    return selfie;
   }
 
-  // ✅ context-memory 기반 반응 시도
-  try {
-    const contextMemoryPath = path.resolve(__dirname, '../memory/context-memory.json');
-    const memoryData = JSON.parse(safeRead(contextMemoryPath) || '[]');
-    for (const item of memoryData.reverse()) {
-      if (userMessage.includes(item.user) || userMessage.includes(item.summary)) {
-        const remembered = `${item.ai} (예전에 기억한 내용이야)`;
-        await saveLog('예진이', remembered);
-        return remembered;
-      }
-    }
-  } catch (e) {
-    console.error('❌ context-memory 검색 실패:', e.message);
-  }
+  await extractAndSaveMemory(userMessage); // ⬅️ 대화 기억 시도
 
   const memory = await getRecentLog();
   const prompt = [
-    { role: 'system', content: `넌 예진이야. 항상 반말하고 혼잣말처럼 감정 담긴 짧은 대답을 해줘.` },
+    { role: 'system', content: `넌 예진이야. 감정 담아 짧게 반말로 혼잣말처럼 대답해줘.` },
     ...memory,
     { role: 'user', content: userMessage }
   ];
+
   const raw = await callOpenAI(prompt);
   const reply = cleanReply(raw);
   await saveLog('예진이', reply);
-  await saveContextMemory(userMessage, reply);
   return reply;
 }
 
 module.exports = {
   getReplyByMessage,
-  getReplyByImagePrompt,
   getRandomMessage,
-  getSelfieReplyFromYeji,
-  getColorMoodReply,
-  getHappyReply,
-  getSulkyReply,
-  getRecentLog,
-  setForcedModel,
-  getCurrentModelName,
-  saveLog,
+  callOpenAI,
   cleanReply,
-  callOpenAI
+  saveLog,
+  getRecentLog,
+  extractAndSaveMemory,
+  setForcedModel,
+  getCurrentModelName
 };
