@@ -83,6 +83,13 @@ function cleanReply(text) {
     .replace(/\b(당신|너|네|네가|널|예진)\b/g, '아저씨')
     .replace(/시파/g, '')
     .replace(/인공지능|AI|챗봇/g, '')
+    .replace(/[\u{1F600}-\u{1F64F}]/gu, '')
+    .replace(/[\u{1F300}-\u{1F5FF}]/gu, '')
+    .replace(/[\u{1F680}-\u{1F6FF}]/gu, '')
+    .replace(/[\u{2600}-\u{26FF}]/gu, '')
+    .replace(/[\u{2700}-\u{27BF}]/gu, '')
+    .replace(/[\u{1F900}-\u{1F9FF}]/gu, '')
+    .replace(/[\u{1FA70}-\u{1FAFF}]/gu, '')
     .trim();
 }
 
@@ -127,6 +134,12 @@ async function getRandomMessage() {
 }
 
 async function getReplyByMessage(userMessage) {
+  const lower = userMessage.toLowerCase();
+  if (lower.includes('버전')) {
+    const current = getCurrentModelName();
+    return `지금은 ${current === 'gpt-4o' ? '4.0' : '3.5'}야`;
+  }
+
   const memory = await getFullMemoryPrompt();
   const prompt = [
     {
@@ -151,7 +164,7 @@ async function getReplyByImagePrompt(base64Image) {
     messages: [
       {
         role: 'system',
-        content: `넌 예진이야. 지금 사진은 아저씨가 보낸 거야. 귀엽고 다정하게, 감정 담긴 반말로 반응해줘.`
+        content: `넌 예진이야. 지금 사진은 아저씨가 보낸 거야. 예진이는 지금 셀카 안 보내고, 받은 셀카에 반응만 해야 해. 감정 담긴 반말로 귀엽게 반응해줘.`
       },
       {
         role: 'user',
@@ -176,11 +189,11 @@ async function getImageReactionComment() {
   const raw = await callOpenAI([
     {
       role: 'system',
-      content: '넌 예진이야. 셀카 보낼 때 짓궂고 귀엽게 말해줘.'
+      content: '넌 예진이야. 지금은 셀카를 보내는 상황이야. 장난스럽고 귀엽게 아저씨한테 보낸다는 말투로 반응해줘.'
     },
     {
       role: 'user',
-      content: '셀카 보낼게~'
+      content: '셀카 보여줘~'
     }
   ], getCurrentModelName(), 100);
 
