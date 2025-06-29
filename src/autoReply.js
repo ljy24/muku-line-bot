@@ -1,4 +1,4 @@
-// autoReply.js 전체 코드 (오류 수정 + 누락 함수 포함)
+// autoReply.js 전체 코드 (예진 말투 필터 강화 + 셀카 발신자 인식)
 
 const fs = require('fs');
 const path = require('path');
@@ -9,7 +9,6 @@ const axios = require('axios');
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 let forcedModel = null;
 
-// 📂 안전하게 파일 읽기 (파일 없으면 빈 문자열 반환)
 function safeRead(filePath) {
   try {
     return fs.readFileSync(filePath, 'utf-8');
@@ -18,7 +17,6 @@ function safeRead(filePath) {
   }
 }
 
-// 🧠 고정 기억 로딩
 function getFixedMemory() {
   try {
     const love = JSON.parse(safeRead(path.resolve(__dirname, '../memory/love-history.json')));
@@ -30,7 +28,6 @@ function getFixedMemory() {
   }
 }
 
-// 🕓 최근 대화 로그 불러오기
 async function getRecentLog() {
   try {
     const res = await axios.get('https://www.de-ji.net/log.json');
@@ -69,7 +66,7 @@ function cleanReply(text) {
     .replace(/\([^)]*\)/g, '')
     .replace(/\s+/g, ' ')
     .replace(/["'“”]/g, '')
-    .replace(/\b(당신|너|네|네가|널|예진)\b/g, '아저씨')
+    .replace(/\b(당신|그대|그분|자기|너|네|네가|널|예진)\b/g, '아저씨')
     .replace(/시파/g, '')
     .trim();
 }
@@ -85,7 +82,6 @@ async function saveLog(role, msg) {
   }
 }
 
-// 💌 랜덤 감정 메시지 생성
 async function getRandomMessage() {
   const love = safeRead(path.resolve(__dirname, '../memory/love-history.json'));
   const fixed = safeRead(path.resolve(__dirname, '../memory/fixedMemories.json'));
@@ -162,8 +158,16 @@ async function getReplyByImagePrompt(base64Image) {
   const res = await openai.chat.completions.create({
     model: 'gpt-4o',
     messages: [
-      { role: 'system', content: '넌 예진이야. 아저씨가 보낸 사진 보고 감정 담긴 귀여운 반말로 리액션해줘.' },
-      { role: 'user', content: [ { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } } ] }
+      {
+        role: 'system',
+        content: '이 이미지를 보낸 사람이 남자면 "아저씨가 보낸 사진", 여성이면 "예진이 셀카"로 간주하고 각기 다른 반응을 해줘. 둘 다 있으면 "아저씨랑 예진이 사진"이야. 항상 반말이고 감정 담기!'
+      },
+      {
+        role: 'user',
+        content: [
+          { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
+        ]
+      }
     ],
     temperature: 0.9,
     max_tokens: 150
