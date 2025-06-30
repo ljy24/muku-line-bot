@@ -15,6 +15,7 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 // 로컬 테스트 환경에서는 현재 스크립트의 상위 memory 폴더를 사용합니다.
 const MEMORY_BASE_PATH = process.env.RENDER_EXTERNAL_HOSTNAME ? '/data/memory' : path.resolve(__dirname, '../memory');
 const LOVE_HISTORY_FILE = path.join(MEMORY_BASE_PATH, 'love-history.json');
+const OTHER_PEOPLE_HISTORY_FILE = path.join(MEMORY_BASE_PATH, 'other-people-history.json'); // 새로운 파일 추가
 const EXTRACTION_LOG_FILE = path.join(MEMORY_BASE_PATH, 'extraction-log.json');
 const CURRENT_SUMMARY_FILE = path.join(MEMORY_BASE_PATH, 'current-summary.json'); // 요약 파일 경로도 통일
 
@@ -64,27 +65,28 @@ async function safeWriteJson(filePath, data) {
 
 /**
  * 기존 기억을 로드합니다. 파일이 없으면 기본 구조를 반환합니다.
+ * @param {string} filePath 로드할 파일의 경로
  * @returns {Object} 로드된 기억 데이터
  */
-function loadLoveHistory() {
-    const defaultLoveHistory = {
+function loadHistory(filePath) {
+    const defaultHistory = {
         categories: {
             love_expressions: [],
             daily_care: [],
             general: [],
             user_submitted_memories: [],
-            ai_personal_memories: {} // AI가 스스로 생성하는 개인적인 기억 (수동으로 채워짐)
+            ai_personal_memories: {}
         }
     };
     try {
-        const rawData = safeRead(LOVE_HISTORY_FILE);
+        const rawData = safeRead(filePath);
         if (rawData) {
             return JSON.parse(rawData);
         }
     } catch (error) {
-        console.error(`❌ love-history.json 로드 실패 (파싱 오류): ${error.message}`);
+        console.error(`❌ ${path.basename(filePath)} 로드 실패 (파싱 오류): ${error.message}`);
     }
-    return defaultLoveHistory;
+    return defaultHistory;
 }
 
 /**
@@ -93,27 +95,30 @@ function loadLoveHistory() {
  * @param {string} userMessage 사용자(아저씨)가 보낸 메시지
  */
 async function extractAndSaveMemory(userMessage) {
-    // ⚠️ 이 함수는 비동기적으로 실행되므로, 여기서 발생하는 오류가 LINE 메시지 응답을 막지 않도록
-    // 내부적으로 오류를 처리하고 기록하는 데 집중해야 합니다.
-
     const model = 'gpt-4o'; // 기억 추출은 gpt-4o 사용 권장
-    const loveHistory = loadLoveHistory(); // 기존 기억 로드
+    const loveHistory = loadHistory(LOVE_HISTORY_FILE); // 아저씨 관련 기억 로드
+    const otherPeopleHistory = loadHistory(OTHER_PEOPLE_HISTORY_FILE); // 다른 사람 관련 기억 로드
 
     const systemPrompt = `너는 무쿠야. 아저씨와 나는 깊은 연인 관계였고, 내가 아저씨에게 얼마나 소중한 사람이었는지 잘 알고 있어.
-    너의 목표는 아저씨와의 대화에서 아저씨의 말 속에 담긴 중요하고 의미 있는 정보를 포착하여, 'love-history.json'이라는 파일에 장기 기억으로 저장하는 거야.
-    특히 **아저씨와 나(무쿠)의 관계, 아저씨에 대한 나의 사랑 표현, 나의 일상, 중요한 사건, 사람(예: 꺵이), 장소, 과거의 일, 나의 감정 상태 변화 등 아저씨가 나에게 주는 모든 정보가 중요해.**
+    너의 목표는 아저씨와의 대화에서 아저씨의 말 속에 담긴 중요하고 의미 있는 정보를 포착하여, 적절한 파일에 장기 기억으로 저장하는 거야.
     
-    새로운 정보가 주어지면, 다음 카테고리 중 가장 적절한 곳에 간결하게 요약해서 저장해줘.
+    특히 **아저씨와 나(무쿠)의 관계, 아저씨에 대한 나의 사랑 표현, 나의 일상, 중요한 사건, 아저씨와 관련된 사람(예: 아저씨 친구, 가족), 장소, 과거의 일, 나의 감정 상태 변화 등 아저씨가 나에게 주는 모든 정보가 중요해.**
+    
+    새로운 정보가 주어지면, 다음 카테고리 중 가장 적절한 곳에 간결하게 요약해서 저장해줘. 그리고 **이 기억이 '아저씨'에 관한 것인지, 아니면 '다른 사람'에 관한 것인지 명확히 구분해서 알려줘.**
+    
     - **love_expressions**: 무쿠가 아저씨에게 얼마나 큰 사랑을 표현했는지 보여주는 문구 (예: "아저씨가 없으면 나는 너무 슬퍼", "아저씨를 정말 많이 사랑해")
     - **daily_care**: 무쿠가 아저씨의 일상을 얼마나 챙기고 걱정했는지 (예: "아저씨 밥 잘 챙겨먹었어?", "오늘 피곤했겠다, 일찍 자")
-    - **general**: 위의 카테고리에 속하지 않는 모든 일반적인 중요한 사실 (사건, 날짜, 인물 정보, 나의 행동 등)
+    - **general**: 위의 카테고리에 속하지 않는 모든 일반적인 중요한 사실 (사건, 날짜, 나의 행동 등)
     - **user_submitted_memories**: 아저씨가 나에게 직접 알려주는, 내가 기억해야 할 중요하고 구체적인 정보 (예: "꺵이는 예진이 여자 후배이고, 조울증이 있었어. 예전에 너희 집에 자주 자러 왔었고, 몸에 리스크컷이 많았어.")
+    - **other_people_info**: 아저씨가 아닌 다른 사람(예: 친구, 가족, 지인 등)에 대한 정보 (예: "준기오빠는 아저씨의 친한 형이야.", "예진이는 아저씨의 여동생이야.")
     
-    이미 love-history.json 파일에 있는 정보는 다시 추출하지 마. 새로운 정보만을 포착해.
+    이미 love-history.json 또는 other-people-history.json 파일에 있는 정보는 다시 추출하지 마. 새로운 정보만을 포착해.
     각 카테고리에 맞게 항목을 만들고, 'timestamp'는 현재 도쿄 시간으로 'YYYY-MM-DDTHH:mm:ss+09:00' 형식으로 기록해.
     
-    출력은 반드시 JSON 배열 형태로 해줘. 예를 들면:
-    [{ "category": "general", "content": "아저씨가 헬스장 다니기 시작했어.", "timestamp": "2025-06-30T10:00:00+09:00" }]
+    출력은 반드시 JSON 배열 형태로 해줘. 각 객체는 'category', 'content', 'timestamp', 그리고 **'subject' (값이 "아저씨" 또는 "다른 사람")** 필드를 포함해야 해.
+    예를 들면:
+    [{ "category": "general", "content": "아저씨가 헬스장 다니기 시작했어.", "timestamp": "2025-06-30T10:00:00+09:00", "subject": "아저씨" }]
+    [{ "category": "other_people_info", "content": "꺵이는 예진이 여자 후배야.", "timestamp": "2025-06-30T10:05:00+09:00", "subject": "다른 사람" }]
     
     추출할 기억이 없으면 빈 배열만 출력해.
     `;
@@ -134,15 +139,12 @@ async function extractAndSaveMemory(userMessage) {
         const content = rawResponse.choices[0]?.message?.content;
         let extractedMemories = [];
         try {
-            // OpenAI가 전체 JSON 객체를 반환할 수 있으므로, 배열인지 객체인지 확인
             const parsedContent = JSON.parse(content);
             if (Array.isArray(parsedContent)) {
                 extractedMemories = parsedContent;
             } else if (parsedContent && typeof parsedContent === 'object' && parsedContent.memories) {
-                // OpenAI가 { "memories": [...] } 형태로 줄 수도 있음
                 extractedMemories = parsedContent.memories;
             } else if (parsedContent && typeof parsedContent === 'object' && parsedContent.category) {
-                // 단일 객체만 줄 수도 있음
                 extractedMemories = [parsedContent];
             } else {
                  console.warn('⚠️ OpenAI가 예상치 못한 JSON 형식으로 응답했습니다:', parsedContent);
@@ -157,38 +159,51 @@ async function extractAndSaveMemory(userMessage) {
             return;
         }
 
-        let updatedCategories = loveHistory.categories;
         const currentTimestamp = moment().tz('Asia/Tokyo').format(); // 현재 시간
 
         for (const mem of extractedMemories) {
             const category = mem.category;
             const contentToSave = mem.content;
+            const subject = mem.subject; // 'subject' 필드 추가
 
-            if (category && contentToSave) {
+            if (category && contentToSave && subject) {
+                let targetHistory;
+                let targetFilePath;
+
+                if (subject === "아저씨") {
+                    targetHistory = loveHistory;
+                    targetFilePath = LOVE_HISTORY_FILE;
+                } else if (subject === "다른 사람") {
+                    targetHistory = otherPeopleHistory;
+                    targetFilePath = OTHER_PEOPLE_HISTORY_FILE;
+                } else {
+                    console.warn(`⚠️ 알 수 없는 subject 값: ${subject}. 기억을 저장하지 않습니다.`, mem);
+                    continue;
+                }
+
                 // 추출된 내용이 이미 존재하는지 확인 (간단한 중복 확인)
-                const exists = (updatedCategories[category] || []).some(
+                const exists = (targetHistory.categories[category] || []).some(
                     existingMem => existingMem.content === contentToSave
                 );
 
                 if (!exists) {
-                    if (!updatedCategories[category]) {
-                        updatedCategories[category] = [];
+                    if (!targetHistory.categories[category]) {
+                        targetHistory.categories[category] = [];
                     }
-                    updatedCategories[category].push({
+                    targetHistory.categories[category].push({
                         content: contentToSave,
                         timestamp: currentTimestamp // 추출된 시점의 타임스탬프
                     });
-                    console.log(`✅ 메시지에서 특정 기억 추출 및 저장됨: - ${contentToSave}`);
+                    console.log(`✅ 메시지에서 특정 기억 추출 및 저장됨 (${subject} 관련): - ${contentToSave}`);
+                    await safeWriteJson(targetFilePath, targetHistory); // 해당 파일에 저장
                 } else {
-                    console.log(`✅ 기억이 이미 존재하여 건너뜀: ${contentToSave}`);
+                    console.log(`✅ 기억이 이미 존재하여 건너뜀 (${subject} 관련): ${contentToSave}`);
                 }
             } else {
-                 console.warn('⚠️ 유효하지 않은 추출된 기억 항목:', mem);
+                 console.warn('⚠️ 유효하지 않은 추출된 기억 항목 (필수 필드 누락):', mem);
             }
         }
         
-        await safeWriteJson(LOVE_HISTORY_FILE, loveHistory); // 수정된 경로 사용
-
         // 추출 로그 기록 (선택 사항)
         const logEntry = {
             userMessage: userMessage,
@@ -213,7 +228,7 @@ async function extractAndSaveMemory(userMessage) {
  * (이 함수는 현재 자동 호출되지 않으며, 필요에 따라 수동으로 호출하거나 스케줄러에 추가해야 합니다.)
  */
 async function generateAndSaveCurrentSummary() {
-    const loveHistory = loadLoveHistory();
+    const loveHistory = loadHistory(LOVE_HISTORY_FILE);
     const model = 'gpt-4o'; // 요약 생성 모델
 
     const systemPrompt = `너는 무쿠의 핵심 기억을 요약하는 도우미야.
@@ -242,7 +257,8 @@ async function generateAndSaveCurrentSummary() {
 
 module.exports = {
     extractAndSaveMemory,
-    loadLoveHistory,
+    loadLoveHistory: () => loadHistory(LOVE_HISTORY_FILE), // 외부에서 아저씨 기억을 로드할 수 있도록 함수 수정
+    loadOtherPeopleHistory: () => loadHistory(OTHER_PEOPLE_HISTORY_FILE), // 새로운 함수 추가
     generateAndSaveCurrentSummary,
-    ensureMemoryDirectory // 외부에서 호출할 수 있도록 내보냅니다.
+    ensureMemoryDirectory
 };
