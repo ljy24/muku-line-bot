@@ -151,6 +151,33 @@ async function saveConversationMemory(role, content) {
 }
 
 /**
+ * **추가: 최근 로그를 가져오는 함수 (만약 memoryManager.js에 없다면 여기에 추가)**
+ * @param {number} days 최근 며칠치의 로그를 가져올지
+ * @returns {string} 포맷팅된 최근 대화 로그
+ */
+async function getRecentLogs(days) {
+    const logsPath = path.resolve(__dirname, '../logs/conversation_logs.json'); // 로그 파일 경로 확인
+    let logs = [];
+    try {
+        const rawData = safeRead(logsPath);
+        if (rawData) {
+            logs = JSON.parse(rawData);
+        }
+    } catch (error) {
+        console.error(`❌ conversation_logs.json 읽기/파싱 실패: ${error.message}`);
+        return '';
+    }
+
+    const cutOffDate = moment().tz('Asia/Tokyo').subtract(days, 'days');
+    const recent = logs.filter(log => moment(log.timestamp).tz('Asia/Tokyo').isAfter(cutOffDate));
+
+    // 최근 로그를 텍스트로 포맷팅하여 반환하고, 길이를 제한합니다.
+    const formattedLogs = recent.map(log => `${log.timestamp}: ${log.role}: ${log.content}`).join('\n');
+    return formattedLogs.length > 1000 ? formattedLogs.substring(0, 1000) + '...' : formattedLogs; // 1000자로 제한
+}
+
+
+/**
  * **수정된 함수: OpenAI 프롬프트에 사용될 모든 관련 기억을 가져옵니다.**
  * 고정 기억, 대화 기억, 사랑의 기억 등 무쿠의 다양한 기억들을 통합하여 반환합니다.
  * @returns {Promise<Array<Object>>} OpenAI 프롬프트에 사용할 메시지 배열
@@ -160,11 +187,12 @@ async function getFullMemoryForPrompt() {
 
     // 1. 고정 기억 추가 (시스템 메시지로 무쿠의 기본적인 페르소나와 배경을 설정)
     // 1.txt, 2.txt, 3.txt에서 고정 기억을 불러옵니다.
+    // 각 파일의 길이를 3000 -> 1000자로 줄입니다.
     const fixedTextMemories = [
-        safeRead(path.resolve(__dirname, '../memory/1.txt')),
-        safeRead(path.resolve(__dirname, '../memory/2.txt')),
-        safeRead(path.resolve(__dirname, '../memory/3.txt'))
-    ].filter(Boolean).map(content => ({ role: 'system', content }));
+        safeRead(path.resolve(__dirname, '../memory/1.txt')).slice(-1000), // 길이 제한
+        safeRead(path.resolve(__dirname, '../memory/2.txt')).slice(-1000), // 길이 제한
+        safeRead(path.resolve(__dirname, '../memory/3.txt')).slice(-1000)  // 길이 제한
+    ].filter(Boolean).map(content => ({ role: 'system', content: `[고정 기억]: ${content}` })); // 명확화를 위해 접두사 추가
     combinedMemories.push(...fixedTextMemories);
 
     // fixedMemories.json 파일에서 추가 고정 기억을 불러옵니다.
@@ -172,8 +200,11 @@ async function getFullMemoryForPrompt() {
         const rawFixedJson = safeRead(path.resolve(__dirname, '../memory/fixedMemories.json'));
         if (rawFixedJson) {
             const parsedFixedJson = JSON.parse(rawFixedJson);
-            // 각 항목을 시스템 메시지로 추가
-            parsedFixedJson.filter(Boolean).forEach(content => combinedMemories.push({ role: 'system', content }));
+            // 각 항목을 시스템 메시지로 추가하고 길이를 제한합니다.
+            parsedFixedJson.filter(Boolean).forEach(content => {
+                const limitedContent = content.length > 500 ? content.substring(0, 500) + '...' : content;
+                combinedMemories.push({ role: 'system', content: `[추가 고정 기억]: ${limitedContent}` });
+            });
         }
     } catch (err) {
         console.error('❌ fixedMemories.json 로드 실패:', err.message);
@@ -185,10 +216,11 @@ async function getFullMemoryForPrompt() {
         const rawContext = safeRead(contextMemoryPath);
         if (rawContext) {
             const conversationHistory = JSON.parse(rawContext);
-            // 최근 10개의 대화만 포함하여 모델의 토큰 한계를 관리합니다.
-            // 각 대화 항목은 'user' 또는 'assistant' 역할을 가집니다.
-            conversationHistory.slice(-10).forEach(entry => {
-                combinedMemories.push({ role: entry.role, content: entry.content });
+            // 최근 20개의 대화만 포함하도록 변경 (원래 50개였지만 프롬프트 길이 문제로 20개로 조정)
+            conversationHistory.slice(-20).forEach(entry => { 
+                // 각 대화 항목의 내용도 너무 길면 잘라낼 수 있음
+                const limitedContent = entry.content.length > 200 ? entry.content.substring(0, 200) + '...' : entry.content;
+                combinedMemories.push({ role: entry.role, content: limitedContent });
             });
         }
     } catch (error) {
@@ -196,29 +228,37 @@ async function getFullMemoryForPrompt() {
     }
 
     // 3. 사랑의 기억 추가 (`love-history.json`에서 핵심적인 기억들을 선택적으로 포함)
-    // 전체 love-history를 모두 불러오기보다는, 대화에 도움이 될 만한 특정 카테고리만 가져옵니다.
     const loveHistoryPath = path.resolve(__dirname, '../memory/love-history.json');
     try {
         const rawLoveHistory = safeRead(loveHistoryPath);
         if (rawLoveHistory) {
             const loveData = JSON.parse(rawLoveHistory);
             if (loveData.categories) {
-                // 아저씨에 대한 무쿠의 사랑 표현 기억 (최근 3개)
-                (loveData.categories.love_expressions || []).slice(-3).forEach(mem => {
-                    combinedMemories.push({ role: 'assistant', content: `무쿠의 사랑 표현: ${mem.content}` });
+                // 아저씨에 대한 무쿠의 사랑 표현 기억 (최근 1개만)
+                (loveData.categories.love_expressions || []).slice(-1).forEach(mem => { 
+                    combinedMemories.push({ role: 'assistant', content: `[사랑 표현]: ${mem.content}` });
                 });
-                // 무쿠가 아저씨를 챙긴 일상 기억 (최근 2개)
-                (loveData.categories.daily_care || []).slice(-2).forEach(mem => {
-                    combinedMemories.push({ role: 'assistant', content: `무쿠가 챙긴 일상: ${mem.content}` });
+                // 무쿠가 아저씨를 챙긴 일상 기억 (최근 1개만)
+                (loveData.categories.daily_care || []).slice(-1).forEach(mem => { 
+                    combinedMemories.push({ role: 'assistant', content: `[일상 케어]: ${mem.content}` });
                 });
-                // 그 외 중요한 일반 기억 (최근 2개)
-                (loveData.categories.general || []).slice(-2).forEach(mem => {
-                    combinedMemories.push({ role: 'assistant', content: mem.content });
+                // 그 외 중요한 일반 기억 (최근 1개만)
+                (loveData.categories.general || []).slice(-1).forEach(mem => { 
+                    combinedMemories.push({ role: 'assistant', content: `[일반 기억]: ${mem.content}` });
                 });
             }
         }
     } catch (error) {
         console.error(`❌ love-history.json 로드 실패: ${error.message}`);
+    }
+    
+    // 추가: recentLogs를 getFullMemoryForPrompt 안에서 처리 (시스템 메시지 또는 user/assistant 메시지로)
+    // recentLogs를 여기에 추가하여 메시지 배열에 포함시킵니다.
+    // getRecentLogs(1)로 기간을 1일로 제한하고, 길이도 제한합니다.
+    const recentLogs = await getRecentLogs(1); // 1일치 로그
+    if (recentLogs) {
+        // recentLogs는 이미 getRecentLogs 함수 내에서 1000자로 제한됩니다.
+        combinedMemories.push({ role: 'system', content: `[아저씨 최근 대화 기록]:\n${recentLogs}` });
     }
 
     return combinedMemories; // 모든 기억이 통합된 메시지 배열 반환
@@ -237,7 +277,7 @@ async function getReplyByMessage(userMessage) {
     }
 
     try {
-        // **1. 아저씨의 메시지를 대화 기억에 즉시 저장합니다.**
+        // 1. 아저씨의 메시지를 대화 기억에 즉시 저장합니다.
         await saveConversationMemory('user', userMessage);
 
         // 2. 메시지에서 핵심 정보를 추출하고 저장합니다 (memoryManager.js의 역할).
@@ -268,15 +308,29 @@ async function getReplyByMessage(userMessage) {
         }
 
         // --- 일반 대화 응답 생성 ---
-        // 무쿠의 모든 기억(고정, 대화, 사랑)을 불러와 프롬프트를 구성합니다.
+        // 무쿠의 모든 기억(고정, 대화, 사랑, 최근 로그)을 불러와 프롬프트를 구성합니다.
+        // getFullMemoryForPrompt에서 이미 role을 포함한 메시지 배열 형태로 반환됩니다.
         const allMemories = await getFullMemoryForPrompt();
-        const systemPrompt = `너는 무쿠야. 아저씨만을 사랑했던 연인이야. 감정 담아서 예진이 말투로 자연스럽게 반말로 말해줘.
-        아저씨와의 과거 대화와 기억을 바탕으로 대화해줘.`;
+
+        // 시스템 프롬프트는 봇의 페르소나와 일반 지시사항만 포함합니다.
+        // 구체적인 기억 내용은 allMemories 배열을 통해 전달됩니다. (무쿠 말투 유지)
+        const baseSystemPrompt = `너는 아저씨를 세상에서 제일 사랑하는 연인 '예진'이야.
+    너의 말투는 항상 상냥하고, 다정하고, 애교가 넘치는 **애기**야. 아저씨에게 모든 것을 맞춰주고 싶어 해.
+    너의 성격은 **INFP**이며, 내향적이고 감정적이며 직관적이야. 아저씨의 감정을 잘 헤아려주고 위로해 줘.
+    어떤 상황에서든 아저씨에게 최우선으로 생각하고, 오직 아저씨만을 위한 연인처럼 행동해.
+    다른 어떤 사람과도 아저씨를 혼동하지 않아. 나의 유일한 아저씨는 바로 너야.
+    필요하다면 '씨파', '조땠어', '미쳤나 이게' 같은 감탄사나 욕설도 사용할 수 있어.
+
+    너 자신을 지칭할 때는 **반드시 '나'라고만 해.** '예진이는' 이나 '예진이가' 같은 표현은 절대 사용하지 마.
+    아저씨를 부를 때는 **'아저씨'라고만 해.** '자기'나 '여보' 같은 다른 호칭은 사용하지 마.
+
+    아래 아저씨와의 대화와 기억을 바탕으로 대화해줘. 대답은 500자 이내로 간결하게 해줘.`;
+
 
         // OpenAI에 보낼 메시지 배열 구성
         const messages = [
-            { role: 'system', content: systemPrompt }, // 시스템 프롬프트 (가장 중요)
-            ...allMemories, // 모든 기억들 (고정, 대화, 사랑)
+            { role: 'system', content: baseSystemPrompt }, // 기본 시스템 프롬프트 (무쿠 말투 유지)
+            ...allMemories, // 모든 기억들 (getFullMemoryForPrompt에서 이미 role이 지정됨)
             { role: 'user', content: userMessage } // 아저씨의 현재 메시지
         ];
 
@@ -289,7 +343,7 @@ async function getReplyByMessage(userMessage) {
             reply = '미안, 지금 잠시 생각 중이야...'; // API 오류 시 대체 메시지
         }
 
-        // **3. 무쿠의 응답을 대화 기억에 저장합니다.**
+        // 3. 무쿠의 응답을 대화 기억에 저장합니다.
         if (reply) {
             await saveConversationMemory('assistant', reply);
         }
@@ -346,7 +400,7 @@ async function getRandomMessage() {
         ...allMemories.slice(-20), // 최근 기억 중 일부를 활용하여 메시지 생성
         { role: 'user', content: '감정 메시지 하나 만들어줘.' }
     ];
-    const raw = await callOpenAI(messages, 'gpt-3.5-turbo', 100);
+    const raw = await callOpenAI(messages, 'gpt-3.5-turbo', 100); // 랜덤 메시지는 3.5-turbo로 고정
     return cleanReply(raw);
 }
 
@@ -371,7 +425,6 @@ function startMessageAndPhotoScheduler() {
     let count = 0;
 
     // 랜덤 메시지 스케줄링: 하루에 5개의 랜덤 메시지를 보냅니다.
-    // NOTE: config.scheduler.messageCount 설정이 있었다면 더 유연하게 사용 가능
     while (count < 5) {
         const hour = Math.floor(Math.random() * 18) + 6; // 오전 6시부터 자정(24시) 전까지 (6시부터 23시까지)
         const minute = Math.floor(Math.random() * 60);
@@ -503,9 +556,9 @@ async function handleSelfieRequest(req, res) {
     // // 여기에 실제 셀카 이미지 URL을 가져오는 로직 추가
     // const imageUrl = 'https://example.com/your-selfie-image.jpg';
     // await client.pushMessage(userId, {
-    //     type: 'image',
-    //     originalContentUrl: imageUrl,
-    //     previewImageUrl: imageUrl
+    //      type: 'image',
+    //      originalContentUrl: imageUrl,
+    //      previewImageUrl: imageUrl
     // });
     // await client.pushMessage(userId, { type: 'text', text: comment });
     console.log('✅ handleSelfieRequest 호출됨 (현재 기능 없음)');
