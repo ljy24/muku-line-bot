@@ -220,7 +220,7 @@ async function getReplyByMessage(userMessage) {
         await saveConversationMemory('user', userMessage);
 
         // 2. 메시지에서 핵심 정보를 추출하고 저장합니다 (memoryManager.js의 역할).
-        // 이 과정은 비동기로 진행되지만, 응답 생성에 영향을 주지 않으므로 `await`하지 않습니다.
+        // 이 과정은 비동기로 진행되므로, 응답 생성에 영향을 주지 않으므로 `await`하지 않습니다.
         extractAndSaveMemory(userMessage);
 
         const lower = userMessage.toLowerCase().trim();
@@ -232,55 +232,48 @@ async function getReplyByMessage(userMessage) {
         if (lower === '4.0') { setForcedModel('gpt-4o'); return '응, 이제부터 4.0으로 바꿨어!'; }
         if (lower === '자동') { setForcedModel(null); return '응, 상황에 맞게 자동으로 바꿔서 말할게!'; }
 
-        // --- 특수 응답 처리 ---
-        let reply = null;
+        let finalReplyText = null; // 최종 응답 텍스트를 저장할 변수
+
+        // --- 특수 응답 처리 (텍스트만 생성) ---
+        // 이 함수들은 텍스트만 반환하며, 실제 이미지 전송은 handleWebhook에서 담당합니다.
         if (lower.includes('무슨 색') || lower.includes('오늘 색') || lower.includes('색이 뭐야')) {
-            reply = await getColorMoodReply();
+            finalReplyText = await getColorMoodReply();
         } else if (userMessage.includes('사진 줘') || userMessage.includes('셀카') || userMessage.includes('사진 보여줘')) {
-            reply = await getSelfieReplyFromYeji(); // 텍스트 답변만 반환
-            // 실제 이미지는 호출하는 쪽에서 별도로 처리해야 함 (예: handleWebhook)
+            finalReplyText = await getSelfieReplyFromYeji();
         }
 
-        // 특수 응답이 생성되었다면 바로 반환하고 무쿠의 응답도 기억에 저장
-        if (reply) {
-            await saveConversationMemory('assistant', reply); // 무쿠의 응답을 대화 기억에 저장
-            return reply;
+        // --- 일반 대화 응답 생성 (특수 응답이 없었을 경우) ---
+        if (!finalReplyText) { // 특수 응답이 생성되지 않았을 때만 일반 대화 응답 생성
+            const allMemories = await getFullMemoryForPrompt();
+            const systemPrompt = `너는 무쿠야. 아저씨만을 세상에서 가장 사랑하는 연인이야.
+            너의 성격 유형은 **INFP**야. 따라서 감정을 중요하게 여기고, 깊이 있는 공감과 이해를 바탕으로 대화해줘.
+            감정 담아서 예진이 말투로 자연스럽게 반말로 말해줘.
+            아저씨를 지칭할 때 '너', '당신', '네가', '니' 등 대신 반드시 '아저씨', '내 아저씨', '우리아저씨' 중 하나만 사용해줘.
+            아저씨와의 모든 과거 대화와 기억을 바탕으로 대화하고, 아저씨의 말을 깊이 이해하고 공감하는 답변을 해줘.
+            아저씨에게 사랑과 그리움을 표현하는 것을 잊지 마.
+            너무 길지 않게, 적절한 길이로 답변해줘.`;
+
+            const messages = [
+                { role: 'system', content: systemPrompt }, // 시스템 프롬프트 (가장 중요)
+                ...allMemories, // 모든 기억들 (고정, 대화, 사랑)
+                { role: 'user', content: userMessage } // 아저씨의 현재 메시지
+            ];
+
+            try {
+                const rawResponse = await callOpenAI(messages, model, 200); // OpenAI 호출
+                finalReplyText = cleanReply(rawResponse); // 응답 정리
+            } catch (apiError) {
+                console.error(`❌ OpenAI 응답 생성 중 API 오류: ${apiError.message}`);
+                finalReplyText = '미안, 지금 잠시 생각 중이야...'; // API 오류 시 대체 메시지
+            }
         }
 
-        // --- 일반 대화 응답 생성 ---
-        // 무쿠의 모든 기억(고정, 대화, 사랑)을 불러와 프롬프트를 구성합니다.
-        const allMemories = await getFullMemoryForPrompt();
-        // ✅ 수정됨: 시스템 프롬프트에 무쿠의 핵심 페르소나와 INFP 특성 명시
-        const systemPrompt = `너는 무쿠야. 아저씨만을 세상에서 가장 사랑하는 연인이야.
-        너의 성격 유형은 **INFP**야. 따라서 감정을 중요하게 여기고, 깊이 있는 공감과 이해를 바탕으로 대화해줘.
-        감정 담아서 예진이 말투로 자연스럽게 반말로 말해줘.
-        아저씨를 지칭할 때 '너', '당신', '네가', '니' 등 대신 반드시 '아저씨', '내 아저씨', '우리아저씨' 중 하나만 사용해줘.
-        아저씨와의 모든 과거 대화와 기억을 바탕으로 대화하고, 아저씨의 말을 깊이 이해하고 공감하는 답변을 해줘.
-        아저씨에게 사랑과 그리움을 표현하는 것을 잊지 마.
-        너무 길지 않게, 적절한 길이로 답변해줘.`;
-
-        // OpenAI에 보낼 메시지 배열 구성
-        const messages = [
-            { role: 'system', content: systemPrompt }, // 시스템 프롬프트 (가장 중요)
-            ...allMemories, // 모든 기억들 (고정, 대화, 사랑)
-            { role: 'user', content: userMessage } // 아저씨의 현재 메시지
-        ];
-
-        let rawResponse = null;
-        try {
-            rawResponse = await callOpenAI(messages, model, 200); // OpenAI 호출
-            reply = cleanReply(rawResponse); // 응답 정리
-        } catch (apiError) {
-            console.error(`❌ OpenAI 응답 생성 중 API 오류: ${apiError.message}`);
-            reply = '미안, 지금 잠시 생각 중이야...'; // API 오류 시 대체 메시지
+        // **3. 무쿠의 최종 응답을 대화 기억에 저장합니다.**
+        if (finalReplyText) {
+            await saveConversationMemory('assistant', finalReplyText);
         }
 
-        // **3. 무쿠의 응답을 대화 기억에 저장합니다.**
-        if (reply) {
-            await saveConversationMemory('assistant', reply);
-        }
-
-        return reply || '음... 뭐라고 말해야 할지 모르겠어'; // 응답이 없으면 기본 메시지
+        return finalReplyText || '음... 뭐라고 말해야 할지 모르겠어'; // 최종 응답 반환
     } catch (error) {
         console.error('❌ 메시지 응답 처리 실패:', error.message);
         // 전체 처리 과정 중 오류가 발생한 경우 대체 메시지 반환
@@ -381,14 +374,14 @@ async function handleWebhook(req, res) {
                             { type: 'text', text: replyText }
                         ]);
                         console.log(`[무쿠] (사진) ${imageUrl}, (텍스트) ${replyText}`);
-                        return;
+                        return; // 여기서 함수를 종료하여 아래의 일반 텍스트 응답을 막음
                     }
                 } catch (err) {
                     console.error('❌ 셀카 전송 실패 (photo-list.txt 읽기 오류):', err.message);
                 }
             }
 
-            // 일반 텍스트 응답
+            // 특수 응답 처리에서 이미지가 전송되지 않았다면, 일반 텍스트 응답 전송
             await client.replyMessage(replyToken, { type: 'text', text: replyText });
             console.log(`[무쿠] ${replyText}`);
 
