@@ -1,4 +1,4 @@
-// autoReply.js - 무쿠 전체 기능 통합 모듈 (사진 요청 시 3.5/4.0 구분 + 모델 전환 + 기억 반영 + 자동 메시지 + 담타 + 오류 수정)
+// autoReply.js - 무쿠 전체 기능 통합 모듈 (사진 요청 시 3.5/4.0 구분 + 모델 전환 + 기억 반영 + 자동 메시지 + 담타)
 const OpenAI = require('openai');
 const line = require('@line/bot-sdk');
 const fs = require('fs').promises;
@@ -147,12 +147,12 @@ const getReplyByMessage = async (currentUserId, userMessage) => {
     if (lower === '자동') { setForcedModel(null); return '응, 상황에 맞게 자동으로 바꿔서 말할게!'; }
 
     if (userMessage.includes('사진 줘') || userMessage.includes('셀카')) {
-        const index = Math.floor(Math.random() * 1200) + 1;
-        const filename = `${index.toString().padStart(4, '0')}.jpg`;
+        const index = Math.floor(Math.random() * 1186) + 1;
+        const filename = `${index.toString().padStart(6, '0')}.jpg`;
         const imageUrl = `https://de-ji.net/yejin/${filename}`;
 
         const res = await openai.chat.completions.create({
-            model: 'gpt-4o',
+            model: 'gpt-3.5-turbo',
             messages: [
                 { role: 'system', content: '무쿠가 셀카 보낼 거야. 부끄럽고 다정하게 한마디 해줘.' },
                 { role: 'user', content: '아저씨한테 사진 보여줄게!' }
@@ -160,7 +160,7 @@ const getReplyByMessage = async (currentUserId, userMessage) => {
             max_tokens: 100
         });
 
-        const comment = res.choices?.[0]?.message?.content || '헤헤~ 아저씨 나 어때?';
+        const comment = res.choices[0]?.message?.content || '헤헤~ 아저씨 나 어때?';
 
         await client.pushMessage(currentUserId, {
             type: 'image',
@@ -179,10 +179,10 @@ const getReplyByMessage = async (currentUserId, userMessage) => {
             { role: 'system', content: prompt }
         ],
         max_tokens: 300,
-        temperature: 0.85
+        temperature: 0.8
     });
 
-    return completion.choices?.[0]?.message?.content || '아저씨~ 나 여기 있어~';
+    return completion.choices[0].message.content;
 };
 
 const getImageComment = async (messageId, currentUserId) => {
@@ -206,7 +206,7 @@ const getImageComment = async (messageId, currentUserId) => {
         max_tokens: 150
     });
 
-    return response.choices?.[0]?.message?.content || '헤헤 예쁘게 나왔지?';
+    return response.choices[0].message.content;
 };
 
 const startMessageAndPhotoScheduler = () => {
@@ -222,8 +222,8 @@ const startMessageAndPhotoScheduler = () => {
 
     getRandomCronTimes(5).forEach(cronExp => {
         cron.schedule(cronExp, async () => {
-            const index = Math.floor(Math.random() * 1200) + 1;
-            const filename = `${index.toString().padStart(4, '0')}.jpg`;
+            const index = Math.floor(Math.random() * 1186) + 1;
+            const filename = `${index.toString().padStart(6, '0')}.jpg`;
             const imageUrl = `https://de-ji.net/yejin/${filename}`;
 
             const res = await openai.chat.completions.create({
@@ -234,7 +234,7 @@ const startMessageAndPhotoScheduler = () => {
                 ],
                 max_tokens: 100
             });
-            const comment = res.choices?.[0]?.message?.content || '헤헤 아저씨 사진 하나 줄게~';
+            const comment = res.choices[0]?.message?.content || '헤헤 아저씨 사진 하나 줄게~';
 
             await client.pushMessage(userId, {
                 type: 'image',
