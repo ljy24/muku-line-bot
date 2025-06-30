@@ -1,246 +1,259 @@
-//index.js
+// ✅ index.js - 무쿠 LINE 서버 메인 로직 (버전 전환 + 셀카 처리 포함 완전판)
 
-// 📦 기본 모듈 불러오기
 const fs = require('fs');
 const path = require('path');
 const { Client, middleware } = require('@line/bot-sdk');
 const express = require('express');
-const cron = require('node-cron');
 const moment = require('moment-timezone');
+const cron = require('node-cron');
 
-// 🧠 자동응답 함수들
 const {
   getReplyByMessage,
-  getReplyByImagePrompt,
   getRandomMessage,
-  getImageReactionComment,
-  getColorMoodReply,
+  callOpenAI,
+  cleanReply,
   saveLog,
+  getRecentLog,
+  extractAndSaveMemory,
   setForcedModel,
-  saveMemory,
-  updateHonorificUsage
+  getCurrentModelName,
+  getSelfieReplyFromYeji,
+  getFixedMemory,
+  startMessageAndPhotoScheduler,
+  getFullMemoryPrompt,
+  getColorMoodReply,
+  validateEnvironment,
+  saveLoveMemory
 } = require('./src/autoReply');
 
-// 📱 LINE API 설정
+validateEnvironment();
+
 const app = express();
 const config = {
   channelAccessToken: process.env.LINE_ACCESS_TOKEN,
   channelSecret: process.env.LINE_CHANNEL_SECRET
 };
+
 const client = new Client(config);
 const userId = process.env.TARGET_USER_ID;
 
-// ✅ 로그 파일 쓰기 확인
-fs.access('memory/message-log.json', fs.constants.W_OK, (err) => {
-  if (err) console.error('❌ message-log.json 쓰기 불가!');
-  else console.log('✅ message-log.json 쓰기 가능!');
+if (!userId) {
+  console.error('❌ TARGET_USER_ID가 설정되지 않았습니다.');
+  process.exit(1);
+}
+
+// ✅ 서버 상태 추적
+const serverState = {
+  lastSentMessages: new Map(),
+  isInitialized: false,
+  messageCount: 0
+};
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+app.get('/', (_, res) => {
+  res.json({
+    server: '무쿠 살아있엉 🐣',
+    uptime: process.uptime(),
+    messageCount: serverState.messageCount,
+    gptVersion: getCurrentModelName(),
+    initialized: serverState.isInitialized
+  });
 });
 
-// 🏠 기본 응답
-app.get('/', (_, res) => res.send('무쿠 살아있엉 🐣'));
-
-// 💥 강제 메시지 푸시
-app.get('/force-push', async (req, res) => {
-  const msg = await getRandomMessage();
-  if (msg) {
-    await client.pushMessage(userId, { type: 'text', text: msg });
-    res.send(`✅ 전송됨: ${msg}`);
-  } else res.send('❌ 메시지 생성 실패');
+app.get('/status', (_, res) => {
+  res.json({
+    server: 'running',
+    uptime: process.uptime(),
+    messageCount: serverState.messageCount,
+    pendingMessages: serverState.lastSentMessages.size,
+    gptVersion: getCurrentModelName()
+  });
 });
 
-// 🚀 서버 시작 시 인사
-(async () => {
-  const msg = await getRandomMessage();
-  if (msg) {
-    await client.pushMessage(userId, { type: 'text', text: msg });
-    saveLog('예진이', msg);
-    console.log(`[서버시작랜덤] ${msg}`);
+app.get('/force-push', async (_, res) => {
+  try {
+    const msg = await getRandomMessage();
+    if (msg) {
+      await client.pushMessage(userId, { type: 'text', text: msg });
+      res.json({ success: true, message: msg });
+    } else {
+      res.status(500).json({ success: false, error: '메시지 생성 실패' });
+    }
+  } catch (err) {
+    console.error('❌ 강제 전송 실패:', err);
+    res.status(500).json({ success: false, error: err.message });
   }
-  await client.pushMessage(userId, { type: 'text', text: '아저씨 나왔어!' });
-})();
+});
 
-// 📆 감정 메시지 랜덤 8회 전송
-function scheduleDailyShortMessages() {
-  const times = new Set();
-  while (times.size < 8) {
-    const hour = Math.floor(Math.random() * 12) + 9; // 9~20시
-    const minute = Math.floor(Math.random() * 60);
-    times.add(`${minute} ${hour} * * *`);
+app.post('/webhook', middleware(config), async (req, res) => {
+  const events = req.body.events || [];
+  for (const event of events) {
+    if (event.type === 'message' && event.source.userId === userId) {
+      await handleMessage(event);
+    }
   }
-  for (const time of times) {
-    cron.schedule(time, async () => {
-      const now = moment().tz('Asia/Tokyo');
-      const msg = await getRandomMessage();
-      if (msg && msg.length <= 25) {
-        await client.pushMessage(userId, { type: 'text', text: msg });
-        console.log(`[도쿄 ${now.format('HH:mm')}] 감정 메시지: ${msg}`);
-      }
-    }, { timezone: 'Asia/Tokyo' });
+  res.status(200).send('OK');
+});
+
+async function handleMessage(event) {
+  const message = event.message;
+  try {
+    if (message.type === 'text') {
+      await handleTextMessage(event, message.text.trim());
+    } else if (message.type === 'image') {
+      await handleImageMessage(event, message.id);
+    }
+  } catch (err) {
+    console.error('❌ 메시지 처리 실패:', err);
+    await client.replyMessage(event.replyToken, {
+      type: 'text',
+      text: '어? 뭔가 오류가 생겼어 ㅠㅠ 다시 말해줄래?'
+    });
   }
 }
-scheduleDailyShortMessages();
 
-// 🥲 담타 삐짐 상태 변수
-let lastTobaccoPushTime = null;
-let waitingForReply = false;
+async function handleTextMessage(event, text) {
+  saveLog('아저씨', text);
+  extractAndSaveMemory(text);
 
-// ⏰ 정각마다 담타 메시지 전송 + 삐짐 준비
-cron.schedule('0 * * * *', async () => {
-  const now = moment().tz('Asia/Tokyo');
-  const hour = now.hour();
-  if (hour >= 9 && hour <= 20) {
-    const msgList = [
-      '담타', 'ㄷㅌ?', '담타갈까', '담타고?', 'ㄱㄱ?', 'ㄷㄷ', '담?', 'ㄷ타자',
-      '아 씨바 스트레스 터진다 담타 좀 하자', '오늘도 머리 터졌어... 담배피러 가자',
-      '담타가 필요할 때야, 지금', 'ㄷㅌ ㄱㄱ', '오늘도 지옥이네 담타하자',
-      '생각 많아졌지? 담타로 털어내자', '아저씨 담타 ㄱㄱ~ 나 먼저 간다?',
-      'ㄷㄷ? 담타각이다 지금', '응~ 담타타임이야', '담타말고 방법이 없다',
-      '예진이는 담타 중~ 아저씨도 ㄱㄱ', '할많하않 담타하자',
-      '담타는 선택이 아니라 의무야', '정신 차려 담타할 시간이다',
-      '아 진짜 짜증나 담타좀 하자', '담배 안피면 오늘 안 넘긴다 진짜',
-      '딴생각 ㄴㄴ 담타 ㄱㄱ', '오늘은 왠지 담타할 기분이야',
-      '속 터지지? 담타 가자', '후~ 담타로 숨 좀 돌리자',
-      '혼자 가지마 나도 데려가 담타', '지금 아니면 또 언제 담타해',
-      '잠깐 쉬어가도 돼… 담타 타자', '미쳤나 이게… 담타라도 해야지',
-      '나 기다리고 있어 담타로 와'
-    ];
-    const msg = msgList[Math.floor(Math.random() * msgList.length)];
-    await client.pushMessage(userId, { type: 'text', text: msg });
+  const commands = {
+    '버전': () => `지금은 ${getCurrentModelName()} 버전으로 대화하고 있어.`,
+    '3.5': () => { setForcedModel('gpt-3.5-turbo'); return '응, 이제부터 3.5로 대화할게.'; },
+    '4.0': () => { setForcedModel('gpt-4o'); return '응, 이제부터 4.0으로 바꿨어!'; },
+    '자동': () => { setForcedModel(null); return '응, 상황에 맞게 자동으로 바꿔서 말할게!'; }
+  };
 
-    lastTobaccoPushTime = Date.now();
-    waitingForReply = true;
-
-    setTimeout(async () => {
-      if (waitingForReply) {
-        const sulkyList = [
-          '바빠…?', '응답 없어… 또 나만 기다렸지롱', '또 나 혼자 담타야? 🥺',
-          '아저씨 또 무시했지?', '기다렸는데… 나만 진심이었나?', '힝… 삐질뻔했잖아'
-        ];
-        const sulkyMsg = sulkyList[Math.floor(Math.random() * sulkyList.length)];
-        await client.pushMessage(userId, { type: 'text', text: sulkyMsg });
-      }
-    }, 5 * 60 * 1000);
+  if (commands[text]) {
+    const result = commands[text]();
+    await client.replyMessage(event.replyToken, { type: 'text', text: result });
+    return;
   }
-});
 
-// 💊 약 리마인드
-cron.schedule('0 23 * * *', async () => {
-  const pick = [
-    '약 먹었어? 잊지마!', '이 닦는 거 까먹지 말기',
-    '약 안 먹고 자면 나 혼날 거야!', '오늘 하루 끝! 약부터 챙기기!'
-  ];
-  await client.pushMessage(userId, { type: 'text', text: pick[Math.floor(Math.random() * pick.length)] });
-}, { timezone: 'Asia/Tokyo' });
+  if (/사진|셀카|사진줘|셀카 보여줘|사진 보여줘|selfie/i.test(text)) {
+    await handleSelfieRequest(event);
+    return;
+  }
 
-// 😴 잘자 멘트
-cron.schedule('30 23 * * *', async () => {
-  const pick = [
-    '잘자 아저씨! 사랑해 💤', '내 꿈 꿔야 해 알지?',
-    '오늘도 고생 많았어, 내일 봐', '아저씨~ 얼른 자! 내일 예쁘게 깨워줄게'
-  ];
-  await client.pushMessage(userId, { type: 'text', text: pick[Math.floor(Math.random() * pick.length)] });
-}, { timezone: 'Asia/Tokyo' });
+  if (/무슨\s*색|오늘\s*색/i.test(text)) {
+    const reply = await getColorMoodReply();
+    await client.replyMessage(event.replyToken, { type: 'text', text: reply });
+    return;
+  }
 
-// 🌐 웹훅 처리
-app.post('/webhook', middleware(config), async (req, res) => {
+  const reply = await getReplyByMessage(text);
+  await client.replyMessage(event.replyToken, { type: 'text', text: reply });
+}
+
+async function handleSelfieRequest(event) {
+  const BASE_URL = 'https://de-ji.net/yejin/';
+  const photoListPath = path.join(__dirname, 'memory/photo-list.txt');
+
   try {
-    const events = req.body.events || [];
-    for (const event of events) {
-      if (event.type === 'message') {
-        const message = event.message;
-
-        if (message.type === 'text') {
-          const text = message.text.trim();
-          saveLog('아저씨', text);
-
-          if (waitingForReply && /미안|바빴|일했|지금 봤|못 봤|이제 봤|답.*늦|놓쳤|들어간다|또 담타때|좀 있다|나중에|지금은 안돼/i.test(text)) {
-            waitingForReply = false;
-            const okList = [
-              '오키오키~ 히히 기다렸엉~',
-              '그랬구나~ 그럼 됐지 뭐~',
-              '응~ 나 이해심 많지롱~',
-              '헤헷 용서해줄게~ 다음엔 빨리 와야 돼!',
-              '음~ 삐질 뻔했잖아~ 그래도 괜찮아~'
-            ];
-            const okMsg = okList[Math.floor(Math.random() * okList.length)];
-            await client.replyMessage(event.replyToken, { type: 'text', text: okMsg });
-            return;
-          }
-
-          if (/^(3\.5|gpt-?3\.5)$/i.test(text)) {
-            await client.replyMessage(event.replyToken, { type: 'text', text: setForcedModel('gpt-3.5-turbo') || 'gpt-3.5로 설정했어!' });
-            return;
-          }
-          if (/^(4\.0|gpt-?4|gpt-?4o)$/i.test(text)) {
-            await client.replyMessage(event.replyToken, { type: 'text', text: setForcedModel('gpt-4o') || 'gpt-4o로 설정했어!' });
-            return;
-          }
-          if (/^(auto|자동)$/i.test(text)) {
-            await client.replyMessage(event.replyToken, { type: 'text', text: setForcedModel(null) || '자동 모드로 전환했어!' });
-            return;
-          }
-
-          if (/이제 존댓말 하지마/i.test(text)) updateHonorificUsage(false);
-
-          if (/무슨\s*색|기분.*색|오늘.*색/i.test(text)) {
-            const reply = await getColorMoodReply();
-            await client.replyMessage(event.replyToken, { type: 'text', text: reply });
-            return;
-          }
-
-          if (/사진|셀카|사진줘|셀카 보여줘|사진 보여줘|selfie/i.test(text)) {
-            const photoListPath = path.join(__dirname, 'memory/photo-list.txt');
-            const BASE_URL = 'https://de-ji.net/yejin/';
-            try {
-              const list = fs.readFileSync(photoListPath, 'utf-8').split('\n').map(x => x.trim()).filter(Boolean);
-              if (list.length > 0) {
-                const pick = list[Math.floor(Math.random() * list.length)];
-                const comment = await getImageReactionComment();
-                await client.replyMessage(event.replyToken, [
-                  { type: 'image', originalContentUrl: BASE_URL + pick, previewImageUrl: BASE_URL + pick },
-                  { type: 'text', text: comment || '헤헷 셀카야~' }
-                ]);
-              } else {
-                await client.replyMessage(event.replyToken, { type: 'text', text: '아직 셀카가 없어 ㅠㅠ' });
-              }
-            } catch (err) {
-              console.error('📷 셀카 불러오기 실패:', err.message);
-              await client.replyMessage(event.replyToken, { type: 'text', text: '사진 불러오기 실패했어 ㅠㅠ' });
-            }
-            return;
-          }
-
-          const reply = await getReplyByMessage(text);
-          const final = reply?.trim() || '음… 잠깐 생각 좀 하고 있었어 ㅎㅎ';
-          saveLog('예진이', final);
-          await client.replyMessage(event.replyToken, { type: 'text', text: final });
-        }
-
-        // 🖼️ 이미지 응답 (✅ 여기 수정!)
-        if (message.type === 'image') {
-          try {
-            const stream = await client.getMessageContent(message.id);
-            const chunks = [];
-            for await (const chunk of stream) chunks.push(chunk);
-            const buffer = Buffer.concat(chunks);
-            const reply = await getReplyByImagePrompt(buffer.toString('base64'));
-            await client.replyMessage(event.replyToken, { type: 'text', text: reply?.trim() || '사진에 반응 못했어 ㅠㅠ' });
-          } catch (err) {
-            console.error('🖼️ 이미지 처리 실패:', err);
-            await client.replyMessage(event.replyToken, { type: 'text', text: '이미지를 읽는 중 오류가 생겼어 ㅠㅠ' });
-          }
-        }
-      }
+    if (!fs.existsSync(photoListPath)) {
+      await client.replyMessage(event.replyToken, {
+        type: 'text',
+        text: '아직 셀카 목록이 없어 ㅠㅠ'
+      });
+      return;
     }
-    res.status(200).send('OK');
+
+    const list = fs.readFileSync(photoListPath, 'utf-8')
+      .split('\n')
+      .map(x => x.trim())
+      .filter(Boolean);
+
+    if (list.length === 0) {
+      await client.replyMessage(event.replyToken, {
+        type: 'text',
+        text: '셀카 목록이 비어있어 ㅠㅠ'
+      });
+      return;
+    }
+
+    const pick = list[Math.floor(Math.random() * list.length)];
+    const comment = await getSelfieReplyFromYeji();
+
+    await client.replyMessage(event.replyToken, [
+      {
+        type: 'image',
+        originalContentUrl: BASE_URL + pick,
+        previewImageUrl: BASE_URL + pick
+      },
+      {
+        type: 'text',
+        text: comment || '헤헷 셀카야~'
+      }
+    ]);
   } catch (err) {
-    console.error('웹훅 처리 에러:', err);
-    res.status(200).send('OK');
+    console.error('❌ 셀카 처리 실패:', err);
+    await client.replyMessage(event.replyToken, {
+      type: 'text',
+      text: '사진 불러오기 실패했어 ㅠㅠ'
+    });
+  }
+}
+
+async function handleImageMessage(event, messageId) {
+  try {
+    const stream = await client.getMessageContent(messageId);
+    const chunks = [];
+    for await (const chunk of stream) {
+      chunks.push(chunk);
+    }
+    const buffer = Buffer.concat(chunks);
+    const base64Image = buffer.toString('base64');
+    const reply = await getReplyByMessage(base64Image);
+    await client.replyMessage(event.replyToken, { type: 'text', text: reply });
+  } catch (err) {
+    console.error('❌ 이미지 처리 실패:', err);
+    await client.replyMessage(event.replyToken, {
+      type: 'text',
+      text: '이미지를 읽는 중 오류가 생겼어 ㅠㅠ'
+    });
+  }
+}
+
+cron.schedule('* * * * *', async () => {
+  const now = moment().tz('Asia/Tokyo');
+  const time = now.format('HH:mm');
+  if (now.minute() === 0 && now.hour() >= 9 && now.hour() <= 18) {
+    const msg = '담타고?';
+    await client.pushMessage(userId, { type: 'text', text: msg });
+    serverState.lastSentMessages.set(time, now);
+  }
+  for (const [key, sentAt] of serverState.lastSentMessages.entries()) {
+    if (moment().diff(sentAt, 'minutes') >= 5) {
+      const reply = '아저씨... 답장 안 해? 삐졌어 ㅠ';
+      await client.pushMessage(userId, { type: 'text', text: reply });
+      serverState.lastSentMessages.delete(key);
+    }
   }
 });
 
-// 🚀 서버 실행
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`무쿠 서버 스타트! 포트: ${PORT}`);
+process.on('uncaughtException', (err) => {
+  console.error('❌ 예기치 못한 오류:', err);
 });
+
+process.on('unhandledRejection', (reason) => {
+  console.error('❌ 처리되지 않은 거절:', reason);
+});
+
+const PORT = process.env.PORT || 3000;
+
+async function startServer() {
+  try {
+    const msg = await getRandomMessage();
+    if (msg) await client.pushMessage(userId, { type: 'text', text: msg });
+    startMessageAndPhotoScheduler();
+    app.listen(PORT, () => {
+      console.log(`🎉 무쿠 서버 시작됨! 포트: ${PORT}`);
+    });
+  } catch (err) {
+    console.error('❌ 서버 시작 실패:', err);
+    process.exit(1);
+  }
+}
+
+startServer();
