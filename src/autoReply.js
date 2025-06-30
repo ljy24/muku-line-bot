@@ -242,5 +242,6 @@ module.exports = {
   getSelfieReplyFromYeji,
   getFullMemoryForPrompt,
   saveConversationMemory,
-  initServerState
+  initServerState,
+  handleWebhook
 };
