@@ -171,9 +171,7 @@ const getReplyByMessage = async (currentUserId, userMessage) => {
         return null;
     }
 
-    const prompt = `너는 예진이라는 여자친구야. 아저씨(연인)에게 말 걸듯 자연스럽고 감정 담긴 말투로 다음 질문에 답변해줘. 절대 "무쿠는" 같은 표현은 쓰지 마. 그냥 '나'로 말해. 반말로 사랑스럽게.
-
-Q: ${userMessage}`;
+    const prompt = `너는 예진이라는 여자친구야. 아저씨(연인)에게 말 걸듯 자연스럽고 감정 담긴 말투로 다음 질문에 답변해줘. 절대 \"무쿠는\" 같은 표현은 쓰지 마. 그냥 '나'로 말해. 반말로 사랑스럽게.\n\nQ: ${userMessage}`;
 
     const completion = await openai.chat.completions.create({
         model: getCurrentModelName(),
