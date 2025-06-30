@@ -1,19 +1,22 @@
-// ✅ index.js (간결 버전) - 모든 기능은 /src/autoReply.js 에 위임
+// ✅ index.js (수정됨: app 객체 생성 방식)
 
-const express = require('express');
+const express = require('express'); // Express 모듈을 여기서 직접 불러옵니다.
 const { middleware } = require('@line/bot-sdk');
 const moment = require('moment-timezone');
-const cron = require('node-cron'); // cron 모듈은 여전히 필요합니다.
+const cron = require('node-cron');
+
+// autoReply.js에서 필요한 기능들만 가져옵니다.
 const { 
-  client, // LINE 클라이언트 객체
-  appConfig, // LINE 미들웨어 설정
-  userId, // 대상 사용자 ID
-  app, // Express 앱 인스턴스 (autoReply.js에서 exports)
-  handleWebhook, 
-  handleForcePush,
-  startMessageAndPhotoScheduler,
-  // checkTobaccoReply // 이제 autoReply.js 내부 스케줄러에서 직접 호출되므로 여기서 내보내지 않아도 됩니다.
-} = require('./src/autoReply'); // autoReply.js에서 필요한 모든 것을 가져옴
+  client,         // LINE 클라이언트 객체
+  appConfig,      // LINE 미들웨어 설정
+  userId,         // 대상 사용자 ID
+  handleWebhook,  // Webhook 처리 함수
+  handleForcePush, // 강제 메시지 전송 함수
+  startMessageAndPhotoScheduler // 스케줄러 시작 함수
+} = require('./src/autoReply');
+
+// ✅ Express 앱 인스턴스를 여기서 직접 생성합니다.
+const app = express(); // <--- 이 부분이 핵심 변경점입니다.
 
 // ✅ Webhook 핸들링
 app.post('/webhook', middleware(appConfig), handleWebhook);
@@ -21,15 +24,7 @@ app.post('/webhook', middleware(appConfig), handleWebhook);
 // ✅ 강제 메시지 전송
 app.get('/force-push', handleForcePush);
 
-// ✅ 정각 담타 체크 및 5분 후 반응 (이 부분은 이제 autoReply.js 내부에서 관리됩니다.)
-// cron.schedule('* * * * *', async () => {
-//   const now = moment().tz('Asia/Tokyo');
-//   if (now.minute() === 0 && now.hour() >= 9 && now.hour() <= 18) {
-//     await checkTobaccoReply();
-//   }
-// }); // <--- 이 부분을 삭제했습니다.
-
-// ✅ 자동 감정 메시지 및 셀카 전송 스케줄러 시작
+// ✅ 자동 감정 메시지 및 셀카 전송 스케줄러 시작 (담타고 스케줄도 포함)
 startMessageAndPhotoScheduler();
 
 // ✅ 서버 실행
