@@ -19,7 +19,7 @@ const {
   getCurrentModelName,
   getSelfieReplyFromYeji,
   getFixedMemory,
-  startMessageAndPhotoScheduler,
+  startMessageAndPhotoScheduler, // ✅ 빠졌던 이 줄 꼭 추가!
   getFullMemoryPrompt,
   getColorMoodReply,
   validateEnvironment,
