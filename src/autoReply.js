@@ -64,6 +64,11 @@ async function logMessage(message) {
     const logEntry = `${timestamp} - ${message}\n`;
 
     try {
+        // 파일에 추가하기 전에 디렉토리가 존재하는지 확인하고 없으면 생성 (재확인)
+        const logDir = path.dirname(logFilePath);
+        if (!fs.existsSync(logDir)) {
+            await fs.promises.mkdir(logDir, { recursive: true });
+        }
         await fs.promises.appendFile(logFilePath, logEntry, 'utf8');
     } catch (err) {
         console.error(`❌ 로그 파일 쓰기 실패: ${err.message}`);
@@ -557,13 +562,29 @@ function startMessageAndPhotoScheduler() {
  * **새로운 함수: 서버 초기화 로직입니다.**
  * `index.js`에서 호출될 때 서버에 필요한 초기 설정을 수행합니다.
  */
-function initServerState() {
+async function initServerState() { // ✨ async 키워드 추가
     console.log('🚀 서버 상태 초기화 시작...');
-    logMessage('🚀 서버 상태 초기화 시작...');
-    // 여기에 필요한 초기화 로직을 추가할 수 있습니다.
+    await logMessage('🚀 서버 상태 초기화 시작...'); // 여기서도 로그가 필요하니 await
+    
+    // logs 디렉토리 경로 설정
+    const logDir = path.resolve(__dirname, '../logs');
+
+    try {
+        // logs 디렉토리가 존재하는지 확인하고, 없으면 생성합니다.
+        // recursive: true 옵션은 상위 디렉토리도 함께 생성하도록 합니다.
+        await fs.promises.mkdir(logDir, { recursive: true });
+        console.log(`✅ 로그 디렉토리 생성 또는 확인 완료: ${logDir}`);
+        await logMessage(`✅ 로그 디렉토리 생성 또는 확인 완료: ${logDir}`);
+    } catch (err) {
+        console.error(`❌ 로그 디렉토리 생성 실패: ${err.message}`);
+        // 이 단계에서 로그 파일 쓰기 실패할 수 있으므로, console.error만 남겨둠
+        // logMessage는 여기서 호출하지 않습니다.
+    }
+
+    // 여기에 필요한 다른 초기화 로직을 추가할 수 있습니다.
     // 예: DB 연결, 초기 데이터 로드 등
     console.log('✅ 서버 상태 초기화 완료.');
-    logMessage('✅ 서버 상태 초기화 완료.');
+    await logMessage('✅ 서버 상태 초기화 완료.'); // 여기서도 로그가 필요하니 await
 }
 
 /**
