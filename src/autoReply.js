@@ -157,6 +157,37 @@ async function sendSelfieWithComment() {
   }
 }
 
+// ✅ handleWebhook - LINE 메시지 수신 및 응답 핸들러
+async function handleWebhook(req, res) {
+  const events = req.body.events || [];
+
+  for (const event of events) {
+    if (event.type === 'message' && event.message.type === 'text') {
+      const userMessage = event.message.text;
+      console.log(`📥 아저씨 메시지 수신: ${userMessage}`);
+
+      try {
+        const reply = await getReplyByMessage(userMessage);
+        if (reply) {
+          await client.replyMessage(event.replyToken, {
+            type: 'text',
+            text: reply
+          });
+          console.log(`📤 무쿠 응답 전송: ${reply}`);
+        }
+      } catch (err) {
+        console.error('❌ 응답 실패:', err.message);
+        await client.replyMessage(event.replyToken, {
+          type: 'text',
+          text: '미안... 지금 좀 버벅거리고 있어...'
+        });
+      }
+    }
+  }
+
+  res.status(200).send('OK');
+}
+
 // ✅ 랜덤 감정 메시지 생성 (이 블록은 절대 빠지면 안 됨!)
 async function getRandomMessage() {
   const rawLove = safeRead(path.resolve(__dirname, '../memory/love-history.json'));
