@@ -8,6 +8,7 @@ const cron = require('node-cron');
 const express = require('express');
 require('dotenv').config();
 
+// 📦 LINE과 OpenAI 설정
 const appConfig = {
     channelAccessToken: process.env.LINE_ACCESS_TOKEN,
     channelSecret: process.env.LINE_CHANNEL_SECRET,
@@ -17,7 +18,7 @@ const userId = process.env.TARGET_USER_ID;
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const app = express();
 
-// 🧠 기억 파일 불러오기 (최근 기억 + 고정 기억)
+// 🧠 기억 파일 경로 및 상태 파일
 const memory1 = fs.readFile(path.resolve(__dirname, '../memory/1.txt'), 'utf8');
 const memory2 = fs.readFile(path.resolve(__dirname, '../memory/2.txt'), 'utf8');
 const memory3 = fs.readFile(path.resolve(__dirname, '../memory/3.txt'), 'utf8');
@@ -25,13 +26,16 @@ const fixedMemory = fs.readFile(path.resolve(__dirname, '../memory/fixedMemories
 const statePath = path.resolve(__dirname, '../memory/state.json');
 const logPath = path.resolve(__dirname, '../memory/message-log.json');
 
+// 📂 대화 맥락 저장 위치
 const CONTEXT_MEMORY_FILE = path.join('/data/memory', 'context-memory.json');
 const LOG_FILE = path.join('/data/memory', 'bot_log.txt');
 
+// 🤖 GPT 모델 강제 설정 관련 변수
 let forcedModel = null;
 const setForcedModel = (name) => { forcedModel = name; };
 const getCurrentModelName = () => forcedModel || 'gpt-4o';
 
+// 📚 기억 관련 유틸 함수 로딩
 const {
     extractAndSaveMemory,
     loadLoveHistory,
@@ -39,6 +43,7 @@ const {
     ensureMemoryDirectory
 } = require('./memoryManager');
 
+// 📌 로그 기록 함수
 async function logMessage(message) {
     try {
         const dir = path.dirname(LOG_FILE);
@@ -51,6 +56,7 @@ async function logMessage(message) {
     }
 }
 
+// 안전한 파일 읽기
 async function safeRead(filePath) {
     try {
         await fs.access(filePath);
@@ -61,6 +67,7 @@ async function safeRead(filePath) {
     }
 }
 
+// 안전한 JSON 저장
 async function safeWriteJson(filePath, data) {
     try {
         const dir = path.dirname(filePath);
@@ -73,6 +80,7 @@ async function safeWriteJson(filePath, data) {
     }
 }
 
+// 대화 맥락 로딩/저장
 async function loadContextMemory() {
     try {
         const rawData = await safeRead(CONTEXT_MEMORY_FILE);
@@ -88,6 +96,7 @@ async function saveContextMemory(context) {
     await logMessage(`✅ 대화 기억 저장됨 (경로: ${CONTEXT_MEMORY_FILE})`);
 }
 
+// 🌐 웹훅 처리
 const handleWebhook = async (req, res) => {
     const events = req.body.events;
     await logMessage('--- 웹훅 이벤트 수신 ---');
@@ -104,6 +113,7 @@ const handleWebhook = async (req, res) => {
     }
 };
 
+// 📩 메시지 이벤트 처리
 const handleMessageEvent = async (event) => {
     const currentUserId = event.source.userId;
     let userMessageContent = event.message.text || `[${event.message.type} 메시지]`;
@@ -139,6 +149,7 @@ const handleMessageEvent = async (event) => {
     }
 };
 
+// 💬 아저씨 메시지 응답 처리
 const getReplyByMessage = async (currentUserId, userMessage) => {
     const lower = userMessage.toLowerCase().trim();
     if (lower === '버전') return `지금은 ${getCurrentModelName()} 버전으로 대화하고 있어.`;
@@ -146,6 +157,7 @@ const getReplyByMessage = async (currentUserId, userMessage) => {
     if (lower === '4.0') { setForcedModel('gpt-4o'); return '응, 이제부터 4.0으로 바꿨어!'; }
     if (lower === '자동') { setForcedModel(null); return '응, 상황에 맞게 자동으로 바꿔서 말할게!'; }
 
+    // 📷 셀카 요청 처리
     if (userMessage.includes('사진 줘') || userMessage.includes('셀카')) {
         const index = Math.floor(Math.random() * 1186) + 1;
         const filename = `${index.toString().padStart(6, '0')}.jpg`;
@@ -171,6 +183,7 @@ const getReplyByMessage = async (currentUserId, userMessage) => {
         return null;
     }
 
+    // 🧠 일반 질문 응답
     const prompt = `너는 예진이라는 여자친구야. 아저씨(연인)에게 말 걸듯 자연스럽고 감정 담긴 말투로 다음 질문에 답변해줘. 절대 \"무쿠는\" 같은 표현은 쓰지 마. 그냥 '나'로 말해. 반말로 사랑스럽게.\n\nQ: ${userMessage}`;
 
     const completion = await openai.chat.completions.create({
@@ -185,12 +198,14 @@ const getReplyByMessage = async (currentUserId, userMessage) => {
     return completion.choices[0].message.content;
 };
 
+// 🖼️ 이미지 리액션 처리 (GPT 분석)
 const getImageComment = async (messageId, currentUserId) => {
     const content = await client.getMessageContent(messageId);
     const chunks = [];
     for await (const chunk of content) chunks.push(chunk);
     const imageBuffer = Buffer.concat(chunks);
     const base64Image = imageBuffer.toString('base64');
+    const dataUri = `data:image/jpeg;base64,${base64Image}`;
 
     const response = await openai.chat.completions.create({
         model: 'gpt-4o',
@@ -198,8 +213,8 @@ const getImageComment = async (messageId, currentUserId) => {
             {
                 role: 'user',
                 content: [
-                    { type: 'text', text: '이 사진 무쿠답게 코멘트 해줘!' },
-                    { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
+                    { type: 'text', text: '이 사진 무쿠답게 예진이 말투로 코멘트 해줘! 감정 담아서!' },
+                    { type: 'image_url', image_url: { url: dataUri } }
                 ]
             }
         ],
@@ -209,6 +224,7 @@ const getImageComment = async (messageId, currentUserId) => {
     return response.choices[0].message.content;
 };
 
+// ⏰ 자동 메시지 + 셀카 + 담타 스케줄링
 const startMessageAndPhotoScheduler = () => {
     const getRandomCronTimes = (count = 5) => {
         const times = new Set();
@@ -220,7 +236,8 @@ const startMessageAndPhotoScheduler = () => {
         return Array.from(times);
     };
 
-    getRandomCronTimes(5).forEach(cronExp => {
+    // 하루 5회 랜덤 셀카 전송
+    getRandomCronTimes(4).forEach(cronExp => {
         cron.schedule(cronExp, async () => {
             const index = Math.floor(Math.random() * 1186) + 1;
             const filename = `${index.toString().padStart(6, '0')}.jpg`;
@@ -245,15 +262,18 @@ const startMessageAndPhotoScheduler = () => {
         }, { timezone: 'Asia/Tokyo' });
     });
 
+    // 담타 메시지: 매 정각
     cron.schedule('0 * * * *', async () => {
         await client.pushMessage(userId, { type: 'text', text: '아저씨~ 담타 가자!' });
     }, { timezone: 'Asia/Tokyo' });
 };
 
+// 🔍 담타 체크 로깅용
 const checkTobaccoReply = async () => {
     console.log(`⏰ 담타 체크 시간: ${moment().tz('Asia/Tokyo').format('YYYY-MM-DD HH:mm:ss')}`);
 };
 
+// 🌐 외부에서 테스트 메시지 푸시할 수 있게 함
 const handleForcePush = async (req, res) => {
     const message = req.query.message || '무쿠 테스트 메시지입니다!';
     try {
@@ -264,6 +284,7 @@ const handleForcePush = async (req, res) => {
     }
 };
 
+// 📤 모듈 외부 공개
 module.exports = {
     client,
     appConfig,
