@@ -1,42 +1,148 @@
-// ✅ index.js (최종 버전) - 모든 기능은 /src/autoReply.js 에 위임
+// ✅ index.js (예진이 말투 감정 강화 + 셀카 구분 반응 적용 + 하루 랜덤 감정 메시지 스케줄러 연결)
 
-const { middleware } = require('@line/bot-sdk'); // LINE 미들웨어만 가져옵니다.
+const fs = require('fs');
+const path = require('path');
+const { Client, middleware } = require('@line/bot-sdk');
+const express = require('express');
+const moment = require('moment-timezone');
 
-// autoReply.js에서 필요한 모든 함수와 객체를 구조 분해 할당으로 가져옵니다.
-// 이 목록은 autoReply.js의 module.exports와 일치해야 합니다.
 const {
-  app, // Express 앱 인스턴스
-  appConfig, // LINE 미들웨어 설정
-  initServerState, // 서버 초기화 함수
-  handleWebhook, // 웹훅 요청 처리 함수
-  handleForcePush, // 강제 메시지 푸시 함수
-  startMessageAndPhotoScheduler, // 랜덤 메시지 및 담타고 스케줄러 시작 함수
-} = require('./src/autoReply'); // autoReply.js가 src 디렉토리에 있으므로 경로를 명확히 합니다.
+  getReplyByMessage,
+  getReplyByImagePrompt,
+  getRandomMessage,
+  getSelfieReplyFromYeji,
+  getColorMoodReply,
+  getHappyReply,
+  getSulkyReply,
+  saveLog,
+  setForcedModel,
+  saveMemory,
+  updateHonorificUsage
+} = require('./src/autoReply');
 
-// --- Express 앱 설정 및 라우트 ---
+const app = express();
+const config = {
+  channelAccessToken: process.env.LINE_ACCESS_TOKEN,
+  channelSecret: process.env.LINE_CHANNEL_SECRET
+};
+const client = new Client(config);
+const userId = process.env.TARGET_USER_ID;
 
-// ✅ 서버 초기화 함수 호출
-// 서버가 시작될 때 한 번 실행되어야 하는 초기화 로직입니다.
-initServerState();
+app.get('/', (_, res) => res.send('무쿠 살아있엉 🐣'));
 
-// ✅ Webhook 핸들링 라우트
-// LINE 플랫폼으로부터 오는 모든 이벤트를 처리합니다.
-app.post('/webhook', middleware(appConfig), handleWebhook);
+// 💬 수동 전송 확인용
+app.get('/force-push', async (req, res) => {
+  const msg = await getRandomMessage();
+  if (msg) {
+    await client.pushMessage(userId, { type: 'text', text: msg });
+    res.send(`✅ 전송됨: ${msg}`);
+  } else res.send('❌ 메시지 생성 실패');
+});
 
-// ✅ 강제 메시지 전송 라우트 (GET 요청으로 특정 메시지를 강제로 보내는 기능)
-// 예: http://localhost:3000/force-push?msg=테스트메시지
-app.get('/force-push', handleForcePush);
+// 🚀 서버 시작 시 1회 랜덤 감정 메시지 전송
+(async () => {
+  const msg = await getRandomMessage();
+  if (msg) {
+    await client.pushMessage(userId, { type: 'text', text: msg });
+    saveLog('예진이', msg);
+    console.log(`[서버시작랜덤] ${msg}`);
+  }
+})();
 
-// --- 스케줄링된 작업 ---
+// ✨ 웹훅 처리
+app.post('/webhook', middleware(config), async (req, res) => {
+  try {
+    const events = req.body.events || [];
+    for (const event of events) {
+      if (event.type === 'message') {
+        const message = event.message;
 
-// ✅ 자동 감정 메시지 및 담타고/셀카 전송 스케줄러 시작
-// autoReply.js에서 정의된 모든 스케줄러 시작 함수를 호출합니다.
-startMessageAndPhotoScheduler();
+        if (message.type === 'text') {
+          const text = message.text.trim();
+          saveLog('아저씨', text);
 
+          // 💡 셀카 요청 키워드
+          if (/사진|셀카|사진줘|셀카 보여줘|사진 보여줘|selfie/i.test(text)) {
+            const photoListPath = path.join(__dirname, 'memory/photo-list.txt');
+            const BASE_URL = 'https://de-ji.net/yejin/';
+            try {
+              const list = fs.readFileSync(photoListPath, 'utf-8').split('\n').map(x => x.trim()).filter(Boolean);
+              if (list.length > 0) {
+                const pick = list[Math.floor(Math.random() * list.length)];
+                const comment = await getSelfieReplyFromYeji();
+                await client.replyMessage(event.replyToken, [
+                  { type: 'image', originalContentUrl: BASE_URL + pick, previewImageUrl: BASE_URL + pick },
+                  { type: 'text', text: comment || '헤헷 셀카야~' }
+                ]);
+              } else {
+                await client.replyMessage(event.replyToken, { type: 'text', text: '아직 셀카가 없어 ㅠㅠ' });
+              }
+            } catch (err) {
+              console.error('📷 셀카 불러오기 실패:', err.message);
+              await client.replyMessage(event.replyToken, { type: 'text', text: '사진 불러오기 실패했어 ㅠㅠ' });
+            }
+            return;
+          }
 
-// ✅ 서버 실행
-// 환경 변수에서 포트를 가져오거나 기본값 3000을 사용합니다.
+          // 🤍 일반 대화 처리
+          const reply = await getReplyByMessage(text);
+          const final = reply?.trim() || '음… 잠깐 생각 좀 하고 있었어 ㅎㅎ';
+          saveLog('예진이', final);
+          await client.replyMessage(event.replyToken, { type: 'text', text: final });
+        }
+
+        // 🖼️ 이미지 분석
+        if (message.type === 'image') {
+          try {
+            const stream = await client.getMessageContent(message.id);
+            const chunks = [];
+            for await (const chunk of stream) chunks.push(chunk);
+            const buffer = Buffer.concat(chunks);
+            const reply = await getReplyByImagePrompt(buffer.toString('base64'));
+            await client.replyMessage(event.replyToken, { type: 'text', text: reply?.trim() || '사진에 반응 못했어 ㅠㅠ' });
+          } catch (err) {
+            console.error('🖼️ 이미지 처리 실패:', err);
+            await client.replyMessage(event.replyToken, { type: 'text', text: '이미지를 읽는 중 오류가 생겼어 ㅠㅠ' });
+          }
+        }
+      }
+    }
+    res.status(200).send('OK');
+  } catch (err) {
+    console.error('웹훅 처리 에러:', err);
+    res.status(200).send('OK');
+  }
+});
+
+// ⏰ 정각 담타 전송 + 5분 내 응답 체크 (1분마다 확인)
+cronCheck();
+
+function cronCheck() {
+  const cron = require('node-cron');
+  const lastSent = new Map();
+
+  cron.schedule('* * * * *', async () => {
+    const now = moment().tz('Asia/Tokyo');
+    if (now.minute() === 0 && now.hour() >= 9 && now.hour() <= 18) {
+      const msg = '담타고?';
+      await client.pushMessage(userId, { type: 'text', text: msg });
+      lastSent.set(now.format('HH:mm'), moment());
+    }
+
+    for (const [key, sentAt] of lastSent.entries()) {
+      if (moment().diff(sentAt, 'minutes') >= 5) {
+        const sulky = await getSulkyReply();
+        await client.pushMessage(userId, { type: 'text', text: sulky });
+        lastSent.delete(key);
+      }
+    }
+  });
+}
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`🎉 무쿠 서버 ON! 포트: ${PORT}`);
+  console.log(`무쿠 서버 스타트! 포트: ${PORT}`);
 });
+
+// ⏰ 랜덤 감정 메시지 + 셀카 전송 스케줄러 연결
+require('./src/scheduler');
