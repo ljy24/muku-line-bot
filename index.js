@@ -61,25 +61,22 @@ app.post('/webhook', middleware(config), async (req, res) => {
           const text = message.text.trim();
           saveLog('아저씨', text);
 
-          // 💡 셀카 요청 키워드
+          // 💡 셀카 요청 키워드 처리 (랜덤 6자리 숫자로 대체)
           if (/사진|셀카|사진줘|셀카 보여줘|사진 보여줘|selfie/i.test(text)) {
-            const photoListPath = path.join(__dirname, 'memory/photo-list.txt');
             const BASE_URL = 'https://de-ji.net/yejin/';
             try {
-              const list = fs.readFileSync(photoListPath, 'utf-8').split('\n').map(x => x.trim()).filter(Boolean);
-              if (list.length > 0) {
-                const pick = list[Math.floor(Math.random() * list.length)];
-                const comment = await getSelfieReplyFromYeji();
-                await client.replyMessage(event.replyToken, [
-                  { type: 'image', originalContentUrl: BASE_URL + pick, previewImageUrl: BASE_URL + pick },
-                  { type: 'text', text: comment || '헤헷 셀카야~' }
-                ]);
-              } else {
-                await client.replyMessage(event.replyToken, { type: 'text', text: '아직 셀카가 없어 ㅠㅠ' });
-              }
+              const index = Math.floor(Math.random() * 1186) + 1; // 1~1186
+              const filename = String(index).padStart(6, '0') + '.jpg';
+              const imageUrl = BASE_URL + filename;
+              const comment = await getSelfieReplyFromYeji();
+
+              await client.replyMessage(event.replyToken, [
+                { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl },
+                { type: 'text', text: comment || '히히 셀카야~' }
+              ]);
             } catch (err) {
-              console.error('📷 셀카 불러오기 실패:', err.message);
-              await client.replyMessage(event.replyToken, { type: 'text', text: '사진 불러오기 실패했어 ㅠㅠ' });
+              console.error('📷 셀카 전송 실패:', err.message);
+              await client.replyMessage(event.replyToken, { type: 'text', text: '사진 보내다 오류났어 ㅠㅠ' });
             }
             return;
           }
