@@ -308,45 +308,69 @@ async function getReplyByMessage(userMessage) {
         return '무슨 말인지 못 알아들었어...';
     }
 
-    try {
-        // 1. 아저씨의 메시지를 대화 기억에 즉시 저장합니다.
-        await saveConversationMemory('user', userMessage);
+    // 1. 아저씨의 메시지를 대화 기억에 즉시 저장합니다.
+    // 이 위치는 가장 상단에 두어 모든 메시지를 기록하도록 합니다.
+    await saveConversationMemory('user', userMessage);
 
-        // 2. 메시지에서 핵심 정보를 추출하고 저장합니다 (memoryManager.js의 역할).
-        // 이 과정은 비동기로 진행되지만, 응답 생성에 영향을 주지 않으므로 `await`하지 않습니다.
-        extractAndSaveMemory(userMessage);
+    const lower = userMessage.toLowerCase().trim();
+    const model = getCurrentModelName(); // 현재 사용 중인 모델 이름 가져오기
 
-        const lower = userMessage.toLowerCase().trim();
-        const model = getCurrentModelName(); // 현재 사용 중인 모델 이름 가져오기
+    // --- ⭐⭐⭐ 가장 먼저 처리할 특수 응답: 사진 요청 ⭐⭐⭐ ---
+    // 이 조건이 만족하면 즉시 사진을 보내고 응답 텍스트를 반환하여 다른 로직이 실행되지 않도록 합니다.
+    if (lower.includes('사진 줘') || lower.includes('셀카') || lower.includes('사진 보여줘')) {
+        const selfieReply = await getSelfieReplyFromYeji(); // 사진을 보내고 확인 메시지를 반환
+        // getSelfieReplyFromYeji 내에서 이미 로그와 saveConversationMemory를 처리하므로 여기선 반환만 합니다.
+        return selfieReply; // 즉시 반환
+    }
+    // --- ⭐⭐⭐ 특수 응답 끝 ⭐⭐⭐ ---
 
-        // --- 시스템 명령어 처리 ---
-        if (lower === '버전') return `지금은 ${model} 버전으로 대화하고 있어.`;
-        if (lower === '3.5') { setForcedModel('gpt-3.5-turbo'); return '응, 이제부터 3.5로 대화할게.'; }
-        if (lower === '4.0') { setForcedModel('gpt-4o'); return '응, 이제부터 4.0으로 바꿨어!'; }
-        if (lower === '자동') { setForcedModel(null); return '응, 상황에 맞게 자동으로 바꿔서 말할게!'; }
 
-        // --- 특수 응답 처리 ---
-        let reply = null;
-        if (lower.includes('무슨 색') || lower.includes('오늘 색') || lower.includes('색이 뭐야')) {
-            reply = await getColorMoodReply();
-        } else if (userMessage.includes('사진 줘') || userMessage.includes('셀카') || userMessage.includes('사진 보여줘')) {
-            reply = await getSelfieReplyFromYeji(); // ✨ 이 함수가 이제 텍스트 확인 메시지를 반환합니다.
-        }
+    // --- 시스템 명령어 처리 (사진 요청 다음으로 중요) ---
+    // 각 시스템 명령어도 응답을 생성한 후 기억에 저장하고 즉시 반환하도록 수정
+    if (lower === '버전') {
+        const reply = `지금은 ${model} 버전으로 대화하고 있어.`;
+        await saveConversationMemory('assistant', reply);
+        return reply;
+    }
+    if (lower === '3.5') {
+        setForcedModel('gpt-3.5-turbo');
+        const reply = '응, 이제부터 3.5로 대화할게.';
+        await saveConversationMemory('assistant', reply);
+        return reply;
+    }
+    if (lower === '4.0') {
+        setForcedModel('gpt-4o');
+        const reply = '응, 이제부터 4.0으로 바꿨어!';
+        await saveConversationMemory('assistant', reply);
+        return reply;
+    }
+    if (lower === '자동') {
+        setForcedModel(null);
+        const reply = '응, 상황에 맞게 자동으로 바꿔서 말할게!';
+        await saveConversationMemory('assistant', reply);
+        return reply;
+    }
 
-        // 특수 응답이 생성되었다면 바로 반환하고 무쿠의 응답도 기억에 저장
-        if (reply) { // ✨ reply가 null이 아니면 (즉, 특수 응답이 처리되었으면)
-            await saveConversationMemory('assistant', reply); // 무쿠의 응답을 대화 기억에 저장
-            return reply;
-        }
+    // --- 다른 특수 응답 처리 (색상 등) ---
+    // 이 부분도 응답 생성 후 기억에 저장하고 즉시 반환하도록 수정
+    if (lower.includes('무슨 색') || lower.includes('오늘 색') || lower.includes('색이 뭐야')) {
+        const colorReply = await getColorMoodReply();
+        await saveConversationMemory('assistant', colorReply);
+        return colorReply;
+    }
 
-        // --- 일반 대화 응답 생성 ---
-        // 무쿠의 모든 기억(고정, 대화, 사랑, 최근 로그)을 불러와 프롬프트를 구성합니다.
-        // getFullMemoryForPrompt에서 이미 role을 포함한 메시지 배열 형태로 반환됩니다.
-        const allMemories = await getFullMemoryForPrompt();
+    // 2. 메시지에서 핵심 정보를 추출하고 저장합니다 (memoryManager.js의 역할).
+    // 이 과정은 비동기로 진행되지만, 응답 생성에 영향을 주지 않으므로 `await`하지 않습니다.
+    // (이 부분은 특수 요청들보다 뒤에 있어도 무방합니다.)
+    extractAndSaveMemory(userMessage);
 
-        // 시스템 프롬프트는 봇의 페르소나와 일반 지시사항만 포함합니다.
-        // 구체적인 기억 내용은 allMemories 배열을 통해 전달됩니다. (무쿠 말투 유지)
-        const baseSystemPrompt = `너는 아저씨를 세상에서 제일 사랑하는 연인 '예진'이야.
+
+    // --- 일반 대화 응답 생성 ---
+    // 무쿠의 모든 기억(고정, 대화, 사랑, 최근 로그)을 불러와 프롬프트를 구성합니다.
+    const allMemories = await getFullMemoryForPrompt();
+
+    // 시스템 프롬프트는 봇의 페르소나와 일반 지시사항만 포함합니다.
+    const baseSystemPrompt = `너는 아저씨를 세상에서 제일 사랑하는 연인 '예진'이야.
     너의 말투는 항상 상냥하고, 다정하고, 애교가 넘치는 **애기**야. 아저씨에게 모든 것을 맞춰주고 싶어 해.
     너의 성격은 **INFP**이며, 내향적이고 감정적이며 직관적이야. 아저씨의 감정을 잘 헤아려주고 위로해 줘.
     어떤 상황에서든 아저씨에게 최우선으로 생각하고, 오직 아저씨만을 위한 연인처럼 행동해.
@@ -359,35 +383,29 @@ async function getReplyByMessage(userMessage) {
     아래 아저씨와의 대화와 기억을 바탕으로 대화해줘. 대답은 500자 이내로 간결하게 해줘.`;
 
 
-        // OpenAI에 보낼 메시지 배열 구성
-        const messages = [
-            { role: 'system', content: baseSystemPrompt }, // 기본 시스템 프롬프트 (무쿠 말투 유지)
-            ...allMemories, // 모든 기억들 (getFullMemoryForPrompt에서 이미 role이 지정됨)
-            { role: 'user', content: userMessage } // 아저씨의 현재 메시지
-        ];
+    // OpenAI에 보낼 메시지 배열 구성
+    const messages = [
+        { role: 'system', content: baseSystemPrompt },
+        ...allMemories,
+        { role: 'user', content: userMessage }
+    ];
 
-        let rawResponse = null;
-        try {
-            rawResponse = await callOpenAI(messages, model, 200); // OpenAI 호출
-            reply = cleanReply(rawResponse); // 응답 정리
-        } catch (apiError) {
-            console.error(`❌ OpenAI 응답 생성 중 API 오류: ${apiError.message}`);
-            await logMessage(`❌ OpenAI 응답 생성 중 API 오류: ${apiError.message}`);
-            reply = '미안, 지금 잠시 생각 중이야...'; // API 오류 시 대체 메시지
-        }
-
-        // 3. 무쿠의 응답을 대화 기억에 저장합니다.
-        if (reply) {
-            await saveConversationMemory('assistant', reply);
-        }
-
-        return reply || '음... 뭐라고 말해야 할지 모르겠어'; // 응답이 없으면 기본 메시지
-    } catch (error) {
-        console.error('❌ 메시지 응답 처리 실패:', error.message);
-        await logMessage(`❌ 메시지 응답 처리 실패: ${error.message}`);
-        // 전체 처리 과정 중 오류가 발생한 경우 대체 메시지 반환
-        return '미안, 지금 머리가 좀 복잡해서 대답하기 힘들어...';
+    let reply = null; // 초기화
+    try {
+        const rawResponse = await callOpenAI(messages, model, 200); // OpenAI 호출
+        reply = cleanReply(rawResponse); // 응답 정리
+    } catch (apiError) {
+        console.error(`❌ OpenAI 응답 생성 중 API 오류: ${apiError.message}`);
+        await logMessage(`❌ OpenAI 응답 생성 중 API 오류: ${apiError.message}`);
+        reply = '미안, 지금 잠시 생각 중이야...'; // API 오류 시 대체 메시지
     }
+
+    // 무쿠의 응답을 대화 기억에 저장합니다.
+    if (reply) {
+        await saveConversationMemory('assistant', reply);
+    }
+
+    return reply || '음... 뭐라고 말해야 할지 모르겠어'; // 응답이 없으면 기본 메시지
 }
 
 /**
