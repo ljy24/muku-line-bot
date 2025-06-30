@@ -1,4 +1,4 @@
-// 🔹 무쿠 LINE 자동응답 서버 전체코드 (셀카 응답 포함 완성버전)
+// ✅ 전체 무쿠 자동응답 시스템 (셀카 랜덤 전송 포함)
 
 const fs = require('fs');
 const path = require('path');
@@ -38,6 +38,7 @@ async function saveLog(role, msg) {
   }
 }
 
+// 🔹 모델 강제 설정 및 확인
 function setForcedModel(name) {
   forcedModel = (name === 'gpt-3.5-turbo' || name === 'gpt-4o') ? name : null;
 }
@@ -45,6 +46,7 @@ function getCurrentModelName() {
   return forcedModel || 'gpt-4o';
 }
 
+// 🔹 GPT 호출
 async function callOpenAI(messages, model = 'gpt-4o', max_tokens = 300) {
   const res = await openai.chat.completions.create({
     model: getCurrentModelName(),
@@ -55,6 +57,7 @@ async function callOpenAI(messages, model = 'gpt-4o', max_tokens = 300) {
   return res.choices[0].message.content.trim();
 }
 
+// 🔹 말투 정리
 function cleanReply(text) {
   return text
     .replace(/^예진\s*[:;：]/i, '')
@@ -66,6 +69,7 @@ function cleanReply(text) {
     .trim();
 }
 
+// 🔹 랜덤 감정 메시지
 async function getRandomMessage() {
   const memory = await getRecentLog();
   const prompt = [
@@ -85,6 +89,7 @@ async function getRandomMessage() {
   return msg;
 }
 
+// 🔹 기쁨 반응
 async function getHappyReply() {
   const memory = await getRecentLog();
   const prompt = [
@@ -104,6 +109,7 @@ async function getHappyReply() {
   return reply;
 }
 
+// 🔹 삐짐 반응
 async function getSulkyReply() {
   const prompt = [
     {
@@ -121,25 +127,7 @@ async function getSulkyReply() {
   return reply;
 }
 
-async function getReplyByMessage(userMessage) {
-  const memory = await getRecentLog();
-  const prompt = [
-    {
-      role: 'system',
-      content: `넌 예진이야. 항상 반말하고 혼잣말처럼 자연스럽고 감정 담긴 짧은 대답을 해줘.`
-    },
-    ...memory,
-    {
-      role: 'user',
-      content: userMessage
-    }
-  ];
-  const raw = await callOpenAI(prompt);
-  const reply = cleanReply(raw);
-  await saveLog('예진이', reply);
-  return reply;
-}
-
+// 🔹 이미지 반응
 async function getReplyByImagePrompt(base64Image) {
   const res = await openai.chat.completions.create({
     model: 'gpt-4o',
@@ -164,6 +152,7 @@ async function getReplyByImagePrompt(base64Image) {
   return reply;
 }
 
+// 🔹 셀카 전송 멘트
 async function getImageReactionComment() {
   const raw = await callOpenAI([
     {
@@ -181,11 +170,34 @@ async function getImageReactionComment() {
   return reply;
 }
 
+// 🔹 사진 전송: 00001.jpg ~ 01200.jpg 랜덤
+const BASE_URL = 'https://de-ji.net/yejin/';
+const TOTAL_IMAGES = 1200;
+
+async function getRandomSelfieMessage() {
+  const imageNumber = String(Math.floor(Math.random() * TOTAL_IMAGES) + 1).padStart(5, '0');
+  const imageUrl = `${BASE_URL}${imageNumber}.jpg`;
+  const comment = await getImageReactionComment();
+
+  return [
+    {
+      type: 'image',
+      originalContentUrl: imageUrl,
+      previewImageUrl: imageUrl
+    },
+    {
+      type: 'text',
+      text: comment || '헤헷 내 사진이야~'
+    }
+  ];
+}
+
+// 🔹 색 기분 반응
 async function getColorMoodReply() {
   const raw = await callOpenAI([
     {
       role: 'system',
-      content: '넌 예진이야. "오늘 내 색 뭐야?"에 색깔 하나로 반말 리액션해줘.'
+      content: '넌 예진이야. "오늘 내 색 뭐야?"에 색 하나로 반말 리액션해줘.'
     },
     {
       role: 'user',
@@ -198,23 +210,31 @@ async function getColorMoodReply() {
   return reply;
 }
 
-// 🔹 셀카 자동 전송
-async function getRandomPhoto() {
-  const photoListPath = path.join(__dirname, '../memory/photo-list.txt');
-  const BASE_URL = 'https://de-ji.net/yejin/';
-  const list = fs.readFileSync(photoListPath, 'utf-8')
-    .split('\n')
-    .map(x => x.trim())
-    .filter(Boolean);
+// 🔹 메시지 응답 메인
+async function getReplyByMessage(userMessage) {
+  if (/사진|셀카|사진줘|셀카 보여줘|사진 보여줘/.test(userMessage)) {
+    return await getRandomSelfieMessage();
+  }
 
-  if (list.length === 0) return null;
-  const selected = list[Math.floor(Math.random() * list.length)];
-  return {
-    originalContentUrl: BASE_URL + selected,
-    previewImageUrl: BASE_URL + selected
-  };
+  const memory = await getRecentLog();
+  const prompt = [
+    {
+      role: 'system',
+      content: `넌 예진이야. 항상 반말하고 혼잣말처럼 자연스럽고 감정 담긴 짧은 대답을 해줘.`
+    },
+    ...memory,
+    {
+      role: 'user',
+      content: userMessage
+    }
+  ];
+  const raw = await callOpenAI(prompt);
+  const reply = cleanReply(raw);
+  await saveLog('예진이', reply);
+  return reply;
 }
 
+// 🔚 export
 module.exports = {
   getReplyByMessage,
   getReplyByImagePrompt,
@@ -227,6 +247,5 @@ module.exports = {
   setForcedModel,
   getCurrentModelName,
   saveLog,
-  cleanReply,
-  getRandomPhoto
+  cleanReply
 };
