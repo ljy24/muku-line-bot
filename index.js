@@ -1,52 +1,51 @@
-// ✅ index.js (간결 버전) - 모든 기능은 /src/autoReply.js 에 위임
+// index.js - 무쿠 봇의 메인 진입점
 
-const express = require('express');
-const { middleware } = require('@line/bot-sdk');
-const moment = require('moment-timezone');
-const cron = require('node-cron');
-const { 
-  client, // LINE 클라이언트 객체
-  appConfig, // LINE 미들웨어 설정
-  userId, // 대상 사용자 ID
-  app, // Express 앱 인스턴스 (autoReply.js에서 exports)
-  handleWebhook, 
-  handleForcePush,
-  // handleSelfieRequest, handleImageMessage, // 이제 autoReply.js 안에서 처리
-  startMessageAndPhotoScheduler,
-  // initServerState, // 제거됨: 필요없음
-  checkTobaccoReply
-} = require('./src/autoReply'); // autoReply.js에서 필요한 모든 것을 가져옴
-const { ensureMemoryDirectory } = require('./src/memoryManager.js'); // memoryManager에서 디렉토리 보장 함수 불러오기
+// autoReply 모듈에서 필요한 모든 함수와 객체들을 불러옵니다.
+// 특히 'app' 객체를 여기서 받아와야 Express 서버를 설정할 수 있습니다.
+const {
+    startMessageAndPhotoScheduler,
+    handleWebhook,
+    handleForcePush,
+    app, // <-- autoReply.js에서 내보낸 Express app 인스턴스
+    client, // Line 클라이언트 (webhook 핸들러 내부에서 사용됨)
+    appConfig, // Line 미들웨어 설정
+    userId // 푸시 메시지 전송용 사용자 ID
+} = require('./src/autoReply');
 
-// ✅ 서버 초기화 (더 이상 필요 없음 - 각 함수가 스스로 초기화 확인)
-// initServerState(); // 제거
+// memoryManager 모듈에서 ensureMemoryDirectory 함수를 불러옵니다.
+const { ensureMemoryDirectory } = require('./src/memoryManager'); // 메모리 디렉토리 보장 함수
 
-// ✅ Webhook 핸들링
-app.post('/webhook', middleware(appConfig), handleWebhook);
+const line = require('@line/bot-sdk'); // LINE Bot SDK 불러오기
 
-// ✅ 강제 메시지 전송
+// 환경 변수에서 포트 번호를 가져오거나 기본값 3000 사용
+const PORT = process.env.PORT || 3000;
+
+// LINE 미들웨어 설정
+// webhook 이벤트를 처리하기 위해 LINE 미들웨어를 사용합니다.
+// 이전에 autoReply.js에서 정의한 appConfig를 사용합니다.
+app.post('/webhook', line.middleware(appConfig), handleWebhook);
+
+// 아저씨가 웹 브라우저를 통해 특정 메시지를 강제로 보내고 싶을 때 사용
 app.get('/force-push', handleForcePush);
 
-// ✅ 정각 담타 체크 및 5분 후 반응 (기존 스케줄러 유지)
-cron.schedule('* * * * *', async () => {
-  const now = moment().tz('Asia/Tokyo');
-  if (now.minute() === 0 && now.hour() >= 9 && now.hour() <= 18) {
-    await checkTobaccoReply();
-  }
+// 봇이 살아있는지 확인하는 루트 경로
+app.get('/', (req, res) => {
+    res.send('무쿠 살아있엉 🐣');
 });
 
-// ✅ 자동 감정 메시지 및 셀카 전송 스케줄러 시작
-startMessageAndPhotoScheduler();
+// 서버 시작
+// Persistent Disk 사용을 위해 ensureMemoryDirectory를 먼저 호출합니다.
+app.listen(PORT, async () => {
+    console.log(`무쿠 서버 시작: ${PORT} 🐣`);
 
-// ✅ 서버 실행
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, async () => { // <-- async 키워드 추가
-  console.log(`🎉 무쿠 서버 ON! 포트: ${PORT}`);
-  try {
-    // ✅ 서버 시작 시 아저씨에게 메시지 전송
-    await client.pushMessage(userId, { type: 'text', text: '아저씨 머해?' });
-    console.log('✅ 서버 시작 메시지 전송 완료.');
-  } catch (error) {
-    console.error('❌ 서버 시작 메시지 전송 실패:', error.message);
-  }
+    try {
+        await ensureMemoryDirectory(); // 메모리 저장 디렉토리 존재 확인 및 생성
+        console.log('✅ 메모리 디렉토리 준비 완료.');
+    } catch (error) {
+        console.error('❌ 메모리 디렉토리 설정 실패:', error);
+        // 디렉토리 생성 실패 시에도 서버는 계속 실행되도록 하지만, 로그를 남깁니다.
+    }
+
+    // 스케줄러 시작
+    startMessageAndPhotoScheduler();
 });
