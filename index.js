@@ -11,12 +11,12 @@ const {
   handleWebhook,   // Webhook 처리
   handleForcePush, // 수동 메시지
   checkTobaccoReply, // "담타고?" 자동 전송
-  startMessageAndPhotoScheduler, // 랜덤 메시지/사진 스케줄러
-  initServerState  // 초기화
+  startMessageAndPhotoScheduler // 랜덤 메시지/사진 스케줄러
+  // initServerState // 이 줄은 이제 필요 없습니다.
 } = require('./src/autoReply');
 
-// ✅ 서버 초기화
-initServerState();
+// ✅ 서버 초기화 - initServerState() 호출이 더 이상 필요 없습니다.
+// initServerState(); // 이 줄은 이제 필요 없습니다.
 
 // ✅ Webhook 엔드포인트 등록
 app.post('/webhook', middleware(appConfig), handleWebhook);
