@@ -1,22 +1,26 @@
 // ✅ index.js - 모든 기능은 /src/autoReply.js 에서 수행
 
 const express = require('express');
-const { middleware } = require('@line/bot-sdk');
+const { middleware } = require('@line/bot-sdk'); // middleware만 여기서 필요
 const moment = require('moment-timezone');
 const cron = require('node-cron');
 const {
-  app,             // Express 인스턴스
-  appConfig,       // LINE 설정
-  userId,          // 대상 사용자
-  handleWebhook,   // Webhook 처리
-  handleForcePush, // 수동 메시지
-  checkTobaccoReply, // "담타고?" 자동 전송
-  startMessageAndPhotoScheduler // 랜덤 메시지/사진 스케줄러
-  // initServerState // 이 줄은 이제 필요 없습니다.
-} = require('./src/autoReply');
+  handleWebhook,
+  handleForcePush,
+  checkTobaccoReply,
+  startMessageAndPhotoScheduler
+} = require('./src/autoReply'); // autoReply.js에서 함수들만 가져옴
+require('dotenv').config(); // .env 파일에서 환경 변수 로드
 
-// ✅ 서버 초기화 - initServerState() 호출이 더 이상 필요 없습니다.
-// initServerState(); // 이 줄은 이제 필요 없습니다.
+// ✅ Express 앱 인스턴스 생성
+const app = express(); // 여기서 app 객체를 초기화합니다.
+
+// ✅ LINE Bot SDK 설정
+// appConfig는 index.js에서 직접 정의합니다.
+const appConfig = {
+  channelAccessToken: process.env.LINE_ACCESS_TOKEN,
+  channelSecret: process.env.LINE_CHANNEL_SECRET,
+};
 
 // ✅ Webhook 엔드포인트 등록
 app.post('/webhook', middleware(appConfig), handleWebhook);
