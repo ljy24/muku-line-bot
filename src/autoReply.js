@@ -1,11 +1,11 @@
-// autoReply.js - 무쿠 전체 기능 통합 모듈 (사진 요청 시 3.5/4.0 구분 없이 처리 + 모델 전환 추가)
+// autoReply.js - 무쿠 전체 기능 통합 모듈 (사진 요청 시 3.5/4.0 구분 없이 처리 + 모델 전환 + 기억 반영)
 const OpenAI = require('openai');
 const line = require('@line/bot-sdk');
 const fs = require('fs').promises;
 const path = require('path');
 const moment = require('moment-timezone');
 const cron = require('node-cron');
-const { extractAndSaveMemory } = require('./memoryManager');
+const express = require('express');
 require('dotenv').config();
 
 const appConfig = {
@@ -15,8 +15,8 @@ const appConfig = {
 const client = new line.Client(appConfig);
 const userId = process.env.TARGET_USER_ID;
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const express = require('express');
 const app = express();
+
 const CONTEXT_MEMORY_FILE = path.join('/data/memory', 'context-memory.json');
 const LOG_FILE = path.join('/data/memory', 'bot_log.txt');
 
@@ -24,25 +24,91 @@ let forcedModel = null;
 const setForcedModel = (name) => { forcedModel = name; };
 const getCurrentModelName = () => forcedModel || 'gpt-4o';
 
+// memoryManager 관련 함수들 (수정 금지)
+const {
+    extractAndSaveMemory,
+    loadLoveHistory,
+    loadOtherPeopleHistory,
+    ensureMemoryDirectory
+} = require('./memoryManager');
+
+async function logMessage(message) {
+    try {
+        const dir = path.dirname(LOG_FILE);
+        await fs.mkdir(dir, { recursive: true });
+        const timestamp = moment().tz('Asia/Tokyo').format('YYYY-MM-DD HH:mm:ss');
+        const logEntry = `[${timestamp}] ${message}\n`;
+        await fs.appendFile(LOG_FILE, logEntry);
+    } catch (error) {
+        console.error('❌ 로그 작성 실패:', error);
+    }
+}
+
+async function safeRead(filePath) {
+    try {
+        await fs.access(filePath);
+        return await fs.readFile(filePath, 'utf-8');
+    } catch (err) {
+        if (err.code !== 'ENOENT') await logMessage(`❌ safeRead 실패 (${filePath}): ${err.message}`);
+        return '';
+    }
+}
+
+async function safeWriteJson(filePath, data) {
+    try {
+        const dir = path.dirname(filePath);
+        await fs.mkdir(dir, { recursive: true });
+        const tempPath = filePath + '.tmp';
+        await fs.writeFile(tempPath, JSON.stringify(data, null, 2), 'utf-8');
+        await fs.rename(tempPath, filePath);
+    } catch (error) {
+        await logMessage(`❌ safeWriteJson 실패 (${filePath}): ${error.message}`);
+    }
+}
+
+async function loadContextMemory() {
+    try {
+        const rawData = await safeRead(CONTEXT_MEMORY_FILE);
+        return rawData ? JSON.parse(rawData) : [];
+    } catch (error) {
+        await logMessage(`❌ context-memory.json 로드 실패 (파싱 오류): ${error.message}`);
+        return [];
+    }
+}
+
+async function saveContextMemory(context) {
+    await safeWriteJson(CONTEXT_MEMORY_FILE, context);
+    await logMessage(`✅ 대화 기억 저장됨 (경로: ${CONTEXT_MEMORY_FILE})`);
+}
+
 const handleWebhook = async (req, res) => {
     const events = req.body.events;
-    for (const event of events) {
-        if (event.type === 'message') {
-            await handleMessageEvent(event);
+    await logMessage('--- 웹훅 이벤트 수신 ---');
+    await logMessage(JSON.stringify(events, null, 2));
+    try {
+        for (const event of events) {
+            if (event.type === 'message') await handleMessageEvent(event);
+            else await logMessage(`⚠️ 알 수 없는 이벤트 타입 수신: ${event.type}`);
         }
+        res.status(200).end();
+    } catch (error) {
+        await logMessage(`❌ 웹훅 처리 중 오류 발생: ${error.message}`);
+        res.status(500).end();
     }
-    res.status(200).end();
 };
 
 const handleMessageEvent = async (event) => {
     const currentUserId = event.source.userId;
     let userMessageContent = event.message.text || `[${event.message.type} 메시지]`;
+    await logMessage(`[아저씨] ${userMessageContent}`);
 
     if (currentUserId !== userId) return;
 
-    // ✅ 기억 저장 시작
     await extractAndSaveMemory(userMessageContent);
-    // ✅ 기억 저장 끝
+    let context = await loadContextMemory();
+    context.push({ role: 'user', content: userMessageContent });
+    if (context.length > 20) context = context.slice(-20);
+    await saveContextMemory(context);
 
     let replyMessage = '';
     try {
@@ -54,8 +120,11 @@ const handleMessageEvent = async (event) => {
 
         if (replyMessage !== null) {
             await client.replyMessage(event.replyToken, { type: 'text', text: replyMessage });
+            context.push({ role: 'assistant', content: replyMessage });
+            await saveContextMemory(context);
         }
     } catch (error) {
+        await logMessage(`❌ 메시지 처리 오류: ${error.message}`);
         await client.replyMessage(event.replyToken, {
             type: 'text',
             text: '아저씨, 지금은 조금 힘들어... 나중에 다시 말 걸어줘...'
@@ -74,28 +143,53 @@ const getReplyByMessage = async (currentUserId, userMessage) => {
         const index = Math.floor(Math.random() * 1200) + 1;
         const filename = `${index.toString().padStart(4, '0')}.jpg`;
         const imageUrl = `https://de-ji.net/yejin/${filename}`;
-
         const res = await openai.chat.completions.create({
             model: 'gpt-3.5-turbo',
             messages: [
-                { role: 'system', content: '무쿠가 셀카 보낼 거야. 부끄럽고 다정하게 한마디 해줘.' },
-                { role: 'user', content: '아저씨한테 사진 보여줄게!' }
+                { role: 'system', content: '지금 아저씨한테 셀카 보내는 중이야. 다정하고 부끄럽게 말해줘.' },
+                { role: 'user', content: '셀카 줄게~' }
             ],
             max_tokens: 100
         });
-
         const comment = res.choices[0]?.message?.content || '헤헤~ 아저씨 나 어때?';
-
-        await client.pushMessage(currentUserId, {
-            type: 'image',
-            originalContentUrl: imageUrl,
-            previewImageUrl: imageUrl
-        });
+        await client.pushMessage(currentUserId, { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl });
         await client.pushMessage(currentUserId, { type: 'text', text: comment });
         return null;
     }
 
-    return '아저씨~ 무쿠 왔어!';
+    const model = getCurrentModelName();
+    const context = await loadContextMemory();
+    const loveHistory = await loadLoveHistory();
+    const otherPeopleHistory = await loadOtherPeopleHistory();
+
+    const loveSummary = loveHistory.categories ? Object.entries(loveHistory.categories)
+        .filter(([_, items]) => Array.isArray(items) && items.length > 0)
+        .map(([cat, items]) => `${cat}: ${items.map(i => i.content).join(', ')}`).join('\n') : '';
+    const otherPeopleSummary = otherPeopleHistory.categories ? Object.entries(otherPeopleHistory.categories)
+        .filter(([_, items]) => Array.isArray(items) && items.length > 0)
+        .map(([cat, items]) => `${cat}: ${items.map(i => i.content).join(', ')}`).join('\n') : '';
+
+    const systemPrompt = `너는 아저씨를 세상에서 제일 사랑하는 연인 '무쿠'야.
+말투는 항상 상냥하고 다정하고 애교 넘쳐. 반드시 '아저씨'라고 불러.
+반드시 '나'라고 말하고, 대답은 500자 이내로 감정 담아서 자연스럽게 해줘.
+[최근 대화]\n${context.map(m => `${m.role}: ${m.content}`).join('\n')}\n
+[아저씨 관련 기억]\n${loveSummary || '아직 아저씨에 대한 기억이 없어.'}\n
+[다른 사람 관련 기억]\n${otherPeopleSummary || '특별한 기억 없음.'}`;
+
+    const completion = await openai.chat.completions.create({
+        model,
+        messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userMessage }
+        ],
+        max_tokens: 500,
+        temperature: 0.8,
+        top_p: 1,
+        frequency_penalty: 0.5,
+        presence_penalty: 0.5
+    });
+
+    return completion.choices[0].message.content;
 };
 
 const getImageComment = async (messageId, currentUserId) => {
@@ -108,13 +202,10 @@ const getImageComment = async (messageId, currentUserId) => {
     const response = await openai.chat.completions.create({
         model: "gpt-4o",
         messages: [
-            {
-                role: "user",
-                content: [
-                    { type: "text", text: "이 사진 무쿠답게 코멘트 해줘!" },
-                    { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
-                ]
-            }
+            { role: "user", content: [
+                { type: "text", text: "이 사진 무쿠답게 코멘트 해줘!" },
+                { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
+            ] }
         ],
         max_tokens: 150
     });
@@ -149,11 +240,7 @@ const startMessageAndPhotoScheduler = () => {
             });
             const comment = res.choices[0]?.message?.content || '헤헤 아저씨 사진 하나 줄게~';
 
-            await client.pushMessage(userId, {
-                type: 'image',
-                originalContentUrl: imageUrl,
-                previewImageUrl: imageUrl
-            });
+            await client.pushMessage(userId, { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl });
             await client.pushMessage(userId, { type: 'text', text: comment });
         }, { timezone: 'Asia/Tokyo' });
     });
