@@ -1,12 +1,12 @@
-// ✅ index.js (수정됨: app 객체 생성 방식)
+// ✅ index.js (최종 버전)
 
 const express = require('express'); // Express 모듈을 여기서 직접 불러옵니다.
 const { middleware } = require('@line/bot-sdk');
-const moment = require('moment-timezone');
-const cron = require('node-cron');
+const moment = require('moment-timezone'); // (크론 작업에 필요하므로 유지)
+const cron = require('node-cron'); // (크론 작업에 필요하므로 유지)
 
 // autoReply.js에서 필요한 기능들만 가져옵니다.
-const { 
+const {
   client,         // LINE 클라이언트 객체
   appConfig,      // LINE 미들웨어 설정
   userId,         // 대상 사용자 ID
@@ -16,7 +16,7 @@ const {
 } = require('./src/autoReply');
 
 // ✅ Express 앱 인스턴스를 여기서 직접 생성합니다.
-const app = express(); // <--- 이 부분이 핵심 변경점입니다.
+const app = express();
 
 // ✅ Webhook 핸들링
 app.post('/webhook', middleware(appConfig), handleWebhook);
