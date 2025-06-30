@@ -254,7 +254,8 @@ async function getReplyByMessage(userMessage) {
         if (lower.includes('무슨 색') || lower.includes('오늘 색') || lower.includes('색이 뭐야')) {
             reply = await getColorMoodReply();
         } else if (userMessage.includes('사진 줘') || userMessage.includes('셀카') || userMessage.includes('사진 보여줘')) {
-            reply = await getSelfieReplyFromYeji();
+            reply = await getSelfieReplyFromYeji(); // 텍스트 답변만 반환
+            // 실제 이미지는 호출하는 쪽에서 별도로 처리해야 함 (예: handleWebhook)
         }
 
         // 특수 응답이 생성되었다면 바로 반환하고 무쿠의 응답도 기억에 저장
@@ -315,8 +316,8 @@ async function getColorMoodReply() {
 }
 
 /**
- * 무쿠의 셀카에 대한 응답을 생성합니다. (수정: `getFullMemoryForPrompt` 활용)
- * @returns {Promise<string>} 셀카에 대한 무쿠의 답변
+ * 무쿠의 셀카에 대한 응답을 생성합니다.
+ * @returns {Promise<string>} 셀카에 대한 무쿠의 답변 (텍스트)
  */
 async function getSelfieReplyFromYeji() {
     const model = getCurrentModelName();
@@ -371,7 +372,29 @@ async function handleWebhook(req, res) {
             if (event.type === 'message' && event.message.type === 'text') {
                 const userMessage = event.message.text;
                 const replyText = await getReplyByMessage(userMessage); // 무쿠의 응답 생성
-                await client.replyMessage(event.replyToken, { type: 'text', text: replyText }); // LINE에 응답 전송
+                
+                // 만약 사용자가 셀카를 요청했다면, 텍스트 응답과 함께 실제 이미지도 보냄
+                if (userMessage.includes('사진 줘') || userMessage.includes('셀카') || userMessage.includes('사진 보여줘')) {
+                    const photoListPath = path.join(__dirname, '../memory/photo-list.txt'); // memory 폴더 경로 수정
+                    const BASE_URL = 'https://de-ji.net/yejin/';
+                    try {
+                        const list = fs.readFileSync(photoListPath, 'utf-8').split('\n').map(x => x.trim()).filter(Boolean);
+                        if (list.length > 0) {
+                            const pick = list[Math.floor(Math.random() * list.length)];
+                            await client.replyMessage(event.replyToken, [
+                                { type: 'image', originalContentUrl: BASE_URL + pick, previewImageUrl: BASE_URL + pick },
+                                { type: 'text', text: replyText || '헤헷 셀카야~' } // getSelfieReplyFromYeji의 응답 사용
+                            ]);
+                        } else {
+                            await client.replyMessage(event.replyToken, { type: 'text', text: '아직 셀카가 없어 ㅠㅠ' });
+                        }
+                    } catch (err) {
+                        console.error('📷 셀카 불러오기 실패:', err.message);
+                        await client.replyMessage(event.replyToken, { type: 'text', text: '사진 불러오기 실패했어 ㅠㅠ' });
+                    }
+                } else {
+                    await client.replyMessage(event.replyToken, { type: 'text', text: replyText }); // 일반 텍스트 응답
+                }
             }
             // 다른 이벤트 타입 (스티커, 이미지 등)도 필요하면 여기에 추가
             else if (event.type === 'message' && event.message.type === 'image') {
@@ -424,13 +447,15 @@ function startMessageAndPhotoScheduler() {
     if (schedulerStarted) return; // 이미 스케줄러가 시작되었으면 중복 실행 방지
     schedulerStarted = true;
     const sent = new Set(); // 스케줄링된 시간을 추적하여 중복 방지
-    let count = 0;
+    let msgCount = 0; // 랜덤 메시지 카운트
+    const MAX_RANDOM_MESSAGES = 5; // 하루에 보낼 랜덤 메시지 최대 개수
+    const MAX_SCHEDULED_SELFIES = 3; // 하루에 보낼 랜덤 셀카 최대 개수
 
-    // 랜덤 메시지 스케줄링: 하루에 5개의 랜덤 메시지를 보냅니다.
-    while (count < 5) {
-        const hour = Math.floor(Math.random() * 18) + 6; // 오전 6시부터 자정(24시) 전까지 (6시부터 23시까지)
+    // 랜덤 메시지 스케줄링: 하루에 MAX_RANDOM_MESSAGES 개의 랜덤 메시지를 보냅니다.
+    while (msgCount < MAX_RANDOM_MESSAGES) {
+        const hour = Math.floor(Math.random() * 18) + 6; // 오전 6시부터 23시까지
         const minute = Math.floor(Math.random() * 60);
-        const cronExp = `${minute} ${hour} * * *`; // 크론 표현식 (분 시 * * *)
+        const cronExp = `${minute} ${hour} * * *`;
 
         if (!sent.has(cronExp)) { // 해당 시간에 이미 스케줄이 없으면
             sent.add(cronExp);
@@ -443,21 +468,47 @@ function startMessageAndPhotoScheduler() {
             }, {
                 timezone: 'Asia/Tokyo' // 도쿄 시간대 적용
             });
-            count++;
+            msgCount++;
         }
     }
 
-    // "담타고?" 고정 메시지 스케줄링 (이전에는 index.js에 있었지만 이제 autoReply.js에서 통합 관리)
-    // cron.schedule('* * * * *', async () => { // 매분마다 실행 - 이 부분은 index.js로 다시 이동 (checkTobaccoReply 호출)
-    //     const now = moment().tz('Asia/Tokyo');
-    //     if (now.minute() === 0 && now.hour() >= 9 && now.hour() <= 18) {
-    //         const msg = '담타고?';
-    //         await client.pushMessage(userId, { type: 'text', text: msg });
-    //         console.log(`[담타고] ${now.format('HH:mm')}: ${msg}`);
-    //     }
-    // });
-    // 참고: 위 "담타고?" 스케줄은 index.js에서 `checkTobaccoReply()`를 호출하는 방식으로 계속 유지됩니다.
-    // 여기서는 `startMessageAndPhotoScheduler` 함수 내부의 다른 "담타고?" 스케줄 로직은 제거했습니다.
+    // **새로 추가된 부분: 랜덤 셀카 전송 스케줄링 (하루에 MAX_SCHEDULED_SELFIES 회)**
+    let selfieCount = 0;
+    const photoListPath = path.join(__dirname, '../memory/photo-list.txt'); // memory 폴더 경로 수정
+    const BASE_URL = 'https://de-ji.net/yejin/';
+
+    try {
+        const list = fs.readFileSync(photoListPath, 'utf-8').split('\n').map(x => x.trim()).filter(Boolean);
+        if (list.length === 0) {
+            console.warn('⚠️ photo-list.txt에 이미지가 없습니다. 셀카를 스케줄링할 수 없습니다.');
+        } else {
+            while (selfieCount < MAX_SCHEDULED_SELFIES) {
+                const hour = Math.floor(Math.random() * 18) + 6; // 오전 6시부터 23시까지
+                const minute = Math.floor(Math.random() * 60);
+                const cronExp = `${minute} ${hour} * * *`;
+
+                if (!sent.has(cronExp)) { // 중복 시간 피하기
+                    sent.add(cronExp);
+                    cron.schedule(cronExp, async () => {
+                        const pick = list[Math.floor(Math.random() * list.length)];
+                        const imageUrl = BASE_URL + pick;
+                        const selfieTextReply = await getSelfieReplyFromYeji(); // 셀카에 대한 텍스트 응답 생성
+
+                        await client.pushMessage(userId, [
+                            { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl },
+                            { type: 'text', text: selfieTextReply || '헤헷 셀카야~' }
+                        ]);
+                        console.log(`[랜덤 셀카] ${cronExp}: ${imageUrl} 전송됨`);
+                    }, {
+                        timezone: 'Asia/Tokyo'
+                    });
+                    selfieCount++;
+                }
+            }
+        }
+    } catch (err) {
+        console.error('❌ 셀카 스케줄링 초기화 실패 (photo-list.txt 읽기 오류):', err.message);
+    }
 
     console.log('✅ 스케줄러가 시작되었습니다.');
 }
