@@ -22,8 +22,8 @@ const {
   saveLoveMemory
 } = require('./src/autoReply');
 
-// 🔹 기억 추출 모듈 불러오기
-const { extractAndSaveMemory } = require('./src/memoryManager');
+// 🔹 기억 추출 모듈 (context-memory 전용)
+const { extractAndSaveMemory: extractContextMemory } = require('./src/memoryManager');
 
 const app = express();
 const config = {
@@ -66,7 +66,8 @@ app.post('/webhook', middleware(config), async (req, res) => {
         if (message.type === 'text') {
           const text = message.text.trim();
           saveLog('아저씨', text);
-          extractAndSaveMemory(text);
+          extractAndSaveMemory(text);      // 예진이 말투 기반 저장
+          extractContextMemory(text);      // 키워드 기반 context-memory 저장
 
           if (text === '버전') {
             const version = getCurrentModelName();
@@ -164,6 +165,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
   }
 });
 
+// ✅ 정각마다 담타 메시지 전송
 cron.schedule('* * * * *', async () => {
   const now = moment().tz('Asia/Tokyo');
   if (now.minute() === 0 && now.hour() >= 9 && now.hour() <= 18) {
@@ -172,8 +174,10 @@ cron.schedule('* * * * *', async () => {
   }
 });
 
+// ✅ 자동 감정 메시지 및 셀카 스케줄 시작
 startMessageAndPhotoScheduler();
 
+// ✅ 서버 리스닝 시작
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`무쿠 서버 ON! 포트: ${PORT}`);
