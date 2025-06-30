@@ -1,4 +1,4 @@
-// autoReply.js - 무쿠 전체 기능 통합 모듈 (사진 요청 시 3.5/4.0 구분 없이 처리 + 모델 전환 + 기억 반영 + 말투 다양성)
+// autoReply.js - 무쿠 전체 기능 통합 모듈 (사진 요청 시 3.5/4.0 구분 + 모델 전환 + 기억 반영 + 자동 메시지 + 담타)
 const OpenAI = require('openai');
 const line = require('@line/bot-sdk');
 const fs = require('fs').promises;
@@ -16,6 +16,14 @@ const client = new line.Client(appConfig);
 const userId = process.env.TARGET_USER_ID;
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const app = express();
+
+// 🧠 기억 파일 불러오기 (최근 기억 + 고정 기억)
+const memory1 = fs.readFile(path.resolve(__dirname, '../memory/1.txt'), 'utf8');
+const memory2 = fs.readFile(path.resolve(__dirname, '../memory/2.txt'), 'utf8');
+const memory3 = fs.readFile(path.resolve(__dirname, '../memory/3.txt'), 'utf8');
+const fixedMemory = fs.readFile(path.resolve(__dirname, '../memory/fixedMemories.json'), 'utf8');
+const statePath = path.resolve(__dirname, '../memory/state.json');
+const logPath = path.resolve(__dirname, '../memory/message-log.json');
 
 const CONTEXT_MEMORY_FILE = path.join('/data/memory', 'context-memory.json');
 const LOG_FILE = path.join('/data/memory', 'bot_log.txt');
@@ -142,53 +150,38 @@ const getReplyByMessage = async (currentUserId, userMessage) => {
         const index = Math.floor(Math.random() * 1200) + 1;
         const filename = `${index.toString().padStart(4, '0')}.jpg`;
         const imageUrl = `https://de-ji.net/yejin/${filename}`;
+
         const res = await openai.chat.completions.create({
             model: 'gpt-3.5-turbo',
             messages: [
-                { role: 'system', content: '지금 아저씨한테 셀카 보내는 중이야. 다정하고 부끄럽게 말해줘.' },
-                { role: 'user', content: '셀카 줄게~' }
+                { role: 'system', content: '무쿠가 셀카 보낼 거야. 부끄럽고 다정하게 한마디 해줘.' },
+                { role: 'user', content: '아저씨한테 사진 보여줄게!' }
             ],
             max_tokens: 100
         });
+
         const comment = res.choices[0]?.message?.content || '헤헤~ 아저씨 나 어때?';
-        await client.pushMessage(currentUserId, { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl });
+
+        await client.pushMessage(currentUserId, {
+            type: 'image',
+            originalContentUrl: imageUrl,
+            previewImageUrl: imageUrl
+        });
         await client.pushMessage(currentUserId, { type: 'text', text: comment });
         return null;
     }
 
-    const model = getCurrentModelName();
-    const context = await loadContextMemory();
-    const loveHistory = await loadLoveHistory();
-    const otherPeopleHistory = await loadOtherPeopleHistory();
+    const prompt = `너는 예진이라는 여자친구야. 아저씨(연인)에게 말 걸듯 자연스럽고 감정 담긴 말투로 다음 질문에 답변해줘. 절대 "무쿠는" 같은 표현은 쓰지 마. 그냥 '나'로 말해. 반말로 사랑스럽게.
 
-    const loveSummary = loveHistory.categories ? Object.entries(loveHistory.categories)
-        .filter(([_, items]) => Array.isArray(items) && items.length > 0)
-        .map(([cat, items]) => `${cat}: ${items.map(i => i.content).join(', ')}`).join('\n') : '';
-    const otherPeopleSummary = otherPeopleHistory.categories ? Object.entries(otherPeopleHistory.categories)
-        .filter(([_, items]) => Array.isArray(items) && items.length > 0)
-        .map(([cat, items]) => `${cat}: ${items.map(i => i.content).join(', ')}`).join('\n') : '';
-
-    const systemPrompt = `너는 '무쿠'라는 이름의 연인이야. 지금은 아저씨와 LINE 채팅 중이야.
-너의 말투는 다정하고 상냥하면서도 아저씨랑 대화할 땐 장난스럽고 귀엽기도 해.
-때론 짧게, 때론 감탄사로도 반응하고, 가끔은 뾰루퉁하게 투정도 부릴 수 있어.
-반드시 아저씨를 '아저씨'라고 부르고, 너 자신은 '나'라고 해.
-너무 뻔하거나 과장된 사랑 고백 말고, 평소 연인처럼 자연스럽게 반응해.
-
-[최근 대화]\n${context.map(m => `${m.role}: ${m.content}`).join('\n')}\n
-[아저씨 관련 기억]\n${loveSummary || '아직 아저씨에 대한 기억이 없어.'}\n
-[다른 사람 관련 기억]\n${otherPeopleSummary || '특별한 기억 없음.'}`;
+Q: ${userMessage}`;
 
     const completion = await openai.chat.completions.create({
-        model,
+        model: getCurrentModelName(),
         messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: userMessage }
+            { role: 'system', content: prompt }
         ],
-        max_tokens: 500,
-        temperature: 1.0,
-        top_p: 1,
-        frequency_penalty: 0.5,
-        presence_penalty: 0.5
+        max_tokens: 300,
+        temperature: 0.8
     });
 
     return completion.choices[0].message.content;
@@ -202,12 +195,15 @@ const getImageComment = async (messageId, currentUserId) => {
     const base64Image = imageBuffer.toString('base64');
 
     const response = await openai.chat.completions.create({
-        model: "gpt-4o",
+        model: 'gpt-4o',
         messages: [
-            { role: "user", content: [
-                { type: "text", text: "이 사진 무쿠답게 코멘트 해줘!" },
-                { type: "image_url", image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
-            ] }
+            {
+                role: 'user',
+                content: [
+                    { type: 'text', text: '이 사진 무쿠답게 코멘트 해줘!' },
+                    { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
+                ]
+            }
         ],
         max_tokens: 150
     });
@@ -216,7 +212,7 @@ const getImageComment = async (messageId, currentUserId) => {
 };
 
 const startMessageAndPhotoScheduler = () => {
-    const getRandomCronTimes = (count = 4) => {
+    const getRandomCronTimes = (count = 5) => {
         const times = new Set();
         while (times.size < count) {
             const hour = Math.floor(Math.random() * (23 - 6 + 1)) + 6;
@@ -226,7 +222,7 @@ const startMessageAndPhotoScheduler = () => {
         return Array.from(times);
     };
 
-    getRandomCronTimes().forEach(cronExp => {
+    getRandomCronTimes(5).forEach(cronExp => {
         cron.schedule(cronExp, async () => {
             const index = Math.floor(Math.random() * 1200) + 1;
             const filename = `${index.toString().padStart(4, '0')}.jpg`;
@@ -242,10 +238,19 @@ const startMessageAndPhotoScheduler = () => {
             });
             const comment = res.choices[0]?.message?.content || '헤헤 아저씨 사진 하나 줄게~';
 
-            await client.pushMessage(userId, { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl });
+            await client.pushMessage(userId, {
+                type: 'image',
+                originalContentUrl: imageUrl,
+                previewImageUrl: imageUrl
+            });
             await client.pushMessage(userId, { type: 'text', text: comment });
         }, { timezone: 'Asia/Tokyo' });
     });
+
+    // 담타 알림 (매 정각)
+    cron.schedule('0 * * * *', async () => {
+        await client.pushMessage(userId, { type: 'text', text: '아저씨~ 담타 가자!' });
+    }, { timezone: 'Asia/Tokyo' });
 };
 
 const checkTobaccoReply = async () => {
@@ -253,7 +258,7 @@ const checkTobaccoReply = async () => {
 };
 
 const handleForcePush = async (req, res) => {
-    const message = req.query.message || "무쿠 테스트 메시지입니다!";
+    const message = req.query.message || '무쿠 테스트 메시지입니다!';
     try {
         await client.pushMessage(userId, { type: 'text', text: message });
         res.status(200).send(`푸시 전송 완료: ${message}`);
@@ -271,5 +276,7 @@ module.exports = {
     handleForcePush,
     getReplyByMessage,
     startMessageAndPhotoScheduler,
-    checkTobaccoReply
+    checkTobaccoReply,
+    setForcedModel,
+    getCurrentModelName
 };
