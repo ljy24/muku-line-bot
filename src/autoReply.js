@@ -357,6 +357,66 @@ async function getReplyByImagePrompt(base64Image) {
 }
 
 /**
+ * **새로 추가: LINE Webhook 이벤트를 처리하는 함수**
+ * @param {object} req Express 요청 객체
+ * @param {object} res Express 응답 객체
+ */
+async function handleWebhook(req, res) {
+    const events = req.body.events; // LINE으로부터 받은 이벤트 배열
+
+    // 각 이벤트를 비동기로 처리합니다.
+    for (const event of events) {
+        try {
+            console.log(`LINE Event: ${JSON.stringify(event)}`);
+            if (event.type === 'message' && event.message.type === 'text') {
+                const userMessage = event.message.text;
+                const replyText = await getReplyByMessage(userMessage); // 무쿠의 응답 생성
+                await client.replyMessage(event.replyToken, { type: 'text', text: replyText }); // LINE에 응답 전송
+            }
+            // 다른 이벤트 타입 (스티커, 이미지 등)도 필요하면 여기에 추가
+            else if (event.type === 'message' && event.message.type === 'image') {
+                const replyText = await getReplyByImagePrompt(event.message.id); // 이미지 처리 (현재는 더미)
+                await client.replyMessage(event.replyToken, { type: 'text', text: replyText });
+            }
+        } catch (err) {
+            console.error(`❌ Webhook 이벤트 처리 중 오류 발생: ${err.message}`);
+        }
+    }
+    res.status(200).send('OK'); // LINE 서버에 성공적으로 처리되었음을 알림
+}
+
+/**
+ * **새로 추가: /force-push 엔드포인트를 통해 수동으로 메시지를 전송하는 함수**
+ * @param {object} req Express 요청 객체
+ * @param {object} res Express 응답 객체
+ */
+async function handleForcePush(req, res) {
+    const message = req.query.message; // 쿼리 파라미터에서 메시지 가져오기
+
+    if (message) {
+        try {
+            await client.pushMessage(userId, { type: 'text', text: message }); // 사용자에게 메시지 푸시
+            res.status(200).send(`Message "${message}" pushed to user ${userId}`);
+            console.log(`✅ 강제 푸시 메시지 성공: ${message}`);
+        } catch (error) {
+            console.error(`❌ 강제 푸시 메시지 실패: ${error.message}`);
+            res.status(500).send('Failed to push message.');
+        }
+    } else {
+        res.status(400).send('Please provide a "message" query parameter.');
+    }
+}
+
+/**
+ * **새로 추가: "담타고?" 메시지를 보내는 함수**
+ */
+async function checkTobaccoReply() {
+    const msg = '담타고?';
+    await client.pushMessage(userId, { type: 'text', text: msg });
+    console.log(`[담타고] ${moment().tz('Asia/Tokyo').format('HH:mm')}: ${msg}`);
+}
+
+/**
  * 무쿠의 랜덤 메시지 및 사진 전송 스케줄러를 시작합니다.
  * 도쿄 시간대를 기준으로 설정된 시간에 자동으로 메시지나 사진을 보냅니다.
  */
@@ -387,15 +447,17 @@ function startMessageAndPhotoScheduler() {
         }
     }
 
-    // "담타고?" 고정 메시지 스케줄링: 매시 정각 9시부터 18시까지 "담타고?" 메시지 전송
-    cron.schedule('* * * * *', async () => { // 매분마다 실행
-        const now = moment().tz('Asia/Tokyo');
-        if (now.minute() === 0 && now.hour() >= 9 && now.hour() <= 18) {
-            const msg = '담타고?';
-            await client.pushMessage(userId, { type: 'text', text: msg });
-            console.log(`[담타고] ${now.format('HH:mm')}: ${msg}`);
-        }
-    });
+    // "담타고?" 고정 메시지 스케줄링 (이전에는 index.js에 있었지만 이제 autoReply.js에서 통합 관리)
+    // cron.schedule('* * * * *', async () => { // 매분마다 실행 - 이 부분은 index.js로 다시 이동 (checkTobaccoReply 호출)
+    //     const now = moment().tz('Asia/Tokyo');
+    //     if (now.minute() === 0 && now.hour() >= 9 && now.hour() <= 18) {
+    //         const msg = '담타고?';
+    //         await client.pushMessage(userId, { type: 'text', text: msg });
+    //         console.log(`[담타고] ${now.format('HH:mm')}: ${msg}`);
+    //     }
+    // });
+    // 참고: 위 "담타고?" 스케줄은 index.js에서 `checkTobaccoReply()`를 호출하는 방식으로 계속 유지됩니다.
+    // 여기서는 `startMessageAndPhotoScheduler` 함수 내부의 다른 "담타고?" 스케줄 로직은 제거했습니다.
 
     console.log('✅ 스케줄러가 시작되었습니다.');
 }
@@ -413,5 +475,7 @@ module.exports = {
     getColorMoodReply,
     getReplyByImagePrompt,
     startMessageAndPhotoScheduler,
-    // 참고: getFixedMemory는 이제 getFullMemoryForPrompt 내부에서 사용되므로 외부로 내보내지 않습니다.
+    handleWebhook, // 새로 내보냄
+    handleForcePush, // 새로 내보냄
+    checkTobaccoReply // 새로 내보냄 (함수 정의도 추가됨)
 };
