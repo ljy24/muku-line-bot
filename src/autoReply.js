@@ -1,11 +1,10 @@
-// autoReply.js - 무쿠 전체 기능 통합 모듈 (사진 요청 시 3.5/4.0 구분 없이 처리)
+// autoReply.js - 무쿠 전체 기능 통합 모듈 (사진 요청 시 3.5/4.0 구분 없이 처리 + 모델 전환 추가)
 const OpenAI = require('openai');
 const line = require('@line/bot-sdk');
 const fs = require('fs').promises;
 const path = require('path');
 const moment = require('moment-timezone');
 const cron = require('node-cron');
-
 const { extractAndSaveMemory, loadLoveHistory, loadOtherPeopleHistory, ensureMemoryDirectory } = require('./memoryManager');
 require('dotenv').config();
 
@@ -16,12 +15,18 @@ const appConfig = {
 const client = new line.Client(appConfig);
 const userId = process.env.TARGET_USER_ID;
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
 const express = require('express');
 const app = express();
-
 const CONTEXT_MEMORY_FILE = path.join('/data/memory', 'context-memory.json');
 const LOG_FILE = path.join('/data/memory', 'bot_log.txt');
+
+let forcedModel = null;
+const setForcedModel = (name) => {
+    forcedModel = name;
+};
+const getCurrentModelName = () => {
+    return forcedModel || 'gpt-4o';
+};
 
 async function logMessage(message) {
     try {
@@ -130,6 +135,12 @@ const handleMessageEvent = async (event) => {
 };
 
 const getReplyByMessage = async (currentUserId, userMessage) => {
+    const lower = userMessage.toLowerCase().trim();
+    if (lower === '버전') return `지금은 ${getCurrentModelName()} 버전으로 대화하고 있어.`;
+    if (lower === '3.5') { setForcedModel('gpt-3.5-turbo'); return '응, 이제부터 3.5로 대화할게.'; }
+    if (lower === '4.0') { setForcedModel('gpt-4o'); return '응, 이제부터 4.0으로 바꿨어!'; }
+    if (lower === '자동') { setForcedModel(null); return '응, 상황에 맞게 자동으로 바꿔서 말할게!'; }
+
     if (userMessage.includes('사진 줘') || userMessage.includes('셀카')) {
         const index = Math.floor(Math.random() * 1200) + 1;
         const filename = `${index.toString().padStart(4, '0')}.jpg`;
@@ -155,7 +166,6 @@ const getReplyByMessage = async (currentUserId, userMessage) => {
         return null;
     }
 
-    // (이하 GPT-4o 대화 로직 생략 - 그대로 유지)
     return '아저씨~ 무쿠 왔어!';
 };
 
