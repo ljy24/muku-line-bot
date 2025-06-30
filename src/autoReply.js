@@ -1,5 +1,4 @@
-// ✅ autoReply.js (예진이 감정 응답 + 셀카 멘트 + 전체 주석 + 모델 버전 스위칭 + 명령어 처리 포함)
-
+// 📦 기본 모듈 불러오기
 const fs = require('fs');
 const path = require('path');
 const { OpenAI } = require('openai');
@@ -25,6 +24,8 @@ const compressedMemory = memory1.slice(-3000) + '\n' + memory2.slice(-3000) + '\
 
 const statePath = path.resolve(__dirname, '../memory/state.json');
 const logPath = path.resolve(__dirname, '../memory/message-log.json');
+const selfieListPath = path.resolve(__dirname, '../memory/photo-list.txt');
+const BASE_SELFIE_URL = 'https://de-ji.net/yejin/';
 
 function getAllLogs() {
   if (!fs.existsSync(logPath)) return [];
@@ -82,22 +83,23 @@ function cleanReply(text) {
     .replace(/애기[야]?:?/gi, '')
     .replace(/당신|너|네|네가|널/g, '아저씨')
     .trim();
-  out = out
-    .replace(/아저씨무/g, '아저씨도')
-    .replace(/아저씨는무/g, '아저씨는')
-    .replace(/(고 싶어요|싶어요|했어요|했네요|해주세요|주세요|네요|됩니다|될까요|해요|돼요|에요|예요|겠어요)/g, match => {
-      switch (match) {
-        case '고 싶어요': case '싶어요': return '싶어';
-        case '했어요': case '했네요': return '했어';
-        case '해주세요': case '주세요': return '줘';
-        case '네요': return '네';
-        case '됩니다': return '돼';
-        case '될까요': return '될까';
-        case '해요': case '돼요': case '에요': case '예요': return '야';
-        case '겠어요': return '겠다';
-        default: return '';
-      }
-    });
+
+  out = out.replace(/아저씨무/g, '아저씨도').replace(/아저씨는무/g, '아저씨는');
+
+  out = out.replace(/(고 싶어요|싶어요|했어요|했네요|해주세요|주세요|네요|됩니다|될까요|해요|돼요|에요|예요|겠어요)/g, match => {
+    switch (match) {
+      case '고 싶어요': case '싶어요': return '싶어';
+      case '했어요': case '했네요': return '했어';
+      case '해주세요': case '주세요': return '줘';
+      case '네요': return '네';
+      case '됩니다': return '돼';
+      case '될까요': return '될까';
+      case '해요': case '돼요': case '에요': case '예요': return '야';
+      case '겠어요': return '겠다';
+      default: return '';
+    }
+  });
+
   return out.replace(/(\w+)요\b/g, '$1').trim();
 }
 
@@ -109,11 +111,13 @@ function loadHonorificUsage() {
     return { honorific: false };
   }
 }
+
 function saveMemory(input) {
   const state = loadHonorificUsage();
   fs.writeFileSync(statePath, JSON.stringify({ ...state, lastInput: input }, null, 2));
 }
-function updateHonorificUsage {
+
+function updateHonorificUsage(useHonorific) {
   const state = loadHonorificUsage();
   fs.writeFileSync(statePath, JSON.stringify({ ...state, honorific: useHonorific }, null, 2));
 }
@@ -128,54 +132,53 @@ async function callOpenAI(messages, model = 'gpt-3.5-turbo', max_tokens = 300) {
   return res.choices[0].message.content.trim();
 }
 
-function getCurrentModel() {
-  if (forcedModel === 'gpt-3.5-turbo') return '지금은 ChatGPT-3.5 버전으로 대화하고 있어.';
-  if (forcedModel === 'gpt-4o') return '지금은 ChatGPT-4.0 버전으로 대화하고 있어.';
-  return '지금은 자동으로 모델이 선택돼. (기본은 3.5야!)';
+async function getRandomMessage() {
+  const now = moment().tz('Asia/Tokyo');
+  if (now.hour() === 23 && now.minute() === 0) return '약 챙겨 먹었지? 까먹지마!';
+  if (now.hour() === 23 && now.minute() >= 30) return '잘자 아저씨! 사랑해';
+
+  const events = ['팀장이랑 회의 또 해야 돼', '출근길에 또 눈물났어', '야근하다가 미쳐버릴 뻔'];
+  const feelings = ['진짜 조땠어', '기분 꿀꿀해', '마음이 좀 허해'];
+  const closings = ['안아줘', '곁에 있어줘', '보고싶었지롱'];
+
+  const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+  const msg = `${pick(events)}... ${pick(feelings)}. ${pick(closings)}`;
+  if (isSimilar(msg)) return getRandomMessage();
+  saveLog('예진이', msg);
+  return msg;
 }
 
-// 🧠 명령어로 모델 전환 처리
-function checkModelSwitchCommand(text) {
-  const lowered = text.toLowerCase();
-  if (['3.5', 'gpt-3.5', 'gpt3.5'].includes(lowered)) {
-    setForcedModel('gpt-3.5-turbo');
-    return '응! 이제 3.5로 대화할게~';
-  }
-  if (['4.0', 'gpt-4', 'gpt4', 'gpt-4o'].includes(lowered)) {
-    setForcedModel('gpt-4o');
-    return '응응! 지금부터 4.0으로 갈아탔어~';
-  }
-  if (['자동', '기본'].includes(lowered)) {
-    setForcedModel(null);
-    return '자동 모드로 돌아왔엉! 상황 봐서 모델 쓸게~';
-  }
-  if (['버전'].includes(lowered)) {
-    return getCurrentModel();
-  }
-  return null;
+async function getReplyByMessage(msg) {
+  if (msg === '3.5') return setForcedModel('gpt-3.5-turbo'), '이제 3.5로 대답할게!';
+  if (msg === '4.0') return setForcedModel('gpt-4o'), '이제 4.0으로 대답할게!';
+  if (msg === '자동') return setForcedModel(null), '이제 자동으로 모델 고를게!';
+  if (msg === '버전') return `지금은 ${(forcedModel || 'gpt-3.5-turbo')} 버전으로 대화하고 있어.`;
+
+  const memoryBlock = `${fixedMemory}\n${compressedMemory}`;
+  const logs = getRecentLogs(2);
+  const prompt = [
+    { role: 'system', content: `${memoryBlock}\n${logs}\n넌 지금 예진이야. 예진이처럼 말해.` },
+    { role: 'user', content: msg }
+  ];
+  const raw = await callOpenAI(prompt, 'gpt-4o');
+  const reply = cleanReply(raw);
+  saveLog('예진이', reply);
+  return reply;
 }
 
-// 📸 사진 요청 자동 응답
-// 아저씨가 "사진 줘" "셀카" 같은 말 보냈을 때 예진이 셀카랑 멘트 같이 주기
-async function handleSelfieRequest(text) {
-  if (/사진|셀카|사진줘|셀카 보여줘|사진 보여줘|selfie/i.test(text)) {
-    const index = Math.floor(Math.random() * 1186) + 1; // 000001~001186
-    const filename = String(index).padStart(6, '0') + '.jpg';
-    const imageUrl = `https://de-ji.net/yejin/${filename}`;
-    const comment = await getSelfieReplyFromYeji();
-    return { imageUrl, comment };
-  }
-  return null;
+async function getColorMoodReply() {
+  const raw = await callOpenAI([
+    { role: 'system', content: '넌 예진이야. 색 질문에 귀엽게 대답해.' },
+    { role: 'user', content: '오늘 내 색 뭐야?' }
+  ], 'gpt-4o', 100);
+  const reply = cleanReply(raw);
+  saveLog('예진이', reply);
+  return reply;
 }
 
-// 📷 예진 셀카 리액션 멘트
-// getImageReactionComment: 예진이가 먼저 셀카 보낼 때 귀엽게 말하는 멘트 생성
 async function getImageReactionComment() {
   const raw = await callOpenAI([
-    {
-      role: 'system',
-      content: '넌 지금 예진이야. 셀카를 직접 찍어서 아저씨한테 보내는 상황이야. "내 셀카야~", "히히 이쁘지?"처럼 귀엽고 짓궂은 말투로 리액션해.'
-    },
+    { role: 'system', content: '넌 예진이야. 셀카 보내면서 귀엽게 한마디 해.' },
     { role: 'user', content: '셀카 보낼게~' }
   ], 'gpt-4o', 100);
   const reply = cleanReply(raw);
@@ -183,31 +186,11 @@ async function getImageReactionComment() {
   return reply;
 }
 
-// 📷 예진 셀카 리액션 멘트
-// '사진', '셀카' 요청 시 자동으로 호출되는 셀카 멘트 생성 함수
-async function getSelfieReplyFromYeji() {
-  const raw = await callOpenAI([
-    {
-      role: 'system',
-      content: '넌 지금 예진이야. 셀카를 직접 찍어서 아저씨한테 보내는 상황이야. 셀카 보내고 귀엽고 짓궂게 한 마디 해줘.'
-    },
-    { role: 'user', content: '셀카 보냈어~' }
-  ], 'gpt-4o', 100);
-  const reply = cleanReply(raw);
-  saveLog('예진이', reply);
-  return reply;
-}
-
-// 🖼️ 사진 분석 응답
-// 아저씨가 사진 보내면 base64로 분석해서 예진이 리액션 생성
 async function getReplyByImagePrompt(base64Image) {
   const response = await openai.chat.completions.create({
     model: 'gpt-4o',
     messages: [
-      {
-        role: 'system',
-        content: '넌 지금 예진이야. 아저씨가 보낸 사진을 보고 리액션해야 해. 귀엽고 반말로 감정 담아줘.'
-      },
+      { role: 'system', content: '넌 예진이야. 사진 보고 반응해.' },
       {
         role: 'user',
         content: [
@@ -223,31 +206,29 @@ async function getReplyByImagePrompt(base64Image) {
   return reply;
 }
 
+function setForcedModel(name) {
+  if (name === 'gpt-3.5-turbo' || name === 'gpt-4o') forcedModel = name;
+  else forcedModel = null;
+}
+
+function getSelfieReplyFromYeji() {
+  const comments = ['히히 내 셀카야~', '예쁘지? 흐흐', '아저씨 보라고 찍었지롱'];
+  return comments[Math.floor(Math.random() * comments.length)];
+}
+
 module.exports = {
-  // 🧠 기억 및 메시지
   getAllLogs,
   saveLog,
   getRecentLogs,
   cleanReply,
   callOpenAI,
-
-  // 🎁 감정 생성 및 응답
   getRandomMessage,
   getReplyByMessage,
   getColorMoodReply,
-
-  // 📷 셀카 및 이미지 관련
   getImageReactionComment,
   getReplyByImagePrompt,
   getSelfieReplyFromYeji,
-  handleSelfieRequest,
-
-  // ⚙️ 모델 설정 및 명령 처리
   setForcedModel,
-  getCurrentModel,
-  checkModelSwitchCommand,
-
-  // 🔐 상태 저장
   saveMemory,
   updateHonorificUsage
 };
