@@ -3,12 +3,13 @@
 const fs = require('fs');
 const path = require('path');
 const moment = require('moment-timezone');
-const { Configuration, OpenAIApi } = require('openai');
+const { OpenAI } = require('openai');
 const cron = require('node-cron');
 const { Client } = require('@line/bot-sdk');
+const { extractAndSaveMemory } = require('./memoryManager');
 require('dotenv').config();
 
-const openai = new OpenAIApi(new Configuration({ apiKey: process.env.OPENAI_API_KEY }));
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const client = new Client({
   channelAccessToken: process.env.LINE_ACCESS_TOKEN,
   channelSecret: process.env.LINE_CHANNEL_SECRET
@@ -33,13 +34,13 @@ function cleanReply(raw) {
 }
 
 async function callOpenAI(messages, model = 'gpt-3.5-turbo', maxTokens = 100) {
-  const res = await openai.createChatCompletion({
+  const res = await openai.chat.completions.create({
     model,
     messages,
     max_tokens: maxTokens,
     temperature: 0.7
   });
-  return res.data.choices[0]?.message?.content;
+  return res.choices[0]?.message?.content;
 }
 
 function setForcedModel(name) {
@@ -50,14 +51,8 @@ function getCurrentModelName() {
   return forcedModel || 'gpt-3.5-turbo';
 }
 
-function getFixedMemory() {
-  const m1 = safeRead(path.resolve(__dirname, '../memory/1.txt'));
-  const m2 = safeRead(path.resolve(__dirname, '../memory/2.txt'));
-  const m3 = safeRead(path.resolve(__dirname, '../memory/3.txt'));
-  return [m1, m2, m3].filter(Boolean).map(content => ({ role: 'system', content }));
-}
-
 async function getReplyByMessage(text) {
+  extractAndSaveMemory(text); // 🔸 context-memory 저장 추가
   const model = getCurrentModelName();
   const memory = getFixedMemory();
   const messages = [
@@ -67,6 +62,13 @@ async function getReplyByMessage(text) {
   ];
   const raw = await callOpenAI(messages, model, 200);
   return cleanReply(raw);
+}
+
+function getFixedMemory() {
+  const m1 = safeRead(path.resolve(__dirname, '../memory/1.txt'));
+  const m2 = safeRead(path.resolve(__dirname, '../memory/2.txt'));
+  const m3 = safeRead(path.resolve(__dirname, '../memory/3.txt'));
+  return [m1, m2, m3].filter(Boolean).map(content => ({ role: 'system', content }));
 }
 
 async function getColorMoodReply() {
