@@ -1,4 +1,4 @@
-// ✅ index.js - 무쿠 LINE 서버 메인 로직 (완전한 최신 통합 버전)
+// ✅ index.js - 무쿠 LINE 서버 메인 로직 (셀카 처리 포함 최신 완성 버전)
 
 const fs = require('fs');
 const path = require('path');
@@ -6,6 +6,7 @@ const { Client, middleware } = require('@line/bot-sdk');
 const express = require('express');
 const moment = require('moment-timezone');
 const cron = require('node-cron');
+
 const {
   getReplyByMessage,
   getReplyByImagePrompt,
@@ -14,6 +15,7 @@ const {
   getColorMoodReply,
   getHappyReply,
   getSulkyReply,
+  getRecentLog,
   setForcedModel,
   getCurrentModelName,
   saveLog,
@@ -21,7 +23,6 @@ const {
 } = require('./src/autoReply');
 
 const app = express();
-const PORT = process.env.PORT || 10000;
 const config = {
   channelAccessToken: process.env.LINE_ACCESS_TOKEN,
   channelSecret: process.env.LINE_CHANNEL_SECRET
@@ -29,110 +30,97 @@ const config = {
 const client = new Client(config);
 const userId = process.env.TARGET_USER_ID;
 
-if (!config.channelAccessToken || !config.channelSecret || !userId) {
-  console.error('❌ 환경변수 누락');
-  process.exit(1);
-}
-
-app.use(middleware(config));
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.get('/', (_, res) => res.send('무쿠 서버 실행 중 🐣'));
 
-app.get('/', (_, res) => {
-  res.send('무쿠 서버 실행 중 🐣');
-});
-
-app.post('/webhook', async (req, res) => {
-  const events = req.body.events;
-  if (!Array.isArray(events)) return res.status(500).end();
-
-  for (const event of events) {
-    if (event.type === 'message' && event.source.userId === userId) {
-      if (event.message.type === 'text') {
-        await handleText(event);
-      } else if (event.message.type === 'image') {
-        await handleImage(event);
+app.post('/webhook', middleware(config), async (req, res) => {
+  try {
+    const events = req.body.events;
+    for (const event of events) {
+      if (event.type === 'message') {
+        const msg = event.message;
+        if (msg.type === 'text') await handleTextMessage(event, msg.text);
+        if (msg.type === 'image') await handleImageMessage(event, msg.id);
       }
     }
+    res.status(200).end();
+  } catch (err) {
+    console.error('❌ Webhook 에러:', err);
+    res.status(500).end();
   }
-  res.status(200).end();
 });
 
-async function handleText(event) {
-  const msg = event.message.text.trim();
-  await saveLog('아저씨', msg);
+async function handleTextMessage(event, text) {
+  try {
+    const lower = text.toLowerCase().trim();
+    await saveLog('아저씨', text);
 
-  // 명령어
-  if (msg === '3.5') return reply(event, '응, 이제부터 3.5로 할게.', setForcedModel('gpt-3.5-turbo'));
-  if (msg === '4.0') return reply(event, '응응, 4.0으로 바꿨어!', setForcedModel('gpt-4o'));
-  if (msg === '자동') return reply(event, '이제 상황에 맞게 자동으로 할게!', setForcedModel(null));
-  if (msg === '버전') return reply(event, `지금은 ${getCurrentModelName()} 버전으로 대화 중이야.`);
+    if (lower === '버전') return reply(event, `지금은 ${getCurrentModelName()} 버전으로 대화하고 있어.`);
+    if (lower === '3.5') { setForcedModel('gpt-3.5-turbo'); return reply(event, '응, 이제부터 3.5로 대화할게.'); }
+    if (lower === '4.0') { setForcedModel('gpt-4o'); return reply(event, '응, 이제부터 4.0으로 바꿨어!'); }
+    if (lower === '자동') { setForcedModel(null); return reply(event, '응, 상황에 맞게 자동으로 바꿔서 말할게!'); }
 
-  // 셀카 요청
-  if (/사진|셀카/i.test(msg)) return await handleSelfie(event);
+    if (/사진|셀카|사진줘|셀카 보여줘|사진 보여줘|selfie/i.test(text)) {
+      await handleSelfieRequest(event);
+      return;
+    }
 
-  // 컬러 무드
-  if (/무슨\s*색|오늘\s*색/i.test(msg)) {
-    const replyText = await getColorMoodReply();
-    return reply(event, replyText);
+    if (/무슨\s*색|오늘\s*색|색이 뭐야/i.test(text)) {
+      const mood = await getColorMoodReply();
+      return reply(event, mood);
+    }
+
+    const res = await getReplyByMessage(text);
+    await reply(event, res);
+  } catch (err) {
+    console.error('❌ 텍스트 처리 실패:', err);
+    await reply(event, '에러났어 ㅠㅠ 다시 말해줄래?');
   }
-
-  // 일반 메시지 응답
-  const replyText = await getReplyByMessage(msg);
-  return reply(event, replyText);
 }
 
-async function handleSelfie(event) {
+async function handleImageMessage(event, messageId) {
+  try {
+    const stream = await client.getMessageContent(messageId);
+    const chunks = [];
+    for await (const chunk of stream) chunks.push(chunk);
+    const buffer = Buffer.concat(chunks);
+    const base64Image = buffer.toString('base64');
+    const res = await getReplyByImagePrompt(base64Image);
+    await reply(event, res);
+  } catch (err) {
+    console.error('❌ 이미지 처리 실패:', err);
+    await reply(event, '사진 읽는 중 오류났어 ㅠㅠ');
+  }
+}
+
+async function handleSelfieRequest(event) {
   const BASE_URL = 'https://de-ji.net/yejin/';
   const listPath = path.join(__dirname, 'memory/photo-list.txt');
-  if (!fs.existsSync(listPath)) return reply(event, '사진 목록이 없어 ㅠㅠ');
 
-  const files = fs.readFileSync(listPath, 'utf-8').split('\n').filter(Boolean);
-  const photo = files[Math.floor(Math.random() * files.length)];
-  const comment = await getImageReactionComment();
-
-  await client.replyMessage(event.replyToken, [
-    {
-      type: 'image',
-      originalContentUrl: BASE_URL + photo,
-      previewImageUrl: BASE_URL + photo
-    },
-    {
-      type: 'text',
-      text: comment
-    }
-  ]);
-}
-
-async function handleImage(event) {
-  const stream = await client.getMessageContent(event.message.id);
-  const chunks = [];
-  for await (const chunk of stream) chunks.push(chunk);
-  const base64 = Buffer.concat(chunks).toString('base64');
-
-  const replyText = await getReplyByImagePrompt(base64);
-  return reply(event, replyText);
-}
-
-async function reply(event, text, after = null) {
-  await client.replyMessage(event.replyToken, { type: 'text', text });
-  if (after && typeof after.then === 'function') await after;
-}
-
-// 정각 담타 체크
-cron.schedule('* * * * *', async () => {
-  const now = moment().tz('Asia/Tokyo');
-  if (now.minute() === 0 && now.hour() >= 9 && now.hour() <= 18) {
-    const msg = '담타고?';
-    await client.pushMessage(userId, { type: 'text', text: msg });
-    console.log(`[담타] ${msg}`);
-    cron.schedule('*/5 * * * *', async () => {
-      const reply = await getSulkyReply();
-      await client.pushMessage(userId, { type: 'text', text: reply });
-    }, { timezone: 'Asia/Tokyo' });
+  try {
+    if (!fs.existsSync(listPath)) return reply(event, '셀카 목록이 없어 ㅠㅠ');
+    const list = fs.readFileSync(listPath, 'utf-8').split('\n').map(x => x.trim()).filter(Boolean);
+    if (list.length === 0) return reply(event, '셀카가 비어있어 ㅠㅠ');
+    const selected = list[Math.floor(Math.random() * list.length)];
+    const comment = await getImageReactionComment();
+    await client.replyMessage(event.replyToken, [
+      { type: 'image', originalContentUrl: BASE_URL + selected, previewImageUrl: BASE_URL + selected },
+      { type: 'text', text: comment }
+    ]);
+  } catch (err) {
+    console.error('❌ 셀카 처리 실패:', err);
+    await reply(event, '사진 불러오기 실패했어 ㅠㅠ');
   }
-});
+}
 
-// 서버 시작
+async function reply(event, text) {
+  if (!text) return;
+  await client.replyMessage(event.replyToken, { type: 'text', text });
+  await saveLog('예진이', text);
+}
+
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`🎉 무쿠 서버 실행됨 포트: ${PORT}`);
+  console.log(`🚀 무쿠 서버 실행됨 포트: ${PORT}`);
 });
