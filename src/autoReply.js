@@ -165,15 +165,18 @@ async function getReplyByMessage(userMessage) {
 module.exports = {
   getReplyByMessage,
   getRandomMessage,
-  getColorMoodReply,
-  getSelfieReplyFromYeji,
-  getFullMemoryPrompt,
-  getRecentLog,
-  cleanReply,
   callOpenAI,
+  cleanReply,
   saveLog,
+  getRecentLog,
   extractAndSaveMemory,
   setForcedModel,
   getCurrentModelName,
-  validateEnvironment
+  getSelfieReplyFromYeji,
+  getFixedMemory,
+  startMessageAndPhotoScheduler,  // ✅ 요거 꼭 있어야 해!
+  getFullMemoryPrompt,
+  getColorMoodReply,
+  validateEnvironment,
+  saveLoveMemory
 };
