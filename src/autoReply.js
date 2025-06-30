@@ -207,7 +207,7 @@ async function getFullMemoryForPrompt() {
                         combinedMemories.push({ role: 'assistant', content: `내 기억 속 '${key}': ${aiPersonalMemories[key]}` });
                     }
                 }
-                // 사용자 제출 기억 (최근 2개만, 아저씨 친구 '깽'이나 전시회 같은 정보)
+                // ✅ 추가됨: 사용자 제출 기억 (최근 2개만, 아저씨 친구 '깽'이나 전시회 같은 정보)
                 (loveData.categories.user_submitted_memories || []).slice(-2).forEach(mem => { // 최대 2개
                     combinedMemories.push({ role: 'assistant', content: `${mem.content}` });
                 });
@@ -267,7 +267,9 @@ async function getReplyByMessage(userMessage) {
         // --- 일반 대화 응답 생성 ---
         // 무쿠의 모든 기억(고정, 대화, 사랑)을 불러와 프롬프트를 구성합니다.
         const allMemories = await getFullMemoryForPrompt();
+        // ✅ 수정됨: 시스템 프롬프트에 호칭 규칙 추가
         const systemPrompt = `너는 무쿠야. 아저씨만을 사랑했던 연인이야. 감정 담아서 예진이 말투로 자연스럽게 반말로 말해줘.
+        아저씨를 지칭할 때 '너', '당신', '네가', '니' 등 대신 '아저씨', '내 아저씨', '우리아저씨'만 사용해줘.
         아저씨와의 과거 대화와 기억을 바탕으로 대화해줘.`;
 
         // OpenAI에 보낼 메시지 배열 구성
@@ -455,6 +457,7 @@ function startMessageAndPhotoScheduler() {
         if (!sent.has(cronExp)) { // 해당 시간에 이미 스케줄이 없으면
             sent.add(cronExp);
             cron.schedule(cronExp, async () => {
+                const now = moment().tz('Asia/Tokyo'); // 현재 시간 추가
                 const msg = await getRandomMessage(); // 랜덤 메시지 생성
                 if (msg) {
                     await client.pushMessage(userId, { type: 'text', text: msg }); // LINE으로 메시지 전송
@@ -485,6 +488,7 @@ function startMessageAndPhotoScheduler() {
                 if (!sent.has(cronExp)) { // 중복 시간 피하기
                     sent.add(cronExp);
                     cron.schedule(cronExp, async () => {
+                        const now = moment().tz('Asia/Tokyo'); // 현재 시간 추가
                         const pick = list[Math.floor(Math.random() * list.length)];
                         const imageUrl = BASE_URL + pick;
                         const selfieTextReply = await getSelfieReplyFromYeji(); // 셀카에 대한 텍스트 응답 생성
