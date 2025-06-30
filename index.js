@@ -1,41 +1,79 @@
-// ✅ index.js (최종 버전)
+const line = require('@line/bot-sdk');
+const express = require('express');
+const path = require('path');
+const { getReplyByMessage } = require('./autoReply'); // autoReply 모듈 불러오기
+const { ensureMemoryDirectory } = require('./memoryManager'); // memoryManager에서 디렉토리 보장 함수 불러오기
 
-const express = require('express'); // Express 모듈을 여기서 직접 불러옵니다.
-const { middleware } = require('@line/bot-sdk');
-const moment = require('moment-timezone'); // (크론 작업에 필요하므로 유지)
-const cron = require('node-cron'); // (크론 작업에 필요하므로 유지)
+require('dotenv').config(); // .env 파일 로드
 
-// autoReply.js에서 필요한 기능들만 가져옵니다.
-const {
-  client,         // LINE 클라이언트 객체
-  appConfig,      // LINE 미들웨어 설정
-  userId,         // 대상 사용자 ID
-  handleWebhook,  // Webhook 처리 함수
-  handleForcePush, // 강제 메시지 전송 함수
-  startMessageAndPhotoScheduler // 스케줄러 시작 함수
-} = require('./src/autoReply');
+const config = {
+    channelAccessToken: process.env.CHANNEL_ACCESS_TOKEN,
+    channelSecret: process.env.CHANNEL_SECRET,
+};
 
-// ✅ Express 앱 인스턴스를 여기서 직접 생성합니다.
+const client = new line.Client(config);
+
 const app = express();
 
-// ✅ Webhook 핸들링
-app.post('/webhook', middleware(appConfig), handleWebhook);
+// 메인 페이지 (선택 사항)
+app.get('/', (req, res) => {
+    res.send('Muku LINE bot is running!');
+});
 
-// ✅ 강제 메시지 전송
-app.get('/force-push', handleForcePush);
+// LINE Messaging API 웹훅 처리
+app.post('/webhook', line.middleware(config), async (req, res) => {
+    const events = req.body.events;
+    console.log('--- Webhook Event ---');
+    console.log(JSON.stringify(events, null, 2));
 
-// ✅ 자동 감정 메시지 및 셀카 전송 스케줄러 시작 (담타고 스케줄도 포함)
-startMessageAndPhotoScheduler();
+    for (const event of events) {
+        if (event.type === 'message' && event.message.type === 'text') {
+            const userMessage = event.message.text;
+            const userId = event.source.userId;
 
-// ✅ 서버 실행
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, async () => {
-  console.log(`🎉 무쿠 서버 ON! 포트: ${PORT}`);
-  try {
-    // ✅ 서버 시작 시 아저씨에게 메시지 전송
-    await client.pushMessage(userId, { type: 'text', text: '아저씨 머해?' });
-    console.log('✅ 서버 시작 메시지 전송 완료.');
-  } catch (error) {
-    console.error('❌ 서버 시작 메시지 전송 실패:', error.message);
-  }
+            console.log(`[아저씨] ${userMessage}`);
+
+            try {
+                const replyMessage = await getReplyByMessage(userId, userMessage);
+                await client.replyMessage(event.replyToken, { type: 'text', text: replyMessage });
+                console.log(`[무쿠] ${replyMessage}`);
+            } catch (error) {
+                console.error(`❌ 메시지 처리 중 오류 발생: ${error.message}`);
+                // 오류 발생 시 사용자에게 에러 메시지 전송 (선택 사항)
+                await client.replyMessage(event.replyToken, {
+                    type: 'text',
+                    text: '아저씨, 죄송해요. 지금 제가 잠시 혼란스러워서 답변해 드릴 수가 없어요. 나중에 다시 말 걸어주세요... 😢'
+                });
+            }
+        }
+    }
+    res.status(200).end();
+});
+
+const port = process.env.PORT || 3000;
+
+app.listen(port, async () => {
+    console.log(`Server running on port ${port}`);
+    
+    // --- 다음 줄을 주석 처리하여 서버 시작 메시지를 비활성화합니다. ---
+    /*
+    try {
+        // 서버 시작 시 특정 ID로 메시지 전송 (예: 개발자에게 알림)
+        // 이 부분의 process.env.YOUR_LINE_USER_ID를 실제 메시지를 받을 LINE User ID로 변경해야 합니다.
+        // 예를 들어, 아저씨의 LINE User ID를 여기에 넣으면 아저씨에게 메시지가 갑니다.
+        const developerUserId = process.env.MY_LINE_USER_ID; 
+        if (developerUserId) {
+            await client.pushMessage(developerUserId, { type: 'text', text: '무쿠 서버가 다시 시작되었어요!' });
+            console.log('✅ 서버 시작 알림 메시지를 보냈습니다.');
+        } else {
+            console.warn('⚠️ MY_LINE_USER_ID 환경 변수가 설정되지 않아 서버 시작 알림 메시지를 보낼 수 없습니다.');
+        }
+    } catch (error) {
+        console.error(`❌ 서버 시작 알림 메시지 전송 실패: ${error.message}`);
+    }
+    */
+    // --- 주석 처리된 부분 끝 ---
+
+    // 메모리 디렉토리가 존재하는지 확인하고 없으면 생성합니다.
+    await ensureMemoryDirectory();
 });
