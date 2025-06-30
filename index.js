@@ -1,4 +1,4 @@
-// ✅ index.js (예진이 말투 감정 강화 + 셀카 구분 반응 적용 + 하루 랜덤 감정 메시지 스케줄러 연결)
+// ✅ index.js (사진 요청 + 모델 스위칭 + 감정 대화 포함)
 
 const fs = require('fs');
 const path = require('path');
@@ -17,7 +17,9 @@ const {
   saveLog,
   setForcedModel,
   saveMemory,
-  updateHonorificUsage
+  updateHonorificUsage,
+  handleSelfieRequest,
+  checkModelSwitchCommand
 } = require('./src/autoReply');
 
 const app = express();
@@ -61,23 +63,20 @@ app.post('/webhook', middleware(config), async (req, res) => {
           const text = message.text.trim();
           saveLog('아저씨', text);
 
-          // 💡 셀카 요청 키워드 처리 (랜덤 6자리 숫자로 대체)
-          if (/사진|셀카|사진줘|셀카 보여줘|사진 보여줘|selfie/i.test(text)) {
-            const BASE_URL = 'https://de-ji.net/yejin/';
-            try {
-              const index = Math.floor(Math.random() * 1186) + 1; // 1~1186
-              const filename = String(index).padStart(6, '0') + '.jpg';
-              const imageUrl = BASE_URL + filename;
-              const comment = await getSelfieReplyFromYeji();
+          // 🔄 모델 전환 명령어
+          const versionSwitch = checkModelSwitchCommand(text);
+          if (versionSwitch) {
+            await client.replyMessage(event.replyToken, { type: 'text', text: versionSwitch });
+            return;
+          }
 
-              await client.replyMessage(event.replyToken, [
-                { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl },
-                { type: 'text', text: comment || '히히 셀카야~' }
-              ]);
-            } catch (err) {
-              console.error('📷 셀카 전송 실패:', err.message);
-              await client.replyMessage(event.replyToken, { type: 'text', text: '사진 보내다 오류났어 ㅠㅠ' });
-            }
+          // 📸 사진 요청 감지
+          const selfie = await handleSelfieRequest(text);
+          if (selfie) {
+            await client.replyMessage(event.replyToken, [
+              { type: 'image', originalContentUrl: selfie.imageUrl, previewImageUrl: selfie.imageUrl },
+              { type: 'text', text: selfie.comment }
+            ]);
             return;
           }
 
