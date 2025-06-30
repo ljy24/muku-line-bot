@@ -5,7 +5,7 @@ const fs = require('fs').promises;
 const path = require('path');
 const moment = require('moment-timezone');
 const cron = require('node-cron');
-const { extractAndSaveMemory, loadLoveHistory, loadOtherPeopleHistory, ensureMemoryDirectory } = require('./memoryManager');
+const { extractAndSaveMemory } = require('./memoryManager');
 require('dotenv').config();
 
 const appConfig = {
@@ -21,96 +21,28 @@ const CONTEXT_MEMORY_FILE = path.join('/data/memory', 'context-memory.json');
 const LOG_FILE = path.join('/data/memory', 'bot_log.txt');
 
 let forcedModel = null;
-const setForcedModel = (name) => {
-    forcedModel = name;
-};
-const getCurrentModelName = () => {
-    return forcedModel || 'gpt-4o';
-};
-
-async function logMessage(message) {
-    try {
-        const dir = path.dirname(LOG_FILE);
-        await fs.mkdir(dir, { recursive: true });
-        const timestamp = moment().tz('Asia/Tokyo').format('YYYY-MM-DD HH:mm:ss');
-        const logEntry = `[${timestamp}] ${message}\n`;
-        await fs.appendFile(LOG_FILE, logEntry);
-    } catch (error) {
-        console.error('❌ 로그 작성 실패:', error);
-    }
-}
-
-async function safeRead(filePath) {
-    try {
-        await fs.access(filePath);
-        return await fs.readFile(filePath, 'utf-8');
-    } catch (err) {
-        if (err.code !== 'ENOENT') {
-            await logMessage(`❌ safeRead 실패 (${filePath}): ${err.message}`);
-        }
-        return '';
-    }
-}
-
-async function safeWriteJson(filePath, data) {
-    try {
-        const dir = path.dirname(filePath);
-        await fs.mkdir(dir, { recursive: true });
-        const tempPath = filePath + '.tmp';
-        await fs.writeFile(tempPath, JSON.stringify(data, null, 2), 'utf-8');
-        await fs.rename(tempPath, filePath);
-    } catch (error) {
-        await logMessage(`❌ safeWriteJson 실패 (${filePath}): ${error.message}`);
-    }
-}
-
-async function loadContextMemory() {
-    try {
-        const rawData = await safeRead(CONTEXT_MEMORY_FILE);
-        return rawData ? JSON.parse(rawData) : [];
-    } catch (error) {
-        await logMessage(`❌ context-memory.json 로드 실패 (파싱 오류): ${error.message}`);
-        return [];
-    }
-}
-
-async function saveContextMemory(context) {
-    await safeWriteJson(CONTEXT_MEMORY_FILE, context);
-    await logMessage(`✅ 대화 기억 저장됨 (경로: ${CONTEXT_MEMORY_FILE})`);
-}
+const setForcedModel = (name) => { forcedModel = name; };
+const getCurrentModelName = () => forcedModel || 'gpt-4o';
 
 const handleWebhook = async (req, res) => {
     const events = req.body.events;
-    await logMessage('--- 웹훅 이벤트 수신 ---');
-    await logMessage(JSON.stringify(events, null, 2));
-
-    try {
-        for (const event of events) {
-            if (event.type === 'message') {
-                await handleMessageEvent(event);
-            } else {
-                await logMessage(`⚠️ 알 수 없는 이벤트 타입 수신: ${event.type}`);
-            }
+    for (const event of events) {
+        if (event.type === 'message') {
+            await handleMessageEvent(event);
         }
-        res.status(200).end();
-    } catch (error) {
-        await logMessage(`❌ 웹훅 처리 중 오류 발생: ${error.message}`);
-        res.status(500).end();
     }
+    res.status(200).end();
 };
 
 const handleMessageEvent = async (event) => {
     const currentUserId = event.source.userId;
     let userMessageContent = event.message.text || `[${event.message.type} 메시지]`;
-    await logMessage(`[아저씨] ${userMessageContent}`);
 
     if (currentUserId !== userId) return;
 
+    // ✅ 기억 저장 시작
     await extractAndSaveMemory(userMessageContent);
-    let context = await loadContextMemory();
-    context.push({ role: 'user', content: userMessageContent });
-    if (context.length > 20) context = context.slice(-20);
-    await saveContextMemory(context);
+    // ✅ 기억 저장 끝
 
     let replyMessage = '';
     try {
@@ -122,11 +54,8 @@ const handleMessageEvent = async (event) => {
 
         if (replyMessage !== null) {
             await client.replyMessage(event.replyToken, { type: 'text', text: replyMessage });
-            context.push({ role: 'assistant', content: replyMessage });
-            await saveContextMemory(context);
         }
     } catch (error) {
-        await logMessage(`❌ 메시지 처리 오류: ${error.message}`);
         await client.replyMessage(event.replyToken, {
             type: 'text',
             text: '아저씨, 지금은 조금 힘들어... 나중에 다시 말 걸어줘...'
