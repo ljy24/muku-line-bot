@@ -1,24 +1,10 @@
-{
-  "name": "muku-line-bot",
-  "version": "1.0.0",
-  "description": "무쿠 LINE 메시지 자동 응답 봇",
-  "main": "index.js",
-  "type": "commonjs",
-  "scripts": {
-    "start": "node index.js"
-  },
-  "dependencies": {
-    "@line/bot-sdk": "^7.5.1",
-    "axios": "^1.6.8",
-    "dotenv": "^16.3.1",
-    "express": "^4.18.2",
-    "openai": "^4.30.0",
-    "moment-timezone": "^0.5.44",
-    "node-cron": "^3.0.3"
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  },
-  "author": "ljy24",
-  "license": "MIT"
+"dependencies": {
+  "@line/bot-sdk": "^7.5.1",
+  "axios": "^1.6.8",
+  "dotenv": "^16.3.1",
+  "express": "^4.18.2",
+  "openai": "^4.30.0",
+  "moment-timezone": "^0.5.44",
+  "node-cron": "^3.0.3",
+  "string-similarity": "^4.0.4"
 }
