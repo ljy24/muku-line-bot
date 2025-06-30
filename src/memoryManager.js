@@ -75,3 +75,8 @@ async function extractAndSaveMemory(userMessage) {
     console.error('❌ context-memory 저장 실패:', err.message);
   }
 }
+
+// 🔚 외부에서 사용할 수 있게 export
+module.exports = {
+  extractAndSaveMemory
+};
