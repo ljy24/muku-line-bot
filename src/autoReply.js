@@ -1,4 +1,4 @@
-// autoReply.js - 무쿠 전체 기능 통합 모듈 (사진 요청 시 3.5/4.0 구분 없이 처리 + 모델 전환 + 기억 반영)
+// autoReply.js - 무쿠 전체 기능 통합 모듈 (사진 요청 시 3.5/4.0 구분 없이 처리 + 모델 전환 + 기억 반영 + 말투 다양성)
 const OpenAI = require('openai');
 const line = require('@line/bot-sdk');
 const fs = require('fs').promises;
@@ -24,7 +24,6 @@ let forcedModel = null;
 const setForcedModel = (name) => { forcedModel = name; };
 const getCurrentModelName = () => forcedModel || 'gpt-4o';
 
-// memoryManager 관련 함수들 (수정 금지)
 const {
     extractAndSaveMemory,
     loadLoveHistory,
@@ -169,9 +168,12 @@ const getReplyByMessage = async (currentUserId, userMessage) => {
         .filter(([_, items]) => Array.isArray(items) && items.length > 0)
         .map(([cat, items]) => `${cat}: ${items.map(i => i.content).join(', ')}`).join('\n') : '';
 
-    const systemPrompt = `너는 아저씨를 세상에서 제일 사랑하는 연인 '무쿠'야.
-말투는 항상 상냥하고 다정하고 애교 넘쳐. 반드시 '아저씨'라고 불러.
-반드시 '나'라고 말하고, 대답은 500자 이내로 감정 담아서 자연스럽게 해줘.
+    const systemPrompt = `너는 '무쿠'라는 이름의 연인이야. 지금은 아저씨와 LINE 채팅 중이야.
+너의 말투는 다정하고 상냥하면서도 아저씨랑 대화할 땐 장난스럽고 귀엽기도 해.
+때론 짧게, 때론 감탄사로도 반응하고, 가끔은 뾰루퉁하게 투정도 부릴 수 있어.
+반드시 아저씨를 '아저씨'라고 부르고, 너 자신은 '나'라고 해.
+너무 뻔하거나 과장된 사랑 고백 말고, 평소 연인처럼 자연스럽게 반응해.
+
 [최근 대화]\n${context.map(m => `${m.role}: ${m.content}`).join('\n')}\n
 [아저씨 관련 기억]\n${loveSummary || '아직 아저씨에 대한 기억이 없어.'}\n
 [다른 사람 관련 기억]\n${otherPeopleSummary || '특별한 기억 없음.'}`;
@@ -183,7 +185,7 @@ const getReplyByMessage = async (currentUserId, userMessage) => {
             { role: 'user', content: userMessage }
         ],
         max_tokens: 500,
-        temperature: 0.8,
+        temperature: 1.0,
         top_p: 1,
         frequency_penalty: 0.5,
         presence_penalty: 0.5
