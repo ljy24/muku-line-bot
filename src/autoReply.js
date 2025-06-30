@@ -1,3 +1,5 @@
+// autoReply.js - 무쿠 전체 감정 응답 로직 + 사진 자동 응답 포함 (모든 모델에서 셀카 작동)
+
 const fs = require('fs');
 const path = require('path');
 const { OpenAI } = require('openai');
@@ -127,6 +129,24 @@ async function getSulkyReply() {
 
 // 🔹 일반 메시지 응답
 async function getReplyByMessage(userMessage) {
+  const lower = userMessage.toLowerCase();
+  if (lower.includes('사진') || lower.includes('셀카')) {
+    const photoListPath = path.join(__dirname, '../memory/photo-list.txt');
+    const BASE_URL = 'https://de-ji.net/yejin/';
+
+    const list = fs.readFileSync(photoListPath, 'utf-8').split('\n').map(x => x.trim()).filter(Boolean);
+    const pick = list[Math.floor(Math.random() * list.length)];
+    const comment = await getImageReactionComment();
+
+    await saveLog('예진이', comment);
+
+    return {
+      type: 'image',
+      imageUrl: BASE_URL + pick,
+      comment
+    };
+  }
+
   const memory = await getRecentLog();
   const prompt = [
     {
