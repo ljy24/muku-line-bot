@@ -8,6 +8,7 @@ const { OpenAI } = require('openai');
 const axios = require('axios');
 const cron = require('node-cron');
 const { Client } = require('@line/bot-sdk');
+const { extractAndSaveMemory } = require('./memoryManager');
 
 // 환경 변수 검증
 function validateEnvironment() {
