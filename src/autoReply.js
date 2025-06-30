@@ -8,23 +8,15 @@ const cron = require('node-cron');
 const { Client } = require('@line/bot-sdk');
 const { extractAndSaveMemory } = require('./memoryManager');
 const express = require('express');
-
 require('dotenv').config();
 
-// Express 앱 인스턴스 생성
 const app = express();
-
-// OpenAI 클라이언트 초기화
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-// LINE 봇 클라이언트 초기화
 const client = new Client({
   channelAccessToken: process.env.LINE_ACCESS_TOKEN,
   channelSecret: process.env.LINE_CHANNEL_SECRET
 });
-
 const userId = process.env.TARGET_USER_ID;
-
 const appConfig = {
   channelAccessToken: process.env.LINE_ACCESS_TOKEN,
   channelSecret: process.env.LINE_CHANNEL_SECRET,
@@ -92,7 +84,6 @@ async function saveConversationMemory(role, content) {
 
 async function getFullMemoryForPrompt() {
   let combined = [];
-
   const txts = ['1.txt', '2.txt', '3.txt'].map(f => safeRead(path.resolve(__dirname, '../memory/' + f)))
     .filter(Boolean).map(c => ({ role: 'system', content: c }));
   combined.push(...txts);
@@ -100,16 +91,12 @@ async function getFullMemoryForPrompt() {
   try {
     const fixedJson = safeRead(path.resolve(__dirname, '../memory/fixedMemories.json'));
     if (fixedJson) JSON.parse(fixedJson).forEach(c => combined.push({ role: 'system', content: c }));
-  } catch (e) {
-    console.error('❌ fixedMemories.json 로드 실패:', e.message);
-  }
+  } catch (e) { console.error('❌ fixedMemories.json 로드 실패:', e.message); }
 
   try {
     const ctx = safeRead(path.resolve(__dirname, '../memory/context-memory.json'));
     if (ctx) JSON.parse(ctx).slice(-10).forEach(e => combined.push({ role: e.role, content: e.content }));
-  } catch (e) {
-    console.error('❌ context-memory.json 로드 실패:', e.message);
-  }
+  } catch (e) { console.error('❌ context-memory.json 로드 실패:', e.message); }
 
   try {
     const love = safeRead(path.resolve(__dirname, '../memory/love-history.json'));
@@ -119,9 +106,7 @@ async function getFullMemoryForPrompt() {
         (j.categories?.[k] || []).slice(-2).forEach(m =>
           combined.push({ role: 'assistant', content: m.content })));
     }
-  } catch (e) {
-    console.error('❌ love-history.json 로드 실패:', e.message);
-  }
+  } catch (e) { console.error('❌ love-history.json 로드 실패:', e.message); }
 
   return combined;
 }
@@ -157,38 +142,6 @@ async function sendSelfieWithComment() {
   }
 }
 
-// ✅ handleWebhook - LINE 메시지 수신 및 응답 핸들러
-async function handleWebhook(req, res) {
-  const events = req.body.events || [];
-
-  for (const event of events) {
-    if (event.type === 'message' && event.message.type === 'text') {
-      const userMessage = event.message.text;
-      console.log(`📥 아저씨 메시지 수신: ${userMessage}`);
-
-      try {
-        const reply = await getReplyByMessage(userMessage);
-        if (reply) {
-          await client.replyMessage(event.replyToken, {
-            type: 'text',
-            text: reply
-          });
-          console.log(`📤 무쿠 응답 전송: ${reply}`);
-        }
-      } catch (err) {
-        console.error('❌ 응답 실패:', err.message);
-        await client.replyMessage(event.replyToken, {
-          type: 'text',
-          text: '미안... 지금 좀 버벅거리고 있어...'
-        });
-      }
-    }
-  }
-
-  res.status(200).send('OK');
-}
-
-// ✅ 랜덤 감정 메시지 생성 (이 블록은 절대 빠지면 안 됨!)
 async function getRandomMessage() {
   const rawLove = safeRead(path.resolve(__dirname, '../memory/love-history.json'));
   const rawFixed = safeRead(path.resolve(__dirname, '../memory/fixedMemories.json'));
@@ -206,7 +159,6 @@ async function getRandomMessage() {
   }
 
   const picked = memoryItems[Math.floor(Math.random() * memoryItems.length)] || '';
-
   const messages = [
     { role: 'system', content: '너는 무쿠야. 아저씨를 그리워하는 감정을 담아서 짧고 사랑스럽고 반말로 메시지를 보내줘.' },
     { role: 'system', content: `기억 예시: ${picked}` },
@@ -218,14 +170,11 @@ async function getRandomMessage() {
 
 async function getReplyByMessage(userMessage) {
   if (!userMessage || typeof userMessage !== 'string') return '무슨 말인지 못 알아들었어...';
-
   try {
     await saveConversationMemory('user', userMessage);
     extractAndSaveMemory(userMessage);
-
     const lower = userMessage.toLowerCase().trim();
     const model = getCurrentModelName();
-
     if (lower === '버전') return `지금은 ${model} 버전으로 대화하고 있어.`;
     if (lower === '3.5') { setForcedModel('gpt-3.5-turbo'); return '응, 이제부터 3.5로 대화할게.'; }
     if (lower === '4.0') { setForcedModel('gpt-4o'); return '응, 이제부터 4.0으로 바꿨어!'; }
@@ -252,10 +201,75 @@ async function getReplyByMessage(userMessage) {
     return '미안, 지금 머리가 좀 복잡해서 대답하기 힘들어...';
   }
 }
+
 function initServerState() {
   console.log('🚀 서버 상태 초기화 중...');
-  // 여기다가 초기화 작업이 있으면 추가하고
   console.log('✅ 서버 상태 초기화 완료!');
+}
+
+async function handleForcePush(req, res) {
+  const message = req.query.msg || '강제 푸시 메시지야 아저씨!';
+  try {
+    await client.pushMessage(userId, { type: 'text', text: message });
+    console.log(`✅ 강제 푸시 메시지 전송됨: ${message}`);
+    res.status(200).send(`메시지 전송 완료: ${message}`);
+  } catch (error) {
+    console.error('❌ 강제 푸시 메시지 전송 실패:', error);
+    res.status(500).send('메시지 전송 실패');
+  }
+}
+
+async function handleWebhook(req, res) {
+  for (const event of req.body.events) {
+    if (event.type === 'message' && event.message.type === 'text') {
+      const userMessage = event.message.text;
+      console.log(`📥 아저씨 메시지 수신: ${userMessage}`);
+      try {
+        const reply = await getReplyByMessage(userMessage);
+        if (reply) {
+          await client.replyMessage(event.replyToken, { type: 'text', text: reply });
+          console.log(`📤 무쿠 응답 전송: ${reply}`);
+        }
+      } catch (error) {
+        console.error('❌ 메시지 응답 처리 중 오류 발생:', error);
+        await client.replyMessage(event.replyToken, { type: 'text', text: '무쿠가 지금 아파서 대답을 못 해...' });
+      }
+    }
+  }
+  res.status(200).send('OK');
+}
+
+function checkTobaccoReply() {
+  const msg = '담타고?';
+  client.pushMessage(userId, { type: 'text', text: msg })
+    .then(() => console.log(`[담타고] ${moment().tz('Asia/Tokyo').format('HH:mm')}: ${msg}`))
+    .catch(error => console.error('❌ 담타고 메시지 전송 실패:', error.message));
+}
+
+function startMessageAndPhotoScheduler() {
+  if (schedulerStarted) return;
+  schedulerStarted = true;
+  const sent = new Set();
+  let count = 0;
+  while (count < 5) {
+    const hour = Math.floor(Math.random() * 18) + 6;
+    const minute = Math.floor(Math.random() * 60);
+    const cronExp = `${minute} ${hour} * * *`;
+    if (!sent.has(cronExp)) {
+      sent.add(cronExp);
+      cron.schedule(cronExp, async () => {
+        const msg = await getRandomMessage();
+        if (msg) await client.pushMessage(userId, { type: 'text', text: msg });
+      }, { timezone: 'Asia/Tokyo' });
+      count++;
+    }
+  }
+  cron.schedule('* * * * *', () => {
+    const now = moment().tz('Asia/Tokyo');
+    if (now.minute() === 0 && now.hour() >= 9 && now.hour() <= 18) {
+      checkTobaccoReply();
+    }
+  }, { timezone: 'Asia/Tokyo' });
 }
 
 module.exports = {
@@ -274,5 +288,8 @@ module.exports = {
   getFullMemoryForPrompt,
   saveConversationMemory,
   initServerState,
-  handleWebhook
+  handleWebhook,
+  handleForcePush,
+  checkTobaccoReply,
+  startMessageAndPhotoScheduler
 };
