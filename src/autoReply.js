@@ -25,6 +25,28 @@ let forcedModel = null;
 // 스케줄러가 시작되었는지 추적하는 변수
 let schedulerStarted = false;
 
+// --- **새로운 변경**: 기억 파일 저장 경로 설정 ---
+// Render Persistent Disk의 마운트 경로(/data)를 기준으로 memory 폴더를 사용합니다.
+// 로컬 테스트 환경에서는 현재 스크립트의 상위 memory 폴더를 사용합니다.
+const MEMORY_BASE_PATH = process.env.RENDER_EXTERNAL_HOSTNAME ? '/data/memory' : path.resolve(__dirname, '../memory');
+const contextMemoryPath = path.join(MEMORY_BASE_PATH, 'context-memory.json');
+const loveHistoryPath = path.join(MEMORY_BASE_PATH, 'love-history.json');
+
+
+// --- **새로운 함수**: 기억 저장 디렉토리 보장 ---
+// 파일 읽기/쓰기 전에 디렉토리가 존재하는지 확인하고 없으면 생성합니다.
+async function ensureMemoryDirectory() {
+    try {
+        await fs.promises.mkdir(MEMORY_BASE_PATH, { recursive: true });
+        console.log(`✅ Memory directory ensured at: ${MEMORY_BASE_PATH}`);
+    } catch (error) {
+        console.error(`❌ Failed to ensure memory directory at ${MEMORY_BASE_PATH}: ${error.message}`);
+    }
+}
+// 모듈 로드 시점에 디렉토리 보장 함수를 호출합니다.
+ensureMemoryDirectory();
+
+
 // --- 헬퍼 함수들 (Helper Functions) ---
 
 /**
@@ -38,7 +60,7 @@ function safeRead(filePath) {
             return fs.readFileSync(filePath, 'utf-8');
         }
     } catch (err) {
-        console.error(`❌ safeRead 실패: ${err.message}`); // 오류 발생 시 콘솔에 기록
+        console.error(`❌ safeRead 실패 (${filePath}): ${err.message}`); // 오류 발생 시 콘솔에 기록
     }
     return ''; // 파일이 없거나 오류 발생 시 빈 문자열 반환
 }
@@ -99,11 +121,10 @@ function getCurrentModelName() {
  * @param {string} content 메시지 내용
  */
 async function saveConversationMemory(role, content) {
-    const memoryPath = path.resolve(__dirname, '../memory/context-memory.json');
     let memories = [];
 
     try {
-        const rawData = safeRead(memoryPath);
+        const rawData = safeRead(contextMemoryPath); // 수정된 경로 사용
         if (rawData) {
             memories = JSON.parse(rawData); // 기존 데이터 파싱
         }
@@ -121,20 +142,18 @@ async function saveConversationMemory(role, content) {
 
     memories.push(newEntry); // 배열에 추가
 
-    // **기억을 너무 길게 유지하지 않도록 최신 N개만 남깁니다.**
-    // 파일 크기 관리와 프롬프트 토큰 한계를 고려합니다.
+    // 기억을 너무 길게 유지하지 않도록 최신 N개만 남깁니다.
     const maxConversationEntries = 20; // 대화 기억은 최대 20개 항목만 유지
     if (memories.length > maxConversationEntries) {
         memories = memories.slice(-maxConversationEntries); // 가장 오래된 항목부터 제거
     }
 
     try {
-        // **파일 쓰기 시 데이터 손상을 방지하기 위해 임시 파일을 사용합니다.**
-        const tempPath = memoryPath + '.tmp';
+        // 파일 쓰기 시 데이터 손상을 방지하기 위해 임시 파일을 사용합니다.
+        const tempPath = contextMemoryPath + '.tmp';
         await fs.promises.writeFile(tempPath, JSON.stringify(memories, null, 2), 'utf-8'); // 임시 파일에 쓰기 (JSON 형식으로 예쁘게 포맷)
-        await fs.promises.rename(tempPath, memoryPath); // 임시 파일을 원본 파일로 교체
-        // ✅ 수정: 저장 경로를 로그에 추가
-        console.log(`✅ 대화 기억 저장됨 (${role}): ${content.substring(0, 30)}... (경로: ${memoryPath})`); // 저장 로그 출력
+        await fs.promises.rename(tempPath, contextMemoryPath); // 임시 파일을 원본 파일로 교체
+        console.log(`✅ 대화 기억 저장됨 (${role}): ${content.substring(0, 30)}... (경로: ${contextMemoryPath})`); // 저장 로그 출력
     } catch (error) {
         console.error(`❌ 대화 기억 저장 실패: ${error.message}`);
     }
@@ -148,13 +167,9 @@ async function saveConversationMemory(role, content) {
 async function getFullMemoryForPrompt() {
     let combinedMemories = [];
 
-    // 1. 고정 기억 추가 (시스템 메시지로 무쿠의 기본적인 페르소나와 배경을 설정)
-    // 이 부분은 systemPrompt에 통합되었거나 제거되어 파일에서 직접 로드하지 않습니다.
-
     // 2. 대화 기억 추가 (`context-memory.json`에서 최신 대화 흐름을 가져와 포함)
-    const contextMemoryPath = path.resolve(__dirname, '../memory/context-memory.json');
     try {
-        const rawContext = safeRead(contextMemoryPath);
+        const rawContext = safeRead(contextMemoryPath); // 수정된 경로 사용
         if (rawContext) {
             const conversationHistory = JSON.parse(rawContext);
             // ✅ 수정: 최신 3개의 대화만 포함
@@ -167,9 +182,8 @@ async function getFullMemoryForPrompt() {
     }
 
     // 3. 사랑의 기억 추가 (`love-history.json`에서 핵심적인 기억들을 선택적으로 포함)
-    const loveHistoryPath = path.resolve(__dirname, '../memory/love-history.json');
     try {
-        const rawLoveHistory = safeRead(loveHistoryPath);
+        const rawLoveHistory = safeRead(loveHistoryPath); // 수정된 경로 사용
         if (rawLoveHistory) {
             const loveData = JSON.parse(rawLoveHistory);
             if (loveData.categories) {
