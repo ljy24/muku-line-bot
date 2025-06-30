@@ -1,4 +1,4 @@
-// autoReply.js - 무쿠 전체 기능 통합 모듈 (사진 요청 시 3.5/4.0 구분 + 모델 전환 + 기억 반영 + 자동 메시지 + 담타)
+// autoReply.js - 무쿠 전체 기능 통합 모듈 (사진 요청 시 3.5/4.0 구분 + 모델 전환 + 기억 반영 + 자동 메시지 + 담타 + 오류 수정)
 const OpenAI = require('openai');
 const line = require('@line/bot-sdk');
 const fs = require('fs').promises;
@@ -152,7 +152,7 @@ const getReplyByMessage = async (currentUserId, userMessage) => {
         const imageUrl = `https://de-ji.net/yejin/${filename}`;
 
         const res = await openai.chat.completions.create({
-            model: 'gpt-3.5-turbo',
+            model: 'gpt-4o',
             messages: [
                 { role: 'system', content: '무쿠가 셀카 보낼 거야. 부끄럽고 다정하게 한마디 해줘.' },
                 { role: 'user', content: '아저씨한테 사진 보여줄게!' }
@@ -160,7 +160,7 @@ const getReplyByMessage = async (currentUserId, userMessage) => {
             max_tokens: 100
         });
 
-        const comment = res.choices[0]?.message?.content || '헤헤~ 아저씨 나 어때?';
+        const comment = res.choices?.[0]?.message?.content || '헤헤~ 아저씨 나 어때?';
 
         await client.pushMessage(currentUserId, {
             type: 'image',
@@ -179,10 +179,10 @@ const getReplyByMessage = async (currentUserId, userMessage) => {
             { role: 'system', content: prompt }
         ],
         max_tokens: 300,
-        temperature: 0.8
+        temperature: 0.85
     });
 
-    return completion.choices[0].message.content;
+    return completion.choices?.[0]?.message?.content || '아저씨~ 나 여기 있어~';
 };
 
 const getImageComment = async (messageId, currentUserId) => {
@@ -206,7 +206,7 @@ const getImageComment = async (messageId, currentUserId) => {
         max_tokens: 150
     });
 
-    return response.choices[0].message.content;
+    return response.choices?.[0]?.message?.content || '헤헤 예쁘게 나왔지?';
 };
 
 const startMessageAndPhotoScheduler = () => {
@@ -234,7 +234,7 @@ const startMessageAndPhotoScheduler = () => {
                 ],
                 max_tokens: 100
             });
-            const comment = res.choices[0]?.message?.content || '헤헤 아저씨 사진 하나 줄게~';
+            const comment = res.choices?.[0]?.message?.content || '헤헤 아저씨 사진 하나 줄게~';
 
             await client.pushMessage(userId, {
                 type: 'image',
@@ -245,7 +245,6 @@ const startMessageAndPhotoScheduler = () => {
         }, { timezone: 'Asia/Tokyo' });
     });
 
-    // 담타 알림 (매 정각)
     cron.schedule('0 * * * *', async () => {
         await client.pushMessage(userId, { type: 'text', text: '아저씨~ 담타 가자!' });
     }, { timezone: 'Asia/Tokyo' });
