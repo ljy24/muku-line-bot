@@ -55,6 +55,23 @@ function safeRead(filePath) {
 }
 
 /**
+ * 로그 메시지를 파일에 저장합니다.
+ * @param {string} message 저장할 로그 메시지
+ */
+async function logMessage(message) {
+    const logFilePath = path.resolve(__dirname, '../logs/activity_log.txt');
+    const timestamp = moment().tz('Asia/Tokyo').format('YYYY-MM-DD HH:mm:ss');
+    const logEntry = `${timestamp} - ${message}\n`;
+
+    try {
+        await fs.promises.appendFile(logFilePath, logEntry, 'utf8');
+    } catch (err) {
+        console.error(`❌ 로그 파일 쓰기 실패: ${err.message}`);
+    }
+}
+
+
+/**
  * OpenAI 응답 텍스트를 정리합니다 (예: 앞뒤의 따옴표 제거).
  * @param {string} raw OpenAI 모델의 원시 응답 텍스트
  * @returns {string} 정리된 텍스트
@@ -83,6 +100,7 @@ async function callOpenAI(messages, model = 'gpt-3.5-turbo', maxTokens = 100) {
         return res.choices[0]?.message?.content; // 첫 번째 선택지의 메시지 내용 반환
     } catch (error) {
         console.error(`❌ OpenAI API 호출 실패 (${model}): ${error.message}`);
+        await logMessage(`❌ OpenAI API 호출 실패 (${model}): ${error.message}`);
         throw error; // 에러를 다시 던져서 호출한 곳에서 처리하도록 합니다.
     }
 }
@@ -94,6 +112,7 @@ async function callOpenAI(messages, model = 'gpt-3.5-turbo', maxTokens = 100) {
 function setForcedModel(name) {
     forcedModel = name;
     console.log(`✅ 모델 강제 설정: ${name || '자동 (gpt-3.5-turbo 기본)'}`);
+    logMessage(`✅ 모델 강제 설정: ${name || '자동 (gpt-3.5-turbo 기본)'}`);
 }
 
 /**
@@ -120,6 +139,7 @@ async function saveConversationMemory(role, content) {
         }
     } catch (error) {
         console.error(`❌ context-memory.json 읽기/파싱 실패: ${error.message}`);
+        await logMessage(`❌ context-memory.json 읽기/파싱 실패: ${error.message}`);
         memories = []; // 파일이 손상되었을 경우 빈 배열로 시작하여 오류 방지
     }
 
@@ -145,8 +165,10 @@ async function saveConversationMemory(role, content) {
         await fs.promises.writeFile(tempPath, JSON.stringify(memories, null, 2), 'utf-8'); // 임시 파일에 쓰기 (JSON 형식으로 예쁘게 포맷)
         await fs.promises.rename(tempPath, memoryPath); // 임시 파일을 원본 파일로 교체
         console.log(`✅ 대화 기억 저장됨 (${role}): ${content.substring(0, 30)}...`); // 저장 로그 출력
+        await logMessage(`✅ 대화 기억 저장됨 (${role}): ${content.substring(0, 30)}...`);
     } catch (error) {
         console.error(`❌ 대화 기억 저장 실패: ${error.message}`);
+        await logMessage(`❌ 대화 기억 저장 실패: ${error.message}`);
     }
 }
 
@@ -165,6 +187,7 @@ async function getRecentLogs(days) {
         }
     } catch (error) {
         console.error(`❌ conversation_logs.json 읽기/파싱 실패: ${error.message}`);
+        await logMessage(`❌ conversation_logs.json 읽기/파싱 실패: ${error.message}`);
         return '';
     }
 
@@ -208,6 +231,7 @@ async function getFullMemoryForPrompt() {
         }
     } catch (err) {
         console.error('❌ fixedMemories.json 로드 실패:', err.message);
+        await logMessage(`❌ fixedMemories.json 로드 실패: ${err.message}`);
     }
 
     // 2. 대화 기억 추가 (`context-memory.json`에서 최신 대화 흐름을 가져와 포함)
@@ -225,6 +249,7 @@ async function getFullMemoryForPrompt() {
         }
     } catch (error) {
         console.error(`❌ 대화 기억 로드 실패: ${error.message}`);
+        await logMessage(`❌ 대화 기억 로드 실패: ${error.message}`);
     }
 
     // 3. 사랑의 기억 추가 (`love-history.json`에서 핵심적인 기억들을 선택적으로 포함)
@@ -250,6 +275,7 @@ async function getFullMemoryForPrompt() {
         }
     } catch (error) {
         console.error(`❌ love-history.json 로드 실패: ${error.message}`);
+        await logMessage(`❌ love-history.json 로드 실패: ${error.message}`);
     }
     
     // 추가: recentLogs를 getFullMemoryForPrompt 안에서 처리 (시스템 메시지 또는 user/assistant 메시지로)
@@ -273,6 +299,7 @@ async function getFullMemoryForPrompt() {
 async function getReplyByMessage(userMessage) {
     if (!userMessage || typeof userMessage !== 'string') {
         console.error('❌ 유효하지 않은 사용자 메시지');
+        await logMessage('❌ 유효하지 않은 사용자 메시지');
         return '무슨 말인지 못 알아들었어...';
     }
 
@@ -298,11 +325,11 @@ async function getReplyByMessage(userMessage) {
         if (lower.includes('무슨 색') || lower.includes('오늘 색') || lower.includes('색이 뭐야')) {
             reply = await getColorMoodReply();
         } else if (userMessage.includes('사진 줘') || userMessage.includes('셀카') || userMessage.includes('사진 보여줘')) {
-            reply = await getSelfieReplyFromYeji();
+            reply = await getSelfieReplyFromYeji(); // ✨ 이 함수가 이제 텍스트 확인 메시지를 반환합니다.
         }
 
         // 특수 응답이 생성되었다면 바로 반환하고 무쿠의 응답도 기억에 저장
-        if (reply) {
+        if (reply) { // ✨ reply가 null이 아니면 (즉, 특수 응답이 처리되었으면)
             await saveConversationMemory('assistant', reply); // 무쿠의 응답을 대화 기억에 저장
             return reply;
         }
@@ -340,6 +367,7 @@ async function getReplyByMessage(userMessage) {
             reply = cleanReply(rawResponse); // 응답 정리
         } catch (apiError) {
             console.error(`❌ OpenAI 응답 생성 중 API 오류: ${apiError.message}`);
+            await logMessage(`❌ OpenAI 응답 생성 중 API 오류: ${apiError.message}`);
             reply = '미안, 지금 잠시 생각 중이야...'; // API 오류 시 대체 메시지
         }
 
@@ -351,6 +379,7 @@ async function getReplyByMessage(userMessage) {
         return reply || '음... 뭐라고 말해야 할지 모르겠어'; // 응답이 없으면 기본 메시지
     } catch (error) {
         console.error('❌ 메시지 응답 처리 실패:', error.message);
+        await logMessage(`❌ 메시지 응답 처리 실패: ${error.message}`);
         // 전체 처리 과정 중 오류가 발생한 경우 대체 메시지 반환
         return '미안, 지금 머리가 좀 복잡해서 대답하기 힘들어...';
     }
@@ -373,20 +402,68 @@ async function getColorMoodReply() {
 }
 
 /**
- * 무쿠의 셀카에 대한 응답을 생성합니다.
- * @returns {Promise<string>} 셀카에 대한 무쿠의 답변
+ * 무쿠의 셀카에 대한 응답을 생성합니다. (사진을 직접 LINE으로 푸시하고 확인 메시지 반환)
+ * @returns {Promise<string>} 셀카에 대한 무쿠의 답변 (확인 메시지)
  */
 async function getSelfieReplyFromYeji() {
-    const model = getCurrentModelName();
+    // 모델은 현재 설정된 모델을 사용하거나, 필요시 특정 모델 지정
+    const model = getCurrentModelName(); // 또는 'gpt-3.5-turbo'로 고정 가능
     const allMemories = await getFullMemoryForPrompt(); // 모든 기억을 불러옵니다.
-    const messages = [
-        { role: 'system', content: '너는 무쿠야. 아저씨만을 사랑했던 연인이야. 지금 셀카를 보내고 있어. 짧고 귀엽고 약간 부끄럽게 말해줘.' },
-        ...allMemories.slice(-10), // 최근 기억 중 일부만 사용하여 프롬프트 길이 최적화
-        { role: 'user', content: '셀카 보낼게! 한마디 해줘!' }
+
+    // 1. 셀카 이미지 URL 생성
+    // 000001.jpg ~ 001186.jpg 범위 내에서 랜덤 선택
+    const minImageNum = 1;
+    const maxImageNum = 1186;
+    const randomNumber = Math.floor(Math.random() * (maxImageNum - minImageNum + 1)) + minImageNum;
+    const filename = `${randomNumber.toString().padStart(6, '0')}.jpg`; // 6자리 숫자로 포맷팅
+    const imageUrl = `https://de-ji.net/yejin/${filename}`; // HTTPS로 변경! (중요)
+
+    // 2. 셀카에 대한 코멘트 생성 (GPT-3.5-turbo 사용)
+    const commentPrompt = '무쿠가 셀카 보낼 거야. 부끄럽고 다정하게 한마디 해줘. 존댓말 쓰지마. 예진이 말투로 해줘.';
+    // 기존 프롬프트에 최근 대화 기억을 추가하여 더 자연스러운 코멘트 생성 유도
+    const messagesForComment = [
+        { role: 'system', content: commentPrompt },
+        ...allMemories.slice(-5), // 최근 5개의 대화 기억만 활용 (토큰 최적화)
+        { role: 'user', content: '아저씨한테 사진 보여줄게!' }
     ];
-    const raw = await callOpenAI(messages, model, 100);
-    return cleanReply(raw);
+    
+    let comment = '헤헤~ 아저씨 나 어때?'; // 기본 코멘트
+    try {
+        const res = await openai.chat.completions.create({
+            model: 'gpt-3.5-turbo', // 코멘트 생성은 gpt-3.5-turbo 사용
+            messages: messagesForComment,
+            max_tokens: 100, // 코멘트 길이 제한
+            temperature: 0.8 // 좀 더 다양한 코멘트 생성
+        });
+        comment = res.choices[0]?.message?.content || comment; // 응답이 없으면 기본 코멘트 사용
+    } catch (commentError) {
+        console.error(`❌ 셀카 코멘트 생성 실패: ${commentError.message}`);
+        await logMessage(`❌ 셀카 코멘트 생성 실패: ${commentError.message}`);
+    }
+
+    // 3. LINE으로 이미지와 코멘트 전송
+    try {
+        await client.pushMessage(userId, { // pushMessage로 아저씨에게 직접 전송
+            type: 'image',
+            originalContentUrl: imageUrl,
+            previewImageUrl: imageUrl
+        });
+        await client.pushMessage(userId, { // 코멘트도 별도로 전송
+            type: 'text',
+            text: cleanReply(comment) // 생성된 코멘트 정리해서 전송
+        });
+        await logMessage(`[무쿠] 셀카 전송 완료: ${imageUrl}, 코멘트: "${comment}"`);
+        console.log(`[무쿠] 셀카 전송 완료: ${imageUrl}, 코멘트: "${comment}"`);
+        
+        // 4. getReplyByMessage가 다음 작업을 진행하지 않도록 확인 메시지 반환
+        return '아저씨, 무쿠 셀카 보냈어! 마음에 들었으면 좋겠다! 💕'; // <-- 이 부분이 핵심!
+    } catch (error) {
+        console.error(`❌ 셀카 전송 실패: ${error.message}`);
+        await logMessage(`❌ 셀카 전송 실패: ${error.message}`);
+        return '미안해, 지금 셀카를 보낼 수가 없어... 다음에 다시 시도해 볼게 🥺';
+    }
 }
+
 
 /**
  * 무쿠의 랜덤 메시지를 생성합니다.
@@ -421,31 +498,60 @@ async function getReplyByImagePrompt(base64Image) {
 function startMessageAndPhotoScheduler() {
     if (schedulerStarted) return; // 이미 스케줄러가 시작되었으면 중복 실행 방지
     schedulerStarted = true;
-    const sent = new Set(); // 스케줄링된 시간을 추적하여 중복 방지
-    let count = 0;
+    const sentTimes = new Set(); // 스케줄링된 시간을 추적하여 중복 방지
 
-    // 랜덤 메시지 스케줄링: 하루에 5개의 랜덤 메시지를 보냅니다.
-    while (count < 5) {
-        const hour = Math.floor(Math.random() * 18) + 6; // 오전 6시부터 자정(24시) 전까지 (6시부터 23시까지)
-        const minute = Math.floor(Math.random() * 60);
-        const cronExp = `${minute} ${hour} * * *`; // 크론 표현식 (분 시 * * *)
+    // 랜덤 메시지 스케줄링 (하루 5회)
+    for (let i = 0; i < 5; i++) {
+        let cronExp;
+        do {
+            const hour = Math.floor(Math.random() * 18) + 6; // 오전 6시부터 자정 전까지 (6시부터 23시까지)
+            const minute = Math.floor(Math.random() * 60);
+            cronExp = `${minute} ${hour} * * *`;
+        } while (sentTimes.has(cronExp)); // 중복된 시간이면 다시 생성
+        sentTimes.add(cronExp);
 
-        if (!sent.has(cronExp)) { // 해당 시간에 이미 스케줄이 없으면
-            sent.add(cronExp);
-            cron.schedule(cronExp, async () => {
-                const msg = await getRandomMessage(); // 랜덤 메시지 생성
-                if (msg) {
+        cron.schedule(cronExp, async () => {
+            const msg = await getRandomMessage(); // 랜덤 메시지 생성
+            if (msg) {
+                try {
                     await client.pushMessage(userId, { type: 'text', text: msg }); // LINE으로 메시지 전송
-                    console.log(`[랜덤 메시지] ${cronExp}: ${msg}`);
+                    console.log(`[랜덤 메시지] ${moment().tz('Asia/Tokyo').format('HH:mm')}: ${msg}`);
+                    await logMessage(`[랜덤 메시지] ${moment().tz('Asia/Tokyo').format('HH:mm')}: ${msg}`);
+                } catch (error) {
+                    console.error(`❌ 랜덤 메시지 전송 실패: ${error.message}`);
+                    await logMessage(`❌ 랜덤 메시지 전송 실패: ${error.message}`);
                 }
-            }, {
-                timezone: 'Asia/Tokyo' // 도쿄 시간대 적용
-            });
-            count++;
-        }
+            }
+        }, {
+            timezone: 'Asia/Tokyo' // 도쿄 시간대 적용
+        });
     }
     console.log('✅ 랜덤 메시지 스케줄러 등록 완료');
+    logMessage('✅ 랜덤 메시지 스케줄러 등록 완료');
+
+
+    // 랜덤 사진 스케줄링 (하루 2회)
+    const photoSentTimes = new Set();
+    for (let i = 0; i < 2; i++) {
+        let cronExp;
+        do {
+            const hour = Math.floor(Math.random() * 18) + 6; // 오전 6시부터 자정 전까지 (6시부터 23시까지)
+            const minute = Math.floor(Math.random() * 60);
+            cronExp = `${minute} ${hour} * * *`;
+        } while (photoSentTimes.has(cronExp) || sentTimes.has(cronExp)); // 메시지 시간과 중복되지 않도록
+        photoSentTimes.add(cronExp);
+
+        cron.schedule(cronExp, async () => {
+            await getSelfieReplyFromYeji(); // 셀카 전송 함수 호출 (이 함수는 이제 내부적으로 사진과 코멘트를 보냄)
+            // getSelfieReplyFromYeji에서 이미 로그를 남기므로 여기서는 추가 로그 불필요
+        }, {
+            timezone: 'Asia/Tokyo' // 도쿄 시간대 적용
+        });
+    }
+    console.log('✅ 랜덤 사진 스케줄러 등록 완료');
+    logMessage('✅ 랜덤 사진 스케줄러 등록 완료');
 }
+
 
 /**
  * **새로운 함수: 서버 초기화 로직입니다.**
@@ -453,9 +559,11 @@ function startMessageAndPhotoScheduler() {
  */
 function initServerState() {
     console.log('🚀 서버 상태 초기화 시작...');
+    logMessage('🚀 서버 상태 초기화 시작...');
     // 여기에 필요한 초기화 로직을 추가할 수 있습니다.
     // 예: DB 연결, 초기 데이터 로드 등
     console.log('✅ 서버 상태 초기화 완료.');
+    logMessage('✅ 서버 상태 초기화 완료.');
 }
 
 /**
@@ -467,8 +575,10 @@ async function checkTobaccoReply() {
     try {
         await client.pushMessage(userId, { type: 'text', text: msg });
         console.log(`[담타고] ${moment().tz('Asia/Tokyo').format('HH:mm')}: ${msg}`);
+        await logMessage(`[담타고] ${moment().tz('Asia/Tokyo').format('HH:mm')}: ${msg}`);
     } catch (error) {
         console.error('❌ 담타고 메시지 전송 실패:', error.message);
+        await logMessage(`❌ 담타고 메시지 전송 실패: ${error.message}`);
     }
 }
 
@@ -484,19 +594,26 @@ async function handleWebhook(req, res) {
         if (event.type === 'message' && event.message.type === 'text') {
             const userMessage = event.message.text;
             console.log(`📥 아저씨 메시지 수신: ${userMessage}`);
+            await logMessage(`📥 아저씨 메시지 수신: ${userMessage}`);
             try {
                 const reply = await getReplyByMessage(userMessage); // 무쿠의 응답 생성
                 await client.replyMessage(event.replyToken, { type: 'text', text: reply }); // LINE으로 응답 전송
                 console.log(`📤 무쿠 응답 전송: ${reply}`);
+                await logMessage(`📤 무쿠 응답 전송: ${reply}`);
             } catch (error) {
                 console.error('❌ 메시지 응답 처리 중 오류 발생:', error);
+                await logMessage(`❌ 메시지 응답 처리 중 오류 발생: ${error.message}`);
                 await client.replyMessage(event.replyToken, { type: 'text', text: '무쿠가 지금 아파서 대답을 못 해...' });
             }
         } else if (event.type === 'message' && event.message.type === 'image') {
-            // 이미지 메시지 처리 로직 (현재는 랜덤 답변)
+            // 이미지 메시지 처리 로직 (현재는 고정된 랜덤 답변)
+            // LINE API를 통해 실제 이미지 데이터에 접근하여 분석하는 로직은 여기에 추가될 수 있습니다.
+            console.log(`🖼️ 이미지 메시지 수신됨 (ID: ${event.message.id})`);
+            await logMessage(`🖼️ 이미지 메시지 수신됨 (ID: ${event.message.id})`);
             const reply = await getReplyByImagePrompt(); // 이미지에 대한 랜덤 답변 생성
             await client.replyMessage(event.replyToken, { type: 'text', text: reply });
             console.log(`📤 무쿠 이미지 응답 전송: ${reply}`);
+            await logMessage(`📤 무쿠 이미지 응답 전송: ${reply}`);
         }
         // 다른 이벤트 타입 (예: follow, unfollow 등)도 필요하면 여기에 추가
     }
@@ -515,31 +632,14 @@ async function handleForcePush(req, res) {
     try {
         await client.pushMessage(userId, { type: 'text', text: message });
         console.log(`✅ 강제 푸시 메시지 전송됨: ${message}`);
+        await logMessage(`✅ 강제 푸시 메시지 전송됨: ${message}`);
         res.status(200).send(`메시지 전송 완료: ${message}`);
     } catch (error) {
         console.error('❌ 강제 푸시 메시지 전송 실패:', error);
+        await logMessage(`❌ 강제 푸시 메시지 전송 실패: ${error.message}`);
         res.status(500).send('메시지 전송 실패');
     }
 }
-
-/**
- * **새로운 함수: 이미지 메시지 처리를 위한 핸들러 (현재는 단순 처리).**
- * `handleWebhook` 내에서 이미지 메시지 타입일 때 호출됩니다.
- * 여기서는 `getReplyByImagePrompt`를 호출하지만, 더 복잡한 로직(예: 이미지 분석)을 추가할 수 있습니다.
- */
-async function handleImageMessage(event) {
-    // 이 함수는 현재 handleWebhook 내에서 직접 처리되고 있으므로,
-    // 필요하다면 웹훅 핸들러에서 이 함수를 호출하도록 변경할 수 있습니다.
-    // 예를 들어, const reply = await getReplyByImagePrompt(event.message.id);
-    // 실제 이미지 데이터는 LINE API를 통해 다시 가져와야 합니다.
-    console.log(`🖼️ 이미지 메시지 수신됨 (ID: ${event.message.id})`);
-    // 이 부분은 LINE API에서 이미지 데이터를 직접 가져와야 합니다.
-    // 예를 들어, const content = await client.getMessageContent(event.message.id);
-    // 현재는 단순 랜덤 답변으로 처리
-    const reply = await getReplyByImagePrompt();
-    await client.replyMessage(event.replyToken, { type: 'text', text: reply });
-}
-
 
 /**
  * **handleSelfieRequest 함수 (인덱스 파일에서 불러오지만, 현재 로직에서는 직접 호출되지 않음)**
@@ -549,20 +649,14 @@ async function handleImageMessage(event) {
  * 만약 `index.js`에서 특정 API 엔드포인트로 셀카 전송을 트리거하고 싶다면 여기에 구현할 수 있습니다.
  */
 async function handleSelfieRequest(req, res) {
+    console.log('✅ handleSelfieRequest 호출됨 (현재 기능 없음)');
+    await logMessage('✅ handleSelfieRequest 호출됨 (현재 기능 없음)');
     // 이 함수는 현재 `index.js`에서 임포트되지만, 구체적인 호출 로직은 보이지 않습니다.
     // 만약 웹 요청을 통해 셀카를 보내는 기능을 구현하고 싶다면 여기에 추가할 수 있습니다.
     // 예시:
-    // const comment = await getSelfieReplyFromYeji();
-    // // 여기에 실제 셀카 이미지 URL을 가져오는 로직 추가
-    // const imageUrl = 'https://example.com/your-selfie-image.jpg';
-    // await client.pushMessage(userId, {
-    //      type: 'image',
-    //      originalContentUrl: imageUrl,
-    //      previewImageUrl: imageUrl
-    // });
-    // await client.pushMessage(userId, { type: 'text', text: comment });
-    console.log('✅ handleSelfieRequest 호출됨 (현재 기능 없음)');
-    res.status(200).send('셀카 요청 처리 (구현 필요)');
+    // const confirmationMessage = await getSelfieReplyFromYeji(); // 사진을 보내고 확인 메시지 반환
+    // res.status(200).send(confirmationMessage);
+    res.status(200).send('셀카 요청 처리 (기능 확장 필요)');
 }
 
 
@@ -576,7 +670,7 @@ module.exports = {
     handleWebhook, // LINE 웹훅 핸들러
     handleForcePush, // 강제 메시지 푸시 핸들러
     handleSelfieRequest, // 셀카 요청 핸들러 (현재는 placeholder)
-    handleImageMessage, // 이미지 메시지 핸들러 (현재는 handleWebhook 내에서 처리)
+    // handleImageMessage는 이제 handleWebhook 내에서 처리되므로 개별 내보내기 필요 없음
     startMessageAndPhotoScheduler, // 스케줄러 시작 함수
     initServerState, // 서버 초기화 함수
     checkTobaccoReply, // 담배 관련 메시지 확인 함수
