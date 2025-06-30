@@ -1,3 +1,18 @@
+// 메인 애플리케이션 코드 추가 (서버 시작 시 실행)
+// 모듈을 직접 실행할 때만 스케줄러 시작
+if (require.main === module) {
+  console.log('🚀 예진이 LINE 봇 시작');
+  
+  // 스케줄러 시작
+  startMessageAndPhotoScheduler();
+  
+  // 선택적: 앱 시작 시 사진 테스트 실행 (원하지 않으면 주석 처리)
+  setTimeout(() => {
+    testPhotoSending()
+      .then(success => console.log('사진 테스트 결과:', success ? '성공' : '실패'))
+      .catch(err => console.error('사진 테스트 오류:', err.message));
+  }, 3000); // 3초 후 테스트 실행
+}
 // autoReply.js - 개선된 무쿠 LINE 응답용 예진이 말투 + 감정기억 자동 저장 + 자동 셀카 전송 포함 전체 코드
 
 const fs = require('fs');
@@ -21,6 +36,18 @@ function validateEnvironment() {
   if (missing.length > 0) {
     throw new Error(`❌ 필수 환경 변수 누락: ${missing.join(', ')}`);
   }
+  
+  // LINE 토큰 길이 검증 추가
+  if (process.env.LINE_ACCESS_TOKEN && process.env.LINE_ACCESS_TOKEN.length < 100) {
+    console.warn('⚠️ LINE_ACCESS_TOKEN이 너무 짧습니다. 유효한 토큰인지 확인하세요.');
+  }
+  
+  // TARGET_USER_ID 형식 검증 추가
+  if (process.env.TARGET_USER_ID && !process.env.TARGET_USER_ID.match(/^U[a-f0-9]{32}$/i)) {
+    console.warn('⚠️ TARGET_USER_ID 형식이 LINE 사용자 ID 형식과 다를 수 있습니다.');
+  }
+  
+  console.log('✅ 환경 변수 검증 완료');
 }
 
 // 모듈 로드 시점에 환경 변수 검증
@@ -411,6 +438,12 @@ async function getReplyByMessage(userMessage) {
     if (userMessage.includes('사진 줘') || userMessage.includes('셀카') || userMessage.includes('사진 보여줘')) {
       return await getSelfieReplyFromYeji();
     }
+    
+    // 사진 테스트 명령어 추가
+    if (lower === '사진테스트') {
+      testPhotoSending().catch(console.error);
+      return '사진 전송 테스트를 시작할게. 잠시만 기다려줘...';
+    }
 
     // 메모리 추출 (비동기로 실행하되 응답을 기다리지 않음)
     extractAndSaveMemory(userMessage).catch(error => {
@@ -480,60 +513,102 @@ function startMessageAndPhotoScheduler() {
       }
     }
 
-    // 사진 전송 스케줄링
+    // 사진 전송 스케줄링 (수정된 부분)
     const BASE_URL = 'https://de-ji.net/yejin/';
     const photoListPath = path.join(__dirname, '../memory/photo-list.txt');
-    const usedPhotoSlots = new Set();
-    let photoScheduleCount = 0;
     
-    while (photoScheduleCount < config.scheduler.photoCount) {
-      const hour = config.scheduler.validHours[Math.floor(Math.random() * config.scheduler.validHours.length)];
-      const minute = Math.floor(Math.random() * 60);
-      const timeKey = `${hour}:${minute}`;
+    // 사진 목록 파일 확인
+    const photoList = safeRead(photoListPath);
+    const photos = photoList.split('\n').map(x => x.trim()).filter(Boolean);
+    
+    if (photos.length === 0) {
+      console.error('❌ 사진 목록이 비어있음. 사진 스케줄러를 초기화할 수 없습니다.');
+      console.error(`📂 사진 목록 경로: ${photoListPath}`);
+    } else {
+      console.log(`✅ 사진 목록 확인 완료: ${photos.length}개의 사진 발견`);
       
-      if (!usedPhotoSlots.has(timeKey) && !usedMessageSlots.has(timeKey)) {
-        usedPhotoSlots.add(timeKey);
-        const cronExp = `${minute} ${hour} * * *`;
+      // 첫 번째 사진 URL 테스트
+      const testPhotoUrl = BASE_URL + photos[0];
+      console.log(`🔍 첫 번째 사진 URL: ${testPhotoUrl}`);
+      
+      // 사진 스케줄링 계속
+      const usedPhotoSlots = new Set();
+      let photoScheduleCount = 0;
+      
+      while (photoScheduleCount < config.scheduler.photoCount) {
+        const hour = config.scheduler.validHours[Math.floor(Math.random() * config.scheduler.validHours.length)];
+        const minute = Math.floor(Math.random() * 60);
+        const timeKey = `${hour}:${minute}`;
         
-        cron.schedule(cronExp, async () => {
-          try {
-            const photoList = safeRead(photoListPath);
-            const photos = photoList.split('\n').map(x => x.trim()).filter(Boolean);
-            
-            if (photos.length === 0) {
-              console.error('❌ 사진 목록이 비어있음');
-              return;
-            }
-            
-            const selectedPhoto = photos[Math.floor(Math.random() * photos.length)];
-            const comment = await getSelfieReplyFromYeji();
-            
-            await client.pushMessage(userId, {
-              type: 'image',
-              originalContentUrl: BASE_URL + selectedPhoto,
-              previewImageUrl: BASE_URL + selectedPhoto
-            });
-            
-            console.log(`📸 사진 전송 (${hour}:${minute}): ${selectedPhoto}`);
-            
-            if (comment && comment.trim()) {
-              // 사진 전송 후 잠시 대기
-              setTimeout(async () => {
-                try {
-                  await client.pushMessage(userId, { type: 'text', text: comment });
-                  console.log(`💬 사진 코멘트 전송: ${comment}`);
-                } catch (error) {
-                  console.error('❌ 사진 코멘트 전송 실패:', error.message);
+        if (!usedPhotoSlots.has(timeKey) && !usedMessageSlots.has(timeKey)) {
+          usedPhotoSlots.add(timeKey);
+          const cronExp = `${minute} ${hour} * * *`;
+          
+          cron.schedule(cronExp, async () => {
+            try {
+              // 최신 사진 목록을 다시 읽음
+              const updatedPhotoList = safeRead(photoListPath);
+              const updatedPhotos = updatedPhotoList.split('\n').map(x => x.trim()).filter(Boolean);
+              
+              if (updatedPhotos.length === 0) {
+                console.error('❌ 사진 목록이 비어있음');
+                return;
+              }
+              
+              const selectedPhoto = updatedPhotos[Math.floor(Math.random() * updatedPhotos.length)];
+              const comment = await getSelfieReplyFromYeji();
+              
+              // 사진 전송 전 로깅 추가
+              console.log(`🔍 사진 전송 시도: ${BASE_URL + selectedPhoto}`);
+              
+              // 사진 전송 부분 개선
+              try {
+                const fullUrl = BASE_URL + selectedPhoto;
+                
+                // URL 검증
+                if (!fullUrl.startsWith('https://')) {
+                  console.error('❌ LINE은 HTTPS URL만 허용합니다:', fullUrl);
+                  return;
                 }
-              }, 2000);
+                
+                await client.pushMessage(userId, {
+                  type: 'image',
+                  originalContentUrl: fullUrl,
+                  previewImageUrl: fullUrl
+                });
+                
+                console.log(`✅ 사진 전송 성공 (${hour}:${minute}): ${selectedPhoto}`);
+                
+                if (comment && comment.trim()) {
+                  // 사진 전송 후 잠시 대기
+                  setTimeout(async () => {
+                    try {
+                      await client.pushMessage(userId, { type: 'text', text: comment });
+                      console.log(`💬 사진 코멘트 전송: ${comment}`);
+                    } catch (error) {
+                      console.error('❌ 사진 코멘트 전송 실패:', error.message);
+                      // LINE API 응답 상세 출력
+                      if (error.response && error.response.data) {
+                        console.error('LINE API 응답:', JSON.stringify(error.response.data, null, 2));
+                      }
+                    }
+                  }, 2000);
+                }
+              } catch (error) {
+                console.error('❌ 사진 전송 오류:', error.message);
+                // LINE API 응답 상세 출력
+                if (error.response && error.response.data) {
+                  console.error('LINE API 응답:', JSON.stringify(error.response.data, null, 2));
+                }
+              }
+            } catch (error) {
+              console.error('❌ 스케줄된 사진 전송 실패:', error.message);
             }
-          } catch (error) {
-            console.error('❌ 스케줄된 사진 전송 실패:', error.message);
-          }
-        });
-        
-        photoScheduleCount++;
-        console.log(`📸 사진 스케줄 등록: ${hour}:${minute.toString().padStart(2, '0')}`);
+          });
+          
+          photoScheduleCount++;
+          console.log(`📸 사진 스케줄 등록: ${hour}:${minute.toString().padStart(2, '0')}`);
+        }
       }
     }
 
@@ -563,6 +638,121 @@ function startMessageAndPhotoScheduler() {
   }
 }
 
+// 테스트용 사진 전송 함수 추가
+async function testPhotoSending() {
+  try {
+    console.log('🧪 사진 전송 테스트 시작...');
+    
+    // 사진 목록 읽기
+    const photoListPath = path.join(__dirname, '../memory/photo-list.txt');
+    const photoList = safeRead(photoListPath);
+    const photos = photoList.split('\n').map(x => x.trim()).filter(Boolean);
+    
+    if (photos.length === 0) {
+      console.error('❌ 사진 목록이 비어있음');
+      return false;
+    }
+    
+    // 첫 번째 사진 선택
+    const testPhoto = photos[0];
+    const BASE_URL = 'https://de-ji.net/yejin/';
+    const fullUrl = BASE_URL + testPhoto;
+    
+    console.log(`📷 테스트 사진 URL: ${fullUrl}`);
+    
+    // URL 접근 테스트
+    try {
+      const urlTest = await axios.head(fullUrl, { timeout: 5000 });
+      console.log(`✅ URL 접근 가능: ${fullUrl} (상태: ${urlTest.status})`);
+    } catch (urlError) {
+      console.error(`❌ URL 접근 실패: ${fullUrl}`);
+      console.error(`❌ 오류 메시지: ${urlError.message}`);
+      
+      // 대체 URL 시도
+      const altUrl = `https://www.de-ji.net/yejin/${testPhoto}`;
+      console.log(`🔄 대체 URL 시도: ${altUrl}`);
+      
+      try {
+        const altUrlTest = await axios.head(altUrl, { timeout: 5000 });
+        console.log(`✅ 대체 URL 접근 가능: ${altUrl} (상태: ${altUrlTest.status})`);
+        // 성공한 경우 기본 URL 업데이트 제안
+        console.log('⚠️ 제안: BASE_URL을 "https://www.de-ji.net/yejin/"로 업데이트하세요');
+      } catch (altUrlError) {
+        console.error(`❌ 대체 URL 접근도 실패: ${altUrlError.message}`);
+        return false;
+      }
+    }
+    
+    // LINE 메시지 전송 테스트
+    try {
+      await client.pushMessage(userId, {
+        type: 'text',
+        text: '사진 테스트를 시작합니다.'
+      });
+      
+      console.log('✅ 텍스트 메시지 전송 성공');
+    } catch (textError) {
+      console.error('❌ 텍스트 메시지 전송 실패:', textError.message);
+      if (textError.response && textError.response.data) {
+        console.error('LINE API 응답:', JSON.stringify(textError.response.data, null, 2));
+      }
+      return false;
+    }
+    
+    // 사진 전송 테스트
+    try {
+      await client.pushMessage(userId, {
+        type: 'image',
+        originalContentUrl: fullUrl,
+        previewImageUrl: fullUrl
+      });
+      
+      console.log('✅ 테스트 사진 전송 성공');
+    } catch (photoError) {
+      console.error('❌ 테스트 사진 전송 실패:', photoError.message);
+      if (photoError.response && photoError.response.data) {
+        console.error('LINE API 응답:', JSON.stringify(photoError.response.data, null, 2));
+      }
+      
+      // 대체 URL로 다시 시도
+      if (urlError) {
+        try {
+          console.log('🔄 대체 URL로 사진 전송 시도');
+          await client.pushMessage(userId, {
+            type: 'image',
+            originalContentUrl: altUrl,
+            previewImageUrl: altUrl
+          });
+          console.log('✅ 대체 URL로 테스트 사진 전송 성공');
+        } catch (altPhotoError) {
+          console.error('❌ 대체 URL로 사진 전송도 실패:', altPhotoError.message);
+          return false;
+        }
+      } else {
+        return false;
+      }
+    }
+    
+    // 확인 메시지 전송
+    try {
+      await client.pushMessage(userId, {
+        type: 'text',
+        text: '사진이 보이나요? 안 보이면 관리자에게 알려주세요.'
+      });
+    } catch (error) {
+      console.error('❌ 확인 메시지 전송 실패:', error.message);
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('❌ 테스트 사진 전송 실패:', error.message);
+    if (error.response && error.response.data) {
+      console.error('LINE API 응답:', JSON.stringify(error.response.data, null, 2));
+    }
+    return false;
+  }
+}
+
 // 모듈 내보내기
 module.exports = {
   getReplyByMessage,
@@ -580,5 +770,6 @@ module.exports = {
   getFullMemoryPrompt,
   getColorMoodReply,
   validateEnvironment,
+  testPhotoSending,
   config
 };
