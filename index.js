@@ -1,4 +1,4 @@
-// ✅ index.js - 무쿠 LINE 서버 메인 로직 (셀카 전송 포함, 감정 응답 완전 구성)
+// ✅ index.js - 무쿠 LINE 서버 메인 로직 (완전한 최신 통합 버전)
 
 const fs = require('fs');
 const path = require('path');
@@ -6,116 +6,95 @@ const { Client, middleware } = require('@line/bot-sdk');
 const express = require('express');
 const moment = require('moment-timezone');
 const cron = require('node-cron');
-
 const {
   getReplyByMessage,
+  getReplyByImagePrompt,
   getRandomMessage,
-  callOpenAI,
-  cleanReply,
-  saveLog,
-  getRecentLog,
-  extractAndSaveMemory,
-  setForcedModel,
-  getCurrentModelName,
   getImageReactionComment,
   getColorMoodReply,
   getHappyReply,
   getSulkyReply,
-  getReplyByImagePrompt
+  setForcedModel,
+  getCurrentModelName,
+  saveLog,
+  cleanReply
 } = require('./src/autoReply');
 
 const app = express();
+const PORT = process.env.PORT || 10000;
 const config = {
   channelAccessToken: process.env.LINE_ACCESS_TOKEN,
   channelSecret: process.env.LINE_CHANNEL_SECRET
 };
-
 const client = new Client(config);
 const userId = process.env.TARGET_USER_ID;
 
-// ✅ 미들웨어
+if (!config.channelAccessToken || !config.channelSecret || !userId) {
+  console.error('❌ 환경변수 누락');
+  process.exit(1);
+}
+
 app.use(middleware(config));
 app.use(express.json());
 
-// ✅ Webhook 처리
-app.post('/webhook', async (req, res) => {
-  try {
-    const events = req.body.events;
-    if (!Array.isArray(events)) return res.status(200).end();
-
-    for (const event of events) {
-      if (event.type === 'message' && event.source.userId === userId) {
-        if (event.message.type === 'text') {
-          await handleTextMessage(event);
-        } else if (event.message.type === 'image') {
-          await handleImageMessage(event);
-        }
-      }
-    }
-    res.status(200).end();
-  } catch (err) {
-    console.error('❌ Webhook 처리 오류:', err);
-    res.status(500).end();
-  }
+app.get('/', (_, res) => {
+  res.send('무쿠 서버 실행 중 🐣');
 });
 
-// ✅ 텍스트 메시지 처리
-async function handleTextMessage(event) {
-  const text = event.message.text.trim();
-  const replyToken = event.replyToken;
+app.post('/webhook', async (req, res) => {
+  const events = req.body.events;
+  if (!Array.isArray(events)) return res.status(500).end();
 
-  await saveLog('아저씨', text);
+  for (const event of events) {
+    if (event.type === 'message' && event.source.userId === userId) {
+      if (event.message.type === 'text') {
+        await handleText(event);
+      } else if (event.message.type === 'image') {
+        await handleImage(event);
+      }
+    }
+  }
+  res.status(200).end();
+});
 
-  // 버전 전환
-  if (text === '3.5') {
-    setForcedModel('gpt-3.5-turbo');
-    return replyText(replyToken, '응, 이제부터 3.5로 대화할게.');
-  }
-  if (text === '4.0') {
-    setForcedModel('gpt-4o');
-    return replyText(replyToken, '응, 이제부터 4.0으로 바꿨어!');
-  }
-  if (text === '자동') {
-    setForcedModel(null);
-    return replyText(replyToken, '응, 상황에 맞게 자동으로 바꿔서 말할게!');
-  }
-  if (text === '버전') {
-    return replyText(replyToken, `지금은 ${getCurrentModelName()} 버전으로 대화하고 있어.`);
+async function handleText(event) {
+  const msg = event.message.text.trim();
+  await saveLog('아저씨', msg);
+
+  // 명령어
+  if (msg === '3.5') return reply(event, '응, 이제부터 3.5로 할게.', setForcedModel('gpt-3.5-turbo'));
+  if (msg === '4.0') return reply(event, '응응, 4.0으로 바꿨어!', setForcedModel('gpt-4o'));
+  if (msg === '자동') return reply(event, '이제 상황에 맞게 자동으로 할게!', setForcedModel(null));
+  if (msg === '버전') return reply(event, `지금은 ${getCurrentModelName()} 버전으로 대화 중이야.`);
+
+  // 셀카 요청
+  if (/사진|셀카/i.test(msg)) return await handleSelfie(event);
+
+  // 컬러 무드
+  if (/무슨\s*색|오늘\s*색/i.test(msg)) {
+    const replyText = await getColorMoodReply();
+    return reply(event, replyText);
   }
 
-  // 사진 요청 처리
-  if (/사진|셀카/.test(text)) {
-    return await sendSelfie(replyToken);
-  }
-
-  // 색깔 감정 응답
-  if (/색.*뭐|무슨.*색/.test(text)) {
-    const reply = await getColorMoodReply();
-    return replyText(replyToken, reply);
-  }
-
-  const reply = await getReplyByMessage(text);
-  return replyText(replyToken, reply);
+  // 일반 메시지 응답
+  const replyText = await getReplyByMessage(msg);
+  return reply(event, replyText);
 }
 
-// ✅ 셀카 전송
-async function sendSelfie(replyToken) {
+async function handleSelfie(event) {
   const BASE_URL = 'https://de-ji.net/yejin/';
-  const photoListPath = path.join(__dirname, 'memory/photo-list.txt');
+  const listPath = path.join(__dirname, 'memory/photo-list.txt');
+  if (!fs.existsSync(listPath)) return reply(event, '사진 목록이 없어 ㅠㅠ');
 
-  const photoList = fs.readFileSync(photoListPath, 'utf-8')
-    .split('\n')
-    .map(x => x.trim())
-    .filter(Boolean);
-
-  const selected = photoList[Math.floor(Math.random() * photoList.length)];
+  const files = fs.readFileSync(listPath, 'utf-8').split('\n').filter(Boolean);
+  const photo = files[Math.floor(Math.random() * files.length)];
   const comment = await getImageReactionComment();
 
-  return client.replyMessage(replyToken, [
+  await client.replyMessage(event.replyToken, [
     {
       type: 'image',
-      originalContentUrl: BASE_URL + selected,
-      previewImageUrl: BASE_URL + selected
+      originalContentUrl: BASE_URL + photo,
+      previewImageUrl: BASE_URL + photo
     },
     {
       type: 'text',
@@ -124,27 +103,36 @@ async function sendSelfie(replyToken) {
   ]);
 }
 
-// ✅ 이미지 메시지 처리
-async function handleImageMessage(event) {
-  const messageId = event.message.id;
-  const stream = await client.getMessageContent(messageId);
-
+async function handleImage(event) {
+  const stream = await client.getMessageContent(event.message.id);
   const chunks = [];
   for await (const chunk of stream) chunks.push(chunk);
-  const buffer = Buffer.concat(chunks);
-  const base64 = buffer.toString('base64');
+  const base64 = Buffer.concat(chunks).toString('base64');
 
-  const reply = await getReplyByImagePrompt(base64);
-  return replyText(event.replyToken, reply);
+  const replyText = await getReplyByImagePrompt(base64);
+  return reply(event, replyText);
 }
 
-// ✅ 텍스트 응답
-function replyText(replyToken, text) {
-  return client.replyMessage(replyToken, { type: 'text', text });
+async function reply(event, text, after = null) {
+  await client.replyMessage(event.replyToken, { type: 'text', text });
+  if (after && typeof after.then === 'function') await after;
 }
 
-// ✅ 서버 실행
-const PORT = process.env.PORT || 3000;
+// 정각 담타 체크
+cron.schedule('* * * * *', async () => {
+  const now = moment().tz('Asia/Tokyo');
+  if (now.minute() === 0 && now.hour() >= 9 && now.hour() <= 18) {
+    const msg = '담타고?';
+    await client.pushMessage(userId, { type: 'text', text: msg });
+    console.log(`[담타] ${msg}`);
+    cron.schedule('*/5 * * * *', async () => {
+      const reply = await getSulkyReply();
+      await client.pushMessage(userId, { type: 'text', text: reply });
+    }, { timezone: 'Asia/Tokyo' });
+  }
+});
+
+// 서버 시작
 app.listen(PORT, () => {
-  console.log(`🚀 무쿠 서버 실행됨 포트: ${PORT}`);
+  console.log(`🎉 무쿠 서버 실행됨 포트: ${PORT}`);
 });
