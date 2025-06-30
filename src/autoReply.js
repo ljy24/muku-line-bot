@@ -122,6 +122,14 @@ function updateHonorificUsage(useHonorific) {
   fs.writeFileSync(statePath, JSON.stringify({ ...state, honorific: useHonorific }, null, 2));
 }
 
+function checkModelSwitchCommand(text) {
+  if (text === '3.5') return setForcedModel('gpt-3.5-turbo'), '이제 3.5로 대답할게!';
+  if (text === '4.0') return setForcedModel('gpt-4o'), '이제 4.0으로 대답할게!';
+  if (text === '자동') return setForcedModel(null), '이제 자동으로 모델 고를게!';
+  if (text === '버전') return `지금은 ${(forcedModel || 'gpt-3.5-turbo')} 버전으로 대화하고 있어.`;
+  return null;
+}
+
 async function callOpenAI(messages, model = 'gpt-3.5-turbo', max_tokens = 300) {
   const res = await openai.chat.completions.create({
     model: forcedModel || model,
@@ -149,10 +157,8 @@ async function getRandomMessage() {
 }
 
 async function getReplyByMessage(msg) {
-  if (msg === '3.5') return setForcedModel('gpt-3.5-turbo'), '이제 3.5로 대답할게!';
-  if (msg === '4.0') return setForcedModel('gpt-4o'), '이제 4.0으로 대답할게!';
-  if (msg === '자동') return setForcedModel(null), '이제 자동으로 모델 고를게!';
-  if (msg === '버전') return `지금은 ${(forcedModel || 'gpt-3.5-turbo')} 버전으로 대화하고 있어.`;
+  const versionSet = checkModelSwitchCommand(msg);
+  if (versionSet) return versionSet;
 
   const memoryBlock = `${fixedMemory}\n${compressedMemory}`;
   const logs = getRecentLogs(2);
@@ -230,5 +236,6 @@ module.exports = {
   getSelfieReplyFromYeji,
   setForcedModel,
   saveMemory,
-  updateHonorificUsage
+  updateHonorificUsage,
+  checkModelSwitchCommand
 };
