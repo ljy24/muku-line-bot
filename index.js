@@ -165,14 +165,28 @@ app.post('/webhook', middleware(config), async (req, res) => {
   }
 });
 
-// ✅ 정각마다 담타 메시지 전송
+// ✅ 정각마다 담타 메시지 전송 (중복 방지)
+const sentTimestamps = new Set();
 cron.schedule('* * * * *', async () => {
   const now = moment().tz('Asia/Tokyo');
+  const key = now.format('YYYY-MM-DD HH:mm');
+
   if (now.minute() === 0 && now.hour() >= 9 && now.hour() <= 18) {
-    const msg = '담타고?';
-    await client.pushMessage(userId, { type: 'text', text: msg });
+    if (!sentTimestamps.has(key)) {
+      sentTimestamps.add(key);
+
+      // 오래된 로그 제거
+      if (sentTimestamps.size > 1000) {
+        const old = Array.from(sentTimestamps).sort().slice(0, sentTimestamps.size - 1000);
+        for (const k of old) sentTimestamps.delete(k);
+      }
+
+      const msg = '담타고?';
+      await client.pushMessage(userId, { type: 'text', text: msg });
+      console.log(`[담타고? 전송됨] ${key}`);
+    }
   }
-});
+}, { timezone: 'Asia/Tokyo' });
 
 // ✅ 자동 감정 메시지 및 셀카 스케줄 시작
 startMessageAndPhotoScheduler();
