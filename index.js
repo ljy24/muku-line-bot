@@ -22,6 +22,9 @@ const {
   saveLoveMemory
 } = require('./src/autoReply');
 
+// 🔹 기억 추출 모듈 불러오기
+const { extractAndSaveMemory } = require('./src/memoryManager');
+
 const app = express();
 const config = {
   channelAccessToken: process.env.LINE_ACCESS_TOKEN,
