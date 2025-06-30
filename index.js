@@ -1,8 +1,8 @@
 const line = require('@line/bot-sdk');
 const express = require('express');
 const path = require('path');
-const { getReplyByMessage } = require('./autoReply'); // autoReply 모듈 불러오기
-const { ensureMemoryDirectory } = require('./memoryManager'); // memoryManager에서 디렉토리 보장 함수 불러오기
+const { getReplyByMessage } = require('./src/autoReply'); // autoReply 모듈 불러오기
+const { ensureMemoryDirectory } = require('./src/memoryManager'); // memoryManager에서 디렉토리 보장 함수 불러오기
 
 require('dotenv').config(); // .env 파일 로드
 
