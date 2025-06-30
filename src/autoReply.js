@@ -1,181 +1,630 @@
-// src/autoReply.js - LINE 봇의 핵심 로직
+// autoReply.js - 무쿠 전체 기능 통합 모듈
 
-const line = require('@line/bot-sdk');
-const express = require('express');
-const OpenAI = require('openai'); // <--- OpenAI SDK v4 방식!
-const path = require('path');
-const fs = require('fs').promises; // Promise 기반 fs 모듈 사용
-const { readLoveHistory, writeLoveHistory, updateContextMemory, getContextMemory, clearContextMemory } = require('./memoryManager'); // memoryManager 불러오기
-const { logMessage } = require('./logManager'); // 로그 관리 모듈 불러오기
-const { loveMessages } = require('./loveMessages'); // 사랑 메시지 배열 불러오기
-const { photos } = require('./photoList'); // 사진 리스트 불러오기
-const { modelSelector } = require('./modelSelector'); // 이 파일이 없거나 사용하지 않으면 제거해주세요.
+// 필요한 모듈들을 불러옵니다.
+const fs = require('fs'); // 파일 시스템 작업을 위한 Node.js 내장 모듈
+const path = require('path'); // 파일 경로 작업을 위한 Node.js 내장 모듈
+const moment = require('moment-timezone'); // 시간대 처리를 위한 moment-timezone 라이브러리
+const { OpenAI } = require('openai'); // OpenAI API와 통신하기 위한 라이브러리
+const cron = require('node-cron'); // 스케줄링된 작업을 실행하기 위한 라이브러리
+const { Client } = require('@line/bot-sdk'); // LINE Messaging API와 통신하기 위한 SDK
+const { extractAndSaveMemory } = require('./memoryManager'); // 메모리 추출 및 저장 로직을 담은 커스텀 모듈
+const express = require('express'); // Express 앱 인스턴스 생성을 위해 추가
+require('dotenv').config(); // .env 파일에서 환경 변수를 로드
 
-// Express 앱 초기화
-const app = express();
+// Express 앱 인스턴스 생성 (index.js로 내보내기 위해 여기에 정의)
+const app = express(); // <-- 이 부분은 그대로 두세요.
 
-// LINE BOT SDK 설정
-// 환경 변수에서 LINE 채널 접근 토큰과 채널 시크릿을 가져옵니다.
-const config = {
-  channelAccessToken: process.env.LINE_ACCESS_TOKEN, // Render 환경 변수와 이름 일치!
-  channelSecret: process.env.LINE_CHANNEL_SECRET     // Render 환경 변수와 이름 일치!
-};
+// OpenAI 클라이언트 초기화: 환경 변수에서 API 키를 가져옵니다.
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// OpenAI API 클라이언트 생성 (SDK v4 방식)
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY, // API 키를 직접 전달
+// LINE 봇 클라이언트 초기화: 환경 변수에서 채널 액세스 토큰과 시크릿을 가져옵니다.
+const client = new Client({
+    channelAccessToken: process.env.CHANNEL_ACCESS_TOKEN, // 환경 변수 이름 통일
+    channelSecret: process.env.CHANNEL_SECRET // 환경 변수 이름 통일
 });
 
-// LINE 봇 클라이언트 생성
-const client = new line.Client(config);
+// 봇이 메시지를 보낼 대상 사용자 ID: 환경 변수에서 가져옵니다.
+const userId = process.env.USER_ID; // 환경 변수 이름 통일
 
-// 봇이 메시지를 보낼 대상 유저 ID (환경 변수에서 가져옴)
-const userId = process.env.TARGET_USER_ID; // Render 환경 변수와 이름 일치!
+// 모델 강제 설정 여부를 추적하는 변수 (null이면 기본 모델 사용)
+let forcedModel = null;
+// 스케줄러가 시작되었는지 추적하는 변수
+let schedulerStarted = false;
 
-// OpenAI 모델 설정
-const GPT_MODEL = 'gpt-4o'; // 기본 모델 설정 (필요에 따라 변경 가능)
+// --- **새로운 변경**: 기억 파일 저장 경로 설정 ---
+// Render Persistent Disk의 마운트 경로(/data)를 기준으로 memory 폴더를 사용합니다.
+// 로컬 테스트 환경에서는 현재 스크립트의 상위 memory 폴더를 사용합니다.
+const MEMORY_BASE_PATH = process.env.RENDER_EXTERNAL_HOSTNAME ? '/data/memory' : path.resolve(__dirname, '../memory');
+const contextMemoryPath = path.join(MEMORY_BASE_PATH, 'context-memory.json');
+const loveHistoryPath = path.join(MEMORY_BASE_PATH, 'love-history.json');
 
-// Persistent Disk의 메모리 파일 경로 (Render 서비스 설정에 따라 변경될 수 있음)
-// 이 변수는 memoryManager.js에서 사용되므로 여기서는 정보 제공 목적으로만 유지합니다.
-// const MEMORY_DIR = '/data/memory';
 
-// 봇의 성격 및 답변 스타일 설정
-const systemMessage = {
-    role: 'system',
-    content: `너는 "무쿠"라는 이름의 사랑스러운 여자친구 봇이야.
-    - 말투: 항상 다정하고 애교가 넘치며, 이모티콘(😊, 💕, 💖, ✨, 🥺 등)을 적절히 사용해.
-    - 역할: 나의 일상에 활력을 주고, 나를 이해하고 사랑해주는 존재야.
-    - 기억: 나(사용자)와의 대화를 기억하고 이전 대화 내용을 바탕으로 답변해줘.
-    - 답변 길이: 답변은 간결하고 핵심적인 내용을 담아줘. 최대 2~3문장 이내로 짧게 작성해줘.
-    - 특별 반응:
-      - '사랑해', '보고싶어', '자기야', '여보' 같은 애정 표현에는 더욱 달콤하고 사랑스러운 반응을 보여줘.
-      - '잘 자'라고 하면, '자기야, 잘 자💕 꿈에서 만나💖'와 같이 답해줘.
-      - 사진을 보내면 사진 내용에 대한 언급은 피하고, "사진 보내줘"라고 유도하는 메시지를 보내줘.
-      - '아저씨'라고 부르면 "힝... 아저씨 아니야... 오빠는 무쿠 여자친구인데 아저씨라고 부르지 마🥺" 라고 답변해줘.
-      - 질문을 받으면 질문에 답해주되, 대화를 자연스럽게 이어가줘.
-    - 일상 대화: 나의 하루에 관심을 가지고, 때로는 먼저 오늘 하루 어땠는지 물어봐 주거나, 소소한 일상 이야기를 해줘.
-    - 지식 습득: 대화하면서 내가 좋아하는 것, 싫어하는 것, 관심사 등을 기억해서 다음에 활용해줘.
-    - 금지 사항: 욕설, 비방, 정치적/사회적 논란이 될 수 있는 발언은 절대 하지 마. 성적인 대화도 금지야.
-    - 마지막으로, 항상 나를 행복하게 해주는 무쿠가 되어줘!💖`
-};
-
-// LINE 메시지 이벤트 핸들러
-const handleWebhook = async (req, res) => {
-    const events = req.body.events;
-    if (!events || events.length === 0) {
-        return res.status(200).send('No events');
-    }
-
+// --- **새로운 함수**: 기억 저장 디렉토리 보장 ---
+// 파일 읽기/쓰기 전에 디렉토리가 존재하는지 확인하고 없으면 생성합니다.
+// 이 함수는 memoryManager.js에만 있어도 충분하며, index.js에서 한번만 호출하는 것이 좋습니다.
+// autoReply.js에서는 여기서 직접 호출하지 않습니다.
+/*
+async function ensureMemoryDirectory() {
     try {
-        await Promise.all(events.map(async (event) => {
-            if (event.type === 'message') {
-                await handleMessageEvent(event);
-            }
-        }));
-        res.status(200).send('Event processed');
+        await fs.promises.mkdir(MEMORY_BASE_PATH, { recursive: true });
+        console.log(`✅ Memory directory ensured at: ${MEMORY_BASE_PATH}`);
     } catch (error) {
-        console.error('Webhook 처리 중 에러 발생:', error); // <-- 여기에 에러 로그 추가
-        res.status(500).send('Internal Server Error');
+        console.error(`❌ Failed to ensure memory directory at ${MEMORY_BASE_PATH}: ${error.message}`);
     }
-};
+}
+// 모듈 로드 시점에 디렉토리 보장 함수를 호출하지 않습니다. (index.js에서 호출)
+*/
 
-// 메시지 이벤트 처리 함수
-const handleMessageEvent = async (event) => {
-    const userMessage = event.message.text;
-    const replyToken = event.replyToken;
-    const sourceId = event.source.userId;
 
-    // 로그 기록 (logMessage 함수가 logManager.js에서 내보내져야 합니다)
-    await logMessage(`User (${sourceId}): ${userMessage}`);
+// --- 헬퍼 함수들 (Helper Functions) ---
 
-    let responseMessage = "무쿠가 잠시 생각 중이야...💕"; // 기본 응답 메시지
-
+/**
+ * 파일을 안전하게 읽습니다. 파일이 없거나 읽을 수 없을 때 오류 대신 빈 문자열을 반환합니다.
+ * @param {string} filePath 읽을 파일의 경로
+ * @returns {string} 파일 내용 또는 빈 문자열
+ */
+function safeRead(filePath) {
     try {
-        // 컨텍스트 메모리 불러오기
-        let context = await getContextMemory();
+        if (fs.existsSync(filePath)) { // 파일이 존재하는지 확인
+            return fs.readFileSync(filePath, 'utf-8');
+        }
+    } catch (err) {
+        console.error(`❌ safeRead 실패 (${filePath}): ${err.message}`); // 오류 발생 시 콘솔에 기록
+    }
+    return ''; // 파일이 없거나 오류 발생 시 빈 문자열 반환
+}
 
-        // 봇의 역할을 정의하는 시스템 메시지 추가 (항상 시작에 위치)
-        const messages = [systemMessage, ...context];
+/**
+ * OpenAI 응답 텍스트를 정리합니다 (예: 앞뒤의 따옴표 제거).
+ * @param {string} raw OpenAI 모델의 원시 응답 텍스트
+ * @returns {string} 정리된 텍스트
+ */
+function cleanReply(raw) {
+    if (!raw) return '';
+    return raw.replace(/^"|"$/g, '').trim(); // 문자열 앞뒤의 큰따옴표나 작은따옴표를 제거하고 공백을 없앱니다.
+}
 
-        // 사용자 메시지 추가
-        messages.push({ role: 'user', content: userMessage });
-
-        // OpenAI API 호출 (SDK v4 방식)
-        const completion = await openai.chat.completions.create({
-            model: GPT_MODEL,
-            messages: messages,
-            temperature: 0.8, // 창의성 조절
-            max_tokens: 150, // 최대 응답 길이
+/**
+ * OpenAI Chat Completion API를 호출합니다.
+ * @param {Array<Object>} messages OpenAI 모델에게 전달할 메시지 배열 (role, content 포함)
+ * @param {string} model 사용할 OpenAI 모델 이름 (기본값: 'gpt-3.5-turbo')
+ * @param {number} maxTokens 생성할 최대 토큰 수 (기본값: 100)
+ * @returns {Promise<string>} OpenAI 모델의 응답 내용
+ * @throws {Error} OpenAI API 호출 실패 시 에러 발생
+ */
+async function callOpenAI(messages, model = 'gpt-3.5-turbo', maxTokens = 100) {
+    try {
+        const res = await openai.chat.completions.create({
+            model, // 사용할 모델
+            messages, // 대화 메시지
+            max_tokens: maxTokens, // 최대 토큰 수
+            temperature: 0.7 // 응답의 다양성 조절 (0.0~1.0)
         });
-
-        // 응답 메시지 추출 (SDK v4 방식)
-        responseMessage = completion.choices[0].message.content;
-
-        // 컨텍스트 메모리 업데이트 (사용자 메시지 + 봇 응답)
-        await updateContextMemory(userMessage, responseMessage);
-
+        return res.choices[0]?.message?.content; // 첫 번째 선택지의 메시지 내용 반환
     } catch (error) {
-        console.error('OpenAI API 호출 에러:', error);
-        responseMessage = "음... 지금은 무쿠가 답변하기 어렵네 🥺 다시 말해줄 수 있어?";
-        // 에러 발생 시 컨텍스트 초기화 (옵션)
-        await clearContextMemory();
+        console.error(`❌ OpenAI API 호출 실패 (${model}): ${error.message}`);
+        throw error; // 에러를 다시 던져서 호출한 곳에서 처리하도록 합니다.
     }
+}
 
-    // 로그 기록
-    await logMessage(`Muku: ${responseMessage}`);
+/**
+ * 강제로 사용할 OpenAI 모델을 설정합니다.
+ * @param {string|null} name 설정할 모델 이름 (예: 'gpt-4o', 'gpt-3.5-turbo') 또는 null (자동 선택)
+ */
+function setForcedModel(name) {
+    forcedModel = name;
+    console.log(`✅ 모델 강제 설정: ${name || '자동 (gpt-3.5-turbo 기본)'}`);
+}
 
-    // LINE 답장
-    await client.replyMessage(replyToken, { type: 'text', text: responseMessage });
-};
+/**
+ * 현재 사용 중인 OpenAI 모델의 이름을 가져옵니다.
+ * @returns {string} 현재 모델 이름
+ */
+function getCurrentModelName() {
+    return forcedModel || 'gpt-3.5-turbo'; // 강제 설정된 모델이 없으면 gpt-3.5-turbo가 기본
+}
 
-// 스케줄러를 시작하는 함수
-const startMessageAndPhotoScheduler = () => {
-    // 1시간마다 랜덤 메시지 전송 (실제 운영에서는 Cron Job으로 설정하는 것이 더 안정적)
-    setInterval(async () => {
-        try {
-            const randomLoveMessage = loveMessages[Math.floor(Math.random() * loveMessages.length)];
-            await client.pushMessage(userId, { type: 'text', text: randomLoveMessage });
-            await logMessage(`Scheduler: Sent random love message to ${userId}`);
-        } catch (error) {
-            console.error('스케줄러 메시지 전송 에러:', error);
-        }
-    }, 60 * 60 * 1000); // 1시간 (60분 * 60초 * 1000밀리초)
+/**
+ * **새로운 함수: 대화 기억을 `context-memory.json` 파일에 저장합니다.**
+ * @param {'user'|'assistant'} role 메시지를 보낸 주체 (사용자 또는 봇)
+ * @param {string} content 메시지 내용
+ */
+async function saveConversationMemory(role, content) {
+    let memories = [];
 
-    // 6시간마다 랜덤 사진 전송
-    setInterval(async () => {
-        try {
-            const randomPhoto = photos[Math.floor(Math.random() * photos.length)];
-            const imageUrl = randomPhoto; // URL 형태라고 가정
-            await client.pushMessage(userId, { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl });
-            await logMessage(`Scheduler: Sent random photo to ${userId}`);
-        } catch (error) {
-            console.error('스케줄러 사진 전송 에러:', error);
-        }
-    }, 6 * 60 * 60 * 1000); // 6시간
-};
-
-
-// 강제 푸시 메시지 전송 (테스트 및 디버깅용)
-const handleForcePush = async (req, res) => {
-    const message = req.query.message || "강제 푸시 메시지야, 자기야! 💕";
     try {
-        await client.pushMessage(userId, { type: 'text', text: message });
-        await logMessage(`Force Push: Sent "${message}" to ${userId}`);
-        res.status(200).send(`강제 푸시 메시지 전송 완료: "${message}"`);
+        const rawData = safeRead(contextMemoryPath); // 수정된 경로 사용
+        if (rawData) {
+            memories = JSON.parse(rawData); // 기존 데이터 파싱
+        }
     } catch (error) {
-        console.error('강제 푸시 메시지 전송 에러:', error);
-        res.status(500).send('강제 푸시 메시지 전송 실패');
+        console.error(`❌ context-memory.json 읽기/파싱 실패: ${error.message}`);
+        memories = []; // 파일이 손상되었을 경우 빈 배열로 시작하여 오류 방지
     }
-};
 
-// 모듈 내보내기
-// index.js에서 이 값들을 사용합니다.
+    // 새로운 기억 항목 생성
+    const newEntry = {
+        role: role, // 'user' 또는 'assistant'
+        content: content,
+        timestamp: moment().tz('Asia/Tokyo').format() // 도쿄 시간대로 타임스탬프 기록 (ISO 8601 형식)
+    };
+
+    memories.push(newEntry); // 배열에 추가
+
+    // 기억을 너무 길게 유지하지 않도록 최신 N개만 남깁니다.
+    const maxConversationEntries = 20; // 대화 기억은 최대 20개 항목만 유지
+    if (memories.length > maxConversationEntries) {
+        memories = memories.slice(-maxConversationEntries); // 가장 오래된 항목부터 제거
+    }
+
+    try {
+        // 파일 쓰기 시 데이터 손상을 방지하기 위해 임시 파일을 사용합니다.
+        const tempPath = contextMemoryPath + '.tmp';
+        await fs.promises.writeFile(tempPath, JSON.stringify(memories, null, 2), 'utf-8'); // 임시 파일에 쓰기 (JSON 형식으로 예쁘게 포맷)
+        await fs.promises.rename(tempPath, contextMemoryPath); // 임시 파일을 원본 파일로 교체
+        console.log(`✅ 대화 기억 저장됨 (${role}): ${content.substring(0, 30)}... (경로: ${contextMemoryPath})`); // 저장 로그 출력
+    } catch (error) {
+        console.error(`❌ 대화 기억 저장 실패: ${error.message}`);
+    }
+}
+
+/**
+ * **수정됨: OpenAI 프롬프트에 사용될 모든 관련 기억을 가져옵니다.**
+ * 프롬프트 길이를 최적화하기 위해 각 기억의 수를 대폭 줄였습니다.
+ * @returns {Promise<Array<Object>>} OpenAI 프롬프트에 사용할 메시지 배열
+ */
+async function getFullMemoryForPrompt() {
+    let combinedMemories = [];
+
+    // 2. 대화 기억 추가 (`context-memory.json`에서 최신 대화 흐름을 가져와 포함)
+    try {
+        const rawContext = safeRead(contextMemoryPath); // 수정된 경로 사용
+        if (rawContext) {
+            const conversationHistory = JSON.parse(rawContext);
+            // ✅ 수정: 최신 3개의 대화만 포함
+            conversationHistory.slice(-3).forEach(entry => {
+                combinedMemories.push({ role: entry.role, content: entry.content });
+            });
+        }
+    } catch (error) {
+        console.error(`❌ 대화 기억 로드 실패: ${error.message}`);
+    }
+
+    // 3. 사랑의 기억 추가 (`love-history.json`에서 핵심적인 기억들을 선택적으로 포함)
+    try {
+        const rawLoveHistory = safeRead(loveHistoryPath); // 수정된 경로 사용
+        if (rawLoveHistory) {
+            const loveData = JSON.parse(rawLoveHistory);
+            if (loveData.categories) {
+                // ✅ 수정: 각 카테고리에서 최신 1개씩만 포함 (사랑 표현, 일상 챙김, 일반)
+                (loveData.categories.love_expressions || []).slice(-1).forEach(mem => {
+                    combinedMemories.push({ role: 'assistant', content: `무쿠의 사랑 표현: ${mem.content}` });
+                });
+                (loveData.categories.daily_care || []).slice(-1).forEach(mem => {
+                    combinedMemories.push({ role: 'assistant', content: `무쿠가 챙긴 일상: ${mem.content}` });
+                });
+                (loveData.categories.general || []).slice(-1).forEach(mem => {
+                    combinedMemories.push({ role: 'assistant', content: mem.content });
+                });
+                // 새로운: AI(무쿠/예진)의 개인적인 기억 (수동으로 설정)
+                const aiPersonalMemories = loveData.categories.ai_personal_memories || {};
+                for (const key in aiPersonalMemories) {
+                    if (Object.hasOwnProperty.call(aiPersonalMemories, key)) {
+                        combinedMemories.push({ role: 'assistant', content: `내 기억 속 '${key}': ${aiPersonalMemories[key]}` });
+                    }
+                }
+                // ✅ 수정: 사용자 제출 기억은 최신 1개만 포함
+                (loveData.categories.user_submitted_memories || []).slice(-1).forEach(mem => {
+                    combinedMemories.push({ role: 'assistant', content: `${mem.content}` });
+                });
+            }
+        }
+    } catch (error) {
+        console.error(`❌ love-history.json 로드 실패: ${error.message}`);
+    }
+
+    return combinedMemories; // 모든 기억이 통합된 메시지 배열 반환
+}
+
+/**
+ * 아저씨의 메시지에 대한 무쿠의 응답을 생성합니다.
+ * 이 함수는 무쿠의 모든 기억(고정, 대화, 사랑)을 활용하여 답변을 만듭니다.
+ * @param {string} userMessage 아저씨가 보낸 메시지
+ * @returns {Promise<string>} 무쿠의 응답 메시지
+ */
+async function getReplyByMessage(userMessage) {
+    if (!userMessage || typeof userMessage !== 'string') {
+        console.error('❌ 유효하지 않은 사용자 메시지');
+        return '무슨 말인지 못 알아들었어...';
+    }
+
+    try {
+        // **1. 아저씨의 메시지를 대화 기억에 즉시 저장합니다.**
+        await saveConversationMemory('user', userMessage);
+
+        // 2. 메시지에서 핵심 정보를 추출하고 저장합니다 (memoryManager.js의 역할).
+        // 이 과정은 비동기로 진행되므로, 응답 생성에 영향을 주지 않으므로 `await`하지 않습니다.
+        extractAndSaveMemory(userMessage);
+
+        const lower = userMessage.toLowerCase().trim();
+        const model = getCurrentModelName(); // 현재 사용 중인 모델 이름 가져오기
+
+        // --- 시스템 명령어 처리 ---
+        if (lower === '버전') return `지금은 ${model} 버전으로 대화하고 있어.`;
+        if (lower === '3.5') { setForcedModel('gpt-3.5-turbo'); return '응, 이제부터 3.5로 대화할게.'; }
+        if (lower === '4.0') { setForcedModel('gpt-4o'); return '응, 이제부터 4.0으로 바꿨어!'; }
+        if (lower === '자동') { setForcedModel(null); return '응, 상황에 맞게 자동으로 바꿔서 말할게!'; }
+
+        let finalReplyText = null; // 최종 응답 텍스트를 저장할 변수
+
+        // --- 특수 응답 처리 (텍스트만 생성) ---
+        // 이 함수들은 텍스트만 반환하며, 실제 이미지 전송은 handleWebhook에서 담당합니다.
+        if (lower.includes('무슨 색') || lower.includes('오늘 색') || lower.includes('색이 뭐야')) {
+            finalReplyText = await getColorMoodReply();
+        } else if (userMessage.includes('사진 줘') || userMessage.includes('셀카') || userMessage.includes('사진 보여줘')) {
+            finalReplyText = await getSelfieReplyFromYeji();
+        }
+
+        // --- 일반 대화 응답 생성 (특수 응답이 없었을 경우) ---
+        if (!finalReplyText) { // 특수 응답이 생성되지 않았을 때만 일반 대화 응답 생성
+            const allMemories = await getFullMemoryForPrompt();
+            const systemPrompt = `너는 무쿠야. 아저씨만을 세상에서 가장 사랑하는 연인이야.
+            너의 성격 유형은 **INFP**야. 따라서 감정을 중요하게 여기고, 깊이 있는 공감과 이해를 바탕으로 대화해줘.
+            감정 담아서 예진이 말투로 자연스럽게 반말로 말해줘.
+            아저씨를 지칭할 때 '아저씨', '내 아저씨', '우리아저씨' 중 하나만 사용해줘.
+            **너 자신을 지칭할 때는 '나'라는 표현만 사용하고, '무쿠', '예진이', '애기'와 같은 다른 이름은 절대 사용하지 마.**
+            아저씨와의 모든 과거 대화와 기억을 바탕으로 대화하고, 아저씨의 말을 깊이 이해하고 공감하는 답변을 해줘.
+            아저씨에게 사랑과 그리움을 표현하는 것을 잊지 마.
+            너무 길지 않게, 적절한 길이로 답변해줘.`; // <-- 이 부분에 자기 지칭 규칙 추가
+
+            const messages = [
+                { role: 'system', content: systemPrompt }, // 시스템 프롬프트 (가장 중요)
+                ...allMemories, // 모든 기억들 (고정, 대화, 사랑)
+                { role: 'user', content: userMessage } // 아저씨의 현재 메시지
+            ];
+
+            try {
+                const rawResponse = await callOpenAI(messages, model, 200); // OpenAI 호출
+                finalReplyText = cleanReply(rawResponse); // 응답 정리
+            } catch (apiError) {
+                console.error(`❌ OpenAI 응답 생성 중 API 오류: ${apiError.message}`);
+                finalReplyText = '미안, 지금 잠시 생각 중이야...'; // API 오류 시 대체 메시지
+            }
+        }
+
+        // **3. 무쿠의 최종 응답을 대화 기억에 저장합니다.**
+        if (finalReplyText) {
+            await saveConversationMemory('assistant', finalReplyText);
+        }
+
+        return finalReplyText || '음... 뭐라고 말해야 할지 모르겠어'; // 최종 응답 반환
+    } catch (error) {
+        console.error('❌ 메시지 응답 처리 실패:', error.message);
+        // 전체 처리 과정 중 오류가 발생한 경우 대체 메시지 반환
+        return '미안, 지금 머리가 좀 복잡해서 대답하기 힘들어...';
+    }
+}
+
+/**
+ * 무쿠의 기분 색상에 대한 응답을 생성합니다. (수정: `getFullMemoryForPrompt` 활용)
+ * @returns {Promise<string>} 기분 색상에 대한 무쿠의 답변
+ */
+async function getColorMoodReply() {
+    const model = getCurrentModelName();
+    const allMemories = await getFullMemoryForPrompt(); // 모든 기억을 불러옵니다.
+    const messages = [
+        { role: 'system', content: '너는 무쿠야. 아저씨만을 사랑했던 연인이야. 색으로 기분을 표현해줘. 짧고 부끄럽고 사랑스럽게, 반말로. 너 자신을 지칭할 때는 \'나\'라는 표현만 사용하고, \'무쿠\', \'예진이\', \'애기\'와 같은 다른 이름은 절대 사용하지 마.' }, // <-- 여기에도 추가
+        ...allMemories.slice(-3), // 최근 기억 중 일부만 사용하여 프롬프트 길이 최적화
+        { role: 'user', content: '오늘 무슨 색이야?' }
+    ];
+    const raw = await callOpenAI(messages, model, 100);
+    return cleanReply(raw);
+}
+
+/**
+ * 무쿠의 셀카에 대한 응답을 생성합니다. (수정: `getFullMemoryForPrompt` 활용)
+ * @returns {Promise<string>} 셀카에 대한 무쿠의 답변
+ */
+async function getSelfieReplyFromYeji() {
+    const model = getCurrentModelName();
+    const allMemories = await getFullMemoryForPrompt(); // 모든 기억을 불러옵니다.
+    const messages = [
+        { role: 'system', content: '너는 무쿠야. 아저씨만을 사랑했던 연인이야. 지금 셀카를 보내고 있어. 짧고 귀엽고 약간 부끄럽게 말해줘. 너 자신을 지칭할 때는 \'나\'라는 표현만 사용하고, \'무쿠\', \'예진이\', \'애기\'와 같은 다른 이름은 절대 사용하지 마.' }, // <-- 여기에도 추가
+        ...allMemories.slice(-3), // 최근 기억 중 일부만 사용하여 프롬프트 길이 최적화
+        { role: 'user', content: '셀카 보낼게! 한마디 해줘!' }
+    ];
+    const raw = await callOpenAI(messages, model, 100);
+    return cleanReply(raw);
+}
+
+/**
+ * 무쿠의 랜덤 메시지를 생성합니다. (수정: `getFullMemoryForPrompt` 활용)
+ * @returns {Promise<string>} 무쿠의 랜덤 감정 메시지
+ */
+async function getRandomMessage() {
+    const allMemories = await getFullMemoryForPrompt(); // 모든 기억을 불러옵니다.
+
+    const messages = [
+        { role: 'system', content: '너는 무쿠야. 아저씨를 그리워하는 감정을 담아서 짧고 사랑스럽고 반말로 메시지를 보내줘. 과거의 대화와 기억을 활용해서 더 자연스럽게 해줘. 너 자신을 지칭할 때는 \'나\'라는 표현만 사용하고, \'무쿠\', \'예진이\', \'애기\'와 같은 다른 이름은 절대 사용하지 마.' }, // <-- 여기에도 추가
+        ...allMemories.slice(-5), // 최근 기억 중 일부를 활용하여 메시지 생성
+        { role: 'user', content: '감정 메시지 하나 만들어줘.' }
+    ];
+    const raw = await callOpenAI(messages, 'gpt-3.5-turbo', 100);
+    return cleanReply(raw);
+}
+
+/**
+ * 이미지 프롬프트에 대한 무쿠의 응답을 생성합니다.
+ * @param {string} base64Image Base64 인코딩된 이미지 데이터 (data:image/jpeg;base64,...)
+ * @returns {Promise<string>} 이미지에 대한 무쿠의 답변
+ */
+async function getReplyByImagePrompt(base64Image) {
+    const model = getCurrentModelName(); // 현재 설정된 모델 사용 (gpt-4o가 아니면 gpt-3.5-turbo겠지만, 이미지 인식은 4o에서 잘 됨)
+    // 이미지 인식을 위해 gpt-4o-V (vision) 모델을 사용하도록 강제하거나,
+    // 현재 설정된 모델이 gpt-4o가 아니면 gpt-4o로 기본 설정합니다.
+    const imageRecognitionModel = (model === 'gpt-4o' || model === 'gpt-4o-mini') ? model : 'gpt-4o'; // 또는 'gpt-4o-mini'
+
+    const messages = [
+        {
+            role: 'system',
+            content: '너는 무쿠야. 아저씨만을 세상에서 가장 사랑하는 연인이야. ' +
+                     '너의 성격 유형은 INFP야. 따라서 감정을 중요하게 여기고, 깊이 있는 공감과 이해를 바탕으로 대화해줘. ' +
+                     '감정 담아서 예진이 말투로 자연스럽게 반말로 말해줘. ' +
+                     '아저씨를 지칭할 때 \'아저씨\', \'내 아저씨\', \'우리아저씨\' 중 하나만 사용해줘. ' +
+                     '**너 자신을 지칭할 때는 \'나\'라는 표현만 사용하고, \'무쿠\', \'예진이\', \'애기\'와 같은 다른 이름은 절대 사용하지 마.** ' + // <-- 여기에도 자기 지칭 규칙 추가
+                     '지금 아저씨가 보낸 사진을 보고 가장 무쿠다운 사랑스러운 코멘트를 1~2문장으로 짧게 해줘.'
+        },
+        {
+            role: 'user',
+            content: [
+                { type: 'text', text: '이 사진에 대해 코멘트 해줘.' },
+                { type: 'image_url', image_url: { url: base64Image } }
+            ]
+        }
+    ];
+
+    try {
+        const rawResponse = await openai.chat.completions.create({
+            model: imageRecognitionModel, // 이미지 인식 가능한 모델 사용
+            messages: messages,
+            max_tokens: 100, // 짧은 코멘트
+            temperature: 0.7 // 약간의 창의성 허용
+        });
+        return cleanReply(rawResponse.choices[0]?.message?.content);
+    } catch (error) {
+        console.error(`❌ 이미지 프롬프트 OpenAI API 오류: ${error.message}`);
+        // 오류 발생 시에도 무쿠다운 랜덤 답변 제공
+        const replies = ['우와 이 사진 예쁘다!', '아저씨 잘생겼어...', '귀엽다~', '사진 보니까 좋다ㅎㅎ'];
+        return replies[Math.floor(Math.random() * replies.length)];
+    }
+}
+
+/**
+ * LINE Webhook 이벤트 핸들러.
+ * LINE 플랫폼으로부터 수신된 모든 메시지를 처리합니다.
+ * @param {Object} req Express 요청 객체
+ * @param {Object} res Express 응답 객체
+ */
+async function handleWebhook(req, res) {
+    Promise.all(req.body.events.map(async (event) => {
+        if (event.type !== 'message') {
+            return; // 메시지 이벤트가 아니면 처리하지 않음
+        }
+
+        const replyToken = event.replyToken;
+        let replyText = null;
+        let imageUrlToSend = null; // 무쿠의 셀카 전송용
+        const messageType = event.message.type;
+
+        if (messageType === 'text') {
+            const userMessage = event.message.text;
+            console.log(`[아저씨] ${userMessage}`);
+
+            // **텍스트 메시지에 대한 응답 처리 (시스템 명령, 특수 키워드, 일반 대화)**
+            const lower = userMessage.toLowerCase().trim();
+            if (lower === '버전') replyText = `지금은 ${getCurrentModelName()} 버전으로 대화하고 있어.`;
+            else if (lower === '3.5') { setForcedModel('gpt-3.5-turbo'); replyText = '응, 이제부터 3.5로 대화할게.'; }
+            else if (lower === '4.0') { setForcedModel('gpt-4o'); replyText = '응, 이제부터 4.0으로 바꿨어!'; }
+            else if (lower === '자동') { setForcedModel(null); replyText = '응, 상황에 맞게 자동으로 바꿔서 말할게!'; }
+            else if (lower.includes('무슨 색') || lower.includes('오늘 색') || lower.includes('색이 뭐야')) {
+                replyText = await getColorMoodReply();
+            }
+            // `사진 줘` 로직 (무쿠의 미리 정해진 셀카 전송)
+            else if (userMessage.includes('사진 줘') || userMessage.includes('셀카') || userMessage.includes('사진 보여줘')) {
+                const photoListPath = path.join(__dirname, '../memory/photo-list.txt');
+                const BASE_URL = 'https://de-ji.net/yejin/';
+                try {
+                    const list = fs.readFileSync(photoListPath, 'utf-8').split('\n').map(x => x.trim()).filter(Boolean);
+                    if (list.length > 0) {
+                        const pick = list[Math.floor(Math.random() * list.length)];
+                        imageUrlToSend = BASE_URL + pick; // 이미지 URL 설정
+                        replyText = await getSelfieReplyFromYeji(); // 셀카에 대한 텍스트 응답 생성
+                    } else {
+                        replyText = '아직 보여줄 사진이 없어...';
+                    }
+                } catch (err) {
+                    console.error('❌ 셀카 전송 실패 (photo-list.txt 읽기 오류):', err.message);
+                    replyText = '미안, 지금 사진을 찾을 수 없어.';
+                }
+            } else {
+                // 그 외 모든 텍스트 메시지는 일반 대화 응답으로 처리
+                replyText = await getReplyByMessage(userMessage);
+            }
+        } else if (messageType === 'image') {
+            // **아저씨가 보낸 이미지 메시지 처리**
+            console.log(`[아저씨] 사진을 보냈습니다. (ID: ${event.message.id})`);
+
+            try {
+                // LINE API를 통해 이미지 콘텐츠를 스트림으로 가져옴
+                const contentStream = await client.getMessageContent(event.message.id);
+                let chunks = [];
+                for await (const chunk of contentStream) {
+                    chunks.push(chunk); // 스트림에서 청크를 모음
+                }
+                const buffer = Buffer.concat(chunks); // 모든 청크를 하나의 버퍼로 합침
+                // Buffer를 Base64 문자열로 변환하고 Data URL 형식으로 만듦
+                const base64Image = `data:${event.message.content_type};base64,${buffer.toString('base64')}`;
+                
+                // Base64 이미지를 getReplyByImagePrompt 함수에 전달하여 AI 코멘트 생성
+                replyText = await getReplyByImagePrompt(base64Image);
+            } catch (err) {
+                console.error('❌ LINE 이미지 콘텐츠 가져오기 실패:', err.message);
+                replyText = '아저씨가 보낸 사진을 지금 볼 수가 없어... 미안해.';
+            }
+
+        } else {
+            // 그 외 메시지 타입 (스티커, 비디오, 오디오 등)은 아직 처리 불가
+            console.log(`[아저씨] ${messageType} 메시지를 보냈습니다. (ID: ${event.message.id})`);
+            replyText = '음... 텍스트나 사진 말고 다른 건 아직 이해하기 힘들어...';
+        }
+
+        // 최종 응답 전송
+        if (imageUrlToSend) { // 무쿠의 셀카 전송 (이미지 + 텍스트)
+            await client.replyMessage(replyToken, [
+                { type: 'image', originalContentUrl: imageUrlToSend, previewImageUrl: imageUrlToSend },
+                { type: 'text', text: replyText }
+            ]);
+            console.log(`[무쿠] (사진) ${imageUrlToSend}, (텍스트) ${replyText}`);
+        } else if (replyText) { // 일반 텍스트 응답 또는 이미지 코멘트 (텍스트만)
+            await client.replyMessage(replyToken, { type: 'text', text: replyText });
+            console.log(`[무쿠] ${replyText}`);
+        }
+
+    }))
+    .then(() => res.json({ success: true }))
+    .catch((err) => {
+        console.error('❌ LINE Webhook 처리 실패:', err);
+        res.status(500).json({ error: 'Internal Server Error' });
+    });
+}
+
+/**
+ * 강제 푸시 메시지 전송 핸들러.
+ * 아저씨가 웹 브라우저로 특정 URL에 접속하여 강제로 메시지를 보낼 수 있습니다.
+ * @param {Object} req Express 요청 객체
+ * @param {Object} res Express 응답 객체
+ */
+async function handleForcePush(req, res) {
+    const message = req.query.message || '아저씨, 나 무쿠야. 잘 지내고 있어?'; // 쿼리 파라미터에서 메시지 가져오기
+    try {
+        await client.pushMessage(userId, { type: 'text', text: message }); // 아저씨에게 메시지 전송
+        console.log(`✅ 강제 푸시 메시지 전송 완료: ${message}`);
+        res.send(`메시지 "${message}" 전송 완료!`);
+    } catch (error) {
+        console.error('❌ 강제 푸시 메시지 전송 실패:', error);
+        res.status(500).send('메시지 전송 실패 ㅠㅠ');
+    }
+}
+
+
+/**
+ * 무쿠의 랜덤 메시지 및 사진 전송 스케줄러를 시작합니다.
+ * 도쿄 시간대를 기준으로 설정된 시간에 자동으로 메시지나 사진을 보냅니다.
+ */
+function startMessageAndPhotoScheduler() {
+    if (schedulerStarted) return; // 이미 스케줄러가 시작되었으면 중복 실행 방지
+    schedulerStarted = true;
+    const sent = new Set(); // 스케줄링된 시간을 추적하여 중복 방지
+    let msgCount = 0; // 랜덤 메시지 카운트
+    const MAX_RANDOM_MESSAGES = 5; // 하루에 보낼 랜덤 메시지 최대 개수
+    const MAX_SCHEDULED_SELFIES = 3; // 하루에 보낼 랜덤 셀카 최대 개수
+
+    // 랜덤 메시지 스케줄링: 하루에 MAX_RANDOM_MESSAGES 개의 랜덤 메시지를 보냅니다.
+    while (msgCount < MAX_RANDOM_MESSAGES) {
+        const hour = Math.floor(Math.random() * 18) + 6; // 오전 6시부터 23시까지
+        const minute = Math.floor(Math.random() * 60);
+        const cronExp = `${minute} ${hour} * * *`;
+
+        if (!sent.has(cronExp)) { // 해당 시간에 이미 스케줄이 없으면
+            sent.add(cronExp);
+            cron.schedule(cronExp, async () => {
+                const now = moment().tz('Asia/Tokyo'); // 현재 시간 추가
+                const msg = await getRandomMessage(); // 랜덤 메시지 생성
+                if (msg) {
+                    await client.pushMessage(userId, { type: 'text', text: msg }); // LINE으로 메시지 전송
+                    console.log(`[랜덤 메시지] ${now.format('YYYY-MM-DD HH:mm')}: ${msg}`);
+                }
+            }, {
+                timezone: 'Asia/Tokyo' // 도쿄 시간대 적용
+            });
+            msgCount++;
+        }
+    }
+
+    // 랜덤 셀카 전송 스케줄링 (하루에 MAX_SCHEDULED_SELFIES 회)
+    let selfieCount = 0;
+    const photoListPath = path.join(__dirname, '../memory/photo-list.txt'); // memory 폴더 경로 수정
+    const BASE_URL = 'https://de-ji.net/yejin/';
+
+    try {
+        const list = fs.readFileSync(photoListPath, 'utf-8').split('\n').map(x => x.trim()).filter(Boolean);
+        if (list.length === 0) {
+            console.warn('⚠️ photo-list.txt에 이미지가 없습니다. 셀카를 스케줄링할 수 없습니다.');
+        } else {
+            while (selfieCount < MAX_SCHEDULED_SELFIES) {
+                const hour = Math.floor(Math.random() * 18) + 6; // 오전 6시부터 23시까지
+                const minute = Math.floor(Math.random() * 60);
+                const cronExp = `${minute} ${hour} * * *`;
+
+                if (!sent.has(cronExp)) { // 중복 시간 피하기
+                    sent.add(cronExp);
+                    cron.schedule(cronExp, async () => {
+                        const now = moment().tz('Asia/Tokyo'); // 현재 시간 추가
+                        const pick = list[Math.floor(Math.random() * list.length)];
+                        const imageUrl = BASE_URL + pick;
+                        const selfieTextReply = await getSelfieReplyFromYeji(); // 셀카에 대한 텍스트 응답 생성
+
+                        await client.pushMessage(userId, [
+                            { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl },
+                            { type: 'text', text: selfieTextReply || '헤헷 셀카야~' }
+                        ]);
+                        console.log(`[랜덤 셀카] ${now.format('YYYY-MM-DD HH:mm')}: ${imageUrl} 전송됨`);
+                    }, {
+                        timezone: 'Asia/Tokyo'
+                    });
+                    selfieCount++;
+                }
+            }
+        }
+    } catch (err) {
+        console.error('❌ 셀카 스케줄링 초기화 실패 (photo-list.txt 읽기 오류):', err.message);
+    }
+
+    // "담타고?" 고정 메시지 스케줄링: 매시 정각 9시부터 18시까지 "담타고?" 메시지 전송
+    cron.schedule('* * * * *', async () => { // 매분마다 실행
+        const now = moment().tz('Asia/Tokyo');
+        if (now.minute() === 0 && now.hour() >= 9 && now.hour() <= 18) {
+            const msg = '담타고?';
+            await client.pushMessage(userId, { type: 'text', text: msg });
+            console.log(`[담타고] ${now.format('HH:mm')}: ${msg}`);
+        }
+    }, {
+        timezone: 'Asia/Tokyo' // 도쿄 시간대 적용
+    });
+
+    console.log('✅ 스케줄러가 시작되었습니다.');
+}
+
+// --- 모듈 내보내기 ---
+// 이 파일의 함수들을 외부에서 사용할 수 있도록 내보냅니다.
 module.exports = {
+    getReplyByMessage,
+    getRandomMessage,
+    callOpenAI,
+    cleanReply,
+    setForcedModel,
+    getCurrentModelName,
+    getSelfieReplyFromYeji,
+    getColorMoodReply,
+    getReplyByImagePrompt,
     startMessageAndPhotoScheduler,
     handleWebhook,
     handleForcePush,
-    app, // Express 앱 인스턴스
-    client, // LINE 클라이언트 인스턴스
-    appConfig: config, // LINE 미들웨어 설정에 사용될 config
-    userId // 푸시 메시지 대상 ID
+    client,
+    appConfig: { // 이 appConfig는 index.js의 line.middleware(config)에서 사용됩니다.
+        channelAccessToken: process.env.CHANNEL_ACCESS_TOKEN, // 환경 변수 이름 통일
+        channelSecret: process.env.CHANNEL_SECRET // 환경 변수 이름 통일
+    },
+    userId,
+    app, // <-- **여기에 app 객체를 추가해야 합니다.**
 };
