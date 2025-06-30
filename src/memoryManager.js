@@ -10,7 +10,7 @@ require('dotenv').config(); // .env 파일 로드
 // OpenAI 클라이언트 초기화
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// --- **새로운 변경**: 기억 파일 저장 경로 설정 ---
+// --- 새로운 변경: 기억 파일 저장 경로 설정 ---
 // Render Persistent Disk의 마운트 경로(/data)를 기준으로 memory 폴더를 사용합니다.
 // 로컬 테스트 환경에서는 현재 스크립트의 상위 memory 폴더를 사용합니다.
 const MEMORY_BASE_PATH = process.env.RENDER_EXTERNAL_HOSTNAME ? '/data/memory' : path.resolve(__dirname, '../memory');
@@ -18,7 +18,7 @@ const LOVE_HISTORY_FILE = path.join(MEMORY_BASE_PATH, 'love-history.json');
 const EXTRACTION_LOG_FILE = path.join(MEMORY_BASE_PATH, 'extraction-log.json');
 const CURRENT_SUMMARY_FILE = path.join(MEMORY_BASE_PATH, 'current-summary.json'); // 요약 파일 경로도 통일
 
-// --- **새로운 함수**: 기억 저장 디렉토리 보장 ---
+// --- 새로운 함수: 기억 저장 디렉토리 보장 ---
 // 파일 읽기/쓰기 전에 디렉토리가 존재하는지 확인하고 없으면 생성합니다.
 async function ensureMemoryDirectory() {
     try {
@@ -115,7 +115,7 @@ async function extractAndSaveMemory(userMessage) {
     출력은 반드시 JSON 배열 형태로 해줘. 예를 들면:
     [{ "category": "general", "content": "아저씨가 헬스장 다니기 시작했어.", "timestamp": "2025-06-30T10:00:00+09:00" }]
     
-    추출할 기억이 없으면 빈 배열 `[]`만 출력해.
+    추출할 기억이 없으면 빈 배열만 출력해. // 이 줄이 문제였는데, 백틱(` `)을 제거했습니다.
     `;
 
     const messages = [
