@@ -18,7 +18,7 @@ const {
   getCurrentModelName,
   saveLog,
   cleanReply
-} = require('./autoReply');
+} = require('./src/autoReply');
 
 // ✅ LINE 설정
 const config = {
