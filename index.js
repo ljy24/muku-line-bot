@@ -8,19 +8,18 @@ const moment = require('moment-timezone');
 const cron = require('node-cron');
 
 const {
-  getReplyByMessage,a
+  getReplyByMessage,
   getRandomMessage,
-  callOpenAI,
-  cleanReply,
+  getSelfieReplyFromYeji,
+  getColorMoodReply,
+  getReplyByImagePrompt,
   saveLog,
-  getRecentLog,
   extractAndSaveMemory,
   setForcedModel,
   getCurrentModelName,
-  getSelfieReplyFromYeji,
-  getFixedMemory,
   startMessageAndPhotoScheduler,
-  getFullMemoryPrompt
+  validateEnvironment,
+  saveLoveMemory
 } = require('./src/autoReply');
 
 const app = express();
@@ -47,12 +46,10 @@ app.get('/force-push', async (_, res) => {
 
 // ✅ 서버 최초 실행 시 메시지 1건 전송
 (async () => {
-  const msg = await getRandomMessage();
-  if (msg) {
-    await client.pushMessage(userId, { type: 'text', text: msg });
-    saveLog('예진이', msg);
-    console.log(`[서버 시작 메시지] ${msg}`);
-  }
+  const msg = '아저씨 뭐해?';
+  await client.pushMessage(userId, { type: 'text', text: msg });
+  saveLog('예진이', msg);
+  console.log(`[서버 시작 메시지] ${msg}`);
 })();
 
 // ✅ LINE Webhook 엔드포인트
@@ -68,16 +65,14 @@ app.post('/webhook', middleware(config), async (req, res) => {
           saveLog('아저씨', text);
           extractAndSaveMemory(text);
 
-          // ✅ 버전 확인 응답
           if (text === '버전') {
-            const version = process.env.GPT_VERSION || '3.5';
-            await client.replyMessage(event.replyToken, { type: 'text', text: `지금은 ChatGPT-${version} 버전으로 대화하고 있어.` });
+            const version = getCurrentModelName();
+            await client.replyMessage(event.replyToken, { type: 'text', text: `지금은 ${version} 버전으로 대화하고 있어.` });
             return;
           }
 
-          // ✅ 3.5로 전환
           if (text === '3.5') {
-            process.env.GPT_VERSION = '3.5';
+            setForcedModel('gpt-3.5-turbo');
             await client.replyMessage(event.replyToken, {
               type: 'text',
               text: '응! 이제부터 ChatGPT-3.5 버전으로 대화할게.'
@@ -85,9 +80,8 @@ app.post('/webhook', middleware(config), async (req, res) => {
             return;
           }
 
-          // ✅ 4.0으로 전환
           if (text === '4.0') {
-            process.env.GPT_VERSION = '4.0';
+            setForcedModel('gpt-4o');
             await client.replyMessage(event.replyToken, {
               type: 'text',
               text: '응응! 이제부터 ChatGPT-4.0으로 얘기해줄게, 아저씨.'
@@ -95,9 +89,8 @@ app.post('/webhook', middleware(config), async (req, res) => {
             return;
           }
 
-          // ✅ 자동으로 다시 설정
           if (text === '자동') {
-            delete process.env.GPT_VERSION;
+            setForcedModel(null);
             await client.replyMessage(event.replyToken, {
               type: 'text',
               text: '응! 이제 상황에 맞게 자동으로 버전 선택해서 말할게.'
@@ -105,7 +98,6 @@ app.post('/webhook', middleware(config), async (req, res) => {
             return;
           }
 
-          // 📸 셀카 요청 감지
           if (/사진|셀카|사진줘|셀카 보여줘|사진 보여줘|selfie/i.test(text)) {
             const BASE_URL = 'https://de-ji.net/yejin/';
             const photoListPath = path.join(__dirname, 'memory/photo-list.txt');
@@ -135,21 +127,18 @@ app.post('/webhook', middleware(config), async (req, res) => {
             return;
           }
 
-          // 🎨 색깔 질문 대응
           if (/무슨\s*색|오늘\s*색/i.test(text)) {
             const reply = await getColorMoodReply();
             await client.replyMessage(event.replyToken, { type: 'text', text: reply });
             return;
           }
 
-          // 💬 일반 메시지 감정 응답 + 기억 확인
           const reply = await getReplyByMessage(text);
           const final = reply?.trim() || '음… 잠깐 생각 좀 하고 있었어 ㅎㅎ';
           saveLog('예진이', final);
           await client.replyMessage(event.replyToken, { type: 'text', text: final });
         }
 
-        // 🖼️ 이미지 메시지 (사진 분석 반응)
         if (message.type === 'image') {
           try {
             const stream = await client.getMessageContent(message.id);
@@ -172,28 +161,16 @@ app.post('/webhook', middleware(config), async (req, res) => {
   }
 });
 
-// ⏰ 정각마다 담타 메시지 + 5분 반응 체크
-const lastSent = new Map();
 cron.schedule('* * * * *', async () => {
   const now = moment().tz('Asia/Tokyo');
   if (now.minute() === 0 && now.hour() >= 9 && now.hour() <= 18) {
     const msg = '담타고?';
     await client.pushMessage(userId, { type: 'text', text: msg });
-    lastSent.set(now.format('HH:mm'), moment());
-  }
-  for (const [key, sentAt] of lastSent.entries()) {
-    if (moment().diff(sentAt, 'minutes') >= 5) {
-      const sulky = await getSulkyReply();
-      await client.pushMessage(userId, { type: 'text', text: sulky });
-      lastSent.delete(key);
-    }
   }
 });
 
-// ✅ 자동 감정 메시지/셀카 전송 시작
 startMessageAndPhotoScheduler();
 
-// ✅ 서버 리스닝 시작
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`무쿠 서버 ON! 포트: ${PORT}`);
