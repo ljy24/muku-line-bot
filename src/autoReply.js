@@ -221,6 +221,11 @@ async function getReplyByMessage(userMessage) {
     return '미안, 지금 머리가 좀 복잡해서 대답하기 힘들어...';
   }
 }
+function initServerState() {
+  console.log('🚀 서버 상태 초기화 중...');
+  // 여기다가 초기화 작업이 있으면 추가하고
+  console.log('✅ 서버 상태 초기화 완료!');
+}
 
 module.exports = {
   app,
