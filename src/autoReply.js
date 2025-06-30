@@ -8,10 +8,15 @@ const { OpenAI } = require('openai'); // OpenAI API와 통신하기 위한 라�
 const cron = require('node-cron'); // 스케줄링된 작업을 실행하기 위한 라이브러리
 const { Client } = require('@line/bot-sdk'); // LINE Messaging API와 통신하기 위한 SDK
 const { extractAndSaveMemory } = require('./memoryManager'); // 메모리 추출 및 저장 로직을 담은 커스텀 모듈
+const express = require('express'); // 웹 서버 구축을 위한 Express 프레임워크
 require('dotenv').config(); // .env 파일에서 환경 변수를 로드
+
+// Express 앱 초기화
+const app = express();
 
 // OpenAI 클라이언트 초기화: 환경 변수에서 API 키를 가져옵니다.
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
 // LINE 봇 클라이언트 초기화: 환경 변수에서 채널 액세스 토큰과 시크릿을 가져옵니다.
 const client = new Client({
     channelAccessToken: process.env.LINE_ACCESS_TOKEN,
@@ -19,6 +24,12 @@ const client = new Client({
 });
 // 봇이 메시지를 보낼 대상 사용자 ID: 환경 변수에서 가져옵니다.
 const userId = process.env.TARGET_USER_ID;
+
+// LINE 봇 미들웨어 설정을 위한 appConfig
+const appConfig = {
+    channelAccessToken: process.env.LINE_ACCESS_TOKEN,
+    channelSecret: process.env.LINE_CHANNEL_SECRET,
+};
 
 // 모델 강제 설정 여부를 추적하는 변수 (null이면 기본 모델 사용)
 let forcedModel = null;
@@ -292,7 +303,7 @@ async function getReplyByMessage(userMessage) {
 }
 
 /**
- * 무쿠의 기분 색상에 대한 응답을 생성합니다. (수정: `getFullMemoryForPrompt` 활용)
+ * 무쿠의 기분 색상에 대한 응답을 생성합니다.
  * @returns {Promise<string>} 기분 색상에 대한 무쿠의 답변
  */
 async function getColorMoodReply() {
@@ -308,7 +319,7 @@ async function getColorMoodReply() {
 }
 
 /**
- * 무쿠의 셀카에 대한 응답을 생성합니다. (수정: `getFullMemoryForPrompt` 활용)
+ * 무쿠의 셀카에 대한 응답을 생성합니다.
  * @returns {Promise<string>} 셀카에 대한 무쿠의 답변
  */
 async function getSelfieReplyFromYeji() {
@@ -324,7 +335,7 @@ async function getSelfieReplyFromYeji() {
 }
 
 /**
- * 무쿠의 랜덤 메시지를 생성합니다. (수정: `getFullMemoryForPrompt` 활용)
+ * 무쿠의 랜덤 메시지를 생성합니다.
  * @returns {Promise<string>} 무쿠의 랜덤 감정 메시지
  */
 async function getRandomMessage() {
@@ -360,6 +371,7 @@ function startMessageAndPhotoScheduler() {
     let count = 0;
 
     // 랜덤 메시지 스케줄링: 하루에 5개의 랜덤 메시지를 보냅니다.
+    // NOTE: config.scheduler.messageCount 설정이 있었다면 더 유연하게 사용 가능
     while (count < 5) {
         const hour = Math.floor(Math.random() * 18) + 6; // 오전 6시부터 자정(24시) 전까지 (6시부터 23시까지)
         const minute = Math.floor(Math.random() * 60);
@@ -379,23 +391,144 @@ function startMessageAndPhotoScheduler() {
             count++;
         }
     }
-
-    // "담타고?" 고정 메시지 스케줄링: 매시 정각 9시부터 18시까지 "담타고?" 메시지 전송
-    cron.schedule('* * * * *', async () => { // 매분마다 실행
-        const now = moment().tz('Asia/Tokyo');
-        if (now.minute() === 0 && now.hour() >= 9 && now.hour() <= 18) {
-            const msg = '담타고?';
-            await client.pushMessage(userId, { type: 'text', text: msg });
-            console.log(`[담타고] ${now.format('HH:mm')}: ${msg}`);
-        }
-    });
-
-    console.log('✅ 스케줄러가 시작되었습니다.');
+    console.log('✅ 랜덤 메시지 스케줄러 등록 완료');
 }
 
+/**
+ * **새로운 함수: 서버 초기화 로직입니다.**
+ * `index.js`에서 호출될 때 서버에 필요한 초기 설정을 수행합니다.
+ */
+function initServerState() {
+    console.log('🚀 서버 상태 초기화 시작...');
+    // 여기에 필요한 초기화 로직을 추가할 수 있습니다.
+    // 예: DB 연결, 초기 데이터 로드 등
+    console.log('✅ 서버 상태 초기화 완료.');
+}
+
+/**
+ * **새로운 함수: 담배 관련 메시지에 대한 응답을 확인하고 전송합니다.**
+ * `index.js`의 cron 스케줄에서 호출됩니다.
+ */
+async function checkTobaccoReply() {
+    const msg = '담타고?';
+    try {
+        await client.pushMessage(userId, { type: 'text', text: msg });
+        console.log(`[담타고] ${moment().tz('Asia/Tokyo').format('HH:mm')}: ${msg}`);
+    } catch (error) {
+        console.error('❌ 담타고 메시지 전송 실패:', error.message);
+    }
+}
+
+/**
+ * **새로운 함수: LINE 웹훅 이벤트를 처리합니다.**
+ * `index.js`의 `/webhook` 경로에 연결됩니다.
+ * @param {Object} req Express 요청 객체
+ * @param {Object} res Express 응답 객체
+ */
+async function handleWebhook(req, res) {
+    // req.body.events 배열을 순회하며 각 이벤트를 처리합니다.
+    for (const event of req.body.events) {
+        if (event.type === 'message' && event.message.type === 'text') {
+            const userMessage = event.message.text;
+            console.log(`📥 아저씨 메시지 수신: ${userMessage}`);
+            try {
+                const reply = await getReplyByMessage(userMessage); // 무쿠의 응답 생성
+                await client.replyMessage(event.replyToken, { type: 'text', text: reply }); // LINE으로 응답 전송
+                console.log(`📤 무쿠 응답 전송: ${reply}`);
+            } catch (error) {
+                console.error('❌ 메시지 응답 처리 중 오류 발생:', error);
+                await client.replyMessage(event.replyToken, { type: 'text', text: '무쿠가 지금 아파서 대답을 못 해...' });
+            }
+        } else if (event.type === 'message' && event.message.type === 'image') {
+            // 이미지 메시지 처리 로직 (현재는 랜덤 답변)
+            const reply = await getReplyByImagePrompt(); // 이미지에 대한 랜덤 답변 생성
+            await client.replyMessage(event.replyToken, { type: 'text', text: reply });
+            console.log(`📤 무쿠 이미지 응답 전송: ${reply}`);
+        }
+        // 다른 이벤트 타입 (예: follow, unfollow 등)도 필요하면 여기에 추가
+    }
+    res.status(200).send('OK'); // 웹훅 요청 성공 응답
+}
+
+/**
+ * **새로운 함수: 강제 메시지 전송을 처리합니다.**
+ * `index.js`의 `/force-push` 경로에 연결됩니다.
+ * (간단한 예시로, 실제 사용 시 인증 등을 추가해야 합니다.)
+ * @param {Object} req Express 요청 객체
+ * @param {Object} res Express 응답 객체
+ */
+async function handleForcePush(req, res) {
+    const message = req.query.msg || '강제 푸시 메시지야 아저씨!';
+    try {
+        await client.pushMessage(userId, { type: 'text', text: message });
+        console.log(`✅ 강제 푸시 메시지 전송됨: ${message}`);
+        res.status(200).send(`메시지 전송 완료: ${message}`);
+    } catch (error) {
+        console.error('❌ 강제 푸시 메시지 전송 실패:', error);
+        res.status(500).send('메시지 전송 실패');
+    }
+}
+
+/**
+ * **새로운 함수: 이미지 메시지 처리를 위한 핸들러 (현재는 단순 처리).**
+ * `handleWebhook` 내에서 이미지 메시지 타입일 때 호출됩니다.
+ * 여기서는 `getReplyByImagePrompt`를 호출하지만, 더 복잡한 로직(예: 이미지 분석)을 추가할 수 있습니다.
+ */
+async function handleImageMessage(event) {
+    // 이 함수는 현재 handleWebhook 내에서 직접 처리되고 있으므로,
+    // 필요하다면 웹훅 핸들러에서 이 함수를 호출하도록 변경할 수 있습니다.
+    // 예를 들어, const reply = await getReplyByImagePrompt(event.message.id);
+    // 실제 이미지 데이터는 LINE API를 통해 다시 가져와야 합니다.
+    console.log(`🖼️ 이미지 메시지 수신됨 (ID: ${event.message.id})`);
+    // 이 부분은 LINE API에서 이미지 데이터를 직접 가져와야 합니다.
+    // 예를 들어, const content = await client.getMessageContent(event.message.id);
+    // 현재는 단순 랜덤 답변으로 처리
+    const reply = await getReplyByImagePrompt();
+    await client.replyMessage(event.replyToken, { type: 'text', text: reply });
+}
+
+
+/**
+ * **handleSelfieRequest 함수 (인덱스 파일에서 불러오지만, 현재 로직에서는 직접 호출되지 않음)**
+ * 이 함수는 `index.js`에서 임포트 목록에 있지만, 현재 `autoReply.js` 내에서는
+ * `getSelfieReplyFromYeji`가 AI 응답을 생성하는 데 사용되고, 실제 전송은 스케줄러나
+ * `handleWebhook` 내부에서 이루어지므로, 직접적인 호출 로직은 없습니다.
+ * 만약 `index.js`에서 특정 API 엔드포인트로 셀카 전송을 트리거하고 싶다면 여기에 구현할 수 있습니다.
+ */
+async function handleSelfieRequest(req, res) {
+    // 이 함수는 현재 `index.js`에서 임포트되지만, 구체적인 호출 로직은 보이지 않습니다.
+    // 만약 웹 요청을 통해 셀카를 보내는 기능을 구현하고 싶다면 여기에 추가할 수 있습니다.
+    // 예시:
+    // const comment = await getSelfieReplyFromYeji();
+    // // 여기에 실제 셀카 이미지 URL을 가져오는 로직 추가
+    // const imageUrl = 'https://example.com/your-selfie-image.jpg';
+    // await client.pushMessage(userId, {
+    //     type: 'image',
+    //     originalContentUrl: imageUrl,
+    //     previewImageUrl: imageUrl
+    // });
+    // await client.pushMessage(userId, { type: 'text', text: comment });
+    console.log('✅ handleSelfieRequest 호출됨 (현재 기능 없음)');
+    res.status(200).send('셀카 요청 처리 (구현 필요)');
+}
+
+
 // --- 모듈 내보내기 ---
-// 이 파일의 함수들을 외부에서 사용할 수 있도록 내보냅니다.
+// 이 파일의 함수들과 변수들을 외부(index.js 등)에서 사용할 수 있도록 내보냅니다.
 module.exports = {
+    client, // LINE 봇 클라이언트 인스턴스
+    appConfig, // LINE 봇 SDK 미들웨어 설정
+    userId, // 대상 사용자 ID
+    app, // Express 앱 인스턴스
+    handleWebhook, // LINE 웹훅 핸들러
+    handleForcePush, // 강제 메시지 푸시 핸들러
+    handleSelfieRequest, // 셀카 요청 핸들러 (현재는 placeholder)
+    handleImageMessage, // 이미지 메시지 핸들러 (현재는 handleWebhook 내에서 처리)
+    startMessageAndPhotoScheduler, // 스케줄러 시작 함수
+    initServerState, // 서버 초기화 함수
+    checkTobaccoReply, // 담배 관련 메시지 확인 함수
+
+    // AI 및 기억 관리 관련 함수들도 내보내 필요하다면 외부에서 사용
     getReplyByMessage,
     getRandomMessage,
     callOpenAI,
@@ -405,6 +538,4 @@ module.exports = {
     getSelfieReplyFromYeji,
     getColorMoodReply,
     getReplyByImagePrompt,
-    startMessageAndPhotoScheduler,
-    // 참고: getFixedMemory는 이제 getFullMemoryForPrompt 내부에서 사용되므로 외부로 내보내지 않습니다.
 };
