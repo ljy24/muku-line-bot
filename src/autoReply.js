@@ -108,7 +108,6 @@ async function saveConversationMemory(role, content) {
             memories = JSON.parse(rawData); // 기존 데이터 파싱
         }
     } catch (error) {
-        // JSON 파싱 오류 발생 시, 오류를 기록하고 빈 배열로 초기화하여 파일 손상을 방지합니다.
         console.error(`❌ context-memory.json 읽기/파싱 실패: ${error.message}`);
         memories = []; // 파일이 손상되었을 경우 빈 배열로 시작하여 오류 방지
     }
@@ -197,7 +196,7 @@ async function getFullMemoryForPrompt() {
                 (loveData.categories.daily_care || []).slice(-1).forEach(mem => { // 2 -> 1로 줄임
                     combinedMemories.push({ role: 'assistant', content: `무쿠가 챙긴 일상: ${mem.content}` });
                 });
-                // 그 외 중요한 일반 기억 (최근 1개만)
+                // 그 외 중요한 일반 기억 (최신 1개만)
                 (loveData.categories.general || []).slice(-1).forEach(mem => { // 2 -> 1로 줄임
                     combinedMemories.push({ role: 'assistant', content: mem.content });
                 });
@@ -253,7 +252,7 @@ async function getReplyByMessage(userMessage) {
         // --- 특수 응답 처리 ---
         let reply = null;
         if (lower.includes('무슨 색') || lower.includes('오늘 색') || lower.includes('색이 뭐야')) {
-            reply = await getColorMoodReply(); 
+            reply = await getColorMoodReply();
         } else if (userMessage.includes('사진 줘') || userMessage.includes('셀카') || userMessage.includes('사진 보여줘')) {
             reply = await getSelfieReplyFromYeji(); // 텍스트 답변만 반환
             // 실제 이미지는 호출하는 쪽에서 별도로 처리해야 함 (예: handleWebhook)
@@ -301,30 +300,24 @@ async function getReplyByMessage(userMessage) {
 }
 
 /**
- * 무쿠의 기분 색상에 대한 응답을 생성합니다. (gpt-4o 사용, 수줍고 장난스럽게)
+ * 무쿠의 기분 색상에 대한 응답을 생성합니다. (수정: `getFullMemoryForPrompt` 활용)
  * @returns {Promise<string>} 기분 색상에 대한 무쿠의 답변
  */
 async function getColorMoodReply() {
-    // 모든 기억을 불러옵니다.
-    const allMemories = await getFullMemoryForPrompt(); 
+    const model = getCurrentModelName();
+    const allMemories = await getFullMemoryForPrompt(); // 모든 기억을 불러옵니다.
     const messages = [
-        {
-            role: 'system',
-            content: '너는 무쿠야. 아저씨만을 사랑했던 연인이야. ' +
-                     '아저씨가 혹시 내 속옷색을 궁금해하는 걸까? 하는 생각으로 수줍고 장난스럽게 대답해줘. ' +
-                     '오늘은 어떤 색인지 내 기분과 연결해서 말이야. 짧고 귀엽게, 반말로 해줘. 무작위적인 색을 선택해도 돼.'
-        },
+        { role: 'system', content: '너는 무쿠야. 아저씨만을 사랑했던 연인이야. 색으로 기분을 표현해줘. 짧고 부끄럽고 사랑스럽게, 반말로.' },
         ...allMemories.slice(-10), // 최근 기억 중 일부만 사용하여 프롬프트 길이 최적화
         { role: 'user', content: '오늘 무슨 색이야?' }
     ];
-    // gpt-4o 모델을 명시적으로 사용합니다.
-    const raw = await callOpenAI(messages, 'gpt-4o', 100); 
+    const raw = await callOpenAI(messages, model, 100);
     return cleanReply(raw);
 }
 
 /**
- * 무쿠의 셀카에 대한 응답을 생성합니다.
- * @returns {Promise<string>} 셀카에 대한 무쿠의 답변 (텍스트)
+ * 무쿠의 셀카에 대한 응답을 생성합니다. (수정: `getFullMemoryForPrompt` 활용)
+ * @returns {Promise<string>} 셀카에 대한 무쿠의 답변
  */
 async function getSelfieReplyFromYeji() {
     const model = getCurrentModelName();
@@ -339,7 +332,7 @@ async function getSelfieReplyFromYeji() {
 }
 
 /**
- * 무쿠의 랜덤 메시지를 생성합니다.
+ * 무쿠의 랜덤 메시지를 생성합니다. (수정: `getFullMemoryForPrompt` 활용)
  * @returns {Promise<string>} 무쿠의 랜덤 감정 메시지
  */
 async function getRandomMessage() {
@@ -365,86 +358,81 @@ async function getReplyByImagePrompt(base64Image) {
 }
 
 /**
- * LINE Webhook 이벤트를 처리하는 함수
- * @param {object} req Express 요청 객체
- * @param {object} res Express 응답 객체
+ * LINE Webhook 이벤트 핸들러.
+ * LINE 플랫폼으로부터 수신된 모든 메시지를 처리합니다.
+ * @param {Object} req Express 요청 객체
+ * @param {Object} res Express 응답 객체
  */
 async function handleWebhook(req, res) {
-    const events = req.body.events; // LINE으로부터 받은 이벤트 배열
+    Promise.all(req.body.events.map(async (event) => {
+        if (event.type !== 'message' || event.message.type !== 'text') {
+            // 텍스트 메시지가 아니거나 메시지 타입이 'message'가 아니면 처리하지 않음
+            return;
+        }
 
-    // 각 이벤트를 비동기로 처리합니다.
-    for (const event of events) {
+        const userMessage = event.message.text;
+        const replyToken = event.replyToken;
+
+        console.log(`[아저씨] ${userMessage}`);
+
         try {
-            console.log(`LINE Event: ${JSON.stringify(event)}`);
-            if (event.type === 'message' && event.message.type === 'text') {
-                const userMessage = event.message.text;
-                const replyText = await getReplyByMessage(userMessage); // 무쿠의 응답 생성
-                
-                // 만약 사용자가 셀카를 요청했다면, 텍스트 응답과 함께 실제 이미지도 보냄
-                if (userMessage.includes('사진 줘') || userMessage.includes('셀카') || userMessage.includes('사진 보여줘')) {
-                    const photoListPath = path.join(__dirname, '../memory/photo-list.txt'); // memory 폴더 경로 수정
-                    const BASE_URL = 'https://de-ji.net/yejin/';
-                    try {
-                        const list = fs.readFileSync(photoListPath, 'utf-8').split('\n').map(x => x.trim()).filter(Boolean);
-                        if (list.length > 0) {
-                            const pick = list[Math.floor(Math.random() * list.length)];
-                            await client.replyMessage(event.replyToken, [
-                                { type: 'image', originalContentUrl: BASE_URL + pick, previewImageUrl: BASE_URL + pick },
-                                { type: 'text', text: replyText || '헤헷 셀카야~' } // getSelfieReplyFromYeji의 응답 사용
-                            ]);
-                        } else {
-                            await client.replyMessage(event.replyToken, { type: 'text', text: '아직 셀카가 없어 ㅠㅠ' });
-                        }
-                    } catch (err) {
-                        console.error('📷 셀카 불러오기 실패:', err.message);
-                        await client.replyMessage(event.replyToken, { type: 'text', text: '사진 불러오기 실패했어 ㅠㅠ' });
+            let replyText = await getReplyByMessage(userMessage); // 무쿠의 응답 생성
+
+            // `사진 줘` 또는 `셀카` 등의 키워드가 포함되면 이미지도 함께 전송
+            if (userMessage.includes('사진 줘') || userMessage.includes('셀카') || userMessage.includes('사진 보여줘')) {
+                const photoListPath = path.join(__dirname, '../memory/photo-list.txt');
+                const BASE_URL = 'https://de-ji.net/yejin/';
+                try {
+                    const list = fs.readFileSync(photoListPath, 'utf-8').split('\n').map(x => x.trim()).filter(Boolean);
+                    if (list.length > 0) {
+                        const pick = list[Math.floor(Math.random() * list.length)];
+                        const imageUrl = BASE_URL + pick;
+                        await client.replyMessage(replyToken, [
+                            { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl },
+                            { type: 'text', text: replyText }
+                        ]);
+                        console.log(`[무쿠] (사진) ${imageUrl}, (텍스트) ${replyText}`);
+                        return;
                     }
-                } else {
-                    await client.replyMessage(event.replyToken, { type: 'text', text: replyText }); // 일반 텍스트 응답
+                } catch (err) {
+                    console.error('❌ 셀카 전송 실패 (photo-list.txt 읽기 오류):', err.message);
                 }
             }
-            // 다른 이벤트 타입 (스티커, 이미지 등)도 필요하면 여기에 추가
-            else if (event.type === 'message' && event.message.type === 'image') {
-                const replyText = await getReplyByImagePrompt(event.message.id); // 이미지 처리 (현재는 더미)
-                await client.replyMessage(event.replyToken, { type: 'text', text: replyText });
-            }
-        } catch (err) {
-            console.error(`❌ Webhook 이벤트 처리 중 오류 발생: ${err.message}`);
+
+            // 일반 텍스트 응답
+            await client.replyMessage(replyToken, { type: 'text', text: replyText });
+            console.log(`[무쿠] ${replyText}`);
+
+        } catch (error) {
+            console.error('❌ 메시지 처리 중 오류 발생:', error);
+            await client.replyMessage(replyToken, { type: 'text', text: '지금은 대답하기가 좀 힘들어... 미안해.' });
         }
-    }
-    res.status(200).send('OK'); // LINE 서버에 성공적으로 처리되었음을 알림
+    }))
+    .then(() => res.json({ success: true }))
+    .catch((err) => {
+        console.error('❌ LINE Webhook 처리 실패:', err);
+        res.status(500).json({ error: 'Internal Server Error' });
+    });
 }
 
 /**
- * /force-push 엔드포인트를 통해 수동으로 메시지를 전송하는 함수
- * @param {object} req Express 요청 객체
- * @param {object} res Express 응답 객체
+ * 강제 푸시 메시지 전송 핸들러.
+ * 아저씨가 웹 브라우저로 특정 URL에 접속하여 강제로 메시지를 보낼 수 있습니다.
+ * @param {Object} req Express 요청 객체
+ * @param {Object} res Express 응답 객체
  */
 async function handleForcePush(req, res) {
-    const message = req.query.message; // 쿼리 파라미터에서 메시지 가져오기
-
-    if (message) {
-        try {
-            await client.pushMessage(userId, { type: 'text', text: message }); // 사용자에게 메시지 푸시
-            res.status(200).send(`Message "${message}" pushed to user ${userId}`);
-            console.log(`✅ 강제 푸시 메시지 성공: ${message}`);
-        } catch (error) {
-            console.error(`❌ 강제 푸시 메시지 실패: ${error.message}`);
-            res.status(500).send('Failed to push message.');
-        }
-    } else {
-        res.status(400).send('Please provide a "message" query parameter.');
+    const message = req.query.message || '아저씨, 나 무쿠야. 잘 지내고 있어?'; // 쿼리 파라미터에서 메시지 가져오기
+    try {
+        await client.pushMessage(userId, { type: 'text', text: message }); // 아저씨에게 메시지 전송
+        console.log(`✅ 강제 푸시 메시지 전송 완료: ${message}`);
+        res.send(`메시지 "${message}" 전송 완료!`);
+    } catch (error) {
+        console.error('❌ 강제 푸시 메시지 전송 실패:', error);
+        res.status(500).send('메시지 전송 실패 ㅠㅠ');
     }
 }
 
-/**
- * "담타고?" 메시지를 보내는 함수
- */
-async function checkTobaccoReply() {
-    const msg = '담타고?';
-    await client.pushMessage(userId, { type: 'text', text: msg });
-    console.log(`[담타고] ${moment().tz('Asia/Tokyo').format('HH:mm')}: ${msg}`);
-}
 
 /**
  * 무쿠의 랜덤 메시지 및 사진 전송 스케줄러를 시작합니다.
@@ -470,7 +458,7 @@ function startMessageAndPhotoScheduler() {
                 const msg = await getRandomMessage(); // 랜덤 메시지 생성
                 if (msg) {
                     await client.pushMessage(userId, { type: 'text', text: msg }); // LINE으로 메시지 전송
-                    console.log(`[랜덤 메시지] ${cronExp}: ${msg}`);
+                    console.log(`[랜덤 메시지] ${now.format('YYYY-MM-DD HH:mm')}: ${msg}`);
                 }
             }, {
                 timezone: 'Asia/Tokyo' // 도쿄 시간대 적용
@@ -505,7 +493,7 @@ function startMessageAndPhotoScheduler() {
                             { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl },
                             { type: 'text', text: selfieTextReply || '헤헷 셀카야~' }
                         ]);
-                        console.log(`[랜덤 셀카] ${cronExp}: ${imageUrl} 전송됨`);
+                        console.log(`[랜덤 셀카] ${now.format('YYYY-MM-DD HH:mm')}: ${imageUrl} 전송됨`);
                     }, {
                         timezone: 'Asia/Tokyo'
                     });
@@ -516,6 +504,18 @@ function startMessageAndPhotoScheduler() {
     } catch (err) {
         console.error('❌ 셀카 스케줄링 초기화 실패 (photo-list.txt 읽기 오류):', err.message);
     }
+
+    // "담타고?" 고정 메시지 스케줄링: 매시 정각 9시부터 18시까지 "담타고?" 메시지 전송
+    cron.schedule('* * * * *', async () => { // 매분마다 실행
+        const now = moment().tz('Asia/Tokyo');
+        if (now.minute() === 0 && now.hour() >= 9 && now.hour() <= 18) {
+            const msg = '담타고?';
+            await client.pushMessage(userId, { type: 'text', text: msg });
+            console.log(`[담타고] ${now.format('HH:mm')}: ${msg}`);
+        }
+    }, {
+        timezone: 'Asia/Tokyo' // 도쿄 시간대 적용
+    });
 
     console.log('✅ 스케줄러가 시작되었습니다.');
 }
@@ -530,10 +530,15 @@ module.exports = {
     setForcedModel,
     getCurrentModelName,
     getSelfieReplyFromYeji,
-    getColorMoodReply, 
+    getColorMoodReply,
     getReplyByImagePrompt,
     startMessageAndPhotoScheduler,
-    handleWebhook,
-    handleForcePush,
-    checkTobaccoReply
+    handleWebhook, // ✅ 추가됨
+    handleForcePush, // ✅ 추가됨
+    client, // ✅ 주석 해제됨
+    appConfig: { // ✅ 주석 해제됨
+        channelAccessToken: process.env.LINE_ACCESS_TOKEN,
+        channelSecret: process.env.LINE_CHANNEL_SECRET
+    },
+    userId, // ✅ 주석 해제됨
 };
