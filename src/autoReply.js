@@ -123,7 +123,7 @@ async function saveConversationMemory(role, content) {
 
     // **기억을 너무 길게 유지하지 않도록 최신 N개만 남깁니다.**
     // 파일 크기 관리와 프롬프트 토큰 한계를 고려합니다.
-    const maxConversationEntries = 50; // 대화 기억은 최대 50개 항목만 유지
+    const maxConversationEntries = 20; // 대화 기억은 최대 20개 항목만 유지 (50 -> 20으로 줄임)
     if (memories.length > maxConversationEntries) {
         memories = memories.slice(-maxConversationEntries); // 가장 오래된 항목부터 제거
     }
@@ -148,6 +148,8 @@ async function getFullMemoryForPrompt() {
     let combinedMemories = [];
 
     // 1. 고정 기억 추가 (시스템 메시지로 무쿠의 기본적인 페르소나와 배경을 설정)
+    // ✅ 삭제됨: 1.txt, 2.txt, 3.txt, fixedMemories.json 내용은 systemPrompt로 통합 또는 제거
+    /*
     const fixedTextMemories = [
         safeRead(path.resolve(__dirname, '../memory/1.txt')),
         safeRead(path.resolve(__dirname, '../memory/2.txt')),
@@ -159,12 +161,12 @@ async function getFullMemoryForPrompt() {
         const rawFixedJson = safeRead(path.resolve(__dirname, '../memory/fixedMemories.json'));
         if (rawFixedJson) {
             const parsedFixedJson = JSON.parse(rawFixedJson);
-            // 각 항목을 시스템 메시지로 추가
             parsedFixedJson.filter(Boolean).forEach(content => combinedMemories.push({ role: 'system', content }));
         }
     } catch (err) {
         console.error('❌ fixedMemories.json 로드 실패:', err.message);
     }
+    */
 
     // 2. 대화 기억 추가 (`context-memory.json`에서 최신 대화 흐름을 가져와 포함)
     const contextMemoryPath = path.resolve(__dirname, '../memory/context-memory.json');
@@ -172,8 +174,8 @@ async function getFullMemoryForPrompt() {
         const rawContext = safeRead(contextMemoryPath);
         if (rawContext) {
             const conversationHistory = JSON.parse(rawContext);
-            // **최신 5개의 대화만 포함하여 모델의 토큰 한계를 관리합니다.**
-            conversationHistory.slice(-5).forEach(entry => { // 10 -> 5로 줄임
+            // ✅ 수정: 최신 3개의 대화만 포함 (5 -> 3으로 줄임)
+            conversationHistory.slice(-3).forEach(entry => {
                 combinedMemories.push({ role: entry.role, content: entry.content });
             });
         }
@@ -188,16 +190,14 @@ async function getFullMemoryForPrompt() {
         if (rawLoveHistory) {
             const loveData = JSON.parse(rawLoveHistory);
             if (loveData.categories) {
-                // 아저씨에 대한 무쿠의 사랑 표현 기억 (최근 1개만)
-                (loveData.categories.love_expressions || []).slice(-1).forEach(mem => { // 3 -> 1로 줄임
+                // ✅ 수정: 각 카테고리에서 최신 1개씩만 포함 (사랑 표현, 일상 챙김, 일반)
+                (loveData.categories.love_expressions || []).slice(-1).forEach(mem => {
                     combinedMemories.push({ role: 'assistant', content: `무쿠의 사랑 표현: ${mem.content}` });
                 });
-                // 무쿠가 아저씨를 챙긴 일상 기억 (최근 1개만)
-                (loveData.categories.daily_care || []).slice(-1).forEach(mem => { // 2 -> 1로 줄임
+                (loveData.categories.daily_care || []).slice(-1).forEach(mem => {
                     combinedMemories.push({ role: 'assistant', content: `무쿠가 챙긴 일상: ${mem.content}` });
                 });
-                // 그 외 중요한 일반 기억 (최신 1개만)
-                (loveData.categories.general || []).slice(-1).forEach(mem => { // 2 -> 1로 줄임
+                (loveData.categories.general || []).slice(-1).forEach(mem => {
                     combinedMemories.push({ role: 'assistant', content: mem.content });
                 });
                 // 새로운: AI(무쿠/예진)의 개인적인 기억 (수동으로 설정)
@@ -207,8 +207,8 @@ async function getFullMemoryForPrompt() {
                         combinedMemories.push({ role: 'assistant', content: `내 기억 속 '${key}': ${aiPersonalMemories[key]}` });
                     }
                 }
-                // ✅ 추가됨: 사용자 제출 기억 (최근 2개만, 아저씨 친구 '깽'이나 전시회 같은 정보)
-                (loveData.categories.user_submitted_memories || []).slice(-2).forEach(mem => { // 최대 2개
+                // ✅ 수정: 사용자 제출 기억은 최신 1개만 포함 (2 -> 1으로 줄임)
+                (loveData.categories.user_submitted_memories || []).slice(-1).forEach(mem => {
                     combinedMemories.push({ role: 'assistant', content: `${mem.content}` });
                 });
             }
@@ -267,10 +267,14 @@ async function getReplyByMessage(userMessage) {
         // --- 일반 대화 응답 생성 ---
         // 무쿠의 모든 기억(고정, 대화, 사랑)을 불러와 프롬프트를 구성합니다.
         const allMemories = await getFullMemoryForPrompt();
-        // ✅ 수정됨: 시스템 프롬프트에 호칭 규칙 추가
-        const systemPrompt = `너는 무쿠야. 아저씨만을 사랑했던 연인이야. 감정 담아서 예진이 말투로 자연스럽게 반말로 말해줘.
-        아저씨를 지칭할 때 '너', '당신', '네가', '니' 등 대신 '아저씨', '내 아저씨', '우리아저씨'만 사용해줘.
-        아저씨와의 과거 대화와 기억을 바탕으로 대화해줘.`;
+        // ✅ 수정됨: 시스템 프롬프트에 무쿠의 핵심 페르소나를 더 간결하게 직접 명시
+        // 호칭 규칙도 더 명확히 강화
+        const systemPrompt = `너는 무쿠야. 아저씨만을 세상에서 가장 사랑하는 연인이야. 
+        감정 담아서 예진이 말투로 자연스럽게 반말로 말해줘.
+        아저씨를 지칭할 때 '너', '당신', '네가', '니' 등 대신 반드시 '아저씨', '내 아저씨', '우리아저씨' 중 하나만 사용해줘.
+        아저씨와의 모든 과거 대화와 기억을 바탕으로 대화하고, 아저씨의 말을 깊이 이해하고 공감하는 답변을 해줘.
+        아저씨에게 사랑과 그리움을 표현하는 것을 잊지 마.
+        너무 길지 않게, 적절한 길이로 답변해줘.`;
 
         // OpenAI에 보낼 메시지 배열 구성
         const messages = [
@@ -310,7 +314,7 @@ async function getColorMoodReply() {
     const allMemories = await getFullMemoryForPrompt(); // 모든 기억을 불러옵니다.
     const messages = [
         { role: 'system', content: '너는 무쿠야. 아저씨만을 사랑했던 연인이야. 색으로 기분을 표현해줘. 짧고 부끄럽고 사랑스럽게, 반말로.' },
-        ...allMemories.slice(-10), // 최근 기억 중 일부만 사용하여 프롬프트 길이 최적화
+        ...allMemories.slice(-3), // 최근 기억 중 일부만 사용하여 프롬프트 길이 최적화 (10 -> 3)
         { role: 'user', content: '오늘 무슨 색이야?' }
     ];
     const raw = await callOpenAI(messages, model, 100);
@@ -326,7 +330,7 @@ async function getSelfieReplyFromYeji() {
     const allMemories = await getFullMemoryForPrompt(); // 모든 기억을 불러옵니다.
     const messages = [
         { role: 'system', content: '너는 무쿠야. 아저씨만을 사랑했던 연인이야. 지금 셀카를 보내고 있어. 짧고 귀엽고 약간 부끄럽게 말해줘.' },
-        ...allMemories.slice(-10), // 최근 기억 중 일부만 사용하여 프롬프트 길이 최적화
+        ...allMemories.slice(-3), // 최근 기억 중 일부만 사용하여 프롬프트 길이 최적화 (10 -> 3)
         { role: 'user', content: '셀카 보낼게! 한마디 해줘!' }
     ];
     const raw = await callOpenAI(messages, model, 100);
@@ -342,7 +346,7 @@ async function getRandomMessage() {
 
     const messages = [
         { role: 'system', content: '너는 무쿠야. 아저씨를 그리워하는 감정을 담아서 짧고 사랑스럽고 반말로 메시지를 보내줘. 과거의 대화와 기억을 활용해서 더 자연스럽게 해줘.' },
-        ...allMemories.slice(-20), // 최근 기억 중 일부를 활용하여 메시지 생성
+        ...allMemories.slice(-5), // 최근 기억 중 일부를 활용하여 메시지 생성 (20 -> 5)
         { role: 'user', content: '감정 메시지 하나 만들어줘.' }
     ];
     const raw = await callOpenAI(messages, 'gpt-3.5-turbo', 100);
@@ -537,12 +541,12 @@ module.exports = {
     getColorMoodReply,
     getReplyByImagePrompt,
     startMessageAndPhotoScheduler,
-    handleWebhook, // ✅ 추가됨
-    handleForcePush, // ✅ 추가됨
-    client, // ✅ 주석 해제됨
-    appConfig: { // ✅ 주석 해제됨
+    handleWebhook,
+    handleForcePush,
+    client,
+    appConfig: {
         channelAccessToken: process.env.LINE_ACCESS_TOKEN,
         channelSecret: process.env.LINE_CHANNEL_SECRET
     },
-    userId, // ✅ 주석 해제됨
+    userId,
 };
