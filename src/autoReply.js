@@ -341,7 +341,7 @@ async function handleForcePush(req, res) {
 
 /**
  * **담배 관련 메시지에 대한 응답을 확인하고 전송합니다.**
- * `index.js`의 cron 스케줄에서 호출됩니다.
+ * `startMessageAndPhotoScheduler` 함수 내의 cron 스케줄에서 호출됩니다.
  */
 async function checkTobaccoReply() {
     const msg = '담타고?';
