@@ -236,5 +236,6 @@ module.exports = {
   getCurrentModelName,
   getSelfieReplyFromYeji,
   getFullMemoryForPrompt,
-  saveConversationMemory
+  saveConversationMemory,
+  initServerState
 };
