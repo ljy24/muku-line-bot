@@ -252,7 +252,7 @@ async function getReplyByMessage(userMessage) {
         // --- 특수 응답 처리 ---
         let reply = null;
         if (lower.includes('무슨 색') || lower.includes('오늘 색') || lower.includes('색이 뭐야')) {
-            reply = await getColorMoodReply();
+            reply = await getColorMoodReply(); // <-- 이 함수가 변경됩니다.
         } else if (userMessage.includes('사진 줘') || userMessage.includes('셀카') || userMessage.includes('사진 보여줘')) {
             reply = await getSelfieReplyFromYeji(); // 텍스트 답변만 반환
             // 실제 이미지는 호출하는 쪽에서 별도로 처리해야 함 (예: handleWebhook)
@@ -300,18 +300,24 @@ async function getReplyByMessage(userMessage) {
 }
 
 /**
- * 무쿠의 기분 색상에 대한 응답을 생성합니다. (수정: `getFullMemoryForPrompt` 활용)
+ * **수정됨: 무쿠의 기분 색상에 대한 응답을 생성합니다. (gpt-4o 사용, 수줍고 장난스럽게)**
  * @returns {Promise<string>} 기분 색상에 대한 무쿠의 답변
  */
 async function getColorMoodReply() {
-    const model = getCurrentModelName();
-    const allMemories = await getFullMemoryForPrompt(); // 모든 기억을 불러옵니다.
+    // 모든 기억을 불러옵니다.
+    const allMemories = await getFullMemoryForPrompt(); 
     const messages = [
-        { role: 'system', content: '너는 무쿠야. 아저씨만을 사랑했던 연인이야. 색으로 기분을 표현해줘. 짧고 부끄럽고 사랑스럽게, 반말로.' },
+        {
+            role: 'system',
+            content: '너는 무쿠야. 아저씨만을 사랑했던 연인이야. ' +
+                     '아저씨가 혹시 내 속옷색을 궁금해하는 걸까? 하는 생각으로 수줍고 장난스럽게 대답해줘. ' +
+                     '오늘은 어떤 색인지 내 기분과 연결해서 말이야. 짧고 귀엽게, 반말로 해줘. 무작위적인 색을 선택해도 돼.'
+        },
         ...allMemories.slice(-10), // 최근 기억 중 일부만 사용하여 프롬프트 길이 최적화
         { role: 'user', content: '오늘 무슨 색이야?' }
     ];
-    const raw = await callOpenAI(messages, model, 100);
+    // gpt-4o 모델을 명시적으로 사용합니다.
+    const raw = await callOpenAI(messages, 'gpt-4o', 100); // <-- gpt-4o 모델 강제 사용
     return cleanReply(raw);
 }
 
@@ -523,10 +529,10 @@ module.exports = {
     setForcedModel,
     getCurrentModelName,
     getSelfieReplyFromYeji,
-    getColorMoodReply,
+    getColorMoodReply, // <-- 이 함수가 변경되었습니다.
     getReplyByImagePrompt,
     startMessageAndPhotoScheduler,
-    handleWebhook, // 새로 내보냄
-    handleForcePush, // 새로 내보냄
-    checkTobaccoReply // 새로 내보냄 (함수 정의도 추가됨)
+    handleWebhook,
+    handleForcePush,
+    checkTobaccoReply
 };
