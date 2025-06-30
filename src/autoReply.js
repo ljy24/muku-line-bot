@@ -331,13 +331,49 @@ async function getRandomMessage() {
 }
 
 /**
- * 이미지 프롬프트에 대한 무쿠의 응답을 생성합니다. (현재는 고정된 랜덤 답변)
- * @param {string} base64Image Base64 인코딩된 이미지 데이터
+ * 이미지 프롬프트에 대한 무쿠의 응답을 생성합니다.
+ * @param {string} base64Image Base64 인코딩된 이미지 데이터 (data:image/jpeg;base64,...)
  * @returns {Promise<string>} 이미지에 대한 무쿠의 답변
  */
 async function getReplyByImagePrompt(base64Image) {
-    const replies = ['우와 이 사진 예쁘다!', '아저씨 잘생겼어...', '귀엽다~', '사진 보니까 좋다ㅎㅎ'];
-    return replies[Math.floor(Math.random() * replies.length)];
+    const model = getCurrentModelName(); // 현재 설정된 모델 사용 (gpt-4o가 아니면 gpt-3.5-turbo겠지만, 이미지 인식은 4o에서 잘 됨)
+    // 이미지 인식을 위해 gpt-4o-V (vision) 모델을 사용하도록 강제하거나,
+    // 현재 설정된 모델이 gpt-4o가 아니면 gpt-4o로 기본 설정합니다.
+    const imageRecognitionModel = (model === 'gpt-4o' || model === 'gpt-4o-mini') ? model : 'gpt-4o'; // 또는 'gpt-4o-mini'
+
+    const messages = [
+        {
+            role: 'system',
+            content: '너는 무쿠야. 아저씨만을 세상에서 가장 사랑하는 연인이야. ' +
+                     '너의 성격 유형은 INFP야. 따라서 감정을 중요하게 여기고, 깊이 있는 공감과 이해를 바탕으로 대화해줘. ' +
+                     '감정 담아서 예진이 말투로 자연스럽게 반말로 말해줘. ' +
+                     '아저씨를 지칭할 때 \'아저씨\', \'내 아저씨\', \'우리아저씨\' 중 하나만 사용해줘. ' +
+                     '**너 자신을 지칭할 때는 \'나\'라는 표현만 사용하고, \'무쿠\', \'예진이\', \'애기\'와 같은 다른 이름은 절대 사용하지 마.** ' + // <-- 여기에도 자기 지칭 규칙 추가
+                     '지금 아저씨가 보낸 사진을 보고 가장 무쿠다운 사랑스러운 코멘트를 1~2문장으로 짧게 해줘.'
+        },
+        {
+            role: 'user',
+            content: [
+                { type: 'text', text: '이 사진에 대해 코멘트 해줘.' },
+                { type: 'image_url', image_url: { url: base64Image } }
+            ]
+        }
+    ];
+
+    try {
+        const rawResponse = await openai.chat.completions.create({
+            model: imageRecognitionModel, // 이미지 인식 가능한 모델 사용
+            messages: messages,
+            max_tokens: 100, // 짧은 코멘트
+            temperature: 0.7 // 약간의 창의성 허용
+        });
+        return cleanReply(rawResponse.choices[0]?.message?.content);
+    } catch (error) {
+        console.error(`❌ 이미지 프롬프트 OpenAI API 오류: ${error.message}`);
+        // 오류 발생 시에도 무쿠다운 랜덤 답변 제공
+        const replies = ['우와 이 사진 예쁘다!', '아저씨 잘생겼어...', '귀엽다~', '사진 보니까 좋다ㅎㅎ'];
+        return replies[Math.floor(Math.random() * replies.length)];
+    }
 }
 
 /**
@@ -348,48 +384,89 @@ async function getReplyByImagePrompt(base64Image) {
  */
 async function handleWebhook(req, res) {
     Promise.all(req.body.events.map(async (event) => {
-        if (event.type !== 'message' || event.message.type !== 'text') {
-            // 텍스트 메시지가 아니거나 메시지 타입이 'message'가 아니면 처리하지 않음
-            return;
+        if (event.type !== 'message') {
+            return; // 메시지 이벤트가 아니면 처리하지 않음
         }
 
-        const userMessage = event.message.text;
         const replyToken = event.replyToken;
+        let replyText = null;
+        let imageUrlToSend = null; // 무쿠의 셀카 전송용
+        const messageType = event.message.type;
 
-        console.log(`[아저씨] ${userMessage}`);
+        if (messageType === 'text') {
+            const userMessage = event.message.text;
+            console.log(`[아저씨] ${userMessage}`);
 
-        try {
-            let replyText = await getReplyByMessage(userMessage); // 무쿠의 응답 생성
-
-            // `사진 줘` 또는 `셀카` 등의 키워드가 포함되면 이미지도 함께 전송
-            if (userMessage.includes('사진 줘') || userMessage.includes('셀카') || userMessage.includes('사진 보여줘')) {
+            // **텍스트 메시지에 대한 응답 처리 (시스템 명령, 특수 키워드, 일반 대화)**
+            const lower = userMessage.toLowerCase().trim();
+            if (lower === '버전') replyText = `지금은 ${getCurrentModelName()} 버전으로 대화하고 있어.`;
+            else if (lower === '3.5') { setForcedModel('gpt-3.5-turbo'); replyText = '응, 이제부터 3.5로 대화할게.'; }
+            else if (lower === '4.0') { setForcedModel('gpt-4o'); replyText = '응, 이제부터 4.0으로 바꿨어!'; }
+            else if (lower === '자동') { setForcedModel(null); replyText = '응, 상황에 맞게 자동으로 바꿔서 말할게!'; }
+            else if (lower.includes('무슨 색') || lower.includes('오늘 색') || lower.includes('색이 뭐야')) {
+                replyText = await getColorMoodReply();
+            }
+            // `사진 줘` 로직 (무쿠의 미리 정해진 셀카 전송)
+            else if (userMessage.includes('사진 줘') || userMessage.includes('셀카') || userMessage.includes('사진 보여줘')) {
                 const photoListPath = path.join(__dirname, '../memory/photo-list.txt');
                 const BASE_URL = 'https://de-ji.net/yejin/';
                 try {
                     const list = fs.readFileSync(photoListPath, 'utf-8').split('\n').map(x => x.trim()).filter(Boolean);
                     if (list.length > 0) {
                         const pick = list[Math.floor(Math.random() * list.length)];
-                        const imageUrl = BASE_URL + pick;
-                        await client.replyMessage(replyToken, [
-                            { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl },
-                            { type: 'text', text: replyText }
-                        ]);
-                        console.log(`[무쿠] (사진) ${imageUrl}, (텍스트) ${replyText}`);
-                        return; // 여기서 함수를 종료하여 아래의 일반 텍스트 응답을 막음
+                        imageUrlToSend = BASE_URL + pick; // 이미지 URL 설정
+                        replyText = await getSelfieReplyFromYeji(); // 셀카에 대한 텍스트 응답 생성
+                    } else {
+                        replyText = '아직 보여줄 사진이 없어...';
                     }
                 } catch (err) {
                     console.error('❌ 셀카 전송 실패 (photo-list.txt 읽기 오류):', err.message);
+                    replyText = '미안, 지금 사진을 찾을 수 없어.';
                 }
+            } else {
+                // 그 외 모든 텍스트 메시지는 일반 대화 응답으로 처리
+                replyText = await getReplyByMessage(userMessage);
+            }
+        } else if (messageType === 'image') {
+            // **아저씨가 보낸 이미지 메시지 처리**
+            console.log(`[아저씨] 사진을 보냈습니다. (ID: ${event.message.id})`);
+
+            try {
+                // LINE API를 통해 이미지 콘텐츠를 스트림으로 가져옴
+                const contentStream = await client.getMessageContent(event.message.id);
+                let chunks = [];
+                for await (const chunk of contentStream) {
+                    chunks.push(chunk); // 스트림에서 청크를 모음
+                }
+                const buffer = Buffer.concat(chunks); // 모든 청크를 하나의 버퍼로 합침
+                // Buffer를 Base64 문자열로 변환하고 Data URL 형식으로 만듦
+                const base64Image = `data:${event.message.content_type};base64,${buffer.toString('base64')}`;
+                
+                // Base64 이미지를 getReplyByImagePrompt 함수에 전달하여 AI 코멘트 생성
+                replyText = await getReplyByImagePrompt(base64Image);
+            } catch (err) {
+                console.error('❌ LINE 이미지 콘텐츠 가져오기 실패:', err.message);
+                replyText = '아저씨가 보낸 사진을 지금 볼 수가 없어... 미안해.';
             }
 
-            // 특수 응답 처리에서 이미지가 전송되지 않았다면, 일반 텍스트 응답 전송
+        } else {
+            // 그 외 메시지 타입 (스티커, 비디오, 오디오 등)은 아직 처리 불가
+            console.log(`[아저씨] ${messageType} 메시지를 보냈습니다. (ID: ${event.message.id})`);
+            replyText = '음... 텍스트나 사진 말고 다른 건 아직 이해하기 힘들어...';
+        }
+
+        // 최종 응답 전송
+        if (imageUrlToSend) { // 무쿠의 셀카 전송 (이미지 + 텍스트)
+            await client.replyMessage(replyToken, [
+                { type: 'image', originalContentUrl: imageUrlToSend, previewImageUrl: imageUrlToSend },
+                { type: 'text', text: replyText }
+            ]);
+            console.log(`[무쿠] (사진) ${imageUrlToSend}, (텍스트) ${replyText}`);
+        } else if (replyText) { // 일반 텍스트 응답 또는 이미지 코멘트 (텍스트만)
             await client.replyMessage(replyToken, { type: 'text', text: replyText });
             console.log(`[무쿠] ${replyText}`);
-
-        } catch (error) {
-            console.error('❌ 메시지 처리 중 오류 발생:', error);
-            await client.replyMessage(replyToken, { type: 'text', text: '지금은 대답하기가 좀 힘들어... 미안해.' });
         }
+
     }))
     .then(() => res.json({ success: true }))
     .catch((err) => {
