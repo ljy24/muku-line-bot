@@ -72,7 +72,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
                     }
 
                     // ⭐ 셀카 요청 처리 (개선) ⭐
-                    if (/사진|셀카|사진줘|셀카 보여줘|사진 보여줘|selfie/i.test(text)) {
+                    if (/사진\s*줘|셀카\s*줘|사진\s*보여줘|셀카\s*보여줘|얼굴\s*보고\s*싶다/i.test(text)) {
                         const BASE_URL = 'https://www.de-ji.net/yejin/';
                         const START_NUM = 1;
                         const END_NUM = 1186;
