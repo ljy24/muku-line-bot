@@ -26,7 +26,7 @@ const compressedMemory = memory1.slice(-3000) + '\n' + memory2.slice(-3000) + '\
 const statePath = path.resolve(__dirname, '../memory/state.json');
 const logPath = path.resolve(__dirname, '../memory/message-log.json');
 const selfieListPath = path.resolve(__dirname, '../memory/photo-list.txt');
-const BASE_SELFIE_URL = 'http://www.de-ji.net/yejin/'; // ⭐ 아저씨 요청에 따라 URL 업데이트 ⭐
+const BASE_SELFIE_URL = 'https://www.de-ji.net/yejin/'; // ⭐ 아저씨 요청에 따라 URL 업데이트 ⭐
 
 function getAllLogs() {
   if (!fs.existsSync(logPath)) return [];
