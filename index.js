@@ -51,9 +51,9 @@ app.post('/webhook', middleware(config), async (req, res) => {
                     const text = message.text.trim();
 
                     // ⭐ 메모리 예외 처리 시작 ⭐
-                    const isCommand = 
-                        /사진|셀카|사진줘|셀카 보여줘|사진 보여줘|selfie/i.test(text) || // 사진 관련 명령어
-                        /3\.5|4\.0|자동|버전/i.test(text); // 모델 전환 명령어
+                     const isCommand = 
+                     /(사진\s?줘|셀카\s?줘|셀카\s?보여줘|사진\s?보여줘|얼굴\s?보여줘|얼굴\s?보고\s?싶[어다]|selfie)/i.test(text) || // 사진 요청 명령어만 허용
+                    /3\.5|4\.0|자동|버전/i.test(text); // 모델 전환 명령어
 
                     saveLog('아저씨', text);
 
@@ -72,23 +72,28 @@ app.post('/webhook', middleware(config), async (req, res) => {
                     }
 
                     // ⭐ 셀카 요청 처리 (개선) ⭐
-                    if (/사진\s*줘|셀카\s*줘|사진\s*보여줘|셀카\s*보여줘|얼굴\s*보고\s*싶다/i.test(text)) {
+                    if (/사진\s*줘|셀카\s*줘|사진\s*보여줘|셀카\s*보여줘|얼굴\s*보고\s*싶[어다]/i.test(text)) {
+                        // 📸 셀카 이미지 범위 설정 (000001.jpg ~ 001186.jpg)
                         const BASE_URL = 'https://www.de-ji.net/yejin/';
                         const START_NUM = 1;
                         const END_NUM = 1186;
-
+                    
                         try {
+                            // 📷 랜덤 셀카 이미지 선택
                             const randomIndex = Math.floor(Math.random() * (END_NUM - START_NUM + 1)) + START_NUM;
                             const fileName = String(randomIndex).padStart(6, '0') + '.jpg'; 
                             const imageUrl = BASE_URL + fileName;
-
+                    
+                            // 💬 예진이 말투로 셀카 코멘트 생성
                             const comment = await getSelfieReplyFromYeji();
-
+                    
                             await client.replyMessage(event.replyToken, [
                                 { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl },
                                 { type: 'text', text: comment || '히히 셀카야~' }
                             ]);
+                    
                             console.log(`📷 셀카 전송 성공: ${imageUrl}`);
+                            saveLog('예진이', comment || '히히 셀카야~');
                         } catch (err) {
                             console.error('📷 셀카 불러오기 실패:', err.message);
                             await client.replyMessage(event.replyToken, { type: 'text', text: '사진 불러오기 실패했어 ㅠㅠ' });
