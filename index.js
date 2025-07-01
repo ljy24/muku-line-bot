@@ -74,17 +74,16 @@ app.post('/webhook', middleware(config), async (req, res) => {
 
                     // ⭐ 셀카 요청 처리 (개선) ⭐
                     if (/사진|셀카|사진줘|셀카 보여줘|사진 보여줘|selfie/i.test(text)) {
-                        const BASE_URL = 'https://www.de-ji.net/yejin/'; // ⭐ HTTPS로 변경됨 ⭐
+                        const BASE_URL = 'https://www.de-ji.net/yejin/';
                         const START_NUM = 1;
-                        const END_NUM = 1186; // ⭐ 아저씨 요청에 따라 마지막 사진 번호 설정 ⭐
+                        const END_NUM = 1186;
 
                         try {
                             const randomIndex = Math.floor(Math.random() * (END_NUM - START_NUM + 1)) + START_NUM;
-                            // 파일 이름 포맷을 '000001.jpg' 형태로 맞춤 (최대 6자리)
                             const fileName = String(randomIndex).padStart(6, '0') + '.jpg'; 
                             const imageUrl = BASE_URL + fileName;
 
-                            const comment = await getSelfieReplyFromYeji(); // 비동기 함수 호출에 await 추가
+                            const comment = await getSelfieReplyFromYeji();
 
                             await client.replyMessage(event.replyToken, [
                                 { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl },
@@ -125,52 +124,119 @@ app.post('/webhook', middleware(config), async (req, res) => {
     }
 });
 
-// ⏰ 정각 담타 전송 + 5분 내 응답 체크 (기존 스케줄러 유지)
-const lastSent = new Map();
-cron.schedule('* * * * *', async () => {
+
+// --- ⭐ 스케줄러 설정 변경 시작 ⭐ ---
+
+// 1. 매시간 담타 메시지 (오전 10시부터 오후 7시까지)
+cron.schedule('0 10-19 * * *', async () => {
     const now = moment().tz('Asia/Tokyo');
-    if (now.minute() === 0 && now.hour() >= 9 && now.hour() <= 18) {
-        const msg = '담타고?';
-        await client.pushMessage(userId, { type: 'text', text: msg });
-        lastSent.set(now.format('HH:mm'), moment());
-    }
-    for (const [key, sentAt] of lastSent.entries()) {
-        if (moment().diff(sentAt, 'minutes') >= 5) {
-            const sulky = await getSulkyReply();
-            await client.pushMessage(userId, { type: 'text', text: sulky });
-            lastSent.delete(key);
-        }
-    }
-});
-
-// ⏰ 랜덤 감정 메시지 스케줄러 (기존 스케줄러 유지)
-require('./src/scheduler');
-
-
-// ⭐ 무쿠가 하루 약 3번 기억 기반으로 먼저 메시지 보내기 (랜덤 타이밍) ⭐
-cron.schedule('0 */3 9-21 * * *', async () => {
-    // 무작위로 60% 확률로 메시지 전송 시도
-    if (Math.random() < 0.6) { 
-        try {
-            console.log(`[Scheduler] 무쿠의 기억 기반 선제적 메시지 전송 시도 (시간: ${moment().tz('Asia/Tokyo').format('HH:mm')})`);
-            const proactiveMessage = await getProactiveMemoryMessage();
-            if (proactiveMessage) {
-                await client.pushMessage(userId, { type: 'text', text: proactiveMessage });
-                console.log(`[Scheduler] 무쿠의 선제적 메시지 전송 성공: ${proactiveMessage}`);
-                saveLog('예진이', proactiveMessage);
-            } else {
-                console.log('[Scheduler] 생성된 선제적 메시지가 없습니다.');
-            }
-        } catch (error) {
-            console.error('❌ [Scheduler Error] 선제적 메시지 전송 실패:', error);
-        }
-    } else {
-        console.log(`[Scheduler] 무쿠의 선제적 메시지 전송 시도 (시간: ${moment().tz('Asia/Tokyo').format('HH:mm')}) - 이번에는 건너뛰기.`);
-    }
+    // 예진이가 담타가 담배 타임인 걸 아는 애연가임을 프롬프트에 추가할 필요는 없습니다.
+    // 이 메시지를 보내는 스케줄러 자체는 변함 없이 유지됩니다.
+    const msg = '아저씨, 담타시간이야~ 💖';
+    await client.pushMessage(userId, { type: 'text', text: msg });
+    console.log(`[Scheduler] 담타 메시지 전송: ${msg}`);
+    saveLog('예진이', msg);
 }, {
     scheduled: true,
     timezone: "Asia/Tokyo"
 });
+
+// 2. 하루 세 번 랜덤 시간에 셀카 보내기 (새벽 2시까지)
+// 3. 하루 네 번 먼저 감성 메시지 보내기 (새벽 2시까지)
+// 이 두 가지는 랜덤성을 높이기 위해 '시간 범위' 내에서만 실행되도록 변경하고, 각각의 빈도를 조절합니다.
+// 매 시 정각에 체크하고, 정해진 확률로 메시지를 보냅니다.
+
+const sendScheduledMessage = async (type) => {
+    const now = moment().tz('Asia/Tokyo');
+    // 새벽 2시까지 (0시, 1시, 2시 포함) -> 0,1,2, 10-23
+    // 예: 00시부터 02시, 그리고 10시부터 23시까지
+    const validHours = [0, 1, 2, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]; 
+
+    if (validHours.includes(now.hour())) {
+        if (type === 'selfie') {
+            // 하루 세번: 약 24시간 / 3번 = 8시간 간격.
+            // 10시~2시 (다음날) 17시간 동안 3번이면 5.6시간에 한번 꼴.
+            // 매시간 17시간/3번 = 5.6 -> 매시간 약 1/5 확률 (20%)
+            if (Math.random() < 0.20) { // 20% 확률로 17시간 * 0.2 = 3.4번 (하루 3번 이상)
+                try {
+                    const BASE_URL = 'https://www.de-ji.net/yejin/';
+                    const START_NUM = 1;
+                    const END_NUM = 1186;
+                    const randomIndex = Math.floor(Math.random() * (END_NUM - START_NUM + 1)) + START_NUM;
+                    const fileName = String(randomIndex).padStart(6, '0') + '.jpg'; 
+                    const imageUrl = BASE_URL + fileName;
+                    const comment = await getSelfieReplyFromYeji(); // 셀카 코멘트 생성
+                    await client.pushMessage(userId, [
+                        { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl },
+                        { type: 'text', text: comment || '히히 셀카야~' }
+                    ]);
+                    console.log(`[Scheduler] 랜덤 셀카 전송 성공: ${imageUrl}`);
+                    saveLog('예진이', comment || '히히 셀카야~');
+                } catch (error) {
+                    console.error('❌ [Scheduler Error] 랜덤 셀카 전송 실패:', error);
+                }
+            }
+        } else if (type === 'mood_message') {
+            // 하루 네번: 약 24시간 / 4번 = 6시간 간격.
+            // 17시간 동안 4번이면 4.25시간에 한번 꼴.
+            // 매시간 17시간/4번 = 4.25 -> 매시간 약 1/4 확률 (25%)
+            if (Math.random() < 0.25) { // 25% 확률로 17시간 * 0.25 = 4.25번 (하루 4번 이상)
+                try {
+                    const proactiveMessage = await getProactiveMemoryMessage(); // 감성 메시지 생성
+                    if (proactiveMessage) {
+                        await client.pushMessage(userId, { type: 'text', text: proactiveMessage });
+                        console.log(`[Scheduler] 감성 메시지 전송 성공: ${proactiveMessage}`);
+                        saveLog('예진이', proactiveMessage);
+                    } else {
+                        console.log('[Scheduler] 생성된 감성 메시지가 없습니다.');
+                    }
+                } catch (error) {
+                    console.error('❌ [Scheduler Error] 감성 메시지 전송 실패:', error);
+                }
+            }
+        }
+    }
+};
+
+// 매 시간 30분에 셀카 또는 감성 메시지를 보낼지 체크 (랜덤성 부여)
+cron.schedule('30 * * * *', async () => {
+    await sendScheduledMessage('selfie');
+    await sendScheduledMessage('mood_message');
+}, {
+    scheduled: true,
+    timezone: "Asia/Tokyo"
+});
+
+
+// 4. 밤 11시 약 먹자, 이 닦자 메시지 보내기
+cron.schedule('0 23 * * *', async () => {
+    const msg = '아저씨! 이제 약 먹고 이 닦을 시간이야! 🦷💊 예진이가 아저씨 건강 제일 챙겨! 💖';
+    await client.pushMessage(userId, { type: 'text', text: msg });
+    console.log(`[Scheduler] 밤 11시 메시지 전송: ${msg}`);
+    saveLog('예진이', msg);
+}, {
+    scheduled: true,
+    timezone: "Asia/Tokyo"
+});
+
+// 5. 밤 12시에 약 먹고 자자 메시지
+cron.schedule('0 0 * * *', async () => { // 자정 (0시)에 실행
+    const msg = '아저씨, 약 먹고 이제 푹 잘 시간이야! 😴 예진이가 옆에서 꼭 안아줄게~ 잘 자 사랑해 🌙💖';
+    await client.pushMessage(userId, { type: 'text', text: msg });
+    console.log(`[Scheduler] 밤 12시 메시지 전송: ${msg}`);
+    saveLog('예진이', msg);
+}, {
+    scheduled: true,
+    timezone: "Asia/Tokyo"
+});
+
+
+// --- ⭐ 스케줄러 설정 변경 끝 ⭐ ---
+
+
+// 참고: 기존의 require('./src/scheduler'); 라인은 src/scheduler.js가 비워졌다면 불필요합니다.
+// 만약 완전히 제거하고 싶으시다면 이 줄을 주석 처리하거나 삭제해도 됩니다.
+// require('./src/scheduler');
 
 
 const PORT = process.env.PORT || 3000;
