@@ -18,10 +18,10 @@ const {
   saveLog,
   setForcedModel,
   checkModelSwitchCommand,
-  getProactiveMemoryMessage // ⭐ 새로 추가된 함수 불러오기 ⭐
+  getProactiveMemoryMessage
 } = require('./src/autoReply');
 
-const memoryManager = require('./src/memoryManager'); // ⭐ 메모리 기록 관련: memoryManager 모듈 불러오기 ⭐
+const memoryManager = require('./src/memoryManager');
 
 const app = express();
 const config = {
@@ -50,11 +50,21 @@ app.post('/webhook', middleware(config), async (req, res) => {
 
         if (message.type === 'text') {
           const text = message.text.trim();
+
+          // ⭐ 메모리 예외 처리 시작 ⭐
+          const isCommand = 
+            /사진|셀카|사진줘|셀카 보여줘|사진 보여줘|selfie/i.test(text) || // 사진 관련 명령어
+            /3\.5|4\.0|자동|버전/i.test(text); // 모델 전환 명령어
+
           saveLog('아저씨', text);
 
-          // ⭐ 사용자 메시지에서 기억 추출 및 저장 ⭐
-          await memoryManager.extractAndSaveMemory(text);
-          console.log(`[index.js] memoryManager.extractAndSaveMemory 호출 완료`); // 호출 확인용 로그
+          if (!isCommand) { // 명령어가 아닐 경우에만 기억 추출 및 저장
+            await memoryManager.extractAndSaveMemory(text);
+            console.log(`[index.js] memoryManager.extractAndSaveMemory 호출 완료`);
+          } else {
+            console.log(`[index.js] 명령어 '${text}'는 메모리 저장에서 제외됩니다.`);
+          }
+          // ⭐ 메모리 예외 처리 끝 ⭐
 
           const versionResponse = checkModelSwitchCommand(text);
           if (versionResponse) {
@@ -62,22 +72,25 @@ app.post('/webhook', middleware(config), async (req, res) => {
             return;
           }
 
-          // 셀카 요청 처리 (아저씨가 주신 코드 그대로 유지)
+          // ⭐ 셀카 요청 처리 (개선) ⭐
           if (/사진|셀카|사진줘|셀카 보여줘|사진 보여줘|selfie/i.test(text)) {
-            const photoListPath = path.join(__dirname, 'memory/photo-list.txt');
-            const BASE_URL = 'https://de-ji.net/yejin/';
+            const BASE_URL = 'http://www.de-ji.net/yejin/'; // ⭐ 아저씨 요청에 따라 URL 업데이트 ⭐
+            const START_NUM = 1;
+            const END_NUM = 1186; // ⭐ 아저씨 요청에 따라 마지막 사진 번호 설정 ⭐
+
             try {
-              const list = fs.readFileSync(photoListPath, 'utf-8').split('\n').map(x => x.trim()).filter(Boolean);
-              if (list.length > 0) {
-                const pick = list[Math.floor(Math.random() * list.length)];
-                const comment = getSelfieReplyFromYeji();
-                await client.replyMessage(event.replyToken, [
-                  { type: 'image', originalContentUrl: BASE_URL + pick, previewImageUrl: BASE_URL + pick },
-                  { type: 'text', text: comment || '히히 셀카야~' }
-                ]);
-              } else {
-                await client.replyMessage(event.replyToken, { type: 'text', text: '아직 셀카가 없어 ㅠㅠ' });
-              }
+              const randomIndex = Math.floor(Math.random() * (END_NUM - START_NUM + 1)) + START_NUM;
+              // 파일 이름 포맷을 '000001.jpg' 형태로 맞춤 (최대 6자리)
+              const fileName = String(randomIndex).padStart(6, '0') + '.jpg'; 
+              const imageUrl = BASE_URL + fileName;
+
+              const comment = await getSelfieReplyFromYeji(); // 비동기 함수 호출에 await 추가
+
+              await client.replyMessage(event.replyToken, [
+                { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl },
+                { type: 'text', text: comment || '히히 셀카야~' }
+              ]);
+              console.log(`📷 셀카 전송 성공: ${imageUrl}`);
             } catch (err) {
               console.error('📷 셀카 불러오기 실패:', err.message);
               await client.replyMessage(event.replyToken, { type: 'text', text: '사진 불러오기 실패했어 ㅠㅠ' });
@@ -134,20 +147,16 @@ cron.schedule('* * * * *', async () => {
 require('./src/scheduler');
 
 
-// ⭐ 새로 추가된 코드: 무쿠가 하루 약 3번 기억 기반으로 먼저 메시지 보내기 (랜덤 타이밍) ⭐
-// 매 3시간마다 (오전 9시부터 오후 9시까지) 실행되며, 60% 확률로 메시지 전송
-// 이렇게 하면 하루 평균 5번의 시도 중 3번 정도 메시지를 보내게 되어,
-// 매번 다른 타이밍에 말을 걸어오는 효과를 줍니다.
-cron.schedule('0 */3 9-21 * * *', async () => { // 매 3시간마다 9시, 12시, 15시, 18시, 21시 정각 (일본 표준시 기준)
-  // 60% 확률로 메시지 전송 (5번의 기회 중 3번 정도 성공)
+// ⭐ 무쿠가 하루 약 3번 기억 기반으로 먼저 메시지 보내기 (랜덤 타이밍) ⭐
+cron.schedule('0 */3 9-21 * * *', async () => {
   if (Math.random() < 0.6) {
     try {
       console.log(`[Scheduler] 무쿠의 기억 기반 선제적 메시지 전송 시도 (시간: ${moment().tz('Asia/Tokyo').format('HH:mm')})`);
-      const proactiveMessage = await getProactiveMemoryMessage(); // autoReply.js에서 새로 만든 함수 호출
+      const proactiveMessage = await getProactiveMemoryMessage();
       if (proactiveMessage) {
         await client.pushMessage(userId, { type: 'text', text: proactiveMessage });
         console.log(`[Scheduler] 무쿠의 선제적 메시지 전송 성공: ${proactiveMessage}`);
-        saveLog('예진이', proactiveMessage); // 예진이 답변 로그 저장
+        saveLog('예진이', proactiveMessage);
       } else {
         console.log('[Scheduler] 생성된 선제적 메시지가 없습니다.');
       }
@@ -159,9 +168,8 @@ cron.schedule('0 */3 9-21 * * *', async () => { // 매 3시간마다 9시, 12시
   }
 }, {
   scheduled: true,
-  timezone: "Asia/Tokyo" // 일본 표준시 (JST) 기준으로 스케줄 설정
+  timezone: "Asia/Tokyo"
 });
-// ⭐ 새로 추가된 코드 끝 ⭐
 
 
 const PORT = process.env.PORT || 3000;
