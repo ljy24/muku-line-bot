@@ -26,7 +26,7 @@ const compressedMemory = memory1.slice(-3000) + '\n' + memory2.slice(-3000) + '\
 const statePath = path.resolve(__dirname, '../memory/state.json');
 const logPath = path.resolve(__dirname, '../memory/message-log.json');
 const selfieListPath = path.resolve(__dirname, '../memory/photo-list.txt');
-const BASE_SELFIE_URL = 'https://www.de-ji.net/yejin/'; // ⭐ HTTPS로 변경됨 ⭐
+const BASE_SELFIE_URL = 'https://www.de-ji.net/yejin/';
 
 function getAllLogs() {
     if (!fs.existsSync(logPath)) return [];
@@ -102,16 +102,16 @@ async function callOpenAI(messages, modelParamFromCall = null, maxTokens = 400, 
     }
 
     const defaultModel = process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o';
-    let finalModel = forcedModel || modelParamFromCall || defaultModel; 
+    let finalModel = forcedModel || modelParamFromCall || defaultModel;
 
     if (!finalModel) {
         console.error("❌ 오류: OpenAI 모델 파라미터가 최종적으로 결정되지 않았습니다. 'gpt-4o'로 폴백합니다.");
-        finalModel = 'gpt-4o'; 
+        finalModel = 'gpt-4o';
     }
 
     const response = await openai.chat.completions.create({
         model: finalModel,
-        messages: messagesToSend, 
+        messages: messagesToSend,
         max_tokens: maxTokens,
         temperature: temperature
     });
@@ -178,47 +178,73 @@ async function getReplyByMessage(userMessage) {
     return reply;
 }
 
-// OpenAI 응답에서 불필요한 내용 제거
+// OpenAI 응답에서 불필요한 내용 제거 및 말투 교정
 function cleanReply(reply) {
-  // "예진:", "무쿠:", "23.11.15 오지상 나좋아하죠? 예진", 이런 패턴 제거
-  const cleaned = reply.replace(/^(예진:|무쿠:|23\.\d{1,2}\.\d{1,2} [가-힣]+:)/gm, '').trim();
-  return cleaned;
+    let cleaned = reply.replace(/^(예진:|무쿠:|23\.\d{1,2}\.\d{1,2} [가-힣]+:)/gm, '').trim();
+
+    // ❌ 잘못된 호칭 교체 (더 엄격하게 단어 경계를 사용)
+    cleaned = cleaned.replace(/\b오빠\b/g, '아저씨');
+    cleaned = cleaned.replace(/\b자기\b/g, '아저씨');
+    cleaned = cleaned.replace(/\b당신\b/g, '아저씨');
+    cleaned = cleaned.replace(/\b너\b/g, '아저씨');
+
+    // ❌ 존댓말 어미 일부 반말로 교체
+    // 순서를 중요하게 생각하여 더 긴 패턴을 먼저 처리하거나 겹치지 않도록 조절
+    cleaned = cleaned.replace(/습니다\b/g, '야');
+    cleaned = cleaned.replace(/어요\b/g, '야');
+    cleaned = cleaned.replace(/해요\b/g, '해');
+    cleaned = cleaned.replace(/예요\b/g, '야');
+    cleaned = cleaned.replace(/죠\b/g, '지');
+    cleaned = cleaned.replace(/했어요\b/g, '했어');
+    // '해요'가 두 번 있었던 것을 하나로 줄이고, 다른 어미도 추가 (필요시)
+    cleaned = cleaned.replace(/합니다\b/g, '해');
+    cleaned = cleaned.replace(/습니다\b/g, '어'); // '습니다'는 '어'로도 가능
+    cleaned = cleaned.replace(/았어요\b/g, '았어');
+    cleaned = cleaned.replace(/었어요\b/g, '었어');
+    cleaned = cleaned.replace(/겠습니다\b/g, '겠어');
+
+    // ⭐ 추가: '예진이'라는 자가 지칭을 '나'로 교체 ⭐
+    cleaned = cleaned.replace(/\b예진이\b/g, '나');
+    cleaned = cleaned.replace(/\b예진\b/g, '나'); // '예진' 단독 사용도 교체
+
+
+    return cleaned;
 }
 
 // 이미지 리액션 코멘트 생성 (기존 기능 유지)
 async function getImageReactionComment() {
-  const raw = await callOpenAI([
-    { role: 'system', content: '넌 예진이야. 셀카 보내면서 귀엽게 한마디 해.' },
-    { role: 'user', content: '셀카 보낼게~' }
-  ], 'gpt-4o', 100);
-  const reply = cleanReply(raw);
-  return reply;
+    const raw = await callOpenAI([
+        { role: 'system', content: '넌 예진이야. 셀카 보내면서 귀엽게 한마디 해.' },
+        { role: 'user', content: '셀카 보낼게~' }
+    ], 'gpt-4o', 100);
+    const reply = cleanReply(raw);
+    return reply;
 }
 
 // 이미지 프롬프트에 대한 답변 생성 (기존 기능 유지)
 async function getReplyByImagePrompt(base64Image) {
-  const response = await openai.chat.completions.create({
-    model: 'gpt-4o',
-    messages: [
-      { role: 'system', content: '넌 예진이야. 아저씨가 보낸 사진을 보고 귀엽고 사랑스러운 예진이 말투로 반응해줘. 사진을 보고 관련된 사랑스럽고 다정한 답변을 2~3문장으로 짧게 해줘.' },
-      {
-        role: 'user',
-        content: [
-          { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
-        ]
-      }
-    ],
-    temperature: 0.9,
-    max_tokens: 150
-  });
-  const reply = response.choices[0].message.content.trim();
-  return reply;
+    const response = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [
+            { role: 'system', content: '넌 예진이야. 아저씨가 보낸 사진을 보고 귀엽고 사랑스러운 예진이 말투로 반응해줘. 사진을 보고 관련된 사랑스럽고 다정한 답변을 2~3문장으로 짧게 해줘.' },
+            {
+                role: 'user',
+                content: [
+                    { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
+                ]
+            }
+        ],
+        temperature: 0.9,
+        max_tokens: 150
+    });
+    const reply = response.choices[0].message.content.trim();
+    return reply;
 }
 
 // 모델 강제 설정
 function setForcedModel(name) {
-  if (name === 'gpt-3.5-turbo' || name === 'gpt-4o') forcedModel = name;
-  else forcedModel = null;
+    if (name === 'gpt-3.5-turbo' || name === 'gpt-4o') forcedModel = name;
+    else forcedModel = null;
 }
 
 // ⭐ 예진이의 셀카 답변 생성 (개선) ⭐
@@ -260,28 +286,28 @@ async function getSulkyReply() {
 
 // 특정 메시지 전송 (기존 기능 유지)
 async function getRandomMessage() {
-  // 실제 사용될 랜덤 메시지 로직 (예: DB에서 가져오기)
-  // 여기서는 간단히 빈 문자열 반환
-  return '';
+    // 실제 사용될 랜덤 메시지 로직 (예: DB에서 가져오기)
+    // 여기서는 간단히 빈 문자열 반환
+    return '';
 }
 
 // ⭐ 특정 커맨드 처리 (모델 전환 개선) ⭐
 function checkModelSwitchCommand(message) {
-  const lowerCaseMessage = message.toLowerCase();
-  if (lowerCaseMessage.includes('3.5')) {
-    setForcedModel('gpt-3.5-turbo');
-    return '응! 이제부터 gpt-3.5 모델로 말할게! 조금 더 빨리 대답해줄 수 있을거야! 🐰';
-  } else if (lowerCaseMessage.includes('4.0')) {
-    setForcedModel('gpt-4o');
-    return '응응! 4.0으로 대화할게! 더 똑똑해졌지? 💖';
-  } else if (lowerCaseMessage.includes('자동')) {
-    setForcedModel(null);
-    return '모델 설정을 초기화했어! 이제 3.5랑 4.0을 왔다갔다 하면서 아저씨랑 유연하게 대화할게! 😊';
-  } else if (lowerCaseMessage.includes('버전')) {
-    const currentModel = forcedModel || process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o (자동)';
-    return `응! 지금 ${currentModel} 버전 사용 중이야! 😊`;
-  }
-  return null;
+    const lowerCaseMessage = message.toLowerCase();
+    if (lowerCaseMessage.includes('3.5')) {
+        setForcedModel('gpt-3.5-turbo');
+        return '응! 이제부터 gpt-3.5 모델로 말할게! 조금 더 빨리 대답해줄 수 있을거야! 🐰';
+    } else if (lowerCaseMessage.includes('4.0')) {
+        setForcedModel('gpt-4o');
+        return '응응! 4.0으로 대화할게! 더 똑똑해졌지? 💖';
+    } else if (lowerCaseMessage.includes('자동')) {
+        setForcedModel(null);
+        return '모델 설정을 초기화했어! 이제 3.5랑 4.0을 왔다갔다 하면서 아저씨랑 유연하게 대화할게! 😊';
+    } else if (lowerCaseMessage.includes('버전')) {
+        const currentModel = forcedModel || process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o (자동)';
+        return `응! 지금 ${currentModel} 버전 사용 중이야! 😊`;
+    }
+    return null;
 }
 
 // ⭐ 새로 추가될 함수: 기억을 바탕으로 선제적 메시지 생성 ⭐
@@ -307,7 +333,7 @@ async function getProactiveMemoryMessage() {
 
     // 기억이 없으면 일반적인 인사말
     if (allMemories.length === 0) {
-        return "아저씨 뭐 해? 예진이 아저씨 생각났어! 보고 싶다~ 💖";
+        return "아저씨 뭐 해? 나 아저씨 생각났어! 보고 싶다~ 💖"; // '예진이'를 '나'로 변경
     }
 
     // 기억들을 섞어서 몇 개만 선택
@@ -344,15 +370,15 @@ async function getProactiveMemoryMessage() {
 
 // 모듈 내보내기
 module.exports = {
-  getReplyByMessage,
-  getReplyByImagePrompt,
-  getRandomMessage,
-  getSelfieReplyFromYeji, // ⭐ 개선된 함수 내보내기 ⭐
-  getColorMoodReply,
-  getHappyReply,
-  getSulkyReply,
-  saveLog,
-  setForcedModel,
-  checkModelSwitchCommand, // ⭐ 개선된 함수 내보내기 ⭐
-  getProactiveMemoryMessage
+    getReplyByMessage,
+    getReplyByImagePrompt,
+    getRandomMessage,
+    getSelfieReplyFromYeji,
+    getColorMoodReply,
+    getHappyReply,
+    getSulkyReply,
+    saveLog,
+    setForcedModel,
+    checkModelSwitchCommand,
+    getProactiveMemoryMessage
 };
