@@ -117,7 +117,7 @@ async function extractAndSaveMemory(userMessage) {
     }
 
     예시 3 (BELOVED_RELATED):
-    사용자: "나 다음주에 제주도로 여행 가려고 하는데, 무쿠는 어디 가고 싶어?"
+    사용자: "나 다음주에 제주도로 여행 가려고 하는데, 애기는 어디 가고 싶어?"
     출력:
     {
       "classification": "BELOVED_RELATED",
