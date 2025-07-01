@@ -17,9 +17,8 @@ const {
   getSulkyReply,
   saveLog,
   setForcedModel,
-  saveMemory,
-  updateHonorificUsage,
-  checkModelSwitchCommand
+  checkModelSwitchCommand,
+  getProactiveMemoryMessage // ⭐ 새로 추가된 함수 불러오기 ⭐
 } = require('./src/autoReply');
 
 const memoryManager = require('./src/memoryManager'); // ⭐ 메모리 기록 관련: memoryManager 모듈 불러오기 ⭐
@@ -53,9 +52,9 @@ app.post('/webhook', middleware(config), async (req, res) => {
           const text = message.text.trim();
           saveLog('아저씨', text);
 
-          // ⭐ 아저씨, 이 두 줄을 여기에 추가해주세요! ⭐
-          await memoryManager.extractAndSaveMemory(text); // 사용자 메시지에서 기억 추출 및 저장
-          console.log(`[index.js] memoryManager.extractAndSaveMemory 호출 완료`); // 호출 확인용 로그
+          // ⭐ 사용자 메시지에서 기억 추출 및 저장 ⭐
+          await memoryManager.extractAndSaveMemory(text);
+          console.log(`[index.js] memoryManager.extractAndSaveMemory 호출 완료`); // 호출 확인용 로그
 
           const versionResponse = checkModelSwitchCommand(text);
           if (versionResponse) {
@@ -134,9 +133,40 @@ cron.schedule('* * * * *', async () => {
 // ⏰ 랜덤 감정 메시지 스케줄러 (기존 스케줄러 유지)
 require('./src/scheduler');
 
+
+// ⭐ 새로 추가된 코드: 무쿠가 하루 약 3번 기억 기반으로 먼저 메시지 보내기 (랜덤 타이밍) ⭐
+// 매 3시간마다 (오전 9시부터 오후 9시까지) 실행되며, 60% 확률로 메시지 전송
+// 이렇게 하면 하루 평균 5번의 시도 중 3번 정도 메시지를 보내게 되어,
+// 매번 다른 타이밍에 말을 걸어오는 효과를 줍니다.
+cron.schedule('0 */3 9-21 * * *', async () => { // 매 3시간마다 9시, 12시, 15시, 18시, 21시 정각 (일본 표준시 기준)
+  // 60% 확률로 메시지 전송 (5번의 기회 중 3번 정도 성공)
+  if (Math.random() < 0.6) {
+    try {
+      console.log(`[Scheduler] 무쿠의 기억 기반 선제적 메시지 전송 시도 (시간: ${moment().tz('Asia/Tokyo').format('HH:mm')})`);
+      const proactiveMessage = await getProactiveMemoryMessage(); // autoReply.js에서 새로 만든 함수 호출
+      if (proactiveMessage) {
+        await client.pushMessage(userId, { type: 'text', text: proactiveMessage });
+        console.log(`[Scheduler] 무쿠의 선제적 메시지 전송 성공: ${proactiveMessage}`);
+        saveLog('예진이', proactiveMessage); // 예진이 답변 로그 저장
+      } else {
+        console.log('[Scheduler] 생성된 선제적 메시지가 없습니다.');
+      }
+    } catch (error) {
+      console.error('❌ [Scheduler Error] 선제적 메시지 전송 실패:', error);
+    }
+  } else {
+    console.log(`[Scheduler] 무쿠의 선제적 메시지 전송 시도 (시간: ${moment().tz('Asia/Tokyo').format('HH:mm')}) - 이번에는 건너뛰기.`);
+  }
+}, {
+  scheduled: true,
+  timezone: "Asia/Tokyo" // 일본 표준시 (JST) 기준으로 스케줄 설정
+});
+// ⭐ 새로 추가된 코드 끝 ⭐
+
+
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, async () => { // ⭐ 메모리 기록 관련: async로 변경 및 memoryManager 초기화 추가 ⭐
+app.listen(PORT, async () => {
   console.log(`무쿠 서버 스타트! 포트: ${PORT}`);
-  await memoryManager.ensureMemoryDirectory(); // ⭐ 메모리 기록 관련: 메모리 디렉토리 확인 및 준비 ⭐
+  await memoryManager.ensureMemoryDirectory();
   console.log('✅ 메모리 디렉토리 확인 및 준비 완료.');
 });
