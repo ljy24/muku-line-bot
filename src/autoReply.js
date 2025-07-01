@@ -206,8 +206,11 @@ function cleanReply(reply) {
     cleaned = cleaned.replace(/겠습니다\b/g, '겠어');
 
     // ⭐ 자가 지칭 '예진이' 제거
-    cleaned = cleaned.replace(/\b예진이\b/g, '나');
-    cleaned = cleaned.replace(/\b예진\b/g, '나');
+
+cleaned = cleaned.replace(/\b예진이\b/g, '나');
+cleaned = cleaned.replace(/\b예진\b/g, '나');
+cleaned = cleaned.replace(/\b무쿠\b/g, '나');
+cleaned = cleaned.replace(/\b무쿠야\b/g, '나');
 
     return cleaned;
 }
