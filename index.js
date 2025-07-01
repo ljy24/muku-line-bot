@@ -198,13 +198,20 @@ const sendScheduledMessage = async (type) => {
 };
 
 // 매 시간 30분에 셀카 또는 감성 메시지를 보낼지 체크 (랜덤성 부여)
-cron.schedule('30 * * * *', async () => {
-    await sendScheduledMessage('selfie');
-    await sendScheduledMessage('mood_message');
-}, {
-    scheduled: true,
-    timezone: "Asia/Tokyo"
-});
+let bootTime = Date.now(); // 서버 시작 시 시간 저장
+
+const sendScheduledMessage = async (type) => {
+    const now = moment().tz('Asia/Tokyo');
+    const currentTime = Date.now();
+
+    // 🛑 서버 부팅 후 3분 동안은 감성/셀카 메시지 금지
+    if (currentTime - bootTime < 3 * 60 * 1000) {
+        console.log('[Schedule] 서버 부팅 직후 3분 이내 → 자동 메시지 전송 스킵');
+        return;
+    }
+
+    // (이하 기존 코드 유지)
+};
 
 
 // 4. 밤 11시 약 먹자, 이 닦자 메시지 보내기
