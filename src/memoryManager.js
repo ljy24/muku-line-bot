@@ -7,7 +7,8 @@ require('dotenv').config(); // OPENAI_API_KEY를 사용하기 위해 필요
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-const MEMORY_DIR = '/data/memory'; // 영구 저장소 디렉토리
+// ⭐ Render 디스크의 영구 저장소 경로를 사용합니다.
+const MEMORY_DIR = '/data/memory'; 
 const LOVE_HISTORY_FILE = path.join(MEMORY_DIR, 'love-history.json'); // 아저씨 관련 기억 파일
 const OTHER_PEOPLE_HISTORY_FILE = path.join(MEMORY_DIR, 'other-people-history.json'); // 다른 사람 관련 기억 파일
 const BOT_LOG_FILE = path.join(MEMORY_DIR, 'bot_log.txt'); // memoryManager 내부 로깅용 파일
@@ -86,9 +87,6 @@ async function extractAndSaveMemory(userMessage) {
     메시지가 다른 사람(친구, 가족, 동료, 유명인 등)에 대한 정보를 포함한다면 'OTHER_PEOPLE_RELATED'로 분류하세요.
     만약 일반적인 대화 내용이거나 분류가 명확하지 않다면, 기본적으로 'BELOVED_RELATED'로 분류하세요.
 
-    분류 후, 메시지에서 중요한 키 정보(예: 사실, 선호도, 사건, 관계, 감정, 계획 등)를 추출하고 적절한 카테고리로 분류하세요.
-    카테고리는 되도록 구체적으로 (예: '취미', '직장', '가족', '친구 철수', '오늘 기분') 만들어주세요.
-
     JSON 형식으로 출력하세요:
     {
       "classification": "BELOVED_RELATED" | "OTHER_PEOPLE_RELATED",
@@ -97,7 +95,7 @@ async function extractAndSaveMemory(userMessage) {
         { "category": "다른카테고리명", "content": "다른 추출된 사실" }
       ]
     }
-    
+
     예시 1 (BELOVED_RELATED):
     사용자: "오늘 회사에서 발표 망쳤어... 너무 속상해"
     출력:
@@ -107,7 +105,7 @@ async function extractAndSaveMemory(userMessage) {
         { "category": "아저씨 감정", "content": "회사 발표 망쳐서 속상함" }
       ]
     }
-    
+
     예시 2 (OTHER_PEOPLE_RELATED):
     사용자: "친구 철수랑 이번 주말에 캠핑 갈 예정이야"
     출력:
@@ -117,7 +115,7 @@ async function extractAndSaveMemory(userMessage) {
         { "category": "친구 철수", "content": "이번 주말 캠핑 예정" }
       ]
     }
-    
+
     예시 3 (BELOVED_RELATED):
     사용자: "나 다음주에 제주도로 여행 가려고 하는데, 무쿠는 어디 가고 싶어?"
     출력:
@@ -127,7 +125,7 @@ async function extractAndSaveMemory(userMessage) {
         { "category": "아저씨 계획", "content": "다음주 제주도 여행 계획" }
       ]
     }
-    
+
     예시 4 (BELOVED_RELATED - 일반 대화는 기본적으로 아저씨 관련):
     사용자: "오늘 날씨 정말 좋다!"
     출력:
@@ -135,7 +133,7 @@ async function extractAndSaveMemory(userMessage) {
       "classification": "BELOVED_RELATED",
       "extracted_memories": []
     }
-    
+
     이제 다음 메시지를 분석하세요: "${userMessage}"
     `;
 
