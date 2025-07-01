@@ -83,8 +83,8 @@ async function getFormattedMemoriesForAI() {
 // --- ⭐ 기억 포매팅 함수 끝 ⭐ ---
 
 
-// --- ⭐ 수정: callOpenAI 함수에 기억 포함 로직 추가 ⭐ ---
-async function callOpenAI(messages, model = process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o', maxTokens = 400, temperature = 0.95) {
+// --- ⭐ 수정: callOpenAI 함수에서 모델 파라미터 처리 방식 개선 ⭐ ---
+async function callOpenAI(messages, modelParamFromCall = null, maxTokens = 400, temperature = 0.95) {
     // 기억 로드 및 포매팅
     const memoriesContext = await getFormattedMemoriesForAI();
 
@@ -101,11 +101,22 @@ async function callOpenAI(messages, model = process.env.OPENAI_DEFAULT_MODEL || 
         // 시스템 메시지가 없다면, 가장 처음에 추가
         messagesToSend.unshift({ role: 'system', content: memoriesContext });
     }
+
+    // --- ⭐ 이 부분이 수정되었습니다 ⭐ ---
+    const defaultModel = process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o'; // 환경변수 또는 'gpt-4o'를 기본 모델로 설정
+    const finalModel = forcedModel || modelParamFromCall || defaultModel; // forcedModel > 함수 호출 시 전달된 모델 > 기본 모델 순으로 적용
+
+    if (!finalModel) {
+        // 예상치 못한 경우 (모델이 최종적으로 null/undefined가 되는 상황)를 대비한 로깅 및 대체
+        console.error("❌ 오류: OpenAI 모델 파라미터가 최종적으로 결정되지 않았습니다. 'gpt-4o'로 폴백합니다.");
+        // 오류 방지를 위해 강제로 'gpt-4o' 할당
+        finalModel = 'gpt-4o'; 
+    }
     // --- ⭐ 수정 부분 끝 ⭐ ---
 
     const response = await openai.chat.completions.create({
-        model: forcedModel || model,
-        messages: messagesToSend, // ⭐ 수정: memoriesContext가 포함된 messagesToSend 사용 ⭐
+        model: finalModel, // ⭐ 수정: 결정된 finalModel 사용 ⭐
+        messages: messagesToSend, 
         max_tokens: maxTokens,
         temperature: temperature
     });
@@ -167,12 +178,6 @@ async function getReplyByMessage(userMessage) {
     const raw = await callOpenAI(messages, forcedModel); // 모델 강제 설정 반영
     const reply = cleanReply(raw);
     saveLog('예진이', reply); // 예진이 답변 로그 저장
-
-    // 비동기적으로 메모리 추출 및 저장 (답변 생성 후 백그라운드에서 진행)
-    // extractAndSaveMemory 함수는 autoReply 외부에서 관리됨
-    // 이 부분은 이미 index.js에서 호출하고 있을테니, 여기서는 제외해도 됨.
-    // 만약 autoReply.js 내에서 extractAndSaveMemory를 직접 호출한다면, 이곳에 추가.
-    // 현재 구조상 index.js에서 getReplyByMessage 호출 후 extractAndSaveMemory를 호출하는 것이 맞는 것으로 보임.
 
     return reply;
 }
@@ -294,6 +299,4 @@ module.exports = {
   saveLog,
   setForcedModel,
   checkModelSwitchCommand,
-  // saveMemory, // memoryManager에서 관리되므로 여기서는 제거
-  // updateHonorificUsage // 사용되지 않으므로 제거
 };
