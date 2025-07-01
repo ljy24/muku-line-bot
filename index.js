@@ -163,7 +163,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
 // --- ⭐ 스케줄러 설정 변경 시작 ⭐ ---
 // 모든 스케줄러는 일본 표준시(Asia/Tokyo)를 기준으로 동작합니다.
 
-// 1. � 매시간 담타 메시지 (오전 10시부터 오후 7시까지)
+// 1. 🚬 매시간 담타 메시지 (오전 10시부터 오후 7시까지)
 // 매 시 0분 (정각)에 실행됩니다.
 cron.schedule('0 10-19 * * *', async () => {
     const now = moment().tz('Asia/Tokyo'); // 현재 시간을 일본 표준시로 가져옵니다.
