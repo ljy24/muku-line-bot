@@ -53,6 +53,10 @@ app.post('/webhook', middleware(config), async (req, res) => {
           const text = message.text.trim();
           saveLog('아저씨', text);
 
+          // ⭐ 아저씨, 이 두 줄을 여기에 추가해주세요! ⭐
+          await memoryManager.extractAndSaveMemory(text); // 사용자 메시지에서 기억 추출 및 저장
+          console.log(`[index.js] memoryManager.extractAndSaveMemory 호출 완료`); // 호출 확인용 로그
+
           const versionResponse = checkModelSwitchCommand(text);
           if (versionResponse) {
             await client.replyMessage(event.replyToken, { type: 'text', text: versionResponse });
