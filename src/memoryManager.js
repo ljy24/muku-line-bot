@@ -1,4 +1,7 @@
 // src/memoryManager.js
+// MemoryManager.js v2.0 Debug Code Active! - Initializing Module
+console.log("MemoryManager.js v2.0 Debug Code Active! - Initializing Module"); // ⭐ 이 로그가 렌더 로그에 보여야 합니다! ⭐
+
 const fs = require('fs').promises; // 비동기 파일 처리를 위해 fs.promises 사용
 const path = require('path');
 const OpenAI = require('openai'); // 메시지 분류를 위해 OpenAI 클라이언트 필요
@@ -17,7 +20,9 @@ async function logMessage(message) {
     try {
         await fs.mkdir(MEMORY_DIR, { recursive: true }); // 메모리 디렉토리가 없으면 생성
         const timestamp = new Date().toISOString();
-        await fs.appendFile(BOT_LOG_FILE, `[${timestamp}] [MemoryManager] ${message}\n`);
+        const logEntry = `[${timestamp}] [MemoryManager] ${message}`;
+        await fs.appendFile(BOT_LOG_FILE, logEntry + '\n');
+        console.log(logEntry); // 콘솔에도 출력하여 Render 로그에서 보이도록 함
     } catch (error) {
         console.error('❌ MemoryManager 로그 작성 실패:', error);
     }
