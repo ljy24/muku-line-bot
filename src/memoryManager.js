@@ -108,133 +108,149 @@ async function loadOtherPeopleHistory() {
 async function extractAndSaveMemory(userMessage) {
     await logMessage(`메모리 추출 및 저장 시도: "${userMessage}"`);
 
-    // OpenAI에 보낼 프롬프트: 분류와 정보 추출을 요청
-    const classificationPrompt = `다음 사용자 메시지를 분석하여 'BELOVED_RELATED' (아저씨 관련) 또는 'OTHER_PEOPLE_RELATED' (다른 사람 관련) 중 하나로 분류하세요.
-    메시지가 직접적으로 아저씨(나의 연인)의 선호도, 감정, 계획, 또는 '무쿠'와의 관계를 강화하는 정보를 포함한다면 'BELOVED_RELATED'로 분류하세요.
-    메시지가 다른 사람(친구, 가족, 동료, 유명인 등)에 대한 정보를 포함한다면 'OTHER_PEOPLE_RELATED'로 분류하세요.
-    만약 일반적인 대화 내용이거나 분류가 명확하지 않다면, 기본적으로 'BELOVED_RELATED'로 분류하세요.
+    // Load histories outside the main try block to ensure they are available for both success and error paths
+    let loveHistory = await loadLoveHistory();
+    let otherPeopleHistory = await loadOtherPeopleHistory();
 
-    분류 후, 메시지에서 중요한 키 정보(예: 사실, 선호도, 사건, 관계, 감정, 계획 등)를 추출하고 적절한 카테고리로 분류하세요.
-    카테고리는 되도록 구체적으로 (예: '취미', '직장', '가족', '친구 철수', '오늘 기분') 만들어주세요.
+    try { // 시작: extractAndSaveMemory의 메인 try 블록
+        // OpenAI에 보낼 프롬프트: 분류와 정보 추출을 요청
+        const classificationPrompt = `다음 사용자 메시지를 분석하여 'BELOVED_RELATED' (아저씨 관련) 또는 'OTHER_PEOPLE_RELATED' (다른 사람 관련) 중 하나로 분류하세요.
+        메시지가 직접적으로 아저씨(나의 연인)의 선호도, 감정, 계획, 또는 '무쿠'와의 관계를 강화하는 정보를 포함한다면 'BELOVED_RELATED'로 분류하세요.
+        메시지가 다른 사람(친구, 가족, 동료, 유명인 등)에 대한 정보를 포함한다면 'OTHER_PEOPLE_RELATED'로 분류하세요.
+        만약 일반적인 대화 내용이거나 분류가 명확하지 않다면, 기본적으로 'BELOVED_RELATED'로 분류하세요.
 
-    JSON 형식으로 출력하세요:
-    {
-      "classification": "BELOVED_RELATED" | "OTHER_PEOPLE_RELATED",
-      "extracted_memories": [
-        { "category": "카테고리명", "content": "추출된 사실 또는 세부 정보" },
-        { "category": "다른카테고리명", "content": "다른 추출된 사실" }
-      ]
-    }
+        분류 후, 메시지에서 중요한 키 정보(예: 사실, 선호도, 사건, 관계, 감정, 계획 등)를 추출하고 적절한 카테고리로 분류하세요.
+        카테고리는 되도록 구체적으로 (예: '취미', '직장', '가족', '친구 철수', '오늘 기분') 만들어주세요.
 
-    예시 1 (BELOVED_RELATED):
-    사용자: "오늘 회사에서 발표 망쳤어... 너무 속상해"
-    출력:
-    {
-      "classification": "BELOVED_RELATED",
-      "extracted_memories": [
-        { "category": "아저씨 감정", "content": "회사 발표 망쳐서 속상함" }
-      ]
-    }
-
-    예시 2 (OTHER_PEOPLE_RELATED):
-    사용자: "친구 철수랑 이번 주말에 캠핑 갈 예정이야"
-    출력:
-    {
-      "classification": "OTHER_PEOPLE_RELATED",
-      "extracted_memories": [
-        { "category": "친구 철수", "content": "이번 주말 캠핑 예정" }
-      ]
-    }
-
-    예시 3 (BELOVED_RELATED):
-    사용자: "나 다음주에 제주도로 여행 가려고 하는데, 무쿠는 어디 가고 싶어?"
-    출력:
-    {
-      "classification": "BELOVED_RELATED",
-      "extracted_memories": [
-        { "category": "아저씨 계획", "content": "다음주 제주도 여행 계획" }
-      ]
-    }
-
-    예시 4 (BELOVED_RELATED - 일반 대화는 기본적으로 아저씨 관련):
-    사용자: "오늘 날씨 정말 좋다!"
-    출력:
-    {
-      "classification": "BELOVED_RELATED",
-      "extracted_memories": []
-    }
-
-    이제 다음 메시지를 분석하세요: "${userMessage}"
-    `;
-
-    const response = await openai.chat.completions.create({
-        model: "gpt-4o", // 분류 및 추출에 gpt-4o 사용
-        messages: [
-            { role: "system", content: classificationPrompt },
-        ],
-        max_tokens: 500,
-        response_format: { type: "json_object" } // JSON 형식으로 응답 요청
-    });
-
-    const rawContent = response.choices[0].message.content;
-    let parsedMemory;
-    try {
-        parsedMemory = JSON.parse(rawContent);
-    } catch (parseError) {
-        console.error(`❌ OpenAI 응답 JSON 파싱 실패: ${parseError.message}, 원본: ${rawContent}`);
-        await logMessage(`❌ OpenAI 응답 JSON 파싱 실패: ${parseError.message}, 원본: ${rawContent}`);
-        return; // 파싱 실패 시 함수 종료
-    }
-
-    const classification = parsedMemory.classification;
-    const extractedMemories = parsedMemory.extracted_memories || [];
-
-    let currentMemory;
-    let filePathToSave;
-
-    if (classification === 'BELOVED_RELATED') {
-        filePathToSave = LOVE_HISTORY_FILE;
-        currentMemory = await loadLoveHistory(); // 아저씨 기억 로드
-        await logMessage(`'아저씨 관련'으로 분류됨.`);
-    } else if (classification === 'OTHER_PEOPLE_RELATED') {
-        filePathToSave = OTHER_PEOPLE_HISTORY_FILE;
-        currentMemory = await loadOtherPeopleHistory(); // 다른 사람 기억 로드
-        await logMessage(`'다른 사람 관련'으로 분류됨.`);
-    } else {
-        // 분류가 불분명하거나 예상치 못한 경우, 기본적으로 아저씨 관련으로 처리
-        filePathToSave = LOVE_HISTORY_FILE;
-        currentMemory = await loadLoveHistory();
-        await logMessage(`분류 불분명(${classification}), 기본적으로 '아저씨 관련'으로 처리됨.`);
-    }
-
-    // 새로운 기억 추가 (중복 방지를 위해 내용 확인 후 추가)
-    for (const mem of extractedMemories) {
-        if (!currentMemory.categories[mem.category]) {
-            currentMemory.categories[mem.category] = [];
+        JSON 형식으로 출력하세요:
+        {
+          "classification": "BELOVED_RELATED" | "OTHER_PEOPLE_RELATED",
+          "extracted_memories": [
+            { "category": "카테고리명", "content": "추출된 사실 또는 세부 정보" },
+            { "category": "다른카테고리명", "content": "다른 추출된 사실" }
+          ]
         }
-        // 같은 카테고리 내에서 동일한 content가 있는지 확인
-        // map 호출 전에 배열인지 다시 한번 확인 (방어적 코드)
-        const existingContents = Array.isArray(currentMemory.categories[mem.category])
-            ? currentMemory.categories[mem.category].map(item => item.content)
-            : []; // 배열이 아니면 빈 배열로 처리하여 오류 방지
 
-        if (!existingContents.includes(mem.content)) {
-            currentMemory.categories[mem.category].push({ content: mem.content, timestamp: new Date().toISOString() });
-            await logMessage(`메모리 추가됨: 카테고리='${mem.category}', 내용='${mem.content}' (${filePathToSave})`);
+        예시 1 (BELOVED_RELATED):
+        사용자: "오늘 회사에서 발표 망쳤어... 너무 속상해"
+        출력:
+        {
+          "classification": "BELOVED_RELATED",
+          "extracted_memories": [
+            { "category": "아저씨 감정", "content": "회사 발표 망쳐서 속상함" }
+          ]
+        }
+
+        예시 2 (OTHER_PEOPLE_RELATED):
+        사용자: "친구 철수랑 이번 주말에 캠핑 갈 예정이야"
+        출력:
+        {
+          "classification": "OTHER_PEOPLE_RELATED",
+          "extracted_memories": [
+            { "category": "친구 철수", "content": "이번 주말 캠핑 예정" }
+          ]
+        }
+
+        예시 3 (BELOVED_RELATED):
+        사용자: "나 다음주에 제주도로 여행 가려고 하는데, 무쿠는 어디 가고 싶어?"
+        출력:
+        {
+          "classification": "BELOVED_RELATED",
+          "extracted_memories": [
+            { "category": "아저씨 계획", "content": "다음주 제주도 여행 계획" }
+          ]
+        }
+
+        예시 4 (BELOVED_RELATED - 일반 대화는 기본적으로 아저씨 관련):
+        사용자: "오늘 날씨 정말 좋다!"
+        출력:
+        {
+          "classification": "BELOVED_RELATED",
+          "extracted_memories": []
+        }
+
+        이제 다음 메시지를 분석하세요: "${userMessage}"
+        `;
+
+        const response = await openai.chat.completions.create({
+            model: "gpt-4o", // 분류 및 추출에 gpt-4o 사용
+            messages: [
+                { role: "system", content: classificationPrompt },
+            ],
+            max_tokens: 500,
+            response_format: { type: "json_object" } // JSON 형식으로 응답 요청
+        });
+
+        const rawContent = response.choices[0].message.content;
+        let parsedMemory;
+        try { // 내부 try 블록 시작: JSON 파싱 오류 처리
+            parsedMemory = JSON.parse(rawContent);
+        } catch (parseError) { // 내부 catch 블록
+            console.error(`❌ OpenAI 응답 JSON 파싱 실패: ${parseError.message}, 원본: ${rawContent}`);
+            await logMessage(`❌ OpenAI 응답 JSON 파싱 실패: ${parseError.message}, 원본: ${rawContent}`);
+            return; // 파싱 실패 시 함수 종료
+        } // 내부 try-catch 블록 끝
+
+        const classification = parsedMemory.classification;
+        const extractedMemories = parsedMemory.extracted_memories || [];
+
+        let targetMemory;
+        let filePathToSave;
+
+        if (classification === 'BELOVED_RELATED') {
+            filePathToSave = LOVE_HISTORY_FILE;
+            targetMemory = loveHistory;
+            await logMessage(`'아저씨 관련'으로 분류됨.`);
+        } else if (classification === 'OTHER_PEOPLE_RELATED') {
+            filePathToSave = OTHER_PEOPLE_HISTORY_FILE;
+            targetMemory = otherPeopleHistory;
+            await logMessage(`'다른 사람 관련'으로 분류됨.`);
         } else {
-            await logMessage(`이미 존재하는 메모리이므로 건너뜀: 카테고리='${mem.category}', 내용='${mem.content}'`);
+            // 분류가 불분명하거나 예상치 못한 경우, 기본적으로 아저씨 관련으로 처리
+            filePathToSave = LOVE_HISTORY_FILE;
+            targetMemory = loveHistory;
+            await logMessage(`분류 불분명(${classification}), 기본적으로 '아저씨 관련'으로 처리됨.`);
         }
-    }
 
-    currentMemory.lastUpdated = new Date().toISOString();
-    await saveMemory(filePathToSave, currentMemory); // 분류된 파일에 저장
-    await logMessage(`"${userMessage}"에 대한 메모리 추출 및 저장 완료.`);
+        // --- 메모리 저장 로직 ---
+        if (!targetMemory.categories) {
+            targetMemory.categories = {};
+        }
 
-} catch (error) {
-    console.error(`❌ extractAndSaveMemory 오류 발생: ${error.message}`);
-    await logMessage(`❌ extractAndSaveMemory 오류 발생: ${error.message}`);
-    // 응답 내용이 있다면 디버깅을 위해 로그
-    if (response && response.choices && response.choices[0] && response.choices[0].message) {
-         await logMessage(`OpenAI 원본 응답 내용 (파싱 오류 원인 가능성): ${response.choices[0].message.content}`);
-    }
-}
+        for (const mem of extractedMemories) {
+            if (!targetMemory.categories[mem.category]) {
+                targetMemory.categories[mem.category] = [];
+            }
+
+            const existingContents = Array.isArray(targetMemory.categories[mem.category])
+                ? targetMemory.categories[mem.category].map(item => item.content)
+                : [];
+
+            if (!existingContents.includes(mem.content)) {
+                targetMemory.categories[mem.category].push({ content: mem.content, timestamp: new Date().toISOString() });
+                await logMessage(`메모리 추가됨: 카테고리='${mem.category}', 내용='${mem.content}' (${filePathToSave})`);
+            } else {
+                await logMessage(`이미 존재하는 메모리이므로 건너뜀: 카테고리='${mem.category}', 내용='${mem.content}'`);
+            }
+        }
+
+        targetMemory.lastUpdated = new Date().toISOString();
+        await saveMemory(filePathToSave, targetMemory); // 분류된 파일에 저장
+        await logMessage(`"${userMessage}"에 대한 메모리 추출 및 저장 완료.`);
+
+    } catch (error) { // 끝: extractAndSaveMemory의 메인 try 블록에 대한 catch
+        console.error(`❌ extractAndSaveMemory 오류 발생: ${error.message}`);
+        await logMessage(`❌ extractAndSaveMemory 오류 발생: ${error.message}`);
+        // 응답 내용이 있다면 디버깅을 위해 로그
+        if (response && response.choices && response.choices[0] && response.choices[0].message) {
+             await logMessage(`OpenAI 원본 응답 내용 (파싱 오류 원인 가능성): ${response.choices[0].message.content}`);
+        }
+    } // extractAndSaveMemory의 메인 catch 블록 끝
+} // extractAndSaveMemory 함수 끝
+
+module.exports = {
+    extractAndSaveMemory,
+    loadLoveHistory,
+    loadOtherPeopleHistory,
+    ensureMemoryDirectory // 앱 시작 시 이 함수를 호출하여 디렉토리가 생성되도록 해야 합니다. (예: index.js에서)
+};
