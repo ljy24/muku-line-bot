@@ -107,7 +107,6 @@ async function extractAndSaveMemory(userMessage) {
     let otherPeopleHistory = await loadOtherPeopleHistory();
 
     try {
-        // ⭐ 수정: OpenAI 프롬프트에 기억 분류 규칙 명확화 ⭐
         const prompt = `다음 대화에서 '사랑/관계/아저씨' 관련 중요 기억과 '다른 사람(가족, 친구, 지인 등)/기타' 관련 중요 기억을 추출해 줘.
         만약 '아저씨'와 '다른 사람'이 함께 언급된 기억이라면, 그 기억의 주된 초점이 '다른 사람'에게 있다면 '다른 사람' 관련 기억으로 분류해줘.
         각 기억은 어떤 카테고리(예: '좋아하는 것', '싫어하는 것', '직업', '특징', '기타', '최근 사건', '관계 특징', '가족', '친구')에 해당하는지 분류하고, 카테고리와 내용을 JSON 배열 형식으로만 응답해줘.
@@ -131,8 +130,14 @@ async function extractAndSaveMemory(userMessage) {
             temperature: 0.7
         });
 
-        const rawResponse = response.choices[0].message.content.trim();
+        let rawResponse = response.choices[0].message.content.trim();
         await logMessage(`OpenAI 메모리 추출 원본 응답: ${rawResponse}`); // 원본 응답 로그 추가
+
+        // ⭐ 추가: 마크다운 코드 블록 제거 ⭐
+        if (rawResponse.startsWith('```json') && rawResponse.endsWith('```')) {
+            rawResponse = rawResponse.substring(7, rawResponse.length - 3).trim();
+            await logMessage(`마크다운 제거 후 응답: ${rawResponse}`);
+        }
 
         let extractedMemories;
         try {
