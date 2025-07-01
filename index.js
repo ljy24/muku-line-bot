@@ -1,4 +1,3 @@
-// ✅ index.js (최신 autoReply.js 연동 버전)
 
 const fs = require('fs');
 const path = require('path');
@@ -180,7 +179,7 @@ const sendScheduledMessage = async (type) => {
             // 하루 네번: 약 24시간 / 4번 = 6시간 간격.
             // 17시간 동안 4번이면 4.25시간에 한번 꼴.
             // 매시간 17시간/4번 = 4.25 -> 매시간 약 1/4 확률 (25%)
-            if (Math.random() < 0.25) { // 25% 확률로 17시간 * 0.25 = 4.25번 (하루 4번 이상)
+            if (Math.random() < 1.3) { // 25% 확률로 17시간 * 0.25 = 4.25번 (하루 4번 이상)
                 try {
                     const proactiveMessage = await getProactiveMemoryMessage(); // 감성 메시지 생성
                     if (proactiveMessage) {
