@@ -7,7 +7,7 @@ require('dotenv').config(); // OPENAI_API_KEY를 사용하기 위해 필요
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// ⭐ Render 디스크의 영구 저장소 경로를 사용합니다.
+// ⭐ 메모리 기록 관련: Render 디스크의 영구 저장소 경로를 사용합니다.
 const MEMORY_DIR = '/data/memory'; 
 const LOVE_HISTORY_FILE = path.join(MEMORY_DIR, 'love-history.json'); // 아저씨 관련 기억 파일
 const OTHER_PEOPLE_HISTORY_FILE = path.join(MEMORY_DIR, 'other-people-history.json'); // 다른 사람 관련 기억 파일
@@ -24,7 +24,7 @@ async function logMessage(message) {
     }
 }
 
-// --- 메모리 디렉토리 존재 확인 및 생성 ---
+// --- 메모리 기록 관련: 메모리 디렉토리 존재 확인 및 생성 ---
 async function ensureMemoryDirectory() {
     try {
         await fs.mkdir(MEMORY_DIR, { recursive: true });
@@ -35,7 +35,7 @@ async function ensureMemoryDirectory() {
     }
 }
 
-// --- JSON 메모리 로드 함수 (제네릭) ---
+// --- 메모리 기록 관련: JSON 메모리 로드 함수 (제네릭) ---
 async function loadMemory(filePath) {
     try {
         await fs.access(filePath); // 파일 존재 여부 확인
@@ -53,7 +53,7 @@ async function loadMemory(filePath) {
     }
 }
 
-// --- JSON 메모리 저장 함수 (제네릭) ---
+// --- 메모리 기록 관련: JSON 메모리 저장 함수 (제네릭) ---
 async function saveMemory(filePath, data) {
     try {
         await fs.mkdir(path.dirname(filePath), { recursive: true }); // 디렉토리가 없으면 생성
@@ -67,17 +67,17 @@ async function saveMemory(filePath, data) {
     }
 }
 
-// --- 아저씨 관련 기억 로드 ---
+// --- 메모리 기록 관련: 아저씨 관련 기억 로드 ---
 async function loadLoveHistory() {
     return await loadMemory(LOVE_HISTORY_FILE);
 }
 
-// --- 다른 사람 관련 기억 로드 ---
+// --- 메모리 기록 관련: 다른 사람 관련 기억 로드 ---
 async function loadOtherPeopleHistory() {
     return await loadMemory(OTHER_PEOPLE_HISTORY_FILE);
 }
 
-// --- OpenAI를 사용하여 메시지 분류 및 기억 추출/저장 ---
+// --- 메모리 기록 관련: OpenAI를 사용하여 메시지 분류 및 기억 추출/저장 ---
 async function extractAndSaveMemory(userMessage) {
     await logMessage(`메모리 추출 및 저장 시도: "${userMessage}"`);
 
@@ -117,7 +117,7 @@ async function extractAndSaveMemory(userMessage) {
     }
 
     예시 3 (BELOVED_RELATED):
-    사용자: "나 다음주에 제주도로 여행 가려고 하는데, 애기는 어디 가고 싶어?"
+    사용자: "나 다음주에 제주도로 여행 가려고 하는데, 무쿠는 어디 가고 싶어?"
     출력:
     {
       "classification": "BELOVED_RELATED",
