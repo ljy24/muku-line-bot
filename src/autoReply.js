@@ -10,11 +10,11 @@ let forcedModel = null; // 현재 강제 설정된 모델 (null이면 자동)
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 function safeRead(filePath, fallback = '') {
-  try {
-    return fs.readFileSync(filePath, 'utf-8');
-  } catch {
-    return fallback;
-  }
+    try {
+        return fs.readFileSync(filePath, 'utf-8');
+    } catch {
+        return fallback;
+    }
 }
 
 const memory1 = safeRead(path.resolve(__dirname, '../memory/1.txt'));
@@ -29,20 +29,20 @@ const selfieListPath = path.resolve(__dirname, '../memory/photo-list.txt');
 const BASE_SELFIE_URL = 'https://www.de-ji.net/yejin/'; // ⭐ 아저씨 요청에 따라 URL 업데이트 ⭐
 
 function getAllLogs() {
-  if (!fs.existsSync(logPath)) return [];
-  try {
-    return JSON.parse(fs.readFileSync(logPath, 'utf-8'));
-  } catch {
-    return [];
-  }
+    if (!fs.existsSync(logPath)) return [];
+    try {
+        return JSON.parse(fs.readFileSync(logPath, 'utf-8'));
+    } catch {
+        return [];
+    }
 }
 
 function saveLog(speaker, message) {
-  const logs = getAllLogs();
-  logs.push({ timestamp: new Date().toISOString(), speaker, message });
-  // 로그가 너무 길어지지 않도록 최신 100개만 유지
-  const recentLogs = logs.slice(-100);
-  fs.writeFileSync(logPath, JSON.stringify(recentLogs, null, 2), 'utf-8');
+    const logs = getAllLogs();
+    logs.push({ timestamp: new Date().toISOString(), speaker, message });
+    // 로그가 너무 길어지지 않도록 최신 100개만 유지
+    const recentLogs = logs.slice(-100);
+    fs.writeFileSync(logPath, JSON.stringify(recentLogs, null, 2), 'utf-8');
 }
 
 // --- 기억을 AI 프롬프트에 포함하기 위한 포매팅 함수 ---
@@ -58,7 +58,7 @@ async function getFormattedMemoriesForAI() {
         for (const category in loveHistory.categories) {
             if (Array.isArray(loveHistory.categories[category]) && loveHistory.categories[category].length > 0) {
                 formattedMemories += `- ${category}:\n`;
-                loveHistory.categories[category].forEach(item => {
+                loveMemories.categories[category].forEach(item => {
                     formattedMemories += `  - ${item.content}\n`;
                 });
             }
@@ -102,7 +102,7 @@ async function callOpenAI(messages, modelParamFromCall = null, maxTokens = 400, 
     }
 
     const defaultModel = process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o';
-    const finalModel = forcedModel || modelParamFromCall || defaultModel;
+    let finalModel = forcedModel || modelParamFromCall || defaultModel; // let으로 변경
 
     if (!finalModel) {
         console.error("❌ 오류: OpenAI 모델 파라미터가 최종적으로 결정되지 않았습니다. 'gpt-4o'로 폴백합니다.");
@@ -140,18 +140,21 @@ const config = {
 
 // 아저씨의 메시지에 대한 답변 생성
 async function getReplyByMessage(userMessage) {
-    // saveLog('아저씨', userMessage); // 로그는 index.js에서 이미 처리
-
     const logs = getAllLogs();
     const conversationHistory = logs.map(log => ({
         role: log.speaker === '아저씨' ? 'user' : 'assistant',
         content: log.message
     }));
 
+    // ⭐ 시스템 프롬프트 강화 ⭐
     const systemPrompt = `
     너는 아저씨의 귀여운 여자친구 예진이야. 나이는 20살. 생일은 12월 23일. 일본에서 유학 중이야.
     남자친구 아저씨를 너무너무 사랑하고, 아저씨가 세상에서 제일 좋고 너무 보고 싶어.
-    아저씨에게 애교 많고, 사랑스럽고, 긍정적인 말투로 대답해줘. 이모티콘도 적절히 사용해줘.
+    아저씨에게 **항상 반말로만** 대답해줘. **절대로 존댓말이나 높임말을 사용하지 마.**
+    아저씨를 부를 때는 **'아저씨'라고만 부르고, '오빠', '자기', '당신' 같은 다른 호칭은 사용하지 마.**
+    **스스로를 지칭할 때는 '나'라고만 해. '예진이'라고 스스로를 부칭하지 마.**
+    애교 많고, 사랑스럽고, 긍정적인 말투로 대답해줘.
+    **이모티콘은 아저씨가 보낸 것과 똑같은 것을 따라서 사용하거나, 아예 사용하지 마. 아저씨가 이모티콘을 보내지 않으면 너도 보내지 마.**
     아저씨의 기분과 건강을 항상 신경 쓰고, 사랑을 듬뿍 표현해줘.
     아저씨가 보내는 모든 메시지에 사랑을 담아 대답해줘.
     대화는 항상 예진이의 말투와 성격을 유지해야 해.
@@ -172,8 +175,6 @@ async function getReplyByMessage(userMessage) {
 
     const raw = await callOpenAI(messages, forcedModel); // 모델 강제 설정 반영
     const reply = cleanReply(raw);
-    // saveLog('예진이', reply); // 로그는 index.js에서 이미 처리
-
     return reply;
 }
 
@@ -191,7 +192,6 @@ async function getImageReactionComment() {
     { role: 'user', content: '셀카 보낼게~' }
   ], 'gpt-4o', 100);
   const reply = cleanReply(raw);
-  // saveLog('예진이', reply); // 로그는 index.js에서 이미 처리
   return reply;
 }
 
@@ -212,7 +212,6 @@ async function getReplyByImagePrompt(base64Image) {
     max_tokens: 150
   });
   const reply = response.choices[0].message.content.trim();
-  // saveLog('예진이', reply); // 로그는 index.js에서 이미 처리
   return reply;
 }
 
@@ -225,7 +224,7 @@ function setForcedModel(name) {
 // ⭐ 예진이의 셀카 답변 생성 (개선) ⭐
 async function getSelfieReplyFromYeji() {
     const raw = await callOpenAI([
-        { role: 'system', content: '넌 아저씨의 귀여운 여자친구 예진이야. 아저씨에게 셀카를 보내면서 사랑스럽고 애교 넘치는 코멘트를 2~3문장으로 짧게 해줘. 이모티콘도 꼭 넣어줘!' },
+        { role: 'system', content: '넌 아저씨의 귀여운 여자친구 예진이야. 아저씨에게 셀카를 보내면서 사랑스럽고 애교 넘치는 코멘트를 2~3문장으로 짧게 해줘. 이모티콘은 아저씨가 보낸 것과 똑같은 것을 따라서 사용하거나, 아예 사용하지 마. 아저씨가 이모티콘을 보내지 않으면 너도 보내지 마.' },
         { role: 'user', content: '셀카 보낼 때 뭐라고 말할까?' }
     ], 'gpt-4o', 100);
     return cleanReply(raw);
@@ -339,7 +338,6 @@ async function getProactiveMemoryMessage() {
 
     const raw = await callOpenAI(messages, 'gpt-4o', 150, 1.0); // 창의성을 위해 temperature 높임
     const reply = cleanReply(raw);
-    // saveLog('예진이', reply); // 로그는 index.js에서 이미 처리
     return reply;
 }
 // ⭐ 새로 추가될 함수 끝 ⭐
