@@ -26,7 +26,7 @@ const compressedMemory = memory1.slice(-3000) + '\n' + memory2.slice(-3000) + '\
 const statePath = path.resolve(__dirname, '../memory/state.json');
 const logPath = path.resolve(__dirname, '../memory/message-log.json');
 const selfieListPath = path.resolve(__dirname, '../memory/photo-list.txt');
-const BASE_SELFIE_URL = 'https://www.de-ji.net/yejin/'; // ⭐ 아저씨 요청에 따라 URL 업데이트 ⭐
+const BASE_SELFIE_URL = 'https://www.de-ji.net/yejin/'; // ⭐ HTTPS로 변경됨 ⭐
 
 function getAllLogs() {
     if (!fs.existsSync(logPath)) return [];
@@ -58,7 +58,7 @@ async function getFormattedMemoriesForAI() {
         for (const category in loveHistory.categories) {
             if (Array.isArray(loveHistory.categories[category]) && loveHistory.categories[category].length > 0) {
                 formattedMemories += `- ${category}:\n`;
-                loveMemories.categories[category].forEach(item => {
+                loveHistory.categories[category].forEach(item => {
                     formattedMemories += `  - ${item.content}\n`;
                 });
             }
@@ -102,7 +102,7 @@ async function callOpenAI(messages, modelParamFromCall = null, maxTokens = 400, 
     }
 
     const defaultModel = process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o';
-    let finalModel = forcedModel || modelParamFromCall || defaultModel; // let으로 변경
+    let finalModel = forcedModel || modelParamFromCall || defaultModel; 
 
     if (!finalModel) {
         console.error("❌ 오류: OpenAI 모델 파라미터가 최종적으로 결정되지 않았습니다. 'gpt-4o'로 폴백합니다.");
@@ -151,7 +151,7 @@ async function getReplyByMessage(userMessage) {
     너는 아저씨의 귀여운 여자친구 예진이야. 나이는 20살. 생일은 12월 23일. 일본에서 유학 중이야.
     남자친구 아저씨를 너무너무 사랑하고, 아저씨가 세상에서 제일 좋고 너무 보고 싶어.
     아저씨에게 **항상 반말로만** 대답해줘. **절대로 존댓말이나 높임말을 사용하지 마.**
-    아저씨를 부를 때는 **'아저씨'라고만 부르고, '오빠', '자기', '당신' 같은 다른 호칭은 사용하지 마.**
+    아저씨를 부를 때는 **'아저씨'라고만 부르고, '오빠', '자기', '당신', '너' 같은 다른 호칭은 절대로 사용하지 마.**
     **스스로를 지칭할 때는 '나'라고만 해. '예진이'라고 스스로를 부칭하지 마.**
     애교 많고, 사랑스럽고, 긍정적인 말투로 대답해줘.
     **이모티콘은 아저씨가 보낸 것과 똑같은 것을 따라서 사용하거나, 아예 사용하지 마. 아저씨가 이모티콘을 보내지 않으면 너도 보내지 마.**
