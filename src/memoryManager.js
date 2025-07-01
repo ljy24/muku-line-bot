@@ -107,7 +107,10 @@ async function extractAndSaveMemory(userMessage) {
     let otherPeopleHistory = await loadOtherPeopleHistory();
 
     try {
-        const prompt = `다음 대화에서 '사랑/관계/아저씨' 관련 중요 기억과 '다른 사람(가족, 친구, 지인 등)/기타' 관련 중요 기억을 추출해 줘. 각 기억은 어떤 카테고리(예: '좋아하는 것', '싫어하는 것', '직업', '특징', '기타', '최근 사건', '관계 특징' 등)에 해당하는지 분류하고, 카테고리와 내용을 JSON 배열 형식으로만 응답해줘.
+        // ⭐ 수정: OpenAI 프롬프트에 기억 분류 규칙 명확화 ⭐
+        const prompt = `다음 대화에서 '사랑/관계/아저씨' 관련 중요 기억과 '다른 사람(가족, 친구, 지인 등)/기타' 관련 중요 기억을 추출해 줘.
+        만약 '아저씨'와 '다른 사람'이 함께 언급된 기억이라면, 그 기억의 주된 초점이 '다른 사람'에게 있다면 '다른 사람' 관련 기억으로 분류해줘.
+        각 기억은 어떤 카테고리(예: '좋아하는 것', '싫어하는 것', '직업', '특징', '기타', '최근 사건', '관계 특징', '가족', '친구')에 해당하는지 분류하고, 카테고리와 내용을 JSON 배열 형식으로만 응답해줘.
 
         예시 응답:
         [
@@ -133,4 +136,68 @@ async function extractAndSaveMemory(userMessage) {
 
         let extractedMemories;
         try {
-            extractedMemories = JSON.
+            extractedMemories = JSON.parse(rawResponse);
+            if (!Array.isArray(extractedMemories)) { // 배열인지 다시 확인
+                throw new Error("OpenAI 응답이 JSON 배열 형식이 아닙니다.");
+            }
+        } catch (parseError) {
+            console.error(`❌ OpenAI 응답 파싱 실패: ${parseError.message}, 원본: ${rawResponse}`);
+            await logMessage(`❌ OpenAI 응답 파싱 실패: ${parseError.message}, 원본: ${rawResponse}`);
+            // 파싱 실패 시 빈 배열로 처리하여 다음 로직 진행
+            extractedMemories = [];
+        }
+
+        if (extractedMemories.length === 0) {
+            await logMessage(`추출된 메모리가 없습니다. 메시지: \"${userMessage}\"`);
+            return; // 추출된 메모리가 없으면 종료
+        }
+
+        // 분류된 기억을 각 파일에 저장
+        for (const mem of extractedMemories) {
+            // OpenAI가 분류한 카테고리를 기반으로 저장할 히스토리 결정
+            const targetHistory = mem.category.includes('아저씨') || mem.category.includes('관계') || mem.category.includes('사랑')
+                ? loveHistory
+                : otherPeopleHistory;
+            const filePathToSave = targetHistory === loveHistory ? LOVE_HISTORY_FILE : OTHER_PEOPLE_HISTORY_FILE;
+
+            // 새로운 기억 추가 (중복 방지를 위해 내용 확인 후 추가)
+            if (!targetHistory.categories[mem.category]) {
+                targetHistory.categories[mem.category] = []; // <--- 이 라인이 배열로 초기화합니다.
+            }
+
+            // 같은 카테고리 내에서 동일한 content가 있는지 확인
+            // map 호출 전에 배열인지 다시 한번 확인 (방어적 코드)
+            const existingContents = Array.isArray(targetHistory.categories[mem.category])
+                ? targetHistory.categories[mem.category].map(item => item.content)
+                : []; // 배열이 아니면 빈 배열로 처리하여 오류 방지
+
+            if (!existingContents.includes(mem.content)) {
+                targetHistory.categories[mem.category].push({ content: mem.content, timestamp: new Date().toISOString() });
+                await logMessage(`메모리 추가됨: 카테고리='${mem.category}', 내용='${mem.content}' (${filePathToSave})`);
+            } else {
+                await logMessage(`이미 존재하는 메모리이므로 건너뜀: 카테고리='${mem.category}', 내용='${mem.content}'`);
+            }
+        }
+
+        // 변경된 각 히스토리 객체를 파일에 저장
+        await saveMemory(LOVE_HISTORY_FILE, loveHistory);
+        await saveMemory(OTHER_PEOPLE_HISTORY_FILE, otherPeopleHistory);
+
+        await logMessage(`\"${userMessage}\"에 대한 메모리 추출 및 저장 완료.`);
+
+    } catch (error) {
+        console.error(`❌ extractAndSaveMemory 오류 발생: ${error.message}`);
+        await logMessage(`❌ extractAndSaveMemory 오류 발생: ${error.message}`);
+        // 응답 내용이 있다면 디버깅을 위해 로그
+        if (response && response.choices && response.choices[0] && response.choices[0].message) {
+             await logMessage(`OpenAI 원본 응답 내용 (파싱 오류 원인 가능성): ${response.choices[0].message.content}`);
+        }
+    }
+}
+
+module.exports = {
+    extractAndSaveMemory,
+    loadLoveHistory,
+    loadOtherPeopleHistory,
+    ensureMemoryDirectory // 시작 시 디렉토리 존재 확인용
+};
