@@ -179,17 +179,29 @@ async function getReplyByMessage(msg) {
 
       if (loveHistory && loveHistory.categories) {
           for (const category in loveHistory.categories) {
-              const contents = loveHistory.categories[category].map(item => item.content).join(', ');
-              if (contents) {
-                  dynamicMemoriesPrompt += `아저씨 관련 기억 (${category}): ${contents}\n`;
+              // ⭐ 수정: categories[category]가 배열인지 확인하는 안전성 검사 추가 ⭐
+              if (Array.isArray(loveHistory.categories[category])) {
+                  const contents = loveHistory.categories[category].map(item => item.content).join(', ');
+                  if (contents) {
+                      dynamicMemoriesPrompt += `아저씨 관련 기억 (${category}): ${contents}\n`;
+                  }
+              } else {
+                  // 배열이 아닐 경우 경고 로그
+                  console.warn(`⚠️ 메모리 로드 경고: loveHistory.categories['${category}']가 배열이 아님. 타입: ${typeof loveHistory.categories[category]}`);
               }
           }
       }
       if (otherPeopleHistory && otherPeopleHistory.categories) {
           for (const category in otherPeopleHistory.categories) {
-              const contents = otherPeopleHistory.categories[category].map(item => item.content).join(', ');
-              if (contents) {
-                  dynamicMemoriesPrompt += `다른 사람 관련 기억 (${category}): ${contents}\n`;
+              // ⭐ 수정: categories[category]가 배열인지 확인하는 안전성 검사 추가 ⭐
+              if (Array.isArray(otherPeopleHistory.categories[category])) {
+                  const contents = otherPeopleHistory.categories[category].map(item => item.content).join(', ');
+                  if (contents) {
+                      dynamicMemoriesPrompt += `다른 사람 관련 기억 (${category}): ${contents}\n`;
+                  }
+              } else {
+                  // 배열이 아닐 경우 경고 로그
+                  console.warn(`⚠️ 메모리 로드 경고: otherPeopleHistory.categories['${category}']가 배열이 아님. 타입: ${typeof otherPeopleHistory.categories[category]}`);
               }
           }
       }
@@ -202,7 +214,8 @@ async function getReplyByMessage(msg) {
   }
 
   const prompt = [
-    { role: 'system', content: `${memoryBlock}\n${dynamicMemoriesPrompt}${logs}\n넌 지금 예진이야. 예진이처럼 말해.` }, // 동적 기억 추가
+    // ⭐ 수정: 시스템 프롬프트에 아저씨 호칭 명시 지시 추가 ⭐
+    { role: 'system', content: `${memoryBlock}\n${dynamicMemoriesPrompt}${logs}\n넌 지금 예진이야. 예진이처럼 말해. 아저씨를 부를 때는 항상 '아저씨'라고 불러줘.` },
     { role: 'user', content: msg }
   ];
   const raw = await callOpenAI(prompt, 'gpt-4o');
