@@ -150,53 +150,65 @@ cron.schedule('0 10-19 * * *', async () => {
 // 이 두 가지는 랜덤성을 높이기 위해 '시간 범위' 내에서만 실행되도록 변경하고, 각각의 빈도를 조절합니다.
 // 매 시 정각에 체크하고, 정해진 확률로 메시지를 보냅니다.
 
+let bootTime = Date.now(); // 서버 부팅 시간 저장
+let lastMoodMessage = ''; // 마지막 감성 메시지 내용
+let lastMoodMessageTime = 0; // 마지막 감성 메시지 전송 시간
+
 const sendScheduledMessage = async (type) => {
     const now = moment().tz('Asia/Tokyo');
-    // 새벽 2시까지 (0시, 1시, 2시 포함) -> 0,1,2, 10-23
-    // 예: 00시부터 02시, 그리고 10시부터 23시까지
-    const validHours = [0, 1, 2, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]; 
+    const currentTime = Date.now();
 
-    if (validHours.includes(now.hour())) {
-        if (type === 'selfie') {
-            // 하루 세번: 약 24시간 / 3번 = 8시간 간격.
-            // 10시~2시 (다음날) 17시간 동안 3번이면 5.6시간에 한번 꼴.
-            // 매시간 17시간/3번 = 5.6 -> 매시간 약 1/5 확률 (20%)
-            if (Math.random() < 0.20) { // 20% 확률로 17시간 * 0.2 = 3.4번 (하루 3번 이상)
-                try {
-                    const BASE_URL = 'https://www.de-ji.net/yejin/';
-                    const START_NUM = 1;
-                    const END_NUM = 1186;
-                    const randomIndex = Math.floor(Math.random() * (END_NUM - START_NUM + 1)) + START_NUM;
-                    const fileName = String(randomIndex).padStart(6, '0') + '.jpg'; 
-                    const imageUrl = BASE_URL + fileName;
-                    const comment = await getSelfieReplyFromYeji(); // 셀카 코멘트 생성
-                    await client.pushMessage(userId, [
-                        { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl },
-                        { type: 'text', text: comment || '히히 셀카야~' }
-                    ]);
-                    console.log(`[Scheduler] 랜덤 셀카 전송 성공: ${imageUrl}`);
-                    saveLog('예진이', comment || '히히 셀카야~');
-                } catch (error) {
-                    console.error('❌ [Scheduler Error] 랜덤 셀카 전송 실패:', error);
-                }
+    // 🚫 부팅 후 3분 동안 감성/셀카 메시지 금지
+    if (currentTime - bootTime < 3 * 60 * 1000) {
+        console.log('[Scheduler] 서버 부팅 직후 3분 이내 → 자동 메시지 전송 스킵');
+        return;
+    }
+
+    // 유효 시간대: 새벽 0~2시 + 오전 10시~23시
+    const validHours = [0, 1, 2, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]; 
+    if (!validHours.includes(now.hour())) return;
+
+    if (type === 'selfie') {
+        if (Math.random() < 0.20) { // 20% 확률
+            try {
+                const BASE_URL = 'https://www.de-ji.net/yejin/';
+                const START_NUM = 1;
+                const END_NUM = 1186;
+                const randomIndex = Math.floor(Math.random() * (END_NUM - START_NUM + 1)) + START_NUM;
+                const fileName = String(randomIndex).padStart(6, '0') + '.jpg'; 
+                const imageUrl = BASE_URL + fileName;
+                const comment = await getSelfieReplyFromYeji();
+                await client.pushMessage(userId, [
+                    { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl },
+                    { type: 'text', text: comment || '히히 셀카야~' }
+                ]);
+                console.log(`[Scheduler] 랜덤 셀카 전송 성공: ${imageUrl}`);
+                saveLog('예진이', comment || '히히 셀카야~');
+            } catch (error) {
+                console.error('❌ [Scheduler Error] 랜덤 셀카 전송 실패:', error);
             }
-        } else if (type === 'mood_message') {
-            // 하루 네번: 약 24시간 / 4번 = 6시간 간격.
-            // 17시간 동안 4번이면 4.25시간에 한번 꼴.
-            // 매시간 17시간/4번 = 4.25 -> 매시간 약 1/4 확률 (25%)
-            if (Math.random() < 1.3) { // 25% 확률로 17시간 * 0.25 = 4.25번 (하루 4번 이상)
-                try {
-                    const proactiveMessage = await getProactiveMemoryMessage(); // 감성 메시지 생성
-                    if (proactiveMessage) {
-                        await client.pushMessage(userId, { type: 'text', text: proactiveMessage });
-                        console.log(`[Scheduler] 감성 메시지 전송 성공: ${proactiveMessage}`);
-                        saveLog('예진이', proactiveMessage);
-                    } else {
-                        console.log('[Scheduler] 생성된 감성 메시지가 없습니다.');
-                    }
-                } catch (error) {
-                    console.error('❌ [Scheduler Error] 감성 메시지 전송 실패:', error);
+        }
+    } else if (type === 'mood_message') {
+        if (Math.random() < 0.25) { // 25% 확률
+            try {
+                const proactiveMessage = await getProactiveMemoryMessage();
+                const now = Date.now();
+
+                if (
+                    proactiveMessage &&
+                    proactiveMessage !== lastMoodMessage &&
+                    now - lastMoodMessageTime > 60 * 1000 // 1분 이내 중복 방지
+                ) {
+                    await client.pushMessage(userId, { type: 'text', text: proactiveMessage });
+                    console.log(`[Scheduler] 감성 메시지 전송 성공: ${proactiveMessage}`);
+                    saveLog('예진이', proactiveMessage);
+                    lastMoodMessage = proactiveMessage;
+                    lastMoodMessageTime = now;
+                } else {
+                    console.log(`[Scheduler] 감성 메시지 중복 또는 너무 빠름 → 전송 스킵`);
                 }
+            } catch (error) {
+                console.error('❌ [Scheduler Error] 감성 메시지 전송 실패:', error);
             }
         }
     }
