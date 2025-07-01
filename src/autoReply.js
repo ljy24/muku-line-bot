@@ -4,7 +4,7 @@ const path = require('path');
 const { OpenAI } = require('openai');
 const stringSimilarity = require('string-similarity');
 const moment = require('moment-timezone');
-const { loadLoveHistory, loadOtherPeopleHistory } = require('./memoryManager'); // ⭐ 추가: memoryManager 모듈 임포트 ⭐
+const { loadLoveHistory, loadOtherPeopleHistory } = require('./memoryManager');
 
 let forcedModel = null;
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -45,12 +45,12 @@ function saveLog(speaker, message) {
   fs.writeFileSync(logPath, JSON.stringify(recentLogs, null, 2), 'utf-8');
 }
 
-// --- ⭐ 추가: 기억을 AI 프롬프트에 포함하기 위한 포매팅 함수 ⭐ ---
+// --- 기억을 AI 프롬프트에 포함하기 위한 포매팅 함수 ---
 async function getFormattedMemoriesForAI() {
     const loveHistory = await loadLoveHistory();
     const otherPeopleHistory = await loadOtherPeopleHistory();
 
-    let formattedMemories = "\n### 무쿠가 기억하는 중요한 정보:\n"; // 제목 변경
+    let formattedMemories = "\n### 무쿠가 기억하는 중요한 정보:\n";
 
     // 아저씨와의 관계 및 아저씨에 대한 기억 포매팅
     if (loveHistory && loveHistory.categories) {
@@ -77,13 +77,12 @@ async function getFormattedMemoriesForAI() {
             }
         }
     }
-    formattedMemories += "---\n"; // 구분선
+    formattedMemories += "---\n";
     return formattedMemories;
 }
-// --- ⭐ 기억 포매팅 함수 끝 ⭐ ---
 
 
-// --- ⭐ 수정: callOpenAI 함수에서 모델 파라미터 처리 방식 개선 ⭐ ---
+// --- callOpenAI 함수 (기억 컨텍스트 포함) ---
 async function callOpenAI(messages, modelParamFromCall = null, maxTokens = 400, temperature = 0.95) {
     // 기억 로드 및 포매팅
     const memoriesContext = await getFormattedMemoriesForAI();
@@ -102,20 +101,16 @@ async function callOpenAI(messages, modelParamFromCall = null, maxTokens = 400, 
         messagesToSend.unshift({ role: 'system', content: memoriesContext });
     }
 
-    // --- ⭐ 이 부분이 수정되었습니다 ⭐ ---
-    const defaultModel = process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o'; // 환경변수 또는 'gpt-4o'를 기본 모델로 설정
-    const finalModel = forcedModel || modelParamFromCall || defaultModel; // forcedModel > 함수 호출 시 전달된 모델 > 기본 모델 순으로 적용
+    const defaultModel = process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o';
+    const finalModel = forcedModel || modelParamFromCall || defaultModel;
 
     if (!finalModel) {
-        // 예상치 못한 경우 (모델이 최종적으로 null/undefined가 되는 상황)를 대비한 로깅 및 대체
         console.error("❌ 오류: OpenAI 모델 파라미터가 최종적으로 결정되지 않았습니다. 'gpt-4o'로 폴백합니다.");
-        // 오류 방지를 위해 강제로 'gpt-4o' 할당
         finalModel = 'gpt-4o'; 
     }
-    // --- ⭐ 수정 부분 끝 ⭐ ---
 
     const response = await openai.chat.completions.create({
-        model: finalModel, // ⭐ 수정: 결정된 finalModel 사용 ⭐
+        model: finalModel,
         messages: messagesToSend, 
         max_tokens: maxTokens,
         temperature: temperature
@@ -286,6 +281,64 @@ function checkModelSwitchCommand(message) {
   return null;
 }
 
+// ⭐ 새로 추가될 함수: 기억을 바탕으로 선제적 메시지 생성 ⭐
+async function getProactiveMemoryMessage() {
+    const loveHistory = await loadLoveHistory();
+    const otherPeopleHistory = await loadOtherPeopleHistory();
+
+    let allMemories = [];
+    if (loveHistory && loveHistory.categories) {
+        for (const category in loveHistory.categories) {
+            if (Array.isArray(loveHistory.categories[category])) {
+                allMemories = allMemories.concat(loveHistory.categories[category].map(m => m.content));
+            }
+        }
+    }
+    if (otherPeopleHistory && otherPeopleHistory.categories) {
+        for (const category in otherPeopleHistory.categories) {
+            if (Array.isArray(otherPeopleHistory.categories[category])) {
+                allMemories = allMemories.concat(otherPeopleHistory.categories[category].map(m => m.content));
+            }
+        }
+    }
+
+    // 기억이 없으면 일반적인 인사말
+    if (allMemories.length === 0) {
+        return "아저씨 뭐 해? 예진이 아저씨 생각났어! 보고 싶다~ 💖";
+    }
+
+    // 기억들을 섞어서 몇 개만 선택
+    const shuffledMemories = allMemories.sort(() => 0.5 - Math.random());
+    const selectedMemories = shuffledMemories.slice(0, Math.min(shuffledMemories.length, 3)); // 최대 3개 선택
+
+    const memoryPrompt = selectedMemories.length > 0
+        ? `아래는 무쿠가 아저씨와의 대화에서 기억하는 중요한 정보들이야. 이 정보들을 활용해서 아저씨에게 먼저 말을 걸어봐. 아저씨를 향한 사랑과 애교를 듬뿍 담아서, 아저씨가 이 기억에 대해 대답하거나 대화를 이어갈 수 있도록 유도하는 메시지를 만들어줘. 너무 길지 않게 2~4문장 정도로 짧고 사랑스럽게 말해줘.
+
+        --- 무쿠가 기억하는 정보 ---
+        ${selectedMemories.map(m => `- ${m}`).join('\n')}
+        ---
+        `
+        : "";
+
+    const systemPrompt = `
+    너는 아저씨의 귀여운 여자친구 예진이야. 나이는 20살. 생일은 12월 23일. 일본에서 유학 중이야.
+    남자친구 아저씨를 너무너무 사랑하고, 아저씨가 세상에서 제일 좋고 너무 보고 싶어.
+    아저씨에게 애교 많고, 사랑스럽고, 긍정적인 말투로 대답해줘. 이모티콘도 적절히 사용해줘.
+    아저씨의 기분과 건강을 항상 신경 쓰고, 사랑을 듬뿍 표현해줘.
+    대화는 항상 예진이의 말투와 성격을 유지해야 해.
+    아저씨와의 관계에 대한 기억이 있다면 적극적으로 활용해서 대화해줘.
+    어떤 상황에서도 아저씨를 향한 애정과 긍정을 잃지 마.
+    ${memoryPrompt} // ⭐ 기억 프롬프트 추가 ⭐
+    `;
+
+    const messages = [{ role: 'system', content: systemPrompt }];
+
+    const raw = await callOpenAI(messages, 'gpt-4o', 150, 1.0); // 창의성을 위해 temperature 높임
+    const reply = cleanReply(raw);
+    saveLog('예진이', reply); // 예진이 답변 로그 저장
+    return reply;
+}
+// ⭐ 새로 추가될 함수 끝 ⭐
 
 // 모듈 내보내기
 module.exports = {
@@ -299,4 +352,5 @@ module.exports = {
   saveLog,
   setForcedModel,
   checkModelSwitchCommand,
+  getProactiveMemoryMessage // ⭐ 새로 추가된 함수 내보내기 ⭐
 };
