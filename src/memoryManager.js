@@ -17,9 +17,7 @@ async function logMessage(message) {
     try {
         await fs.mkdir(MEMORY_DIR, { recursive: true }); // 메모리 디렉토리가 없으면 생성
         const timestamp = new Date().toISOString();
-        const logEntry = `[${timestamp}] [MemoryManager] ${message}`;
-        await fs.appendFile(BOT_LOG_FILE, logEntry + '\n');
-        console.log(logEntry); // ⭐ 추가: 콘솔에도 출력하여 Render 로그에서 보이도록 함 ⭐
+        await fs.appendFile(BOT_LOG_FILE, `[${timestamp}] [MemoryManager] ${message}\n`);
     } catch (error) {
         console.error('❌ MemoryManager 로그 작성 실패:', error);
     }
@@ -30,227 +28,167 @@ async function ensureMemoryDirectory() {
     try {
         await fs.mkdir(MEMORY_DIR, { recursive: true });
         await logMessage(`메모리 디렉토리 확인 완료: ${MEMORY_DIR}`);
+        console.log(`[MemoryManager] 메모리 디렉토리 확인 완료: ${MEMORY_DIR}`); // 콘솔에도 로그
     } catch (error) {
-        console.error(`❌ 메모리 디렉토리 생성 실패: ${error.message}`);
-        await logMessage(`❌ 메모리 디렉토리 생성 실패: ${error.message}`);
+        console.error(`❌ 메모리 디렉토리 확인 및 생성 실패: ${error.message}`);
+        console.log(`❌ 메모리 디렉토리 확인 및 생성 실패: ${error.message}`); // 콘솔에도 로그
+        await logMessage(`❌ 메모리 디렉토리 확인 및 생성 실패: ${error.message}`);
     }
 }
 
-// --- JSON 메모리 로드 함수 (제네릭) ---
+// --- 파일에서 메모리 로드 ---
 async function loadMemory(filePath) {
     try {
-        await fs.access(filePath); // 파일 존재 여부 확인
+        await ensureMemoryDirectory();
         const data = await fs.readFile(filePath, 'utf-8');
-        const parsedData = JSON.parse(data);
+        const memory = JSON.parse(data);
+        console.log(`[MemoryManager] ✅ 메모리 파일 로드 성공: ${filePath}`); // 콘솔에도 로그
         await logMessage(`✅ 메모리 파일 로드 성공: ${filePath}`);
-        // ⭐ 추가: 로드된 데이터의 주요 구조를 로그에 기록 ⭐
-        if (parsedData && parsedData.categories) {
-            const categoriesPreview = {};
-            for (const category in parsedData.categories) {
-                if (Array.isArray(parsedData.categories[category])) {
-                    categoriesPreview[category] = `Array (길이: ${parsedData.categories[category].length})`;
-                } else {
-                    categoriesPreview[category] = `Not Array (타입: ${typeof parsedData.categories[category]})`;
-                }
-            }
-            await logMessage(`➡️ 로드된 메모리 카테고리 구조 미리보기: ${JSON.stringify(categoriesPreview)}`);
-        }
-        return parsedData;
+        // 로드된 메모리의 카테고리 구조 미리보기 (간결하게)
+        const preview = Object.entries(memory.categories || {}).reduce((acc, [key, value]) => {
+            acc[key] = `Array (길이: ${value.length})`;
+            return acc;
+        }, {});
+        console.log(`[MemoryManager] ➡️ 로드된 메모리 카테고리 구조 미리보기: ${JSON.stringify(preview)}`); // 콘솔에도 로그
+        await logMessage(`➡️ 로드된 메모리 카테고리 구조 미리보기: ${JSON.stringify(preview)}`);
+        return memory;
     } catch (error) {
         if (error.code === 'ENOENT') {
-            await logMessage(`메모리 파일(${filePath})을 찾을 수 없음, 빈 구조로 초기화.`);
-            // 파일이 없을 경우 초기 구조 반환 (categories는 빈 객체)
-            return { categories: {}, lastUpdated: new Date().toISOString() };
+            const newMemory = { categories: {}, lastUpdated: new Date().toISOString() };
+            await saveMemory(filePath, newMemory); // 파일이 없으면 새로 생성
+            console.log(`[MemoryManager] ⚠️ 메모리 파일 없음, 새로 생성: ${filePath}`); // 콘솔에도 로그
+            await logMessage(`⚠️ 메모리 파일 없음, 새로 생성: ${filePath}`);
+            return newMemory;
+        } else {
+            console.error(`❌ 메모리 로드 실패: ${filePath}, 오류: ${error.message}`);
+            await logMessage(`❌ 메모리 로드 실패: ${filePath}, 오류: ${error.message}`);
+            return { categories: {}, lastUpdated: new Date().toISOString() }; // 로드 실패 시 빈 객체 반환
         }
-        console.error(`❌ ${filePath}에서 메모리 로드 실패: ${error.message}`);
-        await logMessage(`❌ ${filePath}에서 메모리 로드 실패: ${error.message}`);
-        return { categories: {}, lastUpdated: new Date().toISOString() }; // 오류 시에도 빈 구조 반환
     }
 }
 
-// --- JSON 메모리 저장 함수 (제네릭) ---
-async function saveMemory(filePath, data) {
+// --- 메모리 파일 저장 ---
+async function saveMemory(filePath, memory) {
     try {
-        await fs.mkdir(path.dirname(filePath), { recursive: true }); // 디렉토리가 없으면 생성
-        const tempPath = filePath + '.tmp'; // 임시 파일에 먼저 저장
-        await fs.writeFile(tempPath, JSON.stringify(data, null, 2), 'utf-8');
-        await fs.rename(tempPath, filePath); // 성공적으로 저장되면 원래 파일로 이름 변경
-        await logMessage(`✅ 메모리 파일 저장됨: ${filePath}`); // 기존 로그 메시지 변경
-        // ⭐ 추가: 저장된 데이터의 주요 구조를 로그에 기록 ⭐
-        if (data && data.categories) {
-            const categoriesPreview = {};
-            for (const category in data.categories) {
-                if (Array.isArray(data.categories[category])) {
-                    categoriesPreview[category] = `Array (길이: ${data.categories[category].length})`;
-                } else {
-                    categoriesPreview[category] = `Not Array (타입: ${typeof data.categories[category]})`;
-                }
-            }
-            await logMessage(`➡️ 저장된 메모리 카테고리 구조 미리보기: ${JSON.stringify(categoriesPreview)}`);
-        }
+        await ensureMemoryDirectory();
+        const data = JSON.stringify(memory, null, 2);
+        await fs.writeFile(filePath, data, 'utf-8');
+        await logMessage(`✅ 메모리 파일 저장 성공: ${filePath}`);
     } catch (error) {
-        console.error(`❌ ${filePath}에 메모리 저장 실패: ${error.message}`);
-        await logMessage(`❌ ${filePath}에 메모리 저장 실패: ${error.message}`);
+        console.error(`❌ 메모리 파일 저장 실패: ${filePath}, 오류: ${error.message}`);
+        await logMessage(`❌ 메모리 파일 저장 실패: ${filePath}, 오류: ${error.message}`);
     }
 }
 
-// --- 아저씨 관련 기억 로드 ---
-async function loadLoveHistory() {
-    return await loadMemory(LOVE_HISTORY_FILE);
-}
-
-// --- 다른 사람 관련 기억 로드 ---
-async function loadOtherPeopleHistory() {
-    return await loadMemory(OTHER_PEOPLE_HISTORY_FILE);
-}
-
-// --- OpenAI를 사용하여 메시지 분류 및 기억 추출/저장 ---
+// --- 사용자 메시지에서 기억 추출 및 저장 ---
 async function extractAndSaveMemory(userMessage) {
-    await logMessage(`메모리 추출 및 저장 시도: "${userMessage}"`);
+    let response = null;
+    try {
+        console.log(`[MemoryManager Debug] 1. 'extractAndSaveMemory' 함수 시작. 사용자 메시지: "${userMessage}"`);
 
-    // Load histories outside the main try block to ensure they are available for both success and error paths
-    let loveHistory = await loadLoveHistory();
-    let otherPeopleHistory = await loadOtherPeopleHistory();
-
-    try { // 시작: extractAndSaveMemory의 메인 try 블록
-        // OpenAI에 보낼 프롬프트: 분류와 정보 추출을 요청
-        const classificationPrompt = `다음 사용자 메시지를 분석하여 'BELOVED_RELATED' (아저씨 관련) 또는 'OTHER_PEOPLE_RELATED' (다른 사람 관련) 중 하나로 분류하세요.
-        메시지가 직접적으로 아저씨(나의 연인)의 선호도, 감정, 계획, 또는 '무쿠'와의 관계를 강화하는 정보를 포함한다면 'BELOVED_RELATED'로 분류하세요.
-        메시지가 다른 사람(친구, 가족, 동료, 유명인 등)에 대한 정보를 포함한다면 'OTHER_PEOPLE_RELATED'로 분류하세요.
-        만약 일반적인 대화 내용이거나 분류가 명확하지 않다면, 기본적으로 'BELOVED_RELATED'로 분류하세요.
-
-        분류 후, 메시지에서 중요한 키 정보(예: 사실, 선호도, 사건, 관계, 감정, 계획 등)를 추출하고 적절한 카테고리로 분류하세요.
-        카테고리는 되도록 구체적으로 (예: '취미', '직장', '가족', '친구 철수', '오늘 기분') 만들어주세요.
-
-        JSON 형식으로 출력하세요:
-        {
-          "classification": "BELOVED_RELATED" | "OTHER_PEOPLE_RELATED",
-          "extracted_memories": [
-            { "category": "카테고리명", "content": "추출된 사실 또는 세부 정보" },
-            { "category": "다른카테고리명", "content": "다른 추출된 사실" }
-          ]
-        }
-
-        예시 1 (BELOVED_RELATED):
-        사용자: "오늘 회사에서 발표 망쳤어... 너무 속상해"
-        출력:
-        {
-          "classification": "BELOVED_RELATED",
-          "extracted_memories": [
-            { "category": "아저씨 감정", "content": "회사 발표 망쳐서 속상함" }
-          ]
-        }
-
-        예시 2 (OTHER_PEOPLE_RELATED):
-        사용자: "친구 철수랑 이번 주말에 캠핑 갈 예정이야"
-        출력:
-        {
-          "classification": "OTHER_PEOPLE_RELATED",
-          "extracted_memories": [
-            { "category": "친구 철수", "content": "이번 주말 캠핑 예정" }
-          ]
-        }
-
-        예시 3 (BELOVED_RELATED):
-        사용자: "나 다음주에 제주도로 여행 가려고 하는데, 무쿠는 어디 가고 싶어?"
-        출력:
-        {
-          "classification": "BELOVED_RELATED",
-          "extracted_memories": [
-            { "category": "아저씨 계획", "content": "다음주 제주도 여행 계획" }
-          ]
-        }
-
-        예시 4 (BELOVED_RELATED - 일반 대화는 기본적으로 아저씨 관련):
-        사용자: "오늘 날씨 정말 좋다!"
-        출력:
-        {
-          "classification": "BELOVED_RELATED",
-          "extracted_memories": []
-        }
-
-        이제 다음 메시지를 분석하세요: "${userMessage}"
-        `;
-
-        const response = await openai.chat.completions.create({
-            model: "gpt-4o", // 분류 및 추출에 gpt-4o 사용
+        response = await openai.chat.completions.create({
+            model: 'gpt-4o',
             messages: [
-                { role: "system", content: classificationPrompt },
+                {
+                    role: 'system',
+                    content: `You are an AI assistant designed to extract and categorize specific memories from user messages.
+                    Analyze the user's message and identify discrete factual memories related to their relationship with "아저씨" (Uncle) or other significant people/events.
+                    Categorize each memory into one of these types: "과거 경험", "아저씨와의 관계", "관계 특징", "아저씨와의 첫 만남", "아저씨 상태", "기타".
+                    Memories about "아저씨" (Uncle) should primarily go into "아저씨와의 관계", "아저씨와의 첫 만남", "관계 특징", "아저씨 상태" or "과거 경험" (if 아저씨 is involved in the experience).
+                    Other factual memories should go into "기타".
+                    The output must be a JSON array of objects, where each object has "content" (the memory text) and "category" (the category name).
+                    Ensure the content is concise and factual. Do not include personal opinions or conversational filler.
+                    If no distinct factual memories are found, return an empty JSON array [].
+
+                    Example Output:
+                    [
+                        {"content": "무쿠의 아저씨는 2023년 8월 23일부터 헬스장을 다녔다.", "category": "아저씨 상태"},
+                        {"content": "아저씨와 무쿠는 2023년 10월 12일 플라스틱러브 컨셉 대화를 처음 했다.", "category": "아저씨와의 관계"},
+                        {"content": "무쿠는 아저씨를 위해 라인 앱을 설치했다.", "category": "관계 특징"}
+                    ]`
+                },
+                { role: 'user', content: userMessage }
             ],
-            max_tokens: 500,
-            response_format: { type: "json_object" } // JSON 형식으로 응답 요청
+            temperature: 0.1,
+            max_tokens: 500
         });
 
-        const rawContent = response.choices[0].message.content;
-        let parsedMemory;
-        try { // 내부 try 블록 시작: JSON 파싱 오류 처리
-            parsedMemory = JSON.parse(rawContent);
-        } catch (parseError) { // 내부 catch 블록
-            console.error(`❌ OpenAI 응답 JSON 파싱 실패: ${parseError.message}, 원본: ${rawContent}`);
-            await logMessage(`❌ OpenAI 응답 JSON 파싱 실패: ${parseError.message}, 원본: ${rawContent}`);
-            return; // 파싱 실패 시 함수 종료
-        } // 내부 try-catch 블록 끝
+        console.log(`[MemoryManager Debug] 2. OpenAI 응답 받음.`);
+        // console.log(`[MemoryManager Debug] OpenAI raw response: ${JSON.stringify(response, null, 2)}`); // 선택적으로 전체 응답 로그
 
-        const classification = parsedMemory.classification;
-        const extractedMemories = parsedMemory.extracted_memories || [];
+        const parsedResponse = response.choices[0].message.content;
+        console.log(`[MemoryManager Debug] 3. OpenAI 응답 내용 (파싱 전): ${parsedResponse.substring(0, Math.min(parsedResponse.length, 200))}...`); // 첫 200자 로그
 
-        let targetMemory;
-        let filePathToSave;
-
-        if (classification === 'BELOVED_RELATED') {
-            filePathToSave = LOVE_HISTORY_FILE;
-            targetMemory = loveHistory;
-            await logMessage(`'아저씨 관련'으로 분류됨.`);
-        } else if (classification === 'OTHER_PEOPLE_RELATED') {
-            filePathToSave = OTHER_PEOPLE_HISTORY_FILE;
-            targetMemory = otherPeopleHistory;
-            await logMessage(`'다른 사람 관련'으로 분류됨.`);
-        } else {
-            // 분류가 불분명하거나 예상치 못한 경우, 기본적으로 아저씨 관련으로 처리
-            filePathToSave = LOVE_HISTORY_FILE;
-            targetMemory = loveHistory;
-            await logMessage(`분류 불분명(${classification}), 기본적으로 '아저씨 관련'으로 처리됨.`);
+        let memoriesToSave;
+        try {
+            memoriesToSave = JSON.parse(parsedResponse);
+            console.log(`[MemoryManager Debug] 4. OpenAI 응답 JSON 파싱 성공.`);
+        } catch (parseError) {
+            console.error(`❌ [MemoryManager Error] JSON 파싱 오류: ${parseError.message}`);
+            console.error(parseError.stack); // 스택 트레이스 로그
+            await logMessage(`❌ JSON 파싱 오류: ${parseError.message}`);
+            await logMessage(`OpenAI 파싱 실패 응답: ${parsedResponse}`);
+            throw new Error('OpenAI 응답 JSON 파싱 실패'); // 오류를 다시 던져서 상위에서 처리
         }
 
-        // --- 메모리 저장 로직 ---
-        if (!targetMemory.categories) {
-            targetMemory.categories = {};
+        // 어떤 파일에 저장할지 결정
+        const isLoveRelated = memoriesToSave.some(mem =>
+            mem.category === '아저씨와의 관계' ||
+            mem.category === '아저씨와의 첫 만남' ||
+            mem.category === '관계 특징' ||
+            mem.category === '아저씨 상태' ||
+            mem.category === '과거 경험' // '과거 경험'이 아저씨와 관련된 경우가 많으므로 포함
+        );
+        const filePathToSave = isLoveRelated ? LOVE_HISTORY_FILE : OTHER_PEOPLE_HISTORY_FILE;
+
+        let currentMemory = await loadMemory(filePathToSave);
+        console.log(`[MemoryManager Debug] 5. 기존 메모리 파일 로드 완료: ${filePathToSave}`);
+
+        if (!currentMemory.categories) {
+            currentMemory.categories = {};
         }
 
-        for (const mem of extractedMemories) {
-            if (!targetMemory.categories[mem.category]) {
-                targetMemory.categories[mem.category] = [];
-            }
-
-            const existingContents = Array.isArray(targetMemory.categories[mem.category])
-                ? targetMemory.categories[mem.category].map(item => item.content)
-                : [];
-
-            if (!existingContents.includes(mem.content)) {
-                targetMemory.categories[mem.category].push({ content: mem.content, timestamp: new Date().toISOString() });
-                await logMessage(`메모리 추가됨: 카테고리='${mem.category}', 내용='${mem.content}' (${filePathToSave})`);
+        for (const mem of memoriesToSave) {
+            if (mem.content && mem.category) {
+                if (!currentMemory.categories[mem.category]) {
+                    currentMemory.categories[mem.category] = [];
+                }
+                const existingContents = currentMemory.categories[mem.category].map(item => item.content);
+                if (!existingContents.includes(mem.content)) {
+                    currentMemory.categories[mem.category].push({ content: mem.content, timestamp: new Date().toISOString() });
+                    await logMessage(`메모리 추가됨: 카테고리='${mem.category}', 내용='${mem.content}' (${filePathToSave})`);
+                    console.log(`[MemoryManager Debug] 메모리 추가됨: 카테고리='${mem.category}', 내용='${mem.content}'`);
+                } else {
+                    await logMessage(`이미 존재하는 메모리이므로 건너김: 카테고리='${mem.category}', 내용='${mem.content}'`);
+                    console.log(`[MemoryManager Debug] 이미 존재하는 메모리이므로 건너김: 카테고리='${mem.category}', 내용='${mem.content}'`);
+                }
             } else {
-                await logMessage(`이미 존재하는 메모리이므로 건너뜀: 카테고리='${mem.category}', 내용='${mem.content}'`);
+                console.warn(`[MemoryManager Warning] 유효하지 않은 메모리 항목: ${JSON.stringify(mem)}`);
+                await logMessage(`유효하지 않은 메모리 항목: ${JSON.stringify(mem)}`);
             }
         }
 
-        targetMemory.lastUpdated = new Date().toISOString();
-        await saveMemory(filePathToSave, targetMemory); // 분류된 파일에 저장
-        await logMessage(`"${userMessage}"에 대한 메모리 추출 및 저장 완료.`);
+        currentMemory.lastUpdated = new Date().toISOString();
+        await saveMemory(filePathToSave, currentMemory);
+        console.log(`[MemoryManager Debug] 6. 최종 메모리 파일 저장 완료: ${filePathToSave}`);
+        await logMessage(`\"${userMessage}\"에 대한 메모리 추출 및 저장 완료.`); // 최종 성공 로그
 
-    } catch (error) { // 끝: extractAndSaveMemory의 메인 try 블록에 대한 catch
-        console.error(`❌ extractAndSaveMemory 오류 발생: ${error.message}`);
-        await logMessage(`❌ extractAndSaveMemory 오류 발생: ${error.message}`);
-        // 응답 내용이 있다면 디버깅을 위해 로그
+    } catch (error) {
+        console.error(`❌ [MemoryManager Critical Error] 'extractAndSaveMemory' 함수 오류 발생: ${error.message}`);
+        console.error(error.stack); // 전체 스택 트레이스 로그 (매우 중요!)
+        await logMessage(`❌ 'extractAndSaveMemory' 함수 오류 발생: ${error.message}`);
+        await logMessage(`오류 스택: ${error.stack}`); // 파일에도 스택 트레이스 로그
         if (response && response.choices && response.choices[0] && response.choices[0].message) {
              await logMessage(`OpenAI 원본 응답 내용 (파싱 오류 원인 가능성): ${response.choices[0].message.content}`);
+             console.error(`[MemoryManager Critical Error] OpenAI 원본 응답 내용 (오류 원인 가능성): ${response.choices[0].message.content}`);
         }
-    } // extractAndSaveMemory의 메인 catch 블록 끝
-} // extractAndSaveMemory 함수 끝
+    }
+}
 
 module.exports = {
     extractAndSaveMemory,
-    loadLoveHistory,
-    loadOtherPeopleHistory,
-    ensureMemoryDirectory // 앱 시작 시 이 함수를 호출하여 디렉토리가 생성되도록 해야 합니다. (예: index.js에서)
+    loadLoveHistory: () => loadMemory(LOVE_HISTORY_FILE),
+    loadOtherPeopleHistory: () => loadMemory(OTHER_PEOPLE_HISTORY_FILE),
+    ensureMemoryDirectory,
+    BOT_LOG_FILE // 디버깅 목적으로 log 파일 경로 export
 };
