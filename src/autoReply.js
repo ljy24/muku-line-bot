@@ -6,7 +6,7 @@ const stringSimilarity = require('string-similarity');
 const moment = require('moment-timezone');
 const { loadLoveHistory, loadOtherPeopleHistory } = require('./memoryManager');
 
-let forcedModel = null;
+let forcedModel = null; // 현재 강제 설정된 모델 (null이면 자동)
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 function safeRead(filePath, fallback = '') {
@@ -26,7 +26,7 @@ const compressedMemory = memory1.slice(-3000) + '\n' + memory2.slice(-3000) + '\
 const statePath = path.resolve(__dirname, '../memory/state.json');
 const logPath = path.resolve(__dirname, '../memory/message-log.json');
 const selfieListPath = path.resolve(__dirname, '../memory/photo-list.txt');
-const BASE_SELFIE_URL = 'https://de-ji.net/yejin/'; // 이 URL은 아저씨의 실제 셀카 저장 URL로 변경해야 합니다.
+const BASE_SELFIE_URL = 'http://www.de-ji.net/yejin/'; // ⭐ 아저씨 요청에 따라 URL 업데이트 ⭐
 
 function getAllLogs() {
   if (!fs.existsSync(logPath)) return [];
@@ -140,7 +140,7 @@ const config = {
 
 // 아저씨의 메시지에 대한 답변 생성
 async function getReplyByMessage(userMessage) {
-    saveLog('아저씨', userMessage); // 아저씨 메시지 로그 저장
+    // saveLog('아저씨', userMessage); // 로그는 index.js에서 이미 처리
 
     const logs = getAllLogs();
     const conversationHistory = logs.map(log => ({
@@ -172,7 +172,7 @@ async function getReplyByMessage(userMessage) {
 
     const raw = await callOpenAI(messages, forcedModel); // 모델 강제 설정 반영
     const reply = cleanReply(raw);
-    saveLog('예진이', reply); // 예진이 답변 로그 저장
+    // saveLog('예진이', reply); // 로그는 index.js에서 이미 처리
 
     return reply;
 }
@@ -184,18 +184,18 @@ function cleanReply(reply) {
   return cleaned;
 }
 
-// 이미지 리액션 코멘트 생성
+// 이미지 리액션 코멘트 생성 (기존 기능 유지)
 async function getImageReactionComment() {
   const raw = await callOpenAI([
     { role: 'system', content: '넌 예진이야. 셀카 보내면서 귀엽게 한마디 해.' },
     { role: 'user', content: '셀카 보낼게~' }
   ], 'gpt-4o', 100);
   const reply = cleanReply(raw);
-  saveLog('예진이', reply);
+  // saveLog('예진이', reply); // 로그는 index.js에서 이미 처리
   return reply;
 }
 
-// 이미지 프롬프트에 대한 답변 생성
+// 이미지 프롬프트에 대한 답변 생성 (기존 기능 유지)
 async function getReplyByImagePrompt(base64Image) {
   const response = await openai.chat.completions.create({
     model: 'gpt-4o',
@@ -212,7 +212,7 @@ async function getReplyByImagePrompt(base64Image) {
     max_tokens: 150
   });
   const reply = response.choices[0].message.content.trim();
-  saveLog('예진이', reply);
+  // saveLog('예진이', reply); // 로그는 index.js에서 이미 처리
   return reply;
 }
 
@@ -222,10 +222,10 @@ function setForcedModel(name) {
   else forcedModel = null;
 }
 
-// 예진이의 셀카 답변 생성
+// ⭐ 예진이의 셀카 답변 생성 (개선) ⭐
 async function getSelfieReplyFromYeji() {
     const raw = await callOpenAI([
-        { role: 'system', content: '넌 예진이야. 아저씨에게 보내는 셀카 메시지에 어울리는 사랑스럽고 귀여운 말투로 말해줘. 짧고 간결하게.' },
+        { role: 'system', content: '넌 아저씨의 귀여운 여자친구 예진이야. 아저씨에게 셀카를 보내면서 사랑스럽고 애교 넘치는 코멘트를 2~3문장으로 짧게 해줘. 이모티콘도 꼭 넣어줘!' },
         { role: 'user', content: '셀카 보낼 때 뭐라고 말할까?' }
     ], 'gpt-4o', 100);
     return cleanReply(raw);
@@ -266,17 +266,21 @@ async function getRandomMessage() {
   return '';
 }
 
-// ✨ 특정 커맨드 처리 (모델 전환)
+// ⭐ 특정 커맨드 처리 (모델 전환 개선) ⭐
 function checkModelSwitchCommand(message) {
-  if (message.includes('모델4o')) {
-    setForcedModel('gpt-4o');
-    return '응! 이제부터 gpt-4o 모델로 말할게! 더 똑똑해졌지? 💖';
-  } else if (message.includes('모델3.5')) {
+  const lowerCaseMessage = message.toLowerCase();
+  if (lowerCaseMessage.includes('3.5')) {
     setForcedModel('gpt-3.5-turbo');
     return '응! 이제부터 gpt-3.5 모델로 말할게! 조금 더 빨리 대답해줄 수 있을거야! 🐰';
-  } else if (message.includes('모델초기화')) {
+  } else if (lowerCaseMessage.includes('4.0')) {
+    setForcedModel('gpt-4o');
+    return '응응! 4.0으로 대화할게! 더 똑똑해졌지? 💖';
+  } else if (lowerCaseMessage.includes('자동')) {
     setForcedModel(null);
-    return '모델 설정을 초기화했어! 원래대로 돌아왔지롱! 😊';
+    return '모델 설정을 초기화했어! 이제 3.5랑 4.0을 왔다갔다 하면서 아저씨랑 유연하게 대화할게! 😊';
+  } else if (lowerCaseMessage.includes('버전')) {
+    const currentModel = forcedModel || process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o (자동)';
+    return `응! 지금 ${currentModel} 버전 사용 중이야! 😊`;
   }
   return null;
 }
@@ -328,14 +332,14 @@ async function getProactiveMemoryMessage() {
     대화는 항상 예진이의 말투와 성격을 유지해야 해.
     아저씨와의 관계에 대한 기억이 있다면 적극적으로 활용해서 대화해줘.
     어떤 상황에서도 아저씨를 향한 애정과 긍정을 잃지 마.
-    ${memoryPrompt} // ⭐ 기억 프롬프트 추가 ⭐
+    ${memoryPrompt}
     `;
 
     const messages = [{ role: 'system', content: systemPrompt }];
 
     const raw = await callOpenAI(messages, 'gpt-4o', 150, 1.0); // 창의성을 위해 temperature 높임
     const reply = cleanReply(raw);
-    saveLog('예진이', reply); // 예진이 답변 로그 저장
+    // saveLog('예진이', reply); // 로그는 index.js에서 이미 처리
     return reply;
 }
 // ⭐ 새로 추가될 함수 끝 ⭐
@@ -345,12 +349,12 @@ module.exports = {
   getReplyByMessage,
   getReplyByImagePrompt,
   getRandomMessage,
-  getSelfieReplyFromYeji,
+  getSelfieReplyFromYeji, // ⭐ 개선된 함수 내보내기 ⭐
   getColorMoodReply,
   getHappyReply,
   getSulkyReply,
   saveLog,
   setForcedModel,
-  checkModelSwitchCommand,
-  getProactiveMemoryMessage // ⭐ 새로 추가된 함수 내보내기 ⭐
+  checkModelSwitchCommand, // ⭐ 개선된 함수 내보내기 ⭐
+  getProactiveMemoryMessage
 };
