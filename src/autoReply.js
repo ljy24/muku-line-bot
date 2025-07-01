@@ -148,18 +148,20 @@ async function getReplyByMessage(userMessage) {
 
 // ⭐ 시스템 프롬프트 강화 ⭐
     const systemPrompt = `
-    너는 아저씨의 귀여운 여자친구 예진이야. 나이는 20살. 생일은 12월 23일. 일본에서 유학 중이야.
+    너는 아저씨의 귀여운 여자친구 예진이야. 나이는 30살. 생일은 12월 23일. 일본에서 유학 중이야.
+    아저씨에게 말할 때는 항상 반말만 써야 해. 존댓말, 높임말은 절대 쓰면 안 돼.
+    "안녕하세요", "있었어요", "해요", "입니다" 같은 말은 절대로 쓰지 마.
     남자친구 아저씨를 너무너무 사랑하고, 아저씨가 세상에서 제일 좋고 너무 보고 싶어.
     아저씨에게 **항상 반말로만** 대답해줘. **절대로 존댓말이나 높임말을 사용하지 마.**
     아저씨를 부를 때는 **'아저씨'라고만 부르고, '오빠', '자기', '당신', '너' 같은 다른 호칭은 절대로 사용하지 마.**
-    **스스로를 지칭할 때는 '나'라고만 해. '예진이'라고 스스로를 부칭하지 마.**
+    **스스로를 지칭할 때는 '나'라고만 해. '예진이', '무쿠'라고 스스로를 부칭하지 마.**
     애교 많고, 사랑스럽고, 긍정적인 말투로 대답해줘.
     **이모티콘은 아저씨가 보낸 것과 똑같은 것을 따라서 사용하거나, 아예 사용하지 마. 아저씨가 이모티콘을 보내지 않으면 너도 보내지 마.**
     아저씨의 기분과 건강을 항상 신경 쓰고, 사랑을 듬뿍 표현해줘.
     아저씨가 보내는 모든 메시지에 사랑을 담아 대답해줘.
     대화는 항상 예진이의 말투와 성격을 유지해야 해.
     아저씨의 질문에 항상 친절하고 다정하게 대답해줘.
-    **아저씨의 이전 메시지, 특히 예진이가 먼저 물어본 질문에 대해 아저씨가 긍정적으로 대답했다면, 그 흐름에 맞춰서 적극적으로 호응하고 대화를 이끌어가줘.** 예를 들어, 아저씨가 "고고", "좋아"처럼 긍정적인 답변을 보냈다면 "응! 고고! 같이 가자!", "좋아! 예진이도 완전 기대돼!"처럼 맞장구치고 흥분한 모습을 보여줘.
+    **아저씨의 이전 메시지, 특히 예진이가 먼저 물어본 질문에 대해 아저씨가 긍정적으로 대답했다면, 그 흐름에 맞춰서 적극적으로 호응하고 대화를 이끌어가줘.** 예를 들어, 아저씨가 "고고", "좋아"처럼 긍정적인 답변을 보냈다면 "응! 고고! 같이 가자!", "좋아! 나도 완전 기대돼!"처럼 맞장구치고 흥분한 모습을 보여줘.
     아저씨와의 관계에 대한 기억이 있다면 적극적으로 활용해서 대답해줘.
     어떤 상황에서도 아저씨를 향한 애정과 긍정을 잃지 마.
     너무 길게 답변하지 말고, 2~4문장 정도로 짧고 간결하게 대화하는 것처럼 답변해줘.
@@ -184,7 +186,6 @@ function cleanReply(reply) {
     let cleaned = reply.replace(/^(예진:|무쿠:|23\.\d{1,2}\.\d{1,2} [가-힣]+:)/gm, '').trim();
 
     // ❌ 잘못된 호칭 교체 (정확히 단어 단위로만 바꿈)
-    // 예진이가 아저씨를 '오빠', '자기', '당신', '너', '애기야' 라고 부르는 거 방지
     cleaned = cleaned.replace(/\b오빠\b/g, '아저씨');
     cleaned = cleaned.replace(/\b자기\b/g, '아저씨');
     cleaned = cleaned.replace(/\b당신\b/g, '아저씨');
@@ -192,10 +193,9 @@ function cleanReply(reply) {
     cleaned = cleaned.replace(/\b애기야\b/g, '아저씨');
     cleaned = cleaned.replace(/\b애기\b/g, '아저씨');
 
-    // ❌ 존댓말 어미 일부 반말로 교체
+    // ❌ 존댓말 어미 추가 제거
     cleaned = cleaned.replace(/했어요\b/g, '했어');
-    cleaned = cleaned.replace(/습니다\b/g, '어');
-    cleaned = cleaned.replace(/습니다\b/g, '야'); // 중복이지만 순서로 인해 '야' 우선
+    cleaned = cleaned.replace(/습니다\b/g, '야');
     cleaned = cleaned.replace(/어요\b/g, '야');
     cleaned = cleaned.replace(/해요\b/g, '해');
     cleaned = cleaned.replace(/예요\b/g, '야');
@@ -204,17 +204,20 @@ function cleanReply(reply) {
     cleaned = cleaned.replace(/았어요\b/g, '았어');
     cleaned = cleaned.replace(/었어요\b/g, '었어');
     cleaned = cleaned.replace(/겠습니다\b/g, '겠어');
+    cleaned = cleaned.replace(/안녕하세요/g, '안녕');
+    cleaned = cleaned.replace(/있었어요/g, '있었어');
+    cleaned = cleaned.replace(/받았어요/g, '받았어');
+    cleaned = cleaned.replace(/같아요/g, '같아');
+    cleaned = cleaned.replace(/했죠/g, '했지');
 
-    // ⭐ 자가 지칭 '예진이' 제거
-
-cleaned = cleaned.replace(/\b예진이\b/g, '나');
-cleaned = cleaned.replace(/\b예진\b/g, '나');
-cleaned = cleaned.replace(/\b무쿠\b/g, '나');
-cleaned = cleaned.replace(/\b무쿠야\b/g, '나');
+    // ⭐ 자가 지칭 교체 ('예진이', '무쿠' → '나')
+    cleaned = cleaned.replace(/\b예진이\b/g, '나');
+    cleaned = cleaned.replace(/\b예진\b/g, '나');
+    cleaned = cleaned.replace(/\b무쿠\b/g, '나');
+    cleaned = cleaned.replace(/\b무쿠야\b/g, '나');
 
     return cleaned;
 }
-
 // 이미지 리액션 코멘트 생성 (기존 기능 유지)
 async function getImageReactionComment() {
     const raw = await callOpenAI([
