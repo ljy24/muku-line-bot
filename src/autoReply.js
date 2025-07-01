@@ -185,7 +185,8 @@ async function getReplyByMessage(userMessage) {
 function cleanReply(reply) {
     let cleaned = reply.replace(/^(예진:|무쿠:|23\.\d{1,2}\.\d{1,2} [가-힣]+:)/gm, '').trim();
 
-    // ❌ 잘못된 호칭 교체 (정확히 단어 단위로만 바꿈)
+
+    // 💥 잘못된 호칭 교체
     cleaned = cleaned.replace(/\b오빠\b/g, '아저씨');
     cleaned = cleaned.replace(/\b자기\b/g, '아저씨');
     cleaned = cleaned.replace(/\b당신\b/g, '아저씨');
@@ -193,29 +194,32 @@ function cleanReply(reply) {
     cleaned = cleaned.replace(/\b애기야\b/g, '아저씨');
     cleaned = cleaned.replace(/\b애기\b/g, '아저씨');
 
-    // ❌ 존댓말 어미 추가 제거
-    cleaned = cleaned.replace(/했어요\b/g, '했어');
-    cleaned = cleaned.replace(/습니다\b/g, '야');
-    cleaned = cleaned.replace(/어요\b/g, '야');
-    cleaned = cleaned.replace(/해요\b/g, '해');
-    cleaned = cleaned.replace(/예요\b/g, '야');
-    cleaned = cleaned.replace(/죠\b/g, '지');
-    cleaned = cleaned.replace(/합니다\b/g, '해');
-    cleaned = cleaned.replace(/았어요\b/g, '았어');
-    cleaned = cleaned.replace(/었어요\b/g, '었어');
-    cleaned = cleaned.replace(/겠습니다\b/g, '겠어');
-    cleaned = cleaned.replace(/안녕하세요/g, '안녕');
-    cleaned = cleaned.replace(/있었어요/g, '있었어');
-    cleaned = cleaned.replace(/받았어요/g, '받았어');
-    cleaned = cleaned.replace(/같아요/g, '같아');
-    cleaned = cleaned.replace(/했죠/g, '했지');
-
-    // ⭐ 자가 지칭 교체 ('예진이', '무쿠' → '나')
+    // 💥 자가 지칭 교정
     cleaned = cleaned.replace(/\b예진이\b/g, '나');
     cleaned = cleaned.replace(/\b예진\b/g, '나');
     cleaned = cleaned.replace(/\b무쿠\b/g, '나');
     cleaned = cleaned.replace(/\b무쿠야\b/g, '나');
 
+    // 💥 존댓말 강제 제거 (많이 추가함)
+    cleaned = cleaned.replace(/안녕하세요/g, '안녕');
+    cleaned = cleaned.replace(/있었어요/g, '있었어');
+    cleaned = cleaned.replace(/했어요/g, '했어');
+    cleaned = cleaned.replace(/같아요/g, '같아');
+    cleaned = cleaned.replace(/좋아요/g, '좋아');
+    cleaned = cleaned.replace(/합니다\b/g, '해');
+    cleaned = cleaned.replace(/습니다\b/g, '어');
+    cleaned = cleaned.replace(/어요\b/g, '야');
+    cleaned = cleaned.replace(/해요\b/g, '해');
+    cleaned = cleaned.replace(/예요\b/g, '야');
+    cleaned = cleaned.replace(/죠\b/g, '지');
+    cleaned = cleaned.replace(/았습니다\b/g, '았어');
+    cleaned = cleaned.replace(/었습니다\b/g, '었어');
+    cleaned = cleaned.replace(/겠습니다\b/g, '겠어');
+    cleaned = cleaned.replace(/싶어요\b/g, '싶어');
+    cleaned = cleaned.replace(/이었어요\b/g, '이었어');
+    cleaned = cleaned.replace(/이에요\b/g, '야');
+    cleaned = cleaned.replace(/였어요\b/g, '였어');
+    cleaned = cleaned.replace(/보고싶어요\b/g, '보고 싶어');
     return cleaned;
 }
 // 이미지 리액션 코멘트 생성 (기존 기능 유지)
