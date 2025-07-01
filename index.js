@@ -74,7 +74,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
 
           // ⭐ 셀카 요청 처리 (개선) ⭐
           if (/사진|셀카|사진줘|셀카 보여줘|사진 보여줘|selfie/i.test(text)) {
-            const BASE_URL = 'http://www.de-ji.net/yejin/'; // ⭐ 아저씨 요청에 따라 URL 업데이트 ⭐
+            const BASE_URL = 'https://www.de-ji.net/yejin/'; // ⭐ 아저씨 요청에 따라 URL 업데이트 ⭐
             const START_NUM = 1;
             const END_NUM = 1186; // ⭐ 아저씨 요청에 따라 마지막 사진 번호 설정 ⭐
 
