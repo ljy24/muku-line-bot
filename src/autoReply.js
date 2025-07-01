@@ -4,6 +4,7 @@ const path = require('path');
 const { OpenAI } = require('openai');
 const stringSimilarity = require('string-similarity');
 const moment = require('moment-timezone');
+const memoryManager = require('./memoryManager'); // ⭐ 메모리 기록 관련: memoryManager 모듈 불러오기 ⭐
 
 let forcedModel = null;
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -25,7 +26,7 @@ const compressedMemory = memory1.slice(-3000) + '\n' + memory2.slice(-3000) + '\
 const statePath = path.resolve(__dirname, '../memory/state.json');
 const logPath = path.resolve(__dirname, '../memory/message-log.json');
 const selfieListPath = path.resolve(__dirname, '../memory/photo-list.txt');
-const BASE_SELFIE_URL = 'https://de-ji.net/yejin/';
+const BASE_SELFIE_URL = 'https://de-ji.net/yejin/'; // ⭐ 아저씨가 주신 '버그 없는' 버전의 사진 URL 유지 ⭐
 
 function getAllLogs() {
   if (!fs.existsSync(logPath)) return [];
@@ -112,7 +113,7 @@ function loadHonorificUsage() {
   }
 }
 
-function saveMemory(input) {
+function saveMemory(input) { // 이 saveMemory는 state.json 관리용입니다.
   const state = loadHonorificUsage();
   fs.writeFileSync(statePath, JSON.stringify({ ...state, lastInput: input }, null, 2));
 }
@@ -142,8 +143,8 @@ async function callOpenAI(messages, model = 'gpt-3.5-turbo', max_tokens = 300) {
 
 async function getRandomMessage() {
   const now = moment().tz('Asia/Tokyo');
-  if (now.hour() === 23 && now.minute() === 0) return '약 챙겨 먹었지? 까먹지마!';
-  if (now.hour() === 23 && now.minute() >= 30) return '잘자 아저씨! 사랑해';
+  if (now.minute() === 0 && now.hour() >= 9 && now.hour() <= 18) return '약 챙겨 먹었지? 까먹지마!';
+  if (now.minute() >= 30 && now.hour() === 23) return '잘자 아저씨! 사랑해';
 
   const events = ['팀장이랑 회의 또 해야 돼', '출근길에 또 눈물났어', '야근하다가 미쳐버릴 뻔'];
   const feelings = ['진짜 조땠어', '기분 꿀꿀해', '마음이 좀 허해'];
@@ -160,10 +161,48 @@ async function getReplyByMessage(msg) {
   const versionSet = checkModelSwitchCommand(msg);
   if (versionSet) return versionSet;
 
-  const memoryBlock = `${fixedMemory}\n${compressedMemory}`;
+  saveLog('아저씨', msg);
+
+  // ⭐ 메모리 기록 관련: memoryManager를 사용하여 사용자 메시지로부터 기억 추출 및 저장 (비동기) ⭐
+  memoryManager.extractAndSaveMemory(msg).catch(error => {
+      console.error('❌ 백그라운드 메모리 추출 및 저장 실패:', error);
+  });
+
+  const memoryBlock = `${fixedMemory}\n${compressedMemory}`; // 기존의 정적 메모리 블록 유지
   const logs = getRecentLogs(2);
+
+  // ⭐ 메모리 기록 관련: memoryManager에서 동적 기억들을 불러와 프롬프트에 추가 ⭐
+  let dynamicMemoriesPrompt = "";
+  try {
+      const loveHistory = await memoryManager.loadLoveHistory();
+      const otherPeopleHistory = await memoryManager.loadOtherPeopleHistory();
+
+      if (loveHistory && loveHistory.categories) {
+          for (const category in loveHistory.categories) {
+              const contents = loveHistory.categories[category].map(item => item.content).join(', ');
+              if (contents) {
+                  dynamicMemoriesPrompt += `아저씨 관련 기억 (${category}): ${contents}\n`;
+              }
+          }
+      }
+      if (otherPeopleHistory && otherPeopleHistory.categories) {
+          for (const category in otherPeopleHistory.categories) {
+              const contents = otherPeopleHistory.categories[category].map(item => item.content).join(', ');
+              if (contents) {
+                  dynamicMemoriesPrompt += `다른 사람 관련 기억 (${category}): ${contents}\n`;
+              }
+          }
+      }
+      if (dynamicMemoriesPrompt) {
+          dynamicMemoriesPrompt = `---최근 대화에서 학습된 기억---\n${dynamicMemoriesPrompt}\n---------------------------\n`;
+      }
+  } catch (error) {
+      console.error('❌ 동적 메모리 로드 실패:', error);
+      dynamicMemoriesPrompt = ""; // 로드 실패 시 빈 문자열로 처리
+  }
+
   const prompt = [
-    { role: 'system', content: `${memoryBlock}\n${logs}\n넌 지금 예진이야. 예진이처럼 말해.` },
+    { role: 'system', content: `${memoryBlock}\n${dynamicMemoriesPrompt}${logs}\n넌 지금 예진이야. 예진이처럼 말해.` }, // 동적 기억 추가
     { role: 'user', content: msg }
   ];
   const raw = await callOpenAI(prompt, 'gpt-4o');
@@ -235,7 +274,7 @@ module.exports = {
   getReplyByImagePrompt,
   getSelfieReplyFromYeji,
   setForcedModel,
-  saveMemory,
+  saveMemory, // 이 saveMemory는 기존 state.json 관리를 위해 유지
   updateHonorificUsage,
   checkModelSwitchCommand
 };
