@@ -183,29 +183,31 @@ async function getReplyByMessage(userMessage) {
 function cleanReply(reply) {
     let cleaned = reply.replace(/^(예진:|무쿠:|23\.\d{1,2}\.\d{1,2} [가-힣]+:)/gm, '').trim();
 
-    // ❌ 잘못된 호칭 교체 (더 엄격하게 단어 경계를 사용)
-    // 💥 '오빠', '자기', '당신', '너' → '아저씨'로 무조건 변환
-    cleaned = cleaned.replace(/오빠|자기|당신|(?<!아저씨의 )너/g, '아저씨');
+    // ❌ 잘못된 호칭 교체 (정확히 단어 단위로만 바꿈)
+    // 예진이가 아저씨를 '오빠', '자기', '당신', '너', '애기야' 라고 부르는 거 방지
+    cleaned = cleaned.replace(/\b오빠\b/g, '아저씨');
+    cleaned = cleaned.replace(/\b자기\b/g, '아저씨');
+    cleaned = cleaned.replace(/\b당신\b/g, '아저씨');
+    cleaned = cleaned.replace(/\b너\b/g, '아저씨');
+    cleaned = cleaned.replace(/\b애기야\b/g, '아저씨');
+    cleaned = cleaned.replace(/\b애기\b/g, '아저씨');
 
     // ❌ 존댓말 어미 일부 반말로 교체
-    // 순서를 중요하게 생각하여 더 긴 패턴을 먼저 처리하거나 겹치지 않도록 조절
-    cleaned = cleaned.replace(/습니다\b/g, '야');
+    cleaned = cleaned.replace(/했어요\b/g, '했어');
+    cleaned = cleaned.replace(/습니다\b/g, '어');
+    cleaned = cleaned.replace(/습니다\b/g, '야'); // 중복이지만 순서로 인해 '야' 우선
     cleaned = cleaned.replace(/어요\b/g, '야');
     cleaned = cleaned.replace(/해요\b/g, '해');
     cleaned = cleaned.replace(/예요\b/g, '야');
     cleaned = cleaned.replace(/죠\b/g, '지');
-    cleaned = cleaned.replace(/했어요\b/g, '했어');
-    // '해요'가 두 번 있었던 것을 하나로 줄이고, 다른 어미도 추가 (필요시)
     cleaned = cleaned.replace(/합니다\b/g, '해');
-    cleaned = cleaned.replace(/습니다\b/g, '어'); // '습니다'는 '어'로도 가능
     cleaned = cleaned.replace(/았어요\b/g, '았어');
     cleaned = cleaned.replace(/었어요\b/g, '었어');
     cleaned = cleaned.replace(/겠습니다\b/g, '겠어');
 
-    // ⭐ 추가: '예진이'라는 자가 지칭을 '나'로 교체 ⭐
+    // ⭐ 자가 지칭 '예진이' 제거
     cleaned = cleaned.replace(/\b예진이\b/g, '나');
-    cleaned = cleaned.replace(/\b예진\b/g, '나'); // '예진' 단독 사용도 교체
-
+    cleaned = cleaned.replace(/\b예진\b/g, '나');
 
     return cleaned;
 }
