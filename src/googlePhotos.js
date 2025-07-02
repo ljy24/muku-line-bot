@@ -100,7 +100,14 @@ async function getPhotoByKeyword(keyword) {
   }
 }
 
+// 🔍 텍스트에서 "하카타에서 찍은 사진" 같은 장소 키워드 추출
+function extractPhotoKeywordFromText(text) {
+  const match = text.match(/([가-힣]+)(에서)?( 찍은)?( 사진)?/);
+  return match && match[1] ? match[1] : null;
+}
+
 module.exports = {
   getPhotoFromGoogle,
-  getPhotoByKeyword
+  getPhotoByKeyword,
+  extractPhotoKeywordFromText
 };
