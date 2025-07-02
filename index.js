@@ -91,7 +91,9 @@ app.post('/webhook', middleware(config), async (req, res) => {
                     }
                     // 메모리 예외 처리 끝
 
-                    // 📸 구글 포토 키워드 기반 사진 요청 처리
+                    // 📸 구글 포토 키워드 기반 사진 요청 처리       
+                    const googlePhotoHandled = await handlePhotoRequestByKeyword(text, event.replyToken, client);
+                    console.log('[Google Photo] 처리 여부:', googlePhotoHandled);
                     if (await handlePhotoRequestByKeyword(text, event.replyToken, client)) return;
 
                     // 🧠 모델 전환 명령어 확인
