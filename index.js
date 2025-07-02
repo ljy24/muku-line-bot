@@ -15,6 +15,7 @@ const {
     getReplyByImagePrompt,     // 이미지 메시지에 대한 답변 생성
     getRandomMessage,          // (현재 사용되지 않음, 이전 버전의 랜덤 메시지 기능)
     getSelfieReplyFromYeji,    // 예진이의 셀카 코멘트 생성
+    getCouplePhotoReplyFromYeji, // ⭐ 새로 추가: 커플 사진 코멘트 생성 함수 ⭐
     getColorMoodReply,         // (현재 사용되지 않음, 색상 기반 기분 답변 기능)
     getHappyReply,             // (현재 사용되지 않음, 긍정적인 답변 기능)
     getSulkyReply,             // (현재 사용되지 않음, 삐진 답변 기능)
@@ -99,18 +100,17 @@ app.post('/webhook', middleware(config), async (req, res) => {
                         // ⭐ 중요: 이 URL과 번호 범위는 아저씨의 실제 서버 설정에 맞춰 변경해야 합니다. ⭐
                         const COUPLE_BASE_URL = 'https://www.de-ji.net/couple/'; // 예시 URL, 실제 커플 사진 폴더 URL로 변경
                         const COUPLE_START_NUM = 1; // 커플 사진 파일 번호 시작 (예시)
-                        const COUPLE_END_NUM = 100; // 커플 사진 파일 번호 끝 (예시)
+                        const COUPLE_END_NUM = 481; // ⭐ 변경: 커플 사진 파일 번호 끝 (아저씨가 알려주신 481로 변경) ⭐
 
                         try {
                             // 📷 커플 사진 번호 범위 내에서 무작위로 하나를 선택합니다.
                             const randomCoupleIndex = Math.floor(Math.random() * (COUPLE_END_NUM - COUPLE_START_NUM + 1)) + COUPLE_START_NUM;
-                            // 파일 이름을 '000001.jpg' 형식으로 포매팅합니다.
+                            // 파일 이름을 '000001.jpg' 형식으로 포매팅합니다. (확장자 소문자 통일)
                             const coupleFileName = String(randomCoupleIndex).padStart(6, '0') + '.jpg'; 
                             const coupleImageUrl = COUPLE_BASE_URL + coupleFileName; // 최종 커플 이미지 URL 생성
                             
                             // 💬 예진이 말투로 커플 사진에 대한 코멘트를 생성합니다.
-                            // 셀카 코멘트 함수를 재활용하거나, 필요시 새로운 함수를 만들 수 있습니다.
-                            const coupleComment = await getSelfieReplyFromYeji(); // 커플 사진 코멘트 생성
+                            const coupleComment = await getCouplePhotoReplyFromYeji(); // ⭐ 수정: getCouplePhotoReplyFromYeji 호출 ⭐
                             
                             // LINE에 이미지 메시지와 텍스트 메시지를 함께 보냅니다.
                             await client.replyMessage(event.replyToken, [
@@ -140,7 +140,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
                             // 📷 1부터 1186까지의 숫자 중 무작위로 하나를 선택합니다.
                             const randomIndex = Math.floor(Math.random() * (END_NUM - START_NUM + 1)) + START_NUM;
                             // 파일 이름을 '000001.jpg' 형식으로 포매팅합니다 (6자리, 부족하면 앞에 0 채움).
-                            const fileName = String(randomIndex).padStart(6, '0') + '.jpg'; 
+                            const fileName = String(randomIndex).padStart(6, '0') + '.jpg'; // ⭐ .jpg 소문자 확인 ⭐
                             const imageUrl = BASE_URL + fileName; // 최종 이미지 URL 생성
                             
                             // 💬 예진이 말투로 셀카에 대한 코멘트를 생성합니다.
@@ -236,7 +236,7 @@ let lastMoodMessageTime = 0;
 // ⭐ 커플 사진 관련 상수 정의 (스케줄러에서 사용) ⭐
 const COUPLE_BASE_URL = 'https://www.de-ji.net/couple/'; // 예시 URL, 실제 커플 사진 폴더 URL로 변경
 const COUPLE_START_NUM = 1; // 커플 사진 파일 번호 시작 (예시)
-const COUPLE_END_NUM = 100; // 커플 사진 파일 번호 끝 (예시)
+const COUPLE_END_NUM = 481; // ⭐ 변경: 커플 사진 파일 번호 끝 (아저씨가 알려주신 481로 변경) ⭐
 let lastCouplePhotoMessage = ''; // 마지막으로 보낸 커플 사진 메시지 (중복 방지용)
 let lastCouplePhotoMessageTime = 0; // 마지막 커플 사진 전송 시간 (중복 방지용)
 
@@ -250,7 +250,7 @@ const sendScheduledMessage = async (type) => {
     const now = moment().tz('Asia/Tokyo'); // 현재 시간을 일본 표준시로 가져옵니다.
     const currentTime = Date.now(); // 현재 시스템 시간 (밀리초)
 
-    // 🛑 서버 부팅 후 3분(3 * 60 * 1000 밀리초) 동안은 자동 메시지 전송을 건너킵니다.
+    // 🛑 서버 부팅 후 3분(3 * 60 * 1000 밀리초) 동안은 자동 메시지 전송을 건너뜁니다.
     // 이는 서버 재시작 시 스케줄러가 즉시 발동하여 메시지가 폭주하는 것을 방지합니다.
     if (currentTime - bootTime < 3 * 60 * 1000) {
         console.log('[Scheduler] 서버 부팅 직후 3분 이내 → 자동 메시지 전송 스킵');
@@ -321,7 +321,7 @@ const sendScheduledMessage = async (type) => {
                 const coupleFileName = String(randomCoupleIndex).padStart(6, '0') + '.jpg'; 
                 const coupleImageUrl = COUPLE_BASE_URL + coupleFileName; // 최종 커플 이미지 URL 생성
                 
-                const coupleComment = await getSelfieReplyFromYeji(); // 커플 사진 코멘트 생성 (재활용)
+                const coupleComment = await getCouplePhotoReplyFromYeji(); // ⭐ 수정: getCouplePhotoReplyFromYeji 호출 ⭐
                 const nowTime = Date.now(); // 현재 시간 (중복 방지용)
 
                 // 커플 사진 메시지가 있고, 이전 메시지와 다르며, 1분 이내에 보낸 적이 없을 때만 전송합니다.
