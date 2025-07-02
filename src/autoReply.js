@@ -1,3 +1,7 @@
+// 파일명: src/autoReply.js
+// 수정일: 2025년 7월 2일
+// 수정내용: 단기 기억(대화 컨텍스트) 5턴에서 10턴으로 확장
+
 // 📦 기본 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공
 const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
@@ -208,7 +212,8 @@ async function getReplyByMessage(userMessage) {
     // OpenAI API에 보낼 메시지 배열을 구성합니다.
     const messages = [
         { role: 'system', content: systemPrompt }, // 시스템 프롬프트 (가장 중요)
-        ...conversationHistory.slice(-5) // 최근 5턴의 대화만 포함하여 컨텍스트 유지
+        // ⭐ 변경 부분: 최근 5턴 -> 최근 10턴 (20개 메시지)으로 늘림 ⭐
+        ...conversationHistory.slice(-10) // 최근 10턴의 대화만 포함하여 컨텍스트 유지
     ];
 
     // 마지막 사용자 메시지를 메시지 배열에 추가합니다.
