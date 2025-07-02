@@ -1,6 +1,6 @@
 // 파일명: index.js
 // 수정일: 2025년 7월 2일
-// 수정내용: 불필요한 '}' 문자 제거 및 sendScheduledMessage 함수 중복 정의 문제 해결 확인
+// 수정내용: sendScheduledMessage 함수 중복 정의 문제 해결 확인 및 코드 정리
 
 // ✅ index.js (최신 autoReply.js 연동 버전) - 상세 주석 및 스케줄러 통합
 
@@ -145,7 +145,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
                         for await (const chunk of stream) chunks.push(chunk);
                         const buffer = Buffer.concat(chunks); // 모든 청크를 하나의 버퍼로 합칩니다.
                         // 이미지 버퍼를 base64 문자열로 변환하여 AI 프롬프트로 전달합니다.
-                        const reply = await getReplyByImagePrompt(buffer.toString('base64'));
+                        const reply = await getReplyByImagePrompt(buffer.toString('base64')); // ⭐ 변경: 얼굴 인식 로직이 포함된 함수 호출 ⭐
                         await client.replyMessage(event.replyToken, { type: 'text', text: reply }); // AI 응답 전송
                     } catch (err) {
                         // 이미지 처리 실패 시 오류 처리 및 메시지 전송
