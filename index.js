@@ -7,7 +7,7 @@ const { Client, middleware } = require('@line/bot-sdk'); // LINE Bot SDK: LINE �
 const express = require('express'); // Express 프레임워크: 웹 서버 구축
 const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
 const cron = require('node-cron'); // Node-cron: 주기적인 작업 스케줄링
-
+a
 // ./src/autoReply.js에서 필요한 함수들을 불러옵니다.
 // 이 함수들은 메시지 응답 생성, 셀카 코멘트 생성, 모델 전환 처리 등을 담당합니다.
 const {
@@ -91,9 +91,11 @@ app.post('/webhook', middleware(config), async (req, res) => {
                     }
                     // 메모리 예외 처리 끝
 
-                    $1
                     // 📸 구글 포토 키워드 기반 사진 요청 처리
                     if (await handlePhotoRequestByKeyword(text, event.replyToken, client)) return;
+
+                    // 🧠 모델 전환 명령어 확인
+                    const versionResponse = checkModelSwitchCommand(text);
                     if (versionResponse) { // 모델 전환 명령어가 감지된 경우
                         await client.replyMessage(event.replyToken, { type: 'text', text: versionResponse }); // 응답 메시지 전송
                         return; // 더 이상 다른 처리를 하지 않고 함수 종료
