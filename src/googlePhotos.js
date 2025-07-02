@@ -58,8 +58,8 @@ async function getPhotoByKeyword(keyword) {
   try {
     const accessToken = await getAccessToken();
 
-    // 1. 앨범 리스트 가져오기
-    const albumRes = await axios.get('https://photoslibrary.googleapis.com/v1/albums', {
+    // 1. 앨범 리스트 가져오기 (최대 50개까지)
+    const albumRes = await axios.get('https://photoslibrary.googleapis.com/v1/albums?pageSize=50', {
       headers: {
         Authorization: `Bearer ${accessToken}`
       }
