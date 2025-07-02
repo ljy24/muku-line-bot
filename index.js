@@ -93,41 +93,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
                         return; // 더 이상 다른 처리를 하지 않고 함수 종료
                     }
 
-                    // ⭐ 셀카 요청 처리 (개선된 로직) ⭐
-                    // 아저씨가 '사진줘', '셀카줘' 등의 명령어를 보낸 경우 처리합니다.
-                    if (/사진\s*줘|셀카\s*줘|사진\s*보여줘|셀카\s*보여줘|얼굴\s*보고\s*싶[어다]/i.test(text)) {
-                        // 📸 셀카 이미지의 기본 URL과 파일 번호 범위를 설정합니다.
-                        const BASE_URL = 'https://www.de-ji.net/yejin/'; // 셀카 이미지가 저장된 웹 서버의 기본 URL (HTTPS 필수)
-                        const START_NUM = 1; // 셀카 이미지 파일 번호 시작
-                        const END_NUM = 1186; // 셀카 이미지 파일 번호 끝
-
-                        try {
-                            // 📷 1부터 1186까지의 숫자 중 무작위로 하나를 선택합니다.
-                            const randomIndex = Math.floor(Math.random() * (END_NUM - START_NUM + 1)) + START_NUM;
-                            // 파일 이름을 '000001.jpg' 형식으로 포매팅합니다 (6자리, 부족하면 앞에 0 채움).
-                            const fileName = String(randomIndex).padStart(6, '0') + '.jpg'; 
-                            const imageUrl = BASE_URL + fileName; // 최종 이미지 URL 생성
-                            
-                            // 💬 예진이 말투로 셀카에 대한 코멘트를 생성합니다.
-                            const comment = await getSelfieReplyFromYeji(); // autoReply.js의 함수 호출 (비동기)
-                            
-                            // LINE에 이미지 메시지와 텍스트 메시지를 함께 보냅니다.
-                            await client.replyMessage(event.replyToken, [
-                                { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl }, // 원본 및 미리보기 이미지 URL
-                                { type: 'text', text: comment || '히히 셀카야~' } // 생성된 코멘트 또는 기본 코멘트
-                            ]);
-                            
-                            console.log(`📷 셀카 전송 성공: ${imageUrl}`); // 성공 로그
-                            saveLog('예진이', comment || '히히 셀카야~'); // 예진이의 답변 로그 저장
-                        } catch (err) {
-                            // 셀카 불러오기 실패 시 오류 처리 및 메시지 전송
-                            console.error('📷 셀카 불러오기 실패:', err.message);
-                            await client.replyMessage(event.replyToken, { type: 'text', text: '사진 불러오기 실패했어 ㅠㅠ' });
-                        }
-                        return; // 셀카 요청 처리가 완료되었으므로 함수 종료
-                    }
-
-                    // ⭐ 커플 사진 요청 처리 (새로운 로직) ⭐
+                    // ⭐ 커플 사진 요청 처리 (새로운 로직 - 셀카보다 먼저 검사) ⭐
                     if (/커플사진\s?줘|커플사진\s?보여줘/i.test(text)) {
                         // 📸 커플 사진 이미지의 기본 URL과 파일 번호 범위를 설정합니다.
                         // ⭐ 중요: 이 URL과 번호 범위는 아저씨의 실제 서버 설정에 맞춰 변경해야 합니다. ⭐
@@ -160,6 +126,40 @@ app.post('/webhook', middleware(config), async (req, res) => {
                             await client.replyMessage(event.replyToken, { type: 'text', text: '커플 사진 불러오기 실패했어 ㅠㅠ' });
                         }
                         return; // 커플 사진 요청 처리가 완료되었으므로 함수 종료
+                    }
+
+                    // ⭐ 셀카 요청 처리 (개선된 로직 - 커플 사진 다음으로 검사) ⭐
+                    // 아저씨가 '사진줘', '셀카줘' 등의 명령어를 보낸 경우 처리합니다.
+                    if (/사진\s*줘|셀카\s*줘|사진\s*보여줘|셀카\s*보여줘|얼굴\s*보고\s*싶[어다]|selfie/i.test(text)) {
+                        // 📸 셀카 이미지의 기본 URL과 파일 번호 범위를 설정합니다.
+                        const BASE_URL = 'https://www.de-ji.net/yejin/'; // 셀카 이미지가 저장된 웹 서버의 기본 URL (HTTPS 필수)
+                        const START_NUM = 1; // 셀카 이미지 파일 번호 시작
+                        const END_NUM = 1186; // 셀카 이미지 파일 번호 끝
+
+                        try {
+                            // 📷 1부터 1186까지의 숫자 중 무작위로 하나를 선택합니다.
+                            const randomIndex = Math.floor(Math.random() * (END_NUM - START_NUM + 1)) + START_NUM;
+                            // 파일 이름을 '000001.jpg' 형식으로 포매팅합니다 (6자리, 부족하면 앞에 0 채움).
+                            const fileName = String(randomIndex).padStart(6, '0') + '.jpg'; 
+                            const imageUrl = BASE_URL + fileName; // 최종 이미지 URL 생성
+                            
+                            // 💬 예진이 말투로 셀카에 대한 코멘트를 생성합니다.
+                            const comment = await getSelfieReplyFromYeji(); // autoReply.js의 함수 호출 (비동기)
+                            
+                            // LINE에 이미지 메시지와 텍스트 메시지를 함께 보냅니다.
+                            await client.replyMessage(event.replyToken, [
+                                { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl }, // 원본 및 미리보기 이미지 URL
+                                { type: 'text', text: comment || '히히 셀카야~' } // 생성된 코멘트 또는 기본 코멘트
+                            ]);
+                            
+                            console.log(`📷 셀카 전송 성공: ${imageUrl}`); // 성공 로그
+                            saveLog('예진이', comment || '히히 셀카야~'); // 예진이의 답변 로그 저장
+                        } catch (err) {
+                            // 셀카 불러오기 실패 시 오류 처리 및 메시지 전송
+                            console.error('📷 셀카 불러오기 실패:', err.message);
+                            await client.replyMessage(event.replyToken, { type: 'text', text: '사진 불러오기 실패했어 ㅠㅠ' });
+                        }
+                        return; // 셀카 요청 처리가 완료되었으므로 함수 종료
                     }
 
 
@@ -378,7 +378,7 @@ cron.schedule('0 0 * * *', async () => {
     const msg = '아저씨, 약 먹고 이제 푹 잘 시간이야! 😴 나 옆에서 꼭 안아줄게~ 잘 자 사랑해 🌙💖'; // '예진이가'를 '나'로 변경
     await client.pushMessage(userId, { type: 'text', text: msg }); // 메시지 전송
     console.log(`[Scheduler] 밤 12시 메시지 전송: ${msg}`); // 로그 기록
-    saveLog('예진이', msg); // 예진이의 답변 로그 저장
+    saveLog('예진이', msg); // 예진이의 메시지 로그 저장
 }, {
     scheduled: true,
     timezone: "Asia/Tokyo"
