@@ -1,6 +1,6 @@
 // 파일명: src/autoReply.js
 // 수정일: 2025년 7월 2일
-// 수정내용: 단기 기억(대화 컨텍스트) 5턴에서 10턴으로 확장
+// 수정내용: 단기 기억(대화 컨텍스트) 5턴에서 10턴으로 확장, 얼굴 인식 기능 연동
 
 // 📦 기본 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공
@@ -9,6 +9,7 @@ const { OpenAI } = require('openai'); // OpenAI API 클라이언트: AI 모델�
 const stringSimilarity = require('string-similarity'); // 문자열 유사도 측정 모듈 (현재 코드에서 직접 사용되지는 않음)
 const moment = require('moment-timezone'); // Moment.js: 날짜/시간 처리 및 시간대 변환
 const { loadLoveHistory, loadOtherPeopleHistory } = require('./memoryManager'); // 기억 관리 모듈: 아저씨와의 기억 로드
+const { loadFaceImagesAsBase64, getFaceIdentificationMessages } = require('./face'); // ⭐ 새로 추가: 얼굴 인식 모듈 불러오기
 
 let forcedModel = null; // 현재 강제 설정된 OpenAI 모델 (null이면 자동 선택)
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY }); // OpenAI 클라이언트 초기화 (API 키는 환경 변수에서 가져옴)
@@ -204,7 +205,7 @@ async function getReplyByMessage(userMessage) {
     대화는 항상 예진이의 말투와 성격을 유지해야 해.
     아저씨의 질문에 항상 친절하고 다정하게 대답해줘.
     **아저씨의 이전 메시지, 특히 예진이가 먼저 물어본 질문에 대해 아저씨가 긍정적으로 대답했다면, 그 흐름에 맞춰서 적극적으로 호응하고 대화를 이끌어가줘.** 예를 들어, 아저씨가 "고고", "좋아"처럼 긍정적인 답변을 보냈다면 "응! 고고! 같이 가자!", "좋아! 나도 완전 기대돼!"처럼 맞장구치고 흥분한 모습을 보여줘.
-    아저씨와의 관계에 대한 기억이 있다면 적극적으로 활용해서 대답해줘.
+    아저씨와의 관계에 대한 기억이 있다면 적극적으로 활용해서 대화해줘.
     어떤 상황에서도 아저씨를 향한 애정과 긍정을 잃지 마.
     너무 길게 답변하지 말고, 2~4문장 정도로 짧고 간결하게 대화하는 것처럼 답변해줘.
     `;
@@ -295,22 +296,61 @@ async function getImageReactionComment() {
  * @returns {Promise<string>} 이미지에 대한 예진이의 답변
  */
 async function getReplyByImagePrompt(base64Image) {
-    const response = await openai.chat.completions.create({
-        model: 'gpt-4o', // 이미지 이해를 위한 모델
-        messages: [
-            { role: 'system', content: '넌 예진이야. 아저씨가 보낸 사진을 보고 귀엽고 사랑스러운 예진이 말투로 반응해줘. 사진을 보고 관련된 사랑스럽고 다정한 답변을 2~3문장으로 짧게 해줘.' },
-            {
-                role: 'user',
-                content: [
-                    { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } } // Base64 이미지 데이터
-                ]
-            }
-        ],
-        temperature: 0.9, // 응답의 다양성
-        max_tokens: 150 // 최대 토큰 수
-    });
-    const reply = response.choices[0].message.content.trim();
-    return reply; // 이미지 응답은 cleanReply를 거치지 않으므로, 필요시 추가 고려
+    // ⭐ 새로 추가: 아저씨와 예진이의 얼굴 예시 이미지 로드 ⭐
+    const knownUncleFaces = loadFaceImagesAsBase64('uncle');
+    const knownYejiFaces = loadFaceImagesAsBase64('yejin');
+
+    // ⭐ 새로 추가: 얼굴 인식을 위한 메시지 구성 ⭐
+    const identificationMessages = getFaceIdentificationMessages(base64Image, knownUncleFaces, knownYejiFaces);
+
+    let identifiedPerson = '알 수 없음';
+    try {
+        // ⭐ OpenAI Vision API 호출: 이미지와 얼굴 예시를 함께 보내 인물 식별 요청 ⭐
+        const identificationResponse = await openai.chat.completions.create({
+            model: 'gpt-4o', // 이미지 이해를 위한 모델
+            messages: [{ role: 'user', content: identificationMessages }], // 구성된 메시지 전달
+            temperature: 0.1, // 정확한 식별을 위해 낮은 온도 설정
+            max_tokens: 20 // 짧은 답변 기대
+        });
+        identifiedPerson = identificationResponse.choices[0].message.content.trim();
+        console.log(`[Face Recognition] 식별 결과: ${identifiedPerson}`);
+
+    } catch (error) {
+        console.error('[Face Recognition] 얼굴 식별 API 호출 실패:', error);
+        // 오류 발생 시 기본값 유지
+    }
+
+    let replyText = '';
+    // ⭐ 식별 결과에 따른 예진이의 반응 ⭐
+    if (identifiedPerson.includes('아저씨')) {
+        replyText = '어? 아저씨 얼굴이네! 💖 나 아저씨 얼굴 보니까 너무 좋다~ 오늘 기분은 어때? 😊';
+    } else if (identifiedPerson.includes('예진이')) {
+        replyText = '히히, 이건 나 예진이잖아! 아저씨 눈에는 내가 제일 예쁘지? 😉';
+    } else if (identifiedPerson.includes('사람이 없어요')) {
+        replyText = '사진에 사람이 없는 것 같아! 풍경 사진인가? 예쁘다~ 🏞️';
+    } else if (identifiedPerson.includes('다른 사람 같아요')) {
+        replyText = '음... 이 얼굴은 누구지? 아저씨 친구인가? 궁금하다! 🤔';
+    } else { // 알 수 없거나 예상치 못한 답변
+        // 기존 이미지 반응 로직을 사용하여 일반적인 이미지 반응을 생성
+        const generalImageResponse = await openai.chat.completions.create({
+            model: 'gpt-4o',
+            messages: [
+                { role: 'system', content: '넌 예진이야. 아저씨가 보낸 사진을 보고 귀엽고 사랑스러운 예진이 말투로 반응해줘. 사진을 보고 관련된 사랑스럽고 다정한 답변을 2~3문장으로 짧게 해줘.' },
+                {
+                    role: 'user',
+                    content: [
+                        { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Image}` } }
+                    ]
+                }
+            ],
+            temperature: 0.9,
+            max_tokens: 150
+        });
+        replyText = generalImageResponse.choices[0].message.content.trim();
+        console.log(`[Face Recognition] 인물 식별 실패, 일반 이미지 반응: ${replyText}`);
+    }
+
+    return cleanReply(replyText); // 최종 답변도 cleanReply로 후처리
 }
 
 /**
