@@ -14,7 +14,7 @@ let forcedModel = null;
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 let lastProactiveMessage = '';
 
-// --- 기존 OpenAI 및 대화 로직 함수들 (완전 복구) ---
+// --- 기존 OpenAI 및 대화 로직 함수들 (수정 없음) ---
 
 function safeRead(filePath, fallback = '') {
     try {
@@ -190,7 +190,7 @@ function checkModelSwitchCommand(message) {
     const lowerCaseMessage = message.toLowerCase();
     if (lowerCaseMessage.includes('3.5')) {
         setForcedModel('gpt-3.5-turbo');
-        return '응! 이제부터 gpt-3.5 모델로 말할게! 조금 더 빨리 대답해줄 수 있을거야! �';
+        return '응! 이제부터 gpt-3.5 모델로 말할게! 조금 더 빨리 대답해줄 수 있을거야! 😉';
     } else if (lowerCaseMessage.includes('4.0')) {
         setForcedModel('gpt-4o');
         return '응응! 4.0으로 대화할게! 더 똑똑해졌지? 💖';
@@ -266,7 +266,7 @@ try {
     oauth2Client = new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,
       process.env.GOOGLE_CLIENT_SECRET,
-      'https://developers.google.com/oauthplayground'
+      'https://developers.google.com/oauthplayground' // 혹은 설정된 리디렉션 URI
     );
     oauth2Client.setCredentials({
       refresh_token: process.env.GOOGLE_REFRESH_TOKEN
@@ -296,19 +296,23 @@ async function listGooglePhotosAlbums() {
       return [];
   }
   try {
-    const photoslibrary = google.photoslibrary({ version: 'v1', auth: oauth2Client });
-    const response = await photoslibrary.albums.list({ pageSize: 50 });
-    if (response.data.albums) {
-      const albums = response.data.albums.map(album => ({ id: album.id, title: album.title }));
-      albumCache = { data: albums, timestamp: now };
-      console.log('✅ 구글 포토 앨범 목록 가져오기 및 캐시 저장 성공!');
-      return albums;
-    } else {
-      return [];
-    }
+      // [수정 1] 오류의 원인을 파악하기 위해 google.photoslibrary의 타입을 확인하는 로그 추가
+      console.log('Inspecting google.photoslibrary type:', typeof google.photoslibrary);
+
+      const photoslibrary = google.photoslibrary({ version: 'v1', auth: oauth2Client });
+      const response = await photoslibrary.albums.list({ pageSize: 50 });
+
+      if (response.data.albums) {
+          const albums = response.data.albums.map(album => ({ id: album.id, title: album.title }));
+          albumCache = { data: albums, timestamp: now };
+          console.log('✅ 구글 포토 앨범 목록 가져오기 및 캐시 저장 성공!');
+          return albums;
+      } else {
+          return [];
+      }
   } catch (error) {
-    console.error('❌ 구글 포토 앨범 목록을 가져오는 중 오류 발생:', error);
-    return [];
+      console.error('❌ 구글 포토 앨범 목록을 가져오는 중 오류 발생:', error);
+      return [];
   }
 }
 
@@ -320,8 +324,11 @@ async function getRandomPhotoFromAlbum(albumId) {
         let allPhotos = [];
         let nextPageToken = null;
         do {
+            // [수정 2] mediaItems.search 호출 시 불필요한 requestBody 객체를 제거하고 파라미터를 직접 전달하도록 수정
             const response = await photoslibrary.mediaItems.search({
-                requestBody: { albumId: albumId, pageSize: 100, pageToken: nextPageToken },
+                albumId: albumId,
+                pageSize: 100,
+                pageToken: nextPageToken,
             });
             if (response.data.mediaItems) {
                 allPhotos = allPhotos.concat(response.data.mediaItems);
@@ -354,7 +361,8 @@ async function getPhotoDescriptionWithGemini(photoUrl) {
         const imageResponse = await axios.get(photoUrl, { responseType: 'arraybuffer' });
         const imageBase64 = Buffer.from(imageResponse.data, 'binary').toString('base64');
 
-        const endpoint = `https://us-central1-aiplatform.googleapis.com/v1/projects/${projectId}/locations/us-central1/publishers/google/models/gemini-pro-vision:streamGenerateContent`;
+        // [수정 3] Gemini 모델을 최신 버전(gemini-1.5-flash-001)으로 변경
+        const endpoint = `https://us-central1-aiplatform.googleapis.com/v1/projects/${projectId}/locations/us-central1/publishers/google/models/gemini-1.5-flash-001:streamGenerateContent`;
         const requestBody = {
             "contents": {
                 "role": "USER",
@@ -383,7 +391,8 @@ async function getPhotoDescriptionWithGemini(photoUrl) {
         return "우와, 이 사진 정말 예쁘다! 💖";
 
     } catch (error) {
-        console.error('❌ Gemini Vision API 호출 중 오류 발생:', error.response ? error.response.data.error : error.message);
+        const errorMessage = error.response ? JSON.stringify(error.response.data.error) : error.message;
+        console.error('❌ Gemini Vision API 호출 중 오류 발생:', errorMessage);
         return "이 사진 보니까 좋은 기억이 떠오르네! 😊";
     }
 }
