@@ -30,7 +30,7 @@ const {
 const memoryManager = require('./src/memoryManager');
 
 //  구글사진 불러오기
-const { getPhotoFromGoogle, getPhotoByKeyword } = require('./src/googlePhotos');
+const { getPhotoFromGoogle, getPhotoByKeyword, handlePhotoRequestByKeyword } = require('./src/googlePhotos');
 
 
 // Express 애플리케이션을 생성합니다.
@@ -91,8 +91,9 @@ app.post('/webhook', middleware(config), async (req, res) => {
                     }
                     // 메모리 예외 처리 끝
 
-                    // 모델 전환 명령어(예: "모델4o", "3.5", "자동", "버전")를 확인하고 처리합니다.
-                    const versionResponse = checkModelSwitchCommand(text);
+                    $1
+                    // 📸 구글 포토 키워드 기반 사진 요청 처리
+                    if (await handlePhotoRequestByKeyword(text, event.replyToken, client)) return;
                     if (versionResponse) { // 모델 전환 명령어가 감지된 경우
                         await client.replyMessage(event.replyToken, { type: 'text', text: versionResponse }); // 응답 메시지 전송
                         return; // 더 이상 다른 처리를 하지 않고 함수 종료
