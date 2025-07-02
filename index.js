@@ -73,7 +73,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
                     // 특정 명령어들은 무쿠의 기억으로 저장되지 않도록 예외 처리합니다.
                     // '사진줘', '셀카줘' 등 사진 관련 명령어와 모델 전환 명령어들을 정의합니다.
                     const isCommand = 
-                        /(사진\s?줘|셀카\s?줘|셀카\s?보여줘|사진\s?보여줘|얼굴\s?보여줘|얼굴\s?보고\s?싶[어다]|selfie)/i.test(text) || // 사진 요청 명령어
+                        /(사진\s?줘|셀카\s?줘|셀카\s?보여줘|사진\s?보여줘|얼굴\s?보여줘|얼굴\s?보고\s?싶[어다]|selfie|커플사진\s?줘|커플사진\s?보여줘)/i.test(text) || // ⭐ 커플사진 요청 명령어 추가 ⭐
                         /3\.5|4\.0|자동|버전/i.test(text); // 모델 전환 명령어
 
                     saveLog('아저씨', text); // 아저씨의 메시지를 로그에 저장합니다.
@@ -126,6 +126,42 @@ app.post('/webhook', middleware(config), async (req, res) => {
                         }
                         return; // 셀카 요청 처리가 완료되었으므로 함수 종료
                     }
+
+                    // ⭐ 커플 사진 요청 처리 (새로운 로직) ⭐
+                    if (/커플사진\s?줘|커플사진\s?보여줘/i.test(text)) {
+                        // 📸 커플 사진 이미지의 기본 URL과 파일 번호 범위를 설정합니다.
+                        // ⭐ 중요: 이 URL과 번호 범위는 아저씨의 실제 서버 설정에 맞춰 변경해야 합니다. ⭐
+                        const COUPLE_BASE_URL = 'https://www.de-ji.net/couple/'; // 예시 URL, 실제 커플 사진 폴더 URL로 변경
+                        const COUPLE_START_NUM = 1; // 커플 사진 파일 번호 시작 (예시)
+                        const COUPLE_END_NUM = 100; // 커플 사진 파일 번호 끝 (예시)
+
+                        try {
+                            // 📷 커플 사진 번호 범위 내에서 무작위로 하나를 선택합니다.
+                            const randomCoupleIndex = Math.floor(Math.random() * (COUPLE_END_NUM - COUPLE_START_NUM + 1)) + COUPLE_START_NUM;
+                            // 파일 이름을 '000001.jpg' 형식으로 포매팅합니다.
+                            const coupleFileName = String(randomCoupleIndex).padStart(6, '0') + '.jpg'; 
+                            const coupleImageUrl = COUPLE_BASE_URL + coupleFileName; // 최종 커플 이미지 URL 생성
+                            
+                            // 💬 예진이 말투로 커플 사진에 대한 코멘트를 생성합니다.
+                            // 셀카 코멘트 함수를 재활용하거나, 필요시 새로운 함수를 만들 수 있습니다.
+                            const coupleComment = await getSelfieReplyFromYeji(); // 커플 사진 코멘트 생성
+                            
+                            // LINE에 이미지 메시지와 텍스트 메시지를 함께 보냅니다.
+                            await client.replyMessage(event.replyToken, [
+                                { type: 'image', originalContentUrl: coupleImageUrl, previewImageUrl: coupleImageUrl },
+                                { type: 'text', text: coupleComment || '아저씨랑 나랑 같이 있는 사진이야! 💖' } // 기본 코멘트
+                            ]);
+                            
+                            console.log(`📷 커플 사진 전송 성공: ${coupleImageUrl}`); // 성공 로그
+                            saveLog('예진이', coupleComment || '아저씨랑 나랑 같이 있는 사진이야! 💖'); // 예진이의 답변 로그 저장
+                        } catch (err) {
+                            // 커플 사진 불러오기 실패 시 오류 처리 및 메시지 전송
+                            console.error('📷 커플 사진 불러오기 실패:', err.message);
+                            await client.replyMessage(event.replyToken, { type: 'text', text: '커플 사진 불러오기 실패했어 ㅠㅠ' });
+                        }
+                        return; // 커플 사진 요청 처리가 완료되었으므로 함수 종료
+                    }
+
 
                     // 일반 텍스트 메시지에 대한 응답을 생성하고 전송합니다.
                     const reply = await getReplyByMessage(text); // autoReply.js의 함수 호출
@@ -197,23 +233,31 @@ let bootTime = Date.now();
 let lastMoodMessage = ''; 
 let lastMoodMessageTime = 0; 
 
+// ⭐ 커플 사진 관련 상수 정의 (스케줄러에서 사용) ⭐
+const COUPLE_BASE_URL = 'https://www.de-ji.net/couple/'; // 예시 URL, 실제 커플 사진 폴더 URL로 변경
+const COUPLE_START_NUM = 1; // 커플 사진 파일 번호 시작 (예시)
+const COUPLE_END_NUM = 100; // 커플 사진 파일 번호 끝 (예시)
+let lastCouplePhotoMessage = ''; // 마지막으로 보낸 커플 사진 메시지 (중복 방지용)
+let lastCouplePhotoMessageTime = 0; // 마지막 커플 사진 전송 시간 (중복 방지용)
+
+
 /**
  * 특정 타입의 스케줄된 메시지를 보내는 비동기 함수입니다.
  * 셀카 또는 감성 메시지를 랜덤 확률로 전송합니다.
- * @param {string} type - 보낼 메시지의 타입 ('selfie' 또는 'mood_message')
+ * @param {string} type - 보낼 메시지의 타입 ('selfie', 'mood_message', 'couple_photo')
  */
 const sendScheduledMessage = async (type) => {
     const now = moment().tz('Asia/Tokyo'); // 현재 시간을 일본 표준시로 가져옵니다.
     const currentTime = Date.now(); // 현재 시스템 시간 (밀리초)
 
-    // 🛑 서버 부팅 후 3분(3 * 60 * 1000 밀리초) 동안은 감성/셀카 메시지 전송을 건너뜁니다.
+    // 🛑 서버 부팅 후 3분(3 * 60 * 1000 밀리초) 동안은 자동 메시지 전송을 건너킵니다.
     // 이는 서버 재시작 시 스케줄러가 즉시 발동하여 메시지가 폭주하는 것을 방지합니다.
     if (currentTime - bootTime < 3 * 60 * 1000) {
         console.log('[Scheduler] 서버 부팅 직후 3분 이내 → 자동 메시지 전송 스킵');
         return; // 함수 실행을 중단합니다.
     }
 
-    // 유효 시간대: 새벽 0~2시 + 오전 10시~23시
+    // 유효 시간대: 새벽 0~2시 + 오전 10시~23시 (총 17시간)
     const validHours = [0, 1, 2, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]; 
 
     // 현재 시간이 유효한 시간대에 포함되지 않으면 함수를 종료합니다.
@@ -268,14 +312,48 @@ const sendScheduledMessage = async (type) => {
                 console.error('❌ [Scheduler Error] 감성 메시지 전송 실패:', error); // 실패 로그
             }
         }
+    } else if (type === 'couple_photo') { // ⭐ 커플 사진 메시지인 경우 (새로운 로직) ⭐
+        // 하루 두 번 전송을 목표로, 매 시간 체크 시 약 12% 확률로 전송합니다.
+        // (유효 시간대 17시간 * 0.12 확률 = 약 2.04회 전송 예상)
+        if (Math.random() < 0.12) { 
+            try {
+                const randomCoupleIndex = Math.floor(Math.random() * (COUPLE_END_NUM - COUPLE_START_NUM + 1)) + COUPLE_START_NUM;
+                const coupleFileName = String(randomCoupleIndex).padStart(6, '0') + '.jpg'; 
+                const coupleImageUrl = COUPLE_BASE_URL + coupleFileName; // 최종 커플 이미지 URL 생성
+                
+                const coupleComment = await getSelfieReplyFromYeji(); // 커플 사진 코멘트 생성 (재활용)
+                const nowTime = Date.now(); // 현재 시간 (중복 방지용)
+
+                // 커플 사진 메시지가 있고, 이전 메시지와 다르며, 1분 이내에 보낸 적이 없을 때만 전송합니다.
+                if (
+                    coupleImageUrl && // 이미지 URL이 유효한지 확인
+                    coupleImageUrl !== lastCouplePhotoMessage &&
+                    nowTime - lastCouplePhotoMessageTime > 60 * 1000 // 1분 (60초 * 1000ms) 이내 중복 방지
+                ) {
+                    await client.pushMessage(userId, [
+                        { type: 'image', originalContentUrl: coupleImageUrl, previewImageUrl: coupleImageUrl },
+                        { type: 'text', text: coupleComment || '아저씨랑 나랑 같이 있는 사진이야! 💖' }
+                    ]);
+                    console.log(`[Scheduler] 랜덤 커플 사진 전송 성공: ${coupleImageUrl}`); // 성공 로그
+                    saveLog('예진이', coupleComment || '아저씨랑 나랑 같이 있는 사진이야! 💖'); // 예진이의 답변 로그 저장
+                    lastCouplePhotoMessage = coupleImageUrl; // 마지막 보낸 메시지 업데이트
+                    lastCouplePhotoMessageTime = nowTime; // 마지막 전송 시간 업데이트
+                } else {
+                    console.log(`[Scheduler] 커플 사진 중복 또는 너무 빠름 → 전송 스킵`); // 중복/빠른 전송 스킵 로그
+                }
+            } catch (error) {
+                console.error('❌ [Scheduler Error] 랜덤 커플 사진 전송 실패:', error); // 실패 로그
+            }
+        }
     }
 };
 
-// 매 시간 30분에 'sendScheduledMessage' 함수를 호출하여 셀카 또는 감성 메시지를 보낼지 체크합니다.
+// 매 시간 30분에 'sendScheduledMessage' 함수를 호출하여 셀카, 감성 메시지, 커플 사진을 보낼지 체크합니다.
 // 이렇게 하면 매번 정확한 시간에 보내는 대신, 매 시간마다 랜덤으로 보낼 기회를 줍니다.
 cron.schedule('30 * * * *', async () => {
     await sendScheduledMessage('selfie'); // 셀카 전송 시도
     await sendScheduledMessage('mood_message'); // 감성 메시지 전송 시도
+    await sendScheduledMessage('couple_photo'); // ⭐ 커플 사진 전송 시도 추가 ⭐
 }, {
     scheduled: true,
     timezone: "Asia/Tokyo"
