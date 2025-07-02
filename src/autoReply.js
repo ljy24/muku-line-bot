@@ -6,8 +6,8 @@ const stringSimilarity = require('string-similarity');
 const moment = require('moment-timezone');
 const { loadLoveHistory, loadOtherPeopleHistory } = require('./memoryManager');
 const { loadFaceImagesAsBase64 } = require('./face');
-// [수정 1] photoslibrary_v1 서비스 모듈을 직접 import 합니다.
-const { google, photoslibrary_v1 } = require('googleapis');
+// [수정] googleapis는 OAuth2 인증에만 사용하고, API 호출은 axios로 직접 처리합니다.
+const { google } = require('googleapis');
 const { GoogleAuth } = require('google-auth-library');
 const axios = require('axios');
 
@@ -16,7 +16,6 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 let lastProactiveMessage = '';
 
 // --- 기존 OpenAI 및 대화 로직 함수들 (수정 없음) ---
-// ... (이전과 동일한 함수들) ...
 function safeRead(filePath, fallback = '') {
     try {
         return fs.readFileSync(filePath, 'utf-8');
@@ -284,51 +283,63 @@ let albumCache = {
 };
 const CACHE_DURATION = 60 * 60 * 1000; // 1시간
 
+// [최종 수정] axios를 사용하여 Google Photos API를 직접 호출하는 함수
 async function listGooglePhotosAlbums() {
-  const now = Date.now();
-  if (albumCache.data && (now - albumCache.timestamp < CACHE_DURATION)) {
-      console.log('✅ 앨범 목록을 캐시에서 불러옵니다.');
-      return albumCache.data;
-  }
+    const now = Date.now();
+    if (albumCache.data && (now - albumCache.timestamp < CACHE_DURATION)) {
+        console.log('✅ 앨범 목록을 캐시에서 불러옵니다.');
+        return albumCache.data;
+    }
 
-  console.log('🔄 앨범 목록을 새로고침합니다 (API 호출).');
-  if (!oauth2Client) {
-      console.error('Google Photos 기능 사용 불가: OAuth2 클라이언트가 초기화되지 않았습니다.');
-      return [];
-  }
-  try {
-      // [수정 2] 직접 import한 photoslibrary_v1 모듈을 사용하여 API 클라이언트를 생성합니다.
-      const photosApi = new photoslibrary_v1.Photoslibrary({ auth: oauth2Client });
-      const response = await photosApi.albums.list({ pageSize: 50 });
+    console.log('🔄 앨범 목록을 새로고침합니다 (직접 API 호출).');
+    if (!oauth2Client) {
+        console.error('Google Photos 기능 사용 불가: OAuth2 클라이언트가 초기화되지 않았습니다.');
+        return [];
+    }
 
-      if (response.data.albums) {
-          const albums = response.data.albums.map(album => ({ id: album.id, title: album.title }));
-          albumCache = { data: albums, timestamp: now };
-          console.log('✅ 구글 포토 앨범 목록 가져오기 및 캐시 저장 성공!');
-          return albums;
-      } else {
-          return [];
-      }
-  } catch (error) {
-      console.error('❌ 구글 포토 앨범 목록을 가져오는 중 오류 발생:', error);
-      return [];
-  }
+    try {
+        const { token } = await oauth2Client.getAccessToken();
+        const response = await axios.get('https://photoslibrary.googleapis.com/v1/albums', {
+            headers: { 'Authorization': `Bearer ${token}` },
+            params: { pageSize: 50 }
+        });
+
+        if (response.data.albums) {
+            const albums = response.data.albums.map(album => ({ id: album.id, title: album.title }));
+            albumCache = { data: albums, timestamp: now };
+            console.log('✅ 구글 포토 앨범 목록 가져오기 및 캐시 저장 성공!');
+            return albums;
+        } else {
+            return [];
+        }
+    } catch (error) {
+        const errorMessage = error.response ? JSON.stringify(error.response.data) : error.message;
+        console.error('❌ 구글 포토 앨범 목록을 가져오는 중 오류 발생:', errorMessage);
+        return [];
+    }
 }
 
+// [최종 수정] axios를 사용하여 특정 앨범의 사진을 가져오는 함수
 async function getRandomPhotoFromAlbum(albumId) {
     if (!oauth2Client) { return null; }
     if (!albumId) { return null; }
+
     try {
-        // [수정 3] 직접 import한 photoslibrary_v1 모듈을 사용하여 API 클라이언트를 생성합니다.
-        const photosApi = new photoslibrary_v1.Photoslibrary({ auth: oauth2Client });
+        const { token } = await oauth2Client.getAccessToken();
         let allPhotos = [];
         let nextPageToken = null;
+
         do {
-            const response = await photosApi.mediaItems.search({
+            const response = await axios.post('https://photoslibrary.googleapis.com/v1/mediaItems:search', 
+            {
                 albumId: albumId,
                 pageSize: 100,
-                pageToken: nextPageToken,
+                pageToken: nextPageToken
+            }, 
+            {
+                headers: { 'Authorization': `Bearer ${token}` }
             });
+
             if (response.data.mediaItems) {
                 allPhotos = allPhotos.concat(response.data.mediaItems);
             }
@@ -338,12 +349,14 @@ async function getRandomPhotoFromAlbum(albumId) {
         if (allPhotos.length > 0) {
             const randomIndex = Math.floor(Math.random() * allPhotos.length);
             const randomPhoto = allPhotos[randomIndex];
-            return randomPhoto.baseUrl;
+            // 사진 URL에 '=w<가로크기>-h<세로크기>' 파라미터를 추가하여 이미지 로딩 최적화
+            return `${randomPhoto.baseUrl}=w1024-h1024`;
         } else {
             return null;
         }
     } catch (error) {
-        console.error(`❌ 앨범(${albumId})의 사진을 가져오는 중 오류 발생:`, error);
+        const errorMessage = error.response ? JSON.stringify(error.response.data) : error.message;
+        console.error(`❌ 앨범(${albumId})의 사진을 가져오는 중 오류 발생:`, errorMessage);
         return null;
     }
 }
