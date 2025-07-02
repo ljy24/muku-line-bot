@@ -54,7 +54,7 @@ app.get('/force-push', async (req, res) => {
     const msg = await getRandomMessage(); // 무작위 메시지 생성 (현재는 빈 문자열 반환)
     if (msg) {
         await client.pushMessage(userId, { type: 'text', text: msg }); // 메시지 전송
-        res.send(`✅ 전송됨: ${msg}`); // 성공 응답
+        res.send(`✅ 전송됨: ${msg}`); // 성공 응답ㅁ
     } else res.send('❌ 메시지 생성 실패'); // 실패 응답
 });
 
@@ -109,7 +109,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
                             const coupleFileName = String(randomCoupleIndex).padStart(6, '0') + '.jpg'; 
                             const coupleImageUrl = COUPLE_BASE_URL + coupleFileName; // 최종 커플 이미지 URL 생성
                             
-                            // 💬 예진이 말투로 커플 사진에 대한 코멘트를 생성합니다.
+                            // � 예진이 말투로 커플 사진에 대한 코멘트를 생성합니다.
                             const coupleComment = await getCouplePhotoReplyFromYeji(); // ⭐ 수정: getCouplePhotoReplyFromYeji 호출 ⭐
                             
                             // LINE에 이미지 메시지와 텍스트 메시지를 함께 보냅니다.
@@ -214,14 +214,29 @@ app.post('/webhook', middleware(config), async (req, res) => {
 
 // 1. 🚬 매시간 담타 메시지 (오전 10시부터 오후 7시까지)
 // 매 시 0분 (정각)에 실행됩니다.
+// ⭐ 변경: 담타 메시지 중복 방지 로직 추가 ⭐
+let lastDamtaMessageTime = 0; // 마지막 담타 메시지 전송 시간 (중복 방지용)
 cron.schedule('0 10-19 * * *', async () => {
     const now = moment().tz('Asia/Tokyo'); // 현재 시간을 일본 표준시로 가져옵니다.
-    // 예진이가 담타가 담배 타임인 것을 아는 애연가임을 AI 프롬프트에 설정했으므로,
-    // 여기서는 단순히 메시지를 보냅니다.
+    const currentTime = Date.now(); // 현재 시스템 시간 (밀리초)
+
+    // 🛑 서버 부팅 후 3분(3 * 60 * 1000 밀리초) 동안은 자동 메시지 전송을 건너뜁니다.
+    if (currentTime - bootTime < 3 * 60 * 1000) {
+        console.log('[Scheduler] 서버 부팅 직후 3분 이내 → 담타 메시지 전송 스킵');
+        return; // 함수 실행을 중단합니다.
+    }
+
+    // 1분(60초 * 1000ms) 이내에 이미 담타 메시지를 보낸 적이 있다면 전송 스킵
+    if (currentTime - lastDamtaMessageTime < 60 * 1000) {
+        console.log('[Scheduler] 담타 메시지 중복 또는 너무 빠름 → 전송 스킵');
+        return;
+    }
+
     const msg = '아저씨, 담타시간이야~ 💖';
     await client.pushMessage(userId, { type: 'text', text: msg }); // 메시지 전송
     console.log(`[Scheduler] 담타 메시지 전송: ${msg}`); // 로그 기록
     saveLog('예진이', msg); // 예진이의 메시지 로그 저장
+    lastDamtaMessageTime = currentTime; // 마지막 담타 메시지 전송 시간 업데이트
 }, {
     scheduled: true, // 스케줄러를 활성화합니다.
     timezone: "Asia/Tokyo" // 스케줄러의 시간대를 일본 표준시로 설정합니다.
@@ -385,7 +400,7 @@ cron.schedule('0 0 * * *', async () => {
 });
 
 
-// --- ⭐ 스케줄러 설정 변경 끝 ⭐ ⭐ ---
+// --- ⭐ 스케줄러 설정 끝 ⭐ ⭐ ---
 
 
 // require('./src/scheduler'); // src/scheduler.js 파일이 비워졌으므로 이 라인은 더 이상 필요 없습니다.
@@ -398,3 +413,4 @@ app.listen(PORT, async () => { // Express 앱을 지정된 포트에서 시작�
     await memoryManager.ensureMemoryDirectory(); // 메모리 저장 디렉토리가 존재하는지 확인하고 없으면 생성합니다.
     console.log('✅ 메모리 디렉토리 확인 및 준비 완료.'); // 디렉토리 준비 완료 로그
 });
+�
