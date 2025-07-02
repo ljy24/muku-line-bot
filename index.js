@@ -29,6 +29,10 @@ const {
 // 이 모듈은 사용자 메시지에서 기억을 추출하고 저장하는 역할을 합니다.
 const memoryManager = require('./src/memoryManager');
 
+//  구글사진 불러오기
+const { getPhotoFromGoogle, getPhotoByKeyword } = require('./src/googlePhotos');
+
+
 // Express 애플리케이션을 생성합니다.
 const app = express();
 
