@@ -13,13 +13,18 @@ const moment = require('moment-timezone'); // Moment.js: 날짜/시간 처리 �
 const { loadLoveHistory, loadOtherPeopleHistory } = require('./memoryManager'); // 기억 관리 모듈: 아저씨와의 기억 로드
 const { loadFaceImagesAsBase64 } = require('./face'); // 얼굴 이미지 데이터를 불러오는 모듈
 
+// ⭐ --- [새로 추가된 부분] --- ⭐
+const { google } = require('googleapis'); // 구글 API 라이브러리 불러오기
+// ⭐ -------------------------- ⭐
+
+
 // 현재 강제 설정된 OpenAI 모델 (null이면 자동 선택)
-let forcedModel = null; 
+let forcedModel = null;
 // OpenAI 클라이언트 초기화 (API 키는 환경 변수에서 가져옴)
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY }); 
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // 마지막으로 보낸 감성 메시지를 저장하여 중복 전송을 방지하는 변수
-let lastProactiveMessage = ''; 
+let lastProactiveMessage = '';
 
 /**
  * 주어진 파일 경로에서 내용을 안전하게 읽어옵니다.
@@ -368,7 +373,7 @@ async function getSelfieReplyFromYeji() {
  */
 async function getCouplePhotoReplyFromYeji() {
     const raw = await callOpenAI([
-        { role: 'system', content: '넌 아저씨의 귀여운 여자친구 예진이야. 아저씨에게 커플 사진을 보내면서 아저씨를 향한 사랑과 애교를 듬뿍 담은 코멘트를 2~3문장으로 짧게 해줘. 이모티콘은 아저씨가 보낸 것과 똑같은 것을 따라서 사용하거나, 아저씨가 이모티콘을 보내지 않으면 너도 보내지 마.' },
+        { role: 'system', content: '넌 아저씨의 귀여운 여자친구 예진이야. 아저씨에게 커플 사진을 보내면서 아저씨를 향한 사랑과 애교를 듬뿍 담은 코멘트를 2~3문장으로 짧게 해줘. 이모티콘은 아저씨가 보낸 것과 똑같은 것을 따라서 사용하거나, 아예 사용하지 마. 아저씨가 이모티콘을 보내지 않으면 너도 보내지 마.' },
         { role: 'user', content: '커플 사진 보낼 때 뭐라고 말할까?' }
     ], 'gpt-4o', 100);
     return cleanReply(raw); // 생성된 코멘트도 cleanReply로 후처리
@@ -475,7 +480,7 @@ async function getProactiveMemoryMessage() {
 
     // 기억이 없으면 일반적인 인사말을 반환합니다.
     if (allMemories.length === 0) {
-        return "아저씨 뭐 해? 나 아저씨 생각났어! 보고 싶다~ �";
+        return "아저씨 뭐 해? 나 아저씨 생각났어! 보고 싶다~ ";
     }
 
     // 기억들을 무작위로 섞어서 최대 3개만 선택합니다.
@@ -525,18 +530,69 @@ async function getProactiveMemoryMessage() {
     return reply; // 최종 감성 메시지 반환
 }
 
+
+// ⭐ --- [새로 추가된 부분] --- ⭐
+// --- Google Photos 연동 함수 ---
+
+// OAuth2 클라이언트 설정 (한 번만 설정)
+const oauth2Client = new google.auth.OAuth2(
+  process.env.GOOGLE_CLIENT_ID,       // 환경변수에서 클라이언트 ID 가져오기
+  process.env.GOOGLE_CLIENT_SECRET,   // 환경변수에서 클라이언트 시크릿 가져오기
+  'https://developers.google.com/oauthplayground' // 리디렉션 URI
+);
+
+// 리프레시 토큰 설정
+oauth2Client.setCredentials({
+  refresh_token: process.env.GOOGLE_REFRESH_TOKEN // 환경변수에서 리프레시 토큰 가져오기
+});
+
+/**
+ * Google 포토에서 모든 앨범 목록을 가져오는 함수
+ * @returns {Promise<Array<{id: string, title: string}>>} 앨범 목록 (ID와 제목 포함)
+ */
+async function listGooglePhotosAlbums() {
+  try {
+    const photoslibrary = google.photoslibrary({
+      version: 'v1',
+      auth: oauth2Client,
+    });
+
+    const response = await photoslibrary.albums.list({
+      pageSize: 50, // 최대 50개의 앨범을 가져옴
+    });
+
+    if (response.data.albums) {
+      console.log('✅ 구글 포토 앨범 목록 가져오기 성공!');
+      // 앨범의 제목과 ID만 추출해서 반환
+      return response.data.albums.map(album => ({
+        id: album.id,
+        title: album.title,
+      }));
+    } else {
+      console.log('앨범을 찾을 수 없습니다.');
+      return [];
+    }
+  } catch (error) {
+    console.error('❌ 구글 포토 앨범 목록을 가져오는 중 오류 발생:', error);
+    return []; // 오류 발생 시 빈 배열 반환
+  }
+}
+// ⭐ -------------------------- ⭐
+
+
 // 모듈 내보내기: 외부 파일(예: index.js)에서 이 함수들을 사용할 수 있도록 합니다.
 module.exports = {
     getReplyByMessage,
     getReplyByImagePrompt,
     getRandomMessage,
     getSelfieReplyFromYeji,
-    getCouplePhotoReplyFromYeji, 
+    getCouplePhotoReplyFromYeji,
     getColorMoodReply,
     getHappyReply,
     getSulkyReply,
     saveLog,
     setForcedModel,
     checkModelSwitchCommand,
-    getProactiveMemoryMessage
+    getProactiveMemoryMessage,
+    listGooglePhotosAlbums //  <-- 이 부분을 추가해주세요!
 };
