@@ -102,12 +102,37 @@ async function getPhotoByKeyword(keyword) {
 
 // 🔍 텍스트에서 "하카타에서 찍은 사진" 같은 장소 키워드 추출
 function extractPhotoKeywordFromText(text) {
-  const match = text.match(/([가-힣]+)(에서)?( 찍은)?( 사진)?/);
+  const match = text.match(/([가-힣a-zA-Z0-9]+)(에서)?( 찍은)?( 사진)?/);
   return match && match[1] ? match[1] : null;
+}
+
+// 🖼 예진이 말투로 사진 설명
+function getYejinPhotoComment(keyword) {
+  return `${keyword}에서 우리 같이 찍은 거야~ 기억나?`; // 기본 말투
+}
+
+// ✅ 메시지에서 키워드 감지해서 사진 전송용 함수
+async function handlePhotoRequestByKeyword(text, replyToken, client) {
+  const keyword = extractPhotoKeywordFromText(text);
+  if (!keyword) return false;
+
+  const photoUrl = await getPhotoByKeyword(keyword);
+  if (!photoUrl) return false;
+
+  const comment = getYejinPhotoComment(keyword);
+
+  await client.replyMessage(replyToken, [
+    { type: 'image', originalContentUrl: photoUrl, previewImageUrl: photoUrl },
+    { type: 'text', text: comment }
+  ]);
+
+  return true;
 }
 
 module.exports = {
   getPhotoFromGoogle,
   getPhotoByKeyword,
-  extractPhotoKeywordFromText
+  extractPhotoKeywordFromText,
+  getYejinPhotoComment,
+  handlePhotoRequestByKeyword
 };
