@@ -7,7 +7,7 @@ const { Client, middleware } = require('@line/bot-sdk'); // LINE Bot SDK: LINE �
 const express = require('express'); // Express 프레임워크: 웹 서버 구축
 const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
 const cron = require('node-cron'); // Node-cron: 주기적인 작업 스케줄링
-a
+
 // ./src/autoReply.js에서 필요한 함수들을 불러옵니다.
 // 이 함수들은 메시지 응답 생성, 셀카 코멘트 생성, 모델 전환 처리 등을 담당합니다.
 const {
