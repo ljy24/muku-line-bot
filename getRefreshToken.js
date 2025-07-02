@@ -1,6 +1,6 @@
 const { google } = require('googleapis');
 const { OAuth2Client } = require('google-auth-library');
-const readline = require('readline'); // 사용자 입력을 받기 위한 모듈
+const readline = require('readline');
 
 // 환경 변수에서 CLIENT_ID와 CLIENT_SECRET 가져오기
 // Render에 설정된 GOOGLE_CLIENT_ID와 GOOGLE_CLIENT_SECRET를 사용합니다.
