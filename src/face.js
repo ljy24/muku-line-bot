@@ -1,16 +1,18 @@
 // 파일명: src/face.js
 // 수정일: 2025년 7월 2일
-// 수정내용: OpenAI Vision API를 활용한 얼굴 인식 및 분류 기능 추가
+// 수정내용: OpenAI Vision API 토큰 제한 해결을 위해 이미지 예시 개수 제한 (최대 3장)
 
 const fs = require('fs'); // 파일 시스템 모듈
 const path = require('path'); // 경로 처리 모듈
 
 /**
- * 지정된 폴더에서 모든 이미지 파일을 Base64로 읽어옵니다.
+ * 지정된 폴더에서 이미지 파일을 Base64로 읽어옵니다.
+ * 토큰 제한을 고려하여 최대 이미지 개수를 제한합니다.
  * @param {string} personName - 'uncle' 또는 'yejin'과 같이 인물 이름 폴더명
+ * @param {number} [limit=3] - 불러올 최대 이미지 개수
  * @returns {Array<string>} Base64 인코딩된 이미지 문자열 배열
  */
-function loadFaceImagesAsBase64(personName) {
+function loadFaceImagesAsBase64(personName, limit = 3) {
     const facesDirPath = path.resolve(__dirname, `../memory/faces/${personName}`);
     const base64Images = [];
 
@@ -20,7 +22,10 @@ function loadFaceImagesAsBase64(personName) {
     }
 
     const files = fs.readdirSync(facesDirPath);
+    let count = 0; // 이미지 개수 카운터
     for (const file of files) {
+        if (count >= limit) break; // 제한된 개수에 도달하면 중단
+
         // 이미지 파일만 처리 (jpg, jpeg, png)
         if (file.endsWith('.jpg') || file.endsWith('.jpeg') || file.endsWith('.png')) {
             const filePath = path.join(facesDirPath, file);
@@ -29,6 +34,7 @@ function loadFaceImagesAsBase64(personName) {
                 const base64 = imageBuffer.toString('base64');
                 const mimeType = file.endsWith('.png') ? 'image/png' : 'image/jpeg';
                 base64Images.push(`data:${mimeType};base64,${base64}`);
+                count++;
             } catch (error) {
                 console.error(`[Face Recognition] 오류: 이미지 파일 읽기 실패 - ${filePath}:`, error);
             }
