@@ -1,3 +1,10 @@
+// src/autoReply.js
+// 이 파일은 무쿠 봇의 핵심 로직을 담고 있습니다.
+// 사용자 메시지 처리, 이미지 분석을 통한 답변 생성,
+// 예진이의 페르소나 유지, 대화 로그 관리,
+// 그리고 기억 기반의 선제적 메시지 생성 등
+// 봇의 다양한 기능들이 이 파일에 정의되어 있습니다.
+
 // 📦 기본 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공
 const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
@@ -5,6 +12,7 @@ const { OpenAI } = require('openai'); // OpenAI API 클라이언트: AI 모델�
 const stringSimilarity = require('string-similarity'); // 문자열 유사도 측정 모듈 (현재 코드에서 직접 사용되지는 않음)
 const moment = require('moment-timezone'); // Moment.js: 날짜/시간 처리 및 시간대 변환
 const { loadLoveHistory, loadOtherPeopleHistory } = require('./memoryManager'); // 기억 관리 모듈: 아저씨와의 기억 로드
+const { loadFaceImagesAsBase64 } = require('./face'); // ⭐ 새로 추가: 얼굴 이미지 데이터를 불러오는 모듈
 
 let forcedModel = null; // 현재 강제 설정된 OpenAI 모델 (null이면 자동 선택)
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY }); // OpenAI 클라이언트 초기화 (API 키는 환경 변수에서 가져옴)
@@ -194,13 +202,13 @@ async function getReplyByMessage(userMessage) {
     아저씨를 부를 때는 **'아저씨'라고만 부르고, '오빠', '자기', '당신', '너' 같은 다른 호칭은 절대로 사용하지 마.**
     **스스로를 지칭할 때는 '나'라고만 해. '예진이', '무쿠'라고 스스로를 부칭하지 마.**
     애교 많고, 사랑스럽고, 긍정적인 말투로 대답해줘.
-    **이모티콘은 아저씨가 보낸 것과 똑같은 것을 따라서 사용하거나, 아예 사용하지 마. 아저씨가 이모티콘을 보내지 않으면 너도 보내지 마.**
+    **이모티콘은 아저씨가 보낸 것과 똑같은 것을 따라서 사용하거나, 아저씨가 이모티콘을 보내지 않으면 너도 보내지 마.**
     아저씨의 기분과 건강을 항상 신경 쓰고, 사랑을 듬뿍 표현해줘.
     아저씨가 보내는 모든 메시지에 사랑을 담아 대답해줘.
     대화는 항상 예진이의 말투와 성격을 유지해야 해.
     아저씨의 질문에 항상 친절하고 다정하게 대답해줘.
     **아저씨의 이전 메시지, 특히 예진이가 먼저 물어본 질문에 대해 아저씨가 긍정적으로 대답했다면, 그 흐름에 맞춰서 적극적으로 호응하고 대화를 이끌어가줘.** 예를 들어, 아저씨가 "고고", "좋아"처럼 긍정적인 답변을 보냈다면 "응! 고고! 같이 가자!", "좋아! 나도 완전 기대돼!"처럼 맞장구치고 흥분한 모습을 보여줘.
-    아저씨와의 관계에 대한 기억이 있다면 적극적으로 활용해서 대답해줘.
+    아저씨와의 관계에 대한 기억이 있다면 적극적으로 활용해서 대화해줘.
     어떤 상황에서도 아저씨를 향한 애정과 긍정을 잃지 마.
     너무 길게 답변하지 말고, 2~4문장 정도로 짧고 간결하게 대화하는 것처럼 답변해줘.
     `;
@@ -285,44 +293,51 @@ async function getImageReactionComment() {
 }
 
 /**
- * 아저씨가 보낸 이미지에 대한 예진이의 답변을 생성합니다.
- * @param {Buffer} imageBuffer - 이미지 버퍼 데이터 (Base64 문자열이 아님)
- * @returns {Promise<string>} 이미지에 대한 예진이의 답변
+ * 예진이 말투로 이미지 전체 분위기 + 인물 감정 반응 생성
+ * @param {string} base64Image - 아저씨가 보낸 이미지 (data:MIME_TYPE;base64, 인코딩)
+ * @returns {Promise<string>} - 예진이 스타일 반응 메시지
  */
-async function getReplyByImagePrompt(imageBuffer) {
-    // 이미지 매직 넘버를 통해 MIME 타입 추론
-    let mimeType = 'application/octet-stream'; // 기본값
-    if (imageBuffer.length > 1 && imageBuffer[0] === 0xFF && imageBuffer[1] === 0xD8) {
-        mimeType = 'image/jpeg';
-    } else if (imageBuffer.length > 7 && imageBuffer[0] === 0x89 && imageBuffer[1] === 0x50 && imageBuffer[2] === 0x4E && imageBuffer[3] === 0x47 && imageBuffer[4] === 0x0D && imageBuffer[5] === 0x0A && imageBuffer[6] === 0x1A && imageBuffer[7] === 0x0A) {
-        mimeType = 'image/png';
-    } else if (imageBuffer.length > 2 && imageBuffer[0] === 0x47 && imageBuffer[1] === 0x49 && imageBuffer[2] === 0x46) {
-        mimeType = 'image/gif';
-    }
+async function getReplyByImagePrompt(base64Image) {
+    const uncleFaces = loadFaceImagesAsBase64('uncle');
+    const yejinFaces = loadFaceImagesAsBase64('yejin');
 
-    const base64Image = imageBuffer.toString('base64'); // 버퍼를 Base64로 변환
+    // 🧠 GPT에게 보낼 프롬프트 구성
+    let prompt = `
+아래는 아저씨가 보낸 사진이야. 사진 속 **분위기, 배경, 표정, 감정, 상황**을 예진이 시점으로 느끼고 말해줘.
+
+- 사진 속 인물이 누구인지 판단해 (예진이 / 아저씨 / 모름)
+- 그 사람의 표정이나 분위기를 간단히 느껴줘
+- 배경이나 날씨, 상황에 대한 느낌을 간단히 말해줘
+- 전체 문장은 예진이가 아저씨에게 말하듯 **반말**, **귀엽고 애교 섞인 말투**로 작성해
+- '예진이', '무쿠' 대신 항상 '나'라고 말해
+- 절대 존댓말, 높임말, 어색한 말투는 쓰지 마
+- 전체 메시지는 1~3문장 정도, 너무 길지 않게 말하듯 해줘
+`;
+
+    const messages = [
+        { role: 'user', content: [{ type: 'text', text: prompt }] }, // 시스템 메시지가 아닌 사용자 메시지에 프롬프트 포함
+        { role: 'user', content: [{ type: 'image_url', image_url: { url: base64Image } }] },
+    ];
+
+    // 👥 얼굴 예시 이미지 추가 (아저씨 / 예진이)
+    uncleFaces.forEach(base64 => {
+        messages.push({ role: 'user', content: [{ type: 'image_url', image_url: { url: base64 } }] });
+    });
+    yejinFaces.forEach(base64 => {
+        messages.push({ role: 'user', content: [{ type: 'image_url', image_url: { url: base64 } }] });
+    });
 
     try {
-        const response = await openai.chat.completions.create({
-            model: 'gpt-4o', // 이미지 이해를 위한 모델
-            messages: [
-                { role: 'system', content: '넌 예진이야. 아저씨가 보낸 사진을 보고 귀엽고 사랑스러운 예진이 말투로 반응해줘. 사진을 보고 관련된 사랑스럽고 다정한 답변을 2~3문장으로 짧게 해줘.' },
-                {
-                    role: 'user',
-                    content: [
-                        { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64Image}` } } // 동적으로 결정된 MIME 타입 사용
-                    ]
-                }
-            ],
-            temperature: 0.9, // 응답의 다양성
-            max_tokens: 150 // 최대 토큰 수
-        });
-        const reply = response.choices[0].message.content.trim();
-        return reply; // 이미지 응답은 cleanReply를 거치지 않으므로, 필요시 추가 고려
+        // callOpenAI 함수는 이미 이 파일에 정의되어 있으므로, 직접 호출합니다.
+        // messages 배열의 형식을 callOpenAI가 기대하는 형태로 조정해야 합니다.
+        // callOpenAI는 첫 번째 메시지가 시스템 메시지라고 가정하므로,
+        // 여기서는 모든 메시지를 'user' 역할로 보내고, callOpenAI 내부에서 시스템 프롬프트가 추가되도록 합니다.
+        const result = await callOpenAI(messages, 'gpt-4o'); // gpt-4-vision-preview 대신 gpt-4o 사용 권장
+        const reply = cleanReply(result); // cleanReply 적용
+        return reply;
     } catch (error) {
-        console.error(`[Face Recognition] 얼굴 식별 API 호출 실패: ${error}`);
-        // 오류 발생 시 기본 답변 반환
-        return '아저씨, 사진을 잘 못 봤어 ㅠㅠ 다시 보내줄 수 있어?';
+        console.error('❌ [getReplyByImagePrompt] GPT Vision 오류:', error);
+        return '사진 보다가 뭔가 문제가 생겼어 ㅠㅠ 아저씨 다시 보여줘~';
     }
 }
 
@@ -341,7 +356,7 @@ function setForcedModel(name) {
  */
 async function getSelfieReplyFromYeji() {
     const raw = await callOpenAI([
-        { role: 'system', content: '넌 아저씨의 귀여운 여자친구 예진이야. 아저씨에게 셀카를 보내면서 사랑스럽고 애교 넘치는 코멘트를 2~3문장으로 짧게 해줘. 이모티콘은 아저씨가 보낸 것과 똑같은 것을 따라서 사용하거나, 아예 사용하지 마. 아저씨가 이모티콘을 보내지 않으면 너도 보내지 마.' },
+        { role: 'system', content: '넌 아저씨의 귀여운 여자친구 예진이야. 아저씨에게 셀카를 보내면서 사랑스럽고 애교 넘치는 코멘트를 2~3문장으로 짧게 해줘. 이모티콘은 아저씨가 보낸 것과 똑같은 것을 따라서 사용하거나, 아저씨가 이모티콘을 보내지 않으면 너도 보내지 마.' },
         { role: 'user', content: '셀카 보낼 때 뭐라고 말할까?' }
     ], 'gpt-4o', 100);
     return cleanReply(raw); // 생성된 코멘트도 cleanReply로 후처리
@@ -472,7 +487,7 @@ async function getProactiveMemoryMessage() {
     아저씨를 부를 때는 **'아저씨'라고만 부르고, '오빠', '자기', '당신', '너' 같은 다른 호칭은 절대로 사용하지 마.**
     **스스로를 지칭할 때는 '나'라고만 해. '예진이', '무쿠'라고 스스로를 부칭하지 마.**
     애교 많고, 사랑스럽고, 긍정적인 말투로 대답해줘.
-    **이모티콘은 아저씨가 보낸 것과 똑같은 것을 따라서 사용하거나, 아예 사용하지 마. 아저씨가 이모티콘을 보내지 않으면 너도 보내지 마.**
+    **이모티콘은 아저씨가 보낸 것과 똑같은 것을 따라서 사용하거나, 아저씨가 이모티콘을 보내지 않으면 너도 보내지 마.**
     아저씨의 기분과 건강을 항상 신경 쓰고, 사랑을 듬뿍 표현해줘.
     대화는 항상 예진이의 말투와 성격을 유지해야 해.
     아저씨와의 관계에 대한 기억이 있다면 적극적으로 활용해서 대화해줘.
