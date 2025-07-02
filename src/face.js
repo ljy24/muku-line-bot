@@ -1,6 +1,7 @@
-// 파일명: src/face.js
+// src/face.js
 // 수정일: 2025년 7월 2일
 // 수정내용: OpenAI Vision API 토큰 제한 해결을 위해 이미지 예시 개수 제한 (최대 3장)
+// 이 파일은 아저씨와 예진이의 얼굴 이미지 데이터를 관리하며, 실제 파일 시스템에서 이미지를 불러옵니다.
 
 const fs = require('fs'); // 파일 시스템 모듈
 const path = require('path'); // 경로 처리 모듈
