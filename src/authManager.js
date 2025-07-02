@@ -31,9 +31,13 @@ async function getPhotosLibraryClient() {
     try {
         await oAuth2Client.getAccessToken(); // Access Token 갱신 시도 (필요한 경우)
         // 🚨 이 부분이 수정되었습니다.
-        // google.photoslibrary는 클라이언트 생성 함수를 반환하고,
-        // 이 함수를 호출하여 실제 API 객체를 얻어야 합니다.
-        return google.photoslibrary({ version: 'v1', auth: oAuth2Client });
+        // google.photoslibrary는 API 클라이언트를 빌드하는 함수입니다.
+        // 이 함수가 반환하는 객체가 실제 API 메서드를 포함합니다.
+        const photosLibraryClient = google.photoslibrary({
+            version: 'v1', // API 버전
+            auth: oAuth2Client // 인증 클라이언트
+        });
+        return photosLibraryClient; // 올바르게 초기화된 클라이언트 객체를 반환합니다.
     } catch (error) {
         console.error('Google Photos API 인증 오류:', error);
         throw new Error('Google Photos API 인증에 실패했습니다. GOOGLE_REFRESH_TOKEN이 유효한지 확인하세요.');
