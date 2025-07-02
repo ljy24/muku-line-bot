@@ -140,8 +140,21 @@ app.post('/webhook', middleware(config), async (req, res) => {
                         // 스트림에서 데이터를 청크 단위로 읽어옵니다.
                         for await (const chunk of stream) chunks.push(chunk);
                         const buffer = Buffer.concat(chunks); // 모든 청크를 하나의 버퍼로 합칩니다.
-                        // 이미지 버퍼를 getReplyByImagePrompt 함수로 직접 전달합니다.
-                        const reply = await getReplyByImagePrompt(buffer); // ⭐ 이 부분을 수정했습니다.
+
+                        // ⭐ 이미지 매직 넘버를 통해 MIME 타입 추론
+                        let mimeType = 'application/octet-stream'; // 기본값
+                        if (buffer.length > 1 && buffer[0] === 0xFF && buffer[1] === 0xD8) {
+                            mimeType = 'image/jpeg';
+                        } else if (buffer.length > 7 && buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47 && buffer[4] === 0x0D && buffer[5] === 0x0A && buffer[6] === 0x1A && buffer[7] === 0x0A) {
+                            mimeType = 'image/png';
+                        } else if (buffer.length > 2 && buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46) {
+                            mimeType = 'image/gif';
+                        }
+                        // Base64 이미지 데이터에 MIME 타입 프리픽스를 붙여 전달합니다.
+                        const base64ImageWithPrefix = `data:${mimeType};base64,${buffer.toString('base64')}`;
+
+                        // 이미지 버퍼를 base64 문자열로 변환하여 AI 프롬프트로 전달합니다.
+                        const reply = await getReplyByImagePrompt(base64ImageWithPrefix); // ⭐ 수정된 부분: MIME 타입 포함하여 전달
                         await client.replyMessage(event.replyToken, { type: 'text', text: reply }); // AI 응답 전송
                     } catch (err) {
                         // 이미지 처리 실패 시 오류 처리 및 메시지 전송
@@ -193,7 +206,7 @@ const sendScheduledMessage = async (type) => {
     const now = moment().tz('Asia/Tokyo'); // 현재 시간을 일본 표준시로 가져옵니다.
     const currentTime = Date.now(); // 현재 시스템 시간 (밀리초)
 
-    // 🛑 서버 부팅 후 3분(3 * 60 * 1000 밀리초) 동안은 감성/셀카 메시지 전송을 건너킵니다.
+    // 🛑 서버 부팅 후 3분(3 * 60 * 1000 밀리초) 동안은 감성/셀카 메시지 전송을 건너뜁니다.
     // 이는 서버 재시작 시 스케줄러가 즉시 발동하여 메시지가 폭주하는 것을 방지합니다.
     if (currentTime - bootTime < 3 * 60 * 1000) {
         console.log('[Scheduler] 서버 부팅 직후 3분 이내 → 자동 메시지 전송 스킵');
@@ -294,7 +307,7 @@ cron.schedule('0 0 * * *', async () => {
 });
 
 
-// --- ⭐ 스케줄러 설정 변경 끝 ⭐ ---
+// --- ⭐ 스케줄러 설정 변경 끝 ⭐ ⭐ ---
 
 
 // require('./src/scheduler'); // src/scheduler.js 파일이 비워졌으므로 이 라인은 더 이상 필요 없습니다.
