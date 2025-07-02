@@ -46,7 +46,7 @@ function loadFaceImagesAsBase64(personName, limit = 3) {
 /**
  * OpenAI Vision API를 위한 얼굴 식별 프롬프트와 이미지 데이터를 구성합니다.
  * @param {string} userImageBase64 - 사용자가 보낸 이미지의 Base64 데이터
- * @param {Array<string>} knownUncleFaces - 아저씨 얼굴 예시 Base64 배열
+ * * @param {Array<string>} knownUncleFaces - 아저씨 얼굴 예시 Base64 배열
  * @param {Array<string>} knownYejiFaces - 예진이 얼굴 예시 Base64 배열
  * @returns {Array<Object>} OpenAI Vision API messages 배열 형식
  */
