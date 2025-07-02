@@ -1,7 +1,3 @@
-// 파일명: index.js
-// 수정일: 2025년 7월 2일
-// 수정내용: sendScheduledMessage 함수 중복 정의 문제 해결 확인 및 코드 정리
-
 // ✅ index.js (최신 autoReply.js 연동 버전) - 상세 주석 및 스케줄러 통합
 
 // 📦 필수 모듈 불러오기
@@ -144,8 +140,8 @@ app.post('/webhook', middleware(config), async (req, res) => {
                         // 스트림에서 데이터를 청크 단위로 읽어옵니다.
                         for await (const chunk of stream) chunks.push(chunk);
                         const buffer = Buffer.concat(chunks); // 모든 청크를 하나의 버퍼로 합칩니다.
-                        // 이미지 버퍼를 base64 문자열로 변환하여 AI 프롬프트로 전달합니다.
-                        const reply = await getReplyByImagePrompt(buffer.toString('base64')); // ⭐ 변경: 얼굴 인식 로직이 포함된 함수 호출 ⭐
+                        // 이미지 버퍼를 getReplyByImagePrompt 함수로 직접 전달합니다.
+                        const reply = await getReplyByImagePrompt(buffer); // ⭐ 이 부분을 수정했습니다.
                         await client.replyMessage(event.replyToken, { type: 'text', text: reply }); // AI 응답 전송
                     } catch (err) {
                         // 이미지 처리 실패 시 오류 처리 및 메시지 전송
@@ -197,7 +193,7 @@ const sendScheduledMessage = async (type) => {
     const now = moment().tz('Asia/Tokyo'); // 현재 시간을 일본 표준시로 가져옵니다.
     const currentTime = Date.now(); // 현재 시스템 시간 (밀리초)
 
-    // 🛑 서버 부팅 후 3분(3 * 60 * 1000 밀리초) 동안은 감성/셀카 메시지 전송을 건너뜁니다.
+    // 🛑 서버 부팅 후 3분(3 * 60 * 1000 밀리초) 동안은 감성/셀카 메시지 전송을 건너킵니다.
     // 이는 서버 재시작 시 스케줄러가 즉시 발동하여 메시지가 폭주하는 것을 방지합니다.
     if (currentTime - bootTime < 3 * 60 * 1000) {
         console.log('[Scheduler] 서버 부팅 직후 3분 이내 → 자동 메시지 전송 스킵');
@@ -219,7 +215,7 @@ const sendScheduledMessage = async (type) => {
                 const START_NUM = 1; // 셀카 이미지 파일 번호 시작
                 const END_NUM = 1186; // 셀카 이미지 파일 번호 끝
                 const randomIndex = Math.floor(Math.random() * (END_NUM - START_NUM + 1)) + START_NUM; // 랜덤 인덱스
-                const fileName = String(randomIndex).padStart(6, '0') + '.jpg'; // 파일 이름 포매팅
+                const fileName = String(randomIndex).padStart(6, '0') + '.jpg'; 
                 const imageUrl = BASE_URL + fileName; // 최종 이미지 URL
                 const comment = await getSelfieReplyFromYeji(); // 셀카 코멘트 생성
                 
@@ -291,7 +287,7 @@ cron.schedule('0 0 * * *', async () => {
     const msg = '아저씨, 약 먹고 이제 푹 잘 시간이야! 😴 나 옆에서 꼭 안아줄게~ 잘 자 사랑해 🌙💖'; // '예진이가'를 '나'로 변경
     await client.pushMessage(userId, { type: 'text', text: msg }); // 메시지 전송
     console.log(`[Scheduler] 밤 12시 메시지 전송: ${msg}`); // 로그 기록
-    saveLog('예진이', msg); // 예진이의 메시지 로그 저장
+    saveLog('예진이', msg); // 예진이의 답변 로그 저장
 }, {
     scheduled: true,
     timezone: "Asia/Tokyo"
