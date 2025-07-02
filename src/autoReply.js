@@ -6,7 +6,8 @@ const stringSimilarity = require('string-similarity');
 const moment = require('moment-timezone');
 const { loadLoveHistory, loadOtherPeopleHistory } = require('./memoryManager');
 const { loadFaceImagesAsBase64 } = require('./face');
-const { google } = require('googleapis');
+// [수정 1] photoslibrary_v1 서비스 모듈을 직접 import 합니다.
+const { google, photoslibrary_v1 } = require('googleapis');
 const { GoogleAuth } = require('google-auth-library');
 const axios = require('axios');
 
@@ -15,7 +16,7 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 let lastProactiveMessage = '';
 
 // --- 기존 OpenAI 및 대화 로직 함수들 (수정 없음) ---
-
+// ... (이전과 동일한 함수들) ...
 function safeRead(filePath, fallback = '') {
     try {
         return fs.readFileSync(filePath, 'utf-8');
@@ -266,7 +267,7 @@ try {
     oauth2Client = new google.auth.OAuth2(
       process.env.GOOGLE_CLIENT_ID,
       process.env.GOOGLE_CLIENT_SECRET,
-      'https://developers.google.com/oauthplayground' // 혹은 설정된 리디렉션 URI
+      'https://developers.google.com/oauthplayground'
     );
     oauth2Client.setCredentials({
       refresh_token: process.env.GOOGLE_REFRESH_TOKEN
@@ -296,11 +297,9 @@ async function listGooglePhotosAlbums() {
       return [];
   }
   try {
-      // [수정 1] 오류의 원인을 파악하기 위해 google.photoslibrary의 타입을 확인하는 로그 추가
-      console.log('Inspecting google.photoslibrary type:', typeof google.photoslibrary);
-
-      const photoslibrary = google.photoslibrary({ version: 'v1', auth: oauth2Client });
-      const response = await photoslibrary.albums.list({ pageSize: 50 });
+      // [수정 2] 직접 import한 photoslibrary_v1 모듈을 사용하여 API 클라이언트를 생성합니다.
+      const photosApi = new photoslibrary_v1.Photoslibrary({ auth: oauth2Client });
+      const response = await photosApi.albums.list({ pageSize: 50 });
 
       if (response.data.albums) {
           const albums = response.data.albums.map(album => ({ id: album.id, title: album.title }));
@@ -320,12 +319,12 @@ async function getRandomPhotoFromAlbum(albumId) {
     if (!oauth2Client) { return null; }
     if (!albumId) { return null; }
     try {
-        const photoslibrary = google.photoslibrary({ version: 'v1', auth: oauth2Client });
+        // [수정 3] 직접 import한 photoslibrary_v1 모듈을 사용하여 API 클라이언트를 생성합니다.
+        const photosApi = new photoslibrary_v1.Photoslibrary({ auth: oauth2Client });
         let allPhotos = [];
         let nextPageToken = null;
         do {
-            // [수정 2] mediaItems.search 호출 시 불필요한 requestBody 객체를 제거하고 파라미터를 직접 전달하도록 수정
-            const response = await photoslibrary.mediaItems.search({
+            const response = await photosApi.mediaItems.search({
                 albumId: albumId,
                 pageSize: 100,
                 pageToken: nextPageToken,
@@ -361,7 +360,6 @@ async function getPhotoDescriptionWithGemini(photoUrl) {
         const imageResponse = await axios.get(photoUrl, { responseType: 'arraybuffer' });
         const imageBase64 = Buffer.from(imageResponse.data, 'binary').toString('base64');
 
-        // [수정 3] Gemini 모델을 최신 버전(gemini-1.5-flash-001)으로 변경
         const endpoint = `https://us-central1-aiplatform.googleapis.com/v1/projects/${projectId}/locations/us-central1/publishers/google/models/gemini-1.5-flash-001:streamGenerateContent`;
         const requestBody = {
             "contents": {
