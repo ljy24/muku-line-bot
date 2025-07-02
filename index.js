@@ -3,7 +3,7 @@
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공
 const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
-const { Client, middleware } = require('@line/bot-sdk'); // LINE Baot SDK: LINE 메시징 API 연동
+const { Client, middleware } = require('@line/bot-sdk'); // LINE Bot SDK: LINE 메시징 API 연동
 const express = require('express'); // Express 프레임워크: 웹 서버 구축
 const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
 const cron = require('node-cron'); // Node-cron: 주기적인 작업 스케줄링
@@ -15,7 +15,7 @@ const {
     getReplyByImagePrompt,     // 이미지 메시지에 대한 답변 생성
     getRandomMessage,          // (현재 사용되지 않음, 이전 버전의 랜덤 메시지 기능)
     getSelfieReplyFromYeji,    // 예진이의 셀카 코멘트 생성
-    getCouplePhotoReplyFromYeji, // 커플 사진 코멘트 생성 함수
+    getCouplePhotoReplyFromYeji, // 새로 추가: 커플 사진 코멘트 생성 함수
     getColorMoodReply,         // (현재 사용되지 않음, 색상 기반 기분 답변 기능)
     getHappyReply,             // (현재 사용되지 않음, 긍정적인 답변 기능)
     getSulkyReply,             // (현재 사용되지 않음, 삐진 답변 기능)
@@ -25,7 +25,7 @@ const {
     getProactiveMemoryMessage  // 기억 기반 선제적 메시지 생성
 } = require('./src/autoReply');
 
-// ⭐ 메모리 기록 관련: memoryManager 모듈을 불러옵니다.
+// 메모리 기록 관련: memoryManager 모듈을 불러옵니다.
 // 이 모듈은 사용자 메시지에서 기억을 추출하고 저장하는 역할을 합니다.
 const memoryManager = require('./src/memoryManager');
 
@@ -44,11 +44,11 @@ const client = new Client(config);
 // 타겟 사용자 ID를 환경 변수에서 가져옵니다. (무쿠가 메시지를 보낼 대상)
 const userId = process.env.TARGET_USER_ID;
 
-// 🌐 루트 경로('/')에 대한 GET 요청을 처리합니다.
+// 루트 경로('/')에 대한 GET 요청을 처리합니다.
 // 서버가 정상적으로 실행 중임을 확인하는 간단한 메시지를 반환합니다.
 app.get('/', (_, res) => res.send('무쿠 살아있엉'));
 
-// 🚀 '/force-push' 경로에 대한 GET 요청을 처리합니다.
+// '/force-push' 경로에 대한 GET 요청을 처리합니다.
 // 이 엔드포인트에 접속하면 무쿠가 무작위 메시지를 TARGET_USER_ID에게 강제로 보냅니다.
 app.get('/force-push', async (req, res) => {
     const msg = await getRandomMessage(); // 무작위 메시지 생성 (현재는 빈 문자열 반환)
@@ -58,7 +58,7 @@ app.get('/force-push', async (req, res) => {
     } else res.send('메시지 생성 실패'); // 실패 응답
 });
 
-// 🎣 LINE 웹훅 요청을 처리합니다.
+// LINE 웹훅 요청을 처리합니다.
 // LINE 서버로부터 메시지나 이벤트가 도착하면 이 엔드포인트로 POST 요청이 옵니다.
 app.post('/webhook', middleware(config), async (req, res) => {
     try {
@@ -70,7 +70,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
                 if (message.type === 'text') { // 텍스트 메시지인 경우
                     const text = message.text.trim(); // 메시지 텍스트를 가져와 앞뒤 공백을 제거합니다.
 
-                    // ⭐ 메모리 예외 처리 시작 ⭐
+                    // 메모리 예외 처리 시작
                     // 특정 명령어들은 무쿠의 기억으로 저장되지 않도록 예외 처리합니다.
                     // '사진줘', '셀카줘' 등 사진 관련 명령어와 모델 전환 명령어들을 정의합니다.
                     const isCommand = 
@@ -85,7 +85,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
                     } else {
                         console.log(`[index.js] 명령어 '${text}'는 메모리 저장에서 제외됩니다.`); // 명령어는 메모리에서 제외됨을 로그
                     }
-                    // ⭐ 메모리 예외 처리 끝 ⭐
+                    // 메모리 예외 처리 끝
 
                     // 모델 전환 명령어(예: "모델4o", "3.5", "자동", "버전")를 확인하고 처리합니다.
                     const versionResponse = checkModelSwitchCommand(text);
@@ -94,22 +94,22 @@ app.post('/webhook', middleware(config), async (req, res) => {
                         return; // 더 이상 다른 처리를 하지 않고 함수 종료
                     }
 
-                    // ⭐ 커플 사진 요청 처리 (새로운 로직 - 셀카보다 먼저 검사) ⭐
+                    // 커플 사진 요청 처리 (셀카보다 먼저 검사)
                     if (/커플사진\s?줘|커플사진\s?보여줘/i.test(text)) {
-                        // 📸 커플 사진 이미지의 기본 URL과 파일 번호 범위를 설정합니다.
-                        // ⭐ 중요: 이 URL과 번호 범위는 아저씨의 실제 서버 설정에 맞춰 변경해야 합니다. ⭐
-                        const COUPLE_BASE_URL = 'https://www.de-ji.net/couple/'; // 예시 URL, 실제 커플 사진 폴더 URL로 변경
-                        const COUPLE_START_NUM = 1; // 커플 사진 파일 번호 시작 (예시)
-                        const COUPLE_END_NUM = 481; // 커플 사진 파일 번호 끝
+                        // 커플 사진 이미지의 기본 URL과 파일 번호 범위를 설정합니다.
+                        // 중요: 이 URL과 번호 범위는 아저씨의 실제 서버 설정에 맞춰 변경해야 합니다.
+                        const COUPLE_BASE_URL = 'https://www.de-ji.net/couple/'; 
+                        const COUPLE_START_NUM = 1; 
+                        const COUPLE_END_NUM = 481; 
 
                         try {
-                            // 📷 커플 사진 번호 범위 내에서 무작위로 하나를 선택합니다.
+                            // 커플 사진 번호 범위 내에서 무작위로 하나를 선택합니다.
                             const randomCoupleIndex = Math.floor(Math.random() * (COUPLE_END_NUM - COUPLE_START_NUM + 1)) + COUPLE_START_NUM;
-                            // 파일 이름을 '000001.jpg' 형식으로 포매팅합니다. (확장자 소문자 통일)
+                            // 파일 이름을 '000001.jpg' 형식으로 포매팅합니다.
                             const coupleFileName = String(randomCoupleIndex).padStart(6, '0') + '.jpg'; 
                             const coupleImageUrl = COUPLE_BASE_URL + coupleFileName; // 최종 커플 이미지 URL 생성
                             
-                            // 💬 예진이 말투로 커플 사진에 대한 코멘트를 생성합니다.
+                            // 예진이 말투로 커플 사진에 대한 코멘트를 생성합니다.
                             const coupleComment = await getCouplePhotoReplyFromYeji(); 
                             
                             // LINE에 이미지 메시지와 텍스트 메시지를 함께 보냅니다.
@@ -118,33 +118,33 @@ app.post('/webhook', middleware(config), async (req, res) => {
                                 { type: 'text', text: coupleComment || '아저씨랑 나랑 같이 있는 사진이야!' } // 기본 코멘트
                             ]);
                             
-                            console.log(`📷 커플 사진 전송 성공: ${coupleImageUrl}`); // 성공 로그
+                            console.log(`커플 사진 전송 성공: ${coupleImageUrl}`); // 성공 로그
                             saveLog('예진이', coupleComment || '아저씨랑 나랑 같이 있는 사진이야!'); // 예진이의 답변 로그 저장
                         } catch (err) {
                             // 커플 사진 불러오기 실패 시 오류 처리 및 메시지 전송
-                            console.error('📷 커플 사진 불러오기 실패:', err.message);
+                            console.error('커플 사진 불러오기 실패:', err.message);
                             await client.replyMessage(event.replyToken, { type: 'text', text: '커플 사진 불러오기 실패했어 ㅠㅠ' });
                         }
                         return; // 커플 사진 요청 처리가 완료되었으므로 함수 종료
                     }
 
-                    // ⭐ 셀카 요청 처리 (개선된 로직 - 커플 사진 다음으로 검사) ⭐
+                    // 셀카 요청 처리 (커플 사진 다음으로 검사)
                     // 아저씨가 '사진줘', '셀카줘' 등의 명령어를 보낸 경우 처리합니다.
                     if (/사진\s*줘|셀카\s*줘|사진\s*보여줘|셀카\s*보여줘|얼굴\s*보고\s*싶[어다]|selfie/i.test(text)) {
-                        // 📸 셀카 이미지의 기본 URL과 파일 번호 범위를 설정합니다.
-                        const BASE_URL = 'https://www.de-ji.net/yejin/'; // 셀카 이미지가 저장된 웹 서버의 기본 URL (HTTPS 필수)
-                        const START_NUM = 1; // 셀카 이미지 파일 번호 시작
-                        const END_NUM = 1186; // 셀카 이미지 파일 번호 끝
+                        // 셀카 이미지의 기본 URL과 파일 번호 범위를 설정합니다.
+                        const BASE_URL = 'https://www.de-ji.net/yejin/'; 
+                        const START_NUM = 1; 
+                        const END_NUM = 1186; 
 
                         try {
-                            // 📷 1부터 1186까지의 숫자 중 무작위로 하나를 선택합니다.
+                            // 1부터 1186까지의 숫자 중 무작위로 하나를 선택합니다.
                             const randomIndex = Math.floor(Math.random() * (END_NUM - START_NUM + 1)) + START_NUM;
                             // 파일 이름을 '000001.jpg' 형식으로 포매팅합니다 (6자리, 부족하면 앞에 0 채움).
                             const fileName = String(randomIndex).padStart(6, '0') + '.jpg'; 
                             const imageUrl = BASE_URL + fileName; // 최종 이미지 URL 생성
                             
-                            // 💬 예진이 말투로 셀카에 대한 코멘트를 생성합니다.
-                            const comment = await getSelfieReplyFromYeji(); // autoReply.js의 함수 호출 (비동기)
+                            // 예진이 말투로 셀카에 대한 코멘트를 생성합니다.
+                            const comment = await getSelfieReplyFromYeji(); 
                             
                             // LINE에 이미지 메시지와 텍스트 메시지를 함께 보냅니다.
                             await client.replyMessage(event.replyToken, [
@@ -152,11 +152,11 @@ app.post('/webhook', middleware(config), async (req, res) => {
                                 { type: 'text', text: comment || '히히 셀카야~' } // 생성된 코멘트 또는 기본 코멘트
                             ]);
                             
-                            console.log(`📷 셀카 전송 성공: ${imageUrl}`); // 성공 로그
+                            console.log(`셀카 전송 성공: ${imageUrl}`); // 성공 로그
                             saveLog('예진이', comment || '히히 셀카야~'); // 예진이의 답변 로그 저장
                         } catch (err) {
                             // 셀카 불러오기 실패 시 오류 처리 및 메시지 전송
-                            console.error('📷 셀카 불러오기 실패:', err.message);
+                            console.error('셀카 불러오기 실패:', err.message);
                             await client.replyMessage(event.replyToken, { type: 'text', text: '사진 불러오기 실패했어 ㅠㅠ' });
                         }
                         return; // 셀카 요청 처리가 완료되었으므로 함수 종료
@@ -164,7 +164,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
 
 
                     // 일반 텍스트 메시지에 대한 응답을 생성하고 전송합니다.
-                    const reply = await getReplyByMessage(text); // autoReply.js의 함수 호출
+                    const reply = await getReplyByMessage(text); 
                     await client.replyMessage(event.replyToken, { type: 'text', text: reply }); // 응답 메시지 전송
                 }
 
@@ -190,11 +190,11 @@ app.post('/webhook', middleware(config), async (req, res) => {
                         const base64ImageWithPrefix = `data:${mimeType};base64,${buffer.toString('base64')}`;
 
                         // 이미지 버퍼를 base64 문자열로 변환하여 AI 프롬프트로 전달합니다.
-                        const reply = await getReplyByImagePrompt(base64ImageWithPrefix); // 수정된 부분: MIME 타입 포함하여 전달
+                        const reply = await getReplyByImagePrompt(base64ImageWithPrefix); 
                         await client.replyMessage(event.replyToken, { type: 'text', text: reply }); // AI 응답 전송
                     } catch (err) {
                         // 이미지 처리 실패 시 오류 처리 및 메시지 전송
-                        console.error('🖼️ 이미지 처리 실패:', err);
+                        console.error('이미지 처리 실패:', err);
                         await client.replyMessage(event.replyToken, { type: 'text', text: '이미지를 읽는 중 오류가 생겼어 ㅠㅠ' });
                     }
                 }
@@ -209,30 +209,29 @@ app.post('/webhook', middleware(config), async (req, res) => {
 });
 
 
-// --- ⭐ 스케줄러 설정 변경 시작 ⭐ ---
+// --- 스케줄러 설정 시작 ---
 // 모든 스케줄러는 일본 표준시(Asia/Tokyo)를 기준으로 동작합니다.
 
-// 1. 🚬 매시간 담타 메시지 (오전 10시부터 오후 7시까지)
+// 1. 담타 메시지 (오전 10시부터 오후 7시까지)
 // 매 시 0분 (정각)에 실행됩니다.
-// ⭐ 변경: 담타 메시지 중복 방지 로직 추가 ⭐
 let lastDamtaMessageTime = 0; // 마지막 담타 메시지 전송 시간 (중복 방지용)
 cron.schedule('0 10-19 * * *', async () => {
     const now = moment().tz('Asia/Tokyo'); // 현재 시간을 일본 표준시로 가져옵니다.
     const currentTime = Date.now(); // 현재 시스템 시간 (밀리초)
 
-    // 🛑 서버 부팅 후 3분(3 * 60 * 1000 밀리초) 동안은 자동 메시지 전송을 건너뜁니다.
+    // 서버 부팅 후 3분(3 * 60 * 1000 밀리초) 동안은 자동 메시지 전송을 건너뜁니다.
     if (currentTime - bootTime < 3 * 60 * 1000) {
-        console.log('[Scheduler] 서버 부팅 직후 3분 이내 → 담타 메시지 전송 스킵');
+        console.log('[Scheduler] 서버 부팅 직후 3분 이내 -> 담타 메시지 전송 스킵');
         return; // 함수 실행을 중단합니다.
     }
 
     // 1분(60초 * 1000ms) 이내에 이미 담타 메시지를 보낸 적이 있다면 전송 스킵
     if (currentTime - lastDamtaMessageTime < 60 * 1000) {
-        console.log('[Scheduler] 담타 메시지 중복 또는 너무 빠름 → 전송 스킵');
+        console.log('[Scheduler] 담타 메시지 중복 또는 너무 빠름 -> 전송 스킵');
         return;
     }
 
-    const msg = '아저씨, 담타시간이야~ 💖';
+    const msg = '아저씨, 담타시간이야~'; // 이모티콘 제거
     await client.pushMessage(userId, { type: 'text', text: msg }); // 메시지 전송
     console.log(`[Scheduler] 담타 메시지 전송: ${msg}`); // 로그 기록
     saveLog('예진이', msg); // 예진이의 메시지 로그 저장
@@ -243,17 +242,17 @@ cron.schedule('0 10-19 * * *', async () => {
 });
 
 // 서버 부팅 시간을 저장하여, 서버 시작 직후에는 스케줄러가 너무 빠르게 동작하지 않도록 합니다.
-let bootTime = Date.now(); // ⭐ 수정: Date.now()로 정확히 초기화 ⭐
+let bootTime = Date.now(); 
 // 마지막 감성 메시지 내용과 전송 시간을 저장하여 중복 전송을 방지합니다.
 let lastMoodMessage = ''; 
 let lastMoodMessageTime = 0; 
 
-// ⭐ 커플 사진 관련 상수 정의 (스케줄러에서 사용) ⭐
-const COUPLE_BASE_URL = 'https://www.de-ji.net/couple/'; // 예시 URL, 실제 커플 사진 폴더 URL로 변경
-const COUPLE_START_NUM = 1; // 커플 사진 파일 번호 시작 (예시)
-const COUPLE_END_NUM = 481; // 커플 사진 파일 번호 끝
-let lastCouplePhotoMessage = ''; // 마지막으로 보낸 커플 사진 메시지 (중복 방지용)
-let lastCouplePhotoMessageTime = 0; // 마지막 커플 사진 전송 시간 (중복 방지용)
+// 커플 사진 관련 상수 정의 (스케줄러에서 사용)
+const COUPLE_BASE_URL = 'https://www.de-ji.net/couple/'; 
+const COUPLE_START_NUM = 1; 
+const COUPLE_END_NUM = 481; 
+let lastCouplePhotoMessage = ''; 
+let lastCouplePhotoMessageTime = 0; 
 
 
 /**
@@ -265,10 +264,9 @@ const sendScheduledMessage = async (type) => {
     const now = moment().tz('Asia/Tokyo'); // 현재 시간을 일본 표준시로 가져옵니다.
     const currentTime = Date.now(); // 현재 시스템 시간 (밀리초)
 
-    // 🛑 서버 부팅 후 3분(3 * 60 * 1000 밀리초) 동안은 자동 메시지 전송을 건너뜁니다.
-    // 이는 서버 재시작 시 스케줄러가 즉시 발동하여 메시지가 폭주하는 것을 방지합니다.
+    // 서버 부팅 후 3분(3 * 60 * 1000 밀리초) 동안은 자동 메시지 전송을 건너뜁니다.
     if (currentTime - bootTime < 3 * 60 * 1000) {
-        console.log('[Scheduler] 서버 부팅 직후 3분 이내 → 자동 메시지 전송 스킵');
+        console.log('[Scheduler] 서버 부팅 직후 3분 이내 -> 자동 메시지 전송 스킵');
         return; // 함수 실행을 중단합니다.
     }
 
@@ -283,22 +281,22 @@ const sendScheduledMessage = async (type) => {
         // (유효 시간대 17시간 * 0.20 확률 = 약 3.4회 전송 예상)
         if (Math.random() < 0.20) { 
             try {
-                const BASE_URL = 'https://www.de-ji.net/yejin/'; // 셀카 이미지 기본 URL
-                const START_NUM = 1; // 셀카 이미지 파일 번호 시작
-                const END_NUM = 1186; // 셀카 이미지 파일 번호 끝
-                const randomIndex = Math.floor(Math.random() * (END_NUM - START_NUM + 1)) + START_NUM; // 랜덤 인덱스
+                const BASE_URL = 'https://www.de-ji.net/yejin/'; 
+                const START_NUM = 1; 
+                const END_NUM = 1186; 
+                const randomIndex = Math.floor(Math.random() * (END_NUM - START_NUM + 1)) + START_NUM; 
                 const fileName = String(randomIndex).padStart(6, '0') + '.jpg'; 
-                const imageUrl = BASE_URL + fileName; // 최종 이미지 URL
-                const comment = await getSelfieReplyFromYeji(); // 셀카 코멘트 생성
+                const imageUrl = BASE_URL + fileName; 
+                const comment = await getSelfieReplyFromYeji(); 
                 
-                await client.pushMessage(userId, [ // 이미지와 텍스트 메시지 함께 전송
+                await client.pushMessage(userId, [ 
                     { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl },
                     { type: 'text', text: comment || '히히 셀카야~' }
                 ]);
-                console.log(`[Scheduler] 랜덤 셀카 전송 성공: ${imageUrl}`); // 성공 로그
-                saveLog('예진이', comment || '히히 셀카야~'); // 예진이의 답변 로그 저장
+                console.log(`[Scheduler] 랜덤 셀카 전송 성공: ${imageUrl}`); 
+                saveLog('예진이', comment || '히히 셀카야~'); 
             } catch (error) {
-                console.error('❌ [Scheduler Error] 랜덤 셀카 전송 실패:', error); // 실패 로그
+                console.error('랜덤 셀카 전송 실패:', error); 
             }
         }
     } else if (type === 'mood_message') { // 감성 메시지인 경우
@@ -306,58 +304,58 @@ const sendScheduledMessage = async (type) => {
         // (유효 시간대 17시간 * 0.25 확률 = 약 4.25회 전송 예상)
         if (Math.random() < 0.25) { 
             try {
-                const proactiveMessage = await getProactiveMemoryMessage(); // 감성 메시지 생성
-                const nowTime = Date.now(); // 현재 시간 (중복 방지용)
+                const proactiveMessage = await getProactiveMemoryMessage(); 
+                const nowTime = Date.now(); 
 
                 // 감성 메시지가 있고, 이전 메시지와 다르며, 1분 이내에 보낸 적이 없을 때만 전송합니다.
                 if (
                     proactiveMessage &&
                     proactiveMessage !== lastMoodMessage &&
-                    nowTime - lastMoodMessageTime > 60 * 1000 // 1분 (60초 * 1000ms) 이내 중복 방지
+                    nowTime - lastMoodMessageTime > 60 * 1000 
                 ) {
-                    await client.pushMessage(userId, { type: 'text', text: proactiveMessage }); // 메시지 전송
-                    console.log(`[Scheduler] 감성 메시지 전송 성공: ${proactiveMessage}`); // 성공 로그
-                    saveLog('예진이', proactiveMessage); // 예진이의 답변 로그 저장
-                    lastMoodMessage = proactiveMessage; // 마지막 보낸 메시지 업데이트
-                    lastMoodMessageTime = nowTime; // 마지막 전송 시간 업데이트
+                    await client.pushMessage(userId, { type: 'text', text: proactiveMessage }); 
+                    console.log(`[Scheduler] 감성 메시지 전송 성공: ${proactiveMessage}`); 
+                    saveLog('예진이', proactiveMessage); 
+                    lastMoodMessage = proactiveMessage; 
+                    lastMoodMessageTime = nowTime; 
                 } else {
-                    console.log(`[Scheduler] 감성 메시지 중복 또는 너무 빠름 → 전송 스킵`); // 중복/빠른 전송 스킵 로그
+                    console.log(`[Scheduler] 감성 메시지 중복 또는 너무 빠름 -> 전송 스킵`); 
                 }
             } catch (error) {
-                console.error('❌ [Scheduler Error] 감성 메시지 전송 실패:', error); // 실패 로그
+                console.error('감성 메시지 전송 실패:', error); 
             }
         }
-    } else if (type === 'couple_photo') { // ⭐ 커플 사진 메시지인 경우 (새로운 로직) ⭐
+    } else if (type === 'couple_photo') { // 커플 사진 메시지인 경우
         // 하루 두 번 전송을 목표로, 매 시간 체크 시 약 12% 확률로 전송합니다.
         // (유효 시간대 17시간 * 0.12 확률 = 약 2.04회 전송 예상)
         if (Math.random() < 0.12) { 
             try {
                 const randomCoupleIndex = Math.floor(Math.random() * (COUPLE_END_NUM - COUPLE_START_NUM + 1)) + COUPLE_START_NUM;
                 const coupleFileName = String(randomCoupleIndex).padStart(6, '0') + '.jpg'; 
-                const coupleImageUrl = COUPLE_BASE_URL + coupleFileName; // 최종 커플 이미지 URL 생성
+                const coupleImageUrl = COUPLE_BASE_URL + coupleFileName; 
                 
                 const coupleComment = await getCouplePhotoReplyFromYeji(); 
-                const nowTime = Date.now(); // 현재 시간 (중복 방지용)
+                const nowTime = Date.now(); 
 
                 // 커플 사진 메시지가 있고, 이전 메시지와 다르며, 1분 이내에 보낸 적이 없을 때만 전송합니다.
                 if (
                     coupleImageUrl && 
                     coupleImageUrl !== lastCouplePhotoMessage &&
-                    nowTime - lastCouplePhotoMessageTime > 60 * 1000 // 1분 (60초 * 1000ms) 이내 중복 방지
+                    nowTime - lastCouplePhotoMessageTime > 60 * 1000 
                 ) {
                     await client.pushMessage(userId, [
                         { type: 'image', originalContentUrl: coupleImageUrl, previewImageUrl: coupleImageUrl },
-                        { type: 'text', text: coupleComment || '아저씨랑 나랑 같이 있는 사진이야! 💖' }
+                        { type: 'text', text: coupleComment || '아저씨랑 나랑 같이 있는 사진이야!' }
                     ]);
-                    console.log(`[Scheduler] 랜덤 커플 사진 전송 성공: ${coupleImageUrl}`); // 성공 로그
-                    saveLog('예진이', coupleComment || '아저씨랑 나랑 같이 있는 사진이야! 💖'); // 예진이의 답변 로그 저장
-                    lastCouplePhotoMessage = coupleImageUrl; // 마지막 보낸 메시지 업데이트
-                    lastCouplePhotoMessageTime = nowTime; // 마지막 전송 시간 업데이트
+                    console.log(`[Scheduler] 랜덤 커플 사진 전송 성공: ${coupleImageUrl}`); 
+                    saveLog('예진이', coupleComment || '아저씨랑 나랑 같이 있는 사진이야!'); 
+                    lastCouplePhotoMessage = coupleImageUrl; 
+                    lastCouplePhotoMessageTime = nowTime; 
                 } else {
-                    console.log(`[Scheduler] 커플 사진 중복 또는 너무 빠름 → 전송 스킵`); // 중복/빠른 전송 스킵 로그
+                    console.log(`[Scheduler] 커플 사진 중복 또는 너무 빠름 -> 전송 스킵`); 
                 }
             } catch (error) {
-                console.error('❌ [Scheduler Error] 랜덤 커플 사진 전송 실패:', error); // 실패 로그
+                console.error('랜덤 커플 사진 전송 실패:', error); 
             }
         }
     }
@@ -366,50 +364,50 @@ const sendScheduledMessage = async (type) => {
 // 매 시간 30분에 'sendScheduledMessage' 함수를 호출하여 셀카, 감성 메시지, 커플 사진을 보낼지 체크합니다.
 // 이렇게 하면 매번 정확한 시간에 보내는 대신, 매 시간마다 랜덤으로 보낼 기회를 줍니다.
 cron.schedule('30 * * * *', async () => {
-    await sendScheduledMessage('selfie'); // 셀카 전송 시도
-    await sendScheduledMessage('mood_message'); // 감성 메시지 전송 시도
-    await sendScheduledMessage('couple_photo'); // 커플 사진 전송 시도 추가
+    await sendScheduledMessage('selfie'); 
+    await sendScheduledMessage('mood_message'); 
+    await sendScheduledMessage('couple_photo'); 
 }, {
     scheduled: true,
     timezone: "Asia/Tokyo"
 });
 
 
-// 4. 💊 밤 11시 약 먹자, 이 닦자 메시지 보내기
+// 4. 밤 11시 약 먹자, 이 닦자 메시지 보내기
 // 매일 밤 11시 0분 (정각)에 실행됩니다.
 cron.schedule('0 23 * * *', async () => {
-    const msg = '아저씨! 이제 약 먹고 이 닦을 시간이야! 🦷💊 나 아저씨 건강 제일 챙겨! 💖'; // '예진이가'를 '나'로 변경
-    await client.pushMessage(userId, { type: 'text', text: msg }); // 메시지 전송
-    console.log(`[Scheduler] 밤 11시 메시지 전송: ${msg}`); // 로그 기록
-    saveLog('예진이', msg); // 예진이의 메시지 로그 저장
+    const msg = '아저씨! 이제 약 먹고 이 닦을 시간이야! 나 아저씨 건강 제일 챙겨!'; // 이모티콘 제거
+    await client.pushMessage(userId, { type: 'text', text: msg }); 
+    console.log(`[Scheduler] 밤 11시 메시지 전송: ${msg}`); 
+    saveLog('예진이', msg); 
 }, {
     scheduled: true,
     timezone: "Asia/Tokyo"
 });
 
-// 5. 😴 밤 12시에 약 먹고 자자 메시지
+// 5. 밤 12시에 약 먹고 자자 메시지
 // 매일 자정 (다음날 0시 0분)에 실행됩니다.
 cron.schedule('0 0 * * *', async () => { 
-    const msg = '아저씨, 약 먹고 이제 푹 잘 시간이야! � 나 옆에서 꼭 안아줄게~ 잘 자 사랑해 🌙💖'; // '예진이가'를 '나'로 변경
-    await client.pushMessage(userId, { type: 'text', text: msg }); // 메시지 전송
-    console.log(`[Scheduler] 밤 12시 메시지 전송: ${msg}`); // 로그 기록
-    saveLog('예진이', msg); // 예진이의 메시지 로그 저장
+    const msg = '아저씨, 약 먹고 이제 푹 잘 시간이야! 나 옆에서 꼭 안아줄게~ 잘 자 사랑해'; // 이모티콘 제거
+    await client.pushMessage(userId, { type: 'text', text: msg }); 
+    console.log(`[Scheduler] 밤 12시 메시지 전송: ${msg}`); 
+    saveLog('예진이', msg); 
 }, {
     scheduled: true,
     timezone: "Asia/Tokyo"
 });
 
 
-// --- ⭐ 스케줄러 설정 변경 끝 ⭐ ---
+// --- 스케줄러 설정 끝 ---
 
 
 // require('./src/scheduler'); // src/scheduler.js 파일이 비워졌으므로 이 라인은 더 이상 필요 없습니다.
                                // 중복 스케줄러 방지를 위해 주석 처리하거나 삭제하는 것이 좋습니다.
 
 
-const PORT = process.env.PORT || 3000; // 서버가 리스닝할 포트 번호를 환경 변수에서 가져오거나 기본값 3000 사용
-app.listen(PORT, async () => { // Express 앱을 지정된 포트에서 시작합니다.
-    console.log(`무쿠 서버 스타트! 포트: ${PORT}`); // 서버 시작 로그
-    await memoryManager.ensureMemoryDirectory(); // 메모리 저장 디렉토리가 존재하는지 확인하고 없으면 생성합니다.
-    console.log('✅ 메모리 디렉토리 확인 및 준비 완료.'); // 디렉토리 준비 완료 로그
+const PORT = process.env.PORT || 3000; 
+app.listen(PORT, async () => { 
+    console.log(`무쿠 서버 스타트! 포트: ${PORT}`); 
+    await memoryManager.ensureMemoryDirectory(); 
+    console.log('메모리 디렉토리 확인 및 준비 완료.'); 
 });
