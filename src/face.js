@@ -13,7 +13,7 @@ const path = require('path'); // 경로 처리 모듈
  * @param {number} [limit=3] - 불러올 최대 이미지 개수
  * @returns {Array<string>} Base64 인코딩된 이미지 문자열 배열
  */
-function loadFaceImagesAsBase64(personName, limit = 3) {
+function loadFaceImagesAsBase64(personName, limit = 5) {
     const facesDirPath = path.resolve(__dirname, `../memory/faces/${personName}`);
     const base64Images = [];
 
