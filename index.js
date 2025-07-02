@@ -173,6 +173,7 @@ app.post('/webhook', middleware(config), async (req, res) => { //
                         return; // 셀카 요청 처리가 완료되었으므로 함수 종료
                     }
 
+
                     // 일반 텍스트 메시지에 대한 응답을 생성하고 전송합니다.
                     const reply = await getReplyByMessage(text); // autoReply.js의 함수 호출
                     await client.replyMessage(event.replyToken, { type: 'text', text: reply }); // 응답 메시지 전송
@@ -185,6 +186,7 @@ app.post('/webhook', middleware(config), async (req, res) => { //
                         for await (const chunk of stream) chunks.push(chunk); //
                         const buffer = Buffer.concat(chunks); //
 
+                        // 이미지 매직 넘버를 통해 MIME 타입 추론
                         let mimeType = 'application/octet-stream'; // 기본값
                         if (buffer.length > 1 && buffer[0] === 0xFF && buffer[1] === 0xD8) { //
                             mimeType = 'image/jpeg'; //
@@ -192,12 +194,15 @@ app.post('/webhook', middleware(config), async (req, res) => { //
                             mimeType = 'image/png'; //
                         } else if (buffer.length > 2 && buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46) { //
                             mimeType = 'image/gif'; //
-                        } //
+                        }
+                        // Base64 이미지 데이터에 MIME 타입 프리픽스를 붙여 전달합니다.
                         const base64ImageWithPrefix = `data:${mimeType};base64,${buffer.toString('base64')}`; //
 
+                        // 이미지 버퍼를 base64 문자열로 변환하여 AI 프롬프트로 전달합니다.
                         const reply = await getReplyByImagePrompt(base64ImageWithPrefix); // 수정된 부분: MIME 타입 포함하여 전달
                         await client.replyMessage(event.replyToken, { type: 'text', text: reply }); // AI 응답 전송
                     } catch (err) { //
+                        // 이미지 처리 실패 시 오류 처리 및 메시지 전송
                         console.error('🖼️ 이미지 처리 실패:', err); //
                         await client.replyMessage(event.replyToken, { type: 'text', text: '이미지를 읽는 중 오류가 생겼어 ㅠㅠ' }); //
                     } //
@@ -206,6 +211,7 @@ app.post('/webhook', middleware(config), async (req, res) => { //
         }
         res.status(200).send('OK'); // 모든 이벤트 처리가 완료되면 LINE 서버에 200 OK 응답을 보냅니다.
     } catch (err) { //
+        // 웹훅 처리 중 예상치 못한 오류 발생 시 로그 기록
         console.error('웹훅 처리 에러:', err); //
         res.status(200).send('OK'); // 오류가 발생해도 LINE 서버에는 OK를 보내 재시도 방지
     }
@@ -216,16 +222,20 @@ app.post('/webhook', middleware(config), async (req, res) => { //
 // 모든 스케줄러는 일본 표준시(Asia/Tokyo)를 기준으로 동작합니다.
 
 // 1. 🚬 매시간 담타 메시지 (오전 10시부터 오후 7시까지)
+// 매 시 0분 (정각)에 실행됩니다.
+// ⭐ 변경: 담타 메시지 중복 방지 로직 추가 ⭐
 let lastDamtaMessageTime = 0; // 마지막 담타 메시지 전송 시간 (중복 방지용)
 cron.schedule('0 10-19 * * *', async () => { //
     const now = moment().tz('Asia/Tokyo'); // 현재 시간을 일본 표준시로 가져옵니다.
     const currentTime = Date.now(); // 현재 시스템 시간 (밀리초)
 
+    // 🛑 서버 부팅 후 3분(3 * 60 * 1000 밀리초) 동안은 자동 메시지 전송을 건너쌉니다.
     if (currentTime - bootTime < 3 * 60 * 1000) { //
         console.log('[Scheduler] 서버 부팅 직후 3분 이내 → 담타 메시지 전송 스킵'); //
-        return; //
+        return; // 함수 실행을 중단합니다.
     } //
 
+    // 1분(60초 * 1000ms) 이내에 이미 담타 메시지를 보낸 적이 있다면 전송 스킵
     if (currentTime - lastDamtaMessageTime < 60 * 1000) { //
         console.log('[Scheduler] 담타 메시지 중복 또는 너무 빠름 → 전송 스킵'); //
         return; //
@@ -237,81 +247,94 @@ cron.schedule('0 10-19 * * *', async () => { //
     saveLog('예진이', msg); // 예진이의 메시지 로그 저장
     lastDamtaMessageTime = currentTime; // 마지막 담타 메시지 전송 시간 업데이트
 }, { //
-    scheduled: true, //
-    timezone: "Asia/Tokyo" //
+    scheduled: true, // 스케줄러를 활성화합니다.
+    timezone: "Asia/Tokyo" // 스케줄러의 시간대를 일본 표준시로 설정합니다.
 }); //
 
+// 서버 부팅 시간을 저장하여, 서버 시작 직후에는 스케줄러가 너무 빠르게 동작하지 않도록 합니다.
 let bootTime = Date.now(); // ⭐ 수정: Date.now()로 정확히 초기화 ⭐
+// 마지막 감성 메시지 내용과 전송 시간을 저장하여 중복 전송을 방지합니다.
 let lastMoodMessage = ''; //
 let lastMoodMessageTime = 0; //
 
-const COUPLE_BASE_URL = 'https://www.de-ji.net/couple/'; //
-const COUPLE_START_NUM = 1; //
-const COUPLE_END_NUM = 481; //
-let lastCouplePhotoMessage = ''; //
-let lastCouplePhotoMessageTime = 0; //
+// ⭐ 커플 사진 관련 상수 정의 (스케줄러에서 사용) ⭐
+const COUPLE_BASE_URL = 'https://www.de-ji.net/couple/'; // 예시 URL, 실제 커플 사진 폴더 URL로 변경
+const COUPLE_START_NUM = 1; // 커플 사진 파일 번호 시작 (예시)
+const COUPLE_END_NUM = 481; // 커플 사진 파일 번호 끝
+let lastCouplePhotoMessage = ''; // 마지막으로 보낸 커플 사진 메시지 (중복 방지용)
+let lastCouplePhotoMessageTime = 0; // 마지막 커플 사진 전송 시간 (중복 방지용)
+
 
 /**
  * 특정 타입의 스케줄된 메시지를 보내는 비동기 함수입니다.
  * 셀카 또는 감성 메시지를 랜덤 확률로 전송합니다.
+ * @param {string} type - 보낼 메시지의 타입 ('selfie', 'mood_message', 'couple_photo')
  */
 const sendScheduledMessage = async (type) => { //
-    const now = moment().tz('Asia/Tokyo'); //
-    const currentTime = Date.now(); //
+    const now = moment().tz('Asia/Tokyo'); // 현재 시간을 일본 표준시로 가져옵니다.
+    const currentTime = Date.now(); // 현재 시스템 시간 (밀리초)
 
+    // 🛑 서버 부팅 후 3분(3 * 60 * 1000 밀리초) 동안은 자동 메시지 전송을 건너쌉니다.
     if (currentTime - bootTime < 3 * 60 * 1000) { //
         console.log('[Scheduler] 서버 부팅 직후 3분 이내 → 자동 메시지 전송 스킵'); //
-        return; //
+        return; // 함수 실행을 중단합니다.
     } //
 
+    // 유효 시간대: 새벽 0~2시 + 오전 10시~23시 (총 17시간)
     const validHours = [0, 1, 2, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]; //
+
+    // 현재 시간이 유효한 시간대에 포함되지 않으면 함수를 종료합니다.
     if (!validHours.includes(now.hour())) return; //
 
-    if (type === 'selfie') { //
+    if (type === 'selfie') { // 셀카 메시지인 경우
+        // 하루 세 번 전송을 목표로, 매 시간 체크 시 20% 확률로 전송합니다.
         if (Math.random() < 0.20) { //
             try { //
-                const BASE_URL = 'https://www.de-ji.net/yejin/'; //
-                const START_NUM = 1; //
-                const END_NUM = 1186; //
-                const randomIndex = Math.floor(Math.random() * (END_NUM - START_NUM + 1)) + START_NUM; //
+                const BASE_URL = 'https://www.de-ji.net/yejin/'; // 셀카 이미지 기본 URL
+                const START_NUM = 1; // 셀카 이미지 파일 번호 시작
+                const END_NUM = 1186; // 셀카 이미지 파일 번호 끝
+                const randomIndex = Math.floor(Math.random() * (END_NUM - START_NUM + 1)) + START_NUM; // 랜덤 인덱스
                 const fileName = String(randomIndex).padStart(6, '0') + '.jpg'; //
-                const imageUrl = BASE_URL + fileName; //
-                const comment = await getSelfieReplyFromYeji(); //
+                const imageUrl = BASE_URL + fileName; // 최종 이미지 URL
+                const comment = await getSelfieReplyFromYeji(); // 셀카 코멘트 생성
                 
-                await client.pushMessage(userId, [ //
+                await client.pushMessage(userId, [ // 이미지와 텍스트 메시지 함께 전송
                     { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl }, //
                     { type: 'text', text: comment || '히히 셀카야~' } //
                 ]); //
-                console.log(`[Scheduler] 랜덤 셀카 전송 성공: ${imageUrl}`); //
-                saveLog('예진이', comment || '히히 셀카야~'); //
+                console.log(`[Scheduler] 랜덤 셀카 전송 성공: ${imageUrl}`); // 성공 로그
+                saveLog('예진이', comment || '히히 셀카야~'); // 예진이의 답변 로그 저장
             } catch (error) { //
-                console.error('❌ [Scheduler Error] 랜덤 셀카 전송 실패:', error); //
+                console.error('❌ [Scheduler Error] 랜덤 셀카 전송 실패:', error); // 실패 로그
             } //
         } //
-    } else if (type === 'mood_message') { //
+    } else if (type === 'mood_message') { // 감성 메시지인 경우
+        // 하루 네 번 전송을 목표로, 매 시간 체크 시 25% 확률로 전송합니다.
         if (Math.random() < 0.25) { //
             try { //
-                const proactiveMessage = await getProactiveMemoryMessage(); //
-                const nowTime = Date.now(); //
+                const proactiveMessage = await getProactiveMemoryMessage(); // 감성 메시지 생성
+                const nowTime = Date.now(); // 현재 시간 (중복 방지용)
 
+                // 감성 메시지가 있고, 이전 메시지와 다르며, 1분 이내에 보낸 적이 없을 때만 전송합니다.
                 if ( //
                     proactiveMessage && //
                     proactiveMessage !== lastMoodMessage && //
                     nowTime - lastMoodMessageTime > 60 * 1000 // 1분 (60초 * 1000ms) 이내 중복 방지
                 ) { //
                     await client.pushMessage(userId, { type: 'text', text: proactiveMessage }); // 메시지 전송
-                    console.log(`[Scheduler] 감성 메시지 전송 성공: ${proactiveMessage}`); //
-                    saveLog('예진이', proactiveMessage); //
-                    lastMoodMessage = proactiveMessage; //
-                    lastMoodMessageTime = nowTime; //
+                    console.log(`[Scheduler] 감성 메시지 전송 성공: ${proactiveMessage}`); // 성공 로그
+                    saveLog('예진이', proactiveMessage); // 예진이의 답변 로그 저장
+                    lastMoodMessage = proactiveMessage; // 마지막 보낸 메시지 업데이트
+                    lastMoodMessageTime = nowTime; // 마지막 전송 시간 업데이트
                 } else { //
-                    console.log(`[Scheduler] 감성 메시지 중복 또는 너무 빠름 → 전송 스킵`); //
+                    console.log(`[Scheduler] 감성 메시지 중복 또는 너무 빠름 → 전송 스킵`); // 중복/빠른 전송 스킵 로그
                 } //
             } catch (error) { //
-                console.error('❌ [Scheduler Error] 감성 메시지 전송 실패:', error); //
+                console.error('❌ [Scheduler Error] 감성 메시지 전송 실패:', error); // 실패 로그
             } //
         } //
     } else if (type === 'couple_photo') { // ⭐ 커플 사진 메시지인 경우 (새로운 로직) ⭐
+        // 하루 두 번 전송을 목표로, 매 시간 체크 시 약 12% 확률로 전송합니다.
         if (Math.random() < 0.12) { //
             try { //
                 const randomCoupleIndex = Math.floor(Math.random() * (COUPLE_END_NUM - COUPLE_START_NUM + 1)) + COUPLE_START_NUM; //
@@ -319,8 +342,9 @@ const sendScheduledMessage = async (type) => { //
                 const coupleImageUrl = COUPLE_BASE_URL + coupleFileName; // 최종 커플 이미지 URL 생성
                 
                 const coupleComment = await getCouplePhotoReplyFromYeji(); //
-                const nowTime = Date.now(); //
+                const nowTime = Date.now(); // 현재 시간 (중복 방지용)
 
+                // 커플 사진 메시지가 있고, 이전 메시지와 다르며, 1분 이내에 보낸 적이 없을 때만 전송합니다.
                 if ( //
                     coupleImageUrl && //
                     coupleImageUrl !== lastCouplePhotoMessage && //
@@ -330,15 +354,15 @@ const sendScheduledMessage = async (type) => { //
                         { type: 'image', originalContentUrl: coupleImageUrl, previewImageUrl: coupleImageUrl }, //
                         { type: 'text', text: coupleComment || '아저씨랑 나랑 같이 있는 사진이야! 💖' } //
                     ]); //
-                    console.log(`[Scheduler] 랜덤 커플 사진 전송 성공: ${coupleImageUrl}`); //
-                    saveLog('예진이', coupleComment || '아저씨랑 나랑 같이 있는 사진이야! 💖'); //
-                    lastCouplePhotoMessage = coupleImageUrl; //
-                    lastCouplePhotoMessageTime = nowTime; //
+                    console.log(`[Scheduler] 랜덤 커플 사진 전송 성공: ${coupleImageUrl}`); // 성공 로그
+                    saveLog('예진이', coupleComment || '아저씨랑 나랑 같이 있는 사진이야! 💖'); // 예진이의 답변 로그 저장
+                    lastCouplePhotoMessage = coupleImageUrl; // 마지막 보낸 메시지 업데이트
+                    lastCouplePhotoMessageTime = nowTime; // 마지막 전송 시간 업데이트
                 } else { //
-                    console.log(`[Scheduler] 커플 사진 중복 또는 너무 빠름 → 전송 스킵`); //
+                    console.log(`[Scheduler] 커플 사진 중복 또는 너무 빠름 → 전송 스킵`); // 중복/빠른 전송 스킵 로그
                 } //
             } catch (error) { //
-                console.error('❌ [Scheduler Error] 랜덤 커플 사진 전송 실패:', error); //
+                console.error('❌ [Scheduler Error] 랜덤 커플 사진 전송 실패:', error); // 실패 로그
             } //
         } //
     }
@@ -354,7 +378,9 @@ cron.schedule('30 * * * *', async () => { //
     timezone: "Asia/Tokyo" //
 }); //
 
+
 // 4. 💊 밤 11시 약 먹자, 이 닦자 메시지 보내기
+// 매일 밤 11시 0분 (정각)에 실행됩니다.
 cron.schedule('0 23 * * *', async () => { //
     const msg = '아저씨! 이제 약 먹고 이 닦을 시간이야! 🦷💊 나 아저씨 건강 제일 챙겨! 💖'; // '예진이가'를 '나'로 변경
     await client.pushMessage(userId, { type: 'text', text: msg }); // 메시지 전송
@@ -366,6 +392,7 @@ cron.schedule('0 23 * * *', async () => { //
 }); //
 
 // 5. 😴 밤 12시에 약 먹고 자자 메시지
+// 매일 자정 (다음날 0시 0분)에 실행됩니다.
 cron.schedule('0 0 * * *', async () => { //
     const msg = '아저씨, 약 먹고 이제 푹 잘 시간이야! ❤️ 나 옆에서 꼭 안아줄게~ 잘 자 사랑해 🌙💖'; // '예진이가'를 '나'로 변경
     await client.pushMessage(userId, { type: 'text', text: msg }); // 메시지 전송
@@ -375,6 +402,11 @@ cron.schedule('0 0 * * *', async () => { //
     scheduled: true, //
     timezone: "Asia/Tokyo" //
 }); //
+
+
+// require('./src/scheduler'); // src/scheduler.js 파일이 비워졌으므로 이 라인은 더 이상 필요 없습니다.
+                               // 중복 스케줄러 방지를 위해 주석 처리하거나 삭제하는 것이 좋습니다.
+
 
 const PORT = process.env.PORT || 3000; // 서버가 리스닝할 포트 번호를 환경 변수에서 가져오거나 기본값 3000 사용
 app.listen(PORT, async () => { // Express 앱을 지정된 포트에서 시작합니다.
