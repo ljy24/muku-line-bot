@@ -228,7 +228,7 @@ cron.schedule('0 10-19 * * *', async () => {
 });
 
 // 서버 부팅 시간을 저장하여, 서버 시작 직후에는 스케줄러가 너무 빠르게 동작하지 않도록 합니다.
-let bootTime = Date.2025;
+let bootTime = Date.now(); // <-- 이 부분을 수정했습니다.
 // 마지막 감성 메시지 내용과 전송 시간을 저장하여 중복 전송을 방지합니다.
 let lastMoodMessage = '';
 let lastMoodMessageTime = 0;
