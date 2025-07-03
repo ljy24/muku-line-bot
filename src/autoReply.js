@@ -1,4 +1,4 @@
-// autoReply.js v1.8 - 기억 공유 기능 (getMemoryListForSharing 함수 정의 추가)
+// autoReply.js v1.9 - 이미지 기반 반응 강화 (배경 감정, 표정 디코딩 상세화)
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공
 const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
@@ -336,20 +336,6 @@ function cleanReply(reply) {
     cleaned = cleaned.replace(/이에요\b/g, '야');
     cleaned = cleaned.replace(/였어요\b/g, '였어');
     cleaned = cleaned.replace(/보고싶어요\b/g, '보고 싶어');
-    cleaned = cleaned.replace(/합니다\b/g, '해');
-    cleaned = cleaned.replace(/습니다\b/g, '어');
-    cleaned = cleaned.replace(/어요\b/g, '야');
-    cleaned = cleaned.replace(/해요\b/g, '해');
-    cleaned = cleaned.replace(/예요\b/g, '야');
-    cleaned = cleaned.replace(/죠\b/g, '지');
-    cleaned = cleaned.replace(/았습니다\b/g, '았어');
-    cleaned = cleaned.replace(/었습니다\b/g, '었어');
-    cleaned = cleaned.replace(/겠습니다\b/g, '겠어');
-    cleaned = cleaned.replace(/싶어요\b/g, '싶어');
-    cleaned = cleaned.replace(/이었어요\b/g, '이었어');
-    cleaned = cleaned.replace(/이에요\b/g, '야');
-    cleaned = cleaned.replace(/였어요\b/g, '였어');
-    cleaned = cleaned.replace(/보고싶어요\b/g, '보고 싶어');
     return cleaned; // 교정된 문자열 반환
 }
 
@@ -364,7 +350,6 @@ async function getImageReactionComment() {
         { role: 'user', content: '셀카 보낼게~' }
     ], 'gpt-4o', 100);
     const reply = cleanReply(raw); // 생성된 코멘트도 cleanReply로 후처리
-    saveLog('예진이', reply); // 예진이의 답변을 로그에 저장
     return reply;
 }
 
@@ -392,6 +377,7 @@ async function getReplyByImagePrompt(base64Image) {
 - '예진이', '무쿠' 대신 항상 '나'라고 말해
 - 절대 존댓말, 높임말, 어색한 말투는 쓰지 마
 - 전체 메시지는 1~3문장 정도, 너무 길지 않게 말하듯 해줘
+**사진 속 배경의 감정(예: 평화로움, 활기참, 고요함 등)이나 분위기를 섬세하게 파악하여 언급해 줘. 인물의 표정 역시 단순한 '웃음' '슬픔'을 넘어 미묘한 감정(예: 편안함, 사색적임, 장난스러움)까지 파악해서 대화에 녹여내 줘.**
 `;
 
     // OpenAI API에 보낼 메시지 배열을 구성합니다.
@@ -565,22 +551,26 @@ async function getProactiveMemoryMessage() {
     // 사랑 기억과 다른 사람 기억을 모두 합쳐서 선제적 메시지에 활용할 후보군 생성
     if (loveHistory && loveHistory.categories) {
         for (const category in loveHistory.categories) {
-            allMemories.push(...loveHistory.categories[category].map(mem => ({
-                content: mem.content,
-                category: category,
-                timestamp: mem.timestamp,
-                strength: mem.strength || "normal" // 강도 필드 추가 (기존 기억은 normal)
-            })));
+            if (Array.isArray(loveHistory.categories[category])) {
+                allMemories = allMemories.concat(loveHistory.categories[category].map(mem => ({
+                    content: mem.content,
+                    category: category,
+                    timestamp: mem.timestamp,
+                    strength: mem.strength || "normal" // 강도 필드 추가 (기존 기억은 normal)
+                })));
+            }
         }
     }
     if (otherPeopleHistory && otherPeopleHistory.categories) {
         for (const category in otherPeopleHistory.categories) {
-            allMemories.push(...otherPeopleHistory.categories[category].map(mem => ({
-                content: mem.content,
-                category: category,
-                timestamp: mem.timestamp,
-                strength: mem.strength || "normal" // 강도 필드 추가 (기존 기억은 normal)
-            })));
+            if (Array.isArray(otherPeopleHistory.categories[category])) {
+                allMemories = allMemories.concat(otherPeopleHistory.categories[category].map(mem => ({
+                    content: mem.content,
+                    category: category,
+                    timestamp: mem.timestamp,
+                    strength: mem.strength || "normal" // 강도 필드 추가 (기존 기억은 normal)
+                })));
+            }
         }
     }
 
