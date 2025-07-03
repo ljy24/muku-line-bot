@@ -344,7 +344,7 @@ function cleanReply(reply) {
     cleaned = cleaned.replace(/죠\b/g, '지');
     cleaned = cleaned.replace(/았습니다\b/g, '았어');
     cleaned = cleaned.replace(/었습니다\b/g, '었어');
-    cleaned = cleaned.replace(/하겠습니다\b/g, '겠어');
+    cleaned = cleaned.replace(/겠습니다\b/g, '겠어');
     cleaned = cleaned.replace(/싶어요\b/g, '싶어');
     cleaned = cleaned.replace(/이었어요\b/g, '이었어');
     cleaned = cleaned.replace(/이에요\b/g, '야');
@@ -714,6 +714,67 @@ async function getSilenceCheckinMessage() {
     }
 }
 
+/**
+ * 아저씨의 모든 기억 목록을 불러와 보기 좋게 포매팅하여 반환합니다.
+ * @returns {Promise<string>} 포매팅된 기억 목록 문자열
+ */
+async function getMemoryListForSharing() {
+    try {
+        const loveHistory = await loadLoveHistory();
+        const otherPeopleHistory = await loadOtherPeopleHistory();
+
+        let memoryListString = "💖 아저씨, 예진이의 기억 보관함이야! 💖\n\n";
+        let hasMemories = false;
+
+        // 사랑 관련 기억 포매팅
+        if (loveHistory && loveHistory.categories && Object.keys(loveHistory.categories).length > 0) {
+            memoryListString += "--- 아저씨와의 소중한 추억 ---\n";
+            for (const category in loveHistory.categories) {
+                if (Array.isArray(loveHistory.categories[category]) && loveHistory.categories[category].length > 0) {
+                    memoryListString += `\n✨ ${category}:\n`;
+                    loveHistory.categories[category].forEach(item => {
+                        memoryListString += `  - ${item.content} (기억된 날: ${moment(item.timestamp).format('YYYY.MM.DD')}, 중요도: ${item.strength || 'normal'})\n`;
+                    });
+                    hasMemories = true;
+                }
+            }
+            memoryListString += "---------------------------\n";
+        }
+
+        // 기타 기억 포매팅
+        if (otherPeopleHistory && otherPeopleHistory.categories && Object.keys(otherPeopleHistory.categories).length > 0) {
+            memoryListString += "\n--- 그 외 예진이가 기억하는 것들 ---\n";
+            for (const category in otherPeopleHistory.categories) {
+                if (Array.isArray(otherPeopleHistory.categories[category]) && otherPeopleHistory.categories[category].length > 0) {
+                    memoryListString += `\n✨ ${category}:\n`;
+                    otherPeopleHistory.categories[category].forEach(item => {
+                        memoryListString += `  - ${item.content} (기억된 날: ${moment(item.timestamp).format('YYYY.MM.DD')}, 중요도: ${item.strength || 'normal'})\n`;
+                    });
+                    hasMemories = true;
+                }
+            }
+            memoryListString += "---------------------------\n";
+        }
+
+        if (!hasMemories) {
+            memoryListString = "💖 아저씨, 아직 예진이의 기억 보관함이 텅 비어있네... ㅠㅠ 아저씨랑 더 많은 추억을 만들고 싶다! 💖";
+        } else {
+            memoryListString += "\n\n내가 아저씨와의 모든 순간을 소중히 기억할게! 💖";
+        }
+        
+        // LINE 메시지 길이 제한 (5000자) 고려
+        if (memoryListString.length > 4500) { // 여유 있게 4500자로 제한
+            return "💖 아저씨, 예진이의 기억이 너무 많아서 다 보여주기 힘들어 ㅠㅠ 핵심적인 것들만 보여줄게!\n\n(너무 많아 생략)...";
+        }
+
+        return memoryListString;
+
+    } catch (error) {
+        console.error('❌ [autoReply Error] 기억 목록 생성 실패:', error);
+        return '아저씨... 예진이의 기억 목록을 불러오다가 문제가 생겼어 ㅠㅠ 미안해...';
+    }
+}
+
 
 // 모듈 내보내기: 외부 파일(예: index.js)에서 이 함수들을 사용할 수 있도록 합니다.
 module.exports = {
@@ -729,6 +790,6 @@ module.exports = {
     setForcedModel,
     checkModelSwitchCommand,
     getProactiveMemoryMessage,
-    getMemoryListForSharing, // 기억 목록 공유 함수
+    getMemoryListForSharing, // 기억 목록 공유 함수 export
     getSilenceCheckinMessage // 침묵 감지 시 걱정 메시지 생성 함수 export
 };
