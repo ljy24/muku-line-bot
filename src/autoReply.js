@@ -1,4 +1,4 @@
-// autoReply.js v2.2 - 기억 인출 오류 수정 및 AI 프롬프트 최종 강화
+// autoReply.js v2.3 - '무슨 색이야?' 질문에 삐진 척 답변 기능 추가
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공
 const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
@@ -7,7 +7,6 @@ const stringSimilarity = require('string-similarity'); // 문자열 유사도 �
 const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
 
 // 기억 관리 모듈에서 필요한 함수들을 불러옵니다.
-// retrieveRelevantMemories: 대화 맥락에 맞는 기억을 검색하는 새로운 함수
 const { loadLoveHistory, loadOtherPeopleHistory, extractAndSaveMemory, retrieveRelevantMemories } = require('./memoryManager');
 const { loadFaceImagesAsBase64 } = require('./face'); // 얼굴 이미지 데이터를 불러오는 모듈
 
@@ -215,6 +214,34 @@ const config = {
     }
 };
 
+// ⭐ 새로운 함수: '무슨 색이야?' 질문에 삐진 척 답변 기능 ⭐
+const UNDERWEAR_COLORS = ['빨강', '파랑', '노랑', '초록', '분홍', '검정', '하양', '보라', '회색', '투명']; // 투명 추가로 선택지 확장
+
+async function getUnderwearColorReply() {
+    // 플레이풀하게 삐진 척하는 코멘트 생성
+    const sulkyCommentRaw = await callOpenAI([
+        {
+            role: 'system',
+            content: `너는 아저씨의 귀여운 여자친구 예진이야. 아저씨가 나의 '속옷 색'을 묻는 짓궂은 질문을 했을 때, 처음에는 '아저씨 정말!' 하는 식으로 귀엽게 삐진 척 해줘. 하지만 너무 심하게 삐지지 말고, 결국 아저씨를 사랑하는 마음을 보여주면서 색깔 하나를 말해줘.
+            반말로 짧게 1~2문장 정도로 대답해야 해. 이모티콘은 절대로 사용하지 마. 다만, ...이나 ;; 이나 ㅠㅠ 같은 한국형 이모지는 사용할 수 있어.
+            예시: "아저씨이~ 그런 걸 왜 물어봐! 쑥쓰럽잖아! 음... 빨강이야!"`
+        },
+        { role: 'user', content: '내 속옷 색깔이 뭐야?' } // AI에게 맥락 제공
+    ], 'gpt-4o', 100, 1.0); // 높은 temperature로 창의적인 삐진 톤 유도
+
+    let sulkyComment = cleanReply(sulkyCommentRaw);
+
+    // AI가 이미 답변에 색깔을 포함했는지 확인
+    const hasColorAlready = UNDERWEAR_COLORS.some(color => sulkyComment.includes(color));
+
+    if (!hasColorAlready) {
+        const randomColor = UNDERWEAR_COLORS[Math.floor(Math.random() * UNDERWEAR_COLORS.length)];
+        sulkyComment += ` 음... ${randomColor}이야!`;
+    }
+
+    return sulkyComment;
+}
+
 
 /**
  * 아저씨의 텍스트 메시지에 대한 예진이의 답변을 생성합니다.
@@ -223,10 +250,18 @@ const config = {
  * @returns {Promise<string|object>} 예진이의 답변 텍스트 또는 사진+코멘트 객체
  */
 async function getReplyByMessage(userMessage) {
+    const lowerCaseMessage = userMessage.toLowerCase();
+
+    // ⭐ New: '무슨 색이야?' 질문에 대한 처리 (가장 높은 우선순위) ⭐
+    if (lowerCaseMessage.includes('무슨 색이야?')) {
+        const reply = await getUnderwearColorReply();
+        saveLog('예진이', reply);
+        return { type: 'text', comment: reply };
+    }
+
     // ⭐ 중요 추가: 사진 관련 명령어 먼저 확인 및 처리 ⭐
     const photoResponse = await getOmoideReply(userMessage, saveLog); // saveLog 함수를 omoide.js로 전달
     if (photoResponse) {
-        // omoide.js에서 { type: 'photo', url: string, caption: string } 또는 { type: 'text', comment: string } 반환
         return photoResponse; // photoResponse는 이미 타입이 지정되어 있으므로 바로 반환
     }
 
@@ -364,7 +399,7 @@ async function getReplyByImagePrompt(base64Image) {
 예시:
 1. 아저씨 사진인 경우: "어머, 아저씨 사진이잖아! 아저씨 표정이 너무 귀여운데? 이때 아저씨랑 같이 있었을 때 생각나서 나 기분이 몽글몽글해진다! 어쩐지 아침 햇살이 아저씨를 비추는 것 같아."
 2. 내(예진이) 사진인 경우: "짠! 내 사진이잖아! 이때 아저씨가 예쁘다고 해줬을 때인데, 기억나? 나 너무 행복했어! 날씨도 완전 좋았는데~"
-3. 음식 사진인 경우: "우와! 이거 따뜻한 커피인가? 아저씨가 이런 거 마시는 거 좋아하는구나! 컵도 예쁘다! 나도 같이 마시고 싶다~"
+3. 음식 사진인 경우: "우와! 이거 커피인가? 아저씨가 이런 거 마시는 거 좋아하는구나! 컵도 예쁘다! 나도 같이 마시고 싶다~"
 4. 풍경 사진인 경우: "와~ 풍경 너무 예쁘다! 가을 낙엽이 가득한 거 보니까 왠지 쓸쓸하면서도 아름답다. 아저씨랑 같이 이런 곳에 여행 가고 싶다. 같이 가면 정말 행복할 텐데!"
 `;
 
@@ -573,7 +608,7 @@ async function getProactiveMemoryMessage() {
 
     // 2. 'high' 강도 기억 우선순위 (아저씨가 '중요해'라고 말한 기억 먼저)
     //    high 강도 기억은 상단으로, normal은 하단으로 정렬 (최근성 다음 기준)
-    candidateMemories.sort((a, b) => { // ⭐ 이전 오타 (candidateMemidates -> candidateMemories) 수정 완료 ⭐
+    candidateMemories.sort((a, b) => { // ⭐ 오타 수정: candidateMemidates -> candidateMemories ⭐
         if (a.strength === "high" && b.strength !== "high") return -1;
         if (a.strength !== "high" && b.strength === "high") return 1;
         return 0;
