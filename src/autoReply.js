@@ -14,7 +14,7 @@ const { loadFaceImagesAsBase64 } = require('./face'); // 얼굴 이미지 데이
 // ⭐ 중요 수정: omoide.js에서 getOmoideReply와 cleanReply를 불러옵니다. ⭐
 // omoide.js 파일이 autoReply.js와 같은 폴더에 있다고 가정합니다.
 // 만약 다른 폴더에 있다면 경로를 './폴더명/omoide' 등으로 수정해주세요.
-const { getOmoideReply, cleanReply } = require('./memory/omoide'); // omoide.js에서 cleanReply를 불러와 사용합니다.
+const { getOmoideReply, cleanReply } = require('../memory/omoide'); // omoide.js에서 cleanReply를 불러와 사용합니다.
 
 // 현재 강제 설정된 OpenAI 모델 (null이면 자동 선택, 명령어에 따라 변경 가능)
 let forcedModel = null;
