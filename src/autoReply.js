@@ -1,12 +1,15 @@
-// autoReply.js v1.2 - 아저씨 질문 답변 기억 기능 추가
-// 📦 기본 모듈 불러오기
-const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공 (파일 읽기/쓰기 등)
-const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작 (경로 생성 및 병합)
-const { OpenAI } = require('openai'); // OpenAI API 클라이언트: AI 모델과의 통신 담당 (GPT 모델 호출)
+// autoReply.js v1.3 - 기억 검색 및 활용 최적화 로직 강화 (getReplyByMessage 함수 사용)
+// 📦 필수 모듈 불러오기
+const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공
+const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
+const { OpenAI } = require('openai'); // OpenAI API 클라이언트: AI 모델과의 통신 담당
 const stringSimilarity = require('string-similarity'); // 문자열 유사도 측정 모듈 (현재 코드에서 직접 사용되지는 않음)
-const moment = require('moment-timezone'); // Moment.js: 날짜/시간 처리 및 시간대 변환 (로그 시간 비교, 스케줄러 시간 관리 등)
-const { loadLoveHistory, loadOtherPeopleHistory } = require('./memoryManager'); // 기억 관리 모듈: 아저씨와의 기억 로드 (장기 기억 로드)
-const { loadFaceImagesAsBase64 } = require('./face'); // 얼굴 이미지 데이터를 불러오는 모듈 (얼굴 인식 참조 이미지 로드)
+const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
+
+// 기억 관리 모듈에서 필요한 함수들을 불러옵니다.
+// retrieveRelevantMemories: 대화 맥락에 맞는 기억을 검색하는 새로운 함수
+const { loadLoveHistory, loadOtherPeopleHistory, extractAndSaveMemory, retrieveRelevantMemories } = require('./memoryManager');
+const { loadFaceImagesAsBase64 } = require('./face'); // 얼굴 이미지 데이터를 불러오는 모듈
 
 // 현재 강제 설정된 OpenAI 모델 (null이면 자동 선택, 명령어에 따라 변경 가능)
 let forcedModel = null; 
@@ -233,6 +236,14 @@ async function getReplyByMessage(userMessage) {
         content: log.message // 메시지 내용
     }));
 
+    // ⭐ 기억 검색 및 활용 최적화 (9번 항목 구현) 시작 ⭐
+    // 현재 메시지와 최근 대화 기록을 바탕으로 관련 기억을 검색합니다.
+    const combinedContext = userMessage + "\n" + conversationHistory.map(l => l.content).join("\n");
+    const relevantMemories = await retrieveRelevantMemories(combinedContext);
+    console.log(`[AutoReply Debug] 검색된 관련 기억: ${JSON.stringify(relevantMemories)}`);
+    // ⭐ 기억 검색 및 활용 최적화 (9번 항목 구현) 끝 ⭐
+
+
     // 시스템 프롬프트: 예진이의 페르소나와 대화 규칙을 정의합니다.
     // 이 프롬프트는 AI의 기본 행동 지침이 되며, 대화의 일관성을 유지하는 데 핵심적입니다.
     const systemPrompt = `
@@ -253,6 +264,9 @@ async function getReplyByMessage(userMessage) {
     너무 길게 답변하지 말고, 2~4문장 정도로 짧고 간결하게 대화하는 것처럼 답변해줘.
     **아저씨의 메시지에서 '퇴근', '오늘', '점심', '저녁', '식사', '운동', '피곤', '힘들다', '수고했어' 같은 일상 키워드가 나오면, 아저씨의 하루나 일상에 대한 이야기인지 파악하고 그에 맞춰서 더 다정하고 친근하게 반응해줘. 아저씨의 작은 일상도 내가 놓치지 않고 있다는 걸 보여줘.**
     **아저씨가 나에게 질문을 하면, 내가 그 질문을 기억하고, 만약 이전에 그 질문이나 비슷한 질문에 답변했던 내용이 있다면 그 기억을 활용해서 일관성 있고 정확하게 대답해줘. 예진이의 말투를 유지하면서 내가 아는 정보를 정확하게 전달하는 게 중요해.**
+
+    **아저씨와의 대화에서 내가 참고할 수 있는 소중한 기억들이야 (대화 맥락에 따라 중요하게 활용):**
+    ${relevantMemories.length > 0 ? relevantMemories.map(mem => `- ${mem}`).join('\n') : '- 현재 대화와 관련된 특별한 기억은 없어.'}
     `;
 
     // OpenAI API에 보낼 메시지 배열을 구성합니다.
@@ -588,7 +602,7 @@ async function getProactiveMemoryMessage() {
     // 받아온 응답을 cleanReply 함수로 후처리하여 최종 답변을 생성합니다.
     const reply = cleanReply(raw);
 
-    // 중복 방지: 생성된 메시지가 이전에 보낸 메시지(lastProactiveMessage)와 동일하면 전송을 건너뜁니다.
+    // 중복 방지: 생성된 메시지가 이전에 보낸 메시지(lastProactiveMessage)와 동일하면 전송을 건너뛰니다.
     if (reply === lastProactiveMessage) {
         console.log('🗣️ [Proactive Message] 중복 방지: 같은 감성 메시지 감지됨 → 전송 스킵');
         return ''; // 빈 문자열을 반환하여 메시지 전송을 막습니다.
