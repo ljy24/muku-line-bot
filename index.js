@@ -1,4 +1,4 @@
-// ✅ index.js v1.6 - 웹훅 처리 개선 및 사진 기능 통합
+// ✅ index.js v1.7 - 웹훅 처리 개선 및 사진 기능 통합, isCommand 정규식 업데이트
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공
 const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
@@ -86,10 +86,11 @@ app.post('/webhook', middleware(config), async (req, res) => {
 
                     // 메모리 예외 처리 시작
                     // 특정 명령어들은 무쿠의 기억으로 저장되지 않도록 예외 처리합니다.
-                    // 이 정규식은 이제 autoReply.js 내부의 getOmoideReply에서 더 상세히 처리됩니다.
+                    // 이 정규식은 autoReply.js 내부의 getOmoideReply에서 더 상세히 처리됩니다.
                     // 여기서는 단순히 기억 저장 여부만 판단합니다.
+                    // ⭐ `isCommand` 정규식 업데이트: `omoide.js`의 `keywordMappings`에 있는 모든 키워드를 반영 ⭐
                     const isCommand =
-                        /(사진\s?줘|셀카\s?줘|셀카\s?보여줘|사진\s?보여줘|얼굴\s?보여줘|얼굴\s?보고\s?싶[어다]|selfie|커플사진\s?줘|커플사진\s?보여줘|무쿠\s?셀카|애기\s?셀카|빠계\s?셀카|빠계\s?사진|인생네컷|일본\s?사진|한국\s?사진|출사|필름카메라|애기\s?필름|메이드복|흑심|무슨\s?색이야\?)/i.test(text) ||
+                        /(무쿠\s?셀카|애기\s?셀카|빠계\s?셀카|빠계\s?사진|메이드|흑심|인생네컷|커플사진|일본\s?사진|한국\s?사진|출사|필름카메라|애기\s?필름|셀카줘|사진줘|얼굴\s?보여줘|얼굴\s?보고\s?싶[어다]|selfie|셀카\s?보내줘|얼굴보자|얼굴좀\s?보자|알굴보여줘|무슨\s?색이야\?)/i.test(text) ||
                         /3\.5|4\.0|자동|버전/i.test(text) || // 모델 전환 명령어
                         /(기억\s?보여줘|내\s?기억\s?보여줘|혹시 내가 오늘 뭐한다 그랬지\?|오늘 뭐가 있더라\?|나 뭐하기로 했지\?)/i.test(text); // 기억 공유 명령어 확장
 
@@ -255,9 +256,21 @@ const sendScheduledMessage = async (type) => {
 
     // 유효 시간대: 새벽 0~2시 + 오전 10시~23시 (총 17시간)
     const validHours = [0, 1, 2, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23];
+    if (!validHours.includes(currentHour)) { // 에러 났던 부분: currentHour가 정의되지 않았습니다.
+        // console.log('[Scheduler-Silence] 유효 시간대 아님 -> 침묵 체크 스킵');
+        return;
+    }
 
-    // 현재 시간이 유효한 시간대에 포함되지 않으면 함수를 종료합니다.
-    if (!validHours.includes(now.hour())) return;
+    // ⭐ 문제의 원인: `currentHour` 변수가 이 스코프에서 정의되지 않았습니다.
+    // `currentHour`는 `cron.schedule` 내부 함수에서만 정의됩니다.
+    // `sendScheduledMessage` 함수가 호출될 때 `currentHour`를 파라미터로 받거나, 함수 내부에서 다시 계산해야 합니다.
+    // 여기서는 함수 내부에서 다시 계산하도록 수정하겠습니다.
+    const currentHourForScheduler = now.hour(); // 새로 추가
+
+    if (!validHours.includes(currentHourForScheduler)) { // 수정된 부분
+        return;
+    }
+
 
     if (type === 'selfie') { // 셀카 메시지인 경우
         // 하루 세 번 전송을 목표로, 매 시간 체크 시 20% 확률로 전송합니다.
@@ -315,7 +328,7 @@ const sendScheduledMessage = async (type) => {
         if (Math.random() < 0.12) {
             try {
                 const randomCoupleIndex = Math.floor(Math.random() * (COUPLE_END_NUM - COUPLE_START_NUM + 1)) + COUPLE_START_NUM;
-                const coupleFileName = String(randomCoupleIndex).padStart(6, '0') + '.jpg';
+                const coupleFileName = String(randomIndex).padStart(6, '0') + '.jpg';
                 const coupleImageUrl = COUPLE_BASE_URL + coupleFileName;
                 
                 const coupleComment = await getCouplePhotoReplyFromYeji(); // autoReply.js의 함수 호출
@@ -364,7 +377,7 @@ cron.schedule('*/15 * * * *', async () => { // 매 15분마다 실행
     const elapsedTimeSinceLastProactive = now - lastProactiveSentTime;
 
     // 현재 시간대가 유효 시간대인지 확인
-    const currentHour = moment().tz('Asia/Tokyo').hour();
+    const currentHour = moment().tz('Asia/Tokyo').hour(); // ⭐ 여기서는 currentHour가 올바르게 정의됨 ⭐
     const validHours = [0, 1, 2, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23];
     if (!validHours.includes(currentHour)) {
         // console.log('[Scheduler-Silence] 유효 시간대 아님 -> 침묵 체크 스킵');
