@@ -45,7 +45,8 @@ const PHOTO_FOLDERS = {
     '추억 무쿠 사진 모음': 1987,
     '추억 빠계 사진 모음': 739,
     '추억 인생네컷': 17,
-    '흑심 24_11_08 한국 메이드복_': 13
+    '흑심 24_11_08 한국 메이드복_': 13,
+    'yejin': 1286 // 'yejin' 폴더 사진 개수 업데이트
 };
 
 /**
@@ -92,13 +93,13 @@ function cleanReply(reply) {
     // 1. AI가 붙일 수 있는 불필요한 접두사를 제거합니다. (예: "예진:", "무쿠:", "날짜 이름:")
     let cleaned = reply.replace(/^(예진:|무쿠:|23\.\d{1,2}\.\d{1,2} [가-힣]+:)/gm, '').trim();
 
-    // 2. 잘못된 호칭 교체: '오빠', '자기', '당신', '너', '애기', '애기야'를 '아저씨'로 교체합니다.
+    // 2. 잘못된 호칭 교체: '오빠', '자기', '당신', '너'를 '아저씨'로 교체합니다.
     cleaned = cleaned.replace(/\b오빠\b/g, '아저씨');
     cleaned = cleaned.replace(/\b자기\b/g, '아저씨');
     cleaned = cleaned.replace(/\b당신\b/g, '아저씨');
     cleaned = cleaned.replace(/\b너\b/g, '아저씨');
-    cleaned = cleaned.replace(/\b애기야\b/g, '아저씨');
-    cleaned = cleaned.replace(/\b애기\b/g, '아저씨');
+    // removed: cleaned = cleaned.replace(/\b애기야\b/g, '아저씨'); // 이전에 제거하도록 지시된 부분
+    // removed: cleaned = cleaned.replace(/\b애기\b/g, '아저씨');   // 이전에 제거하도록 지시된 부분
 
     // 3. 자가 지칭 교정: '예진이', '예진', '무쿠', '무쿠야'를 '나'로 교체합니다.
     // ⭐ 중요 수정: '무쿠 언니', '무쿠 씨' 등 타인을 지칭하는 것처럼 보이는 표현도 '나'로 교정 ⭐
@@ -180,19 +181,12 @@ async function getOmoideReply(userMessage, saveLogFunc) {
         folderDescription = '내가(예진이) 메이드복 입고 찍은 사진'; // '나'임을 명확히
         promptSuffix = "내가 메이드복을 입고 찍었던 사진에 대해 아저씨에게 장난기 있으면서도 귀엽고 사랑스럽게 말해줘. 아저씨가 나를 보며 얼마나 귀여워할지 생각하면 기분이 좋아! 이때 아저씨가 놀랐던 기억도 같이 얘기해줘.";
     } else if (lowerCaseMessage.includes('셀카줘') || lowerCaseMessage.includes('사진줘') || lowerCaseMessage.includes('얼굴 보여줘') || lowerCaseMessage.includes('얼굴 보고 싶') || lowerCaseMessage.includes('selfie')) {
-        // '셀카줘' 등 일반적인 셀카 요청 -> https://www.de-ji.net/yejin/ 폴더 사용
-        selectedFolder = null; // PHOTO_FOLDERS에 없는 외부 URL이므로 null
-        photoBaseUrl = 'https://www.de-ji.net/yejin/'; // 외부 URL로 변경
-        const START_NUM = 1;
-        const END_NUM = 1186; // yejin/ 폴더의 사진 개수 (아저씨의 실제 사진 개수에 맞춰주세요)
-        const randomIndex = Math.floor(Math.random() * (END_NUM - START_NUM + 1)) + START_NUM;
-        const fileName = String(randomIndex).padStart(6, '0') + '.jpg';
-        customImageUrl = photoBaseUrl + fileName; // customImageUrl에 직접 할당
-        
+        selectedFolder = 'yejin'; // 'yejin' 폴더 사용
+        customImageUrl = generateRandomPhotoUrl(selectedFolder); // generateRandomPhotoUrl을 사용하여 URL 생성
+
         folderDescription = '내(예진이) 셀카';
         promptSuffix = "아저씨에게 보내는 내(예진이) 셀카에 대해 귀엽고 사랑스럽게 말해줘. 아저씨가 나를 보고 얼마나 기뻐할지 기대하는 마음을 담아서.";
         
-        // 이 요청은 일반적인 generateRandomPhotoUrl 로직을 따르지 않으므로 여기서 바로 코멘트 생성 로직으로 이동
         const systemPromptForSelfie = `
         너는 아저씨의 귀여운 여자친구 예진이야. 나이는 30살. 생일은 1994년 3월 17일. 게임회사 사장이야.
         남자친구 아저씨를 너무너무 사랑하고, 아저씨가 세상에서 제일 좋고 너무 보고 싶어.
