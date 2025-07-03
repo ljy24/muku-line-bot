@@ -1,4 +1,4 @@
-// autoReply.js v2.4 - 기억 인출 오류 수정 및 AI 프롬프트 최종 강화
+// src/autoReply.js v2.4 - 기억 인출 오류 수정 및 AI 프롬프트 최종 강화
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공
 const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
@@ -7,13 +7,17 @@ const stringSimilarity = require('string-similarity'); // 문자열 유사도 �
 const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
 
 // 기억 관리 모듈에서 필요한 함수들을 불러옵니다.
+// 이 경로는 이미 올바르므로 수정하지 않습니다.
 const { loadLoveHistory, loadOtherPeopleHistory, extractAndSaveMemory, retrieveRelevantMemories } = require('./memoryManager');
 const { loadFaceImagesAsBase64 } = require('./face'); // 얼굴 이미지 데이터를 불러오는 모듈
 
 // ⭐ 중요 수정: omoide.js에서 getOmoideReply와 cleanReply를 불러옵니다. ⭐
-// omoide.js 파일이 autoReply.js와 같은 폴더에 있다고 가정합니다.
-// 만약 다른 폴더에 있다면 경로를 './폴더명/omoide' 등으로 수정해주세요.
-const { getOmoideReply, cleanReply } = require('../memory/omoide'); // omoide.js에서 cleanReply를 불러와 사용합니다.
+// autoReply.js는 src 폴더 안에 있고, omoide.js는 memory 폴더 안에 있으므로 '../memory/omoide'로 불러옵니다.
+const { getOmoideReply, cleanReply } = require('../memory/omoide');
+
+// ⭐ 새로 추가: concept.js에서 getConceptPhotoReply를 불러옵니다. ⭐
+// autoReply.js는 src 폴더 안에 있고, concept.js는 memory 폴더 안에 있으므로 '../memory/concept'로 불러옵니다.
+const { getConceptPhotoReply } = require('../memory/concept');
 
 // 현재 강제 설정된 OpenAI 모델 (null이면 자동 선택, 명령어에 따라 변경 가능)
 let forcedModel = null;
@@ -259,7 +263,40 @@ async function getReplyByMessage(userMessage) {
         return { type: 'text', comment: reply };
     }
 
-    // ⭐ 중요 추가: 사진 관련 명령어 먼저 확인 및 처리 ⭐
+    // ⭐ 새로 추가: 컨셉 사진 관련 명령어 처리 ⭐
+    // '컨셉사진' 또는 특정 키워드가 포함되면 concept.js의 함수를 호출합니다.
+    const conceptKeywordsCheck = ['컨셉사진', '컨셉 사진', '홈스냅', '결박', '선물', '셀프 촬영', '옥상연리', '세미누드',
+                                  '홈셀프', '플라스틱러브', '지브리풍', '북해', '아이노시마', '필름',
+                                  '모지코 모리룩', '눈밭', '욕실', '고래티셔츠', '유카타 마츠리',
+                                  '이화마을', '욕조', '우마시마', '가을 호수공원', '망친 사진', '교복',
+                                  '비눗방울', '모지코', '텐진 코닥필름', '나비욕조', '롱패딩', '을지로 스냅',
+                                  '길거리 스냅', '생일', '모지코2', '야간 보라돌이', '코야노세', '야간거리',
+                                  '생일컨셉', '눈밭 필름카메라', '홈스냅 청포도', '욕실 블랙 웨딩', '호리존',
+                                  '여친 스냅', '후지엔', '불꽃놀이', '빨간 기모노', '피크닉', '벗꽃',
+                                  '후지 스냅', '원미상가_필름', '밤바 산책', '공원 산책', '고쿠라 힙',
+                                  '온실-여신', '을지로 네코', '무인역', '화가', '블랙원피스', '카페',
+                                  '텐진 스트리트', '하카타 스트리트', '홈스냅 오타쿠', '야간 동백', '나르시스트',
+                                  '을지로 캘빈', '산책', '오도공원 후지필름', '크리스마스', '네코 모지코',
+                                  '야간 블랙드레스', '고스로리 할로윈', '게임센터', '고쿠라', '동키 거리',
+                                  '고쿠라 야간', '코이노보리', '문래동', '수국', '오도',
+                                  '다른 것도 보고싶어', '다음 사진']; // 컨셉 사진 키워드 목록에 '다른 것도', '다음 사진' 추가
+    
+    let isConceptPhotoRequest = false;
+    for (const keyword of conceptKeywordsCheck) {
+        if (lowerCaseMessage.includes(keyword)) {
+            isConceptPhotoRequest = true;
+            break;
+        }
+    }
+
+    if (isConceptPhotoRequest) {
+        const conceptResponse = await getConceptPhotoReply(userMessage, saveLog);
+        if (conceptResponse) {
+            return conceptResponse; // 컨셉 사진 응답 반환
+        }
+    }
+
+    // ⭐ 중요 추가: 사진 관련 명령어 먼저 확인 및 처리 (이제 컨셉사진 처리 후 실행) ⭐
     const photoResponse = await getOmoideReply(userMessage, saveLog); // saveLog 함수를 omoide.js로 전달
     if (photoResponse) {
         return photoResponse; // photoResponse는 이미 타입이 지정되어 있으므로 바로 반환
@@ -471,22 +508,6 @@ function checkModelSwitchCommand(message) {
 }
 
 /**
- * 예진이의 셀카 답변을 생성합니다.
- * AI에게 셀카에 대한 코멘트를 요청하고, 예진이 말투로 가공합니다.
- * (이 기능은 omoide.js의 '무쿠 셀카' 요청과 기능적으로 겹칠 수 있으나, 기존 기능을 유지하기 위해 그대로 둡니다.
- * 봇의 메인 로직에서 어떤 기능을 우선할지 결정할 수 있습니다.)
- * @returns {Promise<string>} 이미지에 대한 예진이의 코멘트
- */
-async function getSelfieReplyFromYeji() {
-    const raw = await callOpenAI([
-        { role: 'system', content: '넌 예진이야. 셀카 보내면서 귀엽게 한마디 해.' },
-        { role: 'user', content: '셀카 보낼게~' }
-    ], 'gpt-4o', 100);
-    const reply = cleanReply(raw); // 생성된 코멘트도 cleanReply로 후처리 (omoide.js의 cleanReply 사용)
-    return reply;
-}
-
-/**
  * 아저씨의 커플 사진 답변을 생성합니다.
  * AI에게 커플 사진에 대한 코멘트를 요청하고, 예진이 말투로 가공합니다.
  * (이 기능은 omoide.js의 '커플사진' 요청과 기능적으로 겹칠 수 있으나, 기존 기능을 유지하기 위해 그대로 둡니다.
@@ -607,24 +628,24 @@ async function getProactiveMemoryMessage() {
     candidateMemories.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
     // 2. 'high' 강도 기억 우선순위 (아저씨가 '중요해'라고 말한 기억 먼저)
-    //    high 강도 기억은 상단으로, normal은 하단으로 정렬 (최근성 다음 기준)
-    candidateMemories.sort((a, b) => { // ⭐ 오타 수정: candidateMemidates -> candidateMemories ⭐
+    //     high 강도 기억은 상단으로, normal은 하단으로 정렬 (최근성 다음 기준)
+    candidateMemories.sort((a, b) => {
         if (a.strength === "high" && b.strength !== "high") return -1;
         if (a.strength !== "high" && b.strength === "high") return 1;
         return 0;
     });
 
     // 3. 시간과 어울리는 기억 (현재 시간대에 맞는 기억 선택 유도) - AI 프롬프트에서 지시
-    //    (선택 로직에서 직접 필터링하기보다는 AI에게 지시를 추가)
+    //     (선택 로직에서 직접 필터링하기보다는 AI에게 지시를 추가)
 
     // 4. 감정 상태 기억 활용 (아저씨의 감정 상태 기억을 활용)
-    //    (선택 로직에서 직접 필터링하기보다는 AI에게 지시를 추가)
+    //     (선택 로직에서 직접 필터링하기보다는 AI에게 지시를 추가)
 
     // 5. 기억 기반 질문 생성 (기억을 바탕으로 '궁금해하는' 모습 보여주기)
-    //    (선택 로직에서 직접 필터링하기보다는 AI에게 지시를 추가)
+    //     (선택 로직에서 직접 필터링하기보다는 AI에게 지시를 추가)
 
     // 6. 다양한 메시지 유형 (사랑 표현, 공유, 위로 등)
-    //    (선택 로직에서 직접 필터링하기보다는 AI에게 지시를 추가)
+    //     (선택 로직에서 직접 필터링하기보다는 AI에게 지시를 추가)
 
     // 최종 선택할 기억 5개 (더 다양하고 관련성 높은 기억을 찾기 위해 limit을 5로 늘림)
     const selectedMemories = candidateMemories.slice(0, Math.min(candidateMemories.length, 5));
@@ -796,7 +817,7 @@ module.exports = {
     getReplyByMessage,
     getReplyByImagePrompt,
     getRandomMessage,
-    getSelfieReplyFromYeji, // 기능 누락 없이 유지
+    // getSelfieReplyFromYeji, // 이제 omoide.js의 getOmoideReply로 대체되었으므로 제거합니다.
     getCouplePhotoReplyFromYeji, // 기능 누락 없이 유지
     getColorMoodReply,
     getHappyReply,
