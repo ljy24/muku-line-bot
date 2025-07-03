@@ -1,4 +1,4 @@
-// memoryManager.js v2.2 - 기억의 휘발성 조절 (검색 시 강도/시점 고려)
+// memoryManager.js v2.3 - 기억 검색 최적화 (검색 프롬프트 강화)
 // src/memoryManager.js
 // MemoryManager.js v2.0 Debug Code Active! - Initializing Module
 console.log("MemoryManager.js v2.0 Debug Code Active! - Initializing Module"); // ⭐ 이 로그가 렌더 로그에 보여야 합니다! ⭐
@@ -281,16 +281,16 @@ async function retrieveRelevantMemories(conversationContext, limit = 5) {
             messages: [
                 {
                     role: 'system',
-                    content: `You are an AI assistant that helps retrieve the most relevant memories given a conversation context.
-                    Below is a list of existing memories. Each memory also has a 'strength' indicating its importance ('high' or 'normal') and a 'timestamp' indicating when it was created.
-                    Your task is to identify up to ${limit} memories that are most relevant to the provided 'conversation context'.
-                    **Crucially, prioritize memories marked with 'high' strength and more recent memories (closer to the current date).**
-                    Also consider memories that are directly related to the subject, or emotionally significant (especially related to "아저씨의 헌신", "예진이의 힘든 순간", "아저씨의 칭찬/격려", "중요한 기념일", "아저씨의 취미/관심사", "아저씨 감정 상태", "아저씨의 일상 패턴", "대화 맥락/분위기").
+                    content: `너는 AI 비서로, 대화 맥락이 주어졌을 때 가장 관련성이 높은 기억을 검색하는 것을 돕습니다.
+                    아래는 기존 기억 목록입니다. 각 기억에는 중요도('strength': 'high' 또는 'normal')와 생성 시점('timestamp')이 있습니다.
+                    당신의 임무는 제공된 '대화 맥락'과 가장 관련성이 높은 기억을 최대 ${limit}개까지 식별하는 것입니다.
+                    **특히, 'high' 강도로 표시된 기억과 최신 기억(현재 날짜에 가까운)을 우선적으로 고려하세요.**
+                    또한, 주제에 직접적으로 관련되거나 감정적으로 중요한 기억(특히 "아저씨의 헌신", "예진이의 힘든 순간", "아저씨의 칭찬/격려", "중요한 기념일", "아저씨의 취미/관심사", "아저씨 감정 상태", "아저씨의 일상 패턴", "대화 맥락/분위기"와 관련된)도 고려하십시오.
                     
-                    Return the selected memories as a JSON array of strings, where each string is the 'content' of the memory.
-                    If no relevant memories are found, return an empty JSON array [].
+                    선택된 기억들을 'content'만 포함하는 JSON 배열 문자열로 반환하십시오.
+                    관련 기억이 없다면 빈 JSON 배열 []을 반환하십시오.
                     
-                    Existing Memories (content, strength, timestamp):
+                    기존 기억 (내용, 강도, 타임스탬프):
                     ${JSON.stringify(allMemories.map(m => ({ content: m.content, strength: m.strength, timestamp: m.timestamp })), null, 2)}
                     
                     Example Output:
