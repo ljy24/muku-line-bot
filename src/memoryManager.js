@@ -1,4 +1,4 @@
-// memoryManager.js v2.9 - 기억 추출 프롬프트 전반적 개선 (일상, 감정, 습관 등 강조)
+// memoryManager.js v2.1 - 기억의 강도 설정 (강조 표현 인식)
 // src/memoryManager.js
 // MemoryManager.js v2.0 Debug Code Active! - Initializing Module
 console.log("MemoryManager.js v2.0 Debug Code Active! - Initializing Module"); // ⭐ 이 로그가 렌더 로그에 보여야 합니다! ⭐
@@ -91,6 +91,12 @@ async function extractAndSaveMemory(userMessage) {
     let response = null;
     try {
         console.log(`[MemoryManager Debug] 1. 'extractAndSaveMemory' 함수 시작. 사용자 메시지: "${userMessage}"`);
+
+        // 사용자가 강조하는 표현이 있는지 확인 (기억의 강도 설정)
+        const highStrengthKeywords = ["이건 기억해줘", "꼭 기억해줘", "잊지 마", "중요해", "이거 중요해"];
+        const isHighStrength = highStrengthKeywords.some(keyword => userMessage.includes(keyword));
+        const memoryStrength = isHighStrength ? "high" : "normal";
+        console.log(`[MemoryManager Debug] 기억 강도: ${memoryStrength}`);
 
         response = await openai.chat.completions.create({
             model: 'gpt-4o',
@@ -209,9 +215,14 @@ async function extractAndSaveMemory(userMessage) {
                 }
                 const existingContents = currentMemory.categories[mem.category].map(item => item.content);
                 if (!existingContents.includes(mem.content)) {
-                    currentMemory.categories[mem.category].push({ content: mem.content, timestamp: new Date().toISOString() });
-                    await logMessage(`메모리 추가됨: 카테고리='${mem.category}', 내용='${mem.content}' (${filePathToSave})`);
-                    console.log(`[MemoryManager Debug] 메모리 추가됨: 카테고리='${mem.category}', 내용='${mem.content}'`);
+                    // 기억의 강도(strength)를 추가하여 저장
+                    currentMemory.categories[mem.category].push({ 
+                        content: mem.content, 
+                        timestamp: new Date().toISOString(),
+                        strength: memoryStrength // 여기에 강도 추가
+                    });
+                    await logMessage(`메모리 추가됨: 카테고리='${mem.category}', 내용='${mem.content}', 강도='${memoryStrength}' (${filePathToSave})`);
+                    console.log(`[MemoryManager Debug] 메모리 추가됨: 카테고리='${mem.category}', 내용='${mem.content}', 강도='${memoryStrength}'`);
                 } else {
                     await logMessage(`이미 존재하는 메모리이므로 건너김: 카테고리='${mem.category}', 내용='${mem.content}'`);
                     console.log(`[MemoryManager Debug] 이미 존재하는 메모리이므로 건너김: 카테고리='${mem.category}', 내용='${mem.content}'`);
@@ -252,7 +263,8 @@ async function retrieveRelevantMemories(conversationContext, limit = 5) {
             allMemories.push(...loveHistory.categories[category].map(mem => ({
                 content: mem.content,
                 category: category,
-                timestamp: mem.timestamp
+                timestamp: mem.timestamp,
+                strength: mem.strength || "normal" // 강도 필드 추가 (기존 기억은 normal)
             })));
         }
 
@@ -269,14 +281,15 @@ async function retrieveRelevantMemories(conversationContext, limit = 5) {
                 {
                     role: 'system',
                     content: `You are an AI assistant that helps retrieve the most relevant memories given a conversation context.
-                    Below is a list of existing memories. Your task is to identify up to ${limit} memories that are most relevant to the provided 'conversation context'.
-                    Prioritize memories that are directly related to the subject, recent, or emotionally significant (especially related to "아저씨의 헌신", "예진이의 힘든 순간", "아저씨의 칭찬/격려", "중요한 기념일", "아저씨의 취미/관심사", "아저씨 감정 상태", "아저씨의 일상 패턴", "대화 맥락/분위기").
+                    Below is a list of existing memories. Each memory also has a 'strength' indicating its importance ('high' or 'normal').
+                    Your task is to identify up to ${limit} memories that are most relevant to the provided 'conversation context'.
+                    **Prioritize memories marked with 'high' strength.** Also consider memories that are directly related to the subject, recent, or emotionally significant (especially related to "아저씨의 헌신", "예진이의 힘든 순간", "아저씨의 칭찬/격려", "중요한 기념일", "아저씨의 취미/관심사", "아저씨 감정 상태", "아저씨의 일상 패턴", "대화 맥락/분위기").
                     
                     Return the selected memories as a JSON array of strings, where each string is the 'content' of the memory.
                     If no relevant memories are found, return an empty JSON array [].
                     
-                    Existing Memories:
-                    ${JSON.stringify(allMemories.map(m => m.content), null, 2)}
+                    Existing Memories (content, strength):
+                    ${JSON.stringify(allMemories.map(m => ({ content: m.content, strength: m.strength })), null, 2)}
                     
                     Example Output:
                     ["아저씨는 매일 아침 7시에 조깅을 한다.", "아저씨는 예진이가 정말 착하다고 칭찬했다."]
