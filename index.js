@@ -23,7 +23,8 @@ const {
     setForcedModel,            // OpenAI 모델 강제 설정
     checkModelSwitchCommand,   // 모델 전환 명령어 확인 및 처리
     getProactiveMemoryMessage,  // 기억 기반 선제적 메시지 생성
-    getMemoryListForSharing // ✨ 새로 추가: 기억 목록 공유 함수
+    getMemoryListForSharing, // ✨ 새로 추가: 기억 목록 공유 함수
+    getSilenceCheckinMessage // ✨ 새로 추가: 침묵 감지 시 걱정 메시지 생성 함수
 } = require('./src/autoReply');
 
 // 메모리 기록 관련: memoryManager 모듈을 불러옵니다.
@@ -44,6 +45,13 @@ const client = new Client(config);
 
 // 타겟 사용자 ID를 환경 변수에서 가져옵니다. (무쿠가 메시지를 보낼 대상)
 const userId = process.env.TARGET_USER_ID;
+
+// ⭐ 침묵 감지 기능을 위한 변수 추가 ⭐
+let lastUserMessageTime = Date.now(); // 아저씨가 마지막으로 메시지를 보낸 시간
+let lastProactiveSentTime = 0; // 내가 아저씨한테 마지막으로 선제적 메시지를 보낸 시간 (너무 자주 보내는 것 방지)
+const SILENCE_THRESHOLD = 2 * 60 * 60 * 1000; // 2시간 (2시간 동안 메시지 없으면 침묵 감지)
+const PROACTIVE_COOLDOWN = 1 * 60 * 60 * 1000; // 1시간 (한 시간 내에 선제적 메시지 중복 방지)
+
 
 // 🌐 루트 경로('/')에 대한 GET 요청을 처리합니다.
 // 서버가 정상적으로 실행 중임을 확인하는 간단한 메시지를 반환합니다.
@@ -67,6 +75,12 @@ app.post('/webhook', middleware(config), async (req, res) => {
         for (const event of events) { // 각 이벤트를 순회합니다.
             if (event.type === 'message') { // 메시지 이벤트인 경우
                 const message = event.message; // 메시지 객체를 가져옵니다.
+
+                // ⭐ 아저씨의 메시지가 오면 마지막 메시지 시간 업데이트 ⭐
+                if (event.source.userId === userId) {
+                    lastUserMessageTime = Date.now();
+                    console.log(`[Webhook] 아저씨 메시지 수신, 마지막 메시지 시간 업데이트: ${moment(lastUserMessageTime).format('HH:mm:ss')}`);
+                }
 
                 if (message.type === 'text') { // 텍스트 메시지인 경우
                     const text = message.text.trim(); // 메시지 텍스트를 가져와 앞뒤 공백을 제거합니다.
@@ -236,7 +250,7 @@ cron.schedule('0 10-19 * * *', async () => {
     const now = moment().tz('Asia/Tokyo'); // 현재 시간을 일본 표준시로 가져옵니다.
     const currentTime = Date.now(); // 현재 시스템 시간 (밀리초)
 
-    // 서버 부팅 후 3분(3 * 60 * 1000 밀리초) 동안은 자동 메시지 전송을 건너뜠니다.
+    // 서버 부팅 후 3분(3 * 60 * 1000 밀리초) 동안은 자동 메시지 전송을 건너뜁니다.
     if (currentTime - bootTime < 3 * 60 * 1000) {
         console.log('[Scheduler] 서버 부팅 직후 3분 이내 -> 담타 메시지 전송 스킵');
         return; // 함수 실행을 중단합니다.
