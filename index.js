@@ -13,7 +13,7 @@ const {
     getReplyByMessage,          // 사용자 텍스트 메시지에 대한 답변 생성 (이제 사진 요청도 처리)
     getReplyByImagePrompt,      // 이미지 메시지에 대한 답변 생성 (사용자가 보낸 이미지 분석)
     getRandomMessage,           // (현재 사용되지 않음, 이전 버전의 랜덤 메시지 기능)
-    getSelfieReplyFromYeji,     // 예진이의 셀카 코멘트 생성 (스케줄러용)
+    // getSelfieReplyFromYeji,     // 예진이의 셀카 코멘트 생성 (스케줄러용) - 이 부분은 이제 omoide.js의 getOmoideReply로 대체됩니다.
     getCouplePhotoReplyFromYeji, // 커플 사진 코멘트 생성 함수 (스케줄러용)
     getColorMoodReply,          // (현재 사용되지 않음, 색상 기반 기분 답변 기능)
     getHappyReply,              // (현재 사용되지 않음, 긍정적인 답변 기능)
@@ -26,9 +26,12 @@ const {
     getSilenceCheckinMessage    // 침묵 감지 시 걱정 메시지 생성 함수
 } = require('./src/autoReply');
 
-// 메모리 기록 관련: memoryManager 모듈을 불러옵니다.
-// 이 모듈은 사용자 메시지에서 기억을 추출하고 저장하는 역할을 합니다.
+// memoryManager 모듈을 불러옵니다.
 const memoryManager = require('./src/memoryManager');
+
+// omoide.js에서 getOmoideReply 함수를 불러옵니다.
+const { getOmoideReply } = require('./src/memory/omoide');
+
 
 // Express 애플리케이션을 생성합니다.
 const app = express();
@@ -225,7 +228,7 @@ cron.schedule('0 10-19 * * *', async () => {
 });
 
 // 서버 부팅 시간을 저장하여, 서버 시작 직후에는 스케줄러가 너무 빠르게 동작하지 않도록 합니다.
-let bootTime = Date.now();
+let bootTime = Date.2025;
 // 마지막 감성 메시지 내용과 전송 시간을 저장하여 중복 전송을 방지합니다.
 let lastMoodMessage = '';
 let lastMoodMessageTime = 0;
@@ -264,21 +267,24 @@ const sendScheduledMessage = async (type) => {
         // (유효 시간대 17시간 * 0.20 확률 = 약 3.4회 전송 예상)
         if (Math.random() < 0.20) {
             try {
-                const BASE_URL = 'https://www.de-ji.net/yejin/';
-                const START_NUM = 1;
-                const END_NUM = 1186;
-                const randomIndex = Math.floor(Math.random() * (END_NUM - START_NUM + 1)) + START_NUM;
-                const fileName = String(randomIndex).padStart(6, '0') + '.jpg';
-                const imageUrl = BASE_URL + fileName;
-                
-                const comment = await getSelfieReplyFromYeji(); // autoReply.js의 함수 호출
-                
-                await client.pushMessage(userId, [
-                    { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl },
-                    { type: 'text', text: comment || '히히 셀카야~' }
-                ]);
-                console.log(`[Scheduler] 랜덤 셀카 전송 성공: ${imageUrl}`);
-                saveLog('예진이', comment || '히히 셀카야~');
+                // 기존 셀카 전송 로직을 omoide.js의 getOmoideReply로 대체합니다.
+                const selfieResponse = await getOmoideReply('셀카 보여줘', saveLog);
+
+                if (selfieResponse && selfieResponse.type === 'photo') {
+                    await client.pushMessage(userId, [
+                        { type: 'image', originalContentUrl: selfieResponse.url, previewImageUrl: selfieResponse.url },
+                        { type: 'text', text: selfieResponse.caption || '히히 셀카야~' }
+                    ]);
+                    console.log(`[Scheduler] 랜덤 셀카 전송 성공: ${selfieResponse.url}`);
+                    saveLog('예진이', selfieResponse.caption || '히히 셀카야~');
+                } else if (selfieResponse && selfieResponse.type === 'text') {
+                    // 사진 전송에 실패하고 텍스트 코멘트만 받은 경우
+                    await client.pushMessage(userId, { type: 'text', text: selfieResponse.comment });
+                    console.error('랜덤 셀카 전송 실패 (텍스트 응답):', selfieResponse.comment);
+                    saveLog('예진이', selfieResponse.comment);
+                } else {
+                    console.error('랜덤 셀카 전송 실패: 유효한 응답을 받지 못함');
+                }
             } catch (error) {
                 console.error('랜덤 셀카 전송 실패:', error);
             }
