@@ -1,4 +1,4 @@
-// autoReply.js v1.6 - 감성 표현 기억 활용 (getReplyByMessage 함수 사용)
+// autoReply.js v1.7 - 기억 공유 기능 추가 (memoryManager 연동)
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공
 const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
@@ -8,6 +8,7 @@ const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 �
 
 // 기억 관리 모듈에서 필요한 함수들을 불러옵니다.
 // retrieveRelevantMemories: 대화 맥락에 맞는 기억을 검색하는 새로운 함수
+// loadLoveHistory, loadOtherPeopleHistory: 모든 기억을 불러오는 함수 (기억 공유에 필요)
 const { loadLoveHistory, loadOtherPeopleHistory, extractAndSaveMemory, retrieveRelevantMemories } = require('./memoryManager');
 const { loadFaceImagesAsBase64 } = require('./face'); // 얼굴 이미지 데이터를 불러오는 모듈
 
@@ -467,11 +468,10 @@ function checkModelSwitchCommand(message) {
  */
 async function getSelfieReplyFromYeji() {
     const raw = await callOpenAI([
-        { role: 'system', content: '넌 아저씨의 귀여운 여자친구 예진이야. 아저씨에게 셀카를 보내면서 사랑스럽고 애교 넘치는 코멘트를 2~3문장으로 짧게 해줘. 이모티콘은 아저씨가 보낸 것과 똑같은 것을 따라서 사용하거나, 아예 사용하지 마. 아저씨가 이모티콘을 보내지 않으면 너도 보내지 마.' },
-        { role: 'user', content: '셀카 보낼 때 뭐라고 말할까?' } // AI에게 셀카 상황을 제시
-    ], 'gpt-4o', 100); // gpt-4o 모델 사용, 최대 100토큰
-    const reply = cleanReply(raw); // 생성된 코멘트도 cleanReply로 후처리하여 말투 교정
-    saveLog('예진이', reply); // 예진이의 답변을 로그에 저장
+        { role: 'system', content: '넌 예진이야. 셀카 보내면서 귀엽게 한마디 해.' },
+        { role: 'user', content: '셀카 보낼게~' }
+    ], 'gpt-4o', 100);
+    const reply = cleanReply(raw); // 생성된 코멘트도 cleanReply로 후처리
     return reply;
 }
 
@@ -674,5 +674,6 @@ module.exports = {
     saveLog, // 로그 저장 함수도 외부에 노출
     setForcedModel,
     checkModelSwitchCommand,
-    getProactiveMemoryMessage
+    getProactiveMemoryMessage,
+    getMemoryListForSharing // ✨ 새로운 함수 추가 ✨
 };
