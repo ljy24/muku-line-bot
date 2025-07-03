@@ -1,4 +1,4 @@
-// omoide.js v1.11 - cleanReply 오타 수정 및 모든 기능 통합
+// omoide.js v1.12 - cleanReply 오타 최종 수정 및 모든 기능 통합
 // 📦 필수 모듈 불러오기
 const { OpenAI } = require('openai'); // OpenAI API 클라이언트
 const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
