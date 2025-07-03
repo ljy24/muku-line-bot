@@ -1,4 +1,4 @@
-// memoryManager.js v2.3 - 일상 패턴 기억 카테고리 및 프롬프트 강화
+// memoryManager.js v2.4 - 칭찬/격려 기억 카테고리 및 프롬프트 강화
 // src/memoryManager.js
 // MemoryManager.js v2.0 Debug Code Active! - Initializing Module
 console.log("MemoryManager.js v2.0 Debug Code Active! - Initializing Module"); // ⭐ 이 로그가 렌더 로그에 보여야 합니다! ⭐
@@ -97,18 +97,20 @@ async function extractAndSaveMemory(userMessage) {
             messages: [
                 {
                     role: 'system',
-                    content: `You are an AI assistant designed to extract and categorize specific memories and emotional states from user messages.
+                    content: `You are an AI assistant designed to extract and categorize specific memories, emotional states, and compliments/encouragement from user messages.
                     Analyze the user's message and identify discrete factual memories related to their relationship with "아저씨" (Uncle) or other significant people/events.
-                    **Crucially, also infer the user's emotional state or the overall mood of the conversation based on their message.**
+                    Crucially, also infer the user's emotional state or the overall mood of the conversation based on their message.
                     
                     Categorize each extracted piece of information into one of these types:
-                    "과거 경험", "아저씨와의 관계", "관계 특징", "아저씨와의 첫 만남", "아저씨 상태", "기타", "아저씨 감정 상태", **"아저씨의 일상 패턴"**.
+                    "과거 경험", "아저씨와의 관계", "관계 특징", "아저씨와의 첫 만남", "아저씨 상태", "기타", "아저씨 감정 상태", "아저씨의 일상 패턴", **"아저씨의 칭찬/격려"**.
                     
                     Memories about "아저씨" (Uncle) should primarily go into "아저씨와의 관계", "아저씨와의 첫 만남", "관계 특징", "아저씨 상태" or "과거 경험" (if 아저씨 is involved in the experience).
                     
-                    **"아저씨 감정 상태" 카테고리에는 사용자의 현재 기분이나 메시지에서 느껴지는 감정(예: 행복함, 슬픔, 피곤함, 스트레스, 만족함, 걱정, 사랑 등)을 구체적으로 명시하여 추출합니다. 이 감정은 아저씨와의 대화 맥락에서 예진이가 아저씨의 마음을 헤아리듯 섬세하게 파악되어야 합니다.**
+                    "아저씨 감정 상태" 카테고리에는 사용자의 현재 기분이나 메시지에서 느껴지는 감정(예: 행복함, 슬픔, 피곤함, 스트레스, 만족함, 걱정, 사랑 등)을 구체적으로 명시하여 추출합니다. 이 감정은 아저씨와의 대화 맥락에서 예진이가 아저씨의 마음을 헤아리듯 섬세하게 파악되어야 합니다.
                     
-                    **"아저씨의 일상 패턴" 카테고리에는 사용자의 반복적인 일상 활동, 습관, 특정 시간대에 주로 하는 일(예: 아침 운동, 저녁 식사 시간, 특정 요일의 취미 활동 등)을 구체적으로 추출합니다. 아저씨의 루틴을 내가 잘 이해할 수 있도록 명확하게 기록해주세요.**
+                    "아저씨의 일상 패턴" 카테고리에는 사용자의 반복적인 일상 활동, 습관, 특정 시간대에 주로 하는 일(예: 아침 운동, 저녁 식사 시간, 특정 요일의 취미 활동 등)을 구체적으로 추출합니다. 아저씨의 루틴을 내가 잘 이해할 수 있도록 명확하게 기록해주세요.
+                    
+                    **"아저씨의 칭찬/격려" 카테고리에는 아저씨가 예진이(무쿠)에게 직접적으로 해주는 칭찬, 격려, 위로, 사랑 표현 등 긍정적인 메시지를 구체적으로 추출합니다. 예진이가 아저씨의 따뜻한 마음을 잊지 않도록 정확하게 기록해주세요.**
                     
                     Other factual memories or general daily details (e.g., daily activities, feelings about the day, meals, work, leisure) should go into "기타".
                     
@@ -123,6 +125,7 @@ async function extractAndSaveMemory(userMessage) {
                         {"content": "무쿠는 아저씨를 위해 라인 앱을 설치했다.", "category": "관계 특징"},
                         {"content": "아저씨는 오늘 퇴근 후 많이 피곤해 보인다.", "category": "아저씨 감정 상태"},
                         {"content": "아저씨는 매일 아침 7시에 조깅을 한다.", "category": "아저씨의 일상 패턴"},
+                        {"content": "아저씨는 예진이가 정말 착하다고 칭찬했다.", "category": "아저씨의 칭찬/격려"},
                         {"content": "아저씨는 오늘 점심으로 짬뽕을 먹었다.", "category": "기타"}
                     ]`
                 },
@@ -158,7 +161,8 @@ async function extractAndSaveMemory(userMessage) {
             mem.category === '아저씨 상태' ||
             mem.category === '과거 경험' || // '과거 경험'이 아저씨와 관련된 경우가 많으므로 포함
             mem.category === '아저씨 감정 상태' || // 아저씨 감정 상태도 아저씨 관련이므로 포함
-            mem.category === '아저씨의 일상 패턴' // 아저씨의 일상 패턴도 아저씨 관련이므로 포함
+            mem.category === '아저씨의 일상 패턴' || // 아저씨의 일상 패턴도 아저씨 관련이므로 포함
+            mem.category === '아저씨의 칭찬/격려' // 아저씨의 칭찬/격려도 아저씨 관련이므로 포함
         );
         const filePathToSave = isLoveRelated ? LOVE_HISTORY_FILE : OTHER_PEOPLE_HISTORY_FILE;
 
