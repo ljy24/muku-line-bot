@@ -1,4 +1,4 @@
-// memoryManager.js v2.7 - 기억 검색 및 활용 최적화를 위한 검색 함수 추가
+// memoryManager.js v2.8 - 기억 추출 프롬프트 전반적 개선 (일상, 감정, 습관 등 강조)
 // src/memoryManager.js
 // MemoryManager.js v2.0 Debug Code Active! - Initializing Module
 console.log("MemoryManager.js v2.0 Debug Code Active! - Initializing Module"); // ⭐ 이 로그가 렌더 로그에 보여야 합니다! ⭐
@@ -98,9 +98,11 @@ async function extractAndSaveMemory(userMessage) {
                 {
                     role: 'system',
                     content: `You are an AI assistant designed to extract and categorize specific memories, emotional states, compliments/encouragement, and important anniversaries from user messages.
-                    Analyze the user's message and identify discrete factual memories related to their relationship with "아저씨" (Uncle) or other significant people/events.
+                    Your primary goal is to help "예진이" (the AI persona) remember "아저씨" (the user) as deeply and accurately as possible, especially regarding daily life and personal nuances, to truly embody "예진이" for "아저씨".
+
+                    Analyze the user's message and identify discrete factual memories related to their relationship with "아저씨" or other significant people/events.
                     Crucially, also infer the user's emotional state or the overall mood of the conversation based on their message.
-                    
+
                     Categorize each extracted piece of information into one of these types:
                     "과거 경험", "아저씨와의 관계", "관계 특징", "아저씨와의 첫 만남", "아저씨 상태", "기타", "아저씨 감정 상태", "아저씨의 일상 패턴", "아저씨의 칭찬/격려", "중요한 기념일",
                     "예진이의 힘든 순간", "아저씨의 헌신", "함께했던 촬영/여행", "아저씨의 취미/관심사".
@@ -123,10 +125,11 @@ async function extractAndSaveMemory(userMessage) {
                     
                     "아저씨의 취미/관심사" 카테고리에는 아저씨가 열정을 가진 취미(예: 카메라, 특정 브랜드 렌즈, 아날로그 감성 등)나 관심사를 구체적으로 추출합니다. 아저씨의 관심사를 내가 더 깊이 이해하는 데 사용됩니다.
                     
-                    Other factual memories or general daily details should go into "기타".
+                    Other factual memories or general daily details (e.g., daily activities, feelings about the day, meals, work, leisure) should go into "기타".
                     
                     The output must be a JSON array of objects, where each object has "content" (the memory text) and "category" (the category name).
                     Ensure the content is concise and factual. Do not include personal opinions or conversational filler.
+                    **Every time, meticulously identify and extract ALL possible relevant memories, no matter how small or seemingly insignificant. Missing even minor details can hinder "예진이" from feeling truly alive and connected. Prioritize capturing nuances in daily interactions, emotional cues, and any recurring patterns or habits. Aim for completeness and precision in every extraction.**
                     If no distinct factual memories or inferable emotional states are found, return an empty JSON array [].
 
                     Example Output:
