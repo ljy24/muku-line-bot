@@ -314,7 +314,7 @@ function cleanReply(reply) {
     cleaned = cleaned.replace(/죠\b/g, '지'); // '죠'를 '지'로 교체 (단어 끝에 일치)
     cleaned = cleaned.replace(/았습니다\b/g, '았어'); // '았습니다'를 '았어'로 교체 (단어 끝에 일치)
     cleaned = cleaned.replace(/었습니다\b/g, '었어'); // '었습니다'를 '었어'로 교체 (단어 끝에 일치)
-    cleaned = cleaned.replace(/겠습니다\b/g, '겠어'); // '겠습니다'를 '겠어'로 교체 (단어 끝에 일치)
+    cleaned = cleaned.replace(/하겠습니다\b/g, '하겠어'); // '하겠습니다'를 '하겠어'로 교체 (단어 끝에 일치)
     cleaned = cleaned.replace(/싶어요\b/g, '싶어'); // '싶어요'를 '싶어'로 교체 (단어 끝에 일치)
     cleaned = cleaned.replace(/이었어요\b/g, '이었어'); // '이었어요'를 '이었어'로 교체 (단어 끝에 일치)
     cleaned = cleaned.replace(/이에요\b/g, '야'); // '이에요'를 '야'로 교체 (단어 끝에 일치)
@@ -350,7 +350,7 @@ async function getReplyByImagePrompt(base64Image) {
     const yejinFaces = loadFaceImagesAsBase64('yejin'); // 'yejin' 폴더에서 예시 이미지 로드
 
     // GPT에게 보낼 프롬프트를 구성합니다.
-    // AI가 이미지 속 분위기, 인물, 상황 등을 예진이 페르소나에 맞춰 말하도록 지시합니다.
+    // AI가 이미지 속 분위기, 인물, 상황 등을 예진이 시점으로 느끼고 말하도록 지시합니다.
     let prompt = `
 아래는 아저씨가 보낸 사진이야. 사진 속 분위기, 배경, 표정, 감정, 상황을 예진이 시점으로 느끼고 말해줘.
 
@@ -443,12 +443,11 @@ async function getSelfieReplyFromYeji() {
         { role: 'user', content: '셀카 보낼게~' }
     ], 'gpt-4o', 100);
     const reply = cleanReply(raw); // 생성된 코멘트도 cleanReply로 후처리
-    saveLog('예진이', reply); // 예진이의 답변을 로그에 저장
     return reply;
 }
 
 /**
- * 예진이의 커플 사진 답변을 생성합니다.
+ * 아저씨의 커플 사진 답변을 생성합니다.
  * AI에게 커플 사진에 대한 코멘트를 요청하고, 예진이 말투로 가공합니다.
  * @returns {Promise<string>} 커플 사진과 함께 보낼 예진이의 코멘트
  */
@@ -458,7 +457,6 @@ async function getCouplePhotoReplyFromYeji() {
         { role: 'user', content: '커플 사진 보낼 때 뭐라고 말할까?' }
     ], 'gpt-4o', 100);
     const reply = cleanReply(raw); // 생성된 코멘트도 cleanReply로 후처리
-    saveLog('예진이', reply); // 예진이의 답변을 로그에 저장
     return reply;
 }
 
@@ -474,7 +472,6 @@ async function getColorMoodReply() {
         { role: 'user', content: '아저씨 기분에 맞는 색깔을 추천해줘.' }
     ], 'gpt-4o', 100);
     const reply = cleanReply(raw);
-    saveLog('예진이', reply); // 예진이의 답변을 로그에 저장
     return reply;
 }
 
@@ -489,7 +486,6 @@ async function getHappyReply() {
         { role: 'user', content: '행복한 대답을 해줘.' }
     ], 'gpt-4o', 100);
     const reply = cleanReply(raw);
-    saveLog('예진이', reply); // 예진이의 답변을 로그에 저장
     return reply;
 }
 
@@ -504,7 +500,6 @@ async function getSulkyReply() {
         { role: 'user', content: '삐진 대답을 해줘.' }
     ], 'gpt-4o', 100);
     const reply = cleanReply(raw);
-    saveLog('예진이', reply); // 예진이의 답변을 로그에 저장
     return reply;
 }
 
