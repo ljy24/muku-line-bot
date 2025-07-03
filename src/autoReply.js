@@ -1,9 +1,9 @@
-// autoReply.js v1.8 - 기억 공유 기능 (getMemoryListForSharing 함수 정의 추가)
+// autoReply.js v1.8 - 기억 공유 기능 (getMemoryListForSharing 함수 정의 추가 및 모든 기능 통합)
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공
 const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
 const { OpenAI } = require('openai'); // OpenAI API 클라이언트: AI 모델과의 통신 담당
-const stringSimilarity = require('stringSimilarity'); // 문자열 유사도 측정 모듈 (현재 코드에서 직접 사용되지는 않음)
+const stringSimilarity = require('string-similarity'); // 문자열 유사도 측정 모듈 (현재 코드에서 직접 사용되지는 않음)
 const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
 
 // 기억 관리 모듈에서 필요한 함수들을 불러옵니다.
