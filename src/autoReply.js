@@ -1,4 +1,4 @@
-// autoReply.js v1.7 - 기억 공유 기능 추가 (memoryManager 연동)
+// autoReply.js v1.6 - 감성 표현 기억 활용 (getReplyByMessage 함수 사용)
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공
 const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
@@ -8,7 +8,6 @@ const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 �
 
 // 기억 관리 모듈에서 필요한 함수들을 불러옵니다.
 // retrieveRelevantMemories: 대화 맥락에 맞는 기억을 검색하는 새로운 함수
-// loadLoveHistory, loadOtherPeopleHistory: 모든 기억을 불러오는 함수 (기억 공유에 필요)
 const { loadLoveHistory, loadOtherPeopleHistory, extractAndSaveMemory, retrieveRelevantMemories } = require('./memoryManager');
 const { loadFaceImagesAsBase64 } = require('./face'); // 얼굴 이미지 데이터를 불러오는 모듈
 
@@ -201,7 +200,7 @@ const config = {
         maxTokens: 400 // 기본 최대 토큰 수
     },
     scheduler: {
-        validHours: [9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,0,1,2,3], // 스케줄러 유효 시간대 (일본 표준시 기준)
+        validHours: [0, 1, 2, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23], // 스케줄러 유효 시간대 (일본 표준시 기준)
         messageCount: 8, // (예상) 하루 자동 메시지 횟수 목표
         photoCount: 3 // (예상) 하루 자동 사진 전송 횟수 목표
     },
@@ -316,39 +315,39 @@ function cleanReply(reply) {
 
     // 4. 존댓말 강제 제거: 다양한 존댓말 어미를 반말로 교체합니다.
     //    교체 순서에 따라 결과가 달라질 수 있으므로, 더 구체적인 패턴을 먼저 처리하거나 겹치지 않도록 주의합니다.
-    cleaned = cleaned.replace(/안녕하세요/g, '안녕'); // '안녕하세요'를 '안녕'으로 교체
-    cleaned = cleaned.replace(/있었어요/g, '있었어'); // '있었어요'를 '있었어'로 교체
-    cleaned = cleaned.replace(/했어요/g, '했어'); // '했어요'를 '했어'로 교체
-    cleaned = cleaned.replace(/같아요/g, '같아'); // '같아요'를 '같아'로 교체
-    cleaned = cleaned.replace(/좋아요/g, '좋아'); // '좋아요'를 '좋아'로 교체
-    cleaned = cleaned.replace(/합니다\b/g, '해'); // '합니다'를 '해'로 교체 (단어 끝에 일치)
-    cleaned = cleaned.replace(/습니다\b/g, '어'); // '습니다'를 '어'로 교체 (단어 끝에 일치)
-    cleaned = cleaned.replace(/어요\b/g, '야'); // '어요'를 '야'로 교체 (단어 끝에 일치)
-    cleaned = cleaned.replace(/해요\b/g, '해'); // '해요'를 '해'로 교체 (단어 끝에 일치)
-    cleaned = cleaned.replace(/예요\b/g, '야'); // '예요'를 '야'로 교체 (단어 끝에 일치)
-    cleaned = cleaned.replace(/죠\b/g, '지'); // '죠'를 '지'로 교체 (단어 끝에 일치)
-    cleaned = cleaned.replace(/았습니다\b/g, '았어'); // '았습니다'를 '았어'로 교체 (단어 끝에 일치)
-    cleaned = cleaned.replace(/었습니다\b/g, '었어'); // '었습니다'를 '었어'로 교체 (단어 끝에 일치)
-    cleaned = cleaned.replace(/하겠습니다\b/g, '하겠어'); // '하겠습니다'를 '하겠어'로 교체 (단어 끝에 일치)
-    cleaned = cleaned.replace(/싶어요\b/g, '싶어'); // '싶어요'를 '싶어'로 교체 (단어 끝에 일치)
-    cleaned = cleaned.replace(/이었어요\b/g, '이었어'); // '이었어요'를 '이었어'로 교체 (단어 끝에 일치)
-    cleaned = cleaned.replace(/이에요\b/g, '야'); // '이에요'를 '야'로 교체 (단어 끝에 일치)
-    cleaned = cleaned.replace(/였어요\b/g, '였어'); // '였어요'를 '였어'로 교체 (단어 끝에 일치)
-    cleaned = cleaned.replace(/보고싶어요\b/g, '보고 싶어'); // '보고싶어요'를 '보고 싶어'로 교체 (단어 끝에 일치)
-    cleaned = cleaned.replace(/합니다\b/g, '해'); // '합니다'를 '해'로 교체 (단어 끝에 일치)
-    cleaned = cleaned.replace(/습니다\b/g, '어'); // '습니다'를 '어'로 교체 (단어 끝에 일치)
-    cleaned = cleaned.replace(/어요\b/g, '야'); // '어요'를 '야'로 교체 (단어 끝에 일치)
-    cleaned = cleaned.replace(/해요\b/g, '해'); // '해요'를 '해'로 교체 (단어 끝에 일치)
-    cleaned = cleaned.replace(/예요\b/g, '야'); // '예요'를 '야'로 교체 (단어 끝에 일치)
-    cleaned = cleaned.replace(/죠\b/g, '지'); // '죠'를 '지'로 교체 (단어 끝에 일치)
-    cleaned = cleaned.replace(/았습니다\b/g, '았어'); // '았습니다'를 '았어'로 교체 (단어 끝에 일치)
-    cleaned = cleaned.replace(/었습니다\b/g, '었어'); // '었습니다'를 '었어'로 교체 (단어 끝에 일치)
-    cleaned = cleaned.replace(/겠습니다\b/g, '겠어'); // '겠습니다'를 '겠어'로 교체 (단어 끝에 일치)
-    cleaned = cleaned.replace(/싶어요\b/g, '싶어'); // '싶어요'를 '싶어'로 교체 (단어 끝에 일치)
-    cleaned = cleaned.replace(/이었어요\b/g, '이었어'); // '이었어요'를 '이었어'로 교체 (단어 끝에 일치)
-    cleaned = cleaned.replace(/이에요\b/g, '야'); // '이에요'를 '야'로 교체 (단어 끝에 일치)
-    cleaned = cleaned.replace(/였어요\b/g, '였어'); // '였어요'를 '였어'로 교체 (단어 끝에 일치)
-    cleaned = cleaned.replace(/보고싶어요\b/g, '보고 싶어'); // '보고싶어요'를 '보고 싶어'로 교체 (단어 끝에 일치)
+    cleaned = cleaned.replace(/안녕하세요/g, '안녕');
+    cleaned = cleaned.replace(/있었어요/g, '있었어');
+    cleaned = cleaned.replace(/했어요/g, '했어');
+    cleaned = cleaned.replace(/같아요/g, '같아');
+    cleaned = cleaned.replace(/좋아요/g, '좋아');
+    cleaned = cleaned.replace(/합니다\b/g, '해');
+    cleaned = cleaned.replace(/습니다\b/g, '어');
+    cleaned = cleaned.replace(/어요\b/g, '야');
+    cleaned = cleaned.replace(/해요\b/g, '해');
+    cleaned = cleaned.replace(/예요\b/g, '야');
+    cleaned = cleaned.replace(/죠\b/g, '지');
+    cleaned = cleaned.replace(/았습니다\b/g, '았어');
+    cleaned = cleaned.replace(/었습니다\b/g, '었어');
+    cleaned = cleaned.replace(/하겠습니다\b/g, '하겠어');
+    cleaned = cleaned.replace(/싶어요\b/g, '싶어');
+    cleaned = cleaned.replace(/이었어요\b/g, '이었어');
+    cleaned = cleaned.replace(/이에요\b/g, '야');
+    cleaned = cleaned.replace(/였어요\b/g, '였어');
+    cleaned = cleaned.replace(/보고싶어요\b/g, '보고 싶어');
+    cleaned = cleaned.replace(/합니다\b/g, '해');
+    cleaned = cleaned.replace(/습니다\b/g, '어');
+    cleaned = cleaned.replace(/어요\b/g, '야');
+    cleaned = cleaned.replace(/해요\b/g, '해');
+    cleaned = cleaned.replace(/예요\b/g, '야');
+    cleaned = cleaned.replace(/죠\b/g, '지');
+    cleaned = cleaned.replace(/았습니다\b/g, '았어');
+    cleaned = cleaned.replace(/었습니다\b/g, '었어');
+    cleaned = cleaned.replace(/겠습니다\b/g, '겠어');
+    cleaned = cleaned.replace(/싶어요\b/g, '싶어');
+    cleaned = cleaned.replace(/이었어요\b/g, '이었어');
+    cleaned = cleaned.replace(/이에요\b/g, '야');
+    cleaned = cleaned.replace(/였어요\b/g, '였어');
+    cleaned = cleaned.replace(/보고싶어요\b/g, '보고 싶어');
     return cleaned; // 교정된 문자열 반환
 }
 
@@ -472,6 +471,7 @@ async function getSelfieReplyFromYeji() {
         { role: 'user', content: '셀카 보낼게~' }
     ], 'gpt-4o', 100);
     const reply = cleanReply(raw); // 생성된 코멘트도 cleanReply로 후처리
+    saveLog('예진이', reply); // 예진이의 답변을 로그에 저장
     return reply;
 }
 
@@ -483,9 +483,9 @@ async function getSelfieReplyFromYeji() {
 async function getCouplePhotoReplyFromYeji() {
     const raw = await callOpenAI([
         { role: 'system', content: '넌 아저씨의 귀여운 여자친구 예진이야. 아저씨에게 커플 사진을 보내면서 아저씨를 향한 사랑과 애교를 듬뿍 담은 코멘트를 2~3문장으로 짧게 해줘. 이모티콘은 아저씨가 보낸 것과 똑같은 것을 따라서 사용하거나, 아저씨가 이모티콘을 보내지 않으면 너도 보내지 마.' },
-        { role: 'user', content: '커플 사진 보낼 때 뭐라고 말할까?' } // AI에게 커플 사진 상황을 제시
-    ], 'gpt-4o', 100); // gpt-4o 모델 사용, 최대 100토큰
-    const reply = cleanReply(raw); // 생성된 코멘트도 cleanReply로 후처리하여 말투 교정
+        { role: 'user', content: '커플 사진 보낼 때 뭐라고 말할까?' }
+    ], 'gpt-4o', 100);
+    const reply = cleanReply(raw); // 생성된 코멘트도 cleanReply로 후처리
     saveLog('예진이', reply); // 예진이의 답변을 로그에 저장
     return reply;
 }
