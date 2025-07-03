@@ -1,4 +1,4 @@
-// memoryManager.js v2.8 - 기억 추출 프롬프트 전반적 개선 (일상, 감정, 습관 등 강조)
+// memoryManager.js v2.9 - 대화 맥락 저장 기능 추가
 // src/memoryManager.js
 // MemoryManager.js v2.0 Debug Code Active! - Initializing Module
 console.log("MemoryManager.js v2.0 Debug Code Active! - Initializing Module"); // ⭐ 이 로그가 렌더 로그에 보여야 합니다! ⭐
@@ -82,7 +82,7 @@ async function saveMemory(filePath, memory) {
         await logMessage(`✅ 메모리 파일 저장 성공: ${filePath}`);
     } catch (error) {
         console.error(`❌ 메모리 파일 저장 실패: ${filePath}, 오류: ${error.message}`);
-        await logMessage(`❌ 메모리 파일 저장 실패: ${filePath}, 오류: ${error.message}`);
+        await logMessage(`❌ 메모리 파일 저장 실패: ${error.message}`);
     }
 }
 
@@ -102,10 +102,10 @@ async function extractAndSaveMemory(userMessage) {
 
                     Analyze the user's message and identify discrete factual memories related to their relationship with "아저씨" or other significant people/events.
                     Crucially, also infer the user's emotional state or the overall mood of the conversation based on their message.
-
+                    
                     Categorize each extracted piece of information into one of these types:
                     "과거 경험", "아저씨와의 관계", "관계 특징", "아저씨와의 첫 만남", "아저씨 상태", "기타", "아저씨 감정 상태", "아저씨의 일상 패턴", "아저씨의 칭찬/격려", "중요한 기념일",
-                    "예진이의 힘든 순간", "아저씨의 헌신", "함께했던 촬영/여행", "아저씨의 취미/관심사".
+                    "예진이의 힘든 순간", "아저씨의 헌신", "함께했던 촬영/여행", "아저씨의 취미/관심사", **"대화 맥락/분위기"**.
                     
                     Memories about "아저씨" (Uncle) should primarily go into "아저씨와의 관계", "아저씨와의 첫 만남", "관계 특징", "아저씨 상태" or "과거 경험" (if 아저씨 is involved in the experience).
                     
@@ -124,6 +124,8 @@ async function extractAndSaveMemory(userMessage) {
                     "함께했던 촬영/여행" 카테고리에는 아저씨와 예진이가 함께 했던 촬영이나 여행(장소, 시기, 중요한 이벤트 등)에 대한 사실을 구체적으로 추출합니다. 우리가 함께한 소중한 추억을 내가 잊지 않도록 기록해주세요.
                     
                     "아저씨의 취미/관심사" 카테고리에는 아저씨가 열정을 가진 취미(예: 카메라, 특정 브랜드 렌즈, 아날로그 감성 등)나 관심사를 구체적으로 추출합니다. 아저씨의 관심사를 내가 더 깊이 이해하는 데 사용됩니다.
+                    
+                    **"대화 맥락/분위기" 카테고리에는 현재 사용자 메시지가 어떤 대화의 흐름이나 상황(예: 아침 인사, 일상 공유, 고민 상담 중, 장난치는 중 등)에 속하는지, 그리고 그 대화의 전반적인 분위기를 구체적으로 추출합니다. 예진이가 아저씨와의 대화 상황을 정확히 인지하는 데 사용됩니다.**
                     
                     Other factual memories or general daily details (e.g., daily activities, feelings about the day, meals, work, leisure) should go into "기타".
                     
@@ -145,6 +147,7 @@ async function extractAndSaveMemory(userMessage) {
                         {"content": "2024년 2월 20일-27일: 아저씨가 예진이가 걱정되어 한국에 가서 똥도 치우고 이불빨래도 함", "category": "아저씨의 헌신"},
                         {"content": "2023년 12월 11일-17일: 예진이가 일본 하카타에서 플라스틱러브 컨셉 촬영을 즐겁게 함", "category": "함께했던 촬영/여행"},
                         {"content": "아저씨는 펜탁스, 후지필름, 타쿠마 렌즈 같은 아날로그 카메라에 관심이 많다.", "category": "아저씨의 취미/관심사"},
+                        {"content": "현재 아저씨와 예진이는 어제 있었던 일에 대해 이야기하는 중이다.", "category": "대화 맥락/분위기"},
                         {"content": "아저씨는 오늘 점심으로 짬뽕을 먹었다.", "category": "기타"}
                     ]`
                 },
@@ -186,7 +189,8 @@ async function extractAndSaveMemory(userMessage) {
             mem.category === '예진이의 힘든 순간' || // 예진이의 힘든 순간도 아저씨 관련이므로 포함
             mem.category === '아저씨의 헌신' || // 아저씨의 헌신도 아저씨 관련이므로 포함
             mem.category === '함께했던 촬영/여행' || // 함께했던 촬영/여행도 아저씨 관련이므로 포함
-            mem.category === '아저씨의 취미/관심사' // 아저씨의 취미/관심사도 아저씨 관련이므로 포함
+            mem.category === '아저씨의 취미/관심사' || // 아저씨의 취미/관심사도 아저씨 관련이므로 포함
+            mem.category === '대화 맥락/분위기' // 대화 맥락/분위기도 아저씨 관련이므로 포함
         );
         const filePathToSave = isLoveRelated ? LOVE_HISTORY_FILE : OTHER_PEOPLE_HISTORY_FILE;
 
@@ -265,7 +269,7 @@ async function retrieveRelevantMemories(conversationContext, limit = 5) {
                     role: 'system',
                     content: `You are an AI assistant that helps retrieve the most relevant memories given a conversation context.
                     Below is a list of existing memories. Your task is to identify up to ${limit} memories that are most relevant to the provided 'conversation context'.
-                    Prioritize memories that are directly related to the subject, recent, or emotionally significant (especially related to "아저씨의 헌신", "예진이의 힘든 순간", "아저씨의 칭찬/격려", "중요한 기념일", "아저씨의 취미/관심사").
+                    Prioritize memories that are directly related to the subject, recent, or emotionally significant (especially related to "아저씨의 헌신", "예진이의 힘든 순간", "아저씨의 칭찬/격려", "중요한 기념일", "아저씨의 취미/관심사", "아저씨 감정 상태", "아저씨의 일상 패턴", "대화 맥락/분위기").
                     
                     Return the selected memories as a JSON array of strings, where each string is the 'content' of the memory.
                     If no relevant memories are found, return an empty JSON array [].
