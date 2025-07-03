@@ -27,10 +27,12 @@ const {
 } = require('./src/autoReply');
 
 // memoryManager 모듈을 불러옵니다.
-const memoryManager = require('./memoryManager');
+// 파일 구조 이미지에 따르면 memoryManager.js는 src 폴더 안에 있습니다.
+const memoryManager = require('./src/memoryManager'); //
 
 // omoide.js에서 getOmoideReply 함수를 불러옵니다.
-const { getOmoideReply } = require('./memory/omoide');
+// 파일 구조 이미지에 따르면 omoide.js는 memory 폴더 바로 아래에 있습니다.
+const { getOmoideReply } = require('./memory/omoide'); //
 
 
 // Express 애플리케이션을 생성합니다.
@@ -205,7 +207,7 @@ cron.schedule('0 10-19 * * *', async () => {
     const now = moment().tz('Asia/Tokyo'); // 현재 시간을 일본 표준시로 가져옵니다.
     const currentTime = Date.now(); // 현재 시스템 시간 (밀리초)
 
-    // 서버 부팅 후 3분(3 * 60 * 1000 밀리초) 동안은 자동 메시지 전송을 건너뜁니다.
+    // 서버 부팅 후 3분(3 * 60 * 1000 밀리초) 동안은 자동 메시지 전송을 건너꿉니다.
     if (currentTime - bootTime < 3 * 60 * 1000) {
         console.log('[Scheduler] 서버 부팅 직후 3분 이내 -> 담타 메시지 전송 스킵');
         return; // 함수 실행을 중단합니다.
@@ -228,7 +230,7 @@ cron.schedule('0 10-19 * * *', async () => {
 });
 
 // 서버 부팅 시간을 저장하여, 서버 시작 직후에는 스케줄러가 너무 빠르게 동작하지 않도록 합니다.
-let bootTime = Date.now(); // <-- 이 부분을 수정했습니다.
+let bootTime = Date.now(); //
 // 마지막 감성 메시지 내용과 전송 시간을 저장하여 중복 전송을 방지합니다.
 let lastMoodMessage = '';
 let lastMoodMessageTime = 0;
@@ -250,7 +252,7 @@ const sendScheduledMessage = async (type) => {
     const now = moment().tz('Asia/Tokyo'); // 현재 시간을 일본 표준시로 가져옵니다.
     const currentTime = Date.now(); // 현재 시스템 시간 (밀리초)
 
-    // 서버 부팅 후 3분(3 * 60 * 1000 밀리초) 동안은 자동 메시지 전송을 건너뜁니다.
+    // 서버 부팅 후 3분(3 * 60 * 1000 밀리초) 동안은 자동 메시지 전송을 건너꿉니다.
     if (currentTime - bootTime < 3 * 60 * 1000) {
         console.log('[Scheduler] 서버 부팅 직후 3분 이내 -> 자동 메시지 전송 스킵');
         return; // 함수 실행을 중단합니다.
