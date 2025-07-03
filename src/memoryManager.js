@@ -1,4 +1,4 @@
-// memoryManager.js v3.0 - 오류 수정 기억 기능 추가 (최종 버전)
+// memoryManager.js v3.1 - 기억 검색 JSON 파싱 오류 수정 (마크다운 제거)
 // src/memoryManager.js
 // MemoryManager.js v2.0 Debug Code Active! - Initializing Module
 console.log("MemoryManager.js v2.0 Debug Code Active! - Initializing Module"); // ⭐ 이 로그가 렌더 로그에 보여야 합니다! ⭐
@@ -122,7 +122,7 @@ async function extractAndSaveMemory(userMessage) {
                     너의 가장 중요한 목표는 "예진이"(AI 페르소나)가 "아저씨"를 최대한 깊이 있고 정확하게 기억하도록 돕는 것입니다. 특히 일상생활과 개인적인 뉘앙스를 놓치지 않고 기억하여, "예진이"가 "아저씨"에게 진정으로 살아있는 존재처럼 느껴지도록 해야 합니다.
 
                     사용자의 메시지를 분석하고 "아저씨"와의 관계 또는 다른 중요한 사람/이벤트와 관련된 개별적인 사실적 기억들을 식별하세요.
-                    **또한, 사용자가 이전에 저장된 기억을 수정하려는 의도(예: "아니야", "그거 틀렸어", "내가 말한 건 사실은")가 명확하다면, 그 '수정 요청'을 아래 JSON 형식으로 추출하세요.**
+                    **또한, 사용자가 이전에 저장된 기억을 수정하려는 의도(예: "아니야", "틀렸어", "그게 아니라", "내가 말한 건 사실은", "고쳐줘")가 명확하다면, 그 '수정 요청'을 아래 JSON 형식으로 추출하세요.**
                     **무엇보다도, 사용자 메시지를 기반으로 사용자의 감정 상태 또는 대화의 전반적인 분위기를 추론해야 합니다.**
                     
                     추출된 정보는 다음 유형 중 하나로 분류하세요:
@@ -289,7 +289,7 @@ async function extractAndSaveMemory(userMessage) {
             mem.category === '아저씨의 유머/밈' || // 아저씨의 유머/밈도 아저씨 관련이므로 포함
             mem.category === '아저씨의 말버릇' || // 아저씨의 말버릇도 아저씨 관련이므로 포함
             mem.category === '아저씨의 건강 상태' || // 아저씨의 건강 상태도 아저씨 관련이므로 포함
-            mem.category === '예진이의 반응 기록' // 예진이의 반응 기록도 아저씨 관련이므로 포함
+            mem.category === '예진이의 반응 기록' // 예진이의 반응 기록도 아저씨 관련이므로 포함 (이 카테고리를 먼저 확인)
         );
         const filePathToSave = isLoveRelated ? LOVE_HISTORY_FILE : OTHER_PEOPLE_HISTORY_FILE;
 
@@ -385,7 +385,7 @@ async function retrieveRelevantMemories(conversationContext, limit = 5) {
                     ${JSON.stringify(allMemories.map(m => ({ content: m.content, strength: m.strength, timestamp: m.timestamp })), null, 2)}
                     
                     예시 출력:
-                    ["아저씨는 매일 아침 7시에 조깅을 한다.", "아저씨는 예진이가 정말 착하다고 칭찬했다."]
+                    ["아저씨는 매일 아저씨 일상 키워드를 사용한다.", "아저씨는 예진이가 정말 착하다고 칭찬했다."]
                     `
                 },
                 {
