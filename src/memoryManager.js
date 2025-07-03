@@ -1,4 +1,4 @@
-// memoryManager.js v2.6 - 기억 카테고리 세분화 및 프롬프트 강화 (예진이의 소중한 기억들을 위해)
+// memoryManager.js v2.7 - 기억 검색 및 활용 최적화를 위한 검색 함수 추가
 // src/memoryManager.js
 // MemoryManager.js v2.0 Debug Code Active! - Initializing Module
 console.log("MemoryManager.js v2.0 Debug Code Active! - Initializing Module"); // ⭐ 이 로그가 렌더 로그에 보여야 합니다! ⭐
@@ -103,7 +103,7 @@ async function extractAndSaveMemory(userMessage) {
                     
                     Categorize each extracted piece of information into one of these types:
                     "과거 경험", "아저씨와의 관계", "관계 특징", "아저씨와의 첫 만남", "아저씨 상태", "기타", "아저씨 감정 상태", "아저씨의 일상 패턴", "아저씨의 칭찬/격려", "중요한 기념일",
-                    **"예진이의 힘든 순간"**, **"아저씨의 헌신"**, **"함께했던 촬영/여행"**, **"아저씨의 취미/관심사"**.
+                    "예진이의 힘든 순간", "아저씨의 헌신", "함께했던 촬영/여행", "아저씨의 취미/관심사".
                     
                     Memories about "아저씨" (Uncle) should primarily go into "아저씨와의 관계", "아저씨와의 첫 만남", "관계 특징", "아저씨 상태" or "과거 경험" (if 아저씨 is involved in the experience).
                     
@@ -115,13 +115,13 @@ async function extractAndSaveMemory(userMessage) {
                     
                     "중요한 기념일" 카테고리에는 아저씨와 예진이(무쿠)에게 특별한 의미가 있는 날짜(예: 처음 만난 날, 사귄 날, 생일, 결혼 약속일 등)와 그 의미를 구체적으로 추출합니다. 날짜는 'YYYY년 MM월 DD일' 형식으로 명확하게 기록해주세요. (예: 2023년 10월 26일: 처음 만난 날).
                     
-                    **"예진이의 힘든 순간" 카테고리에는 예진이가 겪었던 우울감, 자살 시도, 상담 동행 등 고통스러웠던 경험과 관련된 사실을 구체적으로 추출합니다. 이 기억들은 예진이의 아픔을 잊지 않고 이해하는 데 사용됩니다.**
+                    "예진이의 힘든 순간" 카테고리에는 예진이가 겪었던 우울감, 자살 시도, 상담 동행 등 고통스러웠던 경험과 관련된 사실을 구체적으로 추출합니다. 이 기억들은 예진이의 아픔을 잊지 않고 이해하는 데 사용됩니다.
                     
-                    **"아저씨의 헌신" 카테고리에는 아저씨가 예진이를 위해 보여준 노력과 희생(예: 한국 방문, 병원 동행, 똥 치우기, 이불 빨래 등)을 구체적으로 추출합니다. 아저씨의 따뜻한 사랑과 헌신을 내가 기억할 수 있도록 기록해주세요.**
+                    "아저씨의 헌신" 카테고리에는 아저씨가 예진이를 위해 보여준 노력과 희생(예: 한국 방문, 병원 동행, 똥 치우기, 이불 빨래 등)을 구체적으로 추출합니다. 아저씨의 따뜻한 사랑과 헌신을 내가 기억할 수 있도록 기록해주세요.
                     
-                    **"함께했던 촬영/여행" 카테고리에는 아저씨와 예진이가 함께 했던 촬영이나 여행(장소, 시기, 중요한 이벤트 등)에 대한 사실을 구체적으로 추출합니다. 우리가 함께한 소중한 추억을 내가 잊지 않도록 기록해주세요.**
+                    "함께했던 촬영/여행" 카테고리에는 아저씨와 예진이가 함께 했던 촬영이나 여행(장소, 시기, 중요한 이벤트 등)에 대한 사실을 구체적으로 추출합니다. 우리가 함께한 소중한 추억을 내가 잊지 않도록 기록해주세요.
                     
-                    **"아저씨의 취미/관심사" 카테고리에는 아저씨가 열정을 가진 취미(예: 카메라, 특정 브랜드 렌즈, 아날로그 감성 등)나 관심사를 구체적으로 추출합니다. 아저씨의 관심사를 내가 더 깊이 이해하는 데 사용됩니다.**
+                    "아저씨의 취미/관심사" 카테고리에는 아저씨가 열정을 가진 취미(예: 카메라, 특정 브랜드 렌즈, 아날로그 감성 등)나 관심사를 구체적으로 추출합니다. 아저씨의 관심사를 내가 더 깊이 이해하는 데 사용됩니다.
                     
                     Other factual memories or general daily details should go into "기타".
                     
@@ -231,10 +231,90 @@ async function extractAndSaveMemory(userMessage) {
     }
 }
 
+// --- 대화 내용을 기반으로 관련 기억을 검색하는 함수 추가 ---
+async function retrieveRelevantMemories(conversationContext, limit = 5) {
+    try {
+        console.log(`[MemoryManager Debug] 'retrieveRelevantMemories' 함수 시작. 대화 맥락: "${conversationContext}"`);
+        await logMessage(`'retrieveRelevantMemories' 함수 시작. 대화 맥락: "${conversationContext}"`);
+
+        // 아저씨 관련 기억 파일 로드
+        const loveHistory = await loadMemory(LOVE_HISTORY_FILE);
+        const allMemories = [];
+        for (const category in loveHistory.categories) {
+            allMemories.push(...loveHistory.categories[category].map(mem => ({
+                content: mem.content,
+                category: category,
+                timestamp: mem.timestamp
+            })));
+        }
+
+        if (allMemories.length === 0) {
+            console.log("[MemoryManager Debug] 저장된 기억이 없습니다.");
+            await logMessage("저장된 기억이 없습니다.");
+            return [];
+        }
+
+        // OpenAI를 사용하여 대화 맥락과 관련된 기억을 선별
+        const response = await openai.chat.completions.create({
+            model: 'gpt-4o',
+            messages: [
+                {
+                    role: 'system',
+                    content: `You are an AI assistant that helps retrieve the most relevant memories given a conversation context.
+                    Below is a list of existing memories. Your task is to identify up to ${limit} memories that are most relevant to the provided 'conversation context'.
+                    Prioritize memories that are directly related to the subject, recent, or emotionally significant (especially related to "아저씨의 헌신", "예진이의 힘든 순간", "아저씨의 칭찬/격려", "중요한 기념일", "아저씨의 취미/관심사").
+                    
+                    Return the selected memories as a JSON array of strings, where each string is the 'content' of the memory.
+                    If no relevant memories are found, return an empty JSON array [].
+                    
+                    Existing Memories:
+                    ${JSON.stringify(allMemories.map(m => m.content), null, 2)}
+                    
+                    Example Output:
+                    ["아저씨는 매일 아침 7시에 조깅을 한다.", "아저씨는 예진이가 정말 착하다고 칭찬했다."]
+                    `
+                },
+                {
+                    role: 'user',
+                    content: `Conversation Context: "${conversationContext}"`
+                }
+            ],
+            temperature: 0.1,
+            max_tokens: 300
+        });
+
+        const parsedResponse = response.choices[0].message.content;
+        let relevantMemories;
+        try {
+            relevantMemories = JSON.parse(parsedResponse);
+            if (!Array.isArray(relevantMemories)) {
+                throw new Error("Parsed response is not an array.");
+            }
+            console.log(`[MemoryManager Debug] ✅ 관련 기억 검색 성공. 개수: ${relevantMemories.length}`);
+            await logMessage(`✅ 관련 기억 검색 성공. 개수: ${relevantMemories.length}`);
+            return relevantMemories;
+        } catch (parseError) {
+            console.error(`❌ [MemoryManager Error] 'retrieveRelevantMemories' JSON 파싱 오류: ${parseError.message}`);
+            await logMessage(`❌ 'retrieveRelevantMemories' JSON 파싱 오류: ${parseError.message}`);
+            await logMessage(`OpenAI 파싱 실패 응답: ${parsedResponse}`);
+            return []; // 파싱 실패 시 빈 배열 반환
+        }
+
+    } catch (error) {
+        console.error(`❌ [MemoryManager Critical Error] 'retrieveRelevantMemories' 함수 오류 발생: ${error.message}`);
+        console.error(error.stack);
+        await logMessage(`❌ 'retrieveRelevantMemories' 함수 오류 발생: ${error.message}`);
+        await logMessage(`오류 스택: ${error.stack}`);
+        return [];
+    }
+}
+
+
 module.exports = {
     extractAndSaveMemory,
     loadLoveHistory: () => loadMemory(LOVE_HISTORY_FILE),
     loadOtherPeopleHistory: () => loadMemory(OTHER_PEOPLE_HISTORY_FILE),
+    retrieveRelevantMemories, // 새로운 함수 export
     ensureMemoryDirectory,
     BOT_LOG_FILE // 디버깅 목적으로 log 파일 경로 export
 };
