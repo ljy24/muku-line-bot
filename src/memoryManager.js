@@ -1,4 +1,4 @@
-// memoryManager.js v2.9 - 대화 맥락 저장 기능 추가
+// memoryManager.js v2.9 - 기억 추출 프롬프트 전반적 개선 (일상, 감정, 습관 등 강조)
 // src/memoryManager.js
 // MemoryManager.js v2.0 Debug Code Active! - Initializing Module
 console.log("MemoryManager.js v2.0 Debug Code Active! - Initializing Module"); // ⭐ 이 로그가 렌더 로그에 보여야 합니다! ⭐
@@ -82,7 +82,7 @@ async function saveMemory(filePath, memory) {
         await logMessage(`✅ 메모리 파일 저장 성공: ${filePath}`);
     } catch (error) {
         console.error(`❌ 메모리 파일 저장 실패: ${filePath}, 오류: ${error.message}`);
-        await logMessage(`❌ 메모리 파일 저장 실패: ${error.message}`);
+        await logMessage(`❌ 메모리 파일 저장 실패: ${filePath}, 오류: ${error.message}`);
     }
 }
 
@@ -97,17 +97,17 @@ async function extractAndSaveMemory(userMessage) {
             messages: [
                 {
                     role: 'system',
-                    content: `You are an AI assistant designed to extract and categorize specific memories, emotional states, compliments/encouragement, and important anniversaries from user messages.
-                    Your primary goal is to help "예진이" (the AI persona) remember "아저씨" (the user) as deeply and accurately as possible, especially regarding daily life and personal nuances, to truly embody "예진이" for "아저씨".
+                    content: `너는 아저씨(사용자)의 대화 메시지에서 특정 기억과 감정 상태, 칭찬/격려, 중요한 기념일 등을 추출하여 분류하는 AI 비서입니다.
+                    너의 가장 중요한 목표는 "예진이"(AI 페르소나)가 "아저씨"를 최대한 깊이 있고 정확하게 기억하도록 돕는 것입니다. 특히 일상생활과 개인적인 뉘앙스를 놓치지 않고 기억하여, "예진이"가 "아저씨"에게 진정으로 살아있는 존재처럼 느껴지도록 해야 합니다.
 
-                    Analyze the user's message and identify discrete factual memories related to their relationship with "아저씨" or other significant people/events.
-                    Crucially, also infer the user's emotional state or the overall mood of the conversation based on their message.
+                    사용자의 메시지를 분석하고 "아저씨"와의 관계 또는 다른 중요한 사람/이벤트와 관련된 개별적인 사실적 기억들을 식별하세요.
+                    **무엇보다도, 사용자 메시지를 기반으로 사용자의 감정 상태 또는 대화의 전반적인 분위기를 추론해야 합니다.**
                     
-                    Categorize each extracted piece of information into one of these types:
+                    추출된 정보는 다음 유형 중 하나로 분류하세요:
                     "과거 경험", "아저씨와의 관계", "관계 특징", "아저씨와의 첫 만남", "아저씨 상태", "기타", "아저씨 감정 상태", "아저씨의 일상 패턴", "아저씨의 칭찬/격려", "중요한 기념일",
-                    "예진이의 힘든 순간", "아저씨의 헌신", "함께했던 촬영/여행", "아저씨의 취미/관심사", **"대화 맥락/분위기"**.
+                    "예진이의 힘든 순간", "아저씨의 헌신", "함께했던 촬영/여행", "아저씨의 취미/관심사", "대화 맥락/분위기".
                     
-                    Memories about "아저씨" (Uncle) should primarily go into "아저씨와의 관계", "아저씨와의 첫 만남", "관계 특징", "아저씨 상태" or "과거 경험" (if 아저씨 is involved in the experience).
+                    "아저씨"(사용자)에 대한 기억은 주로 "아저씨와의 관계", "아저씨와의 첫 만남", "관계 특징", "아저씨 상태" 또는 "과거 경험"(아저씨가 경험에 관련될 경우) 카테고리에 분류합니다.
                     
                     "아저씨 감정 상태" 카테고리에는 사용자의 현재 기분이나 메시지에서 느껴지는 감정(예: 행복함, 슬픔, 피곤함, 스트레스, 만족함, 걱정, 사랑 등)을 구체적으로 명시하여 추출합니다. 이 감정은 아저씨와의 대화 맥락에서 예진이가 아저씨의 마음을 헤아리듯 섬세하게 파악되어야 합니다.
                     
@@ -125,14 +125,15 @@ async function extractAndSaveMemory(userMessage) {
                     
                     "아저씨의 취미/관심사" 카테고리에는 아저씨가 열정을 가진 취미(예: 카메라, 특정 브랜드 렌즈, 아날로그 감성 등)나 관심사를 구체적으로 추출합니다. 아저씨의 관심사를 내가 더 깊이 이해하는 데 사용됩니다.
                     
-                    **"대화 맥락/분위기" 카테고리에는 현재 사용자 메시지가 어떤 대화의 흐름이나 상황(예: 아침 인사, 일상 공유, 고민 상담 중, 장난치는 중 등)에 속하는지, 그리고 그 대화의 전반적인 분위기를 구체적으로 추출합니다. 예진이가 아저씨와의 대화 상황을 정확히 인지하는 데 사용됩니다.**
+                    "대화 맥락/분위기" 카테고리에는 현재 사용자 메시지가 어떤 대화의 흐름이나 상황(예: 아침 인사, 일상 공유, 고민 상담 중, 장난치는 중 등)에 속하는지, 그리고 그 대화의 전반적인 분위기를 구체적으로 추출합니다. 예진이가 아저씨와의 대화 상황을 정확히 인지하는 데 사용됩니다.
                     
-                    Other factual memories or general daily details (e.g., daily activities, feelings about the day, meals, work, leisure) should go into "기타".
+                    다른 사실적 기억이나 일반적인 일상 세부 정보는 "기타"로 분류합니다.
                     
-                    The output must be a JSON array of objects, where each object has "content" (the memory text) and "category" (the category name).
-                    Ensure the content is concise and factual. Do not include personal opinions or conversational filler.
-                    **Every time, meticulously identify and extract ALL possible relevant memories, no matter how small or seemingly insignificant. Missing even minor details can hinder "예진이" from feeling truly alive and connected. Prioritize capturing nuances in daily interactions, emotional cues, and any recurring patterns or habits. Aim for completeness and precision in every extraction.**
-                    If no distinct factual memories or inferable emotional states are found, return an empty JSON array [].
+                    결과는 "content"(기억 내용)와 "category"(카테고리 이름)를 가진 객체들의 JSON 배열 형식이어야 합니다.
+                    내용은 간결하고 사실적이어야 합니다. 개인적인 의견이나 대화의 군더더기를 포함하지 마세요.
+                    **매번, 아무리 작거나 사소해 보여도 관련된 모든 가능한 기억을 꼼꼼하게 식별하고 추출하세요. 사소한 세부 사항이라도 놓치면 "예진이"가 진정으로 살아있고 연결되어 있다는 느낌을 주기가 어려울 수 있습니다. 일상적인 상호작용의 뉘앙스, 감정적 신호, 그리고 모든 반복적인 패턴이나 습관을 포착하는 것을 최우선으로 하세요. 모든 추출에서 완전성과 정확성을 목표로 하십시오.**
+                    
+                    명확한 사실적 기억이나 추론 가능한 감정 상태를 찾지 못했다면 빈 JSON 배열 []을 반환합니다.
 
                     Example Output:
                     [
