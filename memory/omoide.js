@@ -1,8 +1,8 @@
-// omoide.js v1.7 - 사진 코멘트 정확도 및 장소/날짜 인식 강화, 오타 처리 및 '셀카 보내줘' 추가
+// omoide.js v1.8 - 사진 코멘트 정확도 및 장소/날짜 인식 강화, 오타 처리 및 '얼굴 보고 싶어' 등 추가
 // 📦 필수 모듈 불러오기
 const { OpenAI } = require('openai'); // OpenAI API 클라이언트
 const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
-const stringSimilarity = require('string-similarity'); // ⭐ 추가: 문자열 유사도 측정 모듈 ⭐
+const stringSimilarity = require('string-similarity'); // 문자열 유사도 측정 모듈
 
 // OpenAI 클라이언트 초기화 (API 키는 환경 변수에서 가져옴 - 보안상 중요)
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -185,9 +185,16 @@ async function getOmoideReply(userMessage, saveLogFunc) {
         '셀카줘': '일반셀카', // 일반 셀카 전용 키워드 추가
         '사진줘': '일반셀카',
         '얼굴 보여줘': '일반셀카',
-        '얼굴 보고 싶': '일반셀카',
+        '얼굴 보고 싶어': '일반셀카', // ⭐ 추가: '얼굴 보고 싶어' ⭐
+        '얼굴 보고싶어': '일반셀카', // ⭐ 추가: '얼굴 보고싶어' (띄어쓰기 없음) ⭐
+        '얼굴 보여줘': '일반셀카', // ⭐ 추가: '얼굴 보여줘' ⭐
+        '얼굴보자': '일반셀카', // ⭐ 추가: '얼굴보자' ⭐
+        '얼굴좀 보자': '일반셀카', // ⭐ 추가: '얼굴좀 보자' ⭐
+        '얼굴좀보자': '일반셀카', // ⭐ 추가: '얼굴좀보자' (띄어쓰기 없음) ⭐
+        '알굴보여줘': '일반셀카', // ⭐ 추가: '알굴보여줘' (오타) ⭐
+        '알굴보여줘': '일반셀카', // ⭐ 추가: '얼굴보여줘' ⭐
         'selfie': '일반셀카',
-        '셀카 보내줘': '일반셀카', // ⭐ 추가: '셀카 보내줘' 처리 ⭐
+        '셀카 보내줘': '일반셀카',
     };
 
     let bestMatchKey = null;
@@ -208,7 +215,7 @@ async function getOmoideReply(userMessage, saveLogFunc) {
             selectedFolder = null; // 외부 URL 사용
             photoBaseUrl = 'https://www.de-ji.net/yejin/';
             const START_NUM = 1;
-            const END_NUM = 1186; // yejin/ 폴더의 사진 개수
+            const END_NUM = 1186; // yejin/ 폴더의 사진 개수 (아저씨의 실제 사진 개수에 맞춰주세요)
             const randomIndex = Math.floor(Math.random() * (END_NUM - START_NUM + 1)) + START_NUM;
             const fileName = String(randomIndex).padStart(6, '0') + '.jpg';
             customImageUrl = photoBaseUrl + fileName;
