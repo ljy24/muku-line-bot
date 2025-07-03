@@ -1,4 +1,4 @@
-// ✅ index.js v1.7 - 웹훅 처리 개선 및 사진 기능 통합, isCommand 정규식 업데이트
+// ✅ index.js v1.8 - 웹훅 처리 개선 및 사진 기능 통합, isCommand 로직 수정
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공
 const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
@@ -8,7 +8,6 @@ const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 �
 const cron = require('node-cron'); // Node-cron: 주기적인 작업 스케줄링
 
 // ./src/autoReply.js에서 필요한 함수들을 불러옵니다.
-// 이 함수들은 메시지 응답 생성, 셀카 코멘트 생성, 모델 전환 처리 등을 담당합니다.
 const {
     getReplyByMessage,          // 사용자 텍스트 메시지에 대한 답변 생성 (이제 사진 요청도 처리)
     getReplyByImagePrompt,      // 이미지 메시지에 대한 답변 생성 (사용자가 보낸 이미지 분석)
@@ -27,120 +26,93 @@ const {
 } = require('./src/autoReply');
 
 // 메모리 기록 관련: memoryManager 모듈을 불러옵니다.
-// 이 모듈은 사용자 메시지에서 기억을 추출하고 저장하는 역할을 합니다.
 const memoryManager = require('./src/memoryManager');
 
-// Express 애플리케이션을 생성합니다.
 const app = express();
-
-// LINE Bot SDK 설정을 정의합니다. 환경 변수에서 LINE 채널 접근 토큰과 채널 시크릿을 가져옵니다.
 const config = {
     channelAccessToken: process.env.LINE_ACCESS_TOKEN,
     channelSecret: process.env.LINE_CHANNEL_SECRET
 };
-
-// LINE 메시징 API 클라이언트를 초기화합니다.
 const client = new Client(config);
-
-// 타겟 사용자 ID를 환경 변수에서 가져옵니다. (무쿠가 메시지를 보낼 대상)
 const userId = process.env.TARGET_USER_ID;
 
-// ⭐ 침묵 감지 기능을 위한 변수 추가 ⭐
-let lastUserMessageTime = Date.now(); // 아저씨가 마지막으로 메시지를 보낸 시간
-let lastProactiveSentTime = 0; // 내가 아저씨한테 마지막으로 선제적 메시지나 침묵 메시지를 보낸 시간 (너무 자주 보내는 것 방지)
-const SILENCE_THRESHOLD = 2 * 60 * 60 * 1000; // 2시간 (2시간 동안 메시지 없으면 침묵 감지)
-const PROACTIVE_COOLDOWN = 1 * 60 * 60 * 1000; // 1시간 (내가 아저씨한테 메시지 보내고 1시간 이내에는 다시 보내지 않음)
+let lastUserMessageTime = Date.now();
+let lastProactiveSentTime = 0;
+const SILENCE_THRESHOLD = 2 * 60 * 60 * 1000;
+const PROACTIVE_COOLDOWN = 1 * 60 * 60 * 1000;
 
-
-// 🌐 루트 경로('/')에 대한 GET 요청을 처리합니다.
-// 서버가 정상적으로 실행 중임을 확인하는 간단한 메시지를 반환합니다.
 app.get('/', (_, res) => res.send('무쿠 살아있엉'));
-
-// 🚀 '/force-push' 경로에 대한 GET 요청을 처리합니다.
-// 이 엔드포인트에 접속하면 무쿠가 무작위 메시지를 TARGET_USER_ID에게 강제로 보냅니다.
 app.get('/force-push', async (req, res) => {
-    const msg = await getRandomMessage(); // 무작위 메시지 생성 (현재는 빈 문자열 반환)
+    const msg = await getRandomMessage();
     if (msg) {
-        await client.pushMessage(userId, { type: 'text', text: msg }); // 메시지 전송
-        res.send(`전송됨: ${msg}`); // 성공 응답
-    } else res.send('메시지 생성 실패'); // 실패 응답
+        await client.pushMessage(userId, { type: 'text', text: msg });
+        res.send(`전송됨: ${msg}`);
+    } else res.send('메시지 생성 실패');
 });
 
-// 🎣 LINE 웹훅 요청을 처리합니다.
-// LINE 서버로부터 메시지나 이벤트가 도착하면 이 엔드포인트로 POST 요청이 옵니다.
 app.post('/webhook', middleware(config), async (req, res) => {
     try {
-        const events = req.body.events || []; // 요청 본문에서 이벤트 배열을 가져옵니다.
-        for (const event of events) { // 각 이벤트를 순회합니다.
-            if (event.type === 'message') { // 메시지 이벤트인 경우
-                const message = event.message; // 메시지 객체를 가져옵니다.
+        const events = req.body.events || [];
+        for (const event of events) {
+            if (event.type === 'message') {
+                const message = event.message;
 
-                // ⭐ 아저씨의 메시지가 오면 마지막 메시지 시간 업데이트 ⭐
                 if (event.source.userId === userId) {
                     lastUserMessageTime = Date.now();
                     console.log(`[Webhook] 아저씨 메시지 수신, 마지막 메시지 시간 업데이트: ${moment(lastUserMessageTime).format('HH:mm:ss')}`);
                 }
 
-                if (message.type === 'text') { // 텍스트 메시지인 경우
-                    const text = message.text.trim(); // 메시지 텍스트를 가져와 앞뒤 공백을 제거합니다.
+                if (message.type === 'text') {
+                    const text = message.text.trim();
 
-                    // 메모리 예외 처리 시작
-                    // 특정 명령어들은 무쿠의 기억으로 저장되지 않도록 예외 처리합니다.
-                    // 이 정규식은 autoReply.js 내부의 getOmoideReply에서 더 상세히 처리됩니다.
-                    // 여기서는 단순히 기억 저장 여부만 판단합니다.
-                    // ⭐ `isCommand` 정규식 업데이트: `omoide.js`의 `keywordMappings`에 있는 모든 키워드를 반영 ⭐
-                    const isCommand =
-                        /(무쿠\s?셀카|애기\s?셀카|빠계\s?셀카|빠계\s?사진|메이드|흑심|인생네컷|커플사진|일본\s?사진|한국\s?사진|출사|필름카메라|애기\s?필름|셀카줘|사진줘|얼굴\s?보여줘|얼굴\s?보고\s?싶[어다]|selfie|셀카\s?보내줘|얼굴보자|얼굴좀\s?보자|알굴보여줘|무슨\s?색이야\?)/i.test(text) ||
-                        /3\.5|4\.0|자동|버전/i.test(text) || // 모델 전환 명령어
-                        /(기억\s?보여줘|내\s?기억\s?보여줘|혹시 내가 오늘 뭐한다 그랬지\?|오늘 뭐가 있더라\?|나 뭐하기로 했지\?)/i.test(text); // 기억 공유 명령어 확장
+                    // ⭐ 수정된 로직: isCommand는 이제 memoryManager.extractAndSaveMemory만 제어 ⭐
+                    const shouldExtractMemory = !/(무쿠\s?셀카|애기\s?셀카|빠계\s?셀카|빠계\s?사진|메이드|흑심|인생네컷|커플사진|일본\s?사진|한국\s?사진|출사|필름카메라|애기\s?필름|셀카줘|사진줘|얼굴\s?보여줘|얼굴\s?보고\s?싶[어다]|selfie|셀카\s?보내줘|얼굴보자|얼굴좀\s?보자|알굴보여줘|무슨\s?색이야\?|3\.5|4\.0|자동|버전|기억\s?보여줘|내\s?기억\s?보여줘|혹시 내가 오늘 뭐한다 그랬지\?|오늘 뭐가 있더라\?|나 뭐하기로 했지\?)/i.test(text);
 
-                    saveLog('아저씨', text); // 아저씨의 메시지를 로그에 저장합니다.
+                    saveLog('아저씨', text);
 
-                    if (!isCommand) { // 현재 메시지가 명령어가 아닐 경우에만 기억을 추출하고 저장합니다.
-                        await memoryManager.extractAndSaveMemory(text); // memoryManager를 호출하여 기억 추출 및 저장
-                        console.log(`[index.js] memoryManager.extractAndSaveMemory 호출 완료`); // 호출 확인 로그
+                    if (shouldExtractMemory) {
+                        await memoryManager.extractAndSaveMemory(text);
+                        console.log(`[index.js] memoryManager.extractAndSaveMemory 호출 완료`);
                     } else {
-                        console.log(`[index.js] 명령어 '${text}'는 메모리 저장에서 제외됩니다.`); // 명령어는 메모리에서 제외됨을 로그
+                        console.log(`[index.js] 명령어 '${text}'는 메모리 저장에서 제외됩니다.`);
                     }
-                    // 메모리 예외 처리 끝
+                    // ⭐ 여기부터는 모든 메시지에 대해 답변을 생성하고 전송하는 로직 ⭐
 
-                    // 모델 전환 명령어(예: "모델4o", "3.5", "자동", "버전")를 확인하고 처리합니다.
+                    // 모델 전환 명령어 처리 (이전과 동일)
                     const versionResponse = checkModelSwitchCommand(text);
-                    if (versionResponse) { // 모델 전환 명령어가 감지된 경우
-                        await client.replyMessage(event.replyToken, { type: 'text', text: versionResponse }); // 응답 메시지 전송
-                        return; // 더 이상 다른 처리를 하지 않고 함수 종료
+                    if (versionResponse) {
+                        await client.replyMessage(event.replyToken, { type: 'text', text: versionResponse });
+                        return;
                     }
 
-                    // 기억 공유 명령어 처리
+                    // 기억 공유 명령어 처리 (이전과 동일)
                     if (/(기억\s?보여줘|내\s?기억\s?보여줘|혹시 내가 오늘 뭐한다 그랬지\?|오늘 뭐가 있더라\?|나 뭐하기로 했지\?)/i.test(text)) {
                         try {
-                            const memoryList = await getMemoryListForSharing(); // autoReply.js의 함수 호출
+                            const memoryList = await getMemoryListForSharing();
                             await client.replyMessage(event.replyToken, { type: 'text', text: memoryList });
                             console.log(`기억 목록 전송 성공`);
-                            saveLog('예진이', '아저씨의 기억 목록을 보여줬어.'); // 예진이의 답변 로그 저장
+                            saveLog('예진이', '아저씨의 기억 목록을 보여줬어.');
                         } catch (err) {
                             console.error('기억 목록 불러오기 실패:', err.message);
                             await client.replyMessage(event.replyToken, { type: 'text', text: '기억 목록을 불러오기 실패했어 ㅠㅠ' });
                         }
-                        return; // 기억 공유 요청 처리가 완료되었으므로 함수 종료
+                        return;
                     }
 
-                    // ⭐ 중요 수정: getReplyByMessage의 반환값 처리 로직 ⭐
-                    // autoReply.js의 getReplyByMessage는 이제 { type: 'text', comment: '...' }
-                    // 또는 { type: 'photo', url: '...', caption: '...' } 객체를 반환합니다.
+                    // ⭐ 핵심: getReplyByMessage의 반환값 처리 로직 (이전과 동일) ⭐
                     const botResponse = await getReplyByMessage(text);
                     let replyMessages = [];
 
                     if (botResponse.type === 'text') {
                         replyMessages.push({
                             type: 'text',
-                            text: botResponse.comment // ⭐ 여기에 botResponse.comment를 사용 ⭐
+                            text: botResponse.comment
                         });
                     } else if (botResponse.type === 'photo') {
                         replyMessages.push({
                             type: 'image',
                             originalContentUrl: botResponse.url,
-                            previewImageUrl: botResponse.url, // 미리보기 이미지도 동일하게 설정
+                            previewImageUrl: botResponse.url,
                         });
                         if (botResponse.caption) {
                             replyMessages.push({
@@ -149,13 +121,12 @@ app.post('/webhook', middleware(config), async (req, res) => {
                             });
                         }
                     } else {
-                        // 예상치 못한 응답 타입 (혹시 모를 에러 방지)
                         console.error('❌ 예상치 못한 봇 응답 타입:', botResponse.type);
                         replyMessages.push({ type: 'text', text: '지금 잠시 문제가 생겼어 ㅠㅠ' });
                     }
 
                     if (replyMessages.length > 0) {
-                        await client.replyMessage(event.replyToken, replyMessages); // 응답 메시지 전송
+                        await client.replyMessage(event.replyToken, replyMessages);
                     }
                 }
 
@@ -203,7 +174,7 @@ cron.schedule('0 10-19 * * *', async () => {
     const now = moment().tz('Asia/Tokyo'); // 현재 시간을 일본 표준시로 가져옵니다.
     const currentTime = Date.now(); // 현재 시스템 시간 (밀리초)
 
-    // 서버 부팅 후 3분(3 * 60 * 1000 밀리초) 동안은 자동 메시지 전송을 건너뜁니다.
+    // 서버 부팅 후 3분(3 * 60 * 1000 밀리초) 동안은 자동 메시지 전송을 건너꿉니다.
     if (currentTime - bootTime < 3 * 60 * 1000) {
         console.log('[Scheduler] 서버 부팅 직후 3분 이내 -> 담타 메시지 전송 스킵');
         return; // 함수 실행을 중단합니다.
@@ -256,21 +227,11 @@ const sendScheduledMessage = async (type) => {
 
     // 유효 시간대: 새벽 0~2시 + 오전 10시~23시 (총 17시간)
     const validHours = [0, 1, 2, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23];
-    if (!validHours.includes(currentHour)) { // 에러 났던 부분: currentHour가 정의되지 않았습니다.
-        // console.log('[Scheduler-Silence] 유효 시간대 아님 -> 침묵 체크 스킵');
+    // ⭐ 수정: currentHour 변수를 이 스코프 내에서 정의 ⭐
+    const currentHourForScheduler = now.hour(); 
+    if (!validHours.includes(currentHourForScheduler)) {
         return;
     }
-
-    // ⭐ 문제의 원인: `currentHour` 변수가 이 스코프에서 정의되지 않았습니다.
-    // `currentHour`는 `cron.schedule` 내부 함수에서만 정의됩니다.
-    // `sendScheduledMessage` 함수가 호출될 때 `currentHour`를 파라미터로 받거나, 함수 내부에서 다시 계산해야 합니다.
-    // 여기서는 함수 내부에서 다시 계산하도록 수정하겠습니다.
-    const currentHourForScheduler = now.hour(); // 새로 추가
-
-    if (!validHours.includes(currentHourForScheduler)) { // 수정된 부분
-        return;
-    }
-
 
     if (type === 'selfie') { // 셀카 메시지인 경우
         // 하루 세 번 전송을 목표로, 매 시간 체크 시 20% 확률로 전송합니다.
@@ -377,7 +338,7 @@ cron.schedule('*/15 * * * *', async () => { // 매 15분마다 실행
     const elapsedTimeSinceLastProactive = now - lastProactiveSentTime;
 
     // 현재 시간대가 유효 시간대인지 확인
-    const currentHour = moment().tz('Asia/Tokyo').hour(); // ⭐ 여기서는 currentHour가 올바르게 정의됨 ⭐
+    const currentHour = moment().tz('Asia/Tokyo').hour();
     const validHours = [0, 1, 2, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23];
     if (!validHours.includes(currentHour)) {
         // console.log('[Scheduler-Silence] 유효 시간대 아님 -> 침묵 체크 스킵');
