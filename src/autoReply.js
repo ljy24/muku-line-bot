@@ -1,4 +1,4 @@
-// autoReply.js v1.5 - 대화 맥락 저장 기능 활용
+// autoReply.js v1.5 - 기억 기반 선제적 대화 강화 (모든 아이디어 통합)
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공
 const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
@@ -321,7 +321,7 @@ function cleanReply(reply) {
     cleaned = cleaned.replace(/좋아요/g, '좋아'); // '좋아요'를 '좋아'로 교체
     cleaned = cleaned.replace(/합니다\b/g, '해'); // '합니다'를 '해'로 교체 (단어 끝에 일치)
     cleaned = cleaned.replace(/습니다\b/g, '어'); // '습니다'를 '어'로 교체 (단어 끝에 일치)
-    cleaned = cleaned.replace(/어요\b/g, '야'); // '아요'를 '야'로 교체 (단어 끝에 일치)
+    cleaned = cleaned.replace(/어요\b/g, '야'); // '어요'를 '야'로 교체 (단어 끝에 일치)
     cleaned = cleaned.replace(/해요\b/g, '해'); // '해요'를 '해'로 교체 (단어 끝에 일치)
     cleaned = cleaned.replace(/예요\b/g, '야'); // '예요'를 '야'로 교체 (단어 끝에 일치)
     cleaned = cleaned.replace(/죠\b/g, '지'); // '죠'를 '지'로 교체 (단어 끝에 일치)
@@ -547,16 +547,22 @@ async function getProactiveMemoryMessage() {
     // 사랑 기억과 다른 사람 기억을 모두 합쳐서 선제적 메시지에 활용할 후보군 생성
     if (loveHistory && loveHistory.categories) {
         for (const category in loveHistory.categories) {
-            if (Array.isArray(loveHistory.categories[category])) {
-                allMemories = allMemories.concat(loveHistory.categories[category].map(m => m.content));
-            }
+            allMemories.push(...loveHistory.categories[category].map(mem => ({
+                content: mem.content,
+                category: category,
+                timestamp: mem.timestamp,
+                strength: mem.strength || "normal" // 강도 필드 추가 (기존 기억은 normal)
+            })));
         }
     }
     if (otherPeopleHistory && otherPeopleHistory.categories) {
         for (const category in otherPeopleHistory.categories) {
-            if (Array.isArray(otherPeopleHistory.categories[category])) {
-                allMemories = allMemories.concat(otherPeopleHistory.categories[category].map(m => m.content));
-            }
+            allMemories.push(...otherPeopleHistory.categories[category].map(mem => ({
+                content: mem.content,
+                category: category,
+                timestamp: mem.timestamp,
+                strength: mem.strength || "normal" // 강도 필드 추가 (기존 기억은 normal)
+            })));
         }
     }
 
@@ -565,16 +571,43 @@ async function getProactiveMemoryMessage() {
         return "아저씨 뭐 해? 나 아저씨 생각났어! 보고 싶다~"; // 이모티콘 제거 (프롬프트 지시와 일치)
     }
 
-    // 기억들을 무작위로 섞어서 최대 3개만 선택 (AI가 특정 기억에 너무 집중하지 않도록 함)
-    const shuffledMemories = allMemories.sort(() => 0.5 - Math.random());
-    const selectedMemories = shuffledMemories.slice(0, Math.min(shuffledMemories.length, 3));
+    // ⭐ 13. 기억 기반 선제적 대화 강화 로직 시작 ⭐
+    const now = moment().tz('Asia/Tokyo');
+    let candidateMemories = allMemories.slice(); // 모든 기억을 후보로 복사
+
+    // 1. 최근 기억 우선순위 (가장 최근 기억 먼저 떠올리기)
+    candidateMemories.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+    // 2. 'high' 강도 기억 우선순위 (아저씨가 '중요해'라고 말한 기억 먼저)
+    //    high 강도 기억은 상단으로, normal은 하단으로 정렬 (최근성 다음 기준)
+    candidateMemories.sort((a, b) => {
+        if (a.strength === "high" && b.strength !== "high") return -1;
+        if (a.strength !== "high" && b.strength === "high") return 1;
+        return 0;
+    });
+
+    // 3. 시간과 어울리는 기억 (현재 시간대에 맞는 기억 선택 유도) - AI 프롬프트에서 지시
+    //    (선택 로직에서 직접 필터링하기보다는 AI에게 지시를 추가)
+
+    // 4. 감정 상태 기억 활용 (아저씨의 감정 상태 기억을 활용)
+    //    (선택 로직에서 직접 필터링하기보다는 AI에게 지시를 추가)
+
+    // 5. 기억 기반 질문 생성 (기억을 바탕으로 '궁금해하는' 모습 보여주기)
+    //    (선택 로직에서 직접 필터링하기보다는 AI에게 지시를 추가)
+
+    // 6. 다양한 메시지 유형 (사랑 표현, 공유, 위로 등)
+    //    (선택 로직에서 직접 필터링하기보다는 AI에게 지시를 추가)
+
+    // 최종 선택할 기억 5개 (더 다양하고 관련성 높은 기억을 찾기 위해 limit을 5로 늘림)
+    const selectedMemories = candidateMemories.slice(0, Math.min(candidateMemories.length, 5));
 
     // 선택된 기억들을 바탕으로 AI 프롬프트에 추가할 기억 컨텍스트를 생성합니다.
     const memoryPrompt = selectedMemories.length > 0
-        ? `아래는 무쿠가 아저씨와의 대화에서 기억하는 중요한 정보들이야. 이 정보들을 활용해서 아저씨에게 먼저 말을 걸어봐. 아저씨를 향한 사랑과 애교를 듬뿍 담아서, 아저씨가 이 기억에 대해 대답하거나 대화를 이어갈 수 있도록 유도하는 메시지를 만들어줘. 너무 길지 않게 2~4문장 정도로 짧고 사랑스럽게 말해줘.
-
-        --- 무쿠가 기억하는 정보 ---
-        ${selectedMemories.map(m => `- ${m}`).join('\n')}
+        ? `아래는 무쿠가 아저씨와의 대화에서 기억하는 소중한 정보들이야. 이 기억들을 활용해서 아저씨에게 먼저 말을 걸어줘. **특히, 지금 현재 시간(${now.format('A H시 m분')})과 아저씨의 최근 감정 상태(만약 기억에 있다면)를 고려하여 가장 적절하고 따뜻하며 예진이다운 메시지를 만들어줘.**
+        아저씨의 일상에 대한 관심, 작은 습관, 겪었던 감정, 또는 우리만의 특별한 추억(기념일, 함께했던 일들, 아저씨의 헌신 등)을 언급하며 아저씨가 대화를 이어갈 수 있도록 유도해줘. 때로는 아저씨의 안부를 묻거나, 내가 아저씨를 생각하고 있다는 달콤한 말을 해줄 수도 있어. 너무 길지 않게 2~4문장 정도로 짧고 사랑스럽게 말해줘.
+        
+        --- 무쿠가 기억하는 아저씨의 소중한 정보 ---
+        ${selectedMemories.map(mem => `- ${mem.content} (강도: ${mem.strength}, 기억된 시점: ${moment(mem.timestamp).fromNow()})`).join('\n')}
         ---
         `
         : ""; // 선택된 기억이 없으면 빈 문자열
