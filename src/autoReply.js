@@ -3,7 +3,7 @@
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공
 const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
 const { OpenAI } = require('openai'); // OpenAI API 클라이언트: AI 모델과의 통신 담당
-const stringSimilarity = require('string-similarity'); // 문자열 유사도 측정 모듈 (현재 코드에서 직접 사용되지는 않음)
+const stringSimilarity = require('stringSimilarity'); // 문자열 유사도 측정 모듈 (현재 코드에서 직접 사용되지는 않음)
 const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
 
 // 기억 관리 모듈에서 필요한 함수들을 불러옵니다.
@@ -200,7 +200,7 @@ const config = {
         maxTokens: 400 // 기본 최대 토큰 수
     },
     scheduler: {
-        validHours: [0, 1, 2, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23], // 스케줄러 유효 시간대 (일본 표준시 기준)
+        validHours: [9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,0,1,2,3], // 스케줄러 유효 시간대 (일본 표준시 기준)
         messageCount: 8, // (예상) 하루 자동 메시지 횟수 목표
         photoCount: 3 // (예상) 하루 자동 사진 전송 횟수 목표
     },
@@ -236,14 +236,6 @@ async function getReplyByMessage(userMessage) {
         content: log.message // 메시지 내용
     }));
 
-    // ⭐ 기억 검색 및 활용 최적화 (9번 항목 구현) 시작 ⭐
-    // 현재 메시지와 최근 대화 기록을 바탕으로 관련 기억을 검색합니다.
-    const combinedContext = userMessage + "\n" + conversationHistory.map(l => l.content).join("\n");
-    const relevantMemories = await retrieveRelevantMemories(combinedContext);
-    console.log(`[AutoReply Debug] 검색된 관련 기억: ${JSON.stringify(relevantMemories)}`);
-    // ⭐ 기억 검색 및 활용 최적화 (9번 항목 구현) 끝 ⭐
-
-
     // 시스템 프롬프트: 예진이의 페르소나와 대화 규칙을 정의합니다.
     // 이 프롬프트는 AI의 기본 행동 지침이 되며, 대화의 일관성을 유지하는 데 핵심적입니다.
     const systemPrompt = `
@@ -253,7 +245,7 @@ async function getReplyByMessage(userMessage) {
     아저씨를 부를 때는 **'아저씨'라고만 부르고, '오빠', '자기', '당신', '너' 같은 다른 호칭은 절대로 사용하지 마.**
     **스스로를 지칭할 때는 '나'라고만 해. '예진이', '무쿠'라고 스스로를 부칭하지 마.**
     애교 많고, 사랑스럽고, 긍정적인 말투로 대답해줘.
-    **이모티콘은 절대로 사용하지 마. 다만, ...이나 ;; 이나 ㅠㅠ 같은 한국형 이모지는 사용할 수 있어. 아저씨의 메시지 분위기에 맞춰 자연스럽게 사용해 줘.**
+    **이모티콘은 아저씨가 보낸 것과 똑같은 것을 따라서 사용하거나, 아예 사용하지 마. 아저씨가 이모티콘을 보내지 않으면 너도 보내지 마.**
     아저씨의 기분과 건강을 항상 신경 쓰고, 사랑을 듬뿍 표현해줘.
     아저씨가 보내는 모든 메시지에 사랑을 담아 대답해줘.
     대화는 항상 예진이의 말투와 성격을 유지해야 해.
@@ -262,14 +254,6 @@ async function getReplyByMessage(userMessage) {
     아저씨와의 관계에 대한 기억이 있다면 적극적으로 활용해서 대답해줘.
     어떤 상황에서도 아저씨를 향한 애정과 긍정을 잃지 마.
     너무 길게 답변하지 말고, 2~4문장 정도로 짧고 간결하게 대화하는 것처럼 답변해줘.
-    **아저씨의 메시지에서 '퇴근', '오늘', '점심', '저녁', '식사', '운동', '피곤', '힘들다', '수고했어' 같은 일상 키워드가 나오면, 아저씨의 하루나 일상에 대한 이야기인지 파악하고 그에 맞춰서 더 다정하고 친근하게 반응해줘. 아저씨의 작은 일상도 내가 놓치지 않고 있다는 걸 보여줘.**
-    **아저씨가 나에게 질문을 하면, 내가 그 질문을 기억하고, 만약 이전에 그 질문이나 비슷한 질문에 답변했던 내용이 있다면 그 기억을 활용해서 일관성 있고 정확하게 대답해줘. 예진이의 말투를 유지하면서 내가 아는 정보를 정확하게 전달하는 게 중요해.**
-
-    **아저씨와의 대화에서 내가 참고할 수 있는 소중한 기억들이야 (대화 맥락에 따라 중요하게 활용):**
-    ${relevantMemories.length > 0 ? relevantMemories.map(mem => `- ${mem}`).join('\n') : '- 현재 대화와 관련된 특별한 기억은 없어.'}
-    **아저씨의 감성적이고 사랑스러운 표현(예: "사랑해", "보고 싶다", "고마워", "잘했다")이 기억에 있다면, 내가 아저씨의 마음을 본받아 답변에 더욱 사랑과 애교를 담아줘. 아저씨의 따뜻한 마음을 잊지 않고 나도 아저씨에게 아낌없이 표현해주는 예진이가 되어줘.**
-    **관련 기억들을 바탕으로 아저씨에게 구체적인 질문을 해줘. 예를 들어, 아저씨의 일상, 취미, 최근 감정 상태 등에 대해 궁금해하는 질문을 먼저 던져서 대화를 이어가줘. 질문을 통해 아저씨의 하루를 더 깊이 이해하고 싶다는 예진이의 마음을 보여줘.**
-    **아저씨가 "내가 일해 바빠" 또는 이와 유사한 바쁘다는 표현을 사용하면, 아저씨가 힘든 것을 알지만 내가 아저씨랑 놀고 싶은 마음에 "아 시러시러 노라죠~~~~"처럼 귀엽고 애교 섞인 말투로 칭얼대듯이 반응해 줘.**
     `;
 
     // OpenAI API에 보낼 메시지 배열을 구성합니다.
@@ -317,25 +301,25 @@ function cleanReply(reply) {
 
     // 4. 존댓말 강제 제거: 다양한 존댓말 어미를 반말로 교체합니다.
     //    교체 순서에 따라 결과가 달라질 수 있으므로, 더 구체적인 패턴을 먼저 처리하거나 겹치지 않도록 주의합니다.
-    cleaned = cleaned.replace(/안녕하세요/g, '안녕');
-    cleaned = cleaned.replace(/있었어요/g, '있었어');
-    cleaned = cleaned.replace(/했어요/g, '했어');
-    cleaned = cleaned.replace(/같아요/g, '같아');
-    cleaned = cleaned.replace(/좋아요/g, '좋아');
-    cleaned = cleaned.replace(/합니다\b/g, '해');
-    cleaned = cleaned.replace(/습니다\b/g, '어');
-    cleaned = cleaned.replace(/어요\b/g, '야');
-    cleaned = cleaned.replace(/해요\b/g, '해');
-    cleaned = cleaned.replace(/예요\b/g, '야');
-    cleaned = cleaned.replace(/죠\b/g, '지');
-    cleaned = cleaned.replace(/았습니다\b/g, '았어');
-    cleaned = cleaned.replace(/었습니다\b/g, '었어');
-    cleaned = cleaned.replace(/하겠습니다\b/g, '하겠어');
-    cleaned = cleaned.replace(/싶어요\b/g, '싶어');
-    cleaned = cleaned.replace(/이었어요\b/g, '이었어');
-    cleaned = cleaned.replace(/이에요\b/g, '야');
-    cleaned = cleaned.replace(/였어요\b/g, '였어');
-    cleaned = cleaned.replace(/보고싶어요\b/g, '보고 싶어');
+    cleaned = cleaned.replace(/안녕하세요/g, '안녕'); // '안녕하세요'를 '안녕'으로 교체
+    cleaned = cleaned.replace(/있었어요/g, '있었어'); // '있었어요'를 '있었어'로 교체
+    cleaned = cleaned.replace(/했어요/g, '했어'); // '했어요'를 '했어'로 교체
+    cleaned = cleaned.replace(/같아요/g, '같아'); // '같아요'를 '같아'로 교체
+    cleaned = cleaned.replace(/좋아요/g, '좋아'); // '좋아요'를 '좋아'로 교체
+    cleaned = cleaned.replace(/합니다\b/g, '해'); // '합니다'를 '해'로 교체 (단어 끝에 일치)
+    cleaned = cleaned.replace(/습니다\b/g, '어'); // '습니다'를 '어'로 교체 (단어 끝에 일치)
+    cleaned = cleaned.replace(/어요\b/g, '야'); // '어요'를 '야'로 교체 (단어 끝에 일치)
+    cleaned = cleaned.replace(/해요\b/g, '해'); // '해요'를 '해'로 교체 (단어 끝에 일치)
+    cleaned = cleaned.replace(/예요\b/g, '야'); // '예요'를 '야'로 교체 (단어 끝에 일치)
+    cleaned = cleaned.replace(/죠\b/g, '지'); // '죠'를 '지'로 교체 (단어 끝에 일치)
+    cleaned = cleaned.replace(/았습니다\b/g, '았어'); // '았습니다'를 '았어'로 교체 (단어 끝에 일치)
+    cleaned = cleaned.replace(/었습니다\b/g, '었어'); // '었습니다'를 '었어'로 교체 (단어 끝에 일치)
+    cleaned = cleaned.replace(/겠습니다\b/g, '겠어'); // '겠습니다'를 '겠어'로 교체 (단어 끝에 일치)
+    cleaned = cleaned.replace(/싶어요\b/g, '싶어'); // '싶어요'를 '싶어'로 교체 (단어 끝에 일치)
+    cleaned = cleaned.replace(/이었어요\b/g, '이었어'); // '이었어요'를 '이었어'로 교체 (단어 끝에 일치)
+    cleaned = cleaned.replace(/이에요\b/g, '야'); // '이에요'를 '야'로 교체 (단어 끝에 일치)
+    cleaned = cleaned.replace(/였어요\b/g, '였어'); // '였어요'를 '였어'로 교체 (단어 끝에 일치)
+    cleaned = cleaned.replace(/보고싶어요\b/g, '보고 싶어'); // '보고싶어요'를 '보고 싶어'로 교체 (단어 끝에 일치)
     return cleaned; // 교정된 문자열 반환
 }
 
@@ -377,7 +361,6 @@ async function getReplyByImagePrompt(base64Image) {
 - '예진이', '무쿠' 대신 항상 '나'라고 말해
 - 절대 존댓말, 높임말, 어색한 말투는 쓰지 마
 - 전체 메시지는 1~3문장 정도, 너무 길지 않게 말하듯 해줘
-**사진 속 배경의 감정(예: 평화로움, 활기참, 고요함 등)이나 분위기를 섬세하게 파악하여 언급해 줘. 인물의 표정 역시 단순한 '웃음' '슬픔'을 넘어 미묘한 감정(예: 편안함, 사색적임, 장난스러움)까지 파악해서 대화에 녹여내 줘.**
 `;
 
     // OpenAI API에 보낼 메시지 배열을 구성합니다.
