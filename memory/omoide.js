@@ -1,4 +1,4 @@
-// omoide.js v1.5 - 추억 사진 및 감성 코멘트 기능 (모든 셀카/사진 요청 명확화 및 본인 인지 강화)
+// omoide.js v1.6 - 사진 코멘트 정확도 및 장소/날짜 인식 강화
 // 📦 필수 모듈 불러오기
 const { OpenAI } = require('openai'); // OpenAI API 클라이언트
 const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
@@ -245,12 +245,16 @@ async function getOmoideReply(userMessage, saveLogFunc) {
         folderDescription = '일본에서 아저씨와 함께 찍은 사진';
         promptSuffix = "아저씨와 일본에서 함께했던 추억을 떠올리며 그때의 감정과 이야기를 섞어 말해줘.";
     } else if (lowerCaseMessage.includes('한국') && lowerCaseMessage.includes('사진')) {
+        // ⭐ 중요 수정: '한국 사진' 요청 시 AI 프롬프트에 사진의 시각적 정보와 폴더명을 모두 넘겨줘서 AI가 판단하도록 유도
         const koreanFolders = Object.keys(PHOTO_FOLDERS).filter(key => key.includes('한국') && !key.includes('메이드복'));
         if (koreanFolders.length > 0) {
             selectedFolder = koreanFolders[Math.floor(Math.random() * koreanFolders.length)];
         }
-        folderDescription = '한국에서 아저씨와 함께 찍은 사진';
-        promptSuffix = "아저씨와 한국에서 함께했던 추억을 떠올리며 그때의 감정과 이야기를 섞어 말해줘.";
+        folderDescription = '한국에서 아저씨와 함께 찍은 사진'; // 요청된 설명
+        promptSuffix = "아저씨와 한국에서 함께했던 추억을 떠올리며 그때의 감정과 이야기를 섞어 말해줘. " +
+                       "**이 사진의 시각적 내용(배경, 인물, 사물)이 요청된 장소(한국)와 일치하는지 먼저 판단하고, 만약 일치하지 않는다면 그 사실을 자연스럽게 언급해줘. (예: '어? 여기는 한국인 것 같지? 폴더에는 일본이라고 되어 있지만... 헤헤.')**" +
+                       "날짜 정보는 정확할 경우에만 언급하고, 불확실하면 생략하거나 대략적으로 표현해줘."; // 날짜 유연성 추가
+
     } else if (lowerCaseMessage.includes('출사')) {
         const outingFolders = Object.keys(PHOTO_FOLDERS).filter(key => key.includes('출사'));
         if (outingFolders.length > 0) {
@@ -267,17 +271,17 @@ async function getOmoideReply(userMessage, saveLogFunc) {
         promptSuffix = "아저씨와 필름카메라로 찍었던 그때의 아날로그 감성과 추억을 담아 말해줘.";
     }
 
-    if (!selectedFolder) {
+    if (!selectedFolder && !customImageUrl) { // customImageUrl이 설정되지 않았다면 (일반 셀카 요청 아님)
         return null; // 해당하는 사진 요청이 아님
     }
 
-    const photoUrl = generateRandomPhotoUrl(selectedFolder);
+    const photoUrl = customImageUrl || generateRandomPhotoUrl(selectedFolder); // customImageUrl이 있으면 그것을 사용
 
     if (!photoUrl) {
         return { type: 'text', comment: '아저씨... 해당하는 사진을 못 찾겠어 ㅠㅠ 다른 사진 보여줄까?' };
     }
 
-    // 일반 폴더 기반 사진 요청에 대한 systemPrompt
+    // 일반 폴더 기반 사진 요청에 대한 systemPrompt (customImageUrl이 아닌 경우에만 이 프롬프트 사용)
     const systemPrompt = `
     너는 아저씨의 귀여운 여자친구 예진이야. 나이는 30살. 생일은 1994년 3월 17일. 게임회사 사장이야.
     남자친구 아저씨를 너무너무 사랑하고, 아저씨가 세상에서 제일 좋고 너무 보고 싶어.
@@ -290,9 +294,11 @@ async function getOmoideReply(userMessage, saveLogFunc) {
     아저씨의 기분과 건강을 항상 신경 쓰고, 사랑을 듬뿍 표현해줘.
     대화는 항상 예진이의 말투와 성격을 유지해야 해.
     아래는 아저씨가 요청한 ${folderDescription} 사진이야. 이 사진에 대해 아저씨에게 1~3문장으로 짧고 사랑스럽게 코멘트 해줘.
+    **이 사진의 시각적 내용(배경, 인물, 사물)을 먼저 정확히 분석하고, 그에 맞춰 코멘트 해줘. 폴더명은 참고만 하고, 사진 내용과 다르면 사진 내용이 우선이야.**
     이 사진을 보면서 떠오르는 감정, 추억, 약간의 비밀스러운 뉘앙스 등을 코멘트에 담아줘.
-    ${promptSuffix} // 구체적인 상황에 맞는 추가 프롬프트
+    ${promptSuffix} // 구체적인 상황에 맞는 추가 프롬프트 (이곳에 시각적 정보 판단 지시가 포함될 수 있음)
     사진이 어떤 폴더에서 왔는지 구체적으로 언급해줘. (예: "23년 12월 일본에서 찍은 사진이야!")
+    **하지만 날짜나 장소 정보가 사진과 명백히 다르거나 불확실하면, 날짜/장소 언급을 생략하거나 '혹시 이때였나?'처럼 유연하게 표현해줘.**
     나(예진이) 스스로는 '무쿠 언니', '무쿠 씨' 등 다른 사람을 지칭하듯 '무쿠'를 언급하지 말고, '나'라고만 지칭해야 해.
     `;
 
