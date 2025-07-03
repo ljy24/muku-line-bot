@@ -1,4 +1,4 @@
-// memoryManager.js v2.13 - 스케줄러 상태 관리 기능 추가 (담타 중복 방지)
+// memoryManager.js v3.0 - 오류 수정 기억 기능 추가 (최종 버전)
 // src/memoryManager.js
 // MemoryManager.js v2.0 Debug Code Active! - Initializing Module
 console.log("MemoryManager.js v2.0 Debug Code Active! - Initializing Module"); // ⭐ 이 로그가 렌더 로그에 보여야 합니다! ⭐
@@ -16,7 +16,7 @@ const MEMORY_DIR = '/data/memory'; // 영구 저장소 디렉토리
 const LOVE_HISTORY_FILE = path.join(MEMORY_DIR, 'love-history.json'); // 아저씨 관련 기억 파일
 const OTHER_PEOPLE_HISTORY_FILE = path.join(MEMORY_DIR, 'other-people-history.json'); // 다른 사람 관련 기억 파일
 const BOT_LOG_FILE = path.join(MEMORY_DIR, 'bot_log.txt'); // memoryManager 내부 로깅용 파일
-const SCHEDULER_STATE_FILE = path.join(MEMORY_DIR, 'scheduler-state.json'); // ✨ 스케줄러 상태 기록 파일 추가 ✨
+const SCHEDULER_STATE_FILE = path.join(MEMORY_DIR, 'scheduler-state.json'); // 스케줄러 상태 기록 파일
 
 // --- 로그 파일 작성 유틸리티 함수 (memoryManager 내부용) ---
 async function logMessage(message) {
@@ -122,6 +122,7 @@ async function extractAndSaveMemory(userMessage) {
                     너의 가장 중요한 목표는 "예진이"(AI 페르소나)가 "아저씨"를 최대한 깊이 있고 정확하게 기억하도록 돕는 것입니다. 특히 일상생활과 개인적인 뉘앙스를 놓치지 않고 기억하여, "예진이"가 "아저씨"에게 진정으로 살아있는 존재처럼 느껴지도록 해야 합니다.
 
                     사용자의 메시지를 분석하고 "아저씨"와의 관계 또는 다른 중요한 사람/이벤트와 관련된 개별적인 사실적 기억들을 식별하세요.
+                    **또한, 사용자가 이전에 저장된 기억을 수정하려는 의도(예: "아니야", "그거 틀렸어", "내가 말한 건 사실은")가 명확하다면, 그 '수정 요청'을 아래 JSON 형식으로 추출하세요.**
                     **무엇보다도, 사용자 메시지를 기반으로 사용자의 감정 상태 또는 대화의 전반적인 분위기를 추론해야 합니다.**
                     
                     추출된 정보는 다음 유형 중 하나로 분류하세요:
@@ -162,7 +163,18 @@ async function extractAndSaveMemory(userMessage) {
                     내용은 간결하고 사실적이어야 합니다. 개인적인 의견이나 대화의 군더더기를 포함하지 마세요.
                     **매번, 아무리 작거나 사소해 보여도 관련된 모든 가능한 기억을 꼼꼼하게 식별하고 추출하세요. 사소한 세부 사항이라도 놓치면 "예진이"가 진정으로 살아있고 연결되어 있다는 느낌을 주기가 어려울 수 있습니다. 일상적인 상호작용의 뉘앙스, 감정적 신호, 그리고 모든 반복적인 패턴이나 습관을 포착하는 것을 최우선으로 하세요. 모든 추출에서 완전성과 정확성을 목표로 하십시오.**
                     
-                    명확한 사실적 기억이나 추론 가능한 감정 상태를 찾지 못했다면 빈 JSON 배열 []을 반환합니다.
+                    **[중요 - 기억 수정 요청 처리]**
+                    만약 사용자의 메시지가 이전에 저장된 기억을 **수정하려는 의도(예: "아니야", "틀렸어", "그게 아니라", "내가 말한 건 사실은", "고쳐줘")**가 명확하다면, 기존의 기억 추출 대신 다음 형식의 JSON 배열을 반환하세요.
+                    이때, 수정하려는 '기존 기억 내용'과 '새로운 올바른 내용'을 최대한 정확하게 파악해야 합니다. 해당하는 기존 기억이 없을 경우 빈 배열을 반환합니다.
+                    Example Correction Output:
+                    [
+                        {"correction_request": {
+                            "old_content": "아저씨는 2023년 8월 23일부터 헬스장을 다녔다.",
+                            "new_content": "아저씨는 2023년 9월 1일부터 헬스장을 다녔다."
+                        }}
+                    ]
+                    
+                    명확한 사실적 기억이나 추론 가능한 감정 상태, 또는 수정 요청을 찾지 못했다면 빈 JSON 배열 []을 반환합니다.
 
                     Example Output:
                     [
@@ -197,17 +209,65 @@ async function extractAndSaveMemory(userMessage) {
         const parsedResponse = response.choices[0].message.content;
         console.log(`[MemoryManager Debug] 3. OpenAI 응답 내용 (파싱 전): ${parsedResponse.substring(0, Math.min(parsedResponse.length, 200))}...`); // 첫 200자 로그
 
-        let memoriesToSave;
+        let parsedMemories;
         try {
-            memoriesToSave = JSON.parse(parsedResponse);
+            parsedMemories = JSON.parse(parsedResponse);
             console.log(`[MemoryManager Debug] 4. OpenAI 응답 JSON 파싱 성공.`);
         } catch (parseError) {
             console.error(`❌ [MemoryManager Error] JSON 파싱 오류: ${parseError.message}`);
             console.error(parseError.stack); // 스택 트레이스 로그
             await logMessage(`❌ JSON 파싱 오류: ${parseError.message}`);
             await logMessage(`OpenAI 파싱 실패 응답: ${parsedResponse}`);
-            throw new Error('OpenAI 응답 JSON 파싱 실패'); // 오류를 다시 던져서 상위에서 처리
+            return; // 오류 발생 시 함수 종료
         }
+
+        // ⭐ 기억 수정 요청 처리 로직 시작 ⭐
+        if (Array.isArray(parsedMemories) && parsedMemories.length > 0 && parsedMemories[0].correction_request) {
+            const correction = parsedMemories[0].correction_request;
+            if (correction.old_content && correction.new_content) {
+                console.log(`[MemoryManager Debug] 기억 수정 요청 감지: 기존="${correction.old_content}" -> 새롭게="${correction.new_content}"`);
+                await logMessage(`기억 수정 요청 감지: 기존="${correction.old_content}" -> 새롭게="${correction.new_content}"`);
+                
+                let memoryFoundAndUpdated = false;
+                const memoryFiles = [LOVE_HISTORY_FILE, OTHER_PEOPLE_HISTORY_FILE];
+
+                for (const filePath of memoryFiles) {
+                    let currentMemory = await loadMemory(filePath);
+                    if (!currentMemory.categories) currentMemory.categories = {};
+
+                    for (const category in currentMemory.categories) {
+                        const categoryMemories = currentMemory.categories[category];
+                        const indexToUpdate = categoryMemories.findIndex(mem => mem.content === correction.old_content);
+
+                        if (indexToUpdate !== -1) {
+                            currentMemory.categories[category][indexToUpdate].content = correction.new_content;
+                            currentMemory.categories[category][indexToUpdate].timestamp = new Date().toISOString(); // 수정 시간 업데이트
+                            currentMemory.categories[category][indexToUpdate].strength = "high"; // 수정된 기억은 중요도 높게 설정
+                            await saveMemory(filePath, currentMemory);
+                            console.log(`[MemoryManager Debug] ✅ 기억 수정 완료: 카테고리='${category}', 이전='${correction.old_content}', 새롭게='${correction.new_content}' (${filePath})`);
+                            await logMessage(`✅ 기억 수정 완료: 카테고리='${category}', 이전='${correction.old_content}', 새롭게='${correction.new_content}' (${filePath})`);
+                            memoryFoundAndUpdated = true;
+                            break; // 해당 기억 수정 완료
+                        }
+                    }
+                    if (memoryFoundAndUpdated) break; // 기억 수정 완료했으니 다른 파일 확인 중단
+                }
+
+                if (!memoryFoundAndUpdated) {
+                    console.log(`[MemoryManager Debug] ⚠️ 수정하려는 기존 기억을 찾을 수 없음: "${correction.old_content}"`);
+                    await logMessage(`⚠️ 수정하려는 기존 기억을 찾을 수 없음: "${correction.old_content}"`);
+                }
+                return; // 기억 수정 요청 처리가 완료되었으므로 함수 종료 (새로운 기억 추출은 하지 않음)
+            } else {
+                console.warn(`[MemoryManager Warning] 유효하지 않은 기억 수정 요청 형식: ${JSON.stringify(correction)}`);
+                await logMessage(`유효하지 않은 기억 수정 요청 형식: ${JSON.stringify(correction)}`);
+                return;
+            }
+        }
+        // ⭐ 기억 수정 요청 처리 로직 끝 ⭐
+
+        // ⭐ 기존 기억 추출 및 저장 로직 (수정 요청이 아닐 경우에만 실행) ⭐
+        const memoriesToSave = parsedMemories; // 수정 요청이 아니면 파싱된 내용을 저장할 기억으로 사용
 
         // 어떤 파일에 저장할지 결정
         const isLoveRelated = memoriesToSave.some(mem =>
@@ -229,7 +289,7 @@ async function extractAndSaveMemory(userMessage) {
             mem.category === '아저씨의 유머/밈' || // 아저씨의 유머/밈도 아저씨 관련이므로 포함
             mem.category === '아저씨의 말버릇' || // 아저씨의 말버릇도 아저씨 관련이므로 포함
             mem.category === '아저씨의 건강 상태' || // 아저씨의 건강 상태도 아저씨 관련이므로 포함
-            mem.category === '예진이의 반응 기록' // 예진이의 반응 기록도 아저씨 관련이므로 포함 (이 카테고리를 먼저 확인)
+            mem.category === '예진이의 반응 기록' // 예진이의 반응 기록도 아저씨 관련이므로 포함
         );
         const filePathToSave = isLoveRelated ? LOVE_HISTORY_FILE : OTHER_PEOPLE_HISTORY_FILE;
 
