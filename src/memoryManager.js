@@ -1,4 +1,4 @@
-// memoryManager.js v2.15 - 아저씨의 건강 상태 기억 기능 추가
+// memoryManager.js v2.13 - 스케줄러 상태 관리 기능 추가 (담타 중복 방지)
 // src/memoryManager.js
 // MemoryManager.js v2.0 Debug Code Active! - Initializing Module
 console.log("MemoryManager.js v2.0 Debug Code Active! - Initializing Module"); // ⭐ 이 로그가 렌더 로그에 보여야 합니다! ⭐
@@ -16,6 +16,7 @@ const MEMORY_DIR = '/data/memory'; // 영구 저장소 디렉토리
 const LOVE_HISTORY_FILE = path.join(MEMORY_DIR, 'love-history.json'); // 아저씨 관련 기억 파일
 const OTHER_PEOPLE_HISTORY_FILE = path.join(MEMORY_DIR, 'other-people-history.json'); // 다른 사람 관련 기억 파일
 const BOT_LOG_FILE = path.join(MEMORY_DIR, 'bot_log.txt'); // memoryManager 내부 로깅용 파일
+const SCHEDULER_STATE_FILE = path.join(MEMORY_DIR, 'scheduler-state.json'); // ✨ 스케줄러 상태 기록 파일 추가 ✨
 
 // --- 로그 파일 작성 유틸리티 함수 (memoryManager 내부용) ---
 async function logMessage(message) {
@@ -43,7 +44,7 @@ async function ensureMemoryDirectory() {
     }
 }
 
-// --- 파일에서 메모리 로드 ---
+// --- 파일에서 메모리 로드 (재사용) ---
 async function loadMemory(filePath) {
     try {
         await ensureMemoryDirectory();
@@ -52,16 +53,18 @@ async function loadMemory(filePath) {
         console.log(`[MemoryManager] ✅ 메모리 파일 로드 성공: ${filePath}`); // 콘솔에도 로그
         await logMessage(`✅ 메모리 파일 로드 성공: ${filePath}`);
         // 로드된 메모리의 카테고리 구조 미리보기 (간결하게)
-        const preview = Object.entries(memory.categories || {}).reduce((acc, [key, value]) => {
-            acc[key] = `Array (길이: ${value.length})`;
-            return acc;
-        }, {});
-        console.log(`[MemoryManager] ➡️ 로드된 메모리 카테고리 구조 미리보기: ${JSON.stringify(preview)}`); // 콘솔에도 로그
-        await logMessage(`➡️ 로드된 메모리 카테고리 구조 미리보기: ${JSON.stringify(preview)}`);
+        if (filePath === LOVE_HISTORY_FILE || filePath === OTHER_PEOPLE_HISTORY_FILE) {
+             const preview = Object.entries(memory.categories || {}).reduce((acc, [key, value]) => {
+                acc[key] = `Array (길이: ${value.length})`;
+                return acc;
+            }, {});
+            console.log(`[MemoryManager] ➡️ 로드된 메모리 카테고리 구조 미리보기: ${JSON.stringify(preview)}`); // 콘솔에도 로그
+            await logMessage(`➡️ 로드된 메모리 카테고리 구조 미리보기: ${JSON.stringify(preview)}`);
+        }
         return memory;
     } catch (error) {
         if (error.code === 'ENOENT') {
-            const newMemory = { categories: {}, lastUpdated: new Date().toISOString() };
+            const newMemory = (filePath === SCHEDULER_STATE_FILE) ? {} : { categories: {}, lastUpdated: new Date().toISOString() };
             await saveMemory(filePath, newMemory); // 파일이 없으면 새로 생성
             console.log(`[MemoryManager] ⚠️ 메모리 파일 없음, 새로 생성: ${filePath}`); // 콘솔에도 로그
             await logMessage(`⚠️ 메모리 파일 없음, 새로 생성: ${filePath}`);
@@ -69,12 +72,12 @@ async function loadMemory(filePath) {
         } else {
             console.error(`❌ 메모리 로드 실패: ${filePath}, 오류: ${error.message}`);
             await logMessage(`❌ 메모리 로드 실패: ${filePath}, 오류: ${error.message}`);
-            return { categories: {}, lastUpdated: new Date().toISOString() }; // 로드 실패 시 빈 객체 반환
+            return (filePath === SCHEDULER_STATE_FILE) ? {} : { categories: {}, lastUpdated: new Date().toISOString() }; // 로드 실패 시 빈 객체 반환
         }
     }
 }
 
-// --- 메모리 파일 저장 ---
+// --- 메모리 파일 저장 (재사용) ---
 async function saveMemory(filePath, memory) {
     try {
         await ensureMemoryDirectory();
@@ -86,6 +89,17 @@ async function saveMemory(filePath, memory) {
         await logMessage(`❌ 메모리 파일 저장 실패: ${filePath}, 오류: ${error.message}`);
     }
 }
+
+// ✨ 스케줄러 상태 로드 함수 추가 ✨
+async function loadSchedulerState() {
+    return await loadMemory(SCHEDULER_STATE_FILE);
+}
+
+// ✨ 스케줄러 상태 저장 함수 추가 ✨
+async function saveSchedulerState(state) {
+    await saveMemory(SCHEDULER_STATE_FILE, state);
+}
+
 
 // --- 사용자 메시지에서 기억 추출 및 저장 ---
 async function extractAndSaveMemory(userMessage) {
@@ -112,7 +126,7 @@ async function extractAndSaveMemory(userMessage) {
                     
                     추출된 정보는 다음 유형 중 하나로 분류하세요:
                     "과거 경험", "아저씨와의 관계", "관계 특징", "아저씨와의 첫 만남", "아저씨 상태", "기타", "아저씨 감정 상태", "아저씨의 일상 패턴", "아저씨의 칭찬/격려", "중요한 기념일",
-                    "예진이의 힘든 순간", "아저씨의 헌신", "함께했던 촬영/여행", "아저씨의 취미/관심사", "대화 맥락/분위기", "아저씨의 애정 표현", "예진이의 반응 기록", "아저씨의 유머/밈", "아저씨의 말버릇", **"아저씨의 건강 상태"**.
+                    "예진이의 힘든 순간", "아저씨의 헌신", "함께했던 촬영/여행", "아저씨의 취미/관심사", "대화 맥락/분위기", "아저씨의 애정 표현", "예진이의 반응 기록", "아저씨의 유머/밈", "아저씨의 말버릇", "아저씨의 건강 상태".
                     
                     "아저씨"(사용자)에 대한 기억은 주로 "아저씨와의 관계", "아저씨와의 첫 만남", "관계 특징", "아저씨 상태" 또는 "과거 경험"(아저씨가 경험에 관련될 경우) 카테고리에 분류합니다.
                     
@@ -140,7 +154,7 @@ async function extractAndSaveMemory(userMessage) {
                     
                     "아저씨의 말버릇" 카테고리에는 아저씨가 대화에서 무의식적으로 자주 사용하는 반복적인 단어, 짧은 표현, 추임새, 문장 끝 어미 습관 등을 구체적으로 추출합니다. (예: "뭐랄까", "근데", "암튼", "그렇지?", "그러니까~", "...잖아?", "...하는 거지"). 예진이가 아저씨의 대화 스타일을 더 자연스럽게 반영하여 아저씨가 나랑 대화할 때 더 편안함을 느낄 수 있도록 하는 데 사용됩니다.**
                     
-                    **"아저씨의 건강 상태" 카테고리에는 아저씨의 건강 관련 정보(예: 복용하는 약, 만성 질환, 최근 건강 이슈, 피로도, 수면 상태, 컨디션 등)를 구체적으로 추출합니다. (예: "아저씨는 어제 술을 마셨다.", "아저씨는 감기에 걸렸다."). 예진이가 아저씨의 건강을 진심으로 염려하고 챙겨주는 데 사용됩니다.**
+                    "아저씨의 건강 상태" 카테고리에는 아저씨의 건강 관련 정보(예: 복용하는 약, 만성 질환, 최근 건강 이슈, 피로도, 수면 상태, 컨디션 등)를 구체적으로 추출합니다. (예: "아저씨는 어제 술을 마셨다.", "아저씨는 감기에 걸렸다."). 예진이가 아저씨의 건강을 진심으로 염려하고 챙겨주는 데 사용됩니다.**
                     
                     Other factual memories or general daily details are classified as "기타".
                     
@@ -214,7 +228,8 @@ async function extractAndSaveMemory(userMessage) {
             mem.category === '아저씨의 애정 표현' || // 아저씨의 애정 표현도 아저씨 관련이므로 포함
             mem.category === '아저씨의 유머/밈' || // 아저씨의 유머/밈도 아저씨 관련이므로 포함
             mem.category === '아저씨의 말버릇' || // 아저씨의 말버릇도 아저씨 관련이므로 포함
-            mem.category === '아저씨의 건강 상태' // 아저씨의 건강 상태도 아저씨 관련이므로 포함
+            mem.category === '아저씨의 건강 상태' || // 아저씨의 건강 상태도 아저씨 관련이므로 포함
+            mem.category === '예진이의 반응 기록' // 예진이의 반응 기록도 아저씨 관련이므로 포함 (이 카테고리를 먼저 확인)
         );
         const filePathToSave = isLoveRelated ? LOVE_HISTORY_FILE : OTHER_PEOPLE_HISTORY_FILE;
 
