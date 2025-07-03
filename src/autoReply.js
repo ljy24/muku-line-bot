@@ -344,7 +344,7 @@ function cleanReply(reply) {
     cleaned = cleaned.replace(/죠\b/g, '지');
     cleaned = cleaned.replace(/았습니다\b/g, '았어');
     cleaned = cleaned.replace(/었습니다\b/g, '었어');
-    cleaned = cleaned.replace(/겠습니다\b/g, '겠어');
+    cleaned = cleaned.replace(/하겠습니다\b/g, '겠어');
     cleaned = cleaned.replace(/싶어요\b/g, '싶어');
     cleaned = cleaned.replace(/이었어요\b/g, '이었어');
     cleaned = cleaned.replace(/이에요\b/g, '야');
