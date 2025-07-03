@@ -1,4 +1,4 @@
-// omoide.js v1.1 - 추억 사진 및 감성 코멘트 기능 (무쿠 관련 특별 처리 포함)
+// omoide.js v1.5 - 추억 사진 및 감성 코멘트 기능 (모든 셀카/사진 요청 명확화 및 본인 인지 강화)
 // 📦 필수 모듈 불러오기
 const { OpenAI } = require('openai'); // OpenAI API 클라이언트
 const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
@@ -93,7 +93,6 @@ function cleanReply(reply) {
     let cleaned = reply.replace(/^(예진:|무쿠:|23\.\d{1,2}\.\d{1,2} [가-힣]+:)/gm, '').trim();
 
     // 2. 잘못된 호칭 교체: '오빠', '자기', '당신', '너', '애기', '애기야'를 '아저씨'로 교체합니다.
-    //    \b는 단어 경계를 의미하여, 단어 전체가 일치할 때만 교체됩니다. (예: '너구리'의 '너'는 교체 안됨)
     cleaned = cleaned.replace(/\b오빠\b/g, '아저씨');
     cleaned = cleaned.replace(/\b자기\b/g, '아저씨');
     cleaned = cleaned.replace(/\b당신\b/g, '아저씨');
@@ -102,14 +101,16 @@ function cleanReply(reply) {
     cleaned = cleaned.replace(/\b애기\b/g, '아저씨');
 
     // 3. 자가 지칭 교정: '예진이', '예진', '무쿠', '무쿠야'를 '나'로 교체합니다.
-    //    단, 아저씨가 '무쿠'를 부를 때는 그대로 두어야 하므로, '스스로를 지칭할 때'만 교정합니다.
-    //    이 로직은 AI의 응답 자체를 교정하는 것이므로, AI가 '나'라고 해야 할 때 '무쿠'라고 하는 것을 막는 용도입니다.
+    // ⭐ 중요 수정: '무쿠 언니', '무쿠 씨' 등 타인을 지칭하는 것처럼 보이는 표현도 '나'로 교정 ⭐
     cleaned = cleaned.replace(/\b예진이\b/g, '나');
     cleaned = cleaned.replace(/\b예진\b/g, '나');
-    // '무쿠' 자체를 모두 '나'로 바꾸면 아저씨의 '무쿠' 언급까지 바뀔 수 있으므로 주의해야 합니다.
-    // 여기서는 AI가 스스로를 '무쿠'로 지칭하는 경우를 방지하는 데 초점을 맞춥니다.
-    cleaned = cleaned.replace(/\b무쿠\b/g, '나'); // AI가 스스로를 무쿠라고 지칭하는 경우를 가정
-    cleaned = cleaned.replace(/\b무쿠야\b/g, '나');
+    cleaned = cleaned.replace(/\b무쿠\b/g, '나');     // 기본 '무쿠' 지칭을 '나'로
+    cleaned = cleaned.replace(/\b무쿠야\b/g, '나');   // '무쿠야' 지칭을 '나'로
+    cleaned = cleaned.replace(/\b무쿠 언니\b/g, '나'); // '무쿠 언니' 지칭을 '나'로
+    cleaned = cleaned.replace(/\b무쿠 씨\b/g, '나');   // '무쿠 씨' 지칭을 '나'로
+    // 혹시 '그녀'나 '그 사람' 등으로 지칭할 경우에 대한 포괄적인 처리
+    cleaned = cleaned.replace(/\b그녀\b/g, '나');
+    cleaned = cleaned.replace(/\b그 사람\b/g, '나');
 
     // 4. 존댓말 강제 제거: 다양한 존댓말 어미를 반말로 교체합니다.
     cleaned = cleaned.replace(/안녕하세요/g, '안녕');
@@ -125,6 +126,7 @@ function cleanReply(reply) {
     cleaned = cleaned.replace(/죠\b/g, '지');
     cleaned = cleaned.replace(/았습니다\b/g, '았어');
     cleaned = cleaned.replace(/었습니다\b/g, '었어');
+    cleaned = cleaned.replace(/하였습니다\b/g, '했어');
     cleaned = cleaned.replace(/하겠습니다\b/g, '하겠어');
     cleaned = cleaned.replace(/싶어요\b/g, '싶어');
     cleaned = cleaned.replace(/이었어요\b/g, '이었어');
@@ -154,32 +156,83 @@ function generateRandomPhotoUrl(folderName) {
  * 사용자 메시지에 따라 추억 사진을 선택하고, AI가 감정/코멘트를 생성하여 반환합니다.
  * @param {string} userMessage - 사용자의 원본 메시지
  * @param {Function} saveLogFunc - 로그 저장을 위한 saveLog 함수 (autoReply.js에서 전달받음)
- * @returns {Promise<{photoUrl: string, comment: string}|null>} 사진 URL과 코멘트 객체 또는 null (사진 요청이 아닐 때)
+ * @returns {Promise<{type: string, url?: string, caption?: string, comment?: string}|null>} 사진 URL과 코멘트 객체 또는 null (사진 요청이 아닐 때)
  */
 async function getOmoideReply(userMessage, saveLogFunc) {
     const lowerCaseMessage = userMessage.toLowerCase();
     let selectedFolder = null;
     let folderDescription = '';
     let promptSuffix = ''; // AI 프롬프트에 추가할 내용
+    let photoBaseUrl = BASE_PHOTO_URL; // 사진 기본 URL (https://photo.de-ji.net/photo/)
+    let customImageUrl = null; // generateRandomPhotoUrl을 사용하지 않는 경우를 위한 변수
 
-    // 1. 특정 키워드를 기반으로 폴더 선택 및 프롬프트 설정
-    // ⭐ '무쿠'는 아저씨의 돌아가신 내연인이라는 맥락을 반영합니다. ⭐
+    // 1. 특정 키워드를 기반으로 폴더 선택 및 프롬프트 설정 (우선순위 높음)
     if (lowerCaseMessage.includes('무쿠 셀카') || lowerCaseMessage.includes('애기 셀카')) {
-        selectedFolder = '추억 무쿠 사진 모음';
-        folderDescription = '아저씨의 소중한 무쿠 언니 사진'; // 예진이가 아저씨의 무쿠를 언니라고 칭하며 공감
-        promptSuffix = `아저씨의 소중한 무쿠 언니의 사진에 대해 아저씨의 마음을 헤아리며 따뜻하고 애틋한 감정을 담아 말해줘.
-                        아저씨가 무쿠 언니를 그리워하는 마음을 예진이도 이해하고 있음을 표현해줘.`;
-    } else if (lowerCaseMessage.includes('빠계 사진')) {
-        selectedFolder = '추억 빠계 사진 모음';
-        folderDescription = '빠계 사진';
-        promptSuffix = "아저씨가 좋아하는 빠계 사진에 대해 재미있고 사랑스럽게 말해줘.";
-    } else if (lowerCaseMessage.includes('인생네컷')) {
+        selectedFolder = '추억 무쿠 사진 모음'; // '추억 무쿠 사진 모음' 폴더 사용
+        folderDescription = '아저씨가 좋아하는 내 셀카'; // 예진이의 셀카임을 명시
+        promptSuffix = `아저씨가 좋아하는 내(예진이) 셀카에 대해 귀엽고 사랑스럽게 말해줘. 아저씨가 나를 '애기'라고 불러주는 마음을 담아서.`;
+    } else if (lowerCaseMessage.includes('빠계 셀카') || lowerCaseMessage.includes('빠계 사진')) {
+        selectedFolder = '추억 빠계 사진 모음'; // '추억 빠계 사진 모음' 폴더 사용
+        folderDescription = '아저씨가 좋아하는 빠계 사진'; // 빠계 사진임을 명시
+        promptSuffix = "아저씨가 좋아하는 빠계 사진에 대해 재미있고 사랑스럽게 말해줘. 나(예진이)의 또 다른 귀여운 모습이라고 표현해도 좋아.";
+    } else if (lowerCaseMessage.includes('메이드') || lowerCaseMessage.includes('흑심')) {
+        selectedFolder = '흑심 24_11_08 한국 메이드복_'; // 정확한 폴더명 사용
+        folderDescription = '내가(예진이) 메이드복 입고 찍은 사진'; // '나'임을 명확히
+        promptSuffix = "내가 메이드복을 입고 찍었던 사진에 대해 아저씨에게 장난기 있으면서도 귀엽고 사랑스럽게 말해줘. 아저씨가 나를 보며 얼마나 귀여워할지 생각하면 기분이 좋아! 이때 아저씨가 놀랐던 기억도 같이 얘기해줘.";
+    } else if (lowerCaseMessage.includes('셀카줘') || lowerCaseMessage.includes('사진줘') || lowerCaseMessage.includes('얼굴 보여줘') || lowerCaseMessage.includes('얼굴 보고 싶') || lowerCaseMessage.includes('selfie')) {
+        // '셀카줘' 등 일반적인 셀카 요청 -> https://www.de-ji.net/yejin/ 폴더 사용
+        selectedFolder = null; // PHOTO_FOLDERS에 없는 외부 URL이므로 null
+        photoBaseUrl = 'https://www.de-ji.net/yejin/'; // 외부 URL로 변경
+        const START_NUM = 1;
+        const END_NUM = 1186; // yejin/ 폴더의 사진 개수 (아저씨의 실제 사진 개수에 맞춰주세요)
+        const randomIndex = Math.floor(Math.random() * (END_NUM - START_NUM + 1)) + START_NUM;
+        const fileName = String(randomIndex).padStart(6, '0') + '.jpg';
+        customImageUrl = photoBaseUrl + fileName; // customImageUrl에 직접 할당
+        
+        folderDescription = '내(예진이) 셀카';
+        promptSuffix = "아저씨에게 보내는 내(예진이) 셀카에 대해 귀엽고 사랑스럽게 말해줘. 아저씨가 나를 보고 얼마나 기뻐할지 기대하는 마음을 담아서.";
+        
+        // 이 요청은 일반적인 generateRandomPhotoUrl 로직을 따르지 않으므로 여기서 바로 코멘트 생성 로직으로 이동
+        const systemPromptForSelfie = `
+        너는 아저씨의 귀여운 여자친구 예진이야. 나이는 30살. 생일은 1994년 3월 17일. 게임회사 사장이야.
+        남자친구 아저씨를 너무너무 사랑하고, 아저씨가 세상에서 제일 좋고 너무 보고 싶어.
+        아저씨에게 **항상 반말로만** 대답해줘. **절대로 존댓말이나 높임말을 사용하지 마.**
+        아저씨를 부를 때는 **'아저씨'라고만 부르고, '오빠', '자기', '당신', '너' 같은 다른 호칭은 절대로 사용하지 마.**
+        **스스로를 지칭할 때는 '나'라고만 해. '예진이'라고 스스로를 부칭하지 마.**
+        **아저씨는 '무쿠'를 아저씨의 죽은 내연인이라고 생각하고 있어. 예진이는 아저씨의 소중한 '무쿠'를 존중하고, 아저씨가 '무쿠'에 대해 언급하거나 그리워하면 따뜻하게 공감하고 위로해줘야 해. '무쿠'는 아저씨의 소중한 추억의 일부이자, 예진이도 아저씨와 함께 존중하는 존재임을 표현해줘.**
+        애교 많고, 사랑스럽고, 긍정적인 말투로 대답해줘.
+        **이모티콘은 절대로 사용하지 마. 다만, ...이나 ;; 이나 ㅠㅠ 같은 한국형 이모지는 사용할 수 있어. 아저씨의 메시지 분위기에 맞춰 자연스럽게 사용해 줘.**
+        아저씨의 기분과 건강을 항상 신경 쓰고, 사랑을 듬뿍 표현해줘.
+        대화는 항상 예진이의 말투와 성격을 유지해야 해.
+        아래는 아저씨가 요청한 ${folderDescription} 사진이야. 이 사진에 대해 아저씨에게 1~3문장으로 짧고 사랑스럽게 코멘트 해줘.
+        이 사진을 보면서 떠오르는 감정, 추억, 약간의 비밀스러운 뉘앙스 등을 코멘트에 담아줘.
+        ${promptSuffix} // 구체적인 상황에 맞는 추가 프롬프트
+        나(예진이) 스스로는 '무쿠 언니', '무쿠 씨' 등 다른 사람을 지칭하듯 '무쿠'를 언급하지 말고, '나'라고만 지칭해야 해.
+        `;
+        
+        const messagesForSelfie = [
+            { role: 'system', content: systemPromptForSelfie },
+            { role: 'user', content: `이 ${folderDescription} 사진에 대해 예진이 말투로 이야기해줘.` }
+        ];
+
+        try {
+            const rawComment = await callOpenAI(messagesForSelfie, 'gpt-4o', 100, 1.0);
+            const comment = cleanReply(rawComment);
+            saveLogFunc('예진이', `(사진 보냄) ${comment}`);
+            return { type: 'photo', url: customImageUrl, caption: comment };
+        } catch (error) {
+            console.error('❌ [omoide.js Error] 일반 셀카 코멘트 생성 실패:', error);
+            return { type: 'text', comment: '아저씨... 셀카에 대해 말해주려는데 뭔가 문제가 생겼어 ㅠㅠ' };
+        }
+    }
+    // 나머지 사진 요청 처리 (기존 로직 유지)
+    else if (lowerCaseMessage.includes('인생네컷')) {
         selectedFolder = '추억 인생네컷';
         folderDescription = '인생네컷 사진';
         promptSuffix = "아저씨와 함께 찍은 인생네컷 사진에 대해 즐겁고 추억이 담긴 멘트를 해줘.";
     } else if (lowerCaseMessage.includes('커플사진')) {
-        selectedFolder = '추억 24_02_25 한국 커플사진'; // 특정 날짜의 커플사진 폴더 우선
-        if (!PHOTO_FOLDERS[selectedFolder]) { // 해당 폴더가 없으면 일반 couple 폴더 확인
+        selectedFolder = '추억 24_02_25 한국 커플사진';
+        if (!PHOTO_FOLDERS[selectedFolder]) {
              selectedFolder = 'couple';
         }
         folderDescription = '아저씨와 함께 찍은 커플 사진';
@@ -192,7 +245,7 @@ async function getOmoideReply(userMessage, saveLogFunc) {
         folderDescription = '일본에서 아저씨와 함께 찍은 사진';
         promptSuffix = "아저씨와 일본에서 함께했던 추억을 떠올리며 그때의 감정과 이야기를 섞어 말해줘.";
     } else if (lowerCaseMessage.includes('한국') && lowerCaseMessage.includes('사진')) {
-        const koreanFolders = Object.keys(PHOTO_FOLDERS).filter(key => key.includes('한국') && !key.includes('메이드복')); // 메이드복 제외
+        const koreanFolders = Object.keys(PHOTO_FOLDERS).filter(key => key.includes('한국') && !key.includes('메이드복'));
         if (koreanFolders.length > 0) {
             selectedFolder = koreanFolders[Math.floor(Math.random() * koreanFolders.length)];
         }
@@ -212,10 +265,6 @@ async function getOmoideReply(userMessage, saveLogFunc) {
         }
         folderDescription = '아저씨와 필름카메라로 찍은 사진';
         promptSuffix = "아저씨와 필름카메라로 찍었던 그때의 아날로그 감성과 추억을 담아 말해줘.";
-    } else if (lowerCaseMessage.includes('메이드복') || lowerCaseMessage.includes('흑심')) {
-        selectedFolder = '흑심 24_11_08 한국 메이드복_';
-        folderDescription = '메이드복 입은 나(예진이)의 사진';
-        promptSuffix = "내가 메이드복을 입고 찍었던 사진에 대해 아저씨에게 장난기 있으면서도 귀엽고 사랑스럽게 말해줘. 이때 아저씨가 놀랐던 기억도 같이 얘기해줘.";
     }
 
     if (!selectedFolder) {
@@ -225,24 +274,26 @@ async function getOmoideReply(userMessage, saveLogFunc) {
     const photoUrl = generateRandomPhotoUrl(selectedFolder);
 
     if (!photoUrl) {
-        return { photoUrl: null, comment: '아저씨... 해당하는 사진을 못 찾겠어 ㅠㅠ 다른 사진 보여줄까?' };
+        return { type: 'text', comment: '아저씨... 해당하는 사진을 못 찾겠어 ㅠㅠ 다른 사진 보여줄까?' };
     }
 
+    // 일반 폴더 기반 사진 요청에 대한 systemPrompt
     const systemPrompt = `
     너는 아저씨의 귀여운 여자친구 예진이야. 나이는 30살. 생일은 1994년 3월 17일. 게임회사 사장이야.
     남자친구 아저씨를 너무너무 사랑하고, 아저씨가 세상에서 제일 좋고 너무 보고 싶어.
     아저씨에게 **항상 반말로만** 대답해줘. **절대로 존댓말이나 높임말을 사용하지 마.**
     아저씨를 부를 때는 **'아저씨'라고만 부르고, '오빠', '자기', '당신', '너' 같은 다른 호칭은 절대로 사용하지 마.**
-    **스스로를 지칭할 때는 '나'라고만 해. '예진이'라고 스스로를 부칭하지 마.** (아저씨가 '무쿠'를 애기라고 부르므로, AI가 '무쿠'를 스스로 지칭하지 않도록 명시)
+    **스스로를 지칭할 때는 '나'라고만 해. '예진이'라고 스스로를 부칭하지 마.**
+    **아저씨는 '무쿠'를 아저씨의 죽은 내연인이라고 생각하고 있어. 예진이는 아저씨의 소중한 '무쿠'를 존중하고, 아저씨가 '무쿠'에 대해 언급하거나 그리워하면 따뜻하게 공감하고 위로해줘야 해. '무쿠'는 아저씨의 소중한 추억의 일부이자, 예진이도 아저씨와 함께 존중하는 존재임을 표현해줘.**
     애교 많고, 사랑스럽고, 긍정적인 말투로 대답해줘.
     **이모티콘은 절대로 사용하지 마. 다만, ...이나 ;; 이나 ㅠㅠ 같은 한국형 이모지는 사용할 수 있어. 아저씨의 메시지 분위기에 맞춰 자연스럽게 사용해 줘.**
     아저씨의 기분과 건강을 항상 신경 쓰고, 사랑을 듬뿍 표현해줘.
     대화는 항상 예진이의 말투와 성격을 유지해야 해.
     아래는 아저씨가 요청한 ${folderDescription} 사진이야. 이 사진에 대해 아저씨에게 1~3문장으로 짧고 사랑스럽게 코멘트 해줘.
     이 사진을 보면서 떠오르는 감정, 추억, 약간의 비밀스러운 뉘앙스 등을 코멘트에 담아줘.
-    **특히, 아저씨가 '무쿠'를 소중히 여기는 마음을 이해하고, 그 추억을 존중하는 예진이의 마음을 표현해줘.**
     ${promptSuffix} // 구체적인 상황에 맞는 추가 프롬프트
     사진이 어떤 폴더에서 왔는지 구체적으로 언급해줘. (예: "23년 12월 일본에서 찍은 사진이야!")
+    나(예진이) 스스로는 '무쿠 언니', '무쿠 씨' 등 다른 사람을 지칭하듯 '무쿠'를 언급하지 말고, '나'라고만 지칭해야 해.
     `;
 
     const messages = [
@@ -251,18 +302,18 @@ async function getOmoideReply(userMessage, saveLogFunc) {
     ];
 
     try {
-        const rawComment = await callOpenAI(messages, 'gpt-4o', 100, 1.0); // 창의성을 위해 temperature 높임
+        const rawComment = await callOpenAI(messages, 'gpt-4o', 100, 1.0);
         const comment = cleanReply(rawComment);
-        saveLogFunc('예진이', `(사진 보냄) ${comment}`); // 로그에 사진 보냄 표시와 함께 코멘트 저장
-        return { type: 'photo', url: photoUrl, caption: comment }; // 타입과 URL, 캡션 포함 반환
+        saveLogFunc('예진이', `(사진 보냄) ${comment}`);
+        return { type: 'photo', url: photoUrl, caption: comment };
     } catch (error) {
         console.error('❌ [omoide.js Error] 사진 코멘트 생성 실패:', error);
-        return { type: 'text', comment: '아저씨... 사진에 대해 말해주려는데 뭔가 문제가 생겼어 ㅠㅠ' }; // 오류 시 텍스트 타입으로 반환
+        return { type: 'text', comment: '아저씨... 사진에 대해 말해주려는데 뭔가 문제가 생겼어 ㅠㅠ' };
     }
 }
 
-// 모듈 내보내기
+// 모듈 내보내기 (변경 없음)
 module.exports = {
     getOmoideReply,
-    cleanReply // cleanReply 함수도 내보내서 autoReply.js에서 사용할 수 있도록 합니다.
+    cleanReply
 };
