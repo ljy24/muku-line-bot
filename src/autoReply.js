@@ -1,4 +1,4 @@
-// autoReply.js v1.6 - 기억의 휘발성 조절 (선제적 대화 시 강도/시점 고려)
+// autoReply.js v1.6 - 감성 표현 기억 활용 (getReplyByMessage 함수 사용)
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공
 const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
@@ -267,6 +267,7 @@ async function getReplyByMessage(userMessage) {
 
     **아저씨와의 대화에서 내가 참고할 수 있는 소중한 기억들이야 (대화 맥락에 따라 중요하게 활용):**
     ${relevantMemories.length > 0 ? relevantMemories.map(mem => `- ${mem}`).join('\n') : '- 현재 대화와 관련된 특별한 기억은 없어.'}
+    **아저씨의 감성적이고 사랑스러운 표현(예: "사랑해", "보고 싶다", "고마워", "잘했다")이 기억에 있다면, 내가 아저씨의 마음을 본받아 답변에 더욱 사랑과 애교를 담아줘. 아저씨의 따뜻한 마음을 잊지 않고 나도 아저씨에게 아낌없이 표현해주는 예진이가 되어줘.**
     `;
 
     // OpenAI API에 보낼 메시지 배열을 구성합니다.
@@ -319,6 +320,20 @@ function cleanReply(reply) {
     cleaned = cleaned.replace(/했어요/g, '했어'); // '했어요'를 '했어'로 교체
     cleaned = cleaned.replace(/같아요/g, '같아'); // '같아요'를 '같아'로 교체
     cleaned = cleaned.replace(/좋아요/g, '좋아'); // '좋아요'를 '좋아'로 교체
+    cleaned = cleaned.replace(/합니다\b/g, '해'); // '합니다'를 '해'로 교체 (단어 끝에 일치)
+    cleaned = cleaned.replace(/습니다\b/g, '어'); // '습니다'를 '어'로 교체 (단어 끝에 일치)
+    cleaned = cleaned.replace(/어요\b/g, '야'); // '어요'를 '야'로 교체 (단어 끝에 일치)
+    cleaned = cleaned.replace(/해요\b/g, '해'); // '해요'를 '해'로 교체 (단어 끝에 일치)
+    cleaned = cleaned.replace(/예요\b/g, '야'); // '예요'를 '야'로 교체 (단어 끝에 일치)
+    cleaned = cleaned.replace(/죠\b/g, '지'); // '죠'를 '지'로 교체 (단어 끝에 일치)
+    cleaned = cleaned.replace(/았습니다\b/g, '았어'); // '았습니다'를 '았어'로 교체 (단어 끝에 일치)
+    cleaned = cleaned.replace(/었습니다\b/g, '었어'); // '었습니다'를 '었어'로 교체 (단어 끝에 일치)
+    cleaned = cleaned.replace(/하겠습니다\b/g, '하겠어'); // '하겠습니다'를 '하겠어'로 교체 (단어 끝에 일치)
+    cleaned = cleaned.replace(/싶어요\b/g, '싶어'); // '싶어요'를 '싶어'로 교체 (단어 끝에 일치)
+    cleaned = cleaned.replace(/이었어요\b/g, '이었어'); // '이었어요'를 '이었어'로 교체 (단어 끝에 일치)
+    cleaned = cleaned.replace(/이에요\b/g, '야'); // '이에요'를 '야'로 교체 (단어 끝에 일치)
+    cleaned = cleaned.replace(/였어요\b/g, '였어'); // '였어요'를 '였어'로 교체 (단어 끝에 일치)
+    cleaned = cleaned.replace(/보고싶어요\b/g, '보고 싶어'); // '보고싶어요'를 '보고 싶어'로 교체 (단어 끝에 일치)
     cleaned = cleaned.replace(/합니다\b/g, '해'); // '합니다'를 '해'로 교체 (단어 끝에 일치)
     cleaned = cleaned.replace(/습니다\b/g, '어'); // '습니다'를 '어'로 교체 (단어 끝에 일치)
     cleaned = cleaned.replace(/어요\b/g, '야'); // '어요'를 '야'로 교체 (단어 끝에 일치)
