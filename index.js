@@ -27,10 +27,10 @@ const {
 } = require('./src/autoReply');
 
 // memoryManager 모듈을 불러옵니다.
-const memoryManager = require('./src/memoryManager');
+const memoryManager = require('./memoryManager');
 
 // omoide.js에서 getOmoideReply 함수를 불러옵니다.
-const { getOmoideReply } = require('./src/memory/omoide');
+const { getOmoideReply } = require('./memory/omoide');
 
 
 // Express 애플리케이션을 생성합니다.
