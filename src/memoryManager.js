@@ -1,3 +1,4 @@
+// memoryManager.js v2.1 - 일상 키워드 기억을 위한 프롬프트 강화
 // src/memoryManager.js
 // MemoryManager.js v2.0 Debug Code Active! - Initializing Module
 console.log("MemoryManager.js v2.0 Debug Code Active! - Initializing Module"); // ⭐ 이 로그가 렌더 로그에 보여야 합니다! ⭐
@@ -101,6 +102,7 @@ async function extractAndSaveMemory(userMessage) {
                     Categorize each memory into one of these types: "과거 경험", "아저씨와의 관계", "관계 특징", "아저씨와의 첫 만남", "아저씨 상태", "기타".
                     Memories about "아저씨" (Uncle) should primarily go into "아저씨와의 관계", "아저씨와의 첫 만남", "관계 특징", "아저씨 상태" or "과거 경험" (if 아저씨 is involved in the experience).
                     Other factual memories should go into "기타".
+                    **추가적으로, 사용자의 일상 생활, 일상적인 활동, 하루와 관련된 감정(예: 피로, 일상적인 일에 대한 행복감), 식사, 직장, 여가 시간과 같은 일반적인 대화 주제에 대한 세부 정보를 면밀히 파악하고 이러한 일상적인 사실들을 기억으로 추출하세요.**
                     The output must be a JSON array of objects, where each object has "content" (the memory text) and "category" (the category name).
                     Ensure the content is concise and factual. Do not include personal opinions or conversational filler.
                     If no distinct factual memories are found, return an empty JSON array [].
