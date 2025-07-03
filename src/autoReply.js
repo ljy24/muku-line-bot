@@ -7,7 +7,6 @@ const stringSimilarity = require('string-similarity'); // 문자열 유사도 �
 const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
 
 // 기억 관리 모듈에서 필요한 함수들을 불러옵니다.
-// retrieveRelevantMemories: 대화 맥락에 맞는 기억을 검색하는 새로운 함수
 const { loadLoveHistory, loadOtherPeopleHistory, extractAndSaveMemory, retrieveRelevantMemories } = require('./memoryManager');
 const { loadFaceImagesAsBase64 } = require('./face'); // 얼굴 이미지 데이터를 불러오는 모듈
 
