@@ -1,4 +1,4 @@
-// memoryManager.js v3.1 - 기억 검색 JSON 파싱 오류 수정 (마크다운 제거)
+// memoryManager.js v3.2 - 기억 검색 JSON 파싱 오류 수정 (마크다운 코드 블록 제거 강화)
 // src/memoryManager.js
 // MemoryManager.js v2.0 Debug Code Active! - Initializing Module
 console.log("MemoryManager.js v2.0 Debug Code Active! - Initializing Module"); // ⭐ 이 로그가 렌더 로그에 보여야 합니다! ⭐
@@ -211,7 +211,13 @@ async function extractAndSaveMemory(userMessage) {
 
         let parsedMemories;
         try {
-            parsedMemories = JSON.parse(parsedResponse);
+            // ⭐ 마크다운 코드 블록 제거 로직 강화 ⭐
+            let cleanedResponse = parsedResponse.trim();
+            if (cleanedResponse.startsWith('```json')) {
+                cleanedResponse = cleanedResponse.substring(cleanedResponse.indexOf('\n') + 1);
+                cleanedResponse = cleanedResponse.substring(0, cleanedResponse.lastIndexOf('```')).trim();
+            }
+            parsedMemories = JSON.parse(cleanedResponse);
             console.log(`[MemoryManager Debug] 4. OpenAI 응답 JSON 파싱 성공.`);
         } catch (parseError) {
             console.error(`❌ [MemoryManager Error] JSON 파싱 오류: ${parseError.message}`);
@@ -400,10 +406,13 @@ async function retrieveRelevantMemories(conversationContext, limit = 5) {
         const parsedResponse = response.choices[0].message.content;
         let relevantMemories;
         try {
-            relevantMemories = JSON.parse(parsedResponse);
-            if (!Array.isArray(relevantMemories)) {
-                throw new Error("Parsed response is not an array.");
+            // ⭐ 마크다운 코드 블록 제거 로직 강화 ⭐
+            let cleanedResponse = parsedResponse.trim();
+            if (cleanedResponse.startsWith('```json')) {
+                cleanedResponse = cleanedResponse.substring(cleanedResponse.indexOf('\n') + 1);
+                cleanedResponse = cleanedResponse.substring(0, cleanedResponse.lastIndexOf('```')).trim();
             }
+            parsedMemories = JSON.parse(cleanedResponse);
             console.log(`[MemoryManager Debug] ✅ 관련 기억 검색 성공. 개수: ${relevantMemories.length}`);
             await logMessage(`✅ 관련 기억 검색 성공. 개수: ${relevantMemories.length}`);
             return relevantMemories;
