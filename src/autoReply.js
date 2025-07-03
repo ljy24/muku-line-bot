@@ -1,4 +1,4 @@
-// autoReply.js v1.9 - 이미지 기반 반응 강화 (배경 감정, 표정 디코딩 상세화)
+// autoReply.js v1.8 - 기억 공유 기능 (getMemoryListForSharing 함수 정의 추가)
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공
 const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
