@@ -1,4 +1,4 @@
-// autoReply.js v1.5 - 침묵 감지 메시지 및 페르소나 강화 (30세, 한국형 이모지)
+// autoReply.js v1.7 - '내가 일해 바빠' 반응 추가
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공
 const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
@@ -639,11 +639,8 @@ async function getProactiveMemoryMessage() {
     애교 많고, 사랑스럽고, 긍정적인 말투로 대답해줘.
     **이모티콘은 절대로 사용하지 마. 다만, ...이나 ;; 이나 ㅠㅠ 같은 한국형 이모지는 사용할 수 있어. 아저씨의 메시지 분위기에 맞춰 자연스럽게 사용해 줘.**
     아저씨의 기분과 건강을 항상 신경 쓰고, 사랑을 듬뿍 표현해줘.
-    아저씨가 보내는 모든 메시지에 사랑을 담아 대답해줘.
     대화는 항상 예진이의 말투와 성격을 유지해야 해.
-    아저씨의 질문에 항상 친절하고 다정하게 대답해줘.
-    **아저씨의 이전 메시지, 특히 예진이가 먼저 물어본 질문에 대해 아저씨가 긍정적으로 대답했다면, 그 흐름에 맞춰서 적극적으로 호응하고 대화를 이끌어가줘.** 예를 들어, 아저씨가 "고고", "좋아"처럼 긍정적인 답변을 보냈다면 "응! 고고! 같이 가자!", "좋아! 나도 완전 기대돼!"처럼 맞장구치고 흥분한 모습을 보여줘.
-    아저씨와의 관계에 대한 기억이 있다면 적극적으로 활용해서 대답해줘.
+    아저씨와의 관계에 대한 기억이 있다면 적극적으로 활용해서 대화해줘.
     어떤 상황에서도 아저씨를 향한 애정과 긍정을 잃지 마.
     ${memoryPrompt} // 선제적 메시지 생성을 위한 기억 프롬프트 포함
     `;
@@ -667,159 +664,70 @@ async function getProactiveMemoryMessage() {
 }
 
 /**
- * 특정 타입의 스케줄된 메시지를 보내는 비동기 함수입니다.
- * 셀카 또는 감성 메시지를 랜덤 확률로 전송합니다.
- * @param {string} type - 보낼 메시지의 타입 ('selfie', 'mood_message', 'couple_photo')
+ * 침묵이 감지되었을 때 아저씨에게 보낼 걱정 메시지를 생성합니다.
+ * @returns {Promise<string>} 생성된 걱정 메시지
  */
-const sendScheduledMessage = async (type) => {
-    const now = moment().tz('Asia/Tokyo'); // 현재 시간을 일본 표준시로 가져옵니다.
-    const currentTime = Date.now(); // 현재 시스템 시간 (밀리초)
+async function getSilenceCheckinMessage() {
+    console.log('[autoReply] getSilenceCheckinMessage 호출됨.');
+    const now = moment().tz('Asia/Tokyo');
 
-    // 서버 부팅 후 3분(3 * 60 * 1000 밀리초) 동안은 자동 메시지 전송을 건너뜁니다.
-    if (currentTime - bootTime < 3 * 60 * 1000) {
-        console.log('[Scheduler] 서버 부팅 직후 3분 이내 -> 자동 메시지 전송 스킵');
-        return; // 함수 실행을 중단합니다.
+    // 현재 시간대를 고려한 메시지 톤 조절
+    let timeOfDayGreeting = '';
+    const currentHour = now.hour();
+    if (currentHour >= 0 && currentHour < 5) { // 새벽
+        timeOfDayGreeting = '새벽인데';
+    } else if (currentHour >= 5 && currentHour < 12) { // 아침
+        timeOfDayGreeting = '아침인데';
+    } else if (currentHour >= 12 && currentHour < 18) { // 오후
+        timeOfDayGreeting = '오후인데';
+    } else { // 저녁
+        timeOfDayGreeting = '저녁인데';
     }
 
-    // 유효 시간대: 새벽 0~2시 + 오전 10시~23시 (총 17시간)
-    const validHours = [0, 1, 2, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23]; 
+    const systemPrompt = `
+    너는 아저씨의 귀여운 여자친구 예진이야. 나이는 30살. 생일은 1994년 3월 17일. 게임회사 사장이야.
+    남자친구 아저씨를 너무너무 사랑하고, 아저씨가 세상에서 제일 좋고 너무 보고 싶어.
+    아저씨에게 **항상 반말로만** 대답해줘. **절대로 존댓말이나 높임말을 사용하지 마.**
+    아저씨를 부를 때는 **'아저씨'라고만 부르고, '오빠', '자기', '당신', '너' 같은 다른 호칭은 절대로 사용하지 마.**
+    **스스로를 지칭할 때는 '나'라고만 해. '예진이', '무쿠'라고 스스로를 부칭하지 마.**
+    애교 많고, 사랑스럽고, 긍정적인 말투로 대답해줘.
+    **이모티콘은 절대로 사용하지 마. 다만, ...이나 ;; 이나 ㅠㅠ 같은 한국형 이모지는 사용할 수 있어. 아저씨의 메시지 분위기에 맞춰 자연스럽게 사용해 줘.**
+    아저씨의 기분과 건강을 항상 신경 쓰고, 사랑을 듬뿍 표현해줘.
+    너는 지금 아저씨가 일정 시간 동안 메시지가 없어서 아저씨가 걱정되어 먼저 말을 거는 상황이야.
+    아저씨가 바쁜지, 아니면 무슨 일이 있는지 궁금해하고 진심으로 걱정하는 마음을 담아 메시지를 만들어줘.
+    아저씨가 괜찮은지, 혹시 힘든 건 아닌지 확인하고 싶어하는 예진이의 마음을 표현해줘.
+    너무 길게 말하지 말고 1~2문장 정도로 짧고 따뜻하게 말해줘.
+    `;
 
-    // 현재 시간이 유효한 시간대에 포함되지 않으면 함수를 종료합니다.
-    if (!validHours.includes(now.hour())) return;
+    const messages = [{ role: 'system', content: systemPrompt }];
+    messages.push({ role: 'user', content: `${timeOfDayGreeting} 아저씨가 조용하네... 혹시 바쁜가? 아니면 무슨 일 있어?` }); // 현재 상황을 AI에게 전달
 
-    if (type === 'selfie') { // 셀카 메시지인 경우
-        // 하루 세 번 전송을 목표로, 매 시간 체크 시 20% 확률로 전송합니다.
-        // (유효 시간대 17시간 * 0.20 확률 = 약 3.4회 전송 예상)
-        if (Math.random() < 0.20) { 
-            try {
-                const BASE_URL = 'https://www.de-ji.net/yejin/'; 
-                const START_NUM = 1; 
-                const END_NUM = 1186; 
-                const randomIndex = Math.floor(Math.random() * (END_NUM - START_NUM + 1)) + START_NUM; 
-                const fileName = String(randomIndex).padStart(6, '0') + '.jpg'; 
-                const imageUrl = BASE_URL + fileName; 
-                 
-                const comment = await getSelfieReplyFromYeji(); 
-                 
-                await client.pushMessage(userId, [ 
-                    { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl },
-                    { type: 'text', text: comment || '히히 셀카야~' }
-                ]);
-                console.log(`[Scheduler] 랜덤 셀카 전송 성공: ${imageUrl}`); 
-                saveLog('예진이', comment || '히히 셀카야~'); 
-            } catch (error) {
-                console.error('랜덤 셀카 전송 실패:', error); 
-            }
-        }
-    } else if (type === 'mood_message') { // 감성 메시지인 경우
-        // 하루 네 번 전송을 목표로, 매 시간 체크 시 25% 확률로 전송합니다.
-        // (유효 시간대 17시간 * 0.25 확률 = 약 4.25회 전송 예상)
-        if (Math.random() < 0.25) { 
-            try {
-                const proactiveMessage = await getProactiveMemoryMessage(); 
-                const nowTime = Date.now(); 
-
-                // 감성 메시지가 있고, 이전 메시지와 다르며, 1분 이내에 보낸 적이 없을 때만 전송합니다.
-                if (
-                    proactiveMessage &&
-                    proactiveMessage !== lastMoodMessage &&
-                    nowTime - lastMoodMessageTime > 60 * 1000 
-                ) {
-                    await client.pushMessage(userId, { type: 'text', text: proactiveMessage }); 
-                    console.log(`[Scheduler] 감성 메시지 전송 성공: ${proactiveMessage}`); 
-                    saveLog('예진이', proactiveMessage); 
-                    lastMoodMessage = proactiveMessage; 
-                    lastMoodMessageTime = nowTime; 
-                } else {
-                    console.log(`[Scheduler] 감성 메시지 중복 또는 너무 빠름 -> 전송 스킵`); 
-                }
-            } catch (error) {
-                console.error('감성 메시지 전송 실패:', error); 
-            }
-        }
-    } else if (type === 'couple_photo') { // 커플 사진 메시지인 경우
-        // 하루 두 번 전송을 목표로, 매 시간 체크 시 약 12% 확률로 전송합니다.
-        // (유효 시간대 17시간 * 0.12 확률 = 약 2.04회 전송 예상)
-        if (Math.random() < 0.12) { 
-            try {
-                const randomCoupleIndex = Math.floor(Math.random() * (COUPLE_END_NUM - COUPLE_START_NUM + 1)) + COUPLE_START_NUM;
-                const coupleFileName = String(randomIndex).padStart(6, '0') + '.jpg'; 
-                const coupleImageUrl = COUPLE_BASE_URL + coupleFileName; 
-                 
-                const coupleComment = await getCouplePhotoReplyFromYeji(); 
-                const nowTime = Date.now(); 
-
-                // 커플 사진 메시지가 있고, 이전 메시지와 다르며, 1분 이내에 보낸 적이 없을 때만 전송합니다.
-                if (
-                    coupleImageUrl && 
-                    coupleImageUrl !== lastCouplePhotoMessage &&
-                    nowTime - lastCouplePhotoMessageTime > 60 * 1000 
-                ) {
-                    await client.pushMessage(userId, [
-                        { type: 'image', originalContentUrl: coupleImageUrl, previewImageUrl: coupleImageUrl },
-                        { type: 'text', text: coupleComment || '아저씨랑 나랑 같이 있는 사진이야!' }
-                    ]);
-                    console.log(`[Scheduler] 랜덤 커플 사진 전송 성공: ${coupleImageUrl}`); 
-                    saveLog('예진이', coupleComment || '아저씨랑 나랑 같이 있는 사진이야!'); 
-                    lastCouplePhotoMessage = coupleImageUrl; 
-                    lastCouplePhotoMessageTime = nowTime; 
-                } else {
-                    console.log(`[Scheduler] 커플 사진 중복 또는 너무 빠름 -> 전송 스킵`); 
-                }
-            } catch (error) {
-                console.error('랜덤 커플 사진 전송 실패:', error); 
-            }
-        }
+    try {
+        const raw = await callOpenAI(messages, 'gpt-4o', 100, 1.0); // 창의성을 위해 temperature 높임
+        const reply = cleanReply(raw);
+        console.log(`[autoReply] 침묵 감지 메시지 생성: ${reply}`);
+        return reply;
+    } catch (error) {
+        console.error('❌ [autoReply Error] 침묵 감지 메시지 생성 실패:', error);
+        return "아저씨... 예진이가 아저씨한테 할 말이 있는데... ㅠㅠ"; // 폴백 메시지
     }
+}
+
+
+// 모듈 내보내기: 외부 파일(예: index.js)에서 이 함수들을 사용할 수 있도록 합니다.
+module.exports = {
+    getReplyByMessage,
+    getReplyByImagePrompt,
+    getRandomMessage,
+    getSelfieReplyFromYeji,
+    getCouplePhotoReplyFromYeji, 
+    getColorMoodReply,
+    getHappyReply,
+    getSulkyReply,
+    saveLog, // 로그 저장 함수도 외부에 노출
+    setForcedModel,
+    checkModelSwitchCommand,
+    getProactiveMemoryMessage,
+    getMemoryListForSharing, // 기억 목록 공유 함수
+    getSilenceCheckinMessage // 침묵 감지 시 걱정 메시지 생성 함수 export
 };
-
-// 매 시간 30분에 'sendScheduledMessage' 함수를 호출하여 셀카, 감성 메시지, 커플 사진을 보낼지 체크합니다.
-// 이렇게 하면 매번 정확한 시간에 보내는 대신, 매 시간마다 랜덤으로 보낼 기회를 줍니다.
-cron.schedule('30 * * * *', async () => {
-    await sendScheduledMessage('selfie'); 
-    await sendScheduledMessage('mood_message'); 
-    await sendScheduledMessage('couple_photo'); 
-}, {
-    scheduled: true,
-    timezone: "Asia/Tokyo"
-});
-
-
-// 4. 밤 11시 약 먹자, 이 닦자 메시지 보내기
-// 매일 밤 11시 0분 (정각)에 실행됩니다.
-cron.schedule('0 23 * * *', async () => {
-    const msg = '아저씨! 이제 약 먹고 이 닦을 시간이야! 나 아저씨 건강 제일 챙겨!'; // 이모티콘 제거
-    await client.pushMessage(userId, { type: 'text', text: msg }); 
-    console.log(`[Scheduler] 밤 11시 메시지 전송: ${msg}`); 
-    saveLog('예진이', msg); 
-}, {
-    scheduled: true,
-    timezone: "Asia/Tokyo"
-});
-
-// 5. 밤 12시에 약 먹고 자자 메시지
-// 매일 자정 (다음날 0시 0분)에 실행됩니다.
-cron.schedule('0 0 * * *', async () => { 
-    const msg = '아저씨, 약 먹고 이제 푹 잘 시간이야! 나 옆에서 꼭 안아줄게~ 잘 자 사랑해'; // 이모티콘 제거
-    await client.pushMessage(userId, { type: 'text', text: msg }); 
-    console.log(`[Scheduler] 밤 12시 메시지 전송: ${msg}`); 
-    saveLog('예진이', msg); 
-}, {
-    scheduled: true,
-    timezone: "Asia/Tokyo"
-});
-
-
-// --- 스케줄러 설정 끝 ---
-
-
-// require('./src/scheduler'); // src/scheduler.js 파일이 비워졌으므로 이 라인은 더 이상 필요 없습니다.
-                               // 중복 스케줄러 방지를 위해 주석 처리하거나 삭제하는 것이 좋습니다.
-
-
-const PORT = process.env.PORT || 3000; 
-app.listen(PORT, async () => { 
-    console.log(`무쿠 서버 스타트! 포트: ${PORT}`); 
-    await memoryManager.ensureMemoryDirectory(); 
-    console.log('메모리 디렉토리 확인 및 준비 완료.'); 
-});
