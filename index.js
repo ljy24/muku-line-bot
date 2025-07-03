@@ -1,5 +1,4 @@
-// ✅ index.js (최신 autoReply.js 연동 버전) - 상세 주석 및 스케줄러 통합
-
+// ✅ index.js v1.5 - 침묵 감지 스케줄러 통합
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공
 const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
@@ -23,7 +22,7 @@ const {
     setForcedModel,            // OpenAI 모델 강제 설정
     checkModelSwitchCommand,   // 모델 전환 명령어 확인 및 처리
     getProactiveMemoryMessage,  // 기억 기반 선제적 메시지 생성
-    getMemoryListForSharing, // ✨ 새로 추가: 기억 목록 공유 함수
+    getMemoryListForSharing, // 기억 목록 공유 함수
     getSilenceCheckinMessage // ✨ 새로 추가: 침묵 감지 시 걱정 메시지 생성 함수
 } = require('./src/autoReply');
 
@@ -48,9 +47,9 @@ const userId = process.env.TARGET_USER_ID;
 
 // ⭐ 침묵 감지 기능을 위한 변수 추가 ⭐
 let lastUserMessageTime = Date.now(); // 아저씨가 마지막으로 메시지를 보낸 시간
-let lastProactiveSentTime = 0; // 내가 아저씨한테 마지막으로 선제적 메시지를 보낸 시간 (너무 자주 보내는 것 방지)
+let lastProactiveSentTime = 0; // 내가 아저씨한테 마지막으로 선제적 메시지나 침묵 메시지를 보낸 시간 (너무 자주 보내는 것 방지)
 const SILENCE_THRESHOLD = 2 * 60 * 60 * 1000; // 2시간 (2시간 동안 메시지 없으면 침묵 감지)
-const PROACTIVE_COOLDOWN = 1 * 60 * 60 * 1000; // 1시간 (한 시간 내에 선제적 메시지 중복 방지)
+const PROACTIVE_COOLDOWN = 1 * 60 * 60 * 1000; // 1시간 (내가 아저씨한테 메시지 보내고 1시간 이내에는 다시 보내지 않음)
 
 
 // 🌐 루트 경로('/')에 대한 GET 요청을 처리합니다.
@@ -91,7 +90,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
                     const isCommand = 
                         /(사진\s?줘|셀카\s?줘|셀카\s?보여줘|사진\s?보여줘|얼굴\s?보여줘|얼굴\s?보고\s?싶[어다]|selfie|커플사진\s?줘|커플사진\s?보여줘)/i.test(text) || 
                         /3\.5|4\.0|자동|버전/i.test(text) || // 모델 전환 명령어
-                        /(기억\s?보여줘|내\s?기억\s?보여줘|혹시 내가 오늘 뭐한다 그랬지\?|오늘 뭐가 있더라\?|나 뭐하기로 했지\?)/i.test(text); // ✨ 기억 공유 명령어 확장 ✨
+                        /(기억\s?보여줘|내\s?기억\s?보여줘|혹시 내가 오늘 뭐한다 그랬지\?|오늘 뭐가 있더라\?|나 뭐하기로 했지\?)/i.test(text); // 기억 공유 명령어 확장
 
                     saveLog('아저씨', text); // 아저씨의 메시지를 로그에 저장합니다.
 
@@ -110,7 +109,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
                         return; // 더 이상 다른 처리를 하지 않고 함수 종료
                     }
 
-                    // ✨ 기억 공유 명령어 처리 (새로운 로직) ✨
+                    // 기억 공유 명령어 처리 (새로운 로직)
                     // 아저씨의 자연스러운 질문을 포함하도록 정규식 확장
                     if (/(기억\s?보여줘|내\s?기억\s?보여줘|혹시 내가 오늘 뭐한다 그랬지\?|오늘 뭐가 있더라\?|나 뭐하기로 했지\?)/i.test(text)) {
                         try {
@@ -174,10 +173,8 @@ app.post('/webhook', middleware(config), async (req, res) => {
                             const fileName = String(randomIndex).padStart(6, '0') + '.jpg'; 
                             const imageUrl = BASE_URL + fileName; 
                              
-                            // 예진이 말투로 셀카에 대한 코멘트를 생성합니다.
                             const comment = await getSelfieReplyFromYeji(); 
                              
-                            // LINE에 이미지 메시지와 텍스트 메시지를 함께 보냅니다.
                             await client.replyMessage(event.replyToken, [
                                 { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl }, // 원본 및 미리보기 이미지 URL
                                 { type: 'text', text: comment || '히히 셀카야~' } // 생성된 코멘트 또는 기본 코멘트
@@ -399,6 +396,47 @@ cron.schedule('30 * * * *', async () => {
     await sendScheduledMessage('selfie'); 
     await sendScheduledMessage('mood_message'); 
     await sendScheduledMessage('couple_photo'); 
+}, {
+    scheduled: true,
+    timezone: "Asia/Tokyo"
+});
+
+
+// ⭐ 침묵 감지 스케줄러 추가 ⭐ (매 15분마다 침묵 감지 체크)
+cron.schedule('*/15 * * * *', async () => { // 매 15분마다 실행
+    const now = Date.now();
+    const elapsedTimeSinceLastMessage = now - lastUserMessageTime;
+    const elapsedTimeSinceLastProactive = now - lastProactiveSentTime;
+
+    // 현재 시간대가 유효 시간대인지 확인
+    const currentHour = moment().tz('Asia/Tokyo').hour();
+    const validHours = [0, 1, 2, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23];
+    if (!validHours.includes(currentHour)) {
+        // console.log('[Scheduler-Silence] 유효 시간대 아님 -> 침묵 체크 스킵');
+        return;
+    }
+
+    // 서버 부팅 직후에는 건너뛰기
+    if (now - bootTime < 3 * 60 * 1000) {
+        console.log('[Scheduler-Silence] 서버 부팅 직후 3분 이내 -> 침묵 체크 스킵');
+        return;
+    }
+
+    // 침묵 임계값(SILENCE_THRESHOLD)을 넘었고, 내가 너무 자주 메시지를 보내지 않았다면
+    if (elapsedTimeSinceLastMessage >= SILENCE_THRESHOLD && elapsedTimeSinceLastProactive >= PROACTIVE_COOLDOWN) {
+        console.log(`[Scheduler-Silence] 침묵 감지! (${moment.duration(elapsedTimeSinceLastMessage).humanize()} 동안 메시지 없음)`);
+        try {
+            const checkinMessage = await getSilenceCheckinMessage(); // 침묵 걱정 메시지 생성
+            if (checkinMessage) {
+                await client.pushMessage(userId, { type: 'text', text: checkinMessage });
+                console.log(`[Scheduler-Silence] 침묵 감지 메시지 전송: ${checkinMessage}`);
+                saveLog('예진이', checkinMessage);
+                lastProactiveSentTime = now; // 선제적 메시지 보낸 시간 업데이트
+            }
+        } catch (error) {
+            console.error('❌ [Scheduler-Silence Error] 침묵 감지 메시지 전송 실패:', error);
+        }
+    }
 }, {
     scheduled: true,
     timezone: "Asia/Tokyo"
