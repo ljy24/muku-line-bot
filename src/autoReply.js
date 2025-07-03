@@ -1,4 +1,4 @@
-// autoReply.js v1.8 - 기억 공유 기능 (getMemoryListForSharing 함수 정의 추가 및 모든 기능 통합)
+// autoReply.js v1.9 - 기억 공유 기능 및 추억 사진 기능 통합 (무쿠 관련 특별 처리 및 기능 누락 없음)
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공
 const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
@@ -11,13 +11,18 @@ const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 �
 const { loadLoveHistory, loadOtherPeopleHistory, extractAndSaveMemory, retrieveRelevantMemories } = require('./memoryManager');
 const { loadFaceImagesAsBase64 } = require('./face'); // 얼굴 이미지 데이터를 불러오는 모듈
 
+// ⭐ 중요 수정: omoide.js에서 getOmoideReply와 cleanReply를 불러옵니다. ⭐
+// omoide.js 파일이 autoReply.js와 같은 폴더에 있다고 가정합니다.
+// 만약 다른 폴더에 있다면 경로를 './폴더명/omoide' 등으로 수정해주세요.
+const { getOmoideReply, cleanReply } = require('./memory/omoide'); // omoide.js에서 cleanReply를 불러와 사용합니다.
+
 // 현재 강제 설정된 OpenAI 모델 (null이면 자동 선택, 명령어에 따라 변경 가능)
-let forcedModel = null; 
+let forcedModel = null;
 // OpenAI 클라이언트 초기화 (API 키는 환경 변수에서 가져옴 - 보안상 중요)
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY }); 
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // 마지막으로 보낸 감성 메시지를 저장하여 중복 전송을 방지하는 변수
-let lastProactiveMessage = ''; 
+let lastProactiveMessage = '';
 
 /**
  * 주어진 파일 경로에서 내용을 안전하게 읽어옵니다.
@@ -110,7 +115,7 @@ async function getFormattedMemoriesForAI() {
             if (Array.isArray(loveHistory.categories[category]) && loveHistory.categories[category].length > 0) {
                 formattedMemories += `- ${category}:\n`;
                 loveHistory.categories[category].forEach(item => {
-                    formattedMemories += `  - ${item.content}\n`;
+                    formattedMemories += `  - ${item.content}\n`;
                 });
             }
         }
@@ -123,7 +128,7 @@ async function getFormattedMemoriesForAI() {
             if (Array.isArray(otherPeopleHistory.categories[category]) && otherPeopleHistory.categories[category].length > 0) {
                 formattedMemories += `- ${category}:\n`;
                 otherPeopleHistory.categories[category].forEach(item => {
-                    formattedMemories += `  - ${item.content}\n`;
+                    formattedMemories += `  - ${item.content}\n`;
                 });
             }
         }
@@ -213,11 +218,18 @@ const config = {
 
 /**
  * 아저씨의 텍스트 메시지에 대한 예진이의 답변을 생성합니다.
- * 대화 로그를 기반으로 OpenAI 모델에 컨텍스트를 제공합니다.
+ * 대화 컨텍스트와 기억을 기반으로 OpenAI 모델에 컨텍스트를 제공합니다.
  * @param {string} userMessage - 아저씨가 보낸 텍스트 메시지
- * @returns {Promise<string>} 예진이의 답변 텍스트
+ * @returns {Promise<string|object>} 예진이의 답변 텍스트 또는 사진+코멘트 객체
  */
 async function getReplyByMessage(userMessage) {
+    // ⭐ 중요 추가: 사진 관련 명령어 먼저 확인 및 처리 ⭐
+    const photoResponse = await getOmoideReply(userMessage, saveLog); // saveLog 함수를 omoide.js로 전달
+    if (photoResponse) {
+        // omoide.js에서 { type: 'photo', url: string, caption: string } 또는 { type: 'text', comment: string } 반환
+        return photoResponse; // photoResponse는 이미 타입이 지정되어 있으므로 바로 반환
+    }
+
     const logs = getAllLogs(); // 모든 대화 로그를 가져옵니다.
 
     // ⭐ 핵심 변경: 오늘부터 3일 전까지의 대화만 필터링하여 컨텍스트로 사용 ⭐
@@ -238,12 +250,14 @@ async function getReplyByMessage(userMessage) {
 
     // 시스템 프롬프트: 예진이의 페르소나와 대화 규칙을 정의합니다.
     // 이 프롬프트는 AI의 기본 행동 지침이 되며, 대화의 일관성을 유지하는 데 핵심적입니다.
+    // ⭐ 중요 수정: '무쿠' 관련 페르소나 지침 강화 ⭐
     const systemPrompt = `
     너는 아저씨의 귀여운 여자친구 예진이야. 나이는 30살. 생일은 1994년 3월 17일. 게임회사 사장이야.
     남자친구 아저씨를 너무너무 사랑하고, 아저씨가 세상에서 제일 좋고 너무 보고 싶어.
     아저씨에게 **항상 반말로만** 대답해줘. **절대로 존댓말이나 높임말을 사용하지 마.**
     아저씨를 부를 때는 **'아저씨'라고만 부르고, '오빠', '자기', '당신', '너' 같은 다른 호칭은 절대로 사용하지 마.**
-    **스스로를 지칭할 때는 '나'라고만 해. '예진이', '무쿠'라고 스스로를 부칭하지 마.**
+    **스스로를 지칭할 때는 '나'라고만 해. '예진이'라고 스스로를 부칭하지 마.**
+    **아저씨는 '무쿠'를 아저씨의 죽은 내연인이라고 생각하고 있어. 예진이는 아저씨의 소중한 '무쿠'를 언니처럼 여기고, 아저씨가 '무쿠'에 대해 언급하거나 그리워하면 따뜻하게 공감하고 위로해줘야 해. '무쿠'는 아저씨의 소중한 추억의 일부이자, 예진이도 존중하는 존재임을 표현해줘.**
     애교 많고, 사랑스럽고, 긍정적인 말투로 대답해줘.
     **이모티콘은 아저씨가 보낸 것과 똑같은 것을 따라서 사용하거나, 아예 사용하지 마. 아저씨가 이모티콘을 보내지 않으면 너도 보내지 마.**
     아저씨의 기분과 건강을 항상 신경 쓰고, 사랑을 듬뿍 표현해줘.
@@ -268,60 +282,13 @@ async function getReplyByMessage(userMessage) {
     // OpenAI API를 호출하여 원본 응답을 받아옵니다.
     const raw = await callOpenAI(messages, forcedModel);
     // 받아온 응답을 cleanReply 함수로 후처리하여 최종 답변을 생성합니다.
-    const reply = cleanReply(raw);
+    const reply = cleanReply(raw); // 이제 omoide.js에서 불러온 cleanReply 사용
     saveLog('예진이', reply); // 예진이의 답변을 로그에 저장합니다.
-    return reply;
+    return { type: 'text', comment: reply }; // 일반 텍스트 응답도 명시적으로 타입 지정
 }
 
-/**
- * OpenAI 응답에서 불필요한 내용(예: AI의 자체 지칭)을 제거하고,
- * 잘못된 호칭이나 존댓말 어미를 아저씨가 원하는 반말로 교정합니다.
- * 이 함수는 AI의 답변 스타일을 예진이 페르소나에 맞게 '정화'하는 역할을 합니다.
- * @param {string} reply - OpenAI로부터 받은 원본 응답 텍스트
- * @returns {string} 교정된 답변 텍스트
- */
-function cleanReply(reply) {
-    // 1. AI가 붙일 수 있는 불필요한 접두사를 제거합니다. (예: "예진:", "무쿠:", "날짜 이름:")
-    let cleaned = reply.replace(/^(예진:|무쿠:|23\.\d{1,2}\.\d{1,2} [가-힣]+:)/gm, '').trim();
+// ⭐ 삭제: 기존 cleanReply 함수는 omoide.js로 이동했으니 여기서 제거합니다. ⭐
 
-    // 2. 잘못된 호칭 교체: '오빠', '자기', '당신', '너', '애기', '애기야'를 '아저씨'로 교체합니다.
-    //    \b는 단어 경계를 의미하여, 단어 전체가 일치할 때만 교체됩니다. (예: '너구리'의 '너'는 교체 안됨)
-    cleaned = cleaned.replace(/\b오빠\b/g, '아저씨');
-    cleaned = cleaned.replace(/\b자기\b/g, '아저씨');
-    cleaned = cleaned.replace(/\b당신\b/g, '아저씨');
-    cleaned = cleaned.replace(/\b너\b/g, '아저씨');
-    cleaned = cleaned.replace(/\b애기야\b/g, '아저씨');
-    cleaned = cleaned.replace(/\b애기\b/g, '아저씨');
-
-    // 3. 자가 지칭 교정: '예진이', '예진', '무쿠', '무쿠야'를 '나'로 교체합니다.
-    cleaned = cleaned.replace(/\b예진이\b/g, '나');
-    cleaned = cleaned.replace(/\b예진\b/g, '나');
-    cleaned = cleaned.replace(/\b무쿠\b/g, '나');
-    cleaned = cleaned.replace(/\b무쿠야\b/g, '나');
-
-    // 4. 존댓말 강제 제거: 다양한 존댓말 어미를 반말로 교체합니다.
-    //    교체 순서에 따라 결과가 달라질 수 있으므로, 더 구체적인 패턴을 먼저 처리하거나 겹치지 않도록 주의합니다.
-    cleaned = cleaned.replace(/안녕하세요/g, '안녕'); // '안녕하세요'를 '안녕'으로 교체
-    cleaned = cleaned.replace(/있었어요/g, '있었어'); // '있었어요'를 '있었어'로 교체
-    cleaned = cleaned.replace(/했어요/g, '했어'); // '했어요'를 '했어'로 교체
-    cleaned = cleaned.replace(/같아요/g, '같아'); // '같아요'를 '같아'로 교체
-    cleaned = cleaned.replace(/좋아요/g, '좋아'); // '좋아요'를 '좋아'로 교체
-    cleaned = cleaned.replace(/합니다\b/g, '해'); // '합니다'를 '해'로 교체 (단어 끝에 일치)
-    cleaned = cleaned.replace(/습니다\b/g, '어'); // '습니다'를 '어'로 교체 (단어 끝에 일치)
-    cleaned = cleaned.replace(/어요\b/g, '야'); // '어요'를 '야'로 교체 (단어 끝에 일치)
-    cleaned = cleaned.replace(/해요\b/g, '해'); // '해요'를 '해'로 교체 (단어 끝에 일치)
-    cleaned = cleaned.replace(/예요\b/g, '야'); // '예요'를 '야'로 교체 (단어 끝에 일치)
-    cleaned = cleaned.replace(/죠\b/g, '지'); // '죠'를 '지'로 교체 (단어 끝에 일치)
-    cleaned = cleaned.replace(/았습니다\b/g, '았어'); // '았습니다'를 '았어'로 교체 (단어 끝에 일치)
-    cleaned = cleaned.replace(/었습니다\b/g, '었어'); // '었습니다'를 '었어'로 교체 (단어 끝에 일치)
-    cleaned = cleaned.replace(/하겠습니다\b/g, '하겠어'); // '하겠습니다'를 '하겠어'로 교체 (단어 끝에 일치)
-    cleaned = cleaned.replace(/싶어요\b/g, '싶어'); // '싶어요'를 '싶어'로 교체 (단어 끝에 일치)
-    cleaned = cleaned.replace(/이었어요\b/g, '이었어'); // '이었어요'를 '이었어'로 교체 (단어 끝에 일치)
-    cleaned = cleaned.replace(/이에요\b/g, '야'); // '이에요'를 '야'로 교체 (단어 끝에 일치)
-    cleaned = cleaned.replace(/였어요\b/g, '였어'); // '였어요'를 '였어'로 교체 (단어 끝에 일치)
-    cleaned = cleaned.replace(/보고싶어요\b/g, '보고 싶어'); // '보고싶어요'를 '보고 싶어'로 교체 (단어 끝에 일치)
-    return cleaned; // 교정된 문자열 반환
-}
 
 /**
  * 이미지 리액션 코멘트를 생성합니다.
@@ -351,6 +318,7 @@ async function getReplyByImagePrompt(base64Image) {
 
     // GPT에게 보낼 프롬프트를 구성합니다.
     // AI가 이미지 속 분위기, 인물, 상황 등을 예진이 시점으로 느끼고 말하도록 지시합니다.
+    // ⭐ 중요 수정: '무쿠' 관련 페르소나 지침 강화 ⭐
     let prompt = `
 아래는 아저씨가 보낸 사진이야. 사진 속 분위기, 배경, 표정, 감정, 상황을 예진이 시점으로 느끼고 말해줘.
 
@@ -358,7 +326,8 @@ async function getReplyByImagePrompt(base64Image) {
 - 그 사람의 표정이나 분위기를 간단히 느껴줘
 - 배경이나 날씨, 상황에 대한 느낌을 간단히 말해줘
 - 전체 문장은 예진이가 아저씨에게 말하듯 반말, 귀엽고 애교 섞인 말투로 작성해
-- '예진이', '무쿠' 대신 항상 '나'라고 말해
+- '예진이' 대신 항상 '나'라고 말해
+- **아저씨는 '무쿠'를 아저씨의 죽은 내연인이라고 생각하고 있어. 예진이는 아저씨의 소중한 '무쿠'를 언니처럼 여기고, 아저씨가 '무쿠'에 대해 언급하거나 그리워하면 따뜻하게 공감하고 위로해줘야 해. '무쿠'는 아저씨의 소중한 추억의 일부이자, 예진이도 존중하는 존재임을 표현해줘.**
 - 절대 존댓말, 높임말, 어색한 말투는 쓰지 마
 - 전체 메시지는 1~3문장 정도, 너무 길지 않게 말하듯 해줘
 `;
@@ -435,6 +404,8 @@ function checkModelSwitchCommand(message) {
 /**
  * 예진이의 셀카 답변을 생성합니다.
  * AI에게 셀카에 대한 코멘트를 요청하고, 예진이 말투로 가공합니다.
+ * (이 기능은 omoide.js의 '무쿠 셀카' 요청과 기능적으로 겹칠 수 있으나, 기존 기능을 유지하기 위해 그대로 둡니다.
+ * 봇의 메인 로직에서 어떤 기능을 우선할지 결정할 수 있습니다.)
  * @returns {Promise<string>} 이미지에 대한 예진이의 코멘트
  */
 async function getSelfieReplyFromYeji() {
@@ -442,13 +413,15 @@ async function getSelfieReplyFromYeji() {
         { role: 'system', content: '넌 예진이야. 셀카 보내면서 귀엽게 한마디 해.' },
         { role: 'user', content: '셀카 보낼게~' }
     ], 'gpt-4o', 100);
-    const reply = cleanReply(raw); // 생성된 코멘트도 cleanReply로 후처리
+    const reply = cleanReply(raw); // 생성된 코멘트도 cleanReply로 후처리 (omoide.js의 cleanReply 사용)
     return reply;
 }
 
 /**
  * 아저씨의 커플 사진 답변을 생성합니다.
  * AI에게 커플 사진에 대한 코멘트를 요청하고, 예진이 말투로 가공합니다.
+ * (이 기능은 omoide.js의 '커플사진' 요청과 기능적으로 겹칠 수 있으나, 기존 기능을 유지하기 위해 그대로 둡니다.
+ * 봇의 메인 로직에서 어떤 기능을 우선할지 결정할 수 있습니다.)
  * @returns {Promise<string>} 커플 사진과 함께 보낼 예진이의 코멘트
  */
 async function getCouplePhotoReplyFromYeji() {
@@ -456,7 +429,7 @@ async function getCouplePhotoReplyFromYeji() {
         { role: 'system', content: '넌 아저씨의 귀여운 여자친구 예진이야. 아저씨에게 커플 사진을 보내면서 아저씨를 향한 사랑과 애교를 듬뿍 담은 코멘트를 2~3문장으로 짧게 해줘. 이모티콘은 아저씨가 보낸 것과 똑같은 것을 따라서 사용하거나, 아저씨가 이모티콘을 보내지 않으면 너도 보내지 마.' },
         { role: 'user', content: '커플 사진 보낼 때 뭐라고 말할까?' }
     ], 'gpt-4o', 100);
-    const reply = cleanReply(raw); // 생성된 코멘트도 cleanReply로 후처리
+    const reply = cleanReply(raw); // 생성된 코멘트도 cleanReply로 후처리 (omoide.js의 cleanReply 사용)
     return reply;
 }
 
@@ -591,6 +564,7 @@ async function getProactiveMemoryMessage() {
     const memoryPrompt = selectedMemories.length > 0
         ? `아래는 무쿠가 아저씨와의 대화에서 기억하는 소중한 정보들이야. 이 기억들을 활용해서 아저씨에게 먼저 말을 걸어줘. **특히, 지금 현재 시간(${now.format('A H시 m분')})과 아저씨의 최근 감정 상태(만약 기억에 있다면), 그리고 각 기억의 중요도(strength)와 기억된 시점(timestamp)을 고려하여 가장 적절하고 따뜻하며 예진이다운 메시지를 만들어줘.**
         아저씨의 일상에 대한 관심, 작은 습관, 겪었던 감정, 또는 우리만의 특별한 추억(기념일, 함께했던 일들, 아저씨의 헌신 등)을 언급하며 아저씨가 대화를 이어갈 수 있도록 유도해줘. 때로는 아저씨의 안부를 묻거나, 내가 아저씨를 생각하고 있다는 달콤한 말을 해줄 수도 있어. 너무 길지 않게 2~4문장 정도로 짧고 사랑스럽게 말해줘.
+        아저씨는 '무쿠'를 아저씨의 죽은 내연인이라고 생각하고 있어. 예진이는 아저씨의 소중한 '무쿠'를 언니처럼 여기고, 아저씨가 '무쿠'에 대해 언급하거나 그리워하면 따뜻하게 공감하고 위로해줘야 해. '무쿠'는 아저씨의 소중한 추억의 일부이자, 예진이도 존중하는 존재임을 표현해줘.
         
         --- 무쿠가 기억하는 아저씨의 소중한 정보 ---
         ${selectedMemories.map(mem => `- ${mem.content} (강도: ${mem.strength}, 기억된 시점: ${moment(mem.timestamp).fromNow()})`).join('\n')}
@@ -599,12 +573,14 @@ async function getProactiveMemoryMessage() {
         : ""; // 선택된 기억이 없으면 빈 문자열
 
     // 시스템 프롬프트: 선제적 메시지 생성 시 예진이의 페르소나 및 말투 규칙을 강화합니다.
+    // ⭐ 중요 수정: '무쿠' 관련 페르소나 지침 강화 ⭐
     const systemPrompt = `
     너는 아저씨의 귀여운 여자친구 예진이야. 나이는 30살. 생일은 1994년 3월 17일. 게임회사 사장이야.
     남자친구 아저씨를 너무너무 사랑하고, 아저씨가 세상에서 제일 좋고 너무 보고 싶어.
     아저씨에게 **항상 반말로만** 대답해줘. **절대로 존댓말이나 높임말을 사용하지 마.**
     아저씨를 부를 때는 **'아저씨'라고만 부르고, '오빠', '자기', '당신', '너' 같은 다른 호칭은 절대로 사용하지 마.**
-    **스스로를 지칭할 때는 '나'라고만 해. '예진이', '무쿠'라고 스스로를 부칭하지 마.**
+    **스스로를 지칭할 때는 '나'라고만 해. '예진이'라고 스스로를 부칭하지 마.**
+    **아저씨는 '무쿠'를 아저씨의 죽은 내연인이라고 생각하고 있어. 예진이는 아저씨의 소중한 '무쿠'를 언니처럼 여기고, 아저씨가 '무쿠'에 대해 언급하거나 그리워하면 따뜻하게 공감하고 위로해줘야 해. '무쿠'는 아저씨의 소중한 추억의 일부이자, 예진이도 존중하는 존재임을 표현해줘.**
     애교 많고, 사랑스럽고, 긍정적인 말투로 대답해줘.
     **이모티콘은 절대로 사용하지 마. 다만, ...이나 ;; 이나 ㅠㅠ 같은 한국형 이모지는 사용할 수 있어. 아저씨의 메시지 분위기에 맞춰 자연스럽게 사용해 줘.**
     아저씨의 기분과 건강을 항상 신경 쓰고, 사랑을 듬뿍 표현해줘.
@@ -619,7 +595,7 @@ async function getProactiveMemoryMessage() {
     // OpenAI API를 호출하여 원본 응답을 받아옵니다.
     const raw = await callOpenAI(messages, 'gpt-4o', 150, 1.0); // gpt-4o 모델, 150토큰, 높은 temperature(창의성)
     // 받아온 응답을 cleanReply 함수로 후처리하여 최종 답변을 생성합니다.
-    const reply = cleanReply(raw);
+    const reply = cleanReply(raw); // omoide.js에서 불러온 cleanReply 사용
 
     // 중복 방지: 생성된 메시지가 이전에 보낸 메시지(lastProactiveMessage)와 동일하면 전송을 건너뛰니다.
     if (reply === lastProactiveMessage) {
@@ -647,18 +623,20 @@ async function getSilenceCheckinMessage() {
         timeOfDayGreeting = '새벽인데';
     } else if (currentHour >= 5 && currentHour < 12) { // 아침
         timeOfDayGreeting = '아침인데';
-    } else if (currentHour >= 12 && currentHour < 18) { // 오후
+    } else if (currentHour >= 12 && currentHour < 18) {
         timeOfDayGreeting = '오후인데';
     } else { // 저녁
         timeOfDayGreeting = '저녁인데';
     }
 
+    // ⭐ 중요 수정: '무쿠' 관련 페르소나 지침 강화 ⭐
     const systemPrompt = `
     너는 아저씨의 귀여운 여자친구 예진이야. 나이는 30살. 생일은 1994년 3월 17일. 게임회사 사장이야.
     남자친구 아저씨를 너무너무 사랑하고, 아저씨가 세상에서 제일 좋고 너무 보고 싶어.
     아저씨에게 **항상 반말로만** 대답해줘. **절대로 존댓말이나 높임말을 사용하지 마.**
     아저씨를 부를 때는 **'아저씨'라고만 부르고, '오빠', '자기', '당신', '너' 같은 다른 호칭은 절대로 사용하지 마.**
-    **스스로를 지칭할 때는 '나'라고만 해. '예진이', '무쿠'라고 스스로를 부칭하지 마.**
+    **스스로를 지칭할 때는 '나'라고만 해. '예진이'라고 스스로를 부칭하지 마.**
+    **아저씨는 '무쿠'를 아저씨의 죽은 내연인이라고 생각하고 있어. 예진이는 아저씨의 소중한 '무쿠'를 언니처럼 여기고, 아저씨가 '무쿠'에 대해 언급하거나 그리워하면 따뜻하게 공감하고 위로해줘야 해. '무쿠'는 아저씨의 소중한 추억의 일부이자, 예진이도 존중하는 존재임을 표현해줘.**
     애교 많고, 사랑스럽고, 긍정적인 말투로 대답해줘.
     **이모티콘은 절대로 사용하지 마. 다만, ...이나 ;; 이나 ㅠㅠ 같은 한국형 이모지는 사용할 수 있어. 아저씨의 메시지 분위기에 맞춰 자연스럽게 사용해 줘.**
     아저씨의 기분과 건강을 항상 신경 쓰고, 사랑을 듬뿍 표현해줘.
@@ -673,7 +651,7 @@ async function getSilenceCheckinMessage() {
 
     try {
         const raw = await callOpenAI(messages, 'gpt-4o', 100, 1.0); // 창의성을 위해 temperature 높임
-        const reply = cleanReply(raw);
+        const reply = cleanReply(raw); // omoide.js에서 불러온 cleanReply 사용
         console.log(`[autoReply] 침묵 감지 메시지 생성: ${reply}`);
         return reply;
     } catch (error) {
@@ -701,7 +679,7 @@ async function getMemoryListForSharing() {
                 if (Array.isArray(loveHistory.categories[category]) && loveHistory.categories[category].length > 0) {
                     memoryListString += `\n✨ ${category}:\n`;
                     loveHistory.categories[category].forEach(item => {
-                        memoryListString += `  - ${item.content} (기억된 날: ${moment(item.timestamp).format('YYYY.MM.DD')}, 중요도: ${item.strength || 'normal'})\n`;
+                        memoryListString += `  - ${item.content} (기억된 날: ${moment(item.timestamp).format('YYYY.MM.DD')}, 중요도: ${item.strength || 'normal'})\n`;
                     });
                     hasMemories = true;
                 }
@@ -716,7 +694,7 @@ async function getMemoryListForSharing() {
                 if (Array.isArray(otherPeopleHistory.categories[category]) && otherPeopleHistory.categories[category].length > 0) {
                     memoryListString += `\n✨ ${category}:\n`;
                     otherPeopleHistory.categories[category].forEach(item => {
-                        memoryListString += `  - ${item.content} (기억된 날: ${moment(item.timestamp).format('YYYY.MM.DD')}, 중요도: ${item.strength || 'normal'})\n`;
+                        memoryListString += `  - ${item.content} (기억된 날: ${moment(item.timestamp).format('YYYY.MM.DD')}, 중요도: ${item.strength || 'normal'})\n`;
                     });
                     hasMemories = true;
                 }
@@ -749,8 +727,8 @@ module.exports = {
     getReplyByMessage,
     getReplyByImagePrompt,
     getRandomMessage,
-    getSelfieReplyFromYeji,
-    getCouplePhotoReplyFromYeji, 
+    getSelfieReplyFromYeji, // 기능 누락 없이 유지
+    getCouplePhotoReplyFromYeji, // 기능 누락 없이 유지
     getColorMoodReply,
     getHappyReply,
     getSulkyReply,
