@@ -1,4 +1,4 @@
-// omoide.js v1.9 - 사진 코멘트 정확도 및 장소/날짜 인식 강화, 오타 처리 및 다양한 셀카 요청 추가, URL 디버그 로그 추가
+// omoide.js v1.10 - cleanReply 오타 수정 및 모든 기능 통합
 // 📦 필수 모듈 불러오기
 const { OpenAI } = require('openai'); // OpenAI API 클라이언트
 const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
@@ -90,6 +90,12 @@ async function callOpenAI(messages, modelParamFromCall = null, maxTokens = 400, 
  * @returns {string} 교정된 답변 텍스트
  */
 function cleanReply(reply) {
+    // ⭐ 중요 수정: reply가 유효한 문자열인지 먼저 확인 (이전 에러 해결) ⭐
+    if (typeof reply !== 'string' || !reply) {
+        console.warn(`[cleanReply] 유효하지 않은 입력(string 아님 또는 비어있음): ${reply}`);
+        return ''; // 유효하지 않으면 빈 문자열 반환하여 에러 방지
+    }
+
     // 1. AI가 붙일 수 있는 불필요한 접두사를 제거합니다. (예: "예진:", "무쿠:", "날짜 이름:")
     let cleaned = reply.replace(/^(예진:|무쿠:|23\.\d{1,2}\.\d{1,2} [가-힣]+:)/gm, '').trim();
 
@@ -102,11 +108,10 @@ function cleanReply(reply) {
     cleaned = cleaned.replace(/\b애기\b/g, '아저씨');
 
     // 3. 자가 지칭 교정: '예진이', '예진', '무쿠', '무쿠야'를 '나'로 교체합니다.
-    // ⭐ 중요 수정: '무쿠 언니', '무쿠 씨' 등 타인을 지칭하는 것처럼 보이는 표현도 '나'로 교정 ⭐
     cleaned = cleaned.replace(/\b예진이\b/g, '나');
     cleaned = cleaned.replace(/\b예진\b/g, '나');
     cleaned = cleaned.replace(/\b무쿠\b/g, '나');     // 기본 '무쿠' 지칭을 '나'로
-    cleaned = cleaned.cleaned.replace(/\b무쿠야\b/g, '나');   // '무쿠야' 지칭을 '나'로
+    cleaned = cleaned.replace(/\b무쿠야\b/g, '나');   // '무쿠야' 지칭을 '나'로
     cleaned = cleaned.replace(/\b무쿠 언니\b/g, '나'); // '무쿠 언니' 지칭을 '나'로
     cleaned = cleaned.replace(/\b무쿠 씨\b/g, '나');   // '무쿠 씨' 지칭을 '나'로
     // 혹시 '그녀'나 '그 사람' 등으로 지칭할 경우에 대한 포괄적인 처리
@@ -157,7 +162,7 @@ function generateRandomPhotoUrl(folderName) {
  * 사용자 메시지에 따라 추억 사진을 선택하고, AI가 감정/코멘트를 생성하여 반환합니다.
  * @param {string} userMessage - 사용자의 원본 메시지
  * @param {Function} saveLogFunc - 로그 저장을 위한 saveLog 함수 (autoReply.js에서 전달받음)
- * @returns {Promise<{type: string, url?: string, caption?: string, comment?: string}|null>} 사진 URL과 코멘트 객체 또는 null (사진 요청이 아닐 때)
+ * @returns {Promise<{type: string, url?: string, caption?: string, comment?: string}|null>} 사진 URL과 코멘트 객체 또는 null (사진 요청이 아님)
  */
 async function getOmoideReply(userMessage, saveLogFunc) {
     const lowerCaseMessage = userMessage.toLowerCase();
@@ -254,8 +259,9 @@ async function getOmoideReply(userMessage, saveLogFunc) {
                 console.error('❌ [omoide.js Error] 일반 셀카 코멘트 생성 실패:', error);
                 return { type: 'text', comment: '아저씨... 셀카에 대해 말해주려는데 뭔가 문제가 생겼어 ㅠㅠ' };
             }
-        } else { // PHOTO_FOLDERS에 직접 매핑되는 키워드 처리
+        } else { // PHOTO_FOLDERS에 직접 매핑되는 키워드 처리 (예: 빠계 셀카, 메이드, 커플사진, 일본/한국 사진 등)
             selectedFolder = mappedValue;
+            // 각 매핑된 값에 따른 폴더 선택 및 프롬프트 설정
             if (mappedValue === '일본') {
                 const japaneseFolders = Object.keys(PHOTO_FOLDERS).filter(key => key.includes('일본'));
                 selectedFolder = japaneseFolders[Math.floor(Math.random() * japaneseFolders.length)];
