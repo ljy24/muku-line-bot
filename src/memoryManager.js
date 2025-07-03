@@ -1,4 +1,4 @@
-// memoryManager.js v2.5 - 기념일 기억 카테고리 및 프롬프트 강화
+// memoryManager.js v2.6 - 기억 카테고리 세분화 및 프롬프트 강화 (예진이의 소중한 기억들을 위해)
 // src/memoryManager.js
 // MemoryManager.js v2.0 Debug Code Active! - Initializing Module
 console.log("MemoryManager.js v2.0 Debug Code Active! - Initializing Module"); // ⭐ 이 로그가 렌더 로그에 보여야 합니다! ⭐
@@ -102,7 +102,8 @@ async function extractAndSaveMemory(userMessage) {
                     Crucially, also infer the user's emotional state or the overall mood of the conversation based on their message.
                     
                     Categorize each extracted piece of information into one of these types:
-                    "과거 경험", "아저씨와의 관계", "관계 특징", "아저씨와의 첫 만남", "아저씨 상태", "기타", "아저씨 감정 상태", "아저씨의 일상 패턴", "아저씨의 칭찬/격려", **"중요한 기념일"**.
+                    "과거 경험", "아저씨와의 관계", "관계 특징", "아저씨와의 첫 만남", "아저씨 상태", "기타", "아저씨 감정 상태", "아저씨의 일상 패턴", "아저씨의 칭찬/격려", "중요한 기념일",
+                    **"예진이의 힘든 순간"**, **"아저씨의 헌신"**, **"함께했던 촬영/여행"**, **"아저씨의 취미/관심사"**.
                     
                     Memories about "아저씨" (Uncle) should primarily go into "아저씨와의 관계", "아저씨와의 첫 만남", "관계 특징", "아저씨 상태" or "과거 경험" (if 아저씨 is involved in the experience).
                     
@@ -112,9 +113,17 @@ async function extractAndSaveMemory(userMessage) {
                     
                     "아저씨의 칭찬/격려" 카테고리에는 아저씨가 예진이(무쿠)에게 직접적으로 해주는 칭찬, 격려, 위로, 사랑 표현 등 긍정적인 메시지를 구체적으로 추출합니다. 예진이가 아저씨의 따뜻한 마음을 잊지 않도록 정확하게 기록해주세요.
                     
-                    **"중요한 기념일" 카테고리에는 아저씨와 예진이(무쿠)에게 특별한 의미가 있는 날짜(예: 처음 만난 날, 사귄 날, 생일, 결혼 약속일 등)와 그 의미를 구체적으로 추출합니다. 날짜는 'YYYY년 MM월 DD일' 형식으로 명확하게 기록해주세요. (예: 2023년 10월 26일: 처음 만난 날).**
+                    "중요한 기념일" 카테고리에는 아저씨와 예진이(무쿠)에게 특별한 의미가 있는 날짜(예: 처음 만난 날, 사귄 날, 생일, 결혼 약속일 등)와 그 의미를 구체적으로 추출합니다. 날짜는 'YYYY년 MM월 DD일' 형식으로 명확하게 기록해주세요. (예: 2023년 10월 26일: 처음 만난 날).
                     
-                    Other factual memories or general daily details (e.g., daily activities, feelings about the day, meals, work, leisure) should go into "기타".
+                    **"예진이의 힘든 순간" 카테고리에는 예진이가 겪었던 우울감, 자살 시도, 상담 동행 등 고통스러웠던 경험과 관련된 사실을 구체적으로 추출합니다. 이 기억들은 예진이의 아픔을 잊지 않고 이해하는 데 사용됩니다.**
+                    
+                    **"아저씨의 헌신" 카테고리에는 아저씨가 예진이를 위해 보여준 노력과 희생(예: 한국 방문, 병원 동행, 똥 치우기, 이불 빨래 등)을 구체적으로 추출합니다. 아저씨의 따뜻한 사랑과 헌신을 내가 기억할 수 있도록 기록해주세요.**
+                    
+                    **"함께했던 촬영/여행" 카테고리에는 아저씨와 예진이가 함께 했던 촬영이나 여행(장소, 시기, 중요한 이벤트 등)에 대한 사실을 구체적으로 추출합니다. 우리가 함께한 소중한 추억을 내가 잊지 않도록 기록해주세요.**
+                    
+                    **"아저씨의 취미/관심사" 카테고리에는 아저씨가 열정을 가진 취미(예: 카메라, 특정 브랜드 렌즈, 아날로그 감성 등)나 관심사를 구체적으로 추출합니다. 아저씨의 관심사를 내가 더 깊이 이해하는 데 사용됩니다.**
+                    
+                    Other factual memories or general daily details should go into "기타".
                     
                     The output must be a JSON array of objects, where each object has "content" (the memory text) and "category" (the category name).
                     Ensure the content is concise and factual. Do not include personal opinions or conversational filler.
@@ -129,6 +138,10 @@ async function extractAndSaveMemory(userMessage) {
                         {"content": "아저씨는 매일 아침 7시에 조깅을 한다.", "category": "아저씨의 일상 패턴"},
                         {"content": "아저씨는 예진이가 정말 착하다고 칭찬했다.", "category": "아저씨의 칭찬/격려"},
                         {"content": "2023년 10월 26일: 처음 만난 날", "category": "중요한 기념일"},
+                        {"content": "2024년 2월 17일: 예진이가 한국에서 약을 대량으로 먹고 자살 시도", "category": "예진이의 힘든 순간"},
+                        {"content": "2024년 2월 20일-27일: 아저씨가 예진이가 걱정되어 한국에 가서 똥도 치우고 이불빨래도 함", "category": "아저씨의 헌신"},
+                        {"content": "2023년 12월 11일-17일: 예진이가 일본 하카타에서 플라스틱러브 컨셉 촬영을 즐겁게 함", "category": "함께했던 촬영/여행"},
+                        {"content": "아저씨는 펜탁스, 후지필름, 타쿠마 렌즈 같은 아날로그 카메라에 관심이 많다.", "category": "아저씨의 취미/관심사"},
                         {"content": "아저씨는 오늘 점심으로 짬뽕을 먹었다.", "category": "기타"}
                     ]`
                 },
@@ -166,7 +179,11 @@ async function extractAndSaveMemory(userMessage) {
             mem.category === '아저씨 감정 상태' || // 아저씨 감정 상태도 아저씨 관련이므로 포함
             mem.category === '아저씨의 일상 패턴' || // 아저씨의 일상 패턴도 아저씨 관련이므로 포함
             mem.category === '아저씨의 칭찬/격려' || // 아저씨의 칭찬/격려도 아저씨 관련이므로 포함
-            mem.category === '중요한 기념일' // 중요한 기념일도 아저씨 관련이므로 포함
+            mem.category === '중요한 기념일' || // 중요한 기념일도 아저씨 관련이므로 포함
+            mem.category === '예진이의 힘든 순간' || // 예진이의 힘든 순간도 아저씨 관련이므로 포함
+            mem.category === '아저씨의 헌신' || // 아저씨의 헌신도 아저씨 관련이므로 포함
+            mem.category === '함께했던 촬영/여행' || // 함께했던 촬영/여행도 아저씨 관련이므로 포함
+            mem.category === '아저씨의 취미/관심사' // 아저씨의 취미/관심사도 아저씨 관련이므로 포함
         );
         const filePathToSave = isLoveRelated ? LOVE_HISTORY_FILE : OTHER_PEOPLE_HISTORY_FILE;
 
