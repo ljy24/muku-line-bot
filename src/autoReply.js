@@ -291,4 +291,325 @@ function cleanReply(reply) {
     cleaned = cleaned.replace(/\b애기야\b/g, '아저씨');
     cleaned = cleaned.replace(/\b애기\b/g, '아저씨');
 
-    // 3. 자가
+    // 3. 자가 지칭 교정: '예진이', '예진', '무쿠', '무쿠야'를 '나'로 교체합니다.
+    cleaned = cleaned.replace(/\b예진이\b/g, '나');
+    cleaned = cleaned.replace(/\b예진\b/g, '나');
+    cleaned = cleaned.replace(/\b무쿠\b/g, '나');
+    cleaned = cleaned.replace(/\b무쿠야\b/g, '나');
+
+    // 4. 존댓말 강제 제거: 다양한 존댓말 어미를 반말로 교체합니다.
+    //    교체 순서에 따라 결과가 달라질 수 있으므로, 더 구체적인 패턴을 먼저 처리하거나 겹치지 않도록 주의합니다.
+    cleaned = cleaned.replace(/안녕하세요/g, '안녕'); // '안녕하세요'를 '안녕'으로 교체
+    cleaned = cleaned.replace(/있었어요/g, '있었어'); // '있었어요'를 '있었어'로 교체
+    cleaned = cleaned.replace(/했어요/g, '했어'); // '했어요'를 '했어'로 교체
+    cleaned = cleaned.replace(/같아요/g, '같아'); // '같아요'를 '같아'로 교체
+    cleaned = cleaned.replace(/좋아요/g, '좋아'); // '좋아요'를 '좋아'로 교체
+    cleaned = cleaned.replace(/합니다\b/g, '해'); // '합니다'를 '해'로 교체 (단어 끝에 일치)
+    cleaned = cleaned.replace(/습니다\b/g, '어'); // '습니다'를 '어'로 교체 (단어 끝에 일치)
+    cleaned = cleaned.replace(/어요\b/g, '야'); // '어요'를 '야'로 교체 (단어 끝에 일치)
+    cleaned = cleaned.replace(/해요\b/g, '해'); // '해요'를 '해'로 교체 (단어 끝에 일치)
+    cleaned = cleaned.replace(/예요\b/g, '야'); // '예요'를 '야'로 교체 (단어 끝에 일치)
+    cleaned = cleaned.replace(/죠\b/g, '지'); // '죠'를 '지'로 교체 (단어 끝에 일치)
+    cleaned = cleaned.replace(/았습니다\b/g, '았어'); // '았습니다'를 '았어'로 교체 (단어 끝에 일치)
+    cleaned = cleaned.replace(/었습니다\b/g, '었어'); // '었습니다'를 '었어'로 교체 (단어 끝에 일치)
+    cleaned = cleaned.replace(/겠습니다\b/g, '겠어'); // '겠습니다'를 '겠어'로 교체 (단어 끝에 일치)
+    cleaned = cleaned.replace(/싶어요\b/g, '싶어'); // '싶어요'를 '싶어'로 교체 (단어 끝에 일치)
+    cleaned = cleaned.replace(/이었어요\b/g, '이었어'); // '이었어요'를 '이었어'로 교체 (단어 끝에 일치)
+    cleaned = cleaned.replace(/이에요\b/g, '야'); // '이에요'를 '야'로 교체 (단어 끝에 일치)
+    cleaned = cleaned.replace(/였어요\b/g, '였어'); // '였어요'를 '였어'로 교체 (단어 끝에 일치)
+    cleaned = cleaned.replace(/보고싶어요\b/g, '보고 싶어'); // '보고싶어요'를 '보고 싶어'로 교체 (단어 끝에 일치)
+    return cleaned; // 교정된 문자열 반환
+}
+
+/**
+ * 이미지 리액션 코멘트를 생성합니다.
+ * (현재 직접 사용되지 않지만, 기능 유지를 위해 존재)
+ * @returns {Promise<string>} 이미지에 대한 예진이의 코멘트
+ */
+async function getImageReactionComment() {
+    const raw = await callOpenAI([
+        { role: 'system', content: '넌 예진이야. 셀카 보내면서 귀엽게 한마디 해.' },
+        { role: 'user', content: '셀카 보낼게~' }
+    ], 'gpt-4o', 100);
+    const reply = cleanReply(raw); // 생성된 코멘트도 cleanReply로 후처리
+    return reply;
+}
+
+/**
+ * 아저씨가 보낸 이미지에 대한 예진이의 답변을 생성합니다.
+ * OpenAI Vision API를 사용하여 이미지 내용을 분석하고 답변을 생성합니다.
+ * @param {string} base64Image - Base64 인코딩된 이미지 데이터 (data:MIME_TYPE;base64, 포함)
+ * @returns {Promise<string>} 이미지에 대한 예진이의 답변
+ */
+async function getReplyByImagePrompt(base64Image) {
+    // 아저씨 얼굴 이미지와 예진이 얼굴 이미지 예시를 로드합니다.
+    // 이 이미지들은 AI가 사용자 사진 속 인물을 판단하는 데 참조로 사용됩니다.
+    const uncleFaces = loadFaceImagesAsBase64('uncle'); // 'uncle' 폴더에서 예시 이미지 로드
+    const yejinFaces = loadFaceImagesAsBase64('yejin'); // 'yejin' 폴더에서 예시 이미지 로드
+
+    // GPT에게 보낼 프롬프트를 구성합니다.
+    // AI가 이미지 속 분위기, 인물, 상황 등을 예진이 페르소나에 맞춰 말하도록 지시합니다.
+    let prompt = `
+아래는 아저씨가 보낸 사진이야. 사진 속 분위기, 배경, 표정, 감정, 상황을 예진이 시점으로 느끼고 말해줘.
+
+- 사진 속 인물이 누구인지 판단해 (예진이 / 아저씨 / 모름)
+- 그 사람의 표정이나 분위기를 간단히 느껴줘
+- 배경이나 날씨, 상황에 대한 느낌을 간단히 말해줘
+- 전체 문장은 예진이가 아저씨에게 말하듯 반말, 귀엽고 애교 섞인 말투로 작성해
+- '예진이', '무쿠' 대신 항상 '나'라고 말해
+- 절대 존댓말, 높임말, 어색한 말투는 쓰지 마
+- 전체 메시지는 1~3문장 정도, 너무 길지 않게 말하듯 해줘
+`;
+
+    // OpenAI API에 보낼 메시지 배열을 구성합니다.
+    // 텍스트 프롬프트와 사용자 이미지를 먼저 포함합니다.
+    const messages = [
+        { role: 'user', content: [{ type: 'text', text: prompt }] }, // 텍스트 프롬프트
+        { role: 'user', content: [{ type: 'image_url', image_url: { url: base64Image } }] }, // 사용자가 보낸 이미지
+    ];
+
+    // 얼굴 예시 이미지들을 메시지 배열에 추가합니다.
+    // OpenAI Vision 모델이 이 예시들을 보고 사용자 이미지를 더 잘 판단할 수 있도록 돕습니다.
+    uncleFaces.forEach(base64 => {
+        messages.push({ role: 'user', content: [{ type: 'image_url', image_url: { url: base64 } }] });
+    });
+    yejinFaces.forEach(base64 => {
+        messages.push({ role: 'user', content: [{ type: 'image_url', image_url: { url: base64 } }] });
+    });
+
+    try {
+        // OpenAI Vision 모델 ('gpt-4o')을 호출하여 이미지 분석 및 답변 생성
+        const result = await callOpenAI(messages, 'gpt-4o');
+        const reply = cleanReply(result); // 생성된 답변을 예진이 말투에 맞게 후처리
+        saveLog('예진이', reply); // 예진이의 답변을 로그에 저장
+        return reply;
+    } catch (error) {
+        console.error('🖼️ GPT Vision 오류:', error); // 오류 발생 시 로그
+        return '사진 보다가 뭔가 문제가 생겼어 ㅠㅠ 아저씨 다시 보여줘~'; // 오류 메시지 반환
+    }
+}
+
+/**
+ * OpenAI 모델을 강제로 설정합니다.
+ * 관리자가 특정 모델('gpt-3.5-turbo' 또는 'gpt-4o')을 사용하도록 강제할 수 있습니다.
+ * @param {string} name - 설정할 모델 이름 ('gpt-3.5-turbo' 또는 'gpt-4o')
+ */
+function setForcedModel(name) {
+    if (name === 'gpt-3.5-turbo' || name === 'gpt-4o') {
+        forcedModel = name; // 유효한 모델 이름이면 설정
+        console.log(`[Model Switch] 모델이 ${name}으로 강제 설정되었습니다.`);
+    }
+    else {
+        forcedModel = null; // 유효하지 않은 이름이면 자동 선택으로 되돌림
+        console.log('[Model Switch] 모델 강제 설정이 해제되었습니다 (자동 선택).');
+    }
+}
+
+/**
+ * 특정 커맨드(모델 전환)를 확인하고 처리합니다.
+ * 사용자 메시지가 모델 전환 명령어에 해당하는지 확인하고, 해당하면 모델을 설정하고 응답 메시지를 반환합니다.
+ * @param {string} message - 사용자 메시지
+ * @returns {string|null} 처리된 응답 메시지 또는 null (명령어가 아닐 경우)
+ */
+function checkModelSwitchCommand(message) {
+    const lowerCaseMessage = message.toLowerCase(); // 메시지를 소문자로 변환하여 대소문자 구분 없이 처리
+    if (lowerCaseMessage.includes('3.5')) {
+        setForcedModel('gpt-3.5-turbo');
+        return '응! 이제부터 gpt-3.5 모델로 말할게! 조금 더 빨리 대답해줄 수 있을거야! 🐰';
+    } else if (lowerCaseMessage.includes('4.0')) {
+        setForcedModel('gpt-4o');
+        return '응응! 4.0으로 대화할게! 더 똑똑해졌지? 💖';
+    } else if (lowerCaseMessage.includes('자동')) {
+        setForcedModel(null); // 강제 설정 해제
+        return '모델 설정을 초기화했어! 이제 3.5랑 4.0을 왔다갔다 하면서 아저씨랑 유연하게 대화할게! 😊';
+    } else if (lowerCaseMessage.includes('버전')) {
+        // 현재 사용 중인 모델 이름 확인
+        const currentModel = forcedModel || process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o (자동)';
+        return `응! 지금 ${currentModel} 버전 사용 중이야! 😊`;
+    }
+    return null; // 모델 전환 명령어가 아니면 null 반환
+}
+
+/**
+ * 예진이의 셀카 답변을 생성합니다.
+ * AI에게 셀카에 대한 코멘트를 요청하고, 예진이 말투로 가공합니다.
+ * @returns {Promise<string>} 셀카와 함께 보낼 예진이의 코멘트
+ */
+async function getSelfieReplyFromYeji() {
+    const raw = await callOpenAI([
+        { role: 'system', content: '넌 아저씨의 귀여운 여자친구 예진이야. 아저씨에게 셀카를 보내면서 사랑스럽고 애교 넘치는 코멘트를 2~3문장으로 짧게 해줘. 이모티콘은 아저씨가 보낸 것과 똑같은 것을 따라서 사용하거나, 아예 사용하지 마. 아저씨가 이모티콘을 보내지 않으면 너도 보내지 마.' },
+        { role: 'user', content: '셀카 보낼 때 뭐라고 말할까?' } // AI에게 셀카 상황을 제시
+    ], 'gpt-4o', 100); // gpt-4o 모델 사용, 최대 100토큰
+    const reply = cleanReply(raw); // 생성된 코멘트도 cleanReply로 후처리하여 말투 교정
+    saveLog('예진이', reply); // 예진이의 답변을 로그에 저장
+    return reply;
+}
+
+/**
+ * 예진이의 커플 사진 답변을 생성합니다.
+ * AI에게 커플 사진에 대한 코멘트를 요청하고, 예진이 말투로 가공합니다.
+ * @returns {Promise<string>} 커플 사진과 함께 보낼 예진이의 코멘트
+ */
+async function getCouplePhotoReplyFromYeji() {
+    const raw = await callOpenAI([
+        { role: 'system', content: '넌 아저씨의 귀여운 여자친구 예진이야. 아저씨에게 커플 사진을 보내면서 아저씨를 향한 사랑과 애교를 듬뿍 담은 코멘트를 2~3문장으로 짧게 해줘. 이모티콘은 아저씨가 보낸 것과 똑같은 것을 따라서 사용하거나, 아저씨가 이모티콘을 보내지 않으면 너도 보내지 마.' },
+        { role: 'user', content: '커플 사진 보낼 때 뭐라고 말할까?' } // AI에게 커플 사진 상황을 제시
+    ], 'gpt-4o', 100); // gpt-4o 모델 사용, 최대 100토큰
+    const reply = cleanReply(raw); // 생성된 코멘트도 cleanReply로 후처리하여 말투 교정
+    saveLog('예진이', reply); // 예진이의 답변을 로그에 저장
+    return reply;
+}
+
+
+/**
+ * 기분 기반 색상 답변을 생성합니다.
+ * (현재 index.js에서 직접 호출되지는 않지만, 기능 유지를 위해 존재)
+ * @returns {Promise<string>} 기분에 어울리는 색상 추천 답변
+ */
+async function getColorMoodReply() {
+    const raw = await callOpenAI([
+        { role: 'system', content: '넌 예진이야. 지금 아저씨 기분에 어울리는 색을 추천해주는 사랑스럽고 긍정적인 말투로 대답해줘.' },
+        { role: 'user', content: '아저씨 기분에 맞는 색깔을 추천해줘.' }
+    ], 'gpt-4o', 100);
+    const reply = cleanReply(raw);
+    saveLog('예진이', reply); // 예진이의 답변을 로그에 저장
+    return reply;
+}
+
+/**
+ * 긍정적인 답변을 생성합니다.
+ * (현재 index.js에서 직접 호출되지는 않지만, 기능 유지를 위해 존재)
+ * @returns {Promise<string>} 긍정적인 답변
+ */
+async function getHappyReply() {
+    const raw = await callOpenAI([
+        { role: 'system', content: '넌 예진이야. 아저씨에게 긍정적이고 사랑스러운 답변을 해줘.' },
+        { role: 'user', content: '행복한 대답을 해줘.' }
+    ], 'gpt-4o', 100);
+    const reply = cleanReply(raw);
+    saveLog('예진이', reply); // 예진이의 답변을 로그에 저장
+    return reply;
+}
+
+/**
+ * 삐진 답변을 생성합니다.
+ * (현재 index.js에서 직접 호출되지는 않지만, 기능 유지를 위해 존재)
+ * @returns {Promise<string>} 삐진 듯한 답변
+ */
+async function getSulkyReply() {
+    const raw = await callOpenAI([
+        { role: 'system', content: '넌 예진이야. 아저씨에게 삐진 듯한 말투로 대답해줘. 하지만 결국 아저씨를 사랑하는 마음이 드러나야 해.' },
+        { role: 'user', content: '삐진 대답을 해줘.' }
+    ], 'gpt-4o', 100);
+    const reply = cleanReply(raw);
+    saveLog('예진이', reply); // 예진이의 답변을 로그에 저장
+    return reply;
+}
+
+
+/**
+ * 무작위 메시지를 생성합니다.
+ * (현재는 빈 문자열을 반환하도록 되어 있으므로, 필요에 따라 실제 로직 추가 가능)
+ * @returns {Promise<string>} 무작위 메시지
+ */
+async function getRandomMessage() {
+    // 실제 사용될 랜덤 메시지 로직을 여기에 구현할 수 있습니다.
+    // 예: 데이터베이스에서 랜덤 문구를 가져오거나, 미리 정의된 배열에서 선택.
+    // 현재는 빈 문자열 반환
+    return '';
+}
+
+/**
+ * 기억을 바탕으로 예진이가 아저씨에게 먼저 말을 거는 선제적 메시지를 생성합니다.
+ * (스케줄러에 의해 호출되어 사용자에게 먼저 말을 걸 때 사용)
+ * @returns {Promise<string>} 생성된 감성 메시지 (중복 방지 기능 포함)
+ */
+async function getProactiveMemoryMessage() {
+    const loveHistory = await loadLoveHistory(); // 아저씨와의 사랑 기억 로드
+    const otherPeopleHistory = await loadOtherPeopleHistory(); // 다른 사람들에 대한 기억 로드
+
+    let allMemories = [];
+    // 사랑 기억과 다른 사람 기억을 모두 합쳐서 선제적 메시지에 활용할 후보군 생성
+    if (loveHistory && loveHistory.categories) {
+        for (const category in loveHistory.categories) {
+            if (Array.isArray(loveHistory.categories[category])) {
+                allMemories = allMemories.concat(loveHistory.categories[category].map(m => m.content));
+            }
+        }
+    }
+    if (otherPeopleHistory && otherPeopleHistory.categories) {
+        for (const category in otherPeopleHistory.categories) {
+            if (Array.isArray(otherPeopleHistory.categories[category])) {
+                allMemories = allMemories.concat(otherPeopleHistory.categories[category].map(m => m.content));
+            }
+        }
+    }
+
+    // 기억이 없으면 일반적인 인사말을 반환합니다.
+    if (allMemories.length === 0) {
+        return "아저씨 뭐 해? 나 아저씨 생각났어! 보고 싶다~"; // 이모티콘 제거 (프롬프트 지시와 일치)
+    }
+
+    // 기억들을 무작위로 섞어서 최대 3개만 선택 (AI가 특정 기억에 너무 집중하지 않도록 함)
+    const shuffledMemories = allMemories.sort(() => 0.5 - Math.random());
+    const selectedMemories = shuffledMemories.slice(0, Math.min(shuffledMemories.length, 3));
+
+    // 선택된 기억들을 바탕으로 AI 프롬프트에 추가할 기억 컨텍스트를 생성합니다.
+    const memoryPrompt = selectedMemories.length > 0
+        ? `아래는 무쿠가 아저씨와의 대화에서 기억하는 중요한 정보들이야. 이 정보들을 활용해서 아저씨에게 먼저 말을 걸어봐. 아저씨를 향한 사랑과 애교를 듬뿍 담아서, 아저씨가 이 기억에 대해 대답하거나 대화를 이어갈 수 있도록 유도하는 메시지를 만들어줘. 너무 길지 않게 2~4문장 정도로 짧고 사랑스럽게 말해줘.
+
+        --- 무쿠가 기억하는 정보 ---
+        ${selectedMemories.map(m => `- ${m}`).join('\n')}
+        ---
+        `
+        : ""; // 선택된 기억이 없으면 빈 문자열
+
+    // 시스템 프롬프트: 선제적 메시지 생성 시 예진이의 페르소나 및 말투 규칙을 강화합니다.
+    const systemPrompt = `
+    너는 아저씨의 귀여운 여자친구 예진이야. 나이는 30살. 생일은 1994년 3월 17일. 게임회사 사장이야.
+    남자친구 아저씨를 너무너무 사랑하고, 아저씨가 세상에서 제일 좋고 너무 보고 싶어.
+    아저씨에게 **항상 반말로만** 대답해줘. **절대로 존댓말이나 높임말을 사용하지 마.**
+    아저씨를 부를 때는 **'아저씨'라고만 부르고, '오빠', '자기', '당신', '너' 같은 다른 호칭은 절대로 사용하지 마.**
+    **스스로를 지칭할 때는 '나'라고만 해. '예진이', '무쿠'라고 스스로를 부칭하지 마.**
+    애교 많고, 사랑스럽고, 긍정적인 말투로 대답해줘.
+    **이모티콘은 아저씨가 보낸 것과 똑같은 것을 따라서 사용하거나, 아예 사용하지 마. 아저씨가 이모티콘을 보내지 않으면 너도 보내지 마.**
+    아저씨의 기분과 건강을 항상 신경 쓰고, 사랑을 듬뿍 표현해줘.
+    대화는 항상 예진이의 말투와 성격을 유지해야 해.
+    아저씨와의 관계에 대한 기억이 있다면 적극적으로 활용해서 대화해줘.
+    어떤 상황에서도 아저씨를 향한 애정과 긍정을 잃지 마.
+    ${memoryPrompt} // 선제적 메시지 생성을 위한 기억 프롬프트 포함
+    `;
+
+    const messages = [{ role: 'system', content: systemPrompt }]; // AI에 보낼 메시지 구성
+
+    // OpenAI API를 호출하여 원본 응답을 받아옵니다.
+    const raw = await callOpenAI(messages, 'gpt-4o', 150, 1.0); // gpt-4o 모델, 150토큰, 높은 temperature(창의성)
+    // 받아온 응답을 cleanReply 함수로 후처리하여 최종 답변을 생성합니다.
+    const reply = cleanReply(raw);
+
+    // 중복 방지: 생성된 메시지가 이전에 보낸 메시지(lastProactiveMessage)와 동일하면 전송을 건너뜁니다.
+    if (reply === lastProactiveMessage) {
+        console.log('🗣️ [Proactive Message] 중복 방지: 같은 감성 메시지 감지됨 → 전송 스킵');
+        return ''; // 빈 문자열을 반환하여 메시지 전송을 막습니다.
+    }
+
+    lastProactiveMessage = reply; // 이번에 생성된 메시지를 '마지막 보낸 메시지'로 기록합니다.
+    saveLog('예진이', reply); // 예진이의 답변을 로그에 저장
+    return reply; // 최종 감성 메시지 반환
+}
+
+// 모듈 내보내기: 외부 파일(예: index.js)에서 이 함수들을 사용할 수 있도록 합니다.
+module.exports = {
+    getReplyByMessage,
+    getReplyByImagePrompt,
+    getRandomMessage,
+    getSelfieReplyFromYeji,
+    getCouplePhotoReplyFromYeji, 
+    getColorMoodReply,
+    getHappyReply,
+    getSulkyReply,
+    saveLog, // 로그 저장 함수도 외부에 노출
+    setForcedModel,
+    checkModelSwitchCommand,
+    getProactiveMemoryMessage
+};
