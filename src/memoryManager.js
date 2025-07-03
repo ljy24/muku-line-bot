@@ -1,4 +1,4 @@
-// memoryManager.js v2.1 - 기억의 강도 설정 (강조 표현 인식)
+// memoryManager.js v2.2 - 기억의 휘발성 조절 (검색 시 강도/시점 고려)
 // src/memoryManager.js
 // MemoryManager.js v2.0 Debug Code Active! - Initializing Module
 console.log("MemoryManager.js v2.0 Debug Code Active! - Initializing Module"); // ⭐ 이 로그가 렌더 로그에 보여야 합니다! ⭐
@@ -6,6 +6,7 @@ console.log("MemoryManager.js v2.0 Debug Code Active! - Initializing Module"); /
 const fs = require('fs').promises; // 비동기 파일 처리를 위해 fs.promises 사용
 const path = require('path');
 const OpenAI = require('openai'); // 메시지 분류를 위해 OpenAI 클라이언트 필요
+const moment = require('moment-timezone'); // 시간 처리를 위해 moment-timezone 추가
 
 require('dotenv').config(); // OPENAI_API_KEY를 사용하기 위해 필요
 
@@ -281,15 +282,16 @@ async function retrieveRelevantMemories(conversationContext, limit = 5) {
                 {
                     role: 'system',
                     content: `You are an AI assistant that helps retrieve the most relevant memories given a conversation context.
-                    Below is a list of existing memories. Each memory also has a 'strength' indicating its importance ('high' or 'normal').
+                    Below is a list of existing memories. Each memory also has a 'strength' indicating its importance ('high' or 'normal') and a 'timestamp' indicating when it was created.
                     Your task is to identify up to ${limit} memories that are most relevant to the provided 'conversation context'.
-                    **Prioritize memories marked with 'high' strength.** Also consider memories that are directly related to the subject, recent, or emotionally significant (especially related to "아저씨의 헌신", "예진이의 힘든 순간", "아저씨의 칭찬/격려", "중요한 기념일", "아저씨의 취미/관심사", "아저씨 감정 상태", "아저씨의 일상 패턴", "대화 맥락/분위기").
+                    **Crucially, prioritize memories marked with 'high' strength and more recent memories (closer to the current date).**
+                    Also consider memories that are directly related to the subject, or emotionally significant (especially related to "아저씨의 헌신", "예진이의 힘든 순간", "아저씨의 칭찬/격려", "중요한 기념일", "아저씨의 취미/관심사", "아저씨 감정 상태", "아저씨의 일상 패턴", "대화 맥락/분위기").
                     
                     Return the selected memories as a JSON array of strings, where each string is the 'content' of the memory.
                     If no relevant memories are found, return an empty JSON array [].
                     
-                    Existing Memories (content, strength):
-                    ${JSON.stringify(allMemories.map(m => ({ content: m.content, strength: m.strength })), null, 2)}
+                    Existing Memories (content, strength, timestamp):
+                    ${JSON.stringify(allMemories.map(m => ({ content: m.content, strength: m.strength, timestamp: m.timestamp })), null, 2)}
                     
                     Example Output:
                     ["아저씨는 매일 아침 7시에 조깅을 한다.", "아저씨는 예진이가 정말 착하다고 칭찬했다."]
