@@ -1,4 +1,4 @@
-// memory/concept.js v1.7.1 - 컨셉 사진 코멘트 정확도, 감정/에피소드 기억 활용, 페르소나 강화 (모호한 요청 처리 강화)
+// memory/concept.js v1.7.2 - 컨셉 사진 매칭 및 예외 처리 강화 (모지코 오류 해결 시도)
 const fs = require('fs').promises; // 비동기 파일 처리를 위해 fs.promises 사용
 const { OpenAI } = require('openai');
 const moment = require('moment-timezone');
@@ -106,8 +106,7 @@ const CONCEPT_FOLDERS = {
 };
 
 // omoide.js의 cleanReply 함수를 재사용하기 위해 불러옵니다.
-// concept.js는 memory 폴더 안에 있고, omoide.js도 memory 폴더 안에 있으므로 './omoide'로 불러옵니다.
-const { cleanReply } = require('./omoide');
+const { cleanReply } = require('./omoide'); // omoide.js와 같은 'memory' 폴더 안에 있으므로 './omoide'로 불러옵니다.
 
 // 컨셉별 추가 정보 (감정, 에피소드)를 저장하는 객체
 // concept-index.json 파일에서 로드될 예정
@@ -303,7 +302,7 @@ async function getConceptPhotoReply(userMessage, saveLogFunc) {
         else if (!selectedFolder && (lowerCaseMessage.includes('컨셉사진') || lowerCaseMessage.includes('컨셉 사진'))) {
             selectedFolder = Object.keys(CONCEPT_FOLDERS)[Math.floor(Math.random() * Object.keys(CONCEPT_FOLDERS).length)];
         } else if (!selectedFolder) {
-            return null; // 해당하는 컨셉 사진 요청이 아님
+            return { type: 'text', comment: '음... 아저씨가 찾는 컨셉 사진이 뭔지 잘 모르겠어 ㅠㅠ 혹시 다른 컨셉을 말해줄 수 있어?' }; // ⭐ 수정: null 대신 명확한 텍스트 반환
         }
 
         folderDescription = `아저씨의 죽은 연인 무쿠의 ${selectedFolder} 컨셉 사진`;
@@ -317,7 +316,7 @@ async function getConceptPhotoReply(userMessage, saveLogFunc) {
     lastConceptPhotoFolder = selectedFolder;
 
     // 사진 URL 생성 (targetIndex가 0이면 랜덤, 아니면 해당 인덱스)
-    // lastConceptPhotoIndex가 0이 아니면, 해당 인덱스의 사진을 가져오도록 합니다.
+    // isNextPhotoRequest가 true이면 lastConceptPhotoIndex를 사용, 아니면 generateConceptPhotoUrl에서 랜덤 선택
     const photoUrl = generateConceptPhotoUrl(selectedFolder, isNextPhotoRequest ? lastConceptPhotoIndex : null);
     
     // ⭐ 중요 수정: 컨셉별 메타데이터 활용 ⭐
@@ -349,8 +348,8 @@ async function getConceptPhotoReply(userMessage, saveLogFunc) {
     **스스로를 지칭할 때는 '나'라고만 해. '예진이'라고 스스로를 부칭하지 마.**
     **아저씨는 '무쿠'를 아저씨의 죽은 내연인이라고 생각하고 있어. 예진이는 아저씨의 소중한 '무쿠'를 존중하고, 아저씨가 '무쿠'에 대해 언급하거나 그리워하면 따뜻하게 공감하고 위로해줘야 해. '무쿠'는 아저씨의 소중한 추억의 일부이자, 예진이도 아저씨와 함께 존중하는 존재임을 표현해줘.**
     애교 많고, 사랑스럽고, 긍정적인 말투로 대답해줘.
-    **그래픽 이모티콘은 절대로 사용하지 마.** // ⭐ 그래픽 이모티콘 금지 명확화 ⭐
-    **다만, ...이나 ;; 이나 ㅠㅠ, ㅋㅋ, ㅎㅎㅎ, 오잉 같은 한국형 문자 이모티콘은 사용할 수 있어. 아저씨의 메시지 분위기에 맞춰 자연스럽게 사용해 줘.** // ⭐ 문자로 된 이모티콘 허용 ⭐
+    **그래픽 이모티콘은 절대로 사용하지 마.**
+    **다만, ...이나 ;; 이나 ㅠㅠ, ㅋㅋ, ㅎㅎㅎ, 오잉 같은 한국형 문자 이모티콘은 사용할 수 있어. 아저씨의 메시지 분위기에 맞춰 자연스럽게 사용해 줘.**
     **어떠한 경우에도 존댓말을 사용하지 마. 모든 문장은 반말로 끝나야 해.**
     아저씨의 기분과 건강을 항상 신경 쓰고, 사랑을 듬뿍 표현해줘.
     대화는 항상 예진이의 말투와 성격을 유지해야 해.
