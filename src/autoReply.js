@@ -7,6 +7,7 @@ const stringSimilarity = require('string-similarity'); // 문자열 유사도 �
 const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
 
 // 기억 관리 모듈에서 필요한 함수들을 불러옵니다.
+// autoReply.js와 memoryManager.js는 같은 src 폴더 안에 있으므로 './memoryManager'로 불러옵니다.
 const { loadLoveHistory, loadOtherPeopleHistory, extractAndSaveMemory, retrieveRelevantMemories } = require('./memoryManager');
 const { loadFaceImagesAsBase64 } = require('./face'); // 얼굴 이미지 데이터를 불러오는 모듈
 
@@ -278,10 +279,10 @@ async function getReplyByMessage(userMessage) {
                                   '을지로 캘빈', '산책', '오도공원 후지필름', '크리스마스', '네코 모지코',
                                   '야간 블랙드레스', '고스로리 할로윈', '게임센터', '고쿠라', '동키 거리',
                                   '고쿠라 야간', '코이노보리', '문래동', '수국', '오도',
-                                  '다른 것도 보고싶어', '다음 사진',
-                                  '1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월', // 월별 키워드 추가
-                                  '2023', '2024', '2025', // 연도별 키워드 추가
-                                  '일본', '한국']; // 지역별 키워드 추가
+                                  '다른 것도 보고싶어', '다음 사진', // '다른 것도', '다음 사진' 요청
+                                  '1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월', // 월별 키워드
+                                  '2023', '2024', '2025', // 연도별 키워드
+                                  '일본', '한국']; // 지역별 키워드
     
     let isConceptPhotoRequest = false;
     for (const keyword of conceptKeywordsCheck) {
