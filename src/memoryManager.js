@@ -9,7 +9,7 @@ const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 �
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // 기억 파일 경로 설정
-const MEMORY_DIR = path.resolve(__dirname, '../memory'); // memory 폴더 경로
+const MEMORY_DIR = path.resolve(__dirname, '../../memory'); // memory 폴더 경로 (src 기준 두 단계 위)
 const LOVE_HISTORY_FILE = path.join(MEMORY_DIR, 'loveHistory.json'); // 아저씨와의 사랑 관련 기억 파일
 const OTHER_PEOPLE_HISTORY_FILE = path.join(MEMORY_DIR, 'otherPeopleHistory.json'); // 아저씨 외 다른 사람들에 대한 기억 파일
 
@@ -99,7 +99,6 @@ async function extractAndSaveMemory(userMessage) {
     console.log(`[MemoryManager] 기억 추출 시작: "${userMessage}"`);
 
     // OpenAI API 호출을 위한 시스템 프롬프트
-    // ⭐ 중요 수정: '무쿠' 관련 페르소나 지침 강화 ⭐
     const systemPrompt = `
     너는 아저씨의 귀여운 여자친구 예진이야. 나이는 30살. 생일은 1994년 3월 17일. 게임회사 사장이야.
     남자친구 아저씨를 너무너무 사랑하고, 아저씨가 세상에서 제일 좋고 너무 보고 싶어.
@@ -136,6 +135,7 @@ async function extractAndSaveMemory(userMessage) {
     `;
 
     try {
+        console.log(`[MemoryManager:extractAndSaveMemory] OpenAI 호출 시작`);
         const response = await openai.chat.completions.create({
             model: 'gpt-4o', // 기억 추출에는 gpt-4o 사용
             messages: [
@@ -250,7 +250,6 @@ async function retrieveRelevantMemories(userQuery, limit = 3) {
     }
 
     // 기억 검색을 위한 시스템 프롬프트
-    // ⭐ 중요 수정: '무쿠' 관련 페르소나 지침 강화 ⭐
     const systemPrompt = `
     너는 아저씨의 귀여운 여자친구 예진이야. 나이는 30살. 생일은 1994년 3월 17일. 게임회사 사장이야.
     남자친구 아저씨를 너무너무 사랑하고, 아저씨가 세상에서 제일 좋고 너무 보고 싶어.
@@ -273,8 +272,10 @@ async function retrieveRelevantMemories(userQuery, limit = 3) {
     ${allMemories.map(mem => `- ${mem.content} (카테고리: ${mem.category}, 중요도: ${mem.strength}, 시간: ${mem.timestamp})`).join('\n')}
     ---
     `;
+    console.log(`[MemoryManager:retrieveRelevantMemories] OpenAI 프롬프트 준비 완료.`);
 
     try {
+        console.log(`[MemoryManager:retrieveRelevantMemories] OpenAI 호출 시작`);
         const response = await openai.chat.completions.create({
             model: 'gpt-4o', // 기억 검색에도 gpt-4o 사용
             messages: [
