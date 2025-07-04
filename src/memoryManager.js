@@ -1,4 +1,4 @@
-// memoryManager.js v3.2 - 기억 검색 JSON 파싱 오류 수정 (마크다운 코드 블록 제거 강화)
+// memoryManager.js v3.3 - 기억 검색 JSON 파싱 오류 수정 (변수명 오류 수정)
 // src/memoryManager.js
 // MemoryManager.js v2.0 Debug Code Active! - Initializing Module
 console.log("MemoryManager.js v2.0 Debug Code Active! - Initializing Module"); // ⭐ 이 로그가 렌더 로그에 보여야 합니다! ⭐
@@ -164,7 +164,7 @@ async function extractAndSaveMemory(userMessage) {
                     **매번, 아무리 작거나 사소해 보여도 관련된 모든 가능한 기억을 꼼꼼하게 식별하고 추출하세요. 사소한 세부 사항이라도 놓치면 "예진이"가 진정으로 살아있고 연결되어 있다는 느낌을 주기가 어려울 수 있습니다. 일상적인 상호작용의 뉘앙스, 감정적 신호, 그리고 모든 반복적인 패턴이나 습관을 포착하는 것을 최우선으로 하세요. 모든 추출에서 완전성과 정확성을 목표로 하십시오.**
                     
                     **[중요 - 기억 수정 요청 처리]**
-                    만약 사용자의 메시지가 이전에 저장된 기억을 **수정하려는 의도(예: "아니야", "틀렸어", "그게 아니라", "내가 말한 건 사실은", "고쳐줘")**가 명확하다면, 기존의 기억 추출 대신 다음 형식의 JSON 배열을 반환하세요.
+                    만약 사용자의 메시지가 이전에 저장된 기억을 **수정하려는 의도(예: "아니야", "틀렸어", "그게 아니라", "내가 말한 건 사실은", "고쳐줘")**가 명확하다면, 그 '수정 요청'을 아래 JSON 형식으로 반환하세요.
                     이때, 수정하려는 '기존 기억 내용'과 '새로운 올바른 내용'을 최대한 정확하게 파악해야 합니다. 해당하는 기존 기억이 없을 경우 빈 배열을 반환합니다.
                     Example Correction Output:
                     [
@@ -404,7 +404,7 @@ async function retrieveRelevantMemories(conversationContext, limit = 5) {
         });
 
         const parsedResponse = response.choices[0].message.content;
-        let relevantMemories;
+        let parsedMemories; // This was 'relevantMemories' before, which was undefined. Fixed.
         try {
             // ⭐ 마크다운 코드 블록 제거 로직 강화 ⭐
             let cleanedResponse = parsedResponse.trim();
@@ -413,9 +413,9 @@ async function retrieveRelevantMemories(conversationContext, limit = 5) {
                 cleanedResponse = cleanedResponse.substring(0, cleanedResponse.lastIndexOf('```')).trim();
             }
             parsedMemories = JSON.parse(cleanedResponse);
-            console.log(`[MemoryManager Debug] ✅ 관련 기억 검색 성공. 개수: ${relevantMemories.length}`);
-            await logMessage(`✅ 관련 기억 검색 성공. 개수: ${relevantMemories.length}`);
-            return relevantMemories;
+            console.log(`[MemoryManager Debug] ✅ 관련 기억 검색 성공. 개수: ${parsedMemories.length}`); // Fixed: used parsedMemories
+            await logMessage(`✅ 관련 기억 검색 성공. 개수: ${parsedMemories.length}`); // Fixed: used parsedMemories
+            return parsedMemories; // Fixed: returned parsedMemories
         } catch (parseError) {
             console.error(`❌ [MemoryManager Error] 'retrieveRelevantMemories' JSON 파싱 오류: ${parseError.message}`);
             await logMessage(`❌ 'retrieveRelevantMemories' JSON 파싱 오류: ${parseError.message}`);
