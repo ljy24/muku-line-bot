@@ -1,4 +1,4 @@
-// ✅ index.js v1.7 - 웹훅 처리 개선, 사진 URL 표시, 스케줄러 통합 (최종)
+// ✅ index.js v1.8 - 웹훅 처리 개선, 사진 URL 표시, 스케줄러 통합 (최종 - 파일 구조 경로 완벽 적용)
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공
 const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
@@ -8,12 +8,13 @@ const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 �
 const cron = require('node-cron'); // Node-cron: 주기적인 작업 스케줄링
 
 // ./src/autoReply.js에서 필요한 함수들을 불러옵니다.
+// 이 함수들은 메시지 응답 생성, 셀카 코멘트 생성, 모델 전환 처리 등을 담당합니다.
 const {
     getReplyByMessage,          // 사용자 텍스트 메시지에 대한 답변 생성 (이제 사진 요청도 처리)
     getReplyByImagePrompt,      // 이미지 메시지에 대한 답변 생성 (사용자가 보낸 이미지 분석)
     getRandomMessage,           // (현재 사용되지 않음, 이전 버전의 랜덤 메시지 기능)
-    // getSelfieReplyFromYeji,     // 예진이의 셀카 코멘트 생성 (스케줄러용) - 이제 omoide.js의 getOmoideReply로 대체됩니다.
-    // getCouplePhotoReplyFromYeji, // 커플 사진 코멘트 생성 함수 (스케줄러용) - 이제 omoide.js의 getOmoideReply로 대체됩니다.
+    getSelfieReplyFromYeji,     // 예진이의 셀카 코멘트 생성 (스케줄러용 - 기존 기능 유지)
+    getCouplePhotoReplyFromYeji, // 커플 사진 코멘트 생성 함수 (스케줄러용 - 기존 기능 유지)
     getColorMoodReply,          // (현재 사용되지 않음, 색상 기반 기분 답변 기능)
     getHappyReply,              // (현재 사용되지 않음, 긍정적인 답변 기능)
     getSulkyReply,              // (현재 사용되지 않음, 삐진 답변 기능)
@@ -23,15 +24,14 @@ const {
     getProactiveMemoryMessage,  // 기억 기반 선제적 메시지 생성
     getMemoryListForSharing,    // 기억 목록 공유 함수
     getSilenceCheckinMessage    // 침묵 감지 시 걱정 메시지 생성 함수
-} = require('./src/autoReply');
+} = require('./src/autoReply'); // ⭐ 경로 수정: src 폴더 안의 autoReply.js
 
 // memoryManager 모듈을 불러옵니다.
-const memoryManager = require('./src/memoryManager');
+const memoryManager = require('./src/memoryManager'); // ⭐ 경로 수정: src 폴더 안의 memoryManager.js
 
 // omoide.js에서 getOmoideReply 함수를 불러옵니다.
-// 파일 구조 이미지에 따르면 omoide.js는 memory 폴더 바로 아래에 있습니다.
-// 따라서 require 경로를 '../memory/omoide'로 수정해야 합니다.
-const { getOmoideReply } = require('../memory/omoide'); //
+// 주신 파일 구조에 따르면, index.js에서 memory 폴더 안의 omoide.js로 접근해야 합니다.
+const { getOmoideReply } = require('./memory/omoide'); // ⭐ 경로 수정: memory 폴더 안의 omoide.js
 
 // Express 애플리케이션을 생성합니다.
 const app = express();
