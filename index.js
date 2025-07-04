@@ -1,4 +1,4 @@
-// ✅ index.js v1.9.1 - 웹훅 처리 개선, 사진 URL 표시, 스케줄러 통합 (최종 - 경로 문제 해결)
+// ✅ index.js v1.9.2 - 웹훅 처리 개선, 사진 URL 표시, 스케줄러 통합 (최종 - GitHub Root 구조 기반)
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공
 const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
@@ -7,8 +7,8 @@ const express = require('express'); // Express 프레임워크: 웹 서버 구�
 const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
 const cron = require('node-cron'); // Node-cron: 주기적인 작업 스케줄링
 
-// ./src/autoReply.js에서 필요한 함수들을 불러옵니다.
-// 이 함수들은 메시지 응답 생성, 셀카 코멘트 생성, 모델 전환 처리 등을 담당합니다.
+// 필요한 함수들을 불러옵니다.
+// ⭐ 경로 수정: autoReply.js는 src 폴더 안에 있습니다. (./src/)
 const {
     getReplyByMessage,          // 사용자 텍스트 메시지에 대한 답변 생성 (이제 사진 요청도 처리)
     getReplyByImagePrompt,      // 이미지 메시지에 대한 답변 생성 (사용자가 보낸 이미지 분석)
@@ -24,17 +24,18 @@ const {
     getProactiveMemoryMessage,  // 기억 기반 선제적 메시지 생성
     getMemoryListForSharing,    // 기억 목록 공유 함수
     getSilenceCheckinMessage    // 침묵 감지 시 걱정 메시지 생성 함수
-} = require('./autoReply'); // ⭐ 경로 수정: autoReply.js가 index.js와 같은 src 폴더 안에 있다고 가정
+} = require('./src/autoReply'); // ⭐ 경로 수정: './src/autoReply' ⭐
 
 // memoryManager 모듈을 불러옵니다.
-const memoryManager = require('./memoryManager'); // ⭐ 경로 수정: memoryManager.js가 index.js와 같은 src 폴더 안에 있다고 가정
+// ⭐ 경로 수정: memoryManager.js는 src 폴더 안에 있습니다. (./src/)
+const memoryManager = require('./src/memoryManager'); // ⭐ 경로 수정
 
 // omoide.js에서 getOmoideReply 함수를 불러옵니다.
-// ⭐ 최종 경로 수정: memory 폴더가 src 폴더 안에 있다고 가정
+// ⭐ 경로 수정: omoide.js는 memory 폴더 안에 있습니다. (./memory/)
 const { getOmoideReply } = require('./memory/omoide'); // ⭐ 경로 수정
 
 // ⭐ concept.js에서 getConceptPhotoReply 함수를 불러옵니다.
-// ⭐ 최종 경로 수정: memory 폴더가 src 폴더 안에 있다고 가정
+// ⭐ 경로 수정: concept.js는 memory 폴더 안에 있습니다. (./memory/)
 const { getConceptPhotoReply } = require('./memory/concept'); // ⭐ 경로 수정
 
 // Express 애플리케이션을 생성합니다.
