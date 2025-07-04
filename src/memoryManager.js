@@ -273,5 +273,6 @@ module.exports = {
     loadLoveHistory, // * 이제 DB에서 필터링하여 사랑 관련 기억만 반환 *
     loadOtherPeopleHistory, // * 이제 DB에서 필터링하여 기타 인물 관련 기억만 반환 *
     extractAndSaveMemory,
-    retrieveRelevantMemories
+    retrieveRelevantMemories,
+    loadAllMemoriesFromDb
 };
