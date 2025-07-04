@@ -1,4 +1,4 @@
-// ✅ index.js v1.9.5 - 웹훅 처리 개선, 사진 URL 표시, 스케줄러 통합 (최종 - 경로 완벽 재조정)
+// ✅ index.js v1.9.4 - 웹훅 처리 개선, 사진 URL 표시, 스케줄러 통합 (최종 - 텍스트 응답 안정성 재강화)
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공
 const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
@@ -8,7 +8,6 @@ const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 �
 const cron = require('node-cron'); // Node-cron: 주기적인 작업 스케줄링
 
 // 필요한 함수들을 불러옵니다.
-// ⭐ 경로 수정: autoReply.js는 src 폴더 안에 있습니다. (./src/)
 const {
     getReplyByMessage,          // 사용자 텍스트 메시지에 대한 답변 생성 (이제 사진 요청도 처리)
     getReplyByImagePrompt,      // 이미지 메시지에 대한 답변 생성 (사용자가 보낸 이미지 분석)
@@ -24,19 +23,16 @@ const {
     getProactiveMemoryMessage,  // 기억 기반 선제적 메시지 생성
     getMemoryListForSharing,    // 기억 목록 공유 함수
     getSilenceCheckinMessage    // 침묵 감지 시 걱정 메시지 생성 함수
-} = require('./src/autoReply'); // ⭐ 경로 재조정: './src/autoReply' ⭐
+} = require('./src/autoReply'); // ⭐ 경로 확인: autoReply.js가 index.js와 같은 src 폴더 안에 있다고 가정
 
 // memoryManager 모듈을 불러옵니다.
-// ⭐ 경로 수정: memoryManager.js는 src 폴더 안에 있습니다. (./src/)
-const memoryManager = require('./src/memoryManager'); // ⭐ 경로 재조정: './src/memoryManager' ⭐
+const memoryManager = require('./src/memoryManager'); // ⭐ 경로 확인: memoryManager.js가 index.js와 같은 src 폴더 안에 있다고 가정
 
 // omoide.js에서 getOmoideReply 함수를 불러옵니다.
-// ⭐ 경로 수정: omoide.js는 memory 폴더 안에 있습니다. (./memory/)
-const { getOmoideReply } = require('./memory/omoide'); // ⭐ 경로 재조정: './memory/omoide' ⭐
+const { getOmoideReply } = require('../memory/omoide'); // ⭐ 경로 확인
 
-// ⭐ concept.js에서 getConceptPhotoReply 함수를 불러옵니다.
-// ⭐ 경로 수정: concept.js는 memory 폴더 안에 있습니다. (./memory/)
-const { getConceptPhotoReply } = require('./memory/concept'); // ⭐ 경로 재조정: './memory/concept' ⭐
+// concept.js에서 getConceptPhotoReply 함수를 불러옵니다.
+const { getConceptPhotoReply } = require('../memory/concept'); // ⭐ 경로 확인
 
 // Express 애플리케이션을 생성합니다.
 const app = express();
@@ -124,10 +120,15 @@ app.post('/webhook', middleware(config), async (req, res) => {
                     const botResponse = await getReplyByMessage(text);
                     let replyMessages = [];
 
+                    // ⭐ 중요 수정: 텍스트 응답 안정성 재강화 ⭐
                     if (botResponse.type === 'text') {
+                        // comment가 유효한 문자열인지 확인하고, 아니면 기본 폴백 메시지 사용
+                        const responseText = (typeof botResponse.comment === 'string' && botResponse.comment.length > 0) 
+                                             ? botResponse.comment 
+                                             : '음... 예진이가 무슨 말을 해야 할지 잠시 잊었어 ㅠㅠ';
                         replyMessages.push({
                             type: 'text',
-                            text: botResponse.comment || '음... 예진이가 무슨 말을 해야 할지 잠시 잊었어 ㅠㅠ'
+                            text: responseText 
                         });
                     } else if (botResponse.type === 'photo') {
                         replyMessages.push({
@@ -176,8 +177,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
             }
         }
         res.status(200).send('OK');
-    }
-    catch (err) {
+    } catch (err) {
         console.error('웹훅 처리 에러:', err);
         res.status(200).send('OK');
     }
