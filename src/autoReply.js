@@ -1,4 +1,4 @@
-// src/autoReply.js v2.4.1 - 기억 인출 오류 수정 및 AI 프롬프트 최종 강화 (이모티콘 규칙 완벽 반영)
+// src/autoReply.js v2.4.2 - 기억 공유 기능 및 추억 사진 기능 통합 (이모티콘 규칙 완벽 반영 및 기능 누락 없음)
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공
 const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
@@ -7,7 +7,7 @@ const stringSimilarity = require('string-similarity'); // 문자열 유사도 �
 const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
 
 // 기억 관리 모듈에서 필요한 함수들을 불러옵니다.
-// 이 경로는 이미 올바르므로 수정하지 않습니다.
+// retrieveRelevantMemories: 대화 맥락에 맞는 기억을 검색하는 새로운 함수
 const { loadLoveHistory, loadOtherPeopleHistory, extractAndSaveMemory, retrieveRelevantMemories } = require('./memoryManager');
 const { loadFaceImagesAsBase64 } = require('./face'); // 얼굴 이미지 데이터를 불러오는 모듈
 
@@ -51,7 +51,7 @@ const memory1 = safeRead(path.resolve(__dirname, '../memory/1.txt'));
 const memory2 = safeRead(path.resolve(__dirname, '../memory/2.txt'));
 const memory3 = safeRead(path.resolve(__dirname, '../memory/3.txt'));
 const fixedMemory = safeRead(path.resolve(__dirname, '../memory/fixedMemories.json')); // 고정된 기억 (JSON 형식, 파싱 필요)
-// 압축된 기억: 각 기억 파일의 마지막 3000자씩을 결합하여 AI 프롬프트에 활용
+// 압축된 기억: 각 파일의 마지막 3000자씩을 결합하여 AI 프롬프트에 활용
 const compressedMemory = memory1.slice(-3000) + '\n' + memory2.slice(-3000) + '\n' + memory3.slice(-3000);
 
 // 메모리 및 로그 파일 경로를 정의합니다.
