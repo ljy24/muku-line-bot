@@ -97,7 +97,23 @@ app.post('/webhook', middleware(config), async (req, res) => {
                     } else {
                         console.log(`[index.js] 명령어 '${text}'는 메모리 저장에서 제외됩니다.`);
                     }
+// index.js 파일의 app.post('/webhook', ... ) 함수 안, 대략 100~102번째 줄 정도에 아래 코드 추가
+// (기존 코드: const botResponse = await getReplyByMessage(text); 바로 위에 추가하면 좋습니다.)
 
+console.log('[Debug Check] botResponse 값 확인 시작 =====================');
+console.log('botResponse 전체:', JSON.stringify(botResponse, null, 2));
+console.log('botResponse.type:', botResponse.type);
+console.log('botResponse.comment (변수 값):', botResponse.comment);
+console.log('typeof botResponse.comment:', typeof botResponse.comment); // 추가: 타입 확인
+console.log('botResponse.comment === "" ?', botResponse.comment === ""); // 추가: 빈 문자열인지 확인
+console.log('botResponse.comment === null ?', botResponse.comment === null); // 추가: null인지 확인
+console.log('botResponse.comment === undefined ?', botResponse.comment === undefined); // 추가: undefined인지 확인
+console.log('[Debug Check] botResponse 값 확인 끝 =====================');
+
+// 그리고 이어서 기존 코드:
+// const botResponse = await getReplyByMessage(text);  <-- 이 줄은 위에 놔두고 그 밑에 log 추가
+// let replyMessages = [];
+// ... (이하 동일)
                     const versionResponse = checkModelSwitchCommand(text);
                     if (versionResponse) {
                         await client.replyMessage(event.replyToken, { type: 'text', text: versionResponse });
