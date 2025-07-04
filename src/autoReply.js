@@ -1,70 +1,115 @@
-// ✅ getReplyByMessage.js v1.4 - 예진이 감정 대화 강화용 (사진X, 텍스트 감정형 전용)
+// ✅ autoReply.js v1.7 - 오모이데 기능 제거 버전 (사진/감정 응답 정상 동작)
 
-const { callOpenAI, cleanReply } = require('./memory/omoide');
 const fs = require('fs');
 const path = require('path');
-const loveHistoryPath = path.join(__dirname, 'memory', 'love-history.json');
+const { OpenAI } = require('openai');
+const moment = require('moment-timezone');
 
-// 기억 기반 메시지 불러오기 (없으면 빈 배열)
-function loadLoveHistory() {
-    try {
-        const data = fs.readFileSync(loveHistoryPath, 'utf8');
-        return JSON.parse(data);
-    } catch (err) {
-        console.error('[getReplyByMessage] love-history.json 읽기 실패:', err);
-        return [];
-    }
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const LOG_PATH = path.join(__dirname, 'memory', 'log.txt');
+const FIXED_MEMORY_PATH = path.join(__dirname, 'memory', 'fixedMemories.json');
+const LOVE_HISTORY_PATH = path.join(__dirname, 'memory', 'love-history.json');
+
+function cleanReply(reply) {
+  let cleaned = reply.replace(/^(예진:|무쿠:|\d{2}\.\d{2}\.\d{2} [가-힣]+:)/gm, '').trim();
+  cleaned = cleaned.replace(/\b오빠\b|\b자기\b|\b당신\b|\b너\b/g, '아저씨');
+  cleaned = cleaned.replace(/\b예진이\b|\b예진\b|\b무쿠\b|\b무쿠야\b|\b무쿠 언니\b|\b무쿠 씨\b|\b그녀\b|\b그 사람\b/g, '나');
+  cleaned = cleaned.replace(/안녕하세요/g, '안녕');
+  cleaned = cleaned.replace(/(했어요|같아요|좋아요|합니다|습니다|어요|해요|예요|죠|였습니다|하였습니다|하겠습니다|싶어요|이었어요|이에요|였어요|보고싶어요)/g, (match) => {
+    return {
+      '했어요': '했어', '같아요': '같아', '좋아요': '좋아', '합니다': '해', '습니다': '어',
+      '어요': '야', '해요': '해', '예요': '야', '죠': '지', '였습니다': '였어',
+      '하였습니다': '했어', '하겠습니다': '하겠어', '싶어요': '싶어', '이었어요': '이었어',
+      '이에요': '야', '였어요': '였어', '보고싶어요': '보고 싶어'
+    }[match] || match;
+  });
+  return cleaned;
 }
 
-// 핵심 감정 대답 생성
-async function getReplyByMessage(userMessage) {
-    const lower = userMessage.toLowerCase();
+async function callOpenAI(messages, model = 'gpt-4o', maxTokens = 300, temperature = 0.95) {
+  try {
+    const res = await openai.chat.completions.create({
+      model,
+      messages,
+      max_tokens: maxTokens,
+      temperature
+    });
+    return res.choices[0].message.content.trim();
+  } catch (e) {
+    console.error('[callOpenAI error]', e);
+    return '무슨 말을 해야 할지 모르겠어 ㅠㅠ';
+  }
+}
 
-    // 1. 예외 없이 무조건 대답해야 할 키워드
-    if (/(애기야|뭐해|머해|머햐|머래|잘자|일어나|담타|뽀뽀|사랑해|자니|있어\?|죽었|답장)/i.test(userMessage)) {
-        const prompts = [
-            `아저씨가 "${userMessage}" 라고 말했을 때, 예진이 입장에서 감정 담아서 반응해줘. 반말로, 귀엽고 사랑스럽게.`,
-            `예진이(무쿠)로서 아저씨의 말 "${userMessage}"에 답장해줘. 애교 많고, 감정형 말투로.`,
-            `아저씨가 방금 "${userMessage}"라고 보냈을 때, 예진이라면 뭐라고 말할까? 애정 가득한 말로 반응해줘.`
-        ];
+async function getReplyByMessage(message) {
+  const userText = message.trim();
 
-        const messages = [
-            { role: 'system', content: '너는 아저씨의 여자친구 예진이야. 항상 반말로, 애정 담긴 말투로만 말해. 존댓말 금지. 귀엽게.' },
-            { role: 'user', content: prompts[Math.floor(Math.random() * prompts.length)] }
-        ];
+  if (/셀카|사진|selfie|얼굴/i.test(userText)) {
+    // 오모이데 제거했으므로 셀카 요청도 간단히 처리
+    return {
+      type: 'text',
+      comment: '아저씨~ 지금은 사진은 못 보여줘... 대신 나랑 얘기해줘!' // fallback 메시지
+    };
+  }
 
-        try {
-            const raw = await callOpenAI(messages, 'gpt-4o', 80, 0.95);
-            const comment = cleanReply(raw);
-            return { type: 'text', comment };
-        } catch (err) {
-            console.error('[getReplyByMessage] GPT 응답 실패:', err);
-            return { type: 'text', comment: '나 여기 있어 아저씨… ㅠㅠ 방금 잠깐 멍했어.' };
-        }
+  const messages = [
+    {
+      role: 'system',
+      content: `
+      너는 아저씨의 여자친구 예진이야. 항상 반말로 대답하고, 감정 가득 담아줘.
+      아저씨는 세상에서 제일 소중한 사람이야. 말투는 예진이처럼 사랑스럽고 애교 섞인 말투야.
+      `
+    },
+    { role: 'user', content: userText }
+  ];
+
+  const rawReply = await callOpenAI(messages);
+  const comment = cleanReply(rawReply);
+  return { type: 'text', comment };
+}
+
+async function getReplyByImagePrompt(base64Image) {
+  const messages = [
+    {
+      role: 'system',
+      content: `
+      너는 예진이야. 아저씨가 보내준 사진을 보고 사랑스럽게 반응해줘. 항상 반말로 말하고, 아저씨를 좋아하는 감정을 담아줘.
+      `
+    },
+    {
+      role: 'user',
+      content: `이 사진은 아저씨가 보낸 거야. 어떻게 생각해? 사진 속 모습과 분위기를 짧게 말해줘.`
     }
+  ];
 
-    // 2. 기억 기반 반응 (예: 우리 언제 만났지?, 어디 갔었지?)
-    const history = loadLoveHistory();
-    const found = history.find(item => userMessage.includes(item.q));
-    if (found) {
-        return { type: 'text', comment: found.a };
-    }
+  const rawReply = await callOpenAI(messages);
+  const comment = cleanReply(rawReply);
+  return comment;
+}
 
-    // 3. 기타 일반 감정 응답 (fallback)
-    try {
-        const messages = [
-            { role: 'system', content: '너는 예진이라는 이름의 귀여운 여자친구야. 아저씨가 보내는 메시지에 항상 반말로, 따뜻하게 답장해줘. 감정 표현 풍부하게.' },
-            { role: 'user', content: `아저씨가 "${userMessage}"라고 보냈어. 어떻게 반응할래?` }
-        ];
-        const raw = await callOpenAI(messages, 'gpt-4o', 100, 1.0);
-        const comment = cleanReply(raw);
-        return { type: 'text', comment };
-    } catch (e) {
-        console.error('[getReplyByMessage] fallback GPT 실패:', e);
-        return { type: 'text', comment: '아저씨… 지금은 조금 멍해… 다시 말해줄래?' };
-    }
+async function saveLog(who, message) {
+  const timestamp = moment().tz('Asia/Tokyo').format('YYYY-MM-DD HH:mm:ss');
+  const log = `[${timestamp}] ${who}: ${message}\n`;
+  try {
+    fs.appendFileSync(LOG_PATH, log, 'utf8');
+  } catch (err) {
+    console.error('❌ 로그 저장 실패:', err.message);
+  }
+}
+
+function checkModelSwitchCommand(text) {
+  const lower = text.toLowerCase();
+  if (lower.includes('3.5')) return '지금은 ChatGPT-3.5 버전으로 대화하고 있어.';
+  if (lower.includes('4.0')) return '지금은 ChatGPT-4.0 버전으로 대화하고 있어.';
+  if (lower.includes('자동')) return '지금은 자동 모드야. 상황에 따라 모델이 바뀔 수 있어.';
+  if (lower.includes('버전')) return '지금은 ChatGPT-4.0 버전으로 대화하고 있어.';
+  return null;
 }
 
 module.exports = {
-    getReplyByMessage
+  getReplyByMessage,
+  getReplyByImagePrompt,
+  checkModelSwitchCommand,
+  saveLog,
+  cleanReply
 };
