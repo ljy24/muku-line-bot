@@ -432,7 +432,6 @@ async function retrieveRelevantMemories(conversationContext, limit = 5) {
     }
 }
 
-
 module.exports = {
     extractAndSaveMemory,
     loadLoveHistory: () => loadMemory(LOVE_HISTORY_FILE),
