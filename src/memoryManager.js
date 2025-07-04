@@ -290,8 +290,10 @@ async function extractAndSaveMemory(userMessage) {
 // 모듈 내보내기
 module.exports = {
     ensureMemoryDirectory,
-    loadLoveHistory, // * 이제 DB에서 필터링하여 사랑 관련 기억만 반환 *
-    loadOtherPeopleHistory, // * 이제 DB에서 필터링하여 기타 인물 관련 기억만 반환 *
+    saveMemoryToDb, // * saveMemoryToDb 함수도 내보내야 합니다. *
+    loadAllMemoriesFromDb,
+    loadLoveHistory,
+    loadOtherPeopleHistory,
     extractAndSaveMemory,
-    retrieveRelevantMemories
+    retrieveRelevantMemories // * 이 함수를 명시적으로 내보냅니다. *
 };
