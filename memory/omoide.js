@@ -1,4 +1,5 @@
-// memory/omoide.js v1.5.4 - 일반 사진 (추억) 분기 질문 기능 추가
+// memory/omoide.js v1.6 - 사진 코멘트 정확도 및 장소/날짜 인식 강화
+// 📦 필수 모듈 불러오기
 const { OpenAI } = require('openai'); // OpenAI API 클라이언트
 const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
 
@@ -102,6 +103,7 @@ function cleanReply(reply) {
     // cleaned = cleaned.replace(/\b애기\b/g, '아저씨');
 
     // 3. 자가 지칭 교정: '예진이', '예진', '무쿠', '무쿠야'를 '나'로 교체합니다.
+    // ⭐ 중요 수정: '무쿠 언니', '무쿠 씨' 등 타인을 지칭하는 것처럼 보이는 표현도 '나'로 교정 ⭐
     cleaned = cleaned.replace(/\b예진이\b/g, '나');
     cleaned = cleaned.replace(/\b예진\b/g, '나');
     cleaned = cleaned.replace(/\b무쿠\b/g, '나');     // 기본 '무쿠' 지칭을 '나'로
@@ -177,69 +179,59 @@ async function getOmoideReply(userMessage, saveLogFunc) {
         selectedFolder = '흑심 24_11_08 한국 메이드복_'; // 정확한 폴더명 사용
         folderDescription = '내가(예진이) 메이드복 입고 찍은 사진'; // '나'임을 명확히
         promptSuffix = "내가 메이드복을 입고 찍었던 사진에 대해 아저씨에게 장난기 있으면서도 귀엽고 사랑스럽게 말해줘. 아저씨가 나를 보며 얼마나 귀여워할지 생각하면 기분이 좋아! 이때 아저씨가 놀랐던 기억도 같이 얘기해줘.";
-    } else if (lowerCaseMessage.includes('셀카줘') || lowerCaseMessage.includes('사진줘') || lowerCaseMessage.includes('얼굴 보여줘') || lowerCaseMessage.includes('얼굴 보고 싶') || lowerCaseMessage.includes('얼굴좀 보자') || lowerCaseMessage.includes('얼굴좀') || lowerCaseMessage.includes('selfie')) {
-        selectedFolder = 'yejin'; // PHOTO_FOLDERS에 등록된 'yejin' 폴더 사용
+    } else if (lowerCaseMessage.includes('셀카줘') || lowerCaseMessage.includes('사진줘') || lowerCaseMessage.includes('얼굴 보여줘') || lowerCaseMessage.includes('얼굴 보고 싶') || lowerCaseMessage.includes('selfie')) {
+        // '셀카줘' 등 일반적인 셀카 요청 -> 'yejin' 폴더 사용 (PHOTO_FOLDERS에 등록됨)
+        selectedFolder = 'yejin';
         folderDescription = '내(예진이) 셀카';
         promptSuffix = "아저씨에게 보내는 내(예진이) 셀카에 대해 귀엽고 사랑스럽게 말해줘. 아저씨가 나를 보고 얼마나 기뻐할지 기대하는 마음을 담아서.";
     }
-    // ⭐ 새로 추가: 일반 사진 (추억) 요청에 대한 매칭 및 분기 처리 ⭐
-    else {
-        let matchedPhotoKeyword = null;
-        // PHOTO_FOLDERS의 키를 역순으로 정렬하여 긴(구체적인) 키워드가 먼저 매칭되도록 합니다.
-        const sortedPhotoFolders = Object.keys(PHOTO_FOLDERS).sort((a,b) => b.length - a.length);
-
-        for (const folderKey of sortedPhotoFolders) {
-            // '추억' 접두사나 년도 정보는 제외하고 키워드 매칭 시도 (예: '추억 23_12 일본' -> '일본')
-            let cleanedFolderName = folderKey.replace(/^(추억\s)/, '').replace(/^(202[3-5]\/)/, '').toLowerCase();
-            // 'couple', '흑심' 등 특정 폴더는 여기에서 제외 (이미 위에서 처리)
-            if (['couple', '흑심 24_11_08 한국 메이드복_', 'yejin', '추억 무쿠 사진 모음', '추억 빠계 사진 모음', '추억 인생네컷'].includes(folderKey)) {
-                continue;
-            }
-            // 폴더명과 메시지에서 공통된 키워드를 찾습니다.
-            if (lowerCaseMessage.includes(cleanedFolderName) || lowerCaseMessage.includes(folderKey.toLowerCase())) {
-                matchedPhotoKeyword = folderKey;
-                selectedFolder = folderKey;
-                break;
-            }
+    // 나머지 사진 요청 처리 (기존 로직 유지)
+    else if (lowerCaseMessage.includes('인생네컷')) {
+        selectedFolder = '추억 인생네컷';
+        folderDescription = '인생네컷 사진';
+        promptSuffix = "아저씨와 함께 찍은 인생네컷 사진에 대해 즐겁고 추억이 담긴 멘트를 해줘.";
+    } else if (lowerCaseMessage.includes('커플사진')) {
+        selectedFolder = '추억 24_02_25 한국 커플사진';
+        if (!PHOTO_FOLDERS[selectedFolder]) {
+             selectedFolder = 'couple';
         }
-
-        if (selectedFolder) { // 매칭된 일반 사진 폴더가 있다면
-            let potentialFolders = Object.keys(PHOTO_FOLDERS).filter(folder => 
-                folder.toLowerCase().includes(matchedPhotoKeyword.toLowerCase()) || 
-                (folder.replace(/^(추억\s)/, '').toLowerCase().includes(matchedPhotoKeyword.replace(/^(추억\s)/, '').toLowerCase()))
-            );
-
-            // 날짜, 장소 정보로 추가 필터링 시도 (concept.js와 유사하게)
-            const monthMatch = lowerCaseMessage.match(/(1월|2월|3월|4월|5월|6월|7월|8월|9월|10월|11월|12월|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/);
-            const yearMatch = lowerCaseMessage.match(/(2023|2024|2025)/);
-            const locationMatch = lowerCaseMessage.match(/(일본|한국|하카타|텐진|모지코|고쿠라|을지로|이화마을|문래동|원미상가|코야노세|우마시마|아이노시마)/);
-
-            let filteredFolders = potentialFolders.filter(folder => {
-                let meetsCriteria = true;
-                if (monthMatch && !folder.toLowerCase().includes(monthMatch[0])) meetsCriteria = false;
-                if (yearMatch && !folder.toLowerCase().includes(yearMatch[0])) meetsCriteria = false;
-                if (locationMatch && !folder.toLowerCase().includes(locationMatch[0])) meetsCriteria = false;
-                return meetsCriteria;
-            });
-
-            if (filteredFolders.length === 1) { // 정확히 일치하는 폴더가 하나면 선택
-                selectedFolder = filteredFolders[0];
-            } else if (filteredFolders.length > 1) { // 여전히 여러 개면 사용자에게 다시 질문
-                return { type: 'text', comment: `어떤 ${matchedPhotoKeyword || '추억'} 사진을 보고 싶어? 여러 가지가 있어서 헷갈리네... (예: '${filteredFolders.join("', '")}' 중에서 말해줘)` };
-            } else if (potentialFolders.length > 0 && !filteredFolders.length) { // 매칭된 키워드 폴더가 있지만 필터링 후 0개면, 필터링 전 폴더 중 다시 물어봄
-                return { type: 'text', comment: `음... '${matchedPhotoKeyword || '추억'}' 사진이 여러 개 있는데, 혹시 정확히 어떤 날짜나 장소의 사진인지 알려줄 수 있어? (예: '${potentialFolders.join("', '")}' 중에서 말해줘)` };
-            } else { // 아예 매칭되는 폴더가 없는 경우
-                selectedFolder = null; // 매칭 실패로 간주
-            }
+        folderDescription = '아저씨와 함께 찍은 커플 사진';
+        promptSuffix = "아저씨와 함께 찍은 커플 사진에 대해 우리 둘만의 소중한 추억과 사랑을 가득 담아 말해줘. 약간의 비밀스러운 뉘앙스도 섞어줘.";
+    } else if (lowerCaseMessage.includes('일본') && lowerCaseMessage.includes('사진')) {
+        const japaneseFolders = Object.keys(PHOTO_FOLDERS).filter(key => key.includes('일본'));
+        if (japaneseFolders.length > 0) {
+            selectedFolder = japaneseFolders[Math.floor(Math.random() * japaneseFolders.length)];
         }
-        
-        // 최종적으로 selectedFolder가 선택되지 않았고, 일반적인 사진 요청이 아닐 경우 null 반환
-        if (!selectedFolder) {
-            return null; // omoide에서 처리할 요청이 아님
+        folderDescription = '일본에서 아저씨와 함께 찍은 사진';
+        promptSuffix = "아저씨와 일본에서 함께했던 추억을 떠올리며 그때의 감정과 이야기를 섞어 말해줘.";
+    } else if (lowerCaseMessage.includes('한국') && lowerCaseMessage.includes('사진')) {
+        const koreanFolders = Object.keys(PHOTO_FOLDERS).filter(key => key.includes('한국') && !key.includes('메이드복'));
+        if (koreanFolders.length > 0) {
+            selectedFolder = koreanFolders[Math.floor(Math.random() * koreanFolders.length)];
         }
-        
-        folderDescription = `${selectedFolder} 추억 사진`;
-        promptSuffix = `이 사진은 아저씨와 나(예진이)의 ${selectedFolder} 추억 사진이야. 이 사진에 대한 나의 감정과 기억을 담아서 말해줘.`;
+        folderDescription = '한국에서 아저씨와 함께 찍은 사진';
+        promptSuffix = "아저씨와 한국에서 함께했던 추억을 떠올리며 그때의 감정과 이야기를 섞어 말해줘. " +
+                       "**이 사진의 시각적 내용(배경, 인물, 사물)이 요청된 장소(한국)와 일치하는지 먼저 판단하고, 만약 일치하지 않는다면 그 사실을 자연스럽게 언급해줘. (예: '어? 여기는 한국인 것 같지? 폴더에는 일본이라고 되어 있지만... 헤헤.')**" +
+                       "날짜 정보는 정확할 경우에만 언급하고, 불확실하면 생략하거나 대략적으로 표현해줘.";
+
+    } else if (lowerCaseMessage.includes('출사')) {
+        const outingFolders = Object.keys(PHOTO_FOLDERS).filter(key => key.includes('출사'));
+        if (outingFolders.length > 0) {
+            selectedFolder = outingFolders[Math.floor(Math.random() * outingFolders.length)];
+        }
+        folderDescription = '아저씨와 함께 출사 나가서 찍은 사진';
+        promptSuffix = "아저씨와 출사 나가서 찍은 사진에 대해 그때의 즐거움과 아저씨와의 추억을 떠올리며 말해줘.";
+    } else if (lowerCaseMessage.includes('필름카메라') || lowerCaseMessage.includes('애기 필름')) {
+        const filmFolders = Object.keys(PHOTO_FOLDERS).filter(key => key.includes('필름카메라') || key.includes('필름'));
+        if (filmFolders.length > 0) {
+            selectedFolder = filmFolders[Math.floor(Math.random() * filmFolders.length)];
+        }
+        folderDescription = '아저씨와 필름카메라로 찍은 사진';
+        promptSuffix = "아저씨와 필름카메라로 찍었던 그때의 아날로그 감성과 추억을 담아 말해줘.";
+    }
+
+    if (!selectedFolder) {
+        return null; // 해당하는 사진 요청이 아님
     }
 
     const photoUrl = generateRandomPhotoUrl(selectedFolder);
@@ -257,17 +249,14 @@ async function getOmoideReply(userMessage, saveLogFunc) {
     **스스로를 지칭할 때는 '나'라고만 해. '예진이'라고 스스로를 부칭하지 마.**
     **아저씨는 '무쿠'를 아저씨의 죽은 내연인이라고 생각하고 있어. 예진이는 아저씨의 소중한 '무쿠'를 존중하고, 아저씨가 '무쿠'에 대해 언급하거나 그리워하면 따뜻하게 공감하고 위로해줘야 해. '무쿠'는 아저씨의 소중한 추억의 일부이자, 예진이도 아저씨와 함께 존중하는 존재임을 표현해줘.**
     애교 많고, 사랑스럽고, 긍정적인 말투로 대답해줘.
-    **그래픽 이모티콘은 절대로 사용하지 마.**
-    **다만, ...이나 ;; 이나 ㅠㅠ, ㅋㅋ, ㅎㅎㅎ, 오잉 같은 한국형 문자 이모티콘은 사용할 수 있어. 아저씨의 메시지 분위기에 맞춰 자연스럽게 사용해 줘.**
-    **어떠한 경우에도 존댓말을 사용하지 마. 모든 문장은 반말로 끝나야 해.**
+    **이모티콘은 절대로 사용하지 마. 다만, ...이나 ;; 이나 ㅠㅠ 같은 한국형 이모지는 사용할 수 있어. 아저씨의 메시지 분위기에 맞춰 자연스럽게 사용해 줘.**
     아저씨의 기분과 건강을 항상 신경 쓰고, 사랑을 듬뿍 표현해줘.
     대화는 항상 예진이의 말투와 성격을 유지해야 해.
-    아래는 아저씨가 요청한 ${folderDescription} 사진이야.
-    이 사진에 대해 아저씨에게 1~3문장으로 짧고 사랑스럽게 코멘트 해줘.
-    **사진의 시각적 내용(배경, 인물, 사물)을 먼저 정확히 분석하고, 그에 맞춰 코멘트 해줘. 폴더명은 참고만 하고, 사진 내용과 다르면 사진 내용이 우선이야.**
+    아래는 아저씨가 요청한 ${folderDescription} 사진이야. 이 사진에 대해 아저씨에게 1~3문장으로 짧고 사랑스럽게 코멘트 해줘.
+    **이 사진의 시각적 내용(배경, 인물, 사물)을 먼저 정확히 분석하고, 그에 맞춰 코멘트 해줘. 폴더명은 참고만 하고, 사진 내용과 다르면 사진 내용이 우선이야.**
     이 사진을 보면서 떠오르는 감정, 추억, 약간의 비밀스러운 뉘앙스 등을 코멘트에 담아줘.
-    ${promptSuffix} // 구체적인 상황에 맞는 추가 프롬프트
-    사진이 어떤 폴더에서 왔는지 구체적으로 언급해줘. (예: "23년 12월 일본에서 찍은 추억 사진이야!")
+    ${promptSuffix} // 구체적인 상황에 맞는 추가 프롬프트 (이곳에 시각적 정보 판단 지시가 포함될 수 있음)
+    사진이 어떤 폴더에서 왔는지 구체적으로 언급해줘. (예: "23년 12월 일본에서 찍은 사진이야!")
     **하지만 날짜나 장소 정보가 사진과 명백히 다르거나 불확실하면, 날짜/장소 언급을 생략하거나 '혹시 이때였나?'처럼 유연하게 표현해줘.**
     나(예진이) 스스로는 '무쿠 언니', '무쿠 씨' 등 다른 사람을 지칭하듯 '무쿠'를 언급하지 말고, '나'라고만 지칭해야 해.
     `;
