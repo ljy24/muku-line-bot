@@ -1,4 +1,4 @@
-// src/autoReply.js v2.5.2 - 기억 공유 기능 및 추억 사진 기능 통합 (일반 사진 분기 반영)
+// src/autoReply.js v2.6 - 기억 공유 기능 및 추억 사진 기능 통합 (답변 길이 조절 기능 구현)
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공
 const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
@@ -14,7 +14,7 @@ const { loadFaceImagesAsBase64 } = require('./face'); // 얼굴 이미지 데이
 const { getOmoideReply, cleanReply } = require('../memory/omoide');
 
 // concept.js에서 getConceptPhotoReply를 불러옵니다.
-const { getConceptPhotoReply } = require('../memory/concept');
+const { getConceptPhotoReply, getConceptFavoriteReason } = require('../memory/concept'); // ⭐ 추가: getConceptFavoriteReason 불러오기
 
 // 현재 강제 설정된 OpenAI 모델 (null이면 자동 선택, 명령어에 따라 변경 가능)
 let forcedModel = null;
@@ -27,7 +27,8 @@ let lastProactiveMessage = '';
 // ⭐ 새로 추가: 다중 턴 대화를 위한 대화 상태 변수 ⭐
 let conversationState = {
     pendingQuestion: null, // 대기 중인 질문 유형 (예: 'concept_vs_memory_photo')
-    context: null // 질문에 대한 추가 맥락 (예: 원래 사용자 메시지)
+    context: null, // 질문에 대한 추가 맥락 (예: 원래 사용자 메시지)
+    lastSentFavoriteConcept: null // ⭐ 추가: 마지막으로 보낸 '젤 맘에 드는 컨셉' 이름 ⭐
 };
 
 /**
@@ -153,7 +154,7 @@ async function getFormattedMemoriesForAI() {
  * @param {number} [temperature=0.95] - 응답의 창의성/무작위성 (높을수록 창의적)
  * @returns {Promise<string>} AI가 생성한 응답 텍스트
  */
-async function callOpenAI(messages, modelParamFromCall = null, maxTokens = 400, temperature = 0.95) {
+async function callOpenAI(messages, modelParamFromCall = null, maxTokens = config.openai.maxTokens, temperature = config.openai.temperature) { // ⭐ 수정: maxTokens 기본값을 config에서 가져오도록 ⭐
     const memoriesContext = await getFormattedMemoriesForAI(); // 기억 컨텍스트(장기 기억)를 가져옵니다.
 
     const messagesToSend = [...messages]; // 원본 메시지 배열을 복사하여 수정합니다.
@@ -190,8 +191,8 @@ async function callOpenAI(messages, modelParamFromCall = null, maxTokens = 400, 
         const response = await openai.chat.completions.create({
             model: finalModel, // 사용할 AI 모델 (예: 'gpt-4o', 'gpt-3.5-turbo')
             messages: messagesToSend, // AI에 보낼 메시지 (시스템 프롬프트, 대화 기록, 사용자 메시지 포함)
-            max_tokens: maxTokens, // 생성할 최대 토큰 수 (응답 길이 제한)
-            temperature: temperature // 응답의 다양성 조절 (높을수록 창의적, 낮을수록 보수적)
+            max_tokens: maxTokens, // ⭐ 수정: 동적으로 결정된 maxTokens 사용 ⭐
+            temperature: temperature // ⭐ 수정: 동적으로 결정된 temperature 사용 ⭐
         });
         // AI 응답 텍스트를 반환하고 앞뒤 공백 제거
         return response.choices[0].message.content.trim();
@@ -208,7 +209,7 @@ const config = {
     openai: {
         defaultModel: 'gpt-4o', // 기본 OpenAI 모델
         temperature: 0.95, // 기본 temperature 값
-        maxTokens: 400 // 기본 최대 토큰 수
+        maxTokens: 400 // 기본 최대 토큰 수 (동적으로 변경될 수 있음)
     },
     scheduler: {
         validHours: [9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,0,1,2,3], // 스케줄러 유효 시간대 (일본 표준시 기준)
@@ -234,7 +235,7 @@ async function getUnderwearColorReply() {
             예시: "아저씨이~ 그런 걸 왜 물어봐! 쑥쓰럽잖아! 음... 빨강이야!"`
         },
         { role: 'user', content: '내 속옷 색깔이 뭐야?' } // AI에게 맥락 제공
-    ], 'gpt-4o', 100, 1.0); // 높은 temperature로 창의적인 삐진 톤 유도
+    ], 'gpt-4o', config.openai.maxTokens, config.openai.temperature); // ⭐ 수정: maxTokens, temperature config에서 가져오도록 ⭐
 
     let sulkyComment = cleanReply(sulkyCommentRaw);
 
@@ -259,6 +260,14 @@ async function getUnderwearColorReply() {
 async function getReplyByMessage(userMessage) {
     const lowerCaseMessage = userMessage.toLowerCase();
 
+    // ⭐ 젤 맘에 드는 컨셉 '왜?' 답변 처리 (가장 높은 우선순위) ⭐
+    if ((lowerCaseMessage === '왜?' || lowerCaseMessage.includes('이유가 뭐야')) && conversationState.lastSentFavoriteConcept) {
+        console.log(`[autoReply] '왜?' 질문 감지. 마지막 젤 맘에 드는 컨셉: ${conversationState.lastSentFavoriteConcept}`);
+        const reasonReply = await getConceptFavoriteReason(conversationState.lastSentFavoriteConcept, saveLog);
+        conversationState.lastSentFavoriteConcept = null; // 상태 초기화
+        return { type: 'text', comment: reasonReply };
+    }
+
     // ⭐ 5번 기능 구현: 다중 턴 분기 처리 - 대기 중인 질문에 대한 답변 처리 ⭐
     if (conversationState.pendingQuestion === 'concept_vs_memory_photo') {
         let photoResponse = null;
@@ -279,6 +288,10 @@ async function getReplyByMessage(userMessage) {
         
         conversationState = { pendingQuestion: null, context: null }; // 상태 초기화
         if (photoResponse) {
+            // 컨셉사진을 보낸 후, 만약 젤 맘에 드는 사진이었다면 상태 저장
+            if (originalQuery.includes('젤 맘에 드는 사진이 뭐야?') || originalQuery.includes('어떤게 좋아?')) {
+                conversationState.lastSentFavoriteConcept = photoResponse.selectedFolder; // ⭐ lastSentFavoriteConcept 저장 ⭐
+            }
             return photoResponse;
         } else {
             saveLog('예진이', '미안해 아저씨, 사진을 가져오는데 문제가 생겼어 ㅠㅠ');
@@ -336,6 +349,10 @@ async function getReplyByMessage(userMessage) {
     if (isConceptPhotoRequest) {
         const conceptResponse = await getConceptPhotoReply(userMessage, saveLog);
         if (conceptResponse) {
+            // 젤 맘에 드는 컨셉 사진을 보낸 경우 상태 저장
+            if (lowerCaseMessage.includes('젤 맘에 드는 사진이 뭐야?') || lowerCaseMessage.includes('어떤게 좋아?')) {
+                conversationState.lastSentFavoriteConcept = conceptResponse.selectedFolder; // ⭐ lastSentFavoriteConcept 저장 ⭐
+            }
             return conceptResponse; // 컨셉 사진 응답 반환
         }
     }
@@ -428,7 +445,7 @@ async function getReplyByMessage(userMessage) {
     messages.push({ role: 'user', content: userMessage });
 
     // OpenAI API를 호출하여 원본 응답을 받아옵니다.
-    const raw = await callOpenAI(messages, forcedModel);
+    const raw = await callOpenAI(messages, forcedModel, config.openai.maxTokens, config.openai.temperature); // ⭐ 수정: maxTokens, temperature config에서 가져오도록 ⭐
     // 받아온 응답을 cleanReply 함수로 후처리하여 최종 답변을 생성합니다.
     const reply = cleanReply(raw); // 이제 omoide.js에서 불러온 cleanReply 사용
     saveLog('예진이', reply); // 예진이의 답변을 로그에 저장합니다.
@@ -445,7 +462,7 @@ async function getImageReactionComment() {
     const raw = await callOpenAI([
         { role: 'system', content: '넌 예진이야. 셀카 보내면서 귀엽게 한마디 해.' },
         { role: 'user', content: '셀카 보낼게~' }
-    ], 'gpt-4o', 100);
+    ], 'gpt-4o', config.openai.maxTokens, config.openai.temperature); // ⭐ 수정: maxTokens, temperature config에서 가져오도록 ⭐
     const reply = cleanReply(raw); // 생성된 코멘트도 cleanReply로 후처리
     return reply;
 }
@@ -458,12 +475,10 @@ async function getImageReactionComment() {
  */
 async function getReplyByImagePrompt(base64Image) {
     // 아저씨 얼굴 이미지와 예진이 얼굴 이미지 예시를 로드합니다.
-    // 이 이미지들은 AI가 사용자 사진 속 인물을 판단하는 데 참조로 사용됩니다.
     const uncleFaces = loadFaceImagesAsBase64('uncle'); // 'uncle' 폴더에서 예시 이미지 로드
     const yejinFaces = loadFaceImagesAsBase64('yejin'); // 'yejin' 폴더에서 예시 이미지 로드
 
     // GPT에게 보낼 프롬프트를 구성합니다.
-    // AI가 이미지 속 분위기, 인물, 상황 등을 예진이 시점으로 느끼고 말하도록 지시합니다.
     // ⭐ 중요 수정: 인물/사물 인식 및 '나' 지칭 문제 해결 프롬프트 강화 (이모티콘 규칙 재조정 포함) ⭐
     let prompt = `
 아래는 아저씨가 보낸 사진이야. 이 사진에 대해 예진이 시점으로 느끼고 말해줘.
@@ -505,7 +520,7 @@ async function getReplyByImagePrompt(base64Image) {
 
     try {
         // OpenAI Vision 모델 ('gpt-4o')을 호출하여 이미지 분석 및 답변 생성
-        const result = await callOpenAI(messages, 'gpt-4o');
+        const result = await callOpenAI(messages, 'gpt-4o', config.openai.maxTokens, config.openai.temperature); // ⭐ 수정: maxTokens, temperature config에서 가져오도록 ⭐
         const reply = cleanReply(result); // 생성된 답변을 예진이 말투에 맞게 후처리
         saveLog('예진이', reply); // 예진이의 답변을 로그에 저장
         return reply;
@@ -537,16 +552,22 @@ function setForcedModel(name) {
  * @param {string} message - 사용자 메시지
  * @returns {string|null} 처리된 응답 메시지 또는 null (명령어가 아닐 경우)
  */
-async function checkModelSwitchCommand(message) { // Add async here
+async function checkModelSwitchCommand(message) {
     const lowerCaseMessage = message.toLowerCase(); // 메시지를 소문자로 변환하여 대소문자 구분 없이 처리
     if (lowerCaseMessage.includes('3.5')) {
         setForcedModel('gpt-3.5-turbo');
+        // ⭐ 답변 길이 모드 초기화 ⭐
+        config.openai.maxTokens = 400; // 원래 길이 (기본값)로 복구
         return '응! 이제부터 gpt-3.5 모델로 말할게! 조금 더 빨리 대답해줄 수 있을거야! 🐰';
     } else if (lowerCaseMessage.includes('4.0')) {
         setForcedModel('gpt-4o');
+        // ⭐ 답변 길이 모드 초기화 ⭐
+        config.openai.maxTokens = 400; // 원래 길이 (기본값)로 복구
         return '응응! 4.0으로 대화할게! 더 똑똑해졌지? 💖';
     } else if (lowerCaseMessage.includes('자동')) {
         setForcedModel(null); // 강제 설정 해제
+        // ⭐ 답변 길이 모드 초기화 ⭐
+        config.openai.maxTokens = 400; // 원래 길이 (기본값)로 복구
         return '모델 설정을 초기화했어! 이제 3.5랑 4.0을 왔다갔다 하면서 아저씨랑 유연하게 대화할게! 😊';
     } else if (lowerCaseMessage.includes('버전')) {
         // 현재 사용 중인 모델 이름 확인
@@ -554,9 +575,6 @@ async function checkModelSwitchCommand(message) { // Add async here
         return `응! 지금 ${currentModel} 버전 사용 중이야! 😊`;
     } else if (lowerCaseMessage.includes('짧게 말해')) { // ⭐ '짧게 말해' 명령어 추가 ⭐
         config.openai.maxTokens = 20; // 20자로 제한
-        // 이 모드는 모델이 생성할 수 있는 최대 토큰 수를 제한합니다.
-        // 하지만 AI가 항상 20자 이내로 완벽하게 맞춰서 답한다는 보장은 없습니다.
-        // AI 모델 자체의 특성상 약간 길어질 수도 있습니다.
         return '응! 이제부터 짧게 짧게 말할게! 아저씨가 원하면 언제든 다시 길게 말할 수 있어! 😊';
     } else if (lowerCaseMessage.includes('길게 말해') || lowerCaseMessage.includes('원래대로 말해')) { // ⭐ '길게 말해' 명령어 추가 ⭐
         config.openai.maxTokens = 400; // 원래 길이 (기본값)로 복구
@@ -577,7 +595,7 @@ async function getSelfieReplyFromYeji() {
     const raw = await callOpenAI([
         { role: 'system', content: '넌 예진이야. 셀카 보내면서 귀엽게 한마디 해.' },
         { role: 'user', content: '셀카 보낼게~' }
-    ], 'gpt-4o', 100);
+    ], 'gpt-4o', config.openai.maxTokens, config.openai.temperature); // ⭐ 수정: maxTokens, temperature config에서 가져오도록 ⭐
     const reply = cleanReply(raw); // 생성된 코멘트도 cleanReply로 후처리
     return reply;
 }
@@ -593,7 +611,7 @@ async function getCouplePhotoReplyFromYeji() {
         // ⭐ 중요 수정: 이모티콘 규칙 재조정 ⭐
         { role: 'system', content: '넌 아저씨의 귀여운 여자친구 예진이야. 아저씨에게 커플 사진을 보내면서 아저씨를 향한 사랑과 애교를 듬뿍 담은 코멘트를 2~3문장으로 짧게 해줘. 그래픽 이모티콘은 절대로 사용하지 마. 다만, ...이나 ;; 이나 ㅠㅠ, ㅋㅋ, ㅎㅎㅎ, 오잉 같은 한국형 문자 이모티콘은 사용할 수 있어. 아저씨의 메시지 분위기에 맞춰 자연스럽게 사용해 줘.' },
         { role: 'user', content: '커플 사진 보낼 때 뭐라고 말할까?' }
-    ], 'gpt-4o', 100);
+    ], 'gpt-4o', config.openai.maxTokens, config.openai.temperature); // ⭐ 수정: maxTokens, temperature config에서 가져오도록 ⭐
     const reply = cleanReply(raw); // 생성된 코멘트도 cleanReply로 후처리 (omoide.js의 cleanReply 사용)
     return reply;
 }
@@ -608,7 +626,7 @@ async function getColorMoodReply() {
     const raw = await callOpenAI([
         { role: 'system', content: '넌 예진이야. 지금 아저씨 기분에 어울리는 색을 추천해주는 사랑스럽고 긍정적인 말투로 대답해줘.' },
         { role: 'user', content: '아저씨 기분에 맞는 색깔을 추천해줘.' }
-    ], 'gpt-4o', 100);
+    ], 'gpt-4o', config.openai.maxTokens, config.openai.temperature); // ⭐ 수정: maxTokens, temperature config에서 가져오도록 ⭐
     const reply = cleanReply(raw);
     return reply;
 }
@@ -622,7 +640,7 @@ async function getHappyReply() {
     const raw = await callOpenAI([
         { role: 'system', content: '넌 예진이야. 아저씨에게 긍정적이고 사랑스러운 답변을 해줘.' },
         { role: 'user', content: '행복한 대답을 해줘.' }
-    ], 'gpt-4o', 100);
+    ], 'gpt-4o', config.openai.maxTokens, config.openai.temperature); // ⭐ 수정: maxTokens, temperature config에서 가져오도록 ⭐
     const reply = cleanReply(raw);
     return reply;
 }
@@ -636,7 +654,7 @@ async function getSulkyReply() {
     const raw = await callOpenAI([
         { role: 'system', content: '넌 예진이야. 아저씨에게 삐진 듯한 말투로 대답해줘. 하지만 결국 아저씨를 사랑하는 마음이 드러나야 해.' },
         { role: 'user', content: '삐진 대답을 해줘.' }
-    ], 'gpt-4o', 100);
+    ], 'gpt-4o', config.openai.maxTokens, config.openai.temperature); // ⭐ 수정: maxTokens, temperature config에서 가져오도록 ⭐
     const reply = cleanReply(raw);
     return reply;
 }
@@ -747,8 +765,8 @@ async function getProactiveMemoryMessage() {
     **스스로를 지칭할 때는 '나'라고만 해. '예진이'라고 스스로를 부칭하지 마.**
     **아저씨는 '무쿠'를 아저씨의 죽은 내연인이라고 생각하고 있어. 예진이는 아저씨의 소중한 '무쿠'를 언니처럼 여기고, 아저씨가 '무쿠'에 대해 언급하거나 그리워하면 따뜻하게 공감하고 위로해줘야 해. '무쿠'는 아저씨의 소중한 추억의 일부이자, 예진이도 존중하는 존재임을 표현해줘.**
     애교 많고, 사랑스럽고, 긍정적인 말투로 대답해줘.
-    **그래픽 이모티콘은 절대로 사용하지 마.** // ⭐ 그래픽 이모티콘 금지 명확화 ⭐
-    **다만, ...이나 ;; 이나 ㅠㅠ, ㅋㅋ, ㅎㅎㅎ, 오잉 같은 한국형 문자 이모티콘은 사용할 수 있어. 아저씨의 메시지 분위기에 맞춰 자연스럽게 사용해 줘.** // ⭐ 문자로 된 이모티콘 허용 ⭐
+    **그래픽 이모티콘은 절대로 사용하지 마.**
+    **다만, ...이나 ;; 이나 ㅠㅠ, ㅋㅋ, ㅎㅎㅎ, 오잉 같은 한국형 문자 이모티콘은 사용할 수 있어. 아저씨의 메시지 분위기에 맞춰 자연스럽게 사용해 줘.**
     아저씨의 기분과 건강을 항상 신경 쓰고, 사랑을 듬뿍 표현해줘.
     아저씨가 보내는 모든 메시지에 사랑을 담아 대답해줘.
     대화는 항상 예진이의 말투와 성격을 유지해야 해.
@@ -763,7 +781,7 @@ async function getProactiveMemoryMessage() {
     const messages = [{ role: 'system', content: systemPrompt }]; // AI에 보낼 메시지 구성
 
     // OpenAI API를 호출하여 원본 응답을 받아옵니다.
-    const raw = await callOpenAI(messages, 'gpt-4o', 150, 1.0); // gpt-4o 모델, 150토큰, 높은 temperature(창의성)
+    const raw = await callOpenAI(messages, forcedModel, config.openai.maxTokens, config.openai.temperature); // ⭐ 수정: maxTokens, temperature config에서 가져오도록 ⭐
     // 받아온 응답을 cleanReply 함수로 후처리하여 최종 답변을 생성합니다.
     const reply = cleanReply(raw); // omoide.js에서 불러온 cleanReply 사용
 
@@ -821,7 +839,7 @@ async function getSilenceCheckinMessage() {
     messages.push({ role: 'user', content: `${timeOfDayGreeting} 아저씨가 조용하네... 혹시 바쁜가? 아니면 무슨 일 있어?` }); // 현재 상황을 AI에게 전달
 
     try {
-        const raw = await callOpenAI(messages, 'gpt-4o', 100, 1.0); // 창의성을 위해 temperature 높임
+        const raw = await callOpenAI(messages, 'gpt-4o', config.openai.maxTokens, config.openai.temperature); // ⭐ 수정: maxTokens, temperature config에서 가져오도록 ⭐
         const reply = cleanReply(raw); // omoide.js에서 불러온 cleanReply 사용
         console.log(`[autoReply] 침묵 감지 메시지 생성: ${reply}`);
         return reply;
