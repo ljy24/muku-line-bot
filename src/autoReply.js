@@ -1,4 +1,4 @@
-// src/autoReply.js v2.5 - 기억 인출 오류 수정 및 AI 프롬프트 최종 강화
+// src/autoReply.js v2.6 - 기억 인출 오류 최종 수정 및 AI 프롬프트 강화
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공
 const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
@@ -6,17 +6,26 @@ const { OpenAI } = require('openai'); // OpenAI API 클라이언트: AI 모델�
 const stringSimilarity = require('string-similarity'); // 문자열 유사도 측정 모듈 (현재 코드에서 직접 사용되지는 않음)
 const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
 
-// 기억 관리 모듈에서 필요한 함수들을 불러옵니다.
-// autoReply.js와 memoryManager.js는 같은 src 폴더 안에 있으므로 './memoryManager'로 불러옵니다.
-const { loadLoveHistory, loadOtherPeopleHistory, extractAndSaveMemory, retrieveRelevantMemories, loadAllMemoriesFromDb } = require('./memoryManager'); 
-const { loadFaceImagesAsBase64 } = require('./face'); // 얼굴 이미지 데이터를 불러오는 모듈
+// * 기억 관리 모듈에서 필요한 함수들을 불러옵니다. *
+// * autoReply.js와 memoryManager.js는 같은 src 폴더 안에 있으므로 './memoryManager'로 불러옵니다. *
+// * loadAllMemoriesFromDb 함수를 명시적으로 불러옵니다. *
+const {
+    loadLoveHistory,
+    loadOtherPeopleHistory,
+    extractAndSaveMemory,
+    retrieveRelevantMemories,
+    loadAllMemoriesFromDb // <-- 이 함수를 명시적으로 불러옵니다.
+} = require('./memoryManager');
 
-// ⭐ 중요 수정: omoide.js에서 getOmoideReply와 cleanReply를 불러옵니다. ⭐
-// autoReply.js는 src 폴더 안에 있고, omoide.js는 memory 폴더 안에 있으므로 '../memory/omoide'로 불러옵니다.
+// * 얼굴 이미지 데이터를 불러오는 모듈 *
+const { loadFaceImagesAsBase64 } = require('./face');
+
+// * omoide.js에서 getOmoideReply와 cleanReply를 불러옵니다. *
+// * autoReply.js는 src 폴더 안에 있고, omoide.js는 memory 폴더 안에 있으므로 '../memory/omoide'로 불러옵니다. *
 const { getOmoideReply, cleanReply } = require('../memory/omoide');
 
-// ⭐ 새로 추가: concept.js에서 getConceptPhotoReply를 불러옵니다. ⭐
-// autoReply.js는 src 폴더 안에 있고, concept.js는 memory 폴더 안에 있으므로 '../memory/concept'로 불러옵니다.
+// * 새로 추가: concept.js에서 getConceptPhotoReply를 불러옵니다. *
+// * autoReply.js는 src 폴더 안에 있고, concept.js는 memory 폴더 안에 있으므로 '../memory/concept'로 불러옵니다. *
 const { getConceptPhotoReply } = require('../memory/concept');
 
 // 현재 강제 설정된 OpenAI 모델 (null이면 자동 선택, 명령어에 따라 변경 가능)
