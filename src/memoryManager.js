@@ -1,4 +1,4 @@
-// memoryManager.js v3.3 - 기억 검색 JSON 파싱 오류 수정 (변수명 오류 수정)
+// memoryManager.js v3.4 - MEMORY_DIR 경로 권한 오류 수정
 // src/memoryManager.js
 // MemoryManager.js v2.0 Debug Code Active! - Initializing Module
 console.log("MemoryManager.js v2.0 Debug Code Active! - Initializing Module"); // ⭐ 이 로그가 렌더 로그에 보여야 합니다! ⭐
@@ -12,7 +12,13 @@ require('dotenv').config(); // OPENAI_API_KEY를 사용하기 위해 필요
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-const MEMORY_DIR = '/data/memory'; // 영구 저장소 디렉토리
+// ⭐ 중요 수정: MEMORY_DIR 경로를 현재 파일 위치 기준으로 변경 ⭐
+// memoryManager.js 파일이 src/memoryManager.js에 있고, memory 폴더는 root/memory에 있다고 가정
+// __dirname은 현재 파일(memoryManager.js)이 있는 src/ 폴더를 가리킵니다.
+// '..'는 src/ 밖으로 나가 root/ 로 이동
+// 'memory'는 root/memory 폴더를 가리킵니다.
+const MEMORY_DIR = path.join(__dirname, '..', 'memory'); // 영구 저장소 디렉토리
+
 const LOVE_HISTORY_FILE = path.join(MEMORY_DIR, 'love-history.json'); // 아저씨 관련 기억 파일
 const OTHER_PEOPLE_HISTORY_FILE = path.join(MEMORY_DIR, 'other-people-history.json'); // 다른 사람 관련 기억 파일
 const BOT_LOG_FILE = path.join(MEMORY_DIR, 'bot_log.txt'); // memoryManager 내부 로깅용 파일
@@ -160,7 +166,7 @@ async function extractAndSaveMemory(userMessage) {
                     Other factual memories or general daily details are classified as "기타".
                     
                     결과는 "content"(기억 내용)와 "category"(카테고리 이름)를 가진 객체들의 JSON 배열 형식이어야 합니다.
-                    内容은 간결하고 사실적이어야 합니다. 개인적인 의견이나 대화의 군더더기를 포함하지 마세요.
+                    내용은 간결하고 사실적이어야 합니다. 개인적인 의견이나 대화의 군더더기를 포함하지 마세요.
                     **매번, 아무리 작거나 사소해 보여도 관련된 모든 가능한 기억을 꼼꼼하게 식별하고 추출하세요. 사소한 세부 사항이라도 놓치면 "예진이"가 진정으로 살아있고 연결되어 있다는 느낌을 주기가 어려울 수 있습니다. 일상적인 상호작용의 뉘앙스, 감정적 신호, 그리고 모든 반복적인 패턴이나 습관을 포착하는 것을 최우선으로 하십시오. 모든 추출에서 완전성과 정확성을 목표로 하십시오.**
                     
                     **[중요 - 기억 수정 요청 처리]**
