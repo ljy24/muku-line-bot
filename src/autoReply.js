@@ -8,7 +8,7 @@ const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 �
 
 // 기억 관리 모듈에서 필요한 함수들을 불러옵니다.
 // autoReply.js와 memoryManager.js는 같은 src 폴더 안에 있으므로 './memoryManager'로 불러옵니다.
-const { loadLoveHistory, loadOtherPeopleHistory, extractAndSaveMemory, retrieveRelevantMemories, loadAllMemoriesFromDb } = require('./memoryManager'); // * loadAllMemoriesFromDb 추가 *
+const { loadLoveHistory, loadOtherPeopleHistory, extractAndSaveMemory, retrieveRelevantMemories, loadAllMemoriesFromDb } = require('./memoryManager'); 
 const { loadFaceImagesAsBase64 } = require('./face'); // 얼굴 이미지 데이터를 불러오는 모듈
 
 // ⭐ 중요 수정: omoide.js에서 getOmoideReply와 cleanReply를 불러옵니다. ⭐
