@@ -1,4 +1,4 @@
-// src/memoryManager.js v1.9 - PostgreSQL 데이터베이스 연동 버전
+// src/memoryManager.js v1.10 - PostgreSQL 데이터베이스 연동 및 기억 처리 로직 강화
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈 (디렉토리 생성 등)
 const path = require('path'); // 경로 처리 모듈
@@ -78,6 +78,16 @@ async function saveMemoryToDb(memory) {
         throw new Error("Database pool not initialized.");
     }
     try {
+        // * 중복 확인 쿼리를 저장 전에 실행 *
+        const checkQuery = 'SELECT COUNT(*) FROM memories WHERE content = $1';
+        const checkResult = await pool.query(checkQuery, [memory.content]);
+        const count = parseInt(checkResult.rows[0].count);
+
+        if (count > 0) {
+            console.log(`[MemoryManager] 중복 기억, 저장 건너뜀: ${memory.content}`);
+            return;
+        }
+
         const queryText = `INSERT INTO memories (content, category, strength, timestamp, is_love_related, is_other_person_related)
                            VALUES ($1, $2, $3, $4, $5, $6)`;
         const queryValues = [
@@ -85,8 +95,8 @@ async function saveMemoryToDb(memory) {
             memory.category,
             memory.strength,
             memory.timestamp,
-            memory.is_love_related,
-            memory.is_other_person_related
+            newMemory.is_love_related, // * Boolean 값을 그대로 전달 *
+            newMemory.is_other_person_related // * Boolean 값을 그대로 전달 *
         ];
         const result = await pool.query(queryText, queryValues);
         console.log(`[MemoryManager] 기억 저장됨 (영향 받은 행 수: ${result.rowCount}): ${memory.content}`);
@@ -98,6 +108,7 @@ async function saveMemoryToDb(memory) {
 
 /**
  * * 모든 기억을 PostgreSQL 데이터베이스에서 불러옵니다. *
+ * * 이 함수는 모든 필드를 포함한 기억 객체 배열을 반환합니다. *
  * @returns {Promise<Array<Object>>} 모든 기억 배열
  */
 async function loadAllMemoriesFromDb() {
@@ -107,8 +118,9 @@ async function loadAllMemoriesFromDb() {
     }
     try {
         const result = await pool.query("SELECT * FROM memories ORDER BY timestamp DESC");
+        // * PostgreSQL의 BOOLEAN 값은 JavaScript에서 true/false로 직접 매핑되므로, 추가 변환이 필요 없습니다. *
         console.log(`[MemoryManager] ${result.rows.length}개의 기억 불러오기 완료.`);
-        return result.rows; // * PostgreSQL의 결과는 result.rows에 담겨 있습니다. *
+        return result.rows; // PostgreSQL의 결과는 result.rows에 담겨 있습니다.
     } catch (err) {
         console.error(`[MemoryManager] 모든 기억 불러오기 실패: ${err.message}`);
         throw err;
@@ -123,8 +135,8 @@ async function loadAllMemoriesFromDb() {
 async function loadLoveHistory() {
     try {
         const allMemories = await loadAllMemoriesFromDb();
-        // * PostgreSQL의 BOOLEAN 값은 JavaScript에서 true/false로 직접 매핑됩니다. *
-        const loveMemories = allMemories.filter(mem => mem.is_love_related === true);
+        // * is_love_related가 true인 기억만 필터링 *
+        const loveMemories = allMemories.filter(mem => mem.is_love_related === true); // PostgreSQL의 boolean은 true/false로 매핑됨
 
         const categories = {};
         loveMemories.forEach(mem => {
@@ -133,6 +145,7 @@ async function loadLoveHistory() {
             }
             categories[mem.category].push(mem);
         });
+        console.log(`[MemoryManager] 사랑 관련 카테고리 로드 완료: ${Object.keys(categories).length}개`); // *디버그 로그*
         return { categories };
     } catch (error) {
         console.error(`[MemoryManager] 사랑 기억 로드 실패: ${error.message}`);
@@ -148,7 +161,7 @@ async function loadLoveHistory() {
 async function loadOtherPeopleHistory() {
     try {
         const allMemories = await loadAllMemoriesFromDb();
-        // * PostgreSQL의 BOOLEAN 값은 JavaScript에서 true/false로 직접 매핑됩니다. *
+        // * is_other_person_related가 true인 기억만 필터링 *
         const otherMemories = allMemories.filter(mem => mem.is_other_person_related === true);
 
         const categories = {};
@@ -158,6 +171,7 @@ async function loadOtherPeopleHistory() {
             }
             categories[mem.category].push(mem);
         });
+        console.log(`[MemoryManager] 기타 인물 관련 카테고리 로드 완료: ${Object.keys(categories).length}개`); // *디버그 로그*
         return { categories };
     } catch (error) {
         console.error(`[MemoryManager] 기타 인물 기억 로드 실패: ${error.message}`);
@@ -173,7 +187,7 @@ async function loadOtherPeopleHistory() {
 async function extractAndSaveMemory(userMessage) {
     // 아저씨의 메시지가 너무 짧거나 의미 없는 내용일 경우 기억 추출을 건너뜁니다.
     if (!userMessage || userMessage.trim().length < 5) {
-        console.log(`[MemoryManager] 메시지가 너무 짧아 기억 추출을 건너웁니다: "${userMessage}"`);
+        console.log(`[MemoryManager] 메시지가 너무 짧아 기억 추출을 건너뜁니다: "${userMessage}"`);
         return;
     }
 
@@ -261,7 +275,7 @@ async function extractAndSaveMemory(userMessage) {
                     await saveMemoryToDb(newMemory); // 데이터베이스에 저장
                     console.log(`[MemoryManager] 새로운 기억 저장됨: ${newMemory.content}`);
                 } else {
-                    console.log(`[MemoryManager] 중복 기억, 저장 건너뜀: ${newMemory.content}`);
+                    console.log(`[MemoryManager] 중복 기억, 저장 건너뜁니다: ${newMemory.content}`);
                 }
             }
         } else {
@@ -331,7 +345,9 @@ async function retrieveRelevantMemories(userQuery, limit = 3) {
 
         let parsedResult;
         try {
-            parsedResult = JSON.parse(rawResult);
+            // * AI가 단일 객체를 반환할 수도 있으므로, 배열인지 확인하고 배열이 아니면 배열로 감싸줍니다. *
+            const potentialResult = JSON.parse(rawResult);
+            parsedResult = Array.isArray(potentialResult) ? potentialResult : [potentialResult];
         } catch (parseError) {
             console.error(`[MemoryManager] 기억 검색 JSON 파싱 실패: ${parseError.message}, 원본: ${rawResult}`);
             return []; // 파싱 실패 시 빈 배열 반환
