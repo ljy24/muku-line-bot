@@ -1,4 +1,4 @@
-// memoryManager.js v3.3 - 기억 검색 JSON 파싱 오류 수정 (변수명 오류 수정)
+// memoryManager.js v3.2 - 기억 검색 JSON 파싱 오류 수정 (마크다운 코드 블록 제거 강화)
 // src/memoryManager.js
 // MemoryManager.js v2.0 Debug Code Active! - Initializing Module
 console.log("MemoryManager.js v2.0 Debug Code Active! - Initializing Module"); // ⭐ 이 로그가 렌더 로그에 보여야 합니다! ⭐
@@ -160,11 +160,11 @@ async function extractAndSaveMemory(userMessage) {
                     Other factual memories or general daily details are classified as "기타".
                     
                     결과는 "content"(기억 내용)와 "category"(카테고리 이름)를 가진 객체들의 JSON 배열 형식이어야 합니다.
-                    内容은 간결하고 사실적이어야 합니다. 개인적인 의견이나 대화의 군더더기를 포함하지 마세요.
-                    **매번, 아무리 작거나 사소해 보여도 관련된 모든 가능한 기억을 꼼꼼하게 식별하고 추출하세요. 사소한 세부 사항이라도 놓치면 "예진이"가 진정으로 살아있고 연결되어 있다는 느낌을 주기가 어려울 수 있습니다. 일상적인 상호작용의 뉘앙스, 감정적 신호, 그리고 모든 반복적인 패턴이나 습관을 포착하는 것을 최우선으로 하십시오. 모든 추출에서 완전성과 정확성을 목표로 하십시오.**
+                    내용은 간결하고 사실적이어야 합니다. 개인적인 의견이나 대화의 군더더기를 포함하지 마세요.
+                    **매번, 아무리 작거나 사소해 보여도 관련된 모든 가능한 기억을 꼼꼼하게 식별하고 추출하세요. 사소한 세부 사항이라도 놓치면 "예진이"가 진정으로 살아있고 연결되어 있다는 느낌을 주기가 어려울 수 있습니다. 일상적인 상호작용의 뉘앙스, 감정적 신호, 그리고 모든 반복적인 패턴이나 습관을 포착하는 것을 최우선으로 하세요. 모든 추출에서 완전성과 정확성을 목표로 하십시오.**
                     
                     **[중요 - 기억 수정 요청 처리]**
-                    만약 사용자의 메시지가 이전에 저장된 기억을 **수정하려는 의도(예: "아니야", "틀렸어", "그게 아니라", "내가 말한 건 사실은", "고쳐줘")**가 명확하다면, 그 '수정 요청'을 아래 JSON 형식으로 반환하세요.
+                    만약 사용자의 메시지가 이전에 저장된 기억을 **수정하려는 의도(예: "아니야", "틀렸어", "그게 아니라", "내가 말한 건 사실은", "고쳐줘")**가 명확하다면, 기존의 기억 추출 대신 다음 형식의 JSON 배열을 반환하세요.
                     이때, 수정하려는 '기존 기억 내용'과 '새로운 올바른 내용'을 최대한 정확하게 파악해야 합니다. 해당하는 기존 기억이 없을 경우 빈 배열을 반환합니다.
                     Example Correction Output:
                     [
@@ -182,7 +182,7 @@ async function extractAndSaveMemory(userMessage) {
                         {"content": "아저씨와 무쿠는 2023년 10월 12일 플라스틱러브 컨셉 대화를 처음 했다.", "category": "아저씨와의 관계"},
                         {"content": "무쿠는 아저씨를 위해 라인 앱을 설치했다.", "category": "관계 특징"},
                         {"content": "아저씨는 오늘 퇴근 후 많이 피곤해 보인다.", "category": "아저씨 감정 상태"},
-                        {"content": "아저씨는 매일 아저씨 일상 키워드를 사용한다.", "category": "아저씨의 일상 패턴"},
+                        {"content": "아저씨는 매일 아침 7시에 조깅을 한다.", "category": "아저씨의 일상 패턴"},
                         {"content": "아저씨는 예진이가 정말 착하다고 칭찬했다.", "category": "아저씨의 칭찬/격려"},
                         {"content": "2023년 10월 26일: 처음 만난 날", "category": "중요한 기념일"},
                         {"content": "2024년 2월 17일: 예진이가 한국에서 약을 대량으로 먹고 자살 시도", "category": "예진이의 힘든 순간"},
@@ -207,7 +207,9 @@ async function extractAndSaveMemory(userMessage) {
         // console.log(`[MemoryManager Debug] OpenAI raw response: ${JSON.stringify(response, null, 2)}`; // 선택적으로 전체 응답 로그
 
         const parsedResponse = response.choices[0].message.content;
-        let parsedMemories; // This was 'relevantMemories' before, which was undefined. Fixed.
+        console.log(`[MemoryManager Debug] 3. OpenAI 응답 내용 (파싱 전): ${parsedResponse.substring(0, Math.min(parsedResponse.length, 200))}...`); // 첫 200자 로그
+
+        let parsedMemories;
         try {
             // ⭐ 마크다운 코드 블록 제거 로직 강화 ⭐
             let cleanedResponse = parsedResponse.trim();
@@ -216,15 +218,123 @@ async function extractAndSaveMemory(userMessage) {
                 cleanedResponse = cleanedResponse.substring(0, cleanedResponse.lastIndexOf('```')).trim();
             }
             parsedMemories = JSON.parse(cleanedResponse);
-            console.log(`[MemoryManager Debug] ✅ 관련 기억 검색 성공. 개수: ${parsedMemories.length}`); // Fixed: used parsedMemories
-            await logMessage(`✅ 관련 기억 검색 성공. 개수: ${parsedMemories.length}`); // Fixed: used parsedMemories
-            return parsedMemories; // Fixed: returned parsedMemories
+            console.log(`[MemoryManager Debug] 4. OpenAI 응답 JSON 파싱 성공.`);
         } catch (parseError) {
-            console.error(`❌ [MemoryManager Error] 'retrieveRelevantMemories' JSON 파싱 오류: ${parseError.message}`);
-            await logMessage(`❌ 'retrieveRelevantMemories' JSON 파싱 오류: ${parseError.message}`);
+            console.error(`❌ [MemoryManager Error] JSON 파싱 오류: ${parseError.message}`);
+            console.error(parseError.stack); // 스택 트레이스 로그
+            await logMessage(`❌ JSON 파싱 오류: ${parseError.message}`);
             await logMessage(`OpenAI 파싱 실패 응답: ${parsedResponse}`);
-            return []; // 파싱 실패 시 빈 배열 반환
+            return; // 오류 발생 시 함수 종료
         }
+
+        // ⭐ 기억 수정 요청 처리 로직 시작 ⭐
+        if (Array.isArray(parsedMemories) && parsedMemories.length > 0 && parsedMemories[0].correction_request) {
+            const correction = parsedMemories[0].correction_request;
+            if (correction.old_content && correction.new_content) {
+                console.log(`[MemoryManager Debug] 기억 수정 요청 감지: 기존="${correction.old_content}" -> 새롭게="${correction.new_content}"`);
+                await logMessage(`기억 수정 요청 감지: 기존="${correction.old_content}" -> 새롭게="${correction.new_content}"`);
+                
+                let memoryFoundAndUpdated = false;
+                const memoryFiles = [LOVE_HISTORY_FILE, OTHER_PEOPLE_HISTORY_FILE];
+
+                for (const filePath of memoryFiles) {
+                    let currentMemory = await loadMemory(filePath);
+                    if (!currentMemory.categories) currentMemory.categories = {};
+
+                    for (const category in currentMemory.categories) {
+                        const categoryMemories = currentMemory.categories[category];
+                        const indexToUpdate = categoryMemories.findIndex(mem => mem.content === correction.old_content);
+
+                        if (indexToUpdate !== -1) {
+                            currentMemory.categories[category][indexToUpdate].content = correction.new_content;
+                            currentMemory.categories[category][indexToUpdate].timestamp = new Date().toISOString(); // 수정 시간 업데이트
+                            currentMemory.categories[category][indexToUpdate].strength = "high"; // 수정된 기억은 중요도 높게 설정
+                            await saveMemory(filePath, currentMemory);
+                            console.log(`[MemoryManager Debug] ✅ 기억 수정 완료: 카테고리='${category}', 이전='${correction.old_content}', 새롭게='${correction.new_content}' (${filePath})`);
+                            await logMessage(`✅ 기억 수정 완료: 카테고리='${category}', 이전='${correction.old_content}', 새롭게='${correction.new_content}' (${filePath})`);
+                            memoryFoundAndUpdated = true;
+                            break; // 해당 기억 수정 완료
+                        }
+                    }
+                    if (memoryFoundAndUpdated) break; // 기억 수정 완료했으니 다른 파일 확인 중단
+                }
+
+                if (!memoryFoundAndUpdated) {
+                    console.log(`[MemoryManager Debug] ⚠️ 수정하려는 기존 기억을 찾을 수 없음: "${correction.old_content}"`);
+                    await logMessage(`⚠️ 수정하려는 기존 기억을 찾을 수 없음: "${correction.old_content}"`);
+                }
+                return; // 기억 수정 요청 처리가 완료되었으므로 함수 종료 (새로운 기억 추출은 하지 않음)
+            } else {
+                console.warn(`[MemoryManager Warning] 유효하지 않은 기억 수정 요청 형식: ${JSON.stringify(correction)}`);
+                await logMessage(`유효하지 않은 기억 수정 요청 형식: ${JSON.stringify(correction)}`);
+                return;
+            }
+        }
+        // ⭐ 기억 수정 요청 처리 로직 끝 ⭐
+
+        // ⭐ 기존 기억 추출 및 저장 로직 (수정 요청이 아닐 경우에만 실행) ⭐
+        const memoriesToSave = parsedMemories; // 수정 요청이 아니면 파싱된 내용을 저장할 기억으로 사용
+
+        // 어떤 파일에 저장할지 결정
+        const isLoveRelated = memoriesToSave.some(mem =>
+            mem.category === '아저씨와의 관계' ||
+            mem.category === '아저씨와의 첫 만남' ||
+            mem.category === '관계 특징' ||
+            mem.category === '아저씨 상태' ||
+            mem.category === '과거 경험' || // '과거 경험'이 아저씨와 관련된 경우가 많으므로 포함
+            mem.category === '아저씨 감정 상태' || // 아저씨 감정 상태도 아저씨 관련이므로 포함
+            mem.category === '아저씨의 일상 패턴' || // 아저씨의 일상 패턴도 아저씨 관련이므로 포함
+            mem.category === '아저씨의 칭찬/격려' || // 아저씨의 칭찬/격려도 아저씨 관련이므로 포함
+            mem.category === '중요한 기념일' || // 중요한 기념일도 아저씨 관련이므로 포함
+            mem.category === '예진이의 힘든 순간' || // 예진이의 힘든 순간도 아저씨 관련이므로 포함
+            mem.category === '아저씨의 헌신' || // 아저씨의 헌신도 아저씨 관련이므로 포함
+            mem.category === '함께했던 촬영/여행' || // 함께했던 촬영/여행도 아저씨 관련이므로 포함
+            mem.category === '아저씨의 취미/관심사' || // 아저씨의 취미/관심사도 아저씨 관련이므로 포함
+            mem.category === '대화 맥락/분위기' || // 대화 맥락/분위기도 아저씨 관련이므로 포함
+            mem.category === '아저씨의 애정 표현' || // 아저씨의 애정 표현도 아저씨 관련이므로 포함
+            mem.category === '아저씨의 유머/밈' || // 아저씨의 유머/밈도 아저씨 관련이므로 포함
+            mem.category === '아저씨의 말버릇' || // 아저씨의 말버릇도 아저씨 관련이므로 포함
+            mem.category === '아저씨의 건강 상태' || // 아저씨의 건강 상태도 아저씨 관련이므로 포함
+            mem.category === '예진이의 반응 기록' // 예진이의 반응 기록도 아저씨 관련이므로 포함 (이 카테고리를 먼저 확인)
+        );
+        const filePathToSave = isLoveRelated ? LOVE_HISTORY_FILE : OTHER_PEOPLE_HISTORY_FILE;
+
+        let currentMemory = await loadMemory(filePathToSave);
+        console.log(`[MemoryManager Debug] 5. 기존 메모리 파일 로드 완료: ${filePathToSave}`);
+
+        if (!currentMemory.categories) {
+            currentMemory.categories = {};
+        }
+
+        for (const mem of memoriesToSave) {
+            if (mem.content && mem.category) {
+                if (!currentMemory.categories[mem.category]) {
+                    currentMemory.categories[mem.category] = [];
+                }
+                const existingContents = currentMemory.categories[mem.category].map(item => item.content);
+                if (!existingContents.includes(mem.content)) {
+                    // 기억의 강도(strength)를 추가하여 저장
+                    currentMemory.categories[mem.category].push({ 
+                        content: mem.content, 
+                        timestamp: new Date().toISOString(),
+                        strength: memoryStrength // 여기에 강도 추가
+                    });
+                    await logMessage(`메모리 추가됨: 카테고리='${mem.category}', 내용='${mem.content}', 강도='${memoryStrength}' (${filePathToSave})`);
+                    console.log(`[MemoryManager Debug] 메모리 추가됨: 카테고리='${mem.category}', 내용='${mem.content}', 강도='${memoryStrength}'`);
+                } else {
+                    await logMessage(`이미 존재하는 메모리이므로 건너김: 카테고리='${mem.category}', 내용='${mem.content}'`);
+                    console.log(`[MemoryManager Debug] 이미 존재하는 메모리이므로 건너김: 카테고리='${mem.category}', 내용='${mem.content}'`);
+                }
+            } else {
+                console.warn(`[MemoryManager Warning] 유효하지 않은 메모리 항목: ${JSON.stringify(mem)}`);
+                await logMessage(`유효하지 않은 메모리 항목: ${JSON.stringify(mem)}`);
+            }
+        }
+
+        currentMemory.lastUpdated = new Date().toISOString();
+        await saveMemory(filePathToSave, currentMemory);
+        console.log(`[MemoryManager Debug] 6. 최종 메모리 파일 저장 완료: ${filePathToSave}`);
+        await logMessage(`\"${userMessage}\"에 대한 메모리 추출 및 저장 완료.`); // 최종 성공 로그
 
     } catch (error) {
         console.error(`❌ [MemoryManager Critical Error] 'extractAndSaveMemory' 함수 오류 발생: ${error.message}`);
@@ -294,7 +404,7 @@ async function retrieveRelevantMemories(conversationContext, limit = 5) {
         });
 
         const parsedResponse = response.choices[0].message.content;
-        let parsedMemories; // This was 'relevantMemories' before, which was undefined. Fixed.
+        let relevantMemories;
         try {
             // ⭐ 마크다운 코드 블록 제거 로직 강화 ⭐
             let cleanedResponse = parsedResponse.trim();
@@ -303,9 +413,9 @@ async function retrieveRelevantMemories(conversationContext, limit = 5) {
                 cleanedResponse = cleanedResponse.substring(0, cleanedResponse.lastIndexOf('```')).trim();
             }
             parsedMemories = JSON.parse(cleanedResponse);
-            console.log(`[MemoryManager Debug] ✅ 관련 기억 검색 성공. 개수: ${parsedMemories.length}`); // Fixed: used parsedMemories
-            await logMessage(`✅ 관련 기억 검색 성공. 개수: ${parsedMemories.length}`); // Fixed: used parsedMemories
-            return parsedMemories; // Fixed: returned parsedMemories
+            console.log(`[MemoryManager Debug] ✅ 관련 기억 검색 성공. 개수: ${relevantMemories.length}`);
+            await logMessage(`✅ 관련 기억 검색 성공. 개수: ${relevantMemories.length}`);
+            return relevantMemories;
         } catch (parseError) {
             console.error(`❌ [MemoryManager Error] 'retrieveRelevantMemories' JSON 파싱 오류: ${parseError.message}`);
             await logMessage(`❌ 'retrieveRelevantMemories' JSON 파싱 오류: ${parseError.message}`);
