@@ -1,32 +1,34 @@
-// src/memoryManager.js v1.8 - MySQL 데이터베이스 연동 버전 (MySQL 5.7 호환)
+// src/memoryManager.js v1.9 - PostgreSQL 데이터베이스 연동 버전
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈 (디렉토리 생성 등)
 const path = require('path'); // 경로 처리 모듈
 const { OpenAI } = require('openai'); // OpenAI API 클라이언트
 const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
-const mysql = require('mysql2/promise'); // * MySQL2 라이브러리 (Promise 기반으로 비동기 처리 용이) 불러오기 *
+const { Pool } = require('pg'); // * PostgreSQL 클라이언트 'pg' 모듈에서 Pool 가져오기 *
 
 // OpenAI 클라이언트 초기화
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// * MySQL 데이터베이스 연결 정보 설정 *
-// * 이 정보들은 환경 변수 (Render 대시보드의 Environment Variables)에 설정되어야 합니다. *
+// * PostgreSQL 데이터베이스 연결 정보 설정 *
+// * Render 환경 변수에서 DB 정보를 가져옵니다. *
+// * DATABASE_URL 환경 변수가 있다면 우선적으로 사용합니다. *
 const dbConfig = {
-    host: process.env.MYSQL_HOST,
-    port: process.env.MYSQL_PORT ? parseInt(process.env.MYSQL_PORT) : 3306, // 환경 변수에서 가져올 때 숫자로 변환
-    user: process.env.MYSQL_USER,
-    password: process.env.MYSQL_PASSWORD,
-    database: process.env.MYSQL_DATABASE,
-    waitForConnections: true, // 연결 풀에서 연결을 사용할 수 있을 때까지 기다릴지 여부
-    connectionLimit: 10,      // 연결 풀의 최대 연결 수
-    queueLimit: 0             // 연결 풀 대기열의 최대 요청 수 (0 = 무제한)
+    connectionString: process.env.DATABASE_URL, // Render에서 제공하는 Connection String 사용 (권장)
+    host: process.env.PG_HOST,
+    port: process.env.PG_PORT ? parseInt(process.env.PG_PORT) : 5432, // 포트는 숫자로 파싱
+    user: process.env.PG_USER,
+    password: process.env.PG_PASSWORD,
+    database: process.env.PG_DATABASE,
+    ssl: {
+        rejectUnauthorized: false // Render PostgreSQL은 SSL을 사용하며, self-signed 인증서일 경우 필요할 수 있습니다.
+    }
 };
 
-let pool; // * MySQL 연결 풀 인스턴스 (연결 재사용을 위해 권장) *
+let pool; // * PostgreSQL 연결 풀 인스턴스 *
 
 /**
- * * 기억 관련 파일 디렉토리가 존재하는지 확인하고, 없으면 생성합니다 (선택 사항, 로그 파일 등을 위해). *
- * * MySQL 데이터베이스에 연결 풀을 설정하고 필요한 'memories' 테이블을 초기화합니다. *
+ * * 기억 관련 파일 디렉토리가 존재하는지 확인하고, 없으면 생성합니다 (로그 파일 등을 위해). *
+ * * PostgreSQL 데이터베이스에 연결 풀을 설정하고 필요한 'memories' 테이블을 초기화합니다. *
  * @returns {Promise<void>}
  */
 async function ensureMemoryDirectory() {
@@ -35,23 +37,23 @@ async function ensureMemoryDirectory() {
         await fs.promises.mkdir(MEMORY_DIR, { recursive: true });
         console.log(`[MemoryManager] 기억 관련 파일 디렉토리 확인/생성 완료: ${MEMORY_DIR}`);
 
-        // * MySQL 데이터베이스 연결 풀 생성 *
-        pool = mysql.createPool(dbConfig);
-        console.log(`[MemoryManager] MySQL 데이터베이스 연결 풀 생성 성공: ${dbConfig.database}`);
+        // * PostgreSQL 데이터베이스 연결 풀 생성 *
+        pool = new Pool(dbConfig);
+        await pool.connect(); // 연결 테스트
+        console.log(`[MemoryManager] PostgreSQL 데이터베이스 연결 풀 생성 성공: ${dbConfig.database || dbConfig.connectionString}`);
 
         // * 'memories' 테이블 생성 (이미 존재하면 건너뜜) *
-        // * MySQL 5.7에서 BOOLEAN 타입은 TINYINT(1)로 처리되므로, BOOLEAN 사용. *
-        // * VARCHAR 대신 TEXT를 사용하여 content의 길이를 유연하게 처리. *
-        await pool.execute(`
+        // * PostgreSQL의 BOOLEAN 타입은 true/false를 직접 사용합니다. *
+        await pool.query(`
             CREATE TABLE IF NOT EXISTS memories (
-                id INT AUTO_INCREMENT PRIMARY KEY,
+                id SERIAL PRIMARY KEY,
                 content TEXT NOT NULL,
                 category VARCHAR(255) NOT NULL,
                 strength VARCHAR(50) NOT NULL,
                 timestamp VARCHAR(255) NOT NULL,
                 is_love_related BOOLEAN NOT NULL,
                 is_other_person_related BOOLEAN NOT NULL
-            ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+            );
         `);
         console.log(`[MemoryManager] 'memories' 테이블 준비 완료.`);
 
@@ -66,29 +68,28 @@ async function ensureMemoryDirectory() {
 }
 
 /**
- * * 새로운 기억을 MySQL 데이터베이스에 저장합니다. *
+ * * 새로운 기억을 PostgreSQL 데이터베이스에 저장합니다. *
  * @param {Object} memory - 저장할 기억 객체
  * @returns {Promise<void>}
  */
 async function saveMemoryToDb(memory) {
     if (!pool) {
-        console.error("[MemoryManager] MySQL 데이터베이스 풀이 초기화되지 않았습니다. 기억을 저장할 수 없습니다.");
+        console.error("[MemoryManager] PostgreSQL 데이터베이스 풀이 초기화되지 않았습니다. 기억을 저장할 수 없습니다.");
         throw new Error("Database pool not initialized.");
     }
     try {
-        const [rows] = await pool.execute( // * connection.execute 대신 pool.execute 사용 *
-            `INSERT INTO memories (content, category, strength, timestamp, is_love_related, is_other_person_related)
-             VALUES (?, ?, ?, ?, ?, ?)`,
-            [
-                memory.content,
-                memory.category,
-                memory.strength,
-                memory.timestamp,
-                memory.is_love_related ? 1 : 0, // * MySQL BOOLEAN은 0 또는 1로 저장 *
-                memory.is_other_person_related ? 1 : 0 // * MySQL BOOLEAN은 0 또는 1로 저장 *
-            ]
-        );
-        console.log(`[MemoryManager] 기억 저장됨 (ID: ${rows.insertId}): ${memory.content}`);
+        const queryText = `INSERT INTO memories (content, category, strength, timestamp, is_love_related, is_other_person_related)
+                           VALUES ($1, $2, $3, $4, $5, $6)`;
+        const queryValues = [
+            memory.content,
+            memory.category,
+            memory.strength,
+            memory.timestamp,
+            memory.is_love_related,
+            memory.is_other_person_related
+        ];
+        const result = await pool.query(queryText, queryValues);
+        console.log(`[MemoryManager] 기억 저장됨 (영향 받은 행 수: ${result.rowCount}): ${memory.content}`);
     } catch (err) {
         console.error(`[MemoryManager] 기억 저장 실패: ${err.message}`);
         throw err;
@@ -96,20 +97,18 @@ async function saveMemoryToDb(memory) {
 }
 
 /**
- * * 모든 기억을 MySQL 데이터베이스에서 불러옵니다. *
+ * * 모든 기억을 PostgreSQL 데이터베이스에서 불러옵니다. *
  * @returns {Promise<Array<Object>>} 모든 기억 배열
  */
 async function loadAllMemoriesFromDb() {
     if (!pool) {
-        console.error("[MemoryManager] MySQL 데이터베이스 풀이 초기화되지 않았습니다. 기억을 불러올 수 없습니다.");
+        console.error("[MemoryManager] PostgreSQL 데이터베이스 풀이 초기화되지 않았습니다. 기억을 불러올 수 없습니다.");
         throw new Error("Database pool not initialized.");
     }
     try {
-        const [rows] = await pool.execute("SELECT * FROM memories ORDER BY timestamp DESC"); // * connection.execute 대신 pool.execute 사용 *
-        // * MySQL의 BOOLEAN (TINYINT(1)) 값은 JavaScript에서 1 또는 0으로 오므로, 직접 사용하거나 필요에 따라 true/false로 변환합니다. *
-        // * 여기서는 1 또는 0을 그대로 사용하고, 필터링 로직에서 === 1 || === true 로 처리하도록 합니다. *
-        console.log(`[MemoryManager] ${rows.length}개의 기억 불러오기 완료.`);
-        return rows;
+        const result = await pool.query("SELECT * FROM memories ORDER BY timestamp DESC");
+        console.log(`[MemoryManager] ${result.rows.length}개의 기억 불러오기 완료.`);
+        return result.rows; // * PostgreSQL의 결과는 result.rows에 담겨 있습니다. *
     } catch (err) {
         console.error(`[MemoryManager] 모든 기억 불러오기 실패: ${err.message}`);
         throw err;
@@ -124,8 +123,8 @@ async function loadAllMemoriesFromDb() {
 async function loadLoveHistory() {
     try {
         const allMemories = await loadAllMemoriesFromDb();
-        // * MySQL에서 불러온 is_love_related 값이 1이거나 true인 경우를 필터링합니다. *
-        const loveMemories = allMemories.filter(mem => mem.is_love_related === 1 || mem.is_love_related === true);
+        // * PostgreSQL의 BOOLEAN 값은 JavaScript에서 true/false로 직접 매핑됩니다. *
+        const loveMemories = allMemories.filter(mem => mem.is_love_related === true);
 
         const categories = {};
         loveMemories.forEach(mem => {
@@ -149,8 +148,8 @@ async function loadLoveHistory() {
 async function loadOtherPeopleHistory() {
     try {
         const allMemories = await loadAllMemoriesFromDb();
-        // * MySQL에서 불러온 is_other_person_related 값이 1이거나 true인 경우를 필터링합니다. *
-        const otherMemories = allMemories.filter(mem => mem.is_other_person_related === 1 || mem.is_other_person_related === true);
+        // * PostgreSQL의 BOOLEAN 값은 JavaScript에서 true/false로 직접 매핑됩니다. *
+        const otherMemories = allMemories.filter(mem => mem.is_other_person_related === true);
 
         const categories = {};
         otherMemories.forEach(mem => {
@@ -174,7 +173,7 @@ async function loadOtherPeopleHistory() {
 async function extractAndSaveMemory(userMessage) {
     // 아저씨의 메시지가 너무 짧거나 의미 없는 내용일 경우 기억 추출을 건너뜁니다.
     if (!userMessage || userMessage.trim().length < 5) {
-        console.log(`[MemoryManager] 메시지가 너무 짧아 기억 추출을 건너뜁니다: "${userMessage}"`);
+        console.log(`[MemoryManager] 메시지가 너무 짧아 기억 추출을 건너웁니다: "${userMessage}"`);
         return;
     }
 
