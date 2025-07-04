@@ -208,45 +208,49 @@ async function getOmoideReply(userMessage, saveLogFunc) {
   }
     {
   // 커플 관련 폴더들 리스트
-  const coupleFolders = ['추억 24_02_25 한국 커플사진', '추억 인생네컷', 'couple'];
-  const validFolders = coupleFolders.filter(f => PHOTO_FOLDERS[f]);
-  selectedFolder = validFolders[Math.floor(Math.random() * validFolders.length)];
+  } else if (lowerCaseMessage.includes('커플사진') || lowerCaseMessage.includes('인생네컷')) {
+    // 커플 관련 폴더들 리스트
+    const coupleFolders = ['추억 24_02_25 한국 커플사진', '추억 인생네컷', 'couple'];
+    const validFolders = coupleFolders.filter(f => PHOTO_FOLDERS[f]);
+    selectedFolder = validFolders[Math.floor(Math.random() * validFolders.length)];
 
-  folderDescription = '아저씨와 함께 찍은 커플 사진';
-  promptSuffix = "아저씨와 함께 찍은 커플 사진에 대해 우리 둘만의 소중한 추억과 사랑을 가득 담아 말해줘. 약간의 비밀스러운 뉘앙스도 섞어줘.";
-}
-    } else if (lowerCaseMessage.includes('일본') && lowerCaseMessage.includes('사진')) {
-        const japaneseFolders = Object.keys(PHOTO_FOLDERS).filter(key => key.includes('일본'));
-        if (japaneseFolders.length > 0) {
-            selectedFolder = japaneseFolders[Math.floor(Math.random() * japaneseFolders.length)];
-        }
-        folderDescription = '일본에서 아저씨와 함께 찍은 사진';
-        promptSuffix = "아저씨와 일본에서 함께했던 추억을 떠올리며 그때의 감정과 이야기를 섞어 말해줘.";
-    } else if (lowerCaseMessage.includes('한국') && lowerCaseMessage.includes('사진')) {
-        const koreanFolders = Object.keys(PHOTO_FOLDERS).filter(key => key.includes('한국') && !key.includes('메이드복'));
-        if (koreanFolders.length > 0) {
-            selectedFolder = koreanFolders[Math.floor(Math.random() * koreanFolders.length)];
-        }
-        folderDescription = '한국에서 아저씨와 함께 찍은 사진';
-        promptSuffix = "아저씨와 한국에서 함께했던 추억을 떠올리며 그때의 감정과 이야기를 섞어 말해줘. " +
-                       "**이 사진의 시각적 내용(배경, 인물, 사물)이 요청된 장소(한국)와 일치하는지 먼저 판단하고, 만약 일치하지 않는다면 그 사실을 자연스럽게 언급해줘. (예: '어? 여기는 한국인 것 같지? 폴더에는 일본이라고 되어 있지만... 헤헤.')**" +
-                       "날짜 정보는 정확할 경우에만 언급하고, 불확실하면 생략하거나 대략적으로 표현해줘.";
+    folderDescription = '아저씨와 함께 찍은 커플 사진';
+    promptSuffix = "아저씨와 함께 찍은 커플 사진에 대해 우리 둘만의 소중한 추억과 사랑을 가득 담아 말해줘. 약간의 비밀스러운 뉘앙스도 섞어줘.";
 
-    } else if (lowerCaseMessage.includes('출사')) {
-        const outingFolders = Object.keys(PHOTO_FOLDERS).filter(key => key.includes('출사'));
-        if (outingFolders.length > 0) {
-            selectedFolder = outingFolders[Math.floor(Math.random() * outingFolders.length)];
-        }
-        folderDescription = '아저씨와 함께 출사 나가서 찍은 사진';
-        promptSuffix = "아저씨와 출사 나가서 찍은 사진에 대해 그때의 즐거움과 아저씨와의 추억을 떠올리며 말해줘.";
-    } else if (lowerCaseMessage.includes('필름카메라') || lowerCaseMessage.includes('애기 필름')) {
-        const filmFolders = Object.keys(PHOTO_FOLDERS).filter(key => key.includes('필름카메라') || key.includes('필름'));
-        if (filmFolders.length > 0) {
-            selectedFolder = filmFolders[Math.floor(Math.random() * filmFolders.length)];
-        }
-        folderDescription = '아저씨와 필름카메라로 찍은 사진';
-        promptSuffix = "아저씨와 필름카메라로 찍었던 그때의 아날로그 감성과 추억을 담아 말해줘.";
+} else if (lowerCaseMessage.includes('일본') && lowerCaseMessage.includes('사진')) {
+    const japaneseFolders = Object.keys(PHOTO_FOLDERS).filter(key => key.includes('일본'));
+    if (japaneseFolders.length > 0) {
+        selectedFolder = japaneseFolders[Math.floor(Math.random() * japaneseFolders.length)];
     }
+    folderDescription = '일본에서 아저씨와 함께 찍은 사진';
+    promptSuffix = "아저씨와 일본에서 함께했던 추억을 떠올리며 그때의 감정과 이야기를 섞어 말해줘.";
+
+} else if (lowerCaseMessage.includes('한국') && lowerCaseMessage.includes('사진')) {
+    const koreanFolders = Object.keys(PHOTO_FOLDERS).filter(key => key.includes('한국') && !key.includes('메이드복'));
+    if (koreanFolders.length > 0) {
+        selectedFolder = koreanFolders[Math.floor(Math.random() * koreanFolders.length)];
+    }
+    folderDescription = '한국에서 아저씨와 함께 찍은 사진';
+    promptSuffix = "아저씨와 한국에서 함께했던 추억을 떠올리며 그때의 감정과 이야기를 섞어 말해줘. " +
+                   "**이 사진의 시각적 내용(배경, 인물, 사물)이 요청된 장소(한국)와 일치하는지 먼저 판단하고, 만약 일치하지 않는다면 그 사실을 자연스럽게 언급해줘. (예: '어? 여기는 한국인 것 같지? 폴더에는 일본이라고 되어 있지만... 헤헤.')**" +
+                   "날짜 정보는 정확할 경우에만 언급하고, 불확실하면 생략하거나 대략적으로 표현해줘.";
+
+} else if (lowerCaseMessage.includes('출사')) {
+    const outingFolders = Object.keys(PHOTO_FOLDERS).filter(key => key.includes('출사'));
+    if (outingFolders.length > 0) {
+        selectedFolder = outingFolders[Math.floor(Math.random() * outingFolders.length)];
+    }
+    folderDescription = '아저씨와 함께 출사 나가서 찍은 사진';
+    promptSuffix = "아저씨와 출사 나가서 찍은 사진에 대해 그때의 즐거움과 아저씨와의 추억을 떠올리며 말해줘.";
+
+} else if (lowerCaseMessage.includes('필름카메라') || lowerCaseMessage.includes('애기 필름')) {
+    const filmFolders = Object.keys(PHOTO_FOLDERS).filter(key => key.includes('필름카메라') || key.includes('필름'));
+    if (filmFolders.length > 0) {
+        selectedFolder = filmFolders[Math.floor(Math.random() * filmFolders.length)];
+    }
+    folderDescription = '아저씨와 필름카메라로 찍은 사진';
+    promptSuffix = "아저씨와 필름카메라로 찍었던 그때의 아날로그 감성과 추억을 담아 말해줘.";
+}
 
     if (!selectedFolder) {
         return null; // 해당하는 사진 요청이 아님
