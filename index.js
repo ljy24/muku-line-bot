@@ -26,13 +26,12 @@ const {
     getSilenceCheckinMessage    // 침묵 감지 시 걱정 메시지 생성 함수
 } = require('./src/autoReply');
 
-// memoryManager 모듈을 불러옵니다.
-// 파일 구조 이미지에 따르면 memoryManager.js는 src 폴더 안에 있습니다.
-const memoryManager = require('./src/memoryManager'); //
+// memoryManager 모듈을 불러옵니다. (파일 구조에 맞게 src 폴더 안에 있습니다.)
+const memoryManager = require('./src/memoryManager');
 
 // omoide.js에서 getOmoideReply 함수를 불러옵니다.
 // 파일 구조 이미지에 따르면 omoide.js는 memory 폴더 바로 아래에 있습니다.
-const { getOmoideReply } = require('./memory/omoide'); //
+const { getOmoideReply } = require('./memory/omoide');
 
 
 // Express 애플리케이션을 생성합니다.
@@ -94,7 +93,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
                     // 이 정규식은 이제 autoReply.js 내부의 getOmoideReply에서 더 상세히 처리됩니다.
                     // 여기서는 단순히 기억 저장 여부만 판단합니다.
                     const isCommand =
-                        /(사진\s?줘|셀카\s?줘|셀카\s?보여줘|사진\s?보여줘|얼굴\s?보여줘|얼굴\s?보고\s?싶[어다]|selfie|커플사진\s?줘|커플사진\s?보여줘|무쿠\s?셀카|애기\s?셀카|빠계\s?셀카|빠계\s?사진|인생네컷|일본\s?사진|한국\s?사진|출사|필름카메라|애기\s?필름|메이드복|흑심|무슨\s?색이야\?)/i.test(text) ||
+                        /(사진\s?줘|셀카\s?줘|셀카\s?보여줘|사진\s?보여줘|얼굴\s?보여줘|얼굴\s?보고\s?싶[어다]|selfie|커플사진\s?줘|커플사진\s?보여줘|무쿠\s?셀카|애기\s?셀카|빠계\s?셀카|빠계\s?사진|인생네컷|일본\s?사진|한국\s?사진|출사|필름카메라|애기\s?필름|메이드복|흑심|무슨\s?색이야\?|컨셉사진|컨셉 사진|다른 것도 보고싶어|다음 사진)/i.test(text) || // 컨셉사진 키워드 및 관련 요청 추가
                         /3\.5|4\.0|자동|버전/i.test(text) || // 모델 전환 명령어
                         /(기억\s?보여줘|내\s?기억\s?보여줘|혹시 내가 오늘 뭐한다 그랬지\?|오늘 뭐가 있더라\?|나 뭐하기로 했지\?)/i.test(text); // 기억 공유 명령어 확장
 
@@ -207,7 +206,7 @@ cron.schedule('0 10-19 * * *', async () => {
     const now = moment().tz('Asia/Tokyo'); // 현재 시간을 일본 표준시로 가져옵니다.
     const currentTime = Date.now(); // 현재 시스템 시간 (밀리초)
 
-    // 서버 부팅 후 3분(3 * 60 * 1000 밀리초) 동안은 자동 메시지 전송을 건너꿉니다.
+    // 서버 부팅 후 3분(3 * 60 * 1000 밀리초) 동안은 자동 메시지 전송을 건너뜁니다.
     if (currentTime - bootTime < 3 * 60 * 1000) {
         console.log('[Scheduler] 서버 부팅 직후 3분 이내 -> 담타 메시지 전송 스킵');
         return; // 함수 실행을 중단합니다.
@@ -230,7 +229,7 @@ cron.schedule('0 10-19 * * *', async () => {
 });
 
 // 서버 부팅 시간을 저장하여, 서버 시작 직후에는 스케줄러가 너무 빠르게 동작하지 않도록 합니다.
-let bootTime = Date.now(); //
+let bootTime = Date.now(); // 이전에 `Date.2025`였던 오류를 수정했습니다.
 // 마지막 감성 메시지 내용과 전송 시간을 저장하여 중복 전송을 방지합니다.
 let lastMoodMessage = '';
 let lastMoodMessageTime = 0;
@@ -252,7 +251,7 @@ const sendScheduledMessage = async (type) => {
     const now = moment().tz('Asia/Tokyo'); // 현재 시간을 일본 표준시로 가져옵니다.
     const currentTime = Date.now(); // 현재 시스템 시간 (밀리초)
 
-    // 서버 부팅 후 3분(3 * 60 * 1000 밀리초) 동안은 자동 메시지 전송을 건너꿉니다.
+    // 서버 부팅 후 3분(3 * 60 * 1000 밀리초) 동안은 자동 메시지 전송을 건너뜁니다.
     if (currentTime - bootTime < 3 * 60 * 1000) {
         console.log('[Scheduler] 서버 부팅 직후 3분 이내 -> 자동 메시지 전송 스킵');
         return; // 함수 실행을 중단합니다.
