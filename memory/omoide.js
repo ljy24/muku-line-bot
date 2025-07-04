@@ -68,15 +68,17 @@ async function callOpenAI(messages, modelParamFromCall = null, maxTokens = 400, 
     }
 
     try {
+        console.log(`[omoide:callOpenAI] 모델 호출 시작: ${finalModel}`);
         const response = await openai.chat.completions.create({
             model: finalModel,
             messages: messages,
             max_tokens: maxTokens,
             temperature: temperature
         });
+        console.log(`[omoide:callOpenAI] 모델 응답 수신 완료.`);
         return response.choices[0].message.content.trim();
     } catch (error) {
-        console.error(`[callOpenAI in omoide.js] OpenAI API 호출 실패 (모델: ${finalModel}):`, error);
+        console.error(`[omoide:callOpenAI] OpenAI API 호출 실패 (모델: ${finalModel}):`, error);
         return "지금 잠시 생각 중이야... 아저씨 조금만 기다려줄래? ㅠㅠ";
     }
 }
@@ -90,6 +92,7 @@ async function callOpenAI(messages, modelParamFromCall = null, maxTokens = 400, 
  * @returns {string} 교정된 답변 텍스트
  */
 function cleanReply(reply) {
+    console.log(`[omoide:cleanReply] 원본 답변: "${reply}"`);
     // 1. AI가 붙일 수 있는 불필요한 접두사를 제거합니다. (예: "예진:", "무쿠:", "날짜 이름:")
     let cleaned = reply.replace(/^(예진:|무쿠:|23\.\d{1,2}\.\d{1,2} [가-힣]+:)/gm, '').trim();
 
@@ -135,6 +138,7 @@ function cleanReply(reply) {
     cleaned = cleaned.replace(/이에요\b/g, '야');
     cleaned = cleaned.replace(/였어요\b/g, '였어');
     cleaned = cleaned.replace(/보고싶어요\b/g, '보고 싶어');
+    console.log(`[omoide:cleanReply] 정제된 답변: "${cleaned}"`);
     return cleaned;
 }
 
@@ -144,6 +148,7 @@ function cleanReply(reply) {
  * @returns {string|null} 랜덤 사진 URL 또는 null (폴더를 찾을 수 없을 때)
  */
 function generateRandomPhotoUrl(folderName) {
+    console.log(`[omoide:generateRandomPhotoUrl] 폴더명: "${folderName}"`);
     const photoCount = PHOTO_FOLDERS[folderName];
     if (photoCount === undefined || photoCount <= 0) {
         console.warn(`[omoide.js] 폴더를 찾을 수 없거나 사진이 없습니다: ${folderName}`);
@@ -151,7 +156,9 @@ function generateRandomPhotoUrl(folderName) {
     }
     const randomIndex = Math.floor(Math.random() * photoCount) + 1; // 1부터 photoCount까지
     const fileName = String(randomIndex).padStart(6, '0') + '.jpg'; // 예: 000001.jpg (6자리)
-    return `${BASE_PHOTO_URL}${encodeURIComponent(folderName)}/${fileName}`;
+    const url = `${BASE_PHOTO_URL}${encodeURIComponent(folderName)}/${fileName}`;
+    console.log(`[omoide:generateRandomPhotoUrl] 생성된 URL: "${url}" (파일 수: ${photoCount}, 인덱스: ${randomIndex})`);
+    return url;
 }
 
 /**
@@ -161,6 +168,7 @@ function generateRandomPhotoUrl(folderName) {
  * @returns {Promise<{type: string, url?: string, caption?: string, comment?: string}|null>} 사진 URL과 코멘트 객체 또는 null (사진 요청이 아닐 때)
  */
 async function getOmoideReply(userMessage, saveLogFunc) {
+    console.log(`[omoide:getOmoideReply] 메시지 수신: "${userMessage}"`);
     const lowerCaseMessage = userMessage.toLowerCase();
     let selectedFolder = null;
     let folderDescription = '';
@@ -231,14 +239,17 @@ async function getOmoideReply(userMessage, saveLogFunc) {
     }
 
     if (!selectedFolder) {
+        console.log(`[omoide:getOmoideReply] 매칭되는 폴더 없음. null 반환.`);
         return null; // 해당하는 사진 요청이 아님
     }
 
     const photoUrl = generateRandomPhotoUrl(selectedFolder);
 
     if (!photoUrl) {
+        console.warn(`[omoide:getOmoideReply] 사진 URL 생성 실패. 텍스트 응답 반환.`);
         return { type: 'text', comment: '아저씨... 해당하는 사진을 못 찾겠어 ㅠㅠ 다른 사진 보여줄까?' };
     }
+    console.log(`[omoide:getOmoideReply] 선택된 폴더: "${selectedFolder}", URL: "${photoUrl}"`);
 
     // 일반 폴더 기반 사진 요청에 대한 systemPrompt
     const systemPrompt = `
@@ -265,11 +276,13 @@ async function getOmoideReply(userMessage, saveLogFunc) {
         { role: 'system', content: systemPrompt },
         { role: 'user', content: `이 ${folderDescription} 사진에 대해 예진이 말투로 이야기해줘.` }
     ];
+    console.log(`[omoide:getOmoideReply] OpenAI 프롬프트 준비 완료.`);
 
     try {
         const rawComment = await callOpenAI(messages, 'gpt-4o', 100, 1.0);
         const comment = cleanReply(rawComment);
         saveLogFunc('예진이', `(사진 보냄) ${comment}`);
+        console.log(`[omoide:getOmoideReply] 응답 완료: ${comment}`);
         return { type: 'photo', url: photoUrl, caption: comment };
     } catch (error) {
         console.error('❌ [omoide.js Error] 사진 코멘트 생성 실패:', error);
