@@ -1,16 +1,18 @@
-// ✅ index.js v1.8 - 서버 시작 시 "아저씨 뭐해?" 자동 메시지 전송 추가
+// index.js v1.8 - 오모이데 제거 + 서버 시작 시 메시지 자동 발송
 
 const fs = require('fs');
 const path = require('path');
 const { Client, middleware } = require('@line/bot-sdk');
 const express = require('express');
 const moment = require('moment-timezone');
-const cron = require('node-cron');
 
 const {
     getReplyByMessage,
     getReplyByImagePrompt,
     getRandomMessage,
+    getColorMoodReply,
+    getHappyReply,
+    getSulkyReply,
     saveLog,
     setForcedModel,
     checkModelSwitchCommand,
@@ -29,6 +31,9 @@ const client = new Client(config);
 const userId = process.env.TARGET_USER_ID;
 
 let lastUserMessageTime = Date.now();
+let lastProactiveSentTime = 0;
+const SILENCE_THRESHOLD = 2 * 60 * 60 * 1000;
+const PROACTIVE_COOLDOWN = 1 * 60 * 60 * 1000;
 
 app.get('/', (_, res) => res.send('무쿠 살아있엉'));
 
@@ -53,7 +58,14 @@ app.post('/webhook', middleware(config), async (req, res) => {
 
                 if (message.type === 'text') {
                     const text = message.text.trim();
+                    const isCommand =
+                        /(사진\s?줘|셀카\s?줘|셀카\s?보여줘|사진\s?보여줘|얼굴\s?보여줘|얼굴\s?보고\s?싶[어다]|selfie|커플사진\s?줘|커플사진\s?보여줘|무쿠\s?셀카|애기\s?셀카|빠계\s?셀카|빠계\s?사진|인생네컷|일본\s?사진|한국\s?사진|출사|필름카메라|애기\s?필름|메이드복|흑심|무슨\s?색이야\?)/i.test(text) ||
+                        /3\.5|4\.0|자동|버전/i.test(text) ||
+                        /(기억\s?보여줘|내\s?기억\s?보여줘|혹시 내가 오늘 뭐한다 그랬지\?|오늘 뭐가 있더라\?|나 뭐하기로 했지\?)/i.test(text);
+
                     saveLog('아저씨', text);
+                    if (!isCommand) await memoryManager.extractAndSaveMemory(text);
+                    else console.log(`[index.js] 명령어 '${text}'는 메모리 저장 제외.`);
 
                     const versionResponse = checkModelSwitchCommand(text);
                     if (versionResponse) {
@@ -78,6 +90,13 @@ app.post('/webhook', middleware(config), async (req, res) => {
                     if (botResponse.type === 'text') {
                         const safeText = botResponse.comment && botResponse.comment.trim() ? botResponse.comment : '무슨 말을 해야 할지 모르겠어 ㅠㅠ';
                         replyMessages.push({ type: 'text', text: safeText });
+                    } else if (botResponse.type === 'photo') {
+                        replyMessages.push({
+                            type: 'image',
+                            originalContentUrl: botResponse.url,
+                            previewImageUrl: botResponse.url
+                        });
+                        if (botResponse.caption) replyMessages.push({ type: 'text', text: botResponse.caption });
                     } else {
                         replyMessages.push({ type: 'text', text: '지금 잠시 문제가 생겼어 ㅠㅠ' });
                     }
@@ -118,14 +137,9 @@ app.listen(PORT, async () => {
     console.log(`무쿠 서버 스타트! 포트: ${PORT}`);
     await memoryManager.ensureMemoryDirectory();
     console.log('메모리 디렉토리 확인 완료!');
-
-    // ✅ 서버 시작 시 아저씨에게 메시지 전송
     try {
-        const greeting = '아저씨 뭐해?';
-        await client.pushMessage(userId, { type: 'text', text: greeting });
-        saveLog('예진이', greeting);
-        console.log('[index.js] 서버 시작 인사 메시지 전송됨');
-    } catch (err) {
-        console.error('서버 시작 시 메시지 전송 실패:', err);
+        await client.pushMessage(userId, { type: 'text', text: '아저씨 뭐해?' });
+    } catch (e) {
+        console.error('서버 시작 후 메시지 전송 실패:', e);
     }
 });
