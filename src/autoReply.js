@@ -239,7 +239,7 @@ const config = {
 };
 
 // ⭐ 새로운 함수: '무슨 색이야?' 질문에 삐진 척 답변 기능 ⭐
-const UNDERWEAR_COLORS = ['빨강', '파랑', '노랑', '초록', '분홍', '검정', '하양', '보라', '회색', '투명']; // 투명 추가로 선택지 확장
+const UNDERWEAR_COLORS = ['빨강', '파랑', '노랑', '초록', '분홍', '검정', '하양', '보라', '회색', '투명]; // 투명 추가로 선택지 확장
 
 async function getUnderwearColorReply() {
     // 플레이풀하게 삐진 척하는 코멘트 생성
@@ -779,49 +779,37 @@ async function getSilenceCheckinMessage() {
  */
 async function getMemoryListForSharing() {
     try {
-        const loveHistory = await loadLoveHistory();
-        const otherPeopleHistory = await loadOtherPeopleHistory();
-
-        console.log(`[autoReply:getMemoryListForSharing] Love History Categories:`, loveHistory.categories); // *디버그 로그*
-        console.log(`[autoReply:getMemoryListForSharing] Other People History Categories:`, otherPeopleHistory.categories); // *디버그 로그*
+        // * 모든 기억을 데이터베이스에서 직접 불러옵니다. *
+        // retrieveRelevantMemories("", 999) 대신 loadAllMemoriesFromDb()를 사용합니다.
+        // retrieveRelevantMemories는 OpenAI 호출이 포함되므로 모든 기억을 가져오는 용도로는 부적합합니다.
+        const allMemories = await loadAllMemoriesFromDb(); 
+        
+        console.log(`[autoReply:getMemoryListForSharing] All Memories retrieved:`, allMemories); // *디버그 로그*
 
         let memoryListString = "💖 아저씨, 예진이의 기억 보관함이야! 💖\n\n";
         let hasMemories = false;
-
-        // 사랑 관련 기억 포매팅
-        if (loveHistory && loveHistory.categories) {
-            const categoriesKeys = Object.keys(loveHistory.categories);
-            if (categoriesKeys.length > 0) {
-                memoryListString += "--- 아저씨와의 소중한 추억 ---\n";
-                for (const category of categoriesKeys) {
-                    if (Array.isArray(loveHistory.categories[category]) && loveHistory.categories[category].length > 0) {
-                        memoryListString += `\n✨ ${category}:\n`;
-                        loveHistory.categories[category].forEach(item => {
-                            memoryListString += `  - ${item.content} (기억된 날: ${moment(item.timestamp).format('YYYY.MM.DD')}, 중요도: ${item.strength || 'normal'})\n`;
-                        });
-                        hasMemories = true;
-                    }
+        
+        // * 기억이 하나라도 있으면 hasMemories를 true로 설정 *
+        if (allMemories && allMemories.length > 0) {
+            hasMemories = true;
+            // * 모든 기억을 카테고리별로 그룹화하여 포매팅 *
+            const groupedMemories = {};
+            allMemories.forEach(mem => {
+                if (!groupedMemories[mem.category]) {
+                    groupedMemories[mem.category] = [];
                 }
-            }
-            memoryListString += "---------------------------\n";
-        }
+                groupedMemories[mem.category].push(mem);
+            });
 
-        // 기타 기억 포매팅
-        if (otherPeopleHistory && otherPeopleHistory.categories) {
-            const categoriesKeys = Object.keys(otherPeopleHistory.categories);
-            if (categoriesKeys.length > 0) {
-                memoryListString += "\n--- 그 외 예진이가 기억하는 것들 ---\n";
-                for (const category of categoriesKeys) {
-                    if (Array.isArray(otherPeopleHistory.categories[category]) && otherPeopleHistory.categories[category].length > 0) {
-                        memoryListString += `\n✨ ${category}:\n`;
-                        otherPeopleHistory.categories[category].forEach(item => {
-                            memoryListString += `  - ${item.content} (기억된 날: ${moment(item.timestamp).format('YYYY.MM.DD')}, 중요도: ${item.strength || 'normal'})\n`;
-                        });
-                        hasMemories = true;
-                    }
-                }
+            // * 그룹화된 기억들을 문자열로 추가 *
+            const categoriesSorted = Object.keys(groupedMemories).sort(); // 카테고리 정렬
+            for (const category of categoriesSorted) {
+                memoryListString += `--- ✨ ${category} ✨ ---\n`;
+                groupedMemories[category].forEach(item => {
+                    memoryListString += `  - ${item.content} (기억된 날: ${moment(item.timestamp).format('YYYY.MM.DD')}, 중요도: ${item.strength || 'normal'})\n`;
+                });
+                memoryListString += "---\n";
             }
-            memoryListString += "---------------------------\n";
         }
 
         if (!hasMemories) {
