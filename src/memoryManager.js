@@ -1,7 +1,7 @@
 // src/memoryManager.js v1.10 - PostgreSQL 데이터베이스 연동 및 기억 처리 로직 강화
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈 (디렉토리 생성 등)
-const path = require='path'; // 경로 처리 모듈
+vconst path = require('path'); // 경로 처리 모듈 (등호를 괄호로 수정)
 const { OpenAI } = require('openai'); // OpenAI API 클라이언트
 const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
 const { Pool } = require('pg'); // * PostgreSQL 클라이언트 'pg' 모듈에서 Pool 가져오기 *
