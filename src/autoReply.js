@@ -17,6 +17,8 @@ const {
     loadAllMemoriesFromDb // <-- 이 함수를 명시적으로 불러옵니다.
 } = require('./memoryManager');
 
+console.log(`[DEBUG] Type of loadAllMemoriesFromDb after import: ${typeof loadAllMemoriesFromDb}`); // <-- 이 줄을 추가
+
 // * 얼굴 이미지 데이터를 불러오는 모듈 *
 const { loadFaceImagesAsBase64 } = require('./face');
 
