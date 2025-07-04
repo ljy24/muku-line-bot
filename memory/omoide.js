@@ -179,12 +179,24 @@ async function getOmoideReply(userMessage, saveLogFunc) {
         selectedFolder = '흑심 24_11_08 한국 메이드복_'; // 정확한 폴더명 사용
         folderDescription = '내가(예진이) 메이드복 입고 찍은 사진'; // '나'임을 명확히
         promptSuffix = "내가 메이드복을 입고 찍었던 사진에 대해 아저씨에게 장난기 있으면서도 귀엽고 사랑스럽게 말해줘. 아저씨가 나를 보며 얼마나 귀여워할지 생각하면 기분이 좋아! 이때 아저씨가 놀랐던 기억도 같이 얘기해줘.";
-    } else if (lowerCaseMessage.includes('셀카줘') || lowerCaseMessage.includes('사진줘') || lowerCaseMessage.includes('얼굴 보여줘') || lowerCaseMessage.includes('얼굴 보고 싶') || lowerCaseMessage.includes('selfie')) {
-        // '셀카줘' 등 일반적인 셀카 요청 -> 'yejin' 폴더 사용 (PHOTO_FOLDERS에 등록됨)
-        selectedFolder = 'yejin';
-        folderDescription = '내(예진이) 셀카';
-        promptSuffix = "아저씨에게 보내는 내(예진이) 셀카에 대해 귀엽고 사랑스럽게 말해줘. 아저씨가 나를 보고 얼마나 기뻐할지 기대하는 마음을 담아서.";
-    }
+  
+} else if (
+  lowerCaseMessage.includes('셀카') ||
+  lowerCaseMessage.includes('사진줘') ||
+  lowerCaseMessage.includes('사진 줘') ||
+  lowerCaseMessage.includes('얼굴 보여줘') ||
+  lowerCaseMessage.includes('얼굴 보고 싶') ||
+  lowerCaseMessage.includes('얼굴 좀') ||
+  lowerCaseMessage.includes('얼굴 한 번') ||
+  lowerCaseMessage.includes('예진이 보고') ||
+  lowerCaseMessage.includes('애기 보고') ||
+  lowerCaseMessage.includes('보고 싶어') ||
+  lowerCaseMessage.includes('selfie')
+) {
+  selectedFolder = 'yejin';
+  folderDescription = '내(예진이) 셀카';
+  promptSuffix = "아저씨에게 보내는 내(예진이) 셀카에 대해 귀엽고 사랑스럽게 말해줘. 아저씨가 나를 보고 얼마나 기뻐할지 기대하는 마음을 담아서.";
+}
     // 나머지 사진 요청 처리 (기존 로직 유지)
     else if (lowerCaseMessage.includes('인생네컷')) {
         selectedFolder = '추억 인생네컷';
