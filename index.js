@@ -1,4 +1,4 @@
-// ✅ index.js v1.9.3 - 웹훅 처리 개선, 사진 URL 표시, 스케줄러 통합 (최종 - 텍스트 응답 안정성 강화)
+// ✅ index.js v1.9.5 - 웹훅 처리 개선, 사진 URL 표시, 스케줄러 통합 (최종 - 경로 완벽 재조정)
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공
 const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
@@ -8,6 +8,7 @@ const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 �
 const cron = require('node-cron'); // Node-cron: 주기적인 작업 스케줄링
 
 // 필요한 함수들을 불러옵니다.
+// ⭐ 경로 수정: autoReply.js는 src 폴더 안에 있습니다. (./src/)
 const {
     getReplyByMessage,          // 사용자 텍스트 메시지에 대한 답변 생성 (이제 사진 요청도 처리)
     getReplyByImagePrompt,      // 이미지 메시지에 대한 답변 생성 (사용자가 보낸 이미지 분석)
@@ -23,16 +24,19 @@ const {
     getProactiveMemoryMessage,  // 기억 기반 선제적 메시지 생성
     getMemoryListForSharing,    // 기억 목록 공유 함수
     getSilenceCheckinMessage    // 침묵 감지 시 걱정 메시지 생성 함수
-} = require('./autoReply'); // ⭐ 경로 확인: autoReply.js가 index.js와 같은 src 폴더 안에 있다고 가정
+} = require('./src/autoReply'); // ⭐ 경로 재조정: './src/autoReply' ⭐
 
 // memoryManager 모듈을 불러옵니다.
-const memoryManager = require('./sec/memoryManager'); // ⭐ 경로 확인: memoryManager.js가 index.js와 같은 src 폴더 안에 있다고 가정
+// ⭐ 경로 수정: memoryManager.js는 src 폴더 안에 있습니다. (./src/)
+const memoryManager = require('./src/memoryManager'); // ⭐ 경로 재조정: './src/memoryManager' ⭐
 
 // omoide.js에서 getOmoideReply 함수를 불러옵니다.
-const { getOmoideReply } = require('./memory/omoide'); // ⭐ 경로 확인
+// ⭐ 경로 수정: omoide.js는 memory 폴더 안에 있습니다. (./memory/)
+const { getOmoideReply } = require('./memory/omoide'); // ⭐ 경로 재조정: './memory/omoide' ⭐
 
-// concept.js에서 getConceptPhotoReply 함수를 불러옵니다.
-const { getConceptPhotoReply } = require('./memory/concept'); // ⭐ 경로 확인
+// ⭐ concept.js에서 getConceptPhotoReply 함수를 불러옵니다.
+// ⭐ 경로 수정: concept.js는 memory 폴더 안에 있습니다. (./memory/)
+const { getConceptPhotoReply } = require('./memory/concept'); // ⭐ 경로 재조정: './memory/concept' ⭐
 
 // Express 애플리케이션을 생성합니다.
 const app = express();
@@ -123,7 +127,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
                     if (botResponse.type === 'text') {
                         replyMessages.push({
                             type: 'text',
-                            text: botResponse.comment || '음... 예진이가 무슨 말을 해야 할지 잠시 잊었어 ㅠㅠ' // ⭐ 추가: 빈 문자열 방지 폴백 ⭐
+                            text: botResponse.comment || '음... 예진이가 무슨 말을 해야 할지 잠시 잊었어 ㅠㅠ'
                         });
                     } else if (botResponse.type === 'photo') {
                         replyMessages.push({
@@ -172,7 +176,8 @@ app.post('/webhook', middleware(config), async (req, res) => {
             }
         }
         res.status(200).send('OK');
-    } catch (err) {
+    }
+    catch (err) {
         console.error('웹훅 처리 에러:', err);
         res.status(200).send('OK');
     }
@@ -225,7 +230,7 @@ let lastCouplePhotoMessageTime = 0;
  */
 const sendScheduledMessage = async (type) => {
     const now = moment().tz('Asia/Tokyo');
-    const currentTime = Date.now();
+    const currentTime = Date.now(); // ⭐ 수정: Date.Now -> Date.now ⭐
 
     if (currentTime - bootTime < 3 * 60 * 1000) {
         console.log('[Scheduler] 서버 부팅 직후 3분 이내 -> 자동 메시지 전송 스킵');
@@ -285,7 +290,7 @@ const sendScheduledMessage = async (type) => {
         if (Math.random() < 0.12) {
             try {
                 const coupleResponse = await getOmoideReply('커플사진 보여줘', saveLog);
-                const nowTime = Date.now();
+                const nowTime = Date.now(); // ⭐ 수정: Date.Now -> Date.now ⭐
 
                 if (
                     coupleResponse &&
@@ -323,7 +328,7 @@ cron.schedule('30 * * * *', async () => {
 
 // ⭐ 침묵 감지 스케줄러 추가 ⭐ (매 15분마다 침묵 감지 체크)
 cron.schedule('*/15 * * * *', async () => {
-    const now = Date.now();
+    const now = Date.now(); // ⭐ 수정: Date.Now -> Date.now ⭐
     const elapsedTimeSinceLastMessage = now - lastUserMessageTime;
     const elapsedTimeSinceLastProactive = now - lastProactiveSentTime;
 
