@@ -232,7 +232,7 @@ async function getConceptPhotoReply(userMessage, saveLogFunc) {
   }
 
   lastConceptPhotoFolder = selectedFolder;
-  const photoUrl = generateConceptPhotoUrl(selectedFolder, lastConceptPhotoIndex > 0 ? lastConceptPhotoIndex : null);
+  let photoUrl = generateConceptPhotoUrl(selectedFolder, lastConceptPhotoIndex > 0 ? lastConceptPhotoIndex : null);
   if (!photoUrl || !CONCEPT_FOLDERS[selectedFolder]) return { type: 'text', comment: '아저씨... 해당하는 컨셉 사진을 못 찾겠어 ㅠㅠ' };
 
   const messages = [
