@@ -1,4 +1,4 @@
-// ✅ index.js v1.8 - 웹훅 처리 개선, 사진 URL 표시, 스케줄러 통합 (최종 - 파일 구조 경로 완벽 적용)
+// ✅ index.js v1.9.1 - 웹훅 처리 개선, 사진 URL 표시, 스케줄러 통합 (최종 - 경로 문제 해결)
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공
 const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
@@ -24,14 +24,18 @@ const {
     getProactiveMemoryMessage,  // 기억 기반 선제적 메시지 생성
     getMemoryListForSharing,    // 기억 목록 공유 함수
     getSilenceCheckinMessage    // 침묵 감지 시 걱정 메시지 생성 함수
-} = require('./src/autoReply'); // ⭐ 경로 수정: src 폴더 안의 autoReply.js
+} = require('./autoReply'); // ⭐ 경로 수정: autoReply.js가 index.js와 같은 src 폴더 안에 있다고 가정
 
 // memoryManager 모듈을 불러옵니다.
-const memoryManager = require('./src/memoryManager'); // ⭐ 경로 수정: src 폴더 안의 memoryManager.js
+const memoryManager = require('./memoryManager'); // ⭐ 경로 수정: memoryManager.js가 index.js와 같은 src 폴더 안에 있다고 가정
 
 // omoide.js에서 getOmoideReply 함수를 불러옵니다.
-// 주신 파일 구조에 따르면, index.js에서 memory 폴더 안의 omoide.js로 접근해야 합니다.
-const { getOmoideReply } = require('./memory/omoide'); // ⭐ 경로 수정: memory 폴더 안의 omoide.js
+// ⭐ 최종 경로 수정: memory 폴더가 src 폴더 안에 있다고 가정
+const { getOmoideReply } = require('./memory/omoide'); // ⭐ 경로 수정
+
+// ⭐ concept.js에서 getConceptPhotoReply 함수를 불러옵니다.
+// ⭐ 최종 경로 수정: memory 폴더가 src 폴더 안에 있다고 가정
+const { getConceptPhotoReply } = require('./memory/concept'); // ⭐ 경로 수정
 
 // Express 애플리케이션을 생성합니다.
 const app = express();
@@ -267,7 +271,6 @@ const sendScheduledMessage = async (type) => {
         // (유효 시간대 17시간 * 0.20 확률 = 약 3.4회 전송 예상)
         if (Math.random() < 0.20) {
             try {
-                // 기존 셀카 전송 로직을 omoide.js의 getOmoideReply로 대체합니다.
                 // '셀카 보여줘'는 omoide.js에서 일반 셀카 폴더(de-ji.net/yejin/)를 사용하도록 설정되어 있습니다.
                 const selfieResponse = await getOmoideReply('셀카 보여줘', saveLog);
 
@@ -322,7 +325,6 @@ const sendScheduledMessage = async (type) => {
         // (유효 시간대 17시간 * 0.12 확률 = 약 2.04회 전송 예상)
         if (Math.random() < 0.12) {
             try {
-                // 기존 커플 사진 전송 로직을 omoide.js의 getOmoideReply로 대체합니다.
                 // '커플사진 보여줘'는 omoide.js에서 커플 사진 폴더를 사용하도록 설정되어 있습니다.
                 const coupleResponse = await getOmoideReply('커플사진 보여줘', saveLog);
                 const nowTime = Date.now();
