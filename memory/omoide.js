@@ -202,13 +202,15 @@ async function getOmoideReply(userMessage, saveLogFunc) {
         selectedFolder = '추억 인생네컷';
         folderDescription = '인생네컷 사진';
         promptSuffix = "아저씨와 함께 찍은 인생네컷 사진에 대해 즐겁고 추억이 담긴 멘트를 해줘.";
-    } else if (lowerCaseMessage.includes('커플사진')) {
-        selectedFolder = '추억 24_02_25 한국 커플사진';
-        if (!PHOTO_FOLDERS[selectedFolder]) {
-             selectedFolder = 'couple';
-        }
-        folderDescription = '아저씨와 함께 찍은 커플 사진';
-        promptSuffix = "아저씨와 함께 찍은 커플 사진에 대해 우리 둘만의 소중한 추억과 사랑을 가득 담아 말해줘. 약간의 비밀스러운 뉘앙스도 섞어줘.";
+    }} else if (lowerCaseMessage.includes('커플사진')) {
+  // 커플 관련 폴더들 리스트
+  const coupleFolders = ['추억 24_02_25 한국 커플사진', '추억 인생네컷', 'couple'];
+  const validFolders = coupleFolders.filter(f => PHOTO_FOLDERS[f]);
+  selectedFolder = validFolders[Math.floor(Math.random() * validFolders.length)];
+
+  folderDescription = '아저씨와 함께 찍은 커플 사진';
+  promptSuffix = "아저씨와 함께 찍은 커플 사진에 대해 우리 둘만의 소중한 추억과 사랑을 가득 담아 말해줘. 약간의 비밀스러운 뉘앙스도 섞어줘.";
+}
     } else if (lowerCaseMessage.includes('일본') && lowerCaseMessage.includes('사진')) {
         const japaneseFolders = Object.keys(PHOTO_FOLDERS).filter(key => key.includes('일본'));
         if (japaneseFolders.length > 0) {
