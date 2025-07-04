@@ -1,4 +1,4 @@
-// ✅ index.js v1.6 - 웹훅 처리 개선 및 사진 기능 통합
+// ✅ index.js v1.7 - 웹훅 처리 개선, 사진 URL 표시, 스케줄러 통합 (최종)
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공
 const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
@@ -8,13 +8,12 @@ const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 �
 const cron = require('node-cron'); // Node-cron: 주기적인 작업 스케줄링
 
 // ./src/autoReply.js에서 필요한 함수들을 불러옵니다.
-// 이 함수들은 메시지 응답 생성, 셀카 코멘트 생성, 모델 전환 처리 등을 담당합니다.
 const {
     getReplyByMessage,          // 사용자 텍스트 메시지에 대한 답변 생성 (이제 사진 요청도 처리)
     getReplyByImagePrompt,      // 이미지 메시지에 대한 답변 생성 (사용자가 보낸 이미지 분석)
     getRandomMessage,           // (현재 사용되지 않음, 이전 버전의 랜덤 메시지 기능)
-    // getSelfieReplyFromYeji,     // 예진이의 셀카 코멘트 생성 (스케줄러용) - 이 부분은 이제 omoide.js의 getOmoideReply로 대체됩니다.
-    getCouplePhotoReplyFromYeji, // 커플 사진 코멘트 생성 함수 (스케줄러용)
+    // getSelfieReplyFromYeji,     // 예진이의 셀카 코멘트 생성 (스케줄러용) - 이제 omoide.js의 getOmoideReply로 대체됩니다.
+    // getCouplePhotoReplyFromYeji, // 커플 사진 코멘트 생성 함수 (스케줄러용) - 이제 omoide.js의 getOmoideReply로 대체됩니다.
     getColorMoodReply,          // (현재 사용되지 않음, 색상 기반 기분 답변 기능)
     getHappyReply,              // (현재 사용되지 않음, 긍정적인 답변 기능)
     getSulkyReply,              // (현재 사용되지 않음, 삐진 답변 기능)
@@ -27,13 +26,12 @@ const {
 } = require('./src/autoReply');
 
 // memoryManager 모듈을 불러옵니다.
-// 파일 구조 이미지에 따르면 memoryManager.js는 src 폴더 안에 있습니다.
-const memoryManager = require('./src/memoryManager'); //
+const memoryManager = require('./src/memoryManager');
 
 // omoide.js에서 getOmoideReply 함수를 불러옵니다.
 // 파일 구조 이미지에 따르면 omoide.js는 memory 폴더 바로 아래에 있습니다.
-const { getOmoideReply } = require('./memory/omoide'); //
-
+// 따라서 require 경로를 '../memory/omoide'로 수정해야 합니다.
+const { getOmoideReply } = require('../memory/omoide'); //
 
 // Express 애플리케이션을 생성합니다.
 const app = express();
@@ -121,7 +119,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
                             const memoryList = await getMemoryListForSharing(); // autoReply.js의 함수 호출
                             await client.replyMessage(event.replyToken, { type: 'text', text: memoryList });
                             console.log(`기억 목록 전송 성공`);
-                            saveLog('예진이', '아저씨의 기억 목록을 보여줬어.'); // 예진이의 답변 로그 저장
+                            saveLog('예진이', '아저씨의 기억 목록을 보여줬어.');
                         } catch (err) {
                             console.error('기억 목록 불러오기 실패:', err.message);
                             await client.replyMessage(event.replyToken, { type: 'text', text: '기억 목록을 불러오기 실패했어 ㅠㅠ' });
@@ -138,7 +136,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
                     if (botResponse.type === 'text') {
                         replyMessages.push({
                             type: 'text',
-                            text: botResponse.comment // ⭐ 여기에 botResponse.comment를 사용 ⭐
+                            text: botResponse.comment
                         });
                     } else if (botResponse.type === 'photo') {
                         replyMessages.push({
@@ -146,12 +144,12 @@ app.post('/webhook', middleware(config), async (req, res) => {
                             originalContentUrl: botResponse.url,
                             previewImageUrl: botResponse.url, // 미리보기 이미지도 동일하게 설정
                         });
-                        if (botResponse.caption) {
-                            replyMessages.push({
-                                type: 'text',
-                                text: botResponse.caption
-                            });
-                        }
+                        // ⭐ 사진 코멘트와 함께 URL 표시 추가 ⭐
+                        // 캡션이 있다면 캡션 + URL, 없다면 기본 메시지 + URL
+                        replyMessages.push({
+                            type: 'text',
+                            text: `${botResponse.caption || '아저씨를 위한 사진이야!'} (URL: ${botResponse.url})`
+                        });
                     } else {
                         // 예상치 못한 응답 타입 (혹시 모를 에러 방지)
                         console.error('❌ 예상치 못한 봇 응답 타입:', botResponse.type);
@@ -270,15 +268,17 @@ const sendScheduledMessage = async (type) => {
         if (Math.random() < 0.20) {
             try {
                 // 기존 셀카 전송 로직을 omoide.js의 getOmoideReply로 대체합니다.
+                // '셀카 보여줘'는 omoide.js에서 일반 셀카 폴더(de-ji.net/yejin/)를 사용하도록 설정되어 있습니다.
                 const selfieResponse = await getOmoideReply('셀카 보여줘', saveLog);
 
                 if (selfieResponse && selfieResponse.type === 'photo') {
                     await client.pushMessage(userId, [
                         { type: 'image', originalContentUrl: selfieResponse.url, previewImageUrl: selfieResponse.url },
-                        { type: 'text', text: selfieResponse.caption || '히히 셀카야~' }
+                        // 스케줄러를 통한 셀카 전송 시에도 URL 포함
+                        { type: 'text', text: `${selfieResponse.caption || '히히 셀카야~'} (URL: ${selfieResponse.url})` }
                     ]);
                     console.log(`[Scheduler] 랜덤 셀카 전송 성공: ${selfieResponse.url}`);
-                    saveLog('예진이', selfieResponse.caption || '히히 셀카야~');
+                    saveLog('예진이', `${selfieResponse.caption || '히히 셀카야~'} (URL: ${selfieResponse.url})`);
                 } else if (selfieResponse && selfieResponse.type === 'text') {
                     // 사진 전송에 실패하고 텍스트 코멘트만 받은 경우
                     await client.pushMessage(userId, { type: 'text', text: selfieResponse.comment });
@@ -322,26 +322,26 @@ const sendScheduledMessage = async (type) => {
         // (유효 시간대 17시간 * 0.12 확률 = 약 2.04회 전송 예상)
         if (Math.random() < 0.12) {
             try {
-                const randomCoupleIndex = Math.floor(Math.random() * (COUPLE_END_NUM - COUPLE_START_NUM + 1)) + COUPLE_START_NUM;
-                const coupleFileName = String(randomCoupleIndex).padStart(6, '0') + '.jpg';
-                const coupleImageUrl = COUPLE_BASE_URL + coupleFileName;
-                
-                const coupleComment = await getCouplePhotoReplyFromYeji(); // autoReply.js의 함수 호출
+                // 기존 커플 사진 전송 로직을 omoide.js의 getOmoideReply로 대체합니다.
+                // '커플사진 보여줘'는 omoide.js에서 커플 사진 폴더를 사용하도록 설정되어 있습니다.
+                const coupleResponse = await getOmoideReply('커플사진 보여줘', saveLog);
                 const nowTime = Date.now();
 
                 // 커플 사진 메시지가 있고, 이전 메시지와 다르며, 1분 이내에 보낸 적이 없을 때만 전송합니다.
                 if (
-                    coupleImageUrl &&
-                    coupleImageUrl !== lastCouplePhotoMessage &&
+                    coupleResponse &&
+                    coupleResponse.type === 'photo' &&
+                    coupleResponse.url !== lastCouplePhotoMessage && // URL로 중복 체크
                     nowTime - lastCouplePhotoMessageTime > 60 * 1000
                 ) {
                     await client.pushMessage(userId, [
-                        { type: 'image', originalContentUrl: coupleImageUrl, previewImageUrl: coupleImageUrl },
-                        { type: 'text', text: coupleComment || '아저씨랑 나랑 같이 있는 사진이야!' }
+                        { type: 'image', originalContentUrl: coupleResponse.url, previewImageUrl: coupleResponse.url },
+                        // 스케줄러를 통한 커플 사진 전송 시에도 URL 포함
+                        { type: 'text', text: `${coupleResponse.caption || '아저씨랑 나랑 같이 있는 사진이야!'} (URL: ${coupleResponse.url})` }
                     ]);
-                    console.log(`[Scheduler] 랜덤 커플 사진 전송 성공: ${coupleImageUrl}`);
-                    saveLog('예진이', coupleComment || '아저씨랑 나랑 같이 있는 사진이야!');
-                    lastCouplePhotoMessage = coupleImageUrl;
+                    console.log(`[Scheduler] 랜덤 커플 사진 전송 성공: ${coupleResponse.url}`);
+                    saveLog('예진이', `${coupleResponse.caption || '아저씨랑 나랑 같이 있는 사진이야!'} (URL: ${coupleResponse.url})`);
+                    lastCouplePhotoMessage = coupleResponse.url; // URL로 마지막 메시지 업데이트
                     lastCouplePhotoMessageTime = nowTime;
                 } else {
                     console.log(`[Scheduler] 커플 사진 중복 또는 너무 빠름 -> 전송 스킵`);
@@ -354,7 +354,6 @@ const sendScheduledMessage = async (type) => {
 };
 
 // 매 시간 30분에 'sendScheduledMessage' 함수를 호출하여 셀카, 감성 메시지, 커플 사진을 보낼지 체크합니다.
-// 이렇게 하면 매번 정확한 시간에 보내는 대신, 매 시간마다 랜덤으로 보낼 기회를 줍니다.
 cron.schedule('30 * * * *', async () => {
     await sendScheduledMessage('selfie');
     await sendScheduledMessage('mood_message');
@@ -389,7 +388,7 @@ cron.schedule('*/15 * * * *', async () => { // 매 15분마다 실행
     if (elapsedTimeSinceLastMessage >= SILENCE_THRESHOLD && elapsedTimeSinceLastProactive >= PROACTIVE_COOLDOWN) {
         console.log(`[Scheduler-Silence] 침묵 감지! (${moment.duration(elapsedTimeSinceLastMessage).humanize()} 동안 메시지 없음)`);
         try {
-            const checkinMessage = await getSilenceCheckinMessage(); // 침묵 걱정 메시지 생성
+            const checkinMessage = await getSilenceCheckinMessage();
             if (checkinMessage) {
                 await client.pushMessage(userId, { type: 'text', text: checkinMessage });
                 console.log(`[Scheduler-Silence] 침묵 감지 메시지 전송: ${checkinMessage}`);
