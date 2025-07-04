@@ -8,7 +8,7 @@ const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 �
 
 // 기억 관리 모듈에서 필요한 함수들을 불러옵니다.
 // autoReply.js와 memoryManager.js는 같은 src 폴더 안에 있으므로 './memoryManager'로 불러옵니다.
-const { loadLoveHistory, loadOtherPeopleHistory, extractAndSaveMemory, retrieveRelevantMemories } = require('./memoryManager');
+const { loadLoveHistory, loadOtherPeopleHistory, extractAndSaveMemory, retrieveRelevantMemories, loadAllMemoriesFromDb } = require('./memoryManager'); // * loadAllMemoriesFromDb 추가 *
 const { loadFaceImagesAsBase64 } = require('./face'); // 얼굴 이미지 데이터를 불러오는 모듈
 
 // ⭐ 중요 수정: omoide.js에서 getOmoideReply와 cleanReply를 불러옵니다. ⭐
@@ -239,7 +239,7 @@ const config = {
 };
 
 // ⭐ 새로운 함수: '무슨 색이야?' 질문에 삐진 척 답변 기능 ⭐
-const UNDERWEAR_COLORS = ['빨강', '파랑', '노랑', '초록', '분홍', '검정', '하양', '보라', '회색', '투명']; // '투명' 뒤에 닫는 따옴표 추가
+const UNDERWEAR_COLORS = ['빨강', '파랑', '노랑', '초록', '분홍', '검정', '하양', '보라', '회색', '투명']; // 투명 추가로 선택지 확장
 
 async function getUnderwearColorReply() {
     // 플레이풀하게 삐진 척하는 코멘트 생성
@@ -782,7 +782,7 @@ async function getMemoryListForSharing() {
         // * 모든 기억을 데이터베이스에서 직접 불러옵니다. *
         // retrieveRelevantMemories("", 999) 대신 loadAllMemoriesFromDb()를 사용합니다.
         // retrieveRelevantMemories는 OpenAI 호출이 포함되므로 모든 기억을 가져오는 용도로는 부적합합니다.
-        const allMemories = await loadAllMemoriesFromDb(); 
+        const allMemories = await loadAllMemoriesFromDb(); // * memoryManager에서 직접 모든 기억을 불러옵니다. *
         
         console.log(`[autoReply:getMemoryListForSharing] All Memories retrieved:`, allMemories); // *디버그 로그*
 
@@ -795,10 +795,12 @@ async function getMemoryListForSharing() {
             // * 모든 기억을 카테고리별로 그룹화하여 포매팅 *
             const groupedMemories = {};
             allMemories.forEach(mem => {
-                if (!groupedMemories[mem.category]) {
-                    groupedMemories[mem.category] = [];
+                // * 카테고리 필드가 없거나 비어있는 경우 '기타'로 분류 *
+                const category = mem.category && mem.category.trim() !== '' ? mem.category : '기타';
+                if (!groupedMemories[category]) {
+                    groupedMemories[category] = [];
                 }
-                groupedMemories[mem.category].push(mem);
+                groupedMemories[category].push(mem);
             });
 
             // * 그룹화된 기억들을 문자열로 추가 *
