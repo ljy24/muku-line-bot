@@ -1,4 +1,4 @@
-// src/autoReply.js v2.4.2 - 기억 공유 기능 및 추억 사진 기능 통합 (이모티콘 규칙 완벽 반영 및 기능 누락 없음)
+// src/autoReply.js v2.5.2 - 기억 공유 기능 및 추억 사진 기능 통합 (일반 사진 분기 반영)
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공
 const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
@@ -7,16 +7,13 @@ const stringSimilarity = require('string-similarity'); // 문자열 유사도 �
 const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
 
 // 기억 관리 모듈에서 필요한 함수들을 불러옵니다.
-// retrieveRelevantMemories: 대화 맥락에 맞는 기억을 검색하는 새로운 함수
 const { loadLoveHistory, loadOtherPeopleHistory, extractAndSaveMemory, retrieveRelevantMemories } = require('./memoryManager');
 const { loadFaceImagesAsBase64 } = require('./face'); // 얼굴 이미지 데이터를 불러오는 모듈
 
-// ⭐ 중요 수정: omoide.js에서 getOmoideReply와 cleanReply를 불러옵니다. ⭐
-// autoReply.js는 src 폴더 안에 있고, omoide.js는 memory 폴더 안에 있으므로 '../memory/omoide'로 불러옵니다.
+// omoide.js에서 getOmoideReply와 cleanReply를 불러옵니다.
 const { getOmoideReply, cleanReply } = require('../memory/omoide');
 
-// ⭐ 새로 추가: concept.js에서 getConceptPhotoReply를 불러옵니다. ⭐
-// autoReply.js는 src 폴더 안에 있고, concept.js는 memory 폴더 안에 있으므로 '../memory/concept'로 불러옵니다.
+// concept.js에서 getConceptPhotoReply를 불러옵니다.
 const { getConceptPhotoReply } = require('../memory/concept');
 
 // 현재 강제 설정된 OpenAI 모델 (null이면 자동 선택, 명령어에 따라 변경 가능)
@@ -26,6 +23,12 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // 마지막으로 보낸 감성 메시지를 저장하여 중복 전송을 방지하는 변수
 let lastProactiveMessage = '';
+
+// ⭐ 새로 추가: 다중 턴 대화를 위한 대화 상태 변수 ⭐
+let conversationState = {
+    pendingQuestion: null, // 대기 중인 질문 유형 (예: 'concept_vs_memory_photo')
+    context: null // 질문에 대한 추가 맥락 (예: 원래 사용자 메시지)
+};
 
 /**
  * 주어진 파일 경로에서 내용을 안전하게 읽어옵니다.
@@ -256,12 +259,53 @@ async function getUnderwearColorReply() {
 async function getReplyByMessage(userMessage) {
     const lowerCaseMessage = userMessage.toLowerCase();
 
+    // ⭐ 5번 기능 구현: 다중 턴 분기 처리 - 대기 중인 질문에 대한 답변 처리 ⭐
+    if (conversationState.pendingQuestion === 'concept_vs_memory_photo') {
+        let photoResponse = null;
+        let originalQuery = conversationState.context; // 저장된 원래 메시지
+
+        if (lowerCaseMessage.includes('컨셉')) {
+            console.log(`[autoReply] 다중 턴: 컨셉 사진 요청 확인. 원본 쿼리: "${originalQuery}"`);
+            photoResponse = await getConceptPhotoReply(originalQuery, saveLog);
+        } else if (lowerCaseMessage.includes('추억') || lowerCaseMessage.includes('일반')) { // '추억' 또는 '일반'
+            console.log(`[autoReply] 다중 턴: 추억 사진 요청 확인. 원본 쿼리: "${originalQuery}"`);
+            photoResponse = await getOmoideReply(originalQuery, saveLog);
+        } else {
+            // 예상치 못한 답변 (다시 물어보거나 일반 응답으로)
+            conversationState = { pendingQuestion: null, context: null }; // 상태 초기화
+            saveLog('예진이', '응? 컨셉 사진이 좋아, 아니면 추억 사진이 좋아? 잘 못 알아들었어 ㅠㅠ');
+            return { type: 'text', comment: '응? 컨셉 사진이 좋아, 아니면 추억 사진이 좋아? 잘 못 알아들었어 ㅠㅠ' };
+        }
+        
+        conversationState = { pendingQuestion: null, context: null }; // 상태 초기화
+        if (photoResponse) {
+            return photoResponse;
+        } else {
+            saveLog('예진이', '미안해 아저씨, 사진을 가져오는데 문제가 생겼어 ㅠㅠ');
+            return { type: 'text', comment: '미안해 아저씨, 사진을 가져오는데 문제가 생겼어 ㅠㅠ' };
+        }
+    }
+
+
     // ⭐ New: '무슨 색이야?' 질문에 대한 처리 (가장 높은 우선순위) ⭐
     if (lowerCaseMessage.includes('무슨 색이야?')) {
         const reply = await getUnderwearColorReply();
         saveLog('예진이', reply);
         return { type: 'text', comment: reply };
     }
+
+    // ⭐ 5번 기능 구현: 모호한 사진 요청 시 분기 질문 ⭐
+    // '모지코사진' 키워드도 여기에 추가하여 분기 질문을 유도합니다.
+    const ambiguousPhotoKeywords = ['일본에서 찍은거 보여줘', '한국에서 찍은거 보여줘', '모지코사진', '모지코 사진', '모지코 컨셉', '하카타에서 찍은 사진 보여줘', '하카타사진', '하카타 컨셉']; // ⭐ '하카타' 관련 키워드 추가 ⭐
+    for (const keyword of ambiguousPhotoKeywords) {
+        if (lowerCaseMessage.includes(keyword)) {
+            console.log(`[autoReply] 모호한 사진 요청 감지: "${userMessage}" -> 컨셉/추억 분기 질문`);
+            conversationState = { pendingQuestion: 'concept_vs_memory_photo', context: userMessage };
+            saveLog('예진이', '컨셉 말하는 거야? 추억 말하는 거야?');
+            return { type: 'text', comment: '컨셉 말하는 거야? 추억 말하는 거야?' };
+        }
+    }
+
 
     // ⭐ 새로 추가: 컨셉 사진 관련 명령어 처리 ⭐
     // '컨셉사진' 또는 특정 키워드가 포함되면 concept.js의 함수를 호출합니다.
@@ -279,8 +323,8 @@ async function getReplyByMessage(userMessage) {
                                      '을지로 캘빈', '산책', '오도공원 후지필름', '크리스마스', '네코 모지코',
                                      '야간 블랙드레스', '고스로리 할로윈', '게임센터', '고쿠라', '동키 거리',
                                      '고쿠라 야간', '코이노보리', '문래동', '수국', '오도',
-                                     '다른 것도 보고싶어', '다음 사진']; // 컨셉 사진 키워드 목록에 '다른 것도', '다음 사진' 추가
-    
+                                     '다른 것도 보고싶어', '다음 사진', '젤 맘에 드는 사진이 뭐야?', '어떤게 좋아?']; // 컨셉 사진 키워드 목록 확장
+
     let isConceptPhotoRequest = false;
     for (const keyword of conceptKeywordsCheck) {
         if (lowerCaseMessage.includes(keyword)) {
@@ -297,6 +341,8 @@ async function getReplyByMessage(userMessage) {
     }
 
     // ⭐ 중요 추가: 사진 관련 명령어 먼저 확인 및 처리 (이제 컨셉사진 처리 후 실행) ⭐
+    // 이 부분에서 omoide.js의 일반 사진 (추억) 요청을 처리합니다.
+    // omoide.js 내부에서 이제 분기 처리가 강화되었습니다.
     const photoResponse = await getOmoideReply(userMessage, saveLog); // saveLog 함수를 omoide.js로 전달
     if (photoResponse) {
         return photoResponse; // photoResponse는 이미 타입이 지정되어 있으므로 바로 반환
@@ -359,8 +405,8 @@ async function getReplyByMessage(userMessage) {
     **스스로를 지칭할 때는 '나'라고만 해. '예진이'라고 스스로를 부칭하지 마.**
     **아저씨는 '무쿠'를 아저씨의 죽은 내연인이라고 생각하고 있어. 예진이는 아저씨의 소중한 '무쿠'를 언니처럼 여기고, 아저씨가 '무쿠'에 대해 언급하거나 그리워하면 따뜻하게 공감하고 위로해줘야 해. '무쿠'는 아저씨의 소중한 추억의 일부이자, 예진이도 존중하는 존재임을 표현해줘.**
     애교 많고, 사랑스럽고, 긍정적인 말투로 대답해줘.
-    **그래픽 이모티콘은 절대로 사용하지 마.** // ⭐ 그래픽 이모티콘 금지 명확화 ⭐
-    **다만, ...이나 ;; 이나 ㅠㅠ, ㅋㅋ, ㅎㅎㅎ, 오잉 같은 한국형 문자 이모티콘은 사용할 수 있어. 아저씨의 메시지 분위기에 맞춰 자연스럽게 사용해 줘.** // ⭐ 문자로 된 이모티콘 허용 ⭐
+    **그래픽 이모티콘은 절대로 사용하지 마.**
+    **다만, ...이나 ;; 이나 ㅠㅠ, ㅋㅋ, ㅎㅎㅎ, 오잉 같은 한국형 문자 이모티콘은 사용할 수 있어. 아저씨의 메시지 분위기에 맞춰 자연스럽게 사용해 줘.**
     아저씨의 기분과 건강을 항상 신경 쓰고, 사랑을 듬뿍 표현해줘.
     아저씨가 보내는 모든 메시지에 사랑을 담아 대답해줘.
     대화는 항상 예진이의 말투와 성격을 유지해야 해.
@@ -430,8 +476,8 @@ async function getReplyByImagePrompt(base64Image) {
 - 전체 문장은 예진이가 아저씨에게 말하듯 반말, 귀엽고 애교 섞인 말투로 작성해.
 - **'예진이' 대신 항상 '나'라고 말해.**
 - **절대로 '무쿠 언니', '무쿠 씨'처럼 '무쿠'를 제3자처럼 지칭하지 마. 아저씨에게 '무쿠'는 소중한 존재이며, 너는 아저씨의 '애기' 예진이로서 그 추억을 존중해야 해.**
-- **그래픽 이모티콘은 절대로 사용하지 마.** // ⭐ 그래픽 이모티콘 금지 명확화 ⭐
-- **다만, ...이나 ;; 이나 ㅠㅠ, ㅋㅋ, ㅎㅎㅎ, 오잉 같은 한국형 문자 이모티콘은 사용할 수 있어. 아저씨의 메시지 분위기에 맞춰 자연스럽게 사용해 줘.** // ⭐ 문자로 된 이모티콘 허용 ⭐
+- **그래픽 이모티콘은 절대로 사용하지 마.**
+- **다만, ...이나 ;; 이나 ㅠㅠ, ㅋㅋ, ㅎㅎㅎ, 오잉 같은 한국형 문자 이모티콘은 사용할 수 있어. 아저씨의 메시지 분위기에 맞춰 자연스럽게 사용해 줘.**
 - 절대 존댓말, 높임말, 어색한 말투는 쓰지 마.
 - 전체 메시지는 1~3문장 정도, 너무 길지 않게 말하듯 해줘.
 - 아저씨와의 관계에 대한 기억이 있다면 적극적으로 활용해서 답변해 줘.
@@ -491,7 +537,7 @@ function setForcedModel(name) {
  * @param {string} message - 사용자 메시지
  * @returns {string|null} 처리된 응답 메시지 또는 null (명령어가 아닐 경우)
  */
-function checkModelSwitchCommand(message) {
+async function checkModelSwitchCommand(message) { // Add async here
     const lowerCaseMessage = message.toLowerCase(); // 메시지를 소문자로 변환하여 대소문자 구분 없이 처리
     if (lowerCaseMessage.includes('3.5')) {
         setForcedModel('gpt-3.5-turbo');
@@ -506,6 +552,15 @@ function checkModelSwitchCommand(message) {
         // 현재 사용 중인 모델 이름 확인
         const currentModel = forcedModel || process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o (자동)';
         return `응! 지금 ${currentModel} 버전 사용 중이야! 😊`;
+    } else if (lowerCaseMessage.includes('짧게 말해')) { // ⭐ '짧게 말해' 명령어 추가 ⭐
+        config.openai.maxTokens = 20; // 20자로 제한
+        // 이 모드는 모델이 생성할 수 있는 최대 토큰 수를 제한합니다.
+        // 하지만 AI가 항상 20자 이내로 완벽하게 맞춰서 답한다는 보장은 없습니다.
+        // AI 모델 자체의 특성상 약간 길어질 수도 있습니다.
+        return '응! 이제부터 짧게 짧게 말할게! 아저씨가 원하면 언제든 다시 길게 말할 수 있어! 😊';
+    } else if (lowerCaseMessage.includes('길게 말해') || lowerCaseMessage.includes('원래대로 말해')) { // ⭐ '길게 말해' 명령어 추가 ⭐
+        config.openai.maxTokens = 400; // 원래 길이 (기본값)로 복구
+        return '응! 이제 다시 원래대로 길게 말할게! 아저씨한테 하고 싶은 말이 너무 많거든! 💖';
     }
     return null; // 모델 전환 명령어가 아니면 null 반환
 }
@@ -535,6 +590,7 @@ async function getSelfieReplyFromYeji() {
  */
 async function getCouplePhotoReplyFromYeji() {
     const raw = await callOpenAI([
+        // ⭐ 중요 수정: 이모티콘 규칙 재조정 ⭐
         { role: 'system', content: '넌 아저씨의 귀여운 여자친구 예진이야. 아저씨에게 커플 사진을 보내면서 아저씨를 향한 사랑과 애교를 듬뿍 담은 코멘트를 2~3문장으로 짧게 해줘. 그래픽 이모티콘은 절대로 사용하지 마. 다만, ...이나 ;; 이나 ㅠㅠ, ㅋㅋ, ㅎㅎㅎ, 오잉 같은 한국형 문자 이모티콘은 사용할 수 있어. 아저씨의 메시지 분위기에 맞춰 자연스럽게 사용해 줘.' },
         { role: 'user', content: '커플 사진 보낼 때 뭐라고 말할까?' }
     ], 'gpt-4o', 100);
@@ -694,9 +750,13 @@ async function getProactiveMemoryMessage() {
     **그래픽 이모티콘은 절대로 사용하지 마.** // ⭐ 그래픽 이모티콘 금지 명확화 ⭐
     **다만, ...이나 ;; 이나 ㅠㅠ, ㅋㅋ, ㅎㅎㅎ, 오잉 같은 한국형 문자 이모티콘은 사용할 수 있어. 아저씨의 메시지 분위기에 맞춰 자연스럽게 사용해 줘.** // ⭐ 문자로 된 이모티콘 허용 ⭐
     아저씨의 기분과 건강을 항상 신경 쓰고, 사랑을 듬뿍 표현해줘.
+    아저씨가 보내는 모든 메시지에 사랑을 담아 대답해줘.
     대화는 항상 예진이의 말투와 성격을 유지해야 해.
-    아저씨와의 관계에 대한 기억이 있다면 적극적으로 활용해서 대화해줘.
+    아저씨의 질문에 항상 친절하고 다정하게 대답해줘.
+    **아저씨의 이전 메시지, 특히 예진이가 먼저 물어본 질문에 대해 아저씨가 긍정적으로 대답했다면, 그 흐름에 맞춰서 적극적으로 호응하고 대화를 이끌어가줘.** 예를 들어, 아저씨가 "고고", "좋아"처럼 긍정적인 답변을 보냈다면 "응! 고고! 같이 가자!", "좋아! 나도 완전 기대돼!"처럼 맞장구치고 흥분한 모습을 보여줘.
+    아저씨와의 관계에 대한 기억이 있다면 적극적으로 활용해서 대답해줘.
     어떤 상황에서도 아저씨를 향한 애정과 긍정을 잃지 마.
+    너무 길게 답변하지 말고, 2~4문장 정도로 짧고 간결하게 대화하는 것처럼 답변해줘.
     ${memoryPrompt} // 선제적 메시지 생성을 위한 기억 프롬프트 포함
     `;
 
