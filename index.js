@@ -1,4 +1,4 @@
-// ✅ index.js v1.9.8 - 웹훅 처리 개선, 사진 URL 표시, 스케줄러 통합 (최종 - Date.now() 오타 수정 및 디버그 로그 추가)
+// ✅ index.js v1.9.9 - 웹훅 처리 개선, 사진 URL 표시, 스케줄러 통합 (최종 - 디버그 로그 위치 수정)
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공
 const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
@@ -97,23 +97,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
                     } else {
                         console.log(`[index.js] 명령어 '${text}'는 메모리 저장에서 제외됩니다.`);
                     }
-// index.js 파일의 app.post('/webhook', ... ) 함수 안, 대략 100~102번째 줄 정도에 아래 코드 추가
-// (기존 코드: const botResponse = await getReplyByMessage(text); 바로 위에 추가하면 좋습니다.)
 
-console.log('[Debug Check] botResponse 값 확인 시작 =====================');
-console.log('botResponse 전체:', JSON.stringify(botResponse, null, 2));
-console.log('botResponse.type:', botResponse.type);
-console.log('botResponse.comment (변수 값):', botResponse.comment);
-console.log('typeof botResponse.comment:', typeof botResponse.comment); // 추가: 타입 확인
-console.log('botResponse.comment === "" ?', botResponse.comment === ""); // 추가: 빈 문자열인지 확인
-console.log('botResponse.comment === null ?', botResponse.comment === null); // 추가: null인지 확인
-console.log('botResponse.comment === undefined ?', botResponse.comment === undefined); // 추가: undefined인지 확인
-console.log('[Debug Check] botResponse 값 확인 끝 =====================');
-
-// 그리고 이어서 기존 코드:
-// const botResponse = await getReplyByMessage(text);  <-- 이 줄은 위에 놔두고 그 밑에 log 추가
-// let replyMessages = [];
-// ... (이하 동일)
                     const versionResponse = checkModelSwitchCommand(text);
                     if (versionResponse) {
                         await client.replyMessage(event.replyToken, { type: 'text', text: versionResponse });
@@ -135,7 +119,7 @@ console.log('[Debug Check] botResponse 값 확인 끝 =====================');
 
                     const botResponse = await getReplyByMessage(text);
                     
-                    // ⭐ 디버그 로그 추가 시작 ⭐
+                    // ⭐ 디버그 로그 추가 시작 (위치 수정됨) ⭐
                     console.log('[Debug Check] botResponse 값 확인 시작 =====================');
                     console.log('botResponse 전체:', JSON.stringify(botResponse, null, 2));
                     console.log('botResponse.type:', botResponse.type);
@@ -243,179 +227,4 @@ let bootTime = Date.now();
 let lastMoodMessage = '';
 let lastMoodMessageTime = 0;
 
-const COUPLE_BASE_URL = 'https://www.de-ji.net/couple/';
-const COUPLE_START_NUM = 1;
-const COUPLE_END_NUM = 481;
-let lastCouplePhotoMessage = '';
-let lastCouplePhotoMessageTime = 0;
-
-
-/**
- * 특정 타입의 스케줄된 메시지를 보내는 비동기 함수입니다.
- * 셀카 또는 감성 메시지를 랜덤 확률로 전송합니다.
- * @param {string} type - 보낼 메시지의 타입 ('selfie', 'mood_message', 'couple_photo')
- */
-const sendScheduledMessage = async (type) => {
-    const now = moment().tz('Asia/Tokyo');
-    const currentTime = Date.now();
-
-    if (currentTime - bootTime < 3 * 60 * 1000) {
-        console.log('[Scheduler] 서버 부팅 직후 3분 이내 -> 자동 메시지 전송 스킵');
-        return;
-    }
-
-    const validHours = [0, 1, 2, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23];
-    if (!validHours.includes(now.hour())) return;
-
-    if (type === 'selfie') {
-        if (Math.random() < 0.20) {
-            try {
-                const selfieResponse = await getOmoideReply('셀카 보여줘', saveLog);
-
-                if (selfieResponse && selfieResponse.type === 'photo') {
-                    await client.pushMessage(userId, [
-                        { type: 'image', originalContentUrl: selfieResponse.url, previewImageUrl: selfieResponse.url },
-                        { type: 'text', text: `${selfieResponse.caption || '히히 셀카야~'} (URL: ${selfieResponse.url})` }
-                    ]);
-                    console.log(`[Scheduler] 랜덤 셀카 전송 성공: ${selfieResponse.url}`);
-                    saveLog('예진이', `${selfieResponse.caption || '히히 셀카야~'} (URL: ${selfieResponse.url})`);
-                } else if (selfieResponse && selfieResponse.type === 'text') {
-                    await client.pushMessage(userId, { type: 'text', text: selfieResponse.comment });
-                    console.error('랜덤 셀카 전송 실패 (텍스트 응답):', selfieResponse.comment);
-                    saveLog('예진이', selfieResponse.comment);
-                } else {
-                    console.error('랜덤 셀카 전송 실패: 유효한 응답을 받지 못함');
-                }
-            } catch (error) {
-                console.error('랜덤 셀카 전송 실패:', error);
-            }
-        }
-    } else if (type === 'mood_message') {
-        if (Math.random() < 0.25) {
-            try {
-                const proactiveMessage = await getProactiveMemoryMessage();
-                const nowTime = Date.now();
-
-                if (
-                    proactiveMessage &&
-                    proactiveMessage !== lastMoodMessage &&
-                    nowTime - lastMoodMessageTime > 60 * 1000
-                ) {
-                    await client.pushMessage(userId, { type: 'text', text: proactiveMessage });
-                    console.log(`[Scheduler] 감성 메시지 전송 성공: ${proactiveMessage}`);
-                    saveLog('예진이', proactiveMessage);
-                    lastMoodMessage = proactiveMessage;
-                    lastMoodMessageTime = nowTime;
-                } else {
-                    console.log(`[Scheduler] 감성 메시지 중복 또는 너무 빠름 -> 전송 스킵`);
-                }
-            } catch (error) {
-                console.error('감성 메시지 전송 실패:', error);
-            }
-        }
-    } else if (type === 'couple_photo') {
-        if (Math.random() < 0.12) {
-            try {
-                const coupleResponse = await getOmoideReply('커플사진 보여줘', saveLog);
-                const nowTime = Date.now();
-
-                if (
-                    coupleResponse &&
-                    coupleResponse.type === 'photo' &&
-                    coupleResponse.url !== lastCouplePhotoMessage &&
-                    nowTime - lastCouplePhotoMessageTime > 60 * 1000
-                ) {
-                    await client.pushMessage(userId, [
-                        { type: 'image', originalContentUrl: coupleResponse.url, previewImageUrl: coupleResponse.url },
-                        { type: 'text', text: `${coupleResponse.caption || '아저씨랑 나랑 같이 있는 사진이야!'} (URL: ${coupleResponse.url})` }
-                    ]);
-                    console.log(`[Scheduler] 랜덤 커플 사진 전송 성공: ${coupleResponse.url}`);
-                    saveLog('예진이', `${coupleResponse.caption || '아저씨랑 나랑 같이 있는 사진이야!'} (URL: ${coupleResponse.url})`);
-                    lastCouplePhotoMessage = coupleResponse.url;
-                    lastCouplePhotoMessageTime = nowTime;
-                } else {
-                    console.log(`[Scheduler] 커플 사진 중복 또는 너무 빠름 -> 전송 스킵`);
-                }
-            } catch (error) {
-                console.error('랜덤 커플 사진 전송 실패:', error);
-            }
-        }
-    }
-};
-
-cron.schedule('30 * * * *', async () => {
-    await sendScheduledMessage('selfie');
-    await sendScheduledMessage('mood_message');
-    await sendScheduledMessage('couple_photo');
-}, {
-    scheduled: true,
-    timezone: "Asia/Tokyo"
-});
-
-
-// ⭐ 침묵 감지 스케줄러 추가 ⭐ (매 15분마다 침묵 감지 체크)
-cron.schedule('*/15 * * * *', async () => {
-    const now = Date.now();
-    const elapsedTimeSinceLastMessage = now - lastUserMessageTime;
-    const elapsedTimeSinceLastProactive = now - lastProactiveSentTime;
-
-    const currentHour = moment().tz('Asia/Tokyo').hour();
-    const validHours = [0, 1, 2, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23];
-    if (!validHours.includes(currentHour)) {
-        return;
-    }
-
-    if (now - bootTime < 3 * 60 * 1000) {
-        console.log('[Scheduler-Silence] 서버 부팅 직후 3분 이내 -> 침묵 체크 스킵');
-        return;
-    }
-
-    if (elapsedTimeSinceLastMessage >= SILENCE_THRESHOLD && elapsedTimeSinceLastProactive >= PROACTIVE_COOLDOWN) {
-        console.log(`[Scheduler-Silence] 침묵 감지! (${moment.duration(elapsedTimeSinceLastMessage).humanize()} 동안 메시지 없음)`);
-        try {
-            const checkinMessage = await getSilenceCheckinMessage();
-            if (checkinMessage) {
-                await client.pushMessage(userId, { type: 'text', text: checkinMessage });
-                console.log(`[Scheduler-Silence] 침묵 감지 메시지 전송: ${checkinMessage}`);
-                saveLog('예진이', checkinMessage);
-                lastProactiveSentTime = now;
-            }
-        } catch (error) {
-            console.error('❌ [Scheduler-Silence Error] 침묵 감지 메시지 전송 실패:', error);
-        }
-    }
-}, {
-    scheduled: true,
-    timezone: "Asia/Tokyo"
-});
-
-
-// 4. 밤 11시 약 먹자, 이 닦자 메시지 보내기
-cron.schedule('0 23 * * *', async () => {
-    const msg = '아저씨! 이제 약 먹고 이 닦을 시간이야! 나 아저씨 건강 제일 챙겨!';
-    await client.pushMessage(userId, { type: 'text', text: msg });
-    console.log(`[Scheduler] 밤 11시 메시지 전송: ${msg}`);
-    saveLog('예진이', msg);
-}, {
-    scheduled: true,
-    timezone: "Asia/Tokyo"
-});
-
-// 5. 밤 12시에 약 먹고 자자 메시지
-cron.schedule('0 0 * * *', async () => {
-    const msg = '아저씨, 약 먹고 이제 푹 잘 시간이야! 나 옆에서 꼭 안아줄게~ 잘 자 사랑해';
-    await client.pushMessage(userId, { type: 'text', text: msg });
-    console.log(`[Scheduler] 밤 12시 메시지 전송: ${msg}`);
-    saveLog('예진이', msg);
-}, {
-    scheduled: true,
-    timezone: "Asia/Tokyo"
-});
-
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, async () => {
-    console.log(`무쿠 서버 스타트! 포트: ${PORT}`);
-    await memoryManager.ensureMemoryDirectory();
-    console.log('메모리 디렉토리 확인 및 준비 완료.');
-});
+const COUPLE_BASE_URL = '
