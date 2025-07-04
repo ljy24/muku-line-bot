@@ -1,87 +1,169 @@
-// src/memoryManager.js v1.6 - 기억 저장 및 인출 로직 강화
+// src/memoryManager.js v1.8 - MySQL 데이터베이스 연동 버전 (MySQL 5.7 호환)
 // 📦 필수 모듈 불러오기
-const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공
-const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
-const { OpenAI } = require('openai'); // OpenAI API 클라이언트: AI 모델과의 통신 담당
+const fs = require('fs'); // 파일 시스템 모듈 (디렉토리 생성 등)
+const path = require('path'); // 경로 처리 모듈
+const { OpenAI } = require('openai'); // OpenAI API 클라이언트
 const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
+const mysql = require('mysql2/promise'); // * MySQL2 라이브러리 (Promise 기반으로 비동기 처리 용이) 불러오기 *
 
 // OpenAI 클라이언트 초기화
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// 기억 파일 경로 설정
-const MEMORY_DIR = path.resolve(__dirname, '../../memory'); // memory 폴더 경로 (src 기준 두 단계 위)
-const LOVE_HISTORY_FILE = path.join(MEMORY_DIR, 'loveHistory.json'); // 아저씨와의 사랑 관련 기억 파일
-const OTHER_PEOPLE_HISTORY_FILE = path.join(MEMORY_DIR, 'otherPeopleHistory.json'); // 아저씨 외 다른 사람들에 대한 기억 파일
+// * MySQL 데이터베이스 연결 정보 설정 *
+// * 이 정보들은 환경 변수 (Render 대시보드의 Environment Variables)에 설정되어야 합니다. *
+const dbConfig = {
+    host: process.env.MYSQL_HOST,
+    port: process.env.MYSQL_PORT ? parseInt(process.env.MYSQL_PORT) : 3306, // 환경 변수에서 가져올 때 숫자로 변환
+    user: process.env.MYSQL_USER,
+    password: process.env.MYSQL_PASSWORD,
+    database: process.env.MYSQL_DATABASE,
+    waitForConnections: true, // 연결 풀에서 연결을 사용할 수 있을 때까지 기다릴지 여부
+    connectionLimit: 10,      // 연결 풀의 최대 연결 수
+    queueLimit: 0             // 연결 풀 대기열의 최대 요청 수 (0 = 무제한)
+};
+
+let pool; // * MySQL 연결 풀 인스턴스 (연결 재사용을 위해 권장) *
 
 /**
- * 기억 디렉토리가 존재하는지 확인하고, 없으면 생성합니다.
+ * * 기억 관련 파일 디렉토리가 존재하는지 확인하고, 없으면 생성합니다 (선택 사항, 로그 파일 등을 위해). *
+ * * MySQL 데이터베이스에 연결 풀을 설정하고 필요한 'memories' 테이블을 초기화합니다. *
  * @returns {Promise<void>}
  */
 async function ensureMemoryDirectory() {
     try {
+        const MEMORY_DIR = path.resolve(__dirname, '../../memory'); // memory 폴더 경로 (src 기준 두 단계 위)
         await fs.promises.mkdir(MEMORY_DIR, { recursive: true });
-        console.log(`[MemoryManager] 기억 디렉토리 확인/생성 완료: ${MEMORY_DIR}`);
+        console.log(`[MemoryManager] 기억 관련 파일 디렉토리 확인/생성 완료: ${MEMORY_DIR}`);
+
+        // * MySQL 데이터베이스 연결 풀 생성 *
+        pool = mysql.createPool(dbConfig);
+        console.log(`[MemoryManager] MySQL 데이터베이스 연결 풀 생성 성공: ${dbConfig.database}`);
+
+        // * 'memories' 테이블 생성 (이미 존재하면 건너뜜) *
+        // * MySQL 5.7에서 BOOLEAN 타입은 TINYINT(1)로 처리되므로, BOOLEAN 사용. *
+        // * VARCHAR 대신 TEXT를 사용하여 content의 길이를 유연하게 처리. *
+        await pool.execute(`
+            CREATE TABLE IF NOT EXISTS memories (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                content TEXT NOT NULL,
+                category VARCHAR(255) NOT NULL,
+                strength VARCHAR(50) NOT NULL,
+                timestamp VARCHAR(255) NOT NULL,
+                is_love_related BOOLEAN NOT NULL,
+                is_other_person_related BOOLEAN NOT NULL
+            ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+        `);
+        console.log(`[MemoryManager] 'memories' 테이블 준비 완료.`);
+
     } catch (error) {
-        console.error(`[MemoryManager] 기억 디렉토리 생성 실패: ${error.message}`);
+        console.error(`[MemoryManager] DB 연결 또는 테이블 초기화 실패: ${error.message}`);
+        // * 초기화 실패 시 연결 풀 종료 시도 *
+        if (pool) {
+            await pool.end();
+        }
+        throw error; // * 초기화 실패 시 애플리케이션 시작을 중단할 수 있도록 에러를 다시 던집니다. *
     }
 }
 
 /**
- * 특정 기억 파일을 읽어와 JSON 객체로 파싱합니다.
- * 파일이 없거나 유효하지 않은 JSON일 경우 기본 구조를 반환합니다.
- * @param {string} filePath - 읽을 기억 파일 경로
- * @returns {Promise<Object>} 기억 데이터 객체
- */
-async function loadMemoryFile(filePath) {
-    try {
-        const data = await fs.promises.readFile(filePath, 'utf-8');
-        const parsedData = JSON.parse(data);
-        // 기본 구조 확인 및 누락된 필드 추가
-        if (!parsedData.categories) {
-            parsedData.categories = {};
-        }
-        return parsedData;
-    } catch (error) {
-        if (error.code === 'ENOENT') {
-            // 파일이 없을 경우 기본 구조 반환
-            console.log(`[MemoryManager] 기억 파일 없음, 새로 생성: ${filePath}`);
-            return { categories: {} };
-        } else {
-            console.error(`[MemoryManager] 기억 파일 로드/파싱 오류 (${filePath}): ${error.message}`);
-            // 파싱 오류 시에도 기본 구조 반환하여 봇 동작 유지
-            return { categories: {} };
-        }
-    }
-}
-
-/**
- * 기억 데이터를 파일에 JSON 형식으로 저장합니다.
- * @param {string} filePath - 저장할 기억 파일 경로
- * @param {Object} data - 저장할 기억 데이터 객체
+ * * 새로운 기억을 MySQL 데이터베이스에 저장합니다. *
+ * @param {Object} memory - 저장할 기억 객체
  * @returns {Promise<void>}
  */
-async function saveMemoryFile(filePath, data) {
+async function saveMemoryToDb(memory) {
+    if (!pool) {
+        console.error("[MemoryManager] MySQL 데이터베이스 풀이 초기화되지 않았습니다. 기억을 저장할 수 없습니다.");
+        throw new Error("Database pool not initialized.");
+    }
     try {
-        await fs.promises.writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
-    } catch (error) {
-        console.error(`[MemoryManager] 기억 파일 저장 오류 (${filePath}): ${error.message}`);
+        const [rows] = await pool.execute( // * connection.execute 대신 pool.execute 사용 *
+            `INSERT INTO memories (content, category, strength, timestamp, is_love_related, is_other_person_related)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [
+                memory.content,
+                memory.category,
+                memory.strength,
+                memory.timestamp,
+                memory.is_love_related ? 1 : 0, // * MySQL BOOLEAN은 0 또는 1로 저장 *
+                memory.is_other_person_related ? 1 : 0 // * MySQL BOOLEAN은 0 또는 1로 저장 *
+            ]
+        );
+        console.log(`[MemoryManager] 기억 저장됨 (ID: ${rows.insertId}): ${memory.content}`);
+    } catch (err) {
+        console.error(`[MemoryManager] 기억 저장 실패: ${err.message}`);
+        throw err;
     }
 }
 
 /**
- * 아저씨와의 사랑 관련 기억을 로드합니다.
- * @returns {Promise<Object>} loveHistory 객체
+ * * 모든 기억을 MySQL 데이터베이스에서 불러옵니다. *
+ * @returns {Promise<Array<Object>>} 모든 기억 배열
  */
-async function loadLoveHistory() {
-    return loadMemoryFile(LOVE_HISTORY_FILE);
+async function loadAllMemoriesFromDb() {
+    if (!pool) {
+        console.error("[MemoryManager] MySQL 데이터베이스 풀이 초기화되지 않았습니다. 기억을 불러올 수 없습니다.");
+        throw new Error("Database pool not initialized.");
+    }
+    try {
+        const [rows] = await pool.execute("SELECT * FROM memories ORDER BY timestamp DESC"); // * connection.execute 대신 pool.execute 사용 *
+        // * MySQL의 BOOLEAN (TINYINT(1)) 값은 JavaScript에서 1 또는 0으로 오므로, 직접 사용하거나 필요에 따라 true/false로 변환합니다. *
+        // * 여기서는 1 또는 0을 그대로 사용하고, 필터링 로직에서 === 1 || === true 로 처리하도록 합니다. *
+        console.log(`[MemoryManager] ${rows.length}개의 기억 불러오기 완료.`);
+        return rows;
+    } catch (err) {
+        console.error(`[MemoryManager] 모든 기억 불러오기 실패: ${err.message}`);
+        throw err;
+    }
 }
 
 /**
- * 아저씨 외 다른 사람들에 대한 기억을 로드합니다.
- * @returns {Promise<Object>} otherPeopleHistory 객체
+ * * 아저씨와의 사랑 관련 기억을 데이터베이스에서 로드합니다. *
+ * * 이 함수는 이제 DB에서 is_love_related가 true인 기억만 필터링하여 반환합니다. *
+ * @returns {Promise<Object>} loveHistory 객체 (categories 필드 포함)
+ */
+async function loadLoveHistory() {
+    try {
+        const allMemories = await loadAllMemoriesFromDb();
+        // * MySQL에서 불러온 is_love_related 값이 1이거나 true인 경우를 필터링합니다. *
+        const loveMemories = allMemories.filter(mem => mem.is_love_related === 1 || mem.is_love_related === true);
+
+        const categories = {};
+        loveMemories.forEach(mem => {
+            if (!categories[mem.category]) {
+                categories[mem.category] = [];
+            }
+            categories[mem.category].push(mem);
+        });
+        return { categories };
+    } catch (error) {
+        console.error(`[MemoryManager] 사랑 기억 로드 실패: ${error.message}`);
+        return { categories: {} }; // 에러 발생 시 빈 객체 반환
+    }
+}
+
+/**
+ * * 아저씨 외 다른 사람들에 대한 기억을 데이터베이스에서 로드합니다. *
+ * * 이 함수는 이제 DB에서 is_other_person_related가 true인 기억만 필터링하여 반환합니다. *
+ * @returns {Promise<Object>} otherPeopleHistory 객체 (categories 필드 포함)
  */
 async function loadOtherPeopleHistory() {
-    return loadMemoryFile(OTHER_PEOPLE_HISTORY_FILE);
+    try {
+        const allMemories = await loadAllMemoriesFromDb();
+        // * MySQL에서 불러온 is_other_person_related 값이 1이거나 true인 경우를 필터링합니다. *
+        const otherMemories = allMemories.filter(mem => mem.is_other_person_related === 1 || mem.is_other_person_related === true);
+
+        const categories = {};
+        otherMemories.forEach(mem => {
+            if (!categories[mem.category]) {
+                categories[mem.category] = [];
+            }
+            categories[mem.category].push(mem);
+        });
+        return { categories };
+    } catch (error) {
+        console.error(`[MemoryManager] 기타 인물 기억 로드 실패: ${error.message}`);
+        return { categories: {} }; // 에러 발생 시 빈 객체 반환
+    }
 }
 
 /**
@@ -170,40 +252,17 @@ async function extractAndSaveMemory(userMessage) {
             for (const newMemory of newMemories) {
                 newMemory.timestamp = currentTimestamp; // 현재 시간으로 타임스탬프 추가
 
-                if (newMemory.is_love_related) {
-                    const loveHistory = await loadLoveHistory();
-                    if (!loveHistory.categories[newMemory.category]) {
-                        loveHistory.categories[newMemory.category] = [];
-                    }
-                    // 중복 기억 방지: 동일한 내용의 기억이 이미 있는지 확인
-                    const isDuplicate = loveHistory.categories[newMemory.category].some(
-                        mem => mem.content === newMemory.content
-                    );
-                    if (!isDuplicate) {
-                        loveHistory.categories[newMemory.category].push(newMemory);
-                        await saveMemoryFile(LOVE_HISTORY_FILE, loveHistory);
-                        console.log(`[MemoryManager] 사랑 관련 기억 저장됨: ${newMemory.content}`);
-                    } else {
-                        console.log(`[MemoryManager] 사랑 관련 중복 기억, 저장 건너뜀: ${newMemory.content}`);
-                    }
-                }
+                // * 중복 기억 방지: 동일한 content를 가진 기억이 이미 데이터베이스에 있는지 확인 후 저장 *
+                const existingMemories = await loadAllMemoriesFromDb(); // 모든 기억 불러오기
+                const isDuplicate = existingMemories.some(
+                    mem => mem.content === newMemory.content
+                );
 
-                if (newMemory.is_other_person_related) {
-                    const otherPeopleHistory = await loadOtherPeopleHistory();
-                    if (!otherPeopleHistory.categories[newMemory.category]) {
-                        otherPeopleHistory.categories[newMemory.category] = [];
-                    }
-                    // 중복 기억 방지
-                    const isDuplicate = otherPeopleHistory.categories[newMemory.category].some(
-                        mem => mem.content === newMemory.content
-                    );
-                    if (!isDuplicate) {
-                        otherPeopleHistory.categories[newMemory.category].push(newMemory);
-                        await saveMemoryFile(OTHER_PEOPLE_HISTORY_FILE, otherPeopleHistory);
-                        console.log(`[MemoryManager] 기타 인물 관련 기억 저장됨: ${newMemory.content}`);
-                    } else {
-                        console.log(`[MemoryManager] 기타 인물 관련 중복 기억, 저장 건너뜀: ${newMemory.content}`);
-                    }
+                if (!isDuplicate) {
+                    await saveMemoryToDb(newMemory); // 데이터베이스에 저장
+                    console.log(`[MemoryManager] 새로운 기억 저장됨: ${newMemory.content}`);
+                } else {
+                    console.log(`[MemoryManager] 중복 기억, 저장 건너뜀: ${newMemory.content}`);
                 }
             }
         } else {
@@ -224,25 +283,7 @@ async function extractAndSaveMemory(userMessage) {
 async function retrieveRelevantMemories(userQuery, limit = 3) {
     console.log(`[MemoryManager] 관련 기억 검색 시작: "${userQuery}"`);
 
-    const loveHistory = await loadLoveHistory();
-    const otherPeopleHistory = await loadOtherPeopleHistory();
-
-    let allMemories = [];
-    // 모든 기억을 하나의 배열로 합칩니다.
-    if (loveHistory && loveHistory.categories) {
-        for (const category in loveHistory.categories) {
-            if (Array.isArray(loveHistory.categories[category])) {
-                allMemories = allMemories.concat(loveHistory.categories[category]);
-            }
-        }
-    }
-    if (otherPeopleHistory && otherPeopleHistory.categories) {
-        for (const category in otherPeopleHistory.categories) {
-            if (Array.isArray(otherPeopleHistory.categories[category])) {
-                allMemories = allMemories.concat(otherPeopleHistory.categories[category]);
-            }
-        }
-    }
+    const allMemories = await loadAllMemoriesFromDb(); // * 모든 기억을 DB에서 불러옵니다. *
 
     if (allMemories.length === 0) {
         console.log('[MemoryManager] 저장된 기억이 없어 관련 기억을 찾을 수 없습니다.');
@@ -322,8 +363,8 @@ async function retrieveRelevantMemories(userQuery, limit = 3) {
 // 모듈 내보내기
 module.exports = {
     ensureMemoryDirectory,
-    loadLoveHistory,
-    loadOtherPeopleHistory,
+    loadLoveHistory, // * 이제 DB에서 필터링하여 사랑 관련 기억만 반환 *
+    loadOtherPeopleHistory, // * 이제 DB에서 필터링하여 기타 인물 관련 기억만 반환 *
     extractAndSaveMemory,
     retrieveRelevantMemories
 };
