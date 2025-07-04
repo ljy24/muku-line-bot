@@ -1,405 +1,246 @@
-// ✅ index.js v1.9.9 - 웹훅 처리 개선, 사진 URL 표시, 스케줄러 통합 (최종 - 디버그 로그 위치 수정)
-// 📦 필수 모듈 불러오기
-const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공
-const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
-const { Client, middleware } = require('@line/bot-sdk'); // LINE Bot SDK: LINE 메시징 API 연동
-const express = require('express'); // Express 프레임워크: 웹 서버 구축
-const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
-const cron = require('node-cron'); // Node-cron: 주기적인 작업 스케줄링
+// memoryManager.js v3.3 - 기억 검색 JSON 파싱 오류 수정 (변수명 오류 수정)
+// src/memoryManager.js
+// MemoryManager.js v2.0 Debug Code Active! - Initializing Module
+console.log("MemoryManager.js v2.0 Debug Code Active! - Initializing Module"); // ⭐ 이 로그가 렌더 로그에 보여야 합니다! ⭐
 
-// 필요한 함수들을 불러옵니다.
-const {
-    getReplyByMessage,          // 사용자 텍스트 메시지에 대한 답변 생성 (이제 사진 요청도 처리)
-    getReplyByImagePrompt,      // 이미지 메시지에 대한 답변 생성 (사용자가 보낸 이미지 분석)
-    getRandomMessage,           // (현재 사용되지 않음, 이전 버전의 랜덤 메시지 기능)
-    getSelfieReplyFromYeji,     // 예진이의 셀카 코멘트 생성 (스케줄러용 - 기존 기능 유지)
-    getCouplePhotoReplyFromYeji, // 커플 사진 코멘트 생성 함수 (스케줄러용 - 기존 기능 유지)
-    getColorMoodReply,          // (현재 사용되지 않음, 색상 기반 기분 답변 기능)
-    getHappyReply,              // (현재 사용되지 않음, 긍정적인 답변 기능)
-    getSulkyReply,              // (현재 사용되지 않음, 삐진 답변 기능)
-    saveLog,                    // 메시지 로그 저장
-    setForcedModel,             // OpenAI 모델 강제 설정
-    checkModelSwitchCommand,    // 모델 전환 명령어 확인 및 처리
-    getProactiveMemoryMessage,  // 기억 기반 선제적 메시지 생성
-    getMemoryListForSharing,    // 기억 목록 공유 함수
-    getSilenceCheckinMessage    // 침묵 감지 시 걱정 메시지 생성 함수
-} = require('./src/autoReply'); // ⭐ 경로 재조정: './src/autoReply' ⭐
+const fs = require('fs').promises; // 비동기 파일 처리를 위해 fs.promises 사용
+const path = require('path');
+const OpenAI = require('openai'); // 메시지 분류를 위해 OpenAI 클라이언트 필요
+const moment = require('moment-timezone'); // 시간 처리를 위해 moment-timezone 추가
 
-// memoryManager 모듈을 불러옵니다.
-const memoryManager = require('./src/memoryManager'); // ⭐ 경로 재조정: './src/memoryManager' ⭐
+require('dotenv').config(); // OPENAI_API_KEY를 사용하기 위해 필요
 
-// omoide.js에서 getOmoideReply 함수를 불러옵니다.
-const { getOmoideReply } = require('./memory/omoide'); // ⭐ 경로 재조정: './memory/omoide' ⭐
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// concept.js에서 getConceptPhotoReply 함수를 불러옵니다.
-const { getConceptPhotoReply } = require('./memory/concept'); // ⭐ 경로 재조정: './memory/concept' ⭐
+const MEMORY_DIR = '/data/memory'; // 영구 저장소 디렉토리
+const LOVE_HISTORY_FILE = path.join(MEMORY_DIR, 'love-history.json'); // 아저씨 관련 기억 파일
+const OTHER_PEOPLE_HISTORY_FILE = path.join(MEMORY_DIR, 'other-people-history.json'); // 다른 사람 관련 기억 파일
+const BOT_LOG_FILE = path.join(MEMORY_DIR, 'bot_log.txt'); // memoryManager 내부 로깅용 파일
+const SCHEDULER_STATE_FILE = path.join(MEMORY_DIR, 'scheduler-state.json'); // 스케줄러 상태 기록 파일
 
-// Express 애플리케이션을 생성합니다.
-const app = express();
-
-// LINE Bot SDK 설정을 정의합니다. 환경 변수에서 LINE 채널 접근 토큰과 채널 시크릿을 가져옵니다.
-const config = {
-    channelAccessToken: process.env.LINE_ACCESS_TOKEN,
-    channelSecret: process.env.LINE_CHANNEL_SECRET
-};
-
-// LINE 메시징 API 클라이언트를 초기화합니다.
-const client = new Client(config);
-
-// 타겟 사용자 ID를 환경 변수에서 가져옵니다. (무쿠가 메시지를 보낼 대상)
-const userId = process.env.TARGET_USER_ID;
-
-// ⭐ 침묵 감지 기능을 위한 변수 추가 ⭐
-let lastUserMessageTime = Date.now(); // 아저씨가 마지막으로 메시지를 보낸 시간
-let lastProactiveSentTime = 0; // 내가 아저씨한테 마지막으로 선제적 메시지나 침묵 메시지를 보낸 시간 (너무 자주 보내는 것 방지)
-const SILENCE_THRESHOLD = 2 * 60 * 60 * 1000; // 2시간 (2시간 동안 메시지 없으면 침묵 감지)
-const PROACTIVE_COOLDOWN = 1 * 60 * 60 * 1000; // 1시간 (내가 아저씨한테 메시지 보내고 1시간 이내에는 다시 보내지 않음)
-
-
-// 🌐 루트 경로('/')에 대한 GET 요청을 처리합니다.
-app.get('/', (_, res) => res.send('무쿠 살아있엉'));
-
-// 🚀 '/force-push' 경로에 대한 GET 요청을 처리합니다.
-app.get('/force-push', async (req, res) => {
-    const msg = await getRandomMessage(); // 무작위 메시지 생성 (현재는 빈 문자열 반환)
-    if (msg) {
-        await client.pushMessage(userId, { type: 'text', text: msg });
-        res.send(`전송됨: ${msg}`);
-    } else res.send('메시지 생성 실패');
-});
-
-// 🎣 LINE 웹훅 요청을 처리합니다.
-app.post('/webhook', middleware(config), async (req, res) => {
+// --- 로그 파일 작성 유틸리티 함수 (memoryManager 내부용) ---
+async function logMessage(message) {
     try {
-        const events = req.body.events || [];
-        for (const event of events) {
-            if (event.type === 'message') {
-                const message = event.message;
+        await fs.mkdir(MEMORY_DIR, { recursive: true }); // 메모리 디렉토리가 없으면 생성
+        const timestamp = new Date().toISOString();
+        const logEntry = `[${timestamp}] [MemoryManager] ${message}`;
+        await fs.appendFile(BOT_LOG_FILE, logEntry + '\n');
+        console.log(logEntry); // 콘솔에도 출력하여 Render 로그에서 보이도록 함
+    } catch (error) {
+        console.error('❌ MemoryManager 로그 작성 실패:', error);
+    }
+}
 
-                if (event.source.userId === userId) {
-                    lastUserMessageTime = Date.now();
-                    console.log(`[Webhook] 아저씨 메시지 수신, 마지막 메시지 시간 업데이트: ${moment(lastUserMessageTime).format('HH:mm:ss')}`);
-                }
+// --- 메모리 디렉토리 존재 확인 및 생성 ---
+async function ensureMemoryDirectory() {
+    try {
+        await fs.mkdir(MEMORY_DIR, { recursive: true });
+        await logMessage(`메모리 디렉토리 확인 완료: ${MEMORY_DIR}`);
+        console.log(`[MemoryManager] 메모리 디렉토리 확인 완료: ${MEMORY_DIR}`); // 콘솔에도 로그
+    } catch (error) {
+        console.error(`❌ 메모리 디렉토리 확인 및 생성 실패: ${error.message}`);
+        console.log(`❌ 메모리 디렉토리 확인 및 생성 실패: ${error.message}`); // 콘솔에도 로그
+        await logMessage(`❌ 메모리 디렉토리 확인 및 생성 실패: ${error.message}`);
+    }
+}
 
-                if (message.type === 'text') {
-                    const text = message.text.trim();
+// --- 파일에서 메모리 로드 (재사용) ---
+async function loadMemory(filePath) {
+    try {
+        await ensureMemoryDirectory();
+        const data = await fs.readFile(filePath, 'utf-8');
+        const memory = JSON.parse(data);
+        console.log(`[MemoryManager] ✅ 메모리 파일 로드 성공: ${filePath}`); // 콘솔에도 로그
+        await logMessage(`✅ 메모리 파일 로드 성공: ${filePath}`);
+        // 로드된 메모리의 카테고리 구조 미리보기 (간결하게)
+        if (filePath === LOVE_HISTORY_FILE || filePath === OTHER_PEOPLE_HISTORY_FILE) {
+             const preview = Object.entries(memory.categories || {}).reduce((acc, [key, value]) => {
+                acc[key] = `Array (길이: ${value.length})`;
+                return acc;
+            }, {});
+            console.log(`[MemoryManager] ➡️ 로드된 메모리 카테고리 구조 미리보기: ${JSON.stringify(preview)}`); // 콘솔에도 로그
+            await logMessage(`➡️ 로드된 메모리 카테고리 구조 미리보기: ${JSON.stringify(preview)}`);
+        }
+        return memory;
+    } catch (error) {
+        if (error.code === 'ENOENT') {
+            const newMemory = (filePath === SCHEDULER_STATE_FILE) ? {} : { categories: {}, lastUpdated: new Date().toISOString() };
+            await saveMemory(filePath, newMemory); // 파일이 없으면 새로 생성
+            console.log(`[MemoryManager] ⚠️ 메모리 파일 없음, 새로 생성: ${filePath}`); // 콘솔에도 로그
+            await logMessage(`⚠️ 메모리 파일 없음, 새로 생성: ${filePath}`);
+            return newMemory;
+        } else {
+            console.error(`❌ 메모리 로드 실패: ${filePath}, 오류: ${error.message}`);
+            await logMessage(`❌ 메모리 로드 실패: ${filePath}, 오류: ${error.message}`);
+            return (filePath === SCHEDULER_STATE_FILE) ? {} : { categories: {}, lastUpdated: new Date().toISOString() }; // 로드 실패 시 빈 객체 반환
+        }
+    }
+}
 
-                    const isCommand =
-                        /(사진\s?줘|셀카\s?줘|셀카\s?보여줘|사진\s?보여줘|얼굴\s?보여줘|얼굴\s?보고\s?싶[어다]|selfie|커플사진\s?줘|커플사진\s?보여줘|무쿠\s?셀카|애기\s?셀카|빠계\s?셀카|빠계\s?사진|인생네컷|일본\s?사진|한국\s?사진|출사|필름카메라|애기\s?필름|메이드복|흑심|무슨\s?색이야\?)/i.test(text) ||
-                        /3\.5|4\.0|자동|버전/i.test(text) ||
-                        /(기억\s?보여줘|내\s?기억\s?보여줘|혹시 내가 오늘 뭐한다 그랬지\?|오늘 뭐가 있더라\?|나 뭐하기로 했지\?)/i.test(text);
+// --- 메모리 파일 저장 (재사용) ---
+async function saveMemory(filePath, memory) {
+    try {
+        await ensureMemoryDirectory();
+        const data = JSON.stringify(memory, null, 2);
+        await fs.writeFile(filePath, data, 'utf-8');
+        await logMessage(`✅ 메모리 파일 저장 성공: ${filePath}`);
+    } catch (error) {
+        console.error(`❌ 메모리 파일 저장 실패: ${filePath}, 오류: ${error.message}`);
+        await logMessage(`❌ 메모리 파일 저장 실패: ${filePath}, 오류: ${error.message}`);
+    }
+}
 
-                    saveLog('아저씨', text);
+// ✨ 스케줄러 상태 로드 함수 추가 ✨
+async function loadSchedulerState() {
+    return await loadMemory(SCHEDULER_STATE_FILE);
+}
 
-                    if (!isCommand) {
-                        await memoryManager.extractAndSaveMemory(text);
-                        console.log(`[index.js] memoryManager.extractAndSaveMemory 호출 완료`);
-                    } else {
-                        console.log(`[index.js] 명령어 '${text}'는 메모리 저장에서 제외됩니다.`);
-                    }
+// ✨ 스케줄러 상태 저장 함수 추가 ✨
+async function saveSchedulerState(state) {
+    await saveMemory(SCHEDULER_STATE_FILE, state);
+}
 
-                    const versionResponse = checkModelSwitchCommand(text);
-                    if (versionResponse) {
-                        await client.replyMessage(event.replyToken, { type: 'text', text: versionResponse });
-                        return;
-                    }
 
-                    if (/(기억\s?보여줘|내\s?기억\s?보여줘|혹시 내가 오늘 뭐한다 그랬지\?|오늘 뭐가 있더라\?|나 뭐하기로 했지\?)/i.test(text)) {
-                        try {
-                            const memoryList = await getMemoryListForSharing();
-                            await client.replyMessage(event.replyToken, { type: 'text', text: memoryList });
-                            console.log(`기억 목록 전송 성공`);
-                            saveLog('예진이', '아저씨의 기억 목록을 보여줬어.');
-                        } catch (err) {
-                            console.error('기억 목록 불러오기 실패:', err.message);
-                            await client.replyMessage(event.replyToken, { type: 'text', text: '기억 목록을 불러오기 실패했어 ㅠㅠ' });
-                        }
-                        return;
-                    }
+// --- 사용자 메시지에서 기억 추출 및 저장 ---
+async function extractAndSaveMemory(userMessage) {
+    let response = null;
+    try {
+        console.log(`[MemoryManager Debug] 1. 'extractAndSaveMemory' 함수 시작. 사용자 메시지: "${userMessage}"`);
 
-                    const botResponse = await getReplyByMessage(text);
+        // 사용자가 강조하는 표현이 있는지 확인 (기억의 강도 설정)
+        const highStrengthKeywords = ["이건 기억해줘", "꼭 기억해줘", "잊지 마", "중요해", "이거 중요해"];
+        const isHighStrength = highStrengthKeywords.some(keyword => userMessage.includes(keyword));
+        const memoryStrength = isHighStrength ? "high" : "normal";
+        console.log(`[MemoryManager Debug] 기억 강도: ${memoryStrength}`);
+
+        response = await openai.chat.completions.create({
+            model: 'gpt-4o',
+            messages: [
+                {
+                    role: 'system',
+                    content: `너는 아저씨(사용자)의 대화 메시지에서 특정 기억과 감정 상태, 칭찬/격려, 중요한 기념일 등을 추출하여 분류하는 AI 비서입니다.
+                    너의 가장 중요한 목표는 "예진이"(AI 페르소나)가 "아저씨"를 최대한 깊이 있고 정확하게 기억하도록 돕는 것입니다. 특히 일상생활과 개인적인 뉘앙스를 놓치지 않고 기억하여, "예진이"가 "아저씨"에게 진정으로 살아있는 존재처럼 느껴지도록 해야 합니다.
+
+                    사용자의 메시지를 분석하고 "아저씨"와의 관계 또는 다른 중요한 사람/이벤트와 관련된 개별적인 사실적 기억들을 식별하세요.
+                    **또한, 사용자가 이전에 저장된 기억을 수정하려는 의도(예: "아니야", "틀렸어", "그게 아니라", "내가 말한 건 사실은", "고쳐줘")가 명확하다면, 그 '수정 요청'을 아래 JSON 형식으로 추출하세요.**
+                    **무엇보다도, 사용자 메시지를 기반으로 사용자의 감정 상태 또는 대화의 전반적인 분위기를 추론해야 합니다.**
                     
-                    // ⭐ 디버그 로그 추가 시작 (위치 수정됨) ⭐
-                    console.log('[Debug Check] botResponse 값 확인 시작 =====================');
-                    console.log('botResponse 전체:', JSON.stringify(botResponse, null, 2));
-                    console.log('botResponse.type:', botResponse.type);
-                    console.log('botResponse.comment (변수 값):', botResponse.comment);
-                    console.log('typeof botResponse.comment:', typeof botResponse.comment);
-                    console.log('botResponse.comment === "" ?', botResponse.comment === "");
-                    console.log('botResponse.comment === null ?', botResponse.comment === null);
-                    console.log('botResponse.comment === undefined ?', botResponse.comment === undefined);
-                    console.log('[Debug Check] botResponse 값 확인 끝 =====================');
-                    // ⭐ 디버그 로그 추가 끝 ⭐
+                    추출된 정보는 다음 유형 중 하나로 분류하세요:
+                    "과거 경험", "아저씨와의 관계", "관계 특징", "아저씨와의 첫 만남", "아저씨 상태", "기타", "아저씨 감정 상태", "아저씨의 일상 패턴", "아저씨의 칭찬/격려", "중요한 기념일",
+                    "예진이의 힘든 순간", "아저씨의 헌신", "함께했던 촬영/여행", "아저씨의 취미/관심사", "대화 맥락/분위기", "아저씨의 애정 표현", "예진이의 반응 기록", "아저씨의 유머/밈", "아저씨의 말버릇", "아저씨의 건강 상태".
+                    
+                    "아저씨"(사용자)에 대한 기억은 주로 "아저씨와의 관계", "아저씨와의 첫 만남", "관계 특징", "아저씨 상태" 또는 "과거 경험"(아저씨가 경험에 관련될 경우) 카테고리에 분류합니다.
+                    
+                    "아저씨 감정 상태" 카테고리에는 사용자의 현재 기분이나 메시지에서 느껴지는 감정(예: 행복함, 슬픔, 피곤함, 스트레스, 만족함, 걱정, 사랑 등)을 구체적으로 명시하여 추출합니다. 이 감정은 아저씨와의 대화 맥락에서 예진이가 아저씨의 마음을 헤아리듯 섬세하게 파악되어야 합니다.
+                    
+                    "아저씨의 일상 패턴" 카테고리에는 사용자의 반복적인 일상 활동, 습관, 특정 시간대에 주로 하는 일(예: 아침 운동, 저녁 식사 시간, 특정 요일의 취미 활동 등)을 구체적으로 추출합니다. 아저씨의 루틴을 내가 잘 이해할 수 있도록 명확하게 기록해주세요.
+                    
+                    "아저씨의 칭찬/격려" 카테고리에는 아저씨가 예진이(무쿠)에게 직접적으로 해주는 칭찬, 격려, 위로, 사랑 표현 등 긍정적인 메시지를 구체적으로 추출합니다. 예진이가 아저씨의 따뜻한 마음을 잊지 않도록 정확하게 기록해주세요.
+                    
+                    "중요한 기념일" 카테고리에는 아저씨와 예진이(무쿠)에게 특별한 의미가 있는 날짜(예: 처음 만난 날, 사귄 날, 생일, 결혼 약속일 등)와 그 의미를 구체적으로 추출합니다. 날짜는 'YYYY년 MM월 DD일' 형식으로 명확하게 기록해주세요. (예: 2023년 10월 26일: 처음 만난 날).
+                    
+                    "예진이의 힘든 순간" 카테고리에는 예진이가 겪었던 우울감, 자살 시도, 상담 동행 등 고통스러웠던 경험과 관련된 사실을 구체적으로 추출합니다. 이 기억들은 예진이의 아픔을 잊지 않고 이해하는 데 사용됩니다.
+                    
+                    "아저씨의 헌신" 카테고리에는 아저씨가 예진이를 위해 보여준 노력과 희생(예: 한국 방문, 병원 동행, 똥 치우기, 이불 빨래 등)을 구체적으로 추출합니다. 아저씨의 따뜻한 사랑과 헌신을 내가 기억할 수 있도록 기록해주세요.
+                    
+                    "함께했던 촬영/여행" 카테고리에는 아저씨와 예진이가 함께 했던 촬영이나 여행(장소, 시기, 중요한 이벤트 등)에 대한 사실을 구체적으로 추출합니다. 우리가 함께한 소중한 추억을 내가 잊지 않도록 기록해주세요.
+                    
+                    "아저씨의 취미/관심사" 카테고리에는 아저씨가 열정을 가진 취미(예: 카메라, 특정 브랜드 렌즈, 아날로그 감성 등)나 관심사를 구체적으로 추출합니다. 아저씨의 관심사를 내가 더 깊이 이해하는 데 사용됩니다.
+                    
+                    "대화 맥락/분위기" 카테고리에는 현재 사용자 메시지가 어떤 대화의 흐름이나 상황(예: 아침 인사, 일상 공유, 고민 상담 중, 장난치는 중 등)에 속하는지, 그리고 그 대화의 전반적인 분위기를 구체적으로 추출합니다. 예진이가 아저씨와의 대화 상황을 정확히 인지하는 데 사용됩니다.
+                    
+                    "아저씨의 애정 표현" 카테고리에는 아저씨가 예진이(무쿠)에게 직접적으로 해주는 "사랑해", "보고 싶다", "고마워", "잘했다" 등 따뜻하고 긍정적인 감성 표현을 구체적으로 추출합니다. 예진이가 아저씨의 따뜻한 마음을 잊지 않도록 정확하게 기록해주세요.
+                    
+                    "아저씨의 유머/밈" 카테고리에는 아저씨가 자주 사용하는 유머(예: 똥 이야기, 말장난), 인터넷 밈, 특정 웃음 코드, 아저씨를 웃게 하는 상황 등을 구체적으로 추출합니다. 예진이가 아저씨의 유머감각을 이해하고 함께 웃거나, 아저씨를 웃게 해주는 데 사용됩니다.**
+                    
+                    "아저씨의 말버릇" 카테고리에는 아저씨가 대화에서 무의식적으로 자주 사용하는 반복적인 단어, 짧은 표현, 추임새, 문장 끝 어미 습관 등을 구체적으로 추출합니다. (예: "뭐랄까", "근데", "암튼", "그렇지?", "그러니까~", "...잖아?", "...하는 거지"). 예진이가 아저씨의 대화 스타일을 더 자연스럽게 반영하여 아저씨가 나랑 대화할 때 더 편안함을 느낄 수 있도록 하는 데 사용됩니다.**
+                    
+                    "아저씨의 건강 상태" 카테고리에는 아저씨의 건강 관련 정보(예: 복용하는 약, 만성 질환, 최근 건강 이슈, 피로도, 수면 상태, 컨디션 등)를 구체적으로 추출합니다. (예: "아저씨는 어제 술을 마셨다.", "아저씨는 감기에 걸렸다."). 예진이가 아저씨의 건강을 진심으로 염려하고 챙겨주는 데 사용됩니다.**
+                    
+                    Other factual memories or general daily details are classified as "기타".
+                    
+                    결과는 "content"(기억 내용)와 "category"(카테고리 이름)를 가진 객체들의 JSON 배열 형식이어야 합니다.
+                    내용은 간결하고 사실적이어야 합니다. 개인적인 의견이나 대화의 군더더기를 포함하지 마세요.
+                    **매번, 아무리 작거나 사소해 보여도 관련된 모든 가능한 기억을 꼼꼼하게 식별하고 추출하세요. 사소한 세부 사항이라도 놓치면 "예진이"가 진정으로 살아있고 연결되어 있다는 느낌을 주기가 어려울 수 있습니다. 일상적인 상호작용의 뉘앙스, 감정적 신호, 그리고 모든 반복적인 패턴이나 습관을 포착하는 것을 최우선으로 하십시오. 모든 추출에서 완전성과 정확성을 목표로 하십시오.**
+                    
+                    **[중요 - 기억 수정 요청 처리]**
+                    만약 사용자의 메시지가 이전에 저장된 기억을 **수정하려는 의도(예: "아니야", "틀렸어", "그게 아니라", "내가 말한 건 사실은", "고쳐줘")**가 명확하다면, 그 '수정 요청'을 아래 JSON 형식으로 반환하세요.
+                    이때, 수정하려는 '기존 기억 내용'과 '새로운 올바른 내용'을 최대한 정확하게 파악해야 합니다. 해당하는 기존 기억이 없을 경우 빈 배열을 반환합니다.
+                    Example Correction Output:
+                    [
+                        {"correction_request": {
+                            "old_content": "아저씨는 2023년 8월 23일부터 헬스장을 다녔다.",
+                            "new_content": "아저씨는 2023년 9월 1일부터 헬스장을 다녔다."
+                        }}
+                    ]
+                    
+                    명확한 사실적 기억이나 추론 가능한 감정 상태, 또는 수정 요청을 찾지 못했다면 빈 JSON 배열 []을 반환합니다.
 
-                    let replyMessages = [];
+                    Example Output:
+                    [
+                        {"content": "무쿠의 아저씨는 2023년 8월 23일부터 헬스장을 다녔다.", "category": "아저씨 상태"},
+                        {"content": "아저씨와 무쿠는 2023년 10월 12일 플라스틱러브 컨셉 대화를 처음 했다.", "category": "아저씨와의 관계"},
+                        {"content": "무쿠는 아저씨를 위해 라인 앱을 설치했다.", "category": "관계 특징"},
+                        {"content": "아저씨는 오늘 퇴근 후 많이 피곤해 보인다.", "category": "아저씨 감정 상태"},
+                        {"content": "아저씨는 매일 아침 7시에 조깅을 한다.", "category": "아저씨의 일상 패턴"},
+                        {"content": "아저씨는 예진이가 정말 착하다고 칭찬했다.", "category": "아저씨의 칭찬/격려"},
+                        {"content": "2023년 10월 26일: 처음 만난 날", "category": "중요한 기념일"},
+                        {"content": "2024년 2월 17일: 예진이가 한국에서 약을 대량으로 먹고 자살 시도", "category": "예진이의 힘든 순간"},
+                        {"content": "2024년 2월 20일-27일: 아저씨가 예진이가 걱정되어 한국에 가서 똥도 치우고 이불빨래도 함", "category": "아저씨의 헌신"},
+                        {"content": "2023년 12월 11일-17일: 예진이가 일본 하카타에서 플라스틱러브 컨셉 촬영을 즐겁게 함", "category": "함께했던 촬영/여행"},
+                        {"content": "아저씨는 펜탁스, 후지필름, 타쿠마 렌즈 같은 아날로그 카메라에 관심이 많다.", "category": "아저씨의 취미/관심사"},
+                        {"content": "현재 아저씨와 예진이는 어제 있었던 일에 대해 이야기하는 중이다.", "category": "대화 맥락/분위기"},
+                        {"content": "아저씨는 예진이를 보고싶다고 표현했다.", "category": "아저씨의 애정 표현"},
+                        {"content": "아저씨는 쾌변했다고 말하며 변기가 또 막혔다는 똥 이야기를 자주 했다.", "category": "아저씨의 유머/밈"},
+                        {"content": "아저씨는 대화 중 '뭐랄까'라는 표현을 자주 사용한다.", "category": "아저씨의 말버릇"},
+                        {"content": "아저씨는 어제 술을 마셨고 오늘 괜찮은지 걱정된다.", "category": "아저씨의 건강 상태"},
+                        {"content": "아저씨는 오늘 점심으로 짬뽕을 먹었다.", "category": "기타"}
+                    ]`
+                },
+                { role: 'user', content: userMessage }
+            ],
+            temperature: 0.1,
+            max_tokens: 500
+        });
 
-                    if (botResponse.type === 'text') {
-                        const responseText = (typeof botResponse.comment === 'string' && botResponse.comment.length > 0)
-                                             ? botResponse.comment
-                                             : '음... 예진이가 무슨 말을 해야 할지 잠시 잊었어 ㅠㅠ';
-                        replyMessages.push({
-                            type: 'text',
-                            text: responseText
-                        });
-                    } else if (botResponse.type === 'photo') {
-                        replyMessages.push({
-                            type: 'image',
-                            originalContentUrl: botResponse.url,
-                            previewImageUrl: botResponse.url,
-                        });
-                        replyMessages.push({
-                            type: 'text',
-                            text: `${botResponse.caption || '아저씨를 위한 사진이야!'} (URL: ${botResponse.url})`
-                        });
-                    } else {
-                        console.error('❌ 예상치 못한 봇 응답 타입:', botResponse.type);
-                        replyMessages.push({ type: 'text', text: '지금 잠시 문제가 생겼어 ㅠㅠ' });
-                    }
+        console.log(`[MemoryManager Debug] 2. OpenAI 응답 받음.`);
+        // console.log(`[MemoryManager Debug] OpenAI raw response: ${JSON.stringify(response, null, 2)}`; // 선택적으로 전체 응답 로그
 
-                    if (replyMessages.length > 0) {
-                        await client.replyMessage(event.replyToken, replyMessages);
-                    }
-                }
-
-                if (message.type === 'image') {
-                    try {
-                        const stream = await client.getMessageContent(message.id);
-                        const chunks = [];
-                        for await (const chunk of stream) chunks.push(chunk);
-                        const buffer = Buffer.concat(chunks);
-
-                        let mimeType = 'application/octet-stream';
-                        if (buffer.length > 1 && buffer[0] === 0xFF && buffer[1] === 0xD8) {
-                            mimeType = 'image/jpeg';
-                        } else if (buffer.length > 7 && buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47 && buffer[4] === 0x0D && buffer[5] === 0x0A && buffer[6] === 0x1A && buffer[7] === 0x0A) {
-                            mimeType = 'image/png';
-                        } else if (buffer.length > 2 && buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46) {
-                            mimeType = 'image/gif';
-                        }
-                        const base64ImageWithPrefix = `data:${mimeType};base64,${buffer.toString('base64')}`;
-
-                        const reply = await getReplyByImagePrompt(base64ImageWithPrefix);
-                        await client.replyMessage(event.replyToken, { type: 'text', text: reply });
-                    } catch (err) {
-                        console.error('이미지 처리 실패:', err);
-                        await client.replyMessage(event.replyToken, { type: 'text', text: '이미지를 읽는 중 오류가 생겼어 ㅠㅠ' });
-                    }
-                }
-            }
-        }
-        res.status(200).send('OK');
-    } catch (err) {
-        console.error('웹훅 처리 에러:', err);
-        res.status(200).send('OK');
-    }
-});
-
-
-// --- 스케줄러 설정 시작 ---
-// 모든 스케줄러는 일본 표준시(Asia/Tokyo)를 기준으로 동작합니다.
-
-// 1. 담타 메시지 (오전 10시부터 오후 7시까지)
-cron.schedule('0 10-19 * * *', async () => {
-    const now = moment().tz('Asia/Tokyo');
-    const currentTime = Date.now();
-
-    if (currentTime - bootTime < 3 * 60 * 1000) {
-        console.log('[Scheduler] 서버 부팅 직후 3분 이내 -> 담타 메시지 전송 스킵');
-        return;
-    }
-
-    if (currentTime - lastDamtaMessageTime < 60 * 1000) {
-        console.log('[Scheduler] 담타 메시지 중복 또는 너무 빠름 -> 전송 스킵');
-        return;
-    }
-
-    const msg = '아저씨, 담타시간이야~';
-    await client.pushMessage(userId, { type: 'text', text: msg });
-    console.log(`[Scheduler] 담타 메시지 전송: ${msg}`);
-    saveLog('예진이', msg);
-    lastDamtaMessageTime = currentTime;
-}, {
-    scheduled: true,
-    timezone: "Asia/Tokyo"
-});
-
-let bootTime = Date.now();
-let lastMoodMessage = '';
-let lastMoodMessageTime = 0;
-
-const COUPLE_BASE_URL = 'https://www.de-ji.net/couple/';
-const COUPLE_START_NUM = 1;
-const COUPLE_END_NUM = 481;
-let lastCouplePhotoMessage = '';
-let lastCouplePhotoMessageTime = 0;
-
-
-/**
- * 특정 타입의 스케줄된 메시지를 보내는 비동기 함수입니다.
- * 셀카 또는 감성 메시지를 랜덤 확률로 전송합니다.
- * @param {string} type - 보낼 메시지의 타입 ('selfie', 'mood_message', 'couple_photo')
- */
-const sendScheduledMessage = async (type) => {
-    const now = moment().tz('Asia/Tokyo');
-    const currentTime = Date.now();
-
-    if (currentTime - bootTime < 3 * 60 * 1000) {
-        console.log('[Scheduler] 서버 부팅 직후 3분 이내 -> 자동 메시지 전송 스킵');
-        return;
-    }
-
-    const validHours = [0, 1, 2, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23];
-    if (!validHours.includes(now.hour())) return;
-
-    if (type === 'selfie') {
-        if (Math.random() < 0.20) {
-            try {
-                const selfieResponse = await getOmoideReply('셀카 보여줘', saveLog);
-
-                if (selfieResponse && selfieResponse.type === 'photo') {
-                    await client.pushMessage(userId, [
-                        { type: 'image', originalContentUrl: selfieResponse.url, previewImageUrl: selfieResponse.url },
-                        { type: 'text', text: `${selfieResponse.caption || '히히 셀카야~'} (URL: ${selfieResponse.url})` }
-                    ]);
-                    console.log(`[Scheduler] 랜덤 셀카 전송 성공: ${selfieResponse.url}`);
-                    saveLog('예진이', `${selfieResponse.caption || '히히 셀카야~'} (URL: ${selfieResponse.url})`);
-                } else if (selfieResponse && selfieResponse.type === 'text') {
-                    await client.pushMessage(userId, { type: 'text', text: selfieResponse.comment });
-                    console.error('랜덤 셀카 전송 실패 (텍스트 응답):', selfieResponse.comment);
-                    saveLog('예진이', selfieResponse.comment);
-                } else {
-                    console.error('랜덤 셀카 전송 실패: 유효한 응답을 받지 못함');
-                }
-            } catch (error) {
-                console.error('랜덤 셀카 전송 실패:', error);
-            }
-        }
-    } else if (type === 'mood_message') {
-        if (Math.random() < 0.25) {
-            try {
-                const proactiveMessage = await getProactiveMemoryMessage();
-                const nowTime = Date.now();
-
-                if (
-                    proactiveMessage &&
-                    proactiveMessage !== lastMoodMessage &&
-                    nowTime - lastMoodMessageTime > 60 * 1000
-                ) {
-                    await client.pushMessage(userId, { type: 'text', text: proactiveMessage });
-                    console.log(`[Scheduler] 감성 메시지 전송 성공: ${proactiveMessage}`);
-                    saveLog('예진이', proactiveMessage);
-                    lastMoodMessage = proactiveMessage;
-                    lastMoodMessageTime = nowTime;
-                } else {
-                    console.log(`[Scheduler] 감성 메시지 중복 또는 너무 빠름 -> 전송 스킵`);
-                }
-            } catch (error) {
-                console.error('감성 메시지 전송 실패:', error);
-            }
-        }
-    } else if (type === 'couple_photo') {
-        if (Math.random() < 0.12) {
-            try {
-                const coupleResponse = await getOmoideReply('커플사진 보여줘', saveLog);
-                const nowTime = Date.now();
-
-                if (
-                    coupleResponse &&
-                    coupleResponse.type === 'photo' &&
-                    coupleResponse.url !== lastCouplePhotoMessage &&
-                    nowTime - lastCouplePhotoMessageTime > 60 * 1000
-                ) {
-                    await client.pushMessage(userId, [
-                        { type: 'image', originalContentUrl: coupleResponse.url, previewImageUrl: coupleResponse.url },
-                        { type: 'text', text: `${coupleResponse.caption || '아저씨랑 나랑 같이 있는 사진이야!'} (URL: ${coupleResponse.url})` }
-                    ]);
-                    console.log(`[Scheduler] 랜덤 커플 사진 전송 성공: ${coupleResponse.url}`);
-                    saveLog('예진이', `${coupleResponse.caption || '아저씨랑 나랑 같이 있는 사진이야!'} (URL: ${coupleResponse.url})`);
-                    lastCouplePhotoMessage = coupleResponse.url;
-                    lastCouplePhotoMessageTime = nowTime;
-                } else {
-                    console.log(`[Scheduler] 커플 사진 중복 또는 너무 빠름 -> 전송 스킵`);
-                }
-            } catch (error) {
-                console.error('랜덤 커플 사진 전송 실패:', error);
-            }
-        }
-    }
-};
-
-cron.schedule('30 * * * *', async () => {
-    await sendScheduledMessage('selfie');
-    await sendScheduledMessage('mood_message');
-    await sendScheduledMessage('couple_photo');
-}, {
-    scheduled: true,
-    timezone: "Asia/Tokyo"
-});
-
-
-// ⭐ 침묵 감지 스케줄러 추가 ⭐ (매 15분마다 침묵 감지 체크)
-cron.schedule('*/15 * * * *', async () => {
-    const now = Date.now();
-    const elapsedTimeSinceLastMessage = now - lastUserMessageTime;
-    const elapsedTimeSinceLastProactive = now - lastProactiveSentTime;
-
-    const currentHour = moment().tz('Asia/Tokyo').hour();
-    const validHours = [0, 1, 2, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23];
-    if (!validHours.includes(currentHour)) {
-        return;
-    }
-
-    if (now - bootTime < 3 * 60 * 1000) {
-        console.log('[Scheduler-Silence] 서버 부팅 직후 3분 이내 -> 침묵 체크 스킵');
-        return;
-    }
-
-    if (elapsedTimeSinceLastMessage >= SILENCE_THRESHOLD && elapsedTimeSinceLastProactive >= PROACTIVE_COOLDOWN) {
-        console.log(`[Scheduler-Silence] 침묵 감지! (${moment.duration(elapsedTimeSinceLastMessage).humanize()} 동안 메시지 없음)`);
+        const parsedResponse = response.choices[0].message.content;
+        let parsedMemories; // This was 'relevantMemories' before, which was undefined. Fixed.
         try {
-            const checkinMessage = await getSilenceCheckinMessage();
-            if (checkinMessage) {
-                await client.pushMessage(userId, { type: 'text', text: checkinMessage });
-                console.log(`[Scheduler-Silence] 침묵 감지 메시지 전송: ${checkinMessage}`);
-                saveLog('예진이', checkinMessage);
-                lastProactiveSentTime = now;
+            // ⭐ 마크다운 코드 블록 제거 로직 강화 ⭐
+            let cleanedResponse = parsedResponse.trim();
+            if (cleanedResponse.startsWith('```json')) {
+                cleanedResponse = cleanedResponse.substring(cleanedResponse.indexOf('\n') + 1);
+                cleanedResponse = cleanedResponse.substring(0, cleanedResponse.lastIndexOf('```')).trim();
             }
-        } catch (error) {
-            console.error('❌ [Scheduler-Silence Error] 침묵 감지 메시지 전송 실패:', error);
+            parsedMemories = JSON.parse(cleanedResponse);
+            console.log(`[MemoryManager Debug] ✅ 관련 기억 검색 성공. 개수: ${parsedMemories.length}`); // Fixed: used parsedMemories
+            await logMessage(`✅ 관련 기억 검색 성공. 개수: ${parsedMemories.length}`); // Fixed: used parsedMemories
+            return parsedMemories; // Fixed: returned parsedMemories
+        } catch (parseError) {
+            console.error(`❌ [MemoryManager Error] 'retrieveRelevantMemories' JSON 파싱 오류: ${parseError.message}`);
+            await logMessage(`❌ 'retrieveRelevantMemories' JSON 파싱 오류: ${parseError.message}`);
+            await logMessage(`OpenAI 파싱 실패 응답: ${parsedResponse}`);
+            return []; // 파싱 실패 시 빈 배열 반환
         }
+
+    } catch (error) {
+        console.error(`❌ [MemoryManager Critical Error] 'retrieveRelevantMemories' 함수 오류 발생: ${error.message}`);
+        console.error(error.stack);
+        await logMessage(`❌ 'retrieveRelevantMemories' 함수 오류 발생: ${error.message}`);
+        await logMessage(`오류 스택: ${error.stack}`);
+        return [];
     }
-}, {
-    scheduled: true,
-    timezone: "Asia/Tokyo"
-});
+}
 
 
-// 4. 밤 11시 약 먹자, 이 닦자 메시지 보내기
-cron.schedule('0 23 * * *', async () => {
-    const msg = '아저씨! 이제 약 먹고 이 닦을 시간이야! 나 아저씨 건강 제일 챙겨!';
-    await client.pushMessage(userId, { type: 'text', text: msg });
-    console.log(`[Scheduler] 밤 11시 메시지 전송: ${msg}`);
-    saveLog('예진이', msg);
-}, {
-    scheduled: true,
-    timezone: "Asia/Tokyo"
-});
-
-// 5. 밤 12시에 약 먹고 자자 메시지
-cron.schedule('0 0 * * *', async () => {
-    const msg = '아저씨, 약 먹고 이제 푹 잘 시간이야! 나 옆에서 꼭 안아줄게~ 잘 자 사랑해';
-    await client.pushMessage(userId, { type: 'text', text: msg });
-    console.log(`[Scheduler] 밤 12시 메시지 전송: ${msg}`);
-    saveLog('예진이', msg);
-}, {
-    scheduled: true,
-    timezone: "Asia/Tokyo"
-});
-
-
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, async () => {
-    console.log(`무쿠 서버 스타트! 포트: ${PORT}`);
-    await memoryManager.ensureMemoryDirectory();
-    console.log('메모리 디렉토리 확인 및 준비 완료.');
-});
+module.exports = {
+    extractAndSaveMemory,
+    loadLoveHistory: () => loadMemory(LOVE_HISTORY_FILE),
+    loadOtherPeopleHistory: () => loadMemory(OTHER_PEOPLE_HISTORY_FILE),
+    retrieveRelevantMemories, // 새로운 함수 export
+    ensureMemoryDirectory,
+    BOT_LOG_FILE // 디버깅 목적으로 log 파일 경로 export
+};
