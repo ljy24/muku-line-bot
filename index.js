@@ -1,4 +1,4 @@
-// ✅ index.js v1.9.5 - 웹훅 처리 개선, 사진 URL 표시, 스케줄러 통합 (최종 - 경로 및 텍스트 응답 안정성 최종 강화)
+// ✅ index.js v1.9.5 - 웹훅 처리 개선, 사진 URL 표시, 스케줄러 통합 (최종 - 경로 완벽 재조정)
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공
 const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
@@ -77,7 +77,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
                 const message = event.message;
 
                 if (event.source.userId === userId) {
-                    lastUserMessageTime = Date.now(); // ⭐ 수정: Date.Now -> Date.now ⭐
+                    lastUserMessageTime = Date.now();
                     console.log(`[Webhook] 아저씨 메시지 수신, 마지막 메시지 시간 업데이트: ${moment(lastUserMessageTime).format('HH:mm:ss')}`);
                 }
 
@@ -122,7 +122,6 @@ app.post('/webhook', middleware(config), async (req, res) => {
 
                     // ⭐ 중요 수정: 텍스트 응답 안정성 재강화 ⭐
                     if (botResponse.type === 'text') {
-                        // comment가 유효한 문자열인지 확인하고, 아니면 기본 폴백 메시지 사용
                         const responseText = (typeof botResponse.comment === 'string' && botResponse.comment.length > 0)
                                              ? botResponse.comment
                                              : '음... 예진이가 무슨 말을 해야 할지 잠시 잊었어 ㅠㅠ';
