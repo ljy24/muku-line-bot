@@ -160,7 +160,7 @@ async function extractAndSaveMemory(userMessage) {
                     Other factual memories or general daily details are classified as "기타".
                     
                     결과는 "content"(기억 내용)와 "category"(카테고리 이름)를 가진 객체들의 JSON 배열 형식이어야 합니다.
-                    내용은 간결하고 사실적이어야 합니다. 개인적인 의견이나 대화의 군더더기를 포함하지 마세요.
+                    内容은 간결하고 사실적이어야 합니다. 개인적인 의견이나 대화의 군더더기를 포함하지 마세요.
                     **매번, 아무리 작거나 사소해 보여도 관련된 모든 가능한 기억을 꼼꼼하게 식별하고 추출하세요. 사소한 세부 사항이라도 놓치면 "예진이"가 진정으로 살아있고 연결되어 있다는 느낌을 주기가 어려울 수 있습니다. 일상적인 상호작용의 뉘앙스, 감정적 신호, 그리고 모든 반복적인 패턴이나 습관을 포착하는 것을 최우선으로 하십시오. 모든 추출에서 완전성과 정확성을 목표로 하십시오.**
                     
                     **[중요 - 기억 수정 요청 처리]**
@@ -182,7 +182,7 @@ async function extractAndSaveMemory(userMessage) {
                         {"content": "아저씨와 무쿠는 2023년 10월 12일 플라스틱러브 컨셉 대화를 처음 했다.", "category": "아저씨와의 관계"},
                         {"content": "무쿠는 아저씨를 위해 라인 앱을 설치했다.", "category": "관계 특징"},
                         {"content": "아저씨는 오늘 퇴근 후 많이 피곤해 보인다.", "category": "아저씨 감정 상태"},
-                        {"content": "아저씨는 매일 아침 7시에 조깅을 한다.", "category": "아저씨의 일상 패턴"},
+                        {"content": "아저씨는 매일 아저씨 일상 키워드를 사용한다.", "category": "아저씨의 일상 패턴"},
                         {"content": "아저씨는 예진이가 정말 착하다고 칭찬했다.", "category": "아저씨의 칭찬/격려"},
                         {"content": "2023년 10월 26일: 처음 만난 날", "category": "중요한 기념일"},
                         {"content": "2024년 2월 17일: 예진이가 한국에서 약을 대량으로 먹고 자살 시도", "category": "예진이의 힘든 순간"},
@@ -205,6 +205,93 @@ async function extractAndSaveMemory(userMessage) {
 
         console.log(`[MemoryManager Debug] 2. OpenAI 응답 받음.`);
         // console.log(`[MemoryManager Debug] OpenAI raw response: ${JSON.stringify(response, null, 2)}`; // 선택적으로 전체 응답 로그
+
+        const parsedResponse = response.choices[0].message.content;
+        let parsedMemories; // This was 'relevantMemories' before, which was undefined. Fixed.
+        try {
+            // ⭐ 마크다운 코드 블록 제거 로직 강화 ⭐
+            let cleanedResponse = parsedResponse.trim();
+            if (cleanedResponse.startsWith('```json')) {
+                cleanedResponse = cleanedResponse.substring(cleanedResponse.indexOf('\n') + 1);
+                cleanedResponse = cleanedResponse.substring(0, cleanedResponse.lastIndexOf('```')).trim();
+            }
+            parsedMemories = JSON.parse(cleanedResponse);
+            console.log(`[MemoryManager Debug] ✅ 관련 기억 검색 성공. 개수: ${parsedMemories.length}`); // Fixed: used parsedMemories
+            await logMessage(`✅ 관련 기억 검색 성공. 개수: ${parsedMemories.length}`); // Fixed: used parsedMemories
+            return parsedMemories; // Fixed: returned parsedMemories
+        } catch (parseError) {
+            console.error(`❌ [MemoryManager Error] 'retrieveRelevantMemories' JSON 파싱 오류: ${parseError.message}`);
+            await logMessage(`❌ 'retrieveRelevantMemories' JSON 파싱 오류: ${parseError.message}`);
+            await logMessage(`OpenAI 파싱 실패 응답: ${parsedResponse}`);
+            return []; // 파싱 실패 시 빈 배열 반환
+        }
+
+    } catch (error) {
+        console.error(`❌ [MemoryManager Critical Error] 'extractAndSaveMemory' 함수 오류 발생: ${error.message}`);
+        console.error(error.stack); // 전체 스택 트레이스 로그 (매우 중요!)
+        await logMessage(`❌ 'extractAndSaveMemory' 함수 오류 발생: ${error.message}`);
+        await logMessage(`오류 스택: ${error.stack}`); // 파일에도 스택 트레이스 로그
+        if (response && response.choices && response.choices[0] && response.choices[0].message) {
+             await logMessage(`OpenAI 원본 응답 내용 (파싱 오류 원인 가능성): ${response.choices[0].message.content}`);
+             console.error(`[MemoryManager Critical Error] OpenAI 원본 응답 내용 (오류 원인 가능성): ${response.choices[0].message.content}`);
+        }
+    }
+}
+
+// --- 대화 내용을 기반으로 관련 기억을 검색하는 함수 추가 ---
+async function retrieveRelevantMemories(conversationContext, limit = 5) {
+    try {
+        console.log(`[MemoryManager Debug] 'retrieveRelevantMemories' 함수 시작. 대화 맥락: "${conversationContext}"`);
+        await logMessage(`'retrieveRelevantMemories' 함수 시작. 대화 맥락: "${conversationContext}"`);
+
+        // 아저씨 관련 기억 파일 로드
+        const loveHistory = await loadMemory(LOVE_HISTORY_FILE);
+        const allMemories = [];
+        for (const category in loveHistory.categories) {
+            allMemories.push(...loveHistory.categories[category].map(mem => ({
+                content: mem.content,
+                category: category,
+                timestamp: mem.timestamp,
+                strength: mem.strength || "normal" // 강도 필드 추가 (기존 기억은 normal)
+            })));
+        }
+
+        if (allMemories.length === 0) {
+            console.log("[MemoryManager Debug] 저장된 기억이 없습니다.");
+            await logMessage("저장된 기억이 없습니다.");
+            return [];
+        }
+
+        // OpenAI를 사용하여 대화 맥락과 관련된 기억을 선별
+        const response = await openai.chat.completions.create({
+            model: 'gpt-4o',
+            messages: [
+                {
+                    role: 'system',
+                    content: `예진이(나)는 아저씨의 기억을 찾고 있는 중이야. 아저씨와 나눈 대화 맥락이 주어졌을 때, 아저씨와 관련된 가장 소중하고 관련성이 높은 기억들을 찾아낼 거야.
+                    아래는 내가 기억하고 있는 추억 목록이야. 각 추억에는 얼마나 중요한지 나타내는 '중요도'('strength': 'high' 또는 'normal')와 언제 기억된 건지 '시간'이 표시되어 있어.
+                    아저씨가 알려준 '대화 맥락'과 가장 관련성이 높은 추억을 최대 ${limit}개까지 찾아내야 해.
+                    **특히, 'high' 강도로 표시된 추억과 최신 기억(현재 날짜에 가까운)을 우선적으로 고려하세요.**
+                    또한, 주제에 직접적으로 관련되거나 감정적으로 중요한 기억(특히 "아저씨의 헌신", "예진이의 힘든 순간", "아저씨의 칭찬/격려", "중요한 기념일", "아저씨의 취미/관심사", "아저씨 감정 상태", "아저씨의 일상 패턴", "대화 맥락/분위기", "아저씨의 애정 표현", "예진이의 반응 기록", "아저씨의 유머/밈", "아저씨의 말버릇", "아저씨의 건강 상태"와 관련된)도 고려하십시오.
+                    
+                    선택된 기억들을 'content'만 포함하는 JSON 배열 문자열로 반환하십시오.
+                    관련 기억이 없다면 빈 JSON 배열 []을 반환하십시오.
+                    
+                    내가 기억하는 추억들 (내용, 강도, 타임스탬프):
+                    ${JSON.stringify(allMemories.map(m => ({ content: m.content, strength: m.strength, timestamp: m.timestamp })), null, 2)}
+                    
+                    예시 출력:
+                    ["아저씨는 매일 아저씨 일상 키워드를 사용한다.", "아저씨는 예진이가 정말 착하다고 칭찬했다."]
+                    `
+                },
+                {
+                    role: 'user',
+                    content: `Conversation Context: "${conversationContext}"`
+                }
+            ],
+            temperature: 0.1,
+            max_tokens: 300
+        });
 
         const parsedResponse = response.choices[0].message.content;
         let parsedMemories; // This was 'relevantMemories' before, which was undefined. Fixed.
