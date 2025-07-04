@@ -1,114 +1,56 @@
-// src/face.js
-// 수정일: 2025년 7월 2일
-// 수정내용: OpenAI Vision API 토큰 제한 해결을 위해 이미지 예시 개수 제한 (최대 3장)
-// 이 파일은 아저씨와 예진이의 얼굴 이미지 데이터를 관리하며, 실제 파일 시스템에서 이미지를 불러옵니다.
+// src/face.js - 얼굴 이미지 데이터 로드
+const fs = require('fs');
+const path = require('path');
 
-const fs = require('fs'); // 파일 시스템 모듈
-const path = require('path'); // 경로 처리 모듈
+// 얼굴 이미지가 저장된 폴더 경로
+const FACE_IMAGES_DIR = path.resolve(__dirname, '../../faces'); // 프로젝트 루트의 faces 폴더
 
 /**
- * 지정된 폴더에서 이미지 파일을 Base64로 읽어옵니다.
- * 토큰 제한을 고려하여 최대 이미지 개수를 제한합니다.
- * @param {string} personName - 'uncle' 또는 'yejin'과 같이 인물 이름 폴더명
- * @param {number} [limit=3] - 불러올 최대 이미지 개수
- * @returns {Array<string>} Base64 인코딩된 이미지 문자열 배열
+ * 주어진 카테고리(예: 'uncle', 'yejin')에 해당하는 얼굴 이미지를 Base64로 인코딩하여 불러옵니다.
+ * @param {string} category - 불러올 이미지의 카테고리 (폴더 이름)
+ * @returns {Array<string>} Base64 인코딩된 이미지 문자열 배열 (data:MIME_TYPE;base64, 포함)
  */
-function loadFaceImagesAsBase64(personName, limit = 5) {
-    const facesDirPath = path.resolve(__dirname, `../memory/faces/${personName}`);
-    const base64Images = [];
+function loadFaceImagesAsBase64(category) {
+    const categoryPath = path.join(FACE_IMAGES_DIR, category);
+    const images = [];
 
-    if (!fs.existsSync(facesDirPath)) {
-        console.warn(`[Face Recognition] 경고: 얼굴 이미지 폴더를 찾을 수 없습니다: ${facesDirPath}`);
-        return [];
-    }
+    try {
+        const files = fs.readdirSync(categoryPath); // 폴더 내 파일 목록 읽기
+        for (const file of files) {
+            const filePath = path.join(categoryPath, file);
+            if (fs.statSync(filePath).isFile()) { // 파일인지 확인
+                const fileExtension = path.extname(file).toLowerCase();
+                let mimeType;
 
-    const files = fs.readdirSync(facesDirPath);
-    let count = 0; // 이미지 개수 카운터
-    for (const file of files) {
-        if (count >= limit) break; // 제한된 개수에 도달하면 중단
+                // 파일 확장자에 따라 MIME 타입 결정
+                if (fileExtension === '.jpg' || fileExtension === '.jpeg') {
+                    mimeType = 'image/jpeg';
+                } else if (fileExtension === '.png') {
+                    mimeType = 'image/png';
+                } else if (fileExtension === '.gif') {
+                    mimeType = 'image/gif';
+                } else {
+                    console.warn(`[Face] 지원하지 않는 이미지 형식: ${file}`);
+                    continue;
+                }
 
-        // 이미지 파일만 처리 (jpg, jpeg, png)
-        if (file.endsWith('.jpg') || file.endsWith('.jpeg') || file.endsWith('.png')) {
-            const filePath = path.join(facesDirPath, file);
-            try {
-                const imageBuffer = fs.readFileSync(filePath);
-                const base64 = imageBuffer.toString('base64');
-                const mimeType = file.endsWith('.png') ? 'image/png' : 'image/jpeg';
-                base64Images.push(`data:${mimeType};base64,${base64}`);
-                count++;
-            } catch (error) {
-                console.error(`[Face Recognition] 오류: 이미지 파일 읽기 실패 - ${filePath}:`, error);
+                const imageData = fs.readFileSync(filePath); // 이미지 파일 읽기
+                const base64 = `data:${mimeType};base64,${imageData.toString('base64')}`; // Base64 인코딩
+                images.push(base64);
             }
         }
-    }
-    return base64Images;
-}
-
-/**
- * OpenAI Vision API를 위한 얼굴 식별 프롬프트와 이미지 데이터를 구성합니다.
- * @param {string} userImageBase64 - 사용자가 보낸 이미지의 Base64 데이터
- * * @param {Array<string>} knownUncleFaces - 아저씨 얼굴 예시 Base64 배열
- * @param {Array<string>} knownYejiFaces - 예진이 얼굴 예시 Base64 배열
- * @returns {Array<Object>} OpenAI Vision API messages 배열 형식
- */
-function getFaceIdentificationMessages(userImageBase64, knownUncleFaces, knownYejiFaces) {
-    let promptText = `
-    아래는 사용자가 보낸 사진이야. 이 사진 속에 있는 인물이 누구인지 판단해줘.
-    
-    참고를 위해 아저씨와 예진이의 얼굴 예시를 제공할게.
-    
-    --- 아저씨 얼굴 예시 ---
-    `;
-    knownUncleFaces.forEach((_, index) => {
-        promptText += `[아저씨 얼굴 ${index + 1}]\n`;
-    });
-    promptText += `
-    --- 예진이 얼굴 예시 ---
-    `;
-    knownYejiFaces.forEach((_, index) => {
-        promptText += `[예진이 얼굴 ${index + 1}]\n`;
-    });
-
-    promptText += `
-    --- 지시 사항 ---
-    1. 사용자가 보낸 사진에 사람이 없다면 "사람이 없어요"라고 대답해줘.
-    2. 사진에 사람이 있지만 아저씨나 예진이 얼굴이 아니라면 "다른 사람 같아요"라고 대답해줘.
-    3. 사진 속 인물이 아저씨 얼굴과 일치한다면 "아저씨"라고만 대답해줘.
-    4. 사진 속 인물이 예진이 얼굴과 일치한다면 "예진이"라고만 대답해줘.
-    5. 답변은 위의 4가지 중 하나로, **다른 부연 설명 없이 해당 단어/문장만** 말해줘.
-    `;
-
-    const messages = [
-        {
-            type: "text",
-            text: promptText.trim()
-        },
-        {
-            type: "image_url",
-            image_url: { url: userImageBase64 }
+        console.log(`[Face] '${category}' 카테고리에서 ${images.length}개의 얼굴 이미지 로드 완료.`);
+    } catch (error) {
+        if (error.code === 'ENOENT') {
+            console.warn(`[Face] 얼굴 이미지 폴더를 찾을 수 없습니다: ${categoryPath}`);
+        } else {
+            console.error(`[Face] 얼굴 이미지 로드 중 오류 발생: ${error.message}`);
         }
-    ];
-
-    // 아저씨 얼굴 예시 이미지 추가
-    knownUncleFaces.forEach(base64 => {
-        messages.push({
-            type: "image_url",
-            image_url: { url: base64 }
-        });
-    });
-
-    // 예진이 얼굴 예시 이미지 추가
-    knownYejiFaces.forEach(base64 => {
-        messages.push({
-            type: "image_url",
-            image_url: { url: base64 }
-        });
-    });
-
-    return messages;
+    }
+    return images;
 }
 
+// 모듈 내보내기
 module.exports = {
-    loadFaceImagesAsBase64,
-    getFaceIdentificationMessages
+    loadFaceImagesAsBase64
 };
