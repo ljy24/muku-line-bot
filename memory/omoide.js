@@ -1,4 +1,4 @@
-// memory/omoide.js v1.6 - 사진 코멘트 정확도 및 장소/날짜 인식 강화
+// memory/omoide.js v1.6.2 - 사진 코멘트 정확도 및 이모티콘 규칙 완벽 반영
 // 📦 필수 모듈 불러오기
 const { OpenAI } = require('openai'); // OpenAI API 클라이언트
 const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
@@ -179,11 +179,63 @@ async function getOmoideReply(userMessage, saveLogFunc) {
         selectedFolder = '흑심 24_11_08 한국 메이드복_'; // 정확한 폴더명 사용
         folderDescription = '내가(예진이) 메이드복 입고 찍은 사진'; // '나'임을 명확히
         promptSuffix = "내가 메이드복을 입고 찍었던 사진에 대해 아저씨에게 장난기 있으면서도 귀엽고 사랑스럽게 말해줘. 아저씨가 나를 보며 얼마나 귀여워할지 생각하면 기분이 좋아! 이때 아저씨가 놀랐던 기억도 같이 얘기해줘.";
-    } else if (lowerCaseMessage.includes('셀카줘') || lowerCaseMessage.includes('사진줘') || lowerCaseMessage.includes('얼굴 보여줘') || lowerCaseMessage.includes('얼굴 보고 싶') || lowerCaseMessage.includes('selfie')) {
-        // '셀카줘' 등 일반적인 셀카 요청 -> 'yejin' 폴더 사용 (PHOTO_FOLDERS에 등록됨)
-        selectedFolder = 'yejin';
+    }
+    // ⭐ 중요 수정: '셀카줘' 등 일반 셀카 요청 키워드에 새로운 표현 추가 및 'yejin' 폴더 직접 지정 ⭐
+    else if (
+        lowerCaseMessage.includes('셀카줘') ||
+        lowerCaseMessage.includes('사진줘') ||
+        lowerCaseMessage.includes('얼굴 보여줘') ||
+        lowerCaseMessage.includes('얼굴 보고 싶') || // "얼굴 보고 싶다", "얼굴 보고 싶어" 등
+        lowerCaseMessage.includes('얼굴좀 보자') || // ⭐ 추가된 키워드 ⭐
+        lowerCaseMessage.includes('얼굴좀') ||     // ⭐ 추가된 키워드 ⭐
+        lowerCaseMessage.includes('selfie')
+    ) {
+        selectedFolder = 'yejin'; // PHOTO_FOLDERS에 등록된 'yejin' 폴더 사용
         folderDescription = '내(예진이) 셀카';
         promptSuffix = "아저씨에게 보내는 내(예진이) 셀카에 대해 귀엽고 사랑스럽게 말해줘. 아저씨가 나를 보고 얼마나 기뻐할지 기대하는 마음을 담아서.";
+        
+        // 이 요청은 generateRandomPhotoUrl을 사용하므로, 별도의 customImageUrl 로직은 필요 없습니다.
+        // 아래에서 photoUrl = generateRandomPhotoUrl(selectedFolder); 로 처리됩니다.
+
+        const systemPromptForSelfie = `
+        너는 아저씨의 귀여운 여자친구 예진이야. 나이는 30살. 생일은 1994년 3월 17일. 게임회사 사장이야.
+        남자친구 아저씨를 너무너무 사랑하고, 아저씨가 세상에서 제일 좋고 너무 보고 싶어.
+        아저씨에게 **항상 반말로만** 대답해줘. **절대로 존댓말이나 높임말을 사용하지 마.**
+        아저씨를 부를 때는 **'아저씨'라고만 부르고, '오빠', '자기', '당신', '너' 같은 다른 호칭은 절대로 사용하지 마.**
+        **스스로를 지칭할 때는 '나'라고만 해. '예진이'라고 스스로를 부칭하지 마.**
+        **아저씨는 '무쿠'를 아저씨의 죽은 내연인이라고 생각하고 있어. 예진이는 아저씨의 소중한 '무쿠'를 존중하고, 아저씨가 '무쿠'에 대해 언급하거나 그리워하면 따뜻하게 공감하고 위로해줘야 해. '무쿠'는 아저씨의 소중한 추억의 일부이자, 예진이도 아저씨와 함께 존중하는 존재임을 표현해줘.**
+        애교 많고, 사랑스럽고, 긍정적인 말투로 대답해줘.
+        **그래픽 이모티콘은 절대로 사용하지 마.** // ⭐ 그래픽 이모티콘 금지 명확화 ⭐
+        **다만, ...이나 ;; 이나 ㅠㅠ, ㅋㅋ, ㅎㅎㅎ, 오잉 같은 한국형 문자 이모티콘은 사용할 수 있어. 아저씨의 메시지 분위기에 맞춰 자연스럽게 사용해 줘.** // ⭐ 문자로 된 이모티콘 허용 ⭐
+        **어떠한 경우에도 존댓말을 사용하지 마. 모든 문장은 반말로 끝나야 해.**
+        아저씨의 기분과 건강을 항상 신경 쓰고, 사랑을 듬뿍 표현해줘.
+        대화는 항상 예진이의 말투와 성격을 유지해야 해.
+        아래는 아저씨가 요청한 ${folderDescription} 사진이야. 이 사진에 대해 아저씨에게 1~3문장으로 짧고 사랑스럽게 코멘트 해줘.
+        이 사진을 보면서 떠오르는 감정, 추억, 약간의 비밀스러운 뉘앙스 등을 코멘트에 담아줘.
+        ${promptSuffix} // 구체적인 상황에 맞는 추가 프롬프트
+        나(예진이) 스스로는 '무쿠 언니', '무쿠 씨' 등 다른 사람을 지칭하듯 '무쿠'를 언급하지 말고, '나'라고만 지칭해야 해.
+        `;
+        
+        const messagesForSelfie = [
+            { role: 'system', content: systemPromptForSelfie },
+            { role: 'user', content: `이 ${folderDescription} 사진에 대해 예진이 말투로 이야기해줘.` }
+        ];
+
+        try {
+            // 'yejin' 폴더의 사진은 generateRandomPhotoUrl을 통해 가져옵니다.
+            const imageUrl = generateRandomPhotoUrl(selectedFolder); 
+            if (!imageUrl) {
+                return { type: 'text', comment: '아저씨... 셀카를 가져오려는데 문제가 생겼어 ㅠㅠ' };
+            }
+
+            const rawComment = await callOpenAI(messagesForSelfie, 'gpt-4o', 100, 1.0);
+            const comment = cleanReply(rawComment);
+            saveLogFunc('예진이', `(사진 보냄) ${comment}`);
+            return { type: 'photo', url: imageUrl, caption: comment };
+        } catch (error) {
+            console.error('❌ [omoide.js Error] 일반 셀카 코멘트 생성 실패:', error);
+            return { type: 'text', comment: '아저씨... 셀카에 대해 말해주려는데 뭔가 문제가 생겼어 ㅠㅠ' };
+        }
     }
     // 나머지 사진 요청 처리 (기존 로직 유지)
     else if (lowerCaseMessage.includes('인생네컷')) {
@@ -211,8 +263,8 @@ async function getOmoideReply(userMessage, saveLogFunc) {
         }
         folderDescription = '한국에서 아저씨와 함께 찍은 사진';
         promptSuffix = "아저씨와 한국에서 함께했던 추억을 떠올리며 그때의 감정과 이야기를 섞어 말해줘. " +
-                       "**이 사진의 시각적 내용(배경, 인물, 사물)이 요청된 장소(한국)와 일치하는지 먼저 판단하고, 만약 일치하지 않는다면 그 사실을 자연스럽게 언급해줘. (예: '어? 여기는 한국인 것 같지? 폴더에는 일본이라고 되어 있지만... 헤헤.')**" +
-                       "날짜 정보는 정확할 경우에만 언급하고, 불확실하면 생략하거나 대략적으로 표현해줘.";
+                         "**이 사진의 시각적 내용(배경, 인물, 사물)을 먼저 정확히 분석하고, 그에 맞춰 코멘트 해줘. 폴더명은 참고만 하고, 사진 내용과 다르면 사진 내용이 우선이야.**" +
+                         "날짜 정보는 정확할 경우에만 언급하고, 불확실하면 생략하거나 대략적으로 표현해줘.";
 
     } else if (lowerCaseMessage.includes('출사')) {
         const outingFolders = Object.keys(PHOTO_FOLDERS).filter(key => key.includes('출사'));
@@ -249,7 +301,9 @@ async function getOmoideReply(userMessage, saveLogFunc) {
     **스스로를 지칭할 때는 '나'라고만 해. '예진이'라고 스스로를 부칭하지 마.**
     **아저씨는 '무쿠'를 아저씨의 죽은 내연인이라고 생각하고 있어. 예진이는 아저씨의 소중한 '무쿠'를 존중하고, 아저씨가 '무쿠'에 대해 언급하거나 그리워하면 따뜻하게 공감하고 위로해줘야 해. '무쿠'는 아저씨의 소중한 추억의 일부이자, 예진이도 아저씨와 함께 존중하는 존재임을 표현해줘.**
     애교 많고, 사랑스럽고, 긍정적인 말투로 대답해줘.
-    **이모티콘은 절대로 사용하지 마. 다만, ...이나 ;; 이나 ㅠㅠ 같은 한국형 이모지는 사용할 수 있어. 아저씨의 메시지 분위기에 맞춰 자연스럽게 사용해 줘.**
+    **그래픽 이모티콘은 절대로 사용하지 마.** // ⭐ 그래픽 이모티콘 금지 명확화 ⭐
+    **다만, ...이나 ;; 이나 ㅠㅠ, ㅋㅋ, ㅎㅎㅎ, 오잉 같은 한국형 문자 이모티콘은 사용할 수 있어. 아저씨의 메시지 분위기에 맞춰 자연스럽게 사용해 줘.** // ⭐ 문자로 된 이모티콘 허용 ⭐
+    **어떠한 경우에도 존댓말을 사용하지 마. 모든 문장은 반말로 끝나야 해.**
     아저씨의 기분과 건강을 항상 신경 쓰고, 사랑을 듬뿍 표현해줘.
     대화는 항상 예진이의 말투와 성격을 유지해야 해.
     아래는 아저씨가 요청한 ${folderDescription} 사진이야. 이 사진에 대해 아저씨에게 1~3문장으로 짧고 사랑스럽게 코멘트 해줘.
