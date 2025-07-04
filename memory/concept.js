@@ -339,7 +339,7 @@ async function getConceptPhotoReply(userMessage, saveLogFunc) {
     lastConceptPhotoFolder = selectedFolder;
 
     // 사진 URL 생성 (targetPhotoIndex가 0이면 랜덤, 아니면 해당 인덱스)
-    const photoUrl = generateConceptPhotoUrl(selectedFolder, lastConceptPhotoIndex > 0 ? lastConceptPhotoIndex : null);
+    let photoUrl = generateConceptPhotoUrl(selectedFolder, lastConceptPhotoIndex > 0 ? lastConceptPhotoIndex : null);
     
     // 만약 '다른 것도' 요청으로 인해 lastConceptPhotoIndex가 업데이트되었다면,
     // generateConceptPhotoUrl에 명시적으로 전달하여 해당 인덱스의 사진을 가져오도록 합니다.
