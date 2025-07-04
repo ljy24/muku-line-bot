@@ -26,13 +26,13 @@ const {
 } = require('./autoReply'); // ⭐ 경로 확인: autoReply.js가 index.js와 같은 src 폴더 안에 있다고 가정
 
 // memoryManager 모듈을 불러옵니다.
-const memoryManager = require('./memoryManager'); // ⭐ 경로 확인: memoryManager.js가 index.js와 같은 src 폴더 안에 있다고 가정
+const memoryManager = require('./sec/memoryManager'); // ⭐ 경로 확인: memoryManager.js가 index.js와 같은 src 폴더 안에 있다고 가정
 
 // omoide.js에서 getOmoideReply 함수를 불러옵니다.
-const { getOmoideReply } = require('../memory/omoide'); // ⭐ 경로 확인
+const { getOmoideReply } = require('./memory/omoide'); // ⭐ 경로 확인
 
 // concept.js에서 getConceptPhotoReply 함수를 불러옵니다.
-const { getConceptPhotoReply } = require('../memory/concept'); // ⭐ 경로 확인
+const { getConceptPhotoReply } = require('./memory/concept'); // ⭐ 경로 확인
 
 // Express 애플리케이션을 생성합니다.
 const app = express();
