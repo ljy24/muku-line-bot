@@ -197,20 +197,15 @@ async function getOmoideReply(userMessage, saveLogFunc) {
   folderDescription = '내(예진이) 셀카';
   promptSuffix = "아저씨에게 보내는 내(예진이) 셀카에 대해 귀엽고 사랑스럽게 말해줘. 아저씨가 나를 보고 얼마나 기뻐할지 기대하는 마음을 담아서.";
 }
-    // 나머지 사진 요청 처리 (기존 로직 유지)
-    else if (lowerCaseMessage.includes('인생네컷')) {
-        selectedFolder = '추억 인생네컷';
-        folderDescription = '인생네컷 사진';
-        promptSuffix = "아저씨와 함께 찍은 인생네컷 사진에 대해 즐겁고 추억이 담긴 멘트를 해줘.";
-   } else if (lowerCaseMessage.includes('커플사진')) {
-  // 커플 관련 폴더들 리스트
-  const coupleFolders = ['추억 24_02_25 한국 커플사진', '추억 인생네컷', 'couple'];
-  const validFolders = coupleFolders.filter(f => PHOTO_FOLDERS[f]);
-  selectedFolder = validFolders[Math.floor(Math.random() * validFolders.length)];
+     } else if (lowerCaseMessage.includes('커플사진') || lowerCaseMessage.includes('인생네컷')) {
+    // 커플 관련 폴더들 리스트
+    const coupleFolders = ['추억 24_02_25 한국 커플사진', '추억 인생네컷', 'couple'];
+    const validFolders = coupleFolders.filter(f => PHOTO_FOLDERS[f]);
+    selectedFolder = validFolders[Math.floor(Math.random() * validFolders.length)];
 
-  folderDescription = '아저씨와 함께 찍은 커플 사진';
-  promptSuffix = "아저씨와 함께 찍은 커플 사진에 대해 우리 둘만의 소중한 추억과 사랑을 가득 담아 말해줘. 약간의 비밀스러운 뉘앙스도 섞어줘.";
-}
+    folderDescription = '아저씨와 함께 찍은 커플 사진';
+    promptSuffix = "아저씨와 함께 찍은 커플 사진에 대해 우리 둘만의 소중한 추억과 사랑을 가득 담아 말해줘. 약간의 비밀스러운 뉘앙스도 섞어줘.";
+  }
     {
   // 커플 관련 폴더들 리스트
   const coupleFolders = ['추억 24_02_25 한국 커플사진', '추억 인생네컷', 'couple'];
