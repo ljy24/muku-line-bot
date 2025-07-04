@@ -1,4 +1,4 @@
-// memory/concept.js v1.7.2 - 컨셉 사진 매칭 및 예외 처리 강화 (모지코 오류 해결 시도)
+// memory/concept.js v1.7.3 - 컨셉 사진 코멘트 정확도, 감정/에피소드 기억 활용, 페르소나 강화 ('왜?' 답변 기능 지원)
 const fs = require('fs').promises; // 비동기 파일 처리를 위해 fs.promises 사용
 const { OpenAI } = require('openai');
 const moment = require('moment-timezone');
@@ -181,7 +181,7 @@ function generateConceptPhotoUrl(folderName, targetIndex = null) {
     }
     
     let indexToUse;
-    if (targetIndex !== null && targetIndex >= 1 && targetIndex <= photoCount) {
+    if (targetIndex !== null && targetIndex >= 1 && targetIndex >= 1 && targetIndex <= photoCount) { // ⭐ 버그 수정: targetIndex >= 1 중복 제거 ⭐
         indexToUse = targetIndex;
     } else {
         indexToUse = Math.floor(Math.random() * photoCount) + 1; // 1부터 photoCount까지
@@ -284,7 +284,8 @@ async function getConceptPhotoReply(userMessage, saveLogFunc) {
         }
         
         // 3단계: '젤 맘에 드는 사진' 처리 (새로운 기능)
-        if (lowerCaseMessage.includes('젤 맘에 드는 사진이 뭐야?')) {
+        // ⭐ 수정: '젤 맘에 드는 사진이 뭐야?' 키워드에 '어떤게 좋아?' 추가 ⭐
+        if (lowerCaseMessage.includes('젤 맘에 드는 사진이 뭐야?') || lowerCaseMessage.includes('어떤게 좋아?')) { // '어떤게 좋아?' 추가
             // CONCEPT_METADATA에서 'favorite' 태그가 있거나, AI가 임의로 선정할 수 있도록 지시
             const favoriteConcepts = Object.keys(CONCEPT_METADATA).filter(folder => CONCEPT_METADATA[folder].favorite === true);
             if (favoriteConcepts.length > 0) {
