@@ -135,6 +135,7 @@ async function getConceptPhotoReply(userMessage, saveLogFunc) {
   let selectedFolder = null;
   let folderDescription = '';
   let promptSuffix = '';
+  let conceptSpecificMemory = null;
 
   const conceptKeywordMap = {
     '일본 홈스냅': '2024/5월 7일 일본 홈스냅', '홈스냅': '2024/5월 7일 일본 홈스냅', // '홈스냅' 단독은 가장 최근/대표적인 것으로 매핑
