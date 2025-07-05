@@ -181,9 +181,19 @@ app.post('/webhook', middleware(config), async (req, res) => {
                     // 기억 저장/삭제/리마인더는 autoReply.js에서 직접 처리하므로,
                     // 여기서 `extractAndSaveMemory` 호출 조건에서 해당 명령어들을 제외합니다.
                     // (autoReply.js의 memoryCommandIntent 로직이 우선적으로 처리합니다.)
-                    // isCommand는 사진/모델 전환 등만 걸러내도록 유지.
-                    if (botResponse.type === 'text' && !['아저씨! 뭘 기억했어! 💖', '응? 뭘 기억해달라는 거야? 다시 말해줄 수 있어? ㅠㅠ', '아저씨가 "OOO" 잊어버리라고 해서 지웠어... 😥', '아저씨... "OOO"이라는 기억을 못 찾겠어 ㅠㅠ 내가 그런 기억을 가지고 있지 않은 걸까?', '응? 뭘 잊어버리라는 거야? 다시 말해줄 수 있어? ㅠㅠ', '아저씨! "OOO" YYYY년 M월 D일 A h시 m분에 알려줄게! 🔔', '아저씨... 리마인더 시간을 정확히 모르겠어 ㅠㅠ 다시 알려줄 수 있어? (예: \'오늘 5시에\', \'내일 아침 8시에\')', '응? 뭘 언제 알려달라는 거야? 리마인더 내용이랑 시간을 같이 말해줘 ㅠㅠ'].includes(botResponse.comment)) {
-                         // `botResponse.comment`가 기억/삭제/리마인더 관련 응답이 아닐 때만 일반 기억 추출 시도
+                    // botResponse.comment가 기억/삭제/리마인더 관련 응답인지 확인하여 중복 저장 방지
+                    const isMemoryRelatedResponse = botResponse.comment && (
+                        botResponse.comment.includes('기억했어! 💖') ||
+                        botResponse.comment.includes('잊어버리라고 해서 지웠어... 😥') ||
+                        botResponse.comment.includes('기억을 못 찾겠어 ㅠㅠ') ||
+                        botResponse.comment.includes('알려줄게! 🔔') ||
+                        botResponse.comment.includes('뭘 기억해달라는 거야?') ||
+                        botResponse.comment.includes('뭘 잊어버리라는 거야?') ||
+                        botResponse.comment.includes('리마인더 시간을 정확히 모르겠어') ||
+                        botResponse.comment.includes('뭘 언제 알려달라는 거야?')
+                    );
+
+                    if (!isCommand(text) && !isMemoryRelatedResponse) {
                         await memoryManager.extractAndSaveMemory(text); // memoryManager를 호출하여 기억 추출 및 저장
                         console.log(`[index.js] memoryManager.extractAndSaveMemory 호출 완료 (메시지: "${text}")`);
                     } else {
@@ -506,14 +516,12 @@ cron.schedule('*/1 * * * *', async () => { // 매 1분마다 실행
                 const reminderMoment = moment(mem.reminder_time).tz('Asia/Tokyo');
                 // 현재 시간 기준 1분 이내에 도래하거나, 이미 지났지만 아직 처리되지 않은 리마인더
                 // 그리고 리마인더 시간이 현재 시간보다 미래가 아니어야 함 (이미 지난 리마인더 처리)
-                return reminderMoment.isSameOrBefore(now.add(1, 'minute')) && reminderMoment.isBefore(now.add(5, 'minutes')); // 현재 시간 기준 1분 이내 도래 + 5분 이내 처리
+                return reminderMoment.isSameOrBefore(now.clone().add(1, 'minute')) && reminderMoment.isAfter(now.clone().subtract(5, 'minutes')); // 현재 시간 기준 1분 이내 도래 + 5분 이내 처리
             }
             return false;
         });
 
         for (const reminder of remindersToSend) {
-            // 이미 전송된 리마인더는 다시 보내지 않도록 처리 (예: reminder_time을 NULL로 업데이트)
-            // 이중 전송 방지를 위해, 리마인더 전송 후 해당 기억의 reminder_time을 NULL로 업데이트합니다.
             const reminderMessage = `아저씨! 지금 ${cleanReply(reminder.content)} 할 시간이야! 🔔`;
             await client.pushMessage(userId, { type: 'text', text: reminderMessage });
             saveLog('예진이', reminderMessage);
@@ -521,10 +529,12 @@ cron.schedule('*/1 * * * *', async () => { // 매 1분마다 실행
 
             // 리마인더 전송 후 해당 기억의 reminder_time을 NULL로 업데이트하여 다시 전송되지 않도록 합니다.
             // 이 로직은 memoryManager에 updateMemoryReminderTime 함수를 추가해야 합니다.
-            // 현재는 saveMemoryToDb를 재활용하여 reminder_time만 NULL로 업데이트하는 방식.
             // TODO: memoryManager에 updateMemoryReminderTime(id, null) 함수 추가 필요
-            await memoryManager.saveMemoryToDb({ // saveMemoryToDb는 content 기준으로 중복 체크하므로, id로 업데이트하는 함수가 더 적합
-                id: reminder.id, // ID를 포함하여 업데이트 (PostgreSQL의 UPDATE 쿼리 사용)
+            // 현재는 saveMemoryToDb를 재활용하여 reminder_time만 NULL로 업데이트하는 방식.
+            // saveMemoryToDb는 content 기준으로 중복 체크하므로, id로 업데이트하는 함수가 더 적합
+            // 임시 방편으로 delete 후 재저장하는 방식 (비효율적이지만 기능 테스트용)
+            await memoryManager.deleteRelevantMemories('', reminder.content); // 기존 기억 삭제
+            await memoryManager.saveMemoryToDb({ // reminder_time이 null인 새 기억으로 재저장
                 content: reminder.content,
                 category: reminder.category,
                 strength: reminder.strength,
