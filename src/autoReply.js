@@ -66,6 +66,12 @@ function safeRead(filePath, fallback = '') {
     }
 }
 
+/*
+// ==================================================================
+//          🎉🎉 데이터베이스 전환 완료! 🎉🎉
+// 아래 파일 읽기 코드는 이제 데이터베이스를 사용하므로 필요 없습니다.
+// 무쿠의 모든 기억은 이제 데이터베이스에서 직접 관리됩니다.
+// ==================================================================
 // 무쿠의 장기 기억 파일들을 읽어옵니다. (이제 DB 사용으로 대부분 대체됨)
 // 각 파일의 마지막 3000자씩을 가져와 컨텍스트 길이 제한에 대비합니다.
 const memory1 = safeRead(path.resolve(__dirname, '../memory/1.txt'));
@@ -74,6 +80,7 @@ const memory3 = safeRead(path.resolve(__dirname, '../memory/3.txt'));
 const fixedMemory = safeRead(path.resolve(__dirname, '../memory/fixedMemories.json')); // 고정된 기억 (JSON 형식, 파싱 필요)
 // 압축된 기억: 각 기억 파일의 마지막 3000자씩을 결합하여 AI 프롬프트에 활용
 const compressedMemory = memory1.slice(-3000) + '\n' + memory2.slice(-3000) + '\n' + memory3.slice(-3000);
+*/
 
 // 메모리 및 로그 파일 경로를 정의합니다.
 const statePath = path.resolve(__dirname, '../memory/state.json'); // 봇의 상태 저장 파일 (예: 모델 설정 등)
