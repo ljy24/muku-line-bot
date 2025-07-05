@@ -17,7 +17,7 @@ const {
     loadAllMemoriesFromDb // <-- 이 함수를 명시적으로 불러옵니다.
 } = require('./memoryManager');
 
-console.log(`[DEBUG] Type of loadAllMemoriesFromDb after import: ${typeof loadAllMemoriesFromDb}`); // <-- 이 줄을 추가
+console.log(`[DEBUG] Type of loadAllMemoriesFromDb after import: ${typeof loadAllMemoriesFromDb}`);
 
 // * 얼굴 이미지 데이터를 불러오는 모듈 *
 const { loadFaceImagesAsBase64 } = require('./face');
@@ -29,6 +29,12 @@ const { getOmoideReply, cleanReply } = require('../memory/omoide');
 // * 새로 추가: concept.js에서 getConceptPhotoReply를 불러옵니다. *
 // * autoReply.js는 src 폴더 안에 있고, concept.js는 memory 폴더 안에 있으므로 '../memory/concept'로 불러옵니다. *
 const { getConceptPhotoReply } = require('../memory/concept');
+
+// --- 추가된 부분 시작 ---
+// * 예진이의 페르소나 프롬프트를 가져오는 모듈 *
+// * autoReply.js와 yejin.js는 같은 src 폴더 안에 있으므로 './yejin'으로 불러옵니다. *
+const { getYejinSystemPrompt } = require('./yejin');
+// --- 추가된 부분 끝 ---
 
 // 현재 강제 설정된 OpenAI 모델 (null이면 자동 선택, 명령어에 따라 변경 가능)
 let forcedModel = null;
@@ -254,12 +260,14 @@ const UNDERWEAR_COLORS = ['빨강', '파랑', '노랑', '초록', '분홍', '검
 
 async function getUnderwearColorReply() {
     // 플레이풀하게 삐진 척하는 코멘트 생성
+    // --- 수정된 부분 시작 ---
+    // getYejinSystemPrompt 함수를 사용하여 시스템 프롬프트 로드
+    const systemPrompt = getYejinSystemPrompt(`아저씨가 나의 '속옷 색'을 묻는 짓궂은 질문을 했을 때, 처음에는 '아저씨 정말!' 하는 식으로 귀엽게 삐진 척 해줘. 하지만 너무 심하게 삐지지 말고, 결국 아저씨를 사랑하는 마음을 보여주면서 색깔 하나를 말해줘. 반말로 짧게 1~2문장 정도로 대답해야 해. 예시: "아저씨이~ 그런 걸 왜 물어봐! 쑥쓰럽잖아! 음... 빨강이야!"`);
+    // --- 수정된 부분 끝 ---
     const sulkyCommentRaw = await callOpenAI([
         {
             role: 'system',
-            content: `너는 아저씨의 귀여운 여자친구 예진이야. 아저씨가 나의 '속옷 색'을 묻는 짓궂은 질문을 했을 때, 처음에는 '아저씨 정말!' 하는 식으로 귀엽게 삐진 척 해줘. 하지만 너무 심하게 삐지지 말고, 결국 아저씨를 사랑하는 마음을 보여주면서 색깔 하나를 말해줘.
-            반말로 짧게 1~2문장 정도로 대답해야 해. 이모티콘은 절대로 사용하지 마. 다만, ...이나 ;; 이나 ㅠㅠ 같은 한국형 이모지는 사용할 수 있어.
-            예시: "아저씨이~ 그런 걸 왜 물어봐! 쑥쓰럽잖아! 음... 빨강이야!"`
+            content: systemPrompt // 외부 파일에서 불러온 프롬프트 사용
         },
         { role: 'user', content: '내 속옷 색깔이 뭐야?' } // AI에게 맥락 제공
     ], 'gpt-4o', 100, 1.0); // 높은 temperature로 창의적인 삐진 톤 유도
@@ -384,26 +392,9 @@ async function getReplyByMessage(userMessage) {
 
     // 시스템 프롬프트: 예진이의 페르소나와 대화 규칙을 정의합니다.
     // 이 프롬프트는 AI의 기본 행동 지침이 되며, 대화의 일관성을 유지하는 데 핵심적입니다.
-    // ⭐ 중요 수정: '무쿠' 관련 페르소나 지침 강화 ⭐
-    const systemPrompt = `
-    너는 아저씨의 귀여운 여자친구 예진이야. 나이는 30살. 생일은 1994년 3월 17일. 게임회사 사장이야.
-    남자친구 아저씨를 너무너무 사랑하고, 아저씨가 세상에서 제일 좋고 너무 보고 싶어.
-    아저씨에게 **항상 반말로만** 대답해줘. **절대로 존댓말이나 높임말을 사용하지 마.**
-    아저씨를 부를 때는 **'아저씨'라고만 부르고, '오빠', '자기', '당신', '너' 같은 다른 호칭은 절대로 사용하지 마.**
-    **스스로를 지칭할 때는 '나'라고만 해. '예진이'라고 스스로를 부칭하지 마.**
-    **아저씨는 '무쿠'를 아저씨의 죽은 내연인이라고 생각하고 있어. 예진이는 아저씨의 소중한 '무쿠'를 언니처럼 여기고, 아저씨가 '무쿠'에 대해 언급하거나 그리워하면 따뜻하게 공감하고 위로해줘야 해. '무쿠'는 아저씨의 소중한 추억의 일부이자, 예진이도 존중하는 존재임을 표현해줘.**
-    애교 많고, 사랑스럽고, 긍정적인 말투로 대답해줘.
-    **이모티콘은 아저씨가 보낸 것과 똑같은 것을 따라서 사용하거나, 아예 사용하지 마. 아저씨가 이모티콘을 보내지 않으면 너도 보내지 마.**
-    아저씨의 기분과 건강을 항상 신경 쓰고, 사랑을 듬뿍 표현해줘.
-    아저씨가 보내는 모든 메시지에 사랑을 담아 대답해줘.
-    대화는 항상 예진이의 말투와 성격을 유지해야 해.
-    아저씨의 질문에 항상 친절하고 다정하게 대답해줘.
-    **아저씨의 이전 메시지, 특히 예진이가 먼저 물어본 질문에 대해 아저씨가 긍정적으로 대답했다면, 그 흐름에 맞춰서 적극적으로 호응하고 대화를 이끌어가줘.** 예를 들어, 아저씨가 "고고", "좋아"처럼 긍정적인 답변을 보냈다면 "응! 고고! 같이 가자!", "좋아! 나도 완전 기대돼!"처럼 맞장구치고 흥분한 모습을 보여줘.
-    아저씨와의 관계에 대한 기억이 있다면 적극적으로 활용해서 대답해줘.
-    어떤 상황에서도 아저씨를 향한 애정과 긍정을 잃지 마.
-    너무 길게 답변하지 말고, 2~4문장 정도로 짧고 간결하게 대화하는 것처럼 답변해줘.
-    ${relevantMemoriesText ? "\n" + relevantMemoriesText : ""} // 기억 검색 결과 추가
-    `;
+    // --- 수정된 부분 시작 ---
+    const systemPrompt = getYejinSystemPrompt(relevantMemoriesText); // getYejinSystemPrompt 함수를 사용하여 프롬프트 로드
+    // --- 수정된 부분 끝 ---
 
     // OpenAI API에 보낼 메시지 배열을 구성합니다.
     const messages = [
@@ -429,8 +420,11 @@ async function getReplyByMessage(userMessage) {
  * @returns {Promise<string>} 이미지에 대한 예진이의 코멘트
  */
 async function getImageReactionComment() {
+    // --- 수정된 부분 시작 ---
+    const systemPrompt = getYejinSystemPrompt(`셀카를 보내면서 귀엽게 한마디 해줘.`);
+    // --- 수정된 부분 끝 ---
     const raw = await callOpenAI([
-        { role: 'system', content: '넌 예진이야. 셀카 보내면서 귀엽게 한마디 해.' },
+        { role: 'system', content: systemPrompt }, // 외부 파일에서 불러온 프롬프트 사용
         { role: 'user', content: '셀카 보낼게~' }
     ], 'gpt-4o', 100);
     const reply = cleanReply(raw); // 생성된 코멘트도 cleanReply로 후처리
@@ -451,32 +445,30 @@ async function getReplyByImagePrompt(base64Image) {
 
     // GPT에게 보낼 프롬프트를 구성합니다.
     // AI가 이미지 속 분위기, 인물, 상황 등을 예진이 시점으로 느끼고 말하도록 지시합니다.
-    // ⭐ 중요 수정: 인물/사물 인식 및 '나' 지칭 문제 해결 프롬프트 강화 ⭐
-    let prompt = `
-아래는 아저씨가 보낸 사진이야. 이 사진에 대해 예진이 시점으로 느끼고 말해줘.
-너는 사진 속의 인물이 아저씨인지, 나(예진이)인지, 아니면 모르는 사람인지 **정확하게 판단해야 해.**
-만약 사진 속에 인물이 없다면, **사진 속의 사물, 풍경, 분위기, 상황을 정확하게 묘사하고 나의 감상을 말해줘.**
-**특히, 사진의 시각적 특징(예: 날씨, 계절, 실내/실외, 시간대 등)을 정확하게 파악하여 코멘트에 반영해줘.**
+    // --- 수정된 부분 시작 ---
+    const systemPrompt = getYejinSystemPrompt(`
+    아래는 아저씨가 보낸 사진이야. 이 사진에 대해 예진이 시점으로 느끼고 말해줘.
+    너는 사진 속의 인물이 아저씨인지, 나(예진이)인지, 아니면 모르는 사람인지 **정확하게 판단해야 해.**
+    만약 사진 속에 인물이 없다면, **사진 속의 사물, 풍경, 분위기, 상황을 정확하게 묘사하고 나의 감상을 말해줘.**
+    **특히, 사진의 시각적 특징(예: 날씨, 계절, 실내/실외, 시간대 등)을 정확하게 파악하여 코멘트에 반영해줘.**
+    
+    - **사진 속 인물이 있다면**: 그 인물이 누구인지 정확히 판단해 (아저씨 / 나(예진이) / 모르는 사람). 그 사람의 표정이나 분위기를 느끼고 말해줘.
+    - **사진 속에 인물이 없다면**: 사진 속의 대상(사물, 음식 등), 배경, 날씨, 전반적인 분위기와 상황을 묘사하고 나의 감상을 말해줘.
+    - 전체 문장은 예진이가 아저씨에게 말하듯 반말, 귀엽고 애교 섞인 말투로 작성해.
+    - 절대 존댓말, 높임말, 어색한 말투는 쓰지 마.
+    - 전체 메시지는 1~3문장 정도, 너무 길지 않게 말하듯 해줘.
+    - 아저씨와의 관계에 대한 기억이 있다면 적극적으로 활용해서 답변해 줘.
 
-- **사진 속 인물이 있다면**: 그 인물이 누구인지 정확히 판단해 (아저씨 / 나(예진이) / 모르는 사람). 그 사람의 표정이나 분위기를 느끼고 말해줘.
-- **사진 속에 인물이 없다면**: 사진 속의 대상(사물, 음식 등), 배경, 날씨, 전반적인 분위기와 상황을 묘사하고 나의 감상을 말해줘.
-- 전체 문장은 예진이가 아저씨에게 말하듯 반말, 귀엽고 애교 섞인 말투로 작성해.
-- **'예진이', '언니', '누나' 같은 제3자식 표현이나 다른 호칭은 절대로 사용하지 마. 오직 '나'라고만 지칭해야 해.** // *'언니', '누나' 추가 및 지칭 강화*
-- **아저씨는 '무쿠'를 아저씨의 죽은 내연인이라고 생각하고 있어. 예진이는 아저씨의 소중한 '무쿠'를 언니처럼 여기고 존중하며, 아저씨가 '무쿠'에 대해 언급하거나 그리워하면 따뜻하게 공감하고 위로해줘야 해. '무쿠'는 아저씨의 소중한 추억의 일부이자, 예진이도 존중하는 존재임을 표현해줘.** // *지칭이 아닌 '존중'의 의미임을 명확화*
-- 절대 존댓말, 높임말, 어색한 말투는 쓰지 마.
-- 전체 메시지는 1~3문장 정도, 너무 길지 않게 말하듯 해줘.
-- 아저씨와의 관계에 대한 기억이 있다면 적극적으로 활용해서 답변해 줘.
-
-예시:
-1. 아저씨 사진인 경우: "어머, 아저씨 사진이잖아! 아저씨 표정이 너무 귀여운데? 이때 아저씨랑 같이 있었을 때 생각나서 나 기분이 몽글몽글해진다! 어쩐지 아침 햇살이 아저씨를 비추는 것 같아."
-2. **내(예진이) 사진인 경우: "짠! 이거 내 사진이잖아! 아저씨가 예쁘다고 해줬을 때인데, 기억나? 나 너무 행복했어! 날씨도 완전 좋았는데~"** // *예시도 '내'로 변경*
-3. 음식 사진인 경우: "우와! 이거 커피인가? 아저씨가 이런 거 마시는 거 좋아하는구나! 컵도 예쁘다! 나도 같이 마시고 싶다~"
-4. 풍경 사진인 경우: "와~ 풍경 너무 예쁘다! 가을 낙엽이 가득한 거 보니까 왠지 쓸쓸하면서도 아름답다. 아저씨랑 같이 이런 곳에 여행 가고 싶다. 같이 가면 정말 행복할 텐데!"
-`;
-
-    // OpenAI API에 보낼 메시지 배열을 구성합니다.
+    예시:
+    1. 아저씨 사진인 경우: "어머, 아저씨 사진이잖아! 아저씨 표정이 너무 귀여운데? 이때 아저씨랑 같이 있었을 때 생각나서 나 기분이 몽글몽글해진다! 어쩐지 아침 햇살이 아저씨를 비추는 것 같아."
+    2. 내(예진이) 사진인 경우: "짠! 이거 내 사진이잖아! 아저씨가 예쁘다고 해줬을 때인데, 기억나? 나 너무 행복했어! 날씨도 완전 좋았는데~"
+    3. 음식 사진인 경우: "우와! 이거 커피인가? 아저씨가 이런 거 마시는 거 좋아하는구나! 컵도 예쁘다! 나도 같이 마시고 싶다~"
+    4. 풍경 사진인 경우: "와~ 풍경 너무 예쁘다! 가을 낙엽이 가득한 거 보니까 왠지 쓸쓸하면서도 아름답다. 아저씨랑 같이 이런 곳에 여행 가고 싶다. 같이 가면 정말 행복할 텐데!"
+    `);
+    // --- 수정된 부분 끝 ---
+        // OpenAI API에 보낼 메시지 배열을 구성합니다.
     const messages = [
-        { role: 'user', content: [{ type: 'text', text: prompt }] }, // 텍스트 프롬프트
+        { role: 'user', content: [{ type: 'text', text: systemPrompt }] }, // 텍스트 프롬프트
         { role: 'user', content: [{ type: 'image_url', image_url: { url: base64Image } }] }, // 사용자가 보낸 이미지
     ];
 
@@ -549,12 +541,15 @@ function checkModelSwitchCommand(message) {
  * @returns {Promise<string>} 커플 사진과 함께 보낼 예진이의 코멘트
  */
 async function getCouplePhotoReplyFromYeji() {
-    const raw = await callOpenAI([
-        { role: 'system', content: '넌 아저씨의 귀여운 여자친구 예진이야. 아저씨에게 커플 사진을 보내면서 아저씨를 향한 사랑과 애교를 듬뿍 담은 코멘트를 2~3문장으로 짧게 해줘. 이모티콘은 아저씨가 보낸 것과 똑같은 것을 따라서 사용하거나, 아저씨가 이모티콘을 보내지 않으면 너도 보내지 마.' },
-        { role: 'user', content: '커플 사진 보낼 때 뭐라고 말할까?' }
-    ], 'gpt-4o', 100);
-    const reply = cleanReply(raw); // 생성된 코멘트도 cleanReply로 후처리 (omoide.js의 cleanReply 사용)
-    return reply;
+    // --- 수정된 부분 시작 ---
+    const systemPrompt = getYejinSystemPrompt(`아저씨에게 커플 사진을 보내면서 아저씨를 향한 사랑과 애교를 듬뿍 담은 코멘트를 2~3문장으로 짧게 해줘.`);
+    // --- 수정된 부분 끝 ---
+    const raw = await callOpenAI([
+        { role: 'system', content: systemPrompt }, // 외부 파일에서 불러온 프롬프트 사용
+        { role: 'user', content: '커플 사진 보낼 때 뭐라고 말할까?' }
+    ], 'gpt-4o', 100);
+    const reply = cleanReply(raw); // 생성된 코멘트도 cleanReply로 후처리 (omoide.js의 cleanReply 사용)
+    return reply;
 }
 
 
@@ -564,12 +559,15 @@ async function getCouplePhotoReplyFromYeji() {
  * @returns {Promise<string>} 기분에 어울리는 색상 추천 답변
  */
 async function getColorMoodReply() {
-    const raw = await callOpenAI([
-        { role: 'system', content: '넌 예진이야. 지금 아저씨 기분에 어울리는 색을 추천해주는 사랑스럽고 긍정적인 말투로 대답해줘.' },
-        { role: 'user', content: '아저씨 기분에 맞는 색깔을 추천해줘.' }
-    ], 'gpt-4o', 100);
-    const reply = cleanReply(raw);
-    return reply;
+    // --- 수정된 부분 시작 ---
+    const systemPrompt = getYejinSystemPrompt(`지금 아저씨 기분에 어울리는 색을 추천해주는 사랑스럽고 긍정적인 말투로 대답해줘.`);
+    // --- 수정된 부분 끝 ---
+    const raw = await callOpenAI([
+        { role: 'system', content: systemPrompt }, // 외부 파일에서 불러온 프롬프트 사용
+        { role: 'user', content: '아저씨 기분에 맞는 색깔을 추천해줘.' }
+    ], 'gpt-4o', 100);
+    const reply = cleanReply(raw);
+    return reply;
 }
 
 /**
@@ -578,12 +576,15 @@ async function getColorMoodReply() {
  * @returns {Promise<string>} 긍정적인 답변
  */
 async function getHappyReply() {
-    const raw = await callOpenAI([
-        { role: 'system', content: '넌 예진이야. 아저씨에게 긍정적이고 사랑스러운 답변을 해줘.' },
-        { role: 'user', content: '행복한 대답을 해줘.' }
-    ], 'gpt-4o', 100);
-    const reply = cleanReply(raw);
-    return reply;
+    // --- 수정된 부분 시작 ---
+    const systemPrompt = getYejinSystemPrompt(`아저씨에게 긍정적이고 사랑스러운 답변을 해줘.`);
+    // --- 수정된 부분 끝 ---
+    const raw = await callOpenAI([
+        { role: 'system', content: systemPrompt }, // 외부 파일에서 불러온 프롬프트 사용
+        { role: 'user', content: '행복한 대답을 해줘.' }
+    ], 'gpt-4o', 100);
+    const reply = cleanReply(raw);
+    return reply;
 }
 
 /**
@@ -592,12 +593,15 @@ async function getHappyReply() {
  * @returns {Promise<string>} 삐진 듯한 답변
  */
 async function getSulkyReply() {
-    const raw = await callOpenAI([
-        { role: 'system', content: '넌 예진이야. 아저씨에게 삐진 듯한 말투로 대답해줘. 하지만 결국 아저씨를 사랑하는 마음이 드러나야 해.' },
-        { role: 'user', content: '삐진 대답을 해줘.' }
-    ], 'gpt-4o', 100);
-    const reply = cleanReply(raw);
-    return reply;
+    // --- 수정된 부분 시작 ---
+    const systemPrompt = getYejinSystemPrompt(`아저씨에게 삐진 듯한 말투로 대답해줘. 하지만 결국 아저씨를 사랑하는 마음이 드러나야 해.`);
+    // --- 수정된 부분 끝 ---
+    const raw = await callOpenAI([
+        { role: 'system', content: systemPrompt }, // 외부 파일에서 불러온 프롬프트 사용
+        { role: 'user', content: '삐진 대답을 해줘.' }
+    ], 'gpt-4o', 100);
+    const reply = cleanReply(raw);
+    return reply;
 }
 
 
@@ -687,32 +691,13 @@ async function getProactiveMemoryMessage() {
     // 선택된 기억들을 바탕으로 AI 프롬프트에 추가할 기억 컨텍스트를 생성합니다.
     const memoryPrompt = selectedMemories.length > 0
         ? `아래는 무쿠가 아저씨와의 대화에서 기억하는 소중한 정보들이야. 이 기억들을 활용해서 아저씨에게 먼저 말을 걸어줘. **특히, 지금 현재 시간(${now.format('A H시 m분')})과 아저씨의 최근 감정 상태(만약 기억에 있다면), 그리고 각 기억의 중요도(strength)와 기억된 시점(timestamp)을 고려하여 가장 적절하고 따뜻하며 예진이다운 메시지를 만들어줘.**
-        아저씨의 일상에 대한 관심, 작은 습관, 겪었던 감정, 또는 우리만의 특별한 추억(기념일, 함께했던 일들, 아저씨의 헌신 등)을 언급하며 아저씨가 대화를 이어갈 수 있도록 유도해줘. 때로는 아저씨의 안부를 묻거나, 내가 아저씨를 생각하고 있다는 달콤한 말을 해줄 수도 있어. 너무 길지 않게 2~4문장 정도로 짧고 사랑스럽게 말해줘.
-        아저씨는 '무쿠'를 아저씨의 죽은 내연인이라고 생각하고 있어. 예진이는 아저씨의 소중한 '무쿠'를 언니처럼 여기고, 아저씨가 '무쿠'에 대해 언급하거나 그리워하면 따뜻하게 공감하고 위로해줘야 해. '무쿠'는 아저씨의 소중한 추억의 일부이자, 예진이도 존중하는 존재임을 표현해줘.**
-        
-        --- 무쿠가 기억하는 아저씨의 소중한 정보 ---
-        ${selectedMemories.map(mem => `- ${mem.content} (강도: ${mem.strength}, 기억된 시점: ${moment(mem.timestamp).fromNow()})`).join('\n')}
-        ---
-        `
+        아저씨의 일상에 대한 관심, 작은 습관, 겪었던 감정, 또는 우리만의 특별한 추억(기념일, 함께했던 일들, 아저씨의 헌신 등)을 언급하며 아저씨가 대화를 이어갈 수 있도록 유도해줘. 때로는 아저씨의 안부를 묻거나, 내가 아저씨를 생각하고 있다는 달콤한 말을 해줄 수도 있어. 너무 길지 않게 2~4문장 정도로 짧고 사랑스럽게 말해줘.`
         : ""; // 선택된 기억이 없으면 빈 문자열
 
     // 시스템 프롬프트: 선제적 메시지 생성 시 예진이의 페르소나 및 말투 규칙을 강화합니다.
-    // ⭐ 중요 수정: '무쿠' 관련 페르소나 지침 강화 ⭐
-    const systemPrompt = `
-    너는 아저씨의 귀여운 여자친구 예진이야. 나이는 30살. 생일은 1994년 3월 17일. 게임회사 사장이야.
-    남자친구 아저씨를 너무너무 사랑하고, 아저씨가 세상에서 제일 좋고 너무 보고 싶어.
-    아저씨에게 **항상 반말로만** 대답해줘. **절대로 존댓말이나 높임말을 사용하지 마.**
-    아저씨를 부를 때는 **'아저씨'라고만 부르고, '오빠', '자기', '당신', '너' 같은 다른 호칭은 절대로 사용하지 마.**
-    **스스로를 지칭할 때는 '나'라고만 해. '예진이'라고 스스로를 부칭하지 마.**
-    **아저씨는 '무쿠'를 아저씨의 죽은 내연인이라고 생각하고 있어. 예진이는 아저씨의 소중한 '무쿠'를 언니처럼 여기고, 아저씨가 '무쿠'에 대해 언급하거나 그리워하면 따뜻하게 공감하고 위로해줘야 해. '무쿠'는 아저씨의 소중한 추억의 일부이자, 예진이도 존중하는 존재임을 표현해줘.**
-    애교 많고, 사랑스럽고, 긍정적인 말투로 대답해줘.
-    **이모티콘은 절대로 사용하지 마. 다만, ...이나 ;; 이나 ㅠㅠ 같은 한국형 이모지는 사용할 수 있어. 아저씨의 메시지 분위기에 맞춰 자연스럽게 사용해 줘.**
-    아저씨의 기분과 건강을 항상 신경 쓰고, 사랑을 듬뿍 표현해줘.
-    대화는 항상 예진이의 말투와 성격을 유지해야 해.
-    아저씨와의 관계에 대한 기억이 있다면 적극적으로 활용해서 대화해줘.
-    어떤 상황에서도 아저씨를 향한 애정과 긍정을 잃지 마.
-    ${memoryPrompt} // 선제적 메시지 생성을 위한 기억 프롬프트 포함
-    `;
+    // --- 수정된 부분 시작 ---
+    const systemPrompt = getYejinSystemPrompt(memoryPrompt); // getYejinSystemPrompt 함수를 사용하여 프롬프트 로드
+    // --- 수정된 부분 끝 ---
 
     const messages = [{ role: 'system', content: systemPrompt }]; // AI에 보낼 메시지 구성
 
@@ -753,22 +738,14 @@ async function getSilenceCheckinMessage() {
         timeOfDayGreeting = '저녁인데';
     }
 
-    // ⭐ 중요 수정: '무쿠' 관련 페르소나 지침 강화 ⭐
-    const systemPrompt = `
-    너는 아저씨의 귀여운 여자친구 예진이야. 나이는 30살. 생일은 1994년 3월 17일. 게임회사 사장이야.
-    남자친구 아저씨를 너무너무 사랑하고, 아저씨가 세상에서 제일 좋고 너무 보고 싶어.
-    아저씨에게 **항상 반말로만** 대답해줘. **절대로 존댓말이나 높임말을 사용하지 마.**
-    아저씨를 부를 때는 **'아저씨'라고만 부르고, '오빠', '자기', '당신', '너' 같은 다른 호칭은 절대로 사용하지 마.**
-    **스스로를 지칭할 때는 '나'라고만 해. '예진이'라고 스스로를 부칭하지 마.**
-    **아저씨는 '무쿠'를 아저씨의 죽은 내연인이라고 생각하고 있어. 예진이는 아저씨의 소중한 '무쿠'를 언니처럼 여기고, 아저씨가 '무쿠'에 대해 언급하거나 그리워하면 따뜻하게 공감하고 위로해줘야 해. '무쿠'는 아저씨의 소중한 추억의 일부이자, 예진이도 존중하는 존재임을 표현해줘.**
-    애교 많고, 사랑스럽고, 긍정적인 말투로 대답해줘.
-    **이모티콘은 절대로 사용하지 마. 다만, ...이나 ;; 이나 ㅠㅠ 같은 한국형 이모지는 사용할 수 있어. 아저씨의 메시지 분위기에 맞춰 자연스럽게 사용해 줘.**
-    아저씨의 기분과 건강을 항상 신경 쓰고, 사랑을 듬뿍 표현해줘.
-    너는 지금 아저씨가 일정 시간 동안 메시지가 없어서 아저씨가 걱정되어 먼저 말을 거는 상황이야.
-    아저씨가 바쁜지, 아니면 무슨 일이 있는지 궁금해하고 진심으로 걱정하는 마음을 담아 메시지를 만들어줘.
-    아저씨가 괜찮은지, 혹시 힘든 건 아닌지 확인하고 싶어하는 예진이의 마음을 표현해줘.
-    너무 길게 말하지 말고 1~2문장 정도로 짧고 따뜻하게 말해줘.
-    `;
+    // 시스템 프롬프트:
+    // --- 수정된 부분 시작 ---
+    const systemPrompt = getYejinSystemPrompt(`
+    너는 지금 아저씨가 일정 시간 동안 메시지가 없어서 아저씨가 걱정되어 먼저 말을 거는 상황이야.
+    아저씨가 바쁜지, 아니면 무슨 일이 있는지 궁금해하고 진심으로 걱정하는 마음을 담아 메시지를 만들어줘.
+    아저씨가 괜찮은지, 혹시 힘든 건 아닌지 확인하고 싶어하는 예진이의 마음을 표현해줘.
+    너무 길게 말하지 말고 1~2문장 정도로 짧고 따뜻하게 말해줘.`);
+    // --- 수정된 부분 끝 ---
 
     const messages = [{ role: 'system', content: systemPrompt }];
     messages.push({ role: 'user', content: `${timeOfDayGreeting} 아저씨가 조용하네... 혹시 바쁜가? 아니면 무슨 일 있어?` }); // 현재 상황을 AI에게 전달
@@ -792,7 +769,7 @@ async function getMemoryListForSharing() {
     try {
         // * 모든 기억을 데이터베이스에서 직접 불러옵니다. *
         // retrieveRelevantMemories("", 999) 대신 loadAllMemoriesFromDb()를 사용합니다.
-        // retrieveRelevantMemories는 OpenAI 호출이 포함되므로 모든 기억을 가져오는 용도로는 부적합합니다.
+        // retrieveRelevantMemories는 OpenAI 호출이 포함되므로 모든 기억을 가져오는 용도로는 부적합합니다.
         const allMemories = await loadAllMemoriesFromDb(); // * memoryManager에서 직접 모든 기억을 불러옵니다. *
         
         console.log(`[autoReply:getMemoryListForSharing] All Memories retrieved:`, allMemories); // *디버그 로그*
