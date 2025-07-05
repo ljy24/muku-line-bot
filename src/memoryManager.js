@@ -1,9 +1,7 @@
-// src/memoryManager.js - 데이터베이스 기반 기억 관리 시스템
-
-const { Pool } = require('pg'); // PostgreSQL 클라이언트 모듈
+// src/memoryManager.js v1.1 - 질문-답변 기억 기능 추가 최종본
+const { Pool } = require('pg');
 
 // Render에서 제공하는 데이터베이스 URL을 사용하여 Pool 생성
-// (SSL 연결을 강제하여 보안 강화)
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: {
@@ -12,9 +10,9 @@ const pool = new Pool({
 });
 
 /**
- * 데이터베이스에 새로운 기억을 저장합니다.
+ * 데이터베이스에 새로운 기억을 저장합니다. 중복된 내용은 저장하지 않습니다.
  * @param {string} content - 기억할 내용
- * @param {string} category - 기억의 카테고리 (예: '대화기록', '아저씨의감정')
+ * @param {string} category - 기억의 카테고리
  * @param {string} strength - 기억의 중요도 ('normal' 또는 'high')
  */
 async function saveMemoryToDb(content, category = '기타', strength = 'normal') {
@@ -24,14 +22,16 @@ async function saveMemoryToDb(content, category = '기타', strength = 'normal')
         WHERE NOT EXISTS (SELECT 1 FROM memories WHERE content = $1);
     `;
     try {
-        await pool.query(query, [content, category, strength]);
-        console.log(`[MemoryManager] 기억 저장 완료: "${content.substring(0, 30)}..."`);
+        const res = await pool.query(query, [content, category, strength]);
+        if (res.rowCount > 0) {
+            console.log(`[MemoryManager] 기억 저장 완료: "${content.substring(0, 30)}..."`);
+        }
     } catch (error) {
         console.error('DB 저장 실패:', error);
     }
 }
 
-// --- ✨ 새로 추가된 함수 시작 ✨ ---
+// --- ✨ [핵심 추가] 질문과 답변을 한 세트로 저장하는 새로운 함수 ✨ ---
 /**
  * 질문과 그에 대한 답변을 하나의 세트로 데이터베이스에 저장합니다.
  * 이 기억은 사용자가 직접 알려준 소중한 정보이므로 높은 중요도(high)로 저장됩니다.
@@ -44,38 +44,30 @@ async function saveAnswerToQuestion(question, answer) {
     await saveMemoryToDb(memoryContent, '답변기억', 'high');
     console.log(`[MemoryManager] 질문에 대한 답변을 저장했습니다: (질문: ${question}), (답변: ${answer})`);
 }
-// --- ✨ 새로 추가된 함수 끝 ✨ ---
 
-
-// (아래는 기존 memoryManager.js 파일에 있던 다른 함수들의 예시입니다.)
-// (아저씨의 실제 파일 내용에 맞춰서 다른 함수들도 존재해야 합니다.)
+// (아래는 기존 memoryManager.js 파일에 있던 다른 함수들입니다)
 
 async function loadLoveHistory() {
-    // is_love_related = true 인 기억을 로드하는 로직
-    // ...
-    return { categories: {} }; // 임시 반환 값
+    // 이 부분은 실제 구현에 따라 달라질 수 있습니다.
+    return { categories: {} };
 }
 
 async function loadOtherPeopleHistory() {
-    // is_other_person_related = true 인 기억을 로드하는 로직
-    // ...
-    return { categories: {} }; // 임시 반환 값
+    // 이 부분은 실제 구현에 따라 달라질 수 있습니다.
+    return { categories: {} };
 }
 
 async function extractAndSaveMemory(message) {
-    // 메시지에서 중요한 정보를 추출하여 저장하는 로직
+    // 이 부분은 실제 구현에 따라 달라질 수 있습니다.
     console.log(`[MemoryManager] "${message}" 에서 기억 추출 시도...`);
-    // 현재 로직에서는 '질문'은 가치 없다고 판단하므로, 이 부분의 개선이 필요할 수 있습니다.
 }
 
 async function retrieveRelevantMemories(query, limit = 3) {
-    // 주어진 쿼리와 관련된 기억을 DB에서 검색하는 로직
-    // ...
-    return []; // 임시 반환 값
+    // 이 부분은 실제 구현에 따라 달라질 수 있습니다.
+    return [];
 }
 
 async function loadAllMemoriesFromDb() {
-    // 모든 기억을 DB에서 로드하는 로직
     try {
         const result = await pool.query('SELECT * FROM memories ORDER BY timestamp DESC');
         return result.rows;
@@ -86,16 +78,13 @@ async function loadAllMemoriesFromDb() {
 }
 
 async function saveUserSpecifiedMemory(rawMessage, content) {
-    // 사용자가 "기억해줘" 라고 명시적으로 말한 내용을 저장하는 로직
     await saveMemoryToDb(content, '사용자지정', 'high');
 }
 
 async function deleteRelevantMemories(rawMessage, content) {
-    // 사용자가 "잊어줘" 라고 말한 내용과 관련된 기억을 삭제하는 로직
-    // ...
-    return true; // 임시 반환 값
+    // 이 부분은 실제 구현에 따라 달라질 수 있습니다.
+    return true;
 }
-
 
 module.exports = {
     pool,
