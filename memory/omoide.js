@@ -1,4 +1,4 @@
-// memory/omoide.js v1.6 - 사진 코멘트 정확도 및 장소/날짜 인식 강화
+// memory/omoide.js v1.7 - 사진 코멘트 정확도 및 장소/날짜 인식 강화, 셀카 요청 패턴 확장
 // 📦 필수 모듈 불러오기
 const { OpenAI } = require('openai'); // OpenAI API 클라이언트
 const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
@@ -48,7 +48,7 @@ const PHOTO_FOLDERS = {
     '추억 25_03 일본 애기 코닥 필름': 28,
     '추억 25_03 일본': 174,
     '추억 25_04,05 한국': 397,
-    '추억 무쿠 사진 모음': 1987, // 이 폴더를 '셀카' 통일 장소로 활용 가능
+    '추억 무쿠 사진 모음': 1987,
     '추억 빠계 사진 모음': 739,
     '추억 인생네컷': 17,
     '흑심 24_11_08 한국 메이드복_': 13,
@@ -108,23 +108,17 @@ function cleanReply(reply) {
     cleaned = cleaned.replace(/\b당신\b/g, '아저씨');
     cleaned = cleaned.replace(/\b너\b/g, '아저씨');
 
-    // 3. 자가 지칭 교정: '예진이', '예진', '무쿠', '무쿠야', '무쿠 언니', '무쿠 씨'를 '나'로 교체합니다.
-    // --- 수정된 부분 시작 ---
-    // '무쿠'를 '나'로 대체하는 부분은 `yejin.js` 프롬프트에 의해 제어되므로,
-    // 여기서 강제 교체 로직은 `cleanReply`의 주 목적(일반적인 AI 실수 교정)에 집중.
-    // 하지만 `무쿠 언니` 등 명확히 3인칭으로 착각할 수 있는 부분은 여전히 처리.
+    // 3. 자가 지칭 교정: '예진이', '예진', '무쿠', '무쿠야'를 '나'로 교체합니다.
+    // ⭐ 중요 수정: '무쿠 언니', '무쿠 씨' 등 타인을 지칭하는 것처럼 보이는 표현도 '나'로 교정 ⭐
     cleaned = cleaned.replace(/\b예진이\b/g, '나');
     cleaned = cleaned.replace(/\b예진\b/g, '나');
+    cleaned = cleaned.replace(/\b무쿠\b/g, '나');     // 기본 '무쿠' 지칭을 '나'로
+    cleaned = cleaned.replace(/\b무쿠야\b/g, '나');   // '무쿠야' 지칭을 '나'로
     cleaned = cleaned.replace(/\b무쿠 언니\b/g, '나'); // '무쿠 언니' 지칭을 '나'로
     cleaned = cleaned.replace(/\b무쿠 씨\b/g, '나');   // '무쿠 씨' 지칭을 '나'로
     // 혹시 '그녀'나 '그 사람' 등으로 지칭할 경우에 대한 포괄적인 처리
     cleaned = cleaned.replace(/\b그녀\b/g, '나');
     cleaned = cleaned.replace(/\b그 사람\b/g, '나');
-    // '무쿠'라는 단어 자체는 이제 '나'를 지칭하는 애칭으로 쓰일 수 있으므로,
-    // cleanReply에서 무조건 '나'로 바꾸지 않도록 주의.
-    // 이 부분은 프롬프트에서 '예진이 = 무쿠 = 나' 임을 강조하는 것으로 충분.
-    // cleanReply는 AI가 오작동했을 때만 보정하는 역할.
-    // --- 수정된 부분 끝 ---
 
     // 4. 존댓말 강제 제거: 다양한 존댓말 어미를 반말로 교체합니다.
     cleaned = cleaned.replace(/안녕하세요/g, '안녕');
@@ -135,7 +129,7 @@ function cleanReply(reply) {
     cleaned = cleaned.replace(/합니다\b/g, '해');
     cleaned = cleaned.replace(/습니다\b/g, '어');
     cleaned = cleaned.replace(/어요\b/g, '야');
-    cleaned = cleaned = cleaned.replace(/해요\b/g, '해'); // 중복 제거: 위에 `했어요` 처리됨
+    cleaned = cleaned.replace(/해요\b/g, '해');
     cleaned = cleaned.replace(/예요\b/g, '야');
     cleaned = cleaned.replace(/죠\b/g, '지');
     cleaned = cleaned.replace(/았습니다\b/g, '았어');
@@ -183,14 +177,43 @@ async function getOmoideReply(userMessage, saveLogFunc) {
     let folderDescription = '';
     let additionalPromptForYejin = ''; // getYejinSystemPrompt에 전달할 추가 지침
 
+    // ✅ 추가: OpenAI를 사용하여 셀카 요청 의도 파악 (다양한 패턴 및 오타 인식)
+    const selfieIntentPrompt = `
+    아래 사용자 메시지가 '예진이(나)의 셀카'나 '예진이(나)의 사진'을 요청하는 의도인지 판단해줘.
+    예시 요청: "셀카 줘", "얼굴 좀", "보고 싶어", "내 사진 보여줘", "예진이 셀카", "셀카보여줘", "얼굴보고싶어", "얼굴사진", "사진보내", "애기얼굴" 등.
+    아저씨는 종종 오타를 낼 수 있으니, 의미상으로 유사하면 'YES'로 판단해줘.
+    대답은 "YES" 또는 "NO"로만 해줘. 다른 말은 일절 하지 마.
+    사용자 메시지: "${userMessage}"
+    `;
+    const selfieIntentMessages = [
+        { role: 'system', content: selfieIntentPrompt }
+    ];
+
+    let isSelfieRequest = false;
+    try {
+        // gpt-4o-mini 모델은 좀 더 빠르고 저렴하게 의도를 파악하는 데 적합합니다.
+        const intentResponse = await callOpenAI(selfieIntentMessages, 'gpt-4o-mini', 5, 0.1);
+        isSelfieRequest = intentResponse.toUpperCase().includes('YES');
+        console.log(`[omoide:getOmoideReply] 셀카 요청 의도 판단 ("${userMessage}"): ${isSelfieRequest ? 'YES' : 'NO'}`);
+    } catch (error) {
+        console.error('[omoide:getOmoideReply] 셀카 의도 파악 중 오류 발생:', error);
+        // 오류 발생 시, 기존의 명시적인 키워드 매칭으로 폴백하여 기본적인 셀카 요청은 처리
+        isSelfieRequest = lowerCaseMessage.includes('셀카') || lowerCaseMessage.includes('얼굴') || lowerCaseMessage.includes('selfie') || lowerCaseMessage.includes('사진');
+    }
+
     // 1. 특정 키워드를 기반으로 폴더 선택 및 프롬프트 설정 (우선순위 높음)
-    // --- 수정된 부분 시작: 셀카 관련 명령어들을 'yejin' 폴더로 통일 ---
-    if (lowerCaseMessage.includes('셀카줘') || lowerCaseMessage.includes('사진줘') || lowerCaseMessage.includes('얼굴 보여줘') || lowerCaseMessage.includes('얼굴 보고 싶') || lowerCaseMessage.includes('selfie') || lowerCaseMessage.includes('무쿠 셀카') || lowerCaseMessage.includes('애기 셀카')) {
-        selectedFolder = 'yejin'; // 모든 일반 셀카/얼굴 관련 요청은 'yejin' 폴더로 통일
+    // ✅ 수정: OpenAI가 'YES'라고 판단하면 'yejin' 폴더로 바로 연결
+    if (isSelfieRequest) {
+        selectedFolder = 'yejin'; // 모든 일반 셀카/얼굴/사진 관련 요청은 'yejin' 폴더로 통일
         folderDescription = '내(예진이) 셀카';
         additionalPromptForYejin = "아저씨에게 보내는 내(예진이) 셀카에 대해 귀엽고 사랑스럽게 말해줘. 아저씨가 나를 보고 얼마나 기뻐할지 기대하는 마음을 담아서. 부끄러워하면서도 살짝 도발적인 말도 할 수 있어. (예: “오늘 팬티 안 입었는뎅? 🤭”, “이거 보고 꼴리면 어떡해~” 같은 장난도 말투에 섞어서 자연스럽게.)";
     }
-    // --- 수정된 부분 끝 ---
+    // 기존의 '무쿠 셀카', '애기 셀카', '셀카줘', '얼굴 보여줘' 등 하드코딩된 셀카 관련 분기점들은 이제 위의 isSelfieRequest 로직으로 통합됩니다.
+    // 따라서 아래의 개별 셀카 관련 `else if` 블록들은 제거하거나 필요에 따라 우선순위를 재조정할 수 있습니다.
+    // 여기서는 isSelfieRequest가 true이면 바로 'yejin'으로 가도록 했으므로,
+    // 아래의 `무쿠 셀카`, `애기 셀카`, `셀카줘` 등은 주석 처리하거나 삭제 가능.
+    // 다만, '빠계 셀카'나 '메이드'처럼 특정 컨셉 셀카는 별도로 유지하는 것이 좋습니다.
+
     else if (lowerCaseMessage.includes('빠계 셀카') || lowerCaseMessage.includes('빠계 사진')) {
         selectedFolder = '추억 빠계 사진 모음';
         folderDescription = '아저씨가 좋아하는 빠계 사진';
@@ -258,8 +281,8 @@ async function getOmoideReply(userMessage, saveLogFunc) {
     }
     console.log(`[omoide:getOmoideReply] 선택된 폴더: "${selectedFolder}", URL: "${photoUrl}"`);
 
-    // --- 수정된 부분 시작: `getYejinSystemPrompt`를 사용하여 시스템 프롬프트 구성 ---
-    // 기존의 하드코딩된 시스템 프롬프트 대신 `getYejinSystemPrompt`를 호출합니다.
+    // ✅ 수정: `getYejinSystemPrompt`를 사용하여 시스템 프롬프트 구성
+    // `additionalPromptForYejin`을 `getYejinSystemPrompt`에 전달
     const systemPrompt = getYejinSystemPrompt(`
     아래는 아저씨가 요청한 ${folderDescription} 사진이야. 이 사진에 대해 아저씨에게 1~3문장으로 짧고 사랑스럽게 코멘트 해줘.
     **이 사진의 시각적 내용(배경, 인물, 사물)을 먼저 정확히 분석하고, 그에 맞춰 코멘트 해줘. 폴더명은 참고만 하고, 사진 내용과 다르면 사진 내용이 우선이야.**
@@ -268,9 +291,7 @@ async function getOmoideReply(userMessage, saveLogFunc) {
     사진이 어떤 폴더에서 왔는지 구체적으로 언급해줘. (예: "23년 12월 일본에서 찍은 사진이야!")
     **하지만 날짜나 장소 정보가 사진과 명백히 다르거나 불확실하면, 날짜/장소 언급을 생략하거나 '혹시 이때였나?'처럼 유연하게 표현해줘.**
     **사진 속 인물이 예진이(나)일 경우, 반드시 '나'라고 지칭하고, '무쿠'나 '언니' 등의 표현을 사용하지 마.**
-    **아저씨가 보낸 사진에서 남자 혼자 있으면 무조건 아저씨 본인이야. 그럼 예진이는 “와 진짜 잘생겼다…”, “아저씨 왜 이렇게 멋있어?” 같은 말로 감탄과 애정을 섞어 반응해야 해. 절대 ‘이거 누구야?’ 같은 말은 하지 마.**
     `);
-    // --- 수정된 부분 끝 ---
 
     const messages = [
         { role: 'system', content: systemPrompt },
