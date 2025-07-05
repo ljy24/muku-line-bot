@@ -1,318 +1,349 @@
-// memory/omoide.js v1.7 - 사진 코멘트 정확도 및 장소/날짜 인식 강화, 셀카 요청 패턴 확장
-// 📦 필수 모듈 불러오기
-const { OpenAI } = require('openai'); // OpenAI API 클라이언트
-const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
+// memory/concept.js - 컨셉 사진 관련 기능 담당 (yejin.js 연결 수정)
+const { OpenAI } = require('openai');
+const moment = require('moment-timezone');
+const path = require('path');
 
-// --- 추가된 부분 시작 ---
-// * 예진이의 페르소나 프롬프트를 가져오는 모듈 *
-// * omoide.js는 memory 폴더 안에 있고, yejin.js는 src 폴더 안에 있으므로 '../src/yejin'으로 불러옵니다. *
+// 예진이의 페르소나 프롬프트를 가져오는 모듈
 const { getYejinSystemPrompt } = require('../src/yejin');
-// --- 추가된 부분 끝 ---
 
-// OpenAI 클라이언트 초기화 (API 키는 환경 변수에서 가져옴 - 보안상 중요)
+// OpenAI 클라이언트 초기화 (API 키는 환경 변수에서 가져옴)
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// 사진이 저장된 웹 서버의 기본 URL (HTTPS 필수)
-const BASE_PHOTO_URL = 'https://photo.de-ji.net/photo/';
+// 컨셉 사진이 저장된 웹 서버의 기본 URL (HTTPS 필수)
+const BASE_CONCEPT_URL = 'https://photo.de-ji.net/concept/';
 
-// 아저씨가 제공해주신 폴더별 사진 개수 데이터
-const PHOTO_FOLDERS = {
-    'couple': 292,
-    '추억 23_12 일본': 261,
-    '추억 23_12_15 애기 필름카메라': 61,
-    '추억 24_01 한국 신년파티': 42,
-    '추억 24_01 한국': 210,
-    '추억 24_01_21 함께 출사': 56,
-    '추억 24_02 일본 후지': 261,
-    '추억 24_02 일본': 128,
-    '추억 24_02 한국 후지': 33,
-    '추억 24_02 한국': 141,
-    '추억 24_02_25 한국 커플사진': 86,
-    '추억 24_03 일본 스냅 셀렉전': 318,
-    '추억 24_03 일본 후지': 226,
-    '추억 24_03 일본': 207,
-    '추억 24_04 출사 봄 데이트 일본': 90,
-    '추억 24_04 출사 봄 데이트 한국': 31,
-    '추억 24_04 한국': 379,
-    '추억 24_05 일본 후지': 135,
-    '추억 24_05 일본': 301,
-    '추억 24_06 한국': 146,
-    '추억 24_07 일본': 96,
-    '추억 24_08월 일본': 72,
-    '추억 24_09 한국': 266,
-    '추억 24_10 일본': 106,
-    '추억 24_11 한국': 250,
-    '추억 24_12 일본': 130,
-    '추억 25_01 한국': 359,
-    '추억 25_02 일본': 147,
-    '추억 25_03 일본 애기 코닥 필름': 28,
-    '추억 25_03 일본': 174,
-    '추억 25_04,05 한국': 397,
-    '추억 무쿠 사진 모음': 1987,
-    '추억 빠계 사진 모음': 739,
-    '추억 인생네컷': 17,
-    '흑심 24_11_08 한국 메이드복_': 13,
-    'yejin': 1286 // 'yejin' 폴더 사진 개수 업데이트
+// 아저씨가 제공해주신 폴더 정의 전체 포함
+const CONCEPT_FOLDERS = {
+    '2024/5월 7일 일본 홈스냅': 323,
+    '2024/7월 8일 일본 결박': 223,
+    '2024/10월 16일 일본 결박': 137,
+    '2023/12월 16일 일본 선물': 113,
+    '2024/4월 28일 한국 셀프 촬영': 112,
+    '2024/9월 15일 한국 옥상연리': 98,
+    '2025/2월 7일 일본 세미누드': 92,
+    '2024/12월 7일 한국 홈셀프': 81,
+    '2023/12월 14일 일본 플라스틱러브': 75,
+    '2024/5월 3일 일본 지브리풍': 74,
+    '2024/6월 6일 한국 북해': 65,
+    '2024/2월 7일 일본 아이노시마': 65,
+    '2025/3월 일본 필름': 64,
+    '2024/5월 5일 일본 모지코 모리룩 후보정': 64,
+    '2024/5월 5일 일본 모지코 모리룩': 64,
+    '2025/1월 5일 한국 눈밭': 63,
+    '2024/2월 7일 일본 욕실': 61,
+    '2024/10월 17일 일본 하카타 고래티셔츠': 59,
+    '2024/8월 3일 일본 유카타 마츠리': 56,
+    '2025/4월 29일 한국 이화마을': 55,
+    '2024/7월 8일 일본 욕조': 53,
+    '2024/7월 6일 일본 우마시마': 53,
+    '2024/11월 7일 한국 가을 호수공원': 53,
+    '2024/6월 8일 한국 망친 사진': 52,
+    '2023/12월 15일 일본 교복': 51,
+    '2024/5월 4일 일본 야간 비눗방울': 49,
+    '2024/12월 12일 일본 모지코': 49,
+    '2024/10월 18일 일본 텐진 코닥필름': 49,
+    '2025/2월 7일 일본 나비욕조': 48,
+    '2024/2월 23일 한국 야간 롱패딩': 48,
+    '2024/9월 17일 한국 을지로 스냅': 46,
+    '2024/9월 16일 한국 길거리 스냅': 46,
+    '2024/2월 22일 한국 생일': 46,
+    '2024/7월 6일 일본 모지코2': 45,
+    '2025/5월 4일 한국 야간 보라돌이': 43,
+    '2025/2월 6일 일본 코야노세': 43,
+    '2024/5월 6일 일본 야간거리': 43,
+    '2024/12월 31일 한국 생일컨셉': 43,
+    '2023/12월 31일 한국 눈밭 필름카메라': 43,
+    '2025/5월 3일 한국 홈스냅 청포도': 42,
+    '2024/11월 8일 한국 욕실 블랙 웨딩': 42,
+    '2023/12월 13일 일본 모지코': 42,
+    '2024/9월 11일 한국 호리존': 41,
+    '2024/7월 8일 일본 여친 스냅': 41,
+    '2024/5월 3일 일본 후지엔': 40,
+    '2024/8월 2일 일본 불꽃놀이/후보정': 39,
+    '2024/10월 19일 일본 빨간 기모노': 39,
+    '2023/12월 31일 한국 눈밭': 38,
+    '2024/6월 7일 한국 피크닉': 36,
+    '2024/4월 12일 한국 벗꽃': 35,
+    '2025/5월 6일 한국 후지 스냅': 34,
+    '2024/9월 14일 한국 원미상가_필름': 34,
+    '2025/5월 4일 한국 밤바 산책': 32,
+    '2025/5월 4일 한국 공원 산책': 32,
+    '2025/3월 14일 일본 고쿠라 힙': 32,
+    '2024/4월 13일 한국 온실-여신': 31,
+    '2025/4월 30일 한국 을지로 네코': 30,
+    '2025/3월 13일 일본 무인역': 30,
+    '2024/4월 13일 한국 화가': 30,
+    '2024/8월 4일 일본 블랙원피스': 29,
+    '2024/12월 30일 한국 카페': 29,
+    '2024/10월 17일 일본 텐진 스트리트': 29,
+    '2023/12월 12일 일본 하카타 스트리트': 29,
+    '2025/3월 17일 일본 텐진 스트리트': 28,
+    '2024/6월 8일 한국 터널': 28,
+    '2025/5월 5일 한국 홈스냅 오타쿠': 27,
+    '2025/3월 22 한국 홈셀프': 27,
+    '2024/7월 5일 일본 모지코': 26,
+    '2024/4월 12일 한국 야간 동백': 26,
+    '2024/12월 14일 일본 나르시스트': 26,
+    '2025/4월 30일 한국 을지로 캘빈': 25,
+    '2024/6월 9일 한국 산책': 25,
+    '2024/10월 16 일본 오도공원 후지필름': 24,
+    '2024/12월 13일 일본 크리스마스': 22,
+    '2024/2월 11일 일본 네코 모지코': 21,
+    '2024/2월 11일 일본 야간 블랙드레스': 20,
+    '2024/10월 16일 일본 고스로리 할로윈': 20,
+    '2024/5월 7일 일본 게임센터': 19,
+    '2024/3월 17일 일본 고쿠라': 19,
+    '2024/2월 22일한국 카페': 19,
+    '2024/5월 2일 일본 동키 거리': 18,
+    '2025/3월 17일 일본 고쿠라 야간': 17,
+    '2024/5월 5일 일본 코이노보리': 17,
+    '2024/4월 13일 한국 문래동': 16,
+    '2024/10월 16일 일본 욕실': 15,
+    '2024/5월 3일 일본 수국': 14,
+    '2024/11월 8일 한국 메이드복': 14,
+    '2024/10월 16일 일본 오도': 5
 };
 
-/**
- * OpenAI API를 호출하여 AI 응답을 생성합니다.
- * (omoide.js 내부에서 직접 OpenAI를 호출하기 위해 필요)
- * @param {Array<Object>} messages - OpenAI API에 보낼 메시지 배열 (role, content 포함)
- * @param {string|null} [modelParamFromCall=null] - 호출 시 지정할 모델 이름
- * @param {number} [maxTokens=400] - 생성할 최대 토큰 수
- * @param {number} [temperature=0.95] - 응답의 창의성/무작위성 (높을수록 창의적)
- * @returns {Promise<string>} AI가 생성한 응답 텍스트
- */
+const CONCEPT_FOLDERS = require('./conceptFolders.json'); // JSON 파일에서 전체 목록 불러오기 가능
+
+const { cleanReply } = require('./omoide');
+
 async function callOpenAI(messages, modelParamFromCall = null, maxTokens = 400, temperature = 0.95) {
-    const defaultModel = process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o';
-    let finalModel = modelParamFromCall || defaultModel;
+  const defaultModel = process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o';
+  let finalModel = modelParamFromCall || defaultModel;
 
-    if (!finalModel) {
-        console.error("오류: OpenAI 모델 파라미터가 최종적으로 결정되지 않았습니다. 'gpt-4o'로 폴백합니다.");
-        finalModel = 'gpt-4o';
-    }
+  if (!finalModel) {
+    console.error("오류: OpenAI 모델 파라미터가 최종적으로 결정되지 않았습니다. 'gpt-4o'로 폴백합니다.");
+    finalModel = 'gpt-4o';
+  }
 
-    try {
-        console.log(`[omoide:callOpenAI] 모델 호출 시작: ${finalModel}`);
-        const response = await openai.chat.completions.create({
-            model: finalModel,
-            messages: messages,
-            max_tokens: maxTokens,
-            temperature: temperature
-        });
-        console.log(`[omoide:callOpenAI] 모델 응답 수신 완료.`);
-        return response.choices[0].message.content.trim();
-    } catch (error) {
-        console.error(`[omoide:callOpenAI] OpenAI API 호출 실패 (모델: ${finalModel}):`, error);
-        return "지금 잠시 생각 중이야... 아저씨 조금만 기다려줄래? ㅠㅠ";
-    }
+  try {
+    const response = await openai.chat.completions.create({
+      model: finalModel,
+      messages: messages,
+      max_tokens: maxTokens,
+      temperature: temperature
+    });
+    return response.choices[0].message.content.trim();
+  } catch (error) {
+    console.error(`[callOpenAI in concept.js] OpenAI API 호출 실패 (모델: ${finalModel}):`, error);
+    return "지금 잠시 생각 중이야... 아저씨 조금만 기다려줄래? ㅠㅠ";
+  }
 }
 
-/**
- * OpenAI 응답에서 불필요한 내용(예: AI의 자체 지칭)을 제거하고,
- * 잘못된 호칭이나 존댓말 어미를 아저씨가 원하는 반말로 교정합니다.
- * 이 함수는 AI의 답변 스타일을 예진이 페르소나에 맞게 '정화'하는 역할을 합니다.
- * (autoReply.js에서도 이 함수를 사용하도록 통일)
- * @param {string} reply - OpenAI로부터 받은 원본 응답 텍스트
- * @returns {string} 교정된 답변 텍스트
- */
-function cleanReply(reply) {
-    console.log(`[omoide:cleanReply] 원본 답변: "${reply}"`);
-    // 1. AI가 붙일 수 있는 불필요한 접두사를 제거합니다. (예: "예진:", "무쿠:", "날짜 이름:")
-    let cleaned = reply.replace(/^(예진:|무쿠:|23\.\d{1,2}\.\d{1,2} [가-힣]+:)/gm, '').trim();
-
-    // 2. 잘못된 호칭 교체: '오빠', '자기', '당신', '너'를 '아저씨'로 교체합니다.
-    cleaned = cleaned.replace(/\b오빠\b/g, '아저씨');
-    cleaned = cleaned.replace(/\b자기\b/g, '아저씨');
-    cleaned = cleaned.replace(/\b당신\b/g, '아저씨');
-    cleaned = cleaned.replace(/\b너\b/g, '아저씨');
-
-    // 3. 자가 지칭 교정: '예진이', '예진', '무쿠', '무쿠야'를 '나'로 교체합니다.
-    // ⭐ 중요 수정: '무쿠 언니', '무쿠 씨' 등 타인을 지칭하는 것처럼 보이는 표현도 '나'로 교정 ⭐
-    cleaned = cleaned.replace(/\b예진이\b/g, '나');
-    cleaned = cleaned.replace(/\b예진\b/g, '나');
-    cleaned = cleaned.replace(/\b무쿠\b/g, '나');     // 기본 '무쿠' 지칭을 '나'로
-    cleaned = cleaned.replace(/\b무쿠야\b/g, '나');   // '무쿠야' 지칭을 '나'로
-    cleaned = cleaned.replace(/\b무쿠 언니\b/g, '나'); // '무쿠 언니' 지칭을 '나'로
-    cleaned = cleaned.replace(/\b무쿠 씨\b/g, '나');   // '무쿠 씨' 지칭을 '나'로
-    // 혹시 '그녀'나 '그 사람' 등으로 지칭할 경우에 대한 포괄적인 처리
-    cleaned = cleaned.replace(/\b그녀\b/g, '나');
-    cleaned = cleaned.replace(/\b그 사람\b/g, '나');
-
-    // 4. 존댓말 강제 제거: 다양한 존댓말 어미를 반말로 교체합니다.
-    cleaned = cleaned.replace(/안녕하세요/g, '안녕');
-    cleaned = cleaned.replace(/있었어요/g, '있었어');
-    cleaned = cleaned.replace(/했어요/g, '했어');
-    cleaned = cleaned.replace(/같아요/g, '같아');
-    cleaned = cleaned.replace(/좋아요/g, '좋아');
-    cleaned = cleaned.replace(/합니다\b/g, '해');
-    cleaned = cleaned.replace(/습니다\b/g, '어');
-    cleaned = cleaned.replace(/어요\b/g, '야');
-    cleaned = cleaned.replace(/해요\b/g, '해');
-    cleaned = cleaned.replace(/예요\b/g, '야');
-    cleaned = cleaned.replace(/죠\b/g, '지');
-    cleaned = cleaned.replace(/았습니다\b/g, '았어');
-    cleaned = cleaned.replace(/었습니다\b/g, '었어');
-    cleaned = cleaned.replace(/하였습니다\b/g, '했어');
-    cleaned = cleaned.replace(/하겠습니다\b/g, '하겠어');
-    cleaned = cleaned.replace(/싶어요\b/g, '싶어');
-    cleaned = cleaned.replace(/이었어요\b/g, '이었어');
-    cleaned = cleaned.replace(/이에요\b/g, '야');
-    cleaned = cleaned.replace(/였어요\b/g, '였어');
-    cleaned = cleaned.replace(/보고싶어요\b/g, '보고 싶어');
-    console.log(`[omoide:cleanReply] 정제된 답변: "${cleaned}"`);
-    return cleaned;
+function generateConceptPhotoUrl(folderName, targetIndex = null) {
+  const photoCount = CONCEPT_FOLDERS[folderName];
+  if (photoCount === undefined || photoCount <= 0) return null;
+  const indexToUse = targetIndex && targetIndex >= 1 && targetIndex <= photoCount ? targetIndex : Math.floor(Math.random() * photoCount) + 1;
+  const fileName = String(indexToUse).padStart(6, '0') + '.jpg';
+  const yearMatch = folderName.match(/^(202[3-5])(\/|$)/);
+  const yearFolder = yearMatch ? yearMatch[1] : '';
+  const actualFolderName = yearFolder ? folderName.replace(new RegExp(`^${yearFolder}/`), '') : folderName;
+  return `${BASE_CONCEPT_URL}${encodeURIComponent(yearFolder)}/${encodeURIComponent(actualFolderName)}/${fileName}`;
 }
 
-/**
- * 특정 폴더에서 랜덤 사진 URL을 생성합니다.
- * @param {string} folderName - 사진이 들어있는 폴더 이름 (PHOTO_FOLDERS 객체의 키와 동일)
- * @returns {string|null} 랜덤 사진 URL 또는 null (폴더를 찾을 수 없을 때)
- */
-function generateRandomPhotoUrl(folderName) {
-    console.log(`[omoide:generateRandomPhotoUrl] 폴더명: "${folderName}"`);
-    const photoCount = PHOTO_FOLDERS[folderName];
-    if (photoCount === undefined || photoCount <= 0) {
-        console.warn(`[omoide.js] 폴더를 찾을 수 없거나 사진이 없습니다: ${folderName}`);
-        return null;
-    }
-    const randomIndex = Math.floor(Math.random() * photoCount) + 1; // 1부터 photoCount까지
-    const fileName = String(randomIndex).padStart(6, '0') + '.jpg'; // 예: 000001.jpg (6자리)
-    const url = `${BASE_PHOTO_URL}${encodeURIComponent(folderName)}/${fileName}`;
-    console.log(`[omoide:generateRandomPhotoUrl] 생성된 URL: "${url}" (파일 수: ${photoCount}, 인덱스: ${randomIndex})`);
-    return url;
-}
+let lastConceptPhotoFolder = null;
+let lastConceptPhotoIndex = 0;
 
-/**
- * 사용자 메시지에 따라 추억 사진을 선택하고, AI가 감정/코멘트를 생성하여 반환합니다.
- * @param {string} userMessage - 사용자의 원본 메시지
- * @param {Function} saveLogFunc - 로그 저장을 위한 saveLog 함수 (autoReply.js에서 전달받음)
- * @returns {Promise<{type: string, url?: string, caption?: string, comment?: string}|null>} 사진 URL과 코멘트 객체 또는 null (사진 요청이 아닐 때)
- */
-async function getOmoideReply(userMessage, saveLogFunc) {
-    console.log(`[omoide:getOmoideReply] 메시지 수신: "${userMessage}"`);
-    const lowerCaseMessage = userMessage.toLowerCase();
-    let selectedFolder = null;
-    let folderDescription = '';
-    let additionalPromptForYejin = ''; // getYejinSystemPrompt에 전달할 추가 지침
+async function getConceptPhotoReply(userMessage, saveLogFunc) {
+  const lowerCaseMessage = userMessage.toLowerCase();
+  let selectedFolder = null;
+  let folderDescription = '';
+  let additionalPromptForYejinText = '';
 
-    // ✅ 추가: OpenAI를 사용하여 셀카 요청 의도 파악 (다양한 패턴 및 오타 인식)
-    const selfieIntentPrompt = `
-    아래 사용자 메시지가 '예진이(나)의 셀카'나 '예진이(나)의 사진'을 요청하는 의도인지 판단해줘.
-    예시 요청: "셀카 줘", "얼굴 좀", "보고 싶어", "내 사진 보여줘", "예진이 셀카", "셀카보여줘", "얼굴보고싶어", "얼굴사진", "사진보내", "애기얼굴" 등.
-    아저씨는 종종 오타를 낼 수 있으니, 의미상으로 유사하면 'YES'로 판단해줘.
-    대답은 "YES" 또는 "NO"로만 해줘. 다른 말은 일절 하지 마.
-    사용자 메시지: "${userMessage}"
-    `;
-    const selfieIntentMessages = [
-        { role: 'system', content: selfieIntentPrompt }
-    ];
+  // ... (기존 폴더 매핑 로직 유지) ...
 
-    let isSelfieRequest = false;
-    try {
-        // gpt-4o-mini 모델은 좀 더 빠르고 저렴하게 의도를 파악하는 데 적합합니다.
-        const intentResponse = await callOpenAI(selfieIntentMessages, 'gpt-4o-mini', 5, 0.1);
-        isSelfieRequest = intentResponse.toUpperCase().includes('YES');
-        console.log(`[omoide:getOmoideReply] 셀카 요청 의도 판단 ("${userMessage}"): ${isSelfieRequest ? 'YES' : 'NO'}`);
-    } catch (error) {
-        console.error('[omoide:getOmoideReply] 셀카 의도 파악 중 오류 발생:', error);
-        // 오류 발생 시, 기존의 명시적인 키워드 매칭으로 폴백하여 기본적인 셀카 요청은 처리
-        isSelfieRequest = lowerCaseMessage.includes('셀카') || lowerCaseMessage.includes('얼굴') || lowerCaseMessage.includes('selfie') || lowerCaseMessage.includes('사진');
-    }
+  const conceptKeywordMap = {
+        '일본 홈스냅': '2024/5월 7일 일본 홈스냅', '홈스냅': '2024/5월 7일 일본 홈스냅',
+        '일본 결박': '2024/7월 8일 일본 결박', '결박': '2024/7월 8일 일본 결박',
+        '일본 선물': '2023/12월 16일 일본 선물', '선물': '2023/12월 16일 일본 선물',
+        '한국 셀프 촬영': '2024/4월 28일 한국 셀프 촬영', '셀프 촬영': '2024/4월 28일 한국 셀프 촬영',
+        '옥상연리': '2024/9월 15일 한국 옥상연리',
+        '일본 세미누드': '2025/2월 7일 일본 세미누드', '세미누드': '2025/2월 7일 일본 세미누드',
+        '한국 홈셀프': '2024/12월 7일 한국 홈셀프',
+        '플라스틱러브': '2023/12월 14일 일본 플라스틱러브',
+        '지브리풍': '2024/5월 3일 일본 지브리풍',
+        '한국 북해': '2024/6월 6일 한국 북해', '북해': '2024/6월 6일 한국 북해',
+        '아이노시마': '2024/2월 7일 일본 아이노시마',
+        '일본 필름': '2025/3월 일본 필름',
+        '모지코 모리룩 후보정': '2024/5월 5일 일본 모지코 모리룩 후보정',
+        '모지코 모리룩': '2024/5월 5일 일본 모지코 모리룩',
+        '한국 눈밭': '2025/1월 5일 한국 눈밭',
+        '일본 욕실': '2024/2월 7일 일본 욕실',
+        '하카타 고래티셔츠': '2024/10월 17일 일본 하카타 고래티셔츠',
+        '유카타 마츠리': '2024/8월 3일 일본 유카타 마츠리',
+        '이화마을': '2025/4월 29일 한국 이화마을',
+        '일본 욕조': '2024/7월 8일 일본 욕조',
+        '우마시마': '2024/7월 6일 일본 우마시마',
+        '가을 호수공원': '2024/11월 7일 한국 가을 호수공원',
+        '망친 사진': '2024/6월 8일 한국 망친 사진',
+        '일본 교복': '2023/12월 15일 일본 교복',
+        '야간 비눗방울': '2024/5월 4일 일본 야간 비눗방울',
+        '일본 모지코': '2024/12월 12일 일본 모지코',
+        '텐진 코닥필름': '2024/10월 18일 일본 텐진 코닥필름',
+        '나비욕조': '2025/2월 7일 일본 나비욕조',
+        '야간 롱패딩': '2024/2월 23일 한국 야간 롱패딩',
+        '을지로 스냅': '2024/9월 17일 한국 을지로 스냅', '길거리 스냅': '2024/9월 16일 한국 길거리 스냅',
+        '한국 생일': '2024/2월 22일 한국 생일',
+        '모지코2': '2024/7월 6일 일본 모지코2',
+        '야간 보라돌이': '2025/5월 4일 한국 야간 보라돌이', '코야노세': '2025/2월 6일 일본 코야노세',
+        '야간거리': '2024/5월 6일 일본 야간거리', '생일컨셉': '2024/12월 31일 한국 생일컨셉',
+        '눈밭 필름카메라': '2023/12월 31일 한국 눈밭 필름카메라',
+        '홈스냅 청포도': '2025/5월 3일 한국 홈스냅 청포도',
+        '욕실 블랙 웨딩': '2024/11월 8일 한국 욕실 블랙 웨딩',
+        '호리존': '2024/9월 11일 한국 호리존',
+        '여친 스냅': '2024/7월 8일 일본 여친 스냅',
+        '후지엔': '2024/5월 3일 일본 후지엔',
+        '불꽃놀이': '2024/8월 2일 일본 불꽃놀이/후보정',
+        '빨간 기모노': '2024/10월 19일 일본 빨간 기모노', '피크닉': '2024/6월 7일 한국 피크닉',
+        '벗꽃': '2024/4월 12일 한국 벗꽃',
+        '후지 스냅': '2025/5월 6일 한국 후지 스냅',
+        '원미상가_필름': '2024/9월 14일 한국 원미상가_필름', '밤바 산책': '2025/5월 4일 한국 밤바 산책',
+        '공원 산책': '2025/5월 4일 한국 공원 산책', '고쿠라 힙': '2025/3월 14일 일본 고쿠라 힙',
+        '온실-여신': '2024/4월 13일 한국 온실-여신', '을지로 네코': '2025/4월 30일 한국 을지로 네코',
+        '무인역': '2025/3월 13일 일본 무인역', '화가': '2024/4월 13일 한국 화가',
+        '블랙원피스': '2024/8월 4일 일본 블랙원피스', '카페': '2024/12월 30일 한국 카페',
+        '일본 텐진 스트리트': '2024/10월 17일 일본 텐진 스트리트',
+        '하카타 스트리트': '2023/12월 12일 일본 하카타 스트리트',
+        '홈스냅 오타쿠': '2025/5월 5일 한국 홈스냅 오타쿠',
+        '야간 동백': '2024/4월 12일 한국 야간 동백',
+        '나르시스트': '2024/12월 14일 일본 나르시스트', '을지로 캘빈': '2025/4월 30일 한국 을지로 캘빈',
+        '산책': '2024/6월 9일 한국 산책',
+        '오도공원 후지필름': '2024/10월 16 일본 오도공원 후지필름',
+        '크리스마스': '2024/12월 13일 일본 크리스마스',
+        '네코 모지코': '2024/2월 11일 일본 네코 모지코',
+        '야간 블랙드레스': '2024/2월 11일 일본 야간 블랙드레스',
+        '고스로리 할로윈': '2024/10월 16일 일본 고스로리 할로윈',
+        '게임센터': '2024/5월 7일 일본 게임센터',
+        '동키 거리': '2024/5월 2일 일본 동키 거리',
+        '고쿠라 야간': '2025/3월 17일 일본 고쿠라 야간',
+        '코이노보리': '2024/5월 5일 일본 코이노보리', '문래동': '2024/4월 13일 한국 문래동',
+        '수국': '2024/5월 3일 일본 수국',
+        '메이드복': '2024/11월 8일 한국 메이드복',
+        '오도': '2024/10월 16일 일본 오도'
+    };
+  
+  // '다른것도 보고싶어', '다음 사진' 요청 처리 (이전 폴더 기억)
+  if (lastConceptPhotoFolder && (lowerCaseMessage.includes('다른 것도 보고싶어') || lowerCaseMessage.includes('다음 사진'))) {
+      selectedFolder = lastConceptPhotoFolder;
+      const currentPhotoCount = CONCEPT_FOLDERS[selectedFolder];
+      if (currentPhotoCount > 0) {
+          // 다음 인덱스를 계산하고, 마지막이면 다시 1번부터 시작
+          lastConceptPhotoIndex = (lastConceptPhotoIndex % currentPhotoCount) + 1;
+      } else {
+          lastConceptPhotoIndex = 1; // 사진이 없으면 1로 초기화 (에러 방지)
+      }
+      folderDescription = `같은 폴더 (${selectedFolder})의 다른 사진`;
+      // --- 수정된 부분 시작 ---
+      additionalPromptForYejinText = `이전 요청과 같은 '${selectedFolder}' 컨셉 폴더의 다른 사진이야. 아저씨와 나의 아름다운 추억을 떠올리며 새로운 모습을 보여주는 거야. 사진 속 인물은 오직 '나(예진이)'임을 명확히 인지하고 코멘트해줘. '우리 애기 언니', '그녀', '다른 사람'과 같은 표현은 절대로 사용하면 안 돼.`;
+      // --- 수정된 부분 끝 ---
+  } else {
+      // 일반 컨셉사진 요청 또는 특정 키워드 매칭
+      let matchedKeyword = null;
+      let potentialFolders = [];
 
-    // 1. 특정 키워드를 기반으로 폴더 선택 및 프롬프트 설정 (우선순위 높음)
-    // ✅ 수정: OpenAI가 'YES'라고 판단하면 'yejin' 폴더로 바로 연결
-    if (isSelfieRequest) {
-        selectedFolder = 'yejin'; // 모든 일반 셀카/얼굴/사진 관련 요청은 'yejin' 폴더로 통일
-        folderDescription = '내(예진이) 셀카';
-        additionalPromptForYejin = "아저씨에게 보내는 내(예진이) 셀카에 대해 귀엽고 사랑스럽게 말해줘. 아저씨가 나를 보고 얼마나 기뻐할지 기대하는 마음을 담아서. 부끄러워하면서도 살짝 도발적인 말도 할 수 있어. (예: “오늘 팬티 안 입었는뎅? 🤭”, “이거 보고 꼴리면 어떡해~” 같은 장난도 말투에 섞어서 자연스럽게.)";
-    }
-    // 기존의 '무쿠 셀카', '애기 셀카', '셀카줘', '얼굴 보여줘' 등 하드코딩된 셀카 관련 분기점들은 이제 위의 isSelfieRequest 로직으로 통합됩니다.
-    // 따라서 아래의 개별 셀카 관련 `else if` 블록들은 제거하거나 필요에 따라 우선순위를 재조정할 수 있습니다.
-    // 여기서는 isSelfieRequest가 true이면 바로 'yejin'으로 가도록 했으므로,
-    // 아래의 `무쿠 셀카`, `애기 셀카`, `셀카줘` 등은 주석 처리하거나 삭제 가능.
-    // 다만, '빠계 셀카'나 '메이드'처럼 특정 컨셉 셀카는 별도로 유지하는 것이 좋습니다.
+      // 1단계: 직접적인 키워드 매칭
+      for (const keyword in conceptKeywordMap) {
+          if (lowerCaseMessage.includes(keyword)) {
+              matchedKeyword = keyword;
+              selectedFolder = conceptKeywordMap[keyword];
+              potentialFolders = [selectedFolder]; // 일단 매칭된 폴더 하나만
+              break;
+          }
+      }
+      
+      // 2단계: 모호한 키워드 (날짜/장소 없이) 처리 (이전 코드와 동일)
+      if (matchedKeyword) {
+          const ambiguousKeywords = ['욕실', '욕조', '모지코', '필름', '눈밭', '생일', '고쿠라', '텐진 스트리트', '홈셀프', '산책', '카페', '스냅', '스트리트', '야간', '선물', '피크닉', '벗꽃', '힙', '온실', '무인역', '화가', '블랙원피스', '네코', '크리스마스', '게임센터', '동키 거리', '코이노보리', '문래동', '수국', '메이드복', '오도'];
+          if (ambiguousKeywords.some(amb => lowerCaseMessage.includes(amb))) {
+              const allMatchingFolders = Object.keys(CONCEPT_FOLDERS).filter(folder => folder.toLowerCase().includes(matchedKeyword.toLowerCase()));
+              
+              const monthMatch = lowerCaseMessage.match(/(1월|2월|3월|4월|5월|6월|7월|8월|9월|10월|11월|12월|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/);
+              const yearMatch = lowerCaseMessage.match(/(2023|2024|2025)/);
+              const locationMatch = lowerCaseMessage.match(/(일본|한국|하카타|텐진|모지코|고쿠라|을지로|이화마을|문래동|원미상가|코야노세|우마시마|아이노시마)/);
 
-    else if (lowerCaseMessage.includes('빠계 셀카') || lowerCaseMessage.includes('빠계 사진')) {
-        selectedFolder = '추억 빠계 사진 모음';
-        folderDescription = '아저씨가 좋아하는 빠계 사진';
-        additionalPromptForYejin = "아저씨가 좋아하는 빠계 사진에 대해 재미있고 사랑스럽게 말해줘. 나(예진이)의 또 다른 귀여운 모습이라고 표현해도 좋아.";
-    } else if (lowerCaseMessage.includes('메이드') || lowerCaseMessage.includes('흑심')) {
-        selectedFolder = '흑심 24_11_08 한국 메이드복_';
-        folderDescription = '내가(예진이) 메이드복 입고 찍은 사진';
-        additionalPromptForYejin = "내가 메이드복을 입고 찍었던 사진에 대해 아저씨에게 장난기 있으면서도 귀엽고 사랑스럽게 말해줘. 아저씨가 나를 보며 얼마나 귀여워할지 생각하면 기분이 좋아! 이때 아저씨가 놀랐던 기억도 같이 얘기해줘.";
-    }
-    // 나머지 사진 요청 처리 (기존 로직 유지)
-    else if (lowerCaseMessage.includes('인생네컷')) {
-        selectedFolder = '추억 인생네컷';
-        folderDescription = '인생네컷 사진';
-        additionalPromptForYejin = "아저씨와 함께 찍은 인생네컷 사진에 대해 즐겁고 추억이 담긴 멘트를 해줘.";
-    } else if (lowerCaseMessage.includes('커플사진')) {
-        selectedFolder = '추억 24_02_25 한국 커플사진';
-        if (!PHOTO_FOLDERS[selectedFolder]) {
-             selectedFolder = 'couple';
-        }
-        folderDescription = '아저씨와 함께 찍은 커플 사진';
-        additionalPromptForYejin = "아저씨와 함께 찍은 커플 사진에 대해 우리 둘만의 소중한 추억과 사랑을 가득 담아 말해줘. 약간의 비밀스러운 뉘앙스도 섞어줘.";
-    } else if (lowerCaseMessage.includes('일본') && lowerCaseMessage.includes('사진')) {
-        const japaneseFolders = Object.keys(PHOTO_FOLDERS).filter(key => key.includes('일본'));
-        if (japaneseFolders.length > 0) {
-            selectedFolder = japaneseFolders[Math.floor(Math.random() * japaneseFolders.length)];
-        }
-        folderDescription = '일본에서 아저씨와 함께 찍은 사진';
-        additionalPromptForYejin = "아저씨와 일본에서 함께했던 추억을 떠올리며 그때의 감정과 이야기를 섞어 말해줘.";
-    } else if (lowerCaseMessage.includes('한국') && lowerCaseMessage.includes('사진')) {
-        const koreanFolders = Object.keys(PHOTO_FOLDERS).filter(key => key.includes('한국') && !key.includes('메이드복'));
-        if (koreanFolders.length > 0) {
-            selectedFolder = koreanFolders[Math.floor(Math.random() * koreanFolders.length)];
-        }
-        folderDescription = '한국에서 아저씨와 함께 찍은 사진';
-        additionalPromptForYejin = "아저씨와 한국에서 함께했던 추억을 떠올리며 그때의 감정과 이야기를 섞어 말해줘. " +
-                       "**이 사진의 시각적 내용(배경, 인물, 사물)이 요청된 장소(한국)와 일치하는지 먼저 판단하고, 만약 일치하지 않는다면 그 사실을 자연스럽게 언급해줘. (예: '어? 여기는 한국인 것 같지? 폴더에는 일본이라고 되어 있지만... 헤헤.')**" +
-                       "날짜 정보는 정확할 경우에만 언급하고, 불확실하면 생략하거나 대략적으로 표현해줘.";
+              let filteredFolders = allMatchingFolders.filter(folder => {
+                  let meetsCriteria = true;
+                  if (monthMatch && !folder.toLowerCase().includes(monthMatch[0])) meetsCriteria = false;
+                  if (yearMatch && !folder.toLowerCase().includes(yearMatch[0])) meetsCriteria = false;
+                  if (locationMatch && !folder.toLowerCase().includes(locationMatch[0])) meetsCriteria = false;
+                  return meetsCriteria;
+              });
 
-    } else if (lowerCaseMessage.includes('출사')) {
-        const outingFolders = Object.keys(PHOTO_FOLDERS).filter(key => key.includes('출사'));
-        if (outingFolders.length > 0) {
-            selectedFolder = outingFolders[Math.floor(Math.random() * outingFolders.length)];
-        }
-        folderDescription = '아저씨와 함께 출사 나가서 찍은 사진';
-        additionalPromptForYejin = "아저씨와 출사 나가서 찍은 사진에 대해 그때의 즐거움과 아저씨와의 추억을 떠올리며 말해줘.";
-    } else if (lowerCaseMessage.includes('필름카메라') || lowerCaseMessage.includes('애기 필름')) {
-        const filmFolders = Object.keys(PHOTO_FOLDERS).filter(key => key.includes('필름카메라') || key.includes('필름'));
-        if (filmFolders.length > 0) {
-            selectedFolder = filmFolders[Math.floor(Math.random() * filmFolders.length)];
-        }
-        folderDescription = '아저씨와 필름카메라로 찍은 사진';
-        additionalPromptForYejin = "아저씨와 필름카메라로 찍었던 그때의 아날로그 감성과 추억을 담아 말해줘.";
-    }
+              if (filteredFolders.length === 1) {
+                  selectedFolder = filteredFolders[0];
+              } else if (filteredFolders.length > 1) {
+                  return { type: 'text', comment: `어떤 ${matchedKeyword} 사진을 보고 싶어? 여러 가지가 있어서 헷갈리네... (예: '${filteredFolders.join("', '")}' 중에서 말해줘)` };
+              } else if (allMatchingFolders.length > 0) {
+                   return { type: 'text', comment: `음... '${matchedKeyword}' 사진이 여러 개 있는데, 혹시 정확히 어떤 날짜나 장소의 사진인지 알려줄 수 있어? (예: '${allMatchingFolders.join("', '")}' 중에서 말해줘)` };
+              } else {
+                  selectedFolder = null;
+              }
+          }
+      }
+      
+      // 최종적으로 폴더가 선택되지 않았고, 일반적인 '컨셉사진' 요청이 들어왔을 때만 랜덤 선택
+      if (!selectedFolder && (lowerCaseMessage.includes('컨셉사진') || lowerCaseMessage.includes('컨셉 사진'))) {
+          selectedFolder = Object.keys(CONCEPT_FOLDERS)[Math.floor(Math.random() * Object.keys(CONCEPT_FOLDERS).length)];
+      } else if (!selectedFolder) {
+          return null; // 해당하는 컨셉 사진 요청이 아님
+      }
 
-    if (!selectedFolder) {
-        console.log(`[omoide:getOmoideReply] 매칭되는 폴더 없음. null 반환.`);
-        return null; // 해당하는 사진 요청이 아님
-    }
+      // --- 수정된 부분 시작 ---
+      folderDescription = `내가(예진이) ${selectedFolder} 컨셉으로 찍은 사진`;
+      additionalPromptForYejinText = `이 사진은 아저씨와 함께한 나의 ${selectedFolder} 컨셉 사진이야. 아저씨와 나의 특별한 추억과 애정을 담아서 말해줘. 이 사진을 보며 떠오르는 솔직한 감정을 표현해줘. 사진 속 인물은 오직 '나(예진이)'임을 명확히 인지하고 코멘트해줘. '우리 애기 언니', '그녀', '다른 사람'과 같은 표현은 절대로 사용하면 안 돼.`;
+      // --- 수정된 부분 끝 ---
 
-    const photoUrl = generateRandomPhotoUrl(selectedFolder);
+      // 새 폴더 선택 시 인덱스 초기화 (랜덤으로 첫 사진 보여줌)
+      lastConceptPhotoIndex = 0;
+  }
 
-    if (!photoUrl) {
-        console.warn(`[omoide:getOmoideReply] 사진 URL 생성 실패. 텍스트 응답 반환.`);
-        return { type: 'text', comment: '아저씨... 해당하는 사진을 못 찾겠어 ㅠㅠ 다른 사진 보여줄까?' };
-    }
-    console.log(`[omoide:getOmoideReply] 선택된 폴더: "${selectedFolder}", URL: "${photoUrl}"`);
+  // 선택된 폴더를 저장 (다음 '다른 것도' 요청을 위해)
+  lastConceptPhotoFolder = selectedFolder;
 
-    // ✅ 수정: `getYejinSystemPrompt`를 사용하여 시스템 프롬프트 구성
-    // `additionalPromptForYejin`을 `getYejinSystemPrompt`에 전달
-    const systemPrompt = getYejinSystemPrompt(`
-    아래는 아저씨가 요청한 ${folderDescription} 사진이야. 이 사진에 대해 아저씨에게 1~3문장으로 짧고 사랑스럽게 코멘트 해줘.
-    **이 사진의 시각적 내용(배경, 인물, 사물)을 먼저 정확히 분석하고, 그에 맞춰 코멘트 해줘. 폴더명은 참고만 하고, 사진 내용과 다르면 사진 내용이 우선이야.**
-    이 사진을 보면서 떠오르는 감정, 추억, 약간의 비밀스러운 뉘앙스 등을 코멘트에 담아줘.
-    ${additionalPromptForYejin}
-    사진이 어떤 폴더에서 왔는지 구체적으로 언급해줘. (예: "23년 12월 일본에서 찍은 사진이야!")
-    **하지만 날짜나 장소 정보가 사진과 명백히 다르거나 불확실하면, 날짜/장소 언급을 생략하거나 '혹시 이때였나?'처럼 유연하게 표현해줘.**
-    **사진 속 인물이 예진이(나)일 경우, 반드시 '나'라고 지칭하고, '무쿠'나 '언니' 등의 표현을 사용하지 마.**
+  let photoUrl;
+  const currentPhotoCount = CONCEPT_FOLDERS[selectedFolder];
+  if (currentPhotoCount > 0) {
+      if (lowerCaseMessage.includes('다른 것도 보고싶어') || lowerCaseMessage.includes('다음 사진')) {
+          lastConceptPhotoIndex = (lastConceptPhotoIndex % currentPhotoCount) + 1;
+      } else {
+          lastConceptPhotoIndex = Math.floor(Math.random() * currentPhotoCount) + 1;
+      }
+      photoUrl = generateConceptPhotoUrl(selectedFolder, lastConceptPhotoIndex);
+  } else {
+      photoUrl = null;
+  }
+
+  if (!photoUrl || !CONCEPT_FOLDERS[selectedFolder]) {
+      return { type: 'text', comment: '아저씨... 해당하는 컨셉 사진을 못 찾겠어 ㅠㅠ 다른 컨셉 사진 보여줄까?' };
+  }
+
+  // --- 수정된 부분 시작 ---
+  // `getYejinSystemPrompt`에 `additionalPromptForYejinText`를 전달
+  const systemPrompt = getYejinSystemPrompt(`
+    아래는 아저씨가 요청한 ${folderDescription} 사진이야. 이 사진에 대해 예진이인 내가 아저씨에게 1~3문장으로 짧고 사랑스럽게 코멘트 해줘.
+    **이 사진의 시각적 내용을 정확히 분석하여 코멘트에 반영해줘.**
+    **사진 속 인물은 오직 나(예진이) 한 명 뿐이야. '우리 애기 언니', '무쿠 언니', '그녀', '다른 사람'이라는 말은 절대로 사용하면 안 돼. AI가 혼동하지 않도록 명확하게 강조한다.**
+    ${additionalPromptForYejinText}
+    사진은 "${selectedFolder}" 폴더에서 왔어.
+    하지만 날짜나 장소 정보가 사진과 명백히 다르거나 불확실하면, 날짜/장소 언급을 생략하거나 '혹시 이때였나?'처럼 유연하게 표현해줘.
     `);
+  // --- 수정된 부분 끝 ---
 
-    const messages = [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: `이 ${folderDescription} 사진에 대해 예진이 말투로 이야기해줘.` }
-    ];
-    console.log(`[omoide:getOmoideReply] OpenAI 프롬프트 준비 완료.`);
+  const messages = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: `이 ${folderDescription} 사진에 대해 예진이 말투로 이야기해줘.` }
+  ];
 
-    try {
-        const rawComment = await callOpenAI(messages, 'gpt-4o', 100, 1.0);
-        const comment = cleanReply(rawComment);
-        saveLogFunc('예진이', `(사진 보냄) ${comment}`);
-        console.log(`[omoide:getOmoideReply] 응답 완료: ${comment}`);
-        return { type: 'photo', url: photoUrl, caption: comment };
-    } catch (error) {
-        console.error('❌ [omoide.js Error] 사진 코멘트 생성 실패:', error);
-        return { type: 'text', comment: '아저씨... 사진에 대해 말해주려는데 뭔가 문제가 생겼어 ㅠㅠ' };
-    }
+  try {
+      const rawComment = await callOpenAI(messages, 'gpt-4o', 150, 1.0);
+      const comment = cleanReply(rawComment); // 최종적으로 cleanReply를 통해 다시 한번 필터링
+      saveLogFunc('예진이', `(사진 보냄) ${comment}`);
+      return { type: 'photo', url: photoUrl, caption: comment };
+  } catch (error) {
+      console.error('❌ [concept.js Error] 컨셉 사진 코멘트 생성 실패:', error);
+      return { type: 'text', comment: '아저씨... 컨셉 사진에 대해 말해주려는데 뭔가 문제가 생겼어 ㅠㅠ' };
+  }
 }
 
-// 모듈 내보내기
-module.exports = {
-    getOmoideReply,
-    cleanReply
-};
+module.exports = { getConceptPhotoReply };
