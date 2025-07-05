@@ -1,4 +1,4 @@
-// src/memoryManager.js v1.11 - PostgreSQL 데이터베이스 연동 및 기억 처리 로직 강화 (완전 수정본)
+// src/memoryManager.js v1.12 - PostgreSQL 데이터베이스 연동 및 기억 처리 로직 강화 (사용자→아저씨 교체 기능 추가)
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈 (디렉토리 생성 등)
 const path = require('path'); // 경로 처리 모듈
@@ -6,11 +6,9 @@ const { OpenAI } = require('openai'); // OpenAI API 클라이언트
 const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
 const { Pool } = require('pg'); // PostgreSQL 클라이언트 'pg' 모듈에서 Pool 가져오기
 
-// --- 추가된 부분 시작 ---
-// * 예진이의 페르소나 프롬프트를 가져오는 모듈 *
-// * memoryManager.js는 src 폴더 안에 있으므로 './yejin'으로 불러옵니다. *
+// 예진이의 페르소나 프롬프트를 가져오는 모듈
+// memoryManager.js는 src 폴더 안에 있으므로 './yejin'으로 불러옵니다.
 const { getYejinSystemPrompt } = require('./yejin');
-// --- 추가된 부분 끝 ---
 
 // OpenAI 클라이언트 초기화
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -196,7 +194,6 @@ async function saveUserSpecifiedMemory(userMessage, extractedContent) {
     }
 }
 
-
 /**
  * 특정 기억을 PostgreSQL 데이터베이스에서 삭제합니다.
  * @param {string} userQuery - 사용자가 기억 삭제를 요청한 원본 메시지
@@ -239,6 +236,153 @@ async function deleteRelevantMemories(userQuery, identifiedContent) {
     }
 }
 
+/**
+ * 모든 기억에서 "사용자" 단어를 "아저씨"로 일괄 변경합니다.
+ * @returns {Promise<number>} 수정된 기억의 개수
+ */
+async function replaceUserWithAjussi() {
+    if (!pool) {
+        console.error("[MemoryManager] PostgreSQL 데이터베이스 풀이 초기화되지 않았습니다.");
+        return 0;
+    }
+    
+    try {
+        console.log('[MemoryManager] "사용자" → "아저씨" 일괄 변경 시작...');
+        
+        // "사용자"가 포함된 모든 기억을 찾아서 수정
+        const updateQuery = `
+            UPDATE memories 
+            SET content = REPLACE(content, '사용자', '아저씨'),
+                timestamp = NOW()
+            WHERE content LIKE '%사용자%'
+        `;
+        
+        const result = await pool.query(updateQuery);
+        
+        console.log(`[MemoryManager] "사용자" → "아저씨" 변경 완료: ${result.rowCount}개 기억 수정됨`);
+        
+        // 수정된 기억들을 로그로 확인
+        if (result.rowCount > 0) {
+            const checkQuery = 'SELECT content FROM memories WHERE content LIKE \'%아저씨%\' ORDER BY timestamp DESC LIMIT 10';
+            const checkResult = await pool.query(checkQuery);
+            console.log('[MemoryManager] 수정된 기억 예시:');
+            checkResult.rows.forEach((row, index) => {
+                console.log(`  ${index + 1}. ${row.content}`);
+            });
+        }
+        
+        return result.rowCount;
+    } catch (err) {
+        console.error(`[MemoryManager] "사용자" → "아저씨" 변경 실패: ${err.message}`);
+        return 0;
+    }
+}
+
+/**
+ * 더 정교한 단어 교체 (다양한 형태 처리)
+ * "사용자가", "사용자의", "사용자는", "사용자에게" 등을 모두 "아저씨가", "아저씨의", "아저씨는", "아저씨에게"로 변경
+ * @returns {Promise<number>} 수정된 기억의 개수
+ */
+async function replaceUserVariationsWithAjussi() {
+    if (!pool) {
+        console.error("[MemoryManager] PostgreSQL 데이터베이스 풀이 초기화되지 않았습니다.");
+        return 0;
+    }
+    
+    try {
+        console.log('[MemoryManager] "사용자" 관련 단어들을 "아저씨"로 정교하게 변경 시작...');
+        
+        // 여러 단계로 나누어 정교하게 교체
+        const replacements = [
+            { from: '사용자가', to: '아저씨가' },
+            { from: '사용자의', to: '아저씨의' },
+            { from: '사용자는', to: '아저씨는' },
+            { from: '사용자에게', to: '아저씨에게' },
+            { from: '사용자와', to: '아저씨와' },
+            { from: '사용자를', to: '아저씨를' },
+            { from: '사용자한테', to: '아저씨한테' },
+            { from: '사용자', to: '아저씨' } // 마지막에 일반적인 "사용자" 처리
+        ];
+        
+        let totalUpdated = 0;
+        
+        for (const replacement of replacements) {
+            const updateQuery = `
+                UPDATE memories 
+                SET content = REPLACE(content, $1, $2),
+                    timestamp = NOW()
+                WHERE content LIKE '%' || $1 || '%'
+            `;
+            
+            const result = await pool.query(updateQuery, [replacement.from, replacement.to]);
+            
+            if (result.rowCount > 0) {
+                console.log(`[MemoryManager] "${replacement.from}" → "${replacement.to}": ${result.rowCount}개 수정됨`);
+                totalUpdated += result.rowCount;
+            }
+        }
+        
+        console.log(`[MemoryManager] 총 ${totalUpdated}개의 변경사항이 적용되었습니다.`);
+        
+        // 최종 결과 확인
+        if (totalUpdated > 0) {
+            const checkQuery = 'SELECT content FROM memories WHERE content LIKE \'%아저씨%\' ORDER BY timestamp DESC LIMIT 5';
+            const checkResult = await pool.query(checkQuery);
+            console.log('[MemoryManager] 최종 수정된 기억 예시:');
+            checkResult.rows.forEach((row, index) => {
+                console.log(`  ${index + 1}. ${row.content}`);
+            });
+        }
+        
+        return totalUpdated;
+    } catch (err) {
+        console.error(`[MemoryManager] 정교한 단어 교체 실패: ${err.message}`);
+        return 0;
+    }
+}
+
+/**
+ * 특정 기억을 수정합니다.
+ * @param {string} oldContent - 기존 기억 내용
+ * @param {string} newContent - 새로운 기억 내용
+ * @returns {Promise<boolean>} 수정 성공 여부
+ */
+async function updateMemory(oldContent, newContent) {
+    if (!pool) {
+        console.error("[MemoryManager] PostgreSQL 데이터베이스 풀이 초기화되지 않았습니다.");
+        return false;
+    }
+    
+    try {
+        // 기존 기억이 존재하는지 확인
+        const checkQuery = 'SELECT id FROM memories WHERE content = $1';
+        const checkResult = await pool.query(checkQuery, [oldContent]);
+        
+        if (checkResult.rows.length === 0) {
+            console.log(`[MemoryManager] 수정할 기억을 찾을 수 없습니다: "${oldContent}"`);
+            return false;
+        }
+        
+        // 기억 내용 수정
+        const updateQuery = 'UPDATE memories SET content = $1, timestamp = $2 WHERE content = $3';
+        const updateResult = await pool.query(updateQuery, [
+            newContent,
+            new Date().toISOString(),
+            oldContent
+        ]);
+        
+        if (updateResult.rowCount > 0) {
+            console.log(`[MemoryManager] 기억 수정됨: "${oldContent}" → "${newContent}"`);
+            return true;
+        } else {
+            console.log(`[MemoryManager] 기억 수정 실패`);
+            return false;
+        }
+    } catch (err) {
+        console.error(`[MemoryManager] 기억 수정 실패: ${err.message}`);
+        return false;
+    }
+}
 
 /**
  * 모든 기억을 PostgreSQL 데이터베이스에서 불러옵니다.
@@ -480,11 +624,14 @@ module.exports = {
     ensureMemoryDirectory,
     loadLoveHistory, // 이제 DB에서 필터링하여 사랑 관련 기억만 반환
     loadOtherPeopleHistory, // 이제 DB에서 필터링하여 기타 인물 관련 기억만 반환
-    loadAllMemoriesFromDb, // ✅ 추가: 모든 기억을 불러오는 함수
-    extractAndSaveMemory, // ✅ 추가: 기억 추출 및 저장 함수 (일반 대화)
-    saveUserSpecifiedMemory, // ✅ 추가: 사용자 지정 기억 저장 함수
-    deleteRelevantMemories, // ✅ 추가: 관련 기억 삭제 함수
+    loadAllMemoriesFromDb, // 모든 기억을 불러오는 함수
+    extractAndSaveMemory, // 기억 추출 및 저장 함수 (일반 대화)
+    saveUserSpecifiedMemory, // 사용자 지정 기억 저장 함수
+    deleteRelevantMemories, // 관련 기억 삭제 함수
     retrieveRelevantMemories,
     saveMemoryToDb, // 외부에서 직접 사용할 수 있도록 추가
-    closeDatabaseConnection // 연결 종료 함수 추가
+    closeDatabaseConnection, // 연결 종료 함수 추가
+    replaceUserWithAjussi, // "사용자" → "아저씨" 간단한 교체
+    replaceUserVariationsWithAjussi, // "사용자" → "아저씨" 정교한 교체 (권장)
+    updateMemory // 특정 기억 수정 함수
 };
