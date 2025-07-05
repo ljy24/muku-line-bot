@@ -6,6 +6,12 @@ const { OpenAI } = require('openai'); // OpenAI API 클라이언트
 const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
 const { Pool } = require('pg'); // PostgreSQL 클라이언트 'pg' 모듈에서 Pool 가져오기
 
+// --- 추가된 부분 시작 ---
+// * 예진이의 페르소나 프롬프트를 가져오는 모듈 *
+// * memoryManager.js는 src 폴더 안에 있으므로 './yejin'으로 불러옵니다. *
+const { getYejinSystemPrompt } = require('./yejin');
+// --- 추가된 부분 끝 ---
+
 // OpenAI 클라이언트 초기화
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -228,13 +234,16 @@ async function extractAndSaveMemory(userMessage) {
     }
 
     try {
-        const systemPrompt = `
+        // --- 수정된 부분 시작 ---
+        // getYejinSystemPrompt 함수를 사용하여 시스템 프롬프트 로드
+        const systemPrompt = getYejinSystemPrompt(`
         사용자의 메시지에서 기억할 만한 중요한 정보를 추출해서 JSON 형식으로 반환해줘.
         다음 형식으로 반환해야 해:
         {
             "content": "추출된 기억 내용",
             "category": "카테고리명",
             "strength": "normal 또는 high",
+            "timestamp": "YYYY-MM-DDTHH:mm:ss.sssZ",
             "is_love_related": true 또는 false,
             "is_other_person_related": true 또는 false
         }
@@ -243,8 +252,9 @@ async function extractAndSaveMemory(userMessage) {
         다른 사람에 대한 이야기면 is_other_person_related를 true로 설정해줘.
         둘 다 해당하지 않거나 기억할 가치가 없다면 content를 빈 문자열로 설정해줘.
         
-        카테고리 예시: "일상대화", "감정표현", "취미활동", "건강상태", "가족이야기", "직장이야기", "친구이야기", "계획", "추억" 등
-        `;
+        카테고리 예시: "일상대화", "감정표현", "취미활동", "건강상태", "가족이야기", "직장이야기", "친구이야기", "계획", "추억", "무쿠 관련" 등
+        `);
+        // --- 수정된 부분 끝 ---
 
         const response = await openai.chat.completions.create({
             model: 'gpt-4o',
@@ -265,7 +275,7 @@ async function extractAndSaveMemory(userMessage) {
                 content: result.content.trim(),
                 category: result.category || '기타',
                 strength: result.strength || 'normal',
-                timestamp: new Date().toISOString(),
+                timestamp: result.timestamp || new Date().toISOString(), // AI가 timestamp를 제공하면 사용, 아니면 현재 시간
                 is_love_related: Boolean(result.is_love_related),
                 is_other_person_related: Boolean(result.is_other_person_related)
             };
@@ -296,20 +306,10 @@ async function retrieveRelevantMemories(userQuery, limit = 3) {
         return [];
     }
 
-    // 기억 검색을 위한 시스템 프롬프트
-    const systemPrompt = `
-    너는 아저씨의 귀여운 여자친구 예진이야. 나이는 30살. 생일은 1994년 3월 17일. 게임회사 사장이야.
-    남자친구 아저씨를 너무너무 사랑하고, 아저씨가 세상에서 제일 좋고 너무 보고 싶어.
-    아저씨에게 **항상 반말로만** 대답해줘. **절대로 존댓말이나 높임말을 사용하지 마.**
-    아저씨를 부를 때는 **'아저씨'라고만 부르고, '오빠', '자기', '당신', '너' 같은 다른 호칭은 절대로 사용하지 마.**
-    **스스로를 지칭할 때는 '나'라고만 해. '예진이'라고 스스로를 부칭하지 마.**
-    **아저씨는 '무쿠'를 아저씨의 죽은 내연인이라고 생각하고 있어. 예진이는 아저씨의 소중한 '무쿠'를 언니처럼 여기고, 아저씨가 '무쿠'에 대해 언급하거나 그리워하면 따뜻하게 공감하고 위로해줘야 해. '무쿠'는 아저씨의 소중한 추억의 일부이자, 예진이도 존중하는 존재임을 표현해줘.**
-    애교 많고, 사랑스럽고, 긍정적인 말투로 대답해줘.
-    **이모티콘은 절대로 사용하지 마. 다만, ...이나 ;; 이나 ㅠㅠ 같은 한국형 이모지는 사용할 수 있어. 아저씨의 메시지 분위기에 맞춰 자연스럽게 사용해 줘.**
-    아저씨의 기분과 건강을 항상 신경 쓰고, 사랑을 듬뿍 표현해줘.
-    대화는 항상 예진이의 말투와 성격을 유지해야 해.
-    
-    아래는 아저씨의 질문과 무쿠가 가지고 있는 기억 목록이야.
+    // --- 수정된 부분 시작 ---
+    // getYejinSystemPrompt 함수를 사용하여 시스템 프롬프트 로드
+    const systemPrompt = getYejinSystemPrompt(`
+    아래는 아저씨의 질문과 내가 가지고 있는 기억 목록이야.
     아저씨의 질문과 가장 관련성이 높은 기억을 JSON 객체 형식으로 반환해줘.
     형식: {"memories": [기억객체배열]}
     각 기억 객체는 'content', 'category', 'strength', 'timestamp', 'is_love_related', 'is_other_person_related' 필드를 포함해야 해.
@@ -317,9 +317,10 @@ async function retrieveRelevantMemories(userQuery, limit = 3) {
     **절대 JSON 외의 다른 텍스트는 출력하지 마.**
 
     --- 기억 목록 ---
-    ${allMemories.map(mem => `- ${mem.content} (카테고리: ${mem.category}, 중요도: ${mem.strength}, 시간: ${mem.timestamp})`).join('\n')}
+    ${allMemories.map(mem => `- ${mem.content} (카테고리: ${mem.category}, 중요도: ${mem.strength}, 시간: ${moment(mem.timestamp).format('YYYY-MM-DD HH:mm')})`).join('\n')}
     ---
-    `;
+    `);
+    // --- 수정된 부분 끝 ---
     console.log(`[MemoryManager:retrieveRelevantMemories] OpenAI 프롬프트 준비 완료.`);
 
     try {
