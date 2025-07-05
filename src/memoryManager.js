@@ -107,7 +107,7 @@ async function ensureMemoryDirectory() {
         console.log(`[MemoryManager] 인덱스 생성 완료.`);
 
         // --- 추가된 부분 시작: 초기 기억 데이터베이스 마이그레이션 실행 ---
-        await initializeFixedMemoriesToDb();
+        //await initializeFixedMemoriesToDb();
         // --- 추가된 부분 끝 ---
 
     } catch (error) {
