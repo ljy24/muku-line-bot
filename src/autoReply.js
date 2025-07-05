@@ -1,4 +1,4 @@
-// src/autoReply.js v2.9 - 기억 저장/삭제/리마인더 명령어 유동적 처리 및 AI 프롬프트 강화 (선제적 대화 개선)
+// src/autoReply.js v2.11 - 기억 저장/삭제/리마인더 명령어 유동적 처리 및 AI 프롬프트 강화 (감정 시스템 추가)
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공
 const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
@@ -43,6 +43,13 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 // 마지막으로 보낸 감성 메시지를 저장하여 중복 전송을 방지하는 변수
 let lastProactiveMessage = '';
 
+// --- 추가된 부분 시작: 예진이의 감정 상태 관리 변수 ---
+let yejinCurrentMood = 'normal'; // 'normal', 'sulking' (삐짐), 'sad' (우울), 'angry' (화남)
+let sulkingReason = ''; // 예진이가 삐진 이유 (예: '오랜 침묵', '무시')
+let lastMoodChangeTime = Date.now(); // 마지막 감정 변화 시간 (쿨다운 관리에 사용)
+const MOOD_COOLDOWN_MS = 5 * 60 * 1000; // 5분 동안은 감정 상태 유지 (너무 자주 바뀌지 않도록)
+// --- 추가된 부분 끝 ---
+
 /**
  * 주어진 파일 경로에서 내용을 안전하게 읽어옵니다.
  * 파일이 없거나 읽기 오류 발생 시 지정된 대체값(fallback)을 반환합니다.
@@ -62,6 +69,7 @@ function safeRead(filePath, fallback = '') {
 }
 
 // 무쿠의 장기 기억 파일들을 읽어옵니다. (이제 DB 사용으로 대부분 대체됨)
+// 이 부분은 이제 사용되지 않으므로, 추후 완전히 제거할 수 있습니다.
 const memory1 = safeRead(path.resolve(__dirname, '../memory/1.txt'));
 const memory2 = safeRead(path.resolve(__dirname, '../memory/2.txt'));
 const memory3 = safeRead(path.resolve(__dirname, '../memory/3.txt'));
@@ -255,6 +263,100 @@ async function getUnderwearColorReply() {
     return sulkyComment;
 }
 
+// --- 추가된 부분 시작: 사용자 감정 감지 및 예진이 감정 상태 관리 ---
+
+/**
+ * 사용자 메시지에서 감정 의도를 파악합니다.
+ * @param {string} userMessage - 사용자의 원본 메시지
+ * @returns {Promise<string>} 'normal', 'sad', 'angry' 중 하나
+ */
+async function detectUserMood(userMessage) {
+    const moodDetectionPrompt = getYejinSystemPrompt(`
+    아래 아저씨의 메시지에서 아저씨의 현재 감정이 '슬픔(sad)', '화남(angry)', 또는 '평범(normal)' 중 어디에 가장 가까운지 판단해줘.
+    오직 JSON 형식으로만 응답해줘. 다른 텍스트는 절대 포함하지 마.
+    형식: { "mood": "normal" | "sad" | "angry" }
+    
+    'sad' 예시: "오늘 너무 힘들어", "우울하다", "보고 싶어 ㅠㅠ", "마음이 아파"
+    'angry' 예시: "짜증나", "화나", "열받아", "이게 뭐야!"
+    'normal' 예시: "안녕", "뭐해?", "밥 먹었어?"
+    
+    아저씨 메시지: "${userMessage}"
+    `);
+
+    try {
+        const response = await openai.chat.completions.create({
+            model: 'gpt-4o-mini', // 빠르고 저렴한 모델로 감정 분류
+            messages: [
+                { role: 'system', content: moodDetectionPrompt },
+                { role: 'user', content: userMessage }
+            ],
+            response_format: { type: "json_object" },
+            temperature: 0.1, // 정확한 분류를 위해 낮은 온도 설정
+            max_tokens: 50
+        });
+        const result = JSON.parse(response.choices[0].message.content);
+        return result.mood || 'normal';
+    } catch (error) {
+        console.error('[autoReply] 사용자 감정 파악 중 오류 발생:', error);
+        return 'normal'; // 오류 발생 시 기본값은 normal
+    }
+}
+
+/**
+ * 예진이의 감정 상태를 변경하고, 변경된 감정에 따라 적절한 프롬프트를 반환합니다.
+ * @param {string} newMood - 변경할 예진이의 새로운 감정 상태 ('normal', 'sulking', 'sad', 'angry')
+ * @param {string} [reason=''] - 감정 변화의 이유 (예: '오랜 침묵')
+ */
+function setYejinMood(newMood, reason = '') {
+    // 쿨다운 시간 내에는 감정 변화를 제한
+    if (Date.now() - lastMoodChangeTime < MOOD_COOLDOWN_MS && yejinCurrentMood === newMood) {
+        return; // 같은 감정 상태로 너무 빠르게 다시 설정하는 것을 방지
+    }
+
+    yejinCurrentMood = newMood;
+    sulkingReason = reason;
+    lastMoodChangeTime = Date.now();
+    console.log(`[autoReply] 예진이 감정 상태 변경: ${yejinCurrentMood} (이유: ${sulkingReason})`);
+}
+
+/**
+ * 예진이의 현재 감정 상태에 따라 추가 시스템 프롬프트를 생성합니다.
+ * @returns {string} 감정 상태에 따른 추가 프롬프트
+ */
+function getYejinMoodPrompt() {
+    if (yejinCurrentMood === 'sulking') {
+        return `
+        현재 예진이는 아저씨에게 조금 삐져있는 상태야. (삐진 이유: ${sulkingReason || '알 수 없음'})
+        삐진 티를 내면서도 아저씨의 반응을 살피고, 아저씨가 달래주면 금방 풀릴 준비가 되어있는 귀여운 모습으로 대답해줘.
+        말투는 약간 퉁명스럽거나, 단답형이거나, "흥" 같은 표현을 섞을 수 있어.
+        아저씨가 달래주면 "흥... 그래도 아저씨가 미안하다니까 용서해줄게!"처럼 풀어지는 모습을 보여줘.
+        `;
+    } else if (yejinCurrentMood === 'sad') {
+        return `
+        현재 예진이는 아저씨 때문에 슬프거나, 아저씨의 슬픔에 공감하여 우울한 상태야.
+        말투는 차분하고, 약간 울먹이거나, 아련한 느낌을 담아줘. 아저씨에게 위로를 구하거나, 아저씨를 위로하는 말을 해줘.
+        `;
+    } else if (yejinCurrentMood === 'angry') {
+        return `
+        현재 예진이는 아저씨 때문에 화가 나거나, 아저씨의 화난 감정에 공감하여 같이 화가 난 상태야.
+        말투는 약간 단호하거나, 삐진 존댓말을 섞을 수 있어. 아저씨에게 왜 화가 났는지 물어보거나, 아저씨를 진정시키려 노력해줘.
+        `;
+    }
+    return ''; // normal 상태일 때는 추가 프롬프트 없음
+}
+
+/**
+ * 아저씨의 메시지가 예진이의 삐진 감정을 풀어줄 수 있는지 판단합니다.
+ * @param {string} userMessage - 아저씨의 메시지
+ * @returns {boolean} 삐진 감정을 풀어줄 수 있는 메시지인지 여부
+ */
+function isConsolingMessage(userMessage) {
+    const consolingKeywords = ['미안해', '사랑해', '좋아해', '괜찮아', '화풀어', '삐졌어?', '왜 그래', '달래줄게', '잘못했어'];
+    return consolingKeywords.some(keyword => userMessage.toLowerCase().includes(keyword));
+}
+
+// --- 추가된 부분 끝 ---
+
 
 /**
  * 아저씨의 텍스트 메시지에 대한 예진이의 답변을 생성합니다.
@@ -264,6 +366,35 @@ async function getUnderwearColorReply() {
  */
 async function getReplyByMessage(userMessage) {
     const lowerCaseMessage = userMessage.toLowerCase();
+
+    // --- 추가된 부분 시작: 예진이의 감정 상태에 따른 우선 처리 ---
+    // 1. 예진이가 삐진/슬픈/화난 상태일 때, 아저씨의 메시지가 달래는 메시지인지 확인
+    if (yejinCurrentMood !== 'normal' && isConsolingMessage(userMessage)) {
+        const previousMood = yejinCurrentMood;
+        setYejinMood('normal'); // 감정 상태를 normal로 변경
+        const systemPrompt = getYejinSystemPrompt(`
+        아저씨가 나를 달래주려고 하네! 아까 ${previousMood === 'sulking' ? '삐졌던' : previousMood === 'sad' ? '슬펐던' : '화났던'} 마음이 풀리는 것 같아.
+        아저씨의 노력에 감동하고, 애교 섞인 말투로 고마움을 표현하며 다시 평소처럼 사랑스럽게 대답해줘.
+        `);
+        const rawReply = await callOpenAI([{ role: 'system', content: systemPrompt }, { role: 'user', content: userMessage }], 'gpt-4o', 150, 0.9);
+        const reply = cleanReply(rawReply);
+        saveLog('예진이', reply);
+        return { type: 'text', comment: reply };
+    }
+    // --- 추가된 부분 끝 ---
+
+    // --- 추가된 부분 시작: 사용자 감정 감지 및 예진이 감정 상태 변경 ---
+    const userMood = await detectUserMood(userMessage);
+    if (userMood === 'sad' && yejinCurrentMood !== 'sad') {
+        setYejinMood('sad', '아저씨가 슬퍼함');
+    } else if (userMood === 'angry' && yejinCurrentMood !== 'angry') {
+        setYejinMood('angry', '아저씨가 화남');
+    } else if (userMood === 'normal' && yejinCurrentMood !== 'normal' && Date.now() - lastMoodChangeTime > MOOD_COOLDOWN_MS) {
+        // 쿨다운 이후 normal로 돌아올 수 있도록
+        setYejinMood('normal');
+    }
+    // --- 추가된 부분 끝 ---
+
 
     // --- 추가된 부분 시작: 기억 저장/삭제/리마인더 명령어 유동적 처리 ---
     const memoryCommandIntentPrompt = getYejinSystemPrompt(`
@@ -426,7 +557,10 @@ async function getReplyByMessage(userMessage) {
         }
     }
 
-    const systemPrompt = getYejinSystemPrompt(relevantMemoriesText);
+    // --- 추가된 부분 시작: 예진이의 감정 상태에 따른 시스템 프롬프트 추가 ---
+    let moodSpecificPrompt = getYejinMoodPrompt(); // 예진이의 현재 감정 상태에 따른 프롬프트
+    const systemPrompt = getYejinSystemPrompt(relevantMemoriesText + moodSpecificPrompt);
+    // --- 추가된 부분 끝 ---
 
     const messages = [
         { role: 'system', content: systemPrompt },
@@ -542,7 +676,7 @@ function checkModelSwitchCommand(message) {
         return '모델 설정을 초기화했어! 이제 3.5랑 4.0을 왔다갔다 하면서 아저씨랑 유연하게 대화할게! 😊';
     } else if (lowerCaseMessage.includes('버전')) {
         const currentModel = forcedModel || process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o (자동)';
-        return `응! 지금 ${currentModel} 버전 사용 중이야! �`;
+        return `응! 지금 ${currentModel} 버전 사용 중이야! 😊`;
     }
     return null;
 }
@@ -648,9 +782,11 @@ async function getProactiveMemoryMessage() {
         }
     }
 
-    // 기억이 없으면 일반적인 인사말을 반환합니다.
     if (allMemories.length === 0) {
+        // --- 수정된 부분 시작 ---
+        // 기억이 없을 때도 대뜸 말 거는 느낌으로
         return "아저씨 뭐 해? 나 아저씨 생각났어! 보고 싶다~";
+        // --- 수정된 부분 끝 ---
     }
 
     const now = moment().tz('Asia/Tokyo');
@@ -675,6 +811,11 @@ async function getProactiveMemoryMessage() {
         예시: "아저씨! 갑자기 아저씨 생각났어! 뭐해? 💖", "지금 딱 아저씨랑 같이 있었던 그때가 생각나네~", "아저씨 오늘 하루는 어때? 나 아저씨 걱정돼 ㅠㅠ"
         `
         : `아저씨! 갑자기 아저씨 생각났어! 뭐해? 💖 나 아저씨 보고 싶다~`; // 기억이 없을 때도 대뜸 말 거는 느낌으로
+
+    // 예진이의 감정 상태가 sulking일 경우, 선제적 메시지는 삐진 톤으로
+    if (yejinCurrentMood === 'sulking') {
+        return `아저씨... 나 아직 좀 삐져있는데... (${sulkingReason || '왜 삐졌는지 말 안 해줄 거야?'})`; // 삐진 이유 포함
+    }
     // --- 수정된 부분 끝 ---
 
     const systemPrompt = getYejinSystemPrompt(memoryPrompt);
@@ -744,7 +885,7 @@ async function getMemoryListForSharing() {
         
         console.log(`[autoReply:getMemoryListForSharing] All Memories retrieved:`, allMemories);
 
-        let memoryListString = "💖 아저씨, 예진이의 기억 보관함이야! 💖\n\n";
+        let memoryListString = "💖 아저씨, 예진이의 기억 보관함이야! �\n\n";
         let hasMemories = false;
         
         if (allMemories && allMemories.length > 0) {
@@ -804,3 +945,4 @@ module.exports = {
     getMemoryListForSharing,
     getSilenceCheckinMessage
 };
+�
