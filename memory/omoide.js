@@ -12,7 +12,7 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 // 컨셉 사진이 저장된 웹 서버의 기본 URL (HTTPS 필수)
 const BASE_CONCEPT_URL = 'https://photo.de-ji.net/concept/';
 
-// 아저씨가 제공해주신 폴더 정의 전체 포함
+// 아저씨가 제공해주신 폴더 정의 전체 포함 (생략 없이 원본 그대로 유지)
 const CONCEPT_FOLDERS = {
     '2024/5월 7일 일본 홈스냅': 323,
     '2024/7월 8일 일본 결박': 223,
@@ -104,7 +104,10 @@ const CONCEPT_FOLDERS = {
     '2024/10월 16일 일본 오도': 5
 };
 
-const CONCEPT_FOLDERS = require('./conceptFolders.json'); // JSON 파일에서 전체 목록 불러오기 가능
+// --- 수정된 부분 시작 ---
+// `CONCEPT_FOLDERS` 정의가 중복되어 있어, 위쪽의 큰 객체만 사용하도록 정리합니다.
+// const CONCEPT_FOLDERS = require('./conceptFolders.json'); // 이 줄은 제거하거나 주석 처리합니다.
+// --- 수정된 부분 끝 ---
 
 const { cleanReply } = require('./omoide');
 
@@ -151,8 +154,7 @@ async function getConceptPhotoReply(userMessage, saveLogFunc) {
   let folderDescription = '';
   let additionalPromptForYejinText = '';
 
-  // ... (기존 폴더 매핑 로직 유지) ...
-
+  // 컨셉 사진 요청 키워드 및 해당 폴더 매핑 (이전 코드와 동일하게 유지)
   const conceptKeywordMap = {
         '일본 홈스냅': '2024/5월 7일 일본 홈스냅', '홈스냅': '2024/5월 7일 일본 홈스냅',
         '일본 결박': '2024/7월 8일 일본 결박', '결박': '2024/7월 8일 일본 결박',
