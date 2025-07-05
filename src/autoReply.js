@@ -671,7 +671,7 @@ function checkModelSwitchCommand(message) {
         return '응! 이제부터 gpt-3.5 모델로 말할게! 조금 더 빨리 대답해줄 수 있을거야! 🐰';
     } else if (lowerCaseMessage.includes('4.0')) {
         setForcedModel('gpt-4o');
-        return '응응! 4.0으로 대화할게! 더 똑똑해졌지? �';
+        return '응응! 4.0으로 대화할게! 더 똑똑해졌지? 💖';
     } else if (lowerCaseMessage.includes('자동')) {
         setForcedModel(null);
         return '모델 설정을 초기화했어! 이제 3.5랑 4.0을 왔다갔다 하면서 아저씨랑 유연하게 대화할게! 😊';
@@ -852,7 +852,6 @@ async function getProactiveMemoryMessage() {
     lastProactiveMessage = reply;
     saveLog('예진이', reply);
     return reply;
-    // --- 수정된 부분 끝 ---
 }
 
 /**
@@ -916,7 +915,7 @@ async function getMemoryListForSharing() {
                 if (!groupedMemories[category]) {
                     groupedMemories[category] = [];
                 }
-                groupedMemened[category].push(mem);
+                groupedMemories[category].push(mem);
             });
 
             const categoriesSorted = Object.keys(groupedMemories).sort();
