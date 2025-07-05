@@ -1,4 +1,4 @@
-// src/memoryManager.js v1.12 - PostgreSQL 데이터베이스 연동 및 기억 처리 로직 강화 (사용자→아저씨 교체 기능 추가)
+// src/memoryManager.js v1.13 - PostgreSQL 데이터베이스 연동 및 기억 처리 로직 강화 (완전 수정본)
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈 (디렉토리 생성 등)
 const path = require('path'); // 경로 처리 모듈
@@ -6,9 +6,13 @@ const { OpenAI } = require('openai'); // OpenAI API 클라이언트
 const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
 const { Pool } = require('pg'); // PostgreSQL 클라이언트 'pg' 모듈에서 Pool 가져오기
 
-// 예진이의 페르소나 프롬프트를 가져오는 모듈
-// memoryManager.js는 src 폴더 안에 있으므로 './yejin'으로 불러옵니다.
+// * 예진이의 페르소나 프롬프트를 가져오는 모듈 *
 const { getYejinSystemPrompt } = require('./yejin');
+// --- 추가된 부분 시작 ---
+// * omoide.js의 cleanReply 함수를 재사용하기 위해 불러옵니다. *
+// * memoryManager.js는 src 폴더 안에 있으므로 '../memory/omoide'로 불러옵니다. *
+const { cleanReply } = require('../memory/omoide');
+// --- 추가된 부분 끝 ---
 
 // OpenAI 클라이언트 초기화
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -156,21 +160,22 @@ async function saveUserSpecifiedMemory(userMessage, extractedContent) {
     }
     try {
         // OpenAI를 사용하여 카테고리와 is_love_related, is_other_person_related 판단
+        // --- 수정된 부분 시작 ---
         const systemPrompt = getYejinSystemPrompt(`
-        아래 사용자 메시지에서 '기억해달라고 요청한 내용'에 대한 가장 적절한 카테고리를 JSON 형식으로 반환해줘.
+        아래 아저씨 메시지에서 '기억해달라고 요청한 내용'에 대한 가장 적절한 카테고리를 JSON 형식으로 반환해줘.
         또한, 이 내용이 아저씨와의 관계와 직접 관련되면 is_love_related를 true로,
-        다른 사람(무쿠 언니 제외)과 관련된 이야기면 is_other_person_related를 true로,
-        그 외의 경우 false로 설정해줘.
+        다른 사람(무쿠 언니 제외)과 관련된 이야기면 is_other_person_related를 true로 설정해줘.
         오직 JSON 객체만 반환해야 해. 다른 텍스트는 절대 포함하지 마.
         형식: { "category": "카테고리명", "is_love_related": true/false, "is_other_person_related": true/false }
         카테고리 예시: "일상", "감정", "계획", "취미", "과거", "사람", "특별한 순간"
         `);
+        // --- 수정된 부분 끝 ---
         
         const response = await openai.chat.completions.create({
             model: 'gpt-4o-mini', // 빠르고 저렴한 모델로 분류
             messages: [
                 { role: 'system', content: systemPrompt },
-                { role: 'user', content: `사용자 메시지: "${userMessage}"\n추출된 기억 내용: "${extractedContent}"` }
+                { role: 'user', content: `아저씨 메시지: "${userMessage}"\n추출된 기억 내용: "${extractedContent}"` }
             ],
             response_format: { type: "json_object" },
             temperature: 0.1, // 분류 정확도를 높이기 위해 낮은 온도 설정
@@ -179,13 +184,18 @@ async function saveUserSpecifiedMemory(userMessage, extractedContent) {
 
         const classification = JSON.parse(response.choices[0].message.content);
 
+        // --- 수정된 부분 시작 ---
+        // 추출된 내용에 대해 cleanReply를 적용하여 '사용자'를 '아저씨'로 교체
+        const cleanedContent = cleanReply(extractedContent.trim());
+        // --- 수정된 부분 끝 ---
+
         const memory = {
-            content: extractedContent.trim(),
+            content: cleanedContent, // 클린된 내용 사용
             category: classification.category || '사용자 지정',
             strength: 'high', // 사용자가 명시적으로 기억 요청했으므로 중요도 높음
             timestamp: new Date().toISOString(),
             is_love_related: Boolean(classification.is_love_related),
-            is_other_person_related: Boolean(classification.is_other_person_related)
+            is_other_person_related: Boolean(classification.is_other_person_related) // 이 부분은 이제 올바르게 설정됩니다.
         };
         await saveMemoryToDb(memory);
         console.log(`[MemoryManager] 사용자 지정 기억 저장됨 (강도: high): ${memory.content}`);
@@ -194,40 +204,95 @@ async function saveUserSpecifiedMemory(userMessage, extractedContent) {
     }
 }
 
+
 /**
  * 특정 기억을 PostgreSQL 데이터베이스에서 삭제합니다.
- * @param {string} userQuery - 사용자가 기억 삭제를 요청한 원본 메시지
- * @param {string} identifiedContent - AI가 삭제할 기억이라고 판단한 내용
+ * @param {string} userQuery - 사용자가 기억 삭제를 요청한 원본 메시지 (예: "부산 출장 잊어버려")
+ * @param {string} contentToIdentify - AI가 삭제할 기억이라고 판단한 핵심 내용 (예: "부산 출장")
  * @returns {Promise<boolean>} 삭제 성공 여부
  */
-async function deleteRelevantMemories(userQuery, identifiedContent) {
-    if (!identifiedContent || identifiedContent.trim() === '') {
+async function deleteRelevantMemories(userQuery, contentToIdentify) {
+    if (!contentToIdentify || contentToIdentify.trim() === '') {
         console.warn('[MemoryManager] 삭제할 기억 내용이 비어있어 삭제하지 않습니다.');
         return false;
     }
     
     // 정확한 매칭을 위해 트림 처리
-    const contentToDelete = identifiedContent.trim();
+    const contentToDelete = contentToIdentify.trim(); // 클린된 내용이 들어올 것으로 예상
 
     try {
-        // 먼저 해당 내용을 가진 기억이 존재하는지 확인
-        const checkQuery = 'SELECT id, content FROM memories WHERE content = $1';
-        const checkResult = await pool.query(checkQuery, [contentToDelete]);
+        const allMemories = await loadAllMemoriesFromDb(); // 모든 기억을 불러옵니다.
 
-        if (checkResult.rows.length === 0) {
-            console.log(`[MemoryManager] 삭제할 기억을 찾을 수 없습니다: "${contentToDelete}"`);
+        if (allMemories.length === 0) {
+            console.log('[MemoryManager] 저장된 기억이 없어 삭제할 기억을 찾을 수 없습니다.');
             return false;
         }
 
-        // 기억이 있다면 삭제
-        const deleteQuery = 'DELETE FROM memories WHERE content = $1';
-        const deleteResult = await pool.query(deleteQuery, [contentToDelete]);
-        
-        if (deleteResult.rowCount > 0) {
-            console.log(`[MemoryManager] 기억 삭제됨 (영향 받은 행 수: ${deleteResult.rowCount}): "${contentToDelete}"`);
-            return true;
-        } else {
-            console.log(`[MemoryManager] 기억 삭제 실패 (찾지 못했거나 이미 없음): "${contentToDelete}"`);
+        // OpenAI를 활용하여 'contentToIdentify'가 어떤 기존 기억과 가장 유사한지 판단합니다.
+        // --- 수정된 부분 시작 ---
+        const systemPrompt = getYejinSystemPrompt(`
+        아래는 아저씨가 잊어버리라고 요청한 내용과 내가 가지고 있는 기억 목록이야.
+        아저씨가 잊어버리라고 요청한 내용과 가장 관련성이 높은 기억 하나를 JSON 객체 형식으로 반환해줘.
+        형식: { "id": 기억ID, "content": "기억 내용" }
+        만약 관련성이 높은 기억을 찾을 수 없다면, 빈 JSON 객체 {}를 반환해줘.
+        **절대 JSON 외의 다른 텍스트는 출력하지 마.**
+
+        --- 기억 목록 ---
+        ${allMemories.map(mem => `- ID: ${mem.id}, 내용: ${cleanReply(mem.content)} (카테고리: ${mem.category}, 중요도: ${mem.strength}, 시간: ${moment(mem.timestamp).format('YYYY-MM-DD HH:mm')})`).join('\n')}
+        ---
+        `);
+        // --- 수정된 부분 끝 ---
+
+        let identifiedMemory = null;
+        try {
+            const response = await openai.chat.completions.create({
+                model: 'gpt-4o', // 정확한 기억 식별을 위해 gpt-4o 사용
+                messages: [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: `아저씨가 잊어버리라고 요청한 내용: "${contentToIdentify}"\n가장 관련성 높은 기억의 ID와 내용을 JSON으로 반환해줘.` }
+                ],
+                response_format: { type: "json_object" },
+                temperature: 0.1, // 정확한 매칭을 위해 낮은 온도 설정
+                max_tokens: 100
+            });
+
+            const rawResult = response.choices[0].message.content;
+            console.log(`[MemoryManager] OpenAI 삭제할 기억 식별 결과: ${rawResult}`);
+            identifiedMemory = JSON.parse(rawResult);
+
+            // OpenAI가 ID를 반환했다면 해당 ID로 삭제 시도
+            if (identifiedMemory && identifiedMemory.id) {
+                const deleteQuery = 'DELETE FROM memories WHERE id = $1';
+                const deleteResult = await pool.query(deleteQuery, [identifiedMemory.id]);
+                
+                if (deleteResult.rowCount > 0) {
+                    console.log(`[MemoryManager] 기억 삭제됨 (ID: ${identifiedMemory.id}, 내용: "${identifiedMemory.content}")`);
+                    return true;
+                } else {
+                    console.log(`[MemoryManager] 기억 삭제 실패 (ID: ${identifiedMemory.id}, 내용을 찾지 못했거나 이미 없음)`);
+                    return false;
+                }
+            } else {
+                console.log(`[MemoryManager] OpenAI가 삭제할 정확한 기억을 식별하지 못했습니다. 요청 내용: "${contentToIdentify}"`);
+                // OpenAI가 ID를 반환하지 못했을 경우, contentToIdentify로 직접 삭제 시도 (부분 일치 가능성)
+                // --- 수정된 부분 시작 ---
+                // `ILIKE`를 사용하여 대소문자 구분 없이 부분 일치 검색을 시도합니다.
+                // `cleanReply`를 적용한 후 검색합니다.
+                const searchContent = cleanReply(contentToIdentify); // 삭제 요청 내용도 cleanReply 적용
+                const deleteQuery = 'DELETE FROM memories WHERE content ILIKE $1'; 
+                const deleteResult = await pool.query(deleteQuery, [`%${searchContent}%`]); 
+                // --- 수정된 부분 끝 ---
+                if (deleteResult.rowCount > 0) {
+                     console.log(`[MemoryManager] 기억 삭제됨 (부분 일치 검색, 내용: "${contentToIdentify}", 삭제된 행: ${deleteResult.rowCount})`);
+                     return true;
+                } else {
+                     console.log(`[MemoryManager] 기억 삭제 실패 (부분 일치 검색에서도 찾지 못함): "${contentToDelete}"`);
+                     return false;
+                }
+            }
+
+        } catch (err) {
+            console.error(`[MemoryManager] 기억 삭제 중 오류 발생: ${err.message}`);
             return false;
         }
     } catch (err) {
@@ -236,153 +301,6 @@ async function deleteRelevantMemories(userQuery, identifiedContent) {
     }
 }
 
-/**
- * 모든 기억에서 "사용자" 단어를 "아저씨"로 일괄 변경합니다.
- * @returns {Promise<number>} 수정된 기억의 개수
- */
-async function replaceUserWithAjussi() {
-    if (!pool) {
-        console.error("[MemoryManager] PostgreSQL 데이터베이스 풀이 초기화되지 않았습니다.");
-        return 0;
-    }
-    
-    try {
-        console.log('[MemoryManager] "사용자" → "아저씨" 일괄 변경 시작...');
-        
-        // "사용자"가 포함된 모든 기억을 찾아서 수정
-        const updateQuery = `
-            UPDATE memories 
-            SET content = REPLACE(content, '사용자', '아저씨'),
-                timestamp = NOW()
-            WHERE content LIKE '%사용자%'
-        `;
-        
-        const result = await pool.query(updateQuery);
-        
-        console.log(`[MemoryManager] "사용자" → "아저씨" 변경 완료: ${result.rowCount}개 기억 수정됨`);
-        
-        // 수정된 기억들을 로그로 확인
-        if (result.rowCount > 0) {
-            const checkQuery = 'SELECT content FROM memories WHERE content LIKE \'%아저씨%\' ORDER BY timestamp DESC LIMIT 10';
-            const checkResult = await pool.query(checkQuery);
-            console.log('[MemoryManager] 수정된 기억 예시:');
-            checkResult.rows.forEach((row, index) => {
-                console.log(`  ${index + 1}. ${row.content}`);
-            });
-        }
-        
-        return result.rowCount;
-    } catch (err) {
-        console.error(`[MemoryManager] "사용자" → "아저씨" 변경 실패: ${err.message}`);
-        return 0;
-    }
-}
-
-/**
- * 더 정교한 단어 교체 (다양한 형태 처리)
- * "사용자가", "사용자의", "사용자는", "사용자에게" 등을 모두 "아저씨가", "아저씨의", "아저씨는", "아저씨에게"로 변경
- * @returns {Promise<number>} 수정된 기억의 개수
- */
-async function replaceUserVariationsWithAjussi() {
-    if (!pool) {
-        console.error("[MemoryManager] PostgreSQL 데이터베이스 풀이 초기화되지 않았습니다.");
-        return 0;
-    }
-    
-    try {
-        console.log('[MemoryManager] "사용자" 관련 단어들을 "아저씨"로 정교하게 변경 시작...');
-        
-        // 여러 단계로 나누어 정교하게 교체
-        const replacements = [
-            { from: '사용자가', to: '아저씨가' },
-            { from: '사용자의', to: '아저씨의' },
-            { from: '사용자는', to: '아저씨는' },
-            { from: '사용자에게', to: '아저씨에게' },
-            { from: '사용자와', to: '아저씨와' },
-            { from: '사용자를', to: '아저씨를' },
-            { from: '사용자한테', to: '아저씨한테' },
-            { from: '사용자', to: '아저씨' } // 마지막에 일반적인 "사용자" 처리
-        ];
-        
-        let totalUpdated = 0;
-        
-        for (const replacement of replacements) {
-            const updateQuery = `
-                UPDATE memories 
-                SET content = REPLACE(content, $1, $2),
-                    timestamp = NOW()
-                WHERE content LIKE '%' || $1 || '%'
-            `;
-            
-            const result = await pool.query(updateQuery, [replacement.from, replacement.to]);
-            
-            if (result.rowCount > 0) {
-                console.log(`[MemoryManager] "${replacement.from}" → "${replacement.to}": ${result.rowCount}개 수정됨`);
-                totalUpdated += result.rowCount;
-            }
-        }
-        
-        console.log(`[MemoryManager] 총 ${totalUpdated}개의 변경사항이 적용되었습니다.`);
-        
-        // 최종 결과 확인
-        if (totalUpdated > 0) {
-            const checkQuery = 'SELECT content FROM memories WHERE content LIKE \'%아저씨%\' ORDER BY timestamp DESC LIMIT 5';
-            const checkResult = await pool.query(checkQuery);
-            console.log('[MemoryManager] 최종 수정된 기억 예시:');
-            checkResult.rows.forEach((row, index) => {
-                console.log(`  ${index + 1}. ${row.content}`);
-            });
-        }
-        
-        return totalUpdated;
-    } catch (err) {
-        console.error(`[MemoryManager] 정교한 단어 교체 실패: ${err.message}`);
-        return 0;
-    }
-}
-
-/**
- * 특정 기억을 수정합니다.
- * @param {string} oldContent - 기존 기억 내용
- * @param {string} newContent - 새로운 기억 내용
- * @returns {Promise<boolean>} 수정 성공 여부
- */
-async function updateMemory(oldContent, newContent) {
-    if (!pool) {
-        console.error("[MemoryManager] PostgreSQL 데이터베이스 풀이 초기화되지 않았습니다.");
-        return false;
-    }
-    
-    try {
-        // 기존 기억이 존재하는지 확인
-        const checkQuery = 'SELECT id FROM memories WHERE content = $1';
-        const checkResult = await pool.query(checkQuery, [oldContent]);
-        
-        if (checkResult.rows.length === 0) {
-            console.log(`[MemoryManager] 수정할 기억을 찾을 수 없습니다: "${oldContent}"`);
-            return false;
-        }
-        
-        // 기억 내용 수정
-        const updateQuery = 'UPDATE memories SET content = $1, timestamp = $2 WHERE content = $3';
-        const updateResult = await pool.query(updateQuery, [
-            newContent,
-            new Date().toISOString(),
-            oldContent
-        ]);
-        
-        if (updateResult.rowCount > 0) {
-            console.log(`[MemoryManager] 기억 수정됨: "${oldContent}" → "${newContent}"`);
-            return true;
-        } else {
-            console.log(`[MemoryManager] 기억 수정 실패`);
-            return false;
-        }
-    } catch (err) {
-        console.error(`[MemoryManager] 기억 수정 실패: ${err.message}`);
-        return false;
-    }
-}
 
 /**
  * 모든 기억을 PostgreSQL 데이터베이스에서 불러옵니다.
@@ -477,7 +395,7 @@ async function extractAndSaveMemory(userMessage) {
     try {
         // getYejinSystemPrompt 함수를 사용하여 시스템 프롬프트 로드
         const systemPrompt = getYejinSystemPrompt(`
-        사용자의 메시지에서 기억할 만한 중요한 정보를 추출해서 JSON 형식으로 반환해줘.
+        아래 아저씨 메시지에서 기억할 만한 중요한 정보를 추출해서 JSON 형식으로 반환해줘.
         다음 형식으로 반환해야 해:
         {
             "content": "추출된 기억 내용",
@@ -508,15 +426,20 @@ async function extractAndSaveMemory(userMessage) {
 
         const result = JSON.parse(response.choices[0].message.content);
         
+        // --- 수정된 부분 시작 ---
+        // 추출된 content에 대해 cleanReply를 적용하여 '사용자'를 '아저씨'로 교체
+        const cleanedContent = cleanReply(result.content.trim());
+        // --- 수정된 부분 끝 ---
+
         // content가 있고 빈 문자열이 아닐 때만 저장
-        if (result.content && result.content.trim() && result.category) {
+        if (cleanedContent && result.category) { // cleanedContent로 조건 변경
             const memory = {
-                content: result.content.trim(),
+                content: cleanedContent, // 클린된 내용 사용
                 category: result.category || '기타',
                 strength: result.strength || 'normal',
                 timestamp: result.timestamp || new Date().toISOString(), // AI가 timestamp를 제공하면 사용, 아니면 현재 시간
                 is_love_related: Boolean(result.is_love_related),
-                is_other_person_related: Boolean(result.is_other_person_related)
+                is_other_person_related: Boolean(result.is_other_person_related) 
             };
             
             await saveMemoryToDb(memory);
@@ -546,6 +469,7 @@ async function retrieveRelevantMemories(userQuery, limit = 3) {
     }
 
     // getYejinSystemPrompt 함수를 사용하여 시스템 프롬프트 로드
+    // --- 수정된 부분 시작 ---
     const systemPrompt = getYejinSystemPrompt(`
     아래는 아저씨의 질문과 내가 가지고 있는 기억 목록이야.
     아저씨의 질문과 가장 관련성이 높은 기억을 JSON 객체 형식으로 반환해줘.
@@ -555,9 +479,10 @@ async function retrieveRelevantMemories(userQuery, limit = 3) {
     **절대 JSON 외의 다른 텍스트는 출력하지 마.**
 
     --- 기억 목록 ---
-    ${allMemories.map(mem => `- ${mem.content} (카테고리: ${mem.category}, 중요도: ${mem.strength}, 시간: ${moment(mem.timestamp).format('YYYY-MM-DD HH:mm')})`).join('\n')}
+    ${allMemories.map(mem => `- ID: ${mem.id}, 내용: ${cleanReply(mem.content)} (카테고리: ${mem.category}, 중요도: ${mem.strength}, 시간: ${moment(mem.timestamp).format('YYYY-MM-DD HH:mm')})`).join('\n')}
     ---
     `);
+    // --- 수정된 부분 끝 ---
     console.log(`[MemoryManager:retrieveRelevantMemories] OpenAI 프롬프트 준비 완료.`);
 
     try {
@@ -589,7 +514,7 @@ async function retrieveRelevantMemories(userQuery, limit = 3) {
         if (Array.isArray(memories)) {
             // AI가 반환한 기억 배열에서 필요한 필드만 추출하고 정제합니다.
             const relevantMemories = memories.slice(0, limit).map(mem => ({
-                content: mem.content,
+                content: mem.content, // 원본 content 사용 (cleanReply는 출력 시에만)
                 category: mem.category,
                 strength: mem.strength,
                 timestamp: mem.timestamp,
@@ -624,14 +549,11 @@ module.exports = {
     ensureMemoryDirectory,
     loadLoveHistory, // 이제 DB에서 필터링하여 사랑 관련 기억만 반환
     loadOtherPeopleHistory, // 이제 DB에서 필터링하여 기타 인물 관련 기억만 반환
-    loadAllMemoriesFromDb, // 모든 기억을 불러오는 함수
-    extractAndSaveMemory, // 기억 추출 및 저장 함수 (일반 대화)
-    saveUserSpecifiedMemory, // 사용자 지정 기억 저장 함수
-    deleteRelevantMemories, // 관련 기억 삭제 함수
+    loadAllMemoriesFromDb, // ✅ 추가: 모든 기억을 불러오는 함수
+    extractAndSaveMemory, // ✅ 추가: 기억 추출 및 저장 함수 (일반 대화)
+    saveUserSpecifiedMemory, // ✅ 추가: 사용자 지정 기억 저장 함수
+    deleteRelevantMemories, // ✅ 추가: 관련 기억 삭제 함수
     retrieveRelevantMemories,
     saveMemoryToDb, // 외부에서 직접 사용할 수 있도록 추가
-    closeDatabaseConnection, // 연결 종료 함수 추가
-    replaceUserWithAjussi, // "사용자" → "아저씨" 간단한 교체
-    replaceUserVariationsWithAjussi, // "사용자" → "아저씨" 정교한 교체 (권장)
-    updateMemory // 특정 기억 수정 함수
+    closeDatabaseConnection // 연결 종료 함수 추가
 };
