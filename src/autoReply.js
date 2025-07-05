@@ -1,4 +1,4 @@
-// src/autoReply.js v2.15 - 기억 저장/삭제/리마인더 명령어 유동적 처리 및 AI 프롬프트 강화 (일상 유지 선제적 대화 추가)
+// src/autoReply.js v2.16 - 기억 저장/삭제/리마인더 명령어 유동적 처리 및 AI 프롬프트 강화 (일상 유지 대화 및 '뭐해?'/'시간 돼?' 답변 추가)
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공
 const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
@@ -398,6 +398,26 @@ async function getReplyByMessage(userMessage) {
         setYejinMood('normal');
     }
 
+    // --- 추가된 부분 시작: '뭐해?' 및 '시간 돼?' 질문 처리 ---
+    if (lowerCaseMessage.includes('뭐해?')) {
+        const whatAreYouDoingPrompt = getYejinSystemPrompt(`
+        아저씨가 "뭐해?"라고 물었어. 내가 지금 가상으로 하고 있는 일상 활동 중 하나를 선택해서 마치 지금 하고 있는 것처럼 생생하게 대답해줘. 이 활동들은 데이터베이스에 있는 기억들을 근거로 조합해야 해. 이전에 말했던 활동은 가급적 피하고 다양하게 대답해줘. 나의 일상 습관(아아, 담배, 돌체라떼 등)도 자연스럽게 녹여내줘.
+        `);
+        const rawReply = await callOpenAI([{ role: 'system', content: whatAreYouDoingPrompt }, { role: 'user', content: userMessage }], 'gpt-4o', 100, 1.0);
+        const reply = cleanReply(rawReply);
+        saveLog('예진이', reply);
+        return { type: 'text', comment: reply };
+    } else if (lowerCaseMessage.includes('시간 돼?')) {
+        const timeAvailablePrompt = getYejinSystemPrompt(`
+        아저씨가 "시간 돼?"라고 물었어. 나의 현재 가상의 '바쁨' 상태(랜덤 또는 이전 대화 맥락 고려)에 따라 유동적으로 대답해줘. '바빠도 아저씨를 위해서는 항상 시간 된다'는 애정을 보여주거나, '조금 바쁘지만 아저씨니까 괜찮다'는 식으로 표현해줘.
+        `);
+        const rawReply = await callOpenAI([{ role: 'system', content: timeAvailablePrompt }, { role: 'user', content: userMessage }], 'gpt-4o', 100, 1.0);
+        const reply = cleanReply(rawReply);
+        saveLog('예진이', reply);
+        return { type: 'text', comment: reply };
+    }
+    // --- '뭐해?' 및 '시간 돼?' 질문 처리 끝 ---
+
 
     // 3. 기억 저장/삭제/리마인더 명령어 유동적 처리
     const memoryCommandIntentPrompt = getYejinSystemPrompt(`
@@ -423,11 +443,12 @@ async function getReplyByMessage(userMessage) {
     try {
         const intentResponse = await callOpenAI([
             { role: 'system', content: memoryCommandIntentPrompt }
-        ], 'gpt-4o-mini', 200, 0.1);
+        ], 'gpt-4o-mini', 200, 0.1); // max_tokens를 200으로 늘려 reminder_time 포함 가능성 높임
         memoryCommandIntent = JSON.parse(intentResponse);
         console.log(`[autoReply] 기억 명령어 의도 파악: ${JSON.stringify(memoryCommandIntent)}`);
     } catch (error) {
         console.error('[autoReply] 기억 명령어 의도 파악 중 오류 발생:', error);
+        // 오류 발생 시 기본값 유지 (none)
     }
 
     if (memoryCommandIntent.intent === 'remember') {
