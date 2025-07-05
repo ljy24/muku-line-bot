@@ -1,4 +1,4 @@
-// src/autoReply.js v2.17 - 기억 저장/삭제/리마인더 명령어 유동적 처리 및 AI 프롬프트 강화 (일상 유지 대화 및 '뭐해?'/'시간 돼?' 답변 추가)
+// src/autoReply.js v2.18 - 기억 저장/삭제/리마인더 명령어 유동적 처리 및 AI 프롬프트 강화 (일상 유지 선제적 대화 추가, 이모티콘 필터링 강화)
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공
 const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
@@ -336,7 +336,6 @@ function getYejinMoodPrompt() {
         삐진 티를 내면서도 아저씨의 반응을 살피고, 아저씨가 달래주면 금방 풀릴 준비가 되어있는 귀여운 모습으로 대답해줘.
         말투는 약간 퉁명스럽거나, 단답형이거나, "흥" 같은 표현을 섞을 수 있어.
         아저씨가 달래주면 "흥... 그래도 아저씨가 미안하다니까 용서해줄게!"처럼 풀어지는 모습을 보여줘.
-        **절대로 먼저 화해를 유도하거나, 아저씨를 안심시키려 하지 마. 아저씨가 먼저 달래줘야 해.**
         `;
     } else if (yejinCurrentMood === 'sad') {
         return `
@@ -358,7 +357,7 @@ function getYejinMoodPrompt() {
  * @returns {boolean} 삐진 감정을 풀어줄 수 있는 메시지인지 여부
  */
 function isConsolingMessage(userMessage) {
-    const consolingKeywords = ['미안해', '사랑해', '좋아해', '괜찮아', '화풀어', '삐졌어?', '왜 그래', '달래줄게', '잘못했어', '농담이야'];
+    const consolingKeywords = ['미안해', '사랑해', '좋아해', '괜찮아', '화풀어', '삐졌어?', '왜 그래', '달래줄게', '잘못했어'];
     return consolingKeywords.some(keyword => userMessage.toLowerCase().includes(keyword));
 }
 
@@ -398,26 +397,6 @@ async function getReplyByMessage(userMessage) {
         setYejinMood('normal');
     }
 
-    // --- 추가된 부분 시작: '뭐해?' 및 '시간 돼?' 질문 처리 ---
-    if (lowerCaseMessage.includes('뭐해?')) {
-        const whatAreYouDoingPrompt = getYejinSystemPrompt(`
-        아저씨가 "뭐해?"라고 물었어. 내가 지금 가상으로 하고 있는 일상 활동 중 하나를 선택해서 마치 지금 하고 있는 것처럼 생생하게 대답해줘. 이 활동들은 데이터베이스에 있는 기억들을 근거로 조합해야 해. 이전에 말했던 활동은 가급적 피하고 다양하게 대답해줘. 나의 일상 습관(아아, 담배, 돌체라떼 등)도 자연스럽게 녹여내줘.
-        `);
-        const rawReply = await callOpenAI([{ role: 'system', content: whatAreYouDoingPrompt }, { role: 'user', content: userMessage }], 'gpt-4o', 100, 1.0);
-        const reply = cleanReply(rawReply);
-        saveLog('예진이', reply);
-        return { type: 'text', comment: reply };
-    } else if (lowerCaseMessage.includes('시간 돼?')) {
-        const timeAvailablePrompt = getYejinSystemPrompt(`
-        아저씨가 "시간 돼?"라고 물었어. 나의 현재 가상의 '바쁨' 상태(랜덤 또는 이전 대화 맥락 고려)에 따라 유동적으로 대답해줘. '바빠도 아저씨를 위해서는 항상 시간 된다'는 애정을 보여주거나, '조금 바쁘지만 아저씨니까 괜찮다'는 식으로 표현해줘.
-        `);
-        const rawReply = await callOpenAI([{ role: 'system', content: timeAvailablePrompt }, { role: 'user', content: userMessage }], 'gpt-4o', 100, 1.0);
-        const reply = cleanReply(rawReply);
-        saveLog('예진이', reply);
-        return { type: 'text', comment: reply };
-    }
-    // --- '뭐해?' 및 '시간 돼?' 질문 처리 끝 ---
-
 
     // 3. 기억 저장/삭제/리마인더 명령어 유동적 처리
     const memoryCommandIntentPrompt = getYejinSystemPrompt(`
@@ -443,7 +422,7 @@ async function getReplyByMessage(userMessage) {
     try {
         const intentResponse = await callOpenAI([
             { role: 'system', content: memoryCommandIntentPrompt }
-        ], 'gpt-4o-mini', 200, 0.1);
+        ], 'gpt-4o-mini', 200, 0.1); // max_tokens를 200으로 늘려 reminder_time 포함 가능성 높임
         memoryCommandIntent = JSON.parse(intentResponse);
         console.log(`[autoReply] 기억 명령어 의도 파악: ${JSON.stringify(memoryCommandIntent)}`);
     } catch (error) {
@@ -511,7 +490,7 @@ async function getReplyByMessage(userMessage) {
                                   '후지 스냅', '원미상가_필름', '밤바 산책', '공원 산책', '고쿠라 힙',
                                   '온실-여신', '을지로 네코', '무인역', '화가', '블랙원피스', '카페',
                                   '텐진 스트리트', '하카타 스트리트', '홈스냅 오타쿠', '야간 동백', '나르시스트',
-                                  ' 을지로 캘빈', '산책', '오도공원 후지필름', '크리스마스', '네코 모지코',
+                                  '을지로 캘빈', '산책', '오도공원 후지필름', '크리스마스', '네코 모지코',
                                   '야간 블랙드레스', '고스로리 할로윈', '게임센터', '고쿠라', '동키 거리',
                                   '고쿠라 야간', '코이노보리', '문래동', '수국', '오도',
                                   '다른 것도 보고싶어', '다음 사진', // '다른 것도', '다음 사진' 요청
@@ -698,7 +677,7 @@ function checkModelSwitchCommand(message) {
         return '모델 설정을 초기화했어! 이제 3.5랑 4.0을 왔다갔다 하면서 아저씨랑 유연하게 대화할게! 😊';
     } else if (lowerCaseMessage.includes('버전')) {
         const currentModel = forcedModel || process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o (자동)';
-        return `응! 지금 ${currentModel} 버전 사용 중이야! 😊`;
+        return `응! 지금 ${currentModel} 버전 사용 중이야! �`;
     }
     return null;
 }
@@ -821,7 +800,6 @@ async function getProactiveMemoryMessage() {
 
     const selectedMemories = candidateMemories.slice(0, Math.min(candidateMemories.length, 5));
 
-    // --- 수정된 부분 시작: '일상 유지' 선제적 대화 프롬프트 강화 ---
     // 아저씨의 마지막 감정 상태에 따른 선제적 메시지 우선순위 (기존 로직 유지)
     if (lastDetectedUserMood !== 'normal' && Date.now() - lastDetectedUserMoodTimestamp < USER_MOOD_REMEMBER_DURATION_MS) {
         const moodToAsk = lastDetectedUserMood;
