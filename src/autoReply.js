@@ -1,4 +1,4 @@
-// src/autoReply.js v2.16 - 기억 저장/삭제/리마인더 명령어 유동적 처리 및 AI 프롬프트 강화 (일상 유지 대화 및 '뭐해?'/'시간 돼?' 답변 추가)
+// src/autoReply.js v2.17 - 기억 저장/삭제/리마인더 명령어 유동적 처리 및 AI 프롬프트 강화 (일상 유지 대화 및 '뭐해?'/'시간 돼?' 답변 추가)
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공
 const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
@@ -443,7 +443,7 @@ async function getReplyByMessage(userMessage) {
     try {
         const intentResponse = await callOpenAI([
             { role: 'system', content: memoryCommandIntentPrompt }
-        ], 'gpt-4o-mini', 200, 0.1); // max_tokens를 200으로 늘려 reminder_time 포함 가능성 높임
+        ], 'gpt-4o-mini', 200, 0.1);
         memoryCommandIntent = JSON.parse(intentResponse);
         console.log(`[autoReply] 기억 명령어 의도 파악: ${JSON.stringify(memoryCommandIntent)}`);
     } catch (error) {
@@ -511,7 +511,7 @@ async function getReplyByMessage(userMessage) {
                                   '후지 스냅', '원미상가_필름', '밤바 산책', '공원 산책', '고쿠라 힙',
                                   '온실-여신', '을지로 네코', '무인역', '화가', '블랙원피스', '카페',
                                   '텐진 스트리트', '하카타 스트리트', '홈스냅 오타쿠', '야간 동백', '나르시스트',
-                                  '을지로 캘빈', '산책', '오도공원 후지필름', '크리스마스', '네코 모지코',
+                                  ' 을지로 캘빈', '산책', '오도공원 후지필름', '크리스마스', '네코 모지코',
                                   '야간 블랙드레스', '고스로리 할로윈', '게임센터', '고쿠라', '동키 거리',
                                   '고쿠라 야간', '코이노보리', '문래동', '수국', '오도',
                                   '다른 것도 보고싶어', '다음 사진', // '다른 것도', '다음 사진' 요청
