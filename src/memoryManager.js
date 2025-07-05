@@ -1,4 +1,4 @@
-// src/memoryManager.js v1.10 - PostgreSQL 데이터베이스 연동 및 기억 처리 로직 강화 (완전 수정본)
+// src/memoryManager.js v1.11 - PostgreSQL 데이터베이스 연동 및 기억 처리 로직 강화 (완전 수정본)
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈 (디렉토리 생성 등)
 const path = require('path'); // 경로 처리 모듈
@@ -145,6 +145,102 @@ async function saveMemoryToDb(memory) {
 }
 
 /**
+ * 사용자가 "기억해"라고 명시적으로 요청한 내용을 AI가 추출하여 저장합니다.
+ * 이 기억은 'high' 강도를 가집니다.
+ * @param {string} userMessage - 사용자가 기억을 요청한 원본 메시지
+ * @param {string} extractedContent - AI가 추출한 실제 기억 내용
+ * @returns {Promise<void>}
+ */
+async function saveUserSpecifiedMemory(userMessage, extractedContent) {
+    if (!extractedContent || extractedContent.trim() === '') {
+        console.warn('[MemoryManager] 사용자 지정 기억 추출 내용이 비어있어 저장하지 않습니다.');
+        return;
+    }
+    try {
+        // OpenAI를 사용하여 카테고리와 is_love_related, is_other_person_related 판단
+        const systemPrompt = getYejinSystemPrompt(`
+        아래 사용자 메시지에서 '기억해달라고 요청한 내용'에 대한 가장 적절한 카테고리를 JSON 형식으로 반환해줘.
+        또한, 이 내용이 아저씨와의 관계와 직접 관련되면 is_love_related를 true로,
+        다른 사람(무쿠 언니 제외)과 관련된 이야기면 is_other_person_related를 true로,
+        그 외의 경우 false로 설정해줘.
+        오직 JSON 객체만 반환해야 해. 다른 텍스트는 절대 포함하지 마.
+        형식: { "category": "카테고리명", "is_love_related": true/false, "is_other_person_related": true/false }
+        카테고리 예시: "일상", "감정", "계획", "취미", "과거", "사람", "특별한 순간"
+        `);
+        
+        const response = await openai.chat.completions.create({
+            model: 'gpt-4o-mini', // 빠르고 저렴한 모델로 분류
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: `사용자 메시지: "${userMessage}"\n추출된 기억 내용: "${extractedContent}"` }
+            ],
+            response_format: { type: "json_object" },
+            temperature: 0.1, // 분류 정확도를 높이기 위해 낮은 온도 설정
+            max_tokens: 100
+        });
+
+        const classification = JSON.parse(response.choices[0].message.content);
+
+        const memory = {
+            content: extractedContent.trim(),
+            category: classification.category || '사용자 지정',
+            strength: 'high', // 사용자가 명시적으로 기억 요청했으므로 중요도 높음
+            timestamp: new Date().toISOString(),
+            is_love_related: Boolean(classification.is_love_related),
+            is_other_person_related: Boolean(classification.is_other_person_related)
+        };
+        await saveMemoryToDb(memory);
+        console.log(`[MemoryManager] 사용자 지정 기억 저장됨 (강도: high): ${memory.content}`);
+    } catch (error) {
+        console.error(`[MemoryManager] 사용자 지정 기억 저장 실패: ${error.message}`);
+    }
+}
+
+
+/**
+ * 특정 기억을 PostgreSQL 데이터베이스에서 삭제합니다.
+ * @param {string} userQuery - 사용자가 기억 삭제를 요청한 원본 메시지
+ * @param {string} identifiedContent - AI가 삭제할 기억이라고 판단한 내용
+ * @returns {Promise<boolean>} 삭제 성공 여부
+ */
+async function deleteRelevantMemories(userQuery, identifiedContent) {
+    if (!identifiedContent || identifiedContent.trim() === '') {
+        console.warn('[MemoryManager] 삭제할 기억 내용이 비어있어 삭제하지 않습니다.');
+        return false;
+    }
+    
+    // 정확한 매칭을 위해 트림 처리
+    const contentToDelete = identifiedContent.trim();
+
+    try {
+        // 먼저 해당 내용을 가진 기억이 존재하는지 확인
+        const checkQuery = 'SELECT id, content FROM memories WHERE content = $1';
+        const checkResult = await pool.query(checkQuery, [contentToDelete]);
+
+        if (checkResult.rows.length === 0) {
+            console.log(`[MemoryManager] 삭제할 기억을 찾을 수 없습니다: "${contentToDelete}"`);
+            return false;
+        }
+
+        // 기억이 있다면 삭제
+        const deleteQuery = 'DELETE FROM memories WHERE content = $1';
+        const deleteResult = await pool.query(deleteQuery, [contentToDelete]);
+        
+        if (deleteResult.rowCount > 0) {
+            console.log(`[MemoryManager] 기억 삭제됨 (영향 받은 행 수: ${deleteResult.rowCount}): "${contentToDelete}"`);
+            return true;
+        } else {
+            console.log(`[MemoryManager] 기억 삭제 실패 (찾지 못했거나 이미 없음): "${contentToDelete}"`);
+            return false;
+        }
+    } catch (err) {
+        console.error(`[MemoryManager] 기억 삭제 실패: ${err.message}`);
+        throw err;
+    }
+}
+
+
+/**
  * 모든 기억을 PostgreSQL 데이터베이스에서 불러옵니다.
  * 이 함수는 모든 필드를 포함한 기억 객체 배열을 반환합니다.
  * @returns {Promise<Array<Object>>} 모든 기억 배열
@@ -219,6 +315,7 @@ async function loadOtherPeopleHistory() {
 
 /**
  * 사용자 메시지에서 기억을 추출하고 데이터베이스에 저장합니다.
+ * 이 함수는 "기억해" 명령이 아닌 일반 대화에서 자동으로 기억을 추출할 때 사용됩니다.
  * @param {string} userMessage - 사용자 메시지
  * @returns {Promise<void>}
  */
@@ -228,13 +325,12 @@ async function extractAndSaveMemory(userMessage) {
         return;
     }
 
-    // 아저씨가 포함된 메시지만 처리
+    // 아저씨가 포함된 메시지만 처리 (특정 호칭에 대한 필터링)
     if (!userMessage.includes('아저씨')) {
         return;
     }
 
     try {
-        // --- 수정된 부분 시작 ---
         // getYejinSystemPrompt 함수를 사용하여 시스템 프롬프트 로드
         const systemPrompt = getYejinSystemPrompt(`
         사용자의 메시지에서 기억할 만한 중요한 정보를 추출해서 JSON 형식으로 반환해줘.
@@ -249,12 +345,11 @@ async function extractAndSaveMemory(userMessage) {
         }
         
         아저씨와의 관계나 감정에 관련된 내용이면 is_love_related를 true로,
-        다른 사람에 대한 이야기면 is_other_person_related를 true로 설정해줘.
+        다른 사람(무쿠 언니 제외)에 대한 이야기면 is_other_person_related를 true로 설정해줘.
         둘 다 해당하지 않거나 기억할 가치가 없다면 content를 빈 문자열로 설정해줘.
         
-        카테고리 예시: "일상대화", "감정표현", "취미활동", "건강상태", "가족이야기", "직장이야기", "친구이야기", "계획", "추억", "무쿠 관련" 등
+        카테고리 예시: "일상대화", "감정표현", "취미활동", "건강상태", "가족이야기", "직장이야기", "친구이야기", "계획", "추억", "무쿠 관련", "사용자 지정" 등
         `);
-        // --- 수정된 부분 끝 ---
 
         const response = await openai.chat.completions.create({
             model: 'gpt-4o',
@@ -306,7 +401,6 @@ async function retrieveRelevantMemories(userQuery, limit = 3) {
         return [];
     }
 
-    // --- 수정된 부분 시작 ---
     // getYejinSystemPrompt 함수를 사용하여 시스템 프롬프트 로드
     const systemPrompt = getYejinSystemPrompt(`
     아래는 아저씨의 질문과 내가 가지고 있는 기억 목록이야.
@@ -320,7 +414,6 @@ async function retrieveRelevantMemories(userQuery, limit = 3) {
     ${allMemories.map(mem => `- ${mem.content} (카테고리: ${mem.category}, 중요도: ${mem.strength}, 시간: ${moment(mem.timestamp).format('YYYY-MM-DD HH:mm')})`).join('\n')}
     ---
     `);
-    // --- 수정된 부분 끝 ---
     console.log(`[MemoryManager:retrieveRelevantMemories] OpenAI 프롬프트 준비 완료.`);
 
     try {
@@ -388,7 +481,9 @@ module.exports = {
     loadLoveHistory, // 이제 DB에서 필터링하여 사랑 관련 기억만 반환
     loadOtherPeopleHistory, // 이제 DB에서 필터링하여 기타 인물 관련 기억만 반환
     loadAllMemoriesFromDb, // ✅ 추가: 모든 기억을 불러오는 함수
-    extractAndSaveMemory, // ✅ 추가: 기억 추출 및 저장 함수
+    extractAndSaveMemory, // ✅ 추가: 기억 추출 및 저장 함수 (일반 대화)
+    saveUserSpecifiedMemory, // ✅ 추가: 사용자 지정 기억 저장 함수
+    deleteRelevantMemories, // ✅ 추가: 관련 기억 삭제 함수
     retrieveRelevantMemories,
     saveMemoryToDb, // 외부에서 직접 사용할 수 있도록 추가
     closeDatabaseConnection // 연결 종료 함수 추가
