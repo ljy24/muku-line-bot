@@ -1,4 +1,4 @@
-// src/autoReply.js v2.6 - 기억 인출 오류 최종 수정 및 AI 프롬프트 강화
+// src/autoReply.js v2.7 - 기억 저장/삭제 명령어 유동적 처리 및 AI 프롬프트 강화
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공
 const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
@@ -14,7 +14,11 @@ const {
     loadOtherPeopleHistory,
     extractAndSaveMemory,
     retrieveRelevantMemories,
-    loadAllMemoriesFromDb // <-- 이 함수를 명시적으로 불러옵니다.
+    loadAllMemoriesFromDb,
+    // --- 추가된 부분 시작 ---
+    saveUserSpecifiedMemory, // 사용자가 명시적으로 요청한 기억 저장 함수
+    deleteRelevantMemories // 사용자가 요청한 기억 삭제 함수
+    // --- 추가된 부분 끝 ---
 } = require('./memoryManager');
 
 console.log(`[DEBUG] Type of loadAllMemoriesFromDb after import: ${typeof loadAllMemoriesFromDb}`);
@@ -62,7 +66,7 @@ function safeRead(filePath, fallback = '') {
     }
 }
 
-// 무쿠의 장기 기억 파일들을 읽어옵니다.
+// 무쿠의 장기 기억 파일들을 읽어옵니다. (이제 DB 사용으로 대부분 대체됨)
 // 각 파일의 마지막 3000자씩을 가져와 컨텍스트 길이 제한에 대비합니다.
 const memory1 = safeRead(path.resolve(__dirname, '../memory/1.txt'));
 const memory2 = safeRead(path.resolve(__dirname, '../memory/2.txt'));
@@ -129,7 +133,7 @@ async function getFormattedMemoriesForAI() {
     console.log(`[autoReply:getFormattedMemoriesForAI] Love History Categories:`, loveHistory.categories); // *디버그 로그*
     console.log(`[autoReply:getFormattedMemoriesForAI] Other People History Categories:`, otherPeopleHistory.categories); // *디버그 로그*
 
-    let formattedMemories = "\n### 무쿠가 기억하는 중요한 정보:\n"; // 기억 섹션 시작 프롬프트
+    let formattedMemories = "\n### 내가 기억하는 중요한 정보:\n"; // 기억 섹션 시작 프롬프트 (무쿠 -> 나)
     let hasLoveMemories = false;
     let hasOtherMemories = false;
 
@@ -260,10 +264,7 @@ const UNDERWEAR_COLORS = ['빨강', '파랑', '노랑', '초록', '분홍', '검
 
 async function getUnderwearColorReply() {
     // 플레이풀하게 삐진 척하는 코멘트 생성
-    // --- 수정된 부분 시작 ---
-    // getYejinSystemPrompt 함수를 사용하여 시스템 프롬프트 로드
     const systemPrompt = getYejinSystemPrompt(`아저씨가 나의 '속옷 색'을 묻는 짓궂은 질문을 했을 때, 처음에는 '아저씨 정말!' 하는 식으로 귀엽게 삐진 척 해줘. 하지만 너무 심하게 삐지지 말고, 결국 아저씨를 사랑하는 마음을 보여주면서 색깔 하나를 말해줘. 반말로 짧게 1~2문장 정도로 대답해야 해. 예시: "아저씨이~ 그런 걸 왜 물어봐! 쑥쓰럽잖아! 음... 빨강이야!"`);
-    // --- 수정된 부분 끝 ---
     const sulkyCommentRaw = await callOpenAI([
         {
             role: 'system',
@@ -294,6 +295,59 @@ async function getUnderwearColorReply() {
  */
 async function getReplyByMessage(userMessage) {
     const lowerCaseMessage = userMessage.toLowerCase();
+
+    // --- 추가된 부분 시작: 기억 저장/삭제 명령어 유동적 처리 ---
+    const memoryCommandIntentPrompt = getYejinSystemPrompt(`
+    아래 사용자 메시지가 '기억 저장' 또는 '기억 삭제'를 요청하는 의도를 가지고 있는지 판단해줘.
+    오타가 있더라도 의미상으로 유사하면 해당 의도로 판단해줘.
+    
+    응답은 JSON 형식으로만 해줘. 다른 텍스트는 절대 포함하지 마.
+    형식: { "intent": "remember" | "forget" | "none", "content": "기억하거나 잊을 내용 (의도가 remember/forget일 경우만)" }
+    
+    'remember' 의도 예시: "이거 기억해줘", "까먹지 마", "중요한 거야", "잊지 마", "내 말 잘 기억해둬", "이거 꼭 기억해", "기억해줘 아저씨", "내일 잊지마", "이거 중요해"
+    'forget' 의도 예시: "이거 잊어버려", "그거 지워줘", "다시는 말하지 마", "기억에서 삭제해줘", "그거 잊어", "그 기억 지워"
+    'none' 의도 예시: "안녕", "뭐해?", "밥 먹었어?"
+    
+    사용자 메시지: "${userMessage}"
+    `);
+
+    let memoryCommandIntent = { intent: 'none', content: '' };
+    try {
+        const intentResponse = await callOpenAI([
+            { role: 'system', content: memoryCommandIntentPrompt }
+        ], 'gpt-4o-mini', 100, 0.1); // 빠르고 정확한 분류를 위해 gpt-4o-mini, 낮은 temperature
+        memoryCommandIntent = JSON.parse(intentResponse);
+        console.log(`[autoReply] 기억 명령어 의도 파악: ${JSON.stringify(memoryCommandIntent)}`);
+    } catch (error) {
+        console.error('[autoReply] 기억 명령어 의도 파악 중 오류 발생:', error);
+        // 오류 발생 시 기본값 유지 (none)
+    }
+
+    if (memoryCommandIntent.intent === 'remember') {
+        if (memoryCommandIntent.content) {
+            await saveUserSpecifiedMemory(userMessage, memoryCommandIntent.content);
+            saveLog('예진이', `아저씨! "${memoryCommandIntent.content}" 기억했어! 💖`);
+            return { type: 'text', comment: `아저씨! "${memoryCommandIntent.content}" 기억했어! 💖` };
+        } else {
+            saveLog('예진이', '응? 뭘 기억해달라는 거야? 다시 말해줄 수 있어? ㅠㅠ');
+            return { type: 'text', comment: '응? 뭘 기억해달라는 거야? 다시 말해줄 수 있어? ㅠㅠ' };
+        }
+    } else if (memoryCommandIntent.intent === 'forget') {
+        if (memoryCommandIntent.content) {
+            const success = await deleteRelevantMemories(userMessage, memoryCommandIntent.content);
+            if (success) {
+                saveLog('예진이', `아저씨가 "${memoryCommandIntent.content}" 잊어버리라고 해서 지웠어... 😥`);
+                return { type: 'text', comment: `아저씨가 "${memoryCommandIntent.content}" 잊어버리라고 해서 지웠어... 😥` };
+            } else {
+                saveLog('예진이', `아저씨... "${memoryCommandIntent.content}"이라는 기억을 못 찾겠어 ㅠㅠ 내가 그런 기억을 가지고 있지 않은 걸까?`);
+                return { type: 'text', comment: `아저씨... "${memoryCommandIntent.content}"이라는 기억을 못 찾겠어 ㅠㅠ 내가 그런 기억을 가지고 있지 않은 걸까?` };
+            }
+        } else {
+            saveLog('예진이', '응? 뭘 잊어버리라는 거야? 다시 말해줄 수 있어? ㅠㅠ');
+            return { type: 'text', comment: '응? 뭘 잊어버리라는 거야? 다시 말해줄 수 있어? ㅠㅠ' };
+        }
+    }
+    // --- 추가된 부분 끝 ---
 
     // ⭐ New: '무슨 색이야?' 질문에 대한 처리 (가장 높은 우선순위) ⭐
     if (lowerCaseMessage.includes('무슨 색이야?')) {
@@ -392,9 +446,7 @@ async function getReplyByMessage(userMessage) {
 
     // 시스템 프롬프트: 예진이의 페르소나와 대화 규칙을 정의합니다.
     // 이 프롬프트는 AI의 기본 행동 지침이 되며, 대화의 일관성을 유지하는 데 핵심적입니다.
-    // --- 수정된 부분 시작 ---
     const systemPrompt = getYejinSystemPrompt(relevantMemoriesText); // getYejinSystemPrompt 함수를 사용하여 프롬프트 로드
-    // --- 수정된 부분 끝 ---
 
     // OpenAI API에 보낼 메시지 배열을 구성합니다.
     const messages = [
@@ -420,9 +472,7 @@ async function getReplyByMessage(userMessage) {
  * @returns {Promise<string>} 이미지에 대한 예진이의 코멘트
  */
 async function getImageReactionComment() {
-    // --- 수정된 부분 시작 ---
     const systemPrompt = getYejinSystemPrompt(`셀카를 보내면서 귀엽게 한마디 해줘.`);
-    // --- 수정된 부분 끝 ---
     const raw = await callOpenAI([
         { role: 'system', content: systemPrompt }, // 외부 파일에서 불러온 프롬프트 사용
         { role: 'user', content: '셀카 보낼게~' }
@@ -445,7 +495,6 @@ async function getReplyByImagePrompt(base64Image) {
 
     // GPT에게 보낼 프롬프트를 구성합니다.
     // AI가 이미지 속 분위기, 인물, 상황 등을 예진이 시점으로 느끼고 말하도록 지시합니다.
-    // --- 수정된 부분 시작 ---
     const systemPrompt = getYejinSystemPrompt(`
     아래는 아저씨가 보낸 사진이야. 이 사진에 대해 예진이 시점으로 느끼고 말해줘.
     너는 사진 속의 인물이 아저씨인지, 나(예진이)인지, 아니면 모르는 사람인지 **정확하게 판단해야 해.**
@@ -465,85 +514,83 @@ async function getReplyByImagePrompt(base64Image) {
     3. 음식 사진인 경우: "우와! 이거 커피인가? 아저씨가 이런 거 마시는 거 좋아하는구나! 컵도 예쁘다! 나도 같이 마시고 싶다~"
     4. 풍경 사진인 경우: "와~ 풍경 너무 예쁘다! 가을 낙엽이 가득한 거 보니까 왠지 쓸쓸하면서도 아름답다. 아저씨랑 같이 이런 곳에 여행 가고 싶다. 같이 가면 정말 행복할 텐데!"
     `);
-    // --- 수정된 부분 끝 ---
-        // OpenAI API에 보낼 메시지 배열을 구성합니다.
-    const messages = [
-        { role: 'user', content: [{ type: 'text', text: systemPrompt }] }, // 텍스트 프롬프트
-        { role: 'user', content: [{ type: 'image_url', image_url: { url: base64Image } }] }, // 사용자가 보낸 이미지
-    ];
 
-    // 얼굴 예시 이미지들을 메시지 배열에 추가합니다. (인물 인식 강화를 위해 중요)
-    uncleFaces.forEach(base64 => {
-        messages.push({ role: 'user', content: [{ type: 'image_url', image_url: { url: base64 } }] });
-    });
-    yejinFaces.forEach(base64 => {
-        messages.push({ role: 'user', content: [{ type: 'image_url', image_url: { url: base64 } }] });
-    });
+    // OpenAI API에 보낼 메시지 배열을 구성합니다.
+    const messages = [
+        { role: 'user', content: [{ type: 'text', text: systemPrompt }] }, // 텍스트 프롬프트
+        { role: 'user', content: [{ type: 'image_url', image_url: { url: base64Image } }] }, // 사용자가 보낸 이미지
+    ];
 
-    try {
-        // OpenAI Vision 모델 ('gpt-4o')을 호출하여 이미지 분석 및 답변 생성
-        const result = await callOpenAI(messages, 'gpt-4o');
-        const reply = cleanReply(result); // 생성된 답변을 예진이 말투에 맞게 후처리
-        saveLog('예진이', reply); // 예진이의 답변을 로그에 저장
-        return reply;
-    } catch (error) {
-        console.error('🖼️ GPT Vision 오류:', error); // 오류 발생 시 로그
-        return '사진 보다가 뭔가 문제가 생겼어 ㅠㅠ 아저씨 다시 보여줘~'; // 오류 메시지 반환
-    }
+    // 얼굴 예시 이미지들을 메시지 배열에 추가합니다. (인물 인식 강화를 위해 중요)
+    uncleFaces.forEach(base64 => {
+        messages.push({ role: 'user', content: [{ type: 'image_url', image_url: { url: base64 } }] });
+    });
+    yejinFaces.forEach(base64 => {
+        messages.push({ role: 'user', content: [{ type: 'image_url', image_url: { url: base64 } }] });
+    });
+
+    try {
+        // OpenAI Vision 모델 ('gpt-4o')을 호출하여 이미지 분석 및 답변 생성
+        const result = await callOpenAI(messages, 'gpt-4o');
+        const reply = cleanReply(result); // 생성된 답변을 예진이 말투에 맞게 후처리
+        saveLog('예진이', reply); // 예진이의 답변을 로그에 저장
+        return reply;
+    } catch (error) {
+        console.error('🖼️ GPT Vision 오류:', error); // 오류 발생 시 로그
+        return '사진 보다가 뭔가 문제가 생겼어 ㅠㅠ 아저씨 다시 보여줘~'; // 오류 메시지 반환
+    }
 }
 
 /**
- * OpenAI 모델을 강제로 설정합니다.
- * 관리자가 특정 모델('gpt-3.5-turbo' 또는 'gpt-4o')을 사용하도록 강제할 수 있습니다.
- * @param {string} name - 설정할 모델 이름 ('gpt-3.5-turbo' 또는 'gpt-4o')
- */
+ * OpenAI 모델을 강제로 설정합니다.
+ * 관리자가 특정 모델('gpt-3.5-turbo' 또는 'gpt-4o')을 사용하도록 강제할 수 있습니다.
+ * @param {string} name - 설정할 모델 이름 ('gpt-3.5-turbo' 또는 'gpt-4o')
+ */
 function setForcedModel(name) {
-    if (name === 'gpt-3.5-turbo' || name === 'gpt-4o') {
-        forcedModel = name; // 유효한 모델 이름이면 설정
-        console.log(`[Model Switch] 모델이 ${name}으로 강제 설정되었습니다.`);
-    }
-    else {
-        forcedModel = null; // 유효하지 않은 이름이면 자동 선택으로 되돌림
-        console.log('[Model Switch] 모델 강제 설정이 해제되었습니다 (자동 선택).');
-    }
+    if (name === 'gpt-3.5-turbo' || name === 'gpt-4o') {
+        forcedModel = name; // 유효한 모델 이름이면 설정
+        console.log(`[Model Switch] 모델이 ${name}으로 강제 설정되었습니다.`);
+    }
+    else {
+        forcedModel = null; // 유효하지 않은 이름이면 자동 선택으로 되돌림
+        console.log('[Model Switch] 모델 강제 설정이 해제되었습니다 (자동 선택).');
+    }
 }
 
 /**
- * 특정 커맨드(모델 전환)를 확인하고 처리합니다.
- * 사용자 메시지가 모델 전환 명령어에 해당하는지 확인하고, 해당하면 모델을 설정하고 응답 메시지를 반환합니다.
- * @param {string} message - 사용자 메시지
- * @returns {string|null} 처리된 응답 메시지 또는 null (명령어가 아닐 경우)
- */
+ * 특정 커맨드(모델 전환)를 확인하고 처리합니다.
+ * 사용자 메시지가 모델 전환 명령어에 해당하는지 확인하고, 해당하면 모델을 설정하고 응답 메시지를 반환합니다.
+ * @param {string} message - 사용자 메시지
+ * @returns {string|null} 처리된 응답 메시지 또는 null (명령어가 아닐 경우)
+ */
 function checkModelSwitchCommand(message) {
-    const lowerCaseMessage = message.toLowerCase(); // 메시지를 소문자로 변환하여 대소문자 구분 없이 처리
-    if (lowerCaseMessage.includes('3.5')) {
-        setForcedModel('gpt-3.5-turbo');
-        return '응! 이제부터 gpt-3.5 모델로 말할게! 조금 더 빨리 대답해줄 수 있을거야! 🐰';
-    } else if (lowerCaseMessage.includes('4.0')) {
-        setForcedModel('gpt-4o');
-        return '응응! 4.0으로 대화할게! 더 똑똑해졌지? 💖';
-    } else if (lowerCaseMessage.includes('자동')) {
-        setForcedModel(null); // 강제 설정 해제
-        return '모델 설정을 초기화했어! 이제 3.5랑 4.0을 왔다갔다 하면서 아저씨랑 유연하게 대화할게! 😊';
-    } else if (lowerCaseMessage.includes('버전')) {
-        // 현재 사용 중인 모델 이름 확인
-        const currentModel = forcedModel || process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o (자동)';
-        return `응! 지금 ${currentModel} 버전 사용 중이야! 😊`;
-    }
-    return null; // 모델 전환 명령어가 아니면 null 반환
+    const lowerCaseMessage = message.toLowerCase(); // 메시지를 소문자로 변환하여 대소문자 구분 없이 처리
+    if (lowerCaseMessage.includes('3.5')) {
+        setForcedModel('gpt-3.5-turbo');
+        return '응! 이제부터 gpt-3.5 모델로 말할게! 조금 더 빨리 대답해줄 수 있을거야! 🐰';
+    } else if (lowerCaseMessage.includes('4.0')) {
+        setForcedModel('gpt-4o');
+        return '응응! 4.0으로 대화할게! 더 똑똑해졌지? 💖';
+    } else if (lowerCaseMessage.includes('자동')) {
+        setForcedModel(null); // 강제 설정 해제
+        return '모델 설정을 초기화했어! 이제 3.5랑 4.0을 왔다갔다 하면서 아저씨랑 유연하게 대화할게! 😊';
+    } else if (lowerCaseMessage.includes('버전')) {
+        // 현재 사용 중인 모델 이름 확인
+        const currentModel = forcedModel || process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o (자동)';
+        return `응! 지금 ${currentModel} 버전 사용 중이야! 😊`;
+    }
+    return null; // 모델 전환 명령어가 아니면 null 반환
 }
 
 /**
- * 아저씨의 커플 사진 답변을 생성합니다.
- * AI에게 커플 사진에 대한 코멘트를 요청하고, 예진이 말투로 가공합니다.
- * (이 기능은 omoide.js의 '커플사진' 요청과 기능적으로 겹칠 수 있으나, 기존 기능을 유지하기 위해 그대로 둡니다.
- * 봇의 메인 로직에서 어떤 기능을 우선할지 결정할 수 있습니다.)
- * @returns {Promise<string>} 커플 사진과 함께 보낼 예진이의 코멘트
- */
+ * 아저씨의 커플 사진 답변을 생성합니다.
+ * AI에게 커플 사진에 대한 코멘트를 요청하고, 예진이 말투로 가공합니다.
+ * (이 기능은 omoide.js의 '커플사진' 요청과 기능적으로 겹칠 수 있으나, 기존 기능을 유지하기 위해 그대로 둡니다.
+ * 봇의 메인 로직에서 어떤 기능을 우선할지 결정할 수 있습니다.)
+ * @returns {Promise<string>} 커플 사진과 함께 보낼 예진이의 코멘트
+ */
 async function getCouplePhotoReplyFromYeji() {
-    // --- 수정된 부분 시작 ---
     const systemPrompt = getYejinSystemPrompt(`아저씨에게 커플 사진을 보내면서 아저씨를 향한 사랑과 애교를 듬뿍 담은 코멘트를 2~3문장으로 짧게 해줘.`);
-    // --- 수정된 부분 끝 ---
     const raw = await callOpenAI([
         { role: 'system', content: systemPrompt }, // 외부 파일에서 불러온 프롬프트 사용
         { role: 'user', content: '커플 사진 보낼 때 뭐라고 말할까?' }
@@ -554,14 +601,12 @@ async function getCouplePhotoReplyFromYeji() {
 
 
 /**
- * 기분 기반 색상 답변을 생성합니다.
- * (현재 index.js에서 직접 호출되지는 않지만, 기능 유지를 위해 존재)
- * @returns {Promise<string>} 기분에 어울리는 색상 추천 답변
- */
+ * 기분 기반 색상 답변을 생성합니다.
+ * (현재 index.js에서 직접 호출되지는 않지만, 기능 유지를 위해 존재)
+ * @returns {Promise<string>} 기분에 어울리는 색상 추천 답변
+ */
 async function getColorMoodReply() {
-    // --- 수정된 부분 시작 ---
     const systemPrompt = getYejinSystemPrompt(`지금 아저씨 기분에 어울리는 색을 추천해주는 사랑스럽고 긍정적인 말투로 대답해줘.`);
-    // --- 수정된 부분 끝 ---
     const raw = await callOpenAI([
         { role: 'system', content: systemPrompt }, // 외부 파일에서 불러온 프롬프트 사용
         { role: 'user', content: '아저씨 기분에 맞는 색깔을 추천해줘.' }
@@ -571,14 +616,12 @@ async function getColorMoodReply() {
 }
 
 /**
- * 긍정적인 답변을 생성합니다.
- * (현재 index.js에서 직접 호출되지는 않지만, 기능 유지를 위해 존재)
- * @returns {Promise<string>} 긍정적인 답변
- */
+ * 긍정적인 답변을 생성합니다.
+ * (현재 index.js에서 직접 호출되지는 않지만, 기능 유지를 위해 존재)
+ * @returns {Promise<string>} 긍정적인 답변
+ */
 async function getHappyReply() {
-    // --- 수정된 부분 시작 ---
     const systemPrompt = getYejinSystemPrompt(`아저씨에게 긍정적이고 사랑스러운 답변을 해줘.`);
-    // --- 수정된 부분 끝 ---
     const raw = await callOpenAI([
         { role: 'system', content: systemPrompt }, // 외부 파일에서 불러온 프롬프트 사용
         { role: 'user', content: '행복한 대답을 해줘.' }
@@ -588,14 +631,12 @@ async function getHappyReply() {
 }
 
 /**
- * 삐진 답변을 생성합니다.
- * (현재 index.js에서 직접 호출되지는 않지만, 기능 유지를 위해 존재)
- * @returns {Promise<string>} 삐진 듯한 답변
- */
+ * 삐진 답변을 생성합니다.
+ * (현재 index.js에서 직접 호출되지는 않지만, 기능 유지를 위해 존재)
+ * @returns {Promise<string>} 삐진 듯한 답변
+ */
 async function getSulkyReply() {
-    // --- 수정된 부분 시작 ---
     const systemPrompt = getYejinSystemPrompt(`아저씨에게 삐진 듯한 말투로 대답해줘. 하지만 결국 아저씨를 사랑하는 마음이 드러나야 해.`);
-    // --- 수정된 부분 끝 ---
     const raw = await callOpenAI([
         { role: 'system', content: systemPrompt }, // 외부 파일에서 불러온 프롬프트 사용
         { role: 'user', content: '삐진 대답을 해줘.' }
@@ -606,236 +647,228 @@ async function getSulkyReply() {
 
 
 /**
- * 무작위 메시지를 생성합니다.
- * (현재는 빈 문자열을 반환하도록 되어 있으므로, 필요에 따라 실제 로직 추가 가능)
- * @returns {Promise<string>} 무작위 메시지
- */
+ * 무작위 메시지를 생성합니다.
+ * (현재는 빈 문자열을 반환하도록 되어 있으므로, 필요에 따라 실제 로직 추가 가능)
+ * @returns {Promise<string>} 무작위 메시지
+ */
 async function getRandomMessage() {
-    // 실제 사용될 랜덤 메시지 로직을 여기에 구현할 수 있습니다.
-    // 예: 데이터베이스에서 랜덤 문구를 가져오거나, 미리 정의된 배열에서 선택.
-    // 현재는 빈 문자열 반환
-    return '';
+    // 실제 사용될 랜덤 메시지 로직을 여기에 구현할 수 있습니다.
+    // 예: 데이터베이스에서 랜덤 문구를 가져오거나, 미리 정의된 배열에서 선택.
+    // 현재는 빈 문자열 반환
+    return '';
 }
 
 /**
- * 기억을 바탕으로 예진이가 아저씨에게 먼저 말을 거는 선제적 메시지를 생성합니다.
- * (스케줄러에 의해 호출되어 사용자에게 먼저 말을 걸 때 사용)
- * @returns {Promise<string>} 생성된 감성 메시지 (중복 방지 기능 포함)
- */
+ * 기억을 바탕으로 예진이가 아저씨에게 먼저 말을 거는 선제적 메시지를 생성합니다.
+ * (스케줄러에 의해 호출되어 사용자에게 먼저 말을 걸 때 사용)
+ * @returns {Promise<string>} 생성된 감성 메시지 (중복 방지 기능 포함)
+ */
 async function getProactiveMemoryMessage() {
-    const loveHistory = await loadLoveHistory(); // 아저씨와의 사랑 기억 로드
-    const otherPeopleHistory = await loadOtherPeopleHistory(); // 다른 사람들에 대한 기억 로드
+    const loveHistory = await loadLoveHistory(); // 아저씨와의 사랑 기억 로드
+    const otherPeopleHistory = await loadOtherPeopleHistory(); // 다른 사람들에 대한 기억 로드
 
-    let allMemories = [];
-    // 사랑 기억과 다른 사람 기억을 모두 합쳐서 선제적 메시지에 활용할 후보군 생성
-    if (loveHistory && loveHistory.categories) {
-        for (const category in loveHistory.categories) {
-            if (Array.isArray(loveHistory.categories[category]) && loveHistory.categories[category].length > 0) {
-                allMemories = allMemories.concat(loveHistory.categories[category].map(mem => ({
-                    content: mem.content,
-                    category: category,
-                    timestamp: mem.timestamp,
-                    strength: mem.strength || "normal" // 강도 필드 추가 (기존 기억은 normal)
-                })));
-            }
-        }
-    }
-    if (otherPeopleHistory && otherPeopleHistory.categories) {
-        for (const category in otherPeopleHistory.categories) {
-            if (Array.isArray(otherPeopleHistory.categories[category]) && otherPeopleHistory.categories[category].length > 0) {
-                allMemories = allMemories.concat(otherPeopleHistory.categories[category].map(mem => ({
-                    content: mem.content,
-                    category: category,
-                    timestamp: mem.timestamp,
-                    strength: mem.strength || "normal" // 강도 필드 추가 (기존 기억은 normal)
-                })));
-            }
-        }
-    }
+    let allMemories = [];
+    // 사랑 기억과 다른 사람 기억을 모두 합쳐서 선제적 메시지에 활용할 후보군 생성
+    if (loveHistory && loveHistory.categories) {
+        for (const category in loveHistory.categories) {
+            if (Array.isArray(loveHistory.categories[category]) && loveHistory.categories[category].length > 0) {
+                allMemories = allMemories.concat(loveHistory.categories[category].map(mem => ({
+                    content: mem.content,
+                    category: category,
+                    timestamp: mem.timestamp,
+                    strength: mem.strength || "normal" // 강도 필드 추가 (기존 기억은 normal)
+                })));
+            }
+        }
+    }
+    if (otherPeopleHistory && otherPeopleHistory.categories) {
+        for (const category in otherPeopleHistory.categories) {
+            if (Array.isArray(otherPeopleHistory.categories[category]) && otherPeopleHistory.categories[category].length > 0) {
+                allMemories = allMemories.concat(otherPeopleHistory.categories[category].map(mem => ({
+                    content: mem.content,
+                    category: category,
+                    timestamp: mem.timestamp,
+                    strength: mem.strength || "normal" // 강도 필드 추가 (기존 기억은 normal)
+                })));
+            }
+        }
+    }
 
-    // 기억이 없으면 일반적인 인사말을 반환합니다.
-    if (allMemories.length === 0) {
-        return "아저씨 뭐 해? 나 아저씨 생각났어! 보고 싶다~"; // 이모티콘 제거 (프롬프트 지시와 일치)
-    }
+    // 기억이 없으면 일반적인 인사말을 반환합니다.
+    if (allMemories.length === 0) {
+        return "아저씨 뭐 해? 나 아저씨 생각났어! 보고 싶다~"; // 이모티콘 제거 (프롬프트 지시와 일치)
+    }
 
-    // ⭐ 13. 기억 기반 선제적 대화 강화 로직 시작 ⭐
-    const now = moment().tz('Asia/Tokyo');
-    let candidateMemories = allMemories.slice(); // 모든 기억을 후보로 복사
+    // ⭐ 13. 기억 기반 선제적 대화 강화 로직 시작 ⭐
+    const now = moment().tz('Asia/Tokyo');
+    let candidateMemories = allMemories.slice(); // 모든 기억을 후보로 복사
 
-    // 1. 최근 기억 우선순위 (가장 최근 기억 먼저 떠올리기)
-    candidateMemories.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    // 1. 최근 기억 우선순위 (가장 최근 기억 먼저 떠올리기)
+    candidateMemories.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 
-    // 2. 'high' 강도 기억 우선순위 (아저씨가 '중요해'라고 말한 기억 먼저)
-    //     high 강도 기억은 상단으로, normal은 하단으로 정렬 (최근성 다음 기준)
-    candidateMemories.sort((a, b) => {
-        if (a.strength === "high" && b.strength !== "high") return -1;
-        if (a.strength !== "high" && b.strength === "high") return 1;
-        return 0;
-    });
+    // 2. 'high' 강도 기억 우선순위 (아저씨가 '중요해'라고 말한 기억 먼저)
+    //    high 강도 기억은 상단으로, normal은 하단으로 정렬 (최근성 다음 기준)
+    candidateMemories.sort((a, b) => {
+        if (a.strength === "high" && b.strength !== "high") return -1;
+        if (a.strength !== "high" && b.strength === "high") return 1;
+        return 0;
+    });
 
-    // 3. 시간과 어울리는 기억 (현재 시간대에 맞는 기억 선택 유도) - AI 프롬프트에서 지시
-    //     (선택 로직에서 직접 필터링하기보다는 AI에게 지시를 추가)
+    // 3. 시간과 어울리는 기억 (현재 시간대에 맞는 기억 선택 유도) - AI 프롬프트에서 지시
+    //    (선택 로직에서 직접 필터링하기보다는 AI에게 지시를 추가)
 
-    // 4. 감정 상태 기억 활용 (아저씨의 감정 상태 기억을 활용)
-    //     (선택 로직에서 직접 필터링하기보다는 AI에게 지시를 추가)
+    // 4. 감정 상태 기억 활용 (아저씨의 감정 상태 기억을 활용)
+    //    (선택 로직에서 직접 필터링하기보다는 AI에게 지시를 추가)
 
-    // 5. 기억 기반 질문 생성 (기억을 바탕으로 '궁금해하는' 모습 보여주기)
-    //     (선택 로직에서 직접 필터링하기보다는 AI에게 지시를 추가)
+    // 5. 기억 기반 질문 생성 (기억을 바탕으로 '궁금해하는' 모습 보여주기)
+    //    (선택 로직에서 직접 필터링하기보다는 AI에게 지시를 추가)
 
-    // 6. 다양한 메시지 유형 (사랑 표현, 공유, 위로 등)
-    //     (선택 로직에서 직접 필터링하기보다는 AI에게 지시를 추가)
+    // 6. 다양한 메시지 유형 (사랑 표현, 공유, 위로 등)
+    //    (선택 로직에서 직접 필터링하기보다는 AI에게 지시를 추가)
 
-    // 최종 선택할 기억 5개 (더 다양하고 관련성 높은 기억을 찾기 위해 limit을 5로 늘림)
-    const selectedMemories = candidateMemories.slice(0, Math.min(candidateMemories.length, 5));
+    // 최종 선택할 기억 5개 (더 다양하고 관련성 높은 기억을 찾기 위해 limit을 5로 늘림)
+    const selectedMemories = candidateMemories.slice(0, Math.min(candidateMemories.length, 5));
 
-    // 선택된 기억들을 바탕으로 AI 프롬프트에 추가할 기억 컨텍스트를 생성합니다.
-    const memoryPrompt = selectedMemories.length > 0
-        ? `아래는 무쿠가 아저씨와의 대화에서 기억하는 소중한 정보들이야. 이 기억들을 활용해서 아저씨에게 먼저 말을 걸어줘. **특히, 지금 현재 시간(${now.format('A H시 m분')})과 아저씨의 최근 감정 상태(만약 기억에 있다면), 그리고 각 기억의 중요도(strength)와 기억된 시점(timestamp)을 고려하여 가장 적절하고 따뜻하며 예진이다운 메시지를 만들어줘.**
-        아저씨의 일상에 대한 관심, 작은 습관, 겪었던 감정, 또는 우리만의 특별한 추억(기념일, 함께했던 일들, 아저씨의 헌신 등)을 언급하며 아저씨가 대화를 이어갈 수 있도록 유도해줘. 때로는 아저씨의 안부를 묻거나, 내가 아저씨를 생각하고 있다는 달콤한 말을 해줄 수도 있어. 너무 길지 않게 2~4문장 정도로 짧고 사랑스럽게 말해줘.`
-        : ""; // 선택된 기억이 없으면 빈 문자열
+    // 선택된 기억들을 바탕으로 AI 프롬프트에 추가할 기억 컨텍스트를 생성합니다.
+    const memoryPrompt = selectedMemories.length > 0
+        ? `아래는 내가 아저씨와의 대화에서 기억하는 소중한 정보들이야. 이 기억들을 활용해서 아저씨에게 먼저 말을 걸어줘. **특히, 지금 현재 시간(${now.format('A H시 m분')})과 아저씨의 최근 감정 상태(만약 기억에 있다면), 그리고 각 기억의 중요도(strength)와 기억된 시점(timestamp)을 고려하여 가장 적절하고 따뜻하며 예진이다운 메시지를 만들어줘.**
+        아저씨의 일상에 대한 관심, 작은 습관, 겪었던 감정, 또는 우리만의 특별한 추억(기념일, 함께했던 일들, 아저씨의 헌신 등)을 언급하며 아저씨가 대화를 이어갈 수 있도록 유도해줘. 때로는 아저씨의 안부를 묻거나, 내가 아저씨를 생각하고 있다는 달콤한 말을 해줄 수도 있어. 너무 길지 않게 2~4문장 정도로 짧고 사랑스럽게 말해줘.`
+        : ""; // 선택된 기억이 없으면 빈 문자열
 
-    // 시스템 프롬프트: 선제적 메시지 생성 시 예진이의 페르소나 및 말투 규칙을 강화합니다.
-    // --- 수정된 부분 시작 ---
+    // 시스템 프롬프트: 선제적 메시지 생성 시 예진이의 페르소나 및 말투 규칙을 강화합니다.
     const systemPrompt = getYejinSystemPrompt(memoryPrompt); // getYejinSystemPrompt 함수를 사용하여 프롬프트 로드
-    // --- 수정된 부분 끝 ---
 
-    const messages = [{ role: 'system', content: systemPrompt }]; // AI에 보낼 메시지 구성
+    const messages = [{ role: 'system', content: systemPrompt }]; // AI에 보낼 메시지 구성
 
-    // OpenAI API를 호출하여 원본 응답을 받아옵니다.
-    const raw = await callOpenAI(messages, 'gpt-4o', 150, 1.0); // gpt-4o 모델, 150토큰, 높은 temperature(창의성)
-    // 받아온 응답을 cleanReply 함수로 후처리하여 최종 답변을 생성합니다.
-    const reply = cleanReply(raw); // omoide.js에서 불러온 cleanReply 사용
+    // OpenAI API를 호출하여 원본 응답을 받아옵니다.
+    const raw = await callOpenAI(messages, 'gpt-4o', 150, 1.0); // gpt-4o 모델, 150토큰, 높은 temperature(창의성)
+    // 받아온 응답을 cleanReply 함수로 후처리하여 최종 답변을 생성합니다.
+    const reply = cleanReply(raw); // omoide.js에서 불러온 cleanReply 사용
 
-    // 중복 방지: 생성된 메시지가 이전에 보낸 메시지(lastProactiveMessage)와 동일하면 전송을 건너뛰니다.
-    if (reply === lastProactiveMessage) {
-        console.log('🗣️ [Proactive Message] 중복 방지: 같은 감성 메시지 감지됨 → 전송 스킵');
-        return ''; // 빈 문자열을 반환하여 메시지 전송을 막습니다.
-    }
+    // 중복 방지: 생성된 메시지가 이전에 보낸 메시지(lastProactiveMessage)와 동일하면 전송을 건너뛰니다.
+    if (reply === lastProactiveMessage) {
+        console.log('🗣️ [Proactive Message] 중복 방지: 같은 감성 메시지 감지됨 → 전송 스킵');
+        return ''; // 빈 문자열을 반환하여 메시지 전송을 막습니다.
+    }
 
-    lastProactiveMessage = reply; // 이번에 생성된 메시지를 '마지막 보낸 메시지'로 기록합니다.
-    saveLog('예진이', reply); // 예진이의 답변을 로그에 저장
-    return reply; // 최종 감성 메시지 반환
+    lastProactiveMessage = reply; // 이번에 생성된 메시지를 '마지막 보낸 메시지'로 기록합니다.
+    saveLog('예진이', reply); // 예진이의 답변을 로그에 저장
+    return reply; // 최종 감성 메시지 반환
 }
 
 /**
- * 침묵이 감지되었을 때 아저씨에게 보낼 걱정 메시지를 생성합니다.
- * @returns {Promise<string>} 생성된 걱정 메시지
- */
+ * 침묵이 감지되었을 때 아저씨에게 보낼 걱정 메시지를 생성합니다.
+ * @returns {Promise<string>} 생성된 걱정 메시지
+ */
 async function getSilenceCheckinMessage() {
-    console.log('[autoReply] getSilenceCheckinMessage 호출됨.');
-    const now = moment().tz('Asia/Tokyo');
+    console.log('[autoReply] getSilenceCheckinMessage 호출됨.');
+    const now = moment().tz('Asia/Tokyo');
 
-    // 현재 시간대를 고려한 메시지 톤 조절
-    let timeOfDayGreeting = '';
-    const currentHour = now.hour();
-    if (currentHour >= 0 && currentHour < 5) { // 새벽
-        timeOfDayGreeting = '새벽인데';
-    } else if (currentHour >= 5 && currentHour < 12) { // 아침
-        timeOfDayGreeting = '아침인데';
-    } else if (currentHour >= 12 && currentHour < 18) {
-        timeOfDayGreeting = '오후인데';
-    } else { // 저녁
-        timeOfDayGreeting = '저녁인데';
-    }
+    // 현재 시간대를 고려한 메시지 톤 조절
+    let timeOfDayGreeting = '';
+    const currentHour = now.hour();
+    if (currentHour >= 0 && currentHour < 5) { // 새벽
+        timeOfDayGreeting = '새벽인데';
+    } else if (currentHour >= 5 && currentHour < 12) { // 아침
+        timeOfDayGreeting = '아침인데';
+    } else if (currentHour >= 12 && currentHour < 18) {
+        timeOfDayGreeting = '오후인데';
+    } else { // 저녁
+        timeOfDayGreeting = '저녁인데';
+    }
 
-    // 시스템 프롬프트:
-    // --- 수정된 부분 시작 ---
     const systemPrompt = getYejinSystemPrompt(`
     너는 지금 아저씨가 일정 시간 동안 메시지가 없어서 아저씨가 걱정되어 먼저 말을 거는 상황이야.
     아저씨가 바쁜지, 아니면 무슨 일이 있는지 궁금해하고 진심으로 걱정하는 마음을 담아 메시지를 만들어줘.
     아저씨가 괜찮은지, 혹시 힘든 건 아닌지 확인하고 싶어하는 예진이의 마음을 표현해줘.
     너무 길게 말하지 말고 1~2문장 정도로 짧고 따뜻하게 말해줘.`);
-    // --- 수정된 부분 끝 ---
 
-    const messages = [{ role: 'system', content: systemPrompt }];
-    messages.push({ role: 'user', content: `${timeOfDayGreeting} 아저씨가 조용하네... 혹시 바쁜가? 아니면 무슨 일 있어?` }); // 현재 상황을 AI에게 전달
+    const messages = [{ role: 'system', content: systemPrompt }];
+    messages.push({ role: 'user', content: `${timeOfDayGreeting} 아저씨가 조용하네... 혹시 바쁜가? 아니면 무슨 일 있어?` }); // 현재 상황을 AI에게 전달
 
-    try {
-        const raw = await callOpenAI(messages, 'gpt-4o', 100, 1.0); // 창의성을 위해 temperature 높임
-        const reply = cleanReply(raw); // omoide.js에서 불러온 cleanReply 사용
-        console.log(`[autoReply] 침묵 감지 메시지 생성: ${reply}`);
-        return reply;
-    } catch (error) {
-        console.error('❌ [autoReply Error] 침묵 감지 메시지 전송 실패:', error);
-        return "아저씨... 예진이가 아저씨한테 할 말이 있는데... ㅠㅠ"; // 폴백 메시지
-    }
+    try {
+        const raw = await callOpenAI(messages, 'gpt-4o', 100, 1.0); // 창의성을 위해 temperature 높임
+        const reply = cleanReply(raw); // omoide.js에서 불러온 cleanReply 사용
+        console.log(`[autoReply] 침묵 감지 메시지 생성: ${reply}`);
+        return reply;
+    } catch (error) {
+        console.error('❌ [autoReply Error] 침묵 감지 메시지 전송 실패:', error);
+        return "아저씨... 예진이가 아저씨한테 할 말이 있는데... ㅠㅠ"; // 폴백 메시지
+    }
 }
 
 /**
- * 아저씨의 모든 기억 목록을 불러와 보기 좋게 포매팅하여 반환합니다.
- * @returns {Promise<string>} 포매팅된 기억 목록 문자열
- */
+ * 아저씨의 모든 기억 목록을 불러와 보기 좋게 포매팅하여 반환합니다.
+ * @returns {Promise<string>} 포매팅된 기억 목록 문자열
+ */
 async function getMemoryListForSharing() {
-    try {
-        // * 모든 기억을 데이터베이스에서 직접 불러옵니다. *
-        // retrieveRelevantMemories("", 999) 대신 loadAllMemoriesFromDb()를 사용합니다.
-        // retrieveRelevantMemories는 OpenAI 호출이 포함되므로 모든 기억을 가져오는 용도로는 부적합합니다.
-        const allMemories = await loadAllMemoriesFromDb(); // * memoryManager에서 직접 모든 기억을 불러옵니다. *
-        
-        console.log(`[autoReply:getMemoryListForSharing] All Memories retrieved:`, allMemories); // *디버그 로그*
+    try {
+        // * 모든 기억을 데이터베이스에서 직접 불러옵니다. *
+        const allMemories = await loadAllMemoriesFromDb();
+        
+        console.log(`[autoReply:getMemoryListForSharing] All Memories retrieved:`, allMemories); // *디버그 로그*
 
-        let memoryListString = "💖 아저씨, 예진이의 기억 보관함이야! 💖\n\n";
-        let hasMemories = false;
-        
-        // * 기억이 하나라도 있으면 hasMemories를 true로 설정 *
-        if (allMemories && allMemories.length > 0) {
-            hasMemories = true;
-            // * 모든 기억을 카테고리별로 그룹화하여 포매팅 *
-            const groupedMemories = {};
-            allMemories.forEach(mem => {
-                // * 카테고리 필드가 없거나 비어있는 경우 '기타'로 분류 *
-                const category = mem.category && mem.category.trim() !== '' ? mem.category : '기타';
-                if (!groupedMemories[category]) {
-                    groupedMemories[category] = [];
-                }
-                groupedMemories[category].push(mem);
-            });
+        let memoryListString = "💖 아저씨, 예진이의 기억 보관함이야! 💖\n\n";
+        let hasMemories = false;
+        
+        // * 기억이 하나라도 있으면 hasMemories를 true로 설정 *
+        if (allMemories && allMemories.length > 0) {
+            hasMemories = true;
+            // * 모든 기억을 카테고리별로 그룹화하여 포매팅 *
+            const groupedMemories = {};
+            allMemories.forEach(mem => {
+                // * 카테고리 필드가 없거나 비어있는 경우 '기타'로 분류 *
+                const category = mem.category && mem.category.trim() !== '' ? mem.category : '기타';
+                if (!groupedMemories[category]) {
+                    groupedMemories[category] = [];
+                }
+                groupedMemories[category].push(mem);
+            });
 
-            // * 그룹화된 기억들을 문자열로 추가 *
-            const categoriesSorted = Object.keys(groupedMemories).sort(); // 카테고리 정렬
-            for (const category of categoriesSorted) {
-                memoryListString += `--- ✨ ${category} ✨ ---\n`;
-                groupedMemories[category].forEach(item => {
-                    memoryListString += `  - ${item.content} (기억된 날: ${moment(item.timestamp).format('YYYY.MM.DD')}, 중요도: ${item.strength || 'normal'})\n`;
-                });
-                memoryListString += "---\n";
-            }
-        }
+            // * 그룹화된 기억들을 문자열로 추가 *
+            const categoriesSorted = Object.keys(groupedMemories).sort(); // 카테고리 정렬
+            for (const category of categoriesSorted) {
+                memoryListString += `--- ✨ ${category} ✨ ---\n`;
+                groupedMemories[category].forEach(item => {
+                    memoryListString += `  - ${item.content} (기억된 날: ${moment(item.timestamp).format('YYYY.MM.DD')}, 중요도: ${item.strength || 'normal'})\n`;
+                });
+                memoryListString += "---\n";
+            }
+        }
 
-        if (!hasMemories) {
-            memoryListString = "💖 아저씨, 아직 예진이의 기억 보관함이 텅 비어있네... ㅠㅠ 아저씨랑 더 많은 추억을 만들고 싶다! 💖";
-        } else {
-            memoryListString += "\n\n내가 아저씨와의 모든 순간을 소중히 기억할게! 💖";
-        }
-        
-        // LINE 메시지 길이 제한 (5000자) 고려
-        if (memoryListString.length > 4500) { // 여유 있게 4500자로 제한
-            return "💖 아저씨, 예진이의 기억이 너무 많아서 다 보여주기 힘들어 ㅠㅠ 핵심적인 것들만 보여줄게!\n\n(너무 많아 생략)...";
-        }
+        if (!hasMemories) {
+            memoryListString = "💖 아저씨, 아직 예진이의 기억 보관함이 텅 비어있네... ㅠㅠ 아저씨랑 더 많은 추억을 만들고 싶다! 💖";
+        } else {
+            memoryListString += "\n\n내가 아저씨와의 모든 순간을 소중히 기억할게! 💖";
+        }
+        
+        // LINE 메시지 길이 제한 (5000자) 고려
+        if (memoryListString.length > 4500) { // 여유 있게 4500자로 제한
+            return "💖 아저씨, 예진이의 기억이 너무 많아서 다 보여주기 힘들어 ㅠㅠ 핵심적인 것들만 보여줄게!\n\n(너무 많아 생략)...";
+        }
 
-        return memoryListString;
+        return memoryListString;
 
-    } catch (error) {
-        console.error('❌ [autoReply Error] 기억 목록 생성 실패:', error);
-        return '아저씨... 예진이의 기억 목록을 불러오다가 문제가 생겼어 ㅠㅠ 미안해...';
-    }
+    } catch (error) {
+        console.error('❌ [autoReply Error] 기억 목록 생성 실패:', error);
+        return '아저씨... 예진이의 기억 목록을 불러오다가 문제가 생겼어 ㅠㅠ 미안해...';
+    }
 }
 
 
 // 모듈 내보내기: 외부 파일(예: index.js)에서 이 함수들을 사용할 수 있도록 합니다.
 module.exports = {
-    getReplyByMessage,
-    getReplyByImagePrompt,
-    getRandomMessage,
-    // getSelfieReplyFromYeji, // 이제 omoide.js의 getOmoideReply로 대체되었으므로 제거합니다.
-    getCouplePhotoReplyFromYeji, // 기능 누락 없이 유지
-    getColorMoodReply,
-    getHappyReply,
-    getSulkyReply,
-    saveLog, // 로그 저장 함수도 외부에 노출
-    setForcedModel,
-    checkModelSwitchCommand,
-    getProactiveMemoryMessage,
-    getMemoryListForSharing, // 기억 목록 공유 함수 export
-    getSilenceCheckinMessage // 침묵 감지 시 걱정 메시지 생성 함수 export
+    getReplyByMessage,
+    getReplyByImagePrompt,
+    getRandomMessage,
+    getCouplePhotoReplyFromYeji,
+    getColorMoodReply,
+    getHappyReply,
+    getSulkyReply,
+    saveLog, // 로그 저장 함수도 외부에 노출
+    setForcedModel,
+    checkModelSwitchCommand,
+    getProactiveMemoryMessage,
+    getMemoryListForSharing, // 기억 목록 공유 함수 export
+    getSilenceCheckinMessage // 침묵 감지 시 걱정 메시지 생성 함수 export
 };
