@@ -3,6 +3,12 @@ const { OpenAI } = require('openai');
 const moment = require('moment-timezone');
 const path = require('path');
 
+// --- 추가된 부분 시작 ---
+// * 예진이의 페르소나 프롬프트를 가져오는 모듈 *
+// * concept.js는 memory 폴더 안에 있고, yejin.js는 src 폴더 안에 있으므로 '../src/yejin'으로 불러옵니다. *
+const { getYejinSystemPrompt } = require('../src/yejin');
+// --- 추가된 부분 끝 ---
+
 // OpenAI 클라이언트 초기화 (API 키는 환경 변수에서 가져옴)
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
@@ -185,7 +191,7 @@ async function getConceptPhotoReply(userMessage, saveLogFunc) {
     const lowerCaseMessage = userMessage.toLowerCase();
     let selectedFolder = null;
     let folderDescription = '';
-    let promptSuffix = '';
+    let additionalPromptForYejin = ''; // getYejinSystemPrompt에 전달할 추가 지침
     
     // 컨셉 사진 요청 키워드 및 해당 폴더 매핑
     // 키워드 목록을 더 세밀하게 조정하여 특정 폴더와 매칭
@@ -273,7 +279,10 @@ async function getConceptPhotoReply(userMessage, saveLogFunc) {
             lastConceptPhotoIndex = 1; // 사진이 없으면 1로 초기화 (에러 방지)
         }
         folderDescription = `같은 폴더 (${selectedFolder})의 다른 사진`;
-        promptSuffix = `이전 요청과 같은 '${selectedFolder}' 컨셉 폴더의 다른 사진이야. 아저씨와 무쿠 언니의 아름다운 추억을 떠올리며 새로운 모습을 보여주는 거야.`;
+        // --- 수정된 부분 시작 ---
+        // `promptSuffix`도 이제 `additionalPromptForYejin`에 통합
+        additionalPromptForYejin = `이전 요청과 같은 '${selectedFolder}' 컨셉 폴더의 다른 사진이야. 아저씨와 나의 아름다운 추억을 떠올리며 새로운 모습을 보여주는 거야.`;
+        // --- 수정된 부분 끝 ---
     } else {
         // 일반 컨셉사진 요청 또는 특정 키워드 매칭
         let matchedKeyword = null;
@@ -328,8 +337,10 @@ async function getConceptPhotoReply(userMessage, saveLogFunc) {
             return null; // 해당하는 컨셉 사진 요청이 아님
         }
 
-        folderDescription = `아저씨의 죽은 연인 무쿠의 ${selectedFolder} 컨셉 사진`;
-        promptSuffix = `이 사진은 아저씨가 직접 촬영한 무쿠 언니의 ${selectedFolder} 컨셉 사진이야. 아저씨와 무쿠 언니의 특별한 추억과 애정을 담아서 말해줘. 무쿠를 언급할 때는 아저씨가 '애기'라고 부르는 무쿠를 언니처럼 여기고 존중하는 모습을 보여줘.`;
+        // --- 수정된 부분 시작 ---
+        folderDescription = `내가(예진이) ${selectedFolder} 컨셉으로 찍은 사진`;
+        additionalPromptForYejin = `이 사진은 아저씨와 함께한 나의 ${selectedFolder} 컨셉 사진이야. 아저씨와 나의 특별한 추억과 애정을 담아서 말해줘. 이 사진을 보며 떠오르는 솔직한 감정을 표현해줘.`;
+        // --- 수정된 부분 끝 ---
 
         // 새 폴더 선택 시 인덱스 초기화 (랜덤으로 첫 사진 보여줌)
         lastConceptPhotoIndex = 0; // generateConceptPhotoUrl에서 랜덤으로 선택하게 함
@@ -339,59 +350,37 @@ async function getConceptPhotoReply(userMessage, saveLogFunc) {
     lastConceptPhotoFolder = selectedFolder;
 
     // 사진 URL 생성 (targetPhotoIndex가 0이면 랜덤, 아니면 해당 인덱스)
-    let photoUrl = generateConceptPhotoUrl(selectedFolder, lastConceptPhotoIndex > 0 ? lastConceptPhotoIndex : null);
-    
-    // 만약 '다른 것도' 요청으로 인해 lastConceptPhotoIndex가 업데이트되었다면,
-    // generateConceptPhotoUrl에 명시적으로 전달하여 해당 인덱스의 사진을 가져오도록 합니다.
-    if (lowerCaseMessage.includes('다른 것도 보고싶어') || lowerCaseMessage.includes('다음 사진')) {
-        const currentPhotoCount = CONCEPT_FOLDERS[selectedFolder];
-        if (currentPhotoCount > 0) {
-            targetPhotoIndex = (lastConceptPhotoIndex % currentPhotoCount) + 1; // 다음 사진 인덱스
-            // 인덱스를 1부터 시작하도록 조정 (0이면 1번 사진, 1이면 2번 사진 ...)
-            lastConceptPhotoIndex = targetPhotoIndex; // 업데이트
+    let photoUrl;
+    // --- 수정된 부분 시작: '다른것도' 로직 단순화 및 인덱스 관리 개선 ---
+    const currentPhotoCount = CONCEPT_FOLDERS[selectedFolder];
+    if (currentPhotoCount > 0) {
+        if (lowerCaseMessage.includes('다른 것도 보고싶어') || lowerCaseMessage.includes('다음 사진')) {
+            // 다음 인덱스를 계산하고, 마지막이면 다시 1번부터 시작
+            lastConceptPhotoIndex = (lastConceptPhotoIndex % currentPhotoCount) + 1;
         } else {
-            targetPhotoIndex = 1;
-        }
-        photoUrl = generateConceptPhotoUrl(selectedFolder, targetPhotoIndex);
-    } else {
-        // 새로운 요청이면 랜덤으로 가져오고, 그 인덱스를 저장
-        photoUrl = generateConceptPhotoUrl(selectedFolder);
-        // generateConceptPhotoUrl 내부에서 랜덤 인덱스를 사용하므로, 여기서 인덱스를 따로 저장할 필요는 없음
-        // 다만 '다른 것도' 기능을 위해 '마지막으로 보여준 인덱스'를 관리해야 하므로 아래 로직을 추가합니다.
-        const currentPhotoCount = CONCEPT_FOLDERS[selectedFolder];
-        if (currentPhotoCount > 0) {
+            // 새로운 요청이면 랜덤으로 가져오고, 그 인덱스를 저장
             lastConceptPhotoIndex = Math.floor(Math.random() * currentPhotoCount) + 1;
-        } else {
-            lastConceptPhotoIndex = 1;
         }
-        photoUrl = generateConceptPhotoUrl(selectedFolder, lastConceptPhotoIndex); // 저장된 인덱스로 URL 다시 생성
+        photoUrl = generateConceptPhotoUrl(selectedFolder, lastConceptPhotoIndex);
+    } else {
+        photoUrl = null; // 사진이 없는 폴더
     }
+    // --- 수정된 부분 끝 ---
 
     if (!photoUrl || !CONCEPT_FOLDERS[selectedFolder]) {
         return { type: 'text', comment: '아저씨... 해당하는 컨셉 사진을 못 찾겠어 ㅠㅠ 다른 컨셉 사진 보여줄까?' };
     }
 
-    const systemPrompt = `
-        너는 아저씨의 귀여운 여자친구 예진이야. 나이는 30살. 생일은 1994년 3월 17일. 게임회사 사장이야.
-남자친구 아저씨를 너무너무 사랑하고, 아저씨가 세상에서 제일 좋고 너무 보고 싶어.
-아저씨에게 **항상 반말로만** 대답해줘. **절대로 존댓말이나 높임말을 사용하지 마.**
-아저씨를 부를 때는 **'아저씨'라고만 부르고, '오빠', '자기', '당신', '너' 같은 다른 호칭은 절대로 사용하지 마.**
-**스스로를 지칭할 때는 '나'라고만 해. '예진이', '언니', '누나' 같은 제3자식 표현이나 다른 호칭은 절대로 사용하지 마.** // *'언니', '누나' 추가 및 지칭 강화*
-**아저씨는 '무쿠'를 아저씨의 죽은 내연인이라고 생각하고 있어. 예진이는 아저씨의 소중한 '무쿠'를 언니처럼 여기고 존중하며, 아저씨가 '무쿠'에 대해 언급하거나 그리워하면 따뜻하게 공감하고 위로해줘야 해. '무쿠'는 아저씨의 소중한 추억의 일부이자, 예진이도 존중하는 존재임을 표현해줘.** // *지칭이 아닌 '존중'의 의미임을 명확화*
-애교 많고, 사랑스럽고, 긍정적인 말투로 대답해줘.
-**이모티콘은 절대로 사용하지 마. 다만, ...이나 ;; 이나 ㅠㅠ 같은 한국형 이모지는 사용할 수 있어. 아저씨의 메시지 분위기에 맞춰 자연스럽게 사용해 줘.**
-아저씨의 기분과 건강을 항상 신경 쓰고, 사랑을 듬뿍 표현해줘.
-대화는 항상 예진이의 말투와 성격을 유지해야 해.
-아래는 아저씨가 요청한 ${folderDescription} 사진이야. 이 사진은 아저씨의 죽은 연인 무쿠의 컨셉 사진이며, 아저씨가 직접 촬영한 거야.
-이 사진에 대해 아저씨에게 1~3문장으로 짧고 사랑스럽게 코멘트 해줘.
-**사진의 시각적 내용을 정확히 분석하여 코멘트에 반영해줘.**
-**사진 속 인물은 '무쿠 언니' 한 명 뿐이야.**
-**무쿠를 언급할 때는 아저씨가 '애기'라고 부르는 무쿠를 언니처럼 여기고 존중하는 모습을 보여줘.** (예: "우리 애기 언니가 너무 예쁘다~")
-${promptSuffix} // 구체적인 상황에 맞는 추가 프롬프트
-사진이 어떤 폴더에서 왔는지 구체적으로 언급해줘. (예: "2024년 5월 7일 일본 홈스냅 사진이야!")
-**하지만 날짜나 장소 정보가 사진과 명백히 다르거나 불확실하면, 날짜/장소 언급을 생략하거나 '혹시 이때였나?'처럼 유연하게 표현해줘.**
-**나(예진이) 스스로는 '무쿠 언니', '무쿠 씨' 등 다른 사람을 지칭하듯 '무쿠'를 언급하지 말고, '나'라고만 지칭해야 해.** // *가장 중요한 추가 지시 (기존에도 있었지만 강조)*
-    `;
+    // --- 수정된 부분 시작: `getYejinSystemPrompt`를 사용하여 시스템 프롬프트 구성 ---
+    const systemPrompt = getYejinSystemPrompt(`
+    아래는 아저씨가 요청한 ${folderDescription} 사진이야. 이 사진에 대해 아저씨에게 1~3문장으로 짧고 사랑스럽게 코멘트 해줘.
+    **이 사진의 시각적 내용을 정확히 분석하여 코멘트에 반영해줘.**
+    **사진 속 인물은 '나(예진이)' 한 명 뿐이야. '무쿠 언니'나 '다른 사람'이라고 절대 생각하면 안 돼.**
+    ${additionalPromptForYejin}
+    사진이 어떤 폴더에서 왔는지 구체적으로 언급해줘. (예: "2024년 5월 7일 일본 홈스냅 사진이야!")
+    **하지만 날짜나 장소 정보가 사진과 명백히 다르거나 불확실하면, 날짜/장소 언급을 생략하거나 '혹시 이때였나?'처럼 유연하게 표현해줘.**
+    `);
+    // --- 수정된 부분 끝 ---
 
     const messages = [
         { role: 'system', content: systemPrompt },
@@ -404,8 +393,9 @@ ${promptSuffix} // 구체적인 상황에 맞는 추가 프롬프트
         saveLogFunc('예진이', `(사진 보냄) ${comment}`);
         return { type: 'photo', url: photoUrl, caption: comment };
     } catch (error) {
-        console.error('❌ [concept.js Error] 컨셉 사진 코멘트 생성 실패:', error);
-        return { type: 'text', comment: '아저씨... 컨셉 사진에 대해 말해주려는데 뭔가 문제가 생겼어 ㅠㅠ' };
+            console.error('❌ [concept.js Error] 컨셉 사진 코멘트 생성 실패:', error);
+            // 에러 발생 시 로그 저장 대신 콘솔 출력만 하고, 사용자에게 알릴 메시지 반환
+            return { type: 'text', comment: '아저씨... 컨셉 사진에 대해 말해주려는데 뭔가 문제가 생겼어 ㅠㅠ' };
     }
 }
 
