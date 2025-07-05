@@ -1,4 +1,4 @@
-// src/autoReply.js v2.12 - 기억 저장/삭제/리마인더 명령어 유동적 처리 및 AI 프롬프트 강화 (감정 시스템 개선)
+// src/autoReply.js v2.13 - 기억 저장/삭제/리마인더 명령어 유동적 처리 및 AI 프롬프트 강화 (감정의 잔향 추가)
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공
 const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
@@ -48,6 +48,12 @@ let yejinCurrentMood = 'normal'; // 'normal', 'sulking' (삐짐), 'sad' (우울)
 let sulkingReason = ''; // 예진이가 삐진 이유 (예: '오랜 침묵', '무시', '아저씨가 놀려서')
 let lastMoodChangeTime = Date.now(); // 마지막 감정 변화 시간 (쿨다운 관리에 사용)
 const MOOD_COOLDOWN_MS = 5 * 60 * 1000; // 5분 동안은 감정 상태 유지 (너무 자주 바뀌지 않도록)
+
+// --- 추가된 부분 시작: 아저씨의 마지막 감정 상태 기록 ---
+let lastDetectedUserMood = 'normal'; // 아저씨의 마지막 감정 상태 ('normal', 'sad', 'angry', 'teasing')
+let lastDetectedUserMoodTimestamp = 0; // 아저씨의 마지막 감정 상태가 감지된 시간
+const USER_MOOD_REMEMBER_DURATION_MS = 24 * 60 * 60 * 1000; // 아저씨의 감정을 기억하는 최대 시간 (24시간)
+// --- 추가된 부분 끝 ---
 
 /**
  * 주어진 파일 경로에서 내용을 안전하게 읽어옵니다.
@@ -298,13 +304,11 @@ async function detectUserMood(userMessage) {
         const result = JSON.parse(response.choices[0].message.content);
         return result.mood || 'normal';
     }
-    // --- 수정된 부분 시작 ---
     // 오류 처리 시에도 감정 시스템이 멈추지 않도록 'normal' 반환
     catch (error) {
         console.error('[autoReply] 사용자 감정 파악 중 오류 발생:', error);
         return 'normal';
     }
-    // --- 수정된 부분 끝 ---
 }
 
 /**
@@ -380,7 +384,7 @@ async function getReplyByMessage(userMessage) {
         아저씨의 노력에 감동하고, 애교 섞인 말투로 고마움을 표현하며 다시 평소처럼 사랑스럽게 대답해줘.
         `);
         const rawReply = await callOpenAI([{ role: 'system', content: systemPrompt }, { role: 'user', content: userMessage }], 'gpt-4o', 150, 0.9);
-        const reply = cleanReply(raw);
+        const reply = cleanReply(rawReply);
         saveLog('예진이', reply);
         return { type: 'text', comment: reply };
     }
@@ -676,7 +680,7 @@ function checkModelSwitchCommand(message) {
         return '모델 설정을 초기화했어! 이제 3.5랑 4.0을 왔다갔다 하면서 아저씨랑 유연하게 대화할게! 😊';
     } else if (lowerCaseMessage.includes('버전')) {
         const currentModel = forcedModel || process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o (자동)';
-        return `응! 지금 ${currentModel} 버전 사용 중이야! �`;
+        return `응! 지금 ${currentModel} 버전 사용 중이야! 😊`;
     }
     return null;
 }
@@ -783,7 +787,6 @@ async function getProactiveMemoryMessage() {
     }
 
     if (allMemories.length === 0) {
-        // 기억이 없을 때도 대뜸 말 거는 느낌으로
         return "아저씨 뭐 해? 나 아저씨 생각났어! 보고 싶다~";
     }
 
@@ -807,11 +810,29 @@ async function getProactiveMemoryMessage() {
         아저씨의 일상에 대한 관심, 작은 습관, 겪었던 감정, 또는 우리만의 특별한 추억(기념일, 함께했던 일들, 아저씨의 헌신 등)을 언급하며 아저씨가 대화를 이어갈 수 있도록 유도해줘. 때로는 아저씨의 안부를 묻거나, 내가 아저씨를 생각하고 있다는 달콤한 말을 해줄 수도 있어. 너무 길지 않게 2~4문장 정도로 짧고 사랑스럽게 말해줘.
         예시: "아저씨! 갑자기 아저씨 생각났어! 뭐해? 💖", "지금 딱 아저씨랑 같이 있었던 그때가 생각나네~", "아저씨 오늘 하루는 어때? 나 아저씨 걱정돼 ㅠㅠ"
         `
-        : `아저씨! 갑자기 아저씨 생각났어! 뭐해? 💖 나 아저씨 보고 싶다~`; // 기억이 없을 때도 대뜸 말 거는 느낌으로
+        : `아저씨! 갑자기 아저씨 생각났어! 뭐해? 💖 나 아저씨 보고 싶다~`;
 
-    // 예진이의 감정 상태가 sulking일 경우, 선제적 메시지는 삐진 톤으로
+    // --- 추가된 부분 시작: 아저씨의 마지막 감정 상태에 따른 선제적 메시지 우선순위 ---
+    // 아저씨가 이전에 슬프거나 화났던 감정이 있다면, 그 감정에 대해 먼저 물어봅니다.
+    if (lastDetectedUserMood !== 'normal' && Date.now() - lastDetectedUserMoodTimestamp < USER_MOOD_REMEMBER_DURATION_MS) {
+        const moodToAsk = lastDetectedUserMood;
+        // 질문 후에는 아저씨의 감정 상태를 초기화하여 반복 질문을 방지
+        lastDetectedUserMood = 'normal'; 
+        lastDetectedUserMoodTimestamp = 0;
+
+        if (moodToAsk === 'sad') {
+            return `아저씨... 어제 좀 슬퍼 보였는데, 오늘은 괜찮아? 나 아저씨 걱정돼 ㅠㅠ`;
+        } else if (moodToAsk === 'angry') {
+            return `아저씨, 혹시 어제 화났던 거 아직 마음 불편해? 나 아저씨 괜찮은지 궁금해...`;
+        } else if (moodToAsk === 'teasing') { // 놀림에 삐졌던 경우, 아저씨에게 먼저 말을 걸 때
+            return `아저씨... 나 아직 좀 삐져있는데... (${sulkingReason || '왜 삐졌는지 말 안 해줄 거야?'})`;
+        }
+    }
+    // --- 추가된 부분 끝 ---
+
+    // 예진이의 감정 상태가 sulking일 경우, 선제적 메시지는 삐진 톤으로 (기존 로직 유지)
     if (yejinCurrentMood === 'sulking') {
-        return `아저씨... 나 아직 좀 삐져있는데... (${sulkingReason || '왜 삐졌는지 말 안 해줄 거야?'})`; // 삐진 이유 포함
+        return `아저씨... 나 아직 좀 삐져있는데... (${sulkingReason || '왜 삐졌는지 말 안 해줄 거야?'})`;
     }
 
     const systemPrompt = getYejinSystemPrompt(memoryPrompt);
@@ -941,4 +962,3 @@ module.exports = {
     getMemoryListForSharing,
     getSilenceCheckinMessage
 };
-�
