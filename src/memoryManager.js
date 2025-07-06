@@ -1,4 +1,4 @@
-// src/memoryManager.js v1.21 - PostgreSQL 데이터베이스 연동 및 기억 처리 로직 강화 (최종 함수 순서 재배치)
+// src/memoryManager.js v1.20 - PostgreSQL 데이터베이스 연동 및 기억 처리 로직 강화 (초기 기억 마이그레이션 및 첫 대화 기억 기능 최종)
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈 (디렉토리 생성 등)
 const path = require('path'); // 경로 처리 모듈
@@ -92,7 +92,6 @@ async function saveMemoryToDb(memory) {
 
 /**
  * 초기 기억 파일들을 데이터베이스에 마이그레이션합니다.
- * 서버 시작 시 한 번만 실행되며, 이미 기억이 존재하면 건너뜥니다.
  */
 async function initializeFixedMemoriesToDb() {
     if (!pool) {
@@ -103,7 +102,7 @@ async function initializeFixedMemoriesToDb() {
     try {
         const { rowCount } = await pool.query('SELECT COUNT(*) FROM memories');
         if (rowCount > 0) {
-            console.log('[MemoryManager] 데이터베이스에 이미 기억이 존재합니다. 초기 기억 마이그레이션을 건너킵니다.');
+            console.log('[MemoryManager] 데이터베이스에 이미 기억이 존재합니다. 초기 기억 마이그레이션을 건너뜁니다.');
             return;
         }
 
@@ -123,7 +122,7 @@ async function initializeFixedMemoriesToDb() {
                 is_other_person_related: content.includes('준기오빠') // '무쿠 언니'는 이제 '나'로 변환되므로 직접 포함하지 않음
             });
         }
-        console.log(`[MemoryManager] fixedMemories.json (${fixedMemories.length}개) 마이그레이션 완료.`);
+        console.log(`[MemoryManager] ✅ fixedMemories.json (${fixedMemories.length}개) 마이그레이션 성공.`);
 
         // 2. love-history.json 로드 및 저장
         const loveHistoryPath = path.resolve(__dirname, '../memory/love-history.json');
@@ -146,7 +145,7 @@ async function initializeFixedMemoriesToDb() {
                 }
             }
         }
-        console.log(`[MemoryManager] love-history.json 마이그레이션 완료.`);
+        console.log(`[MemoryManager] ✅ love-history.json 마이그레이션 성공.`);
 
         // 3. 1.txt, 2.txt, 3.txt, fixed-messages.txt (대화 로그) 파싱 및 저장
         const chatLogs = [];
@@ -202,7 +201,8 @@ async function initializeFixedMemoriesToDb() {
         for (const log of chatLogs) {
             await saveMemoryToDb(log);
         }
-        console.log(`[MemoryManager] 대화 로그 파일 (${chatLogs.length}개) 마이그레이션 완료.`);
+        console.log(`[MemoryManager] ✅ 대화 로그 파일 (1.txt, 2.txt, 3.txt, fixed-messages.txt) (${chatLogs.length}개) 마이그레이션 성공.`);
+        console.log('[MemoryManager] 🎉 모든 초기 기억 데이터베이스 마이그레이션이 완료되었습니다!');
 
     } catch (error) {
         console.error(`[MemoryManager] 초기 기억 마이그레이션 실패: ${error.message}`);
@@ -293,8 +293,7 @@ async function saveUserSpecifiedMemory(userMessage, extractedContent, reminderTi
         const systemPrompt = getYejinSystemPrompt(`
         아래 아저씨 메시지에서 '기억해달라고 요청한 내용'에 대한 가장 적절한 카테고리를 JSON 형식으로 반환해줘.
         또한, 이 내용이 아저씨와의 관계와 직접 관련되면 is_love_related를 true로,
-        다른 사람(무쿠 언니 제외)과 관련된 이야기면 is_other_person_related를 true로,
-        그 외의 경우 false로 설정해줘.
+        다른 사람(무쿠 언니 제외)과 관련된 이야기면 is_other_person_related를 true로 설정해줘.
         오직 JSON 객체만 반환해야 해. 다른 텍스트는 절대 포함하지 마.
         형식: { "category": "카테고리명", "is_love_related": true/false, "is_other_person_related": true/false }
         카테고리 예시: "일상", "감정", "계획", "취미", "과거", "사람", "특별한 순간", "리마인더"
@@ -634,7 +633,7 @@ async function retrieveRelevantMemories(userQuery, limit = 3) {
                 is_love_related: mem.is_love_related,
                 is_other_person_related: mem.is_other_person_related
             }));
-            console.log(`[MemoryManager] 검색된 관련 기억: ${arelevantMemories.length}개`);
+            console.log(`[MemoryManager] 검색된 관련 기억: ${relevantMemories.length}개`);
             return relevantMemories;
         } else {
             console.warn(`[MemoryManager] 예상치 못한 기억 검색 결과 형식: ${rawResult}`);
@@ -662,7 +661,8 @@ async function getFirstInteractionMemory() {
                OR content ILIKE '%라인 앱 설치%'
                OR content ILIKE '%첫 라인 전화%'
                OR content ILIKE '%처음 만났%'
-            ORDER BY timestamp ASC LIMIT 1;
+               OR content ILIKE '%인스타 첫 대화%' -- 인스타 첫 대화 명시적 추가
+            ORDER BY timestamp ASC, id ASC LIMIT 1; -- timestamp가 같을 경우 id로도 정렬하여 일관성 유지
         `;
         const res = await pool.query(query);
         if (res.rows.length > 0) {
