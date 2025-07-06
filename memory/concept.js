@@ -190,6 +190,7 @@ async function getConceptPhotoReply(userMessage, saveLogFunc) {
     let folderDescription = '';
     let additionalPromptForYejinText = '';
     
+    // --- 수정된 부분 시작 ---
     // 키워드 맵을 길이 기준으로 내림차순 정렬하여 더 구체적인 키워드가 먼저 매칭되도록 합니다.
     // Object.keys(conceptKeywordMap)를 직접 순회하는 대신, 배열로 만들고 길이에 따라 내림차순 정렬
     const conceptKeywordMap = { // 이 객체는 이제 정렬을 위해 사용됩니다.
@@ -328,11 +329,11 @@ async function getConceptPhotoReply(userMessage, saveLogFunc) {
         if (!selectedFolder && (lowerCaseMessage.includes('컨셉사진') || lowerCaseMessage.includes('컨셉 사진'))) {
             // 날짜(최신순)로 정렬된 폴더 목록에서 랜덤 선택
             const folderKeysSortedByDate = Object.keys(CONCEPT_FOLDERS).sort((a, b) => {
-                // 폴더 이름에서 YYYY/MM월 DD일 형식의 날짜를 파싱하여 비교
+                // 폴더 이름에서 `YYYY/MM월 DD일` 형식의 날짜를 파싱하여 비교
                 const extractDate = (folderName) => {
                     const match = folderName.match(/(\d{4})\/(\d{1,2})월 (\d{1,2})일/);
                     if (match) {
-                        // moment.js를 사용하여 YYYY-MM-DD 형식으로 변환하여 비교
+                        // moment.js를 사용하여 `YYYY-MM-DD` 형식으로 변환하여 비교
                         return moment(`${match[1]}-${match[2]}-${match[3]}`, 'YYYY-M-D').valueOf();
                     }
                     return 0; // 날짜 파싱 실패 시 가장 오래된 것으로 간주
