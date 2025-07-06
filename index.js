@@ -1,4 +1,4 @@
-// ✅ index.js v1.10 - 웹훅 처리 개선 및 사진 기능 통합, 리마인더 스케줄러 추가 (최종 기억 통합 및 로그 상세화)
+// ✅ index.js v1.11 - 웹훅 처리 개선 및 사진 기능 통합, 리마인더 스케줄러 추가, 즉흥 사진 스케줄러 추가 (최종 기억 통합 및 로그 상세화)
 // 이 파일은 LINE 봇 서버의 메인 진입점입니다.
 // LINE 메시징 API와의 연동, Express 웹 서버 설정, 주기적인 작업 스케줄링 등을 담당합니다.
 
@@ -36,6 +36,9 @@ const memoryManager = require('./src/memoryManager');
 // omoide.js에서 사진 관련 응답 함수와 cleanReply를 불러옵니다.
 // 파일 구조 이미지에 따르면 omoide.js는 memory 폴더 바로 아래에 있습니다.
 const { getOmoideReply, cleanReply } = require('./memory/omoide'); // cleanReply도 함께 불러옵니다.
+
+// spontaneousPhotoManager.js에서 즉흥 사진 스케줄러 함수를 불러옵니다.
+const { startSpontaneousPhotoScheduler } = require('./src/spontaneousPhotoManager');
 
 // Express 애플리케이션을 생성합니다.
 const app = express();
@@ -539,4 +542,8 @@ app.listen(PORT, async () => {
     console.log(`무쿠 서버 스타트! 포트: ${PORT}`); // 서버 시작 로그
     await memoryManager.ensureMemoryDirectory(); // 기억 파일 저장 디렉토리 존재 확인 및 생성
     console.log('메모리 디렉토리 확인 및 준비 완료.'); // 디렉토리 준비 완료 로그
-});
+    
+    // 🎯 예진이 즉흥 사진 스케줄러 시작 - 보고싶을 때마다 사진 보내기! 💕
+    startSpontaneousPhotoScheduler(client, userId, saveLog); // 즉흥 사진 스케줄러 시작
+    console.log('💕 예진이가 보고싶을 때마다 사진 보낼 준비 완료!'); // 즉흥 사진 시스템 시작 로그
+}); 
