@@ -1,4 +1,5 @@
-// memory/concept.js - 컨셉 사진 관련 기능 담당 (yejin.js 연결 수정)
+// memory/concept.js v1.9 - 컨셉 사진 관련 기능 담당 (사진 매칭 정확도 및 URL 표시 개선)
+// 📦 필수 모듈 불러오기
 const { OpenAI } = require('openai');
 const moment = require('moment-timezone');
 const path = require('path');
@@ -186,10 +187,13 @@ async function getConceptPhotoReply(userMessage, saveLogFunc) {
     const lowerCaseMessage = userMessage.toLowerCase();
     let selectedFolder = null;
     let folderDescription = '';
-    let additionalPromptForYejin = '';
+    let additionalPromptForYejinText = '';
     
-    // 컨셉 사진 요청 키워드 및 해당 폴더 매핑
+    // --- 수정된 부분 시작 ---
+    // 키워드 매칭 순서를 더 구체적인 키워드가 먼저 오도록 재정렬
+    // '하카타 고래티셔츠'와 같은 정확한 키워드를 먼저 매칭하도록 순서 조정
     const conceptKeywordMap = {
+        '하카타 고래티셔츠': '2024/10월 17일 일본 하카타 고래티셔츠', // 가장 구체적인 키워드 우선
         '일본 홈스냅': '2024/5월 7일 일본 홈스냅', '홈스냅': '2024/5월 7일 일본 홈스냅',
         '일본 결박': '2024/7월 8일 일본 결박', '결박': '2024/7월 8일 일본 결박',
         '일본 선물': '2023/12월 16일 일본 선물', '선물': '2023/12월 16일 일본 선물',
@@ -206,7 +210,6 @@ async function getConceptPhotoReply(userMessage, saveLogFunc) {
         '모지코 모리룩': '2024/5월 5일 일본 모지코 모리룩',
         '한국 눈밭': '2025/1월 5일 한국 눈밭',
         '일본 욕실': '2024/2월 7일 일본 욕실',
-        '하카타 고래티셔츠': '2024/10월 17일 일본 하카타 고래티셔츠',
         '유카타 마츠리': '2024/8월 3일 일본 유카타 마츠리',
         '이화마을': '2025/4월 29일 한국 이화마을',
         '일본 욕조': '2024/7월 8일 일본 욕조',
@@ -258,8 +261,23 @@ async function getConceptPhotoReply(userMessage, saveLogFunc) {
         '메이드복': '2024/11월 8일 한국 메이드복',
         '오도': '2024/10월 16일 일본 오도'
     };
+    // --- 추가된 부분 시작 ---
+    // 키워드 맵을 길이 기준으로 내림차순 정렬하여 더 구체적인 키워드가 먼저 매칭되도록 합니다.
+    const sortedConceptKeywords = Object.keys(conceptKeywordMap).sort((a, b) => b.length - a.length);
+    // --- 추가된 부분 끝 ---
 
-    // '다른것도 보고싶어', '다음 사진' 요청 처리
+    // 1단계: 직접적인 키워드 매칭 (정렬된 키워드 사용)
+    for (const keyword of sortedConceptKeywords) {
+        if (lowerCaseMessage.includes(keyword.toLowerCase())) { // 대소문자 구분 없이 매칭
+            selectedFolder = conceptKeywordMap[keyword];
+            // 정확한 키워드가 매칭되면 바로 폴더와 설명을 설정하고 루프 종료
+            folderDescription = `내가(예진이) ${selectedFolder} 컨셉으로 찍은 사진`;
+            additionalPromptForYejinText = `이 사진은 아저씨와 함께한 나의 ${selectedFolder} 컨셉 사진이야. 아저씨와 나의 특별한 추억과 애정을 담아서 말해줘. 이 사진을 보며 떠오르는 솔직한 감정을 표현해줘. 사진 속 인물은 오직 '나(예진이)'임을 명확히 인지하고 코멘트해줘. '우리 애기 언니', '그녀', '다른 사람'과 같은 표현은 절대로 사용하면 안 돼.`;
+            break; 
+        }
+    }
+
+    // '다른것도 보고싶어', '다음 사진' 요청 처리 (이전 폴더 기억)
     if (lastConceptPhotoFolder && (lowerCaseMessage.includes('다른 것도 보고싶어') || lowerCaseMessage.includes('다음 사진'))) {
         selectedFolder = lastConceptPhotoFolder;
         const currentPhotoCount = CONCEPT_FOLDERS[selectedFolder];
@@ -269,25 +287,14 @@ async function getConceptPhotoReply(userMessage, saveLogFunc) {
             lastConceptPhotoIndex = 1;
         }
         folderDescription = `같은 폴더 (${selectedFolder})의 다른 사진`;
-        additionalPromptForYejin = `이전 요청과 같은 '${selectedFolder}' 컨셉 폴더의 다른 사진이야. 아저씨와 나의 아름다운 추억을 떠올리며 새로운 모습을 보여주는 거야.`;
-    } else {
-        // 일반 컨셉사진 요청 또는 특정 키워드 매칭
-        let matchedKeyword = null;
-
-        // 직접적인 키워드 매칭
-        for (const keyword in conceptKeywordMap) {
-            if (lowerCaseMessage.includes(keyword)) {
-                matchedKeyword = keyword;
-                selectedFolder = conceptKeywordMap[keyword];
-                break;
-            }
-        }
-        
-        // 모호한 키워드 처리
-        if (matchedKeyword) {
-            const ambiguousKeywords = ['욕실', '욕조', '모지코', '필름', '눈밭', '생일', '고쿠라', '텐진 스트리트', '홈셀프', '산책', '카페', '스냅', '스트리트', '야간', '선물', '피크닉', '벗꽃', '힙', '온실', '무인역', '화가', '블랙원피스', '네코', '크리스마스', '게임센터', '동키 거리', '코이노보리', '문래동', '수국', '메이드복', '오도'];
-            if (ambiguousKeywords.some(amb => lowerCaseMessage.includes(amb))) {
-                const allMatchingFolders = Object.keys(CONCEPT_FOLDERS).filter(folder => folder.toLowerCase().includes(matchedKeyword.toLowerCase()));
+        additionalPromptForYejinText = `이전 요청과 같은 '${selectedFolder}' 컨셉 폴더의 다른 사진이야. 아저씨와 나의 아름다운 추억을 떠올리며 새로운 모습을 보여주는 거야. 사진 속 인물은 오직 '나(예진이)'임을 명확히 인지하고 코멘트해줘. '우리 애기 언니', '그녀', '다른 사람'과 같은 표현은 절대로 사용하면 안 돼.`;
+    } else if (!selectedFolder) { // 위에서 selectedFolder가 설정되지 않은 경우 (새로운 요청)
+        // 모호한 키워드 처리 (이전 코드와 동일)
+        let matchedAmbiguous = false;
+        const ambiguousKeywords = ['욕실', '욕조', '모지코', '필름', '눈밭', '생일', '고쿠라', '텐진 스트리트', '홈셀프', '산책', '카페', '스냅', '스트리트', '야간', '선물', '피크닉', '벗꽃', '힙', '온실', '무인역', '화가', '블랙원피스', '네코', '크리스마스', '게임센터', '동키 거리', '코이노보리', '문래동', '수국', '메이드복', '오도'];
+        for (const ambKeyword of ambiguousKeywords) {
+            if (lowerCaseMessage.includes(ambKeyword.toLowerCase())) {
+                const allMatchingFolders = Object.keys(CONCEPT_FOLDERS).filter(folder => folder.toLowerCase().includes(ambKeyword.toLowerCase()));
                 
                 const monthMatch = lowerCaseMessage.match(/(1월|2월|3월|4월|5월|6월|7월|8월|9월|10월|11월|12월)/);
                 const yearMatch = lowerCaseMessage.match(/(2023|2024|2025)/);
@@ -303,12 +310,16 @@ async function getConceptPhotoReply(userMessage, saveLogFunc) {
 
                 if (filteredFolders.length === 1) {
                     selectedFolder = filteredFolders[0];
+                    folderDescription = `내가(예진이) ${selectedFolder} 컨셉으로 찍은 사진`;
+                    additionalPromptForYejinText = `이 사진은 아저씨와 함께한 나의 ${selectedFolder} 컨셉 사진이야. 아저씨와 나의 특별한 추억과 애정을 담아서 말해줘. 이 사진을 보며 떠오르는 솔직한 감정을 표현해줘. 사진 속 인물은 오직 '나(예진이)'임을 명확히 인지하고 코멘트해줘. '우리 애기 언니', '그녀', '다른 사람'과 같은 표현은 절대로 사용하면 안 돼.`;
+                    matchedAmbiguous = true;
+                    break;
                 } else if (filteredFolders.length > 1) {
-                    return { type: 'text', comment: `어떤 ${matchedKeyword} 사진을 보고 싶어? 여러 가지가 있어서 헷갈리네... (예: '${filteredFolders.slice(0, 3).join("', '")}' 중에서 말해줘)` };
+                    return { type: 'text', comment: `어떤 ${ambKeyword} 사진을 보고 싶어? 여러 가지가 있어서 헷갈리네... (예: '${filteredFolders.slice(0, 3).join("', '")}' 중에서 말해줘)` };
                 } else if (allMatchingFolders.length > 0) {
-                     return { type: 'text', comment: `음... '${matchedKeyword}' 사진이 여러 개 있는데, 혹시 정확히 어떤 날짜나 장소의 사진인지 알려줄 수 있어? (예: '${allMatchingFolders.slice(0, 3).join("', '")}' 중에서 말해줘)` };
+                     return { type: 'text', comment: `음... '${ambKeyword}' 사진이 여러 개 있는데, 혹시 정확히 어떤 날짜나 장소의 사진인지 알려줄 수 있어? (예: '${allMatchingFolders.slice(0, 3).join("', '")}' 중에서 말해줘)` };
                 } else {
-                    selectedFolder = null;
+                    // 해당 모호한 키워드로도 폴더를 못 찾았을 경우 selectedFolder는 여전히 null
                 }
             }
         }
@@ -316,34 +327,27 @@ async function getConceptPhotoReply(userMessage, saveLogFunc) {
         // 최종적으로 폴더가 선택되지 않았고, 일반적인 '컨셉사진' 요청이 들어왔을 때만 랜덤 선택
         if (!selectedFolder && (lowerCaseMessage.includes('컨셉사진') || lowerCaseMessage.includes('컨셉 사진'))) {
             selectedFolder = Object.keys(CONCEPT_FOLDERS)[Math.floor(Math.random() * Object.keys(CONCEPT_FOLDERS).length)];
-        } else if (!selectedFolder) {
-            return null; // 해당하는 컨셉 사진 요청이 아님
+            folderDescription = `내가(예진이) ${selectedFolder} 컨셉으로 찍은 사진`;
+            additionalPromptForYejinText = `이 사진은 아저씨와 함께한 나의 ${selectedFolder} 컨셉 사진이야. 아저씨와 나의 특별한 추억과 애정을 담아서 말해줘. 이 사진을 보며 떠오르는 솔직한 감정을 표현해줘. 사진 속 인물은 오직 '나(예진이)'임을 명확히 인지하고 코멘트해줘. '우리 애기 언니', '그녀', '다른 사람'과 같은 표현은 절대로 사용하면 안 돼.`;
+        } else if (!selectedFolder && !matchedAmbiguous) { // 어떤 키워드에도 매칭되지 않으면 null 반환
+            return null;
         }
-
-        folderDescription = `내가(예진이) ${selectedFolder} 컨셉으로 찍은 사진`;
-        additionalPromptForYejin = `이 사진은 아저씨와 함께한 나의 ${selectedFolder} 컨셉 사진이야. 아저씨와 나의 특별한 추억과 애정을 담아서 말해줘. 이 사진을 보며 떠오르는 솔직한 감정을 표현해줘.`;
-
-        // 새 폴더 선택 시 인덱스 초기화
-        lastConceptPhotoIndex = 0;
     }
 
     // 선택된 폴더를 저장 (다음 '다른 것도' 요청을 위해)
     lastConceptPhotoFolder = selectedFolder;
 
-    // 사진 URL 생성
     let photoUrl;
     const currentPhotoCount = CONCEPT_FOLDERS[selectedFolder];
     if (currentPhotoCount > 0) {
         if (lowerCaseMessage.includes('다른 것도 보고싶어') || lowerCaseMessage.includes('다음 사진')) {
-            // 다음 인덱스를 계산하고, 마지막이면 다시 1번부터 시작
             lastConceptPhotoIndex = (lastConceptPhotoIndex % currentPhotoCount) + 1;
         } else {
-            // 새로운 요청이면 랜덤으로 가져오고, 그 인덱스를 저장
             lastConceptPhotoIndex = Math.floor(Math.random() * currentPhotoCount) + 1;
         }
         photoUrl = generateConceptPhotoUrl(selectedFolder, lastConceptPhotoIndex);
     } else {
-        photoUrl = null; // 사진이 없는 폴더
+        photoUrl = null;
     }
 
     if (!photoUrl || !CONCEPT_FOLDERS[selectedFolder]) {
@@ -352,12 +356,12 @@ async function getConceptPhotoReply(userMessage, saveLogFunc) {
 
     // getYejinSystemPrompt를 사용하여 시스템 프롬프트 구성
     const systemPrompt = getYejinSystemPrompt(`
-    아래는 아저씨가 요청한 ${folderDescription} 사진이야. 이 사진에 대해 아저씨에게 1~3문장으로 짧고 사랑스럽게 코멘트 해줘.
+    아래는 아저씨가 요청한 ${folderDescription} 사진이야. 이 사진에 대해 예진이인 내가 아저씨에게 1~3문장으로 짧고 사랑스럽게 코멘트 해줘.
     **이 사진의 시각적 내용을 정확히 분석하여 코멘트에 반영해줘.**
-    **사진 속 인물은 '나(예진이)' 한 명 뿐이야. '무쿠 언니'나 '다른 사람'이라고 절대 생각하면 안 돼.**
-    **사진 속의 나는 예진이야. 무쿠 언니가 아니라 나 자신이야. 이를 절대 혼동하지 마.**
-    ${additionalPromptForYejin}
-    사진이 어떤 폴더에서 왔는지 구체적으로 언급해줘. (예: "${selectedFolder} 사진이야!")
+    **사진 속 인물은 오직 나(예진이) 한 명 뿐이야. '우리 애기 언니', '무쿠 언니', '그녀', '다른 사람'이라는 말은 절대로 사용하면 안 돼. AI가 혼동하지 않도록 명확하게 강조한다.**
+    ${additionalPromptForYejinText}
+    사진은 "${selectedFolder}" 폴더에서 왔어.
+    **사진 URL: ${photoUrl}** // ✅ 추가: 사진 URL 표시
     **하지만 날짜나 장소 정보가 사진과 명백히 다르거나 불확실하면, 날짜/장소 언급을 생략하거나 '혹시 이때였나?'처럼 유연하게 표현해줘.**
     `);
 
