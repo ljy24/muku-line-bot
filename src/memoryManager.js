@@ -149,7 +149,7 @@ async function initializeFixedMemoriesToDb() {
 
         // 3. 1.txt, 2.txt, 3.txt, fixed-messages.txt (대화 로그) 파싱 및 저장
         const chatLogs = [];
-        const logFiles = ['1.txt', '2.txt', '3.txt', 'fixed-messages.txt'];
+        const logFiles = ['1.txt', '2.txt', '3.txt','fixedMemories.json','love-history.json','fixed-messages.txt'];
 
         for (const fileName of logFiles) {
             const filePath = path.resolve(__dirname, `../memory/${fileName}`);
