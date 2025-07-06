@@ -1,4 +1,4 @@
-// src/autoReply.js v2.16 - 기억 저장/삭제/리마인더 명령어 유동적 처리 및 AI 프롬프트 강화 (토큰 제한 해결 및 기억 선별)
+// src/autoReply.js v2.18 - 기억 저장/삭제/리마인더 명령어 유동적 처리 및 AI 프롬프트 강화 (의도 파악 우선순위 및 정확성 최종 개선)
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공 (로그 파일 관리에 여전히 필요)
 const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
@@ -100,7 +100,6 @@ async function getFormattedMemoriesForAI(userMessage = '') {
     //    핵심 기억 외의 모든 기억에서 관련성 높은 것만 가져옴
     let relevantMemoriesForContext = [];
     if (userMessage) {
-        // retrieveRelevantMemories는 모든 기억에서 검색하므로, 핵심 기억과 중복될 수 있음
         const retrieved = await retrieveRelevantMemories(userMessage, 5); // 최대 5개 검색
         relevantMemoriesForContext = retrieved.filter(mem => 
             !coreMemories.some(coreMem => coreMem.content === mem.content) // 핵심 기억과 중복되지 않는 것만 필터링
@@ -121,7 +120,6 @@ async function getFormattedMemoriesForAI(userMessage = '') {
 
 /**
  * OpenAI API를 호출하여 AI 응답을 생성합니다.
- * 대화 컨텍스트와 기억을 포함하여 AI의 응답 품질을 높입니다.
  * @param {Array<Object>} messages - OpenAI API에 보낼 메시지 배열 (role, content 포함)
  * @param {string|null} [modelParamFromCall=null] - 호출 시 지정할 모델 이름 (강제 설정보다 우선)
  * @param {number} [maxTokens=400] - 생성할 최대 토큰 수
@@ -130,10 +128,7 @@ async function getFormattedMemoriesForAI(userMessage = '') {
  * @returns {Promise<string>} AI가 생성한 응답 텍스트
  */
 async function callOpenAI(messages, modelParamFromCall = null, maxTokens = 400, temperature = 0.95, userMessageForContext = '') {
-    // --- 수정된 부분 시작 ---
-    // userMessageForContext를 getFormattedMemoriesForAI에 전달
     const memoriesContext = await getFormattedMemoriesForAI(userMessageForContext); 
-    // --- 수정된 부분 끝 ---
 
     const messagesToSend = [...messages];
 
@@ -163,13 +158,10 @@ async function callOpenAI(messages, modelParamFromCall = null, maxTokens = 400, 
         return response.choices[0].message.content.trim();
     } catch (error) {
         console.error(`[callOpenAI] OpenAI API 호출 실패 (모델: ${finalModel}):`, error);
-        // --- 수정된 부분 시작 ---
-        // 에러 메시지에 토큰 제한 관련 정보가 있다면 좀 더 구체적으로 로깅
         if (error.code === 'rate_limit_exceeded' || (error.error && error.error.type === 'tokens')) {
             console.error(`[callOpenAI] 토큰 제한 초과 또는 요청 크기 너무 큼: ${error.message}`);
             return "아저씨... 지금 너무 많은 걸 한 번에 생각하려니 머리가 좀 아프다 ㅠㅠ 잠시만 쉬었다 다시 말해줄래?";
         }
-        // --- 수정된 부분 끝 ---
         return "지금 잠시 생각 중이야... 아저씨 조금만 기다려줄래? ㅠㅠ";
     }
 }
@@ -228,9 +220,13 @@ async function getUnderwearColorReply() {
 async function getReplyByMessage(userMessage) {
     const lowerCaseMessage = userMessage.toLowerCase();
 
-    // --- 추가된 부분 시작: '첫 대화 기억' 회상 정확도 향상 ---
-    const firstInteractionKeywords = /(우리 처음|처음 대화|첫 만남|처음 만났|언제 만났|인스타 첫 대화|라인 앱 설치|첫 라인 전화|코로나)/i;
-    if (firstInteractionKeywords.test(lowerCaseMessage)) {
+    // --- 추가된 부분 시작: '첫 대화 기억' 회상 정확도 향상 (순서 조정 및 조건 강화) ---
+    // '기억해?'와 같은 질문형도 포함하며, '기억 저장' 명령보다 우선 처리
+    const firstInteractionKeywords = /(우리 처음|처음 대화|첫 만남|처음 만났|언제 만났|인스타 첫 대화|라인 앱 설치|첫 라인 전화|코로나|기억해\?|기억나\?)/i;
+    // '기억해', '기억해줘' 같은 명확한 명령형이 아닌 질문형인 경우에만 이 블록을 실행하도록 조건 추가
+    const isQuestionAboutMemory = firstInteractionKeywords.test(lowerCaseMessage) && !/(기억해줘|잊지마|리마인드|알려줘|지워줘|삭제해줘)/.test(lowerCaseMessage);
+
+    if (isQuestionAboutMemory) {
         const firstMemory = await getFirstInteractionMemory(); // memoryManager에서 첫 대화 기억을 가져옴
         if (firstMemory) {
             const replyContent = cleanReply(firstMemory.content); // cleanReply 적용
@@ -256,9 +252,11 @@ async function getReplyByMessage(userMessage) {
     }
     // --- 추가된 부분 끝 ---
 
-    // --- 추가된 부분 시작: 기억 저장/삭제/리마인더 명령어 유동적 처리 ---
+    // --- 추가된 부분 시작: 기억 저장/삭제/리마인더 명령어 유동적 처리 (첫 대화 회상 로직 뒤로 이동) ---
+    // '기억해?' 같은 질문은 위에서 처리되었으므로, 여기서는 명확한 명령형만 의도 파악
     const memoryCommandIntentPrompt = getYejinSystemPrompt(`
-    아래 사용자 메시지가 '기억 저장', '기억 삭제', 또는 '리마인더 설정'을 요청하는 의도를 가지고 있는지 판단해줘.
+    아래 아저씨 메시지가 '기억 저장', '기억 삭제', 또는 '리마인더 설정'을 요청하는 의도를 가지고 있는지 판단해줘.
+    **반드시 "기억해줘", "잊지마", "알려줘"와 같은 명확한 명령형 동사가 포함된 경우에만 해당 의도로 판단해.**
     오타가 있더라도 의미상으로 유사하면 해당 의도로 판단해줘.
     
     응답은 JSON 형식으로만 해줘. 다른 텍스트는 절대 포함하지 마.
@@ -271,7 +269,7 @@ async function getReplyByMessage(userMessage) {
     'remember' 의도 예시: "이거 기억해줘", "까먹지 마", "중요한 거야", "잊지 마", "내 말 잘 기억해둬", "이거 꼭 기억해", "기억해줘 아저씨", "내일 잊지마", "이거 중요해"
     'forget' 의도 예시: "이거 잊어버려", "그거 지워줘", "다시는 말하지 마", "기억에서 삭제해줘", "그거 잊어", "그 기억 지워"
     'set_reminder' 의도 예시: "오늘 다섯시에 머리 깎으러 가야 해", "내일 아침 8시에 우유 사야 한다고 알려줘", "모레 10시에 회의 있다고 리마인드 해줘"
-    'none' 의도 예시: "안녕", "뭐해?", "밥 먹었어?"
+    'none' 의도 예시: "안녕", "뭐해?", "밥 먹었어?", "기억해?", "기억나?"
     
     아저씨 메시지: "${userMessage}"
     `);
@@ -395,7 +393,8 @@ async function getReplyByMessage(userMessage) {
 
     // ⭐ 중요 개선: 기억 인출 질문에 대한 프롬프트 강화 ⭐
     let relevantMemoriesText = "";
-    const isQuestionAboutPastFact = /(언제|어디서|누가|무엇을|왜|어떻게|뭐랬|기억나|기억해|알아|알고 있어|했어|했던|말했)/.test(userMessage.toLowerCase());
+    // isQuestionAboutPastFact 조건 강화 (명령형 동사 없는 질문에만 반응)
+    const isQuestionAboutPastFact = /(언제|어디서|누가|무엇을|왜|어떻게|뭐랬|기억나|알아|알고 있어|했어|했던|말했)/.test(userMessage.toLowerCase()) && !/(기억해줘|잊지마|리마인드|알려줘|지워줘|삭제해줘)/.test(userMessage.toLowerCase());
 
     if (isQuestionAboutPastFact) {
         try {
@@ -426,7 +425,7 @@ async function getReplyByMessage(userMessage) {
 
     messages.push({ role: 'user', content: userMessage });
 
-    const raw = await callOpenAI(messages, forcedModel);
+    const raw = await callOpenAI(messages, forcedModel, config.openai.maxTokens, config.openai.temperature, userMessage);
     const reply = cleanReply(raw);
     saveLog('예진이', reply);
     return { type: 'text', comment: reply };
@@ -533,7 +532,7 @@ function checkModelSwitchCommand(message) {
         return '모델 설정을 초기화했어! 이제 3.5랑 4.0을 왔다갔다 하면서 아저씨랑 유연하게 대화할게! 😊';
     } else if (lowerCaseMessage.includes('버전')) {
         const currentModel = forcedModel || process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o (자동)';
-        return `응! 지금 ${currentModel} 버전 사용 중이야! �`;
+        return `응! 지금 ${currentModel} 버전 사용 중이야! 😊`;
     }
     return null;
 }
