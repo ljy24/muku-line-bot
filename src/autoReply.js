@@ -1,4 +1,4 @@
-// src/autoReply.js v2.18 - 기억 저장/삭제/리마인더 명령어 유동적 처리 및 AI 프롬프트 강화 (의도 파악 우선순위 및 정확성 최종 개선)
+// src/autoReply.js v2.16 - 기억 저장/삭제/리마인더 명령어 유동적 처리 및 AI 프롬프트 강화 (토큰 제한 해결 및 기억 선별)
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공 (로그 파일 관리에 여전히 필요)
 const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
@@ -532,7 +532,7 @@ function checkModelSwitchCommand(message) {
         return '모델 설정을 초기화했어! 이제 3.5랑 4.0을 왔다갔다 하면서 아저씨랑 유연하게 대화할게! 😊';
     } else if (lowerCaseMessage.includes('버전')) {
         const currentModel = forcedModel || process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o (자동)';
-        return `응! 지금 ${currentModel} 버전 사용 중이야! 😊`;
+        return `응! 지금 ${currentModel} 버전 사용 중이야! �`;
     }
     return null;
 }
