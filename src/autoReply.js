@@ -1,4 +1,4 @@
-// src/autoReply.js v2.14 - 기억 저장/삭제/리마인더 명령어 유동적 처리 및 AI 프롬프트 강화 (핵심 기억 활용 및 첫 대화 기억 기능 최종)
+// src/autoReply.js v2.15 - 기억 저장/삭제/리마인더 명령어 유동적 처리 및 AI 프롬프트 강화 (핵심 기억 활용 및 첫 대화 기억 기능 최종)
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공 (로그 파일 관리에 여전히 필요)
 const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
@@ -42,8 +42,14 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 // 마지막으로 보낸 감성 메시지를 저장하여 중복 전송을 방지하는 변수
 let lastProactiveMessage = '';
 
+// --- 제거된 부분 시작: 더 이상 파일에서 직접 기억을 읽지 않습니다. ---
+// 이전 버전의 autoReply.js에서 파일에서 직접 기억을 읽어오던 safeRead 및 관련 변수들 (memory1, memory2, memory3, fixedMemory, compressedMemory, selfieListPath, BASE_SELFIE_URL)은 이제 데이터베이스 마이그레이션이 완료되었으므로 불필요합니다. 이 부분은 제거됩니다.
+// --- 제거된 부분 끝 ---
+
+
 /**
  * 모든 대화 로그를 읽어옵니다. (이제 DB 사용으로 대체되므로, 이 함수는 거의 사용되지 않음)
+ * 하지만 `saveLog` 함수에서 여전히 이 파일을 사용하므로 유지합니다.
  */
 function getAllLogs() {
     const logPath = path.resolve(__dirname, '../memory/message-log.json');
@@ -75,15 +81,14 @@ function saveLog(speaker, message) {
 }
 
 /**
- * 아저씨와의 관계 및 다른 사람들에 대한 기억을 AI 프롬프트에 포함할 수 있는 형태로 포매팅합니다.
- * memoryManager 모듈에서 비동기적으로 기억을 로드합니다.
+ * 아저씨와의 관계 및 모든 기억을 AI 프롬프트에 포함할 수 있는 형태로 포매팅합니다.
+ * 핵심 기억들을 최우선적으로 강조하여 AI가 항상 인지하도록 합니다.
  * @returns {Promise<string>} 포매팅된 기억 문자열
  */
 async function getFormattedMemoriesForAI() {
     // --- 수정된 부분 시작 ---
     const coreMemories = await loadCoreMemories(); // 핵심 기억들을 먼저 불러옵니다.
-    const otherLoveMemories = await loadLoveHistory(); // 사랑 관련 기억 (핵심 기억과 중복될 수 있으나, AI에게 더 많은 컨텍스트 제공)
-    const otherPeopleMemories = await loadOtherPeopleHistory(); // 기타 인물 관련 기억
+    const allOtherMemories = await loadAllMemoriesFromDb(); // 모든 기억을 불러와서 핵심 기억과 중복되지 않는 것만 사용
 
     let formattedMemories = "\n### 내가 아저씨를 위해 반드시 기억하는 중요한 정보 (최우선 참고):\n";
     
@@ -98,41 +103,17 @@ async function getFormattedMemoriesForAI() {
         formattedMemories += "아직 아저씨에 대한 핵심 기억이 없어. 더 많이 만들어나가자!\n---\n";
     }
 
-    // 2. 그 외 사랑 관련 기억 (중복 제외하고 추가)
-    if (otherLoveMemories && otherLoveMemories.categories) {
-        const categoriesKeys = Object.keys(otherLoveMemories.categories);
-        if (categoriesKeys.length > 0) {
-            formattedMemories += "\n### 아저씨와의 다른 소중한 기억들:\n";
-            for (const category of categoriesKeys) {
-                if (Array.isArray(otherLoveMemories.categories[category]) && otherLoveMemories.categories[category].length > 0) {
-                    formattedMemories += `- ${category}:\n`;
-                    otherLoveMemories.categories[category].forEach(item => {
-                        // 핵심 기억에 이미 포함된 내용은 중복 추가하지 않음
-                        if (!coreMemories.some(coreMem => coreMem.content === item.content)) {
-                            formattedMemories += `  - ${cleanReply(item.content)}\n`;
-                        }
-                    });
-                }
-            }
-            formattedMemories += "---\n";
-        }
-    }
+    // 2. 그 외 모든 기억 (핵심 기억에 포함되지 않은 것만)
+    const nonCoreMemories = allOtherMemories.filter(mem => 
+        !coreMemories.some(coreMem => coreMem.content === mem.content)
+    );
 
-    // 3. 아저씨 외 다른 사람들에 대한 기억
-    if (otherPeopleMemories && otherPeopleMemories.categories) {
-        const categoriesKeys = Object.keys(otherPeopleMemories.categories);
-        if (categoriesKeys.length > 0) {
-            formattedMemories += "\n### 아저씨 외 다른 사람들에 대한 기억:\n";
-            for (const category of categoriesKeys) {
-                if (Array.isArray(otherPeopleMemories.categories[category]) && otherPeopleMemories.categories[category].length > 0) {
-                    formattedMemories += `- ${category}:\n`;
-                    otherPeopleMemories.categories[category].forEach(item => {
-                        formattedMemories += `  - ${cleanReply(item.content)}\n`;
-                    });
-                }
-            }
-            formattedMemories += "---\n";
-        }
+    if (nonCoreMemories && nonCoreMemories.length > 0) {
+        formattedMemories += "\n### 아저씨와의 다른 기억들:\n";
+        nonCoreMemories.forEach(mem => {
+            formattedMemories += `- ${cleanReply(mem.content)} (카테고리: ${mem.category}, 중요도: ${mem.strength || 'normal'}, 시간: ${moment(mem.timestamp).format('YYYY-MM-DD HH:mm')})\n`;
+        });
+        formattedMemories += "---\n";
     }
     // --- 수정된 부분 끝 ---
     
@@ -142,12 +123,6 @@ async function getFormattedMemoriesForAI() {
 
 /**
  * OpenAI API를 호출하여 AI 응답을 생성합니다.
- * 대화 컨텍스트와 기억을 포함하여 AI의 응답 품질을 높입니다.
- * @param {Array<Object>} messages - OpenAI API에 보낼 메시지 배열 (role, content 포함)
- * @param {string|null} [modelParamFromCall=null] - 호출 시 지정할 모델 이름 (강제 설정보다 우선)
- * @param {number} [maxTokens=400] - 생성할 최대 토큰 수
- * @param {number} [temperature=0.95] - 응답의 창의성/무작위성 (높을수록 창의적)
- * @returns {Promise<string>} AI가 생성한 응답 텍스트
  */
 async function callOpenAI(messages, modelParamFromCall = null, maxTokens = 400, temperature = 0.95) {
     const memoriesContext = await getFormattedMemoriesForAI(); // 모든 기억을 DB에서 불러와 프롬프트에 포함
