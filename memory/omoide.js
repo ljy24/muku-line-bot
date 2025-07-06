@@ -15,6 +15,7 @@ const BASE_PHOTO_URL = 'https://photo.de-ji.net/photo/';
 
 // 아저씨가 제공해주신 폴더별 사진 개수 데이터
 const PHOTO_FOLDERS = {
+    'couple': 292, // 'couple' 폴더 추가 (autoReply.js에서 사용)
     '추억 23_12 일본': 261,
     '추억 23_12_15 애기 필름카메라': 61,
     '추억 24_01 한국 신년파티': 42,
