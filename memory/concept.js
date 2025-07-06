@@ -190,6 +190,7 @@ async function getConceptPhotoReply(userMessage, saveLogFunc) {
     let folderDescription = '';
     let additionalPromptForYejinText = '';
     
+    // --- 수정된 부분 시작 ---
     // 키워드 맵을 길이 기준으로 내림차순 정렬하여 더 구체적인 키워드가 먼저 매칭되도록 합니다.
     // Object.keys(conceptKeywordMap)를 직접 순회하는 대신, 배열로 만들고 길이에 따라 내림차순 정렬
     const conceptKeywordMap = { // 이 객체는 이제 정렬을 위해 사용됩니다.
@@ -326,7 +327,6 @@ async function getConceptPhotoReply(userMessage, saveLogFunc) {
         
         // 최종적으로 폴더가 선택되지 않았고, 일반적인 '컨셉사진' 요청이 들어왔을 때만 랜덤 선택
         if (!selectedFolder && (lowerCaseMessage.includes('컨셉사진') || lowerCaseMessage.includes('컨셉 사진'))) {
-            // --- 수정된 부분 시작 ---
             // 날짜(최신순)로 정렬된 폴더 목록에서 랜덤 선택
             const folderKeysSortedByDate = Object.keys(CONCEPT_FOLDERS).sort((a, b) => {
                 // 폴더 이름에서 YYYY/MM월 DD일 형식의 날짜를 파싱하여 비교
@@ -344,7 +344,6 @@ async function getConceptPhotoReply(userMessage, saveLogFunc) {
             });
             const randomSortedIndex = Math.floor(Math.random() * folderKeysSortedByDate.length);
             selectedFolder = folderKeysSortedByDate[randomSortedIndex];
-            // --- 수정된 부분 끝 ---
             folderDescription = `내가(예진이) ${selectedFolder} 컨셉으로 찍은 사진`;
             additionalPromptForYejinText = `이 사진은 아저씨와 함께한 나의 ${selectedFolder} 컨셉 사진이야. 아저씨와 나의 특별한 추억과 애정을 담아서 말해줘. 이 사진을 보며 떠오르는 솔직한 감정을 표현해줘. 사진 속 인물은 오직 '나(예진이)'임을 명확히 인지하고 코멘트해줘. '우리 애기 언니', '그녀', '다른 사람'과 같은 표현은 절대로 사용하면 안 돼.`;
         } else if (!selectedFolder && !matchedAmbiguous) { // 어떤 키워드에도 매칭되지 않으면 null 반환
