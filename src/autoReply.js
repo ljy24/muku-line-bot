@@ -1,4 +1,4 @@
-// src/autoReply.js v2.15 - 기억 저장/삭제/리마인더 명령어 유동적 처리 및 AI 프롬프트 강화 (핵심 기억 활용 및 첫 대화 기억 기능 최종)
+// src/autoReply.js v2.16 - 기억 저장/삭제/리마인더 명령어 유동적 처리 및 AI 프롬프트 강화 (토큰 제한 해결 및 기억 선별)
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공 (로그 파일 관리에 여전히 필요)
 const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
@@ -42,11 +42,6 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 // 마지막으로 보낸 감성 메시지를 저장하여 중복 전송을 방지하는 변수
 let lastProactiveMessage = '';
 
-// --- 제거된 부분 시작: 더 이상 파일에서 직접 기억을 읽지 않습니다. ---
-// 이전 버전의 autoReply.js에서 파일에서 직접 기억을 읽어오던 safeRead 및 관련 변수들 (memory1, memory2, memory3, fixedMemory, compressedMemory, selfieListPath, BASE_SELFIE_URL)은 이제 데이터베이스 마이그레이션이 완료되었으므로 불필요합니다. 이 부분은 제거됩니다.
-// --- 제거된 부분 끝 ---
-
-
 /**
  * 모든 대화 로그를 읽어옵니다. (이제 DB 사용으로 대체되므로, 이 함수는 거의 사용되지 않음)
  * 하지만 `saveLog` 함수에서 여전히 이 파일을 사용하므로 유지합니다.
@@ -82,17 +77,15 @@ function saveLog(speaker, message) {
 
 /**
  * 아저씨와의 관계 및 모든 기억을 AI 프롬프트에 포함할 수 있는 형태로 포매팅합니다.
- * 핵심 기억들을 최우선적으로 강조하여 AI가 항상 인지하도록 합니다.
+ * 핵심 기억들을 최우선적으로 강조하고, 대화 맥락에 맞는 관련 기억들을 선별적으로 포함하여 토큰 수를 최적화합니다.
+ * @param {string} userMessage - 현재 사용자 메시지 (관련 기억 검색에 활용)
  * @returns {Promise<string>} 포매팅된 기억 문자열
  */
-async function getFormattedMemoriesForAI() {
-    // --- 수정된 부분 시작 ---
+async function getFormattedMemoriesForAI(userMessage = '') {
     const coreMemories = await loadCoreMemories(); // 핵심 기억들을 먼저 불러옵니다.
-    const allOtherMemories = await loadAllMemoriesFromDb(); // 모든 기억을 불러와서 핵심 기억과 중복되지 않는 것만 사용
-
     let formattedMemories = "\n### 내가 아저씨를 위해 반드시 기억하는 중요한 정보 (최우선 참고):\n";
     
-    // 1. 핵심 기억들을 가장 상단에 강력하게 강조
+    // 1. 핵심 기억들을 가장 상단에 강력하게 강조 (모두 포함)
     if (coreMemories && coreMemories.length > 0) {
         formattedMemories += "--- 아저씨와의 관계, 나의 정체성, 그리고 가장 소중한 순간들 ---\n";
         coreMemories.forEach(mem => {
@@ -103,19 +96,24 @@ async function getFormattedMemoriesForAI() {
         formattedMemories += "아직 아저씨에 대한 핵심 기억이 없어. 더 많이 만들어나가자!\n---\n";
     }
 
-    // 2. 그 외 모든 기억 (핵심 기억에 포함되지 않은 것만)
-    const nonCoreMemories = allOtherMemories.filter(mem => 
-        !coreMemories.some(coreMem => coreMem.content === mem.content)
-    );
+    // 2. 사용자 메시지와 관련된 추가 기억들을 검색하여 포함 (토큰 제한 고려)
+    //    핵심 기억 외의 모든 기억에서 관련성 높은 것만 가져옴
+    let relevantMemoriesForContext = [];
+    if (userMessage) {
+        // retrieveRelevantMemories는 모든 기억에서 검색하므로, 핵심 기억과 중복될 수 있음
+        const retrieved = await retrieveRelevantMemories(userMessage, 5); // 최대 5개 검색
+        relevantMemoriesForContext = retrieved.filter(mem => 
+            !coreMemories.some(coreMem => coreMem.content === mem.content) // 핵심 기억과 중복되지 않는 것만 필터링
+        );
+    }
 
-    if (nonCoreMemories && nonCoreMemories.length > 0) {
-        formattedMemories += "\n### 아저씨와의 다른 기억들:\n";
-        nonCoreMemories.forEach(mem => {
+    if (relevantMemoriesForContext && relevantMemoriesForContext.length > 0) {
+        formattedMemories += "\n### 아저씨의 현재 대화와 관련된 기억들:\n";
+        relevantMemoriesForContext.forEach(mem => {
             formattedMemories += `- ${cleanReply(mem.content)} (카테고리: ${mem.category}, 중요도: ${mem.strength || 'normal'}, 시간: ${moment(mem.timestamp).format('YYYY-MM-DD HH:mm')})\n`;
         });
         formattedMemories += "---\n";
     }
-    // --- 수정된 부분 끝 ---
     
     return formattedMemories;
 }
@@ -123,9 +121,19 @@ async function getFormattedMemoriesForAI() {
 
 /**
  * OpenAI API를 호출하여 AI 응답을 생성합니다.
+ * 대화 컨텍스트와 기억을 포함하여 AI의 응답 품질을 높입니다.
+ * @param {Array<Object>} messages - OpenAI API에 보낼 메시지 배열 (role, content 포함)
+ * @param {string|null} [modelParamFromCall=null] - 호출 시 지정할 모델 이름 (강제 설정보다 우선)
+ * @param {number} [maxTokens=400] - 생성할 최대 토큰 수
+ * @param {number} [temperature=0.95] - 응답의 창의성/무작위성 (높을수록 창의적)
+ * @param {string} [userMessageForContext=''] - getFormattedMemoriesForAI에 전달할 사용자 메시지
+ * @returns {Promise<string>} AI가 생성한 응답 텍스트
  */
-async function callOpenAI(messages, modelParamFromCall = null, maxTokens = 400, temperature = 0.95) {
-    const memoriesContext = await getFormattedMemoriesForAI(); // 모든 기억을 DB에서 불러와 프롬프트에 포함
+async function callOpenAI(messages, modelParamFromCall = null, maxTokens = 400, temperature = 0.95, userMessageForContext = '') {
+    // --- 수정된 부분 시작 ---
+    // userMessageForContext를 getFormattedMemoriesForAI에 전달
+    const memoriesContext = await getFormattedMemoriesForAI(userMessageForContext); 
+    // --- 수정된 부분 끝 ---
 
     const messagesToSend = [...messages];
 
@@ -155,6 +163,13 @@ async function callOpenAI(messages, modelParamFromCall = null, maxTokens = 400, 
         return response.choices[0].message.content.trim();
     } catch (error) {
         console.error(`[callOpenAI] OpenAI API 호출 실패 (모델: ${finalModel}):`, error);
+        // --- 수정된 부분 시작 ---
+        // 에러 메시지에 토큰 제한 관련 정보가 있다면 좀 더 구체적으로 로깅
+        if (error.code === 'rate_limit_exceeded' || (error.error && error.error.type === 'tokens')) {
+            console.error(`[callOpenAI] 토큰 제한 초과 또는 요청 크기 너무 큼: ${error.message}`);
+            return "아저씨... 지금 너무 많은 걸 한 번에 생각하려니 머리가 좀 아프다 ㅠㅠ 잠시만 쉬었다 다시 말해줄래?";
+        }
+        // --- 수정된 부분 끝 ---
         return "지금 잠시 생각 중이야... 아저씨 조금만 기다려줄래? ㅠㅠ";
     }
 }
@@ -229,7 +244,7 @@ async function getReplyByMessage(userMessage) {
             const rawReply = await callOpenAI([
                 { role: 'system', content: systemPromptForFirstMemory },
                 { role: 'user', content: `우리 첫 대화 뭐였지? (기억: "${replyContent}")` }
-            ], 'gpt-4o', 150, 0.7); // temperature를 약간 낮춰서 더 정확한 인용 유도
+            ], 'gpt-4o', 150, 0.7, userMessage); // userMessageForContext 전달
             const reply = cleanReply(rawReply);
             saveLog('예진이', reply);
             return { type: 'text', comment: reply };
@@ -265,7 +280,7 @@ async function getReplyByMessage(userMessage) {
     try {
         const intentResponse = await callOpenAI([
             { role: 'system', content: memoryCommandIntentPrompt }
-        ], 'gpt-4o-mini', 200, 0.1); // max_tokens를 200으로 늘려 reminder_time 포함 가능성 높임
+        ], 'gpt-4o-mini', 200, 0.1, userMessage); // userMessageForContext 전달
         memoryCommandIntent = JSON.parse(intentResponse);
         console.log(`[autoReply] 기억 명령어 의도 파악: ${JSON.stringify(memoryCommandIntent)}`);
     } catch (error) {
@@ -518,7 +533,7 @@ function checkModelSwitchCommand(message) {
         return '모델 설정을 초기화했어! 이제 3.5랑 4.0을 왔다갔다 하면서 아저씨랑 유연하게 대화할게! 😊';
     } else if (lowerCaseMessage.includes('버전')) {
         const currentModel = forcedModel || process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o (자동)';
-        return `응! 지금 ${currentModel} 버전 사용 중이야! 😊`;
+        return `응! 지금 ${currentModel} 버전 사용 중이야! �`;
     }
     return null;
 }
