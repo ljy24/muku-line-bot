@@ -1,4 +1,4 @@
-// src/autoReply.js v2.13 - 기억 저장/삭제/리마인더 명령어 유동적 처리 및 AI 프롬프트 강화 (선제적 대화 개선, 첫 대화 기억 기능 최종)
+// src/autoReply.js v2.14 - 기억 저장/삭제/리마인더 명령어 유동적 처리 및 AI 프롬프트 강화 (핵심 기억 활용 및 첫 대화 기억 기능 최종)
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공 (로그 파일 관리에 여전히 필요)
 const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
@@ -7,7 +7,6 @@ const stringSimilarity = require('string-similarity'); // 문자열 유사도 �
 const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
 
 // * 기억 관리 모듈에서 필요한 함수들을 불러옵니다. *
-// * autoReply.js와 memoryManager.js는 같은 src 폴더 안에 있으므로 './memoryManager'로 불러옵니다. *
 const {
     loadLoveHistory,
     loadOtherPeopleHistory,
@@ -17,24 +16,22 @@ const {
     saveUserSpecifiedMemory, // 사용자가 명시적으로 요청한 기억 저장 함수
     deleteRelevantMemories, // 사용자가 요청한 기억 삭제 함수
     getFirstInteractionMemory, // ✅ 추가: 첫 대화 기억 검색 함수
-    updateMemoryReminderTime // ✅ 추가: 리마인더 시간 업데이트 함수
+    updateMemoryReminderTime, // ✅ 추가: 리마인더 시간 업데이트 함수
+    loadCoreMemories // ✅ 추가: 핵심 기억 로드 함수
 } = require('./memoryManager');
 
-console.log(`[DEBUG] Type of loadAllMemoriesFromDb after import: ${typeof loadAllMememoriesFromDb}`);
+console.log(`[DEBUG] Type of loadAllMemoriesFromDb after import: ${typeof loadAllMemoriesFromDb}`);
 
 // * 얼굴 이미지 데이터를 불러오는 모듈 *
 const { loadFaceImagesAsBase64 } = require('./face');
 
 // * omoide.js에서 getOmoideReply와 cleanReply를 불러옵니다. *
-// * autoReply.js는 src 폴더 안에 있고, omoide.js는 memory 폴더 안에 있으므로 '../memory/omoide'로 불러옵니다. *
 const { getOmoideReply, cleanReply } = require('../memory/omoide');
 
 // * 새로 추가: concept.js에서 getConceptPhotoReply를 불러옵니다. *
-// * autoReply.js는 src 폴더 안에 있고, concept.js는 memory 폴더 안에 있으므로 '../memory/concept'로 불러옵니다. *
 const { getConceptPhotoReply } = require('../memory/concept');
 
 // * 예진이의 페르소나 프롬프트를 가져오는 모듈 *
-// * autoReply.js와 yejin.js는 같은 src 폴더 안에 있으므로 './yejin'으로 불러옵니다. *
 const { getYejinSystemPrompt } = require('./yejin');
 
 // 현재 강제 설정된 OpenAI 모델 (null이면 자동 선택, 명령어에 따라 변경 가능)
@@ -45,47 +42,10 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 // 마지막으로 보낸 감성 메시지를 저장하여 중복 전송을 방지하는 변수
 let lastProactiveMessage = '';
 
-// --- 제거된 부분 시작: 더 이상 파일에서 직접 기억을 읽지 않습니다. ---
-// /**
-//  * 주어진 파일 경로에서 내용을 안전하게 읽어옵니다.
-//  * 파일이 없거나 읽기 오류 발생 시 지정된 대체값(fallback)을 반환합니다.
-//  * @param {string} filePath - 읽을 파일의 경로
-//  * @param {string} [fallback=''] - 파일 읽기 실패 시 반환할 대체 문자열
-//  * @returns {string} 파일 내용 또는 대체 문자열
-//  */
-// function safeRead(filePath, fallback = '') {
-//     try {
-//         // 동기적으로 파일을 읽고 UTF-8 인코딩으로 반환
-//         return fs.readFileSync(filePath, 'utf-8');
-//     } catch (error) {
-//         // 파일이 없거나 읽기 오류가 발생하면 fallback 값 반환
-//         console.warn(`[safeRead] 파일 읽기 실패: ${filePath}, 오류: ${error.message}`);
-//         return fallback;
-//     }
-// }
-
-// // 무쿠의 장기 기억 파일들을 읽어옵니다. (이제 DB 사용으로 모두 대체됨)
-// // 이 변수들은 더 이상 사용되지 않습니다.
-// const memory1 = safeRead(path.resolve(__dirname, '../memory/1.txt'));
-// const memory2 = safeRead(path.resolve(__dirname, '../memory/2.txt'));
-// const memory3 = safeRead(path.resolve(__dirname, '../memory/3.txt'));
-// const fixedMemory = safeRead(path.resolve(__dirname, '../memory/fixedMemories.json')); // 고정된 기억 (JSON 형식, 파싱 필요)
-// // 압축된 기억: 각 기억 파일의 마지막 3000자씩을 결합하여 AI 프롬프트에 활용
-// const compressedMemory = memory1.slice(-3000) + '\n' + memory2.slice(-3000) + '\n' + memory3.slice(-3000);
-
-// // 셀카 목록 파일 경로 (현재 코드에서는 직접 사용되지 않고 URL 생성에 의존)
-// const selfieListPath = path.resolve(__dirname, '../memory/photo-list.txt');
-// const BASE_SELFIE_URL = 'https://www.de-ji.net/yejin/';
-// --- 제거된 부분 끝 ---
-
-
 /**
- * 모든 대화 로그를 읽어옵니다.
- * 로그 파일이 없거나 읽기 오류 발생 시 빈 배열을 반환합니다.
- * @returns {Array<Object>} 대화 로그 배열 (각 로그는 { timestamp, speaker, message } 형식)
+ * 모든 대화 로그를 읽어옵니다. (이제 DB 사용으로 대체되므로, 이 함수는 거의 사용되지 않음)
  */
 function getAllLogs() {
-    // 로그는 `index.js`에서 파일로 직접 관리하며, 여기서는 여전히 해당 파일을 읽습니다.
     const logPath = path.resolve(__dirname, '../memory/message-log.json');
     if (!fs.existsSync(logPath)) {
         console.log(`[getAllLogs] 로그 파일이 존재하지 않습니다: ${logPath}`);
@@ -101,9 +61,6 @@ function getAllLogs() {
 
 /**
  * 대화 메시지를 로그 파일에 저장합니다.
- * 로그가 너무 길어지지 않도록 최신 100개만 유지합니다.
- * @param {string} speaker - 메시지를 보낸 사람 ('아저씨' 또는 '예진이')
- * @param {string} message - 메시지 내용
  */
 function saveLog(speaker, message) {
     const logPath = path.resolve(__dirname, '../memory/message-log.json');
@@ -123,30 +80,61 @@ function saveLog(speaker, message) {
  * @returns {Promise<string>} 포매팅된 기억 문자열
  */
 async function getFormattedMemoriesForAI() {
-    const loveHistory = await loadLoveHistory();
-    const otherPeopleHistory = await loadOtherPeopleHistory();
+    // --- 수정된 부분 시작 ---
+    const coreMemories = await loadCoreMemories(); // 핵심 기억들을 먼저 불러옵니다.
+    const otherLoveMemories = await loadLoveHistory(); // 사랑 관련 기억 (핵심 기억과 중복될 수 있으나, AI에게 더 많은 컨텍스트 제공)
+    const otherPeopleMemories = await loadOtherPeopleHistory(); // 기타 인물 관련 기억
 
-    console.log(`[autoReply:getFormattedMemoriesForAI] Love History Categories:`, loveHistory.categories);
-    console.log(`[autoReply:getFormattedMemoriesForAI] Other People History Categories:`, otherPeopleHistory.categories);
-
-    let formattedMemories = "\n### 내가 기억하는 중요한 정보:\n";
-    let hasMemories = false; // 모든 기억이 있는지 여부 플래그
-
-    // 모든 기억을 불러와서 formattedMemories에 추가
-    const allMemoriesFromDb = await loadAllMemoriesFromDb();
-    if (allMemoriesFromDb && allMemoriesFromDb.length > 0) {
-        hasMemories = true;
-        formattedMemories += "--- 모든 기억 목록 (DB에서 불러옴) ---\n";
-        // 모든 기억을 그대로 프롬프트에 포함 (AI가 중요도와 관련성을 판단하도록)
-        allMemoriesFromDb.forEach(mem => {
+    let formattedMemories = "\n### 내가 아저씨를 위해 반드시 기억하는 중요한 정보 (최우선 참고):\n";
+    
+    // 1. 핵심 기억들을 가장 상단에 강력하게 강조
+    if (coreMemories && coreMemories.length > 0) {
+        formattedMemories += "--- 아저씨와의 관계, 나의 정체성, 그리고 가장 소중한 순간들 ---\n";
+        coreMemories.forEach(mem => {
             formattedMemories += `- ${cleanReply(mem.content)} (카테고리: ${mem.category}, 중요도: ${mem.strength || 'normal'}, 시간: ${moment(mem.timestamp).format('YYYY-MM-DD HH:mm')})\n`;
         });
         formattedMemories += "---\n";
+    } else {
+        formattedMemories += "아직 아저씨에 대한 핵심 기억이 없어. 더 많이 만들어나가자!\n---\n";
     }
 
-    if (!hasMemories) {
-        formattedMemories += "아직 아저씨에 대한 중요한 기억이 없어. 더 많이 만들어나가자!\n---\n";
+    // 2. 그 외 사랑 관련 기억 (중복 제외하고 추가)
+    if (otherLoveMemories && otherLoveMemories.categories) {
+        const categoriesKeys = Object.keys(otherLoveMemories.categories);
+        if (categoriesKeys.length > 0) {
+            formattedMemories += "\n### 아저씨와의 다른 소중한 기억들:\n";
+            for (const category of categoriesKeys) {
+                if (Array.isArray(otherLoveMemories.categories[category]) && otherLoveMemories.categories[category].length > 0) {
+                    formattedMemories += `- ${category}:\n`;
+                    otherLoveMemories.categories[category].forEach(item => {
+                        // 핵심 기억에 이미 포함된 내용은 중복 추가하지 않음
+                        if (!coreMemories.some(coreMem => coreMem.content === item.content)) {
+                            formattedMemories += `  - ${cleanReply(item.content)}\n`;
+                        }
+                    });
+                }
+            }
+            formattedMemories += "---\n";
+        }
     }
+
+    // 3. 아저씨 외 다른 사람들에 대한 기억
+    if (otherPeopleMemories && otherPeopleMemories.categories) {
+        const categoriesKeys = Object.keys(otherPeopleMemories.categories);
+        if (categoriesKeys.length > 0) {
+            formattedMemories += "\n### 아저씨 외 다른 사람들에 대한 기억:\n";
+            for (const category of categoriesKeys) {
+                if (Array.isArray(otherPeopleMemories.categories[category]) && otherPeopleMemories.categories[category].length > 0) {
+                    formattedMemories += `- ${category}:\n`;
+                    otherPeopleMemories.categories[category].forEach(item => {
+                        formattedMemories += `  - ${cleanReply(item.content)}\n`;
+                    });
+                }
+            }
+            formattedMemories += "---\n";
+        }
+    }
+    // --- 수정된 부분 끝 ---
     
     return formattedMemories;
 }
@@ -256,11 +244,12 @@ async function getReplyByMessage(userMessage) {
         const firstMemory = await getFirstInteractionMemory(); // memoryManager에서 첫 대화 기억을 가져옴
         if (firstMemory) {
             const replyContent = cleanReply(firstMemory.content); // cleanReply 적용
-            // AI에게 찾아온 기억 내용을 직접 인용하여 답변하도록 지시
+            // AI에게 찾아온 기억 내용을 직접 인용하여 답변에 포함하도록 지시
             const systemPromptForFirstMemory = getYejinSystemPrompt(`
             아저씨가 첫 대화에 대해 물어봤어. 내가 찾아낸 가장 오래된 첫 대화 기억은 다음과 같아:
             "${replyContent}"
             이 기억 내용을 바탕으로 아저씨에게 "응... 그때 아저씨가 ~라고 했지..."처럼 구체적으로 회상하며 사랑스럽게 대답해줘.
+            **특히, 찾아낸 기억 내용을 답변에 반드시 포함해서 인용해줘.**
             `);
             const rawReply = await callOpenAI([
                 { role: 'system', content: systemPromptForFirstMemory },
