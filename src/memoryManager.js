@@ -688,6 +688,31 @@ async function closeDatabaseConnection() {
     }
 }
 
+/**
+ * 고정 기억 (초기 마이그레이션된 텍스트 기반 기억)을 DB에서 불러옵니다.
+ * category = '고정기억' 으로 저장된 모든 content를 반환합니다.
+ * @returns {Promise<string[]>} 고정 기억 문자열 배열
+ */
+async function loadFixedMemoriesFromDb() {
+    if (!pool) {
+        console.error("[MemoryManager] PostgreSQL 연결 풀이 초기화되지 않았습니다.");
+        throw new Error("Database pool not initialized.");
+    }
+    try {
+        const result = await pool.query(`
+            SELECT content FROM memories
+            WHERE category = '고정기억'
+            ORDER BY created_at ASC
+        `);
+        console.log(`[MemoryManager] 고정 기억 ${result.rows.length}개 불러오기 완료.`);
+        return result.rows.map(row => row.content);
+    } catch (err) {
+        console.error(`[MemoryManager] 고정 기억 불러오기 실패: ${err.message}`);
+        throw err;
+    }
+}
+
+
 // 모듈 내보내기
 module.exports = {
     ensureMemoryDirectory,
@@ -701,5 +726,6 @@ module.exports = {
     retrieveRelevantMemories,
     getFirstInteractionMemory,
     saveMemoryToDb,
-    closeDatabaseConnection
+    closeDatabaseConnection,
+    loadFixedMemoriesFromDb 
 };
