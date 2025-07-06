@@ -826,7 +826,7 @@ async function getMemoryListForSharing() {
         }
 
         if (!hasMemories) {
-            memoryListString = "💖 아저씨, 아직 예진이의 기억 보관함이 텅 비어있네... ㅠㅠ 아저씨랑 더 많은 추억을 만들고 싶다! 💖";
+            memoryListString = "💖 아저씨, 아직 예진이의 기억 보관함이 텅 비어있네... ㅠㅠ 아저씨랑 더 많은 추억을 만들고 싶다!";
         } else {
             memoryListString += "\n\n내가 아저씨와의 모든 순간을 소중히 기억할게! 💖";
         }
