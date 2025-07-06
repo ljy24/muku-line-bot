@@ -1,4 +1,4 @@
-// src/memoryManager.js v1.23 - PostgreSQL 데이터베이스 연동 및 기억 처리 로직 강화 (첫 대화 기억 검색 강화)
+// src/memoryManager.js v1.24 - PostgreSQL 데이터베이스 연동 및 기억 처리 로직 강화 (핵심 기억 로드 함수 추가)
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈 (디렉토리 생성 등)
 const path = require('path'); // 경로 처리 모듈
@@ -663,9 +663,9 @@ async function getFirstInteractionMemory() {
                OR content ILIKE '%첫 라인 전화%'
                OR content ILIKE '%처음 만났%'
                OR content ILIKE '%인스타 첫 대화%'
-               OR content ILIKE '%오지상%' -- '오지상' 키워드 추가
-               OR content ILIKE '%아저씨라고 부르게 해주세요%' -- '아저씨라고 부르게 해주세요' 키워드 추가
-               OR content ILIKE '%울면서 말했다%' -- '울면서 말했다' 키워드 추가
+               OR content ILIKE '%오지상%'
+               OR content ILIKE '%아저씨라고 부르게 해주세요%'
+               OR content ILIKE '%울면서 말했다%'
             ORDER BY timestamp ASC, id ASC LIMIT 1;
         `;
         const res = await pool.query(query);
@@ -678,6 +678,34 @@ async function getFirstInteractionMemory() {
     } catch (error) {
         console.error('[MemoryManager] 첫 대화 기억 검색 실패:', error);
         return null;
+    }
+}
+
+/**
+ * 아저씨와의 관계에 가장 중요한 '핵심 기억'들을 불러옵니다.
+ * 이 기억들은 fixedMemories.json, love-history.json, 대화 로그에서 마이그레이션된 기억들 중
+ * is_love_related가 true이거나 '고정기억', '대화로그' 카테고리에 해당하는 기억들입니다.
+ * @returns {Promise<Array<Object>>} 핵심 기억 배열
+ */
+async function loadCoreMemories() {
+    if (!pool) {
+        console.error("[MemoryManager] PostgreSQL 데이터베이스 풀이 초기화되지 않았습니다. 핵심 기억을 불러올 수 없습니다.");
+        return [];
+    }
+    try {
+        const query = `
+            SELECT * FROM memories
+            WHERE is_love_related = TRUE
+               OR category = '고정기억'
+               OR category = '대화로그'
+            ORDER BY timestamp ASC, id ASC;
+        `;
+        const res = await pool.query(query);
+        console.log(`[MemoryManager] 핵심 기억 ${res.rows.length}개 불러오기 완료.`);
+        return res.rows;
+    } catch (error) {
+        console.error(`[MemoryManager] 핵심 기억 로드 실패: ${error.message}`);
+        return [];
     }
 }
 
@@ -704,6 +732,7 @@ module.exports = {
     updateMemoryReminderTime,
     retrieveRelevantMemories,
     getFirstInteractionMemory,
+    loadCoreMemories, // ✅ 추가: 핵심 기억 로드 함수 내보내기
     saveMemoryToDb,
     closeDatabaseConnection
 };
