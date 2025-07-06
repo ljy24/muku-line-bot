@@ -1,4 +1,4 @@
-// ✅ index.js v1.7 - 웹훅 처리 개선 및 사진 기능 통합, 리마인더 스케줄러 추가
+// ✅ index.js v1.8 - 웹훅 처리 개선 및 사진 기능 통합, 리마인더 스케줄러 추가 (리마인더 업데이트 로직 개선)
 // 이 파일은 LINE 봇 서버의 메인 진입점입니다.
 // LINE 메시징 API와의 연동, Express 웹 서버 설정, 주기적인 작업 스케줄링 등을 담당합니다.
 
@@ -35,9 +35,7 @@ const memoryManager = require('./src/memoryManager');
 
 // omoide.js에서 사진 관련 응답 함수와 cleanReply를 불러옵니다.
 // 파일 구조 이미지에 따르면 omoide.js는 memory 폴더 바로 아래에 있습니다.
-// --- 수정된 부분 시작 ---
 const { getOmoideReply, cleanReply } = require('./memory/omoide'); // cleanReply도 함께 불러옵니다.
-// --- 수정된 부분 끝 ---
 
 // Express 애플리케이션을 생성합니다.
 const app = express();
@@ -83,12 +81,10 @@ app.get('/force-push', async (req, res) => {
 });
 
 // 💡 사용자 → 아저씨 치환 필터 (기억 목록에서만 사용)
-// --- 수정된 부분 시작 ---
 // `cleanReply` 함수를 사용하여 '사용자'를 '아저씨'로 교체합니다.
 function replaceUserToAhjussi(text) {
     return cleanReply(text); // omoide.js에서 불러온 cleanReply 함수를 사용합니다.
 }
-// --- 수정된 부분 끝 ---
 
 /**
  * 주어진 메시지가 특정 봇 명령어인지 확인합니다.
@@ -104,12 +100,6 @@ const isCommand = (message) => {
     const definiteCommands = [
         /(기억\s?보여줘|내\s?기억\s?보여줘|혹시 내가 오늘 뭐한다 그랬지\?|오늘 뭐가 있더라\?|나 뭐하기로 했지\?)/i, // 기억 목록 관련
         /3\.5|4\.0|자동|버전/i, // 모델 전환 명령어
-        // --- 수정된 부분 시작 ---
-        // 기억 저장/삭제/리마인더 관련 명령어는 autoReply.js에서 OpenAI로 유동적으로 처리하므로,
-        // 여기 isCommand에서는 명시적인 키워드를 제거하여 일반 대화로 분류되도록 합니다.
-        // (autoReply.js의 memoryCommandIntent 로직이 우선적으로 처리합니다.)
-        // /(기억해|잊지마|리마인드|알려줘)/i, // 이 부분은 autoReply에서 처리되므로 여기서 제외
-        // --- 수정된 부분 끝 ---
         /(사진\s?줘|셀카\s?줘|셀카\s?보여줘|사진\s?보여줘|얼굴\s?보여줘|얼굴\s?보고\s?싶[어다]|selfie|커플사진\s?줘|커플사진\s?보여줘|무쿠\s?셀카|애기\s?셀카|빠계\s?셀카|빠계\s?사진|인생네컷|일본\s?사진|한국\s?사진|출사|필름카메라|애기\s?필름|메이드복|흑심|무슨\s?색이야\?)/i, // 일반 사진 관련 명령어
         /(컨셉사진|컨셉 사진|홈스냅|결박|선물|셀프 촬영|옥상연리|세미누드|홈셀프|플라스틱러브|지브리풍|북해|아이노시마|필름|모지코 모리룩|눈밭|욕실|고래티셔츠|유카타 마츠리|이화마을|욕조|우마시마|가을 호수공원|망친 사진|교복|비눗방울|모지코|텐진 코닥필름|나비욕조|롱패딩|을지로 스냅|길거리 스냅|생일|모지코2|야간 보라돌이|코야노세|야간거리|생일컨셉|눈밭 필름카메라|홈스냅 청포도|욕실 블랙 웨딩|호리존|여친 스냅|후지엔|불꽃놀이|빨간 기모노|피크닉|벗꽃|후지 스냅|원미상가_필름|밤바 산책|공원 산책|고쿠라 힙|온실-여신|을지로 네코|무인역|화가|블랙원피스|카페|텐진 스트리트|하카타 스트리트|홈스냅 오타쿠|야간 동백|나르시스트|을지로 캘빈|산책|오도공원 후지필름|크리스마스|네코 모지코|야간 블랙드레스|고스로리 할로윈|게임센터|고쿠라|동키 거리|고쿠라 야간|코이노보리|문래동|수국|오도|다른 것도 보고싶어|다음 사진)/i // 컨셉사진 관련 명령어 (월, 연도, 지역, '다른 것도/다음 사진' 포함)
     ];
@@ -153,9 +143,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
                     if (/(기억\s?보여줘|내\s?기억\s?보여줘|혹시 내가 오늘 뭐한다 그랬지\?|오늘 뭐가 있더라\?|나 뭐하기로 했지\?)/i.test(text)) {
                         try {
                             let memoryList = await getMemoryListForSharing(); // autoReply.js에서 기억 목록을 가져옴
-                            // --- 수정된 부분 시작 ---
                             memoryList = replaceUserToAhjussi(memoryList); // '사용자' -> '아저씨'로 교체
-                            // --- 수정된 부분 끝 ---
                             await client.replyMessage(event.replyToken, { type: 'text', text: memoryList });
                             console.log(`[index.js] 기억 목록 전송 성공: "${text}"`);
                             saveLog('예진이', '아저씨의 기억 목록을 보여줬어.'); // 봇의 응답도 로그에 저장
@@ -177,10 +165,6 @@ app.post('/webhook', middleware(config), async (req, res) => {
 
                     // * 기억 추출/저장 로직 (메시지가 명확한 봇 명령어가 아닐 경우에만 실행) *
                     // * "기억해줘", "잊지마", "리마인드" 등의 일반 대화는 isCommand에서 false로 반환되므로, 여기서 기억으로 저장될 수 있습니다. *
-                    // --- 수정된 부분 시작 ---
-                    // 기억 저장/삭제/리마인더는 autoReply.js에서 직접 처리하므로,
-                    // 여기서 `extractAndSaveMemory` 호출 조건에서 해당 명령어들을 제외합니다.
-                    // (autoReply.js의 memoryCommandIntent 로직이 우선적으로 처리합니다.)
                     // botResponse.comment가 기억/삭제/리마인더 관련 응답인지 확인하여 중복 저장 방지
                     const isMemoryRelatedResponse = botResponse.comment && (
                         botResponse.comment.includes('기억했어! 💖') ||
@@ -190,7 +174,8 @@ app.post('/webhook', middleware(config), async (req, res) => {
                         botResponse.comment.includes('뭘 기억해달라는 거야?') ||
                         botResponse.comment.includes('뭘 잊어버리라는 거야?') ||
                         botResponse.comment.includes('리마인더 시간을 정확히 모르겠어') ||
-                        botResponse.comment.includes('뭘 언제 알려달라는 거야?')
+                        botResponse.comment.includes('뭘 언제 알려달라는 거야?') ||
+                        botResponse.comment.includes('처음 만났을 때 기억은 내가 아직 정확히 못 찾겠어') // 첫 대화 기억 관련 응답 추가
                     );
 
                     if (!isCommand(text) && !isMemoryRelatedResponse) {
@@ -199,7 +184,6 @@ app.post('/webhook', middleware(config), async (req, res) => {
                     } else {
                         console.log(`[index.js] 명령어 또는 기억/리마인더 관련 응답이므로 메모리 자동 저장에서 제외됩니다.`);
                     }
-                    // --- 수정된 부분 끝 ---
 
                     // * 봇 응답 메시지 구성 및 전송 *
                     if (botResponse.type === 'text') {
@@ -502,7 +486,6 @@ cron.schedule('0 0 * * *', async () => {
     timezone: "Asia/Tokyo" // 일본 표준시 설정
 });
 
-// --- 추가된 부분 시작 ---
 // 6. 리마인더 체크 스케줄러
 // * 매 1분마다 데이터베이스에서 리마인더 시간이 된 기억을 확인하고 메시지를 보냅니다. *
 cron.schedule('*/1 * * * *', async () => { // 매 1분마다 실행
@@ -528,22 +511,12 @@ cron.schedule('*/1 * * * *', async () => { // 매 1분마다 실행
             console.log(`[Scheduler-Reminder] 리마인더 전송: ${reminderMessage}`);
 
             // 리마인더 전송 후 해당 기억의 reminder_time을 NULL로 업데이트하여 다시 전송되지 않도록 합니다.
-            // 이 로직은 memoryManager에 updateMemoryReminderTime 함수를 추가해야 합니다.
-            // TODO: memoryManager에 updateMemoryReminderTime(id, null) 함수 추가 필요
-            // 현재는 saveMemoryToDb를 재활용하여 reminder_time만 NULL로 업데이트하는 방식.
-            // saveMemoryToDb는 content 기준으로 중복 체크하므로, id로 업데이트하는 함수가 더 적합
-            // 임시 방편으로 delete 후 재저장하는 방식 (비효율적이지만 기능 테스트용)
-            await memoryManager.deleteRelevantMemories('', reminder.content); // 기존 기억 삭제
-            await memoryManager.saveMemoryToDb({ // reminder_time이 null인 새 기억으로 재저장
-                content: reminder.content,
-                category: reminder.category,
-                strength: reminder.strength,
-                timestamp: reminder.timestamp,
-                is_love_related: reminder.is_love_related,
-                is_other_person_related: reminder.is_other_person_related,
-                reminder_time: null // 리마인더 시간 초기화
-            });
-            console.log(`[Scheduler-Reminder] 리마인더 처리 완료: 기억 ID ${reminder.id}의 reminder_time을 NULL로 업데이트`);
+            const success = await memoryManager.updateMemoryReminderTime(reminder.id, null);
+            if (success) {
+                console.log(`[Scheduler-Reminder] 리마인더 처리 완료: 기억 ID ${reminder.id}의 reminder_time을 NULL로 업데이트`);
+            } else {
+                console.error(`[Scheduler-Reminder] 리마인더 처리 후 reminder_time 업데이트 실패: 기억 ID ${reminder.id}`);
+            }
         }
     } catch (error) {
         console.error('❌ [Scheduler-Reminder Error] 리마인더 체크 및 전송 실패:', error);
@@ -552,9 +525,6 @@ cron.schedule('*/1 * * * *', async () => { // 매 1분마다 실행
     scheduled: true,
     timezone: "Asia/Tokyo"
 });
-// --- 추가된 부분 끝 ---
-
-
 // --- 스케줄러 설정 끝 ---
 
 
