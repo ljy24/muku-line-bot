@@ -278,12 +278,15 @@ async function closeDatabaseConnection() {
 
 // ---- 이하 기존 memoryManager.js 내 모든 함수, 내보내기(export) 순서 포함 ----
 
+// (파일 마지막 부분에)
 module.exports = {
     ensureMemoryDirectory,
     saveMemoryToDb,
     initializeFixedMemoriesToDb,
     loadFixedMemoriesFromDb,
-    forceClearAndRemigrate, // ⭐️ 강제 전체 초기화+마이그레이션
+    loadAllMemoriesFromDb,        // 꼭 추가!
+    forceClearAndRemigrate,
     closeDatabaseConnection
-    // ...여기에 기존에 사용하던 나머지 함수들도 추가(export)
 };
+
+
