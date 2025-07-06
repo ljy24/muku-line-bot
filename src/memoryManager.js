@@ -1,4 +1,4 @@
-// src/memoryManager.js v1.15 - PostgreSQL 데이터베이스 연동 및 기억 처리 로직 강화 (초기 기억 마이그레이션 포함)
+// src/memoryManager.js v1.17 - PostgreSQL 데이터베이스 연동 및 기억 처리 로직 강화 (초기 기억 마이그레이션 포함, 첫 대화 기억 기능 추가)
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈 (디렉토리 생성 등)
 const path = require('path'); // 경로 처리 모듈
@@ -41,87 +41,155 @@ function validateDatabaseConfig() {
 }
 
 /**
- * 기억 관련 파일 디렉토리가 존재하는지 확인하고, 없으면 생성합니다 (로그 파일 등을 위해).
- * PostgreSQL 데이터베이스에 연결 풀을 설정하고 필요한 'memories' 테이블을 초기화합니다.
- * @returns {Promise<void>}
+ * 주어진 파일 경로에서 내용을 안전하게 읽어옵니다.
+ * 파일이 없거나 읽기 오류 발생 시 지정된 대체값(fallback)을 반환합니다.
+ * @param {string} filePath - 읽을 파일의 경로
+ * @param {string} [fallback=''] - 파일 읽기 실패 시 반환할 대체 문자열
+ * @returns {string} 파일 내용 또는 대체 문자열
  */
-async function ensureMemoryDirectory() {
+function safeRead(filePath, fallback = '') {
     try {
-        // 환경 변수 검증
-        validateDatabaseConfig();
-
-        const MEMORY_DIR = path.resolve(__dirname, '../../memory'); // memory 폴더 경로 (src 기준 두 단계 위)
-        await fs.promises.mkdir(MEMORY_DIR, { recursive: true });
-        console.log(`[MemoryManager] 기억 관련 파일 디렉토리 확인/생성 완료: ${MEMORY_DIR}`);
-
-        // PostgreSQL 데이터베이스 연결 풀 생성
-        pool = new Pool(dbConfig);
-        
-        // 연결 테스트 (올바른 방법)
-        const client = await pool.connect();
-        try {
-            await client.query('SELECT NOW()'); // 간단한 테스트 쿼리
-            console.log(`[MemoryManager] PostgreSQL 데이터베이스 연결 성공`);
-        } finally {
-            client.release(); // 연결 반환
-        }
-
-        // 'memories' 테이블 생성 (이미 존재하면 건너뜀)
-        // PostgreSQL의 BOOLEAN 타입은 true/false를 직접 사용합니다.
-        await pool.query(`
-            CREATE TABLE IF NOT EXISTS memories (
-                id SERIAL PRIMARY KEY,
-                content TEXT NOT NULL,
-                category VARCHAR(255) NOT NULL DEFAULT '기타',
-                strength VARCHAR(50) NOT NULL DEFAULT 'normal',
-                timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                is_love_related BOOLEAN NOT NULL DEFAULT false,
-                is_other_person_related BOOLEAN NOT NULL DEFAULT false,
-                reminder_time TIMESTAMPTZ DEFAULT NULL, -- 리마인더 기능 추가
-                created_at TIMESTAMPTZ DEFAULT NOW()
-            );
-        `);
-        console.log(`[MemoryManager] 'memories' 테이블 준비 완료.`);
-
-        // 기존 테이블에 reminder_time 컬럼이 없을 경우 추가 (마이그레이션)
-        const checkColumnQuery = `SELECT column_name FROM information_schema.columns WHERE table_name='memories' AND column_name='reminder_time';`;
-        const columnExists = await pool.query(checkColumnQuery);
-        if (columnExists.rows.length === 0) {
-            await pool.query(`ALTER TABLE memories ADD COLUMN reminder_time TIMESTAMPTZ DEFAULT NULL;`);
-            console.log(`[MemoryManager] 'reminder_time' 컬럼이 'memories' 테이블에 추가되었습니다.`);
-        }
-
-        // 인덱스 생성 (성능 향상)
-        await pool.query(`
-            CREATE INDEX IF NOT EXISTS idx_memories_love_related ON memories(is_love_related);
-        `);
-        await pool.query(`
-            CREATE INDEX IF NOT EXISTS idx_memories_other_related ON memories(is_other_person_related);
-        `);
-        await pool.query(`
-            CREATE INDEX IF NOT EXISTS idx_memories_timestamp ON memories(timestamp DESC);
-        `);
-        await pool.query(`
-            CREATE INDEX IF NOT EXISTS idx_memories_reminder_time ON memories(reminder_time);
-        `);
-        console.log(`[MemoryManager] 인덱스 생성 완료.`);
-
-        // --- 추가된 부분 시작: 초기 기억 데이터베이스 마이그레이션 실행 ---
-        //await initializeFixedMemoriesToDb();
-        // --- 추가된 부분 끝 ---
-
+        // 동기적으로 파일을 읽고 UTF-8 인코딩으로 반환
+        return fs.readFileSync(filePath, 'utf-8');
     } catch (error) {
-        console.error(`[MemoryManager] DB 연결 또는 테이블 초기화 실패: ${error.message}`);
-        if (pool) {
-            await pool.end();
-        }
-        throw error;
+        // 파일이 없거나 읽기 오류가 발생하면 fallback 값 반환
+        console.warn(`[safeRead] 파일 읽기 실패: ${filePath}, 오류: ${error.message}`);
+        return fallback;
     }
 }
 
 /**
- * 새로운 기억을 PostgreSQL 데이터베이스에 저장합니다.
- * @param {Object} memory - 저장할 기억 객체
+ * 초기 기억 파일들을 데이터베이스에 마이그레이션합니다.
+ * 서버 시작 시 한 번만 실행되며, 이미 기억이 존재하면 건너뜥니다.
+ * @returns {Promise<void>}
+ */
+async function initializeFixedMemoriesToDb() {
+    if (!pool) {
+        console.error("[MemoryManager] PostgreSQL 데이터베이스 풀이 초기화되지 않았습니다. 초기 기억을 저장할 수 없습니다.");
+        return;
+    }
+
+    try {
+        const { rowCount } = await pool.query('SELECT COUNT(*) FROM memories');
+        if (rowCount > 0) {
+            console.log('[MemoryManager] 데이터베이스에 이미 기억이 존재합니다. 초기 기억 마이그레이션을 건너뜁니다.');
+            return;
+        }
+
+        console.log('[MemoryManager] 데이터베이스가 비어있습니다. 초기 기억 마이그레이션을 시작합니다.');
+
+        // 1. fixedMemories.json 로드 및 저장
+        const fixedMemoryPath = path.resolve(__dirname, '../memory/fixedMemories.json');
+        const fixedMemoriesRaw = safeRead(fixedMemoryPath, '[]');
+        const fixedMemories = JSON.parse(fixedMemoriesRaw);
+
+        for (const content of fixedMemories) {
+            // fixedMemories는 is_love_related, is_other_person_related 정보가 없으므로 기본값으로 처리
+            // cleanReply를 적용하여 "사용자"를 "아저씨"로 변환
+            await saveMemoryToDb({
+                content: cleanReply(content),
+                category: '고정기억',
+                strength: 'high', // 고정 기억은 중요도 높음
+                is_love_related: content.includes('아저씨') || content.includes('사랑') || content.includes('연애'),
+                is_other_person_related: content.includes('무쿠 언니') || content.includes('준기오빠')
+            });
+        }
+        console.log(`[MemoryManager] fixedMemories.json (${fixedMemories.length}개) 마이그레이션 완료.`);
+
+        // 2. love-history.json 로드 및 저장
+        const loveHistoryPath = path.resolve(__dirname, '../memory/love-history.json');
+        const loveHistoryRaw = safeRead(loveHistoryPath, '{"categories":{}}');
+        const loveHistoryData = JSON.parse(loveHistoryRaw);
+
+        if (loveHistoryData.categories) {
+            for (const category in loveHistoryData.categories) {
+                if (Array.isArray(loveHistoryData.categories[category])) {
+                    for (const item of loveHistoryData.categories[category]) {
+                        // cleanReply를 적용하여 "사용자"를 "아저씨"로 변환
+                        await saveMemoryToDb({
+                            content: cleanReply(item.content),
+                            category: category,
+                            strength: item.strength || 'normal',
+                            timestamp: item.timestamp,
+                            is_love_related: true, // love-history는 모두 사랑 관련
+                            is_other_person_related: false
+                        });
+                    }
+                }
+            }
+        }
+        console.log(`[MemoryManager] love-history.json 마이그레이션 완료.`);
+
+        // 3. 1.txt, 2.txt, 3.txt (대화 로그) 파싱 및 저장
+        const chatLogs = [];
+        const logFiles = ['1.txt', '2.txt', '3.txt', 'fixed-messages.txt']; // fixed-messages.txt도 포함
+
+        for (const fileName of logFiles) {
+            const filePath = path.resolve(__dirname, `../memory/${fileName}`);
+            const fileContent = safeRead(filePath);
+            const lines = fileContent.split('\n');
+
+            let currentDate = '';
+            for (const line of lines) {
+                const dateMatch = line.match(/^(\d{4}\.\d{2}\.\d{2} [가-힣]+)/);
+                if (dateMatch) {
+                    currentDate = dateMatch[1];
+                    continue;
+                }
+
+                const messageMatch = line.match(/^(\d{2}:\d{2})\s(아저씨|애기|coolio|내꺼|빠계)\s(.+)/);
+                if (messageMatch) {
+                    const time = messageMatch[1];
+                    const speaker = messageMatch[2];
+                    const message = messageMatch[3].trim();
+
+                    if (message.startsWith('[사진]') || message.startsWith('[동영상]') || message.startsWith('[파일]')) {
+                        continue; // 사진, 동영상, 파일 메시지는 건너뛰기
+                    }
+
+                    // 날짜와 시간을 합쳐 ISO 형식으로 변환 시도
+                    let timestamp;
+                    try {
+                        // 2023.11.06 월요일 19:37 -> 2023-11-06T19:37:00+09:00 (일본 시간대)
+                        timestamp = moment.tz(`${currentDate} ${time}`, 'YYYY.MM.DD dddd HH:mm', 'Asia/Tokyo').toISOString();
+                    } catch (e) {
+                        console.warn(`[MemoryManager] 날짜/시간 파싱 실패: ${currentDate} ${time} - ${e.message}`);
+                        timestamp = new Date().toISOString(); // 실패 시 현재 시간 사용
+                    }
+
+                    // cleanReply를 적용하여 "사용자"를 "아저씨"로 변환
+                    const cleanedMessage = cleanReply(message);
+
+                    chatLogs.push({
+                        content: cleanedMessage,
+                        category: '대화로그',
+                        strength: 'normal',
+                        timestamp: timestamp,
+                        is_love_related: true, // 모든 대화 로그는 사랑 관련으로 간주
+                        is_other_person_related: false
+                    });
+                }
+            }
+        }
+
+        // 대화 로그를 오래된 순서로 정렬하여 저장 (시간 순서 보존)
+        chatLogs.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+        for (const log of chatLogs) {
+            await saveMemoryToDb(log);
+        }
+        console.log(`[MemoryManager] 대화 로그 파일 (${chatLogs.length}개) 마이그레이션 완료.`);
+
+    } catch (error) {
+        console.error(`[MemoryManager] 초기 기억 마이그레이션 실패: ${error.message}`);
+        throw error;
+    }
+}
+
+
+/**
+ * 데이터베이스에 새로운 기억을 저장합니다. 중복된 내용은 저장하지 않습니다.
+ * @param {Object} memory - 저장할 기억 객체 { content, category, strength, timestamp, is_love_related, is_other_person_related, reminder_time }
  * @returns {Promise<void>}
  */
 async function saveMemoryToDb(memory) {
@@ -184,13 +252,13 @@ async function saveUserSpecifiedMemory(userMessage, extractedContent, reminderTi
         `);
         
         const response = await openai.chat.completions.create({
-            model: 'gpt-4o-mini',
+            model: 'gpt-4o-mini', // 빠르고 저렴한 모델로 분류
             messages: [
                 { role: 'system', content: systemPrompt },
                 { role: 'user', content: `아저씨 메시지: "${userMessage}"\n추출된 기억 내용: "${extractedContent}"` }
             ],
             response_format: { type: "json_object" },
-            temperature: 0.1,
+            temperature: 0.1, // 분류 정확도를 높이기 위해 낮은 온도 설정
             max_tokens: 100
         });
 
@@ -199,7 +267,7 @@ async function saveUserSpecifiedMemory(userMessage, extractedContent, reminderTi
         const cleanedContent = cleanReply(extractedContent.trim());
 
         const memory = {
-            content: cleanedContent,
+            content: cleanedContent, // 클린된 내용 사용
             category: classification.category || '사용자 지정',
             strength: 'high', // 사용자가 명시적으로 기억 요청했으므로 중요도 높음
             timestamp: new Date().toISOString(),
@@ -301,6 +369,33 @@ async function deleteRelevantMemories(userQuery, contentToIdentify) {
     } catch (err) {
         console.error(`[MemoryManager] 기억 삭제 실패: ${err.message}`);
         throw err;
+    }
+}
+
+/**
+ * 특정 기억의 reminder_time을 업데이트합니다.
+ * @param {number} id - 업데이트할 기억의 ID
+ * @param {string|null} reminderTime - 새로운 리마인더 시간 (ISO string) 또는 null
+ * @returns {Promise<boolean>} 업데이트 성공 여부
+ */
+async function updateMemoryReminderTime(id, reminderTime) {
+    if (!pool) {
+        console.error("[MemoryManager] PostgreSQL 데이터베이스 풀이 초기화되지 않았습니다. 리마인더 시간을 업데이트할 수 없습니다.");
+        return false;
+    }
+    try {
+        const queryText = 'UPDATE memories SET reminder_time = $1 WHERE id = $2';
+        const result = await pool.query(queryText, [reminderTime, id]);
+        if (result.rowCount > 0) {
+            console.log(`[MemoryManager] 기억 ID ${id}의 reminder_time 업데이트 완료: ${reminderTime}`);
+            return true;
+        } else {
+            console.log(`[MemoryManager] 기억 ID ${id}를 찾을 수 없어 reminder_time 업데이트 실패.`);
+            return false;
+        }
+    } catch (err) {
+        console.error(`[MemoryManager] 기억 reminder_time 업데이트 실패 (ID: ${id}): ${err.message}`);
+        return false;
     }
 }
 
@@ -429,10 +524,7 @@ async function extractAndSaveMemory(userMessage) {
 
         const result = JSON.parse(response.choices[0].message.content);
         
-        // --- 수정된 부분 시작 ---
-        // 추출된 content에 대해 cleanReply를 적용하여 '사용자'를 '아저씨'로 교체
         const cleanedContent = cleanReply(result.content.trim());
-        // --- 수정된 부분 끝 ---
 
         // content가 있고 빈 문자열이 아닐 때만 저장
         if (cleanedContent && result.category) { // cleanedContent로 조건 변경
@@ -471,8 +563,6 @@ async function retrieveRelevantMemories(userQuery, limit = 3) {
         return [];
     }
 
-    // getYejinSystemPrompt 함수를 사용하여 시스템 프롬프트 로드
-    // --- 수정된 부분 시작 ---
     const systemPrompt = getYejinSystemPrompt(`
     아래는 아저씨의 질문과 내가 가지고 있는 기억 목록이야.
     아저씨의 질문과 가장 관련성이 높은 기억을 JSON 객체 형식으로 반환해줘.
@@ -485,7 +575,6 @@ async function retrieveRelevantMemories(userQuery, limit = 3) {
     ${allMemories.map(mem => `- ID: ${mem.id}, 내용: ${cleanReply(mem.content)} (카테고리: ${mem.category}, 중요도: ${mem.strength}, 시간: ${moment(mem.timestamp).format('YYYY-MM-DD HH:mm')})`).join('\n')}
     ---
     `);
-    // --- 수정된 부분 끝 ---
     console.log(`[MemoryManager:retrieveRelevantMemories] OpenAI 프롬프트 준비 완료.`);
 
     try {
@@ -524,7 +613,7 @@ async function retrieveRelevantMemories(userQuery, limit = 3) {
                 is_love_related: mem.is_love_related,
                 is_other_person_related: mem.is_other_person_related
             }));
-            console.log(`[MemoryManager] 검색된 관련 기억: ${arelevantMemories.length}개`);
+            console.log(`[MemoryManager] 검색된 관련 기억: ${relevantMemories.length}개`);
             return relevantMemories;
         } else {
             console.warn(`[MemoryManager] 예상치 못한 기억 검색 결과 형식: ${rawResult}`);
@@ -535,6 +624,39 @@ async function retrieveRelevantMemories(userQuery, limit = 3) {
         return [];
     }
 }
+
+/**
+ * '코로나' 또는 '처음 대화'와 관련된 단어를 포함하는 가장 오래된 기억을 찾아주는 함수.
+ * @returns {Promise<Object|null>} 가장 오래된 첫 대화 기억 객체 또는 null
+ */
+async function getFirstInteractionMemory() {
+    if (!pool) {
+        console.error("[MemoryManager] PostgreSQL 데이터베이스 풀이 초기화되지 않았습니다. 첫 대화 기억을 찾을 수 없습니다.");
+        return null;
+    }
+    try {
+        const query = `
+            SELECT * FROM memories
+            WHERE content ILIKE '%코로나%'
+               OR content ILIKE '%처음 대화%'
+               OR content ILIKE '%라인 앱 설치%'
+               OR content ILIKE '%첫 라인 전화%'
+               OR content ILIKE '%처음 만났%'
+            ORDER BY timestamp ASC LIMIT 1;
+        `;
+        const res = await pool.query(query);
+        if (res.rows.length > 0) {
+            console.log(`[MemoryManager] 첫 대화 기억 검색 완료: ${res.rows[0].content}`);
+            return res.rows[0];
+        }
+        console.log('[MemoryManager] 첫 대화 기억을 찾을 수 없습니다.');
+        return null;
+    } catch (error) {
+        console.error('[MemoryManager] 첫 대화 기억 검색 실패:', error);
+        return null;
+    }
+}
+
 
 /**
  * 데이터베이스 연결 풀을 안전하게 종료합니다.
@@ -556,7 +678,9 @@ module.exports = {
     extractAndSaveMemory, // ✅ 추가: 기억 추출 및 저장 함수 (일반 대화)
     saveUserSpecifiedMemory, // ✅ 추가: 사용자 지정 기억 저장 함수
     deleteRelevantMemories, // ✅ 추가: 관련 기억 삭제 함수
+    updateMemoryReminderTime, // ✅ 추가: 리마인더 시간 업데이트 함수
     retrieveRelevantMemories,
+    getFirstInteractionMemory, // ✅ 추가: 첫 대화 기억 검색 함수
     saveMemoryToDb, // 외부에서 직접 사용할 수 있도록 추가
     closeDatabaseConnection // 연결 종료 함수 추가
 };
