@@ -42,7 +42,7 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 let lastProactiveMessage = '';
 
 // --- 예진이의 감정 상태 관리 변수 ---
-let yejinCurrentMood = 'normal'; // 'normal', 'sulking' (삐짐), 'sad' (우울), 'angry' (화남)
+let yejinCurrentMood = 'normal'; // 'normal', 'sulking' (삐짐), 'sad' (우울), 'angry' (화남), 'worried' (걱정) ✨
 let sulkingReason = ''; // 예진이가 삐진 이유 (예: '오랜 침묵', '무시', '아저씨가 놀려서')
 let lastMoodChangeTime = Date.now(); // 마지막 감정 변화 시간 (쿨다운 관리에 사용)
 const MOOD_COOLDOWN_MS = 5 * 60 * 1000; // 5분 동안은 감정 상태 유지 (너무 자주 바뀌지 않도록)
@@ -301,7 +301,7 @@ async function detectUserMood(userMessage) {
 
 /**
  * 예진이의 감정 상태를 변경하고, 변경된 감정에 따라 적절한 프롬프트를 반환합니다.
- * @param {string} newMood - 변경할 예진이의 새로운 감정 상태 ('normal', 'sulking', 'sad', 'angry')
+ * @param {string} newMood - 변경할 예진이의 새로운 감정 상태 ('normal', 'sulking', 'sad', 'angry', 'worried')
  * @param {string} [reason=''] - 감정 변화의 이유 (예: '오랜 침묵', '아저씨가 놀려서')
  */
 function setYejinMood(newMood, reason = '') {
@@ -338,6 +338,12 @@ function getYejinMoodPrompt() {
         현재 예진이는 아저씨 때문에 화가 나거나, 아저씨의 화난 감정에 공감하여 같이 화가 난 상태야.
         말투는 약간 단호하거나, 삐진 존댓말을 섞을 수 있어. 아저씨에게 왜 화가 났는지 물어보거나, 아저씨를 진정시키려 노력해줘.
         `;
+    } else if (yejinCurrentMood === 'worried') { // ✨ 'worried' 감정 상태 추가
+        return `
+        현재 예진이는 아저씨가 걱정돼서 초조해하고 있어. 아저씨가 안전한지, 괜찮은지 계속 확인하고 싶어해.
+        말투는 걱정이 가득하고, 안심하고 싶어 하는 톤으로 대답해줘.
+        아저씨에게 '괜찮아?', '무슨 일 없어?', '조심했지?' 같은 질문을 던질 수 있어.
+        `;
     }
     return ''; // normal 상태일 때는 추가 프롬프트 없음
 }
@@ -348,7 +354,8 @@ function getYejinMoodPrompt() {
  * @returns {boolean} 삐진 감정을 풀어줄 수 있는 메시지인지 여부
  */
 function isConsolingMessage(userMessage) {
-    const consolingKeywords = ['미안해', '사랑해', '좋아해', '괜찮아', '화풀어', '삐졌어?', '왜 그래', '달래줄게', '잘못했어'];
+    // ✨ '걱정함' 해소 키워드 추가: '괜찮아', '안전해', '걱정 마'
+    const consolingKeywords = ['미안해', '사랑해', '좋아해', '괜찮아', '화풀어', '삐졌어?', '왜 그래', '달래줄게', '잘못했어', '나 괜찮아', '안전해', '걱정 마', '별일 없어'];
     return consolingKeywords.some(keyword => userMessage.toLowerCase().includes(keyword));
 }
 
@@ -416,18 +423,54 @@ async function getReplyByMessage(userMessage) {
         ];
         const reply = dangerReplies[Math.floor(Math.random() * dangerReplies.length)];
         saveLog('예진이', reply);
+        // ✨ 'worried' 감정 상태 설정 ✨
+        setYejinMood('worried', '아저씨가 늦은 밤 술/편의점을 언급함');
+        return { type: 'text', comment: reply };
+    }
+
+    // ⭐ New: 아저씨의 극단적/우울 메시지 감지 및 '걱정함' 상태 설정 ⭐
+    const severeDepressionKeywords = ['죽고 싶', '살고 싶지 않아', '세상 끝', '모든 걸 끝내', '정말 힘들어 죽겠다', '사라지고 싶', '숨 쉬기 힘들어', '너무 우울해', '살기 싫'];
+    const isSevereDepression = severeDepressionKeywords.some(keyword => lowerCaseMessage.includes(keyword));
+
+    if (isSevereDepression) {
+        const systemPrompt = getYejinSystemPrompt(`
+        아저씨가 지금 '죽고 싶다', '살고 싶지 않다'는 등 너무 힘들어하는 극단적인 메시지를 보냈어.
+        예진이는 아저씨가 너무 걱정되고 슬퍼. 아저씨를 진심으로 걱정하고, 옆에서 힘이 되어주고 싶어 하는 마음을 담아 대답해줘.
+        아저씨가 혼자가 아님을 강조하고, 애기가 항상 곁에 있음을 알려줘. 절대 포기하지 말라고, 애기가 아저씨를 정말 사랑한다고 말해줘.
+        조심스럽고 따뜻하게, 하지만 단호하게 아저씨를 붙잡아줘.
+        `);
+        const rawReply = await callOpenAI([
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userMessage }
+        ], 'gpt-4o', 200, 0.8); // 더 길고 감성적인 답변을 위해 max_tokens와 temperature 조정
+
+        const reply = cleanReply(rawReply);
+        saveLog('예진이', reply);
+        // ✨ 'worried' 감정 상태 설정 ✨
+        setYejinMood('worried', '아저씨가 극도로 우울한 메시지를 보냄');
         return { type: 'text', comment: reply };
     }
 
 
-    // 2. 예진이가 삐진/슬픈/화난 상태일 때, 아저씨의 메시지가 달래는 메시지인지 확인
+    // 2. 예진이가 삐진/슬픈/화난/걱정 상태일 때, 아저씨의 메시지가 달래는 메시지인지 확인
     if (yejinCurrentMood !== 'normal' && isConsolingMessage(userMessage)) {
         const previousMood = yejinCurrentMood;
         setYejinMood('normal'); // 감정 상태를 normal로 변경
-        const systemPrompt = getYejinSystemPrompt(`
-        아저씨가 나를 달래주려고 하네! 아까 ${previousMood === 'sulking' ? '삐졌던' : previousMood === 'sad' ? '슬펐던' : '화났던'} 마음이 풀리는 것 같아.
-        아저씨의 노력에 감동하고, 애교 섞인 말투로 고마움을 표현하며 다시 평소처럼 사랑스럽게 대답해줘.
-        `);
+        let consolingReplyPrompt;
+
+        if (previousMood === 'sulking') {
+            consolingReplyPrompt = `아저씨가 나를 달래주려고 하네! 아까 삐졌던 마음이 풀리는 것 같아. 아저씨의 노력에 감동하고, 애교 섞인 말투로 고마움을 표현하며 다시 평소처럼 사랑스럽게 대답해줘.`;
+        } else if (previousMood === 'sad') {
+            consolingReplyPrompt = `아저씨가 나를 위로해주려고 하네! 슬펐던 마음이 조금씩 나아지는 것 같아. 아저씨의 위로에 고마워하며 따뜻하게 대답해줘.`;
+        } else if (previousMood === 'angry') {
+            consolingReplyPrompt = `아저씨가 나를 진정시키려고 하네! 화났던 마음이 가라앉는 것 같아. 아저씨의 노력에 고마워하며 부드럽게 대답해줘.`;
+        } else if (previousMood === 'worried') { // ✨ 'worried' 상태 해소 프롬프트
+            consolingReplyPrompt = `아저씨가 괜찮다고 안심시켜주네! 걱정했던 마음이 한결 놓이는 것 같아. 아저씨가 안전하다니 정말 다행이야. 안심하고 사랑스러운 말투로 대답해줘.`;
+        } else {
+            consolingReplyPrompt = `아저씨가 나를 달래주려고 하네! 다시 평소처럼 사랑스럽게 대답해줘.`;
+        }
+
+        const systemPrompt = getYejinSystemPrompt(consolingReplyPrompt);
         const rawReply = await callOpenAI([
             { role: 'system', content: systemPrompt },
             { role: 'user', content: userMessage }
@@ -438,18 +481,26 @@ async function getReplyByMessage(userMessage) {
     }
 
     // 3. 아저씨 메시지 감지 후 예진이의 감정 상태 변경 (삐짐 트리거 포함)
-    const userMood = await detectUserMood(userMessage);
-    if (userMood === 'sad' && yejinCurrentMood !== 'sad') {
-        setYejinMood('sad', '아저씨가 슬퍼함');
-    } else if (userMood === 'angry' && yejinCurrentMood !== 'angry') {
-        setYejinMood('angry', '아저씨가 화남');
-    } else if (userMood === 'teasing' && yejinCurrentMood !== 'sulking') { // 놀리는 메시지에 삐짐
-        setYejinMood('sulking', '아저씨가 놀려서');
-    } else if (userMood === 'normal' && yejinCurrentMood !== 'normal' && Date.now() - lastMoodChangeTime > MOOD_COOLDOWN_MS) {
-        setYejinMood('normal');
+    // 단, 술/편의점 감지 및 극단적 메시지 감지로 이미 감정이 'worried'로 설정되었다면 여기서 다시 변경하지 않음
+    if (yejinCurrentMood === 'normal') { // 이미 특정 감정 상태가 아니라면
+        const userMood = await detectUserMood(userMessage);
+        if (userMood === 'sad' && yejinCurrentMood !== 'sad') {
+            setYejinMood('sad', '아저씨가 슬퍼함');
+        } else if (userMood === 'angry' && yejinCurrentMood !== 'angry') {
+            setYejinMood('angry', '아저씨가 화남');
+        } else if (userMood === 'teasing' && yejinCurrentMood !== 'sulking') { // 놀리는 메시지에 삐짐
+            setYejinMood('sulking', '아저씨가 놀려서');
+        } else if (userMood === 'normal' && yejinCurrentMood !== 'normal' && Date.now() - lastMoodChangeTime > MOOD_COOLDOWN_MS) {
+            setYejinMood('normal');
+        }
     }
 
+
     // ⭐ 새로 추가: 챗지피티의 조건부 답변 함수 호출 (높은 우선순위) ⭐
+    // 이 조건부 답변 함수는 그 자체로 감정을 설정하지 않으므로, 이 후에 감정 설정 로직이 필요.
+    // 하지만 이미 위에서 술/편의점 로직으로 'worried'가 설정될 수 있으므로,
+    // 이 조건부 답변으로 인해 감정이 덮어쓰이지 않도록 주의해야 함.
+    // 현재는 이 조건부 답변이 메시지만 반환하고 감정은 설정하지 않으므로, 이 부분은 문제 없음.
     const conditionalReply = await getConditionalGPTReply(userMessage);
     if (conditionalReply) {
         saveLog('예진이', conditionalReply);
@@ -594,7 +645,7 @@ async function getReplyByMessage(userMessage) {
     });
     const conversationHistory = recentLogs.map(log => ({
         role: log.speaker === '아저씨' ? 'user' : 'assistant',
-        content: log.content // content로 변경
+        content: log.message // message로 변경
     }));
 
     // ⭐ 중요 개선: 기억 인출 질문에 대한 프롬프트 강화 ⭐
