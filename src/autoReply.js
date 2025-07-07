@@ -397,6 +397,19 @@ async function getConditionalGPTReply(msg) {
     return null;
 }
 
+/**
+ * 사용자 메시지가 일반적인 셀카/사진 요청인지 확인합니다.
+ * @param {string} messageText - 사용자 메시지
+ * @returns {boolean} 셀카/사진 요청이면 true
+ */
+function isSelfieRequest(messageText) {
+    const lowerCaseMessage = messageText.trim().toLowerCase();
+    // '셀카', '사진' 외에 '얼굴' 키워드도 셀카 요청으로 처리합니다.
+    return lowerCaseMessage.includes('셀카') || 
+           lowerCaseMessage.includes('사진') ||
+           lowerCaseMessage.includes('얼굴'); // ✨ '얼굴' 키워드 추가
+}
+
 
 /**
  * 아저씨의 텍스트 메시지에 대한 예진이의 답변을 생성합니다.
@@ -629,6 +642,7 @@ async function getReplyByMessage(userMessage) {
     }
 
     // ⭐ 중요 추가: 사진 관련 명령어 먼저 확인 및 처리 (이제 컨셉사진 처리 후 실행) ⭐
+    // 이 부분은 이제 일반 셀카 요청은 처리하지 않고, 특정 추억 사진만 처리합니다.
     const photoResponse = await getOmoideReply(userMessage, saveLog); // saveLog 함수를 omoide.js로 전달
     if (photoResponse) {
         return photoResponse; // photoResponse는 이미 타입이 지정되어 있으므로 바로 반환
@@ -1239,5 +1253,7 @@ module.exports = {
     // * 새로 추가된 함수들을 내보냅니다. *
     setMemoryReminder,
     deleteMemory,
-    getFirstDialogueMemory
+    getFirstDialogueMemory,
+    isSelfieRequest, // ✨ 새로 내보내는 함수
+    getImageReactionComment // ✨ 이미 있지만, 명확히 내보내는지 확인
 };
