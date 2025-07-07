@@ -620,7 +620,7 @@ async function getRandomMessage() {
         });
 
         const result = await pool.query(`
-            SELECT text FROM fixed_memories
+            SELECT sentence FROM fixed_memories
             WHERE tag @> ARRAY['예진이말투']
         `);
 
@@ -629,12 +629,13 @@ async function getRandomMessage() {
         }
 
         const random = result.rows[Math.floor(Math.random() * result.rows.length)];
-        return cleanReply(random.text); // 불필요한 개행/공백 정리
+        return cleanReply(random.sentence); // ✅ 여기서도 .sentence로 바꿔야 해!
     } catch (err) {
         console.error('[getRandomMessage] 예진이 말투 메시지 생성 실패:', err);
         return '음… 말이 안 떠오른다… 아저씨 보고싶어 ㅠㅠ';
     }
 }
+
 
 /**
  * 기억을 바탕으로 예진이가 아저씨에게 먼저 말을 거는 선제적 메시지를 생성합니다.
