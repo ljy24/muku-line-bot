@@ -1,4 +1,4 @@
-// ✅ index.js v1.15 - LINE API 메시지 형식 문제 (사진+텍스트 배열 전송) 해결
+// ✅ index.js v1.16 - autoReply 참조 오류 해결 및 셀카 시스템 완전 수정
 
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공 (예: 로그 파일)
@@ -128,7 +128,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
                 const message = event.message; // 메시지 객체를 가져옵니다.
                 const userMessage = message.text; // 사용자 메시지 텍스트
                 const replyToken = event.replyToken; // 라인 API 응답 토큰
-                const userId = event.source.userId;   // 메시지를 보낸 사용자의 ID
+                const senderId = event.source.userId;   // 메시지를 보낸 사용자의 ID
 
                 // * 아저씨(TARGET_USER_ID)가 메시지를 보낸 경우, 마지막 메시지 시간을 업데이트합니다. *
                 if (event.source.userId === userId) {
@@ -150,7 +150,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
                     }
 
                     // ✨ 2. 셀카 요청 처리 (모델 전환 다음으로 높은 우선순위) ✨
-                    if (autoReply.isSelfieRequest(text)) { // autoReply.js의 isSelfieRequest 함수 사용
+                    if (isSelfieRequest(text)) { // ✅ autoReply. 제거 - 구조분해 할당으로 이미 가져온 함수
                         console.log('[index.js] 셀카 요청 감지됨');
 
                         // ⭐ 셀카 전송 쿨다운 로직 ⭐
@@ -161,8 +161,8 @@ app.post('/webhook', middleware(config), async (req, res) => {
 
                         // GPT 멘트와 이미지 URL을 병렬로 호출하여 시간을 절약합니다.
                         const [imageUrl, selfieComment] = await Promise.all([
-                            omoide.getSelfieImageUrl(),         // omoide.js에서 랜덤 셀카 URL 가져오기
-                            autoReply.getImageReactionComment() // autoReply.js에서 셀카 멘트 생성
+                            getSelfieImageUrl(),         // ✅ omoide.js에서 구조분해 할당으로 가져온 함수
+                            getImageReactionComment()    // ✅ autoReply.js에서 구조분해 할당으로 가져온 함수
                         ]);
 
                         // 이미지 메시지를 먼저 사용자에게 전송합니다 (replyMessage는 한 번만 가능).
@@ -174,8 +174,8 @@ app.post('/webhook', middleware(config), async (req, res) => {
 
                         // 약간의 딜레이(0.5초) 후에 텍스트 멘트를 따로 전송하여 자연스러운 흐름을 만듭니다.
                         setTimeout(async () => {
-                            // pushMessage는 userId를 사용하여 특정 사용자에게 메시지를 보냅니다.
-                            await client.pushMessage(userId, { type: 'text', text: selfieComment });
+                            // pushMessage는 senderId를 사용하여 특정 사용자에게 메시지를 보냅니다.
+                            await client.pushMessage(senderId, { type: 'text', text: selfieComment });
                             console.log('[index.js] 셀카 멘트 전송 완료');
                         }, 500); // 500밀리초 = 0.5초
 
@@ -251,7 +251,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
                         if (botResponse.caption) {
                             // 캡션이 있다면, replyMessage는 한 번만 가능하므로 pushMessage로 캡션을 보냅니다.
                             setTimeout(async () => {
-                                await client.pushMessage(userId, { type: 'text', text: botResponse.caption });
+                                await client.pushMessage(senderId, { type: 'text', text: botResponse.caption });
                             }, 100); // 짧은 딜레이
                         }
                     } else {
@@ -276,7 +276,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
                         botResponse.comment.includes('처음 만났을 때 기억은 내가 아직 정확히 못 찾겠어') // 첫 대화 기억 관련 응답 추가
                     );
 
-                    if (!isCommand(text) && !isMemoryRelatedResponse && !autoReply.isSelfieRequest(text)) { // 셀카 요청도 자동 기억 저장에서 제외
+                    if (!isCommand(text) && !isMemoryRelatedResponse && !isSelfieRequest(text)) { // ✅ autoReply. 제거
                         await memoryManager.extractAndSaveMemory(text); // memoryManager를 호출하여 기억 추출 및 저장
                         console.log(`[index.js] memoryManager.extractAndSaveMemory 호출 완료 (메시지: "${text}")`);
                     } else {
