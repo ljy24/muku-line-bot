@@ -8,8 +8,8 @@ const express = require('express'); // Express 프레임워크: 웹 서버를 �
 const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅 (일본 표준시 기준)
 const cron = require('node-cron'); // Node-cron: 특정 시간 또는 주기마다 작업을 실행하는 스케줄러
 
-// ./src/autoReply.js에서 필요한 함수들을 불러옵니다.
-// 이 함수들은 봇의 핵심 응답 로직, 기억 관리, 모델 전환 등을 캡슐화합니다.
+// 📤 autoReply.js에서 필요한 함수들만 구조분해(import)합니다.
+// ※ 전체를 autoReply로 불러오지 않았기 때문에 `autoReply.getXXX()`로 쓰면 에러 납니다.
 const {
     getReplyByMessage,              // 사용자 텍스트 메시지에 대한 예진이의 답변 생성 (사진 요청 포함)
     getReplyByImagePrompt,          // 사용자가 보낸 이미지 메시지에 대한 예진이의 답변 생성 (이미지 분석)
@@ -27,8 +27,8 @@ const {
     setMemoryReminder,              // 기억 리마인더 설정 함수
     deleteMemory,                   // 기억 삭제 함수
     getFirstDialogueMemory,         // 첫 대화 기억 검색 함수
-    isSelfieRequest,                // ✨ 새로 추가: 셀카 요청 감지 함수
-    getImageReactionComment         // ✨ 새로 추가: 셀카 멘트 생성 함수
+    isSelfieRequest,                // ✨ 셀카 요청 감지 함수
+    getImageReactionComment         // ✨ 셀카 멘트 생성 함수
 } = require('./src/autoReply');
 
 // memoryManager 모듈을 불러옵니다.
