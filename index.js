@@ -41,8 +41,7 @@ const memoryManager = require('./src/memoryManager');
 const { getOmoideReply, cleanReply, getSelfieImageUrl } = require('./memory/omoide'); // cleanReply와 getSelfieImageUrl도 함께 불러옵니다.
 
 // spontaneousPhotoManager.js에서 즉흥 사진 스케줄러 함수를 불러옵니다.
-// (이 파일은 현재 제공되지 않았으므로, 아저씨 프로젝트에 있다면 경로 확인 필요)
-// const { startSpontaneousPhotoScheduler } = require('./src/spontaneousPhotoManager');
+const { startSpontaneousPhotoScheduler } = require('./src/spontaneousPhotoManager');
 
 // 스케줄러 모듈 불러오기 (이제 모든 스케줄링 로직은 여기에)
 const { startAllSchedulers, updateLastUserMessageTime } = require('./src/scheduler');
@@ -63,9 +62,9 @@ const client = new Client(config);
 // 타겟 사용자 ID를 환경 변수에서 가져옵니다. (무쿠가 메시지를 보낼 대상)
 const userId = process.env.TARGET_USER_ID;
 
-// ⭐ 새로 추가: 사용자 요청 셀카 쿨다운을 위한 변수 ⭐
-let lastSentSelfieTime = 0; // 마지막으로 사용자 요청 셀카를 보낸 시간
-const USER_REQUESTED_SELFIE_COOLDOWN_MS = 5 * 60 * 1000; // 5분 쿨다운 (연속 요청 방지)
+// ⭐ 사용자 요청 셀카 쿨다운을 위한 변수 (현재는 사용하지 않음) ⭐
+// let lastSentSelfieTime = 0; // 마지막으로 사용자 요청 셀카를 보낸 시간
+// const USER_REQUESTED_SELFIE_COOLDOWN_MS = 5 * 60 * 1000; // 5분 쿨다운 (연속 요청 방지)
 
 
 // 🌐 루트 경로('/')에 대한 GET 요청을 처리합니다.
@@ -153,11 +152,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
                     if (isSelfieRequest(text)) { // ✅ autoReply. 제거 - 구조분해 할당으로 이미 가져온 함수
                         console.log('[index.js] 셀카 요청 감지됨');
 
-                        // ⭐ 셀카 전송 쿨다운 로직 ⭐
-                        if (Date.now() - lastSentSelfieTime < USER_REQUESTED_SELFIE_COOLDOWN_MS) {
-                            await client.replyMessage(replyToken, { type: 'text', text: '아저씨... 방금 셀카 보냈는데 또 보내달라고? 🙈 잠시만 기다려줘~' });
-                            return; // 쿨다운 중이므로 종료
-                        }
+                        // ⭐ 쿨다운 로직 제거 - 아저씨가 원할 때마다 바로 셀카 보내기! ⭐
 
                         // GPT 멘트와 이미지 URL을 병렬로 호출하여 시간을 절약합니다.
                         const [imageUrl, selfieComment] = await Promise.all([
@@ -179,7 +174,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
                             console.log('[index.js] 셀카 멘트 전송 완료');
                         }, 500); // 500밀리초 = 0.5초
 
-                        lastSentSelfieTime = Date.now(); // 셀카 전송 시간 업데이트
+                        // lastSentSelfieTime = Date.now(); // 쿨다운 제거로 더 이상 필요없음
                         return; // 셀카 요청 처리가 완료되었으므로, 이 이벤트에 대한 다른 로직은 실행하지 않습니다.
                     }
 
@@ -333,7 +328,6 @@ app.listen(PORT, async () => {
     console.log('✅ 모든 스케줄러 시작!');
 
     // 🎯 예진이 즉흥 사진 스케줄러 시작 - 보고싶을 때마다 사진 보내기! 💕
-    // 아저씨의 프로젝트에 spontaneousPhotoManager가 있다면 아래 주석을 해제해주세요.
-    // startSpontaneousPhotoScheduler(client, userId, saveLog); // 즉흥 사진 스케줄러 시작
-    // console.log('💕 예진이가 보고싶을 때마다 사진 보낼 준비 완료!'); // 즉흥 사진 시스템 시작 로그
+    startSpontaneousPhotoScheduler(client, userId, saveLog); // 즉흥 사진 스케줄러 시작
+    console.log('💕 예진이가 보고싶을 때마다 사진 보낼 준비 완료!'); // 즉흥 사진 시스템 시작 로그
 });
