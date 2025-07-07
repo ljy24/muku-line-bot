@@ -1,4 +1,4 @@
-// src/memoryManager.js v1.13 - PostgreSQL 데이터베이스 연동 및 기억 처리 로직 강화 (첫 만남 기억 강화)
+// src/memoryManager.js v1.14 - 누락된 함수들 추가
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈 (디렉토리 생성 등)
 const path = require('path'); // 경로 처리 모듈
@@ -224,12 +224,6 @@ async function extractAndSaveMemory(userMessage) {
         return;
     }
 
-    // 아저씨가 포함된 메시지만 처리
-    // (이 조건은 너무 엄격할 수 있으니 필요에 따라 조정)
-    // if (!userMessage.includes('아저씨')) {
-    //     return;
-    // }
-
     try {
         const systemPrompt = `
         사용자의 메시지에서 기억할 만한 중요한 정보(사실, 약속, 아저씨의 감정, 아저씨의 일상, 아저씨의 취향, 아저씨의 주변 인물, **특히 아저씨와의 첫 만남, 인스타그램에서의 첫 대화와 같은 특별한 추억**)를 추출해서 JSON 형식으로 반환해줘.
@@ -390,6 +384,95 @@ async function retrieveRelevantMemories(userQuery, limit = 3) {
 }
 
 /**
+ * 사용자가 명시적으로 요청한 기억을 저장합니다.
+ * @param {string} userMessage - 사용자의 원본 메시지
+ * @param {string} content - 저장할 기억 내용
+ * @param {string|null} reminderTime - 리마인더 시간 (ISO string), 없으면 null
+ * @returns {Promise<void>}
+ */
+async function saveUserSpecifiedMemory(userMessage, content, reminderTime = null) {
+    console.log(`[MemoryManager] saveUserSpecifiedMemory 호출됨: "${content}", 리마인더: ${reminderTime}`);
+    try {
+        const memory = {
+            content: content,
+            category: '사용자지정',
+            strength: 'normal',
+            timestamp: new Date().toISOString(),
+            is_love_related: true,
+            is_other_person_related: false,
+            reminder_time: reminderTime
+        };
+        
+        await saveMemoryToDb(memory);
+        console.log(`[MemoryManager] 사용자 지정 기억 저장 완료: ${memory.content}`);
+
+    } catch (error) {
+        console.error(`[MemoryManager] 사용자 지정 기억 저장 실패: ${error.message}`);
+        throw error;
+    }
+}
+
+/**
+ * 사용자가 요청한 기억을 데이터베이스에서 삭제합니다.
+ * @param {string} contentToDelete - 삭제할 기억의 내용
+ * @returns {Promise<boolean>} 삭제 성공 여부
+ */
+async function deleteRelevantMemories(contentToDelete) {
+    console.log(`[MemoryManager] 기억 삭제 요청: "${contentToDelete}"`);
+    try {
+        if (!pool) {
+            console.error("[MemoryManager] PostgreSQL 데이터베이스 풀이 초기화되지 않았습니다.");
+            throw new Error("Database pool not initialized.");
+        }
+
+        // 부분 일치로 관련 기억을 찾아 삭제
+        const deleteQuery = 'DELETE FROM memories WHERE content ILIKE $1';
+        const result = await pool.query(deleteQuery, [`%${contentToDelete}%`]);
+        
+        if (result.rowCount > 0) {
+            console.log(`[MemoryManager] 기억 삭제 성공: ${result.rowCount}개 기억 삭제됨`);
+            return true;
+        } else {
+            console.log(`[MemoryManager] 기억 삭제 실패: 일치하는 기억을 찾을 수 없음`);
+            return false;
+        }
+    } catch (error) {
+        console.error(`[MemoryManager] 기억 삭제 처리 중 오류 발생: ${error.message}`);
+        return false;
+    }
+}
+
+/**
+ * 기억의 리마인더 시간을 업데이트합니다.
+ * @param {number} memoryId - 기억 ID
+ * @param {string|null} reminderTime - 새로운 리마인더 시간 (ISO string) 또는 null
+ * @returns {Promise<boolean>} 업데이트 성공 여부
+ */
+async function updateMemoryReminderTime(memoryId, reminderTime) {
+    console.log(`[MemoryManager] 리마인더 시간 업데이트: ID ${memoryId}, 시간 ${reminderTime}`);
+    try {
+        if (!pool) {
+            console.error("[MemoryManager] PostgreSQL 데이터베이스 풀이 초기화되지 않았습니다.");
+            throw new Error("Database pool not initialized.");
+        }
+
+        const updateQuery = 'UPDATE memories SET reminder_time = $1 WHERE id = $2';
+        const result = await pool.query(updateQuery, [reminderTime, memoryId]);
+        
+        if (result.rowCount > 0) {
+            console.log(`[MemoryManager] 리마인더 시간 업데이트 성공: ID ${memoryId}`);
+            return true;
+        } else {
+            console.log(`[MemoryManager] 리마인더 시간 업데이트 실패: 해당 ID의 기억을 찾을 수 없음`);
+            return false;
+        }
+    } catch (error) {
+        console.error(`[MemoryManager] 리마인더 시간 업데이트 중 오류 발생: ${error.message}`);
+        return false;
+    }
+}
+
+/**
  * 데이터베이스 연결 풀을 안전하게 종료합니다.
  * @returns {Promise<void>}
  */
@@ -410,7 +493,7 @@ module.exports = {
     retrieveRelevantMemories,
     saveMemoryToDb,
     closeDatabaseConnection,
-    // * 새로 추가된 함수들을 내보냅니다. *
+    // ✅ 이제 정의된 함수들을 내보냅니다
     saveUserSpecifiedMemory,
     deleteRelevantMemories,
     updateMemoryReminderTime
