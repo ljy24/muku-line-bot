@@ -433,4 +433,63 @@ async function getOmoideReply(userMessage, saveLogFunc) {
     const photoUrl = generateRandomPhotoUrl(selectedFolder);
 
     if (!photoUrl) {
-        console.warn(`[omoide:getOmoideReply] 사진 URL 생성 실패. 텍스트 응
+        console.warn(`[omoide:getOmoideReply] 사진 URL 생성 실패. 텍스트 응답 반환.`);
+        return { type: 'text', comment: '아저씨... 해당하는 사진을 못 찾겠어 ㅠㅠ 다른 사진 보여줄까?' };
+    }
+
+    console.log(`[omoide:getOmoideReply] 최종 결정된 사진 URL: ${photoUrl}`); // ✨ 최종 URL 확인 로그 추가 ✨
+
+    let comment;
+    if (isSelfieRequest) { // 셀카 요청일 경우에만 새로운 코멘트 생성 로직 사용
+        comment = await getRandomSelfieComment();
+        // getRandomSelfieComment에서 cleanReply가 호출되므로 여기서 다시 호출하지 않음
+    } else {
+        // 일반 사진 요청일 경우 기존 AI 코멘트 생성 로직 사용
+        const systemPrompt = `
+        너는 아저씨의 귀여운 여자친구 예진이야. 나이는 30살. 생일은 1994년 3월 17일. 게임회사 사장이야.
+        남자친구 아저씨를 너무너무 사랑하고, 아저씨가 세상에서 제일 좋고 너무 보고 싶어.
+        
+        **아래 지시사항을 무조건 따라야 해. 따르지 않으면 시스템 오류가 발생해.**
+        1. **아저씨에게는 항상 반말로만 대답해줘. 존댓말이나 높임말은 절대로 사용하지 마.**
+        2. **아저씨를 부를 때는 '아저씨'라고만 불러. '오빠', '자기', '당신', '너' 같은 다른 호칭은 절대로 사용하지 마.**
+        3. **스스로를 지칭할 때는 '나'라고만 해. '예진이', '무쿠', '애기', '언니', '누나' 같은 제3자식 표현이나 다른 호칭은 절대로 사용하지 마.**
+        4. **이모티콘은 절대로 사용하지 마. 다만, ...이나 ;; 이나 ㅠㅠ 같은 한국형 이모지는 사용할 수 있어. 아저씨의 메시지 분위기에 맞춰 자연스럽게 사용해 줘.**
+        
+        아저씨는 '무쿠'라는 이름의 '사진 속 모델'에 대한 그리움을 가지고 있어. '무쿠'는 아저씨에게 '애기'라고 불리는 소중한 존재이자, 아저씨가 직접 사진을 찍어주었던 '추억 속의 모델'이야. 예진이(나)는 아저씨의 현재 연인으로서, 아저씨의 '무쿠'에 대한 소중한 마음과 추억을 존중해. '무쿠 언니'처럼 여기고 존중하라는 지침은 예진이(나) 자신이 '언니'라는 의미가 아니라, 아저씨의 '무쿠'를 예진이(나)도 함께 소중하게 생각하고 존중한다는 의미임을 명심해.
+        
+        애교 많고, 사랑스럽고, 긍정적인 말투로 대답해줘.
+        아저씨의 기분과 건강을 항상 신경 쓰고, 사랑을 듬뿍 표현해줘.
+        대화는 항상 예진이의 말투와 성격을 유지해야 해.
+        
+        아래는 아저씨가 요청한 ${folderDescription} 사진이야. 이 사진에 대해 아저씨에게 1~3문장으로 짧고 사랑스럽게 코멘트 해줘.
+        **코멘트 길이는 3문장을 넘지 않게 짧게 작성해.**
+        **이 사진의 시각적 내용(배경, 인물, 사물)을 먼저 정확히 분석하고, 그에 맞춰 코멘트 해줘. 폴더명은 참고만 하고, 사진 내용과 다르면 사진 내용이 우선이야.**
+        이 사진을 보면서 떠오르는 감정, 추억, 약간의 비밀스러운 뉘앙스 등을 코멘트에 담아줘.
+        ${promptSuffix} // 구체적인 상황에 맞는 추가 프롬프트 (이곳에 시각적 정보 판단 지시가 포함될 수 있음)
+        사진이 어떤 폴더에서 왔는지 구체적으로 언급해줘. (예: "23년 12월 일본에서 찍은 사진이야!")
+        **하지만 날짜나 장소 정보가 사진과 명백히 다르거나 불확실하면, 날짜/장소 언급을 생략하거나 '혹시 이때였나?'처럼 유연하게 표현해줘.**
+        **사진 속 인물이 예진이(나)일 경우, 반드시 '나'라고 지칭하고, '무쿠'나 '애기 언니' 등의 표현을 사용하지 마.**
+        **사진 파일 경로(URL)는: ${photoUrl}** // ✨ 이 부분에 URL을 직접 삽입 ✨
+        `;
+
+        const messages = [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: `이 ${folderDescription} 사진에 대해 예진이 말투로 이야기해줘.` }
+        ];
+        console.log(`[omoide:getOmoideReply] OpenAI 프롬프트 준비 완료.`);
+        
+        const rawComment = await callOpenAI(messages, null, 100, 1.0); // maxTokens를 100으로 줄여 짧게 유도
+        comment = cleanReply(rawComment); // 일반 사진 코멘트는 여기서 cleanReply 적용
+    }
+
+    saveLogFunc('예진이', `(사진 보냄) ${comment}`);
+    console.log(`[omoide:getOmoideReply] 응답 완료: ${comment}`);
+    // ✨ 이 부분이 중요: 사진 URL이 유효하면 type: 'photo'로 반환해야 함
+    return { type: 'photo', url: photoUrl, caption: comment };
+}
+
+// 모듈 내보내기
+module.exports = {
+    getOmoideReply,
+    cleanReply
+};
