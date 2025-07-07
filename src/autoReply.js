@@ -607,10 +607,33 @@ async function getSulkyReply() {
 
 /**
  * 무작위 메시지를 생성합니다.
- * @returns {Promise<string>} 무작위 메시지
+ * fixed_memories 테이블에서 예진이 말투 태그가 있는 문장을 불러와 무작위로 하나 선택합니다.
+ * 감정형 혼잣말 메시지로 구성되며, 예진이 특유의 애교, 반말, 말투를 유지합니다.
+ * @returns {Promise<string>} 무작위 예진이 말투 메시지
  */
 async function getRandomMessage() {
-    return '';
+    try {
+        const { Pool } = require('pg');
+        const pool = new Pool({
+            connectionString: process.env.DATABASE_URL || 'postgresql://yejin:eobvDU6ZHl8mNqvimyLi5VNzHTRNOxu4@dpg-d1k1bnu3jp1c73eulvdg-a.oregon-postgres.render.com/mukudb',
+            ssl: { rejectUnauthorized: false }
+        });
+
+        const result = await pool.query(`
+            SELECT text FROM fixed_memories
+            WHERE tag @> ARRAY['예진이말투']
+        `);
+
+        if (result.rows.length === 0) {
+            return '아저씨이… 말 걸어줘 ㅠㅠ';
+        }
+
+        const random = result.rows[Math.floor(Math.random() * result.rows.length)];
+        return cleanReply(random.text); // 불필요한 개행/공백 정리
+    } catch (err) {
+        console.error('[getRandomMessage] 예진이 말투 메시지 생성 실패:', err);
+        return '음… 말이 안 떠오른다… 아저씨 보고싶어 ㅠㅠ';
+    }
 }
 
 /**
