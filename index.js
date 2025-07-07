@@ -1,4 +1,4 @@
-// ✅ index.js v1.11 - 웹훅 처리 개선 및 사진 기능 통합, 리마인더 스케줄러 추가, 즉흥 사진 스케줄러 추가 (최종 기억 통합 및 로그 상세화)
+// ✅ index.js v1.12 - 웹훅 처리 개선 및 사진 기능 통합, 리마인더 스케줄러 추가, 즉흥 사진 스케줄러 추가 (최종 기억 통합 및 로그 상세화)
 // 이 파일은 LINE 봇 서버의 메인 진입점입니다.
 // LINE 메시징 API와의 연동, Express 웹 서버 설정, 주기적인 작업 스케줄링 등을 담당합니다.
 
@@ -15,7 +15,7 @@ const cron = require('node-cron'); // Node-cron: 특정 시간 또는 주기마�
 const {
     getReplyByMessage,           // 사용자 텍스트 메시지에 대한 예진이의 답변 생성 (사진 요청 포함)
     getReplyByImagePrompt,       // 사용자가 보낸 이미지 메시지에 대한 예진이의 답변 생성 (이미지 분석)
-    getRandomMessage,            // 무작위 메시지 생성 (현재는 빈 문자열 반환)
+    getRandomMessage,            // 무작위 메시지 생성
     getCouplePhotoReplyFromYeji, // 커플 사진에 대한 코멘트 생성 (스케줄러용)
     getColorMoodReply,           // 기분 기반 색상 추천 답변 생성 (현재 미사용)
     getHappyReply,               // 긍정적인 답변 생성 (현재 미사용)
@@ -25,7 +25,10 @@ const {
     checkModelSwitchCommand,     // 모델 전환 명령어를 확인하고 처리하는 함수
     getProactiveMemoryMessage,   // 기억을 바탕으로 선제적 메시지를 생성하는 함수
     getMemoryListForSharing,     // 저장된 기억 목록을 포매팅하여 반환하는 함수
-    getSilenceCheckinMessage     // 침묵 감지 시 걱정 메시지를 생성하는 함수
+    getSilenceCheckinMessage,    // 침묵 감지 시 걱정 메시지를 생성하는 함수
+    setMemoryReminder,           // 기억 리마인더 설정 함수
+    deleteMemory,                // 기억 삭제 함수
+    getFirstDialogueMemory       // 첫 대화 기억 검색 함수
 } = require('./src/autoReply');
 
 // memoryManager 모듈을 불러옵니다.
@@ -71,15 +74,21 @@ const PROACTIVE_COOLDOWN = 1 * 60 * 60 * 1000;
 app.get('/', (_, res) => res.send('무쿠 살아있엉'));
 
 // 🚀 '/force-push' 경로에 대한 GET 요청을 처리합니다. (개발/테스트용)
-// 이 엔드포인트에 접속하면 봇이 TARGET_USER_ID에게 무작위 메시지를 강제로 보냅니다.
+// 이 엔드포인트에 접속하면 무쿠가 무작위 메시지를 TARGET_USER_ID에게 강제로 보냅니다.
 app.get('/force-push', async (req, res) => {
-    // getRandomMessage는 현재 빈 문자열을 반환하도록 되어 있으므로, 실제 메시지를 보내려면 autoReply.js에서 해당 함수를 수정해야 합니다.
-    const msg = await getRandomMessage(); 
-    if (msg) {
-        await client.pushMessage(userId, { type: 'text', text: msg }); // 메시지 전송
-        res.send(`전송됨: ${msg}`); // 성공 응답
+    // * 50% 확률로 기억 기반 메시지를 보내거나, 50% 확률로 일반 랜덤 메시지를 보냅니다. *
+    const proactiveMessage = Math.random() < 0.5
+        ? await getProactiveMemoryMessage() // 기억 기반 메시지
+        : await getRandomMessage(); // 일반 랜덤 메시지
+
+    console.log('[force-push] 생성된 메시지:', proactiveMessage); // ✅ 로그 찍기
+
+    if (proactiveMessage) {
+        await client.pushMessage(userId, { type: 'text', text: proactiveMessage });
+        saveLog('예진이', proactiveMessage);
+        res.send(`전송됨: ${proactiveMessage}`);
     } else {
-        res.send('메시지 생성 실패 (getRandomMessage가 비어있을 수 있습니다)'); // 실패 응답
+        res.send('메시지 생성 실패 (랜덤 메시지가 비어있거나 생성되지 않았을 수 있습니다)');
     }
 });
 
@@ -100,6 +109,8 @@ const isCommand = (message) => {
     const lowerCaseMessage = message.toLowerCase();
     
     // * 봇의 특정 기능(기억 목록, 모델 변경, 모든 사진/컨셉 사진 요청 등)을 트리거하는 명확한 명령어들 *
+    // * 기억 저장/삭제/리마인더 관련 명령어는 autoReply.js에서 OpenAI로 유동적으로 처리하므로,
+    // * 여기 isCommand에서는 명시적인 키워드를 제거하여 일반 대화로 분류되도록 합니다. *
     const definiteCommands = [
         /(기억\s?보여줘|내\s?기억\s?보여줘|혹시 내가 오늘 뭐한다 그랬지\?|오늘 뭐가 있더라\?|나 뭐하기로 했지\?)/i, // 기억 목록 관련
         /3\.5|4\.0|자동|버전/i, // 모델 전환 명령어
@@ -130,8 +141,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
                     console.log(`[Webhook] 아저씨 메시지 수신, 마지막 메시지 시간 업데이트: ${moment(lastUserMessageTime).format('HH:mm:ss')}`);
                 }
 
-                // 텍스트 메시지인 경우 처리
-                if (message.type === 'text') {
+                if (message.type === 'text') { // 텍스트 메시지인 경우
                     const text = message.text.trim(); // 메시지 텍스트를 가져와 앞뒤 공백을 제거합니다.
 
                     saveLog('아저씨', text); // 아저씨의 메시지를 로그에 저장합니다.
@@ -147,7 +157,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
                     // * 기억 목록 보여주기 명령어 처리 *
                     if (/(기억\s?보여줘|내\s?기억\s?보여줘|혹시 내가 오늘 뭐한다 그랬지\?|오늘 뭐가 있더라\?|나 뭐하기로 했지\?)/i.test(text)) {
                         try {
-                            let memoryList = await getMemoryListForSharing(); // autoReply.js에서 기억 목록을 가져옴
+                            let memoryList = await getMemoryListForSharing(); // autoReply.js에서 기억 목록을 가져옵니다.
                             memoryList = replaceUserToAhjussi(memoryList); // '사용자' -> '아저씨'로 교체
                             await client.replyMessage(event.replyToken, { type: 'text', text: memoryList });
                             console.log(`[index.js] 기억 목록 전송 성공: "${text}"`);
@@ -157,6 +167,41 @@ app.post('/webhook', middleware(config), async (req, res) => {
                             await client.replyMessage(event.replyToken, { type: 'text', text: '기억 목록을 불러오기 실패했어 ㅠㅠ' });
                         }
                         return; // 명령어 처리 후 함수 종료
+                    }
+
+                    // * 기억 삭제 명령어 처리 *
+                    // 예시: "기억 삭제: 오늘 우유 사야 돼"
+                    const deleteMatch = text.match(/^(기억\s?삭제|기억\s?지워|기억에서\s?없애줘)\s*:\s*(.+)/i);
+                    if (deleteMatch) {
+                        const contentToDelete = deleteMatch[2].trim();
+                        try {
+                            const result = await deleteMemory(contentToDelete); // autoReply.js의 deleteMemory 호출
+                            await client.replyMessage(event.replyToken, { type: 'text', text: result });
+                            console.log(`[index.js] 기억 삭제 명령어 처리 완료: "${text}"`);
+                            saveLog('예진이', result);
+                        } catch (err) {
+                            console.error(`[index.js] 기억 삭제 실패 ("${text}"):`, err.message);
+                            await client.replyMessage(event.replyToken, { type: 'text', text: '기억 삭제에 실패했어 ㅠㅠ 미안해...' });
+                        }
+                        return;
+                    }
+
+                    // * 리마인더 설정 명령어 처리 *
+                    // 예시: "리마인더: 내일 10시 병원 가기", "리마인드: 2025-07-07 14:00 병원 가야 한다"
+                    const reminderMatch = text.match(/^(리마인더|리마인드|알림|알려줘)\s*:\s*(.+)\s+(.+)/i);
+                    if (reminderMatch) {
+                        const content = reminderMatch[2].trim();
+                        const timeString = reminderMatch[3].trim();
+                        try {
+                            const result = await setMemoryReminder(content, timeString); // autoReply.js의 setMemoryReminder 호출
+                            await client.replyMessage(event.replyToken, { type: 'text', text: result });
+                            console.log(`[index.js] 리마인더 설정 명령어 처리 완료: "${text}"`);
+                            saveLog('예진이', result);
+                        } catch (err) {
+                            console.error(`[index.js] 리마인더 설정 실패 ("${text}"):`, err.message);
+                            await client.replyMessage(event.replyToken, { type: 'text', text: '리마인더 설정에 실패했어 ㅠㅠ 미안해...' });
+                        }
+                        return;
                     }
                     
                     // * 봇의 일반 응답 및 사진 요청 처리 *
@@ -173,7 +218,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
                     // botResponse.comment가 기억/삭제/리마인더 관련 응답인지 확인하여 중복 저장 방지
                     const isMemoryRelatedResponse = botResponse.comment && (
                         botResponse.comment.includes('기억했어! 💖') ||
-                        botResponse.comment.includes('잊어버리라고 해서 지웠어... 😥') ||
+                        botResponse.comment.includes('잊어버리라고 해서 지웠어... �') ||
                         botResponse.comment.includes('기억을 못 찾겠어 ㅠㅠ') ||
                         botResponse.comment.includes('알려줄게! 🔔') ||
                         botResponse.comment.includes('뭘 기억해달라는 거야?') ||
@@ -214,7 +259,6 @@ app.post('/webhook', middleware(config), async (req, res) => {
                         replyMessages.push({ type: 'text', text: '지금 잠시 문제가 생겼어 ㅠㅠ' });
                     }
 
-                    // * 최종 응답 메시지 전송 *
                     if (replyMessages.length > 0) {
                         await client.replyMessage(event.replyToken, replyMessages);
                         console.log(`[index.js] 봇 응답 전송 완료 (타입: ${botResponse.type})`);
@@ -272,7 +316,7 @@ cron.schedule('0 10-19 * * *', async () => {
     const now = moment().tz('Asia/Tokyo'); // 현재 일본 표준시 시간
     const currentTime = Date.now(); // 현재 시스템 시간 (밀리초)
 
-    // * 서버 부팅 후 3분 동안은 스케줄러 실행을 건너킵니다. *
+    // * 서버 부팅 후 3분(3 * 60 * 1000 밀리초) 동안은 자동 메시지 전송을 건너뜁니다. *
     if (currentTime - bootTime < 3 * 60 * 1000) {
         console.log('[Scheduler] 서버 부팅 직후 3분 이내 -> 담타 메시지 전송 스킵');
         return; // 함수 실행 중단
@@ -315,7 +359,7 @@ const sendScheduledMessage = async (type) => {
     const now = moment().tz('Asia/Tokyo'); // 현재 일본 표준시 시간
     const currentTime = Date.now(); // 현재 시스템 시간 (밀리초)
 
-    // * 서버 부팅 후 3분 동안은 자동 메시지 전송을 건너킵니다. *
+    // * 서버 부팅 후 3분(3 * 60 * 1000 밀리초) 동안은 자동 메시지 전송을 건너뜁니다. *
     if (currentTime - bootTime < 3 * 60 * 1000) {
         console.log('[Scheduler] 서버 부팅 직후 3분 이내 -> 자동 메시지 전송 스킵');
         return; // 함수 실행 중단
@@ -374,7 +418,7 @@ const sendScheduledMessage = async (type) => {
                     console.log(`[Scheduler] 감성 메시지 중복 또는 너무 빠름 -> 전송 스킵`);
                 }
             } catch (error) {
-                console.error('[Scheduler] 감성 메시지 전송 실패:', error);
+                console.error('감성 메시지 전송 실패:', error);
             }
         }
     } else if (type === 'couple_photo') { // 커플 사진 메시지인 경우
@@ -386,8 +430,8 @@ const sendScheduledMessage = async (type) => {
                 const coupleFileName = String(randomCoupleIndex).padStart(6, '0') + '.jpg';
                 const coupleImageUrl = COUPLE_BASE_URL + coupleFileName;
                 
-                const coupleComment = await getCouplePhotoReplyFromYeji(); // autoReply.js에서 코멘트 가져옴
-                const nowTime = Date.now(); // 현재 시간 (오타 수정: Date.Now() -> Date.now())
+                const coupleComment = await getCouplePhotoReplyFromYeji(); // autoReply.js의 함수 호출
+                const nowTime = Date.now();
 
                 // * 커플 사진 메시지가 있고, 이전 메시지와 다르며, 쿨다운 시간을 지났을 때만 전송합니다. *
                 if (
@@ -407,7 +451,7 @@ const sendScheduledMessage = async (type) => {
                     console.log(`[Scheduler] 커플 사진 중복 또는 너무 빠름 -> 전송 스킵`);
                 }
             } catch (error) {
-                console.error('[Scheduler] 랜덤 커플 사진 전송 실패:', error);
+                console.error('랜덤 커플 사진 전송 실패:', error);
             }
         }
     }
@@ -420,8 +464,8 @@ cron.schedule('30 * * * *', async () => {
     await sendScheduledMessage('mood_message');
     await sendScheduledMessage('couple_photo');
 }, {
-    scheduled: true, // 스케줄러 활성화
-    timezone: "Asia/Tokyo" // 일본 표준시 설정
+    scheduled: true,
+    timezone: "Asia/Tokyo"
 });
 
 
@@ -440,7 +484,7 @@ cron.schedule('*/15 * * * *', async () => { // 매 15분마다 실행
         return;
     }
 
-    // * 서버 부팅 후 3분 이내에는 침묵 감지 체크를 건너킵니다. *
+    // * 서버 부팅 후 3분(3 * 60 * 1000 밀리초) 동안은 자동 메시지 전송을 건너뜁니다. *
     if (now - bootTime < 3 * 60 * 1000) {
         console.log('[Scheduler-Silence] 서버 부팅 직후 3분 이내 -> 침묵 체크 스킵');
         return;
@@ -462,8 +506,8 @@ cron.schedule('*/15 * * * *', async () => { // 매 15분마다 실행
         }
     }
 }, {
-    scheduled: true, // 스케줄러 활성화
-    timezone: "Asia/Tokyo" // 일본 표준시 설정
+    scheduled: true,
+    timezone: "Asia/Tokyo"
 });
 
 
@@ -475,8 +519,8 @@ cron.schedule('0 23 * * *', async () => {
     console.log(`[Scheduler] 밤 11시 메시지 전송: ${msg}`); // 로그 기록
     saveLog('예진이', msg); // 봇의 메시지 로그 저장
 }, {
-    scheduled: true, // 스케줄러 활성화
-    timezone: "Asia/Tokyo" // 일본 표준시 설정
+    scheduled: true,
+    timezone: "Asia/Tokyo"
 });
 
 // 5. 밤 12시에 약 먹고 자자 메시지
@@ -487,8 +531,8 @@ cron.schedule('0 0 * * *', async () => {
     console.log(`[Scheduler] 밤 12시 메시지 전송: ${msg}`); // 로그 기록
     saveLog('예진이', msg); // 봇의 메시지 로그 저장
 }, {
-    scheduled: true, // 스케줄러 활성화
-    timezone: "Asia/Tokyo" // 일본 표준시 설정
+    scheduled: true,
+    timezone: "Asia/Tokyo"
 });
 
 // 6. 리마인더 체크 스케줄러
@@ -546,4 +590,4 @@ app.listen(PORT, async () => {
     // 🎯 예진이 즉흥 사진 스케줄러 시작 - 보고싶을 때마다 사진 보내기! 💕
     startSpontaneousPhotoScheduler(client, userId, saveLog); // 즉흥 사진 스케줄러 시작
     console.log('💕 예진이가 보고싶을 때마다 사진 보낼 준비 완료!'); // 즉흥 사진 시스템 시작 로그
-}); 
+});
