@@ -1,4 +1,5 @@
-// memory/omoide.js v1.9 - 사진 URL 코멘트에 포함 기능 추가 및 프롬프트 강화
+// memory/omoide.js v1.10 - 사진 URL 생성 로직 및 이모티콘 제거 강화
+
 // 📦 필수 모듈 불러오기
 const { OpenAI } = require('openai'); // OpenAI API 클라이언트
 const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
@@ -7,6 +8,8 @@ const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 �
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // 사진이 저장된 웹 서버의 기본 URL (HTTPS 필수)
+// 이 BASE_PHOTO_URL은 'https://photo.de-ji.net/photo/' 로 고정.
+// 각 폴더는 이 URL 바로 하위에 위치한다고 가정
 const BASE_PHOTO_URL = 'https://photo.de-ji.net/photo/';
 
 // 아저씨가 제공해주신 폴더별 사진 개수 데이터
@@ -46,7 +49,7 @@ const PHOTO_FOLDERS = {
     '추억 빠계 사진 모음': 739,
     '추억 인생네컷': 17,
     '흑심 24_11_08 한국 메이드복_': 13,
-    'yejin': 1186 // 'yejin' 폴더 사진 개수 1286 -> 1186으로 업데이트
+    'yejin': 1186 // 'yejin' 폴더 사진 개수 업데이트
 };
 
 /**
@@ -101,12 +104,8 @@ function cleanReply(reply) {
     cleaned = cleaned.replace(/\b자기\b/g, '아저씨');
     cleaned = cleaned.replace(/\b당신\b/g, '아저씨');
     cleaned = cleaned.replace(/\b너\b/g, '아저씨');
-    // '애기' 호칭 교체는 사용자 요청에 따라 제거됨 (무쿠를 '애기'라고 부르는 것 존중)
-    // cleaned = cleaned.replace(/\b애기야\b/g, '아저씨'); // 이 줄을 제거 (아저씨의 "애기" 호칭 유지)
-    // cleaned = cleaned.replace(/\b애기\b/g, '아저씨');   // 이 줄을 제거 (아저씨의 "애기" 호칭 유지)
 
-    // 3. 자가 지칭 교정: '예진이', '예진', '무쿠', '무쿠야'를 '나'로 교체합니다.
-    // '언니', '누나' 등 예진이가 자신을 칭할 때 사용하면 안 되는 표현도 '나'로 교정
+    // 3. 자가 지칭 교정: '예진이', '예진', '무쿠', '무쿠야', '언니', '누나' 등을 '나'로 교체합니다.
     cleaned = cleaned.replace(/\b예진이\b/g, '나');
     cleaned = cleaned.replace(/\b예진\b/g, '나');
     cleaned = cleaned.replace(/\b무쿠\b/g, '나');     // 기본 '무쿠' 지칭을 '나'로
@@ -140,6 +139,10 @@ function cleanReply(reply) {
     cleaned = cleaned.replace(/이에요\b/g, '야');
     cleaned = cleaned.replace(/였어요\b/g, '였어');
     cleaned = cleaned.replace(/보고싶어요\b/g, '보고 싶어');
+
+    // 5. 이모티콘을 더 강력하게 제거 (가장 최근에 주신 정규식 사용)
+    cleaned = cleaned.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E6}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{1F600}-\u{1F64F}\u{1F3FB}-\u{1F3FF}\u{200D}\u{20E3}\u{FE0F}]/gu, '').trim();
+
     console.log(`[omoide:cleanReply] 정제된 답변: "${cleaned}"`);
     return cleaned;
 }
@@ -159,15 +162,11 @@ function generateRandomPhotoUrl(folderName) {
     const randomIndex = Math.floor(Math.random() * photoCount) + 1; // 1부터 photoCount까지
     const fileName = String(randomIndex).padStart(6, '0') + '.jpg'; // 예: 000001.jpg (6자리)
 
-    let url;
-    // 'yejin' 폴더는 'photo' 하위에 직접 있으므로 BASE_PHOTO_URL + folderName + filename
-    if (folderName === 'yejin') {
-        url = `${BASE_PHOTO_URL}${encodeURIComponent(folderName)}/${fileName}`;
-    } else {
-        // 다른 폴더들은 기존 로직 유지 (폴더명이 이미 경로를 포함하는 경우)
-        // 아저씨가 제공한 정보에 따라 `BASE_PHOTO_URL` 뒤에 바로 폴더명, 그 다음 파일명으로 구성
-        url = `${BASE_PHOTO_URL}${encodeURIComponent(folderName)}/${fileName}`;
-    }
+    // 아저씨가 알려준 "http://photo.de-ji.net/photo/yejin" 경로에 맞춰 정확히 구성
+    // BASE_PHOTO_URL 자체가 'https://photo.de-ji.net/photo/' 로 끝나므로,
+    // 폴더명을 `encodeURIComponent` 없이 바로 이어서 붙이면 정확한 URL이 생성됨
+    // 예: https://photo.de-ji.net/photo/yejin/000001.jpg
+    const url = `${BASE_PHOTO_URL}${folderName}/${fileName}`;
 
     console.log(`[omoide:generateRandomPhotoUrl] 생성된 URL: "${url}" (파일 수: ${photoCount}, 인덱스: ${randomIndex})`);
     return url;
@@ -200,8 +199,8 @@ async function getOmoideReply(userMessage, saveLogFunc) {
         folderDescription = '내가(예진이) 메이드복 입고 찍은 사진'; // '나'임을 명확히
         promptSuffix = "내가 메이드복을 입고 찍었던 사진에 대해 아저씨에게 장난기 있으면서도 귀엽고 사랑스럽게 말해줘. 아저씨가 나를 보며 얼마나 귀여워할지 생각하면 기분이 좋아! 이때 아저씨가 놀랐던 기억도 같이 얘기해줘.";
     } else if (lowerCaseMessage.includes('셀카줘') || lowerCaseMessage.includes('사진줘') || lowerCaseMessage.includes('얼굴 보여줘') || lowerCaseMessage.includes('얼굴 보고 싶') || lowerCaseMessage.includes('selfie')) {
-        // '셀카줘' 등 일반적인 셀카 요청 -> 'yejin' 폴더 사용 (PHOTO_FOLDERS에 등록됨)
-        selectedFolder = 'yejin';
+        // '셀카줘' 등 일반적인 셀카 요청 -> 'yejin' 폴더 사용
+        selectedFolder = 'yejin'; //
         folderDescription = '내(예진이) 셀카';
         promptSuffix = "아저씨에게 보내는 내(예진이) 셀카에 대해 귀엽고 사랑스럽게 말해줘. 아저씨가 나를 보고 얼마나 기뻐할지 기대하는 마음을 담아서.";
     }
