@@ -605,7 +605,7 @@ async function getSulkyReply() {
 }
 
 
-/**
+**
  * 무작위 메시지를 생성합니다.
  * fixed_memories 테이블에서 예진이 말투 태그가 있는 문장을 불러와 무작위로 하나 선택합니다.
  * 감정형 혼잣말 메시지로 구성되며, 예진이 특유의 애교, 반말, 말투를 유지합니다.
@@ -619,17 +619,22 @@ async function getRandomMessage() {
             ssl: { rejectUnauthorized: false }
         });
 
+        // ✅ 수정: sentence → text 로 변경
         const result = await pool.query(`
-            SELECT sentence FROM fixed_memories
+            SELECT text FROM fixed_memories
             WHERE tag @> ARRAY['예진이말투']
+            ORDER BY RANDOM() LIMIT 1
         `);
 
         if (result.rows.length === 0) {
+            console.log('[getRandomMessage] 예진이말투 태그를 가진 메시지가 없습니다.');
             return '아저씨이… 말 걸어줘 ㅠㅠ';
         }
 
-        const random = result.rows[Math.floor(Math.random() * result.rows.length)];
-        return cleanReply(random.sentence); // ✅ 여기서도 .sentence로 바꿔야 해!
+        const random = result.rows[0]; // 이미 LIMIT 1이므로 첫 번째 행 사용
+        // ✅ 수정: random.sentence → random.text 로 변경
+        return cleanReply(random.text);
+        
     } catch (err) {
         console.error('[getRandomMessage] 예진이 말투 메시지 생성 실패:', err);
         return '음… 말이 안 떠오른다… 아저씨 보고싶어 ㅠㅠ';
