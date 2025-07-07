@@ -14,10 +14,13 @@ const {
     getReplyByMessage,              // 사용자 텍스트 메시지에 대한 예진이의 답변 생성 (사진 요청 포함)
     getReplyByImagePrompt,          // 사용자가 보낸 이미지 메시지에 대한 예진이의 답변 생성 (이미지 분석)
     getRandomMessage,               // 무작위 메시지 생성 (scheduler.js에서 사용)
-    getCouplePhotoReplyFromYeji,    // 커플 사진에 대한 코멘트 생성 (scheduler.js에서 사용)
-    getColorMoodReply,              // 기분 기반 색상 추천 답변 생성 (현재 미사용)
-    getHappyReply,                  // 긍정적인 답변 생성 (현재 미사용)
-    getSulkyReply,                  // 삐진 듯한 답변 생성 (현재 미사용)
+    getCouplePhotoReplyFromYeji,    // 커플 사진에 대한 코멘트 생성 (scheduler.js에서도 사용)
+    getImageReactionComment,        // 셀카 멘트 생성 함수
+    isSelfieRequest,                // 셀카 요청 감지 함수
+    isCouplePhotoRequest,           // ✨ 새로 추가: 커플 사진 요청 감지 함수
+    isConceptPhotoRequest,          // ✨ 새로 추가: 컨셉 사진 요청 감지 함수
+    isMemoryPhotoRequest,           // ✨ 새로 추가: 추억 사진 요청 감지 함수
+    getConceptPhotoReply,           // ✨ 새로 추가: 컨셉 사진 데이터 가져오기 함수
     saveLog,                        // 메시지 로그를 파일에 저장하는 함수
     setForcedModel,                 // OpenAI 모델을 강제로 설정하는 함수
     checkModelSwitchCommand,        // 모델 전환 명령어를 확인하고 처리하는 함수
@@ -26,9 +29,7 @@ const {
     getSilenceCheckinMessage,       // 침묵 감지 시 걱정 메시지를 생성하는 함수 (scheduler.js에서 사용)
     setMemoryReminder,              // 기억 리마인더 설정 함수
     deleteMemory,                   // 기억 삭제 함수
-    getFirstDialogueMemory,         // 첫 대화 기억 검색 함수
-    isSelfieRequest,                // ✨ 셀카 요청 감지 함수
-    getImageReactionComment         // ✨ 셀카 멘트 생성 함수
+    getFirstDialogueMemory          // 첫 대화 기억 검색 함수
 } = require('./src/autoReply');
 
 // memoryManager 모듈을 불러옵니다.
@@ -36,12 +37,13 @@ const {
 // 파일 구조에 따라 './src/memoryManager' 경로로 불러옵니다. (src 폴더 안에 있음)
 const memoryManager = require('./src/memoryManager');
 
-// omoide.js에서 사진 관련 응답 함수와 cleanReply, getSelfieImageUrl을 불러옵니다.
+// omoide.js에서 사진 관련 응답 함수와 cleanReply, getSelfieImageUrl, getCoupleImageUrl, getMemoryPhoto를 불러옵니다.
 // 파일 구조 이미지에 따르면 omoide.js는 memory 폴더 바로 아래에 있습니다.
-const { getOmoideReply, cleanReply, getSelfieImageUrl } = require('./memory/omoide'); // cleanReply와 getSelfieImageUrl도 함께 불러옵니다.
+const { getMemoryPhoto, cleanReply, getSelfieImageUrl, getCoupleImageUrl } = require('./memory/omoide'); // ✨ getMemoryPhoto 함수 이름 변경
 
 // spontaneousPhotoManager.js에서 즉흥 사진 스케줄러 함수를 불러옵니다.
-const { startSpontaneousPhotoScheduler } = require('./src/spontaneousPhotoManager');
+// (이 파일은 현재 제공되지 않았으므로, 아저씨 프로젝트에 있다면 아래 주석을 해제해주세요)
+// const { startSpontaneousPhotoScheduler } = require('./src/spontaneousPhotoManager');
 
 // 스케줄러 모듈 불러오기 (이제 모든 스케줄링 로직은 여기에)
 const { startAllSchedulers, updateLastUserMessageTime } = require('./src/scheduler');
@@ -62,9 +64,9 @@ const client = new Client(config);
 // 타겟 사용자 ID를 환경 변수에서 가져옵니다. (무쿠가 메시지를 보낼 대상)
 const userId = process.env.TARGET_USER_ID;
 
-// ⭐ 사용자 요청 셀카 쿨다운을 위한 변수 (현재는 사용하지 않음) ⭐
-// let lastSentSelfieTime = 0; // 마지막으로 사용자 요청 셀카를 보낸 시간
-// const USER_REQUESTED_SELFIE_COOLDOWN_MS = 5 * 60 * 1000; // 5분 쿨다운 (연속 요청 방지)
+// ⭐ 사용자 요청 셀카 쿨다운을 위한 변수 (이제 모든 사용자 요청 사진 쿨다운 제거) ⭐
+// let lastSentSelfieTime = 0; // 이 변수와 USER_REQUESTED_SELFIE_COOLDOWN_MS는 이제 사용하지 않습니다.
+// const USER_REQUESTED_SELFIE_COOLDOWN_MS = 5 * 60 * 1000;
 
 
 // 🌐 루트 경로('/')에 대한 GET 요청을 처리합니다.
@@ -102,13 +104,12 @@ const isCommand = (message) => {
     const lowerCaseMessage = message.toLowerCase();
     
     // * 봇의 특정 기능(기억 목록, 모델 변경 등)을 트리거하는 명확한 명령어들 *
-    // * 셀카/사진 관련 명령어는 이제 isSelfieRequest에서 처리하므로 여기서 제외합니다. *
+    // * 모든 사진 관련 명령어는 이제 각 isXXXRequest 함수에서 처리하므로 여기서 제외합니다. *
     // * 기억 저장/삭제/리마인더 관련 명령어는 autoReply.js에서 OpenAI로 유동적으로 처리하므로,
     // * 여기 isCommand에서는 명시적인 키워드를 제거하여 일반 대화로 분류되도록 합니다. *
     const definiteCommands = [
         /(기억\s?보여줘|내\s?기억\s?보여줘|혹시 내가 오늘 뭐한다 그랬지\?|오늘 뭐가 있더라\?|나 뭐하기로 했지\?)/i, // 기억 목록 관련
         /3\.5|4\.0|자동|버전/i, // 모델 전환 명령어
-        // 이전 셀카/사진/얼굴/컨셉사진 관련 명령어들은 isSelfieRequest와 getConceptPhotoReply 로직으로 이동했으므로 여기서 제거.
     ];
 
     // * 메시지가 위의 명령어 정규식 중 하나라도 일치하면 true 반환 *
@@ -148,35 +149,82 @@ app.post('/webhook', middleware(config), async (req, res) => {
                         return; // 명령어 처리 후 함수 종료
                     }
 
-                    // ✨ 2. 셀카 요청 처리 (모델 전환 다음으로 높은 우선순위) ✨
-                    if (isSelfieRequest(text)) { // ✅ autoReply. 제거 - 구조분해 할당으로 이미 가져온 함수
+                    // ⭐ 2. 사진 요청 처리 (종류별로 명확히 분리하여 처리, 쿨다운 없음) ⭐
+
+                    // 2-1. 셀카 요청 처리 (모델 전환 다음 우선순위)
+                    if (isSelfieRequest(text)) {
                         console.log('[index.js] 셀카 요청 감지됨');
+                        // 쿨다운 로직은 이제 제거되었으므로, 바로 보냅니다.
 
-                        // ⭐ 쿨다운 로직 제거 - 아저씨가 원할 때마다 바로 셀카 보내기! ⭐
-
-                        // GPT 멘트와 이미지 URL을 병렬로 호출하여 시간을 절약합니다.
                         const [imageUrl, selfieComment] = await Promise.all([
-                            getSelfieImageUrl(),         // ✅ omoide.js에서 구조분해 할당으로 가져온 함수
-                            getImageReactionComment()    // ✅ autoReply.js에서 구조분해 할당으로 가져온 함수
+                            getSelfieImageUrl(),         // omoide.js에서 랜덤 셀카 URL 가져오기
+                            getImageReactionComment()    // autoReply.js에서 셀카 멘트 생성
                         ]);
-
-                        // 이미지 메시지를 먼저 사용자에게 전송합니다 (replyMessage는 한 번만 가능).
-                        await client.replyMessage(replyToken, {
-                            type: 'image',
-                            originalContentUrl: imageUrl,
-                            previewImageUrl: imageUrl, // 미리보기 이미지도 동일한 URL 사용
-                        });
-
-                        // 약간의 딜레이(0.5초) 후에 텍스트 멘트를 따로 전송하여 자연스러운 흐름을 만듭니다.
+                        await client.replyMessage(replyToken, { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl });
                         setTimeout(async () => {
-                            // pushMessage는 senderId를 사용하여 특정 사용자에게 메시지를 보냅니다.
                             await client.pushMessage(senderId, { type: 'text', text: selfieComment });
                             console.log('[index.js] 셀카 멘트 전송 완료');
-                        }, 500); // 500밀리초 = 0.5초
-
-                        // lastSentSelfieTime = Date.now(); // 쿨다운 제거로 더 이상 필요없음
-                        return; // 셀카 요청 처리가 완료되었으므로, 이 이벤트에 대한 다른 로직은 실행하지 않습니다.
+                        }, 500);
+                        return;
                     }
+
+                    // 2-2. 커플 사진 요청 처리 (셀카 다음 우선순위)
+                    if (isCouplePhotoRequest(text)) {
+                        console.log('[index.js] 커플 사진 요청 감지됨');
+                        const [imageUrl, coupleComment] = await Promise.all([
+                            getCoupleImageUrl(),             // omoide.js에서 랜덤 커플 사진 URL 가져오기
+                            getCouplePhotoReplyFromYeji()    // autoReply.js에서 커플 사진 멘트 생성
+                        ]);
+                        await client.replyMessage(replyToken, { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl });
+                        setTimeout(async () => {
+                            await client.pushMessage(senderId, { type: 'text', text: coupleComment });
+                            console.log('[index.js] 커플 사진 멘트 전송 완료');
+                        }, 500);
+                        return;
+                    }
+
+                    // 2-3. 컨셉 사진 요청 처리 (커플 사진 다음 우선순위)
+                    if (isConceptPhotoRequest(text)) {
+                        console.log('[index.js] 컨셉 사진 요청 감지됨');
+                        const conceptResponse = await getConceptPhotoReply(text, saveLog); // Returns {type: 'photo', url, caption} or {type: 'text', comment}
+                        if (conceptResponse && conceptResponse.type === 'photo') {
+                            await client.replyMessage(replyToken, { type: 'image', originalContentUrl: conceptResponse.url, previewImageUrl: conceptResponse.url });
+                            if (conceptResponse.caption) {
+                                setTimeout(async () => {
+                                    await client.pushMessage(senderId, { type: 'text', text: conceptResponse.caption });
+                                    console.log('[index.js] 컨셉 사진 멘트 전송 완료');
+                                }, 500);
+                            }
+                        } else if (conceptResponse && conceptResponse.type === 'text') {
+                            await client.replyMessage(replyToken, { type: 'text', text: conceptResponse.comment });
+                            console.log('[index.js] 컨셉 사진 (텍스트) 응답 완료');
+                        } else {
+                            console.error('[index.js] 컨셉 사진 응답 실패: 유효한 응답을 받지 못함');
+                            await client.replyMessage(replyToken, { type: 'text', text: '컨셉 사진을 찾다가 뭔가 문제가 생겼어 ㅠㅠ' });
+                        }
+                        return;
+                    }
+
+                    // 2-4. 추억 사진 요청 처리 (컨셉 사진 다음 우선순위) ✨ 새로 추가된 사진 유형
+                    if (isMemoryPhotoRequest(text)) {
+                        console.log('[index.js] 추억 사진 요청 감지됨');
+                        const memoryPhotoResponse = await getMemoryPhoto(text, saveLog); // getMemoryPhoto는 이제 omoide.js에서 불러옵니다.
+                        if (memoryPhotoResponse && memoryPhotoResponse.type === 'photo') {
+                            await client.replyMessage(replyToken, { type: 'image', originalContentUrl: memoryPhotoResponse.url, previewImageUrl: memoryPhotoResponse.url });
+                            if (memoryPhotoResponse.caption) {
+                                setTimeout(async () => {
+                                    await client.pushMessage(senderId, { type: 'text', text: memoryPhotoResponse.caption });
+                                    console.log('[index.js] 추억 사진 멘트 전송 완료');
+                                }, 500);
+                            }
+                        } else { // 사진을 찾지 못했거나 텍스트 응답인 경우
+                             const fallbackComment = memoryPhotoResponse ? memoryPhotoResponse.comment : "아저씨... 미안해. 그 추억 사진은 아직 찾을 수가 없네. ㅠㅠ";
+                            await client.replyMessage(replyToken, { type: 'text', text: fallbackComment });
+                            console.log('[index.js] 추억 사진 (텍스트) 응답 완료');
+                        }
+                        return;
+                    }
+
 
                     // ✨ 3. 기억 목록 보여주기 명령어 처리 (기존 로직 유지) ✨
                     if (/(기억\s?보여줘|내\s?기억\s?보여줘|혹시 내가 오늘 뭐한다 그랬지\?|오늘 뭐가 있더라\?|나 뭐하기로 했지\?)/i.test(text)) {
@@ -226,8 +274,8 @@ app.post('/webhook', middleware(config), async (req, res) => {
                         return;
                     }
                     
-                    // ✨ 6. 봇의 일반 응답 및 사진 요청 처리 (autoReply.js의 getReplyByMessage 호출) ✨
-                    // 이 부분은 이제 일반 셀카 요청을 제외한 나머지 대화를 처리합니다.
+                    // ✨ 6. 봇의 일반 응답 및 그 외 사진 요청 처리 (autoReply.js의 getReplyByMessage 호출) ✨
+                    // 이 부분은 이제 모든 사진 유형별 요청을 제외한 나머지 대화를 처리합니다.
                     const botResponse = await getReplyByMessage(text);
                     
                     // 💡 참고: LINE API는 하나의 replyToken으로 여러 메시지를 배열 형태로 보낼 수 있습니다.
@@ -237,7 +285,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
                         await client.replyMessage(replyToken, { type: 'text', text: botResponse.comment });
                     } else if (botResponse.type === 'photo') {
                         // getOmoideReply가 특정 추억 사진을 반환할 때 사용됩니다.
-                        // (일반 셀카 요청은 이제 위에서 index.js가 직접 처리)
+                        // (모든 사진 유형별 요청은 이제 위에서 index.js가 직접 처리)
                         await client.replyMessage(replyToken, {
                             type: 'image',
                             originalContentUrl: botResponse.url,
@@ -271,11 +319,12 @@ app.post('/webhook', middleware(config), async (req, res) => {
                         botResponse.comment.includes('처음 만났을 때 기억은 내가 아직 정확히 못 찾겠어') // 첫 대화 기억 관련 응답 추가
                     );
 
-                    if (!isCommand(text) && !isMemoryRelatedResponse && !isSelfieRequest(text)) { // ✅ autoReply. 제거
+                    // 모든 사진 요청 유형도 자동 기억 저장에서 제외합니다. ✨
+                    if (!isCommand(text) && !isMemoryRelatedResponse && !isSelfieRequest(text) && !isCouplePhotoRequest(text) && !isConceptPhotoRequest(text) && !isMemoryPhotoRequest(text)) {
                         await memoryManager.extractAndSaveMemory(text); // memoryManager를 호출하여 기억 추출 및 저장
                         console.log(`[index.js] memoryManager.extractAndSaveMemory 호출 완료 (메시지: "${text}")`);
                     } else {
-                        console.log(`[index.js] 명령어 또는 기억/리마인더/셀카 관련 응답이므로 메모리 자동 저장에서 제외됩니다.`);
+                        console.log(`[index.js] 명령어 또는 기억/리마인더/사진 관련 응답이므로 메모리 자동 저장에서 제외됩니다.`);
                     }
                 } // end of text message processing
 
@@ -328,6 +377,7 @@ app.listen(PORT, async () => {
     console.log('✅ 모든 스케줄러 시작!');
 
     // 🎯 예진이 즉흥 사진 스케줄러 시작 - 보고싶을 때마다 사진 보내기! 💕
-    startSpontaneousPhotoScheduler(client, userId, saveLog); // 즉흥 사진 스케줄러 시작
-    console.log('💕 예진이가 보고싶을 때마다 사진 보낼 준비 완료!'); // 즉흥 사진 시스템 시작 로그
+    // 아저씨의 프로젝트에 spontaneousPhotoManager가 있다면 아래 주석을 해제해주세요.
+    // startSpontaneousPhotoScheduler(client, userId, saveLog);
+    // console.log('💕 예진이가 보고싶을 때마다 사진 보낼 준비 완료!');
 });
