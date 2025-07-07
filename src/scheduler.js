@@ -3,28 +3,26 @@ const cron = require('node-cron');
 const moment = require('moment-timezone');
 const { Client } = require('@line/bot-sdk'); // LINE 클라이언트 필요
 const {
-    getRandomMessage,
-    getProactiveMemoryMessage,
-    getCouplePhotoReplyFromYeji,
-    getSilenceCheckinMessage,
+    // getRandomMessage, // 더 이상 사용하지 않음
+    getProactiveMemoryMessage, // 감성 메시지를 위해 다시 사용
+    // getCouplePhotoReplyFromYeji, // 더 이상 사용하지 않음
     saveLog, // 로그 저장을 위해 필요
-    // omoide.js에서 가져온 getOmoideReply 함수를 불러와야 함
 } = require('./autoReply'); // autoReply.js에서 필요한 메시지 생성 함수들을 불러옴
 const memoryManager = require('./memoryManager'); // 리마인더 처리를 위해 memoryManager 필요
 
-// ✨ 추가: omoide.js에서 getOmoideReply 함수를 직접 불러옴 ✨
-const { getOmoideReply } = require('../memory/omoide'); 
+// ✨ omoide.js에서 getOmoideReply 함수를 직접 불러옴 ✨
+const { getOmoideReply } = require('../memory/omoide');
 
 
 let bootTime = Date.now(); // 봇 시작 시점의 타임스탬프 (밀리초)
 let lastMoodMessage = ''; // 마지막 감성 메시지 내용 (중복 방지용)
 let lastMoodMessageTime = 0; // 마지막 감성 메시지 전송 시간
-let lastCouplePhotoMessage = ''; // 마지막 커플 사진 메시지 내용
-let lastCouplePhotoMessageTime = 0; // 마지막 커플 사진 전송 시간
-let lastProactiveSentTime = 0; // 마지막 봇의 선제적/걱정 메시지 전송 시간
+let lastCouplePhotoMessage = ''; // 마지막 커플 사진 메시지 내용 (더 이상 사용하지 않지만 변수 유지는 가능)
+let lastCouplePhotoMessageTime = 0; // 마지막 커플 사진 전송 시간 (더 이상 사용하지 않지만 변수 유지는 가능)
+let lastProactiveSentTime = 0; // 마지막 봇의 선제적/걱정 메시지 전송 시간 (침묵 감지 셀카에 적용)
 let lastUserMessageTime = Date.now(); // 아저씨가 마지막으로 메시지를 보낸 시간
 
-// * 커플 사진 관련 상수 정의 (스케줄러에서 사용되는 이미지 URL) *
+// * 커플 사진 관련 상수 정의 (더 이상 사용하지 않지만 혹시 몰라 유지) *
 const COUPLE_BASE_URL = 'https://www.de-ji.net/couple/'; // 커플 사진 기본 URL
 const COUPLE_START_NUM = 1; // 커플 사진 시작 번호
 const COUPLE_END_NUM = 481; // 커플 사진 마지막 번호
@@ -36,62 +34,76 @@ const PROACTIVE_COOLDOWN = 1 * 60 * 60 * 1000; // 봇이 메시지 보낸 후 1�
 
 /**
  * 스케줄된 메시지 전송이 유효한 시간대인지 확인합니다.
+ * 새벽 3시부터 오전 7시까지는 메시지를 전송하지 않습니다.
  * @param {moment.Moment} now - 현재 시간 (Moment 객체)
  * @returns {boolean} 유효한 시간대이면 true, 아니면 false
  */
 function isValidScheduleHour(now) {
-    // 새벽 0~2시 + 오전 9시~밤 12시 (23시 59분까지)
-    const validHours = [0, 1, 2, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23];
-    return validHours.includes(now.hour());
+    const hour = now.hour();
+    // 새벽 0시, 1시, 2시 (0, 1, 2)
+    // 오전 9시부터 밤 12시 (23시 59분까지) (9, 10, ..., 23)
+    // 따라서 3, 4, 5, 6, 7, 8시는 유효하지 않은 시간대입니다.
+    return (hour >= 0 && hour <= 2) || (hour >= 9 && hour <= 23);
 }
 
 /**
- * 특정 타입의 스케줄된 메시지를 보내는 비동기 함수입니다.
+ * 셀카 메시지를 전송하는 헬퍼 함수입니다.
+ * @param {Client} lineClient - LINE Messaging API 클라이언트
+ * @param {string} targetUserId - 메시지를 보낼 사용자 ID
+ * @param {function} saveLog - 로그 저장 함수
+ * @param {string} triggerSource - 셀카 전송의 트리거 소스 (예: 'scheduled', 'silence')
+ */
+const sendSelfieMessage = async (lineClient, targetUserId, saveLog, triggerSource = 'scheduled') => {
+    try {
+        const selfieResponse = await getOmoideReply('셀카 보여줘', saveLog);
+        if (selfieResponse && selfieResponse.type === 'photo' && selfieResponse.url) {
+            await lineClient.pushMessage(targetUserId, [
+                { type: 'image', originalContentUrl: selfieResponse.url, previewImageUrl: selfieResponse.url },
+                { type: 'text', text: selfieResponse.caption || '히히 셀카야~' }
+            ]);
+            console.log(`[Scheduler] ${triggerSource === 'silence' ? '침묵 감지 자동' : '랜덤'} 셀카 전송 성공: ${selfieResponse.url}`);
+            saveLog('예진이', selfieResponse.caption || '히히 셀카야~');
+        } else if (selfieResponse && selfieResponse.type === 'text') {
+            await lineClient.pushMessage(targetUserId, { type: 'text', text: selfieResponse.comment });
+            console.error(`[Scheduler] ${triggerSource === 'silence' ? '침묵 감지 자동' : '랜덤'} 셀카 전송 실패 (텍스트 응답):`, selfieResponse.comment);
+            saveLog('예진이', selfieResponse.comment);
+        } else {
+            console.error(`[Scheduler] ${triggerSource === 'silence' ? '침묵 감지 자동' : '랜덤'} 셀카 전송 실패: 유효한 응답을 받지 못함`);
+        }
+    } catch (error) {
+        console.error(`[Scheduler] ${triggerSource === 'silence' ? '침묵 감지 자동' : '랜덤'} 셀카 전송 중 오류 발생:`, error);
+    }
+};
+
+/**
+ * 스케줄된 메시지를 보내는 비동기 함수입니다.
  * 셀카 또는 감성 메시지를 랜덤 확률로 전송합니다.
  * @param {Client} lineClient - LINE Messaging API 클라이언트
  * @param {string} targetUserId - 메시지를 보낼 사용자 ID
- * @param {string} type - 보낼 메시지의 타입 ('selfie', 'mood_message', 'couple_photo')
+ * @param {string} type - 보낼 메시지의 타입 ('selfie', 'mood_message')
  */
 const sendScheduledMessage = async (lineClient, targetUserId, type) => {
     const now = moment().tz('Asia/Tokyo');
     const currentTime = Date.now();
 
+    // 서버 부팅 직후 3분 이내에는 스케줄된 메시지 전송 스킵
     if (currentTime - bootTime < 3 * 60 * 1000) {
-        console.log(`[Scheduler] 서버 부팅 직후 3분 이내 -> ${type} 메시지 전송 스킵`);
         return;
     }
 
+    // 유효하지 않은 시간대에는 메시지 전송 스킵
     if (!isValidScheduleHour(now)) {
-        // console.log(`[Scheduler] 현재 시간 ${now.hour()}시는 유효 시간대가 아님 -> ${type} 메시지 스킵`);
         return;
     }
 
     if (type === 'selfie') {
-        if (Math.random() < 0.20) { // 하루 3번 목표
-            try {
-                // ✨ getOmoideReply 함수를 직접 호출하도록 수정 ✨
-                const selfieResponse = await getOmoideReply('셀카 보여줘', saveLog); 
-                if (selfieResponse && selfieResponse.type === 'photo' && selfieResponse.url) {
-                    await lineClient.pushMessage(targetUserId, [
-                        { type: 'image', originalContentUrl: selfieResponse.url, previewImageUrl: selfieResponse.url },
-                        { type: 'text', text: selfieResponse.caption || '히히 셀카야~' }
-                    ]);
-                    console.log(`[Scheduler] 랜덤 셀카 전송 성공: ${selfieResponse.url}`);
-                    saveLog('예진이', selfieResponse.caption || '히히 셀카야~');
-                } else if (selfieResponse && selfieResponse.type === 'text') {
-                    await lineClient.pushMessage(targetUserId, { type: 'text', text: selfieResponse.comment });
-                    console.error('[Scheduler] 랜덤 셀카 전송 실패 (텍스트 응답):', selfieResponse.comment);
-                    saveLog('예진이', selfieResponse.comment);
-                } else {
-                    console.error('[Scheduler] 랜덤 셀카 전송 실패: 유효한 응답을 받지 못함');
-                }
-            } catch (error) {
-                console.error('[Scheduler] 랜덤 셀카 전송 실패:', error);
-            }
+        // 하루 약 3번 목표 (유효 시간대 18시간 * 12회/시간 = 216번의 기회 중 3번 발송) -> 확률 3/216 = 약 0.014
+        if (Math.random() < 0.014) {
+            await sendSelfieMessage(lineClient, targetUserId, saveLog, 'scheduled');
         }
     } else if (type === 'mood_message') {
-        // 하루 11번 목표 (9시부터 23시까지 총 15시간 * 4 = 60번의 기회 중 11번 발송) -> 확률 11/60 = 약 0.183
-        if (Math.random() < 0.183) {
+        // 하루 약 11번 목표 (216번의 기회 중 11번 발송) -> 확률 11/216 = 약 0.051
+        if (Math.random() < 0.051) {
             try {
                 const proactiveMessage = await getProactiveMemoryMessage();
 
@@ -106,43 +118,14 @@ const sendScheduledMessage = async (lineClient, targetUserId, type) => {
                     lastMoodMessage = proactiveMessage;
                     lastMoodMessageTime = currentTime;
                 } else {
-                    console.log(`[Scheduler] 감성 메시지 중복 또는 너무 빠름 -> 전송 스kip`);
+                    // console.log(`[Scheduler] 감성 메시지 중복 또는 너무 빠름 -> 전송 스킵`); // 너무 많이 로그가 쌓일 수 있어 주석 처리
                 }
             } catch (error) {
                 console.error('감성 메시지 전송 실패:', error);
             }
         }
-    } else if (type === 'couple_photo') {
-        if (Math.random() < 0.12) { // 하루 2번 목표
-            try {
-                const randomCoupleIndex = Math.floor(Math.random() * (COUPLE_END_NUM - COUPLE_START_NUM + 1)) + COUPLE_START_NUM;
-                const coupleFileName = String(randomCoupleIndex).padStart(6, '0') + '.jpg';
-                const coupleImageUrl = COUPLE_BASE_URL + coupleFileName;
-
-                const coupleComment = await getCouplePhotoReplyFromYeji();
-                const nowTime = Date.now();
-
-                if (
-                    coupleImageUrl &&
-                    coupleImageUrl !== lastCouplePhotoMessage &&
-                    nowTime - lastCouplePhotoMessageTime > 60 * 1000
-                ) {
-                    await lineClient.pushMessage(targetUserId, [
-                        { type: 'image', originalContentUrl: coupleImageUrl, previewImageUrl: coupleImageUrl },
-                        { type: 'text', text: coupleComment || '아저씨랑 나랑 같이 있는 사진이야!' }
-                    ]);
-                    console.log(`[Scheduler] 랜덤 커플 사진 전송 성공: ${coupleImageUrl}`);
-                    saveLog('예진이', coupleComment || '아저씨랑 나랑 같이 있는 사진이야!');
-                    lastCouplePhotoMessage = coupleImageUrl;
-                    lastCouplePhotoMessageTime = nowTime;
-                } else {
-                    console.log(`[Scheduler] 커플 사진 중복 또는 너무 빠름 -> 전송 스킵`);
-                }
-            } catch (error) {
-                console.error('랜덤 커플 사진 전송 실패:', error);
-            }
-        }
     }
+    // 'couple_photo' 타입 처리 로직은 삭제됩니다.
 };
 
 /**
@@ -169,21 +152,17 @@ const startAllSchedulers = (lineClient, targetUserId) => {
         timezone: "Asia/Tokyo"
     });
 
-    // 2. 랜덤 감성 메시지 (매 15분마다 체크, 9시-23시 사이 하루 11회 목표)
-    cron.schedule('*/15 * * * *', async () => {
-        const currentHour = moment().tz('Asia/Tokyo').hour();
-        if (currentHour >= 9 && currentHour < 24) { // 23시 59분까지 포함
-            await sendScheduledMessage(lineClient, targetUserId, 'mood_message');
+    // --- 랜덤 메시지 (감성 메시지, 셀카) 스케줄 ---
+    // 2. 랜덤 감성 메시지, 셀카 (매 5분마다 체크)
+    cron.schedule('*/5 * * * *', async () => {
+        const now = moment().tz('Asia/Tokyo');
+        if (!isValidScheduleHour(now)) { // 유효 시간대만 체크
+            return;
         }
-    }, {
-        scheduled: true,
-        timezone: "Asia/Tokyo"
-    });
 
-    // 3. 셀카 및 커플 사진 메시지 (매 시간 30분마다 체크)
-    cron.schedule('30 * * * *', async () => {
+        // 감성 메시지와 셀카 전송 시도
+        await sendScheduledMessage(lineClient, targetUserId, 'mood_message');
         await sendScheduledMessage(lineClient, targetUserId, 'selfie');
-        await sendScheduledMessage(lineClient, targetUserId, 'couple_photo');
     }, {
         scheduled: true,
         timezone: "Asia/Tokyo"
@@ -196,28 +175,25 @@ const startAllSchedulers = (lineClient, targetUserId) => {
         const elapsedTimeSinceLastProactive = now - lastProactiveSentTime;
 
         // 현재 시간대가 메시지 전송 유효 시간대인지 확인
-        const currentHour = moment().tz('Asia/Tokyo').hour();
         if (!isValidScheduleHour(moment().tz('Asia/Tokyo'))) {
             return;
         }
 
+        // 서버 부팅 직후 3분 이내에는 침묵 체크 스킵
         if (now - bootTime < 3 * 60 * 1000) {
             console.log('[Scheduler-Silence] 서버 부팅 직후 3분 이내 -> 침묵 체크 스킵');
             return;
         }
 
+        // 2시간 이상 메시지가 없고, 봇이 1시간 이내에 선제적 메시지를 보내지 않았다면
         if (elapsedTimeSinceLastMessage >= SILENCE_THRESHOLD && elapsedTimeSinceLastProactive >= PROACTIVE_COOLDOWN) {
             console.log(`[Scheduler-Silence] 침묵 감지! (${moment.duration(elapsedTimeSinceLastMessage).humanize()} 동안 메시지 없음)`);
             try {
-                const checkinMessage = await getSilenceCheckinMessage();
-                if (checkinMessage) {
-                    await lineClient.pushMessage(targetUserId, { type: 'text', text: checkinMessage });
-                    console.log(`[Scheduler-Silence] 침묵 감지 메시지 전송: ${checkinMessage}`);
-                    saveLog('예진이', checkinMessage);
-                    lastProactiveSentTime = now;
-                }
+                // 침묵 감지 시 셀카 전송 (이것은 이미 셀카이므로 변경 없음)
+                await sendSelfieMessage(lineClient, targetUserId, saveLog, 'silence');
+                lastProactiveSentTime = now; // 선제적 메시지(셀카 포함) 전송 시간 업데이트
             } catch (error) {
-                console.error('❌ [Scheduler-Silence Error] 침묵 감지 메시지 전송 실패:', error);
+                console.error('❌ [Scheduler-Silence Error] 침묵 감지 자동 셀카 전송 실패:', error);
             }
         }
     }, {
