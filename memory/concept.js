@@ -1,4 +1,4 @@
-// memory/concept.js v1.13 - 컨셉 사진 완전 최적화: 쿨다운 제거 및 즉시 응답
+// memory/concept.js v1.14 - 컨셉 사진 완전 최적화 및 문법 오류 수정
 
 // 📦 필수 모듈 불러오기
 const { OpenAI } = require('openai');
@@ -112,11 +112,6 @@ const { cleanReply } = require('./omoide');
 /**
  * OpenAI API를 호출하여 AI 응답을 생성합니다.
  * ✨ 최적화: 빠른 응답을 위해 토큰 수 감소 ✨
- * @param {Array<Object>} messages - OpenAI API에 보낸 메시지 배열
- * @param {string|null} [modelParamFromCall=null] - 호출 시 지정할 모델 이름
- * @param {number} [maxTokens=150] - 생성할 최대 토큰 수 (기존 400 → 150)
- * @param {number} [temperature=1.0] - 응답의 창의성/무작위성 (기존 0.95 → 1.0)
- * @returns {Promise<string>} AI가 생성한 응답 텍스트
  */
 async function callOpenAI(messages, modelParamFromCall = null, maxTokens = 150, temperature = 1.0) {
     const defaultModel = process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o';
@@ -145,10 +140,6 @@ async function callOpenAI(messages, modelParamFromCall = null, maxTokens = 150, 
 
 /**
  * 특정 컨셉 폴더에서 랜덤 또는 다음 사진 URL을 생성합니다.
- * ✨ 최적화: 더 빠른 URL 생성 ✨
- * @param {string} folderName - 사진이 들어있는 폴더 이름
- * @param {number} [targetIndex=null] - 특정 인덱스의 사진을 가져올 경우
- * @returns {string|null} 사진 URL 또는 null
  */
 function generateConceptPhotoUrl(folderName, targetIndex = null) {
     const photoCount = CONCEPT_FOLDERS[folderName];
@@ -186,9 +177,6 @@ let lastConceptPhotoIndex = 0;
 /**
  * 사용자 메시지에 따라 컨셉 사진을 선택하고, AI가 감정/코멘트를 생성하여 반환합니다.
  * ✨ 완전 최적화: 모든 제한 제거, 즉시 응답 ✨
- * @param {string} userMessage - 사용자의 원본 메시지
- * @param {Function} saveLogFunc - 로그 저장을 위한 saveLog 함수
- * @returns {Promise<{type: string, url?: string, caption?: string, comment?: string}|null>} 사진 URL과 코멘트 객체 또는 null
  */
 async function getConceptPhotoReply(userMessage, saveLogFunc) {
     console.log(`[concept:getConceptPhotoReply] 컨셉 사진 요청 처리 시작: "${userMessage}"`);
@@ -330,4 +318,79 @@ async function getConceptPhotoReply(userMessage, saveLogFunc) {
             const folderKeysSortedByDate = Object.keys(CONCEPT_FOLDERS).sort((a, b) => {
                 const extractDate = (folderName) => {
                     const match = folderName.match(/(\d{4})\/(\d{1,2})월 (\d{1,2})일/);
-                    return match ? moment(`${match[1]}-${match[2]}-${match[
+                    return match ? moment(`${match[1]}-${match[2]}-${match[3]}`, 'YYYY-M-D').valueOf() : 0;
+                };
+                return extractDate(b) - extractDate(a); // 최신순
+            });
+            const randomSortedIndex = Math.floor(Math.random() * folderKeysSortedByDate.length);
+            selectedFolder = folderKeysSortedByDate[randomSortedIndex];
+            folderDescription = `내가(예진이) ${selectedFolder} 컨셉으로 찍은 사진`;
+            additionalPromptForYejinText = `이 사진은 아저씨와 함께한 나의 ${selectedFolder} 컨셉 사진이야.`;
+            console.log(`[concept] 일반 컨셉사진 랜덤 선택: ${selectedFolder}`);
+        }
+    }
+
+    // 선택된 폴더가 없으면 null 반환 (컨셉사진 요청이 아님)
+    if (!selectedFolder) {
+        console.log(`[concept:getConceptPhotoReply] 매칭되는 컨셉 폴더 없음. null 반환.`);
+        return null;
+    }
+
+    // ✨ 쿨다운 완전 제거: 바로 사진 생성! ✨
+    lastConceptPhotoFolder = selectedFolder; // 다음 요청을 위해 저장
+
+    let photoUrl;
+    const currentPhotoCount = CONCEPT_FOLDERS[selectedFolder];
+    if (currentPhotoCount > 0) {
+        if (lowerCaseMessage.includes('다른 것도 보고싶어') || lowerCaseMessage.includes('다음 사진')) {
+            // 이미 위에서 lastConceptPhotoIndex 업데이트됨
+        } else {
+            // 새 요청 시 랜덤 인덱스
+            lastConceptPhotoIndex = Math.floor(Math.random() * currentPhotoCount) + 1;
+        }
+        photoUrl = generateConceptPhotoUrl(selectedFolder, lastConceptPhotoIndex);
+    } else {
+        photoUrl = null;
+    }
+
+    if (!photoUrl) {
+        console.warn(`[concept] 사진 URL 생성 실패`);
+        return { type: 'text', comment: '아저씨... 해당하는 컨셉 사진을 못 찾겠어 ㅠㅠ 다른 컨셉 사진 보여줄까?' };
+    }
+
+    console.log(`[concept] 최종 선택된 사진 URL: ${photoUrl}`);
+
+    // ✨ 빠른 응답을 위한 간소화된 시스템 프롬프트 ✨
+    const systemPrompt = getYejinSystemPrompt(`
+    아래는 아저씨가 요청한 ${folderDescription} 사진이야. 이 사진에 대해 1~2문장으로 짧고 사랑스럽게 코멘트 해줘.
+    **사진 속 인물은 오직 나(예진이) 한 명 뿐이야.**
+    ${additionalPromptForYejinText}
+    **사진 URL: ${photoUrl}**
+    `);
+
+    const messages = [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: `이 ${folderDescription} 사진에 대해 예진이 말투로 간단히 이야기해줘.` }
+    ];
+
+    try {
+        // ✨ 병렬 처리로 빠른 응답: AI 호출과 동시에 로그 준비 ✨
+        const rawCommentPromise = callOpenAI(messages, 'gpt-4o', 100, 1.0); // 토큰 수 더 감소
+        
+        const rawComment = await rawCommentPromise;
+        const comment = cleanReply(rawComment);
+        
+        // 로그 저장
+        saveLogFunc('예진이', `(컨셉사진 보냄) ${comment}`);
+        
+        console.log(`[concept] 컨셉사진 응답 완료: ${comment}`);
+        return { type: 'photo', url: photoUrl, caption: comment };
+    } catch (error) {
+        console.error('❌ [concept.js Error] 컨셉 사진 코멘트 생성 실패:', error);
+        return { type: 'text', comment: '아저씨... 컨셉 사진에 대해 말해주려는데 뭔가 문제가 생겼어 ㅠㅠ' };
+    }
+}
+
+module.exports = {
+    getConceptPhotoReply
+};
