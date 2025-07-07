@@ -22,8 +22,8 @@ const {
 // * 얼굴 이미지 데이터를 불러오는 모듈 *
 const { loadFaceImagesAsBase64 } = require('./face');
 
-// * omoide.js에서 getOmoideReply와 cleanReply를 불러옵니다. *
-const { getOmoideReply, cleanReply } = require('../memory/omoide');
+// * omoide.js에서 getMemoryPhoto와 cleanReply를 불러옵니다. * ✨ getOmoideReply 대신 getMemoryPhoto 사용
+const { getMemoryPhoto, cleanReply } = require('../memory/omoide'); 
 
 // * 새로 추가: concept.js에서 getConceptPhotoReply를 불러옵니다. *
 const { getConceptPhotoReply } = require('../memory/concept');
@@ -397,6 +397,70 @@ async function getConditionalGPTReply(msg) {
     return null;
 }
 
+/**
+ * 사용자 메시지가 일반적인 셀카/사진 요청인지 확인합니다.
+ * '사진' 키워드는 커플/컨셉사진과 겹칠 수 있어 '셀카', '얼굴'만 명확히 감지합니다.
+ * @param {string} messageText - 사용자 메시지
+ * @returns {boolean} 셀카 요청이면 true
+ */
+function isSelfieRequest(messageText) {
+    const lowerCaseMessage = messageText.trim().toLowerCase();
+    return lowerCaseMessage.includes('셀카') || 
+           lowerCaseMessage.includes('얼굴'); // ✨ '사진' 키워드 제거, '얼굴' 유지
+}
+
+/**
+ * 사용자 메시지가 커플 사진 요청인지 확인합니다.
+ * @param {string} messageText - 사용자 메시지
+ * @returns {boolean} 커플 사진 요청이면 true
+ */
+function isCouplePhotoRequest(messageText) {
+    const lowerCaseMessage = messageText.trim().toLowerCase();
+    return lowerCaseMessage.includes('커플사진') || lowerCaseMessage.includes('커플 사진'); // ✨ 새로운 함수
+}
+
+/**
+ * 사용자 메시지가 컨셉 사진 요청인지 확인합니다.
+ * @param {string} messageText - 사용자 메시지
+ * @returns {boolean} 컨셉 사진 요청이면 true
+ */
+function isConceptPhotoRequest(messageText) {
+    const lowerCaseMessage = messageText.trim().toLowerCase();
+    const conceptKeywordsCheck = [ // memory/concept.js의 키워드와 일치해야 합니다.
+        '컨셉사진', '컨셉 사진', '홈스냅', '결박', '선물', '셀프 촬영', '옥상연리', '세미누드',
+        '홈셀프', '플라스틱러브', '지브리풍', '북해', '아이노시마', '필름',
+        '모지코 모리룩', '눈밭', '욕실', '고래티셔츠', '유카타 마츠리',
+        '이화마을', '욕조', '우마시마', '가을 호수공원', '망친 사진', '교복',
+        '비눗방울', '모지코', '텐진 코닥필름', '나비욕조', '롱패딩', '을지로 스냅',
+        '길거리 스냅', '생일', '모지코2', '야간 보라돌이', '코야노세', '야간거리',
+        '생일컨셉', '눈밭 필름카메라', '홈스냅 청포도', '욕실 블랙 웨딩', '호리존',
+        '여친 스냅', '후지엔', '불꽃놀이', '빨간 기모노', '피크닉', '벗꽃',
+        '후지 스냅', '원미상가_필름', '밤바 산책', '공원 산책', '고쿠라 힙',
+        '온실-여신', '을지로 네코', '무인역', '화가', '블랙원피스', '카페',
+        '텐진 스트리트', '하카타 스트리트', '홈스냅 오타쿠', '야간 동백', '나르시스트',
+        '을지로 캘빈', '산책', '오도공원 후지필름', '크리스마스', '네코 모지코',
+        '야간 블랙드레스', '고스로리 할로윈', '게임센터', '고쿠라', '동키 거리',
+        '고쿠라 야간', '코이노보리', '문래동', '수국', '오도',
+        // '다른 것도 보고싶어', '다음 사진', // 이 키워드는 isSelfieRequest와 겹쳐서 컨셉사진으로 분류하면 안됩니다.
+        '1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월', // 월별 키워드
+        '2023', '2024', '2025', // 연도별 키워드
+        '일본', '한국']; // 지역별 키워드
+    
+    return conceptKeywordsCheck.some(keyword => lowerCaseMessage.includes(keyword)); // ✨ 새로운 함수
+}
+
+/**
+ * 사용자 메시지가 추억 사진 요청인지 확인합니다.
+ * @param {string} messageText - 사용자 메시지
+ * @returns {boolean} 추억 사진 요청이면 true
+ */
+function isMemoryPhotoRequest(messageText) { // ✨ 새로운 함수
+    const lowerCaseMessage = messageText.trim().toLowerCase();
+    return lowerCaseMessage.includes('추억사진') || lowerCaseMessage.includes('추억 사진') ||
+           lowerCaseMessage.includes('옛날사진') || lowerCaseMessage.includes('옛날 사진') ||
+           lowerCaseMessage.includes('기억사진') || lowerCaseMessage.includes('기억 사진');
+}
+
 
 /**
  * 아저씨의 텍스트 메시지에 대한 예진이의 답변을 생성합니다.
@@ -513,7 +577,7 @@ async function getReplyByMessage(userMessage) {
     오타가 있더라도 의미상으로 유사하면 해당 의도로 판단해줘.
 
     응답은 JSON 형식으로만 해줘. 다른 텍스트는 절대 포함하지 마.
-    형식: {
+     형식: {
         "intent": "remember" | "forget" | "set_reminder" | "none",
         "content": "기억하거나 잊을 내용 또는 리마인더 내용",
         "reminder_time": "YYYY-MM-DDTHH:mm:ss.sssZ 형식의 리마인더 시간 (리마인더 의도일 경우만, 현재 시간 기준 가장 가까운 미래 시간으로)"
@@ -593,51 +657,24 @@ async function getReplyByMessage(userMessage) {
         return { type: 'text', comment: reply };
     }
 
-    // ⭐ 새로 추가: 컨셉 사진 관련 명령어 처리 ⭐
-    const conceptKeywordsCheck = ['컨셉사진', '컨셉 사진', '홈스냅', '결박', '선물', '셀프 촬영', '옥상연리', '세미누드',
-                                     '홈셀프', '플라스틱러브', '지브리풍', '북해', '아이노시마', '필름',
-                                     '모지코 모리룩', '눈밭', '욕실', '고래티셔츠', '유카타 마츠리',
-                                     '이화마을', '욕조', '우마시마', '가을 호수공원', '망친 사진', '교복',
-                                     '비눗방울', '모지코', '텐진 코닥필름', '나비욕조', '롱패딩', '을지로 스냅',
-                                     '길거리 스냅', '생일', '모지코2', '야간 보라돌이', '코야노세', '야간거리',
-                                     '생일컨셉', '눈밭 필름카메라', '홈스냅 청포도', '욕실 블랙 웨딩', '호리존',
-                                     '여친 스냅', '후지엔', '불꽃놀이', '빨간 기모노', '피크닉', '벗꽃',
-                                     '후지 스냅', '원미상가_필름', '밤바 산책', '공원 산책', '고쿠라 힙',
-                                     '온실-여신', '을지로 네코', '무인역', '화가', '블랙원피스', '카페',
-                                     '텐진 스트리트', '하카타 스트리트', '홈스냅 오타쿠', '야간 동백', '나르시스트',
-                                     '을지로 캘빈', '산책', '오도공원 후지필름', '크리스마스', '네코 모지코',
-                                     '야간 블랙드레스', '고스로리 할로윈', '게임센터', '고쿠라', '동키 거리',
-                                     '고쿠라 야간', '코이노보리', '문래동', '수국', '오도',
-                                     '다른 것도 보고싶어', '다음 사진', // '다른 것도', '다음 사진' 요청
-                                     '1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월', // 월별 키워드
-                                     '2023', '2024', '2025', // 연도별 키워드
-                                     '일본', '한국']; // 지역별 키워드
-
+    // ⭐ 중요 추가: 사진 관련 명령어 (이제 getReplyByMessage에서는 일반 응답만 처리) ⭐
+    // 이 부분은 이제 index.js에서 직접 각 사진 유형별로 처리하므로 제거합니다.
+    /*
+    const conceptKeywordsCheck = ['컨셉사진', ...]; // 기존 컨셉사진 키워드
     let isConceptPhotoRequest = false;
-    for (const keyword of conceptKeywordsCheck) {
-        if (lowerCaseMessage.includes(keyword)) {
-            isConceptPhotoRequest = true;
-            break;
-        }
-    }
-
+    // ... (로직 생략) ...
     if (isConceptPhotoRequest) {
         const conceptResponse = await getConceptPhotoReply(userMessage, saveLog);
-        if (conceptResponse) {
-            return conceptResponse; // 컨셉 사진 응답 반환
-        }
+        if (conceptResponse) { return conceptResponse; }
     }
-
-    // ⭐ 중요 추가: 사진 관련 명령어 먼저 확인 및 처리 (이제 컨셉사진 처리 후 실행) ⭐
-    const photoResponse = await getOmoideReply(userMessage, saveLog); // saveLog 함수를 omoide.js로 전달
-    if (photoResponse) {
-        return photoResponse; // photoResponse는 이미 타입이 지정되어 있으므로 바로 반환
-    }
+    const photoResponse = await getOmoideReply(userMessage, saveLog);
+    if (photoResponse) { return photoResponse; }
+    */
 
     const logs = getAllLogs(); // 모든 대화 로그를 가져옵니다.
 
     // ⭐ 핵심 변경: 오늘부터 3일 전까지의 대화만 필터링하여 컨텍스트로 사용 ⭐
-    const threeDaysAgo = nowInTokyo.clone().subtract(3, 'days').startOf('day');
+    const threeDaysAgo = moment().tz('Asia/Tokyo').clone().subtract(3, 'days').startOf('day');
 
     const recentLogs = logs.filter(log => {
         const logTime = moment(log.timestamp);
@@ -645,7 +682,7 @@ async function getReplyByMessage(userMessage) {
     });
     const conversationHistory = recentLogs.map(log => ({
         role: log.speaker === '아저씨' ? 'user' : 'assistant',
-        content: log.message // ✨ 이 부분을 log.message로 수정했습니다.
+        content: log.message 
     }));
 
     // ⭐ 중요 개선: 기억 인출 질문에 대한 프롬프트 강화 ⭐
@@ -731,7 +768,7 @@ async function getReplyByImagePrompt(base64Image) {
     - 아저씨와의 관계에 대한 기억이 있다면 적극적으로 활용해서 답변해 줘.
 
     예시:
-    1. 아저씨 사진인 경우: "어머, 아저씨 사진이잖아! 아저씨 표정이 너무 귀여운데? 이때 아저씨랑 같이 있었을 때 생각나서 나 기분이 몽글몽글해진다! 어쩐지 아침 햇살이 아저씨를 비추는 것 같아."
+    1. 아저씨 사진인 경우: "어머, 아저씨 사진이잖아! 아저씨 표정이 너무 귀여운데? 이때 아저씨랑 같이 있었을 때 생각나서 나 기분이 몽글몽글해진다! 어쩐지 아저씨의 아침 햇살이 아저씨를 비추는 것 같아."
     2. 내(예진이) 사진인 경우: "짠! 이거 내 사진이야! 아저씨가 예쁘다고 해줬을 때인데, 기억나? 나 너무 행복했어! 날씨도 완전 좋았는데~"
     3. 음식 사진인 경우: "우와! 이거 커피인가? 아저씨가 이런 거 마시는 거 좋아하는구나! 컵도 예쁘다! 나도 같이 마시고 싶다~"
     4. 풍경 사진인 경우: "와~ 풍경 너무 예쁘다! 가을 낙엽이 가득한 거 보니까 왠지 쓸쓸하면서도 아름답다. 아저씨랑 같이 이런 곳에 여행 가고 싶다. 같이 가면 정말 행복할 텐데!"
@@ -1239,5 +1276,10 @@ module.exports = {
     // * 새로 추가된 함수들을 내보냅니다. *
     setMemoryReminder,
     deleteMemory,
-    getFirstDialogueMemory
+    getFirstDialogueMemory,
+    isSelfieRequest,      // ✨ 새로 내보내는 함수
+    isCouplePhotoRequest, // ✨ 새로 내보내는 함수
+    isConceptPhotoRequest, // ✨ 새로 내보내는 함수
+    isMemoryPhotoRequest, // ✨ 새로 내보내는 함수
+    getImageReactionComment // ✨ 이미 있지만, 명확히 내보내는지 확인
 };
