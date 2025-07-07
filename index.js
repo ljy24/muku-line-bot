@@ -1,4 +1,4 @@
-// ✅ index.js v1.12 - 웹훅 처리 개선 및 사진 기능 통합, 리마인더 스케줄러 추가, 즉흥 사진 스케줄러 추가 (최종 기억 통합 및 로그 상세화)
+// ✅ index.js v1.13 - LINE API 메시지 형식 문제 해결
 // 이 파일은 LINE 봇 서버의 메인 진입점입니다.
 // LINE 메시징 API와의 연동, Express 웹 서버 설정, 주기적인 작업 스케줄링 등을 담당합니다.
 
@@ -76,19 +76,33 @@ app.get('/', (_, res) => res.send('무쿠 살아있엉'));
 // 🚀 '/force-push' 경로에 대한 GET 요청을 처리합니다. (개발/테스트용)
 // 이 엔드포인트에 접속하면 무쿠가 무작위 메시지를 TARGET_USER_ID에게 강제로 보냅니다.
 app.get('/force-push', async (req, res) => {
-    // * 50% 확률로 기억 기반 메시지를 보내거나, 50% 확률로 일반 랜덤 메시지를 보냅니다. *
-    const proactiveMessage = Math.random() < 0.5
-        ? await getProactiveMemoryMessage() // 기억 기반 메시지
-        : await getRandomMessage(); // 일반 랜덤 메시지
+    try {
+        // * 50% 확률로 기억 기반 메시지를 보내거나, 50% 확률로 일반 랜덤 메시지를 보냅니다. *
+        const proactiveMessage = Math.random() < 0.5
+            ? await getProactiveMemoryMessage() // 기억 기반 메시지
+            : await getRandomMessage(); // 일반 랜덤 메시지
 
-    console.log('[force-push] 생성된 메시지:', proactiveMessage); // ✅ 로그 찍기
+        console.log('[force-push] 생성된 메시지:', proactiveMessage); // ✅ 로그 찍기
 
-    if (proactiveMessage) {
-        await client.pushMessage(userId, { type: 'text', text: proactiveMessage });
-        saveLog('예진이', proactiveMessage);
-        res.send(`전송됨: ${proactiveMessage}`);
-    } else {
-        res.send('메시지 생성 실패 (랜덤 메시지가 비어있거나 생성되지 않았을 수 있습니다)');
+        if (proactiveMessage && typeof proactiveMessage === 'string') {
+            // ✅ 올바른 LINE API 메시지 형식으로 구성
+            const messageToSend = {
+                type: 'text',
+                text: proactiveMessage  // 문자열이어야 함 (객체가 아닌!)
+            };
+            
+            console.log('[force-push] 전송할 메시지 구조:', JSON.stringify(messageToSend, null, 2));
+            
+            await client.pushMessage(userId, messageToSend);
+            saveLog('예진이', proactiveMessage);
+            res.send(`전송됨: ${proactiveMessage}`);
+        } else {
+            console.error('[force-push] 유효하지 않은 메시지:', proactiveMessage);
+            res.send('메시지 생성 실패 (랜덤 메시지가 비어있거나 생성되지 않았을 수 있습니다)');
+        }
+    } catch (error) {
+        console.error('[force-push] 에러 발생:', error);
+        res.status(500).send('메시지 전송 중 오류 발생');
     }
 });
 
@@ -329,7 +343,9 @@ cron.schedule('0 10-19 * * *', async () => {
     }
 
     const msg = '아저씨, 담타시간이야~'; // 전송할 메시지 내용
-    await client.pushMessage(userId, { type: 'text', text: msg }); // 메시지 전송
+    
+    // ✅ 올바른 LINE API 메시지 형식으로 전송
+    await client.pushMessage(userId, { type: 'text', text: msg });
     console.log(`[Scheduler] 담타 메시지 전송: ${msg}`); // 로그 기록
     saveLog('예진이', msg); // 봇의 메시지 로그 저장
     lastDamtaMessageTime = currentTime; // 마지막 전송 시간 업데이트
@@ -379,6 +395,7 @@ const sendScheduledMessage = async (type) => {
 
                 // * 응답이 사진 타입이고 유효한 URL을 포함할 경우 메시지를 보냅니다. *
                 if (selfieResponse && selfieResponse.type === 'photo' && selfieResponse.url) {
+                    // ✅ 올바른 LINE API 메시지 형식으로 전송
                     await client.pushMessage(userId, [
                         { type: 'image', originalContentUrl: selfieResponse.url, previewImageUrl: selfieResponse.url },
                         { type: 'text', text: selfieResponse.caption || '히히 셀카야~' } // 코멘트가 없으면 기본 텍스트 사용
@@ -409,6 +426,7 @@ const sendScheduledMessage = async (type) => {
                     proactiveMessage !== lastMoodMessage &&
                     currentTime - lastMoodMessageTime > 60 * 1000
                 ) {
+                    // ✅ 올바른 LINE API 메시지 형식으로 전송
                     await client.pushMessage(userId, { type: 'text', text: proactiveMessage });
                     console.log(`[Scheduler] 감성 메시지 전송 성공: ${proactiveMessage}`);
                     saveLog('예진이', proactiveMessage); // 봇 응답 로그 저장
@@ -439,6 +457,7 @@ const sendScheduledMessage = async (type) => {
                     coupleImageUrl !== lastCouplePhotoMessage &&
                     nowTime - lastCouplePhotoMessageTime > 60 * 1000
                 ) {
+                    // ✅ 올바른 LINE API 메시지 형식으로 전송
                     await client.pushMessage(userId, [
                         { type: 'image', originalContentUrl: coupleImageUrl, previewImageUrl: coupleImageUrl },
                         { type: 'text', text: coupleComment || '아저씨랑 나랑 같이 있는 사진이야!' }
@@ -496,6 +515,7 @@ cron.schedule('*/15 * * * *', async () => { // 매 15분마다 실행
         try {
             const checkinMessage = await getSilenceCheckinMessage(); // 침묵 걱정 메시지 생성
             if (checkinMessage) {
+                // ✅ 올바른 LINE API 메시지 형식으로 전송
                 await client.pushMessage(userId, { type: 'text', text: checkinMessage });
                 console.log(`[Scheduler-Silence] 침묵 감지 메시지 전송: ${checkinMessage}`);
                 saveLog('예진이', checkinMessage); // 봇 응답 로그 저장
@@ -515,7 +535,9 @@ cron.schedule('*/15 * * * *', async () => { // 매 15분마다 실행
 // * 매일 밤 11시 0분 (정각)에 실행됩니다. (일본 표준시 기준) *
 cron.schedule('0 23 * * *', async () => {
     const msg = '아저씨! 이제 약 먹고 이 닦을 시간이야! 나 아저씨 건강 제일 챙겨!'; // 전송할 메시지 내용
-    await client.pushMessage(userId, { type: 'text', text: msg }); // 메시지 전송
+    
+    // ✅ 올바른 LINE API 메시지 형식으로 전송
+    await client.pushMessage(userId, { type: 'text', text: msg });
     console.log(`[Scheduler] 밤 11시 메시지 전송: ${msg}`); // 로그 기록
     saveLog('예진이', msg); // 봇의 메시지 로그 저장
 }, {
@@ -527,7 +549,9 @@ cron.schedule('0 23 * * *', async () => {
 // * 매일 자정 (다음날 0시 0분)에 실행됩니다. (일본 표준시 기준) *
 cron.schedule('0 0 * * *', async () => {
     const msg = '아저씨, 약 먹고 이제 푹 잘 시간이야! 나 옆에서 꼭 안아줄게~ 잘 자 사랑해'; // 전송할 메시지 내용
-    await client.pushMessage(userId, { type: 'text', text: msg }); // 메시지 전송
+    
+    // ✅ 올바른 LINE API 메시지 형식으로 전송
+    await client.pushMessage(userId, { type: 'text', text: msg });
     console.log(`[Scheduler] 밤 12시 메시지 전송: ${msg}`); // 로그 기록
     saveLog('예진이', msg); // 봇의 메시지 로그 저장
 }, {
@@ -555,6 +579,8 @@ cron.schedule('*/1 * * * *', async () => { // 매 1분마다 실행
 
         for (const reminder of remindersToSend) {
             const reminderMessage = `아저씨! 지금 ${cleanReply(reminder.content)} 할 시간이야! 🔔`;
+            
+            // ✅ 올바른 LINE API 메시지 형식으로 전송
             await client.pushMessage(userId, { type: 'text', text: reminderMessage });
             saveLog('예진이', reminderMessage);
             console.log(`[Scheduler-Reminder] 리마인더 전송: ${reminderMessage}`);
