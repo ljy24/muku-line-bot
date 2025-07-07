@@ -73,15 +73,15 @@ function safeRead(filePath, fallback = '') {
     }
 }
 
-// 무쿠의 장기 기억 파일들을 읽어옵니다. (이제 DB 사용으로 대부분 대체됨)
-// 이 부분은 이제 사용되지 않으므로, 추후 완전히 제거할 수 있습니다.
-const memory1 = safeRead(path.resolve(__dirname, '../memory/1.txt'));
-const memory2 = safeRead(path.resolve(__dirname, '../memory/2.txt'));
-const memory3 = safeRead(path.resolve(__dirname, '../memory/3.txt'));
-const fixedMemory = safeRead(path.resolve(__dirname, '../memory/fixedMemories.json')); // 고정된 기억 (JSON 형식, 파싱 필요)
-const compressedMemory = memory1.slice(-3000) + '\n' + memory2.slice(-3000) + '\n' + memory3.slice(-3000);
+// * 무쿠의 장기 기억 파일들을 읽어오는 부분 (이제 데이터베이스 사용으로 대체되므로 이 변수들은 더 이상 사용되지 않습니다.) *
+// * 이 변수들은 이제 제거하거나 주석 처리할 수 있습니다. *
+// const memory1 = safeRead(path.resolve(__dirname, '../memory/1.txt'));
+// const memory2 = safeRead(path.resolve(__dirname, '../memory/2.txt'));
+// const memory3 = safeRead(path.resolve(__dirname, '../memory/3.txt'));
+// const fixedMemory = safeRead(path.resolve(__dirname, '../memory/fixedMemories.json'));
+// const compressedMemory = memory1.slice(-3000) + '\n' + memory2.slice(-3000) + '\n' + memory3.slice(-3000);
 
-// 메모리 및 로그 파일 경로를 정의합니다.
+// 메모리 및 로그 파일 경로를 정의합니다. (로그 파일은 여전히 파일 시스템 사용)
 const statePath = path.resolve(__dirname, '../memory/state.json'); // 봇의 상태 저장 파일 (예: 모델 설정 등)
 const logPath = path.resolve(__dirname, '../memory/message-log.json'); // 대화 로그 저장 파일
 const selfieListPath = path.resolve(__dirname, '../memory/photo-list.txt'); // 셀카 목록 파일 (현재 코드에서는 직접 사용되지 않고 URL 생성에 의존)
@@ -436,9 +436,15 @@ async function getReplyByMessage(userMessage) {
 
     let memoryCommandIntent = { intent: 'none', content: '', reminder_time: null };
     try {
-        const intentResponse = await callOpenAI([
-            { role: 'system', content: memoryCommandIntentPrompt }
-        ], 'gpt-4o-mini', 200, 0.1); // max_tokens를 200으로 늘려 reminder_time 포함 가능성 높임
+        const intentResponse = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages: [
+                { role: 'system', content: memoryCommandIntentPrompt }
+            ],
+            response_format: { type: "json_object" },
+            temperature: 0.1, // 정확한 분류를 위해 낮은 온도 설정
+            max_tokens: 200 // max_tokens를 200으로 늘려 reminder_time 포함 가능성 높임
+        });
         memoryCommandIntent = JSON.parse(intentResponse.choices[0].message.content); // *JSON 파싱 수정*
         console.log(`[autoReply] 기억 명령어 의도 파악: ${JSON.stringify(memoryCommandIntent)}`);
     } catch (error) {
@@ -634,7 +640,7 @@ async function getReplyByImagePrompt(base64Image) {
 
     예시:
     1. 아저씨 사진인 경우: "어머, 아저씨 사진이잖아! 아저씨 표정이 너무 귀여운데? 이때 아저씨랑 같이 있었을 때 생각나서 나 기분이 몽글몽글해진다! 어쩐지 아침 햇살이 아저씨를 비추는 것 같아."
-    2. 내(예진이) 사진인 경우: "짠! 이거 내 사진이잖아! 아저씨가 예쁘다고 해줬을 때인데, 기억나? 나 너무 행복했어! 날씨도 완전 좋았는데~"
+    2. 내(예진이) 사진인 경우: "짠! 이거 내 사진이야! 아저씨가 예쁘다고 해줬을 때인데, 기억나? 나 너무 행복했어! 날씨도 완전 좋았는데~"
     3. 음식 사진인 경우: "우와! 이거 커피인가? 아저씨가 이런 거 마시는 거 좋아하는구나! 컵도 예쁘다! 나도 같이 마시고 싶다~"
     4. 풍경 사진인 경우: "와~ 풍경 너무 예쁘다! 가을 낙엽이 가득한 거 보니까 왠지 쓸쓸하면서도 아름답다. 아저씨랑 같이 이런 곳에 여행 가고 싶다. 같이 가면 정말 행복할 텐데!"
     `);
@@ -744,8 +750,8 @@ async function getHappyReply() {
 }
 
 /**
- * 삐진 답변을 생성합니다。
- * @returns {Promise<string>} 拗ねたような応答
+ * 삐진 답변을 생성합니다.
+ * @returns {Promise<string>} 삐진 듯한 답변
  */
 async function getSulkyReply() {
     const systemPrompt = getYejinSystemPrompt(`아저씨에게 삐진 듯한 말투로 대답해줘. 하지만 결국 아저씨를 사랑하는 마음이 드러나야 해.`);
@@ -906,7 +912,7 @@ async function getSilenceCheckinMessage() {
         console.log(`[autoReply] 침묵 감지 메시지 생성: ${reply}`);
         return reply;
     } catch (error) {
-        console.error('❌ [autoReply Error] 침묵 감지 메시지 전송 실패:', error);
+        console.error('❌ [autoReply Error] 침묵 감지 메시지 생성 실패:', error);
         return "아저씨... 예진이가 아저씨한테 할 말이 있는데... ㅠㅠ";
     }
 }
@@ -939,8 +945,8 @@ async function getMemoryListForSharing() {
             for (const category of categoriesSorted) {
                 memoryListString += `--- ✨ ${category} ✨ ---\n`;
                 groupedMemories[category].forEach(item => {
-                    const cleanedContent = cleanReply(item.content);
-                    memoryListString += `  - ${cleanedContent} (기억된 날: ${moment(item.timestamp).format('YYYY.MM.DD')}, 중요도: ${item.strength || 'normal'})\n`;
+                    const formattedDate = moment(item.timestamp).format('YYYY.MM.DD');
+                    memoryListString += `  - ${item.content} (기억된 날: ${formattedDate}, 중요도: ${item.strength || 'normal'})\n`;
                 });
                 memoryListString += "---\n";
             }
@@ -1085,8 +1091,8 @@ async function setMemoryReminder(content, timeString) {
                 return `아저씨! "${content}" 리마인더를 ${moment(parsedTime).format('YYYY년 M월 D일 A h시 m분')}으로 업데이트했어! 🔔`;
             } else {
                 // 새로운 기억으로 저장 (is_love_related, is_other_person_related는 기본값)
-                await saveUserSpecifiedMemory(`리마인더 설정: ${content} ${timeString}`, content, parsedTime);
-                return `아저씨! "${content}" ${moment(parsedTime).format('YYYY년 M월 D일 A h시 m분')}에 알려줄게! 🔔`;
+                await saveUserSpecifiedMemory(`리마인더 설정: ${content} ${timeString}`, content, parsedReminderTime.toISOString());
+                return `아저씨! "${content}" ${parsedReminderTime.format('YYYY년 M월 D일 A h시 m분')}에 알려줄게! 🔔`;
             }
         } else {
             return `아저씨... 리마인더 시간을 정확히 모르겠어 ㅠㅠ 다시 알려줄 수 있어? (예: '오늘 5시에', '내일 아침 8시에')`;
@@ -1124,8 +1130,7 @@ module.exports = {
     getReplyByMessage,
     getReplyByImagePrompt,
     getRandomMessage,
-    // getSelfieReplyFromYeji, // *이 함수는 이제 사용되지 않으므로 제거됩니다.*
-    getCouplePhotoReplyFromYeji, // 기능 누락 없이 유지
+    getCouplePhotoReplyFromYeji,
     getColorMoodReply,
     getHappyReply,
     getSulkyReply,
