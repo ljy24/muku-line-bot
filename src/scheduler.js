@@ -7,9 +7,14 @@ const {
     getProactiveMemoryMessage,
     getCouplePhotoReplyFromYeji,
     getSilenceCheckinMessage,
-    saveLog // 로그 저장을 위해 필요
+    saveLog, // 로그 저장을 위해 필요
+    // omoide.js에서 가져온 getOmoideReply 함수를 불러와야 함
 } = require('./autoReply'); // autoReply.js에서 필요한 메시지 생성 함수들을 불러옴
 const memoryManager = require('./memoryManager'); // 리마인더 처리를 위해 memoryManager 필요
+
+// ✨ 추가: omoide.js에서 getOmoideReply 함수를 직접 불러옴 ✨
+const { getOmoideReply } = require('../memory/omoide'); 
+
 
 let bootTime = Date.now(); // 봇 시작 시점의 타임스탬프 (밀리초)
 let lastMoodMessage = ''; // 마지막 감성 메시지 내용 (중복 방지용)
@@ -64,7 +69,8 @@ const sendScheduledMessage = async (lineClient, targetUserId, type) => {
     if (type === 'selfie') {
         if (Math.random() < 0.20) { // 하루 3번 목표
             try {
-                const selfieResponse = await getOmoideReply('셀카 보여줘', saveLog);
+                // ✨ getOmoideReply 함수를 직접 호출하도록 수정 ✨
+                const selfieResponse = await getOmoideReply('셀카 보여줘', saveLog); 
                 if (selfieResponse && selfieResponse.type === 'photo' && selfieResponse.url) {
                     await lineClient.pushMessage(targetUserId, [
                         { type: 'image', originalContentUrl: selfieResponse.url, previewImageUrl: selfieResponse.url },
@@ -100,7 +106,7 @@ const sendScheduledMessage = async (lineClient, targetUserId, type) => {
                     lastMoodMessage = proactiveMessage;
                     lastMoodMessageTime = currentTime;
                 } else {
-                    console.log(`[Scheduler] 감성 메시지 중복 또는 너무 빠름 -> 전송 스킵`);
+                    console.log(`[Scheduler] 감성 메시지 중복 또는 너무 빠름 -> 전송 스kip`);
                 }
             } catch (error) {
                 console.error('감성 메시지 전송 실패:', error);
@@ -247,14 +253,8 @@ const startAllSchedulers = (lineClient, targetUserId) => {
         console.log(`[Scheduler-Reminder] 리마인더 체크 시작: ${now.format('YYYY-MM-DD HH:mm')}`);
 
         try {
-            const allMemories = await memoryManager.loadAllMemoriesFromDb();
-            const remindersToSend = allMemories.filter(mem => {
-                if (mem.reminder_time) {
-                    const reminderMoment = moment(mem.reminder_time).tz('Asia/Tokyo');
-                    return reminderMoment.isSameOrBefore(now.clone().add(1, 'minute')) && reminderMoment.isAfter(now.clone().subtract(5, 'minutes'));
-                }
-                return false;
-            });
+            // 모든 기억을 불러오는 대신, 임박한 리마인더만 불러오도록 변경
+            const remindersToSend = await memoryManager.getDueReminders();
 
             for (const reminder of remindersToSend) {
                 const reminderMessage = `아저씨! 지금 ${reminder.content} 할 시간이야! 🔔`;
@@ -262,6 +262,7 @@ const startAllSchedulers = (lineClient, targetUserId) => {
                 saveLog('예진이', reminderMessage);
                 console.log(`[Scheduler-Reminder] 리마인더 전송: ${reminderMessage}`);
 
+                // 리마인더 전송 후 해당 리마인더 시간을 NULL로 업데이트
                 const success = await memoryManager.updateMemoryReminderTime(reminder.id, null);
                 if (success) {
                     console.log(`[Scheduler-Reminder] 리마인더 처리 완료: 기억 ID ${reminder.id}의 reminder_time을 NULL로 업데이트`);
