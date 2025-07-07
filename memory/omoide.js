@@ -1,4 +1,4 @@
-// memory/omoide.js v1.12 - 셀카 URL 로그 추가 및 이모티콘 제거 강화 최종
+// memory/omoide.js v1.13 - 셀카 전송 문제 및 이모티콘 제거 최종 시도
 
 // 📦 필수 모듈 불러오기
 const { OpenAI } = require('openai'); // OpenAI API 클라이언트
@@ -120,7 +120,7 @@ function cleanReply(reply) {
 
     // 4. 존댓말 강제 제거: 다양한 존댓말 어미를 반말로 교체합니다.
     cleaned = cleaned.replace(/안녕하세요/g, '안녕');
-    cleaned = cleaned.replace(/있었어요/g, '있었어');
+    cleaned = cleaned.cleaned.replace(/있었어요/g, '있었어');
     cleaned = cleaned.replace(/했어요/g, '했어');
     cleaned = cleaned.replace(/같아요/g, '같아');
     cleaned = cleaned.replace(/좋아요/g, '좋아');
@@ -141,9 +141,9 @@ function cleanReply(reply) {
     cleaned = cleaned.replace(/보고싶어요\b/g, '보고 싶어');
 
     // 5. 이모티콘을 더 강력하게 제거 (유니코드 속성 사용)
-    // \p{Extended_Pictographic} 는 이모지, 컴포넌트 등을 포함한 광범위한 그림 문자들을 의미합니다.
-    // 'u' 플래그는 유니코드 모드, 'g' 플래그는 전역 검색을 의미합니다.
-    cleaned = cleaned.replace(/\p{Extended_Pictographic}/gu, '').trim();
+    // \p{Emoji}는 모든 기본 이모지 문자를, \p{Emoji_Presentation}은 텍스트가 아닌 그림으로 표시되는 이모지를 포함합니다.
+    // \p{Emoji_Modifier_Base}, \p{Emoji_Modifier}, \p{Emoji_Component} 등 이모지 관련 속성들을 사용하여 더 포괄적으로 제거
+    cleaned = cleaned.replace(/[\p{Emoji}\p{Emoji_Presentation}\p{Emoji_Modifier_Base}\p{Emoji_Modifier}\p{Emoji_Component}\u200D\uFE0F]/gu, '').trim();
 
     console.log(`[omoide:cleanReply] 정제된 답변: "${cleaned}"`);
     return cleaned;
@@ -306,6 +306,7 @@ async function getOmoideReply(userMessage, saveLogFunc) {
         const comment = cleanReply(rawComment);
         saveLogFunc('예진이', `(사진 보냄) ${comment}`);
         console.log(`[omoide:getOmoideReply] 응답 완료: ${comment}`);
+        // ✨ 이 부분이 중요: 사진 URL이 유효하면 type: 'photo'로 반환해야 함
         return { type: 'photo', url: photoUrl, caption: comment };
     } catch (error) {
         console.error('❌ [omoide.js Error] 사진 코멘트 생성 실패:', error);
