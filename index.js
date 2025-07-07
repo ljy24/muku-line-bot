@@ -14,7 +14,7 @@ const {
     getReplyByMessage,              // 사용자 텍스트 메시지에 대한 예진이의 답변 생성
     getReplyByImagePrompt,          // 사용자가 보낸 이미지 메시지에 대한 예진이의 답변 생성 (이미지 분석)
     getRandomMessage,               // 무작위 메시지 생성 (scheduler.js에서 사용)
-    getCouplePhotoReplyFromYeji,    // 커플 사진에 대한 코멘트 생성
+    getCouplePhotoReplyFromYeji,    // 커플 사진에 대한 코멘트 생성 (scheduler.js에서도 사용)
     getImageReactionComment,        // 셀카 멘트 생성 함수
     isSelfieRequest,                // 셀카 요청 감지 함수
     isCouplePhotoRequest,           // 커플 사진 요청 감지 함수
@@ -39,11 +39,11 @@ const memoryManager = require('./src/memoryManager');
 
 // omoide.js에서 사진 관련 응답 함수와 cleanReply, getSelfieImageUrl, getCoupleImageUrl, getMemoryPhoto를 불러옵니다.
 // 파일 구조 이미지에 따르면 omoide.js는 memory 폴더 바로 아래에 있습니다.
-const { getMemoryPhoto, cleanReply, getSelfieImageUrl, getCoupleImageUrl } = require('./memory/omoide');
+const { getMemoryPhoto, cleanReply, getSelfieImageUrl, getCoupleImageUrl } = require('./memory/omoide'); 
 
 // spontaneousPhotoManager.js에서 즉흥 사진 스케줄러 함수를 불러옵니다.
 // (이 파일은 현재 제공되지 않았으므로, 아저씨 프로젝트에 있다면 아래 주석을 해제해주세요)
-// const { startSpontaneousPhotoScheduler } = require('./src/spontaneousPhotoManager');
+const { startSpontaneousPhotoScheduler } = require('./src/spontaneousPhotoManager');
 
 // 스케줄러 모듈 불러오기 (이제 모든 스케줄링 로직은 여기에)
 const { startAllSchedulers, updateLastUserMessageTime } = require('./src/scheduler');
@@ -316,45 +316,41 @@ app.post('/webhook', middleware(config), async (req, res) => {
                         botResponse.comment.includes('처음 만났을 때 기억은 내가 아직 정확히 못 찾겠어') // 첫 대화 기억 관련 응답 추가
                     );
 
-                    if (!isCommand(text) && !isMemoryRelatedResponse) {
-                        await memoryManager.extractAndSaveMemory(text); // memoryManager를 호출하여 기억 추출 및 저장
-                        console.log(`[index.js] memoryManager.extractAndSaveMemory 호출 완료 (메시지: "${text}")`);
-                    } else {
-                        console.log(`[index.js] 명령어 또는 기억/리마인더 관련 응답이므로 메모리 자동 저장에서 제외됩니다.`);
-                    }
+                    // 모든 사진 요청 유형도 자동 기억 저장에서 제외합니다.
+                    if (!isCommand(text) && !isMemoryRelatedResponse && !isSelfieRequest(text) && !isCouplePhotoRequest(text) && !isConceptPhotoRequest(text) && !isMemoryPhotoRequest(text)) {
+                        await memoryManager.extractAndSaveMemory(text); // memoryManager를 호출하여 기억 추출 및 저장
+                        console.log(`[index.js] memoryManager.extractAndSaveMemory 호출 완료 (메시지: "${text}")`);
+                    } else {
+                        console.log(`[index.js] 명령어 또는 기억/리마인더/사진 관련 응답이므로 메모리 자동 저장에서 제외됩니다.`);
+                    }
+                } // end of text message processing
 
-                    if (replyMessages.length > 0) {
-                        await client.replyMessage(event.replyToken, replyMessages);
-                        console.log(`[index.js] 봇 응답 전송 완료 (타입: ${botResponse.type})`);
-                    }
-                }
+                // * 사용자가 이미지를 보낸 경우 처리 *
+                if (message.type === 'image') {
+                    try {
+                        const stream = await client.getMessageContent(message.id); // LINE 서버에서 이미지 콘텐츠 스트림 가져오기
+                        const chunks = [];
+                        for await (const chunk of stream) chunks.push(chunk); // 스트림의 모든 청크를 모음
+                        const buffer = Buffer.concat(chunks); // 모아진 청크를 하나의 버퍼로 합침
 
-                // * 사용자가 이미지를 보낸 경우 처리 *
-                if (message.type === 'image') {
-                    try {
-                        const stream = await client.getMessageContent(message.id); // LINE 서버에서 이미지 콘텐츠 스트림 가져오기
-                        const chunks = [];
-                        for await (const chunk of stream) chunks.push(chunk); // 스트림의 모든 청크를 모음
-                        const buffer = Buffer.concat(chunks); // 모아진 청크를 하나의 버퍼로 합침
-
-                        let mimeType = 'application/octet-stream'; // 기본 MIME 타입
-                        // * 이미지 파일의 매직 넘버를 통해 실제 MIME 타입 판별 *
-                        if (buffer.length > 1 && buffer[0] === 0xFF && buffer[1] === 0xD8) {
-                            mimeType = 'image/jpeg';
-                        } else if (buffer.length > 7 && buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47 && buffer[4] === 0x0D && buffer[5] === 0x0A && buffer[6] === 0x1A && buffer[7] === 0x0A) {
-                            mimeType = 'image/png';
-                        } else if (buffer.length > 2 && buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46) {
-                            mimeType = 'image/gif';
-                        }
-                        // * Base64 데이터 URL 형식으로 변환 *
-                        const base64ImageWithPrefix = `data:${mimeType};base64,${buffer.toString('base64')}`;
+                        let mimeType = 'application/octet-stream'; // 기본 MIME 타입
+                        // * 이미지 파일의 매직 넘버를 통해 실제 MIME 타입 판별 *
+                        if (buffer.length > 1 && buffer[0] === 0xFF && buffer[1] === 0xD8) {
+                            mimeType = 'image/jpeg';
+                        } else if (buffer.length > 7 && buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47 && buffer[4] === 0x0D && buffer[5] === 0x0A && buffer[6] === 0x1A && buffer[7] === 0x0A) {
+                            mimeType = 'image/png';
+                        } else if (buffer.length > 2 && buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46) {
+                            mimeType = 'image/gif';
+                        }
+                        // * Base64 데이터 URL 형식으로 변환 *
+                        const base64ImageWithPrefix = `data:${mimeType};base64,${buffer.toString('base64')}`;
 
                         const reply = await getReplyByImagePrompt(base64ImageWithPrefix); // AI가 이미지 분석 후 답변 생성
                         await client.replyMessage(event.replyToken, { type: 'text', text: reply });
                         console.log(`[index.js] 이미지 메시지 처리 및 응답 완료`);
                     } catch (err) {
                         console.error(`[index.js] 이미지 처리 실패: ${err}`);
-                        await client.replyMessage(replyToken, { type: 'text', text: '이미지를 읽는 중 오류가 생겼어 ㅠㅠ' });
+                        await client.replyMessage(event.replyToken, { type: 'text', text: '이미지를 읽는 중 오류가 생겼어 ㅠㅠ' });
                     }
                 }
             }
