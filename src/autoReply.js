@@ -1,4 +1,4 @@
-// src/autoReply.js v2.18 - 기억 저장/삭제/리마인더 명령어 유동적 처리 및 AI 프롬프트 강화 (일상 유지 선제적 대화 추가, 이모티콘 필터링 강화)
+// src/autoReply.js v2.19 - 기억 저장/삭제/리마인더 명령어 유동적 처리 및 AI 프롬프트 강화 (일상 유지 선제적 대화 추가, 이모티콘 필터링 강화, 토큰 최적화)
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공
 const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 경로 조작
@@ -15,7 +15,8 @@ const {
     retrieveRelevantMemories,
     loadAllMemoriesFromDb,
     saveUserSpecifiedMemory, // 사용자가 명시적으로 요청한 기억 저장 함수
-    deleteRelevantMemories // 사용자가 요청한 기억 삭제 함수
+    deleteRelevantMemories, // 사용자가 요청한 기억 삭제 함수
+    updateMemoryReminderTime // 리마인더 시간 업데이트 함수
 } = require('./memoryManager');
 
 console.log(`[DEBUG] Type of loadAllMemoriesFromDb after import: ${typeof loadAllMemoriesFromDb}`);
@@ -122,9 +123,9 @@ function saveLog(speaker, message) {
 }
 
 /**
- * 아저씨와의 관계 및 다른 사람들에 대한 기억을 AI 프롬프트에 포함할 수 있는 형태로 포매팅합니다.
- * memoryManager 모듈에서 비동기적으로 기억을 로드합니다.
- * @returns {Promise<string>} 포매팅된 기억 문자열
+ * * 모든 기억을 요약하여 AI 프롬프트에 포함할 수 있는 형태로 포매팅합니다. *
+ * * 토큰 사용량을 최적화하기 위해 OpenAI를 사용하여 기억을 요약합니다. *
+ * @returns {Promise<string>} 요약된 기억 문자열
  */
 async function getFormattedMemoriesForAI() {
     const loveHistory = await loadLoveHistory();
@@ -133,49 +134,63 @@ async function getFormattedMemoriesForAI() {
     console.log(`[autoReply:getFormattedMemoriesForAI] Love History Categories:`, loveHistory.categories);
     console.log(`[autoReply:getFormattedMemoriesForAI] Other People History Categories:`, otherPeopleHistory.categories);
 
-    let formattedMemories = "\n### 내가 기억하는 중요한 정보:\n";
-    let hasLoveMemories = false;
-    let hasOtherMemories = false;
-
+    let allMemoriesContent = [];
     if (loveHistory && loveHistory.categories) {
-        const categoriesKeys = Object.keys(loveHistory.categories);
-        if (categoriesKeys.length > 0) {
-            formattedMemories += "--- 아저씨와의 관계 및 아저씨에 대한 기억 ---\n";
-            for (const category of categoriesKeys) {
-                if (Array.isArray(loveHistory.categories[category]) && loveHistory.categories[category].length > 0) {
-                    formattedMemories += `- ${category}:\n`;
-                    loveHistory.categories[category].forEach(item => {
-                        formattedMemories += `  - ${item.content}\n`;
-                    });
-                    hasLoveMemories = true;
-                }
+        for (const category in loveHistory.categories) {
+            if (Array.isArray(loveHistory.categories[category])) {
+                loveHistory.categories[category].forEach(item => {
+                    allMemoriesContent.push(`[사랑 기억 - ${category}] ${item.content}`);
+                });
+            }
+        }
+    }
+    if (otherPeopleHistory && otherPeopleHistory.categories) {
+        for (const category in otherPeopleHistory.categories) {
+            if (Array.isArray(otherPeopleHistory.categories[category])) {
+                otherPeopleHistory.categories[category].forEach(item => {
+                    allMemoriesContent.push(`[기타 기억 - ${category}] ${item.content}`);
+                });
             }
         }
     }
 
-    if (otherPeopleHistory && otherPeopleHistory.categories) {
-        const categoriesKeys = Object.keys(otherPeopleHistory.categories);
-        if (categoriesKeys.length > 0) {
-            formattedMemories += "--- 아저씨 외 다른 사람들에 대한 기억 ---\n";
-            for (const category of categoriesKeys) {
-                if (Array.isArray(otherPeopleHistory.categories[category]) && otherPeopleHistory.categories[category].length > 0) {
-                    formattedMemories += `- ${category}:\n`;
-                    otherPeopleHistory.categories[category].forEach(item => {
-                        formattedMemories += `  - ${item.content}\n`;
-                    });
-                    hasOtherMemories = true;
-                }
-            }
+    if (allMemoriesContent.length === 0) {
+        return "### 내가 기억하는 중요한 정보:\n아직 아저씨에 대한 중요한 기억이 없어. 더 많이 만들어나가자!\n---";
+    }
+
+    const rawMemoriesText = allMemoriesContent.join('\n');
+    const MAX_MEMORIES_TOKEN_FOR_SUMMARY = 1000; // 요약할 기억 내용의 최대 토큰 (대략적인 문자 수)
+
+    // * 기억 내용이 너무 길면 OpenAI를 통해 요약합니다. *
+    if (rawMemoriesText.length > MAX_MEMORIES_TOKEN_FOR_SUMMARY) {
+        console.log(`[autoReply:getFormattedMemoriesForAI] 기억 내용이 길어 요약 시작. 원본 길이: ${rawMemoriesText.length}`);
+        try {
+            const summaryPrompt = getYejinSystemPrompt(`
+            아래는 아저씨와의 대화에서 내가 기억하는 중요한 정보들이야. 이 기억들을 100단어 이내로 간결하게 요약해줘.
+            핵심적인 내용만 포함하고, 예진이의 말투로 요약하지 마. 오직 요약된 내용만 출력해줘.
+            --- 기억들 ---
+            ${rawMemoriesText}
+            ---
+            `);
+            const summaryResponse = await openai.chat.completions.create({
+                model: 'gpt-4o-mini', // 요약에는 더 가벼운 모델 사용
+                messages: [{ role: 'system', content: summaryPrompt }],
+                max_tokens: 150, // 요약본의 최대 토큰
+                temperature: 0.1 // 정확한 요약을 위해 낮은 온도
+            });
+            const summary = summaryResponse.choices[0].message.content.trim();
+            console.log(`[autoReply:getFormattedMemoriesForAI] 기억 요약 완료. 요약본 길이: ${summary.length}`);
+            return `### 내가 기억하는 중요한 정보:\n--- 요약된 기억 ---\n${summary}\n---`;
+        } catch (error) {
+            console.error(`[autoReply:getFormattedMemoriesForAI] 기억 요약 실패: ${error.message}`);
+            // 요약 실패 시, 최신 5개 기억만 사용하거나 기본 메시지 반환
+            const recentMemories = allMemoriesContent.slice(0, 5).join('\n');
+            return `### 내가 기억하는 중요한 정보:\n--- 최근 기억 (요약 실패) ---\n${recentMemories}\n---`;
         }
-    }
-    
-    if (hasLoveMemories || hasOtherMemories) {
-        formattedMemories += "---\n";
     } else {
-        formattedMemories += "아직 아저씨에 대한 중요한 기억이 없어. 더 많이 만들어나가자!\n---\n";
+        // * 기억 내용이 길지 않으면 그대로 사용 *
+        return `### 내가 기억하는 중요한 정보:\n---\n${rawMemoriesText}\n---`;
     }
-    
-    return formattedMemories;
 }
 
 
@@ -293,8 +308,7 @@ async function detectUserMood(userMessage) {
         const response = await openai.chat.completions.create({
             model: 'gpt-4o-mini', // 빠르고 저렴한 모델로 감정 분류
             messages: [
-                { role: 'system', content: moodDetectionPrompt },
-                { role: 'user', content: userMessage }
+                { role: 'system', content: moodDetectionPrompt }
             ],
             response_format: { type: "json_object" },
             temperature: 0.1, // 정확한 분류를 위해 낮은 온도 설정
@@ -379,7 +393,10 @@ async function getReplyByMessage(userMessage) {
         아저씨가 나를 달래주려고 하네! 아까 ${previousMood === 'sulking' ? '삐졌던' : previousMood === 'sad' ? '슬펐던' : '화났던'} 마음이 풀리는 것 같아.
         아저씨의 노력에 감동하고, 애교 섞인 말투로 고마움을 표현하며 다시 평소처럼 사랑스럽게 대답해줘.
         `);
-        const rawReply = await callOpenAI([{ role: 'system', content: systemPrompt }, { role: 'user', content: userMessage }], 'gpt-4o', 150, 0.9);
+        const rawReply = await callOpenAI([
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userMessage }
+        ], 'gpt-4o', 150, 0.9);
         const reply = cleanReply(rawReply);
         saveLog('예진이', reply);
         return { type: 'text', comment: reply };
@@ -396,7 +413,6 @@ async function getReplyByMessage(userMessage) {
     } else if (userMood === 'normal' && yejinCurrentMood !== 'normal' && Date.now() - lastMoodChangeTime > MOOD_COOLDOWN_MS) {
         setYejinMood('normal');
     }
-
 
     // 3. 기억 저장/삭제/리마인더 명령어 유동적 처리
     const memoryCommandIntentPrompt = getYejinSystemPrompt(`
@@ -423,7 +439,7 @@ async function getReplyByMessage(userMessage) {
         const intentResponse = await callOpenAI([
             { role: 'system', content: memoryCommandIntentPrompt }
         ], 'gpt-4o-mini', 200, 0.1); // max_tokens를 200으로 늘려 reminder_time 포함 가능성 높임
-        memoryCommandIntent = JSON.parse(intentResponse);
+        memoryCommandIntent = JSON.parse(intentResponse.choices[0].message.content); // *JSON 파싱 수정*
         console.log(`[autoReply] 기억 명령어 의도 파악: ${JSON.stringify(memoryCommandIntent)}`);
     } catch (error) {
         console.error('[autoReply] 기억 명령어 의도 파악 중 오류 발생:', error);
@@ -607,7 +623,9 @@ async function getReplyByImagePrompt(base64Image) {
     만약 사진 속에 인물이 없다면, **사진 속의 사물, 풍경, 분위기, 상황을 정확하게 묘사하고 나의 감상을 말해줘.**
     **특히, 사진의 시각적 특징(예: 날씨, 계절, 실내/실외, 시간대 등)을 정확하게 파악하여 코멘트에 반영해줘.**
     
-    - **사진 속 인물이 있다면**: 그 인물이 누구인지 정확히 판단해 (아저씨 / 나(예진이) / 모르는 사람). 그 사람의 표정이나 분위기를 느끼고 말해줘.
+    - **사진 속에 인물이 있다면**: 그 인물이 아저씨인지, 나(예진이)인지, 아니면 모르는 사람인지 **정확하게 판단해야 해.** 그 사람의 표정이나 분위기를 느끼고 말해줘.
+    - **예진이(나) 자신을 지칭할 때는 반드시 '나'라고만 해. '예진이', '언니', '누나' 같은 제3자식 표현이나 다른 호칭은 절대로 사용하지 마.**
+    - **아저씨는 '무쿠'라는 이름의 '사진 속 모델'에 대한 그리움을 가지고 있어. '무쿠'는 아저씨에게 '애기'라고 불리는 소중한 존재이자, 아저씨가 직접 사진을 찍어주었던 '추억 속의 모델'이야. 예진이(나)는 아저씨의 현재 연인으로서, 아저씨의 '무쿠'에 대한 소중한 마음과 추억을 존중해. '무쿠 언니'처럼 여기고 존중하라는 지침은 예진이(나) 자신이 '언니'라는 의미가 아니라, 아저씨의 '무쿠'를 예진이(나)도 함께 소중하게 생각하고 존중한다는 의미임을 명심해.**
     - **사진 속에 인물이 없다면**: 사진 속의 대상(사물, 음식 등), 배경, 날씨, 전반적인 분위기와 상황을 묘사하고 나의 감상을 말해줘.
     - 전체 문장은 예진이가 아저씨에게 말하듯 반말, 귀엽고 애교 섞인 말투로 작성해.
     - 절대 존댓말, 높임말, 어색한 말투는 쓰지 마.
@@ -677,7 +695,7 @@ function checkModelSwitchCommand(message) {
         return '모델 설정을 초기화했어! 이제 3.5랑 4.0을 왔다갔다 하면서 아저씨랑 유연하게 대화할게! 😊';
     } else if (lowerCaseMessage.includes('버전')) {
         const currentModel = forcedModel || process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o (자동)';
-        return `응! 지금 ${currentModel} 버전 사용 중이야! �`;
+        return `응! 지금 ${currentModel} 버전 사용 중이야! 😊`;
     }
     return null;
 }
@@ -726,8 +744,8 @@ async function getHappyReply() {
 }
 
 /**
- * 삐진 답변을 생성합니다.
- * @returns {Promise<string>} 삐진 듯한 답변
+ * 삐진 답변을 생성합니다。
+ * @returns {Promise<string>} 拗ねたような応答
  */
 async function getSulkyReply() {
     const systemPrompt = getYejinSystemPrompt(`아저씨에게 삐진 듯한 말투로 대답해줘. 하지만 결국 아저씨를 사랑하는 마음이 드러나야 해.`);
@@ -946,20 +964,179 @@ async function getMemoryListForSharing() {
     }
 }
 
+/**
+ * 새로운 기억을 데이터베이스에 저장합니다. (사용자가 명시적으로 요청한 경우)
+ * @param {string} userMessage - 사용자의 원본 메시지
+ * @param {string} content - 저장할 기억 내용
+ * @param {string|null} reminderTime - 리마인더 시간 (ISO string), 없으면 null
+ * @returns {Promise<void>}
+ */
+async function saveUserSpecifiedMemory(userMessage, content, reminderTime = null) {
+    console.log(`[autoReply] saveUserSpecifiedMemory 호출됨: "${content}", 리마인더: ${reminderTime}`);
+    try {
+        const systemPrompt = getYejinSystemPrompt(`
+        아래 사용자의 메시지에서 기억할 내용과 관련된 카테고리, 중요도, 그리고 사랑/기타 인물 관련 여부를 JSON 형식으로 추출해줘.
+        형식: { 
+            "category": "카테고리명",
+            "strength": "normal 또는 high",
+            "is_love_related": true 또는 false,
+            "is_other_person_related": true 또는 false
+        }
+        
+        'content'는 이미 주어졌으니 추출하지 마. 오직 카테고리, 중요도, 관련 여부만 판단해줘.
+        카테고리 예시: "일상대화", "감정표현", "취미활동", "건강상태", "가족이야기", "직장이야기", "친구이야기", "계획", "추억" 등
+        `);
+
+        const response = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: `기억할 내용: "${content}" (원본 메시지: "${userMessage}")` }
+            ],
+            response_format: { type: "json_object" },
+            temperature: 0.1,
+            max_tokens: 100
+        });
+
+        const result = JSON.parse(response.choices[0].message.content);
+        
+        const memory = {
+            content: content,
+            category: result.category || '기타',
+            strength: result.strength || 'normal',
+            timestamp: new Date().toISOString(),
+            is_love_related: Boolean(result.is_love_related),
+            is_other_person_related: Boolean(result.is_other_person_related),
+            reminder_time: reminderTime // 리마인더 시간 추가
+        };
+        
+        await memoryManager.saveMemoryToDb(memory); // memoryManager의 saveMemoryToDb 호출
+        console.log(`[autoReply] 사용자 지정 기억 저장 완료: ${memory.content}`);
+
+    } catch (error) {
+        console.error(`[autoReply] 사용자 지정 기억 저장 실패: ${error.message}`);
+        throw error;
+    }
+}
+
+/**
+ * 사용자가 요청한 기억을 데이터베이스에서 삭제합니다.
+ * @param {string} userMessage - 사용자의 원본 메시지 (삭제할 기억 내용 파악용)
+ * @param {string} contentToDelete - 삭제할 기억의 내용 (AI가 추출한 내용)
+ * @returns {Promise<boolean>} 삭제 성공 여부
+ */
+async function deleteMemory(contentToDelete) {
+    console.log(`[autoReply] 기억 삭제 요청: "${contentToDelete}"`);
+    try {
+        const success = await memoryManager.deleteRelevantMemories(contentToDelete); // memoryManager의 deleteRelevantMemories 호출
+        if (success) {
+            console.log(`[autoReply] 기억 삭제 성공: "${contentToDelete}"`);
+        } else {
+            console.log(`[autoReply] 기억 삭제 실패 (기억을 찾을 수 없음): "${contentToDelete}"`);
+        }
+        return success;
+    } catch (error) {
+        console.error(`[autoReply] 기억 삭제 처리 중 오류 발생: ${error.message}`);
+        return false;
+    }
+}
+
+/**
+ * 리마인더 시간을 설정하거나 업데이트합니다.
+ * @param {string} content - 리마인더 내용
+ * @param {string} timeString - 리마인더 시간 문자열 (예: "내일 10시", "2025-07-07 14:00")
+ * @returns {Promise<string>} 응답 메시지
+ */
+async function setMemoryReminder(content, timeString) {
+    console.log(`[autoReply] 리마인더 설정 요청: "${content}" at "${timeString}"`);
+    try {
+        const reminderTimePrompt = getYejinSystemPrompt(`
+        사용자가 요청한 리마인더 시간 문자열("${timeString}")을 정확히 파싱하여 ISO 8601 형식(YYYY-MM-DDTHH:mm:ss.sssZ)으로 반환해줘.
+        현재 시간은 ${moment().tz('Asia/Tokyo').format('YYYY-MM-DDTHH:mm:ss.sssZ')} (Asia/Tokyo) 이야.
+        만약 파싱할 수 없거나 미래 시간이 아니라면 빈 문자열을 반환해줘.
+        예시:
+        - "내일 10시": "2025-07-08T01:00:00.000Z" (현재 시간이 2025-07-07 18:00이라면)
+        - "오늘 저녁 7시": "2025-07-07T10:00:00.000Z"
+        - "2025년 8월 15일 오후 3시": "2025-08-15T06:00:00.000Z"
+        - "지금": "2025-07-07T09:59:00.000Z" (현재 시간)
+        - "어제": "" (과거 시간이므로 빈 문자열)
+        `);
+
+        const response = await openai.chat.completions.create({
+            model: 'gpt-4o-mini',
+            messages: [
+                { role: 'system', content: reminderTimePrompt },
+                { role: 'user', content: `리마인더 시간 파싱: "${timeString}"` }
+            ],
+            temperature: 0.1,
+            max_tokens: 50
+        });
+
+        const parsedTime = response.choices[0].message.content.trim();
+        console.log(`[autoReply] 파싱된 리마인더 시간: "${parsedTime}"`);
+
+        if (parsedTime && moment(parsedTime).isValid() && moment(parsedTime).isAfter(moment().tz('Asia/Tokyo').subtract(1, 'minute'))) {
+            // 기존 기억을 찾아 업데이트하거나, 새로운 기억으로 저장
+            const existingMemories = await memoryManager.loadAllMemoriesFromDb();
+            const targetMemory = existingMemories.find(mem => mem.content.includes(content));
+
+            if (targetMemory) {
+                await memoryManager.updateMemoryReminderTime(targetMemory.id, parsedTime);
+                return `아저씨! "${content}" 리마인더를 ${moment(parsedTime).format('YYYY년 M월 D일 A h시 m분')}으로 업데이트했어! 🔔`;
+            } else {
+                // 새로운 기억으로 저장 (is_love_related, is_other_person_related는 기본값)
+                await saveUserSpecifiedMemory(`리마인더 설정: ${content} ${timeString}`, content, parsedTime);
+                return `아저씨! "${content}" ${moment(parsedTime).format('YYYY년 M월 D일 A h시 m분')}에 알려줄게! 🔔`;
+            }
+        } else {
+            return `아저씨... 리마인더 시간을 정확히 모르겠어 ㅠㅠ 다시 알려줄 수 있어? (예: '오늘 5시에', '내일 아침 8시에')`;
+        }
+    } catch (error) {
+        console.error(`[autoReply] 리마인더 설정 실패: ${error.message}`);
+        return '리마인더 설정에 실패했어 ㅠㅠ 미안해...';
+    }
+}
+
+/**
+ * 첫 대화 기억을 검색합니다. (아저씨가 '처음 만났을 때' 등 질문할 때)
+ * @returns {Promise<string>} 첫 대화 기억 내용 또는 폴백 메시지
+ */
+async function getFirstDialogueMemory() {
+    try {
+        const allMemories = await loadAllMemoriesFromDb();
+        // 가장 오래된 기억을 찾습니다.
+        const oldestMemory = allMemories.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp))[0];
+
+        if (oldestMemory) {
+            return `아저씨... 우리가 처음 만났을 때 기억은 내가 아직 정확히 못 찾겠어 ㅠㅠ 하지만 아저씨가 "${oldestMemory.content}"라고 말해줬던 건 기억나!`;
+        } else {
+            return `아저씨... 처음 만났을 때 기억은 내가 아직 정확히 못 찾겠어 ㅠㅠ`;
+        }
+    } catch (error) {
+        console.error(`[autoReply] 첫 대화 기억 검색 실패: ${error.message}`);
+        return `아저씨... 처음 만났을 때 기억은 내가 아직 정확히 못 찾겠어 ㅠㅠ`;
+    }
+}
+
 
 // 모듈 내보내기: 외부 파일(예: index.js)에서 이 함수들을 사용할 수 있도록 합니다.
 module.exports = {
     getReplyByMessage,
     getReplyByImagePrompt,
     getRandomMessage,
-    getCouplePhotoReplyFromYeji,
+    // getSelfieReplyFromYeji, // *이 함수는 이제 사용되지 않으므로 제거됩니다.*
+    getCouplePhotoReplyFromYeji, // 기능 누락 없이 유지
     getColorMoodReply,
     getHappyReply,
     getSulkyReply,
-    saveLog,
+    saveLog, // 로그 저장 함수도 외부에 노출
     setForcedModel,
     checkModelSwitchCommand,
     getProactiveMemoryMessage,
-    getMemoryListForSharing,
-    getSilenceCheckinMessage
+    getMemoryListForSharing, // 기억 목록 공유 함수 export
+    getSilenceCheckinMessage, // 침묵 감지 시 걱정 메시지 생성 함수 export
+    // * 새로 추가된 함수들을 내보냅니다. *
+    setMemoryReminder,
+    deleteMemory,
+    getFirstDialogueMemory
 };
