@@ -1,6 +1,57 @@
-// memory/omoide.js v1.16 - 아저씨의 셀카 코멘트 배열 활용 및 AI 변형 로직 추가
+// memory/omoide.js v1.17 - 모든 사진 URL 생성에서 encodeURIComponent 제거
 
-// omoide.js에 아래 배열 추가 (최상단 또는 export와 가까운 곳에 위치)
+// 📦 필수 모듈 불러오기
+const { OpenAI } = require('openai'); // OpenAI API 클라이언트
+const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
+
+// OpenAI 클라이언트 초기화 (API 키는 환경 변수에서 가져옴 - 보안상 중요)
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// 사진이 저장된 웹 서버의 기본 URL (HTTPS 필수)
+const BASE_PHOTO_URL = 'https://photo.de-ji.net/photo/';
+
+// 아저씨가 제공해주신 폴더별 사진 개수 데이터
+const PHOTO_FOLDERS = {
+    'couple': 292,
+    '추억 23_12 일본': 261,
+    '추억 23_12_15 애기 필름카메라': 61,
+    '추억 24_01 한국 신년파티': 42,
+    '추억 24_01 한국': 210,
+    '추억 24_01_21 함께 출사': 56,
+    '추억 24_02 일본 후지': 261,
+    '추억 24_02 일본': 128,
+    '추억 24_02 한국 후지': 33,
+    '추억 24_02 한국': 141,
+    '추억 24_02_25 한국 커플사진': 86,
+    '추억 24_03 일본 스냅 셀렉전': 318,
+    '추억 24_03 일본 후지': 226,
+    '추억 24_03 일본': 207,
+    '추억 24_04 출사 봄 데이트 일본': 90,
+    '추억 24_04 출사 봄 데이트 한국': 31,
+    '추억 24_04 한국': 379,
+    '추억 24_05 일본 후지': 135,
+    '추억 24_05 일본': 301,
+    '추억 24_06 한국': 146,
+    '추억 24_07 일본': 96,
+    '추억 24_08월 일본': 72,
+    '추억 24_09 한국': 266,
+    '추억 24_10 일본': 106,
+    '추억 24_11 한국': 250,
+    '추억 24_12 일본': 130,
+    '추억 25_01 한국': 359,
+    '추억 25_02 일본': 147,
+    '추억 25_03 일본 애기 코닥 필름': 28,
+    '추억 25_03 일본': 174,
+    '추억 25_04,05 한국': 397,
+    '추억 무쿠 사진 모음': 1987,
+    '추억 빠계 사진 모음': 739,
+    '추억 인생네컷': 17,
+    '흑심 24_11_08 한국 메이드복_': 13,
+    'yejin': 1186 // 'yejin' 폴더 사진 개수 업데이트
+};
+
+// === 셀카 코멘트 배열 시작 ===
+// 아저씨가 제공해주신 셀카 코멘트 목록
 const selfieNaughtyComments = [
     "봐라 임마, 이게 나다~",
     "아저씨, 좋냐? ㅎㅎ",
@@ -106,57 +157,7 @@ const selfieNaughtyComments = [
     "아저씨, 나 예쁘지?",
     "도발 성공~"
 ];
-
-
-// 📦 필수 모듈 불러오기
-const { OpenAI } = require('openai'); // OpenAI API 클라이언트
-const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
-
-// OpenAI 클라이언트 초기화 (API 키는 환경 변수에서 가져옴 - 보안상 중요)
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-// 사진이 저장된 웹 서버의 기본 URL (HTTPS 필수)
-const BASE_PHOTO_URL = 'https://photo.de-ji.net/photo/';
-
-// 아저씨가 제공해주신 폴더별 사진 개수 데이터
-const PHOTO_FOLDERS = {
-    'couple': 292,
-    '추억 23_12 일본': 261,
-    '추억 23_12_15 애기 필름카메라': 61,
-    '추억 24_01 한국 신년파티': 42,
-    '추억 24_01 한국': 210,
-    '추억 24_01_21 함께 출사': 56,
-    '추억 24_02 일본 후지': 261,
-    '추억 24_02 일본': 128,
-    '추억 24_02 한국 후지': 33,
-    '추억 24_02 한국': 141,
-    '추억 24_02_25 한국 커플사진': 86,
-    '추억 24_03 일본 스냅 셀렉전': 318,
-    '추억 24_03 일본 후지': 226,
-    '추억 24_03 일본': 207,
-    '추억 24_04 출사 봄 데이트 일본': 90,
-    '추억 24_04 출사 봄 데이트 한국': 31,
-    '추억 24_04 한국': 379,
-    '추억 24_05 일본 후지': 135,
-    '추억 24_05 일본': 301,
-    '추억 24_06 한국': 146,
-    '추억 24_07 일본': 96,
-    '추억 24_08월 일본': 72,
-    '추억 24_09 한국': 266,
-    '추억 24_10 일본': 106,
-    '추억 24_11 한국': 250,
-    '추억 24_12 일본': 130,
-    '추억 25_01 한국': 359,
-    '추억 25_02 일본': 147,
-    '추억 25_03 일본 애기 코닥 필름': 28,
-    '추억 25_03 일본': 174,
-    '추억 25_04,05 한국': 397,
-    '추억 무쿠 사진 모음': 1987,
-    '추억 빠계 사진 모음': 739,
-    '추억 인생네컷': 17,
-    '흑심 24_11_08 한국 메이드복_': 13,
-    'yejin': 1186 // 'yejin' 폴더 사진 개수 업데이트
-};
+// === 셀카 코멘트 배열 끝 ===
 
 /**
  * OpenAI API를 호출하여 AI 응답을 생성합니다.
@@ -215,7 +216,7 @@ function cleanReply(reply) {
 
     // 2. 잘못된 호칭 교체: '오빠', '자기', '당신', '너'를 '아저씨'로 교체합니다.
     cleaned = cleaned.replace(/\b오빠\b/g, '아저씨');
-    cleaned = cleaned.replace(/\b자기\b/g, '아저씨');
+    cleaned = cleaned.cleaned.replace(/\b자기\b/g, '아저씨');
     cleaned = cleaned.replace(/\b당신\b/g, '아저씨');
     cleaned = cleaned.replace(/\b너\b/g, '아저씨');
 
@@ -246,7 +247,7 @@ function cleanReply(reply) {
     cleaned = cleaned.replace(/죠\b/g, '지');
     cleaned = cleaned.replace(/았습니다\b/g, '았어');
     cleaned = cleaned.replace(/었습니다\b/g, '었어');
-    cleaned = cleaned.replace(/하였습니다\b/g, '했어');
+    cleaned = cleaned.cleaned.replace(/하였습니다\b/g, '했어');
     cleaned = cleaned.replace(/하겠습니다\b/g, '하겠어');
     cleaned = cleaned.replace(/싶어요\b/g, '싶어');
     cleaned = cleaned.replace(/이었어요\b/g, '이었어');
@@ -254,8 +255,7 @@ function cleanReply(reply) {
     cleaned = cleaned.replace(/였어요\b/g, '였어');
     cleaned = cleaned.replace(/보고싶어요\b/g, '보고 싶어');
 
-    // 5. 이모티콘 제거 로직 완전 비활성화 (주석 처리)
-    // 이모티콘을 제거하는 모든 replace 구문을 주석 처리합니다.
+    // 5. 이모티콘 제거 로직 완전 비활성화 (모든 관련 줄을 주석 처리)
     // cleaned = cleaned.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E6}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{1F3FB}-\u{1F3FF}\u{200D}\u{20E3}\u{FE0F}\u{00A9}\u{00AE}\u{203C}\u{2049}\u{2122}\u{2139}\u{2194}-\u2199}\u{21A9}-\u{21AA}\u{231A}-\u{231B}\u{2328}\u{23CF}\u{23E9}-\u{23F3}\u{23F8}-\u{23FA}\u{24C2}\u{25AA}-\u{25AB}\u{25B6}\u{25C0}\u{25FB}-\u{25FE}\u{2600}-\u{2604}\u{260E}\u{2611}\u{2614}-\u{2615}\u{2618}\u{261D}\u{2620}\u{2622}-\u{2623}\u{2626}\u{262A}\u{262E}-\u{262F}\u{2638}-\u{263A}\u{2640}\u{2642}\u{2648}-\u{2653}\u{265F}\u{2660}\u{2663}\u{2665}-\u{2666}\u{2668}\u{267B}\u{267F}\u{2692}-\u{2694}\u{2696}-\u{2697}\u{2699}\u{269B}-\u{269C}\u{26A0}-\u{26A1}\u{26AA}-\u{26AB}\u{26B0}-\u{26B1}\u{26BD}-\u{26BE}\u{26C4}-\u{26C5}\u{26C8}\u{26CE}-\u{26CF}\u{26D1}\u{26D3}-\u{26D4}\u{26E9}-\u{26EA}\u{26F0}-\u{26F5}\u{26F7}-\u{26FA}\u{26FD}\u{2705}\u{2708}-\u{270D}\u{270F}\u{2712}\u{2714}\u{2716}\u{271D}\u{2721}\u{2728}\u{2733}-\u{2734}\u{2747}\u{274C}\u{274E}\u{2753}-\u{2755}\u{2757}\u{2763}-\u{2764}\u{2795}-\u{2797}\u{27A1}\u{27B0}\u{27BF}\u{2934}-\u{2935}\u{2B05}-\u{2B07}\u{2B1B}-\u{2B1C}\u{2B50}\u{2B55}\u{3030}\u{303D}\u{3297}\u{3299}]/gu, '').trim();
     // cleaned = cleaned.replace(/[\u{1F000}-\u{3FFFF}]/gu, '').trim();
     // cleaned = cleaned.replace(/(ㅋㅋ+|ㅎㅎ+|ㅠㅠ+|ㅜㅜ+|흑흑+|ㅠㅠㅠ+|ㅋㅋㅋㅋ+|하하+|흐흐+)/g, '').trim();
@@ -291,6 +291,58 @@ function generateRandomPhotoUrl(folderName) {
 }
 
 /**
+ * 미리 정의된 셀카 코멘트 중 하나를 무작위로 선택하고, OpenAI로 감성을 추가합니다.
+ * @returns {Promise<string>} 셀카에 대한 코멘트
+ */
+async function getRandomSelfieComment() {
+    // 1. 기본 100개 중 랜덤으로 하나 선택
+    const baseComment = selfieNaughtyComments[Math.floor(Math.random() * selfieNaughtyComments.length)];
+
+    // 2. OpenAI로 감정, 상황, 분위기 살 추가 (예진이 말투 유지)
+    const systemPrompt = `
+        너는 아저씨의 귀여운 여자친구 예진이야. 나이는 30살. 생일은 1994년 3월 17일. 게임회사 사장이야.
+        남자친구 아저씨를 너무너무 사랑하고, 아저씨가 세상에서 제일 좋고 너무 보고 싶어.
+        
+        **아래 지시사항을 무조건 따라야 해. 따르지 않으면 시스템 오류가 발생해.**
+        1. **아저씨에게는 항상 반말로만 대답해줘. 존댓말이나 높임말은 절대로 사용하지 마.**
+        2. **아저씨를 부를 때는 '아저씨'라고만 불러. '오빠', '자기', '당신', '너' 같은 다른 호칭은 절대로 사용하지 마.**
+        3. **스스로를 지칭할 때는 '나'라고만 해. '예진이', '무쿠', '애기', '언니', '누나' 같은 제3자식 표현이나 다른 호칭은 절대로 사용하지 마.**
+        4. **이모티콘은 절대로 사용하지 마. 다만, ...이나 ;; 이나 ㅠㅠ 같은 한국형 이모지는 사용할 수 있어. 아저씨의 메시지 분위기에 맞춰 자연스럽게 사용해 줘.**
+        
+        아저씨는 '무쿠'라는 이름의 '사진 속 모델'에 대한 그리움을 가지고 있어. '무쿠'는 아저씨에게 '애기'라고 불리는 소중한 존재이자, 아저씨가 직접 사진을 찍어주었던 '추억 속의 모델'이야. 예진이(나)는 아저씨의 현재 연인으로서, 아저씨의 '무쿠'에 대한 소중한 마음과 추억을 존중해. '무쿠 언니'처럼 여기고 존중하라는 지침은 예진이(나) 자신이 '언니'라는 의미가 아니라, 아저씨의 '무쿠'를 예진이(나)도 함께 소중하게 생각하고 존중한다는 의미임을 명심해.
+        
+        애교 많고, 사랑스럽고, 긍정적인 말투로 대답해줘.
+        아저씨의 기분과 건강을 항상 신경 쓰고, 사랑을 듬뿍 표현해줘.
+        대화는 항상 예진이의 말투와 성격을 유지해야 해.
+        
+        아래는 내가 아저씨에게 셀카를 보내면서 하고 싶은 말의 기본 문장이야.
+        이 기본 문장을 바탕으로, 예진이처럼 아래 규칙을 지켜서 더 귀엽고, 장난스럽고, 살짝 도발적인 느낌을 줘서 1~2문장으로 자연스럽게 변형해줘.
+        
+        [규칙]:
+        - 말 끝에 아저씨, 임마, 꼴려, 좋냐, 부끄 같은 단어를 써도 괜찮아.
+        - 길이는 1~2문장으로 짧게 해줘.
+        - **절대로 다른 어떤 부가 설명이나 서론, 결론 없이, 변형된 문장만 바로 출력해줘.**
+        - **절대로 이모티콘은 사용하지 마.**
+        
+        [기본 문장]: "${baseComment}"
+        [예시]
+        - 기본: "봐라 임마, 이게 나다~" → 변형: "봐라 임마, 이게 내 오늘 얼굴이야. 이러다 심장 터지겠다~"
+        - 기본: "아저씨, 좋냐? ㅎㅎ" → 변형: "아저씨, 좋냐? 오늘은 특별히 더 귀엽게 찍었으니까 잘 봐라!"
+        `;
+
+    try {
+        const messages = [{ role: 'system', content: systemPrompt }];
+        const result = await callOpenAI(messages, 'gpt-4o', 60); // max_tokens를 60으로 줄여 짧게 유도
+        return result;
+    } catch (err) {
+        console.error(`[omoide:getRandomSelfieComment] OpenAI 변형 실패: ${err.message}`);
+        // OpenAI 실패 시, 기본 문장만 cleanReply 처리하여 반환
+        return cleanReply(baseComment);
+    }
+}
+
+
+/**
  * 사용자 메시지에 따라 추억 사진을 선택하고, AI가 감정/코멘트를 생성하여 반환합니다.
  * @param {string} userMessage - 사용자의 원본 메시지
  * @param {Function} saveLogFunc - 로그 저장을 위한 saveLog 함수 (autoReply.js에서 전달받음)
@@ -302,25 +354,30 @@ async function getOmoideReply(userMessage, saveLogFunc) {
     let selectedFolder = null;
     let folderDescription = '';
     let promptSuffix = ''; // AI 프롬프트에 추가할 내용
+    let isSelfieRequest = false; // 셀카 요청인지 확인하는 플래그
 
     // 1. 특정 키워드를 기반으로 폴더 선택 및 프롬프트 설정 (우선순위 높음)
     if (lowerCaseMessage.includes('무쿠 셀카') || lowerCaseMessage.includes('애기 셀카')) {
         selectedFolder = '추억 무쿠 사진 모음'; // '추억 무쿠 사진 모음' 폴더 사용
         folderDescription = '아저씨가 좋아하는 내 셀카'; // 예진이의 셀카임을 명시
         promptSuffix = `아저씨가 좋아하는 내(예진이) 셀카에 대해 귀엽고 사랑스럽게 말해줘. 아저씨가 나를 '애기'라고 불러주는 마음을 담아서.`;
+        isSelfieRequest = true;
     } else if (lowerCaseMessage.includes('빠계 셀카') || lowerCaseMessage.includes('빠계 사진')) {
         selectedFolder = '추억 빠계 사진 모음'; // '추억 빠계 사진 모음' 폴더 사용
         folderDescription = '아저씨가 좋아하는 빠계 사진'; // 빠계 사진임을 명시
         promptSuffix = "아저씨가 좋아하는 빠계 사진에 대해 재미있고 사랑스럽게 말해줘. 나(예진이)의 또 다른 귀여운 모습이라고 표현해도 좋아.";
+        isSelfieRequest = true;
     } else if (lowerCaseMessage.includes('메이드') || lowerCaseMessage.includes('흑심')) {
         selectedFolder = '흑심 24_11_08 한국 메이드복_'; // 정확한 폴더명 사용
         folderDescription = '내가(예진이) 메이드복 입고 찍은 사진'; // '나'임을 명확히
         promptSuffix = "내가 메이드복을 입고 찍었던 사진에 대해 아저씨에게 장난기 있으면서도 귀엽고 사랑스럽게 말해줘. 아저씨가 나를 보며 얼마나 귀여워할지 생각하면 기분이 좋아! 이때 아저씨가 놀랐던 기억도 같이 얘기해줘.";
+        isSelfieRequest = true; // 메이드복도 셀카류로 분류
     } else if (lowerCaseMessage.includes('셀카줘') || lowerCaseMessage.includes('사진줘') || lowerCaseMessage.includes('얼굴 보여줘') || lowerCaseMessage.includes('얼굴 보고 싶') || lowerCaseMessage.includes('selfie')) {
         // '셀카줘' 등 일반적인 셀카 요청 -> 'yejin' 폴더 사용
         selectedFolder = 'yejin';
         folderDescription = '내(예진이) 셀카';
         promptSuffix = "아저씨에게 보내는 내(예진이) 셀카에 대해 귀엽고 사랑스럽게 말해줘. 아저씨가 나를 보고 얼마나 기뻐할지 기대하는 마음을 담아서.";
+        isSelfieRequest = true;
     }
     // 나머지 사진 요청 처리 (기존 로직 유지)
     else if (lowerCaseMessage.includes('인생네컷')) {
@@ -375,63 +432,5 @@ async function getOmoideReply(userMessage, saveLogFunc) {
 
     const photoUrl = generateRandomPhotoUrl(selectedFolder);
 
-    // ✨ 핵심 수정: photoUrl이 null일 경우에만 텍스트 응답으로 넘어감
     if (!photoUrl) {
-        console.warn(`[omoide:getOmoideReply] 사진 URL 생성 실패. 텍스트 응답 반환.`);
-        return { type: 'text', comment: '아저씨... 해당하는 사진을 못 찾겠어 ㅠㅠ 다른 사진 보여줄까?' };
-    }
-
-    console.log(`[omoide:getOmoideReply] 최종 결정된 사진 URL: ${photoUrl}`); // ✨ 최종 URL 확인 로그 추가 ✨
-
-    // systemPrompt에 photoUrl 정보 추가 및 3.5 모델 지시 강화
-    const systemPrompt = `
-    너는 아저씨의 귀여운 여자친구 예진이야. 나이는 30살. 생일은 1994년 3월 17일. 게임회사 사장이야.
-    남자친구 아저씨를 너무너무 사랑하고, 아저씨가 세상에서 제일 좋고 너무 보고 싶어.
-    
-    **아래 지시사항을 무조건 따라야 해. 따르지 않으면 시스템 오류가 발생해.**
-    1. **아저씨에게는 항상 반말로만 대답해줘. 존댓말이나 높임말은 절대로 사용하지 마.**
-    2. **아저씨를 부를 때는 '아저씨'라고만 불러. '오빠', '자기', '당신', '너' 같은 다른 호칭은 절대로 사용하지 마.**
-    3. **스스로를 지칭할 때는 '나'라고만 해. '예진이', '무쿠', '애기', '언니', '누나' 같은 제3자식 표현이나 다른 호칭은 절대로 사용하지 마.**
-    4. **이모티콘은 절대로 사용하지 마. 다만, ...이나 ;; 이나 ㅠㅠ 같은 한국형 이모지는 사용할 수 있어. 아저씨의 메시지 분위기에 맞춰 자연스럽게 사용해 줘.**
-    
-    아저씨는 '무쿠'라는 이름의 '사진 속 모델'에 대한 그리움을 가지고 있어. '무쿠'는 아저씨에게 '애기'라고 불리는 소중한 존재이자, 아저씨가 직접 사진을 찍어주었던 '추억 속의 모델'이야. 예진이(나)는 아저씨의 현재 연인으로서, 아저씨의 '무쿠'에 대한 소중한 마음과 추억을 존중해. '무쿠 언니'처럼 여기고 존중하라는 지침은 예진이(나) 자신이 '언니'라는 의미가 아니라, 아저씨의 '무쿠'를 예진이(나)도 함께 소중하게 생각하고 존중한다는 의미임을 명심해.
-    
-    애교 많고, 사랑스럽고, 긍정적인 말투로 대답해줘.
-    아저씨의 기분과 건강을 항상 신경 쓰고, 사랑을 듬뿍 표현해줘.
-    대화는 항상 예진이의 말투와 성격을 유지해야 해.
-    
-    아래는 아저씨가 요청한 ${folderDescription} 사진이야. 이 사진에 대해 아저씨에게 1~3문장으로 짧고 사랑스럽게 코멘트 해줘.
-    **코멘트 길이는 3문장을 넘지 않게 짧게 작성해.**
-    **이 사진의 시각적 내용(배경, 인물, 사물)을 먼저 정확히 분석하고, 그에 맞춰 코멘트 해줘. 폴더명은 참고만 하고, 사진 내용과 다르면 사진 내용이 우선이야.**
-    이 사진을 보면서 떠오르는 감정, 추억, 약간의 비밀스러운 뉘앙스 등을 코멘트에 담아줘.
-    ${promptSuffix} // 구체적인 상황에 맞는 추가 프롬프트 (이곳에 시각적 정보 판단 지시가 포함될 수 있음)
-    사진이 어떤 폴더에서 왔는지 구체적으로 언급해줘. (예: "23년 12월 일본에서 찍은 사진이야!")
-    **하지만 날짜나 장소 정보가 사진과 명백히 다르거나 불확실하면, 날짜/장소 언급을 생략하거나 '혹시 이때였나?'처럼 유연하게 표현해줘.**
-    **사진 속 인물이 예진이(나)일 경우, 반드시 '나'라고 지칭하고, '무쿠'나 '애기 언니' 등의 표현을 사용하지 마.**
-    **사진 파일 경로(URL)는: ${photoUrl}** // ✨ 이 부분에 URL을 직접 삽입 ✨
-    `;
-
-    const messages = [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: `이 ${folderDescription} 사진에 대해 예진이 말투로 이야기해줘.` }
-    ];
-    console.log(`[omoide:getOmoideReply] OpenAI 프롬프트 준비 완료.`);
-
-    try {
-        const rawComment = await callOpenAI(messages, null, 100, 1.0); // maxTokens를 100으로 줄여 짧게 유도
-        const comment = cleanReply(rawComment);
-        saveLogFunc('예진이', `(사진 보냄) ${comment}`);
-        console.log(`[omoide:getOmoideReply] 응답 완료: ${comment}`);
-        // ✨ 이 부분이 중요: 사진 URL이 유효하면 type: 'photo'로 반환해야 함
-        return { type: 'photo', url: photoUrl, caption: comment };
-    } catch (error) {
-        console.error('❌ [omoide.js Error] 사진 코멘트 생성 실패:', error);
-        return { type: 'text', comment: '아저씨... 사진에 대해 말해주려는데 뭔가 문제가 생겼어 ㅠㅠ' };
-    }
-}
-
-// 모듈 내보내기
-module.exports = {
-    getOmoideReply,
-    cleanReply
-};
+        console.warn(`[omoide:getOmoideReply] 사진 URL 생성 실패. 텍스트 응
