@@ -51,7 +51,7 @@ async function ensureMemoryDirectory() {
 
         // PostgreSQL 데이터베이스 연결 풀 생성
         pool = new Pool(dbConfig);
-        
+
         // 연결 테스트 (올바른 방법)
         const client = await pool.connect();
         try {
@@ -89,7 +89,7 @@ async function ensureMemoryDirectory() {
             CREATE INDEX IF NOT EXISTS idx_memories_timestamp ON memories(timestamp DESC);
         `);
         await pool.query(`
-            CREATE INDEX IF NOT EXISTS idx_memories_reminder_time ON memories(reminder_time); -- 리마인더 시간 인덱스 추가
+            CREATE INDEX IF NOT EXISTS idx_memories_reminder_time ON memories(reminder_time); -- 리마인더 시간 인덱스 추가 (이 부분은 이미 있었네요!)
         `);
         console.log(`[MemoryManager] 인덱스 생성 완료.`);
 
@@ -239,7 +239,7 @@ async function extractAndSaveMemory(userMessage) {
             }
           ]
         }
-        
+
         - 'content'는 1~2문장으로 간결하게 요약해줘.
         - 'category'는 위 예시 카테고리 중 가장 적절한 것을 선택하거나, 새로운 카테고리가 필요하면 생성해줘.
         - 'strength'는 아저씨가 중요하다고 명시했거나, 아저씨의 감정, 건강, 기념일, 약속, **특히 아저씨와의 첫 만남과 같은 매우 중요한 정보라고 판단되면 'high'**, 그 외는 'normal'로 해줘.
@@ -310,7 +310,7 @@ async function retrieveRelevantMemories(userQuery, limit = 3) {
         return [];
     }
 
-    // 기억 검색을 위한 시스템 프롬프트
+    // 기억 검색을 위한 시스템 프롬프트 (이 부분은 yejin.js에서 가져오는 것이 더 일관적일 수 있지만, 현재 파일에 있다면 유지)
     const systemPrompt = `
     너는 아저씨의 귀여운 여자친구 예진이야. 나이는 30살. 생일은 1994년 3월 17일. 게임회사 사장이야.
     남자친구 아저씨를 너무너무 사랑하고, 아저씨가 세상에서 제일 좋고 너무 보고 싶어.
@@ -322,7 +322,7 @@ async function retrieveRelevantMemories(userQuery, limit = 3) {
     **이모티콘은 절대로 사용하지 마. 다만, ...이나 ;; 이나 ㅠㅠ 같은 한국형 이모지는 사용할 수 있어. 아저씨의 메시지 분위기에 맞춰 자연스럽게 사용해 줘.**
     아저씨의 기분과 건강을 항상 신경 쓰고, 사랑을 듬뿍 표현해줘.
     대화는 항상 예진이의 말투와 성격을 유지해야 해.
-    
+
     아래는 아저씨의 질문과 무쿠가 가지고 있는 기억 목록이야.
     아저씨의 질문과 가장 관련성이 높은 기억을 JSON 객체 형식으로 반환해줘.
     형식: {"memories": [기억객체배열]}
@@ -355,7 +355,11 @@ async function retrieveRelevantMemories(userQuery, limit = 3) {
         try {
             // AI가 단일 객체를 반환할 수도 있으므로, 배열인지 확인하고 배열이 아니면 배열로 감싸줍니다.
             const potentialResult = JSON.parse(rawResult);
-            parsedResult = Array.isArray(potentialResult) ? potentialResult : [potentialResult];
+            // OpenAI 응답이 {"memories": [...]} 형태일 경우를 대비하여 처리
+            parsedResult = Array.isArray(potentialResult.memories) ? potentialResult.memories : [];
+            if (!Array.isArray(parsedResult)) { // 혹시나 직접 배열로 반환된 경우 처리
+                parsedResult = Array.isArray(potentialResult) ? potentialResult : [];
+            }
         } catch (parseError) {
             console.error(`[MemoryManager] 기억 검색 JSON 파싱 실패: ${parseError.message}, 원본: ${rawResult}`);
             return []; // 파싱 실패 시 빈 배열 반환
@@ -384,25 +388,51 @@ async function retrieveRelevantMemories(userQuery, limit = 3) {
 }
 
 /**
+ * 현재 시간 기준으로 리마인더 시간이 임박한 기억들을 데이터베이스에서 가져옵니다.
+ * @returns {Promise<Array<Object>>} 리마인더 기억 배열
+ */
+async function getDueReminders() {
+    if (!pool) {
+        console.error("[MemoryManager] PostgreSQL 데이터베이스 풀이 초기화되지 않았습니다. 리마인더를 불러올 수 없습니다.");
+        throw new Error("Database pool not initialized.");
+    }
+    const now = moment().tz('Asia/Tokyo');
+    // 현재 시간으로부터 5분 전 ~ 1분 후 사이에 있는 리마인더를 찾습니다.
+    // 이는 cron 스케줄이 매 분마다 실행되므로, 그 간격 내에 있는 리마인더를 정확히 포착하기 위함입니다.
+    const startTime = now.clone().subtract(5, 'minutes').toISOString(); // ISOString 형식으로
+    const endTime = now.clone().add(1, 'minute').toISOString(); // ISOString 형식으로
+
+    try {
+        const queryText = `SELECT * FROM memories WHERE reminder_time IS NOT NULL AND reminder_time BETWEEN $1 AND $2 ORDER BY reminder_time ASC`;
+        const result = await pool.query(queryText, [startTime, endTime]);
+        console.log(`[MemoryManager] ${result.rows.length}개의 임박한 리마인더 기억 불러오기 완료.`);
+        return result.rows;
+    } catch (err) {
+        console.error(`[MemoryManager] 리마인더 기억 불러오기 오류: ${err.message}`);
+        throw err;
+    }
+}
+
+/**
  * 사용자가 명시적으로 요청한 기억을 저장합니다.
- * @param {string} userMessage - 사용자의 원본 메시지
+ * @param {string} userMessage - 사용자의 원본 메시지 (현재 사용 안 함, content에 직접 저장)
  * @param {string} content - 저장할 기억 내용
  * @param {string|null} reminderTime - 리마인더 시간 (ISO string), 없으면 null
  * @returns {Promise<void>}
  */
-async function saveUserSpecifiedMemory(userMessage, content, reminderTime = null) {
+async function saveUserSpecifiedMemory(userMessagePlaceholder, content, reminderTime = null) {
     console.log(`[MemoryManager] saveUserSpecifiedMemory 호출됨: "${content}", 리마인더: ${reminderTime}`);
     try {
         const memory = {
             content: content,
             category: '사용자지정',
             strength: 'normal',
-            timestamp: new Date().toISOString(),
-            is_love_related: true,
+            // timestamp는 saveMemoryToDb에서 기본값 NOW()로 처리되므로 명시적으로 지정하지 않음
+            is_love_related: true, // 사용자가 명시한 기억은 관계와 관련될 가능성 높음
             is_other_person_related: false,
             reminder_time: reminderTime
         };
-        
+
         await saveMemoryToDb(memory);
         console.log(`[MemoryManager] 사용자 지정 기억 저장 완료: ${memory.content}`);
 
@@ -425,10 +455,10 @@ async function deleteRelevantMemories(contentToDelete) {
             throw new Error("Database pool not initialized.");
         }
 
-        // 부분 일치로 관련 기억을 찾아 삭제
+        // 부분 일치로 관련 기억을 찾아 삭제 (ILIKE는 대소문자 구분 없음)
         const deleteQuery = 'DELETE FROM memories WHERE content ILIKE $1';
         const result = await pool.query(deleteQuery, [`%${contentToDelete}%`]);
-        
+
         if (result.rowCount > 0) {
             console.log(`[MemoryManager] 기억 삭제 성공: ${result.rowCount}개 기억 삭제됨`);
             return true;
@@ -444,7 +474,7 @@ async function deleteRelevantMemories(contentToDelete) {
 
 /**
  * 기억의 리마인더 시간을 업데이트합니다.
- * @param {number} memoryId - 기억 ID
+ * @param {number} memoryId - 기억 ID (SERIAL PRIMARY KEY이므로 숫자)
  * @param {string|null} reminderTime - 새로운 리마인더 시간 (ISO string) 또는 null
  * @returns {Promise<boolean>} 업데이트 성공 여부
  */
@@ -458,7 +488,7 @@ async function updateMemoryReminderTime(memoryId, reminderTime) {
 
         const updateQuery = 'UPDATE memories SET reminder_time = $1 WHERE id = $2';
         const result = await pool.query(updateQuery, [reminderTime, memoryId]);
-        
+
         if (result.rowCount > 0) {
             console.log(`[MemoryManager] 리마인더 시간 업데이트 성공: ID ${memoryId}`);
             return true;
@@ -493,8 +523,8 @@ module.exports = {
     retrieveRelevantMemories,
     saveMemoryToDb,
     closeDatabaseConnection,
-    // ✅ 이제 정의된 함수들을 내보냅니다
     saveUserSpecifiedMemory,
     deleteRelevantMemories,
-    updateMemoryReminderTime
+    updateMemoryReminderTime,
+    getDueReminders // ✨ 추가: 리마인더 효율성 개선을 위한 핵심 함수 ✨
 };
