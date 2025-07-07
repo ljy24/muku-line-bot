@@ -1,4 +1,4 @@
-// memory/omoide.js v1.11 - 셀카 사진 전송 문제 해결 시도 및 이모티콘 제거 강화
+// memory/omoide.js v1.12 - 셀카 URL 로그 추가 및 이모티콘 제거 강화 최종
 
 // 📦 필수 모듈 불러오기
 const { OpenAI } = require('openai'); // OpenAI API 클라이언트
@@ -140,9 +140,10 @@ function cleanReply(reply) {
     cleaned = cleaned.replace(/였어요\b/g, '였어');
     cleaned = cleaned.replace(/보고싶어요\b/g, '보고 싶어');
 
-    // 5. 이모티콘을 더 강력하게 제거 (가장 최근에 주신 정규식 사용)
-    // 현재까지 가장 포괄적인 이모지 범위와 변형 시퀀스를 포함하는 정규식
-    cleaned = cleaned.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E6}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{1F3FB}-\u{1F3FF}\u{200D}\u{20E3}\u{FE0F}\u{00A9}\u{00AE}\u{203C}\u{2049}\u{2122}\u{2139}\u{2194}-\u2199}\u{21A9}-\u{21AA}\u{231A}-\u{231B}\u{2328}\u{23CF}\u{23E9}-\u{23F3}\u{23F8}-\u{23FA}\u{24C2}\u{25AA}-\u{25AB}\u{25B6}\u{25C0}\u{25FB}-\u{25FE}\u{2600}-\u{2604}\u{260E}\u{2611}\u{2614}-\u{2615}\u{2618}\u{261D}\u{2620}\u{2622}-\u{2623}\u{2626}\u{262A}\u{262E}-\u{262F}\u{2638}-\u{263A}\u{2640}\u{2642}\u{2648}-\u{2653}\u{265F}\u{2660}\u{2663}\u{2665}-\u{2666}\u{2668}\u{267B}\u{267F}\u{2692}-\u{2694}\u{2696}-\u{2697}\u{2699}\u{269B}-\u{269C}\u{26A0}-\u{26A1}\u{26AA}-\u{26AB}\u{26B0}-\u{26B1}\u{26BD}-\u{26BE}\u{26C4}-\u{26C5}\u{26C8}\u{26CE}-\u{26CF}\u{26D1}\u{26D3}-\u{26D4}\u{26E9}-\u{26EA}\u{26F0}-\u{26F5}\u{26F7}-\u{26FA}\u{26FD}\u{2705}\u{2708}-\u{270D}\u{270F}\u{2712}\u{2714}\u{2716}\u{271D}\u{2721}\u{2728}\u{2733}-\u{2734}\u{2747}\u{274C}\u{274E}\u{2753}-\u{2755}\u{2757}\u{2763}-\u{2764}\u{2795}-\u{2797}\u{27A1}\u{27B0}\u{27BF}\u{2934}-\u{2935}\u{2B05}-\u{2B07}\u{2B1B}-\u{2B1C}\u{2B50}\u{2B55}\u{3030}\u{303D}\u{3297}\u{3299}]/gu, '').trim();
+    // 5. 이모티콘을 더 강력하게 제거 (유니코드 속성 사용)
+    // \p{Extended_Pictographic} 는 이모지, 컴포넌트 등을 포함한 광범위한 그림 문자들을 의미합니다.
+    // 'u' 플래그는 유니코드 모드, 'g' 플래그는 전역 검색을 의미합니다.
+    cleaned = cleaned.replace(/\p{Extended_Pictographic}/gu, '').trim();
 
     console.log(`[omoide:cleanReply] 정제된 답변: "${cleaned}"`);
     return cleaned;
@@ -169,7 +170,7 @@ function generateRandomPhotoUrl(folderName) {
     // 예: https://photo.de-ji.net/photo/yejin/000001.jpg
     const url = `${BASE_PHOTO_URL}${folderName}/${fileName}`;
 
-    console.log(`[omoide:generateRandomPhotoUrl] 생성된 URL: "${url}" (파일 수: ${photoCount}, 인덱스: ${randomIndex})`);
+    console.log(`[omoide:generateRandomPhotoUrl] 최종 생성 URL: ${url}`); // ✨ 최종 생성 URL 로그 추가 ✨
     return url;
 }
 
@@ -201,7 +202,7 @@ async function getOmoideReply(userMessage, saveLogFunc) {
         promptSuffix = "내가 메이드복을 입고 찍었던 사진에 대해 아저씨에게 장난기 있으면서도 귀엽고 사랑스럽게 말해줘. 아저씨가 나를 보며 얼마나 귀여워할지 생각하면 기분이 좋아! 이때 아저씨가 놀랐던 기억도 같이 얘기해줘.";
     } else if (lowerCaseMessage.includes('셀카줘') || lowerCaseMessage.includes('사진줘') || lowerCaseMessage.includes('얼굴 보여줘') || lowerCaseMessage.includes('얼굴 보고 싶') || lowerCaseMessage.includes('selfie')) {
         // '셀카줘' 등 일반적인 셀카 요청 -> 'yejin' 폴더 사용
-        selectedFolder = 'yejin'; //
+        selectedFolder = 'yejin';
         folderDescription = '내(예진이) 셀카';
         promptSuffix = "아저씨에게 보내는 내(예진이) 셀카에 대해 귀엽고 사랑스럽게 말해줘. 아저씨가 나를 보고 얼마나 기뻐할지 기대하는 마음을 담아서.";
     }
@@ -258,14 +259,13 @@ async function getOmoideReply(userMessage, saveLogFunc) {
 
     const photoUrl = generateRandomPhotoUrl(selectedFolder);
 
-    // ✨ 핵심 수정: photoUrl이 존재하는데도 텍스트 응답으로 넘어가는 문제 해결 시도 ✨
-    // 기존의 '아저씨... 해당하는 사진을 못 찾겠어 ㅠㅠ' 조건문을 삭제하거나,
-    // 해당 조건문이 실행되기 전에 photoUrl이 유효한지 다시 한번 명확히 확인
-    if (!photoUrl) { // photoUrl이 null일 경우에만 텍스트 응답으로 넘어감
+    // ✨ 핵심 수정: photoUrl이 null일 경우에만 텍스트 응답으로 넘어감
+    if (!photoUrl) {
         console.warn(`[omoide:getOmoideReply] 사진 URL 생성 실패. 텍스트 응답 반환.`);
         return { type: 'text', comment: '아저씨... 해당하는 사진을 못 찾겠어 ㅠㅠ 다른 사진 보여줄까?' };
     }
-    console.log(`[omoide:getOmoideReply] 선택된 폴더: "${selectedFolder}", URL: "${photoUrl}"`);
+
+    console.log(`[omoide:getOmoideReply] 최종 결정된 사진 URL: ${photoUrl}`); // ✨ 최종 URL 확인 로그 추가 ✨
 
     // systemPrompt에 photoUrl 정보 추가 및 3.5 모델 지시 강화
     const systemPrompt = `
