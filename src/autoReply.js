@@ -137,45 +137,24 @@ async function getFormattedMemoriesForAI(userMessage = '') {
  * @param {string} [userMessageForContext=''] - getFormattedMemoriesForAI에 전달할 사용자 메시지
  * @returns {Promise<string>} AI가 생성한 응답 텍스트
  */
-async function callOpenAI(messages, modelParamFromCall = null, maxTokens = 400, temperature = 0.95, userMessageForContext = '') {
-    const memoriesContext = await getFormattedMemoriesForAI(userMessageForContext); 
+// 📍 autoReply.js 내부
+async function callOpenAI({ model, messages }) {
+  try {
+    // 🔥 최근 메시지 10개까지만 사용 (안전 범위)
+    const limitedMessages = messages.slice(-10);
 
-    const messagesToSend = [...messages];
+    const completion = await openai.chat.completions.create({
+      model,
+      messages: limitedMessages, // ✅ 여기만 바뀐거야
+      temperature: 0.8
+    });
 
-    const systemMessageIndex = messagesToSend.findIndex(msg => msg.role === 'system');
-
-    if (systemMessageIndex !== -1) {
-        messagesToSend[systemMessageIndex].content = messagesToSend[systemMessageIndex].content + "\n\n" + memoriesContext;
-    } else {
-        messagesToSend.unshift({ role: 'system', content: memoriesContext });
-    }
-
-    const defaultModel = process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o';
-    let finalModel = modelParamFromCall || forcedModel || defaultModel;
-
-    if (!finalModel) {
-        console.error("오류: OpenAI 모델 파라미터가 최종적으로 결정되지 않았습니다. 'gpt-4o'로 폴백합니다.");
-        finalModel = 'gpt-4o';
-    }
-
-    try {
-        const response = await openai.chat.completions.create({
-            model: finalModel,
-            messages: messagesToSend,
-            max_tokens: maxTokens,
-            temperature: temperature
-        });
-        return response.choices[0].message.content.trim();
-    } catch (error) {
-        console.error(`[callOpenAI] OpenAI API 호출 실패 (모델: ${finalModel}):`, error);
-        if (error.code === 'rate_limit_exceeded' || (error.error && error.error.type === 'tokens')) {
-            console.error(`[callOpenAI] 토큰 제한 초과 또는 요청 크기 너무 큼: ${error.message}`);
-            return "아저씨... 지금 너무 많은 걸 한 번에 생각하려니 머리가 좀 아프다 ㅠㅠ 잠시만 쉬었다 다시 말해줄래?";
-        }
-        return "지금 잠시 생각 중이야... 아저씨 조금만 기다려줄래? ㅠㅠ";
-    }
+    return completion.choices[0].message.content;
+  } catch (err) {
+    console.error(`[callOpenAI] OpenAI API 호출 실패 (모델: ${model}):`, err);
+    return '아저씨... 지금 너무 많은 걸 한 번에 생각하려니 머리가 좀 아프다 ㅠㅠ 잠시만 쉬었다 다시 말해줄래?';
+  }
 }
-
 
 // 모델 설정을 config 객체로 관리
 const config = {
