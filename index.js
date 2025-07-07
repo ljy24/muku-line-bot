@@ -218,7 +218,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
                     // botResponse.comment가 기억/삭제/리마인더 관련 응답인지 확인하여 중복 저장 방지
                     const isMemoryRelatedResponse = botResponse.comment && (
                         botResponse.comment.includes('기억했어! 💖') ||
-                        botResponse.comment.includes('잊어버리라고 해서 지웠어... �') ||
+                        botResponse.comment.includes('잊어버리라고 해서 지웠어... 😥') ||
                         botResponse.comment.includes('기억을 못 찾겠어 ㅠㅠ') ||
                         botResponse.comment.includes('알려줄게! 🔔') ||
                         botResponse.comment.includes('뭘 기억해달라는 거야?') ||
