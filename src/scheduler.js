@@ -3,32 +3,28 @@ const cron = require('node-cron');
 const moment = require('moment-timezone');
 const { Client } = require('@line/bot-sdk'); // LINE 클라이언트 필요
 const {
-    getProactiveMemoryMessage, // 감성 메시지를 위해 필요
+    getProactiveMemoryMessage, // 감성 메시지를 위해 다시 사용
     saveLog, // 로그 저장을 위해 필요
-    getImageReactionComment // ✨ 새로 추가: autoReply에서 셀카 멘트 생성 함수 불러옴
 } = require('./autoReply'); // autoReply.js에서 필요한 메시지 생성 함수들을 불러옴
 const memoryManager = require('./memoryManager'); // 리마인더 처리를 위해 memoryManager 필요
 
-// ✨ omoide.js에서 getMemoryPhoto와 getSelfieImageUrl, getCoupleImageUrl 함수를 불러옴 ✨
-const { getMemoryPhoto, getSelfieImageUrl, getCoupleImageUrl } = require('../memory/omoide');
+// ✨ omoide.js에서 getOmoideReply 함수를 직접 불러옴 ✨
+const { getOmoideReply } = require('../memory/omoide');
 
 
 let bootTime = Date.now(); // 봇 시작 시점의 타임스탬프 (밀리초)
 let lastMoodMessage = ''; // 마지막 감성 메시지 내용 (중복 방지용)
 let lastMoodMessageTime = 0; // 마지막 감성 메시지 전송 시간
-let lastCouplePhotoMessage = ''; // 마지막 커플 사진 메시지 내용 (더 이상 사용하지 않지만 변수 유지는 가능)
-let lastCouplePhotoMessageTime = 0; // 마지막 커플 사진 전송 시간 (더 이상 사용하지 않지만 변수 유지는 가능)
+// let lastCouplePhotoMessage = ''; // 더 이상 사용하지 않음
+// let lastCouplePhotoMessageTime = 0; // 더 이상 사용하지 않음
 let lastProactiveSentTime = 0; // 마지막 봇의 선제적/걱정 메시지 전송 시간 (침묵 감지 셀카에도 적용)
 let lastUserMessageTime = Date.now(); // 아저씨가 마지막으로 메시지를 보낸 시간
-let lastSelfieSentTime = 0; // ✨ 추가: 마지막 침묵 감지 셀카 전송 시간 (스케줄러 내부에서만 사용)
+let lastSelfieSentTime = 0; // ✨ 추가: 마지막 침묵 감지 셀카 전송 시간
 
-// * 커플 사진 관련 상수 정의 (스케줄러에서도 사용되는 이미지 URL) *
-// omoide.js에서 COUPLE_BASE_URL 등이 정의되어 있으므로 여기서는 제거해도 무방.
-// 다만, 현재 scheduler.js에서 커플 사진을 직접 보내는 스케줄은 없으므로 영향 없음.
+// * 커플 사진 관련 상수 정의 (더 이상 사용하지 않지만 혹시 몰라 유지) *
 const COUPLE_BASE_URL = 'https://www.de-ji.net/couple/'; // 커플 사진 기본 URL
 const COUPLE_START_NUM = 1; // 커플 사진 시작 번호
 const COUPLE_END_NUM = 481; // 커플 사진 마지막 번호
-
 
 // * 침묵 감지 기능을 위한 상수 *
 const SILENCE_THRESHOLD = 2 * 60 * 60 * 1000; // 2시간 동안 메시지가 없으면 침묵으로 간주
@@ -52,29 +48,30 @@ function isValidScheduleHour(now) {
 
 /**
  * 셀카 메시지를 전송하는 헬퍼 함수입니다.
- * 이 함수는 스케줄러 내부에서만 사용됩니다 (즉흥 사진 스케줄러와 구분).
  * @param {Client} lineClient - LINE Messaging API 클라이언트
  * @param {string} targetUserId - 메시지를 보낼 사용자 ID
  * @param {function} saveLog - 로그 저장 함수
- * @param {string} triggerSource - 셀카 전송의 트리거 소스 ('scheduled', 'silence')
+ * @param {string} triggerSource - 셀카 전송의 트리거 소스 (예: 'scheduled', 'silence')
  */
 const sendSelfieMessage = async (lineClient, targetUserId, saveLog, triggerSource = 'scheduled') => {
     try {
-        const selfieUrl = getSelfieImageUrl(); // omoide.js에서 순수 이미지 URL만 가져옵니다.
-        const caption = await getImageReactionComment(); // autoReply.js에서 셀카 멘트 생성
-
-        await lineClient.pushMessage(targetUserId, [
-            { type: 'image', originalContentUrl: selfieUrl, previewImageUrl: selfieUrl },
-            { type: 'text', text: caption || '히히 셀카야~' } // 캡션이 없으면 기본 텍스트
-        ]);
-        console.log(`[Scheduler] ${triggerSource === 'silence' ? '침묵 감지 자동' : '랜덤'} 셀카 전송 성공: ${selfieUrl}, 캡션: ${caption}`);
-        saveLog('예진이', caption || '히히 셀카야~');
-        
+        const selfieResponse = await getOmoideReply('셀카 보여줘', saveLog);
+        if (selfieResponse && selfieResponse.type === 'photo' && selfieResponse.url) {
+            await lineClient.pushMessage(targetUserId, [
+                { type: 'image', originalContentUrl: selfieResponse.url, previewImageUrl: selfieResponse.url },
+                { type: 'text', text: selfieResponse.caption || '히히 셀카야~' }
+            ]);
+            console.log(`[Scheduler] ${triggerSource === 'silence' ? '침묵 감지 자동' : '랜덤'} 셀카 전송 성공: ${selfieResponse.url}`);
+            saveLog('예진이', selfieResponse.caption || '히히 셀카야~');
+        } else if (selfieResponse && selfieResponse.type === 'text') {
+            await lineClient.pushMessage(targetUserId, { type: 'text', text: selfieResponse.comment });
+            console.error(`[Scheduler] ${triggerSource === 'silence' ? '침묵 감지 자동' : '랜덤'} 셀카 전송 실패 (텍스트 응답):`, selfieResponse.comment);
+            saveLog('예진이', selfieResponse.comment);
+        } else {
+            console.error(`[Scheduler] ${triggerSource === 'silence' ? '침묵 감지 자동' : '랜덤'} 셀카 전송 실패: 유효한 응답을 받지 못함`);
+        }
     } catch (error) {
         console.error(`[Scheduler] ${triggerSource === 'silence' ? '침묵 감지 자동' : '랜덤'} 셀카 전송 중 오류 발생:`, error);
-        // 오류 시 기본 텍스트 메시지 전송 (사진 실패 시)
-        await lineClient.pushMessage(targetUserId, { type: 'text', text: '아저씨... 셀카 보내려 했는데 뭔가 문제가 생겼어 ㅠㅠ' });
-        saveLog('예진이', '아저씨... 셀카 보내려 했는데 뭔가 문제가 생겼어 ㅠㅠ');
     }
 };
 
@@ -128,7 +125,6 @@ const sendScheduledMessage = async (lineClient, targetUserId, type) => {
             }
         }
     }
-    // 'couple_photo' 타입 처리 로직은 삭제됩니다.
 };
 
 /**
