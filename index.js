@@ -20,6 +20,7 @@ const {
     isCouplePhotoRequest,           // 커플 사진 요청 감지 함수
     isConceptPhotoRequest,          // 컨셉 사진 요청 감지 함수
     isMemoryPhotoRequest,           // 추억 사진 요청 감지 함수
+    isGeneralPhotoRequest,          // ✨ 일반 사진 요청 감지 함수 (새로 추가)
     getConceptPhotoReply,           // 컨셉 사진 데이터 가져오기 함수
     saveLog,                        // 메시지 로그를 파일에 저장하는 함수
     setForcedModel,                 // OpenAI 모델을 강제로 설정하는 함수
@@ -43,7 +44,7 @@ const { getMemoryPhoto, cleanReply, getSelfieImageUrl, getCoupleImageUrl } = req
 
 // spontaneousPhotoManager.js에서 즉흥 사진 스케줄러 함수를 불러옵니다.
 // (이 파일은 현재 제공되지 않았으므로, 아저씨 프로젝트에 있다면 아래 주석을 해제해주세요)
-const { startSpontaneousPhotoScheduler } = require('./src/spontaneousPhotoManager');
+// const { startSpontaneousPhotoScheduler } = require('./src/spontaneousPhotoManager');
 
 // 스케줄러 모듈 불러오기 (이제 모든 스케줄링 로직은 여기에)
 const { startAllSchedulers, updateLastUserMessageTime } = require('./src/scheduler');
@@ -166,7 +167,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
                     }
 
                     // 2-2. 커플 사진 요청 처리 (셀카 다음 우선순위)
-                    if (isCouplePhotoRequest(text)) {
+                    else if (isCouplePhotoRequest(text)) { // ✨ else if로 변경하여 순서 보장
                         console.log('[index.js] 커플 사진 요청 감지됨');
                         const [imageUrl, coupleComment] = await Promise.all([
                             getCoupleImageUrl(),             // omoide.js에서 랜덤 커플 사진 URL 가져오기
@@ -181,7 +182,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
                     }
 
                     // 2-3. 컨셉 사진 요청 처리 (커플 사진 다음 우선순위)
-                    if (isConceptPhotoRequest(text)) {
+                    else if (isConceptPhotoRequest(text)) { // ✨ else if로 변경하여 순서 보장
                         console.log('[index.js] 컨셉 사진 요청 감지됨');
                         const conceptResponse = await getConceptPhotoReply(text, saveLog); // Returns {type: 'photo', url, caption} or {type: 'text', comment}
                         if (conceptResponse && conceptResponse.type === 'photo') {
@@ -203,7 +204,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
                     }
 
                     // 2-4. 추억 사진 요청 처리 (컨셉 사진 다음 우선순위)
-                    if (isMemoryPhotoRequest(text)) {
+                    else if (isMemoryPhotoRequest(text)) { // ✨ else if로 변경하여 순서 보장
                         console.log('[index.js] 추억 사진 요청 감지됨');
                         const memoryPhotoResponse = await getMemoryPhoto(text, saveLog); // getMemoryPhoto는 이제 omoide.js에서 불러옵니다.
                         if (memoryPhotoResponse && memoryPhotoResponse.type === 'photo') {
@@ -219,6 +220,14 @@ app.post('/webhook', middleware(config), async (req, res) => {
                             await client.replyMessage(replyToken, { type: 'text', text: fallbackComment });
                             console.log('[index.js] 추억 사진 (텍스트) 응답 완료');
                         }
+                        return;
+                    }
+
+                    // 2-5. 일반 '사진' 요청 처리 (모호한 요청 - 어떤 사진을 원하는지 재확인) ✨ 새로 추가된 로직
+                    else if (isGeneralPhotoRequest(text)) { // ✨ else if로 변경하여 순서 보장
+                        console.log('[index.js] 일반 사진 요청 감지됨 - 명확한 유형 요청');
+                        const clarificationMessage = "아저씨, 어떤 사진을 원해? 셀카? 커플 사진? 컨셉 사진? 아니면 추억 사진?";
+                        await client.replyMessage(replyToken, { type: 'text', text: clarificationMessage });
                         return;
                     }
 
@@ -297,7 +306,8 @@ app.post('/webhook', middleware(config), async (req, res) => {
                     } else {
                         // * 예상치 못한 응답 타입 (안전 장치) *
                         console.error('❌ [index.js] 예상치 못한 봇 응답 타입:', botResponse.type);
-                        replyMessages.push({ type: 'text', text: '지금 잠시 문제가 생겼어 ㅠㅠ' });
+                        // replyMessages는 여기서는 사용되지 않으므로, 직접 replyMessage 호출
+                        await client.replyMessage(replyToken, { type: 'text', text: '지금 잠시 문제가 생겼어 ㅠㅠ' });
                     }
                     console.log(`[index.js] 봇 응답 전송 완료 (타입: ${botResponse.type})`);
 
@@ -317,7 +327,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
                     );
 
                     // 모든 사진 요청 유형도 자동 기억 저장에서 제외합니다.
-                    if (!isCommand(text) && !isMemoryRelatedResponse && !isSelfieRequest(text) && !isCouplePhotoRequest(text) && !isConceptPhotoRequest(text) && !isMemoryPhotoRequest(text)) {
+                    if (!isCommand(text) && !isMemoryRelatedResponse && !isSelfieRequest(text) && !isCouplePhotoRequest(text) && !isConceptPhotoRequest(text) && !isMemoryPhotoRequest(text) && !isGeneralPhotoRequest(text)) { // ✨ 일반 사진 요청도 제외 조건에 추가
                         await memoryManager.extractAndSaveMemory(text); // memoryManager를 호출하여 기억 추출 및 저장
                         console.log(`[index.js] memoryManager.extractAndSaveMemory 호출 완료 (메시지: "${text}")`);
                     } else {
@@ -346,11 +356,11 @@ app.post('/webhook', middleware(config), async (req, res) => {
                         const base64ImageWithPrefix = `data:${mimeType};base64,${buffer.toString('base64')}`;
 
                         const reply = await getReplyByImagePrompt(base64ImageWithPrefix); // AI가 이미지 분석 후 답변 생성
-                        await client.replyMessage(event.replyToken, { type: 'text', text: reply });
+                        await client.replyMessage(replyToken, { type: 'text', text: reply });
                         console.log(`[index.js] 이미지 메시지 처리 및 응답 완료`);
                     } catch (err) {
                         console.error(`[index.js] 이미지 처리 실패: ${err}`);
-                        await client.replyMessage(event.replyToken, { type: 'text', text: '이미지를 읽는 중 오류가 생겼어 ㅠㅠ' });
+                        await client.replyMessage(replyToken, { type: 'text', text: '이미지를 읽는 중 오류가 생겼어 ㅠㅠ' });
                     }
                 }
             }
