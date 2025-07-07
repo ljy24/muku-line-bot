@@ -1,90 +1,210 @@
-// migrate_love_history.js - love-history.json 파일 구조를 새 형식으로 마이그레이션하는 스크립트
+// migrate_love_history.js - love-history.json 데이터를 PostgreSQL로 마이그레이션하는 스크립트 (한 번만 실행)
 
-const fs = require('fs'); // 파일 시스템 작업을 위한 Node.js 내장 모듈
-const path = require('path'); // 파일 경로 작업을 위한 Node.js 내장 모듈
-const moment = require('moment-timezone'); // 시간대 처리를 위한 moment-timezone 라이브러리 (npm install moment-timezone 이 필요할 수 있습니다.)
+const fs = require('fs');
+const path = require('path');
+const moment = require('moment-timezone');
+const { Pool } = require('pg'); // PostgreSQL 클라이언트 'pg' 모듈
 
-// love-history.json 파일의 경로를 정의합니다. (이 스크립트가 프로젝트 루트에 있다고 가정)
-const OLD_FILE_PATH = path.resolve(__dirname, './memory/love-history.json');
-const NEW_FILE_PATH = path.resolve(__dirname, './memory/love-history.json'); // 동일한 파일에 덮어씁니다.
+// * PostgreSQL 데이터베이스 연결 정보 설정 (memoryManager.js와 동일) *
+// * 환경 변수에서 DB 정보를 가져옵니다. *
+const dbConfig = {
+    connectionString: process.env.DATABASE_URL, // Render에서 제공하는 Connection String 사용 (권장)
+    host: process.env.PG_HOST,
+    port: process.env.PG_PORT ? parseInt(process.env.PG_PORT) : 5432, // 포트는 숫자로 파싱
+    user: process.env.PG_USER,
+    password: process.env.PG_PASSWORD,
+    database: process.env.PG_DATABASE,
+    ssl: {
+        rejectUnauthorized: false // Render PostgreSQL은 SSL을 사용하며, self-signed 인증서일 경우 필요할 수 있습니다.
+    }
+};
+
+let pool; // PostgreSQL 연결 풀 인스턴스
 
 /**
- * love-history.json 파일을 새로운 카테고리 기반 구조로 마이그레이션합니다.
- * 기존 배열 형태의 데이터는 'general' 카테고리로 이동됩니다.
+ * * 환경 변수 검증 함수 *
  */
-async function migrateLoveHistory() {
-    console.log('🔄 love-history.json 파일 구조 마이그레이션을 시작합니다...');
-
-    let oldData = [];
-    try {
-        // 기존 love-history.json 파일 읽기 시도
-        if (fs.existsSync(OLD_FILE_PATH)) {
-            const rawData = fs.readFileSync(OLD_FILE_PATH, 'utf-8');
-            oldData = JSON.parse(rawData);
-
-            // 파일이 이미 새로운 형식인지 확인
-            if (!Array.isArray(oldData) && oldData.categories) {
-                console.log('✅ love-history.json 파일이 이미 새로운 형식으로 보입니다. 마이그레이션을 건너뜁니다.');
-                return; // 이미 마이그레이션된 상태라면 종료
-            } else if (!Array.isArray(oldData)) {
-                // 배열도 아니고 categories도 없으면 알 수 없는 형식
-                console.error('❌ love-history.json 파일 형식이 올바르지 않습니다. 수동 확인이 필요합니다.');
-                console.log('파일 내용을 확인하거나 백업 후 삭제하고 다시 시도해주세요.');
-                return;
-            }
-        } else {
-            console.log('love-history.json 파일이 존재하지 않습니다. 새로운 형식으로 빈 파일을 생성합니다.');
-            // 파일이 없으면 새로운 형식의 빈 파일을 생성합니다.
-            const initialData = {
-                categories: {
-                    love_expressions: [],
-                    daily_care: [],
-                    general: [],
-                    user_submitted_memories: []
-                }
-            };
-            await fs.promises.writeFile(NEW_FILE_PATH, JSON.stringify(initialData, null, 2), 'utf-8');
-            console.log('✅ 빈 love-history.json 파일이 새로운 형식으로 생성되었습니다.');
-            return; // 파일 생성 후 종료
-        }
-    } catch (err) {
-        console.error(`❌ 기존 love-history.json 파일을 읽거나 파싱하는 데 실패했습니다: ${err.message}`);
-        console.error('파일 내용을 확인하거나 백업 후 삭제하고 다시 시도해주세요.');
-        return;
-    }
-
-    // 새로운 파일 구조를 생성합니다.
-    const newStructure = {
-        categories: {
-            love_expressions: [],
-            daily_care: [],
-            general: [], // 기존 'date', 'event' 데이터가 여기에 저장됩니다.
-            user_submitted_memories: [] // 아저씨가 새로 추가할 특정 기억들이 여기에 저장됩니다.
-        }
-    };
-
-    // 기존 배열 데이터를 'general' 카테고리로 이동시킵니다.
-    oldData.forEach(item => {
-        if (item.date && item.event) {
-            newStructure.categories.general.push({
-                content: `${item.date} - ${item.event}`, // 날짜와 이벤트를 하나의 'content'로 묶습니다.
-                timestamp: moment().tz('Asia/Tokyo').format() // 일관성을 위해 타임스탬프를 추가합니다.
-            });
-        }
-    });
-
-    try {
-        // 업데이트된 데이터를 파일에 저장합니다. (안전한 저장을 위해 임시 파일 사용)
-        const tempPath = NEW_FILE_PATH + '.tmp';
-        await fs.promises.writeFile(tempPath, JSON.stringify(newStructure, null, 2), 'utf-8');
-        await fs.promises.rename(tempPath, NEW_FILE_PATH); // 성공 시 임시 파일을 본래 파일로 변경
-        console.log('✅ love-history.json 파일 구조 마이그레이션이 완료되었습니다!');
-        console.log('기존 데이터는 "general" 카테고리로 이동되었고, 새로운 "user_submitted_memories" 카테고리가 추가되었습니다.');
-    } catch (err) {
-        console.error(`❌ 마이그레이션된 love-history.json 파일을 저장하는 데 실패했습니다: ${err.message}`);
-        console.error('마이그레이션에 실패했습니다. 기존 파일을 수동으로 복원하거나 내용을 확인해주세요.');
+function validateDatabaseConfig() {
+    if (!process.env.DATABASE_URL && (!process.env.PG_HOST || !process.env.PG_USER || !process.env.PG_PASSWORD || !process.env.PG_DATABASE)) {
+        throw new Error('데이터베이스 연결 정보가 누락되었습니다. DATABASE_URL 또는 개별 DB 환경변수를 설정해주세요.');
     }
 }
 
-// 마이그레이션 함수를 실행합니다.
-migrateLoveHistory();
+/**
+ * * 데이터베이스 연결 풀을 초기화합니다. *
+ */
+async function initializeDbPool() {
+    try {
+        validateDatabaseConfig(); // 환경 변수 검증
+
+        pool = new Pool(dbConfig);
+        const client = await pool.connect(); // 연결 테스트
+        try {
+            await client.query('SELECT NOW()'); // 간단한 테스트 쿼리
+            console.log(`[Migration] PostgreSQL 데이터베이스 연결 성공: ${dbConfig.database || dbConfig.connectionString}`);
+        } finally {
+            client.release(); // 연결 반환
+        }
+
+        // * 'memories' 테이블 생성 (이미 존재하면 건너뜜) *
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS memories (
+                id SERIAL PRIMARY KEY,
+                content TEXT NOT NULL,
+                category VARCHAR(255) NOT NULL DEFAULT '기타',
+                strength VARCHAR(50) NOT NULL DEFAULT 'normal',
+                timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                is_love_related BOOLEAN NOT NULL DEFAULT false,
+                is_other_person_related BOOLEAN NOT NULL DEFAULT false,
+                created_at TIMESTAMPTZ DEFAULT NOW(),
+                reminder_time TIMESTAMPTZ
+            );
+        `);
+        console.log(`[Migration] 'memories' 테이블 준비 완료.`);
+
+        // * 인덱스 생성 (성능 향상) *
+        await pool.query(`CREATE INDEX IF NOT EXISTS idx_memories_love_related ON memories(is_love_related);`);
+        await pool.query(`CREATE INDEX IF NOT EXISTS idx_memories_other_related ON memories(is_other_person_related);`);
+        await pool.query(`CREATE INDEX IF NOT EXISTS idx_memories_timestamp ON memories(timestamp DESC);`);
+        await pool.query(`CREATE INDEX IF NOT EXISTS idx_memories_reminder_time ON memories(reminder_time);`);
+        console.log(`[Migration] 인덱스 생성 완료.`);
+
+    } catch (error) {
+        console.error(`[Migration] DB 연결 또는 테이블 초기화 실패: ${error.message}`);
+        if (pool) {
+            await pool.end();
+        }
+        throw error;
+    }
+}
+
+/**
+ * * 기억을 데이터베이스에 저장합니다. (중복 방지 포함) *
+ * @param {Object} memory - 저장할 기억 객체
+ */
+async function saveMemoryToDb(memory) {
+    if (!pool) {
+        console.error("[Migration] 데이터베이스 풀이 초기화되지 않았습니다. 기억을 저장할 수 없습니다.");
+        throw new Error("Database pool not initialized.");
+    }
+    try {
+        // * 중복 확인 쿼리를 저장 전에 실행 *
+        const checkQuery = 'SELECT COUNT(*) FROM memories WHERE content = $1';
+        const checkResult = await pool.query(checkQuery, [memory.content]);
+        const count = parseInt(checkResult.rows[0].count);
+
+        if (count > 0) {
+            console.log(`[Migration] 중복 기억, 저장 건너뜁니다: ${memory.content}`);
+            return;
+        }
+
+        const queryText = `INSERT INTO memories (content, category, strength, timestamp, is_love_related, is_other_person_related, reminder_time)
+                           VALUES ($1, $2, $3, $4, $5, $6, $7)`;
+        const queryValues = [
+            memory.content,
+            memory.category || '기타',
+            memory.strength || 'normal',
+            memory.timestamp || new Date().toISOString(),
+            Boolean(memory.is_love_related),
+            Boolean(memory.is_other_person_related),
+            memory.reminder_time || null
+        ];
+        const result = await pool.query(queryText, queryValues);
+        console.log(`[Migration] 기억 저장됨 (영향 받은 행 수: ${result.rowCount}): ${memory.content}`);
+    } catch (err) {
+        console.error(`[Migration] 기억 저장 실패: ${err.message}`);
+        throw err;
+    }
+}
+
+/**
+ * * love-history.json 파일의 내용을 읽어와 데이터베이스로 마이그레이션합니다. *
+ */
+async function migrateLoveHistory() {
+    const LOVE_HISTORY_FILE = path.resolve(__dirname, 'love-history.json'); // 프로젝트 루트의 love-history.json
+
+    if (!fs.existsSync(LOVE_HISTORY_FILE)) {
+        console.warn(`[Migration] love-history.json 파일이 존재하지 않습니다: ${LOVE_HISTORY_FILE}`);
+        return;
+    }
+
+    try {
+        const data = fs.readFileSync(LOVE_HISTORY_FILE, 'utf-8');
+        const loveHistory = JSON.parse(data);
+
+        // * general 카테고리 기억 마이그레이션 *
+        if (loveHistory.categories && Array.isArray(loveHistory.categories.general)) {
+            for (const item of loveHistory.categories.general) {
+                const memory = {
+                    content: item.content,
+                    category: '아저씨와의 추억', // 모든 general 기억을 '아저씨와의 추억'으로 분류
+                    strength: 'normal', // 기본 normal
+                    timestamp: item.timestamp, // 기존 타임스탬프 사용
+                    is_love_related: true, // 사랑 관련 기억으로 설정
+                    is_other_person_related: false,
+                    reminder_time: null // 마이그레이션 시 리마인더는 없음
+                };
+                
+                // * 특정 키워드에 따라 더 구체적인 카테고리나 strength를 부여 *
+                if (item.content.includes('인스타 첫 대화')) {
+                    memory.category = '아저씨와의 첫 만남';
+                    memory.strength = 'high';
+                } else if (item.content.includes('처음으로 \'아저씨\'라고 부름')) {
+                    memory.category = '아저씨와의 중요한 순간';
+                    memory.strength = 'high';
+                } else if (item.content.includes('오지상')) {
+                    memory.category = '아저씨와의 대화';
+                    memory.strength = 'high';
+                } else if (item.content.includes('코로나')) {
+                    memory.category = '아저씨와의 특별한 시기';
+                    memory.strength = 'high';
+                } else if (item.content.includes('고백')) {
+                    memory.category = '아저씨와의 중요한 순간';
+                    memory.strength = 'high';
+                    memory.is_love_related = true;
+                } else if (item.content.includes('자살 시도')) {
+                    memory.category = '아저씨의 건강';
+                    memory.strength = 'high';
+                    memory.is_love_related = true; // 아저씨에게 중요한 일이므로 사랑 관련으로
+                }
+
+
+                await saveMemoryToDb(memory);
+            }
+            console.log(`[Migration] general 카테고리 기억 ${loveHistory.categories.general.length}개 마이그레이션 완료.`);
+        }
+
+        // * ai_personal_memories (객체 형태) 기억 마이그레이션 *
+        if (loveHistory.categories && typeof loveHistory.categories.ai_personal_memories === 'object') {
+            for (const key in loveHistory.categories.ai_personal_memories) {
+                const content = `${key}: ${loveHistory.categories.ai_personal_memories[key]}`;
+                const memory = {
+                    content: content,
+                    category: '예진이의 개인 기억', // AI 개인 기억으로 분류
+                    strength: 'normal', // 기본 normal
+                    timestamp: moment().tz('Asia/Tokyo').toISOString(), // 마이그레이션 시점의 타임스탬프
+                    is_love_related: false, // 예진이 개인 기억이므로 사랑 관련은 아님
+                    is_other_person_related: true, // 예진이 자체에 대한 기억이므로 other_person_related로 간주
+                    reminder_time: null
+                };
+                await saveMemoryToDb(memory);
+            }
+            console.log(`[Migration] ai_personal_memories ${Object.keys(loveHistory.categories.ai_personal_memories).length}개 마이그레이션 완료.`);
+        }
+
+        console.log('[Migration] love-history.json 마이그레이션 완료!');
+
+    } catch (error) {
+        console.error(`[Migration] love-history.json 마이그레이션 실패: ${error.message}`);
+    } finally {
+        if (pool) {
+            await pool.end(); // 데이터베이스 연결 풀 종료
+            console.log('[Migration] 데이터베이스 연결 풀 종료.');
+        }
+    }
+}
+
+// * 스크립트 실행 *
+initializeDbPool()
+    .then(migrateLoveHistory)
+    .catch(error => console.error(`[Migration] 스크립트 실행 중 치명적인 오류 발생: ${error.message}`));
