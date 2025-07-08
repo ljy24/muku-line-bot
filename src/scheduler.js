@@ -1,12 +1,10 @@
-// src/scheduler.js - 모든 스케줄링 로직을 중앙 집중화
+// src/scheduler.js - v1.1 - 모든 스케줄링 로직을 중앙 집중화 및 proactiveMessages.js 연동
 const cron = require('node-cron');
 const moment = require('moment-timezone');
 const { Client } = require('@line/bot-sdk'); // LINE 클라이언트 필요
-const {
-    getProactiveMemoryMessage, // 감성 메시지를 위해 필요
-    saveLog, // 로그 저장을 위해 필요
-} = require('./autoReply'); // autoReply.js에서 필요한 메시지 생성 함수들을 불러옴
+const { saveLog } = require('./autoReply'); // 로그 저장을 위해 필요 (autoReply.js에서 가져옴)
 const memoryManager = require('./memoryManager'); // 리마인더 처리를 위해 memoryManager 필요
+const { getProactiveMemoryMessage, getSilenceCheckinMessage } = require('./proactiveMessages'); // proactiveMessages에서 선제적 메시지 함수들을 불러옴
 
 // ✨ omoide.js에서 getOmoideReply 함수를 직접 불러옴 ✨
 const { getOmoideReply } = require('../memory/omoide');
@@ -105,7 +103,7 @@ const sendScheduledMessage = async (lineClient, targetUserId, type) => {
         // 하루 약 11번 목표 (216번의 기회 중 11번 발송) -> 확률 11/216 = 약 0.051
         if (Math.random() < 0.051) {
             try {
-                const proactiveMessage = await getProactiveMemoryMessage();
+                const proactiveMessage = await getProactiveMemoryMessage(); // proactiveMessages에서 메시지 가져옴
 
                 if (
                     proactiveMessage &&
@@ -120,7 +118,8 @@ const sendScheduledMessage = async (lineClient, targetUserId, type) => {
                 } else {
                     // console.log(`[Scheduler] 감성 메시지 중복 또는 너무 빠름 -> 전송 스킵`); // 너무 많이 로그가 쌓일 수 있어 주석 처리
                 }
-            } catch (error) {
+            }
+            catch (error) {
                 console.error('감성 메시지 전송 실패:', error);
             }
         }
@@ -194,11 +193,13 @@ const startAllSchedulers = (lineClient, targetUserId) => {
         ) {
             console.log(`[Scheduler-Silence] 침묵 감지! (${moment.duration(elapsedTimeSinceLastMessage).humanize()} 동안 메시지 없음)`);
             try {
-                await sendSelfieMessage(lineClient, targetUserId, saveLog, 'silence');
+                // 침묵 감지 시 일반적인 걱정 메시지를 보낼지, 셀카를 보낼지 랜덤 선택 가능 (현재는 셀카만)
+                // const checkinMessage = await getSilenceCheckinMessage(); // proactiveMessages에서 메시지 가져옴
+                await sendSelfieMessage(lineClient, targetUserId, saveLog, 'silence'); // 침묵 감지 시 셀카 전송
                 lastProactiveSentTime = now; // 선제적 메시지(셀카 포함) 전송 시간 업데이트
                 lastSelfieSentTime = now; // ✨ 추가: 침묵 감지 셀카 전송 시간 업데이트
             } catch (error) {
-                console.error('❌ [Scheduler-Silence Error] 침묵 감지 자동 셀카 전송 실패:', error);
+                console.error('❌ [Scheduler-Silence Error] 침묵 감지 자동 메시지 전송 실패:', error);
             }
         }
     }, {
