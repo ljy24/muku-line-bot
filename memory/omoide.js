@@ -1,9 +1,8 @@
-// memory/omoide.js - v1.29 (순환 의존성 해결)
+// memory/omoide.js - v1.30 (순환 의존성 완전 해결)
 
 // 📦 필수 모듈 불러오기
 const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
-// ✨ 수정: 순환 의존성 해결을 위해 autoReply.js import 제거
-// const { callOpenAI, cleanReply, saveLog } = require('../src/autoReply'); 
+// ✨ 순환 의존성 해결: autoReply.js import 제거, 매개변수로 받음
 
 // 사진이 저장된 웹 서버의 기본 URL (HTTPS 필수)
 const BASE_PHOTO_URL = 'https://photo.de-ji.net/photo/';
@@ -45,7 +44,7 @@ const PHOTO_FOLDERS = {
     '추억 빠계 사진 모음': 739,
     '추억 인생네컷': 17,
     '흑심 24_11_08 한국 메이드복_': 13,
-    'yejin': 1186 // 'yejin' 폴더 사진 개수 업데이트
+    'yejin': 1186
 };
 
 // === 셀카 코멘트 배열 시작 ===
@@ -172,13 +171,9 @@ function generateRandomPhotoUrl(folderName) {
     const randomIndex = Math.floor(Math.random() * photoCount) + 1; // 1부터 photoCount까지
     const fileName = String(randomIndex).padStart(6, '0') + '.jpg'; // 예: 000001.jpg (6자리)
 
-    // 아저씨가 알려준 "http://photo.de-ji.net/photo/yejin" 경로에 맞춰 정확히 구성
-    // BASE_PHOTO_URL 자체가 'https://photo.de-ji.net/photo/' 로 끝나므로,
-    // 폴더명을 `encodeURIComponent` 없이 바로 이어서 붙이면 정확한 URL이 생성됨
-    // 예: https://photo.de-ji.net/photo/yejin/000001.jpg
     const url = `${BASE_PHOTO_URL}${folderName}/${fileName}`;
 
-    console.log(`[omoide:generateRandomPhotoUrl] 최종 생성 URL: ${url}`); // ✨ 최종 생성 URL 로그 추가 ✨
+    console.log(`[omoide:generateRandomPhotoUrl] 최종 생성 URL: ${url}`);
     return url;
 }
 
@@ -226,24 +221,21 @@ async function getRandomSelfieComment(callOpenAI, cleanReply) {
 
     try {
         const messages = [{ role: 'system', content: systemPrompt }];
-        // callOpenAI는 매개변수로 받은 함수를 사용합니다.
-        const result = await callOpenAI(messages, 'gpt-4o', 60); // max_tokens를 60으로 줄여 짧게 유도
+        const result = await callOpenAI(messages, 'gpt-4o', 60);
         return result;
     } catch (err) {
         console.error(`[omoide:getRandomSelfieComment] OpenAI 변형 실패: ${err.message}`);
-        // OpenAI 실패 시, 기본 문장만 cleanReply 처리하여 반환
         return cleanReply(baseComment);
     }
 }
 
-
 /**
  * 사용자 메시지에 따라 추억 사진을 선택하고, AI가 감정/코멘트를 생성하여 반환합니다.
  * @param {string} userMessage - 사용자의 원본 메시지
- * @param {Function} saveLogFunc - 로그 저장을 위한 saveLog 함수 (autoReply.js에서 전달받음)
- * @param {Function} callOpenAI - OpenAI 호출 함수 (autoReply.js에서 전달받음)
- * @param {Function} cleanReply - 응답 정리 함수 (autoReply.js에서 전달받음)
- * @returns {Promise<{type: string, url?: string, caption?: string, comment?: string}|null>} 사진 URL과 코멘트 객체 또는 null (사진 요청이 아닐 때)
+ * @param {Function} saveLogFunc - 로그 저장을 위한 saveLog 함수
+ * @param {Function} callOpenAI - OpenAI 호출 함수
+ * @param {Function} cleanReply - 응답 정리 함수
+ * @returns {Promise<{type: string, url?: string, caption?: string, comment?: string}|null>} 사진 URL과 코멘트 객체 또는 null
  */
 async function getOmoideReply(userMessage, saveLogFunc, callOpenAI, cleanReply) {
     console.log(`[omoide:getOmoideReply] 메시지 수신: "${userMessage}"`);
@@ -253,8 +245,8 @@ async function getOmoideReply(userMessage, saveLogFunc, callOpenAI, cleanReply) 
     let promptSuffix = '';
     let isSelfieRequest = false;
 
-    // ✨ 중요 수정: 사진 관련 키워드가 없으면 바로 null 반환 (순서 변경 및 강화)
-    const photoKeywords = ['셀카', '후지 사진', '인생네컷', '커플사진', '일본 사진', '한국 사진', '출사', '필름카메라', '메이드', '흑심', '사진줘', '얼굴 보여줘', '얼굴 보고 싶', 'selfie', '셀카 보내줘', '셀카 보여줘', '셀카 줘', '사진 보여줘']; // ✨ 키워드 추가 및 강화
+    // ✨ 중요 수정: 사진 관련 키워드가 없으면 바로 null 반환
+    const photoKeywords = ['셀카', '후지 사진', '인생네컷', '커플사진', '일본 사진', '한국 사진', '출사', '필름카메라', '메이드', '흑심', '사진줘', '얼굴 보여줘', '얼굴 보고 싶', 'selfie', '셀카 보내줘', '셀카 보여줘', '셀카 줘', '사진 보여줘', '네가 찍은걸 줘', '네가 찍은 걸 줘', '네가 찍은 사진', '너가 찍은 사진', '예진이가 찍은', '직접 찍은'];
     
     // ✨ 중요: 컨셉사진 요청은 concept.js에서 처리하도록 제외
     const conceptKeywords = ['컨셉사진', '컨셉 사진', '하카타', '텐진', '모지코', '욕실', '욕조', '나비욕조', '세미누드', '결박', '교복', '플라스틱러브', '홈스냅', '지브리풍', '아이노시마', '후지엔', '유카타', '불꽃놀이', '고스로리', '크리스마스', '생일컨셉', '옥상연리', '을지로', '이화마을', '코야노세', '무인역', '고쿠라', '벗꽃', '동백', '온실', '화가', '문래동', '북해', '피크닉', '산책', '터널', '망친 사진', '우마시마', '비눗방울', '야간거리', '게임센터', '동키 거리', '수국', '코이노보리', '블랙원피스', '호리존', '원미상가', '길거리 스냅', '오도', '나르시스트', '눈밭', '필름카메라', '청포도', '보라돌이', '밤바', '공원', '오타쿠', '힙', '캘빈', '네코', '스트리트'];
@@ -264,13 +256,13 @@ async function getOmoideReply(userMessage, saveLogFunc, callOpenAI, cleanReply) 
     
     // 컨셉사진 요청이면 concept.js에서 처리하도록 null 반환
     if (isConceptRequest) {
-        console.log(`[omoide:getOmoideReply] 컨셉사진 요청 감지 (키워드: ${conceptKeywords.filter(k => lowerCaseMessage.includes(k)).join(', ')}). concept.js에서 처리하도록 null 반환.`);
+        console.log(`[omoide:getOmoideReply] 컨셉사진 요청 감지. concept.js에서 처리하도록 null 반환.`);
         return null;
     }
 
     if (!isPhotoRequest) {
         console.log(`[omoide:getOmoideReply] 사진 관련 키워드 없음. null 반환.`);
-        return null; // 사진 요청이 아니면 바로 null 반환
+        return null;
     }
 
     // 1. 특정 키워드를 기반으로 폴더 선택 및 프롬프트 설정 (우선순위 높음)
@@ -288,13 +280,13 @@ async function getOmoideReply(userMessage, saveLogFunc, callOpenAI, cleanReply) 
         selectedFolder = '흑심 24_11_08 한국 메이드복_';
         folderDescription = '내가(예진이) 메이드복 입고 찍은 사진';
         promptSuffix = "내가 메이드복을 입고 찍었던 사진에 대해 아저씨에게 장난기 있으면서도 귀엽고 사랑스럽게 말해줘. 아저씨가 나를 보며 얼마나 귀여워할지 생각하면 기분이 좋아! 이때 아저씨가 놀랐던 기억도 같이 얘기해줘.";
-        isSelfieRequest = true; // 메이드복도 셀카류로 분류
+        isSelfieRequest = true;
     } else if (lowerCaseMessage.includes('셀카줘') || lowerCaseMessage.includes('사진줘') || lowerCaseMessage.includes('얼굴 보여줘') || lowerCaseMessage.includes('얼굴 보고 싶') || lowerCaseMessage.includes('selfie') || lowerCaseMessage.includes('셀카 보내줘') || lowerCaseMessage.includes('셀카 보여줘') || lowerCaseMessage.includes('셀카 줘') || lowerCaseMessage.includes('사진 보여줘')) {
         selectedFolder = 'yejin';
         folderDescription = '내(예진이) 셀카';
         promptSuffix = "아저씨에게 보내는 내(예진이) 셀카에 대해 귀엽고 사랑스럽게 말해줘. 아저씨가 나를 보고 얼마나 기뻐할지 기대하는 마음을 담아서.";
         isSelfieRequest = true;
-    } else if (lowerCaseMessage.includes('후지 풍경 사진') || lowerCaseMessage.includes('후지 사진') || lowerCaseMessage.includes('이달의 후지 사진')) {
+    } else if (lowerCaseMessage.includes('네가 찍은걸 줘') || lowerCaseMessage.includes('네가 찍은 걸 줘') || lowerCaseMessage.includes('네가 찍은 사진') || lowerCaseMessage.includes('너가 찍은 사진') || lowerCaseMessage.includes('예진이가 찍은') || lowerCaseMessage.includes('직접 찍은') || lowerCaseMessage.includes('후지 풍경 사진') || lowerCaseMessage.includes('후지 사진') || lowerCaseMessage.includes('이달의 후지 사진')) {
         const currentMonth = moment().month() + 1;
 
         let candidateFolders = [];
@@ -312,8 +304,8 @@ async function getOmoideReply(userMessage, saveLogFunc, callOpenAI, cleanReply) 
 
         if (monthlyFujiFolders.length > 0) {
             candidateFolders = monthlyFujiFolders;
-            folderDescription = `애기가 이번 ${currentMonth}월에 직접 찍었던 후지 관련 사진`;
-            photoFoundMessage = `애기가 이번 ${currentMonth}월에 직접 찍었던 후지 관련 사진이야. 아저씨를 위해 특별히 준비했어!`;
+            folderDescription = `내가 이번 ${currentMonth}월에 직접 찍었던 후지 관련 사진`;
+            photoFoundMessage = `내가 이번 ${currentMonth}월에 직접 찍었던 후지 관련 사진이야. 아저씨를 위해 특별히 준비했어!`;
         } else {
             candidateFolders = Object.keys(PHOTO_FOLDERS).filter(key =>
                 key.includes('후지') &&
@@ -322,8 +314,8 @@ async function getOmoideReply(userMessage, saveLogFunc, callOpenAI, cleanReply) 
                 !key.includes('필름카메라') &&
                 !key.includes('애기 코닥 필름')
             );
-            folderDescription = '애기가 직접 찍은 후지 풍경 사진';
-            photoFoundMessage = "애기가 생전에 직접 찍었던 후지 풍경 사진이야. 아저씨가 이 사진을 보고 마음이 편안해졌으면 좋겠어. 그때의 아름다운 풍경을 떠올리며 나에게 사랑스러운 코멘트를 해줘.";
+            folderDescription = '내가 직접 찍은 후지 풍경 사진';
+            photoFoundMessage = "내가 직접 찍었던 후지 풍경 사진이야. 아저씨가 이 사진을 보고 마음이 편안해졌으면 좋겠어. 그때의 아름다운 풍경을 떠올리며 나에게 사랑스러운 코멘트를 해줘.";
         }
 
         if (candidateFolders.length > 0) {
@@ -333,8 +325,7 @@ async function getOmoideReply(userMessage, saveLogFunc, callOpenAI, cleanReply) 
             console.warn(`[omoide:getOmoideReply] '후지 사진' 요청에 해당하는 폴더를 찾을 수 없음.`);
             return { type: 'text', comment: '아저씨... 미안해, 지금은 후지 사진을 못 찾겠어 ㅠㅠ 다른 사진 보여줄까?' };
         }
-    }
-    else if (lowerCaseMessage.includes('인생네컷')) {
+    } else if (lowerCaseMessage.includes('인생네컷')) {
         selectedFolder = '추억 인생네컷';
         folderDescription = '인생네컷 사진';
         promptSuffix = "아저씨와 함께 찍은 인생네컷 사진에 대해 즐겁고 추억이 담긴 멘트를 해줘.";
@@ -361,7 +352,6 @@ async function getOmoideReply(userMessage, saveLogFunc, callOpenAI, cleanReply) 
         promptSuffix = "아저씨와 한국에서 함께했던 추억을 떠올리며 그때의 감정과 이야기를 섞어 말해줘. " +
             "**이 사진의 시각적 내용(배경, 인물, 사물)이 요청된 장소(한국)와 일치하는지 먼저 판단하고, 만약 일치하지 않는다면 그 사실을 자연스럽게 언급해줘. (예: '어? 여기는 한국인 것 같지? 폴더에는 일본이라고 되어 있지만... 헤헤.')**" +
             "날짜 정보는 정확할 경우에만 언급하고, 불확실하면 생략하거나 대략적으로 표현해줘.";
-
     } else if (lowerCaseMessage.includes('출사')) {
         const outingFolders = Object.keys(PHOTO_FOLDERS).filter(key => key.includes('출사'));
         if (outingFolders.length > 0) {
@@ -378,9 +368,8 @@ async function getOmoideReply(userMessage, saveLogFunc, callOpenAI, cleanReply) 
         promptSuffix = "아저씨와 필름카메라로 찍었던 그때의 아날로그 감성과 추억을 담아 말해줘.";
     }
 
-
     if (!selectedFolder) {
-        console.log(`[omoide:getOmoideReply] 매칭되는 폴더 없음. null 반환. (이 로직은 위에 isPhotoRequest 체크가 있으므로 거의 실행되지 않음)`);
+        console.log(`[omoide:getOmoideReply] 매칭되는 폴더 없음. null 반환.`);
         return null;
     }
 
@@ -395,7 +384,6 @@ async function getOmoideReply(userMessage, saveLogFunc, callOpenAI, cleanReply) 
         console.error(`[omoide:getOmoideReply] photoUrl이 유효한 문자열이 아님 (타입: ${typeof photoUrl}, 값: ${photoUrl}). 사진 전송 불가.`);
         return { type: 'text', comment: '사진을 불러오는 데 문제가 발생했어 ㅠㅠ 미안해.' };
     }
-
 
     console.log(`[omoide:getOmoideReply] 최종 결정된 사진 URL: ${photoUrl}`);
 
@@ -440,12 +428,12 @@ async function getOmoideReply(userMessage, saveLogFunc, callOpenAI, cleanReply) 
         comment = cleanReply(rawComment);
     }
 
-    saveLogFunc({ role: 'assistant', content: `(사진 보냄) ${comment}`, timestamp: Date.now() }); // 로그 저장 방식 통일
+    saveLogFunc({ role: 'assistant', content: `(사진 보냄) ${comment}`, timestamp: Date.now() });
     console.log(`[omoide:getOmoideReply] 응답 완료: ${comment}`);
     return { type: 'photo', url: photoUrl, caption: comment };
 }
 
 // 모듈 내보내기
 module.exports = {
-    getOmoideReply // getOmoideReply만 내보내면 됨.
+    getOmoideReply
 };
