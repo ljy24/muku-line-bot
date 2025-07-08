@@ -533,5 +533,6 @@ async function getOmoideReply(userMessage, saveLogFunc) {
 // 모듈 내보내기
 module.exports = {
     getOmoideReply,
-    cleanReply
+    cleanReply, // cleanReply는 여전히 omoide.js에서 정의되고 내보내짐
+    callOpenAI // ✨ 추가: callOpenAI 함수도 omoide.js에서 내보냄
 };
