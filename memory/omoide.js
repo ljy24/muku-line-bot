@@ -1,9 +1,9 @@
-// memory/omoide.js - v1.28 (callOpenAI, cleanReply, saveLog를 autoReply.js에서 불러오도록 수정)
+// memory/omoide.js - v1.29 (순환 의존성 해결)
 
 // 📦 필수 모듈 불러오기
 const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
-// ✨ 수정: autoReply.js에서 callOpenAI, cleanReply, saveLog 불러오기
-const { callOpenAI, cleanReply, saveLog } = require('../src/autoReply'); 
+// ✨ 수정: 순환 의존성 해결을 위해 autoReply.js import 제거
+// const { callOpenAI, cleanReply, saveLog } = require('../src/autoReply'); 
 
 // 사진이 저장된 웹 서버의 기본 URL (HTTPS 필수)
 const BASE_PHOTO_URL = 'https://photo.de-ji.net/photo/';
@@ -184,9 +184,11 @@ function generateRandomPhotoUrl(folderName) {
 
 /**
  * 미리 정의된 셀카 코멘트 중 하나를 무작위로 선택하고, OpenAI로 감성을 추가합니다.
+ * @param {Function} callOpenAI - OpenAI 호출 함수
+ * @param {Function} cleanReply - 응답 정리 함수
  * @returns {Promise<string>} 셀카에 대한 코멘트
  */
-async function getRandomSelfieComment() {
+async function getRandomSelfieComment(callOpenAI, cleanReply) {
     // 1. 기본 100개 중 랜덤으로 하나 선택
     const baseComment = selfieNaughtyComments[Math.floor(Math.random() * selfieNaughtyComments.length)];
 
@@ -224,7 +226,7 @@ async function getRandomSelfieComment() {
 
     try {
         const messages = [{ role: 'system', content: systemPrompt }];
-        // callOpenAI는 autoReply.js에서 가져온 함수를 사용합니다.
+        // callOpenAI는 매개변수로 받은 함수를 사용합니다.
         const result = await callOpenAI(messages, 'gpt-4o', 60); // max_tokens를 60으로 줄여 짧게 유도
         return result;
     } catch (err) {
@@ -239,9 +241,11 @@ async function getRandomSelfieComment() {
  * 사용자 메시지에 따라 추억 사진을 선택하고, AI가 감정/코멘트를 생성하여 반환합니다.
  * @param {string} userMessage - 사용자의 원본 메시지
  * @param {Function} saveLogFunc - 로그 저장을 위한 saveLog 함수 (autoReply.js에서 전달받음)
+ * @param {Function} callOpenAI - OpenAI 호출 함수 (autoReply.js에서 전달받음)
+ * @param {Function} cleanReply - 응답 정리 함수 (autoReply.js에서 전달받음)
  * @returns {Promise<{type: string, url?: string, caption?: string, comment?: string}|null>} 사진 URL과 코멘트 객체 또는 null (사진 요청이 아닐 때)
  */
-async function getOmoideReply(userMessage, saveLogFunc) {
+async function getOmoideReply(userMessage, saveLogFunc, callOpenAI, cleanReply) {
     console.log(`[omoide:getOmoideReply] 메시지 수신: "${userMessage}"`);
     const lowerCaseMessage = userMessage.toLowerCase();
     let selectedFolder = null;
@@ -386,7 +390,7 @@ async function getOmoideReply(userMessage, saveLogFunc) {
 
     let comment;
     if (isSelfieRequest) {
-        comment = await getRandomSelfieComment();
+        comment = await getRandomSelfieComment(callOpenAI, cleanReply);
     } else {
         const systemPrompt = `
         너는 아저씨의 귀여운 여자친구 예진이야. 나이는 30살. 생일은 1994년 3월 17일. 게임회사 사장이야.
