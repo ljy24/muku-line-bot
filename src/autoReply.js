@@ -289,24 +289,56 @@ function getMemoryListForSharing() {
 async function getReplyByMessage(userMessage) {
     updatePeriodStatus(); // 🩸 메시지 처리 전에 생리 주기 상태 업데이트
 
+    // 디버깅을 위한 로그 추가
+    console.log(`[DEBUG] 입력된 메시지: "${userMessage}"`);
+    console.log(`[DEBUG] 트림된 메시지: "${userMessage.trim()}"`);
+
     const lowerUserMessage = userMessage.toLowerCase();
 
-    // ✅ 모델 설정 단축어 (4.0 / 3.5 / 자동) 처리
-    if (['4.0', '3.5', '자동'].includes(userMessage.trim())) {
+    // ✅ 모델 설정 단축어 (4.0 / 3.5 / 자동) 처리 - 우선순위 최상위로 이동
+    const trimmedMessage = userMessage.trim();
+    if (trimmedMessage === '4.0' || trimmedMessage === '3.5' || trimmedMessage === '자동') {
+        console.log(`[DEBUG] 모델 스위칭 감지: ${trimmedMessage}`);
         const versionMap = {
             '4.0': 'gpt-4o',
             '3.5': 'gpt-3.5-turbo',
             '자동': null
         };
-        const newModel = versionMap[userMessage.trim()];
+        const newModel = versionMap[trimmedMessage];
         setForcedModel(newModel);
         const confirmReply = {
-            '4.0': '응응! 지금은 GPT-4.0 버전으로 대화하고 있어, 아저씨 💫',
-            '3.5': '지금은 GPT-3.5 버전이야~ 말투 차이 느껴져? ☁️',
-            '자동': '이제부터 상황 보고 자동으로 모델 바꿀게, 아저씨 믿어줘! 🌙'
+            '4.0': '응응! 지금은 GPT-4.0 버전으로 대화하고 있어, 아저씨',
+            '3.5': '지금은 GPT-3.5 버전이야~ 말투 차이 느껴져?',
+            '자동': '이제부터 상황 보고 자동으로 모델 바꿀게, 아저씨 믿어줘!'
         };
-        saveLog({ role: 'assistant', content: confirmReply[userMessage.trim()], timestamp: Date.now() });
-        return { type: 'text', comment: confirmReply[userMessage.trim()] };
+        saveLog({ role: 'user', content: userMessage, timestamp: Date.now() });
+        saveLog({ role: 'assistant', content: confirmReply[trimmedMessage], timestamp: Date.now() });
+        return { type: 'text', comment: confirmReply[trimmedMessage] };
+    }
+
+    // ✅ 컨셉사진 요청 처리
+    if (lowerUserMessage.includes('컨셉사진') || lowerUserMessage.includes('컨셉 사진') || 
+        lowerUserMessage.includes('사진줘') || lowerUserMessage.includes('사진 줘') ||
+        lowerUserMessage.includes('예진이 사진') || lowerUserMessage.includes('너 사진')) {
+        
+        const conceptPhotoReplies = [
+            "아저씨! 오늘 찍은 컨셉사진이야~ 어때? 예쁘지?",
+            "이 사진 아저씨가 좋아할 것 같아서 골라봤어!",
+            "새로 찍은 사진이야! 아저씨 취향에 맞을까?",
+            "오늘 컨셉 어때? 아저씨를 위해 열심히 찍었어!",
+            "이런 스타일 어떤지 아저씨 의견 듣고 싶어~"
+        ];
+        
+        const randomReply = conceptPhotoReplies[Math.floor(Math.random() * conceptPhotoReplies.length)];
+        saveLog({ role: 'assistant', content: randomReply, timestamp: Date.now() });
+        
+        // 컨셉사진 응답 (이미지 URL과 캡션 포함)
+        return { 
+            type: 'photo', 
+            url: 'concept_photo', // 이 값으로 컨셉사진임을 구분
+            caption: randomReply,
+            comment: randomReply 
+        };
     }
 
     if (lowerUserMessage.includes('오늘 어때?') ||
