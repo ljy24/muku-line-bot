@@ -1,19 +1,15 @@
-// src/memoryManager.js - v3.0 - Render PostgreSQL 기반 기억 관리
+// src/memoryManager.js - v3.1 - Render PostgreSQL 기반 기억 관리 (DATABASE_URL 사용)
 
 const { Pool } = require('pg'); // PostgreSQL 연결 풀
 const moment = require('moment-timezone'); // 시간 처리 모듈
 const fs = require('fs').promises; // 파일 시스템 모듈 (초기 데이터 로딩용)
 const path = require('path');     // 경로 처리 모듈
 
-// Render PostgreSQL 연결 설정 (환경 변수 사용)
+// Render PostgreSQL 연결 설정 (DATABASE_URL 환경 변수 사용)
 const pool = new Pool({
-    user: process.env.PG_USERNAME, // Render에서 설정된 Username
-    host: process.env.PG_HOST,     // Render에서 설정된 Host
-    database: process.env.PG_DATABASE, // Render에서 설정된 Database
-    password: process.env.PG_PASSWORD, // Render에서 설정된 Password
-    port: process.env.PG_PORT,       // Render에서 설정된 Port
+    connectionString: process.env.DATABASE_URL, // DATABASE_URL 환경 변수 사용
     ssl: {
-        rejectUnauthorized: false // Render PostgreSQL은 SSL이 필요하며, 자체 서명 인증서일 수 있어 이 옵션이 필요할 수 있습니다.
+        rejectUnauthorized: false // Render PostgreSQL은 SSL이 필요하며, 자체 서명 인증서일 수 있어 이 옵션이 필요합니다.
     }
 });
 
@@ -29,7 +25,7 @@ async function ensureMemoryTables() {
                 id BIGSERIAL PRIMARY KEY,
                 content TEXT NOT NULL,
                 timestamp TIMESTAMPTZ DEFAULT NOW(),
-                reminder_time TIMESTAMPTZ
+                reminder_time TIMESTANTZ
             );
         `);
         console.log("테이블 'user_memories' 확인 및 생성 완료.");
@@ -242,17 +238,8 @@ async function getFirstDialogueMemory() {
     return res.rows.length > 0 ? res.rows[0].content : null;
 }
 
-// 메시지에서 기억을 추출하는 AI 로직은 autoReply.js에서 처리하므로,
-// 여기서는 단순히 '저장'만 수행하는 extractAndSaveMemory는 더 이상 필요하지 않습니다.
-// (index.js에서 이 함수를 호출하던 부분은 제거되거나 다른 방식으로 처리되어야 합니다.)
-// 기존에 extractAndSaveMemory가 존재했던 이유: AI가 어떤 메시지를 기억으로 추출했는지 판단 후 이 함수를 호출하기 위함.
-// 현재는 이 함수가 index.js에서 호출되고 있으므로, 그 역할에 맞게 변경
-// -> AI가 일반 대화에서 기억할 만한 내용을 판단하여 저장하는 기능을 추가해야 할 경우,
-//    autoReply.js에서 해당 로직을 구현하고 saveUserMemory를 직접 호출해야 함.
-//    현재 index.js의 extractAndSaveMemory 호출은 의미가 없어지므로 삭제 필요.
-
 module.exports = {
-    ensureMemoryTables, // 디렉토리 대신 테이블 확인/생성 함수 이름 변경
+    ensureMemoryTables,
     saveUserMemory,
     deleteUserMemory,
     setMemoryReminder,
@@ -263,5 +250,4 @@ module.exports = {
     loadLoveHistory,
     loadOtherPeopleHistory,
     getFirstDialogueMemory
-    // extractAndSaveMemory는 더 이상 외부로 노출하거나 사용하지 않습니다.
 };
