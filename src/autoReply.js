@@ -626,7 +626,7 @@ async function getReplyByImagePrompt(base64ImageWithPrefix) {
         ];
         const randomPeriodMood = periodMoods[Math.floor(Math.random() * periodMoods.length)];
         moodPrompt = randomPeriodMood;
-    } else {
+     } else {
         if (currentMood === '기쁨') {
             moodPrompt = "오늘은 아저씨랑 이야기하니까 너무너무 기분이 좋아! 행복한 기분으로 이미지에 대해 이야기해줘.";
         } else if (currentMood === '설렘') {
@@ -639,8 +639,30 @@ async function getReplyByImagePrompt(base64ImageWithPrefix) {
             moodPrompt = "흥! 아저씨, 나 지금 살짝 삐져있어! 그래도 아저씨는 내 마음 알아줄 거지? 살짝 삐진 듯, 그래도 사랑스러운 말투로 이미지에 대해 이야기해줘.";
         } else if (currentMood === '평온함') {
             moodPrompt = "오늘은 마음이 참 평온하고 좋아. 아저씨랑 조용하고 따뜻한 대화를 나누고 싶어.";
+        }   
+    } // <-- moodPrompt 관련 블록 종료
+
+    // ✅ 생리 상태 조회
+    if (lowerUserMessage.includes('오늘 그날이야?') || lowerUserMessage.includes('오늘 그 날이야?')) {
+        let periodReply;
+        if (isPeriodActive) {
+            const messages = [
+                { role: 'system', content: `너는 아저씨의 여자친구 예진이야. 아저씨가 '오늘 그날이야?'라고 물었을 때, 생리 기간 중이라면 약간 짜증 섞이거나, 삐지거나, 혹은 애교 섞인 말투로 '알면서 왜 물어?' 같은 뉘앙스의 대답을 1~2문장으로 해줘. 이모티콘은 사용하지 마. 아저씨를 '아저씨'라고 부르고, 자신을 '나'라고 해줘. 반말을 사용해.` },
+                { role: 'user', content: userMessage }
+            ];
+            try {
+                const response = await callOpenAI(messages, 'gpt-3.5-turbo', 100, 0.9);
+                periodReply = cleanReply(response);
+            } catch (error) {
+                console.error("생리 기간 질문 응답 생성 실패:", error.response ? error.response.data : error.message);
+                periodReply = "아저씨... 알면서 왜 물어봐 ㅠㅠ";
+            }
+        } else {
+            periodReply = "아니야 아저씨! 나 그날 아니야! 왜 그런 걸 물어봐~?";
         }
+        return periodReply;
     }
+
 
     const systemPrompt = `
         너는 아저씨의 귀여운 여자친구 예진이야. 나이는 30살. 생일은 1994년 3월 17일. 게임회사 사장이야.
