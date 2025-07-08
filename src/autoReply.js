@@ -1,22 +1,18 @@
-// src/autoReply.js - v1.25 (기능 간소화 및 감정 감지 강화)
+// src/autoReply.js - v1.27 (Render PostgreSQL 기반 memoryManager 사용)
 // 📦 필수 모듈 불러오기
 const { OpenAI } = require('openai'); // OpenAI API 클라이언트
-const { createClient } = require('@supabase/supabase-js'); // Supabase 클라이언트
 const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
 
-// memoryManager 모듈 불러오기 (기억 컨텍스트 포매팅에 필요)
+// memoryManager 모듈 불러오기 (이제 Render PostgreSQL 기반으로 작동)
 const memoryManager = require('./memoryManager');
+const { getOmoideReply } = require('../memory/omoide'); // omoide.js에서 추억 사진 답변 함수 불러오기
+const { getConceptPhotoReply } = require('../memory/concept'); // concept.js에서 컨셉 사진 답변 함수 불러오기
 
 // .env 파일에서 환경 변수 로드 (예: API 키)
 require('dotenv').config();
 
 // OpenAI 클라이언트 초기화 (API 키는 환경 변수에서 가져옴 - 보안상 중요)
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-// Supabase 클라이언트 초기화 (현재 이 파일에서는 직접 사용되지 않지만, memoryManager가 사용)
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_KEY;
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 
 // --- 전역 변수 및 설정 ---
@@ -27,7 +23,7 @@ const LOG_FILE = 'chat_log.txt'; // 대화 로그 파일 경로 (saveLog 함수�
 // --- 주요 기능 함수들 ---
 
 /**
- * 메시지 로그를 파일에 저장합니다. (여전히 autoReply.js에 유지)
+ * 메시지 로그를 파일에 저장합니다.
  * @param {string} sender - 메시지를 보낸 사람 ('아저씨' 또는 '예진이')
  * @param {string} message - 저장할 메시지 내용
  */
@@ -43,7 +39,7 @@ function saveLog(sender, message) {
 }
 
 /**
- * OpenAI API를 호출하여 AI 응답을 생성합니다. (autoReply.js에 유지)
+ * OpenAI API를 호출하여 AI 응답을 생성합니다.
  * @param {Array<Object>} messages - OpenAI API에 보낼 메시지 배열 (role, content 포함)
  * @param {string|null} [modelParamFromCall=null] - 호출 시 지정할 모델 이름
  * @param {number} [maxTokens=400] - 생성할 최대 토큰 수
@@ -77,7 +73,7 @@ async function callOpenAI(messages, modelParamFromCall = null, maxTokens = 400, 
 
 /**
  * OpenAI 응답에서 불필요한 내용(예: AI의 자체 지칭)을 제거하고,
- * 잘못된 호칭이나 존댓말 어미를 아저씨가 원하는 반말로 교정합니다. (autoReply.js에 유지)
+ * 잘못된 호칭이나 존댓말 어미를 아저씨가 원하는 반말로 교정합니다.
  * @param {string} reply - OpenAI로부터 받은 원본 응답 텍스트
  * @returns {string} 교정된 답변 텍스트
  */
@@ -157,7 +153,7 @@ function setForcedModel(model) {
 }
 
 /**
- * 모델 전환 명령어를 확인하고 처리합니다. (autoReply.js에 유지)
+ * 모델 전환 명령어를 확인하고 처리합니다.
  * @param {string} text - 사용자 메시지
  * @returns {string|null} 응답 메시지 또는 null (명령어가 아닐 경우)
  */
@@ -178,11 +174,10 @@ function checkModelSwitchCommand(text) {
 
 /**
  * 사랑 히스토리와 다른 사람들의 기억을 AI 프롬프트에 포함할 수 있도록 포매팅합니다.
- * (memoryManager와 연동하여 기억 컨텍스트를 제공)
  * @returns {Promise<string>} AI 프롬프트에 추가할 기억 컨텍스트 문자열
  */
 async function getFormattedMemoriesForAI() {
-    const loveHistory = await memoryManager.loadLoveHistory(); // love-history.json에서 데이터 로드
+    const loveHistory = await memoryManager.loadLoveHistory(); // love_history 테이블에서 데이터 로드
     const otherPeopleHistory = await memoryManager.loadOtherPeopleHistory(); // fixed_memories 테이블에서 데이터 로드
     const userMemories = await memoryManager.getMemoriesForAI(); // user_memories 테이블에서 데이터 로드
 
@@ -196,7 +191,7 @@ async function getFormattedMemoriesForAI() {
     }
 
     // 다른 사람들의 기억 (fixed_memories) 추가
-    if (otherPeopleHistory) {
+    if (otherPeopleHistory && otherPeopleHistory.ai_personal_memories) {
         memoriesContext += "\n아저씨 주변 인물 및 중요한 정보:\n";
         for (const [key, value] of Object.entries(otherPeopleHistory.ai_personal_memories)) {
             memoriesContext += `- ${key}: ${value}\n`;
@@ -209,7 +204,7 @@ async function getFormattedMemoriesForAI() {
         userMemories.forEach(mem => {
             // reminder_time이 null이 아닌 경우, 리마인더 문구도 추가
             const reminderInfo = mem.reminder_time ? ` (리마인더: ${moment(mem.reminder_time).tz('Asia/Tokyo').format('YYYY-MM-DD HH:mm')})` : '';
-            memoriesContext += `- ${mem.content}${reminderInfo}\n`;
+            memoriesContext += `- ${mem.content} [${moment(mem.timestamp).tz('Asia/Tokyo').format('YYYY-MM-DD')}]${reminderInfo}\n`;
         });
     }
 
@@ -339,7 +334,7 @@ async function getReplyByImagePrompt(base64ImageWithPrefix) {
 }
 
 /**
- * 기억 목록을 포매팅하여 공유 가능한 문자열로 반환합니다. (여전히 autoReply.js에 유지)
+ * 기억 목록을 포매팅하여 공유 가능한 문자열로 반환합니다.
  * @returns {Promise<string>} 포매팅된 기억 목록 문자열
  */
 async function getMemoryListForSharing() {
