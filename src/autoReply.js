@@ -254,7 +254,7 @@ async function getReplyByMessage(messageText) {
 
     const messages = [
         { role: 'system', content: systemPrompt },
-        { role: 'user', content: userMessage }
+        { role: 'user', content: message }
     ];
 
     try {
