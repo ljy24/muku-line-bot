@@ -1,6 +1,6 @@
 // 파일 경로: /scripts/migrate_love_history_v1.js
-// 버전: v1.2
-// 수정 내용: categories 존재 여부 체크 및 안정화
+// 버전: v1.3
+// 수정 내용: json.categories 기반으로 마이그레이션 정확히 작동
 
 const fs = require('fs');
 const path = require('path');
@@ -38,6 +38,7 @@ async function migrateLoveHistory() {
       return;
     }
 
+    // ✅ 경로 및 JSON 파싱
     const filePath = path.join(__dirname, '../data/love_history.json');
     const rawData = fs.readFileSync(filePath, 'utf8');
     const json = JSON.parse(rawData);
@@ -50,19 +51,20 @@ async function migrateLoveHistory() {
         if (Array.isArray(items)) {
           for (const item of items) {
             const { content, timestamp } = item;
-            await client.query(
-              `INSERT INTO love_history (content, timestamp, category) VALUES ($1, $2, $3)`,
-              [content, timestamp, category]
-            );
-            inserted++;
+            if (content && timestamp) {
+              await client.query(
+                `INSERT INTO love_history (content, timestamp, category) VALUES ($1, $2, $3)`,
+                [content, timestamp, category]
+              );
+              inserted++;
+            }
           }
         }
       }
+      console.log(`✅ Migration completed: ${inserted} records inserted`);
     } else {
-      console.error("❌ 'categories' 구조가 유효하지 않습니다.");
+      console.error("❌ 'categories' 필드가 JSON 안에 없습니다.");
     }
-
-    console.log(`✅ Migration completed: ${inserted} records inserted`);
   } catch (err) {
     console.error('❌ Error during migration:', err);
   } finally {
