@@ -5,6 +5,7 @@ const moment = require('moment-timezone');
 const { Client } = require('@line/bot-sdk'); // LINE 클라이언트 필요
 const {
     setCurrentMood,
+    getCurrentMoodStatus,
     updatePeriodStatus, // autoReply에서 불러오기
     isPeriodActive // autoReply에서 불러오기
 } = require('./autoReply'); // autoReply 모듈에서 함수 가져오기
