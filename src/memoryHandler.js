@@ -1,8 +1,8 @@
-// src/memoryHandler.js - v1.1 - 기억 관련 명령어 처리 핸들러 (파일 기반 memoryManager 사용)
+// src/memoryHandler.js - v1.2 - 기억 관련 명령어 처리 핸들러 (Render PostgreSQL 기반 memoryManager 사용)
 
 // 📦 필수 모듈 불러오기
 const moment = require('moment-timezone'); // Moment.js
-const memoryManager = require('./memoryManager'); // memoryManager 모듈 (이제 파일 기반으로 작동)
+const memoryManager = require('./memoryManager'); // memoryManager 모듈 (이제 Render PostgreSQL 기반으로 작동)
 const { cleanReply } = require('./autoReply'); // cleanReply 함수를 autoReply.js에서 가져옴
 
 /**
