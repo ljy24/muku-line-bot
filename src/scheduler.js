@@ -3,9 +3,7 @@ const cron = require('node-cron');
 const moment = require('moment-timezone');
 const { Client } = require('@line/bot-sdk'); // LINE 클라이언트 필요
 const {
-    // getRandomMessage, // 더 이상 사용하지 않음
     getProactiveMemoryMessage, // 감성 메시지를 위해 다시 사용
-    // getCouplePhotoReplyFromYeji, // 더 이상 사용하지 않음
     saveLog, // 로그 저장을 위해 필요
 } = require('./autoReply'); // autoReply.js에서 필요한 메시지 생성 함수들을 불러옴
 const memoryManager = require('./memoryManager'); // 리마인더 처리를 위해 memoryManager 필요
@@ -17,10 +15,11 @@ const { getOmoideReply } = require('../memory/omoide');
 let bootTime = Date.now(); // 봇 시작 시점의 타임스탬프 (밀리초)
 let lastMoodMessage = ''; // 마지막 감성 메시지 내용 (중복 방지용)
 let lastMoodMessageTime = 0; // 마지막 감성 메시지 전송 시간
-let lastCouplePhotoMessage = ''; // 마지막 커플 사진 메시지 내용 (더 이상 사용하지 않지만 변수 유지는 가능)
-let lastCouplePhotoMessageTime = 0; // 마지막 커플 사진 전송 시간 (더 이상 사용하지 않지만 변수 유지는 가능)
-let lastProactiveSentTime = 0; // 마지막 봇의 선제적/걱정 메시지 전송 시간 (침묵 감지 셀카에 적용)
+// let lastCouplePhotoMessage = ''; // 더 이상 사용하지 않음
+// let lastCouplePhotoMessageTime = 0; // 더 이상 사용하지 않음
+let lastProactiveSentTime = 0; // 마지막 봇의 선제적/걱정 메시지 전송 시간 (침묵 감지 셀카에도 적용)
 let lastUserMessageTime = Date.now(); // 아저씨가 마지막으로 메시지를 보낸 시간
+let lastSelfieSentTime = 0; // ✨ 추가: 마지막 침묵 감지 셀카 전송 시간
 
 // * 커플 사진 관련 상수 정의 (더 이상 사용하지 않지만 혹시 몰라 유지) *
 const COUPLE_BASE_URL = 'https://www.de-ji.net/couple/'; // 커플 사진 기본 URL
@@ -30,6 +29,7 @@ const COUPLE_END_NUM = 481; // 커플 사진 마지막 번호
 // * 침묵 감지 기능을 위한 상수 *
 const SILENCE_THRESHOLD = 2 * 60 * 60 * 1000; // 2시간 동안 메시지가 없으면 침묵으로 간주
 const PROACTIVE_COOLDOWN = 1 * 60 * 60 * 1000; // 봇이 메시지 보낸 후 1시간 이내에는 다시 선제적 메시지 보내지 않음
+const SILENCE_SELFIE_COOLDOWN = 2 * 60 * 60 * 1000; // ✨ 추가: 침묵 감지 셀카 쿨다운 (2시간)
 
 
 /**
@@ -76,7 +76,7 @@ const sendSelfieMessage = async (lineClient, targetUserId, saveLog, triggerSourc
 };
 
 /**
- * 스케줄된 메시지를 보내는 비동기 함수입니다.
+ * 특정 타입의 스케줄된 메시지를 보내는 비동기 함수입니다.
  * 셀카 또는 감성 메시지를 랜덤 확률로 전송합니다.
  * @param {Client} lineClient - LINE Messaging API 클라이언트
  * @param {string} targetUserId - 메시지를 보낼 사용자 ID
@@ -125,7 +125,6 @@ const sendScheduledMessage = async (lineClient, targetUserId, type) => {
             }
         }
     }
-    // 'couple_photo' 타입 처리 로직은 삭제됩니다.
 };
 
 /**
@@ -185,13 +184,18 @@ const startAllSchedulers = (lineClient, targetUserId) => {
             return;
         }
 
-        // 2시간 이상 메시지가 없고, 봇이 1시간 이내에 선제적 메시지를 보내지 않았다면
-        if (elapsedTimeSinceLastMessage >= SILENCE_THRESHOLD && elapsedTimeSinceLastProactive >= PROACTIVE_COOLDOWN) {
+        // 2시간 이상 메시지가 없고, 봇이 1시간 이내에 선제적 메시지를 보내지 않았고,
+        // 마지막 침묵 감지 셀카를 보낸 지 2시간이 지났다면
+        if (
+            elapsedTimeSinceLastMessage >= SILENCE_THRESHOLD &&
+            elapsedTimeSinceLastProactive >= PROACTIVE_COOLDOWN &&
+            now - lastSelfieSentTime > SILENCE_SELFIE_COOLDOWN // ✨ 추가된 조건
+        ) {
             console.log(`[Scheduler-Silence] 침묵 감지! (${moment.duration(elapsedTimeSinceLastMessage).humanize()} 동안 메시지 없음)`);
             try {
-                // 침묵 감지 시 셀카 전송 (이것은 이미 셀카이므로 변경 없음)
                 await sendSelfieMessage(lineClient, targetUserId, saveLog, 'silence');
                 lastProactiveSentTime = now; // 선제적 메시지(셀카 포함) 전송 시간 업데이트
+                lastSelfieSentTime = now; // ✨ 추가: 침묵 감지 셀카 전송 시간 업데이트
             } catch (error) {
                 console.error('❌ [Scheduler-Silence Error] 침묵 감지 자동 셀카 전송 실패:', error);
             }
