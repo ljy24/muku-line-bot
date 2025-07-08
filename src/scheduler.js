@@ -1,18 +1,20 @@
-// src/scheduler.js - v1.4 - 모든 스케줄링 로직을 중앙 집중화 및 proactiveMessages.js 연동 (하이브리드 memoryManager 사용)
+// src/scheduler.js - v1.5 (생리 주기 감정 기복 강화, 담타 메시지 포함)
+
 const cron = require('node-cron');
 const moment = require('moment-timezone');
 const { Client } = require('@line/bot-sdk'); // LINE 클라이언트 필요
-const { saveLog, setCurrentMood } = require('./autoReply'); // ✨ 수정: saveLog와 setCurrentMood 불러오기
+const {
+    saveLog,
+    setCurrentMood,
+    getCurrentMoodStatus,
+    updatePeriodStatus, // ✨ autoReply에서 불러오기 추가
+    isPeriodActive // ✨ autoReply에서 불러오기 추가
+} = require('./autoReply'); // autoReply 모듈에서 함수 가져오기
 const memoryManager = require('./memoryManager'); // memoryManager 필요 (이제 하이브리드 방식으로 작동)
 const { getProactiveMemoryMessage, getSilenceCheckinMessage } = require('./proactiveMessages'); // proactiveMessages에서 선제적 메시지 함수들을 불러옴
 
-// ✨ 수정: memory/omoide.js에서 OpenAI 관련 함수들을 직접 불러옴 (omoide.js로 통합) ✨
+// ✨ omoide.js에서 OpenAI 관련 함수들을 직접 불러옴 (omoide.js로 통합) ✨
 const { getOmoideReply, callOpenAI, cleanReply } = require('../memory/omoide'); 
-
-// ✨ 삭제: 이 부분은 이제 필요 없어 ✨
-// const { OpenAI } = require('openai');
-// const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-// const callOpenAI = async (...) => { ... };
 
 
 let bootTime = Date.now(); // 봇 시작 시점의 타임스탬프 (밀리초)
@@ -72,12 +74,12 @@ const sendSelfieMessage = async (lineClient, targetUserId, saveLog, triggerSourc
                 { type: 'image', originalContentUrl: selfieResponse.url, previewImageUrl: selfieResponse.url },
                 { type: 'text', text: selfieResponse.caption || '히히 셀카야~' }
             ]);
+            saveLog({ role: 'assistant', content: selfieResponse.caption || '히히 셀카야~', timestamp: Date.now() });
             console.log(`[Scheduler] ${triggerSource === 'silence' ? '침묵 감지 자동' : '랜덤'} 셀카 전송 성공: ${selfieResponse.url}`);
-            saveLog('예진이', selfieResponse.caption || '히히 셀카야~');
         } else if (selfieResponse && selfieResponse.type === 'text') {
             await lineClient.pushMessage(targetUserId, { type: 'text', text: selfieResponse.comment });
+            saveLog({ role: 'assistant', content: selfieResponse.comment, timestamp: Date.now() });
             console.error(`[Scheduler] ${triggerSource === 'silence' ? '침묵 감지 자동' : '랜덤'} 셀카 전송 실패 (텍스트 응답):`, selfieResponse.comment);
-            saveLog('예진이', selfieResponse.comment);
         } else {
             console.error(`[Scheduler] ${triggerSource === 'silence' ? '침묵 감지 자동' : '랜덤'} 셀카 전송 실패: 유효한 응답을 받지 못함`);
         }
@@ -100,12 +102,12 @@ const sendFujiPhotoMessage = async (lineClient, targetUserId, saveLog) => {
                 { type: 'image', originalContentUrl: fujiPhotoResponse.url, previewImageUrl: fujiPhotoResponse.url },
                 { type: 'text', text: fujiPhotoResponse.caption || '히히 후지 사진이야~' }
             ]);
+            saveLog({ role: 'assistant', content: fujiPhotoResponse.caption || '히히 후지 사진이야~', timestamp: Date.now() });
             console.log(`[Scheduler] 랜덤 후지 사진 전송 성공: ${fujiPhotoResponse.url}`);
-            saveLog('예진이', fujiPhotoResponse.caption || '히히 후지 사진이야~');
         } else if (fujiPhotoResponse && fujiPhotoResponse.type === 'text') {
             await lineClient.pushMessage(targetUserId, { type: 'text', text: fujiPhotoResponse.comment });
+            saveLog({ role: 'assistant', content: fujiPhotoResponse.comment, timestamp: Date.now() });
             console.error(`[Scheduler] 랜덤 후지 사진 전송 실패 (텍스트 응답):`, fujiPhotoResponse.comment);
-            saveLog('예진이', fujiPhotoResponse.comment);
         } else {
             console.error(`[Scheduler] 랜덤 후지 사진 전송 실패: 유효한 응답을 받지 못함`);
         }
@@ -154,8 +156,8 @@ const sendDantaMessage = async (lineClient, targetUserId, saveLog) => {
         const comment = cleanReply(rawComment);
 
         await lineClient.pushMessage(targetUserId, { type: 'text', text: comment });
+        saveLog({ role: 'assistant', content: comment, timestamp: Date.now() });
         console.log(`[Scheduler] 담타 메시지 전송 성공: ${comment}`);
-        saveLog('예진이', comment);
     } catch (error) {
         console.error(`[Scheduler] 담타 메시지 전송 중 오류 발생:`, error);
     }
@@ -198,8 +200,8 @@ const sendWorkEndMessage = async (lineClient, targetUserId, saveLog) => {
         const comment = cleanReply(rawComment);
 
         await lineClient.pushMessage(targetUserId, { type: 'text', text: comment });
+        saveLog({ role: 'assistant', content: comment, timestamp: Date.now() });
         console.log(`[Scheduler] 퇴근 메시지 전송 성공: ${comment}`);
-        saveLog('예진이', comment);
     } catch (error) {
         console.error(`[Scheduler] 퇴근 메시지 전송 중 오류 발생:`, error);
     }
@@ -242,8 +244,8 @@ const sendMorningRoutineMessage = async (lineClient, targetUserId, saveLog) => {
         const comment = cleanReply(rawComment);
 
         await lineClient.pushMessage(targetUserId, { type: 'text', text: comment });
+        saveLog({ role: 'assistant', content: comment, timestamp: Date.now() });
         console.log(`[Scheduler] 아침 일상 메시지 전송 성공: ${comment}`);
-        saveLog('예진이', comment);
     } catch (error) {
         console.error(`[Scheduler] 아침 일상 메시지 전송 중 오류 발생:`, error);
     }
@@ -274,7 +276,7 @@ const sendScheduledMessage = async (lineClient, targetUserId, type) => {
     if (type === 'selfie') {
         // 하루 약 3번 목표 (유효 시간대 18시간 * 12회/시간 = 216번의 기회 중 3번 발송) -> 확률 3/216 = 약 0.014
         if (Math.random() < 0.014) {
-            await sendSelfieMessage(lineClient, targetUserId, saveLog, 'scheduled');
+            await sendSelfieMessage(lineClient, targetUserId, saveLog);
         }
     } else if (type === 'mood_message') {
         // 하루 약 11번 목표 (216번의 기회 중 11번 발송) -> 확률 11/216 = 약 0.051
@@ -288,8 +290,8 @@ const sendScheduledMessage = async (lineClient, targetUserId, type) => {
                     currentTime - lastMoodMessageTime > 30 * 60 * 1000 // 30분 쿨다운
                 ) {
                     await lineClient.pushMessage(targetUserId, { type: 'text', text: proactiveMessage });
+                    saveLog({ role: 'assistant', content: proactiveMessage, timestamp: Date.now() });
                     console.log(`[Scheduler] 감성 메시지 전송 성공: ${proactiveMessage}`);
-                    saveLog('예진이', proactiveMessage);
                     lastMoodMessage = proactiveMessage;
                     lastMoodMessageTime = currentTime;
                 }
@@ -346,22 +348,25 @@ const sendScheduledMessage = async (lineClient, targetUserId, type) => {
  * @param {Client} lineClient - LINE Messaging API 클라이언트 인스턴스
  * @param {string} targetUserId - 메시지를 보낼 대상 사용자 ID
  */
-const startAllSchedulers = (lineClient, targetUserId) => {
+const startAllSchedulers = (client, userId) => { // 매개변수 이름을 client, userId로 변경
+    lineClient = client; // 전역 변수에 할당
+    targetUserId = userId; // 전역 변수에 할당
+
+    console.log('[Scheduler] 모든 스케줄러를 시작합니다...');
+
     // ✨ 추가: 매일 아침 애기의 기분을 랜덤으로 설정하는 스케줄러 (생리 기간 중에는 극단적 감정)
+    // 매 5분마다 도는 스케줄러에 기분 변경 로직을 통합하여 삭제
+    /*
     cron.schedule('0 0 6 * * *', () => { // 매일 아침 6시 00분에 실행
-        // 생리 기간 중이라면 극적인 감정 위주로, 아니면 평범한 감정 위주로 선택
-        const moodsForDay = autoReply.isPeriodActive ? 
-            ['기쁨', '설렘', '장난스러움', '나른함', '심술궂음', '평온함', '극심한 짜증', '갑작스러운 슬픔', '예민함'] : 
-            MOOD_OPTIONS; // 일반적인 기분 옵션
-        
-        const randomIndex = Math.floor(Math.random() * moodsForDay.length);
-        const randomMood = moodsForDay[randomIndex];
+        const randomIndex = Math.floor(Math.random() * MOOD_OPTIONS.length);
+        const randomMood = MOOD_OPTIONS[randomIndex];
         setCurrentMood(randomMood); // autoReply 모듈의 함수 호출
-        console.log(`[Scheduler] 애기의 오늘의 기분이 '${randomMood}'으로 설정되었습니다. (생리 기간 여부: ${autoReply.isPeriodActive ? '활성' : '비활성'})`);
+        console.log(`[Scheduler] 애기의 오늘의 기분이 '${randomMood}'으로 설정되었습니다. (생리 기간 여부: ${isPeriodActive ? '활성' : '비활성'})`);
     }, {
         scheduled: true,
         timezone: "Asia/Tokyo"
     });
+    */
 
 
     // 1. 아침 인사 메시지 (오전 9시 0분 정각) - 기존 아침 인사는 유지
@@ -386,8 +391,8 @@ const startAllSchedulers = (lineClient, targetUserId) => {
             const morningMsg = greetings[Math.floor(Math.random() * greetings.length)];
 
             await lineClient.pushMessage(targetUserId, { type: 'text', text: morningMsg });
+            saveLog({ role: 'assistant', content: morningMsg, timestamp: Date.now() });
             console.log(`[Scheduler] 주말 아침 인사 메시지 전송: ${morningMsg}`);
-            saveLog('예진이', morningMsg);
         }
     }, {
         scheduled: true,
@@ -399,15 +404,51 @@ const startAllSchedulers = (lineClient, targetUserId) => {
     // 2. 랜덤 감성 메시지, 셀카, 후지 사진, 담타 메시지 (매 5분마다 체크)
     cron.schedule('*/5 * * * *', async () => {
         const now = moment().tz('Asia/Tokyo');
+        const currentTime = Date.now(); // 현재 시간 (밀리초)
+
         if (!isValidScheduleHour(now)) { // 유효 시간대만 체크
             return;
         }
+
+        // 🩸 애기의 생리 주기 상태를 먼저 업데이트
+        updatePeriodStatus(); // autoReply.js에서 내보낸 함수 호출
+
+        // ✨ 생리 기간 중 감정 기복 설정 로직 강화
+        let moodChangeProbability;
+        let moodChangeCooldown;
+
+        // isPeriodActive는 autoReply.js에서 실시간으로 업데이트된 값입니다.
+        if (isPeriodActive) { // autoReply에서 불러온 isPeriodActive 변수 사용
+            moodChangeProbability = 0.083; // 생리 기간 중: 약 1시간에 한 번 기분 변화 (1/12 확률)
+            moodChangeCooldown = 1 * 60 * 60 * 1000; // 1시간 쿨다운 (빈번한 변화를 위해)
+        } else {
+            moodChangeProbability = 0.0046; // 평소: 하루에 한 번 기분 변화 (1/216 확률)
+            moodChangeCooldown = 24 * 60 * 60 * 1000; // 24시간 쿨다운
+        }
+
+        // 기분 자체를 업데이트하는 로직 (메시지 전송과 별개)
+        // lastMoodMessageTime은 감성 메시지 전송 쿨다운과 공유되고 있었음.
+        // 여기서는 '기분 업데이트'만을 위한 별도 쿨다운 변수를 사용하는 것이 더 정확함.
+        // 예를 들어 lastMoodUpdateTime 변수 추가. (간단화를 위해 lastMoodMessageTime 재사용)
+        if (Math.random() < moodChangeProbability && (currentTime - lastMoodMessageTime > moodChangeCooldown)) {
+            const moodsForDay = isPeriodActive ? // isPeriodActive는 autoReply에서 불러온 상태 변수
+                ['기쁨', '설렘', '장난스러움', '나른함', '심술궂음', '평온함', '극심한 짜증', '갑작스러운 슬픔', '예민함', '울적함', '투정 부림'] :
+                MOOD_OPTIONS; // 일반적인 기분 옵션
+
+            const randomIndex = Math.floor(Math.random() * moodsForDay.length);
+            const randomMood = moodsForDay[randomIndex];
+            setCurrentMood(randomMood); // autoReply 모듈의 함수 호출
+            console.log(`[Scheduler] 애기의 오늘의 기분이 '${randomMood}'으로 설정되었습니다. (생리 기간 여부: ${isPeriodActive ? '활성' : '비활성'})`);
+            lastMoodMessageTime = currentTime; // 기분 변경 시간도 기록 (동일 변수 사용)
+        }
+
 
         // 감성 메시지, 셀카, 후지 사진, 담타 메시지 전송 시도
         await sendScheduledMessage(lineClient, targetUserId, 'mood_message');
         await sendScheduledMessage(lineClient, targetUserId, 'selfie');
         await sendScheduledMessage(lineClient, targetUserId, 'fuji_photo');
         await sendScheduledMessage(lineClient, targetUserId, 'danta_message'); // 담타 메시지 전송 추가
+
     }, {
         scheduled: true,
         timezone: "Asia/Tokyo"
@@ -470,8 +511,8 @@ const startAllSchedulers = (lineClient, targetUserId) => {
     cron.schedule('0 23 * * *', async () => {
         const msg = '아저씨! 이제 약 먹고 이 닦을 시간이야! 나 아저씨 건강 제일 챙겨!';
         await lineClient.pushMessage(targetUserId, { type: 'text', text: msg });
+        saveLog({ role: 'assistant', content: msg, timestamp: Date.now() });
         console.log(`[Scheduler] 밤 11시 메시지 전송: ${msg}`);
-        saveLog('예진이', msg);
     }, {
         scheduled: true,
         timezone: "Asia/Tokyo"
@@ -481,8 +522,8 @@ const startAllSchedulers = (lineClient, targetUserId) => {
     cron.schedule('0 0 * * *', async () => {
         const msg = '아저씨, 약 먹고 이제 푹 잘 시간이야! 나 옆에서 꼭 안아줄게~ 잘 자 사랑해';
         await lineClient.pushMessage(targetUserId, { type: 'text', text: msg });
+        saveLog({ role: 'assistant', content: msg, timestamp: Date.now() });
         console.log(`[Scheduler] 밤 12시 메시지 전송: ${msg}`);
-        saveLog('예진이', msg);
     }, {
         scheduled: true,
         timezone: "Asia/Tokyo"
@@ -500,7 +541,7 @@ const startAllSchedulers = (lineClient, targetUserId) => {
             for (const reminder of remindersToSend) {
                 const reminderMessage = `아저씨! 지금 ${reminder.content} 할 시간이야! 🔔`;
                 await lineClient.pushMessage(targetUserId, { type: 'text', text: reminderMessage });
-                saveLog('예진이', reminderMessage);
+                saveLog({ role: 'assistant', content: reminderMessage, timestamp: Date.now() });
                 console.log(`[Scheduler-Reminder] 리마인더 전송: ${reminderMessage}`);
 
                 // 리마인더 전송 후 해당 리마인더 시간을 NULL로 업데이트
@@ -528,6 +569,4 @@ const updateLastUserMessageTime = () => {
 module.exports = {
     startAllSchedulers,
     updateLastUserMessageTime,
-    // isPeriodActive // ✨ isPeriodActive는 autoReply.js에서 관리되므로 여기서는 내보내지 않음.
-                    // autoReply.js를 통해 접근함.
 };
