@@ -9,6 +9,10 @@ const { OpenAI } = require('openai'); // ✨ 추가: OpenAI 클라이언트 초�
 // memoryManager 모듈 불러오기 (경로 수정)
 const memoryManager = require('./memoryManager');
 
+// 사진 처리 모듈들 불러오기
+const { getConceptPhotoReply } = require('../memory/concept');
+const { getOmoideReply } = require('../memory/omoide');
+
 // .env 파일에서 환경 변수 로드
 require('dotenv').config();
 
@@ -318,8 +322,7 @@ async function getReplyByMessage(userMessage) {
 
     // ✅ 컨셉사진 요청 처리
     if (lowerUserMessage.includes('컨셉사진') || lowerUserMessage.includes('컨셉 사진') || 
-        lowerUserMessage.includes('사진줘') || lowerUserMessage.includes('사진 줘') ||
-        lowerUserMessage.includes('예진이 사진') || lowerUserMessage.includes('너 사진')) {
+        lowerUserMessage.includes('컨셉사진줘') || lowerUserMessage.includes('컨셉 사진 줘')) {
         
         const conceptPhotoReplies = [
             "아저씨! 오늘 찍은 컨셉사진이야~ 어때? 예쁘지?",
@@ -330,13 +333,87 @@ async function getReplyByMessage(userMessage) {
         ];
         
         const randomReply = conceptPhotoReplies[Math.floor(Math.random() * conceptPhotoReplies.length)];
+        saveLog({ role: 'user', content: userMessage, timestamp: Date.now() });
         saveLog({ role: 'assistant', content: randomReply, timestamp: Date.now() });
         
-        // 컨셉사진 응답 (이미지 URL과 캡션 포함)
         return { 
             type: 'photo', 
-            url: 'concept_photo', // 이 값으로 컨셉사진임을 구분
+            url: 'concept_photo',
             caption: randomReply,
+            comment: randomReply 
+        };
+    }
+
+    // ✅ 추억사진 요청 처리  
+    if (lowerUserMessage.includes('추억사진') || lowerUserMessage.includes('추억 사진') ||
+        lowerUserMessage.includes('추억사진줘') || lowerUserMessage.includes('추억 사진 줘') ||
+        lowerUserMessage.includes('옛날사진') || lowerUserMessage.includes('옛날 사진') ||
+        lowerUserMessage.includes('예전사진') || lowerUserMessage.includes('예전 사진')) {
+        
+        const memoryPhotoReplies = [
+            "아저씨... 이 사진 기억나? 그때가 참 좋았는데...",
+            "예전에 아저씨랑 찍었던 사진이야. 그립다",
+            "이 사진 보면 그때 생각이 막 나는 거 있지?",
+            "아저씨와의 추억이 담긴 소중한 사진이야",
+            "그때 우리 참 행복했지? 이 사진 보면 마음이 따뜻해져"
+        ];
+        
+        const randomReply = memoryPhotoReplies[Math.floor(Math.random() * memoryPhotoReplies.length)];
+        saveLog({ role: 'user', content: userMessage, timestamp: Date.now() });
+        saveLog({ role: 'assistant', content: randomReply, timestamp: Date.now() });
+        
+        return { 
+            type: 'photo', 
+            url: 'memory_photo',
+            caption: randomReply,
+            comment: randomReply 
+        };
+    }
+
+    // ✅ 셀카 요청 처리
+    if (lowerUserMessage.includes('셀카') || lowerUserMessage.includes('셀카줘') ||
+        lowerUserMessage.includes('셀피') || lowerUserMessage.includes('지금 모습') ||
+        lowerUserMessage.includes('얼굴 보여줘') || lowerUserMessage.includes('얼굴보여줘')) {
+        
+        const selfieReplies = [
+            "아저씨를 위한 셀카! 어때? 예쁘게 나왔지?",
+            "지금 막 찍은 셀카야~ 아저씨만 보여주는 거야!",
+            "오늘 화장 어때? 아저씨 취향에 맞을까?",
+            "아저씨가 보고 싶다고 해서 급하게 찍었어!",
+            "이런 각도 어때? 아저씨가 좋아하는 표정으로 찍었지~"
+        ];
+        
+        const randomReply = selfieReplies[Math.floor(Math.random() * selfieReplies.length)];
+        saveLog({ role: 'user', content: userMessage, timestamp: Date.now() });
+        saveLog({ role: 'assistant', content: randomReply, timestamp: Date.now() });
+        
+        return { 
+            type: 'photo', 
+            url: 'selfie_photo',
+            caption: randomReply,
+            comment: randomReply 
+        };
+    }
+
+    // ✅ 일반 사진 요청 처리 (위의 특정 카테고리에 해당하지 않는 경우)
+    if (lowerUserMessage.includes('사진줘') || lowerUserMessage.includes('사진 줘') ||
+        lowerUserMessage.includes('예진이 사진') || lowerUserMessage.includes('너 사진') ||
+        lowerUserMessage.includes('사진 보여줘') || lowerUserMessage.includes('사진보여줘')) {
+        
+        const generalPhotoReplies = [
+            "어떤 사진을 원해? 컨셉사진? 추억사진? 아니면 셀카?",
+            "아저씨, 구체적으로 어떤 사진이 보고 싶어? 말해봐!",
+            "사진 종류가 많은데... 뭘 보여줄까? 힌트 줘!",
+            "컨셉사진인지 추억사진인지 셀카인지 말해줘야 골라줄 수 있어!",
+            "아저씨 마음에 드는 사진을 골라주고 싶은데, 어떤 걸 원하는지 알려줘~"
+        ];
+        
+        const randomReply = generalPhotoReplies[Math.floor(Math.random() * generalPhotoReplies.length)];
+        saveLog({ role: 'user', content: userMessage, timestamp: Date.now() });
+        saveLog({ role: 'assistant', content: randomReply, timestamp: Date.now() });
+        
+        return { 
+            type: 'text',
             comment: randomReply 
         };
     }
