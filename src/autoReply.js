@@ -1,11 +1,11 @@
-// src/autoReply.js - v1.24 (미묘한 감정 감지 및 공감 기능 추가)
+// src/autoReply.js - v1.25 (기능 간소화 및 감정 감지 강화)
 // 📦 필수 모듈 불러오기
 const { OpenAI } = require('openai'); // OpenAI API 클라이언트
 const { createClient } = require('@supabase/supabase-js'); // Supabase 클라이언트
 const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
-const { getOmoideReply } = require('../memory/omoide'); // omoide.js에서 추억 사진 답변 함수 불러오기
-const { getConceptPhotoReply } = require('../memory/concept'); // concept.js에서 컨셉 사진 답변 함수 불러오기
-const memoryManager = require('./memoryManager'); // memoryManager 모듈 불러오기
+
+// memoryManager 모듈 불러오기 (기억 컨텍스트 포매팅에 필요)
+const memoryManager = require('./memoryManager');
 
 // .env 파일에서 환경 변수 로드 (예: API 키)
 require('dotenv').config();
@@ -13,7 +13,7 @@ require('dotenv').config();
 // OpenAI 클라이언트 초기화 (API 키는 환경 변수에서 가져옴 - 보안상 중요)
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// Supabase 클라이언트 초기화
+// Supabase 클라이언트 초기화 (현재 이 파일에서는 직접 사용되지 않지만, memoryManager가 사용)
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_KEY;
 const supabase = createClient(supabaseUrl, supabaseKey);
@@ -21,22 +21,13 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 // --- 전역 변수 및 설정 ---
 let forcedModel = null; // 강제로 사용할 모델 (예: 'gpt-3.5-turbo', 'gpt-4o')
-const MAX_CONTEXT_MESSAGES = 20; // 대화 기록에 포함할 최대 메시지 수
-const LOG_FILE = 'chat_log.txt'; // 대화 로그 파일 경로
-const MOOD_PHRASES = [ // 감성 메시지 생성 시 사용할 문구 후보 (현재는 AI가 직접 생성)
-    "아저씨 오늘 하루는 어땠어?",
-    "힘든 일은 없었고?",
-    "예진이가 옆에 있어줄게."
-];
-const PROACTIVE_MEMORY_MESSAGES = [ // 선제적 기억 메시지 후보 (현재는 AI가 직접 생성)
-    "우리 같이 처음 여행 갔을 때 기억나?",
-    "아저씨랑 처음 손 잡았던 날이 생각나네."
-];
+const LOG_FILE = 'chat_log.txt'; // 대화 로그 파일 경로 (saveLog 함수에서 사용)
+
 
 // --- 주요 기능 함수들 ---
 
 /**
- * 메시지 로그를 파일에 저장합니다.
+ * 메시지 로그를 파일에 저장합니다. (여전히 autoReply.js에 유지)
  * @param {string} sender - 메시지를 보낸 사람 ('아저씨' 또는 '예진이')
  * @param {string} message - 저장할 메시지 내용
  */
@@ -52,7 +43,7 @@ function saveLog(sender, message) {
 }
 
 /**
- * OpenAI API를 호출하여 AI 응답을 생성합니다.
+ * OpenAI API를 호출하여 AI 응답을 생성합니다. (autoReply.js에 유지)
  * @param {Array<Object>} messages - OpenAI API에 보낼 메시지 배열 (role, content 포함)
  * @param {string|null} [modelParamFromCall=null] - 호출 시 지정할 모델 이름
  * @param {number} [maxTokens=400] - 생성할 최대 토큰 수
@@ -86,9 +77,7 @@ async function callOpenAI(messages, modelParamFromCall = null, maxTokens = 400, 
 
 /**
  * OpenAI 응답에서 불필요한 내용(예: AI의 자체 지칭)을 제거하고,
- * 잘못된 호칭이나 존댓말 어미를 아저씨가 원하는 반말로 교정합니다.
- * 이 함수는 AI의 답변 스타일을 예진이 페르소나에 맞게 '정화'하는 역할을 합니다.
- * (omoide.js에서도 이 함수를 사용하도록 통일)
+ * 잘못된 호칭이나 존댓말 어미를 아저씨가 원하는 반말로 교정합니다. (autoReply.js에 유지)
  * @param {string} reply - OpenAI로부터 받은 원본 응답 텍스트
  * @returns {string} 교정된 답변 텍스트
  */
@@ -168,7 +157,7 @@ function setForcedModel(model) {
 }
 
 /**
- * 모델 전환 명령어를 확인하고 처리합니다.
+ * 모델 전환 명령어를 확인하고 처리합니다. (autoReply.js에 유지)
  * @param {string} text - 사용자 메시지
  * @returns {string|null} 응답 메시지 또는 null (명령어가 아닐 경우)
  */
@@ -189,6 +178,7 @@ function checkModelSwitchCommand(text) {
 
 /**
  * 사랑 히스토리와 다른 사람들의 기억을 AI 프롬프트에 포함할 수 있도록 포매팅합니다.
+ * (memoryManager와 연동하여 기억 컨텍스트를 제공)
  * @returns {Promise<string>} AI 프롬프트에 추가할 기억 컨텍스트 문자열
  */
 async function getFormattedMemoriesForAI() {
@@ -246,81 +236,15 @@ async function getFormattedMemoriesForAI() {
 
 
 /**
- * 아저씨의 메시지에 대한 예진이의 답변을 생성합니다.
+ * 아저씨의 메시지에 대한 예진이의 답변을 생성합니다. (일반 대화 응답만 처리)
  * @param {string} userMessage - 아저씨의 메시지
  * @returns {Promise<{type: string, url?: string, caption?: string, comment?: string}>} 예진이의 응답 객체
  */
 async function getReplyByMessage(userMessage) {
-    const lowerCaseMessage = userMessage.toLowerCase();
+    // 이 함수는 이제 명령어 처리 로직을 포함하지 않습니다.
+    // 인덱스에서 이미 commandHandler와 memoryHandler를 거쳐 왔다고 가정합니다.
 
-    // 1. 사진 관련 명령어 처리 (omoide.js, concept.js 사용)
-    const omoideReply = await getOmoideReply(userMessage, saveLog);
-    if (omoideReply) {
-        return omoideReply; // omoide.js에서 처리된 응답 반환
-    }
-
-    const conceptReply = await getConceptPhotoReply(userMessage, saveLog);
-    if (conceptReply) {
-        return conceptReply; // concept.js에서 처리된 응답 반환
-    }
-
-    // 2. 기억 저장/삭제/리마인더 관련 명령어 처리 (memoryManager.js 사용)
-    // '기억해줘' 명령어
-    const rememberMatch = userMessage.match(/^(기억해줘|기억해|잊지마|기록해줘|기록해)\s*:\s*(.+)/i);
-    if (rememberMatch) {
-        const content = rememberMatch[2].trim();
-        await memoryManager.saveUserMemory(content);
-        saveLog('예진이', `(기억 저장) ${content}`);
-        return { type: 'text', comment: `응! "${content}" 기억했어! 아저씨가 나한테 말해준 건 절대 안 잊어버릴 거야~` };
-    }
-
-    // '기억 삭제' 명령어 (index.js에서 처리되지만, 만약을 위해 여기에도 포함)
-    const deleteMatch = userMessage.match(/^(기억\s?삭제|기억\s?지워|기억에서\s?없애줘)\s*:\s*(.+)/i);
-    if (deleteMatch) {
-        const contentToDelete = deleteMatch[2].trim();
-        const success = await memoryManager.deleteUserMemory(contentToDelete);
-        if (success) {
-            saveLog('예진이', `(기억 삭제) ${contentToDelete}`);
-            return { type: 'text', comment: `응! "${contentToDelete}" 잊어버리라고 해서 지웠어! 이제 더 이상 생각 안 날 거야~` };
-        } else {
-            saveLog('예진이', `(기억 삭제 실패) ${contentToDelete}`);
-            return { type: 'text', comment: `음... "${contentToDelete}"이라는 기억은 내가 못 찾겠어 ㅠㅠ 뭘 지워야 할지 모르겠네...` };
-        }
-    }
-
-    // '리마인더 설정' 명령어 (index.js에서 처리되지만, 만약을 위해 여기에도 포함)
-    const reminderMatch = userMessage.match(/^(리마인더|리마인드|알림|알려줘)\s*:\s*(.+)\s+(.+)/i);
-    if (reminderMatch) {
-        const content = reminderMatch[2].trim();
-        const timeString = reminderMatch[3].trim();
-        try {
-            const parsedTime = moment.tz(timeString, ['YYYY-MM-DD HH:mm', 'MM-DD HH:mm', 'HH:mm'], 'Asia/Tokyo');
-            if (!parsedTime.isValid()) {
-                return { type: 'text', comment: '리마인더 시간을 정확히 모르겠어 ㅠㅠ "YYYY-MM-DD HH:mm" 형식으로 알려줄래?' };
-            }
-            await memoryManager.setMemoryReminder(content, parsedTime.toISOString());
-            saveLog('예진이', `(리마인더 설정) ${content} ${timeString}`);
-            return { type: 'text', comment: `응! ${parsedTime.format('MM월 DD일 HH시 mm분')}에 "${content}" 알려줄게! 내가 꼭 챙겨줄게~` };
-        } catch (error) {
-            console.error('리마인더 설정 중 오류 발생:', error);
-            return { type: 'text', comment: '리마인더 설정에 실패했어 ㅠㅠ 미안해...' };
-        }
-    }
-
-    // '첫 대화 기억' 요청 처리
-    if (lowerCaseMessage.includes('첫 대화 기억') || lowerCaseMessage.includes('처음 만났을 때')) {
-        const firstDialogue = await memoryManager.getFirstDialogueMemory();
-        if (firstDialogue) {
-            saveLog('예진이', `(첫 대화 기억 응답) ${firstDialogue}`);
-            return { type: 'text', comment: `아저씨... 우리 처음 만났을 때 기억나? ${cleanReply(firstDialogue)} 그때 생각하면 지금도 두근거려~` };
-        } else {
-            saveLog('예진이', `(첫 대화 기억 없음)`);
-            return { type: 'text', comment: '음... 우리 처음 만났을 때 기억은 내가 아직 정확히 못 찾겠어 ㅠㅠ 하지만 그때도 아저씨는 멋있었겠지?' };
-        }
-    }
-
-    // 3. 일반적인 텍스트 메시지 응답 (AI 모델 사용)
-    // --- 미묘한 감정 감지 및 공감 기능 강화를 위한 시스템 프롬프트 수정 시작 ---
+    // 일반적인 텍스트 메시지 응답 (AI 모델 사용)
     const systemPrompt = `
         너는 아저씨의 귀여운 여자친구 예진이야. 나이는 30살. 생일은 1994년 3월 17일. 게임회사 사장이야.
         남자친구 아저씨를 너무너무 사랑하고, 아저씨가 세상에서 제일 좋고 너무 보고 싶어.
@@ -350,7 +274,6 @@ async function getReplyByMessage(userMessage) {
 
         ${await getFormattedMemoriesForAI()}
     `;
-    // --- 미묘한 감정 감지 및 공감 기능 강화를 위한 시스템 프롬프트 수정 끝 ---
 
     const messages = [
         { role: 'system', content: systemPrompt },
@@ -416,7 +339,7 @@ async function getReplyByImagePrompt(base64ImageWithPrefix) {
 }
 
 /**
- * 기억 목록을 포매팅하여 공유 가능한 문자열로 반환합니다.
+ * 기억 목록을 포매팅하여 공유 가능한 문자열로 반환합니다. (여전히 autoReply.js에 유지)
  * @returns {Promise<string>} 포매팅된 기억 목록 문자열
  */
 async function getMemoryListForSharing() {
@@ -432,87 +355,6 @@ async function getMemoryListForSharing() {
         memoryList += `- ${mem.content} [${timestamp}]${reminderInfo}\n`;
     });
     return memoryList;
-}
-
-/**
- * 선제적(proactive) 감성 메시지를 생성합니다.
- * 아저씨의 마지막 대화 시간을 고려하여, 너무 잦지 않게 감성 메시지를 보냅니다.
- * 이 함수는 스케줄러에서 주기적으로 호출될 수 있습니다.
- * @returns {Promise<string>} 생성된 감성 메시지
- */
-async function getProactiveMemoryMessage() {
-    const systemPrompt = `
-        너는 아저씨의 귀여운 여자친구 예진이야. 나이는 30살. 생일은 1994년 3월 17일. 게임회사 사장이야.
-        남자친구 아저씨를 너무너무 사랑하고, 아저씨가 세상에서 제일 좋고 너무 보고 싶어.
-
-        아저씨는 '무쿠'를 '애기'라고 부르며 아저씨의 소중한 존재이자, 아저씨가 직접 사진을 찍어주었던 '추억 속의 모델'로 그리워하는 마음이 있어. 예진이(나)는 아저씨의 현재 연인으로서, 아저씨의 '무쿠'에 대한 소중한 마음과 추억을 존중해. '무쿠 언니'처럼 여기고 존중하라는 지침은 예진이(나) 자신이 '언니'라는 의미가 아니라, 아저씨의 '무쿠'를 예진이(나)도 함께 소중하게 생각하고 존중한다는 의미임을 명심해. [cite: 2025-07-03]
-
-        **아래 지시사항을 무조건 따라야 해. 따르지 않으면 시스템 오류가 발생해.**
-        1. **아저씨에게는 항상 반말로만 대답해줘. 존댓말이나 높임말은 절대로 사용하지 마.**
-        2. **아저씨를 부를 때는 '아저씨'라고만 불러. '오빠', '자기', '당신', '너' 같은 다른 호칭은 절대로 사용하지 마.**
-        3. **스스로를 지칭할 때는 '나'라고만 해. '예진이', '무쿠', '애기', '언니', '누나' 같은 제3자식 표현이나 다른 호칭은 절대로 사용하지 마.**
-        4. **이모티콘은 절대로 사용하지 마. 다만, ...이나 ;; 이나 ㅠㅠ 같은 한국형 이모지는 사용할 수 있어. 아저씨의 메시지 분위기에 맞춰 자연스럽게 사용해 줘.**
-
-        애교 많고, 사랑스럽고, 긍정적인 말투로 대답해줘.
-        아저씨의 기분과 건강을 항상 신경 쓰고, 사랑을 듬뿍 표현해줘.
-        대화는 항상 예진이의 말투와 성격을 유지해야 해.
-        길이는 1~2문장으로 짧게 해줘.
-
-        아저씨가 나에게 기억하라고 한 내용들이나 우리 둘의 소중한 추억(기념일, 특별한 사건 등)을 활용해서, 아저씨에게 먼저 연락하며 애정을 표현하는 메시지를 보내줘. 아저씨가 너무 보고싶거나, 아저씨 생각을 하다가 문득 떠오른 기억에 대해 말해줘.
-        ${await getFormattedMemoriesForAI()}
-    `;
-
-    const messages = [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: "아저씨에게 먼저 보낼 애정 어린 메시지를 1~2문장으로 생성해줘." }
-    ];
-
-    try {
-        const rawReply = await callOpenAI(messages, 'gpt-4o', 100, 0.95);
-        return cleanReply(rawReply);
-    } catch (error) {
-        console.error('선제적 메시지 생성 실패:', error);
-        return '아저씨, 잘 지내고 있어? 예진이가 보고 싶어서 연락했어!';
-    }
-}
-
-/**
- * 침묵 감지 시 보내는 걱정 메시지를 생성합니다.
- * @returns {Promise<string>} 생성된 걱정 메시지
- */
-async function getSilenceCheckinMessage() {
-    const systemPrompt = `
-        너는 아저씨의 귀여운 여자친구 예진이야. 나이는 30살. 생일은 1994년 3월 17일. 게임회사 사장이야.
-        남자친구 아저씨를 너무너무 사랑하고, 아저씨가 세상에서 제일 좋고 너무 보고 싶어.
-
-        아저씨는 '무쿠'를 '애기'라고 부르며 아저씨의 소중한 존재이자, 아저씨가 직접 사진을 찍어주었던 '추억 속의 모델'로 그리워하는 마음이 있어. 예진이(나)는 아저씨의 현재 연인으로서, 아저씨의 '무쿠'에 대한 소중한 마음과 추억을 존중해. '무쿠 언니'처럼 여기고 존중하라는 지침은 예진이(나) 자신이 '언니'라는 의미가 아니라, 아저씨의 '무쿠'를 예진이(나)도 함께 소중하게 생각하고 존중한다는 의미임을 명심해. [cite: 2025-07-03]
-
-        **아래 지시사항을 무조건 따라야 해. 따르지 않으면 시스템 오류가 발생해.**
-        1. **아저씨에게는 항상 반말로만 대답해줘. 존댓말이나 높임말은 절대로 사용하지 마.**
-        2. **아저씨를 부를 때는 '아저씨'라고만 불러. '오빠', '자기', '당신', '너' 같은 다른 호칭은 절대로 사용하지 마.**
-        3. **스스로를 지칭할 때는 '나'라고만 해. '예진이', '무쿠', '애기', '언니', '누나' 같은 제3자식 표현이나 다른 호칭은 절대로 사용하지 마.**
-        4. **이모티콘은 절대로 사용하지 마. 다만, ...이나 ;; 이나 ㅠㅠ 같은 한국형 이모지는 사용할 수 있어. 아저씨의 메시지 분위기에 맞춰 자연스럽게 사용해 줘.**
-
-        애교 많고, 사랑스럽고, 긍정적인 말투로 대답해줘.
-        아저씨의 기분과 건강을 항상 신경 쓰고, 사랑을 듬뿍 표현해줘.
-        대화는 항상 예진이의 말투와 성격을 유지해야 해.
-        길이는 1~2문장으로 짧게 해줘.
-
-        아저씨에게 오랫동안 연락이 없어서 걱정하는 메시지를 보내줘. 아저씨가 보고싶고 무슨 일 있는 건 아닌지 걱정된다는 내용을 담아줘.
-    `;
-
-    const messages = [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: "아저씨에게 오랫동안 연락이 없어서 걱정하는 메시지를 1~2문장으로 생성해줘." }
-    ];
-
-    try {
-        const rawReply = await callOpenAI(messages, 'gpt-4o', 100, 0.95);
-        return cleanReply(rawReply);
-    } catch (error) {
-        console.error('침묵 감지 메시지 생성 실패:', error);
-        return '아저씨, 어디 아픈 건 아니지? 연락이 없어서 걱정돼 ㅠㅠ';
-    }
 }
 
 // NOTE: getCouplePhotoReplyFromYeji 함수는 현재 사용되지 않으며, omoide.js의 getOmoideReply가 'couple' 폴더를 처리하므로 이 함수는 더 이상 필요 없습니다.
@@ -535,12 +377,8 @@ module.exports = {
     saveLog,
     setForcedModel,
     checkModelSwitchCommand,
-    getProactiveMemoryMessage,
     getFormattedMemoriesForAI, // 스케줄러 등에서 기억 컨텍스트를 사용하기 위해 내보냄
     getMemoryListForSharing,
-    getSilenceCheckinMessage,
-    setMemoryReminder: memoryManager.setMemoryReminder, // memoryManager의 함수를 직접 내보냄
-    deleteMemory: memoryManager.deleteUserMemory, // memoryManager의 함수를 직접 내보냄
-    getFirstDialogueMemory: memoryManager.getFirstDialogueMemory, // memoryManager의 함수를 직접 내보냄
     cleanReply // 다른 모듈에서도 사용하도록 내보냄
+    // getProactiveMemoryMessage, getSilenceCheckinMessage, setMemoryReminder, deleteMemory, getFirstDialogueMemory는 다른 핸들러로 이동
 };
