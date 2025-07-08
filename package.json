@@ -16,7 +16,8 @@
     "node-cron": "^3.0.3",
     "openai": "^4.30.0",
     "string-similarity": "^4.0.4",
-    "pg": "^8.x.x"
+    "pg": "^8.x.x",
+    "@supabase/supabase-js": "^2.x.x"  // 이 줄을 추가합니다. (최신 버전으로)
   },
   "engines": {
     "node": ">=18.0.0"
