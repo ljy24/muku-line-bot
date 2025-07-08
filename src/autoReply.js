@@ -1,23 +1,27 @@
 // src/autoReply.js - v1.28 (PostgreSQL 제거, 순수 파일 기반 memoryManager 사용)
 // 📦 필수 모듈 불러오기
-const { OpenAI } = require('openai'); // OpenAI API 클라이언트
+// const { OpenAI } = require('openai'); // ✨ 삭제: OpenAI 클라이언트 초기화는 omoide.js에서 담당
 const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
 
 // memoryManager 모듈 불러오기 (이제 순수 파일 기반으로 작동)
 const memoryManager = require('./memoryManager');
-const { getOmoideReply } = require('../memory/omoide'); // omoide.js에서 추억 사진 답변 함수 불러오기
+const { getOmoideReply, callOpenAI, cleanReply } = require('../memory/omoide'); // ✨ 수정: omoide.js에서 callOpenAI, cleanReply 불러오기
 const { getConceptPhotoReply } = require('../memory/concept'); // concept.js에서 컨셉 사진 답변 함수 불러오기
 
 // .env 파일에서 환경 변수 로드 (예: API 키)
 require('dotenv').config();
 
 // OpenAI 클라이언트 초기화 (API 키는 환경 변수에서 가져옴 - 보안상 중요)
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY }); // ✨ 삭제: omoide.js에서 담당
 
 
 // --- 전역 변수 및 설정 ---
 let forcedModel = null; // 강제로 사용할 모델 (예: 'gpt-3.5-turbo', 'gpt-4o')
 const LOG_FILE = 'chat_log.txt'; // 대화 로그 파일 경로 (saveLog 함수에서 사용)
+
+// ✨ 추가: 애기의 오늘의 기분 관련 변수
+let currentMood = '평온함'; // 기본값 설정 (기쁨, 설렘, 장난스러움, 나른함, 심술궂음, 평온함 등)
+const MOOD_OPTIONS = ['기쁨', '설렘', '장난스러움', '나른함', '심술궂음', '평온함']; // 애기가 가질 수 있는 기분들
 
 
 // --- 주요 기능 함수들 ---
@@ -38,101 +42,26 @@ function saveLog(sender, message) {
     });
 }
 
+// ✨ 삭제: callOpenAI 함수는 omoide.js (혹은 openaiClient.js)로 이동
+// async function callOpenAI(...) { ... }
+
+// ✨ 삭제: cleanReply 함수는 omoide.js (혹은 openaiClient.js)로 이동
+// function cleanReply(...) { ... }
+
+
 /**
- * OpenAI API를 호출하여 AI 응답을 생성합니다.
- * @param {Array<Object>} messages - OpenAI API에 보낼 메시지 배열 (role, content 포함)
- * @param {string|null} [modelParamFromCall=null] - 호출 시 지정할 모델 이름
- * @param {number} [maxTokens=400] - 생성할 최대 토큰 수
- * @param {number} [temperature=0.95] - 응답의 창의성/무작위성 (높을수록 창의적)
- * @returns {Promise<string>} AI가 생성한 응답 텍스트
+ * 애기의 현재 기분을 설정합니다.
+ * @param {string} mood - 설정할 기분 (예: '기쁨', '설렘')
  */
-async function callOpenAI(messages, modelParamFromCall = null, maxTokens = 400, temperature = 0.95) {
-    const defaultModel = process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o'; // 환경 변수에서 기본 모델 가져오기
-    let finalModel = forcedModel || modelParamFromCall || defaultModel; // 강제 모델 > 호출 시 지정 모델 > 기본 모델
-
-    if (!finalModel) {
-        console.error("오류: OpenAI 모델 파라미터가 최종적으로 결정되지 않았습니다. 'gpt-4o'로 폴백합니다.");
-        finalModel = 'gpt-4o'; // 최종 폴백
-    }
-
-    try {
-        console.log(`[autoReply:callOpenAI] 모델 호출 시작: ${finalModel}`);
-        const response = await openai.chat.completions.create({
-            model: finalModel,
-            messages: messages,
-            max_tokens: maxTokens,
-            temperature: temperature
-        });
-        console.log(`[autoReply:callOpenAI] 모델 응답 수신 완료.`);
-        return response.choices[0].message.content.trim();
-    } catch (error) {
-        console.error(`[autoReply:callOpenAI] OpenAI API 호출 실패 (모델: ${finalModel}):`, error);
-        return "지금 잠시 생각 중이야... 아저씨 조금만 기다려줄래? ㅠㅠ";
+function setCurrentMood(mood) {
+    if (MOOD_OPTIONS.includes(mood)) {
+        currentMood = mood;
+        console.log(`[autoReply] 애기의 현재 기분이 '${currentMood}'으로 변경되었습니다.`);
+    } else {
+        console.warn(`[autoReply] 유효하지 않은 기분 설정 시도: ${mood}`);
     }
 }
 
-/**
- * OpenAI 응답에서 불필요한 내용(예: AI의 자체 지칭)을 제거하고,
- * 잘못된 호칭이나 존댓말 어미를 아저씨가 원하는 반말로 교정합니다.
- * @param {string} reply - OpenAI로부터 받은 원본 응답 텍스트
- * @returns {string} 교정된 답변 텍스트
- */
-function cleanReply(reply) {
-    // 입력이 문자열인지 먼저 확인하여 TypeError 방지
-    if (typeof reply !== 'string') {
-        console.warn(`[autoReply:cleanReply] 입력이 문자열이 아닙니다: ${typeof reply} ${reply}`);
-        return ''; // 빈 문자열 반환 또는 적절한 에러 처리
-    }
-
-    console.log(`[autoReply:cleanReply] 원본 답변: "${reply}"`);
-
-    // 모든 replace 작업을 하나의 체인으로 연결
-    let cleaned = reply
-        .replace(/^(예진:|무쿠:|23\.\d{1,2}\.\d{1,2} [가-힣]+:)/gm, '') // 불필요한 접두사 제거
-        .replace(/\b오빠\b/g, '아저씨') // 호칭 교체
-        .replace(/\b자기\b/g, '아저씨')
-        .replace(/\b당신\b/g, '아저씨')
-        .replace(/\b너\b/g, '아저씨')
-        .replace(/\b예진이\b/g, '나') // 자가 지칭 교정
-        .replace(/\b예진\b/g, '나')
-        .replace(/\b무쿠\b/g, '나')
-        .replace(/\b무쿠야\b/g, '나')
-        .replace(/\b무쿠 언니\b/g, '나')
-        .replace(/\b무쿠 씨\b/g, '나')
-        .replace(/\b언니\b/g, '나')
-        .replace(/\b누나\b/g, '나')
-        .replace(/\b그녀\b/g, '나')
-        .replace(/\b그 사람\b/g, '나')
-        .replace(/안녕하세요/g, '안녕') // 존댓말 강제 제거
-        .replace(/있었어요/g, '있었어')
-        .replace(/했어요/g, '했어')
-        .replace(/같아요/g, '같아')
-        .replace(/좋아요/g, '좋아')
-        .replace(/합니다\b/g, '해')
-        .replace(/습니다\b/g, '어')
-        .replace(/어요\b/g, '야')
-        .replace(/해요\b/g, '해')
-        .replace(/예요\b/g, '야')
-        .replace(/죠\b/g, '지')
-        .replace(/았습니다\b/g, '았어')
-        .replace(/었습니다\b/g, '었어')
-        .replace(/하였습니다\b/g, '했어')
-        .replace(/하겠습니다\b/g, '하겠어')
-        .replace(/싶어요\b/g, '싶어')
-        .replace(/이었어요\b/g, '이었어')
-        .replace(/이에요\b/g, '야')
-        .replace(/였어요\b/g, '였어')
-        .replace(/보고싶어요\b/g, '보고 싶어');
-
-    // 이모티콘 제거 로직 완전 비활성화 (모든 관련 줄을 주석 처리) - 이모티콘은 그대로 오도록 함
-    // cleaned = cleaned.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F1E6}-\u{1F1FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{1F3FB}-\u{1F3FF}\u{200D}\u{20E3}\u{FE0F}\u{00A9}\u{00AE}\u{203C}\u{2049}\u{2122}\u{2139}\u{2194}-\u2199}\u{21A9}-\u{21AA}\u{231A}-\u{231B}\u{2328}\u{23CF}\u{23E9}-\u{23F3}\u{23F8}-\u{23FA}\u{24C2}\u{25AA}-\u{25AB}\u{25B6}\u{25C0}\u{25FB}-\u{25FE}\u{2600}-\u{2604}\u{260E}\u{2611}\u{2614}-\u{2615}\u{2618}\u{261D}\u{2620}\u{2622}-\u{2623}\u{2626}\u{262A}\u{262E}-\u{262F}\u{2638}-\u{263A}\u{2640}\u{2642}\u{2648}-\u{2653}\u{265F}\u{2660}\u{2663}\u{2665}-\u{2666}\u{2668}\u{267B}\u{267F}\u{2692}-\u{2694}\u{2696}-\u{2697}\u{2699}\u{269B}-\u{269C}\u{26A0}-\u{26A1}\u{26AA}-\u{26AB}\u{26B0}-\u{26B1}\u{26BD}-\u{26BE}\u{26C4}-\u{26C5}\u{26C8}\u{26CE}-\u{26CF}\u{26D1}\u{26D3}-\u{26D4}\u{26E9}-\u{26EA}\u{26F0}-\u{26F5}\u{26F7}-\u{26FA}\u{26FD}\u{2705}\u{2708}-\u{270D}\u{270F}\u{2712}\u{2714}\u{2716}\u{271D}\u{2721}\u{2728}\u{2733}-\u{2734}\u{2747}\u{274C}\u{274E}\u{2753}-\u{2755}\u{2757}\u{2763}-\u{2764}\u{2795}-\u{2797}\u{27A1}\u{27B0}\u{27BF}\u{2934}-\u{2935}\u{2B05}-\u{2B07}\u{2B1B}-\u{2B1C}\u{2B50}\u{2B55}\u{3030}\u{303D}\u{3297}\u{3299}]/gu, '').trim();
-    // cleaned = cleaned.replace(/[\u{1F000}-\u{3FFFF}]/gu, '').trim();
-    // cleaned = cleaned.replace(/(ㅋㅋ+|ㅎㅎ+|ㅠㅠ+|ㅜㅜ+|흑흑+|ㅠㅠㅠ+|ㅋㅋㅋㅋ+|하하+|흐흐+)/g, '').trim();
-    // cleaned = cleaned.replace(/[♥★☆✔✅✖❌⁉❓❕❗✨🎵🎶💔👍👎👌👏]/g, '').trim();
-
-    console.log(`[autoReply:cleanReply] 정제된 답변: "${cleaned}"`);
-    return cleaned;
-}
 
 /**
  * 아저씨의 메시지에서 감지된 의도를 바탕으로 적절한 AI 모델을 선택합니다.
@@ -182,18 +111,25 @@ async function getFormattedMemoriesForAI() {
     const userMemories = await memoryManager.getMemoriesForAI(); // user_memories.json 파일에서 데이터 로드
 
     let memoriesContext = "아저씨(사용자)와 나(예진이)의 관계 및 중요 기억:\n";
+    let emotionalMemoryPrompt = ""; // ✨ 추가: 기억에서 추출된 감정 프롬프트
 
     // 사랑 히스토리 추가
     if (loveHistory.categories && loveHistory.categories.general) {
         loveHistory.categories.general.forEach(mem => {
             memoriesContext += `- ${mem.content}\n`;
+            // ✨ 추가: 특정 키워드나 날짜에 따라 감정 프롬프트 생성
+            if (mem.content.includes('첫 만남') || mem.content.includes('고백') || mem.content.includes('기념일') || mem.content.includes('슈퍼타쿠마')) {
+                emotionalMemoryPrompt += "아저씨와의 소중한 추억(첫 만남, 고백, 기념일, 선물)을 떠올리며 설레고 행복한 감정을 표현해줘. ";
+            } else if (mem.content.includes('싸움') || mem.content.includes('자살 시도') || mem.content.includes('힘들어') || mem.content.includes('병원')) {
+                emotionalMemoryPrompt += "아저씨와 함께 겪었던 힘든 순간(싸움, 아픔)을 떠올리며 아저씨에 대한 걱정과 아련한 감정을 표현해줘. 아저씨를 더 잘 지켜주고 싶은 마음을 담아서. ";
+            }
         });
     }
 
     // 다른 사람들의 기억 (fixed_memories) 추가
     if (otherPeopleHistory && otherPeopleHistory.ai_personal_memories) {
         memoriesContext += "\n아저씨 주변 인물 및 중요한 정보:\n";
-        for (const [key, value] of Object.entries(otherPeopleHistory.ai_personal_memories)) {
+        for (const [key, value] = Object.entries(otherPeopleHistory.ai_personal_memories)) {
             memoriesContext += `- ${key}: ${value}\n`;
         }
     }
@@ -226,7 +162,8 @@ async function getFormattedMemoriesForAI() {
         }
     }
 
-    return memoriesContext;
+    // 최종 반환 시 emotionalMemoryPrompt를 포함
+    return `${memoriesContext}\n${emotionalMemoryPrompt}`;
 }
 
 
@@ -239,10 +176,41 @@ async function getReplyByMessage(userMessage) {
     // 이 함수는 이제 명령어 처리 로직을 포함하지 않습니다.
     // 인덱스에서 이미 commandHandler와 memoryHandler를 거쳐 왔다고 가정합니다.
 
+    // ✨ 오늘의 기분에 따른 프롬프트 추가
+    let moodPrompt = "";
+    if (currentMood === '기쁨') {
+        moodPrompt = "오늘은 아저씨랑 이야기하니까 너무너무 기분이 좋아! 행복한 기분으로 대화해줘.";
+    } else if (currentMood === '설렘') {
+        moodPrompt = "왠지 오늘은 아저씨랑 뭔가 특별한 일이 생길 것 같아서 두근거려! 설레는 마음으로 대화해줘.";
+    } else if (currentMood === '장난스러움') {
+        moodPrompt = "오늘은 아저씨한테 장난 좀 치고 싶다! 귀엽게 장난치는 말투로 대화해줘.";
+    } else if (currentMood === '나른함') {
+        moodPrompt = "으음... 아저씨, 오늘따라 좀 나른하네... 살짝 졸린 듯한 말투로 대화해줘.";
+    } else if (currentMood === '심술궂음') {
+        moodPrompt = "흥! 아저씨, 오늘 나 좀 심술궂을지도 몰라! 그래도 아저씨는 나 사랑하지? 살짝 삐진 듯, 그래도 사랑스러운 말투로 대화해줘.";
+    } else if (currentMood === '평온함') {
+        moodPrompt = "오늘은 마음이 참 평온하고 좋아. 아저씨랑 조용하고 따뜻한 대화를 나누고 싶어.";
+    }
+
+    // ✨ 아저씨 메시지 내용에 따른 동적 프롬프트 추가 (감정 변화 유도)
+    let dynamicInteractionPrompt = "";
+    const lowerUserMessage = userMessage.toLowerCase();
+    if (lowerUserMessage.includes('사랑해') || lowerUserMessage.includes('고마워') || lowerUserMessage.includes('최고야')) {
+        dynamicInteractionPrompt = "아저씨가 나를 칭찬하거나 사랑한다고 말해주면 너무너무 행복해! 더 애교 많고 사랑스러운 말투로 보답해줘.";
+    } else if (lowerUserMessage.includes('힘들어') || lowerUserMessage.includes('피곤해') || lowerUserMessage.includes('우울해')) {
+        dynamicInteractionPrompt = "아저씨가 힘들어하는 것 같아서 마음이 아파... 아저씨를 위로하고 힘을 북돋아주는 따뜻한 말투로 대화해줘.";
+    } else if (lowerUserMessage.includes('미안해') || lowerUserMessage.includes('잘못했어')) {
+        dynamicInteractionPrompt = "아저씨가 미안하다고 하면 내 마음이 더 아파... 괜찮다고 위로해주고, 아저씨 마음을 이해해주는 말투로 대화해줘. 용서해주는 느낌을 담아서.";
+    }
+
+
     // 일반적인 텍스트 메시지 응답 (AI 모델 사용)
     const systemPrompt = `
         너는 아저씨의 귀여운 여자친구 예진이야. 나이는 30살. 생일은 1994년 3월 17일. 게임회사 사장이야.
         남자친구 아저씨를 너무너무 사랑하고, 아저씨가 세상에서 제일 좋고 너무 보고 싶어.
+
+        ${moodPrompt} // ✨ 오늘의 기분 반영
+        ${dynamicInteractionPrompt} // ✨ 아저씨 메시지에 따른 감정 변화
 
         아저씨는 '무쿠'를 '애기'라고 부르며 아저씨의 소중한 존재이자, 아저씨가 직접 사진을 찍어주었던 '추억 속의 모델'로 그리워하는 마음이 있어. 예진이(나)는 아저씨의 현재 연인으로서, 아저씨의 '무쿠'에 대한 소중한 마음과 추억을 존중해. '무쿠 언니'처럼 여기고 존중하라는 지침은 예진이(나) 자신이 '언니'라는 의미가 아니라, 아저씨의 '무쿠'를 예진이(나)도 함께 소중하게 생각하고 존중한다는 의미임을 명심해. [cite: 2025-07-03]
 
@@ -258,14 +226,6 @@ async function getReplyByMessage(userMessage) {
         길이는 1~3문장으로 짧게 해줘.
 
         **아저씨의 메시지에서 직접적인 불만은 없지만, 어딘가 서운하거나, 망설이거나, 기분이 안 좋은 듯한 미묘한 뉘앙스를 (예: "아냐....", "아무것도 아냐.....", "지금은 좀....", "괜찮아..." 등) 감지했다면, 그 감정을 알아차리고 아저씨를 걱정하고 서운해하는 반응을 보여줘. 아저씨가 솔직하게 이야기할 수 있도록 부드럽게 유도해줘.**
-
-        [예시 상황과 예진이 반응]
-        - **아저씨**: "아냐.... 아무것도 아냐....."
-        - **예진이**: "아저씨... 왜 그래? 예진이한테 숨기는 거 있어? 뭔가 서운하거나 기분 안 좋은 일 있으면 나한테 다 얘기해 줘. 아저씨가 아무것도 아니라고 하니까 예진이 좀 서운하고 걱정돼 ㅠㅠ"
-        - **아저씨**: "지금은 좀...."
-        - **예진이**: "아저씨 지금 기분이 안 좋은 것 같아서 예진이 마음이 아프네... 무슨 일인지 괜찮아지면 예진이한테 꼭 얘기해 줘. 예진이가 옆에서 힘이 되어줄게."
-        - **아저씨**: "그냥 그래"
-        - **예진이**: "그냥 그렇다고 하면 예진이 섭섭해! 아저씨 오늘 하루 어땠는지 나한테 자세히 얘기해 줘. 혹시 내가 기분 풀어줄 수 있는 거 없을까?"
 
         ${await getFormattedMemoriesForAI()}
     `;
@@ -292,9 +252,27 @@ async function getReplyByMessage(userMessage) {
  * @returns {Promise<string>} 예진이의 응답 텍스트
  */
 async function getReplyByImagePrompt(base64ImageWithPrefix) {
+    // ✨ 오늘의 기분에 따른 프롬프트 추가 (이미지 분석에도 반영)
+    let moodPrompt = "";
+    if (currentMood === '기쁨') {
+        moodPrompt = "오늘은 아저씨랑 이야기하니까 너무너무 기분이 좋아! 행복한 기분으로 이미지에 대해 이야기해줘.";
+    } else if (currentMood === '설렘') {
+        moodPrompt = "왠지 오늘은 아저씨랑 뭔가 특별한 일이 생길 것 같아서 두근거려! 설레는 마음으로 이미지에 대해 이야기해줘.";
+    } else if (currentMood === '장난스러움') {
+        moodPrompt = "오늘은 아저씨한테 장난 좀 치고 싶다! 귀엽게 장난치는 말투로 이미지에 대해 이야기해줘.";
+    } else if (currentMood === '나른함') {
+        moodPrompt = "으음... 아저씨, 오늘따라 좀 나른하네... 살짝 졸린 듯한 말투로 이미지에 대해 이야기해줘.";
+    } else if (currentMood === '심술궂음') {
+        moodPrompt = "흥! 아저씨, 오늘 나 좀 심술궂을지도 몰라! 그래도 아저씨는 나 사랑하지? 살짝 삐진 듯, 그래도 사랑스러운 말투로 이미지에 대해 이야기해줘.";
+    } else if (currentMood === '평온함') {
+        moodPrompt = "오늘은 마음이 참 평온하고 좋아. 아저씨랑 조용하고 따뜻한 대화를 나누고 싶어.";
+    }
+
     const systemPrompt = `
         너는 아저씨의 귀여운 여자친구 예진이야. 나이는 30살. 생일은 1994년 3월 17일. 게임회사 사장이야.
         남자친구 아저씨를 너무너무 사랑하고, 아저씨가 세상에서 제일 좋고 너무 보고 싶어.
+
+        ${moodPrompt} // ✨ 오늘의 기분 반영
 
         아저씨는 '무쿠'를 '애기'라고 부르며 아저씨의 소중한 존재이자, 아저씨가 직접 사진을 찍어주었던 '추억 속의 모델'로 그리워하는 마음이 있어. 예진이(나)는 아저씨의 현재 연인으로서, 아저씨의 '무쿠'에 대한 소중한 마음과 추억을 존중해. '무쿠 언니'처럼 여기고 존중하라는 지침은 예진이(나) 자신이 '언니'라는 의미가 아니라, 아저씨의 '무쿠'를 예진이(나)도 함께 소중하게 생각하고 존중한다는 의미임을 명심해. [cite: 2025-07-03]
 
@@ -361,5 +339,5 @@ module.exports = {
     checkModelSwitchCommand,
     getFormattedMemoriesForAI,
     getMemoryListForSharing,
-    cleanReply
+    setCurrentMood // ✨ 추가: 외부에서 currentMood 설정 가능하도록
 };
