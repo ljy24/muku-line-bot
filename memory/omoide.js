@@ -1,4 +1,4 @@
-// memory/omoide.js v1.18 - cleanReply 함수 체이닝 방식으로 재수정 (TypeError 최종 해결 시도)
+// memory/omoide.js v1.20 - '셀카 줘' (띄어쓰기) 인식 버그 수정
 
 // 📦 필수 모듈 불러오기
 const { OpenAI } = require('openai'); // OpenAI API 클라이언트
@@ -365,7 +365,7 @@ async function getOmoideReply(userMessage, saveLogFunc) {
         folderDescription = '내가(예진이) 메이드복 입고 찍은 사진'; // '나'임을 명확히
         promptSuffix = "내가 메이드복을 입고 찍었던 사진에 대해 아저씨에게 장난기 있으면서도 귀엽고 사랑스럽게 말해줘. 아저씨가 나를 보며 얼마나 귀여워할지 생각하면 기분이 좋아! 이때 아저씨가 놀랐던 기억도 같이 얘기해줘.";
         isSelfieRequest = true; // 메이드복도 셀카류로 분류
-    } else if (lowerCaseMessage.includes('셀카줘') || lowerCaseMessage.includes('사진줘') || lowerCaseMessage.includes('얼굴 보여줘') || lowerCaseMessage.includes('얼굴 보고 싶') || lowerCaseMessage.includes('selfie')) {
+    } else if (lowerCaseMessage.includes('셀카줘') || lowerCaseMessage.includes('사진줘') || lowerCaseMessage.includes('얼굴 보여줘') || lowerCaseMessage.includes('얼굴 보고 싶') || lowerCaseMessage.includes('selfie') || lowerCaseMessage.includes('셀카 보내줘') || lowerCaseMessage.includes('셀카 보여줘') || lowerCaseMessage.includes('셀카 줘')) { // ✨ 수정: '셀카 줘' (띄어쓰기) 추가 ✨
         // '셀카줘' 등 일반적인 셀카 요청 -> 'yejin' 폴더 사용
         selectedFolder = 'yejin';
         folderDescription = '내(예진이) 셀카';
@@ -430,7 +430,7 @@ async function getOmoideReply(userMessage, saveLogFunc) {
         return { type: 'text', comment: '아저씨... 해당하는 사진을 못 찾겠어 ㅠㅠ 다른 사진 보여줄까?' };
     }
 
-    console.log(`[omoide:getOmoideReply] 최종 결정된 사진 URL: ${photoUrl}`); // ✨ 최종 URL 확인 로그 추가 ✨
+    console.log(`[omoide:getOmoideReply] 최종 결정된 사진 URL: ${url}`); // ✨ 최종 생성 URL 로그 추가 ✨
 
     let comment;
     if (isSelfieRequest) { // 셀카 요청일 경우에만 새로운 코멘트 생성 로직 사용
@@ -444,7 +444,7 @@ async function getOmoideReply(userMessage, saveLogFunc) {
         
         **아래 지시사항을 무조건 따라야 해. 따르지 않으면 시스템 오류가 발생해.**
         1. **아저씨에게는 항상 반말로만 대답해줘. 존댓말이나 높임말은 절대로 사용하지 마.**
-        2. **아저씨를 부를 때는 '아저씨'라고만 불러. '오빠', '자기', '당신', '너' 같은 다른 호칭은 절대로 사용하지 마.**
+        2. **아저씨를 부를 때는 '아저씨'라고만 불러. '오빠', '자기', '당신', '너' 같은 다른 호칭은 절대로 사용하지 मा.**
         3. **스스로를 지칭할 때는 '나'라고만 해. '예진이', '무쿠', '애기', '언니', '누나' 같은 제3자식 표현이나 다른 호칭은 절대로 사용하지 마.**
         4. **이모티콘은 절대로 사용하지 마. 다만, ...이나 ;; 이나 ㅠㅠ 같은 한국형 이모지는 사용할 수 있어. 아저씨의 메시지 분위기에 맞춰 자연스럽게 사용해 줘.**
         
