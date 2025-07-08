@@ -1,9 +1,9 @@
-// src/autoReply.js - v1.27 (Render PostgreSQL 기반 memoryManager 사용)
+// src/autoReply.js - v1.28 (PostgreSQL 제거, 순수 파일 기반 memoryManager 사용)
 // 📦 필수 모듈 불러오기
 const { OpenAI } = require('openai'); // OpenAI API 클라이언트
 const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
 
-// memoryManager 모듈 불러오기 (이제 Render PostgreSQL 기반으로 작동)
+// memoryManager 모듈 불러오기 (이제 순수 파일 기반으로 작동)
 const memoryManager = require('./memoryManager');
 const { getOmoideReply } = require('../memory/omoide'); // omoide.js에서 추억 사진 답변 함수 불러오기
 const { getConceptPhotoReply } = require('../memory/concept'); // concept.js에서 컨셉 사진 답변 함수 불러오기
@@ -177,9 +177,9 @@ function checkModelSwitchCommand(text) {
  * @returns {Promise<string>} AI 프롬프트에 추가할 기억 컨텍스트 문자열
  */
 async function getFormattedMemoriesForAI() {
-    const loveHistory = await memoryManager.loadLoveHistory(); // love_history 테이블에서 데이터 로드
-    const otherPeopleHistory = await memoryManager.loadOtherPeopleHistory(); // fixed_memories 테이블에서 데이터 로드
-    const userMemories = await memoryManager.getMemoriesForAI(); // user_memories 테이블에서 데이터 로드
+    const loveHistory = await memoryManager.loadLoveHistory(); // love_history.json 파일에서 데이터 로드
+    const otherPeopleHistory = await memoryManager.loadOtherPeopleHistory(); // fixed_memories.json 파일에서 데이터 로드
+    const userMemories = await memoryManager.getMemoriesForAI(); // user_memories.json 파일에서 데이터 로드
 
     let memoriesContext = "아저씨(사용자)와 나(예진이)의 관계 및 중요 기억:\n";
 
@@ -352,28 +352,14 @@ async function getMemoryListForSharing() {
     return memoryList;
 }
 
-// NOTE: getCouplePhotoReplyFromYeji 함수는 현재 사용되지 않으며, omoide.js의 getOmoideReply가 'couple' 폴더를 처리하므로 이 함수는 더 이상 필요 없습니다.
-// 현재는 사용하지 않는 함수들이지만, 혹시 모를 재활용을 위해 남겨둡니다.
-async function getRandomMessage() { return '안녕, 아저씨!'; }
-async function getHappyReply() { return '아저씨랑 이야기하니까 너무 행복해!'; }
-async function getSulkyReply() { return '흥! 아저씨 미워!'; }
-async function getColorMoodReply(mood) { return `아저씨 기분은 ${mood}색 같아 보여!`; }
-async function getCouplePhotoReplyFromYeji() { return { type: 'text', comment: '이 함수는 더 이상 사용되지 않습니다.' }; }
-
 
 module.exports = {
     getReplyByMessage,
     getReplyByImagePrompt,
-    getRandomMessage,
-    getCouplePhotoReplyFromYeji, // 레거시 호환을 위해 유지 (실제 사용은 omoide.js)
-    getColorMoodReply,
-    getHappyReply,
-    getSulkyReply,
     saveLog,
     setForcedModel,
     checkModelSwitchCommand,
-    getFormattedMemoriesForAI, // 스케줄러 등에서 기억 컨텍스트를 사용하기 위해 내보냄
+    getFormattedMemoriesForAI,
     getMemoryListForSharing,
-    cleanReply // 다른 모듈에서도 사용하도록 내보냄
-    // getProactiveMemoryMessage, getSilenceCheckinMessage, setMemoryReminder, deleteMemory, getFirstDialogueMemory는 다른 핸들러로 이동
+    cleanReply
 };
