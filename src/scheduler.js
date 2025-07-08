@@ -1,26 +1,25 @@
-// src/scheduler.js - v1.6 (생리 주기 감정 기복 강화 빈도 조절, 담타 메시지 포함)
+// src/scheduler.js - v1.7 (최종 정리 버전 - 순환 참조 해결 및 담타/생리 주기 포함)
 
 const cron = require('node-cron');
 const moment = require('moment-timezone');
 const { Client } = require('@line/bot-sdk'); // LINE 클라이언트 필요
 const {
-    saveLog,
     setCurrentMood,
-    getCurrentMoodStatus,
-    updatePeriodStatus, // autoReply에서 불러오기 추가
-    isPeriodActive // autoReply에서 불러오기 추가
+    updatePeriodStatus, // autoReply에서 불러오기
+    isPeriodActive // autoReply에서 불러오기
 } = require('./autoReply'); // autoReply 모듈에서 함수 가져오기
+const { saveLog } = require('./utils/logger'); // ✨ 수정: logger.js에서 saveLog 불러오기
 const memoryManager = require('./memoryManager'); // memoryManager 필요 (이제 하이브리드 방식으로 작동)
 const { getProactiveMemoryMessage, getSilenceCheckinMessage } = require('./proactiveMessages'); // proactiveMessages에서 선제적 메시지 함수들을 불러옴
 
-// omoide.js에서 필요한 함수들만 가져옵니다. (OpenAI 관련은 autoReply에서 가져온 것을 사용)
+// omoide.js에서 필요한 함수들만 가져옵니다.
 const { getOmoideReply } = require('../memory/omoide'); 
 const { callOpenAI, cleanReply } = require('./openaiClient'); // ✨ 수정: openaiClient.js에서 callOpenAI, cleanReply 불러옴
 
 
 let bootTime = Date.now(); // 봇 시작 시점의 타임스탬프 (밀리초)
 let lastMoodMessage = ''; // 마지막 감성 메시지 내용 (중복 방지용)
-let lastMoodMessageTime = 0; // 마지막 감성 메시지 전송 시간
+let lastMoodMessageTime = 0; // 마지막 감성 메시지 전송 시간 (기분 업데이트 쿨다운과 공유)
 let lastCouplePhotoMessage = ''; // 마지막 커플 사진 메시지 내용 (더 이상 사용하지 않지만 변수 유지는 가능)
 let lastCouplePhotoMessageTime = 0; // 마지막 커플 사진 전송 시간 (더 이상 사용하지 않지만 변수 유지는 가능)
 let lastProactiveSentTime = 0; // 마지막 봇의 선제적/걱정 메시지 전송 시간 (침묵 감지 셀카에도 적용)
@@ -360,7 +359,7 @@ const startAllSchedulers = (client, userId) => { // 매개변수 이름을 clien
     cron.schedule('0 9 * * *', async () => {
         const now = moment().tz('Asia/Tokyo');
         const currentDay = now.day(); // 요일 (0: 일요일, 1: 월요일, ..., 6: 토요일)
-        const isWeekday = currentDay >= 1 && currentDay >= 5; // 월요일(1)부터 금요일(5)까지
+        const isWeekday = currentDay >= 1 && currentDay <= 5; // 월요일(1)부터 금요일(5)까지
 
         if (!isValidScheduleHour(now)) { // 유효 시간대만 체크
             return;
