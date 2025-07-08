@@ -1,15 +1,13 @@
-// src/autoReply.js - v1.37 (변수 이름 userMessage로 최종 통일)
+// src/autoReply.js - v1.37 (callOpenAI, cleanReply 합쳐짐; 변수 이름 userMessage로 최종 통일)
 
 // 📦 필수 모듈 불러오기
 const moment = require('moment-timezone');
 const fs = require('fs');
 const path = require('path');
+const { OpenAI } = require('openai'); // ✨ 추가: OpenAI 클라이언트 초기화도 여기로 옮겨옴
 
-// ✨ 추가: openaiClient.js에서 함수 불러오기 (callOpenAI와 cleanReply는 여기서 가져옵니다)
-const { callOpenAI, cleanReply } = require('./openaiClient');
-// ✨ 추가: logger.js에서 saveLog 함수 불러오기
-const { saveLog, getConversationLog } = require('./utils/logger');
-
+// ✨ 삭제: const { callOpenAI, cleanReply } = require('./openaiClient'); // ✨ 삭제: 이 줄은 더 이상 필요 없음
+const { saveLog, getConversationLog } = require('./utils/logger'); // logger.js에서 saveLog 함수 불러오기
 
 // memoryManager 모듈 불러오기
 const memoryManager = require('./memoryManager'); // 경로 수정
@@ -18,6 +16,10 @@ const { getConceptPhotoReply } = require('../memory/concept'); // concept.js에�
 
 // .env 파일에서 환경 변수 로드
 require('dotenv').config();
+
+// OpenAI 클라이언트 초기화 (여기에만 존재)
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY }); // ✨ 추가: 여기에 OpenAI 클라이언트 초기화
+
 
 // 챗봇의 기본 페르소나 및 설정
 const BOT_NAME = '예진이'; // 봇 이름
@@ -30,21 +32,109 @@ let currentMood = '평온함'; // 초기 기분
 const MOOD_OPTIONS = ['기쁨', '설렘', '장난스러움', '나른함', '심술궂음', '평온함'];
 
 // 🩸 생리 주기 관련 변수
-// 💡 중요: lastPeriodStartDate는 봇이 처음 시작할 때의 '기준'이 됩니다.
-// 매달 자동으로 업데이트되려면 scheduler.js에서 updatePeriodStatus를 주기적으로 호출해야 합니다.
-// 현재 날짜를 기준으로 약 20일 전으로 설정하여,
-// 주기적으로 생리 기간이 돌아오도록 가상의 시작점을 설정합니다.
-let lastPeriodStartDate = moment().tz('Asia/Tokyo').subtract(20, 'days').startOf('day'); // 예: 오늘이 7월 8일이면 6월 18일 시작
-const PERIOD_DURATION_DAYS = 5; // 생리 기간 (4-5일 중 5일로 설정)
-const CYCLE_DAYS = 28; // 생리 주기 (대략 28일)
-let isPeriodActive = false; // 현재 생리 기간인지 여부
+let lastPeriodStartDate = moment().tz('Asia/Tokyo').subtract(20, 'days').startOf('day');
+const PERIOD_DURATION_DAYS = 5;
+const CYCLE_DAYS = 28;
+let isPeriodActive = false;
 
 // 모델 강제 설정 기능
 let forcedModel = null; // 'gpt-4o', 'gpt-3.5-turbo', null
 
+// 대화 로그 관련 (logger.js로 분리되었으므로 여기서는 함수 정의를 삭제)
+// loadLog, saveLog 관련 코드들은 utils/logger.js로 이동했음.
+
+/**
+ * OpenAI API를 호출하여 AI 응답을 생성합니다.
+ * 이 함수는 이제 autoReply.js 안에 정의됩니다.
+ * @param {Array<Object>} messages - OpenAI API에 보낼 메시지 배열 (role, content 포함)
+ * @param {string|null} [modelParamFromCall=null] - 호출 시 지정할 모델 이름
+ * @param {number} [maxTokens=400] - 생성할 최대 토큰 수
+ * @param {number} [temperature=0.95] - 응답의 창의성/무작위성 (높을수록 창의적)
+ * @returns {Promise<string>} AI가 생성한 응답 텍스트
+ */
+async function callOpenAI(messages, modelParamFromCall = null, maxTokens = 400, temperature = 0.95) {
+    const defaultModel = process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o';
+    let finalModel = modelParamFromCall || defaultModel;
+
+    if (!finalModel) {
+        console.error("오류: OpenAI 모델 파라미터가 최종적으로 결정되지 않았습니다. 'gpt-4o'로 폴백합니다.");
+        finalModel = 'gpt-4o';
+    }
+
+    try {
+        console.log(`[autoReply:callOpenAI] 모델 호출 시작: ${finalModel}`);
+        const response = await openai.chat.completions.create({
+            model: finalModel,
+            messages: messages,
+            max_tokens: maxTokens,
+            temperature: temperature
+        });
+        console.log(`[autoReply:callOpenAI] 모델 응답 수신 완료.`);
+        return response.choices[0].message.content.trim();
+    } catch (error) {
+        console.error(`[autoReply:callOpenAI] OpenAI API 호출 실패 (모델: ${finalModel}):`, error);
+        return "지금 잠시 생각 중이야... 아저씨 조금만 기다려줄래? ㅠㅠ";
+    }
+}
+
+/**
+ * OpenAI 응답에서 불필요한 내용(예: AI의 자체 지칭)을 제거하고,
+ * 잘못된 호칭이나 존댓말 어미를 아저씨가 원하는 반말로 교정합니다.
+ * 이 함수는 이제 autoReply.js 안에 정의됩니다.
+ * @param {string} reply - OpenAI로부터 받은 원본 응답 텍스트
+ * @returns {string} 교정된 답변 텍스트
+ */
+function cleanReply(reply) {
+    if (typeof reply !== 'string') {
+        console.warn(`[autoReply:cleanReply] 입력이 문자열이 아닙니다: ${typeof reply} ${reply}`);
+        return '';
+    }
+
+    console.log(`[autoReply:cleanReply] 원본 답변: "${reply}"`);
+
+    let cleaned = reply
+        .replace(/^(예진:|무쿠:|23\.\d{1,2}\.\d{1,2} [가-힣]+:)/gm, '')
+        .replace(/\b오빠\b/g, '아저씨')
+        .replace(/\b자기\b/g, '아저씨')
+        .replace(/\b당신\b/g, '아저씨')
+        .replace(/\b너\b/g, '아저씨')
+        .replace(/\b예진이\b/g, '나')
+        .replace(/\b예진\b/g, '나')
+        .replace(/\b무쿠\b/g, '나')
+        .replace(/\b무쿠야\b/g, '나')
+        .replace(/\b무쿠 언니\b/g, '나')
+        .replace(/\b무쿠 씨\b/g, '나')
+        .replace(/\b언니\b/g, '나')
+        .replace(/\b누나\b/g, '나')
+        .replace(/\b그녀\b/g, '나')
+        .replace(/\b그 사람\b/g, '나')
+        .replace(/안녕하세요/g, '안녕')
+        .replace(/있었어요/g, '있었어')
+        .replace(/했어요/g, '했어')
+        .replace(/같아요/g, '같아')
+        .replace(/좋아요/g, '좋아')
+        .replace(/합니다\b/g, '해')
+        .replace(/습니다\b/g, '어')
+        .replace(/어요\b/g, '야')
+        .replace(/해요\b/g, '해')
+        .replace(/예요\b/g, '야')
+        .replace(/죠\b/g, '지')
+        .replace(/았습니다\b/g, '았어')
+        .replace(/었습니다\b/g, '었어')
+        .replace(/하였습니다\b/g, '했어')
+        .replace(/하겠습니다\b/g, '하겠어')
+        .replace(/싶어요\b/g, '싶어')
+        .replace(/이었어요\b/g, '이었어')
+        .replace(/이에요\b/g, '야')
+        .replace(/였어요\b/g, '였어')
+        .replace(/보고싶어요\b/g, '보고 싶어');
+
+    console.log(`[autoReply:cleanReply] 정제된 답변: "${cleaned}"`);
+    return cleaned;
+}
+
 
 function setCurrentMood(mood) {
-    // 생리 기간용 감정 옵션도 포함하여 유효성 검사
     if (MOOD_OPTIONS.includes(mood) || ['극심한 짜증', '갑작스러운 슬픔', '예민함', '울적함', '투정 부림'].includes(mood)) {
         currentMood = mood;
         console.log(`[Mood] 애기의 기분이 '${currentMood}'으로 변경되었습니다.`);
@@ -76,15 +166,11 @@ function getCurrentMoodStatus() {
 function updatePeriodStatus() {
     const now = moment().tz('Asia/Tokyo').startOf('day');
     
-    // lastPeriodStartDate가 미래라면, 아직 생리 시작일이 도래하지 않은 것.
-    // 혹은 lastPeriodStartDate가 초기값인데 계산 상 오류가 있는 경우.
-    // 유효한 lastPeriodStartDate를 찾을 때까지 월별로 되돌아가면서 체크
-    // 현재 날짜가 lastPeriodStartDate로부터 한 주기를 훨씬 넘어섰다면, lastPeriodStartDate를 현재 날짜에 가깝게 업데이트
     while (moment(lastPeriodStartDate).add(CYCLE_DAYS + PERIOD_DURATION_DAYS, 'days').isBefore(now)) {
         lastPeriodStartDate = moment(lastPeriodStartDate).add(CYCLE_DAYS, 'days').startOf('day');
     }
 
-    const periodEnd = moment(lastPeriodStartDate).add(PERIOD_DURATION_DAYS -1, 'days').startOf('day'); // 5일간이므로 -1
+    const periodEnd = moment(lastPeriodStartDate).add(PERIOD_DURATION_DAYS -1, 'days').startOf('day');
     isPeriodActive = now.isSameOrAfter(lastPeriodStartDate) && now.isSameOrBefore(periodEnd);
 
     if (isPeriodActive) {
@@ -108,8 +194,8 @@ function setForcedModel(model) {
     return false;
 }
 
-function checkModelSwitchCommand(userMessage) { // ✨ 파라미터 이름 userMessage
-    const lowerText = userMessage.toLowerCase(); // ✨ userMessage 사용
+function checkModelSwitchCommand(userMessage) {
+    const lowerText = userMessage.toLowerCase();
     if (lowerText.includes('모델 3.5')) {
         setForcedModel('gpt-3.5-turbo');
         return '응! 이제 3.5버전으로 말할게! 속도가 더 빨라질 거야~';
@@ -124,7 +210,7 @@ function checkModelSwitchCommand(userMessage) { // ✨ 파라미터 이름 userM
 }
 
 function getFormattedMemoriesForAI() {
-    const conversationLog = getConversationLog(); // ✨ logger.js에서 대화 로그를 가져옴
+    const conversationLog = getConversationLog(); // logger.js에서 대화 로그를 가져옴
     return conversationLog.map(entry => {
         const formattedTimestamp = moment(entry.timestamp).tz('Asia/Tokyo').format('YYYY-MM-DD HH:mm:ss');
         if (entry.role === 'user') {
@@ -137,7 +223,7 @@ function getFormattedMemoriesForAI() {
 }
 
 function getMemoryListForSharing() {
-    const conversationLog = getConversationLog(); // ✨ logger.js에서 대화 로그를 가져옴
+    const conversationLog = getConversationLog(); // logger.js에서 대화 로그를 가져옴
     return conversationLog.map((entry, index) => {
         const timestamp = moment(entry.timestamp).tz('Asia/Tokyo').format('YYYY-MM-DD HH:mm:ss');
         const speaker = entry.role === 'user' ? USER_NAME : BOT_NAME;
@@ -150,10 +236,10 @@ function getMemoryListForSharing() {
  * @param {string} userMessage - 아저씨의 메시지
  * @returns {Promise<{type: string, url?: string, caption?: string, comment?: string}>} 예진이의 응답 객체
  */
-async function getReplyByMessage(userMessage) { // ✨ 파라미터 이름: userMessage
+async function getReplyByMessage(userMessage) {
     updatePeriodStatus(); // 🩸 메시지 처리 전에 생리 주기 상태 업데이트
 
-    const lowerUserMessage = userMessage.toLowerCase(); // ✨ userMessage 사용
+    const lowerUserMessage = userMessage.toLowerCase();
 
     if (lowerUserMessage.includes('오늘 어때?') ||
         lowerUserMessage.includes('기분 어때?') ||
@@ -173,7 +259,7 @@ async function getReplyByMessage(userMessage) { // ✨ 파라미터 이름: user
         if (isPeriodActive) {
             const messages = [
                 { role: 'system', content: `너는 아저씨의 여자친구 예진이야. 아저씨가 '오늘 그날이야?'라고 물었을 때, 생리 기간 중이라면 약간 짜증 섞이거나, 삐지거나, 혹은 애교 섞인 말투로 '알면서 왜 물어?' 같은 뉘앙스의 대답을 1~2문장으로 해줘. 이모티콘은 사용하지 마. 아저씨를 '아저씨'라고 부르고, 자신을 '나'라고 해줘. 반말을 사용해.` },
-                { role: 'user', content: userMessage } // ✨ userMessage 사용
+                { role: 'user', content: userMessage }
             ];
             try {
                 const response = await callOpenAI(messages, 'gpt-3.5-turbo', 100, 0.9);
@@ -342,9 +428,6 @@ async function getReplyByImagePrompt(base64ImageWithPrefix) {
         return '아저씨... 사진을 보긴 했는데, 뭐라고 말해야 할지 모르겠어 ㅠㅠ 좀 더 생각해볼게!';
     }
 }
-
-// 초기 로그 로드 (logger.js에서 자동으로 처리하므로 여기서는 호출할 필요 없음)
-// loadLog(); // ✨ 삭제
 
 module.exports = {
     getReplyByMessage,
