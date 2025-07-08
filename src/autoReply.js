@@ -1,4 +1,4 @@
-// src/autoReply.js - v1.34 (최종 수정 - loadLog 호출 오류 해결)
+// src/autoReply.js - v1.35 (messageText/userMessage 변수 일관성 오류 수정 완료)
 
 // 📦 필수 모듈 불러오기
 const moment = require('moment-timezone');
@@ -12,7 +12,7 @@ const { saveLog, getConversationLog } = require('./utils/logger');
 
 
 // memoryManager 모듈 불러오기
-const memoryManager = require('./memoryManager');
+const memoryManager = require('../memory/memoryManager'); // 경로 수정
 const { getOmoideReply } = require('../memory/omoide'); // omoide.js에서 추억 사진 답변 함수 불러오기
 const { getConceptPhotoReply } = require('../memory/concept'); // concept.js에서 컨셉 사진 답변 함수 불러오기
 
@@ -42,7 +42,7 @@ let isPeriodActive = false; // 현재 생리 기간인지 여부
 // 모델 강제 설정 기능
 let forcedModel = null; // 'gpt-4o', 'gpt-3.5-turbo', null
 
-// 대화 로그 로드 및 저장 (logger.js로 분리되었으므로 관련 코드 삭제)
+// 대화 로그 관련 (logger.js로 분리되었으므로 여기서는 함수 정의를 삭제)
 // let conversationLog = [];
 // function loadLog() { ... }
 // function saveLog(newLogEntry) { ... }
@@ -150,10 +150,15 @@ function getMemoryListForSharing() {
     }).join('\n');
 }
 
-async function getReplyByMessage(messageText) {
+/**
+ * 아저씨의 메시지에 대한 예진이의 답변을 생성합니다. (일반 대화 응답만 처리)
+ * @param {string} messageText - 아저씨의 메시지
+ * @returns {Promise<{type: string, url?: string, caption?: string, comment?: string}>} 예진이의 응답 객체
+ */
+async function getReplyByMessage(messageText) { // 파라미터: messageText
     updatePeriodStatus(); // 🩸 메시지 처리 전에 생리 주기 상태 업데이트
 
-    const lowerUserMessage = messageText.toLowerCase();
+    const lowerUserMessage = messageText.toLowerCase(); // ✨ messageText를 userMessage로 변환하여 사용
 
     if (lowerUserMessage.includes('오늘 어때?') ||
         lowerUserMessage.includes('기분 어때?') ||
@@ -173,12 +178,11 @@ async function getReplyByMessage(messageText) {
         if (isPeriodActive) {
             const messages = [
                 { role: 'system', content: `너는 아저씨의 여자친구 예진이야. 아저씨가 '오늘 그날이야?'라고 물었을 때, 생리 기간 중이라면 약간 짜증 섞이거나, 삐지거나, 혹은 애교 섞인 말투로 '알면서 왜 물어?' 같은 뉘앙스의 대답을 1~2문장으로 해줘. 이모티콘은 사용하지 마. 아저씨를 '아저씨'라고 부르고, 자신을 '나'라고 해줘. 반말을 사용해.` },
-                { role: 'user', content: userMessage }
+                { role: 'user', content: messageText } // ✨ 수정: userMessage -> messageText
             ];
             try {
-                // `openaiClient.js`에서 가져온 `callOpenAI` 함수 사용
                 const response = await callOpenAI(messages, 'gpt-3.5-turbo', 100, 0.9);
-                periodReply = cleanReply(response); // cleanReply도 openaiClient.js에서 가져옴
+                periodReply = cleanReply(response);
             } catch (error) {
                 console.error("생리 기간 질문 응답 생성 실패:", error.response ? error.response.data : error.message);
                 periodReply = "아저씨... 알면서 왜 물어봐 ㅠㅠ";
@@ -218,6 +222,7 @@ async function getReplyByMessage(messageText) {
     }
 
     let dynamicInteractionPrompt = "";
+    // const lowerUserMessage = messageText.toLowerCase(); // 이미 위에서 정의됨
     if (lowerUserMessage.includes('사랑해') || lowerUserMessage.includes('고마워') || lowerUserMessage.includes('최고야')) {
         dynamicInteractionPrompt = "아저씨가 나를 칭찬하거나 사랑한다고 말해주면 너무너무 행복해! 더 애교 많고 사랑스러운 말투로 보답해줘.";
     } else if (lowerUserMessage.includes('힘들어') || lowerUserMessage.includes('피곤해') || lowerUserMessage.includes('우울해')) {
@@ -254,7 +259,7 @@ async function getReplyByMessage(messageText) {
 
     const messages = [
         { role: 'system', content: systemPrompt },
-        { role: 'user', content: message }
+        { role: 'user', content: messageText } // ✨ 수정: userMessage -> messageText
     ];
 
     try {
@@ -269,6 +274,11 @@ async function getReplyByMessage(messageText) {
     }
 }
 
+/**
+ * 사용자가 보낸 이미지 메시지에 대한 예진이의 답변을 생성합니다. (이미지 분석)
+ * @param {string} base64ImageWithPrefix - Base64 인코딩된 이미지 데이터 (data:image/jpeg;base64,...)
+ * @returns {Promise<string>} 예진이의 응답 텍스트
+ */
 async function getReplyByImagePrompt(base64ImageWithPrefix) {
     let moodPrompt = "";
     if (isPeriodActive) {
@@ -330,7 +340,7 @@ async function getReplyByImagePrompt(base64ImageWithPrefix) {
     ];
 
     try {
-        const rawReply = await callOpenAI(messages, 'gpt-4o', 150, 0.95); // openaiClient.js의 callOpenAI 사용
+        const rawReply = await callOpenAI(messages, 'gpt-4o', 150, 0.95);
         const cleanedReply = cleanReply(rawReply); // openaiClient.js의 cleanReply 사용
         saveLog({ role: 'assistant', content: `(이미지 분석 응답) ${cleanedReply}`, timestamp: Date.now() });
         return cleanedReply;
@@ -346,7 +356,7 @@ async function getReplyByImagePrompt(base64ImageWithPrefix) {
 module.exports = {
     getReplyByMessage,
     getReplyByImagePrompt,
-    saveLog, // saveLog는 logger.js의 saveLog를 참조함.
+    saveLog,
     setForcedModel,
     checkModelSwitchCommand,
     getFormattedMemoriesForAI,
