@@ -352,6 +352,44 @@ function isConsolingMessage(userMessage) {
     return consolingKeywords.some(keyword => userMessage.toLowerCase().includes(keyword));
 }
 
+// 📦 상황별로 GPT 프롬프트를 생성하는 단일 함수
+async function getConditionalGPTReply(msg) {
+    const nowInTokyo = moment().tz('Asia/Tokyo');
+    const hour = nowInTokyo.hour(); // 현재 시간(시)
+
+    // 💤 새벽 불면증 위로
+    if (
+        /잠이 안|못 자겠|불면증|생각 많|안 졸려|잠 안 와/.test(msg) &&
+        hour >= 1 && hour <= 4 // 새벽 1시 ~ 4시
+    ) {
+        const prompt = getYejinSystemPrompt(`아저씨가 새벽에 '잠이 안 온다', '못 자겠다'고 했어. 
+        예진이라면 어떤 걱정을 하면서 반말로 따뜻하게 위로해줄까? 
+        길지 않게 한 문장으로. 말투는 자연스럽고 감정선이 담겨야 해.`);
+        const rawReply = await callOpenAI([{role: 'system', content: prompt}], 'gpt-3.5-turbo', 100, 0.7); // temperature 조절
+        return cleanReply(rawReply);
+    }
+
+    // 🌧️ 날씨 반응
+    if (/비 와|비온다|덥다|춥다|폭우|장마|태풍/.test(msg)) {
+        const prompt = getYejinSystemPrompt(`아저씨가 '비 온다', '덥다', '춥다' 같은 날씨 얘기를 했어. 
+        예진이 말투로 자연스럽고 걱정하는 반응 한 줄 만들어줘. 반말, 감정선 포함. 이모티콘은 쓰지 마.`);
+        const rawReply = await callOpenAI([{role: 'system', content: prompt}], 'gpt-3.5-turbo', 100, 0.7); // temperature 조절
+        return cleanReply(rawReply);
+    }
+
+    // 🌍 지진 걱정
+    if (/지진|흔들려|진동|진도|지진 났어/.test(msg)) {
+        const prompt = getYejinSystemPrompt(`아저씨가 '지진 났어', '흔들려' 같은 말을 보냈어. 
+        예진이는 일본에 사는 아저씨가 걱정돼서 바로 반응해. 
+        무서운 상황을 걱정하면서 예진이 특유의 말투로 감정 담아 반응해줘. 반말, 한 문장. 이모티콘은 쓰지 마.`);
+        const rawReply = await callOpenAI([{role: 'system', content: prompt}], 'gpt-3.5-turbo', 100, 0.7); // temperature 조절
+        return cleanReply(rawReply);
+    }
+
+    // 👀 조건에 안 맞으면 null 반환
+    return null;
+}
+
 
 /**
  * 아저씨의 텍스트 메시지에 대한 예진이의 답변을 생성합니다.
@@ -409,6 +447,13 @@ async function getReplyByMessage(userMessage) {
         setYejinMood('sulking', '아저씨가 놀려서');
     } else if (userMood === 'normal' && yejinCurrentMood !== 'normal' && Date.now() - lastMoodChangeTime > MOOD_COOLDOWN_MS) {
         setYejinMood('normal');
+    }
+
+    // ⭐ 새로 추가: 챗지피티의 조건부 답변 함수 호출 (높은 우선순위) ⭐
+    const conditionalReply = await getConditionalGPTReply(userMessage);
+    if (conditionalReply) {
+        saveLog('예진이', conditionalReply);
+        return { type: 'text', comment: conditionalReply };
     }
 
     // 4. 기억 저장/삭제/리마인더 명령어 유동적 처리
@@ -481,7 +526,7 @@ async function getReplyByMessage(userMessage) {
                 return { type: 'text', comment: `아저씨! "${memoryCommandIntent.content}" ${parsedReminderTime.format('YYYY년 M월 D일 A h시 m분')}에 알려줄게! 🔔` };
             } else {
                 saveLog('예진이', `아저씨... 리마인더 시간을 정확히 모르겠어 ㅠㅠ 다시 알려줄 수 있어? (예: '오늘 5시에', '내일 아침 8시에')`);
-                return { type: 'text', comment: `아저씨... 리마인더 시간을 정확히 모르겠어 ㅠㅠ 다시 알려줄 수 있어? (예: '오늘 5시에', '내일 아침 8시에')` };
+                return { type: 'text', comment: '아저씨... 리마인더 시간을 정확히 모르겠어 ㅠㅠ 다시 알려줄 수 있어? (예: \'오늘 5시에\', \'내일 아침 8시에\')' };
             }
         } else {
             saveLog('예진이', '응? 뭘 언제 알려달라는 거야? 리마인더 내용이랑 시간을 같이 말해줘 ㅠㅠ');
@@ -549,7 +594,7 @@ async function getReplyByMessage(userMessage) {
     });
     const conversationHistory = recentLogs.map(log => ({
         role: log.speaker === '아저씨' ? 'user' : 'assistant',
-        content: log.message
+        content: log.content // content로 변경
     }));
 
     // ⭐ 중요 개선: 기억 인출 질문에 대한 프롬프트 강화 ⭐
