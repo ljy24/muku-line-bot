@@ -347,12 +347,17 @@ const sendScheduledMessage = async (lineClient, targetUserId, type) => {
  * @param {string} targetUserId - 메시지를 보낼 대상 사용자 ID
  */
 const startAllSchedulers = (lineClient, targetUserId) => {
-    // ✨ 추가: 매일 아침 애기의 기분을 랜덤으로 설정하는 스케줄러
+    // ✨ 추가: 매일 아침 애기의 기분을 랜덤으로 설정하는 스케줄러 (생리 기간 중에는 극단적 감정)
     cron.schedule('0 0 6 * * *', () => { // 매일 아침 6시 00분에 실행
-        const randomIndex = Math.floor(Math.random() * MOOD_OPTIONS.length);
-        const randomMood = MOOD_OPTIONS[randomIndex];
+        // 생리 기간 중이라면 극적인 감정 위주로, 아니면 평범한 감정 위주로 선택
+        const moodsForDay = autoReply.isPeriodActive ? 
+            ['기쁨', '설렘', '장난스러움', '나른함', '심술궂음', '평온함', '극심한 짜증', '갑작스러운 슬픔', '예민함'] : 
+            MOOD_OPTIONS; // 일반적인 기분 옵션
+        
+        const randomIndex = Math.floor(Math.random() * moodsForDay.length);
+        const randomMood = moodsForDay[randomIndex];
         setCurrentMood(randomMood); // autoReply 모듈의 함수 호출
-        console.log(`[Scheduler] 애기의 오늘의 기분이 '${randomMood}'으로 설정되었습니다.`);
+        console.log(`[Scheduler] 애기의 오늘의 기분이 '${randomMood}'으로 설정되었습니다. (생리 기간 여부: ${autoReply.isPeriodActive ? '활성' : '비활성'})`);
     }, {
         scheduled: true,
         timezone: "Asia/Tokyo"
@@ -522,5 +527,7 @@ const updateLastUserMessageTime = () => {
 
 module.exports = {
     startAllSchedulers,
-    updateLastUserMessageTime
+    updateLastUserMessageTime,
+    // isPeriodActive // ✨ isPeriodActive는 autoReply.js에서 관리되므로 여기서는 내보내지 않음.
+                    // autoReply.js를 통해 접근함.
 };
