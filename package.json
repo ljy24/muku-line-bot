@@ -17,7 +17,7 @@
     "openai": "^4.30.0",
     "string-similarity": "^4.0.4",
     "pg": "^8.x.x",
-    "@supabase/supabase-js": "^2.x.x"  // 이 줄을 추가합니다. (최신 버전으로)
+    "@supabase/supabase-js": "^2.x.x"
   },
   "engines": {
     "node": ">=18.0.0"
