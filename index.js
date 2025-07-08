@@ -1,25 +1,24 @@
 // ✅ 파일: index.js
-// ✅ 버전: v1.5 - scheduler require 누락 수정, CHANNEL 환경 변수명 확인
+// ✅ 버전: v1.6 - 환경변수명 수정 (CHANNEL_ACCESS_TOKEN / CHANNEL_SECRET)
 
 const line = require('@line/bot-sdk');
 const express = require('express');
 const { getReplyByMessage, getReplyByImagePrompt, checkModelSwitchCommand, saveLog } = require('./src/autoReply');
 const { updateLastUserMessageTime } = require('./src/scheduler');
-const scheduler = require('./src/scheduler'); // ✅ 빠졌던 이 줄 추가!
+const scheduler = require('./src/scheduler');
 const omoide = require('./memory/omoide');
 const concept = require('./memory/concept');
 
-require('dotenv').config(); // .env 환경변수 로드
+require('dotenv').config();
 
 const config = {
-    channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN, // ✅ 변수명 정확히 확인
-    channelSecret: process.env.LINE_CHANNEL_SECRET
+    channelAccessToken: process.env.CHANNEL_ACCESS_TOKEN,  // ✅ 수정됨
+    channelSecret: process.env.CHANNEL_SECRET              // ✅ 수정됨
 };
 
 const app = express();
 const client = new line.Client(config);
 
-// ✅ 웹훅 이벤트 핸들러
 app.post('/webhook', line.middleware(config), (req, res) => {
     Promise.all(req.body.events.map(handleEvent))
         .then((result) => res.json(result))
@@ -29,7 +28,6 @@ app.post('/webhook', line.middleware(config), (req, res) => {
         });
 });
 
-// ✅ 메시지 이벤트 핸들러
 async function handleEvent(event) {
     if (event.type !== 'message') return null;
 
@@ -54,7 +52,6 @@ async function handleEvent(event) {
             return;
         }
 
-        // 📸 omoide 사진 처리
         const photoReply = await omoide.getOmoideReply(userMessage, saveLog);
         if (photoReply) {
             if (photoReply.type === 'photo') {
@@ -68,7 +65,6 @@ async function handleEvent(event) {
             return;
         }
 
-        // 📸 concept 사진 처리
         const conceptReply = await concept.getConceptPhotoReply(userMessage, saveLog);
         if (conceptReply) {
             if (conceptReply.type === 'photo') {
@@ -82,7 +78,6 @@ async function handleEvent(event) {
             return;
         }
 
-        // 🔚 Fallback
         const fallbackMessage = "음... 아저씨, 무슨 말인지 잘 모르겠어 ㅠㅠ 다시 한번 말해줄래?";
         await client.replyMessage(event.replyToken, { type: 'text', text: fallbackMessage });
         saveLog({ role: 'assistant', content: fallbackMessage, timestamp: Date.now() });
@@ -105,7 +100,6 @@ async function handleEvent(event) {
     return null;
 }
 
-// ✅ 서버 실행
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
     console.log(`무쿠 서버 스타트! 포트: ${port}`);
