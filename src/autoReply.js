@@ -1,4 +1,4 @@
-// src/autoReply.js - v2.0 (모든 핵심 기능 통합)
+// src/autoReply.js - v2.1 (getAppropriateModel 함수 누락 문제 해결)
 
 // 📦 필수 모듈 불러오기
 const moment = require('moment-timezone');
@@ -8,8 +8,6 @@ const { OpenAI } = require('openai'); // ✨ 추가: OpenAI 클라이언트 초�
 
 // memoryManager 모듈 불러오기 (경로 수정)
 const memoryManager = require('./memoryManager');
-const { getOmoideReply } = require('../memory/omoide'); // omoide.js에서 추억 사진 답변 함수 불러오기
-const { getConceptPhotoReply } = require('../memory/concept'); // concept.js에서 컨셉 사진 답변 함수 불러오기
 
 // .env 파일에서 환경 변수 로드
 require('dotenv').config();
@@ -179,6 +177,13 @@ function cleanReply(reply) {
     return cleaned;
 }
 
+/**
+ * 적절한 AI 모델을 반환합니다.
+ * @returns {string} 사용할 모델명
+ */
+function getAppropriateModel() {
+    return forcedModel || 'gpt-4o';
+}
 
 function setCurrentMood(mood) {
     if (MOOD_OPTIONS.includes(mood) || ['극심한 짜증', '갑작스러운 슬픔', '예민함', '울적함', '투정 부림'].includes(mood)) {
@@ -225,7 +230,6 @@ function updatePeriodStatus() {
         // console.log(`[Period] 현재 생리 기간이 아닙니다. 다음 시작 예정: ${moment(lastPeriodStartDate).add(CYCLE_DAYS, 'days').format('YYYY-MM-DD')}`);
     }
 }
-
 
 function getModel() {
     return forcedModel || 'gpt-4o';
@@ -488,5 +492,6 @@ module.exports = {
     updatePeriodStatus,
     isPeriodActive,
     callOpenAI, // ✨ 외부에서 사용 가능하도록 내보내기
-    cleanReply // ✨ 외부에서 사용 가능하도록 내보내기
+    cleanReply, // ✨ 외부에서 사용 가능하도록 내보내기
+    getAppropriateModel // ✨ 누락된 함수 export 추가
 };
