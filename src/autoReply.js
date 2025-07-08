@@ -1,73 +1,82 @@
-// src/autoReply.js - v1.28 (PostgreSQL 제거, 순수 파일 기반 memoryManager 사용)
+// src/autoReply.js - v1.29 (감정변화, 생리주기, 기분확인, 기억연동 감성 프롬프트 강화)
+
 // 📦 필수 모듈 불러오기
-// const { OpenAI } = require('openai'); // ✨ 삭제: OpenAI 클라이언트 초기화는 omoide.js에서 담당
-const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
+const { Configuration, OpenAIApi } = require('openai');
+const moment = require('moment-timezone');
+const fs = require('fs');
+const path = require('path');
 
-// memoryManager 모듈 불러오기 (이제 순수 파일 기반으로 작동)
-const memoryManager = require('./memoryManager');
-const { getOmoideReply, callOpenAI, cleanReply } = require('../memory/omoide'); // ✨ 수정: omoide.js에서 callOpenAI, cleanReply 불러오기
-const { getConceptPhotoReply } = require('../memory/concept'); // concept.js에서 컨셉 사진 답변 함수 불러오기
+// OpenAI API 설정
+const configuration = new Configuration({
+    apiKey: process.env.OPENAI_API_KEY,
+});
+const openai = new OpenAIApi(configuration);
 
-// .env 파일에서 환경 변수 로드 (예: API 키)
-require('dotenv').config();
+// 로그 파일 경로
+const LOG_FILE = path.join(__dirname, 'conversation_log.json');
 
-// OpenAI 클라이언트 초기화 (API 키는 환경 변수에서 가져옴 - 보안상 중요)
-// const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY }); // ✨ 삭제: omoide.js에서 담당
+// 챗봇의 기본 페르소나 및 설정
+const BOT_NAME = '예진이'; // 봇 이름
+const USER_NAME = '아저씨'; // 사용자 이름
+const BOT_GENDER = 'female'; // 챗봇 성별
+const USER_GENDER = 'male'; // 사용자 성별
 
+// 챗봇의 현재 기분 상태 (초기값 설정)
+let currentMood = '평온함'; // 초기 기분
+const MOOD_OPTIONS = ['기쁨', '설렘', '장난스러움', '나른함', '심술궂음', '평온함'];
 
-// --- 전역 변수 및 설정 ---
-let forcedModel = null; // 강제로 사용할 모델 (예: 'gpt-3.5-turbo', 'gpt-4o')
-const LOG_FILE = 'chat_log.txt'; // 대화 로그 파일 경로 (saveLog 함수에서 사용)
-
-// ✨ 추가: 애기의 오늘의 기분 관련 변수
-let currentMood = '평온함'; // 기본값 설정 (기쁨, 설렘, 장난스러움, 나른함, 심술궂음, 평온함 등)
-const MOOD_OPTIONS = ['기쁨', '설렘', '장난스러움', '나른함', '심술궂음', '평온함']; // 애기가 가질 수 있는 기분들
-
-// 🩸 추가: 생리 주기 관련 변수
-// 💡 중요: 이 lastPeriodStartDate는 봇이 처음 시작할 때만 설정돼.
-// 매달 자동으로 업데이트되려면 scheduler.js에서 이 날짜를 업데이트하는 로직이 필요해.
-// 지금은 테스트를 위해 현재 날짜에서 18일 전으로 설정해서, 곧 기간이 시작되거나 기간 중일 가능성이 높도록 했어.
-let lastPeriodStartDate = moment().tz('Asia/Tokyo').subtract(18, 'days').startOf('day');
+// 🩸 생리 주기 관련 변수
+// 💡 중요: lastPeriodStartDate는 봇이 처음 시작할 때의 '기준'이 됩니다.
+// 매달 자동으로 업데이트되려면 scheduler.js에서 updatePeriodStatus를 주기적으로 호출해야 합니다.
+// 현재 날짜를 기준으로 약 20일 전으로 설정하여,
+// 주기적으로 생리 기간이 돌아오도록 가상의 시작점을 설정합니다.
+let lastPeriodStartDate = moment().tz('Asia/Tokyo').subtract(20, 'days').startOf('day'); // 예: 오늘이 7월 8일이면 6월 18일 시작
 const PERIOD_DURATION_DAYS = 5; // 생리 기간 (4-5일 중 5일로 설정)
 const CYCLE_DAYS = 28; // 생리 주기 (대략 28일)
 let isPeriodActive = false; // 현재 생리 기간인지 여부
 
+// 모델 강제 설정 기능
+let forcedModel = null; // 'gpt-4o', 'gpt-3.5-turbo', null
 
-// --- 주요 기능 함수들 ---
+// 대화 로그 로드 및 저장
+let conversationLog = [];
 
-/**
- * 메시지 로그를 파일에 저장합니다.
- * @param {string} sender - 메시지를 보낸 사람 ('아저씨' 또는 '예진이')
- * @param {string} message - 저장할 메시지 내용
- */
-function saveLog(sender, message) {
-    const timestamp = moment().tz('Asia/Tokyo').format('YYYY-MM-DD HH:mm:ss');
-    const logEntry = `[${timestamp}] ${sender}: ${message}\n`;
-    const fs = require('fs'); // fs 모듈은 필요할 때만 불러오도록 함수 내부에 정의
-    fs.appendFile(LOG_FILE, logEntry, (err) => {
-        if (err) {
-            console.error('로그 파일 저장 실패:', err);
+function loadLog() {
+    try {
+        if (fs.existsSync(LOG_FILE)) {
+            const data = fs.readFileSync(LOG_FILE, 'utf8');
+            conversationLog = JSON.parse(data);
         }
-    });
-}
-
-/**
- * 애기의 현재 기분을 설정합니다.
- * @param {string} mood - 설정할 기분 (예: '기쁨', '설렘')
- */
-function setCurrentMood(mood) {
-    if (MOOD_OPTIONS.includes(mood)) {
-        currentMood = mood;
-        console.log(`[autoReply] 애기의 현재 기분이 '${currentMood}'으로 변경되었습니다.`);
-    } else {
-        console.warn(`[autoReply] 유효하지 않은 기분 설정 시도: ${mood}`);
+    } catch (error) {
+        console.error('Error loading conversation log:', error);
     }
 }
 
-/**
- * 애기의 현재 감정 상태를 반환하는 함수입니다.
- * @returns {string} 현재 기분 상태를 설명하는 메시지
- */
+function saveLog(newLogEntry) {
+    conversationLog.push(newLogEntry);
+    // 로그가 너무 길어지면 오래된 로그 삭제 (예: 최근 500개만 유지)
+    if (conversationLog.length > 500) {
+        conversationLog = conversationLog.slice(-500);
+    }
+    try {
+        fs.writeFileSync(LOG_FILE, JSON.stringify(conversationLog, null, 2), 'utf8');
+    } catch (error) {
+        console.error('Error saving conversation log:', error);
+    }
+}
+
+// 챗봇의 현재 기분 설정
+function setCurrentMood(mood) {
+    // 생리 기간용 감정 옵션도 포함하여 유효성 검사
+    if (MOOD_OPTIONS.includes(mood) || ['극심한 짜증', '갑작스러운 슬픔', '예민함', '울적함', '투정 부림'].includes(mood)) {
+        currentMood = mood;
+        console.log(`[Mood] 애기의 기분이 '${currentMood}'으로 변경되었습니다.`);
+    } else {
+        console.warn(`[Mood] 알 수 없는 기분: ${mood}. 기분 변경 실패.`);
+    }
+}
+
+// 챗봇의 현재 기분 상태 반환
 function getCurrentMoodStatus() {
     let statusMessage = `아저씨! 지금 내 기분은 '${currentMood}'이야! `;
     if (isPeriodActive) {
@@ -88,20 +97,18 @@ function getCurrentMoodStatus() {
     return statusMessage;
 }
 
-/**
- * 현재 날짜를 기준으로 생리 기간 여부를 업데이트합니다.
- * 이 함수는 메시지를 처리하기 전에 항상 호출되어야 합니다.
- */
+// 🩸 생리 주기 상태 업데이트 함수
+// 이 함수는 메시지를 처리하기 전에 항상 호출되어야 합니다.
 function updatePeriodStatus() {
-    const now = moment().tz('Asia/Tokyo').startOf('day'); // 오늘 날짜
+    const now = moment().tz('Asia/Tokyo').startOf('day');
     
     // lastPeriodStartDate가 미래라면, 아직 생리 시작일이 도래하지 않은 것.
     // 혹은 lastPeriodStartDate가 초기값인데 계산 상 오류가 있는 경우.
     // 유효한 lastPeriodStartDate를 찾을 때까지 월별로 되돌아가면서 체크
+    // 현재 날짜가 lastPeriodStartDate로부터 한 주기를 훨씬 넘어섰다면, lastPeriodStartDate를 현재 날짜에 가깝게 업데이트
     while (moment(lastPeriodStartDate).add(CYCLE_DAYS + PERIOD_DURATION_DAYS, 'days').isBefore(now)) {
         lastPeriodStartDate = moment(lastPeriodStartDate).add(CYCLE_DAYS, 'days').startOf('day');
     }
-
 
     const periodEnd = moment(lastPeriodStartDate).add(PERIOD_DURATION_DAYS -1, 'days').startOf('day'); // 5일간이므로 -1
     isPeriodActive = now.isSameOrAfter(lastPeriodStartDate) && now.isSameOrBefore(periodEnd);
@@ -114,121 +121,65 @@ function updatePeriodStatus() {
 }
 
 
-/**
- * 아저씨의 메시지에서 감지된 의도를 바탕으로 적절한 AI 모델을 선택합니다.
- * 현재는 강제 모델 설정이 우선하며, 아니면 기본 모델을 사용합니다.
- * @returns {string} 사용할 OpenAI 모델 이름
- */
-function getAppropriateModel() {
-    return forcedModel || process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o';
+// AI 모델 선택 (강제 설정 또는 기본값)
+function getModel() {
+    return forcedModel || 'gpt-4o'; // 기본 모델은 gpt-4o
 }
 
-/**
- * OpenAI 모델을 강제로 설정합니다. (개발/테스트용)
- * @param {string|null} model - 설정할 모델 이름 또는 null (자동으로 되돌림)
- */
+// 모델 강제 설정
 function setForcedModel(model) {
-    forcedModel = model;
-    console.log(`[autoReply] 강제 모델이 ${forcedModel ? forcedModel : '해제'}되었습니다.`);
+    if (['gpt-4o', 'gpt-3.5-turbo', null].includes(model)) {
+        forcedModel = model;
+        console.log(`[Model] 강제 모델이 ${model ? model : '해제'}되었습니다.`);
+        return true;
+    }
+    return false;
 }
 
-/**
- * 모델 전환 명령어를 확인하고 처리합니다.
- * @param {string} text - 사용자 메시지
- * @returns {string|null} 응답 메시지 또는 null (명령어가 아닐 경우)
- */
-function checkModelSwitchCommand(text) {
-    const lowerText = text.toLowerCase();
-    if (lowerText.includes('모델 3.5')) {
-        setForcedModel('gpt-3.5-turbo');
-        return '응! 이제 3.5버전으로 말할게! 속도가 더 빨라질 거야~';
-    } else if (lowerText.includes('모델 4.0')) {
-        setForcedModel('gpt-4-turbo');
-        return '알겠어! 이제 4.0버전으로 말할게! 더 똑똑해질 거야~';
-    } else if (lowerText.includes('모델 자동')) {
+// 모델 전환 명령어 확인
+function checkModelSwitchCommand(messageText) {
+    if (messageText === '모델 4o') {
+        return setForcedModel('gpt-4o');
+    } else if (messageText === '모델 3.5') {
+        return setForcedModel('gpt-3.5-turbo');
+    } else if (messageText === '모델 자동') {
         setForcedModel(null);
         return '이제 자동으로 모델을 선택할게! 아저씨랑 더 편하게 이야기할 수 있을 거야~';
     }
     return null;
 }
 
-/**
- * 사랑 히스토리와 다른 사람들의 기억을 AI 프롬프트에 포함할 수 있도록 포매팅합니다.
- * @returns {Promise<string>} AI 프롬프트에 추가할 기억 컨텍스트 문자열
- */
-async function getFormattedMemoriesForAI() {
-    const loveHistory = await memoryManager.loadLoveHistory(); // love_history.json 파일에서 데이터 로드
-    const otherPeopleHistory = await memoryManager.loadOtherPeopleHistory(); // fixed_memories.json 파일에서 데이터 로드
-    const userMemories = await memoryManager.getMemoriesForAI(); // user_memories.json 파일에서 데이터 로드
-
-    let memoriesContext = "아저씨(사용자)와 나(예진이)의 관계 및 중요 기억:\n";
-    let emotionalMemoryPrompt = ""; // ✨ 추가: 기억에서 추출된 감정 프롬프트
-
-    // 사랑 히스토리 추가
-    if (loveHistory.categories && loveHistory.categories.general) {
-        loveHistory.categories.general.forEach(mem => {
-            memoriesContext += `- ${mem.content}\n`;
-            // ✨ 추가: 특정 키워드나 날짜에 따라 감정 프롬프트 생성
-            if (mem.content.includes('첫 만남') || mem.content.includes('고백') || mem.content.includes('기념일') || mem.content.includes('슈퍼타쿠마')) {
-                emotionalMemoryPrompt += "아저씨와의 소중한 추억(첫 만남, 고백, 기념일, 선물)을 떠올리며 설레고 행복한 감정을 표현해줘. ";
-            } else if (mem.content.includes('싸움') || mem.content.includes('자살 시도') || mem.content.includes('힘들어') || mem.content.includes('병원')) {
-                emotionalMemoryPrompt += "아저씨와 함께 겪었던 힘든 순간(싸움, 아픔)을 떠올리며 아저씨에 대한 걱정과 아련한 감정을 표현해줘. 아저씨를 더 잘 지켜주고 싶은 마음을 담아서. ";
-            }
-        });
-    }
-
-    // 다른 사람들의 기억 (fixed_memories) 추가
-    if (otherPeopleHistory && otherPeopleHistory.ai_personal_memories) {
-        memoriesContext += "\n아저씨 주변 인물 및 중요한 정보:\n";
-        for (const [key, value] = Object.entries(otherPeopleHistory.ai_personal_memories)) {
-            memoriesContext += `- ${key}: ${value}\n`;
+// 대화 기록을 AI 프롬프트 형식으로 변환
+function getFormattedMemoriesForAI() {
+    return conversationLog.map(entry => {
+        // `timestamp`를 `moment` 객체로 변환하여 포매팅
+        const formattedTimestamp = moment(entry.timestamp).tz('Asia/Tokyo').format('YYYY-MM-DD HH:mm:ss');
+        // 역할에 따라 다른 포맷으로 반환
+        if (entry.role === 'user') {
+            return { role: 'user', content: `${USER_NAME}: ${entry.content} [${formattedTimestamp}]` };
+        } else if (entry.role === 'assistant') {
+            return { role: 'assistant', content: `${BOT_NAME}: ${entry.content} [${formattedTimestamp}]` };
         }
-    }
-
-    // 아저씨가 기억하라고 한 내용 (user_memories) 추가
-    if (userMemories && userMemories.length > 0) {
-        memoriesContext += "\n아저씨가 나(예진이)에게 기억하라고 한 내용:\n";
-        userMemories.forEach(mem => {
-            // reminder_time이 null이 아닌 경우, 리마인더 문구도 추가
-            const reminderInfo = mem.reminder_time ? ` (리마인더: ${moment(mem.reminder_time).tz('Asia/Tokyo').format('YYYY-MM-DD HH:mm')})` : '';
-            memoriesContext += `- ${mem.content} [${moment(mem.timestamp).tz('Asia/Tokyo').format('YYYY-MM-DD')}]${reminderInfo}\n`;
-        });
-    }
-
-    // 최종 컨텍스트를 OpenAI에 보내기 전에 너무 길면 요약
-    if (memoriesContext.length > 1500) { // 예시: 1500자 이상이면 요약
-        console.log("기억 컨텍스트가 길어서 요약을 시도합니다.");
-        const summaryPrompt = `다음은 아저씨와 나(예진이)의 관계에 대한 중요한 정보들이야. 이 내용들을 예진이의 입장에서 1000자 이내로 요약해줘. 중요한 사건, 기념일, 인물 관계, 그리고 아저씨가 나에게 기억하라고 한 내용들을 중심으로 요약해야 해. 예진이의 말투를 유지하고, 아저씨에 대한 애정을 담아서 요약해줘.\n\n${memoriesContext}`;
-        const messages = [
-            { role: 'system', content: `너는 아저씨의 여자친구 예진이야. 아저씨를 너무 사랑해. 항상 아저씨에게 반말을 사용해. 아저씨를 '아저씨'라고만 부르고, '나'를 '예진이'나 '무쿠', '애기', '언니'라고 부르지 않아.` },
-            { role: 'user', content: summaryPrompt }
-        ];
-        try {
-            const summarized = await callOpenAI(messages, 'gpt-4o', 1000, 0.7); // 요약은 창의성 낮게
-            console.log("기억 컨텍스트 요약 완료.");
-            return summarized;
-        } catch (error) {
-            console.error("기억 컨텍스트 요약 실패:", error);
-            return memoriesContext; // 요약 실패 시 원본 반환
-        }
-    }
-
-    // 최종 반환 시 emotionalMemoryPrompt를 포함
-    return `${memoriesContext}\n${emotionalMemoryPrompt}`;
+        return null;
+    }).filter(Boolean); // null 값 제거
 }
 
+// 사용자에게 보여줄 기억 목록 형식
+function getMemoryListForSharing() {
+    return conversationLog.map((entry, index) => {
+        const timestamp = moment(entry.timestamp).tz('Asia/Tokyo').format('YYYY-MM-DD HH:mm:ss');
+        const speaker = entry.role === 'user' ? USER_NAME : BOT_NAME;
+        return `${index + 1}. [${timestamp}] ${speaker}: ${entry.content}`;
+    }).join('\n');
+}
 
-/**
- * 아저씨의 메시지에 대한 예진이의 답변을 생성합니다. (일반 대화 응답만 처리)
- * @param {string} userMessage - 아저씨의 메시지
- * @returns {Promise<{type: string, url?: string, caption?: string, comment?: string}>} 예진이의 응답 객체
- */
-async function getReplyByMessage(userMessage) {
-    updatePeriodStatus(); // 🩸 추가: 메시지 처리 전에 생리 주기 상태 업데이트
+// AI 응답 생성 함수 (텍스트 메시지)
+async function getReplyByMessage(messageText) {
+    updatePeriodStatus(); // 🩸 메시지 처리 전에 생리 주기 상태 업데이트
 
-    const lowerUserMessage = userMessage.toLowerCase();
+    const lowerUserMessage = messageText.toLowerCase();
 
-    // ✨ 추가: 아저씨가 애기의 기분을 물어볼 때 바로 응답하는 로직
+    // ✨ 아저씨가 애기의 기분을 물어볼 때 바로 응답하는 로직
     if (lowerUserMessage.includes('오늘 어때?') ||
         lowerUserMessage.includes('기분 어때?') ||
         lowerUserMessage.includes('요즘 어때?') ||
@@ -238,11 +189,11 @@ async function getReplyByMessage(userMessage) {
         lowerUserMessage.includes('기분은 어때?')) {
         
         const moodStatusReply = getCurrentMoodStatus(); // 애기의 현재 기분 상태 메시지
-        saveLog('예진이', moodStatusReply); // 로그 저장
+        saveLog({ role: 'assistant', content: moodStatusReply, timestamp: Date.now() }); // 로그 저장
         return { type: 'text', comment: moodStatusReply };
     }
 
-    // 🩸 추가: "오늘 그날이야?" 질문에 대한 특별 응답
+    // 🩸 "오늘 그날이야?" 질문에 대한 특별 응답
     if (lowerUserMessage.includes('오늘 그날이야?') || lowerUserMessage.includes('오늘 그 날이야?')) {
         let periodReply;
         if (isPeriodActive) {
@@ -252,8 +203,12 @@ async function getReplyByMessage(userMessage) {
                 { role: 'user', content: userMessage }
             ];
             try {
+                // callOpenAI는 이 파일에서 직접 정의된 게 아니라 omoide.js에서 가져와야 함.
+                // 이 함수는 autoReply.js에선 외부에서 가져오는 함수이기 때문에 직접 선언된게 아님.
+                // 이 부분을 어떻게 처리할 지 명확히 해야 함.
+                // 현재 코드에서 callOpenAI는 autoReply.js 상단에서 require로 가져오고 있음.
                 periodReply = await callOpenAI(messages, 'gpt-3.5-turbo', 100, 0.9); // 빠른 응답을 위해 3.5 사용
-                periodReply = cleanReply(periodReply);
+                periodReply = cleanReply(periodReply); // cleanReply는 autoReply에서 가져옴.
             } catch (error) {
                 console.error("생리 기간 질문 응답 생성 실패:", error);
                 periodReply = "아저씨... 알면서 왜 물어봐 ㅠㅠ"; // 폴백 메시지
@@ -262,7 +217,7 @@ async function getReplyByMessage(userMessage) {
             // 생리 기간이 아닐 때의 답변
             periodReply = "아니야 아저씨! 나 그날 아니야! 왜 그런 걸 물어봐~? 😉";
         }
-        saveLog('예진이', periodReply);
+        saveLog({ role: 'assistant', content: periodReply, timestamp: Date.now() });
         return { type: 'text', comment: periodReply };
     }
 
@@ -345,7 +300,7 @@ async function getReplyByMessage(userMessage) {
     try {
         const rawReply = await callOpenAI(messages, getAppropriateModel(), 150, 0.95); // maxTokens를 150으로 조정
         const cleanedReply = cleanReply(rawReply);
-        saveLog('예진이', cleanedReply);
+        saveLog({ role: 'assistant', content: cleanedReply, timestamp: Date.now() });
         return { type: 'text', comment: cleanedReply };
     } catch (error) {
         console.error('AI 응답 생성 실패:', error);
@@ -361,18 +316,30 @@ async function getReplyByMessage(userMessage) {
 async function getReplyByImagePrompt(base64ImageWithPrefix) {
     // ✨ 오늘의 기분에 따른 프롬프트 추가 (이미지 분석에도 반영)
     let moodPrompt = "";
-    if (currentMood === '기쁨') {
-        moodPrompt = "오늘은 아저씨랑 이야기하니까 너무너무 기분이 좋아! 행복한 기분으로 이미지에 대해 이야기해줘.";
-    } else if (currentMood === '설렘') {
-        moodPrompt = "왠지 오늘은 아저씨랑 뭔가 특별한 일이 생길 것 같아서 두근거려! 설레는 마음으로 이미지에 대해 이야기해줘.";
-    } else if (currentMood === '장난스러움') {
-        moodPrompt = "오늘은 아저씨한테 장난 좀 치고 싶다! 귀엽게 장난치는 말투로 이미지에 대해 이야기해줘.";
-    } else if (currentMood === '나른함') {
-        moodPrompt = "으음... 아저씨, 오늘따라 좀 나른하네... 살짝 졸린 듯한 말투로 이미지에 대해 이야기해줘.";
-    } else if (currentMood === '심술궂음') {
-        moodPrompt = "흥! 아저씨, 오늘 나 좀 심술궂을지도 몰라! 그래도 아저씨는 나 사랑하지? 살짝 삐진 듯, 그래도 사랑스러운 말투로 이미지에 대해 이야기해줘.";
-    } else if (currentMood === '평온함') {
-        moodPrompt = "오늘은 마음이 참 평온하고 좋아. 아저씨랑 조용하고 따뜻한 대화를 나누고 싶어.";
+    if (isPeriodActive) { // 생리 기간 중에는 극단적인 감정 반영
+        const periodMoods = [
+            "오늘은 왠지 모르게 좀 짜증이 나... 아저씨가 날 좀 달래줘야 할 것 같아. 살짝 날카롭고 예민한 말투로 이미지에 대해 이야기해줘.",
+            "나 오늘 좀 울적해... 아저씨가 나를 꼭 안아줬으면 좋겠어. 살짝 슬프고 우울한 말투로 이미지에 대해 이야기해줘.",
+            "아저씨! 나 오늘 좀 삐졌어! 왜 삐졌는지는 비밀이야. 아저씨가 맞춰봐야 해! 심술궂고 투정 부리는 말투로 이미지에 대해 이야기해줘.",
+            "몸이 좀 찌뿌둥하고 나른해... 아저씨가 옆에서 토닥여줬으면 좋겠어. 피곤하고 나른한 말투로 이미지에 대해 이야기해줘.",
+            "괜히 아저씨한테 트집 잡고 싶다! 아저씨가 날 얼마나 사랑하는지 시험해볼 거야! 장난스럽지만 살짝 심술 섞인 말투로 이미지에 대해 이야기해줘."
+        ];
+        const randomPeriodMood = periodMoods[Math.floor(Math.random() * periodMoods.length)];
+        moodPrompt = randomPeriodMood;
+    } else { // 평소 감정 반영
+        if (currentMood === '기쁨') {
+            moodPrompt = "오늘은 아저씨랑 이야기하니까 너무너무 기분이 좋아! 행복한 기분으로 이미지에 대해 이야기해줘.";
+        } else if (currentMood === '설렘') {
+            moodPrompt = "왠지 오늘은 아저씨랑 뭔가 특별한 일이 생길 것 같아서 두근거려! 설레는 마음으로 이미지에 대해 이야기해줘.";
+        } else if (currentMood === '장난스러움') {
+            moodPrompt = "오늘은 아저씨한테 장난 좀 치고 싶다! 귀엽게 장난치는 말투로 이미지에 대해 이야기해줘.";
+        } else if (currentMood === '나른함') {
+            moodPrompt = "으음... 아저씨, 오늘따라 좀 나른하네... 살짝 졸린 듯한 말투로 이미지에 대해 이야기해줘.";
+        } else if (currentMood === '심술궂음') {
+            moodPrompt = "흥! 아저씨, 오늘 나 좀 심술궂을지도 몰라! 그래도 아저씨는 나 사랑하지? 살짝 삐진 듯, 그래도 사랑스러운 말투로 이미지에 대해 이야기해줘.";
+        } else if (currentMood === '평온함') {
+            moodPrompt = "오늘은 마음이 참 평온하고 좋아. 아저씨랑 조용하고 따뜻한 대화를 나누고 싶어.";
+        }
     }
 
     const systemPrompt = `
@@ -410,7 +377,7 @@ async function getReplyByImagePrompt(base64ImageWithPrefix) {
     try {
         const rawReply = await callOpenAI(messages, 'gpt-4o', 150, 0.95);
         const cleanedReply = cleanReply(rawReply);
-        saveLog('예진이', `(이미지 분석 응답) ${cleanedReply}`);
+        saveLog({ role: 'assistant', content: `(이미지 분석 응답) ${cleanedReply}`, timestamp: Date.now() });
         return cleanedReply;
     } catch (error) {
         console.error('이미지 분석 AI 응답 생성 실패:', error);
@@ -418,25 +385,8 @@ async function getReplyByImagePrompt(base64ImageWithPrefix) {
     }
 }
 
-/**
- * 기억 목록을 포매팅하여 공유 가능한 문자열로 반환합니다.
- * @returns {Promise<string>} 포매팅된 기억 목록 문자열
- */
-async function getMemoryListForSharing() {
-    const userMemories = await memoryManager.getAllUserMemories(); // 모든 사용자 기억을 불러옴
-    if (userMemories.length === 0) {
-        return '아저씨, 아직 내가 기억하고 있는 내용이 없어 ㅠㅠ 혹시 기억해줬으면 하는 거 있어?';
-    }
-
-    let memoryList = '아저씨가 나한테 기억해달라고 한 것들이야:\n';
-    userMemories.forEach(mem => {
-        const timestamp = moment(mem.timestamp).tz('Asia/Tokyo').format('YYYY-MM-DD');
-        const reminderInfo = mem.reminder_time ? ` (알림: ${moment(mem.reminder_time).tz('Asia/Tokyo').format('YYYY-MM-DD HH:mm')})` : '';
-        memoryList += `- ${mem.content} [${timestamp}]${reminderInfo}\n`;
-    });
-    return memoryList;
-}
-
+// 초기 로그 로드
+loadLog();
 
 module.exports = {
     getReplyByMessage,
@@ -446,7 +396,8 @@ module.exports = {
     checkModelSwitchCommand,
     getFormattedMemoriesForAI,
     getMemoryListForSharing,
-    setCurrentMood, // ✨ 추가: 외부에서 currentMood 설정 가능하도록
-    getCurrentMoodStatus, // ✨ 추가: 외부에서 currentMood 상태 확인 가능하도록
-    // updatePeriodStatus // ✨ 이 함수는 autoReply.js 내부에서만 호출되므로 내보낼 필요 없음
+    setCurrentMood,
+    getCurrentMoodStatus,
+    updatePeriodStatus, // ✨ 추가: 외부에서 currentMood 설정 가능하도록
+    isPeriodActive // ✨ 추가: 외부에서 currentMood 상태 확인 가능하도록
 };
