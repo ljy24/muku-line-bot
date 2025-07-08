@@ -291,6 +291,24 @@ async function getReplyByMessage(userMessage) {
 
     const lowerUserMessage = userMessage.toLowerCase();
 
+    // ✅ 모델 설정 단축어 (4.0 / 3.5 / 자동) 처리
+    if (['4.0', '3.5', '자동'].includes(userMessage.trim())) {
+        const versionMap = {
+            '4.0': 'gpt-4o',
+            '3.5': 'gpt-3.5-turbo',
+            '자동': null
+        };
+        const newModel = versionMap[userMessage.trim()];
+        setForcedModel(newModel);
+        const confirmReply = {
+            '4.0': '응응! 지금은 GPT-4.0 버전으로 대화하고 있어, 아저씨 💫',
+            '3.5': '지금은 GPT-3.5 버전이야~ 말투 차이 느껴져? ☁️',
+            '자동': '이제부터 상황 보고 자동으로 모델 바꿀게, 아저씨 믿어줘! 🌙'
+        };
+        saveLog({ role: 'assistant', content: confirmReply[userMessage.trim()], timestamp: Date.now() });
+        return { type: 'text', comment: confirmReply[userMessage.trim()] };
+    }
+
     if (lowerUserMessage.includes('오늘 어때?') ||
         lowerUserMessage.includes('기분 어때?') ||
         lowerUserMessage.includes('요즘 어때?') ||
