@@ -1,9 +1,9 @@
-// src/scheduler.js - v1.3 - 모든 스케줄링 로직을 중앙 집중화 및 proactiveMessages.js 연동 (Render PostgreSQL 기반 memoryManager 사용)
+// src/scheduler.js - v1.4 - 모든 스케줄링 로직을 중앙 집중화 및 proactiveMessages.js 연동 (하이브리드 memoryManager 사용)
 const cron = require('node-cron');
 const moment = require('moment-timezone');
 const { Client } = require('@line/bot-sdk'); // LINE 클라이언트 필요
 const { saveLog } = require('./autoReply'); // 로그 저장을 위해 필요 (autoReply.js에서 가져옴)
-const memoryManager = require('./memoryManager'); // memoryManager 필요 (이제 Render PostgreSQL 기반으로 작동)
+const memoryManager = require('./memoryManager'); // memoryManager 필요 (이제 하이브리드 방식으로 작동)
 const { getProactiveMemoryMessage, getSilenceCheckinMessage } = require('./proactiveMessages'); // proactiveMessages에서 선제적 메시지 함수들을 불러옴
 
 // ✨ omoide.js에서 getOmoideReply 함수를 직접 불러옴 ✨
@@ -124,7 +124,6 @@ const sendScheduledMessage = async (lineClient, targetUserId, type) => {
             }
         }
     }
-    // 'couple_photo' 타입 처리 로직은 삭제됩니다.
 };
 
 /**
