@@ -257,14 +257,14 @@ async function getOmoideReply(userMessage, saveLogFunc, callOpenAI, cleanReply) 
     const photoKeywords = ['셀카', '후지 사진', '인생네컷', '커플사진', '일본 사진', '한국 사진', '출사', '필름카메라', '메이드', '흑심', '사진줘', '얼굴 보여줘', '얼굴 보고 싶', 'selfie', '셀카 보내줘', '셀카 보여줘', '셀카 줘', '사진 보여줘']; // ✨ 키워드 추가 및 강화
     
     // ✨ 중요: 컨셉사진 요청은 concept.js에서 처리하도록 제외
-    const conceptKeywords = ['컨셉사진', '컨셉 사진', '하카타', '텐진', '모지코', '욕실', '욕조', '나비욕조', '세미누드', '결박', '교복', '플라스틱러브', '홈스냅', '지브리풍', '아이노시마', '후지엔', '유카타', '불꽃놀이', '고스로리', '크리스마스', '생일컨셉', '옥상연리', '을지로', '이화마을', '코야노세', '무인역', '고쿠라', '벗꽃', '동백', '온실', '화가', '문래동', '북해', '피크닉', '산책', '터널', '망친 사진', '우마시마', '비눗방울', '야간거리', '게임센터', '동키 거리', '수국', '코이노보리', '블랙원피스', '호리존', '원미상가', '길거리 스냅', '오도', '나르시스트', '눈밭', '필름카메라', '청포도', '보라돌이', '밤바', '공원', '오타쿠', '힙', '캘빈', '네코'];
+    const conceptKeywords = ['컨셉사진', '컨셉 사진', '하카타', '텐진', '모지코', '욕실', '욕조', '나비욕조', '세미누드', '결박', '교복', '플라스틱러브', '홈스냅', '지브리풍', '아이노시마', '후지엔', '유카타', '불꽃놀이', '고스로리', '크리스마스', '생일컨셉', '옥상연리', '을지로', '이화마을', '코야노세', '무인역', '고쿠라', '벗꽃', '동백', '온실', '화가', '문래동', '북해', '피크닉', '산책', '터널', '망친 사진', '우마시마', '비눗방울', '야간거리', '게임센터', '동키 거리', '수국', '코이노보리', '블랙원피스', '호리존', '원미상가', '길거리 스냅', '오도', '나르시스트', '눈밭', '필름카메라', '청포도', '보라돌이', '밤바', '공원', '오타쿠', '힙', '캘빈', '네코', '스트리트'];
     
     const isPhotoRequest = photoKeywords.some(keyword => lowerCaseMessage.includes(keyword));
     const isConceptRequest = conceptKeywords.some(keyword => lowerCaseMessage.includes(keyword));
     
     // 컨셉사진 요청이면 concept.js에서 처리하도록 null 반환
     if (isConceptRequest) {
-        console.log(`[omoide:getOmoideReply] 컨셉사진 요청 감지. concept.js에서 처리하도록 null 반환.`);
+        console.log(`[omoide:getOmoideReply] 컨셉사진 요청 감지 (키워드: ${conceptKeywords.filter(k => lowerCaseMessage.includes(k)).join(', ')}). concept.js에서 처리하도록 null 반환.`);
         return null;
     }
 
