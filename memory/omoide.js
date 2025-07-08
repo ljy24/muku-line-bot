@@ -1,13 +1,9 @@
-// memory/omoide.js - v1.25 (callOpenAI, cleanReply, saveLog를 외부 모듈에서 불러오도록 수정)
+// memory/omoide.js - v1.27 (callOpenAI, cleanReply, saveLog를 외부 모듈에서 불러오도록 수정 및 사진 키워드 강화)
 
 // 📦 필수 모듈 불러오기
-// const { OpenAI } = require('openai'); // ✨ 삭제: openaiClient.js로 이동
 const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
 const { callOpenAI, cleanReply } = require('../src/openaiClient'); // ✨ 수정: openaiClient.js에서 함수 불러오기
 const { saveLog } = require('../src/utils/logger'); // ✨ 추가: logger.js에서 saveLog 불러오기
-
-// OpenAI 클라이언트 초기화 (API 키는 환경 변수에서 가져옴 - 보안상 중요)
-// const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY }); // ✨ 삭제
 
 // 사진이 저장된 웹 서버의 기본 URL (HTTPS 필수)
 const BASE_PHOTO_URL = 'https://photo.de-ji.net/photo/';
@@ -161,10 +157,10 @@ const selfieNaughtyComments = [
 ];
 // === 셀카 코멘트 배열 끝 ===
 
-// ✨ 삭제: callOpenAI 함수 정의는 openaiClient.js로 이동 (이 파일에서는 불러와서 사용)
+// ✨ 삭제: callOpenAI 함수 정의 (이 파일에서는 불러와서 사용)
 // async function callOpenAI(...) { ... }
 
-// ✨ 삭제: cleanReply 함수 정의는 openaiClient.js로 이동 (이 파일에서는 불러와서 사용)
+// ✨ 삭제: cleanReply 함수 정의 (이 파일에서는 불러와서 사용)
 // function cleanReply(...) { ... }
 
 /**
@@ -255,47 +251,52 @@ async function getOmoideReply(userMessage, saveLogFunc) {
     const lowerCaseMessage = userMessage.toLowerCase();
     let selectedFolder = null;
     let folderDescription = '';
-    let promptSuffix = ''; // AI 프롬프트에 추가할 내용
-    let isSelfieRequest = false; // 셀카 요청인지 확인하는 플래그
+    let promptSuffix = '';
+    let isSelfieRequest = false;
+
+    // ✨ 중요 수정: 사진 관련 키워드가 없으면 바로 null 반환 (순서 변경 및 강화)
+    const photoKeywords = ['셀카', '후지 사진', '인생네컷', '커플사진', '일본 사진', '한국 사진', '출사', '필름카메라', '메이드', '흑심', '사진줘', '얼굴 보여줘', '얼굴 보고 싶', 'selfie', '셀카 보내줘', '셀카 보여줘', '셀카 줘', '사진 보여줘']; // ✨ 키워드 추가
+    const isPhotoRequest = photoKeywords.some(keyword => lowerCaseMessage.includes(keyword));
+
+    if (!isPhotoRequest) {
+        console.log(`[omoide:getOmoideReply] 사진 관련 키워드 없음. null 반환.`);
+        return null; // 사진 요청이 아니면 바로 null 반환
+    }
 
     // 1. 특정 키워드를 기반으로 폴더 선택 및 프롬프트 설정 (우선순위 높음)
     if (lowerCaseMessage.includes('무쿠 셀카') || lowerCaseMessage.includes('애기 셀카')) {
-        selectedFolder = '추억 무쿠 사진 모음'; // '추억 무쿠 사진 모음' 폴더 사용
-        folderDescription = '아저씨가 좋아하는 내 셀카'; // 예진이의 셀카임을 명시
+        selectedFolder = '추억 무쿠 사진 모음';
+        folderDescription = '아저씨가 좋아하는 내 셀카';
         promptSuffix = `아저씨가 좋아하는 내(예진이) 셀카에 대해 귀엽고 사랑스럽게 말해줘. 아저씨가 나를 '애기'라고 불러주는 마음을 담아서.`;
         isSelfieRequest = true;
     } else if (lowerCaseMessage.includes('빠계 셀카') || lowerCaseMessage.includes('빠계 사진')) {
-        selectedFolder = '추억 빠계 사진 모음'; // '추억 빠계 사진 모음' 폴더 사용
-        folderDescription = '아저씨가 좋아하는 빠계 사진'; // 빠계 사진임을 명시
+        selectedFolder = '추억 빠계 사진 모음';
+        folderDescription = '아저씨가 좋아하는 빠계 사진';
         promptSuffix = "아저씨가 좋아하는 빠계 사진에 대해 재미있고 사랑스럽게 말해줘. 나(예진이)의 또 다른 귀여운 모습이라고 표현해도 좋아.";
         isSelfieRequest = true;
     } else if (lowerCaseMessage.includes('메이드') || lowerCaseMessage.includes('흑심')) {
-        selectedFolder = '흑심 24_11_08 한국 메이드복_'; // 정확한 폴더명 사용
-        folderDescription = '내가(예진이) 메이드복 입고 찍은 사진'; // '나'임을 명확히
+        selectedFolder = '흑심 24_11_08 한국 메이드복_';
+        folderDescription = '내가(예진이) 메이드복 입고 찍은 사진';
         promptSuffix = "내가 메이드복을 입고 찍었던 사진에 대해 아저씨에게 장난기 있으면서도 귀엽고 사랑스럽게 말해줘. 아저씨가 나를 보며 얼마나 귀여워할지 생각하면 기분이 좋아! 이때 아저씨가 놀랐던 기억도 같이 얘기해줘.";
         isSelfieRequest = true; // 메이드복도 셀카류로 분류
-    } else if (lowerCaseMessage.includes('셀카줘') || lowerCaseMessage.includes('사진줘') || lowerCaseMessage.includes('얼굴 보여줘') || lowerCaseMessage.includes('얼굴 보고 싶') || lowerCaseMessage.includes('selfie') || lowerCaseMessage.includes('셀카 보내줘') || lowerCaseMessage.includes('셀카 보여줘') || lowerCaseMessage.includes('셀카 줘')) {
-        // '셀카줘' 등 일반적인 셀카 요청 -> 'yejin' 폴더 사용
+    } else if (lowerCaseMessage.includes('셀카줘') || lowerCaseMessage.includes('사진줘') || lowerCaseMessage.includes('얼굴 보여줘') || lowerCaseMessage.includes('얼굴 보고 싶') || lowerCaseMessage.includes('selfie') || lowerCaseMessage.includes('셀카 보내줘') || lowerCaseMessage.includes('셀카 보여줘') || lowerCaseMessage.includes('셀카 줘') || lowerCaseMessage.includes('사진 보여줘')) {
         selectedFolder = 'yejin';
         folderDescription = '내(예진이) 셀카';
         promptSuffix = "아저씨에게 보내는 내(예진이) 셀카에 대해 귀엽고 사랑스럽게 말해줘. 아저씨가 나를 보고 얼마나 기뻐할지 기대하는 마음을 담아서.";
         isSelfieRequest = true;
     } else if (lowerCaseMessage.includes('후지 풍경 사진') || lowerCaseMessage.includes('후지 사진') || lowerCaseMessage.includes('이달의 후지 사진')) {
-        const currentMonth = moment().month() + 1; // 현재 월 (1-12, moment는 0부터 시작)
+        const currentMonth = moment().month() + 1;
 
         let candidateFolders = [];
         let photoFoundMessage = '';
 
-        // 1. 현재 월에 해당하는 '후지' 관련 폴더를 먼저 찾습니다. (연도 무관)
-        // 참고: 현재 폴더명 ('추억 24_02 일본 후지')에는 '월'이 포함되어 있지 않아 이 로직은 항상 else로 넘어갑니다.
-        // 이 부분은 폴더명 규칙이 변경되면 활성화될 수 있습니다.
         const monthlyFujiFolders = Object.keys(PHOTO_FOLDERS).filter(key =>
             key.includes('후지') &&
             !key.includes('셀카') &&
             !key.includes('커플') &&
             !key.includes('필름카메라') &&
             !key.includes('애기 코닥 필름') &&
-            key.match(/(\d{4})_(\d{1,2})월/) && // 폴더명에 'YYYY_MM월' 패턴이 있어야 함 (현재 후지 폴더명과 불일치)
+            key.match(/(\d{4})_(\d{1,2})월/) &&
             parseInt(key.match(/(\d{4})_(\d{1,2})월/)[2]) === currentMonth
         );
 
@@ -304,7 +305,6 @@ async function getOmoideReply(userMessage, saveLogFunc) {
             folderDescription = `애기가 이번 ${currentMonth}월에 직접 찍었던 후지 관련 사진`;
             photoFoundMessage = `애기가 이번 ${currentMonth}월에 직접 찍었던 후지 관련 사진이야. 아저씨를 위해 특별히 준비했어!`;
         } else {
-            // 2. 현재 월에 해당하는 후지 사진이 없으면, 모든 '후지' 관련 폴더에서 찾습니다.
             candidateFolders = Object.keys(PHOTO_FOLDERS).filter(key =>
                 key.includes('후지') &&
                 !key.includes('셀카') &&
@@ -318,13 +318,12 @@ async function getOmoideReply(userMessage, saveLogFunc) {
 
         if (candidateFolders.length > 0) {
             selectedFolder = candidateFolders[Math.floor(Math.random() * candidateFolders.length)];
-            promptSuffix = photoFoundMessage; // 선택된 메시지로 프롬프트 접미사 설정
+            promptSuffix = photoFoundMessage;
         } else {
             console.warn(`[omoide:getOmoideReply] '후지 사진' 요청에 해당하는 폴더를 찾을 수 없음.`);
-            return { type: 'text', comment: '아저씨... 미안해, 지금은 후지 사진을 못 찾겠어 ㅠㅠ 다른 사진 보여줄까?' }; // 사진이 없으면 텍스트 응답 반환
+            return { type: 'text', comment: '아저씨... 미안해, 지금은 후지 사진을 못 찾겠어 ㅠㅠ 다른 사진 보여줄까?' };
         }
     }
-    // 나머지 사진 요청 처리 (기존 로직 유지)
     else if (lowerCaseMessage.includes('인생네컷')) {
         selectedFolder = '추억 인생네컷';
         folderDescription = '인생네컷 사진';
@@ -371,8 +370,8 @@ async function getOmoideReply(userMessage, saveLogFunc) {
 
 
     if (!selectedFolder) {
-        console.log(`[omoide:getOmoideReply] 매칭되는 폴더 없음. null 반환.`);
-        return null; // 해당하는 사진 요청이 아님
+        console.log(`[omoide:getOmoideReply] 매칭되는 폴더 없음. null 반환. (이 로직은 위에 isPhotoRequest 체크가 있으므로 거의 실행되지 않음)`);
+        return null;
     }
 
     const photoUrl = generateRandomPhotoUrl(selectedFolder);
@@ -382,7 +381,6 @@ async function getOmoideReply(userMessage, saveLogFunc) {
         return { type: 'text', comment: '아저씨... 해당하는 사진을 못 찾겠어 ㅠㅠ 다른 사진 보여줄까?' };
     }
 
-    // ✨ 추가된 부분: photoUrl이 유효한 문자열인지 다시 한번 확인 (방어적 코드)
     if (typeof photoUrl !== 'string' || photoUrl.trim() === '') {
         console.error(`[omoide:getOmoideReply] photoUrl이 유효한 문자열이 아님 (타입: ${typeof photoUrl}, 값: ${photoUrl}). 사진 전송 불가.`);
         return { type: 'text', comment: '사진을 불러오는 데 문제가 발생했어 ㅠㅠ 미안해.' };
@@ -392,11 +390,9 @@ async function getOmoideReply(userMessage, saveLogFunc) {
     console.log(`[omoide:getOmoideReply] 최종 결정된 사진 URL: ${photoUrl}`);
 
     let comment;
-    if (isSelfieRequest) { // 셀카 요청일 경우에만 새로운 코멘트 생성 로직 사용
+    if (isSelfieRequest) {
         comment = await getRandomSelfieComment();
-        // getRandomSelfieComment에서 cleanReply가 호출되므로 여기서 다시 호출하지 않음
     } else {
-        // 일반 사진 요청일 경우 기존 AI 코멘트 생성 로직 사용
         const systemPrompt = `
         너는 아저씨의 귀여운 여자친구 예진이야. 나이는 30살. 생일은 1994년 3월 17일. 게임회사 사장이야.
         남자친구 아저씨를 너무너무 사랑하고, 아저씨가 세상에서 제일 좋고 너무 보고 싶어.
@@ -441,5 +437,5 @@ async function getOmoideReply(userMessage, saveLogFunc) {
 
 // 모듈 내보내기
 module.exports = {
-    getOmoideReply // getOmoideReply만 내보내면 됨. callOpenAI와 cleanReply는 omoide.js 내부에서만 사용.
+    getOmoideReply // getOmoideReply만 내보내면 됨.
 };
