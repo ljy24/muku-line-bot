@@ -1,4 +1,4 @@
-// ✅ index.js v1.16 - 파일 분리 및 핸들러 모듈 통합
+// ✅ index.js v1.17 - 파일 분리 및 Supabase 제거
 
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공 (예: 로그 파일)
@@ -25,7 +25,7 @@ const { startAllSchedulers, updateLastUserMessageTime } = require('./src/schedul
 // 즉흥 사진 스케줄러 불러오기
 const { startSpontaneousPhotoScheduler } = require('./src/spontaneousPhotoManager');
 
-// memoryManager 모듈 (리마인더 처리를 위해 필요)
+// memoryManager 모듈 (리마인더 처리 및 파일 기반 기억 관리를 위해 필요)
 const memoryManager = require('./src/memoryManager');
 
 // Express 애플리케이션을 생성합니다.
@@ -95,6 +95,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
                     if (!botResponse) {
                         botResponse = await getReplyByMessage(text);
                         // 일반 대화인 경우에만 기억 추출 및 저장 시도 (명령어/기억 명령이 아닌 경우)
+                        // 참고: 파일 기반 기억은 Render 배포 환경에서 휘발성일 수 있습니다.
                         await memoryManager.extractAndSaveMemory(text);
                         console.log(`[index.js] memoryManager.extractAndSaveMemory 호출 완료 (메시지: "${text}")`);
                     } else {
@@ -174,8 +175,18 @@ app.post('/webhook', middleware(config), async (req, res) => {
 const PORT = process.env.PORT || 3000; // 서버가 수신할 포트 번호 (환경 변수 PORT가 없으면 3000 사용)
 app.listen(PORT, async () => {
     console.log(`무쿠 서버 스타트! 포트: ${PORT}`); // 서버 시작 로그
-    await memoryManager.ensureMemoryDirectory(); // 기억 파일 저장 디렉토리 존재 확인 및 생성
-    console.log('메모리 디렉토리 확인 및 준비 완료.'); // 디렉토리 준비 완료 로그
+    // 'data' 디렉토리 생성 및 고정 기억 파일 초기화를 위한 함수 호출
+    await memoryManager.ensureMemoryDirectory();
+    console.log('메모리 디렉토리 확인 및 준비 완료.');
+
+    // 파일 기반 기억 관리 시, love_history.json과 fixed_memories.json 파일이 존재하지 않으면
+    // 초기 데이터를 생성하는 로직이 필요할 수 있습니다.
+    // (예: 최초 배포 시, 샘플 love_history.json과 fixed_memories.json 파일을 'data' 폴더에 복사하거나
+    // memoryManager에서 파일이 없을 때 기본 데이터를 생성하도록 로직 추가)
+    
+    // 이전에 제공했던 love-history.json과 fixed-messages.txt (fixed_memories.json 데이터) 내용을
+    // 'data' 폴더 내의 love_history.json과 fixed_memories.json으로 옮겨주세요.
+    // 이는 수동으로 파일을 해당 경로에 배치해야 합니다.
 
     // 모든 스케줄러 시작
     startAllSchedulers(client, userId);
