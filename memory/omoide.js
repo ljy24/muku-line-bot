@@ -1,9 +1,9 @@
-// memory/omoide.js - v1.27 (callOpenAI, cleanReply, saveLog를 외부 모듈에서 불러오도록 수정 및 사진 키워드 강화)
+// memory/omoide.js - v1.28 (callOpenAI, cleanReply, saveLog를 autoReply.js에서 불러오도록 수정)
 
 // 📦 필수 모듈 불러오기
 const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
-const { callOpenAI, cleanReply } = require('../src/openaiClient'); // ✨ 수정: openaiClient.js에서 함수 불러오기
-const { saveLog } = require('../src/utils/logger'); // ✨ 추가: logger.js에서 saveLog 불러오기
+// ✨ 수정: autoReply.js에서 callOpenAI, cleanReply, saveLog 불러오기
+const { callOpenAI, cleanReply, saveLog } = require('../src/autoReply'); 
 
 // 사진이 저장된 웹 서버의 기본 URL (HTTPS 필수)
 const BASE_PHOTO_URL = 'https://photo.de-ji.net/photo/';
@@ -157,12 +157,6 @@ const selfieNaughtyComments = [
 ];
 // === 셀카 코멘트 배열 끝 ===
 
-// ✨ 삭제: callOpenAI 함수 정의 (이 파일에서는 불러와서 사용)
-// async function callOpenAI(...) { ... }
-
-// ✨ 삭제: cleanReply 함수 정의 (이 파일에서는 불러와서 사용)
-// function cleanReply(...) { ... }
-
 /**
  * 특정 폴더에서 랜덤 사진 URL을 생성합니다.
  * @param {string} folderName - 사진이 들어있는 폴더 이름 (PHOTO_FOLDERS 객체의 키와 동일)
@@ -230,6 +224,7 @@ async function getRandomSelfieComment() {
 
     try {
         const messages = [{ role: 'system', content: systemPrompt }];
+        // callOpenAI는 autoReply.js에서 가져온 함수를 사용합니다.
         const result = await callOpenAI(messages, 'gpt-4o', 60); // max_tokens를 60으로 줄여 짧게 유도
         return result;
     } catch (err) {
@@ -255,7 +250,7 @@ async function getOmoideReply(userMessage, saveLogFunc) {
     let isSelfieRequest = false;
 
     // ✨ 중요 수정: 사진 관련 키워드가 없으면 바로 null 반환 (순서 변경 및 강화)
-    const photoKeywords = ['셀카', '후지 사진', '인생네컷', '커플사진', '일본 사진', '한국 사진', '출사', '필름카메라', '메이드', '흑심', '사진줘', '얼굴 보여줘', '얼굴 보고 싶', 'selfie', '셀카 보내줘', '셀카 보여줘', '셀카 줘', '사진 보여줘']; // ✨ 키워드 추가
+    const photoKeywords = ['셀카', '후지 사진', '인생네컷', '커플사진', '일본 사진', '한국 사진', '출사', '필름카메라', '메이드', '흑심', '사진줘', '얼굴 보여줘', '얼굴 보고 싶', 'selfie', '셀카 보내줘', '셀카 보여줘', '셀카 줘', '사진 보여줘']; // ✨ 키워드 추가 및 강화
     const isPhotoRequest = photoKeywords.some(keyword => lowerCaseMessage.includes(keyword));
 
     if (!isPhotoRequest) {
