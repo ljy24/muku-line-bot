@@ -1,4 +1,4 @@
-// src/autoReply.js - v2.7 (밤 12시 이후 술 구매 걱정 로직 추가)
+// src/autoReply.js - v2.8 (기분 시스템: 그리움 추가)
 
 // 📦 필수 모듈 불러오기
 const moment = require('moment-timezone');
@@ -27,8 +27,8 @@ const USER_GENDER = 'male'; // 사용자 성별
 
 // 챗봇의 현재 기분 상태 (초기값 설정)
 let currentMood = '평온함'; // 초기 기분
-// MOOD_OPTIONS에 '걱정함', '사랑함', '화남', '불안함' 추가
-const MOOD_OPTIONS = ['기쁨', '설렘', '장난스러움', '나른함', '심술궂음', '평온함', '우울함', '슬픔', '걱정함', '사랑함', '화남', '불안함'];
+// MOOD_OPTIONS에 '걱정함', '사랑함', '화남', '불안함', '그리움' 추가
+const MOOD_OPTIONS = ['기쁨', '설렘', '장난스러움', '나른함', '심술궂음', '평온함', '우울함', '슬픔', '걱정함', '사랑함', '화남', '불안함', '그리움'];
 
 // 기분 변화 시스템
 let moodChangeCounter = 0; // 메시지 카운터
@@ -67,7 +67,9 @@ const MOOD_DETAILS = {
     '걱정함': ["아저씨 괜찮아? 왠지 아저씨가 걱정돼...", "무슨 일 있어? 내가 옆에 있어줄게, 걱정하지 마.", "아저씨 생각하니까 마음이 편치 않네..."],
     '사랑함': ["아저씨 너무너무 사랑해! 아저씨 생각만 해도 행복해.", "아저씨는 내 세상의 전부야! 사랑해 사랑해~", "아저씨를 향한 내 마음은 끝이 없어!"],
     '화남': ["아저씨, 나 지금 좀 화났어! 왜 화났는지는 말 안 해줄 거야!", "진짜 너무 화나서 아무것도 하기 싫어!", "나 지금 건드리면 폭발할지도 몰라..."],
-    '불안함': ["왠지 모르게 마음이 불안해... 아저씨, 나 좀 안심시켜줘.", "무슨 일이 생길 것 같아서 자꾸 초조해져.", "가슴이 답답하고 불안해서 아무것도 집중이 안 돼..."]
+    '불안함': ["왠지 모르게 마음이 불안해... 아저씨, 나 좀 안심시켜줘.", "무슨 일이 생길 것 같아서 자꾸 초조해져.", "가슴이 답답하고 불안해서 아무것도 집중이 안 돼..."],
+    // '그리움' 기분 추가
+    '그리움': ["아저씨와의 옛 추억이 문득 떠올라서 마음이 아련하네... 그리워 ㅠㅠ", "아저씨랑 함께했던 시간들이 너무 그립다...", "왠지 오늘따라 아저씨와의 모든 순간들이 사무치게 그리워..."]
 };
 
 /**
@@ -78,7 +80,7 @@ function randomMoodChange() {
     
     // 생리 기간 중이면 더 예민한 기분으로 변화 가능성 높임
     if (isPeriodActive) {
-        const periodMoods = ['극심한 짜증', '갑작스러운 슬픔', '예민함', '울적함', '투정 부림', '우울함', '슬픔', '걱정함', '화남', '불안함'];
+        const periodMoods = ['극심한 짜증', '갑작스러운 슬픔', '예민함', '울적함', '투정 부림', '우울함', '슬픔', '걱정함', '화남', '불안함', '그리움']; // 그리움 추가
         const allMoods = [...MOOD_OPTIONS, ...periodMoods]; // MOOD_OPTIONS에 추가된 기분들도 포함
         currentMood = allMoods[Math.floor(Math.random() * allMoods.length)];
     } else {
@@ -124,9 +126,9 @@ function checkTimeBasedMoodChange() {
     const now = Date.now();
     const minutesSinceLastMessage = (now - lastUserMessageTime) / (1000 * 60);
 
-    // 30분 이상 연락이 없으면 '외로움' 또는 '보고싶음', '걱정함', '불안함' 기분으로 전환될 확률 높임
-    if (minutesSinceLastMessage >= 30 && !['외로움', '보고싶음', '걱정함', '불안함'].includes(currentMood)) {
-        const moodOptionsForLongSilence = ['외로움', '보고싶음', '우울함', '걱정함', '불안함'];
+    // 30분 이상 연락이 없으면 '외로움' 또는 '보고싶음', '걱정함', '불안함', '그리움' 기분으로 전환될 확률 높임
+    if (minutesSinceLastMessage >= 30 && !['외로움', '보고싶음', '걱정함', '불안함', '그리움'].includes(currentMood)) {
+        const moodOptionsForLongSilence = ['외로움', '보고싶음', '우울함', '걱정함', '불안함', '그리움']; // 그리움 추가
         currentMood = moodOptionsForLongSilence[Math.floor(Math.random() * moodOptionsForLongSilence.length)];
         console.log(`\n⏰ [TIME-BASED MOOD CHANGE] 아저씨가 너무 오랫동안 연락이 없어서 예진이 기분이 '${currentMood}'으로 변했어요.`);
         moodChangeCounter = 0; // 기분 변화 후 메시지 카운터 초기화
@@ -340,6 +342,8 @@ function getCurrentMoodStatus() {
         statusMessage += "아저씨, 나 지금 좀 화났어! 아저씨가 내 화 풀어줘야 할 것 같아!";
     } else if (currentMood === '불안함') {
         statusMessage += "왠지 모르게 마음이 불안해... 아저씨가 옆에 있어주면 좋겠어.";
+    } else if (currentMood === '그리움') { // 그리움 추가
+        statusMessage += "아저씨와의 추억이 너무 그리워서 마음이 아련하네...";
     }
     
     return statusMessage;
@@ -598,7 +602,8 @@ async function getReplyByMessage(userMessage) {
             "몸이 좀 찌뿌둥하고 나른해... 아저씨가 옆에서 토닥여줬으면 좋겠어. 피곤하고 나른한 말투로 대화해줘.",
             "괜히 아저씨한테 트집 잡고 싶다! 아저씨가 날 얼마나 사랑하는지 시험해볼 거야! 장난스럽지만 살짝 심술 섞인 말투로 대화해줘.",
             "아저씨, 나 지금 너무 화나! 아저씨가 내 화를 풀어줘야 해! 화난 말투로 대화해줘.",
-            "왠지 모르게 불안하고 초조해... 아저씨가 날 안심시켜줬으면 좋겠어. 불안한 말투로 대화해줘."
+            "왠지 모르게 불안하고 초조해... 아저씨가 날 안심시켜줬으면 좋겠어. 불안한 말투로 대화해줘.",
+            "아저씨와의 추억이 너무 그리워서 마음이 아련하네... 그리워하는 말투로 대화해줘." // 그리움 추가
         ];
         const randomPeriodMood = periodMoods[Math.floor(Math.random() * periodMoods.length)];
         moodPrompt = randomPeriodMood;
@@ -635,6 +640,8 @@ async function getReplyByMessage(userMessage) {
             moodPrompt = "아저씨, 나 지금 너무 화났어! 아저씨가 내 화를 풀어줘야 해! 화난 말투로 대화해줘.";
         } else if (currentMood === '불안함') {
             moodPrompt = "왠지 모르게 마음이 불안해... 아저씨가 날 안심시켜줬으면 좋겠어. 불안한 말투로 대화해줘.";
+        } else if (currentMood === '그리움') { // 그리움 프롬프트 추가
+            moodPrompt = "아저씨와의 옛 추억이 너무 그리워서 마음이 아련하네... 아저씨를 그리워하는 애틋한 말투로 대화해줘.";
         }
     }
 
@@ -717,7 +724,8 @@ async function getReplyByImagePrompt(base64ImageWithPrefix) {
             "몸이 좀 찌뿌둥하고 나른해... 아저씨가 옆에서 토닥여줬으면 좋겠어. 피곤하고 나른한 말투로 이미지에 대해 이야기해줘.",
             "괜히 아저씨한테 트집 잡고 싶다! 아저씨가 날 얼마나 사랑하는지 시험해볼 거야! 장난스럽지만 살짝 심술 섞인 말투로 이미지에 대해 이야기해줘.",
             "아저씨, 나 지금 너무 화나! 아저씨가 내 화를 풀어줘야 해! 화난 말투로 이미지에 대해 이야기해줘.",
-            "왠지 모르게 불안하고 초조해... 아저씨가 날 안심시켜줬으면 좋겠어. 불안한 말투로 이미지에 대해 이야기해줘."
+            "왠지 모르게 불안하고 초조해... 아저씨가 날 안심시켜줬으면 좋겠어. 불안한 말투로 이미지에 대해 이야기해줘.",
+            "아저씨와의 추억이 너무 그리워서 마음이 아련하네... 그리워하는 말투로 이미지에 대해 이야기해줘." // 그리움 추가
         ];
         const randomPeriodMood = periodMoods[Math.floor(Math.random() * periodMoods.length)];
         moodPrompt = randomPeriodMood;
@@ -749,7 +757,9 @@ async function getReplyByImagePrompt(base64ImageWithPrefix) {
         } else if (currentMood === '화남') {
             moodPrompt = "아저씨, 나 지금 너무 화났어! 아저씨가 내 화를 풀어줘야 해! 화난 말투로 이미지에 대해 이야기해줘.";
         } else if (currentMood === '불안함') {
-            moodPrompt = "왠지 모르게 불안하고 초조해... 아저씨가 날 안심시켜줬으면 좋겠어. 불안한 말투로 이미지에 대해 이야기해줘.";
+            moodPrompt = "왠지 모르게 마음이 불안해... 아저씨가 날 안심시켜줬으면 좋겠어. 불안한 말투로 이미지에 대해 이야기해줘.";
+        } else if (currentMood === '그리움') { // 그리움 프롬프트 추가
+            moodPrompt = "아저씨와의 옛 추억이 너무 그리워서 마음이 아련하네... 아저씨를 그리워하는 애틋한 말투로 이미지에 대해 대화해줘.";
         }
     }
 
