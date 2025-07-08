@@ -1,9 +1,9 @@
-// src/commandHandler.js - v1.1 - 봇 명령어 처리 핸들러 (파일 기반 memoryManager 사용)
+// src/commandHandler.js - v1.2 - 봇 명령어 처리 핸들러 (Render PostgreSQL 기반 memoryManager 사용)
 
 // 📦 필수 모듈 불러오기
 const { getOmoideReply } = require('../memory/omoide'); // omoide.js에서 추억 사진 답변 함수 불러오기
 const { getConceptPhotoReply } = require('../memory/concept'); // concept.js에서 컨셉 사진 답변 함수 불러오기
-// autoReply에서 필요한 함수 가져오기 (이제 autoReply는 Supabase에 의존하지 않음)
+// autoReply에서 필요한 함수 가져오기 (이제 autoReply는 Supabase/파일에 의존하지 않음)
 const { getMemoryListForSharing, setForcedModel, checkModelSwitchCommand, cleanReply } = require('./autoReply');
 
 /**
