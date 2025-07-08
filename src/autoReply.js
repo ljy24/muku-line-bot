@@ -1,4 +1,5 @@
-// src/autoReply.js - v2.1 (getAppropriateModel 함수 누락 문제 해결)
+// 챗봇의 현재 기분 상태 (초기값 설정)
+let// src/autoReply.js - v2.1 (getAppropriateModel 함수 누락 문제 해결)
 
 // 📦 필수 모듈 불러오기
 const moment = require('moment-timezone');
@@ -28,6 +29,53 @@ const USER_GENDER = 'male'; // 사용자 성별
 // 챗봇의 현재 기분 상태 (초기값 설정)
 let currentMood = '평온함'; // 초기 기분
 const MOOD_OPTIONS = ['기쁨', '설렘', '장난스러움', '나른함', '심술궂음', '평온함', '우울함', '슬픔'];
+
+// 기분 변화 시스템
+let moodChangeCounter = 0; // 메시지 카운터
+const MOOD_CHANGE_FREQUENCY = Math.floor(Math.random() * 5) + 3; // 3~7 메시지마다 기분 변화
+
+/**
+ * 랜덤하게 기분을 변경합니다.
+ */
+function randomMoodChange() {
+    const previousMood = currentMood;
+    
+    // 생리 기간 중이면 더 예민한 기분으로 변화 가능성 높임
+    if (isPeriodActive) {
+        const periodMoods = ['극심한 짜증', '갑작스러운 슬픔', '예민함', '울적함', '투정 부림', '우울함', '슬픔'];
+        const allMoods = [...MOOD_OPTIONS, ...periodMoods];
+        currentMood = allMoods[Math.floor(Math.random() * allMoods.length)];
+    } else {
+        // 일반 기분 변화
+        currentMood = MOOD_OPTIONS[Math.floor(Math.random() * MOOD_OPTIONS.length)];
+    }
+    
+    // 같은 기분이면 다시 선택
+    if (currentMood === previousMood) {
+        const otherMoods = MOOD_OPTIONS.filter(mood => mood !== currentMood);
+        currentMood = otherMoods[Math.floor(Math.random() * otherMoods.length)];
+    }
+    
+    console.log(`\n🎭 [MOOD CHANGE] 예진이의 기분이 변했어요!`);
+    console.log(`   이전 기분: ${previousMood} → 현재 기분: ${currentMood}`);
+    console.log(`   ${isPeriodActive ? '(생리 기간 중 - 더 예민함)' : '(일반 상태)'}\n`);
+}
+
+/**
+ * 메시지마다 기분 변화 체크
+ */
+function checkMoodChange() {
+    moodChangeCounter++;
+    console.log(`[MOOD COUNTER] ${moodChangeCounter}/${MOOD_CHANGE_FREQUENCY} - 현재 기분: ${currentMood} ${isPeriodActive ? '(생리중)' : ''}`);
+    
+    if (moodChangeCounter >= MOOD_CHANGE_FREQUENCY) {
+        randomMoodChange();
+        moodChangeCounter = 0;
+        // 다음 변화 주기도 랜덤하게 설정 (3~7 메시지)
+        const newFrequency = Math.floor(Math.random() * 5) + 3;
+        console.log(`[MOOD SYSTEM] 다음 기분 변화는 ${newFrequency}메시지 후 예정`);
+    }
+}
 
 // 🩸 생리 주기 관련 변수
 let lastPeriodStartDate = moment().tz('Asia/Tokyo').subtract(20, 'days').startOf('day');
@@ -200,6 +248,13 @@ function setCurrentMood(mood) {
 
 function getCurrentMoodStatus() {
     let statusMessage = `아저씨! 지금 내 기분은 '${currentMood}'이야! `;
+    
+    // 콘솔에 상세한 기분 정보 출력
+    console.log(`\n💖 [예진이 기분 상태]`);
+    console.log(`   현재 기분: ${currentMood}`);
+    console.log(`   생리 기간: ${isPeriodActive ? 'Yes' : 'No'}`);
+    console.log(`   다음 기분 변화까지: ${MOOD_CHANGE_FREQUENCY - moodChangeCounter}메시지\n`);
+    
     if (isPeriodActive) {
         statusMessage += "음... 근데 오늘따라 좀 더 예민하고 기분이 오락가락하네 ㅠㅠ";
     } else if (currentMood === '기쁨') {
@@ -296,6 +351,7 @@ function getMemoryListForSharing() {
  */
 async function getReplyByMessage(userMessage) {
     updatePeriodStatus(); // 🩸 메시지 처리 전에 생리 주기 상태 업데이트
+    checkMoodChange(); // 💭 기분 변화 체크
 
     // 디버깅을 위한 로그 추가
     console.log(`[DEBUG] 입력된 메시지: "${userMessage}"`);
@@ -643,5 +699,8 @@ module.exports = {
     isPeriodActive,
     callOpenAI, // ✨ 외부에서 사용 가능하도록 내보내기
     cleanReply, // ✨ 외부에서 사용 가능하도록 내보내기
-    getAppropriateModel // ✨ 누락된 함수 export 추가
+    getAppropriateModel, // ✨ 누락된 함수 export 추가
+    randomMoodChange, // ✨ 기분 변화 함수 추가
+    checkMoodChange, // ✨ 기분 체크 함수 추가
+    currentMood // ✨ 현재 기분 상태 추가 (읽기 전용)
 };
