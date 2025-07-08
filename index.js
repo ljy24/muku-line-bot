@@ -1,182 +1,144 @@
-// ✅ index.js v1.20 - 파일 분리 및 하이브리드 memoryManager 연동
+// index.js - v1.3 (메시지 분류 및 에러 핸들링 개선)
 
-// 📦 필수 모듈 불러오기
-const fs = require('fs'); // 파일 시스템 모듈 (로그 저장용)
-const path = require('path'); // 경로 처리 모듈
-const { Client, middleware } = require('@line/bot-sdk'); // LINE Bot SDK
-const express = require('express'); // Express 프레임워크
-const moment = require('moment-timezone'); // Moment.js
+const line = require('@line/bot-sdk');
+const express = require('express');
+const { getReplyByMessage, getReplyByImagePrompt, checkModelSwitchCommand, saveLog } = require('./src/autoReply'); // autoReply 모듈 불러오기
+const { updateLastUserMessageTime } = require('./src/scheduler'); // scheduler에서 마지막 메시지 시간 업데이트 함수 불러오기
+const omoide = require('./memory/omoide'); // omoide 모듈 불러오기
+const concept = require('./memory/concept'); // concept 모듈 불러오기
 
-// ./src/autoReply.js에서 일반 대화 응답 함수들을 불러옵니다.
-const {
-    getReplyByMessage,           // 사용자 텍스트 메시지에 대한 예진이의 답변 생성
-    getReplyByImagePrompt,       // 사용자가 보낸 이미지 메시지에 대한 예진이의 답변 생성
-    saveLog,                     // 메시지 로그를 파일에 저장하는 함수
-    cleanReply                   // AI 응답 정제 함수
-} = require('./src/autoReply');
+require('dotenv').config(); // .env 파일 로드
 
-// 새로운 핸들러 모듈들을 불러옵니다.
-const commandHandler = require('./src/commandHandler'); // 명령어 처리 핸들러
-const memoryHandler = require('./src/memoryHandler');   // 기억 관련 명령어 처리 핸들러
-
-// 스케줄러 모듈 불러오기
-const { startAllSchedulers, updateLastUserMessageTime } = require('./src/scheduler');
-
-// 즉흥 사진 스케줄러 불러오기
-const { startSpontaneousPhotoScheduler } = require('./src/spontaneousPhotoManager');
-
-// memoryManager 모듈 (하이브리드 기억 관리에 필요)
-const memoryManager = require('./src/memoryManager');
-
-// Express 애플리케이션을 생성합니다.
-const app = express();
-
-// LINE Bot SDK 설정을 정의합니다.
 const config = {
-    channelAccessToken: process.env.LINE_ACCESS_TOKEN,
-    channelSecret: process.env.LINE_CHANNEL_SECRET
+    channelAccessToken: process.env.CHANNEL_ACCESS_TOKEN,
+    channelSecret: process.env.CHANNEL_SECRET,
 };
 
-// LINE 메시징 API 클라이언트를 초기화합니다.
-const client = new Client(config);
+const app = express();
+const client = new line.Client(config);
 
-// 타겟 사용자 ID를 환경 변수에서 가져옵니다.
-const userId = process.env.TARGET_USER_ID;
-
-// 🌐 루트 경로('/')에 대한 GET 요청을 처리합니다.
-app.get('/', (_, res) => res.send('무쿠 살아있엉'));
-
-// 🚀 '/force-push' 경로에 대한 GET 요청을 처리합니다. (개발/테스트용)
-app.get('/force-push', async (req, res) => {
-    try {
-        const testMessage = "아저씨! 강제 푸시로 예진이가 메시지 보냈어!";
-        await client.pushMessage(userId, { type: 'text', text: testMessage });
-        saveLog('예진이', testMessage);
-        res.send(`강제 푸시 메시지 전송됨: ${testMessage}`);
-    } catch (error) {
-        console.error('[force-push] 에러 발생:', error);
-        res.status(500).send('메시지 전송 중 오류 발생');
-    }
+// 웹훅 이벤트 핸들러
+app.post('/webhook', line.middleware(config), (req, res) => {
+    Promise.all(req.body.events.map(handleEvent))
+        .then((result) => res.json(result))
+        .catch((err) => {
+            console.error('[index.js] 웹훅 처리 에러:', err);
+            res.status(500).end();
+        });
 });
 
-// 🎣 LINE 웹훅 요청을 처리합니다.
-app.post('/webhook', middleware(config), async (req, res) => {
-    try {
-        const events = req.body.events || [];
-        for (const event of events) {
-            if (event.type === 'message') {
-                const message = event.message;
+// 이벤트 핸들 함수
+async function handleEvent(event) {
+    if (event.type !== 'message') {
+        return Promise.resolve(null);
+    }
 
-                // * 아저씨(TARGET_USER_ID)가 메시지를 보낸 경우, 마지막 메시지 시간을 업데이트합니다. *
-                if (event.source.userId === userId) {
-                    updateLastUserMessageTime();
-                    console.log(`[Webhook] 아저씨 메시지 수신, 마지막 메시지 시간 업데이트: ${moment(Date.now()).format('HH:mm:ss')}`);
+    // 아저씨의 메시지 수신 시간 업데이트 (스케줄러에서 사용)
+    updateLastUserMessageTime();
+
+    if (event.message.type === 'text') {
+        const userMessage = event.message.text; // ✨ 중요: userMessage 변수를 여기서 정의
+        console.log(`[Webhook] 아저씨 메시지 수신: "${userMessage}"`);
+        saveLog({ role: 'user', content: userMessage, timestamp: Date.now() }); // 사용자 메시지 먼저 로그
+
+        // 1. 모델 전환 명령어 확인 (가장 먼저 처리)
+        const modelSwitchReply = checkModelSwitchCommand(userMessage);
+        if (modelSwitchReply) {
+            await client.replyMessage(event.replyToken, { type: 'text', text: modelSwitchReply });
+            saveLog({ role: 'assistant', content: modelSwitchReply, timestamp: Date.now() }); // 봇 응답 로그
+            return;
+        }
+
+        let reply = null; // 애기의 응답을 저장할 변수
+
+        // 2. 일반 대화 및 기분 확인, 생리 주기 질문 등 (autoReply.js로 위임 - 사진 요청보다 우선)
+        // autoReply.js에서 기분 확인, "오늘 그날이야?" 등의 특별 응답을 먼저 처리하도록 설계됨
+        reply = await getReplyByMessage(userMessage); 
+        
+        if (reply && reply.type === 'text' && reply.comment) {
+            await client.replyMessage(event.replyToken, { type: 'text', text: reply.comment });
+            // saveLog는 getReplyByMessage 내부에서 이미 처리되므로 여기서는 주석 처리
+            return; 
+        }
+        // 만약 autoReply에서 텍스트 응답이 아니거나, null이 반환되면 다음 로직으로 넘어감.
+        // 예를 들어, autoReply가 '사진 요청'으로 판단했지만, omoide.js로 넘기도록 결정한 경우.
+
+        // 3. 사진 요청 처리 (omoide.js와 concept.js로 분기)
+        // '셀카', '후지 사진', '인생네컷' 등 특정 키워드
+        const photoKeywords = ['셀카', '후지 사진', '인생네컷', '커플사진', '일본 사진', '한국 사진', '출사', '필름카메라', '메이드', '흑심'];
+        const isPhotoRequest = photoKeywords.some(keyword => userMessage.includes(keyword));
+
+        if (isPhotoRequest) {
+            const photoReply = await omoide.getOmoideReply(userMessage, saveLog); // omoide.js로 위임
+            if (photoReply) {
+                if (photoReply.type === 'photo') {
+                    await client.replyMessage(event.replyToken, [
+                        { type: 'image', originalContentUrl: photoReply.url, previewImageUrl: photoReply.url },
+                        { type: 'text', text: photoReply.caption }
+                    ]);
+                } else if (photoReply.type === 'text') {
+                    await client.replyMessage(event.replyToken, { type: 'text', text: photoReply.comment });
                 }
-
-                if (message.type === 'text') {
-                    const text = message.text.trim();
-                    saveLog('아저씨', text);
-
-                    let botResponse = null;
-
-                    // 1. 명령어 핸들러로 먼저 메시지 처리 시도
-                    botResponse = await commandHandler.handleCommand(text, saveLog);
-
-                    // 2. 명령어 핸들러에서 처리되지 않았다면, 기억 핸들러로 메시지 처리 시도
-                    if (!botResponse) {
-                        botResponse = await memoryHandler.handleMemoryCommand(text, saveLog);
-                    }
-
-                    // 3. 모든 특정 핸들러에서 처리되지 않았다면, 일반 대화 응답 생성
-                    if (!botResponse) {
-                        botResponse = await getReplyByMessage(text);
-                        // 일반 대화인 경우, 기억 추출 및 저장 시도 (현재는 모든 일반 대화를 여기에 전달)
-                        await memoryManager.extractAndSaveMemory(text);
-                        console.log(`[index.js] memoryManager.extractAndSaveMemory 호출 완료 (메시지: "${text}")`);
-                    } else {
-                        console.log(`[index.js] 특정 명령어로 처리되었으므로 메모리 자동 저장에서 제외됩니다.`);
-                    }
-
-                    // 응답 메시지 전송
-                    let replyMessages = [];
-                    if (botResponse.type === 'photo') {
-                        replyMessages.push({
-                            type: 'image',
-                            originalContentUrl: botResponse.url,
-                            previewImageUrl: botResponse.url,
-                        });
-                        if (botResponse.caption) {
-                            replyMessages.push({
-                                type: 'text',
-                                text: botResponse.caption
-                            });
-                        }
-                    } else if (botResponse.type === 'text') {
-                        replyMessages.push({
-                            type: 'text',
-                            text: botResponse.comment
-                        });
-                    } else {
-                        console.error('❌ [index.js] 예상치 못한 봇 응답 타입:', botResponse.type);
-                        replyMessages.push({ type: 'text', text: '지금 잠시 문제가 생겼어 ㅠㅠ' });
-                    }
-
-                    if (replyMessages.length > 0) {
-                        await client.replyMessage(event.replyToken, replyMessages);
-                        console.log(`[index.js] 봇 응답 전송 완료 (타입: ${botResponse.type || 'unknown'})`);
-                    }
-                }
-
-                // * 사용자가 이미지를 보낸 경우 처리 *
-                if (message.type === 'image') {
-                    try {
-                        const stream = await client.getMessageContent(message.id);
-                        const chunks = [];
-                        for await (const chunk of stream) chunks.push(chunk);
-                        const buffer = Buffer.concat(chunks);
-
-                        let mimeType = 'application/octet-stream';
-                        if (buffer.length > 1 && buffer[0] === 0xFF && buffer[1] === 0xD8) {
-                            mimeType = 'image/jpeg';
-                        } else if (buffer.length > 7 && buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47 && buffer[4] === 0x0D && buffer[5] === 0x0A && buffer[6] === 0x1A && buffer[7] === 0x0A) {
-                            mimeType = 'image/png';
-                        } else if (buffer.length > 2 && buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46) {
-                            mimeType = 'image/gif';
-                        }
-                        const base64ImageWithPrefix = `data:${mimeType};base64,${buffer.toString('base64')}`;
-
-                        const reply = await getReplyByImagePrompt(base64ImageWithPrefix);
-                        await client.replyMessage(event.replyToken, { type: 'text', text: reply });
-                        console.log(`[index.js] 이미지 메시지 처리 및 응답 완료`);
-                        saveLog('예진이', `(이미지 분석 응답) ${reply}`);
-                    } catch (err) {
-                        console.error(`[index.js] 이미지 처리 실패: ${err}`);
-                        await client.replyMessage(event.replyToken, { type: 'text', text: '이미지를 읽는 중 오류가 생겼어 ㅠㅠ' });
-                    }
-                }
+                return; // 사진 요청 처리 후 종료
             }
         }
-        res.status(200).send('OK');
-    } catch (err) {
-        console.error(`[index.js] 웹훅 처리 에러: ${err}`);
-        res.status(200).send('OK');
+        // '컨셉 사진' 키워드는 concept.js에서 처리
+        else if (userMessage.includes('컨셉 사진')) {
+            const conceptReply = await concept.getConceptPhotoReply(userMessage, saveLog); // concept.js로 위임
+            if (conceptReply) {
+                if (conceptReply.type === 'photo') {
+                    await client.replyMessage(event.replyToken, [
+                        { type: 'image', originalContentUrl: conceptReply.url, previewImageUrl: conceptReply.url },
+                        { type: 'text', text: conceptReply.caption }
+                    ]);
+                } else if (conceptReply.type === 'text') {
+                    await client.replyMessage(event.replyToken, { type: 'text', text: conceptReply.comment });
+                }
+                return; // 컨셉 사진 요청 처리 후 종료
+            }
+        }
+
+        // 4. 어떤 로직으로도 처리되지 않은 일반 텍스트 메시지 (Fallback)
+        // 이 부분은 사실상 autoReply.getReplyByMessage에서 다 처리될 것이므로 거의 오지 않음
+        // 하지만 혹시 모를 경우를 대비하여 폴백 메시지 추가
+        if (!reply) { // reply가 아직 null인 경우
+             const fallbackMessage = "음... 아저씨, 무슨 말인지 잘 모르겠어 ㅠㅠ 다시 한번 말해줄래?";
+             await client.replyMessage(event.replyToken, { type: 'text', text: fallbackMessage });
+             saveLog({ role: 'assistant', content: fallbackMessage, timestamp: Date.now() });
+        }
+
+
+    } else if (event.message.type === 'image') {
+        // 이미지 메시지 처리 (Line에서 이미지를 받으면 Base64로 인코딩하여 AI에 전달)
+        const content = await client.getMessageContent(event.message.id);
+        const buffer = [];
+        content.on('data', (chunk) => buffer.push(chunk));
+        content.on('end', async () => {
+            const base64Image = Buffer.concat(buffer).toString('base64');
+            const base64ImageWithPrefix = `data:image/jpeg;base64,${base64Image}`; // JPEG 가정, 실제는 content-type 확인 필요
+            const replyText = await getReplyByImagePrompt(base64ImageWithPrefix); // 이미지 프롬프트 생성
+            await client.replyMessage(event.replyToken, { type: 'text', text: replyText });
+            saveLog({ role: 'user', content: `[이미지 전송]`, timestamp: Date.now() }); // 사용자 이미지 전송 로그
+            saveLog({ role: 'assistant', content: replyText, timestamp: Date.now() }); // 봇 응답 로그
+        });
+        return;
     }
-});
 
+    // 기타 메시지 타입 (스티커, 동영상 등)은 무시
+    return Promise.resolve(null);
+}
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, async () => {
-    console.log(`무쿠 서버 스타트! 포트: ${PORT}`);
-    
-    // ✨ 수정: ensureMemoryTablesAndDirectory 호출 (DB와 파일 디렉토리/초기 파일 모두 처리) ✨
-    await memoryManager.ensureMemoryTablesAndDirectory();
-    console.log('메모리 시스템 초기화 완료 (DB 및 파일).');
-
-    // 모든 스케줄러 시작
-    startAllSchedulers(client, userId);
-    console.log('✅ 모든 스케줄러 시작!');
-
-    // 🎯 예진이 즉흥 사진 스케줄러 시작 - 보고싶을 때마다 사진 보내기! 💕
-    startSpontaneousPhotoScheduler(client, userId, saveLog);
-    console.log('💕 예진이가 보고싶을 때마다 사진 보낼 준비 완료!');
+// 서버 시작
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+    console.log(`무쿠 서버 스타트! 포트: ${port}`);
+    // 스케줄러 시작 (실제 사용자 ID로 변경 필요)
+    // process.env.LINE_TARGET_USER_ID에 실제 사용자 ID를 .env 파일에 추가해야 합니다.
+    const LINE_TARGET_USER_ID = process.env.LINE_TARGET_USER_ID;
+    if (LINE_TARGET_USER_ID) {
+        scheduler.startAllSchedulers(client, LINE_TARGET_USER_ID);
+        console.log("✅ 모든 스케줄러 시작!");
+    } else {
+        console.warn("⚠️ LINE_TARGET_USER_ID 환경 변수가 설정되지 않아 스케줄러가 시작되지 않습니다.");
+    }
 });
