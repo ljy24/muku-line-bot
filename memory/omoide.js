@@ -1,9 +1,10 @@
-// memory/omoide.js - v1.24 (callOpenAI, cleanReply를 openaiClient.js에서 불러오도록 수정)
+// memory/omoide.js - v1.25 (callOpenAI, cleanReply, saveLog를 외부 모듈에서 불러오도록 수정)
 
 // 📦 필수 모듈 불러오기
 // const { OpenAI } = require('openai'); // ✨ 삭제: openaiClient.js로 이동
 const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
 const { callOpenAI, cleanReply } = require('../src/openaiClient'); // ✨ 수정: openaiClient.js에서 함수 불러오기
+const { saveLog } = require('../src/utils/logger'); // ✨ 추가: logger.js에서 saveLog 불러오기
 
 // OpenAI 클라이언트 초기화 (API 키는 환경 변수에서 가져옴 - 보안상 중요)
 // const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY }); // ✨ 삭제
