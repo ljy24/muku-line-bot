@@ -1,4 +1,4 @@
-// src/proactiveMessages.js - v1.0 - 선제적/감성 메시지 생성
+// src/proactiveMessages.js - v1.1 - 선제적/감성 메시지 생성 (Render PostgreSQL 기반 memoryManager 사용)
 
 // 📦 필수 모듈 불러오기
 const { OpenAI } = require('openai');
@@ -8,8 +8,6 @@ const { getFormattedMemoriesForAI, cleanReply } = require('./autoReply'); // 필
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // 현재 기본 모델 설정 가져오기 (commandHandler에서 설정한 forcedModel을 따르지 않음)
-// 이 모듈은 독립적으로 메시지를 생성하므로, 자체적인 모델 결정 로직이 필요할 수 있으나
-// 여기서는 기본값 사용
 const defaultModel = process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o';
 
 
