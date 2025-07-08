@@ -13,7 +13,7 @@ const {
     cleanReply // ✨ 추가: autoReply.js에서 cleanReply 불러오기
 } = require('./autoReply'); // autoReply 모듈에서 함수 가져오기
 
-const memoryManager = require('../memory/memoryManager'); // memoryManager 필요 (이제 하이브리드 방식으로 작동)
+const memoryManager = require('./memoryManager'); // memoryManager 필요 (이제 하이브리드 방식으로 작동)
 const { getProactiveMemoryMessage, getSilenceCheckinMessage } = require('./proactiveMessages'); // proactiveMessages에서 선제적 메시지 함수들을 불러옴
 
 // omoide.js에서 필요한 함수들만 가져옵니다.
