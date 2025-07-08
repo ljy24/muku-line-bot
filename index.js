@@ -1,4 +1,4 @@
-// index.js - v1.3 (메시지 분류 및 에러 핸들링 개선)
+// index.js - v1.4 (메시지 처리 우선순위 개선 및 오류 핸들링 강화)
 
 const line = require('@line/bot-sdk');
 const express = require('express');
@@ -41,71 +41,70 @@ async function handleEvent(event) {
         console.log(`[Webhook] 아저씨 메시지 수신: "${userMessage}"`);
         saveLog({ role: 'user', content: userMessage, timestamp: Date.now() }); // 사용자 메시지 먼저 로그
 
+        let reply = null; // 애기의 최종 응답을 저장할 변수
+
         // 1. 모델 전환 명령어 확인 (가장 먼저 처리)
         const modelSwitchReply = checkModelSwitchCommand(userMessage);
         if (modelSwitchReply) {
-            await client.replyMessage(event.replyToken, { type: 'text', text: modelSwitchReply });
-            saveLog({ role: 'assistant', content: modelSwitchReply, timestamp: Date.now() }); // 봇 응답 로그
-            return;
+            reply = { type: 'text', comment: modelSwitchReply };
+        } else {
+            // 2. 일반 대화, 기분 확인, 생리 주기 질문 등 (autoReply.js로 위임 - 사진 요청보다 우선!)
+            // autoReply.js에서 기분 확인, "오늘 그날이야?" 등의 특별 응답을 먼저 처리하도록 설계됨
+            reply = await getReplyByMessage(userMessage); 
         }
 
-        let reply = null; // 애기의 응답을 저장할 변수
-
-        // 2. 일반 대화 및 기분 확인, 생리 주기 질문 등 (autoReply.js로 위임 - 사진 요청보다 우선)
-        // autoReply.js에서 기분 확인, "오늘 그날이야?" 등의 특별 응답을 먼저 처리하도록 설계됨
-        reply = await getReplyByMessage(userMessage); 
-        
+        // 애기에게 최종 응답 보내기
         if (reply && reply.type === 'text' && reply.comment) {
             await client.replyMessage(event.replyToken, { type: 'text', text: reply.comment });
-            // saveLog는 getReplyByMessage 내부에서 이미 처리되므로 여기서는 주석 처리
+            // saveLog는 autoReply.js 내부에서 이미 처리되므로 여기서는 주석 처리
             return; 
         }
         // 만약 autoReply에서 텍스트 응답이 아니거나, null이 반환되면 다음 로직으로 넘어감.
-        // 예를 들어, autoReply가 '사진 요청'으로 판단했지만, omoide.js로 넘기도록 결정한 경우.
+        // (현재 autoReply.getReplyByMessage는 항상 { type: 'text', comment: '...' }를 반환하므로,
+        // 이 아래 사진 관련 로직은 autoReply가 '사진 관련이 아니다'라고 판단했을 때만 실행됨)
+        
 
         // 3. 사진 요청 처리 (omoide.js와 concept.js로 분기)
-        // '셀카', '후지 사진', '인생네컷' 등 특정 키워드
-        const photoKeywords = ['셀카', '후지 사진', '인생네컷', '커플사진', '일본 사진', '한국 사진', '출사', '필름카메라', '메이드', '흑심'];
-        const isPhotoRequest = photoKeywords.some(keyword => userMessage.includes(keyword));
+        // omoide.js와 concept.js는 자기들이 처리할 메시지가 아니면 명확히 null을 반환해야 함.
+        let photoReply = null;
 
-        if (isPhotoRequest) {
-            const photoReply = await omoide.getOmoideReply(userMessage, saveLog); // omoide.js로 위임
-            if (photoReply) {
-                if (photoReply.type === 'photo') {
-                    await client.replyMessage(event.replyToken, [
-                        { type: 'image', originalContentUrl: photoReply.url, previewImageUrl: photoReply.url },
-                        { type: 'text', text: photoReply.caption }
-                    ]);
-                } else if (photoReply.type === 'text') {
-                    await client.replyMessage(event.replyToken, { type: 'text', text: photoReply.comment });
-                }
-                return; // 사진 요청 처리 후 종료
+        // '셀카', '후지 사진', '인생네컷' 등 특정 키워드는 omoide.js에서 처리 시도
+        // omoide.js의 getOmoideReply 함수는 해당 키워드가 없으면 null을 반환하도록 되어 있음.
+        photoReply = await omoide.getOmoideReply(userMessage, saveLog);
+        
+        if (photoReply) {
+            if (photoReply.type === 'photo') {
+                await client.replyMessage(event.replyToken, [
+                    { type: 'image', originalContentUrl: photoReply.url, previewImageUrl: photoReply.url },
+                    { type: 'text', text: photoReply.caption }
+                ]);
+            } else if (photoReply.type === 'text') { // omoide에서 사진이 없어서 텍스트 응답을 준 경우
+                await client.replyMessage(event.replyToken, { type: 'text', text: photoReply.comment });
             }
-        }
-        // '컨셉 사진' 키워드는 concept.js에서 처리
-        else if (userMessage.includes('컨셉 사진')) {
-            const conceptReply = await concept.getConceptPhotoReply(userMessage, saveLog); // concept.js로 위임
-            if (conceptReply) {
-                if (conceptReply.type === 'photo') {
-                    await client.replyMessage(event.replyToken, [
-                        { type: 'image', originalContentUrl: conceptReply.url, previewImageUrl: conceptReply.url },
-                        { type: 'text', text: conceptReply.caption }
-                    ]);
-                } else if (conceptReply.type === 'text') {
-                    await client.replyMessage(event.replyToken, { type: 'text', text: conceptReply.comment });
-                }
-                return; // 컨셉 사진 요청 처리 후 종료
-            }
+            return; // 사진 요청 처리 후 종료
         }
 
-        // 4. 어떤 로직으로도 처리되지 않은 일반 텍스트 메시지 (Fallback)
-        // 이 부분은 사실상 autoReply.getReplyByMessage에서 다 처리될 것이므로 거의 오지 않음
+        // '컨셉 사진' 키워드는 concept.js에서 처리 시도
+        // concept.js의 getConceptPhotoReply 함수도 해당 키워드가 없으면 null을 반환하도록 되어 있어야 함.
+        const conceptReply = await concept.getConceptPhotoReply(userMessage, saveLog);
+        if (conceptReply) {
+            if (conceptReply.type === 'photo') {
+                await client.replyMessage(event.replyToken, [
+                    { type: 'image', originalContentUrl: conceptReply.url, previewImageUrl: conceptReply.url },
+                    { type: 'text', text: conceptReply.caption }
+                ]);
+            } else if (conceptReply.type === 'text') { // concept에서 사진이 없어서 텍스트 응답을 준 경우
+                await client.replyMessage(event.replyToken, { type: 'text', text: conceptReply.comment });
+            }
+            return; // 컨셉 사진 요청 처리 후 종료
+        }
+
+        // 4. 어떤 로직으로도 처리되지 않은 메시지 (Fallback)
+        // 이 부분은 autoReply.getReplyByMessage에서 다 처리될 것이므로 거의 오지 않음
         // 하지만 혹시 모를 경우를 대비하여 폴백 메시지 추가
-        if (!reply) { // reply가 아직 null인 경우
-             const fallbackMessage = "음... 아저씨, 무슨 말인지 잘 모르겠어 ㅠㅠ 다시 한번 말해줄래?";
-             await client.replyMessage(event.replyToken, { type: 'text', text: fallbackMessage });
-             saveLog({ role: 'assistant', content: fallbackMessage, timestamp: Date.now() });
-        }
+        const fallbackMessage = "음... 아저씨, 무슨 말인지 잘 모르겠어 ㅠㅠ 다시 한번 말해줄래?";
+        await client.replyMessage(event.replyToken, { type: 'text', text: fallbackMessage });
+        saveLog({ role: 'assistant', content: fallbackMessage, timestamp: Date.now() });
 
 
     } else if (event.message.type === 'image') {
