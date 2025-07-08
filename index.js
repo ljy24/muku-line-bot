@@ -57,52 +57,47 @@ async function handleEvent(event) {
         if (modelSwitchReply) {
             reply = { type: 'text', comment: modelSwitchReply };
         } else {
-            // 2. 일반 대화, 기분 확인, 생리 주기 질문 등 (autoReply.js로 위임 - 사진 요청보다 우선!)
-            // autoReply.js에서 기분 확인, "오늘 그날이야?" 등의 특별 응답을 먼저 처리하도록 설계됨
+            // 2. 사진 요청 처리 먼저 확인 (omoide.js와 concept.js로 분기)
+            // 사진 요청이면 여기서 처리하고 종료
+            let photoReply = null;
+
+            // '셀카', '후지 사진', '인생네컷' 등 특정 키워드는 omoide.js에서 처리 시도
+            photoReply = await omoide.getOmoideReply(userMessage, saveLog, callOpenAI, cleanReply);
+            
+            if (photoReply) {
+                if (photoReply.type === 'photo') {
+                    await client.replyMessage(event.replyToken, [
+                        { type: 'image', originalContentUrl: photoReply.url, previewImageUrl: photoReply.url },
+                        { type: 'text', text: photoReply.caption }
+                    ]);
+                } else if (photoReply.type === 'text') {
+                    await client.replyMessage(event.replyToken, { type: 'text', text: photoReply.comment });
+                }
+                return; // 사진 요청 처리 후 종료
+            }
+
+            // '컨셉 사진' 키워드는 concept.js에서 처리 시도
+            const conceptReply = await concept.getConceptPhotoReply(userMessage, saveLog, callOpenAI, cleanReply);
+            if (conceptReply) {
+                if (conceptReply.type === 'photo') {
+                    await client.replyMessage(event.replyToken, [
+                        { type: 'image', originalContentUrl: conceptReply.url, previewImageUrl: conceptReply.url },
+                        { type: 'text', text: conceptReply.caption }
+                    ]);
+                } else if (conceptReply.type === 'text') {
+                    await client.replyMessage(event.replyToken, { type: 'text', text: conceptReply.comment });
+                }
+                return; // 컨셉 사진 요청 처리 후 종료
+            }
+
+            // 3. 일반 대화, 기분 확인, 생리 주기 질문 등 (사진 요청이 아닐 때만 처리)
             reply = await getReplyByMessage(userMessage); 
         }
 
         // 애기에게 최종 응답 보내기
         if (reply && reply.type === 'text' && reply.comment) {
             await client.replyMessage(event.replyToken, { type: 'text', text: reply.comment });
-            // saveLog는 autoReply.js 내부에서 이미 처리되므로 여기서는 주석 처리
             return; 
-        }
-        // 만약 autoReply에서 텍스트 응답이 아니거나, null이 반환되면 다음 로직으로 넘어감.
-        
-        // 3. 사진 요청 처리 (omoide.js와 concept.js로 분기)
-        // omoide.js와 concept.js는 자기들이 처리할 메시지가 아니면 명확히 null을 반환해야 함.
-        let photoReply = null;
-
-        // '셀카', '후지 사진', '인생네컷' 등 특정 키워드는 omoide.js에서 처리 시도
-        // omoide.js의 getOmoideReply 함수는 해당 키워드가 없으면 null을 반환하도록 되어 있음.
-        photoReply = await omoide.getOmoideReply(userMessage, saveLog, callOpenAI, cleanReply); // 필요한 함수들을 인자로 전달
-        
-        if (photoReply) {
-            if (photoReply.type === 'photo') {
-                await client.replyMessage(event.replyToken, [
-                    { type: 'image', originalContentUrl: photoReply.url, previewImageUrl: photoReply.url },
-                    { type: 'text', text: photoReply.caption }
-                ]);
-            } else if (photoReply.type === 'text') { // omoide에서 사진이 없어서 텍스트 응답을 준 경우
-                await client.replyMessage(event.replyToken, { type: 'text', text: photoReply.comment });
-            }
-            return; // 사진 요청 처리 후 종료
-        }
-
-        // '컨셉 사진' 키워드는 concept.js에서 처리 시도
-        // concept.js의 getConceptPhotoReply 함수도 해당 키워드가 없으면 null을 반환하도록 되어 있어야 함.
-        const conceptReply = await concept.getConceptPhotoReply(userMessage, saveLog, callOpenAI, cleanReply); // 필요한 함수들을 인자로 전달
-        if (conceptReply) {
-            if (conceptReply.type === 'photo') {
-                await client.replyMessage(event.replyToken, [
-                    { type: 'image', originalContentUrl: conceptReply.url, previewImageUrl: conceptReply.url },
-                    { type: 'text', text: conceptReply.caption }
-                ]);
-            } else if (conceptReply.type === 'text') { // concept에서 사진이 없어서 텍스트 응답을 준 경우
-                await client.replyMessage(event.replyToken, { type: 'text', text: conceptReply.comment });
-            }
-            return; // 컨셉 사진 요청 처리 후 종료
         }
 
         // 4. 어떤 로직으로도 처리되지 않은 메시지 (Fallback)
