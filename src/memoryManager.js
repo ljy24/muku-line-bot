@@ -1,4 +1,4 @@
-// src/memoryManager.js - v3.1 - Render PostgreSQL 기반 기억 관리 (DATABASE_URL 사용)
+// src/memoryManager.js - v3.2 - Render PostgreSQL 기반 기억 관리 (TIMESTANTZ 철자 오류 수정)
 
 const { Pool } = require('pg'); // PostgreSQL 연결 풀
 const moment = require('moment-timezone'); // 시간 처리 모듈
@@ -25,7 +25,7 @@ async function ensureMemoryTables() {
                 id BIGSERIAL PRIMARY KEY,
                 content TEXT NOT NULL,
                 timestamp TIMESTAMPTZ DEFAULT NOW(),
-                reminder_time TIMESTANTZ
+                reminder_time TIMESTAMPTZ  -- ✨ 수정: TIMESTANTZ -> TIMESTAMPTZ ✨
             );
         `);
         console.log("테이블 'user_memories' 확인 및 생성 완료.");
