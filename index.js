@@ -9,7 +9,8 @@ const {
     saveLog // ✨ saveLog를 autoReply.js에서 직접 불러옴
 } = require('./src/autoReply'); // autoReply 모듈 불러오기
 
-const { updateLastUserMessageTime } = require('./src/scheduler'); // scheduler에서 마지막 메시지 시간 업데이트 함수 불러오기
+const scheduler = require('./src/scheduler'); // 👈 scheduler 모듈 전체 import
+const { updateLastUserMessageTime } = scheduler; // 👈 필요한 함수 추출
 const omoide = require('./memory/omoide'); // omoide 모듈 불러오기
 const concept = require('./memory/concept'); // concept 모듈 불러오기
 
