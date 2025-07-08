@@ -1,10 +1,12 @@
-// src/utils/logger.js - v1.0 (대화 로그 저장 기능 분리)
+// src/utils/logger.js - v1.1 (대화 로그 저장 기능 분리)
 
 const fs = require('fs');
 const path = require('path');
-const moment = require('moment-timezone');
+const moment = require('moment-timezone'); // Moment.js도 사용
 
-const LOG_FILE = path.join(__dirname, '../../conversation_log.json'); // 프로젝트 루트에 저장되도록 경로 수정
+// 로그 파일 경로: 프로젝트 루트의 conversation_log.json
+// process.cwd()는 Node.js 프로세스가 실행되는 현재 작업 디렉토리를 반환합니다.
+const LOG_FILE = path.join(process.cwd(), 'conversation_log.json');
 let conversationLog = [];
 
 // 파일 존재 여부 확인 및 디렉토리 생성
@@ -13,8 +15,9 @@ function ensureLogFile() {
     if (!fs.existsSync(logDir)) {
         fs.mkdirSync(logDir, { recursive: true });
     }
+    // 파일이 없으면 빈 배열로 초기화
     if (!fs.existsSync(LOG_FILE)) {
-        fs.writeFileSync(LOG_FILE, '[]', 'utf8'); // 파일이 없으면 빈 배열로 초기화
+        fs.writeFileSync(LOG_FILE, '[]', 'utf8');
     }
 }
 
