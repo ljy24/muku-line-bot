@@ -106,7 +106,10 @@ const CONCEPT_FOLDERS = {
  * @returns {string|null} 사진 URL 또는 null
  */
 function generateConceptPhotoUrl(folderName, targetIndex = null) {
+    console.log(`[concept:generateConceptPhotoUrl] 폴더명: "${folderName}"`);
     const photoCount = CONCEPT_FOLDERS[folderName];
+    console.log(`[concept:generateConceptPhotoUrl] 사진 개수: ${photoCount}`);
+    
     if (photoCount === undefined || photoCount <= 0) {
         console.warn(`[concept.js] 폴더를 찾을 수 없거나 사진이 없습니다: ${folderName}`);
         return null;
@@ -118,16 +121,20 @@ function generateConceptPhotoUrl(folderName, targetIndex = null) {
     } else {
         indexToUse = Math.floor(Math.random() * photoCount) + 1;
     }
+    console.log(`[concept:generateConceptPhotoUrl] 사용할 인덱스: ${indexToUse}`);
 
     const fileName = String(indexToUse).padStart(6, '0') + '.jpg';
+    console.log(`[concept:generateConceptPhotoUrl] 파일명: ${fileName}`);
     
     const yearMatch = folderName.match(/^(202[3-5])(\/|$)/);
     const yearFolder = yearMatch ? yearMatch[1] : '';
+    console.log(`[concept:generateConceptPhotoUrl] 연도 폴더: "${yearFolder}"`);
 
     let actualFolderName = folderName;
     if (yearFolder) {
         actualFolderName = folderName.replace(new RegExp(`^${yearFolder}\/`), '');
     }
+    console.log(`[concept:generateConceptPhotoUrl] 실제 폴더명: "${actualFolderName}"`);
     
     const url = `${BASE_CONCEPT_URL}${encodeURIComponent(yearFolder)}/${encodeURIComponent(actualFolderName)}/${fileName}`;
     console.log(`[concept:generateConceptPhotoUrl] 최종 생성 URL: ${url}`);
