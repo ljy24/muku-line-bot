@@ -3,7 +3,7 @@ const cron = require('node-cron');
 const moment = require('moment-timezone');
 const { Client } = require('@line/bot-sdk'); // LINE 클라이언트 필요
 const {
-    getProactiveMemoryMessage, // 감성 메시지를 위해 다시 사용
+    getProactiveMemoryMessage, // 감성 메시지를 위해 필요
     saveLog, // 로그 저장을 위해 필요
 } = require('./autoReply'); // autoReply.js에서 필요한 메시지 생성 함수들을 불러옴
 const memoryManager = require('./memoryManager'); // 리마인더 처리를 위해 memoryManager 필요
@@ -15,8 +15,8 @@ const { getOmoideReply } = require('../memory/omoide');
 let bootTime = Date.now(); // 봇 시작 시점의 타임스탬프 (밀리초)
 let lastMoodMessage = ''; // 마지막 감성 메시지 내용 (중복 방지용)
 let lastMoodMessageTime = 0; // 마지막 감성 메시지 전송 시간
-// let lastCouplePhotoMessage = ''; // 더 이상 사용하지 않음
-// let lastCouplePhotoMessageTime = 0; // 더 이상 사용하지 않음
+let lastCouplePhotoMessage = ''; // 마지막 커플 사진 메시지 내용 (더 이상 사용하지 않지만 변수 유지는 가능)
+let lastCouplePhotoMessageTime = 0; // 마지막 커플 사진 전송 시간 (더 이상 사용하지 않지만 변수 유지는 가능)
 let lastProactiveSentTime = 0; // 마지막 봇의 선제적/걱정 메시지 전송 시간 (침묵 감지 셀카에도 적용)
 let lastUserMessageTime = Date.now(); // 아저씨가 마지막으로 메시지를 보낸 시간
 let lastSelfieSentTime = 0; // ✨ 추가: 마지막 침묵 감지 셀카 전송 시간
@@ -125,6 +125,7 @@ const sendScheduledMessage = async (lineClient, targetUserId, type) => {
             }
         }
     }
+    // 'couple_photo' 타입 처리 로직은 삭제됩니다.
 };
 
 /**
