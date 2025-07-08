@@ -1,8 +1,9 @@
-// src/memoryHandler.js - v1.0 - 기억 관련 명령어 처리 핸들러
+// src/memoryHandler.js - v1.1 - 기억 관련 명령어 처리 핸들러 (파일 기반 memoryManager 사용)
 
 // 📦 필수 모듈 불러오기
 const moment = require('moment-timezone'); // Moment.js
-const memoryManager = require('./memoryManager'); // memoryManager 모듈
+const memoryManager = require('./memoryManager'); // memoryManager 모듈 (이제 파일 기반으로 작동)
+const { cleanReply } = require('./autoReply'); // cleanReply 함수를 autoReply.js에서 가져옴
 
 /**
  * 기억 관련 명령어를 처리합니다.
@@ -53,14 +54,9 @@ async function handleMemoryCommand(userMessage, saveLogFunc) {
         }
     }
 
-    // 4. '첫 대화 기억' 요청 처리 (이것도 기억 관련으로 분류)
+    // 4. '첫 대화 기억' 요청 처리
     const lowerCaseMessage = userMessage.toLowerCase();
     if (lowerCaseMessage.includes('첫 대화 기억') || lowerCaseMessage.includes('처음 만났을 때')) {
-        // cleanReply는 autoReply에서 가져와야 하므로, 여기서는 직접 사용하지 않고, 필요한 경우 autoReply에서 포매팅된 것을 받거나,
-        // 이 모듈에서 cleanReply를 직접 require 하도록 변경해야 합니다.
-        // 여기서는 임시로 autoReply에서 cleanReply를 내보내도록 하여 사용하겠습니다.
-        const { cleanReply } = require('./autoReply'); // 순환 참조 주의! (실제 앱에서는 유틸성 함수는 별도 파일로 분리하는게 좋습니다)
-
         const firstDialogue = await memoryManager.getFirstDialogueMemory();
         if (firstDialogue) {
             saveLogFunc('예진이', `(첫 대화 기억 응답) ${firstDialogue}`);
