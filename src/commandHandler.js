@@ -1,9 +1,10 @@
-// src/commandHandler.js - v1.0 - 봇 명령어 처리 핸들러
+// src/commandHandler.js - v1.1 - 봇 명령어 처리 핸들러 (파일 기반 memoryManager 사용)
 
 // 📦 필수 모듈 불러오기
 const { getOmoideReply } = require('../memory/omoide'); // omoide.js에서 추억 사진 답변 함수 불러오기
 const { getConceptPhotoReply } = require('../memory/concept'); // concept.js에서 컨셉 사진 답변 함수 불러오기
-const { getMemoryListForSharing, setForcedModel, checkModelSwitchCommand, cleanReply } = require('./autoReply'); // autoReply에서 필요한 함수 가져오기
+// autoReply에서 필요한 함수 가져오기 (이제 autoReply는 Supabase에 의존하지 않음)
+const { getMemoryListForSharing, setForcedModel, checkModelSwitchCommand, cleanReply } = require('./autoReply');
 
 /**
  * 봇의 특정 명령어를 처리합니다.
@@ -36,8 +37,6 @@ async function handleCommand(userMessage, saveLogFunc) {
     }
 
     // 3. 사진 관련 명령어 처리 (omoide.js, concept.js 사용)
-    // 이 부분은 omoide.js와 concept.js의 로직을 그대로 사용하므로,
-    // 해당 모듈들이 '사진 요청' 명령어를 이미 감지하고 처리하도록 설계되어 있어야 합니다.
     const omoideReply = await getOmoideReply(userMessage, saveLogFunc);
     if (omoideReply) {
         return omoideReply; // omoide.js에서 처리된 응답 반환
