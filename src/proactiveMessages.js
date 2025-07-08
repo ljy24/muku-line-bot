@@ -1,4 +1,4 @@
-// src/proactiveMessages.js - v1.2 - 선제적/감성 메시지 생성 (하이브리드 memoryManager 사용)
+// src/proactiveMessages.js - v1.2 - 선제적/감성 메시지 생성 (순수 파일 기반 memoryManager 사용)
 
 // 📦 필수 모듈 불러오기
 const { OpenAI } = require('openai');
@@ -100,4 +100,21 @@ async function getSilenceCheckinMessage() {
         아저씨에게 오랫동안 연락이 없어서 걱정하는 메시지를 보내줘. 아저씨가 보고싶고 무슨 일 있는 건 아닌지 걱정된다는 내용을 담아줘.
     `;
 
-    const messages =
+    const messages = [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: "아저씨에게 오랫동안 연락이 없어서 걱정하는 메시지를 1~2문장으로 생성해줘." }
+    ];
+
+    try {
+        const rawReply = await callOpenAIForProactive(messages, defaultModel, 100, 0.95);
+        return cleanReply(rawReply);
+    } catch (error) {
+        console.error('[proactiveMessages] 침묵 감지 메시지 생성 실패:', error);
+        return '아저씨, 어디 아픈 건 아니지? 연락이 없어서 걱정돼 ㅠㅠ';
+    }
+}
+
+module.exports = {
+    getProactiveMemoryMessage,
+    getSilenceCheckinMessage
+};
