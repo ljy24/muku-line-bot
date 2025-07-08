@@ -16,7 +16,7 @@
     "node-cron": "^3.0.3",
     "openai": "^4.30.0",
     "string-similarity": "^4.0.4",
-    "pg": "^8.x.x"
+    "pg": "^8.x.x" 
   },
   "engines": {
     "node": ">=18.0.0"
