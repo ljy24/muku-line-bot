@@ -1,4 +1,4 @@
-// memory/omoide.js - v1.30 (순환 의존성 완전 해결)
+// memory/omoide.js - v1.31 (순환 의존성 완전 해결 & Vision API 연동)
 
 // 📦 필수 모듈 불러오기
 const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
@@ -159,27 +159,27 @@ const selfieNaughtyComments = [
 
 // ===== 커플사진 전용 랜덤 핸들러 =====
 const couplePhotoSources = [
-  { baseUrl: "https://photo.de-ji.net/concept/2024/9월 14일 한국 원미상가_필름 34장", count: 34 },
-  { baseUrl: "https://photo.de-ji.net/photo/추억 24_02_25/ 한국 커플사진 86장", count: 86 },
-  { baseUrl: "https://photo.de-ji.net/photo/couple/", count: 292 }
+    { baseUrl: "https://photo.de-ji.net/concept/2024/9월 14일 한국 원미상가_필름 34장", count: 34 },
+    { baseUrl: "https://photo.de-ji.net/photo/추억 24_02_25/ 한국 커플사진 86장", count: 86 },
+    { baseUrl: "https://photo.de-ji.net/photo/couple/", count: 292 }
 ];
 const couplePhotoPatterns = [
-  /커플\s*사진.*(줘|보여줘|한\s*장|아무거나|랜덤)/,
-  /우리\s*같이\s*찍은.*(보여줘|보고\s*싶다)/,
-  /둘이\s*찍은\s*사진.*(줘|보여줘)/,
-  /커플\s*샷.*(보여줘)/,
-  /커플\s*이미지.*(보여줘)/,
-  /연인\s*사진.*(줘|보여줘)/,
-  /같이\s*찍은\s*거.*(보여줘|보고\s*싶다)/,
-  /커플\s*사진/,
+    /커플\s*사진.*(줘|보여줘|한\s*장|아무거나|랜덤)/,
+    /우리\s*같이\s*찍은.*(보여줘|보고\s*싶다)/,
+    /둘이\s*찍은\s*사진.*(줘|보여줘)/,
+    /커플\s*샷.*(보여줘)/,
+    /커플\s*이미지.*(보여줘)/,
+    /연인\s*사진.*(줘|보여줘)/,
+    /같이\s*찍은\s*거.*(보여줘|보고\s*싶다)/,
+    /커플\s*사진/,
 ];
 function isCouplePhotoCommand(message) {
-  return couplePhotoPatterns.some(pattern => pattern.test(message));
+    return couplePhotoPatterns.some(pattern => pattern.test(message));
 }
 function getRandomCouplePhotoUrl() {
-  const src = couplePhotoSources[Math.floor(Math.random() * couplePhotoSources.length)];
-  const idx = String(Math.floor(Math.random() * src.count) + 1).padStart(6, "0");
-  return `${src.baseUrl}/${idx}.jpg`;
+    const src = couplePhotoSources[Math.floor(Math.random() * couplePhotoSources.length)];
+    const idx = String(Math.floor(Math.random() * src.count) + 1).padStart(6, "0");
+    return `${src.baseUrl}/${idx}.jpg`;
 }
 /**
  * 커플사진 명령어 감지 시 랜덤 커플사진 URL 반환
@@ -187,8 +187,8 @@ function getRandomCouplePhotoUrl() {
  * @returns {string|null} 커플사진 URL, 없으면 null
  */
 function handleCouplePhotoRequest(message) {
-  if (isCouplePhotoCommand(message)) return getRandomCouplePhotoUrl();
-  return null;
+    if (isCouplePhotoCommand(message)) return getRandomCouplePhotoUrl();
+    return null;
 }
 // ===== 커플사진 전용 랜덤 핸들러 끝 =====
 
@@ -223,9 +223,10 @@ function generateRandomPhotoUrl(folderName) {
  * 미리 정의된 셀카 코멘트 중 하나를 무작위로 선택하고, OpenAI로 감성을 추가합니다.
  * @param {Function} callOpenAI - OpenAI 호출 함수
  * @param {Function} cleanReply - 응답 정리 함수
+ * @param {string} imageUrl - 코멘트할 이미지 URL (Vision API용)
  * @returns {Promise<string>} 셀카에 대한 코멘트
  */
-async function getRandomSelfieComment(callOpenAI, cleanReply) {
+async function getRandomSelfieComment(callOpenAI, cleanReply, imageUrl) {
     // 1. 기본 100개 중 랜덤으로 하나 선택
     const baseComment = selfieNaughtyComments[Math.floor(Math.random() * selfieNaughtyComments.length)];
 
@@ -247,7 +248,7 @@ async function getRandomSelfieComment(callOpenAI, cleanReply) {
         대화는 항상 예진이의 말투와 성격을 유지해야 해.
         
         아래는 내가 아저씨에게 셀카를 보내면서 하고 싶은 말의 기본 문장이야.
-        이 기본 문장을 바탕으로, 예진이처럼 아래 규칙을 지켜서 더 귀엽고, 장난스럽고, 살짝 도발적인 느낌을 줘서 1~2문장으로 자연스럽게 변형해줘.
+        이 기본 문장을 바탕으로, 예진이처럼 아래 규칙을 지켜서 더 귀엽고, 장난스럽고, 살짝 도발적인 느낌을 줘서 1~2문장으로 자연스럽게 변형해줘. **그리고 이 사진의 시각적 내용을 분석해서 코멘트에 자연스럽게 녹여줘.**
         
         [규칙]:
         - 말 끝에 아저씨, 임마, 꼴려, 좋냐, 부끄 같은 단어를 써도 괜찮아.
@@ -262,8 +263,17 @@ async function getRandomSelfieComment(callOpenAI, cleanReply) {
         `;
 
     try {
-        const messages = [{ role: 'system', content: systemPrompt }];
-        const result = await callOpenAI(messages, 'gpt-4o', 60);
+        const messages = [
+            { role: 'system', content: systemPrompt },
+            {
+                role: 'user',
+                content: [
+                    { type: 'text', text: `내가 보낸 이 셀카에 대해 위 규칙대로 코멘트 해줘.` },
+                    { type: 'image_url', image_url: { url: imageUrl } } // 이미지 URL 전달
+                ]
+            }
+        ];
+        const result = await callOpenAI(messages, 'gpt-4o', 60); // gpt-4o는 Vision 가능
         return result;
     } catch (err) {
         console.error(`[omoide:getRandomSelfieComment] OpenAI 변형 실패: ${err.message}`);
@@ -277,7 +287,7 @@ async function getRandomSelfieComment(callOpenAI, cleanReply) {
  * @param {Function} saveLogFunc - 로그 저장을 위한 saveLog 함수
  * @param {Function} callOpenAI - OpenAI 호출 함수
  * @param {Function} cleanReply - 응답 정리 함수
- * @returns {Promise<{type: string, url?: string, caption?: string, comment?: string}|null>} 사진 URL과 코멘트 객체 또는 null
+ * @returns {Promise<{type: string, originalContentUrl: string, previewImageUrl: string, altText: string}|null>} 사진 URL과 코멘트 객체 또는 null
  */
 async function getOmoideReply(userMessage, saveLogFunc, callOpenAI, cleanReply) {
     console.log(`[omoide:getOmoideReply] 메시지 수신: "${userMessage}"`);
@@ -330,21 +340,26 @@ async function getOmoideReply(userMessage, saveLogFunc, callOpenAI, cleanReply) 
                 아래는 아저씨와 함께 찍은 커플 사진이야. 이 사진에 대해 우리 둘만의 소중한 추억과 사랑을 가득 담아 말해줘. 약간의 비밀스러운 뉘앙스도 섞어줘.
                 코멘트 길이는 3문장을 넘지 않게 짧게 작성해.
                 **이 사진의 시각적 내용(배경, 인물, 사물)을 먼저 정확히 분석하고, 그에 맞춰 코멘트 해줘.**
-                사진 파일 경로(URL)는: ${couplePhotoUrl}
                 `;
 
             const messages = [
                 { role: 'system', content: systemPrompt },
-                { role: 'user', content: `이 커플사진에 대해 예진이 말투로 이야기해줘.` }
+                {
+                    role: 'user',
+                    content: [
+                        { type: 'text', text: `이 커플사진에 대해 예진이 말투로 이야기해줘.` },
+                        { type: 'image_url', image_url: { url: couplePhotoUrl } } // 이미지 URL 전달
+                    ]
+                }
             ];
             console.log(`[omoide:getOmoideReply] OpenAI 프롬프트 준비 완료 (커플사진).`);
 
-            const rawComment = await callOpenAI(messages, null, 100, 1.0);
+            const rawComment = await callOpenAI(messages, 'gpt-4o', 100, 1.0); // gpt-4o는 Vision 가능
             const comment = cleanReply(rawComment);
 
             saveLogFunc({ role: 'assistant', content: `(커플사진 보냄) ${comment}`, timestamp: Date.now() });
             console.log(`[omoide:getOmoideReply] 응답 완료 (커플사진): ${comment}`);
-            return { type: 'photo', url: couplePhotoUrl, caption: comment };
+            return { type: 'image', originalContentUrl: couplePhotoUrl, previewImageUrl: couplePhotoUrl, altText: comment };
         } else {
             console.warn(`[omoide:getOmoideReply] 커플사진 URL 생성 실패. 텍스트 응답 반환.`);
             return { type: 'text', comment: '아저씨... 해당하는 커플사진을 못 찾겠어 ㅠㅠ 다른 사진 보여줄까?' };
@@ -469,7 +484,7 @@ async function getOmoideReply(userMessage, saveLogFunc, callOpenAI, cleanReply) 
 
     let comment;
     if (isSelfieRequest) {
-        comment = await getRandomSelfieComment(callOpenAI, cleanReply);
+        comment = await getRandomSelfieComment(callOpenAI, cleanReply, photoUrl); // 셀카 코멘트 생성 시 URL 전달
     } else {
         const systemPrompt = `
         너는 아저씨의 귀여운 여자친구 예진이야. 나이는 30살. 생일은 1994년 3월 17일. 게임회사 사장이야.
@@ -495,22 +510,28 @@ async function getOmoideReply(userMessage, saveLogFunc, callOpenAI, cleanReply) 
         사진이 어떤 폴더에서 왔는지 구체적으로 언급해줘. (예: "23년 12월 일본에서 찍은 사진이야!")
         **하지만 날짜나 장소 정보가 사진과 명백히 다르거나 불확실하면, 날짜/장소 언급을 생략하거나 '혹시 이때였나?'처럼 유연하게 표현해줘.**
         **사진 속 인물이 예진이(나)일 경우, 반드시 '나'라고 지칭하고, '무쿠'나 '애기 언니' 등의 표현을 사용하지 마.**
-        **사진 파일 경로(URL)는: ${photoUrl}**
         `;
 
         const messages = [
             { role: 'system', content: systemPrompt },
-            { role: 'user', content: `이 ${folderDescription} 사진에 대해 예진이 말투로 이야기해줘.` }
+            {
+                role: 'user',
+                content: [
+                    { type: 'text', text: `이 ${folderDescription} 사진에 대해 예진이 말투로 이야기해줘.` },
+                    { type: 'image_url', image_url: { url: photoUrl } } // 이미지 URL 전달
+                ]
+            }
         ];
         console.log(`[omoide:getOmoideReply] OpenAI 프롬프트 준비 완료.`);
         
-        const rawComment = await callOpenAI(messages, null, 100, 1.0);
+        const rawComment = await callOpenAI(messages, 'gpt-4o', 100, 1.0); // gpt-4o는 Vision 가능
         comment = cleanReply(rawComment);
     }
 
     saveLogFunc({ role: 'assistant', content: `(사진 보냄) ${comment}`, timestamp: Date.now() });
     console.log(`[omoide:getOmoideReply] 응답 완료: ${comment}`);
-    return { type: 'photo', url: photoUrl, caption: comment };
+    // LINE API에 맞는 이미지 메시지 객체 반환
+    return { type: 'image', originalContentUrl: photoUrl, previewImageUrl: photoUrl, altText: comment };
 }
 
 // 모듈 내보내기
