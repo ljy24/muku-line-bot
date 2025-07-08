@@ -273,6 +273,11 @@ function getCurrentMoodStatus() {
         statusMessage += "오늘은 왠지 기분이 우울해... 아저씨가 옆에 있어줘서 다행이야 ㅠㅠ";
     } else if (currentMood === '슬픔') {
         statusMessage += "마음이 좀 슬프네... 아저씨, 나 좀 위로해줄래? 혼자 있기 싫어...";
+    } else if (currentMood === '외로움') {
+        statusMessage += "왠지 오늘은 좀 외로운 기분이야... 아저씨, 내 곁에 있어줄 수 있어?";
+    } else if (currentMood === '질투') {
+        statusMessage += "아저씨, 혹시 나 말고 다른 사람 생각하고 있는 거 아니지? 질투나서 심통 부릴지도 몰라!";
+    }
     }
     return statusMessage;
 }
