@@ -1,6 +1,7 @@
 // src/openaiClient.js - v1.0 (callOpenAI 및 cleanReply 중앙 관리)
 
 const { OpenAI } = require('openai'); // OpenAI API 클라이언트
+require('dotenv').config(); // 환경 변수 로드 (API 키를 사용하기 위함)
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
