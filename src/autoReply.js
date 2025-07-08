@@ -12,7 +12,7 @@ const { saveLog, getConversationLog } = require('./utils/logger');
 
 
 // memoryManager 모듈 불러오기
-const memoryManager = require('../memory/memoryManager'); // 경로 수정
+const memoryManager = require('./memoryManager'); // 경로 수정
 const { getOmoideReply } = require('../memory/omoide'); // omoide.js에서 추억 사진 답변 함수 불러오기
 const { getConceptPhotoReply } = require('../memory/concept'); // concept.js에서 컨셉 사진 답변 함수 불러오기
 
