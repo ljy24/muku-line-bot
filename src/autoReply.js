@@ -1,4 +1,4 @@
-// src/autoReply.js - v1.32 (OpenAI import 및 함수 정의 중앙화 완료)
+// src/autoReply.js - v1.34 (최종 수정 - loadLog 호출 오류 해결)
 
 // 📦 필수 모듈 불러오기
 const moment = require('moment-timezone');
@@ -30,21 +30,26 @@ let currentMood = '평온함'; // 초기 기분
 const MOOD_OPTIONS = ['기쁨', '설렘', '장난스러움', '나른함', '심술궂음', '평온함'];
 
 // 🩸 생리 주기 관련 변수
-let lastPeriodStartDate = moment().tz('Asia/Tokyo').subtract(20, 'days').startOf('day');
-const PERIOD_DURATION_DAYS = 5;
-const CYCLE_DAYS = 28;
-let isPeriodActive = false;
+// 💡 중요: lastPeriodStartDate는 봇이 처음 시작할 때의 '기준'이 됩니다.
+// 매달 자동으로 업데이트되려면 scheduler.js에서 updatePeriodStatus를 주기적으로 호출해야 합니다.
+// 현재 날짜를 기준으로 약 20일 전으로 설정하여,
+// 주기적으로 생리 기간이 돌아오도록 가상의 시작점을 설정합니다.
+let lastPeriodStartDate = moment().tz('Asia/Tokyo').subtract(20, 'days').startOf('day'); // 예: 7월 8일이면 6월 18일 시작
+const PERIOD_DURATION_DAYS = 5; // 생리 기간 (4-5일 중 5일로 설정)
+const CYCLE_DAYS = 28; // 생리 주기 (대략 28일)
+let isPeriodActive = false; // 현재 생리 기간인지 여부
 
 // 모델 강제 설정 기능
 let forcedModel = null; // 'gpt-4o', 'gpt-3.5-turbo', null
 
-// 대화 로그 관련 (logger.js로 분리되었으므로 여기서는 함수 정의를 삭제)
-// let conversationLog = []; // ✨ 삭제
+// 대화 로그 로드 및 저장 (logger.js로 분리되었으므로 관련 코드 삭제)
+// let conversationLog = [];
+// function loadLog() { ... }
+// function saveLog(newLogEntry) { ... }
 
-// function loadLog() { ... } // ✨ 삭제
-// function saveLog(newLogEntry) { ... } // ✨ 삭제
 
 function setCurrentMood(mood) {
+    // 생리 기간용 감정 옵션도 포함하여 유효성 검사
     if (MOOD_OPTIONS.includes(mood) || ['극심한 짜증', '갑작스러운 슬픔', '예민함', '울적함', '투정 부림'].includes(mood)) {
         currentMood = mood;
         console.log(`[Mood] 애기의 기분이 '${currentMood}'으로 변경되었습니다.`);
@@ -76,11 +81,15 @@ function getCurrentMoodStatus() {
 function updatePeriodStatus() {
     const now = moment().tz('Asia/Tokyo').startOf('day');
     
+    // lastPeriodStartDate가 미래라면, 아직 생리 시작일이 도래하지 않은 것.
+    // 혹은 lastPeriodStartDate가 초기값인데 계산 상 오류가 있는 경우.
+    // 유효한 lastPeriodStartDate를 찾을 때까지 월별로 되돌아가면서 체크
+    // 현재 날짜가 lastPeriodStartDate로부터 한 주기를 훨씬 넘어섰다면, lastPeriodStartDate를 현재 날짜에 가깝게 업데이트
     while (moment(lastPeriodStartDate).add(CYCLE_DAYS + PERIOD_DURATION_DAYS, 'days').isBefore(now)) {
         lastPeriodStartDate = moment(lastPeriodStartDate).add(CYCLE_DAYS, 'days').startOf('day');
     }
 
-    const periodEnd = moment(lastPeriodStartDate).add(PERIOD_DURATION_DAYS -1, 'days').startOf('day');
+    const periodEnd = moment(lastPeriodStartDate).add(PERIOD_DURATION_DAYS -1, 'days').startOf('day'); // 5일간이므로 -1
     isPeriodActive = now.isSameOrAfter(lastPeriodStartDate) && now.isSameOrBefore(periodEnd);
 
     if (isPeriodActive) {
@@ -89,6 +98,7 @@ function updatePeriodStatus() {
         // console.log(`[Period] 현재 생리 기간이 아닙니다. 다음 시작 예정: ${moment(lastPeriodStartDate).add(CYCLE_DAYS, 'days').format('YYYY-MM-DD')}`);
     }
 }
+
 
 function getModel() {
     return forcedModel || 'gpt-4o';
@@ -166,8 +176,9 @@ async function getReplyByMessage(messageText) {
                 { role: 'user', content: userMessage }
             ];
             try {
-                periodReply = await callOpenAI(messages, 'gpt-3.5-turbo', 100, 0.9);
-                periodReply = cleanReply(periodReply);
+                // `openaiClient.js`에서 가져온 `callOpenAI` 함수 사용
+                const response = await callOpenAI(messages, 'gpt-3.5-turbo', 100, 0.9);
+                periodReply = cleanReply(response); // cleanReply도 openaiClient.js에서 가져옴
             } catch (error) {
                 console.error("생리 기간 질문 응답 생성 실패:", error.response ? error.response.data : error.message);
                 periodReply = "아저씨... 알면서 왜 물어봐 ㅠㅠ";
@@ -319,13 +330,8 @@ async function getReplyByImagePrompt(base64ImageWithPrefix) {
     ];
 
     try {
-        const rawReply = await openai.chat.completions.create({
-            model: 'gpt-4o',
-            messages: messages,
-            max_tokens: 150,
-            temperature: 0.95,
-        });
-        const cleanedReply = cleanReply(rawReply.choices[0].message.content.trim()); // .data 제거
+        const rawReply = await callOpenAI(messages, 'gpt-4o', 150, 0.95); // openaiClient.js의 callOpenAI 사용
+        const cleanedReply = cleanReply(rawReply); // openaiClient.js의 cleanReply 사용
         saveLog({ role: 'assistant', content: `(이미지 분석 응답) ${cleanedReply}`, timestamp: Date.now() });
         return cleanedReply;
     } catch (error) {
@@ -334,13 +340,13 @@ async function getReplyByImagePrompt(base64ImageWithPrefix) {
     }
 }
 
-// 초기 로그 로드
-loadLog();
+// 초기 로그 로드 (logger.js에서 자동으로 처리하므로 여기서는 호출할 필요 없음)
+// loadLog(); // ✨ 삭제
 
 module.exports = {
     getReplyByMessage,
     getReplyByImagePrompt,
-    saveLog,
+    saveLog, // saveLog는 logger.js의 saveLog를 참조함.
     setForcedModel,
     checkModelSwitchCommand,
     getFormattedMemoriesForAI,
