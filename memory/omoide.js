@@ -1,11 +1,12 @@
 // memory/omoide.js v1.22 - '셀카 줘' (띄어쓰기) 인식 및 후지 풍경 사진 로직 추가
 
 // 📦 필수 모듈 불러오기
-const { OpenAI } = require('openai'); // OpenAI API 클라이언트
+// const { OpenAI } = require('openai'); // ✨ 삭제: OpenAI 클라이언트 초기화는 openaiClient.js에서 담당
 const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅
+const { callOpenAI, cleanReply } = require('../src/openaiClient'); // ✨ 수정: openaiClient.js에서 함수 불러오기
 
 // OpenAI 클라이언트 초기화 (API 키는 환경 변수에서 가져옴 - 보안상 중요)
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY }); // ✨ 삭제
 
 // 사진이 저장된 웹 서버의 기본 URL (HTTPS 필수)
 const BASE_PHOTO_URL = 'https://photo.de-ji.net/photo/';
