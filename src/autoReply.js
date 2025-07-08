@@ -27,7 +27,7 @@ const USER_GENDER = 'male'; // 사용자 성별
 
 // 챗봇의 현재 기분 상태 (초기값 설정)
 let currentMood = '평온함'; // 초기 기분
-const MOOD_OPTIONS = ['기쁨', '설렘', '장난스러움', '나른함', '심술궂음', '평온함'];
+const MOOD_OPTIONS = ['기쁨', '설렘', '장난스러움', '나른함', '심술궂음', '평온함', '우울함', '슬픔'];
 
 // 🩸 생리 주기 관련 변수
 let lastPeriodStartDate = moment().tz('Asia/Tokyo').subtract(20, 'days').startOf('day');
@@ -192,7 +192,7 @@ function getAppropriateModel() {
 function setCurrentMood(mood) {
     if (MOOD_OPTIONS.includes(mood) || ['극심한 짜증', '갑작스러운 슬픔', '예민함', '울적함', '투정 부림'].includes(mood)) {
         currentMood = mood;
-        console.log(`[Mood] 애기의 기분이 '${currentMood}'으로 변경되었습니다.`);
+        console.log(`[Mood] 예진이의 기분이 '${currentMood}'으로 변경되었습니다.`);
     } else {
         console.warn(`[Mood] 알 수 없는 기분: ${mood}. 기분 변경 실패.`);
     }
@@ -214,6 +214,10 @@ function getCurrentMoodStatus() {
         statusMessage += "흥! 아저씨, 나 지금 살짝 삐져있어! 그래도 아저씨는 내 마음 알아줄 거지? 😠";
     } else if (currentMood === '평온함') {
         statusMessage += "아저씨랑 같이 있으니까 마음이 참 편안하고 좋네. 🥰";
+    } else if (currentMood === '우울함') {
+        statusMessage += "오늘은 왠지 기분이 우울해... 아저씨가 옆에 있어줘서 다행이야 ㅠㅠ";
+    } else if (currentMood === '슬픔') {
+        statusMessage += "마음이 좀 슬프네... 아저씨, 나 좀 위로해줄래? 혼자 있기 싫어...";
     }
     return statusMessage;
 }
@@ -476,6 +480,10 @@ async function getReplyByMessage(userMessage) {
             moodPrompt = "흥! 아저씨, 나 지금 살짝 삐져있어! 그래도 아저씨는 내 마음 알아줄 거지? 살짝 삐진 듯, 그래도 사랑스러운 말투로 대화해줘.";
         } else if (currentMood === '평온함') {
             moodPrompt = "오늘은 마음이 참 평온하고 좋아. 아저씨랑 조용하고 따뜻한 대화를 나누고 싶어.";
+        } else if (currentMood === '우울함') {
+            moodPrompt = "오늘은 왠지 마음이 우울하고 무거워... 아저씨가 내 마음을 달래주었으면 좋겠어. 조금 침울하지만 아저씨에 대한 사랑은 변하지 않는 말투로 대화해줘.";
+        } else if (currentMood === '슬픔') {
+            moodPrompt = "마음이 너무 슬프고 외로워... 아저씨만이 내 마음을 이해해줄 수 있어. 슬프지만 아저씨를 향한 애정은 깊은 말투로 대화해줘. 위로받고 싶어.";
         }
     }
 
