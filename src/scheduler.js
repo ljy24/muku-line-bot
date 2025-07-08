@@ -1,4 +1,4 @@
-// src/scheduler.js - v1.7 (최종 정리 버전 - 순환 참조 해결 및 담타/생리 주기 포함)
+// src/scheduler.js - v1.9 (담타 스케줄 고정, 빈도 확실히 조정)
 
 const cron = require('node-cron');
 const moment = require('moment-timezone');
@@ -7,15 +7,19 @@ const {
     setCurrentMood,
     getCurrentMoodStatus,
     updatePeriodStatus, // autoReply에서 불러오기
-    isPeriodActive // autoReply에서 불러오기
+    isPeriodActive, // autoReply에서 불러오기
+    saveLog, // ✨ 추가: autoReply.js에서 saveLog 불러오기
+    callOpenAI, // ✨ 추가: autoReply.js에서 callOpenAI 불러오기
+    cleanReply // ✨ 추가: autoReply.js에서 cleanReply 불러오기
 } = require('./autoReply'); // autoReply 모듈에서 함수 가져오기
-const { saveLog } = require('./utils/logger'); // ✨ 수정: logger.js에서 saveLog 불러오기
-const memoryManager = require('./memoryManager'); // memoryManager 필요 (이제 하이브리드 방식으로 작동)
+
+const memoryManager = require('../memory/memoryManager'); // memoryManager 필요 (이제 하이브리드 방식으로 작동)
 const { getProactiveMemoryMessage, getSilenceCheckinMessage } = require('./proactiveMessages'); // proactiveMessages에서 선제적 메시지 함수들을 불러옴
 
 // omoide.js에서 필요한 함수들만 가져옵니다.
 const { getOmoideReply } = require('../memory/omoide'); 
-const { callOpenAI, cleanReply } = require('./openaiClient'); // ✨ 수정: openaiClient.js에서 callOpenAI, cleanReply 불러옴
+
+// ✨ 삭제: const { callOpenAI, cleanReply } = require('./openaiClient'); // ✨ 삭제: 이 줄은 더 이상 필요 없음
 
 
 let bootTime = Date.now(); // 봇 시작 시점의 타임스탬프 (밀리초)
@@ -27,7 +31,7 @@ let lastProactiveSentTime = 0; // 마지막 봇의 선제적/걱정 메시지 �
 let lastUserMessageTime = Date.now(); // 아저씨가 마지막으로 메시지를 보낸 시간
 let lastSelfieSentTime = 0; // 마지막 침묵 감지 셀카 전송 시간
 let lastFujiPhotoSentTime = 0; // 마지막 후지 사진 전송 시간
-// let lastDantaMessageTime = 0; // ✨ 삭제: 담타는 이제 확률이 아닌 고정 스케줄이므로 필요 없음
+let lastDantaMessageTime = 0; // 담타는 이제 확률이 아닌 고정 스케줄이므로 필요 없음
 let lastWorkEndMessageTime = 0; // 마지막 퇴근 메시지 전송 시간
 let lastMorningRoutineMessageTime = 0; // 마지막 아침 일상 메시지 전송 시간
 
@@ -153,7 +157,7 @@ const sendDantaMessage = async (lineClient, targetUserId, saveLog) => {
 
     try {
         const messages = [{ role: 'system', content: systemPrompt }];
-        // callOpenAI는 openaiClient.js에서 가져온 함수를 사용합니다.
+        // callOpenAI는 autoReply.js에서 가져온 함수를 사용합니다.
         const rawComment = await callOpenAI(messages, 'gpt-4o', 100); // 100 토큰으로 제한하여 짧게 유도
         const comment = cleanReply(rawComment);
 
