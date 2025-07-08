@@ -1,5 +1,5 @@
 // 챗봇의 현재 기분 상태 (초기값 설정)
-let// src/autoReply.js - v2.1 (getAppropriateModel 함수 누락 문제 해결)
+// src/autoReply.js - v2.1 (getAppropriateModel 함수 누락 문제 해결)
 
 // 📦 필수 모듈 불러오기
 const moment = require('moment-timezone');
