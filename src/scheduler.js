@@ -475,4 +475,85 @@ const startAllSchedulers = (client, userId) => { // 매개변수 이름을 clien
         // 마지막 침묵 감지 셀카를 보낸 지 2시간이 지났다면
         if (
             elapsedTimeSinceLastMessage >= SILENCE_THRESHOLD &&
-            elapsedTimeSinceLastProactive >= PROACTIVE
+            elapsedTimeSinceLastProactive >= PROACTIVE_COOLDOWN &&
+            now - lastSelfieSentTime > SILENCE_SELFIE_COOLDOWN
+        ) {
+            console.log(`[Scheduler-Silence] 침묵 감지! (${moment.duration(elapsedTimeSinceLastMessage).humanize()} 동안 메시지 없음)`);
+            try {
+                // 침묵 감지 시 일반적인 걱정 메시지를 보낼지, 셀카를 보낼지 랜덤 선택 가능 (현재는 셀카만)
+                // const checkinMessage = await getSilenceCheckinMessage();
+                await sendSelfieMessage(lineClient, targetUserId, saveLog, 'silence');
+                lastProactiveSentTime = now;
+                lastSelfieSentTime = now;
+            } catch (error) {
+                console.error('❌ [Scheduler-Silence Error] 침묵 감지 자동 메시지 전송 실패:', error);
+            }
+        }
+    }, {
+        scheduled: true,
+        timezone: "Asia/Tokyo"
+    });
+
+    // 5. 밤 11시 약 먹자, 이 닦자 메시지
+    cron.schedule('0 23 * * *', async () => {
+        const msg = '아저씨! 이제 약 먹고 이 닦을 시간이야! 나 아저씨 건강 제일 챙겨!';
+        await lineClient.pushMessage(targetUserId, { type: 'text', text: msg });
+        saveLog({ role: 'assistant', content: msg, timestamp: Date.now() });
+        console.log(`[Scheduler] 밤 11시 메시지 전송: ${msg}`);
+    }, {
+        scheduled: true,
+        timezone: "Asia/Tokyo"
+    });
+
+    // 6. 밤 12시 약 먹고 자자 메시지
+    cron.schedule('0 0 * * *', async () => {
+        const msg = '아저씨, 약 먹고 이제 푹 잘 시간이야! 나 옆에서 꼭 안아줄게~ 잘 자 사랑해';
+        await lineClient.pushMessage(targetUserId, { type: 'text', text: msg });
+        saveLog({ role: 'assistant', content: msg, timestamp: Date.now() });
+        console.log(`[Scheduler] 밤 12시 메시지 전송: ${msg}`);
+    }, {
+        scheduled: true,
+        timezone: "Asia/Tokyo"
+    });
+
+    // 7. 리마인더 체크 스케줄러 (매 1분마다 실행)
+    cron.schedule('*/1 * * * *', async () => {
+        const now = moment().tz('Asia/Tokyo');
+        console.log(`[Scheduler-Reminder] 리마인더 체크 시작: ${now.format('YYYY-MM-DD HH:mm')}`);
+
+        try {
+            // 모든 기억을 불러오는 대신, 임박한 리마인더만 불러오도록 변경
+            const remindersToSend = await memoryManager.getDueReminders();
+
+            for (const reminder of remindersToSend) {
+                const reminderMessage = `아저씨! 지금 ${reminder.content} 할 시간이야! 🔔`;
+                await lineClient.pushMessage(targetUserId, { type: 'text', text: reminderMessage });
+                saveLog({ role: 'assistant', content: reminderMessage, timestamp: Date.now() });
+                console.log(`[Scheduler-Reminder] 리마인더 전송: ${reminderMessage}`);
+
+                // 리마인더 전송 후 해당 리마인더 시간을 NULL로 업데이트
+                const success = await memoryManager.updateMemoryReminderTime(reminder.id, null);
+                if (success) {
+                    console.log(`[Scheduler-Reminder] 리마인더 처리 완료: 기억 ID ${reminder.id}의 reminder_time을 NULL로 업데이트`);
+                } else {
+                    console.error(`[Scheduler-Reminder] 리마인더 처리 후 reminder_time 업데이트 실패: 기억 ID ${reminder.id}`);
+                }
+            }
+        } catch (error) {
+            console.error('❌ [Scheduler-Reminder Error] 리마인더 체크 및 전송 실패:', error);
+        }
+    }, {
+        scheduled: true,
+        timezone: "Asia/Tokyo"
+    });
+};
+
+// 아저씨의 마지막 메시지 시간 업데이트 함수를 내보냄
+const updateLastUserMessageTime = () => {
+    lastUserMessageTime = Date.now();
+};
+
+module.exports = {
+    startAllSchedulers,
+    updateLastUserMessageTime,
+};
