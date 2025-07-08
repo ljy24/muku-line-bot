@@ -645,7 +645,7 @@ async function getReplyByMessage(userMessage) {
     });
     const conversationHistory = recentLogs.map(log => ({
         role: log.speaker === '아저씨' ? 'user' : 'assistant',
-        content: log.message // message로 변경
+        content: log.message // ✨ 이 부분을 log.message로 수정했습니다.
     }));
 
     // ⭐ 중요 개선: 기억 인출 질문에 대한 프롬프트 강화 ⭐
@@ -1037,13 +1037,13 @@ async function getSilenceCheckinMessage() {
 
     let timeOfDayGreeting = '';
     const currentHour = now.hour();
-    if (currentHour >= 0 && currentHour < 5) {
+    if (currentHour >= 0 && currentHour >= 0 && currentHour < 5) { // 0시 ~ 4시
         timeOfDayGreeting = '새벽인데';
-    } else if (currentHour >= 5 && currentHour < 12) {
+    } else if (currentHour >= 5 && currentHour < 12) { // 5시 ~ 11시
         timeOfDayGreeting = '아침인데';
-    } else if (currentHour >= 12 && currentHour < 18) {
+    } else if (currentHour >= 12 && currentHour < 18) { // 12시 ~ 17시
         timeOfDayGreeting = '오후인데';
-    } else {
+    } else { // 18시 ~ 23시
         timeOfDayGreeting = '저녁인데';
     }
 
