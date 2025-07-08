@@ -1,8 +1,11 @@
-// memory/concept.js v1.13 - 순환 의존성 해결 및 컨셉사진 키워드 매칭 개선
+// memory/concept.js v1.15 - 최종 의존성 정리 및 컨셉사진 키워드 매칭 개선 + 디버깅 로그
 
 // 📦 필수 모듈 불러오기
 const moment = require('moment-timezone');
 const path = require('path');
+// ✨ 추가: autoReply.js에서 필요한 함수들을 불러옴
+const { callOpenAI, cleanReply, saveLog } = require('../src/autoReply'); 
+
 
 // 컨셉 사진이 저장된 웹 서버의 기본 URL (HTTPS 필수)
 const BASE_CONCEPT_URL = 'https://photo.de-ji.net/concept/';
@@ -52,7 +55,7 @@ const CONCEPT_FOLDERS = {
     '2024/7월 6일 일본 우마시마': 53,
     '2024/7월 6일 일본 모지코2': 45,
     '2024/7월 8일 일본 결박': 223,
-    '2024/7월 8일 일본 욕조': 53,
+    '2024/2월 7일 일본 욕조': 53, // 이전에 '2024/7월 8일 일본 욕조'와 충돌해서 '2024/2월 7일 일본 욕조'로 변경됨.
     '2024/7월 8일 일본 여친 스냅': 41,
     '2024/8월 2일 일본 불꽃놀이/후보정': 39,
     '2024/8월 3일 일본 유카타 마츠리': 56,
@@ -117,7 +120,7 @@ function generateConceptPhotoUrl(folderName, targetIndex = null) {
     
     let indexToUse;
     if (targetIndex !== null && targetIndex >= 1 && targetIndex <= photoCount) {
-        indexToUse = targetIndex;
+        indexTouse = targetIndex;
     } else {
         indexToUse = Math.floor(Math.random() * photoCount) + 1;
     }
@@ -149,11 +152,9 @@ let lastConceptPhotoIndex = 0;
  * 사용자 메시지에 따라 컨셉 사진을 선택하고, AI가 감정/코멘트를 생성하여 반환합니다.
  * @param {string} userMessage - 사용자의 원본 메시지
  * @param {Function} saveLogFunc - 로그 저장을 위한 saveLog 함수
- * @param {Function} callOpenAI - OpenAI 호출 함수
- * @param {Function} cleanReply - 응답 정리 함수
  * @returns {Promise<{type: string, url?: string, caption?: string, comment?: string}|null>} 사진 URL과 코멘트 객체 또는 null
  */
-async function getConceptPhotoReply(userMessage, saveLogFunc, callOpenAI, cleanReply) {
+async function getConceptPhotoReply(userMessage, saveLogFunc) { // saveLogFunc 인자 받음
     console.log(`[concept:getConceptPhotoReply] 메시지 수신: "${userMessage}"`);
     const lowerCaseMessage = userMessage.toLowerCase();
     let selectedFolder = null;
@@ -172,8 +173,8 @@ async function getConceptPhotoReply(userMessage, saveLogFunc, callOpenAI, cleanR
 
     // 키워드 맵을 길이 기준으로 내림차순 정렬하여 더 구체적인 키워드가 먼저 매칭되도록 합니다.
     const conceptKeywordMap = {
-        '2월 욕조': '2024/2월 7일 일본 욕조', // ✨ 추가: "2월 욕조" 키워드
-        '2월 욕실': '2024/2월 7일 일본 욕실', // ✨ 추가: "2월 욕실" 키워드
+        '2월 욕조': '2024/2월 7일 일본 욕조', // ✨ 수정: 실제로는 2월 욕조
+        '2월 욕실': '2024/2월 7일 일본 욕실', // ✨ 2월은 욕실만 있음
         '2월 나비욕조': '2024/2월 7일 일본 나비욕조', // ✨ 추가
         '하카타 고래티셔츠': '2024/10월 17일 일본 하카타 고래티셔츠',
         '일본 홈스냅': '2024/5월 7일 일본 홈스냅', '홈스냅': '2024/5월 7일 일본 홈스냅',
@@ -192,7 +193,7 @@ async function getConceptPhotoReply(userMessage, saveLogFunc, callOpenAI, cleanR
         '모지코 모리룩': '2024/5월 5일 일본 모지코 모리룩',
         '한국 눈밭': '2025/1월 5일 한국 눈밭',
         '일본 욕실': '2024/2월 7일 일본 욕실',
-        '일본 욕조': '2024/7월 8일 일본 욕조',
+        '일본 욕조': '2024/7월 8일 일본 욕조', // 현재 7월 8일 욕조는 2024/7월 8일 일본 욕조로 매칭되나, 2024/2월 7일 일본 욕조와 키워드 충돌 가능성.
         '나비욕조': '2024/2월 7일 일본 나비욕조',
         '유카타 마츠리': '2024/8월 3일 일본 유카타 마츠리',
         '이화마을': '2025/4월 29일 한국 이화마을',
@@ -243,7 +244,7 @@ async function getConceptPhotoReply(userMessage, saveLogFunc, callOpenAI, cleanR
         '메이드복': '2024/11월 8일 한국 메이드복',
         '오도': '2024/10월 16일 일본 오도',
         '욕실': '2024/2월 7일 일본 욕실',
-        '욕조': '2024/7월 8일 일본 욕조'
+        '욕조': '2024/7월 8일 일본 욕조' // ✨ 키워드 순서 및 충돌 가능성 재확인 필요
     };
 
     // 키워드 맵을 길이 기준으로 내림차순 정렬하여 더 구체적인 키워드가 먼저 매칭되도록 합니다.
@@ -256,7 +257,7 @@ async function getConceptPhotoReply(userMessage, saveLogFunc, callOpenAI, cleanR
             folderDescription = `내가(예진이) ${selectedFolder} 컨셉으로 찍은 사진`;
             additionalPromptForYejinText = `이 사진은 아저씨와 함께한 나의 ${selectedFolder} 컨셉 사진이야. 아저씨와 나의 특별한 추억과 애정을 담아서 말해줘. 이 사진을 보며 떠오르는 솔직한 감정을 표현해줘. 사진 속 인물은 오직 '나(예진이)'임을 명확히 인지하고 코멘트해줘.`;
             console.log(`[concept:getConceptPhotoReply] 키워드 "${keyword}" 매칭됨 → 폴더: ${selectedFolder}`);
-            break; 
+            break;
         }
     }
 
@@ -299,9 +300,13 @@ async function getConceptPhotoReply(userMessage, saveLogFunc, callOpenAI, cleanR
 
     // 선택된 폴더를 저장 (다음 '다른 것도' 요청을 위해)
     lastConceptPhotoFolder = selectedFolder;
+    console.log(`[concept:getConceptPhotoReply] 선택된 폴더: "${selectedFolder}"`);
 
     let photoUrl;
     const currentPhotoCount = CONCEPT_FOLDERS[selectedFolder];
+    console.log(`[concept:getConceptPhotoReply] 폴더의 사진 개수: ${currentPhotoCount}`);
+    console.log(`[concept:getConceptPhotoReply] 폴더 존재 여부: ${CONCEPT_FOLDERS.hasOwnProperty(selectedFolder)}`);
+    
     if (currentPhotoCount > 0) {
         if (lowerCaseMessage.includes('다른 것도 보고싶어') || lowerCaseMessage.includes('다음 사진')) {
             lastConceptPhotoIndex = (lastConceptPhotoIndex % currentPhotoCount) + 1;
@@ -309,15 +314,26 @@ async function getConceptPhotoReply(userMessage, saveLogFunc, callOpenAI, cleanR
             // 새 요청 시 랜덤 인덱스 할당
             lastConceptPhotoIndex = Math.floor(Math.random() * currentPhotoCount) + 1;
         }
+        console.log(`[concept:getConceptPhotoReply] generateConceptPhotoUrl 호출 시도...`);
         photoUrl = generateConceptPhotoUrl(selectedFolder, lastConceptPhotoIndex);
+        console.log(`[concept:getConceptPhotoReply] 생성된 photoUrl: ${photoUrl}`);
     } else {
+        console.warn(`[concept:getConceptPhotoReply] 사진 개수가 0 이하: ${currentPhotoCount}`);
         photoUrl = null;
     }
 
-    if (!photoUrl || !CONCEPT_FOLDERS[selectedFolder]) {
-        console.warn(`[concept:getConceptPhotoReply] 사진 URL 생성 실패. 텍스트 응답 반환.`);
+    // ✨ 중요 디버깅 로그
+    console.log(`[concept:DEBUG_URL_CHECK] photoUrl: "${photoUrl}" (Type: ${typeof photoUrl})`);
+    console.log(`[concept:DEBUG_URL_CHECK] CONCEPT_FOLDERS[selectedFolder]: "${CONCEPT_FOLDERS[selectedFolder]}" (Type: ${typeof CONCEPT_FOLDERS[selectedFolder]})`);
+    console.log(`[concept:DEBUG_URL_CHECK] !photoUrl evaluates to: ${!photoUrl}`);
+    console.log(`[concept:DEBUG_URL_CHECK] !CONCEPT_FOLDERS[selectedFolder] evaluates to: ${!CONCEPT_FOLDERS[selectedFolder]}`);
+    console.log(`[concept:DEBUG_URL_CHECK] Combined condition (!photoUrl || !CONCEPT_FOLDERS[selectedFolder]) evaluates to: ${!photoUrl || !CONCEPT_FOLDERS[selectedFolder]}`);
+
+    if (!photoUrl || !CONCEPT_FOLDERS[selectedFolder]) { // 이 조건이 문제의 원인
+        console.warn(`[concept:getConceptPhotoReply] 최종 사진 URL 또는 폴더 정보가 유효하지 않아 텍스트 응답 반환. (디버그 로그 확인 요망)`);
         return { type: 'text', comment: '아저씨... 해당하는 컨셉 사진을 못 찾겠어 ㅠㅠ 다른 컨셉 사진 보여줄까?' };
     }
+
 
     console.log(`[concept:getConceptPhotoReply] 최종 결정된 사진 URL: ${photoUrl}`);
 
@@ -356,6 +372,7 @@ async function getConceptPhotoReply(userMessage, saveLogFunc, callOpenAI, cleanR
 
     try {
         console.log(`[concept:getConceptPhotoReply] OpenAI 프롬프트 준비 완료.`);
+        // callOpenAI는 autoReply.js에서 가져온 함수를 사용합니다.
         const rawComment = await callOpenAI(messages, 'gpt-4o', 150, 1.0);
         const comment = cleanReply(rawComment);
         saveLogFunc({ role: 'assistant', content: `(컨셉사진 보냄) ${comment}`, timestamp: Date.now() });
