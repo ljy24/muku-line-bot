@@ -1,4 +1,4 @@
-// src/autoReply.js - v2.8 (기분 시스템: 그리움 추가)
+// src/autoReply.js - v2.9 (기분 시스템: 그리움 추가 및 이미지 응답 개선)
 
 // 📦 필수 모듈 불러오기
 const moment = require('moment-timezone');
@@ -189,6 +189,12 @@ async function callOpenAI(messages, modelParamFromCall = null, maxTokens = 400, 
     const defaultModel = process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o';
     let finalModel = modelParamFromCall || defaultModel;
 
+    // Vision API 호출 시에는 항상 gpt-4o를 사용
+    const usesImage = messages.some(msg => msg.content && Array.isArray(msg.content) && msg.content.some(item => item.type === 'image_url'));
+    if (usesImage) {
+        finalModel = 'gpt-4o'; // gpt-4o-vision-preview 대신 gpt-4o로 통일
+    }
+
     if (!finalModel) {
         console.error("오류: OpenAI 모델 파라미터가 최종적으로 결정되지 않았습니다. 'gpt-4o'로 폴백합니다.");
         finalModel = 'gpt-4o';
@@ -274,7 +280,6 @@ function setCurrentMood(mood) {
     const allPossibleMoods = [...MOOD_OPTIONS, '극심한 짜증', '갑작스러운 슬픔', '예민함', '울적함', '투정 부림'];
     if (allPossibleMoods.includes(mood)) {
         const previousMood = currentMood;
-        currentMood = mood;
         
         // 기분별 상세 메시지
         const detail = MOOD_DETAILS[currentMood] ? 
@@ -379,7 +384,7 @@ function checkModelSwitchCommand(userMessage) {
         setForcedModel('gpt-3.5-turbo');
         return '응! 이제 3.5버전으로 말할게! 속도가 더 빨라질 거야~';
     } else if (lowerText.includes('모델 4.0')) {
-        setForcedModel('gpt-4-turbo');
+        setForcedModel('gpt-4o'); // 4.0 요청 시 gpt-4o로 설정
         return '알겠어! 이제 4.0버전으로 말할게! 더 똑똑해질 거야~';
     } else if (lowerText.includes('모델 자동')) {
         setForcedModel(null);
@@ -473,7 +478,17 @@ async function getReplyByMessage(userMessage) {
         const conceptResult = await getConceptPhotoReply(userMessage, saveLog, callOpenAI, cleanReply);
         if (conceptResult) {
             saveLog({ role: 'user', content: userMessage, timestamp: Date.now() });
-            return conceptResult;
+            // conceptResult는 { type: 'photo', url: ..., caption: ... } 형식이므로
+            // 이를 LINE API의 'image' 타입으로 변환하여 반환
+            if (conceptResult.type === 'photo') {
+                return {
+                    type: 'image',
+                    originalContentUrl: conceptResult.url,
+                    previewImageUrl: conceptResult.url, // previewImageUrl은 일반적으로 originalContentUrl과 동일하게 설정
+                    altText: conceptResult.caption // LINE API의 altText로 캡션 사용
+                };
+            }
+            return conceptResult; // text 타입이면 그대로 반환
         }
         
         // concept.js에서 처리 못했을 경우 기본 응답
@@ -495,12 +510,19 @@ async function getReplyByMessage(userMessage) {
         lowerUserMessage.includes('출사') || lowerUserMessage.includes('필름카메라') ||
         lowerUserMessage.includes('네가 찍은걸 줘') || lowerUserMessage.includes('네가 찍은 걸 줘') ||
         lowerUserMessage.includes('네가 찍은 사진') || lowerUserMessage.includes('너가 찍은 사진') ||
-        lowerUserMessage.includes('예진이가 찍은') || lowerUserMessage.includes('직접 찍은')) {
+        lowerUserMessage.includes('예진이가 찍은') || lowerUserMessage.includes('직접 찍은') ||
+        lowerUserMessage.includes('셀카') || lowerUserMessage.includes('셀카줘') || // 셀카 관련 키워드 추가
+        lowerUserMessage.includes('셀피') || lowerUserMessage.includes('지금 모습') ||
+        lowerUserMessage.includes('얼굴 보여줘') || lowerUserMessage.includes('얼굴보여줘') ||
+        lowerUserMessage.includes('얼굴 보고 싶') || lowerUserMessage.includes('무쿠 셀카') ||
+        lowerUserMessage.includes('애기 셀카') || lowerUserMessage.includes('빠계 셀카') ||
+        lowerUserMessage.includes('메이드')) {
         
-        console.log('[DEBUG] 추억사진 요청 감지 - omoide.js 모듈 호출');
+        console.log('[DEBUG] 추억사진/셀카 요청 감지 - omoide.js 모듈 호출');
         const omoideResult = await getOmoideReply(userMessage, saveLog, callOpenAI, cleanReply);
         if (omoideResult) {
             saveLog({ role: 'user', content: userMessage, timestamp: Date.now() });
+            // omoideResult는 이미 LINE API의 'image' 타입 또는 'text' 타입으로 잘 구성되어 반환됨
             return omoideResult;
         }
         
@@ -511,29 +533,7 @@ async function getReplyByMessage(userMessage) {
         return { type: 'text', comment: fallbackReply };
     }
 
-    // ✅ 셀카 요청 처리
-    if (lowerUserMessage.includes('셀카') || lowerUserMessage.includes('셀카줘') ||
-        lowerUserMessage.includes('셀피') || lowerUserMessage.includes('지금 모습') ||
-        lowerUserMessage.includes('얼굴 보여줘') || lowerUserMessage.includes('얼굴보여줘') ||
-        lowerUserMessage.includes('얼굴 보고 싶') || lowerUserMessage.includes('무쿠 셀카') ||
-        lowerUserMessage.includes('애기 셀카') || lowerUserMessage.includes('빠계 셀카') ||
-        lowerUserMessage.includes('메이드')) {
-        
-        console.log('[DEBUG] 셀카 요청 감지 - omoide.js 모듈 호출');
-        const omoideResult = await getOmoideReply(userMessage, saveLog, callOpenAI, cleanReply);
-        if (omoideResult) {
-            saveLog({ role: 'user', content: userMessage, timestamp: Date.now() });
-            return omoideResult;
-        }
-        
-        // omoide.js에서 처리 못했을 경우 기본 응답
-        const fallbackReply = "아저씨를 위한 셀카를 준비하고 있어! 조금만 기다려줘~";
-        saveLog({ role: 'user', content: userMessage, timestamp: Date.now() });
-        saveLog({ role: 'assistant', content: fallbackReply, timestamp: Date.now() });
-        return { type: 'text', comment: fallbackReply };
-    }
-
-    // ✅ 일반 사진 요청 처리
+    // ✅ 일반 사진 요청 처리 (위에 셀카 관련 키워드를 omoide로 보냈으므로, 여기는 더 일반적인 질문 처리)
     if (lowerUserMessage.includes('사진줘') || lowerUserMessage.includes('사진 줘') ||
         lowerUserMessage.includes('예진이 사진') || lowerUserMessage.includes('너 사진') ||
         lowerUserMessage.includes('사진 보여줘') || lowerUserMessage.includes('사진보여줘')) {
@@ -588,7 +588,7 @@ async function getReplyByMessage(userMessage) {
         } else {
             periodReply = "아니야 아저씨! 나 그날 아니야! 왜 그런 걸 물어봐~?";
         }
-        saveLog({ role: 'user', content: userMessage, timestamp: Date.now() });
+        saveLog({ role: 'user', content: userMessage, timestamp: Date.2now() });
         saveLog({ role: 'assistant', content: periodReply, timestamp: Date.now() });
         return { type: 'text', comment: periodReply };
     }
@@ -688,8 +688,7 @@ async function getReplyByMessage(userMessage) {
         애교 많고, 사랑스럽고, 긍정적인 말투로 대답해줘.
         아저씨의 기분과 건강을 항상 신경 쓰고, 사랑을 듬뿍 표현해줘.
         대화는 항상 예진이의 말투와 성격을 유지해야 해.
-        길이는 1~3문장으로 짧게 해줘.
-
+        
         **아저씨의 메시지에서 직접적인 불만은 없지만, 어딘가 서운하거나, 망설이거나, 기분이 안 좋은 듯한 미묘한 뉘앙스를 (예: "아냐....", "아무것도 아냐.....", "지금은 좀....", "괜찮아..." 등) 감지했다면, 그 감정을 알아차리고 아저씨를 걱정하고 서운해하는 반응을 보여줘. 아저씨가 솔직하게 이야기할 수 있도록 부드럽게 유도해줘.**
 
         ${getFormattedMemoriesForAI().map(entry => entry.content).join('\n')}
@@ -800,7 +799,7 @@ async function getReplyByImagePrompt(base64ImageWithPrefix) {
         const rawReply = await callOpenAI(messages, 'gpt-4o', 150, 0.95);
         const cleanedReply = cleanReply(rawReply);
         saveLog({ role: 'assistant', content: `(이미지 분석 응답) ${cleanedReply}`, timestamp: Date.now() });
-        return cleanedReply;
+        return { type: 'text', comment: cleanedReply }; // 이미지 응답은 텍스트로만 반환 (이미지를 보낼 수 없는 경우)
     } catch (error) {
         console.error('이미지 분석 AI 응답 생성 실패:', error.response ? error.response.data : error.message);
         return '아저씨... 사진을 보긴 했는데, 뭐라고 말해야 할지 모르겠어 ㅠㅠ 좀 더 생각해볼게!';
