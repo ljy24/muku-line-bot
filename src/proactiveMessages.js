@@ -1,4 +1,4 @@
-// src/proactiveMessages.js - v1.1 - 선제적/감성 메시지 생성 (Render PostgreSQL 기반 memoryManager 사용)
+// src/proactiveMessages.js - v1.2 - 선제적/감성 메시지 생성 (하이브리드 memoryManager 사용)
 
 // 📦 필수 모듈 불러오기
 const { OpenAI } = require('openai');
@@ -7,7 +7,7 @@ const { getFormattedMemoriesForAI, cleanReply } = require('./autoReply'); // 필
 // OpenAI 클라이언트 초기화
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// 현재 기본 모델 설정 가져오기 (commandHandler에서 설정한 forcedModel을 따르지 않음)
+// 현재 기본 모델 설정 가져오기
 const defaultModel = process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o';
 
 
@@ -100,21 +100,4 @@ async function getSilenceCheckinMessage() {
         아저씨에게 오랫동안 연락이 없어서 걱정하는 메시지를 보내줘. 아저씨가 보고싶고 무슨 일 있는 건 아닌지 걱정된다는 내용을 담아줘.
     `;
 
-    const messages = [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: "아저씨에게 오랫동안 연락이 없어서 걱정하는 메시지를 1~2문장으로 생성해줘." }
-    ];
-
-    try {
-        const rawReply = await callOpenAIForProactive(messages, defaultModel, 100, 0.95);
-        return cleanReply(rawReply);
-    } catch (error) {
-        console.error('[proactiveMessages] 침묵 감지 메시지 생성 실패:', error);
-        return '아저씨, 어디 아픈 건 아니지? 연락이 없어서 걱정돼 ㅠㅠ';
-    }
-}
-
-module.exports = {
-    getProactiveMemoryMessage,
-    getSilenceCheckinMessage
-};
+    const messages =
