@@ -1,4 +1,4 @@
-// src/scheduler.js - v1.5 (생리 주기 감정 기복 강화, 담타 메시지 포함)
+// src/scheduler.js - v1.6 (생리 주기 감정 기복 강화 빈도 조절, 담타 메시지 포함)
 
 const cron = require('node-cron');
 const moment = require('moment-timezone');
@@ -7,17 +7,15 @@ const {
     saveLog,
     setCurrentMood,
     getCurrentMoodStatus,
-    updatePeriodStatus, // ✨ autoReply에서 불러오기 추가
-    isPeriodActive // ✨ autoReply에서 불러오기 추가
+    updatePeriodStatus, // autoReply에서 불러오기 추가
+    isPeriodActive // autoReply에서 불러오기 추가
 } = require('./autoReply'); // autoReply 모듈에서 함수 가져오기
 const memoryManager = require('./memoryManager'); // memoryManager 필요 (이제 하이브리드 방식으로 작동)
 const { getProactiveMemoryMessage, getSilenceCheckinMessage } = require('./proactiveMessages'); // proactiveMessages에서 선제적 메시지 함수들을 불러옴
 
-// ✨ omoide.js에서 OpenAI 관련 함수들을 직접 불러옴 (omoide.js로 통합) ✨
-// autoReply.js에서 이미 callOpenAI와 cleanReply를 사용하고 있으므로,
-// scheduler.js에서는 omoide.js를 직접 require할 필요가 없어 보입니다.
-// 필요한 경우, getOmoideReply만 불러오고 callOpenAI, cleanReply는 autoReply에서 가져온 것을 사용합니다.
+// omoide.js에서 필요한 함수들만 가져옵니다. (OpenAI 관련은 autoReply에서 가져온 것을 사용)
 const { getOmoideReply } = require('../memory/omoide'); 
+const { callOpenAI, cleanReply } = require('./openaiClient'); // ✨ 수정: openaiClient.js에서 callOpenAI, cleanReply 불러옴
 
 
 let bootTime = Date.now(); // 봇 시작 시점의 타임스탬프 (밀리초)
@@ -27,11 +25,11 @@ let lastCouplePhotoMessage = ''; // 마지막 커플 사진 메시지 내용 (�
 let lastCouplePhotoMessageTime = 0; // 마지막 커플 사진 전송 시간 (더 이상 사용하지 않지만 변수 유지는 가능)
 let lastProactiveSentTime = 0; // 마지막 봇의 선제적/걱정 메시지 전송 시간 (침묵 감지 셀카에도 적용)
 let lastUserMessageTime = Date.now(); // 아저씨가 마지막으로 메시지를 보낸 시간
-let lastSelfieSentTime = 0; // ✨ 추가: 마지막 침묵 감지 셀카 전송 시간
-let lastFujiPhotoSentTime = 0; // ✨ 추가: 마지막 후지 사진 전송 시간
-let lastDantaMessageTime = 0; // ✨ 추가: 마지막 담타 메시지 전송 시간
-let lastWorkEndMessageTime = 0; // ✨ 새로 추가: 마지막 퇴근 메시지 전송 시간
-let lastMorningRoutineMessageTime = 0; // ✨ 새로 추가: 마지막 아침 일상 메시지 전송 시간
+let lastSelfieSentTime = 0; // 마지막 침묵 감지 셀카 전송 시간
+let lastFujiPhotoSentTime = 0; // 마지막 후지 사진 전송 시간
+let lastDantaMessageTime = 0; // 마지막 담타 메시지 전송 시간
+let lastWorkEndMessageTime = 0; // 마지막 퇴근 메시지 전송 시간
+let lastMorningRoutineMessageTime = 0; // 마지막 아침 일상 메시지 전송 시간
 
 
 // * 커플 사진 관련 상수 정의 (더 이상 사용하지 않지만 혹시 몰라 유지) *
@@ -42,9 +40,9 @@ const COUPLE_END_NUM = 481; // 커플 사진 마지막 번호
 // * 침묵 감지 기능을 위한 상수 *
 const SILENCE_THRESHOLD = 2 * 60 * 60 * 1000; // 2시간 동안 메시지가 없으면 침묵으로 간주
 const PROACTIVE_COOLDOWN = 1 * 60 * 60 * 1000; // 봇이 메시지 보낸 후 1시간 이내에는 다시 선제적 메시지 보내지 않음
-const SILENCE_SELFIE_COOLDOWN = 2 * 60 * 60 * 1000; // ✨ 추가: 침묵 감지 셀카 쿨다운 (2시간)
+const SILENCE_SELFIE_COOLDOWN = 2 * 60 * 60 * 1000; // 침묵 감지 셀카 쿨다운 (2시간)
 
-// ✨ 추가: 애기의 기분 옵션 (autoReply.js와 동일하게 유지)
+// 애기의 기분 옵션 (autoReply.js와 동일하게 유지)
 const MOOD_OPTIONS = ['기쁨', '설렘', '장난스러움', '나른함', '심술궂음', '평온함'];
 
 
@@ -77,7 +75,7 @@ const sendSelfieMessage = async (lineClient, targetUserId, saveLog, triggerSourc
                 { type: 'image', originalContentUrl: selfieResponse.url, previewImageUrl: selfieResponse.url },
                 { type: 'text', text: selfieResponse.caption || '히히 셀카야~' }
             ]);
-            saveLog({ role: 'assistant', content: selfieResponse.caption || '히히 셀카야~', timestamp: Date.2now() });
+            saveLog({ role: 'assistant', content: selfieResponse.caption || '히히 셀카야~', timestamp: Date.now() });
             console.log(`[Scheduler] ${triggerSource === 'silence' ? '침묵 감지 자동' : '랜덤'} 셀카 전송 성공: ${selfieResponse.url}`);
         } else if (selfieResponse && selfieResponse.type === 'text') {
             await lineClient.pushMessage(targetUserId, { type: 'text', text: selfieResponse.comment });
@@ -155,6 +153,7 @@ const sendDantaMessage = async (lineClient, targetUserId, saveLog) => {
 
     try {
         const messages = [{ role: 'system', content: systemPrompt }];
+        // callOpenAI는 openaiClient.js에서 가져온 함수를 사용합니다.
         const rawComment = await callOpenAI(messages, 'gpt-4o', 100); // 100 토큰으로 제한하여 짧게 유도
         const comment = cleanReply(rawComment);
 
@@ -357,26 +356,11 @@ const startAllSchedulers = (client, userId) => { // 매개변수 이름을 clien
 
     console.log('[Scheduler] 모든 스케줄러를 시작합니다...');
 
-    // ✨ 추가: 매일 아침 애기의 기분을 랜덤으로 설정하는 스케줄러 (생리 기간 중에는 극단적 감정)
-    // 매 5분마다 도는 스케줄러에 기분 변경 로직을 통합하여 삭제
-    /*
-    cron.schedule('0 0 6 * * *', () => { // 매일 아침 6시 00분에 실행
-        const randomIndex = Math.floor(Math.random() * MOOD_OPTIONS.length);
-        const randomMood = MOOD_OPTIONS[randomIndex];
-        setCurrentMood(randomMood); // autoReply 모듈의 함수 호출
-        console.log(`[Scheduler] 애기의 오늘의 기분이 '${randomMood}'으로 설정되었습니다. (생리 기간 여부: ${isPeriodActive ? '활성' : '비활성'})`);
-    }, {
-        scheduled: true,
-        timezone: "Asia/Tokyo"
-    });
-    */
-
-
     // 1. 아침 인사 메시지 (오전 9시 0분 정각) - 기존 아침 인사는 유지
     cron.schedule('0 9 * * *', async () => {
         const now = moment().tz('Asia/Tokyo');
         const currentDay = now.day(); // 요일 (0: 일요일, 1: 월요일, ..., 6: 토요일)
-        const isWeekday = currentDay >= 1 && currentDay <= 5; // 월요일(1)부터 금요일(5)까지
+        const isWeekday = currentDay >= 1 && currentDay >= 5; // 월요일(1)부터 금요일(5)까지
 
         if (!isValidScheduleHour(now)) { // 유효 시간대만 체크
             return;
