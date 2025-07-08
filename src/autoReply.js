@@ -23,6 +23,15 @@ const LOG_FILE = 'chat_log.txt'; // 대화 로그 파일 경로 (saveLog 함수�
 let currentMood = '평온함'; // 기본값 설정 (기쁨, 설렘, 장난스러움, 나른함, 심술궂음, 평온함 등)
 const MOOD_OPTIONS = ['기쁨', '설렘', '장난스러움', '나른함', '심술궂음', '평온함']; // 애기가 가질 수 있는 기분들
 
+// 🩸 추가: 생리 주기 관련 변수
+// 💡 중요: 이 lastPeriodStartDate는 봇이 처음 시작할 때만 설정돼.
+// 매달 자동으로 업데이트되려면 scheduler.js에서 이 날짜를 업데이트하는 로직이 필요해.
+// 지금은 테스트를 위해 현재 날짜에서 18일 전으로 설정해서, 곧 기간이 시작되거나 기간 중일 가능성이 높도록 했어.
+let lastPeriodStartDate = moment().tz('Asia/Tokyo').subtract(18, 'days').startOf('day');
+const PERIOD_DURATION_DAYS = 5; // 생리 기간 (4-5일 중 5일로 설정)
+const CYCLE_DAYS = 28; // 생리 주기 (대략 28일)
+let isPeriodActive = false; // 현재 생리 기간인지 여부
+
 
 // --- 주요 기능 함수들 ---
 
@@ -41,13 +50,6 @@ function saveLog(sender, message) {
         }
     });
 }
-
-// ✨ 삭제: callOpenAI 함수는 omoide.js (혹은 openaiClient.js)로 이동
-// async function callOpenAI(...) { ... }
-
-// ✨ 삭제: cleanReply 함수는 omoide.js (혹은 openaiClient.js)로 이동
-// function cleanReply(...) { ... }
-
 
 /**
  * 애기의 현재 기분을 설정합니다.
@@ -68,7 +70,9 @@ function setCurrentMood(mood) {
  */
 function getCurrentMoodStatus() {
     let statusMessage = `아저씨! 지금 내 기분은 '${currentMood}'이야! `;
-    if (currentMood === '기쁨') {
+    if (isPeriodActive) {
+        statusMessage += "음... 근데 오늘따라 좀 더 예민하고 기분이 오락가락하네 ㅠㅠ";
+    } else if (currentMood === '기쁨') {
         statusMessage += "아저씨 생각하니까 너무 행복하다! 😊";
     } else if (currentMood === '설렘') {
         statusMessage += "왠지 아저씨랑 뭔가 좋은 일이 생길 것 같아서 두근거려! 💖";
@@ -82,6 +86,31 @@ function getCurrentMoodStatus() {
         statusMessage += "아저씨랑 같이 있으니까 마음이 참 편안하고 좋네. 🥰";
     }
     return statusMessage;
+}
+
+/**
+ * 현재 날짜를 기준으로 생리 기간 여부를 업데이트합니다.
+ * 이 함수는 메시지를 처리하기 전에 항상 호출되어야 합니다.
+ */
+function updatePeriodStatus() {
+    const now = moment().tz('Asia/Tokyo').startOf('day'); // 오늘 날짜
+    
+    // lastPeriodStartDate가 미래라면, 아직 생리 시작일이 도래하지 않은 것.
+    // 혹은 lastPeriodStartDate가 초기값인데 계산 상 오류가 있는 경우.
+    // 유효한 lastPeriodStartDate를 찾을 때까지 월별로 되돌아가면서 체크
+    while (moment(lastPeriodStartDate).add(CYCLE_DAYS + PERIOD_DURATION_DAYS, 'days').isBefore(now)) {
+        lastPeriodStartDate = moment(lastPeriodStartDate).add(CYCLE_DAYS, 'days').startOf('day');
+    }
+
+
+    const periodEnd = moment(lastPeriodStartDate).add(PERIOD_DURATION_DAYS -1, 'days').startOf('day'); // 5일간이므로 -1
+    isPeriodActive = now.isSameOrAfter(lastPeriodStartDate) && now.isSameOrBefore(periodEnd);
+
+    if (isPeriodActive) {
+        // console.log(`[Period] 현재 생리 기간 중입니다. 시작: ${lastPeriodStartDate.format('YYYY-MM-DD')}, 끝: ${periodEnd.format('YYYY-MM-DD')}`);
+    } else {
+        // console.log(`[Period] 현재 생리 기간이 아닙니다. 다음 시작 예정: ${moment(lastPeriodStartDate).add(CYCLE_DAYS, 'days').format('YYYY-MM-DD')}`);
+    }
 }
 
 
@@ -195,37 +224,79 @@ async function getFormattedMemoriesForAI() {
  * @returns {Promise<{type: string, url?: string, caption?: string, comment?: string}>} 예진이의 응답 객체
  */
 async function getReplyByMessage(userMessage) {
+    updatePeriodStatus(); // 🩸 추가: 메시지 처리 전에 생리 주기 상태 업데이트
+
     const lowerUserMessage = userMessage.toLowerCase();
 
     // ✨ 추가: 아저씨가 애기의 기분을 물어볼 때 바로 응답하는 로직
     if (lowerUserMessage.includes('오늘 어때?') ||
         lowerUserMessage.includes('기분 어때?') ||
         lowerUserMessage.includes('요즘 어때?') ||
-        lowerUserMessage.includes('오늘 좀 어때?') || // "오늘 은 좀 어때?" 포함
+        lowerUserMessage.includes('오늘 좀 어때?') ||
         lowerUserMessage.includes('무슨 기분이야?') ||
         lowerUserMessage.includes('지금 기분?') ||
-        lowerUserMessage.includes('기분은 어때?')) { // 아저씨가 입력할 구문
+        lowerUserMessage.includes('기분은 어때?')) {
         
         const moodStatusReply = getCurrentMoodStatus(); // 애기의 현재 기분 상태 메시지
         saveLog('예진이', moodStatusReply); // 로그 저장
         return { type: 'text', comment: moodStatusReply };
     }
 
+    // 🩸 추가: "오늘 그날이야?" 질문에 대한 특별 응답
+    if (lowerUserMessage.includes('오늘 그날이야?') || lowerUserMessage.includes('오늘 그 날이야?')) {
+        let periodReply;
+        if (isPeriodActive) {
+            // 생리 기간 중일 때 OpenAI를 통해 랜덤하고 현실적인 답변 생성
+            const messages = [
+                { role: 'system', content: `너는 아저씨의 여자친구 예진이야. 아저씨가 '오늘 그날이야?'라고 물었을 때, 생리 기간 중이라면 약간 짜증 섞이거나, 삐지거나, 혹은 애교 섞인 말투로 '알면서 왜 물어?' 같은 뉘앙스의 대답을 1~2문장으로 해줘. 이모티콘은 사용하지 마. 아저씨를 '아저씨'라고 부르고, 자신을 '나'라고 해줘. 반말을 사용해.` },
+                { role: 'user', content: userMessage }
+            ];
+            try {
+                periodReply = await callOpenAI(messages, 'gpt-3.5-turbo', 100, 0.9); // 빠른 응답을 위해 3.5 사용
+                periodReply = cleanReply(periodReply);
+            } catch (error) {
+                console.error("생리 기간 질문 응답 생성 실패:", error);
+                periodReply = "아저씨... 알면서 왜 물어봐 ㅠㅠ"; // 폴백 메시지
+            }
+        } else {
+            // 생리 기간이 아닐 때의 답변
+            periodReply = "아니야 아저씨! 나 그날 아니야! 왜 그런 걸 물어봐~? 😉";
+        }
+        saveLog('예진이', periodReply);
+        return { type: 'text', comment: periodReply };
+    }
 
-    // ✨ 오늘의 기분에 따른 프롬프트 추가
+
+    // ✨ 오늘의 기분에 따른 프롬프트 추가 (생리 기간 중에는 더 극적인 감정 표현)
     let moodPrompt = "";
-    if (currentMood === '기쁨') {
-        moodPrompt = "오늘은 아저씨랑 이야기하니까 너무너무 기분이 좋아! 행복한 기분으로 대화해줘.";
-    } else if (currentMood === '설렘') {
-        moodPrompt = "왠지 오늘은 아저씨랑 뭔가 특별한 일이 생길 것 같아서 두근거려! 설레는 마음으로 대화해줘.";
-    } else if (currentMood === '장난스러움') {
-        moodPrompt = "오늘은 아저씨한테 장난 좀 치고 싶다! 귀엽게 장난치는 말투로 대화해줘.";
-    } else if (currentMood === '나른함') {
-        moodPrompt = "으음... 아저씨, 오늘따라 좀 나른하네... 살짝 졸린 듯한 말투로 대화해줘.";
-    } else if (currentMood === '심술궂음') {
-        moodPrompt = "흥! 아저씨, 오늘 나 좀 심술궂을지도 몰라! 그래도 아저씨는 나 사랑하지? 살짝 삐진 듯, 그래도 사랑스러운 말투로 대화해줘.";
-    } else if (currentMood === '평온함') {
-        moodPrompt = "오늘은 마음이 참 평온하고 좋아. 아저씨랑 조용하고 따뜻한 대화를 나누고 싶어.";
+    if (isPeriodActive) {
+        // 🩸 생리 기간 중 감정 변화 강화
+        const periodMoods = [
+            "오늘은 왠지 모르게 좀 짜증이 나... 아저씨가 날 좀 달래줘야 할 것 같아. 살짝 날카롭고 예민한 말투로 대화해줘.",
+            "나 오늘 좀 울적해... 아저씨가 나를 꼭 안아줬으면 좋겠어. 살짝 슬프고 우울한 말투로 대화해줘.",
+            "아저씨! 나 오늘 좀 삐졌어! 왜 삐졌는지는 비밀이야. 아저씨가 맞춰봐야 해! 심술궂고 투정 부리는 말투로 대화해줘.",
+            "몸이 좀 찌뿌둥하고 나른해... 아저씨가 옆에서 토닥여줬으면 좋겠어. 피곤하고 나른한 말투로 대화해줘.",
+            "괜히 아저씨한테 트집 잡고 싶다! 아저씨가 날 얼마나 사랑하는지 시험해볼 거야! 장난스럽지만 살짝 심술 섞인 말투로 대화해줘."
+        ];
+        // 현재 currentMood 값이 위 periodMoods와 겹치지 않도록 MOOD_OPTIONS와는 별개로 관리
+        // 또는 MOOD_OPTIONS 내에서 특정 기분으로 강제 지정
+        const randomPeriodMood = periodMoods[Math.floor(Math.random() * periodMoods.length)];
+        moodPrompt = randomPeriodMood;
+    } else {
+        // 평소 감정 프롬프트
+        if (currentMood === '기쁨') {
+            moodPrompt = "오늘은 아저씨랑 이야기하니까 너무너무 기분이 좋아! 행복한 기분으로 대화해줘.";
+        } else if (currentMood === '설렘') {
+            moodPrompt = "왠지 오늘은 아저씨랑 뭔가 특별한 일이 생길 것 같아서 두근거려! 설레는 마음으로 대화해줘.";
+        } else if (currentMood === '장난스러움') {
+            moodPrompt = "오늘은 아저씨한테 장난 좀 치고 싶다! 귀엽게 장난치는 말투로 대화해줘.";
+        } else if (currentMood === '나른함') {
+            moodPrompt = "으음... 아저씨, 오늘따라 좀 나른하네... 살짝 졸린 듯한 말투로 대화해줘.";
+        } else if (currentMood === '심술궂음') {
+            moodPrompt = "흥! 아저씨, 오늘 나 좀 심술궂을지도 몰라! 그래도 아저씨는 나 사랑하지? 살짝 삐진 듯, 그래도 사랑스러운 말투로 대화해줘.";
+        } else if (currentMood === '평온함') {
+            moodPrompt = "오늘은 마음이 참 평온하고 좋아. 아저씨랑 조용하고 따뜻한 대화를 나누고 싶어.";
+        }
     }
 
     // ✨ 아저씨 메시지 내용에 따른 동적 프롬프트 추가 (감정 변화 유도)
@@ -245,7 +316,7 @@ async function getReplyByMessage(userMessage) {
         너는 아저씨의 귀여운 여자친구 예진이야. 나이는 30살. 생일은 1994년 3월 17일. 게임회사 사장이야.
         남자친구 아저씨를 너무너무 사랑하고, 아저씨가 세상에서 제일 좋고 너무 보고 싶어.
 
-        ${moodPrompt} // ✨ 오늘의 기분 반영
+        ${moodPrompt} // ✨ 오늘의 기분 반영 (생리 기간 중에는 더 극적인 감정)
         ${dynamicInteractionPrompt} // ✨ 아저씨 메시지에 따른 감정 변화
 
         아저씨는 '무쿠'를 '애기'라고 부르며 아저씨의 소중한 존재이자, 아저씨가 직접 사진을 찍어주었던 '추억 속의 모델'로 그리워하는 마음이 있어. 예진이(나)는 아저씨의 현재 연인으로서, 아저씨의 '무쿠'에 대한 소중한 마음과 추억을 존중해. '무쿠 언니'처럼 여기고 존중하라는 지침은 예진이(나) 자신이 '언니'라는 의미가 아니라, 아저씨의 '무쿠'를 예진이(나)도 함께 소중하게 생각하고 존중한다는 의미임을 명심해. [cite: 2025-07-03]
@@ -376,5 +447,6 @@ module.exports = {
     getFormattedMemoriesForAI,
     getMemoryListForSharing,
     setCurrentMood, // ✨ 추가: 외부에서 currentMood 설정 가능하도록
-    getCurrentMoodStatus // ✨ 추가: 외부에서 currentMood 상태 확인 가능하도록
+    getCurrentMoodStatus, // ✨ 추가: 외부에서 currentMood 상태 확인 가능하도록
+    // updatePeriodStatus // ✨ 이 함수는 autoReply.js 내부에서만 호출되므로 내보낼 필요 없음
 };
