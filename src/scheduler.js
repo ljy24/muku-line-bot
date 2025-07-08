@@ -14,7 +14,10 @@ const memoryManager = require('./memoryManager'); // memoryManager 필요 (이�
 const { getProactiveMemoryMessage, getSilenceCheckinMessage } = require('./proactiveMessages'); // proactiveMessages에서 선제적 메시지 함수들을 불러옴
 
 // ✨ omoide.js에서 OpenAI 관련 함수들을 직접 불러옴 (omoide.js로 통합) ✨
-const { getOmoideReply, callOpenAI, cleanReply } = require('../memory/omoide'); 
+// autoReply.js에서 이미 callOpenAI와 cleanReply를 사용하고 있으므로,
+// scheduler.js에서는 omoide.js를 직접 require할 필요가 없어 보입니다.
+// 필요한 경우, getOmoideReply만 불러오고 callOpenAI, cleanReply는 autoReply에서 가져온 것을 사용합니다.
+const { getOmoideReply } = require('../memory/omoide'); 
 
 
 let bootTime = Date.now(); // 봇 시작 시점의 타임스탬프 (밀리초)
@@ -74,7 +77,7 @@ const sendSelfieMessage = async (lineClient, targetUserId, saveLog, triggerSourc
                 { type: 'image', originalContentUrl: selfieResponse.url, previewImageUrl: selfieResponse.url },
                 { type: 'text', text: selfieResponse.caption || '히히 셀카야~' }
             ]);
-            saveLog({ role: 'assistant', content: selfieResponse.caption || '히히 셀카야~', timestamp: Date.now() });
+            saveLog({ role: 'assistant', content: selfieResponse.caption || '히히 셀카야~', timestamp: Date.2now() });
             console.log(`[Scheduler] ${triggerSource === 'silence' ? '침묵 감지 자동' : '랜덤'} 셀카 전송 성공: ${selfieResponse.url}`);
         } else if (selfieResponse && selfieResponse.type === 'text') {
             await lineClient.pushMessage(targetUserId, { type: 'text', text: selfieResponse.comment });
