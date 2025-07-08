@@ -1,4 +1,4 @@
-// memory/concept.js v1.15 - 최종 의존성 정리 및 컨셉사진 키워드 매칭 개선 + 디버깅 로그
+// memory/concept.js v1.16 - 최종 의존성 정리 및 컨셉사진 키워드 매칭 개선 + 오타 수정
 
 // 📦 필수 모듈 불러오기
 const moment = require('moment-timezone');
@@ -118,9 +118,9 @@ function generateConceptPhotoUrl(folderName, targetIndex = null) {
         return null;
     }
     
-    let indexToUse;
+    let indexToUse; // ✨ 변수 선언 일관성 유지
     if (targetIndex !== null && targetIndex >= 1 && targetIndex <= photoCount) {
-        indexTouse = targetIndex;
+        indexToUse = targetIndex; // ✨ FIX: 'indexTouse' -> 'indexToUse' 오타 수정
     } else {
         indexToUse = Math.floor(Math.random() * photoCount) + 1;
     }
@@ -247,7 +247,6 @@ async function getConceptPhotoReply(userMessage, saveLogFunc) { // saveLogFunc �
         '욕조': '2024/7월 8일 일본 욕조' // ✨ 키워드 순서 및 충돌 가능성 재확인 필요
     };
 
-    // 키워드 맵을 길이 기준으로 내림차순 정렬하여 더 구체적인 키워드가 먼저 매칭되도록 합니다.
     const sortedConceptKeywords = Object.keys(conceptKeywordMap).sort((a, b) => b.length - a.length);
 
     // 1단계: 직접적인 키워드 매칭 (정렬된 키워드 사용)
