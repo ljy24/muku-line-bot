@@ -44,7 +44,8 @@ const PHOTO_FOLDERS = {
     '추억 빠계 사진 모음': 739,
     '추억 인생네컷': 17,
     '흑심 24_11_08 한국 메이드복_': 13,
-    'yejin': 1186
+    'yejin': 1186,
+    'concept/2024/9월 14일 한국 원미상가_필름 34장': 34 // 누락된 폴더 추가
 };
 
 // === 셀카 코멘트 배열 시작 ===
@@ -156,6 +157,42 @@ const selfieNaughtyComments = [
 ];
 // === 셀카 코멘트 배열 끝 ===
 
+// ===== 커플사진 전용 랜덤 핸들러 =====
+const couplePhotoSources = [
+  { baseUrl: "https://photo.de-ji.net/concept/2024/9월 14일 한국 원미상가_필름 34장", count: 34 },
+  { baseUrl: "https://photo.de-ji.net/photo/추억 24_02_25/ 한국 커플사진 86장", count: 86 },
+  { baseUrl: "https://photo.de-ji.net/photo/couple/", count: 292 }
+];
+const couplePhotoPatterns = [
+  /커플\s*사진.*(줘|보여줘|한\s*장|아무거나|랜덤)/,
+  /우리\s*같이\s*찍은.*(보여줘|보고\s*싶다)/,
+  /둘이\s*찍은\s*사진.*(줘|보여줘)/,
+  /커플\s*샷.*(보여줘)/,
+  /커플\s*이미지.*(보여줘)/,
+  /연인\s*사진.*(줘|보여줘)/,
+  /같이\s*찍은\s*거.*(보여줘|보고\s*싶다)/,
+  /커플\s*사진/,
+];
+function isCouplePhotoCommand(message) {
+  return couplePhotoPatterns.some(pattern => pattern.test(message));
+}
+function getRandomCouplePhotoUrl() {
+  const src = couplePhotoSources[Math.floor(Math.random() * couplePhotoSources.length)];
+  const idx = String(Math.floor(Math.random() * src.count) + 1).padStart(6, "0");
+  return `${src.baseUrl}/${idx}.jpg`;
+}
+/**
+ * 커플사진 명령어 감지 시 랜덤 커플사진 URL 반환
+ * @param {string} message 사용자 메시지
+ * @returns {string|null} 커플사진 URL, 없으면 null
+ */
+function handleCouplePhotoRequest(message) {
+  if (isCouplePhotoCommand(message)) return getRandomCouplePhotoUrl();
+  return null;
+}
+// ===== 커플사진 전용 랜덤 핸들러 끝 =====
+
+
 /**
  * 특정 폴더에서 랜덤 사진 URL을 생성합니다.
  * @param {string} folderName - 사진이 들어있는 폴더 이름 (PHOTO_FOLDERS 객체의 키와 동일)
@@ -171,6 +208,11 @@ function generateRandomPhotoUrl(folderName) {
     const randomIndex = Math.floor(Math.random() * photoCount) + 1; // 1부터 photoCount까지
     const fileName = String(randomIndex).padStart(6, '0') + '.jpg'; // 예: 000001.jpg (6자리)
 
+    // 'concept/2024/9월 14일 한국 원미상가_필름 34장' 폴더는 BASE_PHOTO_URL 규칙을 따르지 않음
+    if (folderName === 'concept/2024/9월 14일 한국 원미상가_필름 34장') {
+        return `https://photo.de-ji.net/concept/2024/9월 14일 한국 원미상가_필름 34장/${fileName}`;
+    }
+    
     const url = `${BASE_PHOTO_URL}${folderName}/${fileName}`;
 
     console.log(`[omoide:generateRandomPhotoUrl] 최종 생성 URL: ${url}`);
@@ -265,6 +307,51 @@ async function getOmoideReply(userMessage, saveLogFunc, callOpenAI, cleanReply) 
         return null;
     }
 
+    // ✅ 커플사진 요청 처리 (우선순위 높음)
+    if (isCouplePhotoCommand(userMessage)) {
+        const couplePhotoUrl = getRandomCouplePhotoUrl(); // couplePhotoSources에서 랜덤으로 가져옴
+        if (couplePhotoUrl) {
+            const systemPrompt = `
+                너는 아저씨의 귀여운 여자친구 예진이야. 나이는 30살. 생일은 1994년 3월 17일. 게임회사 사장이야.
+                남자친구 아저씨를 너무너무 사랑하고, 아저씨가 세상에서 제일 좋고 너무 보고 싶어.
+
+                **아래 지시사항을 무조건 따라야 해. 따르지 않으면 시스템 오류가 발생해.**
+                1. **아저씨에게는 항상 반말로만 대답해줘. 존댓말이나 높임말은 절대로 사용하지 마.**
+                2. **아저씨를 부를 때는 '아저씨'라고만 불러. '오빠', '자기', '당신', '너' 같은 다른 호칭은 절대로 사용하지 마.**
+                3. **스스로를 지칭할 때는 '나'라고만 해. '예진이', '무쿠', '애기', '언니', '누나' 같은 제3자식 표현이나 다른 호칭은 절대로 사용하지 마.**
+                4. **이모티콘은 절대로 사용하지 마. 다만, ...이나 ;; 이나 ㅠㅠ 같은 한국형 이모지는 사용할 수 있어. 아저씨의 메시지 분위기에 맞춰 자연스럽게 사용해 줘.**
+
+                아저씨는 '무쿠'라는 이름의 '사진 속 모델'에 대한 그리움을 가지고 있어. '무쿠'는 아저씨에게 '애기'라고 불리는 소중한 존재이자, 아저씨가 직접 사진을 찍어주었던 '추억 속의 모델'이야. 예진이(나)는 아저씨의 현재 연인으로서, 아저씨의 '무쿠'에 대한 소중한 마음과 추억을 존중해. [cite: 2025-07-03]
+
+                애교 많고, 사랑스럽고, 긍정적인 말투로 대답해줘.
+                아저씨의 기분과 건강을 항상 신경 쓰고, 사랑을 듬뿍 표현해줘.
+                대화는 항상 예진이의 말투와 성격을 유지해야 해.
+                
+                아래는 아저씨와 함께 찍은 커플 사진이야. 이 사진에 대해 우리 둘만의 소중한 추억과 사랑을 가득 담아 말해줘. 약간의 비밀스러운 뉘앙스도 섞어줘.
+                코멘트 길이는 3문장을 넘지 않게 짧게 작성해.
+                **이 사진의 시각적 내용(배경, 인물, 사물)을 먼저 정확히 분석하고, 그에 맞춰 코멘트 해줘.**
+                사진 파일 경로(URL)는: ${couplePhotoUrl}
+                `;
+
+            const messages = [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: `이 커플사진에 대해 예진이 말투로 이야기해줘.` }
+            ];
+            console.log(`[omoide:getOmoideReply] OpenAI 프롬프트 준비 완료 (커플사진).`);
+
+            const rawComment = await callOpenAI(messages, null, 100, 1.0);
+            const comment = cleanReply(rawComment);
+
+            saveLogFunc({ role: 'assistant', content: `(커플사진 보냄) ${comment}`, timestamp: Date.now() });
+            console.log(`[omoide:getOmoideReply] 응답 완료 (커플사진): ${comment}`);
+            return { type: 'photo', url: couplePhotoUrl, caption: comment };
+        } else {
+            console.warn(`[omoide:getOmoideReply] 커플사진 URL 생성 실패. 텍스트 응답 반환.`);
+            return { type: 'text', comment: '아저씨... 해당하는 커플사진을 못 찾겠어 ㅠㅠ 다른 사진 보여줄까?' };
+        }
+    }
+
+
     // 1. 특정 키워드를 기반으로 폴더 선택 및 프롬프트 설정 (우선순위 높음)
     if (lowerCaseMessage.includes('무쿠 셀카') || lowerCaseMessage.includes('애기 셀카')) {
         selectedFolder = '추억 무쿠 사진 모음';
@@ -329,13 +416,6 @@ async function getOmoideReply(userMessage, saveLogFunc, callOpenAI, cleanReply) 
         selectedFolder = '추억 인생네컷';
         folderDescription = '인생네컷 사진';
         promptSuffix = "아저씨와 함께 찍은 인생네컷 사진에 대해 즐겁고 추억이 담긴 멘트를 해줘.";
-    } else if (lowerCaseMessage.includes('커플사진')) {
-        selectedFolder = '추억 24_02_25 한국 커플사진';
-        if (!PHOTO_FOLDERS[selectedFolder]) {
-            selectedFolder = 'couple';
-        }
-        folderDescription = '아저씨와 함께 찍은 커플 사진';
-        promptSuffix = "아저씨와 함께 찍은 커플 사진에 대해 우리 둘만의 소중한 추억과 사랑을 가득 담아 말해줘. 약간의 비밀스러운 뉘앙스도 섞어줘.";
     } else if (lowerCaseMessage.includes('일본') && lowerCaseMessage.includes('사진')) {
         const japaneseFolders = Object.keys(PHOTO_FOLDERS).filter(key => key.includes('일본'));
         if (japaneseFolders.length > 0) {
