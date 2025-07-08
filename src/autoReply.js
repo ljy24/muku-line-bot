@@ -7,7 +7,7 @@ const path = require('path');
 const { OpenAI } = require('openai'); // ✨ 추가: OpenAI 클라이언트 초기화도 여기로 옮겨옴
 
 // memoryManager 모듈 불러오기 (경로 수정)
-const memoryManager = require('../memory/memoryManager');
+const memoryManager = require('./memoryManager');
 const { getOmoideReply } = require('../memory/omoide'); // omoide.js에서 추억 사진 답변 함수 불러오기
 const { getConceptPhotoReply } = require('../memory/concept'); // concept.js에서 컨셉 사진 답변 함수 불러오기
 
