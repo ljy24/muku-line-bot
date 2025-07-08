@@ -1,4 +1,4 @@
-// ✅ index.js v1.18 - 파일 분리 및 Render PostgreSQL 기반 memoryManager 연동
+// ✅ index.js v1.20 - 파일 분리 및 하이브리드 memoryManager 연동
 
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈 (로그 저장용)
@@ -25,7 +25,7 @@ const { startAllSchedulers, updateLastUserMessageTime } = require('./src/schedul
 // 즉흥 사진 스케줄러 불러오기
 const { startSpontaneousPhotoScheduler } = require('./src/spontaneousPhotoManager');
 
-// memoryManager 모듈 (PostgreSQL 테이블 초기화 및 기억 관리에 필요)
+// memoryManager 모듈 (하이브리드 기억 관리에 필요)
 const memoryManager = require('./src/memoryManager');
 
 // Express 애플리케이션을 생성합니다.
@@ -90,13 +90,9 @@ app.post('/webhook', middleware(config), async (req, res) => {
                     // 3. 모든 특정 핸들러에서 처리되지 않았다면, 일반 대화 응답 생성
                     if (!botResponse) {
                         botResponse = await getReplyByMessage(text);
-                        // 일반 대화인 경우, 기억 추출 및 저장 시도 (AI 판단 로직은 autoReply.js에 포함될 수 있음)
-                        // 현재는 memoryManager.js에 extractAndSaveMemory 함수를 노출하지 않으므로,
-                        // AI가 기억할 만한 내용을 판단하고 저장하는 로직은 autoReply.js 내부에서
-                        // saveUserMemory를 직접 호출하는 방식으로 구현되어야 합니다.
-                        // 따라서 이 부분은 임시로 주석 처리하거나, AI 판단 후 저장 로직을 추가해야 합니다.
-                        // await memoryManager.extractAndSaveMemory(text);
-                        // console.log(`[index.js] memoryManager.extractAndSaveMemory 호출 완료 (메시지: "${text}")`);
+                        // 일반 대화인 경우, 기억 추출 및 저장 시도 (현재는 모든 일반 대화를 여기에 전달)
+                        await memoryManager.extractAndSaveMemory(text);
+                        console.log(`[index.js] memoryManager.extractAndSaveMemory 호출 완료 (메시지: "${text}")`);
                     } else {
                         console.log(`[index.js] 특정 명령어로 처리되었으므로 메모리 자동 저장에서 제외됩니다.`);
                     }
@@ -172,9 +168,9 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
     console.log(`무쿠 서버 스타트! 포트: ${PORT}`);
     
-    // ✨ 수정: ensureMemoryDirectory 대신 ensureMemoryTables 호출 ✨
-    await memoryManager.ensureMemoryTables();
-    console.log('메모리 데이터베이스 테이블 확인 및 준비 완료.');
+    // ✨ 수정: ensureMemoryTablesAndDirectory 호출 (DB와 파일 디렉토리/초기 파일 모두 처리) ✨
+    await memoryManager.ensureMemoryTablesAndDirectory();
+    console.log('메모리 시스템 초기화 완료 (DB 및 파일).');
 
     // 모든 스케줄러 시작
     startAllSchedulers(client, userId);
