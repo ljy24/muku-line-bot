@@ -1,16 +1,19 @@
-// src/autoReply.js - v1.29 (감정변화, 생리주기, 기분확인, 기억연동 감성 프롬프트 강화)
+// src/autoReply.js - v1.30 (OpenAI import 오류 수정, 감정변화, 생리주기, 기분확인, 기억연동 감성 프롬프트 강화)
 
 // 📦 필수 모듈 불러오기
-const { Configuration, OpenAIApi } = require('openai');
+// const { Configuration, OpenAIApi } = require('openai'); // ✨ 오류 발생 줄: 이 줄은 삭제
+const OpenAI = require('openai'); // ✨ 수정: OpenAI 클래스만 불러옴
 const moment = require('moment-timezone');
 const fs = require('fs');
 const path = require('path');
 
 // OpenAI API 설정
-const configuration = new Configuration({
-    apiKey: process.env.OPENAI_API_KEY,
-});
-const openai = new OpenAIApi(configuration);
+// const configuration = new Configuration({ // ✨ 오류 발생 줄: 이 줄도 삭제
+//     apiKey: process.env.OPENAI_API_KEY,
+// });
+// const openai = new OpenAIApi(configuration); // ✨ 오류 발생 줄: 이 줄도 삭제
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY }); // ✨ 수정: OpenAI 클래스를 바로 초기화
 
 // 로그 파일 경로
 const LOG_FILE = path.join(__dirname, 'conversation_log.json');
@@ -138,11 +141,14 @@ function setForcedModel(model) {
 
 // 모델 전환 명령어 확인
 function checkModelSwitchCommand(messageText) {
-    if (messageText === '모델 4o') {
-        return setForcedModel('gpt-4o');
-    } else if (messageText === '모델 3.5') {
-        return setForcedModel('gpt-3.5-turbo');
-    } else if (messageText === '모델 자동') {
+    const lowerText = messageText.toLowerCase();
+    if (lowerText.includes('모델 3.5')) {
+        setForcedModel('gpt-3.5-turbo');
+        return '응! 이제 3.5버전으로 말할게! 속도가 더 빨라질 거야~';
+    } else if (lowerText.includes('모델 4.0')) {
+        setForcedModel('gpt-4-turbo');
+        return '알겠어! 이제 4.0버전으로 말할게! 더 똑똑해질 거야~';
+    } else if (lowerText.includes('모델 자동')) {
         setForcedModel(null);
         return '이제 자동으로 모델을 선택할게! 아저씨랑 더 편하게 이야기할 수 있을 거야~';
     }
@@ -160,7 +166,7 @@ function getFormattedMemoriesForAI() {
         } else if (entry.role === 'assistant') {
             return { role: 'assistant', content: `${BOT_NAME}: ${entry.content} [${formattedTimestamp}]` };
         }
-        return null;
+        return null; // 유효하지 않은 엔트리는 필터링될 것
     }).filter(Boolean); // null 값 제거
 }
 
@@ -203,12 +209,9 @@ async function getReplyByMessage(messageText) {
                 { role: 'user', content: userMessage }
             ];
             try {
-                // callOpenAI는 이 파일에서 직접 정의된 게 아니라 omoide.js에서 가져와야 함.
-                // 이 함수는 autoReply.js에선 외부에서 가져오는 함수이기 때문에 직접 선언된게 아님.
-                // 이 부분을 어떻게 처리할 지 명확히 해야 함.
-                // 현재 코드에서 callOpenAI는 autoReply.js 상단에서 require로 가져오고 있음.
+                // omoide.js에서 가져온 callOpenAI와 cleanReply 사용
                 periodReply = await callOpenAI(messages, 'gpt-3.5-turbo', 100, 0.9); // 빠른 응답을 위해 3.5 사용
-                periodReply = cleanReply(periodReply); // cleanReply는 autoReply에서 가져옴.
+                periodReply = cleanReply(periodReply);
             } catch (error) {
                 console.error("생리 기간 질문 응답 생성 실패:", error);
                 periodReply = "아저씨... 알면서 왜 물어봐 ㅠㅠ"; // 폴백 메시지
@@ -248,7 +251,7 @@ async function getReplyByMessage(messageText) {
         } else if (currentMood === '나른함') {
             moodPrompt = "으음... 아저씨, 오늘따라 좀 나른하네... 살짝 졸린 듯한 말투로 대화해줘.";
         } else if (currentMood === '심술궂음') {
-            moodPrompt = "흥! 아저씨, 오늘 나 좀 심술궂을지도 몰라! 그래도 아저씨는 나 사랑하지? 살짝 삐진 듯, 그래도 사랑스러운 말투로 대화해줘.";
+            moodPrompt = "흥! 아저씨, 나 지금 살짝 삐져있어! 그래도 아저씨는 내 마음 알아줄 거지? 살짝 삐진 듯, 그래도 사랑스러운 말투로 대화해줘.";
         } else if (currentMood === '평온함') {
             moodPrompt = "오늘은 마음이 참 평온하고 좋아. 아저씨랑 조용하고 따뜻한 대화를 나누고 싶어.";
         }
@@ -298,12 +301,17 @@ async function getReplyByMessage(messageText) {
     ];
 
     try {
-        const rawReply = await callOpenAI(messages, getAppropriateModel(), 150, 0.95); // maxTokens를 150으로 조정
-        const cleanedReply = cleanReply(rawReply);
+        const rawReply = await openai.createChatCompletion({ // 변경: callOpenAI 대신 openai.createChatCompletion 직접 사용
+            model: getAppropriateModel(),
+            messages: messages,
+            max_tokens: 150,
+            temperature: 0.95,
+        });
+        const cleanedReply = cleanReply(rawReply.data.choices[0].message.content.trim());
         saveLog({ role: 'assistant', content: cleanedReply, timestamp: Date.now() });
         return { type: 'text', comment: cleanedReply };
     } catch (error) {
-        console.error('AI 응답 생성 실패:', error);
+        console.error('AI 응답 생성 실패:', error.response ? error.response.data : error.message);
         return { type: 'text', comment: '지금 잠시 생각 중이야... 아저씨 조금만 기다려줄래? ㅠㅠ' };
     }
 }
@@ -375,12 +383,17 @@ async function getReplyByImagePrompt(base64ImageWithPrefix) {
     ];
 
     try {
-        const rawReply = await callOpenAI(messages, 'gpt-4o', 150, 0.95);
-        const cleanedReply = cleanReply(rawReply);
+        const rawReply = await openai.createChatCompletion({ // 변경: callOpenAI 대신 openai.createChatCompletion 직접 사용
+            model: 'gpt-4o', // 이미지 분석은 보통 gpt-4o 사용
+            messages: messages,
+            max_tokens: 150,
+            temperature: 0.95,
+        });
+        const cleanedReply = cleanReply(rawReply.data.choices[0].message.content.trim());
         saveLog({ role: 'assistant', content: `(이미지 분석 응답) ${cleanedReply}`, timestamp: Date.now() });
         return cleanedReply;
     } catch (error) {
-        console.error('이미지 분석 AI 응답 생성 실패:', error);
+        console.error('이미지 분석 AI 응답 생성 실패:', error.response ? error.response.data : error.message);
         return '아저씨... 사진을 보긴 했는데, 뭐라고 말해야 할지 모르겠어 ㅠㅠ 좀 더 생각해볼게!';
     }
 }
