@@ -1,4 +1,4 @@
-// src/autoReply.js - v1.37 (callOpenAI, cleanReply 합쳐짐; 변수 이름 userMessage로 최종 통일)
+// src/autoReply.js - v2.0 (모든 핵심 기능 통합)
 
 // 📦 필수 모듈 불러오기
 const moment = require('moment-timezone');
@@ -6,11 +6,8 @@ const fs = require('fs');
 const path = require('path');
 const { OpenAI } = require('openai'); // ✨ 추가: OpenAI 클라이언트 초기화도 여기로 옮겨옴
 
-// ✨ 삭제: const { callOpenAI, cleanReply } = require('./openaiClient'); // ✨ 삭제: 이 줄은 더 이상 필요 없음
-const { saveLog, getConversationLog } = require('./utils/logger'); // logger.js에서 saveLog 함수 불러오기
-
-// memoryManager 모듈 불러오기
-const memoryManager = require('./memoryManager'); // 경로 수정
+// memoryManager 모듈 불러오기 (경로 수정)
+const memoryManager = require('../memory/memoryManager');
 const { getOmoideReply } = require('../memory/omoide'); // omoide.js에서 추억 사진 답변 함수 불러오기
 const { getConceptPhotoReply } = require('../memory/concept'); // concept.js에서 컨셉 사진 답변 함수 불러오기
 
@@ -18,8 +15,7 @@ const { getConceptPhotoReply } = require('../memory/concept'); // concept.js에�
 require('dotenv').config();
 
 // OpenAI 클라이언트 초기화 (여기에만 존재)
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY }); // ✨ 추가: 여기에 OpenAI 클라이언트 초기화
-
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY }); 
 
 // 챗봇의 기본 페르소나 및 설정
 const BOT_NAME = '예진이'; // 봇 이름
@@ -40,12 +36,62 @@ let isPeriodActive = false;
 // 모델 강제 설정 기능
 let forcedModel = null; // 'gpt-4o', 'gpt-3.5-turbo', null
 
-// 대화 로그 관련 (logger.js로 분리되었으므로 여기서는 함수 정의를 삭제)
-// loadLog, saveLog 관련 코드들은 utils/logger.js로 이동했음.
+// 대화 로그 관련 (이제 autoReply.js 안에 직접 정의됨)
+const LOG_FILE = path.join(process.cwd(), 'conversation_log.json'); // 프로젝트 루트의 conversation_log.json
+let conversationLog = [];
+
+// 파일 존재 여부 확인 및 디렉토리 생성
+function ensureLogFile() {
+    const logDir = path.dirname(LOG_FILE);
+    if (!fs.existsSync(logDir)) {
+        fs.mkdirSync(logDir, { recursive: true });
+    }
+    if (!fs.existsSync(LOG_FILE)) {
+        fs.writeFileSync(LOG_FILE, '[]', 'utf8'); // 파일이 없으면 빈 배열로 초기화
+    }
+}
+
+// 초기 로그 로드 (파일 로딩 시 한 번만 호출)
+ensureLogFile();
+try {
+    const data = fs.readFileSync(LOG_FILE, 'utf8');
+    conversationLog = JSON.parse(data);
+} catch (error) {
+    console.error('Error loading conversation log from autoReply.js:', error);
+    conversationLog = [];
+}
+
+/**
+ * 메시지 로그를 파일에 저장하고 메모리에 추가합니다.
+ * 이 함수는 이제 autoReply.js 안에 직접 정의됩니다.
+ * @param {Object} newLogEntry - 로그 엔트리 객체 ({ role: 'user'/'assistant', content: '메시지 내용', timestamp: Date.now() })
+ */
+function saveLog(newLogEntry) {
+    newLogEntry.timestamp = newLogEntry.timestamp || Date.now();
+
+    conversationLog.push(newLogEntry);
+    if (conversationLog.length > 500) {
+        conversationLog = conversationLog.slice(-500);
+    }
+    try {
+        fs.writeFileSync(LOG_FILE, JSON.stringify(conversationLog, null, 2), 'utf8');
+    } catch (error) {
+        console.error('Error saving conversation log from autoReply.js:', error);
+    }
+}
+
+/**
+ * 메모리에 있는 전체 대화 로그를 반환합니다.
+ * 이 함수는 이제 autoReply.js 안에 직접 정의됩니다.
+ * @returns {Array<Object>} 대화 로그 배열
+ */
+function getConversationLog() {
+    return conversationLog;
+}
 
 /**
  * OpenAI API를 호출하여 AI 응답을 생성합니다.
- * 이 함수는 이제 autoReply.js 안에 정의됩니다.
+ * 이 함수는 이제 autoReply.js 안에 직접 정의됩니다.
  * @param {Array<Object>} messages - OpenAI API에 보낼 메시지 배열 (role, content 포함)
  * @param {string|null} [modelParamFromCall=null] - 호출 시 지정할 모델 이름
  * @param {number} [maxTokens=400] - 생성할 최대 토큰 수
@@ -80,7 +126,7 @@ async function callOpenAI(messages, modelParamFromCall = null, maxTokens = 400, 
 /**
  * OpenAI 응답에서 불필요한 내용(예: AI의 자체 지칭)을 제거하고,
  * 잘못된 호칭이나 존댓말 어미를 아저씨가 원하는 반말로 교정합니다.
- * 이 함수는 이제 autoReply.js 안에 정의됩니다.
+ * 이 함수는 이제 autoReply.js 안에 직접 정의됩니다.
  * @param {string} reply - OpenAI로부터 받은 원본 응답 텍스트
  * @returns {string} 교정된 답변 텍스트
  */
@@ -210,7 +256,7 @@ function checkModelSwitchCommand(userMessage) {
 }
 
 function getFormattedMemoriesForAI() {
-    const conversationLog = getConversationLog(); // logger.js에서 대화 로그를 가져옴
+    const conversationLog = getConversationLog(); // 이 파일 안에 정의된 getConversationLog 사용
     return conversationLog.map(entry => {
         const formattedTimestamp = moment(entry.timestamp).tz('Asia/Tokyo').format('YYYY-MM-DD HH:mm:ss');
         if (entry.role === 'user') {
@@ -223,7 +269,7 @@ function getFormattedMemoriesForAI() {
 }
 
 function getMemoryListForSharing() {
-    const conversationLog = getConversationLog(); // logger.js에서 대화 로그를 가져옴
+    const conversationLog = getConversationLog(); // 이 파일 안에 정의된 getConversationLog 사용
     return conversationLog.map((entry, index) => {
         const timestamp = moment(entry.timestamp).tz('Asia/Tokyo').format('YYYY-MM-DD HH:mm:ss');
         const speaker = entry.role === 'user' ? USER_NAME : BOT_NAME;
@@ -339,7 +385,7 @@ async function getReplyByMessage(userMessage) {
 
     const messages = [
         { role: 'system', content: systemPrompt },
-        { role: 'user', content: userMessage } // ✨ userMessage 사용
+        { role: 'user', content: userMessage }
     ];
 
     try {
@@ -440,5 +486,7 @@ module.exports = {
     setCurrentMood,
     getCurrentMoodStatus,
     updatePeriodStatus,
-    isPeriodActive
+    isPeriodActive,
+    callOpenAI, // ✨ 외부에서 사용 가능하도록 내보내기
+    cleanReply // ✨ 외부에서 사용 가능하도록 내보내기
 };
