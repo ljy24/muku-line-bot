@@ -6,7 +6,9 @@ const {
     getReplyByMessage, 
     getReplyByImagePrompt, 
     checkModelSwitchCommand, 
-    saveLog // ✨ saveLog를 autoReply.js에서 직접 불러옴
+    saveLog, // ✨ saveLog를 autoReply.js에서 직접 불러옴
+    callOpenAI, // 👈 callOpenAI 추가
+    cleanReply  // 👈 cleanReply 추가
 } = require('./src/autoReply'); // autoReply 모듈 불러오기
 
 const scheduler = require('./src/scheduler'); // 👈 scheduler 모듈 전체 import
@@ -74,7 +76,7 @@ async function handleEvent(event) {
 
         // '셀카', '후지 사진', '인생네컷' 등 특정 키워드는 omoide.js에서 처리 시도
         // omoide.js의 getOmoideReply 함수는 해당 키워드가 없으면 null을 반환하도록 되어 있음.
-        photoReply = await omoide.getOmoideReply(userMessage, saveLog); // saveLog를 인자로 전달
+        photoReply = await omoide.getOmoideReply(userMessage, saveLog, callOpenAI, cleanReply); // 필요한 함수들을 인자로 전달
         
         if (photoReply) {
             if (photoReply.type === 'photo') {
@@ -90,7 +92,7 @@ async function handleEvent(event) {
 
         // '컨셉 사진' 키워드는 concept.js에서 처리 시도
         // concept.js의 getConceptPhotoReply 함수도 해당 키워드가 없으면 null을 반환하도록 되어 있어야 함.
-        const conceptReply = await concept.getConceptPhotoReply(userMessage, saveLog); // saveLog를 인자로 전달
+        const conceptReply = await concept.getConceptPhotoReply(userMessage, saveLog, callOpenAI, cleanReply); // 필요한 함수들을 인자로 전달
         if (conceptReply) {
             if (conceptReply.type === 'photo') {
                 await client.replyMessage(event.replyToken, [
