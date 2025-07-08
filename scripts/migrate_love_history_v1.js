@@ -1,5 +1,5 @@
-// scripts/migrate_love_history_v1.js
-// v1.4 – JSON categories 기반 + 변수명 수정 완성
+// ✅ 파일 경로: scripts/migrate_love_history_v1.js
+// ✅ 버전: v1.5 - 'data is not iterable' 완전 해결
 
 const fs = require('fs');
 const path = require('path');
@@ -43,8 +43,11 @@ async function migrateLoveHistory() {
 
     let inserted = 0;
 
+    // 🔥 여기가 핵심 수정
     if (json.categories && typeof json.categories === 'object') {
-      for (const category of Object.keys(json.categories)) {
+      const categoryList = Object.keys(json.categories);
+
+      for (const category of categoryList) {
         const items = json.categories[category];
         if (Array.isArray(items)) {
           for (const item of items) {
@@ -59,10 +62,12 @@ async function migrateLoveHistory() {
           }
         }
       }
+
       console.log(`✅ Migration completed: ${inserted} records inserted`);
     } else {
-      console.error("❌ JSON 파일에 'categories' 필드가 없습니다.");
+      console.error("❌ JSON 구조에 'categories'가 없습니다.");
     }
+
   } catch (err) {
     console.error('❌ Error during migration:', err);
   } finally {
