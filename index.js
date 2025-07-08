@@ -1,4 +1,4 @@
-// ✅ index.js v1.15 - LINE API 메시지 형식 문제 (사진+텍스트 배열 전송) 해결
+// ✅ index.js v1.16 - 파일 분리 및 핸들러 모듈 통합
 
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈: 파일 읽기/쓰기 기능 제공 (예: 로그 파일)
@@ -6,44 +6,27 @@ const path = require('path'); // 경로 처리 모듈: 파일 및 디렉토리 �
 const { Client, middleware } = require('@line/bot-sdk'); // LINE Bot SDK: LINE 메시징 API와의 통신을 위한 클라이언트 및 미들웨어
 const express = require('express'); // Express 프레임워크: 웹 서버를 구축하고 HTTP 요청을 처리
 const moment = require('moment-timezone'); // Moment.js: 시간대 처리 및 날짜/시간 포매팅 (일본 표준시 기준)
-const cron = require('node-cron'); // Node-cron: 특정 시간 또는 주기마다 작업을 실행하는 스케줄러
 
-// ./src/autoReply.js에서 필요한 함수들을 불러옵니다.
-// 이 함수들은 봇의 핵심 응답 로직, 기억 관리, 모델 전환 등을 캡슐화합니다.
+// ./src/autoReply.js에서 일반 대화 응답 함수들을 불러옵니다.
 const {
-    getReplyByMessage,           // 사용자 텍스트 메시지에 대한 예진이의 답변 생성 (사진 요청 포함)
+    getReplyByMessage,           // 사용자 텍스트 메시지에 대한 예진이의 답변 생성 (강화된 미묘한 감정 감지)
     getReplyByImagePrompt,       // 사용자가 보낸 이미지 메시지에 대한 예진이의 답변 생성 (이미지 분석)
-    getRandomMessage,            // 무작위 메시지 생성
-    getCouplePhotoReplyFromYeji, // 커플 사진에 대한 코멘트 생성 (스케줄러용)
-    getColorMoodReply,           // 기분 기반 색상 추천 답변 생성 (현재 미사용)
-    getHappyReply,               // 긍정적인 답변 생성 (현재 미사용)
-    getSulkyReply,               // 삐진 듯한 답변 생성 (현재 미사용)
     saveLog,                     // 메시지 로그를 파일에 저장하는 함수
-    setForcedModel,              // OpenAI 모델을 강제로 설정하는 함수
-    checkModelSwitchCommand,     // 모델 전환 명령어를 확인하고 처리하는 함수
-    getProactiveMemoryMessage,   // 기억을 바탕으로 선제적 메시지를 생성하는 함수
-    getMemoryListForSharing,     // 저장된 기억 목록을 포매팅하여 반환하는 함수
-    getSilenceCheckinMessage,    // 침묵 감지 시 걱정 메시지를 생성하는 함수
-    setMemoryReminder,           // 기억 리마인더 설정 함수
-    deleteMemory,                // 기억 삭제 함수
-    getFirstDialogueMemory       // 첫 대화 기억 검색 함수
+    cleanReply                   // AI 응답 정제 함수 (autoReply.js에 유지)
 } = require('./src/autoReply');
 
-// memoryManager 모듈을 불러옵니다.
-// 이 모듈은 사용자 메시지에서 기억을 추출하고 저장하며, 저장된 기억을 검색합니다.
-// 파일 구조에 따라 './src/memoryManager' 경로로 불러옵니다. (src 폴더 안에 있음)
-const memoryManager = require('./src/memoryManager');
+// 새로운 핸들러 모듈들을 불러옵니다.
+const commandHandler = require('./src/commandHandler'); // 명령어 처리 핸들러
+const memoryHandler = require('./src/memoryHandler');   // 기억 관련 명령어 처리 핸들러
 
-// omoide.js에서 사진 관련 응답 함수와 cleanReply를 불러옵니다.
-// 파일 구조 이미지에 따르면 omoide.js는 memory 폴더 바로 아래에 있습니다.
-const { getOmoideReply, cleanReply } = require('./memory/omoide'); // cleanReply도 함께 불러옵니다.
-
-// spontaneousPhotoManager.js에서 즉흥 사진 스케줄러 함수를 불러옵니다.
-const { startSpontaneousPhotoScheduler } = require('./src/spontaneousPhotoManager');
-
-// 스케줄러 모듈 불러오기 (이제 모든 스케줄링 로직은 여기에)
+// 스케줄러 모듈 불러오기
 const { startAllSchedulers, updateLastUserMessageTime } = require('./src/scheduler');
 
+// 즉흥 사진 스케줄러 불러오기
+const { startSpontaneousPhotoScheduler } = require('./src/spontaneousPhotoManager');
+
+// memoryManager 모듈 (리마인더 처리를 위해 필요)
+const memoryManager = require('./src/memoryManager');
 
 // Express 애플리케이션을 생성합니다.
 const app = express();
@@ -68,17 +51,7 @@ app.get('/', (_, res) => res.send('무쿠 살아있엉'));
 // 이 엔드포인트에 접속하면 무쿠가 무작위 메시지를 TARGET_USER_ID에게 강제로 보냅니다.
 app.get('/force-push', async (req, res) => {
     try {
-        // 이 부분은 이제 직접 메시지를 보내는 대신,
-        // 스케줄러 모듈에서 강제로 특정 스케줄을 트리거하는 방식으로 변경할 수 있으나,
-        // 현재는 이 엔드포인트를 유지하고 getRandomMessage를 호출하도록 함.
-        // (이전 autoReply에서 가져오던 getRandomMessage 대신 여기서 처리)
-        // 혹은 해당 로직을 scheduler.js 내부로 완전히 이동 후 scheduler.js에서만 제어하도록 변경 가능.
-        // 일단은 기존 기능 유지하며, 필요시 추후 변경 고려.
-
-        // 임시로 getRandomMessage 호출 (이후 scheduler.js 내부 함수로 변경 예정)
-        // 주의: getRandomMessage는 autoReply에서 가져오도록 노출되어 있지 않음.
-        // 여기서는 간단히 텍스트 메시지를 강제 전송하는 예시로 대체.
-        const testMessage = "아저씨! 강제 푸시로 무쿠가 메시지 보냈어!";
+        const testMessage = "아저씨! 강제 푸시로 예진이가 메시지 보냈어!";
         await client.pushMessage(userId, { type: 'text', text: testMessage });
         saveLog('예진이', testMessage);
         res.send(`강제 푸시 메시지 전송됨: ${testMessage}`);
@@ -87,39 +60,6 @@ app.get('/force-push', async (req, res) => {
         res.status(500).send('메시지 전송 중 오류 발생');
     }
 });
-
-// 💡 사용자 → 아저씨 치환 필터 (기억 목록에서만 사용)
-// `cleanReply` 함수를 사용하여 '사용자'를 '아저씨'로 교체합니다.
-function replaceUserToAhjussi(text) {
-    return cleanReply(text); // omoide.js에서 불러온 cleanReply 함수를 사용합니다.
-}
-
-/**
- * 주어진 메시지가 특정 봇 명령어인지 확인합니다.
- * 이 함수는 기억을 저장할지 여부를 결정하는 데 사용됩니다.
- * '기억해줘', '잊지마' 등 기억 저장 의도가 있는 일반 대화 문구는 명령어로 간주하지 않습니다.
- * @param {string} message - 사용자 메시지
- * @returns {boolean} 명확한 봇 명령어(사진 요청, 모델 변경, 기억 목록 요청 등)이면 true, 아니면 false
- */
-const isCommand = (message) => {
-    const lowerCaseMessage = message.toLowerCase();
-    
-    // * 봇의 특정 기능(기억 목록, 모델 변경, 모든 사진/컨셉 사진 요청 등)을 트리거하는 명확한 명령어들 *
-    // * 기억 저장/삭제/리마인더 관련 명령어는 autoReply.js에서 OpenAI로 유동적으로 처리하므로,
-    // * 여기 isCommand에서는 명시적인 키워드를 제거하여 일반 대화로 분류되도록 합니다. *
-    const definiteCommands = [
-        /(기억\s?보여줘|내\s?기억\s?보여줘|혹시 내가 오늘 뭐한다 그랬지\?|오늘 뭐가 있더라\?|나 뭐하기로 했지\?)/i, // 기억 목록 관련
-        /3\.5|4\.0|자동|버전/i, // 모델 전환 명령어
-        // 기억 저장/삭제/리마인더 관련 명령어는 autoReply.js에서 OpenAI로 유동적으로 처리하므로,
-        // 여기 isCommand에서는 명시적인 키워드를 제거하여 일반 대화로 분류되도록 합니다.
-        /(사진\s?줘|셀카\s?줘|셀카\s?보여줘|사진\s?보여줘|얼굴\s?보여줘|얼굴\s?보고\s?싶[어다]|selfie|커플사진\s?줘|커플사진\s?보여줘|무쿠\s?셀카|애기\s?셀카|빠계\s?셀카|빠계\s?사진|인생네컷|일본\s?사진|한국\s?사진|출사|필름카메라|애기\s?필름|메이드복|흑심|무슨\s?색이야\?)/i, // 일반 사진 관련 명령어
-        /(컨셉사진|컨셉 사진|홈스냅|결박|선물|셀프 촬영|옥상연리|세미누드|홈셀프|플라스틱러브|지브리풍|북해|아이노시마|필름|모지코 모리룩|눈밭|욕실|고래티셔츠|유카타 마츠리|이화마을|욕조|우마시마|가을 호수공원|망친 사진|교복|비눗방울|모지코|텐진 코닥필름|나비욕조|롱패딩|을지로 스냅|길거리 스냅|생일|모지코2|야간 보라돌이|코야노세|야간거리|생일컨셉|눈밭 필름카메라|홈스냅 청포도|욕실 블랙 웨딩|호리존|여친 스냅|후지엔|불꽃놀이|빨간 기모노|피크닉|벗꽃|후지 스냅|원미상가_필름|밤바 산책|공원 산책|고쿠라 힙|온실-여신|을지로 네코|무인역|화가|블랙원피스|카페|텐진 스트리트|하카타 스트리트|홈스냅 오타쿠|야간 동백|나르시스트|을지로 캘빈|산책|오도공원 후지필름|크리스마스|네코 모지코|야간 블랙드레스|고스로리 할로윈|게임센터|고쿠라|동키 거리|고쿠라 야간|코이노보리|문래동|수국|오도|다른 것도 보고싶어|다음 사진)/i // 컨셉사진 관련 명령어 (월, 연도, 지역, '다른 것도/다음 사진' 포함)
-    ];
-
-    // * 메시지가 위의 명령어 정규식 중 하나라도 일치하면 true 반환 *
-    return definiteCommands.some(regex => regex.test(lowerCaseMessage));
-};
-
 
 // 🎣 LINE 웹훅 요청을 처리합니다.
 // LINE 서버로부터 메시지나 이벤트가 도착하면 이 엔드포인트로 POST 요청이 옵니다.
@@ -139,99 +79,30 @@ app.post('/webhook', middleware(config), async (req, res) => {
 
                 if (message.type === 'text') { // 텍스트 메시지인 경우
                     const text = message.text.trim(); // 메시지 텍스트를 가져와 앞뒤 공백을 제거합니다.
-
                     saveLog('아저씨', text); // 아저씨의 메시지를 로그에 저장합니다.
 
-                    // * 모델 전환 명령어 처리 (가장 높은 우선순위) *
-                    const versionResponse = checkModelSwitchCommand(text);
-                    if (versionResponse) {
-                        await client.replyMessage(event.replyToken, { type: 'text', text: versionResponse });
-                        console.log(`[index.js] 모델 전환 명령어 처리 완료: "${text}"`);
-                        return; // 명령어 처리 후 함수 종료
+                    let botResponse = null;
+
+                    // 1. 명령어 핸들러로 먼저 메시지 처리 시도
+                    botResponse = await commandHandler.handleCommand(text, saveLog);
+
+                    // 2. 명령어 핸들러에서 처리되지 않았다면, 기억 핸들러로 메시지 처리 시도
+                    if (!botResponse) {
+                        botResponse = await memoryHandler.handleMemoryCommand(text, saveLog);
                     }
 
-                    // * 기억 목록 보여주기 명령어 처리 *
-                    if (/(기억\s?보여줘|내\s?기억\s?보여줘|혹시 내가 오늘 뭐한다 그랬지\?|오늘 뭐가 있더라\?|나 뭐하기로 했지\?)/i.test(text)) {
-                        try {
-                            let memoryList = await getMemoryListForSharing(); // autoReply.js에서 기억 목록을 가져옵니다.
-                            memoryList = replaceUserToAhjussi(memoryList); // '사용자' -> '아저씨'로 교체
-                            await client.replyMessage(event.replyToken, { type: 'text', text: memoryList });
-                            console.log(`[index.js] 기억 목록 전송 성공: "${text}"`);
-                            saveLog('예진이', '아저씨의 기억 목록을 보여줬어.'); // 봇의 응답도 로그에 저장
-                        } catch (err) {
-                            console.error(`[index.js] 기억 목록 불러오기 실패 ("${text}"):`, err.message);
-                            await client.replyMessage(event.replyToken, { type: 'text', text: '기억 목록을 불러오기 실패했어 ㅠㅠ' });
-                        }
-                        return; // 명령어 처리 후 함수 종료
-                    }
-
-                    // * 기억 삭제 명령어 처리 *
-                    // 예시: "기억 삭제: 오늘 우유 사야 돼"
-                    const deleteMatch = text.match(/^(기억\s?삭제|기억\s?지워|기억에서\s?없애줘)\s*:\s*(.+)/i);
-                    if (deleteMatch) {
-                        const contentToDelete = deleteMatch[2].trim();
-                        try {
-                            const result = await deleteMemory(contentToDelete); // autoReply.js의 deleteMemory 호출
-                            await client.replyMessage(event.replyToken, { type: 'text', text: result });
-                            console.log(`[index.js] 기억 삭제 명령어 처리 완료: "${text}"`);
-                            saveLog('예진이', result);
-                        } catch (err) {
-                            console.error(`[index.js] 기억 삭제 실패 ("${text}"):`, err.message);
-                            await client.replyMessage(event.replyToken, { type: 'text', text: '기억 삭제에 실패했어 ㅠㅠ 미안해...' });
-                        }
-                        return;
-                    }
-
-                    // * 리마인더 설정 명령어 처리 *
-                    // 예시: "리마인더: 내일 10시 병원 가기", "리마인드: 2025-07-07 14:00 병원 가야 한다"
-                    const reminderMatch = text.match(/^(리마인더|리마인드|알림|알려줘)\s*:\s*(.+)\s+(.+)/i);
-                    if (reminderMatch) {
-                        const content = reminderMatch[2].trim();
-                        const timeString = reminderMatch[3].trim();
-                        try {
-                            const result = await setMemoryReminder(content, timeString); // autoReply.js의 setMemoryReminder 호출
-                            await client.replyMessage(event.replyToken, { type: 'text', text: result });
-                            console.log(`[index.js] 리마인더 설정 명령어 처리 완료: "${text}"`);
-                            saveLog('예진이', result);
-                        } catch (err) {
-                            console.error(`[index.js] 리마인더 설정 실패 ("${text}"):`, err.message);
-                            await client.replyMessage(event.replyToken, { type: 'text', text: '리마인더 설정에 실패했어 ㅠㅠ 미안해...' });
-                        }
-                        return;
-                    }
-                    
-                    // * 봇의 일반 응답 및 사진 요청 처리 *
-                    // * autoReply.js의 getReplyByMessage 함수가 메시지를 처리하고 텍스트 또는 사진+코멘트 객체를 반환합니다. *
-                    const botResponse = await getReplyByMessage(text);
-                    let replyMessages = [];
-
-                    // * 디버그 로그 추가: isCommand 함수의 결과 확인 *
-                    console.log(`[index.js Debug] isCommand("${text}") 결과: ${isCommand(text)}`);
-                    // ---------------------------------------------------
-
-                    // * 기억 추출/저장 로직 (메시지가 명확한 봇 명령어가 아닐 경우에만 실행) *
-                    // * "기억해줘", "잊지마", "리마인드" 등의 일반 대화는 isCommand에서 false로 반환되므로, 여기서 기억으로 저장될 수 있습니다. *
-                    // botResponse.comment가 기억/삭제/리마인더 관련 응답인지 확인하여 중복 저장 방지
-                    const isMemoryRelatedResponse = botResponse.comment && (
-                        botResponse.comment.includes('기억했어!') ||
-                        botResponse.comment.includes('잊어버리라고 해서 지웠어') ||
-                        botResponse.comment.includes('기억을 못 찾겠어') ||
-                        botResponse.comment.includes('알려줄게!') ||
-                        botResponse.comment.includes('뭘 기억해달라는 거야?') ||
-                        botResponse.comment.includes('뭘 잊어버리라는 거야?') ||
-                        botResponse.comment.includes('리마인더 시간을 정확히 모르겠어') ||
-                        botResponse.comment.includes('뭘 언제 알려달라는 거야?') ||
-                        botResponse.comment.includes('처음 만났을 때 기억은 내가 아직 정확히 못 찾겠어') // 첫 대화 기억 관련 응답 추가
-                    );
-
-                    if (!isCommand(text) && !isMemoryRelatedResponse) {
-                        await memoryManager.extractAndSaveMemory(text); // memoryManager를 호출하여 기억 추출 및 저장
+                    // 3. 모든 특정 핸들러에서 처리되지 않았다면, 일반 대화 응답 생성
+                    if (!botResponse) {
+                        botResponse = await getReplyByMessage(text);
+                        // 일반 대화인 경우에만 기억 추출 및 저장 시도 (명령어/기억 명령이 아닌 경우)
+                        await memoryManager.extractAndSaveMemory(text);
                         console.log(`[index.js] memoryManager.extractAndSaveMemory 호출 완료 (메시지: "${text}")`);
                     } else {
-                        console.log(`[index.js] 명령어 또는 기억/리마인더 관련 응답이므로 메모리 자동 저장에서 제외됩니다.`);
+                        console.log(`[index.js] 특정 명령어로 처리되었으므로 메모리 자동 저장에서 제외됩니다.`);
                     }
 
                     // 💡 챗GPT 제안 반영: 이미지와 텍스트를 동시에 보낼 때 배열로 묶어서 전송
+                    let replyMessages = [];
                     if (botResponse.type === 'photo') {
                         replyMessages.push({
                             type: 'image',
@@ -257,7 +128,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
 
                     if (replyMessages.length > 0) {
                         await client.replyMessage(event.replyToken, replyMessages);
-                        console.log(`[index.js] 봇 응답 전송 완료 (타입: ${botResponse.type})`);
+                        console.log(`[index.js] 봇 응답 전송 완료 (타입: ${botResponse.type || 'unknown'})`);
                     }
                 }
 
@@ -284,6 +155,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
                         const reply = await getReplyByImagePrompt(base64ImageWithPrefix); // AI가 이미지 분석 후 답변 생성
                         await client.replyMessage(event.replyToken, { type: 'text', text: reply });
                         console.log(`[index.js] 이미지 메시지 처리 및 응답 완료`);
+                        saveLog('예진이', `(이미지 분석 응답) ${reply}`); // 봇의 응답도 로그에 저장
                     } catch (err) {
                         console.error(`[index.js] 이미지 처리 실패: ${err}`);
                         await client.replyMessage(event.replyToken, { type: 'text', text: '이미지를 읽는 중 오류가 생겼어 ㅠㅠ' });
@@ -304,7 +176,7 @@ app.listen(PORT, async () => {
     console.log(`무쿠 서버 스타트! 포트: ${PORT}`); // 서버 시작 로그
     await memoryManager.ensureMemoryDirectory(); // 기억 파일 저장 디렉토리 존재 확인 및 생성
     console.log('메모리 디렉토리 확인 및 준비 완료.'); // 디렉토리 준비 완료 로그
-    
+
     // 모든 스케줄러 시작
     startAllSchedulers(client, userId);
     console.log('✅ 모든 스케줄러 시작!');
