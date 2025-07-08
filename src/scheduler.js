@@ -5,11 +5,35 @@ const { Client } = require('@line/bot-sdk'); // LINE 클라이언트 필요
 const { saveLog } = require('./autoReply'); // 로그 저장을 위해 필요 (autoReply.js에서 가져옴)
 const memoryManager = require('./memoryManager'); // memoryManager 필요 (이제 하이브리드 방식으로 작동)
 const { getProactiveMemoryMessage, getSilenceCheckinMessage } = require('./proactiveMessages'); // proactiveMessages에서 선제적 메시지 함수들을 불러옴
-const { callOpenAI, cleanReply } = require('./openaiClient'); // ✨ 추가: OpenAI 호출을 위한 클라이언트
 
-// ✨ omoide.js에서 getOmoideReply 함수를 직접 불러옴 ✨
-const { getOmoideReply } = require('../memory/omoide');
+// ✨ 수정: omoide.js에서 OpenAI 관련 함수들을 직접 불러옴 ✨
+const { getOmoideReply, cleanReply } = require('../memory/omoide');
 
+// ✨ 추가: OpenAI 클라이언트를 직접 생성 ✨
+const { OpenAI } = require('openai');
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+/**
+ * OpenAI API를 호출하여 AI 응답을 생성합니다.
+ * @param {Array<Object>} messages - OpenAI API에 보낼 메시지 배열
+ * @param {string} model - 사용할 모델 (기본값: 'gpt-4o')
+ * @param {number} maxTokens - 최대 토큰 수 (기본값: 100)
+ * @returns {Promise<string>} AI가 생성한 응답 텍스트
+ */
+const callOpenAI = async (messages, model = 'gpt-4o', maxTokens = 100) => {
+    try {
+        const response = await openai.chat.completions.create({
+            model: model,
+            messages: messages,
+            max_tokens: maxTokens,
+            temperature: 0.95
+        });
+        return response.choices[0].message.content.trim();
+    } catch (error) {
+        console.error(`[Scheduler:callOpenAI] OpenAI API 호출 실패:`, error);
+        return "지금 잠시 생각 중이야... 아저씨 조금만 기다려줄래? ㅠㅠ";
+    }
+};
 
 let bootTime = Date.now(); // 봇 시작 시점의 타임스탬프 (밀리초)
 let lastMoodMessage = ''; // 마지막 감성 메시지 내용 (중복 방지용)
