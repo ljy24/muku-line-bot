@@ -1,4 +1,4 @@
-// index.js - v1.5 (최종 메시지 분류 및 의존성 정리)
+// index.js - v1.7 (메시지 처리 우선순위 최종 수정 및 모든 문제 해결)
 
 const line = require('@line/bot-sdk');
 const express = require('express');
@@ -57,56 +57,50 @@ async function handleEvent(event) {
         if (modelSwitchReply) {
             reply = { type: 'text', comment: modelSwitchReply };
         } else {
-            // 2. 사진 요청 처리 먼저 확인 (omoide.js와 concept.js로 분기)
-            // 사진 요청이면 여기서 처리하고 종료
-            let photoReply = null;
-
-            // '셀카', '후지 사진', '인생네컷' 등 특정 키워드는 omoide.js에서 처리 시도
-            photoReply = await omoide.getOmoideReply(userMessage, saveLog, callOpenAI, cleanReply);
-            
-            if (photoReply) {
-                if (photoReply.type === 'photo') {
-                    await client.replyMessage(event.replyToken, [
-                        { type: 'image', originalContentUrl: photoReply.url, previewImageUrl: photoReply.url },
-                        { type: 'text', text: photoReply.caption }
-                    ]);
-                } else if (photoReply.type === 'text') {
-                    await client.replyMessage(event.replyToken, { type: 'text', text: photoReply.comment });
-                }
-                return; // 사진 요청 처리 후 종료
-            }
-
-            // '컨셉 사진' 키워드는 concept.js에서 처리 시도
-            const conceptReply = await concept.getConceptPhotoReply(userMessage, saveLog, callOpenAI, cleanReply);
+            // 2. 사진 요청 처리 먼저 확인 (가장 구체적인 것부터)
+            // 컨셉 사진 요청 (concept.js로 위임)
+            const conceptReply = await concept.getConceptPhotoReply(userMessage, saveLog, callOpenAI, cleanReply); // 필요한 함수들을 인자로 전달
             if (conceptReply) {
                 if (conceptReply.type === 'photo') {
                     await client.replyMessage(event.replyToken, [
                         { type: 'image', originalContentUrl: conceptReply.url, previewImageUrl: conceptReply.url },
                         { type: 'text', text: conceptReply.caption }
                     ]);
-                } else if (conceptReply.type === 'text') {
+                } else if (conceptReply.type === 'text') { // concept에서 사진이 없어서 텍스트 응답을 준 경우
                     await client.replyMessage(event.replyToken, { type: 'text', text: conceptReply.comment });
                 }
                 return; // 컨셉 사진 요청 처리 후 종료
+            }
+
+            // 일반 추억 사진 요청 (omoide.js로 위임)
+            const omoideReply = await omoide.getOmoideReply(userMessage, saveLog, callOpenAI, cleanReply); // 필요한 함수들을 인자로 전달
+            if (omoideReply) {
+                if (omoideReply.type === 'photo') {
+                    await client.replyMessage(event.replyToken, [
+                        { type: 'image', originalContentUrl: omoideReply.url, previewImageUrl: omoideReply.url },
+                        { type: 'text', text: omoideReply.caption }
+                    ]);
+                } else if (omoideReply.type === 'text') { // omoide에서 사진이 없어서 텍스트 응답을 준 경우
+                    await client.replyMessage(event.replyToken, { type: 'text', text: omoideReply.comment });
+                }
+                return; // 일반 사진 요청 처리 후 종료
             }
 
             // 3. 일반 대화, 기분 확인, 생리 주기 질문 등 (사진 요청이 아닐 때만 처리)
             reply = await getReplyByMessage(userMessage); 
         }
 
-        // 애기에게 최종 응답 보내기
+        // 애기에게 최종 응답 보내기 (일반 대화 응답)
         if (reply && reply.type === 'text' && reply.comment) {
             await client.replyMessage(event.replyToken, { type: 'text', text: reply.comment });
+            // saveLog는 getReplyByMessage 내부에서 이미 처리되므로 여기서는 주석 처리
             return; 
         }
 
         // 4. 어떤 로직으로도 처리되지 않은 메시지 (Fallback)
-        // 이 부분은 autoReply.getReplyByMessage에서 대부분 처리될 것이므로 거의 오지 않음
-        // 하지만 혹시 모를 경우를 대비하여 폴백 메시지 추가
         const fallbackMessage = "음... 아저씨, 무슨 말인지 잘 모르겠어 ㅠㅠ 다시 한번 말해줄래?";
         await client.replyMessage(event.replyToken, { type: 'text', text: fallbackMessage });
         saveLog({ role: 'assistant', content: fallbackMessage, timestamp: Date.now() });
-
 
     } else if (event.message.type === 'image') {
         // 이미지 메시지 처리 (Line에서 이미지를 받으면 Base64로 인코딩하여 AI에 전달)
