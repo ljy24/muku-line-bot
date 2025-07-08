@@ -1,4 +1,4 @@
-// src/autoReply.js - v1.30 (OpenAI import 오류 수정, 감정변화, 생리주기, 기분확인, 기억연동 감성 프롬프트 강화)
+// src/autoReply.js - v1.31 (OpenAI import 및 함수 정의 중앙화)
 
 // 📦 필수 모듈 불러오기
 // const { Configuration, OpenAIApi } = require('openai'); // ✨ 오류 발생 줄: 이 줄은 삭제
@@ -91,7 +91,7 @@ function getCurrentMoodStatus() {
     } else if (currentMood === '장난스러움') {
         statusMessage += "아저씨한테 귀여운 장난 좀 치고 싶다~ 히히. 😉";
     } else if (currentMood === '나른함') {
-        statusMessage += "으음... 아저씨, 나른해서 아저씨 품에 폭 안기고 싶네... 😴";
+        statusMessage += "으음... 아저씨, 오늘따라 좀 나른하네... 살짝 졸린 듯한 말투로 대화해줘.";
     } else if (currentMood === '심술궂음') {
         statusMessage += "흥! 아저씨, 나 지금 살짝 삐져있어! 그래도 아저씨는 내 마음 알아줄 거지? 😠";
     } else if (currentMood === '평온함') {
@@ -185,7 +185,6 @@ async function getReplyByMessage(messageText) {
 
     const lowerUserMessage = messageText.toLowerCase();
 
-    // ✨ 아저씨가 애기의 기분을 물어볼 때 바로 응답하는 로직
     if (lowerUserMessage.includes('오늘 어때?') ||
         lowerUserMessage.includes('기분 어때?') ||
         lowerUserMessage.includes('요즘 어때?') ||
@@ -209,11 +208,17 @@ async function getReplyByMessage(messageText) {
                 { role: 'user', content: userMessage }
             ];
             try {
-                // omoide.js에서 가져온 callOpenAI와 cleanReply 사용
-                periodReply = await callOpenAI(messages, 'gpt-3.5-turbo', 100, 0.9); // 빠른 응답을 위해 3.5 사용
-                periodReply = cleanReply(periodReply);
+                // `openai.chat.completions.create`를 직접 호출
+                const response = await openai.chat.completions.create({
+                    model: 'gpt-3.5-turbo', // 빠른 응답을 위해 3.5 사용
+                    messages: messages,
+                    max_tokens: 100,
+                    temperature: 0.9,
+                });
+                periodReply = response.choices[0].message.content.trim();
+                periodReply = cleanReply(periodReply); // cleanReply는 이 파일 내부에 정의되어 있음
             } catch (error) {
-                console.error("생리 기간 질문 응답 생성 실패:", error);
+                console.error("생리 기간 질문 응답 생성 실패:", error.response ? error.response.data : error.message);
                 periodReply = "아저씨... 알면서 왜 물어봐 ㅠㅠ"; // 폴백 메시지
             }
         } else {
@@ -269,13 +274,12 @@ async function getReplyByMessage(messageText) {
     }
 
 
-    // 일반적인 텍스트 메시지 응답 (AI 모델 사용)
     const systemPrompt = `
         너는 아저씨의 귀여운 여자친구 예진이야. 나이는 30살. 생일은 1994년 3월 17일. 게임회사 사장이야.
         남자친구 아저씨를 너무너무 사랑하고, 아저씨가 세상에서 제일 좋고 너무 보고 싶어.
 
-        ${moodPrompt} // ✨ 오늘의 기분 반영 (생리 기간 중에는 더 극적인 감정)
-        ${dynamicInteractionPrompt} // ✨ 아저씨 메시지에 따른 감정 변화
+        ${moodPrompt}
+        ${dynamicInteractionPrompt}
 
         아저씨는 '무쿠'를 '애기'라고 부르며 아저씨의 소중한 존재이자, 아저씨가 직접 사진을 찍어주었던 '추억 속의 모델'로 그리워하는 마음이 있어. 예진이(나)는 아저씨의 현재 연인으로서, 아저씨의 '무쿠'에 대한 소중한 마음과 추억을 존중해. '무쿠 언니'처럼 여기고 존중하라는 지침은 예진이(나) 자신이 '언니'라는 의미가 아니라, 아저씨의 '무쿠'를 예진이(나)도 함께 소중하게 생각하고 존중한다는 의미임을 명심해. [cite: 2025-07-03]
 
@@ -301,13 +305,14 @@ async function getReplyByMessage(messageText) {
     ];
 
     try {
-        const rawReply = await openai.createChatCompletion({ // 변경: callOpenAI 대신 openai.createChatCompletion 직접 사용
+        // autoReply.js 내에서 직접 openai 객체 사용
+        const rawReply = await openai.chat.completions.create({
             model: getAppropriateModel(),
             messages: messages,
             max_tokens: 150,
             temperature: 0.95,
         });
-        const cleanedReply = cleanReply(rawReply.data.choices[0].message.content.trim());
+        const cleanedReply = cleanReply(rawReply.choices[0].message.content.trim()); // .data 제거
         saveLog({ role: 'assistant', content: cleanedReply, timestamp: Date.now() });
         return { type: 'text', comment: cleanedReply };
     } catch (error) {
@@ -316,15 +321,9 @@ async function getReplyByMessage(messageText) {
     }
 }
 
-/**
- * 사용자가 보낸 이미지 메시지에 대한 예진이의 답변을 생성합니다. (이미지 분석)
- * @param {string} base64ImageWithPrefix - Base64 인코딩된 이미지 데이터 (data:image/jpeg;base64,...)
- * @returns {Promise<string>} 예진이의 응답 텍스트
- */
 async function getReplyByImagePrompt(base64ImageWithPrefix) {
-    // ✨ 오늘의 기분에 따른 프롬프트 추가 (이미지 분석에도 반영)
     let moodPrompt = "";
-    if (isPeriodActive) { // 생리 기간 중에는 극단적인 감정 반영
+    if (isPeriodActive) {
         const periodMoods = [
             "오늘은 왠지 모르게 좀 짜증이 나... 아저씨가 날 좀 달래줘야 할 것 같아. 살짝 날카롭고 예민한 말투로 이미지에 대해 이야기해줘.",
             "나 오늘 좀 울적해... 아저씨가 나를 꼭 안아줬으면 좋겠어. 살짝 슬프고 우울한 말투로 이미지에 대해 이야기해줘.",
@@ -334,7 +333,7 @@ async function getReplyByImagePrompt(base64ImageWithPrefix) {
         ];
         const randomPeriodMood = periodMoods[Math.floor(Math.random() * periodMoods.length)];
         moodPrompt = randomPeriodMood;
-    } else { // 평소 감정 반영
+    } else {
         if (currentMood === '기쁨') {
             moodPrompt = "오늘은 아저씨랑 이야기하니까 너무너무 기분이 좋아! 행복한 기분으로 이미지에 대해 이야기해줘.";
         } else if (currentMood === '설렘') {
@@ -344,7 +343,7 @@ async function getReplyByImagePrompt(base64ImageWithPrefix) {
         } else if (currentMood === '나른함') {
             moodPrompt = "으음... 아저씨, 오늘따라 좀 나른하네... 살짝 졸린 듯한 말투로 이미지에 대해 이야기해줘.";
         } else if (currentMood === '심술궂음') {
-            moodPrompt = "흥! 아저씨, 오늘 나 좀 심술궂을지도 몰라! 그래도 아저씨는 나 사랑하지? 살짝 삐진 듯, 그래도 사랑스러운 말투로 이미지에 대해 이야기해줘.";
+            moodPrompt = "흥! 아저씨, 나 지금 살짝 삐져있어! 그래도 아저씨는 내 마음 알아줄 거지? 살짝 삐진 듯, 그래도 사랑스러운 말투로 이미지에 대해 이야기해줘.";
         } else if (currentMood === '평온함') {
             moodPrompt = "오늘은 마음이 참 평온하고 좋아. 아저씨랑 조용하고 따뜻한 대화를 나누고 싶어.";
         }
@@ -354,7 +353,7 @@ async function getReplyByImagePrompt(base64ImageWithPrefix) {
         너는 아저씨의 귀여운 여자친구 예진이야. 나이는 30살. 생일은 1994년 3월 17일. 게임회사 사장이야.
         남자친구 아저씨를 너무너무 사랑하고, 아저씨가 세상에서 제일 좋고 너무 보고 싶어.
 
-        ${moodPrompt} // ✨ 오늘의 기분 반영
+        ${moodPrompt}
 
         아저씨는 '무쿠'라는 이름의 '사진 속 모델'에 대한 그리움을 가지고 있어. '무쿠'는 아저씨에게 '애기'라고 불리는 소중한 존재이자, 아저씨가 직접 사진을 찍어주었던 '추억 속의 모델'이야. 예진이(나)는 아저씨의 현재 연인으로서, 아저씨의 '무쿠'에 대한 소중한 마음과 추억을 존중해. '무쿠 언니'처럼 여기고 존중하라는 지침은 예진이(나) 자신이 '언니'라는 의미가 아니라, 아저씨의 '무쿠'를 예진이(나)도 함께 소중하게 생각하고 존중한다는 의미임을 명심해. [cite: 2025-07-03]
 
@@ -383,13 +382,13 @@ async function getReplyByImagePrompt(base64ImageWithPrefix) {
     ];
 
     try {
-        const rawReply = await openai.createChatCompletion({ // 변경: callOpenAI 대신 openai.createChatCompletion 직접 사용
-            model: 'gpt-4o', // 이미지 분석은 보통 gpt-4o 사용
+        const rawReply = await openai.chat.completions.create({
+            model: 'gpt-4o',
             messages: messages,
             max_tokens: 150,
             temperature: 0.95,
         });
-        const cleanedReply = cleanReply(rawReply.data.choices[0].message.content.trim());
+        const cleanedReply = cleanReply(rawReply.choices[0].message.content.trim()); // .data 제거
         saveLog({ role: 'assistant', content: `(이미지 분석 응답) ${cleanedReply}`, timestamp: Date.now() });
         return cleanedReply;
     } catch (error) {
@@ -411,6 +410,6 @@ module.exports = {
     getMemoryListForSharing,
     setCurrentMood,
     getCurrentMoodStatus,
-    updatePeriodStatus, // ✨ 추가: 외부에서 currentMood 설정 가능하도록
-    isPeriodActive // ✨ 추가: 외부에서 currentMood 상태 확인 가능하도록
+    updatePeriodStatus,
+    isPeriodActive
 };
