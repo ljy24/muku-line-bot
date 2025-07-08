@@ -6,7 +6,6 @@ const {
     getRandomMessage,
     getProactiveMemoryMessage,
     getCouplePhotoReplyFromYeji,
-    getSilenceCheckinMessage, // 침묵 감지 텍스트 메시지는 더 이상 사용하지 않지만, 기존 코드를 위해 유지
     saveLog, // 로그 저장을 위해 필요
 } = require('./autoReply'); // autoReply.js에서 필요한 메시지 생성 함수들을 불러옴
 const memoryManager = require('./memoryManager'); // 리마인더 처리를 위해 memoryManager 필요
@@ -89,24 +88,24 @@ const sendScheduledMessage = async (lineClient, targetUserId, type) => {
 
     // 서버 부팅 직후 3분 이내에는 스케줄된 메시지 전송 스킵
     if (currentTime - bootTime < 3 * 60 * 1000) {
-        console.log(`[Scheduler] 서버 부팅 직후 3분 이내 -> ${type} 메시지 전송 스킵`);
+        // console.log(`[Scheduler] 서버 부팅 직후 3분 이내 -> ${type} 메시지 전송 스킵`); // 너무 많이 로그가 쌓일 수 있어 주석 처리
         return;
     }
 
     // 유효하지 않은 시간대에는 메시지 전송 스킵
     if (!isValidScheduleHour(now)) {
-        // console.log(`[Scheduler] 현재 시간 ${now.hour()}시는 유효 시간대가 아님 -> ${type} 메시지 스킵`);
+        // console.log(`[Scheduler] 현재 시간 ${now.hour()}시는 유효 시간대가 아님 -> ${type} 메시지 스킵`); // 너무 많이 로그가 쌓일 수 있어 주석 처리
         return;
     }
 
     if (type === 'selfie') {
-        // 기존 랜덤 셀카 전송 로직 (하루 3번 목표)
-        if (Math.random() < 0.20) {
+        // 하루 약 3번 목표 (216번의 기회 중 3번 발송) -> 확률 3/216 = 약 0.014
+        if (Math.random() < 0.014) {
             await sendSelfieMessage(lineClient, targetUserId, saveLog, 'scheduled');
         }
     } else if (type === 'mood_message') {
-        // 하루 11번 목표 (9시부터 23시까지 총 15시간 * 4 = 60번의 기회 중 11번 발송) -> 확률 11/60 = 약 0.183
-        if (Math.random() < 0.183) {
+        // 하루 약 11번 목표 (216번의 기회 중 11번 발송) -> 확률 11/216 = 약 0.051
+        if (Math.random() < 0.051) {
             try {
                 const proactiveMessage = await getProactiveMemoryMessage();
 
@@ -121,14 +120,15 @@ const sendScheduledMessage = async (lineClient, targetUserId, type) => {
                     lastMoodMessage = proactiveMessage;
                     lastMoodMessageTime = currentTime;
                 } else {
-                    console.log(`[Scheduler] 감성 메시지 중복 또는 너무 빠름 -> 전송 스킵`);
+                    // console.log(`[Scheduler] 감성 메시지 중복 또는 너무 빠름 -> 전송 스킵`); // 너무 많이 로그가 쌓일 수 있어 주석 처리
                 }
             } catch (error) {
                 console.error('감성 메시지 전송 실패:', error);
             }
         }
     } else if (type === 'couple_photo') {
-        if (Math.random() < 0.12) { // 하루 2번 목표
+        // 하루 약 2번 목표 (216번의 기회 중 2번 발송) -> 확률 2/216 = 약 0.009
+        if (Math.random() < 0.009) {
             try {
                 const randomCoupleIndex = Math.floor(Math.random() * (COUPLE_END_NUM - COUPLE_START_NUM + 1)) + COUPLE_START_NUM;
                 const coupleFileName = String(randomCoupleIndex).padStart(6, '0') + '.jpg';
@@ -151,7 +151,7 @@ const sendScheduledMessage = async (lineClient, targetUserId, type) => {
                     lastCouplePhotoMessage = coupleImageUrl;
                     lastCouplePhotoMessageTime = nowTime;
                 } else {
-                    console.log(`[Scheduler] 커플 사진 중복 또는 너무 빠름 -> 전송 스킵`);
+                    // console.log(`[Scheduler] 커플 사진 중복 또는 너무 빠름 -> 전송 스킵`); // 너무 많이 로그가 쌓일 수 있어 주석 처리
                 }
             } catch (error) {
                 console.error('랜덤 커플 사진 전송 실패:', error);
@@ -184,25 +184,23 @@ const startAllSchedulers = (lineClient, targetUserId) => {
         timezone: "Asia/Tokyo"
     });
 
-    // 2. 랜덤 감성 메시지 (매 15분마다 체크, 9시-23시 사이 하루 11회 목표)
-    cron.schedule('*/15 * * * *', async () => {
-        const currentHour = moment().tz('Asia/Tokyo').hour();
-        if (currentHour >= 9 && currentHour < 24) { // 23시 59분까지 포함
-            await sendScheduledMessage(lineClient, targetUserId, 'mood_message');
+    // --- 랜덤 메시지 (감성 메시지, 셀카, 커플 사진) 스케줄 통합 및 빈도 증가 ---
+    // 2. 랜덤 감성 메시지, 셀카, 커플 사진 (매 5분마다 체크)
+    cron.schedule('*/5 * * * *', async () => {
+        const now = moment().tz('Asia/Tokyo');
+        if (!isValidScheduleHour(now)) { // 유효 시간대만 체크
+            return;
         }
-    }, {
-        scheduled: true,
-        timezone: "Asia/Tokyo"
-    });
 
-    // 3. 셀카 및 커플 사진 메시지 (매 시간 30분마다 체크)
-    cron.schedule('30 * * * *', async () => {
-        await sendScheduledMessage(lineClient, targetUserId, 'selfie'); // 기존 랜덤 셀카
+        // 각 타입별로 확률에 따라 메시지 전송 시도
+        await sendScheduledMessage(lineClient, targetUserId, 'mood_message');
+        await sendScheduledMessage(lineClient, targetUserId, 'selfie');
         await sendScheduledMessage(lineClient, targetUserId, 'couple_photo');
     }, {
         scheduled: true,
         timezone: "Asia/Tokyo"
     });
+    // --- 기존 3번 스케줄은 이 2번 스케줄로 통합되므로 삭제됩니다. ---
 
     // 4. 침묵 감지 스케줄러 (매 15분마다 실행)
     cron.schedule('*/15 * * * *', async () => {
