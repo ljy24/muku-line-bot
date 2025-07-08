@@ -2,38 +2,18 @@
 const cron = require('node-cron');
 const moment = require('moment-timezone');
 const { Client } = require('@line/bot-sdk'); // LINE 클라이언트 필요
-const { saveLog } = require('./autoReply'); // 로그 저장을 위해 필요 (autoReply.js에서 가져옴)
+const { saveLog, setCurrentMood } = require('./autoReply'); // ✨ 수정: saveLog와 setCurrentMood 불러오기
 const memoryManager = require('./memoryManager'); // memoryManager 필요 (이제 하이브리드 방식으로 작동)
 const { getProactiveMemoryMessage, getSilenceCheckinMessage } = require('./proactiveMessages'); // proactiveMessages에서 선제적 메시지 함수들을 불러옴
 
-// ✨ 수정: omoide.js에서 OpenAI 관련 함수들을 직접 불러옴 ✨
-const { getOmoideReply, cleanReply } = require('../memory/omoide');
+// ✨ 수정: memory/omoide.js에서 OpenAI 관련 함수들을 직접 불러옴 (omoide.js로 통합) ✨
+const { getOmoideReply, callOpenAI, cleanReply } = require('../memory/omoide'); 
 
-// ✨ 추가: OpenAI 클라이언트를 직접 생성 ✨
-const { OpenAI } = require('openai');
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// ✨ 삭제: 이 부분은 이제 필요 없어 ✨
+// const { OpenAI } = require('openai');
+// const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+// const callOpenAI = async (...) => { ... };
 
-/**
- * OpenAI API를 호출하여 AI 응답을 생성합니다.
- * @param {Array<Object>} messages - OpenAI API에 보낼 메시지 배열
- * @param {string} model - 사용할 모델 (기본값: 'gpt-4o')
- * @param {number} maxTokens - 최대 토큰 수 (기본값: 100)
- * @returns {Promise<string>} AI가 생성한 응답 텍스트
- */
-const callOpenAI = async (messages, model = 'gpt-4o', maxTokens = 100) => {
-    try {
-        const response = await openai.chat.completions.create({
-            model: model,
-            messages: messages,
-            max_tokens: maxTokens,
-            temperature: 0.95
-        });
-        return response.choices[0].message.content.trim();
-    } catch (error) {
-        console.error(`[Scheduler:callOpenAI] OpenAI API 호출 실패:`, error);
-        return "지금 잠시 생각 중이야... 아저씨 조금만 기다려줄래? ㅠㅠ";
-    }
-};
 
 let bootTime = Date.now(); // 봇 시작 시점의 타임스탬프 (밀리초)
 let lastMoodMessage = ''; // 마지막 감성 메시지 내용 (중복 방지용)
@@ -58,6 +38,9 @@ const COUPLE_END_NUM = 481; // 커플 사진 마지막 번호
 const SILENCE_THRESHOLD = 2 * 60 * 60 * 1000; // 2시간 동안 메시지가 없으면 침묵으로 간주
 const PROACTIVE_COOLDOWN = 1 * 60 * 60 * 1000; // 봇이 메시지 보낸 후 1시간 이내에는 다시 선제적 메시지 보내지 않음
 const SILENCE_SELFIE_COOLDOWN = 2 * 60 * 60 * 1000; // ✨ 추가: 침묵 감지 셀카 쿨다운 (2시간)
+
+// ✨ 추가: 애기의 기분 옵션 (autoReply.js와 동일하게 유지)
+const MOOD_OPTIONS = ['기쁨', '설렘', '장난스러움', '나른함', '심술궂음', '평온함'];
 
 
 /**
@@ -178,7 +161,6 @@ const sendDantaMessage = async (lineClient, targetUserId, saveLog) => {
     }
 };
 
-// ✨ 새로 추가된 퇴근 메시지 헬퍼 함수
 /**
  * 퇴근 메시지를 전송하는 헬퍼 함수입니다.
  * @param {Client} lineClient - LINE Messaging API 클라이언트
@@ -223,7 +205,6 @@ const sendWorkEndMessage = async (lineClient, targetUserId, saveLog) => {
     }
 };
 
-// ✨ 새로 추가된 아침 일상 메시지 헬퍼 함수
 /**
  * 아침 일상 메시지를 전송하는 헬퍼 함수입니다.
  * @param {Client} lineClient - LINE Messaging API 클라이언트
@@ -366,6 +347,18 @@ const sendScheduledMessage = async (lineClient, targetUserId, type) => {
  * @param {string} targetUserId - 메시지를 보낼 대상 사용자 ID
  */
 const startAllSchedulers = (lineClient, targetUserId) => {
+    // ✨ 추가: 매일 아침 애기의 기분을 랜덤으로 설정하는 스케줄러
+    cron.schedule('0 0 6 * * *', () => { // 매일 아침 6시 00분에 실행
+        const randomIndex = Math.floor(Math.random() * MOOD_OPTIONS.length);
+        const randomMood = MOOD_OPTIONS[randomIndex];
+        setCurrentMood(randomMood); // autoReply 모듈의 함수 호출
+        console.log(`[Scheduler] 애기의 오늘의 기분이 '${randomMood}'으로 설정되었습니다.`);
+    }, {
+        scheduled: true,
+        timezone: "Asia/Tokyo"
+    });
+
+
     // 1. 아침 인사 메시지 (오전 9시 0분 정각) - 기존 아침 인사는 유지
     cron.schedule('0 9 * * *', async () => {
         const now = moment().tz('Asia/Tokyo');
