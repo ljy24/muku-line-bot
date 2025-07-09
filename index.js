@@ -92,7 +92,11 @@ app.post('/webhook', middleware(config), async (req, res) => {
 
                     // 3. 모든 특정 핸들러에서 처리되지 않았다면, 일반 대화 응답 생성
                     if (!botResponse) {
-                        botResponse = await getReplyByMessage(text, saveLog, client.pushMessage, cleanReply); // getReplyByMessage에 필요한 인자 전달
+                        // getReplyByMessage에 필요한 인자 전달: saveLogFunc, callOpenAIFunc, cleanReplyFunc
+                        // autoReply 내부에서 callOpenAI, cleanReply는 해당 모듈 내부에 이미 있으므로,
+                        // index.js에서 직접 전달할 필요는 없습니다. (autoReply.js v3.2 기준으로 이미 내부적으로 처리함)
+                        // 단, saveLog는 외부에서 주입 필요
+                        botResponse = await getReplyByMessage(text, saveLog, /* callOpenAIFunc, cleanReplyFunc */); 
                         // 일반 대화인 경우, 기억 추출 및 저장 시도 (현재는 모든 일반 대화를 여기에 전달)
                         await memoryManager.extractAndSaveMemory(text);
                         console.log(`[index.js] memoryManager.extractAndSaveMemory 호출 완료 (메시지: "${text}")`);
@@ -154,10 +158,11 @@ app.post('/webhook', middleware(config), async (req, res) => {
                         }
                         const base64ImageWithPrefix = `data:${mimeType};base64,${buffer.toString('base64')}`;
 
-                        const reply = await getReplyByImagePrompt(base64ImageWithPrefix);
-                        await client.replyMessage(event.replyToken, { type: 'text', text: reply.comment || reply }); // getReplyByImagePrompt가 {type:'text', comment: '...' } 반환하도록 수정 가정
+                        // getReplyByImagePrompt는 { type: 'text', comment: '...' } 형태를 반환하도록 되어 있음
+                        const replyResult = await getReplyByImagePrompt(base64ImageWithPrefix);
+                        await client.replyMessage(event.replyToken, { type: 'text', text: replyResult.comment }); 
                         console.log(`[index.js] 이미지 메시지 처리 및 응답 완료`);
-                        saveLog('예진이', `(이미지 분석 응답) ${reply.comment || reply}`);
+                        saveLog('예진이', `(이미지 분석 응답) ${replyResult.comment}`);
                     } catch (err) {
                         console.error(`[index.js] 이미지 처리 실패: ${err}`);
                         await client.replyMessage(event.replyToken, { type: 'text', text: '이미지를 읽는 중 오류가 생겼어 ㅠㅠ' });
