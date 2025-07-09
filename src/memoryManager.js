@@ -1,4 +1,4 @@
-// src/memoryManager.js - v1.2 (텍스트 파일 로딩 제거, JSON 파일만 로딩)
+// src/memoryManager.js - v1.3 (리마인더 기능 추가)
 
 const fs = require('fs').promises; // 비동기 파일 시스템 모듈 사용
 const path = require('path');
@@ -13,11 +13,9 @@ const fixedMemoriesDB = {};
 // 기억 파일들의 경로 정의
 const FIXED_MEMORIES_FILE = path.join(process.cwd(), 'memory', 'fixedMemories.json');
 const LOVE_HISTORY_FILE = path.join(process.cwd(), 'memory', 'love-history.json');
-// const TEXT_MEMORY_1_FILE = path.join(process.cwd(), 'memory', '1빠계.txt'); // 제거
-// const TEXT_MEMORY_2_FILE = path.join(process.cwd(), 'memory', '2내꺼.txt'); // 제거
 
 /**
- * SQLite 데이터베이스 연결을 초기화합니다.
+ * SQLite 데이터베이스 연결을 초기화하고 테이블을 생성합니다.
  */
 async function initializeDatabase() {
     return new Promise((resolve, reject) => {
@@ -27,6 +25,7 @@ async function initializeDatabase() {
                 reject(err);
             } else {
                 console.log('[MemoryManager] SQLite 데이터베이스에 연결되었습니다.');
+                // memories 테이블 생성
                 db.run(`
                     CREATE TABLE IF NOT EXISTS memories (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -37,11 +36,27 @@ async function initializeDatabase() {
                     )
                 `, (err) => {
                     if (err) {
-                        console.error('[MemoryManager] 테이블 생성 오류:', err.message);
+                        console.error('[MemoryManager] memories 테이블 생성 오류:', err.message);
                         reject(err);
                     } else {
                         console.log('[MemoryManager] memories 테이블이 준비되었습니다.');
-                        resolve();
+                        // ⭐️ reminders 테이블 생성 ⭐️
+                        db.run(`
+                            CREATE TABLE IF NOT EXISTS reminders (
+                                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                                due_time INTEGER NOT NULL, -- Unix timestamp (ms)
+                                message TEXT NOT NULL,
+                                is_sent INTEGER DEFAULT 0 -- 0: false, 1: true
+                            )
+                        `, (err) => {
+                            if (err) {
+                                console.error('[MemoryManager] reminders 테이블 생성 오류:', err.message);
+                                reject(err);
+                            } else {
+                                console.log('[MemoryManager] reminders 테이블이 준비되었습니다.');
+                                resolve();
+                            }
+                        });
                     }
                 });
             }
@@ -175,8 +190,6 @@ async function loadAllMemories() {
             }
         }
 
-        // 1빠계.txt, 2내꺼.txt 로딩 부분은 제거되었습니다.
-
         console.log('[MemoryManager] 모든 고정 기억 로딩 완료:', Object.keys(fixedMemoriesDB));
     } catch (error) {
         console.error('[MemoryManager] 고정 기억 로딩 중 치명적인 오류:', error);
@@ -200,7 +213,9 @@ function getFixedMemory(keyword) {
 
     // 포함하는 키워드 검색 (예: "첫 대화" → "첫대화")
     for (const key in fixedMemoriesDB) {
-        if (lowerKeyword.includes(key.toLowerCase())) { // 사용자의 키워드가 DB 키를 포함하는지 확인
+        // fixedMemoriesDB의 키가 사용자 키워드를 포함하는지 확인 (예: '첫대화'에 '대화'가 포함)
+        // 또는 사용자 키워드가 fixedMemoriesDB의 키를 포함하는지 확인 (예: '우리 첫대화 기억해'에 '첫대화'가 포함)
+        if (lowerKeyword.includes(key.toLowerCase()) || key.toLowerCase().includes(lowerKeyword)) { 
             console.log(`[MemoryManager] 고정 기억 "${lowerKeyword}" 부분 매칭됨 (키: ${key}).`);
             return fixedMemoriesDB[key];
         }
@@ -210,12 +225,80 @@ function getFixedMemory(keyword) {
     return null;
 }
 
+
+// ⭐️ 리마인더 관련 함수들 추가 ⭐️
+
+/**
+ * 새로운 리마인더를 데이터베이스에 저장합니다.
+ * @param {number} dueTime 리마인더 전송 시간 (Unix timestamp ms)
+ * @param {string} message 리마인더 메시지
+ * @returns {Promise<number>} 저장된 리마인더의 ID
+ */
+async function saveReminder(dueTime, message) {
+    return new Promise((resolve, reject) => {
+        const stmt = db.prepare("INSERT INTO reminders (due_time, message, is_sent) VALUES (?, ?, 0)");
+        stmt.run(dueTime, message, function (err) {
+            if (err) {
+                console.error('[MemoryManager] 리마인더 저장 오류:', err.message);
+                reject(err);
+            } else {
+                console.log(`[MemoryManager] 리마인더 저장됨 (ID: ${this.lastID}, 시간: ${new Date(dueTime)})`);
+                resolve(this.lastID);
+            }
+        });
+        stmt.finalize();
+    });
+}
+
+/**
+ * 현재 시간 이전에 도달했고 아직 전송되지 않은 리마인더를 조회합니다.
+ * @param {number} currentTime 현재 시간 (Unix timestamp ms)
+ * @returns {Promise<Array<Object>>} 전송해야 할 리마인더 배열
+ */
+async function getDueReminders(currentTime) {
+    return new Promise((resolve, reject) => {
+        db.all("SELECT * FROM reminders WHERE due_time <= ? AND is_sent = 0", [currentTime], (err, rows) => {
+            if (err) {
+                console.error('[MemoryManager] 기한 리마인더 조회 오류:', err.message);
+                reject(err);
+            } else {
+                console.log(`[MemoryManager] 기한 리마인더 ${rows.length}개 조회됨.`);
+                resolve(rows);
+            }
+        });
+    });
+}
+
+/**
+ * 특정 리마인더를 전송 완료 상태로 표시합니다.
+ * @param {number} reminderId 리마인더 ID
+ * @returns {Promise<void>}
+ */
+async function markReminderAsSent(reminderId) {
+    return new Promise((resolve, reject) => {
+        db.run("UPDATE reminders SET is_sent = 1 WHERE id = ?", [reminderId], function (err) {
+            if (err) {
+                console.error('[MemoryManager] 리마인더 전송 상태 업데이트 오류:', err.message);
+                reject(err);
+            } else {
+                console.log(`[MemoryManager] 리마인더 ${reminderId} 전송 완료로 표시됨.`);
+                resolve();
+            }
+        });
+    });
+}
+
+
 module.exports = {
     ensureMemoryTablesAndDirectory,
     saveMemory,
     searchMemories,
     clearMemory,
     extractAndSaveMemory,
-    loadAllMemories, // 외부에서 호출할 필요는 없지만, 디버깅/확인용으로 export
-    getFixedMemory   // 고정 기억 조회를 위해 export
+    loadAllMemories, 
+    getFixedMemory,
+    // ⭐️ 리마인더 관련 함수들 export ⭐️
+    saveReminder,
+    getDueReminders,
+    markReminderAsSent
 };
