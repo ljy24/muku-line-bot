@@ -1,59 +1,43 @@
-// ✅ index.js v1.25 - base64ImageWithPrefix 정의 범위 수정
+// ✅ index.js v1.26 - getReplyByImagePrompt 인자 개수 맞춤
 
 // 📦 필수 모듈 불러오기
-const fs = require('fs'); // 파일 시스템 모듈 (로그 저장용)
-const path = require('path'); // 경로 처리 모듈
-const { Client, middleware } = require('@line/bot-sdk'); // LINE Bot SDK
-const express = require('express'); // Express 프레임워크
-const moment = require('moment-timezone'); // Moment.js
-
-// .env 파일에서 환경 변수 로드 (최상단에서 로드하여 다른 모듈에서 사용 가능하도록)
+const fs = require('fs');
+const path = require('path');
+const { Client, middleware } = require('@line/bot-sdk');
+const express = require('express');
+const moment = require('moment-timezone');
 require('dotenv').config(); 
 
-// ./src/autoReply.js에서 일반 대화 응답 함수들과 상수를 불러옵니다.
 const {
-    getReplyByMessage,           // 사용자 텍스트 메시지에 대한 예진이의 답변 생성
-    getReplyByImagePrompt,       // 사용자가 보낸 이미지 메시지에 대한 예진이의 답변 생성
-    saveLog,                     // 메시지 로그를 파일에 저장하는 함수
-    cleanReply,                  // AI 응답 정제 함수
-    callOpenAI,                  // autoReply에 있는 callOpenAI 함수
-    BOT_NAME,                    // BOT_NAME 상수
-    USER_NAME,                   // USER_NAME 상수
-    getMoodEmoji,                // getMoodEmoji 함수
-    getMoodStatus                // getMoodStatus 함수
+    getReplyByMessage,
+    getReplyByImagePrompt,
+    saveLog,
+    cleanReply,
+    callOpenAI,
+    BOT_NAME,
+    USER_NAME,
+    getMoodEmoji,
+    getMoodStatus
 } = require('./src/autoReply');
 
-// 새로운 핸들러 모듈들을 불러옵니다.
-const memoryManager = require('./src/memoryManager'); // memoryManager 불러오기
-const commandHandler = require('./src/commandHandler'); // 명령어 처리 핸들러
-const memoryHandler = require('./src/memoryHandler');   // 기억 관련 명령어 처리 핸들러
-
-// 스케줄러 모듈 불러오기
+const memoryManager = require('./src/memoryManager');
+const commandHandler = require('./src/commandHandler');
+const memoryHandler = require('./src/memoryHandler');
 const { startAllSchedulers, updateLastUserMessageTime } = require('./src/scheduler');
-
-// 즉흥 사진 스케줄러 불러오기 (이 모듈은 Client 객체를 인자로 받도록 수정되어야 합니다.)
 const { startSpontaneousPhotoScheduler } = require('./src/spontaneousPhotoManager');
 
-
-// Express 애플리케이션을 생성합니다.
 const app = express();
 
-// LINE Bot SDK 설정을 정의합니다.
 const config = {
     channelAccessToken: process.env.LINE_ACCESS_TOKEN,
     channelSecret: process.env.LINE_CHANNEL_SECRET
 };
 
-// LINE 메시징 API 클라이언트를 초기화합니다.
-const client = new Client(config); // client 객체는 여기서 한 번만 생성
-
-// 타겟 사용자 ID를 환경 변수에서 가져옵니다.
+const client = new Client(config);
 const userId = process.env.TARGET_USER_ID;
 
-// 🌐 루트 경로('/')에 대한 GET 요청을 처리합니다.
 app.get('/', (_, res) => res.send('무쿠 살아있엉'));
 
-// 🚀 '/force-push' 경로에 대한 GET 요청을 처리합니다. (개발/테스트용)
 app.get('/force-push', async (req, res) => {
     try {
         const testMessage = "아저씨! 강제 푸시로 예진이가 메시지 보냈어!";
@@ -66,36 +50,24 @@ app.get('/force-push', async (req, res) => {
     }
 });
 
-// 🎣 LINE 웹훅 요청을 처리합니다.
 app.post('/webhook', middleware(config), async (req, res) => {
     try {
         const events = req.body.events || [];
         for (const event of events) {
-            // * 아저씨(TARGET_USER_ID)가 메시지를 보낸 경우, 마지막 메시지 시간을 업데이트합니다. *
             if (event.source.userId === userId) {
                 updateLastUserMessageTime();
                 console.log(`[Webhook] 아저씨 메시지 수신, 마지막 메시지 시간 업데이트: ${moment(Date.now()).format('HH:mm:ss')}`);
             }
-
             if (event.type === 'message') {
                 const message = event.message;
-
-                // 텍스트 메시지 처리
                 if (message.type === 'text') {
                     const text = message.text.trim();
                     saveLog('아저씨', text);
-
                     let botResponse = null;
-
-                    // 1. commandHandler로 먼저 메시지 처리 시도
                     botResponse = await commandHandler.handleCommand(text, saveLog, callOpenAI, cleanReply, memoryManager.getFixedMemory);
-
-                    // 2. memoryHandler로 메시지 처리 시도
                     if (!botResponse) {
                         botResponse = await memoryHandler.handleMemoryCommand(text, saveLog, callOpenAI, cleanReply, memoryManager.getFixedMemory); 
                     }
-
-                    // 3. 모든 특정 핸들러에서 처리되지 않았다면, 일반 대화 응답 생성
                     if (!botResponse) {
                         botResponse = await getReplyByMessage(text, saveLog, callOpenAI, cleanReply); 
                         await memoryManager.extractAndSaveMemory(text);
@@ -103,8 +75,6 @@ app.post('/webhook', middleware(config), async (req, res) => {
                     } else {
                         console.log(`[index.js] 특정 명령어로 처리되었으므로 메모리 자동 저장에서 제외됩니다.`);
                     }
-
-                    // 응답 메시지 전송
                     let replyMessages = [];
                     if (botResponse.type === 'image') { 
                         replyMessages.push({
@@ -128,7 +98,6 @@ app.post('/webhook', middleware(config), async (req, res) => {
                         console.error('❌ [index.js] 예상치 못한 봇 응답 타입:', botResponse.type);
                         replyMessages.push({ type: 'text', text: '지금 잠시 문제가 생겼어 ㅠㅠ' });
                     }
-
                     if (replyMessages.length > 0) {
                         await client.replyMessage(event.replyToken, replyMessages);
                         console.log(`[index.js] 봇 응답 전송 완료 (타입: ${botResponse.type || 'unknown'})`);
@@ -136,9 +105,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
                         console.warn('[index.js] 전송할 메시지가 없습니다.');
                     }
                 }
-                // * 사용자가 이미지를 보낸 경우 처리 *
-                // ⭐️ 이 else if 블록 안에 base64ImageWithPrefix 변수가 정의되고 사용되도록 확실히 합니다. ⭐️
-                else if (message.type === 'image') { // <-- 'else if'로 명확히 분리
+                else if (message.type === 'image') { // <-- 여기만 수정!
                     try {
                         const stream = await client.getMessageContent(message.id);
                         const chunks = [];
@@ -153,9 +120,10 @@ app.post('/webhook', middleware(config), async (req, res) => {
                         } else if (buffer.length > 2 && buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46) {
                             mimeType = 'image/gif';
                         }
-                        const base64ImageWithPrefix = `data:${mimeType};base64,${buffer.toString('base64')}`; // 여기서 정의됨
+                        const base64ImageWithPrefix = `data:${mimeType};base64,${buffer.toString('base64')}`;
 
-                        const replyResult = await getReplyByImagePrompt(base64ImageWithPrefix, callOpenAI, cleanReply);
+                        // ⭐️ 인자 4개로 맞춰줌!
+                        const replyResult = await getReplyByImagePrompt(base64ImageWithPrefix, callOpenAI, cleanReply, saveLog);
                         await client.replyMessage(event.replyToken, { type: 'text', text: replyResult.comment }); 
                         console.log(`[index.js] 이미지 메시지 처리 및 응답 완료`);
                         saveLog('예진이', `(이미지 분석 응답) ${replyResult.comment}`);
@@ -169,25 +137,17 @@ app.post('/webhook', middleware(config), async (req, res) => {
         res.status(200).send('OK');
     } catch (err) {
         console.error(`[index.js] 웹훅 처리 에러: ${err}`);
-        res.status(200).send('OK'); // 에러가 발생해도 200 OK를 반환하여 LINE 서버에 재시도 요청을 보내지 않도록 합니다.
+        res.status(200).send('OK');
     }
 });
-
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
     console.log(`무쿠 서버 스타트! 포트: ${PORT}`);
-    
-    // ✨ 수정: ensureMemoryTablesAndDirectory 호출 (DB와 파일 디렉토리/초기 파일 모두 처리) ✨
     await memoryManager.ensureMemoryTablesAndDirectory();
     console.log('메모리 시스템 초기화 완료 (DB 및 파일).');
-
-    // 모든 스케줄러 시작
     startAllSchedulers(client, userId);
     console.log('✅ 모든 스케줄러 시작!');
-
-    // 🎯 예진이 즉흥 사진 스케줄러 시작 - 보고싶을 때마다 사진 보내기! 💕
-    // startSpontaneousPhotoScheduler 함수에 client 객체와 함께 callOpenAI, cleanReply도 직접 전달
     startSpontaneousPhotoScheduler(client, userId, saveLog, callOpenAI, cleanReply);
     console.log('💕 예진이가 보고싶을 때마다 사진 보낼 준비 완료!');
 });
