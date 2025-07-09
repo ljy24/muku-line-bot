@@ -39,7 +39,7 @@ const memoryManager = require('./src/memoryManager');
 const { getOmoideReply, cleanReply } = require('./memory/omoide'); // cleanReply도 함께 불러옵니다.
 
 // spontaneousPhotoManager.js에서 즉흥 사진 스케줄러 함수를 불러옵니다.
-const { startSpontaneousPhotoScheduler } = require('./src/spontaneousPhotoManager');
+//const { startSpontaneousPhotoScheduler } = require('./src/spontaneousPhotoManager');
 
 // 스케줄러 모듈 불러오기 (이제 모든 스케줄링 로직은 여기에)
 const { startAllSchedulers, updateLastUserMessageTime } = require('./src/scheduler');
