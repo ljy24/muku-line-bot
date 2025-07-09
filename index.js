@@ -1,4 +1,4 @@
-// ✅ index.js v1.24 - BOT_NAME, USER_NAME 등 autoReply에서 import
+// ✅ index.js v1.25 - base64ImageWithPrefix 정의 범위 수정
 
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈 (로그 저장용)
@@ -17,10 +17,10 @@ const {
     saveLog,                     // 메시지 로그를 파일에 저장하는 함수
     cleanReply,                  // AI 응답 정제 함수
     callOpenAI,                  // autoReply에 있는 callOpenAI 함수
-    BOT_NAME,                    // ⭐️ BOT_NAME 상수 import ⭐️
-    USER_NAME,                   // ⭐️ USER_NAME 상수 import ⭐️
-    getMoodEmoji,                // getMoodEmoji 함수 import
-    getMoodStatus                // getMoodStatus 함수 import
+    BOT_NAME,                    // BOT_NAME 상수
+    USER_NAME,                   // USER_NAME 상수
+    getMoodEmoji,                // getMoodEmoji 함수
+    getMoodStatus                // getMoodStatus 함수
 } = require('./src/autoReply');
 
 // 새로운 핸들러 모듈들을 불러옵니다.
@@ -71,15 +71,16 @@ app.post('/webhook', middleware(config), async (req, res) => {
     try {
         const events = req.body.events || [];
         for (const event of events) {
+            // * 아저씨(TARGET_USER_ID)가 메시지를 보낸 경우, 마지막 메시지 시간을 업데이트합니다. *
+            if (event.source.userId === userId) {
+                updateLastUserMessageTime();
+                console.log(`[Webhook] 아저씨 메시지 수신, 마지막 메시지 시간 업데이트: ${moment(Date.now()).format('HH:mm:ss')}`);
+            }
+
             if (event.type === 'message') {
                 const message = event.message;
 
-                // * 아저씨(TARGET_USER_ID)가 메시지를 보낸 경우, 마지막 메시지 시간을 업데이트합니다. *
-                if (event.source.userId === userId) {
-                    updateLastUserMessageTime();
-                    console.log(`[Webhook] 아저씨 메시지 수신, 마지막 메시지 시간 업데이트: ${moment(Date.now()).format('HH:mm:ss')}`);
-                }
-
+                // 텍스트 메시지 처리
                 if (message.type === 'text') {
                     const text = message.text.trim();
                     saveLog('아저씨', text);
@@ -135,9 +136,9 @@ app.post('/webhook', middleware(config), async (req, res) => {
                         console.warn('[index.js] 전송할 메시지가 없습니다.');
                     }
                 }
-
                 // * 사용자가 이미지를 보낸 경우 처리 *
-                if (message.type === 'image') {
+                // ⭐️ 이 else if 블록 안에 base64ImageWithPrefix 변수가 정의되고 사용되도록 확실히 합니다. ⭐️
+                else if (message.type === 'image') { // <-- 'else if'로 명확히 분리
                     try {
                         const stream = await client.getMessageContent(message.id);
                         const chunks = [];
@@ -152,7 +153,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
                         } else if (buffer.length > 2 && buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46) {
                             mimeType = 'image/gif';
                         }
-                        const base64ImageWithPrefix = `data:${mimeType};base64,${buffer.toString('base64')}`;
+                        const base64ImageWithPrefix = `data:${mimeType};base64,${buffer.toString('base64')}`; // 여기서 정의됨
 
                         const replyResult = await getReplyByImagePrompt(base64ImageWithPrefix, callOpenAI, cleanReply);
                         await client.replyMessage(event.replyToken, { type: 'text', text: replyResult.comment }); 
