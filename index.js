@@ -1,4 +1,4 @@
-// ✅ index.js v1.20 - 파일 분리 및 하이브리드 memoryManager 연동
+// ✅ index.js v1.21 - 파일 분리 및 하이브리드 memoryManager 연동
 
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈 (로그 저장용)
@@ -15,7 +15,8 @@ const {
     getReplyByMessage,           // 사용자 텍스트 메시지에 대한 예진이의 답변 생성
     getReplyByImagePrompt,       // 사용자가 보낸 이미지 메시지에 대한 예진이의 답변 생성
     saveLog,                     // 메시지 로그를 파일에 저장하는 함수
-    cleanReply                   // AI 응답 정제 함수
+    cleanReply,                  // AI 응답 정제 함수
+    callOpenAI                   // autoReply에 있는 callOpenAI 함수도 직접 가져와서 사용합니다.
 } = require('./src/autoReply');
 
 // 새로운 핸들러 모듈들을 불러옵니다.
@@ -87,16 +88,17 @@ app.post('/webhook', middleware(config), async (req, res) => {
 
                     // 2. 명령어 핸들러에서 처리되지 않았다면, 기억 핸들러로 메시지 처리 시도
                     if (!botResponse) {
-                        botResponse = await memoryHandler.handleMemoryCommand(text, saveLog);
+                        // memoryHandler.handleMemoryCommand에도 callOpenAI와 cleanReply가 필요할 수 있습니다.
+                        // 현재 제공된 memoryHandler.js가 없으므로 추후 필요시 수정합니다.
+                        botResponse = await memoryHandler.handleMemoryCommand(text, saveLog, callOpenAI, cleanReply); 
                     }
 
                     // 3. 모든 특정 핸들러에서 처리되지 않았다면, 일반 대화 응답 생성
                     if (!botResponse) {
                         // getReplyByMessage에 필요한 인자 전달: saveLogFunc, callOpenAIFunc, cleanReplyFunc
-                        // autoReply 내부에서 callOpenAI, cleanReply는 해당 모듈 내부에 이미 있으므로,
-                        // index.js에서 직접 전달할 필요는 없습니다. (autoReply.js v3.2 기준으로 이미 내부적으로 처리함)
-                        // 단, saveLog는 외부에서 주입 필요
-                        botResponse = await getReplyByMessage(text, saveLog, /* callOpenAIFunc, cleanReplyFunc */); 
+                        // autoReply.js 내에서 callOpenAI, cleanReply를 import 하므로 직접 전달하지 않아도 됩니다.
+                        // 하지만 명시적으로 전달하는 것은 좋은 습관입니다.
+                        botResponse = await getReplyByMessage(text, saveLog, callOpenAI, cleanReply); 
                         // 일반 대화인 경우, 기억 추출 및 저장 시도 (현재는 모든 일반 대화를 여기에 전달)
                         await memoryManager.extractAndSaveMemory(text);
                         console.log(`[index.js] memoryManager.extractAndSaveMemory 호출 완료 (메시지: "${text}")`);
@@ -106,9 +108,8 @@ app.post('/webhook', middleware(config), async (req, res) => {
 
                     // 응답 메시지 전송
                     let replyMessages = [];
-                    // getReplyByMessage에서 반환되는 객체는 { type: 'text', comment: '...' }
-                    // 또는 { type: 'image', originalContentUrl: '...', previewImageUrl: '...', altText: '...', caption: '...' } 형태
-                    if (botResponse.type === 'image') { // 이미지 타입일 경우
+                    // getReplyByMessage, getConceptPhotoReply, getOmoideReply는 모두 동일한 이미지/텍스트 객체 형태를 반환
+                    if (botResponse.type === 'image') { 
                         replyMessages.push({
                             type: 'image',
                             originalContentUrl: botResponse.originalContentUrl,
@@ -122,7 +123,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
                                 text: botResponse.caption
                             });
                         }
-                    } else if (botResponse.type === 'text') { // 텍스트 타입일 경우
+                    } else if (botResponse.type === 'text') { 
                         replyMessages.push({
                             type: 'text',
                             text: botResponse.comment
@@ -158,8 +159,8 @@ app.post('/webhook', middleware(config), async (req, res) => {
                         }
                         const base64ImageWithPrefix = `data:${mimeType};base64,${buffer.toString('base64')}`;
 
-                        // getReplyByImagePrompt는 { type: 'text', comment: '...' } 형태를 반환하도록 되어 있음
-                        const replyResult = await getReplyByImagePrompt(base64ImageWithPrefix);
+                        // getReplyByImagePrompt에 필요한 인자 전달: callOpenAIFunc, cleanReplyFunc
+                        const replyResult = await getReplyByImagePrompt(base64ImageWithPrefix, callOpenAI, cleanReply);
                         await client.replyMessage(event.replyToken, { type: 'text', text: replyResult.comment }); 
                         console.log(`[index.js] 이미지 메시지 처리 및 응답 완료`);
                         saveLog('예진이', `(이미지 분석 응답) ${replyResult.comment}`);
