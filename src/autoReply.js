@@ -797,7 +797,7 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
         getFormattedMemoriesForAI,
         getMemoryListForSharing,
         setCurrentMood,
-        getMoodStatus, 
+        getCurrentMoodStatus, 
         updatePeriodStatus,
         isPeriodActive,
         callOpenAI,
