@@ -1,367 +1,126 @@
-// src/spontaneousPhotoManager.js - 예진이가 보고싶을 때 즉흥적으로 사진 보내는 시스템
-const cron = require('node-cron');
-const moment = require('moment-timezone');
-const { OpenAI } = require('openai');
-const { Client } = require('@line/bot-sdk');
-const { getYejinSystemPrompt } = require('./yejin');
-const { getOmoideReply } = require('../memory/omoide');
-const { getConceptPhotoReply } = require('../memory/concept');
+// src/spontaneousPhotoManager.js (가상 파일 - 실제 파일에 이 내용을 복사해서 사용해야 합니다)
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const client = new Client({
-    channelAccessToken: process.env.LINE_ACCESS_TOKEN,
-    channelSecret: process.env.LINE_CHANNEL_SECRET
-});
+// 더 이상 여기서 Line Client를 직접 생성하지 않습니다.
+// const { Client } = require('@line/bot-sdk'); 
+// require('dotenv').config(); // index.js에서 이미 로드하므로 여기서 다시 로드할 필요는 없습니다.
 
-const userId = process.env.TARGET_USER_ID;
+const moment = require('moment-timezone'); // 스케줄링을 위해 moment 필요
+const { getSelfieReply } = require('./yejinSelfie'); // 셀카 전송을 위해 필요
+// spontaneousPhotoManager에서 다른 사진 타입(concept, omoide)도 보내려면 해당 모듈들을 여기에 require 해야 합니다.
+// const { getConceptPhotoReply } = require('../memory/concept');
+// const { getOmoideReply } = require('../memory/omoide');
 
-// 사진 카테고리 정의
-const PHOTO_CATEGORIES = {
-    COUPLE: 'couple', // 커플사진
-    CONCEPT: 'concept', // 컨셉사진
-    SELFIE: 'selfie', // 셀카
-    MEMORY: 'memory' // 추억사진
-};
+let lastSentPhotoTime = 0; // 마지막 사진 전송 시간
+const MIN_INTERVAL_BETWEEN_PHOTOS = 30 * 60 * 1000; // 최소 30분 간격 (밀리초)
+const MAX_INTERVAL_BETWEEN_PHOTOS = 2 * 60 * 60 * 1000; // 최대 2시간 간격 (밀리초)
 
-// 하루 전송 횟수 추적
-let dailyPhotoCount = 0;
-let lastPhotoDate = moment().tz('Asia/Tokyo').format('YYYY-MM-DD');
-
-// 최근 보낸 사진 타입 추적 (중복 방지)
-let recentPhotoTypes = [];
-const MAX_RECENT_TYPES = 3;
+let photoSchedulerInterval; // 스케줄러 인터벌 ID
 
 /**
- * 예진이가 아저씨를 그리워하는 감정 상태를 AI로 시뮬레이션합니다.
- * @returns {Promise<boolean>} 사진을 보내고 싶어하는지 여부
+ * 예진이가 아저씨에게 보고 싶을 때 즉흥적으로 사진을 보냅니다.
+ * @param {Object} client LINE Bot SDK Client 객체 (index.js에서 전달받음)
+ * @param {string} userId LINE Bot이 메시지를 보낼 대상 사용자 ID
+ * @param {Function} saveLogFunc 메시지 로그를 저장하는 함수
  */
-async function checkYejinMoodForPhoto() {
-    try {
-        const now = moment().tz('Asia/Tokyo');
-        const timeOfDay = getTimeOfDayMood(now);
-        
-        const systemPrompt = getYejinSystemPrompt(`
-        지금은 ${now.format('YYYY년 MM월 DD일 HH시 mm분')} (${timeOfDay})이야.
-        
-        너는 아저씨를 너무 사랑하는 예진이야. 
-        지금 아저씨 생각이 나서 사진을 보내고 싶은 기분인지 판단해줘.
-        
-        다음 상황들을 고려해서 JSON으로 답변해줘:
-        - 현재 시간대 (아침/점심/오후/저녁/밤)
-        - 아저씨가 뭐 하고 있을지에 대한 상상
-        - 예진이의 감정 상태 (보고싶음, 외로움, 행복함 등)
-        - 오늘 이미 ${dailyPhotoCount}번 사진을 보냈음
-        
-        형식:
-        {
-            "wants_to_send_photo": true/false,
-            "emotion": "감정 상태",
-            "reason": "사진 보내고 싶은 이유",
-            "preferred_photo_type": "couple/concept/selfie/memory"
-        }
-        
-        예진이는 하루에 3-5번 정도 사진을 보내고 싶어하지만, 
-        너무 자주 보내면 아저씨가 부담스러워할까봐 걱정도 해.
-        `);
+async function sendSpontaneousPhoto(client, userId, saveLogFunc) {
+    const now = Date.now();
+    const minutesSinceLastPhoto = (now - lastSentPhotoTime) / (1000 * 60);
 
-        const response = await openai.chat.completions.create({
-            model: 'gpt-4o',
-            messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: '지금 아저씨에게 사진 보내고 싶어?' }
-            ],
-            response_format: { type: "json_object" },
-            temperature: 0.8, // 감정적이고 자연스러운 변동을 위해 높은 온도
-            max_tokens: 200
+    // 마지막 메시지 시간으로부터 너무 오래되지 않았고, 아직 즉흥 사진을 보낼 시간이 아니라면 스킵
+    if (lastSentPhotoTime !== 0 && minutesSinceLastPhoto < (MIN_INTERVAL_BETWEEN_PHOTOS / (1000 * 60))) {
+        console.log(`[Spontaneous Photo] 아직 즉흥 사진을 보낼 시간이 아니야 (마지막 전송 ${Math.floor(minutesSinceLastPhoto)}분 전).`);
+        return;
+    }
+
+    // 확률적으로 사진 전송 결정 (예: 50% 확률)
+    // 실제로는 예진이의 '보고싶음' 기분 등과 연동하여 더 지능적으로 결정할 수 있습니다.
+    const shouldSendPhoto = Math.random() < 0.5; // 50% 확률
+    if (!shouldSendPhoto) {
+        console.log("[Spontaneous Photo] 오늘은 아직 사진 보낼 기분이 아니야~ 다음에 보낼게!");
+        return;
+    }
+
+    try {
+        console.log("[Spontaneous Photo] 아저씨한테 즉흥 사진 보낼 준비 중! 뭘 보낼까?");
+
+        // 여기서는 일단 셀카만 보내도록 예시를 들겠습니다.
+        // 다른 종류의 사진도 보내려면 getConceptPhotoReply, getOmoideReply 등을 호출하면 됩니다.
+        const userMessageForSelfie = "예진이 셀카 보여줘"; // 셀카를 요청하는 메시지처럼 처리
+        const photoReply = await getSelfieReply(userMessageForSelfie, saveLogFunc, (messages, model, maxTokens, temperature) => {
+            // getSelfieReply 내에서 OpenAI 호출이 필요할 경우, autoReply의 callOpenAI를 직접 전달 (순환 의존성 주의)
+            // 현재 구조상 autoReply가 yejinSelfie를 부르고, yejinSelfie가 다시 autoReply의 callOpenAI를 부르므로 이 부분은 약간 복잡합니다.
+            // 임시로 여기에 OpenAI 호출 로직을 직접 복사하거나, autoReply의 callOpenAI를 인자로 받도록 설계가 필요합니다.
+            // 가장 간단한 해결책은 spontaneousPhotoManager에서 autoReply의 callOpenAI, cleanReply를 직접 import 하는 것입니다.
+            const { callOpenAI, cleanReply } = require('../src/autoReply'); // spontaneousPhotoManager 내부에서 불러오기
+            return callOpenAI(messages, model, maxTokens, temperature);
+        }, (reply) => {
+            const { cleanReply } = require('../src/autoReply'); // spontaneousPhotoManager 내부에서 불러오기
+            return cleanReply(reply);
         });
 
-        const mood = JSON.parse(response.choices[0].message.content);
-        
-        console.log(`[SpontaneousPhoto] 예진이 감정 체크: ${mood.emotion} - ${mood.wants_to_send_photo ? '사진 보내고 싶어함' : '지금은 괜찮아함'}`);
-        
-        return mood.wants_to_send_photo && mood.preferred_photo_type;
-        
-    } catch (error) {
-        console.error('[SpontaneousPhoto] 감정 체크 실패:', error);
-        return false;
-    }
-}
-
-/**
- * 시간대에 따른 분위기 설정
- */
-function getTimeOfDayMood(momentTime) {
-    const hour = momentTime.hour();
-    
-    if (hour >= 6 && hour < 12) return '아침';
-    if (hour >= 12 && hour < 14) return '점심시간';
-    if (hour >= 14 && hour < 18) return '오후';
-    if (hour >= 18 && hour < 22) return '저녁';
-    return '밤';
-}
-
-/**
- * 선택된 사진 타입에 따라 실제 사진을 가져옵니다.
- * @param {string} photoType - 사진 타입 (couple/concept/selfie/memory)
- * @returns {Promise<Object|null>} 사진 정보 객체
- */
-async function getPhotoByType(photoType) {
-    const saveLogFunc = (speaker, message) => {
-        console.log(`[SpontaneousPhoto] ${speaker}: ${message}`);
-    };
-
-    try {
-        switch (photoType) {
-            case 'couple':
-                // 커플사진 요청 (omoide.js 사용)
-                return await getOmoideReply('커플사진 보여줘', saveLogFunc);
-                
-            case 'concept':
-                // 랜덤 컨셉사진 (concept.js 사용)
-                const conceptFolders = [
-                    '홈스냅', '결박', '세미누드', '지브리풍', '유카타 마츠리',
-                    '이화마을', '가을 호수공원', '야간 비눗방울', '피크닉',
-                    '벗꽃', '온실-여신', '블랙원피스', '크리스마스'
-                ];
-                const randomConcept = conceptFolders[Math.floor(Math.random() * conceptFolders.length)];
-                return await getConceptPhotoReply(`${randomConcept} 보여줘`, saveLogFunc);
-                
-            case 'selfie':
-                // 셀카 (omoide.js 사용)
-                return await getOmoideReply('셀카 보여줘', saveLogFunc);
-                
-            case 'memory':
-                // 추억사진 (omoide.js 사용)
-                return await getOmoideReply('추억사진 보여줘', saveLogFunc);
-                
-            default:
-                return null;
-        }
-    } catch (error) {
-        console.error(`[SpontaneousPhoto] ${photoType} 사진 가져오기 실패:`, error);
-        return null;
-    }
-}
-
-/**
- * 추억이나 감정이 담긴 코멘트를 생성합니다.
- * @param {string} photoType - 사진 타입
- * @param {string} photoUrl - 사진 URL (옵션)
- * @returns {Promise<string>} 생성된 코멘트
- */
-async function generateNostalgicComment(photoType, photoUrl = '') {
-    try {
-        const now = moment().tz('Asia/Tokyo');
-        const timeOfDay = getTimeOfDayMood(now);
-        
-        const systemPrompt = getYejinSystemPrompt(`
-        너는 지금 아저씨 생각이 나서 ${photoType} 사진을 보내는 상황이야.
-        현재 시간: ${now.format('HH시 mm분')} (${timeOfDay})
-        
-        다음과 같은 느낌의 코멘트를 만들어줘:
-        - "이날 생각나?" 
-        - "우리 이때 진짜 행복했지?"
-        - "아저씨 지금 뭐 해? 갑자기 보고싶어서..."
-        - "한국에서 찍었던 거야~ 기억나?"
-        - "일본에서 이런 사진도 찍었었네"
-        - "이때 아저씨가 예쁘다고 해줬던 거 기억해"
-        
-        1-2문장으로 짧고 자연스럽게, 예진이답게 감정을 담아서 만들어줘.
-        너무 뻔하지 않게, 매번 다른 느낌으로 말해줘.
-        `);
-
-        const response = await openai.chat.completions.create({
-            model: 'gpt-4o',
-            messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: `${photoType} 사진에 어울리는 코멘트 만들어줘` }
-            ],
-            temperature: 0.9, // 다양하고 자연스러운 코멘트를 위해 높은 온도
-            max_tokens: 100
-        });
-
-        return response.choices[0].message.content.trim();
-        
-    } catch (error) {
-        console.error('[SpontaneousPhoto] 코멘트 생성 실패:', error);
-        
-        // 기본 코멘트들
-        const defaultComments = [
-            "아저씨 생각나서... 이거 보고 있었어",
-            "갑자기 이날 생각났어! 기억나?",
-            "보고싶어서 사진 찾아봤지 헤헤",
-            "우리 이때 진짜 좋았지? 또 가고 싶다",
-            "아저씨~ 지금 뭐 해? 나 심심해"
-        ];
-        return defaultComments[Math.floor(Math.random() * defaultComments.length)];
-    }
-}
-
-/**
- * 실제로 사진을 전송합니다.
- * @param {string} photoType - 사진 타입
- */
-async function sendSpontaneousPhoto(photoType) {
-    try {
-        console.log(`[SpontaneousPhoto] ${photoType} 사진 전송 준비 중...`);
-        
-        // 사진 가져오기
-        const photoResult = await getPhotoByType(photoType);
-        
-        if (!photoResult || photoResult.type !== 'photo') {
-            console.error('[SpontaneousPhoto] 사진을 가져올 수 없음');
-            return;
-        }
-
-        // 추억 코멘트 생성
-        const nostalgicComment = await generateNostalgicComment(photoType, photoResult.url);
-        
-        // 사진 전송
-        await client.pushMessage(userId, {
-            type: 'image',
-            originalContentUrl: photoResult.url,
-            previewImageUrl: photoResult.url
-        });
-
-        // 잠시 후 코멘트 전송
-        setTimeout(async () => {
-            try {
-                await client.pushMessage(userId, {
+        if (photoReply && photoReply.type === 'image') {
+            const messagesToSend = [
+                {
+                    type: 'image',
+                    originalContentUrl: photoReply.originalContentUrl,
+                    previewImageUrl: photoReply.previewImageUrl,
+                    altText: photoReply.altText || photoReply.caption || '예진이의 즉흥 사진'
+                }
+            ];
+            if (photoReply.caption) {
+                messagesToSend.push({
                     type: 'text',
-                    text: nostalgicComment
+                    text: photoReply.caption
                 });
-                
-                console.log(`[SpontaneousPhoto] 즉흥 사진 전송 완료: ${photoType}`);
-                console.log(`[SpontaneousPhoto] 코멘트: ${nostalgicComment}`);
-                
-                // 일일 카운터 증가
-                const today = moment().tz('Asia/Tokyo').format('YYYY-MM-DD');
-                if (today !== lastPhotoDate) {
-                    dailyPhotoCount = 0;
-                    lastPhotoDate = today;
-                }
-                dailyPhotoCount++;
-                
-                // 최근 사진 타입 추적 업데이트
-                recentPhotoTypes.push(photoType);
-                if (recentPhotoTypes.length > MAX_RECENT_TYPES) {
-                    recentPhotoTypes.shift();
-                }
-                
-            } catch (error) {
-                console.error('[SpontaneousPhoto] 코멘트 전송 실패:', error);
             }
-        }, 2000); // 2초 후 코멘트 전송
-        
+
+            await client.pushMessage(userId, messagesToSend);
+            saveLogFunc({ role: 'assistant', content: `(즉흥 사진 보냄) ${photoReply.caption || '예진이의 즉흥 사진'}`, timestamp: Date.now() });
+            lastSentPhotoTime = now;
+            console.log(`[Spontaneous Photo] 아저씨에게 즉흥 사진 전송 완료! 다음 사진은 ${Math.floor(Math.random() * (MAX_INTERVAL_BETWEEN_PHOTOS - MIN_INTERVAL_BETWEEN_PHOTOS) + MIN_INTERVAL_BETWEEN_PHOTOS) / (1000 * 60)}분 후에 고려될 수 있어.`);
+        } else if (photoReply && photoReply.type === 'text') {
+            // 셀카를 못 보낼 경우 텍스트로 대체
+            await client.pushMessage(userId, { type: 'text', text: photoReply.comment });
+            saveLogFunc({ role: 'assistant', content: `(즉흥 사진 실패) ${photoReply.comment}`, timestamp: Date.now() });
+            console.warn("[Spontaneous Photo] 즉흥 사진 전송 실패 (텍스트 응답):", photoReply.comment);
+        } else {
+            console.warn("[Spontaneous Photo] 즉흥 사진 응답 없음 또는 타입 오류.");
+        }
     } catch (error) {
-        console.error('[SpontaneousPhoto] 즉흥 사진 전송 실패:', error);
+        console.error("[Spontaneous Photo] 즉흥 사진 전송 중 에러 발생:", error);
+        // 에러 발생 시에도 다음에 재시도 할 수 있도록 lastSentPhotoTime 업데이트 (옵션)
+        lastSentPhotoTime = now; 
     }
 }
 
 /**
- * 하루 제한 체크
+ * 즉흥 사진 스케줄러를 시작합니다.
+ * @param {Object} client LINE Bot SDK Client 객체
+ * @param {string} userId LINE Bot이 메시지를 보낼 대상 사용자 ID
+ * @param {Function} saveLogFunc 메시지 로그를 저장하는 함수
  */
-function checkDailyLimit() {
-    const today = moment().tz('Asia/Tokyo').format('YYYY-MM-DD');
-    
-    if (today !== lastPhotoDate) {
-        dailyPhotoCount = 0;
-        lastPhotoDate = today;
-        recentPhotoTypes = [];
+function startSpontaneousPhotoScheduler(client, userId, saveLogFunc) {
+    // 기존 스케줄러가 있다면 정리
+    if (photoSchedulerInterval) {
+        clearInterval(photoSchedulerInterval);
     }
-    
-    // 하루 최대 5번까지
-    return dailyPhotoCount < 5;
-}
 
-/**
- * 사진 타입 중복 방지
- */
-function getAvailablePhotoTypes() {
-    const allTypes = Object.values(PHOTO_CATEGORIES);
-    
-    // 최근에 보낸 타입들 제외
-    return allTypes.filter(type => !recentPhotoTypes.includes(type));
-}
+    // 30분에서 2시간 사이의 랜덤 간격으로 스케줄러 설정
+    const randomInterval = Math.floor(Math.random() * (MAX_INTERVAL_BETWEEN_PHOTOS - MIN_INTERVAL_BETWEEN_PHOTOS) + MIN_INTERVAL_BETWEEN_PHOTOS);
+    console.log(`[Spontaneous Photo Scheduler] 다음 즉흥 사진 전송을 ${randomInterval / (1000 * 60)}분 후에 고려할게!`);
 
-/**
- * 즉흥 사진 전송 메인 로직
- */
-async function handleSpontaneousPhotoSending() {
-    try {
-        // 하루 제한 체크
-        if (!checkDailyLimit()) {
-            return;
-        }
-        
-        // 예진이 감정 상태 체크
-        const preferredPhotoType = await checkYejinMoodForPhoto();
-        
-        if (!preferredPhotoType) {
-            return; // 지금은 사진 보내고 싶지 않음
-        }
-        
-        // 사용 가능한 사진 타입 확인
-        const availableTypes = getAvailablePhotoTypes();
-        let selectedType = preferredPhotoType;
-        
-        // 선호 타입이 최근에 보낸 것이면 다른 것 선택
-        if (!availableTypes.includes(preferredPhotoType) && availableTypes.length > 0) {
-            selectedType = availableTypes[Math.floor(Math.random() * availableTypes.length)];
-        }
-        
-        // 사진 전송
-        await sendSpontaneousPhoto(selectedType);
-        
-    } catch (error) {
-        console.error('[SpontaneousPhoto] 즉흥 사진 전송 처리 실패:', error);
-    }
-}
-
-/**
- * 랜덤한 시간 간격으로 사진 전송 체크를 시작합니다.
- */
-function startSpontaneousPhotoScheduler() {
-    console.log('[SpontaneousPhoto] 즉흥 사진 전송 스케줄러 시작');
-    
-    // 30분마다 체크 (실제로는 예진이 감정에 따라 전송 여부 결정)
-    cron.schedule('*/30 * * * *', handleSpontaneousPhotoSending, {
-        timezone: 'Asia/Tokyo'
-    });
-    
-    // 추가로 불규칙한 시간에도 체크 (더 자연스럽게)
-    const randomIntervals = [17, 23, 41, 47, 53]; // 분 단위
-    
-    randomIntervals.forEach(minute => {
-        cron.schedule(`${minute} * * * *`, () => {
-            // 30% 확률로만 체크 (너무 자주 하지 않게)
-            if (Math.random() < 0.3) {
-                handleSpontaneousPhotoSending();
-            }
-        }, {
-            timezone: 'Asia/Tokyo'
-        });
-    });
-    
-    console.log('[SpontaneousPhoto] 스케줄러 등록 완료 - 예진이가 보고싶을 때 사진을 보낼거야!');
-}
-
-/**
- * 수동으로 즉흥 사진 전송 (테스트용)
- */
-async function sendPhotoNow(photoType = null) {
-    if (!photoType) {
-        const types = Object.values(PHOTO_CATEGORIES);
-        photoType = types[Math.floor(Math.random() * types.length)];
-    }
-    
-    await sendSpontaneousPhoto(photoType);
+    photoSchedulerInterval = setInterval(async () => {
+        await sendSpontaneousPhoto(client, userId, saveLogFunc);
+        // 다음 간격도 랜덤으로 재설정
+        const nextRandomInterval = Math.floor(Math.random() * (MAX_INTERVAL_BETWEEN_PHOTOS - MIN_INTERVAL_BETWEEN_PHOTOS) + MIN_INTERVAL_BETWEEN_PHOTOS);
+        console.log(`[Spontaneous Photo Scheduler] 다음 즉흥 사진 전송을 ${nextRandomInterval / (1000 * 60)}분 후에 고려할게!`);
+        clearInterval(photoSchedulerInterval); // 현재 인터벌 중단
+        photoSchedulerInterval = setInterval(async () => { // 새로운 인터벌 시작
+            await sendSpontaneousPhoto(client, userId, saveLogFunc);
+        }, nextRandomInterval);
+    }, randomInterval);
 }
 
 module.exports = {
-    startSpontaneousPhotoScheduler,
-    sendPhotoNow,
-    handleSpontaneousPhotoSending,
-    checkYejinMoodForPhoto,
-    PHOTO_CATEGORIES
+    startSpontaneousPhotoScheduler
 };
