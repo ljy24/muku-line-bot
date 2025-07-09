@@ -1,35 +1,14 @@
-// memory/omoide.js - v2.5 (셀카 고정 응답 개선 및 경로 안정화)
-// const { callOpenAI, cleanReply } = require("../src/autoReply"); // 이 줄을 제거
-// const { getFaceMatch } = require("../src/autoReply"); // 이 줄을 제거
-const fs = require("fs");
-const path = require("path");
+// memory/omoide.js - v2.6 (셀카 로직 yejinSelfie.js로 분리)
+const { callOpenAI, cleanReply } = require("../src/autoReply"); // 인자로 받으므로 필요 없으나, 현재 구조를 위해 남겨둠. autoReply에서만 직접 호출되게 수정 필요.
 
-function getSelfieReplyFromYeji() {
-  const replies = [
-    "이거 방금 찍은 셀카야, 아저씨~ 예뻐?",
-    "조금 부끄럽지만… 예쁘게 봐줄 거지?",
-    "아저씨 보여주려고 고른 셀카야. 어때?",
-    "오늘따라 잘 나온 것 같지 않아?",
-    "아저씨, 나 또 셀카 찍었어! 보고 싶었지?"
-  ];
-  return replies[Math.floor(Math.random() * replies.length)];
-}
-
-// saveLogFunc, callOpenAIFunc, cleanReplyFunc 인자 추가
-async function getOmoideReply(userMessage, saveLogFunc, callOpenAIFunc, cleanReplyFunc) { 
+async function getOmoideReply(userMessage, saveLogFunc, callOpenAIFunc, cleanReplyFunc) { // 인자 추가
   const lowerMsg = userMessage.trim().toLowerCase(); 
   let baseUrl = "";
   let fileCount; 
 
-  // '메이드' 키워드도 셀카로 분류
-  if (lowerMsg.includes("셀카") || lowerMsg.includes("셀피") || lowerMsg.includes("지금 모습") || 
-      lowerMsg.includes("얼굴 보여줘") || lowerMsg.includes("얼굴보고싶") || lowerMsg.includes("무쿠 셀카") ||
-      lowerMsg.includes("애기 셀카") || lowerMsg.includes("빠계 셀카") || lowerMsg.includes("메이드")) { 
-    baseUrl = "https://photo.de-ji.ne/photo/yejin"; 
-    fileCount = 1200; 
-  } else if (lowerMsg.includes("커플")) {
-    baseUrl = "https://photo.de-ji.ne/photo/couple"; 
-    fileCount = 500; 
+  if (lowerMsg.includes("커플")) {
+    baseUrl = "https://photo.de-ji.ne/photo/couple"; // 커플 사진은 /photo/couple/ 폴더로 변경
+    fileCount = 500; // TODO: 실제 커플사진 폴더의 개수로 변경 필요 (임시 설정)
   } else if (lowerMsg.includes("추억") || lowerMsg.includes("기억") || 
              lowerMsg.includes('옛날사진') || lowerMsg.includes('옛날 사진') ||
              lowerMsg.includes('예전사진') || lowerMsg.includes('예전 사진') ||
@@ -39,22 +18,18 @@ async function getOmoideReply(userMessage, saveLogFunc, callOpenAIFunc, cleanRep
              lowerMsg.includes('네가 찍은걸 줘') || lowerMsg.includes('네가 찍은 걸 줘') ||
              lowerMsg.includes('네가 찍은 사진') || lowerMsg.includes('너가 찍은 사진') ||
              lowerMsg.includes('예진이가 찍은') || lowerMsg.includes('직접 찍은')) {
-    baseUrl = "https://photo.de-ji.ne/photo/omoide"; 
-    fileCount = 1000; 
+    baseUrl = "https://photo.de-ji.ne/photo/omoide"; // 추억 사진은 /photo/omoide/ 폴더로 변경
+    fileCount = 1000; // TODO: 실제 추억사진 폴더의 개수로 변경 필요 (임시 설정)
   } else {
     return null;
   }
 
-  const index = Math.floor(Math.random() * fileCount) + 1; 
-  const fileName = String(index).padStart(6, "0") + ".jpg"; 
+  const index = Math.floor(Math.random() * fileCount) + 1; // 000001부터 시작하도록 +1
+  const fileName = String(index).padStart(6, "0") + ".jpg"; // 6자리 숫자에 .jpg
 
-  const imageUrl = `${baseUrl}/${fileName}`; 
+  const imageUrl = `${baseUrl}/${fileName}`; // 하위 폴더 없이 바로 파일명 사용
 
-  if (baseUrl.includes("yejin")) { 
-    const text = getSelfieReplyFromYeji();
-    return { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl, altText: text, caption: text };
-  }
-
+  // 비-셀카일 경우 GPT 분석
   let folderTypeDescription = "";
   if (baseUrl.includes("omoide")) {
       folderTypeDescription = "소중한 추억이 담긴 사진";
