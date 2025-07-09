@@ -1,16 +1,13 @@
-// src/spontaneousPhotoManager.js (가상 파일 - 실제 파일에 이 내용을 복사해서 사용해야 합니다)
-
-// 더 이상 여기서 Line Client를 직접 생성하지 않습니다.
-// const { Client } = require('@line/bot-sdk'); 
-// require('dotenv').config(); // index.js에서 이미 로드하므로 여기서 다시 로드할 필요는 없습니다.
+// src/spontaneousPhotoManager.js
 
 const moment = require('moment-timezone'); // 스케줄링을 위해 moment 필요
-const { getSelfieReply } = require('./yejinSelfie'); // 셀카 전송을 위해 필요
+const { getSelfieReply } = require('./yejinSelfie'); // 셀카 전송을 위해 필요 (yejinSelfie.js 파일이 필요합니다)
 // spontaneousPhotoManager에서 다른 사진 타입(concept, omoide)도 보내려면 해당 모듈들을 여기에 require 해야 합니다.
-// const { getConceptPhotoReply } = require('../memory/concept');
-// const { getOmoideReply } = require('../memory/omoide');
+// const { getConceptPhotoReply } = require('../memory/concept'); // 필요시 주석 해제 및 사용
+// const { getOmoideReply } = require('../memory/omoide');       // 필요시 주석 해제 및 사용
 
 let lastSentPhotoTime = 0; // 마지막 사진 전송 시간
+// 현재 시간은 2025년 7월 10일 목요일 12:04:48 AM JST입니다.
 const MIN_INTERVAL_BETWEEN_PHOTOS = 30 * 60 * 1000; // 최소 30분 간격 (밀리초)
 const MAX_INTERVAL_BETWEEN_PHOTOS = 2 * 60 * 60 * 1000; // 최대 2시간 간격 (밀리초)
 
@@ -43,20 +40,16 @@ async function sendSpontaneousPhoto(client, userId, saveLogFunc) {
     try {
         console.log("[Spontaneous Photo] 아저씨한테 즉흥 사진 보낼 준비 중! 뭘 보낼까?");
 
-        // 여기서는 일단 셀카만 보내도록 예시를 들겠습니다.
-        // 다른 종류의 사진도 보내려면 getConceptPhotoReply, getOmoideReply 등을 호출하면 됩니다.
-        const userMessageForSelfie = "예진이 셀카 보여줘"; // 셀카를 요청하는 메시지처럼 처리
-        const photoReply = await getSelfieReply(userMessageForSelfie, saveLogFunc, (messages, model, maxTokens, temperature) => {
-            // getSelfieReply 내에서 OpenAI 호출이 필요할 경우, autoReply의 callOpenAI를 직접 전달 (순환 의존성 주의)
-            // 현재 구조상 autoReply가 yejinSelfie를 부르고, yejinSelfie가 다시 autoReply의 callOpenAI를 부르므로 이 부분은 약간 복잡합니다.
-            // 임시로 여기에 OpenAI 호출 로직을 직접 복사하거나, autoReply의 callOpenAI를 인자로 받도록 설계가 필요합니다.
-            // 가장 간단한 해결책은 spontaneousPhotoManager에서 autoReply의 callOpenAI, cleanReply를 직접 import 하는 것입니다.
-            const { callOpenAI, cleanReply } = require('../src/autoReply'); // spontaneousPhotoManager 내부에서 불러오기
-            return callOpenAI(messages, model, maxTokens, temperature);
-        }, (reply) => {
-            const { cleanReply } = require('../src/autoReply'); // spontaneousPhotoManager 내부에서 불러오기
-            return cleanReply(reply);
-        });
+        // 여기서 getSelfieReply 함수 호출 시 필요한 인자들을 전달
+        // autoReply.js에서 callOpenAI, cleanReply를 import 했으므로,
+        // spontaneousPhotoManager에서도 필요하다면 직접 import 해야 합니다.
+        // 또는 getSelfieReply 자체가 이 함수들을 인자로 받도록 설계되어 있어야 합니다.
+        // 현재 autoReply의 getReplyByMessage 등은 callOpenAI, cleanReply를 인자로 받으므로,
+        // yejinSelfie.js도 그렇게 설계되어 있다고 가정합니다.
+        const { callOpenAI, cleanReply } = require('../src/autoReply'); // autoReply에서 필요한 함수 import
+
+        const userMessageForSelfie = "예진이 셀카 보여줘"; // 셀카를 요청하는 메시지처럼 처리 (예진이의 감성적인 코멘트를 위해)
+        const photoReply = await getSelfieReply(userMessageForSelfie, saveLogFunc, callOpenAI, cleanReply); 
 
         if (photoReply && photoReply.type === 'image') {
             const messagesToSend = [
@@ -73,15 +66,15 @@ async function sendSpontaneousPhoto(client, userId, saveLogFunc) {
                     text: photoReply.caption
                 });
             }
-
+            
             await client.pushMessage(userId, messagesToSend);
-            saveLogFunc({ role: 'assistant', content: `(즉흥 사진 보냄) ${photoReply.caption || '예진이의 즉흥 사진'}`, timestamp: Date.now() });
+            saveLogFunc({ role: 'assistant', content: `(즉흥 사진 보냄) ${photoReply.caption || '예진이의 즉흥 사진'}`, timestamp: now }); // timestamp now로 통일
             lastSentPhotoTime = now;
             console.log(`[Spontaneous Photo] 아저씨에게 즉흥 사진 전송 완료! 다음 사진은 ${Math.floor(Math.random() * (MAX_INTERVAL_BETWEEN_PHOTOS - MIN_INTERVAL_BETWEEN_PHOTOS) + MIN_INTERVAL_BETWEEN_PHOTOS) / (1000 * 60)}분 후에 고려될 수 있어.`);
         } else if (photoReply && photoReply.type === 'text') {
             // 셀카를 못 보낼 경우 텍스트로 대체
             await client.pushMessage(userId, { type: 'text', text: photoReply.comment });
-            saveLogFunc({ role: 'assistant', content: `(즉흥 사진 실패) ${photoReply.comment}`, timestamp: Date.now() });
+            saveLogFunc({ role: 'assistant', content: `(즉흥 사진 실패) ${photoReply.comment}`, timestamp: now }); // timestamp now로 통일
             console.warn("[Spontaneous Photo] 즉흥 사진 전송 실패 (텍스트 응답):", photoReply.comment);
         } else {
             console.warn("[Spontaneous Photo] 즉흥 사진 응답 없음 또는 타입 오류.");
@@ -105,20 +98,18 @@ function startSpontaneousPhotoScheduler(client, userId, saveLogFunc) {
         clearInterval(photoSchedulerInterval);
     }
 
-    // 30분에서 2시간 사이의 랜덤 간격으로 스케줄러 설정
-    const randomInterval = Math.floor(Math.random() * (MAX_INTERVAL_BETWEEN_PHOTOS - MIN_INTERVAL_BETWEEN_PHOTOS) + MIN_INTERVAL_BETWEEN_PHOTOS);
-    console.log(`[Spontaneous Photo Scheduler] 다음 즉흥 사진 전송을 ${randomInterval / (1000 * 60)}분 후에 고려할게!`);
+    // 초기 실행 및 주기적인 스케줄링
+    const scheduleNextPhoto = () => {
+        const randomInterval = Math.floor(Math.random() * (MAX_INTERVAL_BETWEEN_PHOTOS - MIN_INTERVAL_BETWEEN_PHOTOS) + MIN_INTERVAL_BETWEEN_PHOTOS);
+        console.log(`[Spontaneous Photo Scheduler] 다음 즉흥 사진 전송을 ${Math.floor(randomInterval / (1000 * 60))}분 후에 고려할게!`);
 
-    photoSchedulerInterval = setInterval(async () => {
-        await sendSpontaneousPhoto(client, userId, saveLogFunc);
-        // 다음 간격도 랜덤으로 재설정
-        const nextRandomInterval = Math.floor(Math.random() * (MAX_INTERVAL_BETWEEN_PHOTOS - MIN_INTERVAL_BETWEEN_PHOTOS) + MIN_INTERVAL_BETWEEN_PHOTOS);
-        console.log(`[Spontaneous Photo Scheduler] 다음 즉흥 사진 전송을 ${nextRandomInterval / (1000 * 60)}분 후에 고려할게!`);
-        clearInterval(photoSchedulerInterval); // 현재 인터벌 중단
-        photoSchedulerInterval = setInterval(async () => { // 새로운 인터벌 시작
+        photoSchedulerInterval = setTimeout(async () => { // setInterval 대신 setTimeout과 재귀 호출로 변경
             await sendSpontaneousPhoto(client, userId, saveLogFunc);
-        }, nextRandomInterval);
-    }, randomInterval);
+            scheduleNextPhoto(); // 다음 사진 스케줄링
+        }, randomInterval);
+    };
+
+    scheduleNextPhoto(); // 첫 스케줄 시작
 }
 
 module.exports = {
