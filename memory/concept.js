@@ -1,4 +1,4 @@
-w// memory/concept.js v1.17 - 순환 의존성 완전 해결
+// memory/concept.js v1.17 - 순환 의존성 완전 해결
 
 // 📦 필수 모듈 불러오기
 const moment = require('moment-timezone');
