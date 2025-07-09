@@ -1,4 +1,4 @@
-// ✅ index.js v1.26 - getReplyByImagePrompt 인자 개수 맞춤
+// ✅ index.js v1.27 - ReferenceError 수정
 
 // 📦 필수 모듈 불러오기
 const fs = require('fs');
@@ -105,13 +105,18 @@ app.post('/webhook', middleware(config), async (req, res) => {
                         console.warn('[index.js] 전송할 메시지가 없습니다.');
                     }
                 }
-                else if (message.type === 'image') { // <-- 여기만 수정!
+                else if (message.type === 'image') {
                     try {
+                        console.log(`[index.js] 이미지 메시지 처리 시작`);
                         const stream = await client.getMessageContent(message.id);
                         const chunks = [];
-                        for await (const chunk of stream) chunks.push(chunk);
+                        for await (const chunk of stream) {
+                            chunks.push(chunk);
+                        }
                         const buffer = Buffer.concat(chunks);
+                        console.log(`[index.js] 이미지 버퍼 생성 완료 (크기: ${buffer.length} bytes)`);
 
+                        // MIME 타입 감지
                         let mimeType = 'application/octet-stream';
                         if (buffer.length > 1 && buffer[0] === 0xFF && buffer[1] === 0xD8) {
                             mimeType = 'image/jpeg';
@@ -120,23 +125,43 @@ app.post('/webhook', middleware(config), async (req, res) => {
                         } else if (buffer.length > 2 && buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46) {
                             mimeType = 'image/gif';
                         }
+                        
+                        console.log(`[index.js] 감지된 MIME 타입: ${mimeType}`);
+                        
+                        // Base64로 변환
                         const base64ImageWithPrefix = `data:${mimeType};base64,${buffer.toString('base64')}`;
+                        console.log(`[index.js] Base64 변환 완료`);
 
-                        // ⭐️ 인자 4개로 맞춰줌!
+                        // getReplyByImagePrompt 호출 (인자 4개)
                         const replyResult = await getReplyByImagePrompt(base64ImageWithPrefix, callOpenAI, cleanReply, saveLog);
-                        await client.replyMessage(event.replyToken, { type: 'text', text: replyResult.comment }); 
+                        console.log(`[index.js] getReplyByImagePrompt 호출 완료`);
+                        
+                        // 응답 전송
+                        await client.replyMessage(event.replyToken, { 
+                            type: 'text', 
+                            text: replyResult.comment 
+                        }); 
+                        
                         console.log(`[index.js] 이미지 메시지 처리 및 응답 완료`);
                         saveLog('예진이', `(이미지 분석 응답) ${replyResult.comment}`);
+                        
                     } catch (err) {
-                        console.error(`[index.js] 이미지 처리 실패: ${err}`);
-                        await client.replyMessage(event.replyToken, { type: 'text', text: '이미지를 읽는 중 오류가 생겼어 ㅠㅠ' });
+                        console.error(`[index.js] 이미지 처리 실패:`, err);
+                        try {
+                            await client.replyMessage(event.replyToken, { 
+                                type: 'text', 
+                                text: '이미지를 읽는 중 오류가 생겼어 ㅠㅠ' 
+                            });
+                        } catch (replyErr) {
+                            console.error(`[index.js] 오류 응답 전송 실패:`, replyErr);
+                        }
                     }
                 }
             }
         }
         res.status(200).send('OK');
     } catch (err) {
-        console.error(`[index.js] 웹훅 처리 에러: ${err}`);
+        console.error(`[index.js] 웹훅 처리 에러:`, err);
         res.status(200).send('OK');
     }
 });
