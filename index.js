@@ -96,7 +96,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
                         // autoReply 내부에서 callOpenAI, cleanReply는 해당 모듈 내부에 이미 있으므로,
                         // index.js에서 직접 전달할 필요는 없습니다. (autoReply.js v3.2 기준으로 이미 내부적으로 처리함)
                         // 단, saveLog는 외부에서 주입 필요
-                        botResponse = await getReplyByMessage(text, saveLog, /* callOpenAIFunc, cleanReplyFunc */); 
+                        botResponse = await getReplyByMessage(text, saveLog); 
                         // 일반 대화인 경우, 기억 추출 및 저장 시도 (현재는 모든 일반 대화를 여기에 전달)
                         await memoryManager.extractAndSaveMemory(text);
                         console.log(`[index.js] memoryManager.extractAndSaveMemory 호출 완료 (메시지: "${text}")`);
