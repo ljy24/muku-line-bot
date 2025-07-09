@@ -22,7 +22,7 @@ require('dotenv').config();
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY }); 
 
 // 챗봇의 기본 페르소나 및 설정 (다른 모듈에서 사용될 수 있으므로 상단에 정의)
-const BOT_NAME = '예진이'; 
+const BOT_NAME = '나'; 
 const USER_NAME = '아저씨'; 
 const BOT_GENDER = 'female'; 
 const USER_GENDER = 'male'; 
