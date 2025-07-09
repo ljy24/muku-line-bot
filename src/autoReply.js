@@ -1,4 +1,4 @@
-// src/autoReply.js - v3.0 (셀카 로직 분리 및 사진 요청 우선순위 조정)
+// src/autoReply.js - v3.1 (최신 URL 적용 및 순환 의존성 해결 최종 확인)
 
 // 📦 필수 모듈 불러오기
 const moment = require('moment-timezone');
@@ -321,7 +321,7 @@ function getCurrentMoodStatus() {
     } else if (currentMood === '설렘') {
         statusMessage += "왠지 아저씨랑 뭔가 좋은 일이 생길 것 같아서 두근거려!";
     } else if (currentMood === '장난스러움') {
-        statusMessage += "아저씨한테 귀여운 장난 좀 치고 싶다~ 히히.";
+        statusMessage += "아저씨한테 귀여운 장난 좀 치고 싶다! 히히.";
     } else if (currentMood === '나른함') {
         statusMessage += "으음... 아저씨, 오늘따라 좀 나른하네...";
     } else if (currentMood === '심술궂음') {
