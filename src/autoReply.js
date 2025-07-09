@@ -588,7 +588,7 @@ async function getReplyByMessage(userMessage) {
         } else {
             periodReply = "아니야 아저씨! 나 그날 아니야! 왜 그런 걸 물어봐~?";
         }
-        saveLog({ role: 'user', content: userMessage, timestamp: Date.2now() });
+        saveLog({ role: 'user', content: userMessage, timestamp: Date.now() });
         saveLog({ role: 'assistant', content: periodReply, timestamp: Date.now() });
         return { type: 'text', comment: periodReply };
     }
