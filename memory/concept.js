@@ -351,6 +351,7 @@ async function getConceptPhotoReply(userMessage, saveLogFunc, callOpenAIFunc, cl
         '욕실': '2024_02_07_일본_욕실',
         '욕조': '2024_07_08_일본_욕조'
     };
+}
     
 module.exports = {
     getConceptPhotoReply,
