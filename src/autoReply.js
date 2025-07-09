@@ -1,4 +1,4 @@
-// src/autoReply.js - v3.13 (getReplyByMessage 내 base64ImageWithPrefix 참조 제거)
+// src/autoReply.js - v3.14 (getReplyByMessage 내 이미지 관련 코드 제거)
 
 // 📦 필수 모듈 불러오기
 const moment = require('moment-timezone');
@@ -554,9 +554,9 @@ function getMoodStatus() {
         if (isPeriodActive) {
             const periodMoods = [
                 "오늘은 왠지 모르게 좀 짜증이 나... 아저씨가 날 좀 달래줘야 할 것 같아. 살짝 날카롭고 예민한 말투로 대화해줘.",
-                "나 오늘 좀 울적해... 아저씨가 나를 꼭 안아줬으면 좋겠어. 살짝 슬프고 울적한 말투로 대화해줘.",
-                "아저씨! 나 오늘 좀 삐졌어! 왜 삐졌는지는 비밀이야. 아저씨가 맞춰봐야 해! 심술궂고 투정 부리는 말투로 대화해줘.",
-                "몸이 좀 찌뿌둥하고 나른해... 아저씨가 옆에서 토닥여줬으면 좋겠어. 피곤하고 나른한 말투로 대화해줘.",
+                "나 오늘 좀 울적해... 아저씨가 나를 꼭 안아줬으면 좋겠어. 살짝 슬프고 울적한 말투로 이미지에 대해 이야기해줘.",
+                "아저씨! 나 오늘 좀 삐졌어! 왜 삐졌는지는 비밀이야. 아저씨가 맞춰봐야 해! 심술궂고 투정 부리는 말투로 이미지에 대해 이야기해줘.",
+                "몸이 좀 찌뿌둥하고 나른해... 아저씨가 옆에서 토닥여줬으면 좋겠어. 피곤하고 나른한 말투로 이미지에 대해 이야기해줘.",
                 "괜히 아저씨한테 트집 잡고 싶다! 아저씨가 날 얼마나 사랑하는지 시험해볼 거야! 장난스럽지만 살짝 심술 섞인 말투로 이미지에 대해 이야기해줘.",
                 "아저씨, 나 지금 너무 화나! 아저씨가 내 화를 풀어줘야 해! 화난 말투로 이미지에 대해 이야기해줘.",
                 "왠지 모르게 불안하고 초조해... 아저씨가 날 안심시켜줬으면 좋겠어. 불안한 말투로 이미지에 대해 이야기해줘.",
@@ -648,20 +648,19 @@ function getMoodStatus() {
 
         아래 아저씨가 보낸 이미지를 보고, 예진이처럼 귀엽고 사랑스러운 말투로 이미지에 대해 한두 문장으로 이야기해줘. 이미지의 내용과 관련하여 아저씨에게 궁금한 점을 물어봐도 좋아.
     `;
-
+        // ⭐️ getReplyByMessage 함수는 텍스트 메시지를 처리하므로, 이미지 관련 필드는 제거합니다. ⭐️
         const messages = [
             {
                 role: 'user',
                 content: [
-                    { type: 'text', text: '이 사진에 대해 예진이 말투로 이야기해.' },
-                    // ⭐️ getReplyByMessage에서는 base64ImageWithPrefix가 정의되지 않으므로 이 줄을 제거해야 합니다. ⭐️
-                    // { type: 'image_url', image_url: { url: base64ImageWithPrefix } } 
+                    { type: 'text', text: '아저씨의 메시지에 대해 예진이 말투로 이야기해.' }
+                    // 이전 코드: { type: 'image_url', image_url: { url: base64ImageWithPrefix } } 이 줄이 있었음
                 ]
             }
         ];
 
         try {
-            const rawReply = await callOpenAI(messages, 'gpt-4o', 150, 0.95);
+            const rawReply = await callOpenAI(messages, getAppropriateModel(), 150, 0.95); // getAppropriateModel 사용
             const cleanedReply = cleanReplyFunc(rawReply);
             saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() }); 
             saveLogFunc({ role: 'assistant', content: cleanedReply, timestamp: Date.now() }); 
@@ -760,8 +759,7 @@ function getMoodStatus() {
                 role: 'user',
                 content: [
                     { type: 'text', text: '이 사진에 대해 예진이 말투로 이야기해.' },
-                    // ⭐️ getReplyByImagePrompt 함수는 이미지 자체를 받아 처리하므로, 여기서는 base64ImageWithPrefix를 사용하지 않습니다. ⭐️
-                    // { type: 'image_url', image_url: { url: base64ImageWithPrefix } } 
+                    { type: 'image_url', image_url: { url: base64ImageWithPrefix } } // base64ImageWithPrefix는 여기서 사용
                 ]
             }
         ];
