@@ -1,94 +1,131 @@
 // 파일 경로: /index.js
 // 파일 이름: index.js
-// 버전: v1.7
-// 변경 내용: autoReply 모듈 require 누락 수정, 전체 흐름 정리 및 주석 강화
+// 버전: v1.4
+// 변경 내용: 모든 require 경로를 /src 하위로 정정하고, 주석 재정비
+
+require('dotenv').config(); // .env 환경변수 로드
 
 const express = require('express');
-const line = require('@line/bot-sdk');
+const { middleware, Client } = require('@line/bot-sdk');
 const bodyParser = require('body-parser');
-const autoReply = require('./src/autoReply'); // ✅ 누락되었던 autoReply 불러오기
-const omoide = require('./omoide');
-const concept = require('./concept');
-const memoryManager = require('./memoryManager');
+const fs = require('fs');
+const path = require('path');
 
-const app = express();
-const port = process.env.PORT || 10000;
-
+// LINE API 설정 (.env에서 가져옴)
 const config = {
-  channelAccessToken: process.env.LINE_ACCESS_TOKEN,
+  channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
   channelSecret: process.env.LINE_CHANNEL_SECRET,
 };
 
-const client = new line.Client(config);
+const client = new Client(config);
+const app = express();
 
+// ✅ 모듈들 경로 명확하게 지정
+const {
+  getReplyByMessage,
+  getReplyByImagePrompt,
+  getRandomMessage,
+  getRandomTobaccoMessage,
+  getHappyReply,
+  getSulkyReply,
+  getColorMoodReply,
+  getAppropriateModel,
+} = require('./src/autoReply');
+
+const omoide = require('./src/omoide');
+const scheduler = require('./src/scheduler');
+const checkUsage = require('./src/checkUsage');
+
+// ✅ 기본 설정
 app.use(bodyParser.json());
+app.use(middleware(config));
 
-// 🔔 Webhook 엔드포인트
+// ✅ LINE Webhook 핸들링
 app.post('/webhook', async (req, res) => {
   try {
     const events = req.body.events;
+    const results = await Promise.all(
+      events.map(async (event) => {
+        // 메시지 타입에 따라 분기 처리
+        if (event.type === 'message') {
+          const message = event.message;
+          const userId = event.source.userId;
 
-    for (const event of events) {
-      if (event.type === 'message' && event.message.type === 'text') {
-        const message = event.message.text;
-        const userId = event.source.userId;
+          // 텍스트 메시지 처리
+          if (message.type === 'text') {
+            const userText = message.text;
 
-        console.log(`[Webhook] 아저씨 메시지 수신, 마지막 메시지 시간 업데이트: ${new Date().toLocaleTimeString()}`);
+            // 버전 요청 처리
+            if (userText.trim() === '버전') {
+              const version = getAppropriateModel();
+              return client.replyMessage(event.replyToken, {
+                type: 'text',
+                text: `지금은 ${version} 버전으로 대화하고 있어.`,
+              });
+            }
 
-        // ✅ 셀카 요청 메시지 감지
-        const selfieKeywords = ['셀카', '얼굴', '얼굴 보여줘', '사진 줘', '얼굴보고싶어', '보고싶어'];
-        const isSelfieRequest = selfieKeywords.some((word) => message.includes(word));
+            // 셀카 요청이면 셀카 + 멘트 전송
+            if (/사진|셀카|얼굴|보고싶어/.test(userText)) {
+              const photoUrl = await omoide.sendSelfie(); // 예진이 셀카
+              const comment = await omoide.getImageReactionComment(); // 감정 멘트
+              await client.replyMessage(event.replyToken, [
+                { type: 'image', originalContentUrl: photoUrl, previewImageUrl: photoUrl },
+                { type: 'text', text: comment },
+              ]);
+              return;
+            }
 
-        if (isSelfieRequest) {
-          console.log('[index.js] 셀카 요청 감지됨');
+            // 감정 메시지 응답 (GPT)
+            const reply = await getReplyByMessage(userText);
+            return client.replyMessage(event.replyToken, {
+              type: 'text',
+              text: reply,
+            });
+          }
 
-          // 셀카 전송 및 멘트 생성
-          const imageUrl = await autoReply.sendRandomSelfieImage(client, userId);
-          const comment = await autoReply.getImageReactionComment();
+          // 이미지 메시지 처리
+          if (message.type === 'image') {
+            const stream = await client.getMessageContent(message.id);
+            const chunks = [];
+            for await (const chunk of stream) {
+              chunks.push(chunk);
+            }
+            const buffer = Buffer.concat(chunks);
+            const base64Image = buffer.toString('base64');
 
-          await client.replyMessage(event.replyToken, [
-            { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl },
-            { type: 'text', text: comment },
-          ]);
-
-          console.log('[index.js] 셀카 멘트 전송 완료');
-          return;
+            const reply = await getReplyByImagePrompt(base64Image);
+            return client.replyMessage(event.replyToken, {
+              type: 'text',
+              text: reply,
+            });
+          }
         }
 
-        // 🔄 일반 메시지에 대한 응답 처리
-        const reply = await autoReply.getReplyByMessage(message);
-        await client.replyMessage(event.replyToken, { type: 'text', text: reply });
-
-        console.log('[index.js] 봇 응답 전송 완료 (타입: text)');
-
-        // 기억 추출 시도
-        await memoryManager.extractAndSaveMemory(message);
-        console.log(`[index.js] memoryManager.extractAndSaveMemory 호출 완료 (메시지: "${message}")`);
-      }
-
-      // 이미지 메시지 처리
-      if (event.type === 'message' && event.message.type === 'image') {
-        const imageBuffer = await client.getMessageContent(event.message.id);
-        const chunks = [];
-        for await (let chunk of imageBuffer) chunks.push(chunk);
-        const buffer = Buffer.concat(chunks);
-        const base64Image = buffer.toString('base64');
-
-        const reply = await autoReply.getReplyByImagePrompt(base64Image);
-        await client.replyMessage(event.replyToken, { type: 'text', text: reply });
-
-        console.log('[index.js] 이미지 응답 전송 완료');
-      }
-    }
-
-    res.sendStatus(200);
-  } catch (error) {
-    console.error('[index.js] 웹훅 처리 에러:', error);
+        return null;
+      })
+    );
+    res.status(200).json(results);
+  } catch (err) {
+    console.error('Webhook 처리 중 오류:', err);
     res.sendStatus(500);
   }
 });
 
-// 서버 기동
+// ✅ 강제 푸시 메시지 (랜덤 감정 메시지 전송용)
+app.get('/force-push', async (req, res) => {
+  try {
+    const message = await getRandomMessage();
+    const userId = process.env.USER_ID;
+    await client.pushMessage(userId, { type: 'text', text: message });
+    res.status(200).send('Message pushed.');
+  } catch (err) {
+    console.error('force-push 에러:', err);
+    res.sendStatus(500);
+  }
+});
+
+// ✅ 포트 설정 (Render 환경 고려)
+const port = process.env.PORT || 3000;
 app.listen(port, () => {
-  console.log(`무쿠 서버가 ${port}번 포트에서 실행 중입니다.`);
+  console.log(`✅ 서버 작동 중: http://localhost:${port}`);
 });
