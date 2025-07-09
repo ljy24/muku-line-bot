@@ -27,6 +27,16 @@ const USER_NAME = '아저씨';
 const BOT_GENDER = 'female'; 
 const USER_GENDER = 'male'; 
 
+// 파일 어딘가 (export보다 위에!!) 붙여넣기!
+async function getReplyByImagePrompt(base64ImageWithPrefix) {
+    // 👇 여기 아래에 함수 내용
+    // 기본 예시:
+    const reply = "아저씨... 이 사진 보고 있으니까, 뭔가 마음이 몽글몽글해졌어. 더 예쁜 사진도 보여줄까?";
+    return { type: 'text', comment: reply };
+}
+
+
+
 // 챗봇의 현재 기분 상태 (초기값 설정)
 let currentMood = '평온함'; 
 const MOOD_OPTIONS = ['기쁨', '설렘', '장난스러움', '나른함', '심술궂음', '평온함', '우울함', '슬픔', '걱정함', '사랑함', '화남', '불안함', '그리움'];
@@ -676,28 +686,27 @@ function getMoodStatus() {
 
 
     module.exports = {
-        getReplyByMessage,
-        getReplyByImagePrompt,
-        saveLog,
-        setForcedModel,
-        checkModelSwitchCommand,
-        getFormattedMemoriesForAI,
-        getMemoryListForSharing,
-        setCurrentMood,
-        getCurrentMoodStatus,
-        updatePeriodStatus,
-        isPeriodActive,
-        callOpenAI,
-        cleanReply,
-        getAppropriateModel,
-        randomMoodChange,
-        checkMoodChange,
-        checkTimeBasedMoodChange,
-        currentMood,
-        MOOD_DETAILS,
-        // ⭐️ BOT_NAME, USER_NAME 상수도 export합니다. ⭐️
-        BOT_NAME,
-        USER_NAME,
-        getMoodEmoji,
-        getMoodStatus
+    getReplyByMessage,
+    getReplyByImagePrompt, 
+    saveLog,
+    setForcedModel,
+    checkModelSwitchCommand,
+    getFormattedMemoriesForAI,
+    getMemoryListForSharing,
+    setCurrentMood,
+    getCurrentMoodStatus,
+    updatePeriodStatus,
+    isPeriodActive,
+    callOpenAI,
+    cleanReply,
+    getAppropriateModel,
+    randomMoodChange,
+    checkMoodChange,
+    checkTimeBasedMoodChange,
+    currentMood,
+    MOOD_DETAILS,
+    BOT_NAME,
+    USER_NAME,
+    getMoodEmoji,
+    getMoodStatus
     };
