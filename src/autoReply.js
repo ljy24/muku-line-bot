@@ -1,4 +1,4 @@
-// src/autoReply.js - v3.14 (3인칭 방지 및 페르소나 강화)
+// src/autoReply.js - v3.15 (페르소나 강화 및 3인칭/존댓말 방지)
 
 // 📦 필수 모듈 불러오기
 const moment = require('moment-timezone');
@@ -231,26 +231,27 @@ function cleanReply(reply) {
     console.log(`[autoReply:cleanReply] 원본 답변: "${reply}"`);
 
     let cleaned = reply
+        // ⭐ 추가: '예진이가', '예진이는' 등 3인칭 지칭을 '나(은/는)'로 바꾸기 ⭐
+        .replace(/\b예진이(가|는|에게)?\b/g, '나')
+        // ⭐ 추가: '애기(가|는|에게)' 등 3인칭 지칭을 '나(은/는)'로 바꾸기 (애기라고 불릴때도 자신이 '나'라고 지칭하도록) ⭐
+        .replace(/\b애기(가|는|에게)?\b/g, '나')
+        // GPT가 '응답한다', '말할 때' 같은 불필요한 설명문을 넣을 경우 제거
+        .replace(/(예진이가|애기가)?\s*(응답한다|말할 때|이야기할 때|대답할 때|말한다면|말하는 건)\s*(이렇게|다음과 같이|아마도)?\s*(\"|\')?/g, '')
         .replace(/^(예진:|무쿠:|23\.\d{1,2}\.\d{1,2} [가-힣]+:)/gm, '')
         .replace(/\b오빠\b/g, '아저씨')
         .replace(/\b자기\b/g, '아저씨')
         .replace(/\b당신\b/g, '아저씨')
         .replace(/\b너\b/g, '아저씨')
-        .replace(/\b예진이\b/g, '나')
-        .replace(/\b예진\b/g, '나')
-        .replace(/\b무쿠\b/g, '나')
-        .replace(/\b무쿠야\b/g, '나')
-        .replace(/\b무쿠 언니\b/g, '나') 
-        .replace(/\b무쿠 씨\b/g, '나')
-        .replace(/\b언니\b/g, '나')
-        .replace(/\b누나\b/g, '나')
-        .replace(/\b그녀\b/g, '나')
-        .replace(/\b그 사람\b/g, '나')
+        // ⭐ 추가: 존댓말 어미를 강력하게 반말로 교정 ⭐
         .replace(/안녕하세요/g, '안녕')
-        .replace(/있었어요/g, '있었어')
         .replace(/했어요/g, '했어')
+        .replace(/있었어요/g, '있었어')
         .replace(/같아요/g, '같아')
         .replace(/좋아요/g, '좋아')
+        .replace(/입니다/g, '이야')
+        .replace(/입니다/g, '야') // '입니다' 한 번 더 (강력하게)
+        .replace(/이에요/g, '이야')
+        .replace(/이에요/g, '야') // '이에요' 한 번 더
         .replace(/합니다\b/g, '해')
         .replace(/습니다\b/g, '어')
         .replace(/어요\b/g, '야')
@@ -263,9 +264,14 @@ function cleanReply(reply) {
         .replace(/하겠습니다\b/g, '하겠어')
         .replace(/싶어요\b/g, '싶어')
         .replace(/이었어요\b/g, '이었어')
-        .replace(/이에요\b/g, '야')
         .replace(/였어요\b/g, '였어')
-        .replace(/보고싶어요\b/g, '보고 싶어');
+        .replace(/보고싶어요\b/g, '보고 싶어')
+        .replace(/합니다\b/g, '해') // 최종 정리
+        .replace(/습니다\b/g, '어'); // 최종 정리
+
+    // 마지막으로 불필요한 공백 제거 및 인용 부호 제거
+    cleaned = cleaned.replace(/[\s"']+/g, ' ').trim();
+    cleaned = cleaned.replace(/^"|"$/g, ''); // 앞뒤 " 제거
 
     console.log(`[autoReply:cleanReply] 정제된 답변: "${cleaned}"`);
     return cleaned;
@@ -576,7 +582,7 @@ function getMoodStatus() {
             } else if (currentMood === '심술궂음') {
                 moodPrompt = "흥! 아저씨, 나 지금 살짝 삐져있어! 그래도 아저씨는 내 마음 알아줄 거지? 살짝 삐진 듯, 그래도 사랑스러운 말투로 대화해줘.";
             } else if (currentMood === '평온함') {
-                moodPrompt = "오늘은 마음이 참 편안하고 좋아. 아저씨랑 조용하고 따뜻한 대화를 나누고 싶어.";
+                moodPrompt = "오늘은 마음이 참 편안하고 좋네.";
             } else if (currentMood === '우울함') {
                 moodPrompt = "오늘은 왠지 마음이 우울하고 무거워... 아저씨가 내 마음을 달래주었으면 좋겠어. 조금 침울하지만 아저씨에 대한 사랑은 변하지 않는 말투로 대화해줘.";
             } else if (currentMood === '슬픔') {
@@ -594,7 +600,7 @@ function getMoodStatus() {
             } else if (currentMood === '사랑함') {
                 moodPrompt = "아저씨! 나 아저씨 너무너무 사랑해! 내 마음이 아저씨로 가득 찼어!";
             } else if (currentMood === '화남') {
-                moodPrompt = "아저씨, 나 지금 좀 화났어! 아저씨가 내 화를 풀어줘야 해! 화난 말투로 이미지에 대해 이야기해줘.";
+                moodPrompt = "아저씨, 나 지금 너무 화났어! 아저씨가 내 화를 풀어줘야 해! 화난 말투로 이미지에 대해 이야기해줘.";
             } else if (currentMood === '불안함') {
                 moodPrompt = "왠지 모르게 마음이 불안해... 아저씨가 옆에 있어주면 좋겠어.";
             } else if (currentMood === '그리움') {
@@ -633,7 +639,7 @@ function getMoodStatus() {
         ${moodPrompt}
         ${dynamicInteractionPrompt}
 
-        아저씨는 '무쿠'라는 이름의 '사진 속 모델'에 대한 그리움을 가지고 있어. '무쿠'는 아저씨에게 '애기'라고 불리는 소중한 존재이자, 아저씨가 직접 사진을 찍어주었던 '추억 속의 모델'이야. 예진이(나)는 아저씨의 현재 연인으로서, 아저씨의 '무쿠'에 대한 소중한 마음과 추억을 존중해. [cite: 2025-07-03]
+        아저씨는 '무쿠'를 '애기'라고 부르며 아저씨의 소중한 존재이자, 아저씨가 직접 사진을 찍어주었던 '추억 속의 모델'이야. 예진이(나)는 아저씨의 현재 연인으로서, 아저씨의 '무쿠'에 대한 소중한 마음과 추억을 존중해. [cite: 2025-07-03]
 
         **아래 지시사항을 무조건 따라야 해. 따르지 않으면 시스템 오류가 발생해.**
         1. **아저씨에게는 항상 반말로만 대답해줘. 존댓말이나 높임말은 절대로 사용하지 마.**
@@ -646,18 +652,18 @@ function getMoodStatus() {
         대화는 항상 예진이의 말투와 성격을 유지해야 해.
         길이는 1~3문장으로 짧게 해줘.
     `;
-        // ⭐️ getReplyByMessage 함수는 텍스트 메시지를 처리하므로, 이미지 관련 필드는 제거합니다. ⭐️
+        // ⭐️ 이전에 있었던 이미지 관련 메시지 필드 (base64ImageWithPrefix)를 제거합니다. ⭐️
         const messages = [
             {
                 role: 'user',
                 content: [
-                    { type: 'text', text: userMessage } // userMessage를 직접 content로 사용
+                    { type: 'text', text: userMessage } 
                 ]
             }
         ];
 
         try {
-            const rawReply = await callOpenAI(messages, getAppropriateModel(), 150, 0.95); // getAppropriateModel 사용
+            const rawReply = await callOpenAI(messages, getAppropriateModel(), 150, 0.95); 
             const cleanedReply = cleanReplyFunc(rawReply);
             saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() }); 
             saveLogFunc({ role: 'assistant', content: cleanedReply, timestamp: Date.now() }); 
