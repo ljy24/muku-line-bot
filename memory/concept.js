@@ -1,4 +1,4 @@
-// memory/concept.js v1.22 (URL 인코딩 수정)
+// memory/concept.js v1.23 (SyntaxError 해결을 위해 파일 끝부분 재확인)
 
 // 📦 필수 모듈 불러오기
 const moment = require('moment-timezone');
