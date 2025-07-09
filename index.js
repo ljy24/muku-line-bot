@@ -1,4 +1,4 @@
-// ✅ index.js v1.21 - 파일 분리 및 하이브리드 memoryManager 연동
+// ✅ index.js v1.22 - callOpenAI, cleanReply를 핸들러로 전달
 
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈 (로그 저장용)
@@ -84,20 +84,18 @@ app.post('/webhook', middleware(config), async (req, res) => {
                     let botResponse = null;
 
                     // 1. 명령어 핸들러로 먼저 메시지 처리 시도
-                    botResponse = await commandHandler.handleCommand(text, saveLog);
+                    // commandHandler.handleCommand에 callOpenAI, cleanReply 전달
+                    botResponse = await commandHandler.handleCommand(text, saveLog, callOpenAI, cleanReply);
 
                     // 2. 명령어 핸들러에서 처리되지 않았다면, 기억 핸들러로 메시지 처리 시도
+                    // memoryHandler.handleMemoryCommand에 callOpenAI, cleanReply 전달
                     if (!botResponse) {
-                        // memoryHandler.handleMemoryCommand에도 callOpenAI와 cleanReply가 필요할 수 있습니다.
-                        // 현재 제공된 memoryHandler.js가 없으므로 추후 필요시 수정합니다.
                         botResponse = await memoryHandler.handleMemoryCommand(text, saveLog, callOpenAI, cleanReply); 
                     }
 
                     // 3. 모든 특정 핸들러에서 처리되지 않았다면, 일반 대화 응답 생성
                     if (!botResponse) {
                         // getReplyByMessage에 필요한 인자 전달: saveLogFunc, callOpenAIFunc, cleanReplyFunc
-                        // autoReply.js 내에서 callOpenAI, cleanReply를 import 하므로 직접 전달하지 않아도 됩니다.
-                        // 하지만 명시적으로 전달하는 것은 좋은 습관입니다.
                         botResponse = await getReplyByMessage(text, saveLog, callOpenAI, cleanReply); 
                         // 일반 대화인 경우, 기억 추출 및 저장 시도 (현재는 모든 일반 대화를 여기에 전달)
                         await memoryManager.extractAndSaveMemory(text);
@@ -108,15 +106,13 @@ app.post('/webhook', middleware(config), async (req, res) => {
 
                     // 응답 메시지 전송
                     let replyMessages = [];
-                    // getReplyByMessage, getConceptPhotoReply, getOmoideReply는 모두 동일한 이미지/텍스트 객체 형태를 반환
                     if (botResponse.type === 'image') { 
                         replyMessages.push({
                             type: 'image',
                             originalContentUrl: botResponse.originalContentUrl,
                             previewImageUrl: botResponse.previewImageUrl,
-                            altText: botResponse.altText // 필수 필드, 캡션 대신 사용 가능
+                            altText: botResponse.altText 
                         });
-                        // 캡션을 별도의 텍스트 메시지로 보내려면 추가
                         if (botResponse.caption) {
                             replyMessages.push({
                                 type: 'text',
