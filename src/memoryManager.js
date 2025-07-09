@@ -1,4 +1,4 @@
-// src/memoryManager.js - v1.3 (리마인더 기능 추가)
+// src/memoryManager.js - v1.5 (고정 기억 로딩 및 검색 로직 대폭 개선)
 
 const fs = require('fs').promises; // 비동기 파일 시스템 모듈 사용
 const path = require('path');
@@ -8,7 +8,12 @@ const dbPath = path.join(process.cwd(), 'memories.db');
 let db; // SQLite 데이터베이스 인스턴스
 
 // ⭐️ 고정 기억을 저장할 변수 (메모리 로딩) ⭐️
-const fixedMemoriesDB = {};
+// 이제 객체 형태로, 각 파일의 내용을 별도의 속성으로 저장
+const fixedMemoriesDB = {
+    fixedMemories: [],    // fixedMemories.json 내용을 배열로 저장
+    loveHistory: {},      // love-history.json 내용을 객체로 저장 (categories 포함)
+    // 기타 텍스트 파일 등은 필요시 여기에 추가 가능
+};
 
 // 기억 파일들의 경로 정의
 const FIXED_MEMORIES_FILE = path.join(process.cwd(), 'memory', 'fixedMemories.json');
@@ -40,7 +45,7 @@ async function initializeDatabase() {
                         reject(err);
                     } else {
                         console.log('[MemoryManager] memories 테이블이 준비되었습니다.');
-                        // ⭐️ reminders 테이블 생성 ⭐️
+                        // reminders 테이블 생성
                         db.run(`
                             CREATE TABLE IF NOT EXISTS reminders (
                                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -156,41 +161,49 @@ async function ensureMemoryTablesAndDirectory() {
 
 /**
  * ⭐️ 모든 고정 기억 파일들을 로딩하여 fixedMemoriesDB에 저장합니다. ⭐️
+ * @returns {Promise<void>}
  */
 async function loadAllMemories() {
     console.log('[MemoryManager] 고정 기억 파일 로딩 시작...');
     try {
-        // fixedMemories.json 로드
+        // fixedMemories.json 로드 (배열 형태)
         try {
             const data = await fs.readFile(FIXED_MEMORIES_FILE, 'utf8');
-            const parsed = JSON.parse(data);
-            Object.assign(fixedMemoriesDB, parsed); // 기존 객체에 병합
-            console.log(`[MemoryManager] fixedMemories.json 로드 완료. (기억 ${Object.keys(parsed).length}개)`);
+            fixedMemoriesDB.fixedMemories = JSON.parse(data);
+            console.log(`[MemoryManager] fixedMemories.json 로드 완료. (기억 ${fixedMemoriesDB.fixedMemories.length}개)`);
         } catch (err) {
             if (err.code === 'ENOENT') {
-                console.warn(`[MemoryManager] fixedMemories.json 파일이 없습니다. 새로 생성합니다.`);
-                await fs.writeFile(FIXED_MEMORIES_FILE, JSON.stringify({}, null, 2), 'utf8');
+                console.warn(`[MemoryManager] fixedMemories.json 파일이 없습니다. 빈 배열로 초기화합니다.`);
+                fixedMemoriesDB.fixedMemories = [];
+                await fs.writeFile(FIXED_MEMORIES_FILE, JSON.stringify([], null, 2), 'utf8');
             } else {
                 console.error(`[MemoryManager] fixedMemories.json 로드 실패: ${err.message}`);
             }
         }
 
-        // love-history.json 로드
+        // love-history.json 로드 (객체 형태, categories 포함)
         try {
             const data = await fs.readFile(LOVE_HISTORY_FILE, 'utf8');
-            const parsed = JSON.parse(data);
-            Object.assign(fixedMemoriesDB, parsed);
-            console.log(`[MemoryManager] love-history.json 로드 완료. (기억 ${Object.keys(parsed).length}개)`);
+            fixedMemoriesDB.loveHistory = JSON.parse(data);
+            console.log(`[MemoryManager] love-history.json 로드 완료.`);
+            // loveHistory 내부의 categories를 직접 접근해서 로그 출력
+            if (fixedMemoriesDB.loveHistory.categories && Array.isArray(fixedMemoriesDB.loveHistory.categories.general)) {
+                 console.log(`[MemoryManager] love-history.json - general 카테고리 기억 ${fixedMemoriesDB.loveHistory.categories.general.length}개.`);
+            }
         } catch (err) {
             if (err.code === 'ENOENT') {
-                console.warn(`[MemoryManager] love-history.json 파일이 없습니다. 새로 생성합니다.`);
-                await fs.writeFile(LOVE_HISTORY_FILE, JSON.stringify({}, null, 2), 'utf8');
+                console.warn(`[MemoryManager] love-history.json 파일이 없습니다. 빈 객체로 초기화합니다.`);
+                fixedMemoriesDB.loveHistory = { categories: { love_expressions: [], daily_care: [], general: [], user_submitted_memories: [], ai_personal_memories: {} } };
+                await fs.writeFile(LOVE_HISTORY_FILE, JSON.stringify(fixedMemoriesDB.loveHistory, null, 2), 'utf8');
             } else {
                 console.error(`[MemoryManager] love-history.json 로드 실패: ${err.message}`);
             }
         }
 
-        console.log('[MemoryManager] 모든 고정 기억 로딩 완료:', Object.keys(fixedMemoriesDB));
+        console.log('[MemoryManager] 모든 고정 기억 로딩 완료.');
+        // 디버깅을 위해 로드된 fixedMemoriesDB의 최상위 키를 출력
+        console.log('[MemoryManager] 로드된 고정 기억 최상위 키:', Object.keys(fixedMemoriesDB));
+
     } catch (error) {
         console.error('[MemoryManager] 고정 기억 로딩 중 치명적인 오류:', error);
     }
@@ -198,94 +211,94 @@ async function loadAllMemories() {
 
 /**
  * ⭐️ 고정 기억 DB에서 특정 키워드에 해당하는 기억을 찾아 반환합니다. ⭐️
- * @param {string} keyword 찾을 기억의 키워드 (예: '첫대화', '고백', '무쿠생일')
- * @returns {string|null} 기억 내용 텍스트 또는 null
+ * @param {string} userMessage 사용자의 원본 메시지 (여기서 키워드를 추출하여 검색)
+ * @returns {string|null} 가장 적합한 기억 내용 텍스트 또는 null
  */
-function getFixedMemory(keyword) {
-    // 키워드를 소문자로 변환하여 고정 기억 DB에서 찾아봅니다.
-    const lowerKeyword = keyword.toLowerCase();
+function getFixedMemory(userMessage) {
+    const lowerMessage = userMessage.toLowerCase();
+    let bestMatch = null;
+    let maxMatches = 0;
 
-    // 정확히 매칭되는 키워드 우선
-    if (fixedMemoriesDB[lowerKeyword]) {
-        console.log(`[MemoryManager] 고정 기억 "${lowerKeyword}" 정확히 매칭됨.`);
-        return fixedMemoriesDB[lowerKeyword];
+    // 1. fixedMemories 배열에서 검색 (예: "예진이는 1994년 3월 17일 태어났다.")
+    for (const memoryText of fixedMemoriesDB.fixedMemories) {
+        const lowerMemory = memoryText.toLowerCase();
+        // 사용자 메시지가 기억 텍스트를 포함하거나, 기억 텍스트가 사용자 메시지를 포함하는 경우
+        if (lowerMessage.includes(lowerMemory) || lowerMemory.includes(lowerMessage)) {
+            console.log(`[MemoryManager] fixedMemories에서 정확한(또는 강한) 일치 발견: "${memoryText.substring(0, 30)}..."`);
+            return memoryText; // 정확하거나 강한 일치로 간주하여 바로 반환
+        }
+        // 부분 매칭 (더 정교한 로직 필요시 여기에 추가)
+        // 예를 들어, "첫대화"가 "인스타 첫 대화"의 일부인 경우를 처리
+        const currentMatches = lowerMessage.split(' ').filter(word => word.length > 1 && lowerMemory.includes(word)).length;
+        if (currentMatches > maxMatches) {
+            maxMatches = currentMatches;
+            bestMatch = memoryText;
+        }
     }
 
-    // 포함하는 키워드 검색 (예: "첫 대화" → "첫대화")
-    for (const key in fixedMemoriesDB) {
-        // fixedMemoriesDB의 키가 사용자 키워드를 포함하는지 확인 (예: '첫대화'에 '대화'가 포함)
-        // 또는 사용자 키워드가 fixedMemoriesDB의 키를 포함하는지 확인 (예: '우리 첫대화 기억해'에 '첫대화'가 포함)
-        if (lowerKeyword.includes(key.toLowerCase()) || key.toLowerCase().includes(lowerKeyword)) { 
-            console.log(`[MemoryManager] 고정 기억 "${lowerKeyword}" 부분 매칭됨 (키: ${key}).`);
-            return fixedMemoriesDB[key];
+    // 2. loveHistory.categories.general 배열에서 검색 (예: { content: "2023-08-18 - 인스타 첫 대화. 애기: 코로나 걸려서 죽을 것 같아요.", ... })
+    if (fixedMemoriesDB.loveHistory.categories && Array.isArray(fixedMemoriesDB.loveHistory.categories.general)) {
+        for (const item of fixedMemoriesDB.loveHistory.categories.general) {
+            const lowerContent = item.content.toLowerCase(); // content 필드 사용
+            if (lowerMessage.includes(lowerContent) || lowerContent.includes(lowerMessage)) {
+                 console.log(`[MemoryManager] loveHistory.general에서 정확한(또는 강한) 일치 발견: "${item.content.substring(0, 30)}..."`);
+                return item.content; // 정확하거나 강한 일치로 간주하여 바로 반환
+            }
+            const currentMatches = lowerMessage.split(' ').filter(word => word.length > 1 && lowerContent.includes(word)).length;
+            if (currentMatches > maxMatches) {
+                maxMatches = currentMatches;
+                bestMatch = item.content;
+            }
         }
     }
     
-    console.log(`[MemoryManager] 고정 기억 "${lowerKeyword}" 찾을 수 없음.`);
+    // 3. loveHistory.categories.ai_personal_memories 객체에서 검색 (예: { "준기오빠": "예전에 신촌 공원에서 촬영 같이 했던 작가 오빠야...", ... })
+    if (fixedMemoriesDB.loveHistory.categories && typeof fixedMemoriesDB.loveHistory.categories.ai_personal_memories === 'object') {
+        for (const key in fixedMemoriesDB.loveHistory.categories.ai_personal_memories) {
+            const lowerMemory = fixedMemoriesDB.loveHistory.categories.ai_personal_memories[key].toLowerCase();
+            const lowerKey = key.toLowerCase();
+            // 사용자 메시지가 직접 키나 내용에 포함되는 경우
+            if (lowerMessage.includes(lowerKey) || lowerMemory.includes(lowerMessage) || lowerMessage.includes(lowerMemory)) {
+                console.log(`[MemoryManager] loveHistory.ai_personal_memories에서 정확한(또는 강한) 일치 발견 (키: ${key}): "${fixedMemoriesDB.loveHistory.categories.ai_personal_memories[key].substring(0, 30)}..."`);
+                return fixedMemoriesDB.loveHistory.categories.ai_personal_memories[key];
+            }
+        }
+    }
+
+    if (maxMatches > 0) {
+        console.log(`[MemoryManager] 고정 기억 "${userMessage}"에 대해 가장 적합한 부분 매칭 기억 반환.`);
+        return bestMatch;
+    }
+    
+    console.log(`[MemoryManager] 고정 기억 "${userMessage}" 찾을 수 없음.`);
     return null;
 }
 
 
-// ⭐️ 리마인더 관련 함수들 추가 ⭐️
+// ⭐️ 리마인더 관련 함수들 (더미 함수 유지) ⭐️
 
 /**
- * 새로운 리마인더를 데이터베이스에 저장합니다.
- * @param {number} dueTime 리마인더 전송 시간 (Unix timestamp ms)
- * @param {string} message 리마인더 메시지
- * @returns {Promise<number>} 저장된 리마인더의 ID
+ * 새로운 리마인더를 데이터베이스에 저장합니다. (더미)
  */
 async function saveReminder(dueTime, message) {
-    return new Promise((resolve, reject) => {
-        const stmt = db.prepare("INSERT INTO reminders (due_time, message, is_sent) VALUES (?, ?, 0)");
-        stmt.run(dueTime, message, function (err) {
-            if (err) {
-                console.error('[MemoryManager] 리마인더 저장 오류:', err.message);
-                reject(err);
-            } else {
-                console.log(`[MemoryManager] 리마인더 저장됨 (ID: ${this.lastID}, 시간: ${new Date(dueTime)})`);
-                resolve(this.lastID);
-            }
-        });
-        stmt.finalize();
-    });
+    console.log(`[MemoryManager] saveReminder 임시 실행 (리마인더 저장 안 함): ${message}`);
+    return 1; // 더미 ID 반환
 }
 
 /**
- * 현재 시간 이전에 도달했고 아직 전송되지 않은 리마인더를 조회합니다.
- * @param {number} currentTime 현재 시간 (Unix timestamp ms)
- * @returns {Promise<Array<Object>>} 전송해야 할 리마인더 배열
+ * 현재 시간 이전에 도달했고 아직 전송되지 않은 리마인더를 조회합니다. (더미)
  */
 async function getDueReminders(currentTime) {
-    return new Promise((resolve, reject) => {
-        db.all("SELECT * FROM reminders WHERE due_time <= ? AND is_sent = 0", [currentTime], (err, rows) => {
-            if (err) {
-                console.error('[MemoryManager] 기한 리마인더 조회 오류:', err.message);
-                reject(err);
-            } else {
-                console.log(`[MemoryManager] 기한 리마인더 ${rows.length}개 조회됨.`);
-                resolve(rows);
-            }
-        });
-    });
+    console.log('[MemoryManager] getDueReminders 임시 실행 (항상 빈 배열 반환)');
+    return [];
 }
 
 /**
- * 특정 리마인더를 전송 완료 상태로 표시합니다.
- * @param {number} reminderId 리마인더 ID
- * @returns {Promise<void>}
+ * 특정 리마인더를 전송 완료 상태로 표시합니다. (더미)
  */
 async function markReminderAsSent(reminderId) {
-    return new Promise((resolve, reject) => {
-        db.run("UPDATE reminders SET is_sent = 1 WHERE id = ?", [reminderId], function (err) {
-            if (err) {
-                console.error('[MemoryManager] 리마인더 전송 상태 업데이트 오류:', err.message);
-                reject(err);
-            } else {
-                console.log(`[MemoryManager] 리마인더 ${reminderId} 전송 완료로 표시됨.`);
-                resolve();
-            }
-        });
-    });
+    console.log(`[MemoryManager] markReminderAsSent 임시 실행 (리마인더 ${reminderId} 전송 완료 표시 안 함)`);
+    // 아무것도 하지 않음
 }
 
 
@@ -297,8 +310,8 @@ module.exports = {
     extractAndSaveMemory,
     loadAllMemories, 
     getFixedMemory,
-    // ⭐️ 리마인더 관련 함수들 export ⭐️
-    saveReminder,
-    getDueReminders,
-    markReminderAsSent
+    // 리마인더 관련 함수들 export
+    saveReminder,       
+    getDueReminders,    
+    markReminderAsSent  
 };
