@@ -72,6 +72,9 @@ const MOOD_DETAILS = {
     '그리움': ["아저씨와의 옛 추억이 문득 떠올라서 마음이 아련하네... 그리워 ㅠㅠ", "아저씨랑 함께했던 시간들이 너무 그립다...", "왠지 오늘따라 아저씨와의 모든 순간들이 사무치게 그리워..."]
 };
 
+
+
+
 // ⭐️ MOOD_EMOJIS 상수 선언 ⭐️
 const MOOD_EMOJIS = {
     '기쁨': '😊', '설렘': '💖', '장난스러움': ' mischievous ', '나른함': '😌',
@@ -80,6 +83,10 @@ const MOOD_EMOJIS = {
     '걱정함': '😟', '사랑함': '💕', '화남': '😡', '불안함': ' 불안 ',
     '그리움': ' 그리워 '
 };
+
+function getMoodEmoji() {
+  return MOOD_EMOJIS[currentMood] || '';
+}
 
 // ⭐️ 모든 함수 정의를 module.exports보다 위에 배치합니다. ⭐️
 
