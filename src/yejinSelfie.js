@@ -1,6 +1,6 @@
 // src/yejinSelfie.js - 예진이 셀카 사진 처리 모듈
 
-const { callOpenAI, cleanReply } = require("./autoReply"); // autoReply에서 함수 가져오기
+// const { callOpenAI, cleanReply } = require("./autoReply"); // 이 줄은 이제 필요 없습니다.
 
 function getSelfieReplyText() {
   const replies = [
@@ -20,9 +20,9 @@ async function getSelfieReply(userMessage, saveLogFunc, callOpenAIFunc, cleanRep
   if (lowerMsg.includes("셀카") || lowerMsg.includes("셀피") || lowerMsg.includes("지금 모습") || 
       lowerMsg.includes("얼굴 보여줘") || lowerMsg.includes("얼굴보고싶") || 
       lowerMsg.includes("무쿠 셀카") || lowerMsg.includes("애기 셀카") || 
-      lowerMsg.includes("빠계 셀카") || lowerMsg.includes("메이드")) { // '메이드' 키워드도 셀카로 분류
+      lowerMsg.includes("빠계 셀카") || lowerMsg.includes("메이드")) { 
     
-    const baseUrl = "https://photo.de-ji.ne/photo/yejin"; // 셀카 URL
+    const baseUrl = "https://photo.de-ji.net/photo/yejin"; // URL 변경
     const fileCount = 1200; // 예진 셀카 기준 고정 수 (실제 파일 개수에 맞게 조정 필요)
     
     const index = Math.floor(Math.random() * fileCount) + 1; // 000001부터 시작
