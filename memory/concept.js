@@ -1,4 +1,4 @@
-// memory/concept.js v1.21 (URL 인코딩 및 검증 기능 추가)
+// memory/concept.js v1.22 (URL 인코딩 수정)
 
 // 📦 필수 모듈 불러오기
 const moment = require('moment-timezone');
@@ -145,28 +145,44 @@ async function validateImageUrl(url) {
 
 /**
  * URL 인코딩을 적용하는 함수
+ * 이중 인코딩을 방지하기 위해 각 세그먼트를 먼저 디코딩한 후 다시 인코딩합니다.
  */
 function encodeImageUrl(url) {
     try {
-        // URL을 파싱하여 path 부분만 인코딩
-        const urlObj = new URL(url);
-        const pathParts = urlObj.pathname.split('/');
-        const encodedParts = pathParts.map(part => {
-            // 빈 문자열이 아닌 경우에만 인코딩
-            return part ? encodeURIComponent(part) : part;
-        });
-        urlObj.pathname = encodedParts.join('/');
+        const parsed = new URL(url); // URL 객체로 파싱
+        // pathname을 '/' 기준으로 분리하고, 각 세그먼트를 먼저 디코딩한 후 다시 인코딩
+        // 이렇게 하면 이미 인코딩된 부분은 디코딩되었다가 다시 인코딩되어 이중 인코딩을 방지합니다.
+        parsed.pathname = parsed.pathname
+            .split('/')
+            .map(segment => {
+                // 비어있지 않은 세그먼트만 처리 (루트 '/'나 연속된 슬래시 처리)
+                if (segment) {
+                    try {
+                        // 이미 인코딩된 문자열을 한번 디코딩 (안전하게)
+                        // 그 후 다시 인코딩 (URL에 안전한 형태로)
+                        return encodeURIComponent(decodeURIComponent(segment));
+                    } catch (e) {
+                        // decodeURIComponent 오류 발생 시 (예: 잘못된 % 인코딩)
+                        // 해당 세그먼트는 그대로 인코딩을 시도하여 안전하게 처리
+                        console.warn(`[encodeImageUrl] decodeURIComponent 실패: ${segment}, 재인코딩 시도`);
+                        return encodeURIComponent(segment);
+                    }
+                }
+                return segment; // 빈 세그먼트는 그대로 유지
+            })
+            .join('/');
         
-        const encodedUrl = urlObj.toString();
+        const encodedUrl = parsed.toString();
         console.log(`[encodeImageUrl] 원본: ${url}`);
         console.log(`[encodeImageUrl] 인코딩: ${encodedUrl}`);
         
         return encodedUrl;
     } catch (error) {
         console.error(`[encodeImageUrl] URL 인코딩 실패: ${url}`, error);
-        return url; // 실패 시 원본 반환
+        return url; // 실패 시 원본 URL 반환
     }
 }
+
 
 /**
  * 특정 컨셉 폴더에서 랜덤 또는 다음 사진 URL을 생성합니다.
@@ -182,7 +198,7 @@ function generateConceptPhotoUrl(folderName, targetIndex = null) {
     // 단일 파일명으로 등록된 경우 바로 해당 파일명을 사용
     if (folderName.endsWith('.jpg')) {
         const rawUrl = `${BASE_CONCEPT_URL}${folderName}`;
-        const encodedUrl = encodeImageUrl(rawUrl);
+        const encodedUrl = encodeImageUrl(rawUrl); // encodeImageUrl 사용
         console.log(`[concept:generateConceptPhotoUrl] 단일 파일 URL: ${encodedUrl}`);
         return encodedUrl;
     }
@@ -206,7 +222,7 @@ function generateConceptPhotoUrl(folderName, targetIndex = null) {
     
     // 최종 URL은 BASE_CONCEPT_URL 바로 아래 파일명으로 구성하고 인코딩 적용
     const rawUrl = `${BASE_CONCEPT_URL}${fileName}`;
-    const encodedUrl = encodeImageUrl(rawUrl);
+    const encodedUrl = encodeImageUrl(rawUrl); // encodeImageUrl 사용
     console.log(`[concept:generateConceptPhotoUrl] 최종 생성 URL: ${encodedUrl}`);
     return encodedUrl;
 }
@@ -366,7 +382,7 @@ async function getConceptPhotoReply(userMessage, saveLogFunc, callOpenAIFunc, cl
             let conceptName = parts.slice(4).join(' '); 
             
             folderDescription = `내가(예진이) ${year}년 ${parseInt(month)}월 ${parseInt(day)}일 ${location}에서 찍은 ${conceptName} 컨셉 사진`; 
-            additionalPromptForYejinText = `이 사진은 아저씨와 함께한 나의 ${year}년 ${parseInt(month)}월 ${parseInt(day)}일 ${location}에서의 ${conceptName} 컨셉 사진이야. 아저씨와 나의 특별한 추억과 애정을 담아서 말해줘. 이 사진을 보며 떠오르는 솔직한 감정을 표현해줘. 사진 속 인물은 오직 '나(예진이)'임을 명확히 인지하고 코멘트해줘.`;
+            additionalPromptForYejinText = `이 사진은 아저씨와 함께한 나의 ${year}년 ${parseInt(month)}월 ${parseInt(day)}일 ${location}에서의 ${conceptName} 컨셉 사진이야. 아저씨와 나의 특별한 추억과 애정을 담아서 말해줘. 사진 속 인물은 오직 '나(예진이)'임을 명확히 인지하고 코멘트해줘.`;
             console.log(`[concept:getConceptPhotoReply] 키워드 "${keyword}" 매칭됨 → 폴더: ${selectedFolder}`);
             break;
         }
