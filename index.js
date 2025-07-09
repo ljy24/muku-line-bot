@@ -6,7 +6,7 @@
 const express = require('express');
 const line = require('@line/bot-sdk');
 const bodyParser = require('body-parser');
-const autoReply = require('./autoReply'); // ✅ 누락되었던 autoReply 불러오기
+const autoReply = require('./src/autoReply'); // ✅ 누락되었던 autoReply 불러오기
 const omoide = require('./omoide');
 const concept = require('./concept');
 const memoryManager = require('./memoryManager');
