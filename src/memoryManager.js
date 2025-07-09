@@ -1,293 +1,221 @@
-// src/memoryManager.js - v5.0 - 하이브리드 기억 관리 (User Memories: PostgreSQL, Love History/Fixed Memories: 파일)
+// src/memoryManager.js - v1.2 (텍스트 파일 로딩 제거, JSON 파일만 로딩)
 
-const { Pool } = require('pg'); // PostgreSQL 연결 풀
-const fs = require('fs').promises; // 비동기 파일 시스템 모듈
-const path = require('path');     // 경로 처리 모듈
-const moment = require('moment-timezone'); // 시간 처리 모듈
+const fs = require('fs').promises; // 비동기 파일 시스템 모듈 사용
+const path = require('path');
+const { Database } = require('sqlite3'); // SQLite3 데이터베이스 모듈
 
-// --- 파일 기반 기억 경로 (loadLoveHistory, loadOtherPeopleHistory용) ---
-const MEMORIES_DIR = path.join(__dirname, '..', 'data'); // 프로젝트 루트의 data 폴더
-const LOVE_HISTORY_FILE = path.join(MEMORIES_DIR, 'love_history.json');
-const FIXED_MEMORIES_FILE = path.join(MEMORIES_DIR, 'fixed_memories.json');
+const dbPath = path.join(process.cwd(), 'memories.db');
+let db; // SQLite 데이터베이스 인스턴스
 
-// --- PostgreSQL 연결 설정 ---
-// Render 환경 변수에서 DB 정보를 가져옵니다.
-const pool = new Pool({
-    connectionString: process.env.DATABASE_URL, // DATABASE_URL 환경 변수 사용 (권장)
-    ssl: {
-        rejectUnauthorized: false // Render PostgreSQL은 SSL이 필요하며, 자체 서명 인증서일 수 있어 이 옵션이 필요합니다.
-    }
-});
+// ⭐️ 고정 기억을 저장할 변수 (메모리 로딩) ⭐️
+const fixedMemoriesDB = {};
+
+// 기억 파일들의 경로 정의
+const FIXED_MEMORIES_FILE = path.join(process.cwd(), 'memory', 'fixedMemories.json');
+const LOVE_HISTORY_FILE = path.join(process.cwd(), 'memory', 'love-history.json');
+// const TEXT_MEMORY_1_FILE = path.join(process.cwd(), 'memory', '1빠계.txt'); // 제거
+// const TEXT_MEMORY_2_FILE = path.join(process.cwd(), 'memory', '2내꺼.txt'); // 제거
 
 /**
- * 데이터베이스 연결 테스트 및 'user_memories' 테이블 생성/확인합니다.
- * love_history와 fixed_memories 테이블은 생성하지 않습니다.
+ * SQLite 데이터베이스 연결을 초기화합니다.
+ */
+async function initializeDatabase() {
+    return new Promise((resolve, reject) => {
+        db = new Database(dbPath, (err) => {
+            if (err) {
+                console.error('[MemoryManager] 데이터베이스 연결 오류:', err.message);
+                reject(err);
+            } else {
+                console.log('[MemoryManager] SQLite 데이터베이스에 연결되었습니다.');
+                db.run(`
+                    CREATE TABLE IF NOT EXISTS memories (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        type TEXT NOT NULL,
+                        content TEXT NOT NULL,
+                        timestamp INTEGER NOT NULL,
+                        keywords TEXT
+                    )
+                `, (err) => {
+                    if (err) {
+                        console.error('[MemoryManager] 테이블 생성 오류:', err.message);
+                        reject(err);
+                    } else {
+                        console.log('[MemoryManager] memories 테이블이 준비되었습니다.');
+                        resolve();
+                    }
+                });
+            }
+        });
+    });
+}
+
+/**
+ * 특정 메모리를 데이터베이스에 저장합니다.
+ * @param {string} type 메모리 유형 (예: 'text_message', 'image_comment', 'fixed_memory')
+ * @param {string} content 메모리 내용
+ * @param {number} timestamp 타임스탬프 (epoch ms)
+ * @param {string} [keywords=''] 관련 키워드 (쉼표로 구분)
+ */
+async function saveMemory(type, content, timestamp, keywords = '') {
+    return new Promise((resolve, reject) => {
+        const stmt = db.prepare("INSERT INTO memories (type, content, timestamp, keywords) VALUES (?, ?, ?, ?)");
+        stmt.run(type, content, timestamp, keywords, function (err) {
+            if (err) {
+                console.error('[MemoryManager] 메모리 저장 오류:', err.message);
+                reject(err);
+            } else {
+                console.log(`[MemoryManager] 메모리 저장됨 (ID: ${this.lastID}, 타입: ${type})`);
+                resolve(this.lastID);
+            }
+        });
+        stmt.finalize();
+    });
+}
+
+/**
+ * 특정 키워드에 해당하는 메모리를 데이터베이스에서 조회합니다.
+ * @param {string} keyword 조회할 키워드
+ * @returns {Promise<Array<Object>>} 조회된 메모리 배열
+ */
+async function searchMemories(keyword) {
+    return new Promise((resolve, reject) => {
+        db.all("SELECT * FROM memories WHERE keywords LIKE ? ORDER BY timestamp DESC LIMIT 5", [`%${keyword}%`], (err, rows) => {
+            if (err) {
+                console.error('[MemoryManager] 메모리 조회 오류:', err.message);
+                reject(err);
+            } else {
+                console.log(`[MemoryManager] 키워드 "${keyword}"로 ${rows.length}개의 메모리 조회됨.`);
+                resolve(rows);
+            }
+        });
+    });
+}
+
+/**
+ * 모든 메모리를 지웁니다.
+ */
+async function clearMemory() {
+    return new Promise((resolve, reject) => {
+        db.run("DELETE FROM memories", function (err) {
+            if (err) {
+                console.error('[MemoryManager] 메모리 삭제 오류:', err.message);
+                reject(err);
+            } else {
+                console.log(`[MemoryManager] ${this.changes}개 메모리 삭제됨.`);
+                resolve();
+            }
+        });
+    });
+}
+
+/**
+ * 사용자 메시지에서 기억을 추출하고 저장합니다. (GPT 활용)
+ * @param {string} userMessage 사용자의 메시지
+ */
+async function extractAndSaveMemory(userMessage) {
+    // TODO: 여기에 GPT를 사용하여 메시지에서 핵심 키워드/내용을 추출하고
+    // saveMemory 함수를 호출하여 DB에 저장하는 로직을 구현합니다.
+    // 현재는 더미 로직입니다.
+    console.log(`[MemoryManager] 기억 추출 및 저장 (더미): "${userMessage.substring(0, 20)}..."`);
+    // await saveMemory('user_chat', userMessage, Date.now(), '자동 추출 키워드');
+}
+
+/**
+ * 필요한 데이터베이스 테이블 및 파일 디렉토리를 보장합니다.
+ * 서버 시작 시 호출됩니다.
  */
 async function ensureMemoryTablesAndDirectory() {
+    await initializeDatabase();
+    // memory 폴더가 없으면 생성
+    const memoryDir = path.join(process.cwd(), 'memory');
     try {
-        // --- 1. PostgreSQL 연결 테스트 및 user_memories 테이블 확인/생성 ---
-        const client = await pool.connect();
+        await fs.mkdir(memoryDir, { recursive: true });
+        console.log(`[MemoryManager] 'memory' 디렉토리 확인 또는 생성됨: ${memoryDir}`);
+    } catch (error) {
+        console.error(`[MemoryManager] 'memory' 디렉토리 생성 실패: ${error.message}`);
+    }
+
+    // ⭐️ 모든 고정 기억 파일들을 로딩합니다. ⭐️
+    await loadAllMemories();
+}
+
+/**
+ * ⭐️ 모든 고정 기억 파일들을 로딩하여 fixedMemoriesDB에 저장합니다. ⭐️
+ */
+async function loadAllMemories() {
+    console.log('[MemoryManager] 고정 기억 파일 로딩 시작...');
+    try {
+        // fixedMemories.json 로드
         try {
-            await client.query('SELECT NOW()'); // 간단한 테스트 쿼리
-            console.log(`[MemoryManager] PostgreSQL 데이터베이스 연결 성공`);
-
-            // 'user_memories' 테이블 생성 (이미 존재하면 건너뜀)
-            await client.query(`
-                CREATE TABLE IF NOT EXISTS user_memories (
-                    id BIGSERIAL PRIMARY KEY,
-                    content TEXT NOT NULL,
-                    timestamp TIMESTAMPTZ DEFAULT NOW(),
-                    reminder_time TIMESTAMPTZ DEFAULT NULL
-                );
-            `);
-            console.log(`[MemoryManager] 'user_memories' 테이블 준비 완료.`);
-
-            // 기존 테이블에 reminder_time 컬럼이 없을 경우 추가 (마이그레이션)
-            const checkColumnQuery = `SELECT column_name FROM information_schema.columns WHERE table_name='user_memories' AND column_name='reminder_time';`;
-            const columnExists = await client.query(checkColumnQuery);
-            if (columnExists.rows.length === 0) {
-                await client.query(`ALTER TABLE user_memories ADD COLUMN reminder_time TIMESTAMPTZ DEFAULT NULL;`);
-                console.log(`[MemoryManager] 'reminder_time' 컬럼이 'user_memories' 테이블에 추가되었습니다.`);
+            const data = await fs.readFile(FIXED_MEMORIES_FILE, 'utf8');
+            const parsed = JSON.parse(data);
+            Object.assign(fixedMemoriesDB, parsed); // 기존 객체에 병합
+            console.log(`[MemoryManager] fixedMemories.json 로드 완료. (기억 ${Object.keys(parsed).length}개)`);
+        } catch (err) {
+            if (err.code === 'ENOENT') {
+                console.warn(`[MemoryManager] fixedMemories.json 파일이 없습니다. 새로 생성합니다.`);
+                await fs.writeFile(FIXED_MEMORIES_FILE, JSON.stringify({}, null, 2), 'utf8');
+            } else {
+                console.error(`[MemoryManager] fixedMemories.json 로드 실패: ${err.message}`);
             }
-
-            // 인덱스 생성 (성능 향상)
-            await client.query(`
-                CREATE INDEX IF NOT EXISTS idx_user_memories_timestamp ON user_memories(timestamp DESC);
-            `);
-            await client.query(`
-                CREATE INDEX IF NOT EXISTS idx_user_memories_reminder_time ON user_memories(reminder_time);
-            `);
-            console.log(`[MemoryManager] 'user_memories' 인덱스 생성 완료.`);
-
-        } finally {
-            client.release(); // 연결 반환
         }
 
-        // --- 2. 파일 기반 기억을 위한 'data' 디렉토리 및 초기 파일 확인/생성 ---
-        await fs.mkdir(MEMORIES_DIR, { recursive: true });
-        console.log(`[MemoryManager] 기억 파일 디렉토리 (${MEMORIES_DIR}) 확인 및 생성 완료.`);
-        
-        // love_history.json 및 fixed_memories.json 파일이 없으면 빈 상태로 생성
-        await ensureFileExists(LOVE_HISTORY_FILE, { categories: { love_expressions: [], daily_care: [], general: [] } });
-        await ensureFileExists(FIXED_MEMORIES_FILE, { ai_personal_memories: {} });
-        
-        console.log('[MemoryManager] 고정 기억 파일들 확인 및 생성 완료.');
-
-    } catch (error) {
-        console.error(`[MemoryManager] 데이터베이스/파일 시스템 초기화 실패: ${error.message}`);
-        if (pool) {
-            await pool.end();
+        // love-history.json 로드
+        try {
+            const data = await fs.readFile(LOVE_HISTORY_FILE, 'utf8');
+            const parsed = JSON.parse(data);
+            Object.assign(fixedMemoriesDB, parsed);
+            console.log(`[MemoryManager] love-history.json 로드 완료. (기억 ${Object.keys(parsed).length}개)`);
+        } catch (err) {
+            if (err.code === 'ENOENT') {
+                console.warn(`[MemoryManager] love-history.json 파일이 없습니다. 새로 생성합니다.`);
+                await fs.writeFile(LOVE_HISTORY_FILE, JSON.stringify({}, null, 2), 'utf8');
+            } else {
+                console.error(`[MemoryManager] love-history.json 로드 실패: ${err.message}`);
+            }
         }
-        throw error;
+
+        // 1빠계.txt, 2내꺼.txt 로딩 부분은 제거되었습니다.
+
+        console.log('[MemoryManager] 모든 고정 기억 로딩 완료:', Object.keys(fixedMemoriesDB));
+    } catch (error) {
+        console.error('[MemoryManager] 고정 기억 로딩 중 치명적인 오류:', error);
     }
 }
 
 /**
- * 파일이 존재하는지 확인하고, 없으면 기본값으로 생성합니다.
- * @param {string} filePath - 확인할 파일 경로
- * @param {any} defaultValue - 파일이 없을 경우 저장할 기본값
+ * ⭐️ 고정 기억 DB에서 특정 키워드에 해당하는 기억을 찾아 반환합니다. ⭐️
+ * @param {string} keyword 찾을 기억의 키워드 (예: '첫대화', '고백', '무쿠생일')
+ * @returns {string|null} 기억 내용 텍스트 또는 null
  */
-async function ensureFileExists(filePath, defaultValue) {
-    try {
-        await fs.access(filePath); // 파일 존재 여부 확인
-    } catch (error) {
-        if (error.code === 'ENOENT') { // 파일이 없으면
-            console.warn(`[MemoryManager] 파일 없음: ${filePath}. 기본값으로 생성합니다.`);
-            await fs.writeFile(filePath, JSON.stringify(defaultValue, null, 2), 'utf8');
-        } else {
-            throw error; // 다른 오류는 다시 throw
+function getFixedMemory(keyword) {
+    // 키워드를 소문자로 변환하여 고정 기억 DB에서 찾아봅니다.
+    const lowerKeyword = keyword.toLowerCase();
+
+    // 정확히 매칭되는 키워드 우선
+    if (fixedMemoriesDB[lowerKeyword]) {
+        console.log(`[MemoryManager] 고정 기억 "${lowerKeyword}" 정확히 매칭됨.`);
+        return fixedMemoriesDB[lowerKeyword];
+    }
+
+    // 포함하는 키워드 검색 (예: "첫 대화" → "첫대화")
+    for (const key in fixedMemoriesDB) {
+        if (lowerKeyword.includes(key.toLowerCase())) { // 사용자의 키워드가 DB 키를 포함하는지 확인
+            console.log(`[MemoryManager] 고정 기억 "${lowerKeyword}" 부분 매칭됨 (키: ${key}).`);
+            return fixedMemoriesDB[key];
         }
     }
-}
-
-/**
- * JSON 파일을 읽고 파싱합니다. 파일이 없으면 빈 배열/객체를 반환합니다.
- * @param {string} filePath - 읽을 파일 경로
- * @param {any} defaultValue - 파일이 없을 경우 반환할 기본값 (배열 또는 객체)
- * @returns {Promise<any>} 파싱된 데이터
- */
-async function readJsonFile(filePath, defaultValue) {
-    try {
-        const data = await fs.readFile(filePath, 'utf8');
-        return JSON.parse(data);
-    } catch (error) {
-        if (error.code === 'ENOENT') { // 파일이 없을 경우
-            return defaultValue;
-        }
-        console.error(`[MemoryManager] 파일 읽기 실패: ${filePath}, 오류: ${error}`);
-        return defaultValue; // 오류 발생 시에도 기본값 반환
-    }
-}
-
-// --- PostgreSQL 기반 사용자 기억 관리 함수 (기존 DB 로직 유지) ---
-/**
- * 사용자 정의 기억을 PostgreSQL 데이터베이스에 저장합니다.
- * @param {string} content - 기억할 내용
- * @param {string|null} reminderTime - 리마인더 시간 (ISO string), 없으면 null
- */
-async function saveUserMemory(content, reminderTime = null) {
-    try {
-        await pool.query(
-            'INSERT INTO user_memories (content, reminder_time) VALUES ($1, $2)',
-            [content, reminderTime]
-        );
-        console.log(`[MemoryManager] 사용자 기억 저장됨: ${content}`);
-    } catch (error) {
-        console.error(`[MemoryManager] 사용자 기억 저장 실패: ${error.message}`);
-        throw error;
-    }
-}
-
-/**
- * 사용자 정의 기억을 PostgreSQL 데이터베이스에서 삭제합니다.
- * @param {string} contentToDelete - 삭제할 기억 내용 (부분 일치)
- * @returns {Promise<boolean>} 삭제 성공 여부
- */
-async function deleteUserMemory(contentToDelete) {
-    try {
-        const result = await pool.query(
-            'DELETE FROM user_memories WHERE content ILIKE $1',
-            [`%${contentToDelete}%`]
-        );
-        console.log(`[MemoryManager] 사용자 기억 삭제 시도: "${contentToDelete}" (삭제된 행: ${result.rowCount})`);
-        return result.rowCount > 0;
-    } catch (error) {
-        console.error(`[MemoryManager] 사용자 기억 삭제 실패: ${error.message}`);
-        throw error;
-    }
-}
-
-/**
- * 리마인더 시간을 설정/업데이트합니다.
- * @param {string} content - 리마인더를 설정할 기억의 내용 (부분 일치)
- * @param {string|null} timeIso - 설정할 리마인더 시간 (ISO string) 또는 null (삭제)
- * @returns {Promise<boolean>} 업데이트 성공 여부
- */
-async function setMemoryReminder(content, timeIso) {
-    try {
-        const result = await pool.query(
-            'UPDATE user_memories SET reminder_time = $1 WHERE content ILIKE $2',
-            [timeIso, `%${content}%`]
-        );
-        console.log(`[MemoryManager] 리마인더 업데이트 시도: "${content}" (업데이트된 행: ${result.rowCount})`);
-        return result.rowCount > 0;
-    } catch (error) {
-        console.error(`[MemoryManager] 리마인더 설정 실패: ${error.message}`);
-        throw error;
-    }
-}
-
-/**
- * 기한이 된 리마인더 목록을 가져옵니다.
- * @returns {Promise<Array<Object>>} 기한이 된 리마인더 배열
- */
-async function getDueReminders() {
-    try {
-        const now = moment().tz('Asia/Tokyo').toISOString();
-        const res = await pool.query(
-            'SELECT id, content, reminder_time FROM user_memories WHERE reminder_time IS NOT NULL AND reminder_time <= $1',
-            [now]
-        );
-        return res.rows;
-    } catch (error) {
-        console.error(`[MemoryManager] 기한 리마인더 불러오기 실패: ${error.message}`);
-        throw error;
-    }
-}
-
-/**
- * 리마인더 전송 후 reminder_time을 NULL로 업데이트합니다.
- * @param {number} id - 업데이트할 기억의 ID
- * @param {null} value - NULL 값 (항상 null이어야 함)
- * @returns {Promise<boolean>} 업데이트 성공 여부
- */
-async function updateMemoryReminderTime(id, value) {
-    try {
-        const res = await pool.query(
-            'UPDATE user_memories SET reminder_time = $1 WHERE id = $2',
-            [value, id]
-        );
-        console.log(`[MemoryManager] 리마인더 시간 업데이트 완료 (ID: ${id})`);
-        return res.rowCount > 0;
-    } catch (error) {
-        console.error(`[MemoryManager] 리마인더 시간 업데이트 실패: ${error.message}`);
-        throw error;
-    }
-}
-
-/**
- * 모든 사용자 정의 기억을 가져옵니다. (기억 목록 보여주기용)
- * @returns {Promise<Array<Object>>} 모든 사용자 기억 배열
- */
-async function getAllUserMemories() {
-    try {
-        const res = await pool.query('SELECT content, timestamp, reminder_time FROM user_memories ORDER BY timestamp ASC');
-        return res.rows;
-    } catch (error) {
-        console.error(`[MemoryManager] 모든 사용자 기억 불러오기 실패: ${error.message}`);
-        throw error;
-    }
-}
-
-/**
- * AI 프롬프트에 포함할 사용자 기억을 가져옵니다. (최신 10개)
- * @returns {Promise<Array<Object>>} AI 프롬프트용 사용자 기억 배열
- */
-async function getMemoriesForAI() {
-    try {
-        const res = await pool.query('SELECT content, timestamp, reminder_time FROM user_memories ORDER BY timestamp DESC LIMIT 10');
-        return res.rows.reverse(); // 최신 10개를 가져와서 오래된 순으로 정렬
-    } catch (error) {
-        console.error(`[MemoryManager] AI용 기억 불러오기 실패: ${error.message}`);
-        throw error;
-    }
-}
-
-// --- 파일 기반 고정 기억 로드 함수 (loadLoveHistory, loadOtherPeopleHistory용) ---
-/**
- * `love_history.json` 파일을 로드합니다. (파일에서 직접 읽음)
- * @returns {Promise<Object>} 사랑 히스토리 데이터
- */
-async function loadLoveHistory() {
-    return await readJsonFile(LOVE_HISTORY_FILE, { categories: { love_expressions: [], daily_care: [], general: [] } });
-}
-
-/**
- * `fixed_memories.json` 파일을 로드합니다. (파일에서 직접 읽음)
- * @returns {Promise<Object>} 다른 사람들의 기억 데이터
- */
-async function loadOtherPeopleHistory() {
-    return await readJsonFile(FIXED_MEMORIES_FILE, { ai_personal_memories: {} });
-}
-
-/**
- * 첫 대화 기억을 가져옵니다. (`love_history.json`에서 특정 이벤트 찾음)
- */
-async function getFirstDialogueMemory() {
-    const loveHistory = await loadLoveHistory();
-    const firstDialogueEntry = loveHistory.categories.general.find(mem => mem.content.includes('인스타 첫 대화'));
-    return firstDialogueEntry ? firstDialogueEntry.content : null;
-}
-
-// AI가 메시지에서 기억을 추출하고 저장하는 함수 (user_memories에 저장)
-async function extractAndSaveMemory(text) {
-    // 이 함수는 AI가 "이것을 기억해달라"고 판단한 경우 autoReply.js에서 호출될 수 있습니다.
-    // 현재는 index.js에서 호출되고 있으며, 단순히 saveUserMemory를 호출하는 방식으로 구현.
-    console.log(`[MemoryManager] 'extractAndSaveMemory'가 호출됨 (자동 저장 대상): ${text.substring(0, 50)}...`);
-    await saveUserMemory(text); // DB에 저장
+    
+    console.log(`[MemoryManager] 고정 기억 "${lowerKeyword}" 찾을 수 없음.`);
+    return null;
 }
 
 module.exports = {
-    ensureMemoryTablesAndDirectory, // 함수 이름 변경: DB와 디렉토리 모두 처리
-    saveUserMemory,
-    deleteUserMemory,
-    setMemoryReminder,
-    getDueReminders,
-    updateMemoryReminderTime,
-    getAllUserMemories,
-    getMemoriesForAI,
-    loadLoveHistory, // 파일에서 로드
-    loadOtherPeopleHistory, // 파일에서 로드
-    getFirstDialogueMemory, // 파일에서 로드된 love_history 사용
-    extractAndSaveMemory
+    ensureMemoryTablesAndDirectory,
+    saveMemory,
+    searchMemories,
+    clearMemory,
+    extractAndSaveMemory,
+    loadAllMemories, // 외부에서 호출할 필요는 없지만, 디버깅/확인용으로 export
+    getFixedMemory   // 고정 기억 조회를 위해 export
 };
