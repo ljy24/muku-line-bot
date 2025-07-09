@@ -57,46 +57,32 @@ async function handleEvent(event) {
         if (modelSwitchReply) {
             reply = { type: 'text', comment: modelSwitchReply };
         } else {
-            // 2. 사진 요청 처리 먼저 확인 (가장 구체적인 것부터)
-            // 컨셉 사진 요청 (concept.js로 위임)
-            const conceptReply = await concept.getConceptPhotoReply(userMessage, saveLog, callOpenAI, cleanReply); // 필요한 함수들을 인자로 전달
-            if (conceptReply) {
-                if (conceptReply.type === 'photo') {
-                    await client.replyMessage(event.replyToken, [
-                        { type: 'image', originalContentUrl: conceptReply.url, previewImageUrl: conceptReply.url },
-                        { type: 'text', text: conceptReply.caption }
-                    ]);
-                } else if (conceptReply.type === 'text') { // concept에서 사진이 없어서 텍스트 응답을 준 경우
-                    await client.replyMessage(event.replyToken, { type: 'text', text: conceptReply.comment });
-                }
-                return; // 컨셉 사진 요청 처리 후 종료
-            }
-
-            // 일반 추억 사진 요청 (omoide.js로 위임)
-            const omoideReply = await omoide.getOmoideReply(userMessage, saveLog, callOpenAI, cleanReply); // 필요한 함수들을 인자로 전달
-            if (omoideReply) {
-                if (omoideReply.type === 'photo') {
-                    await client.replyMessage(event.replyToken, [
-                        { type: 'image', originalContentUrl: omoideReply.url, previewImageUrl: omoideReply.url },
-                        { type: 'text', text: omoideReply.caption }
-                    ]);
-                } else if (omoideReply.type === 'text') { // omoide에서 사진이 없어서 텍스트 응답을 준 경우
-                    await client.replyMessage(event.replyToken, { type: 'text', text: omoideReply.comment });
-                }
-                return; // 일반 사진 요청 처리 후 종료
-            }
-
+            // ⭐⭐⭐ 2. 사진 요청 처리 먼저 확인 (가장 구체적인 것부터) ⭐⭐⭐
+            // autoReply.js에서 사진 요청 우선순위가 정해지므로, 여기서는 getReplyByMessage만 호출하도록 변경.
+            // 기존의 getConceptPhotoReply, getOmoideReply 직접 호출 로직은 autoReply.js로 이동했음.
+            
             // 3. 일반 대화, 기분 확인, 생리 주기 질문 등 (사진 요청이 아닐 때만 처리)
-            reply = await getReplyByMessage(userMessage); 
+            // autoReply.js의 getReplyByMessage 함수가 이제 모든 텍스트 기반 응답을 처리합니다.
+            // getSelfieReply, getConceptPhotoReply, getOmoideReply는 getReplyByMessage 내부에서 호출됩니다.
+            reply = await getReplyByMessage(userMessage, saveLog, callOpenAI, cleanReply); // 필요한 함수들을 인자로 전달
         }
 
-        // 애기에게 최종 응답 보내기 (일반 대화 응답)
-        if (reply && reply.type === 'text' && reply.comment) {
-            await client.replyMessage(event.replyToken, { type: 'text', text: reply.comment });
-            // saveLog는 getReplyByMessage 내부에서 이미 처리되므로 여기서는 주석 처리
-            return; 
+        // 애기에게 최종 응답 보내기 (일반 대화 응답 및 사진 응답)
+        if (reply) {
+            if (reply.type === 'text') {
+                if (reply.comment) {
+                    await client.replyMessage(event.replyToken, { type: 'text', text: reply.comment });
+                    // saveLog는 getReplyByMessage 내부에서 이미 처리되므로 여기서는 주석 처리
+                }
+            } else if (reply.type === 'image') {
+                await client.replyMessage(event.replyToken, [
+                    { type: 'image', originalContentUrl: reply.originalContentUrl, previewImageUrl: reply.previewImageUrl },
+                    { type: 'text', text: reply.caption || reply.altText } // caption 또는 altText를 사용
+                ]);
+            }
+            return; // 응답 처리 후 종료
         }
-
+        
         // 4. 어떤 로직으로도 처리되지 않은 메시지 (Fallback)
         const fallbackMessage = "음... 아저씨, 무슨 말인지 잘 모르겠어 ㅠㅠ 다시 한번 말해줄래?";
         await client.replyMessage(event.replyToken, { type: 'text', text: fallbackMessage });
