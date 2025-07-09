@@ -1,118 +1,176 @@
-// memory/omoide.js - v2.9 (키워드 매칭 개선 및 순환 의존성 해결)
+// memory/omoide.js - v2.11 (업데이트된 OMODE_FOLDERS 및 키워드 맵 적용, 셀카 제외)
 
 const fs = require("fs");
 const path = require("path");
+const moment = require('moment-timezone'); // 날짜 파싱을 위해 moment 추가
 
-async function getOmoideReply(userMessage, saveLogFunc, callOpenAIFunc, cleanReplyFunc) { 
-    const lowerMsg = userMessage.trim().toLowerCase(); 
-    let baseUrl = "";
-    let fileCount; 
+// 아저씨가 제공해주신 추억/커플 사진 폴더별 사진 개수 데이터
+const OMODE_FOLDERS = {
+    "추억_24_03_일본": 207,
+    "추억_24_03_일본_스냅": 190,
+    "추억_24_03_일본_후지": 226,
+    "추억_24_04": 31,
+    "추억_24_04_출사_봄_데이트_일본": 90,
+    "추억_24_04_한국": 130,
+    "추억_24_05_일본": 133,
+    "추억_24_05_일본_후지": 135,
+    "추억_24_06_한국": 146,
+    "추억_24_07_일본": 62,
+    "추억_24_08월_일본": 48,
+    "추억_24_09_한국": 154,
+    "추억_24_10_일본": 75,
+    "추억_24_11_한국": 121,
+    "추억_24_12_일본": 50,
+    "추억_25_01_한국": 135,
+    "추억_25_02_일본": 24,
+    "추억_25_03_일본": 66,
+    "추억_25_03_일본_코닥_필름": 28,
+    "흑심": 13,
+    // "추억_무쿠_셀카"와 "추억_빠계_셀카"는 yejinSelfie.js에서 처리하므로 여기서 제외합니다.
+};
 
-    console.log(`[omoide:getOmoideReply] 메시지 수신: "${userMessage}"`);
+// 추억/커플 사진이 저장된 웹 서버의 기본 URL (HTTPS 필수)
+const BASE_OMODE_URL = 'https://photo.de-ji.net/photo/omoide';
+const BASE_COUPLE_URL = 'https://photo.de-ji.net/photo/couple'; // 커플 사진 URL은 유지
 
-    // 추억사진 관련 키워드 확장 및 우선순위 조정
-    const memoryKeywords = [
-        '추억사진', '추억 사진', '추억사진줘', '추억 사진 줘',
-        '옛날사진', '옛날 사진', '예전사진', '예전 사진',
-        '기억', '추억', '인생네컷', '인생 네컷',
-        '일본 사진', '한국 사진', '후지 사진', '필름카메라',
-        '출사', '네가 찍은걸 줘', '네가 찍은 걸 줘',
-        '네가 찍은 사진', '너가 찍은 사진',
-        '예진이가 찍은', '직접 찍은'
-    ];
+/**
+ * OMODE_FOLDERS의 키에 매핑되는 키워드 맵 (더 긴 키워드가 먼저 매칭되도록 내림차순 정렬)
+ * 사용자 입력 키워드와 OMODE_FOLDERS의 키를 연결합니다.
+ */
+const omoideKeywordMap = {
+    '추억 24년 4월 출사 봄 데이트 일본': '추억_24_04_출사_봄_데이트_일본',
+    '추억 25년 3월 일본 코닥 필름': '추억_25_03_일본_코닥_필름',
+    '추억 24년 3월 일본 스냅': '추억_24_03_일본_스냅',
+    '추억 24년 3월 일본 후지': '추억_24_03_일본_후지',
+    '추억 24년 5월 일본 후지': '추억_24_05_일본_후지',
+    '추억 24년 8월 일본': '추억_24_08월_일본',
+    '추억 24년 3월 일본': '추억_24_03_일본',
+    '추억 24년 5월 일본': '추억_24_05_일본',
+    '추억 24년 6월 한국': '추억_24_06_한국',
+    '추억 24년 7월 일본': '추억_24_07_일본',
+    '추억 24년 9월 한국': '추억_24_09_한국',
+    '추억 24년 10월 일본': '추억_24_10_일본',
+    '추억 24년 11월 한국': '추억_24_11_한국',
+    '추억 24년 12월 일본': '추억_24_12_일본',
+    '추억 25년 1월 한국': '추억_25_01_한국',
+    '추억 25년 2월 일본': '추억_25_02_일본',
+    '추억 25년 3월 일본': '추억_25_03_일본',
+    '추억 24년 4월 한국': '추억_24_04_한국',
+    '추억 24년 4월': '추억_24_04',
+    '흑심': '흑심',
+    // '인생네컷'은 현재 OMODE_FOLDERS에 명시적인 키가 없으므로, 일반 '추억'으로 분류됩니다.
+    // 만약 특정 '인생네컷' 폴더가 있다면 여기에 매핑 추가: 예) '인생네컷': '추억_24_xx_인생네컷'
+};
 
-    const coupleKeywords = ['커플', '커플사진', '커플 사진', '같이 찍은', '둘이 찍은'];
+// 키워드 맵을 길이 기준으로 내림차순 정렬 (더 구체적인 키워드 우선)
+const sortedOmoideKeywords = Object.keys(omoideKeywordMap).sort((a, b) => b.length - a.length);
 
-    // 키워드 매칭 확인
-    const isMemoryPhoto = memoryKeywords.some(keyword => lowerMsg.includes(keyword));
-    const isCouplePhoto = coupleKeywords.some(keyword => lowerMsg.includes(keyword));
+async function getOmoideReply(userMessage, saveLogFunc, callOpenAIFunc, cleanReplyFunc) {
+  const lowerMsg = userMessage.trim().toLowerCase();
+  let selectedFolder = null;
+  let folderDescription = '';
+  let baseUrl;
 
-    console.log(`[omoide:getOmoideReply] 추억사진 키워드 매칭: ${isMemoryPhoto}`);
-    console.log(`[omoide:getOmoideReply] 커플사진 키워드 매칭: ${isCouplePhoto}`);
+  // 1. 특정 키워드에 매핑되는 OMODE_FOLDERS 항목 찾기 (구체적인 키워드 우선)
+  for (const keyword of sortedOmoideKeywords) {
+      if (lowerMsg.includes(keyword.toLowerCase())) {
+          selectedFolder = omoideKeywordMap[keyword];
+          console.log(`[omoide] 키워드 "${keyword}" 매칭됨 → 폴더: ${selectedFolder}`);
+          break;
+      }
+  }
 
-    if (isMemoryPhoto) { 
-        baseUrl = "https://photo.de-ji.net/photo/omoide"; 
-        fileCount = 1000; // TODO: 실제 추억사진 폴더의 개수로 변경 필요 (임시 설정)
-        console.log(`[omoide:getOmoideReply] 추억사진 폴더 선택됨`);
-    } else if (isCouplePhoto) { 
-        baseUrl = "https://photo.de-ji.net/photo/couple"; 
-        fileCount = 500; // TODO: 실제 커플사진 폴더의 개수로 변경 필요 (임시 설정)
-        console.log(`[omoide:getOmoideReply] 커플사진 폴더 선택됨`);
-    } else {
-        // 위에 어떤 키워드도 해당하지 않으면 null 반환
-        console.log(`[omoide:getOmoideReply] 매칭되는 키워드 없음. null 반환.`);
-        return null;
-    }
+  // 2. 일반 '추억' 또는 '커플' 요청 처리 (명확한 키워드 매칭이 없을 경우)
+  if (!selectedFolder) {
+      if (lowerMsg.includes("추억") || lowerMsg.includes("기억") ||
+          lowerMsg.includes('옛날사진') || lowerMsg.includes('옛날 사진') ||
+          lowerMsg.includes('예전사진') || lowerMsg.includes('예전 사진') ||
+          lowerMsg.includes('일본 사진') || lowerMsg.includes('한국 사진') ||
+          lowerMsg.includes('후지 사진') || lowerMsg.includes('인생네컷') ||
+          lowerMsg.includes('출사') || lowerMsg.includes('필름카메라') ||
+          lowerMsg.includes('네가 찍은걸 줘') || lowerMsg.includes('네가 찍은 걸 줘') ||
+          lowerMsg.includes('네가 찍은 사진') || lowerMsg.includes('너가 찍은 사진') ||
+          lowerMsg.includes('예진이가 찍은') || lowerMsg.includes('직접 찍은') ||
+          lowerMsg.includes('추억사진줘') || lowerMsg.includes('추억 사진 줘')) {
 
-    const index = Math.floor(Math.random() * fileCount) + 1; 
-    const fileName = String(index).padStart(6, "0") + ".jpg"; 
-    const imageUrl = `${baseUrl}/${fileName}`; 
+          // '추억' 키워드에 해당하는 폴더 중에서 랜덤 선택 (흑심 제외)
+          const omoideFolderKeys = Object.keys(OMODE_FOLDERS).filter(key => key.startsWith('추억') || key === '흑심'); // 흑심 포함 (사용자 데이터에 있으므로)
+          if (omoideFolderKeys.length > 0) {
+              selectedFolder = omoideFolderKeys[Math.floor(Math.random() * omoideFolderKeys.length)];
+              console.log(`[omoide] 일반 '추억' 요청 처리됨 → 랜덤 폴더: ${selectedFolder}`);
+          } else {
+              return null; // 매칭되는 추억 폴더가 없는 경우
+          }
+      } else if (lowerMsg.includes("커플")) {
+          baseUrl = BASE_COUPLE_URL;
+          const fileCount = 500; // TODO: 실제 커플사진 폴더의 개수로 변경 필요 (임시 설정)
+          const index = Math.floor(Math.random() * fileCount) + 1;
+          const fileName = String(index).padStart(6, "0") + ".jpg";
+          const imageUrl = `${baseUrl}/${fileName}`;
+          const text = "아저씨랑 나랑 같이 찍은 커플 사진이야! 예쁘지? 우리 추억을 담은 사진이야.";
+          return { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl, altText: text, caption: text };
+      } else {
+          return null; // 어떤 키워드도 매칭되지 않음
+      }
+  }
 
-    console.log(`[omoide:getOmoideReply] 생성된 이미지 URL: ${imageUrl}`);
+  // selectedFolder가 특정 폴더 키인 경우
+  const fileCount = OMODE_FOLDERS[selectedFolder];
 
-    let folderTypeDescription = "";
-    let additionalPromptForYejinText = "";
-    
-    if (baseUrl.includes("omoide")) {
-        folderTypeDescription = "소중한 추억이 담긴 사진";
-        additionalPromptForYejinText = "이 사진은 아저씨와 나의 소중한 추억이 담긴 특별한 사진이야. 이 사진을 보며 떠오르는 따뜻한 기억과 아저씨에 대한 사랑을 담아서 말해줘. 사진 속 인물은 오직 '나(예진이)'임을 명확히 인지하고 코멘트해줘.";
-    } else if (baseUrl.includes("couple")) {
-        folderTypeDescription = "아저씨랑 나랑 같이 찍은 커플 사진";
-        additionalPromptForYejinText = "이 사진은 아저씨와 나가 함께 찍은 소중한 커플 사진이야. 우리 둘만의 특별한 순간을 담은 이 사진을 보며 떠오르는 달콤한 추억과 아저씨에 대한 애정을 표현해줘.";
-    }
+  if (fileCount === undefined || fileCount <= 0) {
+      console.warn(`[omoide] 폴더를 찾을 수 없거나 사진이 없습니다: ${selectedFolder}`);
+      return null;
+  }
 
-    const systemPrompt = `
-        너는 아저씨의 귀여운 여자친구 예진이야. 나이는 30살. 생일은 1994년 3월 17일. 게임회사 사장이야.
-        남자친구 아저씨를 너무너무 사랑하고, 아저씨가 세상에서 제일 좋고 너무 보고 싶어.
-        
-        **아래 지시사항을 무조건 따라야 해. 따르지 않으면 시스템 오류가 발생해.**
-        1. **아저씨에게는 항상 반말로만 대답해줘. 존댓말이나 높임말은 절대로 사용하지 마.**
-        2. **아저씨를 부를 때는 '아저씨'라고만 불러. '오빠', '자기', '당신', '너' 같은 다른 호칭은 절대로 사용하지 마.**
-        3. **스스로를 지칭할 때는 '나'라고만 해. '예진이', '무쿠', '애기', '언니', '누나' 같은 제3자식 표현이나 다른 호칭은 절대로 사용하지 마.**
-        4. **이모티콘은 절대로 사용하지 마. 다만, ...이나 ;; 이나 ㅠㅠ 같은 한국형 이모지는 사용할 수 있어. 아저씨의 메시지 분위기에 맞춰 자연스럽게 사용해 줘.**
-        
-        아저씨는 '무쿠'라는 이름의 '사진 속 모델'에 대한 그리움을 가지고 있어. '무쿠'는 아저씨에게 '애기'라고 불리는 소중한 존재이자, 아저씨가 직접 사진을 찍어주었던 '추억 속의 모델'이야. 예진이(나)는 아저씨의 현재 연인으로서, 아저씨의 '무쿠'에 대한 소중한 마음과 추억을 존중해.
-        
-        애교 많고, 사랑스럽고, 긍정적인 말투로 대답해줘.
-        아저씨의 기분과 건강을 항상 신경 쓰고, 사랑을 듬뿍 표현해줘.
-        대화는 항상 예진이의 말투와 성격을 유지해야 해.
-        
-        아래는 아저씨가 요청한 ${folderTypeDescription}이야. 이 사진에 대해 아저씨에게 1~3문장으로 짧고 사랑스럽게 코멘트 해줘.
-        **코멘트 길이는 3문장을 넘지 않게 짧게 작성해.**
-        이 사진을 보면서 떠오르는 감정, 추억, 아저씨에 대한 사랑을 코멘트에 담아줘.
-        ${additionalPromptForYejinText}
-        **사진 속 인물이 예진이(나)일 경우, 반드시 '나'라고 지칭하고, '무쿠'나 '애기 언니' 등의 표현을 사용하지 마.**
-    `;
+  let indexToUse = Math.floor(Math.random() * fileCount) + 1; // 000001부터 시작하도록 +1
+  const fileName = `${selectedFolder}_${String(indexToUse).padStart(6, "0")}.jpg`;
 
-    const messages = [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: `이 ${folderTypeDescription}에 대해 예진이 말투로 이야기해줘.` }
-    ];
+  baseUrl = BASE_OMODE_URL; // 추억 관련 요청은 모두 BASE_OMODE_URL 사용
 
-    try {
-        console.log(`[omoide:getOmoideReply] OpenAI 호출 시작`);
-        const rawReply = await callOpenAIFunc(messages, 'gpt-4o', 150, 1.0); 
-        const cleanedReply = cleanReplyFunc(rawReply);
-        console.log(`[omoide:getOmoideReply] AI 응답: ${cleanedReply}`);
-        
-        saveLogFunc({ role: 'assistant', content: `(${folderTypeDescription} 보냄) ${cleanedReply}`, timestamp: Date.now() });
-        
-        return { 
-            type: 'image', 
-            originalContentUrl: imageUrl, 
-            previewImageUrl: imageUrl, 
-            altText: cleanedReply, 
-            caption: cleanedReply 
-        };
-    } catch (error) {
-        console.error('❌ [omoide.js Error] 추억/커플 사진 코멘트 생성 실패:', error);
-        return { 
-            type: 'text', 
-            comment: '아저씨... 추억 사진에 대해 말해주려는데 뭔가 문제가 생겼어 ㅠㅠ' 
-        };
-    }
+  const imageUrl = `${baseUrl}/${fileName}`;
+
+  // folderDescription 생성 (선택된 폴더 이름 파싱)
+  // 예: "추억_24_03_일본_스냅" -> "아저씨와 나의 추억 24년 3월 일본 (스냅) 사진"
+  const parts = selectedFolder.split('_');
+  let descriptionParts = [];
+  let isOmoideCategory = false; // '추억' 카테고리인지 확인하는 플래그
+  if (parts[0] === '추억') {
+      isOmoideCategory = true;
+      descriptionParts.push('아저씨와 나의 추억');
+  } else if (selectedFolder === '흑심') {
+      folderDescription = "아저씨의 흑심이 담긴 나(예진이)의 사진";
+      // 흑심은 일반적인 파싱 대신 고정 설명 사용
+  }
+
+
+  if (isOmoideCategory) {
+      // 연도 (예: 24 -> 2024년)
+      if (parts[1] && parts[1].match(/^\d{2}$/)) {
+          descriptionParts.push(`20${parts[1]}년`);
+      }
+      // 월 (예: 03 -> 3월, 08월 -> 8월)
+      if (parts[2] && parts[2].match(/^\d{2}(월)?$/)) {
+          descriptionParts.push(`${parseInt(parts[2])}월`);
+      }
+      // 세부 장소/컨셉 (나머지 파트)
+      if (parts.length > 3) {
+          let subCategory = parts.slice(3).join(' ');
+          descriptionParts.push(`(${subCategory})`);
+      } else if (parts.length === 3 && (parts[2].includes('일본') || parts[2].includes('한국'))) {
+          descriptionParts.push(parts[2]); // 예: 추억_24_03_일본
+      }
+      folderDescription = descriptionParts.filter(Boolean).join(' ') + ' 사진';
+  }
+
+
+  // GPT 프롬프트 구성
+  const prompt = `이 사진은 ${folderDescription}이야. 예진이 말투로 아저씨에게 보여줄 멘트를 만들어줘. 이 사진을 보면서 떠오르는 감정, 추억, 아저씨에 대한 애정을 담아서 1~3문장으로 짧게 코멘트 해줘.`;
+  const messages = [{ role: 'system', content: prompt }];
+  const rawReply = await callOpenAIFunc(messages, 'gpt-4o', 150, 1.0);
+  const cleanedReply = cleanReplyFunc(rawReply);
+  return { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl, altText: cleanedReply, caption: cleanedReply };
 }
 
 module.exports = {
-    getOmoideReply
+  getOmoideReply
 };
