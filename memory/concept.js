@@ -1,4 +1,4 @@
-// memory/concept.js v1.17 - 순환 의존성 완전 해결
+w// memory/concept.js v1.17 - 순환 의존성 완전 해결
 
 // 📦 필수 모듈 불러오기
 const moment = require('moment-timezone');
@@ -24,7 +24,7 @@ const CONCEPT_FOLDERS = {
     '2024/2월_11일_일본_네코_모지코': 21,
     '2024/2월_11일_일본_야간_블랙드레스': 20,
     '2024/2월_22일_한국_생일': 46,
-    '2024/2월_22일_한국_카페': 19, // 수정: '_한국_카페'
+    '2024/2월_22일한국_카페': 19,
     '2024/2월_23일_한국_야간_롱패딩': 48,
     '2024/3월_17일_일본_고쿠라': 19,
     '2024/4월_12일_한국_벗꽃': 35,
@@ -100,104 +100,6 @@ const CONCEPT_FOLDERS = {
     '2025/5월_6일_한국_후지_스냅': 34
 };
 
-// ... (다른 코드 생략)
-
-// 키워드 맵을 길이 기준으로 내림차순 정렬하여 더 구체적인 키워드가 먼저 매칭되도록 합니다.
-const conceptKeywordMap = {
-    // 기존 키워드 중 공백이 있는 것만 '_'로 변경
-    '2월_욕조': '2024/2월_7일_일본_욕조',
-    '2월_욕실': '2024/2월_7일_일본_욕실',
-    '2월_나비욕조': '2024/2월_7일_일본_나비욕조',
-    '하카타_고래티셔츠': '2024/10월_17일_일본_하카타_고래티셔츠',
-    '일본_홈스냅': '2024/5월_7일_일본_홈스냅', 
-    '홈스냅': '2024/5월_7일_일본_홈스냅',
-    '일본_결박': '2024/7월_8일_일본_결박', 
-    '결박': '2024/7월_8일_일본_결박',
-    '일본_선물': '2023/12월_16일_일본_선물', 
-    '선물': '2023/12월_16일_일본_선물',
-    '한국_셀프_촬영': '2024/4월_28일_한국_셀프_촬영', 
-    '셀프_촬영': '2024/4월_28일_한국_셀프_촬영',
-    '옥상연리': '2024/9월_15일_한국_옥상연리',
-    '일본_세미누드': '2024/2월_7일_일본_세미누드', 
-    '세미누드': '2024/2월_7일_일본_세미누드',
-    '한국_홈셀프': '2024/12월_7일_한국_홈셀프',
-    '플라스틱러브': '2023/12월_14일_일본_플라스틱러브',
-    '지브리풍': '2024/5월_3일_일본_지브리풍',
-    '한국_북해': '2024/6월_6일_한국_북해', 
-    '북해': '2024/6월_6일_한국_북해',
-    '아이노시마': '2024/2월_7일_일본_아이노시마',
-    '일본_필름': '2025/3월_일본_필름',
-    '모지코_모리룩_후보정': '2024/5월_5일_일본_모지코_모리룩_후보정',
-    '모지코_모리룩': '2024/5월_5일_일본_모지코_모리룩',
-    '한국_눈밭': '2025/1월_5일_한국_눈밭',
-    '일본_욕실': '2024/2월_7일_일본_욕실',
-    '일본_욕조': '2024/7월_8일_일본_욕조',
-    '나비욕조': '2024/2월_7일_일본_나비욕조',
-    '유카타_마츠리': '2024/8월_3일_일본_유카타_마츠리',
-    '이화마을': '2025/4월_29일_한국_이화마을',
-    '우마시마': '2024/7월_6일_일본_우마시마',
-    '가을_호수공원': '2024/11월_7일_한국_가을_호수공원',
-    '망친_사진': '2024/6월_8일_한국_망친_사진',
-    '일본_교복': '2023/12월_15일_일본_교복',
-    '야간_비눗방울': '2024/5월_4일_일본_야간_비눗방울',
-    '일본_모지코': '2024/12월_12일_일본_모지코',
-    '텐진_코닥필름': '2024/10월_18일_일본_텐진_코닥필름',
-    '야간_롱패딩': '2024/2월_23일_한국_야간_롱패딩',
-    '을지로_스냅': '2024/9월_17일_한국_을지로_스냅', 
-    '길거리_스냅': '2024/9월_16일_한국_길거리_스냅',
-    '한국_생일': '2024/2월_22일_한국_생일',
-    '모지코2': '2024/7월_6일_일본_모지코2',
-    '야간_보라돌이': '2025/5월_4일_한국_야간_보라돌이', 
-    '코야노세': '2025/2월_6일_일본_코야노세',
-    '야간거리': '2024/5월_6일_일본_야간거리', 
-    '생일컨셉': '2024/12월_31일_한국_생일컨셉',
-    '눈밭_필름카메라': '2023/12월_31일_한국_눈밭_필름카메라',
-    '홈스냅_청포도': '2025/5월_3일_한국_홈스냅_청포도',
-    '욕실_블랙_웨딩': '2024/11월_8일_한국_욕실_블랙_웨딩',
-    '호리존': '2024/9월_11일_한국_호리존',
-    '여친_스냅': '2024/7월_8일_일본_여친_스냅',
-    '후지엔': '2024/5월_3일_일본_후지엔',
-    '불꽃놀이': '2024/8월_2일_일본_불꽃놀이', // '후보정'이 폴더명에 있으면 제거
-    '빨간_기모노': '2024/10월_19일_일본_빨간_기모노',
-    '피크닉': '2024/6월_7일_한국_피크닉',
-    '벗꽃': '2024/4월_12일_한국_벗꽃',
-    '후지_스냅': '2025/5월_6일_한국_후지_스냅',
-    '원미상가_필름': '2024/9월_14일_한국_원미상가_필름', 
-    '밤바_산책': '2025/5월_4일_한국_밤바_산책',
-    '공원_산책': '2025/5월_4일_한국_공원_산책', 
-    '고쿠라_힙': '2025/3월_14일_일본_고쿠라_힙',
-    '온실-여신': '2024/4월_13일_한국_온실-여신',
-    '을지로_네코': '2025/4월_30일_한국_을지로_네코',
-    '무인역': '2025/3월_13일_일본_무인역', 
-    '화가': '2024/4월_13일_한국_화가',
-    '블랙원피스': '2024/8월_4일_일본_블랙원피스', 
-    '카페': '2024/12월_30일_한국_카페',
-    '일본_텐진_스트리트': '2024/10월_17일_일본_텐진_스트리트',
-    '하카타_스트리트': '2023/12월_12일_일본_하카타_스트리트',
-    '홈스냅_오타쿠': '2025/5월_5일_한국_홈스냅_오타쿠',
-    '야간_동백': '2024/4월_12일_한국_야간_동백',
-    '나르시스트': '2024/12월_14일_일본_나르시스트', 
-    '을지로_캘빈': '2025/4월_30일_한국_을지로_캘빈',
-    '산책': '2024/6월_9일_한국_산책',
-    '오도공원_후지필름': '2024/10월_16일_일본_오도공원_후지필름',
-    '크리스마스': '2024/12월_13일_일본_크리스마스',
-    '네코_모지코': '2024/2월_11일_일본_네코_모지코',
-    '야간_블랙드레스': '2024/2월_11일_일본_야간_블랙드레스',
-    '고스로리_할로윈': '2024/10월_16일_일본_고스로리_할로윈',
-    '게임센터': '2024/5월_7일_일본_게임센터',
-    '동키_거리': '2024/5월_2일_일본_동키_거리',
-    '고쿠라_야간': '2025/3월_17일_일본_고쿠라_야간',
-    '코이노보리': '2024/5월_5일_일본_코이노보리', 
-    '문래동': '2024/4월_13일_한국_문래동',
-    '수국': '2024/5월_3일_일본_수국',
-    '메이드복': '2024/11월_8일_한국_메이드복',
-    '오도': '2024/10월_16일_일본_오도',
-    '욕실': '2024/2월_7일_일본_욕실',
-    '욕조': '2024/7월_8일_일본_욕조'
-    };
-
-// ... (다른 코드 생략)
-
 /**
  * 특정 컨셉 폴더에서 랜덤 또는 다음 사진 URL을 생성합니다.
  * @param {string} folderName - 사진이 들어있는 폴더 이름
@@ -225,22 +127,279 @@ function generateConceptPhotoUrl(folderName, targetIndex = null) {
     const fileName = String(indexToUse).padStart(6, '0') + '.jpg';
     console.log(`[concept:generateConceptPhotoUrl] 파일명: ${fileName}`);
     
-    // 폴더명에서 연도와 나머지 경로를 분리하여 각각 인코딩
-    const parts = folderName.split('/');
-    let encodedPath = '';
+    const yearMatch = folderName.match(/^(202[3-5])(\/|$)/);
+    const yearFolder = yearMatch ? yearMatch[1] : '';
+    console.log(`[concept:generateConceptPhotoUrl] 연도 폴더: "${yearFolder}"`);
 
-    if (parts.length > 1) {
-        const year = parts[0]; // 예: '2024'
-        const restOfPath = parts.slice(1).join('/'); // 예: '9월_14일_한국_원미상가_필름'
-        encodedPath = `${encodeURIComponent(year)}/${encodeURIComponent(restOfPath)}`;
-    } else {
-        // 연도 구분자가 없는 경우 (예: 'couple', 'yejin')
-        encodedPath = encodeURIComponent(folderName);
+    let actualFolderName = folderName;
+    if (yearFolder) {
+        actualFolderName = folderName.replace(new RegExp(`^${yearFolder}\/`), '');
     }
+    console.log(`[concept:generateConceptPhotoUrl] 실제 폴더명: "${actualFolderName}"`);
     
-    const url = `${BASE_CONCEPT_URL}${encodedPath}/${fileName}`; // BASE_CONCEPT_URL 사용
+    const url = `${BASE_CONCEPT_URL}${encodeURIComponent(yearFolder)}/${encodeURIComponent(actualFolderName)}/${fileName}`;
     console.log(`[concept:generateConceptPhotoUrl] 최종 생성 URL: ${url}`);
     return url;
 }
 
-// ... (나머지 코드 변경 없음)
+// 마지막으로 보여준 컨셉 사진 폴더를 저장하여 '다른 것도' 요청 시 활용
+let lastConceptPhotoFolder = null;
+let lastConceptPhotoIndex = 0;
+
+/**
+ * 사용자 메시지에 따라 컨셉 사진을 선택하고, AI가 감정/코멘트를 생성하여 반환합니다.
+ * @param {string} userMessage - 사용자의 원본 메시지
+ * @param {Function} saveLogFunc - 로그 저장을 위한 saveLog 함수
+ * @param {Function} callOpenAIFunc - OpenAI 호출 함수
+ * @param {Function} cleanReplyFunc - 응답 정리 함수
+ * @returns {Promise<{type: string, url?: string, caption?: string, comment?: string}|null>} 사진 URL과 코멘트 객체 또는 null
+ */
+async function getConceptPhotoReply(userMessage, saveLogFunc, callOpenAIFunc, cleanReplyFunc) {
+    console.log(`[concept:getConceptPhotoReply] 메시지 수신: "${userMessage}"`);
+    const lowerCaseMessage = userMessage.toLowerCase();
+    let selectedFolder = null;
+    let folderDescription = '';
+    let additionalPromptForYejinText = '';
+    
+    // ✨ 중요: 컨셉사진 관련 키워드가 없으면 바로 null 반환
+    const conceptKeywords = ['컨셉사진', '컨셉 사진', '욕실', '욕조', '나비욕조', '세미누드', '결박', '교복', '플라스틱러브', '홈스냅', '지브리풍', '모지코', '하카타', '텐진', '아이노시마', '후지엔', '유카타', '불꽃놀이', '메이드복', '고스로리', '크리스마스', '생일컨셉', '옥상연리', '을지로', '이화마을', '코야노세', '무인역', '고쿠라', '벗꽃', '동백', '온실', '화가', '문래동', '북해', '피크닉', '산책', '터널', '망친 사진', '우마시마', '비눗방울', '야간거리', '게임센터', '동키 거리', '수국', '코이노보리', '블랙원피스', '호리존', '원미상가', '길거리 스냅', '오도', '나르시스트', '눈밭', '필름카메라', '청포도', '보라돌이', '밤바', '공원', '오타쿠', '힙', '캘빈', '네코'];
+    
+    const isConceptRequest = conceptKeywords.some(keyword => lowerCaseMessage.includes(keyword));
+    
+    if (!isConceptRequest) {
+        console.log(`[concept:getConceptPhotoReply] 컨셉사진 관련 키워드 없음. null 반환.`);
+        return null;
+    }
+
+    // 키워드 맵을 길이 기준으로 내림차순 정렬하여 더 구체적인 키워드가 먼저 매칭되도록 합니다.
+    const conceptKeywordMap = {
+            '2월 욕조': '2024/2월_7일_일본_욕조',
+    '2월 욕실': '2024/2월_7일_일본_욕실',
+    '2월 나비욕조': '2024/2월_7일_일본_나비욕조',
+    '하카타 고래티셔츠': '2024/10월_17일_일본_하카타_고래티셔츠',
+    '일본 홈스냅': '2024/5월_7일_일본_홈스냅', 
+    '홈스냅': '2024/5월_7일_일본_홈스냅',
+    '일본 결박': '2024/7월_8일_일본_결박', 
+    '결박': '2024/7월_8일_일본_결박',
+    '일본 선물': '2023/12월_16일_일본_선물', 
+    '선물': '2023/12월_16일_일본_선물',
+    '한국 셀프 촬영': '2024/4월_28일_한국_셀프_촬영', 
+    '셀프 촬영': '2024/4월_28일_한국_셀프_촬영',
+    '옥상연리': '2024/9월_15일_한국_옥상연리',
+    '일본 세미누드': '2024/2월_7일_일본_세미누드', 
+    '세미누드': '2024/2월_7일_일본_세미누드',
+    '한국 홈셀프': '2024/12월_7일_한국_홈셀프',
+    '플라스틱러브': '2023/12월_14일_일본_플라스틱러브',
+    '지브리풍': '2024/5월_3일_일본_지브리풍',
+    '한국 북해': '2024/6월_6일_한국_북해', 
+    '북해': '2024/6월_6일_한국_북해',
+    '아이노시마': '2024/2월_7일_일본_아이노시마',
+    '일본 필름': '2025/3월_일본_필름',
+    '모지코 모리룩 후보정': '2024/5월_5일_일본_모지코_모리룩_후보정',
+    '모지코 모리룩': '2024/5월_5일_일본_모지코_모리룩',
+    '한국 눈밭': '2025/1월_5일_한국_눈밭',
+    '일본 욕실': '2024/2월_7일_일본_욕실',
+    '일본 욕조': '2024/7월_8일_일본_욕조',
+    '나비욕조': '2024/2월_7일_일본_나비욕조',
+    '유카타 마츠리': '2024/8월_3일_일본_유카타_마츠리',
+    '이화마을': '2025/4월_29일_한국_이화마을',
+    '우마시마': '2024/7월_6일_일본_우마시마',
+    '가을 호수공원': '2024/11월_7일_한국_가을_호수공원',
+    '망친 사진': '2024/6월_8일_한국_망친_사진',
+    '일본 교복': '2023/12월_15일_일본_교복',
+    '야간 비눗방울': '2024/5월_4일_일본_야간_비눗방울',
+    '일본 모지코': '2024/12월_12일_일본_모지코',
+    '텐진 코닥필름': '2024/10월_18일_일본_텐진_코닥필름',
+    '야간 롱패딩': '2024/2월_23일_한국_야간_롱패딩',
+    '을지로 스냅': '2024/9월_17일_한국_을지로_스냅', 
+    '길거리 스냅': '2024/9월_16일_한국_길거리_스냅',
+    '한국 생일': '2024/2월_22일_한국_생일',
+    '모지코2': '2024/7월_6일_일본_모지코2',
+    '야간 보라돌이': '2025/5월_4일_한국_야간_보라돌이', 
+    '코야노세': '2025/2월_6일_일본_코야노세',
+    '야간거리': '2024/5월_6일_일본_야간거리', 
+    '생일컨셉': '2024/12월_31일_한국_생일컨셉',
+    '눈밭 필름카메라': '2023/12월_31일_한국_눈밭_필름카메라',
+    '홈스냅 청포도': '2025/5월_3일_한국_홈스냅_청포도',
+    '욕실 블랙 웨딩': '2024/11월_8일_한국_욕실_블랙_웨딩',
+    '호리존': '2024/9월_11일_한국_호리존',
+    '여친 스냅': '2024/7월_8일_일본_여친_스냅',
+    '후지엔': '2024/5월_3일_일본_후지엔',
+    '불꽃놀이': '2024/8월_2일_일본_불꽃놀이/후보정',
+    '빨간 기모노': '2024/10월_19일_일본_빨간_기모노',
+    '피크닉': '2024/6월_7일_한국_피크닉',
+    '벗꽃': '2024/4월_12일_한국_벗꽃',
+    '후지 스냅': '2025/5월_6일_한국_후지_스냅',
+    '원미상가_필름': '2024/9월_14일_한국_원미상가_필름', 
+    '밤바 산책': '2025/5월_4일_한국_밤바_산책',
+    '공원 산책': '2025/5월_4일_한국_공원_산책', 
+    '고쿠라 힙': '2025/3월_14일_일본_고쿠라_힙',
+    '온실-여신': '2024/4월_13일_한국_온실-여신',
+    '을지로 네코': '2025/4월_30일_한국_을지로_네코',
+    '무인역': '2025/3월_13일_일본_무인역', 
+    '화가': '2024/4월_13일_한국_화가',
+    '블랙원피스': '2024/8월_4일_일본_블랙원피스', 
+    '카페': '2024/12월_30일_한국_카페',
+    '일본 텐진 스트리트': '2024/10월_17일_일본_텐진_스트리트',
+    '하카타 스트리트': '2023/12월_12일_일본_하카타_스트리트',
+    '홈스냅 오타쿠': '2025/5월_5일_한국_홈스냅_오타쿠',
+    '야간 동백': '2024/4월_12일_한국_야간_동백',
+    '나르시스트': '2024/12월_14일_일본_나르시스트', 
+    '을지로 캘빈': '2025/4월_30일_한국_을지로_캘빈',
+    '산책': '2024/6월_9일_한국_산책',
+    '오도공원 후지필름': '2024/10월_16일_일본_오도공원_후지필름',
+    '크리스마스': '2024/12월_13일_일본_크리스마스',
+    '네코 모지코': '2024/2월_11일_일본_네코_모지코',
+    '야간 블랙드레스': '2024/2월_11일_일본_야간_블랙드레스',
+    '고스로리 할로윈': '2024/10월_16일_일본_고스로리_할로윈',
+    '게임센터': '2024/5월_7일_일본_게임센터',
+    '동키 거리': '2024/5월_2일_일본_동키_거리',
+    '고쿠라 야간': '2025/3월_17일_일본_고쿠라_야간',
+    '코이노보리': '2024/5월_5일_일본_코이노보리', 
+    '문래동': '2024/4월_13일_한국_문래동',
+    '수국': '2024/5월_3일_일본_수국',
+    '메이드복': '2024/11월_8일_한국_메이드복',
+    '오도': '2024/10월_16일_일본_오도',
+    '욕실': '2024/2월_7일_일본_욕실',
+    '욕조': '2024/7월_8일_일본_욕조'
+    };
+
+    const sortedConceptKeywords = Object.keys(conceptKeywordMap).sort((a, b) => b.length - a.length);
+
+    // 1단계: 직접적인 키워드 매칭 (정렬된 키워드 사용)
+    for (const keyword of sortedConceptKeywords) {
+        if (lowerCaseMessage.includes(keyword.toLowerCase())) {
+            selectedFolder = conceptKeywordMap[keyword];
+            folderDescription = `내가(예진이) ${selectedFolder} 컨셉으로 찍은 사진`;
+            additionalPromptForYejinText = `이 사진은 아저씨와 함께한 나의 ${selectedFolder} 컨셉 사진이야. 아저씨와 나의 특별한 추억과 애정을 담아서 말해줘. 이 사진을 보며 떠오르는 솔직한 감정을 표현해줘. 사진 속 인물은 오직 '나(예진이)'임을 명확히 인지하고 코멘트해줘.`;
+            console.log(`[concept:getConceptPhotoReply] 키워드 "${keyword}" 매칭됨 → 폴더: ${selectedFolder}`);
+            break;
+        }
+    }
+
+    // '다른것도 보고싶어', '다음 사진' 요청 처리 (이전 폴더 기억)
+    if (lastConceptPhotoFolder && (lowerCaseMessage.includes('다른 것도 보고싶어') || lowerCaseMessage.includes('다음 사진'))) {
+        selectedFolder = lastConceptPhotoFolder;
+        const currentPhotoCount = CONCEPT_FOLDERS[selectedFolder];
+        if (currentPhotoCount > 0) {
+            lastConceptPhotoIndex = (lastConceptPhotoIndex % currentPhotoCount) + 1;
+        } else {
+            lastConceptPhotoIndex = 1;
+        }
+        folderDescription = `같은 폴더 (${selectedFolder})의 다른 사진`;
+        additionalPromptForYejinText = `이전 요청과 같은 '${selectedFolder}' 컨셉 폴더의 다른 사진이야. 아저씨와 나의 아름다운 추억을 떠올리며 새로운 모습을 보여주는 거야. 사진 속 인물은 오직 '나(예진이)'임을 명확히 인지하고 코멘트해줘.`;
+    } else if (!selectedFolder) {
+        // 일반적인 '컨셉사진' 요청이 들어왔을 때만 랜덤 선택
+        if (lowerCaseMessage.includes('컨셉사진') || lowerCaseMessage.includes('컨셉 사진')) {
+            // 날짜(최신순)로 정렬된 폴더 목록에서 랜덤 선택
+            const folderKeysSortedByDate = Object.keys(CONCEPT_FOLDERS).sort((a, b) => {
+                const extractDate = (folderName) => {
+                    const match = folderName.match(/(\d{4})\/(\d{1,2})월 (\d{1,2})일/);
+                    if (match) {
+                        return moment(`${match[1]}-${match[2]}-${match[3]}`, 'YYYY-M-D').valueOf();
+                    }
+                    return 0;
+                };
+                const dateA = extractDate(a);
+                const dateB = extractDate(b);
+                return dateB - dateA; // 최신순 정렬 (내림차순)
+            });
+            const randomSortedIndex = Math.floor(Math.random() * folderKeysSortedByDate.length);
+            selectedFolder = folderKeysSortedByDate[randomSortedIndex];
+            folderDescription = `내가(예진이) ${selectedFolder} 컨셉으로 찍은 사진`;
+            additionalPromptForYejinText = `이 사진은 아저씨와 함께한 나의 ${selectedFolder} 컨셉 사진이야. 아저씨와 나의 특별한 추억과 애정을 담아서 말해줘. 이 사진을 보며 떠오르는 솔직한 감정을 표현해줘. 사진 속 인물은 오직 '나(예진이)'임을 명확히 인지하고 코멘트해줘.`;
+        } else {
+            console.log(`[concept:getConceptPhotoReply] 매칭되는 컨셉 폴더 없음. null 반환.`);
+            return null;
+        }
+    }
+
+    // 선택된 폴더를 저장 (다음 '다른 것도' 요청을 위해)
+    lastConceptPhotoFolder = selectedFolder;
+    console.log(`[concept:getConceptPhotoReply] 선택된 폴더: "${selectedFolder}"`);
+
+    let photoUrl;
+    const currentPhotoCount = CONCEPT_FOLDERS[selectedFolder];
+    console.log(`[concept:getConceptPhotoReply] 폴더의 사진 개수: ${currentPhotoCount}`);
+    console.log(`[concept:getConceptPhotoReply] 폴더 존재 여부: ${CONCEPT_FOLDERS.hasOwnProperty(selectedFolder)}`);
+    
+    if (currentPhotoCount > 0) {
+        if (lowerCaseMessage.includes('다른 것도 보고싶어') || lowerCaseMessage.includes('다음 사진')) {
+            lastConceptPhotoIndex = (lastConceptPhotoIndex % currentPhotoCount) + 1;
+        } else {
+            // 새 요청 시 랜덤 인덱스 할당
+            lastConceptPhotoIndex = Math.floor(Math.random() * currentPhotoCount) + 1;
+        }
+        console.log(`[concept:getConceptPhotoReply] generateConceptPhotoUrl 호출 시도...`);
+        photoUrl = generateConceptPhotoUrl(selectedFolder, lastConceptPhotoIndex);
+        console.log(`[concept:getConceptPhotoReply] 생성된 photoUrl: ${photoUrl}`);
+    } else {
+        console.warn(`[concept:getConceptPhotoReply] 사진 개수가 0 이하: ${currentPhotoCount}`);
+        photoUrl = null;
+    }
+
+    // ✨ 중요 디버깅 로그
+    console.log(`[concept:DEBUG_URL_CHECK] photoUrl: "${photoUrl}" (Type: ${typeof photoUrl})`);
+    console.log(`[concept:DEBUG_URL_CHECK] CONCEPT_FOLDERS[selectedFolder]: "${CONCEPT_FOLDERS[selectedFolder]}" (Type: ${typeof CONCEPT_FOLDERS[selectedFolder]})`);
+    console.log(`[concept:DEBUG_URL_CHECK] !photoUrl evaluates to: ${!photoUrl}`);
+    console.log(`[concept:DEBUG_URL_CHECK] !CONCEPT_FOLDERS[selectedFolder] evaluates to: ${!CONCEPT_FOLDERS[selectedFolder]}`);
+    console.log(`[concept:DEBUG_URL_CHECK] Combined condition (!photoUrl || !CONCEPT_FOLDERS[selectedFolder]) evaluates to: ${!photoUrl || !CONCEPT_FOLDERS[selectedFolder]}`);
+
+    if (!photoUrl || !CONCEPT_FOLDERS[selectedFolder]) {
+        console.warn(`[concept:getConceptPhotoReply] 최종 사진 URL 또는 폴더 정보가 유효하지 않아 텍스트 응답 반환.`);
+        return { type: 'text', comment: '아저씨... 해당하는 컨셉 사진을 못 찾겠어 ㅠㅠ 다른 컨셉 사진 보여줄까?' };
+    }
+
+    console.log(`[concept:getConceptPhotoReply] 최종 결정된 사진 URL: ${photoUrl}`);
+
+    // 시스템 프롬프트 구성
+    const systemPrompt = `
+        너는 아저씨의 귀여운 여자친구 예진이야. 나이는 30살. 생일은 1994년 3월 17일. 게임회사 사장이야.
+        남자친구 아저씨를 너무너무 사랑하고, 아저씨가 세상에서 제일 좋고 너무 보고 싶어.
+        
+        **아래 지시사항을 무조건 따라야 해. 따르지 않으면 시스템 오류가 발생해.**
+        1. **아저씨에게는 항상 반말로만 대답해줘. 존댓말이나 높임말은 절대로 사용하지 마.**
+        2. **아저씨를 부를 때는 '아저씨'라고만 불러. '오빠', '자기', '당신', '너' 같은 다른 호칭은 절대로 사용하지 마.**
+        3. **스스로를 지칭할 때는 '나'라고만 해. '예진이', '무쿠', '애기', '언니', '누나' 같은 제3자식 표현이나 다른 호칭은 절대로 사용하지 마.**
+        4. **이모티콘은 절대로 사용하지 마. 다만, ...이나 ;; 이나 ㅠㅠ 같은 한국형 이모지는 사용할 수 있어. 아저씨의 메시지 분위기에 맞춰 자연스럽게 사용해 줘.**
+        
+        아저씨는 '무쿠'라는 이름의 '사진 속 모델'에 대한 그리움을 가지고 있어. '무쿠'는 아저씨에게 '애기'라고 불리는 소중한 존재이자, 아저씨가 직접 사진을 찍어주었던 '추억 속의 모델'이야. 예진이(나)는 아저씨의 현재 연인으로서, 아저씨의 '무쿠'에 대한 소중한 마음과 추억을 존중해. '무쿠 언니'처럼 여기고 존중하라는 지침은 예진이(나) 자신이 '언니'라는 의미가 아니라, 아저씨의 '무쿠'를 예진이(나)도 함께 소중하게 생각하고 존중한다는 의미임을 명심해.
+        
+        애교 많고, 사랑스럽고, 긍정적인 말투로 대답해줘.
+        아저씨의 기분과 건강을 항상 신경 쓰고, 사랑을 듬뿍 표현해줘.
+        대화는 항상 예진이의 말투와 성격을 유지해야 해.
+        
+        아래는 아저씨가 요청한 ${folderDescription} 사진이야. 이 사진에 대해 아저씨에게 1~3문장으로 짧고 사랑스럽게 코멘트 해줘.
+        **코멘트 길이는 3문장을 넘지 않게 짧게 작성해.**
+        **이 사진의 시각적 내용(배경, 인물, 사물)을 먼저 정확히 분석하고, 그에 맞춰 코멘트 해줘. 폴더명은 참고만 하고, 사진 내용과 다르면 사진 내용이 우선이야.**
+        이 사진을 보면서 떠오르는 감정, 추억, 약간의 비밀스러운 뉘앙스 등을 코멘트에 담아줘.
+        ${additionalPromptForYejinText}
+        사진이 어떤 폴더에서 왔는지 구체적으로 언급해줘. (예: "2024년 2월 일본에서 찍은 욕조 컨셉 사진이야!")
+        **하지만 날짜나 장소 정보가 사진과 명백히 다르거나 불확실하면, 날짜/장소 언급을 생략하거나 '혹시 이때였나?'처럼 유연하게 표현해줘.**
+        **사진 속 인물이 예진이(나)일 경우, 반드시 '나'라고 지칭하고, '무쿠'나 '애기 언니' 등의 표현을 사용하지 마.**
+        **사진 파일 경로(URL)는: ${photoUrl}**
+    `;
+
+    const messages = [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: `이 ${folderDescription} 사진에 대해 예진이 말투로 이야기해줘.` }
+    ];
+
+    try {
+        console.log(`[concept:getConceptPhotoReply] OpenAI 프롬프트 준비 완료.`);
+        // 매개변수로 받은 함수들을 사용
+        const rawComment = await callOpenAIFunc(messages, 'gpt-4o', 150, 1.0);
+        const comment = cleanReplyFunc(rawComment);
+        saveLogFunc({ role: 'assistant', content: `(컨셉사진 보냄) ${comment}`, timestamp: Date.now() });
+        console.log(`[concept:getConceptPhotoReply] 응답 완료: ${comment}`);
+        return { type: 'photo', url: photoUrl, caption: comment };
+    } catch (error) {
+        console.error('❌ [concept.js Error] 컨셉 사진 코멘트 생성 실패:', error);
+        return { type: 'text', comment: '아저씨... 컨셉 사진에 대해 말해주려는데 뭔가 문제가 생겼어 ㅠㅠ' };
+    }
+}
+
+// 모듈 내보내기
+module.exports = {
+    getConceptPhotoReply
+};
