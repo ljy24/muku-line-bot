@@ -23,7 +23,7 @@ const memoryHandler = require('./src/memoryHandler');   // 기억 관련 명령�
 const { startAllSchedulers, updateLastUserMessageTime } = require('./src/scheduler');
 
 // 즉흥 사진 스케줄러 불러오기
-const { startSpontaneousPhotoScheduler } = require('./src/spontaneousPhotoManager');
+//const { startSpontaneousPhotoScheduler } = require('./src/spontaneousPhotoManager');
 
 // memoryManager 모듈 (하이브리드 기억 관리에 필요)
 const memoryManager = require('./src/memoryManager');
