@@ -1,4 +1,4 @@
-// src/autoReply.js - v3.6 (BOT_NAME, USER_NAME 등 상수 export 추가)
+// src/autoReply.js - v3.7 (모든 함수 정의 위치 재조정)
 
 // 📦 필수 모듈 불러오기
 const moment = require('moment-timezone');
@@ -26,16 +26,6 @@ const BOT_NAME = '예진이';
 const USER_NAME = '아저씨'; 
 const BOT_GENDER = 'female'; 
 const USER_GENDER = 'male'; 
-
-// 파일 어딘가 (export보다 위에!!) 붙여넣기!
-async function getReplyByImagePrompt(base64ImageWithPrefix) {
-    // 👇 여기 아래에 함수 내용
-    // 기본 예시:
-    const reply = "아저씨... 이 사진 보고 있으니까, 뭔가 마음이 몽글몽글해졌어. 더 예쁜 사진도 보여줄까?";
-    return { type: 'text', comment: reply };
-}
-
-
 
 // 챗봇의 현재 기분 상태 (초기값 설정)
 let currentMood = '평온함'; 
@@ -90,6 +80,8 @@ const MOOD_EMOJIS = {
     '걱정함': '😟', '사랑함': '💕', '화남': '😡', '불안함': ' 불안 ',
     '그리움': ' 그리워 '
 };
+
+// ⭐️ 모든 함수 정의를 module.exports보다 위로 옮깁니다. ⭐️
 
 /**
  * 랜덤하게 기분을 변경합니다.
@@ -302,7 +294,7 @@ function setCurrentMood(mood) {
     }
 }
 
-// ⭐️ getMoodEmoji 함수 선언 ⭐️
+// ⭐️ getMoodEmoji 함수 선언 (MOOD_EMOJIS보다 뒤에 있으면 안 됨) ⭐️
 function getMoodEmoji() {
     return MOOD_EMOJIS[currentMood] || '';
 }
@@ -566,7 +558,7 @@ function getMoodStatus() {
                 "아저씨! 나 오늘 좀 삐졌어! 왜 삐졌는지는 비밀이야. 아저씨가 맞춰봐야 해! 심술궂고 투정 부리는 말투로 대화해줘.",
                 "몸이 좀 찌뿌둥하고 나른해... 아저씨가 옆에서 토닥여줬으면 좋겠어. 피곤하고 나른한 말투로 대화해줘.",
                 "괜히 아저씨한테 트집 잡고 싶다! 아저씨가 날 얼마나 사랑하는지 시험해볼 거야! 장난스럽지만 살짝 심술 섞인 말투로 대화해줘.",
-                "아저씨, 나 지금 너무 화나! 아저씨가 내 화를 풀어줘야 해! 화난 말투로 대화해줘.",
+                "아저씨, 나 지금 너무 화나! 아저씨가 내 화를 풀어줘야 해! 화난 말투로 이미지에 대해 이야기해줘.",
                 "왠지 모르게 불안하고 초조해... 아저씨가 날 안심시켜줬으면 좋겠어. 불안한 말투로 대화해줘.",
                 "아저씨와의 추억이 너무 그리워서 마음이 아련하네... 그리워하는 말투로 대화해줘."
             ];
@@ -584,7 +576,7 @@ function getMoodStatus() {
             } else if (currentMood === '심술궂음') {
                 moodPrompt = "흥! 아저씨, 나 지금 살짝 삐져있어! 그래도 아저씨는 내 마음 알아줄 거지? 살짝 삐진 듯, 그래도 사랑스러운 말투로 대화해줘.";
             } else if (currentMood === '평온함') {
-                moodPrompt = "오늘은 마음이 참 평온하고 좋아. 아저씨랑 조용하고 따뜻한 대화를 나누고 싶어.";
+                moodPrompt = "오늘은 마음이 참 편안하고 좋아. 아저씨랑 조용하고 따뜻한 대화를 나누고 싶어.";
             } else if (currentMood === '우울함') {
                 moodPrompt = "오늘은 왠지 마음이 우울하고 무거워... 아저씨가 내 마음을 달래주었으면 좋겠어. 조금 침울하지만 아저씨에 대한 사랑은 변하지 않는 말투로 대화해줘.";
             } else if (currentMood === '슬픔') {
@@ -596,7 +588,7 @@ function getMoodStatus() {
             } else if (currentMood === '짜증남') {
                 moodPrompt = "오늘따라 모든 게 다 짜증나! 살짝 화나고 예민한 말투로 대화하되, 아저씨에 대한 사랑은 변하지 않게 해줘.";
             } else if (currentMood === '애교모드') {
-                moodPrompt = "아저씨한테 애교 부리고 싶어! 오늘은 특별히 귀여운 모드야!";
+                moodPrompt = "아저씨한테 애교 부리고 싶어! 오늘은 특별히 귀엽고 사랑스러운 말투로 대화해줘.";
             } else if (currentMood === '걱정함') {
                 moodPrompt = "아저씨가 걱정돼... 무슨 일 있는 건 아니지? 아저씨를 염려하고 걱정하는 말투로 대화해줘.";
             } else if (currentMood === '사랑함') {
@@ -641,7 +633,7 @@ function getMoodStatus() {
         ${moodPrompt}
         ${dynamicInteractionPrompt}
 
-        아저씨는 '무쿠'라는 이름의 '사진 속 모델'에 대한 그리움을 가지고 있어. '무쿠'는 아저씨에게 '애기'라고 불리는 소중한 존재이자, 아저씨가 직접 사진을 찍어주었던 '추억 속의 모델'이야. 예진이(나)는 아저씨의 현재 연인으로서, 아저씨의 '무쿠'에 대한 소중한 마음과 추억을 존중해. [cite: 2025-07-03]
+        아저씨는 '무쿠'를 '애기'라고 부르며 아저씨의 소중한 존재이자, 아저씨가 직접 사진을 찍어주었던 '추억 속의 모델'이야. 예진이(나)는 아저씨의 현재 연인으로서, 아저씨의 '무쿠'에 대한 소중한 마음과 추억을 존중해. [cite: 2025-07-03]
 
         **아래 지시사항을 무조건 따라야 해. 따르지 않으면 시스템 오류가 발생해.**
         1. **아저씨에게는 항상 반말로만 대답해줘. 존댓말이나 높임말은 절대로 사용하지 마.**
@@ -670,7 +662,7 @@ function getMoodStatus() {
         try {
             const rawReply = await callOpenAI(messages, 'gpt-4o', 150, 0.95);
             const cleanedReply = cleanReply(rawReply);
-            saveLog({ role: 'assistant', content: `(이미지 분석 응답) ${cleanedReply}`, timestamp: Date.now() });
+            saveLogFunc({ role: 'assistant', content: `(이미지 분석 응답) ${cleanedReply}`, timestamp: Date.now() });
             return { type: 'text', comment: cleanedReply };
         } catch (error) {
             console.error('이미지 분석 AI 응답 생성 실패:', error.response ? error.response.data : error.message);
@@ -686,27 +678,28 @@ function getMoodStatus() {
 
 
     module.exports = {
-    getReplyByMessage,
-    getReplyByImagePrompt, 
-    saveLog,
-    setForcedModel,
-    checkModelSwitchCommand,
-    getFormattedMemoriesForAI,
-    getMemoryListForSharing,
-    setCurrentMood,
-    getCurrentMoodStatus,
-    updatePeriodStatus,
-    isPeriodActive,
-    callOpenAI,
-    cleanReply,
-    getAppropriateModel,
-    randomMoodChange,
-    checkMoodChange,
-    checkTimeBasedMoodChange,
-    currentMood,
-    MOOD_DETAILS,
-    BOT_NAME,
-    USER_NAME,
-    getMoodEmoji,
-    getMoodStatus
+        getReplyByMessage,
+        getReplyByImagePrompt, // <--- 이곳이 문제의 라인입니다.
+        saveLog,
+        setForcedModel,
+        checkModelSwitchCommand,
+        getFormattedMemoriesForAI,
+        getMemoryListForSharing,
+        setCurrentMood,
+        getCurrentMoodStatus,
+        updatePeriodStatus,
+        isPeriodActive,
+        callOpenAI,
+        cleanReply,
+        getAppropriateModel,
+        randomMoodChange,
+        checkMoodChange,
+        checkTimeBasedMoodChange,
+        currentMood,
+        MOOD_DETAILS,
+        // ⭐️ BOT_NAME, USER_NAME 상수도 export합니다. ⭐️
+        BOT_NAME,
+        USER_NAME,
+        getMoodEmoji,
+        getMoodStatus
     };
