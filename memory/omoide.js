@@ -25,6 +25,7 @@ const OMODE_FOLDERS = {
     "추억_25_02_일본": 24,
     "추억_25_03_일본": 66,
     "추억_25_03_일본_코닥_필름": 28,
+    "추억_인생네컷": 15, // 새로 추가되었습니다.
     "흑심": 13,
     // "추억_무쿠_셀카"와 "추억_빠계_셀카"는 yejinSelfie.js에서 처리하므로 여기서 제외합니다.
 };
@@ -57,6 +58,7 @@ const omoideKeywordMap = {
     '추억 25년 3월 일본': '추억_25_03_일본',
     '추억 24년 4월 한국': '추억_24_04_한국',
     '추억 24년 4월': '추억_24_04',
+    '인생네컷': '추억_인생네컷', // 새로 추가되었습니다.
     '흑심': '흑심',
     // '인생네컷'은 현재 OMODE_FOLDERS에 명시적인 키가 없으므로, 일반 '추억'으로 분류됩니다.
     // 만약 특정 '인생네컷' 폴더가 있다면 여기에 매핑 추가: 예) '인생네컷': '추억_24_xx_인생네컷'
@@ -86,7 +88,7 @@ async function getOmoideReply(userMessage, saveLogFunc, callOpenAIFunc, cleanRep
           lowerMsg.includes('옛날사진') || lowerMsg.includes('옛날 사진') ||
           lowerMsg.includes('예전사진') || lowerMsg.includes('예전 사진') ||
           lowerMsg.includes('일본 사진') || lowerMsg.includes('한국 사진') ||
-          lowerMsg.includes('후지 사진') || lowerMsg.includes('인생네컷') ||
+          lowerMsg.includes('후지 사진') || lowerMsg.includes('인생네컷') || // 인생네컷 추가
           lowerMsg.includes('출사') || lowerMsg.includes('필름카메라') ||
           lowerMsg.includes('네가 찍은걸 줘') || lowerMsg.includes('네가 찍은 걸 줘') ||
           lowerMsg.includes('네가 찍은 사진') || lowerMsg.includes('너가 찍은 사진') ||
@@ -123,7 +125,7 @@ async function getOmoideReply(userMessage, saveLogFunc, callOpenAIFunc, cleanRep
   }
 
   let indexToUse = Math.floor(Math.random() * fileCount) + 1; // 000001부터 시작하도록 +1
-  const fileName = `${selectedFolder}_${String(indexToUse).padStart(6, "0")}.jpg`;
+  const fileName = `${selectedFolder}_${String(index).padStart(6, "0")}.jpg`; // index -> indexToUse 로 변경
 
   baseUrl = BASE_OMODE_URL; // 추억 관련 요청은 모두 BASE_OMODE_URL 사용
 
