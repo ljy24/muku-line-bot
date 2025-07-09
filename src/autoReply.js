@@ -772,5 +772,7 @@ module.exports = {
     checkMoodChange,
     checkTimeBasedMoodChange,
     currentMood,
-    MOOD_DETAILS
+    MOOD_DETAILS,
+    getMoodEmoji,
+    getMoodStatus
 };
