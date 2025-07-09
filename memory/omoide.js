@@ -1,4 +1,4 @@
-// memory/omoide.js - v2.12 (URL 인코딩 함수 추가 및 적용)
+// memory/omoide.js - v2.13 (랜덤 추억 사진 기능 추가)
 
 const fs = require("fs");
 const path = require("path");
@@ -105,6 +105,21 @@ function encodeImageUrl(url) {
     }
 }
 
+// 랜덤 추억 폴더를 선택하는 함수 추가
+function getRandomOmoideFolder() {
+    // 셀카 폴더 (yejinSelfie.js에서 처리) 및 단일 파일은 제외
+    const folderNames = Object.keys(OMODE_FOLDERS).filter(f => 
+        !f.endsWith('.jpg') && 
+        f !== "추억_무쿠_셀카" && 
+        f !== "추억_빠계_셀카"
+    );
+    if (folderNames.length === 0) {
+        console.warn("[getRandomOmoideFolder] 랜덤으로 선택할 추억 폴더가 없습니다.");
+        return null;
+    }
+    return folderNames[Math.floor(Math.random() * folderNames.length)];
+}
+
 
 async function getOmoideReply(userMessage, saveLogFunc, callOpenAIFunc, cleanReplyFunc) {
   const lowerMsg = userMessage.trim().toLowerCase();
@@ -113,16 +128,18 @@ async function getOmoideReply(userMessage, saveLogFunc, callOpenAIFunc, cleanRep
   let baseUrl;
 
   // 1. 특정 키워드에 매핑되는 OMODE_FOLDERS 항목 찾기 (구체적인 키워드 우선)
+  let isOmoideKeywordRequest = false;
   for (const keyword of sortedOmoideKeywords) {
       if (lowerMsg.includes(keyword.toLowerCase())) {
           selectedFolder = omoideKeywordMap[keyword];
+          isOmoideKeywordRequest = true; // 키워드 매칭이 되었음을 표시
           console.log(`[omoide] 키워드 "${keyword}" 매칭됨 → 폴더: ${selectedFolder}`);
           break;
       }
   }
 
   // 2. 일반 '추억' 또는 '커플' 요청 처리 (명확한 키워드 매칭이 없을 경우)
-  if (!selectedFolder) {
+  if (!selectedFolder) { // 특정 키워드로 폴더가 선택되지 않은 경우
       if (lowerMsg.includes("추억") || lowerMsg.includes("기억") ||
           lowerMsg.includes('옛날사진') || lowerMsg.includes('옛날 사진') ||
           lowerMsg.includes('예전사진') || lowerMsg.includes('예전 사진') ||
@@ -134,12 +151,13 @@ async function getOmoideReply(userMessage, saveLogFunc, callOpenAIFunc, cleanRep
           lowerMsg.includes('예진이가 찍은') || lowerMsg.includes('직접 찍은') ||
           lowerMsg.includes('추억사진줘') || lowerMsg.includes('추억 사진 줘')) {
 
-          // '추억' 키워드에 해당하는 폴더 중에서 랜덤 선택 (흑심 제외)
-          const omoideFolderKeys = Object.keys(OMODE_FOLDERS).filter(key => key.startsWith('추억') || key === '흑심'); 
-          if (omoideFolderKeys.length > 0) {
-              selectedFolder = omoideFolderKeys[Math.floor(Math.random() * omoideFolderKeys.length)];
+          // '추억' 관련 일반 요청일 경우 랜덤 폴더 선택
+          selectedFolder = getRandomOmoideFolder(); 
+          if (selectedFolder) {
+              isOmoideKeywordRequest = true; // 일반 추억 요청도 처리되었음을 표시
               console.log(`[omoide] 일반 '추억' 요청 처리됨 → 랜덤 폴더: ${selectedFolder}`);
           } else {
+              console.log(`[omoide] 랜덤으로 선택할 추억 폴더가 없음. null 반환.`);
               return null; // 매칭되는 추억 폴더가 없는 경우
           }
       } else if (lowerMsg.includes("커플")) {
@@ -155,6 +173,13 @@ async function getOmoideReply(userMessage, saveLogFunc, callOpenAIFunc, cleanRep
           return null; // 어떤 키워드도 매칭되지 않음
       }
   }
+
+  // selectedFolder가 결정되지 않았다면 (즉, 추억/커플 관련 요청이 아니라면) null 반환
+  if (!selectedFolder) {
+      console.log(`[omoide] 최종적으로 선택된 폴더 없음. null 반환.`);
+      return null;
+  }
+
 
   // selectedFolder가 특정 폴더 키인 경우
   const fileCount = OMODE_FOLDERS[selectedFolder];
