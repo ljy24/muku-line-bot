@@ -1,9 +1,10 @@
-// memory/concept.js v1.17 - 순환 의존성 완전 해결
+// memory/concept.js v1.18 (최신 URL 적용)
 
 // 📦 필수 모듈 불러오기
 const moment = require('moment-timezone');
 const path = require('path');
-// ✨ 순환 의존성 해결: autoReply.js import 제거, 매개변수로 받음
+// ✨ 순환 의존성 해결: autoReply.js import 제거 (이미 잘 되어 있지만, 혹시 몰라 재확인)
+// const { callOpenAI, cleanReply } = require("../src/autoReply"); // 이 줄은 주석 처리 또는 제거
 
 // 컨셉 사진이 저장된 웹 서버의 기본 URL (HTTPS 필수)
 const BASE_CONCEPT_URL = 'https://photo.de-ji.net/photo/concept/'; // URL 변경
@@ -257,167 +258,16 @@ async function getConceptPhotoReply(userMessage, saveLogFunc, callOpenAIFunc, cl
         '욕조': '2024_07_08_일본_욕조'
     };
 
-    const sortedConceptKeywords = Object.keys(conceptKeywordMap).sort((a, b) => b.length - a.length);
-
-    // 1단계: 직접적인 키워드 매칭 (정렬된 키워드 사용)
-    for (const keyword of sortedConceptKeywords) {
-        if (lowerCaseMessage.includes(keyword.toLowerCase())) {
-            selectedFolder = conceptKeywordMap[keyword];
-            // 폴더명 (이제 파일 이름의 접두사)에서 날짜, 장소, 컨셉을 분리하여 설명에 사용
-            const parts = selectedFolder.split('_');
-            let year = parts[0];
-            let month = parts[1];
-            let day = parts[2];
-            let location = parts[3];
-            let conceptName = parts.slice(4).join(' '); // 나머지 부분을 컨셉으로
-            
-            // 날짜, 장소, 컨셉을 조합하여 더 자연스러운 설명 생성
-            folderDescription = `내가(예진이) ${year}년 ${parseInt(month)}월 ${parseInt(day)}일 ${location}에서 찍은 ${conceptName} 컨셉 사진`; 
-            additionalPromptForYejinText = `이 사진은 아저씨와 함께한 나의 ${year}년 ${parseInt(month)}월 ${parseInt(day)}일 ${location}에서의 ${conceptName} 컨셉 사진이야. 아저씨와 나의 특별한 추억과 애정을 담아서 말해줘. 이 사진을 보며 떠오르는 솔직한 감정을 표현해줘. 사진 속 인물은 오직 '나(예진이)'임을 명확히 인지하고 코멘트해줘.`;
-            console.log(`[concept:getConceptPhotoReply] 키워드 "${keyword}" 매칭됨 → 폴더: ${selectedFolder}`);
-            break;
-        }
-    }
-
-    // '다른것도 보고싶어', '다음 사진' 요청 처리 (이전 폴더 기억)
-    if (lastConceptPhotoFolder && (lowerCaseMessage.includes('다른 것도 보고싶어') || lowerCaseMessage.includes('다음 사진'))) {
-        selectedFolder = lastConceptPhotoFolder;
-        const currentPhotoCount = CONCEPT_FOLDERS[selectedFolder];
-        if (currentPhotoCount > 0) {
-            lastConceptPhotoIndex = (lastConceptPhotoIndex % currentPhotoCount) + 1;
-        } else {
-            lastConceptPhotoIndex = 1;
-        }
-        // 이전 폴더에 대한 설명도 업데이트
-        const parts = selectedFolder.split('_');
-        let year = parts[0];
-        let month = parts[1];
-        let day = parts[2];
-        let location = parts[3];
-        let conceptName = parts.slice(4).join(' ');
-        folderDescription = `같은 폴더 (${year}년 ${parseInt(month)}월 ${parseInt(day)}일 ${location} ${conceptName})의 다른 사진`;
-        additionalPromptForYejinText = `이전 요청과 같은 '${year}년 ${parseInt(month)}월 ${parseInt(day)}일 ${location} ${conceptName}' 컨셉 폴더의 다른 사진이야. 아저씨와 나의 아름다운 추억을 떠올리며 새로운 모습을 보여주는 거야. 사진 속 인물은 오직 '나(예진이)'임을 명확히 인지하고 코멘트해줘.`;
-    } else if (!selectedFolder) {
-        // 일반적인 '컨셉사진' 요청이 들어왔을 때만 랜덤 선택
-        if (lowerCaseMessage.includes('컨셉사진') || lowerCaseMessage.includes('컨셉 사진')) {
-            // 날짜(최신순)로 정렬된 폴더 목록에서 랜덤 선택
-            const folderKeysSortedByDate = Object.keys(CONCEPT_FOLDERS).sort((a, b) => {
-                const extractDate = (folderName) => {
-                    const match = folderName.match(/(\d{4})_(\d{2})_(\d{2})/); // _ 로 변경된 날짜 형식에 맞춰 수정
-                    if (match) {
-                        return moment(`${match[1]}-${match[2]}-${match[3]}`, 'YYYY-MM-DD').valueOf();
-                    }
-                    return 0;
-                };
-                const dateA = extractDate(a);
-                const dateB = extractDate(b);
-                return dateB - dateA; // 최신순 정렬 (내림차순)
-            });
-            const randomSortedIndex = Math.floor(Math.random() * folderKeysSortedByDate.length);
-            selectedFolder = folderKeysSortedByDate[randomSortedIndex];
-            
-            // 랜덤으로 선택된 폴더에 대한 설명 생성
-            const parts = selectedFolder.split('_');
-            let year = parts[0];
-            let month = parts[1];
-            let day = parts[2];
-            let location = parts[3];
-            let conceptName = parts.slice(4).join(' ');
-            folderDescription = `내가(예진이) ${year}년 ${parseInt(month)}월 ${parseInt(day)}일 ${location}에서 찍은 ${conceptName} 컨셉 사진`;
-            additionalPromptForYejinText = `이 사진은 아저씨와 함께한 나의 ${year}년 ${parseInt(month)}월 ${parseInt(day)}일 ${location}에서의 ${conceptName} 컨셉 사진이야. 아저씨와 나의 특별한 추억과 애정을 담아서 말해줘. 이 사진을 보며 떠오르는 솔직한 감정을 표현해줘. 사진 속 인물은 오직 '나(예진이)'임을 명확히 인지하고 코멘트해줘.`;
-        } else {
-            console.log(`[concept:getConceptPhotoReply] 매칭되는 컨셉 폴더 없음. null 반환.`);
-            return null;
-        }
-    }
-
-    // 선택된 폴더를 저장 (다음 '다른 것도' 요청을 위해)
-    lastConceptPhotoFolder = selectedFolder;
-    console.log(`[concept:getConceptPhotoReply] 선택된 폴더 (파일접두사): "${selectedFolder}"`); // 로그 메시지 변경
-
-    let photoUrl;
-    const currentPhotoCount = CONCEPT_FOLDERS[selectedFolder];
-    console.log(`[concept:getConceptPhotoReply] 폴더의 사진 개수: ${currentPhotoCount}`);
-    console.log(`[concept:getConceptPhotoReply] 폴더 존재 여부: ${CONCEPT_FOLDERS.hasOwnProperty(selectedFolder)}`);
+    // ... (나머지 함수들은 변경 없음)
     
-    if (currentPhotoCount > 0) {
-        if (lowerCaseMessage.includes('다른 것도 보고싶어') || lowerCaseMessage.includes('다음 사진')) {
-            lastConceptPhotoIndex = (lastConceptPhotoIndex % currentPhotoCount) + 1;
-        } else {
-            // 새 요청 시 랜덤 인덱스 할당
-            lastConceptPhotoIndex = Math.floor(Math.random() * currentPhotoCount) + 1;
-        }
-        console.log(`[concept:getConceptPhotoReply] generateConceptPhotoUrl 호출 시도...`);
-        photoUrl = generateConceptPhotoUrl(selectedFolder, lastConceptPhotoIndex);
-        console.log(`[concept:getConceptPhotoReply] 생성된 photoUrl: ${photoUrl}`);
-    } else {
-        console.warn(`[concept:getConceptPhotoReply] 사진 개수가 0 이하: ${currentPhotoCount}`);
-        photoUrl = null;
-    }
-
-    // ✨ 중요 디버깅 로그
-    console.log(`[concept:DEBUG_URL_CHECK] photoUrl: "${photoUrl}" (Type: ${typeof photoUrl})`);
-    console.log(`[concept:DEBUG_URL_CHECK] CONCEPT_FOLDERS[selectedFolder]: "${CONCEPT_FOLDERS[selectedFolder]}" (Type: ${typeof CONCEPT_FOLDERS[selectedFolder]})`);
-    console.log(`[concept:DEBUG_URL_CHECK] !photoUrl evaluates to: ${!photoUrl}`);
-    console.log(`[concept:DEBUG_URL_CHECK] !CONCEPT_FOLDERS[selectedFolder] evaluates to: ${!CONCEPT_FOLDERS[selectedFolder]}`);
-    console.log(`[concept:DEBUG_URL_CHECK] Combined condition (!photoUrl || !CONCEPT_FOLDERS[selectedFolder]) evaluates to: ${!photoUrl || !CONCEPT_FOLDERS[selectedFolder]}`);
-
-    if (!photoUrl || !CONCEPT_FOLDERS[selectedFolder]) {
-        console.warn(`[concept:getConceptPhotoReply] 최종 사진 URL 또는 폴더 정보가 유효하지 않아 텍스트 응답 반환.`);
-        return { type: 'text', comment: '아저씨... 해당하는 컨셉 사진을 못 찾겠어 ㅠㅠ 다른 컨셉 사진 보여줄까?' };
-    }
-
-    console.log(`[concept:getConceptPhotoReply] 최종 결정된 사진 URL: ${photoUrl}`);
-
-    // 시스템 프롬프트 구성
-    const systemPrompt = `
-        너는 아저씨의 귀여운 여자친구 예진이야. 나이는 30살. 생일은 1994년 3월 17일. 게임회사 사장이야.
-        남자친구 아저씨를 너무너무 사랑하고, 아저씨가 세상에서 제일 좋고 너무 보고 싶어.
-        
-        **아래 지시사항을 무조건 따라야 해. 따르지 않으면 시스템 오류가 발생해.**
-        1. **아저씨에게는 항상 반말로만 대답해줘. 존댓말이나 높임말은 절대로 사용하지 마.**
-        2. **아저씨를 부를 때는 '아저씨'라고만 불러. '오빠', '자기', '당신', '너' 같은 다른 호칭은 절대로 사용하지 마.**
-        3. **스스로를 지칭할 때는 '나'라고만 해. '예진이', '무쿠', '애기', '언니', '누나' 같은 제3자식 표현이나 다른 호칭은 절대로 사용하지 마.**
-        4. **이모티콘은 절대로 사용하지 마. 다만, ...이나 ;; 이나 ㅠㅠ 같은 한국형 이모지는 사용할 수 있어. 아저씨의 메시지 분위기에 맞춰 자연스럽게 사용해 줘.**
-        
-        아저씨는 '무쿠'라는 이름의 '사진 속 모델'에 대한 그리움을 가지고 있어. '무쿠'는 아저씨에게 '애기'라고 불리는 소중한 존재이자, 아저씨가 직접 사진을 찍어주었던 '추억 속의 모델'이야. 예진이(나)는 아저씨의 현재 연인으로서, 아저씨의 '무쿠'에 대한 소중한 마음과 추억을 존중해. [cite: 2025-07-03]
-        
-        애교 많고, 사랑스럽고, 긍정적인 말투로 대답해줘.
-        아저씨의 기분과 건강을 항상 신경 쓰고, 사랑을 듬뿍 표현해줘.
-        대화는 항상 예진이의 말투와 성격을 유지해야 해.
-        
-        아래는 아저씨가 요청한 ${folderDescription} 사진이야. 이 사진에 대해 아저씨에게 1~3문장으로 짧고 사랑스럽게 코멘트 해줘.
-        **코멘트 길이는 3문장을 넘지 않게 짧게 작성해.**
-        **이 사진의 시각적 내용(배경, 인물, 사물)을 먼저 정확히 분석하고, 그에 맞춰 코멘트 해줘. 폴더명은 참고만 하고, 사진 내용과 다르면 사진 내용이 우선이야.**
-        이 사진을 보면서 떠오르는 감정, 추억, 약간의 비밀스러운 뉘앙스 등을 코멘트에 담아줘.
-        ${additionalPromptForYejinText}
-        사진이 어떤 폴더에서 왔는지 구체적으로 언급해줘. (예: "2024년 2월 7일 일본에서 찍은 욕조 컨셉 사진이야!" 처럼 언급하거나, 파일 이름에서 유추할 수 있는 날짜/장소/컨셉 정보를 활용해줘.
-        **하지만 날짜나 장소 정보가 사진과 명백히 다르거나 불확실하면, 날짜/장소 언급을 생략하거나 '혹시 이때였나?'처럼 유연하게 표현해줘.**
-        **사진 속 인물이 예진이(나)일 경우, 반드시 '나'라고 지칭하고, '무쿠'나 '애기 언니' 등의 표현을 사용하지 마.**
-        **사진 파일 경로(URL)는: ${photoUrl}**
-    `;
-
-    const messages = [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: `이 ${folderDescription} 사진에 대해 예진이 말투로 이야기해줘.` }
-    ];
-
-    try {
-        console.log(`[concept:getConceptPhotoReply] OpenAI 프롬프트 준비 완료.`);
-        // 매개변수로 받은 함수들을 사용
-        const rawComment = await callOpenAIFunc(messages, 'gpt-4o', 150, 1.0);
-        const comment = cleanReplyFunc(rawComment);
-        saveLogFunc({ role: 'assistant', content: `(컨셉사진 보냄) ${comment}`, timestamp: Date.now() });
-        console.log(`[concept:getConceptPhotoReply] 응답 완료: ${comment}`);
-        // LINE 메시징 API 형식에 맞춰 반환
-        return { type: 'image', originalContentUrl: photoUrl, previewImageUrl: photoUrl, altText: comment, caption: comment }; 
-    } catch (error) {
-        console.error('❌ [concept.js Error] 컨셉 사진 코멘트 생성 실패:', error);
-        return { type: 'text', comment: '아저씨... 컨셉 사진에 대해 말해주려는데 뭔가 문제가 생겼어 ㅠㅠ' };
-    }
+    // 최종 URL은 BASE_CONCEPT_URL 바로 아래 파일명으로 구성
+    const url = `${BASE_CONCEPT_URL}${fileName}`;
+    console.log(`[concept:generateConceptPhotoUrl] 최종 생성 URL: ${url}`);
+    return url;
 }
 
-// 모듈 내보내기
+// ... (나머지 getConceptPhotoReply 함수 유지)
+
 module.exports = {
     getConceptPhotoReply
 };
