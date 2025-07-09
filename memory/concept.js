@@ -1,4 +1,4 @@
-w// memory/concept.js v1.17 - 순환 의존성 완전 해결
+// memory/concept.js v1.17 - 순환 의존성 완전 해결
 
 // 📦 필수 모듈 불러오기
 const moment = require('moment-timezone');
@@ -12,7 +12,7 @@ const BASE_CONCEPT_URL = 'https://photo.de-ji.net/concept/';
 const CONCEPT_FOLDERS = {
     '2023/12월_12일_일본_하카타_스트리트': 29,
     '2023/12월_13일_일본_모지코': 42,
-    '2023/12월_14일_일본_플라스틱러브': 75,
+    '2023/12월_14일_일본_플라스틱러브': 75,a
     '2023/12월_15일_일본_교복': 51,
     '2023/12월_16일_일본_선물': 113,
     '2023/12월_31일_한국_눈밭_필름카메라': 43,
