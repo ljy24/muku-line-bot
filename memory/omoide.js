@@ -159,9 +159,9 @@ const selfieNaughtyComments = [
 
 // ===== 커플사진 전용 랜덤 핸들러 =====
 const couplePhotoSources = [
-    { baseUrl: "https://photo.de-ji.net/concept/2024/9월 14일 한국 원미상가_필름 34장", count: 34 },
-    { baseUrl: "https://photo.de-ji.net/photo/추억 24_02_25/ 한국 커플사진 86장", count: 86 },
-    { baseUrl: "https://photo.de-ji.net/photo/couple/", count: 292 }
+    { baseUrl: "concept/2024/9월 14일 한국 원미상가_필름 34장", count: 34 },
+    { baseUrl: "추억 24_02_25/ 한국 커플사진", count: 86 }, // 경로 수정: "86장" 제거 및 BASE_PHOTO_URL 뒤에 붙을 폴더 이름으로
+    { baseUrl: "couple", count: 292 } // 경로 수정: "/" 제거 및 BASE_PHOTO_URL 뒤에 붙을 폴더 이름으로
 ];
 const couplePhotoPatterns = [
     /커플\s*사진.*(줘|보여줘|한\s*장|아무거나|랜덤)/,
@@ -179,13 +179,19 @@ function isCouplePhotoCommand(message) {
 function getRandomCouplePhotoUrl() {
     const src = couplePhotoSources[Math.floor(Math.random() * couplePhotoSources.length)];
     const idx = String(Math.floor(Math.random() * src.count) + 1).padStart(6, "0");
-    return `${src.baseUrl}/${idx}.jpg`;
+    
+    // special case for 'concept/2024/9월 14일 한국 원미상가_필름 34장' which has a different base URL
+    if (src.baseUrl === 'concept/2024/9월 14일 한국 원미상가_필름 34장') {
+        return `https://photo.de-ji.net/${src.baseUrl}/${idx}.jpg`;
+    }
+    
+    return `${BASE_PHOTO_URL}${src.baseUrl}/${idx}.jpg`;
 }
 /**
  * 커플사진 명령어 감지 시 랜덤 커플사진 URL 반환
  * @param {string} message 사용자 메시지
  * @returns {string|null} 커플사진 URL, 없으면 null
- */
+*/
 function handleCouplePhotoRequest(message) {
     if (isCouplePhotoCommand(message)) return getRandomCouplePhotoUrl();
     return null;
