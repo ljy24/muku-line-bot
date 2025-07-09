@@ -7,6 +7,9 @@ const { Client, middleware } = require('@line/bot-sdk'); // LINE Bot SDK
 const express = require('express'); // Express 프레임워크
 const moment = require('moment-timezone'); // Moment.js
 
+// .env 파일에서 환경 변수 로드 (최상단에서 로드하여 다른 모듈에서 사용 가능하도록)
+require('dotenv').config(); 
+
 // ./src/autoReply.js에서 일반 대화 응답 함수들을 불러옵니다.
 const {
     getReplyByMessage,           // 사용자 텍스트 메시지에 대한 예진이의 답변 생성
@@ -22,7 +25,7 @@ const memoryHandler = require('./src/memoryHandler');   // 기억 관련 명령�
 // 스케줄러 모듈 불러오기
 const { startAllSchedulers, updateLastUserMessageTime } = require('./src/scheduler');
 
-// 즉흥 사진 스케줄러 불러오기
+// 즉흥 사진 스케줄러 불러오기 (이 모듈은 Client 객체를 인자로 받도록 수정되어야 합니다.)
 const { startSpontaneousPhotoScheduler } = require('./src/spontaneousPhotoManager');
 
 // memoryManager 모듈 (하이브리드 기억 관리에 필요)
@@ -38,7 +41,7 @@ const config = {
 };
 
 // LINE 메시징 API 클라이언트를 초기화합니다.
-const client = new Client(config);
+const client = new Client(config); // client 객체는 여기서 한 번만 생성
 
 // 타겟 사용자 ID를 환경 변수에서 가져옵니다.
 const userId = process.env.TARGET_USER_ID;
@@ -89,7 +92,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
 
                     // 3. 모든 특정 핸들러에서 처리되지 않았다면, 일반 대화 응답 생성
                     if (!botResponse) {
-                        botResponse = await getReplyByMessage(text);
+                        botResponse = await getReplyByMessage(text, saveLog, client.pushMessage, cleanReply); // getReplyByMessage에 필요한 인자 전달
                         // 일반 대화인 경우, 기억 추출 및 저장 시도 (현재는 모든 일반 대화를 여기에 전달)
                         await memoryManager.extractAndSaveMemory(text);
                         console.log(`[index.js] memoryManager.extractAndSaveMemory 호출 완료 (메시지: "${text}")`);
@@ -99,19 +102,23 @@ app.post('/webhook', middleware(config), async (req, res) => {
 
                     // 응답 메시지 전송
                     let replyMessages = [];
-                    if (botResponse.type === 'photo') {
+                    // getReplyByMessage에서 반환되는 객체는 { type: 'text', comment: '...' }
+                    // 또는 { type: 'image', originalContentUrl: '...', previewImageUrl: '...', altText: '...', caption: '...' } 형태
+                    if (botResponse.type === 'image') { // 이미지 타입일 경우
                         replyMessages.push({
                             type: 'image',
-                            originalContentUrl: botResponse.url,
-                            previewImageUrl: botResponse.url,
+                            originalContentUrl: botResponse.originalContentUrl,
+                            previewImageUrl: botResponse.previewImageUrl,
+                            altText: botResponse.altText // 필수 필드, 캡션 대신 사용 가능
                         });
+                        // 캡션을 별도의 텍스트 메시지로 보내려면 추가
                         if (botResponse.caption) {
                             replyMessages.push({
                                 type: 'text',
                                 text: botResponse.caption
                             });
                         }
-                    } else if (botResponse.type === 'text') {
+                    } else if (botResponse.type === 'text') { // 텍스트 타입일 경우
                         replyMessages.push({
                             type: 'text',
                             text: botResponse.comment
@@ -124,6 +131,8 @@ app.post('/webhook', middleware(config), async (req, res) => {
                     if (replyMessages.length > 0) {
                         await client.replyMessage(event.replyToken, replyMessages);
                         console.log(`[index.js] 봇 응답 전송 완료 (타입: ${botResponse.type || 'unknown'})`);
+                    } else {
+                        console.warn('[index.js] 전송할 메시지가 없습니다.');
                     }
                 }
 
@@ -146,9 +155,9 @@ app.post('/webhook', middleware(config), async (req, res) => {
                         const base64ImageWithPrefix = `data:${mimeType};base64,${buffer.toString('base64')}`;
 
                         const reply = await getReplyByImagePrompt(base64ImageWithPrefix);
-                        await client.replyMessage(event.replyToken, { type: 'text', text: reply });
+                        await client.replyMessage(event.replyToken, { type: 'text', text: reply.comment || reply }); // getReplyByImagePrompt가 {type:'text', comment: '...' } 반환하도록 수정 가정
                         console.log(`[index.js] 이미지 메시지 처리 및 응답 완료`);
-                        saveLog('예진이', `(이미지 분석 응답) ${reply}`);
+                        saveLog('예진이', `(이미지 분석 응답) ${reply.comment || reply}`);
                     } catch (err) {
                         console.error(`[index.js] 이미지 처리 실패: ${err}`);
                         await client.replyMessage(event.replyToken, { type: 'text', text: '이미지를 읽는 중 오류가 생겼어 ㅠㅠ' });
@@ -159,7 +168,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
         res.status(200).send('OK');
     } catch (err) {
         console.error(`[index.js] 웹훅 처리 에러: ${err}`);
-        res.status(200).send('OK');
+        res.status(200).send('OK'); // 에러가 발생해도 200 OK를 반환하여 LINE 서버에 재시도 요청을 보내지 않도록 합니다.
     }
 });
 
@@ -177,6 +186,7 @@ app.listen(PORT, async () => {
     console.log('✅ 모든 스케줄러 시작!');
 
     // 🎯 예진이 즉흥 사진 스케줄러 시작 - 보고싶을 때마다 사진 보내기! 💕
+    // startSpontaneousPhotoScheduler 함수에 client 객체를 직접 전달
     startSpontaneousPhotoScheduler(client, userId, saveLog);
     console.log('💕 예진이가 보고싶을 때마다 사진 보낼 준비 완료!');
 });
