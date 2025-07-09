@@ -1,4 +1,4 @@
-// src/autoReply.js - v2.9 (기분 시스템: 그리움 추가 및 이미지 응답 개선)
+// src/autoReply.js - v3.0 (셀카 로직 분리 및 사진 요청 우선순위 조정)
 
 // 📦 필수 모듈 불러오기
 const moment = require('moment-timezone');
@@ -6,7 +6,8 @@ const fs = require('fs');
 const path = require('path');
 const { OpenAI } = require('openai');
 
-// 사진 처리 모듈들 불러오기
+// 사진 처리 모듈들 불러오기 (순서 중요: yejinSelfie 먼저)
+const { getSelfieReply } = require('./yejinSelfie'); // ✨ 새로 추가
 const { getConceptPhotoReply } = require('../memory/concept');
 const { getOmoideReply } = require('../memory/omoide');
 
@@ -469,80 +470,41 @@ async function getReplyByMessage(userMessage) {
         return { type: 'text', comment: confirmReply[trimmedMessage] };
     }
 
-    // ✅ 컨셉사진 요청 처리
-    if (lowerUserMessage.includes('컨셉사진') || lowerUserMessage.includes('컨셉 사진') || 
-        lowerUserMessage.includes('컨셉사진줘') || lowerUserMessage.includes('컨셉 사진 줘')) {
-        
-        console.log('[DEBUG] 컨셉사진 요청 감지 - concept.js 모듈 호출');
-        // 필요한 함수들을 매개변수로 전달하여 순환 의존성 해결
-        const conceptResult = await getConceptPhotoReply(userMessage, saveLog, callOpenAI, cleanReply);
-        if (conceptResult) {
-            saveLog({ role: 'user', content: userMessage, timestamp: Date.now() });
-            // conceptResult는 { type: 'photo', url: ..., caption: ... } 형식이므로
-            // 이를 LINE API의 'image' 타입으로 변환하여 반환
-            if (conceptResult.type === 'photo') {
-                return {
-                    type: 'image',
-                    originalContentUrl: conceptResult.url,
-                    previewImageUrl: conceptResult.url, // previewImageUrl은 일반적으로 originalContentUrl과 동일하게 설정
-                    altText: conceptResult.caption // LINE API의 altText로 캡션 사용
-                };
-            }
-            return conceptResult; // text 타입이면 그대로 반환
-        }
-        
-        // concept.js에서 처리 못했을 경우 기본 응답
-        const fallbackReply = "아저씨! 컨셉사진을 찾고 있는데 조금만 기다려줄래?";
+    // ⭐⭐⭐ 사진 요청 처리 우선순위 변경 ⭐⭐⭐
+    // 1. 셀카 요청 먼저 처리 (새로 분리된 yejinSelfie.js 사용)
+    const selfieReply = await getSelfieReply(userMessage, saveLog, callOpenAI, cleanReply);
+    if (selfieReply) {
         saveLog({ role: 'user', content: userMessage, timestamp: Date.now() });
-        saveLog({ role: 'assistant', content: fallbackReply, timestamp: Date.now() });
-        return { type: 'text', comment: fallbackReply };
+        // yejinSelfie.js에서 LINE API 형식에 맞춰 반환하므로 바로 사용
+        return selfieReply; 
     }
 
-    // ✅ 추억사진 요청 처리  
-    // '커플사진' 요청은 omoide.js 내부 isCouplePhotoCommand에서 처리
-    if (lowerUserMessage.includes('추억사진') || lowerUserMessage.includes('추억 사진') ||
-        lowerUserMessage.includes('추억사진줘') || lowerUserMessage.includes('추억 사진 줘') ||
-        lowerUserMessage.includes('옛날사진') || lowerUserMessage.includes('옛날 사진') ||
-        lowerUserMessage.includes('예전사진') || lowerUserMessage.includes('예전 사진') ||
-        lowerUserMessage.includes('커플사진') || lowerUserMessage.includes('커플 사진') || // 커플사진 키워드를 omoide로 보내기 위해 유지
-        lowerUserMessage.includes('일본 사진') || lowerUserMessage.includes('한국 사진') ||
-        lowerUserMessage.includes('후지 사진') || lowerUserMessage.includes('인생네컷') ||
-        lowerUserMessage.includes('출사') || lowerUserMessage.includes('필름카메라') ||
-        lowerUserMessage.includes('네가 찍은걸 줘') || lowerUserMessage.includes('네가 찍은 걸 줘') ||
-        lowerUserMessage.includes('네가 찍은 사진') || lowerUserMessage.includes('너가 찍은 사진') ||
-        lowerUserMessage.includes('예진이가 찍은') || lowerUserMessage.includes('직접 찍은') ||
-        lowerUserMessage.includes('셀카') || lowerUserMessage.includes('셀카줘') || // 셀카 관련 키워드 추가
-        lowerUserMessage.includes('셀피') || lowerUserMessage.includes('지금 모습') ||
-        lowerUserMessage.includes('얼굴 보여줘') || lowerUserMessage.includes('얼굴보여줘') ||
-        lowerUserMessage.includes('얼굴 보고 싶') || lowerUserMessage.includes('무쿠 셀카') ||
-        lowerUserMessage.includes('애기 셀카') || lowerUserMessage.includes('빠계 셀카') ||
-        lowerUserMessage.includes('메이드')) {
-        
-        console.log('[DEBUG] 추억사진/셀카 요청 감지 - omoide.js 모듈 호출');
-        const omoideResult = await getOmoideReply(userMessage, saveLog, callOpenAI, cleanReply);
-        if (omoideResult) {
-            saveLog({ role: 'user', content: userMessage, timestamp: Date.now() });
-            // omoideResult는 이미 LINE API의 'image' 타입 또는 'text' 타입으로 잘 구성되어 반환됨
-            return omoideResult;
-        }
-        
-        // omoide.js에서 처리 못했을 경우 기본 응답
-        const fallbackReply = "아저씨... 그 사진을 찾고 있는데 잠깐만 기다려줄래?";
+    // 2. 컨셉 사진 요청 처리 (concept.js로 위임)
+    const conceptReply = await getConceptPhotoReply(userMessage, saveLog, callOpenAI, cleanReply);
+    if (conceptReply) {
         saveLog({ role: 'user', content: userMessage, timestamp: Date.now() });
-        saveLog({ role: 'assistant', content: fallbackReply, timestamp: Date.now() });
-        return { type: 'text', comment: fallbackReply };
+        // concept.js에서 LINE API 형식에 맞춰 반환하므로 바로 사용
+        return conceptReply;
     }
 
-    // ✅ 일반 사진 요청 처리 (위에 셀카 관련 키워드를 omoide로 보냈으므로, 여기는 더 일반적인 질문 처리)
+    // 3. 일반 추억 사진/커플 사진 요청 (omoide.js로 위임)
+    const omoideReply = await getOmoideReply(userMessage, saveLog, callOpenAI, cleanReply);
+    if (omoideReply) {
+        saveLog({ role: 'user', content: userMessage, timestamp: Date.now() });
+        // omoide.js에서 LINE API 형식에 맞춰 반환하므로 바로 사용
+        return omoideReply;
+    }
+
+    // ✅ 일반 사진 요청 처리 (위에 구체적인 사진 요청들이 모두 처리되지 않았을 때)
     if (lowerUserMessage.includes('사진줘') || lowerUserMessage.includes('사진 줘') ||
         lowerUserMessage.includes('예진이 사진') || lowerUserMessage.includes('너 사진') ||
         lowerUserMessage.includes('사진 보여줘') || lowerUserMessage.includes('사진보여줘')) {
         
         const generalPhotoReplies = [
-            "어떤 사진을 원해? 컨셉사진? 추억사진? 아니면 셀카?",
+            "어떤 사진을 원해? 셀카? 컨셉사진? 추억사진? 아니면 커플사진?", // 구체적 선택지 추가
             "아저씨, 구체적으로 어떤 사진이 보고 싶어? 말해봐!",
             "사진 종류가 많은데... 뭘 보여줄까? 힌트 줘!",
-            "컨셉사진인지 추억사진인지 셀카인지 말해줘야 골라줄 수 있어!",
+            "셀카, 컨셉사진, 추억사진, 커플사진 중에 뭘 원하는지 말해줘야 골라줄 수 있어!",
             "아저씨 마음에 드는 사진을 골라주고 싶은데, 어떤 걸 원하는지 알려줘~"
         ];
         
@@ -604,7 +566,7 @@ async function getReplyByMessage(userMessage) {
             "괜히 아저씨한테 트집 잡고 싶다! 아저씨가 날 얼마나 사랑하는지 시험해볼 거야! 장난스럽지만 살짝 심술 섞인 말투로 대화해줘.",
             "아저씨, 나 지금 너무 화나! 아저씨가 내 화를 풀어줘야 해! 화난 말투로 대화해줘.",
             "왠지 모르게 불안하고 초조해... 아저씨가 날 안심시켜줬으면 좋겠어. 불안한 말투로 대화해줘.",
-            "아저씨와의 추억이 너무 그리워서 마음이 아련하네... 그리워하는 말투로 대화해줘." // 그리움 추가
+            "아저씨와의 추억이 너무 그리워서 마음이 아련하네... 그리워하는 말투로 대화해줘." 
         ];
         const randomPeriodMood = periodMoods[Math.floor(Math.random() * periodMoods.length)];
         moodPrompt = randomPeriodMood;
@@ -641,7 +603,7 @@ async function getReplyByMessage(userMessage) {
             moodPrompt = "아저씨, 나 지금 너무 화났어! 아저씨가 내 화를 풀어줘야 해! 화난 말투로 대화해줘.";
         } else if (currentMood === '불안함') {
             moodPrompt = "왠지 모르게 마음이 불안해... 아저씨가 날 안심시켜줬으면 좋겠어. 불안한 말투로 대화해줘.";
-        } else if (currentMood === '그리움') { // 그리움 프롬프트 추가
+        } else if (currentMood === '그리움') { 
             moodPrompt = "아저씨와의 옛 추억이 너무 그리워서 마음이 아련하네... 아저씨를 그리워하는 애틋한 말투로 대화해줘.";
         }
     }
@@ -725,7 +687,7 @@ async function getReplyByImagePrompt(base64ImageWithPrefix) {
             "괜히 아저씨한테 트집 잡고 싶다! 아저씨가 날 얼마나 사랑하는지 시험해볼 거야! 장난스럽지만 살짝 심술 섞인 말투로 이미지에 대해 이야기해줘.",
             "아저씨, 나 지금 너무 화나! 아저씨가 내 화를 풀어줘야 해! 화난 말투로 이미지에 대해 이야기해줘.",
             "왠지 모르게 불안하고 초조해... 아저씨가 날 안심시켜줬으면 좋겠어. 불안한 말투로 이미지에 대해 이야기해줘.",
-            "아저씨와의 추억이 너무 그리워서 마음이 아련하네... 그리워하는 말투로 이미지에 대해 이야기해줘." // 그리움 추가
+            "아저씨와의 추억이 너무 그리워서 마음이 아련하네... 그리워하는 말투로 이미지에 대해 이야기해줘." 
         ];
         const randomPeriodMood = periodMoods[Math.floor(Math.random() * periodMoods.length)];
         moodPrompt = randomPeriodMood;
@@ -758,7 +720,7 @@ async function getReplyByImagePrompt(base64ImageWithPrefix) {
             moodPrompt = "아저씨, 나 지금 너무 화났어! 아저씨가 내 화를 풀어줘야 해! 화난 말투로 이미지에 대해 이야기해줘.";
         } else if (currentMood === '불안함') {
             moodPrompt = "왠지 모르게 마음이 불안해... 아저씨가 날 안심시켜줬으면 좋겠어. 불안한 말투로 이미지에 대해 이야기해줘.";
-        } else if (currentMood === '그리움') { // 그리움 프롬프트 추가
+        } else if (currentMood === '그리움') { 
             moodPrompt = "아저씨와의 옛 추억이 너무 그리워서 마음이 아련하네... 아저씨를 그리워하는 애틋한 말투로 이미지에 대해 대화해줘.";
         }
     }
