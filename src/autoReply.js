@@ -753,6 +753,15 @@ setInterval(() => {
 }, 5 * 60 * 1000);
 
 
+function getMoodEmoji() {
+    return MOOD_EMOJIS[currentMood] || '';
+}
+
+function getMoodStatus() {
+    return currentMood;
+}
+
+// ⭐️ 그리고 그 아래에
 module.exports = {
     getReplyByMessage,
     getReplyByImagePrompt,
@@ -773,6 +782,7 @@ module.exports = {
     checkTimeBasedMoodChange,
     currentMood,
     MOOD_DETAILS,
-    getMoodEmoji,
-    getMoodStatus
+    getMoodEmoji,     // 함수 선언이 실제로 위에 있어야 함
+    getMoodStatus     // 이것도!
 };
+
