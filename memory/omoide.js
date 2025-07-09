@@ -1,4 +1,4 @@
-// memory/omoide.js - v2.11 (업데이트된 OMODE_FOLDERS 및 키워드 맵 적용, 셀카 제외)
+// memory/omoide.js - v2.12 (URL 인코딩 함수 추가 및 적용)
 
 const fs = require("fs");
 const path = require("path");
@@ -60,12 +60,51 @@ const omoideKeywordMap = {
     '추억 24년 4월': '추억_24_04',
     '인생네컷': '추억_인생네컷',
     '흑심': '흑심',
-    // '인생네컷'은 현재 OMODE_FOLDERS에 명시적인 키가 없으므로, 일반 '추억'으로 분류됩니다.
-    // 만약 특정 '인생네컷' 폴더가 있다면 여기에 매핑 추가: 예) '인생네컷': '추억_24_xx_인생네컷'
 };
 
 // 키워드 맵을 길이 기준으로 내림차순 정렬 (더 구체적인 키워드 우선)
 const sortedOmoideKeywords = Object.keys(omoideKeywordMap).sort((a, b) => b.length - a.length);
+
+/**
+ * URL 인코딩을 적용하는 함수
+ * 이중 인코딩을 방지하기 위해 각 세그먼트를 먼저 디코딩한 후 다시 인코딩합니다.
+ */
+function encodeImageUrl(url) {
+    try {
+        const parsed = new URL(url); // URL 객체로 파싱
+        // pathname을 '/' 기준으로 분리하고, 각 세그먼트를 먼저 디코딩한 후 다시 인코딩
+        // 이렇게 하면 이미 인코딩된 부분은 디코딩되었다가 다시 인코딩되어 이중 인코딩을 방지합니다.
+        parsed.pathname = parsed.pathname
+            .split('/')
+            .map(segment => {
+                // 비어있지 않은 세그먼트만 처리 (루트 '/'나 연속된 슬래시 처리)
+                if (segment) {
+                    try {
+                        // 이미 인코딩된 문자열을 한번 디코딩 (안전하게)
+                        // 그 후 다시 인코딩 (URL에 안전한 형태로)
+                        return encodeURIComponent(decodeURIComponent(segment));
+                    } catch (e) {
+                        // decodeURIComponent 오류 발생 시 (예: 잘못된 % 인코딩)
+                        // 해당 세그먼트는 그대로 인코딩을 시도하여 안전하게 처리
+                        console.warn(`[omoide:encodeImageUrl] decodeURIComponent 실패: ${segment}, 재인코딩 시도`);
+                        return encodeURIComponent(segment);
+                    }
+                }
+                return segment; // 빈 세그먼트는 그대로 유지
+            })
+            .join('/');
+        
+        const encodedUrl = parsed.toString();
+        console.log(`[omoide:encodeImageUrl] 원본: ${url}`);
+        console.log(`[omoide:encodeImageUrl] 인코딩: ${encodedUrl}`);
+        
+        return encodedUrl;
+    } catch (error) {
+        console.error(`[omoide:encodeImageUrl] URL 인코딩 실패: ${url}`, error);
+        return url; // 실패 시 원본 URL 반환
+    }
+}
+
 
 async function getOmoideReply(userMessage, saveLogFunc, callOpenAIFunc, cleanReplyFunc) {
   const lowerMsg = userMessage.trim().toLowerCase();
@@ -88,7 +127,7 @@ async function getOmoideReply(userMessage, saveLogFunc, callOpenAIFunc, cleanRep
           lowerMsg.includes('옛날사진') || lowerMsg.includes('옛날 사진') ||
           lowerMsg.includes('예전사진') || lowerMsg.includes('예전 사진') ||
           lowerMsg.includes('일본 사진') || lowerMsg.includes('한국 사진') ||
-          lowerMsg.includes('후지 사진') || lowerMsg.includes('인생네컷') ||
+          lowerMsg.includes('후지 사진') || lowerMsg.includes('인생네컷') || 
           lowerMsg.includes('출사') || lowerMsg.includes('필름카메라') ||
           lowerMsg.includes('네가 찍은걸 줘') || lowerMsg.includes('네가 찍은 걸 줘') ||
           lowerMsg.includes('네가 찍은 사진') || lowerMsg.includes('너가 찍은 사진') ||
@@ -96,7 +135,7 @@ async function getOmoideReply(userMessage, saveLogFunc, callOpenAIFunc, cleanRep
           lowerMsg.includes('추억사진줘') || lowerMsg.includes('추억 사진 줘')) {
 
           // '추억' 키워드에 해당하는 폴더 중에서 랜덤 선택 (흑심 제외)
-          const omoideFolderKeys = Object.keys(OMODE_FOLDERS).filter(key => key.startsWith('추억') || key === '흑심'); // 흑심 포함 (사용자 데이터에 있으므로)
+          const omoideFolderKeys = Object.keys(OMODE_FOLDERS).filter(key => key.startsWith('추억') || key === '흑심'); 
           if (omoideFolderKeys.length > 0) {
               selectedFolder = omoideFolderKeys[Math.floor(Math.random() * omoideFolderKeys.length)];
               console.log(`[omoide] 일반 '추억' 요청 처리됨 → 랜덤 폴더: ${selectedFolder}`);
@@ -108,9 +147,10 @@ async function getOmoideReply(userMessage, saveLogFunc, callOpenAIFunc, cleanRep
           const fileCount = 500; // TODO: 실제 커플사진 폴더의 개수로 변경 필요 (임시 설정)
           const index = Math.floor(Math.random() * fileCount) + 1;
           const fileName = String(index).padStart(6, "0") + ".jpg";
-          const imageUrl = `${baseUrl}/${fileName}`;
+          const rawImageUrl = `${baseUrl}/${fileName}`;
+          const encodedImageUrl = encodeImageUrl(rawImageUrl); // 인코딩 적용
           const text = "아저씨랑 나랑 같이 찍은 커플 사진이야! 예쁘지? 우리 추억을 담은 사진이야.";
-          return { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl, altText: text, caption: text };
+          return { type: 'image', originalContentUrl: encodedImageUrl, previewImageUrl: encodedImageUrl, altText: text, caption: text };
       } else {
           return null; // 어떤 키워드도 매칭되지 않음
       }
@@ -125,11 +165,12 @@ async function getOmoideReply(userMessage, saveLogFunc, callOpenAIFunc, cleanRep
   }
 
   let indexToUse = Math.floor(Math.random() * fileCount) + 1; // 000001부터 시작하도록 +1
-  const fileName = `${selectedFolder}_${String(indexToUse).padStart(6, "0")}.jpg`; // index -> indexToUse 로 변경
+  const fileName = `${selectedFolder}_${String(indexToUse).padStart(6, "0")}.jpg`;
 
   baseUrl = BASE_OMODE_URL; // 추억 관련 요청은 모두 BASE_OMODE_URL 사용
 
-  const imageUrl = `${baseUrl}/${fileName}`;
+  const rawImageUrl = `${baseUrl}/${fileName}`;
+  const encodedImageUrl = encodeImageUrl(rawImageUrl); // 여기가 중요! 인코딩 적용
 
   // folderDescription 생성 (선택된 폴더 이름 파싱)
   // 예: "추억_24_03_일본_스냅" -> "아저씨와 나의 추억 24년 3월 일본 (스냅) 사진"
@@ -170,7 +211,7 @@ async function getOmoideReply(userMessage, saveLogFunc, callOpenAIFunc, cleanRep
   const messages = [{ role: 'system', content: prompt }];
   const rawReply = await callOpenAIFunc(messages, 'gpt-4o', 150, 1.0);
   const cleanedReply = cleanReplyFunc(rawReply);
-  return { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl, altText: cleanedReply, caption: cleanedReply };
+  return { type: 'image', originalContentUrl: encodedImageUrl, previewImageUrl: encodedImageUrl, altText: cleanedReply, caption: cleanedReply };
 }
 
 module.exports = {
