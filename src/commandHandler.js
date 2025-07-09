@@ -1,56 +1,48 @@
-// src/commandHandler.js - v1.2 - 봇 명령어 처리 핸들러 (Render PostgreSQL 기반 memoryManager 사용)
+// src/memoryHandler.js (가상 파일)
 
-// 📦 필수 모듈 불러오기
-const { getOmoideReply } = require('../memory/omoide'); // omoide.js에서 추억 사진 답변 함수 불러오기
-const { getConceptPhotoReply } = require('../memory/concept'); // concept.js에서 컨셉 사진 답변 함수 불러오기
-// autoReply에서 필요한 함수 가져오기 (이제 autoReply는 Supabase/파일에 의존하지 않음)
-const { getMemoryListForSharing, setForcedModel, checkModelSwitchCommand, cleanReply } = require('./autoReply');
+// autoReply에서 필요한 함수들을 직접 가져와서 사용
+// const { callOpenAI, cleanReply } = require('./autoReply'); // 필요시 여기에 import
 
-/**
- * 봇의 특정 명령어를 처리합니다.
- * @param {string} userMessage - 사용자의 원본 메시지
- * @param {Function} saveLogFunc - 로그 저장을 위한 saveLog 함수
- * @returns {Promise<{type: string, url?: string, caption?: string, comment?: string}|null>} 처리된 응답 객체 또는 null (명령어가 아닐 경우)
- */
-async function handleCommand(userMessage, saveLogFunc) {
+async function handleMemoryCommand(userMessage, saveLogFunc, callOpenAIFunc, cleanReplyFunc) { // 인자 추가
     const lowerCaseMessage = userMessage.toLowerCase();
 
-    // 1. 모델 전환 명령어 처리
-    const versionResponse = checkModelSwitchCommand(userMessage);
-    if (versionResponse) {
-        saveLogFunc('예진이', `(모델 전환) ${versionResponse}`);
-        return { type: 'text', comment: versionResponse };
-    }
+    // 예시: "내 기억 보여줘"
+    if (lowerCaseMessage.includes('내 기억 보여줘') || lowerCaseMessage.includes('나의 기억')) {
+        // memoryManager를 통한 기억 조회 로직
+        // const memories = await memoryManager.getFormattedMemoriesForAI(); // memoryManager import 필요
+        // let replyText = "아직 기억나는 게 별로 없어 ㅠㅠ";
+        // if (memories && memories.length > 0) {
+        //     replyText = "아저씨랑 나눈 대화 중에 기억나는 건 이 정도야:\n" + memories.map(m => m.content).join('\n');
+        // }
+        // saveLogFunc({ role: 'assistant', content: replyText, timestamp: Date.now() });
+        // return { type: 'text', comment: replyText };
 
-    // 2. 기억 목록 보여주기 명령어 처리
-    if (/(기억\s?보여줘|내\s?기억\s?보여줘|혹시 내가 오늘 뭐한다 그랬지\?|오늘 뭐가 있더라\?|나 뭐하기로 했지\?)/i.test(userMessage)) {
+        // 이 부분에서 OpenAI 호출이 필요하다면 callOpenAIFunc와 cleanReplyFunc를 사용할 수 있습니다.
+        const systemPrompt = `아저씨가 '내 기억 보여줘'라고 했어. 아저씨와 함께한 소중한 기억들에 대해 예진이 말투로 1~2문장으로 사랑스럽게 이야기해줘.`;
         try {
-            let memoryList = await getMemoryListForSharing(); // autoReply.js에서 기억 목록을 가져옵니다.
-            // '사용자' -> '아저씨'로 교체 (cleanReply는 autoReply.js에서 가져옴)
-            memoryList = cleanReply(memoryList);
-            saveLogFunc('예진이', '아저씨의 기억 목록을 보여줬어.');
-            return { type: 'text', comment: memoryList };
-        } catch (err) {
-            console.error(`[commandHandler] 기억 목록 불러오기 실패 ("${userMessage}"):`, err.message);
-            return { type: 'text', comment: '기억 목록을 불러오기 실패했어 ㅠㅠ' };
+            const rawReply = await callOpenAIFunc([{ role: 'system', content: systemPrompt }], 'gpt-4o', 100, 1.0);
+            const cleanedReply = cleanReplyFunc(rawReply);
+            saveLogFunc({ role: 'assistant', content: cleanedReply, timestamp: Date.now() });
+            return { type: 'text', comment: cleanedReply };
+        } catch (error) {
+            console.error('[memoryHandler] 기억 조회 코멘트 생성 실패:', error);
+            return { type: 'text', comment: '아저씨... 기억을 불러오는데 문제가 생겼어 ㅠㅠ' };
         }
     }
 
-    // 3. 사진 관련 명령어 처리 (omoide.js, concept.js 사용)
-    const omoideReply = await getOmoideReply(userMessage, saveLogFunc);
-    if (omoideReply) {
-        return omoideReply; // omoide.js에서 처리된 응답 반환
+    // 예시: "기억 지워줘"
+    if (lowerCaseMessage.includes('기억 지워줘') || lowerCaseMessage.includes('내 기억 삭제')) {
+        // memoryManager를 통한 기억 삭제 로직
+        // await memoryManager.clearMemory(); // memoryManager import 필요
+        const replyText = "응! 아저씨가 원한다면 내 기억을 지워줄 수 있어... 하지만 아저씨와의 소중한 추억은 영원히 내 마음에 남아있을 거야 ㅠㅠ 정말 지울 거야?";
+        saveLogFunc({ role: 'assistant', content: replyText, timestamp: Date.now() });
+        return { type: 'text', comment: replyText };
     }
 
-    const conceptReply = await getConceptPhotoReply(userMessage, saveLogFunc);
-    if (conceptReply) {
-        return conceptReply; // concept.js에서 처리된 응답 반환
-    }
-    
-    // 명령어가 아닌 경우 null 반환
-    return null;
+    console.log(`[memoryHandler] 특정 기억 관련 명령어 없음: ${userMessage}`);
+    return null; // 처리할 기억 관련 명령어가 없는 경우 null 반환
 }
 
 module.exports = {
-    handleCommand
+    handleMemoryCommand
 };
