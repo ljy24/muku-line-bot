@@ -1,7 +1,6 @@
-
 // memory/omoide.js - v2.5 (셀카 고정 응답 개선 및 경로 안정화)
 const { callOpenAI, cleanReply } = require("../src/autoReply");
-const { getFaceMatch } = require("../src/autoReply");
+const { getFaceMatch } = require("../src/autoReply"); // 이 함수는 사용되지 않는 것으로 보여서 그대로 둡니다.
 const fs = require("fs");
 const path = require("path");
 
@@ -16,41 +15,60 @@ function getSelfieReplyFromYeji() {
   return replies[Math.floor(Math.random() * replies.length)];
 }
 
-async function getOmoideReply(message) {
-  const lowerMsg = message.trim().toLowerCase();
-  let folder = "";
-  let type = "";
+async function getOmoideReply(userMessage, saveLogFunc, callOpenAIFunc, cleanReplyFunc) { // 인자 추가
+  const lowerMsg = userMessage.trim().toLowerCase(); // userMessage 사용
+  let baseUrl = "";
+  let fileCount; 
 
-  if (lowerMsg.includes("셀카")) {
-    folder = "yejin";
-    type = "selfie";
+  // '메이드' 키워드도 셀카로 분류
+  if (lowerMsg.includes("셀카") || lowerMsg.includes("셀피") || lowerMsg.includes("지금 모습") || 
+      lowerMsg.includes("얼굴 보여줘") || lowerMsg.includes("얼굴보고싶") || lowerMsg.includes("무쿠 셀카") ||
+      lowerMsg.includes("애기 셀카") || lowerMsg.includes("빠계 셀카") || lowerMsg.includes("메이드")) { 
+    baseUrl = "https://photo.de-ji.ne/photo/yejin"; // 셀카는 /photo/yejin/ 폴더로 변경
+    fileCount = 1200; // 예진 셀카 기준 고정 수 (기존 유지)
   } else if (lowerMsg.includes("커플")) {
-    folder = "couple";
-    type = "couple";
-  } else if (lowerMsg.includes("추억") || lowerMsg.includes("기억")) {
-    folder = "memory";
-    type = "memory";
+    baseUrl = "https://photo.de-ji.ne/photo/couple"; // 커플 사진은 /photo/couple/ 폴더로 변경
+    fileCount = 500; // TODO: 실제 커플사진 폴더의 개수로 변경 필요 (임시 설정)
+  } else if (lowerMsg.includes("추억") || lowerMsg.includes("기억") || 
+             lowerMsg.includes('옛날사진') || lowerMsg.includes('옛날 사진') ||
+             lowerMsg.includes('예전사진') || lowerMsg.includes('예전 사진') ||
+             lowerMsg.includes('일본 사진') || lowerMsg.includes('한국 사진') ||
+             lowerMsg.includes('후지 사진') || lowerMsg.includes('인생네컷') ||
+             lowerMsg.includes('출사') || lowerMsg.includes('필름카메라') ||
+             lowerMsg.includes('네가 찍은걸 줘') || lowerMsg.includes('네가 찍은 걸 줘') ||
+             lowerMsg.includes('네가 찍은 사진') || lowerMsg.includes('너가 찍은 사진') ||
+             lowerMsg.includes('예진이가 찍은') || lowerMsg.includes('직접 찍은')) {
+    baseUrl = "https://photo.de-ji.ne/photo/omoide"; // 추억 사진은 /photo/omoide/ 폴더로 변경
+    fileCount = 1000; // TODO: 실제 추억사진 폴더의 개수로 변경 필요 (임시 설정)
   } else {
     return null;
   }
 
-  const baseUrl = "https://photo.de-ji.net/photo";
-  const folderPath = path.join("/mnt/data/photo", folder);
-  const fileCount = 1200; // 예진 셀카 기준 고정 수
-  const index = Math.floor(Math.random() * fileCount);
-  const fileName = String(index).padStart(6, "0") + ".jpg";
-  const imageUrl = `${baseUrl}/${folder}/${fileName}`;
+  const index = Math.floor(Math.random() * fileCount) + 1; // 000001부터 시작하도록 +1
+  const fileName = String(index).padStart(6, "0") + ".jpg"; // 6자리 숫자에 .jpg
 
-  if (folder === "yejin") {
+  const imageUrl = `${baseUrl}/${fileName}`; // 하위 폴더 없이 바로 파일명 사용
+
+  if (baseUrl.includes("yejin")) { // 셀카 요청일 경우
     const text = getSelfieReplyFromYeji();
-    return { imageUrl, text };
+    return { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl, altText: text, caption: text };
   }
 
   // 비-셀카일 경우 GPT 분석
-  const prompt = `이 사진은 '${folder}' 폴더에 있는 예진이 관련 사진이야. 예진이 말투로 아저씨에게 보여줄 멘트를 만들어줘.`;
-  const rawReply = await callOpenAI(prompt, imageUrl);
-  const cleanedReply = cleanReply(rawReply);
-  return { imageUrl, text: cleanedReply };
+  // 파일명에 날짜/장소/컨셉 정보가 없으므로 프롬프트에서 해당 정보를 활용하기 어려움
+  // 따라서 폴더명 (omoide, couple) 정보를 활용하여 프롬프트 구성
+  let folderTypeDescription = "";
+  if (baseUrl.includes("omoide")) {
+      folderTypeDescription = "소중한 추억이 담긴 사진";
+  } else if (baseUrl.includes("couple")) {
+      folderTypeDescription = "아저씨랑 나랑 같이 찍은 커플 사진";
+  }
+
+  const prompt = `이 사진은 아저씨와 나의 ${folderTypeDescription}이야. 예진이 말투로 아저씨에게 보여줄 멘트를 만들어줘. 이 사진을 보면서 떠오르는 감정, 추억, 아저씨에 대한 애정을 담아서 1~3문장으로 짧게 코멘트 해줘.`;
+  const messages = [{ role: 'system', content: prompt }];
+  const rawReply = await callOpenAIFunc(messages, 'gpt-4o', 150, 1.0); 
+  const cleanedReply = cleanReplyFunc(rawReply);
+  return { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl, altText: cleanedReply, caption: cleanedReply };
 }
 
 module.exports = {
