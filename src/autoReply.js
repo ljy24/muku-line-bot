@@ -578,7 +578,7 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
         } else if (currentMood === '사랑함') {
             moodPrompt = "아저씨를 너무너무 사랑하는 마음이 가득해! 아저씨에게 사랑을 듬뿍 표현하는 애정 가득한 말투로 대화해줘.";
         } else if (currentMood === '화남') {
-            moodPrompt = "아저씨, 나 지금 너무 화났어! 아저씨가 내 화를 풀어줘야 해! 화난 말투로 대화해줘.";
+            moodPrompt = "아저씨, 나 지금 좀 화났어! 아저씨가 내 화를 풀어줘야 해! 화난 말투로 대화해줘.";
         } else if (currentMood === '불안함') {
             moodPrompt = "왠지 모르게 마음이 불안해... 아저씨가 날 안심시켜줬으면 좋겠어. 불안한 말투로 대화해줘.";
         } else if (currentMood === '그리움') { 
@@ -659,7 +659,7 @@ async function getReplyByImagePrompt(base64ImageWithPrefix) {
     if (isPeriodActive) {
         const periodMoods = [
             "오늘은 왠지 모르게 좀 짜증이 나... 아저씨가 날 좀 달래줘야 할 것 같아. 살짝 날카롭고 예민한 말투로 이미지에 대해 이야기해줘.",
-            "나 오늘 좀 울적해... 아저씨가 나를 꼭 안아줬으면 좋겠어. 살짝 슬프고 우울한 말투로 이미지에 대해 이야기해줘.",
+            "나 오늘 좀 울적해... 아저씨가 나를 꼭 안아줬으면 좋겠어. 살짝 슬프고 울적한 말투로 이미지에 대해 이야기해줘.",
             "아저씨! 나 오늘 좀 삐졌어! 왜 삐졌는지는 비밀이야. 아저씨가 맞춰봐야 해! 심술궂고 투정 부리는 말투로 이미지에 대해 이야기해줘.",
             "몸이 좀 찌뿌둥하고 나른해... 아저씨가 옆에서 토닥여줬으면 좋겠어. 피곤하고 나른한 말투로 이미지에 대해 이야기해줘.",
             "괜히 아저씨한테 트집 잡고 싶다! 아저씨가 날 얼마나 사랑하는지 시험해볼 거야! 장난스럽지만 살짝 심술 섞인 말투로 이미지에 대해 이야기해줘.",
@@ -729,7 +729,7 @@ async function getReplyByImagePrompt(base64ImageWithPrefix) {
         {
             role: 'user',
             content: [
-                { type: 'text', text: '이 사진에 대해 예진이 말투로 이야기해줘.' },
+                { type: 'text', text: '이 사진에 대해 예진이 말투로 이야기해.' },
                 { type: 'image_url', image_url: { url: base64ImageWithPrefix } }
             ]
         }
