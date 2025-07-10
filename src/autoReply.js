@@ -394,6 +394,8 @@ function getMemoryListForSharing() {
 /**
  * 🆕 아저씨의 메시지에 대한 예진이의 답변을 생성합니다. (v5.1 완전 통합)
  * 감정 컨텍스트 v5.1 완전 연동 + 1인칭 전환 보장
+ *
+ * @returns {object} { type: 'text' | 'image', comment: string, imageUrl?: string, originalContentUrl?: string, previewImageUrl?: string }
  */
 async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, cleanReplyFunc) {
     // 🆕 사용자 메시지 시간 업데이트
@@ -417,6 +419,10 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
     const spontaneousReaction = checkSpontaneousReactions();
     if (spontaneousReaction && Math.random() < 0.3) { // 30% 확률로 대화 중 자발적 반응
         console.log(`[autoReply v5.1] 🌟 대화 중 자발적 반응 삽입: "${spontaneousReaction}"`);
+        // 자발적 반응이 감지되면 이를 응답으로 사용
+        saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
+        saveLogFunc({ role: 'assistant', content: spontaneousReaction, timestamp: Date.now() });
+        return { type: 'text', comment: spontaneousReaction };
     }
 
     const currentHourTokyo = moment().tz('Asia/Tokyo').hour();
@@ -519,27 +525,57 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
 
     // ⭐⭐⭐ 사진 요청 처리 우선순위 변경 ⭐⭐⭐
     // 1. 셀카 요청 먼저 처리
-    const selfieReply = await getSelfieReply(userMessage, saveLogFunc, callOpenAIFunc, cleanReplyFunc);
-    if (selfieReply) {
-        saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
-        return selfieReply;
+    try {
+        const selfieReply = await getSelfieReply(userMessage, saveLogFunc, callOpenAIFunc, cleanReplyFunc);
+        if (selfieReply) {
+            saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
+            saveLogFunc({ role: 'assistant', content: selfieReply.comment, timestamp: Date.now() }); // 코멘트 로그
+            console.log(`[autoReply] 셀카 응답 생성됨: ${JSON.stringify(selfieReply)}`);
+            // LINE 응답 포맷에 맞게 배열로 반환
+            return [
+                { type: 'image', originalContentUrl: selfieReply.imageUrl, previewImageUrl: selfieReply.imageUrl },
+                { type: 'text', text: selfieReply.comment }
+            ];
+        }
+    } catch (error) {
+        console.error(`[autoReply] 셀카 요청 처리 중 오류 발생: ${error.message}`);
     }
 
     // 2. 컨셉 사진 요청 처리
-    const conceptReply = await getConceptPhotoReply(userMessage, saveLogFunc, callOpenAIFunc, cleanReplyFunc);
-    if (conceptReply) {
-        saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
-        return conceptReply;
+    try {
+        const conceptReply = await getConceptPhotoReply(userMessage, saveLogFunc, callOpenAIFunc, cleanReplyFunc);
+        if (conceptReply) {
+            saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
+            saveLogFunc({ role: 'assistant', content: conceptReply.comment, timestamp: Date.now() }); // 코멘트 로그
+            console.log(`[autoReply] 컨셉 사진 응답 생성됨: ${JSON.stringify(conceptReply)}`);
+             // LINE 응답 포맷에 맞게 배열로 반환
+            return [
+                { type: 'image', originalContentUrl: conceptReply.imageUrl, previewImageUrl: conceptReply.imageUrl },
+                { type: 'text', text: conceptReply.comment }
+            ];
+        }
+    } catch (error) {
+        console.error(`[autoReply] 컨셉 사진 요청 처리 중 오류 발생: ${error.message}`);
     }
 
     // 3. 일반 추억 사진/커플 사진 요청
-    const omoideReply = await getOmoideReply(userMessage, saveLogFunc, callOpenAIFunc, cleanReplyFunc);
-    if (omoideReply) {
-        saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
-        return omoideReply;
+    try {
+        const omoideReply = await getOmoideReply(userMessage, saveLogFunc, callOpenAIFunc, cleanReplyFunc);
+        if (omoideReply) {
+            saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
+            saveLogFunc({ role: 'assistant', content: omoideReply.comment, timestamp: Date.now() }); // 코멘트 로그
+            console.log(`[autoReply] 추억/커플 사진 응답 생성됨: ${JSON.stringify(omoideReply)}`);
+             // LINE 응답 포맷에 맞게 배열로 반환
+            return [
+                { type: 'image', originalContentUrl: omoideReply.imageUrl, previewImageUrl: omoideReply.imageUrl },
+                { type: 'text', text: omoideReply.comment }
+            ];
+        }
+    } catch (error) {
+        console.error(`[autoReply] 추억/커플 사진 요청 처리 중 오류 발생: ${error.message}`);
     }
 
-     // 🆕 담타 관련 메시지 우선 처리 (이 부분 추가)
+    // 🆕 담타 관련 메시지 우선 처리 (이 부분 추가)
     if (isDamtaMessage(userMessage)) {
         const damtaResponse = getDamtaResponse(userMessage);
         if (damtaResponse) {
@@ -549,7 +585,7 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
         }
     }
 
-    // ✅ 일반 사진 요청 처리
+    // ✅ 일반 사진 요청 처리 (어떤 종류의 사진인지 물어보기)
     if (lowerUserMessage.includes('사진줘') || lowerUserMessage.includes('사진 줘') ||
         lowerUserMessage.includes('예진이 사진') || lowerUserMessage.includes('너 사진') ||
         lowerUserMessage.includes('사진 보여줘') || lowerUserMessage.includes('사진보여줘')) {
@@ -698,7 +734,7 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
 
         ${moodPrompt}
         ${dynamicInteractionPrompt}
-        ${getDamtaSystemPrompt()} 
+        ${getDamtaSystemPrompt()}    
 
         아저씨는 '무쿠'를 '애기'라고 부르며 아저씨의 소중한 존재이자, 아저씨가 직접 사진을 찍어주었던 '추억 속의 모델'로 그리워하는 마음이 있어. 예진이(나)는 아저씨의 현재 연인으로서, 아저씨의 '무쿠'에 대한 소중한 마음과 추억을 존중해. [cite: 2025-07-03]
 
@@ -747,6 +783,7 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
 /**
  * 🆕 사용자가 보낸 이미지 메시지에 대한 예진이의 답변을 생성합니다. (v5.1)
  * 감정 컨텍스트 v5.1 연동 추가
+ * @returns {object} { type: 'text', comment: string } (이미지 메시지에 대한 답변은 텍스트로만 반환)
  */
 async function getReplyByImagePrompt(base64ImageWithPrefix) {
     // 🆕 사용자 메시지 시간 업데이트
@@ -816,7 +853,7 @@ async function getReplyByImagePrompt(base64ImageWithPrefix) {
         return { type: 'text', comment: cleanedReply };
     } catch (error) {
         console.error('이미지 분석 AI 응답 생성 실패:', error.response ? error.response.data : error.message);
-        return '아저씨... 사진을 보긴 했는데, 뭐라고 말해야 할지 모르겠어 ㅠㅠ 좀 더 생각해볼게!';
+        return { type: 'text', comment: '아저씨... 사진을 보긴 했는데, 뭐라고 말해야 할지 모르겠어 ㅠㅠ 좀 더 생각해볼게!' };
     }
 }
 
