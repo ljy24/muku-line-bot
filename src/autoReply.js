@@ -222,32 +222,25 @@ function cleanReply(reply) {
 }
 
 /**
- * 🆕 기분 상태 조회 (moodManager와 sulkyManager 통합)
+ * 🆕 기분 상태 조회 (moodManager와 sulkyManager v3.0 통합)
  */
 function getMoodEmoji() {
-    if (sulkyManager.isWorried) return '😰';
-    if (sulkyManager.isSulky) {
-        switch (sulkyManager.sulkyLevel) {
-            case 1: return '😤';
-            case 2: return '😠';
-            case 3: return '😡';
-            default: return '😤';
-        }
+    // 🆕 실시간 삐짐 상태 우선 확인
+    const realTimeStatus = sulkyManager.getRealTimeSulkyStatus();
+    if (realTimeStatus.isActivelySulky) {
+        return sulkyManager.getSulkyEmoji();
     }
     return moodManager.getMoodEmoji ? moodManager.getMoodEmoji() : '😊';
 }
 
 /**
- * 🆕 기분 상태 텍스트 조회 (moodManager와 sulkyManager 통합)
+ * 🆕 기분 상태 텍스트 조회 (moodManager와 sulkyManager v3.0 통합)
  */
 function getMoodStatus() {
-    if (sulkyManager.isWorried) {
-        const sulkyStatus = sulkyManager.getSulkyStatus();
-        return `걱정함 (${sulkyStatus.timeSinceLastMessage}분째 무응답)`;
-    }
-    if (sulkyManager.isSulky) {
-        const sulkyStatus = sulkyManager.getSulkyStatus();
-        return `삐짐 ${sulkyStatus.sulkyLevel}단계 (${sulkyStatus.timeSinceLastMessage}분째 무응답)`;
+    // 🆕 실시간 삐짐 상태 우선 확인
+    const realTimeStatus = sulkyManager.getRealTimeSulkyStatus();
+    if (realTimeStatus.isActivelySulky) {
+        return sulkyManager.getSulkyStatusText();
     }
     return moodManager.getMoodStatus ? moodManager.getMoodStatus() : '평온함';
 }
@@ -454,7 +447,7 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
         return { type: 'text', comment: randomReply };
     }
 
-    // ✅ 기분 상태 조회 (🆕 sulkyManager 상태 포함)
+    // ✅ 기분 상태 조회 (🆕 sulkyManager v3.0 실시간 상태 포함)
     if (lowerUserMessage.includes('오늘 어때?') ||
         lowerUserMessage.includes('기분 어때?') ||
         lowerUserMessage.includes('요즘 어때?') ||
@@ -464,13 +457,16 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
 
         let moodStatusReply;
         
-        // 🆕 삐짐/걱정 상태가 있으면 우선 반영
-        if (sulkyManager.isWorried || sulkyManager.isSulky) {
-            const sulkyStatus = sulkyManager.getSulkyStatus();
-            if (sulkyManager.isWorried) {
-                moodStatusReply = `아저씨... 나 지금 정말 걱정돼 ㅠㅠ ${sulkyStatus.timeSinceLastMessage}분째 연락이 없어서 무슨 일인지 모르겠어...`;
+        // 🆕 실시간 삐짐/걱정 상태 우선 확인
+        const realTimeStatus = sulkyManager.getRealTimeSulkyStatus();
+        if (realTimeStatus.isActivelySulky) {
+            const emoji = sulkyManager.getSulkyEmoji();
+            const statusText = sulkyManager.getSulkyStatusText();
+            
+            if (realTimeStatus.isWorried) {
+                moodStatusReply = `${emoji} 아저씨... 나 지금 정말 걱정돼 ㅠㅠ ${realTimeStatus.timeSinceLastMessage}분째 연락이 없어서 무슨 일인지 모르겠어... (현재: ${statusText})`;
             } else {
-                moodStatusReply = `아저씨 때문에 삐져있어! ${sulkyStatus.sulkyLevel}단계로 삐진 상태야... ${sulkyStatus.timeSinceLastMessage}분째 기다렸다고!`;
+                moodStatusReply = `${emoji} 아저씨 때문에 삐져있어! ${realTimeStatus.sulkyLevel}단계로 삐진 상태야... ${realTimeStatus.timeSinceLastMessage}분째 기다렸다고! (현재: ${statusText})`;
             }
         } else {
             moodStatusReply = moodManager.getCurrentMoodStatus();
@@ -505,13 +501,20 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
     }
 
     // ✅ 일반 대화 처리 (프롬프트 구성 및 OpenAI 호출)
-    // 🆕 기분 프롬프트에 삐짐/걱정 상태 추가
+    // 🆕 기분 프롬프트에 삐짐/걱정 상태 강제 적용
     let moodPrompt = moodManager.getMoodPromptForAI();
     
-    // 🆕 삐짐/걱정 상태가 있으면 해당 프롬프트 추가
-    const sulkyMoodPrompt = sulkyManager.getSulkyMoodPrompt();
-    if (sulkyMoodPrompt) {
-        moodPrompt += '\n' + sulkyMoodPrompt;
+    // 🆕 삐짐/걱정 상태가 있으면 강제 적용 (우선순위 최상)
+    if (sulkyManager.shouldForceSulkyMood()) {
+        const sulkyMoodPrompt = sulkyManager.getSulkyMoodPrompt();
+        console.log(`[autoReply v4.0] 🚨 삐짐 톤 강제 적용: ${sulkyManager.currentState} 레벨${sulkyManager.sulkyLevel}`);
+        moodPrompt = sulkyMoodPrompt; // 기존 mood 덮어쓰기 (강제 적용)
+    } else {
+        // 일반 삐짐 프롬프트 추가 (강제 적용이 아닌 경우)
+        const sulkyMoodPrompt = sulkyManager.getSulkyMoodPrompt();
+        if (sulkyMoodPrompt) {
+            moodPrompt += '\n' + sulkyMoodPrompt;
+        }
     }
 
     let dynamicInteractionPrompt = "";
@@ -581,7 +584,7 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
 
 /**
  * 사용자가 보낸 이미지 메시지에 대한 예진이의 답변을 생성합니다.
- * 🆕 sulkyManager 연동 추가
+ * 🆕 sulkyManager v3.0 연동 추가
  */
 async function getReplyByImagePrompt(base64ImageWithPrefix) {
     // 🆕 사용자 메시지 시간 업데이트
@@ -590,10 +593,17 @@ async function getReplyByImagePrompt(base64ImageWithPrefix) {
     // 기분 관리 모듈에서 기분 프롬프트 가져오기
     let moodPrompt = moodManager.getMoodPromptForAI();
     
-    // 🆕 삐짐/걱정 상태가 있으면 해당 프롬프트 추가
-    const sulkyMoodPrompt = sulkyManager.getSulkyMoodPrompt();
-    if (sulkyMoodPrompt) {
-        moodPrompt += '\n' + sulkyMoodPrompt;
+    // 🆕 삐짐/걱정 상태가 있으면 강제 적용 (이미지 응답에도)
+    if (sulkyManager.shouldForceSulkyMood()) {
+        const sulkyMoodPrompt = sulkyManager.getSulkyMoodPrompt();
+        console.log(`[autoReply v4.0] 🚨 이미지 응답에 삐짐 톤 강제 적용: ${sulkyManager.currentState}`);
+        moodPrompt = sulkyMoodPrompt; // 기존 mood 덮어쓰기
+    } else {
+        // 일반 삐짐 프롬프트 추가
+        const sulkyMoodPrompt = sulkyManager.getSulkyMoodPrompt();
+        if (sulkyMoodPrompt) {
+            moodPrompt += '\n' + sulkyMoodPrompt;
+        }
     }
 
     const systemPrompt = `
@@ -639,21 +649,29 @@ async function getReplyByImagePrompt(base64ImageWithPrefix) {
     }
 }
 
-// 🆕 5분 주기 기분 상태 로깅 (삐짐/걱정 상태 포함)
+// 🆕 5분 주기 기분 상태 로깅 (삐짐/걱정 상태 v3.0 포함)
 setInterval(() => {
     console.log(`\n=== 5분 주기 예진이 기분 체크 (${moment().tz('Asia/Tokyo').format('YYYY-MM-DD HH:mm:ss')}) ===`);
     
-    // 삐짐/걱정 상태 체크
-    if (sulkyManager.isWorried || sulkyManager.isSulky) {
-        const sulkyStatus = sulkyManager.getSulkyStatus();
-        console.log(`🔥 삐짐/걱정 상태: ${sulkyStatus.currentState} (레벨: ${sulkyStatus.sulkyLevel})`);
-        console.log(`⏰ 무응답 시간: ${sulkyStatus.timeSinceLastMessage}분`);
-        console.log(`📖 메시지 읽음: ${sulkyStatus.messageRead ? 'Y' : 'N'}`);
-        console.log(`💭 이유: ${sulkyStatus.sulkyReason}`);
+    // 🆕 실시간 삐짐/걱정 상태 체크
+    const realTimeStatus = sulkyManager.getRealTimeSulkyStatus();
+    if (realTimeStatus.isActivelySulky) {
+        console.log(`🔥 삐짐/걱정 상태: ${realTimeStatus.currentState} (레벨: ${realTimeStatus.sulkyLevel})`);
+        console.log(`⏰ 무응답 시간: ${realTimeStatus.timeSinceLastMessage}분`);
+        console.log(`📖 메시지 읽음: ${realTimeStatus.messageRead ? 'Y' : 'N'}`);
+        console.log(`💭 이유: ${realTimeStatus.sulkyReason}`);
+        console.log(`🚨 강제 톤 적용: ${realTimeStatus.shouldForceMood ? 'Y' : 'N'}`);
+        console.log(`🔄 해소 진행 중: ${realTimeStatus.reliefInProgress ? 'Y' : 'N'}`);
+        
+        if (realTimeStatus.nextLevelIn > 0) {
+            console.log(`⏳ 다음 레벨까지: ${realTimeStatus.nextLevelIn}분`);
+        }
+    } else {
+        console.log(`😊 삐짐/걱정 없음 - 평온한 상태`);
     }
     
     // 일반 기분 상태
-    moodManager.getCurrentMoodStatus();
+    console.log(`💝 일반 기분: ${moodManager.getCurrentMoodStatus ? moodManager.getCurrentMoodStatus() : '정보 없음'}`);
     console.log(`========================================================\n`);
 }, 5 * 60 * 1000);
 
@@ -668,12 +686,16 @@ module.exports = {
     callOpenAI,
     cleanReply,
     getAppropriateModel,
-    // 🆕 sulkyManager 연동을 위한 추가 exports
+    // 🆕 sulkyManager v3.0 연동을 위한 추가 exports
     updateLastUserMessageTime,
     getMoodEmoji,
     getMoodStatus,
     lastUserMessageTime: () => lastUserMessageTime,
     // 🆕 BOT_NAME, USER_NAME export (다른 모듈에서 사용 가능)
     BOT_NAME,
-    USER_NAME
+    USER_NAME,
+    // 🆕 sulkyManager v3.0 직접 접근 (디버그용)
+    getSulkyRealTimeStatus: () => sulkyManager.getRealTimeSulkyStatus(),
+    getSulkyDebugInfo: () => sulkyManager.debugInfo,
+    forceSulkyReset: () => sulkyManager.forceSulkyReset()
 };
