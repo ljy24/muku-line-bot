@@ -8,26 +8,26 @@ const express = require('express'); // Express 프레임워크
 const moment = require('moment-timezone'); // Moment.js
 
 // .env 파일에서 환경 변수 로드 (최상단에서 로드하여 다른 모듈에서 사용 가능하도록)
-require('dotenv').config(); 
+require('dotenv').config();
 
 // ./src/autoReply.js에서 일반 대화 응답 함수들과 상수를 불러옵니다.
 const {
-    getReplyByMessage,           // 사용자 텍스트 메시지에 대한 예진이의 답변 생성
-    getReplyByImagePrompt,       // 사용자가 보낸 이미지 메시지에 대한 예진이의 답변 생성
-    saveLog,                     // 메시지 로그를 파일에 저장하는 함수
-    cleanReply,                  // AI 응답 정제 함수
-    callOpenAI,                  // autoReply에 있는 callOpenAI 함수
-    BOT_NAME,                    // BOT_NAME 상수
-    USER_NAME,                   // USER_NAME 상수
-    getMoodEmoji,                // getMoodEmoji 함수
-    getMoodStatus,               // getMoodStatus 함수
-    lastUserMessageTime          // ⭐️ lastUserMessageTime 불러오기 ⭐️
+    getReplyByMessage,
+    getReplyByImagePrompt,
+    saveLog,
+    cleanReply,
+    callOpenAI,
+    BOT_NAME,
+    USER_NAME,
+    getMoodEmoji,
+    getMoodStatus,
+    lastUserMessageTime
 } = require('./src/autoReply');
 
 // 새로운 핸들러 모듈들을 불러옵니다.
 const memoryManager = require('./src/memoryManager'); // memoryManager 불러오기
 const commandHandler = require('./src/commandHandler'); // 명령어 처리 핸들러
-const memoryHandler = require('./src/memoryHandler');   // 기억 관련 명령어 처리 핸들러
+const memoryHandler = require('./src/memoryHandler');    // 기억 관련 명령어 처리 핸들러
 
 // 스케줄러 모듈 불러오기
 const { startAllSchedulers, updateLastUserMessageTime } = require('./src/scheduler');
@@ -56,7 +56,7 @@ app.get('/', (_, res) => res.send('무쿠 살아있엉'));
 
 app.get('/force-push', async (req, res) => {
     try {
-        const testMessage = "아저씨! 나 꺴어!";
+        const testMessage = "아저씨! 나 깼어!"; // 🚩 푸시 메시지 내용 변경
         await client.pushMessage(userId, { type: 'text', text: testMessage });
         saveLog('예진이', testMessage);
         res.send(`강제 푸시 메시지 전송됨: ${testMessage}`);
@@ -89,12 +89,12 @@ app.post('/webhook', middleware(config), async (req, res) => {
                     botResponse = await commandHandler.handleCommand(text, saveLog, callOpenAI, cleanReply, memoryManager.getFixedMemory);
 
                     if (!botResponse) {
-                        botResponse = await memoryHandler.handleMemoryCommand(text, saveLog, callOpenAI, cleanReply, memoryManager.getFixedMemory); 
+                        botResponse = await memoryHandler.handleMemoryCommand(text, saveLog, callOpenAI, cleanReply, memoryManager.getFixedMemory);
                     }
 
                     if (!botResponse) {
                         // getReplyByMessage 호출 시 saveLog, callOpenAI, cleanReply 함수들을 전달
-                        botResponse = await getReplyByMessage(text, saveLog, callOpenAI, cleanReply); 
+                        botResponse = await getReplyByMessage(text, saveLog, callOpenAI, cleanReply);
                         await memoryManager.extractAndSaveMemory(text);
                         console.log(`[index.js] memoryManager.extractAndSaveMemory 호출 완료 (메시지: "${text}")`);
                     } else {
@@ -102,12 +102,12 @@ app.post('/webhook', middleware(config), async (req, res) => {
                     }
 
                     let replyMessages = [];
-                    if (botResponse.type === 'image') { 
+                    if (botResponse.type === 'image') {
                         replyMessages.push({
                             type: 'image',
                             originalContentUrl: botResponse.originalContentUrl,
                             previewImageUrl: botResponse.previewImageUrl,
-                            altText: botResponse.altText 
+                            altText: botResponse.altText
                         });
                         if (botResponse.caption) {
                             replyMessages.push({
@@ -115,7 +115,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
                                 text: botResponse.caption
                             });
                         }
-                    } else if (botResponse.type === 'text') { 
+                    } else if (botResponse.type === 'text') {
                         replyMessages.push({
                             type: 'text',
                             text: botResponse.comment
@@ -132,7 +132,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
                         console.warn('[index.js] 전송할 메시지가 없습니다.');
                     }
                 }
-                else if (message.type === 'image') { 
+                else if (message.type === 'image') {
                     try {
                         const stream = await client.getMessageContent(message.id);
                         const chunks = [];
@@ -151,7 +151,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
 
                         // getReplyByImagePrompt에 saveLogFunc를 추가로 전달
                         const replyResult = await getReplyByImagePrompt(base64ImageWithPrefix, callOpenAI, cleanReply, saveLog);
-                        await client.replyMessage(event.replyToken, { type: 'text', text: replyResult.comment }); 
+                        await client.replyMessage(event.replyToken, { type: 'text', text: replyResult.comment });
                         console.log(`[index.js] 이미지 메시지 처리 및 응답 완료`);
                         saveLog('예진이', `(이미지 분석 응답) ${replyResult.comment}`);
                     } catch (err) {
@@ -175,7 +175,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
     console.log(`무쿠 서버 스타트! 포트: ${PORT}`);
-    
+
     await memoryManager.ensureMemoryTablesAndDirectory();
     console.log('메모리 시스템 초기화 완료 (DB 및 파일).');
 
