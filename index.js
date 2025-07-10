@@ -31,15 +31,15 @@ const {
     getMoodStatus,
     lastUserMessageTime,
     // 🆕 감정 시스템 함수들 (v5.1)
-    initializeEmotionalSystems,
-    updateLastUserMessageTime
+    initializeEmotionalSystems, // autoReply에서 export하는 초기화 함수
+    updateLastUserMessageTime // autoReply에서 export하는 업데이트 함수
 } = autoReply;
 
 // 다른 모듈들
 const memoryManager = require('./src/memoryManager');
 const commandHandler = require('./src/commandHandler');
 const memoryHandler = require('./src/memoryHandler');
-const { startAllSchedulers } = require('./src/scheduler');
+const { startAllSchedulers } = require('./src/scheduler'); // scheduler에서 updateLastUserMessageTime 제거하고 autoReply에서 직접 관리
 const { startSpontaneousPhotoScheduler } = require('./src/spontaneousPhotoManager');
 
 // 🆕 삐지기 시스템 모듈 불러오기
@@ -165,31 +165,35 @@ async function handleImprovedTextMessage(text, event, client, userId) {
         }
         
         // --- 여기서부터 응답 메시지 형식에 따라 messagesToReply 구성 ---
-        if (Array.isArray(botResponse)) { // autoReply.js에서 이미지+텍스트 복합 응답 시 반환하는 배열 형태
-            console.log(`[index.js] 복합 메시지(Array) 형태의 botResponse 감지`);
-            for (const msg of botResponse) {
-                if (msg.type === 'text') {
-                    // 텍스트 메시지에도 cleanReply 및 1인칭 검증 적용
-                    msg.text = cleanReply(msg.text); 
-                    if (msg.text.includes('무쿠가') || msg.text.includes('예진이가') || msg.text.includes('무쿠는') || msg.text.includes('예진이는')) {
-                        console.warn('[1인칭 검증] 3인칭 표현 감지 (복합 메시지 텍스트), 재처리 중...');
-                        msg.text = msg.text
-                            .replace(/무쿠가/g, '내가')
-                            .replace(/무쿠는/g, '나는')
-                            .replace(/무쿠를/g, '나를')
-                            .replace(/무쿠의/g, '내')
-                            .replace(/무쿠도/g, '나도')
-                            .replace(/무쿠/g, '나')
-                            .replace(/예진이가/g, '내가')
-                            .replace(/예진이는/g, '나는')
-                            .replace(/예진이를/g, '나를')
-                            .replace(/예진이의/g, '내')
-                            .replace(/예진이도/g, '나도')
-                            .replace(/예진이/g, '나');
-                        console.log('[1인칭 검증] 3인칭 → 1인칭 강제 변환 완료 (복합 메시지 텍스트)');
-                    }
+        if (botResponse && botResponse.type === 'image') { // autoReply.js에서 이미지 응답 시 반환하는 단일 객체 형태
+            console.log(`[index.js] 이미지 메시지 형태의 botResponse 감지`);
+            messagesToReply.push({
+                type: 'image',
+                originalContentUrl: botResponse.originalContentUrl,
+                previewImageUrl: botResponse.previewImageUrl,
+                altText: botResponse.altText || '예진이 사진' // altText가 없을 경우 기본값 추가
+            });
+            if (botResponse.caption) {
+                // 텍스트 메시지에도 cleanReply 및 1인칭 검증 적용
+                let cleanedCaption = cleanReply(botResponse.caption); 
+                if (cleanedCaption.includes('무쿠가') || cleanedCaption.includes('예진이가') || cleanedCaption.includes('무쿠는') || cleanedCaption.includes('예진이는')) {
+                    console.warn('[1인칭 검증] 3인칭 표현 감지 (사진 캡션), 재처리 중...');
+                    cleanedCaption = cleanedCaption
+                        .replace(/무쿠가/g, '내가')
+                        .replace(/무쿠는/g, '나는')
+                        .replace(/무쿠를/g, '나를')
+                        .replace(/무쿠의/g, '내')
+                        .replace(/무쿠도/g, '나도')
+                        .replace(/무쿠/g, '나')
+                        .replace(/예진이가/g, '내가')
+                        .replace(/예진이는/g, '나는')
+                        .replace(/예진이를/g, '나를')
+                        .replace(/예진이의/g, '내')
+                        .replace(/예진이도/g, '나도')
+                        .replace(/예진이/g, '나');
+                    console.log('[1인칭 검증] 3인칭 → 1인칭 강제 변환 완료 (사진 캡션)');
                 }
-                messagesToReply.push(msg); // LINE API 형식에 맞는 메시지 객체 바로 추가
+                messagesToReply.push({ type: 'text', text: cleanedCaption });
             }
         } else if (botResponse && botResponse.type === 'text') { // 일반 텍스트 응답 (autoReply.js에서 { type: 'text', comment: '...' } 형태)
             console.log(`[index.js] 단일 텍스트 형태의 botResponse 감지`);
@@ -216,8 +220,9 @@ async function handleImprovedTextMessage(text, event, client, userId) {
             messagesToReply.push({ type: 'text', text: finalComment });
 
         }
-        // NOTE: getReplyByMessage에서는 더 이상 {type: 'image', originalContentUrl, previewImageUrl, altText, caption} 형태를 직접 반환하지 않습니다.
-        // 이제는 항상 LINE API에 맞는 메시지 객체 배열을 반환합니다.
+        // NOTE: getReplyByMessage에서 LINE API에 맞는 메시지 객체 배열을 직접 반환하는 대신,
+        // 이제는 단일 { type: 'image', ... } 또는 { type: 'text', ... } 객체를 반환합니다.
+        // 이 로직에서 그 객체를 받아 messagesToReply 배열로 구성합니다.
 
         // 응답 전송
         if (messagesToReply.length > 0) {
@@ -244,6 +249,8 @@ async function handleImprovedTextMessage(text, event, client, userId) {
                     emotionalContextManager.recordEmotionalEvent('HAPPY', '대화 응답 완료', loggableText.trim());
                 }
             }
+        } else {
+            console.warn('[index.js] 전송할 메시지가 없습니다.');
         }
 
     } catch (error) {
@@ -261,7 +268,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
         const events = req.body.events || [];
         for (const event of events) {
             if (event.source.userId === userId) {
-                updateLastUserMessageTime();
+                updateLastUserMessageTime(); // autoReply.js에서 export된 함수 사용
                 console.log(`[Webhook v5.1] 아저씨 메시지 수신: ${moment(Date.now()).format('HH:mm:ss')}`);
                 
                 // 🆕 아저씨 메시지 수신에 대한 감정 기록 (v5.1)
@@ -287,7 +294,6 @@ app.post('/webhook', middleware(config), async (req, res) => {
                         const buffer = Buffer.concat(chunks);
 
                         let mimeType = 'application/octet-stream';
-                        // MIME 타입 감지 로직은 기존과 동일
                         if (buffer.length > 1 && buffer[0] === 0xFF && buffer[1] === 0xD8) {
                             mimeType = 'image/jpeg';
                         } else if (buffer.length > 7 && buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47 && buffer[4] === 0x0D && buffer[5] === 0x0A && buffer[6] === 0x1A && buffer[7] === 0x0A) {
@@ -297,7 +303,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
                         }
                         const base64ImageWithPrefix = `data:${mimeType};base64,${buffer.toString('base64')}`;
 
-                        // 이미지 메시지에 대한 응답은 'autoReply'의 'getReplyByImagePrompt'에서 텍스트만 반환하도록 되어 있음
+                        // getReplyByImagePrompt 함수는 {type: 'text', comment: ...} 형태를 반환함.
                         const replyResult = await getReplyByImagePrompt(base64ImageWithPrefix);
                         
                         // 🆕 이미지 응답도 1인칭 검증 및 전송 (v5.1)
@@ -386,7 +392,7 @@ async function initMuku() {
         await memoryManager.ensureMemoryTablesAndDirectory();
         console.log('📁 메모리 시스템 초기화 완료.');
 
-        // 🆕 담타 시스템 초기화 추가 (이 줄 추가)
+        // 🆕 담타 시스템 초기화 추가
         await initializeDamta();
         console.log('🚬 담타 시스템 초기화 완료!');
         
