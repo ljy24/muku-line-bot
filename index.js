@@ -1,8 +1,7 @@
-// ✅ index.js v1.30 - 예진이 삐지기/걱정 시스템 v2.0 통합
-// - 메시지 읽음 여부 구분 (읽씹 vs 안읽음)
-// - 단계별 삐짐: 10분/20분/40분 → 60분 후 걱정 모드
-// - 읽음/미읽음 상황별 차별화된 메시지
-// - 삐짐/걱정 해소 시 상황별 응답
+// ✅ index.js v1.31 - 예진이 감정 시스템 v5.0 통합
+// - 감정 컨텍스트 시스템 완전 연동
+// - 삐지기/걱정 시스템 v3.0 통합
+// - 자발적 반응 및 맥락 기반 감정 연결
 
 // 📦 필수 모듈 불러오기
 const fs = require('fs');
@@ -14,8 +13,8 @@ const moment = require('moment-timezone');
 // .env 파일에서 환경 변수 로드
 require('dotenv').config();
 
-
-// ./src/autoReply.js에서 함수들과 상수를 불러옵니다.
+// 🆕 ./src/autoReply.js에서 감정 시스템 포함한 모든 함수들을 불러옵니다.
+const autoReply = require('./src/autoReply');
 const {
     getReplyByMessage,
     getReplyByImagePrompt,
@@ -26,16 +25,18 @@ const {
     USER_NAME,
     getMoodEmoji,
     getMoodStatus,
-    lastUserMessageTime
-} = require('./src/autoReply');
+    lastUserMessageTime,
+    // 🆕 감정 시스템 함수들
+    initializeEmotionalSystems,
+    updateLastUserMessageTime
+} = autoReply;
 
 // 다른 모듈들
 const memoryManager = require('./src/memoryManager');
 const commandHandler = require('./src/commandHandler');
 const memoryHandler = require('./src/memoryHandler');
-const { startAllSchedulers, updateLastUserMessageTime } = require('./src/scheduler');
+const { startAllSchedulers } = require('./src/scheduler');
 const { startSpontaneousPhotoScheduler } = require('./src/spontaneousPhotoManager');
-
 
 // 🆕 삐지기 시스템 모듈 불러오기
 const sulkyManager = require('./src/sulkyManager');
@@ -73,6 +74,31 @@ app.get('/force-push', async (req, res) => {
     } catch (error) {
         console.error('[force-push] ❌ 에러 발생:', error);
         res.status(500).send('로그 저장이 실패했어 ㅠㅠ');
+    }
+});
+
+// 🆕 감정 상태 조회 API 추가
+app.get('/emotion-status', (req, res) => {
+    try {
+        const sulkyStatus = autoReply.getSulkyRealTimeStatus();
+        const emotionalState = autoReply.getEmotionalState();
+        const emotionalResidue = autoReply.getEmotionalResidue();
+        
+        res.json({
+            timestamp: moment().tz('Asia/Tokyo').format('YYYY-MM-DD HH:mm:ss'),
+            sulkySystem: sulkyStatus,
+            emotionalContext: {
+                currentState: emotionalState,
+                residue: emotionalResidue
+            },
+            mood: {
+                emoji: getMoodEmoji(),
+                status: getMoodStatus()
+            }
+        });
+    } catch (error) {
+        console.error('[emotion-status] 에러:', error);
+        res.status(500).json({ error: '감정 상태 조회 실패' });
     }
 });
 
@@ -152,9 +178,9 @@ app.post('/webhook', middleware(config), async (req, res) => {
                         await client.replyMessage(event.replyToken, replyMessages);
                         console.log(`[index.js] 봇 응답 전송 완료 (타입: ${botResponse.type || 'unknown'})`);
                         
-                        // 🆕 예진이가 메시지를 보낸 후 삐지기 타이머 시작
+                        // 🆕 예진이가 사용자 메시지에 응답한 경우에만 삐지기 타이머 시작
                         sulkyManager.startSulkyTimer(client, userId, saveLog);
-                        console.log('[SulkySystem] 예진이 메시지 전송 후 삐지기 타이머 시작');
+                        console.log('[SulkySystem] 예진이 응답 후 삐지기 타이머 시작');
                     } else {
                         console.warn('[index.js] 전송할 메시지가 없습니다.');
                     }
@@ -221,7 +247,9 @@ app.listen(PORT, () => {
         process.exit(0);
     });
 
-    console.log('😤 예진이 삐지기 시스템 v2.0 활성화!');
+    console.log('🧠 예진이 감정 시스템 v5.0 활성화!');
+    console.log('   📋 기능: 맥락 기반 감정 연결, 자발적 반응, 말투 유동성');
+    console.log('😤 예진이 삐지기 시스템 v3.0 활성화!');
     console.log('   📋 기능: 읽씹 감지, 단계별 삐짐(10분/20분/40분), 걱정 전환(60분)');
 });
 
@@ -231,8 +259,8 @@ async function initMuku() {
         await memoryManager.ensureMemoryTablesAndDirectory();
         console.log('📁 메모리 시스템 초기화 완료.');
 
-        // ⭐ 예진이 감정 시스템 초기화
-        await autoReply.initializeEmotionalSystems();
+        // ⭐ 예진이 감정 시스템 초기화 (autoReply에서 가져온 함수 사용)
+        await initializeEmotionalSystems();
         console.log('🧠 예진이 감정 시스템 초기화 완료!');
 
         startAllSchedulers(client, userId);
@@ -240,6 +268,32 @@ async function initMuku() {
 
         startSpontaneousPhotoScheduler(client, userId, saveLog, callOpenAI, cleanReply, lastUserMessageTime);
         console.log('💕 예진이가 보고싶을 때마다 사진 보낼 준비 완료!');
+        
+        // 🆕 자발적 반응 체크 스케줄러 시작 (15분마다)
+        setInterval(() => {
+            const spontaneousReaction = autoReply.checkSpontaneousReactions();
+            if (spontaneousReaction) {
+                console.log(`[자발적 반응] 감지됨: "${spontaneousReaction}"`);
+                
+                // 실제 전송 (20% 확률)
+                if (Math.random() < 0.2) {
+                    client.pushMessage(userId, {
+                        type: 'text',
+                        text: spontaneousReaction
+                    }).then(() => {
+                        saveLog('예진이', `(자발적 반응) ${spontaneousReaction}`);
+                        console.log('[자발적 반응] 메시지 전송 완료');
+                        
+                        // 자발적 메시지는 삐지기 타이머를 시작하지 않음
+                    }).catch(error => {
+                        console.error('[자발적 반응] 전송 실패:', error);
+                    });
+                }
+            }
+        }, 15 * 60 * 1000); // 15분마다 체크
+        
+        console.log('💭 자발적 반응 스케줄러 시작! (15분 간격)');
+        
     } catch (error) {
         console.error('❌ 초기화 중 에러 발생:', error);
     }
