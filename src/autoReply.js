@@ -420,7 +420,7 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
         return { type: 'text', comment: periodReply };
     }
 
-/ ✅ 일반 대화 처리 (프롬프트 구성 및 OpenAI 호출)
+// ✅ 일반 대화 처리 (프롬프트 구성 및 OpenAI 호출)
 const moodPrompt = moodManager.getMoodPromptForAI(); // moodManager에서 가져옴
 
 let dynamicInteractionPrompt = "";
