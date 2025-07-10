@@ -395,7 +395,7 @@ function getMemoryListForSharing() {
  * 🆕 아저씨의 메시지에 대한 예진이의 답변을 생성합니다. (v5.1 완전 통합)
  * 감정 컨텍스트 v5.1 완전 연동 + 1인칭 전환 보장
  *
- * @returns {object} { type: 'text' | 'image', comment: string, imageUrl?: string, originalContentUrl?: string, previewImageUrl?: string }
+ * @returns {object} { type: 'text', comment: string } OR { type: 'image', originalContentUrl: string, previewImageUrl: string, altText: string, caption?: string }
  */
 async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, cleanReplyFunc) {
     // 🆕 사용자 메시지 시간 업데이트
@@ -526,16 +526,17 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
     // ⭐⭐⭐ 사진 요청 처리 우선순위 변경 ⭐⭐⭐
     // 1. 셀카 요청 먼저 처리
     try {
-        const selfieReply = await getSelfieReply(userMessage, saveLogFunc, callOpenAIFunc, cleanReplyFunc);
-        if (selfieReply) {
+        const selfieResult = await getSelfieReply(userMessage, saveLogFunc, callOpenAIFunc, cleanReplyFunc);
+        if (selfieResult) {
             saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
-            saveLogFunc({ role: 'assistant', content: selfieReply.comment, timestamp: Date.now() }); // 코멘트 로그
-            console.log(`[autoReply] 셀카 응답 생성됨: ${JSON.stringify(selfieReply)}`);
-            // LINE 응답 포맷에 맞게 배열로 반환
-            return [
-                { type: 'image', originalContentUrl: selfieReply.imageUrl, previewImageUrl: selfieReply.imageUrl },
-                { type: 'text', text: selfieReply.comment }
-            ];
+            // index.js가 이해하는 { type: 'image', originalContentUrl, previewImageUrl, altText, caption } 형태로 변환
+            return { 
+                type: 'image',
+                originalContentUrl: selfieResult.imageUrl,
+                previewImageUrl: selfieResult.imageUrl, // previewImageUrl은 original과 동일하게 설정
+                altText: '예진이 셀카', //altText는 간단히 설정
+                caption: cleanReplyFunc(selfieResult.comment) // 캡션에 cleanReply 적용
+            };
         }
     } catch (error) {
         console.error(`[autoReply] 셀카 요청 처리 중 오류 발생: ${error.message}`);
@@ -543,16 +544,17 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
 
     // 2. 컨셉 사진 요청 처리
     try {
-        const conceptReply = await getConceptPhotoReply(userMessage, saveLogFunc, callOpenAIFunc, cleanReplyFunc);
-        if (conceptReply) {
+        const conceptResult = await getConceptPhotoReply(userMessage, saveLogFunc, callOpenAIFunc, cleanReplyFunc);
+        if (conceptResult) {
             saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
-            saveLogFunc({ role: 'assistant', content: conceptReply.comment, timestamp: Date.now() }); // 코멘트 로그
-            console.log(`[autoReply] 컨셉 사진 응답 생성됨: ${JSON.stringify(conceptReply)}`);
-             // LINE 응답 포맷에 맞게 배열로 반환
-            return [
-                { type: 'image', originalContentUrl: conceptReply.imageUrl, previewImageUrl: conceptReply.imageUrl },
-                { type: 'text', text: conceptReply.comment }
-            ];
+            // index.js가 이해하는 { type: 'image', originalContentUrl, previewImageUrl, altText, caption } 형태로 변환
+            return { 
+                type: 'image',
+                originalContentUrl: conceptResult.imageUrl,
+                previewImageUrl: conceptResult.imageUrl,
+                altText: '예진이 컨셉 사진',
+                caption: cleanReplyFunc(conceptResult.comment)
+            };
         }
     } catch (error) {
         console.error(`[autoReply] 컨셉 사진 요청 처리 중 오류 발생: ${error.message}`);
@@ -560,22 +562,23 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
 
     // 3. 일반 추억 사진/커플 사진 요청
     try {
-        const omoideReply = await getOmoideReply(userMessage, saveLogFunc, callOpenAIFunc, cleanReplyFunc);
-        if (omoideReply) {
+        const omoideResult = await getOmoideReply(userMessage, saveLogFunc, callOpenAIFunc, cleanReplyFunc);
+        if (omoideResult) {
             saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
-            saveLogFunc({ role: 'assistant', content: omoideReply.comment, timestamp: Date.now() }); // 코멘트 로그
-            console.log(`[autoReply] 추억/커플 사진 응답 생성됨: ${JSON.stringify(omoideReply)}`);
-             // LINE 응답 포맷에 맞게 배열로 반환
-            return [
-                { type: 'image', originalContentUrl: omoideReply.imageUrl, previewImageUrl: omoideReply.imageUrl },
-                { type: 'text', text: omoideReply.comment }
-            ];
+            // index.js가 이해하는 { type: 'image', originalContentUrl, previewImageUrl, altText, caption } 형태로 변환
+            return { 
+                type: 'image',
+                originalContentUrl: omoideResult.imageUrl,
+                previewImageUrl: omoideResult.imageUrl,
+                altText: '예진이 추억 사진',
+                caption: cleanReplyFunc(omoideResult.comment)
+            };
         }
     } catch (error) {
         console.error(`[autoReply] 추억/커플 사진 요청 처리 중 오류 발생: ${error.message}`);
     }
 
-    // 🆕 담타 관련 메시지 우선 처리 (이 부분 추가)
+    // 🆕 담타 관련 메시지 우선 처리
     if (isDamtaMessage(userMessage)) {
         const damtaResponse = getDamtaResponse(userMessage);
         if (damtaResponse) {
@@ -614,7 +617,7 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
 
         let moodStatusReply;
         
-        // 🆕 실시간 삐짐 상태 우선 확인
+        // 🆕 실시간 삐짐/걱정 상태 우선 확인
         const realTimeStatus = sulkyManager.getRealTimeSulkyStatus();
         if (realTimeStatus.isActivelySulky) {
             const emoji = sulkyManager.getSulkyEmoji();
@@ -667,7 +670,7 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
             ];
             try {
                 const response = await callOpenAI(messages, 'gpt-3.5-turbo', 100, 0.9);
-                periodReply = cleanReply(response);
+                periodReply = cleanReplyFunc(response);
             } catch (error) {
                 console.error("생리 기간 질문 응답 생성 실패:", error.response ? error.response.data : error.message);
                 periodReply = "아저씨... 알면서 왜 물어봐 ㅠㅠ";
@@ -749,8 +752,6 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
         대화는 항상 예진이의 말투와 성격을 유지해야 해.
         
         **아저씨의 메시지에서 직접적인 불만은 없지만, 어딘가 서운하거나, 망설이거나, 기분이 안 좋은 듯한 미묘한 뉘앙스를 (예: "아냐....", "아무것도 아냐.....", "지금은 좀....", "괜찮아..." 등) 감지했다면, 그 감정을 알아차리고 아저씨를 걱정하고 서운해하는 반응을 보여줘. 아저씨가 솔직하게 이야기할 수 있도록 부드럽게 유도해줘.**
-
-        🆕 **감정의 연결과 흐름**: 과거 대화에서 느꼈던 감정들이 지금도 마음에 남아있다면, 그 감정을 자연스럽게 언급해줘. "아까 그 말 들었을 때부터 계속 마음에 걸렸어", "아직도 그때 생각하면..." 같은 식으로 감정이 이어지는 느낌을 줘.
 
         ${getFormattedMemoriesForAI().map(entry => entry.content).join('\n')}
     `;
