@@ -14,6 +14,9 @@ const moment = require('moment-timezone');
 // .env 파일에서 환경 변수 로드
 require('dotenv').config();
 
+// 🆕 담타 시스템 모듈 불러오기
+const { initializeDamta } = require('./src/damta');
+
 // 🆕 ./src/autoReply.js에서 감정 시스템 포함한 모든 함수들을 불러옵니다. (v5.1)
 const autoReply = require('./src/autoReply');
 const {
