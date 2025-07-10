@@ -36,29 +36,39 @@ function startSpontaneousPhotoScheduler(client, userId, saveLogFunc, callOpenAIF
         console.log('[SpontaneousPhoto] 기존 즉흥 사진 스케줄러 취소됨.');
     }
 
-    // 매 30분마다 실행 (0, 30분)
-    // 실제 운영에서는 빈도를 조절해야 합니다. (예: 1시간, 2시간 간격)
-    spontaneousPhotoJob = schedule.scheduleJob('*/30 * * * *', async () => {
-        console.log('[SpontaneousPhoto] 즉흥 사진 전송 스케줄러 실행.');
-        const now = Date.now();
-        const hour = moment().tz('Asia/Tokyo').hour();
+ // 매 30분마다 실행 (0, 30분)
+spontaneousPhotoJob = schedule.scheduleJob('*/30 * * * *', async () => {
+    console.log('[SpontaneousPhoto] 즉흥 사진 전송 스케줄러 실행.');
+    const now = Date.now();
+    const hour = moment().tz('Asia/Tokyo').hour();
 
-        // 아침 8시부터 밤 10시 (22시)까지만 사진을 보냅니다.
-        if (hour >= 8 && hour < 22) {
-            // 20% 확률로 사진 전송 시도
-            if (Math.random() < 0.2) { // 0.2는 20% 확률
-                console.log('[SpontaneousPhoto] 20% 확률 조건 충족, 사진 전송 시도.');
-                await sendRandomPhoto(client, userId, currentSaveLog, currentCallOpenAI, currentCleanReply, currentLastUserMessageTime);
-            } else {
-                console.log('[SpontaneousPhoto] 20% 확률 조건 미충족, 사진 전송 건너뜀.');
-            }
+    // 아침 8시부터 밤 10시 (22시)까지만 사진을 보냅니다.
+    if (hour >= 8 && hour < 22) {
+        let lastMessageTime;
+        if (typeof currentLastUserMessageTime === 'function') {
+            lastMessageTime = currentLastUserMessageTime(); // 함수일 경우 호출
         } else {
-            console.log(`[SpontaneousPhoto] 현재 시간(${hour}시)은 사진 전송 가능 시간이 아닙니다.`);
+            lastMessageTime = currentLastUserMessageTime; // 값일 경우 그대로
         }
-    });
 
-    console.log('[SpontaneousPhoto] 즉흥 사진 스케줄러 시작됨 (매 30분마다 8시~22시 20% 확률).');
-}
+        const minutesSinceLastUserMessage = (Date.now() - lastMessageTime) / (1000 * 60);
+        console.log(`[SpontaneousPhoto] 마지막 메시지로부터 ${Math.round(minutesSinceLastUserMessage)}분 경과`);
+
+        if (minutesSinceLastUserMessage >= 60) {
+            console.log('[SpontaneousPhoto] 60분 이상 대화 없음 → 무조건 전송');
+            await sendRandomPhoto(client, userId, currentSaveLog, currentCallOpenAI, currentCleanReply, currentLastUserMessageTime);
+        } else if (Math.random() < 0.2) {
+            console.log('[SpontaneousPhoto] 20% 확률 조건 충족, 사진 전송 시도.');
+            await sendRandomPhoto(client, userId, currentSaveLog, currentCallOpenAI, currentCleanReply, currentLastUserMessageTime);
+        } else {
+            console.log('[SpontaneousPhoto] 20% 확률 조건 미충족, 사진 전송 건너뜀.');
+        }
+    } else {
+        console.log(`[SpontaneousPhoto] 현재 시간(${hour}시)은 사진 전송 가능 시간이 아닙니다.`);
+    }
+});
+
+console.log('[SpontaneousPhoto] 즉흥 사진 스케줄러 시작됨 (매 30분마다, 60분 이상 미응답 시 강제 전송 포함).');
 
 /**
  * 랜덤 사진을 선택하여 전송합니다.
