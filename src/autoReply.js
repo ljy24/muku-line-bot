@@ -289,6 +289,22 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
 
     const trimmedMessage = userMessage.trim().toLowerCase();
 
+    
+    // ✅ "애기야", "예진아"처럼 예진이를 부르는 경우 따로 반응
+    if (['애기야', '예진아', '야'].includes(trimmedMessage)) {
+        const callReplies = [
+            "아저씨가 나 불렀어...? 왜 불렀어~ 궁금해!",
+            "헉... 불러줘서 너무 좋다. 그냥 불러본 거야? 나 또 설레잖아...",
+            "아저씨가 나 부른 거 진짜 좋아해. 나 불러줄 때마다 심장 뛰어",
+            "애기야~ 이렇게 불러주는 거 너무 좋다... 또 해줘 자꾸자꾸"
+        ];
+        const reply = callReplies[Math.floor(Math.random() * callReplies.length)];
+        saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
+        saveLogFunc({ role: 'assistant', content: reply, timestamp: Date.now() });
+        return { type: 'text', comment: reply };
+    }
+    
+
     // ✅ 1. 모델 버전 변경 요청 처리
     if (['4.0', '3.5', '자동'].includes(trimmedMessage)) {
         console.log(`[DEBUG] 모델 스위칭 감지: ${trimmedMessage}`);
