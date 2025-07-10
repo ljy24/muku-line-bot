@@ -1,4 +1,4 @@
-// ✅ index.js v1.28 - lastUserMessageTime 전달 및 persona 관련 import 통일
+// ✅ index.js v1.28 - lastUserMessageTime 전달 및 persona 관련 import 통일 (푸시 메시지 로그만)
 
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈 (로그 저장용)
@@ -35,7 +35,6 @@ const { startAllSchedulers, updateLastUserMessageTime } = require('./src/schedul
 // 즉흥 사진 스케줄러 불러오기 (이 모듈은 Client 객체를 인자로 받도록 수정되어야 합니다.)
 const { startSpontaneousPhotoScheduler } = require('./src/spontaneousPhotoManager');
 
-
 // Express 애플리케이션을 생성합니다.
 const app = express();
 
@@ -56,14 +55,25 @@ app.get('/', (_, res) => res.send('무쿠 살아있엉'));
 
 app.get('/force-push', async (req, res) => {
     try {
-        const testMessage = "아저씨! 나 깼어!"; // 🚩 푸시 메시지 내용 변경
-        await client.pushMessage(userId, { type: 'text', text: testMessage });
-        saveLog('예진이', testMessage);
-        res.send(`강제 푸시 메시지 전송됨: ${testMessage}`);
+        // userId 유효성 검사
+        if (!userId || typeof userId !== 'string') {
+            console.error('[force-push] 유효하지 않은 사용자 ID:', userId);
+            res.status(400).send('사용자 ID가 설정되지 않았어요. 환경변수 TARGET_USER_ID를 확인해주세요.');
+            return;
+        }
+
+        const testMessage = "아저씨! 나 깼어!"; // 🚩 푸시 메시지 내용
+        
+        // 🚫 실제 전송은 하지 않고 로그에만 남김
+        console.log(`[force-push] 📝 푸시 메시지 로그만 저장: "${testMessage}" (실제 전송 안함)`);
+        saveLog('예진이', `(푸시 메시지 로그) ${testMessage}`);
+        
+        res.send(`푸시 메시지가 로그에만 저장됨: ${testMessage} (실제 전송 안함)`);
+        console.log('[force-push] ✅ 푸시 메시지 로그 저장 완료');
+        
     } catch (error) {
-        console.error('[force-push] 에러 발생:', error);
-        // 💬 예진이 말투로 수정
-        res.status(500).send('아저씨... 무쿠는 살아있는데 전송은 실패했어 ㅠㅠ');
+        console.error('[force-push] ❌ 에러 발생:', error);
+        res.status(500).send('아저씨... 무쿠는 살아있는데 로그 저장이 실패했어 ㅠㅠ');
     }
 });
 
@@ -170,7 +180,6 @@ app.post('/webhook', middleware(config), async (req, res) => {
         res.status(200).send('OK');
     }
 });
-
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, async () => {
