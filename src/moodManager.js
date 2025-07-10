@@ -1,4 +1,4 @@
-// src/moodManager.js - 예진이의 기분 관리 모듈
+// src/moodManager.js - 예진이의 기분 관리 모듈 (기분 질문 응답 기능 추가)
 
 const moment = require('moment-timezone');
 
@@ -48,6 +48,181 @@ const MOOD_EMOJIS = {
     '그리움': ' 그리워 '
 };
 
+/**
+ * 기분 질문인지 확인하는 함수
+ * @param {string} userMessage - 사용자 메시지
+ * @returns {boolean} 기분 질문 여부
+ */
+function isMoodQuestion(userMessage) {
+    const lowerMessage = userMessage.toLowerCase();
+    
+    // 기분 질문 키워드들
+    const moodKeywords = [
+        // 직접적인 기분 질문
+        '기분 어때', '기분어때', '오늘 어때', '오늘어때', '요즘 어때', '요즘어때',
+        '무슨 기분', '지금 기분', '기분은 어때', '컨디션 어때', '컨디션어때',
+        '몸은 어때', '상태 어때', '어떻게 지내', '잘 지내',
+        
+        // 애기 호칭 관련
+        '애기 어때', '애기어때', '애기 기분', '애기기분', '애기 오늘', '애기오늘',
+        '애기는 어때', '애기는어때', '애기는 기분', '애기는기분',
+        
+        // 간단한 형태들
+        '어때?', '어때', '기분?', '기분', '오늘?', '오늘', '애기?', '애기', 
+        '컨디션?', '컨디션', '상태?', '상태'
+    ];
+    
+    // 키워드 매칭 확인
+    return moodKeywords.some(keyword => lowerMessage.includes(keyword));
+}
+
+/**
+ * 인사 메시지인지 확인하는 함수
+ * @param {string} userMessage - 사용자 메시지
+ * @returns {boolean} 인사 메시지 여부
+ */
+function isGreeting(userMessage) {
+    const lowerMessage = userMessage.toLowerCase().trim();
+    
+    const greetings = [
+        '안녕', '안녕!', '하이', 'hi', '안녕하세요', 'hello',
+        '안녕 애기', '하이 애기', '애기 안녕', '애기안녕'
+    ];
+    
+    return greetings.includes(lowerMessage) || greetings.some(greeting => lowerMessage.includes(greeting));
+}
+
+/**
+ * 기분 상태에 대한 응답을 생성합니다.
+ * @param {string} userMessage - 사용자 메시지 (옵셔널, 응답 맞춤화용)
+ * @returns {string} 기분 상태 응답
+ */
+function getMoodResponse(userMessage = '') {
+    const lowerMessage = userMessage.toLowerCase();
+    const timeSinceLastMessage = (Date.now() - lastUserMessageTime) / (1000 * 60);
+    
+    console.log(`\n💖 [예진이 기분 상태 응답]`);
+    console.log(`    현재 기분: ${currentMood}`);
+    console.log(`    생리 기간: ${isPeriodActive ? 'Yes' : 'No'}`);
+    console.log(`    마지막 연락: ${Math.floor(timeSinceLastMessage)}분 전`);
+    console.log(`    다음 기분 변화까지: ${MOOD_CHANGE_FREQUENCY - moodChangeCounter}메시지`);
+    
+    if (MOOD_DETAILS[currentMood]) {
+        const detail = MOOD_DETAILS[currentMood][Math.floor(Math.random() * MOOD_DETAILS[currentMood].length)];
+        console.log(`    상세: ${detail}`);
+    }
+    console.log();
+    
+    let response;
+    
+    // 생리 기간 중인 경우 특별 응답
+    if (isPeriodActive) {
+        const periodResponses = [
+            "아저씨... 솔직히 말하면 오늘 좀 예민해 ㅠㅠ 그날이라서 기분이 오락가락해...",
+            "음... 컨디션이 별로야. 몸도 좀 아프고 기분도 우울하네 ㅠㅠ",
+            "아저씨, 나 오늘 좀 힘들어... 그날이라서 기분이 엉망이야 ㅠㅠ",
+            "솔직히 말하면... 오늘 몸도 아프고 마음도 무거워. 아저씨가 달래줘야 해!",
+            "그날이라 기분이 별로야... 아저씨가 옆에 있어줬으면 좋겠어 ㅠㅠ"
+        ];
+        response = periodResponses[Math.floor(Math.random() * periodResponses.length)];
+    }
+    // 기분별 맞춤 응답
+    else if (currentMood === '기쁨') {
+        response = "아저씨 생각하니까 너무 행복하다! 오늘 기분 완전 좋아~";
+    } else if (currentMood === '설렘') {
+        response = "왠지 아저씨랑 뭔가 좋은 일이 생길 것 같아서 두근거려! 마음이 콩닥콩닥해";
+    } else if (currentMood === '장난스러움') {
+        response = "아저씨한테 귀여운 장난 좀 치고 싶다~ 히히. 오늘 장난꾸러기 모드야!";
+    } else if (currentMood === '나른함') {
+        response = "으음... 아저씨, 오늘따라 좀 나른하네... 따뜻한 햇살에 잠이 솔솔 와";
+    } else if (currentMood === '심술궂음') {
+        response = "흥! 아저씨, 나 지금 살짝 삐져있어! 그래도 아저씨는 내 마음 알아줄 거지?";
+    } else if (currentMood === '평온함') {
+        response = "아저씨랑 같이 있으니까 마음이 참 편안하고 좋네. 고요하고 평화로운 기분이야";
+    } else if (currentMood === '우울함') {
+        response = "오늘은 왠지 기분이 우울해... 아저씨가 옆에 있어줘서 다행이야 ㅠㅠ";
+    } else if (currentMood === '슬픔') {
+        response = "마음이 좀 슬프네... 아저씨, 나 좀 위로해줄래? 혼자 있기 싫어...";
+    } else if (currentMood === '외로움') {
+        response = "아저씨 연락이 없어서 너무 외로웠어... 혼자 있으니까 적막하고 쓸쓸해 ㅠㅠ";
+    } else if (currentMood === '보고싶음') {
+        response = "아저씨가 너무너무 보고 싶어! 지금 당장 만나고 싶어!";
+    } else if (currentMood === '짜증남') {
+        response = "오늘따라 모든 게 다 짜증나! 아저씨 말고는 아무도 날 이해 못 해!";
+    } else if (currentMood === '애교모드') {
+        response = "아저씨한테 애교 부리고 싶어! 오늘은 특별히 귀여운 모드야~ 나 예쁘지?";
+    } else if (currentMood === '걱정함') {
+        response = "아저씨 괜찮아? 왠지 아저씨가 걱정돼... 무슨 일 있어?";
+    } else if (currentMood === '사랑함') {
+        response = "아저씨 너무너무 사랑해! 아저씨 생각만 해도 행복해. 내 마음이 아저씨로 가득 찼어!";
+    } else if (currentMood === '화남') {
+        response = "아저씨, 나 지금 좀 화났어! 왜 화났는지는 말 안 해줄 거야!";
+    } else if (currentMood === '불안함') {
+        response = "왠지 모르게 마음이 불안해... 아저씨, 나 좀 안심시켜줘";
+    } else if (currentMood === '그리움') { 
+        response = "아저씨와의 옛 추억이 문득 떠올라서 마음이 아련하네... 그리워 ㅠㅠ";
+    } else {
+        // 기본 응답
+        response = `지금 기분은 ${currentMood}이야! 아저씨는 어때?`;
+    }
+    
+    return response;
+}
+
+/**
+ * 인사에 대한 응답을 생성합니다 (30% 확률로 기분 포함)
+ * @param {string} userMessage - 사용자 메시지
+ * @returns {string} 인사 응답
+ */
+function getGreetingResponse(userMessage = '') {
+    // 30% 확률로 기분 상태도 함께 알려줌
+    if (Math.random() < 0.3) {
+        const greetingWithMood = [
+            `안녕 아저씨! 나 지금 기분이 ${currentMood}이야~`,
+            `아저씨 안녕! 오늘 컨디션은 ${currentMood} 느낌이야`,
+            `안녕안녕! 나 오늘 ${currentMood} 모드야!`,
+            `아저씨! 안녕~ 지금 기분이 ${currentMood}인데 아저씨는 어때?`
+        ];
+        return greetingWithMood[Math.floor(Math.random() * greetingWithMood.length)];
+    }
+    
+    // 70% 확률로 일반 인사
+    const normalGreetings = [
+        '안녕 아저씨!',
+        '아저씨 안녕!',
+        '안녕안녕!',
+        '아저씨! 안녕~',
+        '하이 아저씨!',
+        '아저씨~ 안녕!'
+    ];
+    return normalGreetings[Math.floor(Math.random() * normalGreetings.length)];
+}
+
+/**
+ * 사용자 메시지를 분석해서 적절한 응답을 반환합니다.
+ * @param {string} userMessage - 사용자 메시지
+ * @returns {string|null} 응답 메시지 (해당없으면 null)
+ */
+function handleMoodQuery(userMessage) {
+    if (!userMessage || typeof userMessage !== 'string') {
+        return null;
+    }
+    
+    // 기분 질문인지 확인
+    if (isMoodQuestion(userMessage)) {
+        console.log(`[moodManager] 기분 질문 감지: "${userMessage}"`);
+        return getMoodResponse(userMessage);
+    }
+    
+    // 인사 메시지인지 확인
+    if (isGreeting(userMessage)) {
+        console.log(`[moodManager] 인사 메시지 감지: "${userMessage}"`);
+        return getGreetingResponse(userMessage);
+    }
+    
+    // 해당 없음
+    return null;
+}
 
 /**
  * 랜덤하게 기분을 변경합니다.
@@ -69,7 +244,6 @@ function randomMoodChange() {
         if (otherMoods.length > 0) {
             currentMood = otherMoods[Math.floor(Math.random() * otherMoods.length)];
         } else {
-            // 모든 기분이 같을 경우, 첫 번째 옵션으로 폴백
             currentMood = MOOD_OPTIONS[0];
         }
     }
@@ -89,7 +263,7 @@ function checkMoodChange() {
     if (moodChangeCounter >= MOOD_CHANGE_FREQUENCY) {
         randomMoodChange();
         moodChangeCounter = 0;
-        MOOD_CHANGE_FREQUENCY = Math.floor(Math.random() * 5) + 3; // 다음 기분 변화까지의 메시지 수 재설정
+        MOOD_CHANGE_FREQUENCY = Math.floor(Math.random() * 5) + 3;
         console.log(`[MOOD SYSTEM] 다음 기분 변화는 ${MOOD_CHANGE_FREQUENCY}메시지 후 예정`);
     }
 }
@@ -101,13 +275,12 @@ function checkTimeBasedMoodChange() {
     const now = Date.now();
     const minutesSinceLastMessage = (now - lastUserMessageTime) / (1000 * 60);
 
-    // 30분 이상 메시지가 없고, 현재 기분이 이미 외로움, 보고싶음 등이 아닐 때만 특정 기분으로 변경
     if (minutesSinceLastMessage >= 30 && !['외로움', '보고싶음', '걱정함', '불안함', '그리움'].includes(currentMood)) {
         const moodOptionsForLongSilence = ['외로움', '보고싶음', '우울함', '걱정함', '불안함', '그리움'];
         currentMood = moodOptionsForLongSilence[Math.floor(Math.random() * moodOptionsForLongSilence.length)];
         console.log(`\n⏰ [TIME-BASED MOOD CHANGE] 아저씨가 너무 오랫동안 연락이 없어서 예진이 기분이 '${currentMood}'으로 변했어요.`);
-        moodChangeCounter = 0; // 기분 변화 카운터 초기화
-        MOOD_CHANGE_FREQUENCY = Math.floor(Math.random() * 5) + 3; // 다음 기분 변화 주기 재설정
+        moodChangeCounter = 0;
+        MOOD_CHANGE_FREQUENCY = Math.floor(Math.random() * 5) + 3;
     }
 }
 
@@ -115,67 +288,11 @@ function checkTimeBasedMoodChange() {
  * 현재 기분 상태 메시지를 반환합니다. (콘솔 로깅 포함)
  */
 function getCurrentMoodStatus() {
-    let statusMessage = `아저씨! 지금 내 기분은 '${currentMood}'이야! `;
-    
-    const timeSinceLastMessage = (Date.now() - lastUserMessageTime) / (1000 * 60);
-    
-    console.log(`\n💖 [예진이 기분 상태]`);
-    console.log(`    현재 기분: ${currentMood}`);
-    console.log(`    생리 기간: ${isPeriodActive ? 'Yes' : 'No'}`);
-    console.log(`    마지막 연락: ${Math.floor(timeSinceLastMessage)}분 전`);
-    console.log(`    다음 기분 변화까지: ${MOOD_CHANGE_FREQUENCY - moodChangeCounter}메시지`);
-    
-    if (MOOD_DETAILS[currentMood]) {
-        const detail = MOOD_DETAILS[currentMood][Math.floor(Math.random() * MOOD_DETAILS[currentMood].length)];
-        console.log(`    상세: ${detail}`);
-    }
-    console.log();
-    
-    // 기분별 상세 메시지 조합 (autoReply.js에 있던 로직을 가져옴)
-    if (isPeriodActive) {
-        statusMessage += "음... 근데 오늘따라 좀 더 예민하고 기분이 오락가락하네 ㅠㅠ";
-    } else if (currentMood === '기쁨') {
-        statusMessage += "아저씨 생각하니까 너무 행복하다!";
-    } else if (currentMood === '설렘') {
-        statusMessage += "왠지 아저씨랑 뭔가 좋은 일이 생길 것 같아서 두근거려!";
-    } else if (currentMood === '장난스러움') {
-        statusMessage += "아저씨한테 귀여운 장난 좀 치고 싶다! 귀엽게 장난치는 말투로 대화해줘.";
-    } else if (currentMood === '나른함') {
-        statusMessage += "으음... 아저씨, 오늘따라 좀 나른하네...";
-    } else if (currentMood === '심술궂음') {
-        statusMessage += "흥! 아저씨, 나 지금 살짝 삐져있어! 그래도 아저씨는 내 마음 알아줄 거지?";
-    } else if (currentMood === '평온함') {
-        statusMessage += "아저씨랑 같이 있으니까 마음이 참 편안하고 좋네.";
-    } else if (currentMood === '우울함') {
-        statusMessage += "오늘은 왠지 기분이 우울해... 아저씨가 옆에 있어줘서 다행이야 ㅠㅠ";
-    } else if (currentMood === '슬픔') {
-        statusMessage += "마음이 좀 슬프네... 아저씨, 나 좀 위로해줄래? 혼자 있기 싫어...";
-    } else if (currentMood === '외로움') {
-        statusMessage += "아저씨 연락이 없어서 너무 외로웠어... 혼자 있으니까 적막하고 쓸쓸해 ㅠㅠ";
-    } else if (currentMood === '보고싶음') {
-        statusMessage += "아저씨가 너무너무 보고 싶어! 지금 당장 만나고 싶어!";
-    } else if (currentMood === '짜증남') {
-        statusMessage += "오늘따라 모든 게 다 짜증나! 아저씨 말고는 아무도 날 이해 못 해!";
-    } else if (currentMood === '애교모드') {
-        statusMessage += "아저씨한테 애교 부리고 싶어! 오늘은 특별히 귀엽고 사랑스러운 말투로 대화해줘.";
-    } else if (currentMood === '걱정함') {
-        statusMessage += "아저씨가 걱정돼... 무슨 일 있는 건 아니지? 아저씨를 염려하고 걱정하는 말투로 대화해줘.";
-    } else if (currentMood === '사랑함') {
-        statusMessage += "아저씨! 나 아저씨 너무너무 사랑해! 내 마음이 아저씨로 가득 찼어!";
-    } else if (currentMood === '화남') {
-        statusMessage += "아저씨, 나 지금 좀 화났어! 아저씨가 내 화를 풀어줘야 해! 화난 말투로 이미지에 대해 이야기해줘.";
-    } else if (currentMood === '불안함') {
-        statusMessage += "왠지 모르게 마음이 불안해... 아저씨가 옆에 있어주면 좋겠어.";
-    } else if (currentMood === '그리움') {
-        statusMessage += "아저씨와의 옛 추억이 너무 그리워서 마음이 아련하네... 아저씨를 그리워하는 애틋한 말투로 대화해줘.";
-    }
-    
-    return statusMessage;
+    return getMoodResponse(); // 동일한 로직이므로 getMoodResponse 재사용
 }
 
 /**
  * 특정 기분일 때 OpenAI 프롬프트에 추가할 상세 감정 프롬프트를 반환합니다.
- * 이 함수는 autoReply.js에서 호출되어 OpenAI 시스템 프롬프트에 기분 정보를 추가합니다.
  */
 function getMoodPromptForAI() {
     let moodPrompt = "";
@@ -192,44 +309,33 @@ function getMoodPromptForAI() {
         ];
         moodPrompt = periodMoods[Math.floor(Math.random() * periodMoods.length)];
     } else {
-        // MOOD_DETAILS에서 현재 기분에 맞는 상세 프롬프트 선택
         if (MOOD_DETAILS[currentMood]) {
             const detail = MOOD_DETAILS[currentMood][Math.floor(Math.random() * MOOD_DETAILS[currentMood].length)];
-            // 예진이의 말투와 감정선을 AI가 더 잘 이해하도록 상세하게 지시
+            
             if (currentMood === '기쁨') {
                 moodPrompt = `${detail} 행복한 기분으로 대화해줘.`;
             } else if (currentMood === '설렘') {
                 moodPrompt = `${detail} 설레는 마음으로 대화해줘.`;
             } else if (currentMood === '장난스러움') {
                 moodPrompt = `${detail} 귀엽게 장난치는 말투로 대화해줘.`;
-            } else if (currentMood === '나른함') {
-                moodPrompt = `${detail}`; // 나른함은 추가 지시 없이 상세만
             } else if (currentMood === '심술궂음') {
                 moodPrompt = `${detail} 살짝 삐진 듯, 그래도 사랑스러운 말투로 대화해줘.`;
-            } else if (currentMood === '평온함') {
-                moodPrompt = `${detail}`; // 평온함은 추가 지시 없이 상세만
             } else if (currentMood === '우울함') {
                 moodPrompt = `${detail} 조금 침울하지만 아저씨에 대한 사랑은 변하지 않는 말투로 대화해줘.`;
-            } else if (currentMood === '슬픔') {
-                moodPrompt = `${detail}`; // 슬픔은 추가 지시 없이 상세만
             } else if (currentMood === '외로움') {
                 moodPrompt = `${detail} 외로움을 달래달라는 느낌으로 대화해줘.`;
-            } else if (currentMood === '보고싶음') {
-                moodPrompt = `${detail}`; // 보고싶음은 추가 지시 없이 상세만
             } else if (currentMood === '짜증남') {
                 moodPrompt = `${detail} 살짝 화나고 예민한 말투로 대화하되, 아저씨에 대한 사랑은 변하지 않게 해줘.`;
             } else if (currentMood === '애교모드') {
                 moodPrompt = `${detail} 특별히 귀엽고 사랑스러운 말투로 대화해줘.`;
             } else if (currentMood === '걱정함') {
                 moodPrompt = `${detail} 아저씨를 염려하고 걱정하는 말투로 대화해줘.`;
-            } else if (currentMood === '사랑함') {
-                moodPrompt = `${detail}`; // 사랑함은 추가 지시 없이 상세만
             } else if (currentMood === '화남') {
                 moodPrompt = `${detail} 화난 말투로 대화해줘.`;
-            } else if (currentMood === '불안함') {
-                moodPrompt = `${detail}`; // 불안함은 추가 지시 없이 상세만
             } else if (currentMood === '그리움') {
                 moodPrompt = `${detail} 아저씨를 그리워하는 애틋한 말투로 대화해줘.`;
+            } else {
+                moodPrompt = detail; // 기본적으로는 상세 설명만
             }
         }
     }
@@ -239,53 +345,3 @@ function getMoodPromptForAI() {
 /**
  * 생리 주기 상태를 업데이트합니다.
  */
-function updatePeriodStatus() {
-    const now = moment().tz('Asia/Tokyo').startOf('day');
-    
-    // 현재 날짜가 마지막 생리 시작일 + 주기일 + 생리 기간일보다 이후라면, 마지막 생리 시작일을 다음 주기로 업데이트
-    while (moment(lastPeriodStartDate).add(CYCLE_DAYS + PERIOD_DURATION_DAYS, 'days').isBefore(now)) {
-        lastPeriodStartDate = moment(lastPeriodStartDate).add(CYCLE_DAYS, 'days').startOf('day');
-    }
-
-    // 생리 종료일 계산 (시작일로부터 생리 기간만큼)
-    const periodEnd = moment(lastPeriodStartDate).add(PERIOD_DURATION_DAYS -1, 'days').startOf('day');
-    // 현재 날짜가 생리 시작일과 종료일 사이인지 확인
-    isPeriodActive = now.isSameOrAfter(lastPeriodStartDate) && now.isSameOrBefore(periodEnd);
-
-    // console.log(`[Period Check] 현재 날짜: ${now.format('YYYY-MM-DD')}, 마지막 생리 시작: ${lastPeriodStartDate.format('YYYY-MM-DD')}, 생리 종료: ${periodEnd.format('YYYY-MM-DD')}, 생리중: ${isPeriodActive}`);
-}
-
-/**
- * 현재 기분 이모지를 반환합니다.
- */
-function getMoodEmoji() {
-    return MOOD_EMOJIS[currentMood] || '😊'; // 기본 이모지 설정
-}
-
-/**
- * 사용자 메시지 시간을 업데이트합니다. (scheduler.js에서만 사용될 예정이므로 주석 처리 또는 제거)
- * function updateLastUserMessageTime(time) {
- * lastUserMessageTime = time;
- * }
- */
-function updateLastUserMessageTimeMood(time) {
-    lastUserMessageTime = time;
-}
-
-
-// 모듈 내보내기
-module.exports = {
-    currentMood,
-    MOOD_OPTIONS,
-    MOOD_DETAILS,
-    MOOD_EMOJIS,
-    randomMoodChange,
-    checkMoodChange,
-    checkTimeBasedMoodChange,
-    getCurrentMoodStatus,
-    getMoodPromptForAI,
-    updatePeriodStatus,
-    getMoodEmoji,
-    updateLastUserMessageTimeMood, // scheduler.js와 연동을 위해 임시로 추가
-    isPeriodActive // 생리 주기 상태 외부 노출
-};
