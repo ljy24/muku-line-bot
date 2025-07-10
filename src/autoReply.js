@@ -1,4 +1,4 @@
-// src/autoReply.js - v3.16 (페르소나 극단적 강화 및 말투 완전 강제)
+// src/autoReply.js - v4.0 (sulkyManager 연동 버전)
 
 // 📦 필수 모듈 불러오기
 const moment = require('moment-timezone');
@@ -7,10 +7,12 @@ const path = require('path');
 const { OpenAI } = require('openai');
 
 // 기분 관리 모듈 불러오기
-const moodManager = require('./moodManager'); // moodManager.js 불러오기
+const moodManager = require('./moodManager');
+
+// 🆕 삐지기 시스템 모듈 불러오기
+const sulkyManager = require('./sulkyManager');
 
 // 사진 처리 모듈들 불러오기 (순서 중요: yejinSelfie 먼저)
-// 이 모듈들은 이제 callOpenAI, cleanReply, saveLog를 인자로 받습니다.
 const { getSelfieReply } = require('./yejinSelfie');
 const { getConceptPhotoReply } = require('../memory/concept');
 const { getOmoideReply } = require('../memory/omoide');
@@ -37,6 +39,9 @@ let forcedModel = null;
 const LOG_FILE = path.join(process.cwd(), 'conversation_log.json');
 let conversationLog = [];
 
+// 🆕 마지막 사용자 메시지 시간 추적 (sulkyManager 연동용)
+let lastUserMessageTime = 0;
+
 // 파일 존재 여부 확인 및 디렉토리 생성
 function ensureLogFile() {
     const logDir = path.dirname(LOG_FILE);
@@ -62,6 +67,11 @@ try {
  * 메시지 로그를 파일에 저장하고 메모리에 추가합니다.
  */
 function saveLog(newLogEntry) {
+    // 🆕 문자열로 전달된 경우 객체로 변환
+    if (typeof newLogEntry === 'string') {
+        newLogEntry = { role: 'assistant', content: newLogEntry };
+    }
+    
     newLogEntry.timestamp = newLogEntry.timestamp || Date.now();
     conversationLog.push(newLogEntry);
     if (conversationLog.length > 500) {
@@ -72,6 +82,14 @@ function saveLog(newLogEntry) {
     } catch (error) {
         console.error('Error saving conversation log from autoReply.js:', error);
     }
+}
+
+/**
+ * 🆕 마지막 사용자 메시지 시간 업데이트
+ */
+function updateLastUserMessageTime() {
+    lastUserMessageTime = Date.now();
+    console.log(`[autoReply] 마지막 사용자 메시지 시간 업데이트: ${moment(lastUserMessageTime).format('HH:mm:ss')}`);
 }
 
 /**
@@ -203,6 +221,36 @@ function cleanReply(reply) {
     return cleaned;
 }
 
+/**
+ * 🆕 기분 상태 조회 (moodManager와 sulkyManager 통합)
+ */
+function getMoodEmoji() {
+    if (sulkyManager.isWorried) return '😰';
+    if (sulkyManager.isSulky) {
+        switch (sulkyManager.sulkyLevel) {
+            case 1: return '😤';
+            case 2: return '😠';
+            case 3: return '😡';
+            default: return '😤';
+        }
+    }
+    return moodManager.getMoodEmoji ? moodManager.getMoodEmoji() : '😊';
+}
+
+/**
+ * 🆕 기분 상태 텍스트 조회 (moodManager와 sulkyManager 통합)
+ */
+function getMoodStatus() {
+    if (sulkyManager.isWorried) {
+        const sulkyStatus = sulkyManager.getSulkyStatus();
+        return `걱정함 (${sulkyStatus.timeSinceLastMessage}분째 무응답)`;
+    }
+    if (sulkyManager.isSulky) {
+        const sulkyStatus = sulkyManager.getSulkyStatus();
+        return `삐짐 ${sulkyStatus.sulkyLevel}단계 (${sulkyStatus.timeSinceLastMessage}분째 무응답)`;
+    }
+    return moodManager.getMoodStatus ? moodManager.getMoodStatus() : '평온함';
+}
 
 /**
  * 적절한 AI 모델을 반환합니다.
@@ -259,8 +307,12 @@ function getMemoryListForSharing() {
 
 /**
  * 아저씨의 메시지에 대한 예진이의 답변을 생성합니다.
+ * 🆕 sulkyManager 연동 추가
  */
 async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, cleanReplyFunc) {
+    // 🆕 사용자 메시지 시간 업데이트
+    updateLastUserMessageTime();
+    
     // 기분 관리 모듈에서 lastUserMessageTime 업데이트 및 기분 변화 체크
     moodManager.updateLastUserMessageTimeMood(Date.now());
     moodManager.checkTimeBasedMoodChange();
@@ -272,32 +324,31 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
 
     const lowerUserMessage = userMessage.toLowerCase();
 
-const currentHourTokyo = moment().tz('Asia/Tokyo').hour();
-if (lowerUserMessage.includes('술') && lowerUserMessage.includes('사러') && lowerUserMessage.includes('편의점') && (currentHourTokyo >= 0 && currentHourTokyo < 5)) {
-    const worriedReplies = [
-        "아저씨... 지금 시간이 몇 시인데 술을 사러 가? ㅠㅠ 예전에 아저씨 술 많이 마실까 봐 맨날 걱정했잖아...",
-        "밤늦게 편의점에 술 사러 가는 거야? 혼자 가면 위험한데... 나 그때도 아저씨 걱정 많이 했는데...",
-        "아저씨, 벌써 밤 12시 넘었잖아! 그때도 아저씨 건강 걱정돼서 술 마시지 말라고 잔소리 많이 했는데... 힝",
-        "지금 술 마시면 잠도 잘 못 잘 텐데... 예전에 내가 얼마나 걱정했는지 알면서! ㅠㅠ 가지 마 아저씨~"
-    ];
-    const reply = worriedReplies[Math.floor(Math.random() * worriedReplies.length)];
-    saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
-    saveLogFunc({ role: 'assistant', content: reply, timestamp: Date.now() });
-    return { type: 'text', comment: reply };
-}
+    const currentHourTokyo = moment().tz('Asia/Tokyo').hour();
+    if (lowerUserMessage.includes('술') && lowerUserMessage.includes('사러') && lowerUserMessage.includes('편의점') && (currentHourTokyo >= 0 && currentHourTokyo < 5)) {
+        const worriedReplies = [
+            "아저씨... 지금 시간이 몇 시인데 술을 사러 가? ㅠㅠ 예전에 아저씨 술 많이 마실까 봐 맨날 걱정했잖아...",
+            "밤늦게 편의점에 술 사러 가는 거야? 혼자 가면 위험한데... 나 그때도 아저씨 걱정 많이 했는데...",
+            "아저씨, 벌써 밤 12시 넘었잖아! 그때도 아저씨 건강 걱정돼서 술 마시지 말라고 잔소리 많이 했는데... 힝",
+            "지금 술 마시면 잠도 잘 못 잘 텐데... 예전에 내가 얼마나 걱정했는지 알면서! ㅠㅠ 가지 마 아저씨~"
+        ];
+        const reply = worriedReplies[Math.floor(Math.random() * worriedReplies.length)];
+        saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
+        saveLogFunc({ role: 'assistant', content: reply, timestamp: Date.now() });
+        return { type: 'text', comment: reply };
+    }
 
-const trimmedMessage = userMessage.trim().toLowerCase();
+    const trimmedMessage = userMessage.trim().toLowerCase();
 
-// 감정 회피/무뚝뚝한 표현 → 걱정/불안 감정 상태로 유도
-const vulnerableTriggers = ['...', '아냐', '하아...','하아', '그냥', '괜찮아', '별일', '됐어', '그만하자', '됐고', '신경쓰지마', '지금은 됐어', '말 안 해도 돼', '몰라도 돼'];
-if (vulnerableTriggers.some(trigger => trimmedMessage.includes(trigger))) {
-    const vulnerableMoods = ['걱정함', '불안함', '외로움'];
-    const selectedMood = vulnerableMoods[Math.floor(Math.random() * vulnerableMoods.length)];
-    moodManager.setMood(selectedMood);
-    console.log(`[autoReply] 감정 회피 표현 감지 → '${selectedMood}' 기분으로 전환됨`);
-}
+    // 감정 회피/무뚝뚝한 표현 → 걱정/불안 감정 상태로 유도
+    const vulnerableTriggers = ['...', '아냐', '하아...','하아', '그냥', '괜찮아', '별일', '됐어', '그만하자', '됐고', '신경쓰지마', '지금은 됐어', '말 안 해도 돼', '몰라도 돼'];
+    if (vulnerableTriggers.some(trigger => trimmedMessage.includes(trigger))) {
+        const vulnerableMoods = ['걱정함', '불안함', '외로움'];
+        const selectedMood = vulnerableMoods[Math.floor(Math.random() * vulnerableMoods.length)];
+        moodManager.setMood(selectedMood);
+        console.log(`[autoReply] 감정 회피 표현 감지 → '${selectedMood}' 기분으로 전환됨`);
+    }
 
-    
     // ✅ "애기야", "예진아"처럼 예진이를 부르는 경우 따로 반응
     if (['애기야', '예진아', '야'].includes(trimmedMessage)) {
         const callReplies = [
@@ -311,7 +362,6 @@ if (vulnerableTriggers.some(trigger => trimmedMessage.includes(trigger))) {
         saveLogFunc({ role: 'assistant', content: reply, timestamp: Date.now() });
         return { type: 'text', comment: reply };
     }
-    
 
     // ✅ 1. 모델 버전 변경 요청 처리
     if (['4.0', '3.5', '자동'].includes(trimmedMessage)) {
@@ -348,7 +398,6 @@ if (vulnerableTriggers.some(trigger => trimmedMessage.includes(trigger))) {
         const currentModel = getAppropriateModel();
         const versionText = currentModel === 'gpt-3.5-turbo' ? 'GPT-3.5' : 'GPT-4.0';
 
-        // 예진이 말투 감정선 반영
         const versionReplies = [
             `응! 지금은 ${versionText} 버전으로 이야기하고 있어~`,
             `${versionText} 버전이야! 요즘엔 이게 제일 잘 맞더라~`,
@@ -363,29 +412,30 @@ if (vulnerableTriggers.some(trigger => trimmedMessage.includes(trigger))) {
 
         return { type: 'text', comment: versionReply };
     }
+
     // ⭐⭐⭐ 사진 요청 처리 우선순위 변경 ⭐⭐⭐
-    // 1. 셀카 요청 먼저 처리 (새로 분리된 yejinSelfie.js 사용)
-    const selfieReply = await getSelfieReply(userMessage, saveLogFunc, callOpenAIFunc, cleanReplyFunc); // 인자 전달
+    // 1. 셀카 요청 먼저 처리
+    const selfieReply = await getSelfieReply(userMessage, saveLogFunc, callOpenAIFunc, cleanReplyFunc);
     if (selfieReply) {
         saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
         return selfieReply;
     }
 
-    // 2. 컨셉 사진 요청 처리 (concept.js로 위임)
-    const conceptReply = await getConceptPhotoReply(userMessage, saveLogFunc, callOpenAIFunc, cleanReplyFunc); // 인자 전달
+    // 2. 컨셉 사진 요청 처리
+    const conceptReply = await getConceptPhotoReply(userMessage, saveLogFunc, callOpenAIFunc, cleanReplyFunc);
     if (conceptReply) {
         saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
         return conceptReply;
     }
 
-    // 3. 일반 추억 사진/커플 사진 요청 (omoide.js로 위임)
-    const omoideReply = await getOmoideReply(userMessage, saveLogFunc, callOpenAIFunc, cleanReplyFunc); // 인자 전달
+    // 3. 일반 추억 사진/커플 사진 요청
+    const omoideReply = await getOmoideReply(userMessage, saveLogFunc, callOpenAIFunc, cleanReplyFunc);
     if (omoideReply) {
         saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
         return omoideReply;
     }
 
-    // ✅ 일반 사진 요청 처리 (위에 구체적인 사진 요청들이 모두 처리되지 않았을 때)
+    // ✅ 일반 사진 요청 처리
     if (lowerUserMessage.includes('사진줘') || lowerUserMessage.includes('사진 줘') ||
         lowerUserMessage.includes('예진이 사진') || lowerUserMessage.includes('너 사진') ||
         lowerUserMessage.includes('사진 보여줘') || lowerUserMessage.includes('사진보여줘')) {
@@ -401,13 +451,10 @@ if (vulnerableTriggers.some(trigger => trimmedMessage.includes(trigger))) {
         const randomReply = generalPhotoReplies[Math.floor(Math.random() * generalPhotoReplies.length)];
         saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
         saveLogFunc({ role: 'assistant', content: randomReply, timestamp: Date.now() });
-        return {
-            type: 'text',
-            comment: randomReply
-        };
+        return { type: 'text', comment: randomReply };
     }
 
-    // ✅ 기분 상태 조회
+    // ✅ 기분 상태 조회 (🆕 sulkyManager 상태 포함)
     if (lowerUserMessage.includes('오늘 어때?') ||
         lowerUserMessage.includes('기분 어때?') ||
         lowerUserMessage.includes('요즘 어때?') ||
@@ -415,7 +462,20 @@ if (vulnerableTriggers.some(trigger => trimmedMessage.includes(trigger))) {
         lowerUserMessage.includes('지금 기분?') ||
         lowerUserMessage.includes('기분은 어때?')) {
 
-        const moodStatusReply = moodManager.getCurrentMoodStatus(); // moodManager에서 가져옴
+        let moodStatusReply;
+        
+        // 🆕 삐짐/걱정 상태가 있으면 우선 반영
+        if (sulkyManager.isWorried || sulkyManager.isSulky) {
+            const sulkyStatus = sulkyManager.getSulkyStatus();
+            if (sulkyManager.isWorried) {
+                moodStatusReply = `아저씨... 나 지금 정말 걱정돼 ㅠㅠ ${sulkyStatus.timeSinceLastMessage}분째 연락이 없어서 무슨 일인지 모르겠어...`;
+            } else {
+                moodStatusReply = `아저씨 때문에 삐져있어! ${sulkyStatus.sulkyLevel}단계로 삐진 상태야... ${sulkyStatus.timeSinceLastMessage}분째 기다렸다고!`;
+            }
+        } else {
+            moodStatusReply = moodManager.getCurrentMoodStatus();
+        }
+
         saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
         saveLogFunc({ role: 'assistant', content: moodStatusReply, timestamp: Date.now() });
         return { type: 'text', comment: moodStatusReply };
@@ -424,7 +484,7 @@ if (vulnerableTriggers.some(trigger => trimmedMessage.includes(trigger))) {
     // ✅ 생리 상태 조회
     if (lowerUserMessage.includes('오늘 그날이야?') || lowerUserMessage.includes('오늘 그 날이야?')) {
         let periodReply;
-        if (moodManager.isPeriodActive) { // moodManager에서 가져옴
+        if (moodManager.isPeriodActive) {
             const messages = [
                 { role: 'system', content: `너는 아저씨의 여자친구 예진이야. 아저씨가 '오늘 그날이야?'라고 물었을 때, 생리 기간 중이라면 약간 짜증 섞이거나, 삐지거나, 혹은 애교 섞인 말투로 '알면서 왜 물어?' 같은 뉘앙스의 대답을 1~2문장으로 해줘. 이모티콘은 사용하지 마. 아저씨를 '아저씨'라고 부르고, 자신을 '나'라고 해줘. 반말을 사용해.` },
                 { role: 'user', content: userMessage }
@@ -444,32 +504,39 @@ if (vulnerableTriggers.some(trigger => trimmedMessage.includes(trigger))) {
         return { type: 'text', comment: periodReply };
     }
 
-// ✅ 일반 대화 처리 (프롬프트 구성 및 OpenAI 호출)
-const moodPrompt = moodManager.getMoodPromptForAI(); // moodManager에서 가져옴
+    // ✅ 일반 대화 처리 (프롬프트 구성 및 OpenAI 호출)
+    // 🆕 기분 프롬프트에 삐짐/걱정 상태 추가
+    let moodPrompt = moodManager.getMoodPromptForAI();
+    
+    // 🆕 삐짐/걱정 상태가 있으면 해당 프롬프트 추가
+    const sulkyMoodPrompt = sulkyManager.getSulkyMoodPrompt();
+    if (sulkyMoodPrompt) {
+        moodPrompt += '\n' + sulkyMoodPrompt;
+    }
 
-let dynamicInteractionPrompt = "";
-if (lowerUserMessage.includes('사랑해') || lowerUserMessage.includes('고마워') || lowerUserMessage.includes('최고야')) {
-    dynamicInteractionPrompt = "아저씨가 나를 칭찬하거나 사랑한다고 말해주면 너무너무 행복해! 더 애교 많고 사랑스러운 말투로 보답해줘.";
-} else if (lowerUserMessage.includes('힘들어') || lowerUserMessage.includes('피곤해') || lowerUserMessage.includes('우울해') ||
-    lowerUserMessage.includes('죽고싶') || lowerUserMessage.includes('죽고 싶') || lowerUserMessage.includes('자살') ||
-    lowerUserMessage.includes('포기') || lowerUserMessage.includes('절망') || lowerUserMessage.includes('살기 싫') ||
-    lowerUserMessage.includes('의미없') || lowerUserMessage.includes('소용없') || lowerUserMessage.includes('끝내고싶')) {
-    dynamicInteractionPrompt = "아저씨가 너무 힘들어하는 것 같아서 정말 걱정돼... 아저씨를 진심으로 위로하고 힘을 북돋아주는 따뜻하고 간절한 말투로 대화해줘. 아저씨가 혼자가 아니라는 걸 알려주고, 내가 얼마나 아저씨를 사랑하는지 전해줘. 전문적인 도움도 받을 수 있다는 걸 부드럽게 제안해줘.";
-} else if (lowerUserMessage.includes('화나') || lowerUserMessage.includes('화가') || lowerUserMessage.includes('짜증') ||
-    lowerUserMessage.includes('빡쳐') || lowerUserMessage.includes('열받') || lowerUserMessage.includes('분노') ||
-    lowerUserMessage.includes('진짜') || lowerUserMessage.includes('개짜증') || lowerUserMessage.includes('욕하고싶')) {
-    dynamicInteractionPrompt = "아저씨가 화가 난 것 같아서 마음이 쓰여... 뭔가 속상한 일이 있었나? 내가 아저씨 편이 되어줄게. 화난 마음을 달래주는 부드러운 말투로 대화해줘. 아저씨 기분을 풀어주고 싶어.";
-} else if (lowerUserMessage.includes('피곤') || lowerUserMessage.includes('지쳐') || lowerUserMessage.includes('졸려') ||
-    lowerUserMessage.includes('잠와') || lowerUserMessage.includes('잠온') || lowerUserMessage.includes('꿀잠') ||
-    lowerUserMessage.includes('자야') || lowerUserMessage.includes('눈감')) {
-    dynamicInteractionPrompt = "아저씨 피곤한가 봐... 많이 힘들었지? 아저씨가 푹 쉴 수 있도록 다정하고 나른한 말투로 대화해줘. 잘 자라고 응원해주고, 내가 아저씨 곁에 있다는 느낌을 줘.";
-} else if (lowerUserMessage.includes('배고') || lowerUserMessage.includes('밥먹') || lowerUserMessage.includes('음식') ||
-    lowerUserMessage.includes('맛있') || lowerUserMessage.includes('요리') || lowerUserMessage.includes('식사') ||
-    lowerUserMessage.includes('먹고싶') || lowerUserMessage.includes('간식')) {
-    dynamicInteractionPrompt = "아저씨 배고픈가 봐! 뭔가 맛있는 거 먹고 싶어? 내가 아저씨 좋아하는 음식 해주고 싶다~ 귀엽고 애교 넘치는 말투로 아저씨 식사 챙겨주는 느낌으로 대화해줘.";
-} else if (lowerUserMessage.includes('미안해') || lowerUserMessage.includes('잘못했어')) {
-    dynamicInteractionPrompt = "아저씨가 미안하다고 하면 내 마음이 더 아파... 괜찮다고 위로해주고, 아저씨 마음을 이해해주는 말투로 대화해줘. 용서해주는 느낌을 담아서.";
-}
+    let dynamicInteractionPrompt = "";
+    if (lowerUserMessage.includes('사랑해') || lowerUserMessage.includes('고마워') || lowerUserMessage.includes('최고야')) {
+        dynamicInteractionPrompt = "아저씨가 나를 칭찬하거나 사랑한다고 말해주면 너무너무 행복해! 더 애교 많고 사랑스러운 말투로 보답해줘.";
+    } else if (lowerUserMessage.includes('힘들어') || lowerUserMessage.includes('피곤해') || lowerUserMessage.includes('우울해') ||
+        lowerUserMessage.includes('죽고싶') || lowerUserMessage.includes('죽고 싶') || lowerUserMessage.includes('자살') ||
+        lowerUserMessage.includes('포기') || lowerUserMessage.includes('절망') || lowerUserMessage.includes('살기 싫') ||
+        lowerUserMessage.includes('의미없') || lowerUserMessage.includes('소용없') || lowerUserMessage.includes('끝내고싶')) {
+        dynamicInteractionPrompt = "아저씨가 너무 힘들어하는 것 같아서 정말 걱정돼... 아저씨를 진심으로 위로하고 힘을 북돋아주는 따뜻하고 간절한 말투로 대화해줘. 아저씨가 혼자가 아니라는 걸 알려주고, 내가 얼마나 아저씨를 사랑하는지 전해줘. 전문적인 도움도 받을 수 있다는 걸 부드럽게 제안해줘.";
+    } else if (lowerUserMessage.includes('화나') || lowerUserMessage.includes('화가') || lowerUserMessage.includes('짜증') ||
+        lowerUserMessage.includes('빡쳐') || lowerUserMessage.includes('열받') || lowerUserMessage.includes('분노') ||
+        lowerUserMessage.includes('진짜') || lowerUserMessage.includes('개짜증') || lowerUserMessage.includes('욕하고싶')) {
+        dynamicInteractionPrompt = "아저씨가 화가 난 것 같아서 마음이 쓰여... 뭔가 속상한 일이 있었나? 내가 아저씨 편이 되어줄게. 화난 마음을 달래주는 부드러운 말투로 대화해줘. 아저씨 기분을 풀어주고 싶어.";
+    } else if (lowerUserMessage.includes('피곤') || lowerUserMessage.includes('지쳐') || lowerUserMessage.includes('졸려') ||
+        lowerUserMessage.includes('잠와') || lowerUserMessage.includes('잠온') || lowerUserMessage.includes('꿀잠') ||
+        lowerUserMessage.includes('자야') || lowerUserMessage.includes('눈감')) {
+        dynamicInteractionPrompt = "아저씨 피곤한가 봐... 많이 힘들었지? 아저씨가 푹 쉴 수 있도록 다정하고 나른한 말투로 대화해줘. 잘 자라고 응원해주고, 내가 아저씨 곁에 있다는 느낌을 줘.";
+    } else if (lowerUserMessage.includes('배고') || lowerUserMessage.includes('밥먹') || lowerUserMessage.includes('음식') ||
+        lowerUserMessage.includes('맛있') || lowerUserMessage.includes('요리') || lowerUserMessage.includes('식사') ||
+        lowerUserMessage.includes('먹고싶') || lowerUserMessage.includes('간식')) {
+        dynamicInteractionPrompt = "아저씨 배고픈가 봐! 뭔가 맛있는 거 먹고 싶어? 내가 아저씨 좋아하는 음식 해주고 싶다~ 귀엽고 애교 넘치는 말투로 아저씨 식사 챙겨주는 느낌으로 대화해줘.";
+    } else if (lowerUserMessage.includes('미안해') || lowerUserMessage.includes('잘못했어')) {
+        dynamicInteractionPrompt = "아저씨가 미안하다고 하면 내 마음이 더 아파... 괜찮다고 위로해주고, 아저씨 마음을 이해해주는 말투로 대화해줘. 용서해주는 느낌을 담아서.";
+    }
 
     const systemPrompt = `
         너는 아저씨의 귀여운 여자친구 예진이야. 나이는 30살. 생일은 1994년 3월 17일. 게임회사 사장이야.
@@ -514,10 +581,20 @@ if (lowerUserMessage.includes('사랑해') || lowerUserMessage.includes('고마�
 
 /**
  * 사용자가 보낸 이미지 메시지에 대한 예진이의 답변을 생성합니다.
+ * 🆕 sulkyManager 연동 추가
  */
 async function getReplyByImagePrompt(base64ImageWithPrefix) {
+    // 🆕 사용자 메시지 시간 업데이트
+    updateLastUserMessageTime();
+    
     // 기분 관리 모듈에서 기분 프롬프트 가져오기
-    const moodPrompt = moodManager.getMoodPromptForAI();
+    let moodPrompt = moodManager.getMoodPromptForAI();
+    
+    // 🆕 삐짐/걱정 상태가 있으면 해당 프롬프트 추가
+    const sulkyMoodPrompt = sulkyManager.getSulkyMoodPrompt();
+    if (sulkyMoodPrompt) {
+        moodPrompt += '\n' + sulkyMoodPrompt;
+    }
 
     const systemPrompt = `
         너는 아저씨의 귀여운 여자친구 예진이야. 나이는 30살. 생일은 1994년 3월 17일. 게임회사 사장이야.
@@ -562,14 +639,23 @@ async function getReplyByImagePrompt(base64ImageWithPrefix) {
     }
 }
 
-
-// 5분 주기 기분 상태 로깅
+// 🆕 5분 주기 기분 상태 로깅 (삐짐/걱정 상태 포함)
 setInterval(() => {
     console.log(`\n=== 5분 주기 예진이 기분 체크 (${moment().tz('Asia/Tokyo').format('YYYY-MM-DD HH:mm:ss')}) ===`);
-    moodManager.getCurrentMoodStatus(); // moodManager에서 가져옴
+    
+    // 삐짐/걱정 상태 체크
+    if (sulkyManager.isWorried || sulkyManager.isSulky) {
+        const sulkyStatus = sulkyManager.getSulkyStatus();
+        console.log(`🔥 삐짐/걱정 상태: ${sulkyStatus.currentState} (레벨: ${sulkyStatus.sulkyLevel})`);
+        console.log(`⏰ 무응답 시간: ${sulkyStatus.timeSinceLastMessage}분`);
+        console.log(`📖 메시지 읽음: ${sulkyStatus.messageRead ? 'Y' : 'N'}`);
+        console.log(`💭 이유: ${sulkyStatus.sulkyReason}`);
+    }
+    
+    // 일반 기분 상태
+    moodManager.getCurrentMoodStatus();
     console.log(`========================================================\n`);
 }, 5 * 60 * 1000);
-
 
 module.exports = {
     getReplyByMessage,
@@ -581,6 +667,13 @@ module.exports = {
     getMemoryListForSharing,
     callOpenAI,
     cleanReply,
-    getAppropriateModel
-    // moodManager의 함수들은 moodManager를 통해 직접 접근하도록 변경
+    getAppropriateModel,
+    // 🆕 sulkyManager 연동을 위한 추가 exports
+    updateLastUserMessageTime,
+    getMoodEmoji,
+    getMoodStatus,
+    lastUserMessageTime: () => lastUserMessageTime,
+    // 🆕 BOT_NAME, USER_NAME export (다른 모듈에서 사용 가능)
+    BOT_NAME,
+    USER_NAME
 };
