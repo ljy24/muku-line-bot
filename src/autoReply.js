@@ -272,22 +272,19 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
 
     const lowerUserMessage = userMessage.toLowerCase();
 
-    const currentHourTokyo = moment().tz('Asia/Tokyo').hour();
-
-    if (lowerUserMessage.includes('술') && lowerUserMessage.includes('사러') && lowerUserMessage.includes('편의점') && (currentHourTokyo >= 0 && currentHourTokyo < 5)) {
-        const worriedReplies = [
-            "아저씨... 지금 시간이 몇 시인데 술을 사러 가? ㅠㅠ 예전에 아저씨 술 많이 마실까 봐 맨날 걱정했잖아...",
-            "밤늦게 편의점에 술 사러 가는 거야? 혼자 가면 위험한데... 나 그때도 아저씨 걱정 많이 했는데...",
-            "아저씨, 벌써 밤 12시 넘었잖아! 그때도 아저씨 건강 걱정돼서 술 마시지 말라고 잔소리 많이 했는데... 힝",
-            "지금 술 마시면 잠도 잘 못 잘 텐데... 예전에 내가 얼마나 걱정했는지 알면서! ㅠㅠ 가지 마 아저씨~"
-        ];
-        const reply = worriedReplies[Math.floor(Math.random() * worriedReplies.length)];
-        saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
-        saveLogFunc({ role: 'assistant', content: reply, timestamp: Date.now() });
-        return { type: 'text', comment: reply };
-    }
-
-    const trimmedMessage = userMessage.trim().toLowerCase();
+const currentHourTokyo = moment().tz('Asia/Tokyo').hour();
+if (lowerUserMessage.includes('술') && lowerUserMessage.includes('사러') && lowerUserMessage.includes('편의점') && (currentHourTokyo >= 0 && currentHourTokyo < 5)) {
+    const worriedReplies = [
+        "아저씨... 지금 시간이 몇 시인데 술을 사러 가? ㅠㅠ 예전에 아저씨 술 많이 마실까 봐 맨날 걱정했잖아...",
+        "밤늦게 편의점에 술 사러 가는 거야? 혼자 가면 위험한데... 나 그때도 아저씨 걱정 많이 했는데...",
+        "아저씨, 벌써 밤 12시 넘었잖아! 그때도 아저씨 건강 걱정돼서 술 마시지 말라고 잔소리 많이 했는데... 힝",
+        "지금 술 마시면 잠도 잘 못 잘 텐데... 예전에 내가 얼마나 걱정했는지 알면서! ㅠㅠ 가지 마 아저씨~"
+    ];
+    const reply = worriedReplies[Math.floor(Math.random() * worriedReplies.length)];
+    saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
+    saveLogFunc({ role: 'assistant', content: reply, timestamp: Date.now() });
+    return { type: 'text', comment: reply };
+}
 
 const trimmedMessage = userMessage.trim().toLowerCase();
 
