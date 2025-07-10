@@ -336,6 +336,10 @@ async function initMuku() {
         await memoryManager.ensureMemoryTablesAndDirectory();
         console.log('📁 메모리 시스템 초기화 완료.');
 
+        // 🆕 담타 시스템 초기화 추가 (이 줄 추가)
+        await initializeDamta();
+        console.log('🚬 담타 시스템 초기화 완료!');
+        
         // ⭐ 예진이 감정 시스템 초기화 (v5.1)
         await initializeEmotionalSystems();
         console.log('🧠 예진이 감정 시스템 v5.1 초기화 완료! (1인칭 전환 포함)');
