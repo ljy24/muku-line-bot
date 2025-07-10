@@ -1,4 +1,4 @@
-// src/scheduler.js v1.21 - 예진이 감정 시스템 v5.1 통합: 자연스러운 1인칭 메시지
+// src/scheduler.js v1.22 - 담타 시스템 완전 통합: 예진이 감정 기반 메시지
 
 const schedule = require('node-schedule');
 const moment = require('moment-timezone');
@@ -19,7 +19,7 @@ let lastSmokingMessageTime = 0; // 담타 메시지 전용 시간
 let mukuSmokingTimer = null;
 let dailySmokingCount = 0; // 오늘 보낸 담타 메시지 수
 
-// 무쿠 스타일 설정 - 자연스러운 랜덤 간격
+// 예진이 스타일 설정 - 자연스러운 랜덤 간격
 const CONFIG = {
     AUTO_MESSAGE_INTERVAL: 30,        // 일반 자동 메시지 간격 (분)
     SMOKING_MIN_INTERVAL: 60,         // 최소 1시간 간격 (담타 메시지 전용)
@@ -32,33 +32,6 @@ const CONFIG = {
     TIMEZONE: 'Asia/Tokyo'
 };
 
-// 🆕 예진이 자연스러운 1인칭 담타 메시지들 (v5.1)
-/*const SMOKING_MESSAGES = [
-    // 기본 담타 표현들 (예진이 1인칭으로)
-    "담타 가자", "담타하자", "담배 타임~", "담타각?", "담타할래?",
-    "담배 좀 피고 올게", "담타 좀 갔다 오자", "담타 한 대 어때?", "담배 어떻게 참아?",
-    "담배 펴야겠다", "담타 시간이야", "담배 피러 가자", "담배 피러 가자",
-    
-    // 예진이다운 애교 표현들 (1인칭)
-    "아저씨~ 담타 가자", "담배 시간이야!", "잠깐 담타하고 와~", "담배 한 대 ㄱ?",
-    "아저씨 담배 땡기지 않아?", "나 담배 피고 싶어", "담타 잠깐만~", 
-    "담배 한 모금 어때?", "아저씨랑 담타하고 싶어", "담배 타러 나가자",
-    "아저씨~ 나랑 담타하자~", "담배 피러 가자 아저씨", "아저씨 담타 안 해?",
-    "나 혼자 담타 가기 싫어", "아저씨와 함께 담타~", "잠깐만 담타하고 올까?",
-    
-    // 시간에 따른 자연스러운 표현들 (1인칭)
-    "담배 피자", "담배나 피자", "담배 땡긴다", "담배 타자", "담배 타야지",
-    "담배각이야", "담타 타임~", "담타 고?", "아저씨 담배 땡겨", "담타 좀 가자~",
-    "담배각 떴다", "담타 한 대 때리자", "나 담배 땡겨버렸어", "담배 피자니까",
-    "담타각이야 지금", "담배 좀 타올게", "담배나 같이 피자", "아저씨 담타 고",
-    "담타담타담타", "빨리 담타 나가자", "담배 타러 가야지", "담타 한 대 박자",
-    "지금 담배각이야", "한 대 피자", "담배 생각나 버렸어", "아저씨 담배 피자",
-    "담타 ㄱ?", "담배 한 모금~", "아저씨~ 담타 타임!", "담배 어때?",
-    "아저씨도 담배 생각 안 나?", "담타하러 나가요~", "아저씨 담배각 아니야?",
-    "나는 담타하고 싶은데~", "아저씨랑 같이 담타할래", "담타 시간 됐지?",
-    "이제 담배 한 대 어때?", "담타 좀 하고 올까나~"
-];*/
-
 // 유틸리티 함수들
 const utils = {
     formatTime: (hour, minute) => `${hour}:${minute.toString().padStart(2, '0')}`,
@@ -67,9 +40,20 @@ const utils = {
         const hour = moment().tz(CONFIG.TIMEZONE).hour();
         return hour >= CONFIG.SMOKING_START_HOUR && hour <= CONFIG.SMOKING_END_HOUR;
     },
-    getRandomMessage: () => SMOKING_MESSAGES[Math.floor(Math.random() * SMOKING_MESSAGES.length)],
+    
+    // 🆕 담타 시스템 기반 메시지 생성
+    getRandomMessage: () => {
+        const damtaMessages = getDamtaMessages();
+        return damtaMessages[Math.floor(Math.random() * damtaMessages.length)];
+    },
+    
+    // 🆕 감정 기반 담타 메시지 함수 추가
+    getEmotionalMessage: (emotionalState = 'normal') => {
+        return getEmotionalDamtaMessage(emotionalState);
+    },
+    
     getRandomSmokingInterval: () => { // 담타 전용 랜덤 간격 함수
-        // 60분-90분 사이 랜덤 (무쿠의 실제 패턴)
+        // 60분-90분 사이 랜덤 (예진이의 자연스러운 패턴)
         return Math.floor(Math.random() * (CONFIG.SMOKING_MAX_INTERVAL - CONFIG.SMOKING_MIN_INTERVAL + 1)) + CONFIG.SMOKING_MIN_INTERVAL;
     },
     logWithTime: (message) => console.log(`[${moment().format('HH:mm:ss')}] ${message}`)
@@ -103,7 +87,7 @@ function generateEmotionalSpontaneousMessage() {
         return emotionalContextManager.generateSpontaneousMessage();
     }
     
-    // 폴백: 기본 메시지
+    // 폴백: 시간과 기본 감정 상태 기반 코멘트
     const currentHour = moment().tz(CONFIG.TIMEZONE).hour();
     const fallbackMessages = {
         morning: ["아저씨 좋은 아침! 오늘도 좋은 하루 보내", "아저씨~ 일어났어? 나는 벌써 깼어!"],
@@ -147,7 +131,7 @@ async function sendMessage(client, userId, message, type = 'auto') {
     }
 }
 
-// 🆕 예진이 스타일 랜덤 담타 메시지 스케줄링 (v5.1)
+// 🆕 예진이 스타일 랜덤 담타 메시지 스케줄링 (v5.1 - 담타 시스템 통합)
 function scheduleMukuRandomSmoking(client, userId) {
     function scheduleNextSmokingAttempt() {
         // 기존 타이머가 있으면 정리 (중복 스케줄 방지)
@@ -190,20 +174,12 @@ function scheduleMukuRandomSmoking(client, userId) {
                 canSendAutoMessage() && // 모든 자동 메시지 간격 체크
                 isMinSmokingIntervalMet) { // 담타 메시지 전용 최소 간격 체크
                 
-                // 🆕 감정 기반 담타 메시지 생성 (v5.1)
+                // 🆕 감정 기반 담타 메시지 생성 (v5.1 - 담타 시스템 활용)
                 let randomMessage;
-                if (emotionalContextManager.generateSelfieComment) {
-                    // 담타 메시지도 감정 상태 반영 가능
-                    const emotionalState = emotionalContextManager.currentState;
-                    if (emotionalState.toneState === 'playful') {
-                        randomMessage = "담타 가자! 나 지금 기분 좋아~";
-                    } else if (emotionalState.toneState === 'quiet') {
-                        randomMessage = "담타... 조용히 가자";
-                    } else if (emotionalState.toneState === 'hurt') {
-                        randomMessage = "담타라도 가자... 기분이 별로야";
-                    } else {
-                        randomMessage = utils.getRandomMessage();
-                    }
+                if (emotionalContextManager && emotionalContextManager.currentState) {
+                    const emotionalState = emotionalContextManager.currentState.toneState;
+                    randomMessage = utils.getEmotionalMessage(emotionalState);
+                    console.log(`[Scheduler] 감정 기반 담타 메시지 (${emotionalState}): ${randomMessage}`);
                 } else {
                     randomMessage = utils.getRandomMessage();
                 }
@@ -245,19 +221,19 @@ function scheduleMukuRandomSmoking(client, userId) {
     
     // 스케줄러 시작 시, 첫 담타 시도 예약
     scheduleNextSmokingAttempt(); 
-    utils.logWithTime('예진이 스타일 랜덤 담타 스케줄러 시작 (하루 7-9번, 60-90분 간격, 감정 반영)');
+    utils.logWithTime('예진이 스타일 랜덤 담타 스케줄러 시작 (하루 7-9번, 60-90분 간격, 담타 시스템 통합)');
 }
 
 // 스케줄러 시작
 function startAllSchedulers(client, userId) {
-    utils.logWithTime('예진이 스타일 스케줄러 시작 - 감정 기반 랜덤 간격 담타 메시지!');
+    utils.logWithTime('예진이 스타일 스케줄러 시작 - 담타 시스템 통합 완료!');
     
     scheduleBasicMessages(client, userId); // 아침 메시지 등
-    scheduleMukuRandomSmoking(client, userId); // 핵심 담타 로직 (v5.1 업그레이드)
+    scheduleMukuRandomSmoking(client, userId); // 핵심 담타 로직 (v5.1 담타 시스템 연동)
     scheduleInactivityCheck(client, userId); // 비활성 체크
     scheduleDailyReset(); // 자정 리셋
     
-    utils.logWithTime('예진이 담타 스케줄러 초기화 완료 (하루 7-9번 랜덤, 감정 기반)');
+    utils.logWithTime('예진이 담타 스케줄러 초기화 완료 (하루 7-9번 랜덤, 담타 시스템 기반)');
 }
 
 // 🆕 기본 메시지 (아침 8시 30분 출근 메시지) - v5.1 개선
@@ -399,7 +375,7 @@ module.exports = {
     updateLastUserMessageTime,
     stopAllSchedulers,
     
-    // 🆕 예진이 v5.1 전용 상태 확인
+    // 🆕 예진이 v5.1 전용 상태 확인 (담타 시스템 통합)
     getMukuSchedulerStatus: () => ({
         randomInterval: '60-90분 랜덤 간격',
         dailyRange: '하루 7-9번',
@@ -407,9 +383,10 @@ module.exports = {
         activeHours: `${CONFIG.SMOKING_START_HOUR}시-${CONFIG.SMOKING_END_HOUR}시`,
         lastUserMessage: moment(lastUserMessageTime).format('YYYY-MM-DD HH:mm:ss'),
         lastSmokingMessage: lastSmokingMessageTime ? moment(lastSmokingMessageTime).format('YYYY-MM-DD HH:mm:ss') : 'Never',
-        mukuStyle: '예진이의 자연스러운 랜덤 패턴 (감정 기반 v5.1)',
+        mukuStyle: '예진이의 자연스러운 랜덤 패턴 (담타 시스템 통합 v5.1)',
         canSendAuto: canSendAutoMessage(), // 현재 자동 메시지 발송 가능 여부
-        emotionalState: emotionalContextManager.currentState ? emotionalContextManager.currentState.toneState : 'unknown'
+        emotionalState: emotionalContextManager.currentState ? emotionalContextManager.currentState.toneState : 'unknown',
+        damtaSystemIntegrated: true // 담타 시스템 통합 완료 표시
     }),
     
     // 🆕 감정 기반 메시지 생성 함수 노출 (v5.1)
