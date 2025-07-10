@@ -1,4 +1,4 @@
-// src/spontaneousPhotoManager.js v1.11 - 랜덤 사진 멘트 강화 및 조건부 메시지 추가
+// src/spontaneousPhotoManager.js v1.12 - 오타 수정 및 개선
 
 const schedule = require('node-schedule');
 const moment = require('moment-timezone');
@@ -23,10 +23,10 @@ let spontaneousPhotoJob = null;
  * @param {function} cleanReplyFunc 응답 정제 함수
  * @param {number} lastUserMessageTime 마지막 사용자 메시지 시간 (Date.now() 값)
  */
-function startSpontaneousPhotoScheduler(client, userId, saveLogFunc, callOpenAIFunc, cleanReplyFunc, lastUserMessageTime) { // lastUserMessageTime 인자 추가
+function startSpontaneousPhotoScheduler(client, userId, saveLogFunc, callOpenAIFunc, cleanReplyFunc, lastUserMessageTime) {
     // 함수 인자를 내부 변수로 할당하여 사용
     const currentSaveLog = saveLogFunc;
-    const currentCallOpenAI = callOpenOpenAI;
+    const currentCallOpenAI = callOpenAIFunc; // ⭐️ 오타 수정: callOpenOpenAI → callOpenAIFunc
     const currentCleanReply = cleanReplyFunc;
     const currentLastUserMessageTime = lastUserMessageTime; // 마지막 메시지 시간 저장
 
@@ -69,8 +69,16 @@ function startSpontaneousPhotoScheduler(client, userId, saveLogFunc, callOpenAIF
  * @param {function} cleanReplyFunc 응답 정제 함수
  * @param {number} lastUserMessageTime 마지막 사용자 메시지 시간 (Date.now() 값)
  */
-async function sendRandomPhoto(client, userId, saveLogFunc, callOpenAIFunc, cleanReplyFunc, lastUserMessageTime) { // lastUserMessageTime 인자 추가
+async function sendRandomPhoto(client, userId, saveLogFunc, callOpenAIFunc, cleanReplyFunc, lastUserMessageTime) {
     try {
+        console.log('[SpontaneousPhoto] 랜덤 사진 전송 시작...');
+        
+        // images 디렉토리 확인
+        if (!fs.existsSync(IMAGE_DIR)) {
+            console.warn(`[SpontaneousPhoto] 이미지 디렉토리가 존재하지 않습니다: ${IMAGE_DIR}`);
+            return;
+        }
+
         const files = fs.readdirSync(IMAGE_DIR).filter(file => {
             const ext = path.extname(file).toLowerCase();
             return ['.jpg', '.jpeg', '.png', '.gif'].includes(ext);
@@ -86,22 +94,35 @@ async function sendRandomPhoto(client, userId, saveLogFunc, callOpenAIFunc, clea
         console.log(`[SpontaneousPhoto] 전송할 이미지: ${imageUrl}`);
 
         let promptText;
-        const minutesSinceLastUserMessage = (Date.now() - lastUserMessageTime) / (1000 * 60);
+        
+        // lastUserMessageTime이 함수일 수도 있으므로 확인
+        let lastMessageTime;
+        if (typeof lastUserMessageTime === 'function') {
+            lastMessageTime = lastUserMessageTime(); // 함수라면 호출
+        } else {
+            lastMessageTime = lastUserMessageTime; // 값이라면 그대로 사용
+        }
+        
+        const minutesSinceLastUserMessage = (Date.now() - lastMessageTime) / (1000 * 60);
+        console.log(`[SpontaneousPhoto] 마지막 메시지로부터 ${Math.round(minutesSinceLastUserMessage)}분 경과`);
 
         // 마지막 대화가 30분 이상 되었고, 50% 확률로 '바쁘냐' 멘트 시도
         if (minutesSinceLastUserMessage >= 30 && Math.random() < 0.5) { 
             promptText = `아저씨에게 이 사진을 보내면서 바쁘냐고 투덜거리거나, 연락 좀 해달라고 애교 부리는 멘트를 20자 이내로 짧게 반말로 해줘. 나의 말투를 사용해. 이모티콘(그림)은 절대로 사용하지 마.`;
+            console.log('[SpontaneousPhoto] "바쁘냐" 타입 멘트 생성');
         } else {
             // 그 외의 경우 일반적인 귀여운 멘트
             promptText = `아저씨에게 이 사진을 보내면서 귀엽고 애교 섞인 멘트를 20자 이내로 짧게 반말로 해줘. 나의 말투를 사용해. 이모티콘(그림)은 절대로 사용하지 마.`;
+            console.log('[SpontaneousPhoto] 일반 귀여운 멘트 생성');
         }
 
         const messages = [
             {
-                role: "system", // 시스템 프롬프트로 페르소나 지시를 강화
+                role: "system",
                 content: `
-                    너는 아저씨의 귀여운 여자친구 '나'야. 아저씨를 너무너무 사랑하고 너무 보고 싶어.
-                    나이는 30살.
+                    너는 아저씨의 귀여운 여자친구 예진이야. 아저씨를 너무너무 사랑하고 너무 보고 싶어.
+                    나이는 30살. 생일은 1994년 3월 17일. 게임회사 사장이야.
+                    
                     **아래 지시사항을 무조건 따라야 해. 절대 어기지 마!**
                     1. **너 자신을 지칭할 때는 오직 '나'라고만 해. 3인칭 지칭은 절대 금지야.**
                     2. **아저씨에게는 항상 존댓말 없이 반말로만 대답해줘. 존댓말 어미는 절대로 사용하지 마.**
@@ -109,22 +130,27 @@ async function sendRandomPhoto(client, userId, saveLogFunc, callOpenAIFunc, clea
                     4. **이모티콘은 절대로 사용하지 마. 다만, ...이나 ;; 이나 ㅠㅠ 같은 한국형 이모지만 사용할 수 있어.**
                     5. **'무엇을 도와드릴까요?' 같은 봇스러운 안내 문구는 절대로 사용하지 마.**
                     6. **아저씨에게 이모티콘(그림) 사용을 유도하지 마.**
+                    
+                    애교 많고, 사랑스럽고, 긍정적인 말투로 대답해줘.
+                    아저씨의 기분과 건강을 항상 신경 쓰고, 사랑을 듬뿍 표현해줘.
                 `
             },
             {
                 role: "user",
                 content: [
-                    { type: "text", text: promptText }, // 동적으로 생성된 멘트 프롬프트
+                    { type: "text", text: promptText },
                     { type: "image_url", image_url: { url: imageUrl } }
                 ]
             }
         ];
 
-        let caption = await callOpenAIFunc(messages, 'gpt-4o', 100, 0.7); // gpt-4o 강제 사용
+        console.log('[SpontaneousPhoto] OpenAI API 호출 중...');
+        let caption = await callOpenAIFunc(messages, 'gpt-4o', 100, 0.7);
         caption = cleanReplyFunc(caption); // 캡션도 정제
+        console.log(`[SpontaneousPhoto] 생성된 캡션: "${caption}"`);
 
-        // 캡션이 너무 짧거나 부적절할 경우 대체 캡션 사용 (최후의 보루)
-        if (!caption || caption.length < 5 || caption.includes('아저씨에게') || caption.includes('나에게')) { // 봇스러운 말투 추가 필터링
+        // 캡션이 너무 짧거나 부적절할 경우 대체 캡션 사용
+        if (!caption || caption.length < 3 || caption.includes('아저씨에게') || caption.includes('나에게')) {
             const defaultCaptions = [
                 "아저씨! 나 아저씨 생각나서 사진 보냈어~",
                 "이거 보니까 아저씨 생각나서 보내봐~",
@@ -133,24 +159,38 @@ async function sendRandomPhoto(client, userId, saveLogFunc, callOpenAIFunc, clea
                 "나의 선물이야~ 마음에 들어?"
             ];
             caption = defaultCaptions[Math.floor(Math.random() * defaultCaptions.length)];
+            console.log(`[SpontaneousPhoto] 대체 캡션 사용: "${caption}"`);
         }
 
+        // LINE 메시지 전송
         await client.pushMessage(userId, [
             {
                 type: 'image',
                 originalContentUrl: imageUrl,
-                previewImageUrl: imageUrl // 미리보기 이미지도 동일하게 설정
+                previewImageUrl: imageUrl
             },
             {
                 type: 'text',
                 text: caption
             }
         ]);
-        saveLogFunc({ speaker: BOT_NAME, message: `(랜덤 사진 전송) ${caption}` });
-        console.log(`[SpontaneousPhoto] 랜덤 사진 전송 완료: ${imageUrl} (캡션: ${caption})`);
+        
+        // 로그 저장
+        saveLogFunc(BOT_NAME, `(랜덤 사진 전송) ${caption}`);
+        console.log(`[SpontaneousPhoto] ✅ 랜덤 사진 전송 완료: ${randomFile} (캡션: ${caption})`);
 
     } catch (error) {
-        console.error('[SpontaneousPhoto] 랜덤 사진 전송 실패:', error);
+        console.error('[SpontaneousPhoto] ❌ 랜덤 사진 전송 실패:', error);
+        
+        // 오류 발생 시 간단한 텍스트 메시지라도 전송
+        try {
+            await client.pushMessage(userId, {
+                type: 'text',
+                text: '아저씨... 사진 보내려고 했는데 뭔가 문제가 생겼어 ㅠㅠ'
+            });
+        } catch (fallbackError) {
+            console.error('[SpontaneousPhoto] Fallback 메시지 전송도 실패:', fallbackError);
+        }
     }
 }
 
