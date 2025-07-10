@@ -345,3 +345,106 @@ function getMoodPromptForAI() {
 /**
  * 생리 주기 상태를 업데이트합니다.
  */
+function updatePeriodStatus() {
+    const now = moment().tz('Asia/Tokyo');
+    const daysSinceLastPeriod = now.diff(lastPeriodStartDate, 'days');
+    
+    // 생리 기간 중인지 확인 (일반적으로 5일)
+    if (daysSinceLastPeriod >= 0 && daysSinceLastPeriod < PERIOD_DURATION_DAYS) {
+        if (!isPeriodActive) {
+            isPeriodActive = true;
+            console.log(`🩸 [PERIOD] 생리 기간 시작됨 (${daysSinceLastPeriod + 1}일차)`);
+        }
+    } else {
+        if (isPeriodActive) {
+            isPeriodActive = false;
+            console.log(`🩸 [PERIOD] 생리 기간 종료됨`);
+        }
+    }
+    
+    // 새로운 주기 시작 (28일 주기)
+    if (daysSinceLastPeriod >= CYCLE_DAYS) {
+        lastPeriodStartDate = now.startOf('day');
+        isPeriodActive = true;
+        console.log(`🩸 [PERIOD] 새로운 생리 주기 시작됨`);
+    }
+}
+
+/**
+ * 마지막 사용자 메시지 시간을 업데이트하고 기분 변화를 체크합니다.
+ * @param {number} timestamp - 메시지 타임스탬프
+ */
+function updateLastUserMessageTimeMood(timestamp) {
+    lastUserMessageTime = timestamp;
+    console.log(`[moodManager] 마지막 사용자 메시지 시간 업데이트: ${new Date(timestamp).toLocaleString()}`);
+}
+
+/**
+ * 현재 생리 상태를 반환합니다.
+ * @returns {boolean} 생리 기간 여부
+ */
+function getIsPeriodActive() {
+    return isPeriodActive;
+}
+
+/**
+ * 현재 기분을 반환합니다.
+ * @returns {string} 현재 기분
+ */
+function getCurrentMood() {
+    return currentMood;
+}
+
+/**
+ * 기분을 강제로 설정합니다. (테스트 또는 특별한 경우용)
+ * @param {string} mood - 설정할 기분
+ */
+function setMood(mood) {
+    if (MOOD_OPTIONS.includes(mood)) {
+        const previousMood = currentMood;
+        currentMood = mood;
+        console.log(`[moodManager] 기분 강제 설정: ${previousMood} → ${currentMood}`);
+        return true;
+    }
+    return false;
+}
+
+/**
+ * 생리 상태를 강제로 설정합니다. (테스트용)
+ * @param {boolean} active - 생리 활성 상태
+ */
+function setPeriodActive(active) {
+    const previousState = isPeriodActive;
+    isPeriodActive = active;
+    console.log(`[moodManager] 생리 상태 강제 설정: ${previousState} → ${isPeriodActive}`);
+}
+
+// 모듈 export
+module.exports = {
+    // 기분 관련 함수들
+    isMoodQuestion,
+    isGreeting,
+    getMoodResponse,
+    getGreetingResponse,
+    handleMoodQuery,
+    getCurrentMoodStatus,
+    getMoodPromptForAI,
+    getCurrentMood,
+    setMood,
+    
+    // 기분 변화 관련 함수들
+    checkMoodChange,
+    checkTimeBasedMoodChange,
+    randomMoodChange,
+    updateLastUserMessageTimeMood,
+    
+    // 생리 주기 관련 함수들
+    updatePeriodStatus,
+    getIsPeriodActive,
+    setPeriodActive,
+    
+    // 상태 변수들 (읽기 전용으로 접근)
+    get isPeriodActive() { return isPeriodActive; },
+    get currentMood() { return currentMood; },
+    get lastUserMessageTime() { return lastUserMessageTime; }
+};
