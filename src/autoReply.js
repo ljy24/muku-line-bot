@@ -515,11 +515,20 @@ if (
     trimmedMessage.includes('무슨 모델') ||
     trimmedMessage.includes('지금 뭐') ||
     trimmedMessage.includes('모델 뭐') ||
-    trimmedMessage.includes('버전 뭐')
+    trimmedMessage.includes('버전 뭐') ||
+    trimmedMessage.includes('몇 버전')
 ) {
     const currentModel = getAppropriateModel();
     const versionText = currentModel === 'gpt-3.5-turbo' ? 'GPT-3.5' : 'GPT-4.0';
-    const versionReply = `지금은 ${versionText} 버전으로 대화하고 있어, 아저씨`;
+
+    // 예진이 말투 감정선 반영
+    const versionReplies = [
+        `응! 지금은 ${versionText} 버전으로 이야기하고 있어~`,
+        `${versionText} 버전이야! 요즘엔 이게 제일 잘 맞더라~`,
+        `음~ ${versionText} 버전이지롱~`,
+        `지금은 ${versionText}야. 아저씨가 바꿔도 돼~`
+    ];
+    const versionReply = versionReplies[Math.floor(Math.random() * versionReplies.length)];
 
     console.log(`[DEBUG] 현재 모델 확인 요청 → ${versionText}`);
     saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
@@ -527,7 +536,6 @@ if (
 
     return { type: 'text', comment: versionReply };
 }
-
     // ⭐⭐⭐ 사진 요청 처리 우선순위 변경 ⭐⭐⭐
     // 1. 셀카 요청 먼저 처리 (새로 분리된 yejinSelfie.js 사용)
     const selfieReply = await getSelfieReply(userMessage, saveLogFunc, callOpenAIFunc, cleanReplyFunc); // 인자 전달
