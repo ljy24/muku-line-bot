@@ -62,7 +62,8 @@ app.get('/force-push', async (req, res) => {
         res.send(`강제 푸시 메시지 전송됨: ${testMessage}`);
     } catch (error) {
         console.error('[force-push] 에러 발생:', error);
-        res.status(500).send('메시지 전송 중 오류 발생');
+        // 💬 예진이 말투로 수정
+        res.status(500).send('아저씨... 무쿠는 살아있는데 전송은 실패했어 ㅠㅠ');
     }
 });
 
