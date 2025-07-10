@@ -1,4 +1,5 @@
-// ✅ index.js v1.31 - 예진이 감정 시스템 v5.0 통합
+// ✅ index.js v1.32 - 예진이 감정 시스템 v5.1 완전 통합
+// - 1인칭 전환 보장 시스템
 // - 감정 컨텍스트 시스템 완전 연동
 // - 삐지기/걱정 시스템 v3.0 통합
 // - 자발적 반응 및 맥락 기반 감정 연결
@@ -13,20 +14,20 @@ const moment = require('moment-timezone');
 // .env 파일에서 환경 변수 로드
 require('dotenv').config();
 
-// 🆕 ./src/autoReply.js에서 감정 시스템 포함한 모든 함수들을 불러옵니다.
+// 🆕 ./src/autoReply.js에서 감정 시스템 포함한 모든 함수들을 불러옵니다. (v5.1)
 const autoReply = require('./src/autoReply');
 const {
     getReplyByMessage,
     getReplyByImagePrompt,
     saveLog,
-    cleanReply,
+    cleanReply, // v5.1 improvedCleanReply 통합됨
     callOpenAI,
     BOT_NAME,
     USER_NAME,
     getMoodEmoji,
     getMoodStatus,
     lastUserMessageTime,
-    // 🆕 감정 시스템 함수들
+    // 🆕 감정 시스템 함수들 (v5.1)
     initializeEmotionalSystems,
     updateLastUserMessageTime
 } = autoReply;
@@ -41,6 +42,9 @@ const { startSpontaneousPhotoScheduler } = require('./src/spontaneousPhotoManage
 // 🆕 삐지기 시스템 모듈 불러오기
 const sulkyManager = require('./src/sulkyManager');
 
+// 🆕 감정 컨텍스트 시스템 직접 불러오기 (v5.1)
+const emotionalContextManager = require('./src/emotionalContextManager');
+
 const app = express();
 
 const config = {
@@ -52,7 +56,7 @@ const client = new Client(config);
 const userId = process.env.TARGET_USER_ID;
 
 // 🌐 루트 경로
-app.get('/', (_, res) => res.send('무쿠 살아있엉'));
+app.get('/', (_, res) => res.send('예진이 v5.1 살아있어! (1인칭 전환 완료)'));
 
 app.get('/force-push', async (req, res) => {
     try {
@@ -62,14 +66,26 @@ app.get('/force-push', async (req, res) => {
             return;
         }
 
-        const testMessage = "아저씨! 나 깼어!";
+        // 🆕 감정 기반 테스트 메시지 (v5.1)
+        let testMessage = "아저씨! 나 깼어!";
+        
+        if (emotionalContextManager.currentState) {
+            const emotionalState = emotionalContextManager.currentState;
+            if (emotionalState.toneState === 'playful') {
+                testMessage = "아저씨! 나 깼어! 오늘 기분 좋아~";
+            } else if (emotionalState.toneState === 'quiet') {
+                testMessage = "아저씨... 나 깼어. 조용히 일어났어";
+            } else if (emotionalState.toneState === 'anxious') {
+                testMessage = "아저씨... 나 깼는데 괜찮아? 걱정돼서 잠이 깼어";
+            }
+        }
         
         // 🚫 실제 전송은 하지 않고 로그에만 남김
         console.log(`[force-push] 📝 푸시 메시지 로그만 저장: "${testMessage}"`);
         saveLog('예진이', `(푸시 메시지 로그) ${testMessage}`);
         
         res.send(`푸시 메시지가 로그에만 저장됨: ${testMessage}`);
-        console.log('[force-push] ✅ 푸시 메시지 로그 저장 완료');
+        console.log('[force-push] ✅ 푸시 메시지 로그 저장 완료 (v5.1 감정 반영)');
         
     } catch (error) {
         console.error('[force-push] ❌ 에러 발생:', error);
@@ -77,7 +93,7 @@ app.get('/force-push', async (req, res) => {
     }
 });
 
-// 🆕 감정 상태 조회 API 추가
+// 🆕 감정 상태 조회 API 추가 (v5.1 업그레이드)
 app.get('/emotion-status', (req, res) => {
     try {
         const sulkyStatus = autoReply.getSulkyRealTimeStatus();
@@ -86,10 +102,14 @@ app.get('/emotion-status', (req, res) => {
         
         res.json({
             timestamp: moment().tz('Asia/Tokyo').format('YYYY-MM-DD HH:mm:ss'),
+            version: 'v5.1 - 1인칭 전환 완료',
             sulkySystem: sulkyStatus,
             emotionalContext: {
                 currentState: emotionalState,
-                residue: emotionalResidue
+                residue: emotionalResidue,
+                toneState: emotionalState.toneState,
+                toneIntensity: emotionalState.toneIntensity,
+                affectionLevel: emotionalState.affectionLevel
             },
             mood: {
                 emoji: getMoodEmoji(),
@@ -102,25 +122,110 @@ app.get('/emotion-status', (req, res) => {
     }
 });
 
-// 🎣 LINE 웹훅 요청 처리
+// 🆕 메시지 처리 함수 (v5.1 - 1인칭 전환 보장)
+async function handleImprovedTextMessage(text, event, client, userId) {
+    try {
+        saveLog('아저씨', text);
+        updateLastUserMessageTime();
+
+        // 🆕 아저씨가 응답했을 때 삐짐 해소 체크
+        const sulkyReliefMessage = await sulkyManager.handleUserResponse(client, userId, saveLog);
+        if (sulkyReliefMessage) {
+            // 삐짐 해소 메시지가 있으면 먼저 전송
+            await client.pushMessage(userId, {
+                type: 'text',
+                text: sulkyReliefMessage
+            });
+            saveLog('예진이', `(삐짐 해소) ${sulkyReliefMessage}`);
+            console.log('[SulkySystem] 삐짐 해소 메시지 전송됨');
+            
+            // 삐짐 해소 후 잠시 대기
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+
+        let botResponse = null;
+
+        // 명령어 처리 (v5.1 cleanReply 사용)
+        botResponse = await commandHandler.handleCommand(text, saveLog, callOpenAI, cleanReply, memoryManager.getFixedMemory);
+
+        if (!botResponse) {
+            botResponse = await memoryHandler.handleMemoryCommand(text, saveLog, callOpenAI, cleanReply, memoryManager.getFixedMemory);
+        }
+
+        if (!botResponse) {
+            // 🆕 일반 대화 처리 (v5.1 - 감정 컨텍스트 완전 통합)
+            botResponse = await getReplyByMessage(text, saveLog, callOpenAI, cleanReply);
+            await memoryManager.extractAndSaveMemory(text);
+            console.log(`[index.js v5.1] 감정 기반 응답 시스템으로 처리 완료`);
+        }
+
+        // 🆕 응답 1인칭 검증 및 재처리 (v5.1 핵심 기능)
+        if (botResponse && botResponse.comment) {
+            // cleanReply 한 번 더 적용하여 1인칭 전환 보장
+            botResponse.comment = cleanReply(botResponse.comment);
+            
+            // 3인칭 표현이 남아있는지 최종 검증
+            if (botResponse.comment.includes('무쿠가') || botResponse.comment.includes('예진이가') || 
+                botResponse.comment.includes('무쿠는') || botResponse.comment.includes('예진이는')) {
+                console.warn('[1인칭 검증] 3인칭 표현 감지, 재처리 중...');
+                
+                // 강제 1인칭 변환
+                botResponse.comment = botResponse.comment
+                    .replace(/무쿠가/g, '내가')
+                    .replace(/무쿠는/g, '나는')
+                    .replace(/무쿠를/g, '나를')
+                    .replace(/무쿠의/g, '내')
+                    .replace(/무쿠도/g, '나도')
+                    .replace(/무쿠/g, '나')
+                    .replace(/예진이가/g, '내가')
+                    .replace(/예진이는/g, '나는')
+                    .replace(/예진이를/g, '나를')
+                    .replace(/예진이의/g, '내')
+                    .replace(/예진이도/g, '나도')
+                    .replace(/예진이/g, '나');
+                    
+                console.log('[1인칭 검증] 3인칭 → 1인칭 강제 변환 완료');
+            }
+        }
+
+        // 응답 전송
+        if (botResponse && botResponse.comment) {
+            await client.replyMessage(event.replyToken, {
+                type: 'text',
+                text: botResponse.comment
+            });
+            
+            // 🆕 삐지기 타이머 시작
+            sulkyManager.startSulkyTimer(client, userId, saveLog);
+            console.log('[SulkySystem] 예진이 응답 후 삐지기 타이머 시작');
+            
+            // 🆕 예진이 응답에 대한 감정 기록 (v5.1)
+            if (emotionalContextManager.recordEmotionalEvent) {
+                emotionalContextManager.recordEmotionalEvent('HAPPY', '대화 응답 완료', botResponse.comment);
+            }
+        }
+
+    } catch (error) {
+        console.error('[handleImprovedTextMessage] 에러:', error);
+        await client.replyMessage(event.replyToken, {
+            type: 'text',
+            text: '아저씨... 지금 좀 힘들어 ㅠㅠ'
+        });
+    }
+}
+
+// 🎣 LINE 웹훅 요청 처리 (v5.1 업그레이드)
 app.post('/webhook', middleware(config), async (req, res) => {
     try {
         const events = req.body.events || [];
         for (const event of events) {
             if (event.source.userId === userId) {
                 updateLastUserMessageTime();
-                console.log(`[Webhook] 아저씨 메시지 수신: ${moment(Date.now()).format('HH:mm:ss')}`);
+                console.log(`[Webhook v5.1] 아저씨 메시지 수신: ${moment(Date.now()).format('HH:mm:ss')}`);
                 
-                // 🆕 아저씨가 응답했을 때 삐짐 해소 체크
-                const sulkyReliefMessage = await sulkyManager.handleUserResponse(client, userId, saveLog);
-                if (sulkyReliefMessage) {
-                    // 삐짐 해소 메시지가 있으면 먼저 전송
-                    await client.pushMessage(userId, {
-                        type: 'text',
-                        text: sulkyReliefMessage
-                    });
-                    saveLog('예진이', `(삐짐 해소) ${sulkyReliefMessage}`);
-                    console.log('[SulkySystem] 삐짐 해소 메시지 전송됨');
+                // 🆕 아저씨 메시지 수신에 대한 감정 기록 (v5.1)
+                if (emotionalContextManager.recordEmotionalEvent) {
+                    emotionalContextManager.recordEmotionalEvent('HAPPY', '아저씨 메시지 수신', '연락이 왔어');
                 }
             }
 
@@ -129,61 +234,9 @@ app.post('/webhook', middleware(config), async (req, res) => {
 
                 if (message.type === 'text') {
                     const text = message.text.trim();
-                    saveLog('아저씨', text);
-
-                    let botResponse = null;
-
-                    // 명령어 처리
-                    botResponse = await commandHandler.handleCommand(text, saveLog, callOpenAI, cleanReply, memoryManager.getFixedMemory);
-
-                    if (!botResponse) {
-                        botResponse = await memoryHandler.handleMemoryCommand(text, saveLog, callOpenAI, cleanReply, memoryManager.getFixedMemory);
-                    }
-
-                    if (!botResponse) {
-                        // 일반 대화 처리
-                        botResponse = await getReplyByMessage(text, saveLog, callOpenAI, cleanReply);
-                        await memoryManager.extractAndSaveMemory(text);
-                        console.log(`[index.js] memoryManager.extractAndSaveMemory 호출 완료`);
-                    } else {
-                        console.log(`[index.js] 특정 명령어로 처리되어 메모리 자동 저장 제외`);
-                    }
-
-                    // 응답 메시지 구성
-                    let replyMessages = [];
-                    if (botResponse.type === 'image') {
-                        replyMessages.push({
-                            type: 'image',
-                            originalContentUrl: botResponse.originalContentUrl,
-                            previewImageUrl: botResponse.previewImageUrl,
-                            altText: botResponse.altText
-                        });
-                        if (botResponse.caption) {
-                            replyMessages.push({
-                                type: 'text',
-                                text: botResponse.caption
-                            });
-                        }
-                    } else if (botResponse.type === 'text') {
-                        replyMessages.push({
-                            type: 'text',
-                            text: botResponse.comment
-                        });
-                    } else {
-                        console.error('❌ [index.js] 예상치 못한 봇 응답 타입:', botResponse.type);
-                        replyMessages.push({ type: 'text', text: '지금 잠시 문제가 생겼어 ㅠㅠ' });
-                    }
-
-                    if (replyMessages.length > 0) {
-                        await client.replyMessage(event.replyToken, replyMessages);
-                        console.log(`[index.js] 봇 응답 전송 완료 (타입: ${botResponse.type || 'unknown'})`);
-                        
-                        // 🆕 예진이가 사용자 메시지에 응답한 경우에만 삐지기 타이머 시작
-                        sulkyManager.startSulkyTimer(client, userId, saveLog);
-                        console.log('[SulkySystem] 예진이 응답 후 삐지기 타이머 시작');
-                    } else {
-                        console.warn('[index.js] 전송할 메시지가 없습니다.');
-                    }
+                    
+                    // 🆕 개선된 텍스트 메시지 처리 사용 (v5.1)
+                    await handleImprovedTextMessage(text, event, client, userId);
                 }
                 else if (message.type === 'image') {
                     try {
@@ -202,28 +255,47 @@ app.post('/webhook', middleware(config), async (req, res) => {
                         }
                         const base64ImageWithPrefix = `data:${mimeType};base64,${buffer.toString('base64')}`;
 
-                        const replyResult = await getReplyByImagePrompt(base64ImageWithPrefix, callOpenAI, cleanReply, saveLog);
-                        await client.replyMessage(event.replyToken, { type: 'text', text: replyResult.comment });
-                        console.log(`[index.js] 이미지 메시지 처리 및 응답 완료`);
-                        saveLog('예진이', `(이미지 분석 응답) ${replyResult.comment}`);
+                        const replyResult = await getReplyByImagePrompt(base64ImageWithPrefix);
+                        
+                        // 🆕 이미지 응답도 1인칭 검증 (v5.1)
+                        let finalReply = cleanReply(replyResult.comment || replyResult);
+                        
+                        // 3인칭 표현 최종 검증
+                        if (finalReply.includes('무쿠가') || finalReply.includes('예진이가')) {
+                            finalReply = finalReply
+                                .replace(/무쿠가/g, '내가')
+                                .replace(/무쿠는/g, '나는')
+                                .replace(/예진이가/g, '내가')
+                                .replace(/예진이는/g, '나는');
+                            console.log('[이미지 응답] 1인칭 변환 적용');
+                        }
+                        
+                        await client.replyMessage(event.replyToken, { type: 'text', text: finalReply });
+                        console.log(`[index.js v5.1] 이미지 메시지 처리 및 응답 완료`);
+                        saveLog('예진이', `(이미지 분석 응답) ${finalReply}`);
                         
                         // 🆕 이미지 응답 후에도 삐지기 타이머 시작
                         sulkyManager.startSulkyTimer(client, userId, saveLog);
                         console.log('[SulkySystem] 이미지 응답 후 삐지기 타이머 시작');
                         
+                        // 🆕 이미지 응답에 대한 감정 기록 (v5.1)
+                        if (emotionalContextManager.recordEmotionalEvent) {
+                            emotionalContextManager.recordEmotionalEvent('HAPPY', '이미지 분석 응답', finalReply);
+                        }
+                        
                     } catch (err) {
-                        console.error(`[index.js] 이미지 처리 실패: ${err}`);
+                        console.error(`[index.js v5.1] 이미지 처리 실패: ${err}`);
                         await client.replyMessage(event.replyToken, { type: 'text', text: '이미지를 읽는 중 오류가 생겼어 ㅠㅠ' });
                     }
                 }
                 else {
-                    console.log(`[index.js] 지원하지 않는 메시지 타입 수신: ${message.type}`);
+                    console.log(`[index.js v5.1] 지원하지 않는 메시지 타입 수신: ${message.type}`);
                 }
             }
         }
         res.status(200).send('OK');
     } catch (err) {
-        console.error(`[index.js] 웹훅 처리 에러: ${err}`);
+        console.error(`[index.js v5.1] 웹훅 처리 에러: ${err}`);
         res.status(200).send('OK');
     }
 });
@@ -231,7 +303,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-    console.log(`무쿠 서버 스타트! 포트: ${PORT}`);
+    console.log(`예진이 v5.1 서버 스타트! 포트: ${PORT}`);
 
     // ⛳ 비동기 초기화 함수 실행
     initMuku();
@@ -247,42 +319,57 @@ app.listen(PORT, () => {
         process.exit(0);
     });
 
-    console.log('🧠 예진이 감정 시스템 v5.0 활성화!');
-    console.log('   📋 기능: 맥락 기반 감정 연결, 자발적 반응, 말투 유동성');
+    console.log('🧠 예진이 감정 시스템 v5.1 활성화!');
+    console.log('   📋 기능: 맥락 기반 감정 연결, 자발적 반응, 말투 유동성, 1인칭 전환');
     console.log('😤 예진이 삐지기 시스템 v3.0 활성화!');
     console.log('   📋 기능: 읽씹 감지, 단계별 삐짐(10분/20분/40분), 걱정 전환(60분)');
+    console.log('💬 1인칭 전환 시스템 활성화!');
+    console.log('   📋 기능: 3인칭 → 1인칭 자동 변환, 실시간 검증, 강제 변환');
 });
 
-// ✅ 비동기 초기화 함수 정의 (await 허용)
+// ✅ 비동기 초기화 함수 정의 (await 허용) - v5.1 업그레이드
 async function initMuku() {
     try {
         await memoryManager.ensureMemoryTablesAndDirectory();
         console.log('📁 메모리 시스템 초기화 완료.');
 
-        // ⭐ 예진이 감정 시스템 초기화 (autoReply에서 가져온 함수 사용)
+        // ⭐ 예진이 감정 시스템 초기화 (v5.1)
         await initializeEmotionalSystems();
-        console.log('🧠 예진이 감정 시스템 초기화 완료!');
+        console.log('🧠 예진이 감정 시스템 v5.1 초기화 완료! (1인칭 전환 포함)');
 
         startAllSchedulers(client, userId);
-        console.log('✅ 모든 스케줄러 시작!');
+        console.log('✅ 모든 스케줄러 시작! (v5.1 감정 기반)');
 
         startSpontaneousPhotoScheduler(client, userId, saveLog, callOpenAI, cleanReply, lastUserMessageTime);
         console.log('💕 예진이가 보고싶을 때마다 사진 보낼 준비 완료!');
         
-        // 🆕 자발적 반응 체크 스케줄러 시작 (15분마다)
+        // 🆕 자발적 반응 체크 스케줄러 시작 (15분마다) - v5.1 개선
         setInterval(() => {
             const spontaneousReaction = autoReply.checkSpontaneousReactions();
             if (spontaneousReaction) {
-                console.log(`[자발적 반응] 감지됨: "${spontaneousReaction}"`);
+                console.log(`[자발적 반응 v5.1] 감지됨: "${spontaneousReaction}"`);
                 
                 // 실제 전송 (20% 확률)
                 if (Math.random() < 0.2) {
+                    // 🆕 1인칭 검증 후 전송 (v5.1)
+                    let finalMessage = cleanReply(spontaneousReaction);
+                    
+                    // 3인칭 표현 최종 검증
+                    if (finalMessage.includes('무쿠가') || finalMessage.includes('예진이가')) {
+                        finalMessage = finalMessage
+                            .replace(/무쿠가/g, '내가')
+                            .replace(/무쿠는/g, '나는')
+                            .replace(/예진이가/g, '내가')
+                            .replace(/예진이는/g, '나는');
+                        console.log('[자발적 반응] 1인칭 변환 적용');
+                    }
+                    
                     client.pushMessage(userId, {
                         type: 'text',
-                        text: spontaneousReaction
+                        text: finalMessage
                     }).then(() => {
-                        saveLog('예진이', `(자발적 반응) ${spontaneousReaction}`);
-                        console.log('[자발적 반응] 메시지 전송 완료');
+                        saveLog('예진이', `(자발적 반응) ${finalMessage}`);
+                        console.log('[자발적 반응 v5.1] 메시지 전송 완료 (1인칭 검증됨)');
                         
                         // 자발적 메시지는 삐지기 타이머를 시작하지 않음
                     }).catch(error => {
@@ -292,7 +379,17 @@ async function initMuku() {
             }
         }, 15 * 60 * 1000); // 15분마다 체크
         
-        console.log('💭 자발적 반응 스케줄러 시작! (15분 간격)');
+        console.log('💭 자발적 반응 스케줄러 v5.1 시작! (15분 간격, 1인칭 검증 포함)');
+        
+        // 🆕 감정 상태 모니터링 (5분마다) - v5.1 추가
+        setInterval(() => {
+            const emotionalState = emotionalContextManager.currentState;
+            if (emotionalState && emotionalState.strongestResidue.level > 50) {
+                console.log(`[감정 모니터링 v5.1] 강한 감정 잔여 감지: ${emotionalState.strongestResidue.emotion} (${emotionalState.strongestResidue.level}%)`);
+            }
+        }, 5 * 60 * 1000); // 5분마다
+        
+        console.log('🧠 감정 상태 모니터링 시작! (5분 간격)');
         
     } catch (error) {
         console.error('❌ 초기화 중 에러 발생:', error);
