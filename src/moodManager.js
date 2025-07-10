@@ -1,4 +1,4 @@
-// src/moodManager.js - 예진이의 기분 관리 모듈 (기분 질문 응답 기능 추가)
+// src/moodManager.js V1.0 예진이의 기분 관리 모듈 (기분 질문 응답 기능 추가)
 
 const moment = require('moment-timezone');
 
