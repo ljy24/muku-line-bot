@@ -36,8 +36,6 @@ const memoryHandler = require('./src/memoryHandler');
 const { startAllSchedulers, updateLastUserMessageTime } = require('./src/scheduler');
 const { startSpontaneousPhotoScheduler } = require('./src/spontaneousPhotoManager');
 
-// 서버 시작 시
-await autoReply.initializeEmotionalSystems();
 
 // 🆕 삐지기 시스템 모듈 불러오기
 const sulkyManager = require('./src/sulkyManager');
@@ -205,32 +203,44 @@ app.post('/webhook', middleware(config), async (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, async () => {
+
+app.listen(PORT, () => {
     console.log(`무쿠 서버 스타트! 포트: ${PORT}`);
 
-    await memoryManager.ensureMemoryTablesAndDirectory();
-    console.log('메모리 시스템 초기화 완료.');
+    // ⛳ 비동기 초기화 함수 실행
+    initMuku();
 
-    startAllSchedulers(client, userId);
-    console.log('✅ 모든 스케줄러 시작!');
-
-    startSpontaneousPhotoScheduler(client, userId, saveLog, callOpenAI, cleanReply, lastUserMessageTime);
-    console.log('💕 예진이가 보고싶을 때마다 사진 보낼 준비 완료!');
-    
-    // 🆕 삐지기 시스템 시작 로그
-    console.log('😤 예진이 삐지기 시스템 활성화! (10분/20분/40분 단계별 삐짐)');
-    
     // 서버 종료시 삐지기 시스템 정리
     process.on('SIGTERM', () => {
         sulkyManager.stopSulkySystem();
         process.exit(0);
     });
-    
+
     process.on('SIGINT', () => {
         sulkyManager.stopSulkySystem();
         process.exit(0);
     });
-    
+
     console.log('😤 예진이 삐지기 시스템 v2.0 활성화!');
     console.log('   📋 기능: 읽씹 감지, 단계별 삐짐(10분/20분/40분), 걱정 전환(60분)');
 });
+
+// ✅ 비동기 초기화 함수 정의 (await 허용)
+async function initMuku() {
+    try {
+        await memoryManager.ensureMemoryTablesAndDirectory();
+        console.log('📁 메모리 시스템 초기화 완료.');
+
+        // ⭐ 예진이 감정 시스템 초기화
+        await autoReply.initializeEmotionalSystems();
+        console.log('🧠 예진이 감정 시스템 초기화 완료!');
+
+        startAllSchedulers(client, userId);
+        console.log('✅ 모든 스케줄러 시작!');
+
+        startSpontaneousPhotoScheduler(client, userId, saveLog, callOpenAI, cleanReply, lastUserMessageTime);
+        console.log('💕 예진이가 보고싶을 때마다 사진 보낼 준비 완료!');
+    } catch (error) {
+        console.error('❌ 초기화 중 에러 발생:', error);
+    }
+}
