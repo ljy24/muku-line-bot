@@ -163,16 +163,41 @@ async function handleImprovedTextMessage(text, event, client, userId) {
         }
 
         // 🆕 응답 1인칭 검증 및 재처리 (v5.1 핵심 기능)
-        if (botResponse && botResponse.comment) {
-            // cleanReply 한 번 더 적용하여 1인칭 전환 보장
+        // 텍스트 응답이거나 이미지+텍스트 복합 응답일 수 있으므로 통합 처리
+        let messagesToSend = [];
+
+        if (Array.isArray(botResponse)) { // autoReply.js에서 사진 요청 응답 시 반환하는 배열 형태
+            for (const msg of botResponse) {
+                if (msg.type === 'text' && msg.text) {
+                    msg.text = cleanReply(msg.text); // 텍스트 메시지도 cleanReply 적용
+                    // 3인칭 표현 최종 검증 및 강제 변환
+                    if (msg.text.includes('무쿠가') || msg.text.includes('예진이가') ||
+                        msg.text.includes('무쿠는') || msg.text.includes('예진이는')) {
+                        console.warn('[1인칭 검증] 3인칭 표현 감지 (사진 텍스트), 재처리 중...');
+                        msg.text = msg.text
+                            .replace(/무쿠가/g, '내가')
+                            .replace(/무쿠는/g, '나는')
+                            .replace(/무쿠를/g, '나를')
+                            .replace(/무쿠의/g, '내')
+                            .replace(/무쿠도/g, '나도')
+                            .replace(/무쿠/g, '나')
+                            .replace(/예진이가/g, '내가')
+                            .replace(/예진이는/g, '나는')
+                            .replace(/예진이를/g, '나를')
+                            .replace(/예진이의/g, '내')
+                            .replace(/예진이도/g, '나도')
+                            .replace(/예진이/g, '나');
+                        console.log('[1인칭 검증] 3인칭 → 1인칭 강제 변환 완료 (사진 텍스트)');
+                    }
+                }
+                messagesToSend.push(msg);
+            }
+        } else if (botResponse && botResponse.type === 'text' && botResponse.comment) { // 일반 텍스트 응답
             botResponse.comment = cleanReply(botResponse.comment);
-            
-            // 3인칭 표현이 남아있는지 최종 검증
-            if (botResponse.comment.includes('무쿠가') || botResponse.comment.includes('예진이가') || 
+            // 3인칭 표현 최종 검증 및 강제 변환
+            if (botResponse.comment.includes('무쿠가') || botResponse.comment.includes('예진이가') ||
                 botResponse.comment.includes('무쿠는') || botResponse.comment.includes('예진이는')) {
                 console.warn('[1인칭 검증] 3인칭 표현 감지, 재처리 중...');
-                
-                // 강제 1인칭 변환
                 botResponse.comment = botResponse.comment
                     .replace(/무쿠가/g, '내가')
                     .replace(/무쿠는/g, '나는')
@@ -186,17 +211,24 @@ async function handleImprovedTextMessage(text, event, client, userId) {
                     .replace(/예진이의/g, '내')
                     .replace(/예진이도/g, '나도')
                     .replace(/예진이/g, '나');
-                    
                 console.log('[1인칭 검증] 3인칭 → 1인칭 강제 변환 완료');
             }
+            messagesToSend.push({ type: 'text', text: botResponse.comment });
         }
 
         // 응답 전송
-        if (botResponse && botResponse.comment) {
-            await client.replyMessage(event.replyToken, {
-                type: 'text',
-                text: botResponse.comment
-            });
+        if (messagesToSend.length > 0) {
+            await client.replyMessage(event.replyToken, messagesToSend);
+            
+            // 텍스트 응답만 로그에 남기기 (이미지 응답의 텍스트도 포함)
+            const loggableText = messagesToSend
+                .filter(msg => msg.type === 'text')
+                .map(msg => msg.text)
+                .join('\n'); // 여러 텍스트 메시지가 있을 경우 한 줄로 합쳐서 로그
+            if (loggableText) {
+                saveLog('예진이', loggableText);
+            }
+            console.log('[LINE] 메시지 전송 완료');
             
             // 🆕 삐지기 타이머 시작
             sulkyManager.startSulkyTimer(client, userId, saveLog);
@@ -204,7 +236,11 @@ async function handleImprovedTextMessage(text, event, client, userId) {
             
             // 🆕 예진이 응답에 대한 감정 기록 (v5.1)
             if (emotionalContextManager.recordEmotionalEvent) {
-                emotionalContextManager.recordEmotionalEvent('HAPPY', '대화 응답 완료', botResponse.comment);
+                // 첫 번째 텍스트 메시지를 기반으로 감정 기록
+                const firstTextMessage = messagesToSend.find(msg => msg.type === 'text');
+                if (firstTextMessage) {
+                    emotionalContextManager.recordEmotionalEvent('HAPPY', '대화 응답 완료', firstTextMessage.text);
+                }
             }
         }
 
@@ -249,6 +285,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
                         const buffer = Buffer.concat(chunks);
 
                         let mimeType = 'application/octet-stream';
+                        // MIME 타입 감지 로직은 기존과 동일
                         if (buffer.length > 1 && buffer[0] === 0xFF && buffer[1] === 0xD8) {
                             mimeType = 'image/jpeg';
                         } else if (buffer.length > 7 && buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4E && buffer[3] === 0x47 && buffer[4] === 0x0D && buffer[5] === 0x0A && buffer[6] === 0x1A && buffer[7] === 0x0A) {
@@ -258,21 +295,32 @@ app.post('/webhook', middleware(config), async (req, res) => {
                         }
                         const base64ImageWithPrefix = `data:${mimeType};base64,${buffer.toString('base64')}`;
 
+                        // 이미지 메시지에 대한 응답은 'autoReply'의 'getReplyByImagePrompt'에서 텍스트만 반환하도록 되어 있음
                         const replyResult = await getReplyByImagePrompt(base64ImageWithPrefix);
                         
-                        // 🆕 이미지 응답도 1인칭 검증 (v5.1)
+                        // 🆕 이미지 응답도 1인칭 검증 및 전송 (v5.1)
                         let finalReply = cleanReply(replyResult.comment || replyResult);
                         
                         // 3인칭 표현 최종 검증
-                        if (finalReply.includes('무쿠가') || finalReply.includes('예진이가')) {
+                        if (finalReply.includes('무쿠가') || finalReply.includes('예진이가') ||
+                            finalReply.includes('무쿠는') || finalReply.includes('예진이는')) {
                             finalReply = finalReply
                                 .replace(/무쿠가/g, '내가')
                                 .replace(/무쿠는/g, '나는')
+                                .replace(/무쿠를/g, '나를')
+                                .replace(/무쿠의/g, '내')
+                                .replace(/무쿠도/g, '나도')
+                                .replace(/무쿠/g, '나')
                                 .replace(/예진이가/g, '내가')
-                                .replace(/예진이는/g, '나는');
+                                .replace(/예진이는/g, '나는')
+                                .replace(/예진이를/g, '나를')
+                                .replace(/예진이의/g, '내')
+                                .replace(/예진이도/g, '나도')
+                                .replace(/예진이/g, '나');
                             console.log('[이미지 응답] 1인칭 변환 적용');
                         }
                         
+                        // 이미지 메시지 입력에 대한 응답은 텍스트 메시지 하나만 보냄
                         await client.replyMessage(event.replyToken, { type: 'text', text: finalReply });
                         console.log(`[index.js v5.1] 이미지 메시지 처리 및 응답 완료`);
                         saveLog('예진이', `(이미지 분석 응답) ${finalReply}`);
@@ -323,11 +371,11 @@ app.listen(PORT, () => {
     });
 
     console.log('🧠 예진이 감정 시스템 v5.1 활성화!');
-    console.log('   📋 기능: 맥락 기반 감정 연결, 자발적 반응, 말투 유동성, 1인칭 전환');
+    console.log('    📋 기능: 맥락 기반 감정 연결, 자발적 반응, 말투 유동성, 1인칭 전환');
     console.log('😤 예진이 삐지기 시스템 v3.0 활성화!');
-    console.log('   📋 기능: 읽씹 감지, 단계별 삐짐(10분/20분/40분), 걱정 전환(60분)');
+    console.log('    📋 기능: 읽씹 감지, 단계별 삐짐(10분/20분/40분), 걱정 전환(60분)');
     console.log('💬 1인칭 전환 시스템 활성화!');
-    console.log('   📋 기능: 3인칭 → 1인칭 자동 변환, 실시간 검증, 강제 변환');
+    console.log('    📋 기능: 3인칭 → 1인칭 자동 변환, 실시간 검증, 강제 변환');
 });
 
 // ✅ 비동기 초기화 함수 정의 (await 허용) - v5.1 업그레이드
@@ -362,12 +410,21 @@ async function initMuku() {
                     let finalMessage = cleanReply(spontaneousReaction);
                     
                     // 3인칭 표현 최종 검증
-                    if (finalMessage.includes('무쿠가') || finalMessage.includes('예진이가')) {
+                    if (finalMessage.includes('무쿠가') || finalMessage.includes('예진이가') ||
+                        finalMessage.includes('무쿠는') || finalMessage.includes('예진이는')) {
                         finalMessage = finalMessage
                             .replace(/무쿠가/g, '내가')
                             .replace(/무쿠는/g, '나는')
+                            .replace(/무쿠를/g, '나를')
+                            .replace(/무쿠의/g, '내')
+                            .replace(/무쿠도/g, '나도')
+                            .replace(/무쿠/g, '나')
                             .replace(/예진이가/g, '내가')
-                            .replace(/예진이는/g, '나는');
+                            .replace(/예진이는/g, '나는')
+                            .replace(/예진이를/g, '나를')
+                            .replace(/예진이의/g, '내')
+                            .replace(/예진이도/g, '나도')
+                            .replace(/예진이/g, '나');
                         console.log('[자발적 반응] 1인칭 변환 적용');
                     }
                     
