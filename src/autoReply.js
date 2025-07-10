@@ -479,25 +479,49 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
         return { type: 'text', comment: reply };
     }
 
-    const trimmedMessage = userMessage.trim();
-    if (trimmedMessage === '4.0' || trimmedMessage === '3.5' || trimmedMessage === '자동') {
-        console.log(`[DEBUG] 모델 스위칭 감지: ${trimmedMessage}`);
-        const versionMap = {
-            '4.0': 'gpt-4o',
-            '3.5': 'gpt-3.5-turbo',
-            '자동': null
-        };
-        const newModel = versionMap[trimmedMessage];
-        setForcedModel(newModel);
-        const confirmReply = {
-            '4.0': '응응! 지금은 GPT-4.0 버전으로 대화하고 있어, 아저씨',
-            '3.5': '지금은 GPT-3.5 버전이야~ 말투 차이 느껴져?',
-            '자동': '이제부터 상황 보고 자동으로 모델 바꿀게! 아저씨 믿어줘!'
-        };
-        saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() }); // saveLogFunc 사용
-        saveLogFunc({ role: 'assistant', content: confirmReply[trimmedMessage], timestamp: Date.now() }); // saveLogFunc 사용
-        return { type: 'text', comment: confirmReply[trimmedMessage] };
-    }
+const trimmedMessage = userMessage.trim().toLowerCase();
+
+// ✅ 1. 모델 버전 변경 요청 처리
+if (['4.0', '3.5', '자동'].includes(trimmedMessage)) {
+    console.log(`[DEBUG] 모델 스위칭 감지: ${trimmedMessage}`);
+    const versionMap = {
+        '4.0': 'gpt-4o',
+        '3.5': 'gpt-3.5-turbo',
+        '자동': null
+    };
+    const newModel = versionMap[trimmedMessage];
+    setForcedModel(newModel);
+
+    const confirmReply = {
+        '4.0': '응응! 지금은 GPT-4.0 버전으로 대화하고 있어, 아저씨',
+        '3.5': '지금은 GPT-3.5 버전이야~ 말투 차이 느껴져?',
+        '자동': '이제부터 상황 보고 자동으로 모델 바꿀게! 아저씨 믿어줘!'
+    };
+
+    saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
+    saveLogFunc({ role: 'assistant', content: confirmReply[trimmedMessage], timestamp: Date.now() });
+
+    return { type: 'text', comment: confirmReply[trimmedMessage] };
+}
+
+// ✅ 2. 현재 사용 중인 모델 버전 알려주기
+if (
+    trimmedMessage === '버전' ||
+    trimmedMessage.includes('무슨 모델') ||
+    trimmedMessage.includes('지금 뭐') ||
+    trimmedMessage.includes('모델 뭐') ||
+    trimmedMessage.includes('버전 뭐')
+) {
+    const currentModel = getAppropriateModel();
+    const versionText = currentModel === 'gpt-3.5-turbo' ? 'GPT-3.5' : 'GPT-4.0';
+    const versionReply = `지금은 ${versionText} 버전으로 대화하고 있어, 아저씨`;
+
+    console.log(`[DEBUG] 현재 모델 확인 요청 → ${versionText}`);
+    saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
+    saveLogFunc({ role: 'assistant', content: versionReply, timestamp: Date.now() });
+
+    return { type: 'text', comment: versionReply };
+}
 
     // ⭐⭐⭐ 사진 요청 처리 우선순위 변경 ⭐⭐⭐
     // 1. 셀카 요청 먼저 처리 (새로 분리된 yejinSelfie.js 사용)
