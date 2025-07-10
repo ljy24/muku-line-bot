@@ -14,6 +14,7 @@ const moment = require('moment-timezone');
 // .env 파일에서 환경 변수 로드
 require('dotenv').config();
 
+
 // ./src/autoReply.js에서 함수들과 상수를 불러옵니다.
 const {
     getReplyByMessage,
@@ -34,6 +35,9 @@ const commandHandler = require('./src/commandHandler');
 const memoryHandler = require('./src/memoryHandler');
 const { startAllSchedulers, updateLastUserMessageTime } = require('./src/scheduler');
 const { startSpontaneousPhotoScheduler } = require('./src/spontaneousPhotoManager');
+
+// 서버 시작 시
+await autoReply.initializeEmotionalSystems();
 
 // 🆕 삐지기 시스템 모듈 불러오기
 const sulkyManager = require('./src/sulkyManager');
