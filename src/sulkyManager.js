@@ -27,10 +27,10 @@ let sulkyState = {
 
 // 삐지기/걱정 단계별 설정
 const SULKY_CONFIG = {
-    LEVEL_1_DELAY: 10,        // 10분 후 1단계 삐짐
-    LEVEL_2_DELAY: 20,        // 20분 후 2단계 삐짐  
-    LEVEL_3_DELAY: 40,        // 40분 후 3단계 삐짐
-    WORRY_DELAY: 60,          // 60분 후 걱정 모드로 전환
+    LEVEL_1_DELAY: 30,        // 30분 후 1단계 삐짐
+    LEVEL_2_DELAY: 60,        // 60분 후 2단계 삐짐  
+    LEVEL_3_DELAY: 120,        // 120분 후 3단계 삐짐
+    WORRY_DELAY: 180,          // 160분 후 걱정 모드로 전환
     TIMEZONE: 'Asia/Tokyo',
     // 🆕 실시간 체크 설정
     STATE_CHECK_INTERVAL: 30000, // 30초마다 상태 체크
