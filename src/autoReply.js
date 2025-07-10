@@ -415,7 +415,7 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
         } else {
             periodReply = "아니야 아저씨! 나 그날 아니야! 왜 그런 걸 물어봐~?";
         }
-        saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.24, 11 });
+        saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
         saveLogFunc({ role: 'assistant', content: periodReply, timestamp: Date.now() });
         return { type: 'text', comment: periodReply };
     }
