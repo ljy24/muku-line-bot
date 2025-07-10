@@ -292,6 +292,15 @@ function getCurrentMoodStatus() {
 }
 
 /**
+ * 현재 기분 이모지를 반환합니다.
+ * @returns {string} 현재 기분에 맞는 이모지
+ */
+function getMoodEmoji() {
+    return MOOD_EMOJIS[currentMood] || '😊'; // MOOD_EMOJIS에서 찾고 없으면 기본 이모지
+}
+
+
+/**
  * 특정 기분일 때 OpenAI 프롬프트에 추가할 상세 감정 프롬프트를 반환합니다.
  */
 function getMoodPromptForAI() {
@@ -431,6 +440,7 @@ module.exports = {
     getMoodPromptForAI,
     getCurrentMood,
     setMood,
+    getMoodEmoji, // <<<<<< 이 함수를 추가로 export 합니다!
     
     // 기분 변화 관련 함수들
     checkMoodChange,
