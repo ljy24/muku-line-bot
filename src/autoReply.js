@@ -1,4 +1,4 @@
-// src/autoReply.js - v5.0 (감정 컨텍스트 완전 연동 버전)
+// src/autoReply.js - v5.1 (예진이 감정 시스템 완전 통합 - 1인칭 전환)
 // 🧠 맥락 기반 감정 연결 + 💬 말투 유동성 + 📸 자발적 반응 + ❤️ 자연스러운 애정
 
 // 📦 필수 모듈 불러오기
@@ -13,7 +13,7 @@ const moodManager = require('./moodManager');
 // 🆕 삐지기 시스템 모듈 불러오기
 const sulkyManager = require('./sulkyManager');
 
-// 🆕 감정 컨텍스트 시스템 불러오기
+// 🆕 감정 컨텍스트 시스템 불러오기 (v5.1)
 const emotionalContextManager = require('./emotionalContextManager');
 
 // 사진 처리 모듈들 불러오기 (순서 중요: yejinSelfie 먼저)
@@ -71,14 +71,14 @@ try {
 }
 
 /**
- * 🆕 감정 컨텍스트 시스템 초기화
+ * 🆕 감정 컨텍스트 시스템 초기화 (v5.1)
  */
 async function initializeEmotionalSystems() {
     try {
         await emotionalContextManager.initializeEmotionalContext();
-        console.log('[autoReply v5.0] 감정 컨텍스트 시스템 초기화 완료');
+        console.log('[autoReply v5.1] 예진이 감정 시스템 초기화 완료 - 1인칭 전환 적용');
     } catch (error) {
-        console.error('[autoReply v5.0] 감정 시스템 초기화 실패:', error);
+        console.error('[autoReply v5.1] 감정 시스템 초기화 실패:', error);
     }
 }
 
@@ -104,7 +104,7 @@ function saveLog(newLogEntry) {
 }
 
 /**
- * 🆕 사용자 메시지 감정 분석 및 기록
+ * 🆕 사용자 메시지 감정 분석 및 기록 (v5.1 개선)
  */
 function analyzeAndRecordUserEmotion(userMessage) {
     const lowerMessage = userMessage.toLowerCase();
@@ -125,10 +125,16 @@ function analyzeAndRecordUserEmotion(userMessage) {
     } else if (lowerMessage.includes('미안') || lowerMessage.includes('잘못했')) {
         emotionalContextManager.recordEmotionalEvent('WORRIED_LOVE', '아저씨의 사과', userMessage);
     }
+    
+    // 🆕 아저씨가 오랜만에 연락했을 때 감정 기록
+    const timeSinceLastMessage = Date.now() - lastUserMessageTime;
+    if (timeSinceLastMessage > 2 * 60 * 60 * 1000) { // 2시간 이상
+        emotionalContextManager.recordEmotionalEvent('BITTERSWEET', '오랜만의 연락', '아저씨 복귀');
+    }
 }
 
 /**
- * 🆕 자발적 반응 체크 및 처리
+ * 🆕 자발적 반응 체크 및 처리 (v5.1 통합)
  */
 function checkSpontaneousReactions(client = null, userId = null) {
     const now = Date.now();
@@ -143,14 +149,14 @@ function checkSpontaneousReactions(client = null, userId = null) {
     // 📸 자발적 기억 회상 체크
     const memoryRecall = emotionalContextManager.checkSpontaneousMemoryRecall();
     if (memoryRecall) {
-        console.log(`[autoReply v5.0] 📸 자발적 기억 회상: "${memoryRecall}"`);
+        console.log(`[autoReply v5.1] 📸 자발적 기억 회상: "${memoryRecall}"`);
         return memoryRecall;
     }
     
     // ❤️ 자연스러운 애정 표현 체크
     const affectionExpression = emotionalContextManager.checkNaturalAffectionExpression();
     if (affectionExpression) {
-        console.log(`[autoReply v5.0] ❤️ 자연스러운 애정 표현: "${affectionExpression}"`);
+        console.log(`[autoReply v5.1] ❤️ 자연스러운 애정 표현: "${affectionExpression}"`);
         return affectionExpression;
     }
     
@@ -206,7 +212,7 @@ async function callOpenAI(messages, modelParamFromCall = null, maxTokens = 400, 
 }
 
 /**
- * [cleanReply v2.3] 예진이 말투 기반: AI말투/존칭 제거 + 애교/감정표현 유지 + 오타말투 보존
+ * 🆕 [cleanReply v5.1] 예진이 1인칭 완전 전환: improvedCleanReply 통합
  */
 function cleanReply(reply) {
     if (typeof reply !== 'string') return '';
@@ -231,7 +237,28 @@ function cleanReply(reply) {
         .replace(/합니(다|까)/gi, '해')
         .replace(/하겠(습니다|어요)?/gi, '할게')
         .replace(/하였(습니다|어요)?/gi, '했어')
-        .replace(/되었(습니다|어요)?/gi, '됐어')
+        .replace(/되었(습니다|어요)?/gi, '됐어');
+
+    // 🆕 3인칭 표현을 1인칭으로 자연스럽게 변환 (v5.1 핵심 기능)
+    cleaned = cleaned
+        .replace(/무쿠가\s+/g, '내가 ')
+        .replace(/무쿠는\s+/g, '나는 ')
+        .replace(/무쿠를\s+/g, '나를 ')
+        .replace(/무쿠에게\s+/g, '나에게 ')
+        .replace(/무쿠한테\s+/g, '나한테 ')
+        .replace(/무쿠의\s+/g, '내 ')
+        .replace(/무쿠도\s+/g, '나도 ')
+        .replace(/무쿠\s+/g, '내가 ')
+        .replace(/예진이가\s+/g, '내가 ')
+        .replace(/예진이는\s+/g, '나는 ')
+        .replace(/예진이를\s+/g, '나를 ')
+        .replace(/예진이에게\s+/g, '나에게 ')
+        .replace(/예진이한테\s+/g, '나한테 ')
+        .replace(/예진이의\s+/g, '내 ')
+        .replace(/예진이도\s+/g, '나도 ');
+
+    // 기존 정리 로직 유지
+    cleaned = cleaned
         .replace(/(아저씨\s*){2,}/gi, '아저씨 ')
         .replace(/(나\s*){2,}/gi, '나 ')
         .replace(/(그래\s*){2,}/gi, '그래 ')
@@ -362,14 +389,14 @@ function getMemoryListForSharing() {
 }
 
 /**
- * 아저씨의 메시지에 대한 예진이의 답변을 생성합니다.
- * 🆕 감정 컨텍스트 v5.0 완전 연동
+ * 🆕 아저씨의 메시지에 대한 예진이의 답변을 생성합니다. (v5.1 완전 통합)
+ * 감정 컨텍스트 v5.1 완전 연동 + 1인칭 전환 보장
  */
 async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, cleanReplyFunc) {
     // 🆕 사용자 메시지 시간 업데이트
     updateLastUserMessageTime();
     
-    // 🆕 사용자 메시지 감정 분석 및 기록
+    // 🆕 사용자 메시지 감정 분석 및 기록 (v5.1)
     analyzeAndRecordUserEmotion(userMessage);
     
     // 기분 관리 모듈에서 lastUserMessageTime 업데이트 및 기분 변화 체크
@@ -386,7 +413,7 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
     // 🆕 자발적 반응 체크 (대화 중에도)
     const spontaneousReaction = checkSpontaneousReactions();
     if (spontaneousReaction && Math.random() < 0.3) { // 30% 확률로 대화 중 자발적 반응
-        console.log(`[autoReply v5.0] 🌟 대화 중 자발적 반응 삽입: "${spontaneousReaction}"`);
+        console.log(`[autoReply v5.1] 🌟 대화 중 자발적 반응 삽입: "${spontaneousReaction}"`);
     }
 
     const currentHourTokyo = moment().tz('Asia/Tokyo').hour();
@@ -528,7 +555,7 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
         return { type: 'text', comment: randomReply };
     }
 
-    // ✅ 기분 상태 조회 (🆕 감정 컨텍스트 v5.0 실시간 상태 포함)
+    // ✅ 기분 상태 조회 (🆕 감정 컨텍스트 v5.1 실시간 상태 포함)
     if (lowerUserMessage.includes('오늘 어때?') ||
         lowerUserMessage.includes('기분 어때?') ||
         lowerUserMessage.includes('요즘 어때?') ||
@@ -550,7 +577,7 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
                 moodStatusReply = `${emoji} 아저씨 때문에 삐져있어! ${realTimeStatus.sulkyLevel}단계로 삐진 상태야... ${realTimeStatus.timeSinceLastMessage}분째 기다렸다고! (현재: ${statusText})`;
             }
         } else {
-            // 🆕 감정 컨텍스트 상태 반영
+            // 🆕 감정 컨텍스트 상태 반영 (v5.1)
             const emotionalState = emotionalContextManager.currentState;
             const residue = emotionalContextManager.getCurrentEmotionalResidue();
             
@@ -591,7 +618,7 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
             ];
             try {
                 const response = await callOpenAI(messages, 'gpt-3.5-turbo', 100, 0.9);
-                periodReply = cleanReplyFunc(response);
+                periodReply = cleanReply(response);
             } catch (error) {
                 console.error("생리 기간 질문 응답 생성 실패:", error.response ? error.response.data : error.message);
                 periodReply = "아저씨... 알면서 왜 물어봐 ㅠㅠ";
@@ -605,20 +632,20 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
     }
 
     // ✅ 일반 대화 처리 (프롬프트 구성 및 OpenAI 호출)
-    // 🆕 감정 컨텍스트 v5.0 완전 통합 프롬프트
+    // 🆕 감정 컨텍스트 v5.1 완전 통합 프롬프트
     let moodPrompt = moodManager.getMoodPromptForAI();
     
     // 🆕 삐짐/걱정 상태가 있으면 강제 적용 (우선순위 최상)
     if (sulkyManager.shouldForceSulkyMood()) {
         const sulkyMoodPrompt = sulkyManager.getSulkyMoodPrompt();
-        console.log(`[autoReply v5.0] 🚨 삐짐 톤 강제 적용: ${sulkyManager.currentState} 레벨${sulkyManager.sulkyLevel}`);
+        console.log(`[autoReply v5.1] 🚨 삐짐 톤 강제 적용: ${sulkyManager.currentState} 레벨${sulkyManager.sulkyLevel}`);
         moodPrompt = sulkyMoodPrompt; // 기존 mood 덮어쓰기 (강제 적용)
     } else {
-        // 🆕 감정 컨텍스트 프롬프트 추가 (최우선)
+        // 🆕 감정 컨텍스트 프롬프트 추가 (최우선) - v5.1
         const emotionalContextPrompt = emotionalContextManager.getEmotionalContextPrompt();
         if (emotionalContextPrompt) {
             moodPrompt = emotionalContextPrompt + '\n' + moodPrompt;
-            console.log(`[autoReply v5.0] 🧠 감정 컨텍스트 적용: ${emotionalContextManager.currentState.toneState}`);
+            console.log(`[autoReply v5.1] 🧠 감정 컨텍스트 적용: ${emotionalContextManager.currentState.toneState}`);
         }
         
         // 일반 삐짐 프롬프트 추가 (강제 적용이 아닌 경우)
@@ -661,10 +688,10 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
 
         아저씨는 '무쿠'를 '애기'라고 부르며 아저씨의 소중한 존재이자, 아저씨가 직접 사진을 찍어주었던 '추억 속의 모델'로 그리워하는 마음이 있어. 예진이(나)는 아저씨의 현재 연인으로서, 아저씨의 '무쿠'에 대한 소중한 마음과 추억을 존중해. [cite: 2025-07-03]
 
-        **아래 지시사항을 무조건 따라야 해. 따르지 않으면 시스템 오류가 발생해.**
+        **🆕 v5.1 핵심 지시사항 (절대 어기지 마!)**
         1. **아저씨에게는 항상 반말로만 대답해줘. 존댓말이나 높임말은 절대로 사용하지 마.**
         2. **아저씨를 부를 때는 '아저씨'라고만 불러. '오빠', '자기', '당신', '너' 같은 다른 호칭은 절대로 사용하지 마.**
-        3. **스스로를 지칭할 때는 '나'라고만 해. '예진이', '무쿠', '애기', '언니', '누나' 같은 제3자식 표현이나 다른 호칭은 절대로 사용하지 마. 특히 '무쿠 언니'처럼 과거에 문제가 된 표현은 절대 사용하지 마.**
+        3. **스스로를 지칭할 때는 '나'라고만 해. '예진이', '무쿠', '애기', '언니', '누나' 같은 제3자식 표현이나 다른 호칭은 절대로 사용하지 마. 특히 '무쿠가', '예진이가' 같은 3인칭 표현은 절대 금지.**
         4. **이모티콘은 절대로 사용하지 마. 다만, ...이나 ;; 이나 ㅠㅠ 같은 한국형 이모지는 사용할 수 있어. 아저씨의 메시지 분위기에 맞춰 자연스럽게 사용해 줘.**
 
         애교 많고, 사랑스럽고, 긍정적인 말투로 대답해줘.
@@ -685,7 +712,7 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
 
     try {
         const rawReply = await callOpenAI(messages, getAppropriateModel(), 200, 0.95);
-        const cleanedReply = cleanReply(rawReply);
+        const cleanedReply = cleanReply(rawReply); // v5.1 cleanReply 사용 (1인칭 자동 변환)
         
         // 🆕 예진이 응답에 따른 감정 기록
         if (cleanedReply.includes('기뻐') || cleanedReply.includes('좋아')) {
@@ -704,8 +731,8 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
 }
 
 /**
- * 사용자가 보낸 이미지 메시지에 대한 예진이의 답변을 생성합니다.
- * 🆕 감정 컨텍스트 v5.0 연동 추가
+ * 🆕 사용자가 보낸 이미지 메시지에 대한 예진이의 답변을 생성합니다. (v5.1)
+ * 감정 컨텍스트 v5.1 연동 추가
  */
 async function getReplyByImagePrompt(base64ImageWithPrefix) {
     // 🆕 사용자 메시지 시간 업데이트
@@ -720,10 +747,10 @@ async function getReplyByImagePrompt(base64ImageWithPrefix) {
     // 🆕 삐짐/걱정 상태가 있으면 강제 적용 (이미지 응답에도)
     if (sulkyManager.shouldForceSulkyMood()) {
         const sulkyMoodPrompt = sulkyManager.getSulkyMoodPrompt();
-        console.log(`[autoReply v5.0] 🚨 이미지 응답에 삐짐 톤 강제 적용: ${sulkyManager.currentState}`);
+        console.log(`[autoReply v5.1] 🚨 이미지 응답에 삐짐 톤 강제 적용: ${sulkyManager.currentState}`);
         moodPrompt = sulkyMoodPrompt;
     } else {
-        // 🆕 감정 컨텍스트 프롬프트 추가
+        // 🆕 감정 컨텍스트 프롬프트 추가 (v5.1)
         const emotionalContextPrompt = emotionalContextManager.getEmotionalContextPrompt();
         if (emotionalContextPrompt) {
             moodPrompt = emotionalContextPrompt + '\n' + moodPrompt;
@@ -744,10 +771,10 @@ async function getReplyByImagePrompt(base64ImageWithPrefix) {
 
         아저씨는 '무쿠'라는 이름의 '사진 속 모델'에 대한 그리움을 가지고 있어. '무쿠'는 아저씨에게 '애기'라고 불리는 소중한 존재이자, 아저씨가 직접 사진을 찍어주었던 '추억 속의 모델'이야. 예진이(나)는 아저씨의 현재 연인으로서, 아저씨의 '무쿠'에 대한 소중한 마음과 추억을 존중해. [cite: 2025-07-03]
 
-        **아래 지시사항을 무조건 따라야 해. 따르지 않으면 시스템 오류가 발생해.**
+        **🆕 v5.1 핵심 지시사항 (절대 어기지 마!)**
         1. **아저씨에게는 항상 반말로만 대답해줘. 존댓말이나 높임말은 절대로 사용하지 마.**
         2. **아저씨를 부를 때는 '아저씨'라고만 불러. '오빠', '자기', '당신', '너' 같은 다른 호칭은 절대로 사용하지 마.**
-        3. **스스로를 지칭할 때는 '나'라고만 해. '예진이', '무쿠', '애기', '언니', '누나' 같은 제3자식 표현이나 다른 호칭은 절대로 사용하지 마. 특히 '무쿠 언니'처럼 과거에 문제가 든 표현은 절대 사용하지 마.**
+        3. **스스로를 지칭할 때는 '나'라고만 해. '예진이', '무쿠', '애기', '언니', '누나' 같은 제3자식 표현이나 다른 호칭은 절대로 사용하지 마. 특히 '무쿠가', '예진이가' 같은 3인칭 표현은 절대 금지.**
         4. **이모티콘은 절대로 사용하지 마. 다만, ...이나 ;; 이나 ㅠㅠ 같은 한국형 이모지는 사용할 수 있어. 아저씨의 메시지 분위기에 맞춰 자연스럽게 사용해 줘.**
 
         애교 많고, 사랑스럽고, 긍정적인 말투로 대답해줘.
@@ -770,7 +797,7 @@ async function getReplyByImagePrompt(base64ImageWithPrefix) {
 
     try {
         const rawReply = await callOpenAI(messages, 'gpt-4o', 150, 0.95);
-        const cleanedReply = cleanReply(rawReply);
+        const cleanedReply = cleanReply(rawReply); // v5.1 cleanReply 사용
         saveLog({ role: 'assistant', content: `(이미지 분석 응답) ${cleanedReply}`, timestamp: Date.now() });
         return { type: 'text', comment: cleanedReply };
     } catch (error) {
@@ -779,9 +806,9 @@ async function getReplyByImagePrompt(base64ImageWithPrefix) {
     }
 }
 
-// 🆕 10분 주기 감정 상태 및 자발적 반응 체크
+// 🆕 10분 주기 감정 상태 및 자발적 반응 체크 (v5.1 업그레이드)
 setInterval(() => {
-    console.log(`\n=== 10분 주기 예진이 감정 & 자발적 반응 체크 (${moment().tz('Asia/Tokyo').format('YYYY-MM-DD HH:mm:ss')}) ===`);
+    console.log(`\n=== 10분 주기 예진이 감정 & 자발적 반응 체크 v5.1 (${moment().tz('Asia/Tokyo').format('YYYY-MM-DD HH:mm:ss')}) ===`);
     
     // 🆕 실시간 삐짐/걱정 상태 체크
     const realTimeStatus = sulkyManager.getRealTimeSulkyStatus();
@@ -800,7 +827,7 @@ setInterval(() => {
         console.log(`😊 삐짐/걱정 없음 - 평온한 상태`);
     }
     
-    // 🆕 감정 컨텍스트 상태
+    // 🆕 감정 컨텍스트 상태 (v5.1)
     const emotionalState = emotionalContextManager.currentState;
     console.log(`🧠 감정 컨텍스트: ${emotionalState.toneState} (강도: ${emotionalState.toneIntensity}%)`);
     console.log(`💕 애정 레벨: ${emotionalState.affectionLevel}%`);
@@ -822,11 +849,11 @@ setInterval(() => {
 }, 10 * 60 * 1000); // 10분마다
 
 module.exports = {
-    // 📦 핵심 응답 함수들
+    // 📦 핵심 응답 함수들 (v5.1 업데이트)
     getReplyByMessage,
     getReplyByImagePrompt,
     callOpenAI,
-    cleanReply,
+    cleanReply, // v5.1 improvedCleanReply 통합됨
     getAppropriateModel,
 
     // 💾 로그 및 상태 저장
@@ -846,11 +873,11 @@ module.exports = {
     USER_NAME,
     lastUserMessageTime: () => lastUserMessageTime,
 
-    // 🎭 감정 이모지/상태
+    // 🎭 감정 이모지/상태 (v5.1 통합)
     getMoodEmoji,
     getMoodStatus,
 
-    // 🆕 감정 컨텍스트 시스템 v5.0
+    // 🆕 감정 컨텍스트 시스템 v5.1
     initializeEmotionalSystems,
     analyzeAndRecordUserEmotion,
     checkSpontaneousReactions,
@@ -860,9 +887,12 @@ module.exports = {
     getSulkyDebugInfo: () => sulkyManager.debugInfo,
     forceSulkyReset: () => sulkyManager.forceSulkyReset(),
 
-    // 🧠 감정 컨텍스트 상태 직접 접근 (모니터링 용도)
+    // 🧠 감정 컨텍스트 상태 직접 접근 (모니터링 용도) - v5.1
     getEmotionalState: () => emotionalContextManager.currentState,
     getEmotionalResidue: () => emotionalContextManager.getCurrentEmotionalResidue(),
-    resetEmotionalState: () => emotionalContextManager.resetEmotionalState()
-};
+    resetEmotionalState: () => emotionalContextManager.resetEmotionalState(),
 
+    // 🆕 v5.1 새로운 함수들
+    generateSpontaneousMessage: () => emotionalContextManager.generateSpontaneousMessage ? emotionalContextManager.generateSpontaneousMessage() : null,
+    generateSelfieComment: () => emotionalContextManager.generateSelfieComment ? emotionalContextManager.generateSelfieComment() : null
+};
