@@ -1,112 +1,130 @@
-// src/spontaneousPhotoManager.js - v1.1 (항상 셀카 전송)
+// src/spontaneousPhotoManager.js v1.10 - ReferenceError 수정 및 캡션 로직 개선
 
-const moment = require('moment-timezone'); // 스케줄링을 위해 moment 필요
-const { getSelfieReply } = require('./yejinSelfie'); // 셀카 전송을 위해 필요 (yejinSelfie.js 파일이 필요합니다)
-// spontaneousPhotoManager에서 다른 사진 타입(concept, omoide)도 보내려면 해당 모듈들을 여기에 require 해야 합니다.
-// const { getConceptPhotoReply } = require('../memory/concept'); // 필요시 주석 해제 및 사용
-// const { getOmoideReply } = require('../memory/omoide');       // 필요시 주석 해제 및 사용
+const schedule = require('node-schedule');
+const moment = require('moment-timezone');
+const { saveLog, callOpenAI, cleanReply, BOT_NAME, USER_NAME } = require('./autoReply'); // autoReply에서 필요한 함수와 상수 불러오기
+const memoryManager = require('./memoryManager');
+const path = require('path');
+const fs = require('fs');
 
-let lastSentPhotoTime = 0; // 마지막 사진 전송 시간
-const MIN_INTERVAL_BETWEEN_PHOTOS = 30 * 60 * 1000; // 최소 30분 간격 (밀리초)
-const MAX_INTERVAL_BETWEEN_PHOTOS = 2 * 60 * 60 * 1000; // 최대 2시간 간격 (밀리초)
+// 이미지 파일 경로 (프로젝트 루트의 images 폴더)
+const IMAGE_DIR = path.join(process.cwd(), 'images');
 
-let photoSchedulerInterval; // 스케줄러 인터벌 ID
-
-/**
- * 예진이가 아저씨에게 보고 싶을 때 즉흥적으로 사진을 보냅니다.
- * @param {Object} client LINE Bot SDK Client 객체 (index.js에서 전달받음)
- * @param {string} userId LINE Bot이 메시지를 보낼 대상 사용자 ID
- * @param {Function} saveLogFunc 메시지 로그를 저장하는 함수
- * @param {Function} callOpenAIFunc OpenAI API 호출 함수 (autoReply에서 전달받음)
- * @param {Function} cleanReplyFunc OpenAI 응답 정제 함수 (autoReply에서 전달받음)
- */
-async function sendSpontaneousPhoto(client, userId, saveLogFunc, callOpenAIFunc, cleanReplyFunc) {
-    const now = Date.now();
-    const minutesSinceLastPhoto = (now - lastSentPhotoTime) / (1000 * 60);
-
-    // 마지막 사진 전송 시간으로부터 최소 간격이 지나지 않았다면 스킵
-    if (lastSentPhotoTime !== 0 && minutesSinceLastPhoto < (MIN_INTERVAL_BETWEEN_PHOTOS / (1000 * 60))) {
-        console.log(`[Spontaneous Photo] 아직 즉흥 사진을 보낼 시간이 아니야 (마지막 전송 ${Math.floor(minutesSinceLastPhoto)}분 전).`);
-        return;
-    }
-
-    // ⭐⭐⭐ 수정: 항상 사진을 보내도록 변경 ⭐⭐⭐
-    const shouldSendPhoto = true; // 무조건 사진을 보냅니다.
-    // if (!shouldSendPhoto) { // 이 조건문은 이제 필요 없습니다.
-    //     console.log("[Spontaneous Photo] 오늘은 아직 사진 보낼 기분이 아니야~ 다음에 보낼게!");
-    //     return;
-    // }
-
-    try {
-        console.log("[Spontaneous Photo] 아저씨한테 즉흥 사진 보낼 준비 중! 뭘 보낼까?");
-
-        const { callOpenAI, cleanReply } = require('../src/autoReply'); // autoReply에서 필요한 함수 import
-
-        // userMessageForSelfie는 getSelfieReply가 내부적으로 OpenAI 호출에 사용할 텍스트 프롬프트입니다.
-        const userMessageForSelfie = "예진이 셀카 보여줘"; 
-        const photoReply = await getSelfieReply(userMessageForSelfie, saveLogFunc, callOpenAI, cleanReply); 
-
-        if (photoReply && photoReply.type === 'image') {
-            const messagesToSend = [
-                {
-                    type: 'image',
-                    originalContentUrl: photoReply.originalContentUrl,
-                    previewImageUrl: photoReply.previewImageUrl,
-                    altText: photoReply.altText || photoReply.caption || '예진이의 즉흥 사진'
-                }
-            ];
-            if (photoReply.caption) {
-                messagesToSend.push({
-                    type: 'text',
-                    text: photoReply.caption
-                });
-            }
-            
-            await client.pushMessage(userId, messagesToSend);
-            saveLogFunc({ role: 'assistant', content: `(즉흥 사진 보냄) ${photoReply.caption || '예진이의 즉흥 사진'}`, timestamp: now }); 
-            lastSentPhotoTime = now;
-            console.log(`[Spontaneous Photo] 아저씨에게 즉흥 사진 전송 완료! 다음 사진은 ${Math.floor(Math.random() * (MAX_INTERVAL_BETWEEN_PHOTOS - MIN_INTERVAL_BETWEEN_PHOTOS) + MIN_INTERVAL_BETWEEN_PHOTOS) / (1000 * 60)}분 후에 고려될 수 있어.`);
-        } else if (photoReply && photoReply.type === 'text') {
-            // 셀카를 못 보낼 경우 텍스트로 대체
-            await client.pushMessage(userId, { type: 'text', text: photoReply.comment });
-            saveLogFunc({ role: 'assistant', content: `(즉흥 사진 실패) ${photoReply.comment}`, timestamp: now }); 
-            console.warn("[Spontaneous Photo] 즉흥 사진 전송 실패 (텍스트 응답):", photoReply.comment);
-        } else {
-            console.warn("[Spontaneous Photo] 즉흥 사진 응답 없음 또는 타입 오류.");
-        }
-    } catch (error) {
-        console.error("[Spontaneous Photo] 즉흥 사진 전송 중 에러 발생:", error);
-        lastSentPhotoTime = now; 
-    }
-}
+// 즉흥 사진 스케줄러 작업 객체
+let spontaneousPhotoJob = null;
 
 /**
  * 즉흥 사진 스케줄러를 시작합니다.
- * @param {Object} client LINE Bot SDK Client 객체
- * @param {string} userId LINE Bot이 메시지를 보낼 대상 사용자 ID
- * @param {Function} saveLogFunc 메시지 로그를 저장하는 함수
- * @param {Function} callOpenAIFunc OpenAI API 호출 함수 (index.js에서 전달받음)
- * @param {Function} cleanReplyFunc OpenAI 응답 정제 함수 (index.js에서 전달받음)
+ * @param {object} client LINE Messaging API 클라이언트
+ * @param {string} userId 타겟 사용자 ID
+ * @param {function} saveLogFunc 로그 저장 함수
+ * @param {function} callOpenAIFunc OpenAI 호출 함수
+ * @param {function} cleanReplyFunc 응답 정제 함수
  */
 function startSpontaneousPhotoScheduler(client, userId, saveLogFunc, callOpenAIFunc, cleanReplyFunc) {
-    // 기존 스케줄러가 있다면 정리
-    if (photoSchedulerInterval) {
-        clearInterval(photoSchedulerInterval);
+    // 함수 인자를 내부 변수로 할당하여 사용
+    const currentSaveLog = saveLogFunc;
+    const currentCallOpenAI = callOpenAIFunc;
+    const currentCleanReply = cleanReplyFunc;
+
+    // 기존 스케줄된 작업이 있다면 취소
+    if (spontaneousPhotoJob) {
+        spontaneousPhotoJob.cancel();
+        console.log('[SpontaneousPhoto] 기존 즉흥 사진 스케줄러 취소됨.');
     }
 
-    // 초기 실행 및 주기적인 스케줄링
-    const scheduleNextPhoto = () => {
-        const randomInterval = Math.floor(Math.random() * (MAX_INTERVAL_BETWEEN_PHOTOS - MIN_INTERVAL_BETWEEN_PHOTOS) + MIN_INTERVAL_BETWEEN_PHOTOS);
-        console.log(`[Spontaneous Photo Scheduler] 다음 즉흥 사진 전송을 ${Math.floor(randomInterval / (1000 * 60))}분 후에 고려할게!`);
+    // 매 30분마다 실행 (0, 30분)
+    // 실제 운영에서는 빈도를 조절해야 합니다. (예: 1시간, 2시간 간격)
+    spontaneousPhotoJob = schedule.scheduleJob('*/30 * * * *', async () => {
+        console.log('[SpontaneousPhoto] 즉흥 사진 전송 스케줄러 실행.');
+        const now = moment().tz('Asia/Tokyo');
+        const hour = now.hour();
 
-        photoSchedulerInterval = setTimeout(async () => { 
-            // sendSpontaneousPhoto에 인자들을 모두 전달
-            await sendSpontaneousPhoto(client, userId, saveLogFunc, callOpenAIFunc, cleanReplyFunc); 
-            scheduleNextPhoto(); // 다음 사진 스케줄링
-        }, randomInterval);
-    };
+        // 아침 8시부터 밤 10시 (22시)까지만 사진을 보냅니다.
+        if (hour >= 8 && hour < 22) {
+            // 20% 확률로 사진 전송 시도
+            if (Math.random() < 0.2) { // 0.2는 20% 확률
+                console.log('[SpontaneousPhoto] 20% 확률 조건 충족, 사진 전송 시도.');
+                await sendRandomPhoto(client, userId, currentSaveLog, currentCallOpenAI, currentCleanReply);
+            } else {
+                console.log('[SpontaneousPhoto] 20% 확률 조건 미충족, 사진 전송 건너뜀.');
+            }
+        } else {
+            console.log(`[SpontaneousPhoto] 현재 시간(${hour}시)은 사진 전송 가능 시간이 아닙니다.`);
+        }
+    });
 
-    scheduleNextPhoto(); // 첫 스케줄 시작
+    console.log('[SpontaneousPhoto] 즉흥 사진 스케줄러 시작됨 (매 30분마다 8시~22시 20% 확률).');
+}
+
+/**
+ * 랜덤 사진을 선택하여 전송합니다.
+ * @param {object} client LINE Messaging API 클라이언트
+ * @param {string} userId 타겟 사용자 ID
+ * @param {function} saveLogFunc 로그 저장 함수
+ * @param {function} callOpenAIFunc OpenAI 호출 함수
+ * @param {function} cleanReplyFunc 응답 정제 함수
+ */
+async function sendRandomPhoto(client, userId, saveLogFunc, callOpenAIFunc, cleanReplyFunc) {
+    try {
+        const files = fs.readdirSync(IMAGE_DIR).filter(file => {
+            const ext = path.extname(file).toLowerCase();
+            return ['.jpg', '.jpeg', '.png', '.gif'].includes(ext);
+        });
+
+        if (files.length === 0) {
+            console.warn('[SpontaneousPhoto] 전송할 이미지가 없습니다.');
+            return;
+        }
+
+        const randomFile = files[Math.floor(Math.random() * files.length)];
+        const imageUrl = `${process.env.BASE_URL}/images/${encodeURIComponent(randomFile)}`; // URL 인코딩 적용
+        console.log(`[SpontaneousPhoto] 전송할 이미지: ${imageUrl}`);
+
+        // 이미지에 대한 캡션 생성
+        const prompt = `아저씨에게 이 사진을 보내면서 어떤 말을 해줄까? 예진이의 말투로 20자 이내로 짧게 대답해줘. 이모티콘도 사용해줘.`;
+        const messages = [
+            {
+                role: "user",
+                content: [
+                    { type: "text", text: prompt },
+                    { type: "image_url", image_url: { url: imageUrl } }
+                ]
+            }
+        ];
+
+        let caption = await callOpenAIFunc(messages, 'gpt-4o', 100, 0.7); // gpt-4o 강제 사용
+        caption = cleanReplyFunc(caption); // 캡션도 정제
+
+        // 캡션이 너무 짧거나 부적절할 경우 대체 캡션 사용
+        if (!caption || caption.length < 5) {
+            const defaultCaptions = [
+                "아저씨! 예진이가 아저씨 생각나서 사진 보냈어~",
+                "이거 보니까 아저씨 생각나서 보내봐~",
+                "아저씨, 예진이 사진 보고 힘내!",
+                "아저씨한테 보여주고 싶어서 가져왔어!",
+                "예진이의 선물이야~ 마음에 들어?"
+            ];
+            caption = defaultCaptions[Math.floor(Math.random() * defaultCaptions.length)];
+        }
+
+        await client.pushMessage(userId, [
+            {
+                type: 'image',
+                originalContentUrl: imageUrl,
+                previewImageUrl: imageUrl // 미리보기 이미지도 동일하게 설정
+            },
+            {
+                type: 'text',
+                text: caption
+            }
+        ]);
+        saveLogFunc({ speaker: BOT_NAME, message: `(랜덤 사진 전송) ${caption}` });
+        console.log(`[SpontaneousPhoto] 랜덤 사진 전송 완료: ${imageUrl} (캡션: ${caption})`);
+
+    } catch (error) {
+        console.error('[SpontaneousPhoto] 랜덤 사진 전송 실패:', error);
+    }
 }
 
 module.exports = {
