@@ -822,36 +822,47 @@ setInterval(() => {
 }, 10 * 60 * 1000); // 10분마다
 
 module.exports = {
-    // 기존 함수들
+    // 📦 핵심 응답 함수들
     getReplyByMessage,
     getReplyByImagePrompt,
-    saveLog,
-    setForcedModel,
-    checkModelSwitchCommand,
-    getFormattedMemoriesForAI,
-    getMemoryListForSharing,
     callOpenAI,
     cleanReply,
     getAppropriateModel,
+
+    // 💾 로그 및 상태 저장
+    saveLog,
     updateLastUserMessageTime,
-    getMoodEmoji,
-    getMoodStatus,
-    lastUserMessageTime: () => lastUserMessageTime,
+
+    // 🧠 모델 제어 관련
+    setForcedModel,
+    checkModelSwitchCommand,
+
+    // 🧠 기억 시스템
+    getFormattedMemoriesForAI,
+    getMemoryListForSharing,
+
+    // 🧍 사용자 및 봇 이름
     BOT_NAME,
     USER_NAME,
-    
-    // 🆕 감정 컨텍스트 v5.0 관련 exports
+    lastUserMessageTime: () => lastUserMessageTime,
+
+    // 🎭 감정 이모지/상태
+    getMoodEmoji,
+    getMoodStatus,
+
+    // 🆕 감정 컨텍스트 시스템 v5.0
     initializeEmotionalSystems,
     analyzeAndRecordUserEmotion,
     checkSpontaneousReactions,
-    
-    // 🆕 sulkyManager v3.0 직접 접근 (디버그용)
+
+    // 🛠️ 삐지기 상태 직접 접근 (디버깅 용도)
     getSulkyRealTimeStatus: () => sulkyManager.getRealTimeSulkyStatus(),
     getSulkyDebugInfo: () => sulkyManager.debugInfo,
     forceSulkyReset: () => sulkyManager.forceSulkyReset(),
-    
-    // 🆕 감정 컨텍스트 직접 접근
+
+    // 🧠 감정 컨텍스트 상태 직접 접근 (모니터링 용도)
     getEmotionalState: () => emotionalContextManager.currentState,
     getEmotionalResidue: () => emotionalContextManager.getCurrentEmotionalResidue(),
     resetEmotionalState: () => emotionalContextManager.resetEmotionalState()
 };
+
