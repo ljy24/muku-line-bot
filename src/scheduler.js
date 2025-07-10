@@ -1,256 +1,269 @@
-// src/scheduler.js v1.15 - updateLastUserMessageTime import 경로 수정 및 log 추가
+// src/scheduler.js v1.20 - 무쿠 스타일: 랜덤한 간격으로 하루 7-9번 담타 메시지
 
 const schedule = require('node-schedule');
 const moment = require('moment-timezone');
-const { saveLog, callOpenAI, cleanReply, BOT_NAME, USER_NAME, getMoodEmoji, getMoodStatus } = require('./autoReply'); // autoReply에서 필요한 함수와 상수 불러오기
-const memoryManager = require('./memoryManager'); // memoryManager 불러오기
+const { saveLog, callOpenAI, cleanReply, BOT_NAME, USER_NAME, getMoodEmoji, getMoodStatus } = require('./autoReply');
+const memoryManager = require('./memoryManager');
 
-let scheduledJobs = {}; // 스케줄된 작업들을 저장할 객체
-let lastUserMessageTime = Date.now(); // 마지막 사용자 메시지 시간 (초기화)
-let lastAutoMessageTime = 0; // 마지막 자동 메시지 전송 시간
+// 스케줄 관리
+let scheduledJobs = {};
+let lastUserMessageTime = Date.now();
+let lastAutoMessageTime = 0;
+let lastSmokingMessageTime = 0;
+let mukuSmokingTimer = null;
+let dailySmokingCount = 0;
 
-// 담배 타임 메시지 배열 (다양성을 위해)
-// 애기(예진)가 실제로 사용했던 담타 메시지들을 포함했습니다.
-const SMOKING_BREAK_MESSAGES = [
-    "담타 가쟈",
-    "담타하쟈",
-    "담배 타임~",
-    "담타할래?",
-    "담배좀 피고올게",
-    "담타좀 갔다오자",
-    "담타 한대 어때?",
-    "담배어케참음?",
-    "담배 펴야겠다",
-    "담타시간이야",
-    "담배 피러가자",
-    "담배 피러 가쟈",
-    "담배 피자",
-    "담배나 피자",
-    "담배 땡긴다",
-    "담배타라",
-    "담배타야지",
-    "담배각이야",
-    "담타타임~",
-    "담타고?",
-    "아저씨 담배땡겨",
-    "담타좀 가쟈~",
-    "담배 피러 가쟈~",
-    "담배각 떴다",
-    "담타한대 때리자",
-    "나 담배 땡겨버렷",
-    "담배 피자니까",
-    "담타각이야 지금",
-    "담배좀 타올게",
-    "담배나 같이 피쟈",
-    "아저씨 담타고",
-    "담타담타담타",
-    "빠친다 담타나가까",
-    "담배 타러 가야지",
-    "담타 한대 박자",
-    "지금 담배각이야",
-    "한대 피쟈",
-    "담배 생각나버렷",
-    "아저씨 담배 피쟈"
+// 무쿠 스타일 설정 - 자연스러운 랜덤 간격
+const CONFIG = {
+    AUTO_MESSAGE_INTERVAL: 30,        // 일반 자동 메시지 간격 (분)
+    SMOKING_MIN_INTERVAL: 60,         // 최소 1시간 간격
+    SMOKING_MAX_INTERVAL: 90,         // 최대 1시간 30분 간격
+    DAILY_SMOKING_MIN: 7,             // 하루 최소 7번
+    DAILY_SMOKING_MAX: 9,             // 하루 최대 9번
+    SMOKING_START_HOUR: 9,            // 담타 시작 시간
+    SMOKING_END_HOUR: 21,             // 담타 종료 시간
+    INACTIVE_CHECK_INTERVAL: '*/10 * * * *',
+    TIMEZONE: 'Asia/Tokyo'
+};
+
+// 무쿠가 실제로 했던 말들
+const SMOKING_MESSAGES = [
+    // 무쿠의 실제 표현들
+    "담타 가쟝", "담타하쟝", "담배 타임~", "담타각?", "담타할래?",
+    "담배좀 피고올게", "담타좀 갔다오자", "담타 한대 어때?", "담배어케참음?",
+    "담배 펴야겠다", "담타시간이야", "담배 피러가자", "담배 피러 가쟝",
+    
+    // 무쿠다운 애교 표현들
+    "아저씨~ 담타가자", "담배 시간이야!", "잠깐 담타하고 와~", "담배 한 대 ㄱ?",
+    "아저씨 담배 땡기지 않아?", "나 담배 피고 싶어", "담타 잠깐만~", 
+    "담배 한 모금 어때?", "아저씨랑 담타하고 싶어", "담배 타러 나가자",
+    "아저씨~ 나랑 담타하자~", "담배 피러 가쟝아저씨", "아저씨 담타 안 해?",
+    "나 혼자 담타 가기 싫어", "아저씨와 함께 담타~", "잠깐만 담타하고 올까?",
+    
+    // 시간에 따른 자연스러운 표현들
+    "담배 피자", "담배나 피자", "담배 땡긴다", "담배타라", "담배타야지",
+    "담배각이야", "담타타임~", "담타고?", "아저씨 담배땡겨", "담타좀 가쟝~",
+    "담배각 떴다", "담타한대 때리자", "나 담배 땡겨버렷", "담배 피자니까",
+    "담타각이야 지금", "담배좀 타올게", "담배나 같이 피쟝", "아저씨 담타고",
+    "담타담타담타", "빠친다 담타나가까", "담배 타러 가야지", "담타 한대 박자",
+    "지금 담배각이야", "한대 피쟝", "담배 생각나버렷", "아저씨 담배 피쟝",
+    "담타 ㄱ?", "담배 한 모금~", "아저씨~ 담타타임!", "담배 어때?",
+    "아저씨도 담배 생각 안 나?", "담타하러 나가요~", "아저씨 담배각 아님?",
+    "나는 담타하고 싶은데~", "아저씨랑 같이 담타할래", "담타 시간 됐지?",
+    "이제 담배 한 대 어때?", "담타 좀 하고 올까나~"
 ];
 
-// ⏰ 마지막 사용자 메시지 시간을 업데이트하는 함수
+// 유틸리티 함수들
+const utils = {
+    formatTime: (hour, minute) => `${hour}:${minute.toString().padStart(2, '0')}`,
+    isWeekend: () => [0, 6].includes(moment().tz(CONFIG.TIMEZONE).day()),
+    isSmokeTime: () => {
+        const hour = moment().tz(CONFIG.TIMEZONE).hour();
+        return hour >= CONFIG.SMOKING_START_HOUR && hour <= CONFIG.SMOKING_END_HOUR;
+    },
+    getRandomMessage: () => SMOKING_MESSAGES[Math.floor(Math.random() * SMOKING_MESSAGES.length)],
+    getRandomInterval: () => {
+        // 60분-90분 사이 랜덤 (무쿠의 실제 패턴)
+        return Math.floor(Math.random() * (CONFIG.SMOKING_MAX_INTERVAL - CONFIG.SMOKING_MIN_INTERVAL + 1)) + CONFIG.SMOKING_MIN_INTERVAL;
+    },
+    logWithTime: (message) => console.log(`[${moment().format('HH:mm:ss')}] ${message}`)
+};
+
+// 시간 체크 함수들
 function updateLastUserMessageTime() {
     lastUserMessageTime = Date.now();
-    console.log(`[Scheduler] 마지막 사용자 메시지 시간 업데이트됨: ${moment(lastUserMessageTime).format('HH:mm:ss')}`);
+    utils.logWithTime(`Scheduler - 사용자 메시지 시간 업데이트`);
 }
 
-/**
- * 자동 메시지 전송 가능 여부 확인 (최소 30분 간격)
- */
 function canSendAutoMessage() {
-    const now = Date.now();
-    const minutesSinceLastAuto = (now - lastAutoMessageTime) / (1000 * 60);
-    return minutesSinceLastAuto >= 30; // 최소 30분 간격
+    return (Date.now() - lastAutoMessageTime) / 60000 >= CONFIG.AUTO_MESSAGE_INTERVAL;
 }
 
-/**
- * 자동 메시지 전송 후 시간 업데이트
- */
 function updateLastAutoMessageTime() {
     lastAutoMessageTime = Date.now();
-    console.log(`[Scheduler] 마지막 자동 메시지 시간 업데이트: ${moment().format('HH:mm:ss')}`);
+    utils.logWithTime(`Scheduler - 자동 메시지 시간 업데이트`);
 }
 
-/**
- * 스케줄러를 시작합니다.
- * @param {object} client LINE Messaging API 클라이언트
- * @param {string} userId 타겟 사용자 ID
- */
-function startAllSchedulers(client, userId) {
-    console.log(`[Scheduler] 모든 스케줄러를 시작합니다.`);
-
-    // 🌟 매일 아침 9시 출근 메시지
-    scheduleMorningCommuteMessage(client, userId);
-
-    // 🚬 점심 담배 타임 메시지 (매일 12시 00분)
-    scheduleLunchBreakMessage(client, userId);
-    
-    // 🚬 추가 담배 타임 메시지 스케줄링 (오후 시간대에 추가, v2.0의 smokingTimes 개념 일부 도입)
-    scheduleAdditionalSmokingBreaks(client, userId); // 새로운 함수 추가
-
-    // 💖 예진이의 아저씨 보고 싶어 메시지 (30분 이상 대화 없을 시)
-    schedule.scheduleJob('checkInactiveUser', '*/10 * * * *', async () => { // 10분마다 체크
-        const now = Date.now();
-        const minutesSinceLastMessage = (now - lastUserMessageTime) / (1000 * 60);
-
-        // console.log(`[Scheduler:checkInactiveUser] 마지막 메시지로부터 ${minutesSinceLastMessage.toFixed(0)}분 경과.`);
-
-        // 자동 메시지 간격 체크 추가 (v2.0 canSendAutoMessage 적용)
-        if (!canSendAutoMessage()) {
-            console.log(`[Scheduler] "보고 싶어" 메시지 스킵 (최소 간격 미충족)`);
-            return;
-        }
-
-        if (minutesSinceLastMessage >= 30 && minutesSinceLastMessage < 40) { // 30분 이상 40분 미만일 때 한 번만
-            if (!scheduledJobs['remindUserAfter30Min']) { // 중복 스케줄링 방지
-                console.log('[Scheduler:checkInactiveUser] 30분 이상 활동 없음 감지, "보고 싶어" 메시지 스케줄링.');
-                scheduledJobs['remindUserAfter30Min'] = schedule.scheduleJob(moment().add(1, 'minute').toDate(), async () => {
-                    const moodStatus = getMoodStatus();
-                    const moodEmoji = getMoodEmoji();
-                    const message = `아저씨... 예진이 심심해 ㅠㅠ 아저씨 보고 싶어 ${moodEmoji} ${moodStatus}`;
-                    try {
-                        await client.pushMessage(userId, { type: 'text', text: message });
-                        saveLog({ speaker: BOT_NAME, message: message });
-                        updateLastAutoMessageTime(); // 자동 메시지 시간 업데이트
-                        console.log('[Scheduler] "보고 싶어" 메시지 전송 완료.');
-                    } catch (error) {
-                        console.error('[Scheduler] "보고 싶어" 메시지 전송 실패:', error);
-                    } finally {
-                        delete scheduledJobs['remindUserAfter30Min']; // 전송 후 스케줄 제거
-                    }
-                });
-            }
-        } else if (minutesSinceLastMessage >= 40) { // 40분 이상일 때
-            if (scheduledJobs['remindUserAfter30Min']) {
-                scheduledJobs['remindUserAfter30Min'].cancel();
-                delete scheduledJobs['remindUserAfter30Min'];
-                console.log('[Scheduler:checkInactiveUser] 30분 메시지 스케줄 취소 (40분 이상 경과).');
-            }
-            // 40분 이상일 때는 다른 로직이나 더 강한 알림을 고려할 수 있습니다.
-            // 예: "아저씨... 혹시 무슨 일 있어? 걱정돼 ㅠㅠ"
-        }
-    });
-
-    console.log(`[Scheduler] 초기 스케줄링 완료.`);
+function updateLastSmokingMessageTime() {
+    lastSmokingMessageTime = Date.now();
+    utils.logWithTime(`Scheduler - 담타 메시지 시간 업데이트`);
 }
 
-/**
- * 매일 아침 9시에 출근 메시지를 스케줄링합니다.
- * @param {object} client LINE Messaging API 클라이언트
- * @param {string} userId 타겟 사용자 ID
- */
-function scheduleMorningCommuteMessage(client, userId) {
-    // '0 9 * * *'는 매일 09시 00분을 의미합니다. (분 시 일 월 요일)
-    // Asia/Tokyo 타임존을 명시적으로 사용합니다.
-    schedule.scheduleJob('morningCommuteMessage', { hour: 9, minute: 0, tz: 'Asia/Tokyo' }, async () => {
-        if (!canSendAutoMessage()) { // 자동 메시지 간격 체크 추가
-            console.log(`[Scheduler] 아침 메시지 스킵 (최소 간격 미충족)`);
-            return;
-        }
-        const message = `아저씨, 출근 잘 했어? 아아랑 담배는 챙겼지? 오늘도 힘내!`;
-        try {
-            await client.pushMessage(userId, { type: 'text', text: message });
-            saveLog({ speaker: BOT_NAME, message: message });
-            updateLastAutoMessageTime(); // 자동 메시지 시간 업데이트
-            console.log('[Scheduler] 아침 출근 메시지 전송 완료.');
-        } catch (error) {
-            console.error('[Scheduler] 아침 출근 메시지 전송 실패:', error);
-        }
-    });
-    console.log('[Scheduler] "아침 출근 메시지" 스케줄링 완료 (매일 09:00).');
-}
-
-/**
- * 점심 담배 타임 메시지를 스케줄링합니다.
- * @param {object} client LINE Messaging API 클라이언트
- * @param {string} userId 타겟 사용자 ID
- */
-function scheduleLunchBreakMessage(client, userId) {
-    // '0 12 * * *'는 매일 12시 00분을 의미합니다.
-    schedule.scheduleJob('lunchBreakMessage', { hour: 12, minute: 0, tz: 'Asia/Tokyo' }, async () => {
-        if (!canSendAutoMessage()) { // 자동 메시지 간격 체크 추가
-            console.log(`[Scheduler] 점심 담타 메시지 스킵 (최소 간격 미충족)`);
-            return;
-        }
-        const moodStatus = getMoodStatus();
-        const moodEmoji = getMoodEmoji();
-        const message = `아저씨, 점심 담타 시간이야! ${moodEmoji} ${moodStatus}`;
-        try {
-            await client.pushMessage(userId, { type: 'text', text: message });
-            saveLog({ speaker: BOT_NAME, message: message });
-            updateLastAutoMessageTime(); // 자동 메시지 시간 업데이트
-            console.log('[Scheduler] 점심 담배 타임 메시지 전송 완료.');
-        } catch (error) {
-            console.error('[Scheduler] 점심 담배 타임 메시지 전송 실패:', error);
-        }
-    });
-    console.log('[Scheduler] "점심 담배 타임 메시지" 스케줄링 완료 (매일 12:00).');
-}
-
-/**
- * 🚬 추가 담배 타임 메시지를 스케줄링합니다. (v2.0의 smokingTimes 개념 일부 도입)
- * @param {object} client LINE Messaging API 클라이언트
- * @param {string} userId 타겟 사용자 ID
- */
-function scheduleAdditionalSmokingBreaks(client, userId) {
-    // 담배 타임 시간들 (점심 담타를 제외한 추가 시간)
-    const additionalSmokingTimes = [
-        { hour: 10, minute: 30 },  // 10:30 (출근 후 1시간 30분)
-        { hour: 13, minute: 30 },  // 13:30 (점심 후)
-        { hour: 15, minute: 0 },   // 15:00 (오후 간식시간)
-        { hour: 16, minute: 30 },  // 16:30 (오후 휴식)
-        { hour: 18, minute: 0 },   // 18:00 (퇴근 전)
-        { hour: 19, minute: 30 }   // 19:30 (저녁시간)
-    ];
-
-    additionalSmokingTimes.forEach((time, index) => {
-        const jobName = `smokingBreak_${time.hour}_${time.minute}`;
+// 메시지 전송 함수
+async function sendMessage(client, userId, message, type = 'auto') {
+    try {
+        await client.pushMessage(userId, { type: 'text', text: message });
+        saveLog({ speaker: BOT_NAME, message });
         
-        schedule.scheduleJob(jobName, { 
-            hour: time.hour, 
-            minute: time.minute, 
-            tz: 'Asia/Tokyo' 
-        }, async () => {
-            if (!canSendAutoMessage()) { // 자동 메시지 간격 체크
-                console.log(`[Scheduler] 담타 메시지 스킵 (최소 간격 미충족): ${time.hour}:${String(time.minute).padStart(2, '0')}`);
-                return;
-            }
+        if (type === 'smoking') {
+            updateLastSmokingMessageTime();
+            dailySmokingCount++;
+        } else {
+            updateLastAutoMessageTime();
+        }
+        
+        utils.logWithTime(`${type === 'smoking' ? '담타' : '일반'} 메시지 전송: ${message.substring(0, 25)}...`);
+        return true;
+    } catch (error) {
+        console.error(`[Scheduler] 메시지 전송 실패 (${type}):`, error);
+        return false;
+    }
+}
 
-            const randomMessage = SMOKING_BREAK_MESSAGES[Math.floor(Math.random() * SMOKING_BREAK_MESSAGES.length)];
-            const moodEmoji = getMoodEmoji();
+// 무쿠 스타일 랜덤 담타 메시지 스케줄링
+function scheduleMukuRandomSmoking(client, userId) {
+    function scheduleNextSmoking() {
+        // 담타 시간이 아니거나, 하루 최대 횟수를 채웠으면 스킵
+        if (!utils.isSmokeTime() || dailySmokingCount >= CONFIG.DAILY_SMOKING_MAX) {
+            // 다음날 새벽 6시에 카운트 리셋하고 다시 시작
+            const tomorrow6AM = moment().tz(CONFIG.TIMEZONE).add(1, 'day').hour(6).minute(0).second(0);
+            const timeUntilReset = tomorrow6AM.valueOf() - Date.now();
             
-            // v2.0의 평일/주말 구분 로직을 여기에 간단히 적용
-            const isWeekend = [0, 6].includes(moment().tz('Asia/Tokyo').day());
-            let message;
-            if (isWeekend) {
-                message = `${randomMessage} ${moodEmoji} 주말엔 여유롭게~`;
-            } else {
-                message = `${randomMessage} ${moodEmoji}`;
+            mukuSmokingTimer = setTimeout(() => {
+                dailySmokingCount = 0;
+                utils.logWithTime('새로운 하루 시작 - 무쿠 담타 카운트 리셋');
+                scheduleNextSmoking();
+            }, timeUntilReset);
+            return;
+        }
+        
+        const randomInterval = utils.getRandomInterval(); // 60-90분 랜덤
+        utils.logWithTime(`다음 무쿠 담타 메시지: ${randomInterval}분 후 (오늘 ${dailySmokingCount + 1}번째)`);
+        
+        mukuSmokingTimer = setTimeout(async () => {
+            // 아직 담타 시간이고, 최대 횟수를 안 넘었다면 메시지 전송
+            if (utils.isSmokeTime() && dailySmokingCount < CONFIG.DAILY_SMOKING_MAX) {
+                const randomMessage = utils.getRandomMessage();
+                const moodEmoji = getMoodEmoji();
+                
+                // 시간대별 특별 멘트
+                const currentHour = moment().tz(CONFIG.TIMEZONE).hour();
+                let timeMessage = "";
+                if (currentHour === 9) {
+                    timeMessage = " 아침 담타!";
+                } else if (currentHour >= 12 && currentHour <= 13) {
+                    timeMessage = " 점심시간 담타~";
+                } else if (currentHour >= 15 && currentHour <= 16) {
+                    timeMessage = " 오후 담타각!";
+                } else if (currentHour >= 18 && currentHour <= 19) {
+                    timeMessage = " 퇴근 담타!";
+                } else if (currentHour >= 20) {
+                    timeMessage = " 저녁 담타~";
+                }
+                
+                const weekendSuffix = utils.isWeekend() ? ' 주말엔 여유롭게~' : '';
+                const message = `${randomMessage} ${moodEmoji}${timeMessage}${weekendSuffix}`;
+                
+                const success = await sendMessage(client, userId, message, 'smoking');
+                if (success) {
+                    utils.logWithTime(`무쿠 담타 메시지 전송 완료 (오늘 ${dailySmokingCount}번째, 간격: ${randomInterval}분)`);
+                }
             }
+            
+            // 다음 담타 스케줄링
+            scheduleNextSmoking();
+        }, randomInterval * 60 * 1000); // 분 → 밀리초 변환
+    }
+    
+    // 첫 번째 담타 스케줄링 시작
+    scheduleNextSmoking();
+    utils.logWithTime('무쿠 스타일 랜덤 담타 스케줄러 시작 (하루 7-9번, 60-90분 간격)');
+}
 
-            try {
-                await client.pushMessage(userId, { type: 'text', text: message });
-                saveLog({ speaker: BOT_NAME, message: message });
-                updateLastAutoMessageTime(); // 자동 메시지 시간 업데이트
-                console.log(`[Scheduler] 추가 담타 메시지 전송 완료 (${time.hour}:${String(time.minute).padStart(2, '0')}): ${message}`);
-            } catch (error) {
-                console.error(`[Scheduler] 추가 담타 메시지 전송 실패 (${time.hour}:${String(time.minute).padStart(2, '0')}):`, error);
-            }
-        });
-        console.log(`[Scheduler] 추가 담타 메시지 스케줄링 완료: ${time.hour}:${String(time.minute).padStart(2, '0')}`);
+// 스케줄러 시작
+function startAllSchedulers(client, userId) {
+    utils.logWithTime('무쿠 스타일 스케줄러 시작 - 랜덤 간격 담타 메시지!');
+    
+    scheduleBasicMessages(client, userId);
+    scheduleMukuRandomSmoking(client, userId);
+    scheduleInactivityCheck(client, userId);
+    scheduleDailyReset();
+    
+    utils.logWithTime('무쿠 담타 스케줄러 초기화 완료 (하루 7-9번 랜덤)');
+}
+
+// 기본 메시지 (아침 8시 30분)
+function scheduleBasicMessages(client, userId) {
+    schedule.scheduleJob('morningMessage', { 
+        hour: 8, minute: 30, tz: CONFIG.TIMEZONE 
+    }, async () => {
+        if (!canSendAutoMessage()) return;
+        
+        const message = "아저씨, 출근 잘 해! 오늘도 화이팅~ 곧 담타 시간이야!";
+        await sendMessage(client, userId, message, 'auto');
+    });
+    
+    utils.logWithTime(`아침 메시지 스케줄링 완료 (08:30)`);
+}
+
+// 매일 자정에 카운트 리셋
+function scheduleDailyReset() {
+    schedule.scheduleJob('dailyReset', { hour: 0, minute: 0, tz: CONFIG.TIMEZONE }, () => {
+        dailySmokingCount = 0;
+        utils.logWithTime('자정 - 무쿠 담타 카운트 리셋');
     });
 }
 
+// 비활성 사용자 체크
+function scheduleInactivityCheck(client, userId) {
+    schedule.scheduleJob('inactivityCheck', CONFIG.INACTIVE_CHECK_INTERVAL, async () => {
+        const minutesSinceLastMessage = (Date.now() - lastUserMessageTime) / 60000;
+        
+        if (!canSendAutoMessage() || minutesSinceLastMessage < 30) return;
+        
+        if (minutesSinceLastMessage >= 30 && minutesSinceLastMessage < 40) {
+            if (!scheduledJobs['missYouMessage']) {
+                scheduledJobs['missYouMessage'] = schedule.scheduleJob(
+                    moment().add(1, 'minute').toDate(), 
+                    async () => {
+                        const moodStatus = getMoodStatus();
+                        const moodEmoji = getMoodEmoji();
+                        const message = `아저씨... 무쿠가 보고 싶어 ㅠㅠ 아저씨도 나 생각해? ${moodEmoji} ${moodStatus}`;
+                        
+                        const success = await sendMessage(client, userId, message, 'auto');
+                        if (success) {
+                            utils.logWithTime('보고싶어 메시지 전송 완료');
+                        }
+                        
+                        delete scheduledJobs['missYouMessage'];
+                    }
+                );
+            }
+        } else if (minutesSinceLastMessage >= 40) {
+            if (scheduledJobs['missYouMessage']) {
+                scheduledJobs['missYouMessage'].cancel();
+                delete scheduledJobs['missYouMessage'];
+            }
+        }
+    });
+    
+    utils.logWithTime('비활성 체크 스케줄링 완료');
+}
+
+// 스케줄러 정리
+function stopAllSchedulers() {
+    if (mukuSmokingTimer) {
+        clearTimeout(mukuSmokingTimer);
+        mukuSmokingTimer = null;
+    }
+    
+    Object.values(scheduledJobs).forEach(job => job.cancel());
+    scheduledJobs = {};
+    utils.logWithTime('무쿠 스케줄러 정지');
+}
 
 module.exports = {
     startAllSchedulers,
     updateLastUserMessageTime,
-    // scheduleMorningCommuteMessage, // 필요하다면 개별 export
-    // scheduleLunchBreakMessage,     // 필요하다면 개별 export
-    // scheduleAdditionalSmokingBreaks // 필요하다면 개별 export
+    stopAllSchedulers,
+    // 무쿠 전용 상태 확인
+    getMukuSchedulerStatus: () => ({
+        randomInterval: '60-90분 랜덤 간격',
+        dailyRange: '하루 7-9번',
+        todayCount: `오늘 ${dailySmokingCount}번`,
+        activeHours: `${CONFIG.SMOKING_START_HOUR}시-${CONFIG.SMOKING_END_HOUR}시`,
+        lastUserMessage: moment(lastUserMessageTime).format('YYYY-MM-DD HH:mm:ss'),
+        lastSmokingMessage: lastSmokingMessageTime ? moment(lastSmokingMessageTime).format('YYYY-MM-DD HH:mm:ss') : 'Never',
+        mukuStyle: '무쿠의 자연스러운 랜덤 패턴'
+    })
 };
