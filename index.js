@@ -56,7 +56,7 @@ app.get('/', (_, res) => res.send('무쿠 살아있엉'));
 
 app.get('/force-push', async (req, res) => {
     try {
-        const testMessage = "아저씨! 강제 푸시로 예진이가 메시지 보냈어!";
+        const testMessage = "아저씨! 나 꺴어!";
         await client.pushMessage(userId, { type: 'text', text: testMessage });
         saveLog('예진이', testMessage);
         res.send(`강제 푸시 메시지 전송됨: ${testMessage}`);
