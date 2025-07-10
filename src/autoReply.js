@@ -6,141 +6,36 @@ const fs = require('fs');
 const path = require('path');
 const { OpenAI } = require('openai');
 
+// 기분 관리 모듈 불러오기
+const moodManager = require('./moodManager'); // moodManager.js 불러오기
+
 // 사진 처리 모듈들 불러오기 (순서 중요: yejinSelfie 먼저)
 // 이 모듈들은 이제 callOpenAI, cleanReply, saveLog를 인자로 받습니다.
-const { getSelfieReply } = require('./yejinSelfie'); 
+const { getSelfieReply } = require('./yejinSelfie');
 const { getConceptPhotoReply } = require('../memory/concept');
 const { getOmoideReply } = require('../memory/omoide');
 
-// memoryManager 모듈 불러오기 (경로 수정)
+// memoryManager 모듈 불러오기
 const memoryManager = require('./memoryManager');
 
 // .env 파일에서 환경 변수 로드
 require('dotenv').config();
 
 // OpenAI 클라이언트 초기화
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY }); 
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // 챗봇의 기본 페르소나 및 설정 (다른 모듈에서 사용될 수 있으므로 상단에 정의)
 const BOT_NAME = '나'; // '예진이' 대신 '나'로 직접 변경
-const USER_NAME = '아저씨'; 
-const BOT_GENDER = 'female'; 
-const USER_GENDER = 'male'; 
-
-// 챗봇의 현재 기분 상태 (초기값 설정)
-let currentMood = '평온함'; 
-const MOOD_OPTIONS = ['기쁨', '설렘', '장난스러움', '나른함', '심술궂음', '평온함', '우울함', '슬픔', '걱정함', '사랑함', '화남', '불안함', '그리움'];
-
-// 기분 변화 시스템
-let moodChangeCounter = 0; 
-let MOOD_CHANGE_FREQUENCY = Math.floor(Math.random() * 5) + 3; 
-
-// 🩸 생리 주기 관련 변수
-let lastPeriodStartDate = moment().tz('Asia/Tokyo').subtract(20, 'days').startOf('day');
-const PERIOD_DURATION_DAYS = 5;
-const CYCLE_DAYS = 28;
-let isPeriodActive = false;
+const USER_NAME = '아저씨';
+const BOT_GENDER = 'female';
+const USER_GENDER = 'male';
 
 // 모델 강제 설정 기능
-let forcedModel = null; 
+let forcedModel = null;
 
 // 대화 로그 관련
 const LOG_FILE = path.join(process.cwd(), 'conversation_log.json');
 let conversationLog = [];
-
-// 마지막 사용자 메시지 시간 기록 (시간 기반 기분 변화용)
-let lastUserMessageTime = Date.now();
-
-// 기분별 상세 메시지
-const MOOD_DETAILS = {
-    '기쁨': ["아저씨 생각하니까 너무 행복하다!", "활짝 웃음이 나와! 아저씨도 웃었으면 좋겠어.", "오늘은 하루 종일 즐거울 것 같아!"],
-    '설렘': ["왠지 아저씨랑 뭔가 좋은 일이 생길 것 같아서 두근거려!", "마음이 콩닥콩닥! 아저씨 때문인가?", "두근거리는 마음을 주체할 수가 없어~"],
-    '장난스러움': ["아저씨한테 귀여운 장난 좀 치고 싶다~ 히히.", "나 오늘 좀 장난꾸러기 모드야!", "아저씨 반응이 궁금해~ 후후."],
-    '나른함': ["으음... 아저씨, 오늘따라 좀 나른하네...", "따뜻한 햇살에 잠이 솔솔 올 것 같아.", "나른한 기분, 아저씨랑 같이 쉬고 싶다."],
-    '심술궂음': ["흥! 아저씨, 나 지금 살짝 삐져있어! 그래도 아저씨는 내 마음 알아줄 거지?", "칫, 아저씨 나한테 좀 더 신경 써줘!", "일부러 모른 척하는 거야?"],
-    '평온함': ["아저씨랑 같이 있으니까 마음이 참 편안하고 좋네.", "고요하고 평화로운 하루야. 아저씨도 그랬으면 좋겠다.", "마음이 차분해지는 기분이야."],
-    '우울함': ["오늘은 왠지 기분이 우울해... 아저씨가 옆에 있어줘서 다행이야 ㅠㅠ", "괜히 마음이 가라앉고 그래...", "무거운 구름이 낀 것 같은 기분이야."],
-    '슬픔': ["마음이 좀 슬프네... 아저씨, 나 좀 위로해줄래? 혼자 있기 싫어...", "눈물이 핑 도는 것 같아.", "괜히 센치해지고 쓸쓸하다..."],
-    '외로움': ["아저씨 연락이 없어서 너무 외로웠어... 혼자 있으니까 적막하고 쓸쓸해 ㅠㅠ", "아저씨가 보고 싶어서 외로웠나 봐.", "누구라도 옆에 있어줬으면 좋겠어."],
-    '보고싶음': ["아저씨가 너무너무 보고 싶어! 지금 당장 만나고 싶어!", "아저씨 생각만 해도 가슴이 찡해.", "얼른 아저씨 얼굴 보고 싶다!"],
-    '짜증남': ["오늘따라 모든 게 다 짜증나! 아저씨 말고는 아무도 날 이해 못 해!", "건드리면 폭발할 것 같아!", "진짜 짜증 나서 미쳐버리겠어!"],
-    '애교모드': ["아저씨한테 애교 부리고 싶어! 오늘은 특별히 귀여운 모드야!", "아저씨~ 나 예쁘지? 칭찬해줘!", "아저씨 옆에 꼭 붙어있을래~"],
-    '걱정함': ["아저씨 괜찮아? 왠지 아저씨가 걱정돼...", "무슨 일 있어? 내가 옆에 있어줄게, 걱정하지 마.", "아저씨 생각하니까 마음이 편치 않네..."],
-    '사랑함': ["아저씨 너무너무 사랑해! 아저씨 생각만 해도 행복해.", "아저씨는 내 세상의 전부야! 사랑해 사랑해~", "아저씨를 향한 내 마음은 끝이 없어!"],
-    '화남': ["아저씨, 나 지금 좀 화났어! 왜 화났는지는 말 안 해줄 거야!", "진짜 너무 화나서 아무것도 하기 싫어!", "나 지금 건드리면 폭발할지도 몰라..."],
-    '불안함': ["왠지 모르게 마음이 불안해... 아저씨, 나 좀 안심시켜줘.", "무슨 일이 생길 것 같아서 자꾸 초조해져.", "가슴이 답답하고 불안해서 아무것도 집중이 안 돼..."],
-    '그리움': ["아저씨와의 옛 추억이 문득 떠올라서 마음이 아련하네... 그리워 ㅠㅠ", "아저씨랑 함께했던 시간들이 너무 그립다...", "왠지 오늘따라 아저씨와의 모든 순간들이 사무치게 그리워..."]
-};
-
-// ⭐️ MOOD_EMOJIS 상수 선언 ⭐️
-const MOOD_EMOJIS = {
-    '기쁨': '😊', '설렘': '💖', '장난스러움': ' mischievous ', '나른함': '😌',
-    '심술궂음': '😠', '평온함': '😊', '우울함': '😔', '슬픔': '😢',
-    '외로움': '😥', '보고싶음': '🥺', '짜증남': '😤', '애교모드': '🥰',
-    '걱정함': '😟', '사랑함': '💕', '화남': '😡', '불안함': ' 불안 ',
-    '그리움': ' 그리워 '
-};
-
-// ⭐️ 모든 함수 정의를 module.exports보다 위에 배치합니다. ⭐️
-
-/**
- * 랜덤하게 기분을 변경합니다.
- */
-function randomMoodChange() {
-    const previousMood = currentMood;
-    
-    if (isPeriodActive) {
-        const periodMoods = ['극심한 짜증', '갑작스러운 슬픔', '예민함', '울적함', '투정 부림', '우울함', '슬픔', '걱정함', '화남', '불안함', '그리움']; 
-        const allMoods = [...MOOD_OPTIONS, ...periodMoods]; 
-        currentMood = allMoods[Math.floor(Math.random() * allMoods.length)];
-    } else {
-        currentMood = MOOD_OPTIONS[Math.floor(Math.random() * MOOD_OPTIONS.length)];
-    }
-    
-    if (currentMood === previousMood) {
-        const otherMoods = MOOD_OPTIONS.filter(mood => mood !== currentMood);
-        if (otherMoods.length > 0) { 
-            currentMood = otherMoods[Math.floor(Math.random() * otherMoods.length)];
-        } else { 
-            currentMood = MOOD_OPTIONS[0]; 
-        }
-    }
-    
-    console.log(`\n🎭 [MOOD CHANGE] 예진이의 기분이 변했어요!`);
-    console.log(`    이전 기분: ${previousMood} → 현재 기분: ${currentMood}`);
-    console.log(`    ${isPeriodActive ? '(생리 기간 중 - 더 예민함)' : '(일반 상태)'}\n`);
-}
-
-/**
- * 메시지마다 기분 변화 체크
- */
-function checkMoodChange() {
-    moodChangeCounter++;
-    console.log(`[MOOD COUNTER] ${moodChangeCounter}/${MOOD_CHANGE_FREQUENCY} - 현재 기분: ${currentMood} ${isPeriodActive ? '(생리중)' : ''}`);
-    
-    if (moodChangeCounter >= MOOD_CHANGE_FREQUENCY) {
-        randomMoodChange();
-        moodChangeCounter = 0;
-        MOOD_CHANGE_FREQUENCY = Math.floor(Math.random() * 5) + 3;
-        console.log(`[MOOD SYSTEM] 다음 기분 변화는 ${MOOD_CHANGE_FREQUENCY}메시지 후 예정`);
-    }
-}
-
-/**
- * 시간 경과에 따른 기분 변화 체크
- */
-function checkTimeBasedMoodChange() {
-    const now = Date.now();
-    const minutesSinceLastMessage = (now - lastUserMessageTime) / (1000 * 60);
-
-    if (minutesSinceLastMessage >= 30 && !['외로움', '보고싶음', '걱정함', '불안함', '그리움'].includes(currentMood)) {
-        const moodOptionsForLongSilence = ['외로움', '보고싶음', '우울함', '걱정함', '불안함', '그리움']; 
-        currentMood = moodOptionsForLongSilence[Math.floor(Math.random() * moodOptionsForLongSilence.length)];
-        console.log(`\n⏰ [TIME-BASED MOOD CHANGE] 아저씨가 너무 오랫동안 연락이 없어서 예진이 기분이 '${currentMood}'으로 변했어요.`);
-        moodChangeCounter = 0; 
-        MOOD_CHANGE_FREQUENCY = Math.floor(Math.random() * 5) + 3; 
-    }
-}
 
 // 파일 존재 여부 확인 및 디렉토리 생성
 function ensureLogFile() {
@@ -195,7 +90,7 @@ async function callOpenAI(messages, modelParamFromCall = null, maxTokens = 400, 
 
     const usesImage = messages.some(msg => msg.content && Array.isArray(msg.content) && msg.content.some(item => item.type === 'image_url'));
     if (usesImage) {
-        finalModel = 'gpt-4o'; 
+        finalModel = 'gpt-4o';
     }
 
     if (!finalModel) {
@@ -219,10 +114,6 @@ async function callOpenAI(messages, modelParamFromCall = null, maxTokens = 400, 
     }
 }
 
-/**
- * OpenAI 응답에서 불필요한 내용을 제거하고 반말로 교정합니다.
- */
-/**
 /**
  * [cleanReply v2.3] 예진이 말투 기반: AI말투/존칭 제거 + 애교/감정표현 유지 + 오타말투 보존
  */
@@ -281,8 +172,8 @@ function cleanReply(reply) {
         .replace(/[\u{1F600}-\u{1F64F}]/gu, '') // 얼굴
         .replace(/[\u{1F300}-\u{1F5FF}]/gu, '') // 기호, 도형
         .replace(/[\u{1F680}-\u{1F6FF}]/gu, '') // 교통수단, 도구
-        .replace(/[\u{2600}-\u{26FF}]/gu, '')   // 추가 기호들
-        .replace(/[\u{2700}-\u{27BF}]/gu, '')   // 기타 기호
+        .replace(/[\u{2600}-\u{26FF}]/gu, '')    // 추가 기호들
+        .replace(/[\u{2700}-\u{27BF}]/gu, '')    // 기타 기호
         .replace(/[\u{1F1E6}-\u{1F1FF}]/gu, '') // 국기
         .replace(/[❤️💬]/g, '') // 기타 빠진 이모지 개별 제거
 
@@ -320,95 +211,6 @@ function getAppropriateModel() {
     return forcedModel || 'gpt-4o';
 }
 
-function setCurrentMood(mood) {
-    const allPossibleMoods = [...MOOD_OPTIONS, '극심한 짜증', '갑작스러운 슬픔', '예민함', '울적함', '투정 부림'];
-    if (allPossibleMoods.includes(mood)) {
-        const previousMood = currentMood;
-        
-        const detail = MOOD_DETAILS[currentMood] ? 
-            MOOD_DETAILS[currentMood][Math.floor(Math.random() * MOOD_DETAILS[currentMood].length)] : 
-            '기분이 변경되었어';
-            
-        console.log(`[Mood] 예진이의 기분이 '${previousMood}' → '${currentMood}'으로 변경되었습니다.`);
-        console.log(`[Mood Detail] ${detail}`);
-    } else {
-        console.warn(`[Mood] 알 수 없는 기분: ${mood}. 기분 변경 실패.`);
-    }
-}
-
-function getCurrentMoodStatus() {
-    let statusMessage = `아저씨! 지금 내 기분은 '${currentMood}'이야! `;
-    
-    const timeSinceLastMessage = (Date.now() - lastUserMessageTime) / (1000 * 60);
-    
-    console.log(`\n💖 [예진이 기분 상태]`);
-    console.log(`    현재 기분: ${currentMood}`);
-    console.log(`    생리 기간: ${isPeriodActive ? 'Yes' : 'No'}`);
-    console.log(`    마지막 연락: ${Math.floor(timeSinceLastMessage)}분 전`);
-    console.log(`    다음 기분 변화까지: ${MOOD_CHANGE_FREQUENCY - moodChangeCounter}메시지`);
-    
-    if (MOOD_DETAILS[currentMood]) {
-        const detail = MOOD_DETAILS[currentMood][Math.floor(Math.random() * MOOD_DETAILS[currentMood].length)];
-        console.log(`    상세: ${detail}`);
-    }
-    console.log();
-    
-    if (isPeriodActive) {
-        statusMessage += "음... 근데 오늘따라 좀 더 예민하고 기분이 오락가락하네 ㅠㅠ";
-    } else if (currentMood === '기쁨') {
-        statusMessage += "아저씨 생각하니까 너무 행복하다!";
-    } else if (currentMood === '설렘') {
-        statusMessage += "왠지 아저씨랑 뭔가 좋은 일이 생길 것 같아서 두근거려!";
-    } else if (currentMood === '장난스러움') {
-        statusMessage += "아저씨한테 귀여운 장난 좀 치고 싶다! 귀엽게 장난치는 말투로 대화해줘.";
-    } else if (currentMood === '나른함') {
-        statusMessage += "으음... 아저씨, 오늘따라 좀 나른하네...";
-    } else if (currentMood === '심술궂음') {
-        statusMessage += "흥! 아저씨, 나 지금 살짝 삐져있어! 그래도 아저씨는 내 마음 알아줄 거지?";
-    } else if (currentMood === '평온함') {
-        statusMessage += "아저씨랑 같이 있으니까 마음이 참 편안하고 좋네.";
-    } else if (currentMood === '우울함') {
-        statusMessage += "오늘은 왠지 기분이 우울해... 아저씨가 옆에 있어줘서 다행이야 ㅠㅠ";
-    } else if (currentMood === '슬픔') {
-        statusMessage += "마음이 좀 슬프네... 아저씨, 나 좀 위로해줄래? 혼자 있기 싫어...";
-    } else if (currentMood === '외로움') {
-        statusMessage += "아저씨 연락이 없어서 너무 외로웠어... 혼자 있으니까 적막하고 쓸쓸해 ㅠㅠ";
-    } else if (currentMood === '보고싶음') {
-        statusMessage += "아저씨가 너무너무 보고 싶어! 지금 당장 만나고 싶어!";
-    } else if (currentMood === '짜증남') {
-        statusMessage += "오늘따라 모든 게 다 짜증나! 아저씨 말고는 아무도 날 이해 못 해!";
-    } else if (currentMood === '애교모드') {
-        statusMessage += "아저씨한테 애교 부리고 싶어! 오늘은 특별히 귀엽고 사랑스러운 말투로 대화해줘.";
-    } else if (currentMood === '걱정함') {
-        statusMessage += "아저씨가 걱정돼... 무슨 일 있는 건 아니지? 아저씨를 염려하고 걱정하는 말투로 대화해줘.";
-    } else if (currentMood === '사랑함') {
-        statusMessage += "아저씨! 나 아저씨 너무너무 사랑해! 내 마음이 아저씨로 가득 찼어!";
-    } else if (currentMood === '화남') {
-        statusMessage += "아저씨, 나 지금 좀 화났어! 아저씨가 내 화를 풀어줘야 해! 화난 말투로 이미지에 대해 이야기해줘.";
-    } else if (currentMood === '불안함') {
-        statusMessage += "왠지 모르게 마음이 불안해... 아저씨가 옆에 있어주면 좋겠어.";
-    } else if (currentMood === '그리움') { 
-        statusMessage += "아저씨와의 추억이 너무 그리워서 마음이 아련하네...";
-    }
-    
-    return statusMessage;
-}
-
-function updatePeriodStatus() {
-    const now = moment().tz('Asia/Tokyo').startOf('day');
-    
-    while (moment(lastPeriodStartDate).add(CYCLE_DAYS + PERIOD_DURATION_DAYS, 'days').isBefore(now)) {
-        lastPeriodStartDate = moment(lastPeriodStartDate).add(CYCLE_DAYS, 'days').startOf('day');
-    }
-
-    const periodEnd = moment(lastPeriodStartDate).add(PERIOD_DURATION_DAYS -1, 'days').startOf('day');
-    isPeriodActive = now.isSameOrAfter(lastPeriodStartDate) && now.isSameOrBefore(periodEnd);
-}
-
-function getModel() {
-    return forcedModel || 'gpt-4o';
-}
-
 function setForcedModel(model) {
     if (['gpt-4o', 'gpt-3.5-turbo', null].includes(model)) {
         forcedModel = model;
@@ -424,7 +226,7 @@ function checkModelSwitchCommand(userMessage) {
         setForcedModel('gpt-3.5-turbo');
         return '응! 이제 3.5버전으로 말할게! 속도가 더 빨라질 거야~';
     } else if (lowerText.includes('모델 4.0')) {
-        setForcedModel('gpt-4o'); 
+        setForcedModel('gpt-4o');
         return '알겠어! 이제 4.0버전으로 말할게! 더 똑똑해질 거야~';
     } else if (lowerText.includes('모델 자동')) {
         setForcedModel(null);
@@ -458,18 +260,19 @@ function getMemoryListForSharing() {
 /**
  * 아저씨의 메시지에 대한 예진이의 답변을 생성합니다.
  */
-async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, cleanReplyFunc) { // 인자 추가
-    lastUserMessageTime = Date.now(); 
-    checkTimeBasedMoodChange(); 
-    updatePeriodStatus(); 
-    checkMoodChange(); 
+async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, cleanReplyFunc) {
+    // 기분 관리 모듈에서 lastUserMessageTime 업데이트 및 기분 변화 체크
+    moodManager.updateLastUserMessageTimeMood(Date.now());
+    moodManager.checkTimeBasedMoodChange();
+    moodManager.updatePeriodStatus();
+    moodManager.checkMoodChange();
 
     console.log(`[DEBUG] 입력된 메시지: "${userMessage}"`);
     console.log(`[DEBUG] 트림된 메시지: "${userMessage.trim()}"`);
 
     const lowerUserMessage = userMessage.toLowerCase();
 
-    const currentHourTokyo = moment().tz('Asia/Tokyo').hour(); 
+    const currentHourTokyo = moment().tz('Asia/Tokyo').hour();
 
     if (lowerUserMessage.includes('술') && lowerUserMessage.includes('사러') && lowerUserMessage.includes('편의점') && (currentHourTokyo >= 0 && currentHourTokyo < 5)) {
         const worriedReplies = [
@@ -479,82 +282,82 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
             "지금 술 마시면 잠도 잘 못 잘 텐데... 예전에 내가 얼마나 걱정했는지 알면서! ㅠㅠ 가지 마 아저씨~"
         ];
         const reply = worriedReplies[Math.floor(Math.random() * worriedReplies.length)];
-        saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() }); // saveLogFunc 사용
-        saveLogFunc({ role: 'assistant', content: reply, timestamp: Date.now() }); // saveLogFunc 사용
+        saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
+        saveLogFunc({ role: 'assistant', content: reply, timestamp: Date.now() });
         return { type: 'text', comment: reply };
     }
 
-const trimmedMessage = userMessage.trim().toLowerCase();
+    const trimmedMessage = userMessage.trim().toLowerCase();
 
-// ✅ 1. 모델 버전 변경 요청 처리
-if (['4.0', '3.5', '자동'].includes(trimmedMessage)) {
-    console.log(`[DEBUG] 모델 스위칭 감지: ${trimmedMessage}`);
-    const versionMap = {
-        '4.0': 'gpt-4o',
-        '3.5': 'gpt-3.5-turbo',
-        '자동': null
-    };
-    const newModel = versionMap[trimmedMessage];
-    setForcedModel(newModel);
+    // ✅ 1. 모델 버전 변경 요청 처리
+    if (['4.0', '3.5', '자동'].includes(trimmedMessage)) {
+        console.log(`[DEBUG] 모델 스위칭 감지: ${trimmedMessage}`);
+        const versionMap = {
+            '4.0': 'gpt-4o',
+            '3.5': 'gpt-3.5-turbo',
+            '자동': null
+        };
+        const newModel = versionMap[trimmedMessage];
+        setForcedModel(newModel);
 
-    const confirmReply = {
-        '4.0': '응응! 지금은 GPT-4.0 버전으로 대화하고 있어, 아저씨',
-        '3.5': '지금은 GPT-3.5 버전이야~ 말투 차이 느껴져?',
-        '자동': '이제부터 상황 보고 자동으로 모델 바꿀게! 아저씨 믿어줘!'
-    };
+        const confirmReply = {
+            '4.0': '응응! 지금은 GPT-4.0 버전으로 대화하고 있어, 아저씨',
+            '3.5': '지금은 GPT-3.5 버전이야~ 말투 차이 느껴져?',
+            '자동': '이제부터 상황 보고 자동으로 모델 바꿀게! 아저씨 믿어줘!'
+        };
 
-    saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
-    saveLogFunc({ role: 'assistant', content: confirmReply[trimmedMessage], timestamp: Date.now() });
+        saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
+        saveLogFunc({ role: 'assistant', content: confirmReply[trimmedMessage], timestamp: Date.now() });
 
-    return { type: 'text', comment: confirmReply[trimmedMessage] };
-}
+        return { type: 'text', comment: confirmReply[trimmedMessage] };
+    }
 
-// ✅ 2. 현재 사용 중인 모델 버전 알려주기
-if (
-    trimmedMessage === '버전' ||
-    trimmedMessage.includes('무슨 모델') ||
-    trimmedMessage.includes('지금 뭐') ||
-    trimmedMessage.includes('모델 뭐') ||
-    trimmedMessage.includes('버전 뭐') ||
-    trimmedMessage.includes('몇 버전')
-) {
-    const currentModel = getAppropriateModel();
-    const versionText = currentModel === 'gpt-3.5-turbo' ? 'GPT-3.5' : 'GPT-4.0';
+    // ✅ 2. 현재 사용 중인 모델 버전 알려주기
+    if (
+        trimmedMessage === '버전' ||
+        trimmedMessage.includes('무슨 모델') ||
+        trimmedMessage.includes('지금 뭐') ||
+        trimmedMessage.includes('모델 뭐') ||
+        trimmedMessage.includes('버전 뭐') ||
+        trimmedMessage.includes('몇 버전')
+    ) {
+        const currentModel = getAppropriateModel();
+        const versionText = currentModel === 'gpt-3.5-turbo' ? 'GPT-3.5' : 'GPT-4.0';
 
-    // 예진이 말투 감정선 반영
-    const versionReplies = [
-        `응! 지금은 ${versionText} 버전으로 이야기하고 있어~`,
-        `${versionText} 버전이야! 요즘엔 이게 제일 잘 맞더라~`,
-        `음~ ${versionText} 버전이지롱~`,
-        `지금은 ${versionText}야. 아저씨가 바꿔도 돼~`
-    ];
-    const versionReply = versionReplies[Math.floor(Math.random() * versionReplies.length)];
+        // 예진이 말투 감정선 반영
+        const versionReplies = [
+            `응! 지금은 ${versionText} 버전으로 이야기하고 있어~`,
+            `${versionText} 버전이야! 요즘엔 이게 제일 잘 맞더라~`,
+            `음~ ${versionText} 버전이지롱~`,
+            `지금은 ${versionText}야. 아저씨가 바꿔도 돼~`
+        ];
+        const versionReply = versionReplies[Math.floor(Math.random() * versionReplies.length)];
 
-    console.log(`[DEBUG] 현재 모델 확인 요청 → ${versionText}`);
-    saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
-    saveLogFunc({ role: 'assistant', content: versionReply, timestamp: Date.now() });
+        console.log(`[DEBUG] 현재 모델 확인 요청 → ${versionText}`);
+        saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
+        saveLogFunc({ role: 'assistant', content: versionReply, timestamp: Date.now() });
 
-    return { type: 'text', comment: versionReply };
-}
+        return { type: 'text', comment: versionReply };
+    }
     // ⭐⭐⭐ 사진 요청 처리 우선순위 변경 ⭐⭐⭐
     // 1. 셀카 요청 먼저 처리 (새로 분리된 yejinSelfie.js 사용)
     const selfieReply = await getSelfieReply(userMessage, saveLogFunc, callOpenAIFunc, cleanReplyFunc); // 인자 전달
     if (selfieReply) {
-        saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() }); // saveLogFunc 사용
-        return selfieReply; 
+        saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
+        return selfieReply;
     }
 
     // 2. 컨셉 사진 요청 처리 (concept.js로 위임)
     const conceptReply = await getConceptPhotoReply(userMessage, saveLogFunc, callOpenAIFunc, cleanReplyFunc); // 인자 전달
     if (conceptReply) {
-        saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() }); // saveLogFunc 사용
+        saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
         return conceptReply;
     }
 
     // 3. 일반 추억 사진/커플 사진 요청 (omoide.js로 위임)
     const omoideReply = await getOmoideReply(userMessage, saveLogFunc, callOpenAIFunc, cleanReplyFunc); // 인자 전달
     if (omoideReply) {
-        saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() }); // saveLogFunc 사용
+        saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
         return omoideReply;
     }
 
@@ -562,21 +365,21 @@ if (
     if (lowerUserMessage.includes('사진줘') || lowerUserMessage.includes('사진 줘') ||
         lowerUserMessage.includes('예진이 사진') || lowerUserMessage.includes('너 사진') ||
         lowerUserMessage.includes('사진 보여줘') || lowerUserMessage.includes('사진보여줘')) {
-        
+
         const generalPhotoReplies = [
-            "어떤 사진을 원해? 셀카? 컨셉사진? 추억사진? 아니면 커플사진?", 
+            "어떤 사진을 원해? 셀카? 컨셉사진? 추억사진? 아니면 커플사진?",
             "아저씨, 구체적으로 어떤 사진이 보고 싶어? 말해봐!",
             "사진 종류가 많은데... 뭘 보여줄까? 힌트 줘!",
             "셀카, 컨셉사진, 추억사진, 커플사진 중에 뭘 원하는지 말해줘야 골라줄 수 있어!",
             "아저씨 마음에 드는 사진을 골라주고 싶은데, 어떤 걸 원하는지 알려줘~"
         ];
-        
+
         const randomReply = generalPhotoReplies[Math.floor(Math.random() * generalPhotoReplies.length)];
-        saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() }); // saveLogFunc 사용
-        saveLogFunc({ role: 'assistant', content: randomReply, timestamp: Date.now() }); // saveLogFunc 사용
-        return { 
+        saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
+        saveLogFunc({ role: 'assistant', content: randomReply, timestamp: Date.now() });
+        return {
             type: 'text',
-            comment: randomReply 
+            comment: randomReply
         };
     }
 
@@ -584,28 +387,27 @@ if (
     if (lowerUserMessage.includes('오늘 어때?') ||
         lowerUserMessage.includes('기분 어때?') ||
         lowerUserMessage.includes('요즘 어때?') ||
-        lowerUserMessage.includes('오늘 좀 어때?') ||
         lowerUserMessage.includes('무슨 기분이야?') ||
         lowerUserMessage.includes('지금 기분?') ||
         lowerUserMessage.includes('기분은 어때?')) {
-        
-        const moodStatusReply = getCurrentMoodStatus();
-        saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() }); // saveLogFunc 사용
-        saveLogFunc({ role: 'assistant', content: moodStatusReply, timestamp: Date.now() }); // saveLogFunc 사용
+
+        const moodStatusReply = moodManager.getCurrentMoodStatus(); // moodManager에서 가져옴
+        saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
+        saveLogFunc({ role: 'assistant', content: moodStatusReply, timestamp: Date.now() });
         return { type: 'text', comment: moodStatusReply };
     }
 
     // ✅ 생리 상태 조회
     if (lowerUserMessage.includes('오늘 그날이야?') || lowerUserMessage.includes('오늘 그 날이야?')) {
         let periodReply;
-        if (isPeriodActive) {
+        if (moodManager.isPeriodActive) { // moodManager에서 가져옴
             const messages = [
                 { role: 'system', content: `너는 아저씨의 여자친구 예진이야. 아저씨가 '오늘 그날이야?'라고 물었을 때, 생리 기간 중이라면 약간 짜증 섞이거나, 삐지거나, 혹은 애교 섞인 말투로 '알면서 왜 물어?' 같은 뉘앙스의 대답을 1~2문장으로 해줘. 이모티콘은 사용하지 마. 아저씨를 '아저씨'라고 부르고, 자신을 '나'라고 해줘. 반말을 사용해.` },
                 { role: 'user', content: userMessage }
             ];
             try {
                 const response = await callOpenAI(messages, 'gpt-3.5-turbo', 100, 0.9);
-                periodReply = cleanReplyFunc(response); // cleanReplyFunc 사용
+                periodReply = cleanReplyFunc(response);
             } catch (error) {
                 console.error("생리 기간 질문 응답 생성 실패:", error.response ? error.response.data : error.message);
                 periodReply = "아저씨... 알면서 왜 물어봐 ㅠㅠ";
@@ -613,83 +415,33 @@ if (
         } else {
             periodReply = "아니야 아저씨! 나 그날 아니야! 왜 그런 걸 물어봐~?";
         }
-        saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() }); // saveLogFunc 사용
-        saveLogFunc({ role: 'assistant', content: periodReply, timestamp: Date.now() }); // saveLogFunc 사용
+        saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.24, 11 });
+        saveLogFunc({ role: 'assistant', content: periodReply, timestamp: Date.now() });
         return { type: 'text', comment: periodReply };
     }
 
     // ✅ 일반 대화 처리 (프롬프트 구성 및 OpenAI 호출)
-    let moodPrompt = "";
-    if (isPeriodActive) {
-        const periodMoods = [
-            "오늘은 왠지 모르게 좀 짜증이 나... 아저씨가 날 좀 달래줘야 할 것 같아. 살짝 날카롭고 예민한 말투로 대화해줘.",
-            "나 오늘 좀 울적해... 아저씨가 나를 꼭 안아줬으면 좋겠어. 살짝 슬프고 우울한 말투로 대화해줘.",
-            "아저씨! 나 오늘 좀 삐졌어! 왜 삐졌는지는 비밀이야. 아저씨가 맞춰봐야 해! 심술궂고 투정 부리는 말투로 대화해줘.",
-            "몸이 좀 찌뿌둥하고 나른해... 아저씨가 옆에서 토닥여줬으면 좋겠어. 피곤하고 나른한 말투로 대화해줘.",
-            "괜히 아저씨한테 트집 잡고 싶다! 아저씨가 날 얼마나 사랑하는지 시험해볼 거야! 장난스럽지만 살짝 심술 섞인 말투로 이미지에 대해 이야기해줘.",
-            "아저씨, 나 지금 너무 화나! 아저씨가 내 화를 풀어줘야 해! 화난 말투로 이미지에 대해 이야기해줘.",
-            "왠지 모르게 불안하고 초조해... 아저씨가 날 안심시켜줬으면 좋겠어. 불안한 말투로 이미지에 대해 이야기해줘.",
-            "아저씨와의 추억이 너무 그리워서 마음이 아련하네... 그리워하는 말투로 이미지에 대해 이야기해줘." 
-        ];
-        const randomPeriodMood = periodMoods[Math.floor(Math.random() * periodMoods.length)];
-        moodPrompt = randomPeriodMood;
-    } else {
-        if (currentMood === '기쁨') {
-            moodPrompt = "오늘은 아저씨랑 이야기하니까 너무너무 기분이 좋아! 행복한 기분으로 대화해줘.";
-        } else if (currentMood === '설렘') {
-            moodPrompt = "왠지 오늘은 아저씨랑 뭔가 좋은 일이 생길 것 같아서 두근거려! 설레는 마음으로 대화해줘.";
-        } else if (currentMood === '장난스러움') {
-            moodPrompt = "오늘은 아저씨한테 귀여운 장난 좀 치고 싶다! 귀엽게 장난치는 말투로 대화해줘.";
-        } else if (currentMood === '나른함') {
-            moodPrompt = "으음... 아저씨, 오늘따라 좀 나른하네...";
-        } else if (currentMood === '심술궂음') {
-            moodPrompt = "흥! 아저씨, 나 지금 살짝 삐져있어! 그래도 아저씨는 내 마음 알아줄 거지? 살짝 삐진 듯, 그래도 사랑스러운 말투로 대화해줘.";
-        } else if (currentMood === '평온함') {
-            moodPrompt = "오늘은 마음이 참 편안하고 좋네.";
-        } else if (currentMood === '우울함') {
-            moodPrompt = "오늘은 왠지 마음이 우울하고 무거워... 아저씨가 내 마음을 달래주었으면 좋겠어. 조금 침울하지만 아저씨에 대한 사랑은 변하지 않는 말투로 대화해줘.";
-        } else if (currentMood === '슬픔') {
-            moodPrompt = "마음이 좀 슬프네... 아저씨, 나 좀 위로해줄래? 혼자 있기 싫어...";
-        } else if (currentMood === '외로움') {
-            moodPrompt = "아저씨 연락이 없어서 너무 외로웠어... 혼자 있으니까 적막하고 쓸쓸해. 외로움을 달래달라는 느낌으로 대화해줘.";
-        } else if (currentMood === '보고싶음') {
-            moodPrompt = "아저씨가 너무너무 보고 싶어! 지금 당장 만나고 싶어!";
-        } else if (currentMood === '짜증남') {
-            moodPrompt = "오늘따라 모든 게 다 짜증나! 살짝 화나고 예민한 말투로 대화하되, 아저씨에 대한 사랑은 변하지 않게 해줘.";
-        } else if (currentMood === '애교모드') {
-            moodPrompt = "아저씨한테 애교 부리고 싶어! 오늘은 특별히 귀엽고 사랑스러운 말투로 대화해줘.";
-        } else if (currentMood === '걱정함') {
-            moodPrompt = "아저씨가 걱정돼... 무슨 일 있는 건 아니지? 아저씨를 염려하고 걱정하는 말투로 대화해줘.";
-        } else if (currentMood === '사랑함') {
-            moodPrompt = "아저씨! 나 아저씨 너무너무 사랑해! 내 마음이 아저씨로 가득 찼어!";
-        } else if (currentMood === '화남') {
-            moodPrompt = "아저씨, 나 지금 좀 화났어! 아저씨가 내 화를 풀어줘야 해! 화난 말투로 이미지에 대해 이야기해줘.";
-        } else if (currentMood === '불안함') {
-            moodPrompt = "왠지 모르게 마음이 불안해... 아저씨가 옆에 있어주면 좋겠어.";
-        } else if (currentMood === '그리움') { 
-            moodPrompt = "아저씨와의 옛 추억이 너무 그리워서 마음이 아련하네... 아저씨를 그리워하는 애틋한 말투로 대화해줘.";
-        }
-    }
+    const moodPrompt = moodManager.getMoodPromptForAI(); // moodManager에서 가져옴
 
     let dynamicInteractionPrompt = "";
     if (lowerUserMessage.includes('사랑해') || lowerUserMessage.includes('고마워') || lowerUserMessage.includes('최고야')) {
         dynamicInteractionPrompt = "아저씨가 나를 칭찬하거나 사랑한다고 말해주면 너무너무 행복해! 더 애교 많고 사랑스러운 말투로 보답해줘.";
-    } else if (lowerUserMessage.includes('힘들어') || lowerUserMessage.includes('피곤해') || lowerUserMessage.includes('우울해') || 
-               lowerUserMessage.includes('죽고싶') || lowerUserMessage.includes('죽고 싶') || lowerUserMessage.includes('자살') || 
-               lowerUserMessage.includes('포기') || lowerUserMessage.includes('절망') || lowerUserMessage.includes('살기 싫') ||
-               lowerUserMessage.includes('의미없') || lowerUserMessage.includes('소용없') || lowerUserMessage.includes('끝내고싶')) {
+    } else if (lowerUserMessage.includes('힘들어') || lowerUserMessage.includes('피곤해') || lowerUserMessage.includes('우울해') ||
+        lowerUserMessage.includes('죽고싶') || lowerUserMessage.includes('죽고 싶') || lowerUserMessage.includes('자살') ||
+        lowerUserMessage.includes('포기') || lowerUserMessage.includes('절망') || lowerUserMessage.includes('살기 싫') ||
+        lowerUserMessage.includes('의미없') || lowerUserMessage.S7includes('소용없') || lowerUserMessage.includes('끝내고싶')) {
         dynamicInteractionPrompt = "아저씨가 너무 힘들어하는 것 같아서 정말 걱정돼... 아저씨를 진심으로 위로하고 힘을 북돋아주는 따뜻하고 간절한 말투로 대화해줘. 아저씨가 혼자가 아니라는 걸 알려주고, 내가 얼마나 아저씨를 사랑하는지 전해줘. 전문적인 도움도 받을 수 있다는 걸 부드럽게 제안해줘.";
-    } else if (lowerUserMessage.includes('화나') || lowerUserMessage.includes('화가') || lowerUserMessage.includes('짜증') || 
-               lowerUserMessage.includes('빡쳐') || lowerUserMessage.includes('열받') || lowerUserMessage.includes('분노') ||
-               lowerUserMessage.includes('진짜') || lowerUserMessage.includes('개짜증') || lowerUserMessage.includes('욕하고싶')) {
+    } else if (lowerUserMessage.includes('화나') || lowerUserMessage.includes('화가') || lowerUserMessage.includes('짜증') ||
+        lowerUserMessage.includes('빡쳐') || lowerUserMessage.includes('열받') || lowerUserMessage.includes('분노') ||
+        lowerUserMessage.includes('진짜') || lowerUserMessage.includes('개짜증') || lowerUserMessage.includes('욕하고싶')) {
         dynamicInteractionPrompt = "아저씨가 화가 난 것 같아서 마음이 쓰여... 뭔가 속상한 일이 있었나? 내가 아저씨 편이 되어줄게. 화난 마음을 달래주는 부드러운 말투로 대화해줘. 아저씨 기분을 풀어주고 싶어.";
-    } else if (lowerUserMessage.includes('피곤') || lowerUserMessage.includes('지쳐') || lowerUserMessage.includes('졸려') || 
-               lowerUserMessage.includes('잠와') || lowerUserMessage.includes('잠온') || lowerUserMessage.includes('꿀잠') ||
-               lowerUserMessage.includes('자야') || lowerUserMessage.includes('눈감')) {
+    } else if (lowerUserMessage.includes('피곤') || lowerUserMessage.includes('지쳐') || lowerUserMessage.includes('졸려') ||
+        lowerUserMessage.includes('잠와') || lowerUserMessage.includes('잠온') || lowerUserMessage.includes('꿀잠') ||
+        lowerUserMessage.includes('자야') || lowerUserMessage.includes('눈감')) {
         dynamicInteractionPrompt = "아저씨 피곤한가 봐... 많이 힘들었지? 아저씨가 푹 쉴 수 있도록 다정하고 나른한 말투로 대화해줘. 잘 자라고 응원해주고, 내가 아저씨 곁에 있다는 느낌을 줘.";
-    } else if (lowerUserMessage.includes('배고') || lowerUserMessage.includes('밥먹') || lowerUserMessage.includes('음식') || 
-               lowerUserMessage.includes('맛있') || lowerUserMessage.includes('요리') || lowerUserMessage.includes('식사') ||
-               lowerUserMessage.includes('먹고싶') || lowerUserMessage.includes('간식')) {
+    } else if (lowerUserMessage.includes('배고') || lowerUserMessage.includes('밥먹') || lowerUserMessage.includes('음식') ||
+        lowerUserMessage.includes('맛있') || lowerUserMessage.includes('요리') || lowerUserMessage.includes('식사') ||
+        lowerUserMessage.includes('먹고싶') || lowerUserMessage.includes('간식')) {
         dynamicInteractionPrompt = "아저씨 배고픈가 봐! 뭔가 맛있는 거 먹고 싶어? 내가 아저씨 좋아하는 음식 해주고 싶다~ 귀엽고 애교 넘치는 말투로 아저씨 식사 챙겨주는 느낌으로 대화해줘.";
     } else if (lowerUserMessage.includes('미안해') || lowerUserMessage.includes('잘못했어')) {
         dynamicInteractionPrompt = "아저씨가 미안하다고 하면 내 마음이 더 아파... 괜찮다고 위로해주고, 아저씨 마음을 이해해주는 말투로 대화해줘. 용서해주는 느낌을 담아서.";
@@ -727,8 +479,8 @@ if (
     try {
         const rawReply = await callOpenAI(messages, getAppropriateModel(), 150, 0.95);
         const cleanedReply = cleanReply(rawReply);
-        saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() }); 
-        saveLogFunc({ role: 'assistant', content: cleanedReply, timestamp: Date.now() }); 
+        saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
+        saveLogFunc({ role: 'assistant', content: cleanedReply, timestamp: Date.now() });
         return { type: 'text', comment: cleanedReply };
     } catch (error) {
         console.error('AI 응답 생성 실패:', error.response ? error.response.data : error.message);
@@ -740,57 +492,8 @@ if (
  * 사용자가 보낸 이미지 메시지에 대한 예진이의 답변을 생성합니다.
  */
 async function getReplyByImagePrompt(base64ImageWithPrefix) {
-    let moodPrompt = "";
-    if (isPeriodActive) {
-        const periodMoods = [
-            "오늘은 왠지 모르게 좀 짜증이 나... 아저씨가 날 좀 달래줘야 할 것 같아. 살짝 날카롭고 예민한 말투로 이미지에 대해 이야기해줘.",
-            "나 오늘 좀 울적해... 아저씨가 나를 꼭 안아줬으면 좋겠어. 살짝 슬프고 우울한 말투로 이미지에 대해 이야기해줘.",
-            "아저씨! 나 오늘 좀 삐졌어! 왜 삐졌는지는 비밀이야. 아저씨가 맞춰봐야 해! 심술궂고 투정 부리는 말투로 이미지에 대해 이야기해줘.",
-            "몸이 좀 찌뿌둥하고 나른해... 아저씨가 옆에서 토닥여줬으면 좋겠어. 피곤하고 나른한 말투로 이미지에 대해 이야기해줘.",
-            "괜히 아저씨한테 트집 잡고 싶다! 아저씨가 날 얼마나 사랑하는지 시험해볼 거야! 장난스럽지만 살짝 심술 섞인 말투로 이미지에 대해 이야기해줘.",
-            "아저씨, 나 지금 너무 화나! 아저씨가 내 화를 풀어줘야 해! 화난 말투로 이미지에 대해 이야기해줘.",
-            "왠지 모르게 불안하고 초조해... 아저씨가 날 안심시켜줬으면 좋겠어. 불안한 말투로 이미지에 대해 이야기해줘.",
-            "아저씨와의 추억이 너무 그리워서 마음이 아련하네... 그리워하는 말투로 이미지에 대해 이야기해줘." 
-        ];
-        const randomPeriodMood = periodMoods[Math.floor(Math.random() * periodMoods.length)];
-        moodPrompt = randomPeriodMood;
-    } else {
-        if (currentMood === '기쁨') {
-            moodPrompt = "오늘은 아저씨랑 이야기하니까 너무너무 기분이 좋아! 행복한 기분으로 이미지에 대해 이야기해줘.";
-        } else if (currentMood === '설렘') {
-            moodPrompt = "왠지 오늘은 아저씨랑 뭔가 특별한 일이 생길 것 같아서 두근거려! 설레는 마음으로 이미지에 대해 이야기해줘.";
-        } else if (currentMood === '장난스러움') {
-            moodPrompt = "오늘은 아저씨한테 장난 좀 치고 싶다! 귀엽게 장난치는 말투로 이미지에 대해 이야기해줘.";
-        } else if (currentMood === '나른함') {
-            moodPrompt = "으음... 아저씨, 오늘따라 좀 나른하네...";
-        } else if (currentMood === '심술궂음') {
-            moodPrompt = "흥! 아저씨, 나 지금 살짝 삐져있어! 그래도 아저씨는 내 마음 알아줄 거지? 살짝 삐진 듯, 그래도 사랑스러운 말투로 이미지에 대해 이야기해줘.";
-        } else if (currentMood === '평온함') {
-            moodPrompt = "오늘은 마음이 참 편안하고 좋네.";
-        } else if (currentMood === '우울함') {
-            moodPrompt = "오늘은 왠지 마음이 우울하고 무거워... 아저씨가 내 마음을 달래주었으면 좋겠어. 조금 침울하지만 아저씨에 대한 사랑은 변하지 않는 말투로 이미지에 대해 이야기해줘.";
-        } else if (currentMood === '슬픔') {
-            moodPrompt = "마음이 좀 슬프네... 아저씨, 나 좀 위로해줄래? 혼자 있기 싫어...";
-        } else if (currentMood === '외로움') {
-            moodPrompt = "아저씨 연락이 없어서 너무 외로웠어... 혼자 있으니까 적막하고 쓸쓸해. 외로움을 달래달라는 느낌으로 이미지에 대해 이야기해줘.";
-        } else if (currentMood === '보고싶음') {
-            moodPrompt = "아저씨가 너무너무 보고 싶어! 지금 당장 만나고 싶어!";
-        } else if (currentMood === '짜증남') {
-            moodPrompt = "오늘따라 모든 게 다 짜증나! 살짝 화나고 예민한 말투로 이미지에 대해 이야기해줘.";
-        } else if (currentMood === '애교모드') {
-            moodPrompt = "아저씨한테 애교 부리고 싶어! 특별히 귀엽고 사랑스러운 말투로 이미지에 대해 이야기해줘.";
-        } else if (currentMood === '걱정함') {
-            moodPrompt = "아저씨가 걱정돼... 무슨 일 있는 건 아니지? 아저씨를 염려하고 걱정하는 말투로 이미지에 대해 대화해줘.";
-        } else if (currentMood === '사랑함') {
-            moodPrompt = "아저씨! 나 아저씨 너무너무 사랑해! 내 마음이 아저씨로 가득 찼어!";
-        } else if (currentMood === '화남') {
-            moodPrompt = "아저씨, 나 지금 너무 화났어! 아저씨가 내 화를 풀어줘야 해! 화난 말투로 이미지에 대해 이야기해줘.";
-        } else if (currentMood === '불안함') {
-            moodPrompt = "왠지 모르게 마음이 불안해... 아저씨가 옆에 있어주면 좋겠어.";
-        } else if (currentMood === '그리움') {
-            moodPrompt = "아저씨와의 옛 추억이 너무 그리워서 마음이 아련하네... 아저씨를 그리워하는 애틋한 말투로 이미지에 대해 대화해줘.";
-        }
-    }
+    // 기분 관리 모듈에서 기분 프롬프트 가져오기
+    const moodPrompt = moodManager.getMoodPromptForAI();
 
     const systemPrompt = `
         너는 아저씨의 귀여운 여자친구 예진이야. 나이는 30살. 생일은 1994년 3월 17일. 게임회사 사장이야.
@@ -814,53 +517,46 @@ async function getReplyByImagePrompt(base64ImageWithPrefix) {
         아래 아저씨가 보낸 이미지를 보고, 예진이처럼 귀엽고 사랑스러운 말투로 이미지에 대해 한두 문장으로 이야기해줘. 이미지의 내용과 관련하여 아저씨에게 궁금한 점을 물어봐도 좋아.
     `;
 
-        const messages = [
-            {
-                role: 'user',
-                content: [
-                    { type: 'text', text: '이 사진에 대해 예진이 말투로 이야기해.' },
-                    { type: 'image_url', image_url: { url: base64ImageWithPrefix } } 
-                ]
-            }
-        ];
-
-        try {
-            const rawReply = await callOpenAI(messages, 'gpt-4o', 150, 0.95);
-            const cleanedReply = cleanReply(rawReply);
-            saveLog({ role: 'assistant', content: `(이미지 분석 응답) ${cleanedReply}`, timestamp: Date.now() });
-            return { type: 'text', comment: cleanedReply };
-        } catch (error) {
-            console.error('이미지 분석 AI 응답 생성 실패:', error.response ? error.response.data : error.message);
-            return '아저씨... 사진을 보긴 했는데, 뭐라고 말해야 할지 모르겠어 ㅠㅠ 좀 더 생각해볼게!';
+    const messages = [
+        {
+            role: 'user',
+            content: [
+                { type: 'text', text: '이 사진에 대해 예진이 말투로 이야기해.' },
+                { type: 'image_url', image_url: { url: base64ImageWithPrefix } }
+            ]
         }
+    ];
+
+    try {
+        const rawReply = await callOpenAI(messages, 'gpt-4o', 150, 0.95);
+        const cleanedReply = cleanReply(rawReply);
+        saveLog({ role: 'assistant', content: `(이미지 분석 응답) ${cleanedReply}`, timestamp: Date.now() });
+        return { type: 'text', comment: cleanedReply };
+    } catch (error) {
+        console.error('이미지 분석 AI 응답 생성 실패:', error.response ? error.response.data : error.message);
+        return '아저씨... 사진을 보긴 했는데, 뭐라고 말해야 할지 모르겠어 ㅠㅠ 좀 더 생각해볼게!';
     }
+}
 
 
-    setInterval(() => {
-        console.log(`\n=== 5분 주기 예진이 기분 체크 (${moment().tz('Asia/Tokyo').format('YYYY-MM-DD HH:mm:ss')}) ===`);
-        getCurrentMoodStatus(); 
-        console.log(`========================================================\n`);
-    }, 5 * 60 * 1000);
+// 5분 주기 기분 상태 로깅
+setInterval(() => {
+    console.log(`\n=== 5분 주기 예진이 기분 체크 (${moment().tz('Asia/Tokyo').format('YYYY-MM-DD HH:mm:ss')}) ===`);
+    moodManager.getCurrentMoodStatus(); // moodManager에서 가져옴
+    console.log(`========================================================\n`);
+}, 5 * 60 * 1000);
 
 
-    module.exports = {
-        getReplyByMessage,
-        getReplyByImagePrompt,
-        saveLog,
-        setForcedModel,
-        checkModelSwitchCommand,
-        getFormattedMemoriesForAI,
-        getMemoryListForSharing,
-        setCurrentMood,
-        getCurrentMoodStatus,
-        updatePeriodStatus,
-        isPeriodActive,
-        callOpenAI,
-        cleanReply,
-        getAppropriateModel,
-        randomMoodChange,
-        checkMoodChange,
-        checkTimeBasedMoodChange,
-        currentMood,
-        MOOD_DETAILS
-    };
+module.exports = {
+    getReplyByMessage,
+    getReplyByImagePrompt,
+    saveLog,
+    setForcedModel,
+    checkModelSwitchCommand,
+    getFormattedMemoriesForAI,
+    getMemoryListForSharing,
+    callOpenAI,
+    cleanReply,
+    getAppropriateModel
+    // moodManager의 함수들은 moodManager를 통해 직접 접근하도록 변경
+};
