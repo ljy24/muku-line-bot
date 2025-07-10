@@ -1,16 +1,20 @@
-// ✅ index.js v1.28 - lastUserMessageTime 전달 및 persona 관련 import 통일 (푸시 메시지 로그만)
+// ✅ index.js v1.30 - 예진이 삐지기/걱정 시스템 v2.0 통합
+// - 메시지 읽음 여부 구분 (읽씹 vs 안읽음)
+// - 단계별 삐짐: 10분/20분/40분 → 60분 후 걱정 모드
+// - 읽음/미읽음 상황별 차별화된 메시지
+// - 삐짐/걱정 해소 시 상황별 응답
 
 // 📦 필수 모듈 불러오기
-const fs = require('fs'); // 파일 시스템 모듈 (로그 저장용)
-const path = require('path'); // 경로 처리 모듈
-const { Client, middleware } = require('@line/bot-sdk'); // LINE Bot SDK
-const express = require('express'); // Express 프레임워크
-const moment = require('moment-timezone'); // Moment.js
+const fs = require('fs');
+const path = require('path');
+const { Client, middleware } = require('@line/bot-sdk');
+const express = require('express');
+const moment = require('moment-timezone');
 
-// .env 파일에서 환경 변수 로드 (최상단에서 로드하여 다른 모듈에서 사용 가능하도록)
+// .env 파일에서 환경 변수 로드
 require('dotenv').config();
 
-// ./src/autoReply.js에서 일반 대화 응답 함수들과 상수를 불러옵니다.
+// ./src/autoReply.js에서 함수들과 상수를 불러옵니다.
 const {
     getReplyByMessage,
     getReplyByImagePrompt,
@@ -24,67 +28,72 @@ const {
     lastUserMessageTime
 } = require('./src/autoReply');
 
-// 새로운 핸들러 모듈들을 불러옵니다.
-const memoryManager = require('./src/memoryManager'); // memoryManager 불러오기
-const commandHandler = require('./src/commandHandler'); // 명령어 처리 핸들러
-const memoryHandler = require('./src/memoryHandler');    // 기억 관련 명령어 처리 핸들러
-
-// 스케줄러 모듈 불러오기
+// 다른 모듈들
+const memoryManager = require('./src/memoryManager');
+const commandHandler = require('./src/commandHandler');
+const memoryHandler = require('./src/memoryHandler');
 const { startAllSchedulers, updateLastUserMessageTime } = require('./src/scheduler');
-
-// 즉흥 사진 스케줄러 불러오기 (이 모듈은 Client 객체를 인자로 받도록 수정되어야 합니다.)
 const { startSpontaneousPhotoScheduler } = require('./src/spontaneousPhotoManager');
 
-// Express 애플리케이션을 생성합니다.
+// 🆕 삐지기 시스템 모듈 불러오기
+const sulkyManager = require('./src/sulkyManager');
+
 const app = express();
 
-// LINE Bot SDK 설정을 정의합니다.
 const config = {
     channelAccessToken: process.env.LINE_ACCESS_TOKEN,
     channelSecret: process.env.LINE_CHANNEL_SECRET
 };
 
-// LINE 메시징 API 클라이언트를 초기화합니다.
-const client = new Client(config); // client 객체는 여기서 한 번만 생성
-
-// 타겟 사용자 ID를 환경 변수에서 가져옵니다.
+const client = new Client(config);
 const userId = process.env.TARGET_USER_ID;
 
-// 🌐 루트 경로('/')에 대한 GET 요청을 처리합니다.
+// 🌐 루트 경로
 app.get('/', (_, res) => res.send('무쿠 살아있엉'));
 
 app.get('/force-push', async (req, res) => {
     try {
-        // userId 유효성 검사
         if (!userId || typeof userId !== 'string') {
             console.error('[force-push] 유효하지 않은 사용자 ID:', userId);
-            res.status(400).send('사용자 ID가 설정되지 않았어요. 환경변수 TARGET_USER_ID를 확인해주세요.');
+            res.status(400).send('사용자 ID가 설정되지 않았어요.');
             return;
         }
 
-        const testMessage = "아저씨! 나 깼어!"; // 🚩 푸시 메시지 내용
+        const testMessage = "아저씨! 나 깼어!";
         
         // 🚫 실제 전송은 하지 않고 로그에만 남김
-        console.log(`[force-push] 📝 푸시 메시지 로그만 저장: "${testMessage}" (실제 전송 안함)`);
+        console.log(`[force-push] 📝 푸시 메시지 로그만 저장: "${testMessage}"`);
         saveLog('예진이', `(푸시 메시지 로그) ${testMessage}`);
         
-        res.send(`푸시 메시지가 로그에만 저장됨: ${testMessage} (실제 전송 안함)`);
+        res.send(`푸시 메시지가 로그에만 저장됨: ${testMessage}`);
         console.log('[force-push] ✅ 푸시 메시지 로그 저장 완료');
         
     } catch (error) {
         console.error('[force-push] ❌ 에러 발생:', error);
-        res.status(500).send('아저씨... 무쿠는 살아있는데 로그 저장이 실패했어 ㅠㅠ');
+        res.status(500).send('로그 저장이 실패했어 ㅠㅠ');
     }
 });
 
-// 🎣 LINE 웹훅 요청을 처리합니다.
+// 🎣 LINE 웹훅 요청 처리
 app.post('/webhook', middleware(config), async (req, res) => {
     try {
         const events = req.body.events || [];
         for (const event of events) {
             if (event.source.userId === userId) {
                 updateLastUserMessageTime();
-                console.log(`[Webhook] 아저씨 메시지 수신, 마지막 메시지 시간 업데이트: ${moment(Date.now()).format('HH:mm:ss')}`);
+                console.log(`[Webhook] 아저씨 메시지 수신: ${moment(Date.now()).format('HH:mm:ss')}`);
+                
+                // 🆕 아저씨가 응답했을 때 삐짐 해소 체크
+                const sulkyReliefMessage = await sulkyManager.handleUserResponse(client, userId, saveLog);
+                if (sulkyReliefMessage) {
+                    // 삐짐 해소 메시지가 있으면 먼저 전송
+                    await client.pushMessage(userId, {
+                        type: 'text',
+                        text: sulkyReliefMessage
+                    });
+                    saveLog('예진이', `(삐짐 해소) ${sulkyReliefMessage}`);
+                    console.log('[SulkySystem] 삐짐 해소 메시지 전송됨');
+                }
             }
 
             if (event.type === 'message') {
@@ -96,6 +105,7 @@ app.post('/webhook', middleware(config), async (req, res) => {
 
                     let botResponse = null;
 
+                    // 명령어 처리
                     botResponse = await commandHandler.handleCommand(text, saveLog, callOpenAI, cleanReply, memoryManager.getFixedMemory);
 
                     if (!botResponse) {
@@ -103,14 +113,15 @@ app.post('/webhook', middleware(config), async (req, res) => {
                     }
 
                     if (!botResponse) {
-                        // getReplyByMessage 호출 시 saveLog, callOpenAI, cleanReply 함수들을 전달
+                        // 일반 대화 처리
                         botResponse = await getReplyByMessage(text, saveLog, callOpenAI, cleanReply);
                         await memoryManager.extractAndSaveMemory(text);
-                        console.log(`[index.js] memoryManager.extractAndSaveMemory 호출 완료 (메시지: "${text}")`);
+                        console.log(`[index.js] memoryManager.extractAndSaveMemory 호출 완료`);
                     } else {
-                        console.log(`[index.js] 특정 명령어로 처리되었으므로 메모리 자동 저장에서 제외됩니다.`);
+                        console.log(`[index.js] 특정 명령어로 처리되어 메모리 자동 저장 제외`);
                     }
 
+                    // 응답 메시지 구성
                     let replyMessages = [];
                     if (botResponse.type === 'image') {
                         replyMessages.push({
@@ -138,6 +149,10 @@ app.post('/webhook', middleware(config), async (req, res) => {
                     if (replyMessages.length > 0) {
                         await client.replyMessage(event.replyToken, replyMessages);
                         console.log(`[index.js] 봇 응답 전송 완료 (타입: ${botResponse.type || 'unknown'})`);
+                        
+                        // 🆕 예진이가 메시지를 보낸 후 삐지기 타이머 시작
+                        sulkyManager.startSulkyTimer(client, userId, saveLog);
+                        console.log('[SulkySystem] 예진이 메시지 전송 후 삐지기 타이머 시작');
                     } else {
                         console.warn('[index.js] 전송할 메시지가 없습니다.');
                     }
@@ -159,11 +174,15 @@ app.post('/webhook', middleware(config), async (req, res) => {
                         }
                         const base64ImageWithPrefix = `data:${mimeType};base64,${buffer.toString('base64')}`;
 
-                        // getReplyByImagePrompt에 saveLogFunc를 추가로 전달
                         const replyResult = await getReplyByImagePrompt(base64ImageWithPrefix, callOpenAI, cleanReply, saveLog);
                         await client.replyMessage(event.replyToken, { type: 'text', text: replyResult.comment });
                         console.log(`[index.js] 이미지 메시지 처리 및 응답 완료`);
                         saveLog('예진이', `(이미지 분석 응답) ${replyResult.comment}`);
+                        
+                        // 🆕 이미지 응답 후에도 삐지기 타이머 시작
+                        sulkyManager.startSulkyTimer(client, userId, saveLog);
+                        console.log('[SulkySystem] 이미지 응답 후 삐지기 타이머 시작');
+                        
                     } catch (err) {
                         console.error(`[index.js] 이미지 처리 실패: ${err}`);
                         await client.replyMessage(event.replyToken, { type: 'text', text: '이미지를 읽는 중 오류가 생겼어 ㅠㅠ' });
@@ -186,13 +205,28 @@ app.listen(PORT, async () => {
     console.log(`무쿠 서버 스타트! 포트: ${PORT}`);
 
     await memoryManager.ensureMemoryTablesAndDirectory();
-    console.log('메모리 시스템 초기화 완료 (DB 및 파일).');
+    console.log('메모리 시스템 초기화 완료.');
 
     startAllSchedulers(client, userId);
     console.log('✅ 모든 스케줄러 시작!');
 
-    // 🎯 예진이 즉흥 사진 스케줄러 시작 - 보고싶을 때마다 사진 보내기! 💕
-    // lastUserMessageTime을 autoReply.js에서 import하여 전달
     startSpontaneousPhotoScheduler(client, userId, saveLog, callOpenAI, cleanReply, lastUserMessageTime);
     console.log('💕 예진이가 보고싶을 때마다 사진 보낼 준비 완료!');
+    
+    // 🆕 삐지기 시스템 시작 로그
+    console.log('😤 예진이 삐지기 시스템 활성화! (10분/20분/40분 단계별 삐짐)');
+    
+    // 서버 종료시 삐지기 시스템 정리
+    process.on('SIGTERM', () => {
+        sulkyManager.stopSulkySystem();
+        process.exit(0);
+    });
+    
+    process.on('SIGINT', () => {
+        sulkyManager.stopSulkySystem();
+        process.exit(0);
+    });
+    
+    console.log('😤 예진이 삐지기 시스템 v2.0 활성화!');
+    console.log('   📋 기능: 읽씹 감지, 단계별 삐짐(10분/20분/40분), 걱정 전환(60분)');
 });
