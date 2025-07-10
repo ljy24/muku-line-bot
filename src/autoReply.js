@@ -289,6 +289,17 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
 
     const trimmedMessage = userMessage.trim().toLowerCase();
 
+const trimmedMessage = userMessage.trim().toLowerCase();
+
+// 감정 회피/무뚝뚝한 표현 → 걱정/불안 감정 상태로 유도
+const vulnerableTriggers = ['...', '아냐', '하아...','하아', '그냥', '괜찮아', '별일', '됐어', '그만하자', '됐고', '신경쓰지마', '지금은 됐어', '말 안 해도 돼', '몰라도 돼'];
+if (vulnerableTriggers.some(trigger => trimmedMessage.includes(trigger))) {
+    const vulnerableMoods = ['걱정함', '불안함', '외로움'];
+    const selectedMood = vulnerableMoods[Math.floor(Math.random() * vulnerableMoods.length)];
+    moodManager.setMood(selectedMood);
+    console.log(`[autoReply] 감정 회피 표현 감지 → '${selectedMood}' 기분으로 전환됨`);
+}
+
     
     // ✅ "애기야", "예진아"처럼 예진이를 부르는 경우 따로 반응
     if (['애기야', '예진아', '야'].includes(trimmedMessage)) {
