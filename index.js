@@ -1,4 +1,4 @@
-// ✅ index.js v1.27 - ReferenceError 수정 최종 (BOT_NAME 등 autoReply에서 import)
+// ✅ index.js v1.28 - lastUserMessageTime 전달 및 persona 관련 import 통일
 
 // 📦 필수 모듈 불러오기
 const fs = require('fs'); // 파일 시스템 모듈 (로그 저장용)
@@ -20,7 +20,8 @@ const {
     BOT_NAME,                    // BOT_NAME 상수
     USER_NAME,                   // USER_NAME 상수
     getMoodEmoji,                // getMoodEmoji 함수
-    getMoodStatus                // getMoodStatus 함수
+    getMoodStatus,               // getMoodStatus 함수
+    lastUserMessageTime          // ⭐️ lastUserMessageTime 불러오기 ⭐️
 } = require('./src/autoReply');
 
 // 새로운 핸들러 모듈들을 불러옵니다.
@@ -180,6 +181,8 @@ app.listen(PORT, async () => {
     startAllSchedulers(client, userId);
     console.log('✅ 모든 스케줄러 시작!');
 
-    startSpontaneousPhotoScheduler(client, userId, saveLog, callOpenAI, cleanReply);
+    // 🎯 예진이 즉흥 사진 스케줄러 시작 - 보고싶을 때마다 사진 보내기! 💕
+    // lastUserMessageTime을 autoReply.js에서 import하여 전달
+    startSpontaneousPhotoScheduler(client, userId, saveLog, callOpenAI, cleanReply, lastUserMessageTime);
     console.log('💕 예진이가 보고싶을 때마다 사진 보낼 준비 완료!');
 });
