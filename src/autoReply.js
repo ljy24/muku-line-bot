@@ -10,6 +10,9 @@ const { OpenAI } = require('openai');
 // 기분 관리 모듈 불러오기
 const moodManager = require('./moodManager');
 
+// 🆕 담타 시스템 모듈 불러오기
+const { isDamtaMessage, getDamtaResponse, getDamtaSystemPrompt } = require('./damta');
+
 // 🆕 삐지기 시스템 모듈 불러오기
 const sulkyManager = require('./sulkyManager');
 
