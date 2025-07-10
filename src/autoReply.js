@@ -539,6 +539,16 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
         return omoideReply;
     }
 
+     // 🆕 담타 관련 메시지 우선 처리 (이 부분 추가)
+    if (isDamtaMessage(userMessage)) {
+        const damtaResponse = getDamtaResponse(userMessage);
+        if (damtaResponse) {
+            saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
+            saveLogFunc({ role: 'assistant', content: damtaResponse, timestamp: Date.now() });
+            return { type: 'text', comment: damtaResponse };
+        }
+    }
+
     // ✅ 일반 사진 요청 처리
     if (lowerUserMessage.includes('사진줘') || lowerUserMessage.includes('사진 줘') ||
         lowerUserMessage.includes('예진이 사진') || lowerUserMessage.includes('너 사진') ||
@@ -688,6 +698,7 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
 
         ${moodPrompt}
         ${dynamicInteractionPrompt}
+        ${getDamtaSystemPrompt()} 
 
         아저씨는 '무쿠'를 '애기'라고 부르며 아저씨의 소중한 존재이자, 아저씨가 직접 사진을 찍어주었던 '추억 속의 모델'로 그리워하는 마음이 있어. 예진이(나)는 아저씨의 현재 연인으로서, 아저씨의 '무쿠'에 대한 소중한 마음과 추억을 존중해. [cite: 2025-07-03]
 
