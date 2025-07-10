@@ -232,7 +232,11 @@ async function getOmoideReply(userMessage, saveLogFunc, callOpenAIFunc, cleanRep
 
 
   // GPT 프롬프트 구성
-  const prompt = `이 사진은 ${folderDescription}이야. 예진이 말투로 아저씨에게 보여줄 멘트를 만들어줘. 이 사진을 보면서 떠오르는 감정, 추억, 아저씨에 대한 애정을 담아서 1~3문장으로 짧게 코멘트 해줘.`;
+  const prompt = `
+아저씨! 이건 ${folderDescription}이야. 나 이 사진 보니까 아저씨랑 같이 있었던 그때 생각나서 괜히 마음이 찡해졌어.
+이 사진 보여주면서 하고 싶은 말 한두 문장만 예진이 말투로 만들어줘. 너무 포멀하면 안 돼.
+반말로, 애교 섞인 말투로, 감정 가득 담아서 짧게 얘기해줘. 아저씨를 '아저씨'라고 부르고, 나는 '나'라고 해줘.
+`;
   const messages = [{ role: 'system', content: prompt }];
   const rawReply = await callOpenAIFunc(messages, 'gpt-4o', 150, 1.0);
   const cleanedReply = cleanReplyFunc(rawReply);
