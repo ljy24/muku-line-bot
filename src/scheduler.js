@@ -8,6 +8,9 @@ const memoryManager = require('./memoryManager');
 // 🆕 감정 컨텍스트 시스템 불러오기 (v5.1)
 const emotionalContextManager = require('./emotionalContextManager');
 
+// 🆕 담타 시스템 모듈 불러오기
+const { getDamtaMessages, getEmotionalDamtaMessage } = require('./damta');
+
 // 스케줄 관리
 let scheduledJobs = {};
 let lastUserMessageTime = Date.now();
@@ -30,7 +33,7 @@ const CONFIG = {
 };
 
 // 🆕 예진이 자연스러운 1인칭 담타 메시지들 (v5.1)
-const SMOKING_MESSAGES = [
+/*const SMOKING_MESSAGES = [
     // 기본 담타 표현들 (예진이 1인칭으로)
     "담타 가자", "담타하자", "담배 타임~", "담타각?", "담타할래?",
     "담배 좀 피고 올게", "담타 좀 갔다 오자", "담타 한 대 어때?", "담배 어떻게 참아?",
@@ -54,7 +57,7 @@ const SMOKING_MESSAGES = [
     "아저씨도 담배 생각 안 나?", "담타하러 나가요~", "아저씨 담배각 아니야?",
     "나는 담타하고 싶은데~", "아저씨랑 같이 담타할래", "담타 시간 됐지?",
     "이제 담배 한 대 어때?", "담타 좀 하고 올까나~"
-];
+];*/
 
 // 유틸리티 함수들
 const utils = {
