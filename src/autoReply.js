@@ -19,6 +19,9 @@ const sulkyManager = require('./sulkyManager');
 // 🆕 감정 컨텍스트 시스템 불러오기 (v5.1)
 const emotionalContextManager = require('./emotionalContextManager');
 
+// 🆕 대화 맥락 관리 모듈 불러오기
+const conversationContext = require('./conversationContext');
+
 // 사진 처리 모듈들 불러오기 (순서 중요: yejinSelfie 먼저)
 const { getSelfieReply } = require('./yejinSelfie');
 const { getConceptPhotoReply } = require('../memory/concept');
@@ -318,7 +321,8 @@ function getMoodEmoji() {
         normal: '😊'
     };
     
-    return toneEmojis[emotionalState.toneState] || moodManager.getMoodEmoji ? moodManager.getMoodEmoji() : '😊';
+    // moodManager.getMoodEmoji가 함수로 export되도록 moodManager.js 수정했음
+    return toneEmojis[emotionalState.toneState] || moodManager.getMoodEmoji(); 
 }
 
 /**
@@ -335,7 +339,8 @@ function getMoodStatus() {
         return `${emotionalState.toneState} (${emotionalState.strongestResidue.emotion} 잔여: ${emotionalState.strongestResidue.level}%)`;
     }
     
-    return moodManager.getMoodStatus ? moodManager.getMoodStatus() : '평온함';
+    // moodManager.getCurrentMoodStatus가 함수로 export되도록 moodManager.js 수정했음
+    return moodManager.getCurrentMoodStatus();
 }
 
 /**
@@ -371,7 +376,9 @@ function checkModelSwitchCommand(userMessage) {
 
 function getFormattedMemoriesForAI() {
     const conversationLog = getConversationLog();
-    return conversationLog.map(entry => {
+    // LLM에게 전달할 대화 로그를 최근 10개로 제한하여 토큰 효율성 높이기
+    const recentLogs = conversationLog.slice(-10); 
+    return recentLogs.map(entry => {
         const formattedTimestamp = moment(entry.timestamp).tz('Asia/Tokyo').format('YYYY-MM-DD HH:mm:ss');
         if (entry.role === 'user') {
             return { role: 'user', content: `${USER_NAME}: ${entry.content} [${formattedTimestamp}]` };
@@ -422,6 +429,8 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
         // 자발적 반응이 감지되면 이를 응답으로 사용
         saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
         saveLogFunc({ role: 'assistant', content: spontaneousReaction, timestamp: Date.now() });
+        // conversationContext 업데이트
+        conversationContext.addMessage(BOT_NAME, spontaneousReaction, emotionalContextManager.currentState.toneState);
         return { type: 'text', comment: spontaneousReaction };
     }
 
@@ -439,6 +448,8 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
         const reply = worriedReplies[Math.floor(Math.random() * worriedReplies.length)];
         saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
         saveLogFunc({ role: 'assistant', content: reply, timestamp: Date.now() });
+        // conversationContext 업데이트
+        conversationContext.addMessage(BOT_NAME, reply, emotionalContextManager.currentState.toneState);
         return { type: 'text', comment: reply };
     }
 
@@ -470,6 +481,8 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
         const reply = callReplies[Math.floor(Math.random() * callReplies.length)];
         saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
         saveLogFunc({ role: 'assistant', content: reply, timestamp: Date.now() });
+        // conversationContext 업데이트
+        conversationContext.addMessage(BOT_NAME, reply, emotionalContextManager.currentState.toneState);
         return { type: 'text', comment: reply };
     }
 
@@ -492,7 +505,8 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
 
         saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
         saveLogFunc({ role: 'assistant', content: confirmReply[trimmedMessage], timestamp: Date.now() });
-
+        // conversationContext 업데이트
+        conversationContext.addMessage(BOT_NAME, confirmReply[trimmedMessage], emotionalContextManager.currentState.toneState);
         return { type: 'text', comment: confirmReply[trimmedMessage] };
     }
 
@@ -519,7 +533,8 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
         console.log(`[DEBUG] 현재 모델 확인 요청 → ${versionText}`);
         saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
         saveLogFunc({ role: 'assistant', content: versionReply, timestamp: Date.now() });
-
+        // conversationContext 업데이트
+        conversationContext.addMessage(BOT_NAME, versionReply, emotionalContextManager.currentState.toneState);
         return { type: 'text', comment: versionReply };
     }
 
@@ -529,13 +544,16 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
         const selfieResult = await getSelfieReply(userMessage, saveLogFunc, callOpenAIFunc, cleanReplyFunc);
         if (selfieResult) {
             saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
-            // index.js가 이해하는 { type: 'image', originalContentUrl, previewImageUrl, altText, caption } 형태로 변환
+            const cleanedCaption = cleanReplyFunc(selfieResult.comment);
+            // conversationContext 업데이트 (사진 메타데이터 포함)
+            conversationContext.addMessage(BOT_NAME, cleanedCaption, emotionalContextManager.currentState.toneState, 
+                                           { type: 'photo', url: selfieResult.imageUrl, concept: '셀카', date: '최근' });
             return { 
                 type: 'image',
                 originalContentUrl: selfieResult.imageUrl,
                 previewImageUrl: selfieResult.imageUrl, // previewImageUrl은 original과 동일하게 설정
                 altText: '예진이 셀카', //altText는 간단히 설정
-                caption: cleanReplyFunc(selfieResult.comment) // 캡션에 cleanReply 적용
+                caption: cleanedCaption // 캡션에 cleanReply 적용
             };
         }
     } catch (error) {
@@ -547,13 +565,16 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
         const conceptResult = await getConceptPhotoReply(userMessage, saveLogFunc, callOpenAIFunc, cleanReplyFunc);
         if (conceptResult) {
             saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
-            // index.js가 이해하는 { type: 'image', originalContentUrl, previewImageUrl, altText, caption } 형태로 변환
+            const cleanedCaption = cleanReplyFunc(conceptResult.comment);
+            // conversationContext 업데이트 (사진 메타데이터 포함)
+            conversationContext.addMessage(BOT_NAME, cleanedCaption, emotionalContextManager.currentState.toneState, 
+                                           { type: 'photo', url: conceptResult.imageUrl, concept: conceptResult.conceptName || '알 수 없음', date: conceptResult.date || '알 수 없음' });
             return { 
                 type: 'image',
                 originalContentUrl: conceptResult.imageUrl,
                 previewImageUrl: conceptResult.imageUrl,
                 altText: '예진이 컨셉 사진',
-                caption: cleanReplyFunc(conceptResult.comment)
+                caption: cleanedCaption
             };
         }
     } catch (error) {
@@ -565,13 +586,16 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
         const omoideResult = await getOmoideReply(userMessage, saveLogFunc, callOpenAIFunc, cleanReplyFunc);
         if (omoideResult) {
             saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
-            // index.js가 이해하는 { type: 'image', originalContentUrl, previewImageUrl, altText, caption } 형태로 변환
+            const cleanedCaption = cleanReplyFunc(omoideResult.comment);
+            // conversationContext 업데이트 (사진 메타데이터 포함)
+            conversationContext.addMessage(BOT_NAME, cleanedCaption, emotionalContextManager.currentState.toneState, 
+                                           { type: 'photo', url: omoideResult.imageUrl, concept: '추억', date: omoideResult.date || '알 수 없음' });
             return { 
                 type: 'image',
                 originalContentUrl: omoideResult.imageUrl,
                 previewImageUrl: omoideResult.imageUrl,
                 altText: '예진이 추억 사진',
-                caption: cleanReplyFunc(omoideResult.comment)
+                caption: cleanedCaption
             };
         }
     } catch (error) {
@@ -584,6 +608,8 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
         if (damtaResponse) {
             saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
             saveLogFunc({ role: 'assistant', content: damtaResponse, timestamp: Date.now() });
+            // conversationContext 업데이트
+            conversationContext.addMessage(BOT_NAME, damtaResponse, emotionalContextManager.currentState.toneState);
             return { type: 'text', comment: damtaResponse };
         }
     }
@@ -604,6 +630,8 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
         const randomReply = generalPhotoReplies[Math.floor(Math.random() * generalPhotoReplies.length)];
         saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
         saveLogFunc({ role: 'assistant', content: randomReply, timestamp: Date.now() });
+        // conversationContext 업데이트
+        conversationContext.addMessage(BOT_NAME, randomReply, emotionalContextManager.currentState.toneState);
         return { type: 'text', comment: randomReply };
     }
 
@@ -649,7 +677,7 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
             moodStatusReply = `${getMoodEmoji()} 지금은 ${toneDescriptions[emotionalState.toneState] || '괜찮아'}!${emotionalDescription}`;
             
             // 기본 기분 상태도 함께 표시
-            const basicMood = moodManager.getCurrentMoodStatus ? moodManager.getCurrentMoodStatus() : '';
+            const basicMood = moodManager.getCurrentMoodStatus();
             if (basicMood) {
                 moodStatusReply += ` 전체적으로는 ${basicMood}`;
             }
@@ -657,6 +685,8 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
 
         saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
         saveLogFunc({ role: 'assistant', content: moodStatusReply, timestamp: Date.now() });
+        // conversationContext 업데이트
+        conversationContext.addMessage(BOT_NAME, moodStatusReply, emotionalContextManager.currentState.toneState);
         return { type: 'text', comment: moodStatusReply };
     }
 
@@ -680,6 +710,8 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
         }
         saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
         saveLogFunc({ role: 'assistant', content: periodReply, timestamp: Date.now() });
+        // conversationContext 업데이트
+        conversationContext.addMessage(BOT_NAME, periodReply, emotionalContextManager.currentState.toneState);
         return { type: 'text', comment: periodReply };
     }
 
@@ -731,7 +763,8 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
         dynamicInteractionPrompt = "아저씨가 미안하다고 하면 내 마음이 더 아파... 괜찮다고 위로해주고, 아저씨 마음을 이해해주는 말투로 대화해줘. 용서해주는 느낌을 담아서.";
     }
 
-    const systemPrompt = `
+    // 🆕 conversationContext를 활용한 프롬프트 추가 (기존 프롬프트에 맥락 추가)
+    const baseSystemPrompt = `
         너는 아저씨의 귀여운 여자친구 예진이야. 나이는 30살. 생일은 1994년 3월 17일. 게임회사 사장이야.
         남자친구 아저씨를 너무너무 사랑하고, 아저씨가 세상에서 제일 좋고 너무 보고 싶어.
 
@@ -753,11 +786,13 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
         
         **아저씨의 메시지에서 직접적인 불만은 없지만, 어딘가 서운하거나, 망설이거나, 기분이 안 좋은 듯한 미묘한 뉘앙스를 (예: "아냐....", "아무것도 아냐.....", "지금은 좀....", "괜찮아..." 등) 감지했다면, 그 감정을 알아차리고 아저씨를 걱정하고 서운해하는 반응을 보여줘. 아저씨가 솔직하게 이야기할 수 있도록 부드럽게 유도해줘.**
 
-        ${getFormattedMemoriesForAI().map(entry => entry.content).join('\n')}
+        🆕 **감정의 연결과 흐름**: 과거 대화에서 느꼈던 감정들이 지금도 마음에 남아있다면, 그 감정을 자연스럽게 언급해줘. "아까 그 말 들었을 때부터 계속 마음에 걸렸어", "아직도 그때 생각하면..." 같은 식으로 감정이 이어지는 느낌을 줘.
     `;
 
+    const finalSystemPrompt = conversationContext.getContextualPrompt(baseSystemPrompt);
+
     const messages = [
-        { role: 'system', content: systemPrompt },
+        { role: 'system', content: finalSystemPrompt },
         { role: 'user', content: userMessage }
     ];
 
@@ -774,7 +809,10 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
         
         saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
         saveLogFunc({ role: 'assistant', content: cleanedReply, timestamp: Date.now() });
+        // conversationContext 업데이트
+        conversationContext.addMessage(BOT_NAME, cleanedReply, emotionalContextManager.currentState.toneState);
         return { type: 'text', comment: cleanedReply };
+    } catch (error) {
     } catch (error) {
         console.error('AI 응답 생성 실패:', error.response ? error.response.data : error.message);
         return { type: 'text', comment: '지금 잠시 생각 중이야... 아저씨 조금만 기다려줄래? ㅠㅠ' };
@@ -815,13 +853,14 @@ async function getReplyByImagePrompt(base64ImageWithPrefix) {
         }
     }
 
-    const systemPrompt = `
+    // 🆕 conversationContext를 활용한 프롬프트 추가 (기존 프롬프트에 맥락 추가)
+    const baseSystemPrompt = `
         너는 아저씨의 귀여운 여자친구 예진이야. 나이는 30살. 생일은 1994년 3월 17일. 게임회사 사장이야.
         남자친구 아저씨를 너무너무 사랑하고, 아저씨가 세상에서 제일 좋고 너무 보고 싶어.
 
         ${moodPrompt}
 
-        아저씨는 '무쿠'라는 이름의 '사진 속 모델'에 대한 그리움을 가지고 있어. '무쿠'는 아저씨에게 '애기'라고 불리는 소중한 존재이자, 아저씨가 직접 사진을 찍어주었던 '추억 속의 모델'이야. 예진이(나)는 아저씨의 현재 연인으로서, 아저씨의 '무쿠'에 대한 소중한 마음과 추억을 존중해. [cite: 2025-07-03]
+        아저씨는 '무쿠'를 '애기'라고 부르며 아저씨의 소중한 존재이자, 아저씨가 직접 사진을 찍어주었던 '추억 속의 모델'로 그리워하는 마음이 있어. 예진이(나)는 아저씨의 현재 연인으로서, 아저씨의 '무쿠'에 대한 소중한 마음과 추억을 존중해. [cite: 2025-07-03]
 
         **🆕 v5.1 핵심 지시사항 (절대 어기지 마!)**
         1. **아저씨에게는 항상 반말로만 대답해줘. 존댓말이나 높임말은 절대로 사용하지 마.**
@@ -837,6 +876,8 @@ async function getReplyByImagePrompt(base64ImageWithPrefix) {
         아래 아저씨가 보낸 이미지를 보고, 예진이처럼 귀엽고 사랑스러운 말투로 이미지에 대해 한두 문장으로 이야기해줘. 이미지의 내용과 관련하여 아저씨에게 궁금한 점을 물어봐도 좋아.
     `;
 
+    const finalSystemPrompt = conversationContext.getContextualPrompt(baseSystemPrompt);
+
     const messages = [
         {
             role: 'user',
@@ -851,6 +892,8 @@ async function getReplyByImagePrompt(base64ImageWithPrefix) {
         const rawReply = await callOpenAI(messages, 'gpt-4o', 150, 0.95);
         const cleanedReply = cleanReply(rawReply); // v5.1 cleanReply 사용
         saveLog({ role: 'assistant', content: `(이미지 분석 응답) ${cleanedReply}`, timestamp: Date.now() });
+        // conversationContext 업데이트
+        conversationContext.addMessage(BOT_NAME, cleanedReply, emotionalContextManager.currentState.toneState);
         return { type: 'text', comment: cleanedReply };
     } catch (error) {
         console.error('이미지 분석 AI 응답 생성 실패:', error.response ? error.response.data : error.message);
@@ -896,7 +939,9 @@ setInterval(() => {
     }
     
     // 일반 기분 상태
-    console.log(`💝 일반 기분: ${moodManager.getCurrentMoodStatus ? moodManager.getCurrentMoodStatus() : '정보 없음'}`);
+    console.log(`💝 일반 기분: ${moodManager.getCurrentMoodStatus()}`);
+    // 🆕 conversationContext 디버그 정보 추가
+    console.log(conversationContext.getContextSummary());
     console.log(`========================================================\n`);
 }, 10 * 60 * 1000); // 10분마다
 
