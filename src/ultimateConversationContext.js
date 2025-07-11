@@ -1,6 +1,5 @@
-// ✅ ultimateConversationContext.js v17.1 - "오류 수정 최종판"
-// - [오류 수정] getUltimateContextualPrompt is not defined 오류 해결 (함수명과 export명 일치)
-// - [기억 통합] memoryManager의 고정 기억(JSON) 관리 기능을 흡수. 이제 이 파일이 모든 기억의 유일한 관리자.
+// ✅ ultimateConversationContext.js v17.2 - "기능 누락 오류 수정"
+// - [오류 수정] getPendingAction, setPendingAction, clearPendingAction 함수가 누락되어 발생한 에러 해결
 
 const moment = require('moment-timezone');
 const { OpenAI } = require('openai');
@@ -51,18 +50,6 @@ async function _loadFixedMemories() {
     }
 }
 
-async function analyzeToneWithLLM(message) {
-    if (!message || message.trim().length < 2) return { primaryEmotion: 'neutral', primaryIntensity: 1 };
-    const prompt = `너는 사람의 감정을 매우 잘 파악하는 감정 분석 전문가야. 아래 "분석할 메시지"를 읽고, 그 안에 담긴 주된 감정(primaryEmotion)을 분석해줘.\n- 감정은 'positive', 'negative', 'neutral', 'playful', 'romantic', 'sulky', 'worried', 'sarcastic' 중에서 선택해.\n- 감정의 강도(intensity)는 1에서 10 사이의 숫자로 평가해줘.\n- 반드시 아래 JSON 형식에 맞춰서 응답해야 하며, 다른 어떤 설명도 추가해서는 안 돼.\n\n분석할 메시지: "${message}"`;
-    try {
-        const response = await openai.chat.completions.create({ model: "gpt-4o-mini", messages: [{ role: "system", content: "You are a helpful assistant that analyzes emotions and responds only in JSON format." }, { role: "user", content: prompt }], response_format: { type: "json_object" }, temperature: 0.2 });
-        return JSON.parse(response.choices[0].message.content);
-    } catch (error) {
-        console.error('[Emotion] ❌ LLM 감정 분석 중 에러 발생:', error);
-        return { primaryEmotion: 'neutral', primaryIntensity: 1 };
-    }
-}
-
 async function extractAndStoreFacts(message) {
     if (!message || message.length < 10) return;
     const prompt = `너는 중요한 정보를 기억하는 비서 AI야. 다음 문장에서 남자친구('아저씨')에 대한 장기적으로 기억할 만한 중요한 사실(생일, 기념일, 좋아하는 것, 싫어하는 것, 중요한 약속 등)이 있다면, 그 사실들을 명사형 문장(~이다, ~함)으로 요약해서 JSON 문자열 배열 형태로 추출해줘. 예: ["아저씨의 생일은 10월 25일이다."]. 기억할 정보가 없으면 '[]'을 반환해줘. 문장: "${message}"`;
@@ -70,7 +57,10 @@ async function extractAndStoreFacts(message) {
         const response = await openai.chat.completions.create({ model: "gpt-4o-mini", messages: [{ role: "user", content: prompt }], temperature: 0.1 });
         const content = response.choices[0].message.content;
         const jsonMatch = content.match(/\[.*\]/s);
-        if (jsonMatch) facts.forEach(fact => addFactToKnowledgeBase(fact));
+        if (jsonMatch) {
+            const facts = JSON.parse(jsonMatch[0]);
+            facts.forEach(fact => addFactToKnowledgeBase(fact));
+        }
     } catch (error) {
         console.error('[Memory] ❌ 사실 추출 중 에러 발생:', error);
     }
@@ -83,13 +73,12 @@ function addFactToKnowledgeBase(fact) {
 
 function analyzeAndInfluenceBotEmotion(userMessage) {
     const lowerMessage = userMessage.toLowerCase();
-    const eventMap = { love: ['사랑', '좋아', '보고싶'], worry: ['힘들', '슬프', '우울'], hurt: ['화나', '짜증', '싫어'], lonely: ['바쁘', '일 때문에', '나중에'], happy: ['재밌', '웃기', 'ㅋㅋ'] };
     let event = null;
-    if (eventMap.love.some(k => lowerMessage.includes(k))) event = 'LOVED';
-    else if (eventMap.worry.some(k => lowerMessage.includes(k))) event = 'WORRIED_LOVE';
-    else if (eventMap.hurt.some(k => lowerMessage.includes(k))) event = 'HURT';
-    else if (eventMap.lonely.some(k => lowerMessage.includes(k))) event = 'LONELY';
-    else if (eventMap.happy.some(k => lowerMessage.includes(k))) event = 'HAPPY';
+    if (['사랑', '좋아', '보고싶'].some(k => lowerMessage.includes(k))) event = 'LOVED';
+    else if (['힘들', '슬프', '우울'].some(k => lowerMessage.includes(k))) event = 'WORRIED_LOVE';
+    else if (['화나', '짜증', '싫어'].some(k => lowerMessage.includes(k))) event = 'HURT';
+    else if (['바쁘', '일 때문에', '나중에'].some(k => lowerMessage.includes(k))) event = 'LONELY';
+    else if (['재밌', '웃기', 'ㅋㅋ'].some(k => lowerMessage.includes(k))) event = 'HAPPY';
     if (event) recordEmotionalEvent(event, `아저씨의 메시지`);
 }
 
@@ -114,7 +103,6 @@ function updateToneState() {
     }
 }
 
-// [오류 수정] 함수의 이름을 'getUltimateContextualPrompt'로 변경하여 export와 일치시킴
 function getUltimateContextualPrompt(basePrompt) {
     let ultimatePrompt = basePrompt;
     const state = ultimateConversationState;
@@ -185,11 +173,11 @@ async function addUserMemory(content) {
 async function addUltimateMessage(speaker, message, meta = null) {
     const timestamp = Date.now();
     let finalMessage = message || '';
-    if (speaker === '아저씨') {
-        if (finalMessage) analyzeAndInfluenceBotEmotion(finalMessage);
-        if (message) await extractAndStoreFacts(message);
+    if (speaker === '아저씨' && finalMessage) {
+        analyzeAndInfluenceBotEmotion(finalMessage);
+        await extractAndStoreFacts(message);
     }
-    const newMessage = { speaker, message: finalMessage, timestamp, meta, analysis: { tone: (await analyzeToneWithLLM(message)).primaryEmotion || 'neutral' } };
+    const newMessage = { speaker, message: finalMessage, timestamp, meta };
     ultimateConversationState.recentMessages.push(newMessage);
     if (ultimateConversationState.recentMessages.length > 30) ultimateConversationState.recentMessages.shift();
 }
@@ -201,6 +189,29 @@ function updateLastUserMessageTime(timestamp) {
 function processTimeTick() {
     // This function can be expanded to handle time-based events.
 }
+
+// [오류 수정] 누락되었던 함수들 다시 추가
+function setPendingAction(actionType) {
+    if (!actionType) return;
+    ultimateConversationState.pendingAction = { type: actionType, timestamp: Date.now() };
+    console.log(`[UltimateContext] ⏳ 특별 행동 대기 모드 설정: ${actionType}`);
+}
+
+function getPendingAction() {
+    const action = ultimateConversationState.pendingAction;
+    // 5분 이상 경과 시 자동 해제
+    if (action && action.type && (Date.now() - action.timestamp > 5 * 60 * 1000)) {
+        clearPendingAction();
+        return null;
+    }
+    return action.type ? action : null;
+}
+
+function clearPendingAction() {
+    ultimateConversationState.pendingAction = { type: null, timestamp: 0 };
+    console.log(`[UltimateContext] ✅ 특별 행동 대기 모드 해제.`);
+}
+
 
 function getSulkinessState() { return ultimateConversationState.sulkiness; }
 function updateSulkinessState(newState) { Object.assign(ultimateConversationState.sulkiness, newState); }
@@ -221,4 +232,8 @@ module.exports = {
     updateMoodState,
     searchFixedMemory,
     addUserMemory,
+    // [오류 수정] 누락되었던 함수들을 목록에 다시 추가
+    setPendingAction,
+    getPendingAction,
+    clearPendingAction
 };
