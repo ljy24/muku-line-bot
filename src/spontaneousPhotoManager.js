@@ -1,10 +1,10 @@
 // ✅ spontaneousPhotoManager.js v2.4 - 최종 안정화 버전
 
 const schedule = require('node-schedule');
-const moment = require('moment-timezone');
+const moment = 'moment-timezone');
 const path = require('path');
 const fs = require('fs');
-const { callOpenAI, cleanReply, saveLog, BOT_NAME } = require('./aiUtils'); // [수정] 공용 부품 파일에서 함수를 가져옴
+const { callOpenAI, cleanReply, saveLog } = require('./aiUtils');
 const conversationContext = require('./ultimateConversationContext.js');
 
 const IMAGE_DIR = path.join(process.cwd(), 'images');
@@ -37,8 +37,8 @@ async function sendRandomPhoto(client, userId) {
             { type: 'text', text: caption }
         ]);
         const logMessage = `(랜덤 사진 전송) ${caption}`;
-        saveLog(BOT_NAME, logMessage);
-        conversationContext.addUltimateMessage(BOT_NAME, logMessage);
+        saveLog('예진이', logMessage);
+        conversationContext.addUltimateMessage('예진이', logMessage);
     } catch (error) {
         console.error('[SpontaneousPhoto] ❌ 랜덤 사진 전송 실패:', error);
     }
