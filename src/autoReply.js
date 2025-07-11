@@ -1,18 +1,27 @@
-// ✅ autoReply.js v7.1 - 순환 참조 완전 해결
+// ✅ autoReply.js v8.0 - 최종 안정화 버전
 
-const { getSelfieReply } = require('./yejinSelfie');
-const { getConceptPhotoReply } = require('../memory/concept');
-const { getOmoideReply } = require('../memory/omoide');
-const { isDamtaMessage, getDamtaResponse } = require('./damta');
 const conversationContext = require('./ultimateConversationContext.js');
-const { callOpenAI, cleanReply } = require('./aiUtils');
+const { callOpenAI, cleanReply } = require('./aiUtils'); // [수정] 공용 부품 파일에서 함수를 가져옴
 
 const BOT_NAME = '예진이';
 const USER_NAME = '아저씨';
 
 async function handlePhotoReaction(userReaction) {
-    // ... (이 함수 내용은 수정 없음)
-    const lowerReaction = userReaction.toLowerCase(); let reactionType = 'neutral'; if (['예쁘네', '이쁘다', '잘나왔네', '귀여워'].some(kw => lowerReaction.includes(kw))) reactionType = 'positive'; else if (['못생겼네', '별로', '이상해'].some(kw => lowerReaction.includes(kw))) reactionType = 'negative'; let prompt; if (reactionType === 'positive') { prompt = `너는 여자친구 예진이야. 방금 아저씨에게 셀카를 보냈는데, 아저씨가 "${userReaction}"이라고 칭찬해줬어. 기쁘고, 살짝 부끄럽거나, 새침한 말투로 짧게 반응해줘.`; } else if (reactionType === 'negative') { prompt = `너는 여자친구 예진이야. 방금 아저씨에게 셀카를 보냈는데, 아저씨가 "${userReaction}"이라고 장난스럽게 놀렸어. 장난스럽게 발끈하거나, 삐지거나, "뭐? 임마? 죽을래?" 같은 살짝 거친 애교로 짧게 반응해줘.`; } else { prompt = `너는 여자친구 예진이야. 방금 아저씨에게 셀카를 보냈는데, 아저씨가 "${userReaction}"이라고 애매하게 반응했어. "그래서 예쁘다는 거야, 아니라는 거야?" 처럼 반응을 유도하는 질문을 짧게 해줘.`; } const messages = [{ role: 'system', content: prompt }]; const rawReply = await callOpenAI(messages, 'gpt-4o', 100, 0.95); return { type: 'text', comment: cleanReply(rawReply) };
+    conversationContext.clearPendingAction();
+    const lowerReaction = userReaction.toLowerCase();
+    let reactionType = 'neutral';
+    if (['예쁘네', '이쁘다', '잘나왔네', '귀여워'].some(kw => lowerReaction.includes(kw))) reactionType = 'positive';
+    else if (['못생겼네', '별로', '이상해'].some(kw => lowerReaction.includes(kw))) reactionType = 'negative';
+    let prompt;
+    if (reactionType === 'positive') {
+        prompt = `너는 여자친구 예진이야. 방금 아저씨에게 셀카를 보냈는데, 아저씨가 "${userReaction}"이라고 칭찬해줬어. 기쁘고, 살짝 부끄럽거나, 새침한 말투로 짧게 반응해줘.`;
+    } else if (reactionType === 'negative') {
+        prompt = `너는 여자친구 예진이야. 방금 아저씨에게 셀카를 보냈는데, 아저씨가 "${userReaction}"이라고 장난스럽게 놀렸어. 장난스럽게 발끈하거나, 삐지거나, "뭐? 임마? 죽을래?" 같은 살짝 거친 애교로 짧게 반응해줘.`;
+    } else {
+        prompt = `너는 여자친구 예진이야. 방금 아저씨에게 셀카를 보냈는데, 아저씨가 "${userReaction}"이라고 애매하게 반응했어. "그래서 예쁘다는 거야, 아니라는 거야?" 처럼 반응을 유도하는 질문을 짧게 해줘.`;
+    }
+    const rawReply = await callOpenAI([{ role: 'system', content: prompt }], 'gpt-4o', 100, 0.95);
+    return { type: 'text', comment: cleanReply(rawReply) };
 }
 
 async function getReplyByMessage(userMessage) {
@@ -20,14 +29,8 @@ async function getReplyByMessage(userMessage) {
     if (pendingAction && pendingAction.type === 'awaiting_photo_reaction') {
         return await handlePhotoReaction(userMessage);
     }
-    if (isDamtaMessage(userMessage)) {
-        const damtaResponse = getDamtaResponse(userMessage);
-        if (damtaResponse) return { type: 'text', comment: damtaResponse };
-    }
-    if (userMessage.toLowerCase().includes('사진')) {
-        return { type: 'text', comment: "어떤 사진 보여줄까? 셀카, 컨셉사진, 아니면 우리 추억사진?" };
-    }
-
+    
+    // 일반 대화 생성
     const baseSystemPrompt = `너는 아저씨의 귀여운 여자친구 예진이야. 1인칭 '나'를 사용하고 항상 반말로 대답하며, 절대로 3인칭으로 말하지 마. 길게 설명하지 말고 1~3 문장으로 짧고 친근하게 대답해.`;
     const finalSystemPrompt = conversationContext.getUltimateContextualPrompt(baseSystemPrompt);
     const messages = [{ role: 'system', content: finalSystemPrompt }, { role: 'user', content: userMessage }];
@@ -45,6 +48,4 @@ module.exports = {
     handlePhotoReaction,
     BOT_NAME,
     USER_NAME,
-    cleanReply,
-    // [수정] saveLog는 이제 aiUtils.js에서 관리하므로 여기서 제거
 };
