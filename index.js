@@ -173,6 +173,7 @@ async function handleImprovedTextMessage(text, event, client, userId) {
         } else {
             console.log(`[index.js v5.1] 특정 명령어로 처리되어 메모리 자동 저장 제외`);
             // 명령어 처리 후에도 conversationContext에 예진이 응답 추가 (만약 botResponse가 이미 있다면)
+            // (botResponse가 명령어 핸들러에서 직접 생성된 경우 addMessage가 누락될 수 있으므로 추가)
             if (botResponse && botResponse.type === 'text' && botResponse.comment) {
                 conversationContext.addMessage(BOT_NAME, botResponse.comment, emotionalContextManager.currentState.toneState);
             }
