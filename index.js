@@ -1,4 +1,4 @@
-// ✅ index.js v9.2 - TONE_STATES 참조 오류 해결
+// ✅ index.js v9.3 - 로그 표시 형식 변경
 
 const { Client, middleware } = require('@line/bot-sdk');
 const express = require('express');
@@ -19,63 +19,12 @@ const config = { channelAccessToken: process.env.LINE_ACCESS_TOKEN, channelSecre
 const client = new Client(config);
 const userId = process.env.TARGET_USER_ID;
 
-app.get('/', (_, res) => res.send('예진이 v9.2 살아있어! (최종 안정화)'));
+app.get('/', (_, res) => res.send('예진이 v9.3 살아있어! (로그 형식 변경)'));
 
-app.post('/webhook', middleware(config), async (req, res) => {
-    try {
-        await Promise.all(req.body.events.map(handleEvent));
-        res.status(200).send('OK');
-    } catch (err) {
-        console.error(`[Webhook] 웹훅 처리 중 심각한 에러:`, err);
-        res.status(500).send('Error');
-    }
-});
-
-async function handleEvent(event) {
-    if (event.source.userId !== userId || event.type !== 'message') return;
-    conversationContext.updateLastUserMessageTime(event.timestamp);
-    if (event.message.type === 'text') await handleTextMessage(event);
-}
-
-async function handleTextMessage(event) {
-    const text = event.message.text.trim();
-    saveLog('아저씨', text);
-    conversationContext.addUltimateMessage('아저씨', text);
-
-    const sulkyReliefMessage = await sulkyManager.handleUserResponse();
-    if (sulkyReliefMessage) {
-        saveLog('예진이', `(삐짐 해소) ${sulkyReliefMessage}`);
-        await client.pushMessage(userId, { type: 'text', text: sulkyReliefMessage });
-        conversationContext.addUltimateMessage('예진이', `(삐짐 해소) ${sulkyReliefMessage}`);
-        await new Promise(resolve => setTimeout(resolve, 1000));
-    }
-
-    let botResponse = await commandHandler.handleCommand(text, conversationContext);
-    if (!botResponse) botResponse = await getReplyByMessage(text);
-    if (botResponse) await sendReply(event.replyToken, botResponse);
-}
-
-async function sendReply(replyToken, botResponse) {
-    try {
-        if (botResponse.type === 'image') {
-            const caption = botResponse.caption || '사진이야!';
-            saveLog('예진이', `(사진 전송) ${caption}`);
-            await client.replyMessage(replyToken, [
-                { type: 'image', originalContentUrl: botResponse.originalContentUrl, previewImageUrl: botResponse.previewImageUrl, },
-                { type: 'text', text: caption }
-            ]);
-            conversationContext.addUltimateMessage('예진이', `(사진 전송) ${caption}`);
-        } else if (botResponse.type === 'text' && botResponse.comment) {
-            const cleanedText = cleanReply(botResponse.comment);
-            saveLog('예진이', cleanedText);
-            await client.replyMessage(replyToken, { type: 'text', text: cleanedText });
-            conversationContext.addUltimateMessage('예진이', cleanedText);
-        }
-        conversationContext.getSulkinessState().lastBotMessageTime = Date.now();
-    } catch (error) {
-        console.error('[sendReply] 메시지 전송 실패:', error);
-    }
-}
+app.post('/webhook', middleware(config), async (req, res) => { try { await Promise.all(req.body.events.map(handleEvent)); res.status(200).send('OK'); } catch (err) { console.error(`[Webhook] 웹훅 처리 중 심각한 에러:`, err); res.status(500).send('Error'); } });
+async function handleEvent(event) { if (event.source.userId !== userId || event.type !== 'message') return; conversationContext.updateLastUserMessageTime(event.timestamp); if (event.message.type === 'text') await handleTextMessage(event); }
+async function handleTextMessage(event) { const text = event.message.text.trim(); saveLog('아저씨', text); conversationContext.addUltimateMessage('아저씨', text); const sulkyReliefMessage = await sulkyManager.handleUserResponse(); if (sulkyReliefMessage) { saveLog('예진이', `(삐짐 해소) ${sulkyReliefMessage}`); await client.pushMessage(userId, { type: 'text', text: sulkyReliefMessage }); conversationContext.addUltimateMessage('예진이', `(삐짐 해소) ${sulkyReliefMessage}`); await new Promise(resolve => setTimeout(resolve, 1000)); } let botResponse = await commandHandler.handleCommand(text, conversationContext); if (!botResponse) botResponse = await getReplyByMessage(text); if (botResponse) await sendReply(event.replyToken, botResponse); }
+async function sendReply(replyToken, botResponse) { try { if (botResponse.type === 'image') { const caption = botResponse.caption || '사진이야!'; saveLog('예진이', `(사진 전송) ${caption}`); await client.replyMessage(replyToken, [ { type: 'image', originalContentUrl: botResponse.originalContentUrl, previewImageUrl: botResponse.previewImageUrl, }, { type: 'text', text: caption } ]); conversationContext.addUltimateMessage('예진이', `(사진 전송) ${caption}`); } else if (botResponse.type === 'text' && botResponse.comment) { const cleanedText = cleanReply(botResponse.comment); saveLog('예진이', cleanedText); await client.replyMessage(replyToken, { type: 'text', text: cleanedText }); conversationContext.addUltimateMessage('예진이', cleanedText); } conversationContext.getSulkinessState().lastBotMessageTime = Date.now(); } catch (error) { console.error('[sendReply] 메시지 전송 실패:', error); } }
 
 async function initMuku() {
     try {
@@ -91,7 +40,6 @@ async function initMuku() {
             const photoStatus = getPhotoSchedulerStatus();
             const innerThought = conversationContext.generateInnerThought();
             
-            // [오류 수정] 말투 번역을 위한 번역표(TONE_STATES)를 여기에 직접 추가합니다.
             const TONE_STATES = { normal: "평소", quiet: "차분함", playful: "장난스러움", hurt: "상처받음", anxious: "불안함" };
 
             const residue = internalState.emotionalEngine.emotionalResidue;
@@ -105,15 +53,19 @@ async function initMuku() {
                 sulkyText = '걱정 중';
             }
             
+            // [수정] 생리 주기 표시 로직 변경
             const lastStartDate = moment(internalState.mood.lastPeriodStartDate);
             const nextExpectedDate = lastStartDate.add(28, 'days');
             const daysUntilNextPeriod = nextExpectedDate.diff(moment(), 'days');
-            let periodText = `${daysUntilNextPeriod}일 남음`;
-            if (internalState.mood.isPeriodActive) periodText = `현재 생리 중`;
-            else if (daysUntilNextPeriod <= 0) periodText = '오늘 또는 예정일 지남';
-            else if (daysUntilNextPeriod <= 7) periodText = `${daysUntilNextPeriod}일 후 예정 (예민)`;
-            
-            // [오류 수정] TONE_STATES 변수를 사용하여 로그를 출력합니다.
+            let periodText = `[🩸생리까지]: ${daysUntilNextPeriod}일 남음`;
+            if (internalState.mood.isPeriodActive) {
+                periodText = `[🩸생리중]`;
+            } else if (daysUntilNextPeriod <= 0) {
+                periodText = '[🩸생리까지]: 오늘 또는 예정일 지남';
+            } else if (daysUntilNextPeriod <= 7) {
+                periodText = `[🩸생리까지]: ${daysUntilNextPeriod}일 후 예정 (예민)`;
+            }
+
             const currentToneState = internalState.emotionalEngine.currentToneState;
             const toneStateText = TONE_STATES[currentToneState] || currentToneState;
 
@@ -122,8 +74,9 @@ async function initMuku() {
             console.log(`[욕구] ${innerThought.actionUrge}`);
             console.log("------------------------------------------");
             console.log(`[감정] ${residueText}`);
-            console.log(`[상태] 말투: ${toneStateText} | 삐짐: ${sulkyText} | 주기: ${periodText}`);
-            console.log(`[행동] 담타까지: ${schedulerStatus.nextDamtaInMinutes}분 | 사진까지: ${photoStatus.minutesUntilNext}분\n`);
+            console.log(`[상태] 말투: ${toneStateText} | 삐짐: ${sulkyText}`);
+            // [수정] 주기 및 행동 로그 형식 변경
+            console.log(`${periodText} | [🚬담타까지]: ${schedulerStatus.nextDamtaInMinutes}분 | [📸사진까지]: ${photoStatus.minutesUntilNext}분\n`);
 
         }, 60 * 1000);
     } catch (error) {
@@ -134,6 +87,6 @@ async function initMuku() {
 
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
-    console.log(`예진이 v9.2 서버 스타트! 포트: ${PORT}`);
+    console.log(`예진이 v9.3 서버 스타트! 포트: ${PORT}`);
     initMuku();
 });
