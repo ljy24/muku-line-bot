@@ -1,5 +1,8 @@
 // --- START OF FILE: index.js ---
 // ✅ index.js v6.3 - "Photo Feedback Mode" Trigger Implemented & Length Fix
+// - 모든 모듈을 올바르게 연결하고 지휘하는 최종 버전
+// - 역할과 책임 분리 원칙 적용
+// - 안정적인 에러 처리 및 코드 구조 개선
 
 // 📦 필수 모듈 불러오기
 const { Client, middleware } = require('@line/bot-sdk');
@@ -14,7 +17,8 @@ const {
     cleanReply,
     callOpenAI,
     BOT_NAME,
-    USER_NAME
+    USER_NAME,
+    checkSpontaneousReactions // 자발적 반응 체크 함수 추가
 } = require('./src/autoReply');
 
 // 🆕 다른 핵심 모듈들 불러오기
@@ -38,8 +42,10 @@ const config = {
 const client = new Client(config);
 const userId = process.env.TARGET_USER_ID;
 
+// 🌐 루트 경로
 app.get('/', (_, res) => res.send('예진이 v6.3 살아있어! (맥락/길이 개선)'));
 
+// 📊 상태 조회 API
 app.get('/status', (req, res) => {
     try {
         const internalState = conversationContext.getInternalState();
@@ -49,9 +55,11 @@ app.get('/status', (req, res) => {
             ...internalState
         });
     } catch (error) {
+        console.error('[Status] 상태 조회 중 에러 발생:', error);
         res.status(500).json({ error: '상태 조회 실패' });
     }
 });
+
 
 // 🎣 LINE 웹훅 요청 처리 (메인 관제실)
 app.post('/webhook', middleware(config), async (req, res) => {
@@ -65,10 +73,13 @@ app.post('/webhook', middleware(config), async (req, res) => {
     }
 });
 
-// 이벤트별 처리
+// 이벤트별 처리 허브
 async function handleEvent(event) {
-    if (event.source.userId !== userId || event.type !== 'message') return;
+    if (event.source.userId !== userId || event.type !== 'message') {
+        return; // 목표 사용자의 메시지 이벤트가 아니면 무시
+    }
 
+    // 아저씨의 마지막 메시지 시간을 context에 기록
     conversationContext.updateLastUserMessageTime(event.timestamp);
 
     switch (event.message.type) {
@@ -85,16 +96,19 @@ async function handleEvent(event) {
 async function handleTextMessage(event) {
     const text = event.message.text.trim();
     saveLog(USER_NAME, text);
+    // 메시지를 '기억'하도록 context에 전달
     conversationContext.addUltimateMessage(USER_NAME, text);
 
+    // 삐짐 해소 체크
     const sulkyReliefMessage = await sulkyManager.handleUserResponse(client, userId, saveLog);
     if (sulkyReliefMessage) {
         await client.pushMessage(userId, { type: 'text', text: sulkyReliefMessage });
         saveLog(BOT_NAME, `(삐짐 해소) ${sulkyReliefMessage}`);
         conversationContext.addUltimateMessage(BOT_NAME, sulkyReliefMessage);
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise(resolve => setTimeout(resolve, 1000)); // 답장 전 잠시 대기
     }
 
+    // 답장 생성 요청
     let botResponse = null;
     botResponse = await commandHandler.handleCommand(text, saveLog, callOpenAI, cleanReply, memoryManager.getFixedMemory) ||
                   await memoryHandler.handleMemoryCommand(text, saveLog, callOpenAI, cleanReply, memoryManager.getFixedMemory);
@@ -129,7 +143,9 @@ async function handleImageMessage(event) {
     }
 }
 
-// 📤 응답 전송 및 후처리 (공통 함수)
+/**
+ * [MODIFIED] 📤 응답 전송 및 후처리 (공통 함수)
+ */
 async function sendReply(replyToken, botResponse) {
     let messagesToReply = [];
     let loggableText = '';
@@ -159,6 +175,7 @@ async function sendReply(replyToken, botResponse) {
 
         if (loggableText) {
             saveLog(BOT_NAME, loggableText);
+            // 봇의 최종 응답을 '기억'하도록 context에 전달
             conversationContext.addUltimateMessage(BOT_NAME, loggableText);
         }
         sulkyManager.startSulkyTimer(client, userId, saveLog);
@@ -179,6 +196,7 @@ function cleanAndVerifyFirstPerson(text) {
     return cleanedText;
 }
 
+
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
@@ -190,12 +208,29 @@ app.listen(PORT, () => {
 async function initMuku() {
     try {
         await memoryManager.ensureMemoryTablesAndDirectory();
+        // conversationContext의 초기화 함수를 명시적으로 호출
         await conversationContext.initializeEmotionalSystems();
         startAllSchedulers(client, userId);
         startSpontaneousPhotoScheduler(client, userId, saveLog, callOpenAI, cleanReply, () => conversationContext.getInternalState().timingContext.lastUserMessageTime);
-        // ... (자발적 반응 스케줄러 등 기존 코드)
+        
+        // 자발적 반응 스케줄러
+        setInterval(async () => {
+            const spontaneousReaction = await checkSpontaneousReactions();
+            if (spontaneousReaction && Math.random() < 0.2) {
+                const finalMessage = cleanAndVerifyFirstPerson(spontaneousReaction);
+                try {
+                    await client.pushMessage(userId, { type: 'text', text: finalMessage });
+                    saveLog(BOT_NAME, `(자발적 반응) ${finalMessage}`);
+                    conversationContext.addUltimateMessage(BOT_NAME, finalMessage);
+                } catch (err) {
+                    console.error('[Scheduler] 자발적 반응 메시지 전송 실패:', err);
+                }
+            }
+        }, 15 * 60 * 1000);
+
     } catch (error) {
         console.error('❌ 초기화 중 심각한 에러 발생:', error);
         process.exit(1);
     }
 }
+// --- END OF FILE: index.js ---
