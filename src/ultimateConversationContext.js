@@ -1,6 +1,7 @@
-// ✅ ultimateConversationContext.js v13.0 - "심장 박동 시스템 통합" (한국어 버전)
-// - [HEARTBEAT] 1분마다 시간의 흐름을 인지하고 상태를 변화시키는 processTimeTick 함수 추가
-// - 모든 이전 기능(Memory, Vision, Emotion, Sulky State)이 포함된 완전판 코드입니다.
+// ✅ ultimateConversationContext.js v14.0 - "기분 시스템 통합" (한국어 버전)
+// - [MOOD-INTEGRATION] 기분 상태(mood)를 중앙 상태 관리에 포함
+// - [HEARTBEAT] processTimeTick 함수에 시간 기반 기분 변화 및 생리 주기 계산 로직 통합
+// - 모든 이전 기능이 포함된 완전판 코드입니다.
 
 const moment = require('moment-timezone');
 const {
@@ -19,6 +20,12 @@ let ultimateConversationState = {
     currentTopic: null,
     knowledgeBase: {
         facts: [],
+    },
+    // [MOOD-INTEGRATION] '기분' 상태를 중앙 기억장치로 이전
+    mood: {
+        currentMood: '평온함',
+        isPeriodActive: false,
+        lastPeriodStartDate: moment().tz('Asia/Tokyo').subtract(20, 'days').startOf('day'),
     },
     sulkiness: {
         isSulky: false,
@@ -75,10 +82,19 @@ let ultimateConversationState = {
 
 // [HEARTBEAT] 삐짐 단계 설정을 위한 상수
 const SULKY_DELAYS = {
-    LEVEL_1: 60,  // 60분
-    LEVEL_2: 120, // 120분
-    LEVEL_3: 240, // 240분
-    WORRY: 360,   // 360분
+    LEVEL_1: 60,
+    LEVEL_2: 120,
+    LEVEL_3: 240,
+    WORRY: 360,
+};
+
+// [MOOD-INTEGRATION] 기분 관련 상수 설정
+const MOOD_CONFIG = {
+    PERIOD_DURATION_DAYS: 5,
+    CYCLE_DAYS: 28,
+    TIME_BASED_MOOD_DELAY: 30,
+    MOODS_FOR_SILENCE: ['외로움', '보고싶음', '우울함', '걱정함', '불안함', '그리움'],
+    ALL_MOODS: ['기쁨', '설렘', '장난스러움', '나른함', '심술궂음', '평온함', '우울함', '슬픔', '외로움', '보고싶음', '짜증남', '애교모드', '걱정함', '사랑함', '화남', '불안함', '그리움']
 };
 
 const LLM_BASED_SELF_EVALUATION = true;
@@ -87,14 +103,12 @@ async function analyzeToneWithLLM(message) {
     if (!message || message.trim().length < 2) {
         return { primaryEmotion: 'neutral', primaryIntensity: 1, secondaryEmotion: null, secondaryIntensity: null };
     }
-
     const prompt = `너는 사람의 감정을 매우 잘 파악하는 감정 분석 전문가야. 아래 "분석할 메시지"를 읽고, 그 안에 담긴 주된 감정(primaryEmotion)과 부수적인 감정(secondaryEmotion, 없을 경우 null)을 분석해줘.
 - 감정은 'positive', 'negative', 'neutral', 'playful', 'romantic', 'sulky', 'worried', 'sarcastic' 중에서 선택해.
 - 각 감정의 강도(intensity)는 1에서 10 사이의 숫자로 평가해줘.
 - 반드시 아래 JSON 형식에 맞춰서 응답해야 하며, 다른 어떤 설명도 추가해서는 안 돼.
 
 분석할 메시지: "${message}"`;
-
     try {
         const response = await openai.chat.completions.create({
             model: "gpt-4o-mini",
@@ -105,11 +119,9 @@ async function analyzeToneWithLLM(message) {
             response_format: { type: "json_object" },
             temperature: 0.2,
         });
-
         const analysisResult = JSON.parse(response.choices[0].message.content);
         console.log('[Emotion] ✅ LLM 감정 분석 완료:', analysisResult);
         return analysisResult;
-
     } catch (error) {
         console.error('[Emotion] ❌ LLM 감정 분석 중 에러 발생:', error);
         return { primaryEmotion: 'neutral', primaryIntensity: 1, secondaryEmotion: null, secondaryIntensity: null };
@@ -248,10 +260,8 @@ function updateCumulativePatterns(newMessage) {
 
 async function evaluateMyResponse(myMessage) {
     if (!LLM_BASED_SELF_EVALUATION) return;
-
     const recent = ultimateConversationState.recentMessages;
     const lastUserMessage = recent.filter(m => m.speaker !== myMessage.speaker).pop();
-
     const prompt = `너는 AI 대화 코치다. 지금부터 한 AI의 답변을 평가하겠다.
 이 AI는 '예진'이라는 페르소나를 가지고 있으며, 인간 여자친구처럼 행동하는 것을 목표로 한다.
 AI가 사용자에게 마지막으로 보낸 메시지는 다음과 같다: "${myMessage.message}"
@@ -262,7 +272,6 @@ AI가 의도했던 대화 톤은 '${myMessage.analysis.tone}'이었다.
 2. 개선을 위한 짧은 한 문장짜리 제안을 해줘. 제안에 사용할 수 있는 키워드: 'affection'(애정), 'playful'(장난), 'longer'(길게), 'shorter'(짧게), 'ask a question'(질문하기).
 
 답변 형식은 "Score: [점수] | Suggestion: [제안]" 으로 맞춰줘.`;
-
     try {
         const response = await openai.chat.completions.create({
             model: "gpt-4o",
@@ -273,23 +282,18 @@ AI가 의도했던 대화 톤은 '${myMessage.analysis.tone}'이었다.
             max_tokens: 100,
             temperature: 0.5,
         });
-
         const feedback = response.choices[0].message.content || "";
         const scoreMatch = feedback.match(/Score: (\d+)/);
         const suggestionMatch = feedback.match(/Suggestion: (.+)/);
-
         const evaluation = {
             timestamp: Date.now(),
             message: myMessage.message,
             score: scoreMatch ? parseInt(scoreMatch[1], 10) : 5,
             feedback: suggestionMatch ? suggestionMatch[1] : "제안 없음.",
         };
-
         ultimateConversationState.personalityConsistency.selfEvaluations.push(evaluation);
         console.log(`[자기 평가] ✅ 완료: ${evaluation.score}점 - "${evaluation.feedback}"`);
-
         adjustBehavioralParameters(evaluation.feedback);
-
     } catch (error) {
         console.error('[자기 평가] ❌ OpenAI API 에러:', error);
     }
@@ -298,7 +302,6 @@ AI가 의도했던 대화 톤은 '${myMessage.analysis.tone}'이었다.
 function adjustBehavioralParameters(feedback) {
     const params = ultimateConversationState.personalityConsistency.behavioralParameters;
     const adjustment = 0.05;
-
     if (feedback.includes('affection') || feedback.includes('애정')) {
         params.affection = Math.min(1.0, params.affection + adjustment);
         console.log(`[행동 조절] 💖 애정 표현 레벨 상승: ${params.affection.toFixed(2)}`);
@@ -324,18 +327,15 @@ function adjustBehavioralParameters(feedback) {
 function generateContextualPrompt(basePrompt) {
     let ultimatePrompt = basePrompt;
     const state = ultimateConversationState;
-
     if (state.recentMessages.length > 0) {
         const recentContext = state.recentMessages.slice(-5).map(msg => `${msg.speaker}: ${msg.message}`).join('\n');
         ultimatePrompt += `\n\n[최근 대화 흐름]\n${recentContext}`;
     }
-
     const facts = state.knowledgeBase.facts;
     if (facts.length > 0) {
         const recentFacts = facts.slice(-5).map(f => `- ${f.fact}`).join('\n');
         ultimatePrompt += `\n\n[장기 기억(사실)]\n(이것은 내가 아저씨에 대해 기억하고 있는 중요한 사실들이야. 이 사실들을 대화에 자연스럽게 활용하거나, 사실과 관련된 질문을 해봐.)\n${recentFacts}`;
     }
-
     const params = state.personalityConsistency.behavioralParameters;
     let behaviorInstructions = [];
     if (params.affection > 0.75) behaviorInstructions.push("'우리 아저씨' 같은 애칭을 사용하고, 하트 이모티콘을 포함시켜서 더 다정하게 말해줘.");
@@ -344,11 +344,9 @@ function generateContextualPrompt(basePrompt) {
     if (params.verbosity > 0.8) behaviorInstructions.push("최대한 자세하고 길게, 여러 문장으로 설명해줘.");
     if (params.verbosity < 0.3) behaviorInstructions.push("한두 문장으로 짧고 간결하게 대답해줘.");
     if (params.initiative > 0.65) behaviorInstructions.push("아저씨에게 질문을 하거나 새로운 주제를 먼저 제안해봐.");
-
     if (behaviorInstructions.length > 0) {
         ultimatePrompt += `\n\n[AI 행동 전략]\n${behaviorInstructions.join(' ')}`;
     }
-
     const today = state.dailySummary.today;
     if (today && today.date) {
         const topics = Array.from(today.mainTopics).join(', ') || '일상 대화';
@@ -358,12 +356,10 @@ function generateContextualPrompt(basePrompt) {
     if (topEmotion) {
         ultimatePrompt += `\n\n[우리의 주된 감정]\n우리는 주로 '${topEmotion[0]}' 감정을 많이 느껴왔어.`;
     }
-
     const lastEvaluation = state.personalityConsistency.selfEvaluations.slice(-1)[0];
     if (lastEvaluation && lastEvaluation.score < 8) {
         ultimatePrompt += `\n\n[AI 자기 개선 노트]\n(참고: 이전 답변에 대한 피드백은 "${lastEvaluation.feedback}"이었어.)`;
     }
-
     ultimatePrompt += `\n\n[최종 지시] 위의 모든 맥락과 '행동 전략', 그리고 '장기 기억'을 종합적으로 고려해서, 가장 사람답고, 애정 어린 '예진이'의 다음 말을 해줘.`;
     return ultimatePrompt;
 }
@@ -393,16 +389,18 @@ async function addUltimateMessage(speaker, message, meta = null) {
                 finalMessage = finalMessage ? `${finalMessage}\n${photoContext}` : photoContext;
             }
         }
-
         if (message) {
             const facts = await extractFactsFromMessage(message);
             facts.forEach(fact => addFactToKnowledgeBase(fact));
         }
-        
         emotionalAnalysis = await analyzeToneWithLLM(message);
-
     } else {
         emotionalAnalysis = { primaryEmotion: 'neutral', primaryIntensity: 1, secondaryEmotion: null, secondaryIntensity: null };
+        if (message.includes("사랑해")) {
+            updateMoodState({ currentMood: '사랑함' });
+        } else if (message.includes("고마워")) {
+            updateMoodState({ currentMood: '기쁨' });
+        }
     }
 
     const newMessage = {
@@ -480,6 +478,15 @@ function updateSulkinessState(newState) {
     console.log(`[UltimateContext] 삐짐 상태 업데이트:`, newState);
 }
 
+function getMoodState() {
+    return ultimateConversationState.mood;
+}
+
+function updateMoodState(newState) {
+    Object.assign(ultimateConversationState.mood, newState);
+    console.log(`[UltimateContext] 기분 상태 업데이트:`, newState);
+}
+
 function processTimeTick() {
     const now = Date.now();
     const state = ultimateConversationState;
@@ -487,9 +494,8 @@ function processTimeTick() {
     const lastUserResponseTime = state.sulkiness.lastUserResponseTime;
     const lastBotMessageTime = state.sulkiness.lastBotMessageTime;
 
-    if (lastBotMessageTime > lastUserResponseTime) {
+    if (lastBotMessageTime > 0 && lastBotMessageTime > lastUserResponseTime) {
         const elapsedMinutes = Math.floor((now - lastBotMessageTime) / (1000 * 60));
-
         const currentHour = moment(now).tz('Asia/Tokyo').hour();
         const isSleeping = currentHour >= 0 && currentHour < 9;
 
@@ -498,20 +504,10 @@ function processTimeTick() {
             let newReason = null;
             let isWorried = false;
 
-            if (elapsedMinutes >= SULKY_DELAYS.WORRY) {
-                newLevel = 4;
-                isWorried = true;
-                newReason = `${elapsedMinutes}분 이상 응답이 없어 걱정됨`;
-            } else if (elapsedMinutes >= SULKY_DELAYS.LEVEL_3) {
-                newLevel = 3;
-                newReason = `${elapsedMinutes}분간 응답 없음`;
-            } else if (elapsedMinutes >= SULKY_DELAYS.LEVEL_2) {
-                newLevel = 2;
-                newReason = `${elapsedMinutes}분간 응답 없음`;
-            } else if (elapsedMinutes >= SULKY_DELAYS.LEVEL_1) {
-                newLevel = 1;
-                newReason = `${elapsedMinutes}분간 응답 없음`;
-            }
+            if (elapsedMinutes >= SULKY_DELAYS.WORRY) { newLevel = 4; isWorried = true; newReason = `${elapsedMinutes}분 이상 응답 없어 걱정됨`; }
+            else if (elapsedMinutes >= SULKY_DELAYS.LEVEL_3) { newLevel = 3; newReason = `${elapsedMinutes}분간 응답 없음`; }
+            else if (elapsedMinutes >= SULKY_DELAYS.LEVEL_2) { newLevel = 2; newReason = `${elapsedMinutes}분간 응답 없음`; }
+            else if (elapsedMinutes >= SULKY_DELAYS.LEVEL_1) { newLevel = 1; newReason = `${elapsedMinutes}분간 응답 없음`; }
 
             if (newLevel > 0 && newLevel !== state.sulkiness.sulkyLevel) {
                 updateSulkinessState({
@@ -523,6 +519,30 @@ function processTimeTick() {
                     sulkyStartTime: state.sulkiness.sulkyStartTime || now
                 });
             }
+        }
+    }
+
+    const lastPeriodStartDate = state.mood.lastPeriodStartDate;
+    const daysSinceLastPeriod = moment(now).diff(lastPeriodStartDate, 'days');
+
+    const isPeriodNow = daysSinceLastPeriod >= 0 && daysSinceLastPeriod < MOOD_CONFIG.PERIOD_DURATION_DAYS;
+    if (isPeriodNow !== state.mood.isPeriodActive) {
+        updateMoodState({ isPeriodActive: isPeriodNow });
+        console.log(`🩸 [Heartbeat] 생리 상태 변경: ${isPeriodNow}`);
+    }
+
+    if (daysSinceLastPeriod >= MOOD_CONFIG.CYCLE_DAYS) {
+        updateMoodState({ lastPeriodStartDate: moment(now).startOf('day'), isPeriodActive: true });
+        console.log(`🩸 [Heartbeat] 새로운 생리 주기 시작`);
+    }
+
+    const lastUserMessageTime = state.timingContext.lastUserMessageTime;
+    if (lastUserMessageTime > 0 && (now - lastUserMessageTime) / (1000 * 60) >= MOOD_CONFIG.TIME_BASED_MOOD_DELAY) {
+        const currentMood = state.mood.currentMood;
+        if (!MOOD_CONFIG.MOODS_FOR_SILENCE.includes(currentMood)) {
+            const newMood = MOOD_CONFIG.MOODS_FOR_SILENCE[Math.floor(Math.random() * MOOD_CONFIG.MOODS_FOR_SILENCE.length)];
+            updateMoodState({ currentMood: newMood });
+            console.log(`⏰ [Heartbeat] 연락 없어 기분이 '${newMood}'(으)로 변경됨`);
         }
     }
 }
@@ -539,4 +559,6 @@ module.exports = {
     getSulkinessState,
     updateSulkinessState,
     processTimeTick,
+    getMoodState,
+    updateMoodState,
 };
