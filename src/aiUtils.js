@@ -1,4 +1,4 @@
-// ✅ src/aiUtils.js - AI 및 로그 관련 모든 공용 함수 관리 파일
+// ✅ src/aiUtils.js v2.1 - 로그 파일 손상 방지 로직 추가
 
 const { OpenAI } = require('openai');
 const fs = require('fs').promises;
@@ -9,7 +9,7 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const LOG_FILE_PATH = path.join(process.cwd(), 'log.json');
 
 /**
- * 대화 내용을 log.json 파일에 저장하는 공용 함수
+ * [수정] 대화 내용을 log.json 파일에 저장하는 공용 함수
  */
 async function saveLog(speaker, message) {
     const logEntry = {
@@ -17,14 +17,32 @@ async function saveLog(speaker, message) {
         speaker,
         message,
     };
+
     try {
         let logs = [];
         try {
             const data = await fs.readFile(LOG_FILE_PATH, 'utf8');
-            logs = JSON.parse(data);
+            // [추가] 파일 내용이 비어있지 않을 때만 파싱 시도
+            if (data) {
+                logs = JSON.parse(data);
+            }
         } catch (error) {
-            if (error.code !== 'ENOENT') throw error;
+            // [수정] JSON 파싱 오류(파일 손상)가 발생하면, 경고를 남기고 새 로그 배열로 시작합니다.
+            if (error instanceof SyntaxError) {
+                console.warn(`[aiUtils] 경고: log.json 파일이 손상되어 새로 시작합니다. 오류: ${error.message}`);
+                logs = []; // 깨끗한 새 배열로 덮어씁니다.
+            } else if (error.code !== 'ENOENT') {
+                // 파일이 없는 오류 외의 다른 오류는 throw
+                throw error;
+            }
         }
+        
+        // logs가 배열이 아닌 경우 (파일이 완전히 잘못된 형식일 때) 처리
+        if (!Array.isArray(logs)) {
+            console.warn(`[aiUtils] 경고: log.json의 내용이 배열이 아니므로 새로 시작합니다.`);
+            logs = [];
+        }
+
         logs.push(logEntry);
         await fs.writeFile(LOG_FILE_PATH, JSON.stringify(logs, null, 2), 'utf8');
     } catch (error) {
@@ -32,9 +50,6 @@ async function saveLog(speaker, message) {
     }
 }
 
-/**
- * OpenAI API를 호출하여 AI 응답을 생성합니다.
- */
 async function callOpenAI(messages, model = 'gpt-4o', maxTokens = 150, temperature = 0.95) {
     try {
         const response = await openai.chat.completions.create({
@@ -50,9 +65,6 @@ async function callOpenAI(messages, model = 'gpt-4o', maxTokens = 150, temperatu
     }
 }
 
-/**
- * AI의 답변을 예진이의 말투로 다듬고 1인칭을 보장합니다.
- */
 function cleanReply(reply) {
     if (typeof reply !== 'string') return '';
     let cleaned = reply.replace(/\b(예진이|예진|무쿠|애기|본인|저)\b(가|는|를|이|의|께|에게|도|와|은|을)?/g, '나').replace(/\b(너|자기|오빠|당신|고객님|선생님|씨|님|형|형아|형님)\b(은|는|이|가|을|를|께|도|의|와|에게)?/g, '아저씨').replace(/(입니다|이에요|예요|하세요|하셨나요|셨습니다|드릴게요|드릴까요)/gi, '').replace(/(좋아요)/gi, '좋아').replace(/(고마워요|감사합니다)/gi, '고마워').replace(/(미안해요|죄송합니다)/gi, '미안해').replace(/합니(다|까)/gi, '해').replace(/하겠(습니다|어요)?/gi, '할게');
