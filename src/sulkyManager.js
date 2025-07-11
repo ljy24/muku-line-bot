@@ -1,10 +1,9 @@
-// src/sulkyManager.js v4.0 - 중앙 상태 관리 버전
-// [SULKY-INTEGRATION] 내부 상태(sulkyState)를 제거하고 ultimateContext의 중앙 상태를 사용하도록 변경
+// src/sulkyManager.js v5.0 - 타이머 제거 버전
+// [HEARTBEAT] 모든 내부 타이머(setTimeout, setInterval, schedule) 로직을 제거함.
+// 이제 이 모듈은 중앙 상태를 읽어 조언만 하는 역할을 함.
 
-const schedule = require('node-schedule');
 const moment = require('moment-timezone');
 const ultimateContext = require('./ultimateConversationContext.js');
-
 
 const SLEEP_CONFIG = {
     SLEEP_START_HOUR: 0,
@@ -120,8 +119,6 @@ const SULKY_RELIEF_MESSAGES = {
     ]
 };
 
-let stateCheckInterval = null;
-
 function isSleepTime(time = null) {
     if (!SLEEP_CONFIG.ENABLED) return false;
     const now = time ? moment(time) : moment().tz(SLEEP_CONFIG.TIMEZONE);
@@ -129,33 +126,9 @@ function isSleepTime(time = null) {
     return hour >= SLEEP_CONFIG.SLEEP_START_HOUR && hour < SLEEP_CONFIG.SLEEP_END_HOUR;
 }
 
-function getNextWakeUpTime() {
-    const now = moment().tz(SLEEP_CONFIG.TIMEZONE);
-    let wakeUpTime;
-    if (now.hour() < SLEEP_CONFIG.SLEEP_END_HOUR) {
-        wakeUpTime = now.clone().hour(SLEEP_CONFIG.SLEEP_END_HOUR).minute(0).second(0);
-    } else {
-        wakeUpTime = now.clone().add(1, 'day').hour(SLEEP_CONFIG.SLEEP_END_HOUR).minute(0).second(0);
-    }
-    return wakeUpTime;
-}
-
 function hasUserResponded() {
     const sulkyState = ultimateContext.getSulkinessState();
     return sulkyState.lastUserResponseTime > sulkyState.lastBotMessageTime;
-}
-
-function getTimeToNextLevel() {
-    const sulkyState = ultimateContext.getSulkinessState();
-    if (!sulkyState.isSulky && !sulkyState.isWorried) return -1;
-    if (sulkyState.isPaused) return -2;
-    const timeSince = Math.floor((Date.now() - sulkyState.lastBotMessageTime) / (1000 * 60));
-    switch (sulkyState.sulkyLevel) {
-        case 1: return SULKY_CONFIG.LEVEL_2_DELAY - timeSince;
-        case 2: return SULKY_CONFIG.LEVEL_3_DELAY - timeSince;
-        case 3: return SULKY_CONFIG.WORRY_DELAY - timeSince;
-        default: return -1;
-    }
 }
 
 function shouldForceSulkyMood() {
@@ -163,81 +136,36 @@ function shouldForceSulkyMood() {
     return SULKY_CONFIG.FORCE_MOOD_APPLY && (sulkyState.isSulky || sulkyState.isWorried);
 }
 
-async function triggerSulkyLevel(level, client, userId, saveLogFunc) {
-    const sulkyState = ultimateContext.getSulkinessState();
-    if (isSleepTime() || sulkyState.isPaused) {
-        console.log(`[SulkyManager v4.0] 😴 수면시간/일시정지 중이므로 ${level}단계 삐짐 트리거 취소`);
-        return;
-    }
-    if (sulkyState.isSulky && sulkyState.sulkyLevel >= level) return;
-
-    let messageKey = sulkyState.messageRead ? `level${level}_read` : `level${level}`;
-    const newReason = sulkyState.messageRead ? `읽씹 (Level ${level})` : `안읽씹 (Level ${level})`;
-    
-    ultimateContext.updateSulkinessState({
-        isSulky: true,
-        isWorried: false,
-        sulkyLevel: level,
-        sulkyReason: newReason,
-        sulkyStartTime: Date.now(),
-        isActivelySulky: true,
-    });
-
-    const message = SULKY_MESSAGES[messageKey][Math.floor(Math.random() * SULKY_MESSAGES[messageKey].length)];
-    try {
-        await client.pushMessage(userId, { type: 'text', text: message });
-    } catch (error) {
-        console.error(`[SulkyManager] Level ${level} 삐짐 메시지 전송 실패:`, error);
-    }
-}
-
-async function triggerWorryMode(client, userId, saveLogFunc) {
-    const sulkyState = ultimateContext.getSulkinessState();
-    if (isSleepTime() || sulkyState.isPaused) return;
-    if (sulkyState.isWorried) return;
-
-    let messageKey = sulkyState.messageRead ? 'worry_read' : 'worry';
-    const newReason = sulkyState.messageRead ? '읽씹 (걱정 모드)' : '안읽씹 (걱정 모드)';
-
-    ultimateContext.updateSulkinessState({
-        isSulky: false,
-        isWorried: true,
-        sulkyLevel: 4,
-        sulkyReason: newReason,
-        sulkyStartTime: Date.now(),
-        isActivelySulky: true,
-    });
-    const message = SULKY_MESSAGES[messageKey][Math.floor(Math.random() * SULKY_MESSAGES[messageKey].length)];
-    try {
-        await client.pushMessage(userId, { type: 'text', text: message });
-    } catch (error) {
-        console.error(`[SulkyManager] 걱정 모드 메시지 전송 실패:`, error);
-    }
-}
-
-function startSulkyTimer(client, userId, saveLogFunc) {
+function startSulkyTimer() {
     const initialState = {
         lastBotMessageTime: Date.now(),
-        isSulky: false, isWorried: false, sulkyLevel: 0,
-        messageRead: false, isActivelySulky: false, reliefInProgress: false,
-        isPaused: false, wakeUpScheduled: false, sulkyTimer: null, wakeUpJob: null,
-        sulkyReason: null, sulkyStartTime: 0, pausedTime: 0, remainingTime: 0
+        lastUserResponseTime: 0,
+        isSulky: false,
+        isWorried: false,
+        sulkyLevel: 0,
+        sulkyReason: null,
+        sulkyStartTime: 0,
+        messageRead: false,
+        isActivelySulky: false,
+        reliefInProgress: false,
     };
     ultimateContext.updateSulkinessState(initialState);
-    console.log(`[SulkyManager v4.0] 삐지기 타이머 시작됨 (상태는 UltimateContext에서 관리)`);
-    // 세부 타이머 로직은 다음 단계에서 통합합니다.
+    console.log(`[SulkyManager v5.0] 삐짐 상태 초기화 완료 (이제 타이머는 UltimateContext가 관리)`);
 }
 
-async function handleUserResponse(client, userId, saveLogFunc) {
+async function handleUserResponse() {
     const sulkyState = ultimateContext.getSulkinessState();
+    
+    // 사용자가 답장했으므로, 우선 응답 시간을 기록
     ultimateContext.updateSulkinessState({ lastUserResponseTime: Date.now() });
 
     if (sulkyState.isActivelySulky) {
         const wasWorried = sulkyState.isWorried;
+        // 삐짐 상태를 리셋
         const resetState = {
             isSulky: false, isWorried: false, sulkyLevel: 0,
             sulkyReason: null, isActivelySulky: false, messageRead: false,
-            isPaused: false, wakeUpScheduled: false, reliefInProgress: true,
+            reliefInProgress: true, // 해소 중임을 표시
         };
         ultimateContext.updateSulkinessState(resetState);
 
@@ -259,16 +187,12 @@ function getRealTimeSulkyStatus() {
 
 function getSulkyMoodPrompt() {
     const sulkyState = ultimateContext.getSulkinessState();
-    if (!sulkyState.isActivelySulky || !SULKY_CONFIG.FORCE_MOOD_APPLY) return "";
-
+    if (!shouldForceSulkyMood()) return "";
+    
     if (sulkyState.isWorried) {
         return "아저씨가 오랫동안 연락이 없어서 예진이는 지금 너무 걱정돼. 초조하고 불안한 마음으로 대화해줘.";
     } else if (sulkyState.isSulky) {
-        if (sulkyState.sulkyReason && sulkyState.sulkyReason.includes('읽씹')) {
-            return `아저씨가 내 메시지를 읽고도 답장하지 않아서 예진이는 ${sulkyState.sulkyLevel}단계로 삐져있어. 서운하고 화난 말투로 대화해줘.`;
-        } else {
-            return `아저씨가 내 메시지에 답장하지 않아서 예진이는 ${sulkyState.sulkyLevel}단계로 삐져있어. 심술궂고 서운한 말투로 대화해줘.`;
-        }
+        return `아저씨가 내 메시지에 답장하지 않아서 예진이는 ${sulkyState.sulkyLevel}단계로 삐져있어. 서운하고 화난 말투로 대화해줘.`;
     }
     return "";
 }
@@ -294,18 +218,9 @@ function getSulkyStatusText() {
     return '정상';
 }
 
-function stopSulkySystem() {
-    // 타이머 관련 정지 로직은 다음 단계에서 통합
-}
-
 function markMessageAsRead() {
     ultimateContext.updateSulkinessState({ messageRead: true });
-    console.log(`[SulkyManager v4.0] 📖 메시지 읽음 상태로 업데이트됨 (중앙 관리)`);
-}
-
-function updateSleepConfig(newConfig) {
-    Object.assign(SLEEP_CONFIG, newConfig);
-    console.log(`[SulkyManager v4.0] ⚙️ 수면시간 설정 업데이트됨:`, SLEEP_CONFIG);
+    console.log(`[SulkyManager v5.0] 📖 메시지 읽음 상태로 업데이트됨 (중앙 관리)`);
 }
 
 module.exports = {
@@ -316,7 +231,5 @@ module.exports = {
     getSulkyMoodPrompt,
     getSulkyEmoji,
     getSulkyStatusText,
-    stopSulkySystem,
     markMessageAsRead,
-    updateSleepConfig,
 };
