@@ -96,7 +96,7 @@ function isGreeting(userMessage) {
  * 기분 상태에 대한 응답을 생성합니다.
  * @param {string} userMessage - 사용자 메시지 (옵셔널, 응답 맞춤화용)
  * @returns {string} 기분 상태 응답
-*/
+ */
 function getMoodResponse(userMessage = '') {
     const lowerMessage = userMessage.toLowerCase();
     const timeSinceLastMessage = (Date.now() - lastUserMessageTime) / (1000 * 60);
