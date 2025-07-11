@@ -1,12 +1,12 @@
-// ✅ index.js v8.5 - 순환 참조 해결
+// ✅ index.js v9.0 - 최종 안정화 버전
 
 const { Client, middleware } = require('@line/bot-sdk');
 const express = require('express');
 const moment = require('moment-timezone');
 require('dotenv').config();
 
-const { getReplyByMessage, cleanReply } = require('./src/autoReply');
-const { saveLog } = require('./src/aiUtils'); // [수정] saveLog를 aiUtils에서 가져옴
+const { getReplyByMessage } = require('./src/autoReply');
+const { saveLog, cleanReply } = require('./src/aiUtils'); // [수정] 공용 부품만 가져옴
 const commandHandler = require('./src/commandHandler');
 const { startAllSchedulers, getSchedulerStatus } = require('./src/scheduler');
 const { startSpontaneousPhotoScheduler, getPhotoSchedulerStatus } = require('./src/spontaneousPhotoManager');
@@ -19,7 +19,7 @@ const config = { channelAccessToken: process.env.LINE_ACCESS_TOKEN, channelSecre
 const client = new Client(config);
 const userId = process.env.TARGET_USER_ID;
 
-app.get('/', (_, res) => res.send('예진이 v8.5 살아있어! (구조 안정화)'));
+app.get('/', (_, res) => res.send('예진이 v9.0 살아있어! (최종 안정화)'));
 
 app.post('/webhook', middleware(config), async (req, res) => {
     try {
@@ -119,15 +119,14 @@ async function initMuku() {
             console.log(`[행동] 담타까지: ${schedulerStatus.nextDamtaInMinutes}분 | 사진까지: ${photoStatus.minutesUntilNext}분`);
             console.log("------------------------------------------\n");
         }, 60 * 1000);
-
     } catch (error) {
         console.error('❌ 초기화 중 심각한 에러 발생:', error);
         process.exit(1);
     }
 }
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
-    console.log(`예진이 v8.5 서버 스타트! 포트: ${PORT}`);
+    console.log(`예진이 v9.0 서버 스타트! 포트: ${PORT}`);
     initMuku();
 });
