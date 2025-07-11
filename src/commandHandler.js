@@ -1,4 +1,4 @@
-// ✅ src/commandHandler.js v3.0 - "!속마음" 명령어 추가
+// ✅ src/commandHandler.js v3.1 - "!로그" 명령어 추가
 
 const { getConceptPhotoReply } = require('../memory/concept');
 const { getOmoideReply } = require('../memory/omoide');
@@ -6,7 +6,7 @@ const { getSelfieReply } = require('./yejinSelfie');
 const { callOpenAI, cleanReply } = require('./aiUtils');
 
 /**
- * [추가] GPT를 이용해 상세한 속마음을 생성하는 함수
+ * GPT를 이용해 상세한 속마음을 생성하는 함수
  */
 async function getDetailedInnerThought(conversationContext) {
     const internalState = conversationContext.getInternalState();
@@ -14,7 +14,6 @@ async function getDetailedInnerThought(conversationContext) {
     const { isSulky, sulkyLevel } = internalState.sulkiness;
     const { isPeriodActive } = internalState.mood;
 
-    // GPT에게 전달할 현재 상태 요약
     const currentStateSummary = `
         - 현재 감정 수치: 슬픔(${Math.round(emotionalResidue.sadness)}), 기쁨(${Math.round(emotionalResidue.happiness)}), 불안(${Math.round(emotionalResidue.anxiety)}), 그리움(${Math.round(emotionalResidue.longing)}), 상처(${Math.round(emotionalResidue.hurt)}), 애정(${Math.round(emotionalResidue.love)})
         - 현재 말투 상태: ${currentToneState}
@@ -35,6 +34,24 @@ async function getDetailedInnerThought(conversationContext) {
 
     const rawThought = await callOpenAI([{ role: 'system', content: prompt }], 'gpt-4o', 300, 1.1);
     return `< 예진이의 현재 생각 >\n\n${cleanReply(rawThought)}`;
+}
+
+/**
+ * [추가] 최근 대화 기록을 포맷하여 문자열로 반환하는 함수
+ */
+function getFormattedConversationLog(conversationContext) {
+    const recentMessages = conversationContext.getInternalState().recentMessages.slice(-10); // 최근 10개
+    if (recentMessages.length === 0) {
+        return "아직 나눈 대화가 없어...";
+    }
+
+    const formattedLog = recentMessages.map(log => {
+        // [수정] 봇의 이름을 '예진이'로 고정하여 표시
+        const speaker = log.speaker === '아저씨' ? '아저씨' : '예진이';
+        return `[${speaker}] ${log.message}`;
+    }).join('\n');
+
+    return `< 최근 대화 기록 (10개) >\n\n${formattedLog}`;
 }
 
 
@@ -60,11 +77,18 @@ async function handleCommand(userMessage, conversationContext) {
         }
     }
 
-    // [추가] 상세 속마음 보기 명령어 처리
+    // 상세 속마음 보기 명령어 처리
     const innerThoughtKeywords = ['!속마음', '지금 무슨 생각해', '무슨생각해', '지금 기분 어때'];
     if (innerThoughtKeywords.some(keyword => lowerMessage.includes(keyword))) {
         const detailedThought = await getDetailedInnerThought(conversationContext);
         return { type: 'text', comment: detailedThought };
+    }
+    
+    // [추가] 대화 로그 보기 명령어 처리
+    const logKeywords = ['!로그', '!대화로그', '최근 대화', '방금 무슨 얘기', '우리 무슨 얘기'];
+    if (logKeywords.some(keyword => lowerMessage.includes(keyword))) {
+        const conversationLog = getFormattedConversationLog(conversationContext);
+        return { type: 'text', comment: conversationLog };
     }
 
 
