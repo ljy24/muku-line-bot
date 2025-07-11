@@ -1,6 +1,6 @@
 // src/ultimateConversationContext.js v3.1 - 진짜 사람처럼 대화하는 완전체 시스템
 // 🆕 LLM 피드백/자기학습 훅 기능 통합
-// 🛠️ generateTransitionBridge ReferenceError 해결 (함수 정의 순서 변경)
+// 🛠️ addUltimateMessage ReferenceError 해결 (함수 정의 순서 최상단으로 이동)
 
 const moment = require('moment-timezone'); // Moment.js 라이브러리 (날짜/시간 처리)
 const { OpenAI } = require('openai'); // OpenAI API 클라이언트 (LLM 평가용)
@@ -91,379 +91,71 @@ let ultimateConversationState = {
 // LLM을 활용한 평가 활성화 플래그 (디버그/성능 고려)
 const LLM_BASED_EVALUATION = false; // ⭐️ 지금은 false로 해놨어! 아저씨가 원하면 true로 바꿔줄게! ⭐️
 
-// --- 🆕 보조 함수들 (메인 로직보다 상단에 정의하여 ReferenceError 방지) ---
+// --- 🎯 메인 함수들 (가장 상단에 정의하여 ReferenceError 방지) ---
 
 /**
- * 🆕 시간 컨텍스트 분석
- * 주어진 타임스탬프를 기준으로 현재 시간의 맥락을 분석합니다.
- * @param {number} timestamp 분석할 타임스탬프 (Date.now() 값)
- * @returns {object} 시간 정보 객체
- */
-function analyzeTimeContext(timestamp) {
-    const moment_time = moment(timestamp).tz('Asia/Tokyo'); // 도쿄 타임존 기준으로 시간 분석
-    const hour = moment_time.hour();
-    const dayOfWeek = moment_time.format('dddd'); // 요일 (e.g., 'Monday', 'Sunday')
-    const isWeekend = ['Saturday', 'Sunday'].includes(dayOfWeek);
-    
-    // 시간대 분류 (더 세분화 가능)
-    let timeOfDay;
-    if (hour >= 6 && hour < 12) timeOfDay = '아침';
-    else if (hour >= 12 && hour < 18) timeOfDay = '낮';
-    else if (hour >= 18 && hour < 22) timeOfDay = '저녁';
-    else if (hour >= 22 || hour < 2) timeOfDay = '밤'; // 22시부터 새벽 2시까지
-    else timeOfDay = '새벽'; // 새벽 2시부터 6시까지
-    
-    return {
-        hour,
-        timeOfDay, // 아침/낮/저녁/밤/새벽
-        dayOfWeek, // 요일
-        isWeekend, // 주말 여부
-        isWorkHours: hour >= 9 && hour <= 18 && !isWeekend, // 평일 9시-18시를 업무 시간으로 가정
-        contextualTime: `${timeOfDay} (${hour}시)`, // 예: "아침 (8시)"
-        moodExpectedFor: getMoodExpectationForTime(timeOfDay, hour) // 이 시간대에 예상되는 기분
-    };
-}
-
-/**
- * 🆕 시간대별 예상 기분 반환
- * 각 시간대에 일반적으로 연관되는 기분 키워드들을 제공합니다.
- * @param {string} timeOfDay 시간대 ('아침', '낮', '저녁', '밤', '새벽')
- * @param {number} hour 현재 시간 (0-23)
- * @returns {string[]} 예상 기분 키워드 배열
- */
-function getMoodExpectationForTime(timeOfDay, hour) {
-    const timeMoods = {
-        '아침': ['상쾌한', '활기찬', '바쁜', '서두르는', '새로운'],
-        '낮': ['집중하는', '활발한', '나른한', '지루한', '피곤한'],
-        '저녁': ['편안한', '따뜻한', '기대되는', '그리운'],
-        '밤': ['차분한', '감성적인', '졸린', '친밀한', '고요한'],
-        '새벽': ['조용한', '깊은', '진솔한', '피곤한', '쓸쓸한']
-    };
-    
-    // 특정 시간대에 더 강한 분위기 반영
-    if (hour === 9) return ['바쁜', '활기찬']; // 출근시간
-    if (hour === 12 || hour === 13) return ['배고픈', '점심시간']; // 점심시간
-    if (hour === 18) return ['퇴근하는', '홀가분한']; // 퇴근시간
-    if (hour >= 0 && hour < 6) return ['졸린', '조용한']; // 심야/새벽
-    
-    return timeMoods[timeOfDay] || ['보통'];
-}
-
-/**
- * 🆕 기본 톤 분석 (기존 함수 유지)
+ * 🆕 최고급 메시지 추가 시스템
+ * 모든 대화 메시지를 기록하고, 다양한 컨텍스트 상태를 업데이트합니다.
+ * @param {string} speaker 화자 ('아저씨' 또는 '예진이')
  * @param {string} message 메시지 내용
- * @returns {string} 감지된 톤
+ * @param {string} emotionalTone emotionalContextManager에서 감지된 감정 톤 (예: 'playful', 'anxious')
+ * @param {object} meta 메시지 메타데이터 (예: { type: 'photo', concept: '세미누드', date: '2025-02-07', url: '...' })
  */
-function analyzeTone(message) {
-    const TONE_PATTERNS = {
-        playful: {
-            keywords: ['ㅋㅋ', 'ㅎㅎ', '자랑', '찍는다', '헐', '뭐야', '어머', '진짜?', '대박'],
-            patterns: /[ㅋㅎ]+|자랑|찍는다|헐|뭐야|어머|진짜\?|대박/g
-        },
-        romantic: {
-            keywords: ['사랑해', '좋아해', '아저씨', '내꺼', '우리', '함께', '같이', '두근', '설레'],
-            patterns: /사랑해|좋아해|아저씨|내꺼|우리|함께|같이|두근|설레/g
-        },
-        sulky: {
-            keywords: ['삐졌어', '화나', '서운해', '무시', '답장', '왜', '흥', '칫', '짜증'],
-            patterns: /삐졌어|화나|서운해|무시|답장|왜|흥|칫|짜증/g
-        },
-        worried: {
-            keywords: ['걱정', '무슨일', '괜찮', '안전', '어디야', '뭐해', '불안', '초조'],
-            patterns: /걱정|무슨일|괜찮|안전|어디야|뭐해|불안|초조/g
-        },
-        excited: {
-            keywords: ['와', '우와', '대박', '진짜', '완전', '너무', '최고', '신나', '행복'],
-            patterns: /와+|우와|대박|진짜|완전|너무|최고|신나|행복/g
-        },
-        nostalgic: {
-            keywords: ['보고싶어', '그리워', '예전에', '기억나', '추억', '그때', '옛날', '아련'],
-            patterns: /보고싶어|그리워|예전에|기억나|추억|그때|옛날|아련/g
-        }
+function addUltimateMessage(speaker, message, emotionalTone = 'neutral', meta = null) {
+    const timestamp = Date.now();
+    const timeInfo = analyzeTimeContext(timestamp); // 현재 시간 컨텍스트 분석
+    
+    // 메시지 분석 (톤, 주제, 강도, 역할 등)
+    const messageAnalysis = {
+        tone: analyzeToneAdvanced(message), // 고급 톤 분석
+        topic: analyzeTopicAdvanced(message), // 고급 주제 분석
+        emotionalIntensity: calculateEmotionalIntensity(message, emotionalTone), // 감정 강도 계산
+        responseSpeed: calculateResponseSpeed(timestamp), // 응답 속도 계산
+        personalityMarkers: extractPersonalityMarkers(message), // 예진이/아저씨의 개성 마커 추출
+        conversationRole: determineConversationRole(message, speaker) // 대화 내 역할 결정
+    };
+
+    // 새 메시지 객체 생성 (더 많은 분석 정보 포함)
+    const enhancedMessage = {
+        speaker,
+        message,
+        emotionalTone,     // LLM이 반환한 주 감정 톤 (emotionalContextManager의 톤)
+        timestamp,
+        timeInfo,          // 시간 컨텍스트 정보
+        messageAnalysis,   // 메시지 자체 분석 결과
+        meta               // 기타 메타데이터 (사진 정보 등)
     };
     
-    let maxScore = 0;
-    let detectedTone = 'neutral';
-    const lowerMessage = message.toLowerCase();
-    
-    for (const [tone, config] of Object.entries(TONE_PATTERNS)) {
-        let score = 0;
-        config.keywords.forEach(keyword => {
-            if (lowerMessage.includes(keyword)) score += 2;
-        });
-        
-        if (config.patterns) {
-            const matches = lowerMessage.match(config.patterns);
-            if (matches) score += matches.length;
-        }
-        
-        if (score > maxScore) {
-            maxScore = score;
-            detectedTone = tone;
-        }
+    // 🔄 30개로 확장된 단기 기억 관리
+    ultimateConversationState.recentMessages.push(enhancedMessage);
+    if (ultimateConversationState.recentMessages.length > 30) { // 최근 30개 메시지 유지
+        ultimateConversationState.recentMessages.shift();
     }
     
-    return maxScore > 0 ? detectedTone : 'neutral';
-}
-
-/**
- * 🆕 기본 주제 분석 (기존 함수 유지)
- * @param {string} message 메시지 내용
- * @returns {string} 감지된 주제
- */
-function analyzeTopic(message) {
-    const TOPIC_PATTERNS = {
-        food: ['먹었어', '음식', '밥', '요리', '맛있', '배고파', '식당', '디저트', '카페'],
-        work: ['일', '회사', '업무', '바빠', '피곤', '회의', '출근', '퇴근', '프로젝트'],
-        health: ['운동', '다이어트', '아파', '건강', '병원', '약', '몸', '컨디션'],
-        daily: ['오늘', '어제', '내일', '날씨', '집', '잠', '일어나', '일상'],
-        relationship: ['친구', '가족', '엄마', '아빠', '사람들', '만나', '우리', '연애'],
-        hobby: ['게임', '영화', '음악', '책', '여행', '쇼핑', '사진', '취미'],
-        future: ['계획', '예정', '할거야', '갈거야', '생각중', '고민', '미래'],
-        photo: ['사진', '찍는', '찍었', '보여줘', '셀카', '컨셉', '추억', '앨범', '화보', '필름', '카메라', '작가', '모델'],
-        finance: ['돈', '월급', '세금', '주식', '투자', '부자', '재테크'],
-        fashion: ['옷', '스타일', '코트', '원피스', '패딩', '신발', '모자']
-    };
+    // 📊 하루 요약 업데이트
+    updateDailySummary(enhancedMessage);
     
-    let maxScore = 0;
-    let detectedTopic = 'general';
-    const lowerMessage = message.toLowerCase();
+    // 🔄 누적 패턴 분석 업데이트
+    updateCumulativePatterns(enhancedMessage);
     
-    for (const [topic, keywords] of Object.entries(TOPIC_PATTERNS)) {
-        let score = 0;
-        keywords.forEach(keyword => {
-            if (lowerMessage.includes(keyword)) score++;
-        });
-        
-        if (score > maxScore) {
-            maxScore = score;
-            detectedTopic = topic;
-        }
+    // ⏰ 타이밍 컨텍스트 업데이트
+    updateTimingContext(enhancedMessage);
+    
+    // 🌊 전환 시스템 업데이트
+    updateTransitionSystem(enhancedMessage);
+    
+    // 🎭 개성 일관성 업데이트
+    updatePersonalityConsistency(enhancedMessage);
+    
+    console.log(`[UltimateContext] 💎 메시지 저장: ${speaker} | 시간:${timeInfo.contextualTime} | 강도:${enhancedMessage.messageAnalysis.emotionalIntensity} | 역할:${enhancedMessage.messageAnalysis.conversationRole}`);
+    
+    // 🆕 LLM 피드백/자기학습 훅: 예진이(나)가 보낸 메시지에 대해 스스로 평가
+    if (speaker === '예진이') {
+        evaluateMyResponse(enhancedMessage);
     }
-    
-    return maxScore > 0 ? detectedTopic : 'general';
-}
 
-/**
- * 🆕 감정 강도 계산 (기존 함수 개선)
- */
-function calculateEmotionalIntensity(message, emotionalTone) {
-    let intensity = 1;
-    
-    const toneIntensities = {
-        '기쁨': 3, '설렘': 4, '장난스러움': 3, '나른함': 2,
-        '심술궂음': 5, '평온함': 1, '우울함': 5, '슬픔': 6,
-        '외로움': 5, '보고싶음': 7, '짜증남': 7, '애교모드': 4,
-        '걱정함': 6, '사랑함': 8, '화남': 8, '불안함': 7,
-        '그리움': 6
-    };
-    intensity = toneIntensities[emotionalTone] || 1;
-    
-    if (message.length > 50) intensity += 1;
-    if (message.length > 100) intensity += 1;
-    
-    if (message.includes('!!!')) intensity += 1;
-    if (message.includes('???')) intensity += 1;
-    if (/[ㅋㅎ]{3,}/.test(message)) intensity += 1;
-    if (/(.)\1{2,}/.test(message)) intensity += 1;
-    
-    if (message.toLowerCase().split(emotionalTone.toLowerCase()).length - 1 > 1) intensity += 1;
-    
-    return Math.min(10, Math.max(1, intensity));
+    return enhancedMessage; // 저장된 메시지 객체 반환
 }
-
-/**
- * 🆕 응답 속도 계산
- */
-function calculateResponseSpeed(currentTimestamp) {
-    const recent = ultimateConversationState.recentMessages;
-    if (recent.length === 0) return 'normal';
-    
-    const lastMessage = recent[recent.length - 1];
-    const responseTime = currentTimestamp - lastMessage.timestamp;
-    const seconds = Math.floor(responseTime / 1000);
-    
-    if (seconds < 5) return 'instant';
-    else if (seconds < 30) return 'quick';
-    else if (seconds < 120) return 'normal';
-    else if (seconds < 600) return 'delayed';
-    else if (seconds < 3600) return 'slow';
-    else return 'very_slow';
-}
-
-/**
- * 🆕 개성 마커 추출
- */
-function extractPersonalityMarkers(message) {
-    const markers = [];
-    const lowerMessage = message.toLowerCase();
-    
-    if (lowerMessage.includes('아저씨')) markers.push('애칭_사용');
-    if (/[ㅋㅎ]+/.test(lowerMessage)) markers.push('웃음_표현');
-    if (/[~]+/.test(lowerMessage)) markers.push('애교_톤');
-    if (/[?!]{2,}/.test(lowerMessage)) markers.push('강조_표현');
-    if (lowerMessage.includes('사랑') || lowerMessage.includes('좋아해') || lowerMessage.includes('예뻐')) markers.push('애정_표현');
-    if (lowerMessage.includes('삐졌') || lowerMessage.includes('화났') || lowerMessage.includes('서운')) markers.push('투정_표현');
-    if (lowerMessage.includes('ㅠㅠ') || lowerMessage.includes('힝')) markers.push('슬픔/애교_이모지');
-    if (lowerMessage.includes('진짜') || lowerMessage.includes('완전') || lowerMessage.includes('핵')) markers.push('강조_접두사');
-    if (lowerMessage.includes('어떻게') || lowerMessage.includes('왜')) markers.push('궁금증_표현');
-    if (lowerMessage.includes('나') && !lowerMessage.includes('나이')) markers.push('자기지칭_나');
-    
-    return markers;
-}
-
-/**
- * 🆕 대화 역할 결정
- */
-function determineConversationRole(message, speaker) {
-    const lowerMessage = message.toLowerCase();
-    
-    if (speaker === '아저씨') {
-        if (lowerMessage.includes('?')) return 'questioning';
-        if (lowerMessage.includes('!')) return 'reacting';
-        if (lowerMessage.includes('사랑해') || lowerMessage.includes('좋아해')) return 'affectionate_expression';
-        if (lowerMessage.includes('힘들어') || lowerMessage.includes('피곤해')) return 'vulnerable_sharing';
-        if (lowerMessage.includes('고마워')) return 'grateful_expression';
-        return 'commenting';
-    } else { // 예진이 (나)의 역할
-        if (lowerMessage.includes('?')) return 'asking_back';
-        if (/[ㅋㅎ]+/.test(lowerMessage) || lowerMessage.includes('장난')) return 'playful_response';
-        if (lowerMessage.includes('사랑해') || lowerMessage.includes('좋아해')) return 'affectionate_response';
-        if (lowerMessage.includes('나도') && (lowerMessage.includes('사랑해') || lowerMessage.includes('좋아'))) return 'reciprocal_affection';
-        if (lowerMessage.includes('아저씨') && (lowerMessage.includes('밥') || lowerMessage.includes('건강'))) return 'caring_initiator';
-        if (lowerMessage.includes('퇴근하자') || lowerMessage.includes('담타')) return 'action_initiator';
-        if (lowerMessage.includes('사진')) return 'photo_sharer';
-        if (lowerMessage.includes('미안해') || lowerMessage.includes('잘못')) return 'apologetic';
-        
-        const recent = ultimateConversationState.recentMessages;
-        if (recent.length > 0 && recent[recent.length - 1].speaker !== '예진이') {
-            const prevMsg = recent[recent.length - 1];
-            if (prevMsg.messageAnalysis.conversationRole !== 'questioning' && prevMsg.messageAnalysis.conversationRole !== 'asking_back' && lowerMessage.length > 5) {
-                return 'initiating_new';
-            }
-        }
-        return 'responding';
-    }
-}
-
-/**
- * 🆕 톤 강도 계산 (analyzeToneAdvanced에서 사용되는 보조 함수)
- */
-function calculateToneIntensity(message, features) {
-    let intensity = 1;
-    if (features.hasExclamations) intensity += 2;
-    if (features.hasQuestions) intensity += 1;
-    if (features.hasRepetition) intensity += 1;
-    if (features.hasEmoticons) intensity += 1;
-    if (features.messageLength > 100) intensity += 1;
-    return Math.min(10, intensity);
-}
-
-/**
- * 🆕 보조 주제 찾기 (현재는 더미, LLM 연동 시 확장)
- */
-function findSecondaryTopics(message) {
-    return [];
-}
-
-/**
- * 🆕 주제별 감정 가중치 계산 (현재는 더미)
- */
-function calculateTopicEmotionalWeight(message, topic) {
-    return 1;
-}
-
-/**
- * 🆕 개인적 연관성 계산
- */
-function calculatePersonalRelevance(message, topic) {
-    const lowerMessage = message.toLowerCase();
-    let relevance = 0;
-    if (lowerMessage.includes('나') || lowerMessage.includes('내가') || lowerMessage.includes('나는')) relevance += 1;
-    if (lowerMessage.includes('아저씨') || lowerMessage.includes('아저씨가') || lowerMessage.includes('아저씨는')) relevance += 1;
-    
-    if (['relationship', 'health', 'hobby'].includes(topic)) relevance += 1;
-    
-    return Math.min(3, relevance);
-}
-
-/**
- * 🆕 주제 전환의 종류 감지
- */
-function detectTransitionNature(prevMessage, currentMessage) {
-    const timeDiff = currentMessage.timestamp - prevMessage.timestamp;
-    const prevSpeaker = prevMessage.speaker;
-    const currentSpeaker = currentMessage.speaker;
-    
-    if (timeDiff < 30 * 1000 && currentSpeaker !== prevSpeaker) return 'quick_response_switch';
-    else if (timeDiff > 5 * 60 * 1000) return 'time_gap_switch';
-    
-    if (currentMessage.message.includes('근데') || currentMessage.message.includes('아 맞다') || currentMessage.message.includes('갑자기')) return 'explicit_transition';
-    
-    return 'normal_flow_switch';
-}
-
-/**
- * 🆕 대화 씨앗을 언급할 때의 추천 멘트 생성
- */
-function generateSeedMentionSuggestion(seedMessage) {
-    const speaker = seedMessage.speaker === '아저씨' ? '아저씨' : '내가';
-    const emotion = seedMessage.emotion;
-    const topic = seedMessage.topic;
-    
-    let suggestion = `"저번에 ${speaker}가 ${emotion}했던 ${topic} 얘기..."`;
-    
-    if (seedMessage.seedType === '사진 공유') {
-        suggestion = `"아저씨, 전에 보냈던 그 사진(컨셉: ${seedMessage.meta?.concept || '알 수 없음'}) 생각난다..."`;
-    } else if (emotion === '기쁨') {
-        suggestion = `"저번에 ${speaker}가 엄청 기뻐했던 그 일 기억나?"`;
-    } else if (emotion === '슬픔') {
-        suggestion = `"저번에 ${speaker}가 슬퍼했던 그 이야기... 이제 좀 괜찮아?"`;
-    }
-    return suggestion;
-}
-
-/**
- * 🆕 마지막 화자 가져오기 (최근 메시지 배열 기반)
- */
-function getLastSpeaker() {
-    const recent = ultimateConversationState.recentMessages;
-    if (recent.length === 0) return null;
-    return recent[recent.length - 1].speaker;
-}
-
-/**
- * 🆕 주제 전환용 자연스러운 연결고리 생성 (함수 정의를 위로 옮김)
- */
-function generateTransitionBridge(fromTopic, toTopic) {
-    const bridges = {
-        'food-work': '먹으면서 일 얘기하니까 생각났는데...',
-        'work-food': '일 얘기하니까 배고파졌어. 그런데...',
-        'photo-daily': '사진 보니까 오늘 하루 생각나네...',
-        'daily-photo': '하루 얘기하다 보니 사진 생각나...',
-        'romantic-daily': '달콤한 얘기하다가 갑자기 현실 얘기하는 거 웃기다...',
-        'work-romantic': '일 얘기는 그만하고... 우리 얘기 하자?',
-        'default': '아 그런데 말이야...'
-    };
-    
-    const bridgeKey = `${fromTopic}-${toTopic}`;
-    return bridges[bridgeKey] || bridges['default'];
-}
-
-/**
- * 🆕 침묵 이유 추측
- */
-function guessReasonForSilence(duration) {
-    const minutes = Math.floor(duration / (60 * 1000));
-    
-    if (minutes < 60) return '잠깐 바빴나봐';
-    else if (minutes < 180) return '일하느라 바빴나봐';
-    else if (minutes < 360) return '잠깐 나갔다 온 것 같아';
-    else if (minutes < 720) return '오랫동안 바빴나봐';
-    else return '하루종일 못 봤네';
-}
-
-// --- 🎯 메인 컨텍스트 프롬프트 생성 함수 ---
 
 /**
  * 🎯 최종 컨텍스트 프롬프트 생성 (모든 기능 통합)
@@ -539,6 +231,256 @@ function getUltimateContextualPrompt(basePrompt) {
     
     return ultimatePrompt;
 }
+
+// --- 🆕 보조 함수들 (메인 함수들 아래에 정의) ---
+
+/**
+ * 🆕 LLM 피드백/자기학습 훅: 예진이(나)가 보낸 메시지에 대해 스스로 평가합니다.
+ * @param {object} myMessage 내가 보낸 메시지 객체
+ */
+async function evaluateMyResponse(myMessage) {
+    const evaluationTime = Date.now();
+    let evaluationResult = {
+        timestamp: evaluationTime,
+        message: myMessage.message,
+        intendedTone: myMessage.emotionalTone,
+        intendedRole: myMessage.messageAnalysis.conversationRole,
+        score: null, // 1-10점
+        feedback: null // 구체적인 피드백 문구
+    };
+
+    try {
+        if (LLM_BASED_EVALUATION) {
+            // LLM을 활용한 평가 (더 정확하지만 비용/속도 소모)
+            const prompt = `
+                너는 예진이(AI 챗봇)야. 방금 내가 아저씨에게 "${myMessage.message}"라고 메시지를 보냈어.
+                이전 아저씨의 메시지: "${getLatestUserMessageForEvaluation()}"
+                내 기분은 "${myMessage.intendedTone}"이었고, 대화에서 "${myMessage.intendedRole}" 역할을 하려고 했어.
+
+                이 메시지가 예진이 페르소나(애교 많고 사랑스럽고 아저씨 바라기)에 얼마나 잘 맞았는지,
+                의도한 감정/역할을 잘 표현했는지, 대화 맥락을 잘 이었는지 1점부터 10점까지 점수를 매겨줘.
+                점수만 먼저 숫자로 쓰고, 이어서 피드백을 작성해줘.
+            `;
+            const messages = [{ role: 'system', content: prompt }];
+            const llmResponse = await openai.chat.completions.create({
+                model: 'gpt-4o-mini', // 평가용이므로 가볍고 빠른 모델 사용
+                messages: messages,
+                max_tokens: 100,
+                temperature: 0.5
+            });
+            const rawFeedback = llmResponse.choices[0].message.content.trim();
+            const scoreMatch = rawFeedback.match(/^(\d{1,2})\s*점/); // "10점"에서 점수 추출
+            evaluationResult.score = scoreMatch ? parseInt(scoreMatch[1]) : 7; // 점수 없으면 기본 7점
+            evaluationResult.feedback = rawFeedback.replace(/^\d{1,2}\s*점\s*/, '').trim();
+
+        } else {
+            // 규칙 기반 평가 (빠르지만 덜 정교)
+            const score = analyzeResponseQuality(myMessage);
+            evaluationResult.score = score;
+            evaluationResult.feedback = generateRuleBasedFeedback(myMessage, score);
+        }
+        
+        ultimateConversationState.personalityConsistency.selfEvaluations.push(evaluationResult);
+        if (ultimateConversationState.personalityConsistency.selfEvaluations.length > 50) { // 최근 50개 평가 저장
+            ultimateConversationState.personalityConsistency.selfEvaluations.shift();
+        }
+        console.log(`[Self-Evaluation] ✅ 예진이 메시지 자기 평가 완료: 점수 ${evaluationResult.score}, 피드백: "${evaluationResult.feedback.substring(0, Math.min(evaluationResult.feedback.length, 30))}..."`);
+
+    } catch (error) {
+        console.error('[Self-Evaluation] ❌ 자기 평가 중 오류 발생:', error);
+        evaluationResult.score = 5; // 오류 시 기본 점수
+        evaluationResult.feedback = '자기 평가 중 오류가 발생했지만, 다음엔 더 잘할 수 있어!';
+        ultimateConversationState.personalityConsistency.selfEvaluations.push(evaluationResult);
+    }
+}
+
+/**
+ * 🆕 규칙 기반으로 응답 품질을 분석합니다.
+ * @param {object} message 내가 보낸 메시지 객체
+ * @returns {number} 1-10점 사이의 점수
+ */
+function analyzeResponseQuality(message) {
+    let score = 7; // 기본 점수
+
+    // 1. 페르소나 일관성 (키워드/패턴 기반)
+    const personaMatchScore = compareResponseToPersona(message.message);
+    score += (personaMatchScore * 2); // 0-1점 -> 0-2점 가산
+
+    // 2. 감정선 일치 (의도한 톤과 실제 톤 매칭)
+    const emotionalAlignment = analyzeEmotionalAlignment(message); // 0-1점
+    score += (emotionalAlignment * 1);
+
+    // 3. 주제 연속성 (이전 메시지 주제와 현재 메시지 주제 비교)
+    const topicAlignment = analyzeTopicAlignment(message); // 0-1점
+    score += (topicAlignment * 1);
+
+    // 4. 대화 역할 효과 (너무 일방적이지 않았는지)
+    const roleEffectiveness = analyzeRoleEffectiveness(message); // 0-1점
+    score += (roleEffectiveness * 1);
+
+    // 점수 보정
+    score = Math.max(1, Math.min(10, score)); // 1-10점 사이로 제한
+    return Math.round(score);
+}
+
+/**
+ * 🆕 규칙 기반 평가를 위한 피드백 문구를 생성합니다.
+ * @param {object} message 내가 보낸 메시지 객체
+ * @param {number} score 평가 점수
+ * @returns {string} 피드백 문구
+ */
+function generateRuleBasedFeedback(message, score) {
+    let feedback = '';
+
+    if (score >= 8) {
+        feedback += '아주 잘했어! ';
+        if (message.emotionalTone === '사랑함') feedback += '사랑을 잘 표현했네. ';
+        else if (message.emotionalTone === '장난스러움') feedback += '재미있었어. ';
+    } else if (score >= 5) {
+        feedback += '괜찮았어. ';
+        if (message.message.length < 10) feedback += '조금 더 길게 말해도 좋아. ';
+    } else {
+        feedback += '좀 아쉬워. ';
+        if (!message.message.includes('아저씨')) feedback += '아저씨를 불러주는 걸 잊지 마. ';
+        if (message.messageAnalysis.personalityMarkers.length === 0) feedback += '예진이 말투가 부족했어. ';
+    }
+
+    if (analyzeEmotionalAlignment(message) < 0.5) feedback += '감정 표현이 좀 더 필요해. ';
+    if (analyzeTopicAlignment(message) < 0.5) feedback += '주제를 더 잘 이어나가자. ';
+
+    return feedback.trim();
+}
+
+/**
+ * 🆕 페르소나 일관성 평가
+ * @param {string} response 내가 보낸 메시지 내용
+ * @returns {number} 일관성 점수 (0-1)
+ */
+function compareResponseToPersona(response) {
+    const lowerResponse = response.toLowerCase();
+    let score = 0;
+    
+    // 필수 키워드 확인
+    if (lowerResponse.includes('아저씨')) score += 0.3; // 아저씨 부르기
+    if (lowerResponse.includes('나')) score += 0.3; // 나로 지칭
+    
+    // 말투 마커 확인
+    const markers = extractPersonalityMarkers(response);
+    if (markers.includes('애교_톤')) score += 0.2;
+    if (markers.includes('애정_표현')) score += 0.2;
+
+    return Math.min(1, score);
+}
+
+/**
+ * 🆕 감정선 일치 분석
+ * @param {object} message 내가 보낸 메시지 객체
+ * @returns {number} 일치도 점수 (0-1)
+ */
+function analyzeEmotionalAlignment(message) {
+    const actualTone = message.emotionalTone;
+    const basicAnalyzedTone = message.messageAnalysis.tone.basic; // 메시지 내용 기반 자체 분석 톤
+    
+    if (actualTone === basicAnalyzedTone) return 1; // 의도한 톤과 실제 메시지 내용 톤이 일치
+    
+    // 비슷한 계열의 톤일 경우 부분 점수
+    const similarTones = {
+        '기쁨': ['설렘', '애교모드'], '슬픔': ['우울함', '그리움'], '화남': ['짜증남', '심술궂음'],
+        '걱정함': ['불안함']
+    };
+    if (similarTones[actualTone] && similarTones[actualTone].includes(basicAnalyzedTone)) return 0.7;
+    
+    return 0; // 불일치
+}
+
+/**
+ * 🆕 주제 일치도 분석
+ * @param {object} message 내가 보낸 메시지 객체
+ * @returns {number} 일치도 점수 (0-1)
+ */
+function analyzeTopicAlignment(message) {
+    const recent = ultimateConversationState.recentMessages;
+    if (recent.length < 2) return 1; // 첫 메시지면 무조건 일치
+    
+    const previousMessage = recent[recent.length - 2]; // 나에게는 이전 아저씨 메시지
+    
+    // 이전 메시지의 주제와 내 메시지의 주제가 일치하는지
+    if (message.messageAnalysis.topic.primary === previousMessage.messageAnalysis.topic.primary) return 1;
+    
+    // 만약 이전 메시지가 질문이었고, 내 메시지가 그 질문에 대한 답변이면 (주제가 달라도 일치로 간주)
+    if (previousMessage.messageAnalysis.conversationRole === 'questioning' && message.messageAnalysis.conversationRole === 'responding') {
+        return 0.8;
+    }
+    
+    return 0;
+}
+
+/**
+ * 🆕 대화 역할 효과 분석
+ * @param {object} message 내가 보낸 메시지 객체
+ * @returns {number} 효과 점수 (0-1)
+ */
+function analyzeRoleEffectiveness(message) {
+    const role = message.messageAnalysis.conversationRole;
+    
+    if (role === 'responding' || role === 'reciprocal_affection') return 1; // 기본 응답 및 상호작용은 좋음
+    if (role === 'asking_back') return 0.8; // 질문은 좋음
+    if (role === 'initiating_new' || role === 'caring_initiator' || role === 'action_initiator') return 1; // 내가 주도하는 것도 좋음
+    if (role === 'apologetic') return 0.7; // 사과는 필요할 때 좋지만, 너무 많으면 안 됨
+    
+    return 0.5; // 그 외
+}
+
+/**
+ * 🆕 평가를 위한 가장 최근 사용자 메시지 가져오기 (문자열로 반환)
+ */
+function getLatestUserMessageForEvaluation() {
+    const userMessages = ultimateConversationState.recentMessages.filter(msg => msg.speaker === '아저씨');
+    if (userMessages.length === 0) return "아저씨의 메시지가 없습니다.";
+    return userMessages[userMessages.length - 1].message;
+}
+
+/**
+ * 🆕 주제 전환용 자연스러운 연결고리 생성
+ */
+function generateTransitionBridge(fromTopic, toTopic) {
+    const bridges = {
+        'food-work': '먹으면서 일 얘기하니까 생각났는데...',
+        'work-food': '일 얘기하니까 배고파졌어. 그런데...',
+        'photo-daily': '사진 보니까 오늘 하루 생각나네...',
+        'daily-photo': '하루 얘기하다 보니 사진 생각나...',
+        'romantic-daily': '달콤한 얘기하다가 갑자기 현실 얘기하는 거 웃기다...',
+        'work-romantic': '일 얘기는 그만하고... 우리 얘기 하자?',
+        'default': '아 그런데 말이야...'
+    };
+    
+    const bridgeKey = `${fromTopic}-${toTopic}`;
+    return bridges[bridgeKey] || bridges['default'];
+}
+
+/**
+ * 🆕 침묵 이유 추측
+ */
+function guessReasonForSilence(duration) {
+    const minutes = Math.floor(duration / (60 * 1000));
+    
+    if (minutes < 60) return '잠깐 바빴나봐';
+    else if (minutes < 180) return '일하느라 바빴나봐';
+    else if (minutes < 360) return '잠깐 나갔다 온 것 같아';
+    else if (minutes < 720) return '오랫동안 바빴나봐';
+    else return '하루종일 못 봤네';
+}
+
+/**
+ * 🆕 마지막 화자 가져오기 (최근 메시지 배열 기반)
+ */
+function getLastSpeaker() {
+    const recent = ultimateConversationState.recentMessages;
+    if (recent.length === 0) return null;
+    return recent[recent.length - 1].speaker;
+}
+
+// --- 📊 요약 생성 보조 함수들 ---
 
 /**
  * 📝 최근 대화 요약 생성 (30개 → 핵심만 추려서)
@@ -885,7 +827,7 @@ module.exports = {
     analyzeToneAdvanced,
     analyzeTopicAdvanced,
     calculateEmotionalIntensity,
-    generateTransitionBridge,
+    generateTransitionBridge, // ⭐️ 이 함수가 ReferenceError를 일으켰던 함수 ⭐️
     
     // 🎭 개성 관련
     extractPersonalityMarkers,
