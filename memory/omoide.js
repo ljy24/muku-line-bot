@@ -1,8 +1,11 @@
-// memory/omoide.js v2.14 (통합 지능 엔진 연동)
+// memory/omoide.js v2.15 (오류 수정)
+// [오류 수정] require 경로를 '../src/autoReply'로 수정하여 모듈을 찾지 못하는 문제 해결
+// [개선] require 구문을 함수 내부가 아닌 파일 최상단으로 이동하여 코드 안정성 향상
 
 const fs = require("fs");
 const path = require("path");
 const moment = require('moment-timezone');
+const { callOpenAI, cleanReply } = require('../src/autoReply'); // [수정] 경로 수정 및 파일 상단으로 이동
 
 const OMODE_FOLDERS = { "추억_24_03_일본": 207, "추억_24_03_일본_스냅": 190, "추억_24_03_일본_후지": 226, "추억_24_04": 31, "추억_24_04_출사_봄_데이트_일본": 90, "추억_24_04_한국": 130, "추억_24_05_일본": 133, "추억_24_05_일본_후지": 135, "추억_24_06_한국": 146, "추억_24_07_일본": 62, "추억_24_08월_일본": 48, "추억_24_09_한국": 154, "추억_24_10_일본": 75, "추억_24_11_한국": 121, "추억_24_12_일본": 50, "추억_25_01_한국": 135, "추억_25_02_일본": 24, "추억_25_03_일본": 66, "추억_25_03_일본_코닥_필름": 28, "추억_인생네컷": 15, "흑심": 13 };
 
@@ -30,7 +33,6 @@ function getRandomOmoideFolder() {
 }
 
 async function getOmoideReply(userMessage, conversationContext) {
-    const { callOpenAI, cleanReply } = require('../autoReply');
     const lowerMsg = userMessage.trim().toLowerCase();
     let selectedFolder = null;
 
@@ -43,12 +45,12 @@ async function getOmoideReply(userMessage, conversationContext) {
 
     if (!selectedFolder) {
         if (lowerMsg.includes("추억") || lowerMsg.includes("옛날사진") || lowerMsg.includes("커플")) {
-            if(lowerMsg.includes("커플")) {
-                 const fileCount = 500;
-                 const index = Math.floor(Math.random() * fileCount) + 1;
-                 const fileName = String(index).padStart(6, "0") + ".jpg";
-                 const imageUrl = encodeImageUrl(`${BASE_COUPLE_URL}/${fileName}`);
-                 return { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl, caption: "아저씨랑 나랑 같이 찍은 커플 사진이야! 예쁘지?" };
+            if (lowerMsg.includes("커플")) {
+                const fileCount = 500;
+                const index = Math.floor(Math.random() * fileCount) + 1;
+                const fileName = String(index).padStart(6, "0") + ".jpg";
+                const imageUrl = encodeImageUrl(`${BASE_COUPLE_URL}/${fileName}`);
+                return { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl, caption: "아저씨랑 나랑 같이 찍은 커플 사진이야! 예쁘지?" };
             }
             selectedFolder = getRandomOmoideFolder();
         } else {
