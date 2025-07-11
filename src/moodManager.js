@@ -1,4 +1,4 @@
-// src/moodManager.js v2.0 - 중앙 상태 관리 버전
+// src/moodManager.js v2.1 - 누락된 메서드 추가
 // [MOOD-INTEGRATION] 내부 상태(currentMood 등)를 제거하고 ultimateContext의 중앙 상태를 사용하도록 변경
 
 const moment = require('moment-timezone');
@@ -146,6 +146,28 @@ function setPeriodActive(active) {
     console.log(`[moodManager] 생리 상태 강제 설정: ${oldState} → ${active}`);
 }
 
+// 누락된 메서드들 추가
+function getCurrentMoodStatus() {
+    const { currentMood, isPeriodActive } = ultimateContext.getMoodState();
+    const emoji = getMoodEmoji();
+    
+    if (isPeriodActive) {
+        return `${currentMood} (생리중 🩸) ${emoji}`;
+    }
+    return `${currentMood} ${emoji}`;
+}
+
+function updateLastUserMessageTimeMood(timestamp) {
+    // 사용자 메시지 시간 업데이트
+    if (timestamp) {
+        ultimateContext.updateLastUserMessageTime(timestamp);
+    } else {
+        ultimateContext.updateLastUserMessageTime(Date.now());
+    }
+    
+    // 기분 변화 체크 (필요시)
+    console.log(`[moodManager] 사용자 메시지 시간 업데이트 완료`);
+}
 
 module.exports = {
     handleMoodQuery,
@@ -153,4 +175,6 @@ module.exports = {
     getMoodEmoji,
     setMood, // 테스트 및 외부 제어용
     setPeriodActive, // 테스트 및 외부 제어용
+    getCurrentMoodStatus, // 누락된 메서드 추가
+    updateLastUserMessageTimeMood, // 누락된 메서드 추가
 };
