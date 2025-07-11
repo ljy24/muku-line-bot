@@ -434,7 +434,15 @@ const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
     console.log(`🔥 예진이 v6.4 서버 시작! 포트: ${PORT}`);
-    console.log(`🚀 Ultimate Context 통합: ${isUsingUltimateContext() ? '활성화' : '비활성화'}`);
+    
+    // 🚨 안전한 방식으로 ultimateContext 상태 확인
+    try {
+        const isUltimateActive = isUsingUltimateContext();
+        console.log(`🚀 Ultimate Context 통합: ${isUltimateActive ? '활성화' : '비활성화'}`);
+    } catch (error) {
+        console.log(`🚀 Ultimate Context 통합: 확인 불가 (${error.message})`);
+    }
+    
     initMuku();
 });
 
@@ -508,7 +516,14 @@ async function initMuku() {
 
         console.log('🎉 무쿠 초기화 완료!');
         console.log(`🔧 시스템 상태:`);
-        console.log(`   - Ultimate Context: ${isUsingUltimateContext() ? '✅ 활성화' : '❌ 비활성화'}`);
+        
+        // 🚨 안전한 방식으로 상태 확인
+        try {
+            console.log(`   - Ultimate Context: ${isUsingUltimateContext() ? '✅ 활성화' : '❌ 비활성화'}`);
+        } catch (error) {
+            console.log(`   - Ultimate Context: ❓ 상태 확인 불가`);
+        }
+        
         console.log(`   - 서버 포트: ${PORT}`);
         console.log(`   - 목표 사용자: ${userId ? '설정됨' : '❌ 미설정'}`);
         
