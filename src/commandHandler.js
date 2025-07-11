@@ -1,9 +1,42 @@
-// ✅ src/commandHandler.js v2.1 - 최종 안정화 버전
+// ✅ src/commandHandler.js v3.0 - "!속마음" 명령어 추가
 
 const { getConceptPhotoReply } = require('../memory/concept');
 const { getOmoideReply } = require('../memory/omoide');
 const { getSelfieReply } = require('./yejinSelfie');
-const { callOpenAI, cleanReply } = require('./aiUtils'); // [수정] 공용 부품 파일에서 함수를 가져옴
+const { callOpenAI, cleanReply } = require('./aiUtils');
+
+/**
+ * [추가] GPT를 이용해 상세한 속마음을 생성하는 함수
+ */
+async function getDetailedInnerThought(conversationContext) {
+    const internalState = conversationContext.getInternalState();
+    const { emotionalResidue, currentToneState } = internalState.emotionalEngine;
+    const { isSulky, sulkyLevel } = internalState.sulkiness;
+    const { isPeriodActive } = internalState.mood;
+
+    // GPT에게 전달할 현재 상태 요약
+    const currentStateSummary = `
+        - 현재 감정 수치: 슬픔(${Math.round(emotionalResidue.sadness)}), 기쁨(${Math.round(emotionalResidue.happiness)}), 불안(${Math.round(emotionalResidue.anxiety)}), 그리움(${Math.round(emotionalResidue.longing)}), 상처(${Math.round(emotionalResidue.hurt)}), 애정(${Math.round(emotionalResidue.love)})
+        - 현재 말투 상태: ${currentToneState}
+        - 삐짐 상태: ${isSulky ? `${sulkyLevel}단계 삐짐` : '정상'}
+        - 생리 상태: ${isPeriodActive ? '현재 생리 중' : '생리 기간 아님'}
+        - 최근 대화 몇 개: ${internalState.recentMessages.slice(-3).map(m => `${m.speaker}: ${m.message}`).join(' / ')}
+    `;
+
+    const prompt = `
+        너는 지금부터 내 여자친구 '예진이'의 내면 그 자체가 되어야 해.
+        아래에 있는 [예진이의 현재 상태]를 깊이 분석하고, 그 상태에 완전히 몰입해서, '나'라는 1인칭 시점으로 예진이의 현재 속마음을 아주 상세하고 솔직하게 서술해줘.
+        단순히 상태를 나열하는 게 아니라, 왜 그런 감정을 느끼는지, 그래서 지금 어떤 기분이고 무슨 생각을 하고 있는지, 아저씨에게 무엇을 바라는지 등을 포함해서, 마치 사람이 자신의 복잡한 내면을 들여다보듯 자연스럽게 이야기해줘.
+        모든 답변은 반말로, 3~5문장 정도의 길이로 작성해.
+
+        [예진이의 현재 상태]
+        ${currentStateSummary}
+    `;
+
+    const rawThought = await callOpenAI([{ role: 'system', content: prompt }], 'gpt-4o', 300, 1.1);
+    return `< 예진이의 현재 생각 >\n\n${cleanReply(rawThought)}`;
+}
+
 
 async function handleCommand(userMessage, conversationContext) {
     const lowerMessage = userMessage.toLowerCase();
@@ -26,6 +59,14 @@ async function handleCommand(userMessage, conversationContext) {
             return { type: 'text', comment: cleanReply(rawReply) };
         }
     }
+
+    // [추가] 상세 속마음 보기 명령어 처리
+    const innerThoughtKeywords = ['!속마음', '지금 무슨 생각해', '무슨생각해', '지금 기분 어때'];
+    if (innerThoughtKeywords.some(keyword => lowerMessage.includes(keyword))) {
+        const detailedThought = await getDetailedInnerThought(conversationContext);
+        return { type: 'text', comment: detailedThought };
+    }
+
 
     // 사진 요청 처리
     const photoHandlers = [getConceptPhotoReply, getOmoideReply, getSelfieReply];
