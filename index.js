@@ -1,4 +1,4 @@
-// ✅ index.js v9.3 - 로그 표시 형식 변경
+// ✅ index.js v9.4 - 사진 전송 로그 기록 기능 추가
 
 const { Client, middleware } = require('@line/bot-sdk');
 const express = require('express');
@@ -6,7 +6,7 @@ const moment = require('moment-timezone');
 require('dotenv').config();
 
 const { getReplyByMessage } = require('./src/autoReply');
-const { saveLog, cleanReply } = require('./src/aiUtils');
+const { saveLog, saveImageLog, cleanReply } = require('./src/aiUtils'); // [수정] saveImageLog 추가
 const commandHandler = require('./src/commandHandler');
 const { startAllSchedulers, getSchedulerStatus } = require('./src/scheduler');
 const { startSpontaneousPhotoScheduler, getPhotoSchedulerStatus } = require('./src/spontaneousPhotoManager');
@@ -19,12 +19,37 @@ const config = { channelAccessToken: process.env.LINE_ACCESS_TOKEN, channelSecre
 const client = new Client(config);
 const userId = process.env.TARGET_USER_ID;
 
-app.get('/', (_, res) => res.send('예진이 v9.3 살아있어! (로그 형식 변경)'));
+app.get('/', (_, res) => res.send('예진이 v9.4 살아있어! (사진 로그)'));
 
 app.post('/webhook', middleware(config), async (req, res) => { try { await Promise.all(req.body.events.map(handleEvent)); res.status(200).send('OK'); } catch (err) { console.error(`[Webhook] 웹훅 처리 중 심각한 에러:`, err); res.status(500).send('Error'); } });
 async function handleEvent(event) { if (event.source.userId !== userId || event.type !== 'message') return; conversationContext.updateLastUserMessageTime(event.timestamp); if (event.message.type === 'text') await handleTextMessage(event); }
 async function handleTextMessage(event) { const text = event.message.text.trim(); saveLog('아저씨', text); conversationContext.addUltimateMessage('아저씨', text); const sulkyReliefMessage = await sulkyManager.handleUserResponse(); if (sulkyReliefMessage) { saveLog('예진이', `(삐짐 해소) ${sulkyReliefMessage}`); await client.pushMessage(userId, { type: 'text', text: sulkyReliefMessage }); conversationContext.addUltimateMessage('예진이', `(삐짐 해소) ${sulkyReliefMessage}`); await new Promise(resolve => setTimeout(resolve, 1000)); } let botResponse = await commandHandler.handleCommand(text, conversationContext); if (!botResponse) botResponse = await getReplyByMessage(text); if (botResponse) await sendReply(event.replyToken, botResponse); }
-async function sendReply(replyToken, botResponse) { try { if (botResponse.type === 'image') { const caption = botResponse.caption || '사진이야!'; saveLog('예진이', `(사진 전송) ${caption}`); await client.replyMessage(replyToken, [ { type: 'image', originalContentUrl: botResponse.originalContentUrl, previewImageUrl: botResponse.previewImageUrl, }, { type: 'text', text: caption } ]); conversationContext.addUltimateMessage('예진이', `(사진 전송) ${caption}`); } else if (botResponse.type === 'text' && botResponse.comment) { const cleanedText = cleanReply(botResponse.comment); saveLog('예진이', cleanedText); await client.replyMessage(replyToken, { type: 'text', text: cleanedText }); conversationContext.addUltimateMessage('예진이', cleanedText); } conversationContext.getSulkinessState().lastBotMessageTime = Date.now(); } catch (error) { console.error('[sendReply] 메시지 전송 실패:', error); } }
+
+/**
+ * [수정] 사진을 보낼 때 saveImageLog를 사용하도록 변경
+ */
+async function sendReply(replyToken, botResponse) {
+    try {
+        if (botResponse.type === 'image') {
+            const caption = botResponse.caption || '사진이야!';
+            // [수정] 사진 로그를 기록하는 새로운 함수 사용
+            saveImageLog('예진이', caption, botResponse.originalContentUrl);
+            await client.replyMessage(replyToken, [
+                { type: 'image', originalContentUrl: botResponse.originalContentUrl, previewImageUrl: botResponse.previewImageUrl, },
+                { type: 'text', text: caption }
+            ]);
+            conversationContext.addUltimateMessage('예진이', `(사진 전송) ${caption}`);
+        } else if (botResponse.type === 'text' && botResponse.comment) {
+            const cleanedText = cleanReply(botResponse.comment);
+            saveLog('예진이', cleanedText);
+            await client.replyMessage(replyToken, { type: 'text', text: cleanedText });
+            conversationContext.addUltimateMessage('예진이', cleanedText);
+        }
+        conversationContext.getSulkinessState().lastBotMessageTime = Date.now();
+    } catch (error) {
+        console.error('[sendReply] 메시지 전송 실패:', error);
+    }
+}
 
 async function initMuku() {
     try {
@@ -53,7 +78,6 @@ async function initMuku() {
                 sulkyText = '걱정 중';
             }
             
-            // [수정] 생리 주기 표시 로직 변경
             const lastStartDate = moment(internalState.mood.lastPeriodStartDate);
             const nextExpectedDate = lastStartDate.add(28, 'days');
             const daysUntilNextPeriod = nextExpectedDate.diff(moment(), 'days');
@@ -75,7 +99,6 @@ async function initMuku() {
             console.log("------------------------------------------");
             console.log(`[감정] ${residueText}`);
             console.log(`[상태] 말투: ${toneStateText} | 삐짐: ${sulkyText}`);
-            // [수정] 주기 및 행동 로그 형식 변경
             console.log(`${periodText} | [🚬담타까지]: ${schedulerStatus.nextDamtaInMinutes}분 | [📸사진까지]: ${photoStatus.minutesUntilNext}분\n`);
 
         }, 60 * 1000);
@@ -87,6 +110,6 @@ async function initMuku() {
 
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
-    console.log(`예진이 v9.3 서버 스타트! 포트: ${PORT}`);
+    console.log(`예진이 v9.4 서버 스타트! 포트: ${PORT}`);
     initMuku();
 });
