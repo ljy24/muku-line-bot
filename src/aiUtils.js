@@ -1,4 +1,4 @@
-// ✅ src/aiUtils.js v2.1 - 로그 파일 손상 방지 로직 추가
+// ✅ src/aiUtils.js v2.2 - 사진 로그 기록 기능 추가
 
 const { OpenAI } = require('openai');
 const fs = require('fs').promises;
@@ -9,35 +9,25 @@ const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const LOG_FILE_PATH = path.join(process.cwd(), 'log.json');
 
 /**
- * [수정] 대화 내용을 log.json 파일에 저장하는 공용 함수
+ * 로그 항목을 파일에 추가하는 범용 함수
  */
-async function saveLog(speaker, message) {
-    const logEntry = {
-        timestamp: new Date().toISOString(),
-        speaker,
-        message,
-    };
-
+async function appendToLogFile(logEntry) {
     try {
         let logs = [];
         try {
             const data = await fs.readFile(LOG_FILE_PATH, 'utf8');
-            // [추가] 파일 내용이 비어있지 않을 때만 파싱 시도
             if (data) {
                 logs = JSON.parse(data);
             }
         } catch (error) {
-            // [수정] JSON 파싱 오류(파일 손상)가 발생하면, 경고를 남기고 새 로그 배열로 시작합니다.
             if (error instanceof SyntaxError) {
                 console.warn(`[aiUtils] 경고: log.json 파일이 손상되어 새로 시작합니다. 오류: ${error.message}`);
-                logs = []; // 깨끗한 새 배열로 덮어씁니다.
+                logs = [];
             } else if (error.code !== 'ENOENT') {
-                // 파일이 없는 오류 외의 다른 오류는 throw
                 throw error;
             }
         }
         
-        // logs가 배열이 아닌 경우 (파일이 완전히 잘못된 형식일 때) 처리
         if (!Array.isArray(logs)) {
             console.warn(`[aiUtils] 경고: log.json의 내용이 배열이 아니므로 새로 시작합니다.`);
             logs = [];
@@ -46,9 +36,38 @@ async function saveLog(speaker, message) {
         logs.push(logEntry);
         await fs.writeFile(LOG_FILE_PATH, JSON.stringify(logs, null, 2), 'utf8');
     } catch (error) {
-        console.error('[aiUtils] 로그 저장 실패:', error);
+        console.error('[aiUtils] 로그 파일 쓰기 실패:', error);
     }
 }
+
+
+/**
+ * 텍스트 대화 내용을 log.json 파일에 저장하는 함수
+ */
+async function saveLog(speaker, message) {
+    const logEntry = {
+        timestamp: new Date().toISOString(),
+        type: 'text', // 로그 타입 추가
+        speaker,
+        message,
+    };
+    await appendToLogFile(logEntry);
+}
+
+/**
+ * [추가] 사진 URL과 캡션을 log.json 파일에 저장하는 함수
+ */
+async function saveImageLog(speaker, caption, imageUrl) {
+    const logEntry = {
+        timestamp: new Date().toISOString(),
+        type: 'image', // 로그 타입 추가
+        speaker,
+        caption,
+        imageUrl, // 이미지 URL 추가
+    };
+    await appendToLogFile(logEntry);
+}
+
 
 async function callOpenAI(messages, model = 'gpt-4o', maxTokens = 150, temperature = 0.95) {
     try {
@@ -78,6 +97,7 @@ function cleanReply(reply) {
 
 module.exports = {
     saveLog,
+    saveImageLog, // [추가]
     callOpenAI,
     cleanReply
 };
