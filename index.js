@@ -1,5 +1,4 @@
-// --- START OF FILE: index.js ---
-// ✅ index.js v6.3 - "Photo Feedback Mode" Trigger Implemented & Length Fix
+// ✅ index.js v6.4 - "Heartbeat" 시스템 적용 및 UltimateContext 통합
 // - 모든 모듈을 올바르게 연결하고 지휘하는 최종 버전
 // - 역할과 책임 분리 원칙 적용
 // - 안정적인 에러 처리 및 코드 구조 개선
@@ -9,7 +8,6 @@ const { Client, middleware } = require('@line/bot-sdk');
 const express = require('express');
 require('dotenv').config();
 
-// 🆕 autoReply 모듈에서는 '답장 생성' 관련 기능만 가져옵니다.
 const {
     getReplyByMessage,
     getReplyByImagePrompt,
@@ -18,10 +16,9 @@ const {
     callOpenAI,
     BOT_NAME,
     USER_NAME,
-    checkSpontaneousReactions // 자발적 반응 체크 함수 추가
+    checkSpontaneousReactions
 } = require('./src/autoReply');
 
-// 🆕 다른 핵심 모듈들 불러오기
 const memoryManager = require('./src/memoryManager');
 const commandHandler = require('./src/commandHandler');
 const memoryHandler = require('./src/memoryHandler');
@@ -29,7 +26,7 @@ const { startAllSchedulers } = require('./src/scheduler');
 const { startSpontaneousPhotoScheduler } = require('./src/spontaneousPhotoManager');
 const sulkyManager = require('./src/sulkyManager');
 
-// [핵심] 새로운 '마음과 기억' 엔진을 불러옵니다.
+// [핵심] '마음과 기억'의 최종 두뇌 엔진을 불러옵니다.
 const conversationContext = require('./src/ultimateConversationContext.js');
 
 const app = express();
@@ -43,7 +40,7 @@ const client = new Client(config);
 const userId = process.env.TARGET_USER_ID;
 
 // 🌐 루트 경로
-app.get('/', (_, res) => res.send('예진이 v6.3 살아있어! (맥락/길이 개선)'));
+app.get('/', (_, res) => res.send('예진이 v6.4 살아있어! (Heartbeat 적용)'));
 
 // 📊 상태 조회 API
 app.get('/status', (req, res) => {
@@ -51,7 +48,7 @@ app.get('/status', (req, res) => {
         const internalState = conversationContext.getInternalState();
         res.json({
             timestamp: new Date().toISOString(),
-            version: 'v6.3',
+            version: 'v6.4',
             ...internalState
         });
     } catch (error) {
@@ -76,10 +73,9 @@ app.post('/webhook', middleware(config), async (req, res) => {
 // 이벤트별 처리 허브
 async function handleEvent(event) {
     if (event.source.userId !== userId || event.type !== 'message') {
-        return; // 목표 사용자의 메시지 이벤트가 아니면 무시
+        return;
     }
 
-    // 아저씨의 마지막 메시지 시간을 context에 기록
     conversationContext.updateLastUserMessageTime(event.timestamp);
 
     switch (event.message.type) {
@@ -96,25 +92,21 @@ async function handleEvent(event) {
 async function handleTextMessage(event) {
     const text = event.message.text.trim();
     saveLog(USER_NAME, text);
-    // 메시지를 '기억'하도록 context에 전달
     conversationContext.addUltimateMessage(USER_NAME, text);
 
-    // 삐짐 해소 체크
     const sulkyReliefMessage = await sulkyManager.handleUserResponse(client, userId, saveLog);
     if (sulkyReliefMessage) {
         await client.pushMessage(userId, { type: 'text', text: sulkyReliefMessage });
         saveLog(BOT_NAME, `(삐짐 해소) ${sulkyReliefMessage}`);
         conversationContext.addUltimateMessage(BOT_NAME, sulkyReliefMessage);
-        await new Promise(resolve => setTimeout(resolve, 1000)); // 답장 전 잠시 대기
+        await new Promise(resolve => setTimeout(resolve, 1000));
     }
 
-    // 답장 생성 요청
     let botResponse = null;
     botResponse = await commandHandler.handleCommand(text, saveLog, callOpenAI, cleanReply, memoryManager.getFixedMemory) ||
                   await memoryHandler.handleMemoryCommand(text, saveLog, callOpenAI, cleanReply, memoryManager.getFixedMemory);
 
     if (!botResponse) {
-        // [수정] autoReply에게 '답장 생성'을 요청하며 필요한 함수들을 모두 전달합니다.
         botResponse = await getReplyByMessage(text, saveLog, callOpenAI, cleanReply);
         await memoryManager.extractAndSaveMemory(text);
     }
@@ -144,7 +136,7 @@ async function handleImageMessage(event) {
 }
 
 /**
- * [MODIFIED] 📤 응답 전송 및 후처리 (공통 함수)
+ * 📤 응답 전송 및 후처리 (공통 함수)
  */
 async function sendReply(replyToken, botResponse) {
     let messagesToReply = [];
@@ -168,14 +160,12 @@ async function sendReply(replyToken, botResponse) {
     if (messagesToReply.length > 0) {
         await client.replyMessage(replyToken, messagesToReply);
 
-        // [핵심 수정] 만약 보낸 메시지가 이미지라면, '사진 피드백 대기 모드'를 켭니다!
         if (botResponse.type === 'image') {
             conversationContext.setPendingAction('awaiting_photo_reaction');
         }
 
         if (loggableText) {
             saveLog(BOT_NAME, loggableText);
-            // 봇의 최종 응답을 '기억'하도록 context에 전달
             conversationContext.addUltimateMessage(BOT_NAME, loggableText);
         }
         sulkyManager.startSulkyTimer(client, userId, saveLog);
@@ -200,7 +190,7 @@ function cleanAndVerifyFirstPerson(text) {
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-    console.log(`예진이 v6.3 서버 스타트! 포트: ${PORT}`);
+    console.log(`예진이 v6.4 서버 스타트! 포트: ${PORT}`);
     initMuku();
 });
 
@@ -208,8 +198,16 @@ app.listen(PORT, () => {
 async function initMuku() {
     try {
         await memoryManager.ensureMemoryTablesAndDirectory();
-        // conversationContext의 초기화 함수를 명시적으로 호출
         await conversationContext.initializeEmotionalSystems();
+        
+        // --- [HEARTBEAT] 이 부분을 추가했습니다! ---
+        // 예진이의 심장 박동을 시작합니다. 1분마다 시간의 흐름을 체크합니다.
+        console.log('[Heartbeat] 예진이의 심장 박동을 시작합니다 (1분 간격).');
+        setInterval(() => {
+            conversationContext.processTimeTick();
+        }, 60000); // 60000ms = 1분
+        // -----------------------------------------
+
         startAllSchedulers(client, userId);
         startSpontaneousPhotoScheduler(client, userId, saveLog, callOpenAI, cleanReply, () => conversationContext.getInternalState().timingContext.lastUserMessageTime);
         
@@ -233,4 +231,3 @@ async function initMuku() {
         process.exit(1);
     }
 }
-// --- END OF FILE: index.js ---
