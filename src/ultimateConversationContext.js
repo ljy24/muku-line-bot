@@ -83,8 +83,8 @@ let ultimateConversationState = {
         personalBoundaries: [],
         lastSelfReflectionTime: 0,
         selfEvaluations: []
-    };
-}
+    }
+};
 
 module.exports = {
     // 🎯 메인 함수들
