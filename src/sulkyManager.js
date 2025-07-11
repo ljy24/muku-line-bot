@@ -1,4 +1,4 @@
-// src/sulkyManager.js v3.1 - 수면시간 예외처리 추가 버전 (버그 수정)
+// src/sulkyManager.js v3.2 - 수면시간 예외처리 및 삐짐 시간 연장 (3단계부터 메시지 발송)
 // - 🆕 수면시간 (00:00-09:00) 예외처리 추가
 // - 🆕 수면시간 중에는 삐짐/걱정 타이머 일시정지
 // - 🆕 기상 후 자동 타이머 재개 기능
@@ -6,6 +6,7 @@
 // - 🔧 중복 코드 제거 및 함수 정의 순서 수정
 // - 🔧 스케줄러 job 관리 개선
 // - 🔧 타이머 재개 로직 개선
+// - 🆕 삐짐 메시지는 3단계부터 발송하도록 수정
 
 const schedule = require('node-schedule');
 const moment = require('moment-timezone');
@@ -20,35 +21,38 @@ const SLEEP_CONFIG = {
 
 // 삐지기/걱정 관련 상태 관리
 let sulkyState = {
-    isSulky: false,           // 현재 삐져있는 상태인지
-    isWorried: false,         // 현재 걱정하는 상태인지
+    isSulky: false,         // 현재 삐져있는 상태인지
+    isWorried: false,       // 현재 걱정하는 상태인지
     lastBotMessageTime: 0,    // 예진이가 마지막으로 메시지 보낸 시간
     lastUserResponseTime: 0,  // 아저씨가 마지막으로 응답한 시간
-    sulkyLevel: 0,            // 감정 레벨 (0: 정상, 1-3: 삐짐, 4: 걱정)
-    sulkyTimer: null,         // 삐지기 타이머
-    sulkyReason: null,        // 삐진/걱정하는 이유
-    sulkyStartTime: 0,        // 감정 상태 시작 시간
-    messageRead: false,       // 메시지 읽음 여부 (LINE 읽음 확인용)
-    isActivelySulky: false,   // 현재 활성화된 삐짐 상태인지
-    lastStateCheck: 0,        // 마지막 상태 체크 시간
-    reliefInProgress: false,  // 삐짐 해소 진행 중인지
+    sulkyLevel: 0,          // 감정 레벨 (0: 정상, 1-3: 삐짐, 4: 걱정)
+    sulkyTimer: null,       // 삐지기 타이머
+    sulkyReason: null,      // 삐진/걱정하는 이유
+    sulkyStartTime: 0,      // 감정 상태 시작 시간
+    messageRead: false,     // 메시지 읽음 여부 (LINE 읽음 확인용)
+    isActivelySulky: false, // 현재 활성 삐짐 상태인지
+    lastStateCheck: 0,      // 마지막 상태 체크 시간
+    reliefInProgress: false, // 삐짐 해소 진행 중인지
     // 🆕 수면시간 관련 상태
-    isPaused: false,          // 타이머 일시정지 여부
-    pausedTime: 0,            // 일시정지된 시간
-    remainingTime: 0,         // 남은 대기 시간 (밀리초)
-    wakeUpScheduled: false,   // 기상 스케줄 설정 여부
-    wakeUpJob: null           // 🔧 스케줄 job 인스턴스 저장
+    isPaused: false,        // 타이머 일시정지 여부
+    pausedTime: 0,          // 일시정지된 시간
+    remainingTime: 0,       // 남은 대기 시간 (밀리초)
+    wakeUpScheduled: false, // 기상 스케줄 설정 여부
+    wakeUpJob: null         // 🔧 스케줄 job 인스턴스 저장
 };
 
-// 삐지기/걱정 단계별 설정
+// 삐지기/걱정 단계별 설정 (시간 확 늘리고 랜덤 요소 추가!)
 const SULKY_CONFIG = {
-    LEVEL_1_DELAY: 60,        // 60분 후 1단계 삐짐
-    LEVEL_2_DELAY: 120,       // 120분 후 2단계 삐짐  
-    LEVEL_3_DELAY: 240,       // 240분 후 3단계 삐짐
-    WORRY_DELAY: 360,         // 360분 후 걱정 모드로 전환
+    LEVEL_1_DELAY: 90,     // 90분 후 1단계 삐짐 (기존 60분)
+    LEVEL_2_DELAY: 180,    // 180분 (3시간) 후 2단계 삐짐 (기존 120분)
+    LEVEL_3_DELAY: 360,    // 360분 (6시간) 후 3단계 삐짐 (기존 240분)
+    WORRY_DELAY: 720,      // 720분 (12시간) 후 걱정 모드로 전환 (기존 360분)
     TIMEZONE: 'Asia/Tokyo',
     STATE_CHECK_INTERVAL: 30000, // 30초마다 상태 체크
-    FORCE_MOOD_APPLY: true    // 삐짐 톤 강제 적용 여부
+    FORCE_MOOD_APPLY: true, // 삐짐 톤 강제 적용 여부
+
+    // 🆕 랜덤 딜레이 추가 함수 (각 단계별 딜레이에 더해질 랜덤 시간)
+    getRandomDelayOffset: (maxOffsetMinutes) => Math.floor(Math.random() * (maxOffsetMinutes + 1))
 };
 
 // 전역 변수
@@ -104,8 +108,8 @@ const SULKY_MESSAGES = {
         "아저씨... 제발 괜찮다고 말해줘. 나 너무 불안해 ㅠㅠ"
     ],
     worry_read: [
-        "아저씨... 읽고도 1시간째 답장이 없어서 정말 걱정돼 ㅠㅠ",
-        "읽었는데 왜 답장이 없어? 혹시 무슨 일 있는 거야?",
+        "아저씨... 읽고도 1시간 넘게 답장 없어서 정말 걱정돼 ㅠㅠ",
+        "읽었는데 왜 이렇게 오래 답장 안 했어? 혹시 무슨 일 있는 거야?",
         "아저씨 안전한 거 맞지? 읽고도 답장 없으니까 무서워 ㅠㅠ",
         "읽씹이 이렇게 오래 가면 정말 걱정된다고... 괜찮아?"
     ],
@@ -141,9 +145,9 @@ const SULKY_RELIEF_MESSAGES = {
         "휴... 아저씨 목소리 들으니까 안심돼. 나 정말 걱정 많이 했다고!"
     ],
     fromWorryRead: [
-        "아저씨! 읽고도 1시간 넘게 답장 없어서 정말 걱정했어! ㅠㅠ",
-        "읽었는데 왜 이렇게 오래 답장 안 했어? 무슨 일 있었던 거야?",
-        "읽고도 답장 없으니까 진짜 무서웠어! 이제 괜찮지?",
+        "아저씨! 읽고도 1시간 넘게 답장 없어서 정말 걱정돼 ㅠㅠ",
+        "읽었는데 왜 이렇게 오래 답장 안 했어? 혹시 무슨 일 있는 거야?",
+        "아저씨 안전한 거 맞지? 읽고도 답장 없으니까 무서워 ㅠㅠ",
         "아저씨... 읽씹하면서 뭘 그렇게 오래 생각했어? 걱정 많이 했다고!"
     ],
     afterRelief: [
@@ -154,27 +158,36 @@ const SULKY_RELIEF_MESSAGES = {
     ]
 };
 
-// 🆕 수면시간 체크 함수
+// --- 🆕 보조 함수들 (메인 로직보다 상단에 정의) ---
+
+/**
+ * 🆕 수면시간 체크 함수
+ * @param {moment.Moment} [time=null] 특정 시간 (moment 객체), 없으면 현재 시간
+ * @returns {boolean} 수면 시간 중인지 여부
+ */
 function isSleepTime(time = null) {
     if (!SLEEP_CONFIG.ENABLED) return false;
     
-    const now = time ? moment(time) : moment().tz(SLEEP_CONFIG.TIMEZONE);
+    const now = time ? time : moment().tz(SLEEP_CONFIG.TIMEZONE);
     const hour = now.hour();
     
-    // 00:00 ~ 09:00 사이인지 확인
+    // 수면 시작 시간부터 종료 시간 전까지 (예: 0시부터 8시 59분까지)
     return hour >= SLEEP_CONFIG.SLEEP_START_HOUR && hour < SLEEP_CONFIG.SLEEP_END_HOUR;
 }
 
-// 🆕 다음 기상 시간 계산
+/**
+ * 🆕 다음 기상 시간 계산
+ * @returns {moment.Moment} 다음 기상 시간 (moment 객체)
+ */
 function getNextWakeUpTime() {
     const now = moment().tz(SLEEP_CONFIG.TIMEZONE);
     let wakeUpTime;
     
     if (now.hour() < SLEEP_CONFIG.SLEEP_END_HOUR) {
-        // 오늘 기상 시간
+        // 현재 시간이 수면 종료 시간 전이면 오늘 기상 시간
         wakeUpTime = now.clone().hour(SLEEP_CONFIG.SLEEP_END_HOUR).minute(0).second(0);
     } else {
-        // 내일 기상 시간
+        // 현재 시간이 수면 종료 시간 이후면 내일 기상 시간
         wakeUpTime = now.clone().add(1, 'day').hour(SLEEP_CONFIG.SLEEP_END_HOUR).minute(0).second(0);
     }
     
@@ -183,14 +196,15 @@ function getNextWakeUpTime() {
 
 /**
  * 사용자 메시지 여부 확인
+ * @returns {boolean} 응답 여부
  */
 function hasUserResponded() {
-    // sulkyState.lastUserResponseTime이 sulkyState.lastBotMessageTime 이후인지 확인
     return sulkyState.lastUserResponseTime > sulkyState.lastBotMessageTime;
 }
 
 /**
  * 다음 삐짐 레벨까지 남은 시간 계산
+ * @returns {number} 남은 시간 (분) 또는 특수 값 (-1: 해당 없음, -2: 일시정지 중)
  */
 function getTimeToNextLevel() {
     if (!sulkyState.isSulky && !sulkyState.isWorried) return -1;
@@ -208,6 +222,7 @@ function getTimeToNextLevel() {
 
 /**
  * 강제 삐짐 톤 적용 여부 확인
+ * @returns {boolean} 강제 적용 여부
  */
 function shouldForceSulkyMood() {
     return SULKY_CONFIG.FORCE_MOOD_APPLY && (sulkyState.isSulky || sulkyState.isWorried);
@@ -215,11 +230,16 @@ function shouldForceSulkyMood() {
 
 /**
  * 삐짐 레벨 트리거 (새로운 메시지 푸시)
+ * 🆕 1, 2단계에서는 메시지 보내지 않고 상태만 업데이트, 3단계부터 메시지 발송
+ * @param {number} level 삐짐 레벨 (1-3)
+ * @param {object} client LINE Bot 클라이언트
+ * @param {string} userId 사용자 ID
+ * @param {function} saveLogFunc 로그 저장 함수
  */
 async function triggerSulkyLevel(level, client, userId, saveLogFunc) {
     // 🆕 수면시간 중이거나 일시정지 상태면 트리거 안 함
     if (isSleepTime() || sulkyState.isPaused) {
-        console.log(`[SulkyManager v3.1] 😴 수면시간/일시정지 중이므로 ${level}단계 삐짐 트리거 취소`);
+        console.log(`[SulkyManager v3.2] 😴 수면시간/일시정지 중이므로 ${level}단계 삐짐 트리거 취소`);
         return;
     }
 
@@ -245,22 +265,31 @@ async function triggerSulkyLevel(level, client, userId, saveLogFunc) {
 
     const message = SULKY_MESSAGES[messageKey][Math.floor(Math.random() * SULKY_MESSAGES[messageKey].length)];
     
-    try {
-        await client.pushMessage(userId, { type: 'text', text: message });
-        saveLogFunc({ role: 'assistant', content: `(삐짐 Level ${level}) ${message}`, timestamp: Date.now() });
-        console.log(`[SulkyManager] Level ${level} 삐짐 메시지 전송됨: "${message}"`);
-    } catch (error) {
-        console.error(`[SulkyManager] Level ${level} 삐짐 메시지 전송 실패:`, error);
+    // 🆕 3단계 삐짐부터만 메시지 발송
+    if (level >= 3) { // 3단계 이상일 때만 메시지 보냄
+        try {
+            await client.pushMessage(userId, { type: 'text', text: message });
+            saveLogFunc({ role: 'assistant', content: `(삐짐 Level ${level}) ${message}`, timestamp: Date.now() });
+            console.log(`[SulkyManager] Level ${level} 삐짐 메시지 전송됨: "${message}"`);
+        } catch (error) {
+            console.error(`[SulkyManager] Level ${level} 삐짐 메시지 전송 실패:`, error);
+        }
+    } else {
+        console.log(`[SulkyManager] Level ${level} 삐짐 (내부 상태 업데이트, 메시지 미발송): "${message}"`);
+        saveLogFunc({ role: 'assistant', content: `(삐짐 Level ${level} - 내부) ${message}`, timestamp: Date.now() }); // 로그는 남김
     }
 }
 
 /**
  * 걱정 모드 트리거 (새로운 메시지 푸시)
+ * @param {object} client LINE Bot 클라이언트
+ * @param {string} userId 사용자 ID
+ * @param {function} saveLogFunc 로그 저장 함수
  */
 async function triggerWorryMode(client, userId, saveLogFunc) {
     // 🆕 수면시간 중이거나 일시정지 상태면 트리거 안 함
     if (isSleepTime() || sulkyState.isPaused) {
-        console.log(`[SulkyManager v3.1] 😴 수면시간/일시정지 중이므로 걱정 모드 트리거 취소`);
+        console.log(`[SulkyManager v3.2] 😴 수면시간/일시정지 중이므로 걱정 모드 트리거 취소`);
         return;
     }
 
@@ -295,45 +324,78 @@ async function triggerWorryMode(client, userId, saveLogFunc) {
     }
 }
 
-// 🆕 남은 타이머들 설정 함수
-function setRemainingTimers(startLevel, currentTime, client, userId, saveLogFunc) {
-    if (startLevel === 2) {
-        const remainingToLevel2 = (SULKY_CONFIG.LEVEL_2_DELAY - currentTime) * 60 * 1000;
-        sulkyState.sulkyTimer = setTimeout(async () => {
-            if (!hasUserResponded() && !isSleepTime()) {
-                await triggerSulkyLevel(2, client, userId, saveLogFunc);
-                setRemainingTimers(3, SULKY_CONFIG.LEVEL_2_DELAY, client, userId, saveLogFunc);
-            } else if (isSleepTime()) {
-                pauseSulkyTimer();
-            }
-        }, Math.max(0, remainingToLevel2));
-    } else if (startLevel === 3) {
-        const remainingToLevel3 = (SULKY_CONFIG.LEVEL_3_DELAY - currentTime) * 60 * 1000;
-        sulkyState.sulkyTimer = setTimeout(async () => {
-            if (!hasUserResponded() && !isSleepTime()) {
-                await triggerSulkyLevel(3, client, userId, saveLogFunc);
-                // 걱정 모드까지 남은 시간
-                const remainingToWorry = (SULKY_CONFIG.WORRY_DELAY - SULKY_CONFIG.LEVEL_3_DELAY) * 60 * 1000;
-                sulkyState.sulkyTimer = setTimeout(async () => {
-                    if (!hasUserResponded() && !isSleepTime()) {
-                        await triggerWorryMode(client, userId, saveLogFunc);
-                    } else if (isSleepTime()) {
-                        pauseSulkyTimer();
-                    }
-                }, remainingToWorry);
-            } else if (isSleepTime()) {
-                pauseSulkyTimer();
-            }
-        }, Math.max(0, remainingToLevel3));
+// 🆕 남은 타이머들 설정 함수 (재귀적으로 다음 단계 타이머 설정)
+function setRemainingTimers(startLevel, client, userId, saveLogFunc) {
+    // 기존 타이머가 있으면 취소
+    if (sulkyState.sulkyTimer) {
+        clearTimeout(sulkyState.sulkyTimer);
+        sulkyState.sulkyTimer = null;
     }
+
+    let delayMinutes;
+    let nextLevelTrigger;
+
+    switch (startLevel) {
+        case 1:
+            delayMinutes = SULKY_CONFIG.LEVEL_1_DELAY + SULKY_CONFIG.getRandomDelayOffset(30); // 1단계 딜레이 + 랜덤
+            nextLevelTrigger = async () => {
+                if (!hasUserResponded() && !isSleepTime()) {
+                    await triggerSulkyLevel(1, client, userId, saveLogFunc);
+                    setRemainingTimers(2, client, userId, saveLogFunc); // 다음 단계로
+                } else if (isSleepTime()) {
+                    pauseSulkyTimer();
+                }
+            };
+            break;
+        case 2:
+            delayMinutes = SULKY_CONFIG.LEVEL_2_DELAY + SULKY_CONFIG.getRandomDelayOffset(60); // 2단계 딜레이 + 랜덤
+            nextLevelTrigger = async () => {
+                if (!hasUserResponded() && !isSleepTime()) {
+                    await triggerSulkyLevel(2, client, userId, saveLogFunc);
+                    setRemainingTimers(3, client, userId, saveLogFunc); // 다음 단계로
+                } else if (isSleepTime()) {
+                    pauseSulkyTimer();
+                }
+            };
+            break;
+        case 3:
+            delayMinutes = SULKY_CONFIG.LEVEL_3_DELAY + SULKY_CONFIG.getRandomDelayOffset(120); // 3단계 딜레이 + 랜덤
+            nextLevelTrigger = async () => {
+                if (!hasUserResponded() && !isSleepTime()) {
+                    await triggerSulkyLevel(3, client, userId, saveLogFunc);
+                    setRemainingTimers(4, client, userId, saveLogFunc); // 걱정 모드로
+                } else if (isSleepTime()) {
+                    pauseSulkyTimer();
+                }
+            };
+            break;
+        case 4: // 걱정 모드
+            delayMinutes = SULKY_CONFIG.WORRY_DELAY + SULKY_CONFIG.getRandomDelayOffset(240); // 걱정 딜레이 + 랜덤
+            nextLevelTrigger = async () => {
+                if (!hasUserResponded() && !isSleepTime()) {
+                    await triggerWorryMode(client, userId, saveLogFunc);
+                } else if (isSleepTime()) {
+                    pauseSulkyTimer();
+                }
+            };
+            break;
+        default:
+            console.warn("[SulkyManager] 알 수 없는 삐짐 레벨 요청:", startLevel);
+            return;
+    }
+
+    const delayMillis = Math.max(0, delayMinutes * 60 * 1000); // 밀리초
+    console.log(`[SulkyManager] 다음 삐짐 레벨 ${startLevel} 타이머 설정: ${delayMinutes}분 후`);
+    sulkyState.sulkyTimer = setTimeout(nextLevelTrigger, delayMillis);
 }
+
 
 // 🆕 기상 시 재개 스케줄 설정
 function scheduleWakeUpResume(client, userId, saveLogFunc) {
     if (sulkyState.wakeUpScheduled) return;
     
     const wakeUpTime = getNextWakeUpTime();
-    console.log(`[SulkyManager v3.1] 📅 기상 시 재개 스케줄 설정: ${wakeUpTime.format('YYYY-MM-DD HH:mm:ss')}`);
+    console.log(`[SulkyManager v3.2] 📅 기상 시 재개 스케줄 설정: ${wakeUpTime.format('YYYY-MM-DD HH:mm:ss')}`);
     
     // 🔧 기존 job이 있으면 취소
     if (sulkyState.wakeUpJob) {
@@ -342,7 +404,7 @@ function scheduleWakeUpResume(client, userId, saveLogFunc) {
     
     // node-schedule을 사용하여 정확한 시간에 재개
     sulkyState.wakeUpJob = schedule.scheduleJob(wakeUpTime.toDate(), () => {
-        console.log(`[SulkyManager v3.1] ⏰ 기상 시간 도달, 타이머 재개 실행`);
+        console.log(`[SulkyManager v3.2] ⏰ 기상 시간 도달, 타이머 재개 실행`);
         sulkyState.wakeUpScheduled = false;
         sulkyState.wakeUpJob = null;
         
@@ -350,7 +412,7 @@ function scheduleWakeUpResume(client, userId, saveLogFunc) {
         if (client && userId && saveLogFunc) {
             resumeSulkyTimer(client, userId, saveLogFunc);
         } else {
-            console.warn(`[SulkyManager v3.1] ⚠️ 기상 시 재개를 위한 client, userId, saveLogFunc가 없음`);
+            console.warn(`[SulkyManager v3.2] ⚠️ 기상 시 재개를 위한 client, userId, saveLogFunc가 없음`);
         }
     });
     
@@ -361,7 +423,7 @@ function scheduleWakeUpResume(client, userId, saveLogFunc) {
 function pauseSulkyTimer() {
     if (!sulkyState.sulkyTimer || sulkyState.isPaused) return;
     
-    console.log(`[SulkyManager v3.1] 😴 수면시간으로 인한 타이머 일시정지: ${moment().format('HH:mm:ss')}`);
+    console.log(`[SulkyManager v3.2] 😴 수면시간으로 인한 타이머 일시정지: ${moment().format('HH:mm:ss')}`);
     
     // 현재 타이머 취소
     clearTimeout(sulkyState.sulkyTimer);
@@ -370,64 +432,72 @@ function pauseSulkyTimer() {
     // 일시정지 상태 설정
     sulkyState.isPaused = true;
     sulkyState.pausedTime = Date.now();
+    // 남은 시간 계산 (현재 삐짐 레벨까지 남은 시간)
+    const timeSinceBotMessage = (Date.now() - sulkyState.lastBotMessageTime) / (1000 * 60);
+    if (sulkyState.sulkyLevel === 0) { // 아직 삐짐 시작 전
+        sulkyState.remainingTime = (SULKY_CONFIG.LEVEL_1_DELAY - timeSinceBotMessage) * 60 * 1000;
+    } else if (sulkyState.sulkyLevel === 1) {
+        sulkyState.remainingTime = (SULKY_CONFIG.LEVEL_2_DELAY - timeSinceBotMessage) * 60 * 1000;
+    } else if (sulkyState.sulkyLevel === 2) {
+        sulkyState.remainingTime = (SULKY_CONFIG.LEVEL_3_DELAY - timeSinceBotMessage) * 60 * 1000;
+    } else if (sulkyState.sulkyLevel === 3) {
+        sulkyState.remainingTime = (SULKY_CONFIG.WORRY_DELAY - timeSinceBotMessage) * 60 * 1000;
+    } else {
+        sulkyState.remainingTime = 0; // 걱정 모드 진입 후에는 남은 시간 없음
+    }
+    sulkyState.remainingTime = Math.max(0, sulkyState.remainingTime); // 음수 방지
 }
 
 // 🆕 타이머 재개 함수
 function resumeSulkyTimer(client, userId, saveLogFunc) {
     if (!sulkyState.isPaused) return;
     
-    console.log(`[SulkyManager v3.1] 🌅 기상 후 타이머 재개: ${moment().format('HH:mm:ss')}`);
+    console.log(`[SulkyManager v3.2] 🌅 기상 후 타이머 재개: ${moment().format('HH:mm:ss')}`);
     
     sulkyState.isPaused = false;
     sulkyState.wakeUpScheduled = false;
     
     // 일시정지 중이었던 시간 제외하고 남은 시간 계산
-    const pausedDuration = Date.now() - sulkyState.pausedTime;
-    const adjustedLastMessageTime = sulkyState.lastBotMessageTime + pausedDuration;
-    sulkyState.lastBotMessageTime = adjustedLastMessageTime;
-    
-    // 현재 상황에 맞는 타이머 재설정
+    const pausedDuration = Date.now() - sulkyState.pausedTime; // 일시정지 기간
+    // 삐짐 타이머가 시작된 시점을 조정 (수면 시간만큼 뒤로 미룸)
+    const adjustedSulkyStartTime = sulkyState.sulkyStartTime + pausedDuration;
+    sulkyState.sulkyStartTime = adjustedSulkyStartTime; // 삐짐 시작 시간 재조정
+
+    // 마지막 봇 메시지 시간도 조정
+    const adjustedLastBotMessageTime = sulkyState.lastBotMessageTime + pausedDuration;
+    sulkyState.lastBotMessageTime = adjustedLastBotMessageTime;
+
+    // 현재 상황에 맞는 타이머 재설정 (남은 대기 시간을 활용)
     if (!hasUserResponded()) {
-        const timeSinceMessage = Math.floor((Date.now() - adjustedLastMessageTime) / (1000 * 60));
+        const timeSinceAdjustedStart = Math.floor((Date.now() - adjustedLastBotMessageTime) / (1000 * 60)); // 조정된 시간으로부터 경과 시간
         
-        if (timeSinceMessage >= SULKY_CONFIG.WORRY_DELAY) {
-            // 이미 걱정 시간이 지났으면 바로 걱정 모드
-            triggerWorryMode(client, userId, saveLogFunc);
-        } else if (timeSinceMessage >= SULKY_CONFIG.LEVEL_3_DELAY) {
-            // 3단계 삐짐 시간이 지났으면 바로 3단계
-            triggerSulkyLevel(3, client, userId, saveLogFunc);
-            // 걱정 모드까지 남은 시간 계산해서 타이머 설정
-            const remainingToWorry = (SULKY_CONFIG.WORRY_DELAY - timeSinceMessage) * 60 * 1000;
-            sulkyState.sulkyTimer = setTimeout(async () => {
-                if (!hasUserResponded() && !isSleepTime()) {
-                    await triggerWorryMode(client, userId, saveLogFunc);
-                }
-            }, remainingToWorry);
-        } else if (timeSinceMessage >= SULKY_CONFIG.LEVEL_2_DELAY) {
-            // 2단계 삐짐 시간이 지났으면 바로 2단계
-            triggerSulkyLevel(2, client, userId, saveLogFunc);
-            // 3단계까지 남은 시간 계산
-            setRemainingTimers(3, timeSinceMessage, client, userId, saveLogFunc);
-        } else if (timeSinceMessage >= SULKY_CONFIG.LEVEL_1_DELAY) {
-            // 1단계 삐짐 시간이 지났으면 바로 1단계
-            triggerSulkyLevel(1, client, userId, saveLogFunc);
-            // 2단계까지 남은 시간 계산
-            setRemainingTimers(2, timeSinceMessage, client, userId, saveLogFunc);
+        let targetLevel = 0;
+        if (timeSinceAdjustedStart >= SULKY_CONFIG.WORRY_DELAY) {
+            targetLevel = 4; // 걱정 모드
+        } else if (timeSinceAdjustedStart >= SULKY_CONFIG.LEVEL_3_DELAY) {
+            targetLevel = 3;
+        } else if (timeSinceAdjustedStart >= SULKY_CONFIG.LEVEL_2_DELAY) {
+            targetLevel = 2;
+        } else if (timeSinceAdjustedStart >= SULKY_CONFIG.LEVEL_1_DELAY) {
+            targetLevel = 1;
+        }
+
+        if (targetLevel > 0) {
+            // 이미 삐짐 단계에 도달했으면 해당 단계 트리거
+            if (targetLevel === 4) {
+                triggerWorryMode(client, userId, saveLogFunc);
+            } else {
+                triggerSulkyLevel(targetLevel, client, userId, saveLogFunc);
+            }
+            // 남은 단계들 스케줄링 (현재 도달한 단계부터 시작)
+            setRemainingTimers(targetLevel + 1, client, userId, saveLogFunc);
         } else {
             // 아직 1단계도 안 됐으면 1단계까지 남은 시간으로 타이머 설정
-            const remainingToLevel1 = (SULKY_CONFIG.LEVEL_1_DELAY - timeSinceMessage) * 60 * 1000;
-            sulkyState.sulkyTimer = setTimeout(async () => {
-                if (!hasUserResponded() && !isSleepTime()) {
-                    await triggerSulkyLevel(1, client, userId, saveLogFunc);
-                    setRemainingTimers(2, SULKY_CONFIG.LEVEL_1_DELAY, client, userId, saveLogFunc);
-                } else if (isSleepTime()) {
-                    pauseSulkyTimer();
-                }
-            }, remainingToLevel1);
+            setRemainingTimers(1, client, userId, saveLogFunc);
         }
     }
     
-    console.log(`[SulkyManager v3.1] 타이머 재개 완료`);
+    console.log(`[SulkyManager v3.2] 타이머 재개 완료`);
 }
 
 /**
@@ -439,22 +509,37 @@ function startRealTimeStateCheck(client, userId, saveLogFunc) {
     }
     
     stateCheckInterval = setInterval(async () => {
-        if (!sulkyState.isActivelySulky && !hasUserResponded()) {
-            const timeSince = Math.floor((Date.now() - sulkyState.lastBotMessageTime) / (1000 * 60));
-            // 삐짐/걱정 단계 도달했는지 확인 (수면시간 제외)
-            if (!isSleepTime() && !sulkyState.isPaused) {
-                if (timeSince >= SULKY_CONFIG.WORRY_DELAY) {
-                    await triggerWorryMode(client, userId, saveLogFunc);
-                } else if (timeSince >= SULKY_CONFIG.LEVEL_3_DELAY && sulkyState.sulkyLevel < 3) {
-                    await triggerSulkyLevel(3, client, userId, saveLogFunc);
-                } else if (timeSince >= SULKY_CONFIG.LEVEL_2_DELAY && sulkyState.sulkyLevel < 2) {
-                    await triggerSulkyLevel(2, client, userId, saveLogFunc);
-                } else if (timeSince >= SULKY_CONFIG.LEVEL_1_DELAY && sulkyState.sulkyLevel < 1) {
-                    await triggerSulkyLevel(1, client, userId, saveLogFunc);
-                }
-            } else if (isSleepTime() && !sulkyState.isPaused) {
+        // 삐짐/걱정 상태가 아니거나, 사용자가 이미 응답했으면 체크 불필요
+        if (!sulkyState.isActivelySulky && hasUserResponded()) {
+            // console.log("실시간 체크: 삐짐 상태 아님 또는 사용자 응답 확인됨. 스킵.");
+            return;
+        }
+
+        const timeSinceBotMessage = Math.floor((Date.now() - sulkyState.lastBotMessageTime) / (1000 * 60));
+        
+        // 🆕 수면시간 중이거나 일시정지 상태면 삐짐/걱정 트리거 안 함
+        if (isSleepTime()) {
+            if (!sulkyState.isPaused) { // 수면시간 진입 시 일시정지
                 pauseSulkyTimer();
+                scheduleWakeUpResume(client, userId, saveLogFunc); // 기상 시 재개 스케줄
             }
+            console.log(`[SulkyManager v3.2] 😴 실시간 체크: 수면시간 중, 삐짐 트리거 스킵.`);
+            return;
+        } else if (sulkyState.isPaused) { // 수면시간이 끝났는데 아직 일시정지 상태면 재개
+            console.log(`[SulkyManager v3.2] 🌅 실시간 체크: 수면시간 종료, 타이머 재개 시도.`);
+            resumeSulkyTimer(client, userId, saveLogFunc);
+            return;
+        }
+
+        // 삐짐/걱정 단계 도달했는지 확인
+        if (timeSinceBotMessage >= SULKY_CONFIG.WORRY_DELAY) {
+            await triggerWorryMode(client, userId, saveLogFunc);
+        } else if (timeSinceBotMessage >= SULKY_CONFIG.LEVEL_3_DELAY && sulkyState.sulkyLevel < 3) {
+            await triggerSulkyLevel(3, client, userId, saveLogFunc);
+        } else if (timeSinceBotMessage >= SULKY_CONFIG.LEVEL_2_DELAY && sulkyState.sulkyLevel < 2) {
+            await triggerSulkyLevel(2, client, userId, saveLogFunc);
+        } else if (timeSinceBotMessage >= SULKY_CONFIG.LEVEL_1_DELAY && sulkyState.sulkyLevel < 1) {
+            await triggerSulkyLevel(1, client, userId, saveLogFunc);
         }
     }, SULKY_CONFIG.STATE_CHECK_INTERVAL);
 
@@ -462,188 +547,45 @@ function startRealTimeStateCheck(client, userId, saveLogFunc) {
 }
 
 /**
- * 🆕 수면시간 고려한 예진이 메시지 전송 후 삐지기 타이머 시작
+ * 🆕 수면시간 고려한 예진이 메시지 전송 후 삐지기 타이머 시작 (초기 진입점)
+ * @param {object} client LINE Bot 클라이언트
+ * @param {string} userId 사용자 ID
+ * @param {function} saveLogFunc 로그 저장 함수
  */
 function startSulkyTimer(client, userId, saveLogFunc) {
-    sulkyState.lastBotMessageTime = Date.now();
-    sulkyState.isSulky = false;
-    sulkyState.isWorried = false;
-    sulkyState.sulkyLevel = 0;
-    sulkyState.messageRead = false;
-    sulkyState.isActivelySulky = false;
-    sulkyState.reliefInProgress = false;
-    sulkyState.isPaused = false;
-    sulkyState.wakeUpScheduled = false;
+    // 모든 상태 초기화 및 타이머 정리
+    forceSulkyReset(); // 기존 상태를 완전히 리셋
+    sulkyState.lastBotMessageTime = Date.now(); // 마지막 봇 메시지 시간 설정
     
-    // 기존 타이머가 있으면 취소
-    if (sulkyState.sulkyTimer) {
-        clearTimeout(sulkyState.sulkyTimer);
-    }
-    
-    // 🔧 기존 기상 스케줄이 있으면 취소
-    if (sulkyState.wakeUpJob) {
-        sulkyState.wakeUpJob.cancel();
-        sulkyState.wakeUpJob = null;
-    }
-    
-    console.log(`[SulkyManager v3.1] 예진이 메시지 전송 후 삐지기 타이머 시작: ${moment().format('HH:mm:ss')}`);
+    console.log(`[SulkyManager v3.2] 예진이 메시지 전송 후 삐지기 타이머 시작: ${moment().format('HH:mm:ss')}`);
     
     // 🆕 수면시간 체크
     if (isSleepTime()) {
-        console.log(`[SulkyManager v3.1] 😴 현재 수면시간이므로 타이머를 일시정지합니다`);
+        console.log(`[SulkyManager v3.2] 😴 현재 수면시간이므로 타이머를 일시정지합니다`);
         sulkyState.isPaused = true;
-        scheduleWakeUpResume(client, userId, saveLogFunc);
-        return;
+        scheduleWakeUpResume(client, userId, saveLogFunc); // 기상 시 재개 스케줄 설정
+        return; // 수면 중에는 타이머 시작 안 함
     }
     
-    // 실시간 상태 체크 시작
+    // 실시간 상태 체크 시작 (삐짐/걱정 트리거를 위한 주기적인 체크)
     startRealTimeStateCheck(client, userId, saveLogFunc);
     
-    // 🆕 수면시간 체크를 포함한 타이머 설정
-    sulkyState.sulkyTimer = setTimeout(async () => {
-        if (!hasUserResponded() && !isSleepTime()) {
-            await triggerSulkyLevel(1, client, userId, saveLogFunc);
-            
-            sulkyState.sulkyTimer = setTimeout(async () => {
-                if (!hasUserResponded() && !isSleepTime()) {
-                    await triggerSulkyLevel(2, client, userId, saveLogFunc);
-                    
-                    sulkyState.sulkyTimer = setTimeout(async () => {
-                        if (!hasUserResponded() && !isSleepTime()) {
-                            await triggerSulkyLevel(3, client, userId, saveLogFunc);
-                            
-                            sulkyState.sulkyTimer = setTimeout(async () => {
-                                if (!hasUserResponded() && !isSleepTime()) {
-                                    await triggerWorryMode(client, userId, saveLogFunc);
-                                } else if (isSleepTime()) {
-                                    pauseSulkyTimer();
-                                }
-                            }, (SULKY_CONFIG.WORRY_DELAY - SULKY_CONFIG.LEVEL_3_DELAY) * 60 * 1000);
-                        } else if (isSleepTime()) {
-                            pauseSulkyTimer();
-                        }
-                    }, (SULKY_CONFIG.LEVEL_3_DELAY - SULKY_CONFIG.LEVEL_2_DELAY) * 60 * 1000);
-                } else if (isSleepTime()) {
-                    pauseSulkyTimer();
-                }
-            }, (SULKY_CONFIG.LEVEL_2_DELAY - SULKY_CONFIG.LEVEL_1_DELAY) * 60 * 1000);
-        } else if (isSleepTime()) {
-            pauseSulkyTimer();
-        }
-    }, SULKY_CONFIG.LEVEL_1_DELAY * 60 * 1000);
-}
-
-/**
- * 사용자 응답 처리 및 삐짐 해소 (LINE 읽음 확인 포함)
- */
-async function handleUserResponse(client, userId, saveLogFunc) {
-    sulkyState.lastUserResponseTime = Date.now();
-    
-    // 🆕 수면시간 중이 아니거나, 일시정지 상태가 아니라면 타이머 재개
-    if (sulkyState.isPaused && !isSleepTime()) {
-        resumeSulkyTimer(client, userId, saveLogFunc);
-    }
-
-    if (sulkyState.sulkyTimer) {
-        clearTimeout(sulkyState.sulkyTimer);
-        sulkyState.sulkyTimer = null;
-    }
-    
-    // 삐짐/걱정 상태였는지 확인
-    if (sulkyState.isActivelySulky) {
-        sulkyState.reliefInProgress = true;
-        const prevLevel = sulkyState.sulkyLevel;
-        const prevReason = sulkyState.sulkyReason;
-        const wasWorried = sulkyState.isWorried;
-
-        // 상태 초기화
-        sulkyState.isSulky = false;
-        sulkyState.isWorried = false;
-        sulkyState.sulkyLevel = 0;
-        sulkyState.sulkyReason = null;
-        sulkyState.isActivelySulky = false;
-        sulkyState.messageRead = false;
-        sulkyState.pausedTime = 0;
-        sulkyState.remainingTime = 0;
-        sulkyState.wakeUpScheduled = false;
-
-        let reliefMessage = "";
-        if (wasWorried) {
-            if (prevReason && prevReason.includes('읽씹')) {
-                reliefMessage = SULKY_RELIEF_MESSAGES.fromWorryRead[Math.floor(Math.random() * SULKY_RELIEF_MESSAGES.fromWorryRead.length)];
-            } else {
-                reliefMessage = SULKY_RELIEF_MESSAGES.fromWorry[Math.floor(Math.random() * SULKY_RELIEF_MESSAGES.fromWorry.length)];
-            }
-        } else {
-            if (prevReason && prevReason.includes('읽씹')) {
-                reliefMessage = SULKY_RELIEF_MESSAGES.fromSulkyRead[Math.floor(Math.random() * SULKY_RELIEF_MESSAGES.fromSulkyRead.length)];
-            } else {
-                reliefMessage = SULKY_RELIEF_MESSAGES.fromSulky[Math.floor(Math.random() * SULKY_RELIEF_MESSAGES.fromSulky.length)];
-            }
-        }
-        console.log(`[SulkyManager] 삐짐/걱정 해소됨! 메시지: "${reliefMessage}"`);
-        return reliefMessage;
-    }
-    return null;
-}
-
-/**
- * 실시간 삐짐 상태 확인 API (🆕 수면시간 정보 추가)
- */
-function getRealTimeSulkyStatus() {
-    const now = Date.now();
-    const timeSinceLastMessage = Math.floor((now - sulkyState.lastBotMessageTime) / (1000 * 60));
-    const timeSinceUserResponse = Math.floor((now - sulkyState.lastUserResponseTime) / (1000 * 60));
-    const isCurrentlySleepTime = isSleepTime();
-    
-    sulkyState.lastStateCheck = now;
-    sulkyState.isActivelySulky = sulkyState.isSulky || sulkyState.isWorried;
-    
-    return {
-        // 기본 상태
-        isSulky: sulkyState.isSulky,
-        isWorried: sulkyState.isWorried,
-        isActivelySulky: sulkyState.isActivelySulky,
-        sulkyLevel: sulkyState.sulkyLevel,
-        
-        // 시간 정보
-        timeSinceLastMessage,
-        timeSinceUserResponse,
-        sulkyDuration: sulkyState.sulkyStartTime ? Math.floor((now - sulkyState.sulkyStartTime) / (1000 * 60)) : 0,
-        
-        // 상세 정보
-        sulkyReason: sulkyState.sulkyReason,
-        messageRead: sulkyState.messageRead,
-        currentState: sulkyState.isWorried ? 'worried' : (sulkyState.isSulky ? 'sulky' : 'normal'),
-        
-        // 실시간 추가 정보
-        shouldForceMood: SULKY_CONFIG.FORCE_MOOD_APPLY && sulkyState.isActivelySulky,
-        reliefInProgress: sulkyState.reliefInProgress,
-        nextLevelIn: getTimeToNextLevel(),
-        
-        // 🆕 수면시간 관련 정보
-        isCurrentlySleepTime,
-        isPaused: sulkyState.isPaused,
-        wakeUpScheduled: sulkyState.wakeUpScheduled,
-        nextWakeUpTime: isCurrentlySleepTime ? getNextWakeUpTime().format('HH:mm') : null,
-        sleepConfig: { ...SLEEP_CONFIG },
-        
-        // 디버그 정보
-        lastBotMessageTime: moment(sulkyState.lastBotMessageTime).format('HH:mm:ss'),
-        lastUserResponseTime: moment(sulkyState.lastUserResponseTime).format('HH:mm:ss'),
-        lastStateCheck: moment(sulkyState.lastStateCheck).format('HH:mm:ss')
-    };
+    // 1단계 삐짐 타이머를 설정
+    setRemainingTimers(1, client, userId, saveLogFunc);
 }
 
 /**
  * 삐짐 시스템 상태를 강제로 리셋합니다.
  */
 function forceSulkyReset() {
-    console.log('[SulkyManager v3.1] 🚨 삐짐 시스템 강제 리셋');
+    console.log('[SulkyManager v3.2] 🚨 삐짐 시스템 강제 리셋');
     
+    // 기존 타이머 정리
     if (sulkyState.sulkyTimer) {
         clearTimeout(sulkyState.sulkyTimer);
+        sulkyState.sulkyTimer = null;
     }
+    // 실시간 체크 인터벌 정리
     if (stateCheckInterval) {
         clearInterval(stateCheckInterval);
         stateCheckInterval = null;
@@ -651,8 +593,10 @@ function forceSulkyReset() {
     // 🔧 기상 스케줄 취소
     if (sulkyState.wakeUpJob) {
         sulkyState.wakeUpJob.cancel();
+        sulkyState.wakeUpJob = null;
     }
     
+    // 상태 초기화
     sulkyState = {
         isSulky: false,
         isWorried: false,
@@ -724,7 +668,7 @@ function getSulkyStatusText() {
  * 삐짐 시스템 스케줄러를 정지합니다. (서버 종료 시 호출)
  */
 function stopSulkySystem() {
-    console.log('[SulkyManager v3.1] 삐지기 시스템 정지');
+    console.log('[SulkyManager v3.2] 삐지기 시스템 정지');
     
     if (sulkyState.sulkyTimer) {
         clearTimeout(sulkyState.sulkyTimer);
@@ -746,7 +690,7 @@ function stopSulkySystem() {
  */
 function markMessageAsRead() {
     sulkyState.messageRead = true;
-    console.log(`[SulkyManager v3.1] 📖 메시지 읽음 상태로 업데이트됨`);
+    console.log(`[SulkyManager v3.2] 📖 메시지 읽음 상태로 업데이트됨`);
 }
 
 /**
@@ -754,7 +698,7 @@ function markMessageAsRead() {
  */
 function updateSleepConfig(newConfig) {
     Object.assign(SLEEP_CONFIG, newConfig);
-    console.log(`[SulkyManager v3.1] ⚙️ 수면시간 설정 업데이트됨:`, SLEEP_CONFIG);
+    console.log(`[SulkyManager v3.2] ⚙️ 수면시간 설정 업데이트됨:`, SLEEP_CONFIG);
 }
 
 // 디버그 정보를 위한 exports
