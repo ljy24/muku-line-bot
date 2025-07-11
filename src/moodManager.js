@@ -169,6 +169,30 @@ function updateLastUserMessageTimeMood(timestamp) {
     console.log(`[moodManager] 사용자 메시지 시간 업데이트 완료`);
 }
 
+function checkTimeBasedMoodChange() {
+    const { currentMood } = ultimateContext.getMoodState();
+    const timingContext = ultimateContext.getInternalState().timingContext;
+    const lastUserMessageTime = timingContext.lastUserMessageTime;
+    
+    if (!lastUserMessageTime) return false;
+    
+    const now = Date.now();
+    const minutesSinceLastMessage = Math.floor((now - lastUserMessageTime) / (1000 * 60));
+    
+    // 30분 이상 연락이 없으면 기분을 외로움/보고싶음 계열로 변경
+    const TIME_THRESHOLD = 30;
+    const LONELINESS_MOODS = ['외로움', '보고싶음', '우울함', '걱정함', '불안함', '그리움'];
+    
+    if (minutesSinceLastMessage >= TIME_THRESHOLD && !LONELINESS_MOODS.includes(currentMood)) {
+        const newMood = LONELINESS_MOODS[Math.floor(Math.random() * LONELINESS_MOODS.length)];
+        ultimateContext.updateMoodState({ currentMood: newMood });
+        console.log(`[moodManager] ⏰ 시간 기반 기분 변경: ${currentMood} → ${newMood} (${minutesSinceLastMessage}분 경과)`);
+        return true;
+    }
+    
+    return false;
+}
+
 module.exports = {
     handleMoodQuery,
     getMoodPromptForAI,
@@ -177,4 +201,5 @@ module.exports = {
     setPeriodActive, // 테스트 및 외부 제어용
     getCurrentMoodStatus, // 누락된 메서드 추가
     updateLastUserMessageTimeMood, // 누락된 메서드 추가
+    checkTimeBasedMoodChange, // 누락된 메서드 추가
 };
