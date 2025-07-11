@@ -39,7 +39,7 @@ const {
 const memoryManager = require('./src/memoryManager');
 const commandHandler = require('./src/commandHandler');
 const memoryHandler = require('./src/memoryHandler');
-const { startAllSchedulers } = require('./src/scheduler'); // scheduler에서 updateLastUserMessageTime 제거하고 autoReply에서 직접 관리
+const { startAllSchedulers } = require('./src/scheduler');
 const { startSpontaneousPhotoScheduler } = require('./src/spontaneousPhotoManager');
 
 // 🆕 삐지기 시스템 모듈 불러오기
@@ -47,6 +47,9 @@ const sulkyManager = require('./src/sulkyManager');
 
 // 🆕 감정 컨텍스트 시스템 직접 불러오기 (v5.1)
 const emotionalContextManager = require('./src/emotionalContextManager');
+
+// 🆕 대화 맥락 관리 모듈 불러오기
+const conversationContext = require('./src/conversationContext');
 
 const app = express();
 
@@ -102,6 +105,7 @@ app.get('/emotion-status', (req, res) => {
         const sulkyStatus = autoReply.getSulkyRealTimeStatus();
         const emotionalState = autoReply.getEmotionalState();
         const emotionalResidue = autoReply.getEmotionalResidue();
+        const convoContext = conversationContext.getConversationContext(); // 🆕 conversationContext 정보 추가
         
         res.json({
             timestamp: moment().tz('Asia/Tokyo').format('YYYY-MM-DD HH:mm:ss'),
@@ -117,7 +121,8 @@ app.get('/emotion-status', (req, res) => {
             mood: {
                 emoji: getMoodEmoji(),
                 status: getMoodStatus()
-            }
+            },
+            conversationContext: convoContext // 🆕 여기에 conversationContext 정보 포함
         });
     } catch (error) {
         console.error('[emotion-status] 에러:', error);
@@ -130,6 +135,8 @@ async function handleImprovedTextMessage(text, event, client, userId) {
     try {
         saveLog('아저씨', text);
         updateLastUserMessageTime();
+        // 🆕 사용자 메시지를 conversationContext에 추가 (emotionalContextManager의 톤 사용)
+        conversationContext.addMessage(USER_NAME, text, emotionalContextManager.currentState.toneState);
 
         // 🆕 아저씨가 응답했을 때 삐짐 해소 체크
         const sulkyReliefMessage = await sulkyManager.handleUserResponse(client, userId, saveLog);
@@ -141,6 +148,8 @@ async function handleImprovedTextMessage(text, event, client, userId) {
             });
             saveLog('예진이', `(삐짐 해소) ${sulkyReliefMessage}`);
             console.log('[SulkySystem] 삐짐 해소 메시지 전송됨');
+            // conversationContext 업데이트
+            conversationContext.addMessage(BOT_NAME, sulkyReliefMessage, emotionalContextManager.currentState.toneState);
             
             // 삐짐 해소 후 잠시 대기
             await new Promise(resolve => setTimeout(resolve, 1000));
@@ -149,7 +158,7 @@ async function handleImprovedTextMessage(text, event, client, userId) {
         let botResponse = null; // autoReply.js에서 반환되는 형태를 저장할 변수
         let messagesToReply = []; // LINE API에 최종적으로 보낼 메시지 배열
 
-        // 명령어 처리 (v5.1 cleanReply 사용)
+        // 명령어 처리
         botResponse = await commandHandler.handleCommand(text, saveLog, callOpenAI, cleanReply, memoryManager.getFixedMemory);
 
         if (!botResponse) {
@@ -157,11 +166,16 @@ async function handleImprovedTextMessage(text, event, client, userId) {
         }
 
         if (!botResponse) {
-            // 🆕 일반 대화 처리 (v5.1 - 감정 컨텍스트 완전 통합)
-            // autoReply.js에서 사진 응답 시 메시지 배열을 반환하도록 수정했음
+            // 일반 대화 처리
             botResponse = await getReplyByMessage(text, saveLog, callOpenAI, cleanReply);
             await memoryManager.extractAndSaveMemory(text);
             console.log(`[index.js v5.1] 감정 기반 응답 시스템으로 처리 완료`);
+        } else {
+            console.log(`[index.js v5.1] 특정 명령어로 처리되어 메모리 자동 저장 제외`);
+            // 명령어 처리 후에도 conversationContext에 예진이 응답 추가 (만약 botResponse가 이미 있다면)
+            if (botResponse && botResponse.type === 'text' && botResponse.comment) {
+                conversationContext.addMessage(BOT_NAME, botResponse.comment, emotionalContextManager.currentState.toneState);
+            }
         }
         
         // --- 여기서부터 응답 메시지 형식에 따라 messagesToReply 구성 ---
@@ -303,6 +317,9 @@ app.post('/webhook', middleware(config), async (req, res) => {
                         }
                         const base64ImageWithPrefix = `data:${mimeType};base64,${buffer.toString('base64')}`;
 
+                        // 🆕 사용자 이미지 메시지를 conversationContext에 추가
+                        conversationContext.addMessage(USER_NAME, "(사진 보냄)", emotionalContextManager.currentState.toneState, { type: 'image', mimeType: mimeType }); // 이미지 자체는 LLM에게 직접적으로 전달되지 않으므로, 텍스트로만 표시
+
                         // getReplyByImagePrompt 함수는 {type: 'text', comment: ...} 형태를 반환함.
                         const replyResult = await getReplyByImagePrompt(base64ImageWithPrefix);
                         
@@ -332,6 +349,8 @@ app.post('/webhook', middleware(config), async (req, res) => {
                         await client.replyMessage(event.replyToken, { type: 'text', text: finalReply });
                         console.log(`[index.js v5.1] 이미지 메시지 처리 및 응답 완료`);
                         saveLog('예진이', `(이미지 분석 응답) ${finalReply}`);
+                        // 🆕 예진이 이미지 응답 메시지를 conversationContext에 추가
+                        conversationContext.addMessage(BOT_NAME, finalReply, emotionalContextManager.currentState.toneState);
                         
                         // 🆕 이미지 응답 후에도 삐지기 타이머 시작
                         sulkyManager.startSulkyTimer(client, userId, saveLog);
@@ -442,6 +461,8 @@ async function initMuku() {
                     }).then(() => {
                         saveLog('예진이', `(자발적 반응) ${finalMessage}`);
                         console.log('[자발적 반응 v5.1] 메시지 전송 완료 (1인칭 검증됨)');
+                        // 🆕 자발적 반응도 conversationContext에 추가
+                        conversationContext.addMessage(BOT_NAME, finalMessage, emotionalContextManager.currentState.toneState);
                         
                         // 자발적 메시지는 삐지기 타이머를 시작하지 않음
                     }).catch(error => {
