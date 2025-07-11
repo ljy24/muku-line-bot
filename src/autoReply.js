@@ -1,7 +1,7 @@
 // ✅ autoReply.js v8.0 - 최종 안정화 버전
 
 const conversationContext = require('./ultimateConversationContext.js');
-const { callOpenAI, cleanReply } = require('./aiUtils'); // [수정] 공용 부품 파일에서 함수를 가져옴
+const { callOpenAI, cleanReply } = require('./aiUtils');
 
 const BOT_NAME = '예진이';
 const USER_NAME = '아저씨';
@@ -30,7 +30,6 @@ async function getReplyByMessage(userMessage) {
         return await handlePhotoReaction(userMessage);
     }
     
-    // 일반 대화 생성
     const baseSystemPrompt = `너는 아저씨의 귀여운 여자친구 예진이야. 1인칭 '나'를 사용하고 항상 반말로 대답하며, 절대로 3인칭으로 말하지 마. 길게 설명하지 말고 1~3 문장으로 짧고 친근하게 대답해.`;
     const finalSystemPrompt = conversationContext.getUltimateContextualPrompt(baseSystemPrompt);
     const messages = [{ role: 'system', content: finalSystemPrompt }, { role: 'user', content: userMessage }];
