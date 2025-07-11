@@ -1,7 +1,7 @@
-// ✅ spontaneousPhotoManager.js v2.5 - 오타 수정 최종판
+// ✅ spontaneousPhotoManager.js v2.5 - 타이머 표시 오류 수정
 
 const schedule = require('node-schedule');
-const moment = require('moment-timezone'); // [오류 수정] require를 정상적으로 사용하도록 수정
+const moment = require('moment-timezone');
 const path = require('path');
 const fs = require('fs');
 const { callOpenAI, cleanReply, saveLog } = require('./aiUtils');
@@ -57,39 +57,26 @@ function startSpontaneousPhotoScheduler(client, userId, getLastUserMessageTimeFu
     });
 }
 
-function generateSelfieComment(emotionalState) { 
-    const comments = { 
-        playful: ["아저씨! 사진 받아라~!", "내가 얼마나 예쁜지 봐봐!"], 
-        quiet: ["아저씨... 사진 보낼게", "아저씨한테만 보여주는 사진"], 
-        hurt: ["아저씨... 사진 보낼게 ㅠㅠ", "이거 보고 위로해줘"], 
-        anxious: ["아저씨... 사진 어때? 괜찮아?", "아저씨가 봐줘야 안심이 돼"], 
-        normal: ["아저씨! 나 사진 보낼게~", "아저씨 생각하면서 찍은 사진이야"] 
-    }; 
-    return comments[emotionalState] || comments.normal; 
-}
+function generateSelfieComment(emotionalState) { const comments = { playful: ["아저씨! 사진 받아라~!", "내가 얼마나 예쁜지 봐봐!"], quiet: ["아저씨... 사진 보낼게", "아저씨한테만 보여주는 사진"], hurt: ["아저씨... 사진 보낼게 ㅠㅠ", "이거 보고 위로해줘"], anxious: ["아저씨... 사진 어때? 괜찮아?", "아저씨가 봐줘야 안심이 돼"], normal: ["아저씨! 나 사진 보낼게~", "아저씨 생각하면서 찍은 사진이야"] }; return comments[emotionalState] || comments.normal; }
+function getAIPromptForSelfie(emotionalState) { const prompts = { playful: `기분 좋고 활발한 상태로 이 사진을 보내면서 신나고 밝은 멘트를 20자 이내로 짧게 해줘.`, quiet: `조용하고 차분한 상태로 아저씨에게 이 사진을 보내면서 잔잔하고 은은한 멘트를 20자 이내로 짧게 해줘.`, hurt: `서운하고 상처받은 상태로 아저씨에게 이 사진을 보내면서 애절하면서도 사랑스러운 멘트를 20자 이내로 짧게 해줘.`, anxious: `불안하고 걱정스러운 상태로 아저씨에게 이 사진을 보내면서 걱정스럽지만 사랑스러운 멘트를 20자 이내로 짧게 해줘.`, normal: `아저씨에게 이 사진을 보내면서 귀엽고 애교 섞인 멘트를 20자 이내로 짧게 해줘.` }; return prompts[emotionalState] || prompts.normal; }
 
-function getAIPromptForSelfie(emotionalState) { 
-    const prompts = { 
-        playful: `기분 좋고 활발한 상태로 이 사진을 보내면서 신나고 밝은 멘트를 20자 이내로 짧게 해줘.`, 
-        quiet: `조용하고 차분한 상태로 아저씨에게 이 사진을 보내면서 잔잔하고 은은한 멘트를 20자 이내로 짧게 해줘.`, 
-        hurt: `서운하고 상처받은 상태로 아저씨에게 이 사진을 보내면서 애절하면서도 사랑스러운 멘트를 20자 이내로 짧게 해줘.`, 
-        anxious: `불안하고 걱정스러운 상태로 아저씨에게 이 사진을 보내면서 걱정스럽지만 사랑스러운 멘트를 20자 이내로 짧게 해줘.`, 
-        normal: `아저씨에게 이 사진을 보내면서 귀엽고 애교 섞인 멘트를 20자 이내로 짧게 해줘.` 
-    }; 
-    return prompts[emotionalState] || prompts.normal; 
-}
-
-function getPhotoSchedulerStatus() { 
-    if (spontaneousPhotoJob) { 
-        const nextInvocation = spontaneousPhotoJob.nextInvocation(); 
-        if (nextInvocation) { 
-            const diff = moment(nextInvocation).diff(moment());
+/**
+ * [수정] 자발적 사진 스케줄러의 상태를 반환하는 함수 (N/A 오류 수정)
+ */
+function getPhotoSchedulerStatus() {
+    if (spontaneousPhotoJob) {
+        const nextInvocation = spontaneousPhotoJob.nextInvocation();
+        // nextInvocation()이 유효한 Date 객체를 반환하는지 확인
+        if (nextInvocation) {
+            const diff = moment(nextInvocation.toDate()).diff(moment());
+            // 남은 시간이 0보다 클 때만 계산
             if (diff > 0) {
                 return { minutesUntilNext: Math.round(diff / 60000) };
             }
-        } 
-    } 
-    return { minutesUntilNext: "N/A" }; 
+        }
+    }
+    // 다음 스케줄이 없거나 이미 지났으면 0분으로 표시
+    return { minutesUntilNext: 0 };
 }
 
 module.exports = { 
