@@ -219,8 +219,13 @@ function analyzeTopicAdvanced(message) {
 function calculateEmotionalIntensity(message, emotionalTone) {
     let intensity = 1;
     const toneIntensities = {
-        'playful': 3, 'romantic': 8, 'sulky': 7, 'worried': 6,
-        'excited': 7, 'nostalgic': 6, 'neutral': 1
+        'playful': 3,
+        'romantic': 8,
+        'sulky': 7,
+        'worried': 6,
+        'excited': 7,
+        'nostalgic': 6,
+        'neutral': 1
     };
     intensity = toneIntensities[emotionalTone] || 1;
     if (message.length > 50) intensity += 1;
@@ -365,15 +370,15 @@ function generateTodaySummary() {
     const today = ultimateConversationState.dailySummary.today;
     if (!today.date) return null;
     const topics = today.mainTopics.length > 0 ? today.mainTopics.join(', ') : '일상 대화';
-    const timeSpan = `${moment(today.timeSpread.start).format('HH:mm')}~${moment(today.timeSpread.end).format('HH:mm')}`;
+    const timeSpan = today.timeSpread.start ? `${moment(today.timeSpread.start).format('HH:mm')}~${moment(today.timeSpread.end).format('HH:mm')}` : "정보 없음";
     return `오늘 주제: ${topics}, 대화 시간: ${timeSpan}, 총 ${today.totalMessages}개 메시지`;
 }
 
 function generatePersonalityGuide() {
     let guide = '예진이 특유의 애교 있고 사랑스러운 말투와 아저씨에 대한 애정을 자연스럽게 표현해줘.';
-    const recentPatterns = ultimateConversationState.personalityConsistency.speechPatternEvolution.slice(-10);
-    if (recentPatterns.length >= 5) {
-        const avgAegyo = recentPatterns.reduce((sum, p) => sum + (extractPersonalityMarkers(p.message).includes('애교_톤') ? 1 : 0), 0) / recentPatterns.length;
+    const recentMessages = ultimateConversationState.recentMessages.filter(m => m.speaker === '예진이').slice(-10);
+    if (recentMessages.length >= 5) {
+        const avgAegyo = recentMessages.reduce((sum, msg) => sum + (extractPersonalityMarkers(msg.message).includes('애교_톤') ? 1 : 0), 0) / recentMessages.length;
         if (avgAegyo < 0.3) {
             guide += ` **최근 내 말투에서 애교가 부족했어! 이번엔 애교를 듬뿍 담아줘.**`;
         }
@@ -406,13 +411,17 @@ function resetUltimateState() {
     ultimateConversationState.currentTone = 'neutral';
     ultimateConversationState.currentTopic = null;
     resetDailySummary();
-    // ... 다른 상태들도 초기화 ...
     ultimateConversationState.cumulativePatterns = {
         emotionalTrends: {},
         topicAffinities: {}
     };
-    ultimateConversationState.timingContext.lastMessageTime = 0;
-    ultimateConversationState.timingContext.lastUserMessageTime = 0;
+    ultimateConversationState.timingContext = {
+        ...ultimateConversationState.timingContext,
+        lastMessageTime: 0,
+        lastUserMessageTime: 0,
+        currentTimeContext: {}
+    };
+    ultimateConversationState.personalityConsistency.selfEvaluations = [];
 }
 
 /**
@@ -442,7 +451,7 @@ function addUltimateMessage(speaker, message, meta = null) {
     const messageAnalysis = {
         tone: analyzeToneAdvanced(message),
         topic: analyzeTopicAdvanced(message),
-        emotionalIntensity: 0, // 재계산 필요
+        emotionalIntensity: 0,
         responseSpeed: calculateResponseSpeed(timestamp),
         personalityMarkers: extractPersonalityMarkers(message),
         conversationRole: determineConversationRole(message, speaker)
