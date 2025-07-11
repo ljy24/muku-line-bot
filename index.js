@@ -1,5 +1,5 @@
 // --- START OF FILE: index.js ---
-// ✅ index.js v6.0 - ultimateConversationContext v6.0 연동 최종 수정
+// ✅ index.js v6.1 - saveLogFunc 전달 오류 최종 수정
 // - 모듈 연결 오류 및 모든 에러 해결
 // - 역할과 책임 분리 원칙 적용
 // - 코드 구조 개선 및 안정성 강화
@@ -49,7 +49,7 @@ const client = new Client(config);
 const userId = process.env.TARGET_USER_ID;
 
 // 🌐 루트 경로
-app.get('/', (_, res) => res.send('예진이 v6.0 살아있어!'));
+app.get('/', (_, res) => res.send('예진이 v6.1 살아있어!'));
 
 // 📊 상태 조회 API
 app.get('/status', (req, res) => {
@@ -58,7 +58,7 @@ app.get('/status', (req, res) => {
         const internalState = conversationContext.getInternalState();
         res.json({
             timestamp: new Date().toISOString(),
-            version: 'v6.0',
+            version: 'v6.1',
             ...internalState
         });
     } catch (error) {
@@ -82,14 +82,14 @@ app.post('/webhook', middleware(config), async (req, res) => {
     }
 });
 
-// イベントごとの処理
+// 이벤트별 처리
 async function handleEvent(event) {
-    // ユーザーIDが一致しない、またはメッセージイベント以外は無視
+    // 사용자ID가 일치하지 않거나, 메시지 이벤트가 아니면 무시
     if (event.source.userId !== userId || event.type !== 'message') {
         return;
     }
 
-    // [수정] 아저씨의 마지막 메시지 시간을 context에 기록
+    // 아저씨의 마지막 메시지 시간을 context에 기록
     conversationContext.updateLastUserMessageTime(event.timestamp);
 
     switch (event.message.type) {
@@ -109,7 +109,7 @@ async function handleEvent(event) {
 async function handleTextMessage(event) {
     const text = event.message.text.trim();
     saveLog(USER_NAME, text);
-    // [수정] 메시지를 '기억'하도록 context에 전달
+    // 메시지를 '기억'하도록 context에 전달
     conversationContext.addUltimateMessage(USER_NAME, text);
 
     // 삐짐 해소 체크
@@ -130,8 +130,10 @@ async function handleTextMessage(event) {
         await memoryHandler.handleMemoryCommand(text, saveLog, callOpenAI, cleanReply, memoryManager.getFixedMemory);
 
     if (!botResponse) {
-        // [수정] autoReply에게 '답장 생성'을 요청 (내부적으로 getUltimateContextualPrompt 사용)
-        botResponse = await getReplyByMessage(text);
+        // =================================================================
+        // [핵심 수정] getReplyByMessage 함수를 호출할 때, saveLog를 두 번째 인자로 꼭 전달해야 합니다.
+        // =================================================================
+        botResponse = await getReplyByMessage(text, saveLog);
         await memoryManager.extractAndSaveMemory(text);
     }
 
@@ -193,7 +195,7 @@ async function sendReply(replyToken, botResponse) {
         await client.replyMessage(replyToken, messagesToReply);
         if (loggableText) {
             saveLog(BOT_NAME, loggableText);
-            // [수정] 봇의 최종 응답을 '기억'하도록 context에 전달
+            // 봇의 최종 응답을 '기억'하도록 context에 전달
             conversationContext.addUltimateMessage(BOT_NAME, loggableText);
         }
         sulkyManager.startSulkyTimer(client, userId, saveLog);
@@ -218,7 +220,7 @@ function cleanAndVerifyFirstPerson(text) {
 const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-    console.log(`예진이 v6.0 서버 스타트! 포트: ${PORT}`);
+    console.log(`예진이 v6.1 서버 스타트! 포트: ${PORT}`);
     initMuku(); // 서버 시작 시 초기화 함수 실행
 });
 
@@ -227,20 +229,22 @@ async function initMuku() {
     try {
         await memoryManager.ensureMemoryTablesAndDirectory();
 
-        // [핵심 수정] conversationContext의 초기화 함수를 명시적으로 호출
+        // conversationContext의 초기화 함수를 명시적으로 호출
         await conversationContext.initializeEmotionalSystems();
 
         startAllSchedulers(client, userId);
-        // lastUserMessageTime을 직접 전달하는 대신, context 모듈 내부에서 관리하도록 변경 가능 (향후 개선)
         startSpontaneousPhotoScheduler(client, userId, saveLog, callOpenAI, cleanReply, () => conversationContext.getInternalState().timingContext.lastUserMessageTime);
 
         // 자발적 반응 스케줄러
         setInterval(async () => {
-            const spontaneousReaction = await autoReply.checkSpontaneousReactions();
+            const spontaneousReaction = await require('./src/autoReply').checkSpontaneousReactions();
             if (spontaneousReaction && Math.random() < 0.2) {
                 const finalMessage = cleanAndVerifyFirstPerson(spontaneousReaction);
                 try {
-                    await client.pushMessage(userId, { type: 'text', text: finalMessage });
+                    await client.pushMessage(userId, {
+                        type: 'text',
+                        text: finalMessage
+                    });
                     saveLog(BOT_NAME, `(자발적 반응) ${finalMessage}`);
                     conversationContext.addUltimateMessage(BOT_NAME, finalMessage);
                 } catch (err) {
