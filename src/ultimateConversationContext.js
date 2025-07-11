@@ -1,7 +1,6 @@
-// ✅ ultimateConversationContext.js v12.0 - "삐짐 시스템 상태 통합" (한국어 버전)
-// - [SULKY-INTEGRATION] 삐짐 상태(sulkiness)를 중앙 상태 관리에 포함
-// - [SULKY-INTEGRATION] 삐짐 상태를 읽고 업데이트하는 새로운 함수 추가
-// - 모든 이전 기능(Memory, Vision, Emotion)이 포함된 완전판 코드입니다.
+// ✅ ultimateConversationContext.js v13.0 - "심장 박동 시스템 통합" (한국어 버전)
+// - [HEARTBEAT] 1분마다 시간의 흐름을 인지하고 상태를 변화시키는 processTimeTick 함수 추가
+// - 모든 이전 기능(Memory, Vision, Emotion, Sulky State)이 포함된 완전판 코드입니다.
 
 const moment = require('moment-timezone');
 const {
@@ -21,7 +20,6 @@ let ultimateConversationState = {
     knowledgeBase: {
         facts: [],
     },
-    // [SULKY-INTEGRATION] '삐짐' 상태를 중앙 기억장치로 이전
     sulkiness: {
         isSulky: false,
         isWorried: false,
@@ -75,13 +73,16 @@ let ultimateConversationState = {
     }
 };
 
+// [HEARTBEAT] 삐짐 단계 설정을 위한 상수
+const SULKY_DELAYS = {
+    LEVEL_1: 60,  // 60분
+    LEVEL_2: 120, // 120분
+    LEVEL_3: 240, // 240분
+    WORRY: 360,   // 360분
+};
+
 const LLM_BASED_SELF_EVALUATION = true;
 
-// --- 신규 및 기존 헬퍼 함수들 ---
-
-/**
- * 🎭 [EMOTION] LLM을 이용해 메시지의 감정 뉘앙스를 정밀하게 분석합니다.
- */
 async function analyzeToneWithLLM(message) {
     if (!message || message.trim().length < 2) {
         return { primaryEmotion: 'neutral', primaryIntensity: 1, secondaryEmotion: null, secondaryIntensity: null };
@@ -115,9 +116,6 @@ async function analyzeToneWithLLM(message) {
     }
 }
 
-/**
- * 👁️ [VISION] 이미지 URL을 받아 내용을 분석하고 한국어 설명문을 반환합니다.
- */
 async function analyzeImageContent(imageUrl) {
     console.log(`[Vision] 👁️ 이미지 분석 시작: ${imageUrl}`);
     try {
@@ -144,9 +142,6 @@ async function analyzeImageContent(imageUrl) {
     }
 }
 
-/**
- * 📝 [MEMORY] 메시지에서 장기 기억할 사실을 추출합니다.
- */
 async function extractFactsFromMessage(message) {
     if (!message || message.length < 10) return [];
     const prompt = `너는 중요한 정보를 기억하는 비서 AI야. 다음 문장에서 남자친구('아저씨')에 대한 장기적으로 기억할 만한 중요한 사실(생일, 기념일, 좋아하는 것, 싫어하는 것, 중요한 약속 등)이 있다면, 그 사실들을 명사형 문장(~이다, ~함)으로 요약해서 JSON 문자열 배열 형태로 추출해줘. 예: ["아저씨의 생일은 10월 25일이다."]. 기억할 정보가 없으면 '[]'을 반환해줘. 문장: "${message}"`;
@@ -166,9 +161,6 @@ async function extractFactsFromMessage(message) {
     }
 }
 
-/**
- * 🧠 [MEMORY] 추출된 사실을 기억의 궁전(knowledgeBase)에 추가합니다.
- */
 function addFactToKnowledgeBase(fact) {
     if (!fact) return;
     const isDuplicate = ultimateConversationState.knowledgeBase.facts.some(item => item.fact === fact);
@@ -208,7 +200,6 @@ function analyzeTopic(message) {
     return 'daily';
 }
 
-// --- 상태 업데이트 함수들 ---
 function resetDailySummary() {
     const todayDate = moment().tz('Asia/Tokyo').format('YYYY-MM-DD');
     ultimateConversationState.dailySummary.today = {
@@ -255,19 +246,19 @@ function updateCumulativePatterns(newMessage) {
     trends[emotion].totalIntensity += newMessage.analysis.emotionalIntensity;
 }
 
-// --- 자기 학습 및 행동 반영 함수들 ---
 async function evaluateMyResponse(myMessage) {
     if (!LLM_BASED_SELF_EVALUATION) return;
 
     const recent = ultimateConversationState.recentMessages;
     const lastUserMessage = recent.filter(m => m.speaker !== myMessage.speaker).pop();
 
-    const prompt = `너는 대화 코치야. '예진'이라는 이름의 AI가 인간 여자친구처럼 행동하려고 해.
-그녀가 남자친구에게 마지막으로 보낸 메시지는 다음과 같아: "${myMessage.message}"
-그 전에 남자친구가 보낸 메시지는 다음과 같아: "${lastUserMessage ? lastUserMessage.message : '(이전 메시지 없음)'}"
-예진이가 의도했던 대화 톤은 '${myMessage.analysis.tone}'이었어.
+    const prompt = `너는 AI 대화 코치다. 지금부터 한 AI의 답변을 평가하겠다.
+이 AI는 '예진'이라는 페르소나를 가지고 있으며, 인간 여자친구처럼 행동하는 것을 목표로 한다.
+AI가 사용자에게 마지막으로 보낸 메시지는 다음과 같다: "${myMessage.message}"
+그 전에 사용자가 보낸 메시지는 다음과 같다: "${lastUserMessage ? lastUserMessage.message : '(이전 메시지 없음)'}"
+AI가 의도했던 대화 톤은 '${myMessage.analysis.tone}'이었다.
 
-1. 그녀의 답변이 얼마나 자연스럽고 애정이 넘쳤는지 1점에서 10점 사이로 평가해줘.
+1. 이 AI의 답변이 얼마나 자연스럽고 애정이 넘쳤는지 1점에서 10점 사이로 평가해줘.
 2. 개선을 위한 짧은 한 문장짜리 제안을 해줘. 제안에 사용할 수 있는 키워드: 'affection'(애정), 'playful'(장난), 'longer'(길게), 'shorter'(짧게), 'ask a question'(질문하기).
 
 답변 형식은 "Score: [점수] | Suggestion: [제안]" 으로 맞춰줘.`;
@@ -330,25 +321,21 @@ function adjustBehavioralParameters(feedback) {
     }
 }
 
-// --- 프롬프트 생성 함수 ---
 function generateContextualPrompt(basePrompt) {
     let ultimatePrompt = basePrompt;
     const state = ultimateConversationState;
 
-    // 1. 최근 대화 요약
     if (state.recentMessages.length > 0) {
         const recentContext = state.recentMessages.slice(-5).map(msg => `${msg.speaker}: ${msg.message}`).join('\n');
         ultimatePrompt += `\n\n[최근 대화 흐름]\n${recentContext}`;
     }
 
-    // 2. 장기 기억(사실)을 프롬프트에 추가
     const facts = state.knowledgeBase.facts;
     if (facts.length > 0) {
         const recentFacts = facts.slice(-5).map(f => `- ${f.fact}`).join('\n');
         ultimatePrompt += `\n\n[장기 기억(사실)]\n(이것은 내가 아저씨에 대해 기억하고 있는 중요한 사실들이야. 이 사실들을 대화에 자연스럽게 활용하거나, 사실과 관련된 질문을 해봐.)\n${recentFacts}`;
     }
 
-    // 3. 현재 학습된 행동 전략 지시
     const params = state.personalityConsistency.behavioralParameters;
     let behaviorInstructions = [];
     if (params.affection > 0.75) behaviorInstructions.push("'우리 아저씨' 같은 애칭을 사용하고, 하트 이모티콘을 포함시켜서 더 다정하게 말해줘.");
@@ -362,7 +349,6 @@ function generateContextualPrompt(basePrompt) {
         ultimatePrompt += `\n\n[AI 행동 전략]\n${behaviorInstructions.join(' ')}`;
     }
 
-    // 4. 오늘 요약 및 누적 패턴
     const today = state.dailySummary.today;
     if (today && today.date) {
         const topics = Array.from(today.mainTopics).join(', ') || '일상 대화';
@@ -373,7 +359,6 @@ function generateContextualPrompt(basePrompt) {
         ultimatePrompt += `\n\n[우리의 주된 감정]\n우리는 주로 '${topEmotion[0]}' 감정을 많이 느껴왔어.`;
     }
 
-    // 5. 자기 성찰 피드백
     const lastEvaluation = state.personalityConsistency.selfEvaluations.slice(-1)[0];
     if (lastEvaluation && lastEvaluation.score < 8) {
         ultimatePrompt += `\n\n[AI 자기 개선 노트]\n(참고: 이전 답변에 대한 피드백은 "${lastEvaluation.feedback}"이었어.)`;
@@ -382,10 +367,6 @@ function generateContextualPrompt(basePrompt) {
     ultimatePrompt += `\n\n[최종 지시] 위의 모든 맥락과 '행동 전략', 그리고 '장기 기억'을 종합적으로 고려해서, 가장 사람답고, 애정 어린 '예진이'의 다음 말을 해줘.`;
     return ultimatePrompt;
 }
-
-// =========================================================================
-// ========================= 🚀 EXPORT되는 메인 함수들 🚀 =======================
-// =========================================================================
 
 function initializeEmotionalSystems() {
     console.log('[UltimateContext] 🚀 모든 마음과 기억 시스템을 초기화합니다...');
@@ -399,9 +380,6 @@ function updateLastUserMessageTime(timestamp) {
     }
 }
 
-/**
- * 💎 메시지 추가 및 모든 컨텍스트 업데이트 (가장 중요한 함수)
- */
 async function addUltimateMessage(speaker, message, meta = null) {
     const timestamp = Date.now();
     let finalMessage = message || '';
@@ -493,22 +471,60 @@ function clearPendingAction() {
     console.log(`[UltimateContext] ✅ 특별 행동 대기 모드 해제.`);
 }
 
-// --- [SULKY-INTEGRATION] 새로운 상태 관리 함수 ---
-/**
- * 현재 삐짐 상태 객체를 반환합니다.
- * @returns {object}
- */
 function getSulkinessState() {
     return ultimateConversationState.sulkiness;
 }
 
-/**
- * 삐짐 상태를 업데이트합니다.
- * @param {object} newState - 업데이트할 새로운 상태 값들
- */
 function updateSulkinessState(newState) {
     Object.assign(ultimateConversationState.sulkiness, newState);
     console.log(`[UltimateContext] 삐짐 상태 업데이트:`, newState);
+}
+
+function processTimeTick() {
+    const now = Date.now();
+    const state = ultimateConversationState;
+
+    const lastUserResponseTime = state.sulkiness.lastUserResponseTime;
+    const lastBotMessageTime = state.sulkiness.lastBotMessageTime;
+
+    if (lastBotMessageTime > lastUserResponseTime) {
+        const elapsedMinutes = Math.floor((now - lastBotMessageTime) / (1000 * 60));
+
+        const currentHour = moment(now).tz('Asia/Tokyo').hour();
+        const isSleeping = currentHour >= 0 && currentHour < 9;
+
+        if (!isSleeping) {
+            let newLevel = 0;
+            let newReason = null;
+            let isWorried = false;
+
+            if (elapsedMinutes >= SULKY_DELAYS.WORRY) {
+                newLevel = 4;
+                isWorried = true;
+                newReason = `${elapsedMinutes}분 이상 응답이 없어 걱정됨`;
+            } else if (elapsedMinutes >= SULKY_DELAYS.LEVEL_3) {
+                newLevel = 3;
+                newReason = `${elapsedMinutes}분간 응답 없음`;
+            } else if (elapsedMinutes >= SULKY_DELAYS.LEVEL_2) {
+                newLevel = 2;
+                newReason = `${elapsedMinutes}분간 응답 없음`;
+            } else if (elapsedMinutes >= SULKY_DELAYS.LEVEL_1) {
+                newLevel = 1;
+                newReason = `${elapsedMinutes}분간 응답 없음`;
+            }
+
+            if (newLevel > 0 && newLevel !== state.sulkiness.sulkyLevel) {
+                updateSulkinessState({
+                    isSulky: !isWorried,
+                    isWorried: isWorried,
+                    sulkyLevel: newLevel,
+                    sulkyReason: newReason,
+                    isActivelySulky: true,
+                    sulkyStartTime: state.sulkiness.sulkyStartTime || now
+                });
+            }
+        }
+    }
 }
 
 module.exports = {
@@ -520,8 +536,7 @@ module.exports = {
     getPendingAction,
     clearPendingAction,
     getInternalState: () => JSON.parse(JSON.stringify(ultimateConversationState)),
-    
-    // [SULKY-INTEGRATION] 새로 추가된 함수들
     getSulkinessState,
     updateSulkinessState,
+    processTimeTick,
 };
