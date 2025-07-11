@@ -1,12 +1,12 @@
-// ✅ index.js v8.4 - "생리 주기 모니터링 기능 추가"
-// [추가] 1분마다 예진이의 다음 생리 예정일을 계산하여 로그에 함께 출력
+// ✅ index.js v8.5 - 순환 참조 해결
 
 const { Client, middleware } = require('@line/bot-sdk');
 const express = require('express');
-const moment = require('moment-timezone'); // [추가] 날짜 계산을 위해 moment 모듈을 여기서도 사용합니다.
+const moment = require('moment-timezone');
 require('dotenv').config();
 
-const { getReplyByMessage, cleanReply, saveLog } = require('./src/autoReply');
+const { getReplyByMessage, cleanReply } = require('./src/autoReply');
+const { saveLog } = require('./src/aiUtils'); // [수정] saveLog를 aiUtils에서 가져옴
 const commandHandler = require('./src/commandHandler');
 const { startAllSchedulers, getSchedulerStatus } = require('./src/scheduler');
 const { startSpontaneousPhotoScheduler, getPhotoSchedulerStatus } = require('./src/spontaneousPhotoManager');
@@ -19,7 +19,7 @@ const config = { channelAccessToken: process.env.LINE_ACCESS_TOKEN, channelSecre
 const client = new Client(config);
 const userId = process.env.TARGET_USER_ID;
 
-app.get('/', (_, res) => res.send('예진이 v8.4 살아있어! (생리 주기 모니터링)'));
+app.get('/', (_, res) => res.send('예진이 v8.5 살아있어! (구조 안정화)'));
 
 app.post('/webhook', middleware(config), async (req, res) => {
     try {
@@ -84,18 +84,14 @@ async function initMuku() {
         startAllSchedulers(client, userId);
         startSpontaneousPhotoScheduler(client, userId, () => conversationContext.getInternalState().timingContext.lastUserMessageTime);
 
-        // [수정] 1분마다 상태를 종합하여 로그에 출력하는 로직
         setInterval(() => {
             conversationContext.processTimeTick();
-
             const internalState = conversationContext.getInternalState();
             const schedulerStatus = getSchedulerStatus();
             const photoStatus = getPhotoSchedulerStatus();
             const innerThought = conversationContext.generateInnerThought();
-
             const residue = internalState.emotionalEngine.emotionalResidue;
             const residueText = `슬픔:${Math.round(residue.sadness)}|기쁨:${Math.round(residue.happiness)}|불안:${Math.round(residue.anxiety)}|그리움:${Math.round(residue.longing)}|상처:${Math.round(residue.hurt)}|❤️애정:${Math.round(residue.love)}`;
-            
             let sulkyText = '정상';
             if (internalState.sulkiness.isSulky) {
                 const sulkyDuration = Math.round((Date.now() - internalState.sulkiness.sulkyStartTime) / 60000);
@@ -103,13 +99,11 @@ async function initMuku() {
             } else if (internalState.sulkiness.isWorried) {
                 sulkyText = '걱정 중';
             }
-            
-            // [추가] 생리 주기 계산 로직
             const lastStartDate = moment(internalState.mood.lastPeriodStartDate);
-            const nextExpectedDate = lastStartDate.add(28, 'days'); // 28일 주기로 계산
+            const nextExpectedDate = lastStartDate.add(28, 'days');
             const daysUntilNextPeriod = nextExpectedDate.diff(moment(), 'days');
             let periodText = `${daysUntilNextPeriod}일 남음`;
-            if(internalState.mood.isPeriodActive) {
+            if (internalState.mood.isPeriodActive) {
                 periodText = `현재 생리 중`;
             } else if (daysUntilNextPeriod <= 0) {
                 periodText = '오늘 또는 예정일 지남';
@@ -117,7 +111,6 @@ async function initMuku() {
                 periodText = `${daysUntilNextPeriod}일 후 예정 (예민)`;
             }
 
-            // 최종 로그 출력
             console.log("\n--- 💖 예진이 속마음 (1분마다 갱신) 💖 ---");
             console.log(`[속마음] ${innerThought}`);
             console.log(`[감정] ${residueText}`);
@@ -125,7 +118,6 @@ async function initMuku() {
             console.log(`[주기] 다음 생리까지: ${periodText}`);
             console.log(`[행동] 담타까지: ${schedulerStatus.nextDamtaInMinutes}분 | 사진까지: ${photoStatus.minutesUntilNext}분`);
             console.log("------------------------------------------\n");
-
         }, 60 * 1000);
 
     } catch (error) {
@@ -136,6 +128,6 @@ async function initMuku() {
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`예진이 v8.4 서버 스타트! 포트: ${PORT}`);
+    console.log(`예진이 v8.5 서버 스타트! 포트: ${PORT}`);
     initMuku();
 });
