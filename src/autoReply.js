@@ -19,7 +19,9 @@ const sulkyManager = require('./sulkyManager');
 // 🆕 감정 컨텍스트 시스템 불러오기 (v5.1)
 const emotionalContextManager = require('./emotionalContextManager');
 
-// 🆕 대화 맥락 관리 모듈 불러오기
+// [수정 1] 새로운 기억 시스템(두뇌)을 불러옵니다.
+const ultimateContext = require('./ultimateConversationContext.js');
+// 🆕 대화 맥락 관리 모듈 불러오기 (기존 시스템)
 const conversationContext = require('./conversationContext');
 
 // 사진 처리 모듈들 불러오기 (순서 중요: yejinSelfie 먼저)
@@ -545,9 +547,13 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
         if (selfieResult) {
             saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
             const cleanedCaption = cleanReplyFunc(selfieResult.comment);
+            
+            // [수정 2] 셀카를 보낸 행동을 새로운 기억 시스템에 기록합니다.
+            await ultimateContext.addUltimateMessage(BOT_NAME, cleanedCaption, { imageUrl: selfieResult.imageUrl });
+            
             // conversationContext 업데이트 (사진 메타데이터 포함)
             conversationContext.addMessage(BOT_NAME, cleanedCaption, emotionalContextManager.currentState.toneState, 
-                                           { type: 'photo', url: selfieResult.imageUrl, concept: '셀카', date: moment().format('YYYY-MM-DD') });
+                                            { type: 'photo', url: selfieResult.imageUrl, concept: '셀카', date: moment().format('YYYY-MM-DD') });
             return { 
                 type: 'image',
                 originalContentUrl: selfieResult.imageUrl,
@@ -566,9 +572,13 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
         if (conceptResult) {
             saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
             const cleanedCaption = cleanReplyFunc(conceptResult.comment);
+            
+            // [수정 3] 컨셉 사진을 보낸 행동을 새로운 기억 시스템에 기록합니다.
+            await ultimateContext.addUltimateMessage(BOT_NAME, cleanedCaption, { imageUrl: conceptResult.imageUrl });
+
             // conversationContext 업데이트 (사진 메타데이터 포함)
             conversationContext.addMessage(BOT_NAME, cleanedCaption, emotionalContextManager.currentState.toneState, 
-                                           { type: 'photo', url: conceptResult.imageUrl, concept: conceptResult.conceptName || '알 수 없음', date: conceptResult.date || '알 수 없음' });
+                                            { type: 'photo', url: conceptResult.imageUrl, concept: conceptResult.conceptName || '알 수 없음', date: conceptResult.date || '알 수 없음' });
             return { 
                 type: 'image',
                 originalContentUrl: conceptResult.imageUrl,
@@ -587,9 +597,13 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
         if (omoideResult) {
             saveLogFunc({ role: 'user', content: userMessage, timestamp: Date.now() });
             const cleanedCaption = cleanReplyFunc(omoideResult.comment);
+
+            // [수정 4] 추억 사진을 보낸 행동을 새로운 기억 시스템에 기록합니다.
+            await ultimateContext.addUltimateMessage(BOT_NAME, cleanedCaption, { imageUrl: omoideResult.imageUrl });
+
             // conversationContext 업데이트 (사진 메타데이터 포함)
             conversationContext.addMessage(BOT_NAME, cleanedCaption, emotionalContextManager.currentState.toneState, 
-                                           { type: 'photo', url: omoideResult.imageUrl, concept: '추억', date: omoideResult.date || '알 수 없음' });
+                                            { type: 'photo', url: omoideResult.imageUrl, concept: '추억', date: omoideResult.date || '알 수 없음' });
             return { 
                 type: 'image',
                 originalContentUrl: omoideResult.imageUrl,
