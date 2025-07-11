@@ -1,227 +1,338 @@
-// --- START OF FILE: index.js ---
-// ✅ index.js v1.34 - SyntaxError 해결 및 모듈 연결 최종 수정
-// - 1인칭 전환 보장 시스템
-// - 감정 컨텍스트 시스템 완전 연동
-// - 삐지기/걱정 시스템 v3.0 통합
-// - 자발적 반응 및 맥락 기반 감정 연결
+// --- START OF FILE: ultimateConversationContext.js ---
+// ✅ ultimateConversationContext.js v6.0 - The Core Engine for Muku
+// - 장기/단기 기억 시스템 통합 (일일 요약, 누적 패턴)
+// - LLM 기반 자기 성찰 및 학습 기능 구현
+// - 개성 진화 및 일관성 유지 시스템
+// - 모든 함수 호출 및 데이터 접근 안정성 강화 (TypeError 방지)
+// - 독립적 모듈로 작동하여 SyntaxError 가능성 최소화
 
-// 📦 필수 모듈 불러오기
-const fs = require('fs');
-const path = require('path');
-const {
-    Client,
-    middleware
-} = require('@line/bot-sdk');
-const express = require('express');
 const moment = require('moment-timezone');
-
-// .env 파일에서 환경 변수 로드
+const {
+    OpenAI
+} = require('openai');
 require('dotenv').config();
 
-// 🆕 ./src/autoReply.js에서 필요한 함수들을 불러옵니다.
-const autoReply = require('./src/autoReply');
-const {
-    getReplyByMessage,
-    getReplyByImagePrompt,
-    saveLog,
-    cleanReply,
-    callOpenAI,
-    BOT_NAME,
-    USER_NAME,
-    lastUserMessageTime, // spontaneousPhotoManager에서만 사용
-    checkSpontaneousReactions
-} = autoReply;
+const openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY
+});
 
-// 🆕 다른 핵심 모듈들 불러오기
-const memoryManager = require('./src/memoryManager');
-const commandHandler = require('./src/commandHandler');
-const memoryHandler = require('./src/memoryHandler');
-const {
-    startAllSchedulers
-} = require('./src/scheduler');
-const {
-    startSpontaneousPhotoScheduler
-} = require('./src/spontaneousPhotoManager');
-const sulkyManager = require('./src/sulkyManager');
-const emotionalContextManager = require('./src/emotionalContextManager');
-// [수정] 우리가 만든 최종 컨텍스트 모듈을 불러옵니다.
-const conversationContext = require('./src/ultimateConversationContext.js');
+// 🧠 최고 수준의 대화 맥락 상태 관리 객체
+let ultimateConversationState = {
+    // 📝 단기 기억 (최근 30개 메시지)
+    recentMessages: [],
+    currentTone: 'neutral',
+    currentTopic: null,
 
-const app = express();
+    // 📊 장기 기억 1: 일일 요약
+    dailySummary: {
+        today: {},
+        yesterday: null
+    },
 
-const config = {
-    channelAccessToken: process.env.LINE_ACCESS_TOKEN,
-    channelSecret: process.env.LINE_CHANNEL_SECRET
+    // 🔄 장기 기억 2: 누적 패턴 (경험)
+    cumulativePatterns: {
+        emotionalTrends: {},
+        topicAffinities: {}
+    },
+
+    // 🌊 대화 흐름 관리
+    transitionSystem: {
+        pendingTopics: [],
+        conversationSeeds: []
+    },
+
+    // 🎭 개성 및 학습 시스템
+    personalityConsistency: {
+        frequentPhrases: {},
+        speechPatternEvolution: [],
+        selfEvaluations: [], // [핵심] 자기 성찰 기록
+        lastSelfReflectionTime: 0
+    },
+
+    // ⏰ 실시간 시간 정보
+    timingContext: {
+        lastMessageTime: 0,
+        lastUserMessageTime: 0,
+        currentTimeContext: {}
+    }
 };
 
-const client = new Client(config);
-const userId = process.env.TARGET_USER_ID;
+// LLM을 활용한 자기 평가 활성화 플래그 (비용 및 성능 고려)
+const LLM_BASED_SELF_EVALUATION = false;
 
-// 🌐 루트 경로
-app.get('/', (_, res) => res.send('예진이 v5.3 살아있어! (SyntaxError 해결)'));
+// --- Helper & Analysis Functions ---
 
-// 🎣 LINE 웹훅 요청 처리
-app.post('/webhook', middleware(config), async (req, res) => {
-    try {
-        const events = req.body.events || [];
-        for (const event of events) {
-            if (event.source.userId === userId) {
-                // [수정] conversationContext의 함수를 명시적으로 호출
-                conversationContext.updateLastUserMessageTime(Date.now());
-            }
-
-            if (event.type === 'message') {
-                const message = event.message;
-                if (message.type === 'text') {
-                    await handleTextMessage(event);
-                } else if (message.type === 'image') {
-                    await handleImageMessage(event);
-                }
-            }
-        }
-        res.status(200).send('OK');
-    } catch (err) {
-        console.error(`[Webhook] 웹훅 처리 중 심각한 에러:`, err);
-        res.status(500).send('Error'); // 클라이언트에게 OK가 아닌 에러 상태 전송
-    }
-});
-
-// ✍️ 텍스트 메시지 처리 함수
-async function handleTextMessage(event) {
-    const text = event.message.text.trim();
-    saveLog(USER_NAME, text);
-    // [수정] 컨텍스트 추가
-    conversationContext.addUltimateMessage(USER_NAME, text);
-
-    // 삐짐 해소 체크
-    const sulkyReliefMessage = await sulkyManager.handleUserResponse(client, userId, saveLog);
-    if (sulkyReliefMessage) {
-        await client.pushMessage(userId, { type: 'text', text: sulkyReliefMessage });
-        saveLog(BOT_NAME, `(삐짐 해소) ${sulkyReliefMessage}`);
-        conversationContext.addUltimateMessage(BOT_NAME, sulkyReliefMessage);
-        await new Promise(resolve => setTimeout(resolve, 1000));
-    }
-
-    let botResponse = null;
-    // 명령어 처리
-    botResponse = await commandHandler.handleCommand(text, saveLog, callOpenAI, cleanReply, memoryManager.getFixedMemory);
-    if (!botResponse) botResponse = await memoryHandler.handleMemoryCommand(text, saveLog, callOpenAI, cleanReply, memoryManager.getFixedMemory);
-    // 일반 대화 처리
-    if (!botResponse) {
-        botResponse = await getReplyByMessage(text, saveLog, callOpenAI, cleanReply);
-        await memoryManager.extractAndSaveMemory(text);
-    }
-    
-    if (botResponse) {
-        await sendReply(event.replyToken, botResponse);
-    }
+function analyzeTimeContext(timestamp) {
+    const time = moment(timestamp).tz('Asia/Tokyo');
+    const hour = time.hour();
+    let timeOfDay;
+    if (hour >= 6 && hour < 12) timeOfDay = '아침';
+    else if (hour >= 12 && hour < 18) timeOfDay = '낮';
+    else if (hour >= 18 && hour < 22) timeOfDay = '저녁';
+    else if (hour >= 22 || hour < 2) timeOfDay = '밤';
+    else timeOfDay = '새벽';
+    return {
+        hour,
+        timeOfDay,
+        dayOfWeek: time.format('dddd')
+    };
 }
 
-// 🖼️ 이미지 메시지 처리 함수
-async function handleImageMessage(event) {
-    try {
-        const stream = await client.getMessageContent(event.message.id);
-        const chunks = [];
-        for await (const chunk of stream) chunks.push(chunk);
-        const buffer = Buffer.concat(chunks);
-        const base64ImageWithPrefix = `data:image/jpeg;base64,${buffer.toString('base64')}`;
-
-        conversationContext.addUltimateMessage(USER_NAME, "(사진 보냄)", { type: 'image' });
-
-        const replyResult = await getReplyByImagePrompt(base64ImageWithPrefix);
-        if (replyResult) {
-            await sendReply(event.replyToken, replyResult);
-        }
-    } catch (err) {
-        console.error(`[Image] 이미지 처리 실패:`, err);
-        await client.replyMessage(event.replyToken, { type: 'text', text: '이미지를 읽는 중 오류가 생겼어 ㅠㅠ' });
-    }
+function analyzeTone(message) {
+    // 간단한 키워드 기반 톤 분석 (초기 분석용)
+    const lowerMessage = message.toLowerCase();
+    if (lowerMessage.includes('ㅋㅋ') || lowerMessage.includes('ㅎㅎ')) return 'playful';
+    if (lowerMessage.includes('사랑해') || lowerMessage.includes('좋아해')) return 'romantic';
+    if (lowerMessage.includes('삐졌어') || lowerMessage.includes('화나')) return 'sulky';
+    if (lowerMessage.includes('걱정')) return 'worried';
+    if (lowerMessage.includes('보고싶어')) return 'nostalgic';
+    return 'neutral';
 }
 
-// 📤 응답 전송 통합 함수
-async function sendReply(replyToken, botResponse) {
-    let messagesToReply = [];
-    let loggableText = '';
+function analyzeTopic(message) {
+    // 간단한 키워드 기반 주제 분석
+    const lowerMessage = message.toLowerCase();
+    if (lowerMessage.includes('밥') || lowerMessage.includes('음식')) return 'food';
+    if (lowerMessage.includes('일') || lowerMessage.includes('회사')) return 'work';
+    if (lowerMessage.includes('사진') || lowerMessage.includes('찍었')) return 'photo';
+    if (lowerMessage.includes('아파') || lowerMessage.includes('건강')) return 'health';
+    return 'daily';
+}
 
-    if (botResponse.type === 'image') {
-        messagesToReply.push({
-            type: 'image',
-            originalContentUrl: botResponse.originalContentUrl,
-            previewImageUrl: botResponse.previewImageUrl,
+function calculateEmotionalIntensity(message, tone) {
+    let intensity = (tone !== 'neutral') ? 3 : 1;
+    if (message.length > 50) intensity += 2;
+    if (message.includes('!') || message.includes('?')) intensity += 1;
+    return Math.min(10, intensity);
+}
+
+// --- State Update Functions ---
+
+function resetDailySummary() {
+    const todayDate = moment().tz('Asia/Tokyo').format('YYYY-MM-DD');
+    ultimateConversationState.dailySummary.today = {
+        date: todayDate,
+        mainTopics: new Set(),
+        emotionalHighlights: [],
+        totalMessages: 0,
+        timeSpread: {
+            start: null,
+            end: null
+        }
+    };
+}
+
+function updateDailySummary(newMessage) {
+    const todayDate = moment(newMessage.timestamp).tz('Asia/Tokyo').format('YYYY-MM-DD');
+    let today = ultimateConversationState.dailySummary.today;
+
+    if (!today || today.date !== todayDate) {
+        ultimateConversationState.dailySummary.yesterday = today;
+        resetDailySummary();
+        today = ultimateConversationState.dailySummary.today;
+    }
+
+    today.totalMessages++;
+    if (!today.timeSpread.start) today.timeSpread.start = newMessage.timestamp;
+    today.timeSpread.end = newMessage.timestamp;
+
+    const topic = newMessage.analysis.topic;
+    if (topic !== 'daily') today.mainTopics.add(topic);
+
+    if (newMessage.analysis.emotionalIntensity > 6) {
+        today.emotionalHighlights.push({
+            emotion: newMessage.analysis.tone,
+            intensity: newMessage.analysis.emotionalIntensity,
+            message: newMessage.message.substring(0, 30)
         });
-        if (botResponse.caption) {
-            const cleanedCaption = cleanAndVerifyFirstPerson(botResponse.caption);
-            messagesToReply.push({ type: 'text', text: cleanedCaption });
-            loggableText = cleanedCaption;
-        }
-    } else if (botResponse.type === 'text') {
-        const cleanedComment = cleanAndVerifyFirstPerson(botResponse.comment);
-        messagesToReply.push({ type: 'text', text: cleanedComment });
-        loggableText = cleanedComment;
-    }
-
-    if (messagesToReply.length > 0) {
-        await client.replyMessage(replyToken, messagesToReply);
-        if (loggableText) {
-            saveLog(BOT_NAME, loggableText);
-            conversationContext.addUltimateMessage(BOT_NAME, loggableText);
-        }
-        sulkyManager.startSulkyTimer(client, userId, saveLog);
     }
 }
 
-// 🙋‍♀️ 1인칭 변환기
-function cleanAndVerifyFirstPerson(text) {
-    let cleanedText = cleanReply(text);
-    if (cleanedText.includes('무쿠') || cleanedText.includes('예진이')) {
-        console.warn(`[1인칭 검증] 3인칭 감지: "${cleanedText}"`);
-        cleanedText = cleanedText
-            .replace(/무쿠가|예진이가/g, '내가')
-            .replace(/무쿠는|예진이는/g, '나는')
-            .replace(/무쿠를|예진이를/g, '나를')
-            .replace(/무쿠|예진이/g, '나');
-        console.log(`[1인칭 변환] 완료: "${cleanedText}"`);
-    }
-    return cleanedText;
+function updateCumulativePatterns(newMessage) {
+    const emotion = newMessage.analysis.tone;
+    if (emotion === 'neutral') return;
+
+    const trends = ultimateConversationState.cumulativePatterns.emotionalTrends;
+    if (!trends[emotion]) trends[emotion] = {
+        count: 0,
+        totalIntensity: 0
+    };
+    trends[emotion].count++;
+    trends[emotion].totalIntensity += newMessage.analysis.emotionalIntensity;
 }
 
-const PORT = process.env.PORT || 3000;
+// --- Self-Learning Functions ---
 
-app.listen(PORT, () => {
-    console.log(`예진이 v5.3 서버 스타트! 포트: ${PORT}`);
-    initMuku(); // 서버 시작 시 초기화 함수 실행
-});
+async function evaluateMyResponse(myMessage) {
+    if (!LLM_BASED_SELF_EVALUATION) return;
 
-// ✅ 비동기 초기화 함수 정의
-async function initMuku() {
+    const recent = ultimateConversationState.recentMessages;
+    const lastUserMessage = recent.filter(m => m.speaker !== myMessage.speaker).pop();
+
+    const prompt = `You are a conversation coach. An AI named 'Yejin' is trying to act like a human girlfriend.
+Her last message to her boyfriend was: "${myMessage.message}"
+The boyfriend's message before that was: "${lastUserMessage ? lastUserMessage.message : '(No previous message)'}"
+Yejin's intended tone was '${myMessage.analysis.tone}'.
+
+1. Rate her response from 1 to 10 on how natural and affectionate it was.
+2. Provide a short, one-sentence suggestion for improvement.
+
+Format your response as: "Score: [score] | Suggestion: [suggestion]"`;
+
     try {
-        await memoryManager.ensureMemoryTablesAndDirectory();
-        
-        // ⭐ 예진이 통합 컨텍스트 시스템 초기화
-        // [수정] conversationContext의 함수를 명시적으로 호출
-        await conversationContext.initializeEmotionalSystems();
-        console.log('🧠 예진이 통합 컨텍스트 시스템 초기화 완료!');
+        const response = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [{
+                role: "user",
+                content: prompt
+            }],
+            max_tokens: 60,
+            temperature: 0.5,
+        });
 
-        startAllSchedulers(client, userId);
-        startSpontaneousPhotoScheduler(client, userId, saveLog, callOpenAI, cleanReply, lastUserMessageTime);
-        
-        // 자발적 반응 스케줄러
-        setInterval(() => {
-            const spontaneousReaction = checkSpontaneousReactions();
-            if (spontaneousReaction && Math.random() < 0.2) {
-                const finalMessage = cleanAndVerifyFirstPerson(spontaneousReaction);
-                client.pushMessage(userId, { type: 'text', text: finalMessage })
-                .then(() => {
-                    saveLog(BOT_NAME, `(자발적 반응) ${finalMessage}`);
-                    conversationContext.addUltimateMessage(BOT_NAME, finalMessage);
-                }).catch(err => console.error('[Scheduler] 자발적 반응 메시지 전송 실패:', err));
-            }
-        }, 15 * 60 * 1000); // 15분마다 체크
+        const feedback = response.choices[0].message.content || "";
+        const scoreMatch = feedback.match(/Score: (\d+)/);
+        const suggestionMatch = feedback.match(/Suggestion: (.+)/);
+
+        const evaluation = {
+            timestamp: Date.now(),
+            message: myMessage.message,
+            score: scoreMatch ? parseInt(scoreMatch[1], 10) : 5,
+            feedback: suggestionMatch ? suggestionMatch[1] : "No suggestion.",
+        };
+
+        ultimateConversationState.personalityConsistency.selfEvaluations.push(evaluation);
+        console.log(`[Self-Evaluation] ✅ 자기 평가 완료: ${evaluation.score}점 - "${evaluation.feedback}"`);
 
     } catch (error) {
-        console.error('❌ 초기화 중 심각한 에러 발생:', error);
-        // 초기화 실패 시 프로세스 종료, Render.com이 재시도하도록 함
-        process.exit(1); 
+        console.error('[Self-Evaluation] ❌ 자기 평가 중 OpenAI API 에러:', error);
     }
 }
-// --- END OF FILE: index.js ---
+
+// --- Prompt Generation Functions ---
+
+function generateContextualPrompt(basePrompt) {
+    let ultimatePrompt = basePrompt;
+    const state = ultimateConversationState;
+
+    // 1. 최근 대화 요약
+    if (state.recentMessages.length > 0) {
+        const recentContext = state.recentMessages.slice(-5).map(msg => `${msg.speaker}: ${msg.message}`).join('\n');
+        ultimatePrompt += `\n\n[최근 대화 흐름]\n${recentContext}`;
+    }
+
+    // 2. 오늘 요약
+    const today = state.dailySummary.today;
+    if (today && today.totalMessages > 0) {
+        const topics = Array.from(today.mainTopics).join(', ') || '일상 대화';
+        ultimatePrompt += `\n\n[오늘의 주요 대화 주제]\n${topics}`;
+    }
+
+    // 3. 누적된 감정 패턴
+    const topEmotion = Object.entries(state.cumulativePatterns.emotionalTrends)
+        .sort(([, a], [, b]) => b.count - a.count)[0];
+    if (topEmotion) {
+        ultimatePrompt += `\n\n[우리의 주된 감정]\n주로 '${topEmotion[0]}' 감정을 많이 느껴왔어.`;
+    }
+
+    // 4. 자기 성찰 피드백
+    const lastEvaluation = state.personalityConsistency.selfEvaluations.slice(-1)[0];
+    if (lastEvaluation && lastEvaluation.score < 8) {
+        ultimatePrompt += `\n\n[AI 자기 개선 노트]\n이전 내 답변에 대한 피드백: "${lastEvaluation.feedback}" 이걸 참고해서 이번엔 더 잘 말해야지.`;
+    }
+
+    ultimatePrompt += `\n\n[최종 지시] 위의 모든 맥락을 종합적으로 고려해서, 가장 사람답고, 애정 어린 '예진이'의 다음 말을 해줘.`;
+    return ultimatePrompt;
+}
+
+// =========================================================================
+// ========================= 🚀 EXPORT되는 메인 함수들 🚀 =======================
+// =========================================================================
+
+/**
+ * 🚀 시스템 초기화 (서버 시작 시 1회 호출)
+ */
+function initializeEmotionalSystems() {
+    console.log('[UltimateContext] 🚀 모든 마음과 기억 시스템을 초기화합니다...');
+    resetDailySummary();
+    console.log('[UltimateContext] ✅ 초기화 완료. 대화를 시작할 준비가 되었습니다.');
+}
+
+/**
+ * 🙋‍♂️ 아저씨의 마지막 메시지 시간 기록
+ * @param {number} timestamp 메시지 수신 타임스탬프 (e.g., Date.now())
+ */
+function updateLastUserMessageTime(timestamp) {
+    if (timestamp) {
+        ultimateConversationState.timingContext.lastUserMessageTime = timestamp;
+    }
+}
+
+/**
+ * 💎 메시지 추가 및 모든 컨텍스트 업데이트 (가장 중요한 함수)
+ * @param {string} speaker 화자 ('아저씨' 또는 '예진이')
+ * @param {string} message 메시지 내용
+ * @param {object} [meta=null] 추가 데이터 (e.g., 사진 정보)
+ */
+function addUltimateMessage(speaker, message, meta = null) {
+    const timestamp = Date.now();
+
+    const newMessage = {
+        speaker,
+        message,
+        timestamp,
+        analysis: {
+            tone: analyzeTone(message),
+            topic: analyzeTopic(message),
+            emotionalIntensity: 0,
+        },
+        meta
+    };
+    newMessage.analysis.emotionalIntensity = calculateEmotionalIntensity(message, newMessage.analysis.tone);
+
+    // 단기 기억에 추가
+    ultimateConversationState.recentMessages.push(newMessage);
+    if (ultimateConversationState.recentMessages.length > 30) {
+        ultimateConversationState.recentMessages.shift();
+    }
+
+    // 현재 상태 업데이트
+    ultimateConversationState.currentTone = newMessage.analysis.tone;
+    ultimateConversationState.currentTopic = newMessage.analysis.topic;
+    ultimateConversationState.timingContext.lastMessageTime = timestamp;
+    ultimateConversationState.timingContext.currentTimeContext = analyzeTimeContext(timestamp);
+
+
+    // 장기 기억 및 패턴 업데이트
+    updateDailySummary(newMessage);
+    updateCumulativePatterns(newMessage);
+
+    // 예진이의 메시지일 경우, 자기 성찰 실행
+    if (speaker !== '아저씨') { // '예진이' 또는 'BOT_NAME' 등
+        evaluateMyResponse(newMessage);
+    }
+
+    console.log(`[UltimateContext] 💎 메시지 기억 완료: ${speaker} | ${message.substring(0, 20)}...`);
+}
+
+/**
+ * 🤖 현재 모든 맥락을 종합하여 LLM 프롬프트를 생성
+ * @param {string} basePrompt 기본 페르소나 프롬프트
+ * @returns {string} 맥락이 풍부하게 추가된 최종 프롬프트
+ */
+function getUltimateContextualPrompt(basePrompt) {
+    return generateContextualPrompt(basePrompt);
+}
+
+module.exports = {
+    // 🎯 메인 함수 (index.js에서 주로 사용)
+    initializeEmotionalSystems,
+    addUltimateMessage,
+    getUltimateContextualPrompt,
+    updateLastUserMessageTime,
+
+    // 🔍 디버그 및 상태 조회용 함수
+    getInternalState: () => JSON.parse(JSON.stringify(ultimateConversationState))
+};
+
+// --- END OF FILE: ultimateConversationContext.js ---
