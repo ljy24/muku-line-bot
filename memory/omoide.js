@@ -1,16 +1,76 @@
-// memory/omoide.js v2.16 (순환 참조 해결)
+// memory/omoide.js v2.16 (순환 참조 해결 및 전체 코드)
 // [오류 수정] aiUtils.js에서 공용 함수를 가져오도록 변경
 
-const { callOpenAI, cleanReply } = require('../src/aiUtils'); // [수정] aiUtils.js에서 가져옴
+const { callOpenAI, cleanReply } = require('../src/aiUtils');
 
-const OMODE_FOLDERS = { "추억_24_03_일본": 207, "추억_24_03_일본_스냅": 190, "추억_24_03_일본_후지": 226, "추억_24_04": 31, "추억_24_04_출사_봄_데이트_일본": 90, "추억_24_04_한국": 130, "추억_24_05_일본": 133, "추억_24_05_일본_후지": 135, "추억_24_06_한국": 146, "추억_24_07_일본": 62, "추억_24_08월_일본": 48, "추억_24_09_한국": 154, "추억_24_10_일본": 75, "추억_24_11_한국": 121, "추억_24_12_일본": 50, "추억_25_01_한국": 135, "추억_25_02_일본": 24, "추억_25_03_일본": 66, "추억_25_03_일본_코닥_필름": 28, "추억_인생네컷": 15, "흑심": 13 };
+const OMODE_FOLDERS = {
+    "추억_24_03_일본": 207,
+    "추억_24_03_일본_스냅": 190,
+    "추억_24_03_일본_후지": 226,
+    "추억_24_04": 31,
+    "추억_24_04_출사_봄_데이트_일본": 90,
+    "추억_24_04_한국": 130,
+    "추억_24_05_일본": 133,
+    "추억_24_05_일본_후지": 135,
+    "추억_24_06_한국": 146,
+    "추억_24_07_일본": 62,
+    "추억_24_08월_일본": 48,
+    "추억_24_09_한국": 154,
+    "추억_24_10_일본": 75,
+    "추억_24_11_한국": 121,
+    "추억_24_12_일본": 50,
+    "추억_25_01_한국": 135,
+    "추억_25_02_일본": 24,
+    "추억_25_03_일본": 66,
+    "추억_25_03_일본_코닥_필름": 28,
+    "추억_인생네컷": 15,
+    "흑심": 13,
+};
+
 const BASE_OMODE_URL = 'https://photo.de-ji.net/photo/omoide';
 const BASE_COUPLE_URL = 'https://photo.de-ji.net/photo/couple';
-const omoideKeywordMap = { '추억 24년 4월 출사 봄 데이트 일본': '추억_24_04_출사_봄_데이트_일본', '추억 25년 3월 일본 코닥 필름': '추억_25_03_일본_코닥_필름', '추억 24년 3월 일본 스냅': '추억_24_03_일본_스냅', '추억 24년 3월 일본 후지': '추억_24_03_일본_후지', '추억 24년 5월 일본 후지': '추억_24_05_일본_후지', '추억 24년 8월 일본': '추억_24_08월_일본', '추억 24년 3월 일본': '추억_24_03_일본', '추억 24년 5월 일본': '추억_24_05_일본', '추억 24년 6월 한국': '추억_24_06_한국', '추억 24년 7월 일본': '추억_24_07_일본', '추억 24년 9월 한국': '추억_24_09_한국', '추억 24년 10월 일본': '추억_24_10_일본', '추억 24년 11월 한국': '추억_24_11_한국', '추억 24년 12월 일본': '추억_24_12_일본', '추억 25년 1월 한국': '추억_25_01_한국', '추억 25년 2월 일본': '추억_25_02_일본', '추억 25년 3월 일본': '추억_25_03_일본', '추억 24년 4월 한국': '추억_24_04_한국', '추억 24년 4월': '추억_24_04', '인생네컷': '추억_인생네컷', '흑심': '흑심' };
+
+const omoideKeywordMap = {
+    '추억 24년 4월 출사 봄 데이트 일본': '추억_24_04_출사_봄_데이트_일본',
+    '추억 25년 3월 일본 코닥 필름': '추억_25_03_일본_코닥_필름',
+    '추억 24년 3월 일본 스냅': '추억_24_03_일본_스냅',
+    '추억 24년 3월 일본 후지': '추억_24_03_일본_후지',
+    '추억 24년 5월 일본 후지': '추억_24_05_일본_후지',
+    '추억 24년 8월 일본': '추억_24_08월_일본',
+    '추억 24년 3월 일본': '추억_24_03_일본',
+    '추억 24년 5월 일본': '추억_24_05_일본',
+    '추억 24년 6월 한국': '추억_24_06_한국',
+    '추억 24년 7월 일본': '추억_24_07_일본',
+    '추억 24년 9월 한국': '추억_24_09_한국',
+    '추억 24년 10월 일본': '추억_24_10_일본',
+    '추억 24년 11월 한국': '추억_24_11_한국',
+    '추억 24년 12월 일본': '추억_24_12_일본',
+    '추억 25년 1월 한국': '추억_25_01_한국',
+    '추억 25년 2월 일본': '추억_25_02_일본',
+    '추억 25년 3월 일본': '추억_25_03_일본',
+    '추억 24년 4월 한국': '추억_24_04_한국',
+    '추억 24년 4월': '추억_24_04',
+    '인생네컷': '추억_인생네컷',
+    '흑심': '흑심',
+};
+
 const sortedOmoideKeywords = Object.keys(omoideKeywordMap).sort((a, b) => b.length - a.length);
 
-function encodeImageUrl(url) { try { const parsed = new URL(url); parsed.pathname = parsed.pathname.split('/').map(segment => segment ? encodeURIComponent(decodeURIComponent(segment)) : segment).join('/'); return parsed.toString(); } catch (error) { return url; } }
-function getRandomOmoideFolder() { const folderNames = Object.keys(OMODE_FOLDERS).filter(f => !f.endsWith('.jpg')); if (folderNames.length === 0) return null; return folderNames[Math.floor(Math.random() * folderNames.length)]; }
+function encodeImageUrl(url) {
+    try {
+        const parsed = new URL(url);
+        parsed.pathname = parsed.pathname.split('/').map(segment => segment ? encodeURIComponent(decodeURIComponent(segment)) : segment).join('/');
+        return parsed.toString();
+    } catch (error) {
+        return url;
+    }
+}
+
+function getRandomOmoideFolder() {
+    const folderNames = Object.keys(OMODE_FOLDERS).filter(f => !f.endsWith('.jpg'));
+    if (folderNames.length === 0) return null;
+    return folderNames[Math.floor(Math.random() * folderNames.length)];
+}
 
 async function getOmoideReply(userMessage, conversationContext) {
     const lowerMsg = userMessage.trim().toLowerCase();
