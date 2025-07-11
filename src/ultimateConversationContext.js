@@ -1,4 +1,5 @@
-// ✅ ultimateConversationContext.js v18.0 - "상세 속마음 및 실시간 감정 로그"
+// ✅ ultimateConversationContext.js v18.1 - "생리 주기 계산 로직 복원"
+// [오류 수정] processTimeTick 함수에 누락되었던 생리 주기 계산 및 상태 업데이트 로직을 복원
 
 const moment = require('moment-timezone');
 const { OpenAI } = require('openai');
@@ -15,7 +16,7 @@ const TONE_STATES = { normal: "평소처럼 자연스럽고 애정이 담긴 말
 
 let ultimateConversationState = {
     recentMessages: [], currentTopic: null,
-    mood: { currentMood: '평온함', isPeriodActive: false, lastPeriodStartDate: moment().tz('Asia/Tokyo').subtract(20, 'days').startOf('day'), },
+    mood: { currentMood: '평온함', isPeriodActive: false, lastPeriodStartDate: moment().tz('Asia/Tokyo').subtract(22, 'days').startOf('day'), }, // 마지막 생리 시작일을 22일 전으로 수정하여 테스트 용이하게 함
     sulkiness: { isSulky: false, isWorried: false, lastBotMessageTime: 0, lastUserResponseTime: 0, sulkyLevel: 0, sulkyReason: null, sulkyStartTime: 0, isActivelySulky: false, },
     emotionalEngine: { emotionalResidue: { sadness: 0, happiness: 0, anxiety: 0, longing: 0, hurt: 0, love: 50 }, currentToneState: 'normal', lastToneShiftTime: 0, lastSpontaneousReactionTime: 0, lastAffectionExpressionTime: 0, },
     knowledgeBase: { facts: [], fixedMemories: [], loveHistory: {}, },
@@ -37,14 +38,13 @@ function analyzeAndInfluenceBotEmotion(userMessage) {
     else if (['화나', '짜증', '싫어', '못생겼', '별로'].some(k => lowerMessage.includes(k))) event = 'HURT';
     else if (['바쁘', '일 때문에', '나중에'].some(k => lowerMessage.includes(k))) event = 'LONELY';
     else if (['재밌', '웃기', 'ㅋㅋ'].some(k => lowerMessage.includes(k))) event = 'HAPPY';
-    if (event) recordEmotionalEvent(event, `아저씨의 메시지 ("${userMessage.substring(0, 10)}...")`);
+    if (event) recordEmotionalEvent(event, `아저씨의 메시지`);
 }
 
 function recordEmotionalEvent(emotionKey, trigger) {
     const emotion = EMOTION_TYPES[emotionKey];
     if (!emotion) return;
     const residue = ultimateConversationState.emotionalEngine.emotionalResidue;
-    
     let changes = [];
     emotion.types.forEach(type => {
         const increase = emotion.residue;
@@ -52,7 +52,6 @@ function recordEmotionalEvent(emotionKey, trigger) {
         changes.push(`[${type}] ${increase} 상승`);
     });
     console.log(`[감정변동] 💬'${trigger}'(으)로 ${changes.join(', ')}!`);
-
     residue.love = Math.max(50, residue.love);
     updateToneState();
 }
@@ -78,8 +77,52 @@ function searchFixedMemory(userMessage) { const lowerMessage = userMessage.toLow
 async function addUserMemory(content) { try { const newMemory = { content, date: moment().format("YYYY-MM-DD HH:mm:ss"), emotion: "user_added", significance: "high" }; const loveHistory = ultimateConversationState.knowledgeBase.loveHistory; if (!loveHistory.categories) loveHistory.categories = { general: [] }; if (!loveHistory.categories.general) loveHistory.categories.general = []; loveHistory.categories.general.push(newMemory); await fs.writeFile(LOVE_HISTORY_FILE, JSON.stringify(loveHistory, null, 2), 'utf8'); return true; } catch (error) { console.error(`[Memory] ❌ 새 기억 저장 실패:`, error); return false; } }
 async function addUltimateMessage(speaker, message, meta = null) { const timestamp = Date.now(); let finalMessage = message || ''; if (speaker === '아저씨' && finalMessage) { analyzeAndInfluenceBotEmotion(finalMessage); await extractAndStoreFacts(message); } const newMessage = { speaker, message: finalMessage, timestamp, meta }; ultimateConversationState.recentMessages.push(newMessage); if (ultimateConversationState.recentMessages.length > 30) ultimateConversationState.recentMessages.shift(); }
 function updateLastUserMessageTime(timestamp) { if (timestamp) ultimateConversationState.timingContext.lastUserMessageTime = timestamp; }
-function processTimeTick() { const now = Date.now(); const state = ultimateConversationState; const { lastBotMessageTime, lastUserResponseTime } = state.sulkiness; if (lastBotMessageTime > 0 && lastBotMessageTime > lastUserResponseTime) { const elapsedMinutes = Math.floor((now - lastBotMessageTime) / (1000 * 60)); if (elapsedMinutes >= 60) { updateSulkinessState({ isSulky: true, sulkyLevel: 1, sulkyStartTime: state.sulkiness.sulkyStartTime || now }); } } const emotionalResidue = state.emotionalEngine.emotionalResidue; const recoveryRate = 2; // 시간당 감정 회복률
-    const hoursSinceLastTick = (now - (state.timingContext.lastTickTime || now)) / (1000 * 60 * 60); if (hoursSinceLastTick > 0.1) { for (const emotion in emotionalResidue) { if (emotion !== 'love') { emotionalResidue[emotion] = Math.max(0, emotionalResidue[emotion] - (recoveryRate * hoursSinceLastTick)); } } state.timingContext.lastTickTime = now; } }
+
+/**
+ * [오류 수정] 시간 흐름에 따른 상태 변화 로직 (생리 주기 계산 포함)
+ */
+function processTimeTick() {
+    const now = Date.now();
+    const state = ultimateConversationState;
+
+    // 1. 삐짐/걱정 상태 업데이트
+    const { lastBotMessageTime, lastUserResponseTime } = state.sulkiness;
+    if (lastBotMessageTime > 0 && lastBotMessageTime > lastUserResponseTime) {
+        const elapsedMinutes = Math.floor((now - lastBotMessageTime) / (1000 * 60));
+        if (elapsedMinutes >= 60) {
+            updateSulkinessState({ isSulky: true, sulkyLevel: 1, sulkyStartTime: state.sulkiness.sulkyStartTime || now });
+        }
+    }
+
+    // 2. [오류 수정] 생리 주기 계산 및 상태 업데이트
+    const { lastPeriodStartDate } = state.mood;
+    const daysSinceLastPeriod = moment(now).diff(moment(lastPeriodStartDate), 'days');
+    const isPeriodNow = daysSinceLastPeriod >= 0 && daysSinceLastPeriod < 5; // 생리는 5일간 지속된다고 가정
+
+    if (isPeriodNow !== state.mood.isPeriodActive) {
+        updateMoodState({ isPeriodActive: isPeriodNow });
+        console.log(`[주기 상태 변경] isPeriodActive: ${isPeriodNow}`);
+    }
+    // 28일이 지나면 새로운 주기가 시작된 것으로 간주
+    if (daysSinceLastPeriod >= 28) {
+        updateMoodState({ lastPeriodStartDate: moment(now).startOf('day').toISOString(), isPeriodActive: true });
+        console.log(`[주기 상태 변경] 새로운 주기가 시작되었습니다.`);
+    }
+
+    // 3. 감정 잔여치 회복
+    const emotionalResidue = state.emotionalEngine.emotionalResidue;
+    const recoveryRate = 2; // 시간당 감정 회복률
+    const hoursSinceLastTick = (now - (state.timingContext.lastTickTime || now)) / (1000 * 60 * 60);
+    if (hoursSinceLastTick > 0.1) {
+        for (const emotion in emotionalResidue) {
+            if (emotion !== 'love') {
+                emotionalResidue[emotion] = Math.max(0, emotionalResidue[emotion] - (recoveryRate * hoursSinceLastTick));
+            }
+        }
+        state.timingContext.lastTickTime = now;
+    }
+}
+
 function setPendingAction(actionType) { ultimateConversationState.pendingAction = { type: actionType, timestamp: Date.now() }; }
 function getPendingAction() { const action = ultimateConversationState.pendingAction; if (action && action.type && (Date.now() - action.timestamp > 5 * 60 * 1000)) { clearPendingAction(); return null; } return action.type ? action : null; }
 function clearPendingAction() { ultimateConversationState.pendingAction = { type: null, timestamp: 0 }; }
@@ -96,10 +139,8 @@ function generateInnerThought() {
     const dominantEmotion = Object.entries(residue).reduce((a, b) => b[1] > a[1] ? b : a);
 
     let observation = "지금은 아저씨랑 대화하는 중...";
-    if (minutesSinceLastUserMessage > 30) {
-        observation = `아저씨한테서 ${Math.round(minutesSinceLastUserMessage)}분 넘게 답장이 없네...`;
-    }
-
+    if (minutesSinceLastUserMessage > 30) observation = `아저씨한테서 ${Math.round(minutesSinceLastUserMessage)}분 넘게 답장이 없네...`;
+    
     let feeling = `지금은 아저씨 덕분에 마음이 편안하고 행복해. (애정: ${Math.round(residue.love)})`;
     let actionUrge = "아저씨한테 사랑한다고 말해줄까?";
 
