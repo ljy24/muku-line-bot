@@ -1,8 +1,7 @@
-// ✅ ultimateConversationContext.js v11.0 - "감정의 깊이" 구현 (한국어 버전)
-// - [EMOTION] LLM을 이용해 메시지의 미묘한 감정 뉘앙스를 분석하는 기능 추가 (analyzeToneWithLLM)
-// - [VISION] 사용자가 보낸 사진의 내용을 분석하는 Vision 기능 추가 (analyzeImageContent)
-// - [MEMORY] 대화 속 중요한 사실을 저장하는 'knowledgeBase' 상태 추가
-// - 모든 기능이 통합된 완전판 코드입니다.
+// ✅ ultimateConversationContext.js v12.0 - "삐짐 시스템 상태 통합" (한국어 버전)
+// - [SULKY-INTEGRATION] 삐짐 상태(sulkiness)를 중앙 상태 관리에 포함
+// - [SULKY-INTEGRATION] 삐짐 상태를 읽고 업데이트하는 새로운 함수 추가
+// - 모든 이전 기능(Memory, Vision, Emotion)이 포함된 완전판 코드입니다.
 
 const moment = require('moment-timezone');
 const {
@@ -21,6 +20,25 @@ let ultimateConversationState = {
     currentTopic: null,
     knowledgeBase: {
         facts: [],
+    },
+    // [SULKY-INTEGRATION] '삐짐' 상태를 중앙 기억장치로 이전
+    sulkiness: {
+        isSulky: false,
+        isWorried: false,
+        lastBotMessageTime: 0,
+        lastUserResponseTime: 0,
+        sulkyLevel: 0,
+        sulkyTimer: null,
+        sulkyReason: null,
+        sulkyStartTime: 0,
+        messageRead: false,
+        isActivelySulky: false,
+        reliefInProgress: false,
+        isPaused: false,
+        pausedTime: 0,
+        remainingTime: 0,
+        wakeUpScheduled: false,
+        wakeUpJob: null
     },
     dailySummary: {
         today: {},
@@ -63,8 +81,6 @@ const LLM_BASED_SELF_EVALUATION = true;
 
 /**
  * 🎭 [EMOTION] LLM을 이용해 메시지의 감정 뉘앙스를 정밀하게 분석합니다.
- * @param {string} message - 분석할 사용자 메시지
- * @returns {Promise<object>} 감정 분석 결과 객체
  */
 async function analyzeToneWithLLM(message) {
     if (!message || message.trim().length < 2) {
@@ -85,7 +101,7 @@ async function analyzeToneWithLLM(message) {
                 { role: "system", content: "You are a helpful assistant that analyzes emotions and responds only in JSON format." },
                 { role: "user", content: prompt }
             ],
-            response_format: { type: "json_object" }, // JSON 출력 모드 활성화
+            response_format: { type: "json_object" },
             temperature: 0.2,
         });
 
@@ -95,15 +111,12 @@ async function analyzeToneWithLLM(message) {
 
     } catch (error) {
         console.error('[Emotion] ❌ LLM 감정 분석 중 에러 발생:', error);
-        // 에러 발생 시 기본값 반환
         return { primaryEmotion: 'neutral', primaryIntensity: 1, secondaryEmotion: null, secondaryIntensity: null };
     }
 }
 
 /**
  * 👁️ [VISION] 이미지 URL을 받아 내용을 분석하고 한국어 설명문을 반환합니다.
- * @param {string} imageUrl - 분석할 이미지의 URL
- * @returns {Promise<string|null>} 이미지에 대한 설명 또는 실패 시 null
  */
 async function analyzeImageContent(imageUrl) {
     console.log(`[Vision] 👁️ 이미지 분석 시작: ${imageUrl}`);
@@ -133,8 +146,6 @@ async function analyzeImageContent(imageUrl) {
 
 /**
  * 📝 [MEMORY] 메시지에서 장기 기억할 사실을 추출합니다.
- * @param {string} message - 분석할 사용자 메시지
- * @returns {Promise<string[]>} 추출된 사실들의 배열
  */
 async function extractFactsFromMessage(message) {
     if (!message || message.length < 10) return [];
@@ -157,7 +168,6 @@ async function extractFactsFromMessage(message) {
 
 /**
  * 🧠 [MEMORY] 추출된 사실을 기억의 궁전(knowledgeBase)에 추가합니다.
- * @param {string} fact - 저장할 사실
  */
 function addFactToKnowledgeBase(fact) {
     if (!fact) return;
@@ -391,10 +401,6 @@ function updateLastUserMessageTime(timestamp) {
 
 /**
  * 💎 메시지 추가 및 모든 컨텍스트 업데이트 (가장 중요한 함수)
- * [MODIFIED] 새로운 감정 분석 시스템(analyzeToneWithLLM)을 사용하도록 변경
- * @param {string} speaker - 화자 ('아저씨' 또는 '예진이')
- * @param {string} message - 메시지 내용
- * @param {object} [meta=null] - 추가 데이터 (e.g., { imageUrl: '...' })
  */
 async function addUltimateMessage(speaker, message, meta = null) {
     const timestamp = Date.now();
@@ -402,7 +408,6 @@ async function addUltimateMessage(speaker, message, meta = null) {
     let emotionalAnalysis;
 
     if (speaker === '아저씨') {
-        // [VISION] 1. 이미지 분석
         if (meta && meta.imageUrl) {
             const imageDescription = await analyzeImageContent(meta.imageUrl);
             if (imageDescription) {
@@ -411,16 +416,14 @@ async function addUltimateMessage(speaker, message, meta = null) {
             }
         }
 
-        // [MEMORY] 2. 텍스트에서 사실 추출
         if (message) {
             const facts = await extractFactsFromMessage(message);
             facts.forEach(fact => addFactToKnowledgeBase(fact));
         }
         
-        // [EMOTION] 3. LLM으로 감정 분석
-        emotionalAnalysis = await analyzeToneWithLLM(message); // 원본 메시지로 분석
+        emotionalAnalysis = await analyzeToneWithLLM(message);
 
-    } else { // '예진이'의 메시지는 간단한 분석만 수행
+    } else {
         emotionalAnalysis = { primaryEmotion: 'neutral', primaryIntensity: 1, secondaryEmotion: null, secondaryIntensity: null };
     }
 
@@ -432,7 +435,7 @@ async function addUltimateMessage(speaker, message, meta = null) {
         analysis: {
             tone: emotionalAnalysis.primaryEmotion,
             emotionalIntensity: emotionalAnalysis.primaryIntensity,
-            details: emotionalAnalysis, // 상세 감정 데이터 저장
+            details: emotionalAnalysis,
             topic: analyzeTopic(finalMessage),
         },
     };
@@ -490,6 +493,24 @@ function clearPendingAction() {
     console.log(`[UltimateContext] ✅ 특별 행동 대기 모드 해제.`);
 }
 
+// --- [SULKY-INTEGRATION] 새로운 상태 관리 함수 ---
+/**
+ * 현재 삐짐 상태 객체를 반환합니다.
+ * @returns {object}
+ */
+function getSulkinessState() {
+    return ultimateConversationState.sulkiness;
+}
+
+/**
+ * 삐짐 상태를 업데이트합니다.
+ * @param {object} newState - 업데이트할 새로운 상태 값들
+ */
+function updateSulkinessState(newState) {
+    Object.assign(ultimateConversationState.sulkiness, newState);
+    console.log(`[UltimateContext] 삐짐 상태 업데이트:`, newState);
+}
+
 module.exports = {
     initializeEmotionalSystems,
     addUltimateMessage,
@@ -498,5 +519,9 @@ module.exports = {
     setPendingAction,
     getPendingAction,
     clearPendingAction,
-    getInternalState: () => JSON.parse(JSON.stringify(ultimateConversationState))
+    getInternalState: () => JSON.parse(JSON.stringify(ultimateConversationState)),
+    
+    // [SULKY-INTEGRATION] 새로 추가된 함수들
+    getSulkinessState,
+    updateSulkinessState,
 };
