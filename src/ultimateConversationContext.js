@@ -1,8 +1,7 @@
-// --- START OF FILE: ultimateConversationContext.js ---
-// ✅ ultimateConversationContext.js v7.1 - "사진 피드백 모드" 구현 (한국어 버전)
-// - [NEW] 사진 전송 후 피드백을 기다리는 'pendingAction' 상태 추가
-// - [NEW] pendingAction을 설정하고, 확인하고, 초기화하는 함수 추가
-// - 기존 v7.0의 자기 학습 및 행동 파라미터 시스템은 그대로 유지
+// ✅ ultimateConversationContext.js v9.0 - "기억의 궁전" 구현 (한국어 버전)
+// - [NEW] 대화 속 중요한 사실을 저장하는 'knowledgeBase' 상태 추가
+// - [NEW] LLM을 이용해 메시지에서 기억할 만한 사실을 추출하는 기능 추가 (extractFactsFromMessage)
+// - [MODIFIED] addUltimateMessage와 generateContextualPrompt에 기억 저장 및 활용 로직 통합
 
 const moment = require('moment-timezone');
 const {
@@ -19,6 +18,10 @@ let ultimateConversationState = {
     recentMessages: [],
     currentTone: 'neutral',
     currentTopic: null,
+    // --- [MEMORY] 새로운 기억 저장소 ---
+    knowledgeBase: {
+        facts: [], // { fact: "내용", timestamp: 시간 } 형태로 저장됩니다.
+    },
     dailySummary: {
         today: {},
         yesterday: null
@@ -31,23 +34,20 @@ let ultimateConversationState = {
         pendingTopics: [],
         conversationSeeds: []
     },
-    // [NEW] 특별 행동 대기 상태 (사진 피드백 등)
     pendingAction: {
-        type: null, // 예: 'awaiting_photo_reaction'
+        type: null,
         timestamp: 0
     },
-    // [MODIFIED] 개성 및 학습 시스템 확장
     personalityConsistency: {
         frequentPhrases: {},
         speechPatternEvolution: [],
         selfEvaluations: [],
         lastSelfReflectionTime: 0,
-        // [NEW] 애기의 행동을 결정하는 핵심 파라미터 (0.0 ~ 1.0)
         behavioralParameters: {
-            affection: 0.7,     // 애정 표현 레벨 (높을수록 다정하고 애교가 많아짐)
-            playfulness: 0.5,   // 장난기 레벨 (높을수록 농담이나 재미있는 표현을 시도)
-            verbosity: 0.6,     // 수다스러움 레벨 (높을수록 길고 자세하게 말함)
-            initiative: 0.4     // 대화 주도성 레벨 (높을수록 먼저 질문하거나 새로운 주제를 제안)
+            affection: 0.7,
+            playfulness: 0.5,
+            verbosity: 0.6,
+            initiative: 0.4
         }
     },
     timingContext: {
@@ -57,11 +57,74 @@ let ultimateConversationState = {
     }
 };
 
-// [중요] 이 플래그를 true로 바꿔야 실제 LLM 자기 평가 및 학습이 활성화됩니다.
 const LLM_BASED_SELF_EVALUATION = true;
 
-// --- 헬퍼 및 분석 함수들 ---
+// --- [MEMORY] 신규 헬퍼 함수들 ---
+
+/**
+ * 📝 메시지에서 장기 기억할 사실을 추출합니다.
+ * @param {string} message - 분석할 사용자 메시지
+ * @returns {Promise<string[]>} 추출된 사실들의 배열
+ */
+async function extractFactsFromMessage(message) {
+    // 너무 짧은 메시지는 분석에서 제외하여 효율성 증대
+    if (message.length < 10) {
+        return [];
+    }
+
+    const prompt = `너는 중요한 정보를 기억하는 비서 AI야. 다음 문장에서 남자친구('아저씨')에 대한 장기적으로 기억할 만한 중요한 사실(생일, 기념일, 좋아하는 것, 싫어하는 것, 중요한 약속, 가족/친구 이름, 개인적인 경험 등)이 있다면, 그 사실들을 명사형 문장(~이다, ~함)으로 요약해서 JSON 문자열 배열 형태로 추출해줘. 예: ["아저씨의 생일은 10월 25일이다.", "아저씨는 민트초코를 싫어함."]. 기억할 정보가 전혀 없으면 '[]' (빈 배열)을 반환해줘.
+    
+    분석할 문장: "${message}"`;
+
+    try {
+        const response = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [{
+                role: "user",
+                content: prompt
+            }],
+            temperature: 0.1,
+        });
+
+        const content = response.choices[0].message.content;
+        // LLM이 반환한 문자열에서 JSON 배열 부분만 정확히 파싱
+        const jsonMatch = content.match(/\[.*\]/);
+        if (jsonMatch) {
+            return JSON.parse(jsonMatch[0]);
+        }
+        return [];
+
+    } catch (error) {
+        console.error('[기억 추출] ❌ 사실 추출 중 에러 발생:', error);
+        return [];
+    }
+}
+
+/**
+ * 🧠 추출된 사실을 기억의 궁전(knowledgeBase)에 추가합니다.
+ * @param {string} fact - 저장할 사실
+ */
+function addFactToKnowledgeBase(fact) {
+    if (!fact) return;
+
+    // 중복 기억 방지
+    const isDuplicate = ultimateConversationState.knowledgeBase.facts.some(item => item.fact === fact);
+    if (isDuplicate) {
+        console.log(`[기억 저장] ⏩ 이미 알고 있는 사실입니다: "${fact}"`);
+        return;
+    }
+
+    ultimateConversationState.knowledgeBase.facts.push({
+        fact: fact,
+        timestamp: Date.now()
+    });
+    console.log(`[기억 저장] ✅ 새로운 사실을 기억했습니다: "${fact}"`);
+}
+
+
+// --- 기존 헬퍼 및 분석 함수들 (변경 없음) ---
 function analyzeTimeContext(timestamp) {
+    /* ... 변경 없음 ... */
     const time = moment(timestamp).tz('Asia/Tokyo');
     const hour = time.hour();
     let timeOfDay;
@@ -76,7 +139,9 @@ function analyzeTimeContext(timestamp) {
         dayOfWeek: time.format('dddd')
     };
 }
+
 function analyzeTone(message) {
+    /* ... 변경 없음 ... */
     const lowerMessage = message.toLowerCase();
     if (lowerMessage.includes('ㅋㅋ') || lowerMessage.includes('ㅎㅎ')) return 'playful';
     if (lowerMessage.includes('사랑해') || lowerMessage.includes('좋아해')) return 'romantic';
@@ -85,7 +150,9 @@ function analyzeTone(message) {
     if (lowerMessage.includes('보고싶어')) return 'nostalgic';
     return 'neutral';
 }
+
 function analyzeTopic(message) {
+    /* ... 변경 없음 ... */
     const lowerMessage = message.toLowerCase();
     if (lowerMessage.includes('밥') || lowerMessage.includes('음식')) return 'food';
     if (lowerMessage.includes('일') || lowerMessage.includes('회사')) return 'work';
@@ -93,21 +160,32 @@ function analyzeTopic(message) {
     if (lowerMessage.includes('아파') || lowerMessage.includes('건강')) return 'health';
     return 'daily';
 }
+
 function calculateEmotionalIntensity(message, tone) {
+    /* ... 변경 없음 ... */
     let intensity = (tone !== 'neutral') ? 3 : 1;
     if (message.length > 50) intensity += 2;
     if (message.includes('!') || message.includes('?')) intensity += 1;
     return Math.min(10, intensity);
 }
 
-// --- 상태 업데이트 함수들 ---
 function resetDailySummary() {
+    /* ... 변경 없음 ... */
     const todayDate = moment().tz('Asia/Tokyo').format('YYYY-MM-DD');
     ultimateConversationState.dailySummary.today = {
-        date: todayDate, mainTopics: new Set(), emotionalHighlights: [], totalMessages: 0, timeSpread: { start: null, end: null }
+        date: todayDate,
+        mainTopics: new Set(),
+        emotionalHighlights: [],
+        totalMessages: 0,
+        timeSpread: {
+            start: null,
+            end: null
+        }
     };
 }
+
 function updateDailySummary(newMessage) {
+    /* ... 변경 없음 ... */
     const todayDate = moment(newMessage.timestamp).tz('Asia/Tokyo').format('YYYY-MM-DD');
     let today = ultimateConversationState.dailySummary.today;
     if (!today || !today.date || today.date !== todayDate) {
@@ -121,20 +199,30 @@ function updateDailySummary(newMessage) {
     const topic = newMessage.analysis.topic;
     if (topic !== 'daily') today.mainTopics.add(topic);
     if (newMessage.analysis.emotionalIntensity > 6) {
-        today.emotionalHighlights.push({ emotion: newMessage.analysis.tone, intensity: newMessage.analysis.emotionalIntensity, message: newMessage.message.substring(0, 30) });
+        today.emotionalHighlights.push({
+            emotion: newMessage.analysis.tone,
+            intensity: newMessage.analysis.emotionalIntensity,
+            message: newMessage.message.substring(0, 30)
+        });
     }
 }
+
 function updateCumulativePatterns(newMessage) {
+    /* ... 변경 없음 ... */
     const emotion = newMessage.analysis.tone;
     if (emotion === 'neutral') return;
     const trends = ultimateConversationState.cumulativePatterns.emotionalTrends;
-    if (!trends[emotion]) trends[emotion] = { count: 0, totalIntensity: 0 };
+    if (!trends[emotion]) trends[emotion] = {
+        count: 0,
+        totalIntensity: 0
+    };
     trends[emotion].count++;
     trends[emotion].totalIntensity += newMessage.analysis.emotionalIntensity;
 }
 
-// --- 자기 학습 및 행동 반영 함수들 ---
+// --- 자기 학습 및 행동 반영 함수들 (변경 없음) ---
 async function evaluateMyResponse(myMessage) {
+    /* ... 변경 없음 ... */
     if (!LLM_BASED_SELF_EVALUATION) return;
 
     const recent = ultimateConversationState.recentMessages;
@@ -152,7 +240,13 @@ async function evaluateMyResponse(myMessage) {
 
     try {
         const response = await openai.chat.completions.create({
-            model: "gpt-4o-mini", messages: [{ role: "user", content: prompt }], max_tokens: 100, temperature: 0.5,
+            model: "gpt-4o-mini",
+            messages: [{
+                role: "user",
+                content: prompt
+            }],
+            max_tokens: 100,
+            temperature: 0.5,
         });
 
         const feedback = response.choices[0].message.content || "";
@@ -176,11 +270,8 @@ async function evaluateMyResponse(myMessage) {
     }
 }
 
-/**
- * 피드백을 바탕으로 행동 파라미터를 조절하는 함수
- * @param {string} feedback - LLM의 제안 문장
- */
 function adjustBehavioralParameters(feedback) {
+    /* ... 변경 없음 ... */
     const params = ultimateConversationState.personalityConsistency.behavioralParameters;
     const adjustment = 0.05; // 한 번에 조절되는 양
 
@@ -207,18 +298,27 @@ function adjustBehavioralParameters(feedback) {
 }
 
 
-// --- 프롬프트 생성 함수 ---
+// --- [MODIFIED] 프롬프트 생성 함수 ---
 function generateContextualPrompt(basePrompt) {
     let ultimatePrompt = basePrompt;
     const state = ultimateConversationState;
 
-    // 1. 최근 대화 요약
+    // 1. 최근 대화 요약 (변경 없음)
     if (state.recentMessages.length > 0) {
         const recentContext = state.recentMessages.slice(-5).map(msg => `${msg.speaker}: ${msg.message}`).join('\n');
         ultimatePrompt += `\n\n[최근 대화 흐름]\n${recentContext}`;
     }
 
-    // 2. 현재 학습된 행동 전략 지시
+    // --- [MEMORY] 기억 활용 로직 추가 ---
+    // 2. 장기 기억(사실)을 프롬프트에 추가
+    const facts = state.knowledgeBase.facts;
+    if (facts.length > 0) {
+        // 가장 최근에 기억한 5가지 사실을 보여줌
+        const recentFacts = facts.slice(-5).map(f => `- ${f.fact}`).join('\n');
+        ultimatePrompt += `\n\n[장기 기억(사실)]\n(이것은 내가 아저씨에 대해 기억하고 있는 중요한 사실들이야. 이 사실들을 대화에 자연스럽게 활용하거나, 사실과 관련된 질문을 해봐.)\n${recentFacts}`;
+    }
+
+    // 3. 현재 학습된 행동 전략 지시 (변경 없음)
     const params = state.personalityConsistency.behavioralParameters;
     let behaviorInstructions = [];
     if (params.affection > 0.75) behaviorInstructions.push("'우리 아저씨' 같은 애칭을 사용하고, 하트 이모티콘을 포함시켜서 더 다정하게 말해줘.");
@@ -232,7 +332,7 @@ function generateContextualPrompt(basePrompt) {
         ultimatePrompt += `\n\n[AI 행동 전략]\n${behaviorInstructions.join(' ')}`;
     }
 
-    // 3. 오늘 요약 및 누적 패턴
+    // 4. 오늘 요약 및 누적 패턴 (변경 없음)
     const today = state.dailySummary.today;
     if (today && today.date) {
         const topics = Array.from(today.mainTopics).join(', ') || '일상 대화';
@@ -243,13 +343,13 @@ function generateContextualPrompt(basePrompt) {
         ultimatePrompt += `\n\n[우리의 주된 감정]\n우리는 주로 '${topEmotion[0]}' 감정을 많이 느껴왔어.`;
     }
 
-    // 4. 자기 성찰 피드백 (참고용)
+    // 5. 자기 성찰 피드백 (변경 없음)
     const lastEvaluation = state.personalityConsistency.selfEvaluations.slice(-1)[0];
     if (lastEvaluation && lastEvaluation.score < 8) {
         ultimatePrompt += `\n\n[AI 자기 개선 노트]\n(참고: 이전 답변에 대한 피드백은 "${lastEvaluation.feedback}"이었어.)`;
     }
 
-    ultimatePrompt += `\n\n[최종 지시] 위의 모든 맥락과 '행동 전략'을 종합적으로 고려해서, 가장 사람답고, 애정 어린 '예진이'의 다음 말을 해줘.`;
+    ultimatePrompt += `\n\n[최종 지시] 위의 모든 맥락과 '행동 전략', 그리고 '장기 기억'을 종합적으로 고려해서, 가장 사람답고, 애정 어린 '예진이'의 다음 말을 해줘.`;
     return ultimatePrompt;
 }
 
@@ -257,19 +357,12 @@ function generateContextualPrompt(basePrompt) {
 // ========================= 🚀 EXPORT되는 메인 함수들 🚀 =======================
 // =========================================================================
 
-/**
- * 🚀 시스템 초기화 (서버 시작 시 1회 호출)
- */
 function initializeEmotionalSystems() {
     console.log('[UltimateContext] 🚀 모든 마음과 기억 시스템을 초기화합니다...');
     resetDailySummary();
     console.log('[UltimateContext] ✅ 초기화 완료. 대화를 시작할 준비가 되었습니다.');
 }
 
-/**
- * 🙋‍♂️ 아저씨의 마지막 메시지 시간 기록
- * @param {number} timestamp - 메시지 수신 타임스탬프 (e.g., Date.now())
- */
 function updateLastUserMessageTime(timestamp) {
     if (timestamp) {
         ultimateConversationState.timingContext.lastUserMessageTime = timestamp;
@@ -278,14 +371,26 @@ function updateLastUserMessageTime(timestamp) {
 
 /**
  * 💎 메시지 추가 및 모든 컨텍스트 업데이트 (가장 중요한 함수)
+ * [MODIFIED] 이제 async 함수입니다. 사실 추출을 위해 await를 사용합니다.
  * @param {string} speaker - 화자 ('아저씨' 또는 '예진이')
  * @param {string} message - 메시지 내용
  * @param {object} [meta=null] - 추가 데이터 (e.g., 사진 정보)
  */
-function addUltimateMessage(speaker, message, meta = null) {
+async function addUltimateMessage(speaker, message, meta = null) {
     const timestamp = Date.now();
+
+    // --- [MEMORY] 기억 저장 로직 추가 ---
+    // '아저씨'가 보낸 메시지에서만 사실을 추출하고 기억합니다.
+    if (speaker === '아저씨' && message) {
+        const facts = await extractFactsFromMessage(message);
+        facts.forEach(fact => addFactToKnowledgeBase(fact));
+    }
+
     const newMessage = {
-        speaker, message, timestamp, meta,
+        speaker,
+        message,
+        timestamp,
+        meta,
         analysis: {
             tone: analyzeTone(message),
             topic: analyzeTopic(message),
@@ -296,6 +401,7 @@ function addUltimateMessage(speaker, message, meta = null) {
     if (ultimateConversationState.recentMessages.length > 30) {
         ultimateConversationState.recentMessages.shift();
     }
+
     ultimateConversationState.currentTone = newMessage.analysis.tone;
     ultimateConversationState.currentTopic = newMessage.analysis.topic;
     ultimateConversationState.timingContext.lastMessageTime = timestamp;
@@ -308,20 +414,13 @@ function addUltimateMessage(speaker, message, meta = null) {
     console.log(`[UltimateContext] 💎 메시지 기억 완료: ${speaker} | ${message.substring(0, 20)}...`);
 }
 
-/**
- * 🤖 현재 모든 맥락을 종합하여 LLM 프롬프트를 생성
- * @param {string} basePrompt - 기본 페르소나 프롬프트
- * @returns {string} 맥락이 풍부하게 추가된 최종 프롬프트
- */
+
 function getUltimateContextualPrompt(basePrompt) {
     return generateContextualPrompt(basePrompt);
 }
 
-/**
- * [NEW] 특별 행동 상태를 설정하는 함수
- * @param {string} actionType - 설정할 행동 타입 (예: 'awaiting_photo_reaction')
- */
 function setPendingAction(actionType) {
+    /* ... 변경 없음 ... */
     if (!actionType) return;
     ultimateConversationState.pendingAction = {
         type: actionType,
@@ -330,13 +429,9 @@ function setPendingAction(actionType) {
     console.log(`[UltimateContext] ⏳ 특별 행동 대기 모드 설정: ${actionType}`);
 }
 
-/**
- * [NEW] 현재 대기 중인 특별 행동을 가져오는 함수
- * @returns {object | null} 대기 중인 행동 객체 또는 null
- */
 function getPendingAction() {
+    /* ... 변경 없음 ... */
     const action = ultimateConversationState.pendingAction;
-    // 5분 이상 지난 action은 만료시켜서 AI가 계속 기다리는 문제를 방지
     if (action && action.type && (Date.now() - action.timestamp > 5 * 60 * 1000)) {
         console.log(`[UltimateContext] ⌛️ 대기 모드 시간 초과로 자동 해제: ${action.type}`);
         clearPendingAction();
@@ -345,25 +440,22 @@ function getPendingAction() {
     return action.type ? action : null;
 }
 
-/**
- * [NEW] 특별 행동 상태를 초기화하는 함수
- */
 function clearPendingAction() {
-    ultimateConversationState.pendingAction = { type: null, timestamp: 0 };
+    /* ... 변경 없음 ... */
+    ultimateConversationState.pendingAction = {
+        type: null,
+        timestamp: 0
+    };
     console.log(`[UltimateContext] ✅ 특별 행동 대기 모드 해제.`);
 }
 
 module.exports = {
     initializeEmotionalSystems,
-    addUltimateMessage,
+    addUltimateMessage, // [MODIFIED] 이제 async 함수입니다.
     getUltimateContextualPrompt,
     updateLastUserMessageTime,
-
-    // [MODIFIED] 새로 추가된 함수들을 export
     setPendingAction,
     getPendingAction,
     clearPendingAction,
-
     getInternalState: () => JSON.parse(JSON.stringify(ultimateConversationState))
 };
-// --- END OF FILE: ultimateConversationContext.js ---
