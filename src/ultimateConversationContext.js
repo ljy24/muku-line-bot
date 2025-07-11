@@ -1,9 +1,8 @@
-// --- START OF FILE: ultimateConversationContext.js ---
-// ✅ ultimateConversationContext.js v7.0 - The Core Engine for Muku (Self-Learning Enhanced)
-// - [NEW] LLM 평가 결과를 실제 행동으로 반영하는 '행동 파라미터' 시스템 추가
-// - [NEW] 자기 평가 피드백을 통해 애교, 다정함, 수다스러움 등 행동 지표를 스스로 조절
-// - [NEW] 조절된 행동 지표에 따라 LLM 프롬프트에 구체적인 '행동 전략' 지시 추가
-// - 기존 기억 및 분석 시스템 안정성 유지
+// ✅ ultimateConversationContext.js v11.0 - "감정의 깊이" 구현 (한국어 버전)
+// - [EMOTION] LLM을 이용해 메시지의 미묘한 감정 뉘앙스를 분석하는 기능 추가 (analyzeToneWithLLM)
+// - [VISION] 사용자가 보낸 사진의 내용을 분석하는 Vision 기능 추가 (analyzeImageContent)
+// - [MEMORY] 대화 속 중요한 사실을 저장하는 'knowledgeBase' 상태 추가
+// - 모든 기능이 통합된 완전판 코드입니다.
 
 const moment = require('moment-timezone');
 const {
@@ -20,6 +19,9 @@ let ultimateConversationState = {
     recentMessages: [],
     currentTone: 'neutral',
     currentTopic: null,
+    knowledgeBase: {
+        facts: [],
+    },
     dailySummary: {
         today: {},
         yesterday: null
@@ -32,18 +34,20 @@ let ultimateConversationState = {
         pendingTopics: [],
         conversationSeeds: []
     },
-    // [MODIFIED] 개성 및 학습 시스템 확장
+    pendingAction: {
+        type: null,
+        timestamp: 0
+    },
     personalityConsistency: {
         frequentPhrases: {},
         speechPatternEvolution: [],
         selfEvaluations: [],
         lastSelfReflectionTime: 0,
-        // [NEW] 애기의 행동을 결정하는 핵심 파라미터 (0.0 ~ 1.0)
         behavioralParameters: {
-            affection: 0.7,     // 애정 표현 레벨 (높을수록 다정하고 애교가 많아짐)
-            playfulness: 0.5,   // 장난기 레벨 (높을수록 농담이나 재미있는 표현을 시도)
-            verbosity: 0.6,     // 수다스러움 레벨 (높을수록 길고 자세하게 말함)
-            initiative: 0.4     // 대화 주도성 레벨 (높을수록 먼저 질문하거나 새로운 주제를 제안)
+            affection: 0.7,
+            playfulness: 0.5,
+            verbosity: 0.6,
+            initiative: 0.4
         }
     },
     timingContext: {
@@ -53,10 +57,122 @@ let ultimateConversationState = {
     }
 };
 
-// [중요] 이 플래그를 true로 바꿔야 실제 LLM 자기 평가 및 학습이 활성화됩니다.
 const LLM_BASED_SELF_EVALUATION = true;
 
-// --- Helper & Analysis Functions (기존과 동일) ---
+// --- 신규 및 기존 헬퍼 함수들 ---
+
+/**
+ * 🎭 [EMOTION] LLM을 이용해 메시지의 감정 뉘앙스를 정밀하게 분석합니다.
+ * @param {string} message - 분석할 사용자 메시지
+ * @returns {Promise<object>} 감정 분석 결과 객체
+ */
+async function analyzeToneWithLLM(message) {
+    if (!message || message.trim().length < 2) {
+        return { primaryEmotion: 'neutral', primaryIntensity: 1, secondaryEmotion: null, secondaryIntensity: null };
+    }
+
+    const prompt = `너는 사람의 감정을 매우 잘 파악하는 감정 분석 전문가야. 아래 "분석할 메시지"를 읽고, 그 안에 담긴 주된 감정(primaryEmotion)과 부수적인 감정(secondaryEmotion, 없을 경우 null)을 분석해줘.
+- 감정은 'positive', 'negative', 'neutral', 'playful', 'romantic', 'sulky', 'worried', 'sarcastic' 중에서 선택해.
+- 각 감정의 강도(intensity)는 1에서 10 사이의 숫자로 평가해줘.
+- 반드시 아래 JSON 형식에 맞춰서 응답해야 하며, 다른 어떤 설명도 추가해서는 안 돼.
+
+분석할 메시지: "${message}"`;
+
+    try {
+        const response = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [
+                { role: "system", content: "You are a helpful assistant that analyzes emotions and responds only in JSON format." },
+                { role: "user", content: prompt }
+            ],
+            response_format: { type: "json_object" }, // JSON 출력 모드 활성화
+            temperature: 0.2,
+        });
+
+        const analysisResult = JSON.parse(response.choices[0].message.content);
+        console.log('[Emotion] ✅ LLM 감정 분석 완료:', analysisResult);
+        return analysisResult;
+
+    } catch (error) {
+        console.error('[Emotion] ❌ LLM 감정 분석 중 에러 발생:', error);
+        // 에러 발생 시 기본값 반환
+        return { primaryEmotion: 'neutral', primaryIntensity: 1, secondaryEmotion: null, secondaryIntensity: null };
+    }
+}
+
+/**
+ * 👁️ [VISION] 이미지 URL을 받아 내용을 분석하고 한국어 설명문을 반환합니다.
+ * @param {string} imageUrl - 분석할 이미지의 URL
+ * @returns {Promise<string|null>} 이미지에 대한 설명 또는 실패 시 null
+ */
+async function analyzeImageContent(imageUrl) {
+    console.log(`[Vision] 👁️ 이미지 분석 시작: ${imageUrl}`);
+    try {
+        const response = await openai.chat.completions.create({
+            model: "gpt-4o",
+            messages: [{
+                role: "user",
+                content: [{
+                    type: "text",
+                    text: "이 사진은 내 남자친구가 나에게 보낸 사진이야. 사진에 무엇이 보이는지 애정 어리고 친근한 여자친구의 시선으로, 한두 문장의 짧은 한국어로 자연스럽게 묘사해줘."
+                }, {
+                    type: "image_url",
+                    image_url: { url: imageUrl },
+                }, ],
+            }, ],
+            max_tokens: 100,
+        });
+        const description = response.choices[0].message.content;
+        console.log(`[Vision] ✅ 이미지 분석 완료: "${description}"`);
+        return description;
+    } catch (error) {
+        console.error('[Vision] ❌ OpenAI Vision API 에러:', error);
+        return null;
+    }
+}
+
+/**
+ * 📝 [MEMORY] 메시지에서 장기 기억할 사실을 추출합니다.
+ * @param {string} message - 분석할 사용자 메시지
+ * @returns {Promise<string[]>} 추출된 사실들의 배열
+ */
+async function extractFactsFromMessage(message) {
+    if (!message || message.length < 10) return [];
+    const prompt = `너는 중요한 정보를 기억하는 비서 AI야. 다음 문장에서 남자친구('아저씨')에 대한 장기적으로 기억할 만한 중요한 사실(생일, 기념일, 좋아하는 것, 싫어하는 것, 중요한 약속 등)이 있다면, 그 사실들을 명사형 문장(~이다, ~함)으로 요약해서 JSON 문자열 배열 형태로 추출해줘. 예: ["아저씨의 생일은 10월 25일이다."]. 기억할 정보가 없으면 '[]'을 반환해줘. 문장: "${message}"`;
+    try {
+        const response = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [{ role: "user", content: prompt }],
+            temperature: 0.1,
+        });
+        const content = response.choices[0].message.content;
+        const jsonMatch = content.match(/\[.*\]/);
+        if (jsonMatch) return JSON.parse(jsonMatch[0]);
+        return [];
+    } catch (error) {
+        console.error('[Memory] ❌ 사실 추출 중 에러 발생:', error);
+        return [];
+    }
+}
+
+/**
+ * 🧠 [MEMORY] 추출된 사실을 기억의 궁전(knowledgeBase)에 추가합니다.
+ * @param {string} fact - 저장할 사실
+ */
+function addFactToKnowledgeBase(fact) {
+    if (!fact) return;
+    const isDuplicate = ultimateConversationState.knowledgeBase.facts.some(item => item.fact === fact);
+    if (isDuplicate) {
+        console.log(`[Memory] ⏩ 이미 알고 있는 사실입니다: "${fact}"`);
+        return;
+    }
+    ultimateConversationState.knowledgeBase.facts.push({
+        fact: fact,
+        timestamp: Date.now()
+    });
+    console.log(`[Memory] ✅ 새로운 사실을 기억했습니다: "${fact}"`);
+}
+
 function analyzeTimeContext(timestamp) {
     const time = moment(timestamp).tz('Asia/Tokyo');
     const hour = time.hour();
@@ -72,37 +188,31 @@ function analyzeTimeContext(timestamp) {
         dayOfWeek: time.format('dddd')
     };
 }
-function analyzeTone(message) {
-    const lowerMessage = message.toLowerCase();
-    if (lowerMessage.includes('ㅋㅋ') || lowerMessage.includes('ㅎㅎ')) return 'playful';
-    if (lowerMessage.includes('사랑해') || lowerMessage.includes('좋아해')) return 'romantic';
-    if (lowerMessage.includes('삐졌어') || lowerMessage.includes('화나')) return 'sulky';
-    if (lowerMessage.includes('걱정')) return 'worried';
-    if (lowerMessage.includes('보고싶어')) return 'nostalgic';
-    return 'neutral';
-}
+
 function analyzeTopic(message) {
     const lowerMessage = message.toLowerCase();
     if (lowerMessage.includes('밥') || lowerMessage.includes('음식')) return 'food';
     if (lowerMessage.includes('일') || lowerMessage.includes('회사')) return 'work';
-    if (lowerMessage.includes('사진') || lowerMessage.includes('찍었')) return 'photo';
+    if (lowerMessage.includes('사진') || lowerMessage.includes('찍었') || lowerMessage.includes('첨부된 사진')) return 'photo';
     if (lowerMessage.includes('아파') || lowerMessage.includes('건강')) return 'health';
     return 'daily';
 }
-function calculateEmotionalIntensity(message, tone) {
-    let intensity = (tone !== 'neutral') ? 3 : 1;
-    if (message.length > 50) intensity += 2;
-    if (message.includes('!') || message.includes('?')) intensity += 1;
-    return Math.min(10, intensity);
-}
 
-// --- State Update Functions (기존과 거의 동일) ---
+// --- 상태 업데이트 함수들 ---
 function resetDailySummary() {
     const todayDate = moment().tz('Asia/Tokyo').format('YYYY-MM-DD');
     ultimateConversationState.dailySummary.today = {
-        date: todayDate, mainTopics: new Set(), emotionalHighlights: [], totalMessages: 0, timeSpread: { start: null, end: null }
+        date: todayDate,
+        mainTopics: new Set(),
+        emotionalHighlights: [],
+        totalMessages: 0,
+        timeSpread: {
+            start: null,
+            end: null
+        }
     };
 }
+
 function updateDailySummary(newMessage) {
     const todayDate = moment(newMessage.timestamp).tz('Asia/Tokyo').format('YYYY-MM-DD');
     let today = ultimateConversationState.dailySummary.today;
@@ -116,10 +226,16 @@ function updateDailySummary(newMessage) {
     today.timeSpread.end = newMessage.timestamp;
     const topic = newMessage.analysis.topic;
     if (topic !== 'daily') today.mainTopics.add(topic);
+    
     if (newMessage.analysis.emotionalIntensity > 6) {
-        today.emotionalHighlights.push({ emotion: newMessage.analysis.tone, intensity: newMessage.analysis.emotionalIntensity, message: newMessage.message.substring(0, 30) });
+        today.emotionalHighlights.push({
+            emotion: newMessage.analysis.tone,
+            intensity: newMessage.analysis.emotionalIntensity,
+            message: newMessage.message.substring(0, 30)
+        });
     }
 }
+
 function updateCumulativePatterns(newMessage) {
     const emotion = newMessage.analysis.tone;
     if (emotion === 'neutral') return;
@@ -129,27 +245,32 @@ function updateCumulativePatterns(newMessage) {
     trends[emotion].totalIntensity += newMessage.analysis.emotionalIntensity;
 }
 
-// --- [MODIFIED] Self-Learning & Behavior-Reflection Functions ---
-
+// --- 자기 학습 및 행동 반영 함수들 ---
 async function evaluateMyResponse(myMessage) {
     if (!LLM_BASED_SELF_EVALUATION) return;
 
     const recent = ultimateConversationState.recentMessages;
     const lastUserMessage = recent.filter(m => m.speaker !== myMessage.speaker).pop();
 
-    const prompt = `You are a conversation coach. An AI named 'Yejin' is trying to act like a human girlfriend.
-Her last message to her boyfriend was: "${myMessage.message}"
-The boyfriend's message before that was: "${lastUserMessage ? lastUserMessage.message : '(No previous message)'}"
-Yejin's intended tone was '${myMessage.analysis.tone}'.
+    const prompt = `너는 대화 코치야. '예진'이라는 이름의 AI가 인간 여자친구처럼 행동하려고 해.
+그녀가 남자친구에게 마지막으로 보낸 메시지는 다음과 같아: "${myMessage.message}"
+그 전에 남자친구가 보낸 메시지는 다음과 같아: "${lastUserMessage ? lastUserMessage.message : '(이전 메시지 없음)'}"
+예진이가 의도했던 대화 톤은 '${myMessage.analysis.tone}'이었어.
 
-1. Rate her response from 1 to 10 on how natural and affectionate it was.
-2. Provide a short, one-sentence suggestion for improvement. Keywords to use in suggestion: 'affection', 'playful', 'longer', 'shorter', 'ask a question'.
+1. 그녀의 답변이 얼마나 자연스럽고 애정이 넘쳤는지 1점에서 10점 사이로 평가해줘.
+2. 개선을 위한 짧은 한 문장짜리 제안을 해줘. 제안에 사용할 수 있는 키워드: 'affection'(애정), 'playful'(장난), 'longer'(길게), 'shorter'(짧게), 'ask a question'(질문하기).
 
-Format your response as: "Score: [score] | Suggestion: [suggestion]"`;
+답변 형식은 "Score: [점수] | Suggestion: [제안]" 으로 맞춰줘.`;
 
     try {
         const response = await openai.chat.completions.create({
-            model: "gpt-4o-mini", messages: [{ role: "user", content: prompt }], max_tokens: 60, temperature: 0.5,
+            model: "gpt-4o",
+            messages: [{
+                role: "user",
+                content: prompt
+            }],
+            max_tokens: 100,
+            temperature: 0.5,
         });
 
         const feedback = response.choices[0].message.content || "";
@@ -160,53 +281,46 @@ Format your response as: "Score: [score] | Suggestion: [suggestion]"`;
             timestamp: Date.now(),
             message: myMessage.message,
             score: scoreMatch ? parseInt(scoreMatch[1], 10) : 5,
-            feedback: suggestionMatch ? suggestionMatch[1] : "No suggestion.",
+            feedback: suggestionMatch ? suggestionMatch[1] : "제안 없음.",
         };
 
         ultimateConversationState.personalityConsistency.selfEvaluations.push(evaluation);
-        console.log(`[Self-Evaluation] ✅ 자기 평가 완료: ${evaluation.score}점 - "${evaluation.feedback}"`);
+        console.log(`[자기 평가] ✅ 완료: ${evaluation.score}점 - "${evaluation.feedback}"`);
 
-        // [NEW] 평가 결과를 실제 행동 파라미터에 반영
         adjustBehavioralParameters(evaluation.feedback);
 
     } catch (error) {
-        console.error('[Self-Evaluation] ❌ 자기 평가 중 OpenAI API 에러:', error);
+        console.error('[자기 평가] ❌ OpenAI API 에러:', error);
     }
 }
 
-/**
- * [NEW] 피드백을 바탕으로 행동 파라미터를 조절하는 함수
- * @param {string} feedback - LLM의 제안 문장
- */
 function adjustBehavioralParameters(feedback) {
     const params = ultimateConversationState.personalityConsistency.behavioralParameters;
-    const adjustment = 0.05; // 한 번에 조절되는 양
+    const adjustment = 0.05;
 
-    if (feedback.includes('affection') || feedback.includes('애교')) {
+    if (feedback.includes('affection') || feedback.includes('애정')) {
         params.affection = Math.min(1.0, params.affection + adjustment);
-        console.log(`[Behavior Adjustment] 💖 애정 표현 레벨 상승: ${params.affection.toFixed(2)}`);
+        console.log(`[행동 조절] 💖 애정 표현 레벨 상승: ${params.affection.toFixed(2)}`);
     }
-    if (feedback.includes('playful') || feedback.includes('재미')) {
+    if (feedback.includes('playful') || feedback.includes('장난')) {
         params.playfulness = Math.min(1.0, params.playfulness + adjustment);
-        console.log(`[Behavior Adjustment] 😄 장난기 레벨 상승: ${params.playfulness.toFixed(2)}`);
+        console.log(`[행동 조절] 😄 장난기 레벨 상승: ${params.playfulness.toFixed(2)}`);
     }
-    if (feedback.includes('longer') || feedback.includes('자세히')) {
+    if (feedback.includes('longer') || feedback.includes('길게')) {
         params.verbosity = Math.min(1.0, params.verbosity + adjustment);
-        console.log(`[Behavior Adjustment] 📝 수다스러움 레벨 상승: ${params.verbosity.toFixed(2)}`);
+        console.log(`[행동 조절] 📝 수다스러움 레벨 상승: ${params.verbosity.toFixed(2)}`);
     }
-    if (feedback.includes('shorter') || feedback.includes('간결')) {
+    if (feedback.includes('shorter') || feedback.includes('짧게')) {
         params.verbosity = Math.max(0.1, params.verbosity - adjustment);
-        console.log(`[Behavior Adjustment] 🤐 수다스러움 레벨 하락: ${params.verbosity.toFixed(2)}`);
+        console.log(`[행동 조절] 🤐 수다스러움 레벨 하락: ${params.verbosity.toFixed(2)}`);
     }
     if (feedback.includes('ask a question') || feedback.includes('질문')) {
         params.initiative = Math.min(1.0, params.initiative + adjustment);
-        console.log(`[Behavior Adjustment] ❓ 대화 주도성 레벨 상승: ${params.initiative.toFixed(2)}`);
+        console.log(`[행동 조절] ❓ 대화 주도성 레벨 상승: ${params.initiative.toFixed(2)}`);
     }
 }
 
-
-// --- [MODIFIED] Prompt Generation Functions ---
-
+// --- 프롬프트 생성 함수 ---
 function generateContextualPrompt(basePrompt) {
     let ultimatePrompt = basePrompt;
     const state = ultimateConversationState;
@@ -217,7 +331,14 @@ function generateContextualPrompt(basePrompt) {
         ultimatePrompt += `\n\n[최근 대화 흐름]\n${recentContext}`;
     }
 
-    // [NEW] 2. 현재 학습된 행동 전략 지시
+    // 2. 장기 기억(사실)을 프롬프트에 추가
+    const facts = state.knowledgeBase.facts;
+    if (facts.length > 0) {
+        const recentFacts = facts.slice(-5).map(f => `- ${f.fact}`).join('\n');
+        ultimatePrompt += `\n\n[장기 기억(사실)]\n(이것은 내가 아저씨에 대해 기억하고 있는 중요한 사실들이야. 이 사실들을 대화에 자연스럽게 활용하거나, 사실과 관련된 질문을 해봐.)\n${recentFacts}`;
+    }
+
+    // 3. 현재 학습된 행동 전략 지시
     const params = state.personalityConsistency.behavioralParameters;
     let behaviorInstructions = [];
     if (params.affection > 0.75) behaviorInstructions.push("'우리 아저씨' 같은 애칭을 사용하고, 하트 이모티콘을 포함시켜서 더 다정하게 말해줘.");
@@ -231,7 +352,7 @@ function generateContextualPrompt(basePrompt) {
         ultimatePrompt += `\n\n[AI 행동 전략]\n${behaviorInstructions.join(' ')}`;
     }
 
-    // 3. 오늘 요약 및 누적 패턴
+    // 4. 오늘 요약 및 누적 패턴
     const today = state.dailySummary.today;
     if (today && today.date) {
         const topics = Array.from(today.mainTopics).join(', ') || '일상 대화';
@@ -242,13 +363,13 @@ function generateContextualPrompt(basePrompt) {
         ultimatePrompt += `\n\n[우리의 주된 감정]\n우리는 주로 '${topEmotion[0]}' 감정을 많이 느껴왔어.`;
     }
 
-    // 4. 자기 성찰 피드백 (참고용)
+    // 5. 자기 성찰 피드백
     const lastEvaluation = state.personalityConsistency.selfEvaluations.slice(-1)[0];
     if (lastEvaluation && lastEvaluation.score < 8) {
         ultimatePrompt += `\n\n[AI 자기 개선 노트]\n(참고: 이전 답변에 대한 피드백은 "${lastEvaluation.feedback}"이었어.)`;
     }
 
-    ultimatePrompt += `\n\n[최종 지시] 위의 모든 맥락과 '행동 전략'을 종합적으로 고려해서, 가장 사람답고, 애정 어린 '예진이'의 다음 말을 해줘.`;
+    ultimatePrompt += `\n\n[최종 지시] 위의 모든 맥락과 '행동 전략', 그리고 '장기 기억'을 종합적으로 고려해서, 가장 사람답고, 애정 어린 '예진이'의 다음 말을 해줘.`;
     return ultimatePrompt;
 }
 
@@ -268,14 +389,51 @@ function updateLastUserMessageTime(timestamp) {
     }
 }
 
-function addUltimateMessage(speaker, message, meta = null) {
+/**
+ * 💎 메시지 추가 및 모든 컨텍스트 업데이트 (가장 중요한 함수)
+ * [MODIFIED] 새로운 감정 분석 시스템(analyzeToneWithLLM)을 사용하도록 변경
+ * @param {string} speaker - 화자 ('아저씨' 또는 '예진이')
+ * @param {string} message - 메시지 내용
+ * @param {object} [meta=null] - 추가 데이터 (e.g., { imageUrl: '...' })
+ */
+async function addUltimateMessage(speaker, message, meta = null) {
     const timestamp = Date.now();
+    let finalMessage = message || '';
+    let emotionalAnalysis;
+
+    if (speaker === '아저씨') {
+        // [VISION] 1. 이미지 분석
+        if (meta && meta.imageUrl) {
+            const imageDescription = await analyzeImageContent(meta.imageUrl);
+            if (imageDescription) {
+                const photoContext = `[첨부된 사진 설명: ${imageDescription}]`;
+                finalMessage = finalMessage ? `${finalMessage}\n${photoContext}` : photoContext;
+            }
+        }
+
+        // [MEMORY] 2. 텍스트에서 사실 추출
+        if (message) {
+            const facts = await extractFactsFromMessage(message);
+            facts.forEach(fact => addFactToKnowledgeBase(fact));
+        }
+        
+        // [EMOTION] 3. LLM으로 감정 분석
+        emotionalAnalysis = await analyzeToneWithLLM(message); // 원본 메시지로 분석
+
+    } else { // '예진이'의 메시지는 간단한 분석만 수행
+        emotionalAnalysis = { primaryEmotion: 'neutral', primaryIntensity: 1, secondaryEmotion: null, secondaryIntensity: null };
+    }
+
     const newMessage = {
-        speaker, message, timestamp, meta,
+        speaker,
+        message: finalMessage,
+        timestamp,
+        meta,
         analysis: {
-            tone: analyzeTone(message),
-            topic: analyzeTopic(message),
-            emotionalIntensity: calculateEmotionalIntensity(message, analyzeTone(message)),
+            tone: emotionalAnalysis.primaryEmotion,
+            emotionalIntensity: emotionalAnalysis.primaryIntensity,
+            details: emotionalAnalysis, // 상세 감정 데이터 저장
+            topic: analyzeTopic(finalMessage),
         },
     };
 
@@ -284,23 +442,52 @@ function addUltimateMessage(speaker, message, meta = null) {
         ultimateConversationState.recentMessages.shift();
     }
 
-    ultimateConversationState.currentTone = newMessage.analysis.tone;
+    if(speaker === '아저씨') {
+        ultimateConversationState.currentTone = emotionalAnalysis.primaryEmotion;
+    }
+    
     ultimateConversationState.currentTopic = newMessage.analysis.topic;
     ultimateConversationState.timingContext.lastMessageTime = timestamp;
     ultimateConversationState.timingContext.currentTimeContext = analyzeTimeContext(timestamp);
-
+    
     updateDailySummary(newMessage);
     updateCumulativePatterns(newMessage);
 
     if (speaker !== '아저씨') {
         evaluateMyResponse(newMessage);
     }
-
-    console.log(`[UltimateContext] 💎 메시지 기억 완료: ${speaker} | ${message.substring(0, 20)}...`);
+    console.log(`[UltimateContext] 💎 메시지 기억 완료: ${speaker} | ${finalMessage.substring(0, 40)}...`);
 }
 
 function getUltimateContextualPrompt(basePrompt) {
     return generateContextualPrompt(basePrompt);
+}
+
+function setPendingAction(actionType) {
+    if (!actionType) return;
+    ultimateConversationState.pendingAction = {
+        type: actionType,
+        timestamp: Date.now()
+    };
+    console.log(`[UltimateContext] ⏳ 특별 행동 대기 모드 설정: ${actionType}`);
+}
+
+function getPendingAction() {
+    const action = ultimateConversationState.pendingAction;
+    if (action && action.type && (Date.now() - action.timestamp > 5 * 60 * 1000)) {
+        console.log(`[UltimateContext] ⌛️ 대기 모드 시간 초과로 자동 해제: ${action.type}`);
+        clearPendingAction();
+        return null;
+    }
+    return action.type ? action : null;
+}
+
+function clearPendingAction() {
+    ultimateConversationState.pendingAction = {
+        type: null,
+        timestamp: 0
+    };
+    console.log(`[UltimateContext] ✅ 특별 행동 대기 모드 해제.`);
 }
 
 module.exports = {
@@ -308,6 +495,8 @@ module.exports = {
     addUltimateMessage,
     getUltimateContextualPrompt,
     updateLastUserMessageTime,
+    setPendingAction,
+    getPendingAction,
+    clearPendingAction,
     getInternalState: () => JSON.parse(JSON.stringify(ultimateConversationState))
 };
-// --- END OF FILE: ultimateConversationContext.js ---
