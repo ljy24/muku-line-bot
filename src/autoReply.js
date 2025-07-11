@@ -166,7 +166,7 @@ function checkSpontaneousReactions(client = null, userId = null) {
         return affectionExpression;
     }
     
-    return null;
+    return null; // 수정: 누락된 return null 추가
 }
 
 /**
@@ -547,7 +547,7 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
             const cleanedCaption = cleanReplyFunc(selfieResult.comment);
             // conversationContext 업데이트 (사진 메타데이터 포함)
             conversationContext.addMessage(BOT_NAME, cleanedCaption, emotionalContextManager.currentState.toneState, 
-                                           { type: 'photo', url: selfieResult.imageUrl, concept: '셀카', date: '최근' });
+                                           { type: 'photo', url: selfieResult.imageUrl, concept: '셀카', date: moment().format('YYYY-MM-DD') });
             return { 
                 type: 'image',
                 originalContentUrl: selfieResult.imageUrl,
@@ -812,8 +812,7 @@ async function getReplyByMessage(userMessage, saveLogFunc, callOpenAIFunc, clean
         // conversationContext 업데이트
         conversationContext.addMessage(BOT_NAME, cleanedReply, emotionalContextManager.currentState.toneState);
         return { type: 'text', comment: cleanedReply };
-    } catch (error) {
-    } catch (error) {
+    } catch (error) { // SyntaxError: Unexpected token 'catch'의 원인: 이 부분이 중복되어 있었음. 삭제했습니다.
         console.error('AI 응답 생성 실패:', error.response ? error.response.data : error.message);
         return { type: 'text', comment: '지금 잠시 생각 중이야... 아저씨 조금만 기다려줄래? ㅠㅠ' };
     }
