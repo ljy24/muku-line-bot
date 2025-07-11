@@ -1,7 +1,8 @@
-// ✅ ultimateConversationContext.js v10.0 - Vision + Memory 통합 (한국어 버전)
+// ✅ ultimateConversationContext.js v11.0 - "감정의 깊이" 구현 (한국어 버전)
+// - [EMOTION] LLM을 이용해 메시지의 미묘한 감정 뉘앙스를 분석하는 기능 추가 (analyzeToneWithLLM)
 // - [VISION] 사용자가 보낸 사진의 내용을 분석하는 Vision 기능 추가 (analyzeImageContent)
-// - [MEMORY] 대화 속 중요한 사실을 저장하는 'knowledgeBase' 상태 유지
-// - [MODIFIED] addUltimateMessage에 Vision과 Memory 로직을 모두 통합하여 동시 처리
+// - [MEMORY] 대화 속 중요한 사실을 저장하는 'knowledgeBase' 상태 추가
+// - 모든 기능이 통합된 완전판 코드입니다.
 
 const moment = require('moment-timezone');
 const {
@@ -18,7 +19,7 @@ let ultimateConversationState = {
     recentMessages: [],
     currentTone: 'neutral',
     currentTopic: null,
-    knowledgeBase: { // [MEMORY] 기억 저장소
+    knowledgeBase: {
         facts: [],
     },
     dailySummary: {
@@ -58,7 +59,46 @@ let ultimateConversationState = {
 
 const LLM_BASED_SELF_EVALUATION = true;
 
-// --- [VISION & MEMORY] 신규 헬퍼 함수들 ---
+// --- 신규 및 기존 헬퍼 함수들 ---
+
+/**
+ * 🎭 [EMOTION] LLM을 이용해 메시지의 감정 뉘앙스를 정밀하게 분석합니다.
+ * @param {string} message - 분석할 사용자 메시지
+ * @returns {Promise<object>} 감정 분석 결과 객체
+ */
+async function analyzeToneWithLLM(message) {
+    if (!message || message.trim().length < 2) {
+        return { primaryEmotion: 'neutral', primaryIntensity: 1, secondaryEmotion: null, secondaryIntensity: null };
+    }
+
+    const prompt = `너는 사람의 감정을 매우 잘 파악하는 감정 분석 전문가야. 아래 "분석할 메시지"를 읽고, 그 안에 담긴 주된 감정(primaryEmotion)과 부수적인 감정(secondaryEmotion, 없을 경우 null)을 분석해줘.
+- 감정은 'positive', 'negative', 'neutral', 'playful', 'romantic', 'sulky', 'worried', 'sarcastic' 중에서 선택해.
+- 각 감정의 강도(intensity)는 1에서 10 사이의 숫자로 평가해줘.
+- 반드시 아래 JSON 형식에 맞춰서 응답해야 하며, 다른 어떤 설명도 추가해서는 안 돼.
+
+분석할 메시지: "${message}"`;
+
+    try {
+        const response = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [
+                { role: "system", content: "You are a helpful assistant that analyzes emotions and responds only in JSON format." },
+                { role: "user", content: prompt }
+            ],
+            response_format: { type: "json_object" }, // JSON 출력 모드 활성화
+            temperature: 0.2,
+        });
+
+        const analysisResult = JSON.parse(response.choices[0].message.content);
+        console.log('[Emotion] ✅ LLM 감정 분석 완료:', analysisResult);
+        return analysisResult;
+
+    } catch (error) {
+        console.error('[Emotion] ❌ LLM 감정 분석 중 에러 발생:', error);
+        // 에러 발생 시 기본값 반환
+        return { primaryEmotion: 'neutral', primaryIntensity: 1, secondaryEmotion: null, secondaryIntensity: null };
+    }
+}
 
 /**
  * 👁️ [VISION] 이미지 URL을 받아 내용을 분석하고 한국어 설명문을 반환합니다.
@@ -133,8 +173,6 @@ function addFactToKnowledgeBase(fact) {
     console.log(`[Memory] ✅ 새로운 사실을 기억했습니다: "${fact}"`);
 }
 
-
-// --- 기존 헬퍼 및 분석 함수들 ---
 function analyzeTimeContext(timestamp) {
     const time = moment(timestamp).tz('Asia/Tokyo');
     const hour = time.hour();
@@ -151,16 +189,6 @@ function analyzeTimeContext(timestamp) {
     };
 }
 
-function analyzeTone(message) {
-    const lowerMessage = message.toLowerCase();
-    if (lowerMessage.includes('ㅋㅋ') || lowerMessage.includes('ㅎㅎ')) return 'playful';
-    if (lowerMessage.includes('사랑해') || lowerMessage.includes('좋아해')) return 'romantic';
-    if (lowerMessage.includes('삐졌어') || lowerMessage.includes('화나')) return 'sulky';
-    if (lowerMessage.includes('걱정')) return 'worried';
-    if (lowerMessage.includes('보고싶어')) return 'nostalgic';
-    return 'neutral';
-}
-
 function analyzeTopic(message) {
     const lowerMessage = message.toLowerCase();
     if (lowerMessage.includes('밥') || lowerMessage.includes('음식')) return 'food';
@@ -168,13 +196,6 @@ function analyzeTopic(message) {
     if (lowerMessage.includes('사진') || lowerMessage.includes('찍었') || lowerMessage.includes('첨부된 사진')) return 'photo';
     if (lowerMessage.includes('아파') || lowerMessage.includes('건강')) return 'health';
     return 'daily';
-}
-
-function calculateEmotionalIntensity(message, tone) {
-    let intensity = (tone !== 'neutral') ? 3 : 1;
-    if (message.length > 50) intensity += 2;
-    if (message.includes('!') || message.includes('?')) intensity += 1;
-    return Math.min(10, intensity);
 }
 
 // --- 상태 업데이트 함수들 ---
@@ -205,6 +226,7 @@ function updateDailySummary(newMessage) {
     today.timeSpread.end = newMessage.timestamp;
     const topic = newMessage.analysis.topic;
     if (topic !== 'daily') today.mainTopics.add(topic);
+    
     if (newMessage.analysis.emotionalIntensity > 6) {
         today.emotionalHighlights.push({
             emotion: newMessage.analysis.tone,
@@ -218,10 +240,7 @@ function updateCumulativePatterns(newMessage) {
     const emotion = newMessage.analysis.tone;
     if (emotion === 'neutral') return;
     const trends = ultimateConversationState.cumulativePatterns.emotionalTrends;
-    if (!trends[emotion]) trends[emotion] = {
-        count: 0,
-        totalIntensity: 0
-    };
+    if (!trends[emotion]) trends[emotion] = { count: 0, totalIntensity: 0 };
     trends[emotion].count++;
     trends[emotion].totalIntensity += newMessage.analysis.emotionalIntensity;
 }
@@ -301,7 +320,6 @@ function adjustBehavioralParameters(feedback) {
     }
 }
 
-
 // --- 프롬프트 생성 함수 ---
 function generateContextualPrompt(basePrompt) {
     let ultimatePrompt = basePrompt;
@@ -313,7 +331,7 @@ function generateContextualPrompt(basePrompt) {
         ultimatePrompt += `\n\n[최근 대화 흐름]\n${recentContext}`;
     }
 
-    // 2. [MEMORY] 장기 기억(사실)을 프롬프트에 추가
+    // 2. 장기 기억(사실)을 프롬프트에 추가
     const facts = state.knowledgeBase.facts;
     if (facts.length > 0) {
         const recentFacts = facts.slice(-5).map(f => `- ${f.fact}`).join('\n');
@@ -373,7 +391,7 @@ function updateLastUserMessageTime(timestamp) {
 
 /**
  * 💎 메시지 추가 및 모든 컨텍스트 업데이트 (가장 중요한 함수)
- * [MODIFIED] Vision과 Memory 로직이 통합된 비동기 함수
+ * [MODIFIED] 새로운 감정 분석 시스템(analyzeToneWithLLM)을 사용하도록 변경
  * @param {string} speaker - 화자 ('아저씨' 또는 '예진이')
  * @param {string} message - 메시지 내용
  * @param {object} [meta=null] - 추가 데이터 (e.g., { imageUrl: '...' })
@@ -381,8 +399,8 @@ function updateLastUserMessageTime(timestamp) {
 async function addUltimateMessage(speaker, message, meta = null) {
     const timestamp = Date.now();
     let finalMessage = message || '';
+    let emotionalAnalysis;
 
-    // '아저씨'가 보낸 메시지일 경우에만 분석 수행
     if (speaker === '아저씨') {
         // [VISION] 1. 이미지 분석
         if (meta && meta.imageUrl) {
@@ -398,6 +416,12 @@ async function addUltimateMessage(speaker, message, meta = null) {
             const facts = await extractFactsFromMessage(message);
             facts.forEach(fact => addFactToKnowledgeBase(fact));
         }
+        
+        // [EMOTION] 3. LLM으로 감정 분석
+        emotionalAnalysis = await analyzeToneWithLLM(message); // 원본 메시지로 분석
+
+    } else { // '예진이'의 메시지는 간단한 분석만 수행
+        emotionalAnalysis = { primaryEmotion: 'neutral', primaryIntensity: 1, secondaryEmotion: null, secondaryIntensity: null };
     }
 
     const newMessage = {
@@ -406,9 +430,10 @@ async function addUltimateMessage(speaker, message, meta = null) {
         timestamp,
         meta,
         analysis: {
-            tone: analyzeTone(finalMessage),
+            tone: emotionalAnalysis.primaryEmotion,
+            emotionalIntensity: emotionalAnalysis.primaryIntensity,
+            details: emotionalAnalysis, // 상세 감정 데이터 저장
             topic: analyzeTopic(finalMessage),
-            emotionalIntensity: calculateEmotionalIntensity(finalMessage, analyzeTone(finalMessage)),
         },
     };
 
@@ -416,12 +441,18 @@ async function addUltimateMessage(speaker, message, meta = null) {
     if (ultimateConversationState.recentMessages.length > 30) {
         ultimateConversationState.recentMessages.shift();
     }
-    ultimateConversationState.currentTone = newMessage.analysis.tone;
+
+    if(speaker === '아저씨') {
+        ultimateConversationState.currentTone = emotionalAnalysis.primaryEmotion;
+    }
+    
     ultimateConversationState.currentTopic = newMessage.analysis.topic;
     ultimateConversationState.timingContext.lastMessageTime = timestamp;
     ultimateConversationState.timingContext.currentTimeContext = analyzeTimeContext(timestamp);
+    
     updateDailySummary(newMessage);
     updateCumulativePatterns(newMessage);
+
     if (speaker !== '아저씨') {
         evaluateMyResponse(newMessage);
     }
