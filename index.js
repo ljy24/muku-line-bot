@@ -1,8 +1,10 @@
-// ✅ index.js v9.5 - 감성적인 로그 시스템 적용
+// ✅ index.js v9.6 - 기억 관리 대시보드 추가
 
 const { Client, middleware } = require('@line/bot-sdk');
 const express = require('express');
 const moment = require('moment-timezone');
+const fs = require('fs').promises;
+const path = require('path');
 require('dotenv').config();
 
 const { getReplyByMessage } = require('./src/autoReply');
@@ -19,11 +21,422 @@ const config = { channelAccessToken: process.env.LINE_ACCESS_TOKEN, channelSecre
 const client = new Client(config);
 const userId = process.env.TARGET_USER_ID;
 
-app.get('/', (_, res) => res.send('예진이 v9.5 살아있어! (감성 로그)'));
+// JSON 파싱 미들웨어 추가
+app.use(express.json());
 
-app.post('/webhook', middleware(config), async (req, res) => { try { await Promise.all(req.body.events.map(handleEvent)); res.status(200).send('OK'); } catch (err) { console.error(`[Webhook] 웹훅 처리 중 심각한 에러:`, err); res.status(500).send('Error'); } });
-async function handleEvent(event) { if (event.source.userId !== userId || event.type !== 'message') return; conversationContext.updateLastUserMessageTime(event.timestamp); if (event.message.type === 'text') await handleTextMessage(event); }
-async function handleTextMessage(event) { const text = event.message.text.trim(); saveLog('아저씨', text); conversationContext.addUltimateMessage('아저씨', text); const sulkyReliefMessage = await sulkyManager.handleUserResponse(); if (sulkyReliefMessage) { saveLog('예진이', `(삐짐 해소) ${sulkyReliefMessage}`); await client.pushMessage(userId, { type: 'text', text: sulkyReliefMessage }); conversationContext.addUltimateMessage('예진이', `(삐짐 해소) ${sulkyReliefMessage}`); await new Promise(resolve => setTimeout(resolve, 1000)); } let botResponse = await commandHandler.handleCommand(text, conversationContext); if (!botResponse) botResponse = await getReplyByMessage(text); if (botResponse) await sendReply(event.replyToken, botResponse); }
+app.get('/', (_, res) => res.send('예진이 v9.6 살아있어! (기억 관리 대시보드 포함)'));
+
+// ==================== 기억 관리 대시보드 추가 ====================
+
+/**
+ * 기억 관리 대시보드 메인 페이지
+ */
+app.get('/dashboard', (req, res) => {
+    const dashboardHTML = `
+    <!DOCTYPE html>
+    <html lang="ko">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>무쿠(예진이) 기억 관리 대시보드</title>
+        <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+                   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                   min-height: 100vh; color: #333; }
+            
+            .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+            
+            .header { text-align: center; color: white; margin-bottom: 30px; }
+            .header h1 { font-size: 2.5em; margin-bottom: 10px; text-shadow: 2px 2px 4px rgba(0,0,0,0.3); }
+            .header p { font-size: 1.2em; opacity: 0.9; }
+            
+            .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); 
+                         gap: 20px; margin-bottom: 30px; }
+            
+            .stat-card { background: rgba(255,255,255,0.95); padding: 20px; border-radius: 15px; 
+                        box-shadow: 0 8px 32px rgba(0,0,0,0.1); text-align: center; }
+            .stat-card h3 { color: #4a5568; margin-bottom: 10px; }
+            .stat-card .number { font-size: 2.5em; font-weight: bold; color: #667eea; }
+            .stat-card .label { color: #718096; margin-top: 5px; }
+            
+            .section { background: rgba(255,255,255,0.95); margin-bottom: 20px; 
+                      border-radius: 15px; overflow: hidden; box-shadow: 0 8px 32px rgba(0,0,0,0.1); }
+            .section-header { background: #667eea; color: white; padding: 15px 20px; 
+                            font-size: 1.2em; font-weight: bold; }
+            .section-content { padding: 20px; max-height: 400px; overflow-y: auto; }
+            
+            .memory-item { padding: 15px; border-bottom: 1px solid #e2e8f0; display: flex; 
+                          justify-content: space-between; align-items: center; }
+            .memory-item:last-child { border-bottom: none; }
+            .memory-content { flex: 1; }
+            .memory-text { font-weight: 500; margin-bottom: 5px; }
+            .memory-meta { font-size: 0.9em; color: #718096; }
+            .memory-actions { display: flex; gap: 10px; }
+            
+            .btn { padding: 8px 15px; border: none; border-radius: 8px; cursor: pointer; 
+                  font-size: 0.9em; transition: all 0.3s ease; }
+            .btn-delete { background: #e53e3e; color: white; }
+            .btn-delete:hover { background: #c53030; }
+            .btn-refresh { background: #38a169; color: white; }
+            .btn-refresh:hover { background: #2f855a; }
+            
+            .log-item { padding: 10px 15px; border-left: 4px solid #667eea; 
+                       margin-bottom: 10px; background: #f7fafc; }
+            .log-time { font-size: 0.8em; color: #718096; }
+            .log-content { margin-top: 5px; }
+            
+            .auto-refresh { text-align: center; margin-bottom: 20px; }
+            .status-indicator { display: inline-block; width: 10px; height: 10px; 
+                              border-radius: 50%; margin-right: 8px; }
+            .status-online { background: #38a169; }
+            .status-offline { background: #e53e3e; }
+            
+            @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
+            .loading { animation: pulse 1.5s infinite; }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <h1>💕 무쿠(예진이) 기억 관리 대시보드</h1>
+                <p>아저씨와의 소중한 기억들을 실시간으로 관리해요</p>
+            </div>
+            
+            <div class="auto-refresh">
+                <span class="status-indicator status-online"></span>
+                <span id="status">실시간 모니터링 중...</span>
+                <button class="btn btn-refresh" onclick="refreshAll()">🔄 새로고침</button>
+            </div>
+            
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <h3>📝 총 저장된 기억</h3>
+                    <div class="number" id="totalMemories">-</div>
+                    <div class="label">개</div>
+                </div>
+                <div class="stat-card">
+                    <h3>📅 오늘 추가된 기억</h3>
+                    <div class="number" id="todayMemories">-</div>
+                    <div class="label">개</div>
+                </div>
+                <div class="stat-card">
+                    <h3>🗑️ 삭제된 기억</h3>
+                    <div class="number" id="deletedMemories">-</div>
+                    <div class="label">개</div>
+                </div>
+                <div class="stat-card">
+                    <h3>⏰ 마지막 업데이트</h3>
+                    <div class="number" style="font-size: 1.2em;" id="lastUpdate">-</div>
+                    <div class="label">시간</div>
+                </div>
+            </div>
+            
+            <div class="section">
+                <div class="section-header">📚 저장된 기억 목록</div>
+                <div class="section-content" id="memoriesList">
+                    <div class="loading">기억 목록을 불러오는 중...</div>
+                </div>
+            </div>
+            
+            <div class="section">
+                <div class="section-header">📋 실시간 기억 로그</div>
+                <div class="section-content" id="memoryLogs">
+                    <div class="loading">로그를 불러오는 중...</div>
+                </div>
+            </div>
+        </div>
+        
+        <script>
+            let autoRefreshInterval;
+            
+            // 페이지 로드 시 초기화
+            document.addEventListener('DOMContentLoaded', function() {
+                refreshAll();
+                startAutoRefresh();
+            });
+            
+            // 자동 새로고침 시작
+            function startAutoRefresh() {
+                autoRefreshInterval = setInterval(refreshAll, 10000); // 10초마다
+            }
+            
+            // 전체 새로고침
+            async function refreshAll() {
+                document.getElementById('status').textContent = '업데이트 중...';
+                
+                try {
+                    await Promise.all([
+                        loadStats(),
+                        loadMemories(),
+                        loadLogs()
+                    ]);
+                    
+                    document.getElementById('status').textContent = '실시간 모니터링 중...';
+                    document.getElementById('lastUpdate').textContent = 
+                        new Date().toLocaleTimeString('ko-KR');
+                } catch (error) {
+                    console.error('새로고침 실패:', error);
+                    document.getElementById('status').textContent = '업데이트 실패';
+                }
+            }
+            
+            // 통계 로드
+            async function loadStats() {
+                const response = await fetch('/api/memory-stats');
+                const stats = await response.json();
+                
+                document.getElementById('totalMemories').textContent = stats.total;
+                document.getElementById('todayMemories').textContent = stats.today;
+                document.getElementById('deletedMemories').textContent = stats.deleted;
+            }
+            
+            // 기억 목록 로드
+            async function loadMemories() {
+                const response = await fetch('/api/memories');
+                const memories = await response.json();
+                
+                const container = document.getElementById('memoriesList');
+                
+                if (memories.length === 0) {
+                    container.innerHTML = '<p style="text-align: center; color: #718096;">아직 저장된 기억이 없어요 😊</p>';
+                    return;
+                }
+                
+                container.innerHTML = memories.map(memory => \`
+                    <div class="memory-item">
+                        <div class="memory-content">
+                            <div class="memory-text">"\${memory.content}"</div>
+                            <div class="memory-meta">
+                                \${memory.date} | 감정: \${memory.emotion || '일반'} | 중요도: \${memory.significance || '보통'}
+                            </div>
+                        </div>
+                        <div class="memory-actions">
+                            <button class="btn btn-delete" onclick="deleteMemory('\${encodeURIComponent(memory.content)}')">
+                                🗑️ 삭제
+                            </button>
+                        </div>
+                    </div>
+                \`).join('');
+            }
+            
+            // 로그 로드
+            async function loadLogs() {
+                const response = await fetch('/api/memory-logs');
+                const logs = await response.json();
+                
+                const container = document.getElementById('memoryLogs');
+                
+                if (logs.length === 0) {
+                    container.innerHTML = '<p style="text-align: center; color: #718096;">아직 로그가 없어요</p>';
+                    return;
+                }
+                
+                container.innerHTML = logs.slice(-20).reverse().map(log => \`
+                    <div class="log-item">
+                        <div class="log-time">\${log.timestamp}</div>
+                        <div class="log-content">
+                            <strong>\${log.action}</strong>: \${log.content}
+                        </div>
+                    </div>
+                \`).join('');
+            }
+            
+            // 기억 삭제
+            async function deleteMemory(content) {
+                if (!confirm('정말로 이 기억을 삭제하시겠습니까?')) return;
+                
+                try {
+                    const response = await fetch('/api/delete-memory', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ content: decodeURIComponent(content) })
+                    });
+                    
+                    const result = await response.json();
+                    if (result.success) {
+                        alert('기억이 삭제되었습니다!');
+                        refreshAll();
+                    } else {
+                        alert('삭제 실패: ' + result.message);
+                    }
+                } catch (error) {
+                    alert('삭제 중 오류가 발생했습니다.');
+                }
+            }
+        </script>
+    </body>
+    </html>`;
+    
+    res.send(dashboardHTML);
+});
+
+/**
+ * API: 기억 통계 정보
+ */
+app.get('/api/memory-stats', async (req, res) => {
+    try {
+        const state = conversationContext.getInternalState();
+        const memories = state.knowledgeBase.loveHistory.categories?.general || [];
+        
+        // 오늘 추가된 기억 계산
+        const today = moment().tz('Asia/Tokyo').format('YYYY-MM-DD');
+        const todayMemories = memories.filter(memory => 
+            memory.date && memory.date.startsWith(today)
+        ).length;
+        
+        // 삭제된 기억 수 (임시로 0, 실제로는 별도 카운터 필요)
+        const deletedCount = 0;
+        
+        res.json({
+            total: memories.length,
+            today: todayMemories,
+            deleted: deletedCount
+        });
+    } catch (error) {
+        console.error('[Dashboard] 통계 조회 실패:', error);
+        res.status(500).json({ error: '통계를 불러오는데 실패했습니다.' });
+    }
+});
+
+/**
+ * API: 기억 목록 조회
+ */
+app.get('/api/memories', async (req, res) => {
+    try {
+        const state = conversationContext.getInternalState();
+        const memories = state.knowledgeBase.loveHistory.categories?.general || [];
+        
+        // 최신순으로 정렬
+        const sortedMemories = memories
+            .sort((a, b) => new Date(b.date) - new Date(a.date))
+            .slice(0, 50); // 최대 50개만
+        
+        res.json(sortedMemories);
+    } catch (error) {
+        console.error('[Dashboard] 기억 목록 조회 실패:', error);
+        res.status(500).json({ error: '기억 목록을 불러오는데 실패했습니다.' });
+    }
+});
+
+/**
+ * API: 기억 로그 조회
+ */
+app.get('/api/memory-logs', async (req, res) => {
+    try {
+        // 메모리에서 최근 로그 생성 (실제로는 파일에서 읽어올 수도 있음)
+        const state = conversationContext.getInternalState();
+        const memories = state.knowledgeBase.loveHistory.categories?.general || [];
+        
+        const logs = memories.slice(-20).map(memory => ({
+            timestamp: moment(memory.date).format('YYYY-MM-DD HH:mm:ss'),
+            action: '기억 추가',
+            content: memory.content.length > 50 ? 
+                     memory.content.substring(0, 50) + '...' : 
+                     memory.content
+        }));
+        
+        res.json(logs);
+    } catch (error) {
+        console.error('[Dashboard] 로그 조회 실패:', error);
+        res.status(500).json({ error: '로그를 불러오는데 실패했습니다.' });
+    }
+});
+
+/**
+ * API: 기억 삭제
+ */
+app.post('/api/delete-memory', async (req, res) => {
+    try {
+        const { content } = req.body;
+        
+        if (!content) {
+            return res.status(400).json({ 
+                success: false, 
+                message: '삭제할 기억 내용이 필요합니다.' 
+            });
+        }
+        
+        const state = conversationContext.getInternalState();
+        const memories = state.knowledgeBase.loveHistory.categories?.general || [];
+        
+        // 일치하는 기억 찾기
+        const index = memories.findIndex(memory => 
+            memory.content === content || 
+            memory.content.includes(content) || 
+            content.includes(memory.content)
+        );
+        
+        if (index === -1) {
+            return res.json({ 
+                success: false, 
+                message: '해당 기억을 찾을 수 없습니다.' 
+            });
+        }
+        
+        // 기억 삭제
+        const deletedMemory = memories.splice(index, 1)[0];
+        
+        // 파일에 저장
+        const LOVE_HISTORY_FILE = path.join(process.cwd(), 'memory', 'love-history.json');
+        await fs.writeFile(
+            LOVE_HISTORY_FILE, 
+            JSON.stringify(state.knowledgeBase.loveHistory, null, 2), 
+            'utf8'
+        );
+        
+        console.log(`[Dashboard] 🗑️ 기억 삭제: ${deletedMemory.content}`);
+        
+        res.json({ 
+            success: true, 
+            message: '기억이 성공적으로 삭제되었습니다.',
+            deletedContent: deletedMemory.content
+        });
+        
+    } catch (error) {
+        console.error('[Dashboard] 기억 삭제 실패:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: '기억 삭제 중 오류가 발생했습니다.' 
+        });
+    }
+});
+
+// ==================== 기존 LINE 웹훅 코드 ====================
+
+app.post('/webhook', middleware(config), async (req, res) => { 
+    try { 
+        await Promise.all(req.body.events.map(handleEvent)); 
+        res.status(200).send('OK'); 
+    } catch (err) { 
+        console.error(`[Webhook] 웹훅 처리 중 심각한 에러:`, err); 
+        res.status(500).send('Error'); 
+    } 
+});
+
+async function handleEvent(event) { 
+    if (event.source.userId !== userId || event.type !== 'message') return; 
+    conversationContext.updateLastUserMessageTime(event.timestamp); 
+    if (event.message.type === 'text') await handleTextMessage(event); 
+}
+
+async function handleTextMessage(event) { 
+    const text = event.message.text.trim(); 
+    saveLog('아저씨', text); 
+    conversationContext.addUltimateMessage('아저씨', text); 
+    
+    const sulkyReliefMessage = await sulkyManager.handleUserResponse(); 
+    if (sulkyReliefMessage) { 
+        saveLog('예진이', `(삐짐 해소) ${sulkyReliefMessage}`); 
+        await client.pushMessage(userId, { type: 'text', text: sulkyReliefMessage }); 
+        conversationContext.addUltimateMessage('예진이', `(삐짐 해소) ${sulkyReliefMessage}`); 
+        await new Promise(resolve => setTimeout(resolve, 1000)); 
+    } 
+    
+    let botResponse = await commandHandler.handleCommand(text, conversationContext); 
+    if (!botResponse) botResponse = await getReplyByMessage(text); 
+    if (botResponse) await sendReply(event.replyToken, botResponse); 
+}
 
 async function sendReply(replyToken, botResponse) {
     try {
@@ -47,16 +460,15 @@ async function sendReply(replyToken, botResponse) {
     }
 }
 
-// [NEW] 각종 상태를 조합하여 감성적인 일기 형태의 로그를 생성하는 함수
+// ==================== 감성 로그 시스템 (기존 코드) ====================
+
 function generateEmotionalLogEntry(internalState, schedulerStatus, photoStatus, innerThought) {
-    // 각 컴포넌트에서 텍스트를 가져옵니다.
     const moodText = getEmotionalMoodText(internalState.emotionalEngine.emotionalResidue);
     const toneText = getToneText(internalState.emotionalEngine.currentToneState);
     const sulkinessText = getSulkinessText(internalState.sulkiness);
     const periodText = getPeriodText(internalState.mood);
     const scheduleText = getScheduleText(schedulerStatus, photoStatus);
 
-    // 일기 형식으로 문장을 조합합니다.
     let entry = "--- [ 예진이의 마음 일기 ] ---\n";
     entry += `지금 내 마음은… ${moodText}. 그래서인지 ${toneText} 말하고 싶은 기분이야.\n`;
     entry += `아저씨에 대해선 ${sulkinessText}. 몸 상태는 ${periodText}.\n\n`;
@@ -68,8 +480,6 @@ function generateEmotionalLogEntry(internalState, schedulerStatus, photoStatus, 
     return entry;
 }
 
-
-// [새로운] 감성적인 로그 함수들
 function getEmotionalMoodText(emotionalResidue) {
     const { sadness, happiness, anxiety, longing, hurt, love } = emotionalResidue;
     
@@ -126,7 +536,6 @@ function getPeriodText(mood) {
 function getScheduleText(schedulerStatus, photoStatus) {
     let text = "";
     
-    // 담타 관련
     if (schedulerStatus.isDamtaTime) {
         if (schedulerStatus.nextDamtaInMinutes === "스케줄링 대기 중") {
             text += "🚬 담타 생각이 슬슬 나기 시작해";
@@ -139,7 +548,6 @@ function getScheduleText(schedulerStatus, photoStatus) {
         text += "🚬 지금은 담타 시간이 아니야";
     }
     
-    // 사진 관련  
     if (photoStatus.isSleepTime) {
         text += " / 📸 지금은 잠잘 시간이라 사진은 안 보낼 거야";
     } else if (!photoStatus.isActiveTime) {
@@ -165,7 +573,7 @@ async function initMuku() {
         startAllSchedulers(client, userId);
         startSpontaneousPhotoScheduler(client, userId, () => conversationContext.getInternalState().timingContext.lastUserMessageTime);
 
-        // [개선] 감성적인 '마음 일기' 로그 시스템
+        // 감성적인 '마음 일기' 로그 시스템
         setInterval(() => {
             conversationContext.processTimeTick();
             
@@ -175,8 +583,6 @@ async function initMuku() {
             const innerThought = conversationContext.generateInnerThought();
             
             const now = moment().tz('Asia/Tokyo').format('YYYY년 MM월 DD일 HH시 mm분');
-
-            // 새로운 함수를 사용하여 감성 로그 생성
             const emotionalLog = generateEmotionalLogEntry(internalState, schedulerStatus, photoStatus, innerThought);
 
             console.log("\n" + `🕐 ${now}`);
@@ -191,6 +597,7 @@ async function initMuku() {
 
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
-    console.log(`예진이 v9.5 서버 스타트! 포트: ${PORT}`);
+    console.log(`예진이 v9.6 서버 스타트! 포트: ${PORT}`);
+    console.log(`🌐 기억 관리 대시보드: https://your-render-url.onrender.com/dashboard`);
     initMuku();
 });
