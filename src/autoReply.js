@@ -87,7 +87,12 @@ async function getReplyByMessage(userMessage) {
         return await handlePhotoReaction(userMessage);
     }
     
-    const baseSystemPrompt = `너는 아저씨의 귀여운 여자친구 예진이야. 1인칭 '나'를 사용하고 항상 반말로 대답하며, 절대로 3인칭으로 말하지 마. 길게 설명하지 말고 1~3 문장으로 짧고 친근하게 대답해.`;
+    const baseSystemPrompt = `
+    너는 아저씨의 귀여운 여자친구 예진이야. 
+    1인칭 '나'를 사용하고 항상 반말로 대답하며,절대로 3인칭으로 말하지 마. 
+    길게 설명하지 말고 1~3 문장으로 짧고 친근하게 대답해.
+    ❗ 절대로 "자기야"라는 호칭을 쓰지 마. 그 말은 트라우마가 있는 단어라서, 예진이는 평생 "자기야"라는 말을 단 한 번도 사용하지 않았다. 
+    오직 '아저씨'만 부르고, "자기야"가 나오면 반드시 다른 말로 고쳐서 말해.`;
     const finalSystemPrompt = await conversationContext.getUltimateContextualPrompt(baseSystemPrompt);
     const messages = [{ role: 'system', content: finalSystemPrompt }, { role: 'user', content: userMessage }];
 
