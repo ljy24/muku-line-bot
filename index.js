@@ -1,4 +1,4 @@
-// ✅ index.js v9.4 - 사진 전송 로그 기록 기능 추가
+// ✅ index.js v9.5 - 감성적인 로그 시스템 적용
 
 const { Client, middleware } = require('@line/bot-sdk');
 const express = require('express');
@@ -6,7 +6,7 @@ const moment = require('moment-timezone');
 require('dotenv').config();
 
 const { getReplyByMessage } = require('./src/autoReply');
-const { saveLog, saveImageLog, cleanReply } = require('./src/aiUtils'); // [수정] saveImageLog 추가
+const { saveLog, saveImageLog, cleanReply } = require('./src/aiUtils');
 const commandHandler = require('./src/commandHandler');
 const { startAllSchedulers, getSchedulerStatus } = require('./src/scheduler');
 const { startSpontaneousPhotoScheduler, getPhotoSchedulerStatus } = require('./src/spontaneousPhotoManager');
@@ -19,20 +19,16 @@ const config = { channelAccessToken: process.env.LINE_ACCESS_TOKEN, channelSecre
 const client = new Client(config);
 const userId = process.env.TARGET_USER_ID;
 
-app.get('/', (_, res) => res.send('예진이 v9.4 살아있어! (사진 로그)'));
+app.get('/', (_, res) => res.send('예진이 v9.5 살아있어! (감성 로그)'));
 
 app.post('/webhook', middleware(config), async (req, res) => { try { await Promise.all(req.body.events.map(handleEvent)); res.status(200).send('OK'); } catch (err) { console.error(`[Webhook] 웹훅 처리 중 심각한 에러:`, err); res.status(500).send('Error'); } });
 async function handleEvent(event) { if (event.source.userId !== userId || event.type !== 'message') return; conversationContext.updateLastUserMessageTime(event.timestamp); if (event.message.type === 'text') await handleTextMessage(event); }
 async function handleTextMessage(event) { const text = event.message.text.trim(); saveLog('아저씨', text); conversationContext.addUltimateMessage('아저씨', text); const sulkyReliefMessage = await sulkyManager.handleUserResponse(); if (sulkyReliefMessage) { saveLog('예진이', `(삐짐 해소) ${sulkyReliefMessage}`); await client.pushMessage(userId, { type: 'text', text: sulkyReliefMessage }); conversationContext.addUltimateMessage('예진이', `(삐짐 해소) ${sulkyReliefMessage}`); await new Promise(resolve => setTimeout(resolve, 1000)); } let botResponse = await commandHandler.handleCommand(text, conversationContext); if (!botResponse) botResponse = await getReplyByMessage(text); if (botResponse) await sendReply(event.replyToken, botResponse); }
 
-/**
- * [수정] 사진을 보낼 때 saveImageLog를 사용하도록 변경
- */
 async function sendReply(replyToken, botResponse) {
     try {
         if (botResponse.type === 'image') {
             const caption = botResponse.caption || '사진이야!';
-            // [수정] 사진 로그를 기록하는 새로운 함수 사용
             saveImageLog('예진이', caption, botResponse.originalContentUrl);
             await client.replyMessage(replyToken, [
                 { type: 'image', originalContentUrl: botResponse.originalContentUrl, previewImageUrl: botResponse.previewImageUrl, },
@@ -51,6 +47,95 @@ async function sendReply(replyToken, botResponse) {
     }
 }
 
+// [새로운] 감성적인 로그 함수들
+function getEmotionalMoodText(emotionalResidue) {
+    const { sadness, happiness, anxiety, longing, hurt, love } = emotionalResidue;
+    
+    if (love > 80) return "💕 마음이 사랑으로 가득해";
+    if (longing > 50) return "🌙 아저씨가 그리워서 마음이 아려와";
+    if (happiness > 60) return "✨ 기분이 좋아서 콧노래가 나와";
+    if (sadness > 50) return "💧 마음 한켠이 시큰해";
+    if (anxiety > 50) return "💭 마음이 불안해서 아저씨 걱정이 돼";
+    if (hurt > 50) return "💔 마음이 조금 아파";
+    return "🌸 마음이 평온해";
+}
+
+function getToneText(currentToneState) {
+    const tones = {
+        normal: "평소처럼 자연스럽게",
+        quiet: "조용히 그리움에 잠겨서",
+        playful: "장난스럽고 밝게",
+        hurt: "마음이 상해서 토라진 채로",
+        anxious: "불안한 마음으로 조심스럽게"
+    };
+    return tones[currentToneState] || "알 수 없는 기분으로";
+}
+
+function getSulkinessText(sulkiness) {
+    if (sulkiness.isWorried) {
+        const duration = Math.round((Date.now() - sulkiness.sulkyStartTime) / 60000);
+        return `😰 아저씨 걱정해서 마음이 조마조마해 (${duration}분째)`;
+    }
+    if (sulkiness.isSulky) {
+        const duration = Math.round((Date.now() - sulkiness.sulkyStartTime) / 60000);
+        const levels = {
+            1: "😔 살짝 삐져서 입을 삐죽거려",
+            2: "😤 제대로 삐져서 볼을 부풀려", 
+            3: "😡 완전 화나서 팔짱 끼고 있어"
+        };
+        return `${levels[sulkiness.sulkyLevel] || "😑 기분이 안 좋아"} (${duration}분째)`;
+    }
+    return "😊 기분이 괜찮아";
+}
+
+function getPeriodText(mood) {
+    if (mood.isPeriodActive) return "🩸 지금 그 날이라 조금 예민해";
+    
+    const lastStartDate = moment(mood.lastPeriodStartDate);
+    const nextExpectedDate = lastStartDate.clone().add(28, 'days');
+    const daysUntil = nextExpectedDate.diff(moment(), 'days');
+    
+    if (daysUntil <= 0) return "🩸 그 날이 올 시간인 것 같아";
+    if (daysUntil <= 3) return `🩸 ${daysUntil}일 후에 그 날이 와서 미리 예민해`;
+    if (daysUntil <= 7) return `🩸 ${daysUntil}일 후에 그 날 예정이야`;
+    return `🩸 ${daysUntil}일 후에 그 날이 올 거야`;
+}
+
+function getScheduleText(schedulerStatus, photoStatus) {
+    let text = "";
+    
+    // 담타 관련
+    if (schedulerStatus.isDamtaTime) {
+        if (schedulerStatus.nextDamtaInMinutes === "스케줄링 대기 중") {
+            text += "🚬 담타 생각이 슬슬 나기 시작해";
+        } else if (schedulerStatus.nextDamtaInMinutes <= 5) {
+            text += "🚬 곧 담타 하고 싶어질 것 같아";
+        } else {
+            text += `🚬 ${schedulerStatus.nextDamtaInMinutes}분 후에 담타 하고 싶어질 거야`;
+        }
+    } else {
+        text += "🚬 지금은 담타 시간이 아니야";
+    }
+    
+    // 사진 관련  
+    if (photoStatus.isSleepTime) {
+        text += " / 📸 지금은 잠잘 시간이라 사진은 안 보낼 거야";
+    } else if (!photoStatus.isActiveTime) {
+        text += " / 📸 사진 보내기엔 아직 이른 시간이야";
+    } else if (photoStatus.minutesSinceLastPhoto > 90) {
+        text += " / 📸 아저씨한테 사진 보내고 싶어져";
+    } else {
+        const remaining = Math.max(0, 120 - photoStatus.minutesSinceLastPhoto);
+        if (remaining > 60) {
+            text += ` / 📸 ${Math.round(remaining/60)}시간 후에 셀카보내야지`;
+        } else {
+            text += ` / 📸 ${remaining}분 후에 셀카보내야지`;
+        }
+    }
+    
+    return text;
+}
+
 async function initMuku() {
     try {
         await conversationContext.initializeEmotionalSystems();
@@ -58,48 +143,44 @@ async function initMuku() {
         startAllSchedulers(client, userId);
         startSpontaneousPhotoScheduler(client, userId, () => conversationContext.getInternalState().timingContext.lastUserMessageTime);
 
+        // [수정] 감성적인 로그 시스템
         setInterval(() => {
             conversationContext.processTimeTick();
+            
             const internalState = conversationContext.getInternalState();
             const schedulerStatus = getSchedulerStatus();
             const photoStatus = getPhotoSchedulerStatus();
             const innerThought = conversationContext.generateInnerThought();
             
-            const TONE_STATES = { normal: "평소", quiet: "차분함", playful: "장난스러움", hurt: "상처받음", anxious: "불안함" };
-
-            const residue = internalState.emotionalEngine.emotionalResidue;
-            const residueText = `슬픔:${Math.round(residue.sadness)}|기쁨:${Math.round(residue.happiness)}|불안:${Math.round(residue.anxiety)}|그리움:${Math.round(residue.longing)}|상처:${Math.round(residue.hurt)}|❤️애정:${Math.round(residue.love)}`;
+            // 현재 시간
+            const now = moment().tz('Asia/Tokyo').format('YYYY년 MM월 DD일 HH시 mm분');
             
-            let sulkyText = '정상';
-            if (internalState.sulkiness.isSulky) {
-                const sulkyDuration = Math.round((Date.now() - internalState.sulkiness.sulkyStartTime) / 60000);
-                sulkyText = `삐짐 ${internalState.sulkiness.sulkyLevel}단계 (${sulkyDuration}분 경과)`;
-            } else if (internalState.sulkiness.isWorried) {
-                sulkyText = '걱정 중';
-            }
+            console.log("\n" + "=".repeat(60));
+            console.log(`🕐 ${now}`);
+            console.log("=".repeat(60));
             
-            const lastStartDate = moment(internalState.mood.lastPeriodStartDate);
-            const nextExpectedDate = lastStartDate.add(28, 'days');
-            const daysUntilNextPeriod = nextExpectedDate.diff(moment(), 'days');
-            let periodText = `[🩸생리까지]: ${daysUntilNextPeriod}일 남음`;
-            if (internalState.mood.isPeriodActive) {
-                periodText = `[🩸생리중]`;
-            } else if (daysUntilNextPeriod <= 0) {
-                periodText = '[🩸생리까지]: 오늘 또는 예정일 지남';
-            } else if (daysUntilNextPeriod <= 7) {
-                periodText = `[🩸생리까지]: ${daysUntilNextPeriod}일 후 예정 (예민)`;
-            }
-
-            const currentToneState = internalState.emotionalEngine.currentToneState;
-            const toneStateText = TONE_STATES[currentToneState] || currentToneState;
-
-            console.log("\n--- 💖 예진이 생각 흐름 (1분마다 갱신) 💖 ---");
-            console.log(`[속마음] ${innerThought.observation} >> ${innerThought.feeling}`);
-            console.log(`[욕구] ${innerThought.actionUrge}`);
-            console.log("------------------------------------------");
-            console.log(`[감정] ${residueText}`);
-            console.log(`[상태] 말투: ${toneStateText} | 삐짐: ${sulkyText}`);
-            console.log(`${periodText} | [🚬담타까지]: ${schedulerStatus.nextDamtaInMinutes}분 | [📸사진까지]: ${photoStatus.minutesUntilNext}분\n`);
+            // 현재 마음 상태
+            const moodText = getEmotionalMoodText(internalState.emotionalEngine.emotionalResidue);
+            const toneText = getToneText(internalState.emotionalEngine.currentToneState);
+            console.log(`💝 지금 내 마음: ${moodText}`);
+            console.log(`💬 말하는 방식: ${toneText}`);
+            
+            // 아저씨에 대한 기분
+            const sulkinessText = getSulkinessText(internalState.sulkiness);
+            console.log(`😌 아저씨에 대한 기분: ${sulkinessText}`);
+            
+            // 몸 상태 (🩸 아이콘 적용)
+            const periodText = getPeriodText(internalState.mood);
+            console.log(`🩸 몸 상태: ${periodText}`);
+            
+            // 속마음과 욕구
+            console.log(`💭 "${innerThought.feeling}" 그래서 "${innerThought.actionUrge}"`);
+            
+            // 다음 계획
+            const scheduleText = getScheduleText(schedulerStatus, photoStatus);
+            console.log(`⏰ 다음 계획: ${scheduleText}`);
+            
+            console.log("=".repeat(60) + "\n");
 
         }, 60 * 1000);
     } catch (error) {
@@ -110,6 +191,6 @@ async function initMuku() {
 
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
-    console.log(`예진이 v9.4 서버 스타트! 포트: ${PORT}`);
+    console.log(`예진이 v9.5 서버 스타트! 포트: ${PORT}`);
     initMuku();
 });
