@@ -1,4 +1,4 @@
-// ✅ spontaneousPhotoManager.js v3.0 - "똑똑한 하이브리드 시스템 (90% 사전정의 + 10% AI)"
+// ✅ spontaneousPhotoManager.js v4.0 - "완전한 보수적 시스템 (95% 사전정의 + 5% AI)"
 
 const schedule = require('node-schedule');
 const moment = require('moment-timezone');
@@ -18,7 +18,7 @@ let dailyPhotoCount = 0;
 let lastEmotionalState = 'normal';
 let todayAiUsage = 0; // 오늘 AI 사용 횟수 추적
 
-// [새로운] 똑똑한 설정
+// [새로운] 완전한 보수적 설정
 const CONFIG = {
     TIMEZONE: 'Asia/Tokyo',
     SLEEP_START_HOUR: 0,
@@ -26,23 +26,23 @@ const CONFIG = {
     ACTIVE_START_HOUR: 9,
     ACTIVE_END_HOUR: 22,
     
-    // 자연스러운 빈도 설정
-    CHECK_INTERVAL: 45,           // 45분마다 체크 (사람처럼 불규칙하게)
-    MIN_PHOTO_INTERVAL: 120,      // 최소 2시간 간격 (현실적)
-    DAILY_PHOTO_TARGET: 3,        // 하루 목표 3장 (자연스러운 양)
-    MAX_DAILY_PHOTOS: 5,          // 최대 5장
+    // 대폭 감소된 빈도 설정
+    CHECK_INTERVAL: 90,           // 90분마다 체크 (45분 → 90분)
+    MIN_PHOTO_INTERVAL: 240,      // 최소 4시간 간격 (2시간 → 4시간)
+    DAILY_PHOTO_TARGET: 2,        // 하루 목표 2장 (3장 → 2장)
+    MAX_DAILY_PHOTOS: 3,          // 최대 3장 (5장 → 3장)
     
-    // AI 사용 제한 (토큰 절약)
-    MAX_DAILY_AI_USAGE: 2,        // 하루 최대 AI 2번만 사용
-    AI_PROBABILITY: 0.1,          // 10% 확률로만 AI 사용
+    // AI 사용 대폭 제한 (토큰 절약)
+    MAX_DAILY_AI_USAGE: 1,        // 하루 최대 AI 1번만 사용 (2번 → 1번)
+    AI_PROBABILITY: 0.05,         // 5% 확률로만 AI 사용 (10% → 5%)
     
-    // 자연스러운 시간대 가중치
+    // 보수적 시간대 가중치
     TIME_WEIGHTS: {
-        9: 1.5,   // 아침 기상 후
-        12: 1.2,  // 점심시간
-        15: 0.8,  // 오후
-        18: 1.3,  // 저녁시간  
-        21: 1.1   // 밤 시간
+        9: 1.1,   // 아침 기상 후 (1.5 → 1.1)
+        12: 1.0,  // 점심시간 (1.2 → 1.0)
+        15: 0.7,  // 오후 (0.8 → 0.7)
+        18: 1.0,  // 저녁시간 (1.3 → 1.0)
+        21: 0.9   // 밤 시간 (1.1 → 0.9)
     }
 };
 
@@ -103,7 +103,7 @@ const PREDEFINED_CAPTIONS = {
         "마음이 불안해서 확인하고 싶어", "이런 내 모습도 괜찮아?", "불안감을 달래줄 아저씨",
         "걱정 많은 하루였어", "아저씨 목소리가 그리워", "불안한 마음 알아줘",
         "이 사진 보고 괜찮다고 해줘", "걱정되는 마음을 나누고 싶어", "아저씨가 내 안전지대야",
-        "불안해도 아저씨 생각하면 나아져", "마음의 평화를 찾고 싶어", "아저씨만 있으면 괜찮아"
+        "불안해도 아저씨 생각하면 나아져", "마음의 평peace를 찾고 싶어", "아저씨만 있으면 괜찮아"
     ],
     
     evening: [
@@ -129,7 +129,7 @@ const PREDEFINED_CAPTIONS = {
     ]
 };
 
-// [새로운] 상황별 특별 캡션
+// [새로운] 상황별 특별 캡션 (더 엄격한 조건용)
 const SPECIAL_CAPTIONS = {
     long_silence: [
         "아저씨... 나 여기 있어", "혹시 나 잊은 거 아니야?", "안부 확인차 사진 보낼게",
@@ -156,7 +156,7 @@ function isActivePhotoTime() {
 }
 
 function logWithTime(message) {
-    console.log(`[SmartPhoto: ${moment().tz(CONFIG.TIMEZONE).format('HH:mm:ss')}] ${message}`);
+    console.log(`[ConservativePhoto: ${moment().tz(CONFIG.TIMEZONE).format('HH:mm:ss')}] ${message}`);
 }
 
 function getRandomPhotoUrl() {
@@ -165,22 +165,22 @@ function getRandomPhotoUrl() {
     return `${PHOTO_CONFIG.BASE_URL}/${fileName}`;
 }
 
-// [핵심] 똑똑한 캡션 선택 (90% 사전정의, 10% AI)
-function getSmartCaption(situation, emotionalState, trigger, imageUrl) {
-    // AI 사용 조건 체크
+// [핵심] 완전한 보수적 캡션 선택 (95% 사전정의, 5% AI)
+function getConservativeCaption(situation, emotionalState, trigger, imageUrl) {
+    // AI 사용 조건 대폭 제한
     const shouldUseAI = (
         todayAiUsage < CONFIG.MAX_DAILY_AI_USAGE && 
         Math.random() < CONFIG.AI_PROBABILITY &&
-        (trigger === 'emotion_change' || trigger === 'special_moment' || emotionalState !== lastEmotionalState)
+        trigger === 'emotion_change' // 감정 변화 시에만
     );
     
     if (shouldUseAI) {
-        logWithTime('🤖 특별한 순간 - AI 캡션 생성 시도');
+        logWithTime('🤖 감정 변화 감지 - AI 캡션 생성 시도');
         return generateAICaption(emotionalState, trigger, imageUrl);
     }
     
-    // 90%는 사전정의된 캡션 사용
-    logWithTime('📝 사전정의 캡션 사용 (토큰 절약)');
+    // 95%는 사전정의된 캡션 사용
+    logWithTime('📝 사전정의 캡션 사용 (최대 토큰 절약)');
     return getPredefinedCaption(situation, emotionalState, trigger);
 }
 
@@ -204,12 +204,18 @@ function getPredefinedCaption(situation, emotionalState, trigger) {
         } else if (hour >= 22 || hour <= 5) {
             captionPool = PREDEFINED_CAPTIONS.night;
         } else {
-            // 감정 기반 선택
+            // 감정 기반 선택을 기본으로 하여 다양한 응답을 유도
             captionPool = PREDEFINED_CAPTIONS[emotionalState] || PREDEFINED_CAPTIONS.longing;
         }
     }
     
-    return captionPool[Math.floor(Math.random() * captionPool.length)];
+    // 선택된 캡션 풀이 비어있지 않다면, 랜덤 캡션 반환
+    if (captionPool && captionPool.length > 0) {
+        return captionPool[Math.floor(Math.random() * captionPool.length)];
+    }
+    
+    // 만약의 경우를 대비한 기본 캡션
+    return PREDEFINED_CAPTIONS.longing[Math.floor(Math.random() * PREDEFINED_CAPTIONS.longing.length)];
 }
 
 async function generateAICaption(emotionalState, trigger, imageUrl) {
@@ -238,68 +244,68 @@ async function generateAICaption(emotionalState, trigger, imageUrl) {
     }
 }
 
-// [새로운] 자연스러운 사진 발송 조건 판단
+// [새로운] 완전한 보수적 사진 발송 조건 판단
 function shouldSendPhoto(minutesSinceLastUserMessage, emotionalState) {
     const hour = moment().tz(CONFIG.TIMEZONE).hour();
     const minutesSinceLastPhoto = (Date.now() - lastPhotoSentTime) / 60000;
     
-    // 기본 조건 체크
+    // 기본 조건 체크 (더 엄격)
     if (minutesSinceLastPhoto < CONFIG.MIN_PHOTO_INTERVAL) return false;
     if (dailyPhotoCount >= CONFIG.MAX_DAILY_PHOTOS) return false;
     if (!isActivePhotoTime() || isSleepTime()) return false;
     
-    // 자연스러운 확률 계산
-    let probability = 0.3; // 기본 30%
+    // 보수적 확률 계산
+    let probability = 0.1; // 기본 10% (30% → 10%)
     
-    // 시간대 가중치
-    const timeWeight = CONFIG.TIME_WEIGHTS[hour] || 1.0;
+    // 시간대 가중치 (더 보수적)
+    const timeWeight = CONFIG.TIME_WEIGHTS[hour] || 0.8;
     probability *= timeWeight;
     
     // 목표 달성 여부
     if (dailyPhotoCount < CONFIG.DAILY_PHOTO_TARGET) {
-        probability += 0.2; // 목표 미달 시 확률 증가
+        probability += 0.15; // 목표 미달 시 확률 증가 (0.2 → 0.15)
     }
     
-    // 아저씨 반응 패턴
-    if (minutesSinceLastUserMessage >= 90) {
-        probability += 0.3; // 오래 기다린 경우
-    } else if (minutesSinceLastUserMessage <= 20) {
-        probability += 0.2; // 활발한 대화 중
+    // 아저씨 반응 패턴 (더 엄격한 조건)
+    if (minutesSinceLastUserMessage >= 180) { // 3시간 (90분 → 180분)
+        probability += 0.2; // 오래 기다린 경우 (0.3 → 0.2)
+    } else if (minutesSinceLastUserMessage <= 15) { // 15분 (20분 → 15분)
+        probability += 0.1; // 활발한 대화 중 (0.2 → 0.1)
     }
     
-    // 감정 변화 보너스
+    // 감정 변화 보너스 (감소)
     if (emotionalState !== lastEmotionalState) {
-        probability += 0.25;
+        probability += 0.15; // (0.25 → 0.15)
     }
     
-    return Math.random() < Math.min(probability, 0.8); // 최대 80%
+    return Math.random() < Math.min(probability, 0.4); // 최대 40% (80% → 40%)
 }
 
 function getTrigger(minutesSinceLastUserMessage, emotionalState) {
-    if (minutesSinceLastUserMessage >= 90) return 'long_silence';
-    if (minutesSinceLastUserMessage <= 20) return 'quick_response';
+    if (minutesSinceLastUserMessage >= 180) return 'long_silence'; // 3시간 (90분 → 180분)
+    if (minutesSinceLastUserMessage <= 15) return 'quick_response'; // 15분 (20분 → 15분)
     if (emotionalState !== lastEmotionalState) return 'emotion_change';
-    if (Math.random() < 0.05) return 'special_moment';
+    if (Math.random() < 0.02) return 'special_moment'; // 2% (5% → 2%)
     return 'normal';
 }
 
 async function sendRandomPhoto(client, userId, trigger = 'normal') {
     try {
-        logWithTime(`📸 똑똑한 사진 발송 시작 (트리거: ${trigger})`);
+        logWithTime(`📸 보수적 사진 발송 시작 (트리거: ${trigger})`);
         
         const imageUrl = getRandomPhotoUrl();
         const internalState = conversationContext.getInternalState();
         const emotionalState = internalState.emotionalEngine.currentToneState;
         
-        // 똑똑한 캡션 생성 (90% 사전정의, 10% AI)
-        const caption = await getSmartCaption('normal', emotionalState, trigger, imageUrl);
+        // 보수적 캡션 생성 (95% 사전정의, 5% AI)
+        const caption = await getConservativeCaption('normal', emotionalState, trigger, imageUrl);
         
         await client.pushMessage(userId, [
             { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl },
             { type: 'text', text: caption }
         ]);
         
-        const logMessage = `(똑똑한 사진) ${caption}`;
+        const logMessage = `(보수적 사진) ${caption}`;
         saveLog('예진이', logMessage);
         conversationContext.addUltimateMessage('예진이', logMessage);
         
@@ -322,9 +328,9 @@ function startSpontaneousPhotoScheduler(client, userId, getLastUserMessageTimeFu
         logWithTime('기존 스케줄러 취소됨');
     }
     
-    // 45분마다 자연스럽게 체크
+    // 90분마다 보수적으로 체크
     spontaneousPhotoJob = schedule.scheduleJob(`*/${CONFIG.CHECK_INTERVAL} * * * *`, async () => {
-        logWithTime('🧠 똑똑한 사진 발송 체크...');
+        logWithTime('🐌 보수적 사진 발송 체크...');
         
         if (isSleepTime()) return;
         
@@ -333,21 +339,21 @@ function startSpontaneousPhotoScheduler(client, userId, getLastUserMessageTimeFu
         
         if (shouldSendPhoto(minutesSinceLastUserMessage, emotionalState)) {
             const trigger = getTrigger(minutesSinceLastUserMessage, emotionalState);
-            logWithTime(`✅ 자연스러운 발송 조건 충족! (${trigger})`);
+            logWithTime(`✅ 보수적 발송 조건 충족! (${trigger})`);
             await sendRandomPhoto(client, userId, trigger);
         } else {
-            logWithTime('❌ 발송 조건 미충족 (자연스러운 타이밍 대기)');
+            logWithTime('❌ 발송 조건 미충족 (보수적 타이밍 대기)');
         }
     });
     
     // 일일 리셋 (자정)
-    schedule.scheduleJob('dailySmartReset', { hour: 0, minute: 0, tz: CONFIG.TIMEZONE }, () => {
+    schedule.scheduleJob('dailyConservativeReset', { hour: 0, minute: 0, tz: CONFIG.TIMEZONE }, () => {
         logWithTime(`🔄 일일 리셋: 사진 ${dailyPhotoCount}→0, AI사용 ${todayAiUsage}→0`);
         dailyPhotoCount = 0;
         todayAiUsage = 0;
     });
     
-    logWithTime('✅ 똑똑한 하이브리드 사진 시스템 시작!');
+    logWithTime('✅ 완전한 보수적 사진 시스템 시작!');
     logWithTime(`⚙️ 설정: ${CONFIG.CHECK_INTERVAL}분 체크, 하루 ${CONFIG.DAILY_PHOTO_TARGET}장 목표, AI 최대 ${CONFIG.MAX_DAILY_AI_USAGE}회`);
 }
 
@@ -364,7 +370,12 @@ function getPhotoSchedulerStatus() {
         maxDailyAiUsage: CONFIG.MAX_DAILY_AI_USAGE,
         nextCheckIn: CONFIG.CHECK_INTERVAL,
         photoSource: `${PHOTO_CONFIG.BASE_URL} (${PHOTO_CONFIG.FILE_COUNT}장)`,
-        systemType: 'Smart Hybrid (90% 사전정의 + 10% AI)'
+        systemType: 'Conservative System (95% 사전정의 + 5% AI)',
+        minPhotoInterval: CONFIG.MIN_PHOTO_INTERVAL,
+        longSilenceThreshold: 180,
+        quickResponseThreshold: 15,
+        baseProbability: '10%',
+        maxProbability: '40%'
     };
 }
 
