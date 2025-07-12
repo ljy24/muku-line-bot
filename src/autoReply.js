@@ -1,18 +1,17 @@
 // ==================== START OF autoReply.js ====================
-// ✅ autoReply.js v13.2 - "모든 기능 통합 최종본"
+// ✅ autoReply.js v13.2 - "역할 혼동 및 모든 기능 연동 최종본"
 
 const conversationContext = require('./ultimateConversationContext.js');
 const { callOpenAI, cleanReply } = require('./aiUtils');
 const moment = require('moment-timezone');
 
-const BOT_NAME = '나';
+const BOT_NAME = '나'; // 역할 혼동을 막기 위해 '예진이'에서 '나'로 수정
 const USER_NAME = '아저씨';
 
 // 키워드 정의
 const EMERGENCY_KEYWORDS = ['힘들다', '죽고싶다', '우울해', '지친다', '다 싫다', '아무것도 하기 싫어', '너무 괴로워', '살기 싫어'];
 const WEATHER_KEYWORDS = ['날씨', '기온', '온도', '더워', '더운', '추워', '추운', '습해', '비 와', '눈 와'];
 const DRINKING_KEYWORDS = ['술 마셔', '술 마시러', '혼술', '맥주', '소주', '위스키', '사케', '한잔', '취했어', '취한다'];
-
 const MEMORY_KEYWORDS = { USER_REQUEST: ['기억해줘', '기억해', '꼭 기억해', '잊지마', '잊지 말아줘', '이건 중요해', '이거 중요한', '꼭 알아둬', '기억할래', '이건 꼭', '절대 잊으면 안 돼', '평생 기억해'], MUKU_CONFIRM: ['꼭 기억할게', '절대 안 잊을게', '평생 기억할게', '이건 중요한 사실', '기억해둘게', '잊지 않을게', '이거 기억할게', '마음에 새길게'] };
 const MEMORY_DELETE_KEYWORDS = ['잊어줘', '잊어', '기억 삭제', '기억 지워', '틀렸어', '잘못됐어', '아니야', '그게 아니야', '취소해', '지워줘', '없던 일로', '기억 취소', '잘못 기억', '다시 기억', '수정해'];
 const MEMORY_UPDATE_KEYWORDS = ['수정해줘', '바꿔줘', '다시 기억해', '정정해', '고쳐줘', '아니라', '사실은', '정확히는', '바로잡을게'];
