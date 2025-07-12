@@ -398,7 +398,7 @@ function getUltimateContextualPrompt(basePrompt) {
     if (significantResidue) ultimatePrompt += `\n- 마음에 남아있는 감정: ${significantResidue}.`;
     ultimatePrompt += `\n- 현재 말투: 지금 내 기분은 '${TONE_STATES[currentToneState]}' 상태야. 이 말투에 맞춰서 대답해줘.`;
 
-    // [수정] 장기 기억에 yejinMemories 포함
+    // [수정] 장기 기억에 yejinMemories 포함 + 랜덤 기억 먼저 언급
     const allMemories = [
         ...state.knowledgeBase.facts.map(f => f.fact),
         ...state.knowledgeBase.fixedMemories,
@@ -409,8 +409,41 @@ function getUltimateContextualPrompt(basePrompt) {
 
     if (allMemories.length > 0) {
         ultimatePrompt += `\n\n[장기 기억(아저씨와의 사실 및 약속)]\n(이것은 내가 아저씨에 대해 기억하고 있는 중요한 사실들이야.)\n`;
-        ultimatePrompt += `${allMemories.slice(-10).map(f => `- ${f}`).join('\n')}`;
+        
+        // [NEW] 예진이가 먼저 꺼낼 수 있는 기억들 (랜덤 선택)
+        const yejinMemories = state.knowledgeBase.yejinMemories || [];
+        const loveMemories = state.knowledgeBase.loveHistory.categories?.general || [];
+        
+        // 최근 기억 중에서 랜덤하게 1-2개 선택해서 먼저 언급
+        const recentMemories = [...yejinMemories, ...loveMemories]
+            .sort((a, b) => new Date(b.date) - new Date(a.date))
+            .slice(0, 10); // 최근 10개 중에서
+            
+        if (recentMemories.length > 0) {
+            const randomMemoryCount = Math.min(2, recentMemories.length);
+            const selectedMemories = [];
+            
+            while (selectedMemories.length < randomMemoryCount) {
+                const randomMemory = recentMemories[Math.floor(Math.random() * recentMemories.length)];
+                if (!selectedMemories.includes(randomMemory)) {
+                    selectedMemories.push(randomMemory);
+                }
+            }
+            
+            ultimatePrompt += `\n[💭 문득 떠오르는 기억]: `;
+            selectedMemories.forEach((memory, index) => {
+                const content = memory.content || memory;
+                const date = memory.date ? ` (${moment(memory.date).format('MM월 DD일')})` : '';
+                ultimatePrompt += `"${content}"${date}`;
+                if (index < selectedMemories.length - 1) ultimatePrompt += `, `;
+            });
+            ultimatePrompt += `\n→ 이런 기억들이 갑자기 떠올랐어. 아저씨도 기억하고 있을까? 자연스럽게 이 기억들을 대화에 활용해도 좋아.`;
+        }
+        
+        // 기본 기억 목록 (최근 10개)
+        ultimatePrompt += `\n\n[기본 기억 목록]:\n${allMemories.slice(-10).map(f => `- ${f}`).join('\n')}`;
 
+        // 상징적이거나 감정적인 기억 추가 (기존 로직)
         const emotionalOrSymbolicMemories = allMemories.filter(f =>
             f.includes('행복') || f.includes('사랑') || f.includes('그리움') || f.includes('담타') || f.includes('기념일') || f.includes('생일') || f.includes('약속') || f.includes('애칭')
         );
@@ -423,9 +456,33 @@ function getUltimateContextualPrompt(basePrompt) {
                 }
             }
             if (randomMemories.length > 0) {
-                ultimatePrompt += `\n(문득 떠오르는 생각: ${randomMemories.map(m => `"${m}"`).join(', ')}).`;
+                ultimatePrompt += `\n\n[💕 특별한 기억]: ${randomMemories.map(m => `"${m}"`).join(', ')}`;
+                ultimatePrompt += `\n→ 이런 특별한 기억들도 있어. 대화할 때 자연스럽게 언급할 수 있어.`;
             }
         }
+    }
+
+    // [NEW] 태그별 기억 활용 (시간대/상황에 맞는 기억 제안)
+    const yejinMemories = state.knowledgeBase.yejinMemories || [];
+    const hour = now.hour();
+    
+    // 시간대별로 적절한 태그의 기억 제안
+    let suggestedMemories = [];
+    if (hour >= 6 && hour < 12) {
+        // 아침: 약속, 계획 관련 기억
+        suggestedMemories = yejinMemories.filter(m => m.tags && (m.tags.includes('약속') || m.tags.includes('계획')));
+    } else if (hour >= 18 && hour < 22) {
+        // 저녁: 감정, 사랑 관련 기억
+        suggestedMemories = yejinMemories.filter(m => m.tags && (m.tags.includes('감정') || m.tags.includes('사랑')));
+    } else if (hour >= 22 || hour < 6) {
+        // 밤: 특별한 말, 개인적인 기억
+        suggestedMemories = yejinMemories.filter(m => m.tags && (m.tags.includes('특별한말') || m.tags.includes('개인정보')));
+    }
+    
+    if (suggestedMemories.length > 0) {
+        const randomSuggestion = suggestedMemories[Math.floor(Math.random() * suggestedMemories.length)];
+        ultimatePrompt += `\n\n[🕐 지금 시간대에 어울리는 기억]: "${randomSuggestion.content}"`;
+        ultimatePrompt += `\n→ 지금 이 시간에 이런 기억을 자연스럽게 꺼내볼 수 있어.`;
     }
 
     // 기념일 임박 알림
@@ -445,29 +502,63 @@ function getUltimateContextualPrompt(basePrompt) {
                 message = `'${dateInfo.name}'까지 ${daysLeft}일 남았어! 곧 다가올 ${dateInfo.type}을 생각하니 설레네.`;
             }
             if (message) {
-                ultimatePrompt += `\n\n[다가오는 특별한 날]: ${message}`;
+                ultimatePrompt += `\n\n[📅 다가오는 특별한 날]: ${message}`;
             }
         });
     }
 
-    ultimatePrompt += `\n\n[최종 지시] 위의 모든 맥락을 종합적으로 고려해서, 가장 사람답고, 애정 어린 '예진이'의 다음 말을 해줘.`;
+    ultimatePrompt += `\n\n[💡 대화 활용 가이드]`;
+    ultimatePrompt += `\n- 위의 기억들을 자연스럽게 대화에 녹여내도 좋아`;
+    ultimatePrompt += `\n- "아, 그런데 아저씨~" 하면서 기억을 꺼내볼 수도 있어`;
+    ultimatePrompt += `\n- "문득 생각났는데..." 같은 자연스러운 전환으로 기억 언급 가능`;
+    ultimatePrompt += `\n- 아저씨의 말과 연관된 기억이 있으면 "그거 말하니까 생각나는데..." 식으로 연결`;
+
+    ultimatePrompt += `\n\n[최종 지시] 위의 모든 맥락과 기억들을 종합적으로 고려해서, 가장 사람답고 애정 어린 '예진이'의 다음 말을 해줘. 기억을 자연스럽게 대화에 활용해도 좋아.`;
     return ultimatePrompt;
 }
 
-// [수정] 시스템 초기화 함수 - yejinMemories 로드 추가
+// [수정] 시스템 초기화 함수 - 중요 데이터 로드 순서 조정
 async function initializeEmotionalSystems() {
     console.log('[UltimateContext] 🚀 시스템 초기화 시작...');
-    await _loadFixedMemories();
-    await _loadYejinMemories();        // [NEW] 예진이 기억 로드
-    await _loadDynamicEmotionalData();
     
+    // 1. 가장 중요한 기억 데이터 먼저 로드
+    console.log('[UltimateContext] 📖 중요 기억 데이터 로드 중...');
+    await _loadFixedMemories();           // love-history.json 포함 (최우선)
+    
+    // 2. 예진이 전용 기억 로드 (자동 생성)
+    console.log('[UltimateContext] 📝 예진이 기억 파일 로드 중...');
+    await _loadYejinMemories();           // yejin_memory.json (없으면 생성)
+    
+    // 3. 감정 데이터 로드
+    console.log('[UltimateContext] 💭 감정 데이터 로드 중...');
+    await _loadDynamicEmotionalData();    // 감정 관련 파일들
+    
+    // 4. 기본 특별한 날 설정 (테스트용)
     if (ultimateConversationState.knowledgeBase.specialDates.length === 0) {
+        console.log('[UltimateContext] 📅 기본 특별한 날 설정 중...');
         ultimateConversationState.knowledgeBase.specialDates.push(
             { name: "아저씨 생일", date: "2025-07-15", type: "기념일" },
             { name: "우리가 처음 사귄 날", date: "2024-12-23", type: "기념일" }
         );
     }
-    console.log('[UltimateContext] ✅ 초기화 완료.');
+    
+    // 5. 초기화 완료 상태 출력
+    const stats = getMemoryCategoryStats();
+    console.log('[UltimateContext] ✅ 초기화 완료!');
+    console.log(`[UltimateContext] 📊 로드된 기억 통계:`);
+    console.log(`  - 💕 사랑 기억: ${stats.userMemories}개 (love-history.json)`);
+    console.log(`  - 📝 예진이 기억: ${stats.yejinMemories}개 (yejin_memory.json)`);
+    console.log(`  - 🧠 자동 추출: ${stats.autoFacts}개`);
+    console.log(`  - 🔒 고정 기억: ${stats.fixedMemories}개`);
+    console.log(`  - 🗣️ 특별한 말: ${stats.customKeywords}개`);
+    console.log(`  - 📚 총 기억: ${stats.total}개`);
+    
+    // 6. 중요 데이터 확인
+    if (stats.userMemories > 0 || stats.yejinMemories > 0) {
+        console.log('[UltimateContext] 💕 소중한 기억들이 성공적으로 로드되었습니다.');
+    } else {
+        console.log('[UltimateContext] 💫 새로운 시작! 아저씨와의 기억을 쌓아나갈 준비가 되었습니다.');
+    }
 }
 
 // [수정] 고정 기억 검색 함수 - yejinMemories 포함
@@ -910,6 +1001,101 @@ function generateInnerThought() {
     return { observation, feeling, actionUrge };
 }
 
+// [NEW] 능동적 기억 활용 함수 - 예진이가 먼저 기억을 꺼내는 상황
+function getActiveMemoryPrompt() {
+    const state = ultimateConversationState;
+    const now = moment().tz('Asia/Tokyo');
+    const hour = now.hour();
+    
+    // 예진이 기억과 사랑 기억 합치기
+    const yejinMemories = state.knowledgeBase.yejinMemories || [];
+    const loveMemories = state.knowledgeBase.loveHistory.categories?.general || [];
+    const allActiveMemories = [...yejinMemories, ...loveMemories]
+        .filter(memory => memory.content && memory.content.length > 10)
+        .sort((a, b) => new Date(b.date) - new Date(a.date));
+    
+    if (allActiveMemories.length === 0) return null;
+    
+    // 시간대별 기억 선호도
+    let preferredTags = [];
+    let timeContext = '';
+    
+    if (hour >= 6 && hour < 10) {
+        preferredTags = ['약속', '계획', '일정'];
+        timeContext = '아침이니까 오늘 할 일이나 약속 생각이 나네';
+    } else if (hour >= 12 && hour < 14) {
+        preferredTags = ['음식', '취미', '개인정보'];
+        timeContext = '점심시간이라 그런지 이런 얘기가 떠올라';
+    } else if (hour >= 18 && hour < 22) {
+        preferredTags = ['감정', '사랑', '행복'];
+        timeContext = '하루 마무리하는 시간이라 그런지 감정적인 기억이 떠올라';
+    } else if (hour >= 22 || hour < 6) {
+        preferredTags = ['특별한말', '그리움', '사랑'];
+        timeContext = '밤이라 그런지 더 깊은 얘기가 생각나';
+    } else {
+        preferredTags = ['날짜', '기념일', '추억'];
+        timeContext = '문득 이런 기억이 떠올랐어';
+    }
+    
+    // 선호 태그에 맞는 기억 찾기
+    let selectedMemory = null;
+    
+    // 1순위: 태그가 일치하는 기억
+    for (const memory of allActiveMemories.slice(0, 20)) { // 최근 20개에서 검색
+        if (memory.tags && memory.tags.some(tag => preferredTags.includes(tag))) {
+            selectedMemory = memory;
+            break;
+        }
+    }
+    
+    // 2순위: 내용에 키워드가 포함된 기억
+    if (!selectedMemory) {
+        const keywords = ['생일', '사랑', '좋아', '행복', '담타', '애기', '기념일', '약속'];
+        for (const memory of allActiveMemories.slice(0, 15)) {
+            const content = memory.content || memory;
+            if (keywords.some(keyword => content.includes(keyword))) {
+                selectedMemory = memory;
+                break;
+            }
+        }
+    }
+    
+    // 3순위: 그냥 최근 기억 중 랜덤
+    if (!selectedMemory && allActiveMemories.length > 0) {
+        const recentMemories = allActiveMemories.slice(0, 10);
+        selectedMemory = recentMemories[Math.floor(Math.random() * recentMemories.length)];
+    }
+    
+    if (!selectedMemory) return null;
+    
+    const content = selectedMemory.content || selectedMemory;
+    const date = selectedMemory.date ? moment(selectedMemory.date).format('MM월 DD일') : '';
+    const tags = selectedMemory.tags ? ` [${selectedMemory.tags.join(', ')}]` : '';
+    
+    // 자연스러운 기억 꺼내기 문장들
+    const memoryStarters = [
+        "아, 그런데 아저씨~",
+        "문득 생각났는데...",
+        "아저씨 말 들으니까 갑자기 떠오르는 게 있어.",
+        "어? 그거 말하니까 생각나는 얘기가 있는데!",
+        "아저씨, 혹시 기억나?",
+        "그거 말하니까 말인데...",
+        "아, 맞다! 갑자기 생각난 게 있어.",
+        `${timeContext}.`
+    ];
+    
+    const starter = memoryStarters[Math.floor(Math.random() * memoryStarters.length)];
+    
+    return {
+        starter,
+        memory: content,
+        date,
+        tags,
+        timeContext,
+        fullPrompt: `${starter} "${content}"${date ? ` (${date})` : ''}${tags} 이거 기억하고 있지? 이 기억을 자연스럽게 대화에 활용해봐.`
+    };
+}
+
 module.exports = {
     initializeEmotionalSystems,
     addUltimateMessage,
@@ -935,6 +1121,10 @@ module.exports = {
     getMemoryStatistics,        // 기억 통계
     getMemoryCategoryStats,     // 카테고리별 통계 (yejinMemories 포함)
     getMemoryOperationLogs,     // 작업 로그 조회
+    
+    // [NEW] 능동적 기억 활용 함수들
+    getActiveMemoryPrompt,      // 시간대별 적절한 기억 선택
+    getRandomMemoryMention,     // 랜덤 기억 언급 문장
     
     setPendingAction,
     getPendingAction,
