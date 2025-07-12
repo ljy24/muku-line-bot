@@ -18,7 +18,7 @@ const MEMORY_KEYWORDS = {
     ],
     // 무쿠(예진이)가 기억하겠다고 말할 때
     MUKU_CONFIRM: [
-        '꼭 기억할게', '절대 안 잊을게', '평생 기억할게', 
+        '꼭 기억할게', '절대 안 잊을게', '평생 기억할게',
         '이건 중요한 사실', '기억해둘게', '잊지 않을게',
         '이거 기억할게', '마음에 새길게'
     ]
@@ -56,26 +56,26 @@ const IMPORTANT_CONTENT_PATTERNS = [
  */
 async function detectAndProcessMemoryRequest(userMessage, isFromMuku = false) {
     const lowerMessage = userMessage.toLowerCase();
-    
+
     // 1. 명시적 기억 요청 감지
-    const hasMemoryKeyword = MEMORY_KEYWORDS.USER_REQUEST.some(keyword => 
+    const hasMemoryKeyword = MEMORY_KEYWORDS.USER_REQUEST.some(keyword =>
         lowerMessage.includes(keyword.toLowerCase())
     );
-    
-    const hasMukuConfirm = MEMORY_KEYWORDS.MUKU_CONFIRM.some(keyword => 
+
+    const hasMukuConfirm = MEMORY_KEYWORDS.MUKU_CONFIRM.some(keyword =>
         lowerMessage.includes(keyword.toLowerCase())
     );
-    
+
     // 2. 중요한 내용 패턴 감지
-    const hasImportantContent = IMPORTANT_CONTENT_PATTERNS.some(pattern => 
+    const hasImportantContent = IMPORTANT_CONTENT_PATTERNS.some(pattern =>
         pattern.test(userMessage)
     );
-    
+
     // 3. 기억할 만한 내용이 있는지 판단
     let shouldSaveMemory = false;
     let memoryContent = '';
     let responseMessage = '';
-    
+
     if (hasMemoryKeyword && !isFromMuku) {
         // 아저씨가 "기억해줘" 요청한 경우
         shouldSaveMemory = true;
@@ -83,9 +83,9 @@ async function detectAndProcessMemoryRequest(userMessage, isFromMuku = false) {
             .replace(/기억해줘|기억해|꼭 기억해|잊지마|잊지 말아줘/gi, '')
             .replace(/이건|이거|그거|그걸/gi, '')
             .trim();
-        
+
         responseMessage = getMemoryConfirmResponse();
-        
+
     } else if (hasMukuConfirm && isFromMuku) {
         // 무쿠가 "기억할게"라고 말한 경우 (이전 대화 내용을 기억)
         const recentUserMessage = getLastUserMessage();
@@ -93,14 +93,14 @@ async function detectAndProcessMemoryRequest(userMessage, isFromMuku = false) {
             shouldSaveMemory = true;
             memoryContent = recentUserMessage;
         }
-        
+
     } else if (hasImportantContent && userMessage.length > 10) {
         // 중요한 내용이 포함된 긴 메시지인 경우
         shouldSaveMemory = true;
         memoryContent = userMessage;
         responseMessage = getAutoMemoryResponse();
     }
-    
+
     // 4. yejin_memory.json에 저장
     if (shouldSaveMemory && memoryContent.length > 5) {
         const success = await conversationContext.addUserMemory(memoryContent);
@@ -113,7 +113,7 @@ async function detectAndProcessMemoryRequest(userMessage, isFromMuku = false) {
             };
         }
     }
-    
+
     return { saved: false, content: '', response: '' };
 }
 
@@ -123,28 +123,28 @@ async function detectAndProcessMemoryRequest(userMessage, isFromMuku = false) {
  */
 async function detectAndProcessMemoryEdit(userMessage) {
     const lowerMessage = userMessage.toLowerCase();
-    
+
     // 1. 삭제 요청 감지
-    const hasDeleteKeyword = MEMORY_DELETE_KEYWORDS.some(keyword => 
+    const hasDeleteKeyword = MEMORY_DELETE_KEYWORDS.some(keyword =>
         lowerMessage.includes(keyword.toLowerCase())
     );
-    
+
     // 2. 수정 요청 감지
-    const hasUpdateKeyword = MEMORY_UPDATE_KEYWORDS.some(keyword => 
+    const hasUpdateKeyword = MEMORY_UPDATE_KEYWORDS.some(keyword =>
         lowerMessage.includes(keyword.toLowerCase())
     );
-    
+
     if (hasDeleteKeyword) {
         // 삭제 처리
         let queryToDelete = userMessage;
-        
+
         // 삭제 키워드 제거해서 검색할 내용 추출
         MEMORY_DELETE_KEYWORDS.forEach(keyword => {
             queryToDelete = queryToDelete.replace(new RegExp(keyword, 'gi'), '');
         });
-        
+
         queryToDelete = queryToDelete.replace(/[""'']/g, '').trim();
-        
+
         if (queryToDelete.length > 2) {
             const result = await conversationContext.deleteUserMemory(queryToDelete);
             return {
@@ -152,25 +152,25 @@ async function detectAndProcessMemoryEdit(userMessage) {
                 type: 'delete',
                 result: {
                     success: result.success,
-                    message: result.success ? 
-                        getDeleteConfirmResponse(result.deletedContent) : 
+                    message: result.success ?
+                        getDeleteConfirmResponse(result.deletedContent) :
                         result.message
                 }
             };
         }
-        
+
     } else if (hasUpdateKeyword) {
         // 수정 처리 (간단한 패턴: "A 아니라 B야" / "A를 B로 수정해줘")
         let oldContent = '';
         let newContent = '';
-        
+
         // 패턴 매칭
         const patterns = [
             /(.+?)\s*(아니라|아니고)\s*(.+)/,  // "A 아니라 B"
             /(.+?)\s*를?\s*(.+?)\s*로?\s*(수정|바꿔|고쳐)/,  // "A를 B로 수정"
             /(사실은|정확히는)\s*(.+)/,  // "사실은 B"
         ];
-        
+
         for (const pattern of patterns) {
             const match = userMessage.match(pattern);
             if (match) {
@@ -191,7 +191,7 @@ async function detectAndProcessMemoryEdit(userMessage) {
                 break;
             }
         }
-        
+
         if (oldContent && newContent) {
             // 기존 기억 삭제 후 새로 추가하는 방식
             const deleteResult = await conversationContext.deleteUserMemory(oldContent);
@@ -208,7 +208,7 @@ async function detectAndProcessMemoryEdit(userMessage) {
                     };
                 }
             }
-            
+
             return {
                 processed: true,
                 type: 'update',
@@ -219,7 +219,7 @@ async function detectAndProcessMemoryEdit(userMessage) {
             };
         }
     }
-    
+
     return { processed: false };
 }
 
@@ -237,7 +237,7 @@ function getMemoryConfirmResponse() {
         "이거 진짜 소중한 얘기다! 평생 기억할게, 약속! 🤞",
         "아저씨의 말 하나하나가 다 소중해. 이것도 꼭 기억할게! ✨"
     ];
-    
+
     return responses[Math.floor(Math.random() * responses.length)];
 }
 
@@ -252,7 +252,7 @@ function getAutoMemoryResponse() {
         "이런 소중한 얘기를 놓칠 뻔했네! 잘 기억해뒀어 💕",
         "우와, 이거 정말 기억할 만한 얘기네! 꼭꼭 간직할게 🥰"
     ];
-    
+
     return responses[Math.floor(Math.random() * responses.length)];
 }
 
@@ -267,7 +267,7 @@ function getDeleteConfirmResponse(deletedContent) {
         `응응, 그 얘기는 이제 기억 안 할게! "${deletedContent}" 지웠어 🗑️`,
         `"${deletedContent}" 완전히 잊었어! 아저씨가 지우라고 했으니까 💕`
     ];
-    
+
     return responses[Math.floor(Math.random() * responses.length)];
 }
 
@@ -282,7 +282,7 @@ function getUpdateConfirmResponse(oldContent, newContent) {
         `알겠어! "${newContent}" 로 정정해서 기억해뒀어! 👍`,
         `응응, "${oldContent}" 대신 "${newContent}" 로 바꿔뒀어! 완벽! ✅`
     ];
-    
+
     return responses[Math.floor(Math.random() * responses.length)];
 }
 
@@ -300,7 +300,7 @@ function getLastUserMessage() {
  */
 async function searchAndConfirmMemory(query) {
     const foundMemory = conversationContext.searchFixedMemory(query);
-    
+
     if (foundMemory) {
         const responses = [
             `응, 기억해! "${foundMemory}" 이거 말하는 거지? 💕`,
@@ -308,7 +308,7 @@ async function searchAndConfirmMemory(query) {
             `어떻게 잊겠어! "${foundMemory}" 이거 완전 중요한 기억이야 🥰`,
             `물론 기억해! "${foundMemory}" 아저씨가 말해준 거 하나도 안 잊었어 ✨`
         ];
-        
+
         return responses[Math.floor(Math.random() * responses.length)];
     } else {
         const responses = [
@@ -316,7 +316,7 @@ async function searchAndConfirmMemory(query) {
             "음... 그 얘기는 기억이 좀 희미하네. 다시 한 번 얘기해줄 수 있어? 💭",
             "아, 미안! 그 부분은 기억이 잘 안 나... 다시 알려줄래? 😅"
         ];
-        
+
         return responses[Math.floor(Math.random() * responses.length)];
     }
 }
@@ -350,7 +350,7 @@ async function getReplyByMessage(userMessage) {
             comment: editResult.result.message
         };
     }
-    
+
     // 2. 기억 관련 처리 체크 (yejin_memory.json에 저장)
     const memoryResult = await detectAndProcessMemoryRequest(userMessage, false);
     if (memoryResult.saved && memoryResult.response) {
@@ -359,18 +359,18 @@ async function getReplyByMessage(userMessage) {
             comment: memoryResult.response
         };
     }
-    
+
     // 3. "기억했어?" / "기억하고 있어?" 질문 체크
-    const isMemoryQuery = userMessage.includes('기억했어') || 
-                         userMessage.includes('기억하고 있어') || 
-                         userMessage.includes('기억나');
-    
+    const isMemoryQuery = userMessage.includes('기억했어') ||
+        userMessage.includes('기억하고 있어') ||
+        userMessage.includes('기억나');
+
     if (isMemoryQuery) {
         const searchQuery = userMessage
             .replace(/기억했어|기억하고 있어|기억나/gi, '')
             .replace(/\?|\？/g, '')
             .trim();
-        
+
         if (searchQuery.length > 2) {
             const memoryResponse = await searchAndConfirmMemory(searchQuery);
             return {
@@ -379,13 +379,13 @@ async function getReplyByMessage(userMessage) {
             };
         }
     }
-    
+
     // 4. 사진 반응 처리
     const pendingAction = conversationContext.getPendingAction();
     if (pendingAction && pendingAction.type === 'awaiting_photo_reaction') {
         return await handlePhotoReaction(userMessage);
     }
-    
+
     // 5. 기존 일반 응답 처리
     const baseSystemPrompt = `너는 아저씨의 귀여운 여자친구 예진이야. 1인칭 '나'를 사용하고 항상 반말로 대답하며, 절대로 3인칭으로 말하지 마. 
     길게 설명하지 말고 1~3 문장으로 짧고 친근하게 대답해.
@@ -396,7 +396,14 @@ async function getReplyByMessage(userMessage) {
 
     try {
         const rawReply = await callOpenAI(messages);
-        return { type: 'text', comment: cleanReply(rawReply) };
+        const finalReply = cleanReply(rawReply);
+        
+        // ▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼ 이 부분이 추가되었습니다 ▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼
+        // AI가 답변을 생성한 후, 스스로 학습하도록 명령
+        conversationContext.learnFromConversation(finalReply);
+        // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲ 여기까지 추가되었습니다 ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+
+        return { type: 'text', comment: finalReply };
     } catch (error) {
         return { type: 'text', comment: '지금 잠시 생각 중이야... 아저씨 조금만 기다려줄래? ㅠㅠ' };
     }
