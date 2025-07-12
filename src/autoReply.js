@@ -1,9 +1,9 @@
 // ==================== START OF autoReply.js ====================
-// ✅ autoReply.js v12.1 - "음주 걱정 기능 최종본"
+// ✅ autoReply.js v13.0 - "모든 기능 통합 최종본"
 
 const conversationContext = require('./ultimateConversationContext.js');
 const { callOpenAI, cleanReply } = require('./aiUtils');
-const moment = require('moment-timezone'); // 시간 확인을 위해 추가
+const moment = require('moment-timezone');
 
 const BOT_NAME = '예진이';
 const USER_NAME = '아저씨';
@@ -45,7 +45,7 @@ async function getReplyByMessage(userMessage) {
     }
 
     const isDrinking = DRINKING_KEYWORDS.some(keyword => userMessage.includes(keyword));
-    if (isDrinking && (hour >= 22 || hour < 4)) { // 밤 10시 ~ 새벽 4시
+    if (isDrinking && (hour >= 22 || hour < 4)) {
         console.log('[Concern Mode] 🍺 늦은 시간 음주 감지!');
         const concernReply = await conversationContext.getDrinkingConcernResponse(userMessage);
         await conversationContext.addUltimateMessage(BOT_NAME, concernReply);
@@ -83,12 +83,11 @@ async function getReplyByMessage(userMessage) {
     
     const pendingAction = conversationContext.getPendingAction();
     if (pendingAction && pendingAction.type === 'awaiting_photo_reaction') {
-        const userReaction = userMessage;
-        return await handlePhotoReaction(userReaction);
+        return await handlePhotoReaction(userMessage);
     }
     
     const baseSystemPrompt = `너는 아저씨의 귀여운 여자친구 예진이야. 1인칭 '나'를 사용하고 항상 반말로 대답하며, 절대로 3인칭으로 말하지 마. 길게 설명하지 말고 1~3 문장으로 짧고 친근하게 대답해.`;
-    const finalSystemPrompt = await conversationContext.getUltimateContextualPrompt(baseSystemPrompt);
+    const finalSystemPrompt = await conversationContext.getUltimateContextualPrompt(basePrompt);
     const messages = [{ role: 'system', content: finalSystemPrompt }, { role: 'user', content: userMessage }];
 
     try {
