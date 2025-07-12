@@ -1,4 +1,4 @@
-// ✅ index.js v9.8 - undefined 문제 완전 해결본
+// ✅ index.js v9.9 - 모든 undefined 문제 완전 해결본
 
 const { Client, middleware } = require('@line/bot-sdk');
 const express = require('express');
@@ -19,7 +19,7 @@ const config = { channelAccessToken: process.env.LINE_ACCESS_TOKEN, channelSecre
 const client = new Client(config);
 const userId = process.env.TARGET_USER_ID;
 
-app.get('/', (_, res) => res.send('예진이 v9.8 살아있어! (undefined 문제 해결 완료)'));
+app.get('/', (_, res) => res.send('예진이 v9.9 살아있어! (모든 undefined 문제 해결 완료)'));
 
 // ==================== LINE 웹훅 처리 ====================
 
@@ -76,6 +76,39 @@ async function sendReply(replyToken, botResponse) {
         conversationContext.getSulkinessState().lastBotMessageTime = Date.now();
     } catch (error) {
         console.error('[sendReply] 메시지 전송 실패:', error);
+    }
+}
+
+// ==================== ✅ 안전한 기억 통계 가져오기 함수 ====================
+
+function getSafeMemoryStats() {
+    try {
+        const stats = conversationContext.getMemoryCategoryStats();
+        const memoryStats = conversationContext.getMemoryStatistics();
+        
+        // 모든 값에 기본값 보장
+        return {
+            yejinMemories: (typeof stats.yejinMemories === 'number') ? stats.yejinMemories : 0,
+            userMemories: (typeof stats.userMemories === 'number') ? stats.userMemories : 0,
+            facts: (typeof stats.facts === 'number') ? stats.facts : 0,
+            fixedMemories: (typeof stats.fixedMemories === 'number') ? stats.fixedMemories : 0,
+            customKeywords: (typeof stats.customKeywords === 'number') ? stats.customKeywords : 0,
+            total: (typeof stats.total === 'number') ? stats.total : 0,
+            today: (typeof memoryStats.today === 'number') ? memoryStats.today : 0,
+            deleted: (typeof memoryStats.deleted === 'number') ? memoryStats.deleted : 0
+        };
+    } catch (error) {
+        console.error('[Safe Memory Stats] 에러:', error);
+        return {
+            yejinMemories: 0,
+            userMemories: 0,
+            facts: 0,
+            fixedMemories: 0,
+            customKeywords: 0,
+            total: 0,
+            today: 0,
+            deleted: 0
+        };
     }
 }
 
@@ -234,33 +267,35 @@ function getScheduleText(schedulerStatus, photoStatus) {
 
 function logMemoryStatistics() {
     try {
-        const stats = conversationContext.getMemoryCategoryStats();
-        const memoryStats = conversationContext.getMemoryStatistics();
+        // ✅ 안전한 통계 가져오기
+        const safeStats = getSafeMemoryStats();
         
         console.log("\n" + "=".repeat(50));
         console.log("📚 [예진이의 기억 현황 - Render 로그]");
         console.log("=".repeat(50));
-        console.log(`📝 예진이 기억 (yejin_memory.json): ${stats.yejinMemories}개`);
-        console.log(`💕 사랑 기억 (love-history.json): ${stats.userMemories}개`);
-        console.log(`🧠 자동 추출 기억: ${stats.autoFacts}개`);
-        console.log(`🔒 고정 기억: ${stats.fixedMemories}개`);
-        console.log(`🗣️ 특별한 말: ${stats.customKeywords}개`);
-        console.log(`📊 총 기억: ${stats.total}개`);
-        console.log(`📅 오늘 추가: ${memoryStats.today}개`);
-        console.log(`🗑️ 총 삭제: ${memoryStats.deleted}개`);
+        console.log(`📝 예진이 기억 (yejin_memory.json): ${safeStats.yejinMemories}개`);
+        console.log(`💕 사랑 기억 (love-history.json): ${safeStats.userMemories}개`);
+        console.log(`🧠 자동 추출 기억: ${safeStats.facts}개`);
+        console.log(`🔒 고정 기억: ${safeStats.fixedMemories}개`);
+        console.log(`🗣️ 특별한 말: ${safeStats.customKeywords}개`);
+        console.log(`📊 총 기억: ${safeStats.total}개`);
+        console.log(`📅 오늘 추가: ${safeStats.today}개`);
+        console.log(`🗑️ 총 삭제: ${safeStats.deleted}개`);
         console.log("=".repeat(50));
         
         // 최근 예진이 기억 5개 표시
         const recentMemories = conversationContext.getYejinMemories();
-        if (recentMemories.length > 0) {
+        if (recentMemories && Array.isArray(recentMemories) && recentMemories.length > 0) {
             console.log("📋 최근 예진이 기억 (최신 5개):");
             recentMemories
                 .sort((a, b) => new Date(b.date) - new Date(a.date))
                 .slice(0, 5)
                 .forEach((memory, index) => {
-                    const tags = memory.tags && memory.tags.length > 0 ? ` [${memory.tags.join(', ')}]` : '';
-                    console.log(`  ${index + 1}. "${memory.content}"${tags}`);
-                    console.log(`     📅 ${memory.date} | 출처: ${memory.source || '알 수 없음'}`);
+                    if (memory && memory.content) {
+                        const tags = memory.tags && memory.tags.length > 0 ? ` [${memory.tags.join(', ')}]` : '';
+                        console.log(`  ${index + 1}. "${memory.content}"${tags}`);
+                        console.log(`     📅 ${memory.date || '날짜 없음'} | 출처: ${memory.source || '알 수 없음'}`);
+                    }
                 });
         } else {
             console.log("📋 아직 예진이 기억이 없습니다. 아저씨가 '기억해줘'라고 말하면 여기에 저장됩니다.");
@@ -270,6 +305,18 @@ function logMemoryStatistics() {
         
     } catch (error) {
         console.error("❌ 기억 통계 출력 중 오류:", error);
+        
+        // ✅ 에러 발생 시 기본 통계 출력
+        console.log("\n" + "=".repeat(50));
+        console.log("📚 [예진이의 기억 현황 - 안전 모드]");
+        console.log("=".repeat(50));
+        console.log("📝 예진이 기억: 데이터 로드 중...");
+        console.log("💕 사랑 기억: 데이터 로드 중...");
+        console.log("🧠 자동 추출 기억: 데이터 로드 중...");
+        console.log("🔒 고정 기억: 데이터 로드 중...");
+        console.log("🗣️ 특별한 말: 데이터 로드 중...");
+        console.log("📊 시스템이 안정화되면 정확한 통계가 표시됩니다.");
+        console.log("=".repeat(50) + "\n");
     }
 }
 
@@ -319,8 +366,8 @@ async function initMuku() {
 
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
-    console.log(`예진이 v9.8 서버 스타트! 포트: ${PORT}`);
-    console.log(`✅ undefined 문제 해결 완료`);
+    console.log(`예진이 v9.9 서버 스타트! 포트: ${PORT}`);
+    console.log(`✅ 모든 undefined 문제 해결 완료`);
     console.log(`📁 yejin_memory.json: 새로운 기억 전용`);
     console.log(`💕 love-history.json: 기존 중요 기억 보존`);
     console.log(`📊 Render 로그에서 실시간 기억 현황 확인 가능`);
