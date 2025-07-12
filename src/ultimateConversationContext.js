@@ -135,12 +135,12 @@ async function logMemoryOperation(operation, content, details = '') {
         details,
         timestamp: Date.now()
     };
-    
+
     try {
         await fs.mkdir(LOGS_DIR, { recursive: true });
         await fs.appendFile(MEMORY_LOGS_FILE, JSON.stringify(logEntry) + "\n", 'utf8');
         console.log(`[YejinMemory] 📝 ${operation.toUpperCase()}: ${content.substring(0, 50)}${content.length > 50 ? '...' : ''}`);
-        
+
         // 통계 업데이트
         ultimateConversationState.memoryStats.lastMemoryOperation = operation;
         if (operation === 'add') {
@@ -149,7 +149,7 @@ async function logMemoryOperation(operation, content, details = '') {
         } else if (operation === 'delete') {
             ultimateConversationState.memoryStats.totalMemoriesDeleted++;
         }
-        
+
     } catch (error) {
         console.error('[Logger] ❌ 기억 작업 로그 저장 실패:', error);
     }
@@ -159,7 +159,7 @@ async function logMemoryOperation(operation, content, details = '') {
 function updateDailyMemoryCount() {
     const today = moment().tz('Asia/Tokyo').format('YYYY-MM-DD');
     const stats = ultimateConversationState.memoryStats;
-    
+
     if (stats.lastDailyReset !== today) {
         stats.dailyMemoryCount = 1;
         stats.lastDailyReset = today;
@@ -199,7 +199,7 @@ async function _saveYejinMemories() {
             totalCount: ultimateConversationState.knowledgeBase.yejinMemories.length,
             memories: ultimateConversationState.knowledgeBase.yejinMemories
         };
-        
+
         await fs.mkdir(path.dirname(YEJIN_MEMORY_FILE), { recursive: true });
         await fs.writeFile(YEJIN_MEMORY_FILE, JSON.stringify(yejinMemoryData, null, 2), 'utf8');
         console.log(`[YejinMemory] 💾 기억 ${yejinMemoryData.totalCount}개 저장 완료`);
@@ -218,7 +218,7 @@ async function _loadFixedMemories() {
         ultimateConversationState.knowledgeBase.fixedMemories = [];
         console.warn(`[Memory] ⚠️ ${FIXED_MEMORIES_FILE} 파일 로드 실패 또는 없음. 빈 배열로 초기화.`);
     }
-    
+
     try {
         const data = await fs.readFile(LOVE_HISTORY_FILE, 'utf8');
         const loadedLoveHistory = JSON.parse(data);
@@ -278,7 +278,7 @@ async function getMemoryOperationLogs(limit = 50) {
                 return null;
             }
         }).filter(log => log !== null);
-        
+
         return logs.reverse();
     } catch (error) {
         console.warn('[Memory] ⚠️ 기억 로그 파일 읽기 실패:', error.message);
@@ -290,7 +290,7 @@ async function getMemoryOperationLogs(limit = 50) {
 function getMemoryStatistics() {
     const stats = ultimateConversationState.memoryStats;
     const currentMemories = ultimateConversationState.knowledgeBase.yejinMemories || [];
-    
+
     return {
         total: currentMemories.length,
         today: stats.dailyMemoryCount,
@@ -409,27 +409,27 @@ function getUltimateContextualPrompt(basePrompt) {
 
     if (allMemories.length > 0) {
         ultimatePrompt += `\n\n[장기 기억(아저씨와의 사실 및 약속)]\n(이것은 내가 아저씨에 대해 기억하고 있는 중요한 사실들이야.)\n`;
-        
+
         // [NEW] 예진이가 먼저 꺼낼 수 있는 기억들 (랜덤 선택)
         const yejinMemories = state.knowledgeBase.yejinMemories || [];
         const loveMemories = state.knowledgeBase.loveHistory.categories?.general || [];
-        
+
         // 최근 기억 중에서 랜덤하게 1-2개 선택해서 먼저 언급
         const recentMemories = [...yejinMemories, ...loveMemories]
             .sort((a, b) => new Date(b.date) - new Date(a.date))
             .slice(0, 10); // 최근 10개 중에서
-            
+
         if (recentMemories.length > 0) {
             const randomMemoryCount = Math.min(2, recentMemories.length);
             const selectedMemories = [];
-            
+
             while (selectedMemories.length < randomMemoryCount) {
                 const randomMemory = recentMemories[Math.floor(Math.random() * recentMemories.length)];
                 if (!selectedMemories.includes(randomMemory)) {
                     selectedMemories.push(randomMemory);
                 }
             }
-            
+
             ultimatePrompt += `\n[💭 문득 떠오르는 기억]: `;
             selectedMemories.forEach((memory, index) => {
                 const content = memory.content || memory;
@@ -439,7 +439,7 @@ function getUltimateContextualPrompt(basePrompt) {
             });
             ultimatePrompt += `\n→ 이런 기억들이 갑자기 떠올랐어. 아저씨도 기억하고 있을까? 자연스럽게 이 기억들을 대화에 활용해도 좋아.`;
         }
-        
+
         // 기본 기억 목록 (최근 10개)
         ultimatePrompt += `\n\n[기본 기억 목록]:\n${allMemories.slice(-10).map(f => `- ${f}`).join('\n')}`;
 
@@ -465,7 +465,7 @@ function getUltimateContextualPrompt(basePrompt) {
     // [NEW] 태그별 기억 활용 (시간대/상황에 맞는 기억 제안)
     const yejinMemories = state.knowledgeBase.yejinMemories || [];
     const hour = now.hour();
-    
+
     // 시간대별로 적절한 태그의 기억 제안
     let suggestedMemories = [];
     if (hour >= 6 && hour < 12) {
@@ -478,7 +478,7 @@ function getUltimateContextualPrompt(basePrompt) {
         // 밤: 특별한 말, 개인적인 기억
         suggestedMemories = yejinMemories.filter(m => m.tags && (m.tags.includes('특별한말') || m.tags.includes('개인정보')));
     }
-    
+
     if (suggestedMemories.length > 0) {
         const randomSuggestion = suggestedMemories[Math.floor(Math.random() * suggestedMemories.length)];
         ultimatePrompt += `\n\n[🕐 지금 시간대에 어울리는 기억]: "${randomSuggestion.content}"`;
@@ -520,19 +520,19 @@ function getUltimateContextualPrompt(basePrompt) {
 // [수정] 시스템 초기화 함수 - 중요 데이터 로드 순서 조정
 async function initializeEmotionalSystems() {
     console.log('[UltimateContext] 🚀 시스템 초기화 시작...');
-    
+
     // 1. 가장 중요한 기억 데이터 먼저 로드
     console.log('[UltimateContext] 📖 중요 기억 데이터 로드 중...');
     await _loadFixedMemories();          // love-history.json 포함 (최우선)
-    
+
     // 2. 예진이 전용 기억 로드 (자동 생성)
     console.log('[UltimateContext] 📝 예진이 기억 파일 로드 중...');
     await _loadYejinMemories();          // yejin_memory.json (없으면 생성)
-    
+
     // 3. 감정 데이터 로드
     console.log('[UltimateContext] 💭 감정 데이터 로드 중...');
     await _loadDynamicEmotionalData();   // 감정 관련 파일들
-    
+
     // 4. 기본 특별한 날 설정 (테스트용)
     if (ultimateConversationState.knowledgeBase.specialDates.length === 0) {
         console.log('[UltimateContext] 📅 기본 특별한 날 설정 중...');
@@ -541,7 +541,7 @@ async function initializeEmotionalSystems() {
             { name: "우리가 처음 사귄 날", date: "2024-12-23", type: "기념일" }
         );
     }
-    
+
     // 5. 초기화 완료 상태 출력
     const stats = getMemoryCategoryStats();
     console.log('[UltimateContext] ✅ 초기화 완료!');
@@ -552,7 +552,7 @@ async function initializeEmotionalSystems() {
     console.log(`  - 🔒 고정 기억: ${stats.fixedMemories}개`);
     console.log(`  - 🗣️ 특별한 말: ${stats.customKeywords}개`);
     console.log(`  - 📚 총 기억: ${stats.total}개`);
-    
+
     // 6. 중요 데이터 확인
     if (stats.userMemories > 0 || stats.yejinMemories > 0) {
         console.log('[UltimateContext] 💕 소중한 기억들이 성공적으로 로드되었습니다.');
@@ -590,12 +590,12 @@ function searchFixedMemory(userMessage) {
             bestMatch = memory;
         }
     }
-    
+
     // 검색 로그 추가
     if (bestMatch) {
         logMemoryOperation('search', userMessage, `Found: ${bestMatch.substring(0, 50)}...`);
     }
-    
+
     return bestMatch;
 }
 
@@ -604,7 +604,7 @@ async function addUserMemory(content) {
     try {
         const lowerContent = content.toLowerCase();
         const existingMemories = ultimateConversationState.knowledgeBase.yejinMemories || [];
-        
+
         // 중복 체크
         const isDuplicate = existingMemories.some(item =>
             item.content.toLowerCase() === lowerContent ||
@@ -628,17 +628,17 @@ async function addUserMemory(content) {
             source: "user_request",
             tags: extractTags(content)
         };
-        
+
         // 메모리에 추가
         ultimateConversationState.knowledgeBase.yejinMemories.push(newMemory);
-        
+
         // 파일에 저장
         await _saveYejinMemories();
-        
+
         // 로그 및 통계 업데이트
         await logMemoryOperation('add', content, 'User requested memory (yejin_memory.json)');
         console.log(`[YejinMemory] ✅ 새로운 기억 저장 성공: ${content}`);
-        
+
         return true;
     } catch (error) {
         console.error(`[YejinMemory] ❌ 기억 저장 실패:`, error);
@@ -704,22 +704,22 @@ async function deleteUserMemory(content) {
 // [NEW] 기억에서 태그 추출 함수
 function extractTags(content) {
     const tags = [];
-    
+
     // 날짜 관련
     if (/\d{4}년|\d{1,2}월|\d{1,2}일|생일|기념일/.test(content)) tags.push('날짜');
-    
+
     // 감정 관련
     if (/사랑|좋아|행복|기뻐|슬프|화나|걱정/.test(content)) tags.push('감정');
-    
+
     // 개인 정보
     if (/혈액형|키|몸무게|취미|좋아하는|싫어하는/.test(content)) tags.push('개인정보');
-    
+
     // 약속/계획
     if (/약속|계획|하기로|가기로|만나기로/.test(content)) tags.push('약속');
-    
+
     // 특별한 말
     if (/담타|내꺼|애기|히도이네/.test(content)) tags.push('특별한말');
-    
+
     return tags;
 }
 
@@ -770,32 +770,32 @@ async function updateUserMemory(id, newContent) {
     try {
         const yejinMemories = ultimateConversationState.knowledgeBase.yejinMemories || [];
         const memoryIndex = yejinMemories.findIndex(memory => memory.id === id);
-        
+
         if (memoryIndex === -1) {
             return {
                 success: false,
                 message: "해당 ID의 기억을 찾을 수 없습니다."
             };
         }
-        
+
         const oldContent = yejinMemories[memoryIndex].content;
         yejinMemories[memoryIndex].content = newContent;
         yejinMemories[memoryIndex].lastModified = moment().tz('Asia/Tokyo').format("YYYY-MM-DD HH:mm:ss");
         yejinMemories[memoryIndex].tags = extractTags(newContent);
-        
+
         // 파일에 저장
         await _saveYejinMemories();
-        
+
         // 로그
         await logMemoryOperation('update', newContent, `Updated from: ${oldContent}`);
         console.log(`[YejinMemory] ✏️ 기억 수정됨: ${oldContent} → ${newContent}`);
-        
+
         return {
             success: true,
             oldContent,
             newContent
         };
-        
+
     } catch (error) {
         console.error('[YejinMemory] ❌ 기억 수정 중 오류:', error);
         return {
@@ -1006,20 +1006,20 @@ function getActiveMemoryPrompt() {
     const state = ultimateConversationState;
     const now = moment().tz('Asia/Tokyo');
     const hour = now.hour();
-    
+
     // 예진이 기억과 사랑 기억 합치기
     const yejinMemories = state.knowledgeBase.yejinMemories || [];
     const loveMemories = state.knowledgeBase.loveHistory.categories?.general || [];
     const allActiveMemories = [...yejinMemories, ...loveMemories]
         .filter(memory => memory.content && memory.content.length > 10)
         .sort((a, b) => new Date(b.date) - new Date(a.date));
-    
+
     if (allActiveMemories.length === 0) return null;
-    
+
     // 시간대별 기억 선호도
     let preferredTags = [];
     let timeContext = '';
-    
+
     if (hour >= 6 && hour < 10) {
         preferredTags = ['약속', '계획', '일정'];
         timeContext = '아침이니까 오늘 할 일이나 약속 생각이 나네';
@@ -1036,10 +1036,10 @@ function getActiveMemoryPrompt() {
         preferredTags = ['날짜', '기념일', '추억'];
         timeContext = '문득 이런 기억이 떠올랐어';
     }
-    
+
     // 선호 태그에 맞는 기억 찾기
     let selectedMemory = null;
-    
+
     // 1순위: 태그가 일치하는 기억
     for (const memory of allActiveMemories.slice(0, 20)) { // 최근 20개에서 검색
         if (memory.tags && memory.tags.some(tag => preferredTags.includes(tag))) {
@@ -1047,7 +1047,7 @@ function getActiveMemoryPrompt() {
             break;
         }
     }
-    
+
     // 2순위: 내용에 키워드가 포함된 기억
     if (!selectedMemory) {
         const keywords = ['생일', '사랑', '좋아', '행복', '담타', '애기', '기념일', '약속'];
@@ -1059,19 +1059,19 @@ function getActiveMemoryPrompt() {
             }
         }
     }
-    
+
     // 3순위: 그냥 최근 기억 중 랜덤
     if (!selectedMemory && allActiveMemories.length > 0) {
         const recentMemories = allActiveMemories.slice(0, 10);
         selectedMemory = recentMemories[Math.floor(Math.random() * recentMemories.length)];
     }
-    
+
     if (!selectedMemory) return null;
-    
+
     const content = selectedMemory.content || selectedMemory;
     const date = selectedMemory.date ? moment(selectedMemory.date).format('MM월 DD일') : '';
     const tags = selectedMemory.tags ? ` [${selectedMemory.tags.join(', ')}]` : '';
-    
+
     // 자연스러운 기억 꺼내기 문장들
     const memoryStarters = [
         "아, 그런데 아저씨~",
@@ -1083,9 +1083,9 @@ function getActiveMemoryPrompt() {
         "아, 맞다! 갑자기 생각난 게 있어.",
         `${timeContext}.`
     ];
-    
+
     const starter = memoryStarters[Math.floor(Math.random() * memoryStarters.length)];
-    
+
     return {
         starter,
         memory: content,
@@ -1095,6 +1095,95 @@ function getActiveMemoryPrompt() {
         fullPrompt: `${starter} "${content}"${date ? ` (${date})` : ''}${tags} 이거 기억하고 있지? 이 기억을 자연스럽게 대화에 활용해봐.`
     };
 }
+
+
+// [NEW] 대화 내용으로부터 학습하여 감정 데이터를 진화시키는 함수
+async function learnFromConversation(yejinMessage) {
+    // 메시지가 너무 짧으면 학습하지 않음
+    if (!yejinMessage || yejinMessage.length < 15) {
+        return;
+    }
+
+    const prompt = `
+        다음 문장은 AI '예진'이가 한 말이야. 이 문장에서 드러나는 핵심 감정을 찾고, 그 감정과 관련된 '내면 생각(innerThought)'과 '행동 충동(actionUrge)'을 각각 1개씩 추출해서 JSON 형식으로 답해줘.
+
+        - 내면 생각: 감정을 마음속으로 되새기는 독백 톤의 문장
+        - 행동 충동: 감정으로 인해 무언가를 하고 싶다는 의지가 담긴 문장
+        - 감정 종류: 'happiness', 'love', 'sadness', 'hurt', 'anxiety', 'longing' 중에서 가장 적절한 것 하나만 선택해줘.
+        - 결과는 반드시 {"emotion": "감정종류", "innerThought": "추출한 내면 생각", "actionUrge": "추출한 행동 충동"} 형식이어야 해.
+        - 적절한 내용이 없으면 null을 반환해줘.
+
+        입력 문장: "${yejinMessage}"
+    `;
+
+    try {
+        const response = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [{ role: "user", content: prompt }],
+            temperature: 0.3,
+            response_format: { type: "json_object" },
+        });
+
+        const result = JSON.parse(response.choices[0].message.content);
+
+        if (result && result.emotion && (result.innerThought || result.actionUrge)) {
+            console.log(`[LEARNING] 새로운 감정 데이터 추출 성공: ${JSON.stringify(result)}`);
+
+            // 새로운 '내면 생각'을 파일에 저장
+            if (result.innerThought) {
+                await _updateEmotionalFile(INNER_THOUGHTS_FILE, 'innerThought', result.emotion, result.innerThought);
+            }
+            // 새로운 '행동 충동'을 파일에 저장
+            if (result.actionUrge) {
+                await _updateEmotionalFile(ACTION_URGES_FILE, 'actionUrge', result.emotion, result.actionUrge);
+            }
+        }
+    } catch (error) {
+        console.error('[LEARNING] ❌ 대화 내용 학습 중 에러:', error);
+    }
+}
+
+// [NEW] 감정 JSON 파일을 읽고, 새로운 내용을 추가한 후 저장하는 함수
+async function _updateEmotionalFile(filePath, type, emotionKey, newText) {
+    try {
+        let fileData;
+        // 1. 기존 파일 읽기
+        try {
+            const data = await fs.readFile(filePath, 'utf8');
+            fileData = JSON.parse(data);
+        } catch (e) {
+            // 파일이 없으면 새로 생성
+            fileData = {};
+            console.warn(`[LEARNING] ⚠️ ${filePath} 파일이 없어 새로 생성합니다.`);
+        }
+
+        // 2. 해당 감정 카테고리가 없으면 새로 만들기
+        if (!fileData[emotionKey]) {
+            fileData[emotionKey] = [];
+        }
+
+        // 3. 중복 내용이 아니라면 새로운 내용 추가
+        if (!fileData[emotionKey].includes(newText)) {
+            fileData[emotionKey].push(newText);
+            console.log(`[LEARNING] ✅ [${emotionKey}] 카테고리에 새로운 ${type} 추가: "${newText}"`);
+
+            // 4. 업데이트된 내용을 파일에 다시 쓰기
+            await fs.writeFile(filePath, JSON.stringify(fileData, null, 2), 'utf8');
+
+            // 5. 현재 실행중인 변수에도 즉시 반영
+            if (type === 'innerThought') {
+                INNER_THOUGHTS = fileData;
+            } else if (type === 'actionUrge') {
+                ACTION_URGES = fileData;
+            }
+        } else {
+            console.log(`[LEARNING] ℹ️ 이미 존재하는 내용이라 추가하지 않음: "${newText}"`);
+        }
+    } catch (error) {
+        console.error(`[LEARNING] ❌ ${filePath} 파일 업데이트 실패:`, error);
+    }
+}
+
 
 module.exports = {
     initializeEmotionalSystems,
@@ -1108,7 +1197,7 @@ module.exports = {
     getMoodState,
     updateMoodState,
     searchFixedMemory,
-    
+
     // [NEW] 예진이 전용 기억 관리 함수들
     addUserMemory,               // yejin_memory.json에 저장
     deleteUserMemory,            // yejin_memory.json에서 삭제
@@ -1116,20 +1205,23 @@ module.exports = {
     getYejinMemories,            // 예진이 기억만 조회
     getMemoryById,               // ID로 특정 기억 조회
     getMemoriesByTag,            // 태그별 기억 조회
-    
+
     getAllMemories,              // 모든 기억 조회 (yejinMemories 포함)
     getMemoryStatistics,         // 기억 통계
     getMemoryCategoryStats,      // 카테고리별 통계 (yejinMemories 포함)
     getMemoryOperationLogs,      // 작업 로그 조회
-    
+
     // [NEW] 능동적 기억 활용 함수들
     getActiveMemoryPrompt,       // 시간대별 적절한 기억 선택
-    
+
+    // [NEW] 학습 기능 함수
+    learnFromConversation,       // 대화 내용 학습 함수
+
     setPendingAction,
     getPendingAction,
     clearPendingAction,
     generateInnerThought,
-    setConversationContextWindow: function(size) {
+    setConversationContextWindow: function (size) {
         if (typeof size === 'number' && size > 0) {
             ultimateConversationState.conversationContextWindow = size;
             console.log(`[Context] 🔄 대화 맥락 반영 범위가 ${size}로 변경되었습니다.`);
