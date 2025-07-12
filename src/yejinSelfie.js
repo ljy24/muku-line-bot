@@ -19,7 +19,7 @@ async function getSelfieReply(userMessage, conversationContext) {
         lowerMsg.includes("무쿠 셀카") || lowerMsg.includes("애기 셀카")) {
 
         const baseUrl = "https://photo.de-ji.net/photo/yejin";
-        const fileCount = 1200;
+        const fileCount = 2032;
 
         const index = Math.floor(Math.random() * fileCount) + 1;
         const fileName = String(index).padStart(6, "0") + ".jpg";
