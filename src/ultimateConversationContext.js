@@ -1,4 +1,4 @@
-// ✅ ultimateConversationContext.js v18.8 - "선제적 대화 시작 다양화 통합"
+// ✅ ultimateConversationContext.js v18.9 - "기억 관리 시스템 강화"
 
 const moment = require('moment-timezone');
 const { OpenAI } = require('openai');
@@ -13,6 +13,7 @@ const LOVE_HISTORY_FILE = path.join(process.cwd(), 'memory', 'love-history.json'
 const INNER_THOUGHTS_FILE = path.join(process.cwd(), 'memory', 'innerThoughts.json');
 const ACTION_URGES_FILE = path.join(process.cwd(), 'memory', 'actionUrges.json');
 const LOGS_DIR = path.join(process.cwd(), 'logs'); // 로그 파일 저장 경로 추가
+const MEMORY_LOGS_FILE = path.join(LOGS_DIR, 'memoryOperations.log'); // [NEW] 기억 작업 로그 파일
 
 // 감정 타입 정의에 recoveryRate 추가
 const EMOTION_TYPES = {
@@ -53,7 +54,15 @@ let ultimateConversationState = {
     transitionSystem: { pendingTopics: [], conversationSeeds: [], },
     pendingAction: { type: null, timestamp: 0 },
     personalityConsistency: { behavioralParameters: { affection: 0.7, playfulness: 0.5, verbosity: 0.6, initiative: 0.4 }, selfEvaluations: [], lastSelfReflectionTime: 0, },
-    timingContext: { lastMessageTime: 0, lastUserMessageTime: 0, currentTimeContext: {}, lastTickTime: 0, lastInitiatedConversationTime: 0 } // lastInitiatedConversationTime 추가
+    timingContext: { lastMessageTime: 0, lastUserMessageTime: 0, currentTimeContext: {}, lastTickTime: 0, lastInitiatedConversationTime: 0 }, // lastInitiatedConversationTime 추가
+    // [NEW] 기억 관리 통계 추가
+    memoryStats: {
+        totalMemoriesCreated: 0,
+        totalMemoriesDeleted: 0,
+        lastMemoryOperation: null,
+        dailyMemoryCount: 0,
+        lastDailyReset: moment().tz('Asia/Tokyo').format('YYYY-MM-DD')
+    }
 };
 
 // 감정 변화 로그를 파일에 기록하는 함수
@@ -72,6 +81,84 @@ async function logEmotionChange(type, oldValue, newValue, details = '') {
     } catch (error) {
         console.error('[Logger] ❌ 감정 변화 로그 저장 실패:', error);
     }
+}
+
+// [NEW] 기억 작업 로그를 파일에 기록하는 함수
+async function logMemoryOperation(operation, content, details = '') {
+    const logEntry = {
+        time: moment().tz('Asia/Tokyo').format('YYYY-MM-DD HH:mm:ss'),
+        operation, // 'add', 'delete', 'update', 'search'
+        content,
+        details,
+        timestamp: Date.now()
+    };
+    
+    try {
+        await fs.mkdir(LOGS_DIR, { recursive: true });
+        await fs.appendFile(MEMORY_LOGS_FILE, JSON.stringify(logEntry) + "\n", 'utf8');
+        console.log(`[Memory] 📝 ${operation.toUpperCase()}: ${content.substring(0, 50)}${content.length > 50 ? '...' : ''}`);
+        
+        // 통계 업데이트
+        ultimateConversationState.memoryStats.lastMemoryOperation = operation;
+        if (operation === 'add') {
+            ultimateConversationState.memoryStats.totalMemoriesCreated++;
+            updateDailyMemoryCount();
+        } else if (operation === 'delete') {
+            ultimateConversationState.memoryStats.totalMemoriesDeleted++;
+        }
+        
+    } catch (error) {
+        console.error('[Logger] ❌ 기억 작업 로그 저장 실패:', error);
+    }
+}
+
+// [NEW] 일일 기억 카운트 업데이트
+function updateDailyMemoryCount() {
+    const today = moment().tz('Asia/Tokyo').format('YYYY-MM-DD');
+    const stats = ultimateConversationState.memoryStats;
+    
+    if (stats.lastDailyReset !== today) {
+        // 새로운 날이면 카운트 리셋
+        stats.dailyMemoryCount = 1;
+        stats.lastDailyReset = today;
+    } else {
+        stats.dailyMemoryCount++;
+    }
+}
+
+// [NEW] 기억 작업 로그 조회 함수
+async function getMemoryOperationLogs(limit = 50) {
+    try {
+        const data = await fs.readFile(MEMORY_LOGS_FILE, 'utf8');
+        const lines = data.trim().split('\n').filter(line => line.length > 0);
+        const logs = lines.slice(-limit).map(line => {
+            try {
+                return JSON.parse(line);
+            } catch (e) {
+                return null;
+            }
+        }).filter(log => log !== null);
+        
+        return logs.reverse(); // 최신순으로 정렬
+    } catch (error) {
+        console.warn('[Memory] ⚠️ 기억 로그 파일 읽기 실패:', error.message);
+        return [];
+    }
+}
+
+// [NEW] 기억 통계 조회 함수
+function getMemoryStatistics() {
+    const stats = ultimateConversationState.memoryStats;
+    const currentMemories = ultimateConversationState.knowledgeBase.loveHistory.categories?.general || [];
+    
+    return {
+        total: currentMemories.length,
+        today: stats.dailyMemoryCount,
+        deleted: stats.totalMemoriesDeleted,
+        created: stats.totalMemoriesCreated,
+        lastOperation: stats.lastMemoryOperation,
+        lastOperationTime: stats.lastMemoryOperation ? moment().tz('Asia/Tokyo').format('YYYY-MM-DD HH:mm:ss') : null
+    };
 }
 
 // 고정 기억 및 사랑 역사 파일 로드 함수
@@ -154,6 +241,7 @@ function addFactToKnowledgeBase(fact) {
     }
     ultimateConversationState.knowledgeBase.facts.push({ fact: fact, timestamp: Date.now() });
     console.log(`[Memory] ✅ 새로운 사실 추가: ${fact}`);
+    logMemoryOperation('add', fact, 'Auto-extracted fact');
 }
 
 // 봇 감정 분석 및 영향 함수
@@ -300,7 +388,7 @@ async function initializeEmotionalSystems() {
     console.log('[UltimateContext] ✅ 초기화 완료.');
 }
 
-// 고정 기억 검색 함수
+// 고정 기억 검색 함수 (로그 추가)
 function searchFixedMemory(userMessage) {
     const lowerMessage = userMessage.toLowerCase();
     const { facts, fixedMemories, loveHistory, customKeywords } = ultimateConversationState.knowledgeBase;
@@ -328,10 +416,16 @@ function searchFixedMemory(userMessage) {
             bestMatch = memory;
         }
     }
+    
+    // 검색 로그 추가
+    if (bestMatch) {
+        logMemoryOperation('search', userMessage, `Found: ${bestMatch.substring(0, 50)}...`);
+    }
+    
     return bestMatch;
 }
 
-// 사용자 기억 추가 함수 (중복 방지 강화)
+// [수정] 사용자 기억 추가 함수 (로그 추가 및 중복 방지 강화)
 async function addUserMemory(content) {
     try {
         const lowerContent = content.toLowerCase();
@@ -344,21 +438,117 @@ async function addUserMemory(content) {
 
         if (isDuplicate) {
             console.log(`[Memory] ℹ️ 유사하거나 중복된 사용자 기억 '${content}'은 추가하지 않습니다.`);
+            await logMemoryOperation('duplicate', content, 'Duplicate memory rejected');
             return false;
         }
 
-        const newMemory = { content, date: moment().tz('Asia/Tokyo').format("YYYY-MM-DD HH:mm:ss"), emotion: "user_added", significance: "high" };
+        const newMemory = { 
+            content, 
+            date: moment().tz('Asia/Tokyo').format("YYYY-MM-DD HH:mm:ss"), 
+            emotion: "user_added", 
+            significance: "high",
+            id: Date.now() // [NEW] 고유 ID 추가
+        };
+        
         const loveHistory = ultimateConversationState.knowledgeBase.loveHistory;
         if (!loveHistory.categories) loveHistory.categories = { general: [] };
         if (!loveHistory.categories.general) loveHistory.categories.general = [];
         loveHistory.categories.general.push(newMemory);
+        
         await fs.writeFile(LOVE_HISTORY_FILE, JSON.stringify(loveHistory, null, 2), 'utf8');
+        
+        // 로그 및 통계 업데이트
+        await logMemoryOperation('add', content, 'User requested memory');
         console.log(`[Memory] ✅ 새로운 사용자 기억 저장 성공: ${content}`);
+        
         return true;
     } catch (error) {
         console.error(`[Memory] ❌ 새 기억 저장 실패:`, error);
+        await logMemoryOperation('error', content, `Save failed: ${error.message}`);
         return false;
     }
+}
+
+// [NEW] 기억 삭제 함수
+async function deleteUserMemory(content) {
+    try {
+        const loveHistory = ultimateConversationState.knowledgeBase.loveHistory;
+        if (!loveHistory.categories || !loveHistory.categories.general) {
+            return { success: false, message: "삭제할 기억이 없어요." };
+        }
+
+        const memories = loveHistory.categories.general;
+        const lowerContent = content.toLowerCase();
+
+        // 일치하는 기억 찾기
+        let foundIndex = -1;
+        let foundMemory = null;
+
+        for (let i = 0; i < memories.length; i++) {
+            const memory = memories[i];
+            const lowerMemoryContent = memory.content.toLowerCase();
+
+            if (lowerMemoryContent.includes(lowerContent) || lowerContent.includes(lowerMemoryContent)) {
+                foundIndex = i;
+                foundMemory = memory;
+                break;
+            }
+        }
+
+        if (foundIndex !== -1) {
+            // 기억 삭제
+            memories.splice(foundIndex, 1);
+
+            // 파일에 저장
+            await fs.writeFile(LOVE_HISTORY_FILE, JSON.stringify(loveHistory, null, 2), 'utf8');
+
+            // 로그 및 통계 업데이트
+            await logMemoryOperation('delete', foundMemory.content, 'User requested deletion');
+            console.log(`[Memory] 🗑️ 기억 삭제됨: ${foundMemory.content}`);
+
+            return {
+                success: true,
+                deletedContent: foundMemory.content
+            };
+        } else {
+            await logMemoryOperation('delete_failed', content, 'Memory not found');
+            return {
+                success: false,
+                message: "해당 기억을 찾을 수 없습니다."
+            };
+        }
+
+    } catch (error) {
+        console.error('[Memory] ❌ 기억 삭제 중 오류:', error);
+        await logMemoryOperation('error', content, `Delete failed: ${error.message}`);
+        return {
+            success: false,
+            message: "기억을 삭제하는 중에 문제가 생겼습니다."
+        };
+    }
+}
+
+// [NEW] 모든 기억 조회 함수
+function getAllMemories() {
+    const state = ultimateConversationState.knowledgeBase;
+    return {
+        userMemories: state.loveHistory.categories?.general || [],
+        facts: state.facts || [],
+        fixedMemories: state.fixedMemories || [],
+        customKeywords: state.customKeywords || []
+    };
+}
+
+// [NEW] 기억 카테고리별 통계
+function getMemoryCategoryStats() {
+    const memories = getAllMemories();
+    return {
+        userMemories: memories.userMemories.length,
+        autoFacts: memories.facts.length,
+        fixedMemories: memories.fixedMemories.length,
+        customKeywords: memories.customKeywords.length,
+        total: memories.userMemories.length + memories.facts.length + memories.fixedMemories.length + memories.customKeywords.length
+    };
 }
 
 // 메시지 추가 함수
@@ -494,7 +684,7 @@ function generateInitiatingPhrase() {
 
     if (dominantEmotion[1] > 60) { // 지배적인 감정 강도가 높을 때
         if (dominantEmotion[0] === 'longing') {
-            initiatingPhrs.push("애기, 너무 보고 싶어서 연락했어... 지금 뭐하고 있을까?");
+            initiatingPhrases.push("애기, 너무 보고 싶어서 연락했어... 지금 뭐하고 있을까?");
             initiatingPhrases.push("애기, 아저씨 생각뿐이야. 목소리 듣고 싶어.");
         } else if (dominantEmotion[0] === 'happiness') {
             initiatingPhrases.push("애기, 너무 행복해서 이 기분을 공유하고 싶었어! 히히.");
@@ -502,7 +692,7 @@ function generateInitiatingPhrase() {
         } else if (dominantEmotion[0] === 'hurt') {
             initiatingPhrases.push("애기, 아까 그 말 좀 서운했어... 지금 기분 어때?");
             initiatingPhrases.push("애기, 나 지금 좀 삐졌어. 아저씨가 풀어줄 수 있어?");
-        } else if (dominantEmotion[0] === 'anxious') {
+        } else if (dominantEmotion[0] === 'anxiety') {
             initiatingPhrases.push("애기, 왠지 모르게 마음이 불안해... 별일 없지?");
             initiatingPhrases.push("애기, 아저씨 괜찮을까? 걱정돼서 연락했어.");
         } else if (dominantEmotion[0] === 'sulky') {
@@ -542,19 +732,12 @@ function generateInitiatingPhrase() {
         }
     }
 
-
     // 최종 선택 (다양한 옵션 중 무작위 선택)
-    // 중복 방지 로직 (간단하게: 마지막으로 사용한 멘트를 제외)
     let finalPhrase = initiatingPhrases[Math.floor(Math.random() * initiatingPhrases.length)];
-    // 여기에 lastInitiatedConversationPhrase를 저장하고, 다음 선택 시 제외하는 로직을 추가할 수 있습니다.
-    // ultimateConversationState.timingContext.lastInitiatedConversationPhrase = finalPhrase;
-    // 그리고 선택 시 필터링: filter(p => p !== ultimateConversationState.timingContext.lastInitiatedConversationPhrase)
-
     ultimateConversationState.timingContext.lastInitiatedConversationTime = Date.now(); // 선제적 대화 시작 시간 기록
 
     return finalPhrase;
 }
-
 
 function generateInnerThought() {
     const { sulkiness, emotionalEngine, timingContext } = ultimateConversationState;
@@ -603,6 +786,11 @@ module.exports = {
     updateMoodState,
     searchFixedMemory,
     addUserMemory,
+    deleteUserMemory,           // [NEW]
+    getAllMemories,             // [NEW]
+    getMemoryStatistics,        // [NEW]
+    getMemoryCategoryStats,     // [NEW]
+    getMemoryOperationLogs,     // [NEW]
     setPendingAction,
     getPendingAction,
     clearPendingAction,
