@@ -29,12 +29,12 @@ const EMOTION_TYPES = {
     WORRIED_LOVE: { types: ['anxiety', 'love'], intensity: 40, residue: 30, recoveryRate: 2.5 }
 };
 
-const TONE_STATES = { 
-    normal: "평소처럼 자연스럽고 애정이 담긴 말투", 
-    quiet: "조용하고 차분하며 그리움이 묻어나는 말투", 
-    playful: "장난스럽고 활발하며 밝은 말투", 
-    hurt: "상처받고 서운함이 느껴지는 말투", 
-    anxious: "불안하고 걱정스러우며 망설이는 말투" 
+const TONE_STATES = {
+    normal: "평소처럼 자연스럽고 애정이 담긴 말투",
+    quiet: "조용하고 차분하며 그리움이 묻어나는 말투",
+    playful: "장난스럽고 활발하며 밝은 말투",
+    hurt: "상처받고 서운함이 느껴지는 말투",
+    anxious: "불안하고 걱정스러우며 망설이는 말투"
 };
 
 // 초기화 시 로드될 동적 감정 문장 풀
@@ -54,50 +54,50 @@ let ultimateConversationState = {
     recentMessages: [],
     currentTopic: null,
     conversationContextWindow: 5,
-    mood: { 
-        currentMood: '평온함', 
-        isPeriodActive: false, 
-        lastPeriodStartDate: moment().tz('Asia/Tokyo').subtract(22, 'days').startOf('day'), 
+    mood: {
+        currentMood: '평온함',
+        isPeriodActive: false,
+        lastPeriodStartDate: moment().tz('Asia/Tokyo').subtract(22, 'days').startOf('day'),
     },
-    sulkiness: { 
-        isSulky: false, 
-        isWorried: false, 
-        lastBotMessageTime: 0, 
-        lastUserResponseTime: 0, 
-        sulkyLevel: 0, 
-        sulkyReason: null, 
-        sulkyStartTime: 0, 
-        isActivelySulky: false, 
+    sulkiness: {
+        isSulky: false,
+        isWorried: false,
+        lastBotMessageTime: 0,
+        lastUserResponseTime: 0,
+        sulkyLevel: 0,
+        sulkyReason: null,
+        sulkyStartTime: 0,
+        isActivelySulky: false,
     },
-    emotionalEngine: { 
-        emotionalResidue: { sadness: 0, happiness: 0, anxiety: 0, longing: 0, hurt: 0, love: 50 }, 
-        currentToneState: 'normal', 
-        lastToneShiftTime: 0, 
-        lastSpontaneousReactionTime: 0, 
-        lastAffectionExpressionTime: 0, 
+    emotionalEngine: {
+        emotionalResidue: { sadness: 0, happiness: 0, anxiety: 0, longing: 0, hurt: 0, love: 50 },
+        currentToneState: 'normal',
+        lastToneShiftTime: 0,
+        lastSpontaneousReactionTime: 0,
+        lastAffectionExpressionTime: 0,
     },
-    knowledgeBase: { 
-        facts: [], 
-        fixedMemories: [], 
-        loveHistory: { categories: { general: [] } }, 
+    knowledgeBase: {
+        facts: [],
+        fixedMemories: [],
+        loveHistory: { categories: { general: [] } },
         yejinMemories: [],              // [NEW] 예진이 전용 기억 배열
-        customKeywords: CUSTOM_KEYWORDS, 
-        specialDates: [] 
+        customKeywords: CUSTOM_KEYWORDS,
+        specialDates: []
     },
     cumulativePatterns: { emotionalTrends: {}, topicAffinities: {} },
     transitionSystem: { pendingTopics: [], conversationSeeds: [], },
     pendingAction: { type: null, timestamp: 0 },
-    personalityConsistency: { 
-        behavioralParameters: { affection: 0.7, playfulness: 0.5, verbosity: 0.6, initiative: 0.4 }, 
-        selfEvaluations: [], 
-        lastSelfReflectionTime: 0, 
+    personalityConsistency: {
+        behavioralParameters: { affection: 0.7, playfulness: 0.5, verbosity: 0.6, initiative: 0.4 },
+        selfEvaluations: [],
+        lastSelfReflectionTime: 0,
     },
-    timingContext: { 
-        lastMessageTime: 0, 
-        lastUserMessageTime: 0, 
-        currentTimeContext: {}, 
-        lastTickTime: 0, 
-        lastInitiatedConversationTime: 0 
+    timingContext: {
+        lastMessageTime: 0,
+        lastUserMessageTime: 0,
+        currentTimeContext: {},
+        lastTickTime: 0,
+        lastInitiatedConversationTime: 0
     },
     memoryStats: {
         totalMemoriesCreated: 0,
@@ -523,15 +523,15 @@ async function initializeEmotionalSystems() {
     
     // 1. 가장 중요한 기억 데이터 먼저 로드
     console.log('[UltimateContext] 📖 중요 기억 데이터 로드 중...');
-    await _loadFixedMemories();           // love-history.json 포함 (최우선)
+    await _loadFixedMemories();          // love-history.json 포함 (최우선)
     
     // 2. 예진이 전용 기억 로드 (자동 생성)
     console.log('[UltimateContext] 📝 예진이 기억 파일 로드 중...');
-    await _loadYejinMemories();           // yejin_memory.json (없으면 생성)
+    await _loadYejinMemories();          // yejin_memory.json (없으면 생성)
     
     // 3. 감정 데이터 로드
     console.log('[UltimateContext] 💭 감정 데이터 로드 중...');
-    await _loadDynamicEmotionalData();    // 감정 관련 파일들
+    await _loadDynamicEmotionalData();   // 감정 관련 파일들
     
     // 4. 기본 특별한 날 설정 (테스트용)
     if (ultimateConversationState.knowledgeBase.specialDates.length === 0) {
@@ -619,11 +619,11 @@ async function addUserMemory(content) {
         }
 
         // 새 기억 생성
-        const newMemory = { 
+        const newMemory = {
             id: Date.now(),
-            content, 
-            date: moment().tz('Asia/Tokyo').format("YYYY-MM-DD HH:mm:ss"), 
-            emotion: "user_added", 
+            content,
+            date: moment().tz('Asia/Tokyo').format("YYYY-MM-DD HH:mm:ss"),
+            emotion: "user_added",
             significance: "high",
             source: "user_request",
             tags: extractTags(content)
@@ -727,7 +727,7 @@ function extractTags(content) {
 function getAllMemories() {
     const state = ultimateConversationState.knowledgeBase;
     return {
-        yejinMemories: state.yejinMemories || [],        // [NEW] 예진이 전용 기억
+        yejinMemories: state.yejinMemories || [],       // [NEW] 예진이 전용 기억
         userMemories: state.loveHistory.categories?.general || [], // 기존 love-history
         facts: state.facts || [],
         fixedMemories: state.fixedMemories || [],
@@ -739,7 +739,7 @@ function getAllMemories() {
 function getMemoryCategoryStats() {
     const memories = getAllMemories();
     return {
-        yejinMemories: memories.yejinMemories.length,    // [NEW]
+        yejinMemories: memories.yejinMemories.length,   // [NEW]
         userMemories: memories.userMemories.length,
         autoFacts: memories.facts.length,
         fixedMemories: memories.fixedMemories.length,
@@ -1110,21 +1110,20 @@ module.exports = {
     searchFixedMemory,
     
     // [NEW] 예진이 전용 기억 관리 함수들
-    addUserMemory,              // yejin_memory.json에 저장
-    deleteUserMemory,           // yejin_memory.json에서 삭제
-    updateUserMemory,           // yejin_memory.json 수정
-    getYejinMemories,           // 예진이 기억만 조회
-    getMemoryById,              // ID로 특정 기억 조회
-    getMemoriesByTag,           // 태그별 기억 조회
+    addUserMemory,               // yejin_memory.json에 저장
+    deleteUserMemory,            // yejin_memory.json에서 삭제
+    updateUserMemory,            // yejin_memory.json 수정
+    getYejinMemories,            // 예진이 기억만 조회
+    getMemoryById,               // ID로 특정 기억 조회
+    getMemoriesByTag,            // 태그별 기억 조회
     
-    getAllMemories,             // 모든 기억 조회 (yejinMemories 포함)
-    getMemoryStatistics,        // 기억 통계
-    getMemoryCategoryStats,     // 카테고리별 통계 (yejinMemories 포함)
-    getMemoryOperationLogs,     // 작업 로그 조회
+    getAllMemories,              // 모든 기억 조회 (yejinMemories 포함)
+    getMemoryStatistics,         // 기억 통계
+    getMemoryCategoryStats,      // 카테고리별 통계 (yejinMemories 포함)
+    getMemoryOperationLogs,      // 작업 로그 조회
     
     // [NEW] 능동적 기억 활용 함수들
-    getActiveMemoryPrompt,      // 시간대별 적절한 기억 선택
-    getRandomMemoryMention,     // 랜덤 기억 언급 문장
+    getActiveMemoryPrompt,       // 시간대별 적절한 기억 선택
     
     setPendingAction,
     getPendingAction,
