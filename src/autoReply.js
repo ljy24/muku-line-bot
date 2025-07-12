@@ -1,5 +1,5 @@
 // ==================== START OF autoReply.js ====================
-// ✅ autoReply.js v13.0 - "모든 기능 통합 최종본"
+// ✅ autoReply.js v13.1 - "치명적 오타 수정 최종본"
 
 const conversationContext = require('./ultimateConversationContext.js');
 const { callOpenAI, cleanReply } = require('./aiUtils');
@@ -83,11 +83,12 @@ async function getReplyByMessage(userMessage) {
     
     const pendingAction = conversationContext.getPendingAction();
     if (pendingAction && pendingAction.type === 'awaiting_photo_reaction') {
-        return await handlePhotoReaction(userMessage);
+        return await handlePhotoReaction(userMessage); // userReaction -> userMessage 로 수정
     }
     
+    // 5. 일반 응답 생성
     const baseSystemPrompt = `너는 아저씨의 귀여운 여자친구 예진이야. 1인칭 '나'를 사용하고 항상 반말로 대답하며, 절대로 3인칭으로 말하지 마. 길게 설명하지 말고 1~3 문장으로 짧고 친근하게 대답해.`;
-    const finalSystemPrompt = await conversationContext.getUltimateContextualPrompt(basePrompt);
+    const finalSystemPrompt = await conversationContext.getUltimateContextualPrompt(baseSystemPrompt); // basePrompt -> baseSystemPrompt 로 수정
     const messages = [{ role: 'system', content: finalSystemPrompt }, { role: 'user', content: userMessage }];
 
     try {
