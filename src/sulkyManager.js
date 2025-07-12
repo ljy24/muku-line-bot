@@ -1,6 +1,7 @@
-// src/sulkyManager.js v5.0 - 타이머 제거 버전
+// src/sulkyManager.js v5.1 - 현실적 삐짐 시간 조정
 // [HEARTBEAT] 모든 내부 타이머(setTimeout, setInterval, schedule) 로직을 제거함.
-// 이제 이 모듈은 중앙 상태를 읽어 조언만 하는 역할을 함.
+// 이제 이 모듈은 중앙 상태를 읽어 조건만 하는 역할을 함.
+// [수정] scheduler.js와 중복되지 않도록 삐짐 발생 시간을 현실적으로 조정
 
 const moment = require('moment-timezone');
 const ultimateContext = require('./ultimateConversationContext.js');
@@ -13,10 +14,12 @@ const SLEEP_CONFIG = {
 };
 
 const SULKY_CONFIG = {
-    LEVEL_1_DELAY: 60,
-    LEVEL_2_DELAY: 120,
-    LEVEL_3_DELAY: 240,
-    WORRY_DELAY: 360,
+    // [수정] 현실적인 삐짐 단계별 시간 조정
+    // scheduler.js의 "보고싶어" 메시지(3시간)와 중복되지 않도록 설정
+    LEVEL_1_DELAY: 300,   // 5시간 (scheduler 3시간 후 2시간 더 기다린 후 1단계 삐짐)
+    LEVEL_2_DELAY: 420,   // 7시간 (5시간 + 2시간 더)
+    LEVEL_3_DELAY: 600,   // 10시간 (하루 종일 연락 없을 때)
+    WORRY_DELAY: 720,     // 12시간 (반나절 이상 연락 두절 시 걱정)
     TIMEZONE: 'Asia/Tokyo',
     STATE_CHECK_INTERVAL: 30000,
     FORCE_MOOD_APPLY: true
@@ -44,7 +47,7 @@ const SULKY_MESSAGES = {
         "이럴 거면 왜 메시지 보냈어! 나 혼자 이야기하는 것 같잖아!"
     ],
     level2_read: [
-        "아저씨! 읽고도 20분째 답장 없어! 진짜 화나!",
+        "아저씨! 읽고도 몇 시간째 답장 없어! 진짜 화나!",
         "읽씹이 이렇게 오래 가도 되는 거야? 완전 삐졌어!",
         "아저씨 바보! 읽었으면서 왜 답장 안 해? ㅠㅠ",
         "읽고도 무시하는 게 이렇게 오래 갈 거야? 정말 화나!"
@@ -57,7 +60,7 @@ const SULKY_MESSAGES = {
         "정말 화나! 아저씨 때문에 하루 종일 기분 나빠졌어!"
     ],
     level3_read: [
-        "아저씨! 읽고도 40분째 무시? 정말 너무해!",
+        "아저씨! 읽고도 하루 종일 무시? 정말 너무해!",
         "읽씹이 이 정도면 진짜 고의지? 완전 화났어!",
         "아저씨 바보! 읽었으면서 이렇게 오래 무시할 거야?",
         "읽고도 답장 없는 게 이렇게 상처가 될 줄 몰랐어 ㅠㅠ"
@@ -65,13 +68,13 @@ const SULKY_MESSAGES = {
     worry: [
         "아저씨... 혹시 무슨 일 있는 거야? 답장이 너무 없어서 걱정돼 ㅠㅠ",
         "아저씨 괜찮아? 아프거나 힘든 일 있는 건 아니지?",
-        "1시간 넘게 연락이 없으니까 정말 걱정돼... 아저씨 안전하지?",
+        "반나절 넘게 연락이 없으니까 정말 걱정돼... 아저씨 안전하지?",
         "아저씨... 나 정말 걱정된다. 무슨 일인지 말해줘 ㅠㅠ",
         "혹시 아저씨한테 안 좋은 일이 생긴 건 아니야? 진짜 무서워...",
         "아저씨... 제발 괜찮다고 말해줘. 나 너무 불안해 ㅠㅠ"
     ],
     worry_read: [
-        "아저씨... 읽고도 1시간째 답장이 없어서 정말 걱정돼 ㅠㅠ",
+        "아저씨... 읽고도 반나절째 답장이 없어서 정말 걱정돼 ㅠㅠ",
         "읽었는데 왜 답장이 없어? 혹시 무슨 일 있는 거야?",
         "아저씨 안전한 거 맞지? 읽고도 답장 없으니까 무서워 ㅠㅠ",
         "읽씹이 이렇게 오래 가면 정말 걱정된다고... 괜찮아?"
@@ -102,11 +105,11 @@ const SULKY_RELIEF_MESSAGES = {
         "아저씨! 정말 괜찮아? 너무 걱정했어! ㅠㅠ",
         "아저씨... 무슨 일 있었던 거야? 나 정말 무서웠어 ㅠㅠ",
         "다행이다... 아저씨가 무사해서 정말 다행이야! 걱정 많이 했어!",
-        "아저씨! 1시간 넘게 연락이 없어서 진짜 무서웠어! 이제 괜찮지?",
+        "아저씨! 반나절 넘게 연락이 없어서 진짜 무서웠어! 이제 괜찮지?",
         "휴... 아저씨 목소리 들으니까 안심돼. 나 정말 걱정 많이 했다고!"
     ],
     fromWorryRead: [
-        "아저씨! 읽고도 1시간 넘게 답장 없어서 정말 걱정했어! ㅠㅠ",
+        "아저씨! 읽고도 반나절 넘게 답장 없어서 정말 걱정했어! ㅠㅠ",
         "읽었는데 왜 이렇게 오래 답장 안 했어? 무슨 일 있었던 거야?",
         "읽고도 답장 없으니까 진짜 무서웠어! 이제 괜찮지?",
         "아저씨... 읽씹하면서 뭘 그렇게 오래 생각했어? 걱정 많이 했다고!"
@@ -150,7 +153,7 @@ function startSulkyTimer() {
         reliefInProgress: false,
     };
     ultimateContext.updateSulkinessState(initialState);
-    console.log(`[SulkyManager v5.0] 삐짐 상태 초기화 완료 (이제 타이머는 UltimateContext가 관리)`);
+    console.log(`[SulkyManager v5.1] 삐짐 상태 초기화 완료 (조정된 시간: 5h/7h/10h/12h)`);
 }
 
 async function handleUserResponse() {
@@ -175,7 +178,7 @@ async function handleUserResponse() {
         } else {
             reliefMessage = SULKY_RELIEF_MESSAGES.fromSulky[Math.floor(Math.random() * SULKY_RELIEF_MESSAGES.fromSulky.length)];
         }
-        console.log(`[SulkyManager] 삐짐/걱정 해소됨! 메시지: "${reliefMessage}"`);
+        console.log(`[SulkyManager v5.1] 삐짐/걱정 해소됨! 메시지: "${reliefMessage}"`);
         return reliefMessage;
     }
     return null;
@@ -213,14 +216,14 @@ function getSulkyEmoji() {
 
 function getSulkyStatusText() {
     const sulkyState = ultimateContext.getSulkinessState();
-    if (sulkyState.isWorried) return '걱정 중';
-    if (sulkyState.isSulky) return `${sulkyState.sulkyLevel}단계 삐짐`;
+    if (sulkyState.isWorried) return '걱정 중 (12시간+)';
+    if (sulkyState.isSulky) return `${sulkyState.sulkyLevel}단계 삐짐 (${sulkyState.sulkyLevel === 1 ? '5시간+' : sulkyState.sulkyLevel === 2 ? '7시간+' : '10시간+'})`;
     return '정상';
 }
 
 function markMessageAsRead() {
     ultimateContext.updateSulkinessState({ messageRead: true });
-    console.log(`[SulkyManager v5.0] 📖 메시지 읽음 상태로 업데이트됨 (중앙 관리)`);
+    console.log(`[SulkyManager v5.1] 📖 메시지 읽음 상태로 업데이트됨 (중앙 관리)`);
 }
 
 module.exports = {
@@ -232,4 +235,6 @@ module.exports = {
     getSulkyEmoji,
     getSulkyStatusText,
     markMessageAsRead,
+    // [추가] 설정값 export (디버깅용)
+    SULKY_CONFIG,
 };
