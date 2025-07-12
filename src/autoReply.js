@@ -1,4 +1,4 @@
-// ✅ autoReply.js v10.0 - "관계 심화 패키지 적용 (완성본)"
+// ✅ autoReply.js v11.0 - "현실 세계 연결 (날씨) 적용 최종본"
 
 const conversationContext = require('./ultimateConversationContext.js');
 const { callOpenAI, cleanReply } = require('./aiUtils');
@@ -8,6 +8,8 @@ const USER_NAME = '아저씨';
 
 // [LEVEL 3] 긴급 대응을 위한 키워드
 const EMERGENCY_KEYWORDS = ['힘들다', '죽고싶다', '우울해', '지친다', '다 싫다', '아무것도 하기 싫어', '너무 괴로워', '살기 싫어'];
+// [LEVEL 4] 날씨 질문 키워드
+const WEATHER_KEYWORDS = ['날씨', '기온', '온도', '더워', '더운', '추워', '추운', '습해', '비 와', '눈 와'];
 
 
 // ==================== 자동 기억 포착 시스템 ====================
@@ -165,18 +167,40 @@ async function handlePhotoReaction(userReaction) {
 }
 
 async function getReplyByMessage(userMessage) {
-    // [LEVEL 1 & 3] 아저씨 메시지 분석 및 기록
+    // [LEVEL 1, 3] 아저씨 메시지 분석 및 기록
     await conversationContext.learnFromUserMessage(userMessage);
     await conversationContext.analyzeUserMood(userMessage);
     await conversationContext.addUltimateMessage(USER_NAME, userMessage);
 
-    // [LEVEL 3] 긴급 대응 로직 (가장 먼저 체크)
+    // [LEVEL 3] 긴급 대응 로직
     const isEmergency = EMERGENCY_KEYWORDS.some(keyword => userMessage.includes(keyword));
     if (isEmergency) {
         console.log('[Comfort Mode] 🚨 긴급 위로 모드 발동!');
         const comfortingReply = await conversationContext.getComfortingResponse(userMessage);
         await conversationContext.addUltimateMessage(BOT_NAME, comfortingReply);
         return { type: 'text', comment: comfortingReply };
+    }
+
+    // [LEVEL 4] 날씨 질문 처리 로직
+    const isWeatherQuery = WEATHER_KEYWORDS.some(keyword => userMessage.includes(keyword));
+    if (isWeatherQuery) {
+        console.log('[Weather] 🌤️ 날씨 질문 감지!');
+        const weatherInfo = await conversationContext.getWeatherInfo();
+        if (weatherInfo) {
+            const weatherPrompt = `너는 여자친구 예진이야. 방금 아저씨가 날씨에 대해 물어봤어. 아래의 최신 날씨 정보를 바탕으로, 아저씨에게 날씨를 다정하고 알기 쉽게 설명해줘. 예를 들어 "오늘 좀 덥네~" 또는 "비 올 것 같으니까 우산 챙겨!" 같은 말투로.
+            [현재 ${weatherInfo.city} 날씨 정보]
+            - 날씨: ${weatherInfo.description}
+            - 현재 기온: ${weatherInfo.temp}°C
+            - 체감 온도: ${weatherInfo.feels_like}°C
+            - 습도: ${weatherInfo.humidity}%
+            이제 이 정보를 바탕으로 대답해줘.`;
+            
+            const weatherReply = await callOpenAI([{ role: 'system', content: weatherPrompt }]);
+            await conversationContext.addUltimateMessage(BOT_NAME, cleanReply(weatherReply));
+            return { type: 'text', comment: cleanReply(weatherReply) };
+        } else {
+            return { type: 'text', comment: "어라, 지금 날씨 정보를 못 가져오겠어. 인터넷 연결이 이상한가 봐 ㅠㅠ" };
+        }
     }
 
     // 1. 기억 삭제/수정 처리
@@ -204,12 +228,12 @@ async function getReplyByMessage(userMessage) {
     // 4. 사진 반응 처리
     const pendingAction = conversationContext.getPendingAction();
     if (pendingAction && pendingAction.type === 'awaiting_photo_reaction') {
-        return await handlePhotoReaction(userMessage);
+        return await handlePhotoReaction(userReaction);
     }
     
     // 5. 일반 응답 생성
     const baseSystemPrompt = `너는 아저씨의 귀여운 여자친구 예진이야. 1인칭 '나'를 사용하고 항상 반말로 대답하며, 절대로 3인칭으로 말하지 마. 길게 설명하지 말고 1~3 문장으로 짧고 친근하게 대답해.`;
-    const finalSystemPrompt = conversationContext.getUltimateContextualPrompt(baseSystemPrompt);
+    const finalSystemPrompt = await conversationContext.getUltimateContextualPrompt(baseSystemPrompt); // await 추가
     const messages = [{ role: 'system', content: finalSystemPrompt }, { role: 'user', content: userMessage }];
 
     try {
