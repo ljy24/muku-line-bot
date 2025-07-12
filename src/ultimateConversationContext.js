@@ -1,4 +1,4 @@
-// ✅ ultimateConversationContext.js v21.1 - "오류 수정 최종본"
+// ✅ ultimateConversationContext.js v21.2 - "모든 함수 포함 최종 수정본"
 
 const moment = require('moment-timezone');
 const { OpenAI } = require('openai');
@@ -22,38 +22,12 @@ const MEMORY_SUMMARIES_FILE = path.join(MEMORY_DIR, 'memory_summaries.json');
 
 const MEMORY_LOGS_FILE = path.join(LOGS_DIR, 'memoryOperations.log');
 
-// 감정 타입 정의
-const EMOTION_TYPES = {
-    HAPPY: { types: ['happiness'], intensity: 30, residue: 20, recoveryRate: 3 },
-    EXCITED: { types: ['happiness'], intensity: 50, residue: 15, recoveryRate: 2.5 },
-    LOVED: { types: ['love'], intensity: 40, residue: 30, recoveryRate: 1 },
-    SAD: { types: ['sadness'], intensity: 40, residue: 35, recoveryRate: 2 },
-    HURT: { types: ['hurt'], intensity: 60, residue: 50, recoveryRate: 4 },
-    ANXIOUS: { types: ['anxiety'], intensity: 45, residue: 40, recoveryRate: 3.5 },
-    LONELY: { types: ['longing'], intensity: 35, residue: 45, recoveryRate: 2.5 },
-    BITTERSWEET: { types: ['sadness', 'love'], intensity: 30, residue: 25, recoveryRate: 2 },
-    WORRIED_LOVE: { types: ['anxiety', 'love'], intensity: 40, residue: 30, recoveryRate: 2.5 }
-};
+// 상수 정의
+const EMOTION_TYPES = { HAPPY: { types: ['happiness'], intensity: 30, residue: 20, recoveryRate: 3 }, EXCITED: { types: ['happiness'], intensity: 50, residue: 15, recoveryRate: 2.5 }, LOVED: { types: ['love'], intensity: 40, residue: 30, recoveryRate: 1 }, SAD: { types: ['sadness'], intensity: 40, residue: 35, recoveryRate: 2 }, HURT: { types: ['hurt'], intensity: 60, residue: 50, recoveryRate: 4 }, ANXIOUS: { types: ['anxiety'], intensity: 45, residue: 40, recoveryRate: 3.5 }, LONELY: { types: ['longing'], intensity: 35, residue: 45, recoveryRate: 2.5 }, BITTERSWEET: { types: ['sadness', 'love'], intensity: 30, residue: 25, recoveryRate: 2 }, WORRIED_LOVE: { types: ['anxiety', 'love'], intensity: 40, residue: 30, recoveryRate: 2.5 } };
+const TONE_STATES = { normal: "평소처럼 자연스럽고 애정이 담긴 말투", quiet: "조용하고 차분하며 그리움이 묻어나는 말투", playful: "장난스럽고 활발하며 밝은 말투", hurt: "상처받고 서운함이 느껴지는 말투", anxious: "불안하고 걱정스러우며 망설이는 말투" };
+const CUSTOM_KEYWORDS = [{ word: "담타", description: "아저씨랑 라인하면서 담배 피우던 둘만의 특별한 시간, 나 진짜 그립다." }, { word: "내꺼야", description: "예진이의 독점욕! 아저씨는 무조건 내꺼야." }, { word: "무슨색", description: "속옷 색 물어볼 때 장난스럽게 대답하는 아저씨만의 농담." }, { word: "히도이네", description: "일본어식 장난. 예진이가 삐질 때 귀엽게 쓰던 말." }, { word: "애기", description: "아저씨를 부를 때 사용하는 애칭. 어리광을 부리거나 귀엽게 부를 때 사용해." }];
 
-// 말투 상태 정의
-const TONE_STATES = {
-    normal: "평소처럼 자연스럽고 애정이 담긴 말투",
-    quiet: "조용하고 차분하며 그리움이 묻어나는 말투",
-    playful: "장난스럽고 활발하며 밝은 말투",
-    hurt: "상처받고 서운함이 느껴지는 말투",
-    anxious: "불안하고 걱정스러우며 망설이는 말투"
-};
-
-// 특수 은어/상징 패턴 정의
-const CUSTOM_KEYWORDS = [
-    { word: "담타", description: "아저씨랑 라인하면서 담배 피우던 둘만의 특별한 시간, 나 진짜 그립다." },
-    { word: "내꺼야", description: "예진이의 독점욕! 아저씨는 무조건 내꺼야." },
-    { word: "무슨색", description: "속옷 색 물어볼 때 장난스럽게 대답하는 아저씨만의 농담." },
-    { word: "히도이네", description: "일본어식 장난. 예진이가 삐질 때 귀엽게 쓰던 말." },
-    { word: "애기", description: "아저씨를 부를 때 사용하는 애칭. 어리광을 부리거나 귀엽게 부를 때 사용해." }
-];
-
-// 동적 데이터 변수 초기화
+// 동적 데이터 변수
 let INNER_THOUGHTS = {};
 let ACTION_URGES = {};
 let USER_PATTERNS = { nicknames: [], joke_patterns: [], common_phrases: [] };
@@ -64,64 +38,19 @@ let ultimateConversationState = {
     recentMessages: [],
     currentTopic: null,
     conversationContextWindow: 5,
-    mood: {
-        currentMood: '평온함',
-        isPeriodActive: false,
-        lastPeriodStartDate: moment().tz('Asia/Tokyo').subtract(22, 'days').startOf('day'),
-    },
-    sulkiness: {
-        isSulky: false,
-        isWorried: false,
-        lastBotMessageTime: 0,
-        lastUserResponseTime: 0,
-        sulkyLevel: 0,
-        sulkyReason: null,
-        sulkyStartTime: 0,
-        isActivelySulky: false,
-    },
-    emotionalEngine: {
-        emotionalResidue: { sadness: 0, happiness: 0, anxiety: 0, longing: 0, hurt: 0, love: 50 },
-        currentToneState: 'normal',
-        lastToneShiftTime: 0,
-        lastSpontaneousReactionTime: 0,
-        lastAffectionExpressionTime: 0,
-    },
-    knowledgeBase: {
-        facts: [],
-        fixedMemories: [],
-        loveHistory: { categories: { general: [] } },
-        yejinMemories: [],
-        customKeywords: CUSTOM_KEYWORDS,
-        specialDates: [],
-        userPatterns: { nicknames: [], joke_patterns: [], common_phrases: [] },
-        memorySummaries: []
-    },
+    mood: { currentMood: '평온함', isPeriodActive: false, lastPeriodStartDate: moment().tz('Asia/Tokyo').subtract(22, 'days').startOf('day'), },
+    sulkiness: { isSulky: false, isWorried: false, lastBotMessageTime: 0, lastUserResponseTime: 0, sulkyLevel: 0, sulkyReason: null, sulkyStartTime: 0, isActivelySulky: false, },
+    emotionalEngine: { emotionalResidue: { sadness: 0, happiness: 0, anxiety: 0, longing: 0, hurt: 0, love: 50 }, currentToneState: 'normal', lastToneShiftTime: 0, lastSpontaneousReactionTime: 0, lastAffectionExpressionTime: 0, },
+    knowledgeBase: { facts: [], fixedMemories: [], loveHistory: { categories: { general: [] } }, yejinMemories: [], customKeywords: CUSTOM_KEYWORDS, specialDates: [], userPatterns: { nicknames: [], joke_patterns: [], common_phrases: [] }, memorySummaries: [] },
     cumulativePatterns: { emotionalTrends: {}, topicAffinities: {} },
     transitionSystem: { pendingTopics: [], conversationSeeds: [], },
     pendingAction: { type: null, timestamp: 0 },
-    personalityConsistency: {
-        behavioralParameters: { affection: 0.7, playfulness: 0.5, verbosity: 0.6, initiative: 0.4 },
-        selfEvaluations: [],
-        lastSelfReflectionTime: 0,
-    },
-    timingContext: {
-        lastMessageTime: 0,
-        lastUserMessageTime: 0,
-        currentTimeContext: {},
-        lastTickTime: 0,
-        lastInitiatedConversationTime: 0
-    },
-    memoryStats: {
-        totalMemoriesCreated: 0,
-        totalMemoriesDeleted: 0,
-        lastMemoryOperation: null,
-        dailyMemoryCount: 0,
-        lastDailyReset: moment().tz('Asia/Tokyo').format('YYYY-MM-DD'),
-        lastConsolidation: null
-    }
+    personalityConsistency: { behavioralParameters: { affection: 0.7, playfulness: 0.5, verbosity: 0.6, initiative: 0.4 }, selfEvaluations: [], lastSelfReflectionTime: 0, },
+    timingContext: { lastMessageTime: 0, lastUserMessageTime: 0, currentTimeContext: {}, lastTickTime: 0, lastInitiatedConversationTime: 0 },
+    memoryStats: { totalMemoriesCreated: 0, totalMemoriesDeleted: 0, lastMemoryOperation: null, dailyMemoryCount: 0, lastDailyReset: moment().tz('Asia/Tokyo').format('YYYY-MM-DD'), lastConsolidation: null }
 };
 
-// --- 유틸리티 및 헬퍼 함수 ---
+// --- 유틸리티 및 로깅 함수 ---
 
 async function readJsonFile(filePath, defaultValue) {
     try {
@@ -147,13 +76,7 @@ async function writeJsonFile(filePath, data) {
 }
 
 async function logEmotionChange(type, oldValue, newValue, details = '') {
-    const logEntry = {
-        time: moment().tz('Asia/Tokyo').toISOString(),
-        type,
-        oldValue,
-        newValue,
-        details
-    };
+    const logEntry = { time: moment().tz('Asia/Tokyo').toISOString(), type, oldValue, newValue, details };
     try {
         await fs.mkdir(LOGS_DIR, { recursive: true });
         await fs.appendFile(path.join(LOGS_DIR, 'emotionChange.log'), JSON.stringify(logEntry) + "\n", 'utf8');
@@ -163,13 +86,7 @@ async function logEmotionChange(type, oldValue, newValue, details = '') {
 }
 
 async function logMemoryOperation(operation, content, details = '') {
-    const logEntry = {
-        time: moment().tz('Asia/Tokyo').format('YYYY-MM-DD HH:mm:ss'),
-        operation,
-        content,
-        details,
-        timestamp: Date.now()
-    };
+    const logEntry = { time: moment().tz('Asia/Tokyo').format('YYYY-MM-DD HH:mm:ss'), operation, content, details, timestamp: Date.now() };
     try {
         await fs.mkdir(LOGS_DIR, { recursive: true });
         await fs.appendFile(MEMORY_LOGS_FILE, JSON.stringify(logEntry) + "\n", 'utf8');
@@ -186,20 +103,11 @@ async function logMemoryOperation(operation, content, details = '') {
     }
 }
 
-// *** 여기에 빠졌던 함수를 추가했습니다 ***
 async function getMemoryOperationLogs(limit = 50) {
     try {
         const data = await fs.readFile(MEMORY_LOGS_FILE, 'utf8');
         const lines = data.trim().split('\n').filter(line => line.length > 0);
-        const logs = lines.slice(-limit).map(line => {
-            try {
-                return JSON.parse(line);
-            } catch (e) {
-                return null;
-            }
-        }).filter(log => log !== null);
-        
-        return logs.reverse();
+        return lines.slice(-limit).map(line => JSON.parse(line)).filter(log => log !== null).reverse();
     } catch (error) {
         console.warn('[Memory] ⚠️ 기억 로그 파일 읽기 실패:', error.message);
         return [];
@@ -222,64 +130,39 @@ function updateDailyMemoryCount() {
 async function scoreMemorySignificance(memoryContent) {
     const prompt = `다음 문장은 연인 관계에서 나온 대화 내용이야. 이 내용이 관계의 역사에서 얼마나 중요한지 1~10점 척도로 평가해줘. 숫자로만 답해줘.\n10점: 매우 중요 (예: 사랑 고백, 기념일 약속)\n5점: 보통 (예: 개인적인 취향)\n1점: 사소함 (예: 단순 농담)\n내용: "${memoryContent}"\n점수:`;
     try {
-        const response = await openai.chat.completions.create({
-            model: "gpt-4o-mini", messages: [{ role: "user", content: prompt }], temperature: 0, max_tokens: 5
-        });
+        const response = await openai.chat.completions.create({ model: "gpt-4o-mini", messages: [{ role: "user", content: prompt }], temperature: 0, max_tokens: 5 });
         const score = parseInt(response.choices[0].message.content.trim(), 10);
         return isNaN(score) ? 5 : Math.max(1, Math.min(10, score));
-    } catch (error) {
-        console.error('[Memory Scoring] ❌ 중요도 평가 실패:', error);
-        return 5;
-    }
+    } catch (error) { return 5; }
 }
 
 async function consolidateMemories() {
     console.log('[Memory Consolidation] 🚀 기억 정리 시스템 시작...');
     const memories = ultimateConversationState.knowledgeBase.yejinMemories;
-    if (memories.length < 20) {
-        console.log('[Memory Consolidation] ℹ️ 기억이 20개 미만이라 정리를 건너뜁니다.');
-        return;
-    }
+    if (memories.length < 20) return;
 
     const now = moment();
-    const memoriesToKeep = memories.filter(mem => {
-        const daysOld = now.diff(moment(mem.date), 'days');
-        if (daysOld > 30 && mem.significance < 4) {
-            return Math.random() > 0.5;
-        }
-        return true;
-    });
-    const forgottenCount = memories.length - memoriesToKeep.length;
-    if (forgottenCount > 0) {
-        console.log(`[Memory Consolidation] 🗑️ 오래되고 중요도 낮은 기억 ${forgottenCount}개를 잊었습니다.`);
+    const memoriesToKeep = memories.filter(mem => !(now.diff(moment(mem.date), 'days') > 30 && mem.significance < 4 && Math.random() > 0.5));
+    if (memories.length - memoriesToKeep.length > 0) {
         ultimateConversationState.knowledgeBase.yejinMemories = memoriesToKeep;
         await writeJsonFile(YEJIN_MEMORY_FILE, memoriesToKeep);
     }
 
-    const importantRecentMemories = memoriesToKeep
-        .sort((a, b) => new Date(b.date) - new Date(a.date))
-        .filter(mem => mem.significance >= 6)
-        .slice(0, 15);
-
-    if (importantRecentMemories.length < 5) {
-        console.log('[Memory Consolidation] ℹ️ 회고록을 작성할 만한 중요한 기억이 부족합니다.');
-        return;
-    }
+    const importantRecentMemories = memoriesToKeep.sort((a, b) => new Date(b.date) - new Date(a.date)).filter(mem => mem.significance >= 6).slice(0, 15);
+    if (importantRecentMemories.length < 5) return;
     
     const memoryContents = importantRecentMemories.map(m => `(${moment(m.date).format('YYYY-MM-DD')}) ${m.content}`).join('\n');
     const prompt = `너는 여자친구 '예진'이야. 최근 아저씨와 있었던 다음 사건들을 바탕으로, 감정이 담긴 하나의 '주간 회고록'을 일기처럼 작성해줘. 1인칭 '나' 시점으로 작성하고, 있었던 일들을 자연스럽게 연결하며 너의 생각이나 감정을 덧붙여줘. "이번 주에는 아저씨랑..." 같은 자연스러운 톤으로 시작해서 3~5문장으로 요약해줘.\n\n[최근 주요 기억]\n${memoryContents}\n\n[회고록]:`;
 
     try {
-        const response = await openai.chat.completions.create({ model: "gpt-4o", messages: [{ role: "user", content: prompt }], temperature: 0.7, });
+        const response = await openai.chat.completions.create({ model: "gpt-4o", messages: [{ role: "user", content: prompt }], temperature: 0.7 });
         const summary = response.choices[0].message.content.trim();
         MEMORY_SUMMARIES.unshift({ date: moment().tz('Asia/Tokyo').format('YYYY-MM-DD'), summary: summary });
         if (MEMORY_SUMMARIES.length > 10) MEMORY_SUMMARIES.pop();
         await writeJsonFile(MEMORY_SUMMARIES_FILE, MEMORY_SUMMARIES);
         ultimateConversationState.knowledgeBase.memorySummaries = MEMORY_SUMMARIES;
         console.log(`[Memory Consolidation] ✅ 새로운 회고록 작성 완료: ${summary.substring(0, 50)}...`);
-    } catch (error) {
-        console.error('[Memory Consolidation] ❌ 회고록 작성 실패:', error);
-    }
+    } catch (error) { console.error('[Memory Consolidation] ❌ 회고록 작성 실패:', error); }
 }
 
 async function learnFromUserMessage(userMessage) {
@@ -289,17 +172,15 @@ async function learnFromUserMessage(userMessage) {
         const response = await openai.chat.completions.create({ model: "gpt-4o-mini", messages: [{ role: "user", content: prompt }], temperature: 0.1, response_format: { type: "json_object" } });
         const result = JSON.parse(response.choices[0].message.content);
         if (result && result.type && result.content) {
-            const category = result.type === 'nickname' ? 'nicknames' : (result.type === 'joke_pattern' ? 'joke_patterns' : 'common_phrases');
-            if (USER_PATTERNS[category] && !USER_PATTERNS[category].includes(result.content)) {
+            const category = { nickname: 'nicknames', joke_pattern: 'joke_patterns', common_phrase: 'common_phrases' }[result.type];
+            if (category && !USER_PATTERNS[category].includes(result.content)) {
                 USER_PATTERNS[category].push(result.content);
                 await writeJsonFile(USER_PATTERNS_FILE, USER_PATTERNS);
                 ultimateConversationState.knowledgeBase.userPatterns = USER_PATTERNS;
                 console.log(`[User Learning] ✅ 아저씨의 새로운 패턴 학습: [${category}] ${result.content}`);
             }
         }
-    } catch (error) {
-        console.error('[User Learning] ❌ 아저씨 말투 학습 실패:', error);
-    }
+    } catch (error) { console.error('[User Learning] ❌ 아저씨 말투 학습 실패:', error); }
 }
 
 async function learnFromConversation(yejinMessage) {
@@ -334,36 +215,20 @@ async function extractAndStoreFacts(message) {
         if (jsonMatch) {
             const facts = JSON.parse(jsonMatch[0]);
             for (const fact of facts) {
-                const isDuplicate = ultimateConversationState.knowledgeBase.facts.some(item => item.fact === fact);
-                if (!isDuplicate) {
+                if (!ultimateConversationState.knowledgeBase.facts.some(item => item.fact === fact)) {
                     ultimateConversationState.knowledgeBase.facts.push({ fact: fact, timestamp: Date.now() });
-                    console.log(`[Memory] ✅ 새로운 사실 추가: ${fact}`);
                 }
             }
         }
-    } catch (error) {
-        console.error('[Memory] ❌ 사실 추출 중 에러 발생:', error);
-    }
+    } catch (error) { console.error('[Memory] ❌ 사실 추출 중 에러 발생:', error); }
 }
 
 // --- 메모리 관리 CRUD 함수 ---
 
 async function addUserMemory(content) {
-    const lowerContent = content.toLowerCase();
-    const isDuplicate = ultimateConversationState.knowledgeBase.yejinMemories.some(item => item.content.toLowerCase() === lowerContent);
-    if (isDuplicate) {
-        console.log(`[YejinMemory] ℹ️ 중복된 기억이라 추가하지 않습니다: ${content}`);
-        return false;
-    }
-    const newMemory = {
-        id: Date.now(),
-        content,
-        date: moment().tz('Asia/Tokyo').format("YYYY-MM-DD HH:mm:ss"),
-        significance: await scoreMemorySignificance(content),
-        source: "user_request",
-        tags: extractTags(content),
-        lastAccessed: moment().tz('Asia/Tokyo').toISOString(),
-    };
+    const isDuplicate = ultimateConversationState.knowledgeBase.yejinMemories.some(item => item.content.toLowerCase() === content.toLowerCase());
+    if (isDuplicate) return false;
+    const newMemory = { id: Date.now(), content, date: moment().tz('Asia/Tokyo').format("YYYY-MM-DD HH:mm:ss"), significance: await scoreMemorySignificance(content), source: "user_request", tags: extractTags(content), lastAccessed: moment().tz('Asia/Tokyo').toISOString() };
     ultimateConversationState.knowledgeBase.yejinMemories.push(newMemory);
     await writeJsonFile(YEJIN_MEMORY_FILE, ultimateConversationState.knowledgeBase.yejinMemories);
     await logMemoryOperation('add', content, `중요도 ${newMemory.significance}점으로 저장`);
@@ -372,16 +237,10 @@ async function addUserMemory(content) {
 
 async function deleteUserMemory(content) {
     const memories = ultimateConversationState.knowledgeBase.yejinMemories;
-    const lowerContent = content.toLowerCase();
     let foundIndex = -1;
-    for (let i = memories.length - 1; i >= 0; i--) {
-        if (memories[i].content.toLowerCase().includes(lowerContent)) {
-            foundIndex = i;
-            break;
-        }
-    }
+    for (let i = memories.length - 1; i >= 0; i--) { if (memories[i].content.toLowerCase().includes(content.toLowerCase())) { foundIndex = i; break; } }
     if (foundIndex !== -1) {
-        const deletedMemory = memories.splice(foundIndex, 1)[0];
+        const [deletedMemory] = memories.splice(foundIndex, 1);
         await writeJsonFile(YEJIN_MEMORY_FILE, memories);
         await logMemoryOperation('delete', deletedMemory.content, '사용자 요청으로 삭제');
         return { success: true, deletedContent: deletedMemory.content };
@@ -407,26 +266,14 @@ async function updateUserMemory(id, newContent) {
 
 function searchFixedMemory(userMessage) {
     const lowerMessage = userMessage.toLowerCase();
-    const allMemories = [
-        ...ultimateConversationState.knowledgeBase.facts.map(f => f.fact),
-        ...ultimateConversationState.knowledgeBase.fixedMemories,
-        ...ultimateConversationState.knowledgeBase.yejinMemories.map(item => item.content),
-        ...(ultimateConversationState.knowledgeBase.loveHistory.categories?.general?.map(item => item.content) || []),
-    ];
-    let bestMatch = null;
-    let maxScore = 0;
+    const allMemories = [ ...ultimateConversationState.knowledgeBase.facts.map(f => f.fact), ...ultimateConversationState.knowledgeBase.fixedMemories, ...ultimateConversationState.knowledgeBase.yejinMemories.map(item => item.content), ...(ultimateConversationState.knowledgeBase.loveHistory.categories?.general?.map(item => item.content) || []) ];
+    let bestMatch = null, maxScore = 0;
     for (const memory of allMemories) {
         const lowerMemory = memory.toLowerCase();
         if (lowerMemory.includes(lowerMessage)) {
             const score = lowerMessage.length / lowerMemory.length;
-            if (score > maxScore) {
-                maxScore = score;
-                bestMatch = memory;
-            }
+            if (score > maxScore) { maxScore = score; bestMatch = memory; }
         }
-    }
-    if (bestMatch) {
-        logMemoryOperation('search', userMessage, `발견: ${bestMatch}`);
     }
     return bestMatch;
 }
@@ -481,10 +328,7 @@ function getUltimateContextualPrompt(basePrompt) {
     if (state.knowledgeBase.memorySummaries.length > 0) {
         ultimatePrompt += `\n\n[최근 우리들의 회고록 📖]\n(최근에 있었던 중요한 일들을 내가 정리해 둔거야. 이 내용을 바탕으로 대화하면 더 깊은 교감을 나눌 수 있어.)\n- ${state.knowledgeBase.memorySummaries[0].summary}`;
     }
-    const recentMemories = [...state.knowledgeBase.yejinMemories]
-        .sort((a,b) => b.significance - a.significance)
-        .slice(0, 5)
-        .map(m => m.content);
+    const recentMemories = [...state.knowledgeBase.yejinMemories].sort((a,b) => b.significance - a.significance).slice(0, 5).map(m => m.content);
     if(recentMemories.length > 0){
         ultimatePrompt += `\n\n[가장 중요한 최근 기억 Top 5]\n- ${recentMemories.join('\n- ')}`;
     }
@@ -503,140 +347,29 @@ async function addUltimateMessage(speaker, message, meta = null) {
     if (ultimateConversationState.recentMessages.length > 30) ultimateConversationState.recentMessages.shift();
 }
 
-function updateLastUserMessageTime(timestamp) {
-    if (timestamp) ultimateConversationState.timingContext.lastUserMessageTime = timestamp;
-}
-
-function processTimeTick() {
-    // 이 함수는 주기적으로 호출되어 AI의 상태를 업데이트합니다 (예: 감정 회복).
-}
-
-function setPendingAction(actionType) {
-    ultimateConversationState.pendingAction = { type: actionType, timestamp: Date.now() };
-}
-
-function getPendingAction() {
-    const action = ultimateConversationState.pendingAction;
-    if (action && action.type && (Date.now() - action.timestamp > 5 * 60 * 1000)) {
-        clearPendingAction();
-        return null;
-    }
-    return action.type ? action : null;
-}
-
-function clearPendingAction() {
-    ultimateConversationState.pendingAction = { type: null, timestamp: 0 };
-}
-
+function updateLastUserMessageTime(timestamp) { if (timestamp) ultimateConversationState.timingContext.lastUserMessageTime = timestamp; }
+function processTimeTick() { /* 주기적 상태 업데이트 로직 */ }
+function setPendingAction(actionType) { ultimateConversationState.pendingAction = { type: actionType, timestamp: Date.now() }; }
+function getPendingAction() { const action = ultimateConversationState.pendingAction; if (action && action.type && (Date.now() - action.timestamp > 300000)) { clearPendingAction(); return null; } return action.type ? action : null; }
+function clearPendingAction() { ultimateConversationState.pendingAction = { type: null, timestamp: 0 }; }
 function getSulkinessState() { return ultimateConversationState.sulkiness; }
 function updateSulkinessState(newState) { Object.assign(ultimateConversationState.sulkiness, newState); }
 function getMoodState() { return ultimateConversationState.mood; }
 function updateMoodState(newState) { Object.assign(ultimateConversationState.mood, newState); }
 function getInternalState() { return JSON.parse(JSON.stringify(ultimateConversationState)); }
-
-function generateInitiatingPhrase() {
-    const phrases = ["애기, 지금 뭐하고 있어? 내 생각 나?", "애기, 갑자기 목소리 듣고 싶다!"];
-    return phrases[Math.floor(Math.random() * phrases.length)];
-}
-
-function generateInnerThought() {
-    return { observation: "지금은 아저씨랑 대화하는 중...", feeling: "아저씨 뭐하고 있을까? 궁금하다.", actionUrge: "아저씨한테 오늘 하루 어땠는지 물어봐야지." };
-}
-
+function generateInitiatingPhrase() { const phrases = ["애기, 지금 뭐하고 있어? 내 생각 나?", "애기, 갑자기 목소리 듣고 싶다!"]; return phrases[Math.floor(Math.random() * phrases.length)]; }
+function generateInnerThought() { return { observation: "대화 중...", feeling: "아저씨 뭐할까?", actionUrge: "오늘 하루 어땠는지 물어봐야지." }; }
 function getActiveMemoryPrompt() { return null; }
-
-function analyzeAndInfluenceBotEmotion(userMessage) {
-    const lowerMessage = userMessage.toLowerCase();
-    let event = null;
-    if (['사랑', '좋아', '보고싶'].some(k => lowerMessage.includes(k))) event = 'LOVED';
-    else if (['화나', '짜증', '싫어'].some(k => lowerMessage.includes(k))) event = 'HURT';
-    else if (['재밌', '웃기', 'ㅋㅋ'].some(k => lowerMessage.includes(k))) event = 'HAPPY';
-    if (event) recordEmotionalEvent(event, `아저씨의 메시지: ${userMessage}`);
-}
-
-function recordEmotionalEvent(emotionKey, trigger) {
-    const emotion = EMOTION_TYPES[emotionKey];
-    if (!emotion) return;
-    const residue = ultimateConversationState.emotionalEngine.emotionalResidue;
-    emotion.types.forEach(type => {
-        residue[type] = Math.min(100, (residue[type] || 0) + emotion.residue);
-    });
-    updateToneState();
-}
-
-function updateToneState() {
-    const { emotionalEngine } = ultimateConversationState;
-    const oldTone = emotionalEngine.currentToneState;
-    const { emotionalResidue } = emotionalEngine;
-    let newTone = 'normal';
-    if (emotionalResidue.hurt > 60) newTone = 'hurt';
-    else if (emotionalResidue.anxiety > 50) newTone = 'anxious';
-    else if (emotionalResidue.happiness > 70) newTone = 'playful';
-    else if (emotionalResidue.longing > 50) newTone = 'quiet';
-    if (oldTone !== newTone) {
-        emotionalEngine.currentToneState = newTone;
-    }
-}
-
-function getAllMemories() {
-    const state = ultimateConversationState.knowledgeBase;
-    return {
-        yejinMemories: state.yejinMemories || [],
-        userMemories: state.loveHistory.categories?.general || [],
-        facts: state.facts || [],
-        fixedMemories: state.fixedMemories || [],
-        customKeywords: state.customKeywords || []
-    };
-}
-
-function getMemoryCategoryStats() {
-    const memories = getAllMemories();
-    return {
-        yejinMemories: memories.yejinMemories.length,
-        userMemories: memories.userMemories.length,
-        autoFacts: memories.facts.length,
-        fixedMemories: memories.fixedMemories.length,
-        customKeywords: memories.customKeywords.length,
-        total: (memories.yejinMemories.length + memories.userMemories.length + memories.facts.length + memories.fixedMemories.length + memories.customKeywords.length)
-    };
-}
-
+function analyzeAndInfluenceBotEmotion(userMessage) { const lowerMessage = userMessage.toLowerCase(); let event = null; if (['사랑', '좋아', '보고싶'].some(k => lowerMessage.includes(k))) event = 'LOVED'; else if (['화나', '짜증', '싫어'].some(k => lowerMessage.includes(k))) event = 'HURT'; if (event) recordEmotionalEvent(event, `아저씨 메시지`); }
+function recordEmotionalEvent(emotionKey, trigger) { const emotion = EMOTION_TYPES[emotionKey]; if (!emotion) return; const residue = ultimateConversationState.emotionalEngine.emotionalResidue; emotion.types.forEach(type => { residue[type] = Math.min(100, (residue[type] || 0) + emotion.residue); }); updateToneState(); }
+function updateToneState() { const { emotionalEngine } = ultimateConversationState; const oldTone = emotionalEngine.currentToneState; const { emotionalResidue } = emotionalEngine; let newTone = 'normal'; if (emotionalResidue.hurt > 60) newTone = 'hurt'; else if (emotionalResidue.anxiety > 50) newTone = 'anxious'; else if (emotionalResidue.happiness > 70) newTone = 'playful'; else if (emotionalResidue.longing > 50) newTone = 'quiet'; if (oldTone !== newTone) { emotionalEngine.currentToneState = newTone; } }
+function getAllMemories() { const { knowledgeBase } = ultimateConversationState; return { yejinMemories: knowledgeBase.yejinMemories, userMemories: knowledgeBase.loveHistory.categories?.general, facts: knowledgeBase.facts, fixedMemories: knowledgeBase.fixedMemories, customKeywords: knowledgeBase.customKeywords }; }
+function getMemoryCategoryStats() { const memories = getAllMemories(); let total = 0; for(const key in memories) { if(Array.isArray(memories[key])) total += memories[key].length; } return { ...Object.fromEntries(Object.entries(memories).map(([k,v]) => [k, v.length])), total }; }
+function getMemoryStatistics() { const stats = ultimateConversationState.memoryStats; return { total: ultimateConversationState.knowledgeBase.yejinMemories.length, today: stats.dailyMemoryCount, deleted: stats.totalMemoriesDeleted, created: stats.totalMemoriesCreated, lastOperation: stats.lastMemoryOperation }; }
 function getYejinMemories() { return ultimateConversationState.knowledgeBase.yejinMemories || []; }
 function getMemoryById(id) { return (ultimateConversationState.knowledgeBase.yejinMemories || []).find(m => m.id === id); }
 function getMemoriesByTag(tag) { return (ultimateConversationState.knowledgeBase.yejinMemories || []).filter(m => m.tags && m.tags.includes(tag)); }
 
 module.exports = {
-    initializeEmotionalSystems,
-    addUltimateMessage,
-    getUltimateContextualPrompt,
-    updateLastUserMessageTime,
-    processTimeTick,
-    getInternalState,
-    getSulkinessState,
-    updateSulkinessState,
-    getMoodState,
-    updateMoodState,
-    searchFixedMemory,
-    addUserMemory,
-    deleteUserMemory,
-    updateUserMemory,
-    getYejinMemories,
-    getMemoryById,
-    getMemoriesByTag,
-    getAllMemories,
-    getMemoryCategoryStats,
-    getMemoryOperationLogs,
-    getActiveMemoryPrompt,
-    learnFromConversation,
-    learnFromUserMessage,
-    setPendingAction,
-    getPendingAction,
-    clearPendingAction,
-    generateInnerThought,
-    setConversationContextWindow: function(size) {
-        if (typeof size === 'number' && size > 0) {
-            ultimateConversationState.conversationContextWindow = size;
-        }
-    },
-    generateInitiatingPhrase
+    initializeEmotionalSystems, addUltimateMessage, getUltimateContextualPrompt, updateLastUserMessageTime, processTimeTick, getInternalState, getSulkinessState, updateSulkinessState, getMoodState, updateMoodState, searchFixedMemory, addUserMemory, deleteUserMemory, updateUserMemory, getYejinMemories, getMemoryById, getMemoriesByTag, getAllMemories, getMemoryCategoryStats, getMemoryStatistics, getMemoryOperationLogs, getActiveMemoryPrompt, learnFromConversation, learnFromUserMessage, setPendingAction, getPendingAction, clearPendingAction, generateInnerThought, setConversationContextWindow: function(size) { if (typeof size === 'number' && size > 0) ultimateConversationState.conversationContextWindow = size; }, generateInitiatingPhrase
 };
