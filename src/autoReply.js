@@ -5,7 +5,7 @@ const conversationContext = require('./ultimateConversationContext.js');
 const { callOpenAI, cleanReply } = require('./aiUtils');
 const moment = require('moment-timezone');
 
-const BOT_NAME = '예진이';
+const BOT_NAME = '나';
 const USER_NAME = '아저씨';
 
 // 키워드 정의
