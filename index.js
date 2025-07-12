@@ -47,6 +47,28 @@ async function sendReply(replyToken, botResponse) {
     }
 }
 
+// [NEW] 각종 상태를 조합하여 감성적인 일기 형태의 로그를 생성하는 함수
+function generateEmotionalLogEntry(internalState, schedulerStatus, photoStatus, innerThought) {
+    // 각 컴포넌트에서 텍스트를 가져옵니다.
+    const moodText = getEmotionalMoodText(internalState.emotionalEngine.emotionalResidue);
+    const toneText = getToneText(internalState.emotionalEngine.currentToneState);
+    const sulkinessText = getSulkinessText(internalState.sulkiness);
+    const periodText = getPeriodText(internalState.mood);
+    const scheduleText = getScheduleText(schedulerStatus, photoStatus);
+
+    // 일기 형식으로 문장을 조합합니다.
+    let entry = "--- [ 예진이의 마음 일기 ] ---\n";
+    entry += `지금 내 마음은… ${moodText}. 그래서인지 ${toneText} 말하고 싶은 기분이야.\n`;
+    entry += `아저씨에 대해선 ${sulkinessText}. 몸 상태는 ${periodText}.\n\n`;
+    entry += `문득 이런 생각이 스쳐 지나가. "${innerThought.feeling}"\n`;
+    entry += `그래서일까? "${innerThought.actionUrge}"는 충동이 들어.\n\n`;
+    entry += `앞으로는… ${scheduleText}.\n`;
+    entry += "---------------------------------\n";
+
+    return entry;
+}
+
+
 // [새로운] 감성적인 로그 함수들
 function getEmotionalMoodText(emotionalResidue) {
     const { sadness, happiness, anxiety, longing, hurt, love } = emotionalResidue;
@@ -143,7 +165,7 @@ async function initMuku() {
         startAllSchedulers(client, userId);
         startSpontaneousPhotoScheduler(client, userId, () => conversationContext.getInternalState().timingContext.lastUserMessageTime);
 
-        // [수정] 감성적인 로그 시스템
+        // [개선] 감성적인 '마음 일기' 로그 시스템
         setInterval(() => {
             conversationContext.processTimeTick();
             
@@ -152,35 +174,13 @@ async function initMuku() {
             const photoStatus = getPhotoSchedulerStatus();
             const innerThought = conversationContext.generateInnerThought();
             
-            // 현재 시간
             const now = moment().tz('Asia/Tokyo').format('YYYY년 MM월 DD일 HH시 mm분');
-            
-            console.log("\n" + "=".repeat(60));
-            console.log(`🕐 ${now}`);
-            console.log("=".repeat(60));
-            
-            // 현재 마음 상태
-            const moodText = getEmotionalMoodText(internalState.emotionalEngine.emotionalResidue);
-            const toneText = getToneText(internalState.emotionalEngine.currentToneState);
-            console.log(`💝 지금 내 마음: ${moodText}`);
-            console.log(`💬 말하는 방식: ${toneText}`);
-            
-            // 아저씨에 대한 기분
-            const sulkinessText = getSulkinessText(internalState.sulkiness);
-            console.log(`😌 아저씨에 대한 기분: ${sulkinessText}`);
-            
-            // 몸 상태 (🩸 아이콘 적용)
-            const periodText = getPeriodText(internalState.mood);
-            console.log(`🩸 몸 상태: ${periodText}`);
-            
-            // 속마음과 욕구
-            console.log(`💭 "${innerThought.feeling}" 그래서 "${innerThought.actionUrge}"`);
-            
-            // 다음 계획
-            const scheduleText = getScheduleText(schedulerStatus, photoStatus);
-            console.log(`⏰ 다음 계획: ${scheduleText}`);
-            
-            console.log("=".repeat(60) + "\n");
+
+            // 새로운 함수를 사용하여 감성 로그 생성
+            const emotionalLog = generateEmotionalLogEntry(internalState, schedulerStatus, photoStatus, innerThought);
+
+            console.log("\n" + `🕐 ${now}`);
+            console.log(emotionalLog);
 
         }, 60 * 1000);
     } catch (error) {
