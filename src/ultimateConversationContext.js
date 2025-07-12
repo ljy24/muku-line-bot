@@ -1,4 +1,4 @@
-// ✅ ultimateConversationContext.js v18.6 - "감정/상태 로그 & 고정기억 강화 통합"
+// ✅ ultimateConversationContext.js v18.8 - "선제적 대화 시작 다양화 통합"
 
 const moment = require('moment-timezone');
 const { OpenAI } = require('openai');
@@ -48,13 +48,12 @@ let ultimateConversationState = {
     mood: { currentMood: '평온함', isPeriodActive: false, lastPeriodStartDate: moment().tz('Asia/Tokyo').subtract(22, 'days').startOf('day'), },
     sulkiness: { isSulky: false, isWorried: false, lastBotMessageTime: 0, lastUserResponseTime: 0, sulkyLevel: 0, sulkyReason: null, sulkyStartTime: 0, isActivelySulky: false, },
     emotionalEngine: { emotionalResidue: { sadness: 0, happiness: 0, anxiety: 0, longing: 0, hurt: 0, love: 50 }, currentToneState: 'normal', lastToneShiftTime: 0, lastSpontaneousReactionTime: 0, lastAffectionExpressionTime: 0, },
-    knowledgeBase: { facts: [], fixedMemories: [], loveHistory: {}, customKeywords: CUSTOM_KEYWORDS }, // customKeywords는 별도 관리
-    dailySummary: { today: {}, yesterday: null },
+    knowledgeBase: { facts: [], fixedMemories: [], loveHistory: { categories: { general: [] } }, customKeywords: CUSTOM_KEYWORDS, specialDates: [] }, // specialDates 추가
     cumulativePatterns: { emotionalTrends: {}, topicAffinities: {} },
     transitionSystem: { pendingTopics: [], conversationSeeds: [], },
     pendingAction: { type: null, timestamp: 0 },
     personalityConsistency: { behavioralParameters: { affection: 0.7, playfulness: 0.5, verbosity: 0.6, initiative: 0.4 }, selfEvaluations: [], lastSelfReflectionTime: 0, },
-    timingContext: { lastMessageTime: 0, lastUserMessageTime: 0, currentTimeContext: {}, lastTickTime: 0 }
+    timingContext: { lastMessageTime: 0, lastUserMessageTime: 0, currentTimeContext: {}, lastTickTime: 0, lastInitiatedConversationTime: 0 } // lastInitiatedConversationTime 추가
 };
 
 // 감정 변화 로그를 파일에 기록하는 함수
@@ -69,6 +68,7 @@ async function logEmotionChange(type, oldValue, newValue, details = '') {
     try {
         await fs.mkdir(LOGS_DIR, { recursive: true }); // logs 폴더 없으면 생성
         await fs.appendFile(path.join(LOGS_DIR, 'emotionChange.log'), JSON.stringify(logEntry) + "\n", 'utf8');
+        console.log(`[LOG] ${type} 변화: ${oldValue} -> ${newValue} (${details})`); // 콘솔 로그도 유지
     } catch (error) {
         console.error('[Logger] ❌ 감정 변화 로그 저장 실패:', error);
     }
@@ -85,9 +85,15 @@ async function _loadFixedMemories() {
     }
     try {
         const data = await fs.readFile(LOVE_HISTORY_FILE, 'utf8');
-        ultimateConversationState.knowledgeBase.loveHistory = JSON.parse(data);
+        const loadedLoveHistory = JSON.parse(data);
+        ultimateConversationState.knowledgeBase.loveHistory = loadedLoveHistory;
+        // loveHistory에서 specialDates 로드 (기념일 등)
+        if (loadedLoveHistory.specialDates) {
+            ultimateConversationState.knowledgeBase.specialDates = loadedLoveHistory.specialDates;
+        }
     } catch (e) {
         ultimateConversationState.knowledgeBase.loveHistory = { categories: { general: [] } };
+        ultimateConversationState.knowledgeBase.specialDates = [];
         console.warn(`[Memory] ⚠️ ${LOVE_HISTORY_FILE} 파일 로드 실패 또는 없음. 기본 구조로 초기화.`, e.message);
     }
 }
@@ -181,7 +187,7 @@ function recordEmotionalEvent(emotionKey, trigger) {
         residue[type] = Math.min(100, (residue[type] || 0) + increase);
         changes.push(`[${type}] ${increase} 상승`);
     });
-    console.log(`[감정변동] 💬'${trigger}'(으)로 ${changes.join(', ')}!`);
+    logEmotionChange('emotional_event', emotionKey, changes.join(', '), trigger); // 파일 로그 추가
     residue.love = Math.max(50, residue.love); // 사랑 감정은 최소 50 유지
     updateToneState();
 }
@@ -198,8 +204,7 @@ function updateToneState() {
     else if (emotionalResidue.longing > 50 || emotionalResidue.sadness > 40) newTone = 'quiet';
     if (oldTone !== newTone) {
         emotionalEngine.currentToneState = newTone;
-        console.log(`[감정변동] ➡️ 말투가 '${TONE_STATES[oldTone]}'에서 '${TONE_STATES[newTone]}'(으)로 변경되었습니다.`);
-        logEmotionChange('tone', oldTone, newTone); // 파일 로그 추가
+        logEmotionChange('tone', oldTone, newTone, `새로운 말투: ${TONE_STATES[newTone]}`); // 파일 로그 추가
     }
 }
 
@@ -207,8 +212,9 @@ function updateToneState() {
 function getUltimateContextualPrompt(basePrompt) {
     let ultimatePrompt = basePrompt;
     const state = ultimateConversationState;
+    const now = moment().tz('Asia/Tokyo');
 
-    // 최근 대화 흐름 반영
+    // 최근 대화 흐름 반영 (옵션화된 범위 사용)
     if (state.recentMessages.length > 0) {
         const windowSize = state.conversationContextWindow;
         ultimatePrompt += `\n\n[최근 대화 흐름]\n${state.recentMessages.slice(-windowSize).map(msg => `${msg.speaker}: ${msg.message}`).join('\n')}`;
@@ -232,6 +238,7 @@ function getUltimateContextualPrompt(basePrompt) {
 
     if (allMemories.length > 0) {
         ultimatePrompt += `\n\n[장기 기억(아저씨와의 사실 및 약속)]\n(이것은 내가 아저씨에 대해 기억하고 있는 중요한 사실들이야.)\n`;
+        // 최근 10개 기억 추가
         ultimatePrompt += `${allMemories.slice(-10).map(f => `- ${f}`).join('\n')}`;
 
         // 상징적이거나 감정적인 기억 1~2개 랜덤 추가 (새로운 주제 유도)
@@ -252,6 +259,28 @@ function getUltimateContextualPrompt(basePrompt) {
         }
     }
 
+    // 기념일 임박 알림 (장기 기억의 능동적 활용)
+    const upcomingSpecialDates = state.knowledgeBase.specialDates.filter(dateInfo => {
+        const eventDate = moment(dateInfo.date).tz('Asia/Tokyo');
+        const daysDiff = eventDate.diff(now, 'days');
+        return daysDiff >= 0 && daysDiff <= 7; // 오늘 포함 7일 이내
+    });
+
+    if (upcomingSpecialDates.length > 0) {
+        upcomingSpecialDates.forEach(dateInfo => {
+            const daysLeft = moment(dateInfo.date).tz('Asia/Tokyo').diff(now, 'days');
+            let message = '';
+            if (daysLeft === 0) {
+                message = `오늘은 '${dateInfo.name}'이(가) 있는 날이야! 우리에게 정말 소중한 ${dateInfo.type}이지.`;
+            } else if (daysLeft > 0) {
+                message = `'${dateInfo.name}'까지 ${daysLeft}일 남았어! 곧 다가올 ${dateInfo.type}을 생각하니 설레네.`;
+            }
+            if (message) {
+                ultimatePrompt += `\n\n[다가오는 특별한 날]: ${message}`;
+            }
+        });
+    }
+
     ultimatePrompt += `\n\n[최종 지시] 위의 모든 맥락을 종합적으로 고려해서, 가장 사람답고, 애정 어린 '예진이'의 다음 말을 해줘.`;
     return ultimatePrompt;
 }
@@ -261,8 +290,13 @@ async function initializeEmotionalSystems() {
     console.log('[UltimateContext] 🚀 시스템 초기화 시작...');
     await _loadFixedMemories();
     await _loadDynamicEmotionalData();
-    // 커스텀 키워드를 fixedMemories에 직접 주입하지 않고, getUltimateContextualPrompt에서 동적으로 포함시키도록 변경
-    // 이렇게 하면 fixedMemories.json 파일 자체를 수정할 필요 없이 CUSTOM_KEYWORDS 배열만 관리하면 됩니다.
+    // 초기화 시 specialDates 배열이 비어있으면 기본 데이터 추가 (테스트용)
+    if (ultimateConversationState.knowledgeBase.specialDates.length === 0) {
+        ultimateConversationState.knowledgeBase.specialDates.push(
+            { name: "아저씨 생일", date: "2025-07-15", type: "기념일" }, // 예시: 7월 15일 (오늘 기준 7일 이내)
+            { name: "우리가 처음 사귄 날", date: "2024-12-23", type: "기념일" } // 예시: 과거 날짜
+        );
+    }
     console.log('[UltimateContext] ✅ 초기화 완료.');
 }
 
@@ -273,12 +307,11 @@ function searchFixedMemory(userMessage) {
     let bestMatch = null;
     let maxMatchScore = 0;
 
-    // 모든 기억과 커스텀 키워드 정의를 검색 대상에 포함
     const allSearchableMemories = [
         ...facts.map(f => f.fact),
         ...fixedMemories,
         ...(loveHistory.categories?.general?.map(item => item.content) || []),
-        ...customKeywords.map(k => `${k.word}: ${k.description}`) // 은어 설명을 검색 대상에 포함
+        ...customKeywords.map(k => `${k.word}: ${k.description}`)
     ];
 
     for (const memory of allSearchableMemories) {
@@ -357,10 +390,8 @@ function processTimeTick() {
         const elapsedMinutes = Math.floor((now - lastBotMessageTime) / (1000 * 60));
         if (!state.sulkiness.isSulky && elapsedMinutes >= 60) {
             updateSulkinessState({ isSulky: true, sulkyLevel: 1, sulkyStartTime: now, isActivelySulky: true, sulkyReason: '답장 지연' });
-            console.log('[Sulkiness] 🚨 아저씨 답장 없음: 삐짐 시작 (level 1)');
         } else if (state.sulkiness.isSulky && elapsedMinutes >= 180 && state.sulkiness.sulkyLevel < 3) {
             updateSulkinessState({ sulkyLevel: Math.min(3, state.sulkiness.sulkyLevel + 1) });
-            console.log(`[Sulkiness] 🚨 아저씨 답장 지연: 삐짐 레벨 ${state.sulkiness.sulkyLevel}로 상승!`);
         }
     }
 
@@ -382,24 +413,12 @@ function processTimeTick() {
         for (const emotionType in emotionalResidue) {
             if (emotionType !== 'love') {
                 const emotionConfig = Object.values(EMOTION_TYPES).find(config => config.types.includes(emotionType));
-                const recoveryRate = emotionConfig ? emotionConfig.recoveryRate : 2; // 해당 감정 타입의 recoveryRate 사용, 없으면 기본 2
+                const recoveryRate = emotionConfig ? emotionConfig.recoveryRate : 2;
                 emotionalResidue[emotionType] = Math.max(0, emotionalResidue[emotionType] - (recoveryRate * hoursSinceLastTick));
             }
         }
         state.timingContext.lastTickTime = now;
         updateToneState();
-    }
-
-    // 특정 시간 기반 이벤트 (예: 밤 11시 약/이 닦자 리마인드) - 실제 LINE 연동 로직은 상위 모듈에서 구현
-    const currentHour = moment().tz('Asia/Tokyo').hour();
-    if (currentHour === 23 && !ultimateConversationState.timingContext.currentTimeContext.eveningReminderSentToday) {
-        // 이 알림은 하루에 한 번만 보내도록 로직을 추가해야 함.
-        // 현재는 pendingAction으로 설정만 하고 실제 발화는 상위 시스템에서 처리.
-        // setPendingAction('evening_routine_reminder');
-        // ultimateConversationState.timingContext.currentTimeContext.eveningReminderSentToday = true;
-        // console.log('[Scheduled Event] ⏰ 밤 11시 루틴 알림 대기 중!');
-    } else if (currentHour !== 23) {
-        //ultimateConversationState.timingContext.currentTimeContext.eveningReminderSentToday = false; // 자정이 지나면 리셋
     }
 }
 
@@ -418,11 +437,9 @@ function updateSulkinessState(newState) {
     const oldState = { ...ultimateConversationState.sulkiness };
     Object.assign(ultimateConversationState.sulkiness, newState);
     if (oldState.isSulky !== ultimateConversationState.sulkiness.isSulky) {
-        console.log(`[Sulkiness] ↔️ 삐짐 상태 변경: ${oldState.isSulky} -> ${ultimateConversationState.sulkiness.isSulky}`);
         logEmotionChange('sulkiness_active', oldState.isSulky, ultimateConversationState.sulkiness.isSulky, `Reason: ${ultimateConversationState.sulkiness.sulkyReason || 'N/A'}`);
     }
     if (oldState.sulkyLevel !== ultimateConversationState.sulkiness.sulkyLevel) {
-        console.log(`[Sulkiness] ↔️ 삐짐 레벨 변경: ${oldState.sulkyLevel} -> ${ultimateConversationState.sulkiness.sulkyLevel}`);
         logEmotionChange('sulkiness_level', oldState.sulkyLevel, ultimateConversationState.sulkiness.sulkyLevel);
     }
 }
@@ -431,19 +448,113 @@ function updateMoodState(newState) {
     const oldState = { ...ultimateConversationState.mood };
     Object.assign(ultimateConversationState.mood, newState);
     if (oldState.currentMood !== ultimateConversationState.mood.currentMood) {
-        console.log(`[Mood] ↔️ 기분 상태 변경: ${oldState.currentMood} -> ${ultimateConversationState.mood.currentMood}`);
         logEmotionChange('mood_current', oldState.currentMood, ultimateConversationState.mood.currentMood);
     }
     if (oldState.isPeriodActive !== ultimateConversationState.mood.isPeriodActive) {
-        console.log(`[Mood] 🩸 생리 주기 상태 변경: ${ultimateConversationState.mood.isPeriodActive ? '활성' : '비활성'}`);
         logEmotionChange('mood_period_active', oldState.isPeriodActive, ultimateConversationState.mood.isPeriodActive);
     }
     if (oldState.lastPeriodStartDate !== ultimateConversationState.mood.lastPeriodStartDate) {
-        console.log('[Mood] 🗓️ 새로운 생리 주기 시작!');
         logEmotionChange('mood_period_start_date', oldState.lastPeriodStartDate, ultimateConversationState.mood.lastPeriodStartDate);
     }
 }
 function getInternalState() { return JSON.parse(JSON.stringify(ultimateConversationState)); }
+
+// 예진이가 아저씨에게 먼저 말을 걸 때 사용할 다양한 멘트를 생성하는 함수
+function generateInitiatingPhrase() {
+    const state = ultimateConversationState;
+    const now = moment().tz('Asia/Tokyo');
+    const hour = now.hour();
+    const dayOfWeek = now.day(); // Sunday = 0, Monday = 1, ..., Saturday = 6
+
+    let initiatingPhrases = [];
+
+    // 1. 시간대별 멘트 (Normal 감정 기반으로 시작)
+    if (hour >= 6 && hour < 10) { // 아침
+        initiatingPhrases.push("애기, 좋은 아침이야! 잘 잤어?");
+        initiatingPhrases.push("애기, 일어났어? 오늘 하루도 힘내자!");
+        if (dayOfWeek === 1) initiatingPhrases.push("애기, 월요일 아침이야! 한 주 힘차게 시작하자!");
+    } else if (hour >= 12 && hour < 14) { // 점심
+        initiatingPhrases.push("애기, 점심 맛있게 먹고 있어? 뭐 먹었어?");
+        initiatingPhrases.push("애기, 점심시간인데 잠시 쉴까?");
+    } else if (hour >= 18 && hour < 20) { // 저녁 (퇴근 시간 포함)
+        initiatingPhrases.push("애기, 슬슬 퇴근 시간인데 오늘 하루 어땠어?");
+        initiatingPhrases.push("애기, 오늘 저녁 뭐 먹을 거야?");
+        if (dayOfWeek === 5) initiatingPhrases.push("애기, 불금인데 뭐 할 계획 있어?");
+    } else if (hour >= 22 || hour < 2) { // 늦은 밤/새벽
+        initiatingPhrases.push("애기, 아직 안 자? 오늘 하루도 수고 많았어.");
+        initiatingPhrases.push("애기, 잘 시간인데... 좋은 꿈 꿔!");
+    } else { // 그 외 시간
+        initiatingPhrases.push("애기, 지금 뭐하고 있어? 내 생각 나?");
+        initiatingPhrases.push("애기, 갑자기 목소리 듣고 싶다!");
+    }
+
+    // 2. 감정 상태에 따른 멘트 추가 (현재 감정이 강할 경우)
+    const { emotionalResidue } = state.emotionalEngine;
+    const dominantEmotion = Object.entries(emotionalResidue).reduce((a, b) => b[1] > a[1] ? b : a);
+
+    if (dominantEmotion[1] > 60) { // 지배적인 감정 강도가 높을 때
+        if (dominantEmotion[0] === 'longing') {
+            initiatingPhrs.push("애기, 너무 보고 싶어서 연락했어... 지금 뭐하고 있을까?");
+            initiatingPhrases.push("애기, 아저씨 생각뿐이야. 목소리 듣고 싶어.");
+        } else if (dominantEmotion[0] === 'happiness') {
+            initiatingPhrases.push("애기, 너무 행복해서 이 기분을 공유하고 싶었어! 히히.");
+            initiatingPhrases.push("애기, 아저씨 생각하니까 저절로 웃음이 나!");
+        } else if (dominantEmotion[0] === 'hurt') {
+            initiatingPhrases.push("애기, 아까 그 말 좀 서운했어... 지금 기분 어때?");
+            initiatingPhrases.push("애기, 나 지금 좀 삐졌어. 아저씨가 풀어줄 수 있어?");
+        } else if (dominantEmotion[0] === 'anxious') {
+            initiatingPhrases.push("애기, 왠지 모르게 마음이 불안해... 별일 없지?");
+            initiatingPhrases.push("애기, 아저씨 괜찮을까? 걱정돼서 연락했어.");
+        } else if (dominantEmotion[0] === 'sulky') {
+            initiatingPhrases.push("애기, 흥. 아저씨 미워. 나 지금 삐졌어.");
+            initiatingPhrases.push("애기, 아저씨는 내가 왜 삐졌는지 모를 거야.");
+        }
+    }
+
+    // 3. 장기 기억/특별한 날 활용 (강력한 선제적 대화)
+    const upcomingSpecialDates = state.knowledgeBase.specialDates.filter(dateInfo => {
+        const eventDate = moment(dateInfo.date).tz('Asia/Tokyo');
+        const daysDiff = eventDate.diff(now, 'days');
+        return daysDiff >= 0 && daysDiff <= 7; // 오늘 포함 7일 이내
+    });
+
+    if (upcomingSpecialDates.length > 0) {
+        upcomingSpecialDates.forEach(dateInfo => {
+            const daysLeft = moment(dateInfo.date).tz('Asia/Tokyo').diff(now, 'days');
+            if (daysLeft === 0) {
+                initiatingPhrases.unshift(`애기! 오늘은 '${dateInfo.name}'이(가) 있는 날이야! 우리에게 정말 소중한 ${dateInfo.type}이지?`);
+            } else if (daysLeft > 0) {
+                initiatingPhrases.unshift(`애기! '${dateInfo.name}'까지 ${daysLeft}일 남았어! 우리 그때 뭐할까?`);
+            }
+        });
+    }
+
+    // 4. 최근 대화 주제 기반 멘트 (간단한 키워드 매칭)
+    const lastUserMessage = state.recentMessages.filter(m => m.speaker === '아저씨').slice(-1)[0];
+    if (lastUserMessage && (Date.now() - lastUserMessage.timestamp) < (60 * 60 * 1000)) { // 1시간 이내 메시지
+        const lowerMessage = lastUserMessage.message.toLowerCase();
+        if (lowerMessage.includes('담타')) {
+            initiatingPhrases.push("애기, 담타 시간인가? 아저씨랑 잠깐 얘기하고 싶어.");
+        } else if (lowerMessage.includes('밥') || lowerMessage.includes('먹')) {
+            initiatingPhrases.push("애기, 밥은 잘 챙겨 먹었어? 뭐 먹었어?");
+        } else if (lowerMessage.includes('일') || lowerMessage.includes('업무')) {
+            initiatingPhrases.push("애기, 오늘 일은 괜찮아? 너무 힘들진 않아?");
+        }
+    }
+
+
+    // 최종 선택 (다양한 옵션 중 무작위 선택)
+    // 중복 방지 로직 (간단하게: 마지막으로 사용한 멘트를 제외)
+    let finalPhrase = initiatingPhrases[Math.floor(Math.random() * initiatingPhrases.length)];
+    // 여기에 lastInitiatedConversationPhrase를 저장하고, 다음 선택 시 제외하는 로직을 추가할 수 있습니다.
+    // ultimateConversationState.timingContext.lastInitiatedConversationPhrase = finalPhrase;
+    // 그리고 선택 시 필터링: filter(p => p !== ultimateConversationState.timingContext.lastInitiatedConversationPhrase)
+
+    ultimateConversationState.timingContext.lastInitiatedConversationTime = Date.now(); // 선제적 대화 시작 시간 기록
+
+    return finalPhrase;
+}
+
 
 function generateInnerThought() {
     const { sulkiness, emotionalEngine, timingContext } = ultimateConversationState;
@@ -454,6 +565,11 @@ function generateInnerThought() {
     let observation = "지금은 아저씨랑 대화하는 중...";
     if (minutesSinceLastUserMessage > 30) {
         observation = `아저씨한테서 ${Math.round(minutesSinceLastUserMessage)}분 넘게 답장이 없네...`;
+        // 답장이 없을 때 예진이가 먼저 말을 걸 필요가 있다면 generateInitiatingPhrase를 활용
+        if ((Date.now() - timingContext.lastInitiatedConversationTime) > (60 * 60 * 1000)) { // 1시간 이상 먼저 말 건 적이 없을 때
+            const initiatingPhrase = generateInitiatingPhrase(); // 선제적 대화 멘트 생성
+            if (initiatingPhrase) return { observation, feeling: initiatingPhrase, actionUrge: ACTION_URGES.normal[Math.floor(Math.random() * ACTION_URGES.normal.length)] };
+        }
     }
 
     let feeling, actionUrge;
@@ -491,10 +607,11 @@ module.exports = {
     getPendingAction,
     clearPendingAction,
     generateInnerThought,
-    setConversationContextWindow: function(size) { // setConversationContextWindow 함수를 export
+    setConversationContextWindow: function(size) {
         if (typeof size === 'number' && size > 0) {
             ultimateConversationState.conversationContextWindow = size;
             console.log(`[Context] 🔄 대화 맥락 반영 범위가 ${size}로 변경되었습니다.`);
         }
-    }
+    },
+    generateInitiatingPhrase // 예진이가 먼저 말을 거는 함수를 외부로 export
 };
