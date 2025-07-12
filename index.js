@@ -1,4 +1,4 @@
-// ✅ index.js v9.7 - Render 로그 기반 간단한 기억 관리
+// ✅ index.js v9.8 - undefined 문제 완전 해결본
 
 const { Client, middleware } = require('@line/bot-sdk');
 const express = require('express');
@@ -19,7 +19,7 @@ const config = { channelAccessToken: process.env.LINE_ACCESS_TOKEN, channelSecre
 const client = new Client(config);
 const userId = process.env.TARGET_USER_ID;
 
-app.get('/', (_, res) => res.send('예진이 v9.7 살아있어! (yejin_memory.json 기억 관리 시스템)'));
+app.get('/', (_, res) => res.send('예진이 v9.8 살아있어! (undefined 문제 해결 완료)'));
 
 // ==================== LINE 웹훅 처리 ====================
 
@@ -79,7 +79,52 @@ async function sendReply(replyToken, botResponse) {
     }
 }
 
-// ==================== 감성 로그 시스템 (기존 유지) ====================
+// ==================== ✅ 안전한 내면 생각 가져오기 함수 ====================
+
+async function getSafeInnerThought() {
+    try {
+        const innerThought = await conversationContext.generateInnerThought();
+        
+        // 기본 구조 체크
+        if (!innerThought || typeof innerThought !== 'object') {
+            console.log('[Safe Inner Thought] generateInnerThought 결과가 유효하지 않음, 기본값 사용');
+            return {
+                observation: "지금은 아저씨랑 대화하는 중...",
+                feeling: "아저씨 생각하니까 마음이 따뜻해져.",
+                actionUrge: "아저씨한테 사랑한다고 말하고 싶어."
+            };
+        }
+        
+        // 각 필드 개별 체크
+        const safeResult = {
+            observation: innerThought.observation || "지금은 아저씨랑 대화하는 중...",
+            feeling: innerThought.feeling || "아저씨 생각하니까 마음이 따뜻해져.",
+            actionUrge: innerThought.actionUrge || "아저씨한테 사랑한다고 말하고 싶어."
+        };
+        
+        // "undefined" 텍스트 체크
+        if (safeResult.feeling.includes('undefined') || safeResult.actionUrge.includes('undefined')) {
+            console.log('[Safe Inner Thought] undefined 텍스트 발견, 안전한 기본값으로 교체');
+            return {
+                observation: "지금은 아저씨랑 대화하는 중...",
+                feeling: "아저씨가 그리워... 보고 싶어.",
+                actionUrge: "아저씨한테 연락해볼까?"
+            };
+        }
+        
+        return safeResult;
+        
+    } catch (error) {
+        console.error('[Safe Inner Thought] generateInnerThought 에러:', error);
+        return {
+            observation: "지금은 아저씨랑 대화하는 중...",
+            feeling: "아저씨 생각하니까 기분 좋아.",
+            actionUrge: "아저씨한테 메시지 보내고 싶어."
+        };
+    }
+}
+
+// ==================== 감성 로그 시스템 ====================
 
 function generateEmotionalLogEntry(internalState, schedulerStatus, photoStatus, innerThought) {
     const moodText = getEmotionalMoodText(internalState.emotionalEngine.emotionalResidue);
@@ -237,14 +282,16 @@ async function initMuku() {
         startAllSchedulers(client, userId);
         startSpontaneousPhotoScheduler(client, userId, () => conversationContext.getInternalState().timingContext.lastUserMessageTime);
 
-        // 감성적인 '마음 일기' 로그 시스템
-        setInterval(() => {
+        // ✅ 감성적인 '마음 일기' 로그 시스템 (async로 수정)
+        setInterval(async () => {
             conversationContext.processTimeTick();
             
             const internalState = conversationContext.getInternalState();
             const schedulerStatus = getSchedulerStatus();
             const photoStatus = getPhotoSchedulerStatus();
-            const innerThought = conversationContext.generateInnerThought();
+            
+            // ✅ 안전한 내면 생각 가져오기
+            const innerThought = await getSafeInnerThought();
             
             const now = moment().tz('Asia/Tokyo').format('YYYY년 MM월 DD일 HH시 mm분');
             const emotionalLog = generateEmotionalLogEntry(internalState, schedulerStatus, photoStatus, innerThought);
@@ -272,7 +319,8 @@ async function initMuku() {
 
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
-    console.log(`예진이 v9.7 서버 스타트! 포트: ${PORT}`);
+    console.log(`예진이 v9.8 서버 스타트! 포트: ${PORT}`);
+    console.log(`✅ undefined 문제 해결 완료`);
     console.log(`📁 yejin_memory.json: 새로운 기억 전용`);
     console.log(`💕 love-history.json: 기존 중요 기억 보존`);
     console.log(`📊 Render 로그에서 실시간 기억 현황 확인 가능`);
