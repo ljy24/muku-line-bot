@@ -1,10 +1,14 @@
-// ✅ autoReply.js v9.1 - "상호 학습 및 기억 고도화 연동 (완성본)"
+// ✅ autoReply.js v10.0 - "관계 심화 패키지 적용 (완성본)"
 
 const conversationContext = require('./ultimateConversationContext.js');
 const { callOpenAI, cleanReply } = require('./aiUtils');
 
 const BOT_NAME = '예진이';
 const USER_NAME = '아저씨';
+
+// [LEVEL 3] 긴급 대응을 위한 키워드
+const EMERGENCY_KEYWORDS = ['힘들다', '죽고싶다', '우울해', '지친다', '다 싫다', '아무것도 하기 싫어', '너무 괴로워', '살기 싫어'];
+
 
 // ==================== 자동 기억 포착 시스템 ====================
 
@@ -161,9 +165,19 @@ async function handlePhotoReaction(userReaction) {
 }
 
 async function getReplyByMessage(userMessage) {
-    // [LEVEL 1] 아저씨 메시지에서 말투 학습 및 대화 기록
+    // [LEVEL 1 & 3] 아저씨 메시지 분석 및 기록
     await conversationContext.learnFromUserMessage(userMessage);
+    await conversationContext.analyzeUserMood(userMessage);
     await conversationContext.addUltimateMessage(USER_NAME, userMessage);
+
+    // [LEVEL 3] 긴급 대응 로직 (가장 먼저 체크)
+    const isEmergency = EMERGENCY_KEYWORDS.some(keyword => userMessage.includes(keyword));
+    if (isEmergency) {
+        console.log('[Comfort Mode] 🚨 긴급 위로 모드 발동!');
+        const comfortingReply = await conversationContext.getComfortingResponse(userMessage);
+        await conversationContext.addUltimateMessage(BOT_NAME, comfortingReply);
+        return { type: 'text', comment: comfortingReply };
+    }
 
     // 1. 기억 삭제/수정 처리
     const editResult = await detectAndProcessMemoryEdit(userMessage);
