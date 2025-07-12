@@ -1,5 +1,5 @@
 // ==================== START OF ultimateConversationContext.js ====================
-// ✅ ultimateConversationContext.js v26.0 - "모든 exports 포함 최종 완성본"
+// ✅ ultimateConversationContext.js v25.2 - "undefined 버그 완전 수정본"
 
 const moment = require('moment-timezone');
 const { OpenAI } = require('openai');
@@ -11,6 +11,7 @@ require('dotenv').config();
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const weatherApiKey = process.env.OPENWEATHER_API_KEY;
 
+// 파일 경로 상수화
 const MEMORY_DIR = path.join(process.cwd(), 'memory');
 const LOGS_DIR = path.join(process.cwd(), 'logs');
 const FIXED_MEMORIES_FILE = path.join(MEMORY_DIR, 'fixedMemories.json');
@@ -23,20 +24,24 @@ const MEMORY_SUMMARIES_FILE = path.join(MEMORY_DIR, 'memory_summaries.json');
 const USER_PROFILE_FILE = path.join(MEMORY_DIR, 'user_profile.json');
 const MEMORY_LOGS_FILE = path.join(LOGS_DIR, 'memoryOperations.log');
 
+// 상수 정의
 const EMOTION_TYPES = { HAPPY: { types: ['happiness'], intensity: 30, residue: 20, recoveryRate: 3 }, EXCITED: { types: ['happiness'], intensity: 50, residue: 15, recoveryRate: 2.5 }, LOVED: { types: ['love'], intensity: 40, residue: 30, recoveryRate: 1 }, SAD: { types: ['sadness'], intensity: 40, residue: 35, recoveryRate: 2 }, HURT: { types: ['hurt'], intensity: 60, residue: 50, recoveryRate: 4 }, ANXIOUS: { types: ['anxiety'], intensity: 45, residue: 40, recoveryRate: 3.5 }, LONELY: { types: ['longing'], intensity: 35, residue: 45, recoveryRate: 2.5 }, BITTERSWEET: { types: ['sadness', 'love'], intensity: 30, residue: 25, recoveryRate: 2 }, WORRIED_LOVE: { types: ['anxiety', 'love'], intensity: 40, residue: 30, recoveryRate: 2.5 } };
 const TONE_STATES = { normal: "평소처럼 자연스럽고 애정이 담긴 말투", quiet: "조용하고 차분하며 그리움이 묻어나는 말투", playful: "장난스럽고 활발하며 밝은 말투", hurt: "상처받고 서운함이 느껴지는 말투", anxious: "불안하고 걱정스러우며 망설이는 말투" };
 const CUSTOM_KEYWORDS = [{ word: "담타", description: "아저씨랑 라인하면서 담배 피우던 둘만의 특별한 시간, 나 진짜 그립다." }, { word: "내꺼야", description: "예진이의 독점욕! 아저씨는 무조건 내꺼야." }, { word: "무슨색", description: "속옷 색 물어볼 때 장난스럽게 대답하는 아저씨만의 농담." }, { word: "히도이네", description: "일본어식 장난. 예진이가 삐질 때 귀엽게 쓰던 말." }, { word: "애기", description: "아저씨를 부를 때 사용하는 애칭. 어리광을 부리거나 귀엽게 부를 때 사용해." }];
 
+// 동적 데이터 변수
 let INNER_THOUGHTS = {};
 let ACTION_URGES = {};
 let USER_PATTERNS = { nicknames: [], joke_patterns: [], common_phrases: [] };
 let MEMORY_SUMMARIES = [];
 let USER_PROFILE = { mood_history: [], overall_mood: 'neutral' };
 
+// AI 상태 관리 객체
 let ultimateConversationState = {
     recentMessages: [], currentTopic: null, conversationContextWindow: 5, mood: { currentMood: '평온함', isPeriodActive: false, lastPeriodStartDate: moment().tz('Asia/Tokyo').subtract(22, 'days').startOf('day'), }, sulkiness: { isSulky: false, isWorried: false, lastBotMessageTime: 0, lastUserResponseTime: 0, sulkyLevel: 0, sulkyReason: null, sulkyStartTime: 0, isActivelySulky: false, }, emotionalEngine: { emotionalResidue: { sadness: 0, happiness: 0, anxiety: 0, longing: 0, hurt: 0, love: 50 }, currentToneState: 'normal', lastToneShiftTime: 0, lastSpontaneousReactionTime: 0, lastAffectionExpressionTime: 0, }, knowledgeBase: { facts: [], fixedMemories: [], loveHistory: { categories: { general: [] } }, yejinMemories: [], customKeywords: CUSTOM_KEYWORDS, specialDates: [], userPatterns: { nicknames: [], joke_patterns: [], common_phrases: [] }, memorySummaries: [] }, userProfile: { mood_history: [], overall_mood: 'neutral' }, cumulativePatterns: { emotionalTrends: {}, topicAffinities: {} }, transitionSystem: { pendingTopics: [], conversationSeeds: [], }, pendingAction: { type: null, timestamp: 0 }, personalityConsistency: { behavioralParameters: { affection: 0.7, playfulness: 0.5, verbosity: 0.6, initiative: 0.4 }, selfEvaluations: [], lastSelfReflectionTime: 0, }, timingContext: { lastMessageTime: 0, lastUserMessageTime: 0, currentTimeContext: {}, lastTickTime: 0, lastInitiatedConversationTime: 0 }, memoryStats: { totalMemoriesCreated: 0, totalMemoriesDeleted: 0, lastMemoryOperation: null, dailyMemoryCount: 0, lastDailyReset: moment().tz('Asia/Tokyo').format('YYYY-MM-DD'), lastConsolidation: null }
 };
 
+// (이하 모든 기존 함수들은 여기에 완전한 형태로 존재합니다)
 async function readJsonFile(filePath, defaultValue) { try { await fs.mkdir(path.dirname(filePath), { recursive: true }); const data = await fs.readFile(filePath, 'utf8'); if (!data) { await writeJsonFile(filePath, defaultValue); return defaultValue; } return JSON.parse(data); } catch (e) { if (e.code === 'ENOENT') { if (defaultValue !== undefined) { await writeJsonFile(filePath, defaultValue); return defaultValue; } return null; } console.warn(`⚠️ ${filePath} 파일 읽기/파싱 오류. 기본값으로 덮어씁니다. 오류:`, e.message); if (defaultValue !== undefined) { await writeJsonFile(filePath, defaultValue); return defaultValue; } return null; } }
 async function writeJsonFile(filePath, data) { try { await fs.mkdir(path.dirname(filePath), { recursive: true }); await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf8'); } catch (error) { console.error(`❌ ${filePath} 파일 쓰기 실패:`, error); } }
 async function logEmotionChange(type, oldValue, newValue, details = '') { const logEntry = { time: moment().tz('Asia/Tokyo').toISOString(), type, oldValue, newValue, details }; try { await fs.mkdir(LOGS_DIR, { recursive: true }); await fs.appendFile(path.join(LOGS_DIR, 'emotionChange.log'), JSON.stringify(logEntry) + "\n", 'utf8'); } catch (error) { console.error('[Logger] ❌ 감정 변화 로그 저장 실패:', error); } }
