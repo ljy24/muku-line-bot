@@ -1,4 +1,4 @@
-// ✅ scheduler.js v2.6 - "아침/밤 인사 30종 랜덤 발송 기능 추가"
+// ✅ scheduler.js v2.7 - "새벽 시간대(0시~9시) 메시지 차단 기능 추가"
 
 const schedule = require('node-schedule');
 const moment = require('moment-timezone');
@@ -107,15 +107,61 @@ const MIDNIGHT_MESSAGES = [
     "내일 눈 뜨면, 이 세상이 온통 아저씨와 나의 사랑으로 가득하길. 잘 자."
 ];
 
-const CONFIG = { AUTO_MESSAGE_INTERVAL: 30, SMOKING_MIN_INTERVAL: 60, SMOKING_MAX_INTERVAL: 90, DAILY_SMOKING_MIN: 7, DAILY_SMOKING_MAX: 9, SMOKING_START_HOUR: 9, SMOKING_END_HOUR: 21, INACTIVE_CHECK_INTERVAL: '*/10 * * * *', TIMEZONE: 'Asia/Tokyo' };
-const utils = { isSmokeTime: () => { const hour = moment().tz(CONFIG.TIMEZONE).hour(); return hour >= CONFIG.SMOKING_START_HOUR && hour <= CONFIG.SMOKING_END_HOUR; }, getRandomSmokingInterval: () => { return Math.floor(Math.random() * (CONFIG.SMOKING_MAX_INTERVAL - CONFIG.SMOKING_MIN_INTERVAL + 1)) + CONFIG.SMOKING_MIN_INTERVAL; }, logWithTime: (message) => console.log(`[Scheduler: ${moment().tz(CONFIG.TIMEZONE).format('HH:mm:ss')}] ${message}`) };
+const CONFIG = { 
+    AUTO_MESSAGE_INTERVAL: 30, 
+    SMOKING_MIN_INTERVAL: 60, 
+    SMOKING_MAX_INTERVAL: 90, 
+    DAILY_SMOKING_MIN: 7, 
+    DAILY_SMOKING_MAX: 9, 
+    SMOKING_START_HOUR: 9, 
+    SMOKING_END_HOUR: 21, 
+    INACTIVE_CHECK_INTERVAL: '*/10 * * * *', 
+    TIMEZONE: 'Asia/Tokyo',
+    // [추가] 새벽 시간대 차단 설정
+    SLEEP_START_HOUR: 0,  // 자정
+    SLEEP_END_HOUR: 9     // 오전 9시
+};
 
-let scheduledJobs = {}; let lastAutoMessageTime = 0; let lastSmokingMessageTime = 0; let mukuSmokingTimer = null; let nextDamtaAttemptTime = 0; let dailySmokingCount = 0;
+const utils = { 
+    isSmokeTime: () => { 
+        const hour = moment().tz(CONFIG.TIMEZONE).hour(); 
+        return hour >= CONFIG.SMOKING_START_HOUR && hour <= CONFIG.SMOKING_END_HOUR; 
+    }, 
+    // [추가] 새벽 시간대 체크 함수
+    isSleepTime: () => {
+        const hour = moment().tz(CONFIG.TIMEZONE).hour();
+        return hour >= CONFIG.SLEEP_START_HOUR && hour < CONFIG.SLEEP_END_HOUR;
+    },
+    getRandomSmokingInterval: () => { 
+        return Math.floor(Math.random() * (CONFIG.SMOKING_MAX_INTERVAL - CONFIG.SMOKING_MIN_INTERVAL + 1)) + CONFIG.SMOKING_MIN_INTERVAL; 
+    }, 
+    logWithTime: (message) => console.log(`[Scheduler: ${moment().tz(CONFIG.TIMEZONE).format('HH:mm:ss')}] ${message}`) 
+};
 
-function canSendAutoMessage() { return (Date.now() - lastAutoMessageTime) / 60000 >= CONFIG.AUTO_MESSAGE_INTERVAL; }
+let scheduledJobs = {}; 
+let lastAutoMessageTime = 0; 
+let lastSmokingMessageTime = 0; 
+let mukuSmokingTimer = null; 
+let nextDamtaAttemptTime = 0; 
+let dailySmokingCount = 0;
+
+function canSendAutoMessage() { 
+    // [수정] 새벽 시간대에는 자동 메시지 차단
+    if (utils.isSleepTime()) {
+        utils.logWithTime('새벽 시간대이므로 자동 메시지를 보내지 않습니다.');
+        return false;
+    }
+    return (Date.now() - lastAutoMessageTime) / 60000 >= CONFIG.AUTO_MESSAGE_INTERVAL; 
+}
 
 async function sendMessage(client, userId, message, type = 'auto') {
     try {
+        // [추가] 새벽 시간대 메시지 차단 (고정 스케줄 메시지 제외)
+        if (utils.isSleepTime() && type !== 'morning' && type !== 'night') {
+            utils.logWithTime(`새벽 시간대이므로 ${type} 메시지를 차단합니다: ${message.substring(0, 20)}...`);
+            return false;
+        }
+        
         await client.pushMessage(userId, { type: 'text', text: message });
         const logMessage = `(${type === 'night' ? '밤 인사' : type === 'morning' ? '아침 인사' : type === 'smoking' ? '담타' : '자동'} 메시지) ${message}`;
         saveLog('예진이', logMessage);
@@ -134,16 +180,27 @@ async function sendMessage(client, userId, message, type = 'auto') {
 function scheduleMukuRandomSmoking(client, userId) {
     function scheduleNextSmokingAttempt() {
         if (mukuSmokingTimer) clearTimeout(mukuSmokingTimer);
-        if (!utils.isSmokeTime() || dailySmokingCount >= CONFIG.DAILY_SMOKING_MAX) {
+        
+        // [수정] 새벽 시간대이거나 담타 금지 시간이면 다음날 6시까지 대기
+        if (!utils.isSmokeTime() || dailySmokingCount >= CONFIG.DAILY_SMOKING_MAX || utils.isSleepTime()) {
             nextDamtaAttemptTime = 0;
             const tomorrow6AM = moment().tz(CONFIG.TIMEZONE).add(1, 'day').hour(6).minute(0).second(0);
-            mukuSmokingTimer = setTimeout(() => { dailySmokingCount = 0; scheduleNextSmokingAttempt(); }, tomorrow6AM.valueOf() - Date.now());
+            mukuSmokingTimer = setTimeout(() => { 
+                dailySmokingCount = 0; 
+                scheduleNextSmokingAttempt(); 
+            }, tomorrow6AM.valueOf() - Date.now());
             return;
         }
+        
         const nextAttemptInterval = utils.getRandomSmokingInterval();
         nextDamtaAttemptTime = Date.now() + (nextAttemptInterval * 60 * 1000);
         mukuSmokingTimer = setTimeout(async () => {
-            if (utils.isSmokeTime() && dailySmokingCount < CONFIG.DAILY_SMOKING_MAX && canSendAutoMessage() && (Date.now() - lastSmokingMessageTime) / 60000 >= CONFIG.SMOKING_MIN_INTERVAL) {
+            // [수정] 새벽 시간대 체크 추가
+            if (utils.isSmokeTime() && 
+                !utils.isSleepTime() && 
+                dailySmokingCount < CONFIG.DAILY_SMOKING_MAX && 
+                canSendAutoMessage() && 
+                (Date.now() - lastSmokingMessageTime) / 60000 >= CONFIG.SMOKING_MIN_INTERVAL) {
                 const emotionalState = conversationContext.getInternalState().emotionalEngine.currentToneState;
                 await sendMessage(client, userId, getEmotionalDamtaMessage(emotionalState), 'smoking');
             }
@@ -155,6 +212,11 @@ function scheduleMukuRandomSmoking(client, userId) {
 
 function scheduleInactivityCheck(client, userId) {
     schedule.scheduleJob('inactivityCheck', CONFIG.INACTIVE_CHECK_INTERVAL, async () => {
+        // [추가] 새벽 시간대에는 비활성 체크 메시지도 차단
+        if (utils.isSleepTime()) {
+            return;
+        }
+        
         const lastUserMessageTime = conversationContext.getInternalState().timingContext.lastUserMessageTime;
         const minutesSinceLastUserMessage = (Date.now() - lastUserMessageTime) / 60000;
         if (minutesSinceLastUserMessage < 30 || !canSendAutoMessage() || scheduledJobs['missYouMessage']) return;
@@ -171,10 +233,11 @@ function scheduleInactivityCheck(client, userId) {
 
 /**
  * [수정] 아침, 밤 11시, 12시(자정)에 보내는 고정 메시지를 스케줄링하는 함수
+ * 새벽 시간대 메시지 차단 기능 추가
  */
 function scheduleDailyGreetings(client, userId) {
-    // 아침 8시: 잘 잤어? 인사
-    schedule.scheduleJob('morningGreeting', { hour: 8, minute: 0, tz: CONFIG.TIMEZONE }, async () => {
+    // 아침 8시: 잘 잤어? 인사 (새벽 시간 종료 후 첫 메시지)
+    schedule.scheduleJob('morningGreeting', { hour: 9, minute: 20, tz: CONFIG.TIMEZONE }, async () => {
         utils.logWithTime('아침 8시 인사 발송');
         const message = MORNING_MESSAGES[Math.floor(Math.random() * MORNING_MESSAGES.length)];
         await sendMessage(client, userId, message, 'morning');
@@ -187,7 +250,7 @@ function scheduleDailyGreetings(client, userId) {
         await sendMessage(client, userId, message, 'night');
     });
 
-    // 밤 12시(자정): 잘 자라는 인사 및 하루 리셋
+    // 밤 12시(자정): 잘 자라는 인사 및 하루 리셋 (새벽 시간 시작 전 마지막 메시지)
     schedule.scheduleJob('goodNightMessage', { hour: 0, minute: 0, tz: CONFIG.TIMEZONE }, async () => {
         utils.logWithTime('자정 인사 및 하루 리셋 실행');
         
@@ -202,18 +265,24 @@ function scheduleDailyGreetings(client, userId) {
     });
 }
 
-
 function getSchedulerStatus() {
     let nextDamtaInMinutes = 0;
     if (nextDamtaAttemptTime > 0) nextDamtaInMinutes = Math.round((nextDamtaAttemptTime - Date.now()) / 60000);
-    return { isDamtaTime: utils.isSmokeTime(), damtaTodayCount: dailySmokingCount, nextDamtaInMinutes: nextDamtaInMinutes > 0 ? nextDamtaInMinutes : "스케줄링 대기 중" };
+    
+    return { 
+        isDamtaTime: utils.isSmokeTime(), 
+        isSleepTime: utils.isSleepTime(), // [추가] 새벽 시간대 상태 표시
+        damtaTodayCount: dailySmokingCount, 
+        nextDamtaInMinutes: nextDamtaInMinutes > 0 ? nextDamtaInMinutes : "스케줄링 대기 중" 
+    };
 }
 
 function startAllSchedulers(client, userId) {
     utils.logWithTime('모든 스케줄러를 시작합니다...');
+    utils.logWithTime(`새벽 시간대 설정: ${CONFIG.SLEEP_START_HOUR}시 ~ ${CONFIG.SLEEP_END_HOUR}시 (메시지 차단)`);
     scheduleMukuRandomSmoking(client, userId);
     scheduleInactivityCheck(client, userId);
-    scheduleDailyGreetings(client, userId); // [수정] 모든 인사를 여기서 한 번에 스케줄링
+    scheduleDailyGreetings(client, userId);
     utils.logWithTime('✅ 모든 스케줄러 시작 완료!');
 }
 
