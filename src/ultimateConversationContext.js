@@ -1,12 +1,14 @@
-// ✅ ultimateConversationContext.js v22.0 - "관계 심화 패키지 적용"
+// ✅ ultimateConversationContext.js v23.1 - "날씨 기능 수정 최종본"
 
 const moment = require('moment-timezone');
 const { OpenAI } = require('openai');
 const fs = require('fs').promises;
 const path = require('path');
+const { default: axios } = require('axios'); // 날씨 API 호출을 위해 추가
 require('dotenv').config();
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const weatherApiKey = process.env.OPENWEATHER_API_KEY; // .env 파일에서 키 로드
 
 // 파일 경로 상수화
 const MEMORY_DIR = path.join(process.cwd(), 'memory');
@@ -19,7 +21,7 @@ const INNER_THOUGHTS_FILE = path.join(MEMORY_DIR, 'innerThoughts.json');
 const ACTION_URGES_FILE = path.join(MEMORY_DIR, 'actionUrges.json');
 const USER_PATTERNS_FILE = path.join(MEMORY_DIR, 'user_patterns.json');
 const MEMORY_SUMMARIES_FILE = path.join(MEMORY_DIR, 'memory_summaries.json');
-const USER_PROFILE_FILE = path.join(MEMORY_DIR, 'user_profile.json'); // [LEVEL 3]
+const USER_PROFILE_FILE = path.join(MEMORY_DIR, 'user_profile.json');
 
 const MEMORY_LOGS_FILE = path.join(LOGS_DIR, 'memoryOperations.log');
 
@@ -44,7 +46,7 @@ let ultimateConversationState = {
     sulkiness: { isSulky: false, isWorried: false, lastBotMessageTime: 0, lastUserResponseTime: 0, sulkyLevel: 0, sulkyReason: null, sulkyStartTime: 0, isActivelySulky: false, },
     emotionalEngine: { emotionalResidue: { sadness: 0, happiness: 0, anxiety: 0, longing: 0, hurt: 0, love: 50 }, currentToneState: 'normal', lastToneShiftTime: 0, lastSpontaneousReactionTime: 0, lastAffectionExpressionTime: 0, },
     knowledgeBase: { facts: [], fixedMemories: [], loveHistory: { categories: { general: [] } }, yejinMemories: [], customKeywords: CUSTOM_KEYWORDS, specialDates: [], userPatterns: { nicknames: [], joke_patterns: [], common_phrases: [] }, memorySummaries: [] },
-    userProfile: { mood_history: [], overall_mood: 'neutral' }, // [LEVEL 3]
+    userProfile: { mood_history: [], overall_mood: 'neutral' },
     cumulativePatterns: { emotionalTrends: {}, topicAffinities: {} },
     transitionSystem: { pendingTopics: [], conversationSeeds: [], },
     pendingAction: { type: null, timestamp: 0 },
@@ -226,7 +228,6 @@ async function extractAndStoreFacts(message) {
     } catch (error) { console.error('[Memory] ❌ 사실 추출 중 에러 발생:', error); }
 }
 
-// [LEVEL 3] 아저씨 기분 분석 함수
 async function analyzeUserMood(userMessage) {
     const prompt = `다음 문장은 '아저씨'가 한 말이야. 이 문장에서 드러나는 주된 감정을 'positive', 'negative', 'neutral' 중 하나로 판단하고, 구체적인 감정 키워드를 1~2개 추측해줘. 결과는 {"status": "감정상태", "keywords": ["키워드1", "키워드2"]} 형식의 JSON으로 답해줘.\n문장: "${userMessage}"`;
     try {
@@ -235,10 +236,8 @@ async function analyzeUserMood(userMessage) {
         if (result && result.status) {
             USER_PROFILE.mood_history.push({ date: moment().tz('Asia/Tokyo').toISOString(), status: result.status, keywords: result.keywords || [], message: userMessage });
             if (USER_PROFILE.mood_history.length > 50) USER_PROFILE.mood_history.shift();
-            
             const recentNegatives = USER_PROFILE.mood_history.slice(-10).filter(m => m.status === 'negative').length;
             USER_PROFILE.overall_mood = (recentNegatives >= 4) ? 'concerned' : 'neutral';
-            
             await writeJsonFile(USER_PROFILE_FILE, USER_PROFILE);
             ultimateConversationState.userProfile = USER_PROFILE;
         }
@@ -247,7 +246,6 @@ async function analyzeUserMood(userMessage) {
     }
 }
 
-// [LEVEL 3] 긴급 위로 답변 생성 함수
 async function getComfortingResponse(userMessage) {
     const prompt = `너는 나의 여자친구 '예진'이야. 내가 방금 "${userMessage}" 라고 말했어. 나는 지금 매우 힘들고 우울한 상태야. 다른 모든 것을 멈추고, 오직 나를 위로하는 데에만 집중해줘. 매우 따뜻하고, 진심으로 걱정하며, 힘이 되어주는 말을 2~3문장으로 해줘. "내가 옆에 있어 줄게" "무슨 일이야, 애기" 같은 톤으로.`;
     try {
@@ -256,6 +254,33 @@ async function getComfortingResponse(userMessage) {
     } catch (error) {
         console.error('[Comfort Mode] ❌ 위로 메시지 생성 실패:', error);
         return "애기야, 무슨 일 있어? 내가 옆에 있어. 괜찮아...";
+    }
+}
+
+async function getWeatherInfo() {
+    if (!weatherApiKey) {
+        console.log('[Weather] ⚠️ OpenWeatherMap API 키가 .env 파일에 설정되지 않았습니다.');
+        return null;
+    }
+    const lat = 33.8833;
+    const lon = 130.8833;
+    const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${weatherApiKey}&units=metric&lang=kr`;
+
+    try {
+        const response = await axios.get(url);
+        const weatherData = response.data;
+        const result = {
+            city: "Kitakyushu", // 사용자 피드백 반영하여 수정
+            description: weatherData.weather[0].description,
+            temp: Math.round(weatherData.main.temp),
+            feels_like: Math.round(weatherData.main.feels_like),
+            humidity: weatherData.main.humidity,
+        };
+        console.log('[Weather] ✅ 날씨 정보 조회 성공:', result);
+        return result;
+    } catch (error) {
+        console.error('[Weather] ❌ 날씨 정보 조회 실패:', error.response ? error.response.data.message : error.message);
+        return null;
     }
 }
 
@@ -356,9 +381,15 @@ async function initializeEmotionalSystems() {
     console.log('[UltimateContext] ✅ 시스템 초기화 최종 완료!');
 }
 
-function getUltimateContextualPrompt(basePrompt) {
+async function getUltimateContextualPrompt(basePrompt) {
     let ultimatePrompt = basePrompt;
     const state = ultimateConversationState;
+
+    const weatherInfo = await getWeatherInfo();
+    if (weatherInfo) {
+        ultimatePrompt += `\n\n[현재 현실 세계 정보]\n- 지금 내가 있는 곳의 날씨는 '${weatherInfo.description}', 기온은 ${weatherInfo.temp}도야. (체감 ${weatherInfo.feels_like}도)`
+    }
+
     ultimatePrompt += `\n\n[현재 내 마음 상태]\n- 현재 감정: ${Object.entries(state.emotionalEngine.emotionalResidue).filter(([,v])=>v>10).map(([k,v])=>`${k}(${Math.round(v)}%)`).join(', ') || '평온함'}\n- 현재 말투: ${TONE_STATES[state.emotionalEngine.currentToneState]}`;
     
     if (state.userProfile.overall_mood === 'concerned') {
@@ -393,7 +424,7 @@ async function addUltimateMessage(speaker, message, meta = null) {
 }
 
 function updateLastUserMessageTime(timestamp) { if (timestamp) ultimateConversationState.timingContext.lastUserMessageTime = timestamp; }
-function processTimeTick() { /* 주기적 상태 업데이트 로직 */ }
+function processTimeTick() {}
 function setPendingAction(actionType) { ultimateConversationState.pendingAction = { type: actionType, timestamp: Date.now() }; }
 function getPendingAction() { const action = ultimateConversationState.pendingAction; if (action && action.type && (Date.now() - action.timestamp > 300000)) { clearPendingAction(); return null; } return action.type ? action : null; }
 function clearPendingAction() { ultimateConversationState.pendingAction = { type: null, timestamp: 0 }; }
@@ -416,5 +447,5 @@ function getMemoryById(id) { return (ultimateConversationState.knowledgeBase.yej
 function getMemoriesByTag(tag) { return (ultimateConversationState.knowledgeBase.yejinMemories || []).filter(m => m.tags && m.tags.includes(tag)); }
 
 module.exports = {
-    initializeEmotionalSystems, addUltimateMessage, getUltimateContextualPrompt, updateLastUserMessageTime, processTimeTick, getInternalState, getSulkinessState, updateSulkinessState, getMoodState, updateMoodState, searchFixedMemory, addUserMemory, deleteUserMemory, updateUserMemory, getYejinMemories, getMemoryById, getMemoriesByTag, getAllMemories, getMemoryCategoryStats, getMemoryStatistics, getMemoryOperationLogs, getActiveMemoryPrompt, learnFromConversation, learnFromUserMessage, setPendingAction, getPendingAction, clearPendingAction, generateInnerThought, analyzeUserMood, getComfortingResponse, setConversationContextWindow: function(size) { if (typeof size === 'number' && size > 0) ultimateConversationState.conversationContextWindow = size; }, generateInitiatingPhrase
+    initializeEmotionalSystems, addUltimateMessage, getUltimateContextualPrompt, updateLastUserMessageTime, processTimeTick, getInternalState, getSulkinessState, updateSulkinessState, getMoodState, updateMoodState, searchFixedMemory, addUserMemory, deleteUserMemory, updateUserMemory, getYejinMemories, getMemoryById, getMemoriesByTag, getAllMemories, getMemoryCategoryStats, getMemoryStatistics, getMemoryOperationLogs, getActiveMemoryPrompt, learnFromConversation, learnFromUserMessage, setPendingAction, getPendingAction, clearPendingAction, generateInnerThought, analyzeUserMood, getComfortingResponse, getWeatherInfo, setConversationContextWindow: function(size) { if (typeof size === 'number' && size > 0) ultimateConversationState.conversationContextWindow = size; }, generateInitiatingPhrase
 };
