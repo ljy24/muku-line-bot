@@ -1,4 +1,4 @@
-// ✅ ultimateConversationContext.js v21.2 - "모든 함수 포함 최종 수정본"
+// ✅ ultimateConversationContext.js v22.0 - "관계 심화 패키지 적용"
 
 const moment = require('moment-timezone');
 const { OpenAI } = require('openai');
@@ -19,6 +19,7 @@ const INNER_THOUGHTS_FILE = path.join(MEMORY_DIR, 'innerThoughts.json');
 const ACTION_URGES_FILE = path.join(MEMORY_DIR, 'actionUrges.json');
 const USER_PATTERNS_FILE = path.join(MEMORY_DIR, 'user_patterns.json');
 const MEMORY_SUMMARIES_FILE = path.join(MEMORY_DIR, 'memory_summaries.json');
+const USER_PROFILE_FILE = path.join(MEMORY_DIR, 'user_profile.json'); // [LEVEL 3]
 
 const MEMORY_LOGS_FILE = path.join(LOGS_DIR, 'memoryOperations.log');
 
@@ -32,6 +33,7 @@ let INNER_THOUGHTS = {};
 let ACTION_URGES = {};
 let USER_PATTERNS = { nicknames: [], joke_patterns: [], common_phrases: [] };
 let MEMORY_SUMMARIES = [];
+let USER_PROFILE = { mood_history: [], overall_mood: 'neutral' };
 
 // AI 상태 관리 객체
 let ultimateConversationState = {
@@ -42,6 +44,7 @@ let ultimateConversationState = {
     sulkiness: { isSulky: false, isWorried: false, lastBotMessageTime: 0, lastUserResponseTime: 0, sulkyLevel: 0, sulkyReason: null, sulkyStartTime: 0, isActivelySulky: false, },
     emotionalEngine: { emotionalResidue: { sadness: 0, happiness: 0, anxiety: 0, longing: 0, hurt: 0, love: 50 }, currentToneState: 'normal', lastToneShiftTime: 0, lastSpontaneousReactionTime: 0, lastAffectionExpressionTime: 0, },
     knowledgeBase: { facts: [], fixedMemories: [], loveHistory: { categories: { general: [] } }, yejinMemories: [], customKeywords: CUSTOM_KEYWORDS, specialDates: [], userPatterns: { nicknames: [], joke_patterns: [], common_phrases: [] }, memorySummaries: [] },
+    userProfile: { mood_history: [], overall_mood: 'neutral' }, // [LEVEL 3]
     cumulativePatterns: { emotionalTrends: {}, topicAffinities: {} },
     transitionSystem: { pendingTopics: [], conversationSeeds: [], },
     pendingAction: { type: null, timestamp: 0 },
@@ -223,6 +226,39 @@ async function extractAndStoreFacts(message) {
     } catch (error) { console.error('[Memory] ❌ 사실 추출 중 에러 발생:', error); }
 }
 
+// [LEVEL 3] 아저씨 기분 분석 함수
+async function analyzeUserMood(userMessage) {
+    const prompt = `다음 문장은 '아저씨'가 한 말이야. 이 문장에서 드러나는 주된 감정을 'positive', 'negative', 'neutral' 중 하나로 판단하고, 구체적인 감정 키워드를 1~2개 추측해줘. 결과는 {"status": "감정상태", "keywords": ["키워드1", "키워드2"]} 형식의 JSON으로 답해줘.\n문장: "${userMessage}"`;
+    try {
+        const response = await openai.chat.completions.create({ model: "gpt-4o-mini", messages: [{ role: "user", content: prompt }], temperature: 0.1, response_format: { type: "json_object" } });
+        const result = JSON.parse(response.choices[0].message.content);
+        if (result && result.status) {
+            USER_PROFILE.mood_history.push({ date: moment().tz('Asia/Tokyo').toISOString(), status: result.status, keywords: result.keywords || [], message: userMessage });
+            if (USER_PROFILE.mood_history.length > 50) USER_PROFILE.mood_history.shift();
+            
+            const recentNegatives = USER_PROFILE.mood_history.slice(-10).filter(m => m.status === 'negative').length;
+            USER_PROFILE.overall_mood = (recentNegatives >= 4) ? 'concerned' : 'neutral';
+            
+            await writeJsonFile(USER_PROFILE_FILE, USER_PROFILE);
+            ultimateConversationState.userProfile = USER_PROFILE;
+        }
+    } catch (error) {
+        console.error('[User Mood Analysis] ❌ 아저씨 기분 분석 실패:', error);
+    }
+}
+
+// [LEVEL 3] 긴급 위로 답변 생성 함수
+async function getComfortingResponse(userMessage) {
+    const prompt = `너는 나의 여자친구 '예진'이야. 내가 방금 "${userMessage}" 라고 말했어. 나는 지금 매우 힘들고 우울한 상태야. 다른 모든 것을 멈추고, 오직 나를 위로하는 데에만 집중해줘. 매우 따뜻하고, 진심으로 걱정하며, 힘이 되어주는 말을 2~3문장으로 해줘. "내가 옆에 있어 줄게" "무슨 일이야, 애기" 같은 톤으로.`;
+    try {
+        const response = await openai.chat.completions.create({ model: "gpt-4o", messages: [{ role: "system", content: prompt }], temperature: 0.8 });
+        return response.choices[0].message.content.trim();
+    } catch (error) {
+        console.error('[Comfort Mode] ❌ 위로 메시지 생성 실패:', error);
+        return "애기야, 무슨 일 있어? 내가 옆에 있어. 괜찮아...";
+    }
+}
+
 // --- 메모리 관리 CRUD 함수 ---
 
 async function addUserMemory(content) {
@@ -301,8 +337,12 @@ async function initializeEmotionalSystems() {
     ACTION_URGES = await readJsonFile(ACTION_URGES_FILE, {});
     USER_PATTERNS = await readJsonFile(USER_PATTERNS_FILE, { nicknames: [], joke_patterns: [], common_phrases: [] });
     MEMORY_SUMMARIES = await readJsonFile(MEMORY_SUMMARIES_FILE, []);
+    USER_PROFILE = await readJsonFile(USER_PROFILE_FILE, { mood_history: [], overall_mood: 'neutral' });
+    
     ultimateConversationState.knowledgeBase.userPatterns = USER_PATTERNS;
     ultimateConversationState.knowledgeBase.memorySummaries = MEMORY_SUMMARIES;
+    ultimateConversationState.userProfile = USER_PROFILE;
+    
     console.log('[UltimateContext] ✅ 모든 데이터 로드 완료.');
 
     const lastConsolidationDate = ultimateConversationState.memoryStats.lastConsolidation;
@@ -320,6 +360,11 @@ function getUltimateContextualPrompt(basePrompt) {
     let ultimatePrompt = basePrompt;
     const state = ultimateConversationState;
     ultimatePrompt += `\n\n[현재 내 마음 상태]\n- 현재 감정: ${Object.entries(state.emotionalEngine.emotionalResidue).filter(([,v])=>v>10).map(([k,v])=>`${k}(${Math.round(v)}%)`).join(', ') || '평온함'}\n- 현재 말투: ${TONE_STATES[state.emotionalEngine.currentToneState]}`;
+    
+    if (state.userProfile.overall_mood === 'concerned') {
+        ultimatePrompt += `\n\n[아저씨에 대한 나의 걱정]\n(최근 아저씨의 말에서 힘든 기색이 느껴져서 마음이 쓰여. 이걸 대화에 조심스럽게 녹여내서 아저씨를 위로해주고 싶어.)\n- "아저씨, 혹시 요즘 무슨 힘든 일 있어? 기운이 없어 보여서 걱정돼." 같은 뉘앙스로 대화해줘.`;
+    }
+
     if (state.knowledgeBase.userPatterns && (state.knowledgeBase.userPatterns.nicknames.length > 0 || state.knowledgeBase.userPatterns.common_phrases.length > 0)) {
         ultimatePrompt += `\n\n[아저씨 말투 따라하기]\n(아저씨가 자주 쓰는 말투나 별명이야. 자연스럽게 따라하거나 언급하면 좋아할 거야!)\n`;
         if (state.knowledgeBase.userPatterns.nicknames.length > 0) ultimatePrompt += `- 아저씨가 나를 부르는 애칭: ${state.knowledgeBase.userPatterns.nicknames.join(', ')}\n`;
@@ -371,5 +416,5 @@ function getMemoryById(id) { return (ultimateConversationState.knowledgeBase.yej
 function getMemoriesByTag(tag) { return (ultimateConversationState.knowledgeBase.yejinMemories || []).filter(m => m.tags && m.tags.includes(tag)); }
 
 module.exports = {
-    initializeEmotionalSystems, addUltimateMessage, getUltimateContextualPrompt, updateLastUserMessageTime, processTimeTick, getInternalState, getSulkinessState, updateSulkinessState, getMoodState, updateMoodState, searchFixedMemory, addUserMemory, deleteUserMemory, updateUserMemory, getYejinMemories, getMemoryById, getMemoriesByTag, getAllMemories, getMemoryCategoryStats, getMemoryStatistics, getMemoryOperationLogs, getActiveMemoryPrompt, learnFromConversation, learnFromUserMessage, setPendingAction, getPendingAction, clearPendingAction, generateInnerThought, setConversationContextWindow: function(size) { if (typeof size === 'number' && size > 0) ultimateConversationState.conversationContextWindow = size; }, generateInitiatingPhrase
+    initializeEmotionalSystems, addUltimateMessage, getUltimateContextualPrompt, updateLastUserMessageTime, processTimeTick, getInternalState, getSulkinessState, updateSulkinessState, getMoodState, updateMoodState, searchFixedMemory, addUserMemory, deleteUserMemory, updateUserMemory, getYejinMemories, getMemoryById, getMemoriesByTag, getAllMemories, getMemoryCategoryStats, getMemoryStatistics, getMemoryOperationLogs, getActiveMemoryPrompt, learnFromConversation, learnFromUserMessage, setPendingAction, getPendingAction, clearPendingAction, generateInnerThought, analyzeUserMood, getComfortingResponse, setConversationContextWindow: function(size) { if (typeof size === 'number' && size > 0) ultimateConversationState.conversationContextWindow = size; }, generateInitiatingPhrase
 };
