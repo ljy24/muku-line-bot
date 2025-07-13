@@ -1,10 +1,12 @@
-// memory/concept.js v2.3 (mood, episode 정보 포함)
-// [수정] 이미지 설명에 파일이름(날짜), mood, episode 정보 포함
+// ============================================================================
+// concept.js - v2.1 (경로 수정 최종본)
+// 📸 애기의 감정을 읽어서 코멘트와 함께 컨셉 사진을 전송합니다.
+// ============================================================================
 
 const axios = require('axios');
-const { callOpenAI, cleanReply } = require('../src/aiUtils');
-const conversationContext = require('../ultimateConversationContext.js');
-const emotionalContext = require('../emotionalContextManager.js');
+// ✅ [수정] 중앙 기억 서랍으로 가는 올바른 주소로 변경합니다.
+const conversationContext = require('../src/ultimateConversationContext.js');
+const emotionalContext = require('../src/emotionalContextManager.js');
 
 // 컨셉 사진이 저장된 웹 서버의 기본 URL (HTTPS 필수)
 const BASE_CONCEPT_URL = 'https://photo.de-ji.net/photo/concept/';
