@@ -1,5 +1,5 @@
 // ============================================================================
-// spontaneousPhotoManager.js - v1.1 (수정된 자발적 사진 전송 관리자)
+// spontaneousPhotoManager.js - v1.2 (예쁜 로그 시스템 통합)
 // 📸 예진이가 자발적으로 사진을 보내는 기능을 관리합니다.
 // ============================================================================
 
@@ -7,6 +7,16 @@ const schedule = require('node-schedule');
 
 let photoJobs = []; // 실행 중인 사진 스케줄러 작업들
 let isInitialized = false;
+
+// 예쁜 로그 시스템 사용
+function logPhotoAction(actionType, content, additionalInfo = '') {
+    try {
+        const logger = require('./enhancedLogging.js');
+        logger.logSpontaneousAction(actionType, `${content}${additionalInfo ? ` (${additionalInfo})` : ''}`);
+    } catch (error) {
+        console.log(`📸 [자발적사진] ${content}`);
+    }
+}
 
 /**
  * 자발적 사진 전송 스케줄러를 시작합니다.
@@ -62,7 +72,8 @@ function startSpontaneousPhotoScheduler(client, userId, getLastUserMessageTime) 
     photoJobs.push(selfieJob, memoryJob);
     isInitialized = true;
     
-    console.log('📸 [SpontaneousPhoto] 자발적 사진 전송 스케줄러가 시작되었습니다.');
+    // 스케줄러 시작 로그
+    logPhotoAction('system', '자발적 사진 전송 스케줄러 시작됨', 'v1.2');
 }
 
 /**
@@ -106,8 +117,18 @@ async function sendRandomSelfie(client, userId) {
             previewImageUrl: imageUrl
         });
 
-        // 로깅
-        console.log(`📸 [SpontaneousPhoto] 자발적 셀카 전송: ${message}`);
+        // 예쁜 로그 출력
+        logPhotoAction('selfie', message, `파일: ${fileName}`);
+        
+        // 대화 로그도 기록
+        try {
+            const logger = require('./enhancedLogging.js');
+            logger.logConversation('나', message);
+            logger.logConversation('나', `셀카 전송: ${fileName}`, 'photo');
+        } catch (error) {
+            console.log(`💬 나: ${message}`);
+            console.log(`📸 나: 셀카 전송`);
+        }
 
     } catch (error) {
         console.error('❌ [SpontaneousPhoto] 셀카 전송 중 에러:', error);
@@ -164,7 +185,18 @@ async function sendRandomMemoryPhoto(client, userId) {
             previewImageUrl: imageUrl
         });
 
-        console.log(`📸 [SpontaneousPhoto] 자발적 추억사진 전송: ${selectedFolder.description}`);
+        // 예쁜 로그 출력
+        logPhotoAction('memory_photo', message, selectedFolder.description);
+        
+        // 대화 로그도 기록
+        try {
+            const logger = require('./enhancedLogging.js');
+            logger.logConversation('나', message);
+            logger.logConversation('나', `추억사진 전송: ${selectedFolder.description}`, 'photo');
+        } catch (error) {
+            console.log(`💬 나: ${message}`);
+            console.log(`📷 나: 추억사진 전송`);
+        }
 
     } catch (error) {
         console.error('❌ [SpontaneousPhoto] 추억사진 전송 중 에러:', error);
@@ -220,7 +252,8 @@ async function sendEventPhoto(client, userId, eventType = 'random') {
             previewImageUrl: imageUrl
         });
 
-        console.log(`📸 [SpontaneousPhoto] 이벤트 사진 전송 (${eventType}): ${message}`);
+        // 예쁜 로그 출력
+        logPhotoAction('event_photo', message, `이벤트: ${eventType}`);
 
     } catch (error) {
         console.error('❌ [SpontaneousPhoto] 이벤트 사진 전송 중 에러:', error);
@@ -238,7 +271,8 @@ function stopSpontaneousPhotoScheduler() {
     });
     photoJobs = [];
     isInitialized = false;
-    console.log('🛑 [SpontaneousPhoto] 자발적 사진 전송 스케줄러가 중지되었습니다.');
+    
+    logPhotoAction('system', '자발적 사진 전송 스케줄러 중지됨');
 }
 
 /**
