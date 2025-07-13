@@ -21,7 +21,6 @@ const fixedMemoriesDB = {
 
 // 기억 파일들의 경로 정의
 const FIXED_MEMORIES_FILE = path.join(MEMORY_BASE_PATH, 'fixedMemories.json');
-// ⭐️ 수정된 부분: love-history.json -> love_history.json (언더스코어로 변경) ⭐️
 const LOVE_HISTORY_FILE = path.join(MEMORY_BASE_PATH, 'love_history.json');
 
 /**
@@ -300,6 +299,8 @@ module.exports = {
     extractAndSaveMemory,
     loadAllMemories, 
     getFixedMemory,
+    // ⭐️ 추가된 부분: fixedMemoriesDB를 외부로 내보냅니다. ⭐️
+    fixedMemoriesDB, 
     // 리마인더 관련 함수들 export
     saveReminder,        
     getDueReminders,    
