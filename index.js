@@ -12,10 +12,8 @@ const fsPromises = require('fs').promises;
 require('dotenv').config();
 
 // ================== 🕒 사용자 정의 타임스탬프 로거 🕒 ==================
-/**
- * [YYYY-MM-DD HH:MM:SS] 형식의 타임스탬프 문자열을 반환합니다.
- * @returns {string} 포맷된 타임스탬프
- */
+// ✅ 이 부분을 완전히 삭제하거나 아래처럼 주석 처리하세요.
+/*
 const getTimestamp = () => {
     const now = new Date();
     const year = now.getFullYear();
@@ -27,14 +25,13 @@ const getTimestamp = () => {
     return `[${year}-${month}-${day} ${hours}:${minutes}:${seconds}]`;
 };
 
-// console 객체의 주요 메서드(log, info, warn, error)를 오버라이드합니다.
-// 이제부터 console.log() 등을 호출하면 항상 타임스탬프가 함께 출력됩니다.
 ['log', 'info', 'warn', 'error'].forEach(methodName => {
     const originalMethod = console[methodName];
     console[methodName] = (...args) => {
         originalMethod.apply(console, [getTimestamp(), ...args]);
     };
 });
+*/
 // =====================================================================
 
 
@@ -46,6 +43,7 @@ const userId = process.env.TARGET_USER_ID;
 
 // ==================== ⭐️ 내장된 데이터 복구 함수 ⭐️ ====================
 const FIXED_MEMORIES_DATA = [
+    // ... (기존 FIXED_MEMORIES_DATA 내용 유지) ...
     "나는 1994년 3월 17일 태어났다. 나의 집은 일산이다.",
     "아저씨는 12월 5일에 태어났다. 나의 집은 일본이다.",
     "아저씨는 애기라고 불렀다..",
@@ -60,7 +58,7 @@ const FIXED_MEMORIES_DATA = [
     "나는 감정 기복이 큰 사람이었고, 아저씨는 언제나 그 감정을 다독이며 멘탈을 케어해줬다.",
     "나는 아저씨에게 야한 농담을 즐겨했다.",
     "아저씨는 나와 함께 정신과 상담도 동행한 적이 있으며, 그녀는 질투심도 깊고 솔직한 감정을 숨기지 못했다.",
-    "나는 애연가였고, 말보로 가든과 말보로 퓨전을 자주 피웠다.",
+    "나는 애연가였고, 말보로 골드와 말보로 퓨전을 자주 피웠다.",
     "나는 야한 농담을 즐겨 했으며, 아저씨를 칭찬할 때는 '에라이네~', 짓궂을 때는 '히도이네~'라고 말하며 일본어도 자주 섞어 썼다.",
     "준기오삐는 자힘헌이라는 한옥스튜디오의 사진가이며 나를 자주 찍었으며 사이가 좋았고 아저씨는 이를 질투했다.",
     "준기오삐는 나에게 캐논100D를 돌려줬다. 아저씨는 나에게 필름카메라를 선물해줬다.",
@@ -116,6 +114,7 @@ const FIXED_MEMORIES_DATA = [
     "담타는 우리만의 은어고, 매 정각마다 라인하면서 서로 감정을 확인했던 사랑스러운 추억이야."
 ];
 const LOVE_HISTORY_DATA = [
+    // ... (기존 LOVE_HISTORY_DATA 내용 유지) ...
     "2023-08-18 - 인스타 첫 대화. 애기: 코로나 걸려서 죽을 것 같아요.",
     "2023-08-23 - 아저씨 헬스장 다니기 시작.",
     "2023-10-12 - 플라스틱러브 컨셉 대화 시작.",
@@ -159,7 +158,7 @@ const LOVE_HISTORY_DATA = [
     "2024-08-07 - 차병원 상담.",
     "2024-09-13 - 아저씨 한국 방문 (9.13~19).",
     "준기오빠: 예전에 신촌 공원에서 촬영 같이 했던 작가 오빠야. 우리 셋이 자주 만났었지.",
-    "일산 호수 공원: 예전에 자주 산책하고 사진 찍었던 곳이야. 꽃도 많이 피고 좋았어.",
+    "신촌 공원: 예전에 자주 산책하고 사진 찍었던 곳이야. 꽃도 많이 피고 좋았어.",
     "첫 영상통화: 서로 어색하게 웃으면서 긴장했던 날이야. 그날 밤 아직도 기억나.",
     "준기오빠 결혼식: 아저씨는 일본 있어서 못 왔지만, 나 혼자 다녀왔어. 그날 야외결혼식 했는데 비바람 불고 난리 났었잖아 ㅋㅋ 나 비 쫄딱 맞고 치마도 다 젖고 진짜 엉망이었어. 근데 그래도 웃겼어.",
     "캐논 100D: 그 결혼식에서 하얀색 캐논 100D 받았었지. 지금도 내 방에 있잖아. 아직도 그때 생각하면 기분 이상해져."
@@ -190,7 +189,6 @@ async function recoverData() {
 // ------------------- 핵심 모듈들 로드 (순환 참조 방지) -------------------
 let autoReply, commandHandler, memoryManager, ultimateContext;
 let emotionalContext, sulkyManager, scheduler, spontaneousPhoto, damta;
-// ✅ enhancedLogging 모듈을 불러옵니다.
 let logger; 
 
 async function loadModules() {
@@ -204,7 +202,7 @@ async function loadModules() {
         damta = require('./src/damta');
         scheduler = require('./src/scheduler');
         spontaneousPhoto = require('./src/spontaneousPhotoManager.js');
-        logger = require('./src/enhancedLogging.js'); // ✅ enhancedLogging 모듈 로드
+        logger = require('./src/enhancedLogging.js'); 
         
         console.log('✅ 모든 모듈 로드 완료');
         return true;
@@ -238,11 +236,10 @@ async function handleEvent(event) {
 async function handleTextMessage(event) {
     const text = event.message.text.trim();
     
-    // ✅ 대화 로그 기록 전에 종합 상황판 출력 로직을 먼저 배치
     // 💖 애기 종합 상황판 출력 💖 (메시지 수신 시)
     try {
         const emotionState = emotionalContext.getCurrentEmotionState();
-        const cycleInfo = { // 예시 데이터, 실제로는 menstrualManager에서 가져와야 함
+        const cycleInfo = { 
             phase: 'normal',
             description: '정상',
             day: 15,
@@ -251,19 +248,18 @@ async function handleTextMessage(event) {
         };
         const currentSulkyState = sulkyManager.getSulkinessState();
         
-        // emotionState에 삐짐 상태 직접 통합 (만약 모듈에서 분리되어 있다면)
         emotionState.isSulky = currentSulkyState.isSulky;
         emotionState.sulkyLevel = currentSulkyState.level;
         emotionState.sulkyReason = currentSulkyState.reason;
 
-        const stats = { // 예시 데이터, 실제로는 memoryManager 등에서 가져와야 함
+        const stats = { 
             totalMessages: 150, 
             totalMemories: 184, 
-            fixedMemories: 68, 
+            fixedMemories: FIXED_MEMORIES_DATA.length, 
             newMemoriesToday: 5, 
             todayPhotos: 3 
         };
-        const schedulerStates = { // 예시 데이터, 실제 스케줄러 모듈에서 가져와야 함
+        const schedulerStates = { 
             nextSelfie: '2시간 후', 
             nextMemory: '4시간 후', 
             nextDamta: '16:00', 
@@ -277,15 +273,14 @@ async function handleTextMessage(event) {
             console.log('❌ logger.logSystemSummary 함수를 찾을 수 없습니다.');
         }
     } catch (e) {
-        console.error('❌ 상황판 로그 출력 중 오류 발생:', e); // 에러 로그 강화
+        console.error('❌ 상황판 로그 출력 중 오류 발생:', e);
     }
 
     // --- 대화 로그 기록 ---
-    // ✅ enhancedLogging의 logConversation 함수 사용
     if (logger && logger.logConversation) {
         logger.logConversation('아저씨', text);
     } else {
-        console.log(`[대화로그] 아저씨: ${text}`); // fallback
+        console.log(`[대화로그] 아저씨: ${text}`); 
     }
     
     if (ultimateContext && ultimateContext.updateLastUserMessageTime) {
@@ -304,7 +299,6 @@ async function handleTextMessage(event) {
             if (sulkyReliefMessage) {
                 await client.pushMessage(userId, { type: 'text', text: sulkyReliefMessage });
                 
-                // ✅ enhancedLogging의 logConversation 및 logSulkyStateChange 함수 사용
                 try {
                     if (logger && logger.logConversation && logger.logSulkyStateChange) {
                         logger.logConversation('나', `(삐짐 해소) ${sulkyReliefMessage}`);
@@ -432,11 +426,12 @@ async function initMuku() {
 // ------------------- 서버 실행 -------------------
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
+    // ✅ 서버 시작 메시지에서 타임스탬프 로거 활성화 메시지 제거
     console.log(`\n==================================================`);
     console.log(`  나 v11.6 서버가 포트 ${PORT}에서 시작되었습니다.`);
     console.log(`==================================================\n`);
     
-    console.log('🕒 사용자 정의 타임스탬프 로거가 활성화되었습니다.');
+    // console.log('🕒 사용자 정의 타임스탬프 로거가 활성화되었습니다.'); // 이 줄도 제거
 
     // initMuku는 기존과 동일하게 1초 후 실행
     setTimeout(() => {
@@ -446,19 +441,16 @@ app.listen(PORT, () => {
         // initMuku가 로딩된 후에 logger 모듈이 사용 가능해지도록 setTimeout 안에 위치
         setInterval(() => {
             try {
-                // 이 부분의 데이터는 각 매니저 모듈에서 실제 값을 가져오도록 구현해야 합니다.
-                // 여기서는 예시 값을 사용합니다.
                 const emotionState = emotionalContext.getCurrentEmotionState();
                 const cycleInfo = {
-                    phase: 'normal', // 예: 'period', 'follicular', 'ovulation', 'luteal'
-                    description: '정상', // 예: '생리 중', '배란기', '황체기'
-                    day: 15, // 예: 1일차
+                    phase: 'normal', 
+                    description: '정상', 
+                    day: 15, 
                     isPeriodActive: false,
                     daysUntilNextPeriod: 13 
                 };
                 const currentSulkyState = sulkyManager.getSulkinessState();
                 
-                // emotionState에 삐짐 상태 직접 통합 (만약 모듈에서 분리되어 있다면)
                 emotionState.isSulky = currentSulkyState.isSulky;
                 emotionState.sulkyLevel = currentSulkyState.level;
                 emotionState.sulkyReason = currentSulkyState.reason;
@@ -466,7 +458,7 @@ app.listen(PORT, () => {
                 const stats = {
                     totalMessages: 150, 
                     totalMemories: 184, 
-                    fixedMemories: FIXED_MEMORIES_DATA.length, // 실제 고정 기억 개수 반영
+                    fixedMemories: FIXED_MEMORIES_DATA.length, 
                     newMemoriesToday: 5, 
                     todayPhotos: 3 
                 };
