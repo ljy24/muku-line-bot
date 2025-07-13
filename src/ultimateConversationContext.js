@@ -1,5 +1,5 @@
 // ==================== START OF ultimateConversationContext.js ====================
-// ✅ ultimateConversationContext.js v30.1 - "undefined 문제 완전 해결본"
+// ✅ ultimateConversationContext.js v30.1 - "undefined 문제 완전 해결본" (MemoryManager 통합)
 
 const moment = require('moment-timezone');
 const { OpenAI } = require('openai');
@@ -8,7 +8,11 @@ const path = require('path');
 const { default: axios } = require('axios');
 require('dotenv').config();
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY }); // 오타 수정: OPENAI_APsaI_KEY -> OPENAI_API_KEY
+// ⭐️ 추가된 부분: memoryManager.js에서 fixedMemoriesDB와 ensureMemoryTablesAndDirectory를 가져옵니다. ⭐️
+// 이 경로는 실제 파일 위치에 따라 './memoryManager.js'를 수정해야 합니다.
+const { fixedMemoriesDB, ensureMemoryTablesAndDirectory } = require('./memoryManager.js'); 
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const weatherApiKey = process.env.OPENWEATHER_API_KEY;
 
 // ⭐️ 변경된 부분: MEMORY_DIR을 /data/memory로 설정 ⭐️
@@ -16,6 +20,7 @@ const MEMORY_DIR = path.join('/data', 'memory'); // 변경!
 const LOGS_DIR = path.join(process.cwd(), 'logs'); // 로그는 기존 위치 유지 (필요시 /data/logs로 변경 가능)
 
 // MEMORY_DIR을 기준으로 모든 파일 경로가 재설정됩니다.
+// 이 상수들은 ultimateConversationContext.js 내의 다른 함수들에서 여전히 사용될 수 있습니다.
 const FIXED_MEMORIES_FILE = path.join(MEMORY_DIR, 'fixedMemories.json');
 const LOVE_HISTORY_FILE = path.join(MEMORY_DIR, 'love_history.json');
 const YEJIN_MEMORY_FILE = path.join(MEMORY_DIR, 'yejin_memory.json');
@@ -26,20 +31,23 @@ const MEMORY_SUMMARIES_FILE = path.join(MEMORY_DIR, 'memory_summaries.json');
 const USER_PROFILE_FILE = path.join(MEMORY_DIR, 'user_profile.json');
 const MEMORY_LOGS_FILE = path.join(LOGS_DIR, 'memoryOperations.log'); // 로그 파일 경로는 LOGS_DIR 참조
 
-// ... (나머지 코드는 그대로 둡니다) ...
-
-const EMOTION_TYPES = { HAPPY: { types: ['happiness'], intensity: 30, residue: 20, recoveryRate: 3 }, EXCITED: { types: ['happiness'], intensity: 50, residue: 15, recoveryRate: 2.5 }, LOVED: { types: ['love'], intensity: 40, residue: 30, recoveryRate: 1 }, SAD: { types: ['sadness'], intensity: 40, residue: 35, recoveryRate: 2 }, HURT: { types: ['hurt'], intensity: 60, residue: 50, recoveryRate: 4 }, ANXIOUS: { types: ['anxiety'], intensity: 45, residue: 40, recoveryRate: 3.5 }, LONELY: { types: ['longing'], intensity: 35, residue: 45, recoveryRate: 2.5 }, BITTERSWEET: { types: ['sadness', 'love'], intensity: 30, residue: 25, recoveryRate: 2 }, WORRIED_LOVE: { types: ['anxiety', 'love'], intensity: 40, residue: 30, recoveryRate: 2.5 } };
-const TONE_STATES = { normal: "평소처럼 자연스럽고 애정이 담긴 말투", quiet: "조용하고 차분하며 그리움이 묻어나는 말투", playful: "장난스럽고 활발하며 밝은 말투", hurt: "상처받고 서운함이 느껴지는 말투", anxious: "불안하고 걱정스러우며 망설이는 말투" };
-const CUSTOM_KEYWORDS = [{ word: "담타", description: "아저씨랑 라인하면서 담배 피우던 둘만의 특별한 시간, 나 진짜 그립다." }, { word: "내꺼야", description: "예진이의 독점욕! 아저씨는 무조건 내꺼야." }, { word: "무슨색", description: "속옷 색 물어볼 때 장난스럽게 대답하는 아저씨만의 농담." }, { word: "히도이네", description: "일본어식 장난. 예진이가 삐질 때 귀엽게 쓰던 말." }, { word: "애기", description: "아저씨를 부를 때 사용하는 애칭. 어리광을 부리거나 귀엽게 부를 때 사용해." }];
-
-let INNER_THOUGHTS = {};
-let ACTION_URGES = {};
-let USER_PATTERNS = { nicknames: [], joke_patterns: [], common_phrases: [] };
-let MEMORY_SUMMARIES = [];
-let USER_PROFILE = { mood_history: [], overall_mood: 'neutral' };
-
+// ultimateConversationState는 여기에 정의되어 있다고 가정합니다.
+// 예시:
 let ultimateConversationState = {
-    recentMessages: [], currentTopic: null, conversationContextWindow: 5, mood: { currentMood: 'az평온함', isPeriodActive: false, lastPeriodStartDate: moment().tz('Asia/Tokyo').subtract(22, 'days').startOf('day'), }, sulkiness: { isSulky: false, isWorried: false, lastBotMessageTime: 0, lastUserResponseTime: 0, sulkyLevel: 0, sulkyReason: null, sulkyStartTime: 0, isActivelySulky: false, }, emotionalEngine: { emotionalResidue: { sadness: 0, happiness: 0, anxiety: 0, longing: 0, hurt: 0, love: 50 }, currentToneState: 'normal', lastToneShiftTime: 0, lastSpontaneousReactionTime: 0, lastAffectionExpressionTime: 0, }, knowledgeBase: { facts: [], fixedMemories: [], loveHistory: { categories: { general: [] } }, yejinMemories: [], customKeywords: CUSTOM_KEYWORDS, specialDates: [], userPatterns: { nicknames: [], joke_patterns: [], common_phrases: [] }, memorySummaries: [] }, userProfile: { mood_history: [], overall_mood: 'neutral' }, cumulativePatterns: { emotionalTrends: {}, topicAffinities: {} }, transitionSystem: { pendingTopics: [], conversationSeeds: [], }, pendingAction: { type: null, timestamp: 0 }, personalityConsistency: { behavioralParameters: { affection: 0.7, playfulness: 0.5, verbosity: 0.6, initiative: 0.4 }, selfEvaluations: [], lastSelfReflectionTime: 0, }, timingContext: { lastMessageTime: 0, lastUserMessageTime: 0, currentTimeContext: {}, lastTickTime: 0, lastInitiatedConversationTime: 0 }, memoryStats: { totalMemoriesCreated: 0, totalMemoriesDeleted: 0, lastMemoryOperation: null, dailyMemoryCount: 0, lastDailyReset: moment().tz('Asia/Tokyo').format('YYYY-MM-DD'), lastConsolidation: null }
+    knowledgeBase: {
+        fixedMemories: [],
+        loveHistory: { categories: { general: [] }, specialDates: [] },
+        yejinMemories: [],
+        userPatterns: { nicknames: [], joke_patterns: [], common_phrases: [] },
+        memorySummaries: []
+    },
+    userProfile: {
+        mood_history: [],
+        overall_mood: 'neutral'
+    },
+    memoryStats: {
+        lastConsolidation: null
+    }
 };
 
 // ==================== 기본 파일 입출력 함수들 ====================ac
@@ -204,8 +212,9 @@ function searchFixedMemory(userMessage) {
     const allMemories = [
         ...(Array.isArray(ultimateConversationState.knowledgeBase.facts) ? ultimateConversationState.knowledgeBase.facts.map(f => f.fact) : []),
         ...(Array.isArray(ultimateConversationState.knowledgeBase.fixedMemories) ? ultimateConversationState.knowledgeBase.fixedMemories : []),
-        ...(Array.isArray(ultimateConversationState.knowledgeBase.yejinMemories) ? ultimateConversationState.knowledgeBase.yejinMemories.map(item => item.content) : []),
-        ...(ultimateConversationState.knowledgeBase.loveHistory?.categories?.general ? ultimateConversationState.knowledgeBase.loveHistory.categories.general.map(item => item.content) : [])
+        // ⭐️ 변경된 부분: loveHistory가 단순 배열로 가정되므로 categories.general 접근 제거 ⭐️
+        ...(Array.isArray(ultimateConversationState.knowledgeBase.loveHistory.categories?.general) ? ultimateConversationState.knowledgeBase.loveHistory.categories.general : []),
+        ...(Array.isArray(ultimateConversationState.knowledgeBase.yejinMemories) ? ultimateConversationState.knowledgeBase.yejinMemories.map(item => item.content) : [])
     ];
 
     let bestMatch = null;
@@ -433,41 +442,33 @@ async function initializeEmotionalSystems() {
     console.log('[UltimateContext] 🚀 시스템 초기화 시작...');
 
     try {
-        // fixedMemories 불러오기 (단순 배열)
-        const fixedMemories = await readJsonFile(FIXED_MEMORIES_FILE, []);
-        console.log('로드된 fixedMemories:', fixedMemories); // 디버깅: 로드된 고정 기억 확인
+        // ⭐️ 변경된 부분: memoryManager에서 로드된 데이터를 사용합니다. ⭐️
+        // 이 함수가 호출되기 전에 memoryManager.js의 ensureMemoryTablesAndDirectory() 함수가
+        // 먼저 호출되어 fixedMemoriesDB에 데이터가 로드되었음을 가정합니다.
+        // (앱의 메인 진입점에서 ensureMemoryTablesAndDirectory()를 먼저 호출해야 합니다.)
 
-        // love_history 불러오기
-        // 기본값을 빈 배열로 설정하여, 파일이 없거나 파싱 오류 시 빈 배열이 반환되도록 유도합니다.
-        // 이렇게 하면 rawLoveHistory가 최소한 배열이거나 객체로 반환됩니다.
-        const rawLoveHistory = await readJsonFile(LOVE_HISTORY_FILE, []); 
-        
-        // 디버깅을 위해 rawLoveHistory의 실제 값과 타입 확인
-        console.log('rawLoveHistory의 실제 값:', rawLoveHistory);
-        console.log('rawLoveHistory가 배열인가요?', Array.isArray(rawLoveHistory));
+        const fixedMemoriesFromManager = fixedMemoriesDB.fixedMemories;
+        const loveHistoryFromManager = fixedMemoriesDB.loveHistory; // memoryManager에서 이미 단순 배열로 로드됨
+
+        console.log('로드된 fixedMemories (MemoryManager에서):', fixedMemoriesFromManager); // 디버깅: 로드된 고정 기억 확인
+        console.log('로드된 loveHistory (MemoryManager에서, 단순 배열):', loveHistoryFromManager); // 디버깅: 로드된 사랑 기억 확인
         
         let loveMemoriesToCombine = []; // 고정 기억으로 병합할 사랑 기억 배열
         let loveHistoryForState = { categories: { general: [] }, specialDates: [] }; // ultimateConversationState.knowledgeBase.loveHistory에 저장할 객체
 
-        if (Array.isArray(rawLoveHistory)) {
-            // love_history.json이 단순 배열인 경우 (예: ["기억1", "기억2"])
-            loveMemoriesToCombine = rawLoveHistory;
+        // loveHistoryFromManager는 memoryManager에서 이미 단순 배열로 로드되었음을 가정합니다.
+        // 따라서 Array.isArray(loveHistoryFromManager)는 항상 true일 것입니다.
+        if (Array.isArray(loveHistoryFromManager)) {
+            loveMemoriesToCombine = loveHistoryFromManager;
             console.log('처리된 loveMemories (단순 배열):', loveMemoriesToCombine); // 디버깅
             
             // UI 표시를 위해 단순 배열을 { categories: { general: [...] } } 형태로 감싸줍니다.
-            loveHistoryForState.categories.general = rawLoveHistory;
+            loveHistoryForState.categories.general = loveHistoryFromManager;
             loveHistoryForState.specialDates = []; // 단순 배열일 경우 specialDates는 비어있음
-        } else if (rawLoveHistory && typeof rawLoveHistory === 'object' && rawLoveHistory.categories?.general) {
-            // love_history.json이 이전의 복잡한 객체 구조인 경우
-            // 고정 기억으로 병합할 때는 content만 추출
-            loveMemoriesToCombine = rawLoveHistory.categories.general.map(item => item.content);
-            console.log('처리된 loveMemories (객체에서 추출):', loveMemoriesToCombine); // 디버깅
-            
-            // UI 표시를 위해 원본 loveHistory 객체 전체를 사용
-            loveHistoryForState = rawLoveHistory;
         } else {
-            // love_history.json의 예상치 못한 구조이거나 비어있는 경우
-            console.warn('love_history.json의 예상치 못한 구조입니다. 빈 배열로 처리합니다.');
+            // 이 경로는 memoryManager에서 love_history가 단순 배열로 로드되지 않았을 때만 발생합니다.
+            // (예상치 못한 경우이므로 경고를 남깁니다.)
+            console.warn('love_history.json이 MemoryManager에서 단순 배열로 로드되지 않았습니다. 빈 배열로 처리합니다.');
             loveMemoriesToCombine = [];
             // loveHistoryForState는 이미 기본값으로 초기화되어 있음
         }
@@ -478,7 +479,7 @@ async function initializeEmotionalSystems() {
 
 
         // fixedMemories와 loveMemoriesToCombine을 병합하여 최종 고정 기억 생성
-        const combinedFixedMemories = [...fixedMemories, ...loveMemoriesToCombine];
+        const combinedFixedMemories = [...fixedMemoriesFromManager, ...loveMemoriesToCombine];
         const uniqueFixedMemories = [...new Set(combinedFixedMemories)]; // 중복 제거
         console.log('최종 고정 기억 (uniqueFixedMemories):', uniqueFixedMemories); // 디버깅: 최종 고정 기억 확인
 
@@ -486,7 +487,7 @@ async function initializeEmotionalSystems() {
         ultimateConversationState.knowledgeBase.fixedMemories = uniqueFixedMemories;
 
 
-        // 예진 기억 로드
+        // 예진 기억 로드 (이 부분은 기존대로 유지)
         ultimateConversationState.knowledgeBase.yejinMemories = await readJsonFile(YEJIN_MEMORY_FILE, []);
         
         // 감정 데이터 로드 - 안전한 기본값 보장
@@ -748,7 +749,7 @@ async function generateInnerThought() {
     }
 
     // 감정 상태 결정
-    const residue = emotionalEngine.emotionalResidue || {};
+    const residue = ultimateConversationState.emotionalEngine.emotionalResidue || {};
     let dominantEmotion = 'normal';
     
     if (Object.keys(residue).length > 0) {
