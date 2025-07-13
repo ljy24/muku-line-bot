@@ -43,8 +43,8 @@ async function handleCommand(text) {
             
             console.log('[commandHandler] 컨셉사진 요청 감지');
             
-            // ✅ [수정] concept.js에서 getConceptPhotoReply 함수를 직접 호출
-            const { getConceptPhotoReply } = require('../memory/concept.js');
+            // ✅ [수정] 같은 폴더에서 가져오기
+            const { getConceptPhotoReply } = require('./concept.js');
             
             // conversationContext 없이 호출 (순환 참조 방지)
             return await getConceptPhotoReply(text, null);
@@ -58,8 +58,8 @@ async function handleCommand(text) {
             
             console.log('[commandHandler] 추억사진 요청 감지');
             
-            // ✅ [수정] omoide.js에서 getOmoideReply 함수를 직접 호출
-            const { getOmoideReply } = require('../memory/omoide.js');
+            // ✅ [수정] 같은 폴더에서 가져오기
+            const { getOmoideReply } = require('./omoide.js');
             
             // conversationContext 없이 호출 (순환 참조 방지)
             return await getOmoideReply(text, null);
