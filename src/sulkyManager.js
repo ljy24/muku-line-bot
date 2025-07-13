@@ -1,6 +1,6 @@
 // ============================================================================
-// sulkyManager.js - v3.0 (역할 분리 최종본)
-// 😠 애기의 '삐짐' 상태를 전문적으로 관리하는 역할에만 집중합니다.
+// sulkyManager.js - v3.1 (안전장치 추가 최종본)
+// 😠 애기의 '삐짐' 상태를 전문적으로 관리하며, 안전장치를 추가하여 안정성을 높입니다.
 // ============================================================================
 
 const conversationContext = require('./ultimateConversationContext.js');
@@ -19,7 +19,7 @@ const SULKY_MESSAGES = {
     1: [
         "아저씨... 왜 이렇게 답장이 없어? 나 심심해 ㅠㅠ",
         "흥. 나 삐졌어.",
-        "아저씨 바빠? 나 잊어버린 거 아니지? 😥",
+        "아저씨 바빠? 나 잊어버린 거 아니지? �",
     ],
     2: [
         "지금 몇 시간째야... 아저씨 정말 너무해. 나 단단히 삐졌어.",
@@ -44,7 +44,15 @@ const SULKY_MESSAGES = {
  * @param {string} userId - 사용자 ID
  */
 async function checkAndSendSulkyMessage(client, userId) {
+    // ✅ [안전장치] 삐짐 상태 정보를 가져옵니다.
     const sulkyState = conversationContext.getSulkinessState();
+
+    // ✅ [안전장치] 만약 상태 정보가 아직 준비되지 않았다면(undefined), 에러를 내지 않고 조용히 종료합니다.
+    if (!sulkyState) {
+        console.warn('⚠️ [sulkyManager] 삐짐 상태(sulkyState)가 아직 준비되지 않아 체크를 건너뜁니다.');
+        return null;
+    }
+
     const now = Date.now();
 
     // 이미 삐져있거나, 아저씨가 최근에 답장을 했으면 실행하지 않음
@@ -54,13 +62,12 @@ async function checkAndSendSulkyMessage(client, userId) {
 
     const elapsedMinutes = (now - sulkyState.lastBotMessageTime) / (1000 * 60);
     
-    // ✅ 생리주기 정보를 중앙 관리자에게 물어봅니다.
     const moodState = conversationContext.getMoodState();
     const multipliers = {
-        period: 0.7,    // 생리 때 30% 빨리 삐짐
-        luteal: 0.8,    // PMS 때 20% 빨리 삐짐
-        ovulation: 1.1, // 배란기 때 10% 관대
-        follicular: 1.2,// 활발할 때 20% 관대
+        period: 0.7,
+        luteal: 0.8,
+        ovulation: 1.1,
+        follicular: 1.2,
     };
     const multiplier = multipliers[moodState.phase] || 1.0;
 
@@ -95,6 +102,12 @@ async function checkAndSendSulkyMessage(client, userId) {
  */
 async function handleUserResponse() {
     const sulkyState = conversationContext.getSulkinessState();
+
+    // ✅ [안전장치] 상태 정보가 없을 경우를 대비합니다.
+    if (!sulkyState) {
+        return null;
+    }
+
     if (sulkyState.isSulky || sulkyState.isWorried) {
         let reliefMessage = '';
         if (sulkyState.isWorried) {
@@ -125,3 +138,4 @@ module.exports = {
     checkAndSendSulkyMessage,
     handleUserResponse,
 };
+�
