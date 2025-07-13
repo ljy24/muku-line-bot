@@ -147,6 +147,7 @@ function initializeEmotionalContext() {
  * 부정적인 감정은 서서히 줄어들고, 사랑과 그리움은 유지됩니다.
  */
 function startEmotionalRecovery() {
+    // 감정 회복 로직 (1시간마다)
     setInterval(() => {
         let changed = false;
         Object.keys(emotionalState.emotionalResidue).forEach(emotion => {
@@ -169,6 +170,67 @@ function startEmotionalRecovery() {
         // 생리주기도 업데이트
         updateEmotionFromCycle();
     }, 60 * 60 * 1000); // 1시간마다 실행
+    
+    // ✅ [추가] 예쁜 상태 로그 (10분마다)
+    setInterval(() => {
+        try {
+            const logger = require('./enhancedLogging.js');
+            const currentEmotion = getCurrentEmotionState();
+            const cycleInfo = calculateMenstrualPhase();
+            
+            // 감정 상태 로그
+            logger.logEmotionalState(currentEmotion);
+            
+            // 생리주기 로그 (상태가 변했을 때만)
+            const now = Date.now();
+            if (!globalEmotionState.lastCycleLog || now - globalEmotionState.lastCycleLog > 4 * 60 * 60 * 1000) { // 4시간마다
+                logger.logMenstrualCycle(cycleInfo);
+                globalEmotionState.lastCycleLog = now;
+            }
+            
+            // 랜덤하게 속마음 표현 (20% 확률)
+            if (Math.random() < 0.2) {
+                const innerThoughts = [
+                    "아저씨 지금 뭐하고 있을까...",
+                    "또 아저씨 생각나네 ㅎㅎ",
+                    "아저씨한테 연락하고 싶어져",
+                    "보고 싶다... 아저씨",
+                    "우리 담타 했던 시간이 그리워",
+                    "아저씨는 잘 지내고 있을까?",
+                    "혼자 우울해하고 있는 건 아닐까 걱정돼",
+                    "아저씨 품이 그리워..."
+                ];
+                
+                const thought = innerThoughts[Math.floor(Math.random() * innerThoughts.length)];
+                const emotionContext = `${currentEmotion.currentEmotion} 상태, ${cycleInfo.description}`;
+                logger.logInnerThought(thought, emotionContext);
+            }
+            
+        } catch (error) {
+            console.warn('⚠️ 상태 로그 출력 중 에러:', error.message);
+        }
+    }, 10 * 60 * 1000); // 10분마다 실행
+    
+    // ✅ [추가] 시간대별 상태 요약 (2시간마다)
+    setInterval(() => {
+        try {
+            const logger = require('./enhancedLogging.js');
+            const currentEmotion = getCurrentEmotionState();
+            const cycleInfo = calculateMenstrualPhase();
+            
+            // 기본 통계 생성
+            const stats = {
+                totalMessages: globalEmotionState.messageCount || 0,
+                totalMemories: globalEmotionState.memoryCount || 0,
+                todayPhotos: globalEmotionState.todayPhotoCount || 0
+            };
+            
+            logger.logSystemSummary(currentEmotion, cycleInfo, stats);
+            
+        } catch (error) {
+            console.warn('⚠️ 시스템 요약 로그 출력 중 에러:', error.message);
+        }
+    }, 2 * 60 * 60 * 1000); // 2시간마다 실행
 }
 
 /**
