@@ -175,6 +175,8 @@ async function loadAllMemories() {
             const data = await fs.readFile(FIXED_MEMORIES_FILE, 'utf8');
             fixedMemoriesDB.fixedMemories = JSON.parse(data);
             console.log(`[MemoryManager] fixedMemories.json 로드 완료. (기억 ${fixedMemoriesDB.fixedMemories.length}개)`);
+            // ⭐️ 추가된 디버깅 로그 ⭐️
+            console.log('[MemoryManager] fixedMemories.json 내용:', fixedMemoriesDB.fixedMemories); 
         } catch (err) {
             if (err.code === 'ENOENT') {
                 console.warn(`[MemoryManager] fixedMemories.json 파일이 없습니다. 빈 배열로 초기화합니다.`);
@@ -190,6 +192,8 @@ async function loadAllMemories() {
             const data = await fs.readFile(LOVE_HISTORY_FILE, 'utf8');
             fixedMemoriesDB.loveHistory = JSON.parse(data); // 이제 loveHistory는 배열이 될 것임
             console.log(`[MemoryManager] love_history.json 로드 완료. (기억 ${fixedMemoriesDB.loveHistory.length}개)`);
+            // ⭐️ 추가된 디버깅 로그 ⭐️
+            console.log('[MemoryManager] love_history.json 내용:', fixedMemoriesDB.loveHistory); 
         } catch (err) {
             if (err.code === 'ENOENT') {
                 console.warn(`[MemoryManager] love_history.json 파일이 없습니다. 빈 배열로 초기화합니다.`);
