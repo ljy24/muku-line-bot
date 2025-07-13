@@ -431,23 +431,32 @@ function getRandomActionUrge(emotionKey = 'normal') {
 
 async function initializeEmotionalSystems() {
     console.log('[UltimateContext] 🚀 시스템 초기화 시작...');
-    
+
     try {
-        // fixedMemories와 love_history 불러오기
+        // fixedMemories 불러오기 (단순 배열)
         const fixedMemories = await readJsonFile(FIXED_MEMORIES_FILE, []);
-        const loveHistory = await readJsonFile(LOVE_HISTORY_FILE, { categories: { general: [] }, specialDates: [] });
+        console.log('로드된 fixedMemories:', fixedMemories); // 디버깅: 로드된 고정 기억 확인
 
-        // love_history 일반 대화 내용만 추출 (안전하게 처리)
-        const loveGeneralContents = (loveHistory.categories?.general ?? []).map(item => item.content);
+        // love_history 불러오기 (이제 단순 배열로 가정)
+        // love_history.json 파일에 specialDates와 같은 다른 메타데이터가 없다면 이렇게 단순하게 로드합니다.
+        const loveMemories = await readJsonFile(LOVE_HISTORY_FILE, []);
+        console.log('로드된 loveMemories (단순 배열):', loveMemories); // 디버깅: 로드된 사랑 기억 확인
 
-        // 두 배열 병합 후 중복 제거
-        const combinedFixedMemories = [...fixedMemories, ...loveGeneralContents];
-        const uniqueFixedMemories = [...new Set(combinedFixedMemories)];
+        // 두 배열을 단순히 병합하여 고정 기억으로 사용
+        const combinedFixedMemories = [...fixedMemories, ...loveMemories];
+        const uniqueFixedMemories = [...new Set(combinedFixedMemories)]; // 중복 제거
+        console.log('최종 고정 기억 (uniqueFixedMemories):', uniqueFixedMemories); // 디버깅: 최종 고정 기억 확인
 
-        // 고정 기억과 사랑 기억 세팅
+        // ultimateConversationState에 고정 기억 세팅
         ultimateConversationState.knowledgeBase.fixedMemories = uniqueFixedMemories;
-        ultimateConversationState.knowledgeBase.loveHistory = loveHistory;
-        ultimateConversationState.knowledgeBase.specialDates = loveHistory.specialDates || [];
+
+        // 만약 love_history.json에 specialDates와 같은 다른 정보가 여전히 필요하다면,
+        // love_history.json은 객체 구조를 유지하고, loveMemories를 추출하는 로직은 그대로 두어야 합니다.
+        // 하지만 '고정 기억'으로만 사용한다면, 아래 loveHistory 및 specialDates 설정은 필요 없을 수 있습니다.
+        // 현재는 love_history를 단순 배열로 가정했으므로, 이 부분은 예전처럼 객체로 로드하지 않습니다.
+        // ultimateConversationState.knowledgeBase.loveHistory = {}; // 또는 필요에 따라 다른 방식으로 초기화
+        // ultimateConversationState.knowledgeBase.specialDates = [];
+
 
         // 예진 기억 로드
         ultimateConversationState.knowledgeBase.yejinMemories = await readJsonFile(YEJIN_MEMORY_FILE, []);
@@ -493,7 +502,6 @@ async function initializeEmotionalSystems() {
         await createMinimalFallbackData();
     }
 }
-
 
 // ==================== 핵심 함수들 ====================
 async function getUltimateContextualPrompt(basePrompt) {
