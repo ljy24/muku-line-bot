@@ -4,7 +4,11 @@ const fs = require('fs').promises; // 비동기 파일 시스템 모듈 사용
 const path = require('path');
 const { Database } = require('sqlite3'); // SQLite3 데이터베이스 모듈
 
-const dbPath = path.join(process.cwd(), 'memories.db');
+// ⭐️ 변경된 부분: MEMORY_BASE_PATH를 /data/memory로 설정 ⭐️
+const MEMORY_BASE_PATH = path.join('/data', 'memory');
+
+// 이제 모든 파일 경로를 MEMORY_BASE_PATH 기준으로 설정합니다.
+const dbPath = path.join(MEMORY_BASE_PATH, 'memories.db'); // SQLite DB 경로 변경
 let db; // SQLite 데이터베이스 인스턴스
 
 // ⭐️ 고정 기억을 저장할 변수 (메모리 로딩) ⭐️
@@ -16,8 +20,8 @@ const fixedMemoriesDB = {
 };
 
 // 기억 파일들의 경로 정의
-const FIXED_MEMORIES_FILE = path.join(process.cwd(), 'memory', 'fixedMemories.json');
-const LOVE_HISTORY_FILE = path.join(process.cwd(), 'memory', 'love-history.json');
+const FIXED_MEMORIES_FILE = path.join(MEMORY_BASE_PATH, 'fixedMemories.json');
+const LOVE_HISTORY_FILE = path.join(MEMORY_BASE_PATH, 'love-history.json');
 
 /**
  * SQLite 데이터베이스 연결을 초기화하고 테이블을 생성합니다.
@@ -147,7 +151,7 @@ async function extractAndSaveMemory(userMessage) {
 async function ensureMemoryTablesAndDirectory() {
     await initializeDatabase();
     // memory 폴더가 없으면 생성
-    const memoryDir = path.join(process.cwd(), 'memory');
+    const memoryDir = MEMORY_BASE_PATH; // ⭐️ 이 부분을 변경 ⭐️
     try {
         await fs.mkdir(memoryDir, { recursive: true });
         console.log(`[MemoryManager] 'memory' 디렉토리 확인 또는 생성됨: ${memoryDir}`);
