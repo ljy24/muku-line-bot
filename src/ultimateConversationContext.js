@@ -102,7 +102,7 @@ async function addUserMemory(content) {
     return true;
 }
 
-// ==================== 기억 삭제 함수 추가 ====================
+// ==================== 기억 삭제 함수 ====================
 async function deleteUserMemory(content) {
     const memories = ultimateConversationState.knowledgeBase.yejinMemories;
     let foundIndex = -1;
@@ -119,6 +119,23 @@ async function deleteUserMemory(content) {
         return { success: true, deletedContent: deletedMemory.content };
     }
     return { success: false, message: "해당 기억을 찾을 수 없어요. 😅" };
+}
+
+// ==================== 기억 수정 함수 추가 ====================
+async function updateUserMemory(id, newContent) {
+    const memories = ultimateConversationState.knowledgeBase.yejinMemories;
+    const memoryIndex = memories.findIndex(m => m.id === id);
+    if (memoryIndex !== -1) {
+        const oldContent = memories[memoryIndex].content;
+        memories[memoryIndex].content = newContent;
+        memories[memoryIndex].significance = await scoreMemorySignificance(newContent);
+        memories[memoryIndex].tags = extractTags(newContent);
+        memories[memoryIndex].lastModified = moment().tz('Asia/Tokyo').format("YYYY-MM-DD HH:mm:ss");
+        await writeJsonFile(YEJIN_MEMORY_FILE, memories);
+        await logMemoryOperation('update', newContent, `(ID: ${id}) ${oldContent} 에서 수정`);
+        return { success: true, oldContent, newContent };
+    }
+    return { success: false, message: "해당 ID의 기억을 찾을 수 없습니다." };
 }
 
 // ==================== 기억 검색 함수 ====================
@@ -144,6 +161,7 @@ function searchFixedMemory(userMessage) {
     }
     return bestMatch;
 }
+
 
 
 // ==================== ✅ undefined 문제 해결 함수들 ====================
