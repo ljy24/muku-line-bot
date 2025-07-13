@@ -1,9 +1,14 @@
-// memory/omoide.js v2.16 (순환 참조 해결 및 전체 코드)
-// [오류 수정] aiUtils.js에서 공용 함수를 가져오도록 변경
+// ============================================================================
+// omoide.js - v2.1 (경로 수정 최종본)
+// 📸 애기의 감정을 읽어서 코멘트와 함께 추억 사진을 전송합니다.
+// ============================================================================
 
-const { callOpenAI, cleanReply } = require('../src/aiUtils');
+const axios = require('axios');
+// ✅ [수정] 중앙 기억 서랍으로 가는 올바른 주소로 변경합니다.
 const conversationContext = require('../src/ultimateConversationContext.js');
 const emotionalContext = require('../src/emotionalContextManager.js');
+
+const OMOIDE_ALBUM_URL = 'https://photo.de-ji.net/photo/omoide/';
 
 const OMODE_FOLDERS = {
     "추억_24_03_일본": 207,
