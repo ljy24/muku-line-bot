@@ -1,4 +1,4 @@
-// ✅ index.js v9.11 - 응급 수정본 (dataRecovery 내장)
+// ✅ index.js 상단 - 스케줄러 통합 수정본
 
 const { Client, middleware } = require('@line/bot-sdk');
 const express = require('express');
@@ -17,10 +17,15 @@ const conversationContext = require('./src/ultimateConversationContext.js');
 const { initializeDamta } = require('./src/damta');
 const { ensureMemoryTablesAndDirectory } = require('./src/memoryManager.js');
 
+// 💡 [추가] 애기 자동 감성 메시지 스케줄러를 불러옵니다.
+// 이 파일을 불러오는 것만으로 스케줄러가 자동으로 시작됩니다.
+require('./src/emotionalScheduler.js');
+
 const app = express();
 const config = { channelAccessToken: process.env.LINE_ACCESS_TOKEN, channelSecret: process.env.LINE_CHANNEL_SECRET };
 const client = new Client(config);
 const userId = process.env.TARGET_USER_ID;
+핵심 변경 사항:
 
 app.get('/', (_, res) => res.send('나 v9.11 살아있어! (응급 수정본)'));
 
