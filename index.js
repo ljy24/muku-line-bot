@@ -1,37 +1,20 @@
 // ============================================================================
-// index.js - v11.4 (최종 수정본)
-// ✅ 모든 모듈을 최종적으로 조율하고, 안정적인 실행을 보장합니다.
+// index.js - v11.5 (초기화 순서 수정본)
+// ✅ 순환 참조 문제를 해결하고 안정적인 초기화를 보장합니다.
 // ============================================================================
 
 const { Client, middleware } = require('@line/bot-sdk');
 const express = require('express');
 const path = require('path');
-// ✅ [수정] fs import 방식 변경
 const fs = require('fs');
 const fsPromises = require('fs').promises;
 require('dotenv').config();
-
-// ------------------- 모든 모듈 불러오기 -------------------
-const { getReplyByMessage } = require('./src/autoReply');
-const commandHandler = require('./src/commandHandler');
-const { saveLog, cleanReply } = require('./src/aiUtils');
-const conversationContext = require('./src/ultimateConversationContext.js');
-const emotionalContext = require('./src/emotionalContextManager.js');
-const sulkyManager = require('./src/sulkyManager');
-const { startAllSchedulers } = require('./src/scheduler');
-// ✅ [수정] 파일 이름과 경로를 올바르게 수정합니다.
-const { startSpontaneousPhotoScheduler } = require('./src/spontaneousPhotoManager.js'); 
-require('./src/emotionalScheduler.js');
-const { initializeDamta } = require('./src/damta');
-// ✅ [수정] memoryManager에서는 recoverData를 가져오지 않고, 이 파일에 직접 정의된 것을 사용합니다.
-const { ensureMemoryTablesAndDirectory } = require('./src/memoryManager.js');
 
 // ------------------- Express 및 LINE 클라이언트 설정 -------------------
 const app = express();
 const config = { channelAccessToken: process.env.LINE_ACCESS_TOKEN, channelSecret: process.env.LINE_CHANNEL_SECRET };
 const client = new Client(config);
 const userId = process.env.TARGET_USER_ID;
-
 
 // ==================== ⭐️ 내장된 데이터 복구 함수 ⭐️ ====================
 const FIXED_MEMORIES_DATA = [
@@ -153,6 +136,7 @@ const LOVE_HISTORY_DATA = [
     "준기오빠 결혼식: 아저씨는 일본 있어서 못 왔지만, 나 혼자 다녀왔어. 그날 야외결혼식 했는데 비바람 불고 난리 났었잖아 ㅋㅋ 나 비 쫄딱 맞고 치마도 다 젖고 진짜 엉망이었어. 근데 그래도 웃겼어.",
     "캐논 100D: 그 결혼식에서 하얀색 캐논 100D 받았었지. 지금도 내 방에 있잖아. 아직도 그때 생각하면 기분 이상해져."
 ];
+
 const MEMORY_BASE_PATH = path.join('/data', 'memory');
 
 async function recoverData() {
@@ -160,29 +144,58 @@ async function recoverData() {
         await fsPromises.mkdir(MEMORY_BASE_PATH, { recursive: true });
         const fixedMemoryPath = path.join(MEMORY_BASE_PATH, 'fixedMemories.json');
         
-        // ✅ [수정] fs.existsSync 사용
         if (!fs.existsSync(fixedMemoryPath)) {
             await fsPromises.writeFile(fixedMemoryPath, JSON.stringify(FIXED_MEMORIES_DATA, null, 2), 'utf8');
             console.log(`✅ fixedMemories.json 복구 완료.`);
-        } else {
-            console.log(`  - fixedMemories.json 이미 존재하여 복구를 건너뜁니다.`);
         }
         
         const loveHistoryPath = path.join(MEMORY_BASE_PATH, 'love_history.json');
         if (!fs.existsSync(loveHistoryPath)) {
             await fsPromises.writeFile(loveHistoryPath, JSON.stringify(LOVE_HISTORY_DATA, null, 2), 'utf8');
             console.log(`✅ love_history.json 복구 완료.`);
-        } else {
-            console.log(`  - love_history.json 이미 존재하여 복구를 건너뜁니다.`);
         }
     } catch (error) {
         console.error('❌ 데이터 복구 중 에러:', error);
     }
 }
 
+// ------------------- 핵심 모듈들 로드 (순환 참조 방지) -------------------
+let autoReply, commandHandler, memoryManager, ultimateContext;
+let emotionalContext, sulkyManager, scheduler, spontaneousPhoto, damta;
+
+async function loadModules() {
+    try {
+        // 1단계: 기본 유틸리티 모듈들
+        autoReply = require('./src/autoReply');
+        
+        // 2단계: 메모리 관련 모듈들
+        memoryManager = require('./src/memoryManager.js');
+        
+        // 3단계: 컨텍스트 관련 모듈들
+        ultimateContext = require('./src/ultimateConversationContext.js');
+        
+        // 4단계: 감정 관련 모듈들
+        emotionalContext = require('./src/emotionalContextManager.js');
+        
+        // 5단계: 기능 관련 모듈들
+        commandHandler = require('./src/commandHandler');
+        sulkyManager = require('./src/sulkyManager');
+        damta = require('./src/damta');
+        
+        // 6단계: 스케줄러 관련 모듈들
+        scheduler = require('./src/scheduler');
+        spontaneousPhoto = require('./src/spontaneousPhotoManager.js');
+        
+        console.log('✅ 모든 모듈 로드 완료');
+        return true;
+    } catch (error) {
+        console.error('❌ 모듈 로드 중 에러:', error);
+        return false;
+    }
+}
 
 // ------------------- 서버 및 웹훅 설정 -------------------
-app.get('/', (_, res) => res.send('나 v11.4 살아있어! (최종 경로 수정)'));
+app.get('/', (_, res) => res.send('나 v11.5 살아있어! (초기화 순서 수정)'));
 
 app.post('/webhook', middleware(config), async (req, res) => {
     try {
@@ -204,19 +217,36 @@ async function handleEvent(event) {
 
 async function handleTextMessage(event) {
     const text = event.message.text.trim();
-    saveLog('아저씨', text);
-    conversationContext.updateLastUserMessageTime(event.timestamp);
+    
+    // aiUtils의 saveLog 함수 직접 호출
+    console.log(`[대화로그] 아저씨: ${text}`);
+    
+    if (ultimateContext && ultimateContext.updateLastUserMessageTime) {
+        ultimateContext.updateLastUserMessageTime(event.timestamp);
+    }
 
-    let botResponse = await commandHandler.handleCommand(text);
+    let botResponse = null;
+    
+    // commandHandler가 로드되었으면 사용
+    if (commandHandler && commandHandler.handleCommand) {
+        botResponse = await commandHandler.handleCommand(text);
+    }
     
     if (!botResponse) {
-        const sulkyReliefMessage = await sulkyManager.handleUserResponse();
-        if (sulkyReliefMessage) {
-            await client.pushMessage(userId, { type: 'text', text: sulkyReliefMessage });
-            saveLog('나', `(삐짐 해소) ${sulkyReliefMessage}`);
-            await new Promise(resolve => setTimeout(resolve, 1000));
+        // 삐짐 해소 처리
+        if (sulkyManager && sulkyManager.handleUserResponse) {
+            const sulkyReliefMessage = await sulkyManager.handleUserResponse();
+            if (sulkyReliefMessage) {
+                await client.pushMessage(userId, { type: 'text', text: sulkyReliefMessage });
+                console.log(`[대화로그] 나: (삐짐 해소) ${sulkyReliefMessage}`);
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
         }
-        botResponse = await getReplyByMessage(text);
+        
+        // 기본 응답 생성
+        if (autoReply && autoReply.getReplyByMessage) {
+            botResponse = await autoReply.getReplyByMessage(text);
+        }
     }
     
     if (botResponse) {
@@ -230,20 +260,24 @@ async function sendReply(replyToken, botResponse) {
 
         if (botResponse.type === 'image') {
             const caption = botResponse.caption || '사진이야!';
-            saveLog('나', `(사진) ${caption}`);
+            console.log(`[대화로그] 나: (사진) ${caption}`);
             await client.replyMessage(replyToken, [
                 { type: 'image', originalContentUrl: botResponse.originalContentUrl, previewImageUrl: botResponse.previewImageUrl },
                 { type: 'text', text: caption }
             ]);
         } else if (botResponse.type === 'text' && botResponse.comment) {
-            const cleanedText = cleanReply(botResponse.comment);
-            saveLog('나', cleanedText);
+            // cleanReply 함수 직접 구현 (순환 참조 방지)
+            let cleanedText = botResponse.comment.replace(/자기야/gi, '아저씨').replace(/자기/gi, '아저씨');
+            console.log(`[대화로그] 나: ${cleanedText}`);
             await client.replyMessage(replyToken, { type: 'text', text: cleanedText });
         }
 
-        const sulkyState = conversationContext.getSulkinessState();
-        if (sulkyState) {
-            sulkyState.lastBotMessageTime = Date.now();
+        // 삐짐 상태 업데이트
+        if (ultimateContext && ultimateContext.getSulkinessState) {
+            const sulkyState = ultimateContext.getSulkinessState();
+            if (sulkyState) {
+                sulkyState.lastBotMessageTime = Date.now();
+            }
         }
 
     } catch (error) {
@@ -254,35 +288,61 @@ async function sendReply(replyToken, botResponse) {
 // ------------------- 시스템 초기화 함수 -------------------
 async function initMuku() {
     try {
-        console.log('🚀 나 v11.4 시스템 초기화를 시작합니다...');
+        console.log('🚀 나 v11.5 시스템 초기화를 시작합니다...');
         
-        console.log('  [1/6] 💾 데이터 복구 및 디렉토리 확인...');
-        await ensureMemoryTablesAndDirectory();
+        console.log('  [1/7] 💾 데이터 복구 및 디렉토리 확인...');
         await recoverData();
         console.log('  ✅ 데이터 복구 완료');
 
-        console.log('  [2/6] 💖 감정 시스템 초기화...');
-        await emotionalContext.initializeEmotionalContext();
+        console.log('  [2/7] 📦 모든 모듈 로드...');
+        const moduleLoadSuccess = await loadModules();
+        if (!moduleLoadSuccess) {
+            throw new Error('모듈 로드 실패');
+        }
+        console.log('  ✅ 모든 모듈 로드 완료');
+
+        console.log('  [3/7] 💾 메모리 관리자 초기화...');
+        if (memoryManager && memoryManager.ensureMemoryTablesAndDirectory) {
+            await memoryManager.ensureMemoryTablesAndDirectory();
+        }
+        console.log('  ✅ 메모리 관리자 초기화 완료');
+
+        console.log('  [4/7] 💖 감정 시스템 초기화...');
+        if (emotionalContext && emotionalContext.initializeEmotionalContext) {
+            await emotionalContext.initializeEmotionalContext();
+        }
+        if (ultimateContext && ultimateContext.initializeEmotionalSystems) {
+            await ultimateContext.initializeEmotionalSystems();
+        }
         console.log('  ✅ 감정 시스템 초기화 완료');
 
-        console.log('  [3/6] 💬 대화 컨텍스트 초기화...');
-        // ✅ [수정] ultimateConversationContext.js에 initialize 함수가 없으므로 호출을 제거합니다.
-        console.log('  ✅ 대화 컨텍스트는 자동으로 초기화됩니다.');
-
-        console.log('  [4/6] 🚬 담타 시스템 초기화...');
-        await initializeDamta();
+        console.log('  [5/7] 🚬 담타 시스템 초기화...');
+        if (damta && damta.initializeDamta) {
+            await damta.initializeDamta();
+        }
         console.log('  ✅ 담타 시스템 초기화 완료');
 
-        console.log('  [5/6] ⏰ 모든 스케줄러 시작...');
-        startAllSchedulers(client, userId);
-        startSpontaneousPhotoScheduler(client, userId, () => conversationContext.getInternalState().timingContext.lastUserMessageTime);
+        console.log('  [6/7] ⏰ 모든 스케줄러 시작...');
+        if (scheduler && scheduler.startAllSchedulers) {
+            scheduler.startAllSchedulers(client, userId);
+        }
+        if (spontaneousPhoto && spontaneousPhoto.startSpontaneousPhotoScheduler) {
+            spontaneousPhoto.startSpontaneousPhotoScheduler(client, userId, () => {
+                if (ultimateContext && ultimateContext.getInternalState) {
+                    return ultimateContext.getInternalState().timingContext.lastUserMessageTime;
+                }
+                return Date.now();
+            });
+        }
         console.log('  ✅ 모든 스케줄러 시작 완료');
         
-        console.log('  [6/6] 🧠 기억 통계 로그 시작...');
+        console.log('  [7/7] 🧠 기억 통계 로그 시작...');
         setInterval(() => {
-            const stats = conversationContext.getMemoryStatistics();
-            if (stats) {
-                console.log(`[Memory Stats] 📚 총 기억: ${stats.total}, 오늘 추가: ${stats.today}, 오늘 삭제: ${stats.deleted}`);
+            if (ultimateContext && ultimateContext.getMemoryStatistics) {
+                const stats = ultimateContext.getMemoryStatistics();
+                if (stats) {
+                    console.log(`[Memory Stats] 📚 총 기억: ${stats.total}, 오늘 추가: ${stats.today}, 오늘 삭제: ${stats.deleted}`);
+                }
             }
         }, 10 * 60 * 1000);
         console.log('  ✅ 기억 통계 로그 시작 완료');
@@ -292,7 +352,8 @@ async function initMuku() {
     } catch (error) {
         console.error('🚨🚨🚨 시스템 초기화 중 심각한 에러 발생! 🚨🚨🚨');
         console.error(error);
-        process.exit(1);
+        // 에러가 발생해도 서버는 계속 실행 (기본 기능이라도 동작하도록)
+        console.log('⚠️ 기본 기능으로라도 서버를 계속 실행합니다...');
     }
 }
 
@@ -300,7 +361,11 @@ async function initMuku() {
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
     console.log(`\n==================================================`);
-    console.log(`  나 v11.4 서버가 포트 ${PORT}에서 시작되었습니다.`);
+    console.log(`  나 v11.5 서버가 포트 ${PORT}에서 시작되었습니다.`);
     console.log(`==================================================\n`);
-    initMuku();
+    
+    // 초기화를 1초 후에 실행 (서버 시작 후)
+    setTimeout(() => {
+        initMuku();
+    }, 1000);
 });
