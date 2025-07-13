@@ -1,4 +1,24 @@
 {
-  "mood_history": [],
-  "overall_mood": "neutral"
+  "name": "아저씨",
+  "birthday": "1974-12-25",
+  "last_seen": "2025-07-13T01:39:29.000Z",
+  "mood_history": [
+    {
+      "date": "2025-07-13T01:39:18.000Z",
+      "status": "positive",
+      "keywords": ["잘자", "애기"],
+      "message": "잘자 애기야"
+    },
+    {
+      "date": "2025-07-13T01:39:29.000Z", 
+      "status": "neutral",
+      "keywords": ["사진", "요청"],
+      "message": "사진보여줘"
+    }
+  ],
+  "overall_mood": "neutral",
+  "preferences": {
+    "drinks": "아아 > 녹차",
+    "travel": "한국 여행 예정"
+  }
 }
