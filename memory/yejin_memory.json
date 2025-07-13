@@ -14,15 +14,15 @@
   },
   {
     "id": 1720839720000,
-    "content": "아저씨 생일이 12월 25일이야",
+    "content": "아저씨 생일이 12월 5일이야",
     "date": "2025-07-13 10:32:00",
     "significance": 10,
     "source": "auto_generated",
     "tags": ["날짜", "개인정보"],
     "lastAccessed": "2025-07-13T10:32:00.000Z",
     "context": {
-      "userMessage": "내 생일은 12월 25일이야",
-      "yejinResponse": "와! 크리스마스에 태어났구나! 특별해~"
+      "userMessage": "내 생일은 12월 5일이야",
+      "yejinResponse": "와! 특별해~"
     }
   }
 ]
