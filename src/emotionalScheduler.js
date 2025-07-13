@@ -1,11 +1,10 @@
 // ============================================================================
-// emotionalScheduler.js - v4.0 (역할 분리 최종본)
+// emotionalScheduler.js - v5.0 (예쁜 로깅 추가 버전)
 // 💌 자발적으로 아저씨에게 메시지를 보내는 역할에만 집중합니다.
 // ============================================================================
 
 const schedule = require('node-schedule');
 const { Client } = require('@line/bot-sdk');
-const conversationContext = require('./ultimateConversationContext.js'); // ✅ 중앙 관리자에게 정보를 물어봅니다.
 require('dotenv').config();
 
 // ------------------- 설정 -------------------
@@ -95,15 +94,30 @@ const messages = {
  * 모든 상황을 고려하여 보낼 메시지를 최종적으로 선택합니다.
  */
 async function getFinalMessage() {
-  // ✅ 중앙 관리자(conversationContext)에게 모든 정보를 요청합니다.
-  const menstrual = conversationContext.getMoodState();
-  const weatherInfo = await conversationContext.getWeatherInfo();
+  // ✅ 중앙 감정 관리자에서 정보 가져오기
+  let menstrual = null;
+  let weatherInfo = null;
+  
+  try {
+    const emotionalContext = require('./emotionalContextManager.js');
+    menstrual = emotionalContext.calculateMenstrualPhase();
+  } catch (error) {
+    console.warn('⚠️ [emotionalScheduler] 생리주기 정보를 가져올 수 없음:', error.message);
+  }
+  
+  try {
+    const ultimateContext = require('./ultimateConversationContext.js');
+    weatherInfo = await ultimateContext.getWeatherInfo();
+  } catch (error) {
+    console.warn('⚠️ [emotionalScheduler] 날씨 정보를 가져올 수 없음:', error.message);
+  }
+  
   const random = Math.random();
 
   // 1. 생리주기 메시지 (35% 확률로 우선 고려)
   if (random < 0.35 && menstrual && messages.menstrual[menstrual.phase]) {
     const pool = messages.menstrual[menstrual.phase];
-    return pool[Math.floor(Math.random() * pool.length)];
+    return { message: pool[Math.floor(Math.random() * pool.length)], type: 'menstrual', phase: menstrual.phase };
   }
 
   // 2. 날씨 메시지 (25% 확률로 다음 고려)
@@ -117,7 +131,7 @@ async function getFinalMessage() {
     
     if (messages.weather[weatherCategory]) {
         const pool = messages.weather[weatherCategory];
-        return pool[Math.floor(Math.random() * pool.length)];
+        return { message: pool[Math.floor(Math.random() * pool.length)], type: 'weather', category: weatherCategory };
     }
   }
 
@@ -130,7 +144,7 @@ async function getFinalMessage() {
   else if (hour >= 23 || hour < 3) timeCategory = 'lateNight';
 
   const pool = messages.timeBased[timeCategory];
-  return pool[Math.floor(Math.random() * pool.length)];
+  return { message: pool[Math.floor(Math.random() * pool.length)], type: 'timeBased', category: timeCategory };
 }
 
 // ------------------- 메인 스케줄러 -------------------
@@ -143,17 +157,32 @@ schedule.scheduleJob('*/20 * * * *', async () => {
   // 메시지 전송 확률 (25%)
   if (Math.random() < 0.25) {
     try {
-      const messageToSend = await getFinalMessage();
+      const messageInfo = await getFinalMessage();
       if (!USER_ID) {
         console.error('❌ [emotionalScheduler] USER_ID가 설정되지 않았습니다.');
         return;
       }
-      await client.pushMessage(USER_ID, { type: 'text', text: messageToSend });
-      console.log(`💖 [emotionalScheduler] 자발적 감정 메시지 전송 -> ${messageToSend}`);
+      
+      await client.pushMessage(USER_ID, { type: 'text', text: messageInfo.message });
+      
+      // ✅ 예쁜 로깅 추가
+      try {
+        const logger = require('./enhancedLogging.js');
+        logger.logSpontaneousAction('message', `${messageInfo.type}(${messageInfo.category || messageInfo.phase || 'unknown'}): ${messageInfo.message.substring(0, 30)}...`);
+      } catch (error) {
+        console.log(`💖 [emotionalScheduler] 자발적 감정 메시지 전송 -> ${messageInfo.message}`); // 폴백
+      }
+      
     } catch (error) {
       console.error('❌ [emotionalScheduler] 메시지 전송 중 에러 발생:', error);
     }
   }
 });
 
-console.log('💖 [emotionalScheduler] 애기의 자발적 감정 스케줄러 v4.0이 시작되었습니다.');
+// ✅ 스케줄러 상태 로깅
+try {
+  const logger = require('./enhancedLogging.js');
+  logger.logSchedulerStatus('감정 메시지 스케줄러', 'started', '20분마다');
+} catch (error) {
+  console.log('💖 [emotionalScheduler] 애기의 자발적 감정 스케줄러 v5.0이 시작되었습니다.'); // 폴백
+}
