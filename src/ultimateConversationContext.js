@@ -17,7 +17,7 @@ const LOGS_DIR = path.join(process.cwd(), 'logs'); // 로그는 기존 위치 �
 
 // MEMORY_DIR을 기준으로 모든 파일 경로가 재설정됩니다.
 const FIXED_MEMORIES_FILE = path.join(MEMORY_DIR, 'fixedMemories.json');
-const LOVE_HISTORY_FILE = path.join(MEMORY_DIR, 'love-history.json');
+const LOVE_HISTORY_FILE = path.join(MEMORY_DIR, 'love_history.json');
 const YEJIN_MEMORY_FILE = path.join(MEMORY_DIR, 'yejin_memory.json');
 const INNER_THOUGHTS_FILE = path.join(MEMORY_DIR, 'innerThoughts.json');
 const ACTION_URGES_FILE = path.join(MEMORY_DIR, 'actionUrges.json');
