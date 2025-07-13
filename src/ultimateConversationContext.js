@@ -80,6 +80,7 @@ async function getWeatherInfo() { if (!weatherApiKey) { console.log('[Weather] �
 
 // ==================== 태그 추출 함수 ====================
 function extractTags(content) {
+    if (typeof content !== 'string') return [];
     const tags = [];
     if (/\d{4}년|\d{1,2}월|\d{1,2}일|생일|기념일/.test(content)) tags.push('날짜');
     if (/사랑|좋아|행복|기뻐|슬프|화나|걱정/.test(content)) tags.push('감정');
@@ -89,81 +90,120 @@ function extractTags(content) {
     return tags;
 }
 
-
 // ==================== 메모리 관리 ====================
 async function addUserMemory(content) {
-    const isDuplicate = ultimateConversationState.knowledgeBase.yejinMemories.some(item => item.content.toLowerCase() === content.toLowerCase());
-    if (isDuplicate) return false;
-    const newMemory = {
-        id: Date.now(),
-        content,
-        date: moment().tz('Asia/Tokyo').format("YYYY-MM-DD HH:mm:ss"),
-        significance: await scoreMemorySignificance(content),
-        source: "user_request",
-        tags: extractTags(content),
-        lastAccessed: moment().tz('Asia/Tokyo').toISOString()
-    };
-    ultimateConversationState.knowledgeBase.yejinMemories.push(newMemory);
+    try {
+        if (typeof content !== 'string' || content.trim().length === 0) return false;
 
-    // 파일에 실제로 저장!
-    await writeJsonFile(YEJIN_MEMORY_FILE, ultimateConversationState.knowledgeBase.yejinMemories);
+        const memories = ultimateConversationState.knowledgeBase.yejinMemories || [];
+        const isDuplicate = memories.some(item => typeof item.content === 'string' && item.content.toLowerCase() === content.toLowerCase());
+        if (isDuplicate) return false;
 
-    // ⭐️⭐️ [여기!!] 추가 ⭐️⭐️
-    const saved = await readJsonFile(YEJIN_MEMORY_FILE, []);
-    console.log('[Memory Debug] 실제 저장 파일 내용:', saved.map(m => m.content));
+        const newMemory = {
+            id: Date.now(),
+            content,
+            date: moment().tz('Asia/Tokyo').format("YYYY-MM-DD HH:mm:ss"),
+            significance: await scoreMemorySignificance(content).catch(() => 5),
+            source: "user_request",
+            tags: extractTags(content),
+            lastAccessed: moment().tz('Asia/Tokyo').toISOString()
+        };
+        memories.push(newMemory);
+        ultimateConversationState.knowledgeBase.yejinMemories = memories;
 
-    await logMemoryOperation('add', content, `중요도 ${newMemory.significance}점으로 저장`);
-    return true;
+        await writeJsonFile(YEJIN_MEMORY_FILE, memories);
+
+        // 디버그용 저장 내용 출력 (생략 가능)
+        const saved = await readJsonFile(YEJIN_MEMORY_FILE, []);
+        console.log('[Memory Debug] 실제 저장 파일 내용:', saved.map(m => m.content));
+
+        await logMemoryOperation('add', content, `중요도 ${newMemory.significance}점으로 저장`);
+
+        return true;
+    } catch (error) {
+        console.error('[addUserMemory] 에러 발생:', error);
+        return false;
+    }
 }
 
 // ==================== 기억 삭제 함수 ====================
 async function deleteUserMemory(content) {
-    const memories = ultimateConversationState.knowledgeBase.yejinMemories;
-    let foundIndex = -1;
-    for (let i = memories.length - 1; i >= 0; i--) {
-        if (memories[i].content.toLowerCase().includes(content.toLowerCase())) {
-            foundIndex = i;
-            break;
+    try {
+        if (typeof content !== 'string' || content.trim().length === 0) {
+            return { success: false, message: "삭제할 내용이 없습니다." };
         }
+
+        const memories = ultimateConversationState.knowledgeBase.yejinMemories || [];
+        let foundIndex = -1;
+
+        for (let i = memories.length - 1; i >= 0; i--) {
+            if (typeof memories[i].content === 'string' && memories[i].content.toLowerCase().includes(content.toLowerCase())) {
+                foundIndex = i;
+                break;
+            }
+        }
+
+        if (foundIndex !== -1) {
+            const [deletedMemory] = memories.splice(foundIndex, 1);
+            ultimateConversationState.knowledgeBase.yejinMemories = memories;
+            await writeJsonFile(YEJIN_MEMORY_FILE, memories);
+            await logMemoryOperation('delete', deletedMemory.content, '사용자 요청으로 삭제');
+            return { success: true, deletedContent: deletedMemory.content };
+        }
+
+        return { success: false, message: "해당 기억을 찾을 수 없어요. 😅" };
+    } catch (error) {
+        console.error('[deleteUserMemory] 에러 발생:', error);
+        return { success: false, message: "삭제 중 오류가 발생했습니다." };
     }
-    if (foundIndex !== -1) {
-        const [deletedMemory] = memories.splice(foundIndex, 1);
-        await writeJsonFile(YEJIN_MEMORY_FILE, memories);
-        await logMemoryOperation('delete', deletedMemory.content, '사용자 요청으로 삭제');
-        return { success: true, deletedContent: deletedMemory.content };
-    }
-    return { success: false, message: "해당 기억을 찾을 수 없어요. 😅" };
 }
 
 // ==================== 기억 수정 함수 추가 ====================
 async function updateUserMemory(id, newContent) {
-    const memories = ultimateConversationState.knowledgeBase.yejinMemories;
-    const memoryIndex = memories.findIndex(m => m.id === id);
-    if (memoryIndex !== -1) {
-        const oldContent = memories[memoryIndex].content;
-        memories[memoryIndex].content = newContent;
-        memories[memoryIndex].significance = await scoreMemorySignificance(newContent);
-        memories[memoryIndex].tags = extractTags(newContent);
-        memories[memoryIndex].lastModified = moment().tz('Asia/Tokyo').format("YYYY-MM-DD HH:mm:ss");
-        await writeJsonFile(YEJIN_MEMORY_FILE, memories);
-        await logMemoryOperation('update', newContent, `(ID: ${id}) ${oldContent} 에서 수정`);
-        return { success: true, oldContent, newContent };
+    try {
+        if (typeof newContent !== 'string' || newContent.trim().length === 0) {
+            return { success: false, message: "수정할 내용이 비어있습니다." };
+        }
+
+        const memories = ultimateConversationState.knowledgeBase.yejinMemories || [];
+        const memoryIndex = memories.findIndex(m => m.id === id);
+
+        if (memoryIndex !== -1) {
+            const oldContent = memories[memoryIndex].content;
+            memories[memoryIndex].content = newContent;
+            memories[memoryIndex].significance = await scoreMemorySignificance(newContent).catch(() => 5);
+            memories[memoryIndex].tags = extractTags(newContent);
+            memories[memoryIndex].lastModified = moment().tz('Asia/Tokyo').format("YYYY-MM-DD HH:mm:ss");
+            ultimateConversationState.knowledgeBase.yejinMemories = memories;
+            await writeJsonFile(YEJIN_MEMORY_FILE, memories);
+            await logMemoryOperation('update', newContent, `(ID: ${id}) ${oldContent} 에서 수정`);
+            return { success: true, oldContent, newContent };
+        }
+        return { success: false, message: "해당 ID의 기억을 찾을 수 없습니다." };
+    } catch (error) {
+        console.error('[updateUserMemory] 에러 발생:', error);
+        return { success: false, message: "수정 중 오류가 발생했습니다." };
     }
-    return { success: false, message: "해당 ID의 기억을 찾을 수 없습니다." };
 }
 
 // ==================== 기억 검색 함수 ====================
 function searchFixedMemory(userMessage) {
+    if (typeof userMessage !== 'string' || userMessage.trim().length === 0) return null;
+
     const lowerMessage = userMessage.toLowerCase();
+
     const allMemories = [
-        ...(ultimateConversationState.knowledgeBase.facts?.map(f => f.fact) || []),
-        ...(ultimateConversationState.knowledgeBase.fixedMemories || []),
-        ...(ultimateConversationState.knowledgeBase.yejinMemories?.map(item => item.content) || []),
-        ...(ultimateConversationState.knowledgeBase.loveHistory.categories?.general?.map(item => item.content) || [])
+        ...(Array.isArray(ultimateConversationState.knowledgeBase.facts) ? ultimateConversationState.knowledgeBase.facts.map(f => f.fact) : []),
+        ...(Array.isArray(ultimateConversationState.knowledgeBase.fixedMemories) ? ultimateConversationState.knowledgeBase.fixedMemories : []),
+        ...(Array.isArray(ultimateConversationState.knowledgeBase.yejinMemories) ? ultimateConversationState.knowledgeBase.yejinMemories.map(item => item.content) : []),
+        ...(ultimateConversationState.knowledgeBase.loveHistory?.categories?.general ? ultimateConversationState.knowledgeBase.loveHistory.categories.general.map(item => item.content) : [])
     ];
-    let bestMatch = null, maxScore = 0;
+
+    let bestMatch = null;
+    let maxScore = 0;
+
     for (const memory of allMemories) {
-        if (!memory) continue;
+        if (!memory || typeof memory !== 'string') continue;
         const lowerMemory = memory.toLowerCase();
         if (lowerMemory.includes(lowerMessage)) {
             const score = lowerMessage.length / lowerMemory.length;
@@ -173,9 +213,9 @@ function searchFixedMemory(userMessage) {
             }
         }
     }
+
     return bestMatch;
 }
-
 
 
 // ==================== ✅ undefined 문제 해결 함수들 ====================
