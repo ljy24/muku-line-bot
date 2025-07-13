@@ -1,6 +1,6 @@
 // ============================================================================
-// index.js - v11.5 (초기화 순서 수정본)
-// ✅ 순환 참조 문제를 해결하고 안정적인 초기화를 보장합니다.
+// index.js - v11.6 (타임스탬프 로거 추가 & 데이터 전체 포함)
+// ✅ 모든 로그에 [YYYY-MM-DD HH:MM:SS] 형식의 타임스탬프를 추가합니다.
 // ============================================================================
 
 const { Client, middleware } = require('@line/bot-sdk');
@@ -9,6 +9,33 @@ const path = require('path');
 const fs = require('fs');
 const fsPromises = require('fs').promises;
 require('dotenv').config();
+
+// ================== 🕒 사용자 정의 타임스탬프 로거 🕒 ==================
+/**
+ * [YYYY-MM-DD HH:MM:SS] 형식의 타임스탬프 문자열을 반환합니다.
+ * @returns {string} 포맷된 타임스탬프
+ */
+const getTimestamp = () => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0'); // 월은 0부터 시작하므로 +1
+    const day = String(now.getDate()).padStart(2, '0');
+    const hours = String(now.getHours()).padStart(2, '0');
+    const minutes = String(now.getMinutes()).padStart(2, '0');
+    const seconds = String(now.getSeconds()).padStart(2, '0');
+    return `[${year}-${month}-${day} ${hours}:${minutes}:${seconds}]`;
+};
+
+// console 객체의 주요 메서드(log, info, warn, error)를 오버라이드합니다.
+// 이제부터 console.log() 등을 호출하면 항상 타임스탬프가 함께 출력됩니다.
+['log', 'info', 'warn', 'error'].forEach(methodName => {
+    const originalMethod = console[methodName];
+    console[methodName] = (...args) => {
+        originalMethod.apply(console, [getTimestamp(), ...args]);
+    };
+});
+// =====================================================================
+
 
 // ------------------- Express 및 LINE 클라이언트 설정 -------------------
 const app = express();
@@ -165,24 +192,13 @@ let emotionalContext, sulkyManager, scheduler, spontaneousPhoto, damta;
 
 async function loadModules() {
     try {
-        // 1단계: 기본 유틸리티 모듈들
         autoReply = require('./src/autoReply');
-        
-        // 2단계: 메모리 관련 모듈들
         memoryManager = require('./src/memoryManager.js');
-        
-        // 3단계: 컨텍스트 관련 모듈들
         ultimateContext = require('./src/ultimateConversationContext.js');
-        
-        // 4단계: 감정 관련 모듈들
         emotionalContext = require('./src/emotionalContextManager.js');
-        
-        // 5단계: 기능 관련 모듈들
         commandHandler = require('./src/commandHandler');
         sulkyManager = require('./src/sulkyManager');
         damta = require('./src/damta');
-        
-        // 6단계: 스케줄러 관련 모듈들
         scheduler = require('./src/scheduler');
         spontaneousPhoto = require('./src/spontaneousPhotoManager.js');
         
@@ -195,7 +211,7 @@ async function loadModules() {
 }
 
 // ------------------- 서버 및 웹훅 설정 -------------------
-app.get('/', (_, res) => res.send('나 v11.5 살아있어! (초기화 순서 수정)'));
+app.get('/', (_, res) => res.send('나 v11.6 살아있어! (타임스탬프 로거 추가)'));
 
 app.post('/webhook', middleware(config), async (req, res) => {
     try {
@@ -218,12 +234,11 @@ async function handleEvent(event) {
 async function handleTextMessage(event) {
     const text = event.message.text.trim();
     
-    // ✅ 예쁜 로깅 시스템 사용
     try {
         const logger = require('./src/enhancedLogging.js');
         logger.logConversation('아저씨', text);
     } catch (error) {
-        console.log(`[대화로그] 아저씨: ${text}`); // 폴백
+        console.log(`[대화로그] 아저씨: ${text}`);
     }
     
     if (ultimateContext && ultimateContext.updateLastUserMessageTime) {
@@ -232,32 +247,28 @@ async function handleTextMessage(event) {
 
     let botResponse = null;
     
-    // commandHandler가 로드되었으면 사용
     if (commandHandler && commandHandler.handleCommand) {
         botResponse = await commandHandler.handleCommand(text);
     }
     
     if (!botResponse) {
-        // 삐짐 해소 처리
         if (sulkyManager && sulkyManager.handleUserResponse) {
             const sulkyReliefMessage = await sulkyManager.handleUserResponse();
             if (sulkyReliefMessage) {
                 await client.pushMessage(userId, { type: 'text', text: sulkyReliefMessage });
                 
-                // ✅ 예쁜 로깅
                 try {
                     const logger = require('./src/enhancedLogging.js');
                     logger.logConversation('나', `(삐짐 해소) ${sulkyReliefMessage}`);
                     logger.logSulkyStateChange({ isSulky: true }, { isSulky: false });
                 } catch (error) {
-                    console.log(`[대화로그] 나: (삐짐 해소) ${sulkyReliefMessage}`); // 폴백
+                    console.log(`[대화로그] 나: (삐짐 해소) ${sulkyReliefMessage}`);
                 }
                 
                 await new Promise(resolve => setTimeout(resolve, 1000));
             }
         }
         
-        // 기본 응답 생성
         if (autoReply && autoReply.getReplyByMessage) {
             botResponse = await autoReply.getReplyByMessage(text);
         }
@@ -274,19 +285,15 @@ async function sendReply(replyToken, botResponse) {
 
         if (botResponse.type === 'image') {
             const caption = botResponse.caption || '사진이야!';
-            console.log(`[대화로그] 나: (사진) ${caption}`);
             await client.replyMessage(replyToken, [
                 { type: 'image', originalContentUrl: botResponse.originalContentUrl, previewImageUrl: botResponse.previewImageUrl },
                 { type: 'text', text: caption }
             ]);
         } else if (botResponse.type === 'text' && botResponse.comment) {
-            // cleanReply 함수 직접 구현 (순환 참조 방지)
             let cleanedText = botResponse.comment.replace(/자기야/gi, '아저씨').replace(/자기/gi, '아저씨');
-            console.log(`[대화로그] 나: ${cleanedText}`);
             await client.replyMessage(replyToken, { type: 'text', text: cleanedText });
         }
 
-        // 삐짐 상태 업데이트
         if (ultimateContext && ultimateContext.getSulkinessState) {
             const sulkyState = ultimateContext.getSulkinessState();
             if (sulkyState) {
@@ -302,7 +309,7 @@ async function sendReply(replyToken, botResponse) {
 // ------------------- 시스템 초기화 함수 -------------------
 async function initMuku() {
     try {
-        console.log('🚀 나 v11.5 시스템 초기화를 시작합니다...');
+        console.log('🚀 나 v11.6 시스템 초기화를 시작합니다...');
         
         console.log('  [1/7] 💾 데이터 복구 및 디렉토리 확인...');
         await recoverData();
@@ -342,7 +349,7 @@ async function initMuku() {
         }
         if (spontaneousPhoto && spontaneousPhoto.startSpontaneousPhotoScheduler) {
             spontaneousPhoto.startSpontaneousPhotoScheduler(client, userId, () => {
-            a    if (ultimateContext && ultimateContext.getInternalState) {
+                if (ultimateContext && ultimateContext.getInternalState) {
                     return ultimateContext.getInternalState().timingContext.lastUserMessageTime;
                 }
                 return Date.now();
@@ -366,7 +373,6 @@ async function initMuku() {
     } catch (error) {
         console.error('🚨🚨🚨 시스템 초기화 중 심각한 에러 발생! 🚨🚨🚨');
         console.error(error);
-        // 에러가 발생해도 서버는 계속 실행 (기본 기능이라도 동작하도록)
         console.log('⚠️ 기본 기능으로라도 서버를 계속 실행합니다...');
     }
 }
@@ -375,10 +381,11 @@ async function initMuku() {
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
     console.log(`\n==================================================`);
-    console.log(`  나 v11.5 서버가 포트 ${PORT}에서 시작되었습니다.`);
+    console.log(`  나 v11.6 서버가 포트 ${PORT}에서 시작되었습니다.`);
     console.log(`==================================================\n`);
     
-    // 초기화를 1초 후에 실행 (서버 시작 후)
+    console.log('🕒 사용자 정의 타임스탬프 로거가 활성화되었습니다.');
+
     setTimeout(() => {
         initMuku();
     }, 1000);
