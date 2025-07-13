@@ -438,34 +438,46 @@ async function initializeEmotionalSystems() {
         console.log('로드된 fixedMemories:', fixedMemories); // 디버깅: 로드된 고정 기억 확인
 
         // love_history 불러오기
-        // 파일 내용이 단순 배열일 수도 있고, 이전의 복잡한 객체 구조일 수도 있으므로, 유연하게 처리합니다.
-        const rawLoveHistory = await readJsonFile(LOVE_HISTORY_FILE, { categories: { general: [] }, specialDates: [] });
-        let loveMemoriesToCombine = [];
+        // 기본값을 빈 배열로 설정하여, 파일이 없거나 파싱 오류 시 빈 배열이 반환되도록 유도합니다.
+        // 이렇게 하면 rawLoveHistory가 최소한 배열이거나 객체로 반환됩니다.
+        const rawLoveHistory = await readJsonFile(LOVE_HISTORY_FILE, []); 
+        
+        // 디버깅을 위해 rawLoveHistory의 실제 값과 타입 확인
+        console.log('rawLoveHistory의 실제 값:', rawLoveHistory);
+        console.log('rawLoveHistory가 배열인가요?', Array.isArray(rawLoveHistory));
+        
+        let loveMemoriesToCombine = []; // 고정 기억으로 병합할 사랑 기억 배열
+        let loveHistoryForState = { categories: { general: [] }, specialDates: [] }; // ultimateConversationState.knowledgeBase.loveHistory에 저장할 객체
 
         if (Array.isArray(rawLoveHistory)) {
-            // love_history.json이 단순 배열인 경우
+            // love_history.json이 단순 배열인 경우 (예: ["기억1", "기억2"])
             loveMemoriesToCombine = rawLoveHistory;
-            console.log('로드된 loveMemories (단순 배열):', loveMemoriesToCombine); // 디버깅
-            // 단순 배열인 경우 loveHistory 객체와 specialDates는 별도로 설정하지 않습니다.
-            // 만약 love_history에 specialDates와 같은 다른 정보가 여전히 필요하다면,
-            // love_history.json은 객체 구조를 유지하고, loveMemories를 추출하는 로직은 그대로 두어야 합니다.
-            ultimateConversationState.knowledgeBase.loveHistory = {}; // 또는 필요에 따라 다른 방식으로 초기화
-            ultimateConversationState.knowledgeBase.specialDates = [];
+            console.log('처리된 loveMemories (단순 배열):', loveMemoriesToCombine); // 디버깅
+            
+            // UI 표시를 위해 단순 배열을 { categories: { general: [...] } } 형태로 감싸줍니다.
+            loveHistoryForState.categories.general = rawLoveHistory;
+            loveHistoryForState.specialDates = []; // 단순 배열일 경우 specialDates는 비어있음
         } else if (rawLoveHistory && typeof rawLoveHistory === 'object' && rawLoveHistory.categories?.general) {
-            // love_history.json이 이전의 객체 구조인 경우, content만 추출
+            // love_history.json이 이전의 복잡한 객체 구조인 경우
+            // 고정 기억으로 병합할 때는 content만 추출
             loveMemoriesToCombine = rawLoveHistory.categories.general.map(item => item.content);
-            console.log('로드된 loveMemories (객체에서 추출):', loveMemoriesToCombine); // 디버깅
-            // 원본 loveHistory 객체는 ultimateConversationState.knowledgeBase.loveHistory에 저장
-            ultimateConversationState.knowledgeBase.loveHistory = rawLoveHistory;
-            ultimateConversationState.knowledgeBase.specialDates = rawLoveHistory.specialDates || [];
+            console.log('처리된 loveMemories (객체에서 추출):', loveMemoriesToCombine); // 디버깅
+            
+            // UI 표시를 위해 원본 loveHistory 객체 전체를 사용
+            loveHistoryForState = rawLoveHistory;
         } else {
+            // love_history.json의 예상치 못한 구조이거나 비어있는 경우
             console.warn('love_history.json의 예상치 못한 구조입니다. 빈 배열로 처리합니다.');
             loveMemoriesToCombine = [];
-            ultimateConversationState.knowledgeBase.loveHistory = {};
-            ultimateConversationState.knowledgeBase.specialDates = [];
+            // loveHistoryForState는 이미 기본값으로 초기화되어 있음
         }
 
-        // 두 배열을 단순히 병합하여 고정 기억으로 사용
+        // ultimateConversationState에 loveHistory 객체 설정 (UI 표시용)
+        ultimateConversationState.knowledgeBase.loveHistory = loveHistoryForState;
+        ultimateConversationState.knowledgeBase.specialDates = loveHistoryForState.specialDates || [];
+
+
+        // fixedMemories와 loveMemoriesToCombine을 병합하여 최종 고정 기억 생성
         const combinedFixedMemories = [...fixedMemories, ...loveMemoriesToCombine];
         const uniqueFixedMemories = [...new Set(combinedFixedMemories)]; // 중복 제거
         console.log('최종 고정 기억 (uniqueFixedMemories):', uniqueFixedMemories); // 디버깅: 최종 고정 기억 확인
