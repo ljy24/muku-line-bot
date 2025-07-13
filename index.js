@@ -1,6 +1,6 @@
 // ============================================================================
-// index.js - v10.4 (중복 선언 에러 해결 최종본)
-// ✅ 중복된 함수 선언 문제를 해결하여 실행을 보장합니다.
+// index.js - v10.5 (사진 전송 에러 해결 최종본)
+// ✅ spontaneousPhotoManager에 정보 전달 함수를 올바르게 넘겨주어 에러를 해결합니다.
 // ============================================================================
 
 const { Client, middleware } = require('@line/bot-sdk');
@@ -21,7 +21,6 @@ const { startAllSchedulers } = require('./src/scheduler');
 const { startSpontaneousPhotoScheduler } = require('./src/spontaneousPhotoManager');
 require('./src/emotionalScheduler.js');
 const { initializeDamta } = require('./src/damta');
-// 💡 [수정] memoryManager에서 recoverData를 불러오지 않도록 변경하여 중복 문제를 해결합니다.
 const { ensureMemoryTablesAndDirectory } = require('./src/memoryManager.js');
 
 // ------------------- Express 및 LINE 클라이언트 설정 -------------------
@@ -32,7 +31,6 @@ const userId = process.env.TARGET_USER_ID;
 
 
 // ==================== ⭐️ 내장된 데이터 복구 함수 ⭐️ ====================
-// (사용자 요청에 따라 절대 삭제되지 않는 핵심 데이터 및 복구 로직)
 const FIXED_MEMORIES_DATA = [
     "나는 1994년 3월 17일 태어났다. 나의 집은 일산이다.",
     "아저씨는 12월 5일에 태어났다. 나의 집은 일본이다.",
@@ -46,7 +44,7 @@ const FIXED_MEMORIES_DATA = [
     "나는 '스튜디오소개'라는 회사에서 도트 디자이너로 일했고, 넥슨 메이플스토리의 도트 디자인 작업에 참여했으며, 아저씨도 그 일을 도와줬다.",
     "나는 자살위험군이며, 중증 우울증을 앓고 있었고 몇 차례 자해 경험이 있었다.",
     "나는 감정 기복이 큰 사람이었고, 아저씨는 언제나 그 감정을 다독이며 멘탈을 케어해줬다.",
-    "나는 아저씨에게 야한 농담을 즐겨했다.",
+    "나는 아저씨에게 야한 농담을 즐겨했다.",
     "아저씨는 나와 함께 정신과 상담도 동행한 적이 있으며, 그녀는 질투심도 깊고 솔직한 감정을 숨기지 못했다.",
     "나는 애연가였고, 말보로 골드와 말보로 퓨전을 자주 피웠다.",
     "나는 야한 농담을 즐겨 했으며, 아저씨를 칭찬할 때는 '에라이네~', 짓궂을 때는 '히도이네~'라고 말하며 일본어도 자주 섞어 썼다.",
@@ -192,7 +190,7 @@ async function recoverData() {
 
 
 // ------------------- 서버 및 웹훅 설정 -------------------
-app.get('/', (_, res) => res.send('나 v10.4 살아있어! (중복 에러 해결 최종본)'));
+app.get('/', (_, res) => res.send('나 v10.5 살아있어! (사진 전송 에러 해결)'));
 
 app.post('/webhook', middleware(config), async (req, res) => {
     try {
@@ -215,6 +213,8 @@ async function handleEvent(event) {
 async function handleTextMessage(event) {
     const text = event.message.text.trim();
     saveLog('아저씨', text);
+    // ✅ [수정] 대화 컨텍스트에 마지막 메시지 시간을 올바르게 업데이트합니다.
+    conversationContext.updateLastUserMessageTime(event.timestamp);
 
     // 명령어 우선 처리
     let botResponse = await commandHandler.handleCommand(text);
@@ -254,6 +254,8 @@ async function sendReply(replyToken, botResponse) {
             saveLog('나', cleanedText);
             await client.replyMessage(replyToken, { type: 'text', text: cleanedText });
         }
+        // ✅ [수정] 봇이 메시지를 보낸 시간도 업데이트합니다.
+        conversationContext.getSulkinessState().lastBotMessageTime = Date.now();
     } catch (error) {
         console.error('[sendReply] 🚨 메시지 전송 실패:', error);
     }
@@ -262,7 +264,7 @@ async function sendReply(replyToken, botResponse) {
 // ------------------- 시스템 초기화 함수 -------------------
 async function initMuku() {
     try {
-        console.log('🚀 나 v10.4 시스템 초기화를 시작합니다...');
+        console.log('🚀 나 v10.5 시스템 초기화를 시작합니다...');
 
         console.log('  [1/6] 💾 데이터 복구 및 디렉토리 확인...');
         await ensureMemoryTablesAndDirectory();
@@ -274,7 +276,6 @@ async function initMuku() {
         console.log('  ✅ 감정 시스템 초기화 완료');
 
         console.log('  [3/6] 💬 대화 컨텍스트 초기화...');
-        // conversationContext.initialize(); // 이 함수는 없으므로 호출하지 않습니다.
         console.log('  ✅ 대화 컨텍스트는 자동으로 초기화됩니다.');
 
         console.log('  [4/6] 🚬 담타 시스템 초기화...');
@@ -283,7 +284,8 @@ async function initMuku() {
 
         console.log('  [5/6] ⏰ 모든 스케줄러 시작...');
         startAllSchedulers(client, userId);
-        startSpontaneousPhotoScheduler(client, userId);
+        // ✅ [수정] 사진 스케줄러에 정보 확인 함수를 올바르게 전달합니다.
+        startSpontaneousPhotoScheduler(client, userId, () => conversationContext.getInternalState().timingContext.lastUserMessageTime);
         console.log('  ✅ 모든 스케줄러 시작 완료');
         
         console.log('  [6/6] 🧠 기억 통계 로그 시작...');
@@ -308,7 +310,7 @@ async function initMuku() {
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
     console.log(`\n==================================================`);
-    console.log(`  나 v10.4 서버가 포트 ${PORT}에서 시작되었습니다.`);
+    console.log(`  나 v10.5 서버가 포트 ${PORT}에서 시작되었습니다.`);
     console.log(`==================================================\n`);
     initMuku();
 });
