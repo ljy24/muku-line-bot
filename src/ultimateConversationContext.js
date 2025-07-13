@@ -76,6 +76,20 @@ async function getDrinkingConcernResponse(userMessage) { const prompt = `너는 
 // ==================== 날씨 API ====================
 async function getWeatherInfo() { if (!weatherApiKey) { console.log('[Weather] ⚠️ OpenWeatherMap API 키가 .env 파일에 설정되지 않았습니다.'); return null; } const lat = 33.8833; const lon = 130.8833; const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${weatherApiKey}&units=metric&lang=kr`; try { const response = await axios.get(url); const weatherData = response.data; const result = { city: "Kitakyushu", description: weatherData.weather[0].description, temp: Math.round(weatherData.main.temp), feels_like: Math.round(weatherData.main.feels_like), humidity: weatherData.main.humidity, }; console.log('[Weather] ✅ 날씨 정보 조회 성공:', result); return result; } catch (error) { console.error('[Weather] ❌ 날씨 정보 조회 실패:', error.response ? error.response.data.message : error.message); return null; } }
 
+
+
+// ==================== 태그 추출 함수 ====================
+function extractTags(content) {
+    const tags = [];
+    if (/\d{4}년|\d{1,2}월|\d{1,2}일|생일|기념일/.test(content)) tags.push('날짜');
+    if (/사랑|좋아|행복|기뻐|슬프|화나|걱정/.test(content)) tags.push('감정');
+    if (/혈액형|키|몸무게|취미|좋아하는|싫어하는/.test(content)) tags.push('개인정보');
+    if (/약속|계획|하기로|가기로|만나기로/.test(content)) tags.push('약속');
+    if (/담타|내꺼|애기|히도이네/.test(content)) tags.push('특별한말');
+    return tags;
+}
+
+
 // ==================== 메모리 관리 ====================
 async function addUserMemory(content) {
     const isDuplicate = ultimateConversationState.knowledgeBase.yejinMemories.some(item => item.content.toLowerCase() === content.toLowerCase());
