@@ -638,7 +638,7 @@ async function getConceptPhotoReply(userMessage, conversationContext) {
     const emotionalPrompt = tonePrompts[emotionalState] || tonePrompts.normal;
 
     // 메타데이터를 포함한 프롬프트 생성
-    let metadataInfo = `📅 ${formattedDate}`;
+    let metadataInfo = `${formattedDate}`;
     if (photoData) {
         metadataInfo += `\n💭 기분: ${photoData.mood}\n📖 에피소드: ${photoData.episode}`;
     }
