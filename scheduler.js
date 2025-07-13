@@ -1,3 +1,5 @@
+// ✅ scheduler.js v2.9 - "예쁜 로그 시스템 통합"
+
 // 생리주기 통합된 예진이 자동 감정 메시지 스케줄러
 const schedule = require('node-schedule');
 const moment = require('moment-timezone');
@@ -17,6 +19,16 @@ let sentTimestamps = [];
 let lastSentMessages = [];
 let lastWeatherCheck = null;
 let currentWeather = null;
+
+// 예쁜 로그 시스템 사용
+function logSchedulerAction(actionType, message, additionalInfo = '') {
+    try {
+        const logger = require('./enhancedLogging.js');
+        logger.logSpontaneousAction(actionType, `${message}${additionalInfo ? ` (${additionalInfo})` : ''}`);
+    } catch (error) {
+        console.log(`💌 [자동메시지] ${message}`);
+    }
+}
 
 // 생리주기별 메시지
 const MENSTRUAL_MESSAGES = {
@@ -397,7 +409,7 @@ async function getRandomMessage() {
 schedule.scheduleJob('0 0 * * *', () => {
   sentTimestamps = [];
   lastSentMessages = [];
-  console.log('자정 초기화 완료: 예진이 감정 메시지 카운터 reset');
+  logSchedulerAction('reset', '자정 초기화 완료: 감정 메시지 카운터 reset');
 });
 
 // 메시지 전송 스케줄러
@@ -440,17 +452,9 @@ schedule.scheduleJob('*/5 * * * *', async () => {
     
     sentTimestamps.push(currentTimestamp);
     
-    // 생리주기 정보 포함해서 로그
+    // 예쁜 로그 출력
     const phaseInfo = getCurrentMenstrualPhase();
-    const today = moment.tz('Asia/Tokyo');
-    const nextPeriod = moment.tz('2025-07-24', 'Asia/Tokyo');
-    const daysUntil = nextPeriod.diff(today, 'days');
-    
-    console.log(`[예진이 감정 메시지] ${currentTimestamp}`);
-    console.log(`📅 생리주기: ${phaseInfo.description} (주기 ${phaseInfo.day}일째)`);
-    console.log(`🩸 다음 생리: ${phaseInfo.nextPeriodDate} (${daysUntil}일 후)`);
-    console.log(`💬 메시지: ${msg}`);
-    console.log(`📊 오늘 전송: ${sentTimestamps.length}/${DAILY_LIMIT}`);
+    logSchedulerAction('message', msg, `${phaseInfo.description} 기반`);
     
   } catch (err) {
     console.error('자동 감정 메시지 전송 오류:', err.message);
@@ -480,9 +484,16 @@ function getStats() {
   };
 }
 
+// 스케줄러 시작 함수 추가
+function startAllSchedulers(client, userId) {
+  // 기존 스케줄러들이 이미 위에서 정의되어 실행중
+  logSchedulerAction('system', '모든 스케줄러 시작됨', 'v2.9');
+}
+
 module.exports = {
   getStats,
   getRandomMessage,
   getWeatherInfo,
-  getCurrentMenstrualPhase
+  getCurrentMenstrualPhase,
+  startAllSchedulers
 };
