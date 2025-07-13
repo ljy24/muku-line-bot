@@ -1,44 +1,72 @@
-// src/yejinSelfie.js v2.0 (통합 지능 엔진 연동)
+// ============================================================================
+// yejinSelfie.js - v2.1 (똑똑해진 셀카 담당자)
+// 📸 애기의 감정을 읽어서 코멘트와 함께 셀카를 전송합니다.
+// ============================================================================
 
-function getSelfieReplyText(emotionalState) {
-    const textOptions = {
-        playful: "아저씨! 나 예쁘지? 기분 좋아서 셀카 찍었어!",
-        quiet: "그냥... 아저씨 생각나서. 이거 내 최근 셀카야.",
-        hurt: "나 좀 위로해줘 아저씨... 이거 보고 힘낼래. ㅠㅠ",
-        anxious: "나 괜찮아 보여? 아저씨가 봐줬으면 해서...",
-        normal: "아저씨 보여주려고 방금 찍은 셀카야. 어때?"
-    };
-    return textOptions[emotionalState] || textOptions.normal;
+const axios = require('axios');
+// ✅ [수정] 중앙 기억 서랍과 감정 전문가에게 가는 길을 추가했습니다.
+const conversationContext = require('./ultimateConversationContext.js');
+const emotionalContext = require('./emotionalContextManager.js');
+
+const SELFIE_ALBUM_URL = 'https://photo.de-ji.net/photo/yejin/';
+
+/**
+ * 앨범 URL에서 랜덤하게 사진 주소 하나를 가져옵니다.
+ * @param {string} url - 사진 목록이 있는 URL
+ * @returns {string|null} 랜덤 사진의 전체 URL
+ */
+async function getRandomPhotoUrl(url) {
+    try {
+        const response = await axios.get(url, { timeout: 5000 });
+        const files = response.data;
+        if (Array.isArray(files) && files.length > 0) {
+            const randomFile = files[Math.floor(Math.random() * files.length)];
+            const baseUrl = url.endsWith('/') ? url : url + '/';
+            return baseUrl + randomFile;
+        }
+        return null;
+    } catch (error) {
+        console.error(`❌ [yejinSelfie] 사진 목록을 가져오는 데 실패했습니다: ${url}`, error.message);
+        return null;
+    }
 }
 
-async function getSelfieReply(userMessage, conversationContext) {
-    const lowerMsg = userMessage.trim().toLowerCase();
+/**
+ * "셀카줘" 명령어에 대한 최종 응답을 생성합니다.
+ * @returns {Promise<object>} LINE에 보낼 이미지 또는 텍스트 메시지 객체
+ */
+async function getSelfieReply() {
+    try {
+        const photoUrl = await getRandomPhotoUrl(SELFIE_ALBUM_URL);
 
-    if (lowerMsg.includes("셀카") || lowerMsg.includes("셀피") || lowerMsg.includes("지금 모습") ||
-        lowerMsg.includes("얼굴 보여줘") || lowerMsg.includes("얼굴보고싶") ||
-        lowerMsg.includes("무쿠 셀카") || lowerMsg.includes("애기 셀카")) {
+        if (!photoUrl) {
+            return {
+                type: 'text',
+                comment: '아저씨, 지금 셀카 사진첩을 열 수가 없어 ㅠㅠ 서버에 문제가 있나 봐...'
+            };
+        }
 
-        const baseUrl = "https://photo.de-ji.net/photo/yejin";
-        const fileCount = 2032;
-
-        const index = Math.floor(Math.random() * fileCount) + 1;
-        const fileName = String(index).padStart(6, "0") + ".jpg";
-        const imageUrl = `${baseUrl}/${fileName}`;
-
-        const emotionalState = conversationContext.getInternalState().emotionalEngine.currentToneState;
-        const text = getSelfieReplyText(emotionalState);
+        // ✅ [수정] 이제 애기의 감정을 읽어서 코멘트를 생성합니다.
+        const caption = emotionalContext.generateSelfieComment() || "아저씨한테 보내는 내 사진이야! 예쁘지? 히히.";
+        
+        console.log(`📸 [yejinSelfie] 셀카 전송 준비 완료: ${photoUrl}`);
 
         return {
             type: 'image',
-            originalContentUrl: imageUrl,
-            previewImageUrl: imageUrl,
-            altText: text,
-            caption: text
+            originalContentUrl: photoUrl,
+            previewImageUrl: photoUrl,
+            caption: `(셀카) ${caption}`,
+        };
+
+    } catch (error) {
+        console.error('❌ [yejinSelfie] 셀카 응답 생성 중 에러 발생:', error);
+        return {
+            type: 'text',
+            comment: '아저씨... 지금 사진첩을 열어보려는데 뭔가 문제가 생겼나 봐 ㅠㅠ 조금 있다 다시 해줄래?'
         };
     }
-    return null;
 }
 
 module.exports = {
-    getSelfieReply
+    getSelfieReply,
 };
