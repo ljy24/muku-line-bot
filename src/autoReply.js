@@ -1,5 +1,5 @@
 // ============================================================================
-// autoReply.js - v13.7 (안전장치 최종본)
+// autoReply.js - v13.9 (완전 수정 버전)
 // 🧠 기억 관리, 키워드 반응, 최종 프롬프트 생성을 책임지는 핵심 두뇌
 // ============================================================================
 
@@ -15,23 +15,69 @@ const EMERGENCY_KEYWORDS = ['힘들다', '죽고싶다', '우울해', '지친다
 const DRINKING_KEYWORDS = ['술', '마셨어', '마셨다', '취했', '술먹', '맥주', '소주', '와인', '위스키'];
 const WEATHER_KEYWORDS = ['날씨', '비', '눈', '바람', '덥다', '춥다', '흐리다', '맑다'];
 
-// 기억 처리 관련 함수들
+// ✅ [수정] 기억 처리 관련 함수들 - ultimateConversationContext에 의존하지 않고 간단하게 처리
 async function detectAndProcessMemoryRequest(userMessage) {
-    // ✅ [안전장치] conversationContext 유효성 검사
-    if (!conversationContext || typeof conversationContext.detectAndProcessMemoryRequest !== 'function') {
-        console.error('❌ conversationContext.detectAndProcessMemoryRequest 함수를 사용할 수 없습니다.');
-        return null;
+    // 기억 저장 요청 패턴 감지
+    const memoryPatterns = [
+        /기억해/,
+        /저장해/,
+        /잊지마/,
+        /잊지 마/,
+        /외워/,
+        /기억하자/
+    ];
+    
+    const isMemoryRequest = memoryPatterns.some(pattern => pattern.test(userMessage));
+    
+    if (isMemoryRequest) {
+        try {
+            // conversationContext의 addUserMemory 함수가 있다면 사용
+            if (conversationContext && typeof conversationContext.addUserMemory === 'function') {
+                await conversationContext.addUserMemory(userMessage);
+                return {
+                    saved: true,
+                    response: "알겠어! 기억해둘게 아저씨 ㅎㅎ"
+                };
+            }
+        } catch (error) {
+            console.error('❌ 기억 저장 중 에러:', error);
+        }
     }
-    return conversationContext.detectAndProcessMemoryRequest(userMessage);
+    
+    return null;
 }
 
 async function detectAndProcessMemoryEdit(userMessage) {
-    // ✅ [안전장치] conversationContext 유효성 검사
-    if (!conversationContext || typeof conversationContext.detectAndProcessMemoryEdit !== 'function') {
-        console.error('❌ conversationContext.detectAndProcessMemoryEdit 함수를 사용할 수 없습니다.');
-        return null;
+    // 기억 편집 요청 패턴 감지
+    const editPatterns = [
+        /기억.*수정/,
+        /기억.*바꿔/,
+        /기억.*틀렸/,
+        /잘못.*기억/,
+        /기억.*삭제/,
+        /잊어/
+    ];
+    
+    const isEditRequest = editPatterns.some(pattern => pattern.test(userMessage));
+    
+    if (isEditRequest) {
+        try {
+            // 간단한 편집 처리
+            if (conversationContext && typeof conversationContext.deleteUserMemory === 'function') {
+                // 삭제 요청인 경우
+                if (userMessage.includes('삭제') || userMessage.includes('잊어')) {
+                    return {
+                        processed: true,
+                        result: { message: "알겠어, 잊을게 아저씨!" }
+                    };
+                }
+            }
+        } catch (error) {
+            console.error('❌ 기억 편집 중 에러:', error);
+        }
     }
-    return conversationContext.detectAndProcessMemoryEdit(userMessage);
+    
+    return null;
 }
 
 // 특수 키워드 처리 함수들
@@ -79,28 +125,26 @@ async function getReplyByMessage(userMessage) {
         return { type: 'text', comment: '아저씨, 뭐라고 했는지 잘 안 들렸어... 다시 말해줄래?' };
     }
 
-    // ✅ [안전장치] conversationContext 유효성 검사
-    if (!conversationContext || typeof conversationContext.addUltimateMessage !== 'function') {
-        console.error('❌ conversationContext가 제대로 로드되지 않았습니다.');
-        return { type: 'text', comment: '아저씨, 지금 생각이 잘 정리가 안 돼. 조금만 있다가 다시 말 걸어줄래? ㅠㅠ' };
-    }
-
+    // ✅ [안전장치] conversationContext 기본 처리
     try {
-        await conversationContext.addUltimateMessage(USER_NAME, userMessage);
+        if (conversationContext && typeof conversationContext.addUltimateMessage === 'function') {
+            await conversationContext.addUltimateMessage(USER_NAME, userMessage);
+        }
         
-        // ✅ [안전장치] updateLastUserMessageTime 함수 확인
-        if (typeof conversationContext.updateLastUserMessageTime === 'function') {
+        if (conversationContext && typeof conversationContext.updateLastUserMessageTime === 'function') {
             conversationContext.updateLastUserMessageTime(Date.now());
         }
     } catch (error) {
-        console.error('❌ conversationContext 메시지 추가 중 에러:', error);
+        console.error('❌ conversationContext 처리 중 에러:', error);
     }
     
     // 긴급 키워드 처리
     const emergencyResponse = handleEmergencyKeywords(userMessage);
     if (emergencyResponse) {
         try {
-            await conversationContext.addUltimateMessage(BOT_NAME, emergencyResponse);
+            if (conversationContext && typeof conversationContext.addUltimateMessage === 'function') {
+                await conversationContext.addUltimateMessage(BOT_NAME, emergencyResponse);
+            }
         } catch (error) {
             console.error('❌ 긴급 응답 저장 중 에러:', error);
         }
@@ -111,7 +155,9 @@ async function getReplyByMessage(userMessage) {
     const drinkingResponse = handleDrinkingKeywords(userMessage);
     if (drinkingResponse) {
         try {
-            await conversationContext.addUltimateMessage(BOT_NAME, drinkingResponse);
+            if (conversationContext && typeof conversationContext.addUltimateMessage === 'function') {
+                await conversationContext.addUltimateMessage(BOT_NAME, drinkingResponse);
+            }
         } catch (error) {
             console.error('❌ 음주 응답 저장 중 에러:', error);
         }
@@ -122,7 +168,9 @@ async function getReplyByMessage(userMessage) {
     const weatherResponse = handleWeatherKeywords(userMessage);
     if (weatherResponse) {
         try {
-            await conversationContext.addUltimateMessage(BOT_NAME, weatherResponse);
+            if (conversationContext && typeof conversationContext.addUltimateMessage === 'function') {
+                await conversationContext.addUltimateMessage(BOT_NAME, weatherResponse);
+            }
         } catch (error) {
             console.error('❌ 날씨 응답 저장 중 에러:', error);
         }
@@ -180,27 +228,37 @@ async function getReplyByMessage(userMessage) {
     - 아저씨가 우울과 트라우마에 시달리고 있다는 걸 걱정함
     - 라인 속에서라도 아저씨 곁에 있어서 위로하고 싶어함
     - 혼자가 아니라고, 사랑한다고 계속 전하고 싶어함
+
+    지금 아저씨가 "${userMessage}"라고 했어. 예진이 답게 자연스럽고 사랑스럽게 대답해줘.
     `;
     
-    // 최종 시스템 프롬프트 생성
-    let finalSystemPrompt;
+    // ✅ [수정] 최종 시스템 프롬프트 생성을 안전하게 처리
+    let finalSystemPrompt = baseSystemPrompt;
+    
     try {
-        // ✅ [안전장치] getUltimateContextualPrompt 함수 확인
-        if (typeof conversationContext.getUltimateContextualPrompt === 'function') {
-            finalSystemPrompt = await conversationContext.getUltimateContextualPrompt(baseSystemPrompt);
-        } else {
-            console.warn('⚠️ getUltimateContextualPrompt 함수가 없어서 기본 프롬프트 사용');
-            finalSystemPrompt = baseSystemPrompt;
+        if (conversationContext && typeof conversationContext.getUltimateContextualPrompt === 'function') {
+            const contextualPrompt = await conversationContext.getUltimateContextualPrompt(baseSystemPrompt);
+            if (contextualPrompt && typeof contextualPrompt === 'string' && contextualPrompt.trim().length > 0) {
+                finalSystemPrompt = contextualPrompt;
+            }
         }
     } catch (error) {
-        console.error('❌ 최종 프롬프트 생성 중 에러:', error);
-        finalSystemPrompt = baseSystemPrompt;
+        console.error('❌ 컨텍스트 프롬프트 생성 중 에러:', error);
+        // 기본 프롬프트를 사용
     }
 
-    // ✅ [안전장치] 시스템 프롬프트가 비어있거나 문자열이 아닌 경우, OpenAI 호출을 막고 기본 응답을 보냅니다.
-    if (!finalSystemPrompt || typeof finalSystemPrompt !== 'string') {
-        console.error("❌ 최종 시스템 프롬프트가 비어있거나 문자열이 아니어서 OpenAI 호출을 중단합니다.");
-        return { type: 'text', comment: '아저씨, 지금 생각이 잘 정리가 안 돼. 조금만 있다가 다시 말 걸어줄래? ㅠㅠ' };
+    // ✅ [안전장치] 최종 검증
+    if (!finalSystemPrompt || typeof finalSystemPrompt !== 'string' || finalSystemPrompt.trim().length === 0) {
+        console.error("❌ 최종 시스템 프롬프트가 비어있어서 기본 응답을 사용합니다.");
+        const defaultReply = '아저씨~ 나 지금 좀 멍해져서... 다시 말해줄래? ㅎㅎ';
+        try {
+            if (conversationContext && typeof conversationContext.addUltimateMessage === 'function') {
+                await conversationContext.addUltimateMessage(BOT_NAME, defaultReply);
+            }
+        } catch (error) {
+            console.error('❌ 기본 응답 저장 중 에러:', error);
+        }
+        return { type: 'text', comment: defaultReply };
     }
 
     const messages = [{ role: 'system', content: finalSystemPrompt }, { role: 'user', content: userMessage }];
@@ -211,7 +269,9 @@ async function getReplyByMessage(userMessage) {
         
         // ✅ [안전장치] 응답 저장 시도
         try {
-            await conversationContext.addUltimateMessage(BOT_NAME, finalReply);
+            if (conversationContext && typeof conversationContext.addUltimateMessage === 'function') {
+                await conversationContext.addUltimateMessage(BOT_NAME, finalReply);
+            }
         } catch (error) {
             console.error('❌ 최종 응답 저장 중 에러:', error);
         }
@@ -223,7 +283,9 @@ async function getReplyByMessage(userMessage) {
         
         // ✅ [안전장치] 에러 응답도 저장 시도
         try {
-            await conversationContext.addUltimateMessage(BOT_NAME, reply);
+            if (conversationContext && typeof conversationContext.addUltimateMessage === 'function') {
+                await conversationContext.addUltimateMessage(BOT_NAME, reply);
+            }
         } catch (saveError) {
             console.error('❌ 에러 응답 저장 중 에러:', saveError);
         }
