@@ -1,10 +1,9 @@
 // ============================================================================
-// spontaneousPhotoManager.js - v1.0 (자발적 사진 전송 관리자)
+// spontaneousPhotoManager.js - v1.1 (수정된 자발적 사진 전송 관리자)
 // 📸 예진이가 자발적으로 사진을 보내는 기능을 관리합니다.
 // ============================================================================
 
 const schedule = require('node-schedule');
-const { saveLog } = require('./aiUtils');
 
 let photoJobs = []; // 실행 중인 사진 스케줄러 작업들
 let isInitialized = false;
@@ -107,7 +106,7 @@ async function sendRandomSelfie(client, userId) {
             previewImageUrl: imageUrl
         });
 
-        saveLog('나', `(자발적 셀카) ${message}`);
+        // 로깅
         console.log(`📸 [SpontaneousPhoto] 자발적 셀카 전송: ${message}`);
 
     } catch (error) {
@@ -165,7 +164,6 @@ async function sendRandomMemoryPhoto(client, userId) {
             previewImageUrl: imageUrl
         });
 
-        saveLog('나', `(자발적 추억사진) ${message}`);
         console.log(`📸 [SpontaneousPhoto] 자발적 추억사진 전송: ${selectedFolder.description}`);
 
     } catch (error) {
@@ -222,7 +220,6 @@ async function sendEventPhoto(client, userId, eventType = 'random') {
             previewImageUrl: imageUrl
         });
 
-        saveLog('나', `(이벤트 사진: ${eventType}) ${message}`);
         console.log(`📸 [SpontaneousPhoto] 이벤트 사진 전송 (${eventType}): ${message}`);
 
     } catch (error) {
