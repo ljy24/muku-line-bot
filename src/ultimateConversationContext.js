@@ -98,25 +98,29 @@ async function addUserMemory(content) {
         const isDuplicate = memories.some(item => typeof item.content === 'string' && item.content.toLowerCase() === content.toLowerCase());
         if (isDuplicate) return false;
 
+        // 중요도 평가 시 에러시 기본값 5점
+        const significance = await scoreMemorySignificance(content).catch(() => 5);
+
         const newMemory = {
             id: Date.now(),
             content,
             date: moment().tz('Asia/Tokyo').format("YYYY-MM-DD HH:mm:ss"),
-            significance: await scoreMemorySignificance(content).catch(() => 5),
+            significance,
             source: "user_request",
             tags: extractTags(content),
             lastAccessed: moment().tz('Asia/Tokyo').toISOString()
         };
+
         memories.push(newMemory);
         ultimateConversationState.knowledgeBase.yejinMemories = memories;
 
         await writeJsonFile(YEJIN_MEMORY_FILE, memories);
 
-        // 디버그용 저장 내용 출력 (생략 가능)
-        const saved = await readJsonFile(YEJIN_MEMORY_FILE, []);
-        console.log('[Memory Debug] 실제 저장 파일 내용:', saved.map(m => m.content));
+        // 디버그용 저장 내용 출력 (필요 시 주석 처리 가능)
+        // const saved = await readJsonFile(YEJIN_MEMORY_FILE, []);
+        // console.log('[Memory Debug] 실제 저장 파일 내용:', saved.map(m => m.content));
 
-        await logMemoryOperation('add', content, `중요도 ${newMemory.significance}점으로 저장`);
+        await logMemoryOperation('add', content, `중요도 ${significance}점으로 저장`);
 
         return true;
     } catch (error) {
@@ -169,13 +173,19 @@ async function updateUserMemory(id, newContent) {
 
         if (memoryIndex !== -1) {
             const oldContent = memories[memoryIndex].content;
+
+            // 중요도 평가 시 에러시 기본값 5점
+            const significance = await scoreMemorySignificance(newContent).catch(() => 5);
+
             memories[memoryIndex].content = newContent;
-            memories[memoryIndex].significance = await scoreMemorySignificance(newContent).catch(() => 5);
+            memories[memoryIndex].significance = significance;
             memories[memoryIndex].tags = extractTags(newContent);
             memories[memoryIndex].lastModified = moment().tz('Asia/Tokyo').format("YYYY-MM-DD HH:mm:ss");
             ultimateConversationState.knowledgeBase.yejinMemories = memories;
+
             await writeJsonFile(YEJIN_MEMORY_FILE, memories);
             await logMemoryOperation('update', newContent, `(ID: ${id}) ${oldContent} 에서 수정`);
+
             return { success: true, oldContent, newContent };
         }
         return { success: false, message: "해당 ID의 기억을 찾을 수 없습니다." };
