@@ -429,17 +429,27 @@ function getRandomActionUrge(emotionKey = 'normal') {
     return choices[Math.floor(Math.random() * choices.length)];
 }
 
-// ==================== 초기화 시스템 (수정된 버전) ====================
 async function initializeEmotionalSystems() {
     console.log('[UltimateContext] 🚀 시스템 초기화 시작...');
     
     try {
-        // 기본 구조 보장
-        ultimateConversationState.knowledgeBase.fixedMemories = await readJsonFile(FIXED_MEMORIES_FILE, []);
-        
+        // fixedMemories와 love_history 불러오기
+        const fixedMemories = await readJsonFile(FIXED_MEMORIES_FILE, []);
         const loveHistory = await readJsonFile(LOVE_HISTORY_FILE, { categories: { general: [] }, specialDates: [] });
+
+        // love_history 일반 대화 내용만 추출
+        const loveGeneralContents = loveHistory.categories.general.map(item => item.content);
+
+        // 두 배열 병합 후 중복 제거
+        const combinedFixedMemories = [...fixedMemories, ...loveGeneralContents];
+        const uniqueFixedMemories = [...new Set(combinedFixedMemories)];
+
+        // 고정 기억과 사랑 기억 세팅
+        ultimateConversationState.knowledgeBase.fixedMemories = uniqueFixedMemories;
         ultimateConversationState.knowledgeBase.loveHistory = loveHistory;
         ultimateConversationState.knowledgeBase.specialDates = loveHistory.specialDates || [];
+
+        // 예진 기억 로드
         ultimateConversationState.knowledgeBase.yejinMemories = await readJsonFile(YEJIN_MEMORY_FILE, []);
         
         // 감정 데이터 로드 - 안전한 기본값 보장
@@ -483,6 +493,7 @@ async function initializeEmotionalSystems() {
         await createMinimalFallbackData();
     }
 }
+
 
 // ==================== 핵심 함수들 ====================
 async function getUltimateContextualPrompt(basePrompt) {
