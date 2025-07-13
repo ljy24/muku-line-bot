@@ -218,8 +218,13 @@ async function handleEvent(event) {
 async function handleTextMessage(event) {
     const text = event.message.text.trim();
     
-    // aiUtils의 saveLog 함수 직접 호출
-    console.log(`[대화로그] 아저씨: ${text}`);
+    // ✅ 예쁜 로깅 시스템 사용
+    try {
+        const logger = require('./src/enhancedLogging.js');
+        logger.logConversation('아저씨', text);
+    } catch (error) {
+        console.log(`[대화로그] 아저씨: ${text}`); // 폴백
+    }
     
     if (ultimateContext && ultimateContext.updateLastUserMessageTime) {
         ultimateContext.updateLastUserMessageTime(event.timestamp);
@@ -238,7 +243,16 @@ async function handleTextMessage(event) {
             const sulkyReliefMessage = await sulkyManager.handleUserResponse();
             if (sulkyReliefMessage) {
                 await client.pushMessage(userId, { type: 'text', text: sulkyReliefMessage });
-                console.log(`[대화로그] 나: (삐짐 해소) ${sulkyReliefMessage}`);
+                
+                // ✅ 예쁜 로깅
+                try {
+                    const logger = require('./src/enhancedLogging.js');
+                    logger.logConversation('나', `(삐짐 해소) ${sulkyReliefMessage}`);
+                    logger.logSulkyStateChange({ isSulky: true }, { isSulky: false });
+                } catch (error) {
+                    console.log(`[대화로그] 나: (삐짐 해소) ${sulkyReliefMessage}`); // 폴백
+                }
+                
                 await new Promise(resolve => setTimeout(resolve, 1000));
             }
         }
