@@ -12,16 +12,16 @@ const dbPath = path.join(MEMORY_BASE_PATH, 'memories.db'); // SQLite DB 경로 �
 let db; // SQLite 데이터베이스 인스턴스
 
 // ⭐️ 고정 기억을 저장할 변수 (메모리 로딩) ⭐️
-// 이제 객체 형태로, 각 파일의 내용을 별도의 속성으로 저장
+// 이제 두 파일 모두 단순 배열로 저장하도록 변경
 const fixedMemoriesDB = {
     fixedMemories: [],    // fixedMemories.json 내용을 배열로 저장
-    loveHistory: {},      // love-history.json 내용을 객체로 저장 (categories 포함)
+    loveHistory: [],      // love-history.json 내용을 단순 배열로 저장
     // 기타 텍스트 파일 등은 필요시 여기에 추가 가능
 };
 
 // 기억 파일들의 경로 정의
 const FIXED_MEMORIES_FILE = path.join(MEMORY_BASE_PATH, 'fixedMemories.json');
-const LOVE_HISTORY_FILE = path.join(MEMORY_BASE_PATH, 'love-history.json');
+const LOVE_HISTORY_FILE = path.join(MEMORY_BASE_PATH, 'love_history.json');
 
 /**
  * SQLite 데이터베이스 연결을 초기화하고 테이블을 생성합니다.
@@ -185,27 +185,22 @@ async function loadAllMemories() {
             }
         }
 
-        // love-history.json 로드 (객체 형태, categories 포함)
+        // love-history.json 로드 (이제 단순 배열 형태로 로드)
         try {
             const data = await fs.readFile(LOVE_HISTORY_FILE, 'utf8');
-            fixedMemoriesDB.loveHistory = JSON.parse(data);
-            console.log(`[MemoryManager] love-history.json 로드 완료.`);
-            // loveHistory 내부의 categories를 직접 접근해서 로그 출력
-            if (fixedMemoriesDB.loveHistory.categories && Array.isArray(fixedMemoriesDB.loveHistory.categories.general)) {
-                 console.log(`[MemoryManager] love-history.json - general 카테고리 기억 ${fixedMemoriesDB.loveHistory.categories.general.length}개.`);
-            }
+            fixedMemoriesDB.loveHistory = JSON.parse(data); // 이제 loveHistory는 배열이 될 것임
+            console.log(`[MemoryManager] love_history.json 로드 완료. (기억 ${fixedMemoriesDB.loveHistory.length}개)`);
         } catch (err) {
             if (err.code === 'ENOENT') {
-                console.warn(`[MemoryManager] love-history.json 파일이 없습니다. 빈 객체로 초기화합니다.`);
-                fixedMemoriesDB.loveHistory = { categories: { love_expressions: [], daily_care: [], general: [], user_submitted_memories: [], ai_personal_memories: {} } };
-                await fs.writeFile(LOVE_HISTORY_FILE, JSON.stringify(fixedMemoriesDB.loveHistory, null, 2), 'utf8');
+                console.warn(`[MemoryManager] love_history.json 파일이 없습니다. 빈 배열로 초기화합니다.`);
+                fixedMemoriesDB.loveHistory = []; // 빈 배열로 초기화
+                await fs.writeFile(LOVE_HISTORY_FILE, JSON.stringify([], null, 2), 'utf8');
             } else {
-                console.error(`[MemoryManager] love-history.json 로드 실패: ${err.message}`);
+                console.error(`[MemoryManager] love_history.json 로드 실패: ${err.message}`);
             }
         }
 
         console.log('[MemoryManager] 모든 고정 기억 로딩 완료.');
-        // 디버깅을 위해 로드된 fixedMemoriesDB의 최상위 키를 출력
         console.log('[MemoryManager] 로드된 고정 기억 최상위 키:', Object.keys(fixedMemoriesDB));
 
     } catch (error) {
@@ -223,7 +218,7 @@ function getFixedMemory(userMessage) {
     let bestMatch = null;
     let maxMatches = 0;
 
-    // 1. fixedMemories 배열에서 검색 (예: "예진이는 1994년 3월 17일 태어났다.")
+    // 1. fixedMemories 배열에서 검색
     for (const memoryText of fixedMemoriesDB.fixedMemories) {
         const lowerMemory = memoryText.toLowerCase();
         // 사용자 메시지가 기억 텍스트를 포함하거나, 기억 텍스트가 사용자 메시지를 포함하는 경우
@@ -232,7 +227,6 @@ function getFixedMemory(userMessage) {
             return memoryText; // 정확하거나 강한 일치로 간주하여 바로 반환
         }
         // 부분 매칭 (더 정교한 로직 필요시 여기에 추가)
-        // 예를 들어, "첫대화"가 "인스타 첫 대화"의 일부인 경우를 처리
         const currentMatches = lowerMessage.split(' ').filter(word => word.length > 1 && lowerMemory.includes(word)).length;
         if (currentMatches > maxMatches) {
             maxMatches = currentMatches;
@@ -240,34 +234,25 @@ function getFixedMemory(userMessage) {
         }
     }
 
-    // 2. loveHistory.categories.general 배열에서 검색 (예: { content: "2023-08-18 - 인스타 첫 대화. 애기: 코로나 걸려서 죽을 것 같아요.", ... })
-    if (fixedMemoriesDB.loveHistory.categories && Array.isArray(fixedMemoriesDB.loveHistory.categories.general)) {
-        for (const item of fixedMemoriesDB.loveHistory.categories.general) {
-            const lowerContent = item.content.toLowerCase(); // content 필드 사용
-            if (lowerMessage.includes(lowerContent) || lowerContent.includes(lowerMessage)) {
-                 console.log(`[MemoryManager] loveHistory.general에서 정확한(또는 강한) 일치 발견: "${item.content.substring(0, 30)}..."`);
-                return item.content; // 정확하거나 강한 일치로 간주하여 바로 반환
-            }
-            const currentMatches = lowerMessage.split(' ').filter(word => word.length > 1 && lowerContent.includes(word)).length;
-            if (currentMatches > maxMatches) {
-                maxMatches = currentMatches;
-                bestMatch = item.content;
-            }
+    // 2. loveHistory 배열에서 검색 (이제 단순 배열이므로 categories.general 접근 제거)
+    // loveHistory는 이제 직접 문자열 배열이므로 바로 순회합니다.
+    for (const memoryText of fixedMemoriesDB.loveHistory) {
+        const lowerMemory = memoryText.toLowerCase();
+        if (lowerMessage.includes(lowerMemory) || lowerMemory.includes(lowerMessage)) {
+            console.log(`[MemoryManager] loveHistory에서 정확한(또는 강한) 일치 발견: "${memoryText.substring(0, 30)}..."`);
+            return memoryText; // 정확하거나 강한 일치로 간주하여 바로 반환
+        }
+        const currentMatches = lowerMessage.split(' ').filter(word => word.length > 1 && lowerMemory.includes(word)).length;
+        if (currentMatches > maxMatches) {
+            maxMatches = currentMatches;
+            bestMatch = memoryText;
         }
     }
     
-    // 3. loveHistory.categories.ai_personal_memories 객체에서 검색 (예: { "준기오빠": "예전에 신촌 공원에서 촬영 같이 했던 작가 오빠야...", ... })
-    if (fixedMemoriesDB.loveHistory.categories && typeof fixedMemoriesDB.loveHistory.categories.ai_personal_memories === 'object') {
-        for (const key in fixedMemoriesDB.loveHistory.categories.ai_personal_memories) {
-            const lowerMemory = fixedMemoriesDB.loveHistory.categories.ai_personal_memories[key].toLowerCase();
-            const lowerKey = key.toLowerCase();
-            // 사용자 메시지가 직접 키나 내용에 포함되는 경우
-            if (lowerMessage.includes(lowerKey) || lowerMemory.includes(lowerMessage) || lowerMessage.includes(lowerMemory)) {
-                console.log(`[MemoryManager] loveHistory.ai_personal_memories에서 정확한(또는 강한) 일치 발견 (키: ${key}): "${fixedMemoriesDB.loveHistory.categories.ai_personal_memories[key].substring(0, 30)}..."`);
-                return fixedMemoriesDB.loveHistory.categories.ai_personal_memories[key];
-            }
-        }
-    }
+    // 3. loveHistory.categories.ai_personal_memories 객체에서 검색 부분 제거
+    // loveHistory가 단순 배열이므로 이 부분은 더 이상 유효하지 않습니다.
+    // 만약 ai_personal_memories가 여전히 필요하다면, 다른 파일에서 로드하거나
+    // 다른 고정 기억 유형으로 통합해야 합니다.
 
     if (maxMatches > 0) {
         console.log(`[MemoryManager] 고정 기억 "${userMessage}"에 대해 가장 적합한 부분 매칭 기억 반환.`);
@@ -315,7 +300,7 @@ module.exports = {
     loadAllMemories, 
     getFixedMemory,
     // 리마인더 관련 함수들 export
-    saveReminder,       
+    saveReminder,        
     getDueReminders,    
     markReminderAsSent  
 };
