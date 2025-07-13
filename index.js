@@ -25,7 +25,7 @@ const app = express();
 const config = { channelAccessToken: process.env.LINE_ACCESS_TOKEN, channelSecret: process.env.LINE_CHANNEL_SECRET };
 const client = new Client(config);
 const userId = process.env.TARGET_USER_ID;
-핵심 변경 사항:
+//핵심 변경 사항:
 
 app.get('/', (_, res) => res.send('나 v9.11 살아있어! (응급 수정본)'));
 
