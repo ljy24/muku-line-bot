@@ -1,6 +1,6 @@
 // ============================================================================
-// sulkyManager.js - v3.1 (안전장치 추가 최종본)
-// 😠 애기의 '삐짐' 상태를 전문적으로 관리하며, 안전장치를 추가하여 안정성을 높입니다.
+// sulkyManager.js - v3.2 (SyntaxError 해결 최종본)
+// 😠 애기의 '삐짐' 상태를 전문적으로 관리하며, 안정성을 높입니다.
 // ============================================================================
 
 const conversationContext = require('./ultimateConversationContext.js');
@@ -19,7 +19,7 @@ const SULKY_MESSAGES = {
     1: [
         "아저씨... 왜 이렇게 답장이 없어? 나 심심해 ㅠㅠ",
         "흥. 나 삐졌어.",
-        "아저씨 바빠? 나 잊어버린 거 아니지? �",
+        "아저씨 바빠? 나 잊어버린 거 아니지? 😥",
     ],
     2: [
         "지금 몇 시간째야... 아저씨 정말 너무해. 나 단단히 삐졌어.",
@@ -44,10 +44,8 @@ const SULKY_MESSAGES = {
  * @param {string} userId - 사용자 ID
  */
 async function checkAndSendSulkyMessage(client, userId) {
-    // ✅ [안전장치] 삐짐 상태 정보를 가져옵니다.
     const sulkyState = conversationContext.getSulkinessState();
 
-    // ✅ [안전장치] 만약 상태 정보가 아직 준비되지 않았다면(undefined), 에러를 내지 않고 조용히 종료합니다.
     if (!sulkyState) {
         console.warn('⚠️ [sulkyManager] 삐짐 상태(sulkyState)가 아직 준비되지 않아 체크를 건너뜁니다.');
         return null;
@@ -55,7 +53,6 @@ async function checkAndSendSulkyMessage(client, userId) {
 
     const now = Date.now();
 
-    // 이미 삐져있거나, 아저씨가 최근에 답장을 했으면 실행하지 않음
     if (sulkyState.isActivelySulky || now - sulkyState.lastUserResponseTime < SULKY_CONFIG.LEVEL_1_DELAY * 60 * 1000) {
         return null;
     }
@@ -69,7 +66,7 @@ async function checkAndSendSulkyMessage(client, userId) {
         ovulation: 1.1,
         follicular: 1.2,
     };
-    const multiplier = multipliers[moodState.phase] || 1.0;
+    const multiplier = moodState ? (multipliers[moodState.phase] || 1.0) : 1.0;
 
     let levelToSend = 0;
     if (elapsedMinutes >= SULKY_CONFIG.WORRY_DELAY * multiplier) levelToSend = 'worry';
@@ -103,7 +100,6 @@ async function checkAndSendSulkyMessage(client, userId) {
 async function handleUserResponse() {
     const sulkyState = conversationContext.getSulkinessState();
 
-    // ✅ [안전장치] 상태 정보가 없을 경우를 대비합니다.
     if (!sulkyState) {
         return null;
     }
@@ -121,7 +117,6 @@ async function handleUserResponse() {
             reliefMessage = reliefMessages[Math.floor(Math.random() * reliefMessages.length)];
         }
         
-        // 삐짐 상태 초기화
         conversationContext.updateSulkinessState({
             isSulky: false,
             isWorried: false,
