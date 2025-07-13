@@ -1,5 +1,5 @@
 // ============================================================================
-// omoide.js - v2.1 (경로 수정 최종본)
+// omoide.js - v2.2 (에러 수정 및 안전장치 추가 버전)
 // 📸 애기의 감정을 읽어서 코멘트와 함께 추억 사진을 전송합니다.
 // ============================================================================
 
@@ -80,7 +80,13 @@ function getRandomOmoideFolder() {
     return folderNames[Math.floor(Math.random() * folderNames.length)];
 }
 
-async function getOmoideReply(userMessage, conversationContext) {
+async function getOmoideReply(userMessage, conversationContextParam) {
+    // ✅ [안전장치] userMessage 유효성 검사
+    if (!userMessage || typeof userMessage !== 'string') {
+        console.error('❌ getOmoideReply: userMessage가 올바르지 않습니다:', userMessage);
+        return null;
+    }
+
     const lowerMsg = userMessage.trim().toLowerCase();
     let selectedFolder = null;
 
@@ -116,7 +122,22 @@ async function getOmoideReply(userMessage, conversationContext) {
     const encodedImageUrl = encodeImageUrl(`${BASE_OMODE_URL}/${fileName}`);
     const folderDescription = selectedFolder.split('_').join(' ').replace('추억 ', '');
 
-    const emotionalState = conversationContext.getInternalState().emotionalEngine.currentToneState;
+    // ✅ [안전장치] conversationContext 유효성 검사
+    let emotionalState = 'normal';
+    if (conversationContextParam && typeof conversationContextParam.getInternalState === 'function') {
+        try {
+            const internalState = conversationContextParam.getInternalState();
+            if (internalState && internalState.emotionalEngine && internalState.emotionalEngine.currentToneState) {
+                emotionalState = internalState.emotionalEngine.currentToneState;
+            }
+        } catch (error) {
+            console.error('❌ 감정 상태를 가져오는데 실패:', error);
+            emotionalState = 'normal'; // 기본값 사용
+        }
+    } else {
+        console.warn('⚠️ conversationContext가 유효하지 않음. 기본 감정 상태 사용');
+    }
+
     const tonePrompts = {
         playful: "이 사진 보니까 그때의 즐거웠던 기억이 나서 기분이 막 좋아져! 이 신나는 기분을 담아서!",
         quiet: "이 사진을 보니까 괜히 마음이 아련하고 그립네... 이 감성을 담아서...",
@@ -126,10 +147,15 @@ async function getOmoideReply(userMessage, conversationContext) {
 
     const prompt = `아저씨! 이건 우리 ${folderDescription} 추억 사진이야. ${emotionalPrompt} 이 사진을 보면서 떠오르는 감정을 1~2문장으로 짧고 애틋하게, 반말로 이야기해줘.`;
 
-    const messages = [{ role: 'system', content: prompt }];
-    const rawReply = await callOpenAI(messages, 'gpt-4o', 150, 1.0);
-    const cleanedReply = cleanReply(rawReply);
-    return { type: 'image', originalContentUrl: encodedImageUrl, previewImageUrl: encodedImageUrl, altText: cleanedReply, caption: cleanedReply };
+    try {
+        const messages = [{ role: 'system', content: prompt }];
+        const rawReply = await callOpenAI(messages, 'gpt-4o', 150, 1.0);
+        const cleanedReply = cleanReply(rawReply);
+        return { type: 'image', originalContentUrl: encodedImageUrl, previewImageUrl: encodedImageUrl, altText: cleanedReply, caption: cleanedReply };
+    } catch (error) {
+        console.error('❌ [omoide.js Error] 추억 사진 코멘트 생성 실패:', error);
+        return { type: 'text', comment: '아저씨... 추억 사진에 대해 말해주려는데 뭔가 문제가 생겼어 ㅠㅠ' };
+    }
 }
 
 module.exports = {
