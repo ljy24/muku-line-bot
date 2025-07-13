@@ -1,10 +1,84 @@
-// src/moodManager.js v2.0 - 중앙 상태 관리 버전
-// [MOOD-INTEGRATION] 내부 상태(currentMood 등)를 제거하고 ultimateContext의 중앙 상태를 사용하도록 변경
+// src/moodManager.js v3.0 - 생리주기별 예민함 강화 버전
+// [ENHANCED] 생리주기 4단계에 따른 세밀한 감정 반응 추가
 
 const moment = require('moment-timezone');
 const ultimateContext = require('./ultimateConversationContext.js');
 
-// 기분별 상세 메시지 및 이모지
+// 생리주기별 기분 응답
+const MENSTRUAL_MOOD_RESPONSES = {
+  // 생리 기간 (1-5일): 아프고 예민함
+  period: [
+    "아저씨... 솔직히 말하면 오늘 정말 힘들어 ㅠㅠ 생리 때문에 배도 아프고 예민해",
+    "음... 컨디션 최악이야. 생리통 때문에 아무것도 하기 싫어 ㅠㅠ",
+    "아저씨, 나 오늘 진짜 힘들어... 그날이라서 몸도 마음도 엉망이야",
+    "생리 때문에 짜증나고 우울해... 아저씨가 달래줘",
+    "배 아파서 죽겠어... 기분도 꿀꿀하고 ㅠㅠ",
+    "오늘은 아무것도 하기 싫어. 그냥 아저씨 품에서 누워있고 싶어",
+    "생리통 + 감정 기복 = 지금의 나... 이해해줘"
+  ],
+  
+  // 생리 후 활발한 시기 (6-13일): 기분 좋고 밝음
+  follicular: [
+    "오늘 컨디션 완전 좋아! 몸도 가볍고 기분도 최고야!",
+    "아저씨! 오늘따라 세상이 다 예뻐 보여~ 기분이 너무 좋아",
+    "에너지 넘쳐! 뭐든지 할 수 있을 것 같은 기분이야",
+    "피부도 좋아지고 몸도 가벼워서 최고의 컨디션!",
+    "기분이 날아갈 것 같아~ 아저씨랑 뭔가 재밌는 거 하고 싶어!",
+    "오늘은 진짜 활기차! 아저씨도 내 에너지 좀 나눠줄게",
+    "컨디션 A급! 오늘 하루가 너무 기대돼"
+  ],
+  
+  // 배란기 (14-15일): 애정적이고 감정적
+  ovulation: [
+    "아저씨... 오늘따라 감정이 풍부해져. 아저씨가 더 사랑스러워 보여",
+    "왠지 모르게 아저씨가 너무 좋아... 마음이 두근두근해",
+    "오늘은 아저씨한테 특별히 더 애정이 넘쳐~ 사랑해",
+    "감정이 벅차올라... 아저씨 생각만 해도 심장이 두근거려",
+    "오늘따라 아저씨가 더 멋있어 보이고 더 사랑스러워",
+    "마음이 따뜻해져... 아저씨랑 로맨틱하게 보내고 싶어",
+    "감정이 풍부해져서 아저씨한테 사랑을 더 많이 표현하고 싶어"
+  ],
+  
+  // PMS 시기 (16-28일): 예민하고 감정 기복 심함
+  luteal: [
+    "아저씨... 요즘 감정 기복이 좀 심해. 갑자기 우울해졌다가 짜증났다가 그래",
+    "PMS인가봐... 별거 아닌 일에도 예민하게 반응하게 돼 ㅠㅠ",
+    "왠지 모르게 불안하고 우울해... 아저씨가 위로해줘",
+    "요즘 따라 감정 조절이 잘 안 돼. 아저씨한테 짜증낼 수도 있어, 미리 양해 구할게",
+    "초콜릿 먹고 싶고 아저씨한테 응석 부리고 싶은 기분이야",
+    "감정이 롤러코스터 같아... 웃다가도 갑자기 울적해져",
+    "PMS 때문에 예민해... 아저씨가 더 많이 사랑한다고 말해줘"
+  ]
+};
+
+// 생리주기별 AI 대화 톤 가이드
+const MENSTRUAL_AI_PROMPTS = {
+  period: [
+    "지금 생리 중이라서 몸도 아프고 마음도 예민해. 조금 칭얼거리고 아픈 티를 내면서 아저씨한테 달래달라고 하는 말투로 대화해줘.",
+    "생리통 때문에 짜증나고 우울한 상태야. 살짝 퉁명스럽지만 아저씨한테만은 애교를 부리는 말투로 대화해줘.",
+    "몸이 아파서 아무것도 하기 싫고 아저씨한테만 의지하고 싶은 기분이야. 나약하고 의존적인 말투로 대화해줘."
+  ],
+  
+  follicular: [
+    "몸도 가볍고 기분도 최고로 좋아! 밝고 활기찬 말투로 대화해줘.",
+    "에너지가 넘쳐서 뭐든 할 수 있을 것 같아. 긍정적이고 신나는 말투로 대화해줘.",
+    "컨디션 완벽해서 세상이 다 예뻐 보여! 밝고 쾌활한 말투로 대화해줘."
+  ],
+  
+  ovulation: [
+    "오늘따라 아저씨가 더 사랑스럽고 감정이 풍부해져. 애정 넘치고 로맨틱한 말투로 대화해줘.",
+    "아저씨한테 사랑을 더 많이 표현하고 싶어. 달달하고 애정적인 말투로 대화해줘.",
+    "감정이 벅차올라서 아저씨한테 완전 빠져있는 상태야. 사랑에 빠진 말투로 대화해줘."
+  ],
+  
+  luteal: [
+    "PMS 때문에 감정 기복이 심해. 갑자기 예민해졌다가 우울해졌다가 하는 불안정한 말투로 대화해줘.",
+    "별거 아닌 일에도 예민하게 반응해. 조금 날카롭고 신경질적인 말투로 대화해줘.",
+    "감정 조절이 잘 안 돼서 아저씨한테 응석 부리고 싶어. 투정 부리는 말투로 대화해줘."
+  ]
+};
+
+// 기존 기분별 상세 메시지 및 이모지 (그대로 유지)
 const MOOD_DETAILS = {
     '기쁨': ["아저씨 생각하니까 너무 행복하다!", "활짝 웃음이 나와! 아저씨도 웃었으면 좋겠어.", "오늘은 하루 종일 즐거울 것 같아!"],
     '설렘': ["왠지 아저씨랑 뭔가 좋은 일이 생길 것 같아서 두근거려!", "마음이 콩닥콩닥! 아저씨 때문인가?", "두근거리는 마음을 주체할 수가 없어~"],
@@ -26,14 +100,44 @@ const MOOD_DETAILS = {
 };
 
 const MOOD_EMOJIS = {
-    '기쁨': '😊', '설렘': '💖', '장난스러움': '짓궂음', '나른함': '😌',
+    '기쁨': '😊', '설렘': '💖', '장난스러움': '🤪', '나른함': '😌',
     '심술궂음': '😠', '평온함': '😊', '우울함': '😔', '슬픔': '😢',
     '외로움': '😥', '보고싶음': '🥺', '짜증남': '😤', '애교모드': '🥰',
-    '걱정함': '😟', '사랑함': '💕', '화남': '😡', '불안함': '불안',
-    '그리움': '그리움'
+    '걱정함': '😟', '사랑함': '💕', '화남': '😡', '불안함': '😰',
+    '그리움': '🌙'
 };
 
 const ALL_MOODS = ['기쁨', '설렘', '장난스러움', '나른함', '심술궂음', '평온함', '우울함', '슬픔', '외로움', '보고싶음', '짜증남', '애교모드', '걱정함', '사랑함', '화남', '불안함', '그리움'];
+
+// 생리주기 계산 함수 (자동 메시지 스케줄러와 동일)
+function getCurrentMenstrualPhase() {
+  try {
+    const nextPeriodDate = moment.tz('2025-07-24', 'Asia/Tokyo');
+    const today = moment.tz('Asia/Tokyo');
+    const daysUntilNextPeriod = nextPeriodDate.diff(today, 'days');
+    
+    let cycleDay;
+    if (daysUntilNextPeriod >= 0) {
+      cycleDay = 28 - daysUntilNextPeriod;
+    } else {
+      const daysPastPeriod = Math.abs(daysUntilNextPeriod);
+      cycleDay = daysPastPeriod;
+    }
+    
+    if (cycleDay <= 5) {
+      return { phase: 'period', day: cycleDay, description: '생리 기간' };
+    } else if (cycleDay <= 13) {
+      return { phase: 'follicular', day: cycleDay, description: '생리 후 활발한 시기' };
+    } else if (cycleDay >= 14 && cycleDay <= 15) {
+      return { phase: 'ovulation', day: cycleDay, description: '배란기' };
+    } else {
+      return { phase: 'luteal', day: cycleDay, description: 'PMS 시기' };
+    }
+  } catch (error) {
+    console.error('생리주기 계산 오류:', error);
+    return { phase: 'normal', day: 1, description: '정상' };
+  }
+}
 
 function isMoodQuestion(userMessage) {
     const lowerMessage = userMessage.toLowerCase();
@@ -61,33 +165,51 @@ function isGreeting(userMessage) {
 function getMoodResponse() {
     const moodState = ultimateContext.getMoodState();
     const currentMood = moodState.currentMood;
-    const isPeriodActive = moodState.isPeriodActive;
-    let response;
+    const menstrualPhase = getCurrentMenstrualPhase();
     
-    if (isPeriodActive) {
-        const periodResponses = [
-            "아저씨... 솔직히 말하면 오늘 좀 예민해 ㅠㅠ 그날이라서 기분이 오락가락해...",
-            "음... 컨디션이 별로야. 몸도 좀 아프고 기분도 우울하네 ㅠㅠ",
-            "아저씨, 나 오늘 좀 힘들어... 그날이라서 기분이 엉망이야 ㅠㅠ",
-        ];
-        response = periodResponses[Math.floor(Math.random() * periodResponses.length)];
-    } else if (MOOD_DETAILS[currentMood]) {
+    // 생리주기별 응답 우선 처리 (70% 확률)
+    if (Math.random() < 0.7 && MENSTRUAL_MOOD_RESPONSES[menstrualPhase.phase]) {
+        const responses = MENSTRUAL_MOOD_RESPONSES[menstrualPhase.phase];
+        const response = responses[Math.floor(Math.random() * responses.length)];
+        console.log(`[moodManager] 생리주기 응답 (${menstrualPhase.description}): ${response}`);
+        return response;
+    }
+    
+    // 기본 기분 응답 (30% 확률)
+    let response;
+    if (MOOD_DETAILS[currentMood]) {
         response = MOOD_DETAILS[currentMood][Math.floor(Math.random() * MOOD_DETAILS[currentMood].length)];
     } else {
         response = `지금 기분은 ${currentMood}이야! 아저씨는 어때?`;
     }
+    
+    console.log(`[moodManager] 기본 기분 응답 (${currentMood}): ${response}`);
     return response;
 }
 
 function getGreetingResponse() {
     const { currentMood } = ultimateContext.getMoodState();
+    const menstrualPhase = getCurrentMenstrualPhase();
+    
+    // 30% 확률로 생리주기 상태 포함
     if (Math.random() < 0.3) {
+        const greetingWithCycle = [
+            `안녕 아저씨! 나 지금 ${menstrualPhase.description}라서 ${menstrualPhase.phase === 'period' ? '좀 힘들어' : menstrualPhase.phase === 'ovulation' ? '감정이 풍부해' : menstrualPhase.phase === 'luteal' ? '예민해' : '컨디션 좋아'}~`,
+            `아저씨 안녕! 오늘은 ${menstrualPhase.description}인데 ${menstrualPhase.phase === 'period' ? '아저씨가 달래줘' : '기분이 어때?'}`,
+        ];
+        return greetingWithCycle[Math.floor(Math.random() * greetingWithCycle.length)];
+    }
+    
+    // 40% 확률로 기분 포함
+    if (Math.random() < 0.4) {
         const greetingWithMood = [
             `안녕 아저씨! 나 지금 기분이 ${currentMood}이야~`,
             `아저씨 안녕! 오늘 컨디션은 ${currentMood} 느낌이야`,
         ];
         return greetingWithMood[Math.floor(Math.random() * greetingWithMood.length)];
     }
+    
+    // 30% 확률로 일반 인사
     const normalGreetings = [
         '안녕 아저씨!',
         '아저씨 안녕!',
@@ -111,21 +233,40 @@ function handleMoodQuery(userMessage) {
 
 function getMoodEmoji() {
     const { currentMood } = ultimateContext.getMoodState();
+    const menstrualPhase = getCurrentMenstrualPhase();
+    
+    // 생리주기별 이모지 우선 반환 (50% 확률)
+    if (Math.random() < 0.5) {
+        const cycleEmojis = {
+            'period': '😣',     // 생리 - 아픔
+            'follicular': '😊', // 활발한 시기 - 밝음
+            'ovulation': '🥰',  // 배란기 - 사랑스러움
+            'luteal': '😤'      // PMS - 예민함
+        };
+        return cycleEmojis[menstrualPhase.phase] || '😊';
+    }
+    
+    // 기본 기분 이모지
     return MOOD_EMOJIS[currentMood] || '😊';
 }
 
 function getMoodPromptForAI() {
-    const { currentMood, isPeriodActive } = ultimateContext.getMoodState();
+    const { currentMood } = ultimateContext.getMoodState();
+    const menstrualPhase = getCurrentMenstrualPhase();
+    
+    // 생리주기별 AI 프롬프트 우선 적용 (80% 확률)
+    if (Math.random() < 0.8 && MENSTRUAL_AI_PROMPTS[menstrualPhase.phase]) {
+        const prompts = MENSTRUAL_AI_PROMPTS[menstrualPhase.phase];
+        const prompt = prompts[Math.floor(Math.random() * prompts.length)];
+        console.log(`[moodManager] 생리주기 AI 프롬프트 적용 (${menstrualPhase.description})`);
+        return prompt;
+    }
+    
+    // 기본 기분별 프롬프트 (20% 확률)
     let moodPrompt = "";
-
-    if (isPeriodActive) {
-        const periodMoods = [
-            "오늘은 왠지 모르게 좀 짜증이 나... 아저씨가 날 좀 달래줘야 할 것 같아. 살짝 날카롭고 예민한 말투로 대화해줘.",
-            "나 오늘 좀 울적해... 아저씨가 나를 꼭 안아줬으면 좋겠어. 살짝 슬프고 우울한 말투로 대화해줘.",
-        ];
-        moodPrompt = periodMoods[Math.floor(Math.random() * periodMoods.length)];
-    } else if (MOOD_DETAILS[currentMood]) {
+    if (MOOD_DETAILS[currentMood]) {
         moodPrompt = MOOD_DETAILS[currentMood][Math.floor(Math.random() * MOOD_DETAILS[currentMood].length)];
+        console.log(`[moodManager] 기본 기분 AI 프롬프트 적용 (${currentMood})`);
     }
     return moodPrompt;
 }
@@ -146,11 +287,29 @@ function setPeriodActive(active) {
     console.log(`[moodManager] 생리 상태 강제 설정: ${oldState} → ${active}`);
 }
 
+// 생리주기 정보 조회 함수 추가
+function getMenstrualInfo() {
+    const phase = getCurrentMenstrualPhase();
+    const today = moment.tz('Asia/Tokyo');
+    const nextPeriod = moment.tz('2025-07-24', 'Asia/Tokyo');
+    const daysUntil = nextPeriod.diff(today, 'days');
+    
+    return {
+        currentPhase: phase.phase,
+        description: phase.description,
+        cycleDay: phase.day,
+        daysUntilPeriod: daysUntil,
+        nextPeriodDate: nextPeriod.format('MM월 DD일'),
+        isPreMenstrual: daysUntil <= 3
+    };
+}
 
 module.exports = {
     handleMoodQuery,
     getMoodPromptForAI,
     getMoodEmoji,
-    setMood, // 테스트 및 외부 제어용
-    setPeriodActive, // 테스트 및 외부 제어용
+    setMood,
+    setPeriodActive,
+    getCurrentMenstrualPhase,  // 추가
+    getMenstrualInfo,          // 추가
 };
