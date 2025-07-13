@@ -132,5 +132,4 @@ async function handleUserResponse() {
 module.exports = {
     checkAndSendSulkyMessage,
     handleUserResponse,
-     getSulkinessState,
 };
