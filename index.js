@@ -1,5 +1,5 @@
 // ============================================================================
-// index.js - v11.3 (중복 제거 최종본)
+// index.js - v11.4 (최종 수정본)
 // ✅ 모든 모듈을 최종적으로 조율하고, 안정적인 실행을 보장합니다.
 // ============================================================================
 
@@ -17,10 +17,11 @@ const conversationContext = require('./src/ultimateConversationContext.js');
 const emotionalContext = require('./src/emotionalContextManager.js');
 const sulkyManager = require('./src/sulkyManager');
 const { startAllSchedulers } = require('./src/scheduler');
-const { startSpontaneousPhotoScheduler } = require('./src/spontaneousPhotoScheduler');
+// ✅ [수정] 파일 이름과 경로를 올바르게 수정합니다.
+const { startSpontaneousPhotoScheduler } = require('./src/spontaneousPhotoManager.js'); 
 require('./src/emotionalScheduler.js');
 const { initializeDamta } = require('./src/damta');
-// ✅ [수정] memoryManager에서 recoverData를 가져오지 않습니다. 이 파일에 직접 정의합니다.
+// ✅ [수정] memoryManager에서는 recoverData를 가져오지 않고, 이 파일에 직접 정의된 것을 사용합니다.
 const { ensureMemoryTablesAndDirectory } = require('./src/memoryManager.js');
 
 // ------------------- Express 및 LINE 클라이언트 설정 -------------------
@@ -176,7 +177,7 @@ async function recoverData() {
 
 
 // ------------------- 서버 및 웹훅 설정 -------------------
-app.get('/', (_, res) => res.send('나 v11.3 살아있어! (최종 에러 해결)'));
+app.get('/', (_, res) => res.send('나 v11.4 살아있어! (최종 경로 수정)'));
 
 app.post('/webhook', middleware(config), async (req, res) => {
     try {
@@ -248,11 +249,11 @@ async function sendReply(replyToken, botResponse) {
 // ------------------- 시스템 초기화 함수 -------------------
 async function initMuku() {
     try {
-        console.log('🚀 나 v11.3 시스템 초기화를 시작합니다...');
+        console.log('🚀 나 v11.4 시스템 초기화를 시작합니다...');
         
         console.log('  [1/6] 💾 데이터 복구 및 디렉토리 확인...');
         await ensureMemoryTablesAndDirectory();
-        await recoverData(); // 이 파일에 직접 정의된 함수를 호출
+        await recoverData();
         console.log('  ✅ 데이터 복구 완료');
 
         console.log('  [2/6] 💖 감정 시스템 초기화...');
@@ -260,6 +261,7 @@ async function initMuku() {
         console.log('  ✅ 감정 시스템 초기화 완료');
 
         console.log('  [3/6] 💬 대화 컨텍스트 초기화...');
+        // ✅ [수정] ultimateConversationContext.js에 initialize 함수가 없으므로 호출을 제거합니다.
         console.log('  ✅ 대화 컨텍스트는 자동으로 초기화됩니다.');
 
         console.log('  [4/6] 🚬 담타 시스템 초기화...');
@@ -293,7 +295,7 @@ async function initMuku() {
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
     console.log(`\n==================================================`);
-    console.log(`  나 v11.3 서버가 포트 ${PORT}에서 시작되었습니다.`);
+    console.log(`  나 v11.4 서버가 포트 ${PORT}에서 시작되었습니다.`);
     console.log(`==================================================\n`);
     initMuku();
 });
