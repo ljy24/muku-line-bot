@@ -43,6 +43,16 @@ async function handleTextMessage(event) {
     const text = event.message.text.trim(); 
     saveLog('아저씨', text); 
     conversationContext.addUltimateMessage('아저씨', text); 
+
+    // ⭐️ 기억 자동 저장 분기 ⭐️
+    if (
+        text.includes("기억해") ||
+        text.includes("암기해") ||
+        /(내가|나는).*(좋아하는|싫어하는|제일|잘하는|무서워하는)/.test(text)
+    ) {
+        await conversationContext.addUserMemory(text);
+        console.log('[기억 저장] addUserMemory 호출:', text);
+    }
     
     const sulkyReliefMessage = await sulkyManager.handleUserResponse(); 
     if (sulkyReliefMessage) { 
