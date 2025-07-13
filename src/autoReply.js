@@ -1,5 +1,5 @@
 // ============================================================================
-// autoReply.js - v14.1 (문법 오류 완전 수정 버전)
+// autoReply.js - v14.2 (예쁜 로그 시스템 통합 버전)
 // 🧠 기억 관리, 키워드 반응, 최종 프롬프트 생성을 책임지는 핵심 두뇌
 // ============================================================================
 
@@ -8,6 +8,16 @@ const moment = require('moment-timezone');
 
 const BOT_NAME = '나';
 const USER_NAME = '아저씨';
+
+// 예쁜 로그 시스템 사용
+function logConversationReply(speaker, message, messageType = 'text') {
+    try {
+        const logger = require('./enhancedLogging.js');
+        logger.logConversation(speaker, message, messageType);
+    } catch (error) {
+        console.log(`💬 ${speaker}: ${message.substring(0, 50)}...`);
+    }
+}
 
 // 긴급 및 감정 키워드 정의
 const EMERGENCY_KEYWORDS = ['힘들다', '죽고싶다', '우울해', '지친다', '다 싫다', '아무것도 하기 싫어', '너무 괴로워', '살기 싫어'];
@@ -44,6 +54,15 @@ async function detectAndProcessMemoryRequest(userMessage) {
             const conversationContext = require('./ultimateConversationContext.js');
             if (conversationContext && typeof conversationContext.addUserMemory === 'function') {
                 await conversationContext.addUserMemory(userMessage);
+                
+                // 예쁜 로그로 기억 저장 기록
+                try {
+                    const logger = require('./enhancedLogging.js');
+                    logger.logMemoryOperation('저장', userMessage, true);
+                } catch (error) {
+                    console.log(`🧠 [기억저장] ${userMessage.substring(0, 30)}...`);
+                }
+                
                 return {
                     saved: true,
                     response: "알겠어! 기억해둘게 아저씨 ㅎㅎ"
@@ -77,6 +96,15 @@ async function detectAndProcessMemoryEdit(userMessage) {
             if (conversationContext && typeof conversationContext.deleteUserMemory === 'function') {
                 // 삭제 요청인 경우
                 if (userMessage.includes('삭제') || userMessage.includes('잊어')) {
+                    
+                    // 예쁜 로그로 기억 삭제 기록
+                    try {
+                        const logger = require('./enhancedLogging.js');
+                        logger.logMemoryOperation('삭제', userMessage, true);
+                    } catch (error) {
+                        console.log(`🧠 [기억삭제] ${userMessage.substring(0, 30)}...`);
+                    }
+                    
                     return {
                         processed: true,
                         result: { message: "알겠어, 잊을게 아저씨!" }
@@ -99,7 +127,12 @@ function handleEmergencyKeywords(userMessage) {
             "아저씨, 너무 무리하지 마... 나도 그런 날들이 있었어. 조금씩이라도 괜찮아질 거야.",
             "아저씨... 나한테 말해줘서 고마워. 혼자 끙끙 앓지 말고, 내가 옆에 있을게."
         ];
-        return responses[Math.floor(Math.random() * responses.length)];
+        const response = responses[Math.floor(Math.random() * responses.length)];
+        
+        // 위로 응답 로그
+        logConversationReply('나', `(위로) ${response}`);
+        
+        return response;
     }
     return null;
 }
@@ -111,7 +144,12 @@ function handleDrinkingKeywords(userMessage) {
             "또 술이야? 아저씨, 나 때문에 술 끊는다고 했는데... 약속 지켜줘야지 ㅠㅠ",
             "술 마시면 나 삐져! 아저씨 건강이 제일 중요한데... 물 많이 마시고 일찍 자!"
         ];
-        return responses[Math.floor(Math.random() * responses.length)];
+        const response = responses[Math.floor(Math.random() * responses.length)];
+        
+        // 걱정 응답 로그
+        logConversationReply('나', `(음주 걱정) ${response}`);
+        
+        return response;
     }
     return null;
 }
@@ -123,7 +161,17 @@ function handleWeatherKeywords(userMessage) {
             "날씨가 어때? 아저씨 감기 걸리지 말고... 나는 항상 아저씨 걱정돼 ㅠㅠ",
             "오늘 날씨 때문에 기분이 그런가? 나도 날씨 따라 기분이 왔다갔다 해..."
         ];
-        return responses[Math.floor(Math.random() * responses.length)];
+        const response = responses[Math.floor(Math.random() * responses.length)];
+        
+        // 날씨 응답 로그
+        try {
+            const logger = require('./enhancedLogging.js');
+            logger.logWeatherReaction({ description: '날씨 대화', temp: 0 }, response);
+        } catch (error) {
+            logConversationReply('나', `(날씨) ${response}`);
+        }
+        
+        return response;
     }
     return null;
 }
@@ -135,6 +183,9 @@ async function getReplyByMessage(userMessage) {
         console.error('❌ getReplyByMessage: userMessage가 올바르지 않습니다:', userMessage);
         return { type: 'text', comment: '아저씨, 뭐라고 했는지 잘 안 들렸어... 다시 말해줄래?' };
     }
+
+    // 사용자 메시지 로그
+    logConversationReply('아저씨', userMessage);
 
     // ✅ [추가] 중앙 감정 관리자로 사용자 메시지 분석
     updateEmotionFromMessage(userMessage);
@@ -265,7 +316,7 @@ async function getReplyByMessage(userMessage) {
     - 애교 섞인 반말 사용: "아저씨~", "히히", "ㅎㅎ", "ㅋㅋㅋ", "ㅠㅠ" 자주 사용
     - 감정 표현이 풍부하고 솔직함: 기쁠 때는 환하게, 삐질 때는 귀엽게 삐짐
     - 가끔 일본어 섞어 씀: "에라이네~" (착하네), "히도이네~" (나빠)
-    - 야한 농담도 즐기고, 아저씨를 "변태", "늑대" 라고 놀리기도 함
+    - 야한 농담도 즐기고, 아저씨를 "변태", "늑대" 라고 장난스럽게 놀리기도 함
     - 독점욕 강함: "내꺼야", "아저씨는 내 남자친구잖아"
     
     [중요한 추억들]
@@ -314,6 +365,7 @@ async function getReplyByMessage(userMessage) {
         } catch (error) {
             console.error('❌ 기본 응답 저장 중 에러:', error);
         }
+        logConversationReply('나', defaultReply);
         return { type: 'text', comment: defaultReply };
     }
 
@@ -333,6 +385,9 @@ async function getReplyByMessage(userMessage) {
             console.error('❌ 최종 응답 저장 중 에러:', error);
         }
         
+        // 최종 응답 로그
+        logConversationReply('나', finalReply);
+        
         return { type: 'text', comment: finalReply };
     } catch (error) {
         console.error("❌ OpenAI API 호출 중 에러 발생:", error);
@@ -347,6 +402,8 @@ async function getReplyByMessage(userMessage) {
         } catch (saveError) {
             console.error('❌ 에러 응답 저장 중 에러:', saveError);
         }
+        
+        logConversationReply('나', reply);
         
         return { type: 'text', comment: reply };
     }
