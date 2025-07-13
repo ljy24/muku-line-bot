@@ -8,11 +8,14 @@ const path = require('path');
 const { default: axios } = require('axios');
 require('dotenv').config();
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY }); // 오타 수정: OPENAI_APsaI_KEY -> OPENAI_API_KEY
 const weatherApiKey = process.env.OPENWEATHER_API_KEY;
 
-const MEMORY_DIR = path.join(process.cwd(), 'memory');
-const LOGS_DIR = path.join(process.cwd(), 'logs');
+// ⭐️ 변경된 부분: MEMORY_DIR을 /data/memory로 설정 ⭐️
+const MEMORY_DIR = path.join('/data', 'memory'); // 변경!
+const LOGS_DIR = path.join(process.cwd(), 'logs'); // 로그는 기존 위치 유지 (필요시 /data/logs로 변경 가능)
+
+// MEMORY_DIR을 기준으로 모든 파일 경로가 재설정됩니다.
 const FIXED_MEMORIES_FILE = path.join(MEMORY_DIR, 'fixedMemories.json');
 const LOVE_HISTORY_FILE = path.join(MEMORY_DIR, 'love-history.json');
 const YEJIN_MEMORY_FILE = path.join(MEMORY_DIR, 'yejin_memory.json');
@@ -21,7 +24,9 @@ const ACTION_URGES_FILE = path.join(MEMORY_DIR, 'actionUrges.json');
 const USER_PATTERNS_FILE = path.join(MEMORY_DIR, 'user_patterns.json');
 const MEMORY_SUMMARIES_FILE = path.join(MEMORY_DIR, 'memory_summaries.json');
 const USER_PROFILE_FILE = path.join(MEMORY_DIR, 'user_profile.json');
-const MEMORY_LOGS_FILE = path.join(LOGS_DIR, 'memoryOperations.log');
+const MEMORY_LOGS_FILE = path.join(LOGS_DIR, 'memoryOperations.log'); // 로그 파일 경로는 LOGS_DIR 참조
+
+// ... (나머지 코드는 그대로 둡니다) ...
 
 const EMOTION_TYPES = { HAPPY: { types: ['happiness'], intensity: 30, residue: 20, recoveryRate: 3 }, EXCITED: { types: ['happiness'], intensity: 50, residue: 15, recoveryRate: 2.5 }, LOVED: { types: ['love'], intensity: 40, residue: 30, recoveryRate: 1 }, SAD: { types: ['sadness'], intensity: 40, residue: 35, recoveryRate: 2 }, HURT: { types: ['hurt'], intensity: 60, residue: 50, recoveryRate: 4 }, ANXIOUS: { types: ['anxiety'], intensity: 45, residue: 40, recoveryRate: 3.5 }, LONELY: { types: ['longing'], intensity: 35, residue: 45, recoveryRate: 2.5 }, BITTERSWEET: { types: ['sadness', 'love'], intensity: 30, residue: 25, recoveryRate: 2 }, WORRIED_LOVE: { types: ['anxiety', 'love'], intensity: 40, residue: 30, recoveryRate: 2.5 } };
 const TONE_STATES = { normal: "평소처럼 자연스럽고 애정이 담긴 말투", quiet: "조용하고 차분하며 그리움이 묻어나는 말투", playful: "장난스럽고 활발하며 밝은 말투", hurt: "상처받고 서운함이 느껴지는 말투", anxious: "불안하고 걱정스러우며 망설이는 말투" };
