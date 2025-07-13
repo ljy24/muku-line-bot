@@ -5,8 +5,9 @@
 
 const axios = require('axios');
 // ✅ [수정] 중앙 기억 서랍으로 가는 올바른 주소로 변경합니다.
+
+const { callOpenAI, cleanReply } = require('../src/aiUtils');
 const conversationContext = require('../src/ultimateConversationContext.js');
-const emotionalContext = require('../src/emotionalContextManager.js');
 
 // 컨셉 사진이 저장된 웹 서버의 기본 URL (HTTPS 필수)
 const BASE_CONCEPT_URL = 'https://photo.de-ji.net/photo/concept/';
