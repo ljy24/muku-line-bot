@@ -357,16 +357,51 @@ async function getConceptPhotoReply(userMessage, conversationContextParam) {
         emotionalState = 'normal';
     }
 
-    // 간단한 캡션 생성
-    const simpleCaptions = [
-        `${formattedDate} 컨셉 사진이야! 어때?`,
-        `이거 ${formattedDate}에 찍은 건데... 예쁘지?`,
-        `아저씨 보여주려고 가져온 ${formattedDate} 사진!`,
-        `${formattedDate} 추억 사진~ 그때 생각나?`,
-        `이 사진 봐봐! ${formattedDate}에 찍은 거야!`
-    ];
-    
-    const caption = simpleCaptions[Math.floor(Math.random() * simpleCaptions.length)];
+    // ✅ [추가] concept-index.json에서 해당 사진의 에피소드 가져오기
+    let personalMemory = null;
+    try {
+        const conceptIndex = require('./concept-index.json');
+        
+        // 폴더명을 concept-index.json의 키 형식과 매칭
+        const dateKey = formattedDate.replace(/년|월|일/g, '').replace(/\s+/g, '_');
+        for (const [key, value] of Object.entries(conceptIndex)) {
+            if (key.includes(dateKey) || selectedFolder.includes(key.replace(/\s/g, '_'))) {
+                personalMemory = value;
+                break;
+            }
+        }
+    } catch (error) {
+        console.warn('⚠️ [concept] concept-index.json을 읽을 수 없습니다:', error.message);
+    }
+
+    // 개인적인 에피소드가 있으면 사용, 없으면 기본 캡션
+    let caption;
+    if (personalMemory) {
+        // 감정 상태에 따라 mood나 episode 선택
+        if (emotionalState === 'romantic' || emotionalState === 'loving') {
+            caption = personalMemory.episode || personalMemory.mood;
+        } else if (emotionalState === 'sad' || emotionalState === 'sensitive') {
+            caption = personalMemory.mood || personalMemory.episode;
+        } else {
+            // 랜덤하게 mood나 episode 선택
+            caption = Math.random() < 0.5 ? personalMemory.mood : personalMemory.episode;
+        }
+        
+        // 너무 길면 줄이기
+        if (caption && caption.length > 100) {
+            caption = caption.substring(0, 97) + '...';
+        }
+    } else {
+        // 기본 캡션
+        const simpleCaptions = [
+            `${formattedDate} 컨셉 사진이야! 어때?`,
+            `이거 ${formattedDate}에 찍은 건데... 예쁘지?`,
+            `아저씨 보여주려고 가져온 ${formattedDate} 사진!`,
+            `${formattedDate} 추억 사진~ 그때 생각나?`,
+            `이 사진 봐봐! ${formattedDate}에 찍은 거야!`
+        ];
+        caption = simpleCaptions[Math.floor(Math.random() * simpleCaptions.length)];
+    }
     
     return { 
         type: 'image', 
