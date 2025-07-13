@@ -437,8 +437,8 @@ async function initializeEmotionalSystems() {
         const fixedMemories = await readJsonFile(FIXED_MEMORIES_FILE, []);
         const loveHistory = await readJsonFile(LOVE_HISTORY_FILE, { categories: { general: [] }, specialDates: [] });
 
-        // love_history 일반 대화 내용만 추출
-        const loveGeneralContents = loveHistory.categories.general.map(item => item.content);
+        // love_history 일반 대화 내용만 추출 (안전하게 처리)
+        const loveGeneralContents = (loveHistory.categories?.general ?? []).map(item => item.content);
 
         // 두 배열 병합 후 중복 제거
         const combinedFixedMemories = [...fixedMemories, ...loveGeneralContents];
