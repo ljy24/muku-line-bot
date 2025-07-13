@@ -77,7 +77,6 @@ async function getDrinkingConcernResponse(userMessage) { const prompt = `너는 
 async function getWeatherInfo() { if (!weatherApiKey) { console.log('[Weather] ⚠️ OpenWeatherMap API 키가 .env 파일에 설정되지 않았습니다.'); return null; } const lat = 33.8833; const lon = 130.8833; const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&appid=${weatherApiKey}&units=metric&lang=kr`; try { const response = await axios.get(url); const weatherData = response.data; const result = { city: "Kitakyushu", description: weatherData.weather[0].description, temp: Math.round(weatherData.main.temp), feels_like: Math.round(weatherData.main.feels_like), humidity: weatherData.main.humidity, }; console.log('[Weather] ✅ 날씨 정보 조회 성공:', result); return result; } catch (error) { console.error('[Weather] ❌ 날씨 정보 조회 실패:', error.response ? error.response.data.message : error.message); return null; } }
 
 
-
 // ==================== 태그 추출 함수 ====================
 function extractTags(content) {
     if (typeof content !== 'string') return [];
@@ -158,7 +157,7 @@ async function deleteUserMemory(content) {
     }
 }
 
-// ==================== 기억 수정 함수 추가 ====================
+// ==================== 기억 수정 함수 ====================
 async function updateUserMemory(id, newContent) {
     try {
         if (typeof newContent !== 'string' || newContent.trim().length === 0) {
@@ -216,6 +215,7 @@ function searchFixedMemory(userMessage) {
 
     return bestMatch;
 }
+
 
 
 // ==================== ✅ undefined 문제 해결 함수들 ====================
