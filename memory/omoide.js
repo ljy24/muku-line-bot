@@ -2,6 +2,8 @@
 // [오류 수정] aiUtils.js에서 공용 함수를 가져오도록 변경
 
 const { callOpenAI, cleanReply } = require('../src/aiUtils');
+const conversationContext = require('../src/ultimateConversationContext.js');
+const emotionalContext = require('../src/emotionalContextManager.js');
 
 const OMODE_FOLDERS = {
     "추억_24_03_일본": 207,
