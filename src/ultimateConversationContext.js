@@ -102,6 +102,31 @@ async function addUserMemory(content) {
     return true;
 }
 
+// ==================== 기억 검색 함수 추가 (복붙!) ====================
+function searchFixedMemory(userMessage) {
+    const lowerMessage = userMessage.toLowerCase();
+    const allMemories = [
+        ...(ultimateConversationState.knowledgeBase.facts?.map(f => f.fact) || []),
+        ...(ultimateConversationState.knowledgeBase.fixedMemories || []),
+        ...(ultimateConversationState.knowledgeBase.yejinMemories?.map(item => item.content) || []),
+        ...(ultimateConversationState.knowledgeBase.loveHistory.categories?.general?.map(item => item.content) || [])
+    ];
+    let bestMatch = null, maxScore = 0;
+    for (const memory of allMemories) {
+        if (!memory) continue;
+        const lowerMemory = memory.toLowerCase();
+        if (lowerMemory.includes(lowerMessage)) {
+            const score = lowerMessage.length / lowerMemory.length;
+            if (score > maxScore) {
+                maxScore = score;
+                bestMatch = memory;
+            }
+        }
+    }
+    return bestMatch;
+}
+
+
 // ==================== ✅ undefined 문제 해결 함수들 ====================
 
 // 1. 안전한 감정 데이터 접근 헬퍼 함수들
