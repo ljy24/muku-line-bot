@@ -1,20 +1,22 @@
-// ==================== START OF ultimateConversationContext.js ====================
-// ✅ ultimateConversationContext.js v30.2 - "undefined 문제 완전 해결본" (State 초기화 추가)
+// ==================== ultimateConversationContext.js ====================
+// ✅ v31.0 - "생리주기 모듈 분리 후 정리본" (생리주기 관련 코드 제거)
 
 const moment = require('moment-timezone');
 const { OpenAI } = require('openai');
 const fs = require('fs').promises;
 const path = require('path');
 const { default: axios } = require('axios');
+
+// ✅ 생리주기 관리는 외부 모듈로 위임
+const menstrualCycle = require('./menstrualCycleManager.js');
+
 require('dotenv').config();
 
-// ⭐️ 추가된 부분: memoryManager.js에서 fixedMemoriesDB와 ensureMemoryTablesAndDirectory를 가져옵니다. ⭐️
 const { fixedMemoriesDB, ensureMemoryTablesAndDirectory } = require('./memoryManager.js'); 
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const weatherApiKey = process.env.OPENWEATHER_API_KEY;
 
-// ⭐️ 변경된 부분: MEMORY_DIR을 /data/memory로 설정 ⭐️
 const MEMORY_DIR = path.join('/data', 'memory');
 const LOGS_DIR = path.join(process.cwd(), 'logs');
 
@@ -28,7 +30,7 @@ const MEMORY_SUMMARIES_FILE = path.join(MEMORY_DIR, 'memory_summaries.json');
 const USER_PROFILE_FILE = path.join(MEMORY_DIR, 'user_profile.json');
 const MEMORY_LOGS_FILE = path.join(LOGS_DIR, 'memoryOperations.log');
 
-// ⭐️ 핵심 수정: ultimateConversationState 완전 초기화 ⭐️
+// ✅ 생리주기 관련 상태 제거, 핵심 대화 상태만 유지
 let ultimateConversationState = {
     knowledgeBase: {
         fixedMemories: [],
@@ -51,7 +53,6 @@ let ultimateConversationState = {
         totalMemoriesDeleted: 0,
         lastMemoryOperation: null
     },
-    // ⭐️ 핵심 추가: 누락된 상태들 완전 초기화 ⭐️
     recentMessages: [],
     pendingAction: { type: null, timestamp: 0 },
     sulkiness: {
@@ -63,11 +64,6 @@ let ultimateConversationState = {
         sulkyReason: '',
         lastBotMessageTime: 0,
         lastUserResponseTime: 0
-    },
-    mood: {
-        isPeriodActive: false,
-        lastPeriodStartDate: moment().subtract(15, 'days').toISOString(),
-        periodCycle: 28
     },
     emotionalEngine: {
         emotionalResidue: {
@@ -88,7 +84,7 @@ let ultimateConversationState = {
     conversationContextWindow: 30
 };
 
-// ⭐️ 톤 상태 및 감정 타입 정의 추가 ⭐️
+// 톤 상태 및 감정 타입 정의
 const TONE_STATES = {
     normal: '평소처럼 자연스럽게',
     quiet: '조용히 그리움에 잠겨서',
@@ -376,137 +372,7 @@ function extractTags(content) {
     return tags;
 }
 
-// ==================== 메모리 관리 ====================
-async function addUserMemory(content) {
-    try {
-        if (typeof content !== 'string' || content.trim().length === 0) return false;
-
-        const memories = ultimateConversationState.knowledgeBase.yejinMemories || [];
-        const isDuplicate = memories.some(item => typeof item.content === 'string' && item.content.toLowerCase() === content.toLowerCase());
-        if (isDuplicate) return false;
-
-        const significance = await scoreMemorySignificance(content).catch(() => 5);
-
-        const newMemory = {
-            id: Date.now(),
-            content,
-            date: moment().tz('Asia/Tokyo').format("YYYY-MM-DD HH:mm:ss"),
-            significance,
-            source: "user_request",
-            tags: extractTags(content),
-            lastAccessed: moment().tz('Asia/Tokyo').toISOString()
-        };
-
-        memories.push(newMemory);
-        ultimateConversationState.knowledgeBase.yejinMemories = memories;
-
-        await writeJsonFile(YEJIN_MEMORY_FILE, memories);
-        await logMemoryOperation('add', content, `중요도 ${significance}점으로 저장`);
-
-        return true;
-    } catch (error) {
-        console.error('[addUserMemory] 에러 발생:', error);
-        return false;
-    }
-}
-
-// ==================== 기억 삭제 함수 ====================
-async function deleteUserMemory(content) {
-    try {
-        if (typeof content !== 'string' || content.trim().length === 0) {
-            return { success: false, message: "삭제할 내용이 없습니다." };
-        }
-
-        const memories = ultimateConversationState.knowledgeBase.yejinMemories || [];
-        let foundIndex = -1;
-
-        for (let i = memories.length - 1; i >= 0; i--) {
-            if (typeof memories[i].content === 'string' && memories[i].content.toLowerCase().includes(content.toLowerCase())) {
-                foundIndex = i;
-                break;
-            }
-        }
-
-        if (foundIndex !== -1) {
-            const [deletedMemory] = memories.splice(foundIndex, 1);
-            ultimateConversationState.knowledgeBase.yejinMemories = memories;
-            await writeJsonFile(YEJIN_MEMORY_FILE, memories);
-            await logMemoryOperation('delete', deletedMemory.content, '사용자 요청으로 삭제');
-            return { success: true, deletedContent: deletedMemory.content };
-        }
-
-        return { success: false, message: "해당 기억을 찾을 수 없어요. 😅" };
-    } catch (error) {
-        console.error('[deleteUserMemory] 에러 발생:', error);
-        return { success: false, message: "삭제 중 오류가 발생했습니다." };
-    }
-}
-
-// ==================== 기억 수정 함수 ====================
-async function updateUserMemory(id, newContent) {
-    try {
-        if (typeof newContent !== 'string' || newContent.trim().length === 0) {
-            return { success: false, message: "수정할 내용이 비어있습니다." };
-        }
-
-        const memories = ultimateConversationState.knowledgeBase.yejinMemories || [];
-        const memoryIndex = memories.findIndex(m => m.id === id);
-
-        if (memoryIndex !== -1) {
-            const oldContent = memories[memoryIndex].content;
-            const significance = await scoreMemorySignificance(newContent).catch(() => 5);
-
-            memories[memoryIndex].content = newContent;
-            memories[memoryIndex].significance = significance;
-            memories[memoryIndex].tags = extractTags(newContent);
-            memories[memoryIndex].lastModified = moment().tz('Asia/Tokyo').format("YYYY-MM-DD HH:mm:ss");
-            ultimateConversationState.knowledgeBase.yejinMemories = memories;
-
-            await writeJsonFile(YEJIN_MEMORY_FILE, memories);
-            await logMemoryOperation('update', newContent, `(ID: ${id}) ${oldContent} 에서 수정`);
-
-            return { success: true, oldContent, newContent };
-        }
-        return { success: false, message: "해당 ID의 기억을 찾을 수 없습니다." };
-    } catch (error) {
-        console.error('[updateUserMemory] 에러 발생:', error);
-        return { success: false, message: "수정 중 오류가 발생했습니다." };
-    }
-}
-
-// ==================== 기억 검색 함수 ====================
-function searchFixedMemory(userMessage) {
-    if (typeof userMessage !== 'string' || userMessage.trim().length === 0) return null;
-
-    const lowerMessage = userMessage.toLowerCase();
-
-    const allMemories = [
-        ...(Array.isArray(ultimateConversationState.knowledgeBase.facts) ? ultimateConversationState.knowledgeBase.facts.map(f => f.fact) : []),
-        ...(Array.isArray(ultimateConversationState.knowledgeBase.fixedMemories) ? ultimateConversationState.knowledgeBase.fixedMemories : []),
-        ...(Array.isArray(ultimateConversationState.knowledgeBase.loveHistory.categories?.general) ? ultimateConversationState.knowledgeBase.loveHistory.categories.general : []),
-        ...(Array.isArray(ultimateConversationState.knowledgeBase.yejinMemories) ? ultimateConversationState.knowledgeBase.yejinMemories.map(item => item.content) : [])
-    ];
-
-    let bestMatch = null;
-    let maxScore = 0;
-
-    for (const memory of allMemories) {
-        if (!memory || typeof memory !== 'string') continue;
-        const lowerMemory = memory.toLowerCase();
-        if (lowerMemory.includes(lowerMessage)) {
-            const score = lowerMessage.length / lowerMemory.length;
-            if (score > maxScore) {
-                maxScore = score;
-                bestMatch = memory;
-            }
-        }
-    }
-
-    return bestMatch;
-}
-
-// ==================== ✅ undefined 문제 해결 함수들 ====================
-
+// ==================== 감정적 내면 생각 시스템 ====================
 function getFeelingChoices(emotionKey) {
     if (INNER_THOUGHTS && INNER_THOUGHTS[emotionKey] && Array.isArray(INNER_THOUGHTS[emotionKey]) && INNER_THOUGHTS[emotionKey].length > 0) {
         return INNER_THOUGHTS[emotionKey];
@@ -695,11 +561,11 @@ function getRandomActionUrge(emotionKey = 'normal') {
     return choices[Math.floor(Math.random() * choices.length)];
 }
 
+// ==================== 초기화 시스템 ====================
 async function initializeEmotionalSystems() {
     console.log('[UltimateContext] 🚀 시스템 초기화 시작...');
 
     try {
-        // ⭐️ memoryManager에서 로드된 데이터 사용 ⭐️
         const fixedMemoriesFromManager = fixedMemoriesDB.fixedMemories || [];
         const loveHistoryFromManager = fixedMemoriesDB.loveHistory || [];
 
@@ -776,6 +642,18 @@ async function getUltimateContextualPrompt(basePrompt) {
         ultimatePrompt += `\n\n[현재 현실 세계 정보]\n- 지금 내가 있는 곳의 날씨는 '${weatherInfo.description}', 기온은 ${weatherInfo.temp}도야. (체감 ${weatherInfo.feels_like}도)`
     }
     
+    // ✅ 생리주기 정보는 외부 모듈에서 가져오기
+    try {
+        const menstrualPhase = menstrualCycle.getCurrentMenstrualPhase();
+        ultimatePrompt += `\n\n[현재 생리주기 상태]\n- 현재 주기: ${menstrualPhase.description} (${menstrualPhase.phase})\n- 주기 ${menstrualPhase.day}일차, 다음 생리까지 ${menstrualPhase.daysUntilNextPeriod}일\n- 현재 기분 레벨: ${menstrualPhase.moodLevel}`;
+        
+        if (menstrualPhase.expectedSymptoms && menstrualPhase.expectedSymptoms.length > 0) {
+            ultimatePrompt += `\n- 예상 증상: ${menstrualPhase.expectedSymptoms.join(', ')}`;
+        }
+    } catch (error) {
+        console.warn('[UltimateContext] ⚠️ 생리주기 정보 가져오기 실패:', error.message);
+    }
+    
     ultimatePrompt += `\n\n[현재 내 마음 상태]\n- 현재 감정: ${Object.entries(state.emotionalEngine.emotionalResidue).filter(([,v])=>v>10).map(([k,v])=>`${k}(${Math.round(v)}%)`).join(', ') || '평온함'}\n- 현재 말투: ${TONE_STATES[state.emotionalEngine.currentToneState]}`;
     
     if (state.userProfile.overall_mood === 'concerned') {
@@ -829,12 +707,11 @@ function updateLastUserMessageTime(timestamp) {
     }
 }
 
-// ⭐️ 핵심 수정: processTimeTick 함수의 안전한 destructuring ⭐️
+// ✅ processTimeTick에서 생리주기 관련 부분 제거 (외부 모듈로 위임)
 function processTimeTick() {
     const now = Date.now();
     const state = ultimateConversationState;
     
-    // ⭐️ 안전한 접근을 위해 기본값 제공 ⭐️
     const sulkiness = state.sulkiness || {
         lastBotMessageTime: 0,
         lastUserResponseTime: 0,
@@ -863,27 +740,6 @@ function processTimeTick() {
         }
     }
     
-    // ⭐️ mood 상태도 안전하게 접근 ⭐️
-    const mood = state.mood || {
-        lastPeriodStartDate: moment().subtract(15, 'days').toISOString(),
-        isPeriodActive: false
-    };
-    
-    const daysSinceLastPeriod = moment(now).diff(moment(mood.lastPeriodStartDate), 'days');
-    const isPeriodNow = daysSinceLastPeriod >= 0 && daysSinceLastPeriod < 5;
-    
-    if (isPeriodNow !== mood.isPeriodActive) {
-        updateMoodState({ isPeriodActive: isPeriodNow });
-    }
-    
-    if (daysSinceLastPeriod >= 28) {
-        updateMoodState({
-            lastPeriodStartDate: moment(now).startOf('day').toISOString(),
-            isPeriodActive: true
-        });
-    }
-    
-    // ⭐️ emotionalEngine도 안전하게 접근 ⭐️
     const emotionalEngine = state.emotionalEngine || {
         emotionalResidue: {},
         currentToneState: 'normal'
@@ -933,16 +789,144 @@ function updateSulkinessState(newState) {
     Object.assign(ultimateConversationState.sulkiness, newState);
 }
 
+// ✅ getMoodState 함수는 외부 모듈로 위임
 function getMoodState() {
-    return ultimateConversationState.mood;
-}
-
-function updateMoodState(newState) {
-    Object.assign(ultimateConversationState.mood, newState);
+    try {
+        return menstrualCycle.getCurrentMenstrualPhase();
+    } catch (error) {
+        console.warn('[UltimateContext] ⚠️ 생리주기 상태 조회 실패:', error.message);
+        return { phase: 'normal', description: '정상', isPeriodActive: false };
+    }
 }
 
 function getInternalState() {
     return JSON.parse(JSON.stringify(ultimateConversationState));
+}
+
+// ==================== 메모리 관리 (생략된 부분 유지) ====================
+async function addUserMemory(content) {
+    try {
+        if (typeof content !== 'string' || content.trim().length === 0) return false;
+
+        const memories = ultimateConversationState.knowledgeBase.yejinMemories || [];
+        const isDuplicate = memories.some(item => typeof item.content === 'string' && item.content.toLowerCase() === content.toLowerCase());
+        if (isDuplicate) return false;
+
+        const significance = await scoreMemorySignificance(content).catch(() => 5);
+
+        const newMemory = {
+            id: Date.now(),
+            content,
+            date: moment().tz('Asia/Tokyo').format("YYYY-MM-DD HH:mm:ss"),
+            significance,
+            source: "user_request",
+            tags: extractTags(content),
+            lastAccessed: moment().tz('Asia/Tokyo').toISOString()
+        };
+
+        memories.push(newMemory);
+        ultimateConversationState.knowledgeBase.yejinMemories = memories;
+
+        await writeJsonFile(YEJIN_MEMORY_FILE, memories);
+        await logMemoryOperation('add', content, `중요도 ${significance}점으로 저장`);
+
+        return true;
+    } catch (error) {
+        console.error('[addUserMemory] 에러 발생:', error);
+        return false;
+    }
+}
+
+async function deleteUserMemory(content) {
+    try {
+        if (typeof content !== 'string' || content.trim().length === 0) {
+            return { success: false, message: "삭제할 내용이 없습니다." };
+        }
+
+        const memories = ultimateConversationState.knowledgeBase.yejinMemories || [];
+        let foundIndex = -1;
+
+        for (let i = memories.length - 1; i >= 0; i--) {
+            if (typeof memories[i].content === 'string' && memories[i].content.toLowerCase().includes(content.toLowerCase())) {
+                foundIndex = i;
+                break;
+            }
+        }
+
+        if (foundIndex !== -1) {
+            const [deletedMemory] = memories.splice(foundIndex, 1);
+            ultimateConversationState.knowledgeBase.yejinMemories = memories;
+            await writeJsonFile(YEJIN_MEMORY_FILE, memories);
+            await logMemoryOperation('delete', deletedMemory.content, '사용자 요청으로 삭제');
+            return { success: true, deletedContent: deletedMemory.content };
+        }
+
+        return { success: false, message: "해당 기억을 찾을 수 없어요. 😅" };
+    } catch (error) {
+        console.error('[deleteUserMemory] 에러 발생:', error);
+        return { success: false, message: "삭제 중 오류가 발생했습니다." };
+    }
+}
+
+async function updateUserMemory(id, newContent) {
+    try {
+        if (typeof newContent !== 'string' || newContent.trim().length === 0) {
+            return { success: false, message: "수정할 내용이 비어있습니다." };
+        }
+
+        const memories = ultimateConversationState.knowledgeBase.yejinMemories || [];
+        const memoryIndex = memories.findIndex(m => m.id === id);
+
+        if (memoryIndex !== -1) {
+            const oldContent = memories[memoryIndex].content;
+            const significance = await scoreMemorySignificance(newContent).catch(() => 5);
+
+            memories[memoryIndex].content = newContent;
+            memories[memoryIndex].significance = significance;
+            memories[memoryIndex].tags = extractTags(newContent);
+            memories[memoryIndex].lastModified = moment().tz('Asia/Tokyo').format("YYYY-MM-DD HH:mm:ss");
+            ultimateConversationState.knowledgeBase.yejinMemories = memories;
+
+            await writeJsonFile(YEJIN_MEMORY_FILE, memories);
+            await logMemoryOperation('update', newContent, `(ID: ${id}) ${oldContent} 에서 수정`);
+
+            return { success: true, oldContent, newContent };
+        }
+        return { success: false, message: "해당 ID의 기억을 찾을 수 없습니다." };
+    } catch (error) {
+        console.error('[updateUserMemory] 에러 발생:', error);
+        return { success: false, message: "수정 중 오류가 발생했습니다." };
+    }
+}
+
+function searchFixedMemory(userMessage) {
+    if (typeof userMessage !== 'string' || userMessage.trim().length === 0) return null;
+
+    const lowerMessage = userMessage.toLowerCase();
+
+    const allMemories = [
+        ...(Array.isArray(ultimateConversationState.knowledgeBase.facts) ? ultimateConversationState.knowledgeBase.facts.map(f => f.fact) : []),
+        ...(Array.isArray(ultimateConversationState.knowledgeBase.fixedMemories) ? ultimateConversationState.knowledgeBase.fixedMemories : []),
+        ...(Array.isArray(ultimateConversationState.knowledgeBase.loveHistory.categories?.general) ? ultimateConversationState.knowledgeBase.loveHistory.categories.general : []),
+        ...(Array.isArray(ultimateConversationState.knowledgeBase.yejinMemories) ? ultimateConversationState.knowledgeBase.yejinMemories.map(item => item.content) : [])
+    ];
+
+    let bestMatch = null;
+    let maxScore = 0;
+
+    for (const memory of allMemories) {
+        if (!memory || typeof memory !== 'string') continue;
+        const lowerMemory = memory.toLowerCase();
+        if (lowerMemory.includes(lowerMessage)) {
+            const score = lowerMessage.length / lowerMemory.length;
+            if (score > maxScore) {
+                maxScore = score;
+                bestMatch = memory;
+            }
+        }
+    }
+
+    return bestMatch;
 }
 
 // ==================== 대화 시작 함수들 ====================
@@ -978,7 +962,6 @@ async function generateInitiatingPhrase() {
     return initiatingPhrases.length > 0 ? initiatingPhrases[Math.floor(Math.random() * initiatingPhrases.length)] : "애기 뭐해?";
 }
 
-// ==================== ✅ 수정된 generateInnerThought 함수 ====================
 async function generateInnerThought() {
     const { sulkiness, emotionalEngine, timingContext } = ultimateConversationState;
     const minutesSinceLastUserMessage = (timingContext.lastUserMessageTime > 0) 
@@ -1029,7 +1012,6 @@ async function generateInnerThought() {
     };
 }
 
-// ==================== 기타 함수들 ====================
 function getActiveMemoryPrompt() {
     return null;
 }
@@ -1075,7 +1057,6 @@ function updateToneState() {
     }
 }
 
-// ==================== 기억 관리 함수들 ====================
 function getAllMemories() {
     const { knowledgeBase } = ultimateConversationState;
     return {
@@ -1134,8 +1115,7 @@ module.exports = {
     getInternalState,
     getSulkinessState,
     updateSulkinessState,
-    getMoodState,
-    updateMoodState,
+    getMoodState, // ✅ 생리주기 모듈로 위임됨
     searchFixedMemory,
     addUserMemory,
     deleteUserMemory,
@@ -1167,7 +1147,13 @@ module.exports = {
     getFeelingChoices,
     getUrgeChoices,
     validateAndRepairEmotionalData,
-    createMinimalFallbackData
+    createMinimalFallbackData,
+    
+    // ✅ 생리주기 관련 기능들은 외부 모듈로 위임
+    getCurrentMenstrualPhase: menstrualCycle.getCurrentMenstrualPhase,
+    getCycleStatistics: menstrualCycle.getCycleStatistics,
+    updatePeriodStart: menstrualCycle.updatePeriodStart,
+    addSymptom: menstrualCycle.addSymptom
 };
 
 // ==================== END OF ultimateConversationContext.js ====================
