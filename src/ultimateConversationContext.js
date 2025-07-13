@@ -102,7 +102,26 @@ async function addUserMemory(content) {
     return true;
 }
 
-// ==================== 기억 검색 함수 추가 (복붙!) ====================
+// ==================== 기억 삭제 함수 추가 ====================
+async function deleteUserMemory(content) {
+    const memories = ultimateConversationState.knowledgeBase.yejinMemories;
+    let foundIndex = -1;
+    for (let i = memories.length - 1; i >= 0; i--) {
+        if (memories[i].content.toLowerCase().includes(content.toLowerCase())) {
+            foundIndex = i;
+            break;
+        }
+    }
+    if (foundIndex !== -1) {
+        const [deletedMemory] = memories.splice(foundIndex, 1);
+        await writeJsonFile(YEJIN_MEMORY_FILE, memories);
+        await logMemoryOperation('delete', deletedMemory.content, '사용자 요청으로 삭제');
+        return { success: true, deletedContent: deletedMemory.content };
+    }
+    return { success: false, message: "해당 기억을 찾을 수 없어요. 😅" };
+}
+
+// ==================== 기억 검색 함수 ====================
 function searchFixedMemory(userMessage) {
     const lowerMessage = userMessage.toLowerCase();
     const allMemories = [
