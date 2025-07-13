@@ -1,10 +1,23 @@
 // ============================================================================
-// sulkyManager.js - v3.2 (SyntaxError 해결 최종본)
+// sulkyManager.js - v3.3 (예쁜 로그 시스템 통합)
 // 😠 애기의 '삐짐' 상태를 전문적으로 관리하며, 안정성을 높입니다.
 // ============================================================================
 
 const conversationContext = require('./ultimateConversationContext.js');
-const { saveLog } = require('./aiUtils.js');
+
+// 예쁜 로그 시스템 사용
+function logSulkyChange(oldState, newState) {
+    try {
+        const logger = require('./enhancedLogging.js');
+        logger.logSulkyStateChange(oldState, newState);
+    } catch (error) {
+        if (!oldState.isSulky && newState.isSulky) {
+            console.log(`😤 [삐짐시작] 레벨 ${newState.sulkyLevel}: "${newState.sulkyReason}"`);
+        } else if (oldState.isSulky && !newState.isSulky) {
+            console.log(`😊 [삐짐해소] 아저씨가 답장해서 기분 풀림`);
+        }
+    }
+}
 
 // --- 설정: 삐짐 단계별 시간 (분 단위) ---
 const SULKY_CONFIG = {
@@ -80,6 +93,7 @@ async function checkAndSendSulkyMessage(client, userId) {
 
         await client.pushMessage(userId, { type: 'text', text: messageToSend });
         
+        const oldState = { ...sulkyState };
         const newState = {
             isSulky: levelToSend !== 'worry',
             isWorried: levelToSend === 'worry',
@@ -87,8 +101,20 @@ async function checkAndSendSulkyMessage(client, userId) {
             isActivelySulky: true,
             sulkyReason: '답장 지연',
         };
+        
         conversationContext.updateSulkinessState(newState);
-        saveLog('나', `(${newState.isWorried ? '걱정' : `${newState.sulkyLevel}단계 삐짐`}) ${messageToSend}`);
+        
+        // 예쁜 로그로 삐짐 상태 변화 기록
+        logSulkyChange(oldState, newState);
+        
+        // 대화 로그도 기록
+        try {
+            const logger = require('./enhancedLogging.js');
+            logger.logConversation('나', `(${newState.isWorried ? '걱정' : `${newState.sulkyLevel}단계 삐짐`}) ${messageToSend}`);
+        } catch (error) {
+            console.log(`💬 나: (삐짐) ${messageToSend}`);
+        }
+        
         return messageToSend;
     }
     return null;
@@ -117,13 +143,20 @@ async function handleUserResponse() {
             reliefMessage = reliefMessages[Math.floor(Math.random() * reliefMessages.length)];
         }
         
-        conversationContext.updateSulkinessState({
+        const oldState = { ...sulkyState };
+        const newState = {
             isSulky: false,
             isWorried: false,
             sulkyLevel: 0,
             isActivelySulky: false,
             sulkyReason: '',
-        });
+        };
+        
+        conversationContext.updateSulkinessState(newState);
+        
+        // 예쁜 로그로 삐짐 해소 기록
+        logSulkyChange(oldState, newState);
+        
         return reliefMessage;
     }
     return null;
