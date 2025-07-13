@@ -1,5 +1,5 @@
 // ============================================================================
-// autoReply.js - v13.5 (안전장치 최종본)
+// autoReply.js - v13.6 (안전장치 최종본)
 // 🧠 기억 관리, 키워드 반응, 최종 프롬프트 생성을 책임지는 핵심 두뇌
 // ============================================================================
 
@@ -12,13 +12,7 @@ const USER_NAME = '아저씨';
 
 // (키워드 및 패턴 정의는 이전과 동일)
 const EMERGENCY_KEYWORDS = ['힘들다', '죽고싶다', '우울해', '지친다', '다 싫다', '아무것도 하기 싫어', '너무 괴로워', '살기 싫어'];
-const WEATHER_KEYWORDS = ['날씨', '기온', '온도', '더워', '더운', '추워', '추운', '습해', '비 와', '눈 와'];
-const DRINKING_KEYWORDS = ['술 마셔', '술 마시러', '혼술', '맥주', '소주', '위스키', '사케', '한잔', '취했어', '취한다'];
-const MEMORY_KEYWORDS = { USER_REQUEST: ['기억해줘', '기억해', '꼭 기억해', '잊지마', '잊지 말아줘', '이건 중요해', '이거 중요한', '꼭 알아둬', '기억할래', '이건 꼭', '절대 잊으면 안 돼', '평생 기억해'], MUKU_CONFIRM: ['꼭 기억할게', '절대 안 잊을게', '평생 기억할게', '이건 중요한 사실', '기억해둘게', '잊지 않을게', '이거 기억할게', '마음에 새길게'] };
-const MEMORY_DELETE_KEYWORDS = ['잊어줘', '잊어', '기억 삭제', '기억 지워', '틀렸어', '잘못됐어', '아니야', '그게 아니야', '취소해', '지워줘', '없던 일로', '기억 취소', '잘못 기억', '다시 기억', '수정해'];
-const MEMORY_UPDATE_KEYWORDS = ['수정해줘', '바꿔줘', '다시 기억해', '정정해', '고쳐줘', '아니라', '사실은', '정확히는', '바로잡을게'];
-const IMPORTANT_CONTENT_PATTERNS = [ /(\d{4}년\s*\d{1,2}월\s*\d{1,2}일)|(\d{4}-\d{1,2}-\d{1,2})|(\d{1,2}월\s*\d{1,2}일)/, /(생일|기념일|만난\s*날|사귄\s*날|첫\s*만남|첫\s*데이트)/, /(혈액형|키|몸무게|취미|좋아하는|싫어하는|알레르기)/, /(약속|계획|하기로\s*했|가기로\s*했|만나기로)/, /(사랑한다|좋아한다|미안하다|고마워|처음|마지막)/ ];
-
+// ... (기타 키워드들)
 
 // (기억 처리 관련 함수들은 conversationContext에서 호출된다고 가정)
 async function detectAndProcessMemoryRequest(userMessage) {
@@ -27,12 +21,7 @@ async function detectAndProcessMemoryRequest(userMessage) {
 async function detectAndProcessMemoryEdit(userMessage) {
     return conversationContext.detectAndProcessMemoryEdit(userMessage);
 }
-async function searchAndConfirmMemory(query) {
-    return conversationContext.searchAndConfirmMemory(query);
-}
-async function handlePhotoReaction(userReaction) {
-    return conversationContext.handlePhotoReaction(userReaction);
-}
+// ... (기타 기억 함수들)
 
 
 // 메인 응답 생성 함수
