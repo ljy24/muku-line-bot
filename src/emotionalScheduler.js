@@ -1,27 +1,17 @@
 // ============================================================================
-// emotionalScheduler.js - v2.0 (날씨, 생리주기 반영)
-// 💖 애기의 자발적인 감정 표현 스케줄러
-// 아저씨에게 먼저 말을 걸고, 날씨와 그날의 컨디션까지 고려하여 마음을 표현합니다.
+// emotionalScheduler.js - v4.0 (역할 분리 최종본)
+// 💌 자발적으로 아저씨에게 메시지를 보내는 역할에만 집중합니다.
 // ============================================================================
 
 const schedule = require('node-schedule');
 const { Client } = require('@line/bot-sdk');
-const axios = require('axios');
-const moment = require('moment-timezone');
-const conversationContext = require('./ultimateConversationContext.js'); // 생리주기 정보 가져오기
+const conversationContext = require('./ultimateConversationContext.js'); // ✅ 중앙 관리자에게 정보를 물어봅니다.
 require('dotenv').config();
 
 // ------------------- 설정 -------------------
-const config = {
-  channelAccessToken: process.env.LINE_ACCESS_TOKEN,
-  channelSecret: process.env.LINE_CHANNEL_SECRET,
-};
+const config = { channelAccessToken: process.env.LINE_ACCESS_TOKEN };
 const client = new Client(config);
 const USER_ID = process.env.TARGET_USER_ID;
-const WEATHER_API_KEY = process.env.WEATHER_API_KEY; // .env 파일에 날씨 API 키 필요
-const CITY = 'Kitakyushu';
-
-let lastWeatherInfo = null; // 날씨 정보 캐싱
 
 // ------------------- 메시지 모음 (상황별 확장) -------------------
 const messages = {
@@ -99,76 +89,36 @@ const messages = {
   },
 };
 
-// ------------------- 헬퍼 함수 -------------------
-
-/**
- * 날씨 정보를 OpenWeatherMap API에서 가져옵니다. (1시간마다 갱신)
- */
-async function getWeatherInfo() {
-  const now = Date.now();
-  if (lastWeatherInfo && (now - lastWeatherInfo.timestamp < 60 * 60 * 1000)) {
-    return lastWeatherInfo;
-  }
-  try {
-    const response = await axios.get(`https://api.openweathermap.org/data/2.5/weather?q=${CITY}&appid=${WEATHER_API_KEY}&units=metric&lang=kr`);
-    const weather = response.data;
-    const condition = weather.weather[0].main.toLowerCase();
-    let category = 'clouds'; // 기본값
-
-    if (condition.includes('rain')) category = 'rain';
-    else if (condition.includes('clear')) category = 'clear';
-    else if (weather.main.temp <= 10) category = 'cold';
-    else if (weather.main.temp >= 28) category = 'hot';
-
-    lastWeatherInfo = { category, description: weather.weather[0].description, timestamp: now };
-    return lastWeatherInfo;
-  } catch (error) {
-    console.error('❌ [emotionalScheduler] 날씨 정보 가져오기 실패:', error.message);
-    return null;
-  }
-}
-
-/**
- * 생리주기 상태를 conversationContext에서 가져옵니다.
- */
-function getCurrentMenstrualPhase() {
-  try {
-    const moodState = conversationContext.getMoodState();
-    if (!moodState || !moodState.lastPeriodStartDate) return { phase: 'follicular' }; // 정보 없으면 기본값
-
-    const lastPeriodStart = moment(moodState.lastPeriodStartDate);
-    const today = moment();
-    const daysSinceLastPeriod = today.diff(lastPeriodStart, 'days');
-    const cycleDay = (daysSinceLastPeriod % 28) + 1;
-
-    if (cycleDay <= 5) return { phase: 'period' };
-    if (cycleDay > 5 && cycleDay <= 13) return { phase: 'follicular' };
-    if (cycleDay > 13 && cycleDay <= 15) return { phase: 'ovulation' };
-    return { phase: 'luteal' };
-  } catch (error) {
-    console.error('❌ [emotionalScheduler] 생리주기 계산 오류:', error);
-    return { phase: 'follicular' }; // 에러 시 기본값
-  }
-}
+// ------------------- 핵심 로직 -------------------
 
 /**
  * 모든 상황을 고려하여 보낼 메시지를 최종적으로 선택합니다.
  */
 async function getFinalMessage() {
-  const menstrual = getCurrentMenstrualPhase();
-  const weather = await getWeatherInfo();
+  // ✅ 중앙 관리자(conversationContext)에게 모든 정보를 요청합니다.
+  const menstrual = conversationContext.getMoodState();
+  const weatherInfo = await conversationContext.getWeatherInfo();
   const random = Math.random();
 
   // 1. 생리주기 메시지 (35% 확률로 우선 고려)
-  if (random < 0.35 && messages.menstrual[menstrual.phase]) {
+  if (random < 0.35 && menstrual && messages.menstrual[menstrual.phase]) {
     const pool = messages.menstrual[menstrual.phase];
     return pool[Math.floor(Math.random() * pool.length)];
   }
 
   // 2. 날씨 메시지 (25% 확률로 다음 고려)
-  if (random < 0.60 && weather && messages.weather[weather.category]) {
-    const pool = messages.weather[weather.category];
-    return pool[Math.floor(Math.random() * pool.length)];
+  if (random < 0.60 && weatherInfo) {
+    let weatherCategory = 'clouds'; // 기본값
+    const description = weatherInfo.description.toLowerCase();
+    if (description.includes('비')) weatherCategory = 'rain';
+    else if (description.includes('맑음')) weatherCategory = 'clear';
+    else if (weatherInfo.temp <= 10) weatherCategory = 'cold';
+    else if (weatherInfo.temp >= 28) weatherCategory = 'hot';
+    
+    if (messages.weather[weatherCategory]) {
+        const pool = messages.weather[weatherCategory];
+        return pool[Math.floor(Math.random() * pool.length)];
+    }
   }
 
   // 3. 시간대별 기본 메시지
@@ -183,14 +133,10 @@ async function getFinalMessage() {
   return pool[Math.floor(Math.random() * pool.length)];
 }
 
-
 // ------------------- 메인 스케줄러 -------------------
-
-/**
- * 20분마다 실행되어 메시지 전송 여부를 결정합니다.
- */
 schedule.scheduleJob('*/20 * * * *', async () => {
   const hour = new Date().getHours();
+  // 활동 시간 (오전 9시 ~ 새벽 3시)에만 동작
   const isActiveTime = (hour >= 9 && hour <= 23) || (hour >= 0 && hour < 3);
   if (!isActiveTime) return;
 
@@ -198,19 +144,16 @@ schedule.scheduleJob('*/20 * * * *', async () => {
   if (Math.random() < 0.25) {
     try {
       const messageToSend = await getFinalMessage();
-
-      if (!USER_ID || !WEATHER_API_KEY) {
-        console.error('❌ [emotionalScheduler] USER_ID 또는 WEATHER_API_KEY가 설정되지 않았습니다.');
+      if (!USER_ID) {
+        console.error('❌ [emotionalScheduler] USER_ID가 설정되지 않았습니다.');
         return;
       }
-
       await client.pushMessage(USER_ID, { type: 'text', text: messageToSend });
       console.log(`💖 [emotionalScheduler] 자발적 감정 메시지 전송 -> ${messageToSend}`);
-
     } catch (error) {
       console.error('❌ [emotionalScheduler] 메시지 전송 중 에러 발생:', error);
     }
   }
 });
 
-console.log('💖 [emotionalScheduler] 애기의 자발적 감정 스케줄러 v2.0이 시작되었습니다.');
+console.log('💖 [emotionalScheduler] 애기의 자발적 감정 스케줄러 v4.0이 시작되었습니다.');
