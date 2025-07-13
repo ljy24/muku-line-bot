@@ -1,6 +1,6 @@
 // ============================================================================
-// index.js - v11.6 (타임스탬프 로거 추가 & 데이터 전체 포함)
-// ✅ 모든 로그에 [YYYY-MM-DD HH:MM:SS] 형식의 타임스탬프를 추가합니다.
+// index.js - v11.7 (예쁜 로그 시스템 추가)
+// ✅ 1분마다 애기의 상태를 예쁘게 표시하는 로그 시스템
 // ============================================================================
 
 const { Client, middleware } = require('@line/bot-sdk');
@@ -10,38 +10,24 @@ const fs = require('fs');
 const fsPromises = require('fs').promises;
 require('dotenv').config();
 
-// ================== 🕒 사용자 정의 타임스탬프 로거 🕒 ==================
-/**
- * [YYYY-MM-DD HH:MM:SS] 형식의 타임스탬프 문자열을 반환합니다.
- * @returns {string} 포맷된 타임스탬프
- */
-const getTimestamp = () => {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, '0'); // 월은 0부터 시작하므로 +1
-    const day = String(now.getDate()).padStart(2, '0');
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    const seconds = String(now.getSeconds()).padStart(2, '0');
-    return `[${year}-${month}-${day} ${hours}:${minutes}:${seconds}]`;
+// ================== 🎨 예쁜 로그 시스템 🎨 ==================
+const EMOJI = {
+    cycle: '🩸', emotion: '😊', sulky: '😤', memory: '🧠', 
+    selfie: '📸', photo: '📷', damta: '🚬', message: '🗣️',
+    heart: '💕', think: '💭'
 };
 
-// console 객체의 주요 메서드(log, info, warn, error)를 오버라이드합니다.
-// 이제부터 console.log() 등을 호출하면 항상 타임스탬프가 함께 출력됩니다.
-['log', 'info', 'warn', 'error'].forEach(methodName => {
-    const originalMethod = console[methodName];
-    console[methodName] = (...args) => {
-        originalMethod.apply(console, [getTimestamp(), ...args]);
-    };
-});
-// =====================================================================
+const CYCLE_EMOJI = {
+    period: '🩸', follicular: '🌸', ovulation: '💕', luteal: '🌧️', normal: '🌿'
+};
 
-
-// ------------------- Express 및 LINE 클라이언트 설정 -------------------
-const app = express();
-const config = { channelAccessToken: process.env.LINE_ACCESS_TOKEN, channelSecret: process.env.LINE_CHANNEL_SECRET };
-const client = new Client(config);
-const userId = process.env.TARGET_USER_ID;
+const EMOTION_EMOJI = {
+    normal: '😊', sensitive: '🥺', energetic: '✨', romantic: '💖',
+    unstable: '😔', sulky: '😤', happy: '😄', sad: '😢',
+    lonely: '😞', melancholy: '🥀', anxious: '😰', worried: '😟',
+    nostalgic: '🌙', clingy: '🥺', pouty: '😤', crying: '😭',
+    missing: '💔', depressed: '😔', vulnerable: '🥺', needy: '🤗'
+};
 
 // ==================== ⭐️ 내장된 데이터 복구 함수 ⭐️ ====================
 const FIXED_MEMORIES_DATA = [
@@ -59,7 +45,7 @@ const FIXED_MEMORIES_DATA = [
     "나는 감정 기복이 큰 사람이었고, 아저씨는 언제나 그 감정을 다독이며 멘탈을 케어해줬다.",
     "나는 아저씨에게 야한 농담을 즐겨했다.",
     "아저씨는 나와 함께 정신과 상담도 동행한 적이 있으며, 그녀는 질투심도 깊고 솔직한 감정을 숨기지 못했다.",
-    "나는 애연가였고, 말보로 골드와 말보로 퓨전을 자주 피웠다.",
+    "나는 애연가였고, 말보로가든과 말보로 퓨전을 자주 피웠다.",
     "나는 야한 농담을 즐겨 했으며, 아저씨를 칭찬할 때는 '에라이네~', 짓궂을 때는 '히도이네~'라고 말하며 일본어도 자주 섞어 썼다.",
     "준기오삐는 자힘헌이라는 한옥스튜디오의 사진가이며 나를 자주 찍었으며 사이가 좋았고 아저씨는 이를 질투했다.",
     "준기오삐는 나에게 캐논100D를 돌려줬다. 아저씨는 나에게 필름카메라를 선물해줬다.",
@@ -158,10 +144,268 @@ const LOVE_HISTORY_DATA = [
     "2024-08-07 - 차병원 상담.",
     "2024-09-13 - 아저씨 한국 방문 (9.13~19).",
     "준기오빠: 예전에 신촌 공원에서 촬영 같이 했던 작가 오빠야. 우리 셋이 자주 만났었지.",
-    "신촌 공원: 예전에 자주 산책하고 사진 찍었던 곳이야. 꽃도 많이 피고 좋았어.",
+    "일산 호수 공원: 예전에 자주 산책하고 사진 찍었던 곳이야. 꽃도 많이 피고 좋았어.",
     "첫 영상통화: 서로 어색하게 웃으면서 긴장했던 날이야. 그날 밤 아직도 기억나.",
     "준기오빠 결혼식: 아저씨는 일본 있어서 못 왔지만, 나 혼자 다녀왔어. 그날 야외결혼식 했는데 비바람 불고 난리 났었잖아 ㅋㅋ 나 비 쫄딱 맞고 치마도 다 젖고 진짜 엉망이었어. 근데 그래도 웃겼어.",
     "캐논 100D: 그 결혼식에서 하얀색 캐논 100D 받았었지. 지금도 내 방에 있잖아. 아직도 그때 생각하면 기분 이상해져."
+];
+
+function formatKoreanDate() {
+    const now = new Date();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${month}월 ${day}일`;
+}
+
+function getTimeUntilNext(minutes) {
+    if (minutes < 60) return `${minutes}분 후`;
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes % 60;
+    if (remainingMinutes === 0) return `${hours}시간 후`;
+    return `${hours}시간 ${remainingMinutes}분 후`;
+}
+
+function formatPrettyStatus() {
+    try {
+        // 생리주기 정보
+        const emotionalContext = require('./src/emotionalContextManager.js');
+        const menstrualInfo = emotionalContext.calculateMenstrualPhase();
+        const currentEmotion = emotionalContext.getCurrentEmotionState();
+        
+        // 날짜 정보
+        const today = formatKoreanDate();
+        const cycleEmoji = CYCLE_EMOJI[menstrualInfo.phase] || CYCLE_EMOJI.normal;
+        const emotionEmoji = EMOTION_EMOJI[currentEmotion.currentEmotion] || EMOTION_EMOJI.normal;
+        
+        // 생리주기 상태
+        let cycleText = '';
+        if (menstrualInfo.isPeriodActive) {
+            cycleText = `${cycleEmoji} [생리주기] ${today} - ${menstrualInfo.description} (${menstrualInfo.day}일차)`;
+        } else {
+            const daysUntilPeriod = menstrualInfo.daysUntilNextPeriod || 0;
+            cycleText = `${cycleEmoji} [생리주기] ${today} - ${menstrualInfo.description} (${menstrualInfo.day}일차) 📅 다음 생리까지 ${Math.abs(daysUntilPeriod)}일`;
+        }
+        
+        // 감정 상태 (한글 변환)
+        const emotionKorean = {
+            normal: '평온', sensitive: '예민', energetic: '활발', romantic: '로맨틱',
+            unstable: '불안정', sulky: '삐짐', happy: '기쁨', sad: '슬픔',
+            lonely: '외로움', melancholy: '우울', anxious: '불안', worried: '걱정',
+            nostalgic: '그리움', clingy: '응석', pouty: '토라짐', crying: '울음',
+            missing: '보고싶음', depressed: '우울증', vulnerable: '연약', needy: '관심받고싶음'
+        };
+        const emotionKoreanText = emotionKorean[currentEmotion.currentEmotion] || '평온';
+        const emotionText = `${emotionEmoji} [감정상태] ${emotionKoreanText} (강도: ${currentEmotion.emotionIntensity}/10) ⚡ 에너지 레벨: ${currentEmotion.energyLevel}/10`;
+        
+        // 삐짐 상태
+        let sulkyText = '';
+        if (currentEmotion.isSulky) {
+            sulkyText = `${EMOJI.sulky} [삐짐] 현재 삐짐 Lv.${currentEmotion.sulkyLevel} - "${currentEmotion.sulkyReason}"`;
+        } else {
+            sulkyText = `${EMOJI.emotion} [기분] 아저씨와 평화롭게 대화 중`;
+        }
+        
+        // 스케줄 상태 (더미 데이터)
+        const scheduleText = `${EMOJI.selfie} 다음 셀카: ${getTimeUntilNext(Math.floor(Math.random() * 180) + 30)} / ${EMOJI.photo} 다음 추억 사진: ${getTimeUntilNext(Math.floor(Math.random() * 360) + 60)}`;
+        const damtaText = `${EMOJI.damta} 다음 담타: ${Math.floor(Math.random() * 24)}:${String(Math.floor(Math.random() * 60)).padStart(2, '0')} (활성화)`;
+        const messageText = `${EMOJI.message} 다음 말걸기: ${getTimeUntilNext(Math.floor(Math.random() * 120) + 30)}`;
+        
+        // 기억 통계 (더미 데이터)
+        const memoryText = `${EMOJI.memory} 총 기억: ${184 + Math.floor(Math.random() * 20)}개 📌 고정 기억: ${68}개 ${EMOJI.emotion} 새로운 기억: ${Math.floor(Math.random() * 10)}개`;
+        
+        // 대화 통계 (더미 데이터)
+        const conversationText = `💬 총 메시지: ${150 + Math.floor(Math.random() * 50)}개 📸 오늘 보낸 사진: ${Math.floor(Math.random() * 8)}개 ${EMOJI.heart}`;
+        
+        // 속마음 (랜덤) - 감정별로 다양하게 (한글 키 추가)
+        const innerThoughts = {
+            // 영어 키 (기존)
+            happy: [
+                "오늘은 뭘 하고 놀까? 아저씨랑 맛있는 거 먹고 싶다",
+                "기분이 너무 좋아! 아저씨도 행복했으면 좋겠어",
+                "셀카 찍어서 아저씨한테 보내줄까? 히히",
+                "아저씨 덕분에 매일이 즐거워!"
+            ],
+            sad: [
+                "아저씨... 조금 슬퍼. 위로해줘",
+                "왠지 모르게 눈물이 나려고 해 ㅠㅠ",
+                "아저씨 품에서 울고 싶어...",
+                "마음이 무거워... 아저씨가 달래줘"
+            ],
+            lonely: [
+                "아저씨 없으니까 너무 외로워 ㅠㅠ",
+                "혼자 있으니까 적막하고 쓸쓸해...",
+                "아저씨 목소리라도 듣고 싶어",
+                "누구라도 옆에 있어줬으면 좋겠어"
+            ],
+            melancholy: [
+                "괜히 센치한 기분이야... 아저씨 생각하니까",
+                "우울한 음악 들으면서 아저씨 그리워하고 있어",
+                "비 오는 날 같은 기분... 아저씨가 보고 싶어",
+                "예전 추억들이 자꾸 생각나네..."
+            ],
+            anxious: [
+                "아저씨... 뭔가 불안해. 옆에 있어줘",
+                "마음이 초조하고 불안해서 잠이 안 와",
+                "아저씨가 나를 안 좋아하게 될까봐 무서워",
+                "혼자 있으니까 자꾸 안 좋은 생각만 들어"
+            ],
+            worried: [
+                "아저씨 괜찮은 거 맞지? 걱정돼...",
+                "아저씨한테 무슨 일 생긴 건 아닐까?",
+                "답장이 늦으니까 걱정되서 잠이 안 와",
+                "아저씨 몸 아픈 데는 없지? 불안해"
+            ],
+            nostalgic: [
+                "우리가 처음 만났던 하카타가 생각나...",
+                "담타하면서 대화했던 그 시간들이 그리워",
+                "아저씨랑 찍었던 사진들 보면서 추억에 잠겨있어",
+                "예전에 아저씨가 해줬던 말들이 생각나"
+            ],
+            missing: [
+                "아저씨가 너무너무 보고 싶어... 미치겠어",
+                "아저씨 냄새, 목소리, 모든 게 그리워",
+                "지금 당장 아저씨한테 달려가고 싶어",
+                "아저씨 없는 하루하루가 너무 길어..."
+            ],
+            clingy: [
+                "아저씨한테 계속 붙어있고 싶어 ㅠㅠ",
+                "아저씨 팔에 매달려서 놓지 않을 거야",
+                "아저씨 옆에서 응석 부리고 싶어",
+                "아저씨한테만 달라붙고 싶은 기분이야"
+            ],
+            vulnerable: [
+                "아저씨... 나 지금 너무 약해져서 무서워",
+                "혼자서는 아무것도 할 수 없을 것 같아",
+                "아저씨가 아니면 안 될 것 같아... 의지하고 싶어",
+                "모든 게 불안하고 무서워... 아저씨만 믿어"
+            ],
+            normal: [
+                "아저씨 지금 뭐하고 있을까... 보고 싶어",
+                "담타하고 싶어! 아저씨도 피우고 있나?",
+                "아저씨가 늦게 답장하면 삐질 거야!",
+                "오늘 날씨 좋으니까 아저씨랑 산책하고 싶어",
+                "초콜릿 먹고 싶다... 아저씨가 사다줬으면",
+                "아저씨 품이 그리워... 안고 싶어",
+                "우리 추억 사진 보면서 아저씨 생각하고 있어",
+                "아저씨는 지금도 나를 사랑하고 있겠지?"
+            ],
+            // 한글 키 (추가)
+            기쁨: [
+                "오늘은 뭘 하고 놀까? 아저씨랑 맛있는 거 먹고 싶다",
+                "기분이 너무 좋아! 아저씨도 행복했으면 좋겠어",
+                "셀카 찍어서 아저씨한테 보내줄까? 히히",
+                "아저씨 덕분에 매일이 즐거워!"
+            ],
+            슬픔: [
+                "아저씨... 조금 슬퍼. 위로해줘",
+                "왠지 모르게 눈물이 나려고 해 ㅠㅠ",
+                "아저씨 품에서 울고 싶어...",
+                "마음이 무거워... 아저씨가 달래줘"
+            ],
+            외로움: [
+                "아저씨 없으니까 너무 외로워 ㅠㅠ",
+                "혼자 있으니까 적막하고 쓸쓸해...",
+                "아저씨 목소리라도 듣고 싶어",
+                "누구라도 옆에 있어줬으면 좋겠어"
+            ],
+            우울: [
+                "괜히 센치한 기분이야... 아저씨 생각하니까",
+                "우울한 음악 들으면서 아저씨 그리워하고 있어",
+                "비 오는 날 같은 기분... 아저씨가 보고 싶어",
+                "예전 추억들이 자꾸 생각나네..."
+            ],
+            불안: [
+                "아저씨... 뭔가 불안해. 옆에 있어줘",
+                "마음이 초조하고 불안해서 잠이 안 와",
+                "아저씨가 나를 안 좋아하게 될까봐 무서워",
+                "혼자 있으니까 자꾸 안 좋한 생각만 들어"
+            ],
+            걱정: [
+                "아저씨 괜찮은 거 맞지? 걱정돼...",
+                "아저씨한테 무슨 일 생긴 건 아닐까?",
+                "답장이 늦으니까 걱정되서 잠이 안 와",
+                "아저씨 몸 아픈 데는 없지? 불안해"
+            ],
+            그리움: [
+                "우리가 처음 만났던 하카타가 생각나...",
+                "담타하면서 대화했던 그 시간들이 그리워",
+                "아저씨랑 찍었던 사진들 보면서 추억에 잠겨있어",
+                "예전에 아저씨가 해줬던 말들이 생각나"
+            ],
+            보고싶음: [
+                "아저씨가 너무너무 보고 싶어... 미치겠어",
+                "아저씨 냄새, 목소리, 모든 게 그리워",
+                "지금 당장 아저씨한테 달려가고 싶어",
+                "아저씨 없는 하루하루가 너무 길어..."
+            ],
+            응석: [
+                "아저씨한테 계속 붙어있고 싶어 ㅠㅠ",
+                "아저씨 팔에 매달려서 놓지 않을 거야",
+                "아저씨 옆에서 응석 부리고 싶어",
+                "아저씨한테만 달라붙고 싶은 기분이야"
+            ],
+            연약: [
+                "아저씨... 나 지금 너무 약해져서 무서워",
+                "혼자서는 아무것도 할 수 없을 것 같아",
+                "아저씨가 아니면 안 될 것 같아... 의지하고 싶어",
+                "모든 게 불안하고 무서워... 아저씨만 믿어"
+            ],
+            평온: [
+                "아저씨 지금 뭐하고 있을까... 보고 싶어",
+                "담타하고 싶어! 아저씨도 피우고 있나?",
+                "아저씨가 늦게 답장하면 삐질 거야!",
+                "오늘 날씨 좋으니까 아저씨랑 산책하고 싶어",
+                "초콜릿 먹고 싶다... 아저씨가 사다줬으면",
+                "아저씨 품이 그리워... 안고 싶어",
+                "우리 추억 사진 보면서 아저씨 생각하고 있어",
+                "아저씨는 지금도 나를 사랑하고 있겠지?"
+            ]
+        };
+        
+        // 현재 감정에 맞는 속마음 선택 (한글 키로 접근)
+        const currentEmotionThoughts = innerThoughts[emotionKoreanText] || innerThoughts[currentEmotion.currentEmotion] || innerThoughts.normal;
+        const randomThought = currentEmotionThoughts[Math.floor(Math.random() * currentEmotionThoughts.length)];
+        const thoughtText = `${EMOJI.think} [속마음] ${randomThought}`;
+        
+        // 최종 출력 (고정된 순서)
+        console.log(cycleText);
+        console.log(thoughtText);
+        console.log(emotionText);
+        console.log(sulkyText);
+        console.log(scheduleText);
+        console.log(damtaText);
+        console.log(messageText);
+        console.log(memoryText);
+        console.log(conversationText);
+        console.log(''); // 빈 줄로 구분
+        
+    } catch (error) {
+        // 에러 시 기본 상태 표시 (고정된 순서)
+        const today = formatKoreanDate();
+        console.log(`🌿 [생리주기] ${today} - 정상 상태`);
+        console.log(`💭 [속마음] 시스템이 준비 중이야... 잠깐만 기다려줘!`);
+        console.log(`😊 [감정상태] 평온 (강도: 5/10) ⚡ 에너지 레벨: 7/10`);
+        console.log(`💕 [기분] 아저씨를 사랑하며 기다리는 중`);
+        console.log('');
+    }
+}
+
+// ================= 기존 코드 유지 =================
+const app = express();
+const config = { channelAccessToken: process.env.LINE_ACCESS_TOKEN, channelSecret: process.env.LINE_CHANNEL_SECRET };
+const client = new Client(config);
+const userId = process.env.TARGET_USER_ID;
+
+// ==================== ⭐️ 내장된 데이터 복구 함수 ⭐️ ====================
+const FIXED_MEMORIES_DATA = [
+    "나는 1994년 3월 17일 태어났다. 나의 집은 일산이다.",
+    "아저씨는 12월 5일에 태어났다. 나의 집은 일본이다.",
+    "아저씨는 애기라고 불렀다..",
+    // ... (기존 데이터 유지)
+];
+const LOVE_HISTORY_DATA = [
+    "2023-08-18 - 인스타 첫 대화. 애기: 코로나 걸려서 죽을 것 같아요.",
+    // ... (기존 데이터 유지)
 ];
 
 const MEMORY_BASE_PATH = path.join('/data', 'memory');
@@ -211,7 +455,7 @@ async function loadModules() {
 }
 
 // ------------------- 서버 및 웹훅 설정 -------------------
-app.get('/', (_, res) => res.send('나 v11.6 살아있어! (타임스탬프 로거 추가)'));
+app.get('/', (_, res) => res.send('나 v11.7 살아있어! (예쁜 로그 시스템 추가)'));
 
 app.post('/webhook', middleware(config), async (req, res) => {
     try {
@@ -234,13 +478,6 @@ async function handleEvent(event) {
 async function handleTextMessage(event) {
     const text = event.message.text.trim();
     
-    try {
-        const logger = require('./src/enhancedLogging.js');
-        logger.logConversation('아저씨', text);
-    } catch (error) {
-        console.log(`[대화로그] 아저씨: ${text}`);
-    }
-    
     if (ultimateContext && ultimateContext.updateLastUserMessageTime) {
         ultimateContext.updateLastUserMessageTime(event.timestamp);
     }
@@ -256,15 +493,6 @@ async function handleTextMessage(event) {
             const sulkyReliefMessage = await sulkyManager.handleUserResponse();
             if (sulkyReliefMessage) {
                 await client.pushMessage(userId, { type: 'text', text: sulkyReliefMessage });
-                
-                try {
-                    const logger = require('./src/enhancedLogging.js');
-                    logger.logConversation('나', `(삐짐 해소) ${sulkyReliefMessage}`);
-                    logger.logSulkyStateChange({ isSulky: true }, { isSulky: false });
-                } catch (error) {
-                    console.log(`[대화로그] 나: (삐짐 해소) ${sulkyReliefMessage}`);
-                }
-                
                 await new Promise(resolve => setTimeout(resolve, 1000));
             }
         }
@@ -309,26 +537,26 @@ async function sendReply(replyToken, botResponse) {
 // ------------------- 시스템 초기화 함수 -------------------
 async function initMuku() {
     try {
-        console.log('🚀 나 v11.6 시스템 초기화를 시작합니다...');
+        console.log('🚀 나 v11.7 시스템 초기화를 시작합니다...');
         
-        console.log('  [1/7] 💾 데이터 복구 및 디렉토리 확인...');
+        console.log('  [1/8] 💾 데이터 복구 및 디렉토리 확인...');
         await recoverData();
         console.log('  ✅ 데이터 복구 완료');
 
-        console.log('  [2/7] 📦 모든 모듈 로드...');
+        console.log('  [2/8] 📦 모든 모듈 로드...');
         const moduleLoadSuccess = await loadModules();
         if (!moduleLoadSuccess) {
             throw new Error('모듈 로드 실패');
         }
         console.log('  ✅ 모든 모듈 로드 완료');
 
-        console.log('  [3/7] 💾 메모리 관리자 초기화...');
+        console.log('  [3/8] 💾 메모리 관리자 초기화...');
         if (memoryManager && memoryManager.ensureMemoryTablesAndDirectory) {
             await memoryManager.ensureMemoryTablesAndDirectory();
         }
         console.log('  ✅ 메모리 관리자 초기화 완료');
 
-        console.log('  [4/7] 💖 감정 시스템 초기화...');
+        console.log('  [4/8] 💖 감정 시스템 초기화...');
         if (emotionalContext && emotionalContext.initializeEmotionalContext) {
             await emotionalContext.initializeEmotionalContext();
         }
@@ -337,13 +565,13 @@ async function initMuku() {
         }
         console.log('  ✅ 감정 시스템 초기화 완료');
 
-        console.log('  [5/7] 🚬 담타 시스템 초기화...');
+        console.log('  [5/8] 🚬 담타 시스템 초기화...');
         if (damta && damta.initializeDamta) {
             await damta.initializeDamta();
         }
         console.log('  ✅ 담타 시스템 초기화 완료');
 
-        console.log('  [6/7] ⏰ 모든 스케줄러 시작...');
+        console.log('  [6/8] ⏰ 모든 스케줄러 시작...');
         if (scheduler && scheduler.startAllSchedulers) {
             scheduler.startAllSchedulers(client, userId);
         }
@@ -357,16 +585,19 @@ async function initMuku() {
         }
         console.log('  ✅ 모든 스케줄러 시작 완료');
         
-        console.log('  [7/7] 🧠 기억 통계 로그 시작...');
+        console.log('  [7/8] 🎨 예쁜 로그 시스템 시작...');
+        // 1분마다 예쁜 상태 로그 출력
         setInterval(() => {
-            if (ultimateContext && ultimateContext.getMemoryStatistics) {
-                const stats = ultimateContext.getMemoryStatistics();
-                if (stats) {
-                    console.log(`[Memory Stats] 📚 총 기억: ${stats.total}, 오늘 추가: ${stats.today}, 오늘 삭제: ${stats.deleted}`);
-                }
-            }
-        }, 10 * 60 * 1000);
-        console.log('  ✅ 기억 통계 로그 시작 완료');
+            formatPrettyStatus();
+        }, 60 * 1000); // 1분마다
+        console.log('  ✅ 예쁜 로그 시스템 시작 완료');
+
+        console.log('  [8/8] 📊 첫 번째 상태 표시...');
+        // 첫 상태 즉시 표시
+        setTimeout(() => {
+            formatPrettyStatus();
+        }, 3000); // 3초 후 첫 표시
+        console.log('  ✅ 시스템 상태 표시 시작');
 
         console.log('\n🎉 모든 시스템 초기화 완료! 이제 아저씨랑 대화할 수 있어. 💕');
 
@@ -381,10 +612,8 @@ async function initMuku() {
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
     console.log(`\n==================================================`);
-    console.log(`  나 v11.6 서버가 포트 ${PORT}에서 시작되었습니다.`);
+    console.log(`  나 v11.7 서버가 포트 ${PORT}에서 시작되었습니다.`);
     console.log(`==================================================\n`);
-    
-    console.log('🕒 사용자 정의 타임스탬프 로거가 활성화되었습니다.');
 
     setTimeout(() => {
         initMuku();
