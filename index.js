@@ -1,4 +1,4 @@
-// ✅ index.js v9.9 - 모든 undefined 문제 완전 해결본
+// ✅ index.js v9.9 - 모든 undefined 문제 완전 해결본 (기억 로딩 순서 수정)
 
 const { Client, middleware } = require('@line/bot-sdk');
 const express = require('express');
@@ -13,6 +13,8 @@ const { startSpontaneousPhotoScheduler, getPhotoSchedulerStatus } = require('./s
 const sulkyManager = require('./src/sulkyManager');
 const conversationContext = require('./src/ultimateConversationContext.js');
 const { initializeDamta } = require('./src/damta');
+// ⭐️ 추가된 부분: memoryManager.js에서 ensureMemoryTablesAndDirectory를 가져옵니다. ⭐️
+const { ensureMemoryTablesAndDirectory } = require('./src/memoryManager.js');
 
 const app = express();
 const config = { channelAccessToken: process.env.LINE_ACCESS_TOKEN, channelSecret: process.env.LINE_CHANNEL_SECRET };
@@ -170,8 +172,13 @@ async function getSafeInnerThought() {
 // ==================== 감성 로그 시스템 ====================
 
 function generateEmotionalLogEntry(internalState, schedulerStatus, photoStatus, innerThought) {
-    const moodText = getEmotionalMoodText(internalState.emotionalEngine.emotionalResidue);
-    const toneText = getToneText(internalState.emotionalEngine.currentToneState);
+    // emotionalEngine.emotionalResidue가 undefined일 경우를 대비한 안전 장치
+    const emotionalResidue = internalState.emotionalEngine?.emotionalResidue || {};
+    const moodText = getEmotionalMoodText(emotionalResidue);
+    
+    // emotionalEngine.currentToneState가 undefined일 경우를 대비한 안전 장치
+    const toneText = getToneText(internalState.emotionalEngine?.currentToneState);
+    
     const sulkinessText = getSulkinessText(internalState.sulkiness);
     const periodText = getPeriodText(internalState.mood);
     const scheduleText = getScheduleText(schedulerStatus, photoStatus);
@@ -334,6 +341,10 @@ function logMemoryStatistics() {
 
 async function initMuku() {
     try {
+        // ⭐️ 수정된 부분: memoryManager의 ensureMemoryTablesAndDirectory를 먼저 호출합니다. ⭐️
+        await ensureMemoryTablesAndDirectory();
+        console.log('✅ MemoryManager 초기화 및 기억 파일 로드 완료.'); // 로그 추가
+
         await conversationContext.initializeEmotionalSystems();
         await initializeDamta();
         startAllSchedulers(client, userId);
@@ -343,7 +354,13 @@ async function initMuku() {
         setInterval(async () => {
             conversationContext.processTimeTick();
             
-            const internalState = conversationContext.getInternalState();
+            // internalState가 undefined일 경우를 대비한 안전 장치
+            const internalState = conversationContext.getInternalState() || {};
+            // emotionalEngine이 undefined일 경우를 대비한 안전 장치
+            if (!internalState.emotionalEngine) {
+                internalState.emotionalEngine = { emotionalResidue: {}, currentToneState: 'normal' };
+            }
+
             const schedulerStatus = getSchedulerStatus();
             const photoStatus = getPhotoSchedulerStatus();
             
