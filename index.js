@@ -1,13 +1,12 @@
 // ============================================================================
-// index.js - v11.1 (최종 에러 해결본)
+// index.js - v11.3 (중복 제거 최종본)
 // ✅ 모든 모듈을 최종적으로 조율하고, 안정적인 실행을 보장합니다.
 // ============================================================================
 
 const { Client, middleware } = require('@line/bot-sdk');
 const express = require('express');
-const moment = require('moment-timezone');
-const fs = require('fs').promises;
 const path = require('path');
+const fs = require('fs').promises;
 require('dotenv').config();
 
 // ------------------- 모든 모듈 불러오기 -------------------
@@ -18,9 +17,10 @@ const conversationContext = require('./src/ultimateConversationContext.js');
 const emotionalContext = require('./src/emotionalContextManager.js');
 const sulkyManager = require('./src/sulkyManager');
 const { startAllSchedulers } = require('./src/scheduler');
-const { startSpontaneousPhotoScheduler } = require('./src/spontaneousPhotoManager');
+const { startSpontaneousPhotoScheduler } = require('./src/spontaneousPhotoScheduler');
 require('./src/emotionalScheduler.js');
 const { initializeDamta } = require('./src/damta');
+// ✅ [수정] memoryManager에서 recoverData를 가져오지 않습니다. 이 파일에 직접 정의합니다.
 const { ensureMemoryTablesAndDirectory } = require('./src/memoryManager.js');
 
 // ------------------- Express 및 LINE 클라이언트 설정 -------------------
@@ -28,26 +28,6 @@ const app = express();
 const config = { channelAccessToken: process.env.LINE_ACCESS_TOKEN, channelSecret: process.env.LINE_CHANNEL_SECRET };
 const client = new Client(config);
 const userId = process.env.TARGET_USER_ID;
-
-
-// ==================== ⭐️ 내장된 데이터 복구 함수 ⭐️ ====================
-const FIXED_MEMORIES_DATA = [ /* ... (이전과 동일한 데이터) ... */ ];
-const LOVE_HISTORY_DATA = [ /* ... (이전과 동일한 데이터) ... */ ];
-// ... (이하 데이터 복구 함수는 이전과 동일)
-
-
-// ------------------- 서버 및 웹훅 설정 -------------------
-app.get('/', (_, res) => res.send('나 v11.1 살아있어! (최종 에러 해결)'));
-
-app.post('/webhook', middleware(config), async (req, res) => {
-    try {
-        await Promise.all(req.body.events.map(handleEvent));
-        res.status(200).send('OK');
-    } catch (err) {
-        console.error(`[Webhook] 🚨 웹훅 처리 중 심각한 에러:`, err);
-        res.status(500).send('Error');
-    }
-});
 
 
 // ==================== ⭐️ 내장된 데이터 복구 함수 ⭐️ ====================
@@ -64,7 +44,7 @@ const FIXED_MEMORIES_DATA = [
     "나는 '스튜디오소개'라는 회사에서 도트 디자이너로 일했고, 넥슨 메이플스토리의 도트 디자인 작업에 참여했으며, 아저씨도 그 일을 도와줬다.",
     "나는 자살위험군이며, 중증 우울증을 앓고 있었고 몇 차례 자해 경험이 있었다.",
     "나는 감정 기복이 큰 사람이었고, 아저씨는 언제나 그 감정을 다독이며 멘탈을 케어해줬다.",
-    "나는 아저씨에게 야한 농담을 즐겨했다.",
+    "나는 아저씨에게 야한 농담을 즐겨했다.",
     "아저씨는 나와 함께 정신과 상담도 동행한 적이 있으며, 그녀는 질투심도 깊고 솔직한 감정을 숨기지 못했다.",
     "나는 애연가였고, 말보로 골드와 말보로 퓨전을 자주 피웠다.",
     "나는 야한 농담을 즐겨 했으며, 아저씨를 칭찬할 때는 '에라이네~', 짓궂을 때는 '히도이네~'라고 말하며 일본어도 자주 섞어 썼다.",
@@ -176,33 +156,19 @@ async function recoverData() {
     try {
         await fs.mkdir(MEMORY_BASE_PATH, { recursive: true });
         const fixedMemoryPath = path.join(MEMORY_BASE_PATH, 'fixedMemories.json');
-        let existingFixedData = [];
-        try {
-            const content = await fs.readFile(fixedMemoryPath, 'utf8');
-            if (content) existingFixedData = JSON.parse(content);
-        } catch (e) { /* 파일이 없으면 무시 */ }
-
-        if (existingFixedData.length === 0) {
+        if (!fs.existsSync(fixedMemoryPath)) {
             await fs.writeFile(fixedMemoryPath, JSON.stringify(FIXED_MEMORIES_DATA, null, 2), 'utf8');
-            console.log(`✅ fixedMemories.json 복구 완료 (${FIXED_MEMORIES_DATA.length}개 기억)`);
+            console.log(`✅ fixedMemories.json 복구 완료.`);
         } else {
             console.log(`  - fixedMemories.json 이미 존재하여 복구를 건너뜁니다.`);
         }
-
         const loveHistoryPath = path.join(MEMORY_BASE_PATH, 'love_history.json');
-        let existingLoveData = [];
-        try {
-            const content = await fs.readFile(loveHistoryPath, 'utf8');
-            if (content) existingLoveData = JSON.parse(content);
-        } catch (e) { /* 파일이 없으면 무시 */ }
-
-        if (existingLoveData.length === 0) {
+        if (!fs.existsSync(loveHistoryPath)) {
             await fs.writeFile(loveHistoryPath, JSON.stringify(LOVE_HISTORY_DATA, null, 2), 'utf8');
-            console.log(`✅ love_history.json 복구 완료 (${LOVE_HISTORY_DATA.length}개 기억)`);
+            console.log(`✅ love_history.json 복구 완료.`);
         } else {
             console.log(`  - love_history.json 이미 존재하여 복구를 건너뜁니다.`);
         }
-
     } catch (error) {
         console.error('❌ 데이터 복구 중 에러:', error);
     }
@@ -210,7 +176,7 @@ async function recoverData() {
 
 
 // ------------------- 서버 및 웹훅 설정 -------------------
-app.get('/', (_, res) => res.send('나 v11.1 살아있어! (최종 에러 해결)'));
+app.get('/', (_, res) => res.send('나 v11.3 살아있어! (최종 에러 해결)'));
 
 app.post('/webhook', middleware(config), async (req, res) => {
     try {
@@ -269,7 +235,6 @@ async function sendReply(replyToken, botResponse) {
             await client.replyMessage(replyToken, { type: 'text', text: cleanedText });
         }
 
-        // ✅ [안전장치] 삐짐 상태 객체가 있을 때만 시간을 업데이트합니다.
         const sulkyState = conversationContext.getSulkinessState();
         if (sulkyState) {
             sulkyState.lastBotMessageTime = Date.now();
@@ -283,9 +248,37 @@ async function sendReply(replyToken, botResponse) {
 // ------------------- 시스템 초기화 함수 -------------------
 async function initMuku() {
     try {
-        console.log('🚀 나 v11.1 시스템 초기화를 시작합니다...');
-        // (이하 초기화 로직은 이전과 동일)
-        // ...
+        console.log('🚀 나 v11.3 시스템 초기화를 시작합니다...');
+        
+        console.log('  [1/6] 💾 데이터 복구 및 디렉토리 확인...');
+        await ensureMemoryTablesAndDirectory();
+        await recoverData(); // 이 파일에 직접 정의된 함수를 호출
+        console.log('  ✅ 데이터 복구 완료');
+
+        console.log('  [2/6] 💖 감정 시스템 초기화...');
+        await emotionalContext.initializeEmotionalContext();
+        console.log('  ✅ 감정 시스템 초기화 완료');
+
+        console.log('  [3/6] 💬 대화 컨텍스트 초기화...');
+        console.log('  ✅ 대화 컨텍스트는 자동으로 초기화됩니다.');
+
+        console.log('  [4/6] 🚬 담타 시스템 초기화...');
+        await initializeDamta();
+        console.log('  ✅ 담타 시스템 초기화 완료');
+
+        console.log('  [5/6] ⏰ 모든 스케줄러 시작...');
+        startAllSchedulers(client, userId);
+        startSpontaneousPhotoScheduler(client, userId, () => conversationContext.getInternalState().timingContext.lastUserMessageTime);
+        console.log('  ✅ 모든 스케줄러 시작 완료');
+        
+        console.log('  [6/6] 🧠 기억 통계 로그 시작...');
+        setInterval(() => {
+            const stats = conversationContext.getMemoryStatistics();
+            if (stats) {
+                console.log(`[Memory Stats] 📚 총 기억: ${stats.total}, 오늘 추가: ${stats.today}, 오늘 삭제: ${stats.deleted}`);
+            }
+        }, 10 * 60 * 1000);
+        console.log('  ✅ 기억 통계 로그 시작 완료');
 
         console.log('\n🎉 모든 시스템 초기화 완료! 이제 아저씨랑 대화할 수 있어. 💕');
 
@@ -300,7 +293,7 @@ async function initMuku() {
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
     console.log(`\n==================================================`);
-    console.log(`  나 v11.1 서버가 포트 ${PORT}에서 시작되었습니다.`);
+    console.log(`  나 v11.3 서버가 포트 ${PORT}에서 시작되었습니다.`);
     console.log(`==================================================\n`);
     initMuku();
 });
