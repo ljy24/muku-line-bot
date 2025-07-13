@@ -15,12 +15,13 @@ let db; // SQLite 데이터베이스 인스턴스
 // 이제 두 파일 모두 단순 배열로 저장하도록 변경
 const fixedMemoriesDB = {
     fixedMemories: [],    // fixedMemories.json 내용을 배열로 저장
-    loveHistory: [],      // love-history.json 내용을 단순 배열로 저장
+    loveHistory: [],      // love_history.json 내용을 단순 배열로 저장
     // 기타 텍스트 파일 등은 필요시 여기에 추가 가능
 };
 
 // 기억 파일들의 경로 정의
 const FIXED_MEMORIES_FILE = path.join(MEMORY_BASE_PATH, 'fixedMemories.json');
+// ⭐️ 수정된 부분: love-history.json -> love_history.json (언더스코어로 변경) ⭐️
 const LOVE_HISTORY_FILE = path.join(MEMORY_BASE_PATH, 'love_history.json');
 
 /**
@@ -185,7 +186,7 @@ async function loadAllMemories() {
             }
         }
 
-        // love-history.json 로드 (이제 단순 배열 형태로 로드)
+        // love_history.json 로드 (이제 단순 배열 형태로 로드)
         try {
             const data = await fs.readFile(LOVE_HISTORY_FILE, 'utf8');
             fixedMemoriesDB.loveHistory = JSON.parse(data); // 이제 loveHistory는 배열이 될 것임
