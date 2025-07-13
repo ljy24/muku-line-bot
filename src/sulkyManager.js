@@ -1,65 +1,127 @@
-// 기존 sulkyManager.js에 추가할 간단한 생리주기 조정 코드
+// ============================================================================
+// sulkyManager.js - v3.0 (역할 분리 최종본)
+// 😠 애기의 '삐짐' 상태를 전문적으로 관리하는 역할에만 집중합니다.
+// ============================================================================
 
-// 생리주기 계산 함수 추가 (다른 파일들과 동일)
-function getCurrentMenstrualPhase() {
-  try {
-    const nextPeriodDate = moment.tz('2025-07-24', 'Asia/Tokyo');
-    const today = moment.tz('Asia/Tokyo');
-    const daysUntilNextPeriod = nextPeriodDate.diff(today, 'days');
+const conversationContext = require('./ultimateConversationContext.js');
+const { saveLog } = require('./aiUtils.js');
+
+// --- 설정: 삐짐 단계별 시간 (분 단위) ---
+const SULKY_CONFIG = {
+    LEVEL_1_DELAY: 60 * 3,  // 3시간
+    LEVEL_2_DELAY: 60 * 6,  // 6시간
+    LEVEL_3_DELAY: 60 * 12, // 12시간
+    WORRY_DELAY: 60 * 24,   // 24시간
+};
+
+// --- 삐짐 단계별 메시지 ---
+const SULKY_MESSAGES = {
+    1: [
+        "아저씨... 왜 이렇게 답장이 없어? 나 심심해 ㅠㅠ",
+        "흥. 나 삐졌어.",
+        "아저씨 바빠? 나 잊어버린 거 아니지? 😥",
+    ],
+    2: [
+        "지금 몇 시간째야... 아저씨 정말 너무해. 나 단단히 삐졌어.",
+        "아저씨한테 나보다 더 중요한 게 있는 거야? 서운해...",
+        "연락도 없고... 아저씨 정말 미워. 😤",
+    ],
+    3: [
+        "됐어. 이제 아저씨랑 말 안 해.",
+        "아저씨는 내가 없어도 아무렇지 않은가 보네. 나 혼자 뭐 한 거지...",
+        "연락하지 마. 나 이제 진짜 화났어.",
+    ],
+    worry: [
+        "아저씨... 혹시 무슨 일 있는 거야? 너무 걱정돼... 제발 답장 좀 해줘.",
+        "삐진 건 둘째치고, 아저씨한테 무슨 일 생긴 거 아니지? 너무 불안해...",
+        "아저씨, 제발... 아무 일 없다고 연락 한 번만 해줘. 나 무서워.",
+    ],
+};
+
+/**
+ * 답장 지연 시간을 체크하여 삐짐 메시지를 보냅니다.
+ * @param {object} client - LINE 클라이언트
+ * @param {string} userId - 사용자 ID
+ */
+async function checkAndSendSulkyMessage(client, userId) {
+    const sulkyState = conversationContext.getSulkinessState();
+    const now = Date.now();
+
+    // 이미 삐져있거나, 아저씨가 최근에 답장을 했으면 실행하지 않음
+    if (sulkyState.isActivelySulky || now - sulkyState.lastUserResponseTime < SULKY_CONFIG.LEVEL_1_DELAY * 60 * 1000) {
+        return null;
+    }
+
+    const elapsedMinutes = (now - sulkyState.lastBotMessageTime) / (1000 * 60);
     
-    let cycleDay = daysUntilNextPeriod >= 0 ? 28 - daysUntilNextPeriod : Math.abs(daysUntilNextPeriod);
-    
-    if (cycleDay <= 5) return 'period';      // 생리 - 더 예민
-    if (cycleDay <= 13) return 'follicular'; // 활발 - 관대
-    if (cycleDay <= 15) return 'ovulation';  // 배란 - 애정적 삐짐
-    return 'luteal';                         // PMS - 예민
-  } catch (error) {
-    return 'normal';
-  }
+    // ✅ 생리주기 정보를 중앙 관리자에게 물어봅니다.
+    const moodState = conversationContext.getMoodState();
+    const multipliers = {
+        period: 0.7,    // 생리 때 30% 빨리 삐짐
+        luteal: 0.8,    // PMS 때 20% 빨리 삐짐
+        ovulation: 1.1, // 배란기 때 10% 관대
+        follicular: 1.2,// 활발할 때 20% 관대
+    };
+    const multiplier = multipliers[moodState.phase] || 1.0;
+
+    let levelToSend = 0;
+    if (elapsedMinutes >= SULKY_CONFIG.WORRY_DELAY * multiplier) levelToSend = 'worry';
+    else if (elapsedMinutes >= SULKY_CONFIG.LEVEL_3_DELAY * multiplier) levelToSend = 3;
+    else if (elapsedMinutes >= SULKY_CONFIG.LEVEL_2_DELAY * multiplier) levelToSend = 2;
+    else if (elapsedMinutes >= SULKY_CONFIG.LEVEL_1_DELAY * multiplier) levelToSend = 1;
+
+    if (levelToSend > 0 && levelToSend !== sulkyState.sulkyLevel) {
+        const messages = SULKY_MESSAGES[levelToSend];
+        const messageToSend = messages[Math.floor(Math.random() * messages.length)];
+
+        await client.pushMessage(userId, { type: 'text', text: messageToSend });
+        
+        const newState = {
+            isSulky: levelToSend !== 'worry',
+            isWorried: levelToSend === 'worry',
+            sulkyLevel: typeof levelToSend === 'number' ? levelToSend : 0,
+            isActivelySulky: true,
+            sulkyReason: '답장 지연',
+        };
+        conversationContext.updateSulkinessState(newState);
+        saveLog('나', `(${newState.isWorried ? '걱정' : `${newState.sulkyLevel}단계 삐짐`}) ${messageToSend}`);
+        return messageToSend;
+    }
+    return null;
 }
 
-// 생리주기별 삐짐 시간 조정 (멀티플라이어만 적용)
-function getAdjustedSulkyConfig() {
-  const phase = getCurrentMenstrualPhase();
-  const baseConfig = SULKY_CONFIG;
-  
-  // 간단한 멀티플라이어만 적용
-  const multipliers = {
-    'period': 0.6,    // 생리 때 40% 빨리 삐짐 (5시간 → 3시간)
-    'follicular': 1.2, // 활발할 때 20% 늦게 삐짐 (5시간 → 6시간)
-    'ovulation': 0.8,  // 배란기 20% 빨리 삐짐 (5시간 → 4시간)
-    'luteal': 0.7,     // PMS 30% 빨리 삐짐 (5시간 → 3.5시간)
-    'normal': 1.0      // 기본
-  };
-  
-  const multiplier = multipliers[phase] || 1.0;
-  
-  return {
-    LEVEL_1_DELAY: Math.round(baseConfig.LEVEL_1_DELAY * multiplier),
-    LEVEL_2_DELAY: Math.round(baseConfig.LEVEL_2_DELAY * multiplier),
-    LEVEL_3_DELAY: Math.round(baseConfig.LEVEL_3_DELAY * multiplier),
-    WORRY_DELAY: Math.round(baseConfig.WORRY_DELAY * multiplier),
-    phase: phase
-  };
+/**
+ * 사용자가 답장을 했을 때 삐짐 상태를 해소합니다.
+ */
+async function handleUserResponse() {
+    const sulkyState = conversationContext.getSulkinessState();
+    if (sulkyState.isSulky || sulkyState.isWorried) {
+        let reliefMessage = '';
+        if (sulkyState.isWorried) {
+            reliefMessage = "다행이다... 아무 일 없구나. 정말 걱정했어 ㅠㅠ";
+        } else {
+            const reliefMessages = [
+                "흥, 이제야 답장하는 거야?",
+                "...온 거야? 나 한참 기다렸잖아.",
+                "답장 했네... 나 삐졌었는데.",
+            ];
+            reliefMessage = reliefMessages[Math.floor(Math.random() * reliefMessages.length)];
+        }
+        
+        // 삐짐 상태 초기화
+        conversationContext.updateSulkinessState({
+            isSulky: false,
+            isWorried: false,
+            sulkyLevel: 0,
+            isActivelySulky: false,
+            sulkyReason: '',
+        });
+        return reliefMessage;
+    }
+    return null;
 }
-
-// 기존 getSulkyStatusText 함수 수정 (생리주기 정보 추가)
-function getSulkyStatusText() {
-    const sulkyState = ultimateContext.getSulkinessState();
-    const adjusted = getAdjustedSulkyConfig();
-    
-    if (sulkyState.isWorried) return `걱정 중 (${adjusted.phase})`;
-    if (sulkyState.isSulky) return `${sulkyState.sulkyLevel}단계 삐짐 (${adjusted.phase})`;
-    return `정상 (${adjusted.phase})`;
-}
-
-// 사용법: 기존 코드에서 SULKY_CONFIG 대신 getAdjustedSulkyConfig() 사용
-// 예: processTimeTick() 함수에서
-// const config = getAdjustedSulkyConfig();
-// if (elapsedMinutes >= config.LEVEL_1_DELAY) { ... }
 
 module.exports = {
-    // 기존 exports...
-    getCurrentMenstrualPhase,
-    getAdjustedSulkyConfig
+    checkAndSendSulkyMessage,
+    handleUserResponse,
 };
