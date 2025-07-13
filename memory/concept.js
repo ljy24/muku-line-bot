@@ -3,6 +3,8 @@
 
 const axios = require('axios');
 const { callOpenAI, cleanReply } = require('../src/aiUtils');
+const conversationContext = require('../ultimateConversationContext.js');
+const emotionalContext = require('../emotionalContextManager.js');
 
 // 컨셉 사진이 저장된 웹 서버의 기본 URL (HTTPS 필수)
 const BASE_CONCEPT_URL = 'https://photo.de-ji.net/photo/concept/';
