@@ -6,7 +6,9 @@
 const { Client, middleware } = require('@line/bot-sdk');
 const express = require('express');
 const path = require('path');
-const fs = require('fs').promises;
+// ✅ [수정] fs import 방식 변경
+const fs = require('fs');
+const fsPromises = require('fs').promises;
 require('dotenv').config();
 
 // ------------------- 모든 모듈 불러오기 -------------------
@@ -155,17 +157,20 @@ const MEMORY_BASE_PATH = path.join('/data', 'memory');
 
 async function recoverData() {
     try {
-        await fs.mkdir(MEMORY_BASE_PATH, { recursive: true });
+        await fsPromises.mkdir(MEMORY_BASE_PATH, { recursive: true });
         const fixedMemoryPath = path.join(MEMORY_BASE_PATH, 'fixedMemories.json');
+        
+        // ✅ [수정] fs.existsSync 사용
         if (!fs.existsSync(fixedMemoryPath)) {
-            await fs.writeFile(fixedMemoryPath, JSON.stringify(FIXED_MEMORIES_DATA, null, 2), 'utf8');
+            await fsPromises.writeFile(fixedMemoryPath, JSON.stringify(FIXED_MEMORIES_DATA, null, 2), 'utf8');
             console.log(`✅ fixedMemories.json 복구 완료.`);
         } else {
             console.log(`  - fixedMemories.json 이미 존재하여 복구를 건너뜁니다.`);
         }
+        
         const loveHistoryPath = path.join(MEMORY_BASE_PATH, 'love_history.json');
         if (!fs.existsSync(loveHistoryPath)) {
-            await fs.writeFile(loveHistoryPath, JSON.stringify(LOVE_HISTORY_DATA, null, 2), 'utf8');
+            await fsPromises.writeFile(loveHistoryPath, JSON.stringify(LOVE_HISTORY_DATA, null, 2), 'utf8');
             console.log(`✅ love_history.json 복구 완료.`);
         } else {
             console.log(`  - love_history.json 이미 존재하여 복구를 건너뜁니다.`);
