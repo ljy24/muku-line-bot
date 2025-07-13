@@ -5,6 +5,7 @@
 
 const conversationContext = require('./ultimateConversationContext.js');
 const { callOpenAI, cleanReply } = require('./aiUtils');
+const logger = require('./enhancedLogging.js'); // ✅ 예쁜 로깅 시스템 추가
 const moment = require('moment-timezone');
 
 const BOT_NAME = '나';
