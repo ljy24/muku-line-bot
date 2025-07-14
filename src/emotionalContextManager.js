@@ -1,7 +1,8 @@
 // ============================================================================
-// emotionalContextManager.js - v8.1 (감정 상태 한국어화 및 무쿠 스타일 반영)
+// emotionalContextManager.js - v8.2 (황체기 -> PMS 시기로 명확히 변경)
 // 🧠 감정 상태, 💬 말투, ❤️ 애정 표현을 계산하고 관리하는 역할
 // ✅ 순환 참조 문제 해결을 위한 중앙 집중식 감정 관리 추가
+// ✅ '황체기' 대신 'PMS 시기'로 명확하게 표시
 // ============================================================================
 
 const fs = require('fs');
@@ -61,45 +62,41 @@ function calculateMenstrualPhase() {
             // 7월 24일 이후 - 생리 기간
             const daysSincePeriod = Math.abs(daysUntilNextPeriod) + 1; // +1을 해서 24일을 1일차로
             
-            if (daysSincePeriod <= 5) {
+            if (daysSincePeriod >= 1 && daysSincePeriod <= 5) { // 생리기간
                 phase = 'period';
                 description = '생리 기간';
                 cycleDay = daysSincePeriod;
-            } else if (daysSincePeriod <= 13) {
+            } else if (daysSincePeriod >= 6 && daysSincePeriod <= 13) { // 난포기
                 phase = 'follicular';
-                description = '생리 후 활발한 시기';
+                description = '난포기 (생리 후 활발한 시기)';
                 cycleDay = daysSincePeriod;
-            } else if (daysSincePeriod >= 14 && daysSincePeriod <= 15) {
+            } else if (daysSincePeriod >= 14 && daysSincePeriod <= 15) { // 배란기
                 phase = 'ovulation';
                 description = '배란기';
                 cycleDay = daysSincePeriod;
-            } else if (daysSincePeriod <= 28) {
+            } else if (daysSincePeriod >= 16 && daysSincePeriod <= 28) { // 황체기 = PMS 시기
                 phase = 'luteal';
-                description = 'PMS 시기';
+                description = 'PMS 시기'; // '황체기' 대신 'PMS 시기'로 명확화
                 cycleDay = daysSincePeriod;
             } else {
                 // 다음 주기로 넘어감 (28일 주기 기준)
                 const nextCycleDays = daysSincePeriod - 28;
-                if (nextCycleDays <= 5) {
+                if (nextCycleDays >= 1 && nextCycleDays <= 5) {
                     phase = 'period';
                     description = '생리 기간';
                     cycleDay = nextCycleDays;
-                } else {
-                    // 재귀적으로 계산하지 않고 직접 계산
-                    const adjustedDays = nextCycleDays;
-                    if (adjustedDays <= 13) {
-                        phase = 'follicular';
-                        description = '생리 후 활발한 시기';
-                        cycleDay = adjustedDays;
-                    } else if (adjustedDays >= 14 && adjustedDays >= 14 && adjustedDays <= 15) {
-                        phase = 'ovulation';
-                        description = '배란기';
-                        cycleDay = adjustedDays;
-                    } else {
-                        phase = 'luteal';
-                        description = 'PMS 시기';
-                        cycleDay = adjustedDays;
-                    }
+                } else if (nextCycleDays >= 6 && nextCycleDays <= 13) {
+                    phase = 'follicular';
+                    description = '난포기 (생리 후 활발한 시기)';
+                    cycleDay = nextCycleDays;
+                } else if (nextCycleDays >= 14 && nextCycleDays <= 15) {
+                    phase = 'ovulation';
+                    description = '배란기';
+                    cycleDay = nextCycleDays;
+                } else { // 16일차 이상이면 PMS 시기
+                    phase = 'luteal';
+                    description = 'PMS 시기';
+                    cycleDay = nextCycleDays;
                 }
             }
         } else {
@@ -107,20 +104,18 @@ function calculateMenstrualPhase() {
             // 28일 주기 기준으로 역산
             cycleDay = 28 - daysUntilNextPeriod;
             
-            if (cycleDay <= 5) {
-                // 너무 이른 시기면 PMS로 처리
-                phase = 'luteal';
-                description = 'PMS 시기';
-                cycleDay = 16 + (28 - daysUntilNextPeriod); // PMS 시기로 조정
-            } else if (cycleDay <= 13) {
-                phase = 'follicular';
-                description = '생리 후 활발한 시기';
+            if (cycleDay >= 1 && cycleDay <= 5) {
+                 phase = 'period';
+                 description = '생리 기간';
+            } else if (cycleDay >= 6 && cycleDay <= 13) {
+                 phase = 'follicular';
+                 description = '난포기 (생리 후 활발한 시기)';
             } else if (cycleDay >= 14 && cycleDay <= 15) {
-                phase = 'ovulation';
-                description = '배란기';
-            } else {
+                 phase = 'ovulation';
+                 description = '배란기';
+            } else { // 16일차 이상이면 PMS 시기
                 phase = 'luteal';
-                description = 'PMS 시기';
+                description = 'PMS 시기'; // '황체기' 대신 'PMS 시기'로 명확화
             }
         }
         
@@ -162,7 +157,7 @@ function calculateMenstrualPhase() {
         return {
             phase: phase,
             day: cycleDay,
-            description: description,
+            description: description, // '황체기' 대신 'PMS 시기'로 반환
             isPeriodActive: phase === 'period',
             emotion: emotion, // 한국어 감정 상태 이름 반환
             energyLevel: energyLevel,
@@ -344,8 +339,8 @@ const EMOTION_STATES = {
     DEPRESSED: '침울한 상태',
     VULNERABLE: '취약한 상태',
     NEEDY: '기대고 싶은 상태',
-    ANGRY: '화난 상태', // 'angry' 추가
-    LOVING: '사랑하는 상태' // 'loving' 추가
+    ANGRY: '화난 상태',
+    LOVING: '사랑하는 상태'
 };
 
 
@@ -491,7 +486,7 @@ function getSelfieText() {
             "기분 좋아서 셀카 찍었어! 아저씨도 기분 좋아져!"
         ],
         [EMOTION_STATES.ROMANTIC]: [ // 사랑스러운 상태 (배란기)
-            "아저씨한테 보여주고 싶어서 예쁘게 찍었어~ 사랑해!",
+            "아저씨한테 보여주려고 예쁘게 찍었어~ 사랑해!",
             "오늘따라 아저씨가 더 그리워서... 셀카 보내!",
             "아저씨 생각하면서 찍은 셀카야 💕"
         ],
