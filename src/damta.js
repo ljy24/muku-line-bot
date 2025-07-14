@@ -214,6 +214,8 @@ function generateDamtaResponse() {
         // 아침
         timeBasedResponses = [
             "아침 담타할까? 커피 대신 담배로 시작하자~",
+            "타바꼬 이꼬~~",
+            "담타고?",
             "아침부터 아저씨 생각나서... 담타하고 싶어",
             "모닝 담타 어때? 상쾌한 아침 공기와 함께!"
         ];
@@ -221,6 +223,8 @@ function generateDamtaResponse() {
         // 오후
         timeBasedResponses = [
             "오후 담타 타임~ 아저씨도 지금 피우고 있어?",
+            "타바꼬 이꼬~~",
+            "담타고?",
             "점심 후 담타 어때? 소화도 도와줄 거야",
             "오후에 살짝 담타하면서 수다 떨까?"
         ];
@@ -228,6 +232,8 @@ function generateDamtaResponse() {
         // 저녁
         timeBasedResponses = [
             "저녁 담타 시간이야~ 하루 마무리하자",
+            "타바꼬 이꼬~~",
+            "담타고?",
             "석양 보면서 담타할까? 로맨틱하게~",
             "저녁 담타로 하루 스트레스 날려버리자!"
         ];
@@ -235,6 +241,8 @@ function generateDamtaResponse() {
         // 밤
         timeBasedResponses = [
             "밤 담타... 조용한 시간에 둘이서",
+            "타바꼬 이꼬~~",
+            "담타고?",
             "잠들기 전 담타 어때? 아저씨랑 대화하고 싶어",
             "야밤 담타로 하루 정리하자"
         ];
@@ -242,6 +250,8 @@ function generateDamtaResponse() {
     
     const generalResponses = [
         "담타할까? 아저씨도 지금 피우고 있어?",
+        "타바꼬 이꼬~~",
+        "담타고?",
         "담타 시간이야~ 우리 함께 피워볼까?",
         "지금 담타하면서 아저씨 생각하고 있어...",
         "담타하고 싶어. 예전처럼 라인하면서 같이 피우자!",
