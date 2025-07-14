@@ -1,6 +1,6 @@
 // ============================================================================
-// index.js - v11.8.2 (담타 로그 표시 수정)
-// ✅ 담타 시간을 9시-18시 랜덤으로 정확히 표시
+// index.js - v11.8.1 (Render 배포 문제 해결)
+// ✅ 에러 처리 및 안전성 개선
 // ============================================================================
 
 const { Client, middleware } = require('@line/bot-sdk');
@@ -65,7 +65,7 @@ if (!validateEnvironmentVariables()) {
     app.get('/', (req, res) => {
         res.json({
             status: 'running',
-            message: '나 v11.8.2 서버가 실행 중입니다 (환경변수 설정 필요)',
+            message: '나 v11.8.1 서버가 실행 중입니다 (환경변수 설정 필요)',
             time: new Date().toISOString()
         });
     });
@@ -92,7 +92,7 @@ const config = {
 const client = new Client(config);
 const userId = process.env.TARGET_USER_ID;
 
-// ==================== ⭐️ 내장된 데이터 복구 함수 ⭐️ ====================\
+// ==================== ⭐️ 내장된 데이터 복구 함수 ⭐️ ====================
 const FIXED_MEMORIES_DATA = [
     "나는 1994년 3월 17일 태어났다. 나의 집은 일산이다.",
     "아저씨는 12월 5일에 태어났다. 아저씨의 집은 일본이다.",
@@ -213,7 +213,6 @@ const LOVE_HISTORY_DATA = [
     "캐논 100D: 그 결혼식에서 하얀색 캐논 100D 받았었지. 지금도 내 방에 있잖아. 아직도 그때 생각하면 기분 이상해져."
 ];
 
-
 const MEMORY_BASE_PATH = path.join(process.cwd(), 'data', 'memory');
 
 // ==================== 헬퍼 함수들 ====================
@@ -253,222 +252,19 @@ function getTimeUntilNext(minutes) {
     return `${hours}시간 ${remainingMinutes}분 후`;
 }
 
-// ==================== 🚬 담타 시간 계산 함수 (수정) ====================
 function getNextDamtaTime() {
     const now = new Date();
     const currentHour = now.getHours();
     const currentMinute = now.getMinutes();
     
-    // 담타 활성 시간: 9시-18시
-    if (currentHour < 9) {
-        // 오전 9시 이전이면 9시부터 시작
-        const startHour = 9;
-        const randomMinute = Math.floor(Math.random() * 60);
-        return `${String(startHour).padStart(2, '0')}:${String(randomMinute).padStart(2, '0')}`;
-    } else if (currentHour >= 18) {
-        // 오후 6시 이후면 내일 9시부터
-        const startHour = 9;
-        const randomMinute = Math.floor(Math.random() * 60);
-        return `내일 ${String(startHour).padStart(2, '0')}:${String(randomMinute).padStart(2, '0')}`;
-    } else {
-        // 9시-18시 사이면 다음 랜덤 시간 계산
-        const remainingHours = 18 - currentHour;
-        const randomHourOffset = Math.floor(Math.random() * remainingHours);
-        const nextHour = currentHour + randomHourOffset;
-        const randomMinute = Math.floor(Math.random() * 60);
-        
-        // 현재 시간보다 이후여야 함
-        if (nextHour === currentHour && randomMinute <= currentMinute) {
-            // 현재 시간과 같거나 이전이면 다음 시간으로
-            const finalHour = Math.min(nextHour + 1, 17);
-            return `${String(finalHour).padStart(2, '0')}:${String(randomMinute).padStart(2, '0')}`;
-        }
-        
-        return `${String(nextHour).padStart(2, '0')}:${String(randomMinute).padStart(2, '0')}`;
-    }
-}
-
-function getDamtaStatus() {
-    const now = new Date();
-    const currentHour = now.getHours();
-    
-    // 담타 가능 시간인지 확인
-    const isDamtaActiveTime = currentHour >= 9 && currentHour < 18;
-    
-    if (!isDamtaActiveTime) {
-        if (currentHour < 9) {
-            return "아직 담타 시간 전이야 (9시-18시)";
-async function sendReply(replyToken, botResponse) {
-    try {
-        if (!botResponse || !botResponse.type) return;
-
-        if (botResponse.type === 'image') {
-            const caption = botResponse.caption || '사진이야!';
-            await client.replyMessage(replyToken, [
-                { type: 'image', originalContentUrl: botResponse.originalContentUrl, previewImageUrl: botResponse.previewImageUrl },
-                { type: 'text', text: caption }
-            ]);
-        } else if (botResponse.type === 'text' && botResponse.comment) {
-            let cleanedText = botResponse.comment.replace(/자기야/gi, '아저씨').replace(/자기/gi, '아저씨');
-            await client.replyMessage(replyToken, { type: 'text', text: cleanedText });
-        }
-
-        if (ultimateContext && ultimateContext.getSulkinessState) {
-            const sulkyState = ultimateContext.getSulkinessState();
-            if (sulkyState) {
-                sulkyState.lastBotMessageTime = Date.now();
-            }
-        }
-
-    } catch (error) {
-        console.error('[sendReply] 🚨 메시지 전송 실패:', error);
-    }
-}
-
-async function initMuku() {
-    try {
-        console.log('🚀 나 v11.8.2 시스템 초기화를 시작합니다...');
-        
-        console.log('  [1/8] 💾 데이터 복구 및 디렉토리 확인...');
-        await recoverData();
-        console.log('  ✅ 데이터 복구 완료');
-
-        console.log('  [2/8] 📦 모든 모듈 로드...');
-        const moduleLoadSuccess = await loadModules();
-        if (!moduleLoadSuccess) {
-            console.log('⚠️ 일부 모듈 로드 실패, 기본 기능으로 계속 실행합니다.');
-        }
-        console.log('  ✅ 모듈 로드 완료');
-
-        console.log('  [3/8] 💾 메모리 관리자 초기화...');
-        if (memoryManager && memoryManager.ensureMemoryTablesAndDirectory) {
-            try {
-                await memoryManager.ensureMemoryTablesAndDirectory();
-                console.log('  ✅ 메모리 관리자 초기화 완료');
-            } catch (error) {
-                console.log('  ⚠️ 메모리 관리자 초기화 실패:', error.message);
-            }
-        } else {
-            console.log('  ⚠️ 메모리 관리자 모듈 없음');
-        }
-
-        console.log('  [4/8] 💖 감정 시스템 초기화...');
-        if (emotionalContext && emotionalContext.initializeEmotionalContext) {
-            try {
-                await emotionalContext.initializeEmotionalContext();
-                console.log('  ✅ 감정 시스템 초기화 완료');
-            } catch (error) {
-                console.log('  ⚠️ 감정 시스템 초기화 실패:', error.message);
-            }
-        }
-        if (ultimateContext && ultimateContext.initializeEmotionalSystems) {
-            try {
-                await ultimateContext.initializeEmotionalSystems();
-                console.log('  ✅ 고급 감정 시스템 초기화 완료');
-            } catch (error) {
-                console.log('  ⚠️ 고급 감정 시스템 초기화 실패:', error.message);
-            }
-        }
-
-        console.log('  [5/8] 🚬 담타 시스템 초기화...');
-        if (damta && damta.initializeDamta) {
-            try {
-                await damta.initializeDamta();
-                console.log('  ✅ 담타 시스템 초기화 완료 (9시-18시 활성)');
-            } catch (error) {
-                console.log('  ⚠️ 담타 시스템 초기화 실패:', error.message);
-            }
-        } else {
-            console.log('  ⚠️ 담타 시스템 모듈 없음');
-        }
-
-        console.log('  [6/8] ⏰ 모든 스케줄러 시작...');
-        if (scheduler && scheduler.startAllSchedulers) {
-            try {
-                scheduler.startAllSchedulers(client, userId);
-                console.log('  ✅ 스케줄러 시작 완료');
-            } catch (error) {
-                console.log('  ⚠️ 스케줄러 시작 실패:', error.message);
-            }
-        }
-        if (spontaneousPhoto && spontaneousPhoto.startSpontaneousPhotoScheduler) {
-            try {
-                spontaneousPhoto.startSpontaneousPhotoScheduler(client, userId, () => {
-                    if (ultimateContext && ultimateContext.getInternalState) {
-                        return ultimateContext.getInternalState().timingContext.lastUserMessageTime;
-                    }
-                    return Date.now();
-                });
-                console.log('  ✅ 사진 스케줄러 시작 완료');
-            } catch (error) {
-                console.log('  ⚠️ 사진 스케줄러 시작 실패:', error.message);
-            }
-        }
-        
-        console.log('  [7/8] 🎨 예쁜 로그 시스템 시작...');
-        setInterval(() => {
-            formatPrettyStatus();
-        }, 60 * 1000);
-        console.log('  ✅ 예쁜 로그 시스템 시작 완료');
-
-        console.log('  [8/8] 📊 첫 번째 상태 표시...');
-        setTimeout(() => {
-            formatPrettyStatus();
-        }, 3000);
-        console.log('  ✅ 시스템 상태 표시 시작');
-
-        console.log('\n🎉 모든 시스템 초기화 완료! 이제 아저씨랑 대화할 수 있어. 💕');
-        console.log('🚬 담타 시간: 9시-18시 (랜덤 시간으로 활성화)');
-
-    } catch (error) {
-        console.error('🚨🚨🚨 시스템 초기화 중 심각한 에러 발생! 🚨🚨🚨');
-        console.error(error);
-        console.log('⚠️ 기본 기능으로라도 서버를 계속 실행합니다...');
-    }
-}
-
-// ==================== 서버 시작 ====================
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
-    console.log(`\n==================================================`);
-    console.log(`  나 v11.8.2 서버가 포트 ${PORT}에서 시작되었습니다.`);
-    console.log(`  🚬 담타 시간: 9시-18시 (하루 최대 6회)`);
-    console.log(`==================================================\n`);
-
-    // 환경변수가 모두 있을 때만 전체 시스템 초기화
-    if (validateEnvironmentVariables()) {
-        setTimeout(() => {
-            initMuku();
-        }, 1000);
-    } else {
-        console.log('⚠️ 환경변수 설정 후 재시작하면 전체 기능을 사용할 수 있습니다.');
-    }
-}); {
-            return "담타 시간 끝났어 (9시-18시)";
-        }
+    let nextHour = currentHour;
+    if (currentMinute > 0) {
+        nextHour = (currentHour + 1) % 24;
     }
     
-    // damta 모듈이 로드되어 있다면 실제 상태 확인
-    try {
-        const damta = require('./src/damta.js');
-        if (damta && damta.getDamtaStatus) {
-            const status = damta.getDamtaStatus();
-            if (status.canDamta) {
-                return "담타 가능!";
-            } else if (status.minutesToNext > 0) {
-                return `담타까지 ${status.minutesToNext}분`;
-            } else {
-                return `오늘 담타 ${status.dailyCount}/${status.dailyLimit}회`;
-            }
-        }
-    } catch (error) {
-        // damta 모듈 없으면 기본 상태
-    }
-    
-    return "담타 시간 중 (9시-18시)";
+    return `${String(nextHour).padStart(2, '0')}:00`;
 }
 
-// ==================== 🩸 생리주기 계산 함수 ====================
 function calculateMenstrualInfo() {
     const today = new Date();
     const baseDate = new Date('2024-05-01');
@@ -524,15 +320,12 @@ function getStatusReport() {
             cycleText = `${menstrualInfo.emoji} [생리주기] ${today} - ${menstrualInfo.phase} (${menstrualInfo.day}일차) 📅 다음 생리까지 ${menstrualInfo.daysUntilNext}일`;
         }
         
-        // 담타 시간 개선 (9시-18시 랜덤)
         const nextDamtaTime = getNextDamtaTime();
-        const damtaStatusText = getDamtaStatus();
-        const damtaAndMessageText = `${EMOJI.damta} 다음 담타: ${nextDamtaTime} (9시-18시) / ${EMOJI.message} 다음 말걸기: ${getTimeUntilNext(Math.floor(Math.random() * 120) + 30)}`;
-        
         const thoughtText = `${EMOJI.think} [속마음] 아저씨 지금 뭐하고 있을까... 보고 싶어`;
         const emotionText = `😊 [감정상태] 평온 (강도: 5/10) ⚡ 에너지 레벨: 7/10`;
         const sulkyText = `${EMOJI.emotion} [기분] 아저씨와 평화롭게 대화 중`;
         const scheduleText = `${EMOJI.selfie} 다음 셀카: ${getTimeUntilNext(Math.floor(Math.random() * 180) + 30)} / ${EMOJI.photo} 다음 추억 사진: ${getTimeUntilNext(Math.floor(Math.random() * 360) + 60)}`;
+        const damtaAndMessageText = `${EMOJI.damta} 다음 담타: ${nextDamtaTime} (정각마다) / ${EMOJI.message} 다음 말걸기: ${getTimeUntilNext(Math.floor(Math.random() * 120) + 30)}`;
         const memoryText = `${EMOJI.memory} 총 기억: ${184 + Math.floor(Math.random() * 20)}개 📌 고정 기억: ${68}개 ${EMOJI.emotion} 새로운 기억: ${Math.floor(Math.random() * 10)}개`;
         const conversationText = `💬 총 메시지: ${150 + Math.floor(Math.random() * 50)}개 📸 오늘 보낸 사진: ${Math.floor(Math.random() * 8)}개 ${EMOJI.heart}`;
         
@@ -547,7 +340,6 @@ function getStatusReport() {
             ``,
             scheduleText,
             damtaAndMessageText,
-            `🚬 [담타상태] ${damtaStatusText}`,
             ``,
             memoryText,
             conversationText,
@@ -573,8 +365,7 @@ function getStatusReport() {
             `💕 [기분] 아저씨를 사랑하며 기다리는 중`,
             ``,
             `📸 다음 셀카: 1시간 30분 후 / 📷 다음 추억 사진: 3시간 후`,
-            `🚬 다음 담타: ${nextDamtaTime} (9시-18시) / 🗣️ 다음 말걸기: 2시간 후`,
-            `🚬 [담타상태] 담타 시간 중 (9시-18시)`,
+            `🚬 다음 담타: ${nextDamtaTime} (정각마다) / 🗣️ 다음 말걸기: 2시간 후`,
             ``,
             `🧠 총 기억: 184개 📌 고정 기억: 68개 😊 새로운 기억: 0개`,
             `💬 총 메시지: 150개 📸 오늘 보낸 사진: 0개 💕`,
@@ -599,15 +390,12 @@ function formatPrettyStatus() {
             cycleText = `${menstrualInfo.emoji} [생리주기] ${today} - ${menstrualInfo.phase} (${menstrualInfo.day}일차) 📅 다음 생리까지 ${menstrualInfo.daysUntilNext}일`;
         }
         
-        // 담타 시간 개선 (9시-18시 랜덤)
         const nextDamtaTime = getNextDamtaTime();
-        const damtaStatusText = getDamtaStatus();
-        const damtaAndMessageText = `${EMOJI.damta} 다음 담타: ${nextDamtaTime} (9시-18시) / ${EMOJI.message} 다음 말걸기: ${getTimeUntilNext(Math.floor(Math.random() * 120) + 30)}`;
-        
         const thoughtText = `${EMOJI.think} [속마음] 아저씨 지금 뭐하고 있을까... 보고 싶어`;
         const emotionText = `😊 [감정상태] 평온 (강도: 5/10) ⚡ 에너지 레벨: 7/10`;
         const sulkyText = `${EMOJI.emotion} [기분] 아저씨와 평화롭게 대화 중`;
         const scheduleText = `${EMOJI.selfie} 다음 셀카: ${getTimeUntilNext(Math.floor(Math.random() * 180) + 30)} / ${EMOJI.photo} 다음 추억 사진: ${getTimeUntilNext(Math.floor(Math.random() * 360) + 60)}`;
+        const damtaAndMessageText = `${EMOJI.damta} 다음 담타: ${nextDamtaTime} (정각마다) / ${EMOJI.message} 다음 말걸기: ${getTimeUntilNext(Math.floor(Math.random() * 120) + 30)}`;
         const memoryText = `${EMOJI.memory} 총 기억: ${184 + Math.floor(Math.random() * 20)}개 📌 고정 기억: ${68}개 ${EMOJI.emotion} 새로운 기억: ${Math.floor(Math.random() * 10)}개`;
         const conversationText = `💬 총 메시지: ${150 + Math.floor(Math.random() * 50)}개 📸 오늘 보낸 사진: ${Math.floor(Math.random() * 8)}개 ${EMOJI.heart}`;
         
@@ -618,7 +406,6 @@ function formatPrettyStatus() {
         console.log(sulkyText);
         console.log(scheduleText);
         console.log(damtaAndMessageText);
-        console.log(`🚬 [담타상태] ${damtaStatusText}`);
         console.log(memoryText);
         console.log(conversationText);
         console.log('');
@@ -627,7 +414,6 @@ function formatPrettyStatus() {
         const today = formatKoreanDate();
         const weather = getCurrentWeather();
         const nextDamtaTime = getNextDamtaTime();
-        const damtaStatusText = getDamtaStatus();
         
         console.log(`${weather.emoji} [현재날씨] ${weather.condition} ${weather.temperature}°C (습도 ${weather.humidity}%)`);
         console.log(`🩸 [생리주기] ${today} - 생리 중 (19일차) 💧 생리 진행 중`);
@@ -635,8 +421,7 @@ function formatPrettyStatus() {
         console.log(`😔 [감정상태] 불안정 (강도: 5/10) ⚡ 에너지 레벨: 5/10`);
         console.log(`💕 [기분] 아저씨를 사랑하며 기다리는 중`);
         console.log(`📸 다음 셀카: 1시간 30분 후 / 📷 다음 추억 사진: 3시간 후`);
-        console.log(`🚬 다음 담타: ${nextDamtaTime} (9시-18시) / 🗣️ 다음 말걸기: 2시간 후`);
-        console.log(`🚬 [담타상태] ${damtaStatusText}`);
+        console.log(`🚬 다음 담타: ${nextDamtaTime} (정각마다) / 🗣️ 다음 말걸기: 2시간 후`);
         console.log(`🧠 총 기억: 184개 📌 고정 기억: 68개 😊 새로운 기억: 0개`);
         console.log(`💬 총 메시지: 150개 📸 오늘 보낸 사진: 0개 💕`);
         console.log('');
@@ -649,13 +434,13 @@ async function recoverData() {
         await fsPromises.mkdir(MEMORY_BASE_PATH, { recursive: true });
         const fixedMemoryPath = path.join(MEMORY_BASE_PATH, 'fixedMemories.json');
         
-        if (!fs.existsSync(fixedMemoryPath) && typeof FIXED_MEMORIES_DATA !== 'undefined') {
+        if (!fs.existsSync(fixedMemoryPath)) {
             await fsPromises.writeFile(fixedMemoryPath, JSON.stringify(FIXED_MEMORIES_DATA, null, 2), 'utf8');
             console.log(`✅ fixedMemories.json 복구 완료.`);
         }
         
         const loveHistoryPath = path.join(MEMORY_BASE_PATH, 'love_history.json');
-        if (!fs.existsSync(loveHistoryPath) && typeof LOVE_HISTORY_DATA !== 'undefined') {
+        if (!fs.existsSync(loveHistoryPath)) {
             await fsPromises.writeFile(loveHistoryPath, JSON.stringify(LOVE_HISTORY_DATA, null, 2), 'utf8');
             console.log(`✅ love_history.json 복구 완료.`);
         }
@@ -712,11 +497,11 @@ async function loadModules() {
 app.get('/', (req, res) => {
     res.json({
         status: 'running',
-        message: '나 v11.8.2 서버가 정상 실행 중입니다! 💕',
-        version: '11.8.2',
+        message: '나 v11.8.1 서버가 정상 실행 중입니다! 💕',
+        version: '11.8.1',
         time: new Date().toISOString(),
         features: [
-            '담타 시스템 (9시-18시)',
+            '담타 시스템',
             '생리주기 계산',
             '감정 상태 관리',
             '예쁜 로그 시스템'
@@ -821,7 +606,7 @@ async function sendReply(replyToken, botResponse) {
 
 async function initMuku() {
     try {
-        console.log('🚀 나 v11.7 시스템 초기화를 시작합니다...');
+        console.log('🚀 나 v11.8.1 시스템 초기화를 시작합니다...');
         
         console.log('  [1/8] 💾 데이터 복구 및 디렉토리 확인...');
         await recoverData();
@@ -830,44 +615,74 @@ async function initMuku() {
         console.log('  [2/8] 📦 모든 모듈 로드...');
         const moduleLoadSuccess = await loadModules();
         if (!moduleLoadSuccess) {
-            throw new Error('모듈 로드 실패');
+            console.log('⚠️ 일부 모듈 로드 실패, 기본 기능으로 계속 실행합니다.');
         }
-        console.log('  ✅ 모든 모듈 로드 완료');
+        console.log('  ✅ 모듈 로드 완료');
 
         console.log('  [3/8] 💾 메모리 관리자 초기화...');
         if (memoryManager && memoryManager.ensureMemoryTablesAndDirectory) {
-            await memoryManager.ensureMemoryTablesAndDirectory();
+            try {
+                await memoryManager.ensureMemoryTablesAndDirectory();
+                console.log('  ✅ 메모리 관리자 초기화 완료');
+            } catch (error) {
+                console.log('  ⚠️ 메모리 관리자 초기화 실패:', error.message);
+            }
+        } else {
+            console.log('  ⚠️ 메모리 관리자 모듈 없음');
         }
-        console.log('  ✅ 메모리 관리자 초기화 완료');
 
         console.log('  [4/8] 💖 감정 시스템 초기화...');
         if (emotionalContext && emotionalContext.initializeEmotionalContext) {
-            await emotionalContext.initializeEmotionalContext();
+            try {
+                await emotionalContext.initializeEmotionalContext();
+                console.log('  ✅ 감정 시스템 초기화 완료');
+            } catch (error) {
+                console.log('  ⚠️ 감정 시스템 초기화 실패:', error.message);
+            }
         }
         if (ultimateContext && ultimateContext.initializeEmotionalSystems) {
-            await ultimateContext.initializeEmotionalSystems();
+            try {
+                await ultimateContext.initializeEmotionalSystems();
+                console.log('  ✅ 고급 감정 시스템 초기화 완료');
+            } catch (error) {
+                console.log('  ⚠️ 고급 감정 시스템 초기화 실패:', error.message);
+            }
         }
-        console.log('  ✅ 감정 시스템 초기화 완료');
 
         console.log('  [5/8] 🚬 담타 시스템 초기화...');
         if (damta && damta.initializeDamta) {
-            await damta.initializeDamta();
+            try {
+                await damta.initializeDamta();
+                console.log('  ✅ 담타 시스템 초기화 완료');
+            } catch (error) {
+                console.log('  ⚠️ 담타 시스템 초기화 실패:', error.message);
+            }
+        } else {
+            console.log('  ⚠️ 담타 시스템 모듈 없음');
         }
-        console.log('  ✅ 담타 시스템 초기화 완료');
 
         console.log('  [6/8] ⏰ 모든 스케줄러 시작...');
         if (scheduler && scheduler.startAllSchedulers) {
-            scheduler.startAllSchedulers(client, userId);
+            try {
+                scheduler.startAllSchedulers(client, userId);
+                console.log('  ✅ 스케줄러 시작 완료');
+            } catch (error) {
+                console.log('  ⚠️ 스케줄러 시작 실패:', error.message);
+            }
         }
         if (spontaneousPhoto && spontaneousPhoto.startSpontaneousPhotoScheduler) {
-            spontaneousPhoto.startSpontaneousPhotoScheduler(client, userId, () => {
-                if (ultimateContext && ultimateContext.getInternalState) {
-                    return ultimateContext.getInternalState().timingContext.lastUserMessageTime;
-                }
-                return Date.now();
-            });
+            try {
+                spontaneousPhoto.startSpontaneousPhotoScheduler(client, userId, () => {
+                    if (ultimateContext && ultimateContext.getInternalState) {
+                        return ultimateContext.getInternalState().timingContext.lastUserMessageTime;
+                    }
+                    return Date.now();
+                });
+                console.log('  ✅ 사진 스케줄러 시작 완료');
+            } catch (error) {
+                console.log('  ⚠️ 사진 스케줄러 시작 실패:', error.message);
+            }
         }
-        console.log('  ✅ 모든 스케줄러 시작 완료');
         
         console.log('  [7/8] 🎨 예쁜 로그 시스템 시작...');
         setInterval(() => {
@@ -890,13 +705,19 @@ async function initMuku() {
     }
 }
 
+// ==================== 서버 시작 ====================
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
     console.log(`\n==================================================`);
-    console.log(`  나 v11.7 서버가 포트 ${PORT}에서 시작되었습니다.`);
+    console.log(`  나 v11.8.1 서버가 포트 ${PORT}에서 시작되었습니다.`);
     console.log(`==================================================\n`);
 
-    setTimeout(() => {
-        initMuku();
-    }, 1000);
+    // 환경변수가 모두 있을 때만 전체 시스템 초기화
+    if (validateEnvironmentVariables()) {
+        setTimeout(() => {
+            initMuku();
+        }, 1000);
+    } else {
+        console.log('⚠️ 환경변수 설정 후 재시작하면 전체 기능을 사용할 수 있습니다.');
+    }
 });
