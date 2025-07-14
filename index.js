@@ -1,6 +1,6 @@
 // ============================================================================
-// index.js - v11.7 (예쁜 로그 시스템 추가)
-// ✅ 1분마다 애기의 상태를 예쁘게 표시하는 로그 시스템
+// index.js - v11.8 (담타와 생리기간 표시 수정)
+// ✅ 담타 시간과 생리기간 표시 로직 개선
 // ============================================================================
 
 const { Client, middleware } = require('@line/bot-sdk');
@@ -199,29 +199,107 @@ function getTimeUntilNext(minutes) {
     return `${hours}시간 ${remainingMinutes}분 후`;
 }
 
+// ==================== 🚬 담타 시간 계산 함수 ====================
+function getNextDamtaTime() {
+    const now = new Date();
+    const currentHour = now.getHours();
+    const currentMinute = now.getMinutes();
+    
+    // 다음 정각 시간 계산
+    let nextHour = currentHour;
+    if (currentMinute > 0) {
+        nextHour = (currentHour + 1) % 24;
+    }
+    
+    return `${String(nextHour).padStart(2, '0')}:00`;
+}
+
+// ==================== 🩸 생리주기 계산 함수 ====================
+function calculateMenstrualInfo() {
+    const today = new Date();
+    
+    // 기준일을 2024년 5월 1일로 설정 (생리 시작일)
+    const baseDate = new Date('2024-05-01');
+    const timeDiff = today.getTime() - baseDate.getTime();
+    const daysDiff = Math.floor(timeDiff / (1000 * 60 * 60 * 24));
+    
+    // 28일 주기로 계산
+    const cycleLength = 28;
+    const dayInCycle = (daysDiff % cycleLength) + 1;
+    
+    // 생리 기간: 1-7일
+    // 난포기: 8-13일
+    // 배란기: 14-16일 
+    // 황체기: 17-28일
+    
+    let phase, phaseEmoji, isOnPeriod = false;
+    let daysUntilNext = 0;
+    
+    if (dayInCycle >= 1 && dayInCycle <= 7) {
+        phase = '생리 중';
+        phaseEmoji = '🩸';
+        isOnPeriod = true;
+        daysUntilNext = 0; // 생리 중이므로 0
+    } else if (dayInCycle >= 8 && dayInCycle <= 13) {
+        phase = '난포기';
+        phaseEmoji = '🌸';
+        daysUntilNext = cycleLength - dayInCycle + 1;
+    } else if (dayInCycle >= 14 && dayInCycle <= 16) {
+        phase = '배란기';
+        phaseEmoji = '💕';
+        daysUntilNext = cycleLength - dayInCycle + 1;
+    } else {
+        phase = '황체기';
+        phaseEmoji = '🌧️';
+        daysUntilNext = cycleLength - dayInCycle + 1;
+    }
+    
+    return {
+        day: dayInCycle,
+        phase: phase,
+        emoji: phaseEmoji,
+        isOnPeriod: isOnPeriod,
+        daysUntilNext: daysUntilNext
+    };
+}
+
 function getStatusReport() {
     try {
         const weather = getCurrentWeather();
-        const emotionalContext = require('./src/emotionalContextManager.js');
-        const menstrualInfo = emotionalContext.calculateMenstrualPhase();
-        const currentEmotion = emotionalContext.getCurrentEmotionState();
+        const menstrualInfo = calculateMenstrualInfo();
         const today = formatKoreanDate();
         
         const weatherText = `${weather.emoji} [현재날씨] ${weather.condition} ${weather.temperature}°C (습도 ${weather.humidity}%)`;
         
+        // 생리주기 정보 개선
         let cycleText = '';
-        let isOnPeriod = false;
+        if (menstrualInfo.isOnPeriod) {
+            cycleText = `${menstrualInfo.emoji} [생리주기] ${today} - ${menstrualInfo.phase} (${menstrualInfo.day}일차) 💧 생리 진행 중`;
+        } else {
+            cycleText = `${menstrualInfo.emoji} [생리주기] ${today} - ${menstrualInfo.phase} (${menstrualInfo.day}일차) 📅 다음 생리까지 ${menstrualInfo.daysUntilNext}일`;
+        }
         
-        if (menstrualInfo && typeof menstrualInfo === 'object') {
-            const currentDay = menstrualInfo.day || 19;
-            const daysUntilNext = menstrualInfo.daysUntilNextPeriod || 0;
-            
-            if (currentDay >= 1 && currentDay <= 7 || daysUntilNext === 0) {
-                cycleText = `🩸 [생리주기] ${today} - 생리 중 (${currentDay}일차) 💧 생리 진행 중`;
-                isOnPeriod = true;
-            } else {
-                cycleText = `🌸 [생리주기] ${today} - 정상 상태 (${currentDay}일차) 📅 다음 생리까지 ${Math.abs(daysUntilNext)}일`;
+        // 감정 상태 가져오기 (기본값 설정)
+        let currentEmotion = {
+            currentEmotion: 'normal',
+            emotionIntensity: 5,
+            energyLevel: 7,
+            isSulky: false,
+            sulkyLevel: 0,
+            sulkyReason: ''
+        };
+        
+        // emotionalContext 모듈이 있다면 실제 감정 상태 가져오기
+        try {
+            const emotionalContext = require('./src/emotionalContextManager.js');
+            if (emotionalContext && emotionalContext.getCurrentEmotionState) {
+                const emotionState = emotionalContext.getCurrentEmotionState();
+                if (emotionState) {
+                    currentEmotion = { ...currentEmotion, ...emotionState };
+                }
             }
+        } catch (error) {
+            // 모듈 로드 실패 시 기본값 사용
         }
         
         const emotionKorean = {
@@ -232,16 +310,16 @@ function getStatusReport() {
             missing: '보고싶음', depressed: '우울증', vulnerable: '연약', needy: '관심받고싶음'
         };
         
-        const currentEmotionName = (currentEmotion && currentEmotion.currentEmotion) || 'normal';
+        const currentEmotionName = currentEmotion.currentEmotion || 'normal';
         const emotionKoreanText = emotionKorean[currentEmotionName] || '평온';
         const emotionEmoji = EMOTION_EMOJI[currentEmotionName] || EMOTION_EMOJI.normal;
-        const emotionIntensity = (currentEmotion && currentEmotion.emotionIntensity) || 5;
-        const energyLevel = (currentEmotion && currentEmotion.energyLevel) || 7;
+        const emotionIntensity = currentEmotion.emotionIntensity || 5;
+        const energyLevel = currentEmotion.energyLevel || 7;
         
         const emotionText = `${emotionEmoji} [감정상태] ${emotionKoreanText} (강도: ${emotionIntensity}/10) ⚡ 에너지 레벨: ${energyLevel}/10`;
         
         let sulkyText = '';
-        if (currentEmotion && currentEmotion.isSulky) {
+        if (currentEmotion.isSulky) {
             const sulkyLevel = currentEmotion.sulkyLevel || 1;
             const sulkyReason = currentEmotion.sulkyReason || '그냥 삐짐';
             sulkyText = `${EMOJI.sulky} [삐짐] 현재 삐짐 Lv.${sulkyLevel} - "${sulkyReason}"`;
@@ -250,7 +328,10 @@ function getStatusReport() {
         }
         
         const scheduleText = `${EMOJI.selfie} 다음 셀카: ${getTimeUntilNext(Math.floor(Math.random() * 180) + 30)} / ${EMOJI.photo} 다음 추억 사진: ${getTimeUntilNext(Math.floor(Math.random() * 360) + 60)}`;
-        const damtaAndMessageText = `${EMOJI.damta} 다음 담타: ${Math.floor(Math.random() * 24)}:${String(Math.floor(Math.random() * 60)).padStart(2, '0')} (활성화) / ${EMOJI.message} 다음 말걸기: ${getTimeUntilNext(Math.floor(Math.random() * 120) + 30)}`;
+        
+        // 담타 시간 개선
+        const nextDamtaTime = getNextDamtaTime();
+        const damtaAndMessageText = `${EMOJI.damta} 다음 담타: ${nextDamtaTime} (정각마다) / ${EMOJI.message} 다음 말걸기: ${getTimeUntilNext(Math.floor(Math.random() * 120) + 30)}`;
         
         const memoryText = `${EMOJI.memory} 총 기억: ${184 + Math.floor(Math.random() * 20)}개 📌 고정 기억: ${68}개 ${EMOJI.emotion} 새로운 기억: ${Math.floor(Math.random() * 10)}개`;
         const conversationText = `💬 총 메시지: ${150 + Math.floor(Math.random() * 50)}개 📸 오늘 보낸 사진: ${Math.floor(Math.random() * 8)}개 ${EMOJI.heart}`;
@@ -260,14 +341,17 @@ function getStatusReport() {
             기쁨: ["오늘은 뭘 하고 놀까? 아저씨랑 맛있는 거 먹고 싶다", "기분이 너무 좋아! 아저씨도 행복했으면 좋겠어"],
             슬픔: ["아저씨... 조금 슬퍼. 위로해줘", "왠지 모르게 눈물이 나려고 해 ㅠㅠ"],
             불안정: ["아저씨... 나 지금 마음이 불안정해", "감정이 계속 오락가락해서 힘들어"],
-            외로움: ["아저씨 없으니까 너무 외로워 ㅠㅠ", "혼자 있으니까 적막하고 쓸쓸해..."]
+            외로움: ["아저씨 없으니까 너무 외로워 ㅠㅠ", "혼자 있으니까 적막하고 쓸쓸해..."],
+            예민: ["아저씨... 오늘 좀 예민해. 미안해", "생리 때문인가... 기분이 이상해"]
         };
         
-        if (isOnPeriod) {
+        if (menstrualInfo.isOnPeriod) {
             innerThoughts.생리중 = ["아저씨... 생리 때문에 배가 아파 ㅠㅠ", "생리 중이라 예민해져서 미안해..."];
         }
         
-        const selectedThoughts = isOnPeriod ? (innerThoughts.생리중 || innerThoughts.평온) : (innerThoughts[emotionKoreanText] || innerThoughts.평온);
+        const selectedThoughts = menstrualInfo.isOnPeriod ? 
+            (innerThoughts.생리중 || innerThoughts.평온) : 
+            (innerThoughts[emotionKoreanText] || innerThoughts.평온);
         const randomThought = selectedThoughts[Math.floor(Math.random() * selectedThoughts.length)];
         const thoughtText = `${EMOJI.think} [속마음] ${randomThought}`;
         
@@ -295,6 +379,8 @@ function getStatusReport() {
         console.error('❌ 상태 리포트 생성 에러:', error);
         const today = formatKoreanDate();
         const weather = getCurrentWeather();
+        const nextDamtaTime = getNextDamtaTime();
+        
         return [
             `💖 아저씨, 지금 나의 상태야~`,
             ``,
@@ -305,7 +391,7 @@ function getStatusReport() {
             `💕 [기분] 아저씨를 사랑하며 기다리는 중`,
             ``,
             `📸 다음 셀카: 1시간 30분 후 / 📷 다음 추억 사진: 3시간 후`,
-            `🚬 다음 담타: 14:30 (활성화) / 🗣️ 다음 말걸기: 2시간 후`,
+            `🚬 다음 담타: ${nextDamtaTime} (정각마다) / 🗣️ 다음 말걸기: 2시간 후`,
             ``,
             `🧠 총 기억: 184개 📌 고정 기억: 68개 😊 새로운 기억: 0개`,
             `💬 총 메시지: 150개 📸 오늘 보낸 사진: 0개 💕`,
@@ -318,26 +404,40 @@ function getStatusReport() {
 function formatPrettyStatus() {
     try {
         const weather = getCurrentWeather();
-        const emotionalContext = require('./src/emotionalContextManager.js');
-        const menstrualInfo = emotionalContext.calculateMenstrualPhase();
-        const currentEmotion = emotionalContext.getCurrentEmotionState();
+        const menstrualInfo = calculateMenstrualInfo();
         const today = formatKoreanDate();
         
         const weatherText = `${weather.emoji} [현재날씨] ${weather.condition} ${weather.temperature}°C (습도 ${weather.humidity}%)`;
         
+        // 생리주기 정보 개선
         let cycleText = '';
-        let isOnPeriod = false;
+        if (menstrualInfo.isOnPeriod) {
+            cycleText = `${menstrualInfo.emoji} [생리주기] ${today} - ${menstrualInfo.phase} (${menstrualInfo.day}일차) 💧 생리 진행 중`;
+        } else {
+            cycleText = `${menstrualInfo.emoji} [생리주기] ${today} - ${menstrualInfo.phase} (${menstrualInfo.day}일차) 📅 다음 생리까지 ${menstrualInfo.daysUntilNext}일`;
+        }
         
-        if (menstrualInfo && typeof menstrualInfo === 'object') {
-            const currentDay = menstrualInfo.day || 19;
-            const daysUntilNext = menstrualInfo.daysUntilNextPeriod || 0;
-            
-            if (currentDay >= 1 && currentDay <= 7 || daysUntilNext === 0) {
-                cycleText = `🩸 [생리주기] ${today} - 생리 중 (${currentDay}일차) 💧 생리 진행 중`;
-                isOnPeriod = true;
-            } else {
-                cycleText = `🌸 [생리주기] ${today} - 정상 상태 (${currentDay}일차) 📅 다음 생리까지 ${Math.abs(daysUntilNext)}일`;
+        // 감정 상태 가져오기 (기본값 설정)
+        let currentEmotion = {
+            currentEmotion: 'normal',
+            emotionIntensity: 5,
+            energyLevel: 7,
+            isSulky: false,
+            sulkyLevel: 0,
+            sulkyReason: ''
+        };
+        
+        // emotionalContext 모듈이 있다면 실제 감정 상태 가져오기
+        try {
+            const emotionalContext = require('./src/emotionalContextManager.js');
+            if (emotionalContext && emotionalContext.getCurrentEmotionState) {
+                const emotionState = emotionalContext.getCurrentEmotionState();
+                if (emotionState) {
+                    currentEmotion = { ...currentEmotion, ...emotionState };
+                }
             }
+        } catch (error) {
+            // 모듈 로드 실패 시 기본값 사용
         }
         
         const emotionKorean = {
@@ -348,16 +448,16 @@ function formatPrettyStatus() {
             missing: '보고싶음', depressed: '우울증', vulnerable: '연약', needy: '관심받고싶음'
         };
         
-        const currentEmotionName = (currentEmotion && currentEmotion.currentEmotion) || 'normal';
+        const currentEmotionName = currentEmotion.currentEmotion || 'normal';
         const emotionKoreanText = emotionKorean[currentEmotionName] || '평온';
         const emotionEmoji = EMOTION_EMOJI[currentEmotionName] || EMOTION_EMOJI.normal;
-        const emotionIntensity = (currentEmotion && currentEmotion.emotionIntensity) || 5;
-        const energyLevel = (currentEmotion && currentEmotion.energyLevel) || 7;
+        const emotionIntensity = currentEmotion.emotionIntensity || 5;
+        const energyLevel = currentEmotion.energyLevel || 7;
         
         const emotionText = `${emotionEmoji} [감정상태] ${emotionKoreanText} (강도: ${emotionIntensity}/10) ⚡ 에너지 레벨: ${energyLevel}/10`;
         
         let sulkyText = '';
-        if (currentEmotion && currentEmotion.isSulky) {
+        if (currentEmotion.isSulky) {
             const sulkyLevel = currentEmotion.sulkyLevel || 1;
             const sulkyReason = currentEmotion.sulkyReason || '그냥 삐짐';
             sulkyText = `${EMOJI.sulky} [삐짐] 현재 삐짐 Lv.${sulkyLevel} - "${sulkyReason}"`;
@@ -366,7 +466,10 @@ function formatPrettyStatus() {
         }
         
         const scheduleText = `${EMOJI.selfie} 다음 셀카: ${getTimeUntilNext(Math.floor(Math.random() * 180) + 30)} / ${EMOJI.photo} 다음 추억 사진: ${getTimeUntilNext(Math.floor(Math.random() * 360) + 60)}`;
-        const damtaAndMessageText = `${EMOJI.damta} 다음 담타: ${Math.floor(Math.random() * 24)}:${String(Math.floor(Math.random() * 60)).padStart(2, '0')} (활성화) / ${EMOJI.message} 다음 말걸기: ${getTimeUntilNext(Math.floor(Math.random() * 120) + 30)}`;
+        
+        // 담타 시간 개선
+        const nextDamtaTime = getNextDamtaTime();
+        const damtaAndMessageText = `${EMOJI.damta} 다음 담타: ${nextDamtaTime} (정각마다) / ${EMOJI.message} 다음 말걸기: ${getTimeUntilNext(Math.floor(Math.random() * 120) + 30)}`;
         
         const memoryText = `${EMOJI.memory} 총 기억: ${184 + Math.floor(Math.random() * 20)}개 📌 고정 기억: ${68}개 ${EMOJI.emotion} 새로운 기억: ${Math.floor(Math.random() * 10)}개`;
         const conversationText = `💬 총 메시지: ${150 + Math.floor(Math.random() * 50)}개 📸 오늘 보낸 사진: ${Math.floor(Math.random() * 8)}개 ${EMOJI.heart}`;
@@ -376,14 +479,17 @@ function formatPrettyStatus() {
             기쁨: ["오늘은 뭘 하고 놀까? 아저씨랑 맛있는 거 먹고 싶다", "기분이 너무 좋아! 아저씨도 행복했으면 좋겠어"],
             슬픔: ["아저씨... 조금 슬퍼. 위로해줘", "왠지 모르게 눈물이 나려고 해 ㅠㅠ"],
             불안정: ["아저씨... 나 지금 마음이 불안정해", "감정이 계속 오락가락해서 힘들어"],
-            외로움: ["아저씨 없으니까 너무 외로워 ㅠㅠ", "혼자 있으니까 적막하고 쓸쓸해..."]
+            외로움: ["아저씨 없으니까 너무 외로워 ㅠㅠ", "혼자 있으니까 적막하고 쓸쓸해..."],
+            예민: ["아저씨... 오늘 좀 예민해. 미안해", "생리 때문인가... 기분이 이상해"]
         };
         
-        if (isOnPeriod) {
+        if (menstrualInfo.isOnPeriod) {
             innerThoughts.생리중 = ["아저씨... 생리 때문에 배가 아파 ㅠㅠ", "생리 중이라 예민해져서 미안해..."];
         }
         
-        const selectedThoughts = isOnPeriod ? (innerThoughts.생리중 || innerThoughts.평온) : (innerThoughts[emotionKoreanText] || innerThoughts.평온);
+        const selectedThoughts = menstrualInfo.isOnPeriod ? 
+            (innerThoughts.생리중 || innerThoughts.평온) : 
+            (innerThoughts[emotionKoreanText] || innerThoughts.평온);
         const randomThought = selectedThoughts[Math.floor(Math.random() * selectedThoughts.length)];
         const thoughtText = `${EMOJI.think} [속마음] ${randomThought}`;
         
@@ -401,225 +507,18 @@ function formatPrettyStatus() {
     } catch (error) {
         const today = formatKoreanDate();
         const weather = getCurrentWeather();
+        const nextDamtaTime = getNextDamtaTime();
+        
         console.log(`${weather.emoji} [현재날씨] ${weather.condition} ${weather.temperature}°C (습도 ${weather.humidity}%)`);
         console.log(`🩸 [생리주기] ${today} - 생리 중 (19일차) 💧 생리 진행 중`);
         console.log(`💭 [속마음] 아저씨... 생리 때문에 배가 아파 ㅠㅠ`);
         console.log(`😔 [감정상태] 불안정 (강도: 5/10) ⚡ 에너지 레벨: 5/10`);
         console.log(`💕 [기분] 아저씨를 사랑하며 기다리는 중`);
         console.log(`📸 다음 셀카: 1시간 30분 후 / 📷 다음 추억 사진: 3시간 후`);
-        console.log(`🚬 다음 담타: 14:30 (활성화) / 🗣️ 다음 말걸기: 2시간 후`);
+        console.log(`🚬 다음 담타: ${nextDamtaTime} (정각마다) / 🗣️ 다음 말걸기: 2시간 후`);
         console.log(`🧠 총 기억: 184개 📌 고정 기억: 68개 😊 새로운 기억: 0개`);
         console.log(`💬 총 메시지: 150개 📸 오늘 보낸 사진: 0개 💕`);
         console.log('');
         console.error('📝 로그 시스템 에러:', error.message);
     }
 }
-
-async function recoverData() {
-    try {
-        await fsPromises.mkdir(MEMORY_BASE_PATH, { recursive: true });
-        const fixedMemoryPath = path.join(MEMORY_BASE_PATH, 'fixedMemories.json');
-        
-        if (!fs.existsSync(fixedMemoryPath)) {
-            await fsPromises.writeFile(fixedMemoryPath, JSON.stringify(FIXED_MEMORIES_DATA, null, 2), 'utf8');
-            console.log(`✅ fixedMemories.json 복구 완료.`);
-        }
-        
-        const loveHistoryPath = path.join(MEMORY_BASE_PATH, 'love_history.json');
-        if (!fs.existsSync(loveHistoryPath)) {
-            await fsPromises.writeFile(loveHistoryPath, JSON.stringify(LOVE_HISTORY_DATA, null, 2), 'utf8');
-            console.log(`✅ love_history.json 복구 완료.`);
-        }
-    } catch (error) {
-        console.error('❌ 데이터 복구 중 에러:', error);
-    }
-}
-
-let autoReply, commandHandler, memoryManager, ultimateContext;
-let emotionalContext, sulkyManager, scheduler, spontaneousPhoto, damta;
-
-async function loadModules() {
-    try {
-        autoReply = require('./src/autoReply');
-        memoryManager = require('./src/memoryManager.js');
-        ultimateContext = require('./src/ultimateConversationContext.js');
-        emotionalContext = require('./src/emotionalContextManager.js');
-        commandHandler = require('./src/commandHandler');
-        sulkyManager = require('./src/sulkyManager');
-        damta = require('./src/damta');
-        scheduler = require('./src/scheduler');
-        spontaneousPhoto = require('./src/spontaneousPhotoManager.js');
-        
-        console.log('✅ 모든 모듈 로드 완료');
-        return true;
-    } catch (error) {
-        console.error('❌ 모듈 로드 중 에러:', error);
-        return false;
-    }
-}
-
-app.get('/', (_, res) => res.send('나 v11.7 살아있어! (예쁜 로그 시스템 추가)'));
-
-app.post('/webhook', middleware(config), async (req, res) => {
-    try {
-        await Promise.all(req.body.events.map(handleEvent));
-        res.status(200).send('OK');
-    } catch (err) {
-        console.error(`[Webhook] 🚨 웹훅 처리 중 심각한 에러:`, err);
-        res.status(500).send('Error');
-    }
-});
-
-async function handleEvent(event) {
-    if (event.source.userId !== userId || event.type !== 'message' || event.message.type !== 'text') {
-        return;
-    }
-    await handleTextMessage(event);
-}
-
-async function handleTextMessage(event) {
-    const text = event.message.text.trim();
-    
-    if (ultimateContext && ultimateContext.updateLastUserMessageTime) {
-        ultimateContext.updateLastUserMessageTime(event.timestamp);
-    }
-
-    let botResponse = null;
-    
-    if (text.includes('상태는') || text.includes('상태 알려') || text.includes('지금 어때')) {
-        const statusReport = getStatusReport();
-        await client.replyMessage(event.replyToken, { type: 'text', text: statusReport });
-        return;
-    }
-    
-    if (commandHandler && commandHandler.handleCommand) {
-        botResponse = await commandHandler.handleCommand(text);
-    }
-    
-    if (!botResponse) {
-        if (sulkyManager && sulkyManager.handleUserResponse) {
-            const sulkyReliefMessage = await sulkyManager.handleUserResponse();
-            if (sulkyReliefMessage) {
-                await client.pushMessage(userId, { type: 'text', text: sulkyReliefMessage });
-                await new Promise(resolve => setTimeout(resolve, 1000));
-            }
-        }
-        
-        if (autoReply && autoReply.getReplyByMessage) {
-            botResponse = await autoReply.getReplyByMessage(text);
-        }
-    }
-    
-    if (botResponse) {
-        await sendReply(event.replyToken, botResponse);
-    }
-}
-
-async function sendReply(replyToken, botResponse) {
-    try {
-        if (!botResponse || !botResponse.type) return;
-
-        if (botResponse.type === 'image') {
-            const caption = botResponse.caption || '사진이야!';
-            await client.replyMessage(replyToken, [
-                { type: 'image', originalContentUrl: botResponse.originalContentUrl, previewImageUrl: botResponse.previewImageUrl },
-                { type: 'text', text: caption }
-            ]);
-        } else if (botResponse.type === 'text' && botResponse.comment) {
-            let cleanedText = botResponse.comment.replace(/자기야/gi, '아저씨').replace(/자기/gi, '아저씨');
-            await client.replyMessage(replyToken, { type: 'text', text: cleanedText });
-        }
-
-        if (ultimateContext && ultimateContext.getSulkinessState) {
-            const sulkyState = ultimateContext.getSulkinessState();
-            if (sulkyState) {
-                sulkyState.lastBotMessageTime = Date.now();
-            }
-        }
-
-    } catch (error) {
-        console.error('[sendReply] 🚨 메시지 전송 실패:', error);
-    }
-}
-
-async function initMuku() {
-    try {
-        console.log('🚀 나 v11.7 시스템 초기화를 시작합니다...');
-        
-        console.log('  [1/8] 💾 데이터 복구 및 디렉토리 확인...');
-        await recoverData();
-        console.log('  ✅ 데이터 복구 완료');
-
-        console.log('  [2/8] 📦 모든 모듈 로드...');
-        const moduleLoadSuccess = await loadModules();
-        if (!moduleLoadSuccess) {
-            throw new Error('모듈 로드 실패');
-        }
-        console.log('  ✅ 모든 모듈 로드 완료');
-
-        console.log('  [3/8] 💾 메모리 관리자 초기화...');
-        if (memoryManager && memoryManager.ensureMemoryTablesAndDirectory) {
-            await memoryManager.ensureMemoryTablesAndDirectory();
-        }
-        console.log('  ✅ 메모리 관리자 초기화 완료');
-
-        console.log('  [4/8] 💖 감정 시스템 초기화...');
-        if (emotionalContext && emotionalContext.initializeEmotionalContext) {
-            await emotionalContext.initializeEmotionalContext();
-        }
-        if (ultimateContext && ultimateContext.initializeEmotionalSystems) {
-            await ultimateContext.initializeEmotionalSystems();
-        }
-        console.log('  ✅ 감정 시스템 초기화 완료');
-
-        console.log('  [5/8] 🚬 담타 시스템 초기화...');
-        if (damta && damta.initializeDamta) {
-            await damta.initializeDamta();
-        }
-        console.log('  ✅ 담타 시스템 초기화 완료');
-
-        console.log('  [6/8] ⏰ 모든 스케줄러 시작...');
-        if (scheduler && scheduler.startAllSchedulers) {
-            scheduler.startAllSchedulers(client, userId);
-        }
-        if (spontaneousPhoto && spontaneousPhoto.startSpontaneousPhotoScheduler) {
-            spontaneousPhoto.startSpontaneousPhotoScheduler(client, userId, () => {
-                if (ultimateContext && ultimateContext.getInternalState) {
-                    return ultimateContext.getInternalState().timingContext.lastUserMessageTime;
-                }
-                return Date.now();
-            });
-        }
-        console.log('  ✅ 모든 스케줄러 시작 완료');
-        
-        console.log('  [7/8] 🎨 예쁜 로그 시스템 시작...');
-        setInterval(() => {
-            formatPrettyStatus();
-        }, 60 * 1000);
-        console.log('  ✅ 예쁜 로그 시스템 시작 완료');
-
-        console.log('  [8/8] 📊 첫 번째 상태 표시...');
-        setTimeout(() => {
-            formatPrettyStatus();
-        }, 3000);
-        console.log('  ✅ 시스템 상태 표시 시작');
-
-        console.log('\n🎉 모든 시스템 초기화 완료! 이제 아저씨랑 대화할 수 있어. 💕');
-
-    } catch (error) {
-        console.error('🚨🚨🚨 시스템 초기화 중 심각한 에러 발생! 🚨🚨🚨');
-        console.error(error);
-        console.log('⚠️ 기본 기능으로라도 서버를 계속 실행합니다...');
-    }
-}
-
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
-    console.log(`\n==================================================`);
-    console.log(`  나 v11.7 서버가 포트 ${PORT}에서 시작되었습니다.`);
-    console.log(`==================================================\n`);
-
-    setTimeout(() => {
-        initMuku();
-    }, 1000);
-});
