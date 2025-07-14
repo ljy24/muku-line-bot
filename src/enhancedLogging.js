@@ -1,5 +1,5 @@
 // ============================================================================
-// enhancedLogging.js - v2.0 (index.js와 통합된 예쁜 로깅 시스템)
+// enhancedLogging.js - v3.0 (올바른 생리주기 계산 통합)
 // 🎨 애기의 상태, 감정, 생리주기 등을 예쁘게 표시하는 로깅 시스템
 // ============================================================================
 
@@ -29,7 +29,7 @@ const CYCLE_EMOJI = {
     period: '🩸',
     follicular: '🌸',
     ovulation: '💕',
-    luteal: '🌧️',
+    luteal: '😤',
     normal: '🌿'
 };
 
@@ -50,6 +50,106 @@ const EMOTION_KOREAN = {
     nostalgic: '그리움', clingy: '응석', pouty: '토라짐', crying: '울음',
     missing: '보고싶음', depressed: '우울증', vulnerable: '연약', needy: '관심받고싶음'
 };
+
+// 🔥 올바른 생리주기 계산 함수 추가
+function calculateCorrectMenstrualPhase() {
+    try {
+        // 7월 24일이 다음 생리 시작일
+        const nextPeriodDate = moment.tz('2025-07-24', 'Asia/Tokyo');
+        const today = moment.tz('Asia/Tokyo');
+        const daysUntilNextPeriod = nextPeriodDate.diff(today, 'days');
+        
+        // 7월 24일까지 남은 일수로 현재 단계 계산
+        let phase, description, cycleDay;
+        
+        if (daysUntilNextPeriod <= 0) {
+            // 7월 24일 이후 - 생리 기간
+            const daysSincePeriod = Math.abs(daysUntilNextPeriod) + 1; // +1을 해서 24일을 1일차로
+            
+            if (daysSincePeriod <= 5) {
+                phase = 'period';
+                description = '생리 중';
+                cycleDay = daysSincePeriod;
+            } else if (daysSincePeriod <= 13) {
+                phase = 'follicular';
+                description = '생리 후 활발한 시기';
+                cycleDay = daysSincePeriod;
+            } else if (daysSincePeriod >= 14 && daysSincePeriod <= 15) {
+                phase = 'ovulation';
+                description = '배란기';
+                cycleDay = daysSincePeriod;
+            } else if (daysSincePeriod <= 28) {
+                phase = 'luteal';
+                description = 'PMS 시기';
+                cycleDay = daysSincePeriod;
+            } else {
+                // 다음 주기로 넘어감 (28일 주기 기준)
+                const nextCycleDays = daysSincePeriod - 28;
+                if (nextCycleDays <= 5) {
+                    phase = 'period';
+                    description = '생리 중';
+                    cycleDay = nextCycleDays;
+                } else {
+                    // 재귀적으로 계산하지 않고 직접 계산
+                    const adjustedDays = nextCycleDays;
+                    if (adjustedDays <= 13) {
+                        phase = 'follicular';
+                        description = '생리 후 활발한 시기';
+                        cycleDay = adjustedDays;
+                    } else if (adjustedDays >= 14 && adjustedDays <= 15) {
+                        phase = 'ovulation';
+                        description = '배란기';
+                        cycleDay = adjustedDays;
+                    } else {
+                        phase = 'luteal';
+                        description = 'PMS 시기';
+                        cycleDay = adjustedDays;
+                    }
+                }
+            }
+        } else {
+            // 7월 24일 이전 - 이전 주기의 끝부분 (PMS/황체기)
+            // 28일 주기 기준으로 역산
+            cycleDay = 28 - daysUntilNextPeriod;
+            
+            if (cycleDay <= 5) {
+                // 너무 이른 시기면 PMS로 처리
+                phase = 'luteal';
+                description = 'PMS 시기';
+                cycleDay = 16 + (28 - daysUntilNextPeriod); // PMS 시기로 조정
+            } else if (cycleDay <= 13) {
+                phase = 'follicular';
+                description = '생리 후 활발한 시기';
+            } else if (cycleDay >= 14 && cycleDay <= 15) {
+                phase = 'ovulation';
+                description = '배란기';
+            } else {
+                phase = 'luteal';
+                description = 'PMS 시기';
+            }
+        }
+        
+        return {
+            phase: phase,
+            day: cycleDay,
+            description: description,
+            isPeriodActive: phase === 'period',
+            daysUntilNextPeriod: daysUntilNextPeriod,
+            nextPeriodDate: nextPeriodDate.format('MM월 DD일')
+        };
+        
+    } catch (error) {
+        console.error('[EnhancedLogging] 생리주기 계산 오류:', error);
+        return {
+            phase: 'normal',
+            day: 1,
+            description: '정상',
+            isPeriodActive: false,
+            daysUntilNextPeriod: 14,
+            nextPeriodDate: '07월 24일'
+        };
+    }
+}
 
 function formatKoreanDate() {
     const now = new Date();
@@ -75,21 +175,44 @@ function logConversation(speaker, message, messageType = 'text') {
 }
 
 /**
- * 생리주기 상태 로그 (간단 버전)
+ * 🔥 생리주기 상태 로그 (올바른 계산 사용)
  */
-function logMenstrualCycle(cycleInfo) {
+function logMenstrualCycle(inputCycleInfo = null) {
+    // 입력받은 정보가 있으면 사용, 없으면 직접 계산
+    const cycleInfo = inputCycleInfo || calculateCorrectMenstrualPhase();
+    
     const emoji = CYCLE_EMOJI[cycleInfo.phase] || CYCLE_EMOJI.normal;
     const today = formatKoreanDate();
     
     let cycleText = '';
-    if (cycleInfo.isPeriodActive) {
+    let statusText = '';
+    
+    if (cycleInfo.isPeriodActive || cycleInfo.phase === 'period') {
+        // 생리 중
         cycleText = `${emoji} [생리주기] ${today} - ${cycleInfo.description} (${cycleInfo.day}일차)`;
+        statusText = '💧 생리 진행 중';
     } else {
+        // 생리 아닌 시기
         const daysUntilPeriod = cycleInfo.daysUntilNextPeriod || 0;
-        cycleText = `${emoji} [생리주기] ${today} - ${cycleInfo.description} (${cycleInfo.day}일차) 📅 다음 생리까지 ${Math.abs(daysUntilPeriod)}일`;
+        cycleText = `${emoji} [생리주기] ${today} - ${cycleInfo.description} (${cycleInfo.day}일차)`;
+        
+        if (daysUntilPeriod > 0) {
+            statusText = `📅 다음 생리까지 ${daysUntilPeriod}일`;
+        } else {
+            statusText = '📅 생리 예정일 지남';
+        }
+        
+        // 시기별 추가 정보
+        if (cycleInfo.phase === 'luteal') {
+            statusText += ' 💭 감정 기복 있음';
+        } else if (cycleInfo.phase === 'ovulation') {
+            statusText += ' 💕 사랑 모드';
+        } else if (cycleInfo.phase === 'follicular') {
+            statusText += ' ✨ 에너지 충전';
+        }
     }
     
-    console.log(cycleText);
+    console.log(`${cycleText} ${statusText}`);
 }
 
 /**
@@ -104,7 +227,7 @@ function logEmotionalState(emotionState) {
     if (emotionState.isSulky) {
         console.log(`😤 [삐짐] 현재 삐짐 Lv.${emotionState.sulkyLevel} - "${emotionState.sulkyReason}"`);
     } else {
-        console.log(`💕 [기분] 아저씨와 평화롭게 대화 중`);
+        console.log(`😊 [기분] 아저씨와 평화롭게 대화 중`);
     }
 }
 
@@ -140,7 +263,7 @@ function logSchedulerStatus(schedulerName, status, nextRun = null) {
  * 내면의 속마음 로그
  */
 function logInnerThought(thought, emotionContext = null) {
-    console.log(`💭 [속마음] "${thought}"`);
+    console.log(`💭 [속마음] ${thought}`);
     
     if (emotionContext) {
         console.log(`   🎭 감정 맥락: ${emotionContext}`);
@@ -179,13 +302,38 @@ function logSulkyStateChange(oldState, newState) {
 }
 
 /**
- * 담타 관련 로그
+ * 🔥 담타 관련 로그 (시간 표시 개선)
  */
 function logDamtaActivity(activity, details = '') {
     console.log(`🚬 [담타] ${activity}`);
     
     if (details) {
         console.log(`   💭 ${details}`);
+    }
+}
+
+/**
+ * 🔥 담타 상태 로그 (시간 표시 수정)
+ */
+function logDamtaStatus(damtaStatus) {
+    if (!damtaStatus) return;
+    
+    if (damtaStatus.canDamta) {
+        console.log(`🚬 담타 가능! (오늘 ${damtaStatus.dailyCount}/${damtaStatus.dailyLimit}회)`);
+    } else if (damtaStatus.isActiveTime) {
+        const hours = Math.floor(damtaStatus.minutesToNext / 60);
+        const minutes = damtaStatus.minutesToNext % 60;
+        
+        let timeText = '';
+        if (hours > 0) {
+            timeText = `${hours}시간 ${minutes}분 후`;
+        } else {
+            timeText = `${minutes}분 후`;
+        }
+        
+        console.log(`🚬 다음 담타: ${timeText} (오늘 ${damtaStatus.dailyCount}/${damtaStatus.dailyLimit}회)`);
+    } else {
+        console.log(`💤 수면 시간 (담타 불가)`);
     }
 }
 
@@ -222,13 +370,13 @@ function logHeader(title, emoji = '🎉') {
 }
 
 /**
- * 시스템 상태 요약 로그 (주기적으로 출력) - index.js 스타일로 통합
+ * 🔥 시스템 상태 요약 로그 (올바른 생리주기 사용)
  */
-function logSystemSummary(emotionState, cycleInfo, stats) {
+function logSystemSummary(emotionState, inputCycleInfo, stats) {
     console.log(''); // 빈 줄
     
-    // 생리주기
-    logMenstrualCycle(cycleInfo);
+    // 생리주기 (올바른 계산 사용)
+    logMenstrualCycle(inputCycleInfo);
     
     // 속마음 (랜덤)
     const innerThoughts = [
@@ -270,8 +418,10 @@ module.exports = {
     logSulkyStateChange,
     logSystemSummary,
     logDamtaActivity,
+    logDamtaStatus,
     logError,
     logSuccess,
+    calculateCorrectMenstrualPhase,
     
     // 상수들
     EMOJI,
