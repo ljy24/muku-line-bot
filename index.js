@@ -802,4 +802,101 @@ async function sendReply(replyToken, botResponse) {
                 { type: 'image', originalContentUrl: botResponse.originalContentUrl, previewImageUrl: botResponse.previewImageUrl },
                 { type: 'text', text: caption }
             ]);
-        } else
+        } else if (botResponse.type === 'text' && botResponse.comment) {
+            let cleanedText = botResponse.comment.replace(/자기야/gi, '아저씨').replace(/자기/gi, '아저씨');
+            await client.replyMessage(replyToken, { type: 'text', text: cleanedText });
+        }
+
+        if (ultimateContext && ultimateContext.getSulkinessState) {
+            const sulkyState = ultimateContext.getSulkinessState();
+            if (sulkyState) {
+                sulkyState.lastBotMessageTime = Date.now();
+            }
+        }
+
+    } catch (error) {
+        console.error('[sendReply] 🚨 메시지 전송 실패:', error);
+    }
+}
+
+async function initMuku() {
+    try {
+        console.log('🚀 나 v11.7 시스템 초기화를 시작합니다...');
+        
+        console.log('  [1/8] 💾 데이터 복구 및 디렉토리 확인...');
+        await recoverData();
+        console.log('  ✅ 데이터 복구 완료');
+
+        console.log('  [2/8] 📦 모든 모듈 로드...');
+        const moduleLoadSuccess = await loadModules();
+        if (!moduleLoadSuccess) {
+            throw new Error('모듈 로드 실패');
+        }
+        console.log('  ✅ 모든 모듈 로드 완료');
+
+        console.log('  [3/8] 💾 메모리 관리자 초기화...');
+        if (memoryManager && memoryManager.ensureMemoryTablesAndDirectory) {
+            await memoryManager.ensureMemoryTablesAndDirectory();
+        }
+        console.log('  ✅ 메모리 관리자 초기화 완료');
+
+        console.log('  [4/8] 💖 감정 시스템 초기화...');
+        if (emotionalContext && emotionalContext.initializeEmotionalContext) {
+            await emotionalContext.initializeEmotionalContext();
+        }
+        if (ultimateContext && ultimateContext.initializeEmotionalSystems) {
+            await ultimateContext.initializeEmotionalSystems();
+        }
+        console.log('  ✅ 감정 시스템 초기화 완료');
+
+        console.log('  [5/8] 🚬 담타 시스템 초기화...');
+        if (damta && damta.initializeDamta) {
+            await damta.initializeDamta();
+        }
+        console.log('  ✅ 담타 시스템 초기화 완료');
+
+        console.log('  [6/8] ⏰ 모든 스케줄러 시작...');
+        if (scheduler && scheduler.startAllSchedulers) {
+            scheduler.startAllSchedulers(client, userId);
+        }
+        if (spontaneousPhoto && spontaneousPhoto.startSpontaneousPhotoScheduler) {
+            spontaneousPhoto.startSpontaneousPhotoScheduler(client, userId, () => {
+                if (ultimateContext && ultimateContext.getInternalState) {
+                    return ultimateContext.getInternalState().timingContext.lastUserMessageTime;
+                }
+                return Date.now();
+            });
+        }
+        console.log('  ✅ 모든 스케줄러 시작 완료');
+        
+        console.log('  [7/8] 🎨 예쁜 로그 시스템 시작...');
+        setInterval(() => {
+            formatPrettyStatus();
+        }, 60 * 1000);
+        console.log('  ✅ 예쁜 로그 시스템 시작 완료');
+
+        console.log('  [8/8] 📊 첫 번째 상태 표시...');
+        setTimeout(() => {
+            formatPrettyStatus();
+        }, 3000);
+        console.log('  ✅ 시스템 상태 표시 시작');
+
+        console.log('\n🎉 모든 시스템 초기화 완료! 이제 아저씨랑 대화할 수 있어. 💕');
+
+    } catch (error) {
+        console.error('🚨🚨🚨 시스템 초기화 중 심각한 에러 발생! 🚨🚨🚨');
+        console.error(error);
+        console.log('⚠️ 기본 기능으로라도 서버를 계속 실행합니다...');
+    }
+}
+
+const PORT = process.env.PORT || 10000;
+app.listen(PORT, () => {
+    console.log(`\n==================================================`);
+    console.log(`  나 v11.7 서버가 포트 ${PORT}에서 시작되었습니다.`);
+    console.log(`==================================================\n`);
+
+    setTimeout(() => {
+        initMuku();
+    }, 1000);
+});
