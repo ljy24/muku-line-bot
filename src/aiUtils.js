@@ -21,7 +21,7 @@ async function saveImageLog(speaker, caption, imageUrl) {
     console.log(`[사진로그] ${speaker}: ${caption} (URL: ${imageUrl})`);
 }
 
-async function callOpenAI(messages, model = 'gpt-4o', maxTokens = 150, temperature = 0.95) {
+async function callOpenAI(messages, model = 'gpt-4o', maxTokens = 100, temperature = 0.95) {
     try {
         const response = await openai.chat.completions.create({
             model: model,
