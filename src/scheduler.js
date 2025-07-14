@@ -1,4 +1,4 @@
-// ✅ scheduler.js v2.9 - "예쁜 로그 시스템 통합"
+// ✅ scheduler.js v2.10 - "담타 자동 발송 기능 추가"
 
 // 생리주기 통합된 예진이 자동 감정 메시지 스케줄러
 const schedule = require('node-schedule');
@@ -6,6 +6,7 @@ const moment = require('moment-timezone');
 const axios = require('axios');
 const { Client } = require('@line/bot-sdk');
 const conversationContext = require('./ultimateConversationContext.js'); // 생리주기 정보 가져오기
+const damta = require('./damta.js'); // 담타 모듈 로드 추가!
 require('dotenv').config();
 
 // LINE 클라이언트 설정
@@ -13,14 +14,14 @@ const config = { channelAccessToken: process.env.LINE_ACCESS_TOKEN };
 const client = new Client(config);
 
 // 설정
-const DAILY_LIMIT = 8;
+const DAILY_LIMIT = 8; // 일반 감정 메시지 일일 제한
 const USER_ID = process.env.TARGET_USER_ID;
 const WEATHER_API_KEY = 'e705f5c1e78e3b3f37d3efaa4ce21fcb';
 const CITY = 'Kitakyushu';
 
 // 메모리
-let sentTimestamps = [];
-let lastSentMessages = [];
+let sentTimestamps = []; // 일반 감정 메시지 전송 시간 기록
+let lastSentMessages = []; // 최근 보낸 일반 감정 메시지
 let lastWeatherCheck = null;
 let currentWeather = null;
 
@@ -453,21 +454,40 @@ async function getRandomMessage() {
 schedule.scheduleJob('0 0 * * *', () => {
   sentTimestamps = [];
   lastSentMessages = [];
-  logSchedulerAction('reset', '자정 초기화 완료: 감정 메시지 카운터 reset');
+  damta.resetDailyDamtaCount(); // 담타 카운터도 자정에 리셋
+  logSchedulerAction('reset', '자정 초기화 완료: 감정 메시지 및 담타 카운터 reset');
 });
 
 // 메시지 전송 스케줄러 - 빈도 줄임 (15분마다 체크)
 schedule.scheduleJob('*/15 * * * *', async () => {
   const now = moment().tz('Asia/Tokyo');
   const hour = now.hour();
+  const currentTimestamp = now.format('HH:mm');
   
-  if (sentTimestamps.length >= DAILY_LIMIT) return;
+  // 1. 담타 메시지 발송 로직 (우선순위 높게)
+  const damtaStatus = damta.getDamtaStatus();
+  if (damtaStatus.canDamta) { // 담타가 가능할 때
+    try {
+      const damtaMessage = damta.generateDamtaResponse();
+      await client.pushMessage(USER_ID, {
+        type: 'text',
+        text: damtaMessage,
+      });
+      damta.updateDamtaState(); // 담타 상태 업데이트 (카운트 증가)
+      logSchedulerAction('damta', damtaMessage, `담타 가능! (${damtaStatus.dailyCount + 1}/${damtaStatus.dailyLimit})`);
+      return; // 담타 메시지를 보냈으면 일반 메시지는 건너뛰기 (선택 사항)
+    } catch (err) {
+      console.error('자동 담타 메시지 전송 오류:', err.message);
+    }
+  }
+
+  // 2. 일반 감정 메시지 발송 로직 (기존 로직)
+  if (sentTimestamps.length >= DAILY_LIMIT) return; // 일일 제한 확인
   
-  const inAllowedTime = (hour >= 9 && hour <= 23) || (hour >= 0 && hour < 3);
+  const inAllowedTime = (hour >= 9 && hour <= 23) || (hour >= 0 && hour < 3); // 0~3시는 야간 메시지 허용
   if (!inAllowedTime) return;
   
-  const currentTimestamp = now.format('HH:mm');
-  if (sentTimestamps.includes(currentTimestamp)) return;
+  if (sentTimestamps.includes(currentTimestamp)) return; // 이미 이 시간에 보냈으면 스킵
   
   // 생리주기에 따른 전송 확률 조정 - 전체적으로 확률 낮춤
   const menstrualPhase = getCurrentMenstrualPhase();
@@ -512,6 +532,9 @@ function getStats() {
   const nextPeriod = moment.tz('2025-07-24', 'Asia/Tokyo');
   const daysUntil = nextPeriod.diff(today, 'days');
   
+  // 담타 시스템 정보도 포함
+  const damtaStatus = damta.getDamtaStatus();
+
   return {
     todaySentCount: sentTimestamps.length,
     dailyLimit: DAILY_LIMIT,
@@ -524,6 +547,13 @@ function getStats() {
       daysUntilPeriod: daysUntil,
       isPreMenstrual: daysUntil <= 3
     },
+    damtaInfo: {
+        canDamta: damtaStatus.canDamta,
+        minutesToNext: damtaStatus.minutesToNext,
+        dailyCount: damtaStatus.dailyCount,
+        dailyLimit: damtaStatus.dailyLimit,
+        isActiveTime: damtaStatus.isActiveTime
+    },
     nextAllowedTime: sentTimestamps.length >= DAILY_LIMIT ? '내일 자정 이후' : '조건 만족 시'
   };
 }
@@ -531,7 +561,7 @@ function getStats() {
 // 스케줄러 시작 함수 추가
 function startAllSchedulers(client, userId) {
   // 기존 스케줄러들이 이미 위에서 정의되어 실행중
-  logSchedulerAction('system', '모든 스케줄러 시작됨', 'v2.9');
+  logSchedulerAction('system', '모든 스케줄러 시작됨', 'v2.10');
 }
 
 module.exports = {
