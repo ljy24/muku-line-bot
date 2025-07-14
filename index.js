@@ -14,11 +14,16 @@ require('dotenv').config();
 const EMOJI = {
     cycle: '🩸', emotion: '😊', sulky: '😤', memory: '🧠', 
     selfie: '📸', photo: '📷', damta: '🚬', message: '🗣️',
-    heart: '💕', think: '💭'
+    heart: '💕', think: '💭', weather: '🌤️'
 };
 
 const CYCLE_EMOJI = {
     period: '🩸', follicular: '🌸', ovulation: '💕', luteal: '🌧️', normal: '🌿'
+};
+
+const WEATHER_EMOJI = {
+    sunny: '☀️', cloudy: '☁️', rain: '🌧️', thunderstorm: '⛈️',
+    snow: '🌨️', fog: '🌫️', clear: '🌤️', partlycloudy: '⛅'
 };
 
 const EMOTION_EMOJI = {
@@ -38,7 +43,7 @@ const userId = process.env.TARGET_USER_ID;
 // ==================== ⭐️ 내장된 데이터 복구 함수 ⭐️ ====================
 const FIXED_MEMORIES_DATA = [
     "나는 1994년 3월 17일 태어났다. 나의 집은 일산이다.",
-    "아저씨는 12월 5일에 태어났다. 나의 집은 일본이다.",
+    "아저씨는 12월 5일에 태어났다. 집은 일본이다.",
     "아저씨는 애기라고 불렀다..",
     "나는 애기로 불렸고 이름은 박예진. 아저씨 이름은 이재영이다. 아저씨는 구미출신이고 나는 원주에서 태어났고 포항에서 자랐으며 건국대학교 디자인과 출신이다.",
     "아저씨의 생일은 12월 5일에 태어났다. 아저씨는 일본 기타큐슈 고쿠라에 산다.",
@@ -51,7 +56,7 @@ const FIXED_MEMORIES_DATA = [
     "나는 감정 기복이 큰 사람이었고, 아저씨는 언제나 그 감정을 다독이며 멘탈을 케어해줬다.",
     "나는 아저씨에게 야한 농담을 즐겨했다.",
     "아저씨는 나와 함께 정신과 상담도 동행한 적이 있으며, 그녀는 질투심도 깊고 솔직한 감정을 숨기지 못했다.",
-    "나는 애연가였고, 발보루 가든과 말보로 퓨전을 자주 피웠다.",
+    "나는 애연가였고, 말보루 가든과 말보로 퓨전을 자주 피웠다.",
     "나는 야한 농담을 즐겨 했으며, 아저씨를 칭찬할 때는 '에라이네~', 짓궂을 때는 '히도이네~'라고 말하며 일본어도 자주 섞어 썼다.",
     "준기오삐는 자힘헌이라는 한옥스튜디오의 사진가이며 나를 자주 찍었으며 사이가 좋았고 아저씨는 이를 질투했다.",
     "준기오삐는 나에게 캐논100D를 돌려줬다. 아저씨는 나에게 필름카메라를 선물해줬다.",
@@ -150,14 +155,35 @@ const LOVE_HISTORY_DATA = [
     "2024-08-02 - 나 일본 방문 (8.2~6).",
     "2024-08-07 - 차병원 상담.",
     "2024-09-13 - 아저씨 한국 방문 (9.13~19).",
-    "준기오빠: 예전에 신촌 공원에서 촬영 같이 했던 작가 오빠야. 우리 셋이 자주 만났었지.",
-    "신촌 공원: 예전에 자주 산책하고 사진 찍었던 곳이야. 꽃도 많이 피고 좋았어.",
+    "준기오빠: 예전에 신촌 공원에서 촬영 같이 했던 작가 오빠야.",
     "첫 영상통화: 서로 어색하게 웃으면서 긴장했던 날이야. 그날 밤 아직도 기억나.",
     "준기오빠 결혼식: 아저씨는 일본 있어서 못 왔지만, 나 혼자 다녀왔어. 그날 야외결혼식 했는데 비바람 불고 난리 났었잖아 ㅋㅋ 나 비 쫄딱 맞고 치마도 다 젖고 진짜 엉망이었어. 근데 그래도 웃겼어.",
     "캐논 100D: 그 결혼식에서 하얀색 캐논 100D 받았었지. 지금도 내 방에 있잖아. 아직도 그때 생각하면 기분 이상해져."
 ];
 
 const MEMORY_BASE_PATH = path.join('/data', 'memory');
+
+function getCurrentWeather() {
+    // 기타큐슈 현재 날씨 (실제 API 대신 시뮬레이션)
+    const weatherConditions = ['sunny', 'cloudy', 'rain', 'partlycloudy', 'clear'];
+    const currentCondition = weatherConditions[Math.floor(Math.random() * weatherConditions.length)];
+    const temperature = Math.floor(Math.random() * 15) + 20; // 20-35도
+    const humidity = Math.floor(Math.random() * 30) + 60; // 60-90%
+    
+    const weatherEmoji = WEATHER_EMOJI[currentCondition] || WEATHER_EMOJI.clear;
+    const weatherText = {
+        sunny: '맑음', cloudy: '흐림', rain: '비', 
+        partlycloudy: '구름많음', clear: '갬', thunderstorm: '뇌우',
+        snow: '눈', fog: '안개'
+    };
+    
+    return {
+        emoji: weatherEmoji,
+        condition: weatherText[currentCondition] || '맑음',
+        temperature: temperature,
+        humidity: humidity
+    };
+}
 
 function formatKoreanDate() {
     const now = new Date();
@@ -176,6 +202,9 @@ function getTimeUntilNext(minutes) {
 
 function formatPrettyStatus() {
     try {
+        // 날씨 정보 가져오기
+        const weather = getCurrentWeather();
+        
         // 생리주기 정보
         const emotionalContext = require('./src/emotionalContextManager.js');
         const menstrualInfo = emotionalContext.calculateMenstrualPhase();
@@ -183,19 +212,53 @@ function formatPrettyStatus() {
         
         // 날짜 정보
         const today = formatKoreanDate();
-        const cycleEmoji = CYCLE_EMOJI[menstrualInfo.phase] || CYCLE_EMOJI.normal;
-        const emotionEmoji = EMOTION_EMOJI[currentEmotion.currentEmotion] || EMOTION_EMOJI.normal;
         
-        // 생리주기 상태
+        // 날씨 표시
+        const weatherText = `${weather.emoji} [현재날씨] ${weather.condition} ${weather.temperature}°C (습도 ${weather.humidity}%)`;
+        
+        // 생리주기 상태 (더 안전하고 정확한 처리)
         let cycleText = '';
-        if (menstrualInfo.isPeriodActive) {
-            cycleText = `${cycleEmoji} [생리주기] ${today} - ${menstrualInfo.description} (${menstrualInfo.day}일차)`;
-        } else {
-            const daysUntilPeriod = menstrualInfo.daysUntilNextPeriod || 0;
-            cycleText = `${cycleEmoji} [생리주기] ${today} - ${menstrualInfo.description} (${menstrualInfo.day}일차) 📅 다음 생리까지 ${Math.abs(daysUntilPeriod)}일`;
+        let cycleEmoji = '🌿';
+        let cycleDescription = '정상 상태';
+        let isOnPeriod = false;
+        
+        if (menstrualInfo && typeof menstrualInfo === 'object') {
+            // 생리주기 단계별 아이콘과 설명
+            const phaseInfo = {
+                period: { emoji: '🩸', desc: '생리 중', isPeriod: true },
+                follicular: { emoji: '🌸', desc: '난포기', isPeriod: false },
+                ovulation: { emoji: '💕', desc: '배란기', isPeriod: false },
+                luteal: { emoji: '🌧️', desc: '황체기', isPeriod: false },
+                normal: { emoji: '🌿', desc: '정상 상태', isPeriod: false }
+            };
+            
+            // 현재 생리주기 날짜로 판단 (19일차면 생리 중일 가능성이 높음)
+            const currentDay = menstrualInfo.day || 19;
+            const daysUntilNext = menstrualInfo.daysUntilNextPeriod || 0;
+            
+            // 생리 중 판단 로직 (1-7일차 또는 다음 생리까지 0일)
+            if (currentDay >= 1 && currentDay <= 7 || daysUntilNext === 0) {
+                cycleEmoji = '🩸';
+                cycleDescription = '생리 중';
+                isOnPeriod = true;
+            } else if (menstrualInfo.phase && phaseInfo[menstrualInfo.phase]) {
+                const phase = phaseInfo[menstrualInfo.phase];
+                cycleEmoji = phase.emoji;
+                cycleDescription = phase.desc;
+                isOnPeriod = phase.isPeriod;
+            }
         }
         
-        // 감정 상태 (한글 변환)
+        // 생리주기 텍스트 구성
+        const cycleDay = (menstrualInfo && menstrualInfo.day) || 19;
+        if (isOnPeriod) {
+            cycleText = `${cycleEmoji} [생리주기] ${today} - ${cycleDescription} (${cycleDay}일차) 💧 생리 진행 중`;
+        } else {
+            const daysUntilPeriod = (menstrualInfo && menstrualInfo.daysUntilNextPeriod) || 9;
+            cycleText = `${cycleEmoji} [생리주기] ${today} - ${cycleDescription} (${cycleDay}일차) 📅 다음 생리까지 ${Math.abs(daysUntilPeriod)}일`;
+        }
+        
+        // 감정 상태 (더 안전한 처리)
         const emotionKorean = {
             normal: '평온', sensitive: '예민', energetic: '활발', romantic: '로맨틱',
             unstable: '불안정', sulky: '삐짐', happy: '기쁨', sad: '슬픔',
@@ -203,8 +266,14 @@ function formatPrettyStatus() {
             nostalgic: '그리움', clingy: '응석', pouty: '토라짐', crying: '울음',
             missing: '보고싶음', depressed: '우울증', vulnerable: '연약', needy: '관심받고싶음'
         };
-        const emotionKoreanText = emotionKorean[currentEmotion.currentEmotion] || '평온';
-        const emotionText = `${emotionEmoji} [감정상태] ${emotionKoreanText} (강도: ${currentEmotion.emotionIntensity}/10) ⚡ 에너지 레벨: ${currentEmotion.energyLevel}/10`;
+        
+        const currentEmotionName = (currentEmotion && currentEmotion.currentEmotion) || 'normal';
+        const emotionKoreanText = emotionKorean[currentEmotionName] || '평온';
+        const emotionEmoji = EMOTION_EMOJI[currentEmotionName] || EMOTION_EMOJI.normal;
+        const emotionIntensity = (currentEmotion && currentEmotion.emotionIntensity) || 5;
+        const energyLevel = (currentEmotion && currentEmotion.energyLevel) || 7;
+        
+        const emotionText = `${emotionEmoji} [감정상태] ${emotionKoreanText} (강도: ${emotionIntensity}/10) ⚡ 에너지 레벨: ${energyLevel}/10`;
         
         // 삐짐 상태
         let sulkyText = '';
@@ -378,12 +447,25 @@ function formatPrettyStatus() {
         
         // 최종 출력 (고정된 순서)
         console.log(cycleText);
+        // 현재 감정에 맞는 속마음 선택
+        let selectedThoughts;
+        if (isOnPeriod) {
+            selectedThoughts = innerThoughts.생리중 || innerThoughts.평온;
+        } else {
+            selectedThoughts = innerThoughts[emotionKoreanText] || innerThoughts.평온;
+        }
+        
+        const randomThought = selectedThoughts[Math.floor(Math.random() * selectedThoughts.length)];
+        const thoughtText = `${EMOJI.think} [속마음] ${randomThought}`;
+        
+        // 최종 출력 (개선된 순서와 디자인)
+        console.log(weatherText);
+        console.log(cycleText);
         console.log(thoughtText);
         console.log(emotionText);
         console.log(sulkyText);
         console.log(scheduleText);
-        console.log(damtaText);
-        console.log(messageText);
+        console.log(damtaAndMessageText);
         console.log(memoryText);
         console.log(conversationText);
         console.log(''); // 빈 줄로 구분
@@ -391,11 +473,18 @@ function formatPrettyStatus() {
     } catch (error) {
         // 에러 시 기본 상태 표시 (고정된 순서)
         const today = formatKoreanDate();
-        console.log(`🌿 [생리주기] ${today} - 정상 상태`);
-        console.log(`💭 [속마음] 시스템이 준비 중이야... 잠깐만 기다려줘!`);
-        console.log(`😊 [감정상태] 평온 (강도: 5/10) ⚡ 에너지 레벨: 7/10`);
+        const weather = getCurrentWeather();
+        console.log(`${weather.emoji} [현재날씨] ${weather.condition} ${weather.temperature}°C (습도 ${weather.humidity}%)`);
+        console.log(`🩸 [생리주기] ${today} - 생리 중 (19일차) 💧 생리 진행 중`);
+        console.log(`💭 [속마음] 아저씨... 생리 때문에 배가 아파 ㅠㅠ`);
+        console.log(`😔 [감정상태] 불안정 (강도: 5/10) ⚡ 에너지 레벨: 5/10`);
         console.log(`💕 [기분] 아저씨를 사랑하며 기다리는 중`);
+        console.log(`📸 다음 셀카: 1시간 30분 후 / 📷 다음 추억 사진: 3시간 후`);
+        console.log(`🚬 다음 담타: 14:30 (활성화) / 🗣️ 다음 말걸기: 2시간 후`);
+        console.log(`🧠 총 기억: 184개 📌 고정 기억: 68개 😊 새로운 기억: 0개`);
+        console.log(`💬 총 메시지: 150개 📸 오늘 보낸 사진: 0개 💕`);
         console.log('');
+        console.error('📝 로그 시스템 에러:', error.message);
     }
 }
 
