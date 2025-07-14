@@ -1,4 +1,4 @@
-// ✅ scheduler.js v2.10 - "담타 자동 발송 기능 추가"
+// ✅ scheduler.js v2.11 - "담타 즉시 발송 기능 추가"
 
 // 생리주기 통합된 예진이 자동 감정 메시지 스케줄러
 const schedule = require('node-schedule');
@@ -24,6 +24,7 @@ let sentTimestamps = []; // 일반 감정 메시지 전송 시간 기록
 let lastSentMessages = []; // 최근 보낸 일반 감정 메시지
 let lastWeatherCheck = null;
 let currentWeather = null;
+let damtaCheckJob = null; // 담타 즉시 발송을 위한 스케줄러 참조
 
 // 예쁜 로그 시스템 사용
 function logSchedulerAction(actionType, message, additionalInfo = '') {
@@ -458,27 +459,56 @@ schedule.scheduleJob('0 0 * * *', () => {
   logSchedulerAction('reset', '자정 초기화 완료: 감정 메시지 및 담타 카운터 reset');
 });
 
-// 메시지 전송 스케줄러 - 빈도 줄임 (15분마다 체크)
+// 담타 즉시 발송을 위한 별도 스케줄러 (5분 이내 발송 목표)
+// 이 스케줄러는 index.js에서 /status 엔드포인트 호출 시 트리거되도록 할 예정
+async function checkAndSendDamtaImmediately() {
+    const damtaStatus = damta.getDamtaStatus();
+    if (damtaStatus.canDamta && !damta.damtaState.isPendingMessage) { // 담타 가능하고 보류 중인 메시지가 없을 때
+        try {
+            const damtaMessage = damta.generateDamtaResponse();
+            await client.pushMessage(USER_ID, {
+                type: 'text',
+                text: damtaMessage,
+            });
+            damta.updateDamtaState(); // 담타 상태 업데이트 (카운트 증가)
+            logSchedulerAction('damta', damtaMessage, `즉시 담타 발송! (${damta.damtaState.damtaCount}/${damta.damtaState.dailyDamtaLimit})`);
+            damta.damtaState.isPendingMessage = false; // 메시지 보냈으니 보류 상태 해제
+            if (damtaCheckJob) { // 이미 실행 중인 즉시 발송 스케줄러가 있다면 취소
+                damtaCheckJob.cancel();
+                damtaCheckJob = null;
+                console.log('✅ 기존 담타 즉시 발송 스케줄러 취소됨.');
+            }
+        } catch (err) {
+            console.error('자동 담타 메시지 즉시 전송 오류:', err.message);
+            damta.damtaState.isPendingMessage = false; // 오류 발생 시에도 보류 상태 해제
+        }
+    }
+}
+
+// 메인 스케줄러 (15분마다 체크)
 schedule.scheduleJob('*/15 * * * *', async () => {
   const now = moment().tz('Asia/Tokyo');
   const hour = now.hour();
   const currentTimestamp = now.format('HH:mm');
   
-  // 1. 담타 메시지 발송 로직 (우선순위 높게)
+  // 1. 담타 메시지 발송 로직 (확률 기반, 5분 이내 발송은 즉시 스케줄러가 담당)
   const damtaStatus = damta.getDamtaStatus();
-  if (damtaStatus.canDamta) { // 담타가 가능할 때
-    try {
-      const damtaMessage = damta.generateDamtaResponse();
-      await client.pushMessage(USER_ID, {
-        type: 'text',
-        text: damtaMessage,
-      });
-      damta.updateDamtaState(); // 담타 상태 업데이트 (카운트 증가)
-      logSchedulerAction('damta', damtaMessage, `담타 가능! (${damtaStatus.dailyCount + 1}/${damtaStatus.dailyLimit})`);
-      return; // 담타 메시지를 보냈으면 일반 메시지는 건너뛰기 (선택 사항)
-    } catch (err) {
-      console.error('자동 담타 메시지 전송 오류:', err.message);
+  if (damtaStatus.canDamta) {
+    // 담타가 가능하면, 즉시 발송 스케줄러를 가동시킵니다.
+    // 여기서 직접 보내는 대신, 5분 이내에 보내지도록 예약합니다.
+    if (!damtaCheckJob && !damta.damtaState.isPendingMessage) { // 아직 스케줄러가 없고, 보류 메시지가 없을 때만
+        damta.damtaState.isPendingMessage = true; // 메시지 보류 상태로 설정
+        const randomDelay = Math.floor(Math.random() * 5); // 0분 ~ 4분 사이 랜덤 지연
+        const scheduledTime = moment().add(randomDelay, 'minutes').add(Math.floor(Math.random() * 60), 'seconds').toDate();
+
+        console.log(`⏰ 담타 즉시 발송 스케줄링: ${randomDelay}분 ${Math.floor(Math.random() * 60)}초 후`);
+        damtaCheckJob = schedule.scheduleJob(scheduledTime, async () => {
+            await checkAndSendDamtaImmediately();
+            damtaCheckJob = null; // 실행 후 스케줄러 참조 초기화
+        });
     }
+    // 이 15분 주기 스케줄러에서는 담타 가능 시 여기서 return 하지 않음.
+    // 담타 메시지는 별도의 즉시 스케줄러가 처리하고, 이 스케줄러는 일반 메시지도 보낼 수 있게 함.
   }
 
   // 2. 일반 감정 메시지 발송 로직 (기존 로직)
@@ -528,7 +558,7 @@ schedule.scheduleJob('*/15 * * * *', async () => {
 // 상태 확인용
 function getStats() {
   const menstrualPhase = getCurrentMenstrualPhase();
-  const today = moment.tz('Asia/Tokyo');
+  const today = moment().tz('Asia/Tokyo');
   const nextPeriod = moment.tz('2025-07-24', 'Asia/Tokyo');
   const daysUntil = nextPeriod.diff(today, 'days');
   
@@ -561,7 +591,7 @@ function getStats() {
 // 스케줄러 시작 함수 추가
 function startAllSchedulers(client, userId) {
   // 기존 스케줄러들이 이미 위에서 정의되어 실행중
-  logSchedulerAction('system', '모든 스케줄러 시작됨', 'v2.10');
+  logSchedulerAction('system', '모든 스케줄러 시작됨', 'v2.11');
 }
 
 module.exports = {
