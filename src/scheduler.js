@@ -212,60 +212,100 @@ const EMOTION_MESSAGES = {
   ]
 };
 
-// 생리주기 단계 계산 (7월 24일 생리 예정일로 설정)
+// 생리주기 단계 계산 (7월 24일 생리 예정일로 설정) - 수정됨
 function getCurrentMenstrualPhase() {
   try {
-    // 7월 24일이 다음 생리 시작일이 되도록 설정
+    // 7월 24일이 다음 생리 시작일
     const nextPeriodDate = moment.tz('2025-07-24', 'Asia/Tokyo');
     const today = moment.tz('Asia/Tokyo');
     const daysUntilNextPeriod = nextPeriodDate.diff(today, 'days');
     
-    // 28일 주기 기준으로 현재 주기의 몇 일째인지 계산
-    let cycleDay;
-    if (daysUntilNextPeriod >= 0) {
-      cycleDay = 28 - daysUntilNextPeriod;
+    // 7월 24일까지 남은 일수로 현재 단계 계산
+    let phase, description, cycleDay;
+    
+    if (daysUntilNextPeriod <= 0) {
+      // 7월 24일 이후 - 생리 기간
+      const daysSincePeriod = Math.abs(daysUntilNextPeriod) + 1; // +1을 해서 24일을 1일차로
+      
+      if (daysSincePeriod <= 5) {
+        phase = 'period';
+        description = '생리 기간';
+        cycleDay = daysSincePeriod;
+      } else if (daysSincePeriod <= 13) {
+        phase = 'follicular';
+        description = '생리 후 활발한 시기';
+        cycleDay = daysSincePeriod;
+      } else if (daysSincePeriod >= 14 && daysSincePeriod <= 15) {
+        phase = 'ovulation';
+        description = '배란기';
+        cycleDay = daysSincePeriod;
+      } else if (daysSincePeriod <= 28) {
+        phase = 'luteal';
+        description = 'PMS 시기';
+        cycleDay = daysSincePeriod;
+      } else {
+        // 다음 주기로 넘어감 (28일 주기 기준)
+        const nextCycleDays = daysSincePeriod - 28;
+        if (nextCycleDays <= 5) {
+          phase = 'period';
+          description = '생리 기간';
+          cycleDay = nextCycleDays;
+        } else {
+          // 재귀적으로 계산하지 않고 직접 계산
+          const adjustedDays = nextCycleDays;
+          if (adjustedDays <= 13) {
+            phase = 'follicular';
+            description = '생리 후 활발한 시기';
+            cycleDay = adjustedDays;
+          } else if (adjustedDays >= 14 && adjustedDays <= 15) {
+            phase = 'ovulation';
+            description = '배란기';
+            cycleDay = adjustedDays;
+          } else {
+            phase = 'luteal';
+            description = 'PMS 시기';
+            cycleDay = adjustedDays;
+          }
+        }
+      }
     } else {
-      // 이미 지난 경우 다음 주기 계산
-      const daysPastPeriod = Math.abs(daysUntilNextPeriod);
-      cycleDay = daysPastPeriod;
+      // 7월 24일 이전 - 이전 주기의 끝부분 (PMS/황체기)
+      // 28일 주기 기준으로 역산
+      cycleDay = 28 - daysUntilNextPeriod;
+      
+      if (cycleDay <= 5) {
+        // 너무 이른 시기면 PMS로 처리
+        phase = 'luteal';
+        description = 'PMS 시기';
+        cycleDay = 16 + (28 - daysUntilNextPeriod); // PMS 시기로 조정
+      } else if (cycleDay <= 13) {
+        phase = 'follicular';
+        description = '생리 후 활발한 시기';
+      } else if (cycleDay >= 14 && cycleDay <= 15) {
+        phase = 'ovulation';
+        description = '배란기';
+      } else {
+        phase = 'luteal';
+        description = 'PMS 시기';
+      }
     }
     
-    if (cycleDay <= 5) {
-      return { 
-        phase: 'period', 
-        day: cycleDay, 
-        description: '생리 기간',
-        nextPeriodDate: nextPeriodDate.format('MM월 DD일')
-      };
-    } else if (cycleDay <= 13) {
-      return { 
-        phase: 'follicular', 
-        day: cycleDay, 
-        description: '생리 후 활발한 시기',
-        nextPeriodDate: nextPeriodDate.format('MM월 DD일')
-      };
-    } else if (cycleDay >= 14 && cycleDay <= 15) {
-      return { 
-        phase: 'ovulation', 
-        day: cycleDay, 
-        description: '배란기',
-        nextPeriodDate: nextPeriodDate.format('MM월 DD일')
-      };
-    } else {
-      return { 
-        phase: 'luteal', 
-        day: cycleDay, 
-        description: 'PMS 시기',
-        nextPeriodDate: nextPeriodDate.format('MM월 DD일')
-      };
-    }
+    return { 
+      phase: phase, 
+      day: cycleDay, 
+      description: description,
+      nextPeriodDate: nextPeriodDate.format('MM월 DD일'),
+      daysUntilPeriod: daysUntilNextPeriod
+    };
+    
   } catch (error) {
     console.error('생리주기 계산 오류:', error);
     return { 
       phase: 'normal', 
       day: 1, 
       description: '정상',
-      nextPeriodDate: '07월 24일'
+      nextPeriodDate: '07월 24일',
+      daysUntilPeriod: 0
     };
   }
 }
@@ -342,7 +382,7 @@ async function getRandomMessage() {
   
   // 생리주기에 따른 메시지 확률 조정
   let menstrualProbability = 0;
-  if (menstrualPhase.phase === 'period') menstrualProbability = 0.3; // 생리 때 30%
+  if (menstrualPhase.phase === 'period') menstrualProbability = 0.5; // 생리 때 50%
   else if (menstrualPhase.phase === 'ovulation') menstrualProbability = 0.4; // 배란기 40%
   else if (menstrualPhase.phase === 'luteal') menstrualProbability = 0.3; // PMS 30%
   else menstrualProbability = 0.1; // 활발한 시기 10%
@@ -416,8 +456,8 @@ schedule.scheduleJob('0 0 * * *', () => {
   logSchedulerAction('reset', '자정 초기화 완료: 감정 메시지 카운터 reset');
 });
 
-// 메시지 전송 스케줄러
-schedule.scheduleJob('*/5 * * * *', async () => {
+// 메시지 전송 스케줄러 - 빈도 줄임 (15분마다 체크)
+schedule.scheduleJob('*/15 * * * *', async () => {
   const now = moment().tz('Asia/Tokyo');
   const hour = now.hour();
   
@@ -429,19 +469,19 @@ schedule.scheduleJob('*/5 * * * *', async () => {
   const currentTimestamp = now.format('HH:mm');
   if (sentTimestamps.includes(currentTimestamp)) return;
   
-  // 생리주기에 따른 전송 확률 조정
+  // 생리주기에 따른 전송 확률 조정 - 전체적으로 확률 낮춤
   const menstrualPhase = getCurrentMenstrualPhase();
-  let sendProbability = 0.25;
+  let sendProbability = 0.15; // 기본 확률 25% → 15%로 낮춤
   
-  // 시간대별 확률
-  if (hour >= 12 && hour < 17) sendProbability = 0.35;
-  if (hour >= 19 && hour < 22) sendProbability = 0.4;
-  if (hour >= 22 || hour < 1) sendProbability = 0.2;
+  // 시간대별 확률 - 전체적으로 낮춤
+  if (hour >= 12 && hour < 17) sendProbability = 0.20; // 35% → 20%
+  if (hour >= 19 && hour < 22) sendProbability = 0.25; // 40% → 25%
+  if (hour >= 22 || hour < 1) sendProbability = 0.10; // 20% → 10%
   
-  // 생리주기별 확률 조정
-  if (menstrualPhase.phase === 'period') sendProbability *= 1.1; // 생리 때 20% 증가
-  else if (menstrualPhase.phase === 'ovulation') sendProbability *= 1.3; // 배란기 30% 증가
-  else if (menstrualPhase.phase === 'luteal') sendProbability *= 1.1; // PMS 10% 증가
+  // 생리주기별 확률 조정 - 증가율 낮춤
+  if (menstrualPhase.phase === 'period') sendProbability *= 1.1; // 20% → 10% 증가
+  else if (menstrualPhase.phase === 'ovulation') sendProbability *= 1.2; // 30% → 20% 증가
+  else if (menstrualPhase.phase === 'luteal') sendProbability *= 1.05; // 10% → 5% 증가
   
   const shouldSend = Math.random() < sendProbability;
   if (!shouldSend) return;
