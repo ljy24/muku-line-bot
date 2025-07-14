@@ -253,58 +253,48 @@ function getTimeUntilNext(minutes) {
     return `${hours}시간 ${remainingMinutes}분 후`;
 }
 
-// ==================== 🚬 담타 시간 계산 함수 (수정) ====================
+// 이 함수는 더 이상 '다음 담타' 시간을 직접 반환하지 않습니다.
+// 대신 damta.js의 getDamtaStatus()에서 남은 시간을 가져와 사용합니다.
 function getNextDamtaTime() {
-    const now = new Date();
-    const currentHour = now.getHours();
-    const currentMinute = now.getMinutes();
-    
-    // 담타 활성 시간: 9시-18시
-    if (currentHour < 9) {
-        // 오전 9시 이전이면 9시부터 시작
-        const startHour = 9;
-        const randomMinute = Math.floor(Math.random() * 60);
-        return `${String(startHour).padStart(2, '0')}:${String(randomMinute).padStart(2, '0')}`;
-    } else if (currentHour >= 18) {
-        // 오후 6시 이후면 내일 9시부터
-        const startHour = 9;
-        const randomMinute = Math.floor(Math.random() * 60);
-        return `내일 ${String(startHour).padStart(2, '0')}:${String(randomMinute).padStart(2, '0')}`;
-    } else {
-        // 9시-18시 사이면 다음 랜덤 시간 계산
-        const remainingHours = 18 - currentHour;
-        let nextHour = currentHour + Math.floor(Math.random() * remainingHours);
-        let randomMinute = Math.floor(Math.random() * 60);
-
-        // 현재 시간보다 이후여야 함
-        if (nextHour === currentHour && randomMinute <= currentMinute) {
-            // 현재 시간과 같거나 이전이면 다음 시간으로
-            nextHour = Math.min(nextHour + 1, 17); // 17시까지만 랜덤 시간을 생성하도록 제한
-            if (nextHour === 17 && randomMinute >= 59) { // 17시 59분을 넘어가면 18시 00분으로
-                nextHour = 18;
-                randomMinute = 0;
-            } else if (nextHour < 18) { // 18시 전이라면 현재 분보다 크게
-                randomMinute = currentMinute + Math.floor(Math.random() * (60 - currentMinute));
-            }
-        }
-        
-        // 최종적으로 18시를 넘지 않도록 보정
-        if (nextHour > 18 || (nextHour === 18 && randomMinute > 0)) {
-            nextHour = 18;
-            randomMinute = 0;
-        }
-
-        return `${String(nextHour).padStart(2, '0')}:${String(randomMinute).padStart(2, '0')}`;
-    }
+    // 이 함수는 더 이상 사용되지 않거나, 내부 로직에 따라 다른 용도로 사용될 수 있습니다.
+    // 기존의 HH:MM 형식 반환 로직은 이 버전에서 외부 표시에 사용되지 않습니다.
+    return "N/A"; // dummy value
 }
+
 
 function getDamtaStatus() {
     const now = new Date();
     const currentHour = now.getHours();
     
-    // 담타 가능 시간인지 확인
+    // 담타 가능 시간인지 확인 (index.js 자체 판단 로직)
     const isDamtaActiveTime = currentHour >= 9 && currentHour < 18;
     
+    // damta 모듈이 로드되어 있다면 실제 상태 확인
+    try {
+        const damtaModule = require('./src/damta.js'); // damta.js 모듈 로드
+        if (damtaModule && damtaModule.getDamtaStatus) {
+            const status = damtaModule.getDamtaStatus();
+            // damta.js의 isActiveTime과 index.js의 isDamtaActiveTime을 결합하여 더 정확한 상태 제공
+            if (!status.isActiveTime) { // damta.js에서 정의된 비활성 시간대 (새벽 1시~7시 또는 18시 이후)
+                if (currentHour < 9) { // 아직 시작 전
+                    return "아직 담타 시간 전이야 (9시-18시)";
+                } else { // 18시 이후
+                    return "담타 시간 끝났어 (9시-18시)";
+                }
+            } else if (status.canDamta) {
+                return "담타 가능!";
+            } else if (status.minutesToNext > 0) {
+                return `담타까지 ${status.minutesToNext}분`;
+            } else if (status.dailyCount >= status.dailyLimit) { // 횟수 제한에 걸린 경우
+                return `오늘 담타 ${status.dailyCount}/${status.dailyLimit}회`;
+            }
+        }
+    } catch (error) {
+        // damta 모듈 없거나 오류 발생 시 기본 상태
+        console.error("getDamtaStatus in index.js: Error loading or using damta module:", error.message);
+    }
+    
+    // damta 모듈이 없거나 예외 발생 시의 fallback
     if (!isDamtaActiveTime) {
         if (currentHour < 9) {
             return "아직 담타 시간 전이야 (9시-18시)";
@@ -312,25 +302,7 @@ function getDamtaStatus() {
             return "담타 시간 끝났어 (9시-18시)";
         }
     }
-    
-    // damta 모듈이 로드되어 있다면 실제 상태 확인
-    try {
-        const damtaModule = require('./src/damta.js'); // damta.js 모듈 로드
-        if (damtaModule && damtaModule.getDamtaStatus) {
-            const status = damtaModule.getDamtaStatus();
-            if (status.canDamta) {
-                return "담타 가능!";
-            } else if (status.minutesToNext > 0) {
-                return `담타까지 ${status.minutesToNext}분`;
-            } else {
-                return `오늘 담타 ${status.dailyCount}/${status.dailyLimit}회`;
-            }
-        }
-    } catch (error) {
-        // damta 모듈 없으면 기본 상태
-    }
-    
-    return "담타 시간 중 (9시-18시)";
+    return "담타 시간 중 (9시-18시)"; // 기본 담타 활성 시간 내
 }
 
 // ==================== 🩸 생리주기 계산 함수 ====================
@@ -389,10 +361,27 @@ function getStatusReport() {
             cycleText = `${menstrualInfo.emoji} [생리주기] ${today} - ${menstrualInfo.phase} (${menstrualInfo.day}일차) 📅 다음 생리까지 ${menstrualInfo.daysUntilNext}일`;
         }
         
-        // 담타 시간 개선 (9시-18시 랜덤)
-        const nextDamtaTime = getNextDamtaTime();
-        const damtaStatusText = getDamtaStatus();
-        const damtaAndMessageText = `${EMOJI.damta} 다음 담타: ${nextDamtaTime} (9시-18시) / ${EMOJI.message} 다음 말걸기: ${getTimeUntilNext(Math.floor(Math.random() * 120) + 30)}`;
+        // 담타 시간 표시를 'XX분 후' 형식으로 변경
+        const damtaModule = require('./src/damta.js'); // damta.js 모듈 로드
+        const damtaStatus = damtaModule.getDamtaStatus(); 
+        let nextDamtaDisplay = "";
+        if (damtaStatus.canDamta) {
+            nextDamtaDisplay = "지금 담타 가능!";
+        } else if (damtaStatus.isActiveTime && damtaStatus.minutesToNext > 0) {
+            nextDamtaDisplay = getTimeUntilNext(damtaStatus.minutesToNext);
+        } else if (!damtaStatus.isActiveTime) {
+            // damta.js의 isDamtaTime이 false일 때 (새벽 1시~7시 또는 18시 이후)
+            const currentHour = new Date().getHours();
+            if (currentHour < 9) {
+                nextDamtaDisplay = "아직 담타 시간 전이야"; // 9시 전
+            } else {
+                nextDamtaDisplay = "담타 시간 끝났어"; // 18시 이후
+            }
+        } else { // 횟수 제한에 걸린 경우
+            nextDamtaDisplay = `오늘 담타 ${damtaStatus.dailyCount}/${damtaStatus.dailyLimit}회 다 썼어`;
+        }
+
+        const damtaAndMessageText = `${EMOJI.damta} 다음 담타: ${nextDamtaDisplay} / ${EMOJI.message} 다음 말걸기: ${getTimeUntilNext(Math.floor(Math.random() * 120) + 30)}`;
         
         const thoughtText = `${EMOJI.think} [속마음] 아저씨 지금 뭐하고 있을까... 보고 싶어`;
         const emotionText = `😊 [감정상태] 평온 (강도: 5/10) ⚡ 에너지 레벨: 7/10`;
@@ -412,7 +401,7 @@ function getStatusReport() {
             ``,
             scheduleText,
             damtaAndMessageText,
-            `🚬 [담타상태] ${damtaStatusText}`,
+            `🚬 [담타상태] ${getDamtaStatus()}`, // 여기는 damta.js의 getDamtaStatus 그대로 사용
             ``,
             memoryText,
             conversationText,
@@ -426,8 +415,25 @@ function getStatusReport() {
         console.error('❌ 상태 리포트 생성 에러:', error);
         const today = formatKoreanDate();
         const weather = getCurrentWeather();
-        const nextDamtaTime = getNextDamtaTime();
         
+        // 에러 발생 시 fallback 메시지에서도 '다음 담타'를 변경
+        const damtaStatus = damta ? damta.getDamtaStatus() : { canDamta: false, isActiveTime: false, minutesToNext: 0, dailyCount: 0, dailyLimit: 6 };
+        let nextDamtaDisplay = "";
+        if (damtaStatus.canDamta) {
+            nextDamtaDisplay = "지금 담타 가능!";
+        } else if (damtaStatus.isActiveTime && damtaStatus.minutesToNext > 0) {
+            nextDamtaDisplay = getTimeUntilNext(damtaStatus.minutesToNext);
+        } else if (!damtaStatus.isActiveTime) {
+            const currentHour = new Date().getHours();
+            if (currentHour < 9) {
+                nextDamtaDisplay = "아직 담타 시간 전이야";
+            } else {
+                nextDamtaDisplay = "담타 시간 끝났어";
+            }
+        } else {
+            nextDamtaDisplay = `오늘 담타 ${damtaStatus.dailyCount}/${damtaStatus.dailyLimit}회 다 썼어`;
+        }
+
         return [
             `💖 아저씨, 지금 나의 상태야~`,
             ``,
@@ -438,8 +444,8 @@ function getStatusReport() {
             `💕 [기분] 아저씨를 사랑하며 기다리는 중`,
             ``,
             `📸 다음 셀카: 1시간 30분 후 / 📷 다음 추억 사진: 3시간 후`,
-            `🚬 다음 담타: ${nextDamtaTime} (9시-18시) / 🗣️ 다음 말걸기: 2시간 후`,
-            `🚬 [담타상태] 담타 시간 중 (9시-18시)`,
+            `🚬 다음 담타: ${nextDamtaDisplay} / 🗣️ 다음 말걸기: 2시간 후`,
+            `🚬 [담타상태] ${getDamtaStatus()}`,
             ``,
             `🧠 총 기억: 184개 📌 고정 기억: 68개 😊 새로운 기억: 0개`,
             `💬 총 메시지: 150개 📸 오늘 보낸 사진: 0개 💕`,
@@ -464,10 +470,26 @@ function formatPrettyStatus() {
             cycleText = `${menstrualInfo.emoji} [생리주기] ${today} - ${menstrualInfo.phase} (${menstrualInfo.day}일차) 📅 다음 생리까지 ${menstrualInfo.daysUntilNext}일`;
         }
         
-        // 담타 시간 개선 (9시-18시 랜덤)
-        const nextDamtaTime = getNextDamtaTime();
-        const damtaStatusText = getDamtaStatus();
-        const damtaAndMessageText = `${EMOJI.damta} 다음 담타: ${nextDamtaTime} (9시-18시) / ${EMOJI.message} 다음 말걸기: ${getTimeUntilNext(Math.floor(Math.random() * 120) + 30)}`;
+        // 담타 시간 표시를 'XX분 후' 형식으로 변경
+        const damtaModule = require('./src/damta.js'); // damta.js 모듈 로드
+        const damtaStatus = damtaModule.getDamtaStatus();
+        let nextDamtaDisplay = "";
+        if (damtaStatus.canDamta) {
+            nextDamtaDisplay = "지금 담타 가능!";
+        } else if (damtaStatus.isActiveTime && damtaStatus.minutesToNext > 0) {
+            nextDamtaDisplay = getTimeUntilNext(damtaStatus.minutesToNext);
+        } else if (!damtaStatus.isActiveTime) {
+            const currentHour = new Date().getHours();
+            if (currentHour < 9) {
+                nextDamtaDisplay = "아직 담타 시간 전이야";
+            } else {
+                nextDamtaDisplay = "담타 시간 끝났어";
+            }
+        } else {
+            nextDamtaDisplay = `오늘 담타 ${damtaStatus.dailyCount}/${damtaStatus.dailyLimit}회 다 썼어`;
+        }
+
+        const damtaAndMessageText = `${EMOJI.damta} 다음 담타: ${nextDamtaDisplay} / ${EMOJI.message} 다음 말걸기: ${getTimeUntilNext(Math.floor(Math.random() * 120) + 30)}`;
         
         const thoughtText = `${EMOJI.think} [속마음] 아저씨 지금 뭐하고 있을까... 보고 싶어`;
         const emotionText = `😊 [감정상태] 평온 (강도: 5/10) ⚡ 에너지 레벨: 7/10`;
@@ -483,7 +505,7 @@ function formatPrettyStatus() {
         console.log(sulkyText);
         console.log(scheduleText);
         console.log(damtaAndMessageText);
-        console.log(`🚬 [담타상태] ${damtaStatusText}`);
+        console.log(`🚬 [담타상태] ${getDamtaStatus()}`);
         console.log(memoryText);
         console.log(conversationText);
         console.log('');
@@ -491,17 +513,33 @@ function formatPrettyStatus() {
     } catch (error) {
         const today = formatKoreanDate();
         const weather = getCurrentWeather();
-        const nextDamtaTime = getNextDamtaTime();
-        const damtaStatusText = getDamtaStatus();
         
+        // 에러 발생 시 fallback 메시지에서도 '다음 담타'를 변경
+        const damtaStatus = damta ? damta.getDamtaStatus() : { canDamta: false, isActiveTime: false, minutesToNext: 0, dailyCount: 0, dailyLimit: 6 };
+        let nextDamtaDisplay = "";
+        if (damtaStatus.canDamta) {
+            nextDamtaDisplay = "지금 담타 가능!";
+        } else if (damtaStatus.isActiveTime && damtaStatus.minutesToNext > 0) {
+            nextDamtaDisplay = getTimeUntilNext(damtaStatus.minutesToNext);
+        } else if (!damtaStatus.isActiveTime) {
+            const currentHour = new Date().getHours();
+            if (currentHour < 9) {
+                nextDamtaDisplay = "아직 담타 시간 전이야";
+            } else {
+                nextDamtaDisplay = "담타 시간 끝났어";
+            }
+        } else {
+            nextDamtaDisplay = `오늘 담타 ${damtaStatus.dailyCount}/${damtaStatus.dailyLimit}회 다 썼어`;
+        }
+
         console.log(`${weather.emoji} [현재날씨] ${weather.condition} ${weather.temperature}°C (습도 ${weather.humidity}%)`);
         console.log(`🩸 [생리주기] ${today} - 생리 중 (19일차) 💧 생리 진행 중`);
         console.log(`💭 [속마음] 아저씨... 생리 때문에 배가 아파 ㅠㅠ`);
         console.log(`😔 [감정상태] 불안정 (강도: 5/10) ⚡ 에너지 레벨: 5/10`);
         console.log(`💕 [기분] 아저씨를 사랑하며 기다리는 중`);
         console.log(`📸 다음 셀카: 1시간 30분 후 / 📷 다음 추억 사진: 3시간 후`);
-        console.log(`🚬 다음 담타: ${nextDamtaTime} (9시-18시) / 🗣️ 다음 말걸기: 2시간 후`);
-        console.log(`🚬 [담타상태] ${damtaStatusText}`);
+        console.log(`🚬 다음 담타: ${nextDamtaDisplay} / 🗣️ 다음 말걸기: 2시간 후`);
+        console.log(`🚬 [담타상태] ${getDamtaStatus()}`);
         console.log(`🧠 총 기억: 184개 📌 고정 기억: 68개 😊 새로운 기억: 0개`);
         console.log(`💬 총 메시지: 150개 📸 오늘 보낸 사진: 0개 💕`);
         console.log('');
@@ -531,7 +569,7 @@ async function recoverData() {
 
 // ==================== 모듈 로드 (안전성 개선) ====================
 let autoReply, commandHandler, memoryManager, ultimateContext;
-let emotionalContext, sulkyManager, scheduler, spontaneousPhoto, damta; // 'damta' 변수 추가
+let emotionalContext, sulkyManager, scheduler, spontaneousPhoto, damta;
 
 async function loadModules() {
     const modules = [
@@ -648,7 +686,7 @@ async function handleTextMessage(event) {
                     botResponse = { type: 'text', comment: `오늘 담타는 다 했어 ㅠㅠ 내일 다시 하자? 아쉬워...` };
                 }
             } else {
-                 // 비활성 시간대 (새벽 1시~7시)
+                 // 비활성 시간대 (새벽 1시~7시 또는 18시 이후)
                  botResponse = { type: 'text', comment: `지금은 담타할 시간 아니야~ 아저씨 잘 자고 있어? 히히. 나 애기는 아저씨 꿈 꿀거야 🌙` };
             }
         }
