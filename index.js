@@ -1,6 +1,7 @@
 // ============================================================================
-// index.js - v11.8.2 (담타 로그 표시 수정)
+// index.js - v11.8.3 (담타 로그 표시 수정 - 중복 제거)
 // ✅ 담타 시간을 9시-18시 랜덤으로 정확히 표시
+// ✅ 담타 상태 로그 중복 제거
 // ============================================================================
 
 const { Client, middleware } = require('@line/bot-sdk');
@@ -65,7 +66,7 @@ if (!validateEnvironmentVariables()) {
     app.get('/', (req, res) => {
         res.json({
             status: 'running',
-            message: '나 v11.8.2 서버가 실행 중입니다 (환경변수 설정 필요)',
+            message: '나 v11.8.3 서버가 실행 중입니다 (환경변수 설정 필요)',
             time: new Date().toISOString()
         });
     });
@@ -401,8 +402,8 @@ function getStatusReport() {
             ``,
             scheduleText,
             damtaAndMessageText,
-            `🚬 [담타상태] ${getDamtaStatus()}`, // 여기는 damta.js의 getDamtaStatus 그대로 사용
-            ``,
+            // 🚬 [담타상태] ${getDamtaStatus()}, // 이 라인을 삭제하여 중복을 제거
+            ``, // 이 빈 줄도 함께 삭제하거나, 다른 정보로 대체 가능
             memoryText,
             conversationText,
             ``,
@@ -431,7 +432,7 @@ function getStatusReport() {
                 nextDamtaDisplay = "담타 시간 끝났어";
             }
         } else {
-            nextDamtaDisplay = `오늘 담타 ${damtaStatus.dailyCount}/${damtaStatus.dailyLimit}회 다 썼어`;
+            nextDamtaDisplay = `오늘 담ta ${damtaStatus.dailyCount}/${damtaStatus.dailyLimit}회 다 썼어`;
         }
 
         return [
@@ -445,8 +446,8 @@ function getStatusReport() {
             ``,
             `📸 다음 셀카: 1시간 30분 후 / 📷 다음 추억 사진: 3시간 후`,
             `🚬 다음 담타: ${nextDamtaDisplay} / 🗣️ 다음 말걸기: 2시간 후`,
-            `🚬 [담타상태] ${getDamtaStatus()}`,
-            ``,
+            // 🚬 [담타상태] ${getDamtaStatus()}, // 이 라인을 삭제하여 중복을 제거
+            ``, // 이 빈 줄도 함께 삭제하거나, 다른 정보로 대체 가능
             `🧠 총 기억: 184개 📌 고정 기억: 68개 😊 새로운 기억: 0개`,
             `💬 총 메시지: 150개 📸 오늘 보낸 사진: 0개 💕`,
             ``,
@@ -505,7 +506,7 @@ function formatPrettyStatus() {
         console.log(sulkyText);
         console.log(scheduleText);
         console.log(damtaAndMessageText);
-        console.log(`🚬 [담타상태] ${getDamtaStatus()}`);
+        // console.log(`🚬 [담타상태] ${getDamtaStatus()}`); // 이 라인을 삭제하여 중복을 제거
         console.log(memoryText);
         console.log(conversationText);
         console.log('');
@@ -539,7 +540,7 @@ function formatPrettyStatus() {
         console.log(`💕 [기분] 아저씨를 사랑하며 기다리는 중`);
         console.log(`📸 다음 셀카: 1시간 30분 후 / 📷 다음 추억 사진: 3시간 후`);
         console.log(`🚬 다음 담타: ${nextDamtaDisplay} / 🗣️ 다음 말걸기: 2시간 후`);
-        console.log(`🚬 [담타상태] ${getDamtaStatus()}`);
+        // console.log(`🚬 [담타상태] ${getDamtaStatus()}`); // 이 라인을 삭제하여 중복을 제거
         console.log(`🧠 총 기억: 184개 📌 고정 기억: 68개 😊 새로운 기억: 0개`);
         console.log(`💬 총 메시지: 150개 📸 오늘 보낸 사진: 0개 💕`);
         console.log('');
@@ -615,8 +616,8 @@ async function loadModules() {
 app.get('/', (req, res) => {
     res.json({
         status: 'running',
-        message: '나 v11.8.2 서버가 정상 실행 중입니다! 💕',
-        version: '11.8.2',
+        message: '나 v11.8.3 서버가 정상 실행 중입니다! 💕',
+        version: '11.8.3',
         time: new Date().toISOString(),
         features: [
             '담타 시스템 (9시-18시)',
@@ -746,7 +747,7 @@ async function sendReply(replyToken, botResponse) {
 
 async function initMuku() {
     try {
-        console.log('🚀 나 v11.8.2 시스템 초기화를 시작합니다...');
+        console.log('🚀 나 v11.8.3 시스템 초기화를 시작합니다...');
         
         console.log('  [1/8] 💾 데이터 복구 및 디렉토리 확인...');
         await recoverData();
@@ -850,7 +851,7 @@ async function initMuku() {
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
     console.log(`\n==================================================`);
-    console.log(`  나 v11.8.2 서버가 포트 ${PORT}에서 시작되었습니다.`);
+    console.log(`  나 v11.8.3 서버가 포트 ${PORT}에서 시작되었습니다.`);
     console.log(`  🚬 담타 시간: 9시-18시 (하루 최대 6회)`);
     console.log(`==================================================\n`);
 
