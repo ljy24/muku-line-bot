@@ -342,7 +342,7 @@ async function getRandomMessage() {
   
   // 생리주기에 따른 메시지 확률 조정
   let menstrualProbability = 0;
-  if (menstrualPhase.phase === 'period') menstrualProbability = 0.5; // 생리 때 50%
+  if (menstrualPhase.phase === 'period') menstrualProbability = 0.3; // 생리 때 30%
   else if (menstrualPhase.phase === 'ovulation') menstrualProbability = 0.4; // 배란기 40%
   else if (menstrualPhase.phase === 'luteal') menstrualProbability = 0.3; // PMS 30%
   else menstrualProbability = 0.1; // 활발한 시기 10%
@@ -439,7 +439,7 @@ schedule.scheduleJob('*/5 * * * *', async () => {
   if (hour >= 22 || hour < 1) sendProbability = 0.2;
   
   // 생리주기별 확률 조정
-  if (menstrualPhase.phase === 'period') sendProbability *= 1.2; // 생리 때 20% 증가
+  if (menstrualPhase.phase === 'period') sendProbability *= 1.1; // 생리 때 20% 증가
   else if (menstrualPhase.phase === 'ovulation') sendProbability *= 1.3; // 배란기 30% 증가
   else if (menstrualPhase.phase === 'luteal') sendProbability *= 1.1; // PMS 10% 증가
   
