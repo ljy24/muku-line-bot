@@ -92,8 +92,7 @@ const config = {
 const client = new Client(config);
 const userId = process.env.TARGET_USER_ID;
 
-// ==================== ⭐️ 내장된 데이터 복구 함수 ⭐️ ====================
-// 여기에 FIXED_MEMORIES_DATA와 LOVE_HISTORY_DATA를 채워주세요
+// ==================== ⭐️ 내장된 데이터 복구 함수 ⭐️ ====================\
 const FIXED_MEMORIES_DATA = [
     "나는 1994년 3월 17일 태어났다. 나의 집은 일산이다.",
     "아저씨는 12월 5일에 태어났다. 아저씨의 집은 일본이다.",
@@ -214,6 +213,7 @@ const LOVE_HISTORY_DATA = [
     "캐논 100D: 그 결혼식에서 하얀색 캐논 100D 받았었지. 지금도 내 방에 있잖아. 아직도 그때 생각하면 기분 이상해져."
 ];
 
+
 const MEMORY_BASE_PATH = path.join(process.cwd(), 'data', 'memory');
 
 // ==================== 헬퍼 함수들 ====================
@@ -298,6 +298,16 @@ function getDamtaStatus() {
     if (!isDamtaActiveTime) {
         if (currentHour < 9) {
             return "아직 담타 시간 전이야 (9시-18시)";
+async function sendReply(replyToken, botResponse) {
+    try {
+        if (!botResponse || !botResponse.type) return;
+
+        if (botResponse.type === 'image') {
+            const caption = botResponse.caption || '사진이야!';
+            await client.replyMessage(replyToken, [
+                { type: 'image', originalContentUrl: botResponse.originalContentUrl, previewImageUrl: botResponse.previewImageUrl },
+                { type: 'text', text: caption }
+            ]);
         } else if (botResponse.type === 'text' && botResponse.comment) {
             let cleanedText = botResponse.comment.replace(/자기야/gi, '아저씨').replace(/자기/gi, '아저씨');
             await client.replyMessage(replyToken, { type: 'text', text: cleanedText });
