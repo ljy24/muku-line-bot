@@ -1,5 +1,5 @@
 // ============================================================================
-// emotionalContextManager.js - v7.0 (확장 버전)
+// emotionalContextManager.js - v8.0 (올바른 생리주기 계산 수정)
 // 🧠 감정 상태, 💬 말투, ❤️ 애정 표현을 계산하고 관리하는 역할
 // ✅ 순환 참조 문제 해결을 위한 중앙 집중식 감정 관리 추가
 // ============================================================================
@@ -46,72 +46,145 @@ let globalEmotionState = {
     moodSwings: false
 };
 
-// ==================== 생리주기 계산 (내장) ====================
+// ==================== 🔥 수정된 올바른 생리주기 계산 ====================
 function calculateMenstrualPhase() {
     try {
+        // 7월 24일이 다음 생리 시작일
         const nextPeriodDate = moment.tz('2025-07-24', 'Asia/Tokyo');
         const today = moment.tz('Asia/Tokyo');
         const daysUntilNextPeriod = nextPeriodDate.diff(today, 'days');
         
-        let cycleDay;
-        if (daysUntilNextPeriod >= 0) {
-            cycleDay = 28 - daysUntilNextPeriod;
+        // 7월 24일까지 남은 일수로 현재 단계 계산
+        let phase, description, cycleDay;
+        
+        if (daysUntilNextPeriod <= 0) {
+            // 7월 24일 이후 - 생리 기간
+            const daysSincePeriod = Math.abs(daysUntilNextPeriod) + 1; // +1을 해서 24일을 1일차로
+            
+            if (daysSincePeriod <= 5) {
+                phase = 'period';
+                description = '생리 기간';
+                cycleDay = daysSincePeriod;
+            } else if (daysSincePeriod <= 13) {
+                phase = 'follicular';
+                description = '생리 후 활발한 시기';
+                cycleDay = daysSincePeriod;
+            } else if (daysSincePeriod >= 14 && daysSincePeriod <= 15) {
+                phase = 'ovulation';
+                description = '배란기';
+                cycleDay = daysSincePeriod;
+            } else if (daysSincePeriod <= 28) {
+                phase = 'luteal';
+                description = 'PMS 시기';
+                cycleDay = daysSincePeriod;
+            } else {
+                // 다음 주기로 넘어감 (28일 주기 기준)
+                const nextCycleDays = daysSincePeriod - 28;
+                if (nextCycleDays <= 5) {
+                    phase = 'period';
+                    description = '생리 기간';
+                    cycleDay = nextCycleDays;
+                } else {
+                    // 재귀적으로 계산하지 않고 직접 계산
+                    const adjustedDays = nextCycleDays;
+                    if (adjustedDays <= 13) {
+                        phase = 'follicular';
+                        description = '생리 후 활발한 시기';
+                        cycleDay = adjustedDays;
+                    } else if (adjustedDays >= 14 && adjustedDays <= 15) {
+                        phase = 'ovulation';
+                        description = '배란기';
+                        cycleDay = adjustedDays;
+                    } else {
+                        phase = 'luteal';
+                        description = 'PMS 시기';
+                        cycleDay = adjustedDays;
+                    }
+                }
+            }
         } else {
-            const daysPastPeriod = Math.abs(daysUntilNextPeriod);
-            cycleDay = daysPastPeriod;
+            // 7월 24일 이전 - 이전 주기의 끝부분 (PMS/황체기)
+            // 28일 주기 기준으로 역산
+            cycleDay = 28 - daysUntilNextPeriod;
+            
+            if (cycleDay <= 5) {
+                // 너무 이른 시기면 PMS로 처리
+                phase = 'luteal';
+                description = 'PMS 시기';
+                cycleDay = 16 + (28 - daysUntilNextPeriod); // PMS 시기로 조정
+            } else if (cycleDay <= 13) {
+                phase = 'follicular';
+                description = '생리 후 활발한 시기';
+            } else if (cycleDay >= 14 && cycleDay <= 15) {
+                phase = 'ovulation';
+                description = '배란기';
+            } else {
+                phase = 'luteal';
+                description = 'PMS 시기';
+            }
         }
         
-        if (cycleDay <= 5) {
-            return {
-                phase: 'period',
-                day: cycleDay,
-                isPeriodActive: true,
-                emotion: 'sensitive',
-                energyLevel: 3,
-                needsComfort: true,
-                moodSwings: true
-            };
-        } else if (cycleDay <= 13) {
-            return {
-                phase: 'follicular',
-                day: cycleDay,
-                isPeriodActive: false,
-                emotion: 'energetic',
-                energyLevel: 8,
-                needsComfort: false,
-                moodSwings: false
-            };
-        } else if (cycleDay >= 14 && cycleDay <= 15) {
-            return {
-                phase: 'ovulation',
-                day: cycleDay,
-                isPeriodActive: false,
-                emotion: 'romantic',
-                energyLevel: 7,
-                needsComfort: false,
-                moodSwings: false
-            };
-        } else {
-            return {
-                phase: 'luteal',
-                day: cycleDay,
-                isPeriodActive: false,
-                emotion: 'unstable',
-                energyLevel: 5,
-                needsComfort: true,
-                moodSwings: true
-            };
+        // 감정 상태 매핑
+        let emotion, energyLevel, needsComfort, moodSwings;
+        
+        switch(phase) {
+            case 'period':
+                emotion = 'sensitive';
+                energyLevel = 3;
+                needsComfort = true;
+                moodSwings = true;
+                break;
+            case 'follicular':
+                emotion = 'energetic';
+                energyLevel = 8;
+                needsComfort = false;
+                moodSwings = false;
+                break;
+            case 'ovulation':
+                emotion = 'romantic';
+                energyLevel = 7;
+                needsComfort = false;
+                moodSwings = false;
+                break;
+            case 'luteal':
+                emotion = 'unstable';
+                energyLevel = 5;
+                needsComfort = true;
+                moodSwings = true;
+                break;
+            default:
+                emotion = 'normal';
+                energyLevel = 5;
+                needsComfort = false;
+                moodSwings = false;
         }
+        
+        return {
+            phase: phase,
+            day: cycleDay,
+            description: description,
+            isPeriodActive: phase === 'period',
+            emotion: emotion,
+            energyLevel: energyLevel,
+            needsComfort: needsComfort,
+            moodSwings: moodSwings,
+            daysUntilNextPeriod: daysUntilNextPeriod,
+            nextPeriodDate: nextPeriodDate.format('MM월 DD일')
+        };
+        
     } catch (error) {
         console.error('[EmotionalContext] 생리주기 계산 오류:', error);
         return {
             phase: 'normal',
             day: 1,
+            description: '정상',
             isPeriodActive: false,
             emotion: 'normal',
             energyLevel: 5,
             needsComfort: false,
-            moodSwings: false
+            moodSwings: false,
+            daysUntilNextPeriod: 14,
+            nextPeriodDate: '07월 24일'
         };
     }
 }
