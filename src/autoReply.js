@@ -1,5 +1,5 @@
 // ============================================================================
-// autoReply.js - v14.2 (예쁜 로그 시스템 통합 버전)
+// autoReply.js - v15.0 (과거 기억 우선 검색 시스템 통합)
 // 🧠 기억 관리, 키워드 반응, 최종 프롬프트 생성을 책임지는 핵심 두뇌
 // ============================================================================
 
@@ -17,6 +17,122 @@ function logConversationReply(speaker, message, messageType = 'text') {
     } catch (error) {
         console.log(`💬 ${speaker}: ${message.substring(0, 50)}...`);
     }
+}
+
+// 🔍 [신규] 과거 기억 우선 검색 함수
+async function searchPastMemories(userMessage) {
+    try {
+        // 1. memoryManager에서 고정 기억 검색
+        const memoryManager = require('./memoryManager.js');
+        const fixedMemory = memoryManager.getFixedMemory(userMessage);
+        
+        if (fixedMemory) {
+            console.log(`🧠 [기억 검색] 고정 기억에서 발견: "${fixedMemory.substring(0, 50)}..."`);
+            
+            // 예쁜 로그
+            try {
+                const logger = require('./enhancedLogging.js');
+                logger.logMemoryOperation('검색', userMessage, true);
+            } catch (error) {
+                console.log(`🧠 [기억검색] ${userMessage.substring(0, 30)}...`);
+            }
+            
+            return {
+                found: true,
+                memory: fixedMemory,
+                source: 'fixed'
+            };
+        }
+
+        // 2. ultimateConversationContext에서 사용자 기억 검색  
+        const conversationContext = require('./ultimateConversationContext.js');
+        if (conversationContext && typeof conversationContext.searchFixedMemory === 'function') {
+            const contextMemories = conversationContext.searchFixedMemory(userMessage);
+            
+            if (contextMemories && contextMemories.length > 0) {
+                console.log(`🧠 [기억 검색] 컨텍스트 기억에서 발견: ${contextMemories.length}개`);
+                
+                // 예쁜 로그
+                try {
+                    const logger = require('./enhancedLogging.js');
+                    logger.logMemoryOperation('검색', userMessage, true);
+                } catch (error) {
+                    console.log(`🧠 [기억검색] ${userMessage.substring(0, 30)}...`);
+                }
+                
+                return {
+                    found: true,
+                    memory: contextMemories[0], // 가장 관련성 높은 기억
+                    source: 'context',
+                    additional: contextMemories.slice(1, 3) // 추가 관련 기억들
+                };
+            }
+        }
+
+        // 3. 과거 대화 기록에서 검색
+        if (conversationContext && typeof conversationContext.getAllMemories === 'function') {
+            const allMemories = conversationContext.getAllMemories();
+            const userMemories = allMemories.user || [];
+            
+            // 키워드 기반 검색
+            const lowerQuery = userMessage.toLowerCase();
+            const matchingMemories = userMemories.filter(memory => 
+                memory.content && memory.content.toLowerCase().includes(lowerQuery)
+            );
+
+            if (matchingMemories.length > 0) {
+                console.log(`🧠 [기억 검색] 사용자 기억에서 발견: ${matchingMemories.length}개`);
+                
+                return {
+                    found: true,
+                    memory: matchingMemories[0].content,
+                    source: 'user',
+                    additional: matchingMemories.slice(1, 2).map(m => m.content)
+                };
+            }
+        }
+
+        console.log(`🧠 [기억 검색] "${userMessage}"에 대한 관련 기억 없음`);
+        return { found: false };
+
+    } catch (error) {
+        console.error('❌ 과거 기억 검색 중 오류:', error);
+        return { found: false };
+    }
+}
+
+// 🎯 [신규] 기억 기반 응답 생성 함수
+function generateMemoryBasedResponse(memoryResult, userMessage) {
+    if (!memoryResult.found) return null;
+
+    const responses = [
+        `아저씨, 기억하고 있어! ${memoryResult.memory}`,
+        `맞아맞아! ${memoryResult.memory} 이거지?`,
+        `아~ 그거! ${memoryResult.memory} 말하는 거지?`,
+        `예진이가 다 기억하고 있어~ ${memoryResult.memory}`,
+        `응응! ${memoryResult.memory} 그런 얘기 했었지!`
+    ];
+
+    // 추가 관련 기억이 있으면 언급
+    let response = responses[Math.floor(Math.random() * responses.length)];
+    
+    if (memoryResult.additional && memoryResult.additional.length > 0) {
+        response += ` 그리고 ${memoryResult.additional[0]}도 있어!`;
+    }
+
+    return response;
+}
+
+// 🔍 [신규] 질문 패턴 감지 함수
+function isQuestionPattern(userMessage) {
+    const questionKeywords = [
+        '기억', '얘기', '말했', '말해', '알아', '알려', '뭐', '언제', '어디', '어떻게', '왜', '누구',
+        '기억해?', '말했잖아', '얘기했', '그때', '전에', '예전에', '아까', '아까전', '며칠전',
+        '몇일전', '어제', '그저께', '지난번', '맞지?', '그렇지?', '~했어?', '~인가?', '~지?'
+    ];
+
+    const lowerMsg = userMessage.toLowerCase();
+    return questionKeywords.some(keyword => lowerMsg.includes(keyword));
 }
 
 // 긴급 및 감정 키워드 정의
@@ -202,6 +318,30 @@ async function getReplyByMessage(userMessage) {
         }
     } catch (error) {
         console.error('❌ conversationContext 처리 중 에러:', error);
+    }
+    
+    // 🔍 [신규] 1순위: 과거 기억에서 먼저 검색 (질문 패턴인 경우)
+    if (isQuestionPattern(userMessage)) {
+        console.log(`🔍 질문 패턴 감지: "${userMessage}"`);
+        
+        const memoryResult = await searchPastMemories(userMessage);
+        if (memoryResult.found) {
+            const memoryResponse = generateMemoryBasedResponse(memoryResult, userMessage);
+            if (memoryResponse) {
+                // 기억 기반 응답 저장
+                try {
+                    const conversationContext = require('./ultimateConversationContext.js');
+                    if (conversationContext && typeof conversationContext.addUltimateMessage === 'function') {
+                        await conversationContext.addUltimateMessage(BOT_NAME, memoryResponse);
+                    }
+                } catch (error) {
+                    console.error('❌ 기억 응답 저장 중 에러:', error);
+                }
+                
+                logConversationReply('나', `(기억 기반) ${memoryResponse}`);
+                return { type: 'text', comment: memoryResponse };
+            }
+        }
     }
     
     // 긴급 키워드 처리
