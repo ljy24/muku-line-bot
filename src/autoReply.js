@@ -1,9 +1,9 @@
-// core/autoReply.js - 메인 진입점 (100줄 이내)
+// src/autoReply.js - 메인 진입점 (기존 파일 리팩토링)
 const { ResponseRouter } = require('./responseRouter');
 const { ContextAnalyzer } = require('./contextAnalyzer');
-const { MoodManager } = require('../managers/moodManager');
-const { ConversationManager } = require('../managers/conversationManager');
-const { YejinPersonality } = require('../utils/yejinPersonality');
+const { MoodManager } = require('./moodManager');
+const { ConversationManager } = require('./conversationManager');
+const { YejinPersonality } = require('./yejinPersonality');
 
 class AutoReply {
     constructor() {
@@ -15,12 +15,12 @@ class AutoReply {
     }
 
     /**
-     * 메인 메시지 처리 함수
+     * 메인 메시지 처리 함수 (기존 processMessage 대체)
      * @param {string} message - 받은 메시지
-     * @param {string} userId - 사용자 ID
+     * @param {string} userId - 사용자 ID (기본값: 'user')
      * @returns {Promise<Object>} 응답 객체
      */
-    async processMessage(message, userId) {
+    async processMessage(message, userId = 'user') {
         try {
             // 1. 메시지 분석
             const context = await this.contextAnalyzer.analyze(message, userId);
@@ -52,6 +52,13 @@ class AutoReply {
     }
 
     /**
+     * 기존 코드와 호환성을 위한 래퍼 함수
+     */
+    async generateResponse(message, userId = 'user') {
+        return await this.processMessage(message, userId);
+    }
+
+    /**
      * 응답 후처리 (기분 업데이트, 로깅 등)
      */
     async postProcessResponse(userId, message, response) {
@@ -72,7 +79,12 @@ class AutoReply {
      */
     async handlePhotoResponse(userId, response) {
         // 사진 전송 로그 및 추후 기억으로 활용
-        console.log(`사진 응답 처리: ${response.photoType} for ${userId}`);
+        console.log(`[사진 응답] 타입: ${response.photoType}, 사용자: ${userId}`);
+        
+        // 기존 spontaneousPhotoManager와 연동 가능
+        if (this.spontaneousPhotoManager) {
+            await this.spontaneousPhotoManager.logPhotoSent(response.photoType);
+        }
     }
 
     /**
@@ -86,27 +98,50 @@ class AutoReply {
             "잠시만... 내가 좀 정신이 없나봐"
         ];
         
+        const selectedMessage = errorMessages[Math.floor(Math.random() * errorMessages.length)];
+        
         return {
-            text: errorMessages[Math.floor(Math.random() * errorMessages.length)],
+            text: selectedMessage,
             type: 'error',
-            hasPhoto: false
+            hasPhoto: false,
+            timestamp: new Date().toISOString()
         };
     }
 
     /**
-     * 건강 체크 (서버 상태 확인용)
+     * 시스템 상태 체크 (디버깅용)
      */
     healthCheck() {
         return {
             status: 'healthy',
             timestamp: new Date().toISOString(),
+            version: '2.0.0',
             components: {
                 responseRouter: this.responseRouter ? 'ok' : 'error',
                 contextAnalyzer: this.contextAnalyzer ? 'ok' : 'error',
-                moodManager: this.moodManager ? 'ok' : 'error'
+                moodManager: this.moodManager ? 'ok' : 'error',
+                conversationManager: this.conversationManager ? 'ok' : 'error',
+                personality: this.personality ? 'ok' : 'error'
             }
         };
     }
+
+    /**
+     * 기존 코드와의 호환성을 위한 메서드들
+     */
+    async analyzeMessage(message) {
+        return await this.contextAnalyzer.analyze(message, 'user');
+    }
+
+    async updateMood(userId, mood) {
+        if (this.moodManager.updateMood) {
+            return await this.moodManager.updateMood(userId, mood);
+        }
+    }
 }
 
+// 기존 코드 호환성을 위한 기본 export
 module.exports = { AutoReply };
+
+// 추가적인 export (필요시)
+module.exports.default = AutoReply;
