@@ -1,10 +1,13 @@
 // ============================================================================
-// autoReply.js - v14.2 (예쁜 로그 시스템 통합 버전)
+// autoReply.js - v14.3 (새벽 응답 시스템 통합 버전)
 // 🧠 기억 관리, 키워드 반응, 최종 프롬프트 생성을 책임지는 핵심 두뇌
 // ============================================================================
 
 const { callOpenAI, cleanReply } = require('./aiUtils');
 const moment = require('moment-timezone');
+
+// ⭐ 새벽 응답 시스템 추가
+const nightWakeSystem = require('./night_wake_response.js');
 
 const BOT_NAME = '나';
 const USER_NAME = '아저씨';
@@ -178,6 +181,40 @@ function handleWeatherKeywords(userMessage) {
 
 // 메인 응답 생성 함수
 async function getReplyByMessage(userMessage) {
+    
+    // ⭐⭐⭐ 최우선: 새벽 시간 체크 ⭐⭐⭐
+    try {
+        const nightResponse = await nightWakeSystem.handleNightWakeMessage(userMessage);
+        
+        if (nightResponse) {
+            // 새벽 시간이면 깨어난 응답 반환
+            logConversationReply('아저씨', userMessage);
+            logConversationReply('나', `(새벽깨움-${nightResponse.sleepPhase}) ${nightResponse.response}`);
+            
+            // conversationContext에도 저장
+            try {
+                const conversationContext = require('./ultimateConversationContext.js');
+                if (conversationContext && typeof conversationContext.addUltimateMessage === 'function') {
+                    await conversationContext.addUltimateMessage('아저씨', userMessage);
+                    await conversationContext.addUltimateMessage('나', nightResponse.response);
+                }
+                
+                if (conversationContext && typeof conversationContext.updateLastUserMessageTime === 'function') {
+                    conversationContext.updateLastUserMessageTime(Date.now());
+                }
+            } catch (error) {
+                console.error('❌ 새벽 응답 저장 중 에러:', error);
+            }
+            
+            return { type: 'text', comment: nightResponse.response };
+        }
+    } catch (error) {
+        console.error('❌ 새벽 응답 시스템 에러:', error);
+        // 에러가 나도 일반 로직으로 계속 진행
+    }
+    
+    // ⭐⭐⭐ 새벽 시간이 아니면 기존 로직 계속 진행 ⭐⭐⭐
+    
     // ✅ [안전장치] userMessage 유효성 검사
     if (!userMessage || typeof userMessage !== 'string') {
         console.error('❌ getReplyByMessage: userMessage가 올바르지 않습니다:', userMessage);
@@ -265,8 +302,8 @@ async function getReplyByMessage(userMessage) {
     } catch (error) {
         console.error('❌ 기억 요청 처리 중 에러:', error);
     }
-    
-    // ✅ [수정] 중앙 감정 관리자에서 현재 상태 가져와서 프롬프트에 반영
+
+// ✅ [수정] 중앙 감정 관리자에서 현재 상태 가져와서 프롬프트에 반영
     let emotionContext = '';
     try {
         const emotionalContext = require('./emotionalContextManager.js');
