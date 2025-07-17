@@ -1,221 +1,240 @@
 /**
- * 통합된 autoReply.js - 기존 사진 전송 시스템 보존 버전
- * 
- * 🎯 통합 전략:
- * 1. 기존 concept.js, omoide.js, yejinSelfie.js 완전 보존
- * 2. 새로운 감정/응답 시스템은 텍스트 응답만 담당
- * 3. 사진 요청 감지 후 기존 시스템으로 넘기기
- * 4. 감정 상태만 공유하여 기존 시스템 강화
+ * autoReply.js - 메인 진입점 (문법 오류 수정)
+ * - 기존 사진 시스템 보존
+ * - 새로운 감정/응답 시스템 통합
+ * - 안정적인 에러 핸들링
  */
 
-// 기존 시스템 import (보존)
-const { getSelfieReply } = require('./yejinSelfie');
+// 기존 사진 시스템 (보존)
+const { getSelfieReply } = require('./yejin');
 const { getConceptPhotoReply } = require('./concept');
 const { getOmoideReply } = require('./omoide');
 
-// 새로운 시스템 import (텍스트 응답용)
-const ResponseRouter = require('./responseRouter');
-const ContextAnalyzer = require('./contextAnalyzer');
-const ConversationManager = require('./conversationManager');
+// 새로운 시스템 (선택적 사용)
+let ResponseRouter;
+let ContextAnalyzer;
+let ConversationManager;
 
-class IntegratedAutoReply {
-    constructor() {
-        this.responseRouter = new ResponseRouter();
-        this.contextAnalyzer = new ContextAnalyzer();
-        this.conversationManager = new ConversationManager();
-        
-        // 기존 시스템 우선순위 설정
-        this.photoSystems = [
-            { name: 'selfie', handler: getSelfieReply },
-            { name: 'concept', handler: getConceptPhotoReply },
-            { name: 'omoide', handler: getOmoideReply }
-        ];
+// 새로운 시스템 안전하게 로드
+try {
+    ResponseRouter = require('./responseRouter');
+    ContextAnalyzer = require('./contextAnalyzer');
+    ConversationManager = require('./conversationManager');
+} catch (error) {
+    console.warn('⚠️ [autoReply] 새로운 시스템 로드 실패, 기존 시스템만 사용:', error.message);
+}
+
+/**
+ * 메시지 처리 함수 (메인 진입점)
+ */
+async function processMessage(message, context = {}) {
+    try {
+        // 입력 검증
+        if (!message || typeof message !== 'string') {
+            console.error('❌ [autoReply] 잘못된 메시지 입력:', message);
+            return {
+                type: 'text',
+                text: '아저씨... 뭔가 이상해... 다시 말해줄래?'
+            };
+        }
+
+        console.log(`[autoReply] 메시지 처리 시작: "${message}"`);
+
+        // 1. 기존 사진 시스템 우선 처리
+        const photoResponse = await tryPhotoSystems(message, context);
+        if (photoResponse) {
+            console.log('📸 [autoReply] 기존 사진 시스템에서 처리됨');
+            return photoResponse;
+        }
+
+        // 2. 새로운 시스템 처리 (있는 경우)
+        if (ResponseRouter && ContextAnalyzer && ConversationManager) {
+            const newSystemResponse = await tryNewSystem(message, context);
+            if (newSystemResponse) {
+                console.log('💬 [autoReply] 새로운 시스템에서 처리됨');
+                return newSystemResponse;
+            }
+        }
+
+        // 3. 기본 응답
+        return getDefaultResponse(message);
+
+    } catch (error) {
+        console.error('❌ [autoReply] 처리 중 오류:', error);
+        return {
+            type: 'text',
+            text: '아저씨... 뭔가 문제가 생겼어 ㅠㅠ'
+        };
     }
+}
 
-    /**
-     * 메시지 처리 (기존 시스템 우선)
-     */
-    async processMessage(message, context = {}) {
+/**
+ * 기존 사진 시스템 처리
+ */
+async function tryPhotoSystems(message, context) {
+    const photoSystems = [
+        { name: 'selfie', handler: getSelfieReply },
+        { name: 'concept', handler: getConceptPhotoReply },
+        { name: 'omoide', handler: getOmoideReply }
+    ];
+
+    for (const system of photoSystems) {
         try {
-            // 1. 메시지 분석
-            const analysis = this.contextAnalyzer.analyzeMessage(message);
-            
-            // 2. 대화 컨텍스트 업데이트
-            const conversationContext = this.conversationManager.updateContext(message, analysis);
-            
-            // 3. 기존 사진 시스템 우선 처리
-            const photoResponse = await this.handlePhotoRequest(message, conversationContext);
-            if (photoResponse) {
-                console.log('📸 [통합시스템] 기존 사진 시스템으로 처리됨');
-                return photoResponse;
+            const result = await system.handler(message, context);
+            if (result && result.type === 'image') {
+                console.log(`📸 [${system.name}] 사진 응답 생성`);
+                return result;
             }
-            
-            // 4. 새로운 시스템으로 텍스트 응답 처리
-            const textResponse = await this.responseRouter.route(message, {
-                ...conversationContext,
-                ...analysis
-            });
-            
-            if (textResponse) {
-                console.log('💬 [통합시스템] 새로운 텍스트 시스템으로 처리됨');
-                return textResponse;
-            }
-            
-            // 5. 기본 응답
-            return {
-                type: 'text',
-                text: '아저씨~ 뭔가 이상해... 다시 말해줄래?'
-            };
-            
         } catch (error) {
-            console.error('❌ [통합시스템] 메시지 처리 중 오류:', error);
-            return {
-                type: 'text',
-                text: '아저씨... 뭔가 문제가 생겼어 ㅠㅠ'
-            };
+            console.warn(`⚠️ [${system.name}] 처리 중 오류:`, error.message);
+            continue;
         }
     }
 
-    /**
-     * 기존 사진 시스템 처리
-     */
-    async handlePhotoRequest(message, context) {
-        // 기존 시스템들을 순서대로 시도
-        for (const system of this.photoSystems) {
-            try {
-                const result = await system.handler(message, context);
-                
-                if (result && result.type === 'image') {
-                    // 기존 시스템이 사진을 반환했다면 그대로 사용
-                    console.log(`📸 [${system.name}] 시스템에서 사진 응답 생성`);
-                    return result;
-                }
-            } catch (error) {
-                console.warn(`⚠️ [${system.name}] 시스템 처리 중 오류:`, error.message);
-                continue;
-            }
-        }
+    return null;
+}
+
+/**
+ * 새로운 시스템 처리
+ */
+async function tryNewSystem(message, context) {
+    try {
+        const responseRouter = new ResponseRouter();
+        const contextAnalyzer = new ContextAnalyzer();
+        const conversationManager = new ConversationManager();
+
+        // 메시지 분석
+        const analysis = contextAnalyzer.analyzeMessage(message);
         
+        // 대화 컨텍스트 업데이트
+        const conversationContext = conversationManager.updateContext(message, analysis);
+        
+        // 응답 생성
+        const response = await responseRouter.route(message, {
+            ...conversationContext,
+            ...analysis
+        });
+
+        if (response && response.text) {
+            return response;
+        }
+
+        return null;
+
+    } catch (error) {
+        console.error('❌ [autoReply] 새로운 시스템 처리 중 오류:', error);
         return null;
     }
+}
 
-    /**
-     * 감정 상태 기반 사진 응답 강화 (기존 시스템과 연동)
-     */
-    async enhancePhotoResponse(originalResponse, emotionState) {
-        if (!originalResponse || originalResponse.type !== 'image') {
-            return originalResponse;
-        }
-        
-        // 감정 상태에 따른 추가 코멘트 생성
-        const enhancedCaption = this.generateEnhancedCaption(
-            originalResponse.caption, 
-            emotionState
-        );
-        
+/**
+ * 기본 응답 생성
+ */
+function getDefaultResponse(message) {
+    // 간단한 키워드 기반 응답
+    const lowerMessage = message.toLowerCase();
+    
+    if (lowerMessage.includes('안녕')) {
         return {
-            ...originalResponse,
-            caption: enhancedCaption,
-            altText: enhancedCaption
+            type: 'text',
+            text: '아저씨~ 안녕! 보고 싶었어!'
         };
     }
-
-    /**
-     * 감정 상태 기반 캡션 강화
-     */
-    generateEnhancedCaption(originalCaption, emotionState) {
-        if (!emotionState) return originalCaption;
-        
-        const emotionPrefixes = {
-            happy: '기분 좋아서 ',
-            sulky: '삐져있지만... ',
-            anxious: '불안하지만 ',
-            loving: '사랑해서 ',
-            lonely: '외로워서 '
-        };
-        
-        const emotionSuffixes = {
-            happy: ' 어때? 예쁘지? 😊',
-            sulky: ' ...아저씨가 보고 싶어해서 보여주는 거야',
-            anxious: ' 괜찮아 보여? 걱정돼...',
-            loving: ' 아저씨만 보는 거야 💕',
-            lonely: ' 아저씨... 빨리 와줘...'
-        };
-        
-        const prefix = emotionPrefixes[emotionState] || '';
-        const suffix = emotionSuffixes[emotionState] || '';
-        
-        return prefix + originalCaption + suffix;
-    }
-
-    /**
-     * 통합 시스템 상태 확인
-     */
-    getSystemStatus() {
+    
+    if (lowerMessage.includes('사랑')) {
         return {
-            photoSystems: this.photoSystems.map(system => ({
-                name: system.name,
-                status: 'active'
-            })),
-            textSystems: {
-                responseRouter: 'active',
-                contextAnalyzer: 'active',
-                conversationManager: 'active'
-            },
-            integration: 'photo_priority_mode'
+            type: 'text',
+            text: '나도 아저씨 사랑해~ 💕'
+        };
+    }
+    
+    if (lowerMessage.includes('뭐해')) {
+        return {
+            type: 'text',
+            text: '그냥 있어~ 아저씨 생각하고 있었어'
         };
     }
 
-    /**
-     * 기존 시스템과의 호환성 테스트
-     */
-    async testCompatibility() {
-        const testMessages = [
-            '사진 줘',           // yejinSelfie.js
-            '컨셉사진',          // concept.js
-            '추억 사진',         // omoide.js
-            '안녕 아저씨',       // 새로운 시스템
-            '유작 보러간다'      // 새로운 시스템
-        ];
-        
-        const results = [];
-        
-        for (const message of testMessages) {
-            try {
-                const result = await this.processMessage(message);
-                results.push({
-                    message,
-                    success: !!result,
-                    type: result?.type || 'none',
-                    system: result?.type === 'image' ? 'existing' : 'new'
-                });
-            } catch (error) {
-                results.push({
-                    message,
-                    success: false,
-                    error: error.message
-                });
-            }
+    // 완전 기본 응답
+    const defaultResponses = [
+        '아저씨~ 뭔가 말하고 싶은 거 있어?',
+        '응? 뭐라고 했어?',
+        '아저씨 말 잘 못 알아들었어... 다시 말해줄래?',
+        '음... 뭔가 말하고 싶은 게 있는 것 같은데?',
+        '아저씨~ 나랑 얘기하고 싶어?'
+    ];
+
+    const randomResponse = defaultResponses[Math.floor(Math.random() * defaultResponses.length)];
+
+    return {
+        type: 'text',
+        text: randomResponse
+    };
+}
+
+/**
+ * 시스템 상태 확인
+ */
+function getSystemStatus() {
+    return {
+        timestamp: Date.now(),
+        photoSystems: {
+            selfie: !!getSelfieReply,
+            concept: !!getConceptPhotoReply,
+            omoide: !!getOmoideReply
+        },
+        newSystems: {
+            responseRouter: !!ResponseRouter,
+            contextAnalyzer: !!ContextAnalyzer,
+            conversationManager: !!ConversationManager
         }
-        
-        return results;
+    };
+}
+
+/**
+ * 디버깅용 테스트 함수
+ */
+async function testSystem() {
+    console.log('🔍 [autoReply] 시스템 테스트 시작');
+    
+    const testMessages = [
+        '안녕',
+        '사진 줘',
+        '컨셉사진',
+        '추억 사진',
+        '사랑해',
+        '뭐해'
+    ];
+
+    const results = [];
+
+    for (const message of testMessages) {
+        try {
+            const response = await processMessage(message);
+            results.push({
+                message,
+                success: true,
+                response: response?.text || response?.type || 'unknown'
+            });
+        } catch (error) {
+            results.push({
+                message,
+                success: false,
+                error: error.message
+            });
+        }
     }
+
+    console.log('📊 [autoReply] 테스트 결과:', results);
+    return results;
 }
 
-// 기존 방식과 호환되는 함수 export
-async function processMessage(message, context = {}) {
-    const integratedSystem = new IntegratedAutoReply();
-    return await integratedSystem.processMessage(message, context);
-}
-
-// 기존 시스템 테스트 함수
-async function testExistingSystems() {
-    const integratedSystem = new IntegratedAutoReply();
-    return await integratedSystem.testCompatibility();
-}
-
+// 모듈 export
 module.exports = {
-    IntegratedAutoReply,
     processMessage,
-    testExistingSystems
+    getSystemStatus,
+    testSystem
 };
+
+// 기존 방식 호환성 유지
+module.exports.processMessage = processMessage;
