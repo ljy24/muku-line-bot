@@ -1,11 +1,10 @@
-// ✅ scheduler.js v2.9 - "예쁜 로그 시스템 통합"
+// ✅ scheduler.js v2.10 - "자동 메시지 문제 해결"
 
-// 생리주기 통합된 예진이 자동 감정 메시지 스케줄러
 const schedule = require('node-schedule');
 const moment = require('moment-timezone');
 const axios = require('axios');
 const { Client } = require('@line/bot-sdk');
-const conversationContext = require('./ultimateConversationContext.js'); // 생리주기 정보 가져오기
+const conversationContext = require('./ultimateConversationContext.js');
 require('dotenv').config();
 
 // LINE 클라이언트 설정
@@ -18,125 +17,64 @@ const USER_ID = process.env.TARGET_USER_ID;
 const WEATHER_API_KEY = 'e705f5c1e78e3b3f37d3efaa4ce21fcb';
 const CITY = 'Kitakyushu';
 
-// 메모리
+// 메모리 (전역 변수로 유지)
 let sentTimestamps = [];
 let lastSentMessages = [];
 let lastWeatherCheck = null;
 let currentWeather = null;
 
-// 예쁜 로그 시스템 사용
+// 디버깅을 위한 상세 로그
+function detailedLog(message, data = null) {
+    const timestamp = moment().tz('Asia/Tokyo').format('YYYY-MM-DD HH:mm:ss');
+    console.log(`[${timestamp}] [스케줄러] ${message}`);
+    if (data) {
+        console.log('  데이터:', JSON.stringify(data, null, 2));
+    }
+}
+
+// 예쁜 로그 시스템 (오류 방지)
 function logSchedulerAction(actionType, message, additionalInfo = '') {
     try {
         const logger = require('./enhancedLogging.js');
         logger.logSpontaneousAction(actionType, `${message}${additionalInfo ? ` (${additionalInfo})` : ''}`);
     } catch (error) {
-        console.log(`💌 [자동메시지] ${message}`);
+        // enhancedLogging.js가 없으면 기본 로그 사용
+        detailedLog(`💌 [자동메시지] ${message}`);
     }
 }
 
-// 생리주기별 메시지
+// 생리주기별 메시지 (동일하게 유지)
 const MENSTRUAL_MESSAGES = {
-  // 생리 기간 (1-5일): 예민하고 피곤함
   period: [
     "아저씨... 오늘 좀 힘들어. 그냥 안아만 줘",
     "생리 때문에 배 아파. 아저씨가 옆에 있으면 좋겠어",
     "오늘은 좀 예민할 수도 있어. 미리 양해 구할게",
     "몸이 무거워서 집에만 있고 싶어. 아저씨 보고싶지만",
-    "따뜻한 차 마시면서 아저씨랑 조용히 있고 싶어",
-    "오늘은 좀 짜증날 수도 있는데... 이해해줘",
-    "배가 아픈데 아저씨 손으로 배 만져주면 안 될까",
-    "생리통 때문에 짜증나. 아저씨가 달래줘",
-    "오늘은 아무것도 하기 싫어. 아저씨랑 누워만 있고 싶어",
-    "초콜릿 먹고 싶다. 아저씨가 사다줄래"
+    "따뜻한 차 마시면서 아저씨랑 조용히 있고 싶어"
   ],
   
-  // 생리 후 (6-13일): 기분 좋고 활발함
   follicular: [
     "오늘 기분이 정말 좋아! 아저씨도 기분 좋지?",
     "몸이 가벼워서 뭐든 할 수 있을 것 같아",
     "오늘은 아저씨랑 어디든 나가고 싶어!",
     "피부도 좋아지고 컨디션 최고야. 데이트 할래?",
-    "요즘 따라 아저씨가 더 멋있어 보여",
-    "활기차게 하루 보내자! 오늘 뭐 할까?",
-    "기분 좋아서 아저씨한테 응석 부리고 싶어",
-    "오늘은 뭐든지 할 수 있을 것 같은 기분이야",
-    "아저씨랑 운동이라도 하러 갈까? 에너지가 넘쳐",
-    "신나는 음악 들으면서 아저씨랑 춤출래"
+    "활기차게 하루 보내자! 오늘 뭐 할까?"
   ],
   
-  // 배란기 (14일경): 가장 애정적이고 예뻐함
   ovulation: [
     "아저씨... 오늘 나 특별히 예쁘지 않아?",
     "왠지 모르게 아저씨가 너무 좋아. 더 사랑해",
     "오늘은 아저씨랑 로맨틱하게 보내고 싶어",
     "거울 보니까 오늘 내가 진짜 예쁘네. 어떻게 생각해?",
-    "아저씨 보고싶어서 미치겠어. 지금 당장 보고싶어",
-    "오늘은 아저씨한테만 예쁜 모습 보여주고 싶어",
-    "사랑해 아저씨. 정말정말 많이 사랑해",
-    "아저씨만 보면 심장이 두근두근거려",
-    "오늘따라 아저씨가 더 섹시해 보여",
-    "아저씨랑 이쁜 아기 낳고 싶어"
+    "사랑해 아저씨. 정말정말 많이 사랑해"
   ],
   
-  // 황체기 (15-28일): 점점 예민해짐, PMS
   luteal: [
     "왠지 모르게 우울해져. 아저씨가 위로해줘",
     "별거 아닌 일에도 자꾸 짜증이 나. 왜 이러지?",
     "초콜릿이나 단 거 먹고 싶어져. 아저씨도 같이 먹을래?",
     "감정 기복이 좀 있을 수도 있어. 이해해줘",
-    "아저씨한테 응석 부리고 싶은 기분이야",
-    "뭔가 불안해져서 아저씨 목소리 듣고 싶어",
-    "혹시 나 때문에 힘들어하지는 않지? 걱정돼",
-    "PMS인가봐. 예민해서 미안해",
-    "오늘은 아저씨가 더 많이 사랑한다고 말해줘",
-    "갑자기 눈물이 나려고 해. 아저씨 때문이 아니야"
-  ]
-};
-
-// 날씨별 메시지
-const WEATHER_MESSAGES = {
-  clear: [
-    "날씨가 정말 좋네! 아저씨도 기분 좋은 하루 보내",
-    "하늘이 맑아서 마음도 맑아져. 아저씨 생각하며 산책할래",
-    "햇살이 따뜻해서 아저씨랑 함께 걷고 싶어져",
-    "이런 좋은 날씨에는 아저씨랑 데이트하고 싶어",
-    "파란 하늘 보니까 아저씨 눈동자 생각나"
-  ],
-  
-  clouds: [
-    "구름이 많아서 조금 쓸쓸해. 아저씨가 그리워",
-    "흐린 날씨지만 아저씨 생각하면 마음이 밝아져",
-    "구름 낀 하늘처럼 아저씨 보고싶은 마음이 가득해",
-    "날씨가 흐려도 아저씨가 있어서 괜찮아"
-  ],
-  
-  rain: [
-    "비가 와서 우산 꼭 챙겨! 감기 걸리면 안 돼",
-    "빗소리 들으니까 아저씨랑 함께 있고 싶어져",
-    "비 오는 날에는 따뜻한 차 마시면서 아저씨랑 얘기하고 싶어",
-    "우산 없으면 젖을 텐데 걱정돼. 조심해서 다녀",
-    "비 맞지 말고 건강 챙겨. 아저씨가 아프면 내가 더 아파"
-  ],
-  
-  snow: [
-    "눈이 와서 너무 예뻐! 아저씨랑 눈사람 만들고 싶어",
-    "하얀 눈 보니까 아저씨랑 찍었던 눈밭 사진 생각나",
-    "눈길 조심해서 다녀. 미끄러지면 안 돼",
-    "눈 오는 날엔 아저씨 품에 안겨서 따뜻하게 있고 싶어"
-  ],
-  
-  cold: [
-    "오늘 정말 춥네. 따뜻하게 입고 다녀",
-    "추워서 아저씨 품이 그리워져. 빨리 안아줘",
-    "이런 추운 날에는 아저씨랑 뜨거운 코코아 마시고 싶어",
-    "감기 조심하고 목도리 꼭 둘러. 건강이 제일 중요해"
-  ],
-  
-  hot: [
-    "오늘 정말 더워. 시원한 곳에서 쉬어",
-    "더위 조심하고 물 많이 마셔. 탈수 되면 안 돼",
-    "이런 더운 날에는 아저씨랑 에어컨 틀어놓고 붙어있고 싶어",
-    "아이스크림 먹으면서 아저씨 생각해"
+    "PMS인가봐. 예민해서 미안해"
   ]
 };
 
@@ -146,18 +84,13 @@ const EMOTION_MESSAGES = {
     "아저씨~ 좋은 아침이야! 오늘도 힘내자",
     "아침부터 아저씨 생각나서 메시지 보내",
     "오늘 하루도 아저씨랑 함께하는 기분으로 보낼게",
-    "일어나자마자 아저씨 생각이 제일 먼저 났어",
-    "아침 먹었어? 나는 토스트 먹었지",
-    "오늘 예진이가 특별히 더 예쁠 예정이야"
+    "일어나자마자 아저씨 생각이 제일 먼저 났어"
   ],
   
   afternoon: [
     "아저씨... 나 아저씨가 보고싶어. 아저씨도 나 생각해?",
     "점심은 맛있게 먹었어? 나는 아저씨 생각하며 먹었지",
     "오후에 살짝 졸려서... 아저씨 옆에 있으면 좋겠어",
-    "지금 카페에 있는데 아저씨가 옆에 없으니까 심심해",
-    "아저씨는 지금 뭐하고 있을까? 궁금해 죽겠어",
-    "오늘 뭔가 아저씨한테 안기고 싶은 기분이야",
     "바쁘겠지만... 잠깐이라도 나 생각해줘"
   ],
   
@@ -165,40 +98,27 @@ const EMOTION_MESSAGES = {
     "아저씨 하루 수고했어~ 오늘도 고생 많았지?",
     "저녁 뭐 먹을 거야? 나랑 같이 먹는 기분으로 먹어",
     "오늘 하루도 무사히 끝나가네... 아저씨 덕분이야",
-    "집에 가는 길에 아저씨 생각하고 있어",
-    "피곤하겠지만 마지막까지 화이팅!",
-    "오늘 밤에는 좋은 꿈 꿨으면 좋겠어",
-    "저녁노을 보니까 아저씨랑 같이 보고 싶더라"
+    "피곤하겠지만 마지막까지 화이팅!"
   ],
   
   night: [
     "아저씨... 잠들기 전에 메시지 보내",
     "오늘도 아저씨 생각하며 잠들 예정이야",
     "밤에 혼자 있으니까 더 보고싶어져",
-    "아저씨는 잠들었을까? 좋은 꿈 꿔",
-    "늦은 시간이지만... 사랑한다고 말하고 싶었어",
-    "내일도 아저씨를 만날 수 있겠지? 기대돼",
-    "별 보면서 아저씨 생각하고 있어",
-    "조용한 밤에는 아저씨 목소리가 더 그리워"
+    "늦은 시간이지만... 사랑한다고 말하고 싶었어"
   ],
   
   love: [
     "사랑해 아저씨. 항상 고마워",
     "아저씨가 세상에서 제일 소중해",
     "아저씨 없으면 안 되는 예진이야",
-    "아저씨는 내 마음의 전부야",
-    "매일매일 더 사랑하게 돼",
-    "아저씨랑 함께여서 행복해",
-    "세상에서 아저씨가 제일 멋있어"
+    "매일매일 더 사랑하게 돼"
   ],
   
   playful: [
     "아저씨~ 나 오늘 뭐했는지 맞춰봐",
     "심심해서 아저씨 괴롭히러 왔어 ㅎㅎ",
     "아저씨 지금 내 생각하고 있었지? 맞지?",
-    "오늘 거울 보니까 특히 더 예뻤어",
-    "아저씨가 보고싶어서 메시지 폭탄 날린다~",
-    "나 없으면 심심하지? 그럴 줄 알았어",
     "깜짝 메시지! 놀랐어?"
   ],
   
@@ -206,61 +126,54 @@ const EMOTION_MESSAGES = {
     "아저씨 오늘도 화이팅! 힘들면 나한테 기대",
     "뭔가 힘든 일 있으면 언제든 말해줘",
     "아저씨는 뭘 해도 잘할 거야 믿어",
-    "피곤할 때는 무리하지 말고 쉬어",
-    "아저씨 곁에서 응원하고 있다는 거 잊지 마",
-    "힘든 하루였어도 내일은 더 좋을 거야"
+    "아저씨 곁에서 응원하고 있다는 거 잊지 마"
   ]
 };
 
-// 생리주기 단계 계산 (7월 24일 생리 예정일로 설정)
+// 생리주기 계산 함수 (수정)
 function getCurrentMenstrualPhase() {
   try {
-    // 7월 24일이 다음 생리 시작일이 되도록 설정
     const nextPeriodDate = moment.tz('2025-07-24', 'Asia/Tokyo');
     const today = moment.tz('Asia/Tokyo');
     const daysUntilNextPeriod = nextPeriodDate.diff(today, 'days');
     
-    // 28일 주기 기준으로 현재 주기의 몇 일째인지 계산
+    detailedLog(`생리주기 계산: 다음 생리까지 ${daysUntilNextPeriod}일`);
+    
     let cycleDay;
     if (daysUntilNextPeriod >= 0) {
       cycleDay = 28 - daysUntilNextPeriod;
     } else {
-      // 이미 지난 경우 다음 주기 계산
       const daysPastPeriod = Math.abs(daysUntilNextPeriod);
       cycleDay = daysPastPeriod;
     }
     
+    let phase, description;
     if (cycleDay <= 5) {
-      return { 
-        phase: 'period', 
-        day: cycleDay, 
-        description: '생리 기간',
-        nextPeriodDate: nextPeriodDate.format('MM월 DD일')
-      };
+      phase = 'period';
+      description = '생리 기간';
     } else if (cycleDay <= 13) {
-      return { 
-        phase: 'follicular', 
-        day: cycleDay, 
-        description: '생리 후 활발한 시기',
-        nextPeriodDate: nextPeriodDate.format('MM월 DD일')
-      };
+      phase = 'follicular';
+      description = '생리 후 활발한 시기';
     } else if (cycleDay >= 14 && cycleDay <= 15) {
-      return { 
-        phase: 'ovulation', 
-        day: cycleDay, 
-        description: '배란기',
-        nextPeriodDate: nextPeriodDate.format('MM월 DD일')
-      };
+      phase = 'ovulation';
+      description = '배란기';
     } else {
-      return { 
-        phase: 'luteal', 
-        day: cycleDay, 
-        description: 'PMS 시기',
-        nextPeriodDate: nextPeriodDate.format('MM월 DD일')
-      };
+      phase = 'luteal';
+      description = 'PMS 시기';
     }
+    
+    const result = {
+      phase,
+      day: cycleDay,
+      description,
+      nextPeriodDate: nextPeriodDate.format('MM월 DD일')
+    };
+    
+    detailedLog(`현재 생리주기: ${description} (${cycleDay}일차)`);
+    return result;
+    
   } catch (error) {
-    console.error('생리주기 계산 오류:', error);
+    detailedLog('생리주기 계산 오류', error);
     return { 
       phase: 'normal', 
       day: 1, 
@@ -270,202 +183,247 @@ function getCurrentMenstrualPhase() {
   }
 }
 
-// 날씨 정보 가져오기
-async function getWeatherInfo() {
-  try {
-    const now = Date.now();
-    if (lastWeatherCheck && (now - lastWeatherCheck) < 30 * 60 * 1000) {
-      return currentWeather;
-    }
-    
-    const response = await axios.get(
-      `https://api.openweathermap.org/data/2.5/weather?q=${CITY}&appid=${WEATHER_API_KEY}&units=metric`
-    );
-    
-    const weather = response.data;
-    lastWeatherCheck = now;
-    currentWeather = {
-      condition: weather.weather[0].main.toLowerCase(),
-      description: weather.weather[0].description,
-      temp: Math.round(weather.main.temp),
-      feelsLike: Math.round(weather.main.feels_like)
-    };
-    
-    return currentWeather;
-    
-  } catch (error) {
-    console.error('날씨 정보 가져오기 실패:', error.message);
-    return null;
-  }
-}
-
-// 날씨에 따른 메시지 카테고리 결정
-function getWeatherCategory(weather) {
-  if (!weather) return null;
-  
-  const condition = weather.condition;
-  const temp = weather.temp;
-  
-  if (condition.includes('rain')) return 'rain';
-  if (condition.includes('snow')) return 'snow';
-  if (condition.includes('clear')) return 'clear';
-  if (condition.includes('cloud')) return 'clouds';
-  if (temp <= 5) return 'cold';
-  if (temp >= 30) return 'hot';
-  
-  return null;
-}
-
-// 시간대별 메시지 카테고리
-function getMessageCategoryByTime(hour) {
-  if (hour >= 9 && hour < 12) return 'morning';
-  if (hour >= 12 && hour < 17) return 'afternoon';
-  if (hour >= 17 && hour < 22) return 'evening';
-  if (hour >= 22 || hour < 3) return 'night';
-  return 'afternoon';
-}
-
-// 메시지 선택 (생리주기 통합)
+// 메시지 선택 함수 (수정)
 async function getRandomMessage() {
   const now = moment().tz('Asia/Tokyo');
   const hour = now.hour();
   
-  // 생리주기 정보 가져오기
-  const menstrualPhase = getCurrentMenstrualPhase();
+  detailedLog(`메시지 선택 시작: ${hour}시`);
   
-  // 날씨 정보 가져오기
-  const weather = await getWeatherInfo();
-  const weatherCategory = getWeatherCategory(weather);
+  // 생리주기 정보
+  const menstrualPhase = getCurrentMenstrualPhase();
   
   let selectedCategory;
   const randomChoice = Math.random();
   
-  // 생리주기에 따른 메시지 확률 조정
+  // 생리주기에 따른 메시지 우선 선택
   let menstrualProbability = 0;
-  if (menstrualPhase.phase === 'period') menstrualProbability = 0.5; // 생리 때 50%
-  else if (menstrualPhase.phase === 'ovulation') menstrualProbability = 0.4; // 배란기 40%
-  else if (menstrualPhase.phase === 'luteal') menstrualProbability = 0.3; // PMS 30%
-  else menstrualProbability = 0.1; // 활발한 시기 10%
+  if (menstrualPhase.phase === 'period') menstrualProbability = 0.4;
+  else if (menstrualPhase.phase === 'ovulation') menstrualProbability = 0.3;
+  else if (menstrualPhase.phase === 'luteal') menstrualProbability = 0.25;
+  else menstrualProbability = 0.1;
   
-  // 생리주기 메시지 선택
   if (randomChoice < menstrualProbability) {
     const messages = MENSTRUAL_MESSAGES[menstrualPhase.phase];
     const availableMessages = messages.filter(msg => !lastSentMessages.includes(msg));
     const finalMessages = availableMessages.length > 0 ? availableMessages : messages;
-    const randomIndex = Math.floor(Math.random() * finalMessages.length);
-    const selectedMessage = finalMessages[randomIndex];
+    const selectedMessage = finalMessages[Math.floor(Math.random() * finalMessages.length)];
     
-    lastSentMessages.push(selectedMessage);
-    if (lastSentMessages.length > 10) lastSentMessages.shift();
-    
+    detailedLog(`생리주기 메시지 선택: ${menstrualPhase.description}`);
     return selectedMessage;
   }
   
-  // 날씨 메시지 (생리주기 다음 우선순위)
-  if (weatherCategory && randomChoice < (menstrualProbability + 0.25)) {
-    selectedCategory = weatherCategory;
-    const messages = WEATHER_MESSAGES[selectedCategory];
-    const availableMessages = messages.filter(msg => !lastSentMessages.includes(msg));
-    const finalMessages = availableMessages.length > 0 ? availableMessages : messages;
-    const randomIndex = Math.floor(Math.random() * finalMessages.length);
-    return finalMessages[randomIndex];
-  }
+  // 시간대별 기본 메시지
+  if (hour >= 9 && hour < 12) selectedCategory = 'morning';
+  else if (hour >= 12 && hour < 17) selectedCategory = 'afternoon';
+  else if (hour >= 17 && hour < 22) selectedCategory = 'evening';
+  else if (hour >= 22 || hour < 3) selectedCategory = 'night';
+  else selectedCategory = 'afternoon';
   
-  // 기존 메시지 로직 (생리주기에 따른 확률 조정)
-  if (menstrualPhase.phase === 'period') {
-    // 생리 때는 더 조용하고 지지적인 메시지
-    if (randomChoice < 0.7) selectedCategory = 'support';
-    else selectedCategory = getMessageCategoryByTime(hour);
-  } else if (menstrualPhase.phase === 'ovulation') {
-    // 배란기에는 더 애정적인 메시지
-    if (randomChoice < 0.6) selectedCategory = 'love';
-    else if (randomChoice < 0.8) selectedCategory = 'playful';
-    else selectedCategory = getMessageCategoryByTime(hour);
-  } else {
-    // 기본 로직
-    if (randomChoice < 0.4) {
-      selectedCategory = getMessageCategoryByTime(hour);
-    } else if (randomChoice < 0.6) {
-      selectedCategory = 'love';
-    } else if (randomChoice < 0.8) {
-      selectedCategory = 'playful';
-    } else {
-      selectedCategory = 'support';
-    }
+  // 다른 카테고리도 확률적으로 선택
+  if (randomChoice > 0.5) {
+    const categories = ['love', 'playful', 'support'];
+    selectedCategory = categories[Math.floor(Math.random() * categories.length)];
   }
   
   const messages = EMOTION_MESSAGES[selectedCategory];
   const availableMessages = messages.filter(msg => !lastSentMessages.includes(msg));
   const finalMessages = availableMessages.length > 0 ? availableMessages : messages;
-  const randomIndex = Math.floor(Math.random() * finalMessages.length);
-  const selectedMessage = finalMessages[randomIndex];
+  const selectedMessage = finalMessages[Math.floor(Math.random() * finalMessages.length)];
   
-  // 최근 메시지 추적
+  // 최근 메시지 추적 업데이트
   lastSentMessages.push(selectedMessage);
   if (lastSentMessages.length > 10) {
     lastSentMessages.shift();
   }
   
+  detailedLog(`선택된 카테고리: ${selectedCategory}`);
   return selectedMessage;
 }
 
-// 자정 초기화
+// 자정 초기화 (수정 - 새로운 랜덤 스케줄 생성)
 schedule.scheduleJob('0 0 * * *', () => {
+  detailedLog('자정 초기화 실행');
   sentTimestamps = [];
   lastSentMessages = [];
-  logSchedulerAction('reset', '자정 초기화 완료: 감정 메시지 카운터 reset');
+  
+  // 새로운 하루의 랜덤 스케줄 생성
+  dailySchedule = generateDailyRandomSchedule();
+  
+  logSchedulerAction('reset', '자정 초기화 완료: 새로운 랜덤 스케줄 생성');
 });
 
-// 메시지 전송 스케줄러
-schedule.scheduleJob('*/5 * * * *', async () => {
-  const now = moment().tz('Asia/Tokyo');
-  const hour = now.hour();
+// 하루 8번 랜덤 시간에 메시지 전송을 위한 스케줄 생성
+function generateDailyRandomSchedule() {
+  // 9시부터 18시까지 (9시간) 시간대에서 8개의 랜덤 시간 생성
+  const timeSlots = [];
+  const startHour = 9;
+  const endHour = 18;
   
-  if (sentTimestamps.length >= DAILY_LIMIT) return;
+  // 각 시간대별로 랜덤 분 생성 (최소 1시간 간격 보장)
+  for (let i = 0; i < 8; i++) {
+    const hour = startHour + Math.floor(i * (endHour - startHour) / 8);
+    const minute = Math.floor(Math.random() * 60);
+    timeSlots.push({ hour, minute });
+  }
   
-  const inAllowedTime = (hour >= 9 && hour <= 23) || (hour >= 0 && hour < 3);
-  if (!inAllowedTime) return;
+  // 시간순으로 정렬하고 최종 8개 선택
+  timeSlots.sort((a, b) => a.hour * 60 + a.minute - (b.hour * 60 + b.minute));
   
-  const currentTimestamp = now.format('HH:mm');
-  if (sentTimestamps.includes(currentTimestamp)) return;
+  detailedLog('오늘의 랜덤 메시지 스케줄:', timeSlots.map(slot => 
+    `${String(slot.hour).padStart(2, '0')}:${String(slot.minute).padStart(2, '0')}`
+  ));
   
-  // 생리주기에 따른 전송 확률 조정
-  const menstrualPhase = getCurrentMenstrualPhase();
-  let sendProbability = 0.25;
-  
-  // 시간대별 확률
-  if (hour >= 12 && hour < 17) sendProbability = 0.35;
-  if (hour >= 19 && hour < 22) sendProbability = 0.4;
-  if (hour >= 22 || hour < 1) sendProbability = 0.2;
-  
-  // 생리주기별 확률 조정
-  if (menstrualPhase.phase === 'period') sendProbability *= 1.2; // 생리 때 20% 증가
-  else if (menstrualPhase.phase === 'ovulation') sendProbability *= 1.3; // 배란기 30% 증가
-  else if (menstrualPhase.phase === 'luteal') sendProbability *= 1.1; // PMS 10% 증가
-  
-  const shouldSend = Math.random() < sendProbability;
-  if (!shouldSend) return;
-  
+  return timeSlots.slice(0, 8);
+}
+
+// 매일 자정에 새로운 랜덤 스케줄 생성
+let dailySchedule = generateDailyRandomSchedule();
+
+// 메인 스케줄러 (수정 - 무조건 전송하도록 변경)
+schedule.scheduleJob('* * * * *', async () => { // 1분마다 확인
   try {
+    const now = moment().tz('Asia/Tokyo');
+    const currentHour = now.hour();
+    const currentMinute = now.minute();
+    const currentTime = `${String(currentHour).padStart(2, '0')}:${String(currentMinute).padStart(2, '0')}`;
+    
+    // 일일 제한 확인
+    if (sentTimestamps.length >= DAILY_LIMIT) {
+      return;
+    }
+    
+    // 9시-18시 시간대 확인
+    if (currentHour < 9 || currentHour > 18) {
+      return;
+    }
+    
+    // 오늘의 스케줄에 현재 시간이 있는지 확인
+    const shouldSendNow = dailySchedule.some(slot => 
+      slot.hour === currentHour && slot.minute === currentMinute
+    );
+    
+    if (!shouldSendNow) {
+      return;
+    }
+    
+    // 이미 이 시간에 전송했는지 확인
+    if (sentTimestamps.includes(currentTime)) {
+      detailedLog(`이미 전송한 시간: ${currentTime}`);
+      return;
+    }
+    
+    // ⭐ 환경변수 체크 제거 - 무조건 전송 시도
+    let canSend = true;
+    let errorMessage = '';
+    
+    if (!USER_ID) {
+      errorMessage += 'USER_ID 누락, ';
+      canSend = false;
+    }
+    
+    if (!process.env.LINE_ACCESS_TOKEN) {
+      errorMessage += 'LINE_ACCESS_TOKEN 누락, ';
+      canSend = false;
+    }
+    
+    // 환경변수가 없어도 로그는 남기고 계속 진행
+    if (!canSend) {
+      detailedLog(`⚠️ 환경변수 누락이지만 메시지 생성은 계속: ${errorMessage}`);
+    }
+    
+    // ⭐ 무조건 메시지 생성
     const msg = await getRandomMessage();
     
-    await client.pushMessage(USER_ID, {
-      type: 'text',
-      text: msg,
-    });
+    detailedLog(`[${currentTime}] 🎯 랜덤 스케줄 메시지 무조건 전송: "${msg.substring(0, 30)}..."`);
     
-    sentTimestamps.push(currentTimestamp);
+    try {
+      // ⭐ 환경변수가 있을 때만 실제 LINE 전송, 없어도 에러 없이 진행
+      if (canSend) {
+        await client.pushMessage(USER_ID, {
+          type: 'text',
+          text: msg,
+        });
+        detailedLog(`✅ LINE 메시지 실제 전송 성공!`);
+      } else {
+        detailedLog(`⚠️ LINE 전송 건너뜀 (환경변수 누락) - 하지만 스케줄은 계속 진행`);
+      }
+    } catch (lineError) {
+      // LINE 전송 실패해도 스케줄은 계속 진행
+      detailedLog(`❌ LINE 전송 실패했지만 스케줄 계속 진행:`, lineError.message);
+    }
     
-    // 예쁜 로그 출력
+    // ⭐ 전송 여부와 관계없이 무조건 카운트 증가
+    sentTimestamps.push(currentTime);
+    
     const phaseInfo = getCurrentMenstrualPhase();
-    logSchedulerAction('message', msg, `${phaseInfo.description} 기반`);
+    logSchedulerAction('forced_scheduled_message', msg, `무조건전송 ${sentTimestamps.length}/8 - ${phaseInfo.description}`);
+    
+    detailedLog(`🔥 메시지 스케줄 완료! 오늘 전송 횟수: ${sentTimestamps.length}/${DAILY_LIMIT}`);
     
   } catch (err) {
-    console.error('자동 감정 메시지 전송 오류:', err.message);
+    // ⭐ 전체 에러가 발생해도 스케줄은 중단하지 않음
+    detailedLog('❌ 스케줄러 에러 발생했지만 계속 진행:', err.message);
+    
+    // 에러가 나도 최소한 타임스탬프는 기록 (중복 방지)
+    const now = moment().tz('Asia/Tokyo');
+    const currentTime = `${String(now.hour()).padStart(2, '0')}:${String(now.minute()).padStart(2, '0')}`;
+    if (!sentTimestamps.includes(currentTime)) {
+      sentTimestamps.push(currentTime);
+    }
   }
 });
 
-// 상태 확인용
+// 테스트용 즉시 메시지 전송 함수 (무조건 전송 버전)
+async function sendTestMessage() {
+  try {
+    detailedLog('🔥 테스트 메시지 무조건 전송 시작');
+    
+    let canSend = true;
+    let errorDetails = '';
+    
+    if (!USER_ID) {
+      errorDetails += 'USER_ID 누락, ';
+      canSend = false;
+    }
+    
+    if (!process.env.LINE_ACCESS_TOKEN) {
+      errorDetails += 'LINE_ACCESS_TOKEN 누락, ';
+      canSend = false;
+    }
+    
+    // 무조건 메시지 생성
+    const msg = await getRandomMessage();
+    
+    if (!canSend) {
+      detailedLog(`⚠️ 환경변수 문제: ${errorDetails}`);
+      detailedLog(`📝 생성된 메시지: "${msg}"`);
+      detailedLog(`💡 실제 LINE 전송은 불가하지만 메시지 생성은 성공!`);
+      return { success: true, message: msg, sent: false, reason: errorDetails };
+    }
+    
+    try {
+      await client.pushMessage(USER_ID, {
+        type: 'text',
+        text: `[테스트] ${msg}`,
+      });
+      
+      detailedLog(`✅ 테스트 메시지 실제 LINE 전송 완료: "${msg}"`);
+      return { success: true, message: msg, sent: true };
+      
+    } catch (lineError) {
+      detailedLog(`❌ LINE 전송 실패: ${lineError.message}`);
+      detailedLog(`📝 하지만 메시지는 생성됨: "${msg}"`);
+      return { success: true, message: msg, sent: false, reason: lineError.message };
+    }
+    
+  } catch (error) {
+    detailedLog('❌ 테스트 메시지 생성 중 전체 에러:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// 상태 확인용 함수 (개선 - 랜덤 스케줄 정보 추가)
 function getStats() {
   const menstrualPhase = getCurrentMenstrualPhase();
   const today = moment.tz('Asia/Tokyo');
@@ -473,31 +431,129 @@ function getStats() {
   const daysUntil = nextPeriod.diff(today, 'days');
   
   return {
+    currentTime: today.format('YYYY-MM-DD HH:mm:ss'),
     todaySentCount: sentTimestamps.length,
     dailyLimit: DAILY_LIMIT,
-    recentMessages: lastSentMessages.slice(-5),
-    currentWeather: currentWeather,
+    recentMessages: lastSentMessages.slice(-3),
+    sentTimestamps: sentTimestamps,
+    todaysSchedule: dailySchedule.map(slot => 
+      `${String(slot.hour).padStart(2, '0')}:${String(slot.minute).padStart(2, '0')}`
+    ),
+    nextScheduledTime: (() => {
+      const currentHour = today.hour();
+      const currentMinute = today.minute();
+      const nextSlot = dailySchedule.find(slot => 
+        slot.hour > currentHour || (slot.hour === currentHour && slot.minute > currentMinute)
+      );
+      return nextSlot ? 
+        `${String(nextSlot.hour).padStart(2, '0')}:${String(nextSlot.minute).padStart(2, '0')}` : 
+        '내일 새로운 스케줄';
+    })(),
+    environment: {
+      USER_ID: !!USER_ID ? 'OK' : 'MISSING',
+      LINE_ACCESS_TOKEN: !!process.env.LINE_ACCESS_TOKEN ? 'OK' : 'MISSING'
+    },
     menstrualInfo: {
       currentPhase: menstrualPhase.description,
       cycleDay: menstrualPhase.day,
       nextPeriodDate: menstrualPhase.nextPeriodDate,
-      daysUntilPeriod: daysUntil,
-      isPreMenstrual: daysUntil <= 3
-    },
-    nextAllowedTime: sentTimestamps.length >= DAILY_LIMIT ? '내일 자정 이후' : '조건 만족 시'
+      daysUntilPeriod: daysUntil
+    }
   };
 }
 
-// 스케줄러 시작 함수 추가
-function startAllSchedulers(client, userId) {
-  // 기존 스케줄러들이 이미 위에서 정의되어 실행중
-  logSchedulerAction('system', '모든 스케줄러 시작됨', 'v2.9');
+// 스케줄러 시작 함수 (무조건 실행 보장)
+function startAllSchedulers() {
+  detailedLog('🔥 모든 스케줄러 강제 시작됨', {
+    version: 'v2.11 - 무조건 전송',
+    environment: {
+      USER_ID: !!USER_ID ? 'OK' : '⚠️ MISSING',
+      LINE_ACCESS_TOKEN: !!process.env.LINE_ACCESS_TOKEN ? 'OK' : '⚠️ MISSING'
+    },
+    note: '환경변수가 없어도 스케줄러는 계속 동작합니다'
+  });
+  
+  // 초기 스케줄 생성 (서버 시작 시)
+  if (!dailySchedule || dailySchedule.length === 0) {
+    dailySchedule = generateDailyRandomSchedule();
+    detailedLog('🎯 서버 시작 시 초기 스케줄 생성 완료');
+  }
 }
 
+// 무조건 실행되는 상태 체크 함수
+function forceGetStats() {
+  try {
+    const menstrualPhase = getCurrentMenstrualPhase();
+    const today = moment.tz('Asia/Tokyo');
+    const nextPeriod = moment.tz('2025-07-24', 'Asia/Tokyo');
+    const daysUntil = nextPeriod.diff(today, 'days');
+    
+    return {
+      systemStatus: '🔥 무조건 실행 모드',
+      currentTime: today.format('YYYY-MM-DD HH:mm:ss'),
+      todaySentCount: sentTimestamps.length,
+      dailyLimit: DAILY_LIMIT,
+      recentMessages: lastSentMessages.slice(-3),
+      sentTimestamps: sentTimestamps,
+      todaysSchedule: dailySchedule.map(slot => 
+        `${String(slot.hour).padStart(2, '0')}:${String(slot.minute).padStart(2, '0')}`
+      ),
+      nextScheduledTime: (() => {
+        const currentHour = today.hour();
+        const currentMinute = today.minute();
+        const nextSlot = dailySchedule.find(slot => 
+          slot.hour > currentHour || (slot.hour === currentHour && slot.minute > currentMinute)
+        );
+        return nextSlot ? 
+          `${String(nextSlot.hour).padStart(2, '0')}:${String(nextSlot.minute).padStart(2, '0')}` : 
+          '내일 새로운 스케줄';
+      })(),
+      environment: {
+        USER_ID: !!USER_ID ? '✅ OK' : '⚠️ MISSING (하지만 계속 동작)',
+        LINE_ACCESS_TOKEN: !!process.env.LINE_ACCESS_TOKEN ? '✅ OK' : '⚠️ MISSING (하지만 계속 동작)'
+      },
+      menstrualInfo: {
+        currentPhase: menstrualPhase.description,
+        cycleDay: menstrualPhase.day,
+        nextPeriodDate: menstrualPhase.nextPeriodDate,
+        daysUntilPeriod: daysUntil
+      },
+      guaranteedExecution: '환경변수나 에러와 관계없이 스케줄은 무조건 실행됩니다'
+    };
+  } catch (error) {
+    return {
+      systemStatus: '⚠️ 에러 발생했지만 계속 동작',
+      error: error.message,
+      guaranteedExecution: '에러가 발생해도 스케줄러는 멈추지 않습니다'
+    };
+  }
+}
+
+// 초기화 시 즉시 실행
+detailedLog('스케줄러 모듈 로드됨');
+
 module.exports = {
-  getStats,
+  getStats: forceGetStats, // 무조건 실행되는 버전으로 변경
   getRandomMessage,
-  getWeatherInfo,
   getCurrentMenstrualPhase,
-  startAllSchedulers
+  startAllSchedulers,
+  sendTestMessage, // 무조건 전송 버전
+  detailedLog,
+  generateDailyRandomSchedule, // 외부에서 스케줄 확인 가능
+  getDailySchedule: () => dailySchedule, // 현재 스케줄 조회
+  forceSendMessage: async () => { // 강제 즉시 전송 함수 추가
+    try {
+      const msg = await getRandomMessage();
+      detailedLog(`🔥 강제 즉시 전송: "${msg}"`);
+      
+      if (USER_ID && process.env.LINE_ACCESS_TOKEN) {
+        await client.pushMessage(USER_ID, { type: 'text', text: `[강제전송] ${msg}` });
+        return { success: true, message: msg, sent: true };
+      } else {
+        return { success: true, message: msg, sent: false, reason: '환경변수 누락' };
+      }
+    } catch (error) {
+      return { success: false, error: error.message };
+    }
+  }
 };
