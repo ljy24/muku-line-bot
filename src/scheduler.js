@@ -1,4 +1,4 @@
-// ✅ scheduler.js v2.11 - "담타 즉시 발송 기능 추가"
+// ✅ scheduler.js v2.9 - "예쁜 로그 시스템 통합"
 
 // 생리주기 통합된 예진이 자동 감정 메시지 스케줄러
 const schedule = require('node-schedule');
@@ -6,7 +6,6 @@ const moment = require('moment-timezone');
 const axios = require('axios');
 const { Client } = require('@line/bot-sdk');
 const conversationContext = require('./ultimateConversationContext.js'); // 생리주기 정보 가져오기
-const damta = require('./damta.js'); // 담타 모듈 로드 추가!
 require('dotenv').config();
 
 // LINE 클라이언트 설정
@@ -14,17 +13,16 @@ const config = { channelAccessToken: process.env.LINE_ACCESS_TOKEN };
 const client = new Client(config);
 
 // 설정
-const DAILY_LIMIT = 8; // 일반 감정 메시지 일일 제한
+const DAILY_LIMIT = 8;
 const USER_ID = process.env.TARGET_USER_ID;
 const WEATHER_API_KEY = 'e705f5c1e78e3b3f37d3efaa4ce21fcb';
 const CITY = 'Kitakyushu';
 
 // 메모리
-let sentTimestamps = []; // 일반 감정 메시지 전송 시간 기록
-let lastSentMessages = []; // 최근 보낸 일반 감정 메시지
+let sentTimestamps = [];
+let lastSentMessages = [];
 let lastWeatherCheck = null;
 let currentWeather = null;
-let damtaCheckJob = null; // 담타 즉시 발송을 위한 스케줄러 참조
 
 // 예쁜 로그 시스템 사용
 function logSchedulerAction(actionType, message, additionalInfo = '') {
@@ -214,100 +212,60 @@ const EMOTION_MESSAGES = {
   ]
 };
 
-// 생리주기 단계 계산 (7월 24일 생리 예정일로 설정) - 수정됨
+// 생리주기 단계 계산 (7월 24일 생리 예정일로 설정)
 function getCurrentMenstrualPhase() {
   try {
-    // 7월 24일이 다음 생리 시작일
+    // 7월 24일이 다음 생리 시작일이 되도록 설정
     const nextPeriodDate = moment.tz('2025-07-24', 'Asia/Tokyo');
     const today = moment.tz('Asia/Tokyo');
     const daysUntilNextPeriod = nextPeriodDate.diff(today, 'days');
     
-    // 7월 24일까지 남은 일수로 현재 단계 계산
-    let phase, description, cycleDay;
-    
-    if (daysUntilNextPeriod <= 0) {
-      // 7월 24일 이후 - 생리 기간
-      const daysSincePeriod = Math.abs(daysUntilNextPeriod) + 1; // +1을 해서 24일을 1일차로
-      
-      if (daysSincePeriod <= 5) {
-        phase = 'period';
-        description = '생리 기간';
-        cycleDay = daysSincePeriod;
-      } else if (daysSincePeriod <= 13) {
-        phase = 'follicular';
-        description = '생리 후 활발한 시기';
-        cycleDay = daysSincePeriod;
-      } else if (daysSincePeriod >= 14 && daysSincePeriod <= 15) {
-        phase = 'ovulation';
-        description = '배란기';
-        cycleDay = daysSincePeriod;
-      } else if (daysSincePeriod <= 28) {
-        phase = 'luteal';
-        description = 'PMS 시기';
-        cycleDay = daysSincePeriod;
-      } else {
-        // 다음 주기로 넘어감 (28일 주기 기준)
-        const nextCycleDays = daysSincePeriod - 28;
-        if (nextCycleDays <= 5) {
-          phase = 'period';
-          description = '생리 기간';
-          cycleDay = nextCycleDays;
-        } else {
-          // 재귀적으로 계산하지 않고 직접 계산
-          const adjustedDays = nextCycleDays;
-          if (adjustedDays <= 13) {
-            phase = 'follicular';
-            description = '생리 후 활발한 시기';
-            cycleDay = adjustedDays;
-          } else if (adjustedDays >= 14 && adjustedDays <= 15) {
-            phase = 'ovulation';
-            description = '배란기';
-            cycleDay = adjustedDays;
-          } else {
-            phase = 'luteal';
-            description = 'PMS 시기';
-            cycleDay = adjustedDays;
-          }
-        }
-      }
-    } else {
-      // 7월 24일 이전 - 이전 주기의 끝부분 (PMS/황체기)
-      // 28일 주기 기준으로 역산
+    // 28일 주기 기준으로 현재 주기의 몇 일째인지 계산
+    let cycleDay;
+    if (daysUntilNextPeriod >= 0) {
       cycleDay = 28 - daysUntilNextPeriod;
-      
-      if (cycleDay <= 5) {
-        // 너무 이른 시기면 PMS로 처리
-        phase = 'luteal';
-        description = 'PMS 시기';
-        cycleDay = 16 + (28 - daysUntilNextPeriod); // PMS 시기로 조정
-      } else if (cycleDay <= 13) {
-        phase = 'follicular';
-        description = '생리 후 활발한 시기';
-      } else if (cycleDay >= 14 && cycleDay <= 15) {
-        phase = 'ovulation';
-        description = '배란기';
-      } else {
-        phase = 'luteal';
-        description = 'PMS 시기';
-      }
+    } else {
+      // 이미 지난 경우 다음 주기 계산
+      const daysPastPeriod = Math.abs(daysUntilNextPeriod);
+      cycleDay = daysPastPeriod;
     }
     
-    return { 
-      phase: phase, 
-      day: cycleDay, 
-      description: description,
-      nextPeriodDate: nextPeriodDate.format('MM월 DD일'),
-      daysUntilPeriod: daysUntilNextPeriod
-    };
-    
+    if (cycleDay <= 5) {
+      return { 
+        phase: 'period', 
+        day: cycleDay, 
+        description: '생리 기간',
+        nextPeriodDate: nextPeriodDate.format('MM월 DD일')
+      };
+    } else if (cycleDay <= 13) {
+      return { 
+        phase: 'follicular', 
+        day: cycleDay, 
+        description: '생리 후 활발한 시기',
+        nextPeriodDate: nextPeriodDate.format('MM월 DD일')
+      };
+    } else if (cycleDay >= 14 && cycleDay <= 15) {
+      return { 
+        phase: 'ovulation', 
+        day: cycleDay, 
+        description: '배란기',
+        nextPeriodDate: nextPeriodDate.format('MM월 DD일')
+      };
+    } else {
+      return { 
+        phase: 'luteal', 
+        day: cycleDay, 
+        description: 'PMS 시기',
+        nextPeriodDate: nextPeriodDate.format('MM월 DD일')
+      };
+    }
   } catch (error) {
     console.error('생리주기 계산 오류:', error);
     return { 
       phase: 'normal', 
       day: 1, 
       description: '정상',
-      nextPeriodDate: '07월 24일',
-      daysUntilPeriod: 0
+      nextPeriodDate: '07월 24일'
     };
   }
 }
@@ -455,83 +413,35 @@ async function getRandomMessage() {
 schedule.scheduleJob('0 0 * * *', () => {
   sentTimestamps = [];
   lastSentMessages = [];
-  damta.resetDailyDamtaCount(); // 담타 카운터도 자정에 리셋
-  logSchedulerAction('reset', '자정 초기화 완료: 감정 메시지 및 담타 카운터 reset');
+  logSchedulerAction('reset', '자정 초기화 완료: 감정 메시지 카운터 reset');
 });
 
-// 담타 즉시 발송을 위한 별도 스케줄러 (5분 이내 발송 목표)
-// 이 스케줄러는 index.js에서 /status 엔드포인트 호출 시 트리거되도록 할 예정
-async function checkAndSendDamtaImmediately() {
-    const damtaStatus = damta.getDamtaStatus();
-    if (damtaStatus.canDamta && !damta.damtaState.isPendingMessage) { // 담타 가능하고 보류 중인 메시지가 없을 때
-        try {
-            const damtaMessage = damta.generateDamtaResponse();
-            await client.pushMessage(USER_ID, {
-                type: 'text',
-                text: damtaMessage,
-            });
-            damta.updateDamtaState(); // 담타 상태 업데이트 (카운트 증가)
-            logSchedulerAction('damta', damtaMessage, `즉시 담타 발송! (${damta.damtaState.damtaCount}/${damta.damtaState.dailyDamtaLimit})`);
-            damta.damtaState.isPendingMessage = false; // 메시지 보냈으니 보류 상태 해제
-            if (damtaCheckJob) { // 이미 실행 중인 즉시 발송 스케줄러가 있다면 취소
-                damtaCheckJob.cancel();
-                damtaCheckJob = null;
-                console.log('✅ 기존 담타 즉시 발송 스케줄러 취소됨.');
-            }
-        } catch (err) {
-            console.error('자동 담타 메시지 즉시 전송 오류:', err.message);
-            damta.damtaState.isPendingMessage = false; // 오류 발생 시에도 보류 상태 해제
-        }
-    }
-}
-
-// 메인 스케줄러 (15분마다 체크)
-schedule.scheduleJob('*/15 * * * *', async () => {
+// 메시지 전송 스케줄러
+schedule.scheduleJob('*/5 * * * *', async () => {
   const now = moment().tz('Asia/Tokyo');
   const hour = now.hour();
-  const currentTimestamp = now.format('HH:mm');
   
-  // 1. 담타 메시지 발송 로직 (확률 기반, 5분 이내 발송은 즉시 스케줄러가 담당)
-  const damtaStatus = damta.getDamtaStatus();
-  if (damtaStatus.canDamta) {
-    // 담타가 가능하면, 즉시 발송 스케줄러를 가동시킵니다.
-    // 여기서 직접 보내는 대신, 5분 이내에 보내지도록 예약합니다.
-    if (!damtaCheckJob && !damta.damtaState.isPendingMessage) { // 아직 스케줄러가 없고, 보류 메시지가 없을 때만
-        damta.damtaState.isPendingMessage = true; // 메시지 보류 상태로 설정
-        const randomDelay = Math.floor(Math.random() * 5); // 0분 ~ 4분 사이 랜덤 지연
-        const scheduledTime = moment().add(randomDelay, 'minutes').add(Math.floor(Math.random() * 60), 'seconds').toDate();
-
-        console.log(`⏰ 담타 즉시 발송 스케줄링: ${randomDelay}분 ${Math.floor(Math.random() * 60)}초 후`);
-        damtaCheckJob = schedule.scheduleJob(scheduledTime, async () => {
-            await checkAndSendDamtaImmediately();
-            damtaCheckJob = null; // 실행 후 스케줄러 참조 초기화
-        });
-    }
-    // 이 15분 주기 스케줄러에서는 담타 가능 시 여기서 return 하지 않음.
-    // 담타 메시지는 별도의 즉시 스케줄러가 처리하고, 이 스케줄러는 일반 메시지도 보낼 수 있게 함.
-  }
-
-  // 2. 일반 감정 메시지 발송 로직 (기존 로직)
-  if (sentTimestamps.length >= DAILY_LIMIT) return; // 일일 제한 확인
+  if (sentTimestamps.length >= DAILY_LIMIT) return;
   
-  const inAllowedTime = (hour >= 9 && hour <= 23) || (hour >= 0 && hour < 3); // 0~3시는 야간 메시지 허용
+  const inAllowedTime = (hour >= 9 && hour <= 23) || (hour >= 0 && hour < 3);
   if (!inAllowedTime) return;
   
-  if (sentTimestamps.includes(currentTimestamp)) return; // 이미 이 시간에 보냈으면 스킵
+  const currentTimestamp = now.format('HH:mm');
+  if (sentTimestamps.includes(currentTimestamp)) return;
   
-  // 생리주기에 따른 전송 확률 조정 - 전체적으로 확률 낮춤
+  // 생리주기에 따른 전송 확률 조정
   const menstrualPhase = getCurrentMenstrualPhase();
-  let sendProbability = 0.15; // 기본 확률 25% → 15%로 낮춤
+  let sendProbability = 0.25;
   
-  // 시간대별 확률 - 전체적으로 낮춤
-  if (hour >= 12 && hour < 17) sendProbability = 0.20; // 35% → 20%
-  if (hour >= 19 && hour < 22) sendProbability = 0.25; // 40% → 25%
-  if (hour >= 22 || hour < 1) sendProbability = 0.10; // 20% → 10%
+  // 시간대별 확률
+  if (hour >= 12 && hour < 17) sendProbability = 0.35;
+  if (hour >= 19 && hour < 22) sendProbability = 0.4;
+  if (hour >= 22 || hour < 1) sendProbability = 0.2;
   
-  // 생리주기별 확률 조정 - 증가율 낮춤
-  if (menstrualPhase.phase === 'period') sendProbability *= 1.1; // 20% → 10% 증가
-  else if (menstrualPhase.phase === 'ovulation') sendProbability *= 1.2; // 30% → 20% 증가
-  else if (menstrualPhase.phase === 'luteal') sendProbability *= 1.05; // 10% → 5% 증가
+  // 생리주기별 확률 조정
+  if (menstrualPhase.phase === 'period') sendProbability *= 1.2; // 생리 때 20% 증가
+  else if (menstrualPhase.phase === 'ovulation') sendProbability *= 1.3; // 배란기 30% 증가
+  else if (menstrualPhase.phase === 'luteal') sendProbability *= 1.1; // PMS 10% 증가
   
   const shouldSend = Math.random() < sendProbability;
   if (!shouldSend) return;
@@ -558,13 +468,10 @@ schedule.scheduleJob('*/15 * * * *', async () => {
 // 상태 확인용
 function getStats() {
   const menstrualPhase = getCurrentMenstrualPhase();
-  const today = moment().tz('Asia/Tokyo');
+  const today = moment.tz('Asia/Tokyo');
   const nextPeriod = moment.tz('2025-07-24', 'Asia/Tokyo');
   const daysUntil = nextPeriod.diff(today, 'days');
   
-  // 담타 시스템 정보도 포함
-  const damtaStatus = damta.getDamtaStatus();
-
   return {
     todaySentCount: sentTimestamps.length,
     dailyLimit: DAILY_LIMIT,
@@ -577,13 +484,6 @@ function getStats() {
       daysUntilPeriod: daysUntil,
       isPreMenstrual: daysUntil <= 3
     },
-    damtaInfo: {
-        canDamta: damtaStatus.canDamta,
-        minutesToNext: damtaStatus.minutesToNext,
-        dailyCount: damtaStatus.dailyCount,
-        dailyLimit: damtaStatus.dailyLimit,
-        isActiveTime: damtaStatus.isActiveTime
-    },
     nextAllowedTime: sentTimestamps.length >= DAILY_LIMIT ? '내일 자정 이후' : '조건 만족 시'
   };
 }
@@ -591,7 +491,7 @@ function getStats() {
 // 스케줄러 시작 함수 추가
 function startAllSchedulers(client, userId) {
   // 기존 스케줄러들이 이미 위에서 정의되어 실행중
-  logSchedulerAction('system', '모든 스케줄러 시작됨', 'v2.11');
+  logSchedulerAction('system', '모든 스케줄러 시작됨', 'v2.9');
 }
 
 module.exports = {

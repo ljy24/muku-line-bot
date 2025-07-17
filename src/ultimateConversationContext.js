@@ -1,5 +1,5 @@
 // ============================================================================
-// ultimateConversationContext.js - v34.0 (올바른 생리주기 계산)
+// ultimateConversationContext.js - v33.0 (완전 구현 버전)
 // 🗄️ 모든 기억, 대화, 상태를 통합 관리하는 중앙 관리자
 // ============================================================================
 
@@ -55,101 +55,64 @@ let ultimateConversationState = {
     pendingAction: null
 };
 
-// ==================== 🔥 올바른 생리주기 계산 함수로 교체 ====================
+// ==================== 생리주기 관리 ====================
 function getCurrentMenstrualPhase() {
     try {
-        // 7월 24일이 다음 생리 시작일
         const nextPeriodDate = moment.tz('2025-07-24', 'Asia/Tokyo');
         const today = moment.tz('Asia/Tokyo');
         const daysUntilNextPeriod = nextPeriodDate.diff(today, 'days');
         
-        // 7월 24일까지 남은 일수로 현재 단계 계산
-        let phase, description, cycleDay;
-        
-        if (daysUntilNextPeriod <= 0) {
-            // 7월 24일 이후 - 생리 기간
-            const daysSincePeriod = Math.abs(daysUntilNextPeriod) + 1; // +1을 해서 24일을 1일차로
-            
-            if (daysSincePeriod <= 5) {
-                phase = 'period';
-                description = '생리 기간';
-                cycleDay = daysSincePeriod;
-            } else if (daysSincePeriod <= 13) {
-                phase = 'follicular';
-                description = '생리 후 활발한 시기';
-                cycleDay = daysSincePeriod;
-            } else if (daysSincePeriod >= 14 && daysSincePeriod <= 15) {
-                phase = 'ovulation';
-                description = '배란기';
-                cycleDay = daysSincePeriod;
-            } else if (daysSincePeriod <= 28) {
-                phase = 'luteal';
-                description = 'PMS 시기';
-                cycleDay = daysSincePeriod;
-            } else {
-                // 다음 주기로 넘어감 (28일 주기 기준)
-                const nextCycleDays = daysSincePeriod - 28;
-                if (nextCycleDays <= 5) {
-                    phase = 'period';
-                    description = '생리 기간';
-                    cycleDay = nextCycleDays;
-                } else {
-                    // 재귀적으로 계산하지 않고 직접 계산
-                    const adjustedDays = nextCycleDays;
-                    if (adjustedDays <= 13) {
-                        phase = 'follicular';
-                        description = '생리 후 활발한 시기';
-                        cycleDay = adjustedDays;
-                    } else if (adjustedDays >= 14 && adjustedDays <= 15) {
-                        phase = 'ovulation';
-                        description = '배란기';
-                        cycleDay = adjustedDays;
-                    } else {
-                        phase = 'luteal';
-                        description = 'PMS 시기';
-                        cycleDay = adjustedDays;
-                    }
-                }
-            }
-        } else {
-            // 7월 24일 이전 - 이전 주기의 끝부분 (PMS/황체기)
-            // 28일 주기 기준으로 역산
+        let cycleDay;
+        if (daysUntilNextPeriod >= 0) {
             cycleDay = 28 - daysUntilNextPeriod;
-            
-            if (cycleDay <= 5) {
-                // 너무 이른 시기면 PMS로 처리
-                phase = 'luteal';
-                description = 'PMS 시기';
-                cycleDay = 16 + (28 - daysUntilNextPeriod); // PMS 시기로 조정
-            } else if (cycleDay <= 13) {
-                phase = 'follicular';
-                description = '생리 후 활발한 시기';
-            } else if (cycleDay >= 14 && cycleDay <= 15) {
-                phase = 'ovulation';
-                description = '배란기';
-            } else {
-                phase = 'luteal';
-                description = 'PMS 시기';
-            }
+        } else {
+            const daysPastPeriod = Math.abs(daysUntilNextPeriod);
+            cycleDay = daysPastPeriod;
         }
         
-        return { 
-            phase: phase, 
-            day: cycleDay, 
-            description: description,
-            isPeriodActive: phase === 'period',
-            daysUntilNextPeriod: daysUntilNextPeriod,
-            moodLevel: phase === 'period' ? 'sensitive' : 
-                      phase === 'follicular' ? 'energetic' : 
-                      phase === 'ovulation' ? 'romantic' : 'irritable',
-            expectedSymptoms: phase === 'period' ? ['피곤함', '예민함', '복통'] :
-                             phase === 'follicular' ? ['활발함', '긍정적'] :
-                             phase === 'ovulation' ? ['감정 풍부', '애정적'] :
-                             ['예민함', '우울함', '불안함']
-        };
-        
+        if (cycleDay <= 5) {
+            return { 
+                phase: 'period', 
+                day: cycleDay, 
+                description: '생리 기간',
+                isPeriodActive: true,
+                daysUntilNextPeriod: daysUntilNextPeriod,
+                moodLevel: 'sensitive',
+                expectedSymptoms: ['피곤함', '예민함', '복통']
+            };
+        } else if (cycleDay <= 13) {
+            return { 
+                phase: 'follicular', 
+                day: cycleDay, 
+                description: '생리 후 활발한 시기',
+                isPeriodActive: false,
+                daysUntilNextPeriod: daysUntilNextPeriod,
+                moodLevel: 'energetic',
+                expectedSymptoms: ['활발함', '긍정적']
+            };
+        } else if (cycleDay >= 14 && cycleDay <= 15) {
+            return { 
+                phase: 'ovulation', 
+                day: cycleDay, 
+                description: '배란기',
+                isPeriodActive: false,
+                daysUntilNextPeriod: daysUntilNextPeriod,
+                moodLevel: 'romantic',
+                expectedSymptoms: ['감정 풍부', '애정적']
+            };
+        } else {
+            return { 
+                phase: 'luteal', 
+                day: cycleDay, 
+                description: 'PMS 시기',
+                isPeriodActive: false,
+                daysUntilNextPeriod: daysUntilNextPeriod,
+                moodLevel: 'irritable',
+                expectedSymptoms: ['예민함', '우울함', '불안함']
+            };
+        }
     } catch (error) {
-        console.error('[UltimateContext] 생리주기 계산 오류:', error);
+        console.error('생리주기 계산 오류:', error);
         return { 
             phase: 'normal', 
             day: 1, 
