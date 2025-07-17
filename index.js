@@ -436,7 +436,7 @@ async function recoverData() {
 }
 
 let autoReply, commandHandler, memoryManager, ultimateContext;
-let emotionalContext, sulkyManager, scheduler, spontaneousPhoto, damta;
+let emotionalContext, sulkyManager, scheduler, spontaneousPhoto, damta, photoAnalyzer;
 
 async function loadModules() {
     try {
@@ -449,6 +449,7 @@ async function loadModules() {
         damta = require('./src/damta');
         scheduler = require('./src/scheduler');
         spontaneousPhoto = require('./src/spontaneousPhotoManager.js');
+        photoAnalyzer = require('./src/photoAnalyzer.js');
         
         console.log('✅ 모든 모듈 로드 완료');
         return true;
@@ -471,12 +472,19 @@ app.post('/webhook', middleware(config), async (req, res) => {
 });
 
 async function handleEvent(event) {
-    if (event.source.userId !== userId || event.type !== 'message' || event.message.type !== 'text') {
+    if (event.source.userId !== userId) {
         return;
     }
-    await handleTextMessage(event);
+    
+    // 🆕 이벤트 타입별 처리
+    if (event.type === 'message') {
+        if (event.message.type === 'text') {
+            await handleTextMessage(event);
+        } else if (event.message.type === 'image') {
+            await handleImageMessage(event);  // 🆕 이미지 처리 추가
+        }
+    }
 }
-
 async function handleTextMessage(event) {
     const text = event.message.text.trim();
     
@@ -541,6 +549,99 @@ async function sendReply(replyToken, botResponse) {
         console.error('[sendReply] 🚨 메시지 전송 실패:', error);
     }
 }
+
+// 🆕 이미지 메시지 처리 함수 추가 (425라인 근처)
+async function handleImageMessage(event) {
+    try {
+        console.log('📸 [ImageHandler] 아저씨가 사진을 보내셨어요!');
+        
+        // 사용자 응답 시간 업데이트
+        if (ultimateContext && ultimateContext.updateLastUserMessageTime) {
+            ultimateContext.updateLastUserMessageTime(event.timestamp);
+        }
+        
+        // 삐짐 상태 해소 (사진도 답장으로 간주)
+        if (sulkyManager && sulkyManager.handleUserResponse) {
+            const sulkyReliefMessage = await sulkyManager.handleUserResponse();
+            if (sulkyReliefMessage) {
+                await client.pushMessage(userId, { type: 'text', text: sulkyReliefMessage });
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
+        }
+        
+        // 📸 사진 분석 및 반응 생성
+        if (photoAnalyzer) {
+            try {
+                // 1. 사진 분석
+                console.log('🔍 [ImageHandler] 사진 분석 시작...');
+                const analysis = await photoAnalyzer.analyzePhoto(event.message.id, client);
+                
+                // 2. 예진이다운 반응 생성
+                console.log('💕 [ImageHandler] 예진이 반응 생성 중...');
+                const yejinReaction = await photoAnalyzer.generateYejinReaction(analysis, ultimateContext);
+                
+                // 3. 반응 전송
+                await client.replyMessage(event.replyToken, {
+                    type: 'text',
+                    text: yejinReaction
+                });
+                
+                // 4. 대화 기록에 추가
+                if (ultimateContext && ultimateContext.addUltimateMessage) {
+                    await ultimateContext.addUltimateMessage('아저씨', '[사진 전송]');
+                    await ultimateContext.addUltimateMessage('나', yejinReaction);
+                }
+                
+                console.log('✅ [ImageHandler] 사진 처리 완료:', yejinReaction.substring(0, 50) + '...');
+                
+            } catch (analysisError) {
+                console.error('❌ [ImageHandler] 사진 분석 실패:', analysisError);
+                
+                // 분석 실패 시 기본 반응
+                const fallbackReaction = "아저씨! 사진 고마워~ 근데 지금 좀 멍해서 뭐라고 해야 할지 모르겠어 ㅎㅎ 그래도 보내줘서 기뻐!";
+                
+                await client.replyMessage(event.replyToken, {
+                    type: 'text',
+                    text: fallbackReaction
+                });
+            }
+        } else {
+            // photoAnalyzer가 로드되지 않은 경우
+            console.warn('⚠️ [ImageHandler] photoAnalyzer가 로드되지 않았습니다.');
+            
+            const basicReaction = "아저씨 사진 고마워! 같이 보고 있는 것 같아서 좋다 ㅎㅎ";
+            await client.replyMessage(event.replyToken, {
+                type: 'text',
+                text: basicReaction
+            });
+        }
+        
+        // 마지막 봇 메시지 시간 업데이트
+        if (ultimateContext && ultimateContext.getSulkinessState) {
+            const sulkyState = ultimateContext.getSulkinessState();
+            if (sulkyState) {
+                sulkyState.lastBotMessageTime = Date.now();
+            }
+        }
+        
+    } catch (error) {
+        console.error('🚨 [ImageHandler] 이미지 처리 중 심각한 에러:', error);
+        
+        try {
+            await client.replyMessage(event.replyToken, {
+                type: 'text',
+                text: "아저씨... 사진이 잘 안 보여서 ㅠㅠ 다시 보내줄래?"
+            });
+        } catch (replyError) {
+            console.error('🚨 [ImageHandler] 에러 응답 전송도 실패:', replyError);
+        }
+    }
+}
+
+
+
+
+
 
 async function initMuku() {
     try {
