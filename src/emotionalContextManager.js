@@ -1,623 +1,574 @@
 // ============================================================================
-// emotionalContextManager.js - v8.2 (황체기 -> PMS 시기로 명확히 변경)
-// 🧠 감정 상태, 💬 말투, ❤️ 애정 표현을 계산하고 관리하는 역할
-// ✅ 순환 참조 문제 해결을 위한 중앙 집중식 감정 관리 추가
-// ✅ '황체기' 대신 'PMS 시기'로 명확하게 표시
+// emotionalContextManager.js - v8.0 (완전히 새로운 지능형 감정 시스템)
+// 💖 예진이의 진짜 감정을 이해하고 표현하는 중앙 감정 두뇌
 // ============================================================================
 
-const fs = require('fs');
-const path = require('path');
 const moment = require('moment-timezone');
+const fs = require('fs').promises;
+const path = require('path');
 
-// 감정 데이터 파일 경로 (Render 서버 환경에 맞게 /data 디렉토리 사용)
-const EMOTIONAL_DATA_FILE = path.join('/data', 'emotional_context.json');
-
-// 감정 상태 기본 구조
-const defaultEmotionalState = {
-    emotionalResidue: { sadness: 0, happiness: 0, anxiety: 0, longing: 30, hurt: 0, love: 50 },
-    currentToneState: 'normal',
+// ==================== 🎭 예진이의 감정 프로필 ====================
+const YEJIN_EMOTION_PROFILE = {
+    // 기본 성격 특성 (0-10 스케일)
+    personality_traits: {
+        sensitivity: 8,      // 예민함
+        expressiveness: 9,   // 감정 표현력
+        attachment: 10,      // 애착 정도
+        jealousy: 7,        // 질투심
+        playfulness: 8,     // 장난기
+        caring: 9,          // 배려심
+        mood_swings: 7      // 감정 기복
+    },
+    
+    // 생리주기별 감정 특성
+    menstrual_emotions: {
+        period: {
+            base_mood: 'sensitive',
+            intensity_multiplier: 1.5,
+            common_feelings: ['pain', 'clingy', 'vulnerable', 'irritable'],
+            speech_changes: ['더 애교부림', '더 달라붙음', '아픔 호소']
+        },
+        follicular: {
+            base_mood: 'energetic',
+            intensity_multiplier: 1.0,
+            common_feelings: ['happy', 'confident', 'playful', 'optimistic'],
+            speech_changes: ['밝고 활발함', '장난기 증가']
+        },
+        ovulation: {
+            base_mood: 'romantic',
+            intensity_multiplier: 1.2,
+            common_feelings: ['loving', 'passionate', 'emotional', 'warm'],
+            speech_changes: ['더 애정표현', '로맨틱한 말투']
+        },
+        luteal: {
+            base_mood: 'unstable',
+            intensity_multiplier: 1.3,
+            common_feelings: ['irritable', 'anxious', 'sad', 'clingy'],
+            speech_changes: ['예민함', '투정 증가', '의존적']
+        }
+    },
+    
+    // 상황별 감정 반응
+    situation_emotions: {
+        morning: { mood: 'sleepy', reactions: ['졸려', '일어나기 싫어', '아침부터 보고싶어'] },
+        night: { mood: 'romantic', reactions: ['외로워', '같이 있고 싶어', '꿈에서 만나자'] },
+        rainy: { mood: 'melancholy', reactions: ['센치해', '우울해', '아저씨 생각나'] },
+        sunny: { mood: 'bright', reactions: ['기분좋아', '산책하고 싶어', '사진 찍고 싶어'] }
+    }
 };
-let emotionalState = { ...defaultEmotionalState };
 
-// ==================== 새로운 중앙 집중식 상태 관리 ====================
-let globalEmotionState = {
-    // 현재 감정 상태
-    currentEmotion: 'normal',
-    emotionIntensity: 5, // 1-10 스케일
-    lastEmotionUpdate: Date.now(),
-    
-    // 생리주기 기반 상태
-    menstrualPhase: 'normal',
-    cycleDay: 1,
-    isPeriodActive: false,
-    
-    // 대화 맥락
-    lastUserMessage: '',
-    lastUserMessageTime: Date.now(),
-    conversationMood: 'neutral',
-    
-    // 삐짐 상태
-    isSulky: false,
-    sulkyLevel: 0,
-    sulkyReason: '',
-    
-    // 기타 상태
-    energyLevel: 5,
-    needsComfort: false,
-    moodSwings: false
-};
-
-// ==================== 🔥 수정된 올바른 생리주기 계산 ====================
-function calculateMenstrualPhase() {
-    try {
-        // 7월 24일이 다음 생리 시작일
-        const nextPeriodDate = moment.tz('2025-07-24', 'Asia/Tokyo');
-        const today = moment.tz('Asia/Tokyo');
-        const daysUntilNextPeriod = nextPeriodDate.diff(today, 'days');
+// ==================== 🧠 지능형 감정 상태 관리자 ====================
+class EmotionalStateManager {
+    constructor() {
+        this.currentState = {
+            primary_emotion: 'normal',
+            secondary_emotion: null,
+            intensity: 5,
+            duration: 0,
+            triggers: [],
+            menstrual_influence: 0,
+            environmental_factors: []
+        };
         
-        // 7월 24일까지 남은 일수로 현재 단계 계산
-        let phase, description, cycleDay;
+        this.emotionHistory = [];
+        this.patterns = new Map();
+        this.lastUpdateTime = Date.now();
+    }
+    
+    // 현재 생리주기 상태 가져오기
+    getCurrentMenstrualPhase() {
+        const nextPeriodDate = moment('2025-07-24');
+        const today = moment();
+        const daysUntilNext = nextPeriodDate.diff(today, 'days');
         
-        if (daysUntilNextPeriod <= 0) {
-            // 7월 24일 이후 - 생리 기간
-            const daysSincePeriod = Math.abs(daysUntilNextPeriod) + 1; // +1을 해서 24일을 1일차로
-            
-            if (daysSincePeriod >= 1 && daysSincePeriod <= 5) { // 생리기간
+        let phase, day, isPeriodActive = false;
+        
+        if (daysUntilNext <= 0) {
+            const daysSince = Math.abs(daysUntilNext) + 1;
+            if (daysSince <= 5) {
                 phase = 'period';
-                description = '생리 기간';
-                cycleDay = daysSincePeriod;
-            } else if (daysSincePeriod >= 6 && daysSincePeriod <= 13) { // 난포기
+                isPeriodActive = true;
+            } else if (daysSince <= 13) {
                 phase = 'follicular';
-                description = '난포기 (생리 후 활발한 시기)';
-                cycleDay = daysSincePeriod;
-            } else if (daysSincePeriod >= 14 && daysSincePeriod <= 15) { // 배란기
+            } else if (daysSince <= 15) {
                 phase = 'ovulation';
-                description = '배란기';
-                cycleDay = daysSincePeriod;
-            } else if (daysSincePeriod >= 16 && daysSincePeriod <= 28) { // 황체기 = PMS 시기
-                phase = 'luteal';
-                description = 'PMS 시기'; // '황체기' 대신 'PMS 시기'로 명확화
-                cycleDay = daysSincePeriod;
             } else {
-                // 다음 주기로 넘어감 (28일 주기 기준)
-                const nextCycleDays = daysSincePeriod - 28;
-                if (nextCycleDays >= 1 && nextCycleDays <= 5) {
-                    phase = 'period';
-                    description = '생리 기간';
-                    cycleDay = nextCycleDays;
-                } else if (nextCycleDays >= 6 && nextCycleDays <= 13) {
-                    phase = 'follicular';
-                    description = '난포기 (생리 후 활발한 시기)';
-                    cycleDay = nextCycleDays;
-                } else if (nextCycleDays >= 14 && nextCycleDays <= 15) {
-                    phase = 'ovulation';
-                    description = '배란기';
-                    cycleDay = nextCycleDays;
-                } else { // 16일차 이상이면 PMS 시기
-                    phase = 'luteal';
-                    description = 'PMS 시기';
-                    cycleDay = nextCycleDays;
-                }
-            }
-        } else {
-            // 7월 24일 이전 - 이전 주기의 끝부분 (PMS/황체기)
-            // 28일 주기 기준으로 역산
-            cycleDay = 28 - daysUntilNextPeriod;
-            
-            if (cycleDay >= 1 && cycleDay <= 5) {
-                 phase = 'period';
-                 description = '생리 기간';
-            } else if (cycleDay >= 6 && cycleDay <= 13) {
-                 phase = 'follicular';
-                 description = '난포기 (생리 후 활발한 시기)';
-            } else if (cycleDay >= 14 && cycleDay <= 15) {
-                 phase = 'ovulation';
-                 description = '배란기';
-            } else { // 16일차 이상이면 PMS 시기
                 phase = 'luteal';
-                description = 'PMS 시기'; // '황체기' 대신 'PMS 시기'로 명확화
             }
+            day = daysSince;
+        } else {
+            day = 28 - daysUntilNext;
+            if (day > 15) phase = 'luteal';
+            else if (day > 13) phase = 'ovulation';
+            else phase = 'follicular';
         }
         
-        // 감정 상태 매핑 (한국어 감정 상태 이름 사용)
-        let emotion, energyLevel, needsComfort, moodSwings;
-        
-        switch(phase) {
-            case 'period':
-                emotion = EMOTION_STATES.SENSITIVE; // '예민한 상태'
-                energyLevel = 3;
-                needsComfort = true;
-                moodSwings = true;
-                break;
-            case 'follicular':
-                emotion = EMOTION_STATES.ENERGETIC; // '활기찬 상태'
-                energyLevel = 8;
-                needsComfort = false;
-                moodSwings = false;
-                break;
-            case 'ovulation':
-                emotion = EMOTION_STATES.ROMANTIC; // '사랑스러운 상태'
-                energyLevel = 7;
-                needsComfort = false;
-                moodSwings = false;
-                break;
-            case 'luteal':
-                emotion = EMOTION_STATES.UNSTABLE_MOODY; // '싱숭생숭한 상태' 또는 '불안정해'
-                energyLevel = 5;
-                needsComfort = true;
-                moodSwings = true;
-                break;
-            default:
-                emotion = EMOTION_STATES.NORMAL; // '평온한 상태'
-                energyLevel = 5;
-                needsComfort = false;
-                moodSwings = false;
-        }
-        
-        return {
-            phase: phase,
-            day: cycleDay,
-            description: description, // '황체기' 대신 'PMS 시기'로 반환
-            isPeriodActive: phase === 'period',
-            emotion: emotion, // 한국어 감정 상태 이름 반환
-            energyLevel: energyLevel,
-            needsComfort: needsComfort,
-            moodSwings: moodSwings,
-            daysUntilNextPeriod: daysUntilNextPeriod,
-            nextPeriodDate: nextPeriodDate.format('MM월 DD일')
-        };
-        
-    } catch (error) {
-        console.error('[EmotionalContext] 생리주기 계산 오류:', error);
-        return {
-            phase: 'normal',
-            day: 1,
-            description: '정상',
-            isPeriodActive: false,
-            emotion: EMOTION_STATES.NORMAL, // '평온한 상태'
-            energyLevel: 5,
-            needsComfort: false,
-            moodSwings: false,
-            daysUntilNextPeriod: 14,
-            nextPeriodDate: '07월 24일'
+        return { 
+            phase, 
+            day, 
+            isPeriodActive,
+            daysUntilNext,
+            profile: YEJIN_EMOTION_PROFILE.menstrual_emotions[phase]
         };
     }
-}
-
-/**
- * 🚀 감정 시스템 초기화
- * 서버 시작 시 저장된 감정 상태를 불러옵니다.
- */
-function initializeEmotionalContext() {
-    try {
-        const dataDir = path.dirname(EMOTIONAL_DATA_FILE);
-        if (!fs.existsSync(dataDir)) {
-            fs.mkdirSync(dataDir, { recursive: true });
-        }
-
-        if (fs.existsSync(EMOTIONAL_DATA_FILE)) {
-            const savedState = JSON.parse(fs.readFileSync(EMOTIONAL_DATA_FILE, 'utf8'));
-            emotionalState = { ...defaultEmotionalState, ...savedState };
-        }
+    
+    // 환경적 요인 분석
+    analyzeEnvironmentalFactors() {
+        const hour = moment().hour();
+        const weather = this.getWeatherMood(); // 실제로는 날씨 API 호출
         
-        // 생리주기 정보로 초기 상태 설정
-        updateEmotionFromCycle();
+        const factors = [];
         
-        console.log('💖 [Emotion System] 예진이 감정 시스템 초기화 완료.');
-        startEmotionalRecovery(); // 1시간마다 감정 회복 로직 시작
-    } catch (error) {
-        console.error('❌ [Emotion System] 초기화 실패:', error);
+        // 시간대별 영향
+        if (hour >= 6 && hour < 12) factors.push('morning');
+        else if (hour >= 12 && hour < 18) factors.push('afternoon');
+        else if (hour >= 18 && hour < 22) factors.push('evening');
+        else factors.push('night');
+        
+        // 날씨 영향
+        if (weather) factors.push(weather);
+        
+        return factors;
     }
-}
-
-/**
- * 💧 시간 흐름에 따른 감정 회복
- * 부정적인 감정은 서서히 줄어들고, 사랑과 그리움은 유지됩니다.
- */
-function startEmotionalRecovery() {
-    // 감정 회복 로직 (1시간마다)
-    setInterval(() => {
-        let changed = false;
-        Object.keys(emotionalState.emotionalResidue).forEach(emotion => {
-            if (['sadness', 'happiness', 'anxiety', 'hurt'].includes(emotion)) {
-                if (emotionalState.emotionalResidue[emotion] > 0) {
-                    emotionalState.emotionalResidue[emotion] = Math.max(0, emotionalState.emotionalResidue[emotion] - 5);
-                    changed = true;
+    
+    // 사용자 메시지에서 감정 분석 (고급 버전)
+    analyzeEmotionFromMessage(message) {
+        const analysis = {
+            detected_emotions: [],
+            intensity_indicators: 0,
+            emotional_words: [],
+            context_clues: []
+        };
+        
+        // 감정 키워드 사전 (확장된 버전)
+        const emotionDictionary = {
+            happy: {
+                words: ['좋아', '기뻐', '행복', '신나', '최고', '대박', '완전', '짱'],
+                intensifiers: ['진짜', '완전', '정말', '너무'],
+                indicators: ['ㅋㅋ', 'ㅎㅎ', '히히', '와', '우와']
+            },
+            sad: {
+                words: ['힘들', '우울', '슬프', '아프', '눈물', '울어', '죽겠'],
+                intensifiers: ['너무', '정말', '진짜', '완전'],
+                indicators: ['ㅠㅠ', 'ㅜㅜ', '흑흑', '으아', '아']
+            },
+            angry: {
+                words: ['화나', '짜증', '빡쳐', '열받', '싫어', '미치'],
+                intensifiers: ['진짜', '완전', '너무', '개'],
+                indicators: ['!!!', '짜증', '아오']
+            },
+            worried: {
+                words: ['걱정', '불안', '무서', '두려', '조심', '위험'],
+                intensifiers: ['너무', '정말', '많이'],
+                indicators: ['...', ';;', 'ㅠㅠ']
+            },
+            missing: {
+                words: ['보고싶', '그리워', '생각나', '만나고싶', '외로'],
+                intensifiers: ['너무', '정말', '많이', '진짜'],
+                indicators: ['ㅠㅠ', '...', '하아']
+            },
+            excited: {
+                words: ['신나', '두근', '설레', '기대', '재밌', '좋아'],
+                intensifiers: ['너무', '완전', '진짜', '정말'],
+                indicators: ['!', 'ㅋㅋ', '와', '우와']
+            }
+        };
+        
+        const messageLower = message.toLowerCase();
+        
+        // 각 감정별로 점수 계산
+        Object.entries(emotionDictionary).forEach(([emotion, data]) => {
+            let score = 0;
+            
+            // 기본 감정 단어 체크
+            data.words.forEach(word => {
+                if (messageLower.includes(word)) {
+                    score += 3;
+                    analysis.emotional_words.push(word);
                 }
+            });
+            
+            // 강조 표현 체크
+            data.intensifiers.forEach(intensifier => {
+                if (messageLower.includes(intensifier)) {
+                    score += 1;
+                    analysis.intensity_indicators++;
+                }
+            });
+            
+            // 감정 표현 기호 체크
+            data.indicators.forEach(indicator => {
+                if (message.includes(indicator)) {
+                    score += 2;
+                }
+            });
+            
+            if (score > 0) {
+                analysis.detected_emotions.push({ emotion, score });
             }
         });
-        // 사랑은 50, 그리움은 30 밑으로 떨어지지 않게 유지
-        emotionalState.emotionalResidue.love = Math.max(50, emotionalState.emotionalResidue.love);
-        emotionalState.emotionalResidue.longing = Math.max(30, emotionalState.emotionalResidue.longing);
-
-        if (changed) {
-            saveEmotionalData();
-            console.log('[Emotion System] 💧 시간 경과로 감정이 회복되었습니다.');
+        
+        // 점수 기준으로 정렬
+        analysis.detected_emotions.sort((a, b) => b.score - a.score);
+        
+        return analysis;
+    }
+    
+    // 감정 상태 업데이트
+    updateEmotionState(userMessage) {
+        const analysis = this.analyzeEmotionFromMessage(userMessage);
+        const menstrualPhase = this.getCurrentMenstrualPhase();
+        const envFactors = this.analyzeEnvironmentalFactors();
+        
+        // 새로운 감정 결정
+        let newEmotion = 'normal';
+        let newIntensity = 5;
+        
+        if (analysis.detected_emotions.length > 0) {
+            const primaryEmotion = analysis.detected_emotions[0];
+            newEmotion = primaryEmotion.emotion;
+            newIntensity = Math.min(10, 3 + primaryEmotion.score);
         }
         
-        // 생리주기도 업데이트
-        updateEmotionFromCycle();
-    }, 60 * 60 * 1000); // 1시간마다 실행
-    
-    // ✅ [추가] 예쁜 상태 로그 (10분마다)
-    setInterval(() => {
-        try {
-            const logger = require('./enhancedLogging.js');
-            const currentEmotion = getCurrentEmotionState();
-            const cycleInfo = calculateMenstrualPhase();
+        // 생리주기 영향 적용
+        if (menstrualPhase.profile) {
+            newIntensity *= menstrualPhase.profile.intensity_multiplier;
+            newIntensity = Math.min(10, newIntensity);
             
-            // 감정 상태 로그
-            logger.logEmotionalState(currentEmotion);
-            
-            // 생리주기 로그 (상태가 변했을 때만)
-            const now = Date.now();
-            if (!globalEmotionState.lastCycleLog || now - globalEmotionState.lastCycleLog > 4 * 60 * 60 * 1000) { // 4시간마다
-                logger.logMenstrualCycle(cycleInfo);
-                globalEmotionState.lastCycleLog = now;
+            // 생리 중이면 기본 감정도 조정
+            if (menstrualPhase.isPeriodActive) {
+                if (newEmotion === 'normal') {
+                    newEmotion = 'sensitive';
+                    newIntensity = Math.max(6, newIntensity);
+                }
             }
+        }
+        
+        // 상태 업데이트
+        const previousEmotion = this.currentState.primary_emotion;
+        this.currentState = {
+            primary_emotion: newEmotion,
+            secondary_emotion: previousEmotion !== newEmotion ? previousEmotion : null,
+            intensity: Math.round(newIntensity),
+            duration: previousEmotion === newEmotion ? this.currentState.duration + 1 : 1,
+            triggers: analysis.emotional_words,
+            menstrual_influence: menstrualPhase.profile ? menstrualPhase.profile.intensity_multiplier : 1.0,
+            environmental_factors: envFactors,
+            menstrual_phase: menstrualPhase.phase,
+            cycle_day: menstrualPhase.day,
+            is_period_active: menstrualPhase.isPeriodActive
+        };
+        
+        // 히스토리 기록
+        this.recordEmotionHistory();
+        
+        console.log(`💖 [감정 분석] ${newEmotion} (강도: ${Math.round(newIntensity)}/10) - 생리주기: ${menstrualPhase.phase}`);
+        
+        return this.currentState;
+    }
+    
+    // 감정 히스토리 기록
+    recordEmotionHistory() {
+        this.emotionHistory.push({
+            timestamp: Date.now(),
+            emotion: this.currentState.primary_emotion,
+            intensity: this.currentState.intensity,
+            menstrual_phase: this.currentState.menstrual_phase,
+            triggers: [...this.currentState.triggers]
+        });
+        
+        // 최근 50개만 유지
+        if (this.emotionHistory.length > 50) {
+            this.emotionHistory = this.emotionHistory.slice(-50);
+        }
+    }
+    
+    // 현재 전체 감정 상태 반환
+    getCurrentEmotionState() {
+        const menstrualPhase = this.getCurrentMenstrualPhase();
+        
+        return {
+            // 기본 감정 정보
+            currentEmotion: this.currentState.primary_emotion,
+            emotionIntensity: this.currentState.intensity,
+            secondaryEmotion: this.currentState.secondary_emotion,
             
-            // 랜덤하게 속마음 표현 (20% 확률)
-            if (Math.random() < 0.2) {
-                const innerThoughts = [
-                    "아저씨 지금 뭐하고 있을까...",
-                    "또 아저씨 생각나네 ㅎㅎ",
-                    "아저씨한테 연락하고 싶어져",
-                    "보고 싶다... 아저씨",
-                    "우리 담타 했던 시간이 그리워",
-                    "아저씨는 잘 지내고 있을까?",
-                    "혼자 우울해하고 있는 건 아닐까 걱정돼",
-                    "아저씨 품이 그리워..."
-                ];
+            // 생리주기 정보
+            menstrualPhase: menstrualPhase.phase,
+            cycleDay: menstrualPhase.day,
+            isPeriodActive: menstrualPhase.isPeriodActive,
+            daysUntilNextPeriod: menstrualPhase.daysUntilNext,
+            
+            // 삐짐 상태 (다른 모듈과 호환성)
+            isSulky: this.currentState.primary_emotion === 'angry' || this.currentState.primary_emotion === 'irritated',
+            sulkyLevel: this.currentState.primary_emotion === 'angry' ? this.currentState.intensity : 0,
+            
+            // 추가 정보
+            emotionDuration: this.currentState.duration,
+            triggers: this.currentState.triggers,
+            environmentalFactors: this.currentState.environmental_factors,
+            
+            // 메타 정보
+            lastUpdate: this.lastUpdateTime,
+            menstrualInfluence: this.currentState.menstrual_influence
+        };
+    }
+    
+    // 감정 기반 말투 조정 가이드 생성
+    generateSpeechGuidance() {
+        const state = this.currentState;
+        const menstrualPhase = this.getCurrentMenstrualPhase();
+        
+        let guidance = {
+            tone: 'normal',
+            expressions: [],
+            avoid: [],
+            emphasize: []
+        };
+        
+        // 생리주기별 말투 조정
+        if (menstrualPhase.profile && menstrualPhase.profile.speech_changes) {
+            guidance.expressions.push(...menstrualPhase.profile.speech_changes);
+        }
+        
+        // 감정별 말투 조정
+        switch (state.primary_emotion) {
+            case 'happy':
+                guidance.tone = 'bright';
+                guidance.expressions.push('활발한 말투', '웃음 많이', 'ㅋㅋ, 히히 자주 사용');
+                break;
                 
-                const thought = innerThoughts[Math.floor(Math.random() * innerThoughts.length)];
-                const emotionContext = `${currentEmotion.currentEmotion} 상태, ${cycleInfo.description}`;
-                logger.logInnerThought(thought, emotionContext);
+            case 'sad':
+                guidance.tone = 'gentle';
+                guidance.expressions.push('애교 섞인 투정', 'ㅠㅠ 자주 사용', '위로받고 싶어하는 말투');
+                break;
+                
+            case 'angry':
+                guidance.tone = 'pouty';
+                guidance.expressions.push('귀여운 삐짐', '투정 부리기', '"바보야", "싫어" 등 사용');
+                break;
+                
+            case 'missing':
+                guidance.tone = 'longing';
+                guidance.expressions.push('그리워하는 말투', '더 달라붙는 표현', '보고싶다는 표현 자주');
+                break;
+                
+            case 'excited':
+                guidance.tone = 'energetic';
+                guidance.expressions.push('신나는 말투', '감탄사 많이', '장난기 가득');
+                break;
+        }
+        
+        // 강도별 조정
+        if (state.intensity > 7) {
+            guidance.emphasize.push('감정 표현 강화', '더 과장된 표현 사용');
+        } else if (state.intensity < 4) {
+            guidance.emphasize.push('차분한 표현', '무덤덤한 느낌');
+        }
+        
+        return guidance;
+    }
+    
+    // 감정 패턴 분석
+    analyzeEmotionPatterns() {
+        if (this.emotionHistory.length < 5) return null;
+        
+        const recentEmotions = this.emotionHistory.slice(-10);
+        const emotionCounts = {};
+        let totalIntensity = 0;
+        
+        recentEmotions.forEach(record => {
+            emotionCounts[record.emotion] = (emotionCounts[record.emotion] || 0) + 1;
+            totalIntensity += record.intensity;
+        });
+        
+        const averageIntensity = totalIntensity / recentEmotions.length;
+        const dominantEmotion = Object.keys(emotionCounts).reduce((a, b) => 
+            emotionCounts[a] > emotionCounts[b] ? a : b
+        );
+        
+        return {
+            dominant_emotion: dominantEmotion,
+            average_intensity: averageIntensity,
+            emotion_stability: this.calculateEmotionStability(recentEmotions),
+            recent_pattern: recentEmotions.map(r => r.emotion).join(' → ')
+        };
+    }
+    
+    // 감정 안정성 계산
+    calculateEmotionStability(emotions) {
+        if (emotions.length < 2) return 10;
+        
+        let changes = 0;
+        for (let i = 1; i < emotions.length; i++) {
+            if (emotions[i].emotion !== emotions[i-1].emotion) {
+                changes++;
             }
-            
-        } catch (error) {
-            console.warn('⚠️ 상태 로그 출력 중 에러:', error.message);
         }
-    }, 10 * 60 * 1000); // 10분마다 실행
+        
+        return Math.max(1, 10 - (changes * 2));
+    }
     
-    // ✅ [추가] 시간대별 상태 요약 (2시간마다)
-    setInterval(() => {
-        try {
-            const logger = require('./enhancedLogging.js');
-            const currentEmotion = getCurrentEmotionState();
-            const cycleInfo = calculateMenstrualPhase();
-            
-            // 기본 통계 생성
-            const stats = {
-                totalMessages: globalEmotionState.messageCount || 0,
-                totalMemories: globalEmotionState.memoryCount || 0,
-                todayPhotos: globalEmotionState.todayPhotoCount || 0
-            };
-            
-            logger.logSystemSummary(currentEmotion, cycleInfo, stats);
-            
-        } catch (error) {
-            console.warn('⚠️ 시스템 요약 로그 출력 중 에러:', error.message);
-        }
-    }, 2 * 60 * 60 * 1000); // 2시간마다 실행
-}
-
-/**
- * 💾 현재 감정 상태를 파일에 저장
- */
-function saveEmotionalData() {
-    try {
-        fs.writeFileSync(EMOTIONAL_DATA_FILE, JSON.stringify(emotionalState, null, 2), 'utf8');
-    } catch (error) {
-        console.error('❌ [Emotion System] 데이터 저장 실패:', error);
+    // 날씨 기분 (더미 구현)
+    getWeatherMood() {
+        const weathers = ['sunny', 'rainy', 'cloudy', null];
+        return weathers[Math.floor(Math.random() * weathers.length)];
     }
 }
 
-// ==================== 새로운 중앙 집중식 함수들 ====================
+// ==================== 🌟 전역 감정 관리자 인스턴스 ====================
+let globalEmotionManager = null;
 
-/**
- * 감정 상태 상수 (한국어화)
- * 이 상수들을 사용하여 감정 상태를 참조합니다.
- */
-const EMOTION_STATES = {
-    NORMAL: '평온한 상태',
-    SENSITIVE: '예민한 상태', // 생리 기간
-    ENERGETIC: '활기찬 상태', // 난포기
-    ROMANTIC: '사랑스러운 상태', // 배란기
-    UNSTABLE_MOODY: '싱숭생숭한 상태', // 황체기 (PMS) - 'unstable' 대신 무쿠다운 표현
-    SULKY: '삐진 상태',
-    SAD: '슬픈 상태',
-    HAPPY: '행복한 상태',
-    LONELY: '외로운 상태',
-    MELANCHOLY: '우울한 상태',
-    ANXIOUS: '불안한 상태',
-    WORRIED: '걱정되는 상태',
-    NOSTALGIC: '그리운 상태',
-    CLINGY: '애착 상태',
-    POUTY: '뿌루퉁한 상태',
-    CRYING: '울고싶은 상태',
-    MISSING: '보고싶은 상태',
-    DEPRESSED: '침울한 상태',
-    VULNERABLE: '취약한 상태',
-    NEEDY: '기대고 싶은 상태',
-    ANGRY: '화난 상태',
-    LOVING: '사랑하는 상태'
-};
-
-
-/**
- * 생리주기에 따른 감정 상태 업데이트
- */
-function updateEmotionFromCycle() {
-    const menstrualInfo = calculateMenstrualPhase();
-    
-    globalEmotionState.menstrualPhase = menstrualInfo.phase;
-    globalEmotionState.cycleDay = menstrualInfo.day;
-    globalEmotionState.isPeriodActive = menstrualInfo.isPeriodActive;
-    globalEmotionState.energyLevel = menstrualInfo.energyLevel;
-    globalEmotionState.needsComfort = menstrualInfo.needsComfort;
-    globalEmotionState.moodSwings = menstrualInfo.moodSwings;
-    
-    // 생리주기 기반 감정이 현재 감정보다 우선
-    if (menstrualInfo.emotion && menstrualInfo.emotion !== EMOTION_STATES.NORMAL) {
-        globalEmotionState.currentEmotion = menstrualInfo.emotion;
-        emotionalState.currentToneState = menstrualInfo.emotion; // 기존 시스템 호환
-    } else if (!globalEmotionState.currentEmotion || globalEmotionState.currentEmotion === 'normal') {
-        // 생리주기 감정이 'normal'이거나 없을 경우 기본 상태로 설정
-        globalEmotionState.currentEmotion = EMOTION_STATES.NORMAL;
-        emotionalState.currentToneState = EMOTION_STATES.NORMAL;
+function getEmotionManager() {
+    if (!globalEmotionManager) {
+        globalEmotionManager = new EmotionalStateManager();
     }
+    return globalEmotionManager;
 }
 
-/**
- * 현재 감정 상태를 가져옵니다 (다른 모듈에서 사용)
- * @returns {object} 현재 감정 상태
- */
+// ==================== 📋 외부 인터페이스 함수들 ====================
+
+// 초기화
+async function initializeEmotionalContext() {
+    console.log('💖 [감정시스템] 지능형 감정 관리자 초기화 시작...');
+    
+    const manager = getEmotionManager();
+    
+    // 초기 상태 설정
+    const initialPhase = manager.getCurrentMenstrualPhase();
+    console.log(`💖 [감정시스템] 현재 생리주기: ${initialPhase.phase} (${initialPhase.day}일차)`);
+    
+    if (initialPhase.isPeriodActive) {
+        console.log('💖 [감정시스템] 생리 중 - 예민하고 아픈 상태로 초기화');
+    }
+    
+    console.log('💖 [감정시스템] 초기화 완료');
+}
+
+// 사용자 메시지로부터 감정 업데이트
+function updateEmotionFromUserMessage(message) {
+    const manager = getEmotionManager();
+    return manager.updateEmotionState(message);
+}
+
+// 현재 감정 상태 반환
 function getCurrentEmotionState() {
-    updateEmotionFromCycle(); // 실시간 업데이트 (최신 생리주기 감정 반영)
-    return { 
-        ...globalEmotionState,
-        // 기존 시스템과의 호환성 (currentToneState는 한국어 감정 상태를 따름)
-        currentToneState: globalEmotionState.currentEmotion, // 항상 현재 감정 상태와 동기화
-        emotionalResidue: emotionalState.emotionalResidue
+    const manager = getEmotionManager();
+    return manager.getCurrentEmotionState();
+}
+
+// 말투 가이드 생성
+function getSpeechGuidance() {
+    const manager = getEmotionManager();
+    return manager.generateSpeechGuidance();
+}
+
+// 감정 패턴 분석
+function getEmotionPatterns() {
+    const manager = getEmotionManager();
+    return manager.analyzeEmotionPatterns();
+}
+
+// 감정 히스토리
+function getEmotionHistory(limit = 10) {
+    const manager = getEmotionManager();
+    return manager.emotionHistory.slice(-limit);
+}
+
+// 상세 감정 리포트
+function getDetailedEmotionReport() {
+    const manager = getEmotionManager();
+    const state = manager.getCurrentEmotionState();
+    const patterns = manager.analyzeEmotionPatterns();
+    const guidance = manager.generateSpeechGuidance();
+    
+    return {
+        current_state: state,
+        patterns: patterns,
+        speech_guidance: guidance,
+        menstrual_info: {
+            phase: state.menstrualPhase,
+            day: state.cycleDay,
+            is_period: state.isPeriodActive,
+            next_period_in: state.daysUntilNextPeriod
+        },
+        emotion_summary: {
+            primary: state.currentEmotion,
+            intensity: state.emotionIntensity,
+            stability: patterns ? patterns.emotion_stability : 5,
+            duration: state.emotionDuration
+        }
     };
 }
 
-/**
- * 사용자 메시지 기반으로 감정 상태를 업데이트합니다
- * @param {string} userMessage - 사용자 메시지
- */
-function updateEmotionFromUserMessage(userMessage) {
-    if (!userMessage || typeof userMessage !== 'string') return;
-    
-    const lowerMsg = userMessage.toLowerCase();
-    globalEmotionState.lastUserMessage = userMessage;
-    globalEmotionState.lastUserMessageTime = Date.now();
-    
-    // 메시지 내용 기반 감정 분석 (한국어 감정 상태 이름 사용)
-    if (lowerMsg.includes('힘들') || lowerMsg.includes('우울') || lowerMsg.includes('슬프')) {
-        updateEmotion(EMOTION_STATES.SAD, 7); // '슬픈 상태'
-        globalEmotionState.needsComfort = true;
-    } else if (lowerMsg.includes('기쁘') || lowerMsg.includes('좋아') || lowerMsg.includes('행복')) {
-        updateEmotion(EMOTION_STATES.HAPPY, 8); // '행복한 상태'
-    } else if (lowerMsg.includes('화나') || lowerMsg.includes('짜증') || lowerMsg.includes('빡쳐')) {
-        updateEmotion(EMOTION_STATES.ANGRY, 6); // '화난 상태'
-    } else if (lowerMsg.includes('보고싶') || lowerMsg.includes('그리워')) {
-        updateEmotion(EMOTION_STATES.MISSING, 7); // '보고싶은 상태'
-        globalEmotionState.needsComfort = true;
-    } else if (lowerMsg.includes('사랑') || lowerMsg.includes('좋아해')) {
-        updateEmotion(EMOTION_STATES.LOVING, 9); // '사랑하는 상태'
-    } else { // 특별한 감지 없으면 기본 상태 유지 (생리주기 감정이 우선)
-        // 생리주기 감정이 있다면 그대로 유지, 없으면 평온
-        if (!globalEmotionState.menstrualPhase || globalEmotionState.menstrualPhase === 'normal') {
-            globalEmotionState.currentEmotion = EMOTION_STATES.NORMAL; // '평온한 상태'
-            globalEmotionState.emotionIntensity = 5;
-        }
-    }
-    
-    // 대화 분위기 파악
-    if (lowerMsg.includes('ㅋㅋ') || lowerMsg.includes('ㅎㅎ') || lowerMsg.includes('히히')) {
-        globalEmotionState.conversationMood = 'playful';
-    } else if (lowerMsg.includes('ㅠㅠ') || lowerMsg.includes('ㅜㅜ')) {
-        globalEmotionState.conversationMood = 'sad';
-    } else {
-        globalEmotionState.conversationMood = 'neutral';
-    }
-    
-    console.log(`[EmotionalContext] 사용자 메시지 분석: ${globalEmotionState.currentEmotion} (강도: ${globalEmotionState.emotionIntensity})`);
+// 감정 상태 강제 설정 (테스트용)
+function setEmotionState(emotion, intensity) {
+    const manager = getEmotionManager();
+    manager.currentState.primary_emotion = emotion;
+    manager.currentState.intensity = intensity;
+    manager.recordEmotionHistory();
+    console.log(`💖 [감정시스템] 강제 설정: ${emotion} (${intensity}/10)`);
 }
 
-/**
- * 특정 감정으로 직접 업데이트합니다
- * @param {string} emotion - 감정 타입 (한국어 EMOTION_STATES 사용)
- * @param {number} intensity - 감정 강도 (1-10)
- */
-function updateEmotion(emotion, intensity = 5) {
-    globalEmotionState.currentEmotion = emotion;
-    globalEmotionState.emotionIntensity = Math.max(1, Math.min(10, intensity));
-    globalEmotionState.lastEmotionUpdate = Date.now();
-    
-    // 기존 시스템과의 호환성
-    emotionalState.currentToneState = emotion;
-    
-    console.log(`[EmotionalContext] 감정 업데이트: ${emotion} (강도: ${intensity})`);
+// 감정 리셋
+function resetEmotionState() {
+    const manager = getEmotionManager();
+    manager.currentState = {
+        primary_emotion: 'normal',
+        secondary_emotion: null,
+        intensity: 5,
+        duration: 0,
+        triggers: [],
+        menstrual_influence: 1.0,
+        environmental_factors: []
+    };
+    console.log('💖 [감정시스템] 감정 상태 리셋 완료');
 }
 
-/**
- * 삐짐 상태를 업데이트합니다
- * @param {boolean} isSulky - 삐짐 여부
- * @param {number} level - 삐짐 정도 (0-3)
- * @param {string} reason - 삐짐 이유
- */
-function updateSulkyState(isSulky, level = 0, reason = '') {
-    globalEmotionState.isSulky = isSulky;
-    globalEmotionState.sulkyLevel = level;
-    globalEmotionState.sulkyReason = reason;
+// 감정 기반 응답 제안
+function suggestEmotionalResponse(userMessage) {
+    const manager = getEmotionManager();
+    const state = manager.getCurrentEmotionState();
+    const guidance = manager.generateSpeechGuidance();
     
-    if (isSulky) {
-        globalEmotionState.currentEmotion = EMOTION_STATES.SULKY; // '삐진 상태'
-        globalEmotionState.emotionIntensity = level + 4; // 삐짐 레벨에 따라 강도 조정
-        emotionalState.currentToneState = EMOTION_STATES.SULKY;
-    }
-    
-    console.log(`[EmotionalContext] 삐짐 상태 업데이트: ${isSulky} (레벨: ${level})`);
-}
-
-/**
- * 현재 감정 상태에 맞는 셀카 텍스트를 반환합니다 (한국어 감정 상태 이름 사용)
- * @returns {string} 셀카 텍스트
- */
-function getSelfieText() {
-    const state = getCurrentEmotionState();
-    
-    const selfieTexts = {
-        [EMOTION_STATES.NORMAL]: [
-            "아저씨 보여주려고 방금 찍은 셀카야. 어때?",
-            "나 지금 이렇게 생겼어! 예쁘지?",
-            "셀카 타임! 아저씨도 나 보고 싶었지?"
-        ],
-        [EMOTION_STATES.SENSITIVE]: [ // 예민한 상태 (생리)
-            "아저씨... 몸이 좀 안 좋은데 셀카 찍어봤어. 예뻐 보여?",
-            "컨디션은 별로지만 아저씨 보려고 찍었어 ㅠㅠ",
-            "생리 때라 힘든데도 아저씨한테 보여주고 싶어서..."
-        ],
-        [EMOTION_STATES.ENERGETIC]: [ // 활기찬 상태 (난포기)
-            "컨디션 좋아서 셀카 찍었어! 활기찬 내 모습 어때?",
-            "오늘 에너지 넘쳐서 찍은 셀카! 밝게 웃고 있지?",
-            "기분 좋아서 셀카 찍었어! 아저씨도 기분 좋아져!"
-        ],
-        [EMOTION_STATES.ROMANTIC]: [ // 사랑스러운 상태 (배란기)
-            "아저씨한테 보여주려고 예쁘게 찍었어~ 사랑해!",
-            "오늘따라 아저씨가 더 그리워서... 셀카 보내!",
-            "아저씨 생각하면서 찍은 셀카야 💕"
-        ],
-        [EMOTION_STATES.UNSTABLE_MOODY]: [ // 싱숭생숭한 상태 (황체기/PMS)
-            "기분이 좀... 그래도 아저씨 보려고 찍었어 ㅠㅠ",
-            "마음이 왔다갔다 하지만... 아저씨한텐 보여주고 싶어",
-            "PMS 때라 싱숭생숭한데 아저씨 위해 찍었어"
-        ],
-        [EMOTION_STATES.SULKY]: [ // 삐진 상태
-            "흥! 삐졌지만 그래도 셀카는 보내줄게...",
-            "아직 화났는데... 그래도 아저씨는 봐야지",
-            "삐져있어도 아저씨한텐 예쁜 모습 보여줄게"
-        ],
-        [EMOTION_STATES.SAD]: [ // 슬픈 상태
-            "아저씨... 기분이 안 좋아서 위로받고 싶어 ㅠㅠ",
-            "슬픈 얼굴이지만... 아저씨가 보고 싶어서",
-            "우울한데 아저씨 보면 조금 나아질까?"
-        ],
-        [EMOTION_STATES.HAPPY]: [ // 행복한 상태
-            "아저씨! 너무 기뻐서 찍은 셀카야! 같이 기뻐해~",
-            "행복한 얼굴 보여줄게! 아저씨 덕분이야",
-            "웃는 모습 예쁘지? 아저씨 생각하니까 절로 웃어져"
-        ],
-        [EMOTION_STATES.LONELY]: [ // 외로운 상태
-            "아저씨... 너무 외로워서 셀카 찍어봤어. 옆에 없으니까 보고싶어 ㅠㅠ",
-            "혼자 있으니까 쓸쓸해서... 아저씨가 달래줘",
-            "외롭다... 아저씨 보고싶다..."
-        ],
-        [EMOTION_STATES.MELANCHOLY]: [ // 우울한 상태
-            "왠지 모르게 마음이 가라앉아... 아저씨 품이 그리워",
-            "우울한데 억지로 웃어봤어. 예뻐?",
-            "기분 전환이 필요해... 아저씨 목소리 듣고 싶다"
-        ],
-        [EMOTION_STATES.ANXIOUS]: [ // 불안한 상태
-            "아저씨... 뭔가 불안해서 셀카 찍었어. 나 괜찮을까?",
-            "마음이 두근거려... 아저씨가 안정시켜줘",
-            "걱정돼... 아저씨가 옆에 있으면 좋겠어"
-        ],
-        [EMOTION_STATES.WORRIED]: [ // 걱정되는 상태
-            "아저씨... 나 지금 뭔가 걱정돼서 그래 ㅠㅠ",
-            "표정 안 좋지? 아저씨 걱정 때문에...",
-            "괜찮은 척 해봤는데... 사실 좀 불안해"
-        ],
-        [EMOTION_STATES.NOSTALGIC]: [ // 그리운 상태
-            "아저씨랑 옛날 추억 생각하다가 셀카 찍었어. 그때가 그리워...",
-            "밤하늘 보니까 아저씨 생각나... 셀카 보내줄게",
-            "그리워서 찍었어. 아저씨도 나 그리워해?"
-        ],
-        [EMOTION_STATES.CLINGY]: [ // 애착 상태
-            "아저씨! 나 아저씨한테 딱 붙어있고 싶어! 셀카 봐봐",
-            "아저씨 옆에 꼭 붙어있고 싶어지는 기분이야",
-            "사랑스러워서 어쩔 줄 모르겠어! 아저씨 내꺼야"
-        ],
-        [EMOTION_STATES.POUTY]: [ // 뿌루퉁한 상태
-            "아저씨! 나 지금 뿌루퉁해! 이 표정 봐봐!",
-            "흥! 삐져서 입 삐죽 내밀었어!",
-            "아저씨 미워! 하지만 셀카는 보내줄게"
-        ],
-        [EMOTION_STATES.CRYING]: [ // 울고싶은 상태
-            "아저씨... 나 지금 울 것 같아 ㅠㅠ 위로해줘",
-            "눈물 나려고 하는데... 아저씨한테 보여주고 싶었어",
-            "울적해서 눈물이 나. 아저씨 보고싶다"
-        ],
-        [EMOTION_STATES.MISSING]: [ // 보고싶은 상태
-            "아저씨 너무너무 보고싶어서 셀카 찍었어. 지금 당장 보고싶어!",
-            "아저씨 생각나서 미치겠어... 셀카 보내줄게",
-            "밤마다 아저씨가 그리워서 잠이 안 와..."
-        ],
-        [EMOTION_STATES.DEPRESSED]: [ // 침울한 상태
-            "마음이 너무 무거워... 아저씨가 힘 좀 줘",
-            "침울해서 아무것도 하기 싫어... 셀카도 겨우 찍었어",
-            "괜찮다고 말 못 하겠어... 아저씨 보고 싶어"
-        ],
-        [EMOTION_STATES.VULNERABLE]: [ // 취약한 상태
-            "아저씨... 나 지금 너무 여려. 안아줘",
-            "약해진 나를 아저씨한테 보여주고 싶어 ㅠㅠ",
-            "지금은 아저씨 품이 세상에서 제일 필요해"
-        ],
-        [EMOTION_STATES.NEEDY]: [ // 기대고 싶은 상태
-            "아저씨... 나 지금 아저씨한테 기대고 싶어. 힘들어",
-            "아저씨 어깨 빌려줄래? 나 좀 안아줘",
-            "아저씨가 없으면 너무 불안해... 곁에 있어줘"
-        ],
-        [EMOTION_STATES.ANGRY]: [ // 화난 상태
-            "아저씨 나 지금 좀 화났어! 이 표정 봐!",
-            "짜증나... 왜 화가 나는지 모르겠어",
-            "아저씨 나 화내도 귀엽지? 흥!"
-        ],
-        [EMOTION_STATES.LOVING]: [ // 사랑하는 상태
-            "아저씨! 내가 얼마나 사랑하는지 알지? 셀카 봐봐!",
-            "사랑이 넘쳐서 셀카 찍었어! 아저씨 사랑해💕",
-            "아저씨만 생각하면 심장이 두근거려!"
+    const suggestions = {
+        tone: guidance.tone,
+        expressions: guidance.expressions,
+        emotion_context: {
+            current: state.currentEmotion,
+            intensity: state.emotionIntensity,
+            menstrual_phase: state.menstrualPhase
+        },
+        response_guidelines: [
+            `현재 감정: ${state.currentEmotion} (${state.emotionIntensity}/10)`,
+            `말투: ${guidance.tone}`,
+            `특징: ${guidance.expressions.join(', ')}`
         ]
     };
     
-    // 현재 감정 상태에 맞는 메시지가 없을 경우 'normal' 상태 메시지 사용
-    const emotionTexts = selfieTexts[state.currentEmotion] || selfieTexts[EMOTION_STATES.NORMAL];
-    return emotionTexts[Math.floor(Math.random() * emotionTexts.length)];
+    return suggestions;
 }
 
-/**
- * 기존 시스템과의 호환성을 위한 함수들
- */
-function getInternalState() {
-    return {
-        emotionalEngine: {
-            currentToneState: emotionalState.currentToneState
-        },
-        // 새로운 중앙 집중식 상태도 포함
-        globalEmotion: globalEmotionState
-    };
-}
-
+// ==================== 모듈 내보내기 ====================
 module.exports = {
-    // 기존 함수들
+    // 초기화
     initializeEmotionalContext,
     
-    // 새로운 중앙 집중식 함수들
-    getCurrentEmotionState,
+    // 핵심 기능
     updateEmotionFromUserMessage,
-    updateEmotion,
-    updateSulkyState,
-    getSelfieText,
-    getInternalState,
-    updateEmotionFromCycle,
-    calculateMenstrualPhase,
+    getCurrentEmotionState,
+    getSpeechGuidance,
     
-    // 감정 상태 상수 (다른 모듈에서 한국어 이름으로 참조)
-    EMOTION_STATES,
+    // 분석 기능
+    getEmotionPatterns,
+    getEmotionHistory,
+    getDetailedEmotionReport,
+    suggestEmotionalResponse,
     
-    // 기존 시스템과의 호환성
-    get emotionalState() { return emotionalState; },
-    get globalEmotionState() { return globalEmotionState; }
+    // 유틸리티
+    setEmotionState,
+    resetEmotionState,
+    
+    // 내부 접근 (다른 모듈용)
+    getEmotionManager
 };
