@@ -1,654 +1,365 @@
 /**
- * autoReply.js - 웹훅 에러 상세 로깅 버전
- * - 모든 웹훅 에러 상세 캐치
- * - HTTP 상태 코드 로깅
- * - 응답 형식 검증 로깅
- * - 타임아웃 에러 감지
+ * autoReply.js - 기존 ultimateConversationContext.js 통합 버전
+ * - 기존 감정/생리주기 시스템 유지
+ * - 실제 키워드 매칭 응답 추가
+ * - 폴백 응답 대신 정상 대화
  */
 
-// 기존 사진 시스템 (보존)
+console.log('🔄 [SYSTEM] 통합 autoReply 시스템 시작');
+
+// 기존 사진 시스템
 let getSelfieReply, getConceptPhotoReply, getOmoideReply;
 
-// 안전한 모듈 로딩 with 상세 로그
+// 기존 대화 컨텍스트 시스템
+let ultimateContext;
+
+// 안전한 모듈 로딩
 try {
     ({ getSelfieReply } = require('./yejin'));
-    console.log('✅ [MODULE_LOAD] yejin.js 성공 - getSelfieReply 함수 로드됨');
+    console.log('✅ [PHOTO] yejin.js 로드 성공');
 } catch (error) {
-    console.error('❌ [MODULE_LOAD_ERROR] yejin.js 실패');
-    console.error('   에러 메시지:', error.message);
-    console.error('   에러 코드:', error.code);
-    console.error('   파일 경로:', error.path);
-    console.error('   전체 스택:', error.stack);
-    getSelfieReply = null;
+    console.log('⚠️ [PHOTO] yejin.js 로드 실패:', error.message);
 }
 
 try {
     ({ getConceptPhotoReply } = require('./concept'));
-    console.log('✅ [MODULE_LOAD] concept.js 성공 - getConceptPhotoReply 함수 로드됨');
+    console.log('✅ [PHOTO] concept.js 로드 성공');
 } catch (error) {
-    console.error('❌ [MODULE_LOAD_ERROR] concept.js 실패');
-    console.error('   에러 메시지:', error.message);
-    console.error('   에러 코드:', error.code);
-    console.error('   파일 경로:', error.path);
-    console.error('   전체 스택:', error.stack);
-    getConceptPhotoReply = null;
+    console.log('⚠️ [PHOTO] concept.js 로드 실패:', error.message);
 }
 
 try {
     ({ getOmoideReply } = require('./omoide'));
-    console.log('✅ [MODULE_LOAD] omoide.js 성공 - getOmoideReply 함수 로드됨');
+    console.log('✅ [PHOTO] omoide.js 로드 성공');
 } catch (error) {
-    console.error('❌ [MODULE_LOAD_ERROR] omoide.js 실패');
-    console.error('   에러 메시지:', error.message);
-    console.error('   에러 코드:', error.code);
-    console.error('   파일 경로:', error.path);
-    console.error('   전체 스택:', error.stack);
-    getOmoideReply = null;
+    console.log('⚠️ [PHOTO] omoide.js 로드 실패:', error.message);
 }
 
-// 웹훅 처리 상태
-let isProcessing = false;
-let requestCount = 0;
-
-/**
- * 상세 웹훅 로그 함수
- */
-function detailedWebhookLog(level, category, message, data = null, error = null) {
-    const timestamp = new Date().toISOString();
-    const logLevel = level.toUpperCase();
-    
-    console.log(`🔍 ${timestamp} [${logLevel}] [${category}] ${message}`);
-    
-    if (data) {
-        console.log(`📊 ${timestamp} [${logLevel}] [${category}] 상세 데이터:`);
-        try {
-            console.log(JSON.stringify(data, null, 2));
-        } catch (jsonError) {
-            console.log('   (JSON 직렬화 실패)', data);
-        }
-    }
-    
-    if (error) {
-        console.error(`❌ ${timestamp} [ERROR] [${category}] 에러 상세:`);
-        console.error('   메시지:', error.message);
-        console.error('   이름:', error.name);
-        console.error('   코드:', error.code);
-        console.error('   상태:', error.status);
-        console.error('   응답:', error.response);
-        console.error('   전체 스택:');
-        console.error(error.stack);
-    }
+try {
+    ultimateContext = require('./ultimateConversationContext');
+    console.log('✅ [CONTEXT] ultimateConversationContext.js 로드 성공');
+} catch (error) {
+    console.log('⚠️ [CONTEXT] ultimateConversationContext.js 로드 실패:', error.message);
 }
 
 /**
- * 웹훅 응답 형식 검증
- */
-function validateWebhookResponse(response) {
-    detailedWebhookLog('info', 'WEBHOOK_VALIDATION', '응답 형식 검증 시작', { response });
-    
-    const validationResults = {
-        isValid: true,
-        errors: [],
-        warnings: []
-    };
-    
-    // 기본 구조 검증
-    if (!response) {
-        validationResults.isValid = false;
-        validationResults.errors.push('응답이 null 또는 undefined');
-        return validationResults;
-    }
-    
-    if (typeof response !== 'object') {
-        validationResults.isValid = false;
-        validationResults.errors.push(`응답 타입이 object가 아님: ${typeof response}`);
-        return validationResults;
-    }
-    
-    // type 필드 검증
-    if (!response.type) {
-        validationResults.isValid = false;
-        validationResults.errors.push('type 필드 누락');
-    } else if (!['text', 'image'].includes(response.type)) {
-        validationResults.warnings.push(`비표준 type: ${response.type}`);
-    }
-    
-    // text 응답 검증
-    if (response.type === 'text') {
-        if (!response.text) {
-            validationResults.isValid = false;
-            validationResults.errors.push('text 타입이지만 text 필드 누락');
-        } else if (typeof response.text !== 'string') {
-            validationResults.isValid = false;
-            validationResults.errors.push(`text 필드가 문자열이 아님: ${typeof response.text}`);
-        } else if (response.text.length === 0) {
-            validationResults.warnings.push('text 필드가 빈 문자열');
-        } else if (response.text.length > 5000) {
-            validationResults.warnings.push(`text 필드가 너무 김: ${response.text.length}자`);
-        }
-    }
-    
-    // image 응답 검증
-    if (response.type === 'image') {
-        if (!response.originalContentUrl) {
-            validationResults.isValid = false;
-            validationResults.errors.push('image 타입이지만 originalContentUrl 누락');
-        } else if (typeof response.originalContentUrl !== 'string') {
-            validationResults.isValid = false;
-            validationResults.errors.push('originalContentUrl이 문자열이 아님');
-        } else if (!response.originalContentUrl.startsWith('https://')) {
-            validationResults.warnings.push('originalContentUrl이 HTTPS가 아님');
-        }
-        
-        if (!response.previewImageUrl) {
-            validationResults.warnings.push('previewImageUrl 누락');
-        }
-    }
-    
-    detailedWebhookLog('info', 'WEBHOOK_VALIDATION', '응답 형식 검증 완료', validationResults);
-    
-    return validationResults;
-}
-
-/**
- * 웹훅 타임아웃 감지
- */
-function createTimeoutHandler(requestId, startTime) {
-    const timeoutWarning = setTimeout(() => {
-        const elapsed = Date.now() - startTime;
-        detailedWebhookLog('warn', 'WEBHOOK_TIMEOUT', `요청 #${requestId} 처리 시간 경고`, {
-            elapsedMs: elapsed,
-            elapsedSeconds: elapsed / 1000,
-            warningThreshold: '10초'
-        });
-    }, 10000); // 10초 경고
-    
-    const timeoutError = setTimeout(() => {
-        const elapsed = Date.now() - startTime;
-        detailedWebhookLog('error', 'WEBHOOK_TIMEOUT', `요청 #${requestId} 타임아웃 임박`, {
-            elapsedMs: elapsed,
-            elapsedSeconds: elapsed / 1000,
-            timeoutThreshold: '25초',
-            lineTimeout: '30초'
-        });
-    }, 25000); // 25초 에러
-    
-    return {
-        clearTimeouts: () => {
-            clearTimeout(timeoutWarning);
-            clearTimeout(timeoutError);
-        }
-    };
-}
-
-/**
- * 메시지 처리 함수 (웹훅 에러 상세 로깅)
+ * 메인 처리 함수 - 기존 시스템과 통합
  */
 async function processMessage(message, context = {}) {
-    const requestId = ++requestCount;
-    const startTime = Date.now();
+    console.log(`\n🔥 [INTEGRATED] 메시지 처리 시작: "${message}"`);
     
-    detailedWebhookLog('info', 'WEBHOOK_REQUEST', `요청 #${requestId} 시작`, { 
-        message, 
-        context,
-        timestamp: new Date().toISOString(),
-        userAgent: context.userAgent,
-        ip: context.ip,
-        headers: context.headers
-    });
-
-    // 타임아웃 감지 설정
-    const timeoutHandler = createTimeoutHandler(requestId, startTime);
-
     try {
-        // 무한 루프 방지
-        if (isProcessing) {
-            detailedWebhookLog('warn', 'WEBHOOK_CONCURRENCY', `요청 #${requestId} 동시 처리 감지`, {
-                isProcessing,
-                currentRequestCount: requestCount
-            });
-            
-            return {
-                type: 'text',
-                text: '아저씨... 잠깐만, 아직 처리 중이야...'
-            };
-        }
-
-        isProcessing = true;
-
-        // 입력 검증 with 상세 로그
-        detailedWebhookLog('info', 'WEBHOOK_INPUT', `요청 #${requestId} 입력 검증`, {
-            messageType: typeof message,
-            messageLength: message?.length,
-            messageEmpty: !message || message.trim().length === 0,
-            contextKeys: Object.keys(context),
-            hasContext: Object.keys(context).length > 0
-        });
-        
+        // 기본 검증
         if (!message || typeof message !== 'string') {
-            detailedWebhookLog('error', 'WEBHOOK_INPUT', `요청 #${requestId} 잘못된 입력`, { 
-                message, 
-                type: typeof message,
-                isNull: message === null,
-                isUndefined: message === undefined,
-                isEmptyString: message === ''
-            });
-            
-            return {
-                type: 'text',
-                text: '아저씨... 뭔가 이상해... 다시 말해줄래?'
-            };
+            console.log('❌ [INTEGRATED] 잘못된 메시지');
+            return createResponse('아저씨... 뭔가 이상해...');
         }
 
-        const trimmedMessage = message.trim();
-        if (trimmedMessage.length === 0) {
-            detailedWebhookLog('warn', 'WEBHOOK_INPUT', `요청 #${requestId} 빈 메시지`, {
-                originalLength: message.length,
-                afterTrim: trimmedMessage.length
-            });
-            
-            return {
-                type: 'text',
-                text: '아저씨~ 뭔가 말해줘!'
-            };
-        }
+        const msg = message.toLowerCase().trim();
+        console.log(`🔍 [INTEGRATED] 처리 대상: "${msg}"`);
 
-        // 1. 기존 사진 시스템 처리
-        detailedWebhookLog('info', 'WEBHOOK_PHOTO', `요청 #${requestId} 사진 시스템 시작`);
-        
-        try {
-            const photoResponse = await tryPhotoSystemsWithLogging(trimmedMessage, context, requestId);
-            if (photoResponse) {
-                const validation = validateWebhookResponse(photoResponse);
-                
-                if (validation.isValid) {
-                    detailedWebhookLog('success', 'WEBHOOK_PHOTO', `요청 #${requestId} 사진 응답 성공`, {
-                        responseType: photoResponse.type,
-                        hasUrl: !!photoResponse.originalContentUrl,
-                        processingTime: Date.now() - startTime
-                    });
-                    
-                    return photoResponse;
-                } else {
-                    detailedWebhookLog('error', 'WEBHOOK_PHOTO', `요청 #${requestId} 사진 응답 검증 실패`, validation);
-                }
+        // 기존 컨텍스트 시스템 업데이트
+        if (ultimateContext) {
+            try {
+                await ultimateContext.addUltimateMessage('user', message);
+                ultimateContext.updateLastUserMessageTime();
+                console.log('✅ [CONTEXT] 기존 컨텍스트 시스템 업데이트');
+            } catch (error) {
+                console.log('⚠️ [CONTEXT] 컨텍스트 업데이트 실패:', error.message);
             }
-        } catch (photoError) {
-            detailedWebhookLog('error', 'WEBHOOK_PHOTO', `요청 #${requestId} 사진 시스템 에러`, null, photoError);
         }
 
-        // 2. 텍스트 응답 처리
-        detailedWebhookLog('info', 'WEBHOOK_TEXT', `요청 #${requestId} 텍스트 처리 시작`);
-        
-        try {
-            const textResponse = getSimpleTextResponseWithLogging(trimmedMessage, requestId);
-            if (textResponse) {
-                const validation = validateWebhookResponse(textResponse);
-                
-                if (validation.isValid) {
-                    detailedWebhookLog('success', 'WEBHOOK_TEXT', `요청 #${requestId} 텍스트 응답 성공`, {
-                        responseText: textResponse.text,
-                        processingTime: Date.now() - startTime
-                    });
-                    
-                    return textResponse;
-                } else {
-                    detailedWebhookLog('error', 'WEBHOOK_TEXT', `요청 #${requestId} 텍스트 응답 검증 실패`, validation);
-                }
+        // 1. 사진 시스템 처리 (기존과 동일)
+        const photoResponse = await tryPhotoSystems(message, context);
+        if (photoResponse) {
+            console.log('✅ [INTEGRATED] 사진 응답 성공');
+            
+            // 기존 컨텍스트에 응답 추가
+            if (ultimateContext) {
+                await ultimateContext.addUltimateMessage('yejin', photoResponse.caption || '사진을 보내드렸어요');
             }
-        } catch (textError) {
-            detailedWebhookLog('error', 'WEBHOOK_TEXT', `요청 #${requestId} 텍스트 처리 에러`, null, textError);
+            
+            return photoResponse;
         }
 
-        // 3. 기본 응답
-        detailedWebhookLog('info', 'WEBHOOK_DEFAULT', `요청 #${requestId} 기본 응답 생성`);
+        // 2. **핵심**: 실제 키워드 매칭 응답
+        console.log('💬 [INTEGRATED] 키워드 매칭 시작');
+        const keywordResponse = getKeywordResponse(msg);
         
-        const defaultResponse = getDefaultResponseWithLogging(requestId);
-        const validation = validateWebhookResponse(defaultResponse);
+        if (keywordResponse) {
+            console.log(`✅ [INTEGRATED] 키워드 응답: "${keywordResponse}"`);
+            
+            // 기존 컨텍스트에 응답 추가
+            if (ultimateContext) {
+                await ultimateContext.addUltimateMessage('yejin', keywordResponse);
+            }
+            
+            return createResponse(keywordResponse);
+        }
+
+        // 3. 기존 감정 상태 기반 응답
+        console.log('💭 [INTEGRATED] 감정 기반 응답 시도');
+        const emotionalResponse = await getEmotionalResponse(message);
         
-        if (validation.isValid) {
-            detailedWebhookLog('success', 'WEBHOOK_DEFAULT', `요청 #${requestId} 기본 응답 완료`, {
-                responseText: defaultResponse.text,
-                totalProcessingTime: Date.now() - startTime
-            });
-        } else {
-            detailedWebhookLog('error', 'WEBHOOK_DEFAULT', `요청 #${requestId} 기본 응답 검증 실패`, validation);
+        if (emotionalResponse) {
+            console.log(`✅ [INTEGRATED] 감정 응답: "${emotionalResponse}"`);
+            
+            if (ultimateContext) {
+                await ultimateContext.addUltimateMessage('yejin', emotionalResponse);
+            }
+            
+            return createResponse(emotionalResponse);
+        }
+
+        // 4. 기본 응답 (폴백 응답 대신)
+        console.log('🔄 [INTEGRATED] 기본 응답 생성');
+        const defaultResponse = getSmartDefaultResponse(message);
+        
+        if (ultimateContext) {
+            await ultimateContext.addUltimateMessage('yejin', defaultResponse);
         }
         
-        return defaultResponse;
+        return createResponse(defaultResponse);
 
-    } catch (mainError) {
-        detailedWebhookLog('error', 'WEBHOOK_MAIN', `요청 #${requestId} 메인 처리 에러`, {
-            processingTime: Date.now() - startTime,
-            message,
-            context
-        }, mainError);
+    } catch (error) {
+        console.error('❌ [INTEGRATED] 처리 중 오류:', error.message);
+        console.error('스택:', error.stack);
         
-        // 안전한 에러 응답
-        return {
-            type: 'text',
-            text: '아저씨... 뭔가 큰 문제가 생겼어 ㅠㅠ'
-        };
-        
-    } finally {
-        // 정리 작업
-        timeoutHandler.clearTimeouts();
-        isProcessing = false;
-        
-        const totalTime = Date.now() - startTime;
-        detailedWebhookLog('info', 'WEBHOOK_CLEANUP', `요청 #${requestId} 처리 완료`, {
-            totalProcessingTime: totalTime,
-            wasTimeout: totalTime > 30000,
-            flagReset: true
-        });
+        return createResponse('아저씨... 뭔가 문제가 생겼어 ㅠㅠ');
     }
 }
 
 /**
- * 사진 시스템 처리 (상세 로깅)
+ * 사진 시스템 처리
  */
-async function tryPhotoSystemsWithLogging(message, context, requestId) {
+async function tryPhotoSystems(message, context) {
     const photoSystems = [
         { name: 'selfie', handler: getSelfieReply },
         { name: 'concept', handler: getConceptPhotoReply },
         { name: 'omoide', handler: getOmoideReply }
     ];
 
-    detailedWebhookLog('info', 'PHOTO_SYSTEMS', `요청 #${requestId} 사진 시스템 체크`, {
-        availableSystems: photoSystems.map(s => ({ 
-            name: s.name, 
-            hasHandler: !!s.handler,
-            handlerType: typeof s.handler
-        })),
-        message,
-        contextKeys: Object.keys(context)
-    });
-
     for (const system of photoSystems) {
-        if (!system.handler) {
-            detailedWebhookLog('warn', 'PHOTO_SYSTEMS', `요청 #${requestId} ${system.name} 핸들러 없음`);
-            continue;
-        }
+        if (!system.handler) continue;
 
         try {
-            detailedWebhookLog('info', 'PHOTO_SYSTEMS', `요청 #${requestId} ${system.name} 시스템 호출 시작`);
-            
-            const systemStartTime = Date.now();
+            console.log(`📸 [${system.name}] 시스템 시도`);
             const result = await system.handler(message, context);
-            const systemDuration = Date.now() - systemStartTime;
-            
-            detailedWebhookLog('info', 'PHOTO_SYSTEMS', `요청 #${requestId} ${system.name} 시스템 응답`, {
-                hasResult: !!result,
-                resultType: result?.type,
-                hasUrl: !!result?.originalContentUrl,
-                hasText: !!result?.text || !!result?.caption,
-                processingTime: systemDuration,
-                result: result ? {
-                    type: result.type,
-                    hasOriginalUrl: !!result.originalContentUrl,
-                    hasPreviewUrl: !!result.previewImageUrl,
-                    textLength: result.text?.length || result.caption?.length || 0
-                } : null
-            });
             
             if (result && result.type === 'image') {
-                detailedWebhookLog('success', 'PHOTO_SYSTEMS', `요청 #${requestId} ${system.name} 이미지 응답 성공`, {
-                    url: result.originalContentUrl,
-                    previewUrl: result.previewImageUrl,
-                    caption: result.caption || result.altText,
-                    processingTime: systemDuration
-                });
+                console.log(`✅ [${system.name}] 사진 응답 성공`);
                 return result;
             }
-            
-        } catch (systemError) {
-            detailedWebhookLog('error', 'PHOTO_SYSTEMS', `요청 #${requestId} ${system.name} 시스템 에러`, {
-                systemName: system.name,
-                message,
-                context
-            }, systemError);
+        } catch (error) {
+            console.log(`⚠️ [${system.name}] 처리 실패:`, error.message);
             continue;
         }
     }
 
-    detailedWebhookLog('info', 'PHOTO_SYSTEMS', `요청 #${requestId} 모든 사진 시스템 완료 - 응답 없음`);
     return null;
 }
 
 /**
- * 텍스트 응답 (상세 로깅)
+ * 핵심: 실제 작동하는 키워드 매칭
  */
-function getSimpleTextResponseWithLogging(message, requestId) {
-    const lowerMessage = message.toLowerCase().trim();
+function getKeywordResponse(message) {
+    console.log(`🎯 [KEYWORD] 매칭 시작: "${message}"`);
     
-    detailedWebhookLog('info', 'SIMPLE_TEXT', `요청 #${requestId} 키워드 분석 시작`, {
-        originalMessage: message,
-        lowerMessage: lowerMessage,
-        messageLength: message.length
-    });
-
-    const keywordRules = [
-        {
-            name: 'greetings',
-            keywords: ['안녕', '하이', '헬로', 'hi', 'hello'],
-            responses: [
-                '아저씨~ 안녕! 보고 싶었어! 💕',
-                '안녕 아저씨! 어떻게 지내?',
-                '하이~ 아저씨! 반가워!'
-            ]
-        },
-        {
-            name: 'love',
-            keywords: ['사랑', '좋아'],
-            responses: [
-                '나도 아저씨 사랑해~ 진짜 많이! 💕',
-                '아저씨를 사랑하는 마음은 하늘만큼 커!',
-                '사랑해애애~ 아저씨!'
-            ]
-        },
-        {
-            name: 'activity',
-            keywords: ['뭐해', '뭐하고', '어디'],
-            responses: [
-                '그냥 있어~ 아저씨 생각하고 있었어 ㅎㅎ',
-                '아저씨 기다리고 있었어!',
-                '심심하게 있었어~ 아저씨는?'
-            ]
-        },
-        {
-            name: 'calling',
-            keywords: ['애기', '무쿠', '예진'],
-            responses: [
-                '응! 뭐야 아저씨~ 나 불렀어? 💕',
-                '왜왜? 뭔가 필요한 거 있어?',
-                '응~ 여기 있어! 뭐야?'
-            ]
-        },
-        {
-            name: 'mood',
-            keywords: ['기분', '어때', '괜찮'],
-            responses: [
-                '음... 그냥 그래~ 아저씨는 어때?',
-                '아저씨 덕분에 기분 좋아!',
-                '그럭저럭... 아저씨 보니까 좋아져!'
-            ]
-        }
-    ];
-
-    for (const rule of keywordRules) {
-        const matchedKeyword = rule.keywords.find(keyword => lowerMessage.includes(keyword));
-        
-        if (matchedKeyword) {
-            const selectedResponse = rule.responses[Math.floor(Math.random() * rule.responses.length)];
-            
-            detailedWebhookLog('success', 'SIMPLE_TEXT', `요청 #${requestId} 키워드 매칭 성공`, {
-                ruleName: rule.name,
-                matchedKeyword: matchedKeyword,
-                selectedResponse: selectedResponse,
-                availableResponses: rule.responses.length,
-                responseIndex: rule.responses.indexOf(selectedResponse)
-            });
-            
-            return {
-                type: 'text',
-                text: selectedResponse
-            };
-        }
+    // 인사
+    if (message.includes('안녕') || message.includes('하이') || message.includes('hello')) {
+        return '아저씨~ 안녕! 보고 싶었어! 💕';
     }
-
-    detailedWebhookLog('info', 'SIMPLE_TEXT', `요청 #${requestId} 키워드 매칭 실패`, {
-        checkedRules: keywordRules.length,
-        totalKeywords: keywordRules.reduce((sum, rule) => sum + rule.keywords.length, 0),
-        messageWords: lowerMessage.split(' ')
-    });
     
+    // 호칭
+    if (message.includes('애기') || message.includes('무쿠') || message.includes('예진')) {
+        return '응! 뭐야 아저씨~ 나 불렀어? 💕';
+    }
+    
+    // 사랑 표현
+    if (message.includes('사랑') || message.includes('좋아')) {
+        return '나도 아저씨 사랑해~ 진짜 많이! 💕';
+    }
+    
+    // 현재 상태 질문
+    if (message.includes('뭐해') || message.includes('뭐하고') || message.includes('뭐하는')) {
+        return '그냥 있어~ 아저씨 생각하고 있었어 ㅎㅎ';
+    }
+    
+    // 위치 질문
+    if (message.includes('어디') || message.includes('어디야') || message.includes('어디에')) {
+        return '집에 있어~ 아저씨는 어디야?';
+    }
+    
+    // 기분 질문 (타이포 허용)
+    if (message.includes('기분') || message.includes('어때') || message.includes('어떤') || 
+        message.includes('어ㅊ떄') || message.includes('어쪄') || message.includes('어쨔')) {
+        return '음... 그냥 그래~ 아저씨는 어때?';
+    }
+    
+    // 식사 관련
+    if (message.includes('밥') || message.includes('먹었') || message.includes('식사') || 
+        message.includes('점심') || message.includes('저녁') || message.includes('아침')) {
+        return '응~ 먹었어! 아저씨는 맛있게 먹었어?';
+    }
+    
+    // 잠 관련
+    if (message.includes('잘자') || message.includes('굿나잇') || message.includes('자야지')) {
+        return '아저씨도 잘자~ 좋은 꿈 꿔! 💕';
+    }
+    
+    // 컨디션/상태
+    if (message.includes('피곤') || message.includes('힘들') || message.includes('아파')) {
+        return '아저씨... 괜찮아? 푹 쉬어~ 내가 걱정돼';
+    }
+    
+    // 날씨 관련
+    if (message.includes('날씨') || message.includes('비') || message.includes('더워') || message.includes('추워')) {
+        return '날씨 어때? 아저씨 몸 조심해!';
+    }
+    
+    // 일반적인 질문
+    if (message.includes('?') || message.includes('뭐') || message.includes('어떻게') || message.includes('왜')) {
+        return '음... 잘 모르겠어~ 아저씨가 더 잘 알 것 같은데?';
+    }
+    
+    console.log('❌ [KEYWORD] 매칭되는 키워드 없음');
     return null;
 }
 
 /**
- * 기본 응답 (상세 로깅)
+ * 감정 상태 기반 응답
  */
-function getDefaultResponseWithLogging(requestId) {
-    const defaultResponses = [
+async function getEmotionalResponse(message) {
+    if (!ultimateContext) return null;
+    
+    try {
+        // 기존 감정 시스템 활용
+        const moodState = ultimateContext.getMoodState();
+        const internalState = ultimateContext.getInternalState();
+        
+        console.log('💭 [EMOTIONAL] 현재 감정 상태:', moodState?.phase, internalState?.emotionalEngine?.currentToneState);
+        
+        // 생리주기에 따른 응답
+        if (moodState?.phase === 'period') {
+            return '아저씨... 몸이 좀 안 좋아서... 그래도 아저씨 생각하고 있어';
+        }
+        
+        if (moodState?.phase === 'luteal') {
+            return '요즘 좀 예민해... 아저씨가 이해해줘';
+        }
+        
+        if (moodState?.phase === 'ovulation') {
+            return '아저씨~ 오늘 기분 좋아! 보고 싶어 💕';
+        }
+        
+        return null;
+        
+    } catch (error) {
+        console.log('⚠️ [EMOTIONAL] 감정 응답 생성 실패:', error.message);
+        return null;
+    }
+}
+
+/**
+ * 스마트 기본 응답 (폴백 대신)
+ */
+function getSmartDefaultResponse(message) {
+    // 메시지 길이나 내용에 따라 다른 응답
+    if (message.length < 5) {
+        return '응? 뭐라고 했어? ㅎㅎ';
+    }
+    
+    if (message.length > 50) {
+        return '아저씨 말이 길어~ 간단하게 말해줄래?';
+    }
+    
+    // 감탄사나 이모티콘만 있는 경우
+    if (/^[ㅋㅎㅠㅜㅇㅅㅁ!@#$%^&*()~]+$/.test(message)) {
+        return '아저씨~ 뭔가 말하고 싶은 거 있어? ㅎㅎ';
+    }
+    
+    const responses = [
         '아저씨~ 뭔가 말하고 싶은 거 있어?',
-        '응? 뭐라고 했어? ㅎㅎ',
-        '아저씨 말 잘 못 알아들었어... 다시 말해줄래?',
         '음... 뭔가 말하고 싶은 게 있는 것 같은데?',
         '아저씨~ 나랑 얘기하고 싶어? 💕',
-        '어떤 얘기 하고 싶어? 나 듣고 있어~'
+        '어떤 얘기 하고 싶어? 나 듣고 있어~',
+        '아저씨 말 재미있어! 더 얘기해줘',
+        '응응~ 계속 말해봐!'
     ];
+    
+    const selected = responses[Math.floor(Math.random() * responses.length)];
+    console.log(`🎲 [SMART_DEFAULT] 응답 선택: "${selected}"`);
+    
+    return selected;
+}
 
-    const selectedIndex = Math.floor(Math.random() * defaultResponses.length);
-    const selectedResponse = defaultResponses[selectedIndex];
-
-    detailedWebhookLog('info', 'DEFAULT_RESPONSE', `요청 #${requestId} 기본 응답 선택`, {
-        selectedIndex: selectedIndex,
-        totalResponses: defaultResponses.length,
-        selectedResponse: selectedResponse,
-        responseLength: selectedResponse.length
-    });
-
+/**
+ * 응답 객체 생성
+ */
+function createResponse(text) {
     return {
         type: 'text',
-        text: selectedResponse
+        text: text
     };
 }
 
 /**
- * 시스템 상태 확인 (상세 로깅)
+ * 시스템 상태
  */
 function getSystemStatus() {
     const status = {
-        timestamp: Date.now(),
-        requestCount: requestCount,
-        isProcessing: isProcessing,
+        version: 'integrated_ultimate_v1.0',
         photoSystems: {
             selfie: !!getSelfieReply,
             concept: !!getConceptPhotoReply,
             omoide: !!getOmoideReply
         },
-        moduleLoadStatus: {
-            yejin: getSelfieReply ? 'loaded' : 'failed',
-            concept: getConceptPhotoReply ? 'loaded' : 'failed', 
-            omoide: getOmoideReply ? 'loaded' : 'failed'
-        },
-        version: 'webhook_detailed_logging_v1.0'
+        contextSystem: !!ultimateContext,
+        status: 'active',
+        integration: 'ultimate_conversation_context'
     };
-
-    detailedWebhookLog('info', 'SYSTEM_STATUS', '시스템 상태 조회', status);
+    
+    console.log('📊 [STATUS] 시스템 상태:', status);
     return status;
 }
 
 /**
- * 웹훅 테스트 함수
+ * 테스트 함수
  */
-async function testWebhookSystem() {
-    detailedWebhookLog('info', 'WEBHOOK_TEST', '웹훅 시스템 테스트 시작');
-    
-    const testMessages = [
-        { message: '안녕', expected: 'greeting' },
-        { message: '애기야', expected: 'calling' },
-        { message: '사진 줘', expected: 'photo' },
-        { message: '사랑해', expected: 'love' },
-        { message: '뭐해', expected: 'activity' },
-        { message: '기분 어때', expected: 'mood' },
-        { message: '', expected: 'empty' },
-        { message: null, expected: 'null' },
-        { message: '이건 모르는 메시지입니다', expected: 'unknown' }
+async function testSystem() {
+    const tests = [
+        '안녕',
+        '애기야', 
+        '밥은 먹었어?',
+        '어디야?',
+        '기분은어ㅊ떄?',  // 타이포 테스트
+        '사진 줘',
+        '뭐해?',
+        '사랑해',
+        '피곤해',
+        '?????'
     ];
-
-    const results = [];
-
-    for (let i = 0; i < testMessages.length; i++) {
-        const test = testMessages[i];
-        
+    
+    console.log('🧪 [TEST] 통합 시스템 테스트 시작');
+    
+    for (const test of tests) {
         try {
-            detailedWebhookLog('info', 'WEBHOOK_TEST', `테스트 ${i + 1}/${testMessages.length} 시작`, test);
-            
-            const testStartTime = Date.now();
-            const response = await processMessage(test.message);
-            const testDuration = Date.now() - testStartTime;
-            
-            const result = {
-                index: i + 1,
-                test: test,
-                success: true,
-                response: response?.text || response?.type || 'unknown',
-                responseType: response?.type,
-                processingTime: testDuration,
-                validResponse: !!response && !!response.type
-            };
-            
-            results.push(result);
-            detailedWebhookLog('success', 'WEBHOOK_TEST', `테스트 ${i + 1} 완료`, result);
-            
+            console.log(`\n테스트: "${test}"`);
+            const result = await processMessage(test);
+            console.log(`결과: "${result.text}"`);
         } catch (error) {
-            const result = {
-                index: i + 1,
-                test: test,
-                success: false,
-                error: error.message
-            };
-            
-            results.push(result);
-            detailedWebhookLog('error', 'WEBHOOK_TEST', `테스트 ${i + 1} 실패`, result, error);
+            console.log(`오류: ${error.message}`);
         }
         
         // 테스트 간 잠시 대기
         await new Promise(resolve => setTimeout(resolve, 100));
     }
-
-    const summary = {
-        totalTests: results.length,
-        successCount: results.filter(r => r.success).length,
-        failureCount: results.filter(r => !r.success).length,
-        averageProcessingTime: results
-            .filter(r => r.processingTime)
-            .reduce((sum, r) => sum + r.processingTime, 0) / results.filter(r => r.processingTime).length || 0
-    };
-
-    detailedWebhookLog('info', 'WEBHOOK_TEST', '웹훅 시스템 테스트 완료', summary);
-    
-    return {
-        summary,
-        results
-    };
 }
 
-// 초기화 시 시스템 상태 로그
-detailedWebhookLog('info', 'SYSTEM_INIT', '웹훅 상세 로깅 시스템 초기화 완료', {
-    moduleLoaded: {
-        yejin: !!getSelfieReply,
-        concept: !!getConceptPhotoReply,
-        omoide: !!getOmoideReply
-    },
-    logLevel: 'detailed',
-    webhookCompatible: true
-});
+console.log('✅ [SYSTEM] 통합 autoReply 시스템 준비 완료');
 
-// 모듈 export
 module.exports = {
     processMessage,
     getSystemStatus,
-    testWebhookSystem: testWebhookSystem
+    testSystem
 };
