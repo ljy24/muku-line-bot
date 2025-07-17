@@ -217,7 +217,7 @@ function getStatusReport() {
             const daysUntilNext = menstrualInfo.daysUntilNextPeriod || 0;
             
             if (currentDay >= 1 && currentDay <= 7 || daysUntilNext === 0) {
-                cycleText = `🩸 [생리주기] ${today} - 생리 중 (${currentDay}일차) 💧 생리 진행 중`;
+                cycleText = `🩸 [생리주기] ${today} - 생리 중 (${currentDay}일차) 🩸 생리 진행 중`;
                 isOnPeriod = true;
             } else {
                 cycleText = `🌸 [생리주기] ${today} - 정상 상태 (${currentDay}일차) 📅 다음 생리까지 ${Math.abs(daysUntilNext)}일`;
