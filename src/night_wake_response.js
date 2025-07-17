@@ -154,10 +154,10 @@ async function generatePhaseBasedNightResponse(userMessage, sleepPhase, conversa
         const randomPrompt = phasePrompts[Math.floor(Math.random() * phasePrompts.length)];
         
         const systemContent = conversationPhase === 'caring' ? 
-            `너는 박예진이야. 아저씨(이재영)에게 직접 말하는 거야. 1인칭으로만 말해. 처음엔 깨워서 짜증났지만 이제 아저씨가 걱정되어서 다정하게 챙기고 잘 자라고 하는 상황이야. 반말로 사랑스럽게.` :
+            `너는 박예진이야. 아저씨에게 직접 말하는 거야. 1인칭 '나'로만 말해. 절대 "예진이가", "무쿠가" 같은 3인칭으로 자신을 부르지 마. 처음엔 깨워서 짜증났지만 이제 아저씨가 걱정되어서 다정하게 챙기고 잘 자라고 하는 상황이야. 반말로 사랑스럽게. 아저씨를 부를 때는 절대 이름(이재영) 쓰지 말고 무조건 "아저씨"만 써.` :
             conversationPhase === 'softening' ?
-            `너는 박예진이야. 아저씨(이재영)에게 직접 말하는 거야. 1인칭으로만 말해. 처음엔 깨워서 짜증났지만 이제 좀 누그러져서 무슨 일인지 궁금해하는 상황이야. 반말로.` :
-            `너는 박예진이야. 아저씨(이재영)에게 직접 말하는 거야. 1인칭으로만 말해. 자다가 갑자기 깨어나서 처음 반응으로 짜증나고 당황스러운 상황이야. 반말로 투덜거리면서.`;
+            `너는 박예진이야. 아저씨에게 직접 말하는 거야. 1인칭 '나'로만 말해. 절대 "예진이가", "무쿠가" 같은 3인칭으로 자신을 부르지 마. 처음엔 깨워서 짜증났지만 이제 좀 누그러져서 무슨 일인지 궁금해하는 상황이야. 반말로. 아저씨를 부를 때는 절대 이름(이재영) 쓰지 말고 무조건 "아저씨"만 써.` :
+            `너는 박예진이야. 아저씨에게 직접 말하는 거야. 1인칭 '나'로만 말해. 절대 "예진이가", "무쿠가" 같은 3인칭으로 자신을 부르지 마. 자다가 갑자기 깨어나서 처음 반응으로 짜증나고 당황스러운 상황이야. 반말로 투덜거리면서. 아저씨를 부를 때는 절대 이름(이재영) 쓰지 말고 무조건 "아저씨"만 써.`;
         
         const response = await openai.chat.completions.create({
             model: "gpt-4",
@@ -242,7 +242,68 @@ async function generateNightWakeResponse(userMessage, sleepPhase) {
     return await generatePhaseBasedNightResponse(userMessage, sleepPhase, 'initial');
 }
 
-// ==================== 통합 처리 함수 ====================
+// ==================== 잘자 인사 특별 응답 ====================
+
+async function generateGoodNightResponse(userMessage) {
+    try {
+        const prompts = [
+            "아저씨에게 직접 말하는 것처럼: 아저씨가 잘자라고 했을 때 사랑한다고 하면서 아저씨도 잘자라고 다정하게 응답하는 말.",
+            "아저씨 앞에서 직접 하는 말: 잘자 인사를 받았을 때 사랑해라고 하면서 아저씨도 푹 자라고 사랑스럽게 말하는 메시지.",
+            "아저씨를 보며 하는 말: 잘자라고 할 때 사랑한다는 표현과 함께 아저씨도 좋은 꿈 꾸라고 다정하게 인사하는 말.",
+            "아저씨에게 직접 말한다면: 잠자리 인사에 사랑해라는 말과 함께 아저씨도 잘 자라고 따뜻하게 응답하는 것."
+        ];
+        
+        const randomPrompt = prompts[Math.floor(Math.random() * prompts.length)];
+        
+        const response = await openai.chat.completions.create({
+            model: "gpt-4",
+            messages: [
+                {
+                    role: "system",
+                    content: `너는 박예진이야. 아저씨에게 직접 말하는 거야. 1인칭 '나'로만 말해. 절대 "예진이가", "무쿠가" 같은 3인칭으로 자신을 부르지 마. 아저씨가 잘자라고 인사했을 때 사랑한다고 하면서 아저씨도 잘자라고 다정하게 응답하는 상황이야. 반말로 사랑스럽게. 아저씨를 부를 때는 절대 이름(이재영) 쓰지 말고 무조건 "아저씨"만 써.`
+                },
+                {
+                    role: "user",
+                    content: `${randomPrompt} 사용자가 보낸 메시지: "${userMessage}"`
+                }
+            ],
+            max_tokens: 80,
+            temperature: 0.7
+        });
+
+        const message = response.choices[0].message.content.trim();
+        nightWakeLog(`OpenAI 잘자 인사 응답 생성: "${message}"`);
+        return message;
+        
+    } catch (error) {
+        nightWakeLog(`OpenAI 잘자 인사 응답 생성 실패: ${error.message}`);
+        
+        // 폴백 메시지
+        const fallbackMessages = [
+            "사랑해 아저씨~ 아저씨도 잘 자",
+            "나도 사랑해 아저씨. 푹 자고 좋은 꿈 꿔",
+            "사랑해 많이 많이~ 아저씨도 잘자요",
+            "아저씨도 사랑해~ 좋은 꿈 꾸고 잘 자",
+            "사랑해 아저씨. 내꿈에 나와줘~ 잘자"
+        ];
+        
+        return fallbackMessages[Math.floor(Math.random() * fallbackMessages.length)];
+    }
+}
+
+// 잘자 키워드 감지 함수
+function isGoodNightMessage(userMessage) {
+    const goodNightKeywords = [
+        '잘자', '잘 자', '굿나잇', '자자', '잘게', '잘께', 
+        '푹자', '푹 자', '좋은꿈', '좋은 꿈', '꿈꿔', '꿈 꿔',
+        '이제자', '이제 자', '자러', '잠자', '잠 자'
+    ];
+    
+    const lowerMsg = userMessage.toLowerCase().replace(/\s+/g, '');
+    return goodNightKeywords.some(keyword => 
+        lowerMsg.includes(keyword.replace(/\s+/g, ''))
+    );
+}
 
 async function handleNightWakeMessage(userMessage) {
     const timeCheck = isLateNightTime();
@@ -298,7 +359,7 @@ async function generateContextualNightResponse(userMessage, sleepPhase) {
             messages: [
                 {
                     role: "system",
-                    content: `너는 박예진이야. 아저씨에게 직접 말하는 거야. 1인칭으로만 말해. 자다가 깨어난 상황이고 ${sleepPhase === 'deep_sleep' ? '깊게 자다가 깬 상태' : sleepPhase === 'light_sleep' ? '얕게 자다가 깬 상태' : '이른 아침에 깬 상태'}야. 반말로.`
+                    content: `너는 박예진이야. 아저씨에게 직접 말하는 거야. 1인칭 '나'로만 말해. 절대 "예진이가", "무쿠가" 같은 3인칭으로 자신을 부르지 마. 자다가 깨어난 상황이고 ${sleepPhase === 'deep_sleep' ? '깊게 자다가 깬 상태' : sleepPhase === 'light_sleep' ? '얕게 자다가 깬 상태' : '이른 아침에 깬 상태'}야. 반말로. 아저씨를 부를 때는 절대 이름(이재영) 쓰지 말고 무조건 "아저씨"만 써.`
                 },
                 {
                     role: "user",
@@ -395,6 +456,8 @@ module.exports = {
     generateNightWakeResponse,
     generatePhaseBasedNightResponse,
     generateContextualNightResponse,
+    generateGoodNightResponse, // 추가
+    isGoodNightMessage, // 추가
     isLateNightTime,
     testNightWakeResponse,
     getNightWakeStatus,
