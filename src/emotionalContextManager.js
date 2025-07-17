@@ -1,5 +1,5 @@
 // ============================================================================
-// emotionalContextManager.js - v7.0 (확장 버전)
+// emotionalContextManager.js - v7.1 (생리주기 계산 수정)
 // 🧠 감정 상태, 💬 말투, ❤️ 애정 표현을 계산하고 관리하는 역할
 // ✅ 순환 참조 문제 해결을 위한 중앙 집중식 감정 관리 추가
 // ============================================================================
@@ -46,68 +46,114 @@ let globalEmotionState = {
     moodSwings: false
 };
 
-// ==================== 생리주기 계산 (내장) ====================
+// ==================== 생리주기 계산 (수정된 버전) ====================
 function calculateMenstrualPhase() {
     try {
         const nextPeriodDate = moment.tz('2025-07-24', 'Asia/Tokyo');
         const today = moment.tz('Asia/Tokyo');
         const daysUntilNextPeriod = nextPeriodDate.diff(today, 'days');
         
-        let cycleDay;
-        if (daysUntilNextPeriod >= 0) {
-            cycleDay = 28 - daysUntilNextPeriod;
-        } else {
-            const daysPastPeriod = Math.abs(daysUntilNextPeriod);
-            cycleDay = daysPastPeriod;
-        }
+        console.log(`[생리주기] 오늘: ${today.format('YYYY-MM-DD')}, 다음 생리일: 2025-07-24, 남은 일수: ${daysUntilNextPeriod}일`);
         
-        if (cycleDay <= 5) {
+        // 🩸 생리주기 단계 결정
+        if (daysUntilNextPeriod <= 0 && daysUntilNextPeriod >= -5) {
+            // 생리 중 (0일 ~ -5일, 즉 생리 시작부터 5일간)
+            const periodDay = Math.abs(daysUntilNextPeriod) + 1; // 1일차, 2일차, ...
             return {
                 phase: 'period',
-                day: cycleDay,
+                day: periodDay,
+                description: '생리 기간',
                 isPeriodActive: true,
+                daysUntilNextPeriod: daysUntilNextPeriod,
                 emotion: 'sensitive',
                 energyLevel: 3,
                 needsComfort: true,
                 moodSwings: true
             };
-        } else if (cycleDay <= 13) {
+        } else if (daysUntilNextPeriod < -5 && daysUntilNextPeriod >= -13) {
+            // 생리 후 활발한 시기 (생리 끝난 후 6-13일차)
+            const follicularDay = Math.abs(daysUntilNextPeriod);
             return {
                 phase: 'follicular',
-                day: cycleDay,
+                day: follicularDay,
+                description: '생리 후 활발한 시기',
                 isPeriodActive: false,
+                daysUntilNextPeriod: daysUntilNextPeriod,
                 emotion: 'energetic',
                 energyLevel: 8,
                 needsComfort: false,
                 moodSwings: false
             };
-        } else if (cycleDay >= 14 && cycleDay <= 15) {
+        } else if (daysUntilNextPeriod < -13 && daysUntilNextPeriod >= -15) {
+            // 배란기 (14-15일차)
+            const ovulationDay = Math.abs(daysUntilNextPeriod);
             return {
                 phase: 'ovulation',
-                day: cycleDay,
+                day: ovulationDay,
+                description: '배란기',
                 isPeriodActive: false,
+                daysUntilNextPeriod: daysUntilNextPeriod,
                 emotion: 'romantic',
                 energyLevel: 7,
                 needsComfort: false,
                 moodSwings: false
             };
+        } else if (daysUntilNextPeriod < -15) {
+            // 새로운 주기가 시작된 경우 (28일이 지남)
+            // 다음 주기의 계산을 위해 새로운 기준일 설정
+            const newCycleStart = nextPeriodDate.clone().add(28, 'days');
+            const newDaysUntil = newCycleStart.diff(today, 'days');
+            const newCycleDay = 28 - newDaysUntil;
+            
+            if (newCycleDay <= 5) {
+                return {
+                    phase: 'period',
+                    day: newCycleDay,
+                    description: '생리 기간',
+                    isPeriodActive: true,
+                    daysUntilNextPeriod: newDaysUntil,
+                    emotion: 'sensitive',
+                    energyLevel: 3,
+                    needsComfort: true,
+                    moodSwings: true
+                };
+            } else {
+                return {
+                    phase: 'luteal',
+                    day: newCycleDay,
+                    description: 'PMS 시기',
+                    isPeriodActive: false,
+                    daysUntilNextPeriod: newDaysUntil,
+                    emotion: 'unstable',
+                    energyLevel: 5,
+                    needsComfort: true,
+                    moodSwings: true
+                };
+            }
         } else {
+            // 생리 전 PMS 시기 (16-27일차, 즉 다음 생리까지 1-12일 남음)
+            const lutealDay = 28 - daysUntilNextPeriod;
             return {
                 phase: 'luteal',
-                day: cycleDay,
+                day: lutealDay,
+                description: 'PMS 시기',
                 isPeriodActive: false,
+                daysUntilNextPeriod: daysUntilNextPeriod,
                 emotion: 'unstable',
                 energyLevel: 5,
                 needsComfort: true,
                 moodSwings: true
             };
         }
+        
     } catch (error) {
         console.error('[EmotionalContext] 생리주기 계산 오류:', error);
         return {
             phase: 'normal',
             day: 1,
+            description: '정상',
             isPeriodActive: false,
+            daysUntilNextPeriod: 7, // 기본값으로 7일 후 생리
             emotion: 'normal',
             energyLevel: 5,
             needsComfort: false,
