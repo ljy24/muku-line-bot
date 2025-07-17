@@ -7,25 +7,26 @@
  */
 class BirthdayDetector {
     constructor() {
-        // 생일 정보 설정
+        // 생일 정보 설정 (실제 데이터 기반)
         this.birthdays = {
             yejin: {
-                month: 3,
-                day: 227,
-                year: 1994 // 해마다 계산
+                month: 3,    // 3월
+                day: 17,     // 17일
+                year: 1994   // 1994년 (나이 계산용)
             },
             ajusshi: {
-                month:12, // 실제 생일로 수정 필요
-                day: 5,
-                year: 1984
+                month: 12,   // 12월
+                day: 5,      // 5일
+                year: null   // 연도 미지정
             }
         };
         
-        // 생일 관련 키워드
+        // 생일 관련 키워드 (실제 날짜 반영)
         this.birthdayKeywords = [
             '생일', '생신', '태어난', '태어나', '몇 살', '나이',
             '축하', '케이크', '선물', '파티', '미역국',
-            '5월 28일', '5월28일', '528', '5-28'
+            '3월 17일', '3월17일', '317', '3-17',  // 예진이 생일
+            '12월 5일', '12월5일', '125', '12-5'   // 아저씨 생일
         ];
         
         // 생일 관련 질문 패턴
@@ -145,20 +146,25 @@ class BirthdayDetector {
         );
     }
 
-    // 현재 생일 상태 확인
+    // 생일 상태 확인 (실제 날짜 기반)
     getBirthdayStatus() {
         const today = new Date();
         const currentMonth = today.getMonth() + 1;
         const currentDay = today.getDate();
         
-        // 예진이 생일 체크
+        // 예진이 생일 체크 (3월 17일)
         const yejinStatus = this.checkSpecificBirthday(
-            currentMonth, currentDay, 5, 28
+            currentMonth, currentDay, 3, 17
+        );
+        
+        // 아저씨 생일 체크 (12월 5일)
+        const ajusshiStatus = this.checkSpecificBirthday(
+            currentMonth, currentDay, 12, 5
         );
         
         return {
             yejin: yejinStatus,
-            ajusshi: 'unknown' // 아저씨 생일 정보 없음
+            ajusshi: ajusshiStatus
         };
     }
 
@@ -284,7 +290,7 @@ class BirthdayDetector {
 
     // 생일 카운트다운 메시지
     getBirthdayCountdown() {
-        const daysUntil = this.getDaysUntilBirthday(5, 28);
+        const daysUntil = this.getDaysUntilBirthday(3, 17); // 3월 17일로 변경
         
         if (daysUntil === 0) {
             return "오늘이 내 생일이야! 🎂";
@@ -310,7 +316,10 @@ class BirthdayDetector {
         confidence += keywordMatches * 0.2;
         
         // 날짜 매칭 점수
-        if (message.includes('5월 28일') || message.includes('528')) {
+        if (message.includes('3월 17일') || message.includes('317')) {
+            confidence += 0.4;
+        }
+        if (message.includes('12월 5일') || message.includes('125')) {
             confidence += 0.4;
         }
         
