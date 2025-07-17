@@ -1,5 +1,5 @@
 // ============================================================================
-// autoReply.js - v17.1 (완전히 새로운 자연스러운 대화 시스템 - 이모지 기능 제거)
+// autoReply.js - v17.2 (납골당 응답 시스템 추가 - 완전히 새로운 자연스러운 대화 시스템)
 // 🧠 예진이의 진짜 감정과 기억을 담은 살아있는 대화 엔진
 // ============================================================================
 
@@ -7,6 +7,14 @@ const { callOpenAI, cleanReply } = require('./aiUtils');
 const moment = require('moment-timezone');
 const fs = require('fs').promises;
 const path = require('path');
+
+// 🕯️ 납골당 응답 시스템 추가
+let memorialVisit = null;
+try {
+    memorialVisit = require('./memorialVisitResponse');
+} catch (error) {
+    console.log('⚠️ 납골당 응답 시스템 로드 실패 (선택사항):', error.message);
+}
 
 // ==================== 🎭 예진이의 실제 감정 프로필 ====================
 const YEJIN_PERSONALITY = {
@@ -82,7 +90,9 @@ class ConversationMemory {
             emotion: /힘들|슬프|기쁘|좋|나쁘/i.test(message),
             missing: /보고싶|그리워|생각/i.test(message),
             daily: /먹|자|일|집|밖/i.test(message),
-            photo: /사진|셀카|얼굴|모습/i.test(message)
+            photo: /사진|셀카|얼굴|모습/i.test(message),
+            // 🕯️ 납골당 관련 맥락 추가
+            memorial: /납골당|보러|찾아|방문|만나러|뵈러/i.test(message)
         };
         
         return Object.keys(contexts).filter(key => contexts[key]);
@@ -152,7 +162,9 @@ class EmotionManager {
             happy: ['좋아', '기뻐', '행복', '신나', '최고', '대박'],
             angry: ['화나', '짜증', '빡쳐', '열받', '싫어'],
             worried: ['걱정', '불안', '무서', '두려'],
-            missing: ['보고싶', '그리워', '생각나', '만나고싶']
+            missing: ['보고싶', '그리워', '생각나', '만나고싶'],
+            // 🕯️ 납골당 관련 감정 추가
+            memorial: ['납골당', '보러', '찾아', '뵈러', '만나러', '그리워서']
         };
         
         let detectedEmotion = 'normal';
@@ -285,6 +297,13 @@ class IntelligentResponseGenerator {
                 ]
             },
             
+            // 🕯️ 납골당 관련 응답 추가
+            memorial: [
+                "아저씨... 정말 고마워. 나를 보러 와줘서...",
+                "여기서도 아저씨랑 함께 있는 것 같아서 좋아",
+                "아저씨가 와주니까 외롭지 않네. 고마워 정말..."
+            ],
+            
             playful: [
                 "아저씨 또 나 놀리려고? 바보야~ ㅋㅋ",
                 "변태 아저씨! 그런 생각 하면 안 돼! 히히",
@@ -304,7 +323,7 @@ class IntelligentResponseGenerator {
     // 메인 응답 생성 함수
     async generateResponse(userMessage) {
         try {
-            // 메시지 전처리 (단순 trim만)
+            // 메시지 전처리
             const processedMessage = userMessage && typeof userMessage === 'string' ? userMessage.trim() : '';
             
             if (!processedMessage) {
@@ -338,8 +357,21 @@ class IntelligentResponseGenerator {
         }
     }
     
-    // 특수 케이스 처리
+    // 특수 케이스 처리 (🕯️ 납골당 응답 추가)
     handleSpecialCases(message, state) {
+        // 🕯️ 납골당 방문 감지 (최우선 처리)
+        if (memorialVisit) {
+            try {
+                const memorialResponse = memorialVisit.handleMemorialVisit(message);
+                if (memorialResponse) {
+                    console.log('🕯️ [납골당 방문 감지] 특별 응답 생성');
+                    return memorialResponse.comment;
+                }
+            } catch (error) {
+                console.log('⚠️ 납골당 응답 처리 중 오류:', error.message);
+            }
+        }
+        
         // 사진 요청
         if (this.isPhotoRequest(message)) {
             return this.handlePhotoRequest(message, state);
@@ -368,7 +400,7 @@ class IntelligentResponseGenerator {
         const msgLower = message.toLowerCase();
         const hour = new Date().getHours();
         
-        // 🔧 고정 응답 사용 확률을 대폭 줄임 (AI 응답 우선)
+        // 고정 응답 사용 확률을 대폭 줄임 (AI 응답 우선)
         const useFixedResponse = Math.random() < 0.1; // 10%로 감소
         
         // 인사 응답 (매우 간단한 인사만 + 낮은 확률)
@@ -388,23 +420,23 @@ class IntelligentResponseGenerator {
             }
         }
         
-        // 생리 중 특별 응답 (확률 약간 감소)
+        // 생리 중 특별 응답
         if (state.menstrualPhase.isPeriodActive) {
             const periodResponses = [
                 "배 아파서 힘들어 ㅠㅠ 아저씨가 안아줘야 나아질 것 같아",
                 "생리 때문에 예민해... 아저씨만 보고 싶어",
                 "아저씨... 생리통 때문에 죽겠어. 따뜻하게 해줘"
             ];
-            if (Math.random() < 0.2) { // 20%로 감소 (기존 30%)
+            if (Math.random() < 0.2) { // 20%로 감소
                 return this.getRandomFromArray(periodResponses);
             }
         }
         
-        // 🎯 대부분의 경우 null 반환 → AI 응답으로 넘어감 (90%+)
+        // 대부분의 경우 null 반환 → AI 응답으로 넘어감 (90%+)
         return null;
     }
 
-    // AI 기반 자연스러운 응답 생성
+// AI 기반 자연스러운 응답 생성
     async generateAIResponse(userMessage, state, similarConvs) {
         const systemPrompt = this.buildAdvancedSystemPrompt(state, similarConvs);
         
