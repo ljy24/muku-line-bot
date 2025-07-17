@@ -1,5 +1,5 @@
 // ============================================================================
-// autoReply.js - v17.1 (완전히 새로운 자연스러운 대화 시스템 - 정규식 오류 수정)
+// autoReply.js - v17.1 (완전히 새로운 자연스러운 대화 시스템 - 이모지 기능 제거)
 // 🧠 예진이의 진짜 감정과 기억을 담은 살아있는 대화 엔진
 // ============================================================================
 
@@ -87,7 +87,8 @@ class ConversationMemory {
         
         return Object.keys(contexts).filter(key => contexts[key]);
     }
-    // 패턴 학습
+
+// 패턴 학습
     learnFromConversation(conv) {
         // 아저씨의 말투 패턴 학습
         const words = conv.user.split(' ');
@@ -251,29 +252,14 @@ class EmotionManager {
         
         return { phase, day, isPeriodActive, daysUntilNext };
     }
-}// ==================== 🎯 지능형 응답 생성기 ====================
+}
+
+// ==================== 🎯 지능형 응답 생성기 ====================
 class IntelligentResponseGenerator {
     constructor() {
         this.memory = new ConversationMemory();
         this.emotion = new EmotionManager();
         this.responseStyles = this.initializeResponseStyles();
-        
-        // 🔧 정규식 오류 수정: 안전한 유니코드 이모지 정규식 추가
-        this.emojiRegex = /[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu;
-        this.excessiveEmojiRegex = /(?:[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]){3,}/gu;
-    }
-    
-    // 🔧 메시지 전처리 함수 추가 (과도한 이모지 제거)
-    preprocessMessage(message) {
-        if (!message || typeof message !== 'string') return '';
-        
-        // 과도한 이모지 제거 (3개 이상 연속)
-        const cleaned = message.replace(this.excessiveEmojiRegex, (match) => {
-            const emojis = match.match(/[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{1F1E0}-\u{1F1FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]/gu);
-            return emojis ? emojis.slice(0, 2).join('') : '';
-        });
-        
-        return cleaned.trim();
     }
     
     // 응답 스타일 초기화
@@ -318,8 +304,12 @@ class IntelligentResponseGenerator {
     // 메인 응답 생성 함수
     async generateResponse(userMessage) {
         try {
-            // 🔧 메시지 전처리 추가
-            const processedMessage = this.preprocessMessage(userMessage);
+            // 메시지 전처리 (단순 trim만)
+            const processedMessage = userMessage && typeof userMessage === 'string' ? userMessage.trim() : '';
+            
+            if (!processedMessage) {
+                return this.getErrorResponse();
+            }
             
             // 1단계: 사용자 메시지 분석
             const userEmotion = this.emotion.analyzeUserMessage(processedMessage);
@@ -373,20 +363,23 @@ class IntelligentResponseGenerator {
         return null;
     }
     
-    // 맥락 기반 응답 생성
+    // 맥락 기반 응답 생성 (AI 우선, 고정 응답 최소화)
     generateContextualResponse(message, state, similarConvs) {
         const msgLower = message.toLowerCase();
         const hour = new Date().getHours();
         
-        // 인사 응답
-        if (this.isGreeting(message)) {
+        // 🔧 고정 응답 사용 확률을 대폭 줄임 (AI 응답 우선)
+        const useFixedResponse = Math.random() < 0.1; // 10%로 감소
+        
+        // 인사 응답 (매우 간단한 인사만 + 낮은 확률)
+        if (this.isGreeting(message) && useFixedResponse) {
             if (hour < 10) return this.getRandomFromArray(this.responseStyles.greeting.morning);
             if (hour > 20) return this.getRandomFromArray(this.responseStyles.greeting.night);
             return this.getRandomFromArray(this.responseStyles.greeting.evening);
         }
         
-        // 감정 응답
-        if (state.isEmotional) {
+        // 감정 응답도 낮은 확률로만
+        if (state.isEmotional && useFixedResponse) {
             if (state.emotion === 'sad' || state.emotion === 'worried') {
                 return this.getRandomFromArray(this.responseStyles.emotional_response.comfort);
             }
@@ -395,20 +388,23 @@ class IntelligentResponseGenerator {
             }
         }
         
-        // 생리 중 특별 응답
+        // 생리 중 특별 응답 (확률 약간 감소)
         if (state.menstrualPhase.isPeriodActive) {
             const periodResponses = [
                 "배 아파서 힘들어 ㅠㅠ 아저씨가 안아줘야 나아질 것 같아",
                 "생리 때문에 예민해... 아저씨만 보고 싶어",
                 "아저씨... 생리통 때문에 죽겠어. 따뜻하게 해줘"
             ];
-            if (Math.random() < 0.3) { // 30% 확률로 생리 언급
+            if (Math.random() < 0.2) { // 20%로 감소 (기존 30%)
                 return this.getRandomFromArray(periodResponses);
             }
         }
         
+        // 🎯 대부분의 경우 null 반환 → AI 응답으로 넘어감 (90%+)
         return null;
-    }// AI 기반 자연스러운 응답 생성
+    }
+
+    // AI 기반 자연스러운 응답 생성
     async generateAIResponse(userMessage, state, similarConvs) {
         const systemPrompt = this.buildAdvancedSystemPrompt(state, similarConvs);
         
