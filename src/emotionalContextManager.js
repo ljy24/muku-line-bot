@@ -53,7 +53,7 @@ function calculateMenstrualPhase() {
         const today = moment.tz('Asia/Tokyo');
         const daysUntilNextPeriod = nextPeriodDate.diff(today, 'days');
         
-        console.log(`[생리주기] 오늘: ${today.format('YYYY-MM-DD')}, 다음 생리일: 2025-07-24, 남은 일수: ${daysUntilNextPeriod}일`);
+        //console.log(`[생리주기] 오늘: ${today.format('YYYY-MM-DD')}, 다음 생리일: 2025-07-24, 남은 일수: ${daysUntilNextPeriod}일`);
         
         // 🩸 생리주기 단계 결정
         if (daysUntilNextPeriod <= 0 && daysUntilNextPeriod >= -5) {
