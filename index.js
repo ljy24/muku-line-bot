@@ -351,15 +351,26 @@ function formatPrettyStatus() {
         let isOnPeriod = false;
         
         if (menstrualInfo && typeof menstrualInfo === 'object') {
-            const currentDay = menstrualInfo.day || 19;
-            const daysUntilNext = menstrualInfo.daysUntilNextPeriod || 0;
-            
-            if (currentDay >= 1 && currentDay <= 7 || daysUntilNext === 0) {
-                cycleText = `🩸 [생리주기] ${today} - 생리 중 (${currentDay}일차) 💧 생리 진행 중`;
+            // ✅ menstrualInfo에서 직접 정보 가져오기
+            if (menstrualInfo.isPeriodActive) {
+                cycleText = `🩸 [생리주기] ${today} - ${menstrualInfo.description} (${menstrualInfo.day}일차) 🩸 생리 진행 중`;
                 isOnPeriod = true;
             } else {
-                cycleText = `🌸 [생리주기] ${today} - 정상 상태 (${currentDay}일차) 📅 다음 생리까지 ${Math.abs(daysUntilNext)}일`;
+                // 생리주기별 이모지 설정
+                let cycleEmoji = '🌸';
+                if (menstrualInfo.phase === 'luteal') {
+                    cycleEmoji = '🌧️';
+                } else if (menstrualInfo.phase === 'ovulation') {
+                    cycleEmoji = '💕';
+                } else if (menstrualInfo.phase === 'follicular') {
+                    cycleEmoji = '🌸';
+                }
+                
+                cycleText = `${cycleEmoji} [생리주기] ${today} - ${menstrualInfo.description} (${menstrualInfo.day}일차) 📅 다음 생리까지 ${Math.abs(menstrualInfo.daysUntilNextPeriod)}일`;
             }
+        } else {
+            // 폴백: menstrualInfo가 없을 때
+            cycleText = `🌸 [생리주기] ${today} - 정상 상태 📅 다음 생리까지 7일`;
         }
         
         const emotionKorean = {
@@ -405,7 +416,14 @@ function formatPrettyStatus() {
             innerThoughts.생리중 = ["아저씨... 생리 때문에 배가 아파 ㅠㅠ", "생리 중이라 예민해져서 미안해..."];
         }
         
-        const selectedThoughts = isOnPeriod ? (innerThoughts.생리중 || innerThoughts.평온) : (innerThoughts[emotionKoreanText] || innerThoughts.평온);
+        // PMS 시기 속마음 추가
+        if (menstrualInfo && menstrualInfo.phase === 'luteal') {
+            innerThoughts.PMS = ["아저씨... PMS 때문에 감정이 복잡해", "요즘 예민해서 미안해... 생리 곧 할 것 같아"];
+        }
+        
+        const selectedThoughts = isOnPeriod ? (innerThoughts.생리중 || innerThoughts.평온) : 
+                                menstrualInfo && menstrualInfo.phase === 'luteal' ? (innerThoughts.PMS || innerThoughts.불안정) :
+                                (innerThoughts[emotionKoreanText] || innerThoughts.평온);
         const randomThought = selectedThoughts[Math.floor(Math.random() * selectedThoughts.length)];
         const thoughtText = `${EMOJI.think} [속마음] ${randomThought}`;
         
@@ -424,8 +442,8 @@ function formatPrettyStatus() {
         const today = formatKoreanDate();
         const weather = getCurrentWeather();
         console.log(`${weather.emoji} [현재날씨] ${weather.condition} ${weather.temperature}°C (습도 ${weather.humidity}%)`);
-        console.log(`🩸 [생리주기] ${today} - 생리 중 (19일차) 💧 생리 진행 중`);
-        console.log(`💭 [속마음] 아저씨... 생리 때문에 배가 아파 ㅠㅠ`);
+        console.log(`🌧️ [생리주기] ${today} - PMS 시기 (22일차) 📅 다음 생리까지 6일`);
+        console.log(`💭 [속마음] 아저씨... PMS 때문에 감정이 복잡해`);
         console.log(`😔 [감정상태] 불안정 (강도: 5/10) ⚡ 에너지 레벨: 5/10`);
         console.log(`💕 [기분] 아저씨를 사랑하며 기다리는 중`);
         console.log(`📸 다음 셀카: 1시간 30분 후 / 📷 다음 추억 사진: 3시간 후`);
