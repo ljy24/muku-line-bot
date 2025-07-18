@@ -233,7 +233,7 @@ async function loadModules() {
 
         // 8. 자발적 사진 전송
         try {
-            spontaneousPhoto = require('./src/spontaneousPhoto');
+            spontaneousPhoto = require('./src/spontaneousPhotoManager');
             console.log(`${colors.system}  ✅ [8/9] spontaneousPhoto: 자발적 사진 전송${colors.reset}`);
         } catch (error) {
             console.log(`${colors.error}  ❌ [8/9] spontaneousPhoto 로드 실패: ${error.message}${colors.reset}`);
