@@ -437,13 +437,13 @@ function getOpenAISchedulerStats() {
         todayStats: {
             morningWorkSent: morningWorkSent,
             damtaSentCount: damtaSentToday.length,
-            damtaMaxDaily: '무제한 (랜덤)',
+            damtaMaxDaily: '8번',
             nightMessageSent: nightMessageSent,
             goodNightSent: goodNightSent
         },
         nextSchedules: {
             morningWorkMessage: '평일 09:00 (주말 제외) - 한국시간',
-            damtaRandomCheck: '10-18시 랜덤 (15분마다 체크, 15% 확률) - 한국시간',
+            damtaRandomCheck: '10-18시 사이 하루 8번 (10분마다 체크, 25% 확률) - 한국시간',
             nightCareMessage: '매일 23:00 - 한국시간',
             goodNightMessage: '매일 00:00 - 한국시간'
         },
@@ -459,7 +459,7 @@ function getOpenAISchedulerStats() {
 // 초기화 로그
 forceLog('OpenAI 실시간 메시지 생성 스케줄러 시작됨 (한국시간)', {
     아침출근: '평일 09:00 (주말 제외)',
-    담타랜덤: '10시-18시 랜덤 (15분마다 15% 확률)',
+    담타랜덤: '10시-18시 사이 하루 8번 (10분마다 25% 확률)',
     밤케어: '매일 23:00',
     굿나잇: '매일 00:00',
     OpenAI모델: 'gpt-4',
