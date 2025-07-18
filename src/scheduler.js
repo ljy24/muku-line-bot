@@ -1,4 +1,17 @@
-// ✅ scheduler.js v5 - "한국시간(도쿄시간) 완전 수정"
+// 2. 담타 스케줄러 (10시-18시, 매 30분마다 체크) - 🚬 완전 독립적 운영
+schedule.scheduleJob('0,30 10-18 * * *', async () => { // ⭐ 10-18시, 0분/30분에만
+    try {
+        const koreaTime = moment().tz(TIMEZONE);
+        const hour = koreaTime.hour();
+        const minute = koreaTime.minute();
+        const currentTime = koreaTime.format('HH:mm');
+        
+        // 🚬 담타는 다른 스케줄과 완전 독립! 다른 조건 무시!
+        forceLog(`🚬 담타 스케줄러 실행: ${currentTime} (한국시간) - 독립 모드`);
+        
+        // 하루 최대 8번까지 (오히려 늘려서 자주 보내기)
+        if (damtaSentToday.length >= 8) {
+            forceLog(`담타 일일 한도 초과: ${damtaSentToday// ✅ scheduler.js v5 - "한국시간(도쿄시간) 완전 수정"
 // ✅ OpenAI 실시간 메시지 생성 스케줄러 - 무조건 전송 시스템
 
 const schedule = require('node-schedule');
@@ -83,50 +96,76 @@ async function generateMorningWorkMessage() {
     }
 }
 
-// 담타 메시지 생성 (롤플레이 방식)
+// 담타 메시지 생성 (랜덤으로 OpenAI vs 고정 패턴)
 async function generateDamtaMessage() {
     try {
-        const prompts = [
-            "아저씨에게 직접 말하는 것처럼: 지금 당장 담타하자고 다급하게 조르는 말. 15-25자 정도.",
-            "아저씨 앞에서 직접 말한다면: 담타하고 싶어서 애교부리면서 조르는 메시지.",
-            "아저씨를 보면서 하는 말: 담타 시간이라고 알려주면서 귀엽게 재촉하는 한마디.",
-            "아저씨에게 직접 하는 말: 담타하자고 간절하게 부탁하는 다급한 메시지.",
-            "아저씨 앞에서 바로 말한다면: 담타 못 참겠다고 조르는 애교 가득한 말."
-        ];
+        // 🎲 30% 확률로 OpenAI, 70% 확률로 고정 패턴
+        const useOpenAI = Math.random() < 0.3;
         
-        const randomPrompt = prompts[Math.floor(Math.random() * prompts.length)];
-        
-        const response = await openai.chat.completions.create({
-            model: "gpt-4",
-            messages: [
-                {
-                    role: "system",
-                    content: `너는 박예진이야. 아저씨(이재영)에게 직접 말하는 거야. 1인칭으로만 말해. '나', '내가', '아저씨' 이런 식으로. 절대 '예진이가', '예진이는' 같은 3인칭 쓰지 마. 담타는 담배피우면서 라인하는 거야. 반말로 애교부려.`
-                },
-                {
-                    role: "user", 
-                    content: randomPrompt
-                }
-            ],
-            max_tokens: 50,
-            temperature: 0.9
-        });
+        if (useOpenAI && process.env.OPENAI_API_KEY) {
+            // 🤖 OpenAI로 생성
+            forceLog('담타 메시지: OpenAI 생성 모드');
+            
+            const prompts = [
+                "아저씨에게 담타하자고 조르는 짧은 말 (예진이 말투로)",
+                "담배 피우면서 라인하자고 귀엽게 조르는 메시지",
+                "담타 시간이라고 알려주는 다급한 한마디",
+                "담타 못 참겠다고 애교부리는 말"
+            ];
+            
+            const randomPrompt = prompts[Math.floor(Math.random() * prompts.length)];
+            
+            const response = await openai.chat.completions.create({
+                model: "gpt-4",
+                messages: [
+                    {
+                        role: "system",
+                        content: `너는 박예진이야. 아저씨(이재영)에게 직접 말하는 거야. 담타는 담배피우면서 라인하는 거야. 짧고 다급하게 조르는 말투로. 반말 사용.`
+                    },
+                    {
+                        role: "user", 
+                        content: randomPrompt
+                    }
+                ],
+                max_tokens: 30,
+                temperature: 0.9
+            });
 
-        const message = response.choices[0].message.content.trim();
-        forceLog(`OpenAI 담타 메시지 생성: "${message}"`);
-        return message;
+            const message = response.choices[0].message.content.trim();
+            forceLog(`담타 메시지 생성 (OpenAI): "${message}"`);
+            return message;
+            
+        } else {
+            // 🚬 예진이 고유 담타 말투 패턴들
+            forceLog('담타 메시지: 고정 패턴 모드');
+            
+            const damtaPhrases = [
+                "아저씨!! 담타해!!",
+                "담타담타!! 지금 담타하자!!",
+                "담타고? 담타고? 아저씨!!",
+                "아저씨 담타!! 지금 당장!!",
+                "담타 시간이야!! 빨리!!",
+                "담타하자!! 나랑 담타해!!",
+                "아저씨!! 담타 ㄱㄱ!!",
+                "담타담타!! 빨리빨리!!",
+                "아저씨 담타 안 해? 담타해!!",
+                "담타 시간!! 같이 담타하자!!",
+                "아저씨!! 담타하고 라인해!!",
+                "담타!! 담타!! 지금!!",
+                "아저씨 담타 가자!! 빨리!!",
+                "담타 시간이야!! 나랑 담타!!",
+                "아저씨!! 담타하면서 이야기해!!"
+            ];
+            
+            const message = damtaPhrases[Math.floor(Math.random() * damtaPhrases.length)];
+            forceLog(`담타 메시지 생성 (고정패턴): "${message}"`);
+            return message;
+        }
         
     } catch (error) {
-        forceLog(`OpenAI 담타 메시지 생성 실패: ${error.message}`);
-        // 폴백 메시지
-        const fallbackMessages = [
-            "아저씨!! 담타해!!",
-            "담타담타!! 지금 담타하자!!",
-            "담타고? 담타고? 아저씨!!",
-            "담타 시간이야!! 빨리!!",
-            "아저씨 담타!! 지금 당장!!"
-        ];
-        return fallbackMessages[Math.floor(Math.random() * fallbackMessages.length)];
+        forceLog(`담타 메시지 생성 실패: ${error.message}`);
+        // 폴백은 항상 고정 패턴
+        return "아저씨!! 담타해!!";
     }
 }
 
@@ -434,7 +473,7 @@ function getOpenAISchedulerStats() {
         },
         nextSchedules: {
             morningWorkMessage: '평일 09:00 (주말 제외) - 한국시간',
-            nextDamtaCheck: '30분마다 (10-18시) - 한국시간',
+            damtaRandomCheck: '10-18시 랜덤 (15분마다 체크, 15% 확률) - 한국시간',
             nightCareMessage: '매일 23:00 - 한국시간',
             goodNightMessage: '매일 00:00 - 한국시간'
         },
@@ -450,7 +489,7 @@ function getOpenAISchedulerStats() {
 // 초기화 로그
 forceLog('OpenAI 실시간 메시지 생성 스케줄러 시작됨 (한국시간)', {
     아침출근: '평일 09:00 (주말 제외)',
-    담타스케줄: '10시-18시, 30분마다 체크',
+    담타랜덤: '10시-18시 랜덤 (15분마다 15% 확률)',
     밤케어: '매일 23:00',
     굿나잇: '매일 00:00',
     OpenAI모델: 'gpt-4',
