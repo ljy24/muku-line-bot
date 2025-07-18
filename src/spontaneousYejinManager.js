@@ -1,7 +1,8 @@
 // ============================================================================
-// spontaneousYejinManager.js - v1.0
+// spontaneousYejinManager.js - v1.1 (문법 오류 수정)
 // 🌸 예진이가 능동적으로 하루 15번 메시지 보내는 시스템
 // 8시-1시 사이 랜덤, 3문장~20문장, 실제 취향과 일상 기반
+// ✅ 문법 오류 수정: line 106-107 중괄호 문제 해결
 // ============================================================================
 
 const schedule = require('node-schedule');
@@ -95,12 +96,7 @@ const ajossiSituationReactions = {
         "길에서도 시선 집중이었어 ㅋㅋ 이거 봐봐!",
         "오늘 컨디션도 좋고 옷도 예쁘게 입었거든~ 보여줄게"
     ]
-};
-}; 고마워 ㅎㅎ 착해!",
-        "오케이! 이제 나랑 놀자! 뭐하고 싶어?",
-        "수고 많았어~ 이제 내가 힐링 시켜줄게!"
-    ]
-};
+}; // ← 여기가 문제였음! 중괄호 제대로 닫기
 
 // ================== 🌸 예진이의 실제 일상 데이터 ==================
 const yejinRealLife = {
@@ -800,41 +796,6 @@ ${sentenceCount}으로 자연스럽게 작성해줘.
     }
 }
 
-// ================== 📤 메시지 전송 ==================
-async function sendSpontaneousMessage() {
-    try {
-        if (!lineClient || !USER_ID) {
-            spontaneousLog('❌ LINE 클라이언트 또는 USER_ID 없음');
-            return false;
-        }
-
-        const message = await generateYejinSpontaneousMessage();
-        
-        // omoide 사진을 보낸 경우 메시지가 null일 수 있음
-        if (!message) {
-            spontaneousLog('✅ omoide 사진 전송 완료 (별도 메시지 없음)');
-            dailyScheduleState.sentToday++;
-            return true;
-        }
-        
-        await lineClient.pushMessage(USER_ID, {
-            type: 'text',
-            text: message
-        });
-
-        dailyScheduleState.sentToday++;
-        
-        spontaneousLog(`✅ 예진이 능동 메시지 전송 성공 (${dailyScheduleState.sentToday}/${DAILY_MESSAGE_COUNT})`);
-        spontaneousLog(`📱 메시지: "${message.substring(0, 50)}..."`);
-        
-        return true;
-
-    } catch (error) {
-        spontaneousLog(`❌ 메시지 전송 실패: ${error.message}`);
-        return false;
-    }
-}
-
 // ================== 🔄 폴백 메시지 ==================
 function getFallbackMessage() {
     const fallbackMessages = [
@@ -862,6 +823,13 @@ async function sendSpontaneousMessage() {
         }
 
         const message = await generateYejinSpontaneousMessage();
+        
+        // omoide 사진을 보낸 경우 메시지가 null일 수 있음
+        if (!message) {
+            spontaneousLog('✅ omoide 사진 전송 완료 (별도 메시지 없음)');
+            dailyScheduleState.sentToday++;
+            return true;
+        }
         
         await lineClient.pushMessage(USER_ID, {
             type: 'text',
@@ -916,7 +884,7 @@ function generateDailyYejinSchedule() {
     spontaneousLog(`📊 현재시간: ${currentTime.format('HH:mm')}, 종료시간: ${endTime.format('HH:mm')}, 남은시간: ${remainingMinutes}분`);
     spontaneousLog(`📊 생성할 스케줄 개수: ${scheduleCount}개`);
 
-    const schedule = [];
+    const scheduleArray = [];
     const intervalMinutes = Math.floor(remainingMinutes / scheduleCount);
     
     for (let i = 0; i < scheduleCount; i++) {
@@ -929,7 +897,7 @@ function generateDailyYejinSchedule() {
         
         // 시간 범위 체크 (현재 시간 ~ 새벽 1시)
         if (scheduleTime.isBefore(endTime)) {
-            schedule.push({ 
+            scheduleArray.push({ 
                 hour: scheduleTime.hour(), 
                 minute: scheduleTime.minute(),
                 timestamp: scheduleTime.valueOf()
@@ -938,10 +906,10 @@ function generateDailyYejinSchedule() {
     }
 
     // 시간순 정렬
-    schedule.sort((a, b) => a.timestamp - b.timestamp);
+    scheduleArray.sort((a, b) => a.timestamp - b.timestamp);
 
     // 스케줄 등록
-    schedule.forEach((time, index) => {
+    scheduleArray.forEach((time, index) => {
         const cronExpression = `${time.minute} ${time.hour} * * *`;
         const job = schedule.scheduleJob(cronExpression, async () => {
             await sendSpontaneousMessage();
@@ -951,12 +919,12 @@ function generateDailyYejinSchedule() {
         dailyScheduleState.jobs.push(job);
     });
 
-    dailyScheduleState.todaySchedule = schedule;
+    dailyScheduleState.todaySchedule = scheduleArray;
     dailyScheduleState.lastScheduleDate = koreaTime.format('YYYY-MM-DD HH:mm');
     dailyScheduleState.sentToday = 0;
 
     spontaneousLog(`✅ 예진이 능동 메시지 스케줄 ${scheduleCount}개 등록 완료`);
-    spontaneousLog(`📋 스케줄: ${schedule.map(t => `${String(t.hour).padStart(2, '0')}:${String(t.minute).padStart(2, '0')}`).join(', ')}`);
+    spontaneousLog(`📋 스케줄: ${scheduleArray.map(t => `${String(t.hour).padStart(2, '0')}:${String(t.minute).padStart(2, '0')}`).join(', ')}`);
 }
 
 // ================== 🌄 자정 스케줄 초기화 (기존 유지) ==================
