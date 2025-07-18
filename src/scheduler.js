@@ -289,7 +289,7 @@ schedule.scheduleJob('0 9 * * 1-5', async () => {
 }); // ⭐ 시간대 문제로 일단 기본 설정
 
 // 2. 담타 스케줄러 (10시-18시, 매 30분마다 체크) - 한국시간
-schedule.scheduleJob('*/30 * * * *', async () => {
+schedule.scheduleJob('0,30 * * * *', async () => { // ⭐ 0분, 30분에만 실행
     try {
         const koreaTime = moment().tz(TIMEZONE); // ⭐ 한국시간으로 체크
         const hour = koreaTime.hour();
@@ -297,11 +297,13 @@ schedule.scheduleJob('*/30 * * * *', async () => {
         
         // 10시-18시 시간대 확인 (한국시간 기준)
         if (hour < 10 || hour > 18) {
+            forceLog(`담타 시간대 아님: ${currentTime} (10-18시 외)`);
             return;
         }
         
         // 하루 최대 6번까지 (3시간마다 약 2번 정도)
         if (damtaSentToday.length >= 6) {
+            forceLog(`담타 일일 한도 초과: ${damtaSentToday.length}/6`);
             return;
         }
         
@@ -312,15 +314,18 @@ schedule.scheduleJob('*/30 * * * *', async () => {
         );
         
         if (recentSent) {
+            forceLog(`담타 최근 1시간 내 전송됨, 스킵`);
             return;
         }
         
         // 30% 확률로 전송 (자연스럽게)
-        if (Math.random() > 0.3) {
+        const randomChance = Math.random();
+        if (randomChance > 0.3) {
+            forceLog(`담타 확률 체크 실패: ${(randomChance * 100).toFixed(1)}% (30% 이하여야 함)`);
             return;
         }
         
-        forceLog(`🚬 담타 스케줄러 실행: ${currentTime} (한국시간)`);
+        forceLog(`🚬 담타 스케줄러 실행: ${currentTime} (한국시간) - 확률: ${(randomChance * 100).toFixed(1)}%`);
         
         // OpenAI로 담타 메시지 생성
         const damtaMessage = await generateDamtaMessage();
@@ -336,7 +341,7 @@ schedule.scheduleJob('*/30 * * * *', async () => {
     } catch (error) {
         forceLog(`담타 스케줄러 에러: ${error.message} - 하지만 계속 진행`);
     }
-}); // ⭐ 시간대 문제로 일단 기본 설정
+}); // ⭐ 0분, 30분에만 실행되도록 수정
 
 // 3. 밤 11시 케어 메시지 스케줄러 - 한국시간
 schedule.scheduleJob('0 23 * * *', async () => {
