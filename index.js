@@ -62,8 +62,10 @@ const colors = {
     error: '\x1b[91m'                      // 빨간색 (에러용)
 };
 
-// ================== 🎭 감정 상태 한글 변환 ==================
-function translateEmotionToKorean(emotion) {
+// ================== 🎭 감정 상태 한글 변환 절대 선언 ==================
+// 🚨 중요: 모든 모듈에서 감정 상태를 한글로 표시합니다
+// 전역 함수로 선언하여 require 없이도 사용 가능
+global.translateEmotionToKorean = function(emotion) {
     const emotionMap = {
         'stable': '안정',
         'unstable': '불안정',
@@ -91,8 +93,57 @@ function translateEmotionToKorean(emotion) {
         'sensitive': '예민함'
     };
     
-    return emotionMap[emotion.toLowerCase()] || emotion;
-}
+    const korean = emotionMap[emotion.toLowerCase()] || emotion;
+    return korean;
+};
+
+// 전역 로그 함수 - 자동으로 한글 변환
+global.logEmotionKorean = function(message) {
+    // 영어 감정 → 한글 자동 변환
+    let translatedMessage = message;
+    
+    // "unstable 상태로 응답" → "불안정 상태로 응답"
+    translatedMessage = translatedMessage.replace(/(\w+) 상태로 응답/g, (match, emotion) => {
+        const koreanEmotion = global.translateEmotionToKorean(emotion);
+        return `${koreanEmotion} 상태로 응답`;
+    });
+    
+    // "가져온 상태: unstable" → "가져온 상태: 불안정"  
+    translatedMessage = translatedMessage.replace(/가져온 상태: (\w+)/g, (match, emotion) => {
+        const koreanEmotion = global.translateEmotionToKorean(emotion);
+        return `가져온 상태: ${koreanEmotion}`;
+    });
+    
+    // 일반적인 영어 감정 단어들 변환
+    Object.keys(global.translateEmotionToKorean).forEach(eng => {
+        const kor = global.translateEmotionToKorean(eng);
+        if (eng !== kor) {
+            const regex = new RegExp(`\\b${eng}\\b`, 'gi');
+            translatedMessage = translatedMessage.replace(regex, kor);
+        }
+    });
+    
+    console.log(translatedMessage);
+    return translatedMessage;
+};
+
+// console.log 오버라이드 - 자동 한글 변환
+const originalConsoleLog = console.log;
+console.log = function(...args) {
+    const message = args.join(' ');
+    
+    // 특정 패턴이 포함된 로그만 변환 (성능 최적화)
+    if (message.includes('상태') || message.includes('Selfie') || message.includes('감정')) {
+        const translatedMessage = global.logEmotionKorean(message);
+        return; // 이미 출력됨
+    } else {
+        // 일반 로그는 그대로
+        originalConsoleLog.apply(console, args);
+    }
+};
+
+console.log(`🎭 [감정변환] 한글 감정 상태 절대 선언 완료!`);
+console.log(`🎭 [감정변환] 모든 모듈에서 자동으로 unstable → 불안정 변환!`);
 
 // ================== 📝 로그 헬퍼 함수 ==================
 function logWithKoreanEmotion(message) {
@@ -409,7 +460,7 @@ async function initializeMemorySystems() {
 }
 
 // ================== 🌐 Express 라우트 ==================
-app.get('/', (_, res) => res.send('나 v13.2 살아있어! (일본시간 절대 선언 + 한글감정 + 정확한색상 시스템)'));
+app.get('/', (_, res) => res.send('나 v13.3 살아있어! (감정 한글 절대 선언 시스템)'));
 
 app.post('/webhook', middleware(config), async (req, res) => {
     try {
@@ -635,7 +686,7 @@ async function sendReply(replyToken, botResponse) {
 // ================== 🚀 시스템 초기화 ==================
 async function initMuku() {
     try {
-        console.log(`${colors.system}🚀 나 v13.2 시스템 초기화를 시작합니다... (일본시간 절대 선언 + 한글감정 + 정확한색상 시스템)${colors.reset}`);
+        console.log(`${colors.system}🚀 나 v13.3 시스템 초기화를 시작합니다... (감정 한글 절대 선언 시스템)${colors.reset}`);
         console.log(`${colors.system}🌏 현재 일본시간: ${getJapanTimeString()} (JST)${colors.reset}`);
         
         console.log(`${colors.system}  [1/6] 📦 모든 모듈 로드...${colors.reset}`);
@@ -697,13 +748,14 @@ async function initMuku() {
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
     console.log(`\n==================================================`);
-    console.log(`  ${colors.system}나 v13.2 서버가 포트 ${PORT}에서 시작되었습니다.${colors.reset}`);
+    console.log(`  ${colors.system}나 v13.3 서버가 포트 ${PORT}에서 시작되었습니다.${colors.reset}`);
+    console.log(`  🎭 ${colors.pms}감정 한글 절대 선언${colors.reset}: 모든 로그 자동 변환`);
     console.log(`  🌏 ${colors.pms}일본시간(JST) 절대 선언${colors.reset}: ${getJapanTimeString()}`);
     console.log(`  🧠 통합 기억: 고정기억(memoryManager) + 동적기억(ultimateContext)`);
     console.log(`  🚬 정확한 담타: 실시간 다음 체크 시간 계산 (JST 기준)`);
     console.log(`  🤖 실시간 학습: 대화 내용 자동 기억 + 수동 기억 추가`);
     console.log(`  🎨 정확한 색상: ${colors.ajeossi}아저씨(#50bcdf)${colors.reset}, ${colors.yejin}예진이(#d09aff)${colors.reset}, ${colors.pms}PMS(굵은주황)${colors.reset}`);
-    console.log(`  🎭 한글 감정: unstable → 불안정, sensitive → 예민함`);
+    console.log(`  🎭 자동 변환: unstable→불안정, sensitive→예민함 (전역 적용)`);
     console.log(`  ⚡ 성능 향상: 모든 중복 코드 제거 + 완전한 모듈 연동`);
     console.log(`==================================================\n`);
 
