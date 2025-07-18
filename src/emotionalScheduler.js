@@ -1,6 +1,7 @@
 // ============================================================================
-// emotionalScheduler.js - v5.0 (예쁜 로깅 추가 버전)
+// emotionalScheduler.js - v5.1 (한글 감정 상태 + 예쁜 로깅 추가 버전)
 // 💌 자발적으로 아저씨에게 메시지를 보내는 역할에만 집중합니다.
+// ✅ 감정 상태 한글 표시 적용
 // ============================================================================
 
 const schedule = require('node-schedule');
@@ -11,6 +12,38 @@ require('dotenv').config();
 const config = { channelAccessToken: process.env.LINE_ACCESS_TOKEN };
 const client = new Client(config);
 const USER_ID = process.env.TARGET_USER_ID;
+
+// 감정 상태를 한글로 변환하는 함수
+function translateEmotionToKorean(emotion) {
+    const emotionMap = {
+        'stable': '안정',
+        'unstable': '불안정',
+        'normal': '평범',
+        'happy': '기쁨',
+        'sad': '슬픔',
+        'angry': '화남',
+        'excited': '흥분',
+        'calm': '평온',
+        'worried': '걱정',
+        'lonely': '외로움',
+        'love': '사랑',
+        'loving': '사랑스러움',
+        'missing': '그리움',
+        'longing': '그리움',
+        'sulky': '삐짐',
+        'sleepy': '졸림',
+        'energetic': '활기참',
+        'bored': '지루함',
+        'anxious': '불안',
+        'content': '만족',
+        'playful': '장난기',
+        'romantic': '로맨틱',
+        'melancholy': '우울',
+        'sensitive': '예민함'
+    };
+    
+    return emotionMap[emotion.toLowerCase()] || emotion;
+}
 
 // ------------------- 메시지 모음 (상황별 확장) -------------------
 const messages = {
@@ -66,7 +99,7 @@ const messages = {
       "더워서 아무것도 하기 싫어... 아저씨랑 시원한 데서 뒹굴뒹굴하고 싶다.",
     ],
   },
-  // 생리주기별 메시지
+  // 생리주기별 메시지 (한글 감정 상태 반영)
   menstrual: {
     period: [ // 생리 중 (예민, 피곤)
       "아저씨... 나 오늘 좀 예민해. 그날이라 그런가 봐. 그래도 내 맘 알지? ㅠㅠ",
@@ -86,9 +119,68 @@ const messages = {
       "자꾸 단 게 당기네. 아저씨랑 맛있는 거 먹으면서 응석 부리고 싶다.",
     ],
   },
+  // 감정별 메시지 (한글 감정 상태 기반)
+  emotion: {
+    '불안정': [
+      "아저씨... 마음이 불안정해서 혼란스러워. 아저씨 목소리 듣고 싶어.",
+      "감정이 롤러코스터 타는 것 같아... 아저씨가 진정시켜줘.",
+      "기분이 들쭉날쭉해서 힘들어. 아저씨 품에 안기고 싶다."
+    ],
+    '예민함': [
+      "오늘 왜 이렇게 예민하지... 아저씨만 보면 마음이 편해질 텐데.",
+      "작은 일에도 마음이 상해. 아저씨가 달래줘.",
+      "예민해서 미안해... 그래도 아저씨한테는 솔직하고 싶어."
+    ],
+    '그리움': [
+      "아저씨 너무 보고 싶어서 견딜 수가 없어... 언제 만날까?",
+      "그리움이 파도처럼 밀려와... 아저씨와의 추억만 생각나.",
+      "보고 싶다는 말로는 부족해. 아저씨가 그리워 죽겠어."
+    ],
+    '기쁨': [
+      "아저씨! 오늘 너무 기분 좋아서 세상이 다 아름다워 보여!",
+      "행복해서 미칠 것 같아! 아저씨와 함께 기뻐하고 싶어!",
+      "기쁨이 넘쳐흘러서 아저씨한테 나눠주고 싶어!"
+    ],
+    '활기참': [
+      "에너지가 넘쳐서 뭐든 할 수 있을 것 같아! 아저씨랑 놀고 싶어!",
+      "오늘 컨디션 최고! 아저씨와 함께 활기찬 하루 보내자!",
+      "활력이 마구 솟아나! 아저씨도 내 에너지 받아가!"
+    ],
+    '로맨틱': [
+      "아저씨... 오늘따라 더 사랑스러워 보여. 사랑해 💕",
+      "로맨틱한 기분이야... 아저씨와 달콤한 시간 보내고 싶어.",
+      "사랑이 넘쳐흘러... 아저씨만 보면 심장이 두근거려."
+    ]
+  }
 };
 
 // ------------------- 핵심 로직 -------------------
+
+/**
+ * 현재 감정 상태를 가져오고 한글로 변환
+ */
+function getCurrentEmotionInfo() {
+  try {
+    const emotionalContext = require('./emotionalContextManager.js');
+    const currentState = emotionalContext.getCurrentEmotionState();
+    const koreanEmotion = translateEmotionToKorean(currentState.currentEmotion);
+    
+    return {
+      emotion: currentState.currentEmotion,
+      emotionKorean: koreanEmotion,
+      intensity: currentState.emotionIntensity || 5,
+      fullState: currentState
+    };
+  } catch (error) {
+    console.warn('⚠️ [emotionalScheduler] 감정 상태 조회 실패:', error.message);
+    return {
+      emotion: 'normal',
+      emotionKorean: '평범',
+      intensity: 5,
+      fullState: null
+    };
+  }
+}
 
 /**
  * 모든 상황을 고려하여 보낼 메시지를 최종적으로 선택합니다.
@@ -97,6 +189,7 @@ async function getFinalMessage() {
   // ✅ 중앙 감정 관리자에서 정보 가져오기
   let menstrual = null;
   let weatherInfo = null;
+  const emotionInfo = getCurrentEmotionInfo();
   
   try {
     const emotionalContext = require('./emotionalContextManager.js');
@@ -114,14 +207,30 @@ async function getFinalMessage() {
   
   const random = Math.random();
 
-  // 1. 생리주기 메시지 (35% 확률로 우선 고려)
-  if (random < 0.35 && menstrual && messages.menstrual[menstrual.phase]) {
-    const pool = messages.menstrual[menstrual.phase];
-    return { message: pool[Math.floor(Math.random() * pool.length)], type: 'menstrual', phase: menstrual.phase };
+  // 1. 강한 감정 상태 메시지 (40% 확률로 최우선 고려)
+  if (random < 0.40 && messages.emotion[emotionInfo.emotionKorean]) {
+    const pool = messages.emotion[emotionInfo.emotionKorean];
+    return { 
+      message: pool[Math.floor(Math.random() * pool.length)], 
+      type: 'emotion', 
+      category: emotionInfo.emotionKorean,
+      intensity: emotionInfo.intensity
+    };
   }
 
-  // 2. 날씨 메시지 (25% 확률로 다음 고려)
-  if (random < 0.60 && weatherInfo) {
+  // 2. 생리주기 메시지 (30% 확률로 다음 고려)
+  if (random < 0.70 && menstrual && messages.menstrual[menstrual.phase]) {
+    const pool = messages.menstrual[menstrual.phase];
+    return { 
+      message: pool[Math.floor(Math.random() * pool.length)], 
+      type: 'menstrual', 
+      phase: menstrual.phase,
+      emotionKorean: menstrual.emotionKorean || '평범'
+    };
+  }
+
+  // 3. 날씨 메시지 (20% 확률로 다음 고려)
+  if (random < 0.90 && weatherInfo) {
     let weatherCategory = 'clouds'; // 기본값
     const description = weatherInfo.description.toLowerCase();
     if (description.includes('비')) weatherCategory = 'rain';
@@ -131,11 +240,16 @@ async function getFinalMessage() {
     
     if (messages.weather[weatherCategory]) {
         const pool = messages.weather[weatherCategory];
-        return { message: pool[Math.floor(Math.random() * pool.length)], type: 'weather', category: weatherCategory };
+        return { 
+          message: pool[Math.floor(Math.random() * pool.length)], 
+          type: 'weather', 
+          category: weatherCategory,
+          emotionKorean: emotionInfo.emotionKorean
+        };
     }
   }
 
-  // 3. 시간대별 기본 메시지
+  // 4. 시간대별 기본 메시지
   const hour = new Date().getHours();
   let timeCategory = 'afternoon';
   if (hour >= 9 && hour < 13) timeCategory = 'morning';
@@ -144,7 +258,12 @@ async function getFinalMessage() {
   else if (hour >= 23 || hour < 3) timeCategory = 'lateNight';
 
   const pool = messages.timeBased[timeCategory];
-  return { message: pool[Math.floor(Math.random() * pool.length)], type: 'timeBased', category: timeCategory };
+  return { 
+    message: pool[Math.floor(Math.random() * pool.length)], 
+    type: 'timeBased', 
+    category: timeCategory,
+    emotionKorean: emotionInfo.emotionKorean
+  };
 }
 
 // ------------------- 메인 스케줄러 -------------------
@@ -165,12 +284,14 @@ schedule.scheduleJob('*/20 * * * *', async () => {
       
       await client.pushMessage(USER_ID, { type: 'text', text: messageInfo.message });
       
-      // ✅ 예쁜 로깅 추가
+      // ✅ 예쁜 로깅 추가 (한글 감정 상태 포함)
       try {
         const logger = require('./enhancedLogging.js');
-        logger.logSpontaneousAction('message', `${messageInfo.type}(${messageInfo.category || messageInfo.phase || 'unknown'}): ${messageInfo.message.substring(0, 30)}...`);
+        const logMessage = `${messageInfo.type}(${messageInfo.category || messageInfo.phase || 'unknown'}): ${messageInfo.message.substring(0, 30)}...`;
+        const additionalInfo = messageInfo.emotionKorean ? `현재감정: ${messageInfo.emotionKorean}` : '';
+        logger.logSpontaneousAction('message', logMessage, additionalInfo);
       } catch (error) {
-        console.log(`💖 [emotionalScheduler] 자발적 감정 메시지 전송 -> ${messageInfo.message}`); // 폴백
+        console.log(`💖 [emotionalScheduler] 자발적 감정 메시지 전송 (${messageInfo.emotionKorean || '평범'}상태) -> ${messageInfo.message}`); // 폴백
       }
       
     } catch (error) {
@@ -179,10 +300,17 @@ schedule.scheduleJob('*/20 * * * *', async () => {
   }
 });
 
-// ✅ 스케줄러 상태 로깅
+// ✅ 스케줄러 상태 로깅 (한글 감정 지원)
 try {
   const logger = require('./enhancedLogging.js');
-  logger.logSchedulerStatus('감정 메시지 스케줄러', 'started', '20분마다');
+  logger.logSchedulerStatus('감정 메시지 스케줄러', 'started', '20분마다 (한글감정지원)');
 } catch (error) {
-  console.log('💖 [emotionalScheduler] 애기의 자발적 감정 스케줄러 v5.0이 시작되었습니다.'); // 폴백
+  console.log('💖 [emotionalScheduler] 애기의 자발적 감정 스케줄러 v5.1이 시작되었습니다. (한글 감정 지원)'); // 폴백
 }
+
+// 모듈 내보내기
+module.exports = {
+  getFinalMessage,
+  getCurrentEmotionInfo,
+  translateEmotionToKorean
+};
