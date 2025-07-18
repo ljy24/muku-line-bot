@@ -1,6 +1,6 @@
 // ============================================================================
-// index.js - v13.0 (최종 완성 버전)
-// ✅ 모든 중복 함수 제거 + 완전한 모듈 위임 시스템
+// index.js - v13.1 (색상 개선 버전)
+// ✅ 대화 색상: 아저씨(하늘색), 예진이(연보라색), PMS(굵은 주황색)
 // ============================================================================
 
 const { Client, middleware } = require('@line/bot-sdk');
@@ -13,6 +13,17 @@ require('dotenv').config();
 let autoReply, commandHandler, memoryManager, ultimateContext;
 let moodManager, sulkyManager, scheduler, spontaneousPhoto, photoAnalyzer;
 let menstrualCycleManager;
+
+// ================== 🎨 색상 코드 정의 ==================
+const colors = {
+    reset: '\x1b[0m',
+    ajeossi: '\x1b[96m',      // 하늘색 (밝은 시안)
+    yejin: '\x1b[95m',        // 연보라색 (밝은 마젠타)
+    pms: '\x1b[1m\x1b[38;5;208m', // 굵은 주황색 (Bold + 256색 주황)
+    system: '\x1b[92m',       // 밝은 초록색 (시스템 메시지용)
+    warning: '\x1b[93m',      // 노란색 (경고용)
+    error: '\x1b[91m'         // 빨간색 (에러용)
+};
 
 // ================== 🎨 기본 설정 ==================
 const app = express();
@@ -163,14 +174,14 @@ function getStatusReport() {
     }
 }
 
-// ================== 🎨 통합 로그 시스템 ==================
+// ================== 🎨 통합 로그 시스템 (색상 개선) ==================
 function formatPrettyStatus() {
     try {
-        console.log('💖 [시스템상태] 나 v13.0 정상 동작 중');
+        console.log(`${colors.system}💖 [시스템상태] 나 v13.1 정상 동작 중${colors.reset}`);
         
         const status = collectSystemStatus();
         
-        // 생리주기 로그 (다음 생리예정일 + 현재 상태)
+        // 생리주기 로그 (다음 생리예정일 + 현재 상태) - PMS는 굵은 주황색
         if (menstrualCycleManager?.getCurrentMenstrualPhase) {
             const cycle = menstrualCycleManager.getCurrentMenstrualPhase();
             const daysUntil = Math.abs(cycle.daysUntilNextPeriod);
@@ -181,10 +192,10 @@ function formatPrettyStatus() {
             nextPeriodDate.setDate(nextPeriodDate.getDate() + daysUntil);
             const monthDay = `${nextPeriodDate.getMonth() + 1}/${nextPeriodDate.getDate()}`;
             
-            // PMS 글자에 주황색 적용 (더 확실한 주황색)
+            // PMS를 굵은 주황색으로 강조
             let description = cycle.description;
             if (description.includes('PMS')) {
-                description = description.replace('PMS', '\x1b[38;5;208mPMS\x1b[0m'); // 밝은 주황색 (256색 코드)
+                description = description.replace('PMS', `${colors.pms}PMS${colors.reset}`);
             }
             
             console.log(`🩸 [생리주기] 다음 생리예정일: ${nextPeriodText}(${monthDay}), 현재 ${description} 중`);
@@ -233,7 +244,7 @@ function formatPrettyStatus() {
         console.log('');
         
     } catch (error) {
-        console.log('💖 [시스템상태] 나 v13.0 정상 동작 중 (일부 모듈 대기)');
+        console.log(`${colors.system}💖 [시스템상태] 나 v13.1 정상 동작 중 (일부 모듈 대기)${colors.reset}`);
         console.log('');
     }
 }
@@ -253,10 +264,10 @@ async function loadModules() {
         photoAnalyzer = require('./src/photoAnalyzer.js');
         menstrualCycleManager = require('./src/menstrualCycleManager.js');
         
-        console.log('✅ 모든 모듈 로드 완료');
+        console.log(`${colors.system}✅ 모든 모듈 로드 완료${colors.reset}`);
         return true;
     } catch (error) {
-        console.error('❌ 모듈 로드 중 에러:', error);
+        console.error(`${colors.error}❌ 모듈 로드 중 에러:${colors.reset}`, error);
         return false;
     }
 }
@@ -264,7 +275,7 @@ async function loadModules() {
 // ================== ⭐️ 통합 기억 시스템 초기화 ⭐️ ==================
 async function initializeMemorySystems() {
     try {
-        console.log('  🧠 통합 기억 시스템 초기화...');
+        console.log(`${colors.system}  🧠 통합 기억 시스템 초기화...${colors.reset}`);
         
         // 1. memoryManager 초기화 (고정 기억)
         if (memoryManager?.ensureMemoryTablesAndDirectory) {
@@ -284,7 +295,7 @@ async function initializeMemorySystems() {
         }
         
         // 3. 기억 시스템 연동 확인
-        console.log('  🔗 기억 시스템 연동 확인...');
+        console.log(`${colors.system}  🔗 기억 시스템 연동 확인...${colors.reset}`);
         
         try {
             // 고정 기억 검색 테스트
@@ -300,26 +311,26 @@ async function initializeMemorySystems() {
             }
             
         } catch (testError) {
-            console.warn('     ⚠️ 기억 시스템 연동 테스트 실패:', testError.message);
+            console.warn(`${colors.warning}     ⚠️ 기억 시스템 연동 테스트 실패:${colors.reset}`, testError.message);
         }
         
-        console.log('  ✅ 통합 기억 시스템 초기화 완료');
+        console.log(`${colors.system}  ✅ 통합 기억 시스템 초기화 완료${colors.reset}`);
         
     } catch (error) {
-        console.error('  ❌ 통합 기억 시스템 초기화 실패:', error);
-        console.log('  ⚠️ 기본 기능으로라도 계속 진행합니다...');
+        console.error(`${colors.error}  ❌ 통합 기억 시스템 초기화 실패:${colors.reset}`, error);
+        console.log(`${colors.warning}  ⚠️ 기본 기능으로라도 계속 진행합니다...${colors.reset}`);
     }
 }
 
 // ================== 🌐 Express 라우트 ==================
-app.get('/', (_, res) => res.send('나 v13.0 살아있어! (최종 완성 통합 시스템)'));
+app.get('/', (_, res) => res.send('나 v13.1 살아있어! (색상 개선 통합 시스템)'));
 
 app.post('/webhook', middleware(config), async (req, res) => {
     try {
         await Promise.all(req.body.events.map(handleEvent));
         res.status(200).send('OK');
     } catch (err) {
-        console.error(`[Webhook] 🚨 웹훅 처리 중 에러:`, err);
+        console.error(`${colors.error}[Webhook] 🚨 웹훅 처리 중 에러:${colors.reset}`, err);
         res.status(500).send('Error');
     }
 });
@@ -341,6 +352,9 @@ async function handleEvent(event) {
 async function handleTextMessage(event) {
     const text = event.message.text.trim();
     
+    // 💬 대화 로그 출력 (아저씨는 하늘색)
+    console.log(`💬 [대화] ${colors.ajeossi}아저씨${colors.reset}: "${text}"`);
+    
     // 사용자 메시지 시간 업데이트
     if (ultimateContext?.updateLastUserMessageTime) {
         ultimateContext.updateLastUserMessageTime(event.timestamp);
@@ -352,6 +366,8 @@ async function handleTextMessage(event) {
     if (text.includes('상태는') || text.includes('상태 알려') || text.includes('지금 어때')) {
         const statusReport = getStatusReport();
         await client.replyMessage(event.replyToken, { type: 'text', text: statusReport });
+        // 예진이 응답 로그 (연보라색)
+        console.log(`💬 [대화] ${colors.yejin}예진${colors.reset}: "[상태 리포트 전송]"`);
         return;
     }
     
@@ -364,11 +380,16 @@ async function handleTextMessage(event) {
                 const newCount = ultimateContext.getYejinMemories().length;
                 const response = `아저씨! 기억했어~ 이제 새로운 기억이 ${newCount}개야! (ID: ${memoryId.substring(0, 8)}...)`;
                 await client.replyMessage(event.replyToken, { type: 'text', text: response });
+                // 예진이 응답 로그 (연보라색)
+                console.log(`💬 [대화] ${colors.yejin}예진${colors.reset}: "${response}"`);
                 return;
             }
         } catch (error) {
-            console.error('❌ 기억 추가 실패:', error);
-            await client.replyMessage(event.replyToken, { type: 'text', text: '아저씨... 기억하려고 했는데 실패했어 ㅠㅠ' });
+            console.error(`${colors.error}❌ 기억 추가 실패:${colors.reset}`, error);
+            const errorResponse = '아저씨... 기억하려고 했는데 실패했어 ㅠㅠ';
+            await client.replyMessage(event.replyToken, { type: 'text', text: errorResponse });
+            // 예진이 응답 로그 (연보라색)
+            console.log(`💬 [대화] ${colors.yejin}예진${colors.reset}: "${errorResponse}"`);
             return;
         }
     }
@@ -385,6 +406,8 @@ async function handleTextMessage(event) {
             const sulkyReliefMessage = await sulkyManager.handleUserResponse();
             if (sulkyReliefMessage) {
                 await client.pushMessage(userId, { type: 'text', text: sulkyReliefMessage });
+                // 삐짐 해소 메시지 로그 (연보라색)
+                console.log(`💬 [대화] ${colors.yejin}예진${colors.reset}: "${sulkyReliefMessage}"`);
                 await new Promise(resolve => setTimeout(resolve, 1000));
             }
         }
@@ -409,7 +432,7 @@ async function handleTextMessage(event) {
             await ultimateContext.learnFromUserMessage(text);
         }
     } catch (error) {
-        console.warn('⚠️ 대화 학습 실패:', error.message);
+        console.warn(`${colors.warning}⚠️ 대화 학습 실패:${colors.reset}`, error.message);
     }
     
     if (botResponse) {
@@ -420,7 +443,10 @@ async function handleTextMessage(event) {
 // ================== 🖼️ 이미지 메시지 처리 ==================
 async function handleImageMessage(event) {
     try {
-        console.log('📸 [ImageHandler] 아저씨가 사진을 보내셨어요!');
+        console.log(`${colors.system}📸 [ImageHandler] 아저씨가 사진을 보내셨어요!${colors.reset}`);
+        
+        // 💬 대화 로그 출력 (아저씨는 하늘색)
+        console.log(`💬 [대화] ${colors.ajeossi}아저씨${colors.reset}: "[사진 전송]"`);
         
         if (ultimateContext?.updateLastUserMessageTime) {
             ultimateContext.updateLastUserMessageTime(event.timestamp);
@@ -430,6 +456,8 @@ async function handleImageMessage(event) {
             const sulkyReliefMessage = await sulkyManager.handleUserResponse();
             if (sulkyReliefMessage) {
                 await client.pushMessage(userId, { type: 'text', text: sulkyReliefMessage });
+                // 삐짐 해소 메시지 로그 (연보라색)
+                console.log(`💬 [대화] ${colors.yejin}예진${colors.reset}: "${sulkyReliefMessage}"`);
                 await new Promise(resolve => setTimeout(resolve, 1000));
             }
         }
@@ -444,6 +472,9 @@ async function handleImageMessage(event) {
                     text: yejinReaction
                 });
                 
+                // 예진이 사진 반응 로그 (연보라색)
+                console.log(`💬 [대화] ${colors.yejin}예진${colors.reset}: "${yejinReaction}"`);
+                
                 // ⭐️ 사진 분석 결과를 새로운 기억으로 저장 ⭐️
                 if (ultimateContext?.addUserMemory) {
                     const memoryContent = `아저씨가 사진을 보내줬어: ${analysis.description || '사진 내용 분석'}`;
@@ -455,24 +486,29 @@ async function handleImageMessage(event) {
                     await ultimateContext.addUltimateMessage('나', yejinReaction);
                 }
                 
-                console.log('✅ [ImageHandler] 사진 처리 완료');
+                console.log(`${colors.system}✅ [ImageHandler] 사진 처리 완료${colors.reset}`);
                 
             } catch (analysisError) {
-                console.error('❌ [ImageHandler] 사진 분석 실패:', analysisError);
+                console.error(`${colors.error}❌ [ImageHandler] 사진 분석 실패:${colors.reset}`, analysisError);
                 const fallbackReaction = "아저씨! 사진 고마워~ 근데 지금 좀 멍해서 뭐라고 해야 할지 모르겠어 ㅎㅎ";
                 await client.replyMessage(event.replyToken, { type: 'text', text: fallbackReaction });
+                // 예진이 폴백 반응 로그 (연보라색)
+                console.log(`💬 [대화] ${colors.yejin}예진${colors.reset}: "${fallbackReaction}"`);
             }
         }
         
     } catch (error) {
-        console.error('🚨 [ImageHandler] 이미지 처리 중 에러:', error);
+        console.error(`${colors.error}🚨 [ImageHandler] 이미지 처리 중 에러:${colors.reset}`, error);
         try {
+            const errorResponse = "아저씨... 사진이 잘 안 보여서 ㅠㅠ 다시 보내줄래?";
             await client.replyMessage(event.replyToken, {
                 type: 'text',
-                text: "아저씨... 사진이 잘 안 보여서 ㅠㅠ 다시 보내줄래?"
+                text: errorResponse
             });
+            // 예진이 에러 응답 로그 (연보라색)
+            console.log(`💬 [대화] ${colors.yejin}예진${colors.reset}: "${errorResponse}"`);
         } catch (replyError) {
-            console.error('🚨 [ImageHandler] 에러 응답 전송도 실패:', replyError);
+            console.error(`${colors.error}🚨 [ImageHandler] 에러 응답 전송도 실패:${colors.reset}`, replyError);
         }
     }
 }
@@ -488,9 +524,13 @@ async function sendReply(replyToken, botResponse) {
                 { type: 'image', originalContentUrl: botResponse.originalContentUrl, previewImageUrl: botResponse.previewImageUrl },
                 { type: 'text', text: caption }
             ]);
+            // 예진이 이미지 응답 로그 (연보라색)
+            console.log(`💬 [대화] ${colors.yejin}예진${colors.reset}: "[사진 전송] ${caption}"`);
         } else if (botResponse.type === 'text' && botResponse.comment) {
             let cleanedText = botResponse.comment.replace(/자기야/gi, '아저씨').replace(/자기/gi, '아저씨');
             await client.replyMessage(replyToken, { type: 'text', text: cleanedText });
+            // 예진이 텍스트 응답 로그 (연보라색)
+            console.log(`💬 [대화] ${colors.yejin}예진${colors.reset}: "${cleanedText}"`);
         }
 
         // 마지막 봇 메시지 시간 업데이트
@@ -502,28 +542,28 @@ async function sendReply(replyToken, botResponse) {
         }
 
     } catch (error) {
-        console.error('[sendReply] 🚨 메시지 전송 실패:', error);
+        console.error(`${colors.error}[sendReply] 🚨 메시지 전송 실패:${colors.reset}`, error);
     }
 }
 
 // ================== 🚀 시스템 초기화 ==================
 async function initMuku() {
     try {
-        console.log('🚀 나 v13.0 시스템 초기화를 시작합니다... (최종 완성 통합 시스템)');
+        console.log(`${colors.system}🚀 나 v13.1 시스템 초기화를 시작합니다... (색상 개선 통합 시스템)${colors.reset}`);
         
-        console.log('  [1/6] 📦 모든 모듈 로드...');
+        console.log(`${colors.system}  [1/6] 📦 모든 모듈 로드...${colors.reset}`);
         const moduleLoadSuccess = await loadModules();
         if (!moduleLoadSuccess) {
             throw new Error('모듈 로드 실패');
         }
         
-        console.log('  [2/6] 🧠 통합 기억 시스템 초기화...');
+        console.log(`${colors.system}  [2/6] 🧠 통합 기억 시스템 초기화...${colors.reset}`);
         await initializeMemorySystems();
         
-        console.log('  [3/6] 💖 감정 시스템 초기화...');
+        console.log(`${colors.system}  [3/6] 💖 감정 시스템 초기화...${colors.reset}`);
         // ultimateContext는 이미 initializeMemorySystems에서 초기화됨
         
-        console.log('  [4/6] ⏰ 모든 스케줄러 시작...');
+        console.log(`${colors.system}  [4/6] ⏰ 모든 스케줄러 시작...${colors.reset}`);
         if (scheduler?.startAllSchedulers) {
             // scheduler.startAllSchedulers(client, userId); // 실제로는 주석 해제
         }
@@ -536,28 +576,30 @@ async function initMuku() {
             });
         }
         
-        console.log('  [5/6] 🎨 예쁜 로그 시스템 시작...');
+        console.log(`${colors.system}  [5/6] 🎨 예쁜 로그 시스템 시작...${colors.reset}`);
         setInterval(() => {
             formatPrettyStatus();
         }, 60 * 1000);
         
-        console.log('  [6/6] 📊 첫 번째 상태 표시...');
+        console.log(`${colors.system}  [6/6] 📊 첫 번째 상태 표시...${colors.reset}`);
         setTimeout(() => {
             formatPrettyStatus();
         }, 3000);
 
-        console.log('\n🎉 모든 시스템 초기화 완료! (v13.0 최종 완성 통합 시스템)');
-        console.log('\n📋 v13.0 주요 변경사항:');
-        console.log('   - 통합 기억 시스템: memoryManager(고정) + ultimateContext(동적)');
-        console.log('   - 정확한 담타 시간 표시: 다음 체크까지 남은 시간 실시간 계산');
-        console.log('   - 실시간 기억 학습: 대화/사진에서 자동 기억 추가');
-        console.log('   - 기억 명령어: "기억해줘 [내용]"으로 수동 기억 추가');
-        console.log('   - 모든 중복 코드 제거 + 완전한 모듈 연동');
+        console.log(`\n${colors.system}🎉 모든 시스템 초기화 완료! (v13.1 색상 개선 통합 시스템)${colors.reset}`);
+        console.log(`\n${colors.system}📋 v13.1 주요 변경사항:${colors.reset}`);
+        console.log(`   - ${colors.ajeossi}아저씨 대화: 하늘색${colors.reset}`);
+        console.log(`   - ${colors.yejin}예진이 대화: 연보라색${colors.reset}`);
+        console.log(`   - ${colors.pms}PMS: 굵은 주황색${colors.reset}`);
+        console.log(`   - 통합 기억 시스템: memoryManager(고정) + ultimateContext(동적)`);
+        console.log(`   - 정확한 담타 시간 표시: 다음 체크까지 남은 시간 실시간 계산`);
+        console.log(`   - 실시간 기억 학습: 대화/사진에서 자동 기억 추가`);
+        console.log(`   - 기억 명령어: "기억해줘 [내용]"으로 수동 기억 추가`);
 
     } catch (error) {
-        console.error('🚨🚨🚨 시스템 초기화 중 심각한 에러 발생! 🚨🚨🚨');
+        console.error(`${colors.error}🚨🚨🚨 시스템 초기화 중 심각한 에러 발생! 🚨🚨🚨${colors.reset}`);
         console.error(error);
-        console.log('⚠️ 기본 기능으로라도 서버를 계속 실행합니다...');
+        console.log(`${colors.warning}⚠️ 기본 기능으로라도 서버를 계속 실행합니다...${colors.reset}`);
     }
 }
 
@@ -565,10 +607,11 @@ async function initMuku() {
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
     console.log(`\n==================================================`);
-    console.log(`  나 v13.0 서버가 포트 ${PORT}에서 시작되었습니다.`);
+    console.log(`  ${colors.system}나 v13.1 서버가 포트 ${PORT}에서 시작되었습니다.${colors.reset}`);
     console.log(`  🧠 통합 기억: 고정기억(memoryManager) + 동적기억(ultimateContext)`);
     console.log(`  🚬 정확한 담타: 실시간 다음 체크 시간 계산`);
     console.log(`  🤖 실시간 학습: 대화 내용 자동 기억 + 수동 기억 추가`);
+    console.log(`  🎨 색상 개선: ${colors.ajeossi}아저씨(하늘색)${colors.reset}, ${colors.yejin}예진이(연보라색)${colors.reset}, ${colors.pms}PMS(굵은주황)${colors.reset}`);
     console.log(`  ⚡ 성능 향상: 모든 중복 코드 제거 + 완전한 모듈 연동`);
     console.log(`==================================================\n`);
 
@@ -585,5 +628,6 @@ module.exports = {
     getStatusReport,
     loadModules,
     initMuku,
-    initializeMemorySystems
+    initializeMemorySystems,
+    colors // 색상 객체도 내보내기
 };
