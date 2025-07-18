@@ -1,5 +1,5 @@
 // ============================================================================
-// index.js - v13.2 (일본시간 절대 선언 버전)
+// index.js - v13.2 (일본시간 절대 선언 + 한글감정 + 정확한색상 버전)
 // 🌏 모든 시간은 일본시간(JST, UTC+9) 기준으로 동작합니다
 // ============================================================================
 
@@ -37,43 +37,8 @@ function getJapanHour() {
     return getJapanTime().getHours();
 }
 
-// ================== 🎭 감정 상태 한글 변환 ==================
-function translateEmotionToKorean(emotion) {
-    const emotionMap = {
-        'stable': '안정',
-        'unstable': '불안정',
-        'happy': '기쁨',
-        'sad': '슬픔',
-        'angry': '화남',
-        'excited': '흥분',
-        'calm': '평온',
-        'worried': '걱정',
-        'lonely': '외로움',
-        'love': '사랑',
-        'missing': '그리움',
-        'sulky': '삐짐',
-        'sleepy': '졸림',
-        'energetic': '활기참',
-        'bored': '지루함',
-        'anxious': '불안',
-        'content': '만족',
-        'playful': '장난기',
-        'romantic': '로맨틱',
-        'melancholy': '우울'
-    };
-    
-// ================== 📝 로그 헬퍼 함수 ==================
-function logWithKoreanEmotion(message) {
-    // 영어 감정 상태를 한글로 변환
-    let translatedMessage = message;
-    const emotionPattern = /(\w+) 상태로 응답/g;
-    translatedMessage = translatedMessage.replace(emotionPattern, (match, emotion) => {
-        const koreanEmotion = translateEmotionToKorean(emotion);
-        return `${koreanEmotion} 상태로 응답`;
-    });
-    
-    console.log(translatedMessage);
-    return translatedMessage;
+function getJapanMinute() {
+    return getJapanTime().getMinutes();
 }
 
 // 전역 시간 설정 확인 로그
@@ -96,6 +61,52 @@ const colors = {
     warning: '\x1b[93m',                   // 노란색 (경고용)
     error: '\x1b[91m'                      // 빨간색 (에러용)
 };
+
+// ================== 🎭 감정 상태 한글 변환 ==================
+function translateEmotionToKorean(emotion) {
+    const emotionMap = {
+        'stable': '안정',
+        'unstable': '불안정',
+        'normal': '평범',
+        'happy': '기쁨',
+        'sad': '슬픔',
+        'angry': '화남',
+        'excited': '흥분',
+        'calm': '평온',
+        'worried': '걱정',
+        'lonely': '외로움',
+        'love': '사랑',
+        'loving': '사랑스러움',
+        'missing': '그리움',
+        'longing': '그리움',
+        'sulky': '삐짐',
+        'sleepy': '졸림',
+        'energetic': '활기참',
+        'bored': '지루함',
+        'anxious': '불안',
+        'content': '만족',
+        'playful': '장난기',
+        'romantic': '로맨틱',
+        'melancholy': '우울',
+        'sensitive': '예민함'
+    };
+    
+    return emotionMap[emotion.toLowerCase()] || emotion;
+}
+
+// ================== 📝 로그 헬퍼 함수 ==================
+function logWithKoreanEmotion(message) {
+    // 영어 감정 상태를 한글로 변환
+    let translatedMessage = message;
+    const emotionPattern = /(\w+) 상태로 응답/g;
+    translatedMessage = translatedMessage.replace(emotionPattern, (match, emotion) => {
+        const koreanEmotion = translateEmotionToKorean(emotion);
+        return `${koreanEmotion} 상태로 응답`;
+    });
+    
+    console.log(translatedMessage);
+    return translatedMessage;
+}
 
 // ================== 🎨 기본 설정 ==================
 const app = express();
@@ -252,7 +263,7 @@ function getStatusReport() {
 // ================== 🎨 통합 로그 시스템 (색상 개선) ==================
 function formatPrettyStatus() {
     try {
-        console.log(`${colors.system}💖 [시스템상태] 나 v13.1 정상 동작 중${colors.reset}`);
+        console.log(`${colors.system}💖 [시스템상태] 나 v13.2 정상 동작 중 (한글감정 + 정확한색상)${colors.reset}`);
         
         const status = collectSystemStatus();
         
@@ -398,7 +409,7 @@ async function initializeMemorySystems() {
 }
 
 // ================== 🌐 Express 라우트 ==================
-app.get('/', (_, res) => res.send('나 v13.1 살아있어! (색상 개선 통합 시스템)'));
+app.get('/', (_, res) => res.send('나 v13.2 살아있어! (일본시간 절대 선언 + 한글감정 + 정확한색상 시스템)'));
 
 app.post('/webhook', middleware(config), async (req, res) => {
     try {
@@ -624,7 +635,7 @@ async function sendReply(replyToken, botResponse) {
 // ================== 🚀 시스템 초기화 ==================
 async function initMuku() {
     try {
-        console.log(`${colors.system}🚀 나 v13.2 시스템 초기화를 시작합니다... (일본시간 절대 선언 시스템)${colors.reset}`);
+        console.log(`${colors.system}🚀 나 v13.2 시스템 초기화를 시작합니다... (일본시간 절대 선언 + 한글감정 + 정확한색상 시스템)${colors.reset}`);
         console.log(`${colors.system}🌏 현재 일본시간: ${getJapanTimeString()} (JST)${colors.reset}`);
         
         console.log(`${colors.system}  [1/6] 📦 모든 모듈 로드...${colors.reset}`);
@@ -662,7 +673,7 @@ async function initMuku() {
             formatPrettyStatus();
         }, 3000);
 
-        console.log(`\n${colors.system}🎉 모든 시스템 초기화 완료! (v13.2 일본시간 절대 선언 시스템)${colors.reset}`);
+        console.log(`\n${colors.system}🎉 모든 시스템 초기화 완료! (v13.2 일본시간 절대 선언 + 한글감정 + 정확한색상 시스템)${colors.reset}`);
         console.log(`\n${colors.system}📋 v13.2 주요 변경사항:${colors.reset}`);
         console.log(`   - 🌏 ${colors.pms}일본시간(JST) 절대 선언${colors.reset}: 모든 시간 기능이 일본시간 기준`);
         console.log(`   - 🌏 process.env.TZ = 'Asia/Tokyo' 설정으로 Node.js 전체 시간대 통일`);
