@@ -286,7 +286,7 @@ schedule.scheduleJob('0 9 * * 1-5', async () => {
     } catch (error) {
         forceLog(`아침 출근 스케줄러 에러: ${error.message} - 하지만 계속 진행`);
     }
-}, null, true, TIMEZONE); // ⭐ 시간대 명시!
+}); // ⭐ 시간대 문제로 일단 기본 설정
 
 // 2. 담타 스케줄러 (10시-18시, 매 30분마다 체크) - 한국시간
 schedule.scheduleJob('*/30 * * * *', async () => {
@@ -336,7 +336,7 @@ schedule.scheduleJob('*/30 * * * *', async () => {
     } catch (error) {
         forceLog(`담타 스케줄러 에러: ${error.message} - 하지만 계속 진행`);
     }
-}, null, true, TIMEZONE); // ⭐ 시간대 명시!
+}); // ⭐ 시간대 문제로 일단 기본 설정
 
 // 3. 밤 11시 케어 메시지 스케줄러 - 한국시간
 schedule.scheduleJob('0 23 * * *', async () => {
@@ -356,7 +356,7 @@ schedule.scheduleJob('0 23 * * *', async () => {
     } catch (error) {
         forceLog(`밤 케어 스케줄러 에러: ${error.message} - 하지만 계속 진행`);
     }
-}, null, true, TIMEZONE); // ⭐ 시간대 명시!
+}); // ⭐ 시간대 문제로 일단 기본 설정
 
 // 4. 자정 굿나잇 메시지 스케줄러 - 한국시간
 schedule.scheduleJob('0 0 * * *', async () => {
@@ -381,7 +381,7 @@ schedule.scheduleJob('0 0 * * *', async () => {
     } catch (error) {
         forceLog(`굿나잇 스케줄러 에러: ${error.message} - 하지만 계속 진행`);
     }
-}, null, true, TIMEZONE); // ⭐ 시간대 명시!
+}); // ⭐ 시간대 문제로 일단 기본 설정
 
 // ==================== 테스트 및 상태 확인 ====================
 
