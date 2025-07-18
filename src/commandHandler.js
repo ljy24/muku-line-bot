@@ -116,9 +116,9 @@ async function handleCommand(text, userId, client = null) {
                     const cycleInfo = menstrualCycle.getCurrentMenstrualPhase();
                     
                     const monthDay = '7/24'; // 7월 24일
-                    statusReport += `🩸 [생리주기] 현재 ${cycleInfo.day}일차 (${cycleInfo.description}), 다음 생리예정일: ${Math.abs(cycleInfo.daysUntilNextPeriod)}일 후 (${monthDay})\n`;
+                    statusReport += `🩸 [생리주기] 현재 생리후 ${cycleInfo.day}일차, 다음 생리예정일: ${Math.abs(cycleInfo.daysUntilNextPeriod)}일 후 (${monthDay})\n`;
                 } catch (error) {
-                    statusReport += `🩸 [생리주기] 현재 6일차 (생리 후 회복기), 다음 생리예정일: 6일 후 (7/24)\n`;
+                    statusReport += `🩸 [생리주기] 현재 생리후 6일차, 다음 생리예정일: 6일 후 (7/24)\n`;
                 }
                 
                 // 감정 상태 (한글로 변경)
