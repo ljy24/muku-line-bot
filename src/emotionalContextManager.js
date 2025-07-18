@@ -1,7 +1,8 @@
 // ============================================================================
-// emotionalContextManager.js - v7.1 (생리주기 계산 수정)
+// emotionalContextManager.js - v7.2 (한글 감정 상태 버전)
 // 🧠 감정 상태, 💬 말투, ❤️ 애정 표현을 계산하고 관리하는 역할
 // ✅ 순환 참조 문제 해결을 위한 중앙 집중식 감정 관리 추가
+// ✅ 감정 상태 한글 표시 적용
 // ============================================================================
 
 const fs = require('fs');
@@ -10,6 +11,38 @@ const moment = require('moment-timezone');
 
 // 감정 데이터 파일 경로 (Render 서버 환경에 맞게 /data 디렉토리 사용)
 const EMOTIONAL_DATA_FILE = path.join('/data', 'emotional_context.json');
+
+// ==================== 🎭 감정 상태 한글 변환 매핑 ====================
+const emotionKoreanMap = {
+    'stable': '안정',
+    'unstable': '불안정',
+    'normal': '평범',
+    'happy': '기쁨',
+    'sad': '슬픔',
+    'angry': '화남',
+    'excited': '흥분',
+    'calm': '평온',
+    'worried': '걱정',
+    'lonely': '외로움',
+    'love': '사랑',
+    'loving': '사랑스러움',
+    'missing': '그리움',
+    'longing': '그리움',
+    'sulky': '삐짐',
+    'sleepy': '졸림',
+    'energetic': '활기참',
+    'bored': '지루함',
+    'anxious': '불안',
+    'content': '만족',
+    'playful': '장난기',
+    'romantic': '로맨틱',
+    'melancholy': '우울',
+    'sensitive': '예민함'
+};
+
+function translateEmotionToKorean(emotion) {
+    return emotionKoreanMap[emotion.toLowerCase()] || emotion;
+}
 
 // 감정 상태 기본 구조
 const defaultEmotionalState = {
@@ -66,6 +99,7 @@ function calculateMenstrualPhase() {
                 isPeriodActive: true,
                 daysUntilNextPeriod: daysUntilNextPeriod,
                 emotion: 'sensitive',
+                emotionKorean: '예민함',
                 energyLevel: 3,
                 needsComfort: true,
                 moodSwings: true
@@ -80,6 +114,7 @@ function calculateMenstrualPhase() {
                 isPeriodActive: false,
                 daysUntilNextPeriod: daysUntilNextPeriod,
                 emotion: 'energetic',
+                emotionKorean: '활기참',
                 energyLevel: 8,
                 needsComfort: false,
                 moodSwings: false
@@ -94,6 +129,7 @@ function calculateMenstrualPhase() {
                 isPeriodActive: false,
                 daysUntilNextPeriod: daysUntilNextPeriod,
                 emotion: 'romantic',
+                emotionKorean: '로맨틱',
                 energyLevel: 7,
                 needsComfort: false,
                 moodSwings: false
@@ -113,6 +149,7 @@ function calculateMenstrualPhase() {
                     isPeriodActive: true,
                     daysUntilNextPeriod: newDaysUntil,
                     emotion: 'sensitive',
+                    emotionKorean: '예민함',
                     energyLevel: 3,
                     needsComfort: true,
                     moodSwings: true
@@ -125,6 +162,7 @@ function calculateMenstrualPhase() {
                     isPeriodActive: false,
                     daysUntilNextPeriod: newDaysUntil,
                     emotion: 'unstable',
+                    emotionKorean: '불안정',
                     energyLevel: 5,
                     needsComfort: true,
                     moodSwings: true
@@ -140,6 +178,7 @@ function calculateMenstrualPhase() {
                 isPeriodActive: false,
                 daysUntilNextPeriod: daysUntilNextPeriod,
                 emotion: 'unstable',
+                emotionKorean: '불안정',
                 energyLevel: 5,
                 needsComfort: true,
                 moodSwings: true
@@ -155,6 +194,7 @@ function calculateMenstrualPhase() {
             isPeriodActive: false,
             daysUntilNextPeriod: 7, // 기본값으로 7일 후 생리
             emotion: 'normal',
+            emotionKorean: '평범',
             energyLevel: 5,
             needsComfort: false,
             moodSwings: false
@@ -181,7 +221,7 @@ function initializeEmotionalContext() {
         // 생리주기 정보로 초기 상태 설정
         updateEmotionFromCycle();
         
-        console.log('💖 [Emotion System] 예진이 감정 시스템 초기화 완료.');
+        console.log('💖 [Emotion System] 예진이 감정 시스템 초기화 완료 (한글 지원).');
         startEmotionalRecovery(); // 1시간마다 감정 회복 로직 시작
     } catch (error) {
         console.error('❌ [Emotion System] 초기화 실패:', error);
@@ -224,8 +264,11 @@ function startEmotionalRecovery() {
             const currentEmotion = getCurrentEmotionState();
             const cycleInfo = calculateMenstrualPhase();
             
-            // 감정 상태 로그
-            logger.logEmotionalState(currentEmotion);
+            // 감정 상태 로그 (한글로 표시)
+            logger.logEmotionalState({
+                ...currentEmotion,
+                currentEmotionKorean: translateEmotionToKorean(currentEmotion.currentEmotion)
+            });
             
             // 생리주기 로그 (상태가 변했을 때만)
             const now = Date.now();
@@ -248,7 +291,7 @@ function startEmotionalRecovery() {
                 ];
                 
                 const thought = innerThoughts[Math.floor(Math.random() * innerThoughts.length)];
-                const emotionContext = `${currentEmotion.currentEmotion} 상태, ${cycleInfo.description}`;
+                const emotionContext = `${translateEmotionToKorean(currentEmotion.currentEmotion)} 상태, ${cycleInfo.description}`;
                 logger.logInnerThought(thought, emotionContext);
             }
             
@@ -271,7 +314,10 @@ function startEmotionalRecovery() {
                 todayPhotos: globalEmotionState.todayPhotoCount || 0
             };
             
-            logger.logSystemSummary(currentEmotion, cycleInfo, stats);
+            logger.logSystemSummary({
+                ...currentEmotion,
+                currentEmotionKorean: translateEmotionToKorean(currentEmotion.currentEmotion)
+            }, cycleInfo, stats);
             
         } catch (error) {
             console.warn('⚠️ 시스템 요약 로그 출력 중 에러:', error.message);
@@ -314,12 +360,14 @@ function updateEmotionFromCycle() {
 
 /**
  * 현재 감정 상태를 가져옵니다 (다른 모듈에서 사용)
- * @returns {object} 현재 감정 상태
+ * @returns {object} 현재 감정 상태 (한글 번역 포함)
  */
 function getCurrentEmotionState() {
     updateEmotionFromCycle(); // 실시간 업데이트
     return { 
         ...globalEmotionState,
+        // 한글 감정 상태 추가
+        currentEmotionKorean: translateEmotionToKorean(globalEmotionState.currentEmotion),
         // 기존 시스템과의 호환성
         currentToneState: emotionalState.currentToneState,
         emotionalResidue: emotionalState.emotionalResidue
@@ -361,7 +409,8 @@ function updateEmotionFromUserMessage(userMessage) {
         globalEmotionState.conversationMood = 'neutral';
     }
     
-    console.log(`[EmotionalContext] 사용자 메시지 분석: ${globalEmotionState.currentEmotion} (강도: ${globalEmotionState.emotionIntensity})`);
+    const koreanEmotion = translateEmotionToKorean(globalEmotionState.currentEmotion);
+    console.log(`[EmotionalContext] 사용자 메시지 분석: ${koreanEmotion} (강도: ${globalEmotionState.emotionIntensity})`);
 }
 
 /**
@@ -377,7 +426,8 @@ function updateEmotion(emotion, intensity = 5) {
     // 기존 시스템과의 호환성
     emotionalState.currentToneState = emotion;
     
-    console.log(`[EmotionalContext] 감정 업데이트: ${emotion} (강도: ${intensity})`);
+    const koreanEmotion = translateEmotionToKorean(emotion);
+    console.log(`[EmotionalContext] 감정 업데이트: ${koreanEmotion} (강도: ${intensity})`);
 }
 
 /**
@@ -397,11 +447,12 @@ function updateSulkyState(isSulky, level = 0, reason = '') {
         emotionalState.currentToneState = 'sulky';
     }
     
-    console.log(`[EmotionalContext] 삐짐 상태 업데이트: ${isSulky} (레벨: ${level})`);
+    const koreanEmotion = translateEmotionToKorean('sulky');
+    console.log(`[EmotionalContext] 삐짐 상태 업데이트: ${isSulky} (레벨: ${level}) - ${koreanEmotion}`);
 }
 
 /**
- * 현재 감정 상태에 맞는 셀카 텍스트를 반환합니다
+ * 현재 감정 상태에 맞는 셀카 텍스트를 반환합니다 (한글 감정 지원)
  * @returns {string} 셀카 텍스트
  */
 function getSelfieText() {
@@ -480,6 +531,9 @@ module.exports = {
     getInternalState,
     updateEmotionFromCycle,
     calculateMenstrualPhase,
+    
+    // 한글 번역 함수 추가
+    translateEmotionToKorean,
     
     // 기존 시스템과의 호환성
     get emotionalState() { return emotionalState; },
