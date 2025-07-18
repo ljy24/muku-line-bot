@@ -51,15 +51,15 @@ let autoReply, commandHandler, memoryManager, ultimateContext;
 let moodManager, sulkyManager, scheduler, spontaneousPhoto, photoAnalyzer;
 let menstrualCycleManager;
 
-// ================== 🎨 색상 코드 정의 ==================
+// ================== 🎨 색상 코드 정의 (터미널 호환성 개선) ==================
 const colors = {
     reset: '\x1b[0m',
-    ajeossi: '\x1b[38;2;80;188;223m',      // 하늘색 #50bcdf (아저씨)
-    yejin: '\x1b[38;2;208;154;255m',       // 연보라색 #d09aff (예진이)
-    pms: '\x1b[1m\x1b[38;5;208m',          // 굵은 주황색 (Bold + 256색 주황)
-    system: '\x1b[92m',                    // 밝은 초록색 (시스템 메시지용)
-    warning: '\x1b[93m',                   // 노란색 (경고용)
-    error: '\x1b[91m'                      // 빨간색 (에러용)
+    ajeossi: '\x1b[36m',        // 시안색 (하늘색 대체, 호환성 좋음)
+    yejin: '\x1b[35m',          // 마젠타색 (연보라색 대체, 호환성 좋음)
+    pms: '\x1b[1m\x1b[33m',     // 굵은 노란색 (PMS 강조, 모든 터미널 지원)
+    system: '\x1b[92m',         // 밝은 초록색 (시스템 메시지용)
+    warning: '\x1b[93m',        // 노란색 (경고용)
+    error: '\x1b[91m'           // 빨간색 (에러용)
 };
 
 // ================== 🎭 감정 상태 한글 변환 절대 선언 ==================
@@ -730,9 +730,9 @@ async function initMuku() {
         console.log(`   - 🌏 process.env.TZ = 'Asia/Tokyo' 설정으로 Node.js 전체 시간대 통일`);
         console.log(`   - 🌏 전용 헬퍼 함수: getJapanTime(), getJapanHour(), getJapanMinute()`);
         console.log(`   - 🚬 담타 시간 표시에 JST 명시`);
-        console.log(`   - ${colors.ajeossi}아저씨 대화 (#50bcdf): 하늘색${colors.reset}`);
-        console.log(`   - ${colors.yejin}예진이 대화 (#d09aff): 연보라색${colors.reset}`);
-        console.log(`   - ${colors.pms}PMS: 굵은 주황색${colors.reset}`);
+        console.log(`   - ${colors.ajeossi}아저씨 대화 (시안색): 터미널 호환성 개선${colors.reset}`);
+        console.log(`   - ${colors.yejin}예진이 대화 (마젠타): 터미널 호환성 개선${colors.reset}`);
+        console.log(`   - ${colors.pms}PMS (굵은노랑): 모든 터미널 지원${colors.reset}`);
         console.log(`   - 🎭 감정 상태 한글 표시: unstable → 불안정`);
         console.log(`   - 통합 기억 시스템: memoryManager(고정) + ultimateContext(동적)`);
         console.log(`   - 정확한 담타 시간 표시: 다음 체크까지 남은 시간 실시간 계산`);
@@ -754,7 +754,7 @@ app.listen(PORT, () => {
     console.log(`  🧠 통합 기억: 고정기억(memoryManager) + 동적기억(ultimateContext)`);
     console.log(`  🚬 정확한 담타: 실시간 다음 체크 시간 계산 (JST 기준)`);
     console.log(`  🤖 실시간 학습: 대화 내용 자동 기억 + 수동 기억 추가`);
-    console.log(`  🎨 정확한 색상: ${colors.ajeossi}아저씨(#50bcdf)${colors.reset}, ${colors.yejin}예진이(#d09aff)${colors.reset}, ${colors.pms}PMS(굵은주황)${colors.reset}`);
+    console.log(`  🎨 호환성 색상: ${colors.ajeossi}아저씨(시안)${colors.reset}, ${colors.yejin}예진이(마젠타)${colors.reset}, ${colors.pms}PMS(굵은노랑)${colors.reset}`);
     console.log(`  🎭 자동 변환: unstable→불안정, sensitive→예민함 (전역 적용)`);
     console.log(`  ⚡ 성능 향상: 모든 중복 코드 제거 + 완전한 모듈 연동`);
     console.log(`==================================================\n`);
