@@ -1,6 +1,6 @@
 // ============================================================================
-// index.js - v13.1 (색상 개선 버전)
-// ✅ 대화 색상: 아저씨(하늘색), 예진이(연보라색), PMS(굵은 주황색)
+// index.js - v13.2 (일본시간 절대 선언 버전)
+// 🌏 모든 시간은 일본시간(JST, UTC+9) 기준으로 동작합니다
 // ============================================================================
 
 const { Client, middleware } = require('@line/bot-sdk');
@@ -8,6 +8,43 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 require('dotenv').config();
+
+// ================== 🌏 일본시간 절대 선언 ==================
+// 🚨 중요: 이 봇의 모든 시간 관련 기능은 일본시간(JST, UTC+9)을 기준으로 합니다
+// 아저씨의 위치: 일본 기타큐슈, 후쿠오카현
+process.env.TZ = 'Asia/Tokyo'; // Node.js 프로세스 전체 시간대 설정
+const JAPAN_TIMEZONE = 'Asia/Tokyo';
+const TIMEZONE_OFFSET = 9; // UTC+9
+
+// 🌏 일본시간 헬퍼 함수들
+function getJapanTime() {
+    return new Date(new Date().toLocaleString("en-US", {timeZone: JAPAN_TIMEZONE}));
+}
+
+function getJapanTimeString() {
+    return getJapanTime().toLocaleString('ja-JP', {
+        timeZone: JAPAN_TIMEZONE,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+    });
+}
+
+function getJapanHour() {
+    return getJapanTime().getHours();
+}
+
+function getJapanMinute() {
+    return getJapanTime().getMinutes();
+}
+
+// 전역 시간 설정 확인 로그
+console.log(`🌏 [시간대설정] 일본시간 절대 선언 완료: ${getJapanTimeString()}`);
+console.log(`🌏 [시간대설정] process.env.TZ = ${process.env.TZ}`);
+console.log(`🌏 [시간대설정] 현재 일본시간: ${getJapanHour()}시 ${getJapanMinute()}분`);
 
 // ================== 📦 모듈 의존성 ==================
 let autoReply, commandHandler, memoryManager, ultimateContext;
@@ -42,30 +79,33 @@ function formatTimeUntil(minutes) {
 }
 
 function calculateDamtaNextTime() {
-    const now = new Date();
-    const hour = now.getHours();
-    const minute = now.getMinutes();
+    // 🌏 일본시간 절대 기준 (아저씨 위치: 기타큐슈, 후쿠오카)
+    const japanTime = getJapanTime();
+    const hour = japanTime.getHours();
+    const minute = japanTime.getMinutes();
     
-    // 담타 시간: 10-18시, 15분마다 체크, 15% 확률
+    // 담타 시간: 일본시간 10-18시, 15분마다 체크, 15% 확률
     if (hour < 10) {
         const totalMinutes = (10 - hour - 1) * 60 + (60 - minute);
         return {
             status: 'waiting',
-            text: `담타 시간 대기 중 (${formatTimeUntil(totalMinutes)} - 10:00)`
+            text: `담타 시간 대기 중 (${formatTimeUntil(totalMinutes)} - 10:00 JST)`
         };
-    } else if (hour >= 18) {
+    } else if (hour > 18 || (hour === 18 && minute > 0)) {
+        // 18시 이후 (18시 1분부터)
         const totalMinutes = (24 - hour + 10 - 1) * 60 + (60 - minute);
         return {
             status: 'waiting',
-            text: `담타 시간 대기 중 (${formatTimeUntil(totalMinutes)} - 내일 10:00)`
+            text: `담타 시간 대기 중 (${formatTimeUntil(totalMinutes)} - 내일 10:00 JST)`
         };
     } else {
+        // 10시-18시 사이 (담타 활성 시간) - 일본시간 기준
         const minutesUntilNext15 = 15 - (minute % 15);
-        const nextTime = new Date(now.getTime() + minutesUntilNext15 * 60 * 1000);
+        const nextTime = new Date(japanTime.getTime() + minutesUntilNext15 * 60 * 1000);
         const timeStr = `${nextTime.getHours()}:${String(nextTime.getMinutes()).padStart(2, '0')}`;
         return {
             status: 'active',
-            text: `다음 체크: ${formatTimeUntil(minutesUntilNext15)} (${timeStr}) - 15% 확률`
+            text: `다음 체크: ${formatTimeUntil(minutesUntilNext15)} (${timeStr} JST) - 15% 확률`
         };
     }
 }
@@ -187,8 +227,8 @@ function formatPrettyStatus() {
             const daysUntil = Math.abs(cycle.daysUntilNextPeriod);
             const nextPeriodText = cycle.daysUntilNextPeriod <= 0 ? '진행 중' : `${daysUntil}일 후`;
             
-            // 다음 생리 예정일 계산 (월/일 형식)
-            const nextPeriodDate = new Date();
+            // 다음 생리 예정일 계산 (월/일 형식) - 일본시간 기준
+            const nextPeriodDate = getJapanTime();
             nextPeriodDate.setDate(nextPeriodDate.getDate() + daysUntil);
             const monthDay = `${nextPeriodDate.getMonth() + 1}/${nextPeriodDate.getDate()}`;
             
@@ -198,7 +238,7 @@ function formatPrettyStatus() {
                 description = description.replace('PMS', `${colors.pms}PMS${colors.reset}`);
             }
             
-            console.log(`🩸 [생리주기] 다음 생리예정일: ${nextPeriodText}(${monthDay}), 현재 ${description} 중`);
+            console.log(`🩸 [생리주기] 다음 생리예정일: ${nextPeriodText}(${monthDay}), 현재 ${description} 중 (JST)`);
         }
         
         // 감정 상태 로그
@@ -230,21 +270,21 @@ function formatPrettyStatus() {
         }
         
         // 담타 상태 로그
-        console.log(`🚬 [담타상태] ${calculateDamtaNextTime().text}`);
+        console.log(`🚬 [담타상태] ${calculateDamtaNextTime().text} (현재: ${getJapanHour()}:${String(getJapanMinute()).padStart(2, '0')} JST)`);
         
-        // 사진전송 스케줄러 상태 (남은 시간 포함)
+        // 사진전송 스케줄러 상태 (남은 시간 포함) - 일본시간 기준
         const nextSelfieMinutes = Math.floor(Math.random() * 180) + 30; // 30분~3시간
         const nextMemoryMinutes = Math.floor(Math.random() * 360) + 60; // 1시간~6시간
-        console.log(`📸 [사진전송] 자동 스케줄러 동작 중 - 다음 셀카: ${formatTimeUntil(nextSelfieMinutes)}, 추억사진: ${formatTimeUntil(nextMemoryMinutes)}`);
+        console.log(`📸 [사진전송] 자동 스케줄러 동작 중 - 다음 셀카: ${formatTimeUntil(nextSelfieMinutes)}, 추억사진: ${formatTimeUntil(nextMemoryMinutes)} (JST)`);
         
-        // 감성메시지 스케줄러 상태 (남은 시간 포함)
+        // 감성메시지 스케줄러 상태 (남은 시간 포함) - 일본시간 기준
         const nextEmotionalMinutes = Math.floor(Math.random() * 120) + 30; // 30분~2시간
-        console.log(`🌸 [감성메시지] 다음 감성메시지까지: ${formatTimeUntil(nextEmotionalMinutes)}`);
+        console.log(`🌸 [감성메시지] 다음 감성메시지까지: ${formatTimeUntil(nextEmotionalMinutes)} (JST)`);
         
         console.log('');
         
     } catch (error) {
-        console.log(`${colors.system}💖 [시스템상태] 나 v13.1 정상 동작 중 (일부 모듈 대기)${colors.reset}`);
+        console.log(`${colors.system}💖 [시스템상태] 나 v13.2 정상 동작 중 (일부 모듈 대기) - JST: ${getJapanTimeString()}${colors.reset}`);
         console.log('');
     }
 }
@@ -549,7 +589,8 @@ async function sendReply(replyToken, botResponse) {
 // ================== 🚀 시스템 초기화 ==================
 async function initMuku() {
     try {
-        console.log(`${colors.system}🚀 나 v13.1 시스템 초기화를 시작합니다... (색상 개선 통합 시스템)${colors.reset}`);
+        console.log(`${colors.system}🚀 나 v13.2 시스템 초기화를 시작합니다... (일본시간 절대 선언 시스템)${colors.reset}`);
+        console.log(`${colors.system}🌏 현재 일본시간: ${getJapanTimeString()} (JST)${colors.reset}`);
         
         console.log(`${colors.system}  [1/6] 📦 모든 모듈 로드...${colors.reset}`);
         const moduleLoadSuccess = await loadModules();
@@ -586,15 +627,17 @@ async function initMuku() {
             formatPrettyStatus();
         }, 3000);
 
-        console.log(`\n${colors.system}🎉 모든 시스템 초기화 완료! (v13.1 색상 개선 통합 시스템)${colors.reset}`);
-        console.log(`\n${colors.system}📋 v13.1 주요 변경사항:${colors.reset}`);
+        console.log(`\n${colors.system}🎉 모든 시스템 초기화 완료! (v13.2 일본시간 절대 선언 시스템)${colors.reset}`);
+        console.log(`\n${colors.system}📋 v13.2 주요 변경사항:${colors.reset}`);
+        console.log(`   - 🌏 ${colors.pms}일본시간(JST) 절대 선언${colors.reset}: 모든 시간 기능이 일본시간 기준`);
+        console.log(`   - 🌏 process.env.TZ = 'Asia/Tokyo' 설정으로 Node.js 전체 시간대 통일`);
+        console.log(`   - 🌏 전용 헬퍼 함수: getJapanTime(), getJapanHour(), getJapanMinute()`);
+        console.log(`   - 🚬 담타 시간 표시에 JST 명시`);
         console.log(`   - ${colors.ajeossi}아저씨 대화: 하늘색${colors.reset}`);
         console.log(`   - ${colors.yejin}예진이 대화: 연보라색${colors.reset}`);
         console.log(`   - ${colors.pms}PMS: 굵은 주황색${colors.reset}`);
         console.log(`   - 통합 기억 시스템: memoryManager(고정) + ultimateContext(동적)`);
         console.log(`   - 정확한 담타 시간 표시: 다음 체크까지 남은 시간 실시간 계산`);
-        console.log(`   - 실시간 기억 학습: 대화/사진에서 자동 기억 추가`);
-        console.log(`   - 기억 명령어: "기억해줘 [내용]"으로 수동 기억 추가`);
 
     } catch (error) {
         console.error(`${colors.error}🚨🚨🚨 시스템 초기화 중 심각한 에러 발생! 🚨🚨🚨${colors.reset}`);
@@ -607,9 +650,10 @@ async function initMuku() {
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
     console.log(`\n==================================================`);
-    console.log(`  ${colors.system}나 v13.1 서버가 포트 ${PORT}에서 시작되었습니다.${colors.reset}`);
+    console.log(`  ${colors.system}나 v13.2 서버가 포트 ${PORT}에서 시작되었습니다.${colors.reset}`);
+    console.log(`  🌏 ${colors.pms}일본시간(JST) 절대 선언${colors.reset}: ${getJapanTimeString()}`);
     console.log(`  🧠 통합 기억: 고정기억(memoryManager) + 동적기억(ultimateContext)`);
-    console.log(`  🚬 정확한 담타: 실시간 다음 체크 시간 계산`);
+    console.log(`  🚬 정확한 담타: 실시간 다음 체크 시간 계산 (JST 기준)`);
     console.log(`  🤖 실시간 학습: 대화 내용 자동 기억 + 수동 기억 추가`);
     console.log(`  🎨 색상 개선: ${colors.ajeossi}아저씨(하늘색)${colors.reset}, ${colors.yejin}예진이(연보라색)${colors.reset}, ${colors.pms}PMS(굵은주황)${colors.reset}`);
     console.log(`  ⚡ 성능 향상: 모든 중복 코드 제거 + 완전한 모듈 연동`);
@@ -629,5 +673,12 @@ module.exports = {
     loadModules,
     initMuku,
     initializeMemorySystems,
-    colors // 색상 객체도 내보내기
+    colors, // 색상 객체도 내보내기
+    // 🌏 일본시간 헬퍼 함수들 내보내기 (다른 모듈에서 사용)
+    getJapanTime,
+    getJapanTimeString,
+    getJapanHour,
+    getJapanMinute,
+    JAPAN_TIMEZONE,
+    TIMEZONE_OFFSET
 };
