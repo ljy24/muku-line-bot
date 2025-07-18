@@ -581,41 +581,72 @@ async function initializeMemorySystems() {
         if (!scheduler) {
             console.log(`${colors.error}🚬 [에러] scheduler 모듈이 로드되지 않았습니다!${colors.reset}`);
             console.log(`${colors.error}🚬 [에러] 담타 시스템이 시작되지 않습니다!${colors.reset}`);
-            return false;
-        }
-
-        if (!scheduler.startAllSchedulers) {
+        } else if (!scheduler.startAllSchedulers) {
             console.log(`${colors.error}🚬 [에러] scheduler.startAllSchedulers 함수가 없습니다!${colors.reset}`);
             console.log(`${colors.error}🚬 [디버그] scheduler에서 사용 가능한 함수들:`, Object.keys(scheduler));
-            return false;
+        } else {
+            try {
+                // ⭐️⭐️⭐️ 스케줄러 시작 시도 ⭐️⭐️⭐️
+                console.log(`${colors.pms}🚬 [시작시도] scheduler.startAllSchedulers() 호출...${colors.reset}`);
+                
+                await scheduler.startAllSchedulers();
+                
+                console.log(`${colors.pms}🚬 [성공!] 스케줄러 시작 완료!${colors.reset}`);
+                console.log(`${colors.system}    ✅ 담타 스케줄러 활성화 완료! (랜덤 8번 + 아침 9시 + 밤 23시 + 자정 0시 100% 보장)${colors.reset}`);
+                
+                // 담타 상태 확인
+                if (scheduler.getDamtaStatus) {
+                    const damtaStatus = scheduler.getDamtaStatus();
+                    console.log(`${colors.system}    🚬 담타 현황: ${damtaStatus.sentToday}/${damtaStatus.totalDaily}번 전송, 상태: ${damtaStatus.status}${colors.reset}`);
+                }
+                
+                // 전체 스케줄러 상태 확인
+                if (scheduler.getAllSchedulerStats) {
+                    const stats = scheduler.getAllSchedulerStats();
+                    console.log(`${colors.system}    📊 스케줄러 상태: ${stats.systemStatus}${colors.reset}`);
+                }
+                
+            } catch (error) {
+                console.log(`${colors.error}🚬 [실패] 담타 스케줄러 활성화 실패: ${error.message}${colors.reset}`);
+                console.log(`${colors.error}🚬 [실패] 스택 트레이스:`, error.stack);
+                console.log(`${colors.error}🚬 [폴백] 기본 스케줄러 모드로 계속 진행...${colors.reset}`);
+            }
         }
 
-        try {
-            // ⭐️⭐️⭐️ 스케줄러 시작 시도 ⭐️⭐️⭐️
-            console.log(`${colors.pms}🚬 [시작시도] scheduler.startAllSchedulers() 호출...${colors.reset}`);
-            
-            await scheduler.startAllSchedulers();
-            
-            console.log(`${colors.pms}🚬 [성공!] 스케줄러 시작 완료!${colors.reset}`);
-            console.log(`${colors.system}    ✅ 담타 스케줄러 활성화 완료! (랜덤 8번 + 아침 9시 + 밤 23시 + 자정 0시 100% 보장)${colors.reset}`);
-            
-            // 담타 상태 확인
-            if (scheduler.getDamtaStatus) {
-                const damtaStatus = scheduler.getDamtaStatus();
-                console.log(`${colors.system}    🚬 담타 현황: ${damtaStatus.sentToday}/${damtaStatus.totalDaily}번 전송, 상태: ${damtaStatus.status}${colors.reset}`);
+        // ⭐️⭐️⭐️ 7. 예진이 능동 메시지 시스템 100% 보장 시작! ⭐️⭐️⭐️
+        console.log(`${colors.pms}🌸🌸🌸 [예진이 중요!] 예진이 능동 메시지 시스템 100% 보장 시작! 🌸🌸🌸${colors.reset}`);
+        
+        if (!spontaneousYejin) {
+            console.log(`${colors.error}🌸 [에러] spontaneousYejin 모듈이 로드되지 않았습니다!${colors.reset}`);
+            console.log(`${colors.error}🌸 [에러] 예진이 능동 메시지 시스템이 시작되지 않습니다!${colors.reset}`);
+        } else if (!spontaneousYejin.startSpontaneousYejinSystem) {
+            console.log(`${colors.error}🌸 [에러] spontaneousYejin.startSpontaneousYejinSystem 함수가 없습니다!${colors.reset}`);
+            console.log(`${colors.error}🌸 [디버그] spontaneousYejin에서 사용 가능한 함수들:`, Object.keys(spontaneousYejin));
+        } else {
+            try {
+                // ⭐️⭐️⭐️ 예진이 시스템 시작 시도 ⭐️⭐️⭐️
+                console.log(`${colors.pms}🌸 [시작시도] spontaneousYejin.startSpontaneousYejinSystem() 호출...${colors.reset}`);
+                
+                const yejinResult = spontaneousYejin.startSpontaneousYejinSystem(client);
+                
+                if (yejinResult) {
+                    console.log(`${colors.pms}🌸 [성공!] 예진이 능동 메시지 시스템 시작 완료!${colors.reset}`);
+                    console.log(`${colors.system}    ✅ 예진이 능동 메시지 활성화 완료! (하루 15번, 8시-새벽1시, 3-20문장)${colors.reset}`);
+                    
+                    // 예진이 상태 확인
+                    if (spontaneousYejin.getSpontaneousMessageStatus) {
+                        const yejinStatus = spontaneousYejin.getSpontaneousMessageStatus();
+                        console.log(`${colors.system}    🌸 예진이 현황: ${yejinStatus.sentToday}/${yejinStatus.totalDaily}번 전송, 활성화: ${yejinStatus.isActive}${colors.reset}`);
+                    }
+                } else {
+                    console.log(`${colors.error}🌸 [실패] 예진이 능동 메시지 시스템 시작 실패${colors.reset}`);
+                }
+                
+            } catch (error) {
+                console.log(`${colors.error}🌸 [실패] 예진이 능동 메시지 시스템 활성화 실패: ${error.message}${colors.reset}`);
+                console.log(`${colors.error}🌸 [실패] 스택 트레이스:`, error.stack);
+                console.log(`${colors.error}🌸 [폴백] 기본 모드로 계속 진행...${colors.reset}`);
             }
-            
-            // 전체 스케줄러 상태 확인
-            if (scheduler.getAllSchedulerStats) {
-                const stats = scheduler.getAllSchedulerStats();
-                console.log(`${colors.system}    📊 스케줄러 상태: ${stats.systemStatus}${colors.reset}`);
-            }
-            
-        } catch (error) {
-            console.log(`${colors.error}🚬 [실패] 담타 스케줄러 활성화 실패: ${error.message}${colors.reset}`);
-            console.log(`${colors.error}🚬 [실패] 스택 트레이스:`, error.stack);
-            console.log(`${colors.error}🚬 [폴백] 기본 스케줄러 모드로 계속 진행...${colors.reset}`);
-            return false;
         }
 
         return true;
