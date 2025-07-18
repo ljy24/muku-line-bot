@@ -49,7 +49,7 @@ console.log(`🌏 [시간대설정] 현재 일본시간: ${getJapanHour()}시 ${
 // ================== 📦 모듈 의존성 ==================
 let autoReply, commandHandler, memoryManager, ultimateContext;
 let moodManager, sulkyManager, scheduler, spontaneousPhoto, photoAnalyzer;
-let menstrualCycleManager;
+let menstrualCycleManager, faceMatcher;
 
 // ================== 🎨 색상 코드 정의 (터미널 호환성 개선) ==================
 const colors = {
@@ -379,8 +379,9 @@ async function loadModules() {
         spontaneousPhoto = require('./src/spontaneousPhotoManager.js');
         photoAnalyzer = require('./src/photoAnalyzer.js');
         menstrualCycleManager = require('./src/menstrualCycleManager.js');
+        faceMatcher = require('./src/faceMatcher.js'); // 🔍 얼굴 인식 모듈 추가
         
-        console.log(`${colors.system}✅ 모든 모듈 로드 완료${colors.reset}`);
+        console.log(`${colors.system}✅ 모든 모듈 로드 완료 (얼굴인식 포함)${colors.reset}`);
         return true;
     } catch (error) {
         console.error(`${colors.error}❌ 모듈 로드 중 에러:${colors.reset}`, error);
@@ -597,6 +598,38 @@ async function handleImageMessage(event) {
                     await ultimateContext.addUserMemory(memoryContent);
                 }
                 
+                // 🔍 얼굴 인식으로 누구 사진인지 확인
+                if (faceMatcher?.detectFaceMatch) {
+                    try {
+                        // LINE에서 이미지 가져오기
+                        const stream = await client.getMessageContent(event.message.id);
+                        const chunks = [];
+                        
+                        stream.on('data', chunk => chunks.push(chunk));
+                        stream.on('end', async () => {
+                            try {
+                                const buffer = Buffer.concat(chunks);
+                                const base64 = buffer.toString('base64');
+                                
+                                const faceResult = await faceMatcher.detectFaceMatch(base64);
+                                console.log(`🔍 [얼굴인식] 결과: ${faceResult}`);
+                                
+                                // 얼굴 인식 결과를 기억에 추가
+                                if (ultimateContext?.addUserMemory) {
+                                    const faceMemory = `사진 분석: ${faceResult}의 사진으로 확인됨`;
+                                    await ultimateContext.addUserMemory(faceMemory);
+                                }
+                                
+                            } catch (faceError) {
+                                console.warn(`${colors.warning}⚠️ 얼굴 인식 실패:${colors.reset}`, faceError.message);
+                            }
+                        });
+                        
+                    } catch (streamError) {
+                        console.warn(`${colors.warning}⚠️ 이미지 스트림 처리 실패:${colors.reset}`, streamError.message);
+                    }
+                }
+                
                 if (ultimateContext?.addUltimateMessage) {
                     await ultimateContext.addUltimateMessage('아저씨', '[사진 전송]');
                     await ultimateContext.addUltimateMessage('나', yejinReaction);
@@ -677,8 +710,19 @@ async function initMuku() {
         console.log(`${colors.system}  [2/6] 🧠 통합 기억 시스템 초기화...${colors.reset}`);
         await initializeMemorySystems();
         
-        console.log(`${colors.system}  [3/6] 💖 감정 시스템 초기화...${colors.reset}`);
+        console.log(`${colors.system}  [3/6] 💖 감정 시스템 + 얼굴 인식 초기화...${colors.reset}`);
         // ultimateContext는 이미 initializeMemorySystems에서 초기화됨
+        
+        // 🔍 얼굴 인식 시스템 초기화
+        if (faceMatcher?.initModels) {
+            console.log(`${colors.system}     🔍 얼굴 인식 모델 로딩 중...${colors.reset}`);
+            const faceInitSuccess = await faceMatcher.initModels();
+            if (faceInitSuccess) {
+                console.log(`${colors.system}     ✅ 얼굴 인식 시스템 준비 완료${colors.reset}`);
+            } else {
+                console.log(`${colors.warning}     ⚠️ 얼굴 인식 모델 없음 - 빠른 구분 모드 사용${colors.reset}`);
+            }
+        }
         
         console.log(`${colors.system}  [4/6] ⏰ 모든 스케줄러 시작...${colors.reset}`);
         if (scheduler?.startAllSchedulers) {
@@ -713,6 +757,7 @@ async function initMuku() {
         console.log(`   - ${colors.yejin}예진이 대화 (마젠타): 터미널 호환성 개선${colors.reset}`);
         console.log(`   - ${colors.pms}PMS (굵은노랑): 모든 터미널 지원${colors.reset}`);
         console.log(`   - 🎭 감정 상태 한글 표시: unstable → 불안정`);
+        console.log(`   - 🔍 얼굴 인식: 아저씨/예진이 사진 자동 구분 (20장씩 학습)`);
         console.log(`   - 통합 기억 시스템: memoryManager(고정) + ultimateContext(동적)`);
         console.log(`   - 정확한 담타 시간 표시: 다음 체크까지 남은 시간 실시간 계산`);
 
@@ -734,6 +779,7 @@ app.listen(PORT, () => {
     console.log(`  🚬 정확한 담타: 실시간 다음 체크 시간 계산 (JST 기준)`);
     console.log(`  🤖 실시간 학습: 대화 내용 자동 기억 + 수동 기억 추가`);
     console.log(`  🎨 호환성 색상: ${colors.ajeossi}아저씨(시안)${colors.reset}, ${colors.yejin}예진이(마젠타)${colors.reset}, ${colors.pms}PMS(굵은노랑)${colors.reset}`);
+    console.log(`  🔍 얼굴 인식: 아저씨/예진이 사진 자동 구분 (각 20장 학습)`);
     console.log(`  🎭 자동 변환: unstable→불안정, sensitive→예민함 (전역 적용)`);
     console.log(`  ⚡ 성능 향상: 모든 중복 코드 제거 + 완전한 모듈 연동`);
     console.log(`==================================================\n`);
