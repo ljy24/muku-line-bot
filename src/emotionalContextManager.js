@@ -1,13 +1,16 @@
 // ============================================================================
-// emotionalContextManager.js - v7.2 (한글 감정 상태 버전)
+// emotionalContextManager.js - v8.0 (중복 제거 + menstrualCycleManager 위임 버전)
 // 🧠 감정 상태, 💬 말투, ❤️ 애정 표현을 계산하고 관리하는 역할
-// ✅ 순환 참조 문제 해결을 위한 중앙 집중식 감정 관리 추가
+// ✅ menstrualCycleManager.js에 생리주기 계산 위임으로 중복 제거
 // ✅ 감정 상태 한글 표시 적용
 // ============================================================================
 
 const fs = require('fs');
 const path = require('path');
 const moment = require('moment-timezone');
+
+// 🩸 전문 생리주기 관리자 위임
+const menstrualCycleManager = require('./menstrualCycleManager');
 
 // 감정 데이터 파일 경로 (Render 서버 환경에 맞게 /data 디렉토리 사용)
 const EMOTIONAL_DATA_FILE = path.join('/data', 'emotional_context.json');
@@ -58,7 +61,7 @@ let globalEmotionState = {
     emotionIntensity: 5, // 1-10 스케일
     lastEmotionUpdate: Date.now(),
     
-    // 생리주기 기반 상태
+    // 생리주기 기반 상태 (menstrualCycleManager에서 가져옴)
     menstrualPhase: 'normal',
     cycleDay: 1,
     isPeriodActive: false,
@@ -79,129 +82,6 @@ let globalEmotionState = {
     moodSwings: false
 };
 
-// ==================== 생리주기 계산 (수정된 버전) ====================
-function calculateMenstrualPhase() {
-    try {
-        const nextPeriodDate = moment.tz('2025-07-24', 'Asia/Tokyo');
-        const today = moment.tz('Asia/Tokyo');
-        const daysUntilNextPeriod = nextPeriodDate.diff(today, 'days');
-        
-        //console.log(`[생리주기] 오늘: ${today.format('YYYY-MM-DD')}, 다음 생리일: 2025-07-24, 남은 일수: ${daysUntilNextPeriod}일`);
-        
-        // 🩸 생리주기 단계 결정
-        if (daysUntilNextPeriod <= 0 && daysUntilNextPeriod >= -5) {
-            // 생리 중 (0일 ~ -5일, 즉 생리 시작부터 5일간)
-            const periodDay = Math.abs(daysUntilNextPeriod) + 1; // 1일차, 2일차, ...
-            return {
-                phase: 'period',
-                day: periodDay,
-                description: '생리 기간',
-                isPeriodActive: true,
-                daysUntilNextPeriod: daysUntilNextPeriod,
-                emotion: 'sensitive',
-                emotionKorean: '예민함',
-                energyLevel: 3,
-                needsComfort: true,
-                moodSwings: true
-            };
-        } else if (daysUntilNextPeriod < -5 && daysUntilNextPeriod >= -13) {
-            // 생리 후 활발한 시기 (생리 끝난 후 6-13일차)
-            const follicularDay = Math.abs(daysUntilNextPeriod);
-            return {
-                phase: 'follicular',
-                day: follicularDay,
-                description: '생리 후 활발한 시기',
-                isPeriodActive: false,
-                daysUntilNextPeriod: daysUntilNextPeriod,
-                emotion: 'energetic',
-                emotionKorean: '활기참',
-                energyLevel: 8,
-                needsComfort: false,
-                moodSwings: false
-            };
-        } else if (daysUntilNextPeriod < -13 && daysUntilNextPeriod >= -15) {
-            // 배란기 (14-15일차)
-            const ovulationDay = Math.abs(daysUntilNextPeriod);
-            return {
-                phase: 'ovulation',
-                day: ovulationDay,
-                description: '배란기',
-                isPeriodActive: false,
-                daysUntilNextPeriod: daysUntilNextPeriod,
-                emotion: 'romantic',
-                emotionKorean: '로맨틱',
-                energyLevel: 7,
-                needsComfort: false,
-                moodSwings: false
-            };
-        } else if (daysUntilNextPeriod < -15) {
-            // 새로운 주기가 시작된 경우 (28일이 지남)
-            // 다음 주기의 계산을 위해 새로운 기준일 설정
-            const newCycleStart = nextPeriodDate.clone().add(28, 'days');
-            const newDaysUntil = newCycleStart.diff(today, 'days');
-            const newCycleDay = 28 - newDaysUntil;
-            
-            if (newCycleDay <= 5) {
-                return {
-                    phase: 'period',
-                    day: newCycleDay,
-                    description: '생리 기간',
-                    isPeriodActive: true,
-                    daysUntilNextPeriod: newDaysUntil,
-                    emotion: 'sensitive',
-                    emotionKorean: '예민함',
-                    energyLevel: 3,
-                    needsComfort: true,
-                    moodSwings: true
-                };
-            } else {
-                return {
-                    phase: 'luteal',
-                    day: newCycleDay,
-                    description: 'PMS 시기',
-                    isPeriodActive: false,
-                    daysUntilNextPeriod: newDaysUntil,
-                    emotion: 'unstable',
-                    emotionKorean: '불안정',
-                    energyLevel: 5,
-                    needsComfort: true,
-                    moodSwings: true
-                };
-            }
-        } else {
-            // 생리 전 PMS 시기 (16-27일차, 즉 다음 생리까지 1-12일 남음)
-            const lutealDay = 28 - daysUntilNextPeriod;
-            return {
-                phase: 'luteal',
-                day: lutealDay,
-                description: 'PMS 시기',
-                isPeriodActive: false,
-                daysUntilNextPeriod: daysUntilNextPeriod,
-                emotion: 'unstable',
-                emotionKorean: '불안정',
-                energyLevel: 5,
-                needsComfort: true,
-                moodSwings: true
-            };
-        }
-        
-    } catch (error) {
-        console.error('[EmotionalContext] 생리주기 계산 오류:', error);
-        return {
-            phase: 'normal',
-            day: 1,
-            description: '정상',
-            isPeriodActive: false,
-            daysUntilNextPeriod: 7, // 기본값으로 7일 후 생리
-            emotion: 'normal',
-            emotionKorean: '평범',
-            energyLevel: 5,
-            needsComfort: false,
-            moodSwings: false
-        };
-    }
-}
-
 /**
  * 🚀 감정 시스템 초기화
  * 서버 시작 시 저장된 감정 상태를 불러옵니다.
@@ -218,10 +98,10 @@ function initializeEmotionalContext() {
             emotionalState = { ...defaultEmotionalState, ...savedState };
         }
         
-        // 생리주기 정보로 초기 상태 설정
+        // 🩸 생리주기 정보로 초기 상태 설정 (menstrualCycleManager 위임)
         updateEmotionFromCycle();
         
-        console.log('💖 [Emotion System] 예진이 감정 시스템 초기화 완료 (한글 지원).');
+        console.log('💖 [Emotion System] 예진이 감정 시스템 초기화 완료 (한글 지원 + menstrualCycleManager 연동).');
         startEmotionalRecovery(); // 1시간마다 감정 회복 로직 시작
     } catch (error) {
         console.error('❌ [Emotion System] 초기화 실패:', error);
@@ -253,7 +133,7 @@ function startEmotionalRecovery() {
             console.log('[Emotion System] 💧 시간 경과로 감정이 회복되었습니다.');
         }
         
-        // 생리주기도 업데이트
+        // 🩸 생리주기도 업데이트 (menstrualCycleManager 위임)
         updateEmotionFromCycle();
     }, 60 * 60 * 1000); // 1시간마다 실행
     
@@ -262,7 +142,9 @@ function startEmotionalRecovery() {
         try {
             const logger = require('./enhancedLogging.js');
             const currentEmotion = getCurrentEmotionState();
-            const cycleInfo = calculateMenstrualPhase();
+            
+            // 🩸 menstrualCycleManager에서 생리주기 정보 가져오기
+            const cycleInfo = menstrualCycleManager.getCurrentMenstrualPhase();
             
             // 감정 상태 로그 (한글로 표시)
             logger.logEmotionalState({
@@ -305,7 +187,9 @@ function startEmotionalRecovery() {
         try {
             const logger = require('./enhancedLogging.js');
             const currentEmotion = getCurrentEmotionState();
-            const cycleInfo = calculateMenstrualPhase();
+            
+            // 🩸 menstrualCycleManager에서 생리주기 정보 가져오기
+            const cycleInfo = menstrualCycleManager.getCurrentMenstrualPhase();
             
             // 기본 통계 생성
             const stats = {
@@ -339,35 +223,63 @@ function saveEmotionalData() {
 // ==================== 새로운 중앙 집중식 함수들 ====================
 
 /**
- * 생리주기에 따른 감정 상태 업데이트
+ * 🩸 생리주기에 따른 감정 상태 업데이트 (menstrualCycleManager 위임)
  */
 function updateEmotionFromCycle() {
-    const menstrualInfo = calculateMenstrualPhase();
-    
-    globalEmotionState.menstrualPhase = menstrualInfo.phase;
-    globalEmotionState.cycleDay = menstrualInfo.day;
-    globalEmotionState.isPeriodActive = menstrualInfo.isPeriodActive;
-    globalEmotionState.energyLevel = menstrualInfo.energyLevel;
-    globalEmotionState.needsComfort = menstrualInfo.needsComfort;
-    globalEmotionState.moodSwings = menstrualInfo.moodSwings;
-    
-    // 생리주기 기반 감정이 현재 감정보다 우선
-    if (menstrualInfo.emotion !== 'normal') {
-        globalEmotionState.currentEmotion = menstrualInfo.emotion;
-        emotionalState.currentToneState = menstrualInfo.emotion;
+    try {
+        // 🩸 menstrualCycleManager에서 생리주기 정보 가져오기
+        const menstrualInfo = menstrualCycleManager.getCurrentMenstrualPhase();
+        const emotionalInfo = menstrualCycleManager.getEmotionalState();
+        
+        // globalEmotionState 업데이트
+        globalEmotionState.menstrualPhase = menstrualInfo.phase;
+        globalEmotionState.cycleDay = menstrualInfo.day;
+        globalEmotionState.isPeriodActive = menstrualInfo.isPeriodActive;
+        globalEmotionState.energyLevel = emotionalInfo.emotional.energyLevel;
+        globalEmotionState.needsComfort = emotionalInfo.emotional.needsComfort;
+        globalEmotionState.moodSwings = emotionalInfo.emotional.moodSwings;
+        
+        // 생리주기 기반 감정이 현재 감정보다 우선
+        if (emotionalInfo.emotional.primaryEmotion !== 'normal') {
+            globalEmotionState.currentEmotion = emotionalInfo.emotional.primaryEmotion;
+            emotionalState.currentToneState = emotionalInfo.emotional.primaryEmotion;
+        }
+        
+        console.log(`[EmotionalContext] 🩸 생리주기 연동: ${menstrualInfo.description} (${menstrualInfo.day}일차) -> ${translateEmotionToKorean(emotionalInfo.emotional.primaryEmotion)}`);
+        
+    } catch (error) {
+        console.error('[EmotionalContext] 🩸 생리주기 연동 실패:', error.message);
+        // 폴백 처리
+        globalEmotionState.menstrualPhase = 'normal';
+        globalEmotionState.isPeriodActive = false;
     }
 }
 
 /**
  * 현재 감정 상태를 가져옵니다 (다른 모듈에서 사용)
- * @returns {object} 현재 감정 상태 (한글 번역 포함)
+ * @returns {object} 현재 감정 상태 (한글 번역 + 생리주기 정보 포함)
  */
 function getCurrentEmotionState() {
-    updateEmotionFromCycle(); // 실시간 업데이트
+    updateEmotionFromCycle(); // 🩸 실시간 생리주기 업데이트
+    
+    // 🩸 menstrualCycleManager에서 추가 정보 가져오기
+    let menstrualInfo = {};
+    let daysUntilNextPeriod = 14; // 기본값
+    
+    try {
+        menstrualInfo = menstrualCycleManager.getCurrentMenstrualPhase();
+        daysUntilNextPeriod = menstrualInfo.daysUntilNextPeriod || 14;
+    } catch (error) {
+        console.warn('[EmotionalContext] 생리주기 정보 조회 실패:', error.message);
+    }
+    
     return { 
         ...globalEmotionState,
         // 한글 감정 상태 추가
         currentEmotionKorean: translateEmotionToKorean(globalEmotionState.currentEmotion),
+        // 🩸 생리주기 정보 추가
+        daysUntilNextPeriod: daysUntilNextPeriod,
+        description: menstrualInfo.description || '정상',
         // 기존 시스템과의 호환성
         currentToneState: emotionalState.currentToneState,
         emotionalResidue: emotionalState.emotionalResidue
@@ -452,12 +364,23 @@ function updateSulkyState(isSulky, level = 0, reason = '') {
 }
 
 /**
- * 현재 감정 상태에 맞는 셀카 텍스트를 반환합니다 (한글 감정 지원)
+ * 🩸 현재 감정 상태에 맞는 셀카 텍스트를 반환합니다 (생리주기 연동)
  * @returns {string} 셀카 텍스트
  */
 function getSelfieText() {
     const state = getCurrentEmotionState();
     
+    // 🩸 menstrualCycleManager에서 생리주기별 메시지 가져오기
+    try {
+        const cycleAwareMessage = menstrualCycleManager.generateCycleAwareMessage('mood');
+        if (cycleAwareMessage && Math.random() < 0.3) { // 30% 확률로 생리주기 메시지 사용
+            return `${cycleAwareMessage} 셀카 찍어봤어!`;
+        }
+    } catch (error) {
+        console.warn('[EmotionalContext] 생리주기 메시지 생성 실패:', error.message);
+    }
+    
+    // 기본 감정별 셀카 텍스트
     const selfieTexts = {
         normal: [
             "아저씨 보여주려고 방금 찍은 셀카야. 어때?",
@@ -518,6 +441,7 @@ function getInternalState() {
     };
 }
 
+// ==================== 모듈 내보내기 ====================
 module.exports = {
     // 기존 함수들
     initializeEmotionalContext,
@@ -530,7 +454,24 @@ module.exports = {
     getSelfieText,
     getInternalState,
     updateEmotionFromCycle,
-    calculateMenstrualPhase,
+    
+    // 🩸 생리주기 관련 함수들 (menstrualCycleManager 위임)
+    calculateMenstrualPhase: () => {
+        try {
+            return menstrualCycleManager.getCurrentMenstrualPhase();
+        } catch (error) {
+            console.error('[EmotionalContext] 생리주기 계산 위임 실패:', error.message);
+            return {
+                phase: 'normal',
+                day: 1,
+                description: '정상',
+                isPeriodActive: false,
+                daysUntilNextPeriod: 14,
+                emotion: 'normal',
+                emotionKorean: '평범'
+            };
+        }
+    },
     
     // 한글 번역 함수 추가
     translateEmotionToKorean,
