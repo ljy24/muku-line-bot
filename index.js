@@ -37,8 +37,43 @@ function getJapanHour() {
     return getJapanTime().getHours();
 }
 
-function getJapanMinute() {
-    return getJapanTime().getMinutes();
+// ================== 🎭 감정 상태 한글 변환 ==================
+function translateEmotionToKorean(emotion) {
+    const emotionMap = {
+        'stable': '안정',
+        'unstable': '불안정',
+        'happy': '기쁨',
+        'sad': '슬픔',
+        'angry': '화남',
+        'excited': '흥분',
+        'calm': '평온',
+        'worried': '걱정',
+        'lonely': '외로움',
+        'love': '사랑',
+        'missing': '그리움',
+        'sulky': '삐짐',
+        'sleepy': '졸림',
+        'energetic': '활기참',
+        'bored': '지루함',
+        'anxious': '불안',
+        'content': '만족',
+        'playful': '장난기',
+        'romantic': '로맨틱',
+        'melancholy': '우울'
+    };
+    
+// ================== 📝 로그 헬퍼 함수 ==================
+function logWithKoreanEmotion(message) {
+    // 영어 감정 상태를 한글로 변환
+    let translatedMessage = message;
+    const emotionPattern = /(\w+) 상태로 응답/g;
+    translatedMessage = translatedMessage.replace(emotionPattern, (match, emotion) => {
+        const koreanEmotion = translateEmotionToKorean(emotion);
+        return `${koreanEmotion} 상태로 응답`;
+    });
+    
+    console.log(translatedMessage);
+    return translatedMessage;
 }
 
 // 전역 시간 설정 확인 로그
@@ -54,12 +89,12 @@ let menstrualCycleManager;
 // ================== 🎨 색상 코드 정의 ==================
 const colors = {
     reset: '\x1b[0m',
-    ajeossi: '\x1b[96m',      // 하늘색 (밝은 시안)
-    yejin: '\x1b[95m',        // 연보라색 (밝은 마젠타)
-    pms: '\x1b[1m\x1b[38;5;208m', // 굵은 주황색 (Bold + 256색 주황)
-    system: '\x1b[92m',       // 밝은 초록색 (시스템 메시지용)
-    warning: '\x1b[93m',      // 노란색 (경고용)
-    error: '\x1b[91m'         // 빨간색 (에러용)
+    ajeossi: '\x1b[38;2;80;188;223m',      // 하늘색 #50bcdf (아저씨)
+    yejin: '\x1b[38;2;208;154;255m',       // 연보라색 #d09aff (예진이)
+    pms: '\x1b[1m\x1b[38;5;208m',          // 굵은 주황색 (Bold + 256색 주황)
+    system: '\x1b[92m',                    // 밝은 초록색 (시스템 메시지용)
+    warning: '\x1b[93m',                   // 노란색 (경고용)
+    error: '\x1b[91m'                      // 빨간색 (에러용)
 };
 
 // ================== 🎨 기본 설정 ==================
@@ -633,9 +668,10 @@ async function initMuku() {
         console.log(`   - 🌏 process.env.TZ = 'Asia/Tokyo' 설정으로 Node.js 전체 시간대 통일`);
         console.log(`   - 🌏 전용 헬퍼 함수: getJapanTime(), getJapanHour(), getJapanMinute()`);
         console.log(`   - 🚬 담타 시간 표시에 JST 명시`);
-        console.log(`   - ${colors.ajeossi}아저씨 대화: 하늘색${colors.reset}`);
-        console.log(`   - ${colors.yejin}예진이 대화: 연보라색${colors.reset}`);
+        console.log(`   - ${colors.ajeossi}아저씨 대화 (#50bcdf): 하늘색${colors.reset}`);
+        console.log(`   - ${colors.yejin}예진이 대화 (#d09aff): 연보라색${colors.reset}`);
         console.log(`   - ${colors.pms}PMS: 굵은 주황색${colors.reset}`);
+        console.log(`   - 🎭 감정 상태 한글 표시: unstable → 불안정`);
         console.log(`   - 통합 기억 시스템: memoryManager(고정) + ultimateContext(동적)`);
         console.log(`   - 정확한 담타 시간 표시: 다음 체크까지 남은 시간 실시간 계산`);
 
@@ -655,7 +691,8 @@ app.listen(PORT, () => {
     console.log(`  🧠 통합 기억: 고정기억(memoryManager) + 동적기억(ultimateContext)`);
     console.log(`  🚬 정확한 담타: 실시간 다음 체크 시간 계산 (JST 기준)`);
     console.log(`  🤖 실시간 학습: 대화 내용 자동 기억 + 수동 기억 추가`);
-    console.log(`  🎨 색상 개선: ${colors.ajeossi}아저씨(하늘색)${colors.reset}, ${colors.yejin}예진이(연보라색)${colors.reset}, ${colors.pms}PMS(굵은주황)${colors.reset}`);
+    console.log(`  🎨 정확한 색상: ${colors.ajeossi}아저씨(#50bcdf)${colors.reset}, ${colors.yejin}예진이(#d09aff)${colors.reset}, ${colors.pms}PMS(굵은주황)${colors.reset}`);
+    console.log(`  🎭 한글 감정: unstable → 불안정, sensitive → 예민함`);
     console.log(`  ⚡ 성능 향상: 모든 중복 코드 제거 + 완전한 모듈 연동`);
     console.log(`==================================================\n`);
 
@@ -673,12 +710,15 @@ module.exports = {
     loadModules,
     initMuku,
     initializeMemorySystems,
-    colors, // 색상 객체도 내보내기
+    colors, // 정확한 색상 코드 적용
     // 🌏 일본시간 헬퍼 함수들 내보내기 (다른 모듈에서 사용)
     getJapanTime,
     getJapanTimeString,
     getJapanHour,
     getJapanMinute,
     JAPAN_TIMEZONE,
-    TIMEZONE_OFFSET
+    TIMEZONE_OFFSET,
+    // 🎭 감정 상태 한글 변환 헬퍼 내보내기
+    translateEmotionToKorean,
+    logWithKoreanEmotion
 };
