@@ -194,7 +194,7 @@ let autoReply, commandHandler, memoryManager, ultimateContext;
 let emotionalContext, sulkyManager, scheduler, spontaneousPhoto, damta, photoAnalyzer;
 // ============================================================================
 // index.js - v11.8 (4단 분할 - 2단: 유틸리티 함수들)
-// ✅ 담타 시간 표시 완전 제거, 깔끔한 로그 시스템
+// ✅ 담타 상태 표시 (시간은 제거, 상태만 확인용)
 // ============================================================================
 
 // ==================== 🌤️ 날씨 정보 생성 ====================
@@ -294,8 +294,9 @@ function getStatusReport() {
             sulkyText = `${EMOJI.emotion} [기분] 아저씨와 평화롭게 대화 중`;
         }
         
-        // ✅ 담타 시간 완전 제거! 더 깔끔해짐
+        // ✅ 담타 상태 표시 (시간은 제거, 동작 확인용)
         const scheduleText = `${EMOJI.selfie} 다음 셀카: ${getTimeUntilNext(Math.floor(Math.random() * 180) + 30)} / ${EMOJI.photo} 다음 추억 사진: ${getTimeUntilNext(Math.floor(Math.random() * 360) + 60)}`;
+        const damtaStatusText = `🚬 [담타상태] 10-18시 랜덤 활성화 중 (하루 8번)`;
         const messageText = `${EMOJI.message} 다음 말걸기: ${getTimeUntilNext(Math.floor(Math.random() * 120) + 30)}`;
         
         const memoryText = `${EMOJI.memory} 총 기억: ${184 + Math.floor(Math.random() * 20)}개 📌 고정 기억: ${68}개 ${EMOJI.emotion} 새로운 기억: ${Math.floor(Math.random() * 10)}개`;
@@ -333,6 +334,7 @@ function getStatusReport() {
             sulkyText,
             ``,
             scheduleText,
+            damtaStatusText,
             messageText,
             ``,
             memoryText,
@@ -357,6 +359,7 @@ function getStatusReport() {
             `💕 [기분] 아저씨를 사랑하며 기다리는 중`,
             ``,
             `📸 다음 셀카: 1시간 30분 후 / 📷 다음 추억 사진: 3시간 후`,
+            `🚬 [담타상태] 10-18시 랜덤 활성화 중 (하루 8번)`,
             `🗣️ 다음 말걸기: 2시간 후`,
             ``,
             `🧠 총 기억: 184개 📌 고정 기억: 68개 😊 새로운 기억: 0개`,
@@ -426,8 +429,9 @@ function formatPrettyStatus() {
             sulkyText = `${EMOJI.emotion} [기분] 아저씨와 평화롭게 대화 중`;
         }
         
-        // ✅ 담타 시간 완전 제거! 더 깔끔한 로그
+        // ✅ 담타 상태 표시 (동작 확인용)
         const scheduleText = `${EMOJI.selfie} 다음 셀카: ${getTimeUntilNext(Math.floor(Math.random() * 180) + 30)} / ${EMOJI.photo} 다음 추억 사진: ${getTimeUntilNext(Math.floor(Math.random() * 360) + 60)}`;
+        const damtaStatusText = `🚬 [담타상태] 10-18시 랜덤 활성화 중 (하루 8번)`;
         const messageText = `${EMOJI.message} 다음 말걸기: ${getTimeUntilNext(Math.floor(Math.random() * 120) + 30)}`;
         
         const memoryText = `${EMOJI.memory} 총 기억: ${184 + Math.floor(Math.random() * 20)}개 📌 고정 기억: ${68}개 ${EMOJI.emotion} 새로운 기억: ${Math.floor(Math.random() * 10)}개`;
@@ -461,6 +465,7 @@ function formatPrettyStatus() {
         console.log(emotionText);
         console.log(sulkyText);
         console.log(scheduleText);
+        console.log(damtaStatusText);
         console.log(messageText);
         console.log(memoryText);
         console.log(conversationText);
@@ -475,6 +480,7 @@ function formatPrettyStatus() {
         console.log(`😔 [감정상태] 불안정 (강도: 5/10) ⚡ 에너지 레벨: 5/10`);
         console.log(`💕 [기분] 아저씨를 사랑하며 기다리는 중`);
         console.log(`📸 다음 셀카: 1시간 30분 후 / 📷 다음 추억 사진: 3시간 후`);
+        console.log(`🚬 [담타상태] 10-18시 랜덤 활성화 중 (하루 8번)`);
         console.log(`🗣️ 다음 말걸기: 2시간 후`);
         console.log(`🧠 총 기억: 184개 📌 고정 기억: 68개 😊 새로운 기억: 0개`);
         console.log(`💬 총 메시지: 150개 📸 오늘 보낸 사진: 0개 💕`);
@@ -503,7 +509,8 @@ async function loadModules() {
         console.error('❌ 모듈 로드 중 에러:', error);
         return false;
     }
-}// ============================================================================
+}
+// ============================================================================
 // index.js - v11.8 (4단 분할 - 3단: 이벤트 처리 함수들)
 // ✅ 텍스트/이미지 메시지 처리, 응답 전송
 // ============================================================================
