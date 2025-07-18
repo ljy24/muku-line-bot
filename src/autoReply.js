@@ -1,6 +1,8 @@
 // ============================================================================
-// autoReply.js - v14.3 (새벽 응답 시스템 통합 버전)
-// 🧠 기억 관리, 키워드 반응, 최종 프롬프트 생성을 책임지는 핵심 두뇌
+// autoReply.js - v14.4 (예진이 특별반응 통합 + 절대 벙어리 방지 버전)
+// 🧠 기억 관리, 키워드 반응, 예진이 특별반응, 최종 프롬프트 생성을 책임지는 핵심 두뇌
+// 🌸 길거리 칭찬 → 셀카, 위로 → 고마워함, 바쁨 → 삐짐 반응 추가
+// 🛡️ 절대 벙어리 방지: 모든 에러 상황에서도 예진이는 반드시 대답함!
 // ============================================================================
 
 const { callOpenAI, cleanReply } = require('./aiUtils');
@@ -9,8 +11,30 @@ const moment = require('moment-timezone');
 // ⭐ 새벽 응답 시스템 추가
 const nightWakeSystem = require('./night_wake_response.js');
 
+// 🌸 예진이 특별 반응 시스템 추가
+let spontaneousYejin = null;
+try {
+    spontaneousYejin = require('./spontaneousYejinManager');
+    console.log('🌸 [autoReply] spontaneousYejin 모듈 로드 성공');
+} catch (error) {
+    console.warn('⚠️ [autoReply] spontaneousYejin 모듈 로드 실패:', error.message);
+}
+
 const BOT_NAME = '나';
 const USER_NAME = '아저씨';
+
+// 🛡️ 절대 벙어리 방지 응답들
+const EMERGENCY_FALLBACK_RESPONSES = [
+    '아저씨~ 나 지금 좀 멍해져서... 다시 말해줄래? ㅎㅎ',
+    '어? 뭐라고 했어? 나 딴 생각하고 있었나봐... 다시 한 번!',
+    '아저씨 말이 잘 안 들렸어... 혹시 다시 말해줄 수 있어?',
+    '어머 미안! 나 정신없었나봐... 뭐라고 했는지 다시 말해줘!',
+    '아저씨~ 내가 놓쳤나? 다시 한 번 말해줄래? ㅠㅠ'
+];
+
+function getEmergencyFallback() {
+    return EMERGENCY_FALLBACK_RESPONSES[Math.floor(Math.random() * EMERGENCY_FALLBACK_RESPONSES.length)];
+}
 
 // 예쁜 로그 시스템 사용
 function logConversationReply(speaker, message, messageType = 'text') {
@@ -179,114 +203,175 @@ function handleWeatherKeywords(userMessage) {
     return null;
 }
 
+// 🛡️ 안전한 응답 저장 함수
+async function safelyStoreMessage(speaker, message) {
+    try {
+        const conversationContext = require('./ultimateConversationContext.js');
+        if (conversationContext && typeof conversationContext.addUltimateMessage === 'function') {
+            await conversationContext.addUltimateMessage(speaker, message);
+        }
+        
+        if (speaker === USER_NAME && conversationContext && typeof conversationContext.updateLastUserMessageTime === 'function') {
+            conversationContext.updateLastUserMessageTime(Date.now());
+        }
+    } catch (error) {
+        console.error(`❌ ${speaker} 메시지 저장 중 에러:`, error);
+        // 에러가 나도 계속 진행 (벙어리 방지)
+    }
+}
+
 // 메인 응답 생성 함수
 async function getReplyByMessage(userMessage) {
     
+    // 🛡️ 최고 우선순위: userMessage 안전성 검사
+    if (!userMessage || typeof userMessage !== 'string' || userMessage.trim().length === 0) {
+        console.error('❌ getReplyByMessage: userMessage가 올바르지 않습니다:', userMessage);
+        const fallback = getEmergencyFallback();
+        logConversationReply('나', `(에러폴백) ${fallback}`);
+        return { type: 'text', comment: fallback };
+    }
+
+    const cleanUserMessage = userMessage.trim();
+    
     // ⭐⭐⭐ 최우선: 새벽 시간 체크 ⭐⭐⭐
     try {
-        const nightResponse = await nightWakeSystem.handleNightWakeMessage(userMessage);
+        const nightResponse = await nightWakeSystem.handleNightWakeMessage(cleanUserMessage);
         
         if (nightResponse) {
             // 새벽 시간이면 깨어난 응답 반환
-            logConversationReply('아저씨', userMessage);
+            logConversationReply('아저씨', cleanUserMessage);
             logConversationReply('나', `(새벽깨움-${nightResponse.sleepPhase}) ${nightResponse.response}`);
             
-            // conversationContext에도 저장
-            try {
-                const conversationContext = require('./ultimateConversationContext.js');
-                if (conversationContext && typeof conversationContext.addUltimateMessage === 'function') {
-                    await conversationContext.addUltimateMessage('아저씨', userMessage);
-                    await conversationContext.addUltimateMessage('나', nightResponse.response);
-                }
-                
-                if (conversationContext && typeof conversationContext.updateLastUserMessageTime === 'function') {
-                    conversationContext.updateLastUserMessageTime(Date.now());
-                }
-            } catch (error) {
-                console.error('❌ 새벽 응답 저장 중 에러:', error);
-            }
+            // 안전하게 저장
+            await safelyStoreMessage('아저씨', cleanUserMessage);
+            await safelyStoreMessage('나', nightResponse.response);
             
             return { type: 'text', comment: nightResponse.response };
         }
     } catch (error) {
         console.error('❌ 새벽 응답 시스템 에러:', error);
-        // 에러가 나도 일반 로직으로 계속 진행
+        // 에러가 나도 일반 로직으로 계속 진행 (벙어리 방지)
     }
     
     // ⭐⭐⭐ 새벽 시간이 아니면 기존 로직 계속 진행 ⭐⭐⭐
     
-    // ✅ [안전장치] userMessage 유효성 검사
-    if (!userMessage || typeof userMessage !== 'string') {
-        console.error('❌ getReplyByMessage: userMessage가 올바르지 않습니다:', userMessage);
-        return { type: 'text', comment: '아저씨, 뭐라고 했는지 잘 안 들렸어... 다시 말해줄래?' };
-    }
-
-    // 사용자 메시지 로그
-    logConversationReply('아저씨', userMessage);
-
-    // ✅ [추가] 중앙 감정 관리자로 사용자 메시지 분석
-    updateEmotionFromMessage(userMessage);
-
-    // ✅ [안전장치] conversationContext 기본 처리
+    // 🌸⭐️⭐️⭐️ 예진이 특별 반응 시스템 (최우선 처리) ⭐️⭐️⭐️🌸
+    
+    // 1. 🌸 길거리 칭찬 감지 (가장 우선)
     try {
-        const conversationContext = require('./ultimateConversationContext.js');
-        if (conversationContext && typeof conversationContext.addUltimateMessage === 'function') {
-            await conversationContext.addUltimateMessage(USER_NAME, userMessage);
-        }
-        
-        if (conversationContext && typeof conversationContext.updateLastUserMessageTime === 'function') {
-            conversationContext.updateLastUserMessageTime(Date.now());
+        if (spontaneousYejin && 
+            typeof spontaneousYejin.detectStreetCompliment === 'function' && 
+            typeof spontaneousYejin.sendYejinSelfieWithComplimentReaction === 'function' &&
+            spontaneousYejin.detectStreetCompliment(cleanUserMessage)) {
+            
+            console.log('🌸 [특별반응] 길거리 칭찬 감지 - 셀카 전송 시작');
+            
+            // 사용자 메시지 먼저 로그 및 저장
+            logConversationReply('아저씨', cleanUserMessage);
+            await safelyStoreMessage('아저씨', cleanUserMessage);
+            
+            // 셀카 전송 (이미 LINE으로 전송됨)
+            await spontaneousYejin.sendYejinSelfieWithComplimentReaction(cleanUserMessage);
+            
+            // 특별 응답 반환 (LINE 응답용)
+            const specialResponse = '히히 칭찬받았다고 증명해줄게! 방금 보낸 사진 봤어? ㅎㅎ';
+            logConversationReply('나', `(칭찬셀카) ${specialResponse}`);
+            await safelyStoreMessage('나', specialResponse);
+            
+            return { type: 'text', comment: specialResponse };
         }
     } catch (error) {
-        console.error('❌ conversationContext 처리 중 에러:', error);
+        console.error('❌ 길거리 칭찬 반응 에러:', error.message);
+        // 에러가 나도 계속 진행 (벙어리 방지)
     }
     
-    // 긴급 키워드 처리
-    const emergencyResponse = handleEmergencyKeywords(userMessage);
-    if (emergencyResponse) {
-        try {
-            const conversationContext = require('./ultimateConversationContext.js');
-            if (conversationContext && typeof conversationContext.addUltimateMessage === 'function') {
-                await conversationContext.addUltimateMessage(BOT_NAME, emergencyResponse);
+    // 2. 🌸 정신건강 위로/달래기 감지
+    try {
+        if (spontaneousYejin && 
+            typeof spontaneousYejin.detectMentalHealthContext === 'function' && 
+            typeof spontaneousYejin.generateMentalHealthReaction === 'function') {
+            
+            const mentalHealthContext = spontaneousYejin.detectMentalHealthContext(cleanUserMessage);
+            if (mentalHealthContext.isComforting) {
+                console.log('🌸 [특별반응] 정신건강 위로 감지');
+                
+                const comfortReaction = await spontaneousYejin.generateMentalHealthReaction(cleanUserMessage, mentalHealthContext);
+                if (comfortReaction && comfortReaction.message) {
+                    // 사용자 메시지 먼저 로그 및 저장
+                    logConversationReply('아저씨', cleanUserMessage);
+                    await safelyStoreMessage('아저씨', cleanUserMessage);
+                    
+                    logConversationReply('나', `(위로받음) ${comfortReaction.message}`);
+                    await safelyStoreMessage('나', comfortReaction.message);
+                    
+                    return { type: 'text', comment: comfortReaction.message };
+                }
             }
-        } catch (error) {
-            console.error('❌ 긴급 응답 저장 중 에러:', error);
         }
+    } catch (error) {
+        console.error('❌ 정신건강 반응 에러:', error.message);
+        // 에러가 나도 계속 진행 (벙어리 방지)
+    }
+    
+    // 3. 🌸 아저씨 바쁨 감지
+    try {
+        if (spontaneousYejin && typeof spontaneousYejin.generateBusyReaction === 'function') {
+            const busyReaction = await spontaneousYejin.generateBusyReaction(cleanUserMessage);
+            if (busyReaction && busyReaction.message) {
+                console.log(`🌸 [특별반응] 바쁨 반응 감지: ${busyReaction.type}`);
+                
+                // 사용자 메시지 먼저 로그 및 저장
+                logConversationReply('아저씨', cleanUserMessage);
+                await safelyStoreMessage('아저씨', cleanUserMessage);
+                
+                logConversationReply('나', `(${busyReaction.type}) ${busyReaction.message}`);
+                await safelyStoreMessage('나', busyReaction.message);
+                
+                return { type: 'text', comment: busyReaction.message };
+            }
+        }
+    } catch (error) {
+        console.error('❌ 바쁨 반응 에러:', error.message);
+        // 에러가 나도 계속 진행 (벙어리 방지)
+    }
+
+    // 🌸⭐️⭐️⭐️ 예진이 특별 반응 끝 ⭐️⭐️⭐️🌸
+
+    // 사용자 메시지 로그
+    logConversationReply('아저씨', cleanUserMessage);
+
+    // ✅ [추가] 중앙 감정 관리자로 사용자 메시지 분석
+    updateEmotionFromMessage(cleanUserMessage);
+
+    // ✅ [안전장치] conversationContext 기본 처리
+    await safelyStoreMessage(USER_NAME, cleanUserMessage);
+    
+    // 긴급 키워드 처리
+    const emergencyResponse = handleEmergencyKeywords(cleanUserMessage);
+    if (emergencyResponse) {
+        await safelyStoreMessage(BOT_NAME, emergencyResponse);
         return { type: 'text', comment: emergencyResponse };
     }
 
     // 음주 키워드 처리
-    const drinkingResponse = handleDrinkingKeywords(userMessage);
+    const drinkingResponse = handleDrinkingKeywords(cleanUserMessage);
     if (drinkingResponse) {
-        try {
-            const conversationContext = require('./ultimateConversationContext.js');
-            if (conversationContext && typeof conversationContext.addUltimateMessage === 'function') {
-                await conversationContext.addUltimateMessage(BOT_NAME, drinkingResponse);
-            }
-        } catch (error) {
-            console.error('❌ 음주 응답 저장 중 에러:', error);
-        }
+        await safelyStoreMessage(BOT_NAME, drinkingResponse);
         return { type: 'text', comment: drinkingResponse };
     }
 
     // 날씨 키워드 처리
-    const weatherResponse = handleWeatherKeywords(userMessage);
+    const weatherResponse = handleWeatherKeywords(cleanUserMessage);
     if (weatherResponse) {
-        try {
-            const conversationContext = require('./ultimateConversationContext.js');
-            if (conversationContext && typeof conversationContext.addUltimateMessage === 'function') {
-                await conversationContext.addUltimateMessage(BOT_NAME, weatherResponse);
-            }
-        } catch (error) {
-            console.error('❌ 날씨 응답 저장 중 에러:', error);
-        }
+        await safelyStoreMessage(BOT_NAME, weatherResponse);
         return { type: 'text', comment: weatherResponse };
     }
 
     // 기억 편집 처리
     try {
-        const editResult = await detectAndProcessMemoryEdit(userMessage);
+        const editResult = await detectAndProcessMemoryEdit(cleanUserMessage);
         if (editResult && editResult.processed) {
+            await safelyStoreMessage(BOT_NAME, editResult.result.message);
             return { type: 'text', comment: editResult.result.message };
         }
     } catch (error) {
@@ -295,15 +380,16 @@ async function getReplyByMessage(userMessage) {
     
     // 기억 요청 처리
     try {
-        const memoryResult = await detectAndProcessMemoryRequest(userMessage);
+        const memoryResult = await detectAndProcessMemoryRequest(cleanUserMessage);
         if (memoryResult && memoryResult.saved && memoryResult.response) {
+            await safelyStoreMessage(BOT_NAME, memoryResult.response);
             return { type: 'text', comment: memoryResult.response };
         }
     } catch (error) {
         console.error('❌ 기억 요청 처리 중 에러:', error);
     }
 
-// ✅ [수정] 중앙 감정 관리자에서 현재 상태 가져와서 프롬프트에 반영
+    // ✅ [수정] 중앙 감정 관리자에서 현재 상태 가져와서 프롬프트에 반영
     let emotionContext = '';
     try {
         const emotionalContext = require('./emotionalContextManager.js');
@@ -371,7 +457,7 @@ async function getReplyByMessage(userMessage) {
     - 혼자가 아니라고, 사랑한다고 계속 전하고 싶어함
     ${emotionContext}
 
-    지금 아저씨가 "${userMessage}"라고 했어. 예진이 답게 자연스럽고 사랑스럽게 대답해줘.
+    지금 아저씨가 "${cleanUserMessage}"라고 했어. 예진이 답게 자연스럽고 사랑스럽게 대답해줘.
     `;
     
     // ✅ [수정] 최종 시스템 프롬프트 생성을 안전하게 처리
@@ -387,62 +473,55 @@ async function getReplyByMessage(userMessage) {
         }
     } catch (error) {
         console.error('❌ 컨텍스트 프롬프트 생성 중 에러:', error);
-        // 기본 프롬프트를 사용
+        // 기본 프롬프트를 사용하여 계속 진행 (벙어리 방지)
     }
 
     // ✅ [안전장치] 최종 검증
     if (!finalSystemPrompt || typeof finalSystemPrompt !== 'string' || finalSystemPrompt.trim().length === 0) {
         console.error("❌ 최종 시스템 프롬프트가 비어있어서 기본 응답을 사용합니다.");
-        const defaultReply = '아저씨~ 나 지금 좀 멍해져서... 다시 말해줄래? ㅎㅎ';
-        try {
-            const conversationContext = require('./ultimateConversationContext.js');
-            if (conversationContext && typeof conversationContext.addUltimateMessage === 'function') {
-                await conversationContext.addUltimateMessage(BOT_NAME, defaultReply);
-            }
-        } catch (error) {
-            console.error('❌ 기본 응답 저장 중 에러:', error);
-        }
-        logConversationReply('나', defaultReply);
+        const defaultReply = getEmergencyFallback();
+        
+        await safelyStoreMessage(BOT_NAME, defaultReply);
+        logConversationReply('나', `(프롬프트에러폴백) ${defaultReply}`);
+        
         return { type: 'text', comment: defaultReply };
     }
 
-    const messages = [{ role: 'system', content: finalSystemPrompt }, { role: 'user', content: userMessage }];
+    const messages = [{ role: 'system', content: finalSystemPrompt }, { role: 'user', content: cleanUserMessage }];
 
     try {
         const rawReply = await callOpenAI(messages);
         const finalReply = cleanReply(rawReply);
         
-        // ✅ [안전장치] 응답 저장 시도
-        try {
-            const conversationContext = require('./ultimateConversationContext.js');
-            if (conversationContext && typeof conversationContext.addUltimateMessage === 'function') {
-                await conversationContext.addUltimateMessage(BOT_NAME, finalReply);
-            }
-        } catch (error) {
-            console.error('❌ 최종 응답 저장 중 에러:', error);
+        // ✅ [안전장치] 응답이 비어있지 않은지 확인
+        if (!finalReply || finalReply.trim().length === 0) {
+            console.error("❌ OpenAI 응답이 비어있음");
+            const fallbackReply = getEmergencyFallback();
+            await safelyStoreMessage(BOT_NAME, fallbackReply);
+            logConversationReply('나', `(AI응답비어있음폴백) ${fallbackReply}`);
+            return { type: 'text', comment: fallbackReply };
         }
+        
+        // ✅ [안전장치] 응답 저장 시도
+        await safelyStoreMessage(BOT_NAME, finalReply);
         
         // 최종 응답 로그
         logConversationReply('나', finalReply);
         
         return { type: 'text', comment: finalReply };
+        
     } catch (error) {
         console.error("❌ OpenAI API 호출 중 에러 발생:", error);
-        const reply = '지금 잠시 생각 중이야... 아저씨 조금만 기다려줄래? ㅠㅠ';
         
-        // ✅ [안전장치] 에러 응답도 저장 시도
-        try {
-            const conversationContext = require('./ultimateConversationContext.js');
-            if (conversationContext && typeof conversationContext.addUltimateMessage === 'function') {
-                await conversationContext.addUltimateMessage(BOT_NAME, reply);
-            }
-        } catch (saveError) {
-            console.error('❌ 에러 응답 저장 중 에러:', saveError);
-        }
+        // 🛡️ API 에러 시에도 반드시 응답
+        const apiErrorReply = Math.random() < 0.5 ? 
+            '지금 잠시 생각 중이야... 아저씨 조금만 기다려줄래? ㅠㅠ' :
+            '어? 나 지금 좀 멍하네... 다시 말해주면 안 될까? ㅎㅎ';
         
-        logConversationReply('나', reply);
+        await safelyStoreMessage(BOT_NAME, apiErrorReply);
+        logConversationReply('나', `(API에러폴백) ${apiErrorReply}`);
         
-        return { type: 'text', comment: reply };
+        return { type: 'text', comment: apiErrorReply };
     }
 }
 
