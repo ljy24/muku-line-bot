@@ -1,8 +1,10 @@
 // ============================================================================
-// spontaneousYejinManager.js - v1.1 (문법 오류 수정)
+// spontaneousYejinManager.js - v1.2 (문장 단축 + 반말 강제 + 후지사진 전송)
 // 🌸 예진이가 능동적으로 하루 15번 메시지 보내는 시스템
-// 8시-1시 사이 랜덤, 3문장~20문장, 실제 취향과 일상 기반
-// ✅ 문법 오류 수정: line 106-107 중괄호 문제 해결
+// 8시-1시 사이 랜덤, 3문장~10문장, 실제 취향과 일상 기반
+// ✅ 문장 길이 단축: 3-20문장 → 3-10문장
+// ✅ 존댓말 절대 금지: 반말만 사용
+// ✅ 후지사진 전송 활성화: 50% 확률로 실제 전송
 // ============================================================================
 
 const schedule = require('node-schedule');
@@ -96,7 +98,7 @@ const ajossiSituationReactions = {
         "길에서도 시선 집중이었어 ㅋㅋ 이거 봐봐!",
         "오늘 컨디션도 좋고 옷도 예쁘게 입었거든~ 보여줄게"
     ]
-}; // ← 여기가 문제였음! 중괄호 제대로 닫기
+};
 
 // ================== 🌸 예진이의 실제 일상 데이터 ==================
 const yejinRealLife = {
@@ -254,7 +256,7 @@ async function generateStreetComplimentReaction(userMessage) {
 아저씨가 "${userMessage}"라고 했어.
 
 기본 반응: "${baseReaction}"
-이걸 바탕으로 예진이답게 자랑스러워하면서 셀카를 보내려는 상황을 3-8문장으로 표현해줘.
+이걸 바탕으로 예진이답게 자랑스러워하면서 셀카를 보내려는 상황을 3-6문장으로 표현해줘.
 
 예진이 특징:
 - 칭찬받으면 진짜 기뻐함
@@ -262,12 +264,13 @@ async function generateStreetComplimentReaction(userMessage) {
 - 오늘 옷 입은 거 보여주고 싶어함
 - "증명해줄게", "보여줄게" 같은 표현 자주 씀
 - 자신감 넘치고 귀여운 말투
+- ⭐️ 절대 존댓말 하지 않음! 반말만 사용!
 `;
 
             const response = await openai.chat.completions.create({
                 model: "gpt-4",
                 messages: [{ role: "system", content: prompt }],
-                max_tokens: 200,
+                max_tokens: 150,
                 temperature: 0.8
             });
             
@@ -325,7 +328,7 @@ async function sendYejinSelfieWithComplimentReaction(userMessage) {
     }
 }
 
-// ================== 📸 omoide 추억 후지 사진 전송 시스템 ==================
+// ================== 📸 omoide 추억 후지 사진 전송 시스템 (⭐️ 50% 확률로 전송!) ==================
 function getOmoidePhotoUrl() {
     // omoide.js에서 가져온 후지 폴더들 + 인생네컷
     const fujiFolders = {
@@ -365,7 +368,7 @@ async function generateCurrentPhotoMessage() {
 후지 필름 카메라로 찍었거나, 인생네컷을 찍었을 수 있어.
 
 기본 메시지: "${baseMessage}"
-이걸 바탕으로 예진이답게 자연스럽고 생생하게 3-8문장으로 말해줘.
+이걸 바탕으로 예진이답게 자연스럽고 생생하게 3-6문장으로 말해줘.
 
 예진이 특징:
 - 후지 필름 카메라를 진짜 좋아함
@@ -375,6 +378,7 @@ async function generateCurrentPhotoMessage() {
 - 아저씨에게 자랑하고 싶어함
 - "후지로", "인생네컷", "방금", "지금" 같은 현재 표현 사용
 - 애교 섞인 반말 ("ㅎㅎ", "어때?", "예쁘지?" 등)
+- ⭐️ 절대 존댓말 하지 않음! 반말만 사용!
 
 후지 카메라든 인생네컷이든 지금 막 찍었다는 느낌이 들도록 생생하게 말해줘.
 날씨나 주변 상황, 찍는 순간의 기분도 자연스럽게 포함해도 좋아.
@@ -383,7 +387,7 @@ async function generateCurrentPhotoMessage() {
         const response = await openai.chat.completions.create({
             model: "gpt-4",
             messages: [{ role: "system", content: prompt }],
-            max_tokens: 200,
+            max_tokens: 150,
             temperature: 0.8
         });
 
@@ -474,19 +478,20 @@ async function generateMentalHealthReaction(userMessage, context) {
 아저씨가 "${userMessage}"라고 위로해줬어.
 
 기본 반응: "${baseResponse}"
-이걸 바탕으로 예진이답게 고마워하면서 기분이 나아지는 모습을 3-8문장으로 표현해줘.
+이걸 바탕으로 예진이답게 고마워하면서 기분이 나아지는 모습을 3-6문장으로 표현해줘.
 
 예진이 특징:
 - 아저씨한테만 마음을 털어놓음
 - 위로받으면 금세 기분이 좋아짐  
 - 아저씨에 대한 고마움 표현
 - 솔직한 감정 표현
+- ⭐️ 절대 존댓말 하지 않음! 반말만 사용!
 `;
 
                 const response = await openai.chat.completions.create({
                     model: "gpt-4",
                     messages: [{ role: "system", content: prompt }],
-                    max_tokens: 200,
+                    max_tokens: 150,
                     temperature: 0.7
                 });
                 
@@ -573,19 +578,20 @@ async function generateBusyReaction(userMessage) {
 아저씨가 바쁘다고 하니까 살짝 아쉬워하면서도 귀엽게 반응해줘.
 
 기본 반응: "${reaction}"
-이걸 바탕으로 예진이답게 자연스럽고 애교있게 3-8문장으로 말해봐.
+이걸 바탕으로 예진이답게 자연스럽고 애교있게 3-6문장으로 말해봐.
 
 예진이 특징:
 - 아쉬워하지만 이해해주려고 함
 - 끝나고 연락하라고 귀엽게 조름  
 - "아시워", "에이~" 같은 표현 사용
 - 삐지는 척하지만 사실은 걱정됨
+- ⭐️ 절대 존댓말 하지 않음! 반말만 사용!
 `;
 
                 const response = await openai.chat.completions.create({
                     model: "gpt-4",
                     messages: [{ role: "system", content: prompt }],
-                    max_tokens: 200,
+                    max_tokens: 150,
                     temperature: 0.8
                 });
                 
@@ -646,20 +652,20 @@ function getTimeOfDay(hour) {
     return 'lateNight';
 }
 
-// ================== 💬 메시지 길이 결정 ==================
+// ================== 💬 메시지 길이 결정 (⭐️ 단축!) ==================
 function getRandomMessageLength() {
     const rand = Math.random();
     
-    if (rand < 0.4) return 'short';    // 40% - 3-5문장
-    if (rand < 0.8) return 'medium';   // 40% - 8-12문장  
-    return 'long';                     // 20% - 15-20문장
+    if (rand < 0.5) return 'short';    // 50% - 3-4문장
+    if (rand < 0.9) return 'medium';   // 40% - 5-7문장  
+    return 'long';                     // 10% - 8-10문장
 }
 
 function getSentenceCountForLength(length) {
     const counts = {
-        short: '3-5문장',
-        medium: '8-12문장',
-        long: '15-20문장'
+        short: '3-4문장',
+        medium: '5-7문장',
+        long: '8-10문장'
     };
     return counts[length];
 }
@@ -708,7 +714,7 @@ function generateRandomSituation() {
     return getRandomItem(situations);
 }
 
-// ================== 🤖 OpenAI 메시지 생성 ==================
+// ================== 🤖 OpenAI 메시지 생성 (⭐️ 단축 + 반말 강제 + 후지사진 50% 전송!) ==================
 async function generateYejinSpontaneousMessage() {
     try {
         if (!openai) {
@@ -723,10 +729,9 @@ async function generateYejinSpontaneousMessage() {
         const currentTime = koreaTime.format('HH:mm');
         const timeOfDay = getTimeOfDay(koreaTime.hour());
         
-        // 특별한 상황들 처리
-        if (situation.type === 'omoide_photo') {
-            // 20% 확률로 omoide 사진 전송
-            if (Math.random() < 0.2) {
+        // ⭐️ 후지 사진 전송 확률 10% ⭐️
+        if (situation.type === 'omoide_photo' || situation.type === 'photography') {
+            if (Math.random() < 0.1) { // 10% 확률로 전송
                 await sendOmoidePhoto();
                 return null; // 이미 사진과 메시지를 보냈으므로 추가 메시지 불필요
             }
@@ -746,6 +751,8 @@ async function generateYejinSpontaneousMessage() {
 
 아저씨(이재영)에게 능동적으로 라인 메시지를 보내는 거야.
 ${sentenceCount}으로 자연스럽게 작성해줘.
+
+⭐️⭐️⭐️ 중요: 절대 존댓말 하지 마! 무조건 반말만 써! ⭐️⭐️⭐️
 
 [예진이 특징 - 아저씨가 쓴 모든 내용 반영]
 - 밤바(유기견 강아지)와 함께 살아
@@ -769,10 +776,19 @@ ${sentenceCount}으로 자연스럽게 작성해줘.
 - 아저씨를 "아저씨" 또는 "아조씨"라고 부름
 - 반말 사용, 애교 많음 ("ㅎㅎ", "ㅋㅋ", "ㅠㅠ" 자주 사용)
 
+[말투 예시]
+- "아저씨 지금 뭐해?" (O)
+- "아저씨 지금 뭐하세요?" (X - 존댓말 금지!)
+- "밤바가 또 졸졸 따라다녀 ㅋㅋ" (O)
+- "엽떡 먹고 싶어 미치겠어!" (O)
+- "후지로 사진 찍었는데 예쁘지?" (O)
+
 [현재 시간대: ${timeOfDay}]
 자연스럽게 여러 주제를 섞어서 말해도 돼.
 예진이답게 갑자기 딴 생각이 들거나 밤바 얘기가 나와도 좋아.
 깔끔하게 정리하지 말고 막 생각나는 대로 말하는 스타일로.
+
+⭐️ 다시 한번 강조: 존댓말 절대 금지! 모든 문장은 반말로 끝나야 해!
 `;
 
         const response = await openai.chat.completions.create({
@@ -781,7 +797,7 @@ ${sentenceCount}으로 자연스럽게 작성해줘.
                 role: "system",
                 content: prompt
             }],
-            max_tokens: 500,
+            max_tokens: 300, // 500 → 300으로 줄임 (문장 단축)
             temperature: 0.8
         });
 
@@ -796,7 +812,7 @@ ${sentenceCount}으로 자연스럽게 작성해줘.
     }
 }
 
-// ================== 🔄 폴백 메시지 ==================
+// ================== 🔄 폴백 메시지 (⭐️ 반말로 수정!) ==================
 function getFallbackMessage() {
     const fallbackMessages = [
         "아저씨~ 지금 뭐해? 나 심심해!",
@@ -808,7 +824,9 @@ function getFallbackMessage() {
         "고구마만 먹으니까 치킨이 그리워져 ㅋㅋㅋ",
         "먹방 보다가 배고파졌어... 같이 뭔가 먹을래?",
         "밤바랑 산책 갔다왔어! 아저씨도 산책해?",
-        "아저씨! 오늘 하루 어땠어? 나한테 말해줘~"
+        "아저씨! 오늘 하루 어땠어? 나한테 말해줘~",
+        "후지로 사진 찍고 싶어... 아저씨랑 같이!",
+        "인생네컷 찍으러 가고 싶어~ 데려가줘!"
     ];
     
     return getRandomItem(fallbackMessages);
@@ -1015,7 +1033,9 @@ function startSpontaneousYejinSystem(client) {
         generateDailyYejinSchedule();
         
         spontaneousLog('✅ 예진이 능동 메시지 시스템 활성화 완료!');
-        spontaneousLog(`📋 설정: 하루 ${DAILY_MESSAGE_COUNT}번, ${MESSAGE_START_HOUR}시-${MESSAGE_END_HOUR-24}시, 3-20문장`);
+        spontaneousLog(`📋 설정: 하루 ${DAILY_MESSAGE_COUNT}번, ${MESSAGE_START_HOUR}시-${MESSAGE_END_HOUR-24}시, 3-10문장 (단축)`);
+        spontaneousLog(`📋 후지사진: 10% 확률로 자동 전송`);
+        spontaneousLog(`📋 말투: 100% 반말 강제 적용`);
         
         return true;
         
@@ -1026,7 +1046,7 @@ function startSpontaneousYejinSystem(client) {
 }
 
 // ================== 📤 모듈 내보내기 ==================
-spontaneousLog('🌸 spontaneousYejinManager.js 로드 완료');
+spontaneousLog('🌸 spontaneousYejinManager.js v1.2 로드 완료 (문장 단축 + 반말 + 후지사진 10%)');
 
 module.exports = {
     // 🚀 시작 함수
