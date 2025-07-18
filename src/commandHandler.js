@@ -110,13 +110,34 @@ async function handleCommand(text, userId, client = null) {
                 // 각 시스템에서 정보 수집
                 let statusReport = "====== 💖 나의 현재 상태 리포트 ======\n\n";
                 
-                // 생리주기 정보
+                // 생리주기 정보 (7월 24일 예정일로 수정)
                 try {
                     const emotionalContext = require('./emotionalContextManager.js');
                     const emotion = emotionalContext.getCurrentEmotionState();
-                    statusReport += `🩸 [생리주기] 현재 ${emotion.cycleDay || 6}일차 (${emotion.menstrualPhase || '생리 후 회복기'})\n`;
+                    
+                    // 7월 24일을 다음 생리 예정일로 설정
+                    const nextPeriodDate = new Date('2025-07-24');
+                    const currentDate = new Date();
+                    const daysDiff = Math.ceil((nextPeriodDate - currentDate) / (1000 * 60 * 60 * 24));
+                    const monthDay = `7/24`;
+                    
+                    // 현재 주기일 계산 (28일 주기 기준)
+                    const cycleDay = daysDiff <= 0 ? Math.abs(daysDiff) + 1 : 28 - daysDiff;
+                    
+                    let description;
+                    if (cycleDay <= 5) {
+                        description = '생리 중';
+                    } else if (cycleDay <= 13) {
+                        description = '생리 후 회복기';
+                    } else if (cycleDay >= 14 && cycleDay <= 15) {
+                        description = '배란기';
+                    } else {
+                        description = 'PMS 시기';
+                    }
+                    
+                    statusReport += `🩸 [생리주기] 현재 ${cycleDay}일차 (${description}), 다음 생리예정일: ${daysDiff}일 후 (${monthDay})\n`;
                 } catch (error) {
-                    statusReport += `🩸 [생리주기] 현재 6일차 (생리 후 회복기)\n`;
+                    statusReport += `🩸 [생리주기] 현재 6일차 (생리 후 회복기), 다음 생리예정일: 6일 후 (7/24)\n`;
                 }
                 
                 // 감정 상태 (한글로 변경)
