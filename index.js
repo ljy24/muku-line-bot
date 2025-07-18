@@ -861,8 +861,8 @@ async function sendReply(replyToken, botResponse) {
                         }
                     ]);
                     
-                    console.log(`${colors.yejin}📸 예진이: 이미지 + 텍스트 전송 성공${colors.reset}`);
-                    console.logconsole.log(`${colors.yejin}💕 예진이: ${caption}${colors.reset}`);
+                   console.log(`${colors.yejin}📸 예진이: 이미지 + 텍스트 전송 성공${colors.reset}`);
+                    console.log(`${colors.yejin}💕 예진이: ${caption}${colors.reset}`);  // ✅ 수정
                     return; // 성공시 함수 종료
                     
                 } catch (urlError) {
