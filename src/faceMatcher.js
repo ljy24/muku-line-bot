@@ -1,9 +1,4 @@
-// src/faceMatcher.js - v2.0 (완전 수정 버전)
-// 🔍 아저씨와 예진이 사진을 정확히 구분합니다
-const fs = require('fs');
-const path = require('path');
-
-// src/faceMatcher.js - v2.1 (완전 안전 버전)
+// src/faceMatcher.js - v2.2 (NodeJS 호환 버전)
 // 🔍 아저씨와 예진이 사진을 정확히 구분합니다
 const fs = require('fs');
 const path = require('path');
@@ -13,10 +8,11 @@ let faceapi = null;
 let canvas = null;
 let isModuleAvailable = false;
 
-// 안전한 모듈 로드
+// 안전한 모듈 로드 (NodeJS 호환)
 function loadFaceApiModules() {
     try {
-        faceapi = require('@vladmandic/face-api');
+        // ✅ NodeJS용 올바른 import 방법
+        faceapi = require('@vladmandic/face-api/dist/face-api.node.js');
         canvas = require('canvas');
         
         if (faceapi && canvas) {
