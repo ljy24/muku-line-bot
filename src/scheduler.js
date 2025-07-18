@@ -1,17 +1,4 @@
-// 2. 담타 스케줄러 (10시-18시, 매 30분마다 체크) - 🚬 완전 독립적 운영
-schedule.scheduleJob('0,30 10-18 * * *', async () => { // ⭐ 10-18시, 0분/30분에만
-    try {
-        const koreaTime = moment().tz(TIMEZONE);
-        const hour = koreaTime.hour();
-        const minute = koreaTime.minute();
-        const currentTime = koreaTime.format('HH:mm');
-        
-        // 🚬 담타는 다른 스케줄과 완전 독립! 다른 조건 무시!
-        forceLog(`🚬 담타 스케줄러 실행: ${currentTime} (한국시간) - 독립 모드`);
-        
-        // 하루 최대 8번까지 (오히려 늘려서 자주 보내기)
-        if (damtaSentToday.length >= 8) {
-            forceLog(`담타 일일 한도 초과: ${damtaSentToday// ✅ scheduler.js v5 - "한국시간(도쿄시간) 완전 수정"
+// ✅ scheduler.js v6 - "한국시간 + 담타랜덤 완전 수정"
 // ✅ OpenAI 실시간 메시지 생성 스케줄러 - 무조건 전송 시스템
 
 const schedule = require('node-schedule');
@@ -325,62 +312,45 @@ schedule.scheduleJob('0 9 * * 1-5', async () => {
     } catch (error) {
         forceLog(`아침 출근 스케줄러 에러: ${error.message} - 하지만 계속 진행`);
     }
-}); // ⭐ 시간대 문제로 일단 기본 설정
+});
 
-// 2. 담타 스케줄러 (10시-18시, 매 30분마다 체크) - 한국시간
-schedule.scheduleJob('0,30 * * * *', async () => { // ⭐ 0분, 30분에만 실행
+// 2. 🚬 담타 스케줄러 - 10-18시 랜덤 시간! 완전 독립!
+schedule.scheduleJob('*/15 * * * *', async () => { // 15분마다 체크해서 랜덤 전송
     try {
-        const koreaTime = moment().tz(TIMEZONE); // ⭐ 한국시간으로 체크
+        const koreaTime = moment().tz(TIMEZONE);
         const hour = koreaTime.hour();
         const currentTime = koreaTime.format('HH:mm');
         
-        // 10시-18시 시간대 확인 (한국시간 기준)
+        // 10시-18시가 아니면 아예 체크 안 함
         if (hour < 10 || hour > 18) {
-            forceLog(`담타 시간대 아님: ${currentTime} (10-18시 외)`);
             return;
         }
         
-        // 하루 최대 6번까지 (3시간마다 약 2번 정도)
-        if (damtaSentToday.length >= 6) {
-            forceLog(`담타 일일 한도 초과: ${damtaSentToday.length}/6`);
-            return;
-        }
-        
-        // 최근 1시간 내에 보냈으면 스킵
-        const oneHourAgo = koreaTime.clone().subtract(1, 'hour');
-        const recentSent = damtaSentToday.some(time => 
-            moment(time).tz(TIMEZONE).isAfter(oneHourAgo)
-        );
-        
-        if (recentSent) {
-            forceLog(`담타 최근 1시간 내 전송됨, 스킵`);
-            return;
-        }
-        
-        // 30% 확률로 전송 (자연스럽게)
+        // 🚬 10-18시 사이에서만 랜덤 체크!
+        // 15% 확률로 담타 전송 (시간당 평균 1번 정도)
         const randomChance = Math.random();
-        if (randomChance > 0.3) {
-            forceLog(`담타 확률 체크 실패: ${(randomChance * 100).toFixed(1)}% (30% 이하여야 함)`);
-            return;
+        if (randomChance > 0.15) {
+            return; // 85% 확률로 스킵
         }
         
-        forceLog(`🚬 담타 스케줄러 실행: ${currentTime} (한국시간) - 확률: ${(randomChance * 100).toFixed(1)}%`);
+        // 🚬 담타는 무조건 와야 함! 다른 조건들 완전 무시!
+        forceLog(`🚬 담타 랜덤 실행: ${currentTime} (한국시간) - 확률: ${(randomChance * 100).toFixed(1)}%`);
         
-        // OpenAI로 담타 메시지 생성
+        // 예진이 고유 담타 말투로 메시지 생성
         const damtaMessage = await generateDamtaMessage();
         
-        // 무조건 전송 시도
+        // 무조건 전송! 조건 없음!
         const result = await forceLineMessage(damtaMessage, '담타메시지');
         
-        // 전송 기록 (성공 여부 무관)
+        // 전송 기록 (통계용)
         damtaSentToday.push(koreaTime.toISOString());
         
-        forceLog(`담타 메시지 처리 완료: 오늘 ${damtaSentToday.length}번째`);
+        forceLog(`🚬 담타 랜덤 전송 완료: 오늘 ${damtaSentToday.length}번째 - "${damtaMessage}"`);
         
     } catch (error) {
         forceLog(`담타 스케줄러 에러: ${error.message} - 하지만 계속 진행`);
     }
-}); // ⭐ 0분, 30분에만 실행되도록 수정
+});
 
 // 3. 밤 11시 케어 메시지 스케줄러 - 한국시간
 schedule.scheduleJob('0 23 * * *', async () => {
@@ -400,7 +370,7 @@ schedule.scheduleJob('0 23 * * *', async () => {
     } catch (error) {
         forceLog(`밤 케어 스케줄러 에러: ${error.message} - 하지만 계속 진행`);
     }
-}); // ⭐ 시간대 문제로 일단 기본 설정
+});
 
 // 4. 자정 굿나잇 메시지 스케줄러 - 한국시간
 schedule.scheduleJob('0 0 * * *', async () => {
@@ -425,7 +395,7 @@ schedule.scheduleJob('0 0 * * *', async () => {
     } catch (error) {
         forceLog(`굿나잇 스케줄러 에러: ${error.message} - 하지만 계속 진행`);
     }
-}); // ⭐ 시간대 문제로 일단 기본 설정
+});
 
 // ==================== 테스트 및 상태 확인 ====================
 
@@ -467,7 +437,7 @@ function getOpenAISchedulerStats() {
         todayStats: {
             morningWorkSent: morningWorkSent,
             damtaSentCount: damtaSentToday.length,
-            damtaMaxDaily: 6,
+            damtaMaxDaily: '무제한 (랜덤)',
             nightMessageSent: nightMessageSent,
             goodNightSent: goodNightSent
         },
