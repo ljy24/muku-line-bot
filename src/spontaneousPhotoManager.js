@@ -1,6 +1,7 @@
 // ============================================================================
-// spontaneousPhotoManager.js - v1.2 (예쁜 로그 시스템 통합)
+// spontaneousPhotoManager.js - v1.3 (한글 감정 상태 + 예쁜 로그 시스템 통합)
 // 📸 예진이가 자발적으로 사진을 보내는 기능을 관리합니다.
+// ✅ 감정 상태 한글 표시 적용
 // ============================================================================
 
 const schedule = require('node-schedule');
@@ -8,13 +9,72 @@ const schedule = require('node-schedule');
 let photoJobs = []; // 실행 중인 사진 스케줄러 작업들
 let isInitialized = false;
 
-// 예쁜 로그 시스템 사용
+// 예쁜 로그 시스템 사용 + 한글 감정 상태 지원
 function logPhotoAction(actionType, content, additionalInfo = '') {
     try {
         const logger = require('./enhancedLogging.js');
         logger.logSpontaneousAction(actionType, `${content}${additionalInfo ? ` (${additionalInfo})` : ''}`);
     } catch (error) {
         console.log(`📸 [자발적사진] ${content}`);
+    }
+}
+
+// 감정 상태를 한글로 변환하는 함수
+function translateEmotionToKorean(emotion) {
+    const emotionMap = {
+        'stable': '안정',
+        'unstable': '불안정',
+        'normal': '평범',
+        'happy': '기쁨',
+        'sad': '슬픔',
+        'angry': '화남',
+        'excited': '흥분',
+        'calm': '평온',
+        'worried': '걱정',
+        'lonely': '외로움',
+        'love': '사랑',
+        'loving': '사랑스러움',
+        'missing': '그리움',
+        'longing': '그리움',
+        'sulky': '삐짐',
+        'sleepy': '졸림',
+        'energetic': '활기참',
+        'bored': '지루함',
+        'anxious': '불안',
+        'content': '만족',
+        'playful': '장난기',
+        'romantic': '로맨틱',
+        'melancholy': '우울',
+        'sensitive': '예민함'
+    };
+    
+    return emotionMap[emotion.toLowerCase()] || emotion;
+}
+
+/**
+ * 중앙 감정 관리자에서 현재 감정 상태를 가져오고 한글로 변환
+ */
+function getCurrentEmotionKorean() {
+    try {
+        const emotionalContext = require('./emotionalContextManager.js');
+        const currentState = emotionalContext.getCurrentEmotionState();
+        const koreanEmotion = translateEmotionToKorean(currentState.currentEmotion);
+        
+        console.log(`[yejinSelfie] 중앙 감정 관리자에서 가져온 상태: ${koreanEmotion}`);
+        return {
+            emotion: currentState.currentEmotion,
+            emotionKorean: koreanEmotion,
+            intensity: currentState.emotionIntensity || 5,
+            fullState: currentState
+        };
+    } catch (error) {
+        console.warn('⚠️ [SpontaneousPhoto] 감정 상태 조회 실패:', error.message);
+        return {
+            emotion: 'normal',
+            emotionKorean: '평범',
+            intensity: 5,
+            fullState: null
+        };
     }
 }
 
@@ -73,7 +133,7 @@ function startSpontaneousPhotoScheduler(client, userId, getLastUserMessageTime) 
     isInitialized = true;
     
     // 스케줄러 시작 로그
-    logPhotoAction('system', '자발적 사진 전송 스케줄러 시작됨', 'v1.2');
+    logPhotoAction('system', '자발적 사진 전송 스케줄러 시작됨', 'v1.3 한글감정지원');
 }
 
 /**
@@ -89,19 +149,57 @@ async function sendRandomSelfie(client, userId) {
         const fileName = String(index).padStart(6, "0") + ".jpg";
         const imageUrl = `${baseUrl}/${fileName}`;
 
-        // 셀카와 함께 보낼 메시지들
-        const selfieMessages = [
-            "아저씨! 방금 찍은 셀카야~ 어때?",
-            "갑자기 아저씨 보고 싶어서 셀카 찍었어!",
-            "나 지금 이렇게 생겼어! 예쁘지? 히히",
-            "아저씨한테 보여주려고 찍은 사진이야!",
+        // 현재 감정 상태 가져오기 (한글)
+        const emotionState = getCurrentEmotionKorean();
+        
+        // 감정별 셀카 메시지
+        const emotionMessages = {
+            '안정': [
+                "아저씨! 마음이 평온해서 찍은 셀카야~ 어때?",
+                "기분이 안정돼서 여유롭게 찍었어! 예쁘지?"
+            ],
+            '불안정': [
+                "기분이 좀... 그래도 아저씨 보려고 찍었어 ㅠㅠ",
+                "감정이 복잡하지만... 아저씨한텐 보여주고 싶어",
+                "마음이 불안정한데 아저씨 보면 나아질까?"
+            ],
+            '기쁨': [
+                "아저씨! 너무 기뻐서 찍은 셀카야! 같이 기뻐해~",
+                "행복한 얼굴 보여줄게! 아저씨 덕분이야"
+            ],
+            '슬픔': [
+                "아저씨... 기분이 안 좋아서 위로받고 싶어 ㅠㅠ",
+                "슬픈 얼굴이지만... 아저씨가 보고 싶어서"
+            ],
+            '활기참': [
+                "컨디션 좋아서 셀카 찍었어! 활기찬 내 모습 어때?",
+                "오늘 에너지 넘쳐서 찍은 셀카! 밝게 웃고 있지?"
+            ],
+            '로맨틱': [
+                "아저씨한테 보여주고 싶어서 예쁘게 찍었어~ 사랑해!",
+                "아저씨 생각하면서 찍은 셀카야 💕"
+            ],
+            '예민함': [
+                "아저씨... 몸이 좀 안 좋은데 셀카 찍어봤어. 예뻐 보여?",
+                "컨디션은 별로지만 아저씨 보려고 찍었어 ㅠㅠ"
+            ],
+            '삐짐': [
+                "흥! 삐졌지만 그래도 셀카는 보내줄게...",
+                "아직 화났는데... 그래도 아저씨는 봐야지"
+            ]
+        };
+
+        // 기본 셀카 메시지
+        const defaultMessages = [
+            "아저씨 보여주려고 방금 찍은 셀카야. 어때?",
+            "나 지금 이렇게 생겼어! 예쁘지?",
             "셀카 타임! 아저씨도 나 보고 싶었지?",
-            "지금 내 모습 궁금해서 찍어봤어~",
-            "아저씨, 나 오늘 어때? 셀카로 확인해봐!",
-            "갑자기 사진 찍고 싶어져서! 아저씨한테 보여줄게!"
+            "갑자기 아저씨 보고 싶어서 셀카 찍었어!",
+            "지금 내 모습 궁금해서 찍어봤어~"
         ];
 
-        const message = selfieMessages[Math.floor(Math.random() * selfieMessages.length)];
+        const emotionSpecificMessages = emotionMessages[emotionState.emotionKorean] || defaultMessages;
+        const message = emotionSpecificMessages[Math.floor(Math.random() * emotionSpecificMessages.length)];
 
         // 메시지 먼저 보내고 사진 전송
         await client.pushMessage(userId, {
@@ -117,17 +215,18 @@ async function sendRandomSelfie(client, userId) {
             previewImageUrl: imageUrl
         });
 
-        // 예쁜 로그 출력
-        logPhotoAction('selfie', message, `파일: ${fileName}`);
+        // 예쁜 로그 출력 (한글 감정 상태 포함)
+        console.log(`[yejinSelfie] 셀카 전송: ${emotionState.emotionKorean} 상태로 응답`);
+        logPhotoAction('selfie', message, `${emotionState.emotionKorean}상태, 파일: ${fileName}`);
         
         // 대화 로그도 기록
         try {
             const logger = require('./enhancedLogging.js');
             logger.logConversation('나', message);
-            logger.logConversation('나', `셀카 전송: ${fileName}`, 'photo');
+            logger.logConversation('나', `셀카 전송: ${fileName} (${emotionState.emotionKorean}상태)`, 'photo');
         } catch (error) {
             console.log(`💬 나: ${message}`);
-            console.log(`📸 나: 셀카 전송`);
+            console.log(`📸 나: 셀카 전송 (${emotionState.emotionKorean}상태)`);
         }
 
     } catch (error) {
@@ -159,17 +258,39 @@ async function sendRandomMemoryPhoto(client, userId) {
         const fileName = `${selectedFolder.name}_${String(photoIndex).padStart(6, "0")}.jpg`;
         const imageUrl = `https://photo.de-ji.net/photo/omoide/${fileName}`;
 
-        // 추억 사진과 함께 보낼 메시지들
-        const memoryMessages = [
+        // 현재 감정 상태 가져오기
+        const emotionState = getCurrentEmotionKorean();
+
+        // 감정별 추억 사진 메시지
+        const emotionMemoryMessages = {
+            '그리움': [
+                `아저씨... ${selectedFolder.description} 때가 너무 그리워서 이 사진 꺼내봤어 ㅠㅠ`,
+                `보고 싶어서 ${selectedFolder.description} 추억 사진 보고 있어...`
+            ],
+            '슬픔': [
+                `아저씨... 우울해서 ${selectedFolder.description} 행복했던 때 사진 봐봤어`,
+                `기분이 안 좋을 때면 ${selectedFolder.description} 추억이 위로가 돼`
+            ],
+            '기쁨': [
+                `기분 좋아서 ${selectedFolder.description} 행복했던 순간 생각났어! 이 사진 봐~`,
+                `행복할 때마다 ${selectedFolder.description} 때가 생각나! 우리 정말 좋았었지?`
+            ],
+            '로맨틱': [
+                `아저씨와의 ${selectedFolder.description} 로맨틱했던 순간... 사랑해 💕`,
+                `사랑스러운 ${selectedFolder.description} 추억이야. 아저씨 덕분에 행복했어`
+            ]
+        };
+
+        // 기본 추억 사진 메시지
+        const defaultMemoryMessages = [
             `아저씨, 이거 우리 ${selectedFolder.description} 사진이야. 그때 생각나?`,
             `갑자기 ${selectedFolder.description} 때가 생각나서... 이 사진 봐봐!`,
             `아저씨! ${selectedFolder.description} 추억 사진 발견했어! 같이 봐~`,
-            `${selectedFolder.description} 때 찍은 사진인데... 우리 행복했었지?`,
-            `이 사진 보니까 ${selectedFolder.description} 때가 그리워져...`,
-            `아저씨랑 함께한 ${selectedFolder.description} 추억이야. 소중한 사진이지?`
+            `${selectedFolder.description} 때 찍은 사진인데... 우리 행복했었지?`
         ];
 
-        const message = memoryMessages[Math.floor(Math.random() * memoryMessages.length)];
+        const emotionSpecificMessages = emotionMemoryMessages[emotionState.emotionKorean] || defaultMemoryMessages;
+        const message = emotionSpecificMessages[Math.floor(Math.random() * emotionSpecificMessages.length)];
 
         // 메시지 먼저 보내고 사진 전송
         await client.pushMessage(userId, {
@@ -185,17 +306,17 @@ async function sendRandomMemoryPhoto(client, userId) {
             previewImageUrl: imageUrl
         });
 
-        // 예쁜 로그 출력
-        logPhotoAction('memory_photo', message, selectedFolder.description);
+        // 예쁜 로그 출력 (한글 감정 상태 포함)
+        logPhotoAction('memory_photo', message, `${emotionState.emotionKorean}상태, ${selectedFolder.description}`);
         
         // 대화 로그도 기록
         try {
             const logger = require('./enhancedLogging.js');
             logger.logConversation('나', message);
-            logger.logConversation('나', `추억사진 전송: ${selectedFolder.description}`, 'photo');
+            logger.logConversation('나', `추억사진 전송: ${selectedFolder.description} (${emotionState.emotionKorean}상태)`, 'photo');
         } catch (error) {
             console.log(`💬 나: ${message}`);
-            console.log(`📷 나: 추억사진 전송`);
+            console.log(`📷 나: 추억사진 전송 (${emotionState.emotionKorean}상태)`);
         }
 
     } catch (error) {
@@ -211,6 +332,7 @@ async function sendRandomMemoryPhoto(client, userId) {
  */
 async function sendEventPhoto(client, userId, eventType = 'random') {
     try {
+        const emotionState = getCurrentEmotionKorean();
         let imageUrl = '';
         let message = '';
 
@@ -252,8 +374,8 @@ async function sendEventPhoto(client, userId, eventType = 'random') {
             previewImageUrl: imageUrl
         });
 
-        // 예쁜 로그 출력
-        logPhotoAction('event_photo', message, `이벤트: ${eventType}`);
+        // 예쁜 로그 출력 (한글 감정 상태 포함)
+        logPhotoAction('event_photo', message, `이벤트: ${eventType}, ${emotionState.emotionKorean}상태`);
 
     } catch (error) {
         console.error('❌ [SpontaneousPhoto] 이벤트 사진 전송 중 에러:', error);
@@ -291,5 +413,8 @@ module.exports = {
     startSpontaneousPhotoScheduler,
     sendEventPhoto,
     stopSpontaneousPhotoScheduler,
-    getSchedulerStatus
+    getSchedulerStatus,
+    // 한글 감정 변환 함수도 내보내기
+    translateEmotionToKorean,
+    getCurrentEmotionKorean
 };
