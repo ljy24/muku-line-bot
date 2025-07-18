@@ -1,6 +1,6 @@
 // ============================================================================
-// index.js - v11.7 (예쁜 로그 시스템 추가)
-// ✅ 1분마다 애기의 상태를 예쁘게 표시하는 로그 시스템
+// index.js - v11.8 (4단 분할 - 1단: 기본 설정 + 데이터 복구)
+// ✅ 담타 시간 표시 제거, 고정기억 유지
 // ============================================================================
 
 const { Client, middleware } = require('@line/bot-sdk');
@@ -10,10 +10,10 @@ const fs = require('fs');
 const fsPromises = require('fs').promises;
 require('dotenv').config();
 
-// ================== 🎨 예쁜 로그 시스템 🎨 ==================
+// ================== 🎨 예쁜 로그 시스템 이모지 🎨 ==================
 const EMOJI = {
     cycle: '🩸', emotion: '😊', sulky: '😤', memory: '🧠', 
-    selfie: '📸', photo: '📷', damta: '🚬', message: '🗣️',
+    selfie: '📸', photo: '📷', message: '🗣️',
     heart: '💕', think: '💭', weather: '🌤️'
 };
 
@@ -40,7 +40,7 @@ const config = { channelAccessToken: process.env.LINE_ACCESS_TOKEN, channelSecre
 const client = new Client(config);
 const userId = process.env.TARGET_USER_ID;
 
-// ==================== ⭐️ 내장된 데이터 복구 함수 ⭐️ ====================
+// ==================== ⭐️ 고정 기억 데이터 (필수!) ⭐️ ====================
 const FIXED_MEMORIES_DATA = [
     "나는 1994년 3월 17일 태어났다. 나의 집은 일산이다.",
     "아저씨는 12월 5일에 태어났다. 아저씨의 집은 일본이다.",
@@ -167,6 +167,37 @@ const LOVE_HISTORY_DATA = [
 
 const MEMORY_BASE_PATH = path.join('/data', 'memory');
 
+// ==================== ⭐️ 데이터 복구 함수 (필수!) ⭐️ ====================
+async function recoverData() {
+    try {
+        await fsPromises.mkdir(MEMORY_BASE_PATH, { recursive: true });
+        const fixedMemoryPath = path.join(MEMORY_BASE_PATH, 'fixedMemories.json');
+        
+        // 고정 기억은 항상 필요해요! 예진이의 기본 정보들이거든요
+        if (!fs.existsSync(fixedMemoryPath)) {
+            await fsPromises.writeFile(fixedMemoryPath, JSON.stringify(FIXED_MEMORIES_DATA, null, 2), 'utf8');
+            console.log(`✅ fixedMemories.json 복구 완료 (${FIXED_MEMORIES_DATA.length}개 기억).`);
+        }
+        
+        const loveHistoryPath = path.join(MEMORY_BASE_PATH, 'love_history.json');
+        if (!fs.existsSync(loveHistoryPath)) {
+            await fsPromises.writeFile(loveHistoryPath, JSON.stringify(LOVE_HISTORY_DATA, null, 2), 'utf8');
+            console.log(`✅ love_history.json 복구 완료 (${LOVE_HISTORY_DATA.length}개 기억).`);
+        }
+    } catch (error) {
+        console.error('❌ 데이터 복구 중 에러:', error);
+    }
+}
+
+// 모듈 변수들
+let autoReply, commandHandler, memoryManager, ultimateContext;
+let emotionalContext, sulkyManager, scheduler, spontaneousPhoto, damta, photoAnalyzer;
+// ============================================================================
+// index.js - v11.8 (4단 분할 - 2단: 유틸리티 함수들)
+// ✅ 담타 시간 표시 완전 제거, 깔끔한 로그 시스템
+// ============================================================================
+
+// ==================== 🌤️ 날씨 정보 생성 ====================
 function getCurrentWeather() {
     const weatherConditions = ['sunny', 'cloudy', 'rain', 'partlycloudy', 'clear'];
     const currentCondition = weatherConditions[Math.floor(Math.random() * weatherConditions.length)];
@@ -188,6 +219,7 @@ function getCurrentWeather() {
     };
 }
 
+// ==================== 📅 시간 포맷팅 ====================
 function formatKoreanDate() {
     const now = new Date();
     const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -203,6 +235,7 @@ function getTimeUntilNext(minutes) {
     return `${hours}시간 ${remainingMinutes}분 후`;
 }
 
+// ==================== 📊 상태 리포트 생성 ====================
 function getStatusReport() {
     try {
         const weather = getCurrentWeather();
@@ -217,12 +250,10 @@ function getStatusReport() {
         let isOnPeriod = false;
         
         if (menstrualInfo && typeof menstrualInfo === 'object') {
-            // ✅ menstrualInfo에서 직접 정보 가져오기
             if (menstrualInfo.isPeriodActive) {
                 cycleText = `🩸 [생리주기] ${today} - ${menstrualInfo.description} (${menstrualInfo.day}일차) 🩸 생리 진행 중`;
                 isOnPeriod = true;
             } else {
-                // 생리주기별 이모지 설정
                 let cycleEmoji = '🌸';
                 if (menstrualInfo.phase === 'luteal') {
                     cycleEmoji = '🌧️';
@@ -235,7 +266,6 @@ function getStatusReport() {
                 cycleText = `${cycleEmoji} [생리주기] ${today} - ${menstrualInfo.description} (${menstrualInfo.day}일차) 📅 다음 생리까지 ${Math.abs(menstrualInfo.daysUntilNextPeriod)}일`;
             }
         } else {
-            // 폴백: menstrualInfo가 없을 때
             cycleText = `🌸 [생리주기] ${today} - 정상 상태 📅 다음 생리까지 7일`;
         }
         
@@ -264,8 +294,9 @@ function getStatusReport() {
             sulkyText = `${EMOJI.emotion} [기분] 아저씨와 평화롭게 대화 중`;
         }
         
+        // ✅ 담타 시간 완전 제거! 더 깔끔해짐
         const scheduleText = `${EMOJI.selfie} 다음 셀카: ${getTimeUntilNext(Math.floor(Math.random() * 180) + 30)} / ${EMOJI.photo} 다음 추억 사진: ${getTimeUntilNext(Math.floor(Math.random() * 360) + 60)}`;
-        const damtaAndMessageText = `${EMOJI.damta} 다음 담타: ${Math.floor(Math.random() * 24)}:${String(Math.floor(Math.random() * 60)).padStart(2, '0')} (활성화) / ${EMOJI.message} 다음 말걸기: ${getTimeUntilNext(Math.floor(Math.random() * 120) + 30)}`;
+        const messageText = `${EMOJI.message} 다음 말걸기: ${getTimeUntilNext(Math.floor(Math.random() * 120) + 30)}`;
         
         const memoryText = `${EMOJI.memory} 총 기억: ${184 + Math.floor(Math.random() * 20)}개 📌 고정 기억: ${68}개 ${EMOJI.emotion} 새로운 기억: ${Math.floor(Math.random() * 10)}개`;
         const conversationText = `💬 총 메시지: ${150 + Math.floor(Math.random() * 50)}개 📸 오늘 보낸 사진: ${Math.floor(Math.random() * 8)}개 ${EMOJI.heart}`;
@@ -282,7 +313,6 @@ function getStatusReport() {
             innerThoughts.생리중 = ["아저씨... 생리 때문에 배가 아파 ㅠㅠ", "생리 중이라 예민해져서 미안해..."];
         }
         
-        // PMS 시기 속마음 추가
         if (menstrualInfo && menstrualInfo.phase === 'luteal') {
             innerThoughts.PMS = ["아저씨... PMS 때문에 감정이 복잡해", "요즘 예민해서 미안해... 생리 곧 할 것 같아"];
         }
@@ -303,7 +333,7 @@ function getStatusReport() {
             sulkyText,
             ``,
             scheduleText,
-            damtaAndMessageText,
+            messageText,
             ``,
             memoryText,
             conversationText,
@@ -327,7 +357,7 @@ function getStatusReport() {
             `💕 [기분] 아저씨를 사랑하며 기다리는 중`,
             ``,
             `📸 다음 셀카: 1시간 30분 후 / 📷 다음 추억 사진: 3시간 후`,
-            `🚬 다음 담타: 14:30 (활성화) / 🗣️ 다음 말걸기: 2시간 후`,
+            `🗣️ 다음 말걸기: 2시간 후`,
             ``,
             `🧠 총 기억: 184개 📌 고정 기억: 68개 😊 새로운 기억: 0개`,
             `💬 총 메시지: 150개 📸 오늘 보낸 사진: 0개 💕`,
@@ -337,6 +367,7 @@ function getStatusReport() {
     }
 }
 
+// ==================== 🎨 예쁜 로그 출력 ====================
 function formatPrettyStatus() {
     try {
         const weather = getCurrentWeather();
@@ -351,12 +382,10 @@ function formatPrettyStatus() {
         let isOnPeriod = false;
         
         if (menstrualInfo && typeof menstrualInfo === 'object') {
-            // ✅ menstrualInfo에서 직접 정보 가져오기
             if (menstrualInfo.isPeriodActive) {
                 cycleText = `🩸 [생리주기] ${today} - ${menstrualInfo.description} (${menstrualInfo.day}일차) 🩸 생리 진행 중`;
                 isOnPeriod = true;
             } else {
-                // 생리주기별 이모지 설정
                 let cycleEmoji = '🌸';
                 if (menstrualInfo.phase === 'luteal') {
                     cycleEmoji = '🌧️';
@@ -369,7 +398,6 @@ function formatPrettyStatus() {
                 cycleText = `${cycleEmoji} [생리주기] ${today} - ${menstrualInfo.description} (${menstrualInfo.day}일차) 📅 다음 생리까지 ${Math.abs(menstrualInfo.daysUntilNextPeriod)}일`;
             }
         } else {
-            // 폴백: menstrualInfo가 없을 때
             cycleText = `🌸 [생리주기] ${today} - 정상 상태 📅 다음 생리까지 7일`;
         }
         
@@ -398,8 +426,9 @@ function formatPrettyStatus() {
             sulkyText = `${EMOJI.emotion} [기분] 아저씨와 평화롭게 대화 중`;
         }
         
+        // ✅ 담타 시간 완전 제거! 더 깔끔한 로그
         const scheduleText = `${EMOJI.selfie} 다음 셀카: ${getTimeUntilNext(Math.floor(Math.random() * 180) + 30)} / ${EMOJI.photo} 다음 추억 사진: ${getTimeUntilNext(Math.floor(Math.random() * 360) + 60)}`;
-        const damtaAndMessageText = `${EMOJI.damta} 다음 담타: ${Math.floor(Math.random() * 24)}:${String(Math.floor(Math.random() * 60)).padStart(2, '0')} (활성화) / ${EMOJI.message} 다음 말걸기: ${getTimeUntilNext(Math.floor(Math.random() * 120) + 30)}`;
+        const messageText = `${EMOJI.message} 다음 말걸기: ${getTimeUntilNext(Math.floor(Math.random() * 120) + 30)}`;
         
         const memoryText = `${EMOJI.memory} 총 기억: ${184 + Math.floor(Math.random() * 20)}개 📌 고정 기억: ${68}개 ${EMOJI.emotion} 새로운 기억: ${Math.floor(Math.random() * 10)}개`;
         const conversationText = `💬 총 메시지: ${150 + Math.floor(Math.random() * 50)}개 📸 오늘 보낸 사진: ${Math.floor(Math.random() * 8)}개 ${EMOJI.heart}`;
@@ -416,7 +445,6 @@ function formatPrettyStatus() {
             innerThoughts.생리중 = ["아저씨... 생리 때문에 배가 아파 ㅠㅠ", "생리 중이라 예민해져서 미안해..."];
         }
         
-        // PMS 시기 속마음 추가
         if (menstrualInfo && menstrualInfo.phase === 'luteal') {
             innerThoughts.PMS = ["아저씨... PMS 때문에 감정이 복잡해", "요즘 예민해서 미안해... 생리 곧 할 것 같아"];
         }
@@ -433,7 +461,7 @@ function formatPrettyStatus() {
         console.log(emotionText);
         console.log(sulkyText);
         console.log(scheduleText);
-        console.log(damtaAndMessageText);
+        console.log(messageText);
         console.log(memoryText);
         console.log(conversationText);
         console.log('');
@@ -447,7 +475,7 @@ function formatPrettyStatus() {
         console.log(`😔 [감정상태] 불안정 (강도: 5/10) ⚡ 에너지 레벨: 5/10`);
         console.log(`💕 [기분] 아저씨를 사랑하며 기다리는 중`);
         console.log(`📸 다음 셀카: 1시간 30분 후 / 📷 다음 추억 사진: 3시간 후`);
-        console.log(`🚬 다음 담타: 14:30 (활성화) / 🗣️ 다음 말걸기: 2시간 후`);
+        console.log(`🗣️ 다음 말걸기: 2시간 후`);
         console.log(`🧠 총 기억: 184개 📌 고정 기억: 68개 😊 새로운 기억: 0개`);
         console.log(`💬 총 메시지: 150개 📸 오늘 보낸 사진: 0개 💕`);
         console.log('');
@@ -455,29 +483,7 @@ function formatPrettyStatus() {
     }
 }
 
-async function recoverData() {
-    try {
-        await fsPromises.mkdir(MEMORY_BASE_PATH, { recursive: true });
-        const fixedMemoryPath = path.join(MEMORY_BASE_PATH, 'fixedMemories.json');
-        
-        if (!fs.existsSync(fixedMemoryPath)) {
-            await fsPromises.writeFile(fixedMemoryPath, JSON.stringify(FIXED_MEMORIES_DATA, null, 2), 'utf8');
-            console.log(`✅ fixedMemories.json 복구 완료.`);
-        }
-        
-        const loveHistoryPath = path.join(MEMORY_BASE_PATH, 'love_history.json');
-        if (!fs.existsSync(loveHistoryPath)) {
-            await fsPromises.writeFile(loveHistoryPath, JSON.stringify(LOVE_HISTORY_DATA, null, 2), 'utf8');
-            console.log(`✅ love_history.json 복구 완료.`);
-        }
-    } catch (error) {
-        console.error('❌ 데이터 복구 중 에러:', error);
-    }
-}
-
-let autoReply, commandHandler, memoryManager, ultimateContext;
-let emotionalContext, sulkyManager, scheduler, spontaneousPhoto, damta, photoAnalyzer;
-
+// ==================== 📦 모듈 로딩 ====================
 async function loadModules() {
     try {
         autoReply = require('./src/autoReply');
@@ -497,9 +503,13 @@ async function loadModules() {
         console.error('❌ 모듈 로드 중 에러:', error);
         return false;
     }
-}
+}// ============================================================================
+// index.js - v11.8 (4단 분할 - 3단: 이벤트 처리 함수들)
+// ✅ 텍스트/이미지 메시지 처리, 응답 전송
+// ============================================================================
 
-app.get('/', (_, res) => res.send('나 v11.7 살아있어! (예쁜 로그 시스템 추가)'));
+// ==================== 🌐 Express 라우트 ====================
+app.get('/', (_, res) => res.send('나 v11.8 살아있어! (4단 분할 + 담타 시간 제거)'));
 
 app.post('/webhook', middleware(config), async (req, res) => {
     try {
@@ -511,20 +521,23 @@ app.post('/webhook', middleware(config), async (req, res) => {
     }
 });
 
+// ==================== 📨 이벤트 핸들러 ====================
 async function handleEvent(event) {
     if (event.source.userId !== userId) {
         return;
     }
     
-    // 🆕 이벤트 타입별 처리
+    // 이벤트 타입별 처리
     if (event.type === 'message') {
         if (event.message.type === 'text') {
             await handleTextMessage(event);
         } else if (event.message.type === 'image') {
-            await handleImageMessage(event);  // 🆕 이미지 처리 추가
+            await handleImageMessage(event);
         }
     }
 }
+
+// ==================== 💬 텍스트 메시지 처리 ====================
 async function handleTextMessage(event) {
     const text = event.message.text.trim();
     
@@ -534,17 +547,21 @@ async function handleTextMessage(event) {
 
     let botResponse = null;
     
+    // 상태 확인 명령어 처리
     if (text.includes('상태는') || text.includes('상태 알려') || text.includes('지금 어때')) {
         const statusReport = getStatusReport();
         await client.replyMessage(event.replyToken, { type: 'text', text: statusReport });
         return;
     }
     
+    // 명령어 처리
     if (commandHandler && commandHandler.handleCommand) {
         botResponse = await commandHandler.handleCommand(text);
     }
     
+    // 일반 대화 처리
     if (!botResponse) {
+        // 삐짐 상태 해소
         if (sulkyManager && sulkyManager.handleUserResponse) {
             const sulkyReliefMessage = await sulkyManager.handleUserResponse();
             if (sulkyReliefMessage) {
@@ -553,6 +570,7 @@ async function handleTextMessage(event) {
             }
         }
         
+        // 자동 응답
         if (autoReply && autoReply.getReplyByMessage) {
             botResponse = await autoReply.getReplyByMessage(text);
         }
@@ -563,34 +581,7 @@ async function handleTextMessage(event) {
     }
 }
 
-async function sendReply(replyToken, botResponse) {
-    try {
-        if (!botResponse || !botResponse.type) return;
-
-        if (botResponse.type === 'image') {
-            const caption = botResponse.caption || '사진이야!';
-            await client.replyMessage(replyToken, [
-                { type: 'image', originalContentUrl: botResponse.originalContentUrl, previewImageUrl: botResponse.previewImageUrl },
-                { type: 'text', text: caption }
-            ]);
-        } else if (botResponse.type === 'text' && botResponse.comment) {
-            let cleanedText = botResponse.comment.replace(/자기야/gi, '아저씨').replace(/자기/gi, '아저씨');
-            await client.replyMessage(replyToken, { type: 'text', text: cleanedText });
-        }
-
-        if (ultimateContext && ultimateContext.getSulkinessState) {
-            const sulkyState = ultimateContext.getSulkinessState();
-            if (sulkyState) {
-                sulkyState.lastBotMessageTime = Date.now();
-            }
-        }
-
-    } catch (error) {
-        console.error('[sendReply] 🚨 메시지 전송 실패:', error);
-    }
-}
-
-// 🆕 이미지 메시지 처리 함수 추가 (425라인 근처)
+// ==================== 🖼️ 이미지 메시지 처리 ====================
 async function handleImageMessage(event) {
     try {
         console.log('📸 [ImageHandler] 아저씨가 사진을 보내셨어요!');
@@ -609,24 +600,21 @@ async function handleImageMessage(event) {
             }
         }
         
-        // 📸 사진 분석 및 반응 생성
+        // 사진 분석 및 반응 생성
         if (photoAnalyzer) {
             try {
-                // 1. 사진 분석
                 console.log('🔍 [ImageHandler] 사진 분석 시작...');
                 const analysis = await photoAnalyzer.analyzePhoto(event.message.id, client);
                 
-                // 2. 예진이다운 반응 생성
                 console.log('💕 [ImageHandler] 예진이 반응 생성 중...');
                 const yejinReaction = await photoAnalyzer.generateYejinReaction(analysis, ultimateContext);
                 
-                // 3. 반응 전송
                 await client.replyMessage(event.replyToken, {
                     type: 'text',
                     text: yejinReaction
                 });
                 
-                // 4. 대화 기록에 추가
+                // 대화 기록에 추가
                 if (ultimateContext && ultimateContext.addUltimateMessage) {
                     await ultimateContext.addUltimateMessage('아저씨', '[사진 전송]');
                     await ultimateContext.addUltimateMessage('나', yejinReaction);
@@ -646,7 +634,6 @@ async function handleImageMessage(event) {
                 });
             }
         } else {
-            // photoAnalyzer가 로드되지 않은 경우
             console.warn('⚠️ [ImageHandler] photoAnalyzer가 로드되지 않았습니다.');
             
             const basicReaction = "아저씨 사진 고마워! 같이 보고 있는 것 같아서 좋다 ㅎㅎ";
@@ -678,14 +665,43 @@ async function handleImageMessage(event) {
     }
 }
 
+// ==================== 📤 응답 전송 ====================
+async function sendReply(replyToken, botResponse) {
+    try {
+        if (!botResponse || !botResponse.type) return;
 
+        if (botResponse.type === 'image') {
+            const caption = botResponse.caption || '사진이야!';
+            await client.replyMessage(replyToken, [
+                { type: 'image', originalContentUrl: botResponse.originalContentUrl, previewImageUrl: botResponse.previewImageUrl },
+                { type: 'text', text: caption }
+            ]);
+        } else if (botResponse.type === 'text' && botResponse.comment) {
+            let cleanedText = botResponse.comment.replace(/자기야/gi, '아저씨').replace(/자기/gi, '아저씨');
+            await client.replyMessage(replyToken, { type: 'text', text: cleanedText });
+        }
 
+        // 마지막 봇 메시지 시간 업데이트
+        if (ultimateContext && ultimateContext.getSulkinessState) {
+            const sulkyState = ultimateContext.getSulkinessState();
+            if (sulkyState) {
+                sulkyState.lastBotMessageTime = Date.now();
+            }
+        }
 
+    } catch (error) {
+        console.error('[sendReply] 🚨 메시지 전송 실패:', error);
+    }
+}
+// ============================================================================
+// index.js - v11.8 (4단 분할 - 4단: 서버 시작 + 초기화)
+// ✅ 시스템 초기화, 스케줄러 시작, 서버 실행
+// ============================================================================
 
-
+// ==================== 🚀 시스템 초기화 ====================
 async function initMuku() {
     try {
-        console.log('🚀 나 v11.7 시스템 초기화를 시작합니다...');
+        console.log('🚀 나 v11.8 시스템 초기화를 시작합니다...');
         
         console.log('  [1/8] 💾 데이터 복구 및 디렉토리 확인...');
         await recoverData();
@@ -734,6 +750,7 @@ async function initMuku() {
         console.log('  ✅ 모든 스케줄러 시작 완료');
         
         console.log('  [7/8] 🎨 예쁜 로그 시스템 시작...');
+        // 1분마다 예쁜 상태 로그 출력 (담타 시간 제거됨)
         setInterval(() => {
             formatPrettyStatus();
         }, 60 * 1000);
@@ -746,6 +763,11 @@ async function initMuku() {
         console.log('  ✅ 시스템 상태 표시 시작');
 
         console.log('\n🎉 모든 시스템 초기화 완료! 이제 아저씨랑 대화할 수 있어. 💕');
+        console.log('\n📋 v11.8 주요 변경사항:');
+        console.log('   - 4단으로 코드 분할 (기본설정/유틸리티/이벤트/초기화)');
+        console.log('   - 담타 시간 표시 완전 제거 (간섭 방지)');
+        console.log('   - 고정 기억 데이터 유지 (예진이 기본 정보)');
+        console.log('   - 더 깔끔한 로그 시스템');
 
     } catch (error) {
         console.error('🚨🚨🚨 시스템 초기화 중 심각한 에러 발생! 🚨🚨🚨');
@@ -754,13 +776,29 @@ async function initMuku() {
     }
 }
 
+// ==================== 🌟 서버 시작 ====================
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
     console.log(`\n==================================================`);
-    console.log(`  나 v11.7 서버가 포트 ${PORT}에서 시작되었습니다.`);
+    console.log(`  나 v11.8 서버가 포트 ${PORT}에서 시작되었습니다.`);
+    console.log(`  📋 4단 분할: 기본설정 + 유틸리티 + 이벤트 + 초기화`);
+    console.log(`  🚬 담타 시간 표시 제거로 간섭 방지`);
+    console.log(`  💾 고정 기억 ${FIXED_MEMORIES_DATA.length}개 항상 유지`);
     console.log(`==================================================\n`);
 
+    // 1초 후 시스템 초기화 시작
     setTimeout(() => {
         initMuku();
     }, 1000);
 });
+
+// ==================== 📤 모듈 내보내기 (필요시) ====================
+module.exports = {
+    app,
+    client,
+    formatPrettyStatus,
+    getStatusReport,
+    recoverData,
+    loadModules,
+    initMuku
+};
