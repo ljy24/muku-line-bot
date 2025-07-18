@@ -427,7 +427,7 @@ async function handleEvent(event) {
             // 명령어 처리 확인
             if (commandHandler && commandHandler.handleCommand) {
                 try {
-                    const commandResult = await commandHandler.handleCommand(userMessage.text, userId);
+                    const commandResult = await commandHandler.handleCommand(userMessage.text, userId, client);
                     if (commandResult && commandResult.handled) {
                         return sendReply(event.replyToken, commandResult);
                     }
@@ -605,10 +605,25 @@ async function initMuku() {
         }
 
         console.log(`${colors.system}  [4/6] 📸 자발적 사진 전송 시스템 활성화...${colors.reset}`);
-        if (spontaneousPhoto && spontaneousPhoto.startSpontaneousPhotoSystem) {
+        if (spontaneousPhoto && spontaneousPhoto.startSpontaneousPhotoScheduler) {
             try {
-                spontaneousPhoto.startSpontaneousPhotoSystem();
-                console.log(`${colors.system}    ✅ 자발적 사진 전송 활성화 완료${colors.reset}`);
+                const userId = process.env.TARGET_USER_ID;
+                if (!userId) {
+                    console.log(`${colors.error}    ❌ TARGET_USER_ID 환경변수 없음 - 자발적 사진 전송 비활성화${colors.reset}`);
+                } else {
+                    // 마지막 사용자 메시지 시간 함수 (옵션)
+                    const getLastUserMessageTime = () => {
+                        try {
+                            const ultimateContext = require('./src/ultimateConversationContext');
+                            return ultimateContext.getLastUserMessageTime ? ultimateContext.getLastUserMessageTime() : Date.now();
+                        } catch (error) {
+                            return Date.now();
+                        }
+                    };
+                    
+                    spontaneousPhoto.startSpontaneousPhotoScheduler(client, userId, getLastUserMessageTime);
+                    console.log(`${colors.system}    ✅ 자발적 사진 전송 활성화 완료 (userId: ${userId.slice(0,8)}...)${colors.reset}`);
+                }
             } catch (error) {
                 console.log(`${colors.error}    ❌ 자발적 사진 전송 활성화 실패: ${error.message}${colors.reset}`);
             }
