@@ -346,6 +346,15 @@ async function loadModules() {
             console.log(`${colors.error}  ❌ [11/11] birthdayDetector 로드 실패: ${error.message}${colors.reset}`);
         }
 
+        // 12. ⭐️ 스케줄러 시스템 ⭐️ 
+        try {
+            scheduler = require('./src/scheduler');
+            console.log(`${colors.system}  ✅ [12/12] scheduler: 자동 메시지 스케줄러 (담타 100%)${colors.reset}`);
+        } catch (error) {
+            console.log(`${colors.error}  ❌ [12/12] scheduler 로드 실패: ${error.message}${colors.reset}`);
+        }
+                
+
         // 🔍 face-api는 별도로 로드 (지연 로딩)
         console.log(`${colors.system}  🔍 [추가] faceMatcher: 지연 로딩 모드 (필요시에만 로드)${colors.reset}`);
 
