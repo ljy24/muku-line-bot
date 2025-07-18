@@ -1,9 +1,8 @@
 /**
- * 생일 관련 감지 시스템
- * - 예진이 생일 (5월 28일) 관련 메시지 감지
- * - 아저씨 생일 관련 메시지 감지
- * - 생일 전후 특별 응답 생성
- * - 생일 기념일 카운트다운 및 축하 메시지
+ * 생일 관련 감지 시스템 - 완전 수정 버전
+ * - checkBirthday 메소드 추가 (autoReply.js 호환)
+ * - 에러 방지 개선
+ * - 실제 예진이 생일 날짜로 수정 (3월 17일)
  */
 class BirthdayDetector {
     constructor() {
@@ -89,18 +88,58 @@ class BirthdayDetector {
         };
     }
 
+    // ✅ [핵심] autoReply.js에서 호출하는 메인 메소드
+    checkBirthday(userMessage) {
+        try {
+            // 입력값 검증
+            if (!userMessage || typeof userMessage !== 'string') {
+                return null;
+            }
+            
+            // 생일 메시지 감지
+            const detection = this.detectBirthdayMessage(userMessage);
+            
+            if (!detection || !detection.detected) {
+                return null; // 생일 관련 메시지가 아님
+            }
+            
+            // 생일 응답 생성
+            const response = this.generateBirthdayResponse(detection);
+            
+            if (response && response.text) {
+                return {
+                    detected: true,
+                    response: response.text,
+                    type: response.type,
+                    priority: response.priority || 'medium',
+                    confidence: detection.confidence || 0.8
+                };
+            }
+            
+            return null;
+            
+        } catch (error) {
+            console.error('❌ [BirthdayDetector] checkBirthday 에러:', error);
+            return null; // 에러 발생 시 null 반환 (벙어리 방지)
+        }
+    }
+
     // 생일 관련 메시지 감지
     detectBirthdayMessage(message) {
+        if (!message || typeof message !== 'string') {
+            return null;
+        }
+        
         const lowerMessage = message.toLowerCase();
         
         // 키워드 매칭
         const hasKeyword = this.birthdayKeywords.some(keyword => 
-            lowerMessage.includes(keyword)
+            lowerMessage.includes(keyword.toLowerCase())
         );
         
         // 질문 패턴 매칭
         const hasQuestion = this.birthdayQuestions.some(question => 
-            lowerMessage.includes(question)
+            lowerMessage.includes(question.toLowerCase())
         );
         
         if (!hasKeyword && !hasQuestion) {
@@ -123,11 +162,11 @@ class BirthdayDetector {
     // 예진이 생일 관련 메시지인지 확인
     isYejinBirthdayRelated(message) {
         const yejinIndicators = [
-            '너', '네', '당신', '예진', '5월 28일', '5월28일', '528'
+            '너', '네', '당신', '예진', '3월 17일', '3월17일', '317', '3-17'
         ];
         
         return yejinIndicators.some(indicator => 
-            message.includes(indicator)
+            message.toLowerCase().includes(indicator)
         );
     }
 
@@ -215,7 +254,12 @@ class BirthdayDetector {
             return this.generateAjusshiBirthdayResponse(context);
         }
         
-        return null;
+        // 일반적인 생일 언급인 경우 예진이 생일 정보 제공
+        return {
+            text: "내 생일은 3월 17일이야! 아저씨 꼭 기억해줘 💕",
+            type: 'general_birthday',
+            priority: 'medium'
+        };
     }
 
     // 예진이 생일 응답 생성
@@ -251,6 +295,18 @@ class BirthdayDetector {
     generateAjusshiBirthdayResponse(context) {
         const responses = this.birthdayResponses.ajusshi;
         
+        // 아저씨 생일이 오늘인지 확인
+        if (context.birthdayStatus.ajusshi === 'today') {
+            const celebrateResponses = responses.celebrate;
+            const randomIndex = Math.floor(Math.random() * celebrateResponses.length);
+            
+            return {
+                text: celebrateResponses[randomIndex],
+                type: 'ajusshi_birthday_celebrate',
+                priority: 'high'
+            };
+        }
+        
         // 아저씨 생일 정보가 없는 경우 질문
         if (!this.birthdays.ajusshi.month) {
             const questionResponses = responses.question;
@@ -263,14 +319,14 @@ class BirthdayDetector {
             };
         }
         
-        // 아저씨 생일 축하
-        const celebrateResponses = responses.celebrate;
-        const randomIndex = Math.floor(Math.random() * celebrateResponses.length);
+        // 일반적인 아저씨 생일 언급
+        const rememberResponses = responses.remember;
+        const randomIndex = Math.floor(Math.random() * rememberResponses.length);
         
         return {
-            text: celebrateResponses[randomIndex],
-            type: 'ajusshi_birthday_celebrate',
-            priority: 'high'
+            text: rememberResponses[randomIndex],
+            type: 'ajusshi_birthday_remember',
+            priority: 'medium'
         };
     }
 
@@ -311,7 +367,7 @@ class BirthdayDetector {
         
         // 키워드 매칭 점수
         const keywordMatches = this.birthdayKeywords.filter(keyword => 
-            message.includes(keyword)
+            message.toLowerCase().includes(keyword.toLowerCase())
         ).length;
         confidence += keywordMatches * 0.2;
         
@@ -325,7 +381,7 @@ class BirthdayDetector {
         
         // 질문 패턴 점수
         const questionMatches = this.birthdayQuestions.filter(question => 
-            message.includes(question)
+            message.toLowerCase().includes(question.toLowerCase())
         ).length;
         confidence += questionMatches * 0.3;
         
