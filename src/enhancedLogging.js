@@ -187,39 +187,89 @@ function logMenstrualCycleStatus(emotionalContextManager) {
         if (emotionalContextManager) {
             const cycle = emotionalContextManager.getCurrentEmotionState();
             
-            const lastPeriodDate = new Date('2024-12-01');
+            // ⭐️ 예진이 정확한 생리일 기준: 2025년 7월 24일 ⭐️
+            const nextPeriodDate = new Date('2025-07-24');
             const currentDate = getJapanTime();
-            const daysSinceLastPeriod = Math.floor((currentDate - lastPeriodDate) / (1000 * 60 * 60 * 24));
-            const cycleDay = (daysSinceLastPeriod % 28) + 1;
+            const daysUntilPeriod = Math.floor((nextPeriodDate - currentDate) / (1000 * 60 * 60 * 24));
             
-            let stateKey, daysUntilNext;
-            if (cycleDay <= 5) {
-                stateKey = 'period';
-                daysUntilNext = 28 - cycleDay;
-            } else if (cycleDay <= 10) {
-                stateKey = 'recovery';
-                daysUntilNext = 28 - cycleDay;
-            } else if (cycleDay <= 18) {
-                stateKey = 'normal';
-                daysUntilNext = 28 - cycleDay;
-            } else if (cycleDay <= 25) {
-                stateKey = 'pms_start';
-                daysUntilNext = 28 - cycleDay;
+            let stateKey, description, cycleDay;
+            
+            if (daysUntilPeriod <= 0) {
+                // 생리 중이거나 이미 지남
+                const daysSincePeriod = Math.abs(daysUntilPeriod);
+                if (daysSincePeriod <= 5) {
+                    stateKey = 'period';
+                    description = `생리 ${daysSincePeriod + 1}일차`;
+                    cycleDay = daysSincePeriod + 1;
+                } else if (daysSincePeriod <= 10) {
+                    stateKey = 'recovery';
+                    description = `생리 후 회복기 ${daysSincePeriod - 5}일차`;
+                    cycleDay = daysSincePeriod + 1;
+                } else {
+                    // 다음 주기 계산
+                    const nextCycle = new Date(nextPeriodDate.getTime() + 28 * 24 * 60 * 60 * 1000);
+                    const daysToNext = Math.floor((nextCycle - currentDate) / (1000 * 60 * 60 * 24));
+                    
+                    if (daysToNext <= 7) {
+                        stateKey = 'pms_intense';
+                        description = `PMS 심화 (생리 ${daysToNext}일 전)`;
+                    } else if (daysToNext <= 14) {
+                        stateKey = 'pms_start';
+                        description = `PMS 시작 (생리 ${daysToNext}일 전)`;
+                    } else {
+                        stateKey = 'normal';
+                        description = `정상기 (생리 ${daysToNext}일 전)`;
+                    }
+                    cycleDay = 28 - daysToNext;
+                }
             } else {
-                stateKey = 'pms_intense';
-                daysUntilNext = 28 - cycleDay;
+                // 생리 전
+                if (daysUntilPeriod <= 3) {
+                    stateKey = 'pms_intense';
+                    description = `PMS 심화 (생리 ${daysUntilPeriod}일 전)`;
+                    cycleDay = 28 - daysUntilPeriod;
+                } else if (daysUntilPeriod <= 7) {
+                    stateKey = 'pms_start';
+                    description = `PMS 시작 (생리 ${daysUntilPeriod}일 전)`;
+                    cycleDay = 28 - daysUntilPeriod;
+                } else if (daysUntilPeriod <= 14) {
+                    stateKey = 'normal';
+                    description = `정상기 (생리 ${daysUntilPeriod}일 전)`;
+                    cycleDay = 28 - daysUntilPeriod;
+                } else {
+                    // 이전 생리 후 시기
+                    const prevPeriodDate = new Date(nextPeriodDate.getTime() - 28 * 24 * 60 * 60 * 1000);
+                    const daysSincePrev = Math.floor((currentDate - prevPeriodDate) / (1000 * 60 * 60 * 1000));
+                    
+                    if (daysSincePrev <= 10) {
+                        stateKey = 'recovery';
+                        description = `생리 후 회복기 (생리 ${daysUntilPeriod}일 전)`;
+                    } else {
+                        stateKey = 'normal';
+                        description = `정상기 (생리 ${daysUntilPeriod}일 전)`;
+                    }
+                    cycleDay = 28 - daysUntilPeriod;
+                }
             }
 
             const state = CYCLE_STATES[stateKey];
-            const nextPeriodDate = new Date(currentDate.getTime() + daysUntilNext * 24 * 60 * 60 * 1000);
             const monthDay = `${nextPeriodDate.getMonth() + 1}/${nextPeriodDate.getDate()}`;
 
-            console.log(`${state.emoji} ${state.color}[생리주기]${colors.reset} 현재 ${cycleDay}일차 (${state.name}), 다음 생리예정일: ${daysUntilNext}일 후 (${monthDay}) (JST)`);
+            console.log(`${state.emoji} ${state.color}[생리주기]${colors.reset} ${description}, 다음 생리예정일: ${daysUntilPeriod > 0 ? daysUntilPeriod + '일 후' : '진행 중'} (${monthDay}) (JST)`);
         } else {
-            console.log(`🩸 [생리주기] 현재 14일차 (정상기), 다음 생리예정일: 14일 후 (현실적 28일 주기)`);
+            // 폴백: 현재 날짜 기준으로 간단 계산
+            const nextPeriodDate = new Date('2025-07-24');
+            const currentDate = getJapanTime();
+            const daysUntilPeriod = Math.floor((nextPeriodDate - currentDate) / (1000 * 60 * 60 * 24));
+            
+            if (daysUntilPeriod <= 3 && daysUntilPeriod > 0) {
+                console.log(`⛈️ [생리주기] PMS 심화 (생리 ${daysUntilPeriod}일 전), 다음 생리예정일: ${daysUntilPeriod}일 후 (7/24) (JST)`);
+            } else {
+                console.log(`🩸 [생리주기] 시스템 로딩 중... (다음 생리: 7/24)`);
+            }
         }
     } catch (error) {
-        console.log(`🩸 [생리주기] 시스템 로딩 중... (현실적 28일 주기로 설정 예정)`);
+        console.log(`🩸 [생리주기] 시스템 로딩 중... (다음 생리: 7/24 예정)`);
     }
 }
 
