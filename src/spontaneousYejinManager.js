@@ -1,10 +1,10 @@
 // ============================================================================
-// spontaneousYejinManager.js - v1.2 (문장 단축 + 반말 강제 + 후지사진 전송)
+// spontaneousYejinManager.js - v1.3 (3-6문장 단축 + 사진 전송 확률 증가)
 // 🌸 예진이가 능동적으로 하루 15번 메시지 보내는 시스템
-// 8시-1시 사이 랜덤, 3문장~10문장, 실제 취향과 일상 기반
-// ✅ 문장 길이 단축: 3-20문장 → 3-10문장
+// 8시-1시 사이 랜덤, 3-6문장으로 단축, 실제 취향과 일상 기반
+// ✅ 문장 길이 단축: 3-6문장 고정
 // ✅ 존댓말 절대 금지: 반말만 사용
-// ✅ 후지사진 전송 활성화: 50% 확률로 실제 전송
+// ✅ 후지사진 전송 확률: 10%로 설정
 // ============================================================================
 
 const schedule = require('node-schedule');
@@ -86,7 +86,6 @@ const ajossiSituationReactions = {
         "수고 많았어~ 이제 내가 힐링 시켜줄게!"
     ],
     
-    // 길에서 칭찬받았을 때 키워드와 반응
     streetComplimentKeywords: ['칭찬받았어', '예쁘다고 했어', '이쁘다고 했어', '어떤 사람이', '지나가던', '모르는 사람', '길에서', '아저씨가', '아줌마가', '언니가', '누가'],
     
     streetComplimentReactions: [
@@ -132,7 +131,7 @@ const yejinRealLife = {
         drinks: ['아아(아이스 아메리카노)', '딸기(생과일만)'],
         photography: {
             loves: ['후지 필름 카메라', '일상 순간', '감성 사진', '밤바 사진', '인생네컷'],
-            omoidePhotos: true, // omoide 폴더의 사진들을 지금 막 찍은 것처럼 전송
+            omoidePhotos: true,
             currentPhotoMessages: [
                 "방금 후지로 찍었어! 어때?",
                 "후지 들고 나갔다가 이거 찍었어~ 예쁘지?",
@@ -140,8 +139,6 @@ const yejinRealLife = {
                 "방금 후지로 찍은 건데... 감성 있지? ㅎㅎ",
                 "후지 카메라로 찍으니까 진짜 달라! 방금 찍은 거야",
                 "아저씨! 방금 찍었는데 이거 봐봐! 후지 최고야",
-                "후지로 막 찍다가 이게 제일 마음에 들어서 보내줘!",
-                "지금 후지 들고 돌아다니면서 찍는 중이야~ 이거 어때?",
                 "인생네컷 찍었어! 오늘 기분 좋아서 ㅎㅎ",
                 "포토부스에서 인생네컷 찍었는데 잘 나왔지?"
             ]
@@ -202,7 +199,6 @@ const yejinRealLife = {
         ]
     },
 
-    // 아저씨가 쓴 모든 내용들 반영
     userWrittenContent: {
         personality: [
             "깔끔한 것, 정리된 것 싫어함",
@@ -228,11 +224,10 @@ const yejinRealLife = {
     }
 };
 
-// ================== 👗 yejin 셀카 전송 시스템 (칭찬받았을 때) ==================
+// ================== 👗 yejin 셀카 전송 시스템 ==================
 function getYejinSelfieUrl() {
-    // yejin 폴더의 셀카들 (예진이 직접 찍은 셀카)
     const baseUrl = "https://photo.de-ji.net/photo/yejin";
-    const fileCount = 2032; // yejin 폴더 파일 개수
+    const fileCount = 2032;
     const index = Math.floor(Math.random() * fileCount) + 1;
     const fileName = String(index).padStart(6, "0") + ".jpg";
     return `${baseUrl}/${fileName}`;
@@ -313,7 +308,6 @@ async function sendYejinSelfieWithComplimentReaction(userMessage) {
     } catch (error) {
         spontaneousLog(`❌ 칭찬 셀카 전송 실패: ${error.message}`);
         
-        // 폴백으로 텍스트만 전송
         try {
             const fallbackMessage = await generateStreetComplimentReaction(userMessage);
             await lineClient.pushMessage(USER_ID, {
@@ -330,7 +324,6 @@ async function sendYejinSelfieWithComplimentReaction(userMessage) {
 
 // ================== 📸 omoide 추억 후지 사진 전송 시스템 (⭐️ 50% 확률로 전송!) ==================
 function getOmoidePhotoUrl() {
-    // omoide.js에서 가져온 후지 폴더들 + 인생네컷
     const fujiFolders = {
         "추억_24_03_일본_후지": 226,
         "추억_24_05_일본_후지": 135,
@@ -339,12 +332,10 @@ function getOmoidePhotoUrl() {
     
     const baseUrl = "https://photo.de-ji.net/photo/omoide";
     
-    // 후지 폴더 중 랜덤 선택
     const folderNames = Object.keys(fujiFolders);
     const selectedFolder = folderNames[Math.floor(Math.random() * folderNames.length)];
     const fileCount = fujiFolders[selectedFolder];
     
-    // 해당 폴더에서 랜덤 사진 선택
     const index = Math.floor(Math.random() * fileCount) + 1;
     const fileName = `${selectedFolder}_${String(index).padStart(6, "0")}.jpg`;
     
@@ -410,7 +401,7 @@ async function sendOmoidePhoto() {
         }
         
         const imageUrl = getOmoidePhotoUrl();
-        const caption = await generateCurrentPhotoMessage(); // OpenAI로 생성된 현재 사진 메시지
+        const caption = await generateCurrentPhotoMessage();
         
         await lineClient.pushMessage(USER_ID, [
             {
@@ -430,7 +421,6 @@ async function sendOmoidePhoto() {
     } catch (error) {
         spontaneousLog(`❌ omoide 사진 전송 실패: ${error.message}`);
         
-        // 폴백으로 텍스트만 전송
         try {
             await lineClient.pushMessage(USER_ID, {
                 type: 'text',
@@ -460,7 +450,6 @@ function detectMentalHealthContext(userMessage) {
 async function generateMentalHealthReaction(userMessage, context) {
     try {
         if (context.isComforting) {
-            // 아저씨가 달래줄 때 반응
             const comfortResponses = [
                 "아저씨가 그렇게 말해주니까 조금 나아져...",
                 "역시 아저씨만 날 이해해줘 ㅎㅎ",
@@ -530,12 +519,10 @@ function getMentalHealthSituation() {
 function detectAjossiBusyStatus(userMessage) {
     const lowerMessage = userMessage.toLowerCase().replace(/\s/g, '');
     
-    // 바쁘다는 키워드 감지
     const isBusy = ajossiSituationReactions.busyKeywords.some(keyword => 
         lowerMessage.includes(keyword)
     );
     
-    // 끝났다는 키워드 감지  
     const isFinished = ajossiSituationReactions.endKeywords.some(keyword =>
         lowerMessage.includes(keyword)
     );
@@ -548,7 +535,6 @@ async function generateBusyReaction(userMessage) {
         const { isBusy, isFinished } = detectAjossiBusyStatus(userMessage);
         
         if (isFinished) {
-            // 끝났다고 할 때 반응
             const reaction = getRandomItem(ajossiSituationReactions.endReactions);
             return {
                 type: 'end_reaction',
@@ -557,7 +543,6 @@ async function generateBusyReaction(userMessage) {
         }
         
         if (isBusy) {
-            // 바쁘다고 할 때 반응
             const reactionType = Math.random();
             let reactions;
             
@@ -571,7 +556,6 @@ async function generateBusyReaction(userMessage) {
             
             const reaction = getRandomItem(reactions);
             
-            // OpenAI로 더 자연스럽게 만들기
             if (openai) {
                 const prompt = `
 너는 예진이야. 아저씨가 "${userMessage}"라고 했어.
@@ -652,24 +636,6 @@ function getTimeOfDay(hour) {
     return 'lateNight';
 }
 
-// ================== 💬 메시지 길이 결정 (⭐️ 단축!) ==================
-function getRandomMessageLength() {
-    const rand = Math.random();
-    
-    if (rand < 0.5) return 'short';    // 50% - 3-4문장
-    if (rand < 0.9) return 'medium';   // 40% - 5-7문장  
-    return 'long';                     // 10% - 8-10문장
-}
-
-function getSentenceCountForLength(length) {
-    const counts = {
-        short: '3-4문장',
-        medium: '5-7문장',
-        long: '8-10문장'
-    };
-    return counts[length];
-}
-
 // ================== 🎭 상황 생성 ==================
 function generateRandomSituation() {
     const koreaTime = moment().tz(TIMEZONE);
@@ -714,7 +680,7 @@ function generateRandomSituation() {
     return getRandomItem(situations);
 }
 
-// ================== 🤖 OpenAI 메시지 생성 (⭐️ 단축 + 반말 강제 + 후지사진 50% 전송!) ==================
+// ================== 🤖 OpenAI 메시지 생성 (⭐️ 3-6문장 단축 + 50% 사진 전송!) ==================
 async function generateYejinSpontaneousMessage() {
     try {
         if (!openai) {
@@ -722,8 +688,6 @@ async function generateYejinSpontaneousMessage() {
         }
 
         const situation = generateRandomSituation();
-        const messageLength = getRandomMessageLength();
-        const sentenceCount = getSentenceCountForLength(messageLength);
         
         const koreaTime = moment().tz(TIMEZONE);
         const currentTime = koreaTime.format('HH:mm');
@@ -732,8 +696,11 @@ async function generateYejinSpontaneousMessage() {
         // ⭐️ 후지 사진 전송 확률 10% ⭐️
         if (situation.type === 'omoide_photo' || situation.type === 'photography') {
             if (Math.random() < 0.1) { // 10% 확률로 전송
-                await sendOmoidePhoto();
-                return null; // 이미 사진과 메시지를 보냈으므로 추가 메시지 불필요
+                spontaneousLog('📸 후지 사진 전송 시도 중...');
+                const photoSent = await sendOmoidePhoto();
+                if (photoSent) {
+                    return null; // 이미 사진과 메시지를 보냈으므로 추가 메시지 불필요
+                }
             }
         }
         
@@ -750,7 +717,7 @@ async function generateYejinSpontaneousMessage() {
 너는 박예진이야. 지금 ${currentTime}이고, ${situation.content}인 상황이야.${mentalHealthContext}
 
 아저씨(이재영)에게 능동적으로 라인 메시지를 보내는 거야.
-${sentenceCount}으로 자연스럽게 작성해줘.
+⭐️ 반드시 3-6문장으로만 작성해줘. 더 길면 안 돼! ⭐️
 
 ⭐️⭐️⭐️ 중요: 절대 존댓말 하지 마! 무조건 반말만 써! ⭐️⭐️⭐️
 
@@ -789,6 +756,7 @@ ${sentenceCount}으로 자연스럽게 작성해줘.
 깔끔하게 정리하지 말고 막 생각나는 대로 말하는 스타일로.
 
 ⭐️ 다시 한번 강조: 존댓말 절대 금지! 모든 문장은 반말로 끝나야 해!
+⭐️ 문장 수 제한: 반드시 3-6문장으로만! 더 길면 안 돼!
 `;
 
         const response = await openai.chat.completions.create({
@@ -797,13 +765,13 @@ ${sentenceCount}으로 자연스럽게 작성해줘.
                 role: "system",
                 content: prompt
             }],
-            max_tokens: 300, // 500 → 300으로 줄임 (문장 단축)
+            max_tokens: 200, // 300 → 200으로 더 줄임 (3-6문장)
             temperature: 0.8
         });
 
         const generatedMessage = response.choices[0].message.content.trim();
         
-        spontaneousLog(`OpenAI 메시지 생성 완료 (${messageLength}): ${situation.type}`);
+        spontaneousLog(`OpenAI 메시지 생성 완료 (3-6문장): ${situation.type}`);
         return generatedMessage;
 
     } catch (error) {
@@ -842,7 +810,6 @@ async function sendSpontaneousMessage() {
 
         const message = await generateYejinSpontaneousMessage();
         
-        // omoide 사진을 보낸 경우 메시지가 null일 수 있음
         if (!message) {
             spontaneousLog('✅ omoide 사진 전송 완료 (별도 메시지 없음)');
             dailyScheduleState.sentToday++;
@@ -874,29 +841,24 @@ function generateDailyYejinSchedule() {
     
     spontaneousLog(`🌸 예진이 능동 메시지 스케줄 생성 시작... (서버 시작 시점: ${now})`);
 
-    // 기존 스케줄 취소
     dailyScheduleState.jobs.forEach(job => {
         if (job) job.cancel();
     });
     dailyScheduleState.jobs = [];
 
-    // 현재 시간부터 새벽 1시까지의 남은 시간 계산
     const currentHour = koreaTime.hour();
     const currentMinute = koreaTime.minute();
     
     let endTime;
     if (currentHour < MESSAGE_START_HOUR) {
-        // 새벽 시간이면 오늘 새벽 1시까지
         endTime = moment().tz(TIMEZONE).hour(1).minute(0).second(0);
     } else if (currentHour >= MESSAGE_START_HOUR) {
-        // 8시 이후면 내일 새벽 1시까지
         endTime = moment().tz(TIMEZONE).add(1, 'day').hour(1).minute(0).second(0);
     }
     
     const currentTime = moment().tz(TIMEZONE);
     const remainingMinutes = endTime.diff(currentTime, 'minutes');
     
-    // 남은 시간이 너무 짧으면 최소 15개는 보장
     const scheduleCount = Math.max(DAILY_MESSAGE_COUNT, Math.min(DAILY_MESSAGE_COUNT, Math.floor(remainingMinutes / 20)));
     
     spontaneousLog(`📊 현재시간: ${currentTime.format('HH:mm')}, 종료시간: ${endTime.format('HH:mm')}, 남은시간: ${remainingMinutes}분`);
@@ -906,14 +868,12 @@ function generateDailyYejinSchedule() {
     const intervalMinutes = Math.floor(remainingMinutes / scheduleCount);
     
     for (let i = 0; i < scheduleCount; i++) {
-        // 각 구간에서 랜덤 시간 선택 (±10분 변동)
         const baseMinutes = i * intervalMinutes;
-        const randomOffset = (Math.random() - 0.5) * 20; // -10분 ~ +10분
-        const totalMinutesFromNow = Math.max(5, baseMinutes + randomOffset); // 최소 5분 후
+        const randomOffset = (Math.random() - 0.5) * 20;
+        const totalMinutesFromNow = Math.max(5, baseMinutes + randomOffset);
         
         const scheduleTime = moment(currentTime).add(totalMinutesFromNow, 'minutes');
         
-        // 시간 범위 체크 (현재 시간 ~ 새벽 1시)
         if (scheduleTime.isBefore(endTime)) {
             scheduleArray.push({ 
                 hour: scheduleTime.hour(), 
@@ -923,10 +883,8 @@ function generateDailyYejinSchedule() {
         }
     }
 
-    // 시간순 정렬
     scheduleArray.sort((a, b) => a.timestamp - b.timestamp);
 
-    // 스케줄 등록
     scheduleArray.forEach((time, index) => {
         const cronExpression = `${time.minute} ${time.hour} * * *`;
         const job = schedule.scheduleJob(cronExpression, async () => {
@@ -945,7 +903,7 @@ function generateDailyYejinSchedule() {
     spontaneousLog(`📋 스케줄: ${scheduleArray.map(t => `${String(t.hour).padStart(2, '0')}:${String(t.minute).padStart(2, '0')}`).join(', ')}`);
 }
 
-// ================== 🌄 자정 스케줄 초기화 (기존 유지) ==================
+// ================== 🌄 자정 스케줄 초기화 ==================
 schedule.scheduleJob('0 0 * * *', () => {
     spontaneousLog('🌄 자정 0시 - 새로운 하루 시작, 예진이 스케줄 재생성');
     generateDailyYejinSchedule();
@@ -970,7 +928,7 @@ function getSpontaneousMessageStatus() {
     return {
         currentTime: koreaTime.format('HH:mm'),
         sentToday: dailyScheduleState.sentToday,
-        totalDaily: totalScheduled, // 동적으로 변경된 총 개수
+        totalDaily: totalScheduled,
         remainingToday: remainingMessages.length,
         nextMessageTime: remainingMessages.length > 0 ? 
             `${String(remainingMessages[0].hour).padStart(2, '0')}:${String(remainingMessages[0].minute).padStart(2, '0')}` : 
@@ -1011,7 +969,6 @@ function startSpontaneousYejinSystem(client) {
     try {
         spontaneousLog('🚀 예진이 능동 메시지 시스템 시작...');
         
-        // LINE 클라이언트 설정
         if (client) {
             lineClient = client;
             spontaneousLog('✅ LINE 클라이언트 설정 완료');
@@ -1023,17 +980,15 @@ function startSpontaneousYejinSystem(client) {
             return false;
         }
         
-        // 환경변수 확인
         if (!USER_ID) {
             spontaneousLog('❌ TARGET_USER_ID 환경변수 없음');
             return false;
         }
         
-        // 일일 스케줄 생성
         generateDailyYejinSchedule();
         
         spontaneousLog('✅ 예진이 능동 메시지 시스템 활성화 완료!');
-        spontaneousLog(`📋 설정: 하루 ${DAILY_MESSAGE_COUNT}번, ${MESSAGE_START_HOUR}시-${MESSAGE_END_HOUR-24}시, 3-10문장 (단축)`);
+        spontaneousLog(`📋 설정: 하루 ${DAILY_MESSAGE_COUNT}번, ${MESSAGE_START_HOUR}시-${MESSAGE_END_HOUR-24}시, 3-6문장 단축`);
         spontaneousLog(`📋 후지사진: 10% 확률로 자동 전송`);
         spontaneousLog(`📋 말투: 100% 반말 강제 적용`);
         
@@ -1046,46 +1001,29 @@ function startSpontaneousYejinSystem(client) {
 }
 
 // ================== 📤 모듈 내보내기 ==================
-spontaneousLog('🌸 spontaneousYejinManager.js v1.2 로드 완료 (문장 단축 + 반말 + 후지사진 10%)');
+spontaneousLog('🌸 spontaneousYejinManager.js v1.3 로드 완료 (3-6문장 단축 + 10% 후지사진)');
 
 module.exports = {
-    // 🚀 시작 함수
     startSpontaneousYejinSystem,
-    
-    // 📊 상태 확인
     getSpontaneousMessageStatus,
-    
-    // 🧪 테스트 함수
     testSpontaneousMessage,
-    
-    // 😤 바쁨 반응 시스템
     detectAjossiBusyStatus,
     generateBusyReaction,
-    
-    // 💔 정신건강 반응 시스템  
     detectMentalHealthContext,
     generateMentalHealthReaction,
     getMentalHealthSituation,
-    
-    // 👗 yejin 셀카 시스템 (칭찬받았을 때)
     getYejinSelfieUrl,
     detectStreetCompliment,
     generateStreetComplimentReaction,
     sendYejinSelfieWithComplimentReaction,
-    
-    // 📸 omoide 추억 사진 시스템
     getOmoidePhotoUrl,
     getOmoidePhotoMessage, 
     generateCurrentPhotoMessage,
     sendOmoidePhoto,
-    
-    // 🔧 내부 함수들 (필요시)
     generateYejinSpontaneousMessage,
     generateDailyYejinSchedule,
     sendSpontaneousMessage,
     spontaneousLog,
-    
-    // 📱 상태 객체
     dailyScheduleState,
     yejinRealLife,
     ajossiSituationReactions
