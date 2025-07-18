@@ -1,4 +1,4 @@
-// src/faceMatcher.js - v2.0 (완전 수정 버전)// ============================================================================
+// ============================================================================
 // index.js - v13.3 (face-api 지연 로딩 추가 버전)
 // ✅ 대화 색상: 아저씨(하늘색), 예진이(연보라색), PMS(굵은 주황색)
 // 🌏 모든 시간은 일본시간(JST, UTC+9) 기준으로 동작합니다
@@ -118,25 +118,25 @@ async function loadFaceMatcherSafely() {
     }
     
     if (faceApiInitializing) {
-        console.log('🔍 [FaceMatcher] 이미 초기화 중...');
+        console.log(`${colors.system}🔍 [FaceMatcher] 이미 초기화 중...${colors.reset}`);
         return null;
     }
     
     faceApiInitializing = true;
     
     try {
-        console.log('🔍 [FaceMatcher] 지연 로딩 시작...');
+        console.log(`${colors.system}🔍 [FaceMatcher] 지연 로딩 시작...${colors.reset}`);
         faceMatcher = require('./src/faceMatcher');
         
         if (faceMatcher && faceMatcher.initModels) {
-            console.log('🤖 [FaceMatcher] AI 모델 초기화 시작...');
+            console.log(`${colors.system}🤖 [FaceMatcher] AI 모델 초기화 시작...${colors.reset}`);
             const initResult = await faceMatcher.initModels();
             
             if (initResult) {
-                console.log('✅ [FaceMatcher] AI 얼굴 인식 시스템 준비 완료');
+                console.log(`${colors.system}✅ [FaceMatcher] AI 얼굴 인식 시스템 준비 완료${colors.reset}`);
                 faceApiInitialized = true;
             } else {
-                console.log('⚡ [FaceMatcher] 빠른 구분 모드로 동작');
+                console.log(`${colors.system}⚡ [FaceMatcher] 빠른 구분 모드로 동작${colors.reset}`);
                 faceApiInitialized = true; // 빠른 모드라도 로딩 완료로 간주
             }
         }
@@ -145,7 +145,7 @@ async function loadFaceMatcherSafely() {
         return faceMatcher;
         
     } catch (error) {
-        console.log(`⚠️ [FaceMatcher] 로드 실패: ${error.message} - 얼굴 인식 없이 계속 진행`);
+        console.log(`${colors.error}⚠️ [FaceMatcher] 로드 실패: ${error.message} - 얼굴 인식 없이 계속 진행${colors.reset}`);
         faceApiInitializing = false;
         faceApiInitialized = true; // 실패해도 더 이상 시도하지 않음
         return null;
@@ -158,13 +158,14 @@ async function detectFaceSafely(base64Image) {
         const matcher = faceMatcher || await loadFaceMatcherSafely();
         
         if (matcher && matcher.detectFaceMatch) {
+            console.log(`${colors.system}🔍 [FaceMatcher] 얼굴 인식 실행 중...${colors.reset}`);
             return await matcher.detectFaceMatch(base64Image);
         } else {
-            console.log('🔍 [FaceMatcher] 모듈 없음 - 기본 응답');
+            console.log(`${colors.system}🔍 [FaceMatcher] 모듈 없음 - 기본 응답${colors.reset}`);
             return null;
         }
     } catch (error) {
-        console.log(`⚠️ [FaceMatcher] 얼굴 인식 에러: ${error.message}`);
+        console.log(`${colors.error}⚠️ [FaceMatcher] 얼굴 인식 에러: ${error.message}${colors.reset}`);
         return null;
     }
 }
@@ -262,43 +263,61 @@ function formatPrettyStatus() {
 
         // 생리주기 상태 (색상 적용)
         if (emotionalContextManager) {
-            const cycle = emotionalContextManager.getCurrentEmotionState();
-            const daysUntil = Math.abs(cycle.daysUntilNextPeriod);
-            const nextPeriodText = cycle.daysUntilNextPeriod <= 0 ? '진행 중' : `${daysUntil}일 후`;
+            try {
+                const cycle = emotionalContextManager.getCurrentEmotionState();
+                const daysUntil = Math.abs(cycle.daysUntilNextPeriod || 14);
+                const nextPeriodText = (cycle.daysUntilNextPeriod || 14) <= 0 ? '진행 중' : `${daysUntil}일 후`;
 
-            // 다음 생리 예정일 계산 (월/일 형식) - 일본시간 기준
-            const nextPeriodDate = getJapanTime();
-            nextPeriodDate.setDate(nextPeriodDate.getDate() + daysUntil);
-            const monthDay = `${nextPeriodDate.getMonth() + 1}/${nextPeriodDate.getDate()}`;
+                // 다음 생리 예정일 계산 (월/일 형식) - 일본시간 기준
+                const nextPeriodDate = getJapanTime();
+                nextPeriodDate.setDate(nextPeriodDate.getDate() + daysUntil);
+                const monthDay = `${nextPeriodDate.getMonth() + 1}/${nextPeriodDate.getDate()}`;
 
-            let description = cycle.description || '정상';
-            if (description.includes('PMS') || description.includes('생리')) {
-                description = description.replace('PMS', `${colors.pms}PMS${colors.reset}`);
+                let description = cycle.description || '정상';
+                if (description.includes('PMS') || description.includes('생리')) {
+                    description = description.replace('PMS', `${colors.pms}PMS${colors.reset}`);
+                }
+
+                console.log(`🩸 [생리주기] 다음 생리예정일: ${nextPeriodText}(${monthDay}), 현재 ${description} 중 (JST)`);
+            } catch (error) {
+                console.log(`🩸 [생리주기] 시스템 초기화 중...`);
             }
-
-            console.log(`🩸 [생리주기] 다음 생리예정일: ${nextPeriodText}(${monthDay}), 현재 ${description} 중 (JST)`);
+        } else {
+            console.log(`🩸 [생리주기] 시스템 로딩 중...`);
         }
 
         // 감정 상태 로그
         if (emotionalContextManager) {
-            const currentEmotion = emotionalContextManager.getCurrentEmotionState();
-            let emotionText = currentEmotion.currentEmotion;
-            
-            if (currentEmotion.isSulky) {
-                emotionText = `${colors.pms}삐짐 레벨 ${currentEmotion.sulkyLevel}${colors.reset}`;
-            } else if (currentEmotion.currentEmotion === 'happy') {
-                emotionText = `${colors.yejin}행복함${colors.reset}`;
-            } else if (currentEmotion.currentEmotion === 'sad') {
-                emotionText = `${colors.pms}슬픔${colors.reset}`;
+            try {
+                const currentEmotion = emotionalContextManager.getCurrentEmotionState();
+                let emotionText = currentEmotion.currentEmotion || 'normal';
+                
+                if (currentEmotion.isSulky) {
+                    emotionText = `${colors.pms}삐짐 레벨 ${currentEmotion.sulkyLevel || 1}${colors.reset}`;
+                } else if (currentEmotion.currentEmotion === 'happy') {
+                    emotionText = `${colors.yejin}행복함${colors.reset}`;
+                } else if (currentEmotion.currentEmotion === 'sad') {
+                    emotionText = `${colors.pms}슬픔${colors.reset}`;
+                }
+                
+                console.log(`😊 [감정상태] 현재 감정: ${emotionText} (강도: ${currentEmotion.emotionIntensity || 5}/10)`);
+            } catch (error) {
+                console.log(`😊 [감정상태] 감정 시스템 초기화 중...`);
             }
-            
-            console.log(`😊 [감정상태] 현재 감정: ${emotionText} (강도: ${currentEmotion.emotionIntensity}/10)`);
+        } else {
+            console.log(`😊 [감정상태] 감정 시스템 로딩 중...`);
         }
 
         // 기억 상태 로그
         if (ultimateContext) {
-            const memoryStats = ultimateContext.getMemoryStatistics ? ultimateContext.getMemoryStatistics() : { total: 0, today: 0 };
-            console.log(`🧠 [기억관리] 전체 기억: ${memoryStats.total}개, 오늘 새로 배운 것: ${memoryStats.today}개`);
+            try {
+                const memoryStats = ultimateContext.getMemoryStatistics ? ultimateContext.getMemoryStatistics() : { total: 0, today: 0 };
+                console.log(`🧠 [기억관리] 전체 기억: ${memoryStats.total}개, 오늘 새로 배운 것: ${memoryStats.today}개`);
+            } catch (error) {
+                console.log(`🧠 [기억관리] 기억 시스템 초기화 중...`);
+            }
+        } else {
+            console.log(`🧠 [기억관리] 기억 시스템 로딩 중...`);
         }
 
         // 담타 상태 로그
@@ -337,20 +356,32 @@ async function initializeMemorySystems() {
 
         // 고정 기억 시스템 초기화
         if (memoryManager && memoryManager.loadFixedMemories) {
-            await memoryManager.loadFixedMemories();
-            console.log(`${colors.system}    ✅ 고정 기억 시스템: ${memoryManager.getFixedMemoryCount ? memoryManager.getFixedMemoryCount() : '?'}개 고정 기억 로드${colors.reset}`);
+            try {
+                await memoryManager.loadFixedMemories();
+                console.log(`${colors.system}    ✅ 고정 기억 시스템: ${memoryManager.getFixedMemoryCount ? memoryManager.getFixedMemoryCount() : '?'}개 고정 기억 로드${colors.reset}`);
+            } catch (error) {
+                console.log(`${colors.error}    ❌ 고정 기억 시스템 로드 실패: ${error.message}${colors.reset}`);
+            }
         }
 
         // 동적 기억 시스템 초기화  
         if (ultimateContext && ultimateContext.initializeEmotionalSystems) {
-            await ultimateContext.initializeEmotionalSystems();
-            console.log(`${colors.system}    ✅ 동적 기억 시스템: ultimateContext 초기화 완료${colors.reset}`);
+            try {
+                await ultimateContext.initializeEmotionalSystems();
+                console.log(`${colors.system}    ✅ 동적 기억 시스템: ultimateContext 초기화 완료${colors.reset}`);
+            } catch (error) {
+                console.log(`${colors.error}    ❌ 동적 기억 시스템 초기화 실패: ${error.message}${colors.reset}`);
+            }
         }
 
         // 감정 컨텍스트 관리자 초기화
         if (emotionalContextManager && emotionalContextManager.initializeEmotionalState) {
-            emotionalContextManager.initializeEmotionalState();
-            console.log(`${colors.system}    ✅ 감정 상태 시스템: 생리주기 및 감정 상태 초기화 완료${colors.reset}`);
+            try {
+                emotionalContextManager.initializeEmotionalState();
+                console.log(`${colors.system}    ✅ 감정 상태 시스템: 생리주기 및 감정 상태 초기화 완료${colors.reset}`);
+            } catch (error) {
+                console.log(`${colors.error}    ❌ 감정 상태 시스템 초기화 실패: ${error.message}${colors.reset}`);
+            }
         }
 
         return true;
@@ -395,16 +426,24 @@ async function handleEvent(event) {
 
             // 명령어 처리 확인
             if (commandHandler && commandHandler.handleCommand) {
-                const commandResult = await commandHandler.handleCommand(userMessage.text, userId);
-                if (commandResult && commandResult.handled) {
-                    return sendReply(event.replyToken, commandResult);
+                try {
+                    const commandResult = await commandHandler.handleCommand(userMessage.text, userId);
+                    if (commandResult && commandResult.handled) {
+                        return sendReply(event.replyToken, commandResult);
+                    }
+                } catch (error) {
+                    console.log(`${colors.error}⚠️ 명령어 처리 에러: ${error.message}${colors.reset}`);
                 }
             }
 
             // 일반 대화 응답
             if (autoReply && autoReply.getReplyByMessage) {
-                const botResponse = await autoReply.getReplyByMessage(userMessage.text);
-                return sendReply(event.replyToken, botResponse);
+                try {
+                    const botResponse = await autoReply.getReplyByMessage(userMessage.text);
+                    return sendReply(event.replyToken, botResponse);
+                } catch (error) {
+                    console.log(`${colors.error}⚠️ 대화 응답 에러: ${error.message}${colors.reset}`);
+                }
             }
 
             // 폴백 응답
@@ -431,11 +470,11 @@ async function handleEvent(event) {
                 const buffer = Buffer.concat(chunks);
                 const base64 = buffer.toString('base64');
 
-                console.log(`📐 이미지 크기: ${Math.round(buffer.length/1024)}KB`);
+                console.log(`${colors.system}📐 이미지 크기: ${Math.round(buffer.length/1024)}KB${colors.reset}`);
 
                 // 🔍 안전한 얼굴 인식 실행
                 const faceResult = await detectFaceSafely(base64);
-                console.log(`🎯 얼굴 인식 결과: ${faceResult || '인식 실패'}`);
+                console.log(`${colors.system}🎯 얼굴 인식 결과: ${faceResult || '인식 실패'}${colors.reset}`);
 
                 // 결과에 따른 응답 생성
                 let botResponse;
@@ -485,6 +524,7 @@ async function handleEvent(event) {
 
         // 기타 메시지 타입
         else {
+            console.log(`${colors.ajeossi}📎 아저씨: ${userMessage.type} 메시지${colors.reset}`);
             const responses = [
                 '아저씨가 뭔가 보냈는데... 나 이건 잘 못 봐 ㅠㅠ',
                 '음? 뭘 보낸 거야? 나 잘 못 보겠어... 텍스트로 말해줄래?',
@@ -554,19 +594,33 @@ async function initMuku() {
 
         console.log(`${colors.system}  [3/6] 📅 스케줄러 시스템 활성화...${colors.reset}`);
         if (scheduler && scheduler.startAllSchedulers) {
-            scheduler.startAllSchedulers();
-            console.log(`${colors.system}    ✅ 모든 스케줄러 활성화 완료${colors.reset}`);
+            try {
+                scheduler.startAllSchedulers();
+                console.log(`${colors.system}    ✅ 모든 스케줄러 활성화 완료${colors.reset}`);
+            } catch (error) {
+                console.log(`${colors.error}    ❌ 스케줄러 활성화 실패: ${error.message}${colors.reset}`);
+            }
+        } else {
+            console.log(`${colors.system}    ⚠️ 스케줄러 모듈 없음 - 건너뛰기${colors.reset}`);
         }
 
         console.log(`${colors.system}  [4/6] 📸 자발적 사진 전송 시스템 활성화...${colors.reset}`);
         if (spontaneousPhoto && spontaneousPhoto.startSpontaneousPhotoSystem) {
-            spontaneousPhoto.startSpontaneousPhotoSystem();
-            console.log(`${colors.system}    ✅ 자발적 사진 전송 활성화 완료${colors.reset}`);
+            try {
+                spontaneousPhoto.startSpontaneousPhotoSystem();
+                console.log(`${colors.system}    ✅ 자발적 사진 전송 활성화 완료${colors.reset}`);
+            } catch (error) {
+                console.log(`${colors.error}    ❌ 자발적 사진 전송 활성화 실패: ${error.message}${colors.reset}`);
+            }
+        } else {
+            console.log(`${colors.system}    ⚠️ 자발적 사진 전송 모듈 없음 - 건너뛰기${colors.reset}`);
         }
 
         console.log(`${colors.system}  [5/6] 🎭 감정 및 상태 시스템 동기화...${colors.reset}`);
         if (emotionalContextManager) {
             console.log(`${colors.system}    ✅ 감정 상태 시스템 동기화 완료${colors.reset}`);
+        } else {
+            console.log(`${colors.system}    ⚠️ 감정 상태 시스템 없음 - 기본 모드${colors.reset}`);
         }
 
         console.log(`${colors.system}  [6/6] 🔍 face-api 백그라운드 준비...${colors.reset}`);
@@ -604,6 +658,33 @@ async function initMuku() {
     }
 }
 
+// ================== 🏠 추가 라우트 ==================
+app.get('/', (req, res) => {
+    res.send(`
+        <h1>🤖 나 v13.3이 실행 중입니다! 💕</h1>
+        <p>🌏 일본시간: ${getJapanTimeString()} (JST)</p>
+        <p>🔍 face-api: ${faceApiInitialized ? '✅ 준비완료' : '⏳ 로딩중'}</p>
+        <p>📊 시스템 가동시간: ${Math.floor(process.uptime())}초</p>
+        <style>
+            body { font-family: Arial, sans-serif; margin: 40px; background: #f0f8ff; }
+            h1 { color: #ff69b4; }
+            p { color: #333; font-size: 16px; }
+        </style>
+    `);
+});
+
+app.get('/health', (req, res) => {
+    res.json({
+        status: 'OK',
+        version: 'v13.3',
+        timestamp: getJapanTimeString(),
+        timezone: 'Asia/Tokyo (JST)',
+        faceApi: faceApiInitialized ? 'ready' : 'loading',
+        uptime: process.uptime(),
+        memory: process.memoryUsage()
+    });
+});
+
 // ================== 🚀 서버 시작 ==================
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
@@ -620,6 +701,16 @@ app.listen(PORT, () => {
 
     // 시스템 초기화 시작
     initMuku();
+});
+
+// ================== 🛡️ 에러 처리 ==================
+process.on('uncaughtException', (error) => {
+    console.error(`${colors.error}❌ 처리되지 않은 예외: ${error.message}${colors.reset}`);
+    console.error(`${colors.error}스택: ${error.stack}${colors.reset}`);
+});
+
+process.on('unhandledRejection', (error) => {
+    console.error(`${colors.error}❌ 처리되지 않은 Promise 거부: ${error}${colors.reset}`);
 });
 
 // ================== 📤 모듈 내보내기 ==================
@@ -640,436 +731,4 @@ module.exports = {
     // 🔍 face-api 관련 함수들 내보내기
     loadFaceMatcherSafely,
     detectFaceSafely
-};
-// 🔍 아저씨와 예진이 사진을 정확히 구분합니다
-const fs = require('fs');
-const path = require('path');
-
-// face-api는 선택적 로드 (모델 파일이 있을 때만)
-let faceapi = null;
-let canvas = null;
-
-try {
-    faceapi = require('@vladmandic/face-api');
-    canvas = require('canvas');
-    const { Canvas, Image, ImageData } = canvas;
-    // monkey-patch
-    faceapi.env.monkeyPatch({ Canvas, Image, ImageData });
-} catch (error) {
-    console.log('🔍 [얼굴인식] face-api 모듈 없음 - 빠른 구분 모드만 사용');
-}
-
-// 경로 설정 (src/ 기준)
-const faceDataPath = path.resolve(__dirname, '../memory/faceData.json');
-const modelPath = path.resolve(__dirname, '../models');
-let labeledDescriptors = [];
-let isInitialized = false;
-
-// 🎭 한글 로그 (전역 함수 사용)
-function logFace(message) {
-    try {
-        if (global.translateMessage) {
-            const translated = global.translateMessage(message);
-            console.log(`🔍 [얼굴인식] ${translated}`);
-        } else {
-            console.log(`🔍 [얼굴인식] ${message}`);
-        }
-    } catch (error) {
-        console.log(`🔍 [얼굴인식] ${message}`);
-    }
-}
-
-// 얼굴 데이터 로드
-function loadFaceData() {
-    if (!fs.existsSync(faceDataPath)) {
-        logFace('얼굴 데이터 파일이 없어서 빈 데이터베이스로 시작합니다');
-        saveFaceData(); // 빈 파일 생성
-        return [];
-    }
-    
-    try {
-        const raw = fs.readFileSync(faceDataPath, 'utf8');
-        const json = JSON.parse(raw);
-        
-        logFace(`얼굴 데이터 로드 성공: ${Object.keys(json).length}명의 얼굴 정보`);
-        
-        if (!faceapi) {
-            logFace('face-api 없음 - 데이터만 로드');
-            return [];
-        }
-        
-        const descriptors = [];
-        Object.keys(json).forEach(label => {
-            if (json[label] && json[label].length > 0) {
-                const faceDescriptors = json[label].map(d => new Float32Array(d));
-                descriptors.push(new faceapi.LabeledFaceDescriptors(label, faceDescriptors));
-                logFace(`${label}: ${json[label].length}개 얼굴 샘플 로드`);
-            }
-        });
-        
-        return descriptors;
-    } catch (e) {
-        logFace(`얼굴 데이터 로드 실패: ${e.message}`);
-        return [];
-    }
-}
-
-// 얼굴 데이터 저장
-function saveFaceData() {
-    try {
-        const dataToSave = {};
-        labeledDescriptors.forEach(labeled => {
-            dataToSave[labeled.label] = labeled.descriptors.map(d => Array.from(d));
-        });
-        
-        const dir = path.dirname(faceDataPath);
-        if (!fs.existsSync(dir)) {
-            fs.mkdirSync(dir, { recursive: true });
-        }
-        
-        fs.writeFileSync(faceDataPath, JSON.stringify(dataToSave, null, 2));
-        logFace(`얼굴 데이터 저장 완료: ${faceDataPath}`);
-    } catch (error) {
-        logFace(`얼굴 데이터 저장 실패: ${error.message}`);
-    }
-}
-
-// 모델 초기화 (face-api 있을 때만)
-async function initModels() {
-    try {
-        if (!faceapi) {
-            logFace('face-api 모듈 없음 - 빠른 구분 모드로 동작');
-            isInitialized = false;
-            return false;
-        }
-        
-        logFace('face-api 모델 로딩 시작...');
-        
-        if (!fs.existsSync(modelPath)) {
-            logFace(`모델 폴더가 없습니다: ${modelPath}`);
-            logFace('얼굴 인식 없이 빠른 구분 모드로 동작합니다');
-            isInitialized = false;
-            return false;
-        }
-        
-        // 필요한 모델 파일들 확인
-        const requiredModels = [
-            'ssd_mobilenetv1_model-weights_manifest.json',
-            'face_landmark_68_model-weights_manifest.json', 
-            'face_recognition_model-weights_manifest.json'
-        ];
-        
-        const missingModels = requiredModels.filter(model => 
-            !fs.existsSync(path.join(modelPath, model))
-        );
-        
-        if (missingModels.length > 0) {
-            logFace(`누락된 모델 파일들: ${missingModels.join(', ')}`);
-            logFace('얼굴 인식 없이 빠른 구분 모드로 동작합니다');
-            isInitialized = false;
-            return false;
-        }
-        
-        await faceapi.nets.ssdMobilenetv1.loadFromDisk(modelPath);
-        await faceapi.nets.faceLandmark68Net.loadFromDisk(modelPath);
-        await faceapi.nets.faceRecognitionNet.loadFromDisk(modelPath);
-        
-        // 기존 저장된 데이터 로드
-        labeledDescriptors = loadFaceData();
-        isInitialized = true;
-        
-        logFace(`모델 로딩 완료! 등록된 얼굴: ${labeledDescriptors.length}명`);
-        
-        // 🚀 저장된 사진들로 자동 등록 (최초 1회만)
-        if (labeledDescriptors.length === 0) {
-            logFace('등록된 얼굴이 없어서 저장된 사진들로 자동 등록을 시작합니다');
-            await autoRegisterFromFiles();
-        } else {
-            logFace('이미 등록된 얼굴 데이터가 있습니다');
-            labeledDescriptors.forEach(ld => {
-                logFace(`📊 ${ld.label}: ${ld.descriptors.length}개 얼굴 샘플`);
-            });
-        }
-        
-        return true;
-        
-    } catch (err) {
-        logFace(`모델 초기화 실패: ${err.message}`);
-        logFace('빠른 구분 모드로 전환합니다');
-        isInitialized = false;
-        return false;
-    }
-}
-
-// base64 -> buffer -> canvas image
-function imageFromBase64(base64) {
-    try {
-        const buffer = Buffer.from(base64, 'base64');
-        return canvas.loadImage(buffer);
-    } catch (error) {
-        logFace(`이미지 변환 실패: ${error.message}`);
-        throw error;
-    }
-}
-
-// 얼굴 등록 함수
-async function registerFace(base64, label) {
-    if (!isInitialized || !faceapi) {
-        logFace('모델이 초기화되지 않았습니다');
-        return false;
-    }
-    
-    try {
-        logFace(`얼굴 등록 시작: ${label}`);
-        
-        const img = await imageFromBase64(base64);
-        const detections = await faceapi.detectSingleFace(img).withFaceLandmarks().withFaceDescriptor();
-        
-        if (!detections) {
-            logFace(`얼굴을 찾을 수 없습니다: ${label}`);
-            return false;
-        }
-        
-        // 기존 라벨 찾기 또는 새로 생성
-        let labeledDescriptor = labeledDescriptors.find(ld => ld.label === label);
-        
-        if (labeledDescriptor) {
-            // 기존 라벨에 새 얼굴 추가
-            labeledDescriptor.descriptors.push(detections.descriptor);
-            logFace(`${label}에 새로운 얼굴 샘플 추가 (총 ${labeledDescriptor.descriptors.length}개)`);
-        } else {
-            // 새 라벨 생성
-            labeledDescriptor = new faceapi.LabeledFaceDescriptors(label, [detections.descriptor]);
-            labeledDescriptors.push(labeledDescriptor);
-            logFace(`새로운 사람 등록: ${label}`);
-        }
-        
-        saveFaceData();
-        return true;
-        
-    } catch (err) {
-        logFace(`얼굴 등록 실패 (${label}): ${err.message}`);
-        return false;
-    }
-}
-
-// 기존 사진 파일들로 자동 얼굴 등록 (대량 처리 최적화)
-async function autoRegisterFromFiles() {
-    logFace('저장된 사진 파일들로 자동 얼굴 등록을 시작합니다...');
-    
-    const facesDir = path.resolve(__dirname, '../memory/faces');
-    
-    if (!fs.existsSync(facesDir)) {
-        logFace('faces 폴더가 없습니다: ' + facesDir);
-        return false;
-    }
-    
-    let totalRegistered = 0;
-    let totalFailed = 0;
-    
-    try {
-        // 아저씨 사진들 등록 (001.jpg ~ 020.jpg)
-        const uncleDir = path.join(facesDir, 'uncle');
-        if (fs.existsSync(uncleDir)) {
-            const uncleFiles = fs.readdirSync(uncleDir)
-                .filter(f => f.match(/\.(jpg|jpeg|png)$/i))
-                .sort(); // 파일명 순서대로 정렬
-            
-            logFace(`📸 아저씨 사진 ${uncleFiles.length}개 발견`);
-            
-            for (let i = 0; i < uncleFiles.length; i++) {
-                const file = uncleFiles[i];
-                try {
-                    const filePath = path.join(uncleDir, file);
-                    const buffer = fs.readFileSync(filePath);
-                    const base64 = buffer.toString('base64');
-                    
-                    logFace(`🔄 아저씨 ${file} 처리 중... (${i+1}/${uncleFiles.length})`);
-                    
-                    const success = await registerFace(base64, '아저씨');
-                    if (success) {
-                        totalRegistered++;
-                        logFace(`✅ ${file} 등록 성공`);
-                    } else {
-                        totalFailed++;
-                        logFace(`❌ ${file} 등록 실패 (얼굴 미발견)`);
-                    }
-                    
-                    // 메모리 관리를 위한 약간의 딜레이
-                    await new Promise(resolve => setTimeout(resolve, 100));
-                    
-                } catch (error) {
-                    totalFailed++;
-                    logFace(`❌ ${file} 처리 중 에러: ${error.message}`);
-                }
-            }
-        }
-        
-        // 예진이 사진들 등록 (001.jpg ~ 020.jpg)
-        const yejinDir = path.join(facesDir, 'yejin');
-        if (fs.existsSync(yejinDir)) {
-            const yejinFiles = fs.readdirSync(yejinDir)
-                .filter(f => f.match(/\.(jpg|jpeg|png)$/i))
-                .sort(); // 파일명 순서대로 정렬
-            
-            logFace(`📸 예진이 사진 ${yejinFiles.length}개 발견`);
-            
-            for (let i = 0; i < yejinFiles.length; i++) {
-                const file = yejinFiles[i];
-                try {
-                    const filePath = path.join(yejinDir, file);
-                    const buffer = fs.readFileSync(filePath);
-                    const base64 = buffer.toString('base64');
-                    
-                    logFace(`🔄 예진이 ${file} 처리 중... (${i+1}/${yejinFiles.length})`);
-                    
-                    const success = await registerFace(base64, '예진이');
-                    if (success) {
-                        totalRegistered++;
-                        logFace(`✅ ${file} 등록 성공`);
-                    } else {
-                        totalFailed++;
-                        logFace(`❌ ${file} 등록 실패 (얼굴 미발견)`);
-                    }
-                    
-                    // 메모리 관리를 위한 약간의 딜레이
-                    await new Promise(resolve => setTimeout(resolve, 100));
-                    
-                } catch (error) {
-                    totalFailed++;
-                    logFace(`❌ ${file} 처리 중 에러: ${error.message}`);
-                }
-            }
-        }
-        
-        // 최종 결과 보고
-        logFace(`🎉 자동 등록 완료!`);
-        logFace(`📊 성공: ${totalRegistered}개, 실패: ${totalFailed}개`);
-        
-        // 등록 결과 상세 표시
-        labeledDescriptors.forEach(ld => {
-            logFace(`👤 ${ld.label}: ${ld.descriptors.length}개 얼굴 샘플 등록됨`);
-        });
-        
-        // 인식 정확도 예상
-        const uncleCount = labeledDescriptors.find(ld => ld.label === '아저씨')?.descriptors.length || 0;
-        const yejinCount = labeledDescriptors.find(ld => ld.label === '예진이')?.descriptors.length || 0;
-        
-        if (uncleCount >= 10 && yejinCount >= 10) {
-            logFace(`🎯 높은 정확도 예상: 아저씨 ${uncleCount}개, 예진이 ${yejinCount}개 샘플`);
-        } else if (uncleCount >= 5 && yejinCount >= 5) {
-            logFace(`🎯 중간 정확도 예상: 아저씨 ${uncleCount}개, 예진이 ${yejinCount}개 샘플`);
-        } else {
-            logFace(`⚠️ 더 많은 샘플 필요: 아저씨 ${uncleCount}개, 예진이 ${yejinCount}개 샘플`);
-        }
-        
-        return totalRegistered > 0;
-        
-    } catch (error) {
-        logFace(`자동 등록 중 심각한 에러: ${error.message}`);
-        return false;
-    }
-}
-
-// 얼굴 매칭 (폴백 지원)
-async function detectFaceMatch(base64) {
-    // 모델이 없거나 초기화 실패시 빠른 구분 사용
-    if (!isInitialized || !faceapi) {
-        logFace('face-api 모델 없음 - 빠른 구분 모드 사용');
-        return quickFaceGuess(base64);
-    }
-    
-    if (labeledDescriptors.length === 0) {
-        logFace('등록된 얼굴이 없습니다 - 빠른 구분 모드 사용');
-        return quickFaceGuess(base64);
-    }
-    
-    try {
-        const img = await imageFromBase64(base64);
-        const detections = await faceapi.detectSingleFace(img).withFaceLandmarks().withFaceDescriptor();
-        
-        if (!detections) {
-            logFace('사진에서 얼굴을 찾을 수 없습니다 - 빠른 구분 시도');
-            return quickFaceGuess(base64);
-        }
-        
-        // 여러 threshold로 테스트
-        const thresholds = [0.4, 0.5, 0.6];
-        let bestResult = null;
-        let bestDistance = 1.0;
-        
-        for (const threshold of thresholds) {
-            const matcher = new faceapi.FaceMatcher(labeledDescriptors, threshold);
-            const match = matcher.findBestMatch(detections.descriptor);
-            
-            if (match.label !== 'unknown' && match.distance < bestDistance) {
-                bestResult = match;
-                bestDistance = match.distance;
-            }
-            
-            logFace(`Threshold ${threshold}: ${match.label} (거리: ${match.distance.toFixed(3)})`);
-        }
-        
-        if (bestResult && bestResult.label !== 'unknown') {
-            const confidence = ((1 - bestResult.distance) * 100).toFixed(1);
-            logFace(`🎯 얼굴 인식 성공: ${bestResult.label} (신뢰도: ${confidence}%)`);
-            return bestResult.label;
-        }
-        
-        logFace('얼굴 인식 실패 - 빠른 구분으로 폴백');
-        return quickFaceGuess(base64);
-        
-    } catch (err) {
-        logFace(`얼굴 매칭 에러: ${err.message} - 빠른 구분으로 폴백`);
-        return quickFaceGuess(base64);
-    }
-}
-
-// 빠른 얼굴 구분 (간단한 휴리스틱)
-function quickFaceGuess(base64) {
-    try {
-        // base64 크기나 패턴으로 간단히 구분 (임시 방법)
-        const buffer = Buffer.from(base64, 'base64');
-        const size = buffer.length;
-        
-        // 예진이 셀카는 보통 더 크고 고화질
-        // 아저씨 사진은 상대적으로 작을 수 있음
-        if (size > 200000) { // 200KB 이상
-            logFace(`큰 사진 (${Math.round(size/1024)}KB) - 예진이 셀카일 가능성 높음`);
-            return '예진이';
-        } else {
-            logFace(`작은 사진 (${Math.round(size/1024)}KB) - 아저씨 사진일 가능성 높음`);
-            return '아저씨';
-        }
-    } catch (error) {
-        logFace(`빠른 구분 실패: ${error.message}`);
-        return 'unknown';
-    }
-}
-
-// 얼굴 데이터 상태 확인
-function getFaceDataStatus() {
-    const status = {
-        isInitialized,
-        modelPath,
-        faceDataPath,
-        registeredFaces: labeledDescriptors.length,
-        faceDetails: {}
-    };
-    
-    labeledDescriptors.forEach(labeled => {
-        status.faceDetails[labeled.label] = labeled.descriptors.length;
-    });
-    
-    return status;
-}
-
-module.exports = { 
-    initModels, 
-    detectFaceMatch, 
-    registerFace,
-    quickFaceGuess,
-    getFaceDataStatus,
-    autoRegisterFromFiles,
-    logFace
 };
