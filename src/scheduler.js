@@ -1,4 +1,4 @@
-// ✅ scheduler.js v4 - "자동 메시지 문제 해결"
+// ✅ scheduler.js v5 - "한국시간(도쿄시간) 완전 수정"
 // ✅ OpenAI 실시간 메시지 생성 스케줄러 - 무조건 전송 시스템
 
 const schedule = require('node-schedule');
@@ -7,6 +7,9 @@ const axios = require('axios');
 const { Client } = require('@line/bot-sdk');
 const OpenAI = require('openai');
 require('dotenv').config();
+
+// ⭐ 시간대 설정: 한국시간 = 도쿄시간 (UTC+9)
+const TIMEZONE = 'Asia/Seoul'; // 또는 'Asia/Tokyo' 동일함
 
 // LINE 클라이언트 설정
 const config = { channelAccessToken: process.env.LINE_ACCESS_TOKEN };
@@ -22,11 +25,11 @@ const openai = new OpenAI({
 let damtaSentToday = [];
 let nightMessageSent = false;
 let goodNightSent = false;
-let morningWorkSent = false; // 아침 출근 메시지 추가
+let morningWorkSent = false;
 
 // 디버깅 로그
 function forceLog(message, data = null) {
-    const timestamp = moment().tz('Asia/Tokyo').format('YYYY-MM-DD HH:mm:ss');
+    const timestamp = moment().tz(TIMEZONE).format('YYYY-MM-DD HH:mm:ss');
     console.log(`[${timestamp}] [OpenAI무조건전송] ${message}`);
     if (data) console.log('  데이터:', JSON.stringify(data, null, 2));
 }
@@ -256,12 +259,20 @@ async function forceLineMessage(message, messageType) {
     }
 }
 
-// ==================== 스케줄러들 ====================
+// ==================== 🕘 한국시간 스케줄러들 ====================
 
-// 1. 평일 아침 9시 출근 메시지 스케줄러
-schedule.scheduleJob('0 9 * * 1-5', async () => { // 평일 9시 정각
+// 1. 평일 아침 9시 출근 메시지 스케줄러 - 한국시간
+schedule.scheduleJob('0 9 * * 1-5', async () => { 
     try {
-        forceLog(`☀️ 평일 아침 9시 출근 메시지 스케줄러 실행`);
+        const koreaTime = moment().tz(TIMEZONE);
+        forceLog(`☀️ 평일 아침 9시 출근 메시지 스케줄러 실행 (한국시간: ${koreaTime.format('YYYY-MM-DD HH:mm:ss')})`);
+        
+        // 한국시간으로 평일인지 다시 확인 (이중 체크)
+        const dayOfWeek = koreaTime.day(); // 0=일요일, 1=월요일...
+        if (dayOfWeek === 0 || dayOfWeek === 6) {
+            forceLog('한국시간 기준 주말이므로 아침 출근 메시지 스킵');
+            return;
+        }
         
         // OpenAI로 출근 메시지 생성
         const workMessage = await generateMorningWorkMessage();
@@ -275,16 +286,16 @@ schedule.scheduleJob('0 9 * * 1-5', async () => { // 평일 9시 정각
     } catch (error) {
         forceLog(`아침 출근 스케줄러 에러: ${error.message} - 하지만 계속 진행`);
     }
-});
+}, null, true, TIMEZONE); // ⭐ 시간대 명시!
 
-// 2. 담타 스케줄러 (10시-18시, 매 30분마다 체크) - 시간 수정
+// 2. 담타 스케줄러 (10시-18시, 매 30분마다 체크) - 한국시간
 schedule.scheduleJob('*/30 * * * *', async () => {
     try {
-        const now = moment().tz('Asia/Tokyo');
-        const hour = now.hour();
-        const currentTime = now.format('HH:mm');
+        const koreaTime = moment().tz(TIMEZONE); // ⭐ 한국시간으로 체크
+        const hour = koreaTime.hour();
+        const currentTime = koreaTime.format('HH:mm');
         
-        // 10시-18시 시간대 확인 (10시부터로 변경)
+        // 10시-18시 시간대 확인 (한국시간 기준)
         if (hour < 10 || hour > 18) {
             return;
         }
@@ -295,9 +306,9 @@ schedule.scheduleJob('*/30 * * * *', async () => {
         }
         
         // 최근 1시간 내에 보냈으면 스킵
-        const oneHourAgo = now.clone().subtract(1, 'hour');
+        const oneHourAgo = koreaTime.clone().subtract(1, 'hour');
         const recentSent = damtaSentToday.some(time => 
-            moment(time).isAfter(oneHourAgo)
+            moment(time).tz(TIMEZONE).isAfter(oneHourAgo)
         );
         
         if (recentSent) {
@@ -309,7 +320,7 @@ schedule.scheduleJob('*/30 * * * *', async () => {
             return;
         }
         
-        forceLog(`🚬 담타 스케줄러 실행: ${currentTime}`);
+        forceLog(`🚬 담타 스케줄러 실행: ${currentTime} (한국시간)`);
         
         // OpenAI로 담타 메시지 생성
         const damtaMessage = await generateDamtaMessage();
@@ -318,19 +329,20 @@ schedule.scheduleJob('*/30 * * * *', async () => {
         const result = await forceLineMessage(damtaMessage, '담타메시지');
         
         // 전송 기록 (성공 여부 무관)
-        damtaSentToday.push(now.toISOString());
+        damtaSentToday.push(koreaTime.toISOString());
         
         forceLog(`담타 메시지 처리 완료: 오늘 ${damtaSentToday.length}번째`);
         
     } catch (error) {
         forceLog(`담타 스케줄러 에러: ${error.message} - 하지만 계속 진행`);
     }
-});
+}, null, true, TIMEZONE); // ⭐ 시간대 명시!
 
-// 3. 밤 11시 케어 메시지 스케줄러
+// 3. 밤 11시 케어 메시지 스케줄러 - 한국시간
 schedule.scheduleJob('0 23 * * *', async () => {
     try {
-        forceLog(`🌙 밤 11시 케어 메시지 스케줄러 실행`);
+        const koreaTime = moment().tz(TIMEZONE);
+        forceLog(`🌙 밤 11시 케어 메시지 스케줄러 실행 (한국시간: ${koreaTime.format('YYYY-MM-DD HH:mm:ss')})`);
         
         // OpenAI로 케어 메시지 생성
         const careMessage = await generateNightCareMessage();
@@ -344,12 +356,13 @@ schedule.scheduleJob('0 23 * * *', async () => {
     } catch (error) {
         forceLog(`밤 케어 스케줄러 에러: ${error.message} - 하지만 계속 진행`);
     }
-});
+}, null, true, TIMEZONE); // ⭐ 시간대 명시!
 
-// 4. 자정 굿나잇 메시지 스케줄러
+// 4. 자정 굿나잇 메시지 스케줄러 - 한국시간
 schedule.scheduleJob('0 0 * * *', async () => {
     try {
-        forceLog(`🌟 자정 굿나잇 메시지 스케줄러 실행`);
+        const koreaTime = moment().tz(TIMEZONE);
+        forceLog(`🌟 자정 굿나잇 메시지 스케줄러 실행 (한국시간: ${koreaTime.format('YYYY-MM-DD HH:mm:ss')})`);
         
         // OpenAI로 굿나잇 메시지 생성
         const goodNightMessage = await generateGoodNightMessage();
@@ -361,14 +374,14 @@ schedule.scheduleJob('0 0 * * *', async () => {
         damtaSentToday = [];
         nightMessageSent = false;
         goodNightSent = true;
-        morningWorkSent = false; // 아침 출근 메시지도 초기화
+        morningWorkSent = false;
         
         forceLog(`자정 굿나잇 메시지 처리 완료 + 하루 초기화`);
         
     } catch (error) {
         forceLog(`굿나잇 스케줄러 에러: ${error.message} - 하지만 계속 진행`);
     }
-});
+}, null, true, TIMEZONE); // ⭐ 시간대 명시!
 
 // ==================== 테스트 및 상태 확인 ====================
 
@@ -401,11 +414,12 @@ async function testGoodNightMessage() {
 }
 
 function getOpenAISchedulerStats() {
-    const now = moment().tz('Asia/Tokyo');
+    const koreaTime = moment().tz(TIMEZONE);
     
     return {
-        systemStatus: '🔥 OpenAI 실시간 생성 + 무조건 전송 모드',
-        currentTime: now.format('YYYY-MM-DD HH:mm:ss'),
+        systemStatus: '🔥 OpenAI 실시간 생성 + 무조건 전송 모드 (한국시간)',
+        currentTime: koreaTime.format('YYYY-MM-DD HH:mm:ss'),
+        timezone: TIMEZONE,
         todayStats: {
             morningWorkSent: morningWorkSent,
             damtaSentCount: damtaSentToday.length,
@@ -414,10 +428,10 @@ function getOpenAISchedulerStats() {
             goodNightSent: goodNightSent
         },
         nextSchedules: {
-            morningWorkMessage: '평일 09:00 (주말 제외)',
-            nextDamtaCheck: '30분마다 (10-18시)',
-            nightCareMessage: '매일 23:00',
-            goodNightMessage: '매일 00:00'
+            morningWorkMessage: '평일 09:00 (주말 제외) - 한국시간',
+            nextDamtaCheck: '30분마다 (10-18시) - 한국시간',
+            nightCareMessage: '매일 23:00 - 한국시간',
+            goodNightMessage: '매일 00:00 - 한국시간'
         },
         environment: {
             USER_ID: !!USER_ID ? '✅ OK' : '⚠️ MISSING (하지만 계속 동작)',
@@ -429,21 +443,22 @@ function getOpenAISchedulerStats() {
 }
 
 // 초기화 로그
-forceLog('OpenAI 실시간 메시지 생성 스케줄러 시작됨', {
+forceLog('OpenAI 실시간 메시지 생성 스케줄러 시작됨 (한국시간)', {
     아침출근: '평일 09:00 (주말 제외)',
     담타스케줄: '10시-18시, 30분마다 체크',
     밤케어: '매일 23:00',
     굿나잇: '매일 00:00',
-    OpenAI모델: 'gpt-4'
+    OpenAI모델: 'gpt-4',
+    시간대: TIMEZONE
 });
 
 module.exports = {
-    testMorningWorkMessage, // 추가
+    testMorningWorkMessage,
     testDamtaMessage,
     testNightMessage, 
     testGoodNightMessage,
     getOpenAISchedulerStats,
-    generateMorningWorkMessage, // 추가
+    generateMorningWorkMessage,
     generateDamtaMessage,
     generateNightCareMessage,
     generateGoodNightMessage,
