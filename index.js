@@ -171,7 +171,7 @@ function calculateDamtaNextTime() {
         const timeStr = `${nextTime.getHours()}:${String(nextTime.getMinutes()).padStart(2, '0')}`;
         return {
             status: 'active',
-            text: `다음 체크: ${formatTimeUntil(minutesUntilNext15)} (${timeStr} JST) - 15% 확률`
+            text: `다음 체크: ${formatTimeUntil(minutesUntilNext15)} (${timeStr} JST)`
         };
     }
 }
