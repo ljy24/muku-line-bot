@@ -97,53 +97,32 @@ global.translateEmotionToKorean = function(emotion) {
     return korean;
 };
 
-// 전역 로그 함수 - 자동으로 한글 변환
-global.logEmotionKorean = function(message) {
-    // 영어 감정 → 한글 자동 변환
-    let translatedMessage = message;
-    
-    // "unstable 상태로 응답" → "불안정 상태로 응답"
-    translatedMessage = translatedMessage.replace(/(\w+) 상태로 응답/g, (match, emotion) => {
-        const koreanEmotion = global.translateEmotionToKorean(emotion);
-        return `${koreanEmotion} 상태로 응답`;
-    });
-    
-    // "가져온 상태: unstable" → "가져온 상태: 불안정"  
-    translatedMessage = translatedMessage.replace(/가져온 상태: (\w+)/g, (match, emotion) => {
-        const koreanEmotion = global.translateEmotionToKorean(emotion);
-        return `가져온 상태: ${koreanEmotion}`;
-    });
-    
-    // 일반적인 영어 감정 단어들 변환
-    Object.keys(global.translateEmotionToKorean).forEach(eng => {
-        const kor = global.translateEmotionToKorean(eng);
-        if (eng !== kor) {
-            const regex = new RegExp(`\\b${eng}\\b`, 'gi');
-            translatedMessage = translatedMessage.replace(regex, kor);
-        }
-    });
-    
-    console.log(translatedMessage);
-    return translatedMessage;
+// 원본 console.log 미리 저장 (오버라이드 전에)
+const originalLog = console.log;
+
+// 안전한 로그 함수 - 무한루프 없음
+global.safeLog = function(message) {
+    originalLog(message);
 };
 
-// console.log 오버라이드 - 자동 한글 변환
-const originalConsoleLog = console.log;
-console.log = function(...args) {
-    const message = args.join(' ');
+// 감정 번역 함수 (console.log 사용 안 함)
+global.translateMessage = function(message) {
+    let translated = message;
     
-    // 특정 패턴이 포함된 로그만 변환 (성능 최적화)
-    if (message.includes('상태') || message.includes('Selfie') || message.includes('감정')) {
-        const translatedMessage = global.logEmotionKorean(message);
-        return; // 이미 출력됨
-    } else {
-        // 일반 로그는 그대로
-        originalConsoleLog.apply(console, args);
-    }
+    // 특정 패턴들만 변환
+    translated = translated.replace(/unstable/gi, '불안정');
+    translated = translated.replace(/stable/gi, '안정');
+    translated = translated.replace(/sensitive/gi, '예민함');
+    translated = translated.replace(/energetic/gi, '활기참');
+    translated = translated.replace(/romantic/gi, '로맨틱');
+    translated = translated.replace(/happy/gi, '기쁨');
+    translated = translated.replace(/sad/gi, '슬픔');
+    
+    return translated;
 };
 
 console.log(`🎭 [감정변환] 한글 감정 상태 절대 선언 완료!`);
-console.log(`🎭 [감정변환] 모든 모듈에서 자동으로 unstable → 불안정 변환!`);
+console.log(`🎭 [감정변환] 안전한 변환 시스템으로 변경!`);
 
 // ================== 📝 로그 헬퍼 함수 ==================
 function logWithKoreanEmotion(message) {
