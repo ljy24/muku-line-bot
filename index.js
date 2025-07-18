@@ -1,6 +1,6 @@
 // ============================================================================
 // index.js - v13.3 (face-api 지연 로딩 추가 버전)
-// ✅ 대화 색상: 아저씨(하늘색), 예진이(연보라색), PMS(굵은 주황색)
+// ✅ 대화 색상: 아저씨(하늘색), 예진이(연보라색), PMS(굵은 빨간색)
 // 🌏 모든 시간은 일본시간(JST, UTC+9) 기준으로 동작합니다
 // 🔍 face-api: 지연 로딩으로 TensorFlow 크래시 방지
 // ============================================================================
@@ -64,7 +64,7 @@ let faceApiInitializing = false;
 const colors = {
     ajeossi: '\x1b[96m',    // 하늘색 (아저씨)
     yejin: '\x1b[95m',      // 연보라색 (예진이)
-    pms: '\x1b[1m\x1b[33m', // 굵은 주황색 (PMS)
+    pms: '\x1b[1m\x1b[91m', // 굵은 빨간색 (PMS)
     system: '\x1b[92m',     // 연초록색 (시스템)
     error: '\x1b[91m',      // 빨간색 (에러)
     reset: '\x1b[0m'        // 색상 리셋
@@ -231,12 +231,12 @@ async function loadModules() {
             console.log(`${colors.error}  ❌ [7/9] enhancedLogging 로드 실패: ${error.message}${colors.reset}`);
         }
 
-        // 8. 자발적 사진 전송
+        // 8. 자발적 사진 전송 (파일명 수정됨)
         try {
             spontaneousPhoto = require('./src/spontaneousPhotoManager');
-            console.log(`${colors.system}  ✅ [8/9] spontaneousPhoto: 자발적 사진 전송${colors.reset}`);
+            console.log(`${colors.system}  ✅ [8/9] spontaneousPhotoManager: 자발적 사진 전송${colors.reset}`);
         } catch (error) {
-            console.log(`${colors.error}  ❌ [8/9] spontaneousPhoto 로드 실패: ${error.message}${colors.reset}`);
+            console.log(`${colors.error}  ❌ [8/9] spontaneousPhotoManager 로드 실패: ${error.message}${colors.reset}`);
         }
 
         // 9. 사진 분석기
@@ -400,8 +400,8 @@ const config = {
 const client = new Client(config);
 const app = express();
 
-// ================== 📨 메시지 처리 ==================
-app.post('/callback', middleware(config), (req, res) => {
+// ================== 📨 메시지 처리 (webhook 경로로 변경) ==================
+app.post('/webhook', middleware(config), (req, res) => {
     Promise.all(req.body.events.map(handleEvent))
         .then((result) => res.json(result))
         .catch((err) => {
@@ -643,9 +643,11 @@ async function initMuku() {
         console.log(`   - 🌏 process.env.TZ = 'Asia/Tokyo' 설정으로 Node.js 전체 시간대 통일`);
         console.log(`   - 🌏 전용 헬퍼 함수: getJapanTime(), getJapanHour(), getJapanMinute()`);
         console.log(`   - 🚬 담타 시간 표시에 JST 명시`);
+        console.log(`   - 🔧 ${colors.pms}webhook 경로 수정${colors.reset}: /callback → /webhook`);
+        console.log(`   - 🔧 ${colors.pms}spontaneousPhotoManager${colors.reset}: 파일명 수정 완료`);
         console.log(`   - ${colors.ajeossi}아저씨 대화: 하늘색${colors.reset}`);
         console.log(`   - ${colors.yejin}예진이 대화: 연보라색${colors.reset}`);
-        console.log(`   - ${colors.pms}PMS: 굵은 주황색${colors.reset}`);
+        console.log(`   - ${colors.pms}PMS: 굵은 빨간색${colors.reset}`);
         console.log(`   - 통합 기억 시스템: memoryManager(고정) + ultimateContext(동적)`);
         console.log(`   - 정확한 담타 시간 표시: 다음 체크까지 남은 시간 실시간 계산`);
         console.log(`   - 실시간 기억 학습: 대화/사진에서 자동 기억 추가`);
@@ -664,6 +666,7 @@ app.get('/', (req, res) => {
         <h1>🤖 나 v13.3이 실행 중입니다! 💕</h1>
         <p>🌏 일본시간: ${getJapanTimeString()} (JST)</p>
         <p>🔍 face-api: ${faceApiInitialized ? '✅ 준비완료' : '⏳ 로딩중'}</p>
+        <p>🔧 webhook: /webhook 경로로 변경 완료</p>
         <p>📊 시스템 가동시간: ${Math.floor(process.uptime())}초</p>
         <style>
             body { font-family: Arial, sans-serif; margin: 40px; background: #f0f8ff; }
@@ -680,6 +683,8 @@ app.get('/health', (req, res) => {
         timestamp: getJapanTimeString(),
         timezone: 'Asia/Tokyo (JST)',
         faceApi: faceApiInitialized ? 'ready' : 'loading',
+        webhookPath: '/webhook',
+        spontaneousPhoto: 'spontaneousPhotoManager',
         uptime: process.uptime(),
         memory: process.memoryUsage()
     });
@@ -691,10 +696,12 @@ app.listen(PORT, () => {
     console.log(`\n==================================================`);
     console.log(`  ${colors.system}나 v13.3 서버가 포트 ${PORT}에서 시작되었습니다.${colors.reset}`);
     console.log(`  🌏 ${colors.pms}일본시간(JST) 절대 선언${colors.reset}: ${getJapanTimeString()}`);
+    console.log(`  🔧 ${colors.pms}webhook 경로${colors.reset}: /webhook (수정 완료)`);
+    console.log(`  🔧 ${colors.pms}자발적 사진${colors.reset}: spontaneousPhotoManager (수정 완료)`);
     console.log(`  🧠 통합 기억: 고정기억(memoryManager) + 동적기억(ultimateContext)`);
     console.log(`  🚬 정확한 담타: 실시간 다음 체크 시간 계산 (JST 기준)`);
     console.log(`  🤖 실시간 학습: 대화 내용 자동 기억 + 수동 기억 추가`);
-    console.log(`  🎨 색상 개선: ${colors.ajeossi}아저씨(하늘색)${colors.reset}, ${colors.yejin}예진이(연보라색)${colors.reset}, ${colors.pms}PMS(굵은주황)${colors.reset}`);
+    console.log(`  🎨 색상 개선: ${colors.ajeossi}아저씨(하늘색)${colors.reset}, ${colors.yejin}예진이(연보라색)${colors.reset}, ${colors.pms}PMS(굵은빨강)${colors.reset}`);
     console.log(`  ⚡ 성능 향상: 모든 중복 코드 제거 + 완전한 모듈 연동`);
     console.log(`  🔍 ${colors.pms}face-api 지연 로딩${colors.reset}: TensorFlow 크래시 방지 + 안전한 얼굴 인식`);
     console.log(`==================================================\n`);
