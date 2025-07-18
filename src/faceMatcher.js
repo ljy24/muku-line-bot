@@ -1,60 +1,20 @@
-// src/faceMatcher.js - v2.3 (더 안전한 초기화)
+// src/faceMatcher.js - v2.4 (지연 로딩 버전)
 // 🔍 아저씨와 예진이 사진을 정확히 구분합니다
 const fs = require('fs');
 const path = require('path');
 
-// face-api는 완전 선택적 로드 (에러 방지)
+// face-api는 완전 선택적 로드 (앱 시작시에는 로드하지 않음)
 let faceapi = null;
 let canvas = null;
 let tf = null;
 let isModuleAvailable = false;
-
-// 안전한 모듈 로드 (NodeJS 호환)
-async function loadFaceApiModules() {
-    try {
-        console.log('🔍 [얼굴인식] 모듈 로드 시작...');
-        
-        // TensorFlow 먼저 로드
-        tf = require('@tensorflow/tfjs-node');
-        console.log('🔍 [얼굴인식] TensorFlow 로드 성공');
-        
-        // TensorFlow 백엔드 설정
-        await tf.ready();
-        console.log('🔍 [얼굴인식] TensorFlow 백엔드 준비 완료');
-        
-        // face-api 로드
-        faceapi = require('@vladmandic/face-api/dist/face-api.node.js');
-        console.log('🔍 [얼굴인식] face-api 로드 성공');
-        
-        // canvas 로드
-        canvas = require('canvas');
-        console.log('🔍 [얼굴인식] canvas 로드 성공');
-        
-        if (faceapi && canvas) {
-            const { Canvas, Image, ImageData } = canvas;
-            faceapi.env.monkeyPatch({ Canvas, Image, ImageData });
-            console.log('🔍 [얼굴인식] canvas 패치 완료');
-            
-            isModuleAvailable = true;
-            return true;
-        }
-        return false;
-    } catch (error) {
-        console.log(`🔍 [얼굴인식] 모듈 로드 실패: ${error.message}`);
-        // 모듈 없어도 에러 안남
-        faceapi = null;
-        canvas = null;
-        tf = null;
-        isModuleAvailable = false;
-        return false;
-    }
-}
+let isInitialized = false;
+let initializationAttempted = false;
 
 // 경로 설정 (src/ 기준)
 const faceDataPath = path.resolve(__dirname, '../memory/faceData.json');
 const modelPath = path.resolve(__dirname, '../models');
 let labeledDescriptors = [];
-let isInitialized = false;
 
 // 🎭 한글 로그 (전역 함수 사용)
 function logFace(message) {
@@ -67,6 +27,61 @@ function logFace(message) {
         }
     } catch (error) {
         console.log(`🔍 [얼굴인식] ${message}`);
+    }
+}
+
+// 앱 시작시에는 빠른 구분 모드로 시작
+console.log('🔍 [얼굴인식] 빠른 구분 모드로 시작 (필요시 AI 모드로 전환)');
+
+// 지연 로딩 함수 (처음 사용할 때만 실행)
+async function loadFaceApiModules() {
+    if (initializationAttempted) {
+        return isModuleAvailable;
+    }
+    
+    initializationAttempted = true;
+    
+    try {
+        logFace('AI 모듈 지연 로딩 시작...');
+        
+        // TensorFlow 먼저 로드
+        tf = require('@tensorflow/tfjs-node');
+        logFace('TensorFlow 로드 성공');
+        
+        // TensorFlow 백엔드 설정 (타임아웃 적용)
+        await Promise.race([
+            tf.ready(),
+            new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('TensorFlow 타임아웃')), 10000)
+            )
+        ]);
+        logFace('TensorFlow 백엔드 준비 완료');
+        
+        // face-api 로드
+        faceapi = require('@vladmandic/face-api/dist/face-api.node.js');
+        logFace('face-api 로드 성공');
+        
+        // canvas 로드
+        canvas = require('canvas');
+        logFace('canvas 로드 성공');
+        
+        if (faceapi && canvas) {
+            const { Canvas, Image, ImageData } = canvas;
+            faceapi.env.monkeyPatch({ Canvas, Image, ImageData });
+            logFace('canvas 패치 완료');
+            
+            isModuleAvailable = true;
+            return true;
+        }
+        return false;
+    } catch (error) {
+        logFace(`AI 모듈 로드 실패: ${error.message} - 빠른 구분 모드 유지`);
+        // 모듈 없어도 에러 안남
+        faceapi = null;
+        canvas = null;
+        tf = null;
+        isModuleAvailable = false;
+        return false;
     }
 }
 
@@ -125,33 +140,39 @@ function saveFaceData() {
     }
 }
 
-// 모델 초기화 (더 안전한 버전)
+// 모델 초기화 (지연 로딩 버전) - 앱 시작시에는 실행하지 않음
 async function initModels() {
     try {
-        logFace('얼굴 인식 시스템 초기화 시작...');
+        // 즉시 성공으로 리턴 (실제 초기화는 지연)
+        logFace('지연 로딩 모드 - 필요시 AI 모듈을 로드합니다');
+        return true;
         
-        // 1단계: 모듈 로드
-        if (!isModuleAvailable) {
-            logFace('모듈 로드 시도 중...');
-            const loaded = await loadFaceApiModules();
-            if (!loaded) {
-                logFace('face-api 모듈 없음 - 빠른 구분 모드로 동작');
-                isInitialized = false;
-                return false;
-            }
-        }
-        
-        logFace('face-api 모듈 로드 성공');
-        
-        // 2단계: 모델 폴더 확인
+    } catch (err) {
+        logFace(`초기화 실패: ${err.message}`);
+        return false;
+    }
+}
+
+// 실제 AI 모델 초기화 (처음 사용할 때만)
+async function ensureAIReady() {
+    if (isInitialized) {
+        return true;
+    }
+    
+    // 모듈 로드 시도
+    const moduleLoaded = await loadFaceApiModules();
+    if (!moduleLoaded) {
+        return false;
+    }
+    
+    try {
+        // 모델 폴더 확인
         if (!fs.existsSync(modelPath)) {
             logFace(`모델 폴더가 없습니다: ${modelPath}`);
-            logFace('얼굴 인식 없이 빠른 구분 모드로 동작합니다');
-            isInitialized = false;
             return false;
         }
         
-        // 3단계: 필요한 모델 파일들 확인
+        // 필요한 모델 파일들 확인
         const requiredModels = [
             'ssd_mobilenetv1_model-weights_manifest.json',
             'face_landmark_68_model-weights_manifest.json', 
@@ -164,18 +185,11 @@ async function initModels() {
         
         if (missingModels.length > 0) {
             logFace(`누락된 모델 파일들: ${missingModels.join(', ')}`);
-            logFace('얼굴 인식 없이 빠른 구분 모드로 동작합니다');
-            isInitialized = false;
             return false;
         }
         
-        // 4단계: 모델 로딩 시도 (타임아웃 추가)
+        // 모델 로딩 시도 (타임아웃 적용)
         logFace('AI 모델 로딩 시작...');
-        
-        const loadTimeout = setTimeout(() => {
-            logFace('모델 로딩 시간 초과 - 빠른 구분 모드로 전환');
-            isInitialized = false;
-        }, 30000); // 30초 타임아웃
         
         await Promise.race([
             Promise.all([
@@ -184,22 +198,19 @@ async function initModels() {
                 faceapi.nets.faceRecognitionNet.loadFromDisk(modelPath)
             ]),
             new Promise((_, reject) => 
-                setTimeout(() => reject(new Error('로딩 타임아웃')), 25000)
+                setTimeout(() => reject(new Error('로딩 타임아웃')), 20000)
             )
         ]);
         
-        clearTimeout(loadTimeout);
-        
-        // 5단계: 기존 저장된 데이터 로드
+        // 기존 저장된 데이터 로드
         labeledDescriptors = loadFaceData();
         isInitialized = true;
         
-        logFace(`AI 모델 로딩 완료! 등록된 얼굴: ${labeledDescriptors.length}명`);
+        logFace(`🎉 AI 모델 로딩 완료! 등록된 얼굴: ${labeledDescriptors.length}명`);
         
-        // 6단계: 자동 등록 (비동기로 실행)
+        // 자동 등록 (백그라운드)
         if (labeledDescriptors.length === 0) {
             logFace('백그라운드에서 얼굴 자동 등록을 시작합니다...');
-            // 메인 스레드를 블록하지 않도록 비동기 실행
             setImmediate(async () => {
                 try {
                     await autoRegisterFromFiles();
@@ -207,20 +218,13 @@ async function initModels() {
                     logFace(`자동 등록 중 에러 (무시됨): ${error.message}`);
                 }
             });
-        } else {
-            logFace('이미 등록된 얼굴 데이터가 있습니다');
-            labeledDescriptors.forEach(ld => {
-                logFace(`📊 ${ld.label}: ${ld.descriptors.length}개 얼굴 샘플`);
-            });
         }
         
         return true;
         
     } catch (err) {
-        logFace(`모델 초기화 실패: ${err.message}`);
-        logFace('빠른 구분 모드로 전환합니다');
-        isInitialized = false;
-        return false; // 에러 대신 false 반환
+        logFace(`AI 모델 초기화 실패: ${err.message}`);
+        return false;
     }
 }
 
@@ -240,8 +244,10 @@ function imageFromBase64(base64) {
 
 // 얼굴 등록 함수 (안전 버전)
 async function registerFace(base64, label) {
-    if (!isModuleAvailable || !isInitialized || !faceapi) {
-        logFace('모델이 초기화되지 않았습니다');
+    // AI 모델 준비 확인
+    const aiReady = await ensureAIReady();
+    if (!aiReady) {
+        logFace('AI 모델 준비 실패 - 등록 불가');
         return false;
     }
     
@@ -281,8 +287,9 @@ async function registerFace(base64, label) {
 
 // 자동 등록 함수 (안전 버전)
 async function autoRegisterFromFiles() {
-    if (!isModuleAvailable || !isInitialized) {
-        logFace('face-api 모듈 없음 - 자동 등록 건너뛰기');
+    const aiReady = await ensureAIReady();
+    if (!aiReady) {
+        logFace('AI 모델 준비 실패 - 자동 등록 건너뛰기');
         return false;
     }
     
@@ -299,13 +306,13 @@ async function autoRegisterFromFiles() {
     let totalFailed = 0;
     
     try {
-        // 아저씨 사진들 등록 (001.jpg ~ 020.jpg)
+        // 아저씨 사진들 등록 (처음 3개만)
         const uncleDir = path.join(facesDir, 'uncle');
         if (fs.existsSync(uncleDir)) {
             const uncleFiles = fs.readdirSync(uncleDir)
                 .filter(f => f.match(/\.(jpg|jpeg|png)$/i))
-                .sort() // 파일명 순서대로 정렬
-                .slice(0, 5); // 처음 5개만 (속도 향상)
+                .sort()
+                .slice(0, 3); // 처음 3개만
             
             logFace(`📸 아저씨 사진 ${uncleFiles.length}개 처리 예정`);
             
@@ -324,11 +331,10 @@ async function autoRegisterFromFiles() {
                         logFace(`✅ ${file} 등록 성공`);
                     } else {
                         totalFailed++;
-                        logFace(`❌ ${file} 등록 실패 (얼굴 미발견)`);
+                        logFace(`❌ ${file} 등록 실패`);
                     }
                     
-                    // 메모리 관리를 위한 약간의 딜레이
-                    await new Promise(resolve => setTimeout(resolve, 200));
+                    await new Promise(resolve => setTimeout(resolve, 300));
                     
                 } catch (error) {
                     totalFailed++;
@@ -337,13 +343,13 @@ async function autoRegisterFromFiles() {
             }
         }
         
-        // 예진이 사진들 등록 (001.jpg ~ 020.jpg)
+        // 예진이 사진들 등록 (처음 3개만)
         const yejinDir = path.join(facesDir, 'yejin');
         if (fs.existsSync(yejinDir)) {
             const yejinFiles = fs.readdirSync(yejinDir)
                 .filter(f => f.match(/\.(jpg|jpeg|png)$/i))
-                .sort() // 파일명 순서대로 정렬
-                .slice(0, 5); // 처음 5개만 (속도 향상)
+                .sort()
+                .slice(0, 3); // 처음 3개만
             
             logFace(`📸 예진이 사진 ${yejinFiles.length}개 처리 예정`);
             
@@ -362,11 +368,10 @@ async function autoRegisterFromFiles() {
                         logFace(`✅ ${file} 등록 성공`);
                     } else {
                         totalFailed++;
-                        logFace(`❌ ${file} 등록 실패 (얼굴 미발견)`);
+                        logFace(`❌ ${file} 등록 실패`);
                     }
                     
-                    // 메모리 관리를 위한 약간의 딜레이
-                    await new Promise(resolve => setTimeout(resolve, 200));
+                    await new Promise(resolve => setTimeout(resolve, 300));
                     
                 } catch (error) {
                     totalFailed++;
@@ -376,14 +381,7 @@ async function autoRegisterFromFiles() {
         }
         
         // 최종 결과 보고
-        logFace(`🎉 자동 등록 완료!`);
-        logFace(`📊 성공: ${totalRegistered}개, 실패: ${totalFailed}개`);
-        
-        // 등록 결과 상세 표시
-        labeledDescriptors.forEach(ld => {
-            logFace(`👤 ${ld.label}: ${ld.descriptors.length}개 얼굴 샘플 등록됨`);
-        });
-        
+        logFace(`🎉 자동 등록 완료! 성공: ${totalRegistered}개, 실패: ${totalFailed}개`);
         return totalRegistered > 0;
         
     } catch (error) {
@@ -392,11 +390,13 @@ async function autoRegisterFromFiles() {
     }
 }
 
-// 얼굴 매칭 (완전 안전 버전)
+// 얼굴 매칭 (지연 로딩 버전)
 async function detectFaceMatch(base64) {
-    // 모델이 없거나 초기화 실패시 빠른 구분 사용
-    if (!isModuleAvailable || !isInitialized || !faceapi) {
-        logFace('face-api 모델 없음 - 빠른 구분 모드 사용');
+    // AI 모델 준비 시도 (처음 사용시에만)
+    const aiReady = await ensureAIReady();
+    
+    if (!aiReady) {
+        logFace('AI 모델 없음 - 빠른 구분 모드 사용');
         return quickFaceGuess(base64);
     }
     
@@ -433,11 +433,11 @@ async function detectFaceMatch(base64) {
         
         if (bestResult && bestResult.label !== 'unknown') {
             const confidence = ((1 - bestResult.distance) * 100).toFixed(1);
-            logFace(`🎯 얼굴 인식 성공: ${bestResult.label} (신뢰도: ${confidence}%)`);
+            logFace(`🎯 AI 얼굴 인식 성공: ${bestResult.label} (신뢰도: ${confidence}%)`);
             return bestResult.label;
         }
         
-        logFace('얼굴 인식 실패 - 빠른 구분으로 폴백');
+        logFace('AI 얼굴 인식 실패 - 빠른 구분으로 폴백');
         return quickFaceGuess(base64);
         
     } catch (err) {
