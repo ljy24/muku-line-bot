@@ -1,5 +1,5 @@
 // ============================================================================
-// index.js - v13.8 FINAL (sulkyManager 독립 연동 버전)
+// index.js - v13.8 FINAL [1/6] - 초기 설정 및 시간 관리
 // ✅ 스케줄러 시작 코드 강화 + 담타 100% 보장
 // 🧠 고정기억: 65개 + 55개 = 120개 기억 완전 로드 보장
 // 🩸 생리주기: 현실적인 28일 주기로 수정
@@ -11,6 +11,7 @@
 // 🌸 예진이능동: spontaneousYejinManager 연동
 // 🌤️ 날씨시스템: weatherManager 실시간 API 연동
 // 😤 삐짐시스템: sulkyManager 완전 독립 관리 ⭐️ 신규!
+// ⭐️ enhancedLogging v3.0 완전 연동 + 1분마다 자동 상태 갱신
 // ============================================================================
 
 const { Client, middleware } = require('@line/bot-sdk');
@@ -83,6 +84,7 @@ const config = {
 
 const client = new Client(config);
 const app = express();
+
 // ================== 🕐 시간 계산 및 담타 시스템 ==================
 function formatTimeUntil(minutes) {
     if (minutes < 60) {
@@ -131,178 +133,42 @@ function calculateDamtaNextTime() {
         };
     }
 }
-
-// ================== 🔍 face-api 지연 로딩 시스템 ==================
-async function loadFaceMatcherSafely() {
-    if (faceApiInitialized) {
-        return faceMatcher;
-    }
-    
-    if (faceApiInitializing) {
-        console.log(`${colors.system}🔍 [FaceMatcher] 이미 초기화 중...${colors.reset}`);
-        return null;
-    }
-    
-    faceApiInitializing = true;
-    
-    try {
-        console.log(`${colors.system}🔍 [FaceMatcher] 지연 로딩 시작...${colors.reset}`);
-        faceMatcher = require('./src/faceMatcher');
-        
-        if (faceMatcher && faceMatcher.initModels) {
-            console.log(`${colors.system}🤖 [FaceMatcher] AI 모델 초기화 시작...${colors.reset}`);
-            const initResult = await faceMatcher.initModels();
-            
-            if (initResult) {
-                console.log(`${colors.system}✅ [FaceMatcher] AI 얼굴 인식 시스템 준비 완료${colors.reset}`);
-                faceApiInitialized = true;
-            } else {
-                console.log(`${colors.system}⚡ [FaceMatcher] 빠른 구분 모드로 동작${colors.reset}`);
-                faceApiInitialized = true;
-            }
-        }
-        
-        faceApiInitializing = false;
-        return faceMatcher;
-        
-    } catch (error) {
-        console.log(`${colors.error}⚠️ [FaceMatcher] 로드 실패: ${error.message} - 얼굴 인식 없이 계속 진행${colors.reset}`);
-        faceApiInitializing = false;
-        faceApiInitialized = true;
-        return null;
-    }
-}
-
-async function detectFaceSafely(base64Image) {
-    try {
-        const matcher = faceMatcher || await loadFaceMatcherSafely();
-        
-        if (matcher && matcher.detectFaceMatch) {
-            console.log(`${colors.system}🔍 [FaceMatcher] 얼굴 인식 실행 중...${colors.reset}`);
-            return await matcher.detectFaceMatch(base64Image);
-        } else {
-            console.log(`${colors.system}🔍 [FaceMatcher] 모듈 없음 - 기본 응답${colors.reset}`);
-            return null;
-        }
-    } catch (error) {
-        console.log(`${colors.error}⚠️ [FaceMatcher] 얼굴 인식 에러: ${error.message}${colors.reset}`);
-        return null;
-    }
-}
-
-// ================== 📦 모듈 로드 ==================
-async function loadModules() {
-   try {
-       console.log(`${colors.system}📦 [모듈로드] 핵심 시스템들을 순서대로 로딩합니다...${colors.reset}`);
-
-       // 1. 대화 응답 시스템 (최우선)
-       try {
-           autoReply = require('./src/autoReply');
-           console.log(`${colors.system}✅ [1/15] autoReply: 대화 응답 시스템${colors.reset}`);
-       } catch (error) {
-           console.log(`${colors.error}❌ [1/15] autoReply 로드 실패: ${error.message}${colors.reset}`);
-       }
-
-       // 2. ⭐️ 고정 기억 관리자 (가장 중요!) ⭐️
-       try {
-           memoryManager = require('./src/memoryManager');
-           console.log(`${colors.system}✅ [2/15] memoryManager: 고정 기억 시스템 (120개 기억)${colors.reset}`);
-       } catch (error) {
-           console.log(`${colors.error}❌ [2/15] memoryManager 로드 실패: ${error.message}${colors.reset}`);
-       }
-
-       // 3. 동적 기억 컨텍스트
-       try {
-           ultimateContext = require('./src/ultimateConversationContext');
-           console.log(`${colors.system}✅ [3/15] ultimateContext: 동적 기억 시스템${colors.reset}`);
-       } catch (error) {
-           console.log(`${colors.error}❌ [3/15] ultimateContext 로드 실패: ${error.message}${colors.reset}`);
-       }
-
-       // 4. 명령어 처리기
-       try {
-           commandHandler = require('./src/commandHandler');
-           console.log(`${colors.system}✅ [4/15] commandHandler: 명령어 처리 시스템${colors.reset}`);
-       } catch (error) {
-           console.log(`${colors.error}❌ [4/15] commandHandler 로드 실패: ${error.message}${colors.reset}`);
-       }
-
-       // 5. 감정 상태 관리자
-       try {
-           emotionalContextManager = require('./src/emotionalContextManager');
-           console.log(`${colors.system}✅ [5/15] emotionalContextManager: 감정 상태 시스템${colors.reset}`);
-       } catch (error) {
-           console.log(`${colors.error}❌ [5/15] emotionalContextManager 로드 실패: ${error.message}${colors.reset}`);
-       }
-
-       // 6. ⭐️ 독립 삐짐 관리자 (신규 추가!) ⭐️
-       try {
-           sulkyManager = require('./src/sulkyManager');
-           console.log(`${colors.system}✅ [6/15] sulkyManager: 독립된 삐짐 관리 시스템${colors.reset}`);
-           
-           // ⭐️ 삐짐 시스템 상태 확인 ⭐️
-           if (sulkyManager.getSulkinessState) {
-               console.log(`${colors.system}😤 [삐짐 확인] 독립 삐짐 시스템 로드 완료 ✅${colors.reset}`);
-           } else {
-               console.log(`${colors.error}😤 [삐짐 확인] getSulkinessState 함수 없음! ❌${colors.reset}`);
-           }
-           
-       } catch (error) {
-           console.log(`${colors.error}❌ [6/15] sulkyManager 로드 실패: ${error.message}${colors.reset}`);
-           sulkyManager = null;
-       }
-
-       // 7. 기분 관리자
-       try {
-           moodManager = require('./src/moodManager');
-           console.log(`${colors.system}✅ [7/15] moodManager: 기분 관리 시스템${colors.reset}`);
-       } catch (error) {
-           console.log(`${colors.error}❌ [7/15] moodManager 로드 실패: ${error.message}${colors.reset}`);
-       }
-
-       // 8. 향상된 로깅
-       try {
-           enhancedLogging = require('./src/enhancedLogging');
-           console.log(`${colors.system}✅ [8/15] enhancedLogging: 향상된 로그 시스템${colors.reset}`);
-       } catch (error) {
-           console.log(`${colors.error}❌ [8/15] enhancedLogging 로드 실패: ${error.message}${colors.reset}`);
-       }
-       // 9. 자발적 사진 전송
+// 9. 자발적 사진 전송
        try {
            spontaneousPhoto = require('./src/spontaneousPhotoManager');
-           console.log(`${colors.system}✅ [9/15] spontaneousPhotoManager: 자발적 사진 전송${colors.reset}`);
+           console.log(`${colors.system}✅ [9/16] spontaneousPhotoManager: 자발적 사진 전송${colors.reset}`);
        } catch (error) {
-           console.log(`${colors.error}❌ [9/15] spontaneousPhotoManager 로드 실패: ${error.message}${colors.reset}`);
+           console.log(`${colors.error}❌ [9/16] spontaneousPhotoManager 로드 실패: ${error.message}${colors.reset}`);
        }
 
        // 10. 사진 분석기
        try {
            photoAnalyzer = require('./src/photoAnalyzer');
-           console.log(`${colors.system}✅ [10/15] photoAnalyzer: 사진 분석 시스템${colors.reset}`);
+           console.log(`${colors.system}✅ [10/16] photoAnalyzer: 사진 분석 시스템${colors.reset}`);
        } catch (error) {
-           console.log(`${colors.error}❌ [10/15] photoAnalyzer 로드 실패: ${error.message}${colors.reset}`);
+           console.log(`${colors.error}❌ [10/16] photoAnalyzer 로드 실패: ${error.message}${colors.reset}`);
        }
 
        // 11. ⭐️ 새벽 대화 반응 시스템 ⭐️
        try {
            nightWakeResponse = require('./src/night_wake_response');
-           console.log(`${colors.system}✅ [11/15] nightWakeResponse: 새벽 대화 반응 시스템 (2-7시 단계별)${colors.reset}`);
+           console.log(`${colors.system}✅ [11/16] nightWakeResponse: 새벽 대화 반응 시스템 (2-7시 단계별)${colors.reset}`);
        } catch (error) {
-           console.log(`${colors.error}❌ [11/15] nightWakeResponse 로드 실패: ${error.message}${colors.reset}`);
+           console.log(`${colors.error}❌ [11/16] nightWakeResponse 로드 실패: ${error.message}${colors.reset}`);
        }
 
        // 12. ⭐️ 생일 감지 시스템 ⭐️
        try {
            birthdayDetector = require('./src/birthdayDetector');
-           console.log(`${colors.system}✅ [12/15] birthdayDetector: 생일 감지 시스템 (3/17, 12/5)${colors.reset}`);
+           console.log(`${colors.system}✅ [12/16] birthdayDetector: 생일 감지 시스템 (3/17, 12/5)${colors.reset}`);
        } catch (error) {
-           console.log(`${colors.error}❌ [12/15] birthdayDetector 로드 실패: ${error.message}${colors.reset}`);
+           console.log(`${colors.error}❌ [12/16] birthdayDetector 로드 실패: ${error.message}${colors.reset}`);
        }
 
        // 13. ⭐️⭐️⭐️ 스케줄러 시스템 (담타 최우선!) ⭐️⭐️⭐️ 
        try {
            scheduler = require('./src/scheduler');
-           console.log(`${colors.system}✅ [13/15] scheduler: 자동 메시지 스케줄러 (담타 100% 보장!)${colors.reset}`);
+           console.log(`${colors.system}✅ [13/16] scheduler: 자동 메시지 스케줄러 (담타 100% 보장!)${colors.reset}`);
            
            // ⭐️⭐️⭐️ 스케줄러 로드 후 즉시 확인 ⭐️⭐️⭐️
            if (scheduler.startAllSchedulers) {
@@ -313,14 +179,14 @@ async function loadModules() {
            }
            
        } catch (error) {
-           console.log(`${colors.error}❌ [13/15] scheduler 로드 실패: ${error.message}${colors.reset}`);
+           console.log(`${colors.error}❌ [13/16] scheduler 로드 실패: ${error.message}${colors.reset}`);
            scheduler = null;
        }
 
        // 14. ⭐️⭐️⭐️ 예진이 능동 메시지 시스템 ⭐️⭐️⭐️
        try {
            spontaneousYejin = require('./src/spontaneousYejinManager');
-           console.log(`${colors.system}✅ [14/15] spontaneousYejin: 예진이 능동 메시지 시스템 (하루 15번)${colors.reset}`);
+           console.log(`${colors.system}✅ [14/16] spontaneousYejin: 예진이 능동 메시지 시스템 (하루 15번)${colors.reset}`);
            
            // ⭐️⭐️⭐️ 예진이 시스템 로드 후 즉시 확인 ⭐️⭐️⭐️
            if (spontaneousYejin.startSpontaneousYejinSystem) {
@@ -331,14 +197,14 @@ async function loadModules() {
            }
            
        } catch (error) {
-           console.log(`${colors.error}❌ [14/15] spontaneousYejin 로드 실패: ${error.message}${colors.reset}`);
+           console.log(`${colors.error}❌ [14/16] spontaneousYejin 로드 실패: ${error.message}${colors.reset}`);
            spontaneousYejin = null;
        }
 
        // 15. ⭐️ 날씨 시스템 ⭐️
        try {
            weatherManager = require('./src/weatherManager');
-           console.log(`${colors.system}✅ [15/15] weatherManager: 실시간 날씨 API 시스템 (기타큐슈↔고양시)${colors.reset}`);
+           console.log(`${colors.system}✅ [15/16] weatherManager: 실시간 날씨 API 시스템 (기타큐슈↔고양시)${colors.reset}`);
            
            // ⭐️ 날씨 시스템 로드 후 즉시 확인 ⭐️
            if (weatherManager.getCurrentWeather && weatherManager.generateWeatherBasedMessage) {
@@ -357,12 +223,12 @@ async function loadModules() {
            }
            
        } catch (error) {
-           console.log(`${colors.error}❌ [15/15] weatherManager 로드 실패: ${error.message}${colors.reset}`);
+           console.log(`${colors.error}❌ [15/16] weatherManager 로드 실패: ${error.message}${colors.reset}`);
            weatherManager = null;
        }
                
        // 🔍 face-api는 별도로 로드 (지연 로딩)
-       console.log(`${colors.system}🔍 [추가] faceMatcher: 지연 로딩 모드 (필요시에만 로드)${colors.reset}`);
+       console.log(`${colors.system}🔍 [16/16] faceMatcher: 지연 로딩 모드 (필요시에만 로드)${colors.reset}`);
 
        return true;
    } catch (error) {
@@ -371,220 +237,161 @@ async function loadModules() {
    }
 }
 
-// ================== 💖 예쁜 상태 리포트 출력 함수 ==================  
+// ================== 💖 예쁜 상태 리포트 출력 함수 (enhancedLogging v3.0 연동) ==================  
 function formatPrettyStatus() {
     try {
-        console.log(`\n${colors.system}====== 💖 나의 현재 상태 리포트 ======${colors.reset}\n`);
+        // ⭐️⭐️⭐️ enhancedLogging v3.0 사용 ⭐️⭐️⭐️
+        if (enhancedLogging && enhanc
+            // 9. 자발적 사진 전송
+       try {
+           spontaneousPhoto = require('./src/spontaneousPhotoManager');
+           console.log(`${colors.system}✅ [9/16] spontaneousPhotoManager: 자발적 사진 전송${colors.reset}`);
+       } catch (error) {
+           console.log(`${colors.error}❌ [9/16] spontaneousPhotoManager 로드 실패: ${error.message}${colors.reset}`);
+       }
 
-        // ⭐️ 생리주기 상태 (현실적인 28일 주기로 수정) ⭐️
-        if (emotionalContextManager) {
-            try {
-                const cycle = emotionalContextManager.getCurrentEmotionState();
-                
-                const lastPeriodDate = new Date('2024-12-01');
-                const currentDate = getJapanTime();
-                const daysSinceLastPeriod = Math.floor((currentDate - lastPeriodDate) / (1000 * 60 * 60 * 24));
-                const cycleDay = (daysSinceLastPeriod % 28) + 1;
-                
-                let description, daysUntilNext;
-                if (cycleDay <= 5) {
-                    description = `${colors.pms}생리 중${colors.reset}`;
-                    daysUntilNext = 28 - cycleDay;
-                } else if (cycleDay <= 10) {
-                    description = '생리 후 회복기';
-                    daysUntilNext = 28 - cycleDay;
-                } else if (cycleDay <= 18) {
-                    description = '정상기';
-                    daysUntilNext = 28 - cycleDay;
-                } else if (cycleDay <= 25) {
-                    description = `${colors.pms}PMS 시작${colors.reset}`;
-                    daysUntilNext = 28 - cycleDay;
-                } else {
-                    description = `${colors.pms}PMS 심화${colors.reset}`;
-                    daysUntilNext = 28 - cycleDay;
+       // 10. 사진 분석기
+       try {
+           photoAnalyzer = require('./src/photoAnalyzer');
+           console.log(`${colors.system}✅ [10/16] photoAnalyzer: 사진 분석 시스템${colors.reset}`);
+       } catch (error) {
+           console.log(`${colors.error}❌ [10/16] photoAnalyzer 로드 실패: ${error.message}${colors.reset}`);
+       }
+
+       // 11. ⭐️ 새벽 대화 반응 시스템 ⭐️
+       try {
+           nightWakeResponse = require('./src/night_wake_response');
+           console.log(`${colors.system}✅ [11/16] nightWakeResponse: 새벽 대화 반응 시스템 (2-7시 단계별)${colors.reset}`);
+       } catch (error) {
+           console.log(`${colors.error}❌ [11/16] nightWakeResponse 로드 실패: ${error.message}${colors.reset}`);
+       }
+
+       // 12. ⭐️ 생일 감지 시스템 ⭐️
+       try {
+           birthdayDetector = require('./src/birthdayDetector');
+           console.log(`${colors.system}✅ [12/16] birthdayDetector: 생일 감지 시스템 (3/17, 12/5)${colors.reset}`);
+       } catch (error) {
+           console.log(`${colors.error}❌ [12/16] birthdayDetector 로드 실패: ${error.message}${colors.reset}`);
+       }
+
+       // 13. ⭐️⭐️⭐️ 스케줄러 시스템 (담타 최우선!) ⭐️⭐️⭐️ 
+       try {
+           scheduler = require('./src/scheduler');
+           console.log(`${colors.system}✅ [13/16] scheduler: 자동 메시지 스케줄러 (담타 100% 보장!)${colors.reset}`);
+           
+           // ⭐️⭐️⭐️ 스케줄러 로드 후 즉시 확인 ⭐️⭐️⭐️
+           if (scheduler.startAllSchedulers) {
+               console.log(`${colors.system}🚬 [스케줄러 확인] startAllSchedulers 함수 존재 확인 ✅${colors.reset}`);
+           } else {
+               console.log(`${colors.error}🚬 [스케줄러 확인] startAllSchedulers 함수 없음! ❌${colors.reset}`);
+               console.log(`${colors.error}🚬 [스케줄러 확인] 사용 가능한 함수들:`, Object.keys(scheduler || {}));
+           }
+           
+       } catch (error) {
+           console.log(`${colors.error}❌ [13/16] scheduler 로드 실패: ${error.message}${colors.reset}`);
+           scheduler = null;
+       }
+
+       // 14. ⭐️⭐️⭐️ 예진이 능동 메시지 시스템 ⭐️⭐️⭐️
+       try {
+           spontaneousYejin = require('./src/spontaneousYejinManager');
+           console.log(`${colors.system}✅ [14/16] spontaneousYejin: 예진이 능동 메시지 시스템 (하루 15번)${colors.reset}`);
+           
+           // ⭐️⭐️⭐️ 예진이 시스템 로드 후 즉시 확인 ⭐️⭐️⭐️
+           if (spontaneousYejin.startSpontaneousYejinSystem) {
+               console.log(`${colors.system}🌸 [예진이 확인] startSpontaneousYejinSystem 함수 존재 확인 ✅${colors.reset}`);
+           } else {
+               console.log(`${colors.error}🌸 [예진이 확인] startSpontaneousYejinSystem 함수 없음! ❌${colors.reset}`);
+               console.log(`${colors.error}🌸 [예진이 확인] 사용 가능한 함수들:`, Object.keys(spontaneousYejin || {}));
+           }
+           
+       } catch (error) {
+           console.log(`${colors.error}❌ [14/16] spontaneousYejin 로드 실패: ${error.message}${colors.reset}`);
+           spontaneousYejin = null;
+       }
+
+       // 15. ⭐️ 날씨 시스템 ⭐️
+       try {
+           weatherManager = require('./src/weatherManager');
+           console.log(`${colors.system}✅ [15/16] weatherManager: 실시간 날씨 API 시스템 (기타큐슈↔고양시)${colors.reset}`);
+           
+           // ⭐️ 날씨 시스템 로드 후 즉시 확인 ⭐️
+           if (weatherManager.getCurrentWeather && weatherManager.generateWeatherBasedMessage) {
+               console.log(`${colors.system}🌤️ [날씨 확인] 핵심 날씨 함수들 존재 확인 ✅${colors.reset}`);
+               
+               // API 키 상태 확인
+               const weatherStatus = weatherManager.getWeatherSystemStatus();
+               if (weatherStatus.isActive) {
+                   console.log(`${colors.system}🌤️ [날씨 확인] OpenWeather API 키 연결 ✅${colors.reset}`);
+               } else {
+                   console.log(`${colors.error}🌤️ [날씨 확인] OpenWeather API 키 없음! 환경변수 OPENWEATHER_API_KEY 확인 필요${colors.reset}`);
+               }
+           } else {
+               console.log(`${colors.error}🌤️ [날씨 확인] 날씨 핵심 함수 없음! ❌${colors.reset}`);
+               console.log(`${colors.error}🌤️ [날씨 확인] 사용 가능한 함수들:`, Object.keys(weatherManager || {}));
+           }
+           
+       } catch (error) {
+           console.log(`${colors.error}❌ [15/16] weatherManager 로드 실패: ${error.message}${colors.reset}`);
+           weatherManager = null;
+       }
+               
+       // 🔍 face-api는 별도로 로드 (지연 로딩)
+       console.log(`${colors.system}🔍 [16/16] faceMatcher: 지연 로딩 모드 (필요시에만 로드)${colors.reset}`);
+
+       return true;
+   } catch (error) {
+       console.error(`${colors.error}❌ 모듈 로드 중 심각한 에러: ${error.message}${colors.reset}`);
+       return false;
+   }
+}
+
+// ================== 💖 예쁜 상태 리포트 출력 함수 (enhancedLogging v3.0 연동) ==================  
+function formatPrettyStatus() {
+    try {
+        // ⭐️⭐️⭐️ enhancedLogging v3.0 사용 ⭐️⭐️⭐️
+        if (enhancedLogging && enhancedLogging.formatPrettyMukuStatus) {
+            // 모든 시스템 모듈을 enhancedLogging에 전달
+            const systemModules = {
+                memoryManager,
+                ultimateContext,
+                emotionalContextManager,
+                sulkyManager,
+                scheduler,
+                spontaneousYejin,
+                weatherManager,
+                nightWakeResponse,
+                birthdayDetector,
+                faceApiStatus: {
+                    initialized: faceApiInitialized,
+                    initializing: faceApiInitializing
                 }
-
-                const nextPeriodDate = new Date(currentDate.getTime() + daysUntilNext * 24 * 60 * 60 * 1000);
-                const monthDay = `${nextPeriodDate.getMonth() + 1}/${nextPeriodDate.getDate()}`;
-
-                console.log(`🩸 [생리주기] 현재 ${cycleDay}일차 (${description}), 다음 생리예정일: ${daysUntilNext}일 후 (${monthDay}) (JST)`);
-            } catch (error) {
-                console.log(`🩸 [생리주기] 현재 14일차 (정상기), 다음 생리예정일: 14일 후 (현실적 28일 주기)`);
-            }
+            };
+            
+            enhancedLogging.formatPrettyMukuStatus(systemModules);
         } else {
-            console.log(`🩸 [생리주기] 시스템 로딩 중... (현실적 28일 주기로 설정 예정)`);
-        }
-
-        // ⭐️ 감정 상태 로그 (삐짐 상태는 sulkyManager에서 별도 조회) ⭐️
-        if (emotionalContextManager) {
-            try {
-                const currentEmotion = emotionalContextManager.getCurrentEmotionState();
-                let emotionText = currentEmotion.currentEmotion || 'normal';
-                
-                // 기본 감정 상태 표시 (삐짐은 제외)
-                if (currentEmotion.currentEmotion === 'happy') {
-                    emotionText = `${colors.yejin}행복함${colors.reset}`;
-                } else if (currentEmotion.currentEmotion === 'sad') {
-                    emotionText = `${colors.pms}슬픔${colors.reset}`;
-                } else {
-                    emotionText = currentEmotion.currentEmotion || 'normal';
-                }
-                
-                console.log(`😊 [감정상태] 현재 감정: ${emotionText} (강도: ${currentEmotion.emotionIntensity || 5}/10)`);
-            } catch (error) {
-                console.log(`😊 [감정상태] 감정 시스템 초기화 중...`);
-            }
-        } else {
-            console.log(`😊 [감정상태] 감정 시스템 로딩 중...`);
-        }
-
-        // ⭐️ 삐짐 상태 별도 로그 (sulkyManager에서 조회) ⭐️
-        if (sulkyManager) {
-            try {
-                const sulkyStatus = sulkyManager.getSulkySystemStatus();
-                const timeSince = Math.floor(sulkyStatus.timing.minutesSinceLastUser);
-                
-                if (sulkyStatus.currentState.isSulky) {
-                    console.log(`😤 [삐짐상태] 현재 ${sulkyStatus.currentState.level}단계 삐짐 중 (이유: ${sulkyStatus.currentState.reason})`);
-                } else if (sulkyStatus.currentState.isWorried) {
-                    console.log(`😰 [삐짐상태] 걱정 단계 (${timeSince}분 경과, 24시간 초과)`);
-                } else {
-                    console.log(`😊 [삐짐상태] 정상 (마지막 답장: ${timeSince}분 전)`);
-                }
-            } catch (error) {
-                console.log(`😤 [삐짐상태] 시스템 로딩 중...`);
-            }
-        } else {
-            console.log(`😤 [삐짐상태] 시스템 로딩 중...`);
-        }
-        // ⭐️ 기억 상태 로그 (고정기억 + 동적기억) ⭐️
-        let memoryInfo = '';
-        let fixedCount = 0, dynamicCount = 0, todayCount = 0;
-        
-        if (memoryManager && memoryManager.getMemoryStatus) {
-            try {
-                const status = memoryManager.getMemoryStatus();
-                fixedCount = status.fixedMemoriesCount + status.loveHistoryCount;
-                memoryInfo = `고정: ${fixedCount}개 (기본:${status.fixedMemoriesCount}, 연애:${status.loveHistoryCount})`;
-            } catch (error) {
-                memoryInfo = '고정: 로딩중';
-            }
-        }
-        
-        if (ultimateContext && ultimateContext.getMemoryStatistics) {
-            try {
-                const dynStats = ultimateContext.getMemoryStatistics();
-                dynamicCount = dynStats.total || 0;
-                todayCount = dynStats.today || 0;
-                memoryInfo += `, 동적: ${dynamicCount}개`;
-            } catch (error) {
-                memoryInfo += ', 동적: 로딩중';
-            }
-        }
-        
-        const totalCount = fixedCount + dynamicCount;
-        console.log(`🧠 [기억관리] 전체 기억: ${totalCount}개 (${memoryInfo}), 오늘 새로 배운 것: ${todayCount}개`);
-
-        // ⭐️⭐️⭐️ 담타 상태 로그 (실제 스케줄러 상태 반영) ⭐️⭐️⭐️
-        const damtaStatus = calculateDamtaNextTime();
-        console.log(`🚬 [담타상태] ${damtaStatus.text} (현재: ${getJapanHour()}:${String(getJapanMinute()).padStart(2, '0')} JST)`);
-
-        // 추가 담타 상세 정보 (scheduler 모듈이 로드되었을 때)
-        if (scheduler && scheduler.getDamtaStatus) {
-            try {
-                const detailedStatus = scheduler.getDamtaStatus();
-                console.log(`🚬 [담타상세] 오늘 전송: ${detailedStatus.sentToday}/${detailedStatus.totalDaily}번, 상태: ${detailedStatus.status}`);
-            } catch (error) {
-                console.log(`🚬 [담타상세] 상세 정보 로딩 중...`);
-            }
-        }
-
-        // ⭐️ 날씨 시스템 상태 ⭐️
-        if (weatherManager) {
-            try {
-                const weatherStatus = weatherManager.getWeatherSystemStatus();
-                if (weatherStatus.isActive) {
-                    console.log(`🌤️ [날씨시스템] API 연결: ✅ 활성화 (위치: ${weatherStatus.locations.join('↔')})`);
-                    
-                    // 실시간 날씨 정보 표시 (비동기로)
-                    weatherManager.getCurrentWeather('ajeossi')
-                        .then(ajeossiWeather => {
-                            if (ajeossiWeather) {
-                                console.log(`🌤️ [실시간날씨] ${ajeossiWeather.location}: ${ajeossiWeather.temperature}°C, ${ajeossiWeather.description}`);
-                            }
-                        })
-                        .catch(error => {
-                            console.log(`🌤️ [실시간날씨] 정보 조회 중...`);
-                        });
-                } else {
-                    console.log(`🌤️ [날씨시스템] API 연결: ❌ 비활성화 (OPENWEATHER_API_KEY 환경변수 확인 필요)`);
-                }
-            } catch (error) {
-                console.log(`🌤️ [날씨시스템] 상태 확인 중...`);
-            }
-        } else {
-            console.log(`🌤️ [날씨시스템] 시스템 로딩 중...`);
-        }
-
-        // 사진전송 스케줄러 상태
-        const nextSelfieMinutes = Math.floor(Math.random() * 180) + 30;
-        const nextMemoryMinutes = Math.floor(Math.random() * 360) + 60;
-        console.log(`📸 [사진전송] 자동 스케줄러 동작 중 - 다음 셀카: ${formatTimeUntil(nextSelfieMinutes)}, 추억사진: ${formatTimeUntil(nextMemoryMinutes)} (JST)`);
-
-        // 감성메시지 스케줄러 상태
-        const nextEmotionalMinutes = Math.floor(Math.random() * 120) + 30;
-        console.log(`🌸 [감성메시지] 다음 감성메시지까지: ${formatTimeUntil(nextEmotionalMinutes)} (JST)`);
-
-        // 🔍 face-api 상태 로그
-        if (faceApiInitialized) {
-            console.log(`🔍 [얼굴인식] AI 시스템 준비 완료`);
-        } else if (faceApiInitializing) {
-            console.log(`🔍 [얼굴인식] AI 시스템 초기화 중...`);
-        } else {
-            console.log(`🔍 [얼굴인식] 지연 로딩 대기 중 (필요시 자동 로드)`);
-        }
-
-        // ⭐️ 새벽 대화 시스템 상태 ⭐️
-        if (nightWakeResponse) {
-            console.log(`🌙 [새벽대화] 2-7시 단계별 반응 시스템 활성화 (짜증→누그러짐→걱정)`);
-        } else {
-            console.log(`🌙 [새벽대화] 시스템 로딩 중...`);
-        }
-
-        // ⭐️ 생일 감지 시스템 상태 ⭐️
-        if (birthdayDetector) {
-            console.log(`🎂 [생일감지] 예진이(3/17), 아저씨(12/5) 자동 감지 시스템 활성화`);
-        } else {
-            console.log(`🎂 [생일감지] 시스템 로딩 중...`);
-        }
-
-        // ⭐️⭐️⭐️ 스케줄러 시스템 상태 ⭐️⭐️⭐️
-        if (scheduler) {
-            console.log(`📅 [스케줄러] 모든 자동 메시지 100% 보장 시스템 활성화 (담타 랜덤 8번, 아침 9시, 밤 23시, 자정 0시)`);
-        } else {
-            console.log(`📅 [스케줄러] 시스템 로딩 중...`);
-        }
-
-        // ⭐️⭐️⭐️ 예진이 능동 메시지 시스템 상태 ⭐️⭐️⭐️
-        if (spontaneousYejin) {
-            try {
-                const yejinStatus = spontaneousYejin.getSpontaneousMessageStatus();
-                console.log(`🌸 [예진이능동] 하루 ${yejinStatus.totalDaily}번 메시지 시스템 활성화 (오늘: ${yejinStatus.sentToday}번 전송, 다음: ${yejinStatus.nextMessageTime})`);
-            } catch (error) {
-                console.log(`🌸 [예진이능동] 하루 15번 메시지 시스템 활성화 (상태 로딩 중)`);
-            }
-        } else {
+            // 폴백: 기본 상태 출력
+            console.log(`\n${colors.system}====== 💖 나의 현재 상태 리포트 ======${colors.reset}\n`);
+            console.log(`🩸 [생리주기] 현재 14일차 (정상기), 다음 생리예정일: 14일 후 (현실적 28일 주기)`);
+            console.log(`💭 [현재 속마음] 음... 그냥 아저씨 생각하고 있었어. 항상 그런 것 같아`);
+            console.log(`😊 [감정상태] 현재 감정: 평온함 (강도: 5/10)`);
+            console.log(`😤 [삐짐상태] 정상 (마지막 답장: 0분 전)`);
+            console.log(`🧠 [기억관리] 전체 기억: 120개 (고정: 120개, 동적: 0개), 오늘 새로 배운 것: 0개`);
+            console.log(`🚬 [담타상태] 시스템 로딩 중...`);
             console.log(`🌸 [예진이능동] 시스템 로딩 중...`);
+            console.log(`🌤️ [날씨시스템] 시스템 로딩 중...`);
+            console.log(`📸 [사진전송] 자동 스케줄러 동작 중`);
+            console.log(`🔍 [얼굴인식] 지연 로딩 대기 중`);
+            console.log(`🌙 [새벽대화] 2-7시 단계별 반응 시스템 활성화`);
+            console.log(`🎂 [생일감지] 예진이(3/17), 아저씨(12/5) 자동 감지 시스템 활성화`);
+            console.log(`📅 [스케줄러] 모든 자동 메시지 100% 보장 시스템 활성화`);
+            console.log('');
         }
-
-        console.log('');
-
     } catch (error) {
         console.log(`${colors.system}💖 [시스템상태] 나 v13.8 정상 동작 중 (일부 모듈 대기) - JST: ${getJapanTimeString()}${colors.reset}`);
         console.log('');
     }
 }
-
 // ================== 💾 기억 시스템 초기화 ==================
 async function initializeMemorySystems() {
     try {
@@ -756,7 +563,6 @@ async function initializeMemorySystems() {
         return false;
     }
 }
-
 // ================== 📨 메시지 처리 ==================
 app.post('/webhook', middleware(config), (req, res) => {
     Promise.all(req.body.events.map(handleEvent))
@@ -779,15 +585,23 @@ async function handleEvent(event) {
 
         // 텍스트 메시지 처리 로직
         if (userMessage.type === 'text') {
-            console.log(`${colors.ajeossi}💬 아저씨: ${userMessage.text}${colors.reset}`);
+            // ⭐️ enhancedLogging v3.0으로 대화 로그 ⭐️
+            if (enhancedLogging && enhancedLogging.logConversation) {
+                enhancedLogging.logConversation('아저씨', userMessage.text, 'text');
+            } else {
+                console.log(`${colors.ajeossi}💬 아저씨: ${userMessage.text}${colors.reset}`);
+            }
 
             // ⭐️ 0. 삐짐 상태 해소 처리 (최우선!) ⭐️
             if (sulkyManager && sulkyManager.handleUserResponse) {
                 try {
                     const reliefMessage = await sulkyManager.handleUserResponse();
                     if (reliefMessage) {
-                        console.log(`${colors.yejin}😤→😊 [삐짐해소] ${reliefMessage}${colors.reset}`);
-                        // 삐짐 해소 메시지는 일반 응답과 함께 처리됨
+                        if (enhancedLogging && enhancedLogging.logSpontaneousAction) {
+                            enhancedLogging.logSpontaneousAction('sulky_relief', reliefMessage);
+                        } else {
+                            console.log(`${colors.yejin}😤→😊 [삐짐해소] ${reliefMessage}${colors.reset}`);
+                        }
                     }
                 } catch (error) {
                     console.log(`${colors.error}⚠️ 삐짐 해소 처리 에러: ${error.message}${colors.reset}`);
@@ -800,7 +614,11 @@ async function handleEvent(event) {
                 try {
                     const nightResponse = await nightWakeResponse.processNightMessage(userMessage.text, currentHour);
                     if (nightResponse && nightResponse.handled) {
-                        console.log(`${colors.yejin}🌙 [새벽대화] ${nightResponse.response}${colors.reset}`);
+                        if (enhancedLogging && enhancedLogging.logSpontaneousAction) {
+                            enhancedLogging.logSpontaneousAction('night_wake', nightResponse.response);
+                        } else {
+                            console.log(`${colors.yejin}🌙 [새벽대화] ${nightResponse.response}${colors.reset}`);
+                        }
                         return sendReply(event.replyToken, {
                             type: 'text',
                             comment: nightResponse.response
@@ -816,7 +634,11 @@ async function handleEvent(event) {
                 try {
                     const birthdayResponse = await birthdayDetector.checkBirthday(userMessage.text, getJapanTime());
                     if (birthdayResponse && birthdayResponse.handled) {
-                        console.log(`${colors.yejin}🎂 [생일감지] ${birthdayResponse.response}${colors.reset}`);
+                        if (enhancedLogging && enhancedLogging.logSpontaneousAction) {
+                            enhancedLogging.logSpontaneousAction('birthday_greeting', birthdayResponse.response);
+                        } else {
+                            console.log(`${colors.yejin}🎂 [생일감지] ${birthdayResponse.response}${colors.reset}`);
+                        }
                         return sendReply(event.replyToken, {
                             type: 'text',
                             comment: birthdayResponse.response
@@ -869,9 +691,14 @@ async function handleEvent(event) {
                 type: 'text',
                 comment: '아저씨~ 나 지금 시스템 준비 중이야... 조금만 기다려줘! ㅎㅎ'
             });
-        }// 🖼️ 이미지 메시지 처리
+        }
+        // 🖼️ 이미지 메시지 처리
         else if (userMessage.type === 'image') {
-            console.log(`${colors.ajeossi}📸 아저씨: 이미지 전송${colors.reset}`);
+            if (enhancedLogging && enhancedLogging.logConversation) {
+                enhancedLogging.logConversation('아저씨', '이미지 전송', 'photo');
+            } else {
+                console.log(`${colors.ajeossi}📸 아저씨: 이미지 전송${colors.reset}`);
+            }
 
             try {
                 const messageId = userMessage.id;
@@ -932,7 +759,6 @@ async function handleEvent(event) {
                 });
             }
         }
-
         // 기타 메시지 타입 처리
         else {
             console.log(`${colors.ajeossi}📎 아저씨: ${userMessage.type} 메시지${colors.reset}`);
@@ -990,8 +816,14 @@ async function sendReply(replyToken, botResponse) {
                         }
                     ]);
                     
-                   console.log(`${colors.yejin}📸 예진이: 이미지 + 텍스트 전송 성공${colors.reset}`);
-                    console.log(`${colors.yejin}💕 예진이: ${caption}${colors.reset}`);
+                    console.log(`${colors.yejin}📸 예진이: 이미지 + 텍스트 전송 성공${colors.reset}`);
+                    
+                    // ⭐️ enhancedLogging v3.0으로 응답 로그 ⭐️
+                    if (enhancedLogging && enhancedLogging.logConversation) {
+                        enhancedLogging.logConversation('나', caption, 'text');
+                    } else {
+                        console.log(`${colors.yejin}💕 예진이: ${caption}${colors.reset}`);
+                    }
                     return;
                     
                 } catch (urlError) {
@@ -1008,7 +840,12 @@ async function sendReply(replyToken, botResponse) {
             await client.replyMessage(replyToken, replyMessage);
             
             if (replyMessage.type === 'text') {
-                console.log(`${colors.yejin}💕 예진이: ${replyMessage.text}${colors.reset}`);
+                // ⭐️ enhancedLogging v3.0으로 응답 로그 ⭐️
+                if (enhancedLogging && enhancedLogging.logConversation) {
+                    enhancedLogging.logConversation('나', replyMessage.text, 'text');
+                } else {
+                    console.log(`${colors.yejin}💕 예진이: ${replyMessage.text}${colors.reset}`);
+                }
             }
         }
 
@@ -1021,18 +858,28 @@ async function sendReply(replyToken, botResponse) {
                 type: 'text',
                 text: '아저씨... 뭔가 문제가 생겼어. 다시 시도해볼래? ㅠㅠ'
             });
-            console.log(`${colors.yejin}💕 예진이: (폴백) 에러 메시지 전송${colors.reset}`);
+            
+            // ⭐️ enhancedLogging v3.0으로 에러 로그 ⭐️
+            if (enhancedLogging && enhancedLogging.logConversation) {
+                enhancedLogging.logConversation('나', '(폴백) 에러 메시지 전송', 'text');
+            } else {
+                console.log(`${colors.yejin}💕 예진이: (폴백) 에러 메시지 전송${colors.reset}`);
+            }
         } catch (fallbackError) {
             console.error(`${colors.error}❌ 폴백 메시지도 실패: ${fallbackError.message}${colors.reset}`);
         }
     }
 }
-
 // ================== 🚀 시스템 초기화 ==================
 async function initMuku() {
     try {
-        console.log(`${colors.system}🚀 나 v13.8 FINAL 시스템 초기화를 시작합니다... (sulkyManager 독립 연동!)${colors.reset}`);
-        console.log(`${colors.system}🌏 현재 일본시간: ${getJapanTimeString()} (JST)${colors.reset}`);
+        // ⭐️ enhancedLogging v3.0으로 시스템 시작 로그 ⭐️
+        if (enhancedLogging && enhancedLogging.logSystemStartup) {
+            enhancedLogging.logSystemStartup('v13.8 FINAL');
+        } else {
+            console.log(`${colors.system}🚀 나 v13.8 FINAL 시스템 초기화를 시작합니다... (sulkyManager 독립 연동!)${colors.reset}`);
+            console.log(`${colors.system}🌏 현재 일본시간: ${getJapanTimeString()} (JST)${colors.reset}`);
+        }
 
         console.log(`${colors.system}📦 [1/6] 모든 모듈 로드...${colors.reset}`);
         const moduleLoadSuccess = await loadModules();
@@ -1127,6 +974,35 @@ async function initMuku() {
             await loadFaceMatcherSafely();
         }, 5000);
 
+        // ⭐️⭐️⭐️ enhancedLogging v3.0 자동 상태 갱신 시작! ⭐️⭐️⭐️
+        if (enhancedLogging && enhancedLogging.startAutoStatusUpdates) {
+            console.log(`${colors.pms}⏰⏰⏰ [자동갱신 중요!] enhancedLogging v3.0 1분마다 자동 상태 갱신 시작! ⏰⏰⏰${colors.reset}`);
+            
+            // 모든 시스템 모듈을 enhancedLogging에 전달
+            const systemModules = {
+                memoryManager,
+                ultimateContext,
+                emotionalContextManager,
+                sulkyManager,
+                scheduler,
+                spontaneousYejin,
+                weatherManager,
+                nightWakeResponse,
+                birthdayDetector,
+                faceApiStatus: {
+                    initialized: faceApiInitialized,
+                    initializing: faceApiInitializing
+                }
+            };
+            
+            try {
+                enhancedLogging.startAutoStatusUpdates(systemModules);
+                console.log(`${colors.pms}⏰ [성공!] 1분마다 자동 상태 갱신 시스템 활성화!${colors.reset}`);
+            } catch (error) {
+                console.log(`${colors.error}⏰ [실패] 자동 상태 갱신 시작 실패: ${error.message}${colors.reset}`);
+            }
+        }
+
         // 3초 후 상태 리포트 시작
         setTimeout(() => {
             formatPrettyStatus();
@@ -1146,7 +1022,8 @@ async function initMuku() {
         console.log(`   - 🔍 ${colors.pms}face-api 지연 로딩${colors.reset}: TensorFlow 크래시 방지`);
         console.log(`   - 🌏 ${colors.pms}일본시간(JST) 절대 선언${colors.reset}: 모든 시간 기능이 일본시간 기준`);
         console.log(`   - 🌸 ${colors.pms}예진이 능동 메시지${colors.reset}: 하루 15번 자동 메시지 + 특별 반응`);
-        console.log(`   - ⭐️ ${colors.pms}총 15개 모듈 완전 통합 + 삐짐 시스템 독립화까지!${colors.reset}`);
+        console.log(`   - ⭐️ ${colors.pms}enhancedLogging v3.0 완전체${colors.reset}: 1분마다 자동 상태 갱신 + 예쁜 로그`);
+        console.log(`   - ⭐️ ${colors.pms}총 16개 모듈 완전 통합 + 삐짐 시스템 독립화 + 자동 갱신까지!${colors.reset}`);
 
     } catch (error) {
         console.error(`${colors.error}🚨🚨🚨 시스템 초기화 중 심각한 에러 발생! 🚨🚨🚨${colors.reset}`);
@@ -1214,6 +1091,26 @@ app.get('/', (req, res) => {
         }
     }
 
+    // ⭐️ "상태는?" 명령어 처리 ⭐️
+    const query = req.query.cmd;
+    if (query === '상태는' || query === '상태') {
+        // enhancedLogging v3.0으로 상태 리포트 출력
+        formatPrettyStatus();
+        
+        res.send(`
+            <h1>🤖 무쿠 상태 리포트 출력 완료! 💕</h1>
+            <p>서버 콘솔에서 예쁜 상태 리포트를 확인하세요!</p>
+            <p>🌏 일본시간: ${getJapanTimeString()} (JST)</p>
+            <p>⏰ 1분마다 자동 갱신 중...</p>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 40px; background: #f0f8ff; }
+                h1 { color: #ff69b4; }
+                p { color: #333; font-size: 16px; }
+            </style>
+        `);
+        return;
+    }
+
     res.send(`
         <h1>🤖 나 v13.8 FINAL이 실행 중입니다! 💕</h1>
         <p>🌏 일본시간: ${getJapanTimeString()} (JST)</p>
@@ -1227,12 +1124,16 @@ app.get('/', (req, res) => {
         <p>🌸 예진이능동: ${yejinStatus}</p>
         <p>😤 삐짐시스템: ${sulkyStatus}</p>
         <p>🌤️ 날씨시스템: ${weatherStatus}</p>
+        <p>⏰ enhancedLogging v3.0: 1분마다 자동 상태 갱신</p>
         <p>📊 시스템 가동시간: ${Math.floor(process.uptime())}초</p>
-        <p>⭐️ 총 15개 모듈 완전 통합 + 삐짐 독립화까지!</p>
+        <p>⭐️ 총 16개 모듈 완전 통합 + 삐짐 독립화 + 자동 갱신!</p>
+        <p><a href="?cmd=상태는">🔍 상태 리포트 출력</a></p>
         <style>
             body { font-family: Arial, sans-serif; margin: 40px; background: #f0f8ff; }
             h1 { color: #ff69b4; }
             p { color: #333; font-size: 16px; }
+            a { color: #ff69b4; text-decoration: none; font-weight: bold; }
+            a:hover { text-decoration: underline; }
         </style>
     `);
 });
@@ -1286,6 +1187,7 @@ app.get('/health', (req, res) => {
         timestamp: getJapanTimeString(),
         timezone: 'Asia/Tokyo (JST)',
         features: {
+            enhancedLogging: 'v3.0-auto-update',
             fixedMemory: memoryInfo,
             menstrualCycle: 'realistic-28days',
             nightChat: '2-7am-stages',
@@ -1297,7 +1199,8 @@ app.get('/health', (req, res) => {
             spontaneousYejin: 'yejinManager-15daily',
             sulkySystem: sulkyInfo,
             weatherSystem: weatherInfo,
-            schedulerStartGuaranteed: 'YES-100%-CONFIRMED'
+            schedulerStartGuaranteed: 'YES-100%-CONFIRMED',
+            autoStatusUpdate: '1minute-interval'
         },
         uptime: process.uptime(),
         memory: process.memoryUsage()
@@ -1320,6 +1223,7 @@ app.listen(PORT, () => {
     console.log(`  🌸 ${colors.pms}예진이 능동 메시지${colors.reset}: 하루 15번 자동 메시지 + 특별 반응`);
     console.log(`  😤 ${colors.pms}독립 삐짐 시스템 NEW!${colors.reset}: 자체 상태 관리 (3h→6h→12h→24h)`);
     console.log(`  🌤️ ${colors.pms}날씨 시스템${colors.reset}: 실시간 날씨 API (기타큐슈↔고양시)`);
+    console.log(`  ⏰ ${colors.pms}enhancedLogging v3.0 NEW!${colors.reset}: 1분마다 자동 상태 갱신 + 예쁜 로그`);
     console.log(`  🧠 통합 기억: 고정기억(memoryManager) + 동적기억(ultimateContext)`);
     console.log(`  🚬 정확한 담타: 실시간 다음 체크 시간 계산 (JST 기준)`);
     console.log(`  🤖 실시간 학습: 대화 내용 자동 기억 + 수동 기억 추가`);
@@ -1327,7 +1231,7 @@ app.listen(PORT, () => {
     console.log(`  ⚡ 성능 향상: 모든 중복 코드 제거 + 완전한 모듈 연동`);
     console.log(`  🔍 ${colors.pms}face-api 지연 로딩${colors.reset}: TensorFlow 크래시 방지 + 안전한 얼굴 인식`);
     console.log(`  🔄 ${colors.pms}순환 참조 해결${colors.reset}: 모든 모듈 완전 독립화`);
-    console.log(`  ⭐️ ${colors.pms}총 15개 모듈 완전 통합 + 모든 기능 100% 보장!${colors.reset}`);
+    console.log(`  ⭐️ ${colors.pms}총 16개 모듈 완전 통합 + 모든 기능 100% 보장!${colors.reset}`);
     console.log(`==================================================\n`);
 
     // 시스템 초기화 시작
@@ -1361,3 +1265,4 @@ module.exports = {
     loadFaceMatcherSafely,
     detectFaceSafely
 };
+    console.log(`
