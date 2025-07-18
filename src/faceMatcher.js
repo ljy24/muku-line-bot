@@ -1,4 +1,4 @@
-// src/faceMatcher.js - v2.2 (NodeJS 호환 버전)
+// src/faceMatcher.js - v2.3 (더 안전한 초기화)
 // 🔍 아저씨와 예진이 사진을 정확히 구분합니다
 const fs = require('fs');
 const path = require('path');
@@ -6,37 +6,48 @@ const path = require('path');
 // face-api는 완전 선택적 로드 (에러 방지)
 let faceapi = null;
 let canvas = null;
+let tf = null;
 let isModuleAvailable = false;
 
 // 안전한 모듈 로드 (NodeJS 호환)
-function loadFaceApiModules() {
+async function loadFaceApiModules() {
     try {
-        // ✅ NodeJS용 올바른 import 방법
+        console.log('🔍 [얼굴인식] 모듈 로드 시작...');
+        
+        // TensorFlow 먼저 로드
+        tf = require('@tensorflow/tfjs-node');
+        console.log('🔍 [얼굴인식] TensorFlow 로드 성공');
+        
+        // TensorFlow 백엔드 설정
+        await tf.ready();
+        console.log('🔍 [얼굴인식] TensorFlow 백엔드 준비 완료');
+        
+        // face-api 로드
         faceapi = require('@vladmandic/face-api/dist/face-api.node.js');
+        console.log('🔍 [얼굴인식] face-api 로드 성공');
+        
+        // canvas 로드
         canvas = require('canvas');
+        console.log('🔍 [얼굴인식] canvas 로드 성공');
         
         if (faceapi && canvas) {
             const { Canvas, Image, ImageData } = canvas;
             faceapi.env.monkeyPatch({ Canvas, Image, ImageData });
+            console.log('🔍 [얼굴인식] canvas 패치 완료');
+            
             isModuleAvailable = true;
             return true;
         }
         return false;
     } catch (error) {
+        console.log(`🔍 [얼굴인식] 모듈 로드 실패: ${error.message}`);
         // 모듈 없어도 에러 안남
         faceapi = null;
         canvas = null;
+        tf = null;
         isModuleAvailable = false;
         return false;
     }
-}
-
-// 초기 모듈 로드 시도
-const moduleLoaded = loadFaceApiModules();
-if (moduleLoaded) {
-    console.log('🔍 [얼굴인식] face-api 모듈 로드 성공');
-} else {
-    console.log('🔍 [얼굴인식] face-api 모듈 없음 - 빠른 구분 모드만 사용');
 }
 
 // 경로 설정 (src/ 기준)
@@ -114,17 +125,25 @@ function saveFaceData() {
     }
 }
 
-// 모델 초기화 (완전 안전 버전)
+// 모델 초기화 (더 안전한 버전)
 async function initModels() {
     try {
-        if (!isModuleAvailable || !faceapi) {
-            logFace('face-api 모듈 없음 - 빠른 구분 모드로 동작');
-            isInitialized = false;
-            return false; // 에러 없이 false만 반환
+        logFace('얼굴 인식 시스템 초기화 시작...');
+        
+        // 1단계: 모듈 로드
+        if (!isModuleAvailable) {
+            logFace('모듈 로드 시도 중...');
+            const loaded = await loadFaceApiModules();
+            if (!loaded) {
+                logFace('face-api 모듈 없음 - 빠른 구분 모드로 동작');
+                isInitialized = false;
+                return false;
+            }
         }
         
-        logFace('face-api 모델 로딩 시작...');
+        logFace('face-api 모듈 로드 성공');
         
+        // 2단계: 모델 폴더 확인
         if (!fs.existsSync(modelPath)) {
             logFace(`모델 폴더가 없습니다: ${modelPath}`);
             logFace('얼굴 인식 없이 빠른 구분 모드로 동작합니다');
@@ -132,7 +151,7 @@ async function initModels() {
             return false;
         }
         
-        // 필요한 모델 파일들 확인
+        // 3단계: 필요한 모델 파일들 확인
         const requiredModels = [
             'ssd_mobilenetv1_model-weights_manifest.json',
             'face_landmark_68_model-weights_manifest.json', 
@@ -150,21 +169,44 @@ async function initModels() {
             return false;
         }
         
-        // 모델 로딩 시도
-        await faceapi.nets.ssdMobilenetv1.loadFromDisk(modelPath);
-        await faceapi.nets.faceLandmark68Net.loadFromDisk(modelPath);
-        await faceapi.nets.faceRecognitionNet.loadFromDisk(modelPath);
+        // 4단계: 모델 로딩 시도 (타임아웃 추가)
+        logFace('AI 모델 로딩 시작...');
         
-        // 기존 저장된 데이터 로드
+        const loadTimeout = setTimeout(() => {
+            logFace('모델 로딩 시간 초과 - 빠른 구분 모드로 전환');
+            isInitialized = false;
+        }, 30000); // 30초 타임아웃
+        
+        await Promise.race([
+            Promise.all([
+                faceapi.nets.ssdMobilenetv1.loadFromDisk(modelPath),
+                faceapi.nets.faceLandmark68Net.loadFromDisk(modelPath),
+                faceapi.nets.faceRecognitionNet.loadFromDisk(modelPath)
+            ]),
+            new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('로딩 타임아웃')), 25000)
+            )
+        ]);
+        
+        clearTimeout(loadTimeout);
+        
+        // 5단계: 기존 저장된 데이터 로드
         labeledDescriptors = loadFaceData();
         isInitialized = true;
         
-        logFace(`모델 로딩 완료! 등록된 얼굴: ${labeledDescriptors.length}명`);
+        logFace(`AI 모델 로딩 완료! 등록된 얼굴: ${labeledDescriptors.length}명`);
         
-        // 🚀 저장된 사진들로 자동 등록 (최초 1회만)
+        // 6단계: 자동 등록 (비동기로 실행)
         if (labeledDescriptors.length === 0) {
-            logFace('등록된 얼굴이 없어서 저장된 사진들로 자동 등록을 시작합니다');
-            await autoRegisterFromFiles();
+            logFace('백그라운드에서 얼굴 자동 등록을 시작합니다...');
+            // 메인 스레드를 블록하지 않도록 비동기 실행
+            setImmediate(async () => {
+                try {
+                    await autoRegisterFromFiles();
+                } catch (error) {
+                    logFace(`자동 등록 중 에러 (무시됨): ${error.message}`);
+                }
+            });
         } else {
             logFace('이미 등록된 얼굴 데이터가 있습니다');
             labeledDescriptors.forEach(ld => {
@@ -262,9 +304,10 @@ async function autoRegisterFromFiles() {
         if (fs.existsSync(uncleDir)) {
             const uncleFiles = fs.readdirSync(uncleDir)
                 .filter(f => f.match(/\.(jpg|jpeg|png)$/i))
-                .sort(); // 파일명 순서대로 정렬
+                .sort() // 파일명 순서대로 정렬
+                .slice(0, 5); // 처음 5개만 (속도 향상)
             
-            logFace(`📸 아저씨 사진 ${uncleFiles.length}개 발견`);
+            logFace(`📸 아저씨 사진 ${uncleFiles.length}개 처리 예정`);
             
             for (let i = 0; i < uncleFiles.length; i++) {
                 const file = uncleFiles[i];
@@ -285,7 +328,7 @@ async function autoRegisterFromFiles() {
                     }
                     
                     // 메모리 관리를 위한 약간의 딜레이
-                    await new Promise(resolve => setTimeout(resolve, 100));
+                    await new Promise(resolve => setTimeout(resolve, 200));
                     
                 } catch (error) {
                     totalFailed++;
@@ -299,9 +342,10 @@ async function autoRegisterFromFiles() {
         if (fs.existsSync(yejinDir)) {
             const yejinFiles = fs.readdirSync(yejinDir)
                 .filter(f => f.match(/\.(jpg|jpeg|png)$/i))
-                .sort(); // 파일명 순서대로 정렬
+                .sort() // 파일명 순서대로 정렬
+                .slice(0, 5); // 처음 5개만 (속도 향상)
             
-            logFace(`📸 예진이 사진 ${yejinFiles.length}개 발견`);
+            logFace(`📸 예진이 사진 ${yejinFiles.length}개 처리 예정`);
             
             for (let i = 0; i < yejinFiles.length; i++) {
                 const file = yejinFiles[i];
@@ -322,7 +366,7 @@ async function autoRegisterFromFiles() {
                     }
                     
                     // 메모리 관리를 위한 약간의 딜레이
-                    await new Promise(resolve => setTimeout(resolve, 100));
+                    await new Promise(resolve => setTimeout(resolve, 200));
                     
                 } catch (error) {
                     totalFailed++;
@@ -339,18 +383,6 @@ async function autoRegisterFromFiles() {
         labeledDescriptors.forEach(ld => {
             logFace(`👤 ${ld.label}: ${ld.descriptors.length}개 얼굴 샘플 등록됨`);
         });
-        
-        // 인식 정확도 예상
-        const uncleCount = labeledDescriptors.find(ld => ld.label === '아저씨')?.descriptors.length || 0;
-        const yejinCount = labeledDescriptors.find(ld => ld.label === '예진이')?.descriptors.length || 0;
-        
-        if (uncleCount >= 10 && yejinCount >= 10) {
-            logFace(`🎯 높은 정확도 예상: 아저씨 ${uncleCount}개, 예진이 ${yejinCount}개 샘플`);
-        } else if (uncleCount >= 5 && yejinCount >= 5) {
-            logFace(`🎯 중간 정확도 예상: 아저씨 ${uncleCount}개, 예진이 ${yejinCount}개 샘플`);
-        } else {
-            logFace(`⚠️ 더 많은 샘플 필요: 아저씨 ${uncleCount}개, 예진이 ${yejinCount}개 샘플`);
-        }
         
         return totalRegistered > 0;
         
