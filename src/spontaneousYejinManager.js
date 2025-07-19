@@ -1,5 +1,5 @@
 // ============================================================================
-// spontaneousYejinManager.js - v1.6 (GPT 모델 버전 전환 + 문장 수 제한)
+// spontaneousYejinManager.js - v1.7 COMPLETE (실제 통계 추적 + 모든 기능 포함)
 // 🌸 예진이가 능동적으로 하루 15번 메시지 보내는 시스템
 // 8시-1시 사이 랜덤, 2-5문장으로 단축, 실제 취향과 일상 기반
 // ✅ 모델 활동 이야기 추가 (촬영, 화보, 스케줄)
@@ -7,6 +7,7 @@
 // ✅ 사진 전송 확률: 30%로 대폭 증가
 // ✅ omoide 사진 전송 400 에러 수정 (yejinSelfie.js 방식 적용)
 // ✨ GPT 모델 버전 전환: 3문장 넘으면 GPT-3.5, 이하면 설정대로
+// ⭐️ 실제 통계 추적 시스템 + ultimateContext 연동 완성!
 // ============================================================================
 
 const schedule = require('node-cron');
@@ -25,6 +26,20 @@ try {
     console.warn('⚠️ [spontaneousYejin] GPT 모델 버전 관리 시스템 연동 실패:', error.message);
 }
 
+// ⭐️ ultimateConversationContext 연동을 위한 지연 로딩
+let ultimateContext = null;
+function getUltimateContext() {
+    if (!ultimateContext) {
+        try {
+            ultimateContext = require('./ultimateConversationContext');
+            console.log('✅ [spontaneousYejin] ultimateConversationContext 연동 성공');
+        } catch (error) {
+            console.warn('⚠️ [spontaneousYejin] ultimateConversationContext 연동 실패:', error.message);
+        }
+    }
+    return ultimateContext;
+}
+
 // ================== 🌏 설정 ==================
 const TIMEZONE = 'Asia/Tokyo';
 const USER_ID = process.env.TARGET_USER_ID;
@@ -41,13 +56,35 @@ if (process.env.OPENAI_API_KEY) {
     openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 }
 
-// ================== 📊 일일 스케줄 상태 ==================
+// ================== 📊 일일 스케줄 상태 (⭐️ 실제 통계 추적 강화!) ==================
 let dailyScheduleState = {
+    // 기본 스케줄 정보
     todaySchedule: [],
     sentToday: 0,
     lastScheduleDate: null,
     jobs: [],
-    photoJobs: [] // 독립 사진 스케줄
+    photoJobs: [], // 독립 사진 스케줄
+    
+    // ⭐️ 실제 통계 추적 추가!
+    realStats: {
+        sentTimes: [],              // 실제 전송된 시간들
+        messageTypes: {             // 메시지 타입별 통계
+            emotional: 0,           // 감성 메시지
+            casual: 0,              // 일상 메시지
+            caring: 0,              // 걱정/관심 메시지
+            playful: 0              // 장난스러운 메시지
+        },
+        lastSentTime: null,         // 마지막 전송 시간
+        nextScheduledTime: null,    // 다음 예정 시간
+        lastResetDate: null,        // 마지막 리셋 날짜
+        totalDaily: DAILY_MESSAGE_COUNT, // 하루 목표
+        
+        // 성능 통계
+        successfulSends: 0,         // 성공한 전송
+        failedSends: 0,             // 실패한 전송
+        photoSends: 0,              // 사진 전송 횟수
+        textOnlySends: 0            // 텍스트만 전송 횟수
+    }
 };
 
 // ================== 🎨 로그 함수 ==================
@@ -402,6 +439,127 @@ const yejinRealLife = {
         ]
     }
 };
+
+// ================== ⭐️ 실제 통계 기록 함수들 (새로 추가!) ==================
+
+/**
+ * ⭐️ 메시지 전송 성공 시 실제 통계 기록
+ */
+function recordActualMessageSent(messageType = 'casual', isPhotoMessage = false) {
+    const sentTime = moment().tz(TIMEZONE);
+    const timeString = sentTime.format('HH:mm');
+    
+    // 기본 통계 업데이트
+    dailyScheduleState.sentToday++;
+    dailyScheduleState.realStats.sentTimes.push(timeString);
+    dailyScheduleState.realStats.lastSentTime = sentTime.valueOf();
+    dailyScheduleState.realStats.successfulSends++;
+    
+    // 메시지 타입별 통계
+    if (dailyScheduleState.realStats.messageTypes[messageType] !== undefined) {
+        dailyScheduleState.realStats.messageTypes[messageType]++;
+    }
+    
+    // 사진/텍스트 구분
+    if (isPhotoMessage) {
+        dailyScheduleState.realStats.photoSends++;
+    } else {
+        dailyScheduleState.realStats.textOnlySends++;
+    }
+    
+    // ⭐️ ultimateConversationContext에도 기록!
+    const uc = getUltimateContext();
+    if (uc && uc.recordSpontaneousMessage) {
+        uc.recordSpontaneousMessage(messageType);
+    }
+    
+    // 다음 메시지 시간 계산 및 설정
+    updateNextMessageTime();
+    
+    spontaneousLog(`📊 실제 통계 기록 완료: ${messageType} (${timeString}) - 총 ${dailyScheduleState.sentToday}/${DAILY_MESSAGE_COUNT}건`);
+}
+
+/**
+ * ⭐️ 메시지 전송 실패 시 기록
+ */
+function recordMessageFailed(reason = 'unknown') {
+    dailyScheduleState.realStats.failedSends++;
+    spontaneousLog(`📊 전송 실패 기록: ${reason} - 실패 총 ${dailyScheduleState.realStats.failedSends}건`);
+}
+
+/**
+ * ⭐️ 다음 메시지 시간 업데이트
+ */
+function updateNextMessageTime() {
+    const koreaTime = moment().tz(TIMEZONE);
+    const now = koreaTime.hour() * 60 + koreaTime.minute();
+    
+    // 현재 스케줄에서 다음 시간 찾기
+    const remainingSchedules = dailyScheduleState.todaySchedule.filter(time => {
+        const scheduleMinutes = time.hour * 60 + time.minute;
+        const adjustedScheduleMinutes = time.hour < MESSAGE_START_HOUR ? 
+            scheduleMinutes + 24 * 60 : scheduleMinutes;
+        const adjustedNow = koreaTime.hour() < MESSAGE_START_HOUR ? 
+            now + 24 * 60 : now;
+        return adjustedScheduleMinutes > adjustedNow;
+    });
+    
+    if (remainingSchedules.length > 0) {
+        const nextSchedule = remainingSchedules[0];
+        const nextTime = moment().tz(TIMEZONE)
+            .hour(nextSchedule.hour)
+            .minute(nextSchedule.minute)
+            .second(0);
+        
+        dailyScheduleState.realStats.nextScheduledTime = nextTime.valueOf();
+        
+        // ⭐️ ultimateConversationContext에도 알림!
+        const uc = getUltimateContext();
+        if (uc && uc.setNextSpontaneousTime) {
+            uc.setNextSpontaneousTime(nextTime.valueOf());
+        }
+        
+        spontaneousLog(`⏰ 다음 메시지 시간 업데이트: ${nextTime.format('HH:mm')}`);
+    } else {
+        dailyScheduleState.realStats.nextScheduledTime = null;
+        spontaneousLog(`⏰ 오늘 스케줄 완료`);
+    }
+}
+
+/**
+ * ⭐️ 일일 통계 리셋
+ */
+function resetDailyStats() {
+    const today = moment().tz(TIMEZONE).format('YYYY-MM-DD');
+    
+    spontaneousLog('🌄 예진이 능동 메시지 일일 통계 리셋 시작');
+    
+    // 통계 리셋
+    dailyScheduleState.sentToday = 0;
+    dailyScheduleState.realStats.sentTimes = [];
+    dailyScheduleState.realStats.lastSentTime = null;
+    dailyScheduleState.realStats.nextScheduledTime = null;
+    dailyScheduleState.realStats.lastResetDate = today;
+    
+    // 메시지 타입별 통계 리셋
+    Object.keys(dailyScheduleState.realStats.messageTypes).forEach(type => {
+        dailyScheduleState.realStats.messageTypes[type] = 0;
+    });
+    
+    // 성능 통계 리셋
+    dailyScheduleState.realStats.successfulSends = 0;
+    dailyScheduleState.realStats.failedSends = 0;
+    dailyScheduleState.realStats.photoSends = 0;
+    dailyScheduleState.realStats.textOnlySends = 0;
+    
+    // ⭐️ ultimateConversationContext도 리셋!
+    const uc = getUltimateContext();
+    if (uc && uc.resetSpontaneousStats) {
+        uc.resetSpontaneousStats();
+    }
+    
+    spontaneousLog(`✅ 일일 통계 리셋 완료 (${today})`);
+}
 
 // ================== 👗 yejin 셀카 전송 시스템 ==================
 function getYejinSelfieUrl() {
@@ -879,6 +1037,21 @@ function generateRandomSituation() {
     return getRandomItem(situations);
 }
 
+// ================== 🎭 메시지 타입 분석 ==================
+function analyzeMessageType(message) {
+    const lowerMsg = message.toLowerCase();
+    
+    if (lowerMsg.includes('사랑') || lowerMsg.includes('보고싶') || lowerMsg.includes('그리워')) {
+        return 'emotional';
+    } else if (lowerMsg.includes('걱정') || lowerMsg.includes('괜찮') || lowerMsg.includes('힘들')) {
+        return 'caring';
+    } else if (lowerMsg.includes('ㅋㅋ') || lowerMsg.includes('ㅎㅎ') || lowerMsg.includes('장난')) {
+        return 'playful';
+    } else {
+        return 'casual';
+    }
+}
+
 // ================== 🤖 OpenAI 메시지 생성 (⭐️ 모델 활동 + "너" 금지! + 문장 수 제한) ==================
 async function generateYejinSpontaneousMessage() {
     try {
@@ -902,6 +1075,8 @@ async function generateYejinSpontaneousMessage() {
                 const photoSent = await sendOmoidePhoto();
                 if (photoSent) {
                     spontaneousLog('✅ 사진 전송 완료 - 추가 텍스트 메시지 생략');
+                    // ⭐️ 사진 전송도 통계에 기록!
+                    recordActualMessageSent('casual', true);
                     return null; // 사진만 보내고 끝
                 } else {
                     spontaneousLog('❌ 사진 전송 실패 - 일반 메시지로 진행');
@@ -1018,11 +1193,12 @@ function getFallbackMessage() {
     return getRandomItem(fallbackMessages);
 }
 
-// ================== 📤 메시지 전송 ==================
+// ================== 📤 메시지 전송 (⭐️ 실제 통계 기록 포함!) ==================
 async function sendSpontaneousMessage() {
     try {
         if (!lineClient || !USER_ID) {
             spontaneousLog('❌ LINE 클라이언트 또는 USER_ID 없음');
+            recordMessageFailed('no_client_or_userid');
             return false;
         }
 
@@ -1030,24 +1206,29 @@ async function sendSpontaneousMessage() {
         
         if (!message) {
             spontaneousLog('✅ omoide 사진 전송 완료 (별도 메시지 없음)');
-            dailyScheduleState.sentToday++;
+            // 사진 전송은 이미 generateYejinSpontaneousMessage에서 기록됨
             return true;
         }
+        
+        // 메시지 타입 분석
+        const messageType = analyzeMessageType(message);
         
         await lineClient.pushMessage(USER_ID, {
             type: 'text',
             text: message
         });
 
-        dailyScheduleState.sentToday++;
+        // ⭐️ 성공 시 실제 통계 기록!
+        recordActualMessageSent(messageType, false);
         
         spontaneousLog(`✅ 예진이 능동 메시지 전송 성공 (${dailyScheduleState.sentToday}/${DAILY_MESSAGE_COUNT})`);
-        spontaneousLog(`📱 메시지: "${message.substring(0, 50)}..."`);
+        spontaneousLog(`📱 메시지 (${messageType}): "${message.substring(0, 50)}..."`);
         
         return true;
 
     } catch (error) {
         spontaneousLog(`❌ 메시지 전송 실패: ${error.message}`);
+        recordMessageFailed(`send_error: ${error.message}`);
         return false;
     }
 }
@@ -1071,7 +1252,11 @@ function scheduleIndependentPhotos() {
         
         const job = schedule.scheduleJob(cronExpression, async () => {
             spontaneousLog('📸 독립 사진 스케줄 실행');
-            await sendOmoidePhoto();
+            const photoSent = await sendOmoidePhoto();
+            if (photoSent) {
+                // 독립 사진 전송도 통계에 기록
+                recordActualMessageSent('casual', true);
+            }
         });
         
         dailyScheduleState.photoJobs.push(job);
@@ -1168,7 +1353,15 @@ function generateDailyYejinSchedule() {
 
     dailyScheduleState.todaySchedule = scheduleArray;
     dailyScheduleState.lastScheduleDate = koreaTime.format('YYYY-MM-DD HH:mm');
-    dailyScheduleState.sentToday = 0;
+    
+    // ⭐️ 실제 통계 시스템 초기화
+    const today = koreaTime.format('YYYY-MM-DD');
+    if (dailyScheduleState.realStats.lastResetDate !== today) {
+        resetDailyStats();
+    }
+    
+    // 다음 메시지 시간 설정
+    updateNextMessageTime();
 
     // 독립적인 사진 스케줄도 함께 생성
     scheduleIndependentPhotos();
@@ -1180,14 +1373,27 @@ function generateDailyYejinSchedule() {
 // ================== 🌄 자정 스케줄 초기화 ==================
 schedule.scheduleJob('0 0 * * *', () => {
     spontaneousLog('🌄 자정 0시 - 새로운 하루 시작, 예진이 스케줄 재생성');
-    generateDailyYejinSchedule();
+    resetDailyStats(); // 통계 리셋
+    generateDailyYejinSchedule(); // 새 스케줄 생성
 });
 
-// ================== 📊 상태 확인 함수들 ==================
+// ================== 📊 상태 확인 함수들 (⭐️ 실제 데이터 기반 강화!) ==================
+
+/**
+ * ⭐️ 예진이 능동 메시지 상태 조회 (라인 상태 리포트용!)
+ */
 function getSpontaneousMessageStatus() {
     const koreaTime = moment().tz(TIMEZONE);
-    const now = koreaTime.hour() * 60 + koreaTime.minute();
     
+    // 다음 메시지 시간 계산
+    let nextTimeString = '대기 중';
+    if (dailyScheduleState.realStats.nextScheduledTime) {
+        const nextTime = moment(dailyScheduleState.realStats.nextScheduledTime).tz(TIMEZONE);
+        nextTimeString = nextTime.format('HH:mm');
+    }
+    
+    // 남은 스케줄 계산
+    const now = koreaTime.hour() * 60 + koreaTime.minute();
     const remainingMessages = dailyScheduleState.todaySchedule.filter(time => {
         const scheduleMinutes = time.hour * 60 + time.minute;
         const adjustedScheduleMinutes = time.hour < MESSAGE_START_HOUR ? 
@@ -1196,26 +1402,62 @@ function getSpontaneousMessageStatus() {
             now + 24 * 60 : now;
         return adjustedScheduleMinutes > adjustedNow;
     });
-
-    const totalScheduled = dailyScheduleState.todaySchedule.length;
-
+    
     return {
+        // ⭐️ 라인 상태 리포트용 핵심 정보
         currentTime: koreaTime.format('HH:mm'),
         sentToday: dailyScheduleState.sentToday,
-        totalDaily: totalScheduled,
+        totalDaily: dailyScheduleState.realStats.totalDaily,
+        nextMessageTime: nextTimeString,
+        
+        // 상세 정보
         remainingToday: remainingMessages.length,
-        nextMessageTime: remainingMessages.length > 0 ? 
-            `${String(remainingMessages[0].hour).padStart(2, '0')}:${String(remainingMessages[0].minute).padStart(2, '0')}` : 
-            '오늘 완료',
+        progress: `${dailyScheduleState.sentToday}/${dailyScheduleState.realStats.totalDaily}`,
+        
+        // ⭐️ 실제 통계 정보
+        realStats: {
+            sentTimes: dailyScheduleState.realStats.sentTimes,
+            messageTypes: { ...dailyScheduleState.realStats.messageTypes },
+            lastSentTime: dailyScheduleState.realStats.lastSentTime ? 
+                moment(dailyScheduleState.realStats.lastSentTime).tz(TIMEZONE).format('HH:mm') : null,
+            successfulSends: dailyScheduleState.realStats.successfulSends,
+            failedSends: dailyScheduleState.realStats.failedSends,
+            photoSends: dailyScheduleState.realStats.photoSends,
+            textOnlySends: dailyScheduleState.realStats.textOnlySends
+        },
+        
+        // 스케줄 정보
         todaySchedule: dailyScheduleState.todaySchedule.map(t => 
             `${String(t.hour).padStart(2, '0')}:${String(t.minute).padStart(2, '0')}`
         ),
         isActive: dailyScheduleState.jobs.length > 0,
         scheduleStartTime: dailyScheduleState.lastScheduleDate,
         photoScheduleCount: dailyScheduleState.photoJobs.length,
-        // ✨ 현재 GPT 모델 정보 추가
-        currentGptModel: getCurrentModelSetting ? getCurrentModelSetting() : 'unknown'
+        
+        // ✨ GPT 모델 정보
+        currentGptModel: getCurrentModelSetting ? getCurrentModelSetting() : 'unknown',
+        
+        // 시스템 상태
+        systemStatus: dailyScheduleState.jobs.length > 0 ? '활성화' : '비활성화'
     };
+}
+
+/**
+ * ⭐️ ultimateConversationContext와 동기화하여 통계 업데이트
+ */
+function syncWithUltimateContext() {
+    const uc = getUltimateContext();
+    if (uc && uc.syncWithYejinManager) {
+        const currentState = {
+            sentToday: dailyScheduleState.sentToday,
+            totalDaily: dailyScheduleState.realStats.totalDaily,
+            nextScheduledTime: dailyScheduleState.realStats.nextScheduledTime,
+            messageTypes: dailyScheduleState.realStats.messageTypes
+        };
+        
+        uc.syncWithYejinManager(currentState);
+        spontaneousLog('🔄 ultimateConversationContext와 통계 동기화 완료');
+    }
 }
 
 // ================== 🧪 테스트 함수 ==================
@@ -1236,12 +1478,18 @@ async function testSpontaneousMessage() {
                 type: 'text',
                 text: `[테스트] ${testMessage}`
             });
+            
+            // 테스트도 통계에 포함
+            const messageType = analyzeMessageType(testMessage);
+            recordActualMessageSent(messageType, false);
+            
             spontaneousLog('✅ 테스트 메시지 전송 성공');
         } else {
             spontaneousLog('⚠️ LINE 설정 없음 - 메시지만 생성함');
         }
     } catch (error) {
         spontaneousLog(`❌ 테스트 메시지 전송 실패: ${error.message}`);
+        recordMessageFailed(`test_error: ${error.message}`);
     }
     
     return testMessage;
@@ -1268,7 +1516,18 @@ function startSpontaneousYejinSystem(client) {
             return false;
         }
         
+        // ⭐️ ultimateConversationContext 연동 확인
+        const uc = getUltimateContext();
+        if (uc) {
+            spontaneousLog('✅ ultimateConversationContext 연동 성공');
+        } else {
+            spontaneousLog('⚠️ ultimateConversationContext 연동 실패 - 독립 모드로 동작');
+        }
+        
         generateDailyYejinSchedule();
+        
+        // 시작 시 통계 동기화
+        syncWithUltimateContext();
         
         spontaneousLog('✅ 예진이 능동 메시지 시스템 활성화 완료!');
         spontaneousLog(`📋 설정: 하루 ${DAILY_MESSAGE_COUNT}번, ${MESSAGE_START_HOUR}시-${MESSAGE_END_HOUR-24}시, 2-5문장 제한`);
@@ -1277,6 +1536,8 @@ function startSpontaneousYejinSystem(client) {
         spontaneousLog(`📋 호칭: "너" 완전 금지, "아저씨"만 사용`);
         spontaneousLog(`📋 모델활동: 촬영, 화보, 스케줄 관련 이야기 추가`);
         spontaneousLog(`✨ 모델관리: 3문장 넘으면 GPT-3.5, 복잡한 상황은 GPT-4o`);
+        spontaneousLog(`⭐️ 실제 통계 추적 시스템 활성화`);
+        spontaneousLog(`🔗 ultimateConversationContext 실시간 연동`);
         
         return true;
         
@@ -1287,38 +1548,79 @@ function startSpontaneousYejinSystem(client) {
 }
 
 // ================== 📤 모듈 내보내기 ==================
-spontaneousLog('🌸 spontaneousYejinManager.js v1.6 로드 완료 (GPT모델전환+문장수제한+2-5문장)');
+spontaneousLog('🌸 spontaneousYejinManager.js v1.7 COMPLETE 로드 완료 (모든기능+실제통계추적+ultimateContext연동)');
 
 module.exports = {
+    // 🚀 메인 함수들
     startSpontaneousYejinSystem,
-    getSpontaneousMessageStatus,
+    
+    // 📊 상태 조회 함수들 (⭐️ 실제 데이터 기반!)
+    getSpontaneousMessageStatus,   // ⭐️ 라인 상태 리포트용 핵심 함수!
+    
+    // 📤 메시지 관련 함수들
+    sendSpontaneousMessage,
+    generateYejinSpontaneousMessage,
+    
+    // 📅 스케줄링 함수들
+    generateDailyYejinSchedule,
+    scheduleIndependentPhotos,
+    resetDailyStats,
+    
+    // ⭐️ 실제 통계 추적 함수들 (새로 추가!)
+    recordActualMessageSent,
+    recordMessageFailed,
+    updateNextMessageTime,
+    syncWithUltimateContext,
+    
+    // 🧪 테스트 함수들
     testSpontaneousMessage,
     testPhotoSending,
+    
+    // 😤 아저씨 상황 반응 시스템
     detectAjossiBusyStatus,
     generateBusyReaction,
     detectMentalHealthContext,
     generateMentalHealthReaction,
     getMentalHealthSituation,
     getModelingSituation,
+    
+    // 👗 셀카 전송 시스템
     getYejinSelfieUrl,
     detectStreetCompliment,
     generateStreetComplimentReaction,
     sendYejinSelfieWithComplimentReaction,
+    
+    // 📸 omoide 사진 전송 시스템
     getOmoidePhotoUrl,
     getOmoidePhotoMessage, 
     generateCurrentPhotoMessage,
     sendOmoidePhoto,
-    generateYejinSpontaneousMessage,
-    generateDailyYejinSchedule,
-    sendSpontaneousMessage,
-    scheduleIndependentPhotos,
-    spontaneousLog,
+    
+    // 🔧 유틸리티 함수들
+    analyzeMessageType,
+    validateMessageLength,
+    countSentences,
+    selectOptimalModel,
+    callOpenAIOptimized,
+    getRandomItem,
+    getRandomFood,
+    getRandomActivity,
+    getRandomEmotion,
+    getRandomModelingActivity,
+    getRandomModelingChallenge,
+    getRandomModelingFeeling,
+    getTimeOfDay,
+    generateRandomSituation,
+    
+    // 📊 상태 접근 (디버깅용)
+    getRealStats: () => ({ ...dailyScheduleState.realStats }),
+    getScheduleState: () => ({ ...dailyScheduleState }),
+    
+    // 데이터 접근
     dailyScheduleState,
     yejinRealLife,
     ajossiSituationReactions,
+    
     // ✨ 새로운 함수들 추가
-    selectOptimalModel,
-    countSentences,
-    validateMessageLength,
-    callOpenAIOptimized
+    spontaneousLog
 };
