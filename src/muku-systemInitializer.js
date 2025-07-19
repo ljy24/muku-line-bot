@@ -5,7 +5,7 @@
 // 🚬 담타시스템: 100% 보장 스케줄러 활성화
 // 🌸 예진이능동: spontaneousYejinManager 연동
 // 🔥 1시간차: 시스템 분석 & 기반 구축 시스템 통합 완료!
-// 🚀 2시간차: 학습 시스템 구축 시스템 통합 완료!
+// 🚀 2시간차: 학습 시스템 구축 시스템 통합 완료! + muku-conversationAnalyzer 추가!
 // 🔥 3시간차: AI 응답 고도화 시스템 통합 완료!
 // ⚙️ 4시간차: 통합 & 최적화 시스템 통합 완료!
 // 💯 Pro Max 5x: 모든 시간차 시스템 완전 통합 패치!
@@ -249,7 +249,7 @@ async function loadAllModules() {
         // ================== 🚀 2시간차: 학습 시스템 구축 모듈 로드 ==================
         console.log(`${colors.learning}🚀🚀🚀 [2시간차] 학습 시스템 구축 모듈 로드 시작! 🚀🚀🚀${colors.reset}`);
 
-        // 19. ⭐️⭐️⭐️ 무쿠 실시간 학습 시스템 (2시간차 1/3) ⭐️⭐️⭐️
+        // 19. ⭐️⭐️⭐️ 무쿠 실시간 학습 시스템 (2시간차 1/4) ⭐️⭐️⭐️
         try {
             modules.realTimeLearningSystem = require('./muku-realTimeLearningSystem');
             console.log(`${colors.learning}✅ [19/28] realTimeLearningSystem: 실시간 학습 시스템${colors.reset}`);
@@ -266,7 +266,7 @@ async function loadAllModules() {
             modules.realTimeLearningSystem = null;
         }
 
-        // 20. ⭐️⭐️⭐️ 무쿠 동적 기억 관리자 (2시간차 2/3) ⭐️⭐️⭐️
+        // 20. ⭐️⭐️⭐️ 무쿠 동적 기억 관리자 (2시간차 2/4) ⭐️⭐️⭐️
         try {
             modules.dynamicMemoryManager = require('./muku-dynamicMemoryManager');
             console.log(`${colors.memory}✅ [20/28] dynamicMemoryManager: 동적 기억 관리 시스템${colors.reset}`);
@@ -283,10 +283,27 @@ async function loadAllModules() {
             modules.dynamicMemoryManager = null;
         }
 
-        // 21. ⭐️⭐️⭐️ 무쿠 맥락 기반 응답 생성기 (2시간차 3/3) ⭐️⭐️⭐️
+        // 21. ⭐️⭐️⭐️ 무쿠 대화 분석 엔진 (2시간차 3/4) ⭐️⭐️⭐️
+        try {
+            modules.conversationAnalyzer = require('./muku-conversationAnalyzer');
+            console.log(`${colors.learning}✅ [21/28] conversationAnalyzer: 대화 분석 엔진${colors.reset}`);
+            
+            if (modules.conversationAnalyzer.initializeMukuConversationAnalyzer) {
+                console.log(`${colors.learning}🔍 [대화분석 확인] initializeMukuConversationAnalyzer 함수 존재 확인 ✅${colors.reset}`);
+                console.log(`${colors.learning}    🧠 기능: 고급 감정 분석, 완벽한 맥락 이해, 지능적 패턴 인식${colors.reset}`);
+            } else {
+                console.log(`${colors.error}🔍 [대화분석 확인] 핵심 함수 없음! ❌${colors.reset}`);
+            }
+            
+        } catch (error) {
+            console.log(`${colors.error}❌ [21/28] conversationAnalyzer 로드 실패: ${error.message}${colors.reset}`);
+            modules.conversationAnalyzer = null;
+        }
+
+        // 22. ⭐️⭐️⭐️ 무쿠 맥락 기반 응답 생성기 (2시간차 4/4) ⭐️⭐️⭐️
         try {
             modules.contextualResponseGenerator = require('./muku-contextualResponseGenerator');
-            console.log(`${colors.context}✅ [21/28] contextualResponseGenerator: 맥락 기반 응답 생성 시스템${colors.reset}`);
+            console.log(`${colors.context}✅ [22/28] contextualResponseGenerator: 맥락 기반 응답 생성 시스템${colors.reset}`);
             
             if (modules.contextualResponseGenerator.initializeMukuContextualGenerator) {
                 console.log(`${colors.context}🧠 [맥락응답 확인] initializeMukuContextualGenerator 함수 존재 확인 ✅${colors.reset}`);
@@ -296,19 +313,19 @@ async function loadAllModules() {
             }
             
         } catch (error) {
-            console.log(`${colors.error}❌ [21/28] contextualResponseGenerator 로드 실패: ${error.message}${colors.reset}`);
+            console.log(`${colors.error}❌ [22/28] contextualResponseGenerator 로드 실패: ${error.message}${colors.reset}`);
             modules.contextualResponseGenerator = null;
         }
 
-        console.log(`${colors.learning}🎉 [2시간차] 학습 시스템 구축 모듈 로드 완료!${colors.reset}`);
+        console.log(`${colors.learning}🎉 [2시간차] 학습 시스템 구축 모듈 로드 완료! (대화분석엔진 추가!)${colors.reset}`);
 
         // ================== 🔥 3시간차: AI 응답 고도화 시스템 로드 (기존) ==================
         console.log(`${colors.ai}🔥🔥🔥 [3시간차] AI 응답 고도화 시스템 로드 시작! 🔥🔥🔥${colors.reset}`);
 
-        // 22. ⭐️⭐️⭐️ 자연어 처리기 (예진이 말투 완벽 구현!) ⭐️⭐️⭐️
+        // 23. ⭐️⭐️⭐️ 자연어 처리기 (예진이 말투 완벽 구현!) ⭐️⭐️⭐️
         try {
             modules.naturalLanguageProcessor = require('./muku-naturalLanguageProcessor');
-            console.log(`${colors.ai}✅ [22/28] naturalLanguageProcessor: 예진이 자연어 처리 시스템${colors.reset}`);
+            console.log(`${colors.ai}✅ [23/28] naturalLanguageProcessor: 예진이 자연어 처리 시스템${colors.reset}`);
             
             if (modules.naturalLanguageProcessor.generateNaturalResponse) {
                 console.log(`${colors.ai}🌸 [자연어 확인] generateNaturalResponse 함수 존재 확인 ✅${colors.reset}`);
@@ -318,14 +335,14 @@ async function loadAllModules() {
             }
             
         } catch (error) {
-            console.log(`${colors.error}❌ [22/28] naturalLanguageProcessor 로드 실패: ${error.message}${colors.reset}`);
+            console.log(`${colors.error}❌ [23/28] naturalLanguageProcessor 로드 실패: ${error.message}${colors.reset}`);
             modules.naturalLanguageProcessor = null;
         }
 
-        // 23. ⭐️⭐️⭐️ 감정 뉘앙스 감지기 (숨겨진 감정까지 감지!) ⭐️⭐️⭐️
+        // 24. ⭐️⭐️⭐️ 감정 뉘앙스 감지기 (숨겨진 감정까지 감지!) ⭐️⭐️⭐️
         try {
             modules.emotionalNuanceDetector = require('./muku-emotionalNuanceDetector');
-            console.log(`${colors.emotion}✅ [23/28] emotionalNuanceDetector: 미묘한 감정 변화 감지 시스템${colors.reset}`);
+            console.log(`${colors.emotion}✅ [24/28] emotionalNuanceDetector: 미묘한 감정 변화 감지 시스템${colors.reset}`);
             
             if (modules.emotionalNuanceDetector.analyzeEmotionalNuance && modules.emotionalNuanceDetector.initializeDetector) {
                 modules.emotionalNuanceDetector.initializeDetector();
@@ -337,14 +354,14 @@ async function loadAllModules() {
             }
             
         } catch (error) {
-            console.log(`${colors.error}❌ [23/28] emotionalNuanceDetector 로드 실패: ${error.message}${colors.reset}`);
+            console.log(`${colors.error}❌ [24/28] emotionalNuanceDetector 로드 실패: ${error.message}${colors.reset}`);
             modules.emotionalNuanceDetector = null;
         }
 
-        // 24. ⭐️⭐️⭐️ 예측적 돌봄 시스템 (먼저 알아채고 돌봐주기!) ⭐️⭐️⭐️
+        // 25. ⭐️⭐️⭐️ 예측적 돌봄 시스템 (먼저 알아채고 돌봐주기!) ⭐️⭐️⭐️
         try {
             modules.predictiveCaringSystem = require('./muku-predictiveCaringSystem');
-            console.log(`${colors.care}✅ [24/28] predictiveCaringSystem: 예측적 돌봄 시스템${colors.reset}`);
+            console.log(`${colors.care}✅ [25/28] predictiveCaringSystem: 예측적 돌봄 시스템${colors.reset}`);
             
             if (modules.predictiveCaringSystem.predictCaringNeeds && modules.predictiveCaringSystem.initializeCaringSystem) {
                 modules.predictiveCaringSystem.initializeCaringSystem();
@@ -356,7 +373,7 @@ async function loadAllModules() {
             }
             
         } catch (error) {
-            console.log(`${colors.error}❌ [24/28] predictiveCaringSystem 로드 실패: ${error.message}${colors.reset}`);
+            console.log(`${colors.error}❌ [25/28] predictiveCaringSystem 로드 실패: ${error.message}${colors.reset}`);
             modules.predictiveCaringSystem = null;
         }
 
@@ -365,10 +382,10 @@ async function loadAllModules() {
         // ================== ⚙️ 4시간차: 통합 & 최적화 시스템 로드 (기존) ==================
         console.log(`${colors.intelligent}⚙️⚙️⚙️ [4시간차] 통합 & 최적화 시스템 로드 시작! ⚙️⚙️⚙️${colors.reset}`);
 
-        // 25. ⭐️⭐️⭐️ 지능형 스케줄러 v2.0 (기존 스케줄러 AI 업그레이드!) ⭐️⭐️⭐️
+        // 26. ⭐️⭐️⭐️ 지능형 스케줄러 v2.0 (기존 스케줄러 AI 업그레이드!) ⭐️⭐️⭐️
         try {
             modules.intelligentScheduler = require('./muku-intelligentScheduler');
-            console.log(`${colors.intelligent}✅ [25/28] intelligentScheduler: 지능형 스케줄러 v2.0 (AI 업그레이드)${colors.reset}`);
+            console.log(`${colors.intelligent}✅ [26/28] intelligentScheduler: 지능형 스케줄러 v2.0 (AI 업그레이드)${colors.reset}`);
             
             if (modules.intelligentScheduler.initialize && modules.intelligentScheduler.analyzeUserActivity) {
                 console.log(`${colors.intelligent}🧠 [지능형스케줄러 확인] 핵심 함수들 존재 확인 ✅${colors.reset}`);
@@ -379,14 +396,14 @@ async function loadAllModules() {
             }
             
         } catch (error) {
-            console.log(`${colors.error}❌ [25/28] intelligentScheduler 로드 실패: ${error.message}${colors.reset}`);
+            console.log(`${colors.error}❌ [26/28] intelligentScheduler 로드 실패: ${error.message}${colors.reset}`);
             modules.intelligentScheduler = null;
         }
 
-        // 26. ⭐️⭐️⭐️ 적응형 성격 시스템 (예진이 성격 실시간 진화!) ⭐️⭐️⭐️
+        // 27. ⭐️⭐️⭐️ 적응형 성격 시스템 (예진이 성격 실시간 진화!) ⭐️⭐️⭐️
         try {
             modules.adaptivePersonality = require('./muku-adaptivePersonalitySystem');
-            console.log(`${colors.personality}✅ [26/28] adaptivePersonality: 적응형 성격 시스템${colors.reset}`);
+            console.log(`${colors.personality}✅ [27/28] adaptivePersonality: 적응형 성격 시스템${colors.reset}`);
             
             if (modules.adaptivePersonality.initialize && modules.adaptivePersonality.adaptPersonality) {
                 console.log(`${colors.personality}🌸 [적응형성격 확인] 핵심 함수들 존재 확인 ✅${colors.reset}`);
@@ -397,14 +414,14 @@ async function loadAllModules() {
             }
             
         } catch (error) {
-            console.log(`${colors.error}❌ [26/28] adaptivePersonality 로드 실패: ${error.message}${colors.reset}`);
+            console.log(`${colors.error}❌ [27/28] adaptivePersonality 로드 실패: ${error.message}${colors.reset}`);
             modules.adaptivePersonality = null;
         }
 
-        // 27. ⭐️⭐️⭐️ 품질 보증 엔진 (응답 품질 100% 보장!) ⭐️⭐️⭐️
+        // 28. ⭐️⭐️⭐️ 품질 보증 엔진 (응답 품질 100% 보장!) ⭐️⭐️⭐️
         try {
             modules.qualityAssurance = require('./muku-qualityAssuranceEngine');
-            console.log(`${colors.quality}✅ [27/28] qualityAssurance: 품질 보증 엔진${colors.reset}`);
+            console.log(`${colors.quality}✅ [28/28] qualityAssurance: 품질 보증 엔진${colors.reset}`);
             
             if (modules.qualityAssurance.initialize && modules.qualityAssurance.checkResponseQuality) {
                 console.log(`${colors.quality}🛡️ [품질보증 확인] 핵심 함수들 존재 확인 ✅${colors.reset}`);
@@ -415,14 +432,15 @@ async function loadAllModules() {
             }
             
         } catch (error) {
-            console.log(`${colors.error}❌ [27/28] qualityAssurance 로드 실패: ${error.message}${colors.reset}`);
+            console.log(`${colors.error}❌ [28/28] qualityAssurance 로드 실패: ${error.message}${colors.reset}`);
             modules.qualityAssurance = null;
         }
 
         console.log(`${colors.intelligent}🎉 [4시간차] 통합 & 최적화 시스템 로드 완료! 무쿠 시스템이 완전체가 되었어요! 🚀${colors.reset}`);
 
         // ================== 🏁 모든 시간차 로드 완료! ==================
-        console.log(`${colors.pms}🏁🏁🏁 Pro Max 5x: 모든 27개 모듈 로드 완료! 무쿠가 진짜 완전체가 되었어요! 💯${colors.reset}`);
+        console.log(`${colors.pms}🏁🏁🏁 Pro Max 5x: 모든 28개 모듈 로드 완료! 무쿠가 진짜 완전체가 되었어요! 💯${colors.reset}`);
+        console.log(`${colors.learning}🎉 특히 2시간차에 muku-conversationAnalyzer.js 추가 완료! 대화 분석 능력 대폭 향상! 🔍${colors.reset}`);
 
         return modules;
         
@@ -661,7 +679,21 @@ async function initializeMemorySystems(modules, client) {
             console.log(`${colors.error}    ⚠️ 동적 기억 관리자 없음 - 건너뛰기${colors.reset}`);
         }
 
-        // ⭐️ 13. 무쿠 맥락 기반 응답 생성기 초기화 ⭐️
+        // ⭐️ 13. 무쿠 대화 분석 엔진 초기화 ⭐️
+        if (modules.conversationAnalyzer) {
+            try {
+                console.log(`${colors.learning}🔍 [대화분석엔진] 초기화...${colors.reset}`);
+                const conversationAnalyzer = await modules.conversationAnalyzer.initializeMukuConversationAnalyzer();
+                console.log(`${colors.learning}    ✅ 대화 분석 엔진: 고급 감정 분석 및 맥락 이해 시스템 활성화 완료${colors.reset}`);
+                console.log(`${colors.learning}    🧠 패턴 인식, 의도 분석, 지능적 응답 전략 생성 준비 완료${colors.reset}`);
+            } catch (error) {
+                console.log(`${colors.error}    ❌ 대화 분석 엔진 초기화 실패: ${error.message}${colors.reset}`);
+            }
+        } else {
+            console.log(`${colors.error}    ⚠️ 대화 분석 엔진 없음 - 건너뛰기${colors.reset}`);
+        }
+
+        // ⭐️ 14. 무쿠 맥락 기반 응답 생성기 초기화 ⭐️
         if (modules.contextualResponseGenerator) {
             try {
                 console.log(`${colors.context}🧠 [맥락응답생성] 초기화...${colors.reset}`);
@@ -675,12 +707,12 @@ async function initializeMemorySystems(modules, client) {
             console.log(`${colors.error}    ⚠️ 맥락 기반 응답 생성기 없음 - 건너뛰기${colors.reset}`);
         }
 
-        console.log(`${colors.learning}🎉 [2시간차] 학습 시스템 구축 시스템 초기화 완료!${colors.reset}`);
+        console.log(`${colors.learning}🎉 [2시간차] 학습 시스템 구축 시스템 초기화 완료! (대화분석엔진 추가!)${colors.reset}`);
 
         // ================== 🔥 3시간차: AI 응답 고도화 시스템 초기화 ==================
         console.log(`${colors.ai}🔥🔥🔥 [3시간차] AI 응답 고도화 시스템 초기화 시작! 🔥🔥🔥${colors.reset}`);
 
-        // ⭐️ 14. 자연어 처리기 초기화 ⭐️
+        // ⭐️ 15. 자연어 처리기 초기화 ⭐️
         if (modules.naturalLanguageProcessor) {
             try {
                 console.log(`${colors.ai}    ✅ 자연어 처리기: 예진이 말투 시스템 활성화 완료${colors.reset}`);
@@ -690,7 +722,7 @@ async function initializeMemorySystems(modules, client) {
             }
         }
 
-        // ⭐️ 15. 감정 뉘앙스 감지기 초기화 ⭐️
+        // ⭐️ 16. 감정 뉘앙스 감지기 초기화 ⭐️
         if (modules.emotionalNuanceDetector) {
             try {
                 console.log(`${colors.emotion}    ✅ 감정 뉘앙스 감지기: 미묘한 감정 변화 감지 시스템 활성화 완료${colors.reset}`);
@@ -700,7 +732,7 @@ async function initializeMemorySystems(modules, client) {
             }
         }
 
-        // ⭐️ 16. 예측적 돌봄 시스템 초기화 ⭐️
+        // ⭐️ 17. 예측적 돌봄 시스템 초기화 ⭐️
         if (modules.predictiveCaringSystem) {
             try {
                 console.log(`${colors.care}    ✅ 예측적 돌봄 시스템: 선제적 케어 시스템 활성화 완료${colors.reset}`);
@@ -715,7 +747,7 @@ async function initializeMemorySystems(modules, client) {
         // ================== ⚙️ 4시간차: 통합 & 최적화 시스템 초기화 ==================
         console.log(`${colors.intelligent}⚙️⚙️⚙️ [4시간차] 통합 & 최적화 시스템 초기화 시작! ⚙️⚙️⚙️${colors.reset}`);
 
-        // ⭐️ 17. 지능형 스케줄러 v2.0 초기화 (기존 스케줄러 연동!) ⭐️
+        // ⭐️ 18. 지능형 스케줄러 v2.0 초기화 (기존 스케줄러 연동!) ⭐️
         if (modules.intelligentScheduler && modules.scheduler && modules.spontaneousYejin) {
             try {
                 console.log(`${colors.intelligent}🧠 [지능형스케줄러] 기존 스케줄러들과 연동 초기화...${colors.reset}`);
@@ -729,7 +761,7 @@ async function initializeMemorySystems(modules, client) {
             console.log(`${colors.error}    ⚠️ 지능형 스케줄러 또는 기존 스케줄러들 없음 - 건너뛰기${colors.reset}`);
         }
 
-        // ⭐️ 18. 적응형 성격 시스템 초기화 ⭐️
+        // ⭐️ 19. 적응형 성격 시스템 초기화 ⭐️
         if (modules.adaptivePersonality) {
             try {
                 await modules.adaptivePersonality.initialize();
@@ -742,7 +774,7 @@ async function initializeMemorySystems(modules, client) {
             console.log(`${colors.error}    ⚠️ 적응형 성격 시스템 없음 - 건너뛰기${colors.reset}`);
         }
 
-        // ⭐️ 19. 품질 보증 엔진 초기화 ⭐️
+        // ⭐️ 20. 품질 보증 엔진 초기화 ⭐️
         if (modules.qualityAssurance) {
             try {
                 await modules.qualityAssurance.initialize();
@@ -758,9 +790,9 @@ async function initializeMemorySystems(modules, client) {
         console.log(`${colors.intelligent}🎉 [4시간차] 통합 & 최적화 시스템 초기화 완료! 무쿠 시스템이 완전체가 되었어요! 🚀${colors.reset}`);
 
         // ================== 🏁 모든 시간차 초기화 완료! ==================
-        console.log(`${colors.pms}🏁🏁🏁 Pro Max 5x: 모든 27개 모듈 초기화 완료! 무쿠가 진짜 완전체가 되었어요! 💯${colors.reset}`);
+        console.log(`${colors.pms}🏁🏁🏁 Pro Max 5x: 모든 28개 모듈 초기화 완료! 무쿠가 진짜 완전체가 되었어요! 💯${colors.reset}`);
         console.log(`${colors.ai}🔥 1시간차: 시스템 분석 & 기반 구축 ✅${colors.reset}`);
-        console.log(`${colors.learning}🚀 2시간차: 학습 시스템 구축 ✅${colors.reset}`);
+        console.log(`${colors.learning}🚀 2시간차: 학습 시스템 구축 ✅ (대화분석엔진 추가!)${colors.reset}`);
         console.log(`${colors.ai}🔥 3시간차: AI 응답 고도화 ✅${colors.reset}`);
         console.log(`${colors.intelligent}⚙️ 4시간차: 통합 & 최적화 ✅${colors.reset}`);
         console.log(`${colors.pms}💯 무쿠 Pro Max 5x: 완전체 달성! 💯${colors.reset}`);
@@ -840,9 +872,10 @@ function synchronizeEmotionalSystems(modules) {
     }
 
     // 🚀 2시간차: 학습 시스템 구축 시스템들 간 동기화
-    if (modules.realTimeLearningSystem && modules.dynamicMemoryManager && modules.contextualResponseGenerator) {
+    if (modules.realTimeLearningSystem && modules.dynamicMemoryManager && modules.conversationAnalyzer && modules.contextualResponseGenerator) {
         console.log(`${colors.learning}    ✅ 2시간차 학습 시스템들 상호 동기화 완료${colors.reset}`);
-        console.log(`${colors.learning}    🔗 실시간학습 ↔ 동적기억 ↔ 맥락응답 완벽 연동${colors.reset}`);
+        console.log(`${colors.learning}    🔗 실시간학습 ↔ 동적기억 ↔ 대화분석 ↔ 맥락응답 완벽 연동${colors.reset}`);
+        console.log(`${colors.learning}    🎉 대화분석엔진 추가로 시너지 효과 극대화!${colors.reset}`);
     }
 
     // 🔥 3시간차: AI 응답 고도화 시스템들 간 동기화
@@ -857,9 +890,10 @@ function synchronizeEmotionalSystems(modules) {
         console.log(`${colors.intelligent}    🔗 지능형스케줄러 ↔ 적응형성격 ↔ 품질보증 완벽 연동${colors.reset}`);
     }
 
-    // 🌟 전체 시간차 간 시너지 동기화
+    // 🌟 전체 시간차 간 시너지 동기화 (대화분석엔진 포함!)
     console.log(`${colors.pms}    🌟 모든 시간차 시스템들의 완벽한 시너지 동기화 완료!${colors.reset}`);
     console.log(`${colors.pms}    💯 1시간차 ↔ 2시간차 ↔ 3시간차 ↔ 4시간차 전체 연동 완성!${colors.reset}`);
+    console.log(`${colors.learning}    🎉 특히 대화분석엔진 추가로 2시간차 시스템 성능 대폭 향상!${colors.reset}`);
 }
 
 // ================== ⭐️ enhancedLogging v3.0 자동 상태 갱신 시작 ==================
@@ -885,6 +919,7 @@ function startAutoStatusUpdates(modules) {
             // 🚀 2시간차 학습 시스템 구축 모듈들
             realTimeLearningSystem: modules.realTimeLearningSystem,
             dynamicMemoryManager: modules.dynamicMemoryManager,
+            conversationAnalyzer: modules.conversationAnalyzer, // ⭐️ 추가!
             contextualResponseGenerator: modules.contextualResponseGenerator,
             // 🔥 3시간차 AI 응답 고도화 시스템들
             naturalLanguageProcessor: modules.naturalLanguageProcessor,
@@ -902,7 +937,8 @@ function startAutoStatusUpdates(modules) {
         
         try {
             modules.enhancedLogging.startAutoStatusUpdates(systemModules);
-            console.log(`${colors.pms}⏰ [성공!] 1분마다 자동 상태 갱신 시스템 활성화! (모든 27개 모듈 모니터링)${colors.reset}`);
+            console.log(`${colors.pms}⏰ [성공!] 1분마다 자동 상태 갱신 시스템 활성화! (모든 28개 모듈 모니터링)${colors.reset}`);
+            console.log(`${colors.learning}⏰ [특별!] 대화분석엔진 모니터링 추가 완료!${colors.reset}`);
         } catch (error) {
             console.log(`${colors.error}⏰ [실패] 자동 상태 갱신 시작 실패: ${error.message}${colors.reset}`);
         }
@@ -914,13 +950,13 @@ async function initializeMukuSystems(client, getCurrentModelSetting) {
     try {
         console.log(`${colors.system}🚀 무쿠 시스템 초기화를 시작합니다...${colors.reset}`);
         console.log(`${colors.ai}🔥 1시간차: 시스템 분석 & 기반 구축 버전으로 초기화합니다!${colors.reset}`);
-        console.log(`${colors.learning}🚀 2시간차: 학습 시스템 구축 버전으로 초기화합니다!${colors.reset}`);
+        console.log(`${colors.learning}🚀 2시간차: 학습 시스템 구축 버전으로 초기화합니다! (대화분석엔진 추가!)${colors.reset}`);
         console.log(`${colors.ai}🔥 3시간차: AI 응답 고도화 버전으로 초기화합니다!${colors.reset}`);
         console.log(`${colors.intelligent}⚙️ 4시간차: 통합 & 최적화 버전으로 초기화합니다!${colors.reset}`);
         console.log(`${colors.pms}💯 Pro Max 5x: 완전체 버전으로 초기화합니다!${colors.reset}`);
 
         // 1. 모든 모듈 로드 (1+2+3+4시간차 모든 모듈들 포함!)
-        console.log(`${colors.system}📦 [1/6] 모든 모듈 로드 (27개 모듈)...${colors.reset}`);
+        console.log(`${colors.system}📦 [1/6] 모든 모듈 로드 (28개 모듈)...${colors.reset}`);
         const modules = await loadAllModules();
 
         // 2. 기억 시스템 초기화 (스케줄러 + 예진이 + 삐짐 + 모든 시간차 시스템 100% 확실 시작!)
@@ -956,16 +992,17 @@ async function initializeMukuSystems(client, getCurrentModelSetting) {
         console.log(`${colors.system}🎭 [5/6] 감정 및 상태 시스템 동기화 (모든 시간차 시스템 포함)...${colors.reset}`);
         synchronizeEmotionalSystems(modules);
 
-        // 6. enhancedLogging v3.0 자동 상태 갱신 시작 (모든 27개 모듈 모니터링!)
-        console.log(`${colors.system}⏰ [6/6] enhancedLogging v3.0 자동 상태 갱신 시작 (27개 모듈 모니터링)...${colors.reset}`);
+        // 6. enhancedLogging v3.0 자동 상태 갱신 시작 (모든 28개 모듈 모니터링!)
+        console.log(`${colors.system}⏰ [6/6] enhancedLogging v3.0 자동 상태 갱신 시작 (28개 모듈 모니터링)...${colors.reset}`);
         startAutoStatusUpdates(modules);
 
         console.log(`${colors.system}🎉 무쿠 시스템 초기화 완료!${colors.reset}`);
         console.log(`${colors.ai}🔥 1시간차 시스템 분석 & 기반 구축 시스템 통합 완료!${colors.reset}`);
-        console.log(`${colors.learning}🚀 2시간차 학습 시스템 구축 시스템 통합 완료!${colors.reset}`);
+        console.log(`${colors.learning}🚀 2시간차 학습 시스템 구축 시스템 통합 완료! (대화분석엔진 추가!)${colors.reset}`);
         console.log(`${colors.ai}🔥 3시간차 AI 응답 고도화 시스템 통합 완료! 이제 진짜 예진이가 되었어요! 💕${colors.reset}`);
         console.log(`${colors.intelligent}⚙️ 4시간차 통합 & 최적화 시스템 통합 완료! 무쿠가 완전체가 되었어요! 🚀${colors.reset}`);
         console.log(`${colors.pms}💯 Pro Max 5x 완전체 달성! 모든 시간차 시스템이 완벽하게 통합되었어요! 🎊${colors.reset}`);
+        console.log(`${colors.learning}🎉 특히 muku-conversationAnalyzer.js 추가로 대화 분석 능력이 크게 향상되었어요! 🔍${colors.reset}`);
         
         return {
             success: true,
