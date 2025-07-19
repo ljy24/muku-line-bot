@@ -295,18 +295,14 @@ function handleWeatherKeywords(userMessage) {
     return response;
 }
 
-// 🎂 [추가] 생일 키워드 처리 함수
+// 🎂 [수정] 생일 키워드 처리 함수 - 안전하고 확실한 버전
 function handleBirthdayKeywords(userMessage) {
-    if (!birthdayDetector) {
-        return null; // 생일 감지기가 없으면 처리하지 않음
-    }
-    
     try {
         // 생일 관련 키워드 간단 체크
         const birthdayKeywords = [
             '생일', '생신', '태어난', '태어나', '몇 살', '나이',
             '축하', '케이크', '선물', '파티', '미역국',
-            '3월 17일', '3월17일', '317', '3-17'
+            '3월 17일', '3월17일', '317', '3-17', '12월 5일', '12월5일'
         ];
         
         const hasBirthdayKeyword = birthdayKeywords.some(keyword => 
@@ -317,17 +313,59 @@ function handleBirthdayKeywords(userMessage) {
             return null;
         }
         
-        // 생일 관련 응답 생성
-        const detection = birthdayDetector.detectBirthdayMessage(userMessage);
+        // ✅ 안전한 직접 응답 방식
+        const message = userMessage.toLowerCase();
         
-        if (detection && detection.detected) {
-            const response = birthdayDetector.generateBirthdayResponse(detection);
-            
-            if (response && response.text) {
-                // 생일 응답 로그
-                logConversationReply('나', `(생일) ${response.text}`);
-                return response.text;
-            }
+        // 예진이 생일 관련
+        if (message.includes('3월 17일') || message.includes('3월17일') || message.includes('317') || message.includes('3-17')) {
+            const responses = [
+                "3월 17일은 내 생일이야! 아저씨 꼭 기억해줘 💕",
+                "내 생일 3월 17일! 잊지 마 아저씨~",
+                "와! 내 생일 기억해줘서 고마워! 3월 17일이야",
+                "3월 17일... 아저씨 이 날 기억해줘야 해"
+            ];
+            const response = responses[Math.floor(Math.random() * responses.length)];
+            logConversationReply('나', `(생일) ${response}`);
+            return response;
+        }
+        
+        // 아저씨 생일 관련
+        if (message.includes('12월 5일') || message.includes('12월5일')) {
+            const responses = [
+                "12월 5일은 아저씨 생일이지! 나도 챙겨줄게~",
+                "아저씨 생일 12월 5일! 절대 잊지 않을 거야",
+                "아저씨 생일 축하해! 12월 5일 맞지?",
+                "12월 5일... 우리 아저씨 생일이야!"
+            ];
+            const response = responses[Math.floor(Math.random() * responses.length)];
+            logConversationReply('나', `(생일) ${response}`);
+            return response;
+        }
+        
+        // 일반적인 생일 언급
+        if (message.includes('생일') || message.includes('생신')) {
+            const responses = [
+                "내 생일은 3월 17일이고, 아저씨 생일은 12월 5일이야!",
+                "생일 얘기? 내 생일 3월 17일 기억해줘!",
+                "아저씨 생일 12월 5일, 내 생일 3월 17일! 둘 다 중요해",
+                "생일은 특별한 날이지~ 내 생일 3월 17일이야!"
+            ];
+            const response = responses[Math.floor(Math.random() * responses.length)];
+            logConversationReply('나', `(생일) ${response}`);
+            return response;
+        }
+        
+        // 나이 관련
+        if (message.includes('몇 살') || message.includes('나이')) {
+            const responses = [
+                "나는 1994년 3월 17일생이야! 나이 계산해봐~",
+                "아저씨보다 10살 어린 94년생이야!",
+                "1994년에 태어났어! 귀여운 나이지?",
+                "94년생! 아저씨는 나보다 10살 많아"
+            ];
+            const response = responses[Math.floor(Math.random() * responses.length)];
+            logConversationReply('나', `(생일) ${response}`);
+            return response;
         }
         
     } catch (error) {
