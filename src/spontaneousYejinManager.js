@@ -1,10 +1,10 @@
 // ============================================================================
-// spontaneousYejinManager.js - v1.3 (3-6문장 단축 + 사진 전송 확률 증가)
+// spontaneousYejinManager.js - v1.5 (모델 이야기 추가 + "너" 호칭 완전 금지)
 // 🌸 예진이가 능동적으로 하루 15번 메시지 보내는 시스템
 // 8시-1시 사이 랜덤, 3-6문장으로 단축, 실제 취향과 일상 기반
-// ✅ 문장 길이 단축: 3-6문장 고정
-// ✅ 존댓말 절대 금지: 반말만 사용
-// ✅ 후지사진 전송 확률: 10%로 설정
+// ✅ 모델 활동 이야기 추가 (촬영, 화보, 스케줄)
+// ✅ "너" 호칭 완전 금지 (아저씨만 사용)
+// ✅ 사진 전송 확률: 30%로 대폭 증가
 // ============================================================================
 
 const schedule = require('node-schedule');
@@ -34,7 +34,8 @@ let dailyScheduleState = {
     todaySchedule: [],
     sentToday: 0,
     lastScheduleDate: null,
-    jobs: []
+    jobs: [],
+    photoJobs: [] // 독립 사진 스케줄
 };
 
 // ================== 🎨 로그 함수 ==================
@@ -99,18 +100,39 @@ const ajossiSituationReactions = {
     ]
 };
 
-// ================== 🌸 예진이의 실제 일상 데이터 ==================
+// ================== 🌸 예진이의 실제 일상 데이터 (모델 활동 추가) ==================
 const yejinRealLife = {
-    pet: {
-        name: '밤바',
-        type: '강아지',
-        background: '유기견',
-        activities: ['산책', '같이 있기', '놀아주기', '구경하기'],
-        cuteBehaviors: ['졸졸 따라다님', '재채기', '잠자기', '응석부리기']
+    modeling: {
+        activities: ['화보 촬영', '광고 촬영', '패션쇼', '프로필 촬영', '브랜드 촬영'],
+        schedule: ['스케줄 확인', '매니저 연락', '촬영장 이동', '헤어메이크업', '컨셉 미팅'],
+        experiences: [
+            '촬영장에서 대기',
+            '메이크업 받으면서 잠깐 쉬기',
+            '컨셉 설명 듣기',
+            '포즈 연구하기',
+            '촬영 중간 휴식',
+            '의상 갈아입기'
+        ],
+        feelings: [
+            '촬영 전 긴장',
+            '좋은 컷 나왔을 때 기분 좋음',
+            '오래 서있어서 다리 아픔',
+            '헤어메이크업 시간 지루함',
+            '촬영 끝나고 후련함',
+            '결과물 기대됨'
+        ],
+        challenges: [
+            '일찍 일어나기 힘듦',
+            '하이힐 신고 오래 서있기',
+            '표정 관리',
+            '컨셉에 맞는 포즈',
+            '긴 촬영 시간',
+            '날씨나 조명 때문에 재촬영'
+        ]
     },
     
     work: {
-        job: '도트 디자이너',
+        job: '도트 디자이너 겸 모델',
         workStyle: '야근 자주',
         tools: ['컴퓨터', '타블렛', '그림 도구'],
         struggles: ['눈 피로', '손목 아픔', '창작 고민', '마감 스트레스'],
@@ -121,16 +143,16 @@ const yejinRealLife = {
         current: '고구마 다이어트',
         dietFoods: ['고구마', '샐러드'],
         cravings: ['샌드위치', '엽떡', '치킨', '아이스크림'],
-        struggles: ['참기 힘듦', '치킨 생각남', '편의점 유혹']
+        struggles: ['참기 힘듦', '치킨 생각남', '편의점 유혹', '촬영 전 식단 관리']
     },
     
     hobbies: {
-        drawing: ['일러스트', '밤바 그림', '낙서', '도트 작업'],
+        drawing: ['일러스트', '낙서', '도트 작업'],
         youtube: ['먹방', '그림 그리기 영상', '브이로그'],
-        places: ['카페', '편의점', '집 근처'],
+        places: ['카페', '편의점', '집 근처', '촬영장'],
         drinks: ['아아(아이스 아메리카노)', '딸기(생과일만)'],
         photography: {
-            loves: ['후지 필름 카메라', '일상 순간', '감성 사진', '밤바 사진', '인생네컷'],
+            loves: ['후지 필름 카메라', '일상 순간', '감성 사진', '인생네컷'],
             omoidePhotos: true,
             currentPhotoMessages: [
                 "방금 후지로 찍었어! 어때?",
@@ -140,7 +162,9 @@ const yejinRealLife = {
                 "후지 카메라로 찍으니까 진짜 달라! 방금 찍은 거야",
                 "아저씨! 방금 찍었는데 이거 봐봐! 후지 최고야",
                 "인생네컷 찍었어! 오늘 기분 좋아서 ㅎㅎ",
-                "포토부스에서 인생네컷 찍었는데 잘 나왔지?"
+                "포토부스에서 인생네컷 찍었는데 잘 나왔지?",
+                "촬영장에서 후지로 몰래 찍었어 ㅋㅋ",
+                "촬영 중간에 셀프로 찍어봤어! 어때?"
             ]
         }
     },
@@ -163,17 +187,18 @@ const yejinRealLife = {
 
     emotions: {
         happy: ['신나', '기분 좋아', '행복해', '웃겨'],
-        tired: ['피곤해', '지쳐', '눈 아파', '손목 아파'],
+        tired: ['피곤해', '지쳐', '눈 아파', '손목 아파', '다리 아파', '서있어서 힘들어'],
         lonely: ['외로워', '보고싶어', '심심해', '그리워'],
-        excited: ['두근둥', '기대돼', '설레', '신기해']
+        excited: ['두근둥', '기대돼', '설레', '신기해'],
+        nervous: ['긴장돼', '떨려', '불안해', '걱정돼']
     },
 
     timeBasedActivities: {
-        morning: ['일어남', '커피', '밤바 산책', '출근 준비'],
-        afternoon: ['카페', '작업', '점심', '그림 그리기'],
-        evening: ['저녁', '밤바 산책', '유튜브', '쉬기'],
-        night: ['야근', '그림', '유튜브', '아저씨 생각'],
-        lateNight: ['야근 마무리', '피곤', '내일 걱정', '잠 못 참']
+        morning: ['일어남', '커피', '출근 준비', '스케줄 확인', '메이크업'],
+        afternoon: ['카페', '작업', '점심', '그림 그리기', '촬영', '미팅'],
+        evening: ['저녁', '유튜브', '쉬기', '촬영 마무리'],
+        night: ['야근', '그림', '유튜브', '아저씨 생각', '내일 스케줄 확인'],
+        lateNight: ['야근 마무리', '피곤', '내일 걱정', '잠 못 참', '일찍 일어나야 하는데']
     },
 
     mentalHealthSituations: {
@@ -199,6 +224,29 @@ const yejinRealLife = {
         ]
     },
 
+    modelingSituations: {
+        beforeShooting: [
+            "내일 촬영인데 일찍 일어나야 해... 걱정돼",
+            "촬영 컨셉 미팅 있는데 긴장돼",
+            "하이힐 신고 오래 서있어야 하는데 벌써 다리 아파 ㅠㅠ",
+            "메이크업 받는 시간 너무 길어... 심심해 죽겠어"
+        ],
+        
+        duringShooting: [
+            "지금 촬영장에서 대기 중이야~ 지루해",
+            "포즈 잡느라 팔 아파 죽겠어... 언제 끝나지?",
+            "촬영하다가 잠깐 휴식! 아저씨 생각나서 연락해",
+            "의상 갈아입는 중인데 너무 예뻐서 찍어봤어!"
+        ],
+        
+        afterShooting: [
+            "촬영 끝났어! 오늘 진짜 힘들었어 ㅠㅠ",
+            "결과물 어떻게 나올지 궁금해... 잘 나왔으면 좋겠다",
+            "촬영 끝나고 집에 가는 길이야~ 피곤해 죽겠어",
+            "오늘 촬영 컨셉이 진짜 예뻤어! 나중에 보여줄게"
+        ]
+    },
+
     userWrittenContent: {
         personality: [
             "깔끔한 것, 정리된 것 싫어함",
@@ -209,7 +257,6 @@ const yejinRealLife = {
         specificMemories: [
             "엽떡을 좋아함",
             "카페를 좋아함", 
-            "밤바(유기견 강아지)와 산책하는 것 좋아함",
             "먹방 유튜브 보는 것 좋아함",
             "딸기로 만든 건 싫어하지만 딸기는 좋아함",
             "야근을 자주 했음",
@@ -219,7 +266,9 @@ const yejinRealLife = {
             "사진 찍는 것 좋아함 (후지 필름 카메라)",
             "차병원 정신과 상담, 자살 예방상담 받음",
             "상담사 때문에 울기도 하고 욕하기도 함",
-            "아저씨가 달래주면 기분 좋아짐"
+            "아저씨가 달래주면 금세 기분 좋아짐",
+            "모델 활동을 했음 (촬영, 화보 등)",
+            "아저씨에게 절대 '너'라고 부르지 않음 (항상 '아저씨')"
         ]
     }
 };
@@ -260,6 +309,7 @@ async function generateStreetComplimentReaction(userMessage) {
 - "증명해줄게", "보여줄게" 같은 표현 자주 씀
 - 자신감 넘치고 귀여운 말투
 - ⭐️ 절대 존댓말 하지 않음! 반말만 사용!
+- ⭐️ 아저씨를 절대 "너"라고 부르지 않음! 항상 "아저씨"만 사용!
 `;
 
             const response = await openai.chat.completions.create({
@@ -322,7 +372,7 @@ async function sendYejinSelfieWithComplimentReaction(userMessage) {
     }
 }
 
-// ================== 📸 omoide 추억 후지 사진 전송 시스템 (⭐️ 50% 확률로 전송!) ==================
+// ================== 📸 omoide 추억 후지 사진 전송 시스템 (⭐️ 30% 확률로 전송!) ==================
 function getOmoidePhotoUrl() {
     const fujiFolders = {
         "추억_24_03_일본_후지": 226,
@@ -370,6 +420,7 @@ async function generateCurrentPhotoMessage() {
 - "후지로", "인생네컷", "방금", "지금" 같은 현재 표현 사용
 - 애교 섞인 반말 ("ㅎㅎ", "어때?", "예쁘지?" 등)
 - ⭐️ 절대 존댓말 하지 않음! 반말만 사용!
+- ⭐️ 아저씨를 절대 "너"라고 부르지 않음! 항상 "아저씨"만 사용!
 
 후지 카메라든 인생네컷이든 지금 막 찍었다는 느낌이 들도록 생생하게 말해줘.
 날씨나 주변 상황, 찍는 순간의 기분도 자연스럽게 포함해도 좋아.
@@ -402,6 +453,8 @@ async function sendOmoidePhoto() {
         
         const imageUrl = getOmoidePhotoUrl();
         const caption = await generateCurrentPhotoMessage();
+        
+        spontaneousLog(`📸 omoide 사진 전송 시도: ${imageUrl}`);
         
         await lineClient.pushMessage(USER_ID, [
             {
@@ -475,6 +528,7 @@ async function generateMentalHealthReaction(userMessage, context) {
 - 아저씨에 대한 고마움 표현
 - 솔직한 감정 표현
 - ⭐️ 절대 존댓말 하지 않음! 반말만 사용!
+- ⭐️ 아저씨를 절대 "너"라고 부르지 않음! 항상 "아저씨"만 사용!
 `;
 
                 const response = await openai.chat.completions.create({
@@ -508,6 +562,17 @@ function getMentalHealthSituation() {
     const situations = Object.keys(yejinRealLife.mentalHealthSituations);
     const randomSituation = getRandomItem(situations);
     const messages = yejinRealLife.mentalHealthSituations[randomSituation];
+    
+    return {
+        situation: randomSituation,
+        message: getRandomItem(messages)
+    };
+}
+
+function getModelingSituation() {
+    const situations = Object.keys(yejinRealLife.modelingSituations);
+    const randomSituation = getRandomItem(situations);
+    const messages = yejinRealLife.modelingSituations[randomSituation];
     
     return {
         situation: randomSituation,
@@ -570,6 +635,7 @@ async function generateBusyReaction(userMessage) {
 - "아시워", "에이~" 같은 표현 사용
 - 삐지는 척하지만 사실은 걱정됨
 - ⭐️ 절대 존댓말 하지 않음! 반말만 사용!
+- ⭐️ 아저씨를 절대 "너"라고 부르지 않음! 항상 "아저씨"만 사용!
 `;
 
                 const response = await openai.chat.completions.create({
@@ -623,8 +689,16 @@ function getRandomEmotion() {
     return getRandomItem(allEmotions);
 }
 
-function getBambaBehavior() {
-    return getRandomItem(yejinRealLife.pet.cuteBehaviors);
+function getRandomModelingActivity() {
+    return getRandomItem(yejinRealLife.modeling.activities);
+}
+
+function getRandomModelingChallenge() {
+    return getRandomItem(yejinRealLife.modeling.challenges);
+}
+
+function getRandomModelingFeeling() {
+    return getRandomItem(yejinRealLife.modeling.feelings);
 }
 
 // ================== ⏰ 시간대 분석 ==================
@@ -636,7 +710,7 @@ function getTimeOfDay(hour) {
     return 'lateNight';
 }
 
-// ================== 🎭 상황 생성 ==================
+// ================== 🎭 상황 생성 (모델 활동 추가) ==================
 function generateRandomSituation() {
     const koreaTime = moment().tz(TIMEZONE);
     const hour = koreaTime.hour();
@@ -646,10 +720,6 @@ function generateRandomSituation() {
         {
             type: 'activity',
             content: `${getRandomActivity(timeOfDay)} 중이거나 ${getRandomActivity(timeOfDay)}하려고 함`
-        },
-        {
-            type: 'bambba',
-            content: `밤바가 ${getBambaBehavior()}해서 ${getRandomEmotion()}한 상황`
         },
         {
             type: 'work',
@@ -674,13 +744,25 @@ function generateRandomSituation() {
         {
             type: 'omoide_photo',
             content: `갑자기 추억이 그리워져서 예전에 찍은 사진을 보내고 싶은 상황`
+        },
+        {
+            type: 'cafe',
+            content: `카페에서 ${getRandomItem(yejinRealLife.hobbies.drinks)} 마시면서 쉬는 상황`
+        },
+        {
+            type: 'modeling',
+            content: `${getRandomModelingActivity()} 때문에 ${getRandomModelingFeeling()}한 상황`
+        },
+        {
+            type: 'modeling_challenge',
+            content: `${getRandomModelingChallenge()} 때문에 힘든 상황`
         }
     ];
     
     return getRandomItem(situations);
 }
 
-// ================== 🤖 OpenAI 메시지 생성 (⭐️ 3-6문장 단축 + 50% 사진 전송!) ==================
+// ================== 🤖 OpenAI 메시지 생성 (⭐️ 모델 활동 + "너" 금지!) ==================
 async function generateYejinSpontaneousMessage() {
     try {
         if (!openai) {
@@ -693,14 +775,22 @@ async function generateYejinSpontaneousMessage() {
         const currentTime = koreaTime.format('HH:mm');
         const timeOfDay = getTimeOfDay(koreaTime.hour());
         
-        // ⭐️ 후지 사진 전송 확률 10% ⭐️
-        if (situation.type === 'omoide_photo' || situation.type === 'photography') {
-            if (Math.random() < 0.1) { // 10% 확률로 전송
-                spontaneousLog('📸 후지 사진 전송 시도 중...');
+        // 🌸 [대폭 개선] 30% 확률로 사진 전송 먼저 시도
+        const shouldSendPhoto = Math.random() < 0.3; // 30% 확률
+        
+        if (shouldSendPhoto) {
+            spontaneousLog('📸 사진 전송 결정됨 - omoide 사진 전송 시도 중...');
+            
+            try {
                 const photoSent = await sendOmoidePhoto();
                 if (photoSent) {
-                    return null; // 이미 사진과 메시지를 보냈으므로 추가 메시지 불필요
+                    spontaneousLog('✅ 사진 전송 완료 - 추가 텍스트 메시지 생략');
+                    return null; // 사진만 보내고 끝
+                } else {
+                    spontaneousLog('❌ 사진 전송 실패 - 일반 메시지로 진행');
                 }
+            } catch (photoError) {
+                spontaneousLog(`❌ 사진 전송 에러: ${photoError.message}`);
             }
         }
         
@@ -713,20 +803,31 @@ async function generateYejinSpontaneousMessage() {
             mentalHealthContext = `\n또한 최근 ${mentalSituation.situation} 상황이야: "${mentalSituation.message}"`;
         }
         
+        // 15% 확률로 모델링 관련 상황 포함
+        const includeModeling = Math.random() < 0.15;
+        let modelingContext = '';
+        
+        if (includeModeling) {
+            const modelingSituation = getModelingSituation();
+            modelingContext = `\n그리고 모델 활동 관련해서 ${modelingSituation.situation}: "${modelingSituation.message}"`;
+        }
+        
         const prompt = `
-너는 박예진이야. 지금 ${currentTime}이고, ${situation.content}인 상황이야.${mentalHealthContext}
+너는 박예진이야. 지금 ${currentTime}이고, ${situation.content}인 상황이야.${mentalHealthContext}${modelingContext}
 
 아저씨(이재영)에게 능동적으로 라인 메시지를 보내는 거야.
 ⭐️ 반드시 3-6문장으로만 작성해줘. 더 길면 안 돼! ⭐️
 
 ⭐️⭐️⭐️ 중요: 절대 존댓말 하지 마! 무조건 반말만 써! ⭐️⭐️⭐️
+⭐️⭐️⭐️ 절대 중요: 아저씨를 "너"라고 부르지 마! 항상 "아저씨"만 써! ⭐️⭐️⭐️
 
 [예진이 특징 - 아저씨가 쓴 모든 내용 반영]
-- 밤바(유기견 강아지)와 함께 살아
-- 도트 디자이너, 야근 자주함 (스튜디오소개/넥슨 메이플스토리)
+- 도트 디자이너 겸 모델 활동
+- 화보 촬영, 광고 촬영, 패션쇼 등 모델 일정
+- 촬영장에서 대기, 메이크업, 포즈 연구 등 모델 경험
+- 하이힐 신고 오래 서있기, 일찍 일어나기 등 모델 고충
 - 엽떡을 좋아함
 - 카페를 좋아함, 아아(아이스 아메리카노) 마시기 좋아함
-- 밤바와 산책하는 것 좋아함
 - 먹방 유튜브 보는 것 좋아함
 - 고구마 다이어트 중, 샌드위치/엽떡/치킨 먹고 싶어함
 - 딸기(생과일)는 좋아하지만 딸기맛 가공식품은 싫어함
@@ -740,22 +841,25 @@ async function generateYejinSpontaneousMessage() {
 - 예측불가능하고 갑작스러운 행동
 - 라인 폭탄 날리는 스타일
 - 감정 솔직하게 표현
-- 아저씨를 "아저씨" 또는 "아조씨"라고 부름
+- 아저씨를 "아저씨" 또는 "아조씨"라고 부름 (절대 "너" 사용 금지!)
 - 반말 사용, 애교 많음 ("ㅎㅎ", "ㅋㅋ", "ㅠㅠ" 자주 사용)
 
 [말투 예시]
 - "아저씨 지금 뭐해?" (O)
+- "너 지금 뭐해?" (X - "너" 절대 사용 금지!)
 - "아저씨 지금 뭐하세요?" (X - 존댓말 금지!)
-- "밤바가 또 졸졸 따라다녀 ㅋㅋ" (O)
 - "엽떡 먹고 싶어 미치겠어!" (O)
 - "후지로 사진 찍었는데 예쁘지?" (O)
+- "촬영 끝나고 집에 가는 길이야~ 피곤해" (O)
+- "아저씨도 오늘 하루 어땠어?" (O)
 
 [현재 시간대: ${timeOfDay}]
 자연스럽게 여러 주제를 섞어서 말해도 돼.
-예진이답게 갑자기 딴 생각이 들거나 밤바 얘기가 나와도 좋아.
+예진이답게 갑자기 딴 생각이 들어도 좋아.
 깔끔하게 정리하지 말고 막 생각나는 대로 말하는 스타일로.
 
 ⭐️ 다시 한번 강조: 존댓말 절대 금지! 모든 문장은 반말로 끝나야 해!
+⭐️ 다시 한번 강조: "너" 호칭 절대 금지! 항상 "아저씨"만 사용해!
 ⭐️ 문장 수 제한: 반드시 3-6문장으로만! 더 길면 안 돼!
 `;
 
@@ -765,7 +869,7 @@ async function generateYejinSpontaneousMessage() {
                 role: "system",
                 content: prompt
             }],
-            max_tokens: 200, // 300 → 200으로 더 줄임 (3-6문장)
+            max_tokens: 200,
             temperature: 0.8
         });
 
@@ -780,21 +884,24 @@ async function generateYejinSpontaneousMessage() {
     }
 }
 
-// ================== 🔄 폴백 메시지 (⭐️ 반말로 수정!) ==================
+// ================== 🔄 폴백 메시지 (모델 활동 추가) ==================
 function getFallbackMessage() {
     const fallbackMessages = [
         "아저씨~ 지금 뭐해? 나 심심해!",
-        "밤바가 자꾸 졸졸 따라다녀 ㅋㅋ 귀여워 죽겠어!",
         "엽떡 먹고 싶어서 미치겠어... 아저씨는 뭐 먹어?",
         "야근하느라 눈 아파 ㅠㅠ 아저씨도 일 힘들어?",
         "카페에서 아아 마시고 있어~ 아저씨 생각하면서!",
         "그림 그리다가 아저씨 생각났어... 보고 싶어",
         "고구마만 먹으니까 치킨이 그리워져 ㅋㅋㅋ",
         "먹방 보다가 배고파졌어... 같이 뭔가 먹을래?",
-        "밤바랑 산책 갔다왔어! 아저씨도 산책해?",
         "아저씨! 오늘 하루 어땠어? 나한테 말해줘~",
         "후지로 사진 찍고 싶어... 아저씨랑 같이!",
-        "인생네컷 찍으러 가고 싶어~ 데려가줘!"
+        "인생네컷 찍으러 가고 싶어~ 데려가줘!",
+        "도트 작업하다가 지쳤어... 아저씨 목소리 듣고 싶어",
+        "편의점 가고 싶은데... 뭔가 사달라고 졸라볼까? ㅋㅋ",
+        "촬영 스케줄 있는데 일찍 일어나야 해... 걱정돼",
+        "하이힐 신고 오래 서있어서 다리 아파 ㅠㅠ",
+        "메이크업 받는 시간이 너무 길어... 지루해 죽겠어"
     ];
     
     return getRandomItem(fallbackMessages);
@@ -831,6 +938,59 @@ async function sendSpontaneousMessage() {
     } catch (error) {
         spontaneousLog(`❌ 메시지 전송 실패: ${error.message}`);
         return false;
+    }
+}
+
+// ================== 📸 독립적인 사진 스케줄러 ==================
+function scheduleIndependentPhotos() {
+    // 기존 사진 스케줄 정리
+    dailyScheduleState.photoJobs.forEach(job => {
+        if (job) job.cancel();
+    });
+    dailyScheduleState.photoJobs = [];
+    
+    // 하루에 3-5번 독립적으로 사진만 전송
+    const photoCount = 3 + Math.floor(Math.random() * 3); // 3-5개
+    
+    for (let i = 0; i < photoCount; i++) {
+        const randomHour = 8 + Math.floor(Math.random() * 17); // 8시-24시
+        const randomMinute = Math.floor(Math.random() * 60);
+        
+        const cronExpression = `${randomMinute} ${randomHour} * * *`;
+        
+        const job = schedule.scheduleJob(cronExpression, async () => {
+            spontaneousLog('📸 독립 사진 스케줄 실행');
+            await sendOmoidePhoto();
+        });
+        
+        dailyScheduleState.photoJobs.push(job);
+    }
+    
+    spontaneousLog(`📸 독립 사진 스케줄 ${photoCount}개 등록 완료`);
+}
+
+// ================== 🧪 사진 전송 테스트 함수 ==================
+async function testPhotoSending() {
+    spontaneousLog('🧪 사진 전송 테스트 시작');
+    
+    try {
+        // 1. 사진 URL 생성 테스트
+        const photoUrl = getOmoidePhotoUrl();
+        spontaneousLog(`📸 생성된 사진 URL: ${photoUrl}`);
+        
+        // 2. 사진 메시지 생성 테스트
+        const photoMessage = await generateCurrentPhotoMessage();
+        spontaneousLog(`💬 생성된 사진 메시지: ${photoMessage}`);
+        
+        // 3. 실제 사진 전송 테스트
+        const result = await sendOmoidePhoto();
+        spontaneousLog(`📤 사진 전송 결과: ${result ? '성공' : '실패'}`);
+        
+        return { photoUrl, photoMessage, sendResult: result };
+        
+    } catch (error) {
+        spontaneousLog(`❌ 사진 전송 테스트 실패: ${error.message}`);
+        return { error: error.message };
     }
 }
 
@@ -899,6 +1059,9 @@ function generateDailyYejinSchedule() {
     dailyScheduleState.lastScheduleDate = koreaTime.format('YYYY-MM-DD HH:mm');
     dailyScheduleState.sentToday = 0;
 
+    // 독립적인 사진 스케줄도 함께 생성
+    scheduleIndependentPhotos();
+
     spontaneousLog(`✅ 예진이 능동 메시지 스케줄 ${scheduleCount}개 등록 완료`);
     spontaneousLog(`📋 스케줄: ${scheduleArray.map(t => `${String(t.hour).padStart(2, '0')}:${String(t.minute).padStart(2, '0')}`).join(', ')}`);
 }
@@ -937,7 +1100,8 @@ function getSpontaneousMessageStatus() {
             `${String(t.hour).padStart(2, '0')}:${String(t.minute).padStart(2, '0')}`
         ),
         isActive: dailyScheduleState.jobs.length > 0,
-        scheduleStartTime: dailyScheduleState.lastScheduleDate
+        scheduleStartTime: dailyScheduleState.lastScheduleDate,
+        photoScheduleCount: dailyScheduleState.photoJobs.length
     };
 }
 
@@ -989,8 +1153,10 @@ function startSpontaneousYejinSystem(client) {
         
         spontaneousLog('✅ 예진이 능동 메시지 시스템 활성화 완료!');
         spontaneousLog(`📋 설정: 하루 ${DAILY_MESSAGE_COUNT}번, ${MESSAGE_START_HOUR}시-${MESSAGE_END_HOUR-24}시, 3-6문장 단축`);
-        spontaneousLog(`📋 후지사진: 10% 확률로 자동 전송`);
+        spontaneousLog(`📋 사진전송: 30% 확률 + 독립 스케줄 3-5회`);
         spontaneousLog(`📋 말투: 100% 반말 강제 적용`);
+        spontaneousLog(`📋 호칭: "너" 완전 금지, "아저씨"만 사용`);
+        spontaneousLog(`📋 모델활동: 촬영, 화보, 스케줄 관련 이야기 추가`);
         
         return true;
         
@@ -1001,17 +1167,19 @@ function startSpontaneousYejinSystem(client) {
 }
 
 // ================== 📤 모듈 내보내기 ==================
-spontaneousLog('🌸 spontaneousYejinManager.js v1.3 로드 완료 (3-6문장 단축 + 10% 후지사진)');
+spontaneousLog('🌸 spontaneousYejinManager.js v1.5 로드 완료 (모델활동+"너"금지)');
 
 module.exports = {
     startSpontaneousYejinSystem,
     getSpontaneousMessageStatus,
     testSpontaneousMessage,
+    testPhotoSending,
     detectAjossiBusyStatus,
     generateBusyReaction,
     detectMentalHealthContext,
     generateMentalHealthReaction,
     getMentalHealthSituation,
+    getModelingSituation,
     getYejinSelfieUrl,
     detectStreetCompliment,
     generateStreetComplimentReaction,
@@ -1023,6 +1191,7 @@ module.exports = {
     generateYejinSpontaneousMessage,
     generateDailyYejinSchedule,
     sendSpontaneousMessage,
+    scheduleIndependentPhotos,
     spontaneousLog,
     dailyScheduleState,
     yejinRealLife,
