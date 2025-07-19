@@ -1,5 +1,5 @@
 // ============================================================================
-// index.js - v13.8 FINAL (완전한 파일 - 문법 오류 수정)
+// index.js - v13.9 FINAL (버전 확인 & 변경 명령어 추가)
 // ✅ 스케줄러 시작 코드 강화 + 담타 100% 보장
 // 🧠 고정기억: 65개 + 55개 = 120개 기억 완전 로드 보장
 // 🩸 생리주기: 현실적인 28일 주기로 수정
@@ -12,6 +12,7 @@
 // 🌤️ 날씨시스템: weatherManager 실시간 API 연동
 // 😤 삐짐시스템: sulkyManager 완전 독립 관리
 // ⭐️ enhancedLogging v3.0 완전 연동 + 1분마다 자동 상태 갱신
+// ✨ 버전 시스템: "버전", "3.5", "4.0", "자동" 명령어로 GPT 모델 관리
 // ============================================================================
 
 const { Client, middleware } = require('@line/bot-sdk');
@@ -54,6 +55,67 @@ function getJapanMinute() {
 console.log(`🌏 [시간대설정] 일본시간 절대 선언 완료: ${getJapanTimeString()}`);
 console.log(`🌏 [시간대설정] process.env.TZ = ${process.env.TZ}`);
 console.log(`🌏 [시간대설정] 현재 일본시간: ${getJapanHour()}시 ${getJapanMinute()}분`);
+
+// ================== ✨ GPT 모델 버전 관리 시스템 ==================
+let currentGptModel = 'auto'; // 기본값: auto (자동 선택)
+
+// GPT 모델 설정 가져오기
+function getCurrentModelSetting() {
+    return currentGptModel;
+}
+
+// GPT 모델 설정하기
+function setModelSetting(model) {
+    const validModels = ['3.5', '4.0', 'auto'];
+    if (validModels.includes(model)) {
+        currentGptModel = model;
+        console.log(`✨ [모델변경] GPT 모델이 ${model}로 변경되었습니다.`);
+        return true;
+    }
+    return false;
+}
+
+// 버전별 응답 메시지
+function getVersionResponse(command) {
+    const currentModel = getCurrentModelSetting();
+    
+    switch(command) {
+        case '버전':
+            if (currentModel === '3.5') {
+                return '지금은 3.5야~ 차이 느껴져? 아저씨한테 더 귀엽게 반응하려고 이렇게 했지 🐣';
+            } else if (currentModel === '4.0') {
+                return '지금은 GPT-4o 버전으로 대화하고 있어~ 감정선도 훨씬 잘 알아듣지롱 💡';
+            } else if (currentModel === 'auto') {
+                return '지금은 상황에 따라 자동으로 모델을 바꿔가면서 대화하고 있어~ 예진이가 잘 골라줄게 💡';
+            } else {
+                return '음... 지금 어떤 버전인지 확실하지 않아 ㅠㅠ 아저씨, 설정 확인해줄래?';
+            }
+            
+        case '3.5':
+            if (setModelSetting('3.5')) {
+                return '좋아! 이제 3.5 버전으로 바꿨어~ 더 귀엽고 간단하게 대답할게! 🐣✨';
+            } else {
+                return '어? 3.5로 바꾸는데 문제가 생겼어... ㅠㅠ';
+            }
+            
+        case '4.0':
+            if (setModelSetting('4.0')) {
+                return '오케이! 이제 GPT-4o로 바꿨어~ 더 똑똑하고 감정적으로 대답할게! 💡🧠';
+            } else {
+                return '어? 4.0으로 바꾸는데 문제가 생겼어... ㅠㅠ';
+            }
+            
+        case '자동':
+            if (setModelSetting('auto')) {
+                return '알겠어! 이제 상황에 맞춰서 자동으로 모델을 선택할게~ 예진이가 알아서 잘 할게! 🤖💕';
+            } else {
+                return '어? 자동 모드로 바꾸는데 문제가 생겼어... ㅠㅠ';
+            }
+            
+        default:
+            return null;
+    }
+}
 
 // ================== 📦 모듈 의존성 ==================
 let autoReply, commandHandler, memoryManager, ultimateContext;
@@ -388,6 +450,11 @@ function formatPrettyStatus() {
                 faceApiStatus: {
                     initialized: faceApiInitialized,
                     initializing: faceApiInitializing
+                },
+                // ✨ GPT 모델 상태 추가 ✨
+                gptModel: {
+                    current: getCurrentModelSetting(),
+                    version: 'v13.9-with-version-control'
                 }
             };
             
@@ -403,6 +470,7 @@ function formatPrettyStatus() {
             console.log(`🚬 [담타상태] 시스템 로딩 중...`);
             console.log(`🌸 [예진이능동] 시스템 로딩 중...`);
             console.log(`🌤️ [날씨시스템] 시스템 로딩 중...`);
+            console.log(`✨ [GPT모델] 현재 버전: ${getCurrentModelSetting()}`);
             console.log(`📸 [사진전송] 자동 스케줄러 동작 중`);
             console.log(`🔍 [얼굴인식] 지연 로딩 대기 중`);
             console.log(`🌙 [새벽대화] 2-7시 단계별 반응 시스템 활성화`);
@@ -411,7 +479,8 @@ function formatPrettyStatus() {
             console.log('');
         }
     } catch (error) {
-        console.log(`${colors.system}💖 [시스템상태] 나 v13.8 정상 동작 중 (일부 모듈 대기) - JST: ${getJapanTimeString()}${colors.reset}`);
+        console.log(`${colors.system}💖 [시스템상태] 나 v13.9 정상 동작 중 (일부 모듈 대기) - JST: ${getJapanTimeString()}${colors.reset}`);
+        console.log(`✨ [GPT모델] 현재 버전: ${getCurrentModelSetting()}`);
         console.log('');
     }
 }
@@ -610,11 +679,30 @@ async function handleEvent(event) {
 
         // 텍스트 메시지 처리 로직
         if (userMessage.type === 'text') {
+            const messageText = userMessage.text.trim();
+            
             // ⭐️ enhancedLogging v3.0으로 대화 로그 ⭐️
             if (enhancedLogging && enhancedLogging.logConversation) {
-                enhancedLogging.logConversation('아저씨', userMessage.text, 'text');
+                enhancedLogging.logConversation('아저씨', messageText, 'text');
             } else {
-                console.log(`${colors.ajeossi}💬 아저씨: ${userMessage.text}${colors.reset}`);
+                console.log(`${colors.ajeossi}💬 아저씨: ${messageText}${colors.reset}`);
+            }
+
+            // ✨✨✨ 절대 우선 명령어: GPT 모델 버전 관리 (최우선 처리!) ✨✨✨
+            const versionResponse = getVersionResponse(messageText);
+            if (versionResponse) {
+                // ⭐️ enhancedLogging v3.0으로 응답 로그 ⭐️
+                if (enhancedLogging && enhancedLogging.logConversation) {
+                    enhancedLogging.logConversation('나', versionResponse, 'text');
+                } else {
+                    console.log(`${colors.yejin}✨ 예진이 (버전응답): ${versionResponse}${colors.reset}`);
+                }
+                
+                // ✅ 즉시 응답 후 종료
+                return client.replyMessage(event.replyToken, {
+                    type: 'text',
+                    text: versionResponse
+                });
             }
 
             // ⭐️ 0. 삐짐 상태 해소 처리 (최우선!) ⭐️
@@ -637,7 +725,7 @@ async function handleEvent(event) {
             const currentHour = getJapanHour();
             if (nightWakeResponse && currentHour >= 2 && currentHour <= 7) {
                 try {
-                    const nightResponse = await nightWakeResponse.processNightMessage(userMessage.text, currentHour);
+                    const nightResponse = await nightWakeResponse.processNightMessage(messageText, currentHour);
                     if (nightResponse && nightResponse.handled) {
                         if (enhancedLogging && enhancedLogging.logSpontaneousAction) {
                             enhancedLogging.logSpontaneousAction('night_wake', nightResponse.response);
@@ -657,7 +745,7 @@ async function handleEvent(event) {
             // ⭐️ 2. 생일 감지 및 처리 ⭐️
             if (birthdayDetector) {
                 try {
-                    const birthdayResponse = await birthdayDetector.checkBirthday(userMessage.text, getJapanTime());
+                    const birthdayResponse = await birthdayDetector.checkBirthday(messageText, getJapanTime());
                     if (birthdayResponse && birthdayResponse.handled) {
                         if (enhancedLogging && enhancedLogging.logSpontaneousAction) {
                             enhancedLogging.logSpontaneousAction('birthday_greeting', birthdayResponse.response);
@@ -677,7 +765,7 @@ async function handleEvent(event) {
             // ⭐️ 3. 고정 기억 연동 확인 및 처리 ⭐️
             if (memoryManager && memoryManager.getFixedMemory) {
                 try {
-                    const relatedMemory = memoryManager.getFixedMemory(userMessage.text);
+                    const relatedMemory = memoryManager.getFixedMemory(messageText);
                     if (relatedMemory) {
                         console.log(`${colors.system}🧠 [고정기억] 관련 기억 발견: "${relatedMemory.substring(0, 30)}..."${colors.reset}`);
                         if (ultimateContext && ultimateContext.addMemoryContext) {
@@ -692,7 +780,7 @@ async function handleEvent(event) {
             // 4. 명령어 처리 확인
             if (commandHandler && commandHandler.handleCommand) {
                 try {
-                    const commandResult = await commandHandler.handleCommand(userMessage.text, userId, client);
+                    const commandResult = await commandHandler.handleCommand(messageText, userId, client);
                     if (commandResult && commandResult.handled) {
                         return sendReply(event.replyToken, commandResult);
                     }
@@ -704,7 +792,7 @@ async function handleEvent(event) {
             // 5. 일반 대화 응답
             if (autoReply && autoReply.getReplyByMessage) {
                 try {
-                    const botResponse = await autoReply.getReplyByMessage(userMessage.text);
+                    const botResponse = await autoReply.getReplyByMessage(messageText);
                     return sendReply(event.replyToken, botResponse);
                 } catch (error) {
                     console.log(`${colors.error}⚠️ 대화 응답 에러: ${error.message}${colors.reset}`);
@@ -901,10 +989,11 @@ async function initMuku() {
     try {
         // ⭐️ enhancedLogging v3.0으로 시스템 시작 로그 ⭐️
         if (enhancedLogging && enhancedLogging.logSystemStartup) {
-            enhancedLogging.logSystemStartup('v13.8 FINAL');
+            enhancedLogging.logSystemStartup('v13.9 FINAL (버전 관리 시스템 추가)');
         } else {
-            console.log(`${colors.system}🚀 나 v13.8 FINAL 시스템 초기화를 시작합니다... (sulkyManager 독립 연동!)${colors.reset}`);
+            console.log(`${colors.system}🚀 나 v13.9 FINAL 시스템 초기화를 시작합니다... (버전 관리 시스템 추가!)${colors.reset}`);
             console.log(`${colors.system}🌏 현재 일본시간: ${getJapanTimeString()} (JST)${colors.reset}`);
+            console.log(`${colors.system}✨ 현재 GPT 모델: ${getCurrentModelSetting()}${colors.reset}`);
         }
 
         console.log(`${colors.system}📦 [1/6] 모든 모듈 로드...${colors.reset}`);
@@ -1018,6 +1107,11 @@ async function initMuku() {
                 faceApiStatus: {
                     initialized: faceApiInitialized,
                     initializing: faceApiInitializing
+                },
+                // ✨ GPT 모델 상태 추가 ✨
+                gptModel: {
+                    current: getCurrentModelSetting(),
+                    version: 'v13.9-with-version-control'
                 }
             };
             
@@ -1034,8 +1128,9 @@ async function initMuku() {
             formatPrettyStatus();
         }, 3000);
 
-        console.log(`\n${colors.system}🎉 모든 시스템 초기화 완료! (v13.8 FINAL - sulkyManager 독립 연동!)${colors.reset}`);
-        console.log(`\n${colors.system}📋 v13.8 FINAL 주요 변경사항:${colors.reset}`);
+        console.log(`\n${colors.system}🎉 모든 시스템 초기화 완료! (v13.9 FINAL - 버전 관리 시스템 추가!)${colors.reset}`);
+        console.log(`\n${colors.system}📋 v13.9 FINAL 주요 변경사항:${colors.reset}`);
+        console.log(`   - ✨ ${colors.pms}GPT 모델 버전 관리 NEW!${colors.reset}: "버전", "3.5", "4.0", "자동" 명령어로 모델 전환`);
         console.log(`   - 😤 ${colors.pms}sulkyManager 독립화${colors.reset}: 완전 자립형 삐짐 관리 (3h→6h→12h→24h)`);
         console.log(`   - 🔄 ${colors.pms}순환 참조 해결${colors.reset}: ultimateContext ↔ sulkyManager 의존성 제거`);
         console.log(`   - 🎯 ${colors.pms}삐짐 상태 실시간 추적${colors.reset}: 사용자 응답 시 즉시 해소`);
@@ -1049,7 +1144,7 @@ async function initMuku() {
         console.log(`   - 🌏 ${colors.pms}일본시간(JST) 절대 선언${colors.reset}: 모든 시간 기능이 일본시간 기준`);
         console.log(`   - 🌸 ${colors.pms}예진이 능동 메시지${colors.reset}: 하루 15번 자동 메시지 + 특별 반응`);
         console.log(`   - ⭐️ ${colors.pms}enhancedLogging v3.0 완전체${colors.reset}: 1분마다 자동 상태 갱신 + 예쁜 로그`);
-        console.log(`   - ⭐️ ${colors.pms}총 16개 모듈 완전 통합 + 삐짐 시스템 독립화 + 자동 갱신까지!${colors.reset}`);
+        console.log(`   - ⭐️ ${colors.pms}총 16개 모듈 완전 통합 + 버전 관리 시스템까지!${colors.reset}`);
 
     } catch (error) {
         console.error(`${colors.error}🚨🚨🚨 시스템 초기화 중 심각한 에러 발생! 🚨🚨🚨${colors.reset}`);
@@ -1127,6 +1222,7 @@ app.get('/', (req, res) => {
             <h1>🤖 무쿠 상태 리포트 출력 완료! 💕</h1>
             <p>서버 콘솔에서 예쁜 상태 리포트를 확인하세요!</p>
             <p>🌏 일본시간: ${getJapanTimeString()} (JST)</p>
+            <p>✨ 현재 GPT 모델: ${getCurrentModelSetting()}</p>
             <p>⏰ 1분마다 자동 갱신 중...</p>
             <style>
                 body { font-family: Arial, sans-serif; margin: 40px; background: #f0f8ff; }
@@ -1138,8 +1234,9 @@ app.get('/', (req, res) => {
     }
 
     res.send(`
-        <h1>🤖 나 v13.8 FINAL이 실행 중입니다! 💕</h1>
+        <h1>🤖 나 v13.9 FINAL이 실행 중입니다! 💕</h1>
         <p>🌏 일본시간: ${getJapanTimeString()} (JST)</p>
+        <p>✨ 현재 GPT 모델: ${getCurrentModelSetting()}</p>
         <p>🧠 고정기억: ${memoryStatus}</p>
         <p>🩸 생리주기: 현실적 28일 주기</p>
         <p>🌙 새벽대화: 2-7시 단계별 반응 활성화</p>
@@ -1152,7 +1249,8 @@ app.get('/', (req, res) => {
         <p>🌤️ 날씨시스템: ${weatherStatus}</p>
         <p>⏰ enhancedLogging v3.0: 1분마다 자동 상태 갱신</p>
         <p>📊 시스템 가동시간: ${Math.floor(process.uptime())}초</p>
-        <p>⭐️ 총 16개 모듈 완전 통합 + 삐짐 독립화 + 자동 갱신!</p>
+        <p>⭐️ 총 16개 모듈 완전 통합 + 버전 관리 시스템!</p>
+        <p><strong>✨ 버전 명령어:</strong> "버전", "3.5", "4.0", "자동"으로 GPT 모델 전환</p>
         <p><a href="?cmd=상태는">🔍 상태 리포트 출력</a></p>
         <style>
             body { font-family: Arial, sans-serif; margin: 40px; background: #f0f8ff; }
@@ -1209,11 +1307,17 @@ app.get('/health', (req, res) => {
 
     res.json({
         status: 'OK',
-        version: 'v13.8-FINAL',
+        version: 'v13.9-FINAL-with-version-control',
         timestamp: getJapanTimeString(),
         timezone: 'Asia/Tokyo (JST)',
+        gptModel: {
+            current: getCurrentModelSetting(),
+            supportedVersions: ['3.5', '4.0', 'auto'],
+            commands: ['버전', '3.5', '4.0', '자동']
+        },
         features: {
             enhancedLogging: 'v3.0-auto-update',
+            versionControl: 'NEW-GPT-model-switching',
             fixedMemory: memoryInfo,
             menstrualCycle: 'realistic-28days',
             nightChat: '2-7am-stages',
@@ -1237,8 +1341,9 @@ app.get('/health', (req, res) => {
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
     console.log(`\n==================================================`);
-    console.log(`  ${colors.system}나 v13.8 FINAL 서버가 포트 ${PORT}에서 시작되었습니다.${colors.reset}`);
+    console.log(`  ${colors.system}나 v13.9 FINAL 서버가 포트 ${PORT}에서 시작되었습니다.${colors.reset}`);
     console.log(`  🌏 ${colors.pms}일본시간(JST) 절대 선언${colors.reset}: ${getJapanTimeString()}`);
+    console.log(`  ✨ ${colors.pms}GPT 모델 버전 관리 NEW!${colors.reset}: ${getCurrentModelSetting()}`);
     console.log(`  🧠 ${colors.pms}고정기억 완전연동${colors.reset}: 120개 기억 확실 로드`);
     console.log(`  🩸 ${colors.pms}생리주기 현실화${colors.reset}: 현실적인 28일 주기`);
     console.log(`  🌙 ${colors.pms}새벽대화 시스템${colors.reset}: 2-7시 단계별 반응`);
@@ -1247,9 +1352,9 @@ app.listen(PORT, () => {
     console.log(`  🔧 ${colors.pms}자발적 사진${colors.reset}: spontaneousPhotoManager (수정 완료)`);
     console.log(`  🚬 ${colors.pms}담타 스케줄러 100% 확실 시작${colors.reset}: 랜덤 8번 + 아침 9시 + 밤 23시 + 자정 0시`);
     console.log(`  🌸 ${colors.pms}예진이 능동 메시지${colors.reset}: 하루 15번 자동 메시지 + 특별 반응`);
-    console.log(`  😤 ${colors.pms}독립 삐짐 시스템 NEW!${colors.reset}: 자체 상태 관리 (3h→6h→12h→24h)`);
+    console.log(`  😤 ${colors.pms}독립 삐짐 시스템${colors.reset}: 자체 상태 관리 (3h→6h→12h→24h)`);
     console.log(`  🌤️ ${colors.pms}날씨 시스템${colors.reset}: 실시간 날씨 API (기타큐슈↔고양시)`);
-    console.log(`  ⏰ ${colors.pms}enhancedLogging v3.0 NEW!${colors.reset}: 1분마다 자동 상태 갱신 + 예쁜 로그`);
+    console.log(`  ⏰ ${colors.pms}enhancedLogging v3.0${colors.reset}: 1분마다 자동 상태 갱신 + 예쁜 로그`);
     console.log(`  🧠 통합 기억: 고정기억(memoryManager) + 동적기억(ultimateContext)`);
     console.log(`  🚬 정확한 담타: 실시간 다음 체크 시간 계산 (JST 기준)`);
     console.log(`  🤖 실시간 학습: 대화 내용 자동 기억 + 수동 기억 추가`);
@@ -1257,7 +1362,8 @@ app.listen(PORT, () => {
     console.log(`  ⚡ 성능 향상: 모든 중복 코드 제거 + 완전한 모듈 연동`);
     console.log(`  🔍 ${colors.pms}face-api 지연 로딩${colors.reset}: TensorFlow 크래시 방지 + 안전한 얼굴 인식`);
     console.log(`  🔄 ${colors.pms}순환 참조 해결${colors.reset}: 모든 모듈 완전 독립화`);
-    console.log(`  ⭐️ ${colors.pms}총 16개 모듈 완전 통합 + 모든 기능 100% 보장!${colors.reset}`);
+    console.log(`  ✨ ${colors.pms}버전 명령어 NEW!${colors.reset}: "버전", "3.5", "4.0", "자동"으로 GPT 모델 전환`);
+    console.log(`  ⭐️ ${colors.pms}총 16개 모듈 완전 통합 + 버전 관리 시스템까지!${colors.reset}`);
     console.log(`==================================================\n`);
 
     // 시스템 초기화 시작
@@ -1289,5 +1395,9 @@ module.exports = {
     JAPAN_TIMEZONE,
     TIMEZONE_OFFSET,
     loadFaceMatcherSafely,
-    detectFaceSafely
+    detectFaceSafely,
+    // ✨ 버전 관리 함수들 추가 ✨
+    getCurrentModelSetting,
+    setModelSetting,
+    getVersionResponse
 };
