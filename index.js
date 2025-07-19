@@ -391,7 +391,7 @@ async function initMuku() {
     }
 }
 
-// ================== 🌐 라우트 설정 ==================
+// 🌐 라우트 설정
 function setupAllRoutes() {
     const modules = global.mukuModules || {};
     
@@ -416,3 +416,6 @@ function setupAllRoutes() {
         faceApiStatus
     );
 }
+
+// ================== 🚀 서버 시작 ==================
+const PORT = process.env.PORT || 10000;
