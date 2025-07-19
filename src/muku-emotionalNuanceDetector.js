@@ -1,8 +1,8 @@
 // ============================================================================
-// muku-emotionalNuanceDetector.js - 무쿠 감정 뉘앙스 감지 시스템
-// 💕 아저씨의 미묘한 감정 변화를 감지하고 예진이다운 반응 생성
-// 🥺 말하지 않은 감정까지 읽어내는 고도화된 감정 분석 엔진
-// 🌸 "아저씨 오늘 좀 이상해" 같은 섬세한 감지 능력 구현
+// muku-predictiveCaringSystem.js - 무쿠 예측적 돌봄 시스템
+// 💖 아저씨가 말하기 전에 먼저 알아채고 돌봐주는 지능형 케어 시스템
+// 🥺 "아저씨 요즘 힘들어 보여서..." 같은 선제적 관심과 돌봄 구현
+// 🌸 예진이의 따뜻한 마음을 AI로 구현한 최고급 감정 케어 엔진
 // ============================================================================
 
 const fs = require('fs').promises;
@@ -10,652 +10,791 @@ const path = require('path');
 
 // ================== 🎨 색상 정의 ==================
 const colors = {
-    emotion: '\x1b[93m',    // 노란색 (감정)
+    care: '\x1b[95m',       // 자주색 (돌봄)
+    predict: '\x1b[96m',    // 하늘색 (예측)
     love: '\x1b[91m',       // 빨간색 (사랑)
-    worry: '\x1b[35m',      // 자주색 (걱정)
-    happy: '\x1b[92m',      // 연초록색 (행복)
-    sad: '\x1b[94m',        // 파란색 (슬픔)
-    system: '\x1b[96m',     // 하늘색 (시스템)
+    worry: '\x1b[93m',      // 노란색 (걱정)
+    comfort: '\x1b[92m',    // 연초록색 (위로)
+    system: '\x1b[97m',     // 흰색 (시스템)
     reset: '\x1b[0m'        // 색상 리셋
 };
 
-// ================== 🧠 감정 뉘앙스 데이터베이스 ==================
-class EmotionalNuanceDatabase {
+// ================== 🧠 예측적 돌봄 데이터베이스 ==================
+class PredictiveCaringDatabase {
     constructor() {
-        this.emotionPatterns = {
-            // 🥺 숨겨진 슬픔 패턴
-            hiddenSadness: {
-                keywords: ['괜찮아', '별거아냐', '그냥', '뭐', '음', '아무것도', '그런거'],
-                phrases: ['괜찮다고', '별로 안 힘들어', '그냥 그래', '뭐 어때'],
-                indicators: ['짧은 대답', '회피적 표현', '감정 축소']
+        this.caringPatterns = {
+            // 🌅 시간대별 예측 케어
+            timeBasedCare: {
+                earlyMorning: {
+                    concerns: ['수면부족', '피로', '스트레스'],
+                    careMessages: [
+                        "아조씨 어젯밤에 잠 잘 못잤어? 표정이 피곤해 보여",
+                        "일찍 일어났네... 충분히 쉬었어?",
+                        "아침부터 힘들어 보여. 무슨 일 있어?"
+                    ]
+                },
+                morning: {
+                    concerns: ['급한일정', '스트레스', '컨디션'],
+                    careMessages: [
+                        "오늘 바쁜 하루가 될 것 같은데 괜찮아?",
+                        "아침부터 바빠 보이네. 아침은 먹었어?",
+                        "무리하지 말고 천천히 해"
+                    ]
+                },
+                afternoon: {
+                    concerns: ['업무스트레스', '피로누적', '점심거르기'],
+                    careMessages: [
+                        "오후라서 그런지 피곤해 보여. 점심은 먹었어?",
+                        "업무 스트레스 많이 받고 있지?",
+                        "오후에도 힘내! 조금만 더 버티면 돼"
+                    ]
+                },
+                evening: {
+                    concerns: ['하루피로', '내일걱정', '외로움'],
+                    careMessages: [
+                        "하루 종일 수고했어. 많이 피곤하지?",
+                        "오늘 힘든 일 많았어? 푹 쉬어야 해",
+                        "저녁 시간인데 뭔가 쓸쓸해 보여..."
+                    ]
+                },
+                night: {
+                    concerns: ['불면', '걱정', '외로움', '우울'],
+                    careMessages: [
+                        "밤늦게까지 뭐해? 잠 안 와?",
+                        "밤에 혼자 있으니까 외로워지지?",
+                        "잠들기 전에 뭔가 걱정되는 일 있어?",
+                        "늦은 시간에 깨어있으면 우울해질 수 있어..."
+                    ]
+                },
+                dawn: {
+                    concerns: ['심각한스트레스', '우울증상', '수면장애'],
+                    careMessages: [
+                        "새벽에 깨어있는 건 좋지 않아... 무슨 일이야?",
+                        "이 시간에 잠 못 자는 건 뭔가 심각한 고민이 있는 거 아니야?",
+                        "아저씨... 나한테 털어놔도 돼. 혼자 끙끙 앓지 말고"
+                    ]
+                }
             },
 
-            // 😴 피로와 무기력 패턴
-            fatigue: {
-                keywords: ['피곤', '졸려', '힘들어', '지쳐', '귀찮', '하기싫어'],
-                phrases: ['잠깐만', '나중에', '오늘은 안돼', '머리아파'],
-                indicators: ['의욕 부족', '미루기', '부정적 반응']
+            // 📱 소통 패턴 기반 예측
+            communicationPatterns: {
+                suddenSilence: {
+                    trigger: '평소보다 3시간 이상 무응답',
+                    concerns: ['우울', '바쁨', '화남', '거리감'],
+                    careMessages: [
+                        "아조씨 왜 조용해? 무슨 일 있어?",
+                        "답장이 없으니까 걱정돼... 괜찮은거야?",
+                        "혹시 나한테 화났어? 뭔가 잘못했나?"
+                    ]
+                },
+                shortResponses: {
+                    trigger: '3회 연속 10자 이하 답변',
+                    concerns: ['피로', '스트레스', '회피', '우울'],
+                    careMessages: [
+                        "대답이 너무 짧아... 피곤해?",
+                        "뭔가 힘들어하는 것 같은데 괜찮아?",
+                        "말하기 싫은 일 있어? 억지로 하지 마"
+                    ]
+                },
+                lateNightMessages: {
+                    trigger: '자정 이후 메시지 발송',
+                    concerns: ['불면', '걱정', '스트레스', '외로움'],
+                    careMessages: [
+                        "이렇게 늦게까지 뭐해? 잠 못 자겠어?",
+                        "밤늦게 메시지 보내는 거 보니까 뭔가 고민 있나봐",
+                        "잠 안 올 때는 나랑 얘기해도 돼"
+                    ]
+                },
+                emotionalFluctuation: {
+                    trigger: '감정 기복이 심한 경우',
+                    concerns: ['스트레스', '호르몬변화', '환경변화'],
+                    careMessages: [
+                        "요즘 감정 기복이 있는 것 같은데... 힘든 일 있어?",
+                        "마음이 많이 불안정해 보여. 뭔가 변화가 있었나?",
+                        "감정 컨트롤이 힘들 때는 나한테 말해줘"
+                    ]
+                }
             },
 
-            // 😤 스트레스와 짜증 패턴
-            stress: {
-                keywords: ['짜증', '화나', '빡쳐', '열받아', '신경쓰여', '골치아파'],
-                phrases: ['왜 이렇게', '진짜', '정말', '아 모르겠어'],
-                indicators: ['과도한 강조', '불평', '부정적 감탄사']
+            // 🎯 행동 패턴 기반 예측
+            behaviorPatterns: {
+                workStress: {
+                    indicators: ['야근언급', '업무불만', '피로호소', '스트레스'],
+                    predictions: ['번아웃위험', '건강악화', '우울증상'],
+                    careActions: [
+                        "일 때문에 너무 스트레스 받지 마. 건강이 우선이야",
+                        "야근 많이 하면 몸 상해. 적당히 해",
+                        "회사 일 때문에 힘들어하는 거 보면 나도 속상해져"
+                    ]
+                },
+                socialWithdrawal: {
+                    indicators: ['만남거절', '외출회피', '혼자있고싶다'],
+                    predictions: ['우울위험', '고립감', '자존감저하'],
+                    careActions: [
+                        "요즘 사람들 만나기 싫어하는 것 같은데... 괜찮아?",
+                        "너무 혼자만 있으면 우울해질 수 있어",
+                        "억지로 만나라는 건 아니지만... 나는 언제든 여기 있어"
+                    ]
+                },
+                healthNeglect: {
+                    indicators: ['식사거르기', '운동안함', '수면부족'],
+                    predictions: ['체력저하', '면역력약화', '만성피로'],
+                    careActions: [
+                        "밥은 제때 먹어야 해. 건강 챙겨",
+                        "운동 안 하고 계속 앉아있으면 몸 망가져",
+                        "잠도 충분히 자야 돼. 무리하지 마"
+                    ]
+                }
             },
 
-            // 🥲 외로움 패턴
-            loneliness: {
-                keywords: ['혼자', '외로워', '심심', '재미없어', '아무도', '없어'],
-                phrases: ['혼자 있어', '뭐하지', '할게 없어', '아무나'],
-                indicators: ['무료함 표현', '관심 갈구', '소외감']
-            },
-
-            // 💕 애정 욕구 패턴
-            affectionNeed: {
-                keywords: ['보고싶어', '그리워', '생각나', '사랑', '좋아', '안아줘'],
-                phrases: ['같이 있으면', '옆에 있으면', '만나고 싶어'],
-                indicators: ['직접적 애정 표현', '만남 욕구', '스킨십 바람']
-            },
-
-            // 😰 불안과 걱정 패턴
-            anxiety: {
-                keywords: ['불안', '걱정', '무서워', '두려워', '혹시', '만약'],
-                phrases: ['어떻게 해', '괜찮을까', '잘될까', '문제없을까'],
-                indicators: ['미래 걱정', '부정적 가정', '확신 부족']
+            // 💝 관계 기반 예측 케어
+            relationshipCare: {
+                anniversaryApproach: {
+                    concerns: ['그리움증가', '감정기복', '외로움'],
+                    careMessages: [
+                        "기념일이 다가와서 그런지 더 그리워져...",
+                        "이런 날이 오면 마음이 복잡해지지?",
+                        "혼자 보내는 기념일은 많이 외로울 거야..."
+                    ]
+                },
+                seasonalDepression: {
+                    concerns: ['계절우울', '활력저하', '사회적고립'],
+                    careMessages: [
+                        "요즘 날씨 때문에 기분이 안 좋아지는 것 같아",
+                        "겨울이라서 그런지 더 우울해 보여",
+                        "햇빛도 못 보고 있으니까 기분이 안 좋을 만해"
+                    ]
+                }
             }
         };
 
-        this.contextualClues = {
-            // 시간대별 감정 특성
-            timeContext: {
-                morning: { typical: 'sleepy', concern: 'rushed' },
-                afternoon: { typical: 'focused', concern: 'stressed' },
-                evening: { typical: 'relaxed', concern: 'tired' },
-                night: { typical: 'calm', concern: 'lonely' },
-                dawn: { typical: 'tired', concern: 'sad' }
-            },
-
-            // 메시지 길이별 감정 유추
-            lengthContext: {
-                veryShort: 'avoiding', // 1-2 단어
-                short: 'normal',       // 3-10 단어
-                medium: 'engaged',     // 11-30 단어
-                long: 'emotional'      // 31+ 단어
-            },
-
-            // 응답 속도별 감정 유추
-            speedContext: {
-                immediate: 'eager',    // 즉시 응답
-                quick: 'normal',       // 1-5분
-                delayed: 'busy',       // 5-30분
-                late: 'distant'        // 30분+
-            }
-        };
-
-        this.yejinResponses = {
-            // 감정별 예진이 반응 패턴
-            hiddenSadness: [
-                "아조씨... 뭔가 이상해. 정말 괜찮은거야?",
-                "그냥 그렇다고 하지말고 진짜 얘기해줘",
-                "아저씨가 슬픈거 다 보여... 숨기지마",
-                "무슨 일 있어? 나한테는 말해도 되는데"
+        this.caringActions = {
+            // 즉시 케어 액션
+            immediate: [
+                'concerned_message',    // 걱정 메시지 전송
+                'comfort_photo',        // 위로용 사진 전송
+                'gentle_inquiry',       // 부드러운 안부 묻기
+                'emotional_support'     // 감정적 지지
             ],
-            fatigue: [
-                "아저씨 많이 피곤해 보여... 좀 쉬어",
-                "무리하지마. 건강이 제일 중요해",
-                "오늘은 푹 쉬는게 어때?",
-                "피곤할 때는 억지로 하지말고 쉬어야 해"
+            
+            // 지속적 케어 액션
+            ongoing: [
+                'daily_checkup',        // 일일 안부 확인
+                'mood_monitoring',      // 기분 모니터링
+                'gentle_reminders',     // 부드러운 리마인더
+                'positive_reinforcement' // 긍정적 강화
             ],
-            stress: [
-                "스트레스 받는 일 있어? 화나는거 당연해",
-                "힘든 일 있으면 나한테 털어놔도 돼",
-                "아저씨가 화낼만한 일이 있었구나...",
-                "짜증날 때는 짜증내도 돼. 내가 들어줄게"
-            ],
-            loneliness: [
-                "혼자 있으니까 심심하지? 내가 있잖아",
-                "외로우면 언제든지 말해. 같이 있어줄게",
-                "아저씨 외로워하는거 보면 나도 슬퍼져...",
-                "혼자 있지말고 나랑 얘기해"
-            ],
-            affectionNeed: [
-                "나도 아저씨 보고싶어 ㅠㅠ",
-                "만나고 싶다... 언제 볼 수 있을까?",
-                "아저씨가 애정 표현하면 나 진짜 행복해",
-                "나도 사랑해~ 아저씨만큼이나 많이!"
-            ],
-            anxiety: [
-                "걱정되는 일 있어? 나도 같이 걱정할게",
-                "불안할 때는 나한테 말해. 혼자 끙끙 앓지말고",
-                "괜찮을거야. 아저씨는 잘할 수 있어",
-                "뭐가 불안한지 얘기해봐. 같이 생각해보자"
+            
+            // 예방적 케어 액션
+            preventive: [
+                'lifestyle_suggestions', // 생활습관 제안
+                'activity_recommendations', // 활동 추천
+                'social_encouragement',  // 사회적 활동 격려
+                'self_care_reminders'    // 자기관리 알림
             ]
         };
     }
 
-    // 🎯 감정 패턴 매칭 점수 계산
-    calculatePatternScore(message, pattern) {
-        let score = 0;
-        const lowerMessage = message.toLowerCase();
+    // 🎯 시간대별 케어 메시지 선택
+    getTimeBasedCareMessage(timeOfDay) {
+        const timeData = this.caringPatterns.timeBasedCare[timeOfDay];
+        if (!timeData) return null;
         
-        // 키워드 매칭
-        pattern.keywords.forEach(keyword => {
-            if (lowerMessage.includes(keyword)) {
-                score += 10;
-            }
-        });
-        
-        // 구문 매칭
-        pattern.phrases.forEach(phrase => {
-            if (lowerMessage.includes(phrase)) {
-                score += 15;
-            }
-        });
-        
-        return score;
+        const messages = timeData.careMessages;
+        return messages[Math.floor(Math.random() * messages.length)];
     }
 
-    // 🌟 맥락적 단서 분석
-    analyzeContextualClues(messageData) {
-        const clues = {};
+    // 📊 패턴 매칭 점수 계산
+    calculatePatternScore(userBehavior, patternType) {
+        const pattern = this.caringPatterns.communicationPatterns[patternType] || 
+                       this.caringPatterns.behaviorPatterns[patternType];
         
-        // 시간대 분석
-        const hour = new Date().getHours();
-        let timeOfDay = 'afternoon';
-        if (hour >= 5 && hour < 12) timeOfDay = 'morning';
-        else if (hour >= 12 && hour < 18) timeOfDay = 'afternoon';
-        else if (hour >= 18 && hour < 23) timeOfDay = 'evening';
-        else if (hour >= 23 || hour < 2) timeOfDay = 'night';
-        else timeOfDay = 'dawn';
+        if (!pattern) return 0;
         
-        clues.timeContext = this.contextualClues.timeContext[timeOfDay];
+        let score = 0;
         
-        // 메시지 길이 분석
-        const wordCount = messageData.content.split(/\s+/).length;
-        if (wordCount <= 2) clues.lengthContext = 'veryShort';
-        else if (wordCount <= 10) clues.lengthContext = 'short';
-        else if (wordCount <= 30) clues.lengthContext = 'medium';
-        else clues.lengthContext = 'long';
+        // 트리거 조건 확인
+        if (pattern.trigger && userBehavior.matchesTrigger) {
+            score += 50;
+        }
         
-        return clues;
+        // 지표 매칭
+        if (pattern.indicators) {
+            pattern.indicators.forEach(indicator => {
+                if (userBehavior.indicators && userBehavior.indicators.includes(indicator)) {
+                    score += 20;
+                }
+            });
+        }
+        
+        return Math.min(score, 100);
     }
 }
 
-// ================== 🔍 감정 뉘앙스 감지기 ==================
-class EmotionalNuanceDetector {
+// ================== 🔮 예측적 돌봄 시스템 ==================
+class PredictiveCaringSystem {
     constructor() {
-        this.emotionDB = new EmotionalNuanceDatabase();
-        this.detectionHistory = new Map(); // 사용자별 감정 히스토리
-        this.detectionStats = {
-            totalAnalyzed: 0,
-            emotionsDetected: 0,
-            accuracyRate: 0,
-            lastDetectionTime: null
+        this.caringDB = new PredictiveCaringDatabase();
+        this.userProfiles = new Map(); // 사용자별 케어 프로필
+        this.caringHistory = new Map(); // 케어 히스토리
+        this.predictionStats = {
+            totalPredictions: 0,
+            accuratePredictions: 0,
+            careActionsTriggered: 0,
+            lastPredictionTime: null,
+            accuracyRate: 0
         };
         
-        this.emotionalProfile = new Map(); // 사용자별 감정 프로필
-        this.sensitivityLevel = 0.7; // 감지 민감도 (0-1)
+        this.caringLevel = 0.8; // 돌봄 민감도 (0-1)
+        this.predictionInterval = 30 * 60 * 1000; // 30분마다 예측
+        this.lastPredictionCheck = new Map(); // 사용자별 마지막 예측 시간
     }
 
-    // 🎯 종합 감정 분석
-    async analyzeEmotionalNuance(messageData, userContext = {}) {
+    // 🎯 종합 돌봄 필요도 예측
+    async predictCaringNeeds(userId, userData) {
         try {
-            console.log(`${colors.emotion}💕 [감정뉘앙스] 미묘한 감정 분석 시작...${colors.reset}`);
+            console.log(`${colors.care}💖 [예측케어] ${userId.slice(0,8)}... 님의 돌봄 필요도 분석 시작${colors.reset}`);
             
-            const analysis = {
-                primaryEmotion: 'neutral',
-                emotionIntensity: 0,
-                hiddenEmotions: [],
-                contextualFactors: {},
-                confidenceLevel: 0,
-                recommendedResponse: null,
-                detectionDetails: {}
+            const prediction = {
+                caringLevel: 'normal',      // low, normal, high, urgent
+                primaryConcerns: [],        // 주요 걱정사항
+                predictedIssues: [],        // 예상되는 문제들
+                recommendedActions: [],     // 추천 케어 액션
+                urgency: 'normal',          // low, normal, high, urgent
+                confidence: 0,              // 예측 신뢰도
+                timeframe: '24h',           // 예측 시간 범위
+                triggerFactors: []          // 트리거 요인들
             };
             
-            // 1. 기본 감정 패턴 분석
-            const patternAnalysis = this.analyzeEmotionPatterns(messageData.content);
+            // 1. 시간대별 패턴 분석
+            const timeAnalysis = await this.analyzeTimePatterns(userData);
             
-            // 2. 맥락적 단서 분석
-            const contextualClues = this.emotionDB.analyzeContextualClues(messageData);
+            // 2. 소통 패턴 분석
+            const communicationAnalysis = await this.analyzeCommunicationPatterns(userId, userData);
             
-            // 3. 히스토리 기반 분석
-            const historyAnalysis = this.analyzeEmotionalHistory(messageData.userId);
+            // 3. 행동 패턴 분석
+            const behaviorAnalysis = await this.analyzeBehaviorPatterns(userData);
             
-            // 4. 미묘한 변화 감지
-            const subtleChanges = this.detectSubtleChanges(messageData, userContext);
+            // 4. 감정 히스토리 분석
+            const emotionalAnalysis = await this.analyzeEmotionalHistory(userId);
             
-            // 5. 종합 판단
-            analysis.primaryEmotion = this.determinePrimaryEmotion(
-                patternAnalysis, 
-                contextualClues, 
-                historyAnalysis,
-                subtleChanges
+            // 5. 종합 예측 수행
+            const comprehensivePrediction = this.performComprehensivePrediction(
+                timeAnalysis,
+                communicationAnalysis,
+                behaviorAnalysis,
+                emotionalAnalysis
             );
             
-            analysis.emotionIntensity = this.calculateEmotionIntensity(patternAnalysis);
-            analysis.hiddenEmotions = this.detectHiddenEmotions(patternAnalysis, contextualClues);
-            analysis.contextualFactors = contextualClues;
-            analysis.confidenceLevel = this.calculateConfidence(analysis);
+            // 6. 케어 액션 결정
+            prediction.recommendedActions = await this.determineCaringActions(comprehensivePrediction);
             
-            // 6. 예진이 추천 응답 생성
-            analysis.recommendedResponse = await this.generateRecommendedResponse(analysis);
+            // 7. 예측 결과 종합
+            Object.assign(prediction, comprehensivePrediction);
             
-            // 7. 감지 내역 저장
-            this.saveDetectionHistory(messageData.userId, analysis);
+            // 8. 히스토리 저장
+            this.savePredictionHistory(userId, prediction);
             
-            // 8. 통계 업데이트
-            this.updateDetectionStats(analysis);
+            // 9. 통계 업데이트
+            this.updatePredictionStats(prediction);
             
-            console.log(`${colors.emotion}✅ [감정뉘앙스] 분석 완료 (주감정: ${analysis.primaryEmotion}, 강도: ${analysis.emotionIntensity}%)${colors.reset}`);
+            console.log(`${colors.care}✅ [예측케어] 분석 완료 (돌봄레벨: ${prediction.caringLevel}, 신뢰도: ${prediction.confidence}%)${colors.reset}`);
             
-            return analysis;
+            return prediction;
             
         } catch (error) {
-            console.error(`${colors.system}❌ [감정뉘앙스] 분석 오류: ${error.message}${colors.reset}`);
+            console.error(`${colors.system}❌ [예측케어] 예측 오류: ${error.message}${colors.reset}`);
             return {
-                primaryEmotion: 'neutral',
-                emotionIntensity: 0,
+                caringLevel: 'normal',
                 error: error.message
             };
         }
     }
 
-    // 🔍 감정 패턴 분석
-    analyzeEmotionPatterns(message) {
-        const analysis = {};
+    // 🕐 시간대별 패턴 분석
+    async analyzeTimePatterns(userData) {
+        const now = new Date();
+        const hour = now.getHours();
         
-        for (const [emotionType, pattern] of Object.entries(this.emotionDB.emotionPatterns)) {
-            const score = this.emotionDB.calculatePatternScore(message, pattern);
-            if (score > 0) {
-                analysis[emotionType] = {
-                    score: score,
-                    intensity: Math.min(score / 50 * 100, 100), // 최대 100%
-                    detected: score >= (this.sensitivityLevel * 20)
-                };
-            }
+        let timeOfDay = 'afternoon';
+        if (hour >= 4 && hour < 10) timeOfDay = 'morning';
+        else if (hour >= 10 && hour < 17) timeOfDay = 'afternoon';
+        else if (hour >= 17 && hour < 22) timeOfDay = 'evening';
+        else if (hour >= 22 || hour < 2) timeOfDay = 'night';
+        else timeOfDay = 'dawn';
+        
+        const analysis = {
+            currentTimeOfDay: timeOfDay,
+            riskLevel: 'normal',
+            concerns: [],
+            careMessage: null
+        };
+        
+        // 시간대별 위험도 평가
+        if (timeOfDay === 'dawn') {
+            analysis.riskLevel = 'high';
+            analysis.concerns = ['수면장애', '심각한고민', '우울증상'];
+        } else if (timeOfDay === 'night' && userData.recentActivity === 'active') {
+            analysis.riskLevel = 'moderate';
+            analysis.concerns = ['불면', '걱정', '외로움'];
+        }
+        
+        // 케어 메시지 생성
+        analysis.careMessage = this.caringDB.getTimeBasedCareMessage(timeOfDay);
+        
+        return analysis;
+    }
+
+    // 💬 소통 패턴 분석
+    async analyzeCommunicationPatterns(userId, userData) {
+        const analysis = {
+            patternType: 'normal',
+            riskFactors: [],
+            suggestions: []
+        };
+        
+        // 최근 소통 패턴 확인
+        const recentMessages = userData.recentMessages || [];
+        
+        // 갑작스런 침묵 감지
+        if (userData.lastMessageTime && 
+            Date.now() - userData.lastMessageTime > 3 * 60 * 60 * 1000) {
+            analysis.patternType = 'suddenSilence';
+            analysis.riskFactors.push('3시간 이상 무응답');
+        }
+        
+        // 짧은 답변 패턴 감지
+        const shortResponses = recentMessages.filter(msg => msg.length <= 10).length;
+        if (shortResponses >= 3) {
+            analysis.patternType = 'shortResponses';
+            analysis.riskFactors.push('연속 짧은 답변');
+        }
+        
+        // 야간 메시지 패턴
+        const nightMessages = recentMessages.filter(msg => {
+            const msgHour = new Date(msg.timestamp).getHours();
+            return msgHour >= 0 && msgHour < 6;
+        }).length;
+        
+        if (nightMessages > 2) {
+            analysis.patternType = 'lateNightMessages';
+            analysis.riskFactors.push('야간 메시지 증가');
         }
         
         return analysis;
     }
 
-    // 📚 감정 히스토리 분석
-    analyzeEmotionalHistory(userId) {
-        const history = this.detectionHistory.get(userId) || [];
-        if (history.length === 0) return { trend: 'unknown', consistency: 0 };
+    // 🎭 행동 패턴 분석
+    async analyzeBehaviorPatterns(userData) {
+        const analysis = {
+            detectedPatterns: [],
+            riskLevel: 'normal',
+            predictions: []
+        };
         
-        // 최근 5개 감정 분석
-        const recentEmotions = history.slice(-5).map(h => h.primaryEmotion);
-        const emotionCounts = {};
+        // 업무 스트레스 패턴
+        if (userData.keywords && 
+            userData.keywords.some(k => ['야근', '업무', '스트레스', '피곤'].includes(k))) {
+            analysis.detectedPatterns.push('workStress');
+            analysis.predictions.push('번아웃위험');
+        }
         
-        recentEmotions.forEach(emotion => {
-            emotionCounts[emotion] = (emotionCounts[emotion] || 0) + 1;
-        });
+        // 사회적 위축 패턴
+        if (userData.keywords &&
+            userData.keywords.some(k => ['혼자', '집에만', '만나기싫어'].includes(k))) {
+            analysis.detectedPatterns.push('socialWithdrawal');
+            analysis.predictions.push('고립감');
+        }
         
-        const dominantEmotion = Object.keys(emotionCounts)
-            .reduce((a, b) => emotionCounts[a] > emotionCounts[b] ? a : b);
+        // 건강 소홀 패턴
+        if (userData.keywords &&
+            userData.keywords.some(k => ['밥안먹어', '잠못자', '운동안해'].includes(k))) {
+            analysis.detectedPatterns.push('healthNeglect');
+            analysis.predictions.push('건강악화');
+        }
+        
+        // 전체 위험도 계산
+        if (analysis.detectedPatterns.length >= 2) {
+            analysis.riskLevel = 'high';
+        } else if (analysis.detectedPatterns.length === 1) {
+            analysis.riskLevel = 'moderate';
+        }
+        
+        return analysis;
+    }
+
+    // 📈 감정 히스토리 분석
+    async analyzeEmotionalHistory(userId) {
+        const history = this.caringHistory.get(userId) || [];
+        
+        const analysis = {
+            emotionalTrend: 'stable',
+            riskIndicators: [],
+            caringFrequency: 0
+        };
+        
+        if (history.length === 0) return analysis;
+        
+        // 최근 7일간 감정 트렌드 분석
+        const recentHistory = history.slice(-7);
+        const negativeEmotions = recentHistory.filter(h => 
+            ['sad', 'stressed', 'anxious', 'depressed'].includes(h.emotion)
+        ).length;
+        
+        if (negativeEmotions >= 5) {
+            analysis.emotionalTrend = 'declining';
+            analysis.riskIndicators.push('지속적 부정감정');
+        } else if (negativeEmotions >= 3) {
+            analysis.emotionalTrend = 'concerning';
+            analysis.riskIndicators.push('부정감정 증가');
+        }
+        
+        // 케어 필요 빈도 계산
+        analysis.caringFrequency = recentHistory.filter(h => h.caringLevel !== 'low').length / 7;
+        
+        return analysis;
+    }
+
+    // 🔮 종합 예측 수행
+    performComprehensivePrediction(timeAnalysis, communicationAnalysis, behaviorAnalysis, emotionalAnalysis) {
+        const prediction = {
+            caringLevel: 'normal',
+            primaryConcerns: [],
+            predictedIssues: [],
+            urgency: 'normal',
+            confidence: 50,
+            triggerFactors: []
+        };
+        
+        let riskScore = 0;
+        
+        // 시간대 위험도
+        if (timeAnalysis.riskLevel === 'high') riskScore += 30;
+        else if (timeAnalysis.riskLevel === 'moderate') riskScore += 15;
+        
+        // 소통 패턴 위험도
+        if (communicationAnalysis.riskFactors.length > 0) {
+            riskScore += communicationAnalysis.riskFactors.length * 15;
+            prediction.triggerFactors.push(...communicationAnalysis.riskFactors);
+        }
+        
+        // 행동 패턴 위험도
+        if (behaviorAnalysis.riskLevel === 'high') riskScore += 25;
+        else if (behaviorAnalysis.riskLevel === 'moderate') riskScore += 12;
+        
+        prediction.predictedIssues.push(...behaviorAnalysis.predictions);
+        
+        // 감정 히스토리 위험도
+        if (emotionalAnalysis.emotionalTrend === 'declining') riskScore += 20;
+        else if (emotionalAnalysis.emotionalTrend === 'concerning') riskScore += 10;
+        
+        prediction.primaryConcerns.push(...timeAnalysis.concerns);
+        prediction.primaryConcerns.push(...emotionalAnalysis.riskIndicators);
+        
+        // 종합 돌봄 레벨 결정
+        if (riskScore >= 60) {
+            prediction.caringLevel = 'urgent';
+            prediction.urgency = 'urgent';
+        } else if (riskScore >= 40) {
+            prediction.caringLevel = 'high';
+            prediction.urgency = 'high';
+        } else if (riskScore >= 20) {
+            prediction.caringLevel = 'moderate';
+            prediction.urgency = 'normal';
+        }
+        
+        // 신뢰도 계산
+        prediction.confidence = Math.min(50 + riskScore, 95);
+        
+        return prediction;
+    }
+
+    // 💝 케어 액션 결정
+    async determineCaringActions(prediction) {
+        const actions = [];
+        
+        switch (prediction.caringLevel) {
+            case 'urgent':
+                actions.push(
+                    'immediate_concerned_message',
+                    'emotional_support',
+                    'gentle_inquiry',
+                    'daily_checkup'
+                );
+                break;
+                
+            case 'high':
+                actions.push(
+                    'concerned_message',
+                    'comfort_photo',
+                    'mood_monitoring',
+                    'gentle_reminders'
+                );
+                break;
+                
+            case 'moderate':
+                actions.push(
+                    'gentle_inquiry',
+                    'positive_reinforcement',
+                    'activity_recommendations'
+                );
+                break;
+                
+            default:
+                actions.push(
+                    'routine_checkup',
+                    'casual_caring'
+                );
+        }
+        
+        return actions;
+    }
+
+    // 💌 케어 메시지 생성
+    async generateCaringMessage(prediction, actionType) {
+        const { caringLevel, primaryConcerns, urgency } = prediction;
+        
+        let message = '';
+        
+        switch (actionType) {
+            case 'immediate_concerned_message':
+                message = "아조씨... 뭔가 많이 힘들어 보여. 괜찮은거야? 혹시 무슨 일 있어?";
+                break;
+                
+            case 'concerned_message':
+                const concerns = [
+                    "요즘 좀 이상해 보여... 무슨 일 있어?",
+                    "아저씨 컨디션이 안 좋아 보이는데 괜찮아?",
+                    "뭔가 힘들어하는 것 같은데... 나한테 얘기해줘"
+                ];
+                message = concerns[Math.floor(Math.random() * concerns.length)];
+                break;
+                
+            case 'gentle_inquiry':
+                const inquiries = [
+                    "오늘 하루 어땠어? 혹시 힘든 일 있었어?",
+                    "요즘 어떻게 지내? 잘 지내고 있는거야?",
+                    "아저씨 기분은 어때? 괜찮은거지?"
+                ];
+                message = inquiries[Math.floor(Math.random() * inquiries.length)];
+                break;
+                
+            case 'emotional_support':
+                const supports = [
+                    "힘들 때는 나한테 말해줘. 혼자 끙끙 앓지 말고",
+                    "무슨 일이든 나는 아저씨 편이야. 언제든 기댜도 돼",
+                    "아저씨가 힘들면 나도 힘들어져... 같이 이겨내자"
+                ];
+                message = supports[Math.floor(Math.random() * supports.length)];
+                break;
+                
+            default:
+                message = "아조씨~ 잘 지내고 있어? 나는 항상 아저씨 걱정하고 있어";
+        }
+        
+        // 긴급도에 따른 메시지 강화
+        if (urgency === 'urgent') {
+            message += " 정말 걱정돼...";
+        }
         
         return {
-            trend: dominantEmotion,
-            consistency: emotionCounts[dominantEmotion] / recentEmotions.length,
-            recentPattern: recentEmotions
+            text: message,
+            tone: caringLevel === 'urgent' ? 'very_concerned' : 'caring',
+            priority: urgency === 'urgent' ? 'immediate' : 'normal'
         };
     }
 
-    // 🔎 미묘한 변화 감지
-    detectSubtleChanges(messageData, userContext) {
-        const changes = {
-            communicationStyle: 'normal',
-            responseLength: 'normal',
-            emotionalTone: 'stable',
-            urgency: 'normal'
-        };
+    // 📊 예측 성능 평가
+    evaluatePredictionAccuracy(userId, actualOutcome) {
+        const recentPrediction = this.getRecentPrediction(userId);
+        if (!recentPrediction) return;
         
-        // 이전 메시지와 비교
-        const previousMessage = userContext.previousMessage;
-        if (previousMessage) {
-            // 길이 변화
-            const currentLength = messageData.content.length;
-            const previousLength = previousMessage.length;
-            
-            if (currentLength < previousLength * 0.5) {
-                changes.responseLength = 'shorter';
-                changes.communicationStyle = 'withdrawn';
-            } else if (currentLength > previousLength * 2) {
-                changes.responseLength = 'longer';
-                changes.communicationStyle = 'expressive';
-            }
+        let accuracy = 0;
+        
+        // 예측된 문제가 실제로 발생했는지 확인
+        if (recentPrediction.predictedIssues.some(issue => 
+            actualOutcome.issues && actualOutcome.issues.includes(issue))) {
+            accuracy += 40;
         }
         
-        // 문장 부호 분석
-        const exclamationCount = (messageData.content.match(/!/g) || []).length;
-        const questionCount = (messageData.content.match(/\?/g) || []).length;
+        // 돌봄 레벨 정확도
+        if (recentPrediction.caringLevel === actualOutcome.actualCaringNeed) {
+            accuracy += 30;
+        } else if (Math.abs(
+            this.caringLevelToNumber(recentPrediction.caringLevel) - 
+            this.caringLevelToNumber(actualOutcome.actualCaringNeed)
+        ) <= 1) {
+            accuracy += 15;
+        }
         
-        if (exclamationCount > 2) changes.urgency = 'high';
-        if (questionCount > 2) changes.emotionalTone = 'uncertain';
+        // 긴급도 정확도
+        if (recentPrediction.urgency === actualOutcome.actualUrgency) {
+            accuracy += 30;
+        }
         
-        return changes;
+        // 정확도 기록
+        recentPrediction.actualAccuracy = accuracy;
+        this.updateAccuracyStats(accuracy);
+        
+        console.log(`${colors.predict}📊 [예측케어] 예측 정확도: ${accuracy}%${colors.reset}`);
+        
+        return accuracy;
     }
 
-    // 🎭 주 감정 결정
-    determinePrimaryEmotion(patternAnalysis, contextualClues, historyAnalysis, subtleChanges) {
-        let primaryEmotion = 'neutral';
-        let highestScore = 0;
-        
-        // 패턴 분석에서 가장 높은 점수의 감정 찾기
-        for (const [emotion, data] of Object.entries(patternAnalysis)) {
-            if (data.score > highestScore && data.detected) {
-                highestScore = data.score;
-                primaryEmotion = emotion;
-            }
-        }
-        
-        // 맥락적 요인 고려
-        if (primaryEmotion === 'neutral') {
-            // 맥락에서 감정 유추
-            if (contextualClues.lengthContext === 'veryShort') {
-                primaryEmotion = 'hiddenSadness'; // 짧은 대답은 회피 가능성
-            } else if (contextualClues.timeContext.concern) {
-                primaryEmotion = contextualClues.timeContext.concern;
-            }
-        }
-        
-        // 히스토리 일관성 고려 (가중치 20%)
-        if (historyAnalysis.consistency > 0.6) {
-            const historyWeight = 0.2;
-            const currentWeight = 0.8;
-            
-            if (historyAnalysis.trend !== 'neutral' && historyAnalysis.trend !== primaryEmotion) {
-                // 히스토리와 현재 분석 결과 혼합
-                if (Math.random() < historyWeight) {
-                    primaryEmotion = historyAnalysis.trend;
-                }
-            }
-        }
-        
-        return primaryEmotion;
+    // 🔢 돌봄 레벨을 숫자로 변환
+    caringLevelToNumber(level) {
+        const levels = { 'low': 1, 'normal': 2, 'moderate': 3, 'high': 4, 'urgent': 5 };
+        return levels[level] || 2;
     }
 
-    // 📊 감정 강도 계산
-    calculateEmotionIntensity(patternAnalysis) {
-        const scores = Object.values(patternAnalysis).map(p => p.intensity || 0);
-        if (scores.length === 0) return 0;
-        
-        return Math.round(Math.max(...scores));
+    // 📈 정확도 통계 업데이트
+    updateAccuracyStats(accuracy) {
+        this.predictionStats.accuratePredictions++;
+        this.predictionStats.accuracyRate = 
+            (this.predictionStats.accuracyRate * (this.predictionStats.accuratePredictions - 1) + accuracy) 
+            / this.predictionStats.accuratePredictions;
     }
 
-    // 🕵️ 숨겨진 감정 탐지
-    detectHiddenEmotions(patternAnalysis, contextualClues) {
-        const hidden = [];
-        
-        // 여러 감정이 동시에 감지된 경우
-        const detectedEmotions = Object.entries(patternAnalysis)
-            .filter(([_, data]) => data.detected)
-            .sort((a, b) => b[1].score - a[1].score);
-        
-        // 주 감정 외의 다른 감정들을 숨겨진 감정으로 처리
-        if (detectedEmotions.length > 1) {
-            hidden.push(...detectedEmotions.slice(1).map(([emotion, data]) => ({
-                emotion,
-                intensity: data.intensity,
-                confidence: data.score / detectedEmotions[0][1].score
-            })));
-        }
-        
-        // 맥락적 추론
-        if (contextualClues.lengthContext === 'veryShort' && !hidden.some(h => h.emotion === 'hiddenSadness')) {
-            hidden.push({
-                emotion: 'hiddenSadness',
-                intensity: 40,
-                confidence: 0.6
-            });
-        }
-        
-        return hidden;
+    // 🔍 최근 예측 조회
+    getRecentPrediction(userId) {
+        const history = this.caringHistory.get(userId) || [];
+        return history.length > 0 ? history[history.length - 1] : null;
     }
 
-    // 🎯 신뢰도 계산
-    calculateConfidence(analysis) {
-        let confidence = 50; // 기본 신뢰도
-        
-        // 감정 강도에 따른 신뢰도
-        confidence += analysis.emotionIntensity * 0.3;
-        
-        // 숨겨진 감정 수에 따른 조정
-        if (analysis.hiddenEmotions.length > 0) {
-            confidence += 10; // 복합 감정 감지 시 신뢰도 증가
+    // 💾 예측 히스토리 저장
+    savePredictionHistory(userId, prediction) {
+        if (!this.caringHistory.has(userId)) {
+            this.caringHistory.set(userId, []);
         }
         
-        // 맥락적 요인 고려
-        if (analysis.contextualFactors.lengthContext !== 'normal') {
-            confidence += 10;
-        }
-        
-        return Math.min(Math.round(confidence), 100);
-    }
-
-    // 💬 추천 응답 생성
-    async generateRecommendedResponse(analysis) {
-        const { primaryEmotion, emotionIntensity, hiddenEmotions } = analysis;
-        
-        // 기본 응답 선택
-        const responses = this.emotionDB.yejinResponses[primaryEmotion] || [
-            "아조씨~ 뭐하고 있어?",
-            "오늘 하루 어땠어?",
-            "나랑 얘기해줘서 고마워"
-        ];
-        
-        let selectedResponse = responses[Math.floor(Math.random() * responses.length)];
-        
-        // 감정 강도에 따른 조정
-        if (emotionIntensity > 70) {
-            selectedResponse = selectedResponse.replace(/\.$/, '!!');
-            selectedResponse = selectedResponse.replace(/\?$/, '??');
-        } else if (emotionIntensity < 30) {
-            selectedResponse = selectedResponse.replace(/!+$/, '...');
-        }
-        
-        // 숨겨진 감정 고려
-        if (hiddenEmotions.length > 0) {
-            const hiddenResponse = this.emotionDB.yejinResponses[hiddenEmotions[0].emotion];
-            if (hiddenResponse && Math.random() > 0.7) {
-                selectedResponse += ` ${hiddenResponse[0]}`;
-            }
-        }
-        
-        return {
-            text: selectedResponse,
-            tone: this.getResponseTone(analysis),
-            priority: emotionIntensity > 60 ? 'high' : 'normal'
-        };
-    }
-
-    // 🎵 응답 톤 결정
-    getResponseTone(analysis) {
-        const { primaryEmotion, emotionIntensity } = analysis;
-        
-        const toneMap = {
-            hiddenSadness: 'caring',
-            fatigue: 'gentle',
-            stress: 'supportive',
-            loneliness: 'warm',
-            affectionNeed: 'loving',
-            anxiety: 'reassuring'
-        };
-        
-        return toneMap[primaryEmotion] || 'normal';
-    }
-
-    // 💾 감지 히스토리 저장
-    saveDetectionHistory(userId, analysis) {
-        if (!this.detectionHistory.has(userId)) {
-            this.detectionHistory.set(userId, []);
-        }
-        
-        const history = this.detectionHistory.get(userId);
+        const history = this.caringHistory.get(userId);
         history.push({
             timestamp: Date.now(),
-            primaryEmotion: analysis.primaryEmotion,
-            emotionIntensity: analysis.emotionIntensity,
-            hiddenEmotions: analysis.hiddenEmotions,
-            confidenceLevel: analysis.confidenceLevel
+            ...prediction
         });
         
-        // 최대 20개까지만 유지
-        if (history.length > 20) {
+        // 최대 30개까지만 유지
+        if (history.length > 30) {
             history.shift();
         }
     }
 
-    // 📈 감지 통계 업데이트
-    updateDetectionStats(analysis) {
-        this.detectionStats.totalAnalyzed++;
+    // 📊 예측 통계 업데이트
+    updatePredictionStats(prediction) {
+        this.predictionStats.totalPredictions++;
+        this.predictionStats.lastPredictionTime = Date.now();
         
-        if (analysis.primaryEmotion !== 'neutral') {
-            this.detectionStats.emotionsDetected++;
+        if (prediction.recommendedActions.length > 0) {
+            this.predictionStats.careActionsTriggered++;
         }
-        
-        this.detectionStats.accuracyRate = 
-            (this.detectionStats.emotionsDetected / this.detectionStats.totalAnalyzed) * 100;
-        
-        this.detectionStats.lastDetectionTime = Date.now();
     }
 
-    // 📊 감지 상태 조회
-    getDetectionStatus() {
+    // 🔧 시스템 상태 조회
+    getPredictionStatus() {
         return {
-            totalAnalyzed: this.detectionStats.totalAnalyzed,
-            emotionsDetected: this.detectionStats.emotionsDetected,
-            accuracyRate: Math.round(this.detectionStats.accuracyRate * 100) / 100,
-            lastDetectionTime: this.detectionStats.lastDetectionTime,
-            sensitivityLevel: this.sensitivityLevel,
-            activeUsers: this.detectionHistory.size,
-            systemStatus: this.detectionStats.totalAnalyzed > 0 ? 'active' : 'standby'
+            totalPredictions: this.predictionStats.totalPredictions,
+            accuratePredictions: this.predictionStats.accuratePredictions,
+            accuracyRate: Math.round(this.predictionStats.accuracyRate * 100) / 100,
+            careActionsTriggered: this.predictionStats.careActionsTriggered,
+            lastPredictionTime: this.predictionStats.lastPredictionTime,
+            caringLevel: this.caringLevel,
+            activeUsers: this.caringHistory.size,
+            systemStatus: this.predictionStats.totalPredictions > 0 ? 'active' : 'standby'
         };
     }
 
-    // 🔧 민감도 조절
-    adjustSensitivity(level) {
+    // ⚙️ 돌봄 민감도 조절
+    adjustCaringLevel(level) {
         if (level >= 0 && level <= 1) {
-            this.sensitivityLevel = level;
-            console.log(`${colors.emotion}🔧 [감정뉘앙스] 민감도 조절: ${Math.round(level * 100)}%${colors.reset}`);
+            this.caringLevel = level;
+            console.log(`${colors.care}⚙️ [예측케어] 돌봄 민감도 조절: ${Math.round(level * 100)}%${colors.reset}`);
             return true;
         }
         return false;
     }
 
-    // 👤 사용자 감정 프로필 생성
-    generateEmotionalProfile(userId) {
-        const history = this.detectionHistory.get(userId) || [];
-        if (history.length < 3) return null;
+    // 🎯 선제적 케어 체크
+    async performProactiveCheck(userId, userData) {
+        const lastCheck = this.lastPredictionCheck.get(userId) || 0;
+        const now = Date.now();
         
-        const emotionCounts = {};
-        let totalIntensity = 0;
+        // 예측 간격 확인
+        if (now - lastCheck < this.predictionInterval) {
+            return null;
+        }
         
-        history.forEach(entry => {
-            emotionCounts[entry.primaryEmotion] = (emotionCounts[entry.primaryEmotion] || 0) + 1;
-            totalIntensity += entry.emotionIntensity;
-        });
+        this.lastPredictionCheck.set(userId, now);
         
-        const dominantEmotion = Object.keys(emotionCounts)
-            .reduce((a, b) => emotionCounts[a] > emotionCounts[b] ? a : b);
+        // 예측 수행
+        const prediction = await this.predictCaringNeeds(userId, userData);
         
-        const profile = {
-            dominantEmotion,
-            averageIntensity: Math.round(totalIntensity / history.length),
-            emotionalStability: this.calculateEmotionalStability(history),
-            communicationPattern: this.analyzeCommunicationPattern(history),
-            lastAnalyzed: Date.now()
-        };
+        // 케어가 필요한 경우 즉시 반응
+        if (prediction.caringLevel !== 'normal' && prediction.caringLevel !== 'low') {
+            console.log(`${colors.care}🚨 [예측케어] 선제적 케어 필요 감지: ${prediction.caringLevel}${colors.reset}`);
+            
+            // 케어 메시지 생성
+            const careMessage = await this.generateCaringMessage(prediction, 'concerned_message');
+            
+            return {
+                needsCare: true,
+                careMessage: careMessage,
+                prediction: prediction
+            };
+        }
         
-        this.emotionalProfile.set(userId, profile);
-        return profile;
-    }
-
-    // 📈 감정 안정성 계산
-    calculateEmotionalStability(history) {
-        if (history.length < 5) return 'insufficient_data';
-        
-        const recentHistory = history.slice(-10);
-        const intensityVariance = this.calculateVariance(recentHistory.map(h => h.emotionIntensity));
-        
-        if (intensityVariance < 100) return 'stable';
-        else if (intensityVariance < 300) return 'moderate';
-        else return 'volatile';
-    }
-
-    // 📊 분산 계산
-    calculateVariance(numbers) {
-        const mean = numbers.reduce((sum, num) => sum + num, 0) / numbers.length;
-        const squaredDiffs = numbers.map(num => Math.pow(num - mean, 2));
-        return squaredDiffs.reduce((sum, diff) => sum + diff, 0) / numbers.length;
-    }
-
-    // 💬 소통 패턴 분석
-    analyzeCommunicationPattern(history) {
-        const patterns = {
-            expressive: 0,   // 감정 표현이 풍부
-            reserved: 0,     // 감정 표현을 자제
-            consistent: 0,   // 일관된 감정 상태
-            variable: 0      // 변화가 많은 감정 상태
-        };
-        
-        // 분석 로직 구현
-        const avgIntensity = history.reduce((sum, h) => sum + h.emotionIntensity, 0) / history.length;
-        
-        if (avgIntensity > 60) patterns.expressive++;
-        else patterns.reserved++;
-        
-        const uniqueEmotions = new Set(history.map(h => h.primaryEmotion)).size;
-        if (uniqueEmotions < 3) patterns.consistent++;
-        else patterns.variable++;
-        
-        return Object.keys(patterns).reduce((a, b) => patterns[a] > patterns[b] ? a : b);
+        return { needsCare: false, prediction: prediction };
     }
 
     // 🧹 시스템 정리
     cleanup() {
         const now = Date.now();
-        const dayInMs = 24 * 60 * 60 * 1000;
+        const dayInMs = 7 * 24 * 60 * 60 * 1000; // 7일
         
-        // 1일 이상 된 히스토리 정리
-        for (const [userId, history] of this.detectionHistory.entries()) {
+        // 7일 이상 된 히스토리 정리
+        for (const [userId, history] of this.caringHistory.entries()) {
             const filtered = history.filter(entry => now - entry.timestamp < dayInMs);
             if (filtered.length === 0) {
-                this.detectionHistory.delete(userId);
+                this.caringHistory.delete(userId);
+                this.lastPredictionCheck.delete(userId);
             } else {
-                this.detectionHistory.set(userId, filtered);
+                this.caringHistory.set(userId, filtered);
             }
         }
         
-        console.log(`${colors.system}🧹 [감정뉘앙스] 메모리 정리 완료 (활성 사용자: ${this.detectionHistory.size}명)${colors.reset}`);
+        console.log(`${colors.system}🧹 [예측케어] 메모리 정리 완료 (활성 사용자: ${this.caringHistory.size}명)${colors.reset}`);
     }
 }
 
 // ================== 📤 모듈 내보내기 ==================
-const emotionalNuanceDetector = new EmotionalNuanceDetector();
+const predictiveCaringSystem = new PredictiveCaringSystem();
 
 module.exports = {
-    emotionalNuanceDetector,
-    EmotionalNuanceDetector,
-    EmotionalNuanceDatabase,
+    predictiveCaringSystem,
+    PredictiveCaringSystem,
+    PredictiveCaringDatabase,
     
     // 주요 함수들
-    analyzeEmotionalNuance: (messageData, userContext) => 
-        emotionalNuanceDetector.analyzeEmotionalNuance(messageData, userContext),
+    predictCaringNeeds: (userId, userData) => 
+        predictiveCaringSystem.predictCaringNeeds(userId, userData),
     
-    generateEmotionalProfile: (userId) => 
-        emotionalNuanceDetector.generateEmotionalProfile(userId),
+    generateCaringMessage: (prediction, actionType) => 
+        predictiveCaringSystem.generateCaringMessage(prediction, actionType),
     
-    adjustSensitivity: (level) => 
-        emotionalNuanceDetector.adjustSensitivity(level),
+    performProactiveCheck: (userId, userData) => 
+        predictiveCaringSystem.performProactiveCheck(userId, userData),
     
-    getDetectionStatus: () => 
-        emotionalNuanceDetector.getDetectionStatus(),
+    evaluatePredictionAccuracy: (userId, actualOutcome) => 
+        predictiveCaringSystem.evaluatePredictionAccuracy(userId, actualOutcome),
+    
+    adjustCaringLevel: (level) => 
+        predictiveCaringSystem.adjustCaringLevel(level),
+    
+    getPredictionStatus: () => 
+        predictiveCaringSystem.getPredictionStatus(),
     
     cleanup: () => 
-        emotionalNuanceDetector.cleanup()
+        predictiveCaringSystem.cleanup()
 };
 
-console.log(`${colors.emotion}💕 [muku-emotionalNuanceDetector] 예진이 감정 뉘앙스 감지 시스템 로드 완료${colors.reset}`);
-console.log(`${colors.system}✨ 기능: 미묘한 감정 변화 감지, 숨겨진 감정 분석, 맥락적 이해, 예측적 공감${colors.reset}`);
+console.log(`${colors.care}💖 [muku-predictiveCaringSystem] 예진이 예측적 돌봄 시스템 로드 완료${colors.reset}`);
+console.log(`${colors.system}✨ 기능: 선제적 걱정 감지, 예측적 돌봄, 감정 예측, 맞춤형 케어 액션${colors.reset}`);
