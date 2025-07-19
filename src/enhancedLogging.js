@@ -285,12 +285,25 @@ function getLineDamtaStatus(scheduler) {
             const damtaStatus = scheduler.getDamtaStatus();
             sentToday = damtaStatus.sentToday || 0;
             totalDaily = damtaStatus.totalDaily || 11;
+            
+            console.log(`[라인로그] 담타 데이터 가져옴: ${sentToday}/${totalDaily}건`);
         }
         
         // 실제 다음 담타 시간 가져오기
         if (scheduler && scheduler.getNextDamtaInfo) {
             const damtaInfo = scheduler.getNextDamtaInfo();
-            nextTime = damtaInfo.nextTime || calculateNextDamtaTime();
+            
+            // 다음 담타 시간 추출 (텍스트에서 시간 파싱)
+            if (damtaInfo.text && damtaInfo.text.includes('예정:')) {
+                const timeMatch = damtaInfo.text.match(/예정:\s*(\d{1,2}:\d{2})/);
+                if (timeMatch) {
+                    nextTime = timeMatch[1];
+                }
+            } else {
+                nextTime = calculateNextDamtaTime();
+            }
+            
+            console.log(`[라인로그] 다음 담타 시간: ${nextTime}`);
         } else {
             nextTime = calculateNextDamtaTime();
         }
@@ -298,6 +311,7 @@ function getLineDamtaStatus(scheduler) {
         return `🚬 [담타상태] ${sentToday}건 /${totalDaily}건 다음에 ${nextTime}에 발송예정\n`;
         
     } catch (error) {
+        console.log(`[라인로그] 담타 데이터 가져오기 실패: ${error.message}`);
         // 폴백: 현실적인 데이터로 표시
         const sentToday = Math.floor(Math.random() * 5) + 3; // 3-7건
         const nextTime = calculateNextDamtaTime();
@@ -345,11 +359,15 @@ function getLineSystemsStatus(systemModules) {
             photoSent = photoStatus.sentToday || 0;
             photoTotal = photoStatus.totalDaily || 8;
             nextPhotoTime = photoStatus.nextTime || nextPhotoTime;
+            
+            console.log(`[라인로그] 사진 실제 데이터: ${photoSent}/${photoTotal}건, 다음: ${nextPhotoTime}`);
         } catch (error) {
+            console.log(`[라인로그] 사진 데이터 가져오기 실패: ${error.message}`);
             // 실제 모듈에서 가져오기 실패 시 현실적인 데이터
             photoSent = Math.floor(Math.random() * 4) + 2; // 2-5건
         }
     } else {
+        console.log(`[라인로그] spontaneousPhoto 모듈 없음 - 폴백 데이터 사용`);
         // 모듈이 없을 때 현실적인 데이터
         photoSent = Math.floor(Math.random() * 4) + 2; // 2-5건
     }
@@ -367,38 +385,49 @@ function getLineSystemsStatus(systemModules) {
             emotionSent = yejinStatus.sentToday || 0;
             emotionTotal = yejinStatus.totalDaily || 15;
             
-            // 다음 메시지 시간 파싱
-            if (yejinStatus.nextMessageTime && yejinStatus.nextMessageTime !== '대기 중') {
+            // 다음 메시지 시간 파싱 (여러 형태 지원)
+            if (yejinStatus.nextMessageTime && 
+                yejinStatus.nextMessageTime !== '오늘 완료' && 
+                yejinStatus.nextMessageTime !== '대기 중' &&
+                yejinStatus.nextMessageTime.includes(':')) {
                 nextEmotionTime = yejinStatus.nextMessageTime;
             }
+            
+            console.log(`[라인로그] 예진이 실제 데이터: ${emotionSent}/${emotionTotal}건, 다음: ${nextEmotionTime}`);
         } catch (error) {
+            console.log(`[라인로그] 예진이 데이터 가져오기 실패: ${error.message}`);
             // 실제 모듈에서 가져오기 실패 시 현실적인 데이터
             emotionSent = Math.floor(Math.random() * 6) + 4; // 4-9건
         }
     } else {
+        console.log(`[라인로그] spontaneousYejin 모듈 없음 - 폴백 데이터 사용`);
         // 모듈이 없을 때 현실적인 데이터
         emotionSent = Math.floor(Math.random() * 6) + 4; // 4-9건
     }
     
     systemsText += `🌸 [감성메시지] ${emotionSent}건 /${emotionTotal}건 다음에 ${nextEmotionTime}에 발송예정\n`;
     
-    // 💌 자발적인 메시지 - 새로 추가 (실제 데이터 기반)
+    // 💌 자발적인 메시지 - 실제 데이터 기반
     let spontaneousSent = 0;
     let spontaneousTotal = 20;
     let nextSpontaneousTime = calculateNextSpontaneousTime();
     
-    // ultimateContext나 autoReply에서 자발적 메시지 데이터 가져오기 시도
+    // ultimateContext에서 자발적 메시지 데이터 가져오기 시도
     if (systemModules.ultimateContext && systemModules.ultimateContext.getSpontaneousStats) {
         try {
             const spontaneousStats = systemModules.ultimateContext.getSpontaneousStats();
             spontaneousSent = spontaneousStats.sentToday || 0;
             spontaneousTotal = spontaneousStats.totalDaily || 20;
             nextSpontaneousTime = spontaneousStats.nextTime || nextSpontaneousTime;
+            
+            console.log(`[라인로그] 자발적메시지 실제 데이터: ${spontaneousSent}/${spontaneousTotal}건, 다음: ${nextSpontaneousTime}`);
         } catch (error) {
+            console.log(`[라인로그] 자발적메시지 데이터 가져오기 실패: ${error.message}`);
             // 실제 모듈에서 가져오기 실패 시 현실적인 데이터
             spontaneousSent = Math.floor(Math.random() * 8) + 5; // 5-12건
         }
     } else {
+        console.log(`[라인로그] ultimateContext.getSpontaneousStats 없음 - 폴백 데이터 사용`);
         // 모듈이 없을 때 현실적인 데이터
         spontaneousSent = Math.floor(Math.random() * 8) + 5; // 5-12건
     }
