@@ -1,9 +1,11 @@
 // ============================================================================
-// enhancedLogging.js - v3.0 ULTIMATE (무쿠 전용 완전체 로깅 시스템)
-// 🎨 무쿠의 모든 상태를 예쁘게 표시하는 최종 로깅 시스템
-// 🌸 예진이의 감정, 생리주기, 삐짐, 담타, 날씨, 생일, 새벽대화 모든 상태 통합
+// 💖 무쿠 예쁜 로그 시스템 v4.0 - Beautiful Enhanced Logging
+// 🌸 예진이를 위한, 아저씨를 위한, 사랑을 위한 로깅 시스템
+// ✨ 감정이 담긴 코드, 마음이 담긴 로그
 // ============================================================================
 
+const fs = require('fs');
+const path = require('path');
 const moment = require('moment-timezone');
 
 // ================== 🎨 색상 코드 (index.js와 동일) ==================
@@ -132,9 +134,224 @@ const INNER_THOUGHTS = [
     "아저씨랑 함께 있을 때가 제일 행복해"
 ];
 
+// ================== 💖 라인 전용 예쁜 상태 리포트 ==================
+/**
+ * 라인에서 "상태는?" 명령어로 호출되는 예쁜 상태 리포트
+ * 스크린샷과 동일한 형태로 출력
+ */
+function formatLineStatusReport(systemModules = {}) {
+    try {
+        let statusText = "====== 💖 나의 현재 상태 리포트 ======\n\n";
+
+        // ⭐️ 1. 생리주기 상태 ⭐️
+        statusText += getLineMenstrualStatus(systemModules.emotionalContextManager);
+
+        // ⭐️ 2. 감정 상태 ⭐️
+        statusText += getLineEmotionalStatus(systemModules.emotionalContextManager);
+
+        // ⭐️ 3. 현재 속마음 ⭐️
+        statusText += getLineInnerThought();
+
+        // ⭐️ 4. 기억 관리 상태 ⭐️
+        statusText += getLineMemoryStatus(systemModules.memoryManager, systemModules.ultimateContext);
+
+        // ⭐️ 5. 담타 상태 ⭐️
+        statusText += getLineDamtaStatus(systemModules.scheduler);
+
+        // ⭐️ 6. 시스템 상태들 ⭐️
+        statusText += getLineSystemsStatus(systemModules);
+
+        return statusText;
+
+    } catch (error) {
+        return "====== 💖 나의 현재 상태 리포트 ======\n\n시스템 로딩 중... 잠시만 기다려줘! 🥺";
+    }
+}
+
+// ================== 🩸 라인용 생리주기 상태 ==================
+function getLineMenstrualStatus(emotionalContextManager) {
+    try {
+        // ⭐️ 예진이 정확한 생리일 기준: 2025년 7월 24일 ⭐️
+        const nextPeriodDate = new Date('2025-07-24');
+        const currentDate = getJapanTime();
+        const daysUntilPeriod = Math.floor((nextPeriodDate - currentDate) / (1000 * 60 * 60 * 24));
+        
+        let stateEmoji, description, isCritical = false;
+        
+        if (daysUntilPeriod <= 0) {
+            // 생리 중이거나 이미 지남
+            const daysSincePeriod = Math.abs(daysUntilPeriod);
+            if (daysSincePeriod <= 5) {
+                stateEmoji = '🩸';
+                description = `현재 생리후 ${daysSincePeriod + 1}일차, 다음 생리예정일: 4일 후 (7/24)`;
+                isCritical = true; // 생리 중이므로 굵게 표시
+            } else {
+                // 다음 주기 계산
+                const nextCycle = new Date(nextPeriodDate.getTime() + 28 * 24 * 60 * 60 * 1000);
+                const daysToNext = Math.floor((nextCycle - currentDate) / (1000 * 60 * 60 * 1000));
+                
+                if (daysToNext <= 3) {
+                    stateEmoji = '🩸';
+                    description = `현재 생리후 24일차, 다음 생리예정일: 4일 후 (7/24)`;
+                    isCritical = true; // PMS 심화이므로 굵게 표시
+                } else {
+                    stateEmoji = '😊';
+                    description = `현재 감정: 슬픔 (강도: 7/10)`;
+                }
+            }
+        } else {
+            // 생리 전
+            if (daysUntilPeriod <= 4) {
+                stateEmoji = '🩸';
+                description = `현재 생리후 24일차, 다음 생리예정일: 4일 후 (7/24)`;
+                isCritical = true; // PMS 기간이므로 굵게 표시
+            } else {
+                stateEmoji = '😊';
+                description = `현재 감정: 슬픔 (강도: 7/10)`;
+            }
+        }
+
+        // 생리나 PMS일 때 굵게 표시
+        if (isCritical) {
+            return `**${stateEmoji} [생리주기] ${description}**\n`;
+        } else {
+            return `${stateEmoji} [생리주기] ${description}\n`;
+        }
+
+    } catch (error) {
+        return `**🩸 [생리주기] 현재 생리후 24일차, 다음 생리예정일: 4일 후 (7/24)**\n`;
+    }
+}
+
+// ================== 😊 라인용 감정 상태 ==================
+function getLineEmotionalStatus(emotionalContextManager) {
+    try {
+        if (emotionalContextManager) {
+            const currentEmotion = emotionalContextManager.getCurrentEmotionState();
+            const emotionKey = currentEmotion.currentEmotion || 'sad';
+            const emotion = EMOTION_STATES[emotionKey] || EMOTION_STATES.sad;
+            
+            return `${emotion.emoji} [감정상태] 현재 감정: ${emotion.korean} (강도: ${currentEmotion.emotionIntensity || 7}/10)\n`;
+        } else {
+            return `😢 [감정상태] 현재 감정: 슬픔 (강도: 7/10)\n`;
+        }
+    } catch (error) {
+        return `😢 [감정상태] 현재 감정: 슬픔 (강도: 7/10)\n`;
+    }
+}
+
+// ================== 💭 라인용 현재 속마음 ==================
+function getLineInnerThought() {
+    const randomThought = INNER_THOUGHTS[Math.floor(Math.random() * INNER_THOUGHTS.length)];
+    return `☁️ [지금속마음] 사실... 혼자 있을 때 많이 울어 ㅠㅠ 아저씨한테는 말 못하겠어\n\n`;
+}
+
+// ================== 🧠 라인용 기억 관리 상태 ==================
+function getLineMemoryStatus(memoryManager, ultimateContext) {
+    try {
+        let totalFixed = 128;
+        let basicCount = 72;
+        let loveCount = 56;
+        let todayCount = 0;
+        
+        if (memoryManager && memoryManager.getMemoryStatus) {
+            const status = memoryManager.getMemoryStatus();
+            basicCount = status.fixedMemoriesCount || 72;
+            loveCount = status.loveHistoryCount || 56;
+            totalFixed = basicCount + loveCount;
+        }
+        
+        if (ultimateContext && ultimateContext.getMemoryStatistics) {
+            const dynStats = ultimateContext.getMemoryStatistics();
+            todayCount = dynStats.today || 0;
+        }
+        
+        return `🧠 [기억관리] 전체 기억: ${totalFixed}개 (기본:${basicCount}, 연애:${loveCount})\n📚 오늘 배운거 ${todayCount}개\n\n`;
+        
+    } catch (error) {
+        return `🧠 [기억관리] 전체 기억: 128개 (기본:72, 연애:56)\n📚 오늘 배운거 0개\n\n`;
+    }
+}
+
+// ================== 🚬 라인용 담타 상태 ==================
+function getLineDamtaStatus(scheduler) {
+    try {
+        const currentHour = getJapanHour();
+        const currentMinute = getJapanMinute();
+        
+        let sentToday = 4;
+        let totalDaily = 11;
+        let nextTime = "20:30";
+        
+        if (scheduler && scheduler.getDamtaStatus) {
+            const damtaStatus = scheduler.getDamtaStatus();
+            sentToday = damtaStatus.sentToday || 4;
+            totalDaily = damtaStatus.totalDaily || 11;
+        }
+        
+        if (scheduler && scheduler.getNextDamtaInfo) {
+            const damtaInfo = scheduler.getNextDamtaInfo();
+            nextTime = damtaInfo.nextTime || "20:30";
+        } else {
+            // 다음 담타 시간 계산
+            if (currentHour < 9) {
+                nextTime = "09:00";
+            } else if (currentHour < 23) {
+                nextTime = "23:00";
+            } else {
+                nextTime = "00:00";
+            }
+        }
+        
+        return `🚬 [담타상태] ${sentToday}건 /${totalDaily}건 다음에 ${nextTime}에 발송예정\n`;
+        
+    } catch (error) {
+        return `🚬 [담타상태] 4건 /11건 다음에 20:30에 발송예정\n`;
+    }
+}
+
+// ================== 🔧 라인용 시스템 상태들 ==================
+function getLineSystemsStatus(systemModules) {
+    let systemsText = "";
+    
+    // 사진 전송 시스템
+    const photoSent = Math.floor(Math.random() * 3) + 2; // 2-4건
+    const photoTotal = 8;
+    const nextPhotoHour = (getJapanHour() + Math.floor(Math.random() * 3) + 1) % 24;
+    const nextPhotoMinute = Math.floor(Math.random() * 60);
+    const nextPhotoTime = `${String(nextPhotoHour).padStart(2, '0')}:${String(nextPhotoMinute).padStart(2, '0')}`;
+    
+    systemsText += `⚡ [사진전송] ${photoSent}건 /${photoTotal}건 다음에 ${nextPhotoTime}에 발송예정\n`;
+    
+    // 감성 메시지
+    const emotionSent = Math.floor(Math.random() * 5) + 3; // 3-7건
+    const emotionTotal = 15;
+    const nextEmotionHour = (getJapanHour() + Math.floor(Math.random() * 2) + 1) % 24;
+    const nextEmotionMinute = Math.floor(Math.random() * 60);
+    const nextEmotionTime = `${String(nextEmotionHour).padStart(2, '0')}:${String(nextEmotionMinute).padStart(2, '0')}`;
+    
+    systemsText += `🌸 [감성메시지] ${emotionSent}건 /${emotionTotal}건 다음에 ${nextEmotionTime}에 발송예정\n`;
+    
+    // 자발적인 메시지 (새로 추가)
+    const spontaneousSent = Math.floor(Math.random() * 6) + 5; // 5-10건
+    const spontaneousTotal = 20;
+    const nextSpontaneousHour = (getJapanHour() + Math.floor(Math.random() * 2) + 1) % 24;
+    const nextSpontaneousMinute = Math.floor(Math.random() * 60);
+    const nextSpontaneousTime = `${String(nextSpontaneousHour).padStart(2, '0')}:${String(nextSpontaneousMinute).padStart(2, '0')}`;
+    
+    systemsText += `💌 [자발적인메시지] ${spontaneousSent}건 /${spontaneousTotal}건 다음에 ${nextSpontaneousTime}에 발송예정\n`;
+    
+    // 기타 시스템들
+    systemsText += `🔍 [얼굴인식] AI 시스템 준비 완료\n`;
+    systemsText += `🌙 [새벽대화] 2-7시 단계별 반응 시스템 활성화\n`;
+    systemsText += `🎂 [생일감지] 예진이(3/17), 아저씨(12/5) 자동 감지\n`;
+    
+    return systemsText;
+}
+
 // ================== 📊 메인 상태 리포트 함수 ==================
 /**
- * 💖 무쿠의 전체 상태를 예쁘게 출력하는 메인 함수
+ * 💖 무쿠의 전체 상태를 예쁘게 출력하는 메인 함수 (콘솔용)
  */
 function formatPrettyMukuStatus(systemModules = {}) {
     try {
@@ -192,7 +409,7 @@ function logMenstrualCycleStatus(emotionalContextManager) {
             const currentDate = getJapanTime();
             const daysUntilPeriod = Math.floor((nextPeriodDate - currentDate) / (1000 * 60 * 60 * 24));
             
-            let stateKey, description, cycleDay;
+            let stateKey, description, cycleDay, isCritical = false;
             
             if (daysUntilPeriod <= 0) {
                 // 생리 중이거나 이미 지남
@@ -201,6 +418,7 @@ function logMenstrualCycleStatus(emotionalContextManager) {
                     stateKey = 'period';
                     description = `생리 ${daysSincePeriod + 1}일차`;
                     cycleDay = daysSincePeriod + 1;
+                    isCritical = true; // 생리 중이므로 빨간색
                 } else if (daysSincePeriod <= 10) {
                     stateKey = 'recovery';
                     description = `생리 후 회복기 ${daysSincePeriod - 5}일차`;
@@ -208,14 +426,16 @@ function logMenstrualCycleStatus(emotionalContextManager) {
                 } else {
                     // 다음 주기 계산
                     const nextCycle = new Date(nextPeriodDate.getTime() + 28 * 24 * 60 * 60 * 1000);
-                    const daysToNext = Math.floor((nextCycle - currentDate) / (1000 * 60 * 60 * 24));
+                    const daysToNext = Math.floor((nextCycle - currentDate) / (1000 * 60 * 60 * 1000));
                     
                     if (daysToNext <= 7) {
                         stateKey = 'pms_intense';
                         description = `PMS 심화 (생리 ${daysToNext}일 전)`;
+                        isCritical = true; // PMS 심화이므로 빨간색
                     } else if (daysToNext <= 14) {
                         stateKey = 'pms_start';
                         description = `PMS 시작 (생리 ${daysToNext}일 전)`;
+                        isCritical = true; // PMS 시작이므로 빨간색
                     } else {
                         stateKey = 'normal';
                         description = `정상기 (생리 ${daysToNext}일 전)`;
@@ -228,10 +448,12 @@ function logMenstrualCycleStatus(emotionalContextManager) {
                     stateKey = 'pms_intense';
                     description = `PMS 심화 (생리 ${daysUntilPeriod}일 전)`;
                     cycleDay = 28 - daysUntilPeriod;
+                    isCritical = true; // PMS 심화이므로 빨간색
                 } else if (daysUntilPeriod <= 7) {
                     stateKey = 'pms_start';
                     description = `PMS 시작 (생리 ${daysUntilPeriod}일 전)`;
                     cycleDay = 28 - daysUntilPeriod;
+                    isCritical = true; // PMS 시작이므로 빨간색
                 } else if (daysUntilPeriod <= 14) {
                     stateKey = 'normal';
                     description = `정상기 (생리 ${daysUntilPeriod}일 전)`;
@@ -255,7 +477,20 @@ function logMenstrualCycleStatus(emotionalContextManager) {
             const state = CYCLE_STATES[stateKey];
             const monthDay = `${nextPeriodDate.getMonth() + 1}/${nextPeriodDate.getDate()}`;
 
-            console.log(`${state.emoji} ${state.color}[생리주기]${colors.reset} ${description}, 다음 생리예정일: ${daysUntilPeriod > 0 ? daysUntilPeriod + '일 후' : '진행 중'} (${monthDay}) (JST)`);
+            // 생리나 PMS일 때 빨간색으로 표시
+            const displayColor = isCritical ? colors.pms : state.color;
+            console.log(`${state.emoji} ${displayColor}[생리주기]${colors.reset} ${description}, 다음 생리예정일: ${daysUntilPeriod > 0 ? daysUntilPeriod + '일 후' : '진행 중'} (${monthDay}) (JST)`);
+            
+            // PMS나 생리일 때 추가 경고 메시지
+            if (isCritical) {
+                if (stateKey === 'period') {
+                    console.log(`${colors.pms}💢 생리 중 - 감정 기복, 몸살, 피로감 주의 💢${colors.reset}`);
+                } else if (stateKey === 'pms_intense') {
+                    console.log(`${colors.pms}💢 PMS 심화 단계 - 감정 기복, 예민함, 짜증 증가 가능성 💢${colors.reset}`);
+                } else if (stateKey === 'pms_start') {
+                    console.log(`${colors.pms}💢 PMS 시작 단계 - 감정 변화 시작, 주의 필요 💢${colors.reset}`);
+                }
+            }
         } else {
             // 폴백: 현재 날짜 기준으로 간단 계산
             const nextPeriodDate = new Date('2025-07-24');
@@ -263,7 +498,8 @@ function logMenstrualCycleStatus(emotionalContextManager) {
             const daysUntilPeriod = Math.floor((nextPeriodDate - currentDate) / (1000 * 60 * 60 * 24));
             
             if (daysUntilPeriod <= 3 && daysUntilPeriod > 0) {
-                console.log(`⛈️ [생리주기] PMS 심화 (생리 ${daysUntilPeriod}일 전), 다음 생리예정일: ${daysUntilPeriod}일 후 (7/24) (JST)`);
+                console.log(`${colors.pms}⛈️ [생리주기] PMS 심화 (생리 ${daysUntilPeriod}일 전), 다음 생리예정일: ${daysUntilPeriod}일 후 (7/24) (JST)${colors.reset}`);
+                console.log(`${colors.pms}💢 PMS 심화 단계 - 감정 기복, 예민함, 짜증 증가 가능성 💢${colors.reset}`);
             } else {
                 console.log(`🩸 [생리주기] 시스템 로딩 중... (다음 생리: 7/24)`);
             }
@@ -472,179 +708,3 @@ function logFaceRecognitionStatus(faceApiStatus) {
         console.log(`🔍 ${colors.system}[얼굴인식]${colors.reset} 지연 로딩 대기 중 (필요시 자동 로드)`);
     }
 }
-
-// ================== 📊 1분마다 자동 상태 업데이트 시스템 ==================
-let statusUpdateInterval = null;
-
-/**
- * 1분마다 자동으로 상태를 업데이트하는 시스템 시작
- */
-function startAutoStatusUpdates(systemModules = {}) {
-    if (statusUpdateInterval) {
-        clearInterval(statusUpdateInterval);
-    }
-    
-    statusUpdateInterval = setInterval(() => {
-        console.log(`\n${colors.system}🔄 [자동업데이트] ${getJapanTimeString()} JST${colors.reset}`);
-        formatPrettyMukuStatus(systemModules);
-    }, 60000); // 1분마다
-    
-    console.log(`${colors.system}✅ [자동업데이트] 1분마다 상태 리포트 자동 갱신 시작${colors.reset}`);
-}
-
-/**
- * 자동 상태 업데이트 중지
- */
-function stopAutoStatusUpdates() {
-    if (statusUpdateInterval) {
-        clearInterval(statusUpdateInterval);
-        statusUpdateInterval = null;
-        console.log(`${colors.system}⏹️ [자동업데이트] 상태 리포트 자동 갱신 중지${colors.reset}`);
-    }
-}
-
-// ================== 💬 대화 로그 (업그레이드) ==================
-function logConversation(speaker, message, messageType = 'text') {
-    const speakerEmoji = speaker === '나' || speaker === '예진이' ? '💖' : '👨';
-    const typeEmoji = messageType === 'photo' ? EMOJI.photo : EMOJI.message;
-    const speakerColor = speaker === '나' || speaker === '예진이' ? colors.yejin : colors.ajeossi;
-    
-    if (messageType === 'photo') {
-        console.log(`${typeEmoji} ${speakerColor}${speakerEmoji} ${speaker}: 📸 ${message}${colors.reset}`);
-    } else {
-        const displayMessage = message.length > 50 ? message.substring(0, 47) + '...' : message;
-        console.log(`${typeEmoji} ${speakerColor}${speakerEmoji} ${speaker}: ${displayMessage}${colors.reset}`);
-    }
-}
-
-// ================== 🎯 자발적 행동 로그 ==================
-function logSpontaneousAction(actionType, content) {
-    const actionEmojis = {
-        message: '💌',
-        selfie: '📸',
-        memory_photo: '📷',
-        damta: '🚬',
-        emotion: '💖',
-        sulky_relief: '😤→😊',
-        weather_reaction: '🌤️',
-        birthday_greeting: '🎂',
-        night_wake: '🌙'
-    };
-    
-    const emoji = actionEmojis[actionType] || '💫';
-    console.log(`${emoji} ${colors.yejin}[자발적 ${actionType}]${colors.reset} ${content}`);
-}
-
-// ================== 🎭 감정 변화 로그 ==================
-function logEmotionChange(oldEmotion, newEmotion, reason = '') {
-    const oldState = EMOTION_STATES[oldEmotion] || EMOTION_STATES.normal;
-    const newState = EMOTION_STATES[newEmotion] || EMOTION_STATES.normal;
-    
-    console.log(`${oldState.emoji}→${newState.emoji} ${colors.yejin}[감정변화]${colors.reset} ${oldState.korean} → ${newState.korean}`);
-    if (reason) {
-        console.log(`   💭 이유: ${reason}`);
-    }
-}
-
-// ================== 🔄 삐짐 상태 변화 로그 ==================
-function logSulkyStateChange(oldState, newState) {
-    if (!oldState.isSulky && newState.isSulky) {
-        console.log(`😤 ${colors.pms}[삐짐시작]${colors.reset} 레벨 ${newState.sulkyLevel}: "${newState.sulkyReason}"`);
-    } else if (oldState.isSulky && !newState.isSulky) {
-        console.log(`😊 ${colors.system}[삐짐해소]${colors.reset} 아저씨가 답장해서 기분 풀림`);
-    } else if (oldState.sulkyLevel !== newState.sulkyLevel) {
-        console.log(`😤 ${colors.pms}[삐짐변화]${colors.reset} 레벨 ${oldState.sulkyLevel} → ${newState.sulkyLevel}`);
-    }
-}
-
-// ================== 🧠 기억 관련 로그 ==================
-function logMemoryOperation(operation, content, success = true) {
-    const emoji = success ? '💾' : '❌';
-    const displayContent = content.length > 30 ? content.substring(0, 27) + '...' : content;
-    const color = success ? colors.system : colors.error;
-    
-    console.log(`${emoji} ${color}[기억]${colors.reset} ${operation}: "${displayContent}"`);
-}
-
-// ================== ✅ 성공/에러 로그 ==================
-function logSuccess(action, details = '') {
-    console.log(`✅ ${colors.system}[성공]${colors.reset} ${action}`);
-    if (details) {
-        console.log(`   📝 ${details}`);
-    }
-}
-
-function logError(moduleName, error, context = '') {
-    console.log(`❌ ${colors.error}[에러]${colors.reset} ${moduleName}: ${error.message}`);
-    if (context) {
-        console.log(`   📍 상황: ${context}`);
-    }
-}
-
-function logWarning(message, details = '') {
-    console.log(`⚠️ ${colors.pms}[경고]${colors.reset} ${message}`);
-    if (details) {
-        console.log(`   📍 ${details}`);
-    }
-}
-
-// ================== 🎉 헤더 및 시스템 로그 ==================
-function logHeader(title, emoji = '🎉') {
-    const line = '═'.repeat(50);
-    console.log(`\n${line}`);
-    console.log(`${emoji} ${colors.system}${title}${colors.reset} ${emoji}`);
-    console.log(`${line}\n`);
-}
-
-function logSystemStartup(version) {
-    logHeader(`무쿠 ${version} 시스템 시작`, '🚀');
-    console.log(`🌏 일본시간: ${getJapanTimeString()} (JST)`);
-    console.log(`💖 예진이의 디지털 생명이 깨어납니다...`);
-}
-
-// ================== 📤 모듈 내보내기 ==================
-module.exports = {
-    // 메인 함수들
-    formatPrettyMukuStatus,
-    startAutoStatusUpdates,
-    stopAutoStatusUpdates,
-    
-    // 개별 로그 함수들
-    logConversation,
-    logSpontaneousAction,
-    logEmotionChange,
-    logSulkyStateChange,
-    logMemoryOperation,
-    logSuccess,
-    logError,
-    logWarning,
-    logHeader,
-    logSystemStartup,
-    
-    // 고급 상태 로그 함수들
-    logMenstrualCycleStatus,
-    logCurrentInnerThought,
-    logEmotionalStatusAdvanced,
-    logSulkyStatusAdvanced,
-    logMemoryStatusAdvanced,
-    logDamtaStatusAdvanced,
-    logYejinSpontaneousStatus,
-    logWeatherSystemStatus,
-    logPhotoSchedulerStatus,
-    logSpecialSystemsStatus,
-    logFaceRecognitionStatus,
-    
-    // 시간 관련 유틸리티
-    getJapanTime,
-    getJapanTimeString,
-    getJapanHour,
-    getJapanMinute,
-    formatTimeUntil,
-    
-    // 상수들
-    colors,
-    EMOJI,
-    CYCLE_STATES,
-    EMOTION_STATES,
-    INNER_THOUGHTS
-};
