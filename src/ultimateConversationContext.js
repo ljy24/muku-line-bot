@@ -1,13 +1,15 @@
 // ============================================================================
-// ultimateConversationContext.js - v34.1 (GPT 모델 버전 전환 지원)
+// ultimateConversationContext.js - v35.0 (실제 통계 추적 시스템 추가)
 // 🗄️ 동적 기억과 대화 컨텍스트 전문 관리자
 // ✅ 중복 기능 완전 제거: 생리주기, 날씨, 고정기억, 시간관리
 // 🎯 핵심 역할에만 집중: 동적기억 + 대화흐름 + 컨텍스트 조합
 // ✨ GPT 모델 버전 전환: index.js의 설정에 따라 컨텍스트 최적화
+// ⭐️ getSpontaneousStats() 함수 추가 - 라인 상태 리포트용 자발적 메시지 통계
 // ============================================================================
 
 const fs = require('fs').promises;
 const path = require('path');
+const moment = require('moment-timezone');
 
 // ✨ GPT 모델 버전 관리 시스템 import
 let getCurrentModelSetting = null;
@@ -19,8 +21,10 @@ try {
     console.warn('⚠️ [UltimateContext] GPT 모델 버전 관리 시스템 연동 실패:', error.message);
 }
 
-// --- 파일 경로 정의 ---
+// --- 설정 ---
+const TIMEZONE = 'Asia/Tokyo';
 const MEMORY_DIR = path.join('/data', 'memory');
+const DAILY_SPONTANEOUS_TARGET = 20; // 하루 자발적 메시지 목표
 
 // --- 외부 모듈 지연 로딩 (순환 참조 방지) ---
 let emotionalContextManager = null;
@@ -60,7 +64,7 @@ function getWeatherManager() {
     return weatherManager;
 }
 
-// --- 핵심 상태 관리 (동적 기억 + 대화 컨텍스트만) ---
+// --- 핵심 상태 관리 (동적 기억 + 대화 컨텍스트 + ⭐️ 자발적 메시지 통계) ---
 let ultimateConversationState = {
     // 🧠 동적 기억 관리 (사용자가 추가/수정/삭제하는 기억들)
     dynamicMemories: {
@@ -91,6 +95,22 @@ let ultimateConversationState = {
         // sulkinessState 제거됨: sulkyManager.js에서 독립 관리
     },
     
+    // ⭐️ 자발적 메시지 통계 추가!
+    spontaneousMessages: {
+        sentToday: 0,                    // 오늘 보낸 자발적 메시지 수
+        totalDaily: DAILY_SPONTANEOUS_TARGET, // 하루 목표
+        sentTimes: [],                   // 실제 전송된 시간들
+        lastSentTime: null,              // 마지막 전송 시간
+        nextScheduledTime: null,         // 다음 예정 시간
+        messageTypes: {                  // 메시지 타입별 통계
+            emotional: 0,                // 감성 메시지
+            casual: 0,                   // 일상 메시지
+            caring: 0,                   // 걱정/관심 메시지
+            playful: 0                   // 장난스러운 메시지
+        },
+        lastResetDate: null             // 마지막 리셋 날짜
+    },
+    
     // 📊 통계 및 메타데이터
     memoryStats: {
         totalUserMemories: 0,
@@ -100,6 +120,15 @@ let ultimateConversationState = {
         lastMemoryOperation: null
     }
 };
+
+// ================== 🎨 로그 함수 ==================
+function contextLog(message, data = null) {
+    const timestamp = moment().tz(TIMEZONE).format('YYYY-MM-DD HH:mm:ss');
+    console.log(`[${timestamp}] [UltimateContext] ${message}`);
+    if (data) {
+        console.log('  🗄️ 데이터:', JSON.stringify(data, null, 2));
+    }
+}
 
 // ================== ✨ GPT 모델별 컨텍스트 최적화 ==================
 
@@ -193,7 +222,7 @@ async function addUltimateMessage(speaker, message) {
         updateLastUserMessageTime(timestamp);
     }
     
-    console.log(`[UltimateContext] 메시지 추가: ${speaker} - "${message.substring(0, 30)}..."`);
+    contextLog(`메시지 추가: ${speaker} - "${message.substring(0, 30)}..."`);
     
     // 대화에서 자동 학습
     await learnFromConversation(speaker, message);
@@ -215,7 +244,7 @@ function getRecentMessages(limit = null) {
 function updateConversationTopic(topic) {
     ultimateConversationState.conversationContext.currentTopic = topic;
     ultimateConversationState.conversationContext.lastTopicChange = Date.now();
-    console.log(`[UltimateContext] 대화 주제 업데이트: ${topic}`);
+    contextLog(`대화 주제 업데이트: ${topic}`);
 }
 
 // ==================== 🧠 동적 기억 관리 ====================
@@ -238,7 +267,7 @@ async function addUserMemory(content, category = 'general') {
     ultimateConversationState.memoryStats.todayMemoryCount++;
     ultimateConversationState.memoryStats.lastMemoryOperation = Date.now();
     
-    console.log(`[UltimateContext] 사용자 기억 추가: "${content.substring(0, 30)}..." (${category})`);
+    contextLog(`사용자 기억 추가: "${content.substring(0, 30)}..." (${category})`);
     return memoryObj.id;
 }
 
@@ -256,7 +285,7 @@ async function deleteUserMemory(content) {
     const deletedCount = beforeCount - ultimateConversationState.dynamicMemories.userMemories.length;
     ultimateConversationState.memoryStats.lastMemoryOperation = Date.now();
     
-    console.log(`[UltimateContext] ${deletedCount}개 사용자 기억 삭제`);
+    contextLog(`${deletedCount}개 사용자 기억 삭제`);
     return deletedCount > 0;
 }
 
@@ -269,7 +298,7 @@ async function updateUserMemory(id, newContent) {
         memory.content = newContent;
         memory.lastModified = Date.now();
         ultimateConversationState.memoryStats.lastMemoryOperation = Date.now();
-        console.log(`[UltimateContext] 기억 수정: ${id}`);
+        contextLog(`기억 수정: ${id}`);
         return true;
     }
     return false;
@@ -309,6 +338,97 @@ function getAllMemories() {
     };
 }
 
+// ==================== ⭐️ 자발적 메시지 통계 관리 (새로 추가!) ====================
+
+/**
+ * ⭐️ 자발적 메시지 전송 기록
+ */
+function recordSpontaneousMessage(messageType = 'casual') {
+    const sentTime = moment().tz(TIMEZONE);
+    const timeString = sentTime.format('HH:mm');
+    
+    // 전송 횟수 증가
+    ultimateConversationState.spontaneousMessages.sentToday++;
+    
+    // 전송 시간 기록
+    ultimateConversationState.spontaneousMessages.sentTimes.push(timeString);
+    ultimateConversationState.spontaneousMessages.lastSentTime = sentTime.valueOf();
+    
+    // 메시지 타입별 통계
+    if (ultimateConversationState.spontaneousMessages.messageTypes[messageType] !== undefined) {
+        ultimateConversationState.spontaneousMessages.messageTypes[messageType]++;
+    }
+    
+    contextLog(`자발적 메시지 기록: ${messageType} (${timeString}) - 총 ${ultimateConversationState.spontaneousMessages.sentToday}건`);
+}
+
+/**
+ * ⭐️ 다음 자발적 메시지 시간 설정
+ */
+function setNextSpontaneousTime(nextTime) {
+    ultimateConversationState.spontaneousMessages.nextScheduledTime = nextTime;
+    
+    const timeString = moment(nextTime).tz(TIMEZONE).format('HH:mm');
+    contextLog(`다음 자발적 메시지 시간 설정: ${timeString}`);
+}
+
+/**
+ * ⭐️ 자발적 메시지 통계 조회 (라인 상태 리포트용!)
+ */
+function getSpontaneousStats() {
+    const nextTime = ultimateConversationState.spontaneousMessages.nextScheduledTime;
+    let nextTimeString = '대기 중';
+    
+    if (nextTime) {
+        nextTimeString = moment(nextTime).tz(TIMEZONE).format('HH:mm');
+    }
+    
+    return {
+        // 라인 상태 리포트용 핵심 정보
+        sentToday: ultimateConversationState.spontaneousMessages.sentToday,
+        totalDaily: ultimateConversationState.spontaneousMessages.totalDaily,
+        nextTime: nextTimeString,
+        
+        // 상세 정보
+        progress: `${ultimateConversationState.spontaneousMessages.sentToday}/${ultimateConversationState.spontaneousMessages.totalDaily}`,
+        sentTimes: ultimateConversationState.spontaneousMessages.sentTimes,
+        lastSentTime: ultimateConversationState.spontaneousMessages.lastSentTime ? 
+            moment(ultimateConversationState.spontaneousMessages.lastSentTime).tz(TIMEZONE).format('HH:mm') : null,
+        
+        // 메시지 타입별 통계
+        messageTypes: { ...ultimateConversationState.spontaneousMessages.messageTypes },
+        
+        // 시스템 상태
+        isActive: ultimateConversationState.spontaneousMessages.sentToday < ultimateConversationState.spontaneousMessages.totalDaily,
+        remainingToday: ultimateConversationState.spontaneousMessages.totalDaily - ultimateConversationState.spontaneousMessages.sentToday,
+        
+        // GPT 모델 정보
+        currentGptModel: getCurrentModelSetting ? getCurrentModelSetting() : 'unknown'
+    };
+}
+
+/**
+ * ⭐️ 일일 자발적 메시지 통계 리셋
+ */
+function resetSpontaneousStats() {
+    const today = moment().tz(TIMEZONE).format('YYYY-MM-DD');
+    
+    contextLog('🌄 자발적 메시지 통계 리셋 시작');
+    
+    ultimateConversationState.spontaneousMessages.sentToday = 0;
+    ultimateConversationState.spontaneousMessages.sentTimes = [];
+    ultimateConversationState.spontaneousMessages.lastSentTime = null;
+    ultimateConversationState.spontaneousMessages.nextScheduledTime = null;
+    ultimateConversationState.spontaneousMessages.lastResetDate = today;
+    
+    // 메시지 타입별 통계 리셋
+    Object.keys(ultimateConversationState.spontaneousMessages.messageTypes).forEach(type => {
+        ultimateConversationState.spontaneousMessages.messageTypes[type] = 0;
+    });
+    
+    contextLog(`✅ 자발적 메시지 통계 리셋 완료 (${today})`);
+}
+
 // ==================== 🎯 컨텍스트 조합 및 프롬프트 생성 ====================
 
 /**
@@ -323,7 +443,7 @@ async function getUltimateContextualPrompt(basePrompt) {
         const contextLength = getOptimalContextLength();
         const priority = getContextPriority(currentModel);
         
-        console.log(`[UltimateContext] 컨텍스트 생성 (모델: ${currentModel}, 우선순위: 메시지=${priority.recentMessages}, 감정=${priority.emotions}, 기억=${priority.memories})`);
+        contextLog(`컨텍스트 생성 (모델: ${currentModel}, 우선순위: 메시지=${priority.recentMessages}, 감정=${priority.emotions}, 기억=${priority.memories})`);
         
         // 1. ✨ 모델별 최적화된 최근 대화 추가
         const recentMessages = getRecentMessages(contextLength.recent);
@@ -357,7 +477,7 @@ async function getUltimateContextualPrompt(basePrompt) {
                         }
                     }
                 } catch (error) {
-                    console.log('⚠️ [UltimateContext] 감정 상태 조회 실패:', error.message);
+                    contextLog('감정 상태 조회 실패:', error.message);
                 }
             }
         }
@@ -393,7 +513,7 @@ async function getUltimateContextualPrompt(basePrompt) {
             contextualPrompt += `\n📊 컨텍스트: 메시지 ${messageCount}개, 기억 ${memoryCount}개\n`;
         }
         
-        console.log(`[UltimateContext] 컨텍스트 생성 완료 (${currentModel} 최적화, 길이: ${contextualPrompt.length}자)`);
+        contextLog(`컨텍스트 생성 완료 (${currentModel} 최적화, 길이: ${contextualPrompt.length}자)`);
         return contextualPrompt;
         
     } catch (error) {
@@ -500,11 +620,11 @@ async function learnFromConversation(speaker, message) {
                 ultimateConversationState.dynamicMemories.conversationMemories.push(learningMemory);
                 ultimateConversationState.memoryStats.totalConversationMemories++;
                 
-                console.log(`[UltimateContext] 자동 학습: "${message.substring(0, 30)}..."`);
+                contextLog(`자동 학습: "${message.substring(0, 30)}..."`);
             }
         }
     } catch (error) {
-        console.log('⚠️ [UltimateContext] 대화 학습 중 에러:', error.message);
+        contextLog('대화 학습 중 에러:', error.message);
     }
 }
 
@@ -516,7 +636,7 @@ async function learnFromUserMessage(message) {
     
     // 감정 상태가 특별한 경우 기록
     if (mood !== 'neutral') {
-        console.log(`[UltimateContext] 사용자 감정 감지: ${mood} - "${message.substring(0, 30)}..."`);
+        contextLog(`사용자 감정 감지: ${mood} - "${message.substring(0, 30)}..."`);
     }
 }
 
@@ -592,13 +712,14 @@ function getInternalState() {
         memoryStats: ultimateConversationState.memoryStats,
         timingContext: ultimateConversationState.timingContext,
         emotionalSync: ultimateConversationState.emotionalSync,
+        spontaneousMessages: ultimateConversationState.spontaneousMessages, // ⭐️ 추가!
         currentTime: Date.now(),
         // ✨ GPT 모델 최적화 정보 추가
         gptOptimization: {
             currentModel,
             contextLength,
             priority,
-            version: 'v34.1-with-version-control'
+            version: 'v35.0-with-spontaneous-stats'
         }
     };
 }
@@ -625,11 +746,11 @@ function clearPendingAction() {
  * 감정 시스템 초기화 (호환성)
  */
 async function initializeEmotionalSystems() {
-    console.log('[UltimateContext] 동적 기억 및 대화 컨텍스트 시스템 초기화...');
+    contextLog('동적 기억 및 대화 컨텍스트 시스템 초기화...');
     
     // ✨ GPT 모델 정보 로그
     const currentModel = getCurrentModelSetting ? getCurrentModelSetting() : 'unknown';
-    console.log(`[UltimateContext] 현재 GPT 모델: ${currentModel}`);
+    contextLog(`현재 GPT 모델: ${currentModel}`);
     
     // 디렉토리 생성
     try {
@@ -638,7 +759,7 @@ async function initializeEmotionalSystems() {
             fs.mkdirSync(MEMORY_DIR, { recursive: true });
         }
     } catch (error) {
-        console.log('⚠️ [UltimateContext] 디렉토리 생성 실패:', error.message);
+        contextLog('디렉토리 생성 실패:', error.message);
     }
     
     // 일일 리셋 확인
@@ -648,7 +769,13 @@ async function initializeEmotionalSystems() {
         ultimateConversationState.memoryStats.lastDailyReset = today;
     }
     
-    console.log(`[UltimateContext] 초기화 완료 - 동적 기억과 대화 컨텍스트에 집중 (${currentModel} 최적화)`);
+    // ⭐️ 자발적 메시지 통계 일일 리셋 확인
+    const todayDate = moment().tz(TIMEZONE).format('YYYY-MM-DD');
+    if (ultimateConversationState.spontaneousMessages.lastResetDate !== todayDate) {
+        resetSpontaneousStats();
+    }
+    
+    contextLog(`초기화 완료 - 동적 기억과 대화 컨텍스트에 집중 (${currentModel} 최적화)`);
 }
 
 // ==================== 🎁 유틸리티 함수들 ====================
@@ -658,7 +785,7 @@ async function initializeEmotionalSystems() {
  */
 function setConversationContextWindow(size) {
     const currentModel = getCurrentModelSetting ? getCurrentModelSetting() : 'auto';
-    console.log(`[UltimateContext] 컨텍스트 윈도우 크기: ${size} (모델: ${currentModel})`);
+    contextLog(`컨텍스트 윈도우 크기: ${size} (모델: ${currentModel})`);
     // 실제 구현에서는 메시지 보관 개수 조정
 }
 
@@ -677,7 +804,7 @@ async function generateInitiatingPhrase() {
 }
 
 // ==================== 📤 모듈 내보내기 ==================
-console.log('[UltimateContext] v34.1 로드 완료 (GPT 모델 버전 전환 지원)');
+contextLog('v35.0 로드 완료 (GPT 모델 버전 전환 + 자발적 메시지 통계 지원)');
 
 module.exports = {
     // 초기화
@@ -703,6 +830,12 @@ module.exports = {
     getMemoriesByTag,
     getAllMemories,
     getActiveMemoryPrompt,
+    
+    // ⭐️ 자발적 메시지 통계 관리 (새로 추가!)
+    recordSpontaneousMessage,
+    setNextSpontaneousTime,
+    getSpontaneousStats,        // ⭐️ 라인 상태 리포트용 핵심 함수!
+    resetSpontaneousStats,
     
     // 감정 상태 연동 (보조) - 삐짐 상태는 sulkyManager.js에서 독립 관리
     analyzeUserMood,
