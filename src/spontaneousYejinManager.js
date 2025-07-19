@@ -5,6 +5,7 @@
 // ✅ 모델 활동 이야기 추가 (촬영, 화보, 스케줄)
 // ✅ "너" 호칭 완전 금지 (아저씨만 사용)
 // ✅ 사진 전송 확률: 30%로 대폭 증가
+// ✅ omoide 사진 전송 400 에러 수정 (yejinSelfie.js 방식 적용)
 // ============================================================================
 
 const schedule = require('node-schedule');
@@ -340,17 +341,14 @@ async function sendYejinSelfieWithComplimentReaction(userMessage) {
         const imageUrl = getYejinSelfieUrl();
         const caption = await generateStreetComplimentReaction(userMessage);
         
-        await lineClient.pushMessage(USER_ID, [
-            {
-                type: 'image',
-                originalContentUrl: imageUrl,
-                previewImageUrl: imageUrl
-            },
-            {
-                type: 'text',
-                text: caption
-            }
-        ]);
+        // ⭐️ yejinSelfie.js와 동일한 형식으로 수정!
+        await lineClient.pushMessage(USER_ID, {
+            type: 'image',
+            originalContentUrl: imageUrl,
+            previewImageUrl: imageUrl,
+            altText: caption,        // 필수 필드 추가!
+            caption: caption         // 필수 필드 추가!
+        });
         
         spontaneousLog(`✅ 칭찬 받은 셀카 전송 성공: "${caption.substring(0, 30)}..."`);
         return true;
@@ -372,7 +370,7 @@ async function sendYejinSelfieWithComplimentReaction(userMessage) {
     }
 }
 
-// ================== 📸 omoide 추억 후지 사진 전송 시스템 (⭐️ 30% 확률로 전송!) ==================
+// ================== 📸 omoide 추억 후지 사진 전송 시스템 (⭐️ 400 에러 수정!) ==================
 function getOmoidePhotoUrl() {
     const fujiFolders = {
         "추억_24_03_일본_후지": 226,
@@ -456,17 +454,14 @@ async function sendOmoidePhoto() {
         
         spontaneousLog(`📸 omoide 사진 전송 시도: ${imageUrl}`);
         
-        await lineClient.pushMessage(USER_ID, [
-            {
-                type: 'image',
-                originalContentUrl: imageUrl,
-                previewImageUrl: imageUrl
-            },
-            {
-                type: 'text',
-                text: caption
-            }
-        ]);
+        // ⭐️ yejinSelfie.js와 동일한 형식으로 수정! (400 에러 해결)
+        await lineClient.pushMessage(USER_ID, {
+            type: 'image',
+            originalContentUrl: imageUrl,
+            previewImageUrl: imageUrl,
+            altText: caption,        // 필수 필드 추가!
+            caption: caption         // 필수 필드 추가!
+        });
         
         spontaneousLog(`✅ omoide 현재 사진 전송 성공: "${caption.substring(0, 30)}..."`);
         return true;
@@ -1153,7 +1148,7 @@ function startSpontaneousYejinSystem(client) {
         
         spontaneousLog('✅ 예진이 능동 메시지 시스템 활성화 완료!');
         spontaneousLog(`📋 설정: 하루 ${DAILY_MESSAGE_COUNT}번, ${MESSAGE_START_HOUR}시-${MESSAGE_END_HOUR-24}시, 3-6문장 단축`);
-        spontaneousLog(`📋 사진전송: 30% 확률 + 독립 스케줄 3-5회`);
+        spontaneousLog(`📋 사진전송: 30% 확률 + 독립 스케줄 3-5회 (400 에러 수정 완료)`);
         spontaneousLog(`📋 말투: 100% 반말 강제 적용`);
         spontaneousLog(`📋 호칭: "너" 완전 금지, "아저씨"만 사용`);
         spontaneousLog(`📋 모델활동: 촬영, 화보, 스케줄 관련 이야기 추가`);
@@ -1167,7 +1162,7 @@ function startSpontaneousYejinSystem(client) {
 }
 
 // ================== 📤 모듈 내보내기 ==================
-spontaneousLog('🌸 spontaneousYejinManager.js v1.5 로드 완료 (모델활동+"너"금지)');
+spontaneousLog('🌸 spontaneousYejinManager.js v1.5 로드 완료 (모델활동+"너"금지+사진400에러수정)');
 
 module.exports = {
     startSpontaneousYejinSystem,
