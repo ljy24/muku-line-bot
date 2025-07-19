@@ -220,11 +220,13 @@ async function loadAllModules() {
             modules.emotionalNuanceDetector = require('./muku-emotionalNuanceDetector');
             console.log(`${colors.emotion}✅ [18/19] emotionalNuanceDetector: 미묘한 감정 변화 감지 시스템${colors.reset}`);
             
-            if (modules.emotionalNuanceDetector.analyzeEmotionalNuance) {
+            if (modules.emotionalNuanceDetector.analyzeEmotionalNuance && modules.emotionalNuanceDetector.initializeDetector) {
+                modules.emotionalNuanceDetector.initializeDetector();
                 console.log(`${colors.emotion}💕 [감정뉘앙스 확인] analyzeEmotionalNuance 함수 존재 확인 ✅${colors.reset}`);
                 console.log(`${colors.emotion}    🥺 기능: 숨겨진 슬픔 감지, 소통 패턴 분석, 맥락적 이해${colors.reset}`);
             } else {
                 console.log(`${colors.error}💕 [감정뉘앙스 확인] 핵심 함수 없음! ❌${colors.reset}`);
+                console.log(`${colors.error}💕 [감정뉘앙스 확인] 사용 가능한 함수들:`, Object.keys(modules.emotionalNuanceDetector || {}));
             }
             
         } catch (error) {
@@ -237,11 +239,13 @@ async function loadAllModules() {
             modules.predictiveCaringSystem = require('./muku-predictiveCaringSystem');
             console.log(`${colors.care}✅ [19/19] predictiveCaringSystem: 예측적 돌봄 시스템${colors.reset}`);
             
-            if (modules.predictiveCaringSystem.predictCaringNeeds) {
+            if (modules.predictiveCaringSystem.predictCaringNeeds && modules.predictiveCaringSystem.initializeCaringSystem) {
+                modules.predictiveCaringSystem.initializeCaringSystem();
                 console.log(`${colors.care}💖 [예측돌봄 확인] predictCaringNeeds 함수 존재 확인 ✅${colors.reset}`);
                 console.log(`${colors.care}    🔮 기능: 선제적 걱정 감지, 예측적 케어, 30분마다 체크${colors.reset}`);
             } else {
                 console.log(`${colors.error}💖 [예측돌봄 확인] 핵심 함수 없음! ❌${colors.reset}`);
+                console.log(`${colors.error}💖 [예측돌봄 확인] 사용 가능한 함수들:`, Object.keys(modules.predictiveCaringSystem || {}));
             }
             
         } catch (error) {
