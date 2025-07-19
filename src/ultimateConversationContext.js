@@ -1,12 +1,23 @@
 // ============================================================================
-// ultimateConversationContext.js - v34.0 (중복 제거 완료 버전)
+// ultimateConversationContext.js - v34.1 (GPT 모델 버전 전환 지원)
 // 🗄️ 동적 기억과 대화 컨텍스트 전문 관리자
 // ✅ 중복 기능 완전 제거: 생리주기, 날씨, 고정기억, 시간관리
 // 🎯 핵심 역할에만 집중: 동적기억 + 대화흐름 + 컨텍스트 조합
+// ✨ GPT 모델 버전 전환: index.js의 설정에 따라 컨텍스트 최적화
 // ============================================================================
 
 const fs = require('fs').promises;
 const path = require('path');
+
+// ✨ GPT 모델 버전 관리 시스템 import
+let getCurrentModelSetting = null;
+try {
+    const indexModule = require('../index');
+    getCurrentModelSetting = indexModule.getCurrentModelSetting;
+    console.log('✨ [UltimateContext] GPT 모델 버전 관리 시스템 연동 성공');
+} catch (error) {
+    console.warn('⚠️ [UltimateContext] GPT 모델 버전 관리 시스템 연동 실패:', error.message);
+}
 
 // --- 파일 경로 정의 ---
 const MEMORY_DIR = path.join('/data', 'memory');
@@ -90,6 +101,68 @@ let ultimateConversationState = {
     }
 };
 
+// ================== ✨ GPT 모델별 컨텍스트 최적화 ==================
+
+/**
+ * 현재 설정된 GPT 모델에 따라 컨텍스트 길이 조정
+ */
+function getOptimalContextLength() {
+    if (!getCurrentModelSetting) {
+        return { recent: 5, memory: 3 }; // 기본값
+    }
+    
+    const currentModel = getCurrentModelSetting();
+    
+    switch(currentModel) {
+        case '3.5':
+            // GPT-3.5는 컨텍스트를 짧게
+            return { recent: 3, memory: 2 };
+            
+        case '4.0':
+            // GPT-4o는 컨텍스트를 길게
+            return { recent: 7, memory: 4 };
+            
+        case 'auto':
+            // 자동 모드는 중간
+            return { recent: 5, memory: 3 };
+            
+        default:
+            return { recent: 5, memory: 3 };
+    }
+}
+
+/**
+ * 모델별로 최적화된 컨텍스트 우선순위 결정
+ */
+function getContextPriority(currentModel) {
+    switch(currentModel) {
+        case '3.5':
+            // GPT-3.5는 간결한 정보에 집중
+            return {
+                recentMessages: 0.5,    // 최근 대화 가중치
+                emotions: 0.3,          // 감정 상태 가중치
+                memories: 0.2           // 기억 가중치
+            };
+            
+        case '4.0':
+            // GPT-4o는 풍부한 컨텍스트 활용
+            return {
+                recentMessages: 0.4,
+                emotions: 0.3,
+                memories: 0.3
+            };
+            
+        case 'auto':
+        default:
+            // 균형잡힌 가중치
+            return {
+                recentMessages: 0.4,
+                emotions: 0.3,
+                memories: 0.3
+            };
+    }
+}
+
 // ==================== 💬 대화 메시지 관리 ====================
 
 /**
@@ -106,10 +179,13 @@ async function addUltimateMessage(speaker, message) {
     
     ultimateConversationState.conversationContext.recentMessages.push(messageObj);
     
-    // 최근 20개 메시지만 유지
-    if (ultimateConversationState.conversationContext.recentMessages.length > 20) {
+    // ✨ 모델별 최적화된 메시지 보관 개수
+    const contextLength = getOptimalContextLength();
+    const maxMessages = contextLength.recent * 3; // 여유분 포함
+    
+    if (ultimateConversationState.conversationContext.recentMessages.length > maxMessages) {
         ultimateConversationState.conversationContext.recentMessages = 
-            ultimateConversationState.conversationContext.recentMessages.slice(-20);
+            ultimateConversationState.conversationContext.recentMessages.slice(-maxMessages);
     }
     
     // 사용자 메시지인 경우 타이밍 업데이트
@@ -124,10 +200,13 @@ async function addUltimateMessage(speaker, message) {
 }
 
 /**
- * 최근 대화 내용 가져오기
+ * 최근 대화 내용 가져오기 (모델별 최적화)
  */
-function getRecentMessages(limit = 10) {
-    return ultimateConversationState.conversationContext.recentMessages.slice(-limit);
+function getRecentMessages(limit = null) {
+    const contextLength = getOptimalContextLength();
+    const actualLimit = limit || contextLength.recent;
+    
+    return ultimateConversationState.conversationContext.recentMessages.slice(-actualLimit);
 }
 
 /**
@@ -233,47 +312,90 @@ function getAllMemories() {
 // ==================== 🎯 컨텍스트 조합 및 프롬프트 생성 ====================
 
 /**
- * 모든 정보를 조합하여 컨텍스트 프롬프트 생성
+ * ✨ 모든 정보를 조합하여 GPT 모델별 최적화된 컨텍스트 프롬프트 생성
  */
 async function getUltimateContextualPrompt(basePrompt) {
     try {
         let contextualPrompt = basePrompt;
         
-        // 1. 최근 대화 추가
-        const recentMessages = getRecentMessages(5);
-        if (recentMessages.length > 0) {
+        // ✨ 현재 GPT 모델 설정 확인
+        const currentModel = getCurrentModelSetting ? getCurrentModelSetting() : 'auto';
+        const contextLength = getOptimalContextLength();
+        const priority = getContextPriority(currentModel);
+        
+        console.log(`[UltimateContext] 컨텍스트 생성 (모델: ${currentModel}, 우선순위: 메시지=${priority.recentMessages}, 감정=${priority.emotions}, 기억=${priority.memories})`);
+        
+        // 1. ✨ 모델별 최적화된 최근 대화 추가
+        const recentMessages = getRecentMessages(contextLength.recent);
+        if (recentMessages.length > 0 && priority.recentMessages > 0) {
             const recentContext = recentMessages.map(msg => 
                 `${msg.speaker}: "${msg.message}"`
             ).join('\n');
-            contextualPrompt += `\n\n📋 최근 대화:\n${recentContext}\n`;
-        }
-        
-        // 2. 외부 모듈에서 감정 상태 가져오기
-        const emotionalManager = getEmotionalManager();
-        if (emotionalManager && emotionalManager.getCurrentEmotionState) {
-            try {
-                const emotionState = emotionalManager.getCurrentEmotionState();
-                if (emotionState.description !== '정상기') {
-                    contextualPrompt += `\n💭 현재 감정: ${emotionState.description} (${emotionState.cycleDay}일차)\n`;
-                }
-            } catch (error) {
-                console.log('⚠️ [UltimateContext] 감정 상태 조회 실패:', error.message);
+            
+            if (currentModel === '3.5') {
+                // GPT-3.5는 간결하게
+                contextualPrompt += `\n\n📋 최근 대화:\n${recentContext}\n`;
+            } else {
+                // GPT-4o는 풍부하게
+                contextualPrompt += `\n\n📋 최근 대화 (${recentMessages.length}개):\n${recentContext}\n`;
             }
         }
         
-        // 3. 동적 기억 중 최근 3개 추가
-        const recentMemories = ultimateConversationState.dynamicMemories.userMemories.slice(-3);
-        if (recentMemories.length > 0) {
-            const memoryContext = recentMemories.map(m => m.content).join('. ');
-            contextualPrompt += `\n🧠 최근 기억: ${memoryContext}\n`;
+        // 2. ✨ 모델별 감정 상태 정보 추가
+        if (priority.emotions > 0) {
+            const emotionalManager = getEmotionalManager();
+            if (emotionalManager && emotionalManager.getCurrentEmotionState) {
+                try {
+                    const emotionState = emotionalManager.getCurrentEmotionState();
+                    if (emotionState.description !== '정상기') {
+                        if (currentModel === '3.5') {
+                            // GPT-3.5는 핵심만
+                            contextualPrompt += `\n💭 현재: ${emotionState.description}\n`;
+                        } else {
+                            // GPT-4o는 상세하게
+                            contextualPrompt += `\n💭 현재 감정: ${emotionState.description} (${emotionState.cycleDay}일차)\n`;
+                        }
+                    }
+                } catch (error) {
+                    console.log('⚠️ [UltimateContext] 감정 상태 조회 실패:', error.message);
+                }
+            }
         }
         
-        // 4. 현재 대화 주제 추가
+        // 3. ✨ 모델별 동적 기억 추가
+        if (priority.memories > 0) {
+            const memoryCount = contextLength.memory;
+            const recentMemories = ultimateConversationState.dynamicMemories.userMemories.slice(-memoryCount);
+            
+            if (recentMemories.length > 0) {
+                const memoryContext = recentMemories.map(m => m.content).join('. ');
+                
+                if (currentModel === '3.5') {
+                    // GPT-3.5는 간단하게
+                    contextualPrompt += `\n🧠 기억: ${memoryContext}\n`;
+                } else {
+                    // GPT-4o는 상세하게
+                    contextualPrompt += `\n🧠 최근 기억 (${recentMemories.length}개): ${memoryContext}\n`;
+                }
+            }
+        }
+        
+        // 4. 현재 대화 주제 추가 (모든 모델에서 사용)
         if (ultimateConversationState.conversationContext.currentTopic) {
             contextualPrompt += `\n🎯 현재 주제: ${ultimateConversationState.conversationContext.currentTopic}\n`;
         }
         
+        // 5. ✨ 모델별 추가 메타정보
+        if (currentModel === '4.0') {
+            // GPT-4o에서만 상세한 메타정보 추가
+            const messageCount = ultimateConversationState.conversationContext.recentMessages.length;
+            const memoryCount = ultimateConversationState.dynamicMemories.userMemories.length;
+            contextualPrompt += `\n📊 컨텍스트: 메시지 ${messageCount}개, 기억 ${memoryCount}개\n`;
+        }
+        
+        console.log(`[UltimateContext] 컨텍스트 생성 완료 (${currentModel} 최적화, 길이: ${contextualPrompt.length}자)`);
         return contextualPrompt;
+        
     } catch (error) {
         console.error('❌ [UltimateContext] 프롬프트 생성 중 에러:', error);
         return basePrompt;
@@ -281,11 +403,25 @@ async function getUltimateContextualPrompt(basePrompt) {
 }
 
 /**
- * 활성 기억들을 프롬프트용으로 조합
+ * ✨ 활성 기억들을 모델별로 최적화하여 프롬프트용으로 조합
  */
 function getActiveMemoryPrompt() {
-    const recentMemories = ultimateConversationState.dynamicMemories.userMemories.slice(-3);
-    return recentMemories.map(m => m.content).join('. ');
+    const contextLength = getOptimalContextLength();
+    const recentMemories = ultimateConversationState.dynamicMemories.userMemories.slice(-contextLength.memory);
+    
+    if (!getCurrentModelSetting) {
+        return recentMemories.map(m => m.content).join('. ');
+    }
+    
+    const currentModel = getCurrentModelSetting();
+    
+    if (currentModel === '3.5') {
+        // GPT-3.5는 간결하게
+        return recentMemories.map(m => m.content.substring(0, 50)).join('. ');
+    } else {
+        // GPT-4o는 전체 내용
+        return recentMemories.map(m => m.content).join('. ');
+    }
 }
 
 // ==================== ⏰ 타이밍 관리 ====================
@@ -387,15 +523,25 @@ async function learnFromUserMessage(message) {
 // ==================== 📊 통계 및 상태 조회 ====================
 
 /**
- * 기억 통계
+ * ✨ GPT 모델 정보를 포함한 기억 통계
  */
 function getMemoryStatistics() {
+    const currentModel = getCurrentModelSetting ? getCurrentModelSetting() : 'unknown';
+    const contextLength = getOptimalContextLength();
+    
     return {
         user: ultimateConversationState.memoryStats.totalUserMemories,
         conversation: ultimateConversationState.memoryStats.totalConversationMemories,
         today: ultimateConversationState.memoryStats.todayMemoryCount,
         total: ultimateConversationState.memoryStats.totalUserMemories + 
-               ultimateConversationState.memoryStats.totalConversationMemories
+               ultimateConversationState.memoryStats.totalConversationMemories,
+        // ✨ GPT 모델 정보 추가
+        currentGptModel: currentModel,
+        contextOptimization: {
+            recentMessages: contextLength.recent,
+            memoryCount: contextLength.memory,
+            optimizedFor: currentModel
+        }
     };
 }
 
@@ -434,15 +580,26 @@ async function getMemoryOperationLogs(limit = 10) {
 }
 
 /**
- * 내부 상태 조회 (디버깅용)
+ * ✨ GPT 모델 정보를 포함한 내부 상태 조회 (디버깅용)
  */
 function getInternalState() {
+    const currentModel = getCurrentModelSetting ? getCurrentModelSetting() : 'unknown';
+    const contextLength = getOptimalContextLength();
+    const priority = getContextPriority(currentModel);
+    
     return {
         conversationContext: ultimateConversationState.conversationContext,
         memoryStats: ultimateConversationState.memoryStats,
         timingContext: ultimateConversationState.timingContext,
         emotionalSync: ultimateConversationState.emotionalSync,
-        currentTime: Date.now()
+        currentTime: Date.now(),
+        // ✨ GPT 모델 최적화 정보 추가
+        gptOptimization: {
+            currentModel,
+            contextLength,
+            priority,
+            version: 'v34.1-with-version-control'
+        }
     };
 }
 
@@ -470,6 +627,10 @@ function clearPendingAction() {
 async function initializeEmotionalSystems() {
     console.log('[UltimateContext] 동적 기억 및 대화 컨텍스트 시스템 초기화...');
     
+    // ✨ GPT 모델 정보 로그
+    const currentModel = getCurrentModelSetting ? getCurrentModelSetting() : 'unknown';
+    console.log(`[UltimateContext] 현재 GPT 모델: ${currentModel}`);
+    
     // 디렉토리 생성
     try {
         const fs = require('fs');
@@ -487,16 +648,17 @@ async function initializeEmotionalSystems() {
         ultimateConversationState.memoryStats.lastDailyReset = today;
     }
     
-    console.log('[UltimateContext] 초기화 완료 - 동적 기억과 대화 컨텍스트에 집중');
+    console.log(`[UltimateContext] 초기화 완료 - 동적 기억과 대화 컨텍스트에 집중 (${currentModel} 최적화)`);
 }
 
 // ==================== 🎁 유틸리티 함수들 ====================
 
 /**
- * 대화 컨텍스트 윈도우 크기 설정
+ * ✨ 모델별 대화 컨텍스트 윈도우 크기 설정
  */
 function setConversationContextWindow(size) {
-    console.log(`[UltimateContext] 컨텍스트 윈도우 크기: ${size}`);
+    const currentModel = getCurrentModelSetting ? getCurrentModelSetting() : 'auto';
+    console.log(`[UltimateContext] 컨텍스트 윈도우 크기: ${size} (모델: ${currentModel})`);
     // 실제 구현에서는 메시지 보관 개수 조정
 }
 
@@ -514,7 +676,9 @@ async function generateInitiatingPhrase() {
     return phrases[Math.floor(Math.random() * phrases.length)];
 }
 
-// ==================== 📤 모듈 내보내기 ====================
+// ==================== 📤 모듈 내보내기 ==================
+console.log('[UltimateContext] v34.1 로드 완료 (GPT 모델 버전 전환 지원)');
+
 module.exports = {
     // 초기화
     initializeEmotionalSystems,
@@ -561,6 +725,10 @@ module.exports = {
     // 유틸리티
     setConversationContextWindow,
     generateInitiatingPhrase,
+    
+    // ✨ GPT 모델 최적화 함수들 추가
+    getOptimalContextLength,
+    getContextPriority,
     
     // 호환성 (기존 시스템과의 연동)
     addMemoryContext: addUserMemory,  // 별칭
