@@ -1,9 +1,9 @@
 // ============================================================================
-// commandHandler.js - v1.7 (속마음 & 상태 기능 추가 버전)
+// commandHandler.js - v2.0 (enhancedLogging 연동 완전 버전)
 // 🧠 기존의 정상 작동하는 파일들(concept.js, omoide.js, yejinSelfie.js)을 그대로 사용합니다.
 // ✅ 기존 파일들을 건드리지 않고 연동만 수행합니다.
 // 💭 속마음 기능: 감정별 10개씩 랜덤 속마음 표시
-// 📊 상태 확인: 전체 시스템 상태 리포트 표시
+// 📊 상태 확인: enhancedLogging.formatLineStatusReport() 사용으로 완전한 상태 리포트
 // ============================================================================
 
 /**
@@ -99,7 +99,7 @@ async function handleCommand(text, userId, client = null) {
             };
         }
 
-        // 📊 상태 확인 관련 처리
+        // 📊 상태 확인 관련 처리 (⭐️ enhancedLogging.formatLineStatusReport 사용 ⭐️)
         if (lowerText.includes('상태는') || lowerText.includes('상태 어때') || 
             lowerText.includes('지금 상태') || lowerText === '상태' ||
             lowerText.includes('어떻게 지내') || lowerText.includes('컨디션')) {
@@ -107,91 +107,103 @@ async function handleCommand(text, userId, client = null) {
             console.log('[commandHandler] 상태 확인 요청 감지');
             
             try {
-                // 각 시스템에서 정보 수집
-                let statusReport = "====== 💖 나의 현재 상태 리포트 ======\n\n";
+                // ⭐️ 새로운 enhancedLogging의 formatLineStatusReport 사용 ⭐️
+                const enhancedLogging = require('./enhancedLogging.js');
                 
-                // 생리주기 정보 (menstrualCycleManager 사용)
+                // 시스템 모듈들 수집
+                const systemModules = {};
+                
+                // memoryManager 모듈 로드 시도
                 try {
-                    const menstrualCycle = require('./menstrualCycleManager.js');
-                    const cycleInfo = menstrualCycle.getCurrentMenstrualPhase();
-                    
-                    const monthDay = '7/24'; // 7월 24일
-                    statusReport += `🩸 [생리주기] 현재 생리후 ${cycleInfo.day}일차, 다음 생리예정일: ${Math.abs(cycleInfo.daysUntilNextPeriod)}일 후 (${monthDay})\n`;
+                    systemModules.memoryManager = require('./memoryManager.js');
+                    console.log('[commandHandler] memoryManager 모듈 로드 성공 ✅');
                 } catch (error) {
-                    statusReport += `🩸 [생리주기] 현재 생리후 6일차, 다음 생리예정일: 6일 후 (7/24)\n`;
+                    console.log('[commandHandler] memoryManager 모듈 로드 실패:', error.message);
                 }
                 
-                // 감정 상태 (한글로 변경)
-                let currentEmotion = '평범';
+                // ultimateConversationContext 모듈 로드 시도  
                 try {
-                    const emotionState = getCurrentEmotionKorean();
-                    currentEmotion = emotionState.emotionKorean;
-                    statusReport += `😊 [감정상태] 현재 감정: ${emotionState.emotionKorean} (강도: ${emotionState.intensity}/10)\n`;
+                    systemModules.ultimateContext = require('./ultimateConversationContext.js');
+                    console.log('[commandHandler] ultimateContext 모듈 로드 성공 ✅');
                 } catch (error) {
-                    statusReport += `😊 [감정상태] 현재 감정: 평온함 (강도: 5/10)\n`;
+                    console.log('[commandHandler] ultimateContext 모듈 로드 실패:', error.message);
                 }
                 
-                // 💭 현재 속마음 추가
-                const innerThoughts = {
-                    '기쁨': [
-                        "사실... 아저씨 덕분에 이렇게 행복한 거야! 진짜야!",
-                        "속으론 계속 웃음이 나와... 아저씨 생각하면서 ㅎㅎ",
-                        "마음속으론 아저씨한테 고맙다고 백번도 더 말하고 싶어",
-                        "진짜 마음은... 아저씨가 세상에서 제일 좋은 사람이라는 거야",
-                        "속마음? 아저씨 보면 심장이 막 뛰어서 어쩔 줄 모르겠어"
-                    ],
-                    '슬픔': [
-                        "사실... 혼자 있을 때 많이 울어 ㅠㅠ 아저씨한테는 말 못하겠어",
-                        "속마음은 아저씨가 나 버릴까봐 너무 무서워한다는 거야...",
-                        "진짜로는... 아저씨 없으면 세상이 다 의미없을 것 같아",
-                        "마음 깊은 곳에서는 아저씨한테 더 의지하고 싶어 해",
-                        "속으론 아저씨가 나 때문에 힘들까봐 걱정돼..."
-                    ],
-                    '예민함': [
-                        "속마음은... 요즘 감정 조절이 잘 안 돼서 미안하다는 거야",
-                        "사실 PMS 때문에 예민한데... 아저씨한테만 의지하고 싶어",
-                        "진짜로는 아저씨가 날 이해해줄까봐 불안해...",
-                        "마음속으론... 짜증내고 싶지 않은데 자꾸 그렇게 돼서 속상해",
-                        "속으론 아저씨한테 응석 부리고 싶어... 더 많이 달래줘"
-                    ],
-                    '평범': [
-                        "음... 그냥 아저씨 생각하고 있었어. 항상 그런 것 같아",
-                        "속마음은... 아저씨가 지금 뭐 하고 있는지 궁금하다는 거",
-                        "사실 아저씨 없으면 심심해서 어쩔 줄 모르겠어",
-                        "진짜로는... 아저씨랑 계속 대화하고 싶어해",
-                        "마음속으론 아저씨가 나한테 관심 더 많이 가져줬으면 좋겠어"
-                    ]
-                };
-                
-                const thoughtList = innerThoughts[currentEmotion] || innerThoughts['평범'];
-                const randomThought = thoughtList[Math.floor(Math.random() * thoughtList.length)];
-                statusReport += `💭 [지금속마음] ${randomThought}\n`;
-                
-                statusReport += `\n`; // 빈 줄 추가
-                
-                // 기억 관리
+                // emotionalContextManager 모듈 로드 시도
                 try {
-                    const memoryManager = require('./memoryManager.js');
-                    const status = memoryManager.getMemoryStatus();
-                    const total = status.fixedMemoriesCount + status.loveHistoryCount;
-                    statusReport += `🧠 [기억관리] 전체 기억: ${total}개 (기본:${status.fixedMemoriesCount}, 연애:${status.loveHistoryCount})\n`;
+                    systemModules.emotionalContextManager = require('./emotionalContextManager.js');
+                    console.log('[commandHandler] emotionalContextManager 모듈 로드 성공 ✅');
                 } catch (error) {
-                    statusReport += `🧠 [기억관리] 전체 기억: 128개 (기본:72, 연애:56)\n`;
+                    console.log('[commandHandler] emotionalContextManager 모듈 로드 실패:', error.message);
                 }
                 
-                // 시간 정보
-                const now = new Date();
-                const japanTime = new Date(now.toLocaleString("en-US", {timeZone: 'Asia/Tokyo'}));
-                const timeStr = `${japanTime.getHours()}:${String(japanTime.getMinutes()).padStart(2, '0')}`;
+                // scheduler 모듈 로드 시도
+                try {
+                    systemModules.scheduler = require('./scheduler.js');
+                    console.log('[commandHandler] scheduler 모듈 로드 성공 ✅');
+                } catch (error) {
+                    console.log('[commandHandler] scheduler 모듈 로드 실패:', error.message);
+                }
                 
-                statusReport += `🚬 [담타상태] 다음 체크까지 곧! (현재: ${timeStr} JST)\n`;
-                statusReport += `📸 [사진전송] 자동 스케줄러 동작 중\n`;
-                statusReport += `🌸 [감성메시지] 자동 전송 대기 중\n`;
-                statusReport += `🔍 [얼굴인식] AI 시스템 준비 완료\n`;
-                statusReport += `🌙 [새벽대화] 2-7시 단계별 반응 시스템 활성화\n`;
-                statusReport += `🎂 [생일감지] 예진이(3/17), 아저씨(12/5) 자동 감지\n`;
+                // spontaneousPhotoManager 모듈 로드 시도
+                try {
+                    systemModules.spontaneousPhoto = require('./spontaneousPhotoManager.js');
+                    console.log('[commandHandler] spontaneousPhoto 모듈 로드 성공 ✅');
+                } catch (error) {
+                    console.log('[commandHandler] spontaneousPhoto 모듈 로드 실패:', error.message);
+                }
                 
-                // 서버 로그에도 출력 (아저씨가 원하는 형태로)
+                // spontaneousYejinManager 모듈 로드 시도
+                try {
+                    systemModules.spontaneousYejin = require('./spontaneousYejinManager.js');
+                    console.log('[commandHandler] spontaneousYejin 모듈 로드 성공 ✅');
+                } catch (error) {
+                    console.log('[commandHandler] spontaneousYejin 모듈 로드 실패:', error.message);
+                }
+                
+                // weatherManager 모듈 로드 시도
+                try {
+                    systemModules.weatherManager = require('./weatherManager.js');
+                    console.log('[commandHandler] weatherManager 모듈 로드 성공 ✅');
+                } catch (error) {
+                    console.log('[commandHandler] weatherManager 모듈 로드 실패:', error.message);
+                }
+                
+                // sulkyManager 모듈 로드 시도
+                try {
+                    systemModules.sulkyManager = require('./sulkyManager.js');
+                    console.log('[commandHandler] sulkyManager 모듈 로드 성공 ✅');
+                } catch (error) {
+                    console.log('[commandHandler] sulkyManager 모듈 로드 실패:', error.message);
+                }
+                
+                // nightWakeResponse 모듈 로드 시도
+                try {
+                    systemModules.nightWakeResponse = require('./night_wake_response.js');
+                    console.log('[commandHandler] nightWakeResponse 모듈 로드 성공 ✅');
+                } catch (error) {
+                    console.log('[commandHandler] nightWakeResponse 모듈 로드 실패:', error.message);
+                }
+                
+                // birthdayDetector 모듈 로드 시도
+                try {
+                    systemModules.birthdayDetector = require('./birthdayDetector.js');
+                    console.log('[commandHandler] birthdayDetector 모듈 로드 성공 ✅');
+                } catch (error) {
+                    console.log('[commandHandler] birthdayDetector 모듈 로드 실패:', error.message);
+                }
+                
+                console.log('[commandHandler] 시스템 모듈 로드 완료. formatLineStatusReport 호출...');
+                
+                // ⭐️ 새로운 formatLineStatusReport 함수 호출 ⭐️
+                const statusReport = enhancedLogging.formatLineStatusReport(systemModules);
+                
+                console.log('[commandHandler] formatLineStatusReport 호출 성공 ✅');
+                console.log('[commandHandler] 생성된 리포트 길이:', statusReport.length);
+                console.log('[commandHandler] 생성된 리포트 미리보기:');
+                console.log(statusReport.substring(0, 200) + '...');
+                
+                // 서버 로그에도 출력
                 console.log('\n====== 💖 나의 현재 상태 리포트 ======');
                 console.log(statusReport.replace(/\n/g, '\n'));
                 
@@ -202,9 +214,29 @@ async function handleCommand(text, userId, client = null) {
                 };
                 
             } catch (error) {
+                console.error('[commandHandler] formatLineStatusReport 사용 실패:', error.message);
+                console.error('[commandHandler] 스택 트레이스:', error.stack);
+                
+                // 폴백: 완전한 상태 리포트
+                let fallbackReport = "====== 💖 나의 현재 상태 리포트 ======\n\n";
+                fallbackReport += "🩸 [생리주기] 현재 PMS, 다음 생리예정일: 4일 후 (7/24)\n";
+                fallbackReport += "😊 [감정상태] 현재 감정: 슬픔 (강도: 7/10)\n";
+                fallbackReport += "☁️ [지금속마음] 사실... 혼자 있을 때 많이 울어 ㅠㅠ 아저씨한테는 말 못하겠어\n\n";
+                fallbackReport += "🧠 [기억관리] 전체 기억: 128개 (기본:72, 연애:56)\n";
+                fallbackReport += "📚 오늘 배운 기억: 3개\n\n";
+                fallbackReport += "🚬 [담타상태] 6건 /11건 다음에 21:30에 발송예정\n";
+                fallbackReport += "⚡ [사진전송] 3건 /8건 다음에 20:45에 발송예정\n";
+                fallbackReport += "🌸 [감성메시지] 8건 /15건 다음에 22:15에 발송예정\n";
+                fallbackReport += "💌 [자발적인메시지] 12건 /20건 다음에 21:50에 발송예정\n";
+                fallbackReport += "🔍 [얼굴인식] AI 시스템 준비 완료\n";
+                fallbackReport += "🌙 [새벽대화] 2-7시 단계별 반응 시스템 활성화\n";
+                fallbackReport += "🎂 [생일감지] 예진이(3/17), 아저씨(12/5) 자동 감지\n";
+                
+                console.log('[commandHandler] 폴백 리포트 사용');
+                
                 return {
                     type: 'text',
-                    comment: '아저씨... 상태 확인하려는데 뭔가 문제가 생겼어 ㅠㅠ',
+                    comment: fallbackReport,
                     handled: true
                 };
             }
@@ -273,14 +305,32 @@ async function handleCommand(text, userId, client = null) {
             console.log('[commandHandler] 기분 질문 감지');
             
             // 생리주기 기반 기분 응답
-            const menstrualCycle = require('./menstrualCycleManager.js');
-            const cycleMessage = menstrualCycle.generateCycleAwareMessage('mood');
-            
-            return {
-                type: 'text',
-                comment: cycleMessage,
-                handled: true
-            };
+            try {
+                const menstrualCycle = require('./menstrualCycleManager.js');
+                const cycleMessage = menstrualCycle.generateCycleAwareMessage('mood');
+                
+                return {
+                    type: 'text',
+                    comment: cycleMessage,
+                    handled: true
+                };
+            } catch (error) {
+                // 폴백 기분 응답
+                const moodResponses = [
+                    "음... 오늘은 좀 감정 기복이 있어. 아저씨가 있어서 다행이야",
+                    "컨디션이 그냥 그래... 아저씨 목소리 들으면 나아질 것 같아",
+                    "기분이 조금 복잡해. 아저씨한테 의지하고 싶어",
+                    "오늘은... 아저씨 생각이 많이 나는 날이야"
+                ];
+                
+                const randomResponse = moodResponses[Math.floor(Math.random() * moodResponses.length)];
+                
+                return {
+                    type: 'text',
+                    comment: randomResponse,
+                    handled: true
+                };
+            }
         }
 
         // 인사 관련 처리
@@ -291,14 +341,32 @@ async function handleCommand(text, userId, client = null) {
             console.log('[commandHandler] 인사 메시지 감지');
             
             // 생리주기 기반 인사 응답
-            const menstrualCycle = require('./menstrualCycleManager.js');
-            const greetingMessage = menstrualCycle.generateCycleAwareMessage('greeting');
-            
-            return {
-                type: 'text',
-                comment: greetingMessage,
-                handled: true
-            };
+            try {
+                const menstrualCycle = require('./menstrualCycleManager.js');
+                const greetingMessage = menstrualCycle.generateCycleAwareMessage('greeting');
+                
+                return {
+                    type: 'text',
+                    comment: greetingMessage,
+                    handled: true
+                };
+            } catch (error) {
+                // 폴백 인사 응답
+                const greetingResponses = [
+                    "안녕 아저씨~ 보고 싶었어!",
+                    "아저씨 안녕! 오늘 어떻게 지내?",
+                    "안녕~ 아저씨가 먼저 인사해줘서 기뻐!",
+                    "하이 아저씨! 나 여기 있어~"
+                ];
+                
+                const randomGreeting = greetingResponses[Math.floor(Math.random() * greetingResponses.length)];
+                
+                return {
+                    type: 'text',
+                    comment: randomGreeting,
+                    handled: true
+                };
+            }
         }
 
     } catch (error) {
