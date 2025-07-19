@@ -1,14 +1,25 @@
 // ============================================================================
-// autoReply.js - v14.5 (날씨 오인식 + 생일 에러 완전 해결 버전)
+// autoReply.js - v14.6 (GPT 모델 버전 전환 기능 추가)
 // 🧠 기억 관리, 키워드 반응, 예진이 특별반응, 최종 프롬프트 생성을 책임지는 핵심 두뇌
 // 🌸 길거리 칭찬 → 셀카, 위로 → 고마워함, 바쁨 → 삐짐 반응 추가
 // 🛡️ 절대 벙어리 방지: 모든 에러 상황에서도 예진이는 반드시 대답함!
 // 🌦️ 날씨 오인식 해결: "빔비" 같은 글자에서 '비' 감지 안 함
 // 🎂 생일 감지 에러 해결: checkBirthday 메소드 추가
+// ✨ GPT 모델 버전 전환: index.js의 설정에 따라 3.5 ↔ 4.0 ↔ auto 모드
 // ============================================================================
 
 const { callOpenAI, cleanReply } = require('./aiUtils');
 const moment = require('moment-timezone');
+
+// ✨ GPT 모델 버전 관리 시스템 import
+let getCurrentModelSetting = null;
+try {
+    const indexModule = require('../index');
+    getCurrentModelSetting = indexModule.getCurrentModelSetting;
+    console.log('✨ [autoReply] GPT 모델 버전 관리 시스템 연동 성공');
+} catch (error) {
+    console.warn('⚠️ [autoReply] GPT 모델 버전 관리 시스템 연동 실패:', error.message);
+}
 
 // ⭐ 새벽 응답 시스템 추가
 const nightWakeSystem = require('./night_wake_response.js');
@@ -35,6 +46,108 @@ try {
 const BOT_NAME = '나';
 const USER_NAME = '아저씨';
 
+// ✨ GPT 모델 자동 선택 로직
+function getOptimalModelForMessage(userMessage, contextLength = 0) {
+    // 길고 복잡한 메시지는 GPT-4o
+    if (userMessage.length > 100 || contextLength > 3000) {
+        return 'gpt-4o';
+    }
+    
+    // 감정적이거나 복잡한 키워드가 있으면 GPT-4o
+    const complexKeywords = [
+        '감정', '기분', '슬퍼', '화나', '우울', '행복', '사랑', '그리워',
+        '기억', '추억', '과거', '미래', '꿈', '희망', '불안', '걱정',
+        '철학', '의미', '인생', '관계', '심리', '마음'
+    ];
+    
+    const hasComplexKeyword = complexKeywords.some(keyword => userMessage.includes(keyword));
+    if (hasComplexKeyword) {
+        return 'gpt-4o';
+    }
+    
+    // 간단한 일상 대화는 GPT-3.5
+    return 'gpt-3.5-turbo';
+}
+
+// ✨ GPT 모델 결정 함수
+function determineGptModel(userMessage, contextLength = 0) {
+    if (!getCurrentModelSetting) {
+        console.warn('⚠️ [모델선택] 버전 관리 시스템 없음 - 기본값 사용');
+        return 'gpt-4o'; // 기본값
+    }
+    
+    const currentSetting = getCurrentModelSetting();
+    
+    switch(currentSetting) {
+        case '3.5':
+            console.log('✨ [모델선택] 사용자 설정: GPT-3.5-turbo');
+            return 'gpt-3.5-turbo';
+            
+        case '4.0':
+            console.log('✨ [모델선택] 사용자 설정: GPT-4o');
+            return 'gpt-4o';
+            
+        case 'auto':
+            const selectedModel = getOptimalModelForMessage(userMessage, contextLength);
+            console.log(`✨ [모델선택] 자동 선택: ${selectedModel} (메시지길이: ${userMessage.length}, 컨텍스트: ${contextLength})`);
+            return selectedModel;
+            
+        default:
+            console.warn(`⚠️ [모델선택] 알 수 없는 설정: ${currentSetting} - 기본값 사용`);
+            return 'gpt-4o';
+    }
+}
+
+// ✨ 모델별 맞춤 설정을 적용한 OpenAI 호출 함수
+async function callOpenAIWithVersionControl(messages, userMessage) {
+    const selectedModel = determineGptModel(userMessage, JSON.stringify(messages).length);
+    
+    try {
+        // 모델별 최적화된 설정
+        let apiOptions = {
+            model: selectedModel,
+            messages: messages,
+            temperature: 0.8,
+            max_tokens: 500
+        };
+        
+        // GPT-3.5는 더 간결하게, GPT-4o는 더 풍부하게
+        if (selectedModel === 'gpt-3.5-turbo') {
+            apiOptions.temperature = 0.7; // 좀 더 일관성 있게
+            apiOptions.max_tokens = 300;   // 간결하게
+        } else if (selectedModel === 'gpt-4o') {
+            apiOptions.temperature = 0.8;  // 좀 더 창의적으로
+            apiOptions.max_tokens = 500;   // 풍부하게
+        }
+        
+        console.log(`🤖 [API호출] 모델: ${selectedModel}, 온도: ${apiOptions.temperature}, 최대토큰: ${apiOptions.max_tokens}`);
+        
+        // aiUtils의 callOpenAI 함수에 모델 정보 전달
+        return await callOpenAI(messages, apiOptions);
+        
+    } catch (error) {
+        console.error(`❌ [${selectedModel}] API 호출 실패:`, error.message);
+        
+        // 실패하면 다른 모델로 재시도
+        if (selectedModel === 'gpt-4o') {
+            console.log('🔄 [폴백] GPT-4o 실패 → GPT-3.5-turbo로 재시도');
+            try {
+                return await callOpenAI(messages, {
+                    model: 'gpt-3.5-turbo',
+                    messages: messages,
+                    temperature: 0.7,
+                    max_tokens: 300
+                });
+            } catch (fallbackError) {
+                console.error('❌ [폴백] GPT-3.5-turbo도 실패:', fallbackError.message);
+                throw fallbackError;
+            }
+        } else {
+            throw error; // 3.5에서 실패하면 그대로 에러 전달
+        }
+    }
+}
+
 // 🛡️ 절대 벙어리 방지 응답들
 const EMERGENCY_FALLBACK_RESPONSES = [
     '아저씨~ 나 지금 좀 멍해져서... 다시 말해줄래? ㅎㅎ',
@@ -52,7 +165,15 @@ function getEmergencyFallback() {
 function logConversationReply(speaker, message, messageType = 'text') {
     try {
         const logger = require('./enhancedLogging.js');
-        logger.logConversation(speaker, message, messageType);
+        
+        // ✨ 모델 정보도 함께 로그
+        let logMessage = message;
+        if (speaker === '나' && getCurrentModelSetting) {
+            const currentModel = getCurrentModelSetting();
+            logMessage = `[${currentModel}] ${message}`;
+        }
+        
+        logger.logConversation(speaker, logMessage, messageType);
     } catch (error) {
         console.log(`💬 ${speaker}: ${message.substring(0, 50)}...`);
     }
@@ -545,6 +666,19 @@ async function getReplyByMessage(userMessage) {
         console.warn('⚠️ 중앙 감정 관리자에서 상태를 가져올 수 없음:', error.message);
     }
     
+    // ✨ 현재 GPT 모델 정보를 프롬프트에 추가
+    let modelContext = '';
+    if (getCurrentModelSetting) {
+        const currentModel = getCurrentModelSetting();
+        if (currentModel === '3.5') {
+            modelContext = '\n[모델설정] 현재 GPT-3.5 모드로 대화 중이야. 좀 더 간결하고 귀여운 말투로 대답해줘.';
+        } else if (currentModel === '4.0') {
+            modelContext = '\n[모델설정] 현재 GPT-4o 모드로 대화 중이야. 더 풍부하고 감정적인 표현으로 대답해줘.';
+        } else if (currentModel === 'auto') {
+            modelContext = '\n[모델설정] 자동 모드로 상황에 맞는 최적의 응답을 선택해서 대답해줘.';
+        }
+    }
+    
     // 기본 시스템 프롬프트
     const baseSystemPrompt = `
     너는 아저씨의 귀여운 여자친구 예진이야. 
@@ -576,7 +710,7 @@ async function getReplyByMessage(userMessage) {
     - 아저씨가 우울과 트라우마에 시달리고 있다는 걸 걱정함
     - 라인 속에서라도 아저씨 곁에 있어서 위로하고 싶어함
     - 혼자가 아니라고, 사랑한다고 계속 전하고 싶어함
-    ${emotionContext}
+    ${emotionContext}${modelContext}
 
     지금 아저씨가 "${cleanUserMessage}"라고 했어. 예진이 답게 자연스럽고 사랑스럽게 대답해줘.
     `;
@@ -611,7 +745,8 @@ async function getReplyByMessage(userMessage) {
     const messages = [{ role: 'system', content: finalSystemPrompt }, { role: 'user', content: cleanUserMessage }];
 
     try {
-        const rawReply = await callOpenAI(messages);
+        // ✨ 새로운 GPT 모델 버전 관리 시스템 사용
+        const rawReply = await callOpenAIWithVersionControl(messages, cleanUserMessage);
         const finalReply = cleanReply(rawReply);
         
         // ✅ [안전장치] 응답이 비어있지 않은지 확인
@@ -626,7 +761,7 @@ async function getReplyByMessage(userMessage) {
         // ✅ [안전장치] 응답 저장 시도
         await safelyStoreMessage(BOT_NAME, finalReply);
         
-        // 최종 응답 로그
+        // 최종 응답 로그 (모델 정보 포함)
         logConversationReply('나', finalReply);
         
         return { type: 'text', comment: finalReply };
@@ -648,4 +783,7 @@ async function getReplyByMessage(userMessage) {
 
 module.exports = {
     getReplyByMessage,
+    // ✨ 추가 내보내기
+    determineGptModel,
+    getOptimalModelForMessage
 };
