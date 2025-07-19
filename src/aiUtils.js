@@ -1,7 +1,8 @@
 // ============================================================================
-// aiUtils.js v2.4 - GPT 모델 버전 전환 기능 추가
+// aiUtils.js v2.5 - selectedModel 에러 수정 버전
 // 파일 저장 대신 console.log로 변경 + 모델별 최적화 지원
 // ✨ "3.5", "4.0", "auto" 모드에 따라 다른 모델 사용
+// 🔧 selectedModel undefined 에러 완전 수정
 // ============================================================================
 
 const { OpenAI } = require('openai');
@@ -112,12 +113,16 @@ function getModelOptimizedSettings(model) {
     }
 }
 
-// ✨ [수정] 모델 버전 전환을 지원하는 callOpenAI 함수
+// ✨ [완전 수정] 모델 버전 전환을 지원하는 callOpenAI 함수 - selectedModel 에러 해결
 async function callOpenAI(messages, modelOverride = null, maxTokensOverride = null, temperatureOverride = null) {
+    let selectedModel = 'gpt-4o'; // 기본값 설정
+    
     try {
         // 1. 모델 결정 (오버라이드가 있으면 그것을 사용, 없으면 자동 선택)
-        let selectedModel = modelOverride;
-        if (!selectedModel) {
+        if (modelOverride) {
+            selectedModel = modelOverride;
+            console.log(`🎯 [모델강제] 오버라이드로 ${selectedModel} 사용`);
+        } else {
             // messages에서 사용자 메시지 추출 (자동 선택용)
             const userMessage = messages.find(m => m.role === 'user')?.content || '';
             const contextLength = JSON.stringify(messages).length;
@@ -147,7 +152,7 @@ async function callOpenAI(messages, modelOverride = null, maxTokensOverride = nu
         return response.choices[0].message.content.trim();
         
     } catch (error) {
-        console.error(`[aiUtils] OpenAI API 호출 실패 (모델: ${selectedModel || 'unknown'}):`, error.message);
+        console.error(`[aiUtils] OpenAI API 호출 실패 (모델: ${selectedModel}):`, error.message);
         
         // ✨ 폴백 시스템: GPT-4o 실패 시 GPT-3.5로 재시도
         if (!modelOverride && selectedModel === 'gpt-4o') {
@@ -236,6 +241,16 @@ function getCurrentModelInfo() {
     return { setting: currentSetting, model: actualModel };
 }
 
+// ✨ 안전한 모델 검증 함수
+function validateModel(model) {
+    const validModels = ['gpt-3.5-turbo', 'gpt-4o', 'gpt-4-turbo', 'gpt-4'];
+    if (!model || !validModels.includes(model)) {
+        console.warn(`⚠️ [모델검증] 유효하지 않은 모델: ${model}, 기본값 사용`);
+        return 'gpt-4o';
+    }
+    return model;
+}
+
 module.exports = {
     saveLog,
     saveImageLog,
@@ -245,5 +260,6 @@ module.exports = {
     determineGptModel,
     getOptimalModelForMessage,
     getModelOptimizedSettings,
-    getCurrentModelInfo
+    getCurrentModelInfo,
+    validateModel
 };
