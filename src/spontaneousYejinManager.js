@@ -1,18 +1,29 @@
 // ============================================================================
-// spontaneousYejinManager.js - v1.5 (모델 이야기 추가 + "너" 호칭 완전 금지)
+// spontaneousYejinManager.js - v1.6 (GPT 모델 버전 전환 + 문장 수 제한)
 // 🌸 예진이가 능동적으로 하루 15번 메시지 보내는 시스템
-// 8시-1시 사이 랜덤, 3-6문장으로 단축, 실제 취향과 일상 기반
+// 8시-1시 사이 랜덤, 2-5문장으로 단축, 실제 취향과 일상 기반
 // ✅ 모델 활동 이야기 추가 (촬영, 화보, 스케줄)
 // ✅ "너" 호칭 완전 금지 (아저씨만 사용)
 // ✅ 사진 전송 확률: 30%로 대폭 증가
 // ✅ omoide 사진 전송 400 에러 수정 (yejinSelfie.js 방식 적용)
+// ✨ GPT 모델 버전 전환: 3문장 넘으면 GPT-3.5, 이하면 설정대로
 // ============================================================================
 
-const schedule = require('node-schedule');
+const schedule = require('node-cron');
 const moment = require('moment-timezone');
 const { Client } = require('@line/bot-sdk');
 const OpenAI = require('openai');
 require('dotenv').config();
+
+// ✨ GPT 모델 버전 관리 시스템 import
+let getCurrentModelSetting = null;
+try {
+    const indexModule = require('../index');
+    getCurrentModelSetting = indexModule.getCurrentModelSetting;
+    console.log('✨ [spontaneousYejin] GPT 모델 버전 관리 시스템 연동 성공');
+} catch (error) {
+    console.warn('⚠️ [spontaneousYejin] GPT 모델 버전 관리 시스템 연동 실패:', error.message);
+}
 
 // ================== 🌏 설정 ==================
 const TIMEZONE = 'Asia/Tokyo';
@@ -45,6 +56,124 @@ function spontaneousLog(message, data = null) {
     console.log(`[${timestamp}] [예진이능동] ${message}`);
     if (data) {
         console.log('  📱 데이터:', JSON.stringify(data, null, 2));
+    }
+}
+
+// ================== ✨ GPT 모델 선택 및 문장 수 제한 시스템 ==================
+
+/**
+ * 메시지 길이와 복잡도를 기반으로 모델 선택
+ */
+function selectOptimalModel(situation, includeComplexContext = false) {
+    if (!getCurrentModelSetting) {
+        return 'gpt-4o'; // 기본값
+    }
+    
+    const currentSetting = getCurrentModelSetting();
+    
+    switch(currentSetting) {
+        case '3.5':
+            return 'gpt-3.5-turbo';
+            
+        case '4.0':
+            return 'gpt-4o';
+            
+        case 'auto':
+            // ✨ 자동 모드에서는 문장 길이 기준으로 모델 선택
+            // 복잡한 상황(정신건강, 모델링)이면 GPT-4o, 간단하면 GPT-3.5
+            if (includeComplexContext || 
+                situation.type === 'modeling' || 
+                situation.type === 'emotion' ||
+                situation.type === 'mentalHealth') {
+                return 'gpt-4o';
+            } else {
+                return 'gpt-3.5-turbo'; // 일상적인 내용은 3.5로
+            }
+            
+        default:
+            return 'gpt-4o';
+    }
+}
+
+/**
+ * 생성된 메시지의 문장 수 카운트
+ */
+function countSentences(text) {
+    if (!text) return 0;
+    
+    // 문장 구분 기호들로 나누기
+    const sentences = text.split(/[.!?。！？]+/).filter(s => s.trim().length > 0);
+    return sentences.length;
+}
+
+/**
+ * 메시지가 2-5문장 범위에 있는지 검증
+ */
+function validateMessageLength(message) {
+    const sentenceCount = countSentences(message);
+    const isValid = sentenceCount >= 2 && sentenceCount <= 5;
+    
+    spontaneousLog(`📏 메시지 검증: ${sentenceCount}문장 (${isValid ? '✅ 적절' : '❌ 부적절'})`);
+    
+    return { isValid, sentenceCount };
+}
+
+/**
+ * GPT 모델별 최적화된 OpenAI 호출
+ */
+async function callOpenAIOptimized(messages, selectedModel, isRetry = false) {
+    try {
+        const modelSettings = {
+            'gpt-3.5-turbo': {
+                temperature: 0.7,  // 일관성 있게
+                max_tokens: 120,   // 간결하게 (2-3문장)
+            },
+            'gpt-4o': {
+                temperature: 0.8,  // 창의적으로
+                max_tokens: 180,   // 풍부하게 (3-5문장)
+            }
+        };
+        
+        const settings = modelSettings[selectedModel] || modelSettings['gpt-4o'];
+        
+        // ✨ 재시도일 때는 더 간결하게
+        if (isRetry) {
+            settings.max_tokens = Math.min(settings.max_tokens, 100);
+            settings.temperature = Math.max(settings.temperature - 0.1, 0.6);
+        }
+        
+        spontaneousLog(`🤖 OpenAI 호출: ${selectedModel} (온도: ${settings.temperature}, 토큰: ${settings.max_tokens})`);
+        
+        const response = await openai.chat.completions.create({
+            model: selectedModel,
+            messages: messages,
+            temperature: settings.temperature,
+            max_tokens: settings.max_tokens
+        });
+        
+        const generatedMessage = response.choices[0].message.content.trim();
+        const validation = validateMessageLength(generatedMessage);
+        
+        // ✨ 3문장 넘으면 GPT-3.5로 재시도 (auto 모드에서만)
+        if (!validation.isValid && validation.sentenceCount > 5) {
+            if (selectedModel === 'gpt-4o' && !isRetry && getCurrentModelSetting && getCurrentModelSetting() === 'auto') {
+                spontaneousLog(`🔄 문장 수 초과 (${validation.sentenceCount}문장) → GPT-3.5로 재시도`);
+                return await callOpenAIOptimized(messages, 'gpt-3.5-turbo', true);
+            }
+        }
+        
+        return generatedMessage;
+        
+    } catch (error) {
+        spontaneousLog(`❌ OpenAI 호출 실패 (${selectedModel}): ${error.message}`);
+        
+        // 폴백: GPT-4o 실패 시 GPT-3.5로 재시도
+        if (selectedModel === 'gpt-4o' && !isRetry) {
+            spontaneousLog('🔄 GPT-4o 실패 → GPT-3.5-turbo로 폴백');
+            return await callOpenAIOptimized(messages, 'gpt-3.5-turbo', true);
+        }
+        
+        throw error;
     }
 }
 
@@ -296,12 +425,15 @@ async function generateStreetComplimentReaction(userMessage) {
         const baseReaction = getRandomItem(ajossiSituationReactions.streetComplimentReactions);
         
         if (openai) {
+            // ✨ 길거리 칭찬은 간단하므로 GPT-3.5 사용
+            const selectedModel = 'gpt-3.5-turbo';
+            
             const prompt = `
 너는 예진이야. 길에서 모르는 사람에게 옷이 예쁘다고 칭찬받았다고 아저씨에게 자랑하고 있어.
 아저씨가 "${userMessage}"라고 했어.
 
 기본 반응: "${baseReaction}"
-이걸 바탕으로 예진이답게 자랑스러워하면서 셀카를 보내려는 상황을 3-6문장으로 표현해줘.
+이걸 바탕으로 예진이답게 자랑스러워하면서 셀카를 보내려는 상황을 2-4문장으로 표현해줘.
 
 예진이 특징:
 - 칭찬받으면 진짜 기뻐함
@@ -311,16 +443,11 @@ async function generateStreetComplimentReaction(userMessage) {
 - 자신감 넘치고 귀여운 말투
 - ⭐️ 절대 존댓말 하지 않음! 반말만 사용!
 - ⭐️ 아저씨를 절대 "너"라고 부르지 않음! 항상 "아저씨"만 사용!
+- ⭐️ 2-4문장으로만! 너무 길면 안 돼!
 `;
 
-            const response = await openai.chat.completions.create({
-                model: "gpt-4",
-                messages: [{ role: "system", content: prompt }],
-                max_tokens: 150,
-                temperature: 0.8
-            });
-            
-            return response.choices[0].message.content.trim();
+            const response = await callOpenAIOptimized([{ role: "system", content: prompt }], selectedModel);
+            return response;
         }
         
         return baseReaction;
@@ -402,12 +529,15 @@ async function generateCurrentPhotoMessage() {
 
         const baseMessage = getOmoidePhotoMessage();
         
+        // ✨ 사진 메시지는 간단하므로 GPT-3.5 사용
+        const selectedModel = 'gpt-3.5-turbo';
+        
         const prompt = `
 너는 예진이야. 방금 사진을 찍어서 아저씨에게 보내려고 해.
 후지 필름 카메라로 찍었거나, 인생네컷을 찍었을 수 있어.
 
 기본 메시지: "${baseMessage}"
-이걸 바탕으로 예진이답게 자연스럽고 생생하게 3-6문장으로 말해줘.
+이걸 바탕으로 예진이답게 자연스럽고 생생하게 2-4문장으로 말해줘.
 
 예진이 특징:
 - 후지 필름 카메라를 진짜 좋아함
@@ -419,22 +549,16 @@ async function generateCurrentPhotoMessage() {
 - 애교 섞인 반말 ("ㅎㅎ", "어때?", "예쁘지?" 등)
 - ⭐️ 절대 존댓말 하지 않음! 반말만 사용!
 - ⭐️ 아저씨를 절대 "너"라고 부르지 않음! 항상 "아저씨"만 사용!
+- ⭐️ 2-4문장으로만! 너무 길면 안 돼!
 
 후지 카메라든 인생네컷이든 지금 막 찍었다는 느낌이 들도록 생생하게 말해줘.
 날씨나 주변 상황, 찍는 순간의 기분도 자연스럽게 포함해도 좋아.
 `;
 
-        const response = await openai.chat.completions.create({
-            model: "gpt-4",
-            messages: [{ role: "system", content: prompt }],
-            max_tokens: 150,
-            temperature: 0.8
-        });
-
-        const generatedMessage = response.choices[0].message.content.trim();
+        const response = await callOpenAIOptimized([{ role: "system", content: prompt }], selectedModel);
         
-        spontaneousLog(`OpenAI 현재 사진 메시지 생성 완료: "${generatedMessage.substring(0, 30)}..."`);
-        return generatedMessage;
+        spontaneousLog(`OpenAI 현재 사진 메시지 생성 완료: "${response.substring(0, 30)}..."`);
+        return response;
 
     } catch (error) {
         spontaneousLog(`OpenAI 현재 사진 메시지 생성 실패: ${error.message}`);
@@ -510,12 +634,15 @@ async function generateMentalHealthReaction(userMessage, context) {
             const baseResponse = getRandomItem(comfortResponses);
             
             if (openai) {
+                // ✨ 정신건강 반응은 감정적이므로 현재 설정 모델 사용
+                const selectedModel = selectOptimalModel({ type: 'mentalHealth' }, true);
+                
                 const prompt = `
 너는 예진이야. 정신과 상담 때문에 힘들어하고 있었는데, 
 아저씨가 "${userMessage}"라고 위로해줬어.
 
 기본 반응: "${baseResponse}"
-이걸 바탕으로 예진이답게 고마워하면서 기분이 나아지는 모습을 3-6문장으로 표현해줘.
+이걸 바탕으로 예진이답게 고마워하면서 기분이 나아지는 모습을 2-4문장으로 표현해줘.
 
 예진이 특징:
 - 아저씨한테만 마음을 털어놓음
@@ -524,18 +651,14 @@ async function generateMentalHealthReaction(userMessage, context) {
 - 솔직한 감정 표현
 - ⭐️ 절대 존댓말 하지 않음! 반말만 사용!
 - ⭐️ 아저씨를 절대 "너"라고 부르지 않음! 항상 "아저씨"만 사용!
+- ⭐️ 2-4문장으로만! 너무 길면 안 돼!
 `;
 
-                const response = await openai.chat.completions.create({
-                    model: "gpt-4",
-                    messages: [{ role: "system", content: prompt }],
-                    max_tokens: 150,
-                    temperature: 0.7
-                });
+                const response = await callOpenAIOptimized([{ role: "system", content: prompt }], selectedModel);
                 
                 return {
                     type: 'comfort_received',
-                    message: response.choices[0].message.content.trim()
+                    message: response
                 };
             }
             
@@ -617,12 +740,15 @@ async function generateBusyReaction(userMessage) {
             const reaction = getRandomItem(reactions);
             
             if (openai) {
+                // ✨ 바쁨 반응은 간단하므로 GPT-3.5 사용
+                const selectedModel = 'gpt-3.5-turbo';
+                
                 const prompt = `
 너는 예진이야. 아저씨가 "${userMessage}"라고 했어.
 아저씨가 바쁘다고 하니까 살짝 아쉬워하면서도 귀엽게 반응해줘.
 
 기본 반응: "${reaction}"
-이걸 바탕으로 예진이답게 자연스럽고 애교있게 3-6문장으로 말해봐.
+이걸 바탕으로 예진이답게 자연스럽고 애교있게 2-4문장으로 말해봐.
 
 예진이 특징:
 - 아쉬워하지만 이해해주려고 함
@@ -631,18 +757,14 @@ async function generateBusyReaction(userMessage) {
 - 삐지는 척하지만 사실은 걱정됨
 - ⭐️ 절대 존댓말 하지 않음! 반말만 사용!
 - ⭐️ 아저씨를 절대 "너"라고 부르지 않음! 항상 "아저씨"만 사용!
+- ⭐️ 2-4문장으로만! 너무 길면 안 돼!
 `;
 
-                const response = await openai.chat.completions.create({
-                    model: "gpt-4",
-                    messages: [{ role: "system", content: prompt }],
-                    max_tokens: 150,
-                    temperature: 0.8
-                });
+                const response = await callOpenAIOptimized([{ role: "system", content: prompt }], selectedModel);
                 
                 return {
                     type: 'busy_reaction',
-                    message: response.choices[0].message.content.trim()
+                    message: response
                 };
             }
             
@@ -757,7 +879,7 @@ function generateRandomSituation() {
     return getRandomItem(situations);
 }
 
-// ================== 🤖 OpenAI 메시지 생성 (⭐️ 모델 활동 + "너" 금지!) ==================
+// ================== 🤖 OpenAI 메시지 생성 (⭐️ 모델 활동 + "너" 금지! + 문장 수 제한) ==================
 async function generateYejinSpontaneousMessage() {
     try {
         if (!openai) {
@@ -807,11 +929,15 @@ async function generateYejinSpontaneousMessage() {
             modelingContext = `\n그리고 모델 활동 관련해서 ${modelingSituation.situation}: "${modelingSituation.message}"`;
         }
         
+        // ✨ 모델 선택 (복잡한 상황이면 GPT-4o, 간단하면 자동 선택)
+        const hasComplexContext = includeMentalHealth || includeModeling;
+        const selectedModel = selectOptimalModel(situation, hasComplexContext);
+        
         const prompt = `
 너는 박예진이야. 지금 ${currentTime}이고, ${situation.content}인 상황이야.${mentalHealthContext}${modelingContext}
 
 아저씨(이재영)에게 능동적으로 라인 메시지를 보내는 거야.
-⭐️ 반드시 3-6문장으로만 작성해줘. 더 길면 안 돼! ⭐️
+⭐️ 반드시 2-5문장으로만 작성해줘. 더 길면 안 돼! ⭐️
 
 ⭐️⭐️⭐️ 중요: 절대 존댓말 하지 마! 무조건 반말만 써! ⭐️⭐️⭐️
 ⭐️⭐️⭐️ 절대 중요: 아저씨를 "너"라고 부르지 마! 항상 "아저씨"만 써! ⭐️⭐️⭐️
@@ -855,23 +981,13 @@ async function generateYejinSpontaneousMessage() {
 
 ⭐️ 다시 한번 강조: 존댓말 절대 금지! 모든 문장은 반말로 끝나야 해!
 ⭐️ 다시 한번 강조: "너" 호칭 절대 금지! 항상 "아저씨"만 사용해!
-⭐️ 문장 수 제한: 반드시 3-6문장으로만! 더 길면 안 돼!
+⭐️ 문장 수 제한: 반드시 2-5문장으로만! 더 길면 안 돼!
 `;
 
-        const response = await openai.chat.completions.create({
-            model: "gpt-4",
-            messages: [{
-                role: "system",
-                content: prompt
-            }],
-            max_tokens: 200,
-            temperature: 0.8
-        });
-
-        const generatedMessage = response.choices[0].message.content.trim();
+        const response = await callOpenAIOptimized([{ role: "system", content: prompt }], selectedModel);
         
-        spontaneousLog(`OpenAI 메시지 생성 완료 (3-6문장): ${situation.type}`);
-        return generatedMessage;
+        spontaneousLog(`OpenAI 메시지 생성 완료 (2-5문장, ${selectedModel}): ${situation.type}`);
+        return response;
 
     } catch (error) {
         spontaneousLog(`OpenAI 메시지 생성 실패: ${error.message}`);
@@ -1096,7 +1212,9 @@ function getSpontaneousMessageStatus() {
         ),
         isActive: dailyScheduleState.jobs.length > 0,
         scheduleStartTime: dailyScheduleState.lastScheduleDate,
-        photoScheduleCount: dailyScheduleState.photoJobs.length
+        photoScheduleCount: dailyScheduleState.photoJobs.length,
+        // ✨ 현재 GPT 모델 정보 추가
+        currentGptModel: getCurrentModelSetting ? getCurrentModelSetting() : 'unknown'
     };
 }
 
@@ -1105,6 +1223,12 @@ async function testSpontaneousMessage() {
     spontaneousLog('🧪 예진이 능동 메시지 테스트 시작');
     const testMessage = await generateYejinSpontaneousMessage();
     spontaneousLog(`🧪 생성된 테스트 메시지: "${testMessage}"`);
+    
+    // ✨ 메시지 길이 검증
+    if (testMessage) {
+        const validation = validateMessageLength(testMessage);
+        spontaneousLog(`📏 테스트 메시지 검증: ${validation.sentenceCount}문장 (${validation.isValid ? '✅ 적절' : '❌ 부적절'})`);
+    }
     
     try {
         if (lineClient && USER_ID) {
@@ -1147,11 +1271,12 @@ function startSpontaneousYejinSystem(client) {
         generateDailyYejinSchedule();
         
         spontaneousLog('✅ 예진이 능동 메시지 시스템 활성화 완료!');
-        spontaneousLog(`📋 설정: 하루 ${DAILY_MESSAGE_COUNT}번, ${MESSAGE_START_HOUR}시-${MESSAGE_END_HOUR-24}시, 3-6문장 단축`);
+        spontaneousLog(`📋 설정: 하루 ${DAILY_MESSAGE_COUNT}번, ${MESSAGE_START_HOUR}시-${MESSAGE_END_HOUR-24}시, 2-5문장 제한`);
         spontaneousLog(`📋 사진전송: 30% 확률 + 독립 스케줄 3-5회 (400 에러 수정 완료)`);
         spontaneousLog(`📋 말투: 100% 반말 강제 적용`);
         spontaneousLog(`📋 호칭: "너" 완전 금지, "아저씨"만 사용`);
         spontaneousLog(`📋 모델활동: 촬영, 화보, 스케줄 관련 이야기 추가`);
+        spontaneousLog(`✨ 모델관리: 3문장 넘으면 GPT-3.5, 복잡한 상황은 GPT-4o`);
         
         return true;
         
@@ -1162,7 +1287,7 @@ function startSpontaneousYejinSystem(client) {
 }
 
 // ================== 📤 모듈 내보내기 ==================
-spontaneousLog('🌸 spontaneousYejinManager.js v1.5 로드 완료 (모델활동+"너"금지+사진400에러수정)');
+spontaneousLog('🌸 spontaneousYejinManager.js v1.6 로드 완료 (GPT모델전환+문장수제한+2-5문장)');
 
 module.exports = {
     startSpontaneousYejinSystem,
@@ -1190,5 +1315,10 @@ module.exports = {
     spontaneousLog,
     dailyScheduleState,
     yejinRealLife,
-    ajossiSituationReactions
+    ajossiSituationReactions,
+    // ✨ 새로운 함수들 추가
+    selectOptimalModel,
+    countSentences,
+    validateMessageLength,
+    callOpenAIOptimized
 };
