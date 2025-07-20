@@ -1,8 +1,9 @@
 // ============================================================================
-// muku-moduleLoader.js - 모듈 로딩 전용 시스템
+// muku-moduleLoader.js - 모듈 로딩 전용 시스템 (수정됨)
 // ✅ 순수하게 모듈 로딩만 담당하여 순환 의존성 방지
 // 📦 24개 모듈을 6단계로 안전하게 로딩
 // 🔄 초기화와 완전 분리하여 안정성 극대화
+// 🔧 diarySystem 로딩 문제 해결
 // ============================================================================
 
 const path = require('path');
@@ -168,11 +169,47 @@ async function loadAllModules() {
             modules.personLearning = null;
         }
 
+        // ⭐️⭐️⭐️ 일기장 시스템 로딩 강화! ⭐️⭐️⭐️
         try {
+            console.log(`${colors.diary}📖 [일기장 로딩] muku-diarySystem 모듈 로드 시도...${colors.reset}`);
+            
+            // 파일 존재 확인
+            const diaryPath = path.join(__dirname, 'muku-diarySystem.js');
+            console.log(`${colors.diary}📁 [일기장 로딩] 파일 경로: ${diaryPath}${colors.reset}`);
+            
+            try {
+                await fs.access(diaryPath);
+                console.log(`${colors.diary}✅ [일기장 로딩] 파일 존재 확인 완료${colors.reset}`);
+            } catch (accessError) {
+                console.log(`${colors.error}❌ [일기장 로딩] 파일이 존재하지 않음: ${diaryPath}${colors.reset}`);
+                throw accessError;
+            }
+            
+            // 모듈 require 시도
             modules.diarySystem = require('./muku-diarySystem');
-            console.log(`${colors.diary}✅ [17/24] diarySystem: 일기장 시스템 (누적 학습 내용 조회)${colors.reset}`);
+            
+            // 모듈 함수 확인
+            if (modules.diarySystem) {
+                console.log(`${colors.diary}🔍 [일기장 로딩] 사용 가능한 함수들:`, Object.keys(modules.diarySystem));
+                
+                if (modules.diarySystem.initializeDiarySystem || modules.diarySystem.initialize) {
+                    console.log(`${colors.diary}✅ [일기장 로딩] 초기화 함수 존재 확인 ✅${colors.reset}`);
+                } else {
+                    console.log(`${colors.error}🔍 [일기장 로딩] 초기화 함수 없음!${colors.reset}`);
+                }
+                
+                if (modules.diarySystem.getDiarySystemStatus || modules.diarySystem.getStatus) {
+                    console.log(`${colors.diary}✅ [일기장 로딩] 상태 함수 존재 확인 ✅${colors.reset}`);
+                } else {
+                    console.log(`${colors.error}🔍 [일기장 로딩] 상태 함수 없음!${colors.reset}`);
+                }
+            }
+            
+            console.log(`${colors.diary}✅ [17/24] diarySystem: 일기장 시스템 (누적 학습 내용 조회) ⭐️ 로딩 성공!${colors.reset}`);
+            
         } catch (error) {
             console.log(`${colors.error}❌ [17/24] diarySystem 로드 실패: ${error.message}${colors.reset}`);
+            console.log(`${colors.error}🔧 [일기장 디버그] 에러 스택:`, error.stack);
             modules.diarySystem = null;
         }
 
@@ -236,6 +273,13 @@ async function loadAllModules() {
         const loadSuccessRate = ((loadedCount / totalModules) * 100).toFixed(1);
 
         console.log(`${colors.system}📊 [로딩 완료] ${loadedCount}/${totalModules}개 모듈 성공 (${loadSuccessRate}%)${colors.reset}`);
+
+        // ⭐️ 일기장 시스템 로딩 상태 특별 확인 ⭐️
+        if (modules.diarySystem) {
+            console.log(`${colors.diary}🎉 [일기장 성공] diarySystem 모듈이 성공적으로 로드되었습니다!${colors.reset}`);
+        } else {
+            console.log(`${colors.error}⚠️ [일기장 실패] diarySystem 모듈 로드 실패 - enhancedLogging에서 null로 표시될 예정${colors.reset}`);
+        }
 
         if (loadSuccessRate >= 90) {
             console.log(`${colors.system}🎉 [완벽] 모든 모듈이 성공적으로 로드되었습니다!${colors.reset}`);
