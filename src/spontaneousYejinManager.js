@@ -1,11 +1,11 @@
 // ============================================================================
-// spontaneousYejinManager.js - v1.8 COMPLETE (사진 전송 안정성 강화)
+// spontaneousYejinManager.js - v1.9 FIXED (사진 전송 안정성 완전 해결)
 // 🌸 예진이가 능동적으로 하루 15번 메시지 보내는 시스템
 // 8시-1시 사이 랜덤, 2-5문장으로 단축, 실제 취향과 일상 기반
 // ✅ 모델 활동 이야기 추가 (촬영, 화보, 스케줄)
 // ✅ "너" 호칭 완전 금지 (아저씨만 사용)
 // ✅ 사진 전송 확률: 30%로 대폭 증가
-// 🔧 omoide 사진 전송 안정성 강화 - 순차 전송 방식 적용
+// 🔧 yejinSelfie.js 방식 적용으로 사진 전송 안정성 완전 해결
 // ✨ GPT 모델 버전 전환: 3문장 넘으면 GPT-3.5, 이하면 설정대로
 // ⭐️ 실제 통계 추적 시스템 + ultimateContext 연동 완성!
 // 🔧 analyzeMessageType 함수 누락 문제 해결!
@@ -22,7 +22,7 @@ let getCurrentModelSetting = null;
 try {
     const indexModule = require('../index');
     getCurrentModelSetting = indexModule.getCurrentModelSetting;
-    console.log('✨ [spontaneousYejin] GPT 모델 버전 관리 시스템 연동 성공');
+    console.log('✅ [spontaneousYejin] GPT 모델 버전 관리 시스템 연동 성공');
 } catch (error) {
     console.warn('⚠️ [spontaneousYejin] GPT 모델 버전 관리 시스템 연동 실패:', error.message);
 }
@@ -404,7 +404,7 @@ function resetDailyStats() {
     spontaneousLog(`✅ 일일 통계 리셋 완료 (${today})`);
 }
 
-// ================== 👗 yejin 셀카 전송 시스템 ==================
+// ================== 👗 yejin 셀카 전송 시스템 (yejinSelfie.js 방식 적용) ==================
 function getYejinSelfieUrl() {
     const baseUrl = "https://photo.de-ji.net/photo/yejin";
     const fileCount = 2032;
@@ -443,19 +443,13 @@ async function sendYejinSelfieWithComplimentReaction(userMessage) {
         const imageUrl = getYejinSelfieUrl();
         const caption = await generateStreetComplimentReaction(userMessage);
         
-        // 순차 전송 방식 적용
+        // 🔧 yejinSelfie.js 방식 적용: altText와 caption 동시 사용
         await lineClient.pushMessage(USER_ID, {
             type: 'image',
             originalContentUrl: imageUrl,
-            previewImageUrl: imageUrl
-        });
-        
-        // 짧은 지연 후 텍스트 전송
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        await lineClient.pushMessage(USER_ID, {
-            type: 'text',
-            text: caption
+            previewImageUrl: imageUrl,
+            altText: caption,
+            caption: caption
         });
         
         spontaneousLog(`✅ 칭찬 받은 셀카 전송 성공: "${caption.substring(0, 30)}..."`);
@@ -473,7 +467,7 @@ async function sendYejinSelfieWithComplimentReaction(userMessage) {
     }
 }
 
-// ================== 📸 omoide 추억 후지 사진 전송 시스템 (🔧 안정성 강화!) ==================
+// ================== 📸 omoide 추억 후지 사진 전송 시스템 (🔧 yejinSelfie 방식으로 완전 재작성!) ==================
 function getOmoidePhotoUrl() {
     const fujiFolders = {
         "추억_24_03_일본_후지": 226,
@@ -523,62 +517,34 @@ async function sendOmoidePhoto() {
         spontaneousLog(`📸 omoide 사진 전송 시도: ${imageUrl}`);
         spontaneousLog(`💬 사진 메시지: "${caption.substring(0, 50)}..."`);
         
-        try {
-            // 🔧 [핵심 수정] 이미지와 텍스트를 순차적으로 별도 전송하여 안정성 확보
-            // 1단계: 이미지 먼저 전송
-            await lineClient.pushMessage(USER_ID, {
-                type: 'image',
-                originalContentUrl: imageUrl,
-                previewImageUrl: imageUrl
-            });
-            
-            spontaneousLog('✅ 1단계: 이미지 전송 성공');
-            
-            // 2단계: 약간의 지연 후 텍스트 전송 (LINE API 안정성을 위해)
-            await new Promise(resolve => setTimeout(resolve, 800)); // 0.8초 대기
-            
-            await lineClient.pushMessage(USER_ID, {
-                type: 'text',
-                text: caption
-            });
-            
-            spontaneousLog('✅ 2단계: 텍스트 전송 성공');
-            spontaneousLog(`✅ omoide 현재 사진 전송 완료: "${caption.substring(0, 30)}..."`);
-            
-            return true;
-            
-        } catch (sendError) {
-            spontaneousLog(`❌ 사진 전송 중 에러: ${sendError.message}`);
-            
-            // 🔄 폴백 1: 텍스트만 전송 시도
-            try {
-                await lineClient.pushMessage(USER_ID, {
-                    type: 'text',
-                    text: `${caption}\n\n(사진 전송이 실패했어... 나중에 다시 보내줄게 ㅠㅠ)`
-                });
-                spontaneousLog('✅ omoide 사진 폴백 메시지 전송 성공');
-                return true;
-            } catch (fallbackError) {
-                spontaneousLog(`❌ omoide 폴백도 실패: ${fallbackError.message}`);
-                
-                // 🔄 폴백 2: 기본 메시지 전송 시도  
-                try {
-                    await lineClient.pushMessage(USER_ID, {
-                        type: 'text',
-                        text: "방금 후지로 사진 찍었는데... 전송이 안 되네 ㅠㅠ 나중에 다시 보내줄게!"
-                    });
-                    spontaneousLog('✅ omoide 최종 폴백 메시지 전송 성공');
-                    return true;
-                } catch (finalError) {
-                    spontaneousLog(`❌ omoide 최종 폴백도 실패: ${finalError.message}`);
-                    return false;
-                }
-            }
-        }
+        // 🔧 [핵심 수정] yejinSelfie.js 방식 완전 적용: 단일 메시지로 altText + caption 함께 전송
+        await lineClient.pushMessage(USER_ID, {
+            type: 'image',
+            originalContentUrl: imageUrl,
+            previewImageUrl: imageUrl,
+            altText: caption,
+            caption: caption
+        });
+        
+        spontaneousLog(`✅ omoide 현재 사진 전송 완료: "${caption.substring(0, 30)}..."`);
+        return true;
         
     } catch (error) {
-        spontaneousLog(`❌ omoide 사진 전송 완전 실패: ${error.message}`);
-        return false;
+        spontaneousLog(`❌ omoide 사진 전송 실패: ${error.message}`);
+        
+        // 🔄 폴백: 텍스트만 전송 시도
+        try {
+            const caption = await generateCurrentPhotoMessage();
+            await lineClient.pushMessage(USER_ID, {
+                type: 'text',
+                text: `${caption}\n\n(사진 전송이 실패했어... 나중에 다시 보내줄게 ㅠㅠ)`
+            });
+            spontaneousLog('✅ omoide 사진 폴백 메시지 전송 성공');
+            return true;
+        } catch (fallbackError) {
+            spontaneousLog(`❌ omoide 폴백도 실패: ${fallbackError.message}`);
+            return false;
+        }
     }
 }
 
@@ -690,6 +656,8 @@ function generateRandomSituation() {
 async function generateYejinSpontaneousMessage() {
     try {
         if (!openai) return getFallbackMessage();
+        
+        // 30% 확률로 사진 전송 시도
         const shouldSendPhoto = Math.random() < 0.3;
         if (shouldSendPhoto) {
             spontaneousLog('📸 사진 전송 결정됨 - omoide 사진 전송 시도 중...');
@@ -706,6 +674,7 @@ async function generateYejinSpontaneousMessage() {
                 spontaneousLog(`❌ 사진 전송 에러: ${photoError.message}`);
             }
         }
+        
         const situation = generateRandomSituation();
         const koreaTime = moment().tz(TIMEZONE);
         const prompt = `너는 박예진이야. 지금은 ${koreaTime.format('HH:mm')}이고, ${situation.content}인 상황. 아저씨에게 보내는 자연스러운 2-5문장의 라인 메시지를 작성해줘. 예진이의 특징과 말투를 완벽히 반영해야 해. 절대 '너'라고 부르지 말고, 항상 반말로만 말해.`;
@@ -735,7 +704,8 @@ async function sendSpontaneousMessage() {
             return false;
         }
         const message = await generateYejinSpontaneousMessage();
-        if (!message) return true;
+        if (!message) return true; // 사진이 전송된 경우
+        
         const messageType = analyzeMessageType(message);
         await lineClient.pushMessage(USER_ID, { type: 'text', text: message });
         recordActualMessageSent(messageType, false);
