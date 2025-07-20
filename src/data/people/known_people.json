@@ -1,0 +1,35 @@
+{
+  "version": "1.0",
+  "lastUpdated": "2025-07-20T15:30:00+09:00",
+  "people": {
+    "예진이": {
+      "id": "yejin_main",
+      "name": "예진이",
+      "type": "main_character",
+      "totalSightings": 0,
+      "firstSeen": null,
+      "lastSeen": null,
+      "confidence": 100,
+      "locations": [],
+      "contexts": ["photo_sharing", "selfie", "memory"],
+      "notes": "무쿠의 주인공, 예진이 본인"
+    },
+    "아저씨": {
+      "id": "ajeossi_main",
+      "name": "아저씨",
+      "type": "main_character",
+      "totalSightings": 0,
+      "firstSeen": null,
+      "lastSeen": null,
+      "confidence": 100,
+      "locations": [],
+      "contexts": ["photo_sharing", "selfie"],
+      "notes": "무쿠의 사용자, 아저씨"
+    }
+  },
+  "statistics": {
+    "totalKnownPeople": 2,
+    "todayNewPeople": 0,
+    "todayTotalSightings": 0
+  }
+}
