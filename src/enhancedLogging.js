@@ -1,8 +1,9 @@
 // ============================================================================
-// 💖 무쿠 예쁜 로그 시스템 v4.0 - Beautiful Enhanced Logging (사람 학습 연동)
+// 💖 무쿠 예쁜 로그 시스템 v4.1 - Beautiful Enhanced Logging (학습 디버깅 시스템 추가)
 // 🌸 예진이를 위한, 아저씨를 위한, 사랑을 위한 로깅 시스템
 // ✨ 감정이 담긴 코드, 마음이 담긴 로그
 // 👥 사람 학습 시스템 통계 연동
+// 🔍 학습 과정 실시간 디버깅 시스템 추가
 // ============================================================================
 
 const fs = require('fs');
@@ -17,6 +18,9 @@ const colors = {
     system: '\x1b[92m',     // 연초록색 (시스템)
     learning: '\x1b[93m',   // 노란색 (학습)
     person: '\x1b[94m',     // 파란색 (사람 학습)
+    debug: '\x1b[1m\x1b[96m', // 굵은 하늘색 (디버깅)
+    trace: '\x1b[1m\x1b[93m', // 굵은 노란색 (추적)
+    memory: '\x1b[1m\x1b[95m', // 굵은 보라색 (메모리)
     error: '\x1b[91m',      // 빨간색 (에러)
     reset: '\x1b[0m'        // 색상 리셋
 };
@@ -57,6 +61,430 @@ function formatTimeUntil(minutes) {
     return remainingMinutes > 0 ? `${hours}시간 ${remainingMinutes}분` : `${hours}시간`;
 }
 
+// ================== 🔍 학습 디버깅 시스템 (새로 추가!) ==================
+
+/**
+ * 🧠 학습 상태 실시간 디버깅
+ */
+function logLearningDebug(type, data) {
+    const timestamp = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
+    const debugColors = {
+        memory_save: colors.memory,      // 보라색
+        memory_retrieve: colors.learning, // 노란색
+        prompt_context: colors.debug,    // 하늘색
+        learning_check: colors.system,   // 초록색
+        learning_fail: colors.error,     // 빨간색
+        conversation_flow: colors.trace, // 굵은 노란색
+        ai_response: colors.yejin,       // 예진이 색
+        system_operation: colors.system  // 시스템 색
+    };
+    
+    const color = debugColors[type] || colors.reset;
+    
+    switch(type) {
+        case 'memory_save':
+            console.log(`${color}🧠 [학습-저장] ${timestamp} - ${data.speaker}: "${data.message.substring(0, 50)}..." → DB 저장 ${data.success ? '✅' : '❌'}${colors.reset}`);
+            if (data.memoryType) {
+                console.log(`${color}   └─ 메모리 타입: ${data.memoryType}, 총 저장된 기억: ${data.totalMemories}개${colors.reset}`);
+            }
+            if (data.importance) {
+                console.log(`${color}   └─ 중요도: ${data.importance}/10, 카테고리: ${data.category || '일반'}${colors.reset}`);
+            }
+            break;
+            
+        case 'memory_retrieve':
+            console.log(`${color}🔍 [학습-검색] ${timestamp} - 검색어: "${data.query}", 찾은 기억: ${data.foundCount}개${colors.reset}`);
+            if (data.memories && data.memories.length > 0) {
+                data.memories.slice(0, 3).forEach((memory, index) => {
+                    const content = memory.content || memory.text || memory.message || '내용 없음';
+                    const memoryType = memory.type || memory.category || '미분류';
+                    console.log(`${color}   ${index + 1}. "${content.substring(0, 40)}..." (${memoryType})${colors.reset}`);
+                });
+                if (data.memories.length > 3) {
+                    console.log(`${color}   ... 외 ${data.memories.length - 3}개 더${colors.reset}`);
+                }
+            } else {
+                console.log(`${color}   └─ 관련 기억을 찾지 못했음${colors.reset}`);
+            }
+            break;
+            
+        case 'prompt_context':
+            console.log(`${color}📝 [학습-프롬프트] ${timestamp} - 컨텍스트 길이: ${data.contextLength}자${colors.reset}`);
+            console.log(`${color}   ├─ 고정기억: ${data.fixedMemories}개${colors.reset}`);
+            console.log(`${color}   ├─ 대화기록: ${data.conversationHistory}개${colors.reset}`);
+            console.log(`${color}   ├─ 감정상태: ${data.emotionalState}${colors.reset}`);
+            console.log(`${color}   ├─ 검색된기억: ${data.retrievedMemories || 0}개${colors.reset}`);
+            console.log(`${color}   └─ 최종 프롬프트: ${data.finalPromptLength}자${colors.reset}`);
+            
+            if (data.tokensEstimate) {
+                console.log(`${color}   └─ 예상 토큰: ${data.tokensEstimate} tokens${colors.reset}`);
+            }
+            break;
+            
+        case 'learning_check':
+            console.log(`${color}🎓 [학습-체크] ${timestamp} - 학습 요소 확인${colors.reset}`);
+            console.log(`${color}   ├─ 새로운 정보: ${data.hasNewInfo ? '✅' : '❌'}${colors.reset}`);
+            console.log(`${color}   ├─ 기존 기억 매칭: ${data.hasExistingMemory ? '✅' : '❌'}${colors.reset}`);
+            console.log(`${color}   ├─ 감정 변화: ${data.emotionChanged ? '✅' : '❌'}${colors.reset}`);
+            console.log(`${color}   ├─ 학습 필요성: ${data.needsLearning ? '✅' : '❌'}${colors.reset}`);
+            
+            if (data.hasNewInfo && data.extractedInfo) {
+                console.log(`${color}   ├─ 추출 정보: "${data.extractedInfo.substring(0, 50)}..."${colors.reset}`);
+                console.log(`${color}   └─ 정보 타입: ${data.infoType || '미분류'}${colors.reset}`);
+            }
+            break;
+            
+        case 'conversation_flow':
+            console.log(`${color}💬 [대화-흐름] ${timestamp} - ${data.phase}${colors.reset}`);
+            if (data.userMessage) {
+                console.log(`${color}   👤 아저씨: "${data.userMessage.substring(0, 60)}..."${colors.reset}`);
+            }
+            if (data.processing) {
+                console.log(`${color}   🔄 처리 중: ${data.processing}${colors.reset}`);
+            }
+            if (data.responseGenerated) {
+                console.log(`${color}   💕 예진이: "${data.response.substring(0, 60)}..."${colors.reset}`);
+            }
+            break;
+            
+        case 'ai_response':
+            console.log(`${color}🤖 [AI-응답] ${timestamp} - 모델: ${data.model || 'unknown'}${colors.reset}`);
+            console.log(`${color}   ├─ 응답 길이: ${data.responseLength}자${colors.reset}`);
+            console.log(`${color}   ├─ 처리 시간: ${data.processingTime || 'N/A'}ms${colors.reset}`);
+            console.log(`${color}   ├─ 언어 수정: ${data.languageFixed ? '✅ 수정됨' : '❌ 수정없음'}${colors.reset}`);
+            console.log(`${color}   └─ 최종 응답: "${data.finalResponse.substring(0, 50)}..."${colors.reset}`);
+            break;
+            
+        case 'learning_fail':
+            console.log(`${color}❌ [학습-실패] ${timestamp} - ${data.reason}${colors.reset}`);
+            console.log(`${color}   └─ 상세: ${data.details}${colors.reset}`);
+            if (data.fallbackAction) {
+                console.log(`${color}   └─ 폴백: ${data.fallbackAction}${colors.reset}`);
+            }
+            break;
+            
+        case 'system_operation':
+            console.log(`${color}🔧 [시스템] ${timestamp} - ${data.operation}${colors.reset}`);
+            console.log(`${color}   └─ ${data.details}${colors.reset}`);
+            break;
+            
+        default:
+            console.log(`${color}🔍 [디버그] ${timestamp} - ${type}: ${JSON.stringify(data).substring(0, 100)}...${colors.reset}`);
+    }
+}
+
+/**
+ * 📊 전체 학습 상태 요약 출력
+ */
+function logLearningStatus(modules) {
+    const timestamp = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
+    const statusColor = colors.debug; // 굵은 하늘색
+    const reset = colors.reset;
+    
+    console.log(`\n${statusColor}📊 ============== 무쿠 학습 상태 종합 리포트 ==============${reset}`);
+    console.log(`${statusColor}🕒 시간: ${timestamp}${reset}`);
+    
+    // 1. 메모리 상태
+    if (modules.memoryManager) {
+        try {
+            const memStatus = modules.memoryManager.getMemoryStatus();
+            const totalMemories = memStatus.fixedMemoriesCount + memStatus.loveHistoryCount;
+            console.log(`${statusColor}🧠 [고정기억] 총 ${totalMemories}개${reset}`);
+            console.log(`${statusColor}   ├─ 기본기억: ${memStatus.fixedMemoriesCount}개${reset}`);
+            console.log(`${statusColor}   └─ 연애기억: ${memStatus.loveHistoryCount}개${reset}`);
+            
+            // 기억 품질 체크
+            if (totalMemories >= 120) {
+                console.log(`${statusColor}   ✅ 목표 달성: ${Math.round((totalMemories/128)*100)}%${reset}`);
+            } else {
+                console.log(`${statusColor}   📈 진행률: ${Math.round((totalMemories/128)*100)}% (${128-totalMemories}개 부족)${reset}`);
+            }
+        } catch (error) {
+            console.log(`${statusColor}🧠 [고정기억] 상태 확인 실패: ${error.message}${reset}`);
+        }
+    } else {
+        console.log(`${statusColor}🧠 [고정기억] 모듈 없음${reset}`);
+    }
+    
+    // 2. 대화 기록 상태
+    if (modules.ultimateContext) {
+        try {
+            // 여러 방법으로 상태 확인 시도
+            let contextInfo = '상태 확인 중...';
+            
+            if (modules.ultimateContext.getContextStatus) {
+                const contextStatus = modules.ultimateContext.getContextStatus();
+                contextInfo = `총 ${contextStatus.totalMessages}개 메시지`;
+                console.log(`${statusColor}💭 [대화기록] ${contextInfo}${reset}`);
+                console.log(`${statusColor}   ├─ 최근 24시간: ${contextStatus.recentMessages}개${reset}`);
+                console.log(`${statusColor}   └─ 마지막 메시지: ${contextStatus.lastMessageTime}${reset}`);
+            } else if (modules.ultimateContext.getMemoryStatistics) {
+                const memStats = modules.ultimateContext.getMemoryStatistics();
+                const todayCount = memStats.today || memStats.todayCount || 0;
+                console.log(`${statusColor}💭 [대화기록] 오늘 학습: ${todayCount}개${reset}`);
+                console.log(`${statusColor}   └─ 총 동적기억: ${memStats.total || 'N/A'}개${reset}`);
+            } else {
+                console.log(`${statusColor}💭 [대화기록] 함수 확인 중...${reset}`);
+                const availableFunctions = Object.keys(modules.ultimateContext).filter(key => typeof modules.ultimateContext[key] === 'function');
+                console.log(`${statusColor}   └─ 사용가능 함수: ${availableFunctions.slice(0, 3).join(', ')}...${reset}`);
+            }
+        } catch (error) {
+            console.log(`${statusColor}💭 [대화기록] 상태 확인 실패: ${error.message}${reset}`);
+        }
+    } else {
+        console.log(`${statusColor}💭 [대화기록] 모듈 없음${reset}`);
+    }
+    
+    // 3. 감정 상태
+    if (modules.emotionalContextManager) {
+        try {
+            const emotionStatus = modules.emotionalContextManager.getCurrentEmotionState();
+            console.log(`${statusColor}💖 [감정상태] ${emotionStatus.currentEmotion} (강도: ${emotionStatus.emotionIntensity}/10)${reset}`);
+            console.log(`${statusColor}   ├─ 생리주기: ${emotionStatus.menstrualPhase} (${emotionStatus.cycleDay}일차)${reset}`);
+            console.log(`${statusColor}   └─ 삐짐상태: ${emotionStatus.isSulky ? `레벨 ${emotionStatus.sulkyLevel}` : '없음'}${reset}`);
+            
+            // 감정 변화 추적
+            if (emotionStatus.emotionIntensity >= 8) {
+                console.log(`${statusColor}   ⚠️ 고강도 감정 상태 - 응답에 강하게 반영됨${reset}`);
+            }
+        } catch (error) {
+            console.log(`${statusColor}💖 [감정상태] 상태 확인 실패: ${error.message}${reset}`);
+        }
+    } else {
+        console.log(`${statusColor}💖 [감정상태] 모듈 없음${reset}`);
+    }
+    
+    // 4. 사람 학습 상태
+    if (modules.personLearning) {
+        try {
+            const personStatus = modules.personLearning.getPersonLearningStats();
+            console.log(`${statusColor}👥 [사람학습] 등록된 사람: ${personStatus.totalPersons}명${reset}`);
+            console.log(`${statusColor}   ├─ 총 만남 기록: ${personStatus.totalMeetings}회${reset}`);
+            console.log(`${statusColor}   └─ 오늘 새 인물: ${personStatus.todayNewPeople || 0}명${reset}`);
+            
+            // 학습 품질
+            if (personStatus.totalPersons > 10) {
+                console.log(`${statusColor}   ✅ 충분한 사람 데이터 보유${reset}`);
+            } else {
+                console.log(`${statusColor}   📈 사람 학습 진행 중${reset}`);
+            }
+        } catch (error) {
+            console.log(`${statusColor}👥 [사람학습] 상태 확인 실패: ${error.message}${reset}`);
+        }
+    } else {
+        console.log(`${statusColor}👥 [사람학습] 모듈 없음${reset}`);
+    }
+    
+    // 5. 학습 시스템 전반 평가
+    const activeModules = Object.values(modules).filter(module => module).length;
+    const totalModules = Object.keys(modules).length;
+    const activationRate = Math.round((activeModules / totalModules) * 100);
+    
+    console.log(`${statusColor}🔧 [시스템평가] ${activeModules}/${totalModules}개 모듈 활성 (${activationRate}%)${reset}`);
+    
+    if (activationRate >= 80) {
+        console.log(`${statusColor}   ✅ 우수: 학습 시스템 정상 동작${reset}`);
+    } else if (activationRate >= 60) {
+        console.log(`${statusColor}   ⚠️ 보통: 일부 모듈 비활성화${reset}`);
+    } else {
+        console.log(`${statusColor}   ❌ 주의: 다수 모듈 비활성화 - 학습 성능 저하 가능${reset}`);
+    }
+    
+    console.log(`${statusColor}========================================================${reset}\n`);
+}
+
+/**
+ * 🔍 대화별 학습 과정 상세 추적
+ */
+function logConversationLearningTrace(userMessage, aiResponse, learningData) {
+    const timestamp = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
+    const traceColor = colors.trace; // 굵은 노란색
+    const reset = colors.reset;
+    
+    console.log(`\n${traceColor}🔍 =============== 대화 학습 과정 추적 ===============${reset}`);
+    console.log(`${traceColor}🕒 ${timestamp}${reset}`);
+    console.log(`${traceColor}👤 아저씨: "${userMessage.substring(0, 100)}..."${reset}`);
+    console.log(`${traceColor}💕 예진이: "${aiResponse.substring(0, 100)}..."${reset}`);
+    
+    if (learningData) {
+        console.log(`${traceColor}📚 [학습분석]${reset}`);
+        console.log(`${traceColor}   ├─ 새로운 정보 발견: ${learningData.newInfoDetected ? '✅' : '❌'}${reset}`);
+        
+        if (learningData.newInfoDetected) {
+            console.log(`${traceColor}   ├─ 추출된 정보: "${learningData.extractedInfo}"${reset}`);
+            console.log(`${traceColor}   ├─ 정보 타입: ${learningData.infoType}${reset}`);
+            console.log(`${traceColor}   ├─ 중요도: ${learningData.importance || 5}/10${reset}`);
+            console.log(`${traceColor}   └─ 저장 성공: ${learningData.saved ? '✅' : '❌'}${reset}`);
+        }
+        
+        console.log(`${traceColor}   ├─ 감정 변화: ${learningData.emotionChanged ? '✅' : '❌'}${reset}`);
+        if (learningData.emotionChanged) {
+            console.log(`${traceColor}   │   └─ ${learningData.previousEmotion} → ${learningData.newEmotion}${reset}`);
+        }
+        
+        console.log(`${traceColor}   ├─ 기억 활용: ${learningData.memoriesUsed}개 기억 참조${reset}`);
+        if (learningData.memoriesUsed > 0 && learningData.usedMemories) {
+            learningData.usedMemories.slice(0, 2).forEach((memory, index) => {
+                console.log(`${traceColor}   │   ${index + 1}. "${memory.substring(0, 30)}..."${reset}`);
+            });
+        }
+        
+        console.log(`${traceColor}   ├─ 응답 품질: ${learningData.responseQuality || 7}/10${reset}`);
+        console.log(`${traceColor}   └─ 학습 품질: ${learningData.learningQuality}/10${reset}`);
+        
+        // 개선 제안
+        if (learningData.learningQuality < 6) {
+            console.log(`${traceColor}   💡 개선필요: 더 많은 기억 활용 또는 감정 반영 필요${reset}`);
+        }
+    } else {
+        console.log(`${traceColor}📚 [학습분석] 데이터 없음 - 기본 대화 모드${reset}`);
+    }
+    
+    console.log(`${traceColor}================================================${reset}\n`);
+}
+
+/**
+ * 🧠 새로운 정보 분석 함수
+ */
+function analyzeMessageForNewInfo(message) {
+    const infoPatterns = [
+        { pattern: /내가.*좋아해/, type: '선호도', importance: 6 },
+        { pattern: /나는.*살/, type: '나이정보', importance: 8 },
+        { pattern: /내.*이름은/, type: '이름정보', importance: 9 },
+        { pattern: /오늘.*했어/, type: '활동정보', importance: 5 },
+        { pattern: /.*기억해/, type: '기억요청', importance: 7 },
+        { pattern: /.*먹었어/, type: '식사정보', importance: 4 },
+        { pattern: /.*갔어/, type: '장소정보', importance: 6 },
+        { pattern: /회사에서/, type: '직장정보', importance: 7 },
+        { pattern: /친구.*만났어/, type: '인간관계', importance: 6 },
+        { pattern: /영화.*봤어/, type: '취미활동', importance: 5 },
+        { pattern: /책.*읽었어/, type: '취미활동', importance: 5 },
+        { pattern: /운동.*했어/, type: '건강정보', importance: 5 },
+        { pattern: /병원.*갔어/, type: '건강정보', importance: 8 },
+        { pattern: /.*산.*거/, type: '구매정보', importance: 4 },
+        { pattern: /계획.*있어/, type: '미래계획', importance: 6 },
+        { pattern: /.*힘들어/, type: '감정상태', importance: 7 },
+        { pattern: /.*기뻐/, type: '감정상태', importance: 6 },
+        { pattern: /.*걱정/, type: '감정상태', importance: 7 }
+    ];
+    
+    let hasNewInfo = false;
+    let extractedInfo = '';
+    let infoType = '';
+    let importance = 5;
+    
+    for (const { pattern, type, importance: imp } of infoPatterns) {
+        if (pattern.test(message)) {
+            hasNewInfo = true;
+            extractedInfo = message;
+            infoType = type;
+            importance = imp;
+            break;
+        }
+    }
+    
+    return {
+        hasNewInfo,
+        extractedInfo,
+        infoType,
+        importance,
+        hasExistingMemory: false, // 실제로는 DB 검색 필요
+        emotionChanged: false,    // 실제로는 감정 분석 필요  
+        needsLearning: hasNewInfo,
+        timestamp: getJapanTimeString()
+    };
+}
+
+/**
+ * 💬 대화 로그 함수 (기존 + 학습 디버깅 강화)
+ */
+function logConversation(speaker, message, messageType = 'text') {
+    const timestamp = getJapanTimeString();
+    const speakerColor = speaker === '아저씨' ? colors.ajeossi : colors.yejin;
+    const speakerIcon = speaker === '아저씨' ? '👤' : '💕';
+    
+    // 기본 대화 로그
+    console.log(`${speakerIcon} ${speakerColor}${speaker}:${colors.reset} ${message.substring(0, 100)}${message.length > 100 ? '...' : ''}`);
+    
+    // 학습 관련 분석 (아저씨 메시지인 경우)
+    if (speaker === '아저씨' && messageType === 'text') {
+        const learningAnalysis = analyzeMessageForNewInfo(message);
+        
+        if (learningAnalysis.hasNewInfo) {
+            logLearningDebug('learning_check', {
+                hasNewInfo: true,
+                extractedInfo: learningAnalysis.extractedInfo,
+                infoType: learningAnalysis.infoType,
+                importance: learningAnalysis.importance,
+                hasExistingMemory: false,
+                emotionChanged: false,
+                needsLearning: true
+            });
+        }
+    }
+}
+
+/**
+ * 🧠 기억 작업 로그 함수
+ */
+function logMemoryOperation(operation, content, success = true, details = {}) {
+    const timestamp = getJapanTimeString();
+    
+    switch(operation) {
+        case '저장':
+            logLearningDebug('memory_save', {
+                speaker: details.speaker || '시스템',
+                message: content,
+                success: success,
+                memoryType: details.type || '동적기억',
+                totalMemories: details.total || 'N/A',
+                importance: details.importance,
+                category: details.category
+            });
+            break;
+            
+        case '검색':
+            logLearningDebug('memory_retrieve', {
+                query: content,
+                foundCount: details.count || 0,
+                memories: details.results || []
+            });
+            break;
+            
+        case '삭제':
+            logLearningDebug('system_operation', {
+                operation: '기억 삭제',
+                details: `"${content.substring(0, 50)}..." 삭제 ${success ? '성공' : '실패'}`
+            });
+            break;
+            
+        default:
+            logLearningDebug('system_operation', {
+                operation: `기억 ${operation}`,
+                details: content
+            });
+    }
+}
+
+/**
+ * 🌤️ 날씨 반응 로그 함수
+ */
+function logWeatherReaction(weatherData, response) {
+    const timestamp = getJapanTimeString();
+    console.log(`🌤️ ${colors.system}[날씨반응] ${timestamp} - ${weatherData.description} → 응답 생성${colors.reset}`);
+    console.log(`🌤️ ${colors.system}   └─ "${response.substring(0, 50)}..."${colors.reset}`);
+}
+
+/**
+ * 🔧 시스템 작업 로그 함수
+ */
+function logSystemOperation(operation, details) {
+    logLearningDebug('system_operation', {
+        operation: operation,
+        details: details
+    });
+}
+
 // ================== 🎭 이모지 및 상태 정의 ==================
 const EMOJI = {
     heart: '💖',
@@ -83,7 +511,8 @@ const EMOJI = {
     error: '❌',
     warning: '⚠️',
     person: '👥',
-    learning: '🧠'
+    learning: '🧠',
+    debug: '🔍'
 };
 
 // 생리주기별 이모지와 설명
@@ -1197,7 +1626,7 @@ function startAutoStatusUpdates(systemModules) {
         // 시스템 모듈 캐시 업데이트
         systemModulesCache = { ...systemModules };
         
-        console.log(`${colors.pms}⏰⏰⏰ [자동갱신] enhancedLogging v3.0 1분마다 자동 상태 갱신 시작! ⏰⏰⏰${colors.reset}`);
+        console.log(`${colors.pms}⏰⏰⏰ [자동갱신] enhancedLogging v4.1 1분마다 자동 상태 갱신 시작! ⏰⏰⏰${colors.reset}`);
         
         // 1분마다 실행 (60,000ms = 1분)
         autoStatusInterval = setInterval(() => {
@@ -1299,6 +1728,18 @@ function stopAutoStatusUpdates() {
 
 // ================== 📤 모듈 내보내기 ==================
 module.exports = {
+    // 🔍 학습 디버깅 시스템 (새로 추가!)
+    logLearningDebug,
+    logLearningStatus,
+    logConversationLearningTrace,
+    analyzeMessageForNewInfo,
+    
+    // 강화된 로깅 함수들
+    logConversation,
+    logMemoryOperation,
+    logWeatherReaction,
+    logSystemOperation,
+    
     // 라인용 상태 리포트 함수들
     formatLineStatusReport,
     getLineSystemsStatus,
@@ -1306,7 +1747,7 @@ module.exports = {
     getLineEmotionalStatus,
     getLineInnerThought,
     getLineMemoryStatus,
-    getLinePersonLearningStatus, // 새로 추가!
+    getLinePersonLearningStatus,
     
     // 콘솔용 상태 리포트 함수들
     formatPrettyMukuStatus,
@@ -1315,7 +1756,7 @@ module.exports = {
     logEmotionalStatusAdvanced,
     logSulkyStatusAdvanced,
     logMemoryStatusAdvanced,
-    logPersonLearningStatus, // 새로 추가!
+    logPersonLearningStatus,
     logDamtaStatusAdvanced,
     logYejinSpontaneousStatus,
     logWeatherSystemStatus,
@@ -1323,7 +1764,7 @@ module.exports = {
     logSpecialSystemsStatus,
     logFaceRecognitionStatus,
     
-    // 사람 학습 로깅 함수들 (새로 추가!)
+    // 사람 학습 로깅 함수들
     logPersonLearning,
     
     // 자동 갱신 시스템 함수들
