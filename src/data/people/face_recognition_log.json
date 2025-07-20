@@ -1,0 +1,14 @@
+{
+  "version": "1.0",
+  "logs": [],
+  "dailyStats": {
+    "2025-07-20": {
+      "totalRecognitions": 0,
+      "successfulRecognitions": 0,
+      "newPeopleDetected": 0,
+      "yejinSightings": 0,
+      "ajeossiSightings": 0,
+      "unknownFaces": 0
+    }
+  }
+}
