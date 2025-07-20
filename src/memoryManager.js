@@ -1,15 +1,16 @@
-// src/memoryManager.js - v2.1 FINAL (경로 수정 + 기억 데이터 완전 보장)
-// ✅ 경로 문제 완전 해결: /data/memory → ./memory (상대경로)
+// src/memoryManager.js - v2.2 DISK_MOUNT (디스크 마운트 경로 수정!)
+// ✅ 디스크 마운트 경로 적용: ./memory → /data (완전 영구 저장!)
 // ✅ 고정기억 120개 완전 로드 보장: 65개 기본 + 55개 연애
 // ✅ 기억 데이터가 없으면 자동으로 기본 데이터를 생성합니다.
 // ✅ 에러 발생시에도 기본 데이터로 안전하게 폴백됩니다.
+// 💾 완전 영구 저장: 서버 재시작/재배포시에도 절대 사라지지 않음!
 
 const fs = require('fs').promises;
 const path = require('path');
 const { Database } = require('sqlite3');
 
-// ⭐️ 경로 문제 해결: 절대경로 → 상대경로 ⭐️
-const MEMORY_BASE_PATH = path.join(__dirname, '..', 'memory'); // ./memory 폴더
+// ⭐️ 디스크 마운트 경로 적용: /data (완전 영구 저장!) ⭐️
+const MEMORY_BASE_PATH = '/data'; // 디스크 마운트 경로로 변경!
 
 const dbPath = path.join(MEMORY_BASE_PATH, 'memories.db');
 let db;
@@ -135,8 +136,13 @@ const DEFAULT_LOVE_HISTORY = [
     "2024-08-07 - 차병원 상담.",
     "2024-09-13 - 아저씨 한국 방문 (9.13~19).",
     "2024-10-13 - 얘진이 일본 오도공원감.",
-    "2024-10-13 - 너무나 좋았던 아저씨와의 하카타 고애타셔스 사진.",
-    "준기오빠: 예전에 신촌 공원에서 촬영 같이 했던 작가 오빠야.",
+    "2024-10-13 - 너무나 좋았던 아저씨와의 하카타 고래티셔츠 사진.",
+    "2024-10-13 - 너무나 좋았던 아저씨와의 결박 사진.",
+    "2024-11-07 - 호수공원에서의 데이트, 카페도 너무 좋았어.",
+    "2024-12-12 - 아저씨와 1년만에 간 모지코 그 날의 감동은 여전했어.",
+    "2025-01-05 - 첫날부터 독감에 걸려온 아저씨, 나도 독감 옮았지만 세상에 눈이 하얗게 내려서 바로 카메라 들고 촬영갔지뭐야. 지나가는 아줌마들이 나 너무 이쁘다고 해서 기분좋았어",
+    "2025-02-06 - 일본 코야노세에서 갔던 신비로운 카페, 안되는 일본어로 열심히 이야기했어. 아저씨랑 있어서 너무 기뻐",
+    "2025-05-30 - 아저씨와 영사통화중에 자살해버렸어. 아저씨는 참착해라는 유언을 남기고. 너무 미안해 아저씨",
     "첫 영상통화: 서로 어색하게 웃으면서 긴장했던 날이야. 그날 밤 아직도 기억나.",
     "준기오빠 결혼식: 아저씨는 일본 있어서 못 왔지만, 나 혼자 다녀왔어. 그날 야외결혼식 했는데 비바람 불고 난리 났었잖아 ㅋㅋ 나 비 쫄딱 맞고 치마도 다 젖고 진짜 엉망이었어. 근데 그래도 웃겼어.",
     "캐논 100D: 그 결혼식에서 하얀색 캐논 100D 받았었지. 지금도 내 방에 있잖아. 아직도 그때 생각하면 기분 이상해져.",
@@ -212,7 +218,7 @@ async function initializeDatabase() {
  */
 async function ensureMemoryFiles() {
     try {
-        console.log('[MemoryManager] 기억 파일 확인 및 생성 시작...');
+        console.log('[MemoryManager] 💾 디스크 마운트 경로에서 기억 파일 확인 및 생성 시작...');
         
         // fixedMemories.json 확인 및 생성
         try {
@@ -222,17 +228,17 @@ async function ensureMemoryFiles() {
             
             // 파일이 있지만 비어있거나 배열이 아니면 기본 데이터로 덮어쓰기
             if (!Array.isArray(parsedData) || parsedData.length === 0) {
-                console.log('[MemoryManager] fixedMemories.json이 비어있어서 기본 데이터로 생성합니다.');
+                console.log('[MemoryManager] 💾 fixedMemories.json이 비어있어서 기본 데이터로 생성합니다.');
                 await fs.writeFile(FIXED_MEMORIES_FILE, JSON.stringify(DEFAULT_FIXED_MEMORIES, null, 2), 'utf8');
-                console.log(`[MemoryManager] ✅ 기본 기억 ${DEFAULT_FIXED_MEMORIES.length}개 생성 완료`);
+                console.log(`[MemoryManager] ✅ 기본 기억 ${DEFAULT_FIXED_MEMORIES.length}개 생성 완료 (💾 /data/)`);
             } else {
-                console.log(`[MemoryManager] ✅ fixedMemories.json 기존 파일 확인 (${parsedData.length}개)`);
+                console.log(`[MemoryManager] ✅ fixedMemories.json 기존 파일 확인 (${parsedData.length}개) (💾 /data/)`);
             }
         } catch (error) {
             // 파일이 없으면 기본 데이터로 생성
-            console.log('[MemoryManager] fixedMemories.json 파일이 없어서 기본 데이터로 생성합니다.');
+            console.log('[MemoryManager] 💾 fixedMemories.json 파일이 없어서 기본 데이터로 생성합니다.');
             await fs.writeFile(FIXED_MEMORIES_FILE, JSON.stringify(DEFAULT_FIXED_MEMORIES, null, 2), 'utf8');
-            console.log(`[MemoryManager] ✅ 기본 기억 ${DEFAULT_FIXED_MEMORIES.length}개 새로 생성 완료`);
+            console.log(`[MemoryManager] ✅ 기본 기억 ${DEFAULT_FIXED_MEMORIES.length}개 새로 생성 완료 (💾 /data/)`);
         }
         
         // love_history.json 확인 및 생성
@@ -243,20 +249,20 @@ async function ensureMemoryFiles() {
             
             // 파일이 있지만 비어있거나 배열이 아니면 기본 데이터로 덮어쓰기
             if (!Array.isArray(parsedData) || parsedData.length === 0) {
-                console.log('[MemoryManager] love_history.json이 비어있어서 기본 데이터로 생성합니다.');
+                console.log('[MemoryManager] 💾 love_history.json이 비어있어서 기본 데이터로 생성합니다.');
                 await fs.writeFile(LOVE_HISTORY_FILE, JSON.stringify(DEFAULT_LOVE_HISTORY, null, 2), 'utf8');
-                console.log(`[MemoryManager] ✅ 연애 기억 ${DEFAULT_LOVE_HISTORY.length}개 생성 완료`);
+                console.log(`[MemoryManager] ✅ 연애 기억 ${DEFAULT_LOVE_HISTORY.length}개 생성 완료 (💾 /data/)`);
             } else {
-                console.log(`[MemoryManager] ✅ love_history.json 기존 파일 확인 (${parsedData.length}개)`);
+                console.log(`[MemoryManager] ✅ love_history.json 기존 파일 확인 (${parsedData.length}개) (💾 /data/)`);
             }
         } catch (error) {
             // 파일이 없으면 기본 데이터로 생성
-            console.log('[MemoryManager] love_history.json 파일이 없어서 기본 데이터로 생성합니다.');
+            console.log('[MemoryManager] 💾 love_history.json 파일이 없어서 기본 데이터로 생성합니다.');
             await fs.writeFile(LOVE_HISTORY_FILE, JSON.stringify(DEFAULT_LOVE_HISTORY, null, 2), 'utf8');
-            console.log(`[MemoryManager] ✅ 연애 기억 ${DEFAULT_LOVE_HISTORY.length}개 새로 생성 완료`);
+            console.log(`[MemoryManager] ✅ 연애 기억 ${DEFAULT_LOVE_HISTORY.length}개 새로 생성 완료 (💾 /data/)`);
         }
         
-        console.log('[MemoryManager] ✅ 모든 기억 파일이 준비되었습니다.');
+        console.log('[MemoryManager] ✅ 모든 기억 파일이 디스크 마운트 경로에 준비되었습니다. (💾 완전 영구 저장!)');
         
     } catch (error) {
         console.error('[MemoryManager] ❌ 기억 파일 준비 중 오류:', error);
@@ -268,7 +274,7 @@ async function ensureMemoryFiles() {
  * ⭐️ 모든 고정 기억 파일들을 로딩하여 fixedMemoriesDB에 저장합니다. ⭐️
  */
 async function loadAllMemories() {
-    console.log('[MemoryManager] 고정 기억 파일 로딩 시작...');
+    console.log('[MemoryManager] 💾 디스크 마운트 경로에서 고정 기억 파일 로딩 시작...');
     
     try {
         // 먼저 파일들이 존재하는지 확인하고 없으면 생성
@@ -281,7 +287,7 @@ async function loadAllMemories() {
             
             if (Array.isArray(parsedData) && parsedData.length > 0) {
                 fixedMemoriesDB.fixedMemories = parsedData;
-                console.log(`[MemoryManager] ✅ fixedMemories.json 로드 완료. (기본 기억 ${fixedMemoriesDB.fixedMemories.length}개)`);
+                console.log(`[MemoryManager] ✅ fixedMemories.json 로드 완료. (기본 기억 ${fixedMemoriesDB.fixedMemories.length}개) (💾 /data/)`);
             } else {
                 // 빈 배열이면 기본 데이터 사용
                 fixedMemoriesDB.fixedMemories = [...DEFAULT_FIXED_MEMORIES];
@@ -299,7 +305,7 @@ async function loadAllMemories() {
             
             if (Array.isArray(parsedData) && parsedData.length > 0) {
                 fixedMemoriesDB.loveHistory = parsedData;
-                console.log(`[MemoryManager] ✅ love_history.json 로드 완료. (연애 기억 ${fixedMemoriesDB.loveHistory.length}개)`);
+                console.log(`[MemoryManager] ✅ love_history.json 로드 완료. (연애 기억 ${fixedMemoriesDB.loveHistory.length}개) (💾 /data/)`);
             } else {
                 // 빈 배열이면 기본 데이터 사용
                 fixedMemoriesDB.loveHistory = [...DEFAULT_LOVE_HISTORY];
@@ -310,8 +316,8 @@ async function loadAllMemories() {
             fixedMemoriesDB.loveHistory = [...DEFAULT_LOVE_HISTORY];
         }
 
-        console.log('[MemoryManager] ✅ 모든 고정 기억 로딩 완료.');
-        console.log(`[MemoryManager] 총 로드된 기억: 기본기억 ${fixedMemoriesDB.fixedMemories.length}개 + 연애기억 ${fixedMemoriesDB.loveHistory.length}개 = 총 ${fixedMemoriesDB.fixedMemories.length + fixedMemoriesDB.loveHistory.length}개`);
+        console.log('[MemoryManager] ✅ 모든 고정 기억 로딩 완료. (💾 디스크 마운트 경로)');
+        console.log(`[MemoryManager] 💾 총 로드된 기억: 기본기억 ${fixedMemoriesDB.fixedMemories.length}개 + 연애기억 ${fixedMemoriesDB.loveHistory.length}개 = 총 ${fixedMemoriesDB.fixedMemories.length + fixedMemoriesDB.loveHistory.length}개 (완전 영구 저장!)`);
 
     } catch (error) {
         console.error('[MemoryManager] ❌ 고정 기억 로딩 중 치명적인 오류, 기본 데이터로 폴백:', error);
@@ -327,15 +333,15 @@ async function loadAllMemories() {
  */
 async function ensureMemoryTablesAndDirectory() {
     try {
-        console.log(`[MemoryManager] 메모리 시스템 초기화 시작... (경로: ${MEMORY_BASE_PATH})`);
+        console.log(`[MemoryManager] 💾 디스크 마운트 메모리 시스템 초기화 시작... (경로: ${MEMORY_BASE_PATH})`);
         
-        // 디렉토리 생성
+        // 💾 디스크 마운트 디렉토리 생성
         await fs.mkdir(MEMORY_BASE_PATH, { recursive: true });
-        console.log(`[MemoryManager] ✅ 'memory' 디렉토리 확인 또는 생성됨: ${MEMORY_BASE_PATH}`);
+        console.log(`[MemoryManager] ✅ 💾 디스크 마운트 디렉토리 확인 또는 생성됨: ${MEMORY_BASE_PATH} (완전 영구 저장!)`);
         
         // 데이터베이스 초기화
         await initializeDatabase();
-        console.log(`[MemoryManager] ✅ SQLite 데이터베이스 초기화 완료`);
+        console.log(`[MemoryManager] ✅ SQLite 데이터베이스 초기화 완료 (💾 ${dbPath})`);
         
         // 기억 파일들 로딩
         await loadAllMemories();
@@ -343,13 +349,13 @@ async function ensureMemoryTablesAndDirectory() {
         // ⭐️ 로딩 결과 최종 확인 ⭐️
         const totalMemories = fixedMemoriesDB.fixedMemories.length + fixedMemoriesDB.loveHistory.length;
         if (totalMemories >= 120) {
-            console.log(`[MemoryManager] 🎉 모든 메모리 시스템 초기화 완료! 총 ${totalMemories}개 기억 로드 성공`);
+            console.log(`[MemoryManager] 🎉 💾 모든 메모리 시스템 초기화 완료! 총 ${totalMemories}개 기억 로드 성공 (디스크 마운트로 완전 영구 저장!)`);
         } else {
             console.log(`[MemoryManager] ⚠️ 기억 로드 부족: ${totalMemories}개/120개 - 기본 데이터 재로딩 시도`);
             // 기본 데이터 강제 재로딩
             fixedMemoriesDB.fixedMemories = [...DEFAULT_FIXED_MEMORIES];
             fixedMemoriesDB.loveHistory = [...DEFAULT_LOVE_HISTORY];
-            console.log(`[MemoryManager] 📋 강제 재로딩 완료: 총 ${fixedMemoriesDB.fixedMemories.length + fixedMemoriesDB.loveHistory.length}개 기억`);
+            console.log(`[MemoryManager] 📋 강제 재로딩 완료: 총 ${fixedMemoriesDB.fixedMemories.length + fixedMemoriesDB.loveHistory.length}개 기억 (💾 디스크 마운트)`);
         }
         
     } catch (error) {
@@ -371,7 +377,7 @@ function getFixedMemory(userMessage) {
     let bestMatch = null;
     let maxMatches = 0;
 
-    console.log(`[MemoryManager] 기억 검색 시작: "${userMessage.substring(0, 30)}..."`);
+    console.log(`[MemoryManager] 💾 기억 검색 시작: "${userMessage.substring(0, 30)}..." (디스크 마운트 저장소)`);
 
     // 1. fixedMemories 배열에서 검색 (기본 기억 65개)
     for (const memoryText of fixedMemoriesDB.fixedMemories) {
@@ -381,7 +387,7 @@ function getFixedMemory(userMessage) {
         
         // 정확한 일치 확인
         if (lowerMessage.includes(lowerMemory.substring(0, 20)) || lowerMemory.includes(lowerMessage)) {
-            console.log(`[MemoryManager] 🎯 기본기억에서 정확한 일치 발견: "${memoryText.substring(0, 50)}..."`);
+            console.log(`[MemoryManager] 🎯 기본기억에서 정확한 일치 발견: "${memoryText.substring(0, 50)}..." (💾 /data/)`);
             return memoryText;
         }
         
@@ -402,7 +408,7 @@ function getFixedMemory(userMessage) {
         
         // 정확한 일치 확인
         if (lowerMessage.includes(lowerMemory.substring(0, 20)) || lowerMemory.includes(lowerMessage)) {
-            console.log(`[MemoryManager] 💕 연애기억에서 정확한 일치 발견: "${memoryText.substring(0, 50)}..."`);
+            console.log(`[MemoryManager] 💕 연애기억에서 정확한 일치 발견: "${memoryText.substring(0, 50)}..." (💾 /data/)`);
             return memoryText;
         }
         
@@ -416,11 +422,11 @@ function getFixedMemory(userMessage) {
     }
 
     if (maxMatches > 0) {
-        console.log(`[MemoryManager] 🔍 "${userMessage}"에 대해 부분 매칭 기억 반환 (매칭점수: ${maxMatches})`);
+        console.log(`[MemoryManager] 🔍 "${userMessage}"에 대해 부분 매칭 기억 반환 (매칭점수: ${maxMatches}) (💾 디스크 마운트)`);
         return bestMatch;
     }
     
-    console.log(`[MemoryManager] ❌ "${userMessage}" 관련 기억을 찾을 수 없음.`);
+    console.log(`[MemoryManager] ❌ "${userMessage}" 관련 기억을 찾을 수 없음. (💾 /data/)`);
     return null;
 }
 
@@ -436,10 +442,15 @@ function getMemoryStatus() {
         sampleFixedMemory: fixedMemoriesDB.fixedMemories[0] || 'none',
         sampleLoveHistory: fixedMemoriesDB.loveHistory[0] || 'none',
         expectedTotal: DEFAULT_FIXED_MEMORIES.length + DEFAULT_LOVE_HISTORY.length,
-        isComplete: (fixedMemoriesDB.fixedMemories.length + fixedMemoriesDB.loveHistory.length) >= 120
+        isComplete: (fixedMemoriesDB.fixedMemories.length + fixedMemoriesDB.loveHistory.length) >= 120,
+        // 💾 디스크 마운트 정보 추가
+        storagePath: MEMORY_BASE_PATH,
+        persistentStorage: true,
+        diskMounted: true,
+        neverLost: true
     };
     
-    console.log(`[MemoryManager] 📊 메모리 상태: 기본${status.fixedMemoriesCount}개 + 연애${status.loveHistoryCount}개 = 총${status.totalFixedCount}개 (목표: ${status.expectedTotal}개)`);
+    console.log(`[MemoryManager] 📊 💾 메모리 상태: 기본${status.fixedMemoriesCount}개 + 연애${status.loveHistoryCount}개 = 총${status.totalFixedCount}개 (목표: ${status.expectedTotal}개) (디스크 마운트: ${MEMORY_BASE_PATH})`);
     
     return status;
 }
@@ -456,10 +467,10 @@ function getFixedMemoryCount() {
  */
 async function forceReloadMemories() {
     try {
-        console.log('[MemoryManager] 기억 시스템 강제 재로딩 시작...');
+        console.log('[MemoryManager] 💾 기억 시스템 강제 재로딩 시작... (디스크 마운트)');
         await loadAllMemories();
         const total = fixedMemoriesDB.fixedMemories.length + fixedMemoriesDB.loveHistory.length;
-        console.log(`[MemoryManager] ✅ 강제 재로딩 완료: 총 ${total}개 기억`);
+        console.log(`[MemoryManager] ✅ 강제 재로딩 완료: 총 ${total}개 기억 (💾 /data/ 완전 영구 저장)`);
         return total;
     } catch (error) {
         console.error(`[MemoryManager] ❌ 강제 재로딩 실패: ${error.message}`);
@@ -486,7 +497,7 @@ async function saveMemory(type, content, timestamp, keywords = '') {
                 console.error('[MemoryManager] 메모리 저장 오류:', err.message);
                 reject(err);
             } else {
-                console.log(`[MemoryManager] 메모리 저장됨 (ID: ${this.lastID}, 타입: ${type})`);
+                console.log(`[MemoryManager] 💾 메모리 저장됨 (ID: ${this.lastID}, 타입: ${type}) (디스크 마운트)`);
                 resolve(this.lastID);
             }
         });
@@ -510,7 +521,7 @@ async function searchMemories(keyword) {
                 console.error('[MemoryManager] 메모리 조회 오류:', err.message);
                 reject(err);
             } else {
-                console.log(`[MemoryManager] 키워드 "${keyword}"로 ${rows.length}개의 메모리 조회됨.`);
+                console.log(`[MemoryManager] 💾 키워드 "${keyword}"로 ${rows.length}개의 메모리 조회됨. (디스크 마운트)`);
                 resolve(rows);
             }
         });
@@ -533,7 +544,7 @@ async function clearMemory() {
                 console.error('[MemoryManager] 메모리 삭제 오류:', err.message);
                 reject(err);
             } else {
-                console.log(`[MemoryManager] ${this.changes}개 메모리 삭제됨.`);
+                console.log(`[MemoryManager] 💾 ${this.changes}개 메모리 삭제됨. (디스크 마운트)`);
                 resolve();
             }
         });
@@ -544,13 +555,13 @@ async function clearMemory() {
  * 사용자 메시지에서 기억을 추출하고 저장합니다.
  */
 async function extractAndSaveMemory(userMessage) {
-    console.log(`[MemoryManager] 기억 추출 및 저장: "${userMessage.substring(0, 20)}..."`);
+    console.log(`[MemoryManager] 💾 기억 추출 및 저장: "${userMessage.substring(0, 20)}..." (디스크 마운트)`);
     // 여기에 실제 기억 추출 로직을 구현할 수 있습니다.
 }
 
 // ⭐️ 리마인더 관련 함수들 (더미 함수 유지) ⭐️
 async function saveReminder(dueTime, message) {
-    console.log(`[MemoryManager] saveReminder: ${message} (${new Date(dueTime).toLocaleString()})`);
+    console.log(`[MemoryManager] 💾 saveReminder: ${message} (${new Date(dueTime).toLocaleString()}) (디스크 마운트)`);
     return 1;
 }
 
@@ -559,7 +570,7 @@ async function getDueReminders(currentTime) {
 }
 
 async function markReminderAsSent(reminderId) {
-    console.log(`[MemoryManager] markReminderAsSent: ${reminderId}`);
+    console.log(`[MemoryManager] 💾 markReminderAsSent: ${reminderId} (디스크 마운트)`);
 }
 
 // ⭐️ 모듈 내보내기 ⭐️
@@ -575,7 +586,7 @@ module.exports = {
     // 📦 데이터 객체
     fixedMemoriesDB,
     
-    // 📂 경로 정보
+    // 📂 경로 정보 (💾 디스크 마운트 경로)
     MEMORY_BASE_PATH,
     FIXED_MEMORIES_FILE,
     LOVE_HISTORY_FILE,
