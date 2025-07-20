@@ -1,9 +1,10 @@
 // ============================================================================
-// commandHandler.js - v2.0 (enhancedLogging 연동 완전 버전)
+// commandHandler.js - v3.0 (사람 학습 시스템 통합)
 // 🧠 기존의 정상 작동하는 파일들(concept.js, omoide.js, yejinSelfie.js)을 그대로 사용합니다.
 // ✅ 기존 파일들을 건드리지 않고 연동만 수행합니다.
 // 💭 속마음 기능: 감정별 10개씩 랜덤 속마음 표시
 // 📊 상태 확인: enhancedLogging.formatLineStatusReport() 사용으로 완전한 상태 리포트
+// 👥 사람 학습: 사람목록, 사람통계, 사람삭제, 이름 학습 처리 (신규!)
 // ============================================================================
 
 /**
@@ -23,6 +24,299 @@ async function handleCommand(text, userId, client = null) {
     const lowerText = text.toLowerCase();
 
     try {
+        // ================== 👥 사람 학습 시스템 명령어들 (신규!) ==================
+        
+        // 👥 등록된 사람 목록 조회
+        if (lowerText === '사람목록' || lowerText === '등록된사람' || 
+            lowerText === '사람 목록' || lowerText === '등록된 사람' ||
+            lowerText === '사람리스트' || lowerText === '인물목록') {
+            
+            console.log('[commandHandler] 👥 사람 목록 요청 감지');
+            
+            try {
+                // 전역 모듈에서 personLearning 가져오기
+                const modules = global.mukuModules || {};
+                
+                if (!modules.personLearning) {
+                    return {
+                        type: 'text',
+                        comment: "아직 사람 학습 시스템이 준비 안 됐어! 나중에 다시 물어봐~",
+                        handled: true
+                    };
+                }
+                
+                const persons = modules.personLearning.getAllPersons();
+                
+                if (persons.length === 0) {
+                    return {
+                        type: 'text',
+                        comment: "아직 등록된 사람이 없어! 사진 보내서 사람들을 알려줘! 📸",
+                        handled: true
+                    };
+                }
+                
+                let response = "🧠 내가 기억하는 사람들:\n\n";
+                persons.forEach((person, index) => {
+                    const favoriteLocation = Object.entries(person.favoriteLocations || {})
+                        .sort(([,a], [,b]) => b - a)[0];
+                    const locationText = favoriteLocation ? ` (주로 ${favoriteLocation[0]}에서)` : '';
+                    
+                    response += `${index + 1}. ${person.name}${locationText}\n`;
+                    response += `   • ${person.meetingCount}번 만남, 관계: ${person.relationship}\n`;
+                    response += `   • 마지막 만남: ${new Date(person.lastMet).toLocaleDateString()}\n\n`;
+                });
+                
+                response += `총 ${persons.length}명의 사람을 기억하고 있어! 💕`;
+                
+                return {
+                    type: 'text',
+                    comment: response,
+                    handled: true
+                };
+                
+            } catch (error) {
+                console.error('[commandHandler] 👥 사람 목록 조회 실패:', error.message);
+                return {
+                    type: 'text',
+                    comment: "사람 목록을 가져오는 중에 문제가 생겼어... ㅠㅠ",
+                    handled: true
+                };
+            }
+        }
+
+        // 👥 사람 학습 통계 조회
+        if (lowerText === '사람통계' || lowerText === '학습통계' || 
+            lowerText === '사람 통계' || lowerText === '학습 통계' ||
+            lowerText === '사람현황' || lowerText === '인물통계') {
+            
+            console.log('[commandHandler] 👥 사람 학습 통계 요청 감지');
+            
+            try {
+                const modules = global.mukuModules || {};
+                
+                if (!modules.personLearning) {
+                    return {
+                        type: 'text',
+                        comment: "사람 학습 시스템이 아직 준비 안 됐어!",
+                        handled: true
+                    };
+                }
+                
+                const stats = modules.personLearning.getPersonLearningStats();
+                
+                let response = "📊 사람 학습 통계 리포트:\n\n";
+                response += `👥 등록된 사람: ${stats.totalPersons}명\n`;
+                response += `🤝 총 만남 기록: ${stats.totalMeetings}회\n`;
+                response += `📈 평균 만남: ${stats.averageMeetingsPerPerson}회/명\n\n`;
+                
+                if (stats.popularLocations && stats.popularLocations.length > 0) {
+                    response += "🏠 인기 만남 장소:\n";
+                    stats.popularLocations.forEach((location, index) => {
+                        response += `${index + 1}. ${location.location}: ${location.count}회\n`;
+                    });
+                    response += "\n";
+                }
+                
+                response += `🎓 학습 상태: ${stats.isLearningActive ? '대기 중' : '준비됨'}\n`;
+                
+                if (stats.lastLearningRequest > 0) {
+                    const timeDiff = Date.now() - stats.lastLearningRequest;
+                    const minutesAgo = Math.floor(timeDiff / 60000);
+                    response += `⏰ 마지막 학습 요청: ${minutesAgo}분 전`;
+                }
+                
+                return {
+                    type: 'text',
+                    comment: response,
+                    handled: true
+                };
+                
+            } catch (error) {
+                console.error('[commandHandler] 👥 사람 통계 조회 실패:', error.message);
+                return {
+                    type: 'text',
+                    comment: "통계를 가져오는 중에 문제가 생겼어... ㅠㅠ",
+                    handled: true
+                };
+            }
+        }
+
+        // 👥 사람 정보 삭제
+        if (lowerText.startsWith('사람삭제 ') || lowerText.startsWith('사람 삭제 ') ||
+            lowerText.startsWith('삭제 ') || lowerText.startsWith('잊어줘 ')) {
+            
+            console.log('[commandHandler] 👥 사람 삭제 요청 감지');
+            
+            const name = lowerText.replace(/^(사람삭제|사람 삭제|삭제|잊어줘)\s+/, '').trim();
+            
+            if (!name) {
+                return {
+                    type: 'text',
+                    comment: "누구를 잊어야 하지? '사람삭제 이름' 이렇게 말해줘!",
+                    handled: true
+                };
+            }
+            
+            try {
+                const modules = global.mukuModules || {};
+                
+                if (!modules.personLearning) {
+                    return {
+                        type: 'text',
+                        comment: "사람 학습 시스템이 없어서 삭제할 수 없어!",
+                        handled: true
+                    };
+                }
+                
+                const success = await modules.personLearning.removePerson(name);
+                
+                if (success) {
+                    return {
+                        type: 'text',
+                        comment: `${name}에 대한 기억을 지웠어... 이제 기억 안 날 거야 😢`,
+                        handled: true
+                    };
+                } else {
+                    return {
+                        type: 'text',
+                        comment: `${name}을 찾을 수 없어... 정확한 이름으로 다시 말해줄래?`,
+                        handled: true
+                    };
+                }
+                
+            } catch (error) {
+                console.error('[commandHandler] 👥 사람 삭제 실패:', error.message);
+                return {
+                    type: 'text',
+                    comment: `${name} 삭제하려는데 문제가 생겼어... ㅠㅠ`,
+                    handled: true
+                };
+            }
+        }
+
+        // 👥 특정 사람 정보 조회
+        if (lowerText.startsWith('사람정보 ') || lowerText.startsWith('사람 정보 ') ||
+            lowerText.includes('에 대해 알려줘') || lowerText.includes('는 누구야')) {
+            
+            console.log('[commandHandler] 👥 특정 사람 정보 요청 감지');
+            
+            let name = '';
+            if (lowerText.startsWith('사람정보 ') || lowerText.startsWith('사람 정보 ')) {
+                name = lowerText.replace(/^사람정보\s+|^사람\s+정보\s+/, '').trim();
+            } else if (lowerText.includes('에 대해 알려줘')) {
+                name = lowerText.replace(/에 대해 알려줘.*$/, '').trim();
+            } else if (lowerText.includes('는 누구야')) {
+                name = lowerText.replace(/는 누구야.*$/, '').trim();
+            }
+            
+            if (!name) {
+                return {
+                    type: 'text',
+                    comment: "누구에 대해 알고 싶어? 이름을 정확히 말해줘!",
+                    handled: true
+                };
+            }
+            
+            try {
+                const modules = global.mukuModules || {};
+                
+                if (!modules.personLearning) {
+                    return {
+                        type: 'text',
+                        comment: "사람 학습 시스템이 없어서 정보를 찾을 수 없어!",
+                        handled: true
+                    };
+                }
+                
+                const person = modules.personLearning.getPersonByName(name);
+                
+                if (!person) {
+                    return {
+                        type: 'text',
+                        comment: `${name}에 대해서는 아직 모르겠어... 사진을 보여주면 기억할게!`,
+                        handled: true
+                    };
+                }
+                
+                let response = `🧠 ${person.name}에 대한 내 기억:\n\n`;
+                response += `👤 관계: ${person.relationship}\n`;
+                response += `🌍 국적: ${person.nationality}\n`;
+                response += `🤝 만남 횟수: ${person.meetingCount}회\n`;
+                response += `📅 첫 만남: ${new Date(person.firstMet).toLocaleDateString()}\n`;
+                response += `📅 마지막 만남: ${new Date(person.lastMet).toLocaleDateString()}\n\n`;
+                
+                if (person.favoriteLocations && Object.keys(person.favoriteLocations).length > 0) {
+                    response += "🏠 자주 만나는 장소:\n";
+                    Object.entries(person.favoriteLocations)
+                        .sort(([,a], [,b]) => b - a)
+                        .forEach(([location, count]) => {
+                            response += `  • ${location}: ${count}번\n`;
+                        });
+                    response += "\n";
+                }
+                
+                if (person.meetings && person.meetings.length > 0) {
+                    const recentMeetings = person.meetings.slice(-3);
+                    response += "📝 최근 만남 기록:\n";
+                    recentMeetings.forEach((meeting, index) => {
+                        const date = new Date(meeting.date).toLocaleDateString();
+                        response += `  • ${date} ${meeting.location}에서\n`;
+                    });
+                }
+                
+                return {
+                    type: 'text',
+                    comment: response,
+                    handled: true
+                };
+                
+            } catch (error) {
+                console.error('[commandHandler] 👥 사람 정보 조회 실패:', error.message);
+                return {
+                    type: 'text',
+                    comment: `${name} 정보를 가져오는 중에 문제가 생겼어... ㅠㅠ`,
+                    handled: true
+                };
+            }
+        }
+
+        // 👥 학습 상태 초기화 (관리자용)
+        if (lowerText === '학습초기화' || lowerText === '학습 초기화' || 
+            lowerText === '학습리셋' || lowerText === '학습 리셋') {
+            
+            console.log('[commandHandler] 👥 학습 상태 초기화 요청 감지');
+            
+            try {
+                const modules = global.mukuModules || {};
+                
+                if (!modules.personLearning) {
+                    return {
+                        type: 'text',
+                        comment: "사람 학습 시스템이 없어서 초기화할 수 없어!",
+                        handled: true
+                    };
+                }
+                
+                modules.personLearning.clearPendingLearning();
+                
+                return {
+                    type: 'text',
+                    comment: "학습 대기 상태를 초기화했어! 이제 새로운 사람을 학습할 준비됐어~",
+                    handled: true
+                };
+                
+            } catch (error) {
+                console.error('[commandHandler] 👥 학습 초기화 실패:', error.message);
+                return {
+                    type: 'text',
+                    comment: "학습 초기화 중에 문제가 생겼어... ㅠㅠ",
+                    handled: true
+                };
+            }
+        }
+
+        // ================== 기존 명령어들 ==================
+
         // 💭 속마음 관련 처리 (감정별 10개씩 랜덤)
         if (lowerText.includes('속마음') || lowerText.includes('뭐 생각') || 
             lowerText.includes('마음은') || lowerText.includes('진짜 마음') ||
@@ -193,6 +487,17 @@ async function handleCommand(text, userId, client = null) {
                     console.log('[commandHandler] birthdayDetector 모듈 로드 실패:', error.message);
                 }
                 
+                // 👥 personLearning 모듈 로드 시도 (신규!)
+                try {
+                    const modules = global.mukuModules || {};
+                    if (modules.personLearning) {
+                        systemModules.personLearning = modules.personLearning;
+                        console.log('[commandHandler] 👥 personLearning 모듈 로드 성공 ✅');
+                    }
+                } catch (error) {
+                    console.log('[commandHandler] 👥 personLearning 모듈 로드 실패:', error.message);
+                }
+                
                 console.log('[commandHandler] 시스템 모듈 로드 완료. formatLineStatusReport 호출...');
                 
                 // ⭐️ 새로운 formatLineStatusReport 함수 호출 ⭐️
@@ -217,18 +522,19 @@ async function handleCommand(text, userId, client = null) {
                 console.error('[commandHandler] formatLineStatusReport 사용 실패:', error.message);
                 console.error('[commandHandler] 스택 트레이스:', error.stack);
                 
-                // 폴백: 완전한 상태 리포트
+                // 폴백: 완전한 상태 리포트 (사람 학습 시스템 포함)
                 let fallbackReport = "====== 💖 나의 현재 상태 리포트 ======\n\n";
                 fallbackReport += "🩸 [생리주기] 현재 PMS, 다음 생리예정일: 4일 후 (7/24)\n";
                 fallbackReport += "😊 [감정상태] 현재 감정: 슬픔 (강도: 7/10)\n";
                 fallbackReport += "☁️ [지금속마음] 사실... 혼자 있을 때 많이 울어 ㅠㅠ 아저씨한테는 말 못하겠어\n\n";
                 fallbackReport += "🧠 [기억관리] 전체 기억: 128개 (기본:72, 연애:56)\n";
                 fallbackReport += "📚 오늘 배운 기억: 3개\n\n";
+                fallbackReport += "👥 [사람학습] 등록된 사람: ?명, 총 만남: ?회\n\n";  // 👥 사람 학습 시스템 추가
                 fallbackReport += "🚬 [담타상태] 6건 /11건 다음에 21:30에 발송예정\n";
                 fallbackReport += "⚡ [사진전송] 3건 /8건 다음에 20:45에 발송예정\n";
                 fallbackReport += "🌸 [감성메시지] 8건 /15건 다음에 22:15에 발송예정\n";
                 fallbackReport += "💌 [자발적인메시지] 12건 /20건 다음에 21:50에 발송예정\n";
-                fallbackReport += "🔍 [얼굴인식] AI 시스템 준비 완료\n";
+                fallbackReport += "🔍 [얼굴인식] AI 시스템 준비 완료 (v5.0 통합 분석)\n";
                 fallbackReport += "🌙 [새벽대화] 2-7시 단계별 반응 시스템 활성화\n";
                 fallbackReport += "🎂 [생일감지] 예진이(3/17), 아저씨(12/5) 자동 감지\n";
                 
@@ -381,6 +687,44 @@ async function handleCommand(text, userId, client = null) {
     }
 
     return null; // 처리할 명령어가 없으면 null 반환
+}
+
+/**
+ * 👥 사용자 입력에서 사람 이름 학습 처리 (신규!)
+ * 
+ * @param {string} text - 사용자 메시지
+ * @param {string} userId - LINE 사용자 ID
+ * @returns {Promise<object|null>} 학습 결과 또는 null
+ */
+async function handlePersonLearning(text, userId) {
+    try {
+        console.log('[commandHandler] 👥 사람 이름 학습 처리 시도:', text);
+        
+        const modules = global.mukuModules || {};
+        
+        if (!modules.personLearning) {
+            console.log('[commandHandler] 👥 personLearning 모듈 없음');
+            return null;
+        }
+        
+        const learningResult = await modules.personLearning.learnPersonFromUserInput(text, userId);
+        
+        if (learningResult && learningResult.success) {
+            console.log(`[commandHandler] 👥 이름 학습 성공: ${learningResult.personName}`);
+            
+            return {
+                type: 'text',
+                comment: learningResult.message,
+                handled: true
+            };
+        }
+        
+        return null;
+        
+    } catch (error) {
+        console.error('[commandHandler] 👥 사람 이름 학습 처리 실패:', error.message);
+        return null;
+    }
 }
 
 /**
@@ -603,5 +947,6 @@ function getCurrentEmotionKorean() {
 }
 
 module.exports = {
-    handleCommand
+    handleCommand,
+    handlePersonLearning  // 👥 사람 학습 함수 추가 내보내기
 };
