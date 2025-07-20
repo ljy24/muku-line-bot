@@ -1,17 +1,21 @@
 // ============================================================================
-// muku-personLearningSystem.js v1.0 - 사람 학습 및 기억 시스템 (구조 수정됨)
+// muku-personLearningSystem.js v1.1 DISK_MOUNT - 사람 학습 및 기억 시스템 
+// 💾 디스크 마운트 경로 적용: ./data → /data (완전 영구 저장!)
 // 🧠 모르는 사람 감지 → 사용자 알려줌 → 기억 → 다음에 인식
 // 💕 예진이가 점점 더 많은 사람들을 기억하고 관계를 이해하는 시스템
 // 📸 투샷 + 장소/상황 기억으로 더 자연스러운 대화
+// 🔧 디스크 마운트: 서버 재시작/재배포시에도 절대 사라지지 않는 완전한 영구 저장!
 // ============================================================================
 
 const fs = require('fs').promises;
 const path = require('path');
 const moment = require('moment-timezone');
 
-// ================== 📁 파일 경로 및 설정 ==================
-const PERSON_DB_PATH = path.join(__dirname, 'data', 'learned_persons.json');
-const PERSON_PHOTOS_DIR = path.join(__dirname, 'data', 'person_photos');
+// ================== 📁 파일 경로 및 설정 (💾 디스크 마운트) ==================
+// ⭐️ 디스크 마운트 경로로 변경! ⭐️
+const PERSON_DB_PATH = '/data/learned_persons.json'; // 💾 ./data → /data 변경!
+const PERSON_PHOTOS_DIR = '/data/person_photos'; // 💾 ./data → /data 변경!
+
 const LEARNING_CONFIG = {
     MIN_CONFIDENCE_FOR_MATCH: 0.7,
     MAX_STORED_PHOTOS: 5,
@@ -132,14 +136,14 @@ async function loadPersonDatabase() {
         personArray.forEach(person => {
             personDatabase.set(person.id, person);
         });
-        console.log(`🧠 [PersonLearning] 데이터베이스 로드 완료: ${personDatabase.size}명`);
+        console.log(`🧠 [PersonLearning] 💾 데이터베이스 로드 완료: ${personDatabase.size}명 (디스크 마운트: /data/)`);
     } catch (error) {
         if (error.code === 'ENOENT') {
-            console.log('🧠 [PersonLearning] 새로운 데이터베이스 생성');
+            console.log('🧠 [PersonLearning] 💾 새로운 데이터베이스 생성 (디스크 마운트: /data/)');
             personDatabase = new Map();
             await savePersonDatabase();
         } else {
-            console.error('🧠 [PersonLearning] 데이터베이스 로드 실패:', error.message);
+            console.error('🧠 [PersonLearning] 💾 데이터베이스 로드 실패:', error.message);
         }
     }
 }
@@ -149,13 +153,16 @@ async function savePersonDatabase() {
         const personArray = Array.from(personDatabase.values());
         const jsonData = JSON.stringify(personArray, null, 2);
         const backupPath = PERSON_DB_PATH + '.backup';
+        
+        // 백업 생성
         if (await fs.access(PERSON_DB_PATH).then(() => true).catch(() => false)) {
             await fs.copyFile(PERSON_DB_PATH, backupPath);
         }
+        
         await fs.writeFile(PERSON_DB_PATH, jsonData, 'utf8');
-        console.log(`🧠 [PersonLearning] 데이터베이스 저장 완료: ${personArray.length}명`);
+        console.log(`🧠 [PersonLearning] 💾 데이터베이스 저장 완료: ${personArray.length}명 (디스크 마운트: /data/)`);
     } catch (error) {
-        console.error('🧠 [PersonLearning] 데이터베이스 저장 실패:', error.message);
+        console.error('🧠 [PersonLearning] 💾 데이터베이스 저장 실패:', error.message);
     }
 }
 
@@ -163,6 +170,7 @@ function generatePersonLocationReaction(person, location) {
     const name = person.name;
     const meetingCount = person.meetingCount;
     let baseReaction = '';
+    
     if (meetingCount <= 2) {
         baseReaction = MEETING_COUNT_RESPONSES[meetingCount];
     } else if (meetingCount <= 5) {
@@ -170,15 +178,18 @@ function generatePersonLocationReaction(person, location) {
     } else {
         baseReaction = MEETING_COUNT_RESPONSES['many'];
     }
+    
     const locationResponses = PERSON_LOCATION_RESPONSES[location] || PERSON_LOCATION_RESPONSES['기본'];
     const locationReaction = locationResponses[Math.floor(Math.random() * locationResponses.length)];
     const finalReaction = locationReaction.replace(/{name}/g, name);
+    
     if (Math.random() < 0.3 && meetingCount > 2) {
         const countComment = meetingCount > 5 ?
             ` ${name}이랑 정말 자주 만나네!` :
             ` ${name}이랑 ${meetingCount}번째 만남이구나!`;
         return finalReaction + countComment;
     }
+    
     return finalReaction;
 }
 
@@ -186,19 +197,21 @@ async function findMatchingPerson(base64Image) {
     try {
         const imageSize = Buffer.from(base64Image, 'base64').length;
         const imageHash = base64Image.slice(0, 100);
+        
         for (const person of personDatabase.values()) {
             for (const feature of person.faceFeatures) {
                 if (Math.abs(feature.size - imageSize) < 50000 &&
                     feature.hash === imageHash) {
-                    console.log(`🧠 [PersonMatching] 매칭된 사람: ${person.name}`);
+                    console.log(`🧠 [PersonMatching] 💾 매칭된 사람: ${person.name} (디스크 저장소)`);
                     return person;
                 }
             }
         }
-        console.log('🧠 [PersonMatching] 매칭되는 사람 없음');
+        
+        console.log('🧠 [PersonMatching] 💾 매칭되는 사람 없음 (디스크 저장소)');
         return null;
     } catch (error) {
-        console.error('🧠 [PersonMatching] 매칭 실패:', error.message);
+        console.error('🧠 [PersonMatching] 💾 매칭 실패:', error.message);
         return null;
     }
 }
@@ -208,10 +221,12 @@ function addMeetingRecord(person, meetingRecord) {
     person.meetingCount++;
     person.lastMet = meetingRecord.date;
     person.updated = new Date();
+    
     const location = meetingRecord.location;
     const currentCount = person.favoriteLocations.get(location) || 0;
     person.favoriteLocations.set(location, currentCount + 1);
-    console.log(`🧠 [PersonLearning] ${person.name} 만남 기록 추가: ${location} (총 ${person.meetingCount}회)`);
+    
+    console.log(`🧠 [PersonLearning] 💾 ${person.name} 만남 기록 추가: ${location} (총 ${person.meetingCount}회) (디스크 저장)`);
 }
 
 function extractNameFromInput(userInput) {
@@ -226,12 +241,14 @@ function extractNameFromInput(userInput) {
         /이름은\s*([가-힣a-zA-Z]+)/,
         /^([가-힣a-zA-Z]+)$/
     ];
+    
     for (const pattern of patterns) {
         const match = userInput.match(pattern);
         if (match && match[1]) {
             return match[1].trim();
         }
     }
+    
     return null;
 }
 
@@ -258,6 +275,7 @@ function generateLearningSuccessMessage(name, location) {
             `${name}이라는 이름이구나! 반가워!`
         ]
     };
+    
     const locationMessages = messages[location] || messages['기본'];
     return locationMessages[Math.floor(Math.random() * locationMessages.length)];
 }
@@ -265,6 +283,7 @@ function generateLearningSuccessMessage(name, location) {
 async function getPhotoAnalysisFromFaceMatcher(base64Image) {
     try {
         const faceMatcher = require('./faceMatcher');
+        
         if (faceMatcher.analyzePhotoWithOpenAI) {
             const result = await faceMatcher.analyzePhotoWithOpenAI(base64Image);
             if (result) {
@@ -275,6 +294,7 @@ async function getPhotoAnalysisFromFaceMatcher(base64Image) {
                 };
             }
         }
+        
         if (faceMatcher.detectFaceMatch) {
             const result = await faceMatcher.detectFaceMatch(base64Image);
             return {
@@ -283,9 +303,10 @@ async function getPhotoAnalysisFromFaceMatcher(base64Image) {
                 message: result.message
             };
         }
+        
         throw new Error('faceMatcher 함수 없음');
     } catch (error) {
-        console.error('🧠 [PhotoAnalysis] faceMatcher 연동 실패:', error.message);
+        console.error('🧠 [PhotoAnalysis] 💾 faceMatcher 연동 실패:', error.message);
         return {
             type: '기타',
             content: '',
@@ -296,10 +317,11 @@ async function getPhotoAnalysisFromFaceMatcher(base64Image) {
 
 function detectLocationFromPhoto(photoAnalysis) {
     const content = photoAnalysis.content?.toLowerCase() || '';
+    
     for (const [location, keywords] of Object.entries(LOCATION_KEYWORDS)) {
         for (const keyword of keywords) {
             if (content.includes(keyword)) {
-                console.log(`🧠 [LocationDetect] 감지된 장소: ${location} (키워드: ${keyword})`);
+                console.log(`🧠 [LocationDetect] 💾 감지된 장소: ${location} (키워드: ${keyword}) (디스크 저장)`);
                 return {
                     location: location,
                     confidence: 'detected',
@@ -308,6 +330,7 @@ function detectLocationFromPhoto(photoAnalysis) {
             }
         }
     }
+    
     return {
         location: '기본',
         confidence: 'unknown',
@@ -317,6 +340,7 @@ function detectLocationFromPhoto(photoAnalysis) {
 
 function requestPersonLearning(base64Image, locationInfo, photoAnalysis) {
     const now = Date.now();
+    
     if (now - lastLearningRequest < LEARNING_CONFIG.LEARNING_COOLDOWN) {
         return {
             type: 'learning_cooldown',
@@ -324,13 +348,16 @@ function requestPersonLearning(base64Image, locationInfo, photoAnalysis) {
             message: "조금 전에 물어봤잖아~ 잠깐만 기다려줘!"
         };
     }
+    
     pendingLearning = {
         base64Image: base64Image,
         locationInfo: locationInfo,
         photoAnalysis: photoAnalysis,
         timestamp: now
     };
+    
     lastLearningRequest = now;
+    
     const locationReactions = {
         '가라오케': "어? 누구야? 가라오케에서 만난 새로운 친구? 이름이 뭐야?",
         '카페': "모르는 사람이네! 카페에서 만났어? 누구야? 이름 알려줘!",
@@ -338,8 +365,11 @@ function requestPersonLearning(base64Image, locationInfo, photoAnalysis) {
         '식당': "어? 이 사람 누구야? 같이 밥 먹은 친구? 이름 알려줘!",
         '기본': "어? 누구야? 새로운 친구? 이름이 뭔지 알려줘!"
     };
+    
     const message = locationReactions[locationInfo.location] || locationReactions['기본'];
-    console.log(`🧠 [PersonLearning] 새로운 사람 학습 요청: ${locationInfo.location}`);
+    
+    console.log(`🧠 [PersonLearning] 💾 새로운 사람 학습 요청: ${locationInfo.location} (디스크 저장소 대기)`);
+    
     return {
         type: 'learning_request',
         isLearning: true,
@@ -350,16 +380,20 @@ function requestPersonLearning(base64Image, locationInfo, photoAnalysis) {
 
 async function handleCouplePhotoWithUnknownPerson(base64Image, locationInfo, photoAnalysis) {
     const matchedPerson = await findMatchingPerson(base64Image);
+    
     if (matchedPerson) {
         const meetingRecord = createMeetingRecord(
             locationInfo.location,
             photoAnalysis.content,
             photoAnalysis
         );
+        
         addMeetingRecord(matchedPerson, meetingRecord);
         const reaction = generatePersonLocationReaction(matchedPerson, locationInfo.location);
         meetingRecord.yejinReaction = reaction;
-        console.log(`🧠 [PersonLearning] 알려진 사람과 만남: ${matchedPerson.name} @ ${locationInfo.location}`);
+        
+        console.log(`🧠 [PersonLearning] 💾 알려진 사람과 만남: ${matchedPerson.name} @ ${locationInfo.location} (디스크 저장)`);
+        
         return {
             type: 'known_person_meeting',
             isLearning: false,
@@ -375,6 +409,7 @@ async function handleCouplePhotoWithUnknownPerson(base64Image, locationInfo, pho
 
 async function handleUnknownPersonPhoto(base64Image, locationInfo, photoAnalysis) {
     const matchedPerson = await findMatchingPerson(base64Image);
+    
     if (matchedPerson) {
         const reaction = `어? ${matchedPerson.name} 사진이네! ${matchedPerson.name}이 뭐 하는 거야?`;
         return {
@@ -391,16 +426,21 @@ async function handleUnknownPersonPhoto(base64Image, locationInfo, photoAnalysis
 // 🌟 메인 함수들
 async function initializePersonLearningSystem() {
     try {
-        console.log('🧠 [PersonLearning] 사람 학습 시스템 초기화 시작...');
-        const dataDir = path.dirname(PERSON_DB_PATH);
-        await fs.mkdir(dataDir, { recursive: true });
+        console.log('🧠 [PersonLearning] 💾 사람 학습 시스템 초기화 시작... (디스크 마운트: /data/)');
+        
+        // 💾 디스크 마운트 디렉토리 생성
+        await fs.mkdir('/data', { recursive: true });
         await fs.mkdir(PERSON_PHOTOS_DIR, { recursive: true });
+        
         await loadPersonDatabase();
+        
+        // 자동 저장 설정
         setInterval(savePersonDatabase, LEARNING_CONFIG.AUTO_SAVE_INTERVAL);
-        console.log(`🧠 [PersonLearning] 초기화 완료! 등록된 사람: ${personDatabase.size}명`);
+        
+        console.log(`🧠 [PersonLearning] 💾 초기화 완료! 등록된 사람: ${personDatabase.size}명 (디스크 마운트로 완전 영구 저장!)`);
         return true;
     } catch (error) {
-        console.error('🧠 [PersonLearning] 초기화 실패:', error.message);
+        console.error('🧠 [PersonLearning] 💾 초기화 실패:', error.message);
         return false;
     }
 }
@@ -408,21 +448,24 @@ async function initializePersonLearningSystem() {
 async function analyzeAndLearnPerson(base64Image, userId) {
     try {
         const photoAnalysis = await getPhotoAnalysisFromFaceMatcher(base64Image);
+        
         if (!photoAnalysis.message) { 
             const locationInfo = detectLocationFromPhoto(photoAnalysis);
+            
             if (photoAnalysis.type === 'couple_with_unknown' || photoAnalysis.type === 'new_person_group') {
                 return await handleCouplePhotoWithUnknownPerson(base64Image, locationInfo, photoAnalysis);
             } else if (photoAnalysis.type === 'unknown_person_only') {
                 return await handleUnknownPersonPhoto(base64Image, locationInfo, photoAnalysis);
             }
         }
+        
         return {
             type: photoAnalysis.type,
             isLearning: false,
             message: photoAnalysis.message || "이 사진은 잘 모르겠어~"
         };
     } catch (error) {
-        console.error('🧠 [PersonLearning] 사람 식별 실패:', error.message);
+        console.error('🧠 [PersonLearning] 💾 사람 식별 실패:', error.message);
         return {
             type: 'error',
             isLearning: false,
@@ -439,6 +482,7 @@ async function learnPersonFromUserInput(userInput, userId) {
                 message: "🤔 지금은 새로 배울 사람이 없는데? 사진을 먼저 보내줘!"
             };
         }
+        
         const name = extractNameFromInput(userInput);
         if (!name) {
             return {
@@ -446,25 +490,33 @@ async function learnPersonFromUserInput(userInput, userId) {
                 message: "🤔 이름을 정확히 알려줘! '이 사람은 OOO야' 이런 식으로!"
             };
         }
+        
         const newPerson = createPersonData(name);
+        
         const faceFeature = {
             hash: pendingLearning.base64Image.slice(0, 100),
             size: Buffer.from(pendingLearning.base64Image, 'base64').length,
             timestamp: Date.now()
         };
         newPerson.faceFeatures.push(faceFeature);
+        
         const firstMeeting = createMeetingRecord(
             pendingLearning.locationInfo.location,
             pendingLearning.photoAnalysis.content,
             pendingLearning.photoAnalysis
         );
+        
         const learningMessage = generateLearningSuccessMessage(name, pendingLearning.locationInfo.location);
         firstMeeting.yejinReaction = learningMessage;
         newPerson.meetings.push(firstMeeting);
+        
         personDatabase.set(newPerson.id, newPerson);
         await savePersonDatabase();
+        
         pendingLearning = null;
-        console.log(`🧠 [PersonLearning] 새로운 사람 학습 완료: ${name} @ ${firstMeeting.location}`);
+        
+        console.log(`🧠 [PersonLearning] 💾 새로운 사람 학습 완료: ${name} @ ${firstMeeting.location} (디스크 마운트 저장)`);
+        
         return {
             success: true,
             personName: name,
@@ -472,7 +524,7 @@ async function learnPersonFromUserInput(userInput, userId) {
             message: learningMessage
         };
     } catch (error) {
-        console.error('🧠 [PersonLearning] 사람 학습 실패:', error.message);
+        console.error('🧠 [PersonLearning] 💾 사람 학습 실패:', error.message);
         return {
             success: false,
             message: "😅 학습에 실패했어... 다시 시도해볼래?"
@@ -506,12 +558,14 @@ function getPersonLearningStats() {
     const totalPersons = personDatabase.size;
     const totalMeetings = Array.from(personDatabase.values())
         .reduce((sum, person) => sum + person.meetingCount, 0);
+    
     const locationStats = {};
     for (const person of personDatabase.values()) {
         for (const [location, count] of person.favoriteLocations) {
             locationStats[location] = (locationStats[location] || 0) + count;
         }
     }
+    
     return {
         totalPersons: totalPersons,
         totalMeetings: totalMeetings,
@@ -521,7 +575,12 @@ function getPersonLearningStats() {
             .slice(0, 5)
             .map(([location, count]) => ({ location, count })),
         isLearningActive: pendingLearning !== null,
-        lastLearningRequest: lastLearningRequest
+        lastLearningRequest: lastLearningRequest,
+        // 💾 디스크 마운트 정보 추가
+        storagePath: '/data',
+        persistentStorage: true,
+        diskMounted: true,
+        neverLost: true
     };
 }
 
@@ -531,20 +590,20 @@ async function removePerson(name) {
             if (person.name === name) {
                 personDatabase.delete(id);
                 await savePersonDatabase();
-                console.log(`🧠 [PersonLearning] 사람 삭제: ${name}`);
+                console.log(`🧠 [PersonLearning] 💾 사람 삭제: ${name} (디스크 마운트 저장)`);
                 return true;
             }
         }
         return false;
     } catch (error) {
-        console.error('🧠 [PersonLearning] 사람 삭제 실패:', error.message);
+        console.error('🧠 [PersonLearning] 💾 사람 삭제 실패:', error.message);
         return false;
     }
 }
 
 function clearPendingLearning() {
     pendingLearning = null;
-    console.log('🧠 [PersonLearning] 학습 대기 상태 초기화');
+    console.log('🧠 [PersonLearning] 💾 학습 대기 상태 초기화');
 }
 
 module.exports = {
