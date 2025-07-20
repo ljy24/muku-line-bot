@@ -8,6 +8,8 @@
 // 📖 diarySystem 초기화 문제 해결
 // 💥 갈등 관리 시스템 완전 동기화 및 모니터링
 // 🔧 문법 에러 완전 해결
+// ⭐️ 갈등 시스템 함수명 수정 완료:
+//    - ❌ getConflictStatus() → ✅ getMukuConflictSystemStatus()
 // ============================================================================
 
 const { colors } = require('./muku-moduleLoader');
@@ -156,8 +158,8 @@ function synchronizeEmotionalSystems(modules) {
                 console.log(`${colors.conflict}🔗 [갈등 동기화] 감정 시스템들과 동기화 완료${colors.reset}`);
             }
             
-            // 갈등 시스템 실시간 상태 확인
-            if (modules.unifiedConflictManager.getConflictStatus) {
+            // ✅ 갈등 시스템 실시간 상태 확인 - 올바른 함수명 사용
+            if (modules.unifiedConflictManager.getMukuConflictSystemStatus) {
                 const conflictStatus = modules.unifiedConflictManager.getMukuConflictSystemStatus();
                 console.log(`${colors.conflict}📊 [갈등 동기화] 현재 갈등 상태: 레벨 ${conflictStatus.currentLevel}, 활성: ${conflictStatus.isActive}${colors.reset}`);
             }
@@ -354,7 +356,8 @@ function generateSystemStatusReport(modules, initResults) {
         console.log(`${colors.conflict}💥 [갈등 특별확인] unifiedConflictManager 모듈 상태: 정상 로드됨 ✅${colors.reset}`);
         
         try {
-            if (modules.unifiedConflictManager.getConflictStatus) {
+            // ✅ 갈등 시스템 상태 확인 - 올바른 함수명 사용
+            if (modules.unifiedConflictManager.getMukuConflictSystemStatus) {
                 const conflictStatus = modules.unifiedConflictManager.getMukuConflictSystemStatus();
                 console.log(`${colors.conflict}📊 [갈등 특별확인] 갈등 상태:`, conflictStatus);
                 console.log(`${colors.conflict}📊 [갈등 특별확인] 현재 레벨: ${conflictStatus.currentLevel}, 활성: ${conflictStatus.isActive}${colors.reset}`);
