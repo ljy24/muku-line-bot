@@ -1,10 +1,12 @@
 // ============================================================================
-// muku-systemInitializer.js - 메인 초기화 컨트롤러 (최종 통합) - 수정됨
+// muku-systemInitializer.js v2.2 - 메인 초기화 컨트롤러 (갈등 시스템 통합) - 수정됨
 // ✅ 분리된 초기화 시스템들을 통합 관리
+// ✅ unifiedConflictManager 갈등 시스템 완전 통합
 // 🎛️ 핵심 시스템 + 고급 시스템을 순차적으로 초기화
 // 📊 전체 시스템 상태 모니터링 및 리포트 제공
 // 🚀 깔끔하고 관리하기 쉬운 구조로 재설계
 // 📖 diarySystem 로딩 문제 완전 해결
+// 💥 갈등 관리 시스템 완전 초기화 및 연동
 // ============================================================================
 
 const path = require('path');
@@ -96,7 +98,29 @@ async function initializeCoreMemorySystems(modules, client) {
         }
     }
 
-    // ⭐️ 5. 새벽 대화 시스템 초기화 ⭐️
+    // ⭐️⭐️⭐️ 5. 갈등 관리 시스템 초기화 (신규 추가!) ⭐️⭐️⭐️
+    if (modules.unifiedConflictManager && modules.unifiedConflictManager.initializeConflictSystem) {
+        try {
+            console.log(`${colors.conflict}💥 [갈등 초기화] unifiedConflictManager 초기화 시작...${colors.reset}`);
+            await modules.unifiedConflictManager.initializeConflictSystem();
+            console.log(`${colors.conflict}    ✅ 갈등 관리 시스템: 4단계 갈등 레벨 + 자동 해소 시스템 초기화 완료${colors.reset}`);
+            console.log(`${colors.conflict}    💥 갈등 트리거: 감정/상황 기반 자동 갈등 발생 + 해소 메커니즘 활성화${colors.reset}`);
+            
+            // 갈등 시스템 상태 확인
+            if (modules.unifiedConflictManager.getConflictStatus) {
+                const conflictStatus = modules.unifiedConflictManager.getConflictStatus();
+                console.log(`${colors.conflict}    📊 갈등 현황: 레벨 ${conflictStatus.currentLevel}, 활성: ${conflictStatus.isActive}${colors.reset}`);
+            }
+            
+            successCount++;
+        } catch (error) {
+            console.log(`${colors.error}    ❌ 갈등 관리 시스템 초기화 실패: ${error.message}${colors.reset}`);
+        }
+    } else {
+        console.log(`${colors.error}    ❌ unifiedConflictManager 모듈이 로드되지 않음!${colors.reset}`);
+    }
+
+    // ⭐️ 6. 새벽 대화 시스템 초기화 ⭐️
     if (modules.nightWakeResponse && modules.nightWakeResponse.initialize) {
         try {
             modules.nightWakeResponse.initialize();
@@ -107,7 +131,7 @@ async function initializeCoreMemorySystems(modules, client) {
         }
     }
 
-    // ⭐️ 6. 생일 감지 시스템 초기화 ⭐️
+    // ⭐️ 7. 생일 감지 시스템 초기화 ⭐️
     if (modules.birthdayDetector && modules.birthdayDetector.initialize) {
         try {
             modules.birthdayDetector.initialize();
@@ -118,8 +142,8 @@ async function initializeCoreMemorySystems(modules, client) {
         }
     }
 
-    console.log(`${colors.system}🎉 [핵심기억] 초기화 완료! ${successCount}/6개 시스템 활성화${colors.reset}`);
-    return successCount >= 3; // 절반 이상 성공하면 true
+    console.log(`${colors.system}🎉 [핵심기억] 초기화 완료! ${successCount}/7개 시스템 활성화 (갈등 시스템 포함)${colors.reset}`);
+    return successCount >= 4; // 절반 이상 성공하면 true (갈등 시스템 추가로 7개 중 4개)
 }
 
 // ================== 🚬 담타 스케줄러 시스템 초기화 ==================
@@ -201,9 +225,9 @@ async function initializeSpontaneousYejin(modules, client) {
     }
 }
 
-// ================== 📖👥 신규 시스템들 초기화 (사람 학습 + 일기장) ==================
+// ================== 📖👥💥 신규 시스템들 초기화 (사람 학습 + 일기장 + 갈등) ==================
 async function initializeNewSystems(modules) {
-    console.log(`${colors.person}👥📖 [신규시스템] 사람 학습 + 일기장 시스템 초기화...${colors.reset}`);
+    console.log(`${colors.person}👥📖💥 [신규시스템] 사람 학습 + 일기장 + 갈등 시스템 초기화...${colors.reset}`);
     
     let successCount = 0;
 
@@ -264,7 +288,42 @@ async function initializeNewSystems(modules) {
         console.log(`${colors.error}    🔧 modules.diarySystem이 null입니다!${colors.reset}`);
     }
 
-    console.log(`${colors.person}🎉 [신규시스템] 초기화 완료! ${successCount}/2개 시스템 활성화${colors.reset}`);
+    // 💥⭐️⭐️⭐️ 갈등 시스템 추가 초기화 (특별 처리!) ⭐️⭐️⭐️
+    if (modules.unifiedConflictManager) {
+        try {
+            console.log(`${colors.conflict}💥 [갈등 추가초기화] unifiedConflictManager 추가 설정...${colors.reset}`);
+            
+            // 갈등 시스템 고급 설정
+            if (modules.unifiedConflictManager.configureConflictTriggers) {
+                await modules.unifiedConflictManager.configureConflictTriggers();
+                console.log(`${colors.conflict}⚙️ [갈등 설정] 갈등 트리거 설정 완료${colors.reset}`);
+            }
+            
+            // 갈등 시스템과 다른 감정 시스템 연동
+            if (modules.unifiedConflictManager.linkWithEmotionalSystems) {
+                const emotionalSystems = {
+                    sulkyManager: modules.sulkyManager,
+                    emotionalContextManager: modules.emotionalContextManager,
+                    moodManager: modules.moodManager
+                };
+                await modules.unifiedConflictManager.linkWithEmotionalSystems(emotionalSystems);
+                console.log(`${colors.conflict}🔗 [갈등 연동] 감정 시스템들과 연동 완료${colors.reset}`);
+            }
+            
+            console.log(`${colors.conflict}    ✅ 갈등 관리 시스템: 고급 설정 및 시스템 연동 완료${colors.reset}`);
+            console.log(`${colors.conflict}    💥 자동 갈등 발생 + 단계별 해소 + 감정 시스템 연동 준비 완료${colors.reset}`);
+            successCount++;
+            
+        } catch (error) {
+            console.log(`${colors.error}    ❌ 갈등 시스템 추가 초기화 실패: ${error.message}${colors.reset}`);
+            console.log(`${colors.error}    🔧 갈등 에러 상세:`, error.stack);
+        }
+    } else {
+        console.log(`${colors.error}    ❌ 갈등 시스템 모듈이 로드되지 않음! (갈등 기능 비활성화)${colors.reset}`);
+        console.log(`${colors.error}    🔧 modules.unifiedConflictManager가 null입니다!${colors.reset}`);
+    }
+
+    console.log(`${colors.person}🎉 [신규시스템] 초기화 완료! ${successCount}/3개 시스템 활성화 (갈등 시스템 포함)${colors.reset}`);
     return successCount;
 }
 
@@ -330,16 +389,24 @@ async function testWeatherSystem(modules) {
 // ================== 🚀 통합 무쿠 시스템 초기화 함수 ==================
 async function initializeMukuSystems(client, getCurrentModelSetting) {
     try {
-        console.log(`${colors.system}🚀 무쿠 시스템 초기화를 시작합니다... (분리된 아키텍처 v2.1 - diarySystem 수정)${colors.reset}`);
+        console.log(`${colors.system}🚀 무쿠 시스템 초기화를 시작합니다... (분리된 아키텍처 v2.2 - 갈등 시스템 추가)${colors.reset}`);
         console.log(`${colors.system}📋 [구조] 모듈로더 → 핵심초기화 → 고급초기화 → 동기화 → 모니터링${colors.reset}`);
+        console.log(`${colors.conflict}💥 갈등: ConflictManager 갈등 시스템으로 초기화합니다! (신규 추가)${colors.reset}`);
         console.log(`${colors.diary}📖 일기장: DiarySystem 추가 버전으로 초기화합니다! (수정됨)${colors.reset}`);
         console.log(`${colors.person}👥 사람 학습: PersonLearningSystem 추가 버전으로 초기화합니다!${colors.reset}`);
         console.log(`${colors.ai}🔥 3시간차: AI 응답 고도화 버전으로 초기화합니다!${colors.reset}`);
         console.log(`${colors.intelligent}⚙️ 4시간차: 통합 & 최적화 버전으로 초기화합니다!${colors.reset}`);
 
         // =================== 1단계: 모듈 로딩 (수정된 로더 사용) ===================
-        console.log(`${colors.system}📦 [1/6] 모든 모듈 로드 (분리된 로더 사용 - diarySystem 수정)...${colors.reset}`);
+        console.log(`${colors.system}📦 [1/6] 모든 모듈 로드 (분리된 로더 사용 - 갈등 시스템 추가)...${colors.reset}`);
         const modules = await loadAllModules();
+        
+        // 갈등 시스템 로딩 상태 특별 확인
+        if (modules.unifiedConflictManager) {
+            console.log(`${colors.conflict}🎉 [1단계 확인] unifiedConflictManager 모듈 로드 성공! ✅${colors.reset}`);
+        } else {
+            console.log(`${colors.error}❌ [1단계 확인] unifiedConflictManager 모듈 로드 실패! ❌${colors.reset}`);
+        }
         
         // diarySystem 로딩 상태 특별 확인
         if (modules.diarySystem) {
@@ -349,7 +416,7 @@ async function initializeMukuSystems(client, getCurrentModelSetting) {
         }
 
         // =================== 2단계: 핵심 시스템 초기화 ===================
-        console.log(`${colors.system}🧠 [2/6] 핵심 시스템 초기화 (기억 + 스케줄러 + 예진이)...${colors.reset}`);
+        console.log(`${colors.system}🧠 [2/6] 핵심 시스템 초기화 (기억 + 스케줄러 + 예진이 + 갈등)...${colors.reset}`);
         
         const initResults = {
             coreMemory: false,
@@ -361,10 +428,11 @@ async function initializeMukuSystems(client, getCurrentModelSetting) {
             aiSystems: 0,
             integratedSystems: 0,
             sync: 0,
-            monitoring: false
+            monitoring: false,
+            conflictSystem: false // 갈등 시스템 상태 추가
         };
 
-        // 2-1. 핵심 기억 시스템
+        // 2-1. 핵심 기억 시스템 (갈등 시스템 포함)
         initResults.coreMemory = await initializeCoreMemorySystems(modules, client);
         
         // 2-2. 담타 스케줄러 (client 전달 포함)
@@ -373,8 +441,20 @@ async function initializeMukuSystems(client, getCurrentModelSetting) {
         // 2-3. 예진이 능동 메시지
         initResults.spontaneousYejin = await initializeSpontaneousYejin(modules, client);
         
-        // 2-4. 신규 시스템들 (사람 학습 + 일기장) - 수정됨
+        // 2-4. 신규 시스템들 (사람 학습 + 일기장 + 갈등) - 수정됨
         initResults.newSystems = await initializeNewSystems(modules);
+        
+        // 갈등 시스템 개별 상태 확인
+        if (modules.unifiedConflictManager && modules.unifiedConflictManager.getConflictStatus) {
+            try {
+                const conflictStatus = modules.unifiedConflictManager.getConflictStatus();
+                initResults.conflictSystem = conflictStatus.initialized || false;
+                console.log(`${colors.conflict}📊 [갈등 확인] 갈등 시스템 활성화: ${initResults.conflictSystem ? '✅' : '❌'}${colors.reset}`);
+            } catch (error) {
+                initResults.conflictSystem = false;
+                console.log(`${colors.error}📊 [갈등 확인] 갈등 상태 확인 실패: ${error.message}${colors.reset}`);
+            }
+        }
 
         // =================== 3단계: 추가 시스템 활성화 ===================
         console.log(`${colors.system}📸 [3/6] 추가 시스템 활성화 (사진 + 날씨)...${colors.reset}`);
@@ -396,10 +476,10 @@ async function initializeMukuSystems(client, getCurrentModelSetting) {
         // =================== 6단계: 동기화 & 모니터링 (수정됨) ===================
         console.log(`${colors.system}🎭 [6/6] 시스템 동기화 & 모니터링 시작...${colors.reset}`);
         
-        // 6-1. 감정 및 상태 시스템 동기화 (수정됨 - diarySystem 포함)
+        // 6-1. 감정 및 상태 시스템 동기화 (수정됨 - 갈등 시스템 포함)
         initResults.sync = synchronizeEmotionalSystems(modules);
         
-        // 6-2. enhancedLogging v3.0 자동 상태 갱신 시작 (수정됨 - diarySystem 포함)
+        // 6-2. enhancedLogging v3.0 자동 상태 갱신 시작 (수정됨 - 갈등 시스템 포함)
         initResults.monitoring = startAutoStatusUpdates(modules);
 
         // =================== 최종 리포트 생성 ===================
@@ -422,6 +502,13 @@ async function initializeMukuSystems(client, getCurrentModelSetting) {
         
         if (isSuccess) {
             console.log(`${colors.system}🎉 무쿠 시스템 초기화 완료! (성공률: ${statusReport.successRate}%)${colors.reset}`);
+            
+            // 갈등 시스템 로딩 성공 확인
+            if (statusReport.conflictSystemLoaded) {
+                console.log(`${colors.conflict}💥 갈등 시스템 통합 완료! 이제 예진이가 진짜처럼 갈등하고 화해해요! 💕${colors.reset}`);
+            } else {
+                console.log(`${colors.error}💥 갈등 시스템 통합 실패! enhancedLogging에서 null로 표시될 예정 ❌${colors.reset}`);
+            }
             
             // diarySystem 로딩 성공 확인
             if (statusReport.diarySystemLoaded) {
