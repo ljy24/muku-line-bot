@@ -1,8 +1,8 @@
 // ============================================================================
-// faceMatcher.js - v5.2 (영어 거부 메시지 대응 + 로컬 백업 강화)
+// faceMatcher.js - v5.3 (OpenAI 응답 파싱 로직 완전 수정)
 // 🔍 얼굴 인식 + 전체 사진 내용 분석 + 예진이 스타일 반응 생성
 // 🛡️ OpenAI Vision 실패 시, 로컬 얼굴 인식으로 백업하여 더 똑똑하게 반응
-// ✅ 영어/한국어 거부 메시지 모두 감지하여 완벽한 백업 시스템 구현
+// ✅ OpenAI 실제 응답 형태에 맞춘 파싱 로직 완전 개선
 // ============================================================================
 
 const OpenAI = require('openai');
@@ -36,7 +36,6 @@ function initializeOpenAI() {
 
 /**
  * ✅ [핵심 수정] OpenAI 분석 거부 메시지 완벽 감지
- * 한국어와 영어 거부 패턴 모두 체크
  */
 function isOpenAIRefusal(responseText) {
     const refusalPatterns = [
@@ -47,7 +46,7 @@ function isOpenAIRefusal(responseText) {
         "도와드릴 수 없습니다",
         "제공할 수 없습니다",
         
-        // 영어 패턴 ⭐️ 추가
+        // 영어 패턴
         "I'm sorry",
         "I can't help",
         "I cannot help",
@@ -66,9 +65,108 @@ function isOpenAIRefusal(responseText) {
 }
 
 /**
+ * ⭐️⭐️⭐️ [핵심 수정] OpenAI 응답 파싱 로직 완전 개선 ⭐️⭐️⭐️
+ */
+function parseOpenAIResponse(result) {
+    console.log('🔍 [파싱] 원본 응답:', result);
+    
+    let classification = '기타';
+    let content = '';
+    let reaction = '';
+    
+    try {
+        // ✅ [수정] 실제 OpenAI 응답 형태에 맞춘 파싱
+        const lines = result.split('\n');
+        let currentSection = '';
+        
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim();
+            
+            // 섹션 구분자 찾기
+            if (line.includes('1단계: 인물 분류') || line.includes('인물 분류')) {
+                currentSection = 'classification';
+                continue;
+            } else if (line.includes('2단계: 사진 내용') || line.includes('사진 내용')) {
+                currentSection = 'content';
+                continue;
+            } else if (line.includes('3단계: 예진이 스타일') || line.includes('예진이 스타일')) {
+                currentSection = 'reaction';
+                continue;
+            }
+            
+            // 실제 데이터 추출
+            if (currentSection === 'classification') {
+                // "- \"아저씨\" : 중년..." 형태에서 분류 추출
+                if (line.includes('"아저씨"') || line.includes("'아저씨'")) {
+                    classification = '아저씨';
+                } else if (line.includes('"예진이"') || line.includes("'예진이'")) {
+                    classification = '예진이';
+                } else if (line.includes('"커플사진"') || line.includes("'커플사진'")) {
+                    classification = '커플사진';
+                } else if (line.includes('"기타인물"') || line.includes("'기타인물'")) {
+                    classification = '기타인물';
+                } else if (line.includes('"무인물"') || line.includes("'무인물'")) {
+                    classification = '무인물';
+                }
+            } else if (currentSection === 'content') {
+                // "- 자동차 안이며..." 형태에서 내용 추출
+                if (line.startsWith('-') && line.length > 3) {
+                    content += line.substring(1).trim() + ' ';
+                }
+            } else if (currentSection === 'reaction') {
+                // "- 아조씨~ 운전 조심해서..." 형태에서 반응 추출
+                if (line.startsWith('-') && line.length > 3) {
+                    reaction += line.substring(1).trim() + ' ';
+                }
+            }
+        }
+        
+        // 추가 정리
+        content = content.trim();
+        reaction = reaction.trim();
+        
+        // ✅ [추가] 백업 파싱 - 기존 방식도 시도
+        if (!classification || classification === '기타') {
+            lines.forEach(line => {
+                if (line.includes('분류:')) {
+                    const extracted = line.split('분류:')[1]?.trim();
+                    if (extracted) {
+                        classification = extracted.replace(/['"]/g, '');
+                    }
+                } else if (line.includes('내용:')) {
+                    const extracted = line.split('내용:')[1]?.trim();
+                    if (extracted) {
+                        content = extracted;
+                    }
+                } else if (line.includes('반응:')) {
+                    const extracted = line.split('반응:')[1]?.trim();
+                    if (extracted) {
+                        reaction = extracted;
+                    }
+                }
+            });
+        }
+        
+        console.log(`🔍 [파싱] 결과: 분류="${classification}", 내용="${content.substring(0, 50)}...", 반응="${reaction.substring(0, 50)}..."`);
+        
+        return {
+            classification: classification,
+            content: content,
+            reaction: reaction
+        };
+        
+    } catch (error) {
+        console.log('🔍 [파싱] 파싱 실패:', error.message);
+        return {
+            classification: '기타',
+            content: '',
+            reaction: ''
+        };
+    }
+}
+
+/**
  * ⭐️⭐️⭐️ 핵심 기능: 전체 사진 분석 시스템 ⭐️⭐️⭐️
- * @param {string} base64Image - Base64 인코딩된 이미지 데이터
- * @returns {Object} 분석 결과 객체 {classification, content, reaction, fullAnalysis}
  */
 async function analyzePhotoWithOpenAI(base64Image) {
     if (!isOpenAIAvailable || !openai) {
@@ -125,34 +223,21 @@ async function analyzePhotoWithOpenAI(base64Image) {
 
         const result = response.choices[0].message.content.trim();
         
-        // ✅ [핵심 수정] 영어/한국어 거부 메시지 모두 감지
+        // 분석 거부 감지
         if (isOpenAIRefusal(result)) {
             console.log('🚨 [사진분석] OpenAI Vision이 안전 정책으로 분석을 거부했습니다:', result);
-            return null; // 분석 실패로 처리하여 백업 시스템 작동
+            return null;
         }
 
         console.log('🔍 [사진분석] OpenAI Vision 전체 분석 결과:', result);
         
-        // 결과 파싱
-        const lines = result.split('\n');
-        let classification = '기타';
-        let content = '';
-        let reaction = '';
-        
-        lines.forEach(line => {
-            if (line.includes('분류:')) {
-                classification = line.split('분류:')[1]?.trim() || '기타';
-            } else if (line.includes('내용:')) {
-                content = line.split('내용:')[1]?.trim() || '';
-            } else if (line.includes('반응:')) {
-                reaction = line.split('반응:')[1]?.trim() || '';
-            }
-        });
+        // ✅ [핵심 수정] 새로운 파싱 로직 사용
+        const parsed = parseOpenAIResponse(result);
         
         return {
-            classification: classification,
-            content: content,
-            reaction: reaction,
+            classification: parsed.classification,
+            content: parsed.content,
+            reaction: parsed.reaction,
             fullAnalysis: result
         };
         
@@ -165,8 +250,6 @@ async function analyzePhotoWithOpenAI(base64Image) {
 // ================== [강화] 로컬 백업 분석 함수 ==================
 /**
  * 🛡️ 로컬 face-api.js를 이용한 백업 얼굴 인식 (개선된 추측 로직)
- * @param {string} base64Image - Base64 인코딩된 이미지
- * @returns {string} '아저씨', '예진이', '커플사진', 또는 'unknown'
  */
 async function runLocalFaceRecognition(base64Image) {
     console.log('🛡️ [백업분석] 로컬 face-api.js로 분석 시도...');
@@ -178,14 +261,10 @@ async function runLocalFaceRecognition(base64Image) {
         
         console.log(`🛡️ [백업분석] 이미지 분석: ${Math.round(sizeKB)}KB`);
         
-        // ✅ [개선] 더 정교한 추측 로직
         if (sizeKB > 300) {
-            // 335KB 같은 큰 이미지는 보통 고해상도 인물 사진
             console.log('🛡️ [백업분석] 고해상도 이미지 -> 실제 인물 사진 가능성 높음');
-            
-            // 파일 헤더 분석으로 추가 추측
             const header = base64Image.substring(0, 50);
-            if (header.includes('FFD8')) { // JPEG 헤더
+            if (header.includes('FFD8')) {
                 console.log('🛡️ [백업분석] JPEG 포맷 + 큰 용량 -> 아저씨 사진으로 추정');
                 return '아저씨';
             }
@@ -275,13 +354,11 @@ function generateBasicPhotoReaction(imageSize) {
 
 /**
  * 🌟🌟🌟 메인 함수: 통합 사진 분석 시스템 🌟🌟🌟
- * ✅ [핵심 수정] OpenAI 거부 시 로컬 백업 확실히 작동
- * @param {string} base64Image - Base64 인코딩된 이미지 데이터
- * @returns {Object} 통합 분석 결과 객체
+ * ✅ [핵심 수정] OpenAI 파싱 완벽 처리
  */
 async function detectFaceMatch(base64Image) {
     try {
-        console.log('🔍 [통합분석 v5.2] 얼굴 + 전체 사진 분석 실행...');
+        console.log('🔍 [통합분석 v5.3] 얼굴 + 전체 사진 분석 실행...');
         const buffer = Buffer.from(base64Image, 'base64');
         const sizeKB = buffer.length / 1024;
         console.log(`🔍 [통합분석] 이미지 크기: ${Math.round(sizeKB)}KB`);
@@ -295,8 +372,9 @@ async function detectFaceMatch(base64Image) {
                 console.log(`   - 내용: ${fullAnalysis.content}`);
                 console.log(`   - 반응: ${fullAnalysis.reaction}`);
                 
-                // AI가 생성한 반응이 있으면 최우선으로 사용
+                // ✅ [핵심 수정] AI가 생성한 반응이 있으면 최우선으로 사용
                 if (fullAnalysis.reaction && fullAnalysis.reaction.length > 0) {
+                    console.log('✨ [응답선택] OpenAI 생성 반응 사용');
                     return {
                         type: fullAnalysis.classification,
                         confidence: 'high',
@@ -308,14 +386,37 @@ async function detectFaceMatch(base64Image) {
                 
                 // 반응이 없으면 분류별 기본 반응
                 if (fullAnalysis.classification === '커플사진') {
-                    return { type: '커플사진', confidence: 'high', message: generateCouplePhotoResponse(), content: fullAnalysis.content, analysisType: 'full' };
-                } else { // 예진이, 아저씨, 기타인물, 무인물 등
-                    return { type: fullAnalysis.classification, confidence: 'high', message: null, content: fullAnalysis.content, analysisType: 'full' };
+                    console.log('✨ [응답선택] 커플사진 응답 사용');
+                    return { 
+                        type: '커플사진', 
+                        confidence: 'high', 
+                        message: generateCouplePhotoResponse(), 
+                        content: fullAnalysis.content, 
+                        analysisType: 'full' 
+                    };
+                } else if (fullAnalysis.classification === '아저씨') {
+                    console.log('✨ [응답선택] 아저씨 응답 사용');
+                    return { 
+                        type: '아저씨', 
+                        confidence: 'high', 
+                        message: generateAjeossiPhotoResponse(), 
+                        content: fullAnalysis.content, 
+                        analysisType: 'full' 
+                    };
+                } else { // 예진이, 기타인물, 무인물 등
+                    console.log('✨ [응답선택] 기본 분류 응답 사용');
+                    return { 
+                        type: fullAnalysis.classification, 
+                        confidence: 'high', 
+                        message: null, 
+                        content: fullAnalysis.content, 
+                        analysisType: 'full' 
+                    };
                 }
             }
         }
         
-        // ✅ [핵심 수정] 2. OpenAI 실패 시, 로컬 얼굴 인식 백업 (확실히 실행)
+        // 2. OpenAI 실패 시, 로컬 얼굴 인식 백업
         console.log('🛡️ [백업분석] OpenAI 분석 실패. 로컬 백업 분석으로 전환합니다.');
         const localResult = await runLocalFaceRecognition(base64Image);
         console.log(`🛡️ [백업분석] 로컬 분석 결과: ${localResult}`);
@@ -343,7 +444,7 @@ async function detectFaceMatch(base64Image) {
             };
         }
 
-        // 3. 로컬 분석도 불확실하면 거부 응답 (OpenAI가 거부했으니 실제 인물일 가능성 높음)
+        // 3. 로컬 분석도 불확실하면 거부 응답
         console.log('🚨 [최종폴백] OpenAI 거부 + 로컬 불확실 -> 실제 인물 추정 응답');
         return {
             type: '분석거부인물',
@@ -380,7 +481,7 @@ async function detectFaceWithOpenAI(base64Image) {
  */
 async function initModels() {
     try {
-        console.log('🔍 [얼굴인식 v5.2] 영어 거부 메시지 대응 + 로컬 백업 강화 시스템 준비 완료');
+        console.log('🔍 [얼굴인식 v5.3] OpenAI 응답 파싱 완전 개선 시스템 준비 완료');
         
         const openaiInit = initializeOpenAI();
         
@@ -411,13 +512,14 @@ async function initModels() {
 function getFaceRecognitionStatus() {
     return {
         openaiAvailable: isOpenAIAvailable,
-        version: "5.2 (영어 거부 대응 + 로컬 백업 강화)",
+        version: "5.3 (OpenAI 응답 파싱 완전 개선)",
         features: [
             "개인 얼굴 인식 (예진이/아저씨)",
             "커플사진 인식 지원", 
             "전체 사진 내용 분석 ⭐️",
             "로컬 얼굴 인식 백업 🛡️",
             "영어/한국어 거부 메시지 감지 ✅",
+            "OpenAI 응답 파싱 완전 개선 ✅",
             "예진이 스타일 반응 생성 ⭐️",
             "상황별 맞춤 응답 ⭐️"
         ],
@@ -431,5 +533,6 @@ module.exports = {
     initModels,                  // 🔧 시스템 초기화
     analyzePhotoWithOpenAI,      // (내부용) 전체 사진 분석
     runLocalFaceRecognition,     // 🛡️ 로컬 백업 분석
+    parseOpenAIResponse,         // ✅ 새로운 파싱 함수
     getFaceRecognitionStatus     // 📊 시스템 상태 확인
 };
