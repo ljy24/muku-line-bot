@@ -1,10 +1,12 @@
 // ============================================================================
-// muku-advancedInitializer.js - 고급 시스템 초기화 (2/2) 문법 에러 수정
+// muku-advancedInitializer.js v2.3 - 고급 시스템 초기화 (갈등 시스템 통합) - 수정됨
 // ✅ AI 고도화 + 통합 최적화 + 동기화 + 모니터링 시스템 담당
+// ✅ unifiedConflictManager 갈등 시스템 완전 통합
 // 🔥 3시간차: AI 응답 고도화 시스템 초기화
 // ⚙️ 4시간차: 통합 & 최적화 시스템 초기화
 // ⏰ enhancedLogging v3.0 자동 상태 갱신 시작
 // 📖 diarySystem 초기화 문제 해결
+// 💥 갈등 관리 시스템 완전 동기화 및 모니터링
 // 🔧 문법 에러 완전 해결
 // ============================================================================
 
@@ -122,9 +124,9 @@ async function initializeIntegratedSystems(modules) {
     return successCount;
 }
 
-// ================== 🎭 감정 상태 시스템 동기화 ==================
+// ================== 🎭 감정 상태 시스템 동기화 (갈등 시스템 포함) ==================
 function synchronizeEmotionalSystems(modules) {
-    console.log(`${colors.system}🎭 [감정시스템] 동기화...${colors.reset}`);
+    console.log(`${colors.system}🎭 [감정시스템] 동기화 (갈등 시스템 포함)...${colors.reset}`);
     
     let syncCount = 0;
 
@@ -134,6 +136,42 @@ function synchronizeEmotionalSystems(modules) {
         syncCount++;
     } else {
         console.log(`${colors.system}    ⚠️ 감정 상태 시스템 없음 - 기본 모드${colors.reset}`);
+    }
+
+    // 💥⭐️⭐️⭐️ 갈등 관리 시스템 동기화 (신규 추가!) ⭐️⭐️⭐️
+    if (modules.unifiedConflictManager) {
+        try {
+            console.log(`${colors.conflict}💥 [갈등 동기화] unifiedConflictManager 동기화 시작...${colors.reset}`);
+            
+            // 갈등 시스템과 다른 감정 시스템들 동기화
+            if (modules.unifiedConflictManager.synchronizeWithEmotionalSystems) {
+                const emotionalSystems = {
+                    emotionalContextManager: modules.emotionalContextManager,
+                    sulkyManager: modules.sulkyManager,
+                    moodManager: modules.moodManager,
+                    spontaneousYejin: modules.spontaneousYejin
+                };
+                
+                modules.unifiedConflictManager.synchronizeWithEmotionalSystems(emotionalSystems);
+                console.log(`${colors.conflict}🔗 [갈등 동기화] 감정 시스템들과 동기화 완료${colors.reset}`);
+            }
+            
+            // 갈등 시스템 실시간 상태 확인
+            if (modules.unifiedConflictManager.getConflictStatus) {
+                const conflictStatus = modules.unifiedConflictManager.getConflictStatus();
+                console.log(`${colors.conflict}📊 [갈등 동기화] 현재 갈등 상태: 레벨 ${conflictStatus.currentLevel}, 활성: ${conflictStatus.isActive}${colors.reset}`);
+            }
+            
+            console.log(`${colors.conflict}    ✅ 갈등 관리 시스템 동기화 완료 (4단계 갈등 + 자동 해소)${colors.reset}`);
+            console.log(`${colors.conflict}    🔗 감정시스템 ↔ 갈등시스템 완벽 연동${colors.reset}`);
+            syncCount++;
+            
+        } catch (error) {
+            console.log(`${colors.error}    ❌ 갈등 관리 시스템 동기화 실패: ${error.message}${colors.reset}`);
+            console.log(`${colors.error}    🔧 갈등 동기화 에러 상세:`, error.stack);
+        }
+    } else {
+        console.log(`${colors.error}    ❌ 갈등 관리 시스템 모듈 없음 - 동기화 건너뛰기${colors.reset}`);
     }
 
     // 👥 사람 학습 시스템 동기화
@@ -196,14 +234,14 @@ function synchronizeEmotionalSystems(modules) {
         syncCount++;
     }
 
-    console.log(`${colors.system}🎯 [동기화 완료] ${syncCount}개 시스템 상호 연동 성공${colors.reset}`);
+    console.log(`${colors.system}🎯 [동기화 완료] ${syncCount}개 시스템 상호 연동 성공 (갈등 시스템 포함)${colors.reset}`);
     return syncCount;
 }
 
-// ================== ⭐️ enhancedLogging v3.0 자동 상태 갱신 시작 ==================
+// ================== ⭐️ enhancedLogging v3.0 자동 상태 갱신 시작 (갈등 시스템 포함) ==================
 function startAutoStatusUpdates(modules) {
     if (modules.enhancedLogging && modules.enhancedLogging.startAutoStatusUpdates) {
-        console.log(`${colors.pms}⏰⏰⏰ [자동갱신 중요!] enhancedLogging v3.0 1분마다 자동 상태 갱신 시작! ⏰⏰⏰${colors.reset}`);
+        console.log(`${colors.pms}⏰⏰⏰ [자동갱신 중요!] enhancedLogging v3.0 1분마다 자동 상태 갱신 시작! (갈등 시스템 포함) ⏰⏰⏰${colors.reset}`);
         
         // 모든 시스템 모듈을 enhancedLogging에 전달
         const systemModules = {
@@ -216,6 +254,8 @@ function startAutoStatusUpdates(modules) {
             weatherManager: modules.weatherManager,
             nightWakeResponse: modules.nightWakeResponse,
             birthdayDetector: modules.birthdayDetector,
+            // 💥⭐️⭐️⭐️ 갈등 시스템 (신규 추가!) ⭐️⭐️⭐️
+            unifiedConflictManager: modules.unifiedConflictManager,
             // 📖⭐️⭐️⭐️ 일기장 시스템 (확실히 전달!) ⭐️⭐️⭐️
             diarySystem: modules.diarySystem,
             // 👥 사람 학습 시스템 (신규!)
@@ -234,6 +274,14 @@ function startAutoStatusUpdates(modules) {
             }
         };
         
+        // 갈등 시스템 상태 특별 로깅
+        if (modules.unifiedConflictManager) {
+            console.log(`${colors.conflict}📋 [자동갱신] unifiedConflictManager 모듈이 정상적으로 전달됩니다! ✅${colors.reset}`);
+            console.log(`${colors.conflict}🔍 [자동갱신] unifiedConflictManager 함수들:`, Object.keys(modules.unifiedConflictManager));
+        } else {
+            console.log(`${colors.error}❌ [자동갱신] unifiedConflictManager 모듈이 null입니다!${colors.reset}`);
+        }
+        
         // diarySystem 상태 특별 로깅
         if (modules.diarySystem) {
             console.log(`${colors.diary}📋 [자동갱신] diarySystem 모듈이 정상적으로 전달됩니다! ✅${colors.reset}`);
@@ -244,7 +292,7 @@ function startAutoStatusUpdates(modules) {
         
         try {
             modules.enhancedLogging.startAutoStatusUpdates(systemModules);
-            console.log(`${colors.pms}⏰ [성공!] 1분마다 자동 상태 갱신 시스템 활성화! (24개 모듈 모니터링)${colors.reset}`);
+            console.log(`${colors.pms}⏰ [성공!] 1분마다 자동 상태 갱신 시스템 활성화! (25개 모듈 모니터링 - 갈등 시스템 포함)${colors.reset}`);
             return true;
         } catch (error) {
             console.log(`${colors.error}⏰ [실패] 자동 상태 갱신 시작 실패: ${error.message}${colors.reset}`);
@@ -256,23 +304,24 @@ function startAutoStatusUpdates(modules) {
     }
 }
 
-// ================== 📊 시스템 상태 종합 리포트 ==================
+// ================== 📊 시스템 상태 종합 리포트 (갈등 시스템 포함) ==================
 function generateSystemStatusReport(modules, initResults) {
-    console.log(`${colors.system}📊 [종합리포트] 무쿠 시스템 초기화 결과 요약${colors.reset}`);
+    console.log(`${colors.system}📊 [종합리포트] 무쿠 시스템 초기화 결과 요약 (갈등 시스템 포함)${colors.reset}`);
     
-    // 모듈 로딩 상태
+    // 모듈 로딩 상태 (갈등 시스템 포함으로 25개)
     const loadedModules = Object.values(modules).filter(module => module !== null).length;
-    console.log(`${colors.system}📦 모듈 로딩: ${loadedModules}/24개 성공 (${((loadedModules/24)*100).toFixed(1)}%)${colors.reset}`);
+    console.log(`${colors.system}📦 모듈 로딩: ${loadedModules}/25개 성공 (${((loadedModules/25)*100).toFixed(1)}%) (갈등 시스템 포함)${colors.reset}`);
     
     // 핵심 시스템 상태
     const coreSystemStatus = {
         memory: modules.memoryManager ? '✅' : '❌',
         scheduler: modules.scheduler ? '✅' : '❌', 
         yejin: modules.spontaneousYejin ? '✅' : '❌',
-        weather: modules.weatherManager ? '✅' : '❌'
+        weather: modules.weatherManager ? '✅' : '❌',
+        conflict: modules.unifiedConflictManager ? '✅' : '❌' // 갈등 시스템 추가
     };
     
-    console.log(`${colors.system}🔧 핵심 시스템: 기억${coreSystemStatus.memory} 담타${coreSystemStatus.scheduler} 예진이${coreSystemStatus.yejin} 날씨${coreSystemStatus.weather}${colors.reset}`);
+    console.log(`${colors.system}🔧 핵심 시스템: 기억${coreSystemStatus.memory} 담타${coreSystemStatus.scheduler} 예진이${coreSystemStatus.yejin} 날씨${coreSystemStatus.weather} 갈등${coreSystemStatus.conflict}${colors.reset}`);
     
     // 신규 시스템 상태
     const newSystemStatus = {
@@ -300,6 +349,26 @@ function generateSystemStatusReport(modules, initResults) {
     
     console.log(`${colors.intelligent}⚙️ 통합 최적화: 지능스케줄${integratedStatus.intelligent} 적응성격${integratedStatus.personality} 품질보증${integratedStatus.quality}${colors.reset}`);
     
+    // ⭐️ 갈등 시스템 특별 상태 확인 ⭐️
+    if (modules.unifiedConflictManager) {
+        console.log(`${colors.conflict}💥 [갈등 특별확인] unifiedConflictManager 모듈 상태: 정상 로드됨 ✅${colors.reset}`);
+        
+        try {
+            if (modules.unifiedConflictManager.getConflictStatus) {
+                const conflictStatus = modules.unifiedConflictManager.getConflictStatus();
+                console.log(`${colors.conflict}📊 [갈등 특별확인] 갈등 상태:`, conflictStatus);
+                console.log(`${colors.conflict}📊 [갈등 특별확인] 현재 레벨: ${conflictStatus.currentLevel}, 활성: ${conflictStatus.isActive}${colors.reset}`);
+            } else if (modules.unifiedConflictManager.getStatus) {
+                const conflictStatus = modules.unifiedConflictManager.getStatus();
+                console.log(`${colors.conflict}📊 [갈등 특별확인] 갈등 상태:`, conflictStatus);
+            }
+        } catch (error) {
+            console.log(`${colors.error}💥 [갈등 특별확인] 상태 확인 실패: ${error.message}${colors.reset}`);
+        }
+    } else {
+        console.log(`${colors.error}💥 [갈등 특별확인] unifiedConflictManager 모듈이 null입니다! ❌${colors.reset}`);
+    }
+    
     // ⭐️ 일기장 시스템 특별 상태 확인 ⭐️
     if (modules.diarySystem) {
         console.log(`${colors.diary}📖 [일기장 특별확인] diarySystem 모듈 상태: 정상 로드됨 ✅${colors.reset}`);
@@ -319,17 +388,17 @@ function generateSystemStatusReport(modules, initResults) {
         console.log(`${colors.error}📖 [일기장 특별확인] diarySystem 모듈이 null입니다! ❌${colors.reset}`);
     }
     
-    // 전체 성공률 계산
-    const totalSystems = 13; // 핵심4 + 신규2 + AI3 + 통합3 + 로깅1
+    // 전체 성공률 계산 (갈등 시스템 포함으로 14개)
+    const totalSystems = 14; // 핵심5 + 신규2 + AI3 + 통합3 + 로깅1
     const successfulSystems = Object.values({...coreSystemStatus, ...newSystemStatus, ...aiSystemStatus, ...integratedStatus}).filter(s => s === '✅').length + (modules.enhancedLogging ? 1 : 0);
     const successRate = ((successfulSystems / totalSystems) * 100).toFixed(1);
     
     if (successRate >= 90) {
-        console.log(`${colors.system}🎉 [완벽] 시스템 성공률: ${successRate}% - 무쿠가 완전체로 작동합니다! 🚀${colors.reset}`);
+        console.log(`${colors.system}🎉 [완벽] 시스템 성공률: ${successRate}% - 무쿠가 완전체로 작동합니다! (갈등 포함) 🚀${colors.reset}`);
     } else if (successRate >= 70) {
-        console.log(`${colors.system}✅ [양호] 시스템 성공률: ${successRate}% - 무쿠가 안정적으로 작동합니다! 💕${colors.reset}`);
+        console.log(`${colors.system}✅ [양호] 시스템 성공률: ${successRate}% - 무쿠가 안정적으로 작동합니다! (갈등 포함) 💕${colors.reset}`);
     } else {
-        console.log(`${colors.error}⚠️ [주의] 시스템 성공률: ${successRate}% - 일부 기능 제한 가능성${colors.reset}`);
+        console.log(`${colors.error}⚠️ [주의] 시스템 성공률: ${successRate}% - 일부 기능 제한 가능성 (갈등 포함)${colors.reset}`);
     }
     
     return {
@@ -339,7 +408,8 @@ function generateSystemStatusReport(modules, initResults) {
         newSystemStatus,
         aiSystemStatus,
         integratedStatus,
-        diarySystemLoaded: modules.diarySystem ? true : false
+        diarySystemLoaded: modules.diarySystem ? true : false,
+        conflictSystemLoaded: modules.unifiedConflictManager ? true : false // 갈등 시스템 상태 추가
     };
 }
 
