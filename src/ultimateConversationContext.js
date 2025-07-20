@@ -1767,8 +1767,4 @@ module.exports = {
         }
         return { phase: 'normal', description: '정상', emotion: 'normal' };
     }
-};.lastUserMessageTime = timestamp || Date.now();
-    
-    // 대화 간격 계산
-    const now = Date.now();
-    ultimateConversationState.timingContext
+};
