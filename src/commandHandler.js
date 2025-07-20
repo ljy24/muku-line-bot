@@ -1,11 +1,11 @@
 // ============================================================================
-// commandHandler.js - v3.1 (일기장 시스템 통합 + 사람 학습 시스템 통합)
+// commandHandler.js - v3.2 (일기장 시스템 통합 완료 + 사람 학습 시스템 통합)
 // 🧠 기존의 정상 작동하는 파일들(concept.js, omoide.js, yejinSelfie.js)을 그대로 사용합니다.
 // ✅ 기존 파일들을 건드리지 않고 연동만 수행합니다.
 // 💭 속마음 기능: 감정별 10개씩 랜덤 속마음 표시
 // 📊 상태 확인: enhancedLogging.formatLineStatusReport() 사용으로 완전한 상태 리포트
 // 👥 사람 학습: 사람목록, 사람통계, 사람삭제, 이름 학습 처리
-// 🗓️ 일기장 시스템: 일기장, 일기목록, 특정날짜 일기, 일기통계 (신규!)
+// 🗓️ 일기장 시스템: diarySystem 모듈 연동 완료 (diaryManager → diarySystem 수정!)
 // ============================================================================
 
 /**
@@ -25,22 +25,28 @@ async function handleCommand(text, userId, client = null) {
     const lowerText = text.toLowerCase();
 
     try {
-        // ================== 🗓️ 일기장 시스템 명령어들 (신규!) ==================
+        // ================== 🗓️ 일기장 시스템 명령어들 (diarySystem 연동!) ==================
         
-        // 🗓️ 오늘 일기 생성
+        // 🗓️ 일기장 관련 모든 명령어 통합 처리
         if (lowerText.includes('일기장') || lowerText.includes('일기') || 
             lowerText.includes('다이어리') || lowerText.includes('diary') ||
             lowerText === '오늘일기' || lowerText === '일기써줘' ||
-            lowerText.includes('일기 써') || lowerText.includes('일기쓰')) {
+            lowerText.includes('일기 써') || lowerText.includes('일기쓰') ||
+            lowerText.includes('일기 보여줘') || lowerText.includes('일기목록') ||
+            lowerText.includes('일기 목록') || lowerText.includes('지난 일기') ||
+            lowerText.includes('예전 일기') || lowerText.includes('일기 찾아') ||
+            lowerText.includes('일기통계') || lowerText.includes('일기 통계') ||
+            lowerText.includes('일기현황') || lowerText.includes('일기 현황') ||
+            (lowerText.includes('몇 개') && lowerText.includes('일기'))) {
             
-            console.log('[commandHandler] 🗓️ 일기장 요청 감지');
+            console.log('[commandHandler] 🗓️ 일기장 관련 요청 감지:', lowerText);
             
             try {
-                // 전역 모듈에서 diaryManager 가져오기
+                // 전역 모듈에서 diarySystem 가져오기 (수정됨!)
                 const modules = global.mukuModules || {};
                 
-                if (!modules.diaryManager) {
-                    console.log('[commandHandler] 🗓️ diaryManager 모듈 없음');
+                if (!modules.diarySystem) {
+                    console.log('[commandHandler] 🗓️ diarySystem 모듈 없음');
                     return {
                         type: 'text',
                         comment: "아직 일기장 시스템이 준비 안 됐어! 나중에 다시 말해줘~",
@@ -48,37 +54,49 @@ async function handleCommand(text, userId, client = null) {
                     };
                 }
                 
-                // 오늘 일기 생성 시도
-                const diaryResult = await modules.diaryManager.generateTodayDiary();
+                // diarySystem의 handleDiaryCommand 함수 호출
+                const diaryResult = await modules.diarySystem.handleDiaryCommand(lowerText);
                 
-                if (diaryResult && diaryResult.success && diaryResult.diary) {
-                    console.log('[commandHandler] 🗓️ 일기장 생성 성공');
-                    
-                    // 일기 내용 포매팅
-                    let diaryResponse = `📔 ${diaryResult.diary.date} 일기\n\n`;
-                    diaryResponse += diaryResult.diary.content;
-                    
-                    if (diaryResult.diary.mood) {
-                        diaryResponse += `\n\n💭 오늘 기분: ${diaryResult.diary.mood}`;
-                    }
-                    
-                    // 일기 저장 확인 메시지 추가
-                    if (diaryResult.saved) {
-                        diaryResponse += `\n\n📝 일기장에 저장했어! 나중에 또 보자~`;
-                    }
+                if (diaryResult && diaryResult.success) {
+                    console.log('[commandHandler] 🗓️ 일기장 처리 성공');
                     
                     return {
                         type: 'text',
-                        comment: diaryResponse,
+                        comment: diaryResult.response,
                         handled: true
                     };
                     
                 } else {
-                    console.log('[commandHandler] 🗓️ 일기장 생성 실패:', diaryResult);
+                    console.log('[commandHandler] 🗓️ 일기장 처리 실패:', diaryResult);
+                    
+                    // 폴백: 기본 학습 내용 표시
+                    try {
+                        const learningData = await modules.diarySystem.getAllDynamicLearning();
+                        
+                        if (learningData && learningData.length > 0) {
+                            let response = `📚 내가 지금까지 배운 것들 (총 ${learningData.length}개):\n\n`;
+                            
+                            learningData.slice(-5).forEach((item, index) => {
+                                const date = new Date(item.timestamp).toLocaleDateString();
+                                response += `${index + 1}. ${date} - ${item.category}\n`;
+                                response += `   "${item.content.substring(0, 40)}..."\n\n`;
+                            });
+                            
+                            response += `💕 더 자세한 내용이 알고 싶으면 말해줘!`;
+                            
+                            return {
+                                type: 'text',
+                                comment: response,
+                                handled: true
+                            };
+                        }
+                    } catch (error) {
+                        console.error('[commandHandler] 🗓️ 폴백 처리 실패:', error.message);
+                    }
                     
                     return {
                         type: 'text',
-                        comment: "일기 쓰려고 했는데... 뭔가 문제가 생겼어 ㅠㅠ 다시 시도해볼까?",
+                        comment: "일기 처리 중에 문제가 생겼어... 다시 시도해볼까?",
                         handled: true
                     };
                 }
@@ -88,229 +106,7 @@ async function handleCommand(text, userId, client = null) {
                 
                 return {
                     type: 'text',
-                    comment: "일기장 열려고 했는데 문제가 생겼어... 나중에 다시 시도해볼게!",
-                    handled: true
-                };
-            }
-        }
-
-        // 🗓️ 과거 일기 조회 처리
-        if (lowerText.includes('일기 보여줘') || lowerText.includes('일기목록') || 
-            lowerText.includes('일기 목록') || lowerText.includes('지난 일기') ||
-            lowerText.includes('예전 일기') || lowerText.includes('일기 찾아')) {
-            
-            console.log('[commandHandler] 🗓️ 과거 일기 조회 요청 감지');
-            
-            try {
-                const modules = global.mukuModules || {};
-                
-                if (!modules.diaryManager) {
-                    return {
-                        type: 'text',
-                        comment: "일기장 시스템이 아직 준비 안 됐어!",
-                        handled: true
-                    };
-                }
-                
-                // 최근 일기들 가져오기
-                const recentDiaries = await modules.diaryManager.getRecentDiaries(5);
-                
-                if (!recentDiaries || recentDiaries.length === 0) {
-                    return {
-                        type: 'text',
-                        comment: "아직 쓴 일기가 없어! 먼저 '일기장' 이라고 말해서 오늘 일기부터 써보자!",
-                        handled: true
-                    };
-                }
-                
-                let diaryListResponse = `📚 내가 쓴 일기들 (최근 ${recentDiaries.length}개):\n\n`;
-                
-                recentDiaries.forEach((diary, index) => {
-                    diaryListResponse += `${index + 1}. ${diary.date}`;
-                    if (diary.mood) {
-                        diaryListResponse += ` (기분: ${diary.mood})`;
-                    }
-                    diaryListResponse += `\n`;
-                    
-                    // 내용 미리보기 (첫 50자)
-                    const preview = diary.content.substring(0, 50);
-                    diaryListResponse += `   "${preview}${diary.content.length > 50 ? '...' : ''}"\n\n`;
-                });
-                
-                diaryListResponse += `💕 읽고 싶은 날짜가 있으면 말해줘! 전체 일기를 보여줄게~`;
-                
-                return {
-                    type: 'text',
-                    comment: diaryListResponse,
-                    handled: true
-                };
-                
-            } catch (error) {
-                console.error('[commandHandler] 🗓️ 과거 일기 조회 실패:', error.message);
-                
-                return {
-                    type: 'text',
-                    comment: "일기 목록을 가져오려는데 문제가 생겼어... ㅠㅠ",
-                    handled: true
-                };
-            }
-        }
-
-        // 🗓️ 특정 날짜 일기 조회 처리
-        if (lowerText.includes('일기') && (
-            lowerText.includes('월') || lowerText.includes('일') || 
-            lowerText.includes('/') || lowerText.includes('-') ||
-            lowerText.includes('2024') || lowerText.includes('2025'))) {
-            
-            console.log('[commandHandler] 🗓️ 특정 날짜 일기 조회 요청 감지');
-            
-            try {
-                const modules = global.mukuModules || {};
-                
-                if (!modules.diaryManager) {
-                    return {
-                        type: 'text',
-                        comment: "일기장 시스템이 없어서 찾을 수 없어!",
-                        handled: true
-                    };
-                }
-                
-                // 간단한 날짜 파싱 (예: "7월 20일 일기", "2024-07-20 일기" 등)
-                let targetDate = null;
-                
-                // 년-월-일 형식 찾기
-                const dateMatch1 = lowerText.match(/(\d{4})[\.\/\-](\d{1,2})[\.\/\-](\d{1,2})/);
-                if (dateMatch1) {
-                    const [, year, month, day] = dateMatch1;
-                    targetDate = `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-                }
-                
-                // 월일 형식 찾기 (예: "7월 20일")
-                const dateMatch2 = lowerText.match(/(\d{1,2})월\s*(\d{1,2})일/);
-                if (dateMatch2 && !targetDate) {
-                    const [, month, day] = dateMatch2;
-                    const currentYear = new Date().getFullYear();
-                    targetDate = `${currentYear}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-                }
-                
-                if (!targetDate) {
-                    return {
-                        type: 'text',
-                        comment: "날짜를 정확히 말해줄래? 예를 들어 '7월 20일 일기' 이런 식으로!",
-                        handled: true
-                    };
-                }
-                
-                const specificDiary = await modules.diaryManager.getDiaryByDate(targetDate);
-                
-                if (!specificDiary) {
-                    return {
-                        type: 'text',
-                        comment: `${targetDate}에는 일기를 안 썼나봐... 혹시 다른 날짜를 말한 거야?`,
-                        handled: true
-                    };
-                }
-                
-                let specificDiaryResponse = `📔 ${specificDiary.date} 일기\n\n`;
-                specificDiaryResponse += specificDiary.content;
-                
-                if (specificDiary.mood) {
-                    specificDiaryResponse += `\n\n💭 그날 기분: ${specificDiary.mood}`;
-                }
-                
-                if (specificDiary.weather) {
-                    specificDiaryResponse += `\n🌤️ 그날 날씨: ${specificDiary.weather}`;
-                }
-                
-                specificDiaryResponse += `\n\n💕 그때 생각이 나지? 추억이다~`;
-                
-                return {
-                    type: 'text',
-                    comment: specificDiaryResponse,
-                    handled: true
-                };
-                
-            } catch (error) {
-                console.error('[commandHandler] 🗓️ 특정 날짜 일기 조회 실패:', error.message);
-                
-                return {
-                    type: 'text',
-                    comment: "그날 일기를 찾으려는데 문제가 생겼어... ㅠㅠ",
-                    handled: true
-                };
-            }
-        }
-
-        // 🗓️ 일기 통계 조회 처리
-        if (lowerText.includes('일기통계') || lowerText.includes('일기 통계') || 
-            lowerText.includes('일기현황') || lowerText.includes('일기 현황') ||
-            lowerText.includes('몇 개') && lowerText.includes('일기')) {
-            
-            console.log('[commandHandler] 🗓️ 일기 통계 요청 감지');
-            
-            try {
-                const modules = global.mukuModules || {};
-                
-                if (!modules.diaryManager) {
-                    return {
-                        type: 'text',
-                        comment: "일기장 시스템이 없어서 통계를 볼 수 없어!",
-                        handled: true
-                    };
-                }
-                
-                const diaryStats = await modules.diaryManager.getDiaryStatistics();
-                
-                if (!diaryStats) {
-                    return {
-                        type: 'text',
-                        comment: "일기 통계를 가져오는 중에 문제가 생겼어...",
-                        handled: true
-                    };
-                }
-                
-                let statsResponse = "📊 내 일기장 통계:\n\n";
-                statsResponse += `📔 총 일기 수: ${diaryStats.totalDiaries}개\n`;
-                
-                if (diaryStats.firstDiaryDate) {
-                    statsResponse += `📅 첫 일기: ${diaryStats.firstDiaryDate}\n`;
-                }
-                
-                if (diaryStats.lastDiaryDate) {
-                    statsResponse += `📅 마지막 일기: ${diaryStats.lastDiaryDate}\n`;
-                }
-                
-                if (diaryStats.averageLength > 0) {
-                    statsResponse += `📝 평균 길이: ${diaryStats.averageLength}자\n`;
-                }
-                
-                if (diaryStats.moodStats && Object.keys(diaryStats.moodStats).length > 0) {
-                    statsResponse += `\n💭 기분 통계:\n`;
-                    Object.entries(diaryStats.moodStats)
-                        .sort(([,a], [,b]) => b - a)
-                        .forEach(([mood, count]) => {
-                            statsResponse += `  • ${mood}: ${count}번\n`;
-                        });
-                }
-                
-                if (diaryStats.thisMonthCount > 0) {
-                    statsResponse += `\n📅 이번 달 일기: ${diaryStats.thisMonthCount}개`;
-                }
-                
-                statsResponse += `\n\n💕 꾸준히 일기 쓰는 나! 아저씨도 내 일기 읽어줘서 고마워~`;
-                
-                return {
-                    type: 'text',
-                    comment: statsResponse,
-                    handled: true
-                };
-                
-            } catch (error) {
-                console.error('[commandHandler] 🗓️ 일기 통계 조회 실패:', error.message);
-                
-                return {
-                    type: 'text',
-                    comment: "일기 통계를 보려는데 문제가 생겼어... ㅠㅠ",
+                    comment: "일기장 시스템에서 문제가 생겼어... 나중에 다시 시도해볼게!",
                     handled: true
                 };
             }
@@ -669,15 +465,15 @@ async function handleCommand(text, userId, client = null) {
                     console.log('[commandHandler] 👥 personLearning 모듈 로드 실패:', error.message);
                 }
                 
-                // 🗓️ diaryManager 모듈 로드 시도 (신규!)
+                // 🗓️ diarySystem 모듈 로드 시도 (수정됨!)
                 try {
                     const modules = global.mukuModules || {};
-                    if (modules.diaryManager) {
-                        systemModules.diaryManager = modules.diaryManager;
-                        console.log('[commandHandler] 🗓️ diaryManager 모듈 로드 성공 ✅');
+                    if (modules.diarySystem) {
+                        systemModules.diarySystem = modules.diarySystem;
+                        console.log('[commandHandler] 🗓️ diarySystem 모듈 로드 성공 ✅');
                     }
                 } catch (error) {
-                    console.log('[commandHandler] 🗓️ diaryManager 모듈 로드 실패:', error.message);
+                    console.log('[commandHandler] 🗓️ diarySystem 모듈 로드 실패:', error.message);
                 }
                 
                 console.log('[commandHandler] 시스템 모듈 로드 완료. formatLineStatusReport 호출...');
@@ -712,7 +508,7 @@ async function handleCommand(text, userId, client = null) {
                 fallbackReport += "🧠 [기억관리] 전체 기억: 128개 (기본:72, 연애:56)\n";
                 fallbackReport += "📚 오늘 배운 기억: 3개\n\n";
                 fallbackReport += "👥 [사람학습] 등록된 사람: ?명, 총 만남: ?회\n";
-                fallbackReport += "🗓️ [일기장] 총 일기: ?개, 이번 달: ?개\n\n";  // 🗓️ 일기장 시스템 추가
+                fallbackReport += "🗓️ [일기장] 총 학습 내용: ?개, 이번 달: ?개\n\n";  // 🗓️ 일기장 시스템 추가
                 fallbackReport += "🚬 [담타상태] 6건 /11건 다음에 21:30에 발송예정\n";
                 fallbackReport += "⚡ [사진전송] 3건 /8건 다음에 20:45에 발송예정\n";
                 fallbackReport += "🌸 [감성메시지] 8건 /15건 다음에 22:15에 발송예정\n";
