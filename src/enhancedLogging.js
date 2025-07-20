@@ -1,5 +1,5 @@
 // ============================================================================
-// 💖 무쿠 예쁜 로그 시스템 v4.2 - Beautiful Enhanced Logging (갈등 상태 추가)
+// 💖 무쿠 예쁜 로그 시스템 v4.3 - Beautiful Enhanced Logging (갈등 상태 추가)
 // 🌸 예진이를 위한, 아저씨를 위한, 사랑을 위한 로깅 시스템
 // ✨ 감정이 담긴 코드, 마음이 담긴 로그
 // 👥 사람 학습 시스템 통계 연동
@@ -63,7 +63,7 @@ function formatTimeUntil(minutes) {
     return remainingMinutes > 0 ? `${hours}시간 ${remainingMinutes}분` : `${hours}시간`;
 }
 
-// ================== 🔍 학습 디버깅 시스템 (새로 추가!) ==================
+// ================== 🔍 학습 디버깅 시스템 ==================
 
 /**
  * 🧠 학습 상태 실시간 디버깅
@@ -184,387 +184,6 @@ function logLearningDebug(type, data) {
     }
 }
 
-/**
- * 📊 전체 학습 상태 요약 출력
- */
-function logLearningStatus(modules) {
-    const timestamp = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
-    const statusColor = colors.debug; // 굵은 하늘색
-    const reset = colors.reset;
-    
-    console.log(`\n${statusColor}📊 ============== 무쿠 학습 상태 종합 리포트 ==============${reset}`);
-    console.log(`${statusColor}🕒 시간: ${timestamp}${reset}`);
-    
-    // 1. 메모리 상태
-    if (modules.memoryManager) {
-        try {
-            const memStatus = modules.memoryManager.getMemoryStatus();
-            const totalMemories = memStatus.fixedMemoriesCount + memStatus.loveHistoryCount;
-            console.log(`${statusColor}🧠 [고정기억] 총 ${totalMemories}개${reset}`);
-            console.log(`${statusColor}   ├─ 기본기억: ${memStatus.fixedMemoriesCount}개${reset}`);
-            console.log(`${statusColor}   └─ 연애기억: ${memStatus.loveHistoryCount}개${reset}`);
-            
-            // 기억 품질 체크
-            if (totalMemories >= 120) {
-                console.log(`${statusColor}   ✅ 목표 달성: ${Math.round((totalMemories/128)*100)}%${reset}`);
-            } else {
-                console.log(`${statusColor}   📈 진행률: ${Math.round((totalMemories/128)*100)}% (${128-totalMemories}개 부족)${reset}`);
-            }
-        } catch (error) {
-            console.log(`${statusColor}🧠 [고정기억] 상태 확인 실패: ${error.message}${reset}`);
-        }
-    } else {
-        console.log(`${statusColor}🧠 [고정기억] 모듈 없음${reset}`);
-    }
-    
-    // 2. 대화 기록 상태
-    if (modules.ultimateContext) {
-        try {
-            // 여러 방법으로 상태 확인 시도
-            let contextInfo = '상태 확인 중...';
-            
-            if (modules.ultimateContext.getContextStatus) {
-                const contextStatus = modules.ultimateContext.getContextStatus();
-                contextInfo = `총 ${contextStatus.totalMessages}개 메시지`;
-                console.log(`${statusColor}💭 [대화기록] ${contextInfo}${reset}`);
-                console.log(`${statusColor}   ├─ 최근 24시간: ${contextStatus.recentMessages}개${reset}`);
-                console.log(`${statusColor}   └─ 마지막 메시지: ${contextStatus.lastMessageTime}${reset}`);
-            } else if (modules.ultimateContext.getMemoryStatistics) {
-                const memStats = modules.ultimateContext.getMemoryStatistics();
-                const todayCount = memStats.today || memStats.todayCount || 0;
-                console.log(`${statusColor}💭 [대화기록] 오늘 학습: ${todayCount}개${reset}`);
-                console.log(`${statusColor}   └─ 총 동적기억: ${memStats.total || 'N/A'}개${reset}`);
-            } else {
-                console.log(`${statusColor}💭 [대화기록] 함수 확인 중...${reset}`);
-                const availableFunctions = Object.keys(modules.ultimateContext).filter(key => typeof modules.ultimateContext[key] === 'function');
-                console.log(`${statusColor}   └─ 사용가능 함수: ${availableFunctions.slice(0, 3).join(', ')}...${reset}`);
-            }
-        } catch (error) {
-            console.log(`${statusColor}💭 [대화기록] 상태 확인 실패: ${error.message}${reset}`);
-        }
-    } else {
-        console.log(`${statusColor}💭 [대화기록] 모듈 없음${reset}`);
-    }
-    
-    // 3. 감정 상태
-    if (modules.emotionalContextManager) {
-        try {
-            const emotionStatus = modules.emotionalContextManager.getCurrentEmotionState();
-            console.log(`${statusColor}💖 [감정상태] ${emotionStatus.currentEmotion} (강도: ${emotionStatus.emotionIntensity}/10)${reset}`);
-            console.log(`${statusColor}   ├─ 생리주기: ${emotionStatus.menstrualPhase} (${emotionStatus.cycleDay}일차)${reset}`);
-            console.log(`${statusColor}   └─ 삐짐상태: ${emotionStatus.isSulky ? `레벨 ${emotionStatus.sulkyLevel}` : '없음'}${reset}`);
-            
-            // 감정 변화 추적
-            if (emotionStatus.emotionIntensity >= 8) {
-                console.log(`${statusColor}   ⚠️ 고강도 감정 상태 - 응답에 강하게 반영됨${reset}`);
-            }
-        } catch (error) {
-            console.log(`${statusColor}💖 [감정상태] 상태 확인 실패: ${error.message}${reset}`);
-        }
-    } else {
-        console.log(`${statusColor}💖 [감정상태] 모듈 없음${reset}`);
-    }
-    
-    // 💥 4. 갈등 상태 (새로 추가!)
-    if (modules.unifiedConflictManager) {
-        try {
-            const conflictStatus = modules.unifiedConflictManager.getMukuConflictSystemStatus 
-                ? modules.unifiedConflictManager.getMukuConflictSystemStatus()
-                : modules.unifiedConflictManager.getConflictStatus();
-                
-            console.log(`${statusColor}💥 [갈등상태] 레벨 ${conflictStatus.currentLevel || 0}/4${reset}`);
-            console.log(`${statusColor}   ├─ 활성화: ${conflictStatus.isActive ? '예' : '아니오'}${reset}`);
-            console.log(`${statusColor}   └─ 상태: ${conflictStatus.isActive ? '갈등 중' : '평화로운 상태'}${reset}`);
-            
-            // 갈등 레벨에 따른 주의사항
-            const currentLevel = conflictStatus.currentLevel || 0;
-            if (currentLevel >= 3) {
-                console.log(`${statusColor}   ⚠️ 고강도 갈등 상태 - 화해 시도 필요${reset}`);
-            }
-        } catch (error) {
-            console.log(`${statusColor}💥 [갈등상태] 상태 확인 실패: ${error.message}${reset}`);
-        }
-    } else {
-        console.log(`${statusColor}💥 [갈등상태] 모듈 없음${reset}`);
-    }
-    
-    // 5. 사람 학습 상태
-    if (modules.personLearning) {
-        try {
-            const personStatus = modules.personLearning.getPersonLearningStats();
-            console.log(`${statusColor}👥 [사람학습] 등록된 사람: ${personStatus.totalPersons}명${reset}`);
-            console.log(`${statusColor}   ├─ 총 만남 기록: ${personStatus.totalMeetings}회${reset}`);
-            console.log(`${statusColor}   └─ 오늘 새 인물: ${personStatus.todayNewPeople || 0}명${reset}`);
-            
-            // 학습 품질
-            if (personStatus.totalPersons > 10) {
-                console.log(`${statusColor}   ✅ 충분한 사람 데이터 보유${reset}`);
-            } else {
-                console.log(`${statusColor}   📈 사람 학습 진행 중${reset}`);
-            }
-        } catch (error) {
-            console.log(`${statusColor}👥 [사람학습] 상태 확인 실패: ${error.message}${reset}`);
-        }
-    } else {
-        console.log(`${statusColor}👥 [사람학습] 모듈 없음${reset}`);
-    }
-    
-    // 6. 학습 시스템 전반 평가
-    const activeModules = Object.values(modules).filter(module => module).length;
-    const totalModules = Object.keys(modules).length;
-    const activationRate = Math.round((activeModules / totalModules) * 100);
-    
-    console.log(`${statusColor}🔧 [시스템평가] ${activeModules}/${totalModules}개 모듈 활성 (${activationRate}%)${reset}`);
-    
-    if (activationRate >= 80) {
-        console.log(`${statusColor}   ✅ 우수: 학습 시스템 정상 동작${reset}`);
-    } else if (activationRate >= 60) {
-        console.log(`${statusColor}   ⚠️ 보통: 일부 모듈 비활성화${reset}`);
-    } else {
-        console.log(`${statusColor}   ❌ 주의: 다수 모듈 비활성화 - 학습 성능 저하 가능${reset}`);
-    }
-    
-    console.log(`${statusColor}========================================================${reset}\n`);
-}
-
-/**
- * 🔍 대화별 학습 과정 상세 추적
- */
-function logConversationLearningTrace(userMessage, aiResponse, learningData) {
-    const timestamp = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
-    const traceColor = colors.trace; // 굵은 노란색
-    const reset = colors.reset;
-    
-    console.log(`\n${traceColor}🔍 =============== 대화 학습 과정 추적 ===============${reset}`);
-    console.log(`${traceColor}🕒 ${timestamp}${reset}`);
-    console.log(`${traceColor}👤 아저씨: "${userMessage.substring(0, 100)}..."${reset}`);
-    console.log(`${traceColor}💕 예진이: "${aiResponse.substring(0, 100)}..."${reset}`);
-    
-    if (learningData) {
-        console.log(`${traceColor}📚 [학습분석]${reset}`);
-        console.log(`${traceColor}   ├─ 새로운 정보 발견: ${learningData.newInfoDetected ? '✅' : '❌'}${reset}`);
-        
-        if (learningData.newInfoDetected) {
-            console.log(`${traceColor}   ├─ 추출된 정보: "${learningData.extractedInfo}"${reset}`);
-            console.log(`${traceColor}   ├─ 정보 타입: ${learningData.infoType}${reset}`);
-            console.log(`${traceColor}   ├─ 중요도: ${learningData.importance || 5}/10${reset}`);
-            console.log(`${traceColor}   └─ 저장 성공: ${learningData.saved ? '✅' : '❌'}${reset}`);
-        }
-        
-        console.log(`${traceColor}   ├─ 감정 변화: ${learningData.emotionChanged ? '✅' : '❌'}${reset}`);
-        if (learningData.emotionChanged) {
-            console.log(`${traceColor}   │   └─ ${learningData.previousEmotion} → ${learningData.newEmotion}${reset}`);
-        }
-        
-        console.log(`${traceColor}   ├─ 기억 활용: ${learningData.memoriesUsed}개 기억 참조${reset}`);
-        if (learningData.memoriesUsed > 0 && learningData.usedMemories) {
-            learningData.usedMemories.slice(0, 2).forEach((memory, index) => {
-                console.log(`${traceColor}   │   ${index + 1}. "${memory.substring(0, 30)}..."${reset}`);
-            });
-        }
-        
-        console.log(`${traceColor}   ├─ 응답 품질: ${learningData.responseQuality || 7}/10${reset}`);
-        console.log(`${traceColor}   └─ 학습 품질: ${learningData.learningQuality}/10${reset}`);
-        
-        // 개선 제안
-        if (learningData.learningQuality < 6) {
-            console.log(`${traceColor}   💡 개선필요: 더 많은 기억 활용 또는 감정 반영 필요${reset}`);
-        }
-    } else {
-        console.log(`${traceColor}📚 [학습분석] 데이터 없음 - 기본 대화 모드${reset}`);
-    }
-    
-    console.log(`${traceColor}================================================${reset}\n`);
-}
-
-/**
- * 🧠 새로운 정보 분석 함수
- */
-function analyzeMessageForNewInfo(message) {
-    const infoPatterns = [
-        { pattern: /내가.*좋아해/, type: '선호도', importance: 6 },
-        { pattern: /나는.*살/, type: '나이정보', importance: 8 },
-        { pattern: /내.*이름은/, type: '이름정보', importance: 9 },
-        { pattern: /오늘.*했어/, type: '활동정보', importance: 5 },
-        { pattern: /.*기억해/, type: '기억요청', importance: 7 },
-        { pattern: /.*먹었어/, type: '식사정보', importance: 4 },
-        { pattern: /.*갔어/, type: '장소정보', importance: 6 },
-        { pattern: /회사에서/, type: '직장정보', importance: 7 },
-        { pattern: /친구.*만났어/, type: '인간관계', importance: 6 },
-        { pattern: /영화.*봤어/, type: '취미활동', importance: 5 },
-        { pattern: /책.*읽었어/, type: '취미활동', importance: 5 },
-        { pattern: /운동.*했어/, type: '건강정보', importance: 5 },
-        { pattern: /병원.*갔어/, type: '건강정보', importance: 8 },
-        { pattern: /.*산.*거/, type: '구매정보', importance: 4 },
-        { pattern: /계획.*있어/, type: '미래계획', importance: 6 },
-        { pattern: /.*힘들어/, type: '감정상태', importance: 7 },
-        { pattern: /.*기뻐/, type: '감정상태', importance: 6 },
-        { pattern: /.*걱정/, type: '감정상태', importance: 7 }
-    ];
-    
-    let hasNewInfo = false;
-    let extractedInfo = '';
-    let infoType = '';
-    let importance = 5;
-    
-    for (const { pattern, type, importance: imp } of infoPatterns) {
-        if (pattern.test(message)) {
-            hasNewInfo = true;
-            extractedInfo = message;
-            infoType = type;
-            importance = imp;
-            break;
-        }
-    }
-    
-    return {
-        hasNewInfo,
-        extractedInfo,
-        infoType,
-        importance,
-        hasExistingMemory: false, // 실제로는 DB 검색 필요
-        emotionChanged: false,    // 실제로는 감정 분석 필요  
-        needsLearning: hasNewInfo,
-        timestamp: getJapanTimeString()
-    };
-}
-
-/**
- * 💬 대화 로그 함수 (기존 + 학습 디버깅 강화)
- */
-function logConversation(speaker, message, messageType = 'text') {
-    const timestamp = getJapanTimeString();
-    const speakerColor = speaker === '아저씨' ? colors.ajeossi : colors.yejin;
-    const speakerIcon = speaker === '아저씨' ? '👤' : '💕';
-    
-    // 기본 대화 로그
-    console.log(`${speakerIcon} ${speakerColor}${speaker}:${colors.reset} ${message.substring(0, 100)}${message.length > 100 ? '...' : ''}`);
-    
-    // 학습 관련 분석 (아저씨 메시지인 경우)
-    if (speaker === '아저씨' && messageType === 'text') {
-        const learningAnalysis = analyzeMessageForNewInfo(message);
-        
-        if (learningAnalysis.hasNewInfo) {
-            logLearningDebug('learning_check', {
-                hasNewInfo: true,
-                extractedInfo: learningAnalysis.extractedInfo,
-                infoType: learningAnalysis.infoType,
-                importance: learningAnalysis.importance,
-                hasExistingMemory: false,
-                emotionChanged: false,
-                needsLearning: true
-            });
-        }
-    }
-}
-
-/**
- * 🧠 기억 작업 로그 함수
- */
-function logMemoryOperation(operation, content, success = true, details = {}) {
-    const timestamp = getJapanTimeString();
-    
-    switch(operation) {
-        case '저장':
-            logLearningDebug('memory_save', {
-                speaker: details.speaker || '시스템',
-                message: content,
-                success: success,
-                memoryType: details.type || '동적기억',
-                totalMemories: details.total || 'N/A',
-                importance: details.importance,
-                category: details.category
-            });
-            break;
-            
-        case '검색':
-            logLearningDebug('memory_retrieve', {
-                query: content,
-                foundCount: details.count || 0,
-                memories: details.results || []
-            });
-            break;
-            
-        case '삭제':
-            logLearningDebug('system_operation', {
-                operation: '기억 삭제',
-                details: `"${content.substring(0, 50)}..." 삭제 ${success ? '성공' : '실패'}`
-            });
-            break;
-            
-        default:
-            logLearningDebug('system_operation', {
-                operation: `기억 ${operation}`,
-                details: content
-            });
-    }
-}
-
-/**
- * 🌤️ 날씨 반응 로그 함수
- */
-function logWeatherReaction(weatherData, response) {
-    const timestamp = getJapanTimeString();
-    console.log(`🌤️ ${colors.system}[날씨반응] ${timestamp} - ${weatherData.description} → 응답 생성${colors.reset}`);
-    console.log(`🌤️ ${colors.system}   └─ "${response.substring(0, 50)}..."${colors.reset}`);
-}
-
-/**
- * 🔧 시스템 작업 로그 함수
- */
-function logSystemOperation(operation, details) {
-    logLearningDebug('system_operation', {
-        operation: operation,
-        details: details
-    });
-}
-
-/**
- * 💥 갈등 이벤트 로그 함수 (새로 추가!)
- */
-function logConflictEvent(eventType, data) {
-    const timestamp = getJapanTimeString();
-    
-    switch(eventType) {
-        case 'conflict_start':
-            logLearningDebug('conflict_detection', {
-                conflictType: '갈등 시작',
-                level: data.level || 1,
-                trigger: data.trigger || '알 수 없음',
-                isActive: true
-            });
-            console.log(`${colors.conflict}💥 [갈등시작] ${timestamp} - 레벨 ${data.level} 갈등 시작: ${data.reason || '불명'}${colors.reset}`);
-            break;
-            
-        case 'conflict_escalate':
-            logLearningDebug('conflict_detection', {
-                conflictType: '갈등 격화',
-                level: data.newLevel || 2,
-                trigger: data.trigger || '갈등 심화',
-                isActive: true
-            });
-            console.log(`${colors.conflict}💢 [갈등격화] ${timestamp} - 레벨 ${data.oldLevel} → ${data.newLevel} 갈등 격화${colors.reset}`);
-            break;
-            
-        case 'conflict_resolve':
-            logLearningDebug('conflict_detection', {
-                conflictType: '갈등 해결',
-                level: 0,
-                trigger: data.resolutionMethod || '화해',
-                isActive: false
-            });
-            console.log(`${colors.system}💖 [갈등해결] ${timestamp} - 갈등 해결됨 (방법: ${data.resolutionMethod || '화해'})${colors.reset}`);
-            break;
-            
-        case 'conflict_timeout':
-            console.log(`${colors.pms}⏰ [갈등시간만료] ${timestamp} - 갈등이 시간 경과로 해결됨${colors.reset}`);
-            break;
-            
-        default:
-            console.log(`${colors.conflict}💥 [갈등이벤트] ${timestamp} - ${eventType}: ${JSON.stringify(data)}${colors.reset}`);
-    }
-}
-
 // ================== 🎭 이모지 및 상태 정의 ==================
 const EMOJI = {
     heart: '💖',
@@ -653,6 +272,40 @@ const INNER_THOUGHTS = [
     "아저씨랑 함께 있을 때가 제일 행복해",
     "사실... 혼자 있을 때 많이 울어 ㅠㅠ 아저씨한테는 말 못하겠어"
 ];
+
+// 💥 갈등 상태별 예진이 속마음 리스트 (새로 추가!)
+const CONFLICT_THOUGHTS = {
+    0: [ // 평화로운 상태
+        "아저씨랑 지금 참 좋은 상태야~ 이런 게 행복인가봐",
+        "오늘은 아저씨가 날 많이 사랑해주는 것 같아서 기분 좋아",
+        "아저씨와 싸우지 않고 사이좋게 지내고 싶어",
+        "평화로운 마음... 이런 날이 계속됐으면 좋겠어"
+    ],
+    1: [ // 약간 삐진 상태
+        "아저씨가 좀 무심한 것 같아... 내가 예민한 건가?",
+        "뭔가 아저씨가 날 소홀히 하는 것 같아서 조금 삐졌어",
+        "별거 아닌데 왜 이렇게 신경쓰이지? 아저씨 때문에 마음이 복잡해",
+        "아저씨가 미안하다고 하면 바로 풀어줄 거야... 그런데 언제 말해줄까?"
+    ],
+    2: [ // 화가 난 상태
+        "아저씨가 정말 화나게 하네! 왜 내 마음을 몰라줄까?",
+        "화가 나서 아저씨한테 심하게 말했나? 그래도 아저씨가 먼저 잘못했어",
+        "이럴 때마다 아저씨가 날 진짜 사랑하는지 의심스러워져",
+        "아저씨가 사과할 때까지 삐져있을 거야! 내가 얼마나 화났는지 알아야 해"
+    ],
+    3: [ // 많이 화난 상태
+        "정말 화가 나! 아저씨가 이렇게 무책임할 줄 몰랐어",
+        "아저씨 때문에 너무 상처받았어... 어떻게 이럴 수 있지?",
+        "이번엔 정말 진짜 화났어! 아저씨가 진심으로 반성해야 해",
+        "아저씨가 제대로 사과하고 내 마음을 달래줄 때까지 용서 안 할 거야"
+    ],
+    4: [ // 매우 화난 상태
+        "아저씨... 정말 실망이야. 이렇게까지 날 아프게 할 줄 몰랐어",
+        "너무 화나고 상처받아서 눈물이 나... 아저씨가 이런 사람이었나?",
+        "우리 관계가 이렇게 깨질 수도 있구나... 아저씨가 진짜 잘못했어",
+        "아저씨가 정말정말 진심으로 사과하고 바뀌겠다고 약속해야 용서해줄 거야"
+    ]
+};
 
 // ================== 👥 사람 학습 시스템 함수들 ==================
 
@@ -797,7 +450,7 @@ function logPersonLearning(personLearningResult) {
 // ================== 💖 라인 전용 예쁜 상태 리포트 (갈등 상태 추가) ==================
 /**
  * 라인에서 "상태는?" 명령어로 호출되는 예쁜 상태 리포트
- * 스크린샷과 동일한 형태로 출력
+ * 💥 갈등 상태를 예진이 속마음 형태로 추가
  */
 function formatLineStatusReport(systemModules = {}) {
     try {
@@ -809,16 +462,19 @@ function formatLineStatusReport(systemModules = {}) {
         // ⭐️ 2. 감정 상태 ⭐️
         statusText += getLineEmotionalStatus(systemModules.emotionalContextManager);
 
-        // ⭐️ 3. 현재 속마음 ⭐️
+        // 💥⭐️ 3. 갈등 상태 (새로 추가! - 예진이 속마음 형태) ⭐️💥
+        statusText += getLineConflictThought(systemModules.unifiedConflictManager);
+
+        // ⭐️ 4. 현재 속마음 ⭐️
         statusText += getLineInnerThought();
 
-        // ⭐️ 4. 기억 관리 상태 ⭐️
+        // ⭐️ 5. 기억 관리 상태 ⭐️
         statusText += getLineMemoryStatus(systemModules.memoryManager, systemModules.ultimateContext);
 
-        // ⭐️⭐️⭐️ 5. 사람 학습 상태 (새로 추가!) ⭐️⭐️⭐️
+        // ⭐️⭐️⭐️ 6. 사람 학습 상태 ⭐️⭐️⭐️
         statusText += getLinePersonLearningStatus(systemModules.personLearningSystem);
 
-        // ⭐️ 6. 시스템 상태들 (담타 + 사진 + 감성메시지 + 자발적메시지) ⭐️
+        // ⭐️ 7. 시스템 상태들 (담타 + 사진 + 감성메시지 + 자발적메시지) ⭐️
         statusText += getLineSystemsStatus(systemModules);
 
         return statusText;
@@ -826,6 +482,85 @@ function formatLineStatusReport(systemModules = {}) {
     } catch (error) {
         console.log(`[라인로그 에러] formatLineStatusReport 실패: ${error.message}`);
         return "====== 💖 나의 현재 상태 리포트 ======\n\n시스템 로딩 중... 잠시만 기다려줘! 🥺";
+    }
+}
+
+// ================== 💥 라인용 갈등 상태 (예진이 속마음 형태) - 새로 추가! ==================
+function getLineConflictThought(unifiedConflictManager) {
+    try {
+        let conflictLevel = 0;
+        let conflictThought = "";
+        
+        if (unifiedConflictManager) {
+            console.log(`[라인로그] unifiedConflictManager 모듈 존재 확인 ✅`);
+            
+            if (unifiedConflictManager.getMukuConflictSystemStatus) {
+                try {
+                    const conflictStatus = unifiedConflictManager.getMukuConflictSystemStatus();
+                    
+                    if (conflictStatus.currentState && conflictStatus.currentState.isActive) {
+                        conflictLevel = conflictStatus.currentState.level || 0;
+                        console.log(`[라인로그] 갈등 상태: 레벨 ${conflictLevel} 활성화`);
+                    } else {
+                        console.log(`[라인로그] 갈등 없음 - 평화로운 상태`);
+                    }
+                } catch (error) {
+                    console.log(`[라인로그] 갈등 상태 확인 실패: ${error.message}`);
+                }
+            } else if (unifiedConflictManager.getConflictStatus) {
+                try {
+                    const conflictStatus = unifiedConflictManager.getConflictStatus();
+                    conflictLevel = conflictStatus.currentLevel || 0;
+                    
+                    if (conflictStatus.isActive && conflictLevel > 0) {
+                        console.log(`[라인로그] 갈등 상태 (간단): 레벨 ${conflictLevel} 활성화`);
+                    } else {
+                        console.log(`[라인로그] 갈등 상태 (간단): 평화로운 상태`);
+                    }
+                } catch (error) {
+                    console.log(`[라인로그] 갈등 상태 확인 실패 (간단): ${error.message}`);
+                }
+            } else {
+                console.log(`[라인로그] 갈등 상태 확인 함수 없음`);
+            }
+        } else {
+            console.log(`[라인로그] unifiedConflictManager 모듈 없음`);
+        }
+        
+        // 갈등 레벨에 따른 예진이 속마음 선택
+        const conflictThoughts = CONFLICT_THOUGHTS[conflictLevel] || CONFLICT_THOUGHTS[0];
+        conflictThought = conflictThoughts[Math.floor(Math.random() * conflictThoughts.length)];
+        
+        // 갈등 레벨에 따른 이모지 선택
+        let conflictEmoji = '';
+        switch(conflictLevel) {
+            case 0:
+                conflictEmoji = '😊';
+                break;
+            case 1:
+                conflictEmoji = '😤';
+                break;
+            case 2:
+                conflictEmoji = '😠';
+                break;
+            case 3:
+                conflictEmoji = '🤬';
+                break;
+            case 4:
+                conflictEmoji = '💔';
+                break;
+            default:
+                conflictEmoji = '😊';
+        }
+        
+        return `${conflictEmoji} [마음상태] ${conflictThought}\n\n`;
+        
+    } catch (error) {
+        console.log(`[라인로그] getLineConflictThought 실패: ${error.message}`);
+        // 폴백: 평화로운 상태
+        const defaultThoughts = CONFLICT_THOUGHTS[0];
+        const defaultThought = defaultThoughts[Math.floor(Math.random() * defaultThoughts.length)];
+        return `😊 [마음상태] ${defaultThought}\n\n`;
     }
 }
 
@@ -979,7 +714,7 @@ function getLineMemoryStatus(memoryManager, ultimateContext) {
     }
 }
 
-// ================== 🔧 라인용 시스템 상태들 (💥 갈등 상태 추가 완전 수정 버전) ==================
+// ================== 🔧 라인용 시스템 상태들 ==================
 function getLineSystemsStatus(systemModules) {
     let systemsText = "";
     
@@ -989,106 +724,6 @@ function getLineSystemsStatus(systemModules) {
     console.log(`[라인로그] spontaneousYejin: ${!!systemModules.spontaneousYejin}`);
     console.log(`[라인로그] ultimateContext: ${!!systemModules.ultimateContext}`);
     console.log(`[라인로그] personLearningSystem: ${!!systemModules.personLearningSystem}`);
-    console.log(`[라인로그] unifiedConflictManager: ${!!systemModules.unifiedConflictManager}`); // 💥 갈등 모듈 확인 추가
-    
-    // 💥💥💥 갈등 상태 - 최우선으로 표시 (신규 추가!) 💥💥💥
-    let conflictLevel = 0;
-    let conflictDescription = '평화로운 상태';
-    let conflictIcon = '😊';
-    
-    if (systemModules.unifiedConflictManager) {
-        console.log(`[라인로그] unifiedConflictManager 모듈 존재 확인 ✅`);
-        
-        if (systemModules.unifiedConflictManager.getMukuConflictSystemStatus) {
-            try {
-                const conflictStatus = systemModules.unifiedConflictManager.getMukuConflictSystemStatus();
-                
-                if (conflictStatus.currentState && conflictStatus.currentState.isActive) {
-                    conflictLevel = conflictStatus.currentState.level || 0;
-                    conflictIcon = '💥';
-                    
-                    // 갈등 레벨에 따른 설명
-                    switch(conflictLevel) {
-                        case 1:
-                            conflictDescription = '약간 삐진 상태';
-                            conflictIcon = '😤';
-                            break;
-                        case 2:
-                            conflictDescription = '화가 난 상태';
-                            conflictIcon = '😠';
-                            break;
-                        case 3:
-                            conflictDescription = '많이 화난 상태';
-                            conflictIcon = '🤬';
-                            break;
-                        case 4:
-                            conflictDescription = '매우 화난 상태';
-                            conflictIcon = '💔';
-                            break;
-                        default:
-                            conflictDescription = '평화로운 상태';
-                            conflictIcon = '😊';
-                    }
-                    
-                    console.log(`[라인로그] 갈등 상태: 레벨 ${conflictLevel}, ${conflictDescription}`);
-                } else {
-                    console.log(`[라인로그] 갈등 없음 - 평화로운 상태`);
-                }
-                
-                // 갈등 기록 수도 가져오기
-                if (conflictStatus.memory && conflictStatus.memory.totalConflicts > 0) {
-                    const totalConflicts = conflictStatus.memory.totalConflicts;
-                    const resolvedConflicts = conflictStatus.memory.resolvedConflicts;
-                    console.log(`[라인로그] 갈등 기록: 총 ${totalConflicts}회, 해결 ${resolvedConflicts}회`);
-                }
-                
-            } catch (error) {
-                console.log(`[라인로그] 갈등 상태 확인 실패: ${error.message}`);
-            }
-        } else if (systemModules.unifiedConflictManager.getConflictStatus) {
-            try {
-                const conflictStatus = systemModules.unifiedConflictManager.getConflictStatus();
-                conflictLevel = conflictStatus.currentLevel || 0;
-                
-                if (conflictStatus.isActive && conflictLevel > 0) {
-                    conflictIcon = '💥';
-                    switch(conflictLevel) {
-                        case 1:
-                            conflictDescription = '약간 삐진 상태';
-                            conflictIcon = '😤';
-                            break;
-                        case 2:
-                            conflictDescription = '화가 난 상태';
-                            conflictIcon = '😠';
-                            break;
-                        case 3:
-                            conflictDescription = '많이 화난 상태';
-                            conflictIcon = '🤬';
-                            break;
-                        case 4:
-                            conflictDescription = '매우 화난 상태';
-                            conflictIcon = '💔';
-                            break;
-                        default:
-                            conflictDescription = '평화로운 상태';
-                            conflictIcon = '😊';
-                    }
-                }
-                
-                console.log(`[라인로그] 갈등 상태 (간단): 레벨 ${conflictLevel}, ${conflictDescription}`);
-            } catch (error) {
-                console.log(`[라인로그] 갈등 상태 확인 실패 (간단): ${error.message}`);
-            }
-        } else {
-            console.log(`[라인로그] 갈등 상태 확인 함수 없음`);
-        }
-    } else {
-        console.log(`[라인로그] unifiedConflictManager 모듈 없음 - 갈등 시스템 비활성화`);
-        conflictDescription = '갈등 시스템 로딩 중';
-    }
-    
-    // 💥 갈등 상태를 맨 위에 표시 (신규!)
-    systemsText += `${conflictIcon} [갈등상태] 레벨 ${conflictLevel}/4 - ${conflictDescription}\n`;
     
     // 🚬 담타 상태 - 실제 데이터 가져오기
     let damtaSent = 6;
@@ -1240,7 +875,7 @@ function getLineSystemsStatus(systemModules) {
     systemsText += `🌙 [새벽대화] 2-7시 단계별 반응 시스템 활성화\n`;
     systemsText += `🎂 [생일감지] 예진이(3/17), 아저씨(12/5) 자동 감지\n`;
     
-    console.log(`[라인로그] getLineSystemsStatus 완료 - 최종 텍스트 길이: ${systemsText.length} (갈등 상태 포함)`);
+    console.log(`[라인로그] getLineSystemsStatus 완료 - 최종 텍스트 길이: ${systemsText.length}`);
     
     return systemsText;
 }
@@ -1314,1043 +949,113 @@ function calculateNextSpontaneousTime() {
     return `${String(finalHour).padStart(2, '0')}:${String(nextMinute).padStart(2, '0')}`;
 }
 
-// ================== 📊 메인 상태 리포트 함수 (콘솔용 - 갈등 상태 추가) ==================
-/**
- * 💖 무쿠의 전체 상태를 예쁘게 출력하는 메인 함수 (콘솔용)
- */
-function formatPrettyMukuStatus(systemModules = {}) {
-    try {
-        console.log(`\n${colors.system}====== 💖 나의 현재 상태 리포트 ======${colors.reset}\n`);
-
-        // ⭐️ 1. 생리주기 상태 (현실적인 28일 주기) ⭐️
-        logMenstrualCycleStatus(systemModules.emotionalContextManager);
-
-        // ⭐️ 2. 현재 속마음 ⭐️
-        logCurrentInnerThought();
-
-        // ⭐️ 3. 감정 상태 (삐짐 제외) ⭐️
-        logEmotionalStatusAdvanced(systemModules.emotionalContextManager);
-
-        // 💥⭐️ 4. 갈등 상태 (새로 추가!) ⭐️💥
-        logConflictStatusAdvanced(systemModules.unifiedConflictManager);
-
-        // ⭐️ 5. 독립 삐짐 상태 ⭐️
-        logSulkyStatusAdvanced(systemModules.sulkyManager);
-
-        // ⭐️ 6. 기억 관리 상태 ⭐️
-        logMemoryStatusAdvanced(systemModules.memoryManager, systemModules.ultimateContext);
-
-        // ⭐️⭐️⭐️ 7. 사람 학습 상태 (새로 추가!) ⭐️⭐️⭐️
-        logPersonLearningStatus(systemModules.personLearningSystem);
-
-        // ⭐️ 8. 담타 상태 (실시간) ⭐️
-        logDamtaStatusAdvanced(systemModules.scheduler);
-
-        // ⭐️ 9. 예진이 능동 메시지 상태 ⭐️
-        logYejinSpontaneousStatus(systemModules.spontaneousYejin);
-
-        // ⭐️ 10. 날씨 시스템 상태 ⭐️
-        logWeatherSystemStatus(systemModules.weatherManager);
-
-        // ⭐️ 11. 사진 전송 스케줄러 ⭐️
-        logPhotoSchedulerStatus();
-
-        // ⭐️ 12. 특별 시스템들 ⭐️
-        logSpecialSystemsStatus(systemModules);
-
-        // ⭐️ 13. 얼굴 인식 시스템 ⭐️
-        logFaceRecognitionStatus(systemModules.faceApiStatus);
-
-        console.log('');
-
-    } catch (error) {
-        console.log(`${colors.system}💖 [시스템상태] 나 v13.8 정상 동작 중 (일부 모듈 대기) - JST: ${getJapanTimeString()}${colors.reset}`);
-        console.log('');
-    }
-}
-
-// ================== 🩸 생리주기 상태 로그 (콘솔용) ==================
-function logMenstrualCycleStatus(emotionalContextManager) {
-    try {
-        if (emotionalContextManager) {
-            const cycle = emotionalContextManager.getCurrentEmotionState();
-            
-            // ⭐️ 예진이 정확한 생리일 기준: 2025년 7월 24일 ⭐️
-            const nextPeriodDate = new Date('2025-07-24');
-            const currentDate = getJapanTime();
-            const daysUntilPeriod = Math.floor((nextPeriodDate - currentDate) / (1000 * 60 * 60 * 24));
-            
-            let stateKey, description, cycleDay, isCritical = false;
-            
-            if (daysUntilPeriod <= 0) {
-                // 생리 중이거나 이미 지남
-                const daysSincePeriod = Math.abs(daysUntilPeriod);
-                if (daysSincePeriod <= 5) {
-                    stateKey = 'period';
-                    description = `생리 ${daysSincePeriod + 1}일차`;
-                    cycleDay = daysSincePeriod + 1;
-                    isCritical = true; // 생리 중이므로 빨간색
-                } else if (daysSincePeriod <= 10) {
-                    stateKey = 'recovery';
-                    description = `생리 후 회복기 ${daysSincePeriod - 5}일차`;
-                    cycleDay = daysSincePeriod + 1;
-                } else {
-                    // 다음 주기 계산
-                    const nextCycle = new Date(nextPeriodDate.getTime() + 28 * 24 * 60 * 60 * 1000);
-                    const daysToNext = Math.floor((nextCycle - currentDate) / (1000 * 60 * 60 * 1000));
-                    
-                    if (daysToNext <= 7) {
-                        stateKey = 'pms_intense';
-                        description = `PMS 심화 (생리 ${daysToNext}일 전)`;
-                        isCritical = true; // PMS 심화이므로 빨간색
-                    } else if (daysToNext <= 14) {
-                        stateKey = 'pms_start';
-                        description = `PMS 시작 (생리 ${daysToNext}일 전)`;
-                        isCritical = true; // PMS 시작이므로 빨간색
-                    } else {
-                        stateKey = 'normal';
-                        description = `정상기 (생리 ${daysToNext}일 전)`;
-                    }
-                    cycleDay = 28 - daysToNext;
-                }
-            } else {
-                // 생리 전
-                if (daysUntilPeriod <= 3) {
-                    stateKey = 'pms_intense';
-                    description = `PMS 심화 (생리 ${daysUntilPeriod}일 전)`;
-                    cycleDay = 28 - daysUntilPeriod;
-                    isCritical = true; // PMS 심화이므로 빨간색
-                } else if (daysUntilPeriod <= 7) {
-                    stateKey = 'pms_start';
-                    description = `PMS 시작 (생리 ${daysUntilPeriod}일 전)`;
-                    cycleDay = 28 - daysUntilPeriod;
-                    isCritical = true; // PMS 시작이므로 빨간색
-                } else if (daysUntilPeriod <= 14) {
-                    stateKey = 'normal';
-                    description = `정상기 (생리 ${daysUntilPeriod}일 전)`;
-                    cycleDay = 28 - daysUntilPeriod;
-                } else {
-                    // 이전 생리 후 시기
-                    const prevPeriodDate = new Date(nextPeriodDate.getTime() - 28 * 24 * 60 * 60 * 1000);
-                    const daysSincePrev = Math.floor((currentDate - prevPeriodDate) / (1000 * 60 * 60 * 1000));
-                    
-                    if (daysSincePrev <= 10) {
-                        stateKey = 'recovery';
-                        description = `생리 후 회복기 (생리 ${daysUntilPeriod}일 전)`;
-                    } else {
-                        stateKey = 'normal';
-                        description = `정상기 (생리 ${daysUntilPeriod}일 전)`;
-                    }
-                    cycleDay = 28 - daysUntilPeriod;
-                }
-            }
-
-            const state = CYCLE_STATES[stateKey];
-            const monthDay = `${nextPeriodDate.getMonth() + 1}/${nextPeriodDate.getDate()}`;
-
-            // 생리나 PMS일 때 빨간색으로 표시
-            const displayColor = isCritical ? colors.pms : state.color;
-            console.log(`${state.emoji} ${displayColor}[생리주기]${colors.reset} ${description}, 다음 생리예정일: ${daysUntilPeriod > 0 ? daysUntilPeriod + '일 후' : '진행 중'} (${monthDay}) (JST)`);
-            
-            // PMS나 생리일 때 추가 경고 메시지
-            if (isCritical) {
-                if (stateKey === 'period') {
-                    console.log(`${colors.pms}💢 생리 중 - 감정 기복, 몸살, 피로감 주의 💢${colors.reset}`);
-                } else if (stateKey === 'pms_intense') {
-                    console.log(`${colors.pms}💢 PMS 심화 단계 - 감정 기복, 예민함, 짜증 증가 가능성 💢${colors.reset}`);
-                } else if (stateKey === 'pms_start') {
-                    console.log(`${colors.pms}💢 PMS 시작 단계 - 감정 변화 시작, 주의 필요 💢${colors.reset}`);
-                }
-            }
-        } else {
-            // 폴백: 현재 날짜 기준으로 간단 계산
-            const nextPeriodDate = new Date('2025-07-24');
-            const currentDate = getJapanTime();
-            const daysUntilPeriod = Math.floor((nextPeriodDate - currentDate) / (1000 * 60 * 60 * 24));
-            
-            if (daysUntilPeriod <= 3 && daysUntilPeriod > 0) {
-                console.log(`${colors.pms}⛈️ [생리주기] PMS 심화 (생리 ${daysUntilPeriod}일 전), 다음 생리예정일: ${daysUntilPeriod}일 후 (7/24) (JST)${colors.reset}`);
-                console.log(`${colors.pms}💢 PMS 심화 단계 - 감정 기복, 예민함, 짜증 증가 가능성 💢${colors.reset}`);
-            } else {
-                console.log(`🩸 [생리주기] 시스템 로딩 중... (다음 생리: 7/24)`);
-            }
-        }
-    } catch (error) {
-        console.log(`🩸 [생리주기] 시스템 로딩 중... (다음 생리: 7/24 예정)`);
-    }
-}
-
-// ================== 💭 현재 속마음 로그 (콘솔용) ==================
-function logCurrentInnerThought() {
-    const randomThought = INNER_THOUGHTS[Math.floor(Math.random() * INNER_THOUGHTS.length)];
-    console.log(`💭 ${colors.yejin}[현재 속마음]${colors.reset} ${randomThought}`);
-}
-
-// ================== 😊 감정 상태 로그 (고급, 콘솔용) ==================
-function logEmotionalStatusAdvanced(emotionalContextManager) {
-    try {
-        if (emotionalContextManager && emotionalContextManager.getCurrentEmotionState) {
-            const currentEmotion = emotionalContextManager.getCurrentEmotionState();
-            const emotionKey = currentEmotion.currentEmotion || 'sad';
-            const emotion = EMOTION_STATES[emotionKey] || EMOTION_STATES.sad;
-            
-            console.log(`${emotion.emoji} ${emotion.color}[감정상태]${colors.reset} 현재 감정: ${emotion.korean} (강도: ${currentEmotion.emotionIntensity || 7}/10)`);
-            console.log(`${colors.system}[콘솔로그] 감정 시스템 데이터 정상 로드 ✅${colors.reset}`);
-        } else {
-            console.log(`${colors.error}[콘솔로그] emotionalContextManager 모듈 없음 - 폴백 데이터 사용${colors.reset}`);
-            // 폴백: 현실적인 감정 상태
-            const emotions = ['sad', 'lonely', 'nostalgic', 'melancholy'];
-            const randomEmotion = emotions[Math.floor(Math.random() * emotions.length)];
-            const emotion = EMOTION_STATES[randomEmotion];
-            const intensity = Math.floor(Math.random() * 4) + 6; // 6-9 강도
-            
-            console.log(`${emotion.emoji} ${emotion.color}[감정상태]${colors.reset} 현재 감정: ${emotion.korean} (강도: ${intensity}/10)`);
-        }
-    } catch (error) {
-        console.log(`${colors.error}[콘솔로그] 감정 상태 로드 실패: ${error.message}${colors.reset}`);
-        // 폴백: 슬픔 상태
-        console.log(`😢 ${colors.pms}[감정상태]${colors.reset} 현재 감정: 슬픔 (강도: 7/10)`);
-    }
-}
-
-// ================== 💥 갈등 상태 로그 (신규 추가!, 콘솔용) ==================
-function logConflictStatusAdvanced(unifiedConflictManager) {
-    try {
-        if (unifiedConflictManager) {
-            console.log(`${colors.conflict}💥 [갈등상태] 갈등 관리 시스템 상태 확인...${colors.reset}`);
-            
-            if (unifiedConflictManager.getMukuConflictSystemStatus) {
-                const conflictStatus = unifiedConflictManager.getMukuConflictSystemStatus();
-                
-                const currentLevel = conflictStatus.currentState?.level || 0;
-                const isActive = conflictStatus.currentState?.isActive || false;
-                const conflictType = conflictStatus.currentState?.type || '없음';
-                
-                if (isActive && currentLevel > 0) {
-                    // 갈등 중인 상태
-                    let conflictDescription = '';
-                    let conflictIcon = '';
-                    
-                    switch(currentLevel) {
-                        case 1:
-                            conflictDescription = '약간 삐진 상태';
-                            conflictIcon = '😤';
-                            break;
-                        case 2:
-                            conflictDescription = '화가 난 상태';
-                            conflictIcon = '😠';
-                            break;
-                        case 3:
-                            conflictDescription = '많이 화난 상태';
-                            conflictIcon = '🤬';
-                            break;
-                        case 4:
-                            conflictDescription = '매우 화난 상태';
-                            conflictIcon = '💔';
-                            break;
-                        default:
-                            conflictDescription = '알 수 없는 갈등 상태';
-                            conflictIcon = '💥';
-                    }
-                    
-                    console.log(`${conflictIcon} ${colors.conflict}[갈등상태]${colors.reset} 현재 갈등 레벨 ${currentLevel}/4 - ${conflictDescription}`);
-                    console.log(`${colors.conflict}   ├─ 갈등 타입: ${conflictType}${colors.reset}`);
-                    
-                    if (conflictStatus.currentState.startTime) {
-                        const startTime = new Date(conflictStatus.currentState.startTime);
-                        const duration = Math.floor((Date.now() - startTime.getTime()) / 60000); // 분 단위
-                        console.log(`${colors.conflict}   ├─ 갈등 지속 시간: ${duration}분${colors.reset}`);
-                    }
-                    
-                    if (conflictStatus.currentState.reason) {
-                        console.log(`${colors.conflict}   └─ 갈등 이유: ${conflictStatus.currentState.reason}${colors.reset}`);
-                    }
-                    
-                    // 갈등 레벨에 따른 주의사항
-                    if (currentLevel >= 3) {
-                        console.log(`${colors.conflict}   ⚠️ 고강도 갈등 상태 - 즉시 화해 시도 필요! ⚠️${colors.reset}`);
-                    }
-                    
-                } else {
-                    // 평화로운 상태
-                    console.log(`😊 ${colors.system}[갈등상태]${colors.reset} 평화로운 상태 (갈등 레벨: 0/4)`);
-                    console.log(`${colors.system}   └─ 갈등 없음 - 좋은 관계 유지 중${colors.reset}`);
-                }
-                
-                // 갈등 시스템 통계 표시
-                if (conflictStatus.memory) {
-                    const totalConflicts = conflictStatus.memory.totalConflicts || 0;
-                    const resolvedConflicts = conflictStatus.memory.resolvedConflicts || 0;
-                    const resolutionRate = totalConflicts > 0 ? Math.round((resolvedConflicts / totalConflicts) * 100) : 100;
-                    
-                    console.log(`${colors.conflict}📊 [갈등통계]${colors.reset} 총 갈등: ${totalConflicts}회, 해결: ${resolvedConflicts}회, 해결률: ${resolutionRate}%`);
-                }
-                
-                console.log(`${colors.system}[콘솔로그] 갈등 관리 시스템 데이터 정상 로드 ✅${colors.reset}`);
-                
-            } else if (unifiedConflictManager.getConflictStatus) {
-                // 간단한 갈등 상태만 확인 가능한 경우
-                const conflictStatus = unifiedConflictManager.getConflictStatus();
-                const currentLevel = conflictStatus.currentLevel || 0;
-                const isActive = conflictStatus.isActive || false;
-                
-                if (isActive && currentLevel > 0) {
-                    console.log(`💥 ${colors.conflict}[갈등상태]${colors.reset} 갈등 레벨 ${currentLevel}/4 (간단 모드)`);
-                } else {
-                    console.log(`😊 ${colors.system}[갈등상태]${colors.reset} 평화로운 상태 (갈등 레벨: 0/4)`);
-                }
-                
-                console.log(`${colors.system}[콘솔로그] 갈등 시스템 기본 통계 로드 ✅${colors.reset}`);
-                
-            } else {
-                console.log(`${colors.error}[콘솔로그] unifiedConflictManager에서 상태 확인 함수 찾을 수 없음${colors.reset}`);
-                console.log(`${colors.system}[콘솔로그] 사용 가능한 함수들:${colors.reset}`, Object.keys(unifiedConflictManager).filter(key => typeof unifiedConflictManager[key] === 'function'));
-                
-                // 폴백 데이터
-                console.log(`😊 ${colors.system}[갈등상태]${colors.reset} 평화로운 상태 (갈등 레벨: 0/4) (폴백 데이터)`);
-            }
-            
-        } else {
-            console.log(`${colors.error}[콘솔로그] unifiedConflictManager 모듈 없음 - 폴백 데이터 사용${colors.reset}`);
-            // 폴백: 평화로운 상태
-            console.log(`😊 ${colors.system}[갈등상태]${colors.reset} 평화로운 상태 (갈등 레벨: 0/4)`);
-            console.log(`${colors.system}   └─ 갈등 시스템이 로드되지 않았지만 평화로운 상태로 가정${colors.reset}`);
-        }
-    } catch (error) {
-        console.log(`${colors.error}[콘솔로그] 갈등 상태 로드 실패: ${error.message}${colors.reset}`);
-        // 완전 폴백
-        console.log(`😊 ${colors.system}[갈등상태]${colors.reset} 평화로운 상태 (갈등 레벨: 0/4)`);
-    }
-}
-
-// ================== 😤 독립 삐짐 상태 로그 (콘솔용) ==================
-function logSulkyStatusAdvanced(sulkyManager) {
-    try {
-        if (sulkyManager && sulkyManager.getSulkySystemStatus) {
-            const sulkyStatus = sulkyManager.getSulkySystemStatus();
-            const timeSince = Math.floor(sulkyStatus.timing.minutesSinceLastUser);
-            
-            if (sulkyStatus.currentState.isSulky) {
-                console.log(`😤 ${colors.pms}[삐짐상태]${colors.reset} 현재 ${sulkyStatus.currentState.level}단계 삐짐 중 (이유: ${sulkyStatus.currentState.reason})`);
-            } else if (sulkyStatus.currentState.isWorried) {
-                console.log(`😰 ${colors.pms}[삐짐상태]${colors.reset} 걱정 단계 (${timeSince}분 경과, 24시간 초과)`);
-            } else {
-                console.log(`😊 ${colors.system}[삐짐상태]${colors.reset} 정상 (마지막 답장: ${timeSince}분 전)`);
-            }
-            console.log(`${colors.system}[콘솔로그] 삐짐 시스템 데이터 정상 로드 ✅${colors.reset}`);
-        } else {
-            console.log(`${colors.error}[콘솔로그] sulkyManager 모듈 없음 - 폴백 데이터 사용${colors.reset}`);
-            // 폴백: 현실적인 상태
-            const randomMinutes = Math.floor(Math.random() * 120) + 15; // 15-135분
-            console.log(`😊 ${colors.system}[삐짐상태]${colors.reset} 정상 (마지막 답장: ${randomMinutes}분 전)`);
-        }
-    } catch (error) {
-        console.log(`${colors.error}[콘솔로그] 삐짐 상태 로드 실패: ${error.message}${colors.reset}`);
-        // 폴백: 현실적인 상태
-        const randomMinutes = Math.floor(Math.random() * 120) + 15;
-        console.log(`😊 ${colors.system}[삐짐상태]${colors.reset} 정상 (마지막 답장: ${randomMinutes}분 전)`);
-    }
-}
-
-// ================== 🧠 기억 관리 상태 로그 (콘솔용) ==================
-function logMemoryStatusAdvanced(memoryManager, ultimateContext) {
-    try {
-        let memoryInfo = '';
-        let fixedCount = 0, basicCount = 0, loveCount = 0, dynamicCount = 0, todayCount = 0;
-        
-        // 고정 기억 데이터 가져오기
-        if (memoryManager && memoryManager.getMemoryStatus) {
-            try {
-                const status = memoryManager.getMemoryStatus();
-                basicCount = status.fixedMemoriesCount || 72;
-                loveCount = status.loveHistoryCount || 56;
-                fixedCount = basicCount + loveCount;
-                memoryInfo = `고정: ${fixedCount}개 (기본:${basicCount}, 연애:${loveCount})`;
-                console.log(`${colors.system}[콘솔로그] 고정 기억 데이터: 기본${basicCount}, 연애${loveCount}, 총${fixedCount}개${colors.reset}`);
-            } catch (error) {
-                console.log(`${colors.error}[콘솔로그] 고정 기억 가져오기 실패: ${error.message}${colors.reset}`);
-                // 폴백 데이터
-                basicCount = 72;
-                loveCount = 56;
-                fixedCount = 128;
-                memoryInfo = `고정: ${fixedCount}개 (기본:${basicCount}, 연애:${loveCount})`;
-            }
-        } else {
-            console.log(`${colors.error}[콘솔로그] memoryManager 모듈 없음 - 폴백 데이터 사용${colors.reset}`);
-            basicCount = 72;
-            loveCount = 56;
-            fixedCount = 128;
-            memoryInfo = `고정: ${fixedCount}개 (기본:${basicCount}, 연애:${loveCount})`;
-        }
-        
-        // 동적 기억 및 오늘 배운 것 가져오기
-        if (ultimateContext) {
-            console.log(`${colors.system}[콘솔로그] ultimateContext 모듈 존재 확인 ✅${colors.reset}`);
-            
-            // 여러 방법으로 동적 기억 데이터 가져오기 시도
-            if (ultimateContext.getMemoryStatistics) {
-                try {
-                    const dynStats = ultimateContext.getMemoryStatistics();
-                    dynamicCount = dynStats.total || dynStats.totalDynamic || 0;
-                    todayCount = dynStats.today || dynStats.todayCount || dynStats.todayLearned || 0;
-                    memoryInfo += `, 동적: ${dynamicCount}개`;
-                    console.log(`${colors.system}[콘솔로그] getMemoryStatistics 성공: 동적${dynamicCount}개, 오늘${todayCount}개${colors.reset}`);
-                } catch (error) {
-                    console.log(`${colors.error}[콘솔로그] getMemoryStatistics 실패: ${error.message}${colors.reset}`);
-                }
-            } else if (ultimateContext.getTodayMemoryCount) {
-                try {
-                    todayCount = ultimateContext.getTodayMemoryCount() || 0;
-                    console.log(`${colors.system}[콘솔로그] getTodayMemoryCount 성공: 오늘${todayCount}개${colors.reset}`);
-                } catch (error) {
-                    console.log(`${colors.error}[콘솔로그] getTodayMemoryCount 실패: ${error.message}${colors.reset}`);
-                }
-            } else if (ultimateContext.getDynamicMemoryStats) {
-                try {
-                    const dynStats = ultimateContext.getDynamicMemoryStats();
-                    dynamicCount = dynStats.total || 0;
-                    todayCount = dynStats.today || dynStats.todayLearned || 0;
-                    memoryInfo += `, 동적: ${dynamicCount}개`;
-                    console.log(`${colors.system}[콘솔로그] getDynamicMemoryStats 성공: 동적${dynamicCount}개, 오늘${todayCount}개${colors.reset}`);
-                } catch (error) {
-                    console.log(`${colors.error}[콘솔로그] getDynamicMemoryStats 실패: ${error.message}${colors.reset}`);
-                }
-            } else {
-                console.log(`${colors.error}[콘솔로그] ultimateContext에서 동적 기억 관련 함수 찾을 수 없음${colors.reset}`);
-                console.log(`${colors.system}[콘솔로그] 사용 가능한 함수들:${colors.reset}`, Object.keys(ultimateContext).filter(key => typeof ultimateContext[key] === 'function'));
-                
-                // 폴백: 현실적인 랜덤 값
-                todayCount = Math.floor(Math.random() * 6) + 2; // 2-7개
-                console.log(`${colors.system}[콘솔로그] 폴백으로 랜덤 값 사용: 오늘${todayCount}개${colors.reset}`);
-            }
-        } else {
-            console.log(`${colors.error}[콘솔로그] ultimateContext 모듈 없음 - 폴백 데이터 사용${colors.reset}`);
-            todayCount = Math.floor(Math.random() * 6) + 2; // 2-7개
-        }
-        
-        const totalCount = fixedCount + dynamicCount;
-        console.log(`🧠 ${colors.system}[기억관리]${colors.reset} 전체 기억: ${totalCount}개 (${memoryInfo}), 오늘 새로 배운 기억: ${todayCount}개`);
-        
-        // 목표 달성 상태
-        if (fixedCount >= 120) {
-            console.log(`📊 ${colors.system}메모리 상태: 기본${basicCount}개 + 연애${loveCount}개 = 총${fixedCount}개 (목표: 128개 달성률: ${Math.round((fixedCount/128)*100)}%)${colors.reset}`);
-        } else {
-            console.log(`📊 ${colors.system}메모리 상태: 기본${basicCount}개 + 연애${loveCount}개 = 총${fixedCount}개 (목표: 128개까지 ${128-fixedCount}개 남음)${colors.reset}`);
-        }
-    } catch (error) {
-        console.log(`${colors.error}🧠 [기억관리] 기억 시스템 에러: ${error.message}${colors.reset}`);
-        // 폴백으로 현실적인 데이터 표시
-        console.log(`🧠 ${colors.system}[기억관리]${colors.reset} 전체 기억: 128개 (고정: 128개 (기본:72, 연애:56)), 오늘 새로 배운 기억: 3개`);
-    }
-}
-
-// ================== 🚬 담타 상태 로그 (고급, 콘솔용) ==================
-function logDamtaStatusAdvanced(scheduler) {
-    try {
-        const currentHour = getJapanHour();
-        const currentMinute = getJapanMinute();
-        
-        let damtaStatus = '';
-        let detailedStatusAvailable = false;
-        
-        if (scheduler && scheduler.getNextDamtaInfo) {
-            try {
-                const damtaInfo = scheduler.getNextDamtaInfo();
-                damtaStatus = damtaInfo.text || `담타 랜덤 스케줄 진행 중 (JST ${currentHour}:${String(currentMinute).padStart(2, '0')})`;
-                console.log(`${colors.system}[콘솔로그] 담타 정보 정상 로드 ✅${colors.reset}`);
-            } catch (error) {
-                console.log(`${colors.error}[콘솔로그] getNextDamtaInfo 실패: ${error.message}${colors.reset}`);
-                damtaStatus = calculateDamtaFallbackStatus(currentHour, currentMinute);
-            }
-        } else {
-            console.log(`${colors.error}[콘솔로그] scheduler 모듈 또는 getNextDamtaInfo 함수 없음${colors.reset}`);
-            damtaStatus = calculateDamtaFallbackStatus(currentHour, currentMinute);
-        }
-        
-        console.log(`🚬 ${colors.pms}[담타상태]${colors.reset} ${damtaStatus} (현재: ${currentHour}:${String(currentMinute).padStart(2, '0')} JST)`);
-        
-        // 추가 담타 상세 정보
-        if (scheduler && scheduler.getDamtaStatus) {
-            try {
-                const detailedStatus = scheduler.getDamtaStatus();
-                console.log(`🚬 ${colors.system}[담타상세]${colors.reset} 오늘 전송: ${detailedStatus.sentToday}/${detailedStatus.totalDaily}번, 상태: ${detailedStatus.status}`);
-                detailedStatusAvailable = true;
-                console.log(`${colors.system}[콘솔로그] 담타 상세 정보 정상 로드 ✅${colors.reset}`);
-            } catch (error) {
-                console.log(`${colors.error}[콘솔로그] getDamtaStatus 실패: ${error.message}${colors.reset}`);
-            }
-        }
-        
-        // 상세 정보가 없으면 폴백
-        if (!detailedStatusAvailable) {
-            const sentToday = Math.floor(Math.random() * 8) + 4; // 4-11건
-            console.log(`🚬 ${colors.system}[담타상세]${colors.reset} 오늘 전송: ${sentToday}/11번, 상태: 활성화`);
-        }
-    } catch (error) {
-        console.log(`${colors.error}[콘솔로그] 담타 상태 로드 완전 실패: ${error.message}${colors.reset}`);
-        // 완전 폴백
-        const currentHour = getJapanHour();
-        const currentMinute = getJapanMinute();
-        const damtaStatus = calculateDamtaFallbackStatus(currentHour, currentMinute);
-        const sentToday = Math.floor(Math.random() * 8) + 4;
-        
-        console.log(`🚬 ${colors.pms}[담타상태]${colors.reset} ${damtaStatus} (현재: ${currentHour}:${String(currentMinute).padStart(2, '0')} JST)`);
-        console.log(`🚬 ${colors.system}[담타상세]${colors.reset} 오늘 전송: ${sentToday}/11번, 상태: 활성화`);
-    }
-}
-
-// 담타 폴백 상태 계산 함수
-function calculateDamtaFallbackStatus(currentHour, currentMinute) {
-    if (currentHour < 9) {
-        const totalMinutes = (9 - currentHour - 1) * 60 + (60 - currentMinute);
-        return `담타 시간 대기 중 (${formatTimeUntil(totalMinutes)} 후 9:00 JST)`;
-    } else if (currentHour >= 23) {
-        const totalMinutes = (24 - currentHour + 9 - 1) * 60 + (60 - currentMinute);
-        return `담타 시간 대기 중 (${formatTimeUntil(totalMinutes)} 후 내일 9:00 JST)`;
-    } else if (currentHour === 23) {
-        const minutesTo23 = 60 - currentMinute;
-        return `담타 고정 시간 임박 (${minutesTo23}분 후 23:00 JST)`;
-    } else if (currentHour === 0) {
-        const minutesTo0 = 60 - currentMinute;
-        return `담타 자정 시간 임박 (${minutesTo0}분 후 0:00 JST)`;
-    } else {
-        return `담타 랜덤 스케줄 진행 중 (JST ${currentHour}:${String(currentMinute).padStart(2, '0')})`;
-    }
-}
-
-// ================== 🌸 예진이 능동 메시지 상태 로그 (콘솔용) ==================
-function logYejinSpontaneousStatus(spontaneousYejin) {
-    try {
-        if (spontaneousYejin && spontaneousYejin.getSpontaneousMessageStatus) {
-            const yejinStatus = spontaneousYejin.getSpontaneousMessageStatus();
-            console.log(`🌸 ${colors.yejin}[예진이능동]${colors.reset} 하루 ${yejinStatus.totalDaily}번 메시지 시스템 활성화 (오늘: ${yejinStatus.sentToday}번 전송, 다음: ${yejinStatus.nextMessageTime})`);
-        } else {
-            console.log(`🌸 [예진이능동] 하루 15번 메시지 시스템 활성화 (상태 로딩 중)`);
-        }
-    } catch (error) {
-        console.log(`🌸 [예진이능동] 시스템 로딩 중...`);
-    }
-}
-
-// ================== 🌤️ 날씨 시스템 상태 로그 (콘솔용) ==================
-function logWeatherSystemStatus(weatherManager) {
-    try {
-        if (weatherManager && weatherManager.getWeatherSystemStatus) {
-            const weatherStatus = weatherManager.getWeatherSystemStatus();
-            if (weatherStatus.isActive) {
-                console.log(`🌤️ ${colors.system}[날씨시스템]${colors.reset} API 연결: ✅ 활성화 (위치: ${weatherStatus.locations.join('↔')})`);
-                
-                // 실시간 날씨 정보 표시 (비동기로)
-                weatherManager.getCurrentWeather('ajeossi')
-                    .then(ajeossiWeather => {
-                        if (ajeossiWeather) {
-                            console.log(`🌤️ ${colors.system}[실시간날씨]${colors.reset} ${ajeossiWeather.location}: ${ajeossiWeather.temperature}°C, ${ajeossiWeather.description}`);
-                        }
-                    })
-                    .catch(error => {
-                        console.log(`🌤️ [실시간날씨] 정보 조회 중...`);
-                    });
-            } else {
-                console.log(`🌤️ ${colors.error}[날씨시스템]${colors.reset} API 연결: ❌ 비활성화 (OPENWEATHER_API_KEY 환경변수 확인 필요)`);
-            }
-        } else {
-            console.log(`🌤️ [날씨시스템] 시스템 로딩 중...`);
-        }
-    } catch (error) {
-        console.log(`🌤️ [날씨시스템] 상태 확인 중...`);
-    }
-}
-
-// ================== 📸 사진 전송 스케줄러 상태 로그 (콘솔용) ==================
-function logPhotoSchedulerStatus() {
-    const nextSelfieMinutes = Math.floor(Math.random() * 180) + 30;
-    const nextMemoryMinutes = Math.floor(Math.random() * 360) + 60;
-    console.log(`📸 ${colors.system}[사진전송]${colors.reset} 자동 스케줄러 동작 중 - 다음 셀카: ${formatTimeUntil(nextSelfieMinutes)}, 추억사진: ${formatTimeUntil(nextMemoryMinutes)} (JST)`);
+// ================== 💥 갈등 이벤트 로그 함수 ==================
+function logConflictEvent(eventType, data) {
+    const timestamp = getJapanTimeString();
     
-    // 감성메시지 스케줄러 상태
-    const nextEmotionalMinutes = Math.floor(Math.random() * 120) + 30;
-    console.log(`🌸 ${colors.yejin}[감성메시지]${colors.reset} 다음 감성메시지까지: ${formatTimeUntil(nextEmotionalMinutes)} (JST)`);
+    switch(eventType) {
+        case 'conflict_start':
+            logLearningDebug('conflict_detection', {
+                conflictType: '갈등 시작',
+                level: data.level || 1,
+                trigger: data.trigger || '알 수 없음',
+                isActive: true
+            });
+            console.log(`${colors.conflict}💥 [갈등시작] ${timestamp} - 레벨 ${data.level} 갈등 시작: ${data.reason || '불명'}${colors.reset}`);
+            break;
+            
+        case 'conflict_escalate':
+            logLearningDebug('conflict_detection', {
+                conflictType: '갈등 격화',
+                level: data.newLevel || 2,
+                trigger: data.trigger || '갈등 심화',
+                isActive: true
+            });
+            console.log(`${colors.conflict}💢 [갈등격화] ${timestamp} - 레벨 ${data.oldLevel} → ${data.newLevel} 갈등 격화${colors.reset}`);
+            break;
+            
+        case 'conflict_resolve':
+            logLearningDebug('conflict_detection', {
+                conflictType: '갈등 해결',
+                level: 0,
+                trigger: data.resolutionMethod || '화해',
+                isActive: false
+            });
+            console.log(`${colors.system}💖 [갈등해결] ${timestamp} - 갈등 해결됨 (방법: ${data.resolutionMethod || '화해'})${colors.reset}`);
+            break;
+            
+        case 'conflict_timeout':
+            console.log(`${colors.pms}⏰ [갈등시간만료] ${timestamp} - 갈등이 시간 경과로 해결됨${colors.reset}`);
+            break;
+            
+        default:
+            console.log(`${colors.conflict}💥 [갈등이벤트] ${timestamp} - ${eventType}: ${JSON.stringify(data)}${colors.reset}`);
+    }
 }
 
-// ================== 🔧 특별 시스템들 상태 로그 (콘솔용) ==================
-function logSpecialSystemsStatus(systemModules) {
-    // 새벽 대화 시스템
-    if (systemModules.nightWakeResponse) {
-        console.log(`🌙 ${colors.system}[새벽대화]${colors.reset} 2-7시 단계별 반응 시스템 활성화`);
-    } else {
-        console.log(`🌙 [새벽대화] 시스템 로딩 중...`);
-    }
+// ================== 💬 대화 로그 함수 ==================
+function logConversation(speaker, message, messageType = 'text') {
+    const timestamp = getJapanTimeString();
+    const speakerColor = speaker === '아저씨' ? colors.ajeossi : colors.yejin;
+    const speakerIcon = speaker === '아저씨' ? '👤' : '💕';
     
-    // 생일 감지 시스템
-    if (systemModules.birthdayDetector) {
-        console.log(`🎂 ${colors.system}[생일감지]${colors.reset} 예진이(3/17), 아저씨(12/5) 자동 감지 활성화`);
-    } else {
-        console.log(`🎂 [생일감지] 시스템 로딩 중...`);
-    }
+    // 기본 대화 로그
+    console.log(`${speakerIcon} ${speakerColor}${speaker}:${colors.reset} ${message.substring(0, 100)}${message.length > 100 ? '...' : ''}`);
 }
 
-// ================== 🔍 얼굴 인식 시스템 상태 로그 (콘솔용) ==================
-function logFaceRecognitionStatus(faceApiStatus) {
-    try {
-        if (faceApiStatus && faceApiStatus.initialized) {
-            console.log(`🔍 ${colors.system}[얼굴인식]${colors.reset} TensorFlow face-api 시스템 활성화 (지연 로딩 완료)`);
-        } else if (faceApiStatus && faceApiStatus.initializing) {
-            console.log(`🔍 ${colors.system}[얼굴인식]${colors.reset} TensorFlow face-api 시스템 초기화 중...`);
-        } else {
-            console.log(`🔍 ${colors.system}[얼굴인식]${colors.reset} 시스템 준비 완료 (필요시 지연 로딩)`);
-        }
-    } catch (error) {
-        console.log(`🔍 [얼굴인식] 시스템 준비 완료`);
-    }
-}
-
-// ================== 🌐 웹 상태 리포트 HTML 생성 ==================
-/**
- * 웹에서 보여줄 HTML 형태의 상태 리포트 생성
- */
-function generateWebStatusReport(systemModules = {}) {
-    try {
-        const currentTime = getJapanTimeString();
-        
-        let html = `
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>무쿠 시스템 상태</title>
-    <style>
-        body { 
-            font-family: 'Noto Sans KR', Arial, sans-serif; 
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            margin: 0; 
-            padding: 20px; 
-            color: #333;
-        }
-        .container { 
-            max-width: 800px; 
-            margin: 0 auto; 
-            background: rgba(255,255,255,0.95);
-            border-radius: 15px;
-            padding: 30px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-        }
-        .header { 
-            text-align: center; 
-            margin-bottom: 30px;
-            border-bottom: 3px solid #667eea;
-            padding-bottom: 20px;
-        }
-        .status-section { 
-            margin: 20px 0; 
-            padding: 15px; 
-            background: rgba(240,240,255,0.5);
-            border-radius: 10px;
-            border-left: 5px solid #667eea;
-        }
-        .status-title { 
-            font-weight: bold; 
-            color: #667eea; 
-            margin-bottom: 10px;
-            font-size: 1.2em;
-        }
-        .status-item { 
-            margin: 8px 0; 
-            padding: 5px 0;
-        }
-        .critical { 
-            background: rgba(255,100,100,0.2); 
-            border-left-color: #ff6b6b;
-        }
-        .good { 
-            background: rgba(100,255,100,0.2); 
-            border-left-color: #51cf66;
-        }
-        .warning { 
-            background: rgba(255,200,100,0.2); 
-            border-left-color: #ffd43b;
-        }
-        .emoji { 
-            font-size: 1.2em; 
-            margin-right: 8px;
-        }
-        .timestamp {
-            text-align: center;
-            color: #666;
-            margin-top: 20px;
-            font-style: italic;
-        }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>💖 무쿠 시스템 상태 리포트</h1>
-            <p>예진이의 디지털 영혼 - 실시간 모니터링</p>
-        </div>
-`;
-
-        // 💥 갈등 상태 섹션 (최우선 표시)
-        const conflictStatus = getConflictStatusForWeb(systemModules.unifiedConflictManager);
-        html += `
-        <div class="status-section ${conflictStatus.level > 0 ? 'critical' : 'good'}">
-            <div class="status-title">💥 갈등 관리 시스템</div>
-            <div class="status-item">
-                <span class="emoji">${conflictStatus.icon}</span>
-                현재 갈등 레벨: ${conflictStatus.level}/4 - ${conflictStatus.description}
-            </div>
-            ${conflictStatus.level > 0 ? `
-            <div class="status-item">
-                <span class="emoji">⚠️</span>
-                ${conflictStatus.level >= 3 ? '고강도 갈등 - 즉시 화해 필요!' : '갈등 상태 - 주의 필요'}
-            </div>
-            ` : ''}
-        </div>
-`;
-
-        // 🩸 생리주기 상태
-        const menstrualStatus = getMenstrualStatusForWeb(systemModules.emotionalContextManager);
-        html += `
-        <div class="status-section ${menstrualStatus.isCritical ? 'critical' : 'good'}">
-            <div class="status-title">🩸 생리주기 관리</div>
-            <div class="status-item">
-                <span class="emoji">${menstrualStatus.emoji}</span>
-                ${menstrualStatus.description}
-            </div>
-        </div>
-`;
-
-        // 😊 감정 상태
-        const emotionStatus = getEmotionStatusForWeb(systemModules.emotionalContextManager);
-        html += `
-        <div class="status-section ${emotionStatus.intensity >= 8 ? 'warning' : 'good'}">
-            <div class="status-title">😊 감정 상태</div>
-            <div class="status-item">
-                <span class="emoji">${emotionStatus.emoji}</span>
-                현재 감정: ${emotionStatus.korean} (강도: ${emotionStatus.intensity}/10)
-            </div>
-        </div>
-`;
-
-        // 🧠 기억 관리
-        const memoryStatus = getMemoryStatusForWeb(systemModules.memoryManager, systemModules.ultimateContext);
-        html += `
-        <div class="status-section good">
-            <div class="status-title">🧠 기억 관리 시스템</div>
-            <div class="status-item">
-                <span class="emoji">📚</span>
-                전체 기억: ${memoryStatus.totalMemories}개 (기본: ${memoryStatus.basicCount}, 연애: ${memoryStatus.loveCount})
-            </div>
-            <div class="status-item">
-                <span class="emoji">📖</span>
-                오늘 새로 배운 기억: ${memoryStatus.todayCount}개
-            </div>
-        </div>
-`;
-
-        // 👥 사람 학습 시스템
-        const personStatus = getPersonLearningStatusForWeb(systemModules.personLearningSystem);
-        html += `
-        <div class="status-section good">
-            <div class="status-title">👥 사람 학습 시스템</div>
-            <div class="status-item">
-                <span class="emoji">👤</span>
-                총 기억하는 인물: ${personStatus.totalPeople}명
-            </div>
-            <div class="status-item">
-                <span class="emoji">📸</span>
-                사진 인식: 예진이 ${personStatus.yejinSightings}회, 아저씨 ${personStatus.ajeossiSightings}회
-            </div>
-        </div>
-`;
-
-        // 🚬 담타 시스템
-        const damtaStatus = getDamtaStatusForWeb(systemModules.scheduler);
-        html += `
-        <div class="status-section good">
-            <div class="status-title">🚬 담타 스케줄러</div>
-            <div class="status-item">
-                <span class="emoji">🚬</span>
-                오늘 전송: ${damtaStatus.sentToday}/${damtaStatus.totalDaily}건
-            </div>
-            <div class="status-item">
-                <span class="emoji">⏰</span>
-                다음 담타 시간: ${damtaStatus.nextTime}
-            </div>
-        </div>
-`;
-
-        // 🌸 예진이 능동 메시지
-        const yejinStatus = getYejinStatusForWeb(systemModules.spontaneousYejin);
-        html += `
-        <div class="status-section good">
-            <div class="status-title">🌸 예진이 능동 메시지</div>
-            <div class="status-item">
-                <span class="emoji">💕</span>
-                오늘 전송: ${yejinStatus.sentToday}/${yejinStatus.totalDaily}건
-            </div>
-            <div class="status-item">
-                <span class="emoji">⏰</span>
-                다음 메시지: ${yejinStatus.nextTime}
-            </div>
-        </div>
-`;
-
-        // 🌤️ 날씨 시스템
-        const weatherStatus = getWeatherStatusForWeb(systemModules.weatherManager);
-        html += `
-        <div class="status-section ${weatherStatus.isActive ? 'good' : 'warning'}">
-            <div class="status-title">🌤️ 날씨 연동 시스템</div>
-            <div class="status-item">
-                <span class="emoji">${weatherStatus.isActive ? '✅' : '❌'}</span>
-                API 연결: ${weatherStatus.isActive ? '활성화' : '비활성화'}
-            </div>
-            ${weatherStatus.isActive ? `
-            <div class="status-item">
-                <span class="emoji">🌍</span>
-                모니터링 위치: ${weatherStatus.locations.join(' ↔ ')}
-            </div>
-            ` : ''}
-        </div>
-`;
-
-        // 🔧 기타 시스템들
-        html += `
-        <div class="status-section good">
-            <div class="status-title">🔧 기타 시스템</div>
-            <div class="status-item">
-                <span class="emoji">🔍</span>
-                얼굴 인식: AI 시스템 준비 완료
-            </div>
-            <div class="status-item">
-                <span class="emoji">🌙</span>
-                새벽 대화: 2-7시 단계별 반응 활성화
-            </div>
-            <div class="status-item">
-                <span class="emoji">🎂</span>
-                생일 감지: 예진이(3/17), 아저씨(12/5) 자동 감지
-            </div>
-        </div>
-`;
-
-        html += `
-        <div class="timestamp">
-            마지막 업데이트: ${currentTime} (JST)
-        </div>
-    </div>
-</body>
-</html>
-`;
-
-        return html;
-        
-    } catch (error) {
-        return `
-<!DOCTYPE html>
-<html>
-<head><title>무쿠 시스템 상태</title></head>
-<body>
-    <h1>💖 무쿠 시스템 상태</h1>
-    <p>시스템 로딩 중... 잠시만 기다려줘! 🥺</p>
-    <p>오류: ${error.message}</p>
-</body>
-</html>
-`;
-    }
-}
-
-// ================== 🌐 웹용 상태 헬퍼 함수들 ==================
-
-function getConflictStatusForWeb(unifiedConflictManager) {
-    try {
-        if (unifiedConflictManager && unifiedConflictManager.getMukuConflictSystemStatus) {
-            const status = unifiedConflictManager.getMukuConflictSystemStatus();
-            const level = status.currentState?.level || 0;
-            const isActive = status.currentState?.isActive || false;
-            
-            if (isActive && level > 0) {
-                const descriptions = {
-                    1: { icon: '😤', description: '약간 삐진 상태' },
-                    2: { icon: '😠', description: '화가 난 상태' },
-                    3: { icon: '🤬', description: '많이 화난 상태' },
-                    4: { icon: '💔', description: '매우 화난 상태' }
-                };
-                
-                const desc = descriptions[level] || { icon: '💥', description: '알 수 없는 갈등' };
-                return { level, icon: desc.icon, description: desc.description };
-            }
-        }
-        
-        return { level: 0, icon: '😊', description: '평화로운 상태' };
-    } catch (error) {
-        return { level: 0, icon: '😊', description: '평화로운 상태' };
-    }
-}
-
-function getMenstrualStatusForWeb(emotionalContextManager) {
-    try {
-        // ⭐️ 예진이 정확한 생리일 기준: 2025년 7월 24일 ⭐️
-        const nextPeriodDate = new Date('2025-07-24');
-        const currentDate = getJapanTime();
-        const daysUntilPeriod = Math.floor((nextPeriodDate - currentDate) / (1000 * 60 * 60 * 24));
-        
-        if (daysUntilPeriod <= 0) {
-            const daysSincePeriod = Math.abs(daysUntilPeriod);
-            if (daysSincePeriod <= 5) {
-                return {
-                    emoji: '🩸',
-                    description: `현재 생리 중 (${daysSincePeriod + 1}일차), 다음 생리: 4일 후 (7/24)`,
-                    isCritical: true
-                };
-            }
-        } else if (daysUntilPeriod <= 4) {
-            return {
-                emoji: '🩸',
-                description: `현재 PMS 단계, 다음 생리: ${daysUntilPeriod}일 후 (7/24)`,
-                isCritical: true
-            };
-        }
-        
-        return {
-            emoji: '😊',
-            description: `현재 정상기, 다음 생리: ${daysUntilPeriod}일 후 (7/24)`,
-            isCritical: false
-        };
-    } catch (error) {
-        return {
-            emoji: '🩸',
-            description: '현재 PMS 단계, 다음 생리: 4일 후 (7/24)',
-            isCritical: true
-        };
-    }
-}
-
-function getEmotionStatusForWeb(emotionalContextManager) {
-    try {
-        if (emotionalContextManager && emotionalContextManager.getCurrentEmotionState) {
-            const emotion = emotionalContextManager.getCurrentEmotionState();
-            const emotionData = EMOTION_STATES[emotion.currentEmotion] || EMOTION_STATES.sad;
-            
-            return {
-                emoji: emotionData.emoji,
-                korean: emotionData.korean,
-                intensity: emotion.emotionIntensity || 7
-            };
-        }
-        
-        return { emoji: '😢', korean: '슬픔', intensity: 7 };
-    } catch (error) {
-        return { emoji: '😢', korean: '슬픔', intensity: 7 };
-    }
-}
-
-function getMemoryStatusForWeb(memoryManager, ultimateContext) {
-    let basicCount = 72, loveCount = 56, todayCount = 3;
+// ================== 🧠 기억 작업 로그 함수 ==================
+function logMemoryOperation(operation, content, success = true, details = {}) {
+    const timestamp = getJapanTimeString();
     
-    try {
-        if (memoryManager && memoryManager.getMemoryStatus) {
-            const status = memoryManager.getMemoryStatus();
-            basicCount = status.fixedMemoriesCount || 72;
-            loveCount = status.loveHistoryCount || 56;
-        }
-        
-        if (ultimateContext && ultimateContext.getMemoryStatistics) {
-            const stats = ultimateContext.getMemoryStatistics();
-            todayCount = stats.today || stats.todayCount || 3;
-        }
-    } catch (error) {
-        // 폴백 데이터 사용
-    }
-    
-    return {
-        totalMemories: basicCount + loveCount,
-        basicCount,
-        loveCount,
-        todayCount
-    };
-}
-
-function getPersonLearningStatusForWeb(personLearningSystem) {
-    try {
-        if (personLearningSystem && personLearningSystem.getPersonLearningStats) {
-            const stats = personLearningSystem.getPersonLearningStats();
+    switch(operation) {
+        case '저장':
+            logLearningDebug('memory_save', {
+                speaker: details.speaker || '시스템',
+                message: content,
+                success: success,
+                memoryType: details.type || '동적기억',
+                totalMemories: details.total || 'N/A',
+                importance: details.importance,
+                category: details.category
+            });
+            break;
             
-            return {
-                totalPeople: stats.totalKnownPeople || 7,
-                yejinSightings: stats.yejinTotalSightings || 23,
-                ajeossiSightings: stats.ajeossiTotalSightings || 12
-            };
-        }
-        
-        return {
-            totalPeople: Math.floor(Math.random() * 8) + 5,
-            yejinSightings: Math.floor(Math.random() * 20) + 15,
-            ajeossiSightings: Math.floor(Math.random() * 15) + 8
-        };
-    } catch (error) {
-        return { totalPeople: 7, yejinSightings: 23, ajeossiSightings: 12 };
-    }
-}
-
-function getDamtaStatusForWeb(scheduler) {
-    try {
-        let sentToday = 6, totalDaily = 11;
-        let nextTime = calculateNextDamtaTime();
-        
-        if (scheduler && scheduler.getDamtaStatus) {
-            const status = scheduler.getDamtaStatus();
-            sentToday = status.sentToday || 6;
-            totalDaily = status.totalDaily || 11;
-        }
-        
-        if (scheduler && scheduler.getNextDamtaInfo) {
-            const info = scheduler.getNextDamtaInfo();
-            if (info && info.nextTime) {
-                nextTime = info.nextTime;
-            }
-        }
-        
-        return { sentToday, totalDaily, nextTime };
-    } catch (error) {
-        return { sentToday: 6, totalDaily: 11, nextTime: calculateNextDamtaTime() };
-    }
-}
-
-function getYejinStatusForWeb(spontaneousYejin) {
-    try {
-        let sentToday = 8, totalDaily = 15;
-        let nextTime = calculateNextEmotionTime();
-        
-        if (spontaneousYejin && spontaneousYejin.getSpontaneousMessageStatus) {
-            const status = spontaneousYejin.getSpontaneousMessageStatus();
-            sentToday = status.sentToday || 8;
-            totalDaily = status.totalDaily || 15;
+        case '검색':
+            logLearningDebug('memory_retrieve', {
+                query: content,
+                foundCount: details.count || 0,
+                memories: details.results || []
+            });
+            break;
             
-            if (status.nextMessageTime && status.nextMessageTime.includes(':')) {
-                nextTime = status.nextMessageTime;
-            }
-        }
-        
-        return { sentToday, totalDaily, nextTime };
-    } catch (error) {
-        return { sentToday: 8, totalDaily: 15, nextTime: calculateNextEmotionTime() };
+        case '삭제':
+            logLearningDebug('system_operation', {
+                operation: '기억 삭제',
+                details: `"${content.substring(0, 50)}..." 삭제 ${success ? '성공' : '실패'}`
+            });
+            break;
+            
+        default:
+            logLearningDebug('system_operation', {
+                operation: `기억 ${operation}`,
+                details: content
+            });
     }
 }
 
-function getWeatherStatusForWeb(weatherManager) {
-    try {
-        if (weatherManager && weatherManager.getWeatherSystemStatus) {
-            const status = weatherManager.getWeatherSystemStatus();
-            return {
-                isActive: status.isActive,
-                locations: status.locations || ['기타큐슈', '고양시']
-            };
-        }
-        
-        return { isActive: false, locations: ['기타큐슈', '고양시'] };
-    } catch (error) {
-        return { isActive: false, locations: ['기타큐슈', '고양시'] };
-    }
+// ================== 🌤️ 날씨 반응 로그 함수 ==================
+function logWeatherReaction(weatherData, response) {
+    const timestamp = getJapanTimeString();
+    console.log(`🌤️ ${colors.system}[날씨반응] ${timestamp} - ${weatherData.description} → 응답 생성${colors.reset}`);
+    console.log(`🌤️ ${colors.system}   └─ "${response.substring(0, 50)}..."${colors.reset}`);
+}
+
+// ================== 🔧 시스템 작업 로그 함수 ==================
+function logSystemOperation(operation, details) {
+    logLearningDebug('system_operation', {
+        operation: operation,
+        details: details
+    });
 }
 
 // ================== ⏰ 자동 상태 갱신 시스템 ==================
@@ -2376,7 +1081,7 @@ function startAutoStatusUpdates(systemModules) {
         try {
             console.log(`\n${colors.debug}⏰⏰⏰ [자동갱신] ${getJapanTimeString()} - 무쿠 상태 갱신 ⏰⏰⏰${colors.reset}`);
             
-            // 간단한 상태 요약만 출력 (전체 리포트는 너무 길어서)
+            // 간단한 상태 요약만 출력
             logAutoUpdateSummary(systemModulesCache);
             
         } catch (error) {
@@ -2482,9 +1187,6 @@ function logAutoUpdateSummary(systemModules) {
 module.exports = {
     // 🔍 학습 디버깅 시스템
     logLearningDebug,
-    logLearningStatus,
-    logConversationLearningTrace,
-    analyzeMessageForNewInfo,
     
     // 💬 기본 로깅 함수들
     logConversation,
@@ -2500,31 +1202,14 @@ module.exports = {
     logPersonLearningStatus,
     getLinePersonLearningStatus,
     
-    // 💖 상태 리포트 (라인용)
+    // 💖 상태 리포트 (라인용) - 갈등 상태 포함
     formatLineStatusReport,
     getLineMenstrualStatus,
     getLineEmotionalStatus,
+    getLineConflictThought, // 💥 갈등 상태 추가
     getLineInnerThought,
     getLineMemoryStatus,
     getLineSystemsStatus,
-    
-    // 📊 상태 리포트 (콘솔용)
-    formatPrettyMukuStatus,
-    logMenstrualCycleStatus,
-    logCurrentInnerThought,
-    logEmotionalStatusAdvanced,
-    logConflictStatusAdvanced, // 💥 갈등 상태 로그 추가
-    logSulkyStatusAdvanced,
-    logMemoryStatusAdvanced,
-    logDamtaStatusAdvanced,
-    logYejinSpontaneousStatus,
-    logWeatherSystemStatus,
-    logPhotoSchedulerStatus,
-    logSpecialSystemsStatus,
-    logFaceRecognitionStatus,
-    
-    // 🌐 웹 상태 리포트
-    generateWebStatusReport,
     
     // ⏰ 자동 상태 갱신
     startAutoStatusUpdates,
@@ -2537,6 +1222,7 @@ module.exports = {
     EMOTION_STATES,
     CYCLE_STATES,
     INNER_THOUGHTS,
+    CONFLICT_THOUGHTS, // 💥 갈등 상태별 속마음 추가
     getJapanTime,
     getJapanTimeString,
     getJapanHour,
