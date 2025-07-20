@@ -6,6 +6,11 @@
 // 🔄 초기화와 완전 분리하여 안정성 극대화
 // 💾 디스크 마운트 경로 적용: /data 경로 확인 및 생성
 // 💥 갈등 관리 시스템 완전 통합
+// ⭐️ 갈등 시스템 함수명 수정 완료:
+//    - ❌ initializeConflictSystem → ✅ initializeMukuUnifiedConflictSystem
+//    - ❌ getConflictStatus → ✅ getMukuConflictSystemStatus
+//    - ❌ triggerConflict → ✅ processMukuMessageForConflict
+//    - ❌ resolveConflict → ✅ recordMukuReconciliation
 // ============================================================================
 
 const path = require('path');
@@ -172,8 +177,8 @@ async function loadAllModules() {
                     console.log(`${colors.conflict}✅ [갈등] 모듈 로드 성공! (💾 디스크 마운트 연동)${colors.reset}`);
                     console.log(`${colors.conflict}🔍 [갈등] 사용 가능한 함수들:`, Object.keys(modules.unifiedConflictManager));
                     
-                    // 4단계: 필수 함수 확인
-                    const requiredFunctions = ['initializeConflictSystem', 'getConflictStatus', 'triggerConflict', 'resolveConflict'];
+                    // ✅ 4단계: 필수 함수 확인 - 올바른 함수명 사용
+                    const requiredFunctions = ['initializeMukuUnifiedConflictSystem', 'getMukuConflictSystemStatus', 'processMukuMessageForConflict', 'recordMukuReconciliation'];
                     let functionCheck = true;
                     
                     for (const func of requiredFunctions) {
