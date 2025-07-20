@@ -101,54 +101,54 @@ async function loadAllModules() {
             modules.moodManager = null;
         }
 
-        // =================== 5단계: 사진 및 특수 시스템 ===================
+        // =================== 5단계: 능동 시스템 우선 + 사진 시스템 ===================
+        try {
+            modules.spontaneousYejin = require('./spontaneousYejinManager');
+            console.log(`${colors.pms}✅ [9/24] spontaneousYejin: 예진이 능동 메시지 시스템 (하루 15번) ⭐️⭐️ 최우선!${colors.reset}`);
+        } catch (error) {
+            console.log(`${colors.error}❌ [9/24] spontaneousYejin 로드 실패: ${error.message}${colors.reset}`);
+            modules.spontaneousYejin = null;
+        }
+
         try {
             modules.spontaneousPhoto = require('./spontaneousPhotoManager');
-            console.log(`${colors.system}✅ [9/24] spontaneousPhotoManager: 자발적 사진 전송${colors.reset}`);
+            console.log(`${colors.system}✅ [10/24] spontaneousPhotoManager: 자발적 사진 전송${colors.reset}`);
         } catch (error) {
-            console.log(`${colors.error}❌ [9/24] spontaneousPhotoManager 로드 실패: ${error.message}${colors.reset}`);
+            console.log(`${colors.error}❌ [10/24] spontaneousPhotoManager 로드 실패: ${error.message}${colors.reset}`);
             modules.spontaneousPhoto = null;
         }
 
         try {
             modules.photoAnalyzer = require('./photoAnalyzer');
-            console.log(`${colors.system}✅ [10/24] photoAnalyzer: 사진 분석 시스템${colors.reset}`);
+            console.log(`${colors.system}✅ [11/24] photoAnalyzer: 사진 분석 시스템${colors.reset}`);
         } catch (error) {
-            console.log(`${colors.error}❌ [10/24] photoAnalyzer 로드 실패: ${error.message}${colors.reset}`);
+            console.log(`${colors.error}❌ [11/24] photoAnalyzer 로드 실패: ${error.message}${colors.reset}`);
             modules.photoAnalyzer = null;
         }
 
         try {
             modules.nightWakeResponse = require('./night_wake_response');
-            console.log(`${colors.system}✅ [11/24] nightWakeResponse: 새벽 대화 반응 시스템 (2-7시 단계별)${colors.reset}`);
+            console.log(`${colors.system}✅ [12/24] nightWakeResponse: 새벽 대화 반응 시스템 (2-7시 단계별)${colors.reset}`);
         } catch (error) {
-            console.log(`${colors.error}❌ [11/24] nightWakeResponse 로드 실패: ${error.message}${colors.reset}`);
+            console.log(`${colors.error}❌ [12/24] nightWakeResponse 로드 실패: ${error.message}${colors.reset}`);
             modules.nightWakeResponse = null;
         }
 
         try {
             modules.birthdayDetector = require('./birthdayDetector');
-            console.log(`${colors.system}✅ [12/24] birthdayDetector: 생일 감지 시스템 (3/17, 12/5)${colors.reset}`);
+            console.log(`${colors.system}✅ [13/24] birthdayDetector: 생일 감지 시스템 (3/17, 12/5)${colors.reset}`);
         } catch (error) {
-            console.log(`${colors.error}❌ [12/24] birthdayDetector 로드 실패: ${error.message}${colors.reset}`);
+            console.log(`${colors.error}❌ [13/24] birthdayDetector 로드 실패: ${error.message}${colors.reset}`);
             modules.birthdayDetector = null;
         }
 
-        // =================== 6단계: 스케줄러 및 능동 시스템 ===================
+        // =================== 6단계: 스케줄러 시스템 ===================
         try {
             modules.scheduler = require('./scheduler');
-            console.log(`${colors.system}✅ [13/24] scheduler: 자동 메시지 스케줄러 (담타 100% 보장!)${colors.reset}`);
+            console.log(`${colors.system}✅ [14/24] scheduler: 자동 메시지 스케줄러 (담타 100% 보장!)${colors.reset}`);
         } catch (error) {
-            console.log(`${colors.error}❌ [13/24] scheduler 로드 실패: ${error.message}${colors.reset}`);
+            console.log(`${colors.error}❌ [14/24] scheduler 로드 실패: ${error.message}${colors.reset}`);
             modules.scheduler = null;
-        }
-
-        try {
-            modules.spontaneousYejin = require('./spontaneousYejinManager');
-            console.log(`${colors.system}✅ [14/24] spontaneousYejin: 예진이 능동 메시지 시스템 (하루 15번)${colors.reset}`);
-        } catch (error) {
-            console.log(`${colors.error}❌ [14/24] spontaneousYejin 로드 실패: ${error.message}${colors.reset}`);
-            modules.spontaneousYejin = null;
         }
 
         try {
