@@ -1,5 +1,5 @@
 // ============================================================================
-// spontaneousYejinManager.js - v1.7 COMPLETE (사진 전송 버그 수정)
+// spontaneousYejinManager.js - v1.7 COMPLETE (analyzeMessageType 함수 추가 수정)
 // 🌸 예진이가 능동적으로 하루 15번 메시지 보내는 시스템
 // 8시-1시 사이 랜덤, 2-5문장으로 단축, 실제 취향과 일상 기반
 // ✅ 모델 활동 이야기 추가 (촬영, 화보, 스케줄)
@@ -8,6 +8,7 @@
 // ✅ omoide 사진 전송 400 에러 수정 (yejinSelfie.js 방식 적용)
 // ✨ GPT 모델 버전 전환: 3문장 넘으면 GPT-3.5, 이하면 설정대로
 // ⭐️ 실제 통계 추적 시스템 + ultimateContext 연동 완성!
+// 🔧 analyzeMessageType 함수 누락 문제 해결!
 // ============================================================================
 
 const schedule = require('node-schedule');
@@ -94,6 +95,38 @@ function spontaneousLog(message, data = null) {
     if (data) {
         console.log('  📱 데이터:', JSON.stringify(data, null, 2));
     }
+}
+
+// ================== 🔍 메시지 타입 분석 함수 (⭐️ 추가된 함수!) ==================
+function analyzeMessageType(message) {
+    if (!message || typeof message !== 'string') {
+        return 'casual';
+    }
+    
+    const msg = message.toLowerCase();
+    
+    // 감정 표현 패턴
+    if (msg.includes('사랑') || msg.includes('보고싶') || msg.includes('그리워') || msg.includes('좋아해')) {
+        return 'emotional';
+    }
+    
+    // 걱정/관심 패턴
+    if (msg.includes('괜찮') || msg.includes('걱정') || msg.includes('힘들') || msg.includes('피곤')) {
+        return 'caring';
+    }
+    
+    // 장난스러운 패턴
+    if (msg.includes('ㅋㅋ') || msg.includes('ㅎㅎ') || msg.includes('히히') || msg.includes('장난')) {
+        return 'playful';
+    }
+    
+    // 모델링/작업 관련
+    if (msg.includes('촬영') || msg.includes('작업') || msg.includes('화보') || msg.includes('스케줄')) {
+        return 'work';
+    }
+    
+    // 기본값
+    return 'casual';
 }
 
 // ================== ✨ GPT 모델 선택 및 문장 수 제한 시스템 ==================
@@ -503,7 +536,6 @@ async function sendOmoidePhoto() {
 }
 
 // ================== 💔 정신과 상담 및 바쁨 감지 등 나머지 보조 함수들 ==================
-// (이전 코드와 동일하므로 생략하지 않고 모두 포함합니다)
 function detectMentalHealthContext(userMessage) {
     const lowerMessage = userMessage.toLowerCase();
     const comfortKeywords = yejinRealLife.mentalHealth.ajossiComfort.triggers;
@@ -588,6 +620,25 @@ function getRandomFood(type = 'any') { const foods = { diet: yejinRealLife.diet.
 function getRandomActivity(timeOfDay) { const activities = yejinRealLife.timeBasedActivities[timeOfDay] || yejinRealLife.timeBasedActivities.afternoon; return getRandomItem(activities); }
 function getTimeOfDay(hour) { if (hour >= 6 && hour < 12) return 'morning'; if (hour >= 12 && hour < 17) return 'afternoon'; if (hour >= 17 && hour < 22) return 'evening'; if (hour >= 22 || hour < 2) return 'night'; return 'lateNight'; }
 
+// ================== 🎯 랜덤 상황 생성 함수 (⭐️ 추가된 함수!) ==================
+function generateRandomSituation() {
+    const koreaTime = moment().tz(TIMEZONE);
+    const hour = koreaTime.hour();
+    const timeOfDay = getTimeOfDay(hour);
+    
+    const situations = [
+        { type: 'modeling', content: '촬영장에서 잠깐 휴식 중' },
+        { type: 'work', content: '도트 디자인 작업 중' },
+        { type: 'casual', content: '카페에서 아아 마시며 쉬는 중' },
+        { type: 'tired', content: '야근 때문에 피곤한 상태' },
+        { type: 'diet', content: '고구마 다이어트 중이지만 치킨 생각나는 상황' },
+        { type: 'photo', content: '후지 카메라로 사진 찍고 싶은 기분' },
+        { type: 'missing', content: '아저씨 생각나는 순간' }
+    ];
+    
+    return getRandomItem(situations);
+}
+
 // ================== 🤖 OpenAI 메시지 생성 및 전송 ==================
 async function generateYejinSpontaneousMessage() {
     try {
@@ -608,7 +659,7 @@ async function generateYejinSpontaneousMessage() {
                 spontaneousLog(`❌ 사진 전송 에러: ${photoError.message}`);
             }
         }
-        const situation = generateRandomSituation(); // generateRandomSituation는 위에 정의된 것으로 가정
+        const situation = generateRandomSituation();
         const koreaTime = moment().tz(TIMEZONE);
         const prompt = `너는 박예진이야. 지금은 ${koreaTime.format('HH:mm')}이고, ${situation.content}인 상황. 아저씨에게 보내는 자연스러운 2-5문장의 라인 메시지를 작성해줘. 예진이의 특징과 말투를 완벽히 반영해야 해. 절대 '너'라고 부르지 말고, 항상 반말로만 말해.`;
         const selectedModel = selectOptimalModel(situation, false);
@@ -619,7 +670,16 @@ async function generateYejinSpontaneousMessage() {
     }
 }
 
-function getFallbackMessage() { return getRandomItem(yejinRealLife.modelingSituations.afterShooting); } // 간단한 폴백
+function getFallbackMessage() { 
+    const fallbackMessages = [
+        "아저씨~ 지금 뭐해?",
+        "아아 마시고 싶어 ㅠㅠ",
+        "오늘 하루 어땠어?",
+        "아저씨 생각나서 연락해!",
+        "치킨 너무 먹고 싶어..."
+    ];
+    return getRandomItem(fallbackMessages); 
+}
 
 async function sendSpontaneousMessage() {
     try {
@@ -661,20 +721,75 @@ function scheduleIndependentPhotos() {
 
 function generateDailyYejinSchedule() {
     spontaneousLog(`🌸 예진이 능동 메시지 스케줄 생성 시작...`);
+    
+    // 기존 작업 취소
     dailyScheduleState.jobs.forEach(job => job.cancel());
     dailyScheduleState.jobs = [];
-    // ... (이하 스케줄 생성 로직은 이전과 동일)
+    dailyScheduleState.todaySchedule = [];
+    
+    // 통계 리셋 확인
+    const today = moment().tz(TIMEZONE).format('YYYY-MM-DD');
+    if (dailyScheduleState.realStats.lastResetDate !== today) {
+        resetDailyStats();
+    }
+    
+    // 8시-새벽1시 사이 15개 시간 생성
+    const schedules = [];
+    for (let i = 0; i < DAILY_MESSAGE_COUNT; i++) {
+        let hour, minute;
+        if (Math.random() < 0.8) { // 80%는 8시-23시 사이
+            hour = MESSAGE_START_HOUR + Math.floor(Math.random() * 16); // 8-23시
+        } else { // 20%는 0시-1시 사이 (새벽)
+            hour = Math.floor(Math.random() * 2); // 0-1시
+        }
+        minute = Math.floor(Math.random() * 60);
+        schedules.push({ hour, minute });
+    }
+    
+    // 시간순 정렬
+    schedules.sort((a, b) => {
+        const aMinutes = a.hour < MESSAGE_START_HOUR ? a.hour + 24 : a.hour;
+        const bMinutes = b.hour < MESSAGE_START_HOUR ? b.hour + 24 : b.hour;
+        return (aMinutes * 60 + a.minute) - (bMinutes * 60 + b.minute);
+    });
+    
+    dailyScheduleState.todaySchedule = schedules;
+    
+    // 스케줄 등록
+    schedules.forEach((schedule, index) => {
+        const cronExpression = `${schedule.minute} ${schedule.hour} * * *`;
+        const job = require('node-schedule').scheduleJob(cronExpression, async () => {
+            await sendSpontaneousMessage();
+        });
+        dailyScheduleState.jobs.push(job);
+    });
+    
+    // 독립 사진 스케줄도 생성
     scheduleIndependentPhotos();
-    spontaneousLog(`✅ 예진이 능동 메시지 스케줄 등록 완료`);
+    
+    // 다음 메시지 시간 업데이트
+    updateNextMessageTime();
+    
+    spontaneousLog(`✅ 예진이 능동 메시지 스케줄 ${schedules.length}개 등록 완료`);
+    spontaneousLog(`📅 오늘 스케줄: ${schedules.map(s => `${s.hour}:${String(s.minute).padStart(2, '0')}`).join(', ')}`);
 }
 
+// 자정 0시마다 새로운 스케줄 생성
 schedule.scheduleJob('0 0 * * *', () => {
     spontaneousLog('🌄 자정 0시 - 새로운 하루 시작, 예진이 스케줄 재생성');
     resetDailyStats();
     generateDailyYejinSchedule();
 });
 
-function getSpontaneousMessageStatus() { /* 이전과 동일 */ return dailyScheduleState.realStats; }
+function getSpontaneousMessageStatus() { 
+    return {
+        sentToday: dailyScheduleState.sentToday,
+        totalDaily: DAILY_MESSAGE_COUNT,
+        isActive: dailyScheduleState.jobs.length > 0,
+        nextScheduledTime: dailyScheduleState.realStats.nextScheduledTime,
+        realStats: dailyScheduleState.realStats
+    };
+}
 
 function startSpontaneousYejinSystem(client) {
     try {
@@ -729,7 +844,8 @@ module.exports = {
     getOmoidePhotoMessage, 
     generateCurrentPhotoMessage,
     sendOmoidePhoto,
-    analyzeMessageType,
+    analyzeMessageType,  // ⭐️ 이제 정의되어 있음!
+    generateRandomSituation, // ⭐️ 추가됨!
     validateMessageLength,
     countSentences,
     selectOptimalModel,
