@@ -1,13 +1,15 @@
 // ============================================================================
-// ultimateConversationContext.js - v37.0 DISK_MOUNT (디스크 마운트 경로 수정!)
+// ultimateConversationContext.js - v37.1 DISK_MOUNT + CONFLICT (갈등 시스템 완전 통합!)
 // 🗄️ 동적 기억과 대화 컨텍스트 전문 관리자
 // 💾 디스크 마운트 경로 적용: ./data → /data (완전 영구 저장!)
+// 💥 갈등 시스템 완전 통합: unifiedConflictManager와 완벽 연동!
 // ✅ 중복 기능 완전 제거: 생리주기, 날씨, 고정기억, 시간관리
-// 🎯 핵심 역할에만 집중: 동적기억 + 대화흐름 + 컨텍스트 조합
+// 🎯 핵심 역할에만 집중: 동적기억 + 대화흐름 + 컨텍스트 조합 + 갈등학습
 // ✨ GPT 모델 버전 전환: index.js의 설정에 따라 컨텍스트 최적화
 // ⭐️ getSpontaneousStats() 함수 추가 - 라인 상태 리포트용 자발적 메시지 통계
 // 📚 getAllDynamicLearning() 함수 추가 - 일기장 시스템용!
 // 🧠 자동 학습 시스템 강화 - 모든 대화에서 학습 내용 추출!
+// 💔 갈등 시스템 완전 연동 - 갈등 감지, 학습, 패턴 분석, 해소 추적!
 // 💾 완전 누적 시스템 - 모든 데이터 영구 저장, 절대 사라지지 않음!
 // 🔧 디스크 마운트: 서버 재시작/재배포시에도 절대 사라지지 않는 완전한 영구 저장!
 // ============================================================================
@@ -39,13 +41,15 @@ const PERSISTENT_FILES = {
     learningData: path.join(DATA_DIR, 'learning_data_persistent.json'),
     spontaneousStats: path.join(DATA_DIR, 'spontaneous_stats_persistent.json'),
     memoryStats: path.join(DATA_DIR, 'memory_stats_persistent.json'),
-    dailyBackup: path.join(DATA_DIR, 'daily_backup.json')
+    dailyBackup: path.join(DATA_DIR, 'daily_backup.json'),
+    conflictLearning: path.join(DATA_DIR, 'conflict_learning_persistent.json') // 💥 갈등 학습 데이터 추가
 };
 
 // --- 외부 모듈 지연 로딩 (순환 참조 방지) ---
 let emotionalContextManager = null;
 let memoryManager = null;
 let weatherManager = null;
+let unifiedConflictManager = null; // 💥 갈등 매니저 추가
 
 function getEmotionalManager() {
     if (!emotionalContextManager) {
@@ -80,7 +84,20 @@ function getWeatherManager() {
     return weatherManager;
 }
 
-// --- 핵심 상태 관리 (동적 기억 + 대화 컨텍스트 + ⭐️ 자발적 메시지 통계 + 📚 학습 데이터) ---
+// 💥 갈등 매니저 로딩 함수 추가
+function getConflictManager() {
+    if (!unifiedConflictManager) {
+        try {
+            unifiedConflictManager = require('./muku-unifiedConflictManager');
+            console.log('💥 [UltimateContext] unifiedConflictManager 로드 성공');
+        } catch (error) {
+            console.log('⚠️ [UltimateContext] unifiedConflictManager 로드 실패:', error.message);
+        }
+    }
+    return unifiedConflictManager;
+}
+
+// --- 핵심 상태 관리 (동적 기억 + 대화 컨텍스트 + ⭐️ 자발적 메시지 통계 + 📚 학습 데이터 + 💥 갈등 데이터) ---
 let ultimateConversationState = {
     // 🧠 동적 기억 관리 (사용자가 추가/수정/삭제하는 기억들) - 💾 영구 저장
     dynamicMemories: {
@@ -94,7 +111,17 @@ let ultimateConversationState = {
         dailyLearning: [],          // 일별 학습 내용
         conversationLearning: [],   // 대화별 학습 내용
         emotionLearning: [],        // 감정별 학습 내용
-        topicLearning: []           // 주제별 학습 내용
+        topicLearning: [],          // 주제별 학습 내용
+        conflictLearning: []        // 💥 갈등별 학습 내용 추가
+    },
+    
+    // 💥 갈등 관련 상태 추가
+    conflictContext: {
+        recentConflictSignals: [],  // 최근 갈등 신호들
+        conflictPatterns: [],       // 갈등 패턴 분석 결과
+        lastConflictDetection: null,// 마지막 갈등 감지 시간
+        activeConflictTriggers: [], // 활성 갈등 트리거들
+        resolutionAttempts: []      // 해소 시도 기록
     },
     
     // 💬 대화 컨텍스트 관리 (🔄 메모리 기반 - 재시작시 초기화됨)
@@ -146,6 +173,11 @@ let ultimateConversationState = {
         totalLearningEntries: 0,
         todayLearningCount: 0,
         lastLearningEntry: null,
+        // 💥 갈등 통계 추가!
+        totalConflictEvents: 0,
+        todayConflictCount: 0,
+        lastConflictEvent: null,
+        conflictResolutionRate: 0,
         // 💾 영구 저장 관련 메타데이터
         lastSaved: null,
         totalSaves: 0,
@@ -179,7 +211,7 @@ async function saveUserMemoriesToFile() {
             memories: ultimateConversationState.dynamicMemories.userMemories,
             lastSaved: new Date().toISOString(),
             totalCount: ultimateConversationState.dynamicMemories.userMemories.length,
-            version: '37.0-disk-mount',
+            version: '37.1-disk-mount-conflict',
             storagePath: DATA_DIR
         };
         
@@ -198,7 +230,7 @@ async function saveUserMemoriesToFile() {
 }
 
 /**
- * 💾 학습 데이터 영구 저장 (디스크 마운트)
+ * 💾 학습 데이터 영구 저장 (디스크 마운트 + 갈등 데이터 포함)
  */
 async function saveLearningDataToFile() {
     try {
@@ -206,15 +238,18 @@ async function saveLearningDataToFile() {
         
         const learningData = {
             learningData: ultimateConversationState.learningData,
+            conflictContext: ultimateConversationState.conflictContext, // 💥 갈등 컨텍스트 추가
             lastSaved: new Date().toISOString(),
             totalEntries: ultimateConversationState.memoryStats.totalLearningEntries,
+            conflictEvents: ultimateConversationState.memoryStats.totalConflictEvents, // 💥 갈등 이벤트 수 추가
             statistics: {
                 daily: ultimateConversationState.learningData.dailyLearning.length,
                 conversation: ultimateConversationState.learningData.conversationLearning.length,
                 emotion: ultimateConversationState.learningData.emotionLearning.length,
-                topic: ultimateConversationState.learningData.topicLearning.length
+                topic: ultimateConversationState.learningData.topicLearning.length,
+                conflict: ultimateConversationState.learningData.conflictLearning.length // 💥 갈등 학습 통계 추가
             },
-            version: '37.0-disk-mount',
+            version: '37.1-disk-mount-conflict',
             storagePath: DATA_DIR
         };
         
@@ -224,7 +259,7 @@ async function saveLearningDataToFile() {
             'utf8'
         );
         
-        contextLog(`💾 학습 데이터 저장 완료: ${learningData.totalEntries}개 (디스크 마운트: ${DATA_DIR})`);
+        contextLog(`💾 학습 데이터 저장 완료: ${learningData.totalEntries}개 (갈등: ${learningData.conflictEvents}개) (디스크 마운트: ${DATA_DIR})`);
         return true;
     } catch (error) {
         contextLog(`❌ 학습 데이터 저장 실패: ${error.message}`);
@@ -242,7 +277,7 @@ async function saveSpontaneousStatsToFile() {
         const spontaneousData = {
             stats: ultimateConversationState.spontaneousMessages,
             lastSaved: new Date().toISOString(),
-            version: '37.0-disk-mount',
+            version: '37.1-disk-mount-conflict',
             storagePath: DATA_DIR
         };
         
@@ -261,7 +296,7 @@ async function saveSpontaneousStatsToFile() {
 }
 
 /**
- * 💾 메모리 통계 영구 저장 (디스크 마운트)
+ * 💾 메모리 통계 영구 저장 (디스크 마운트 + 갈등 통계 포함)
  */
 async function saveMemoryStatsToFile() {
     try {
@@ -270,7 +305,7 @@ async function saveMemoryStatsToFile() {
         const statsData = {
             stats: ultimateConversationState.memoryStats,
             lastSaved: new Date().toISOString(),
-            version: '37.0-disk-mount',
+            version: '37.1-disk-mount-conflict',
             storagePath: DATA_DIR
         };
         
@@ -280,7 +315,7 @@ async function saveMemoryStatsToFile() {
             'utf8'
         );
         
-        contextLog(`💾 메모리 통계 저장 완료 (디스크 마운트: ${DATA_DIR})`);
+        contextLog(`💾 메모리 통계 저장 완료 (갈등 통계 포함) (디스크 마운트: ${DATA_DIR})`);
         return true;
     } catch (error) {
         contextLog(`❌ 메모리 통계 저장 실패: ${error.message}`);
@@ -304,7 +339,7 @@ async function saveAllDataToFiles() {
         ultimateConversationState.memoryStats.lastSaved = Date.now();
         ultimateConversationState.memoryStats.totalSaves++;
         
-        contextLog(`💾 전체 데이터 저장: ${successCount}/4개 성공 (디스크 마운트: ${DATA_DIR})`);
+        contextLog(`💾 전체 데이터 저장: ${successCount}/4개 성공 (갈등 시스템 포함) (디스크 마운트: ${DATA_DIR})`);
         return successCount === 4;
     } catch (error) {
         contextLog(`❌ 전체 데이터 저장 실패: ${error.message}`);
@@ -335,7 +370,7 @@ async function loadUserMemoriesFromFile() {
 }
 
 /**
- * 💾 학습 데이터 파일에서 로드 (디스크 마운트)
+ * 💾 학습 데이터 파일에서 로드 (디스크 마운트 + 갈등 데이터 포함)
  */
 async function loadLearningDataFromFile() {
     try {
@@ -345,7 +380,15 @@ async function loadLearningDataFromFile() {
         if (learningDataFile.learningData) {
             ultimateConversationState.learningData = learningDataFile.learningData;
             ultimateConversationState.memoryStats.totalLearningEntries = learningDataFile.totalEntries || 0;
-            contextLog(`💾 학습 데이터 로드 완료: ${learningDataFile.totalEntries}개 (디스크 마운트: ${DATA_DIR})`);
+            
+            // 💥 갈등 컨텍스트 로드
+            if (learningDataFile.conflictContext) {
+                ultimateConversationState.conflictContext = learningDataFile.conflictContext;
+                ultimateConversationState.memoryStats.totalConflictEvents = learningDataFile.conflictEvents || 0;
+                contextLog(`💾 갈등 컨텍스트 로드 완료: ${learningDataFile.conflictEvents || 0}개 이벤트`);
+            }
+            
+            contextLog(`💾 학습 데이터 로드 완료: ${learningDataFile.totalEntries}개 (갈등 포함) (디스크 마운트: ${DATA_DIR})`);
             return true;
         }
         
@@ -396,7 +439,7 @@ async function loadSpontaneousStatsFromFile() {
 }
 
 /**
- * 💾 메모리 통계 파일에서 로드 (디스크 마운트)
+ * 💾 메모리 통계 파일에서 로드 (디스크 마운트 + 갈등 통계 포함)
  */
 async function loadMemoryStatsFromFile() {
     try {
@@ -409,15 +452,16 @@ async function loadMemoryStatsFromFile() {
             if (statsData.stats.lastDailyReset !== today) {
                 statsData.stats.todayMemoryCount = 0;
                 statsData.stats.todayLearningCount = 0;
+                statsData.stats.todayConflictCount = 0; // 💥 갈등 일일 카운트 리셋
                 statsData.stats.lastDailyReset = today;
-                contextLog(`🌄 일일 통계 리셋 (${today}) (💾 디스크 마운트)`);
+                contextLog(`🌄 일일 통계 리셋 (갈등 포함) (${today}) (💾 디스크 마운트)`);
             }
             
             ultimateConversationState.memoryStats = {
                 ...ultimateConversationState.memoryStats,
                 ...statsData.stats
             };
-            contextLog(`💾 메모리 통계 로드 완료 (디스크 마운트: ${DATA_DIR})`);
+            contextLog(`💾 메모리 통계 로드 완료 (갈등 통계 포함) (디스크 마운트: ${DATA_DIR})`);
             return true;
         }
         
@@ -429,11 +473,11 @@ async function loadMemoryStatsFromFile() {
 }
 
 /**
- * 💾 모든 데이터 파일에서 로드 (디스크 마운트)
+ * 💾 모든 데이터 파일에서 로드 (디스크 마운트 + 갈등 시스템 포함)
  */
 async function loadAllDataFromFiles() {
     try {
-        contextLog(`💾 모든 영구 데이터 로드 시작... (디스크 마운트: ${DATA_DIR})`);
+        contextLog(`💾 모든 영구 데이터 로드 시작... (갈등 시스템 포함) (디스크 마운트: ${DATA_DIR})`);
         
         const results = await Promise.all([
             loadUserMemoriesFromFile(),
@@ -443,11 +487,11 @@ async function loadAllDataFromFiles() {
         ]);
         
         const successCount = results.filter(r => r === true).length;
-        contextLog(`💾 데이터 로드 완료: ${successCount}/4개 성공 (디스크 마운트: ${DATA_DIR})`);
+        contextLog(`💾 데이터 로드 완료: ${successCount}/4개 성공 (갈등 시스템 포함) (디스크 마운트: ${DATA_DIR})`);
         
         // 로드 후 통계 정보 출력
         const memStats = getMemoryStatistics();
-        contextLog(`📊 로드된 데이터: 사용자기억 ${memStats.user}개, 학습데이터 ${memStats.learning.totalEntries}개 (💾 완전 영구 저장)`);
+        contextLog(`📊 로드된 데이터: 사용자기억 ${memStats.user}개, 학습데이터 ${memStats.learning.totalEntries}개, 갈등이벤트 ${memStats.conflictEvents || 0}개 (💾 완전 영구 저장)`);
         
         return successCount > 0;
     } catch (error) {
@@ -457,7 +501,7 @@ async function loadAllDataFromFiles() {
 }
 
 /**
- * 💾 일일 백업 생성 (디스크 마운트)
+ * 💾 일일 백업 생성 (디스크 마운트 + 갈등 데이터 포함)
  */
 async function createDailyBackup() {
     try {
@@ -469,9 +513,10 @@ async function createDailyBackup() {
             timestamp: new Date().toISOString(),
             userMemories: ultimateConversationState.dynamicMemories.userMemories,
             learningData: ultimateConversationState.learningData,
+            conflictContext: ultimateConversationState.conflictContext, // 💥 갈등 컨텍스트 백업 추가
             spontaneousStats: ultimateConversationState.spontaneousMessages,
             memoryStats: ultimateConversationState.memoryStats,
-            version: '37.0-disk-mount',
+            version: '37.1-disk-mount-conflict',
             storagePath: DATA_DIR
         };
         
@@ -489,7 +534,7 @@ async function createDailyBackup() {
         await fs.writeFile(backupPath, JSON.stringify(backupData, null, 2), 'utf8');
         
         ultimateConversationState.memoryStats.lastBackup = Date.now();
-        contextLog(`💾 일일 백업 생성: ${backupFileName} (디스크 마운트: ${DATA_DIR})`);
+        contextLog(`💾 일일 백업 생성: ${backupFileName} (갈등 데이터 포함) (디스크 마운트: ${DATA_DIR})`);
         
         return true;
     } catch (error) {
@@ -506,7 +551,7 @@ function startAutoSaveSystem() {
     setInterval(async () => {
         try {
             await saveAllDataToFiles();
-            contextLog(`⏰ 자동 저장 완료 (5분 주기) (💾 디스크 마운트: ${DATA_DIR})`);
+            contextLog(`⏰ 자동 저장 완료 (5분 주기) (갈등 시스템 포함) (💾 디스크 마운트: ${DATA_DIR})`);
         } catch (error) {
             contextLog(`❌ 자동 저장 실패: ${error.message}`);
         }
@@ -526,7 +571,7 @@ function startAutoSaveSystem() {
         }
     }, 60 * 60 * 1000); // 1시간
     
-    contextLog(`⏰ 자동 저장 시스템 시작 (5분 저장, 1시간 백업 체크) (💾 디스크 마운트: ${DATA_DIR})`);
+    contextLog(`⏰ 자동 저장 시스템 시작 (5분 저장, 1시간 백업 체크) (갈등 시스템 포함) (💾 디스크 마운트: ${DATA_DIR})`);
 }
 
 // ================== 🎨 로그 함수 ==================
@@ -600,7 +645,204 @@ function getContextPriority(currentModel) {
     }
 }
 
-// ==================== 📚 학습 데이터 관리 (영구 저장 연동!) ====================
+// ==================== 💥 갈등 시스템 연동 기능들 ====================
+
+/**
+ * 💥 메시지에서 갈등 신호 감지
+ */
+function detectConflictSignals(message) {
+    try {
+        const lowerMsg = message.toLowerCase();
+        let conflictLevel = 0;
+        let triggers = [];
+        let conflictType = 'none';
+        
+        // 갈등 키워드 감지 (점수 기반)
+        if (lowerMsg.includes('화나') || lowerMsg.includes('짜증') || lowerMsg.includes('열받')) {
+            conflictLevel += 3;
+            triggers.push('감정표현');
+            conflictType = '감정분출';
+        }
+        
+        if (lowerMsg.includes('싫어') || lowerMsg.includes('그만') || lowerMsg.includes('안 해')) {
+            conflictLevel += 2;
+            triggers.push('거부반응');
+            conflictType = '의견충돌';
+        }
+        
+        if (lowerMsg.includes('미안') || lowerMsg.includes('죄송') || lowerMsg.includes('잘못')) {
+            triggers.push('사과시도');
+            conflictType = '화해시도';
+            // 사과는 갈등 레벨을 낮춤
+            conflictLevel = Math.max(0, conflictLevel - 2);
+        }
+        
+        if (lowerMsg.includes('이해 안') || lowerMsg.includes('왜 그래') || lowerMsg.includes('모르겠')) {
+            conflictLevel += 1;
+            triggers.push('이해부족');
+            conflictType = '소통문제';
+        }
+        
+        if (lowerMsg.includes('사랑') || lowerMsg.includes('좋아') || lowerText.includes('고마워')) {
+            triggers.push('애정표현');
+            conflictType = '긍정신호';
+            // 애정표현은 갈등을 크게 낮춤
+            conflictLevel = Math.max(0, conflictLevel - 3);
+        }
+        
+        // 갈등 레벨 정규화 (0-4)
+        conflictLevel = Math.min(4, Math.max(0, conflictLevel));
+        
+        const conflictSignal = {
+            level: conflictLevel,
+            triggers: triggers,
+            type: conflictType,
+            hasConflict: conflictLevel > 0,
+            timestamp: new Date().toISOString(),
+            originalMessage: message
+        };
+        
+        // 갈등 신호 기록 (최근 10개만 보관)
+        ultimateConversationState.conflictContext.recentConflictSignals.push(conflictSignal);
+        if (ultimateConversationState.conflictContext.recentConflictSignals.length > 10) {
+            ultimateConversationState.conflictContext.recentConflictSignals.shift();
+        }
+        
+        if (conflictLevel > 0) {
+            contextLog(`💥 갈등 신호 감지: 레벨 ${conflictLevel}, 타입: ${conflictType}, 트리거: ${triggers.join(', ')}`);
+            ultimateConversationState.conflictContext.lastConflictDetection = Date.now();
+        }
+        
+        return conflictSignal;
+        
+    } catch (error) {
+        contextLog('💥 갈등 신호 감지 실패:', error.message);
+        return { level: 0, triggers: [], type: 'none', hasConflict: false };
+    }
+}
+
+/**
+ * 💥 갈등 시스템과 연동하여 갈등 상태 업데이트
+ */
+async function updateConflictWithSystem(conflictSignal) {
+    try {
+        const conflictManager = getConflictManager();
+        if (!conflictManager) {
+            contextLog('💥 갈등 매니저 없음 - 로컬 기록만 수행');
+            return false;
+        }
+        
+        if (conflictSignal.hasConflict && conflictSignal.level > 1) {
+            // 갈등 트리거 시도
+            const triggerResult = conflictManager.triggerConflict ? 
+                await conflictManager.triggerConflict(
+                    conflictSignal.triggers.join(', '),
+                    conflictSignal.level
+                ) : null;
+                
+            if (triggerResult && triggerResult.success) {
+                contextLog(`💥 갈등 시스템 트리거 성공: ${conflictSignal.type}`);
+                return true;
+            }
+        } else if (conflictSignal.type === '화해시도' || conflictSignal.type === '긍정신호') {
+            // 갈등 해소 시도
+            const resolveResult = conflictManager.resolveConflict ? 
+                await conflictManager.resolveConflict(conflictSignal.type) : null;
+                
+            if (resolveResult && resolveResult.success) {
+                contextLog(`💚 갈등 시스템 해소 성공: ${conflictSignal.type}`);
+                return true;
+            }
+        }
+        
+        return false;
+    } catch (error) {
+        contextLog('💥 갈등 시스템 연동 실패:', error.message);
+        return false;
+    }
+}
+
+/**
+ * 💥 갈등 해소 시도 기록
+ */
+async function recordConflictResolutionAttempt(method, success, details = {}) {
+    try {
+        const resolutionAttempt = {
+            id: `resolution_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            timestamp: new Date().toISOString(),
+            method: method,
+            success: success,
+            details: details
+        };
+        
+        ultimateConversationState.conflictContext.resolutionAttempts.push(resolutionAttempt);
+        
+        // 최근 20개만 보관
+        if (ultimateConversationState.conflictContext.resolutionAttempts.length > 20) {
+            ultimateConversationState.conflictContext.resolutionAttempts.shift();
+        }
+        
+        // 해소율 업데이트
+        const successful = ultimateConversationState.conflictContext.resolutionAttempts.filter(a => a.success).length;
+        const total = ultimateConversationState.conflictContext.resolutionAttempts.length;
+        ultimateConversationState.memoryStats.conflictResolutionRate = 
+            total > 0 ? Math.round((successful / total) * 100) : 0;
+        
+        contextLog(`💥 갈등 해소 시도 기록: ${method} (성공: ${success}), 해소율: ${ultimateConversationState.memoryStats.conflictResolutionRate}%`);
+        
+        // 💾 즉시 저장
+        saveLearningDataToFile().catch(err => 
+            contextLog(`❌ 갈등 해소 기록 저장 실패: ${err.message}`)
+        );
+        
+        return resolutionAttempt;
+    } catch (error) {
+        contextLog('💥 갈등 해소 시도 기록 실패:', error.message);
+        return null;
+    }
+}
+
+/**
+ * 💥 갈등 시스템 연동 상태 확인
+ */
+async function getConflictSystemStatus() {
+    try {
+        const conflictManager = getConflictManager();
+        if (!conflictManager) {
+            return { 
+                connected: false, 
+                error: '갈등 매니저 로드 실패',
+                localDataAvailable: ultimateConversationState.conflictContext.recentConflictSignals.length > 0
+            };
+        }
+        
+        const status = conflictManager.getConflictStatus ? 
+            await conflictManager.getConflictStatus() : { isActive: false, currentLevel: 0 };
+            
+        const stats = conflictManager.getConflictStats ? 
+            await conflictManager.getConflictStats() : {};
+        
+        return { 
+            connected: true, 
+            status: status,
+            stats: stats,
+            localContext: {
+                recentSignals: ultimateConversationState.conflictContext.recentConflictSignals.length,
+                resolutionAttempts: ultimateConversationState.conflictContext.resolutionAttempts.length,
+                resolutionRate: ultimateConversationState.memoryStats.conflictResolutionRate,
+                lastDetection: ultimateConversationState.conflictContext.lastConflictDetection
+            }
+        };
+    } catch (error) {
+        return { 
+            connected: false, 
+            error: error.message,
+            localDataAvailable: ultimateConversationState.conflictContext.recentConflictSignals.length > 0
+        };
+    }
+}
+
+// ==================== 📚 학습 데이터 관리 (영구 저장 연동! + 갈등 학습 강화) ====================
 
 /**
  * 📚 새로운 학습 내용 추가 (💾 즉시 저장!)
@@ -628,6 +870,12 @@ async function addLearningEntry(content, category = '일반학습', context = {}
                 break;
             case '주제학습':
                 ultimateConversationState.learningData.topicLearning.push(learningEntry);
+                break;
+            case '갈등학습': // 💥 갈등 학습 카테고리 추가
+                ultimateConversationState.learningData.conflictLearning.push(learningEntry);
+                ultimateConversationState.memoryStats.totalConflictEvents++;
+                ultimateConversationState.memoryStats.todayConflictCount++;
+                ultimateConversationState.memoryStats.lastConflictEvent = Date.now();
                 break;
             default:
                 ultimateConversationState.learningData.dailyLearning.push(learningEntry);
@@ -660,18 +908,19 @@ async function getAllDynamicLearning() {
         // 💾 파일에서 최신 데이터 로드
         await loadLearningDataFromFile();
         
-        // 모든 학습 데이터를 하나의 배열로 합치기
+        // 모든 학습 데이터를 하나의 배열로 합치기 (💥 갈등 학습 포함)
         const allLearning = [
             ...ultimateConversationState.learningData.dailyLearning,
             ...ultimateConversationState.learningData.conversationLearning,
             ...ultimateConversationState.learningData.emotionLearning,
-            ...ultimateConversationState.learningData.topicLearning
+            ...ultimateConversationState.learningData.topicLearning,
+            ...ultimateConversationState.learningData.conflictLearning // 💥 갈등 학습 추가
         ];
         
         // 시간순으로 정렬
         allLearning.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
         
-        contextLog(`📚 전체 학습 데이터 조회: ${allLearning.length}개 (파일에서 로드)`);
+        contextLog(`📚 전체 학습 데이터 조회: ${allLearning.length}개 (갈등 학습 포함) (파일에서 로드)`);
         
         return allLearning;
     } catch (error) {
@@ -698,6 +947,9 @@ async function getLearningByCategory(category) {
                 break;
             case '주제학습':
                 targetArray = ultimateConversationState.learningData.topicLearning;
+                break;
+            case '갈등학습': // 💥 갈등 학습 카테고리 추가
+                targetArray = ultimateConversationState.learningData.conflictLearning;
                 break;
             default:
                 targetArray = ultimateConversationState.learningData.dailyLearning;
@@ -726,22 +978,29 @@ async function getTodayLearning() {
 }
 
 /**
- * 📚 학습 통계 조회
+ * 📚 학습 통계 조회 (💥 갈등 통계 포함)
  */
 function getLearningStatistics() {
     const total = ultimateConversationState.memoryStats.totalLearningEntries;
     const today = ultimateConversationState.memoryStats.todayLearningCount;
+    const conflictEvents = ultimateConversationState.memoryStats.totalConflictEvents || 0;
+    const todayConflict = ultimateConversationState.memoryStats.todayConflictCount || 0;
     
     return {
         totalEntries: total,
         todayCount: today,
+        conflictEvents: conflictEvents, // 💥 갈등 이벤트 통계 추가
+        todayConflictCount: todayConflict, // 💥 오늘 갈등 횟수 추가
         categories: {
             daily: ultimateConversationState.learningData.dailyLearning.length,
             conversation: ultimateConversationState.learningData.conversationLearning.length,
             emotion: ultimateConversationState.learningData.emotionLearning.length,
-            topic: ultimateConversationState.learningData.topicLearning.length
+            topic: ultimateConversationState.learningData.topicLearning.length,
+            conflict: ultimateConversationState.learningData.conflictLearning.length // 💥 갈등 학습 통계 추가
         },
         lastEntry: ultimateConversationState.memoryStats.lastLearningEntry,
+        lastConflictEvent: ultimateConversationState.memoryStats.lastConflictEvent, // 💥 마지막 갈등 이벤트 시간 추가
+        conflictResolutionRate: ultimateConversationState.memoryStats.conflictResolutionRate || 0, // 💥 갈등 해소율 추가
         isPersistent: true // 💾 영구 저장 표시
     };
 }
@@ -755,7 +1014,7 @@ async function addConflictLearning(conflictType, trigger, resolution, success) {
     try {
         const learningContent = success ? 
             `화해 성공: ${conflictType} 갈등을 "${resolution}" 방법으로 해결` :
-            `화해 실패: ${conflictType} 갈등 해결 시도 - "${resolution}"`;
+            `갈등 발생: ${conflictType} 갈등이 "${trigger}" 원인으로 시작됨`;
         
         await addLearningEntry(learningContent, '갈등학습', {
             conflictType: conflictType,
@@ -764,6 +1023,14 @@ async function addConflictLearning(conflictType, trigger, resolution, success) {
             success: success,
             timestamp: new Date().toISOString()
         });
+        
+        // 💥 갈등 해소 시도도 별도 기록
+        if (resolution !== '감지됨' && resolution !== '진행중') {
+            await recordConflictResolutionAttempt(resolution, success, {
+                conflictType: conflictType,
+                trigger: trigger
+            });
+        }
         
         contextLog(`💔 갈등 학습 추가: ${learningContent.substring(0, 50)}...`);
         return true;
@@ -790,7 +1057,8 @@ async function analyzeConflictPatterns() {
                 failedResolutions: 0,
                 mostCommonTrigger: '없음',
                 bestResolutionMethod: '없음',
-                patterns: []
+                patterns: [],
+                recentTrends: '데이터 없음'
             };
         }
         
@@ -810,9 +1078,10 @@ async function analyzeConflictPatterns() {
             }
         });
         
-        const mostCommonTrigger = Object.keys(triggerCounts).reduce((a, b) => 
-            triggerCounts[a] > triggerCounts[b] ? a : b, '없음'
-        );
+        const mostCommonTrigger = Object.keys(triggerCounts).length > 0 ?
+            Object.keys(triggerCounts).reduce((a, b) => 
+                triggerCounts[a] > triggerCounts[b] ? a : b
+            ) : '없음';
         
         // 가장 효과적인 화해 방법 분석
         const resolutionCounts = {};
@@ -823,9 +1092,15 @@ async function analyzeConflictPatterns() {
             }
         });
         
-        const bestResolutionMethod = Object.keys(resolutionCounts).reduce((a, b) => 
-            resolutionCounts[a] > resolutionCounts[b] ? a : b, '없음'
-        );
+        const bestResolutionMethod = Object.keys(resolutionCounts).length > 0 ?
+            Object.keys(resolutionCounts).reduce((a, b) => 
+                resolutionCounts[a] > resolutionCounts[b] ? a : b
+            ) : '없음';
+        
+        // 최근 트렌드 분석 (최근 5개)
+        const recentConflicts = conflictLearning.slice(-5);
+        const recentSuccessRate = recentConflicts.length > 0 ? 
+            Math.round((recentConflicts.filter(c => c.context?.success).length / recentConflicts.length) * 100) : 0;
         
         return {
             totalConflicts: conflictLearning.length,
@@ -833,11 +1108,19 @@ async function analyzeConflictPatterns() {
             failedResolutions: failed.length,
             successRate: conflictLearning.length > 0 ? 
                 Math.round((successful.length / conflictLearning.length) * 100) : 0,
+            recentSuccessRate: recentSuccessRate,
             mostCommonTrigger: mostCommonTrigger,
             bestResolutionMethod: bestResolutionMethod,
             triggerFrequency: triggerCounts,
             resolutionFrequency: resolutionCounts,
-            patterns: conflictLearning.slice(-5) // 최근 5개 패턴
+            patterns: conflictLearning.slice(-5), // 최근 5개 패턴
+            recentTrends: `최근 해소율: ${recentSuccessRate}%`,
+            // 💥 추가 분석 데이터
+            systemIntegration: {
+                localSignals: ultimateConversationState.conflictContext.recentConflictSignals.length,
+                resolutionAttempts: ultimateConversationState.conflictContext.resolutionAttempts.length,
+                overallResolutionRate: ultimateConversationState.memoryStats.conflictResolutionRate
+            }
         };
         
     } catch (error) {
@@ -848,7 +1131,8 @@ async function analyzeConflictPatterns() {
             failedResolutions: 0,
             mostCommonTrigger: '분석 실패',
             bestResolutionMethod: '분석 실패',
-            patterns: []
+            patterns: [],
+            recentTrends: '분석 실패'
         };
     }
 }
@@ -876,11 +1160,10 @@ async function getConflictLearningForDiary() {
     }
 }
 
-
-// ==================== 🧠 강화된 자동 학습 시스템 ====================
+// ==================== 🧠 강화된 자동 학습 시스템 (갈등 감지 포함) ====================
 
 /**
- * 🧠 메시지에서 새로운 정보 분석 및 추출
+ * 🧠 메시지에서 새로운 정보 분석 및 추출 (💥 갈등 감지 통합)
  */
 function analyzeMessageForNewInfo(message) {
     try {
@@ -889,8 +1172,15 @@ function analyzeMessageForNewInfo(message) {
         let category = '일반학습';
         let extractedInfo = '';
         
+        // 💥 갈등 신호 먼저 감지
+        const conflictSignal = detectConflictSignals(message);
+        if (conflictSignal.hasConflict) {
+            hasNewInfo = true;
+            category = '갈등학습';
+            extractedInfo = `갈등 신호 감지: ${conflictSignal.type} (레벨 ${conflictSignal.level}) - ${message}`;
+        }
         // 1. 감정 관련 정보
-        if (lowerMsg.includes('기분') || lowerMsg.includes('느낌') || lowerMsg.includes('감정')) {
+        else if (lowerMsg.includes('기분') || lowerMsg.includes('느낌') || lowerMsg.includes('감정')) {
             hasNewInfo = true;
             category = '감정분석';
             extractedInfo = `아저씨의 감정 표현: ${message}`;
@@ -931,7 +1221,8 @@ function analyzeMessageForNewInfo(message) {
             category,
             extractedInfo: extractedInfo || message,
             originalMessage: message,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            conflictSignal: conflictSignal // 💥 갈등 신호 정보 추가
         };
         
     } catch (error) {
@@ -941,7 +1232,7 @@ function analyzeMessageForNewInfo(message) {
 }
 
 /**
- * 🧠 메시지 기반 자동 학습 처리 (💾 영구 저장 연동!)
+ * 🧠 메시지 기반 자동 학습 처리 (💾 영구 저장 연동! + 💥 갈등 시스템 연동!)
  */
 async function processAutoLearning(speaker, message) {
     try {
@@ -959,12 +1250,19 @@ async function processAutoLearning(speaker, message) {
                 {
                     speaker: speaker,
                     originalMessage: message,
-                    analysisTime: new Date().toISOString()
+                    analysisTime: new Date().toISOString(),
+                    conflictSignal: analysis.conflictSignal // 💥 갈등 신호 정보 추가
                 }
             );
             
             if (learningEntry) {
                 contextLog(`🧠 자동 학습 완료: [${analysis.category}] ${analysis.extractedInfo.substring(0, 30)}...`);
+                
+                // 💥 갈등 시스템과 연동
+                if (analysis.conflictSignal && analysis.conflictSignal.hasConflict) {
+                    await updateConflictWithSystem(analysis.conflictSignal);
+                }
+                
                 return true;
             }
         }
@@ -976,10 +1274,10 @@ async function processAutoLearning(speaker, message) {
     }
 }
 
-// ==================== 💬 대화 메시지 관리 (학습 연동) ====================
+// ==================== 💬 대화 메시지 관리 (학습 연동 + 갈등 감지) ====================
 
 /**
- * 새로운 메시지를 대화 컨텍스트에 추가 (학습 시스템 연동!)
+ * 새로운 메시지를 대화 컨텍스트에 추가 (학습 시스템 + 갈등 감지 연동!)
  */
 async function addUltimateMessage(speaker, message) {
     const timestamp = Date.now();
@@ -1008,7 +1306,7 @@ async function addUltimateMessage(speaker, message) {
     
     contextLog(`메시지 추가: ${speaker} - "${message.substring(0, 30)}..."`);
     
-    // 🧠 자동 학습 처리 (새로 추가!)
+    // 🧠 자동 학습 처리 (갈등 감지 포함!)
     await processAutoLearning(speaker, message);
     
     // 대화에서 자동 학습 (기존)
@@ -1292,10 +1590,10 @@ async function resetSpontaneousStats() {
     );
 }
 
-// ==================== 🎯 컨텍스트 조합 및 프롬프트 생성 ====================
+// ==================== 🎯 컨텍스트 조합 및 프롬프트 생성 (갈등 상태 포함) ====================
 
 /**
- * ✨ 모든 정보를 조합하여 GPT 모델별 최적화된 컨텍스트 프롬프트 생성
+ * ✨ 모든 정보를 조합하여 GPT 모델별 최적화된 컨텍스트 프롬프트 생성 (💥 갈등 상태 포함)
  */
 async function getUltimateContextualPrompt(basePrompt) {
     try {
@@ -1345,7 +1643,36 @@ async function getUltimateContextualPrompt(basePrompt) {
             }
         }
         
-        // 3. ✨ 모델별 동적 기억 추가 (💾 파일에서 최신 데이터 로드)
+        // 💥 3. 갈등 상태 정보 추가 (신규!)
+        if (priority.emotions > 0) {
+            const conflictManager = getConflictManager();
+            if (conflictManager && conflictManager.getConflictStatus) {
+                try {
+                    const conflictStatus = await conflictManager.getConflictStatus();
+                    if (conflictStatus.isActive && conflictStatus.currentLevel > 0) {
+                        if (currentModel === '3.5') {
+                            // GPT-3.5는 간결하게
+                            contextualPrompt += `\n💥 갈등: 레벨 ${conflictStatus.currentLevel}\n`;
+                        } else {
+                            // GPT-4o는 상세하게
+                            contextualPrompt += `\n💥 갈등상태: 레벨 ${conflictStatus.currentLevel}/4, 이유: ${conflictStatus.reason || '불명'}\n`;
+                        }
+                    }
+                } catch (error) {
+                    contextLog('갈등 상태 조회 실패:', error.message);
+                }
+            }
+            
+            // 최근 갈등 신호도 추가 (GPT-4o에서만)
+            if (currentModel === '4.0' && ultimateConversationState.conflictContext.recentConflictSignals.length > 0) {
+                const recentSignal = ultimateConversationState.conflictContext.recentConflictSignals.slice(-1)[0];
+                if (recentSignal && recentSignal.level > 0) {
+                    contextualPrompt += `\n💔 최근갈등신호: ${recentSignal.type} (${recentSignal.triggers.join(', ')})\n`;
+                }
+            }
+        }
+        
+        // 4. ✨ 모델별 동적 기억 추가 (💾 파일에서 최신 데이터 로드)
         if (priority.memories > 0) {
             await loadUserMemoriesFromFile(); // 💾 최신 데이터 로드
             const memoryCount = contextLength.memory;
@@ -1364,7 +1691,7 @@ async function getUltimateContextualPrompt(basePrompt) {
             }
         }
         
-        // 4. 🧠 최근 학습 내용 추가 (새로 추가!) - 💾 파일에서 최신 데이터 로드
+        // 5. 🧠 최근 학습 내용 추가 (💥 갈등 학습 포함) - 💾 파일에서 최신 데이터 로드
         const recentLearning = await getAllDynamicLearning();
         if (recentLearning.length > 0) {
             const lastFewLearning = recentLearning.slice(-3); // 최근 3개만
@@ -1375,21 +1702,22 @@ async function getUltimateContextualPrompt(basePrompt) {
             }
         }
         
-        // 5. 현재 대화 주제 추가 (모든 모델에서 사용)
+        // 6. 현재 대화 주제 추가 (모든 모델에서 사용)
         if (ultimateConversationState.conversationContext.currentTopic) {
             contextualPrompt += `\n🎯 현재 주제: ${ultimateConversationState.conversationContext.currentTopic}\n`;
         }
         
-        // 6. ✨ 모델별 추가 메타정보
+        // 7. ✨ 모델별 추가 메타정보 (💥 갈등 정보 포함)
         if (currentModel === '4.0') {
             // GPT-4o에서만 상세한 메타정보 추가
             const messageCount = ultimateConversationState.conversationContext.recentMessages.length;
             const memoryCount = ultimateConversationState.dynamicMemories.userMemories.length;
             const learningCount = ultimateConversationState.memoryStats.totalLearningEntries;
-            contextualPrompt += `\n📊 컨텍스트: 메시지 ${messageCount}개, 기억 ${memoryCount}개, 학습 ${learningCount}개 (💾영구저장)\n`;
+            const conflictEvents = ultimateConversationState.memoryStats.totalConflictEvents || 0;
+            contextualPrompt += `\n📊 컨텍스트: 메시지 ${messageCount}개, 기억 ${memoryCount}개, 학습 ${learningCount}개, 갈등 ${conflictEvents}개 (💾영구저장)\n`;
         }
         
-        contextLog(`컨텍스트 생성 완료 (${currentModel} 최적화, 길이: ${contextualPrompt.length}자)`);
+        contextLog(`컨텍스트 생성 완료 (${currentModel} 최적화, 갈등 포함, 길이: ${contextualPrompt.length}자)`);
         return contextualPrompt;
         
     } catch (error) {
@@ -1428,8 +1756,9 @@ async function getActiveMemoryPrompt() {
  * 마지막 사용자 메시지 시간 업데이트
  */
 function updateLastUserMessageTime(timestamp) {
+    ultimateConversationState.timingContext.lastUserMessageTime = timestamp;
     ultimateConversationState.timingContext.conversationGap = 
-        now - ultimateConversationState.timingContext.lastUserMessageTime;
+        timestamp - ultimateConversationState.timingContext.lastUserMessageTime;
 }
 
 /**
@@ -1519,7 +1848,7 @@ async function learnFromConversation(speaker, message) {
 }
 
 /**
- * 사용자 메시지에서 학습 (강화됨!)
+ * 사용자 메시지에서 학습 (강화됨! + 갈등 감지)
  */
 async function learnFromUserMessage(message) {
     const mood = await analyzeUserMood(message);
@@ -1529,14 +1858,14 @@ async function learnFromUserMessage(message) {
         contextLog(`사용자 감정 감지: ${mood} - "${message.substring(0, 30)}..."`);
     }
     
-    // 🧠 추가 학습 처리
+    // 🧠 추가 학습 처리 (갈등 감지 포함)
     await processAutoLearning('아저씨', message);
 }
 
-// ==================== 📊 통계 및 상태 조회 ====================
+// ==================== 📊 통계 및 상태 조회 (갈등 통계 포함) ====================
 
 /**
- * ✨ GPT 모델 정보를 포함한 기억 통계 - 💾 파일에서 최신 데이터 로드
+ * ✨ GPT 모델 정보를 포함한 기억 통계 (💥 갈등 통계 포함) - 💾 파일에서 최신 데이터 로드
  */
 async function getMemoryStatistics() {
     await loadUserMemoriesFromFile(); // 💾 최신 데이터 로드
@@ -1554,6 +1883,10 @@ async function getMemoryStatistics() {
                ultimateConversationState.memoryStats.totalConversationMemories,
         // 📚 학습 통계 추가
         learning: learningStats,
+        // 💥 갈등 통계 추가
+        conflictEvents: ultimateConversationState.memoryStats.totalConflictEvents || 0,
+        todayConflictCount: ultimateConversationState.memoryStats.todayConflictCount || 0,
+        conflictResolutionRate: ultimateConversationState.memoryStats.conflictResolutionRate || 0,
         // ✨ GPT 모델 정보 추가
         currentGptModel: currentModel,
         contextOptimization: {
@@ -1615,7 +1948,7 @@ async function getMemoryOperationLogs(limit = 10) {
 }
 
 /**
- * ✨ GPT 모델 정보를 포함한 내부 상태 조회 (디버깅용) - 💾 파일에서 최신 데이터 로드
+ * ✨ GPT 모델 정보를 포함한 내부 상태 조회 (갈등 시스템 포함, 디버깅용) - 💾 파일에서 최신 데이터 로드
  */
 async function getInternalState() {
     await loadAllDataFromFiles(); // 💾 모든 최신 데이터 로드
@@ -1626,6 +1959,7 @@ async function getInternalState() {
     
     return {
         conversationContext: ultimateConversationState.conversationContext,
+        conflictContext: ultimateConversationState.conflictContext, // 💥 갈등 컨텍스트 추가
         memoryStats: ultimateConversationState.memoryStats,
         timingContext: ultimateConversationState.timingContext,
         emotionalSync: ultimateConversationState.emotionalSync,
@@ -1637,7 +1971,15 @@ async function getInternalState() {
             currentModel,
             contextLength,
             priority,
-            version: 'v37.0-disk-mount-complete'
+            version: 'v37.1-disk-mount-conflict-complete'
+        },
+        // 💥 갈등 시스템 연동 상태 추가
+        conflictSystemIntegration: {
+            managerConnected: getConflictManager() !== null,
+            recentSignalsCount: ultimateConversationState.conflictContext.recentConflictSignals.length,
+            resolutionAttemptsCount: ultimateConversationState.conflictContext.resolutionAttempts.length,
+            lastDetection: ultimateConversationState.conflictContext.lastConflictDetection,
+            resolutionRate: ultimateConversationState.memoryStats.conflictResolutionRate
         },
         // 💾 영구 저장 시스템 상태 추가
         persistentSystem: {
@@ -1671,13 +2013,13 @@ function clearPendingAction() {
     pendingAction = null;
 }
 
-// ==================== 🔄 시스템 초기화 (💾 영구 저장 시스템 포함!) ====================
+// ==================== 🔄 시스템 초기화 (💾 영구 저장 시스템 + 💥 갈등 시스템 포함!) ====================
 
 /**
- * 감정 시스템 초기화 (호환성) - 💾 완전 누적 시스템으로 업그레이드!
+ * 감정 시스템 초기화 (호환성) - 💾 완전 누적 시스템 + 💥 갈등 시스템으로 업그레이드!
  */
 async function initializeEmotionalSystems() {
-    contextLog('💾 완전 누적 시스템으로 동적 기억, 대화 컨텍스트 및 학습 시스템 초기화... (디스크 마운트)');
+    contextLog('💾 완전 누적 시스템 + 💥 갈등 시스템으로 동적 기억, 대화 컨텍스트 및 학습 시스템 초기화... (디스크 마운트)');
     
     // ✨ GPT 모델 정보 로그
     const currentModel = getCurrentModelSetting ? getCurrentModelSetting() : 'unknown';
@@ -1689,9 +2031,17 @@ async function initializeEmotionalSystems() {
     // 💾 모든 영구 데이터 로드
     const loadSuccess = await loadAllDataFromFiles();
     if (loadSuccess) {
-        contextLog('💾 영구 저장된 데이터 로드 성공! (디스크 마운트)');
+        contextLog('💾 영구 저장된 데이터 로드 성공! (갈등 시스템 포함) (디스크 마운트)');
     } else {
-        contextLog('ℹ️ 첫 실행 - 새로운 데이터 파일들을 생성합니다 (💾 디스크 마운트)');
+        contextLog('ℹ️ 첫 실행 - 새로운 데이터 파일들을 생성합니다 (갈등 시스템 포함) (💾 디스크 마운트)');
+    }
+    
+    // 💥 갈등 매니저 연결 확인
+    const conflictManager = getConflictManager();
+    if (conflictManager) {
+        contextLog('💥 갈등 시스템 연결 성공!');
+    } else {
+        contextLog('⚠️ 갈등 시스템 연결 실패 - 로컬 갈등 기능만 사용');
     }
     
     // 일일 리셋 확인
@@ -1699,6 +2049,7 @@ async function initializeEmotionalSystems() {
     if (ultimateConversationState.memoryStats.lastDailyReset !== today) {
         ultimateConversationState.memoryStats.todayMemoryCount = 0;
         ultimateConversationState.memoryStats.todayLearningCount = 0; // 📚 학습 카운트 리셋
+        ultimateConversationState.memoryStats.todayConflictCount = 0; // 💥 갈등 카운트 리셋
         ultimateConversationState.memoryStats.lastDailyReset = today;
         
         // 💾 통계 저장
@@ -1715,11 +2066,12 @@ async function initializeEmotionalSystems() {
     startAutoSaveSystem();
     
     // 📚 시스템 초기화 학습 기록
-    await addLearningEntry('완전 누적 시스템 초기화 완료 (디스크 마운트)', '시스템', {
+    await addLearningEntry('완전 누적 시스템 + 갈등 시스템 초기화 완료 (디스크 마운트)', '시스템', {
         initTime: new Date().toISOString(),
         gptModel: currentModel,
         persistentSystem: true,
         diskMounted: true,
+        conflictSystemConnected: conflictManager !== null,
         storagePath: DATA_DIR,
         loadedDataFiles: Object.keys(PERSISTENT_FILES).length
     });
@@ -1727,11 +2079,11 @@ async function initializeEmotionalSystems() {
     // 💾 초기화 완료 후 전체 저장
     await saveAllDataToFiles();
     
-    contextLog(`✅ 완전 누적 시스템 초기화 완료 - 모든 데이터 디스크 마운트로 완전 영구 저장 보장! (${currentModel} 최적화)`);
+    contextLog(`✅ 완전 누적 시스템 + 갈등 시스템 초기화 완료 - 모든 데이터 디스크 마운트로 완전 영구 저장 보장! (${currentModel} 최적화)`);
     
     // 로드된 데이터 통계 출력
     const stats = await getMemoryStatistics();
-    contextLog(`📊 로드된 데이터: 사용자기억 ${stats.user}개, 학습데이터 ${stats.learning.totalEntries}개 (💾 디스크 마운트: ${DATA_DIR})`);
+    contextLog(`📊 로드된 데이터: 사용자기억 ${stats.user}개, 학습데이터 ${stats.learning.totalEntries}개, 갈등이벤트 ${stats.conflictEvents}개 (💾 디스크 마운트: ${DATA_DIR})`);
 }
 
 // ==================== 🎁 유틸리티 함수들 ====================
@@ -1741,7 +2093,7 @@ async function initializeEmotionalSystems() {
  */
 function setConversationContextWindow(size) {
     const currentModel = getCurrentModelSetting ? getCurrentModelSetting() : 'auto';
-    contextLog(`컨텍스트 윈도우 크기: ${size} (모델: ${currentModel}) (💾 디스크 마운트)`);
+    contextLog(`컨텍스트 윈도우 크기: ${size} (모델: ${currentModel}) (갈등 시스템 포함) (💾 디스크 마운트)`);
     // 실제 구현에서는 메시지 보관 개수 조정
 }
 
@@ -1760,14 +2112,14 @@ async function generateInitiatingPhrase() {
 }
 
 /**
- * 💾 수동 전체 데이터 저장 (명령어용)
+ * 💾 수동 전체 데이터 저장 (명령어용 + 갈등 데이터 포함)
  */
 async function manualSaveAllData() {
-    contextLog('💾 수동 전체 데이터 저장 시작... (디스크 마운트)');
+    contextLog('💾 수동 전체 데이터 저장 시작... (갈등 시스템 포함) (디스크 마운트)');
     const success = await saveAllDataToFiles();
     if (success) {
-        contextLog('✅ 수동 저장 완료! (💾 디스크 마운트)');
-        return { success: true, message: '모든 데이터가 디스크 마운트에 안전하게 저장되었어요!' };
+        contextLog('✅ 수동 저장 완료! (갈등 시스템 포함) (💾 디스크 마운트)');
+        return { success: true, message: '모든 데이터(갈등 포함)가 디스크 마운트에 안전하게 저장되었어요!' };
     } else {
         contextLog('❌ 수동 저장 실패!');
         return { success: false, message: '데이터 저장 중 오류가 발생했어요.' };
@@ -1775,14 +2127,14 @@ async function manualSaveAllData() {
 }
 
 /**
- * 💾 수동 백업 생성 (명령어용)
+ * 💾 수동 백업 생성 (명령어용 + 갈등 데이터 포함)
  */
 async function manualCreateBackup() {
-    contextLog('💾 수동 백업 생성 시작... (디스크 마운트)');
+    contextLog('💾 수동 백업 생성 시작... (갈등 시스템 포함) (디스크 마운트)');
     const success = await createDailyBackup();
     if (success) {
-        contextLog('✅ 수동 백업 완료! (💾 디스크 마운트)');
-        return { success: true, message: '백업이 디스크 마운트에 생성되었어요!' };
+        contextLog('✅ 수동 백업 완료! (갈등 시스템 포함) (💾 디스크 마운트)');
+        return { success: true, message: '백업(갈등 포함)이 디스크 마운트에 생성되었어요!' };
     } else {
         contextLog('❌ 수동 백업 실패!');
         return { success: false, message: '백업 생성 중 오류가 발생했어요.' };
@@ -1790,7 +2142,7 @@ async function manualCreateBackup() {
 }
 
 /**
- * 💾 영구 저장 시스템 상태 조회
+ * 💾 영구 저장 시스템 상태 조회 (갈등 시스템 포함)
  */
 function getPersistentSystemStatus() {
     return {
@@ -1804,17 +2156,19 @@ function getPersistentSystemStatus() {
             userMemories: PERSISTENT_FILES.userMemories,
             learningData: PERSISTENT_FILES.learningData,
             spontaneousStats: PERSISTENT_FILES.spontaneousStats,
-            memoryStats: PERSISTENT_FILES.memoryStats
+            memoryStats: PERSISTENT_FILES.memoryStats,
+            conflictLearning: PERSISTENT_FILES.conflictLearning // 💥 갈등 학습 파일 추가
         },
         isNeverLost: true, // 💾 절대 사라지지 않음 보장
         diskMounted: true, // 💾 디스크 마운트 적용
         storagePath: DATA_DIR, // 💾 /data 경로
-        version: 'v37.0-disk-mount-complete'
+        conflictSystemIntegrated: true, // 💥 갈등 시스템 통합 표시
+        version: 'v37.1-disk-mount-conflict-complete'
     };
 }
 
 // ==================== 📤 모듈 내보내기 ==================
-contextLog('💾 v37.0 로드 완료 (완전 누적 시스템 - 디스크 마운트로 영구 저장 보장, GPT 모델 버전 전환, 자발적 메시지 통계, 학습 시스템 완전 지원)');
+contextLog('💾💥 v37.1 로드 완료 (완전 누적 시스템 + 갈등 시스템 - 디스크 마운트로 영구 저장 보장, GPT 모델 버전 전환, 자발적 메시지 통계, 학습 시스템, 갈등 시스템 완전 지원)');
 
 module.exports = {
     // 초기화
@@ -1847,8 +2201,8 @@ module.exports = {
     getLearningByCategory,
     getTodayLearning,
     getLearningStatistics,
-    analyzeMessageForNewInfo,   // 메시지 분석 함수
-    processAutoLearning,        // 자동 학습 처리
+    analyzeMessageForNewInfo,   // 메시지 분석 함수 (갈등 감지 포함)
+    processAutoLearning,        // 자동 학습 처리 (갈등 감지 포함)
     
     // ⭐️ 자발적 메시지 통계 관리 (💾 완전 영구 저장!)
     recordSpontaneousMessage,
@@ -1863,6 +2217,12 @@ module.exports = {
     manualCreateBackup,
     getPersistentSystemStatus,
     
+    // 💥 갈등 시스템 연동 (신규 추가!)
+    detectConflictSignals,       // 갈등 신호 감지
+    updateConflictWithSystem,    // 갈등 시스템과 연동
+    recordConflictResolutionAttempt, // 갈등 해소 시도 기록
+    getConflictSystemStatus,     // 갈등 시스템 연동 상태 확인
+    
     // 감정 상태 연동 (보조) - 삐짐 상태는 sulkyManager.js에서 독립 관리
     analyzeUserMood,
     
@@ -1875,7 +2235,7 @@ module.exports = {
     getPendingAction,
     clearPendingAction,
     
-    // 통계 및 상태
+    // 통계 및 상태 (갈등 통계 포함)
     getMemoryStatistics,
     getMemoryCategoryStats,
     getMemoryOperationLogs,
@@ -1889,7 +2249,7 @@ module.exports = {
     getOptimalContextLength,
     getContextPriority,
     
-   // 💔 갈등 학습 연동 (새로 추가!)
+   // 💔 갈등 학습 연동 (갈등 시스템과 연동!)
     addConflictLearning,
     analyzeConflictPatterns,
     getConflictLearningForDiary,
