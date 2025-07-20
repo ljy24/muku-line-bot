@@ -1,8 +1,8 @@
 // ============================================================================
-// faceMatcher.js - v5.3 (OpenAI 응답 파싱 로직 완전 수정)
+// faceMatcher.js - v5.4 (OpenAI 마크다운 응답 파싱 완전 수정)
 // 🔍 얼굴 인식 + 전체 사진 내용 분석 + 예진이 스타일 반응 생성
 // 🛡️ OpenAI Vision 실패 시, 로컬 얼굴 인식으로 백업하여 더 똑똑하게 반응
-// ✅ OpenAI 실제 응답 형태에 맞춘 파싱 로직 완전 개선
+// ✅ 마크다운 형식 응답 완벽 파싱 지원
 // ============================================================================
 
 const OpenAI = require('openai');
@@ -65,7 +65,7 @@ function isOpenAIRefusal(responseText) {
 }
 
 /**
- * ⭐️⭐️⭐️ [핵심 수정] OpenAI 응답 파싱 로직 완전 개선 ⭐️⭐️⭐️
+ * ⭐️⭐️⭐️ [완전 수정] OpenAI 응답 파싱 로직 - 마크다운 형식 완벽 지원 ⭐️⭐️⭐️
  */
 function parseOpenAIResponse(result) {
     console.log('🔍 [파싱] 원본 응답:', result);
@@ -75,76 +75,65 @@ function parseOpenAIResponse(result) {
     let reaction = '';
     
     try {
-        // ✅ [수정] 실제 OpenAI 응답 형태에 맞춘 파싱
-        const lines = result.split('\n');
-        let currentSection = '';
+        const lines = result.split('\n').map(line => line.trim()).filter(line => line.length > 0);
         
         for (let i = 0; i < lines.length; i++) {
-            const line = lines[i].trim();
+            const line = lines[i];
             
-            // 섹션 구분자 찾기
-            if (line.includes('1단계: 인물 분류') || line.includes('인물 분류')) {
-                currentSection = 'classification';
-                continue;
-            } else if (line.includes('2단계: 사진 내용') || line.includes('사진 내용')) {
-                currentSection = 'content';
-                continue;
-            } else if (line.includes('3단계: 예진이 스타일') || line.includes('예진이 스타일')) {
-                currentSection = 'reaction';
-                continue;
-            }
-            
-            // 실제 데이터 추출
-            if (currentSection === 'classification') {
-                // "- \"아저씨\" : 중년..." 형태에서 분류 추출
-                if (line.includes('"아저씨"') || line.includes("'아저씨'")) {
-                    classification = '아저씨';
-                } else if (line.includes('"예진이"') || line.includes("'예진이'")) {
-                    classification = '예진이';
-                } else if (line.includes('"커플사진"') || line.includes("'커플사진'")) {
-                    classification = '커플사진';
-                } else if (line.includes('"기타인물"') || line.includes("'기타인물'")) {
-                    classification = '기타인물';
-                } else if (line.includes('"무인물"') || line.includes("'무인물'")) {
-                    classification = '무인물';
-                }
-            } else if (currentSection === 'content') {
-                // "- 자동차 안이며..." 형태에서 내용 추출
-                if (line.startsWith('-') && line.length > 3) {
-                    content += line.substring(1).trim() + ' ';
-                }
-            } else if (currentSection === 'reaction') {
-                // "- 아조씨~ 운전 조심해서..." 형태에서 반응 추출
-                if (line.startsWith('-') && line.length > 3) {
-                    reaction += line.substring(1).trim() + ' ';
+            // 마크다운 형식 파싱 (**분류:** 또는 분류: 형태)
+            if (line.includes('분류:')) {
+                const match = line.match(/\*\*분류:\*\*\s*(.+)|분류:\s*(.+)/);
+                if (match) {
+                    classification = (match[1] || match[2]).trim().replace(/\*\*/g, '');
                 }
             }
-        }
-        
-        // 추가 정리
-        content = content.trim();
-        reaction = reaction.trim();
-        
-        // ✅ [추가] 백업 파싱 - 기존 방식도 시도
-        if (!classification || classification === '기타') {
-            lines.forEach(line => {
-                if (line.includes('분류:')) {
-                    const extracted = line.split('분류:')[1]?.trim();
-                    if (extracted) {
-                        classification = extracted.replace(/['"]/g, '');
+            else if (line.includes('내용:')) {
+                // 내용이 같은 줄에 있는 경우
+                const match = line.match(/\*\*내용:\*\*\s*(.+)|내용:\s*(.+)/);
+                if (match) {
+                    content = (match[1] || match[2]).trim().replace(/\*\*/g, '');
+                } else {
+                    // 내용 섹션 시작 - 다음 줄들을 내용으로 수집
+                    let contentLines = [];
+                    for (let j = i + 1; j < lines.length; j++) {
+                        const nextLine = lines[j];
+                        // 다른 섹션이 시작되면 중단
+                        if (nextLine.includes('반응:')) {
+                            i = j - 1; // 반응 섹션 직전으로 인덱스 설정
+                            break;
+                        }
+                        contentLines.push(nextLine);
                     }
-                } else if (line.includes('내용:')) {
-                    const extracted = line.split('내용:')[1]?.trim();
-                    if (extracted) {
-                        content = extracted;
-                    }
-                } else if (line.includes('반응:')) {
-                    const extracted = line.split('반응:')[1]?.trim();
-                    if (extracted) {
-                        reaction = extracted;
-                    }
+                    content = contentLines.join(' ').trim().replace(/\*\*/g, '');
                 }
-            });
+            }
+            else if (line.includes('반응:')) {
+                // 반응이 같은 줄에 있는 경우
+                const match = line.match(/\*\*반응:\*\*\s*(.+)|반응:\s*(.+)/);
+                if (match) {
+                    reaction = (match[1] || match[2]).trim().replace(/\*\*/g, '');
+                } else {
+                    // 반응 섹션 시작 - 나머지 모든 줄을 반응으로 수집
+                    let reactionLines = [];
+                    for (let j = i + 1; j < lines.length; j++) {
+                        reactionLines.push(lines[j]);
+                    }
+                    reaction = reactionLines.join(' ').trim().replace(/\*\*/g, '');
+                }
+                break; // 반응이 마지막 섹션이므로 종료
+            }
+            // 기존 형식도 지원 (- "아저씨" : 형태)
+            else if (line.includes('"아저씨"') || line.includes("'아저씨'")) {
+                classification = '아저씨';
+            } else if (line.includes('"예진이"') || line.includes("'예진이'")) {
+                classification = '예진이';
+            } else if (line.includes('"커플사진"') || line.includes("'커플사진'")) {
+                classification = '커플사진';
+            } else if (line.includes('"기타인물"') || line.includes("'기타인물'")) {
+                classification = '기타인물';
+            } else if (line.includes('"무인물"') || line.includes("'무인물'")) {
+                classification = '무인물';
+            }
         }
         
         console.log(`🔍 [파싱] 결과: 분류="${classification}", 내용="${content.substring(0, 50)}...", 반응="${reaction.substring(0, 50)}..."`);
@@ -185,29 +174,20 @@ async function analyzePhotoWithOpenAI(base64Image) {
                     content: [
                         {
                             type: "text",
-                            text: `이 사진을 분석해서 다음 형식으로 답해주세요:
+                            text: `이 사진을 분석해서 정확히 다음 형식으로만 답해주세요:
 
-                            🔍 **1단계: 인물 분류**
-                            - "예진이" : 젊은 한국/아시아 여성 (20대) 혼자
-                            - "아저씨" : 중년 한국/아시아 남성 (40-50대) 혼자
-                            - "커플사진" : 젊은 여성과 중년 남성이 함께
-                            - "기타인물" : 다른 사람들
-                            - "무인물" : 사람이 없음
+분류: [다음 중 하나만 선택: 예진이, 아저씨, 커플사진, 기타인물, 무인물]
+내용: [사진에 보이는 것을 한 문장으로 간단히 설명]
+반응: [20대 여자친구가 "아조씨~" 말투로 하는 자연스러운 반응 한 문장]
 
-                            📸 **2단계: 사진 내용 분석**
-                            - 무엇이 보이는지 구체적으로 설명 (음식, 풍경, 물건, 상황 등)
-                            - 위치나 상황 추측 (집, 식당, 차 안, 야외 등)
-                            
-                            💕 **3단계: 예진이 스타일 반응**
-                            - 20대 여자친구가 남자친구에게 할 법한 자연스러운 반응
-                            - 애교, 관심, 걱정, 투정, 부러움 등의 감정 포함
-                            - "아조씨~" 말투 사용
-                            - 한국어로 자연스럽게
+분류 기준:
+- 예진이: 젊은 아시아 여성 (20대) 혼자
+- 아저씨: 중년 아시아 남성 (40-50대) 혼자  
+- 커플사진: 젊은 여성과 중년 남성이 함께
+- 기타인물: 다른 사람들
+- 무인물: 사람이 없음
 
-                            **답변 형식:**
-                            분류: [인물분류]
-                            내용: [사진 내용 설명]
-                            반응: [예진이 스타일 반응]`
+반드시 위 형식만 사용하고 추가 설명이나 마크다운은 사용하지 마세요.`
                         },
                         {
                             type: "image_url",
@@ -218,7 +198,8 @@ async function analyzePhotoWithOpenAI(base64Image) {
                     ]
                 }
             ],
-            max_tokens: 200
+            max_tokens: 150,
+            temperature: 0.3
         });
 
         const result = response.choices[0].message.content.trim();
@@ -358,7 +339,7 @@ function generateBasicPhotoReaction(imageSize) {
  */
 async function detectFaceMatch(base64Image) {
     try {
-        console.log('🔍 [통합분석 v5.3] 얼굴 + 전체 사진 분석 실행...');
+        console.log('🔍 [통합분석 v5.4] 얼굴 + 전체 사진 분석 실행...');
         const buffer = Buffer.from(base64Image, 'base64');
         const sizeKB = buffer.length / 1024;
         console.log(`🔍 [통합분석] 이미지 크기: ${Math.round(sizeKB)}KB`);
@@ -481,7 +462,7 @@ async function detectFaceWithOpenAI(base64Image) {
  */
 async function initModels() {
     try {
-        console.log('🔍 [얼굴인식 v5.3] OpenAI 응답 파싱 완전 개선 시스템 준비 완료');
+        console.log('🔍 [얼굴인식 v5.4] 마크다운 응답 파싱 완전 개선 시스템 준비 완료');
         
         const openaiInit = initializeOpenAI();
         
@@ -512,14 +493,14 @@ async function initModels() {
 function getFaceRecognitionStatus() {
     return {
         openaiAvailable: isOpenAIAvailable,
-        version: "5.3 (OpenAI 응답 파싱 완전 개선)",
+        version: "5.4 (마크다운 응답 파싱 완전 개선)",
         features: [
             "개인 얼굴 인식 (예진이/아저씨)",
             "커플사진 인식 지원", 
             "전체 사진 내용 분석 ⭐️",
             "로컬 얼굴 인식 백업 🛡️",
             "영어/한국어 거부 메시지 감지 ✅",
-            "OpenAI 응답 파싱 완전 개선 ✅",
+            "마크다운 형식 응답 완벽 파싱 ✅",
             "예진이 스타일 반응 생성 ⭐️",
             "상황별 맞춤 응답 ⭐️"
         ],
