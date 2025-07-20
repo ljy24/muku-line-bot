@@ -1,5 +1,5 @@
 // ============================================================================
-// muku-eventProcessor.js - 무쿠 이벤트 처리 전용 모듈 (수정됨)
+// muku-eventProcessor.js - 무쿠 이벤트 처리 전용 모듈 (모든 오류 수정됨)
 // ✅ 메시지 처리, 이미지 처리, 명령어 처리 로직 분리
 // 🔍 얼굴 인식, 새벽 대화, 생일 감지 등 모든 이벤트 처리
 // 🧠 실시간 학습 시스템 연동 - 대화 패턴 학습 및 개인화
@@ -153,7 +153,6 @@ async function generatePersonalizedImageResponse(faceResult, personLearningResul
         return null;
     }
 }
-
 async function processLearningFromMessage(messageText, modules, enhancedLogging) {
     try {
         // 1. 대화 패턴 학습
@@ -484,66 +483,38 @@ function generateFaceRecognitionResponse(faceResult, modules, messageContext) {
 async function processImageMessage(messageId, client, faceMatcher, loadFaceMatcherSafely, enhancedLogging, modules) {
     try {
         const stream = await client.getMessageContent(messageId);
-
         const chunks = [];
         for await (const chunk of stream) {
             chunks.push(chunk);
         }
         const buffer = Buffer.concat(chunks);
         const base64 = buffer.toString('base64');
-
         console.log(`${colors.system}📐 이미지 크기: ${Math.round(buffer.length/1024)}KB${colors.reset}`);
 
-        // 1. 얼굴 인식 실행
-        const faceResult = await detectFaceSafely(base64, faceMatcher, loadFaceMatcherSafely);
-        console.log(`${colors.system}🎯 얼굴 인식 결과: ${faceResult || '인식 실패'}${colors.reset}`);
+        // [수정된 로직 시작]
+        const analysisResult = await detectFaceSafely(base64, faceMatcher, loadFaceMatcherSafely);
+        console.log(`${colors.system}🎯 통합 분석 결과:`, (analysisResult ? `분류: ${analysisResult.type}`: '분석 실패'), `${colors.reset}`);
 
-        // 2. 이미지 메타데이터 구성
-        const imageMetadata = {
-            base64: base64,
-            imageSize: buffer.length,
-            timestamp: getJapanTime(),
-            context: 'photo_sharing'
-        };
+        let finalResponse;
 
-        // ⭐️⭐️⭐️ 3. 사람 학습 시스템 처리 (핵심!) ⭐️⭐️⭐️
-        const personLearningResult = await processPersonLearning(
-            faceResult, 
-            imageMetadata, 
-            modules, 
-            enhancedLogging
-        );
-
-        // 4. 기본 응답 생성
-        let finalResponse = generateFaceRecognitionResponse(faceResult, modules, imageMetadata);
-
-        // ⭐️⭐️⭐️ 5. 사람 학습 데이터 기반 개인화 응답 시도 ⭐️⭐️⭐️
-        const personalizedImageResponse = await generatePersonalizedImageResponse(
-            faceResult, 
-            personLearningResult, 
-            modules
-        );
-
-        if (personalizedImageResponse) {
+        // AI가 생성한 반응(message)이 있으면 최우선으로 사용
+        if (analysisResult && analysisResult.message) {
             finalResponse = {
-                ...finalResponse,
-                comment: personalizedImageResponse,
-                personalized: true,
-                learningData: personLearningResult
+                type: 'text',
+                comment: analysisResult.message,
+                personalized: true
             };
+        } else {
+            // AI 반응이 없다면, 분류(type)에 따라 기본 반응을 생성
+            const faceType = analysisResult ? analysisResult.type : 'unknown';
+            finalResponse = generateFaceRecognitionResponse(faceType, modules, {});
         }
-
-        // 6. 일반 학습 시스템도 연동
-        if (modules.realTimeLearningSystem && modules.realTimeLearningSystem.learnFromImage) {
-            try {
-                await modules.realTimeLearningSystem.learnFromImage(faceResult, imageMetadata);
-                console.log(`${colors.learning}📷 [이미지학습] 일반 이미지 데이터 학습 완료${colors.reset}`);
-            } catch (error) {
-                console.log(`${colors.error}⚠️ 일반 이미지 학습 에러: ${error.message}${colors.reset}`);
-            }
-        }
+        
+        const imageMetadata = { base64, imageSize: buffer.length, timestamp: getJapanTime(), context: 'photo_sharing' };
+        await processPersonLearning(analysisResult?.type, imageMetadata, modules, enhancedLogging);
 
         return finalResponse;
+        // [수정된 로직 끝]
 
     } catch (error) {
         console.error(`${colors.error}❌ 이미지 처리 에러: ${error.message}${colors.reset}`);
@@ -568,6 +539,7 @@ function processOtherMessageType(messageType) {
         comment: responses[Math.floor(Math.random() * responses.length)]
     };
 }
+
 // ================== 🎯 메인 이벤트 처리 함수 (학습 시스템 완전 연동) ==================
 async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherSafely, getVersionResponse, enhancedLogging) {
     if (event.type !== 'message') {
@@ -578,195 +550,87 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
         const userId = event.source.userId;
         const userMessage = event.message;
 
-        // 텍스트 메시지 처리 로직
         if (userMessage.type === 'text') {
             const messageText = userMessage.text.trim();
-            
-            // ⭐️ enhancedLogging v3.0으로 대화 로그 ⭐️
-            if (enhancedLogging && enhancedLogging.logConversation) {
+            if (enhancedLogging?.logConversation) {
                 enhancedLogging.logConversation('아저씨', messageText, 'text');
             } else {
                 console.log(`${colors.ajeossi}💬 아저씨: ${messageText}${colors.reset}`);
             }
 
-            // ⭐️⭐️⭐️ 학습 시스템 전체 연동 처리 (최우선!) ⭐️⭐️⭐️
             console.log(`${colors.learning}🧠 [학습시작] 메시지 학습 및 분석 시작...${colors.reset}`);
-            
-            // 1. 대화 컨텍스트 분석
             const conversationContext = await analyzeConversationContext(messageText, modules);
-            
-            // 2. 학습 시스템 처리
             await processLearningFromMessage(messageText, modules, enhancedLogging);
 
-            // ✨✨✨ 절대 우선 명령어: GPT 모델 버전 관리 (최우선 처리!) ✨✨✨
             const versionResponse = processVersionCommand(messageText, getVersionResponse);
             if (versionResponse) {
-                // ⭐️ enhancedLogging v3.0으로 응답 로그 ⭐️
-                if (enhancedLogging && enhancedLogging.logConversation) {
+                if (enhancedLogging?.logConversation) {
                     enhancedLogging.logConversation('나', versionResponse, 'text');
                 } else {
                     console.log(`${colors.yejin}✨ 예진이 (버전응답): ${versionResponse}${colors.reset}`);
                 }
-                
-                return {
-                    type: 'version_response',
-                    response: versionResponse
-                };
+                return { type: 'version_response', response: versionResponse };
             }
 
-            // ⭐️ 0. 삐짐 상태 해소 처리 (최우선!) ⭐️
             await processSulkyRelief(modules, enhancedLogging);
-
-            // ⭐️ 1. 새벽 대화 감지 및 처리 (2-7시) ⭐️
             const nightResponse = await processNightWakeMessage(messageText, modules, enhancedLogging);
-            if (nightResponse) {
-                return {
-                    type: 'night_response',
-                    response: nightResponse.response
-                };
-            }
-
-            // ⭐️ 2. 생일 감지 및 처리 ⭐️
+            if (nightResponse) return { type: 'night_response', response: nightResponse.response };
             const birthdayResponse = await processBirthdayDetection(messageText, modules, enhancedLogging);
-            if (birthdayResponse) {
-                return {
-                    type: 'birthday_response',
-                    response: birthdayResponse.response
-                };
-            }
-
-            // ⭐️ 3. 고정 기억 연동 확인 및 처리 ⭐️
+            if (birthdayResponse) return { type: 'birthday_response', response: birthdayResponse.response };
             processFixedMemory(messageText, modules);
-
-            // 4. 명령어 처리 확인
             const commandResult = await processCommand(messageText, userId, client, modules);
-            if (commandResult) {
-                return {
-                    type: 'command_response',
-                    response: commandResult
-                };
-            }
+            if (commandResult) return { type: 'command_response', response: commandResult };
 
-            // ⭐️⭐️⭐️ 5. 학습 시스템 연동된 일반 대화 응답 ⭐️⭐️⭐️
             const chatResponse = await processGeneralChat(messageText, modules, enhancedLogging);
             if (chatResponse) {
-                // 응답 로그에 학습 정보 포함
-                const logMessage = chatResponse.personalized 
-                    ? `${chatResponse.comment} [개인화됨]`
-                    : chatResponse.comment;
-                
-                if (enhancedLogging && enhancedLogging.logConversation) {
+                const logMessage = chatResponse.personalized ? `${chatResponse.comment} [개인화됨]` : chatResponse.comment;
+                if (enhancedLogging?.logConversation) {
                     enhancedLogging.logConversation('나', logMessage, 'text');
                 } else {
                     console.log(`${colors.yejin}💖 예진이: ${logMessage}${colors.reset}`);
                 }
-                
-                return {
-                    type: 'chat_response',
-                    response: chatResponse,
-                    conversationContext: conversationContext
-                };
+                return { type: 'chat_response', response: chatResponse, conversationContext: conversationContext };
             }
-
-            // 6. 폴백 응답 (학습 기반)
-            return {
-                type: 'fallback_response',
-                response: {
-                    type: 'text',
-                    comment: '아저씨~ 나 지금 시스템 준비 중이야... 조금만 기다려줘! ㅎㅎ'
-                }
-            };
+            return { type: 'fallback_response', response: { type: 'text', comment: '아저씨~ 나 지금 시스템 준비 중이야... 조금만 기다려줘! ㅎㅎ' } };
         }
-        // 🖼️ 이미지 메시지 처리 (학습 연동)
         else if (userMessage.type === 'image') {
-            if (enhancedLogging && enhancedLogging.logConversation) {
+            if (enhancedLogging?.logConversation) {
                 enhancedLogging.logConversation('아저씨', '이미지 전송', 'photo');
             } else {
                 console.log(`${colors.ajeossi}📸 아저씨: 이미지 전송${colors.reset}`);
             }
-            
-            // ❗❗❗ [핵심 수정] 여기서 messageId를 정의해야 합니다. ❗❗❗
+
             const messageId = userMessage.id;
-            
             const imageResponse = await processImageMessage(messageId, client, faceMatcher, loadFaceMatcherSafely, enhancedLogging, modules);
             
-            // 이미지 응답 로그
-            const logMessage = imageResponse.personalized 
-                ? `${imageResponse.comment} [개인화됨]`
-                : imageResponse.comment;
-                
-            if (enhancedLogging && enhancedLogging.logConversation) {
+            const logMessage = imageResponse.personalized ? `${imageResponse.comment} [개인화됨]` : imageResponse.comment;
+            if (enhancedLogging?.logConversation) {
                 enhancedLogging.logConversation('나', logMessage, 'text');
             } else {
                 console.log(`${colors.yejin}📸 예진이: ${logMessage}${colors.reset}`);
             }
-            
-            return {
-                type: 'image_response',
-                response: imageResponse
-            };
+            return { type: 'image_response', response: imageResponse };
         }
-        // 기타 메시지 타입 처리
         else {
             console.log(`${colors.ajeossi}📎 아저씨: ${userMessage.type} 메시지${colors.reset}`);
             const otherResponse = processOtherMessageType(userMessage.type);
-            return {
-                type: 'other_response',
-                response: otherResponse
-            };
+            return { type: 'other_response', response: otherResponse };
         }
 
     } catch (error) {
         console.error(`${colors.error}❌ 메시지 처리 에러: ${error.message}${colors.reset}`);
-        
-        // 에러도 학습 데이터로 활용
-        if (modules.realTimeLearningSystem && modules.realTimeLearningSystem.learnFromError) {
+        if (modules.realTimeLearningSystem?.learnFromError) {
             try {
-                await modules.realTimeLearningSystem.learnFromError(error, {
-                    messageType: event.message?.type,
-                    timestamp: getJapanTime()
-                });
+                await modules.realTimeLearningSystem.learnFromError(error, { messageType: event.message?.type, timestamp: getJapanTime() });
             } catch (learningError) {
                 console.log(`${colors.error}⚠️ 에러 학습 실패: ${learningError.message}${colors.reset}`);
             }
         }
-        
-        return {
-            type: 'error_response',
-            response: {
-                type: 'text',
-                comment: '아저씨... 나 지금 좀 멍해져서... 다시 말해줄래? ㅠㅠ'
-            }
-        };
+        return { type: 'error_response', response: { type: 'text', comment: '아저씨... 나 지금 좀 멍해져서... 다시 말해줄래? ㅠㅠ' } };
     }
 }
 
 // ================== 📤 모듈 내보내기 ==================
 module.exports = {
-    handleEvent,
-    processVersionCommand,
-    processSulkyRelief,
-    processNightWakeMessage,
-    processBirthdayDetection,
-    processFixedMemory,
-    processCommand,
-    processGeneralChat,
-    processImageMessage,
-    processOtherMessageType,
-    generateFaceRecognitionResponse,
-    detectFaceSafely,
-    
-    // 새로 추가된 학습 시스템 함수들
-    processLearningFromMessage,
-    generatePersonalizedResponse,
-    analyzeConversationContext,
-    
-    // 새로 추가된 사람 학습 시스템 함수들
-    processPersonLearning,
-    generatePersonalizedImageResponse,
-    
-    // 유틸리티 함수들
-    getJapanTime,
-    getJapanHour,
-    colors
+    handleEvent
 };
