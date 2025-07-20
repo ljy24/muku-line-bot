@@ -172,6 +172,71 @@ async function handleCommand(text, userId, client = null) {
             }
         }
 
+
+                // ================== 💾 수동 기억 저장 명령어 ==================
+        
+        // 💾 "기억해줘" 명령어 처리
+        if (lowerText.startsWith('기억해줘 ') || lowerText.startsWith('기억해 ') ||
+            lowerText.startsWith('저장해줘 ') || lowerText.startsWith('기록해줘 ')) {
+            
+            console.log('[commandHandler] 💾 수동 기억 저장 요청 감지');
+            
+            // 명령어 제거하고 내용만 추출
+            const content = text.replace(/^(기억해줘|기억해|저장해줘|기록해줘)\s+/, '').trim();
+            
+            if (!content) {
+                return {
+                    type: 'text',
+                    comment: "뭘 기억해달라는 거야? '기억해줘 [내용]' 이렇게 말해줘!",
+                    handled: true
+                };
+            }
+            
+            try {
+                // 🗓️ diarySystem 모듈 로드 및 수동 저장
+                let diarySystem;
+                try {
+                    diarySystem = require('./muku-diarySystem.js');
+                } catch (directLoadError) {
+                    const modules = global.mukuModules || {};
+                    diarySystem = modules.diarySystem;
+                }
+                
+                if (!diarySystem || !diarySystem.saveManualMemory) {
+                    return {
+                        type: 'text',
+                        comment: "일기장 시스템이 준비되지 않아서 기억할 수 없어... 잠시 후 다시 시도해줘!",
+                        handled: true
+                    };
+                }
+                
+                // 수동 기억 저장 실행
+                const saveResult = await diarySystem.saveManualMemory(content, '수동저장');
+                
+                if (saveResult.success) {
+                    return {
+                        type: 'text',
+                        comment: `📝 "${content}"를 기억했어! 이제 총 ${saveResult.totalMemories}개의 기억이 쌓였어~ 💕`,
+                        handled: true
+                    };
+                } else {
+                    return {
+                        type: 'text',
+                        comment: "기억하려고 했는데 문제가 생겼어... 다시 시도해볼까?",
+                        handled: true
+                    };
+                }
+                
+            } catch (error) {
+                console.error('[commandHandler] 💾 수동 기억 저장 실패:', error.message);
+                return {
+                    type: 'text',
+                    comment: "기억하는 중에 문제가 생겼어... 다시 말해줄래? ㅠㅠ",
+                    handled: true
+                };
+            }
+        }
+        
         // ================== 👥 사람 학습 시스템 명령어들 ==================
         
         // 👥 등록된 사람 목록 조회
