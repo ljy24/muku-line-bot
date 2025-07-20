@@ -5,7 +5,7 @@
 // 🎯 다음 전송 시간 정확 계산 + 일일 전송 통계
 // ============================================================================
 
-const schedule = require('node-cron');
+const schedule = require('node-schedule'); // ❗ 수정: 'node-cron' -> 'node-schedule'
 const moment = require('moment-timezone');
 const { Client } = require('@line/bot-sdk');
 
@@ -19,7 +19,7 @@ const MAX_INTERVAL_MINUTES = 180; // 최대 간격 (3시간)
 let photoScheduleState = {
     // 일일 통계
     dailyStats: {
-        sentToday: 0,              // 오늘 전송한 사진 수
+        sentToday: 0,               // 오늘 전송한 사진 수
         totalDaily: DAILY_PHOTO_TARGET, // 하루 목표
         lastResetDate: null,       // 마지막 리셋 날짜
         systemStartTime: Date.now()
@@ -37,7 +37,7 @@ let photoScheduleState = {
         nextScheduledTime: null,   // 다음 예정 시간
         activeJobs: [],            // 활성 크론 작업들
         scheduleCount: 0,          // 예약된 스케줄 수
-        isSystemActive: false     // 시스템 활성화 상태
+        isSystemActive: false      // 시스템 활성화 상태
     },
     
     // 시스템 설정
@@ -273,7 +273,7 @@ function scheduleNextPhoto() {
         
         // 기존 스케줄 취소
         photoScheduleState.schedule.activeJobs.forEach(job => {
-            if (job && job.destroy) job.destroy();
+            if (job) job.cancel();
         });
         photoScheduleState.schedule.activeJobs = [];
         
@@ -345,7 +345,7 @@ function resetDailyStats() {
     
     // 기존 스케줄 모두 취소
     photoScheduleState.schedule.activeJobs.forEach(job => {
-        if (job && job.destroy) job.destroy();
+        if (job) job.cancel();
     });
     photoScheduleState.schedule.activeJobs = [];
     photoScheduleState.schedule.scheduleCount = 0;
@@ -548,7 +548,7 @@ function stopSpontaneousPhotoScheduler() {
         
         // 모든 활성 작업 취소
         photoScheduleState.schedule.activeJobs.forEach(job => {
-            if (job && job.destroy) job.destroy();
+            if (job) job.cancel();
         });
         
         // 상태 리셋
@@ -583,7 +583,7 @@ function forceReschedule() {
     
     // 기존 스케줄 취소
     photoScheduleState.schedule.activeJobs.forEach(job => {
-        if (job && job.destroy) job.destroy();
+        if (job) job.cancel();
     });
     photoScheduleState.schedule.activeJobs = [];
     
@@ -621,7 +621,7 @@ module.exports = {
     stopSpontaneousPhotoScheduler,
     
     // 📊 상태 조회 함수들 (⭐️ 라인 상태 리포트용!)
-    getPhotoStatus,           // ⭐️ 라인에서 "상태는?" 명령어용 핵심 함수!
+    getPhotoStatus,              // ⭐️ 라인에서 "상태는?" 명령어용 핵심 함수!
     getDetailedPhotoStats,
     getPhotoStatusSummary,
     
