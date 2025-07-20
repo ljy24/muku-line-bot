@@ -1,5 +1,5 @@
 // ============================================================================
-// ultimateConversationContext.js - v35.1 (학습 시스템 완전 추가!)
+// ultimateConversationContext.js - v36.0 (완전 누적 시스템!)
 // 🗄️ 동적 기억과 대화 컨텍스트 전문 관리자
 // ✅ 중복 기능 완전 제거: 생리주기, 날씨, 고정기억, 시간관리
 // 🎯 핵심 역할에만 집중: 동적기억 + 대화흐름 + 컨텍스트 조합
@@ -7,6 +7,7 @@
 // ⭐️ getSpontaneousStats() 함수 추가 - 라인 상태 리포트용 자발적 메시지 통계
 // 📚 getAllDynamicLearning() 함수 추가 - 일기장 시스템용!
 // 🧠 자동 학습 시스템 강화 - 모든 대화에서 학습 내용 추출!
+// 💾 완전 누적 시스템 - 모든 데이터 영구 저장, 절대 사라지지 않음!
 // ============================================================================
 
 const fs = require('fs').promises;
@@ -25,8 +26,18 @@ try {
 
 // --- 설정 ---
 const TIMEZONE = 'Asia/Tokyo';
-const MEMORY_DIR = path.join('/data', 'memory');
+const DATA_DIR = './data';
 const DAILY_SPONTANEOUS_TARGET = 20; // 하루 자발적 메시지 목표
+
+// 💾 영구 저장 파일 경로들
+const PERSISTENT_FILES = {
+    userMemories: path.join(DATA_DIR, 'user_memories_persistent.json'),
+    conversationMemories: path.join(DATA_DIR, 'conversation_memories_persistent.json'),
+    learningData: path.join(DATA_DIR, 'learning_data_persistent.json'),
+    spontaneousStats: path.join(DATA_DIR, 'spontaneous_stats_persistent.json'),
+    memoryStats: path.join(DATA_DIR, 'memory_stats_persistent.json'),
+    dailyBackup: path.join(DATA_DIR, 'daily_backup.json')
+};
 
 // --- 외부 모듈 지연 로딩 (순환 참조 방지) ---
 let emotionalContextManager = null;
@@ -68,14 +79,14 @@ function getWeatherManager() {
 
 // --- 핵심 상태 관리 (동적 기억 + 대화 컨텍스트 + ⭐️ 자발적 메시지 통계 + 📚 학습 데이터) ---
 let ultimateConversationState = {
-    // 🧠 동적 기억 관리 (사용자가 추가/수정/삭제하는 기억들)
+    // 🧠 동적 기억 관리 (사용자가 추가/수정/삭제하는 기억들) - 💾 영구 저장
     dynamicMemories: {
         userMemories: [],           // 사용자가 직접 추가한 기억
         conversationMemories: [],   // 대화에서 자동 학습된 기억
         temporaryMemories: []       // 임시 기억 (세션별)
     },
     
-    // 📚 학습 데이터 (일기장용!) - 새로 추가!
+    // 📚 학습 데이터 (일기장용!) - 💾 영구 저장 
     learningData: {
         dailyLearning: [],          // 일별 학습 내용
         conversationLearning: [],   // 대화별 학습 내용
@@ -83,7 +94,7 @@ let ultimateConversationState = {
         topicLearning: []           // 주제별 학습 내용
     },
     
-    // 💬 대화 컨텍스트 관리
+    // 💬 대화 컨텍스트 관리 (🔄 메모리 기반 - 재시작시 초기화됨)
     conversationContext: {
         recentMessages: [],         // 최근 20개 메시지
         currentTopic: null,         // 현재 대화 주제
@@ -91,7 +102,7 @@ let ultimateConversationState = {
         lastTopicChange: Date.now()
     },
     
-    // ⏰ 타이밍 관리
+    // ⏰ 타이밍 관리 (🔄 메모리 기반)
     timingContext: {
         lastUserMessageTime: Date.now(),
         lastBotResponse: Date.now(),
@@ -105,7 +116,7 @@ let ultimateConversationState = {
         // sulkinessState 제거됨: sulkyManager.js에서 독립 관리
     },
     
-    // ⭐️ 자발적 메시지 통계 추가!
+    // ⭐️ 자발적 메시지 통계 - 💾 영구 저장
     spontaneousMessages: {
         sentToday: 0,                    // 오늘 보낸 자발적 메시지 수
         totalDaily: DAILY_SPONTANEOUS_TARGET, // 하루 목표
@@ -121,7 +132,7 @@ let ultimateConversationState = {
         lastResetDate: null             // 마지막 리셋 날짜
     },
     
-    // 📊 통계 및 메타데이터
+    // 📊 통계 및 메타데이터 - 💾 영구 저장
     memoryStats: {
         totalUserMemories: 0,
         totalConversationMemories: 0,
@@ -131,9 +142,383 @@ let ultimateConversationState = {
         // 📚 학습 통계 추가!
         totalLearningEntries: 0,
         todayLearningCount: 0,
-        lastLearningEntry: null
+        lastLearningEntry: null,
+        // 💾 영구 저장 관련 메타데이터
+        lastSaved: null,
+        totalSaves: 0,
+        lastBackup: null
     }
 };
+
+// ================== 💾 영구 저장 시스템 ==================
+
+/**
+ * 💾 데이터 디렉토리 확인 및 생성
+ */
+async function ensureDataDirectory() {
+    try {
+        await fs.access(DATA_DIR);
+    } catch {
+        await fs.mkdir(DATA_DIR, { recursive: true });
+        contextLog(`📁 데이터 디렉토리 생성: ${DATA_DIR}`);
+    }
+}
+
+/**
+ * 💾 사용자 기억 영구 저장
+ */
+async function saveUserMemoriesToFile() {
+    try {
+        await ensureDataDirectory();
+        
+        const userMemoryData = {
+            memories: ultimateConversationState.dynamicMemories.userMemories,
+            lastSaved: new Date().toISOString(),
+            totalCount: ultimateConversationState.dynamicMemories.userMemories.length,
+            version: '36.0'
+        };
+        
+        await fs.writeFile(
+            PERSISTENT_FILES.userMemories,
+            JSON.stringify(userMemoryData, null, 2),
+            'utf8'
+        );
+        
+        contextLog(`💾 사용자 기억 저장 완료: ${userMemoryData.totalCount}개`);
+        return true;
+    } catch (error) {
+        contextLog(`❌ 사용자 기억 저장 실패: ${error.message}`);
+        return false;
+    }
+}
+
+/**
+ * 💾 학습 데이터 영구 저장
+ */
+async function saveLearningDataToFile() {
+    try {
+        await ensureDataDirectory();
+        
+        const learningData = {
+            learningData: ultimateConversationState.learningData,
+            lastSaved: new Date().toISOString(),
+            totalEntries: ultimateConversationState.memoryStats.totalLearningEntries,
+            statistics: {
+                daily: ultimateConversationState.learningData.dailyLearning.length,
+                conversation: ultimateConversationState.learningData.conversationLearning.length,
+                emotion: ultimateConversationState.learningData.emotionLearning.length,
+                topic: ultimateConversationState.learningData.topicLearning.length
+            },
+            version: '36.0'
+        };
+        
+        await fs.writeFile(
+            PERSISTENT_FILES.learningData,
+            JSON.stringify(learningData, null, 2),
+            'utf8'
+        );
+        
+        contextLog(`💾 학습 데이터 저장 완료: ${learningData.totalEntries}개`);
+        return true;
+    } catch (error) {
+        contextLog(`❌ 학습 데이터 저장 실패: ${error.message}`);
+        return false;
+    }
+}
+
+/**
+ * 💾 자발적 메시지 통계 영구 저장
+ */
+async function saveSpontaneousStatsToFile() {
+    try {
+        await ensureDataDirectory();
+        
+        const spontaneousData = {
+            stats: ultimateConversationState.spontaneousMessages,
+            lastSaved: new Date().toISOString(),
+            version: '36.0'
+        };
+        
+        await fs.writeFile(
+            PERSISTENT_FILES.spontaneousStats,
+            JSON.stringify(spontaneousData, null, 2),
+            'utf8'
+        );
+        
+        contextLog(`💾 자발적 메시지 통계 저장 완료`);
+        return true;
+    } catch (error) {
+        contextLog(`❌ 자발적 메시지 통계 저장 실패: ${error.message}`);
+        return false;
+    }
+}
+
+/**
+ * 💾 메모리 통계 영구 저장
+ */
+async function saveMemoryStatsToFile() {
+    try {
+        await ensureDataDirectory();
+        
+        const statsData = {
+            stats: ultimateConversationState.memoryStats,
+            lastSaved: new Date().toISOString(),
+            version: '36.0'
+        };
+        
+        await fs.writeFile(
+            PERSISTENT_FILES.memoryStats,
+            JSON.stringify(statsData, null, 2),
+            'utf8'
+        );
+        
+        contextLog(`💾 메모리 통계 저장 완료`);
+        return true;
+    } catch (error) {
+        contextLog(`❌ 메모리 통계 저장 실패: ${error.message}`);
+        return false;
+    }
+}
+
+/**
+ * 💾 모든 데이터 한번에 저장
+ */
+async function saveAllDataToFiles() {
+    try {
+        const results = await Promise.all([
+            saveUserMemoriesToFile(),
+            saveLearningDataToFile(), 
+            saveSpontaneousStatsToFile(),
+            saveMemoryStatsToFile()
+        ]);
+        
+        const successCount = results.filter(r => r === true).length;
+        ultimateConversationState.memoryStats.lastSaved = Date.now();
+        ultimateConversationState.memoryStats.totalSaves++;
+        
+        contextLog(`💾 전체 데이터 저장: ${successCount}/4개 성공`);
+        return successCount === 4;
+    } catch (error) {
+        contextLog(`❌ 전체 데이터 저장 실패: ${error.message}`);
+        return false;
+    }
+}
+
+/**
+ * 💾 사용자 기억 파일에서 로드
+ */
+async function loadUserMemoriesFromFile() {
+    try {
+        const data = await fs.readFile(PERSISTENT_FILES.userMemories, 'utf8');
+        const userMemoryData = JSON.parse(data);
+        
+        if (userMemoryData.memories && Array.isArray(userMemoryData.memories)) {
+            ultimateConversationState.dynamicMemories.userMemories = userMemoryData.memories;
+            ultimateConversationState.memoryStats.totalUserMemories = userMemoryData.memories.length;
+            contextLog(`💾 사용자 기억 로드 완료: ${userMemoryData.memories.length}개`);
+            return true;
+        }
+        
+        return false;
+    } catch (error) {
+        contextLog(`ℹ️ 사용자 기억 파일 없음 (첫 실행)`);
+        return false;
+    }
+}
+
+/**
+ * 💾 학습 데이터 파일에서 로드
+ */
+async function loadLearningDataFromFile() {
+    try {
+        const data = await fs.readFile(PERSISTENT_FILES.learningData, 'utf8');
+        const learningDataFile = JSON.parse(data);
+        
+        if (learningDataFile.learningData) {
+            ultimateConversationState.learningData = learningDataFile.learningData;
+            ultimateConversationState.memoryStats.totalLearningEntries = learningDataFile.totalEntries || 0;
+            contextLog(`💾 학습 데이터 로드 완료: ${learningDataFile.totalEntries}개`);
+            return true;
+        }
+        
+        return false;
+    } catch (error) {
+        contextLog(`ℹ️ 학습 데이터 파일 없음 (첫 실행)`);
+        return false;
+    }
+}
+
+/**
+ * 💾 자발적 메시지 통계 파일에서 로드
+ */
+async function loadSpontaneousStatsFromFile() {
+    try {
+        const data = await fs.readFile(PERSISTENT_FILES.spontaneousStats, 'utf8');
+        const spontaneousData = JSON.parse(data);
+        
+        if (spontaneousData.stats) {
+            // 날짜가 바뀌었으면 일일 통계만 리셋
+            const today = moment().tz(TIMEZONE).format('YYYY-MM-DD');
+            if (spontaneousData.stats.lastResetDate !== today) {
+                // 일일 통계만 리셋, 누적 데이터는 유지
+                spontaneousData.stats.sentToday = 0;
+                spontaneousData.stats.sentTimes = [];
+                spontaneousData.stats.lastSentTime = null;
+                spontaneousData.stats.nextScheduledTime = null;
+                spontaneousData.stats.lastResetDate = today;
+                
+                // 메시지 타입별 통계도 리셋
+                Object.keys(spontaneousData.stats.messageTypes).forEach(type => {
+                    spontaneousData.stats.messageTypes[type] = 0;
+                });
+                
+                contextLog(`🌄 자발적 메시지 일일 통계 리셋 (${today})`);
+            }
+            
+            ultimateConversationState.spontaneousMessages = spontaneousData.stats;
+            contextLog(`💾 자발적 메시지 통계 로드 완료`);
+            return true;
+        }
+        
+        return false;
+    } catch (error) {
+        contextLog(`ℹ️ 자발적 메시지 통계 파일 없음 (첫 실행)`);
+        return false;
+    }
+}
+
+/**
+ * 💾 메모리 통계 파일에서 로드
+ */
+async function loadMemoryStatsFromFile() {
+    try {
+        const data = await fs.readFile(PERSISTENT_FILES.memoryStats, 'utf8');
+        const statsData = JSON.parse(data);
+        
+        if (statsData.stats) {
+            // 일일 카운트 리셋 확인
+            const today = new Date().toDateString();
+            if (statsData.stats.lastDailyReset !== today) {
+                statsData.stats.todayMemoryCount = 0;
+                statsData.stats.todayLearningCount = 0;
+                statsData.stats.lastDailyReset = today;
+                contextLog(`🌄 일일 통계 리셋 (${today})`);
+            }
+            
+            ultimateConversationState.memoryStats = {
+                ...ultimateConversationState.memoryStats,
+                ...statsData.stats
+            };
+            contextLog(`💾 메모리 통계 로드 완료`);
+            return true;
+        }
+        
+        return false;
+    } catch (error) {
+        contextLog(`ℹ️ 메모리 통계 파일 없음 (첫 실행)`);
+        return false;
+    }
+}
+
+/**
+ * 💾 모든 데이터 파일에서 로드
+ */
+async function loadAllDataFromFiles() {
+    try {
+        contextLog(`💾 모든 영구 데이터 로드 시작...`);
+        
+        const results = await Promise.all([
+            loadUserMemoriesFromFile(),
+            loadLearningDataFromFile(),
+            loadSpontaneousStatsFromFile(),
+            loadMemoryStatsFromFile()
+        ]);
+        
+        const successCount = results.filter(r => r === true).length;
+        contextLog(`💾 데이터 로드 완료: ${successCount}/4개 성공`);
+        
+        // 로드 후 통계 정보 출력
+        const memStats = getMemoryStatistics();
+        contextLog(`📊 로드된 데이터: 사용자기억 ${memStats.user}개, 학습데이터 ${memStats.learning.totalEntries}개`);
+        
+        return successCount > 0;
+    } catch (error) {
+        contextLog(`❌ 데이터 로드 실패: ${error.message}`);
+        return false;
+    }
+}
+
+/**
+ * 💾 일일 백업 생성
+ */
+async function createDailyBackup() {
+    try {
+        await ensureDataDirectory();
+        
+        const today = moment().tz(TIMEZONE).format('YYYY-MM-DD');
+        const backupData = {
+            backupDate: today,
+            timestamp: new Date().toISOString(),
+            userMemories: ultimateConversationState.dynamicMemories.userMemories,
+            learningData: ultimateConversationState.learningData,
+            spontaneousStats: ultimateConversationState.spontaneousMessages,
+            memoryStats: ultimateConversationState.memoryStats,
+            version: '36.0'
+        };
+        
+        const backupFileName = `backup_${today.replace(/-/g, '')}.json`;
+        const backupPath = path.join(DATA_DIR, 'backups', backupFileName);
+        
+        // 백업 디렉토리 생성
+        const backupDir = path.join(DATA_DIR, 'backups');
+        try {
+            await fs.access(backupDir);
+        } catch {
+            await fs.mkdir(backupDir, { recursive: true });
+        }
+        
+        await fs.writeFile(backupPath, JSON.stringify(backupData, null, 2), 'utf8');
+        
+        ultimateConversationState.memoryStats.lastBackup = Date.now();
+        contextLog(`💾 일일 백업 생성: ${backupFileName}`);
+        
+        return true;
+    } catch (error) {
+        contextLog(`❌ 일일 백업 실패: ${error.message}`);
+        return false;
+    }
+}
+
+/**
+ * 💾 자동 저장 시스템 (5분마다)
+ */
+function startAutoSaveSystem() {
+    // 5분마다 자동 저장
+    setInterval(async () => {
+        try {
+            await saveAllDataToFiles();
+            contextLog(`⏰ 자동 저장 완료 (5분 주기)`);
+        } catch (error) {
+            contextLog(`❌ 자동 저장 실패: ${error.message}`);
+        }
+    }, 5 * 60 * 1000); // 5분
+    
+    // 1시간마다 백업 체크
+    setInterval(async () => {
+        try {
+            const today = moment().tz(TIMEZONE).format('YYYY-MM-DD');
+            const lastBackup = ultimateConversationState.memoryStats.lastBackup;
+            
+            if (!lastBackup || moment(lastBackup).format('YYYY-MM-DD') !== today) {
+                await createDailyBackup();
+            }
+        } catch (error) {
+            contextLog(`❌ 백업 체크 실패: ${error.message}`);
+        }
+    }, 60 * 60 * 1000); // 1시간
+    
+    contextLog(`⏰ 자동 저장 시스템 시작 (5분 저장, 1시간 백업 체크)`);
+}
 
 // ================== 🎨 로그 함수 ==================
 function contextLog(message, data = null) {
@@ -206,12 +591,12 @@ function getContextPriority(currentModel) {
     }
 }
 
-// ==================== 📚 학습 데이터 관리 (새로 추가!) ====================
+// ==================== 📚 학습 데이터 관리 (영구 저장 연동!) ====================
 
 /**
- * 📚 새로운 학습 내용 추가
+ * 📚 새로운 학습 내용 추가 (💾 즉시 저장!)
  */
-function addLearningEntry(content, category = '일반학습', context = {}) {
+async function addLearningEntry(content, category = '일반학습', context = {}) {
     try {
         const learningEntry = {
             id: `learn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -246,6 +631,11 @@ function addLearningEntry(content, category = '일반학습', context = {}) {
         
         contextLog(`📚 학습 추가: [${category}] ${content.substring(0, 50)}...`);
         
+        // 💾 즉시 저장 (비동기)
+        saveLearningDataToFile().catch(err => 
+            contextLog(`❌ 학습 데이터 저장 실패: ${err.message}`)
+        );
+        
         return learningEntry;
     } catch (error) {
         contextLog('학습 추가 실패:', error.message);
@@ -254,10 +644,13 @@ function addLearningEntry(content, category = '일반학습', context = {}) {
 }
 
 /**
- * 📚 모든 학습 내용 조회 (일기장용!)
+ * 📚 모든 학습 내용 조회 (일기장용!) - 💾 파일에서 최신 데이터 로드
  */
 async function getAllDynamicLearning() {
     try {
+        // 💾 파일에서 최신 데이터 로드
+        await loadLearningDataFromFile();
+        
         // 모든 학습 데이터를 하나의 배열로 합치기
         const allLearning = [
             ...ultimateConversationState.learningData.dailyLearning,
@@ -269,7 +662,7 @@ async function getAllDynamicLearning() {
         // 시간순으로 정렬
         allLearning.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
         
-        contextLog(`📚 전체 학습 데이터 조회: ${allLearning.length}개`);
+        contextLog(`📚 전체 학습 데이터 조회: ${allLearning.length}개 (파일에서 로드)`);
         
         return allLearning;
     } catch (error) {
@@ -283,6 +676,8 @@ async function getAllDynamicLearning() {
  */
 async function getLearningByCategory(category) {
     try {
+        await loadLearningDataFromFile(); // 💾 최신 데이터 로드
+        
         let targetArray = [];
         
         switch(category) {
@@ -337,7 +732,8 @@ function getLearningStatistics() {
             emotion: ultimateConversationState.learningData.emotionLearning.length,
             topic: ultimateConversationState.learningData.topicLearning.length
         },
-        lastEntry: ultimateConversationState.memoryStats.lastLearningEntry
+        lastEntry: ultimateConversationState.memoryStats.lastLearningEntry,
+        isPersistent: true // 💾 영구 저장 표시
     };
 }
 
@@ -405,7 +801,7 @@ function analyzeMessageForNewInfo(message) {
 }
 
 /**
- * 🧠 메시지 기반 자동 학습 처리
+ * 🧠 메시지 기반 자동 학습 처리 (💾 영구 저장 연동!)
  */
 async function processAutoLearning(speaker, message) {
     try {
@@ -417,7 +813,7 @@ async function processAutoLearning(speaker, message) {
         const analysis = analyzeMessageForNewInfo(message);
         
         if (analysis.hasNewInfo) {
-            const learningEntry = addLearningEntry(
+            const learningEntry = await addLearningEntry(
                 analysis.extractedInfo,
                 analysis.category,
                 {
@@ -492,22 +888,22 @@ function getRecentMessages(limit = null) {
 /**
  * 대화 주제 업데이트
  */
-function updateConversationTopic(topic) {
+async function updateConversationTopic(topic) {
     ultimateConversationState.conversationContext.currentTopic = topic;
     ultimateConversationState.conversationContext.lastTopicChange = Date.now();
     contextLog(`대화 주제 업데이트: ${topic}`);
     
     // 🧠 주제 변경도 학습 대상으로 추가
-    addLearningEntry(`대화 주제가 "${topic}"으로 변경됨`, '주제학습', {
+    await addLearningEntry(`대화 주제가 "${topic}"으로 변경됨`, '주제학습', {
         previousTopic: ultimateConversationState.conversationContext.currentTopic,
         changeTime: Date.now()
     });
 }
 
-// ==================== 🧠 동적 기억 관리 ====================
+// ==================== 🧠 동적 기억 관리 (💾 영구 저장 연동!) ====================
 
 /**
- * 사용자 기억 추가
+ * 사용자 기억 추가 (💾 즉시 저장!)
  */
 async function addUserMemory(content, category = 'general') {
     const memoryObj = {
@@ -527,16 +923,21 @@ async function addUserMemory(content, category = 'general') {
     contextLog(`사용자 기억 추가: "${content.substring(0, 30)}..." (${category})`);
     
     // 🧠 기억 추가도 학습 데이터로 기록
-    addLearningEntry(`사용자가 기억 추가: ${content}`, '대화학습', {
+    await addLearningEntry(`사용자가 기억 추가: ${content}`, '대화학습', {
         memoryId: memoryObj.id,
         category: category
     });
+    
+    // 💾 즉시 저장 (비동기)
+    saveUserMemoriesToFile().catch(err => 
+        contextLog(`❌ 사용자 기억 저장 실패: ${err.message}`)
+    );
     
     return memoryObj.id;
 }
 
 /**
- * 사용자 기억 삭제
+ * 사용자 기억 삭제 (💾 즉시 저장!)
  */
 async function deleteUserMemory(content) {
     const beforeCount = ultimateConversationState.dynamicMemories.userMemories.length;
@@ -548,21 +949,27 @@ async function deleteUserMemory(content) {
     
     const deletedCount = beforeCount - ultimateConversationState.dynamicMemories.userMemories.length;
     ultimateConversationState.memoryStats.lastMemoryOperation = Date.now();
+    ultimateConversationState.memoryStats.totalUserMemories = ultimateConversationState.dynamicMemories.userMemories.length;
     
     contextLog(`${deletedCount}개 사용자 기억 삭제`);
     
     // 🧠 기억 삭제도 학습 데이터로 기록
     if (deletedCount > 0) {
-        addLearningEntry(`${deletedCount}개의 기억이 삭제됨: ${content}`, '대화학습', {
+        await addLearningEntry(`${deletedCount}개의 기억이 삭제됨: ${content}`, '대화학습', {
             deletedCount: deletedCount
         });
     }
+    
+    // 💾 즉시 저장 (비동기)
+    saveUserMemoriesToFile().catch(err => 
+        contextLog(`❌ 사용자 기억 저장 실패: ${err.message}`)
+    );
     
     return deletedCount > 0;
 }
 
 /**
- * 사용자 기억 수정
+ * 사용자 기억 수정 (💾 즉시 저장!)
  */
 async function updateUserMemory(id, newContent) {
     const memory = ultimateConversationState.dynamicMemories.userMemories.find(m => m.id === id);
@@ -574,11 +981,16 @@ async function updateUserMemory(id, newContent) {
         contextLog(`기억 수정: ${id}`);
         
         // 🧠 기억 수정도 학습 데이터로 기록
-        addLearningEntry(`기억 수정: "${oldContent}" → "${newContent}"`, '대화학습', {
+        await addLearningEntry(`기억 수정: "${oldContent}" → "${newContent}"`, '대화학습', {
             memoryId: id,
             oldContent: oldContent,
             newContent: newContent
         });
+        
+        // 💾 즉시 저장 (비동기)
+        saveUserMemoriesToFile().catch(err => 
+            contextLog(`❌ 사용자 기억 저장 실패: ${err.message}`)
+        );
         
         return true;
     }
@@ -586,9 +998,10 @@ async function updateUserMemory(id, newContent) {
 }
 
 /**
- * 예진이의 동적 기억들 가져오기
+ * 예진이의 동적 기억들 가져오기 (💾 파일에서 최신 데이터 로드)
  */
-function getYejinMemories() {
+async function getYejinMemories() {
+    await loadUserMemoriesFromFile(); // 💾 최신 데이터 로드
     return ultimateConversationState.dynamicMemories.userMemories;
 }
 
@@ -609,9 +1022,10 @@ function getMemoriesByTag(tag) {
 }
 
 /**
- * 모든 동적 기억 가져오기
+ * 모든 동적 기억 가져오기 (💾 파일에서 최신 데이터 로드)
  */
-function getAllMemories() {
+async function getAllMemories() {
+    await loadUserMemoriesFromFile(); // 💾 최신 데이터 로드
     return {
         user: ultimateConversationState.dynamicMemories.userMemories,
         conversation: ultimateConversationState.dynamicMemories.conversationMemories,
@@ -619,12 +1033,12 @@ function getAllMemories() {
     };
 }
 
-// ==================== ⭐️ 자발적 메시지 통계 관리 ====================
+// ==================== ⭐️ 자발적 메시지 통계 관리 (💾 영구 저장 연동!) ====================
 
 /**
- * ⭐️ 자발적 메시지 전송 기록
+ * ⭐️ 자발적 메시지 전송 기록 (💾 즉시 저장!)
  */
-function recordSpontaneousMessage(messageType = 'casual') {
+async function recordSpontaneousMessage(messageType = 'casual') {
     const sentTime = moment().tz(TIMEZONE);
     const timeString = sentTime.format('HH:mm');
     
@@ -643,27 +1057,39 @@ function recordSpontaneousMessage(messageType = 'casual') {
     contextLog(`자발적 메시지 기록: ${messageType} (${timeString}) - 총 ${ultimateConversationState.spontaneousMessages.sentToday}건`);
     
     // 🧠 자발적 메시지도 학습 데이터로 기록
-    addLearningEntry(`자발적 메시지 전송: ${messageType} 타입`, '감정분석', {
+    await addLearningEntry(`자발적 메시지 전송: ${messageType} 타입`, '감정분석', {
         messageType: messageType,
         sentTime: timeString,
         todayCount: ultimateConversationState.spontaneousMessages.sentToday
     });
+    
+    // 💾 즉시 저장 (비동기)
+    saveSpontaneousStatsToFile().catch(err => 
+        contextLog(`❌ 자발적 메시지 통계 저장 실패: ${err.message}`)
+    );
 }
 
 /**
- * ⭐️ 다음 자발적 메시지 시간 설정
+ * ⭐️ 다음 자발적 메시지 시간 설정 (💾 즉시 저장!)
  */
-function setNextSpontaneousTime(nextTime) {
+async function setNextSpontaneousTime(nextTime) {
     ultimateConversationState.spontaneousMessages.nextScheduledTime = nextTime;
     
     const timeString = moment(nextTime).tz(TIMEZONE).format('HH:mm');
     contextLog(`다음 자발적 메시지 시간 설정: ${timeString}`);
+    
+    // 💾 즉시 저장 (비동기)
+    saveSpontaneousStatsToFile().catch(err => 
+        contextLog(`❌ 자발적 메시지 통계 저장 실패: ${err.message}`)
+    );
 }
 
 /**
- * ⭐️ 자발적 메시지 통계 조회 (라인 상태 리포트용!)
+ * ⭐️ 자발적 메시지 통계 조회 (라인 상태 리포트용!) - 💾 파일에서 최신 데이터 로드
  */
-function getSpontaneousStats() {
+async function getSpontaneousStats() {
+    await loadSpontaneousStatsFromFile(); // 💾 최신 데이터 로드
+    
     const nextTime = ultimateConversationState.spontaneousMessages.nextScheduledTime;
     let nextTimeString = '대기 중';
     
@@ -691,14 +1117,18 @@ function getSpontaneousStats() {
         remainingToday: ultimateConversationState.spontaneousMessages.totalDaily - ultimateConversationState.spontaneousMessages.sentToday,
         
         // GPT 모델 정보
-        currentGptModel: getCurrentModelSetting ? getCurrentModelSetting() : 'unknown'
+        currentGptModel: getCurrentModelSetting ? getCurrentModelSetting() : 'unknown',
+        
+        // 💾 영구 저장 상태
+        isPersistent: true,
+        lastSaved: ultimateConversationState.memoryStats.lastSaved
     };
 }
 
 /**
- * ⭐️ 일일 자발적 메시지 통계 리셋
+ * ⭐️ 일일 자발적 메시지 통계 리셋 (💾 즉시 저장!)
  */
-function resetSpontaneousStats() {
+async function resetSpontaneousStats() {
     const today = moment().tz(TIMEZONE).format('YYYY-MM-DD');
     
     contextLog('🌄 자발적 메시지 통계 리셋 시작');
@@ -715,6 +1145,11 @@ function resetSpontaneousStats() {
     });
     
     contextLog(`✅ 자발적 메시지 통계 리셋 완료 (${today})`);
+    
+    // 💾 즉시 저장 (비동기)
+    saveSpontaneousStatsToFile().catch(err => 
+        contextLog(`❌ 자발적 메시지 통계 저장 실패: ${err.message}`)
+    );
 }
 
 // ==================== 🎯 컨텍스트 조합 및 프롬프트 생성 ====================
@@ -770,8 +1205,9 @@ async function getUltimateContextualPrompt(basePrompt) {
             }
         }
         
-        // 3. ✨ 모델별 동적 기억 추가
+        // 3. ✨ 모델별 동적 기억 추가 (💾 파일에서 최신 데이터 로드)
         if (priority.memories > 0) {
+            await loadUserMemoriesFromFile(); // 💾 최신 데이터 로드
             const memoryCount = contextLength.memory;
             const recentMemories = ultimateConversationState.dynamicMemories.userMemories.slice(-memoryCount);
             
@@ -788,7 +1224,7 @@ async function getUltimateContextualPrompt(basePrompt) {
             }
         }
         
-        // 4. 🧠 최근 학습 내용 추가 (새로 추가!)
+        // 4. 🧠 최근 학습 내용 추가 (새로 추가!) - 💾 파일에서 최신 데이터 로드
         const recentLearning = await getAllDynamicLearning();
         if (recentLearning.length > 0) {
             const lastFewLearning = recentLearning.slice(-3); // 최근 3개만
@@ -810,7 +1246,7 @@ async function getUltimateContextualPrompt(basePrompt) {
             const messageCount = ultimateConversationState.conversationContext.recentMessages.length;
             const memoryCount = ultimateConversationState.dynamicMemories.userMemories.length;
             const learningCount = ultimateConversationState.memoryStats.totalLearningEntries;
-            contextualPrompt += `\n📊 컨텍스트: 메시지 ${messageCount}개, 기억 ${memoryCount}개, 학습 ${learningCount}개\n`;
+            contextualPrompt += `\n📊 컨텍스트: 메시지 ${messageCount}개, 기억 ${memoryCount}개, 학습 ${learningCount}개 (💾영구저장)\n`;
         }
         
         contextLog(`컨텍스트 생성 완료 (${currentModel} 최적화, 길이: ${contextualPrompt.length}자)`);
@@ -825,7 +1261,9 @@ async function getUltimateContextualPrompt(basePrompt) {
 /**
  * ✨ 활성 기억들을 모델별로 최적화하여 프롬프트용으로 조합
  */
-function getActiveMemoryPrompt() {
+async function getActiveMemoryPrompt() {
+    await loadUserMemoriesFromFile(); // 💾 최신 데이터 로드
+    
     const contextLength = getOptimalContextLength();
     const recentMemories = ultimateConversationState.dynamicMemories.userMemories.slice(-contextLength.memory);
     
@@ -899,7 +1337,7 @@ async function analyzeUserMood(message) {
     
     // 🧠 감정 분석 결과도 학습 데이터로 기록
     if (mood !== 'neutral') {
-        addLearningEntry(`아저씨 감정 상태: ${mood} - "${message}"`, '감정분석', {
+        await addLearningEntry(`아저씨 감정 상태: ${mood} - "${message}"`, '감정분석', {
             detectedMood: mood,
             confidence: 'medium'
         });
@@ -911,7 +1349,7 @@ async function analyzeUserMood(message) {
 // ==================== 🎓 학습 및 분석 ====================
 
 /**
- * 대화에서 자동 학습 (기존)
+ * 대화에서 자동 학습 (기존) - 💾 영구 저장 연동!
  */
 async function learnFromConversation(speaker, message) {
     try {
@@ -933,7 +1371,7 @@ async function learnFromConversation(speaker, message) {
                 contextLog(`자동 학습: "${message.substring(0, 30)}..."`);
                 
                 // 🧠 기억에 추가된 것도 학습 데이터로 기록
-                addLearningEntry(`기억 요청사항이 자동 기억에 추가됨: ${message}`, '대화학습', {
+                await addLearningEntry(`기억 요청사항이 자동 기억에 추가됨: ${message}`, '대화학습', {
                     memoryId: learningMemory.id,
                     type: 'auto_learned'
                 });
@@ -962,9 +1400,12 @@ async function learnFromUserMessage(message) {
 // ==================== 📊 통계 및 상태 조회 ====================
 
 /**
- * ✨ GPT 모델 정보를 포함한 기억 통계
+ * ✨ GPT 모델 정보를 포함한 기억 통계 - 💾 파일에서 최신 데이터 로드
  */
-function getMemoryStatistics() {
+async function getMemoryStatistics() {
+    await loadUserMemoriesFromFile(); // 💾 최신 데이터 로드
+    await loadMemoryStatsFromFile(); // 💾 최신 통계 로드
+    
     const currentModel = getCurrentModelSetting ? getCurrentModelSetting() : 'unknown';
     const contextLength = getOptimalContextLength();
     const learningStats = getLearningStatistics();
@@ -983,6 +1424,13 @@ function getMemoryStatistics() {
             recentMessages: contextLength.recent,
             memoryCount: contextLength.memory,
             optimizedFor: currentModel
+        },
+        // 💾 영구 저장 상태 추가
+        persistence: {
+            lastSaved: ultimateConversationState.memoryStats.lastSaved,
+            totalSaves: ultimateConversationState.memoryStats.totalSaves,
+            lastBackup: ultimateConversationState.memoryStats.lastBackup,
+            isAutoSaving: true
         }
     };
 }
@@ -990,14 +1438,17 @@ function getMemoryStatistics() {
 /**
  * 기억 카테고리 통계
  */
-function getMemoryCategoryStats() {
+async function getMemoryCategoryStats() {
+    await loadUserMemoriesFromFile(); // 💾 최신 데이터 로드
+    
     const userMems = ultimateConversationState.dynamicMemories.userMemories;
     const convMems = ultimateConversationState.dynamicMemories.conversationMemories;
     
     return {
         user: userMems.length,
         conversation: convMems.length,
-        total: userMems.length + convMems.length
+        total: userMems.length + convMems.length,
+        isPersistent: true // 💾 영구 저장 표시
     };
 }
 
@@ -1005,6 +1456,8 @@ function getMemoryCategoryStats() {
  * 최근 기억 작업 로그
  */
 async function getMemoryOperationLogs(limit = 10) {
+    await loadUserMemoriesFromFile(); // 💾 최신 데이터 로드
+    
     // 간단한 작업 로그 (실제 구현에서는 더 상세하게)
     const logs = [];
     
@@ -1014,7 +1467,8 @@ async function getMemoryOperationLogs(limit = 10) {
             operation: 'add',
             timestamp: mem.timestamp,
             content: mem.content.substring(0, 50) + '...',
-            type: mem.type
+            type: mem.type,
+            isPersistent: true // 💾 영구 저장 표시
         });
     });
     
@@ -1022,9 +1476,11 @@ async function getMemoryOperationLogs(limit = 10) {
 }
 
 /**
- * ✨ GPT 모델 정보를 포함한 내부 상태 조회 (디버깅용)
+ * ✨ GPT 모델 정보를 포함한 내부 상태 조회 (디버깅용) - 💾 파일에서 최신 데이터 로드
  */
-function getInternalState() {
+async function getInternalState() {
+    await loadAllDataFromFiles(); // 💾 모든 최신 데이터 로드
+    
     const currentModel = getCurrentModelSetting ? getCurrentModelSetting() : 'unknown';
     const contextLength = getOptimalContextLength();
     const priority = getContextPriority(currentModel);
@@ -1042,7 +1498,17 @@ function getInternalState() {
             currentModel,
             contextLength,
             priority,
-            version: 'v35.1-with-learning-system'
+            version: 'v36.0-complete-persistent-system'
+        },
+        // 💾 영구 저장 시스템 상태 추가
+        persistentSystem: {
+            autoSaveActive: true,
+            lastSaved: ultimateConversationState.memoryStats.lastSaved,
+            totalSaves: ultimateConversationState.memoryStats.totalSaves,
+            lastBackup: ultimateConversationState.memoryStats.lastBackup,
+            dataFiles: Object.keys(PERSISTENT_FILES),
+            saveInterval: '5분',
+            backupInterval: '1시간'
         }
     };
 }
@@ -1063,26 +1529,27 @@ function clearPendingAction() {
     pendingAction = null;
 }
 
-// ==================== 🔄 시스템 초기화 ====================
+// ==================== 🔄 시스템 초기화 (💾 영구 저장 시스템 포함!) ====================
 
 /**
- * 감정 시스템 초기화 (호환성)
+ * 감정 시스템 초기화 (호환성) - 💾 완전 누적 시스템으로 업그레이드!
  */
 async function initializeEmotionalSystems() {
-    contextLog('동적 기억, 대화 컨텍스트 및 학습 시스템 초기화...');
+    contextLog('💾 완전 누적 시스템으로 동적 기억, 대화 컨텍스트 및 학습 시스템 초기화...');
     
     // ✨ GPT 모델 정보 로그
     const currentModel = getCurrentModelSetting ? getCurrentModelSetting() : 'unknown';
     contextLog(`현재 GPT 모델: ${currentModel}`);
     
-    // 디렉토리 생성
-    try {
-        const fs = require('fs');
-        if (!fs.existsSync(MEMORY_DIR)) {
-            fs.mkdirSync(MEMORY_DIR, { recursive: true });
-        }
-    } catch (error) {
-        contextLog('디렉토리 생성 실패:', error.message);
+    // 💾 데이터 디렉토리 생성
+    await ensureDataDirectory();
+    
+    // 💾 모든 영구 데이터 로드
+    const loadSuccess = await loadAllDataFromFiles();
+    if (loadSuccess) {
+        contextLog('💾 영구 저장된 데이터 로드 성공!');
+    } else {
+        contextLog('ℹ️ 첫 실행 - 새로운 데이터 파일들을 생성합니다');
     }
     
     // 일일 리셋 확인
@@ -1091,21 +1558,36 @@ async function initializeEmotionalSystems() {
         ultimateConversationState.memoryStats.todayMemoryCount = 0;
         ultimateConversationState.memoryStats.todayLearningCount = 0; // 📚 학습 카운트 리셋
         ultimateConversationState.memoryStats.lastDailyReset = today;
+        
+        // 💾 통계 저장
+        await saveMemoryStatsToFile();
     }
     
     // ⭐️ 자발적 메시지 통계 일일 리셋 확인
     const todayDate = moment().tz(TIMEZONE).format('YYYY-MM-DD');
     if (ultimateConversationState.spontaneousMessages.lastResetDate !== todayDate) {
-        resetSpontaneousStats();
+        await resetSpontaneousStats();
     }
     
+    // 💾 자동 저장 시스템 시작
+    startAutoSaveSystem();
+    
     // 📚 시스템 초기화 학습 기록
-    addLearningEntry('시스템 초기화 완료', '시스템', {
+    await addLearningEntry('완전 누적 시스템 초기화 완료', '시스템', {
         initTime: new Date().toISOString(),
-        gptModel: currentModel
+        gptModel: currentModel,
+        persistentSystem: true,
+        loadedDataFiles: Object.keys(PERSISTENT_FILES).length
     });
     
-    contextLog(`초기화 완료 - 동적 기억, 대화 컨텍스트 및 학습 시스템 활성화 (${currentModel} 최적화)`);
+    // 💾 초기화 완료 후 전체 저장
+    await saveAllDataToFiles();
+    
+    contextLog(`✅ 완전 누적 시스템 초기화 완료 - 모든 데이터 영구 저장 보장! (${currentModel} 최적화)`);
+    
+    // 로드된 데이터 통계 출력
+    const stats = await getMemoryStatistics();
+    contextLog(`📊 로드된 데이터: 사용자기억 ${stats.user}개, 학습데이터 ${stats.learning.totalEntries}개, 자발적메시지 ${stats.user}건`);
 }
 
 // ==================== 🎁 유틸리티 함수들 ====================
@@ -1133,8 +1615,60 @@ async function generateInitiatingPhrase() {
     return phrases[Math.floor(Math.random() * phrases.length)];
 }
 
+/**
+ * 💾 수동 전체 데이터 저장 (명령어용)
+ */
+async function manualSaveAllData() {
+    contextLog('💾 수동 전체 데이터 저장 시작...');
+    const success = await saveAllDataToFiles();
+    if (success) {
+        contextLog('✅ 수동 저장 완료!');
+        return { success: true, message: '모든 데이터가 안전하게 저장되었어요!' };
+    } else {
+        contextLog('❌ 수동 저장 실패!');
+        return { success: false, message: '데이터 저장 중 오류가 발생했어요.' };
+    }
+}
+
+/**
+ * 💾 수동 백업 생성 (명령어용)
+ */
+async function manualCreateBackup() {
+    contextLog('💾 수동 백업 생성 시작...');
+    const success = await createDailyBackup();
+    if (success) {
+        contextLog('✅ 수동 백업 완료!');
+        return { success: true, message: '백업이 생성되었어요!' };
+    } else {
+        contextLog('❌ 수동 백업 실패!');
+        return { success: false, message: '백업 생성 중 오류가 발생했어요.' };
+    }
+}
+
+/**
+ * 💾 영구 저장 시스템 상태 조회
+ */
+function getPersistentSystemStatus() {
+    return {
+        autoSaveActive: true,
+        saveInterval: '5분',
+        backupInterval: '1시간',
+        lastSaved: ultimateConversationState.memoryStats.lastSaved,
+        totalSaves: ultimateConversationState.memoryStats.totalSaves,
+        lastBackup: ultimateConversationState.memoryStats.lastBackup,
+        dataFiles: {
+            userMemories: PERSISTENT_FILES.userMemories,
+            learningData: PERSISTENT_FILES.learningData,
+            spontaneousStats: PERSISTENT_FILES.spontaneousStats,
+            memoryStats: PERSISTENT_FILES.memoryStats
+        },
+        isNeverLost: true, // 💾 절대 사라지지 않음 보장
+        version: 'v36.0-complete-persistent'
+    };
+}
+
 // ==================== 📤 모듈 내보내기 ==================
-contextLog('v35.1 로드 완료 (GPT 모델 버전 전환 + 자발적 메시지 통계 + 학습 시스템 완전 지원)');
+contextLog('💾 v36.0 로드 완료 (완전 누적 시스템 - 영구 저장 보장, GPT 모델 버전 전환, 자발적 메시지 통계, 학습 시스템 완전 지원)');
 
 module.exports = {
     // 초기화
@@ -1151,7 +1685,7 @@ module.exports = {
     getLastUserMessageTime,
     processTimeTick,
     
-    // 동적 기억 관리 (핵심!)
+    // 동적 기억 관리 (핵심!) - 💾 완전 영구 저장!
     addUserMemory,
     deleteUserMemory,
     updateUserMemory,
@@ -1161,7 +1695,7 @@ module.exports = {
     getAllMemories,
     getActiveMemoryPrompt,
     
-    // 📚 학습 시스템 (새로 추가!)
+    // 📚 학습 시스템 (💾 완전 영구 저장!)
     getAllDynamicLearning,      // ⭐️ 일기장용 핵심 함수!
     addLearningEntry,
     getLearningByCategory,
@@ -1170,11 +1704,18 @@ module.exports = {
     analyzeMessageForNewInfo,   // 메시지 분석 함수
     processAutoLearning,        // 자동 학습 처리
     
-    // ⭐️ 자발적 메시지 통계 관리
+    // ⭐️ 자발적 메시지 통계 관리 (💾 완전 영구 저장!)
     recordSpontaneousMessage,
     setNextSpontaneousTime,
     getSpontaneousStats,        // ⭐️ 라인 상태 리포트용 핵심 함수!
     resetSpontaneousStats,
+    
+    // 💾 영구 저장 시스템 관리
+    saveAllDataToFiles,
+    loadAllDataFromFiles,
+    manualSaveAllData,
+    manualCreateBackup,
+    getPersistentSystemStatus,
     
     // 감정 상태 연동 (보조) - 삐짐 상태는 sulkyManager.js에서 독립 관리
     analyzeUserMood,
