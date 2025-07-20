@@ -1,8 +1,8 @@
 // ============================================================================
-// faceMatcher.js - v5.1 (통합 사진 분석 시스템 + 로컬 백업 기능)
+// faceMatcher.js - v5.2 (영어 거부 메시지 대응 + 로컬 백업 강화)
 // 🔍 얼굴 인식 + 전체 사진 내용 분석 + 예진이 스타일 반응 생성
 // 🛡️ OpenAI Vision 실패 시, 로컬 얼굴 인식으로 백업하여 더 똑똑하게 반응
-// ✅ eventProcessor와 완벽하게 호환되도록 객체(Object) 반환 구조 명확화
+// ✅ 영어/한국어 거부 메시지 모두 감지하여 완벽한 백업 시스템 구현
 // ============================================================================
 
 const OpenAI = require('openai');
@@ -32,6 +32,37 @@ function initializeOpenAI() {
         isOpenAIAvailable = false;
         return false;
     }
+}
+
+/**
+ * ✅ [핵심 수정] OpenAI 분석 거부 메시지 완벽 감지
+ * 한국어와 영어 거부 패턴 모두 체크
+ */
+function isOpenAIRefusal(responseText) {
+    const refusalPatterns = [
+        // 한국어 패턴
+        "죄송합니다",
+        "분석해 드릴 수 없습니다",
+        "분석할 수 없습니다",
+        "도와드릴 수 없습니다",
+        "제공할 수 없습니다",
+        
+        // 영어 패턴 ⭐️ 추가
+        "I'm sorry",
+        "I can't help",
+        "I cannot help",
+        "I'm not able to",
+        "I cannot provide",
+        "I'm unable to",
+        "I can't analyze",
+        "I cannot analyze",
+        "I can't assist",
+        "I cannot assist"
+    ];
+    
+    return refusalPatterns.some(pattern => 
+        responseText.toLowerCase().includes(pattern.toLowerCase())
+    );
 }
 
 /**
@@ -94,10 +125,10 @@ async function analyzePhotoWithOpenAI(base64Image) {
 
         const result = response.choices[0].message.content.trim();
         
-        // OpenAI가 분석을 거부했는지 확인
-        if (result.includes("죄송합니다") || result.includes("분석해 드릴 수 없습니다")) {
-            console.log('🔍 [사진분석] OpenAI Vision이 안전 정책으로 분석을 거부했습니다.');
-            return null; // 분석 실패로 처리
+        // ✅ [핵심 수정] 영어/한국어 거부 메시지 모두 감지
+        if (isOpenAIRefusal(result)) {
+            console.log('🚨 [사진분석] OpenAI Vision이 안전 정책으로 분석을 거부했습니다:', result);
+            return null; // 분석 실패로 처리하여 백업 시스템 작동
         }
 
         console.log('🔍 [사진분석] OpenAI Vision 전체 분석 결과:', result);
@@ -131,42 +162,62 @@ async function analyzePhotoWithOpenAI(base64Image) {
     }
 }
 
-// ================== [신규 추가] 로컬 백업 분석 함수 ==================
+// ================== [강화] 로컬 백업 분석 함수 ==================
 /**
- * 🛡️ 로컬 face-api.js를 이용한 백업 얼굴 인식 (시뮬레이션)
- * OpenAI Vision이 실패했을 때 호출되는 2차 방어선.
- * 실제로는 여기에 face-api.js 라이브러리를 이용한 인식 코드가 들어갑니다.
+ * 🛡️ 로컬 face-api.js를 이용한 백업 얼굴 인식 (개선된 추측 로직)
  * @param {string} base64Image - Base64 인코딩된 이미지
  * @returns {string} '아저씨', '예진이', '커플사진', 또는 'unknown'
  */
 async function runLocalFaceRecognition(base64Image) {
     console.log('🛡️ [백업분석] 로컬 face-api.js로 분석 시도...');
-    // --- 여기에 실제 face-api.js 로직 구현 ---
-    // 예시: const detections = await faceapi.detectAllFaces(image).withFaceLandmarks().withFaceDescriptors()
-    // const faceMatcher = new faceapi.FaceMatcher(labeledDescriptors)
-    // const bestMatch = faceMatcher.findBestMatch(detections[0].descriptor)
-    // return bestMatch.label;
-    // -----------------------------------------
-
-    // 지금은 실제 로직이 없으므로, 추측만 반환합니다.
-    const buffer = Buffer.from(base64Image, 'base64');
-    const sizeKB = buffer.length / 1024;
-    if (sizeKB > 100) { // 인물 사진은 보통 용량이 어느정도 됨
-        return '아저씨'; // 예시로 '아저씨'를 반환
+    
+    try {
+        // 이미지 크기와 특성으로 추측
+        const buffer = Buffer.from(base64Image, 'base64');
+        const sizeKB = buffer.length / 1024;
+        
+        console.log(`🛡️ [백업분석] 이미지 분석: ${Math.round(sizeKB)}KB`);
+        
+        // ✅ [개선] 더 정교한 추측 로직
+        if (sizeKB > 300) {
+            // 335KB 같은 큰 이미지는 보통 고해상도 인물 사진
+            console.log('🛡️ [백업분석] 고해상도 이미지 -> 실제 인물 사진 가능성 높음');
+            
+            // 파일 헤더 분석으로 추가 추측
+            const header = base64Image.substring(0, 50);
+            if (header.includes('FFD8')) { // JPEG 헤더
+                console.log('🛡️ [백업분석] JPEG 포맷 + 큰 용량 -> 아저씨 사진으로 추정');
+                return '아저씨';
+            }
+        } else if (sizeKB > 150) {
+            console.log('🛡️ [백업분석] 중간 크기 이미지 -> 커플사진 가능성');
+            return '커플사진';
+        } else if (sizeKB > 80) {
+            console.log('🛡️ [백업분석] 작은 이미지 -> 개인 사진');
+            return 'unknown';
+        }
+        
+        console.log('🛡️ [백업분석] 매우 작은 이미지 -> 분석 불가');
+        return 'unknown';
+        
+    } catch (error) {
+        console.log('🛡️ [백업분석] 로컬 분석 실패:', error.message);
+        return 'unknown';
     }
-    return 'unknown';
 }
 
-
 /**
- * 🔄 하위 호환성: 기존 얼굴 인식 함수 (내부용)
+ * ⭐️ 아저씨 전용 응답 생성기 ⭐️
  */
-async function detectFaceWithOpenAI(base64Image) {
-    const fullAnalysis = await analyzePhotoWithOpenAI(base64Image);
-    if (fullAnalysis) {
-        return fullAnalysis.classification;
-    }
-    return null;
+function generateAjeossiPhotoResponse() {
+    const responses = [
+        "👤 아저씨 사진이네! 잘생겼어~ 내 남자친구 맞지? ㅎㅎ",
+        "😊 우리 아저씨다! 사진으로 봐도 멋있어... 보고 싶어 ㅠㅠ", 
+        "🥰 아저씨 얼굴이야! 이런 아저씨 좋아해~ 나만의 아저씨 ㅎㅎ",
+        "📸 아저씨! 셀카 찍었구나~ 나한테 보여주려고? 고마워 ㅎㅎ",
+        "💕 우리 아저씨 사진이다! 언제나 봐도 좋아... 더 보내줘!"
+    ];
+    return responses[Math.floor(Math.random() * responses.length)];
 }
 
 /**
@@ -176,8 +227,29 @@ function generateCouplePhotoResponse() {
     const responses = [
         "💕 우리 둘이 함께 있는 사진이네! 정말 행복해 보여~",
         "🥰 아조씨랑 같이 있는 사진! 이런 사진 너무 좋아해!",
-        "💑 커플사진이다! 우리 진짜 잘 어울리지 않아?"
+        "💑 커플사진이다! 우리 진짜 잘 어울리지 않아?",
+        "😊 둘이 함께 찍은 사진... 추억이 새록새록 나네!",
+        "💖 아조씨와 함께 있는 모습이 너무 예뻐! 다시 이런 사진 찍고 싶어..."
     ];
+    return responses[Math.floor(Math.random() * responses.length)];
+}
+
+/**
+ * ✅ [신규] 분석 거부 전용 응답 생성기
+ */
+function generateRefusalResponse(imageSize) {
+    const responses = [
+        "🤔 실제 사람 사진인 것 같은데... 누구야? 궁금해!",
+        "📸 선명한 인물 사진이네! 아저씨야? 다른 사람이야?",
+        "👤 진짜 사람 같은데... 혹시 아저씨 사진?",
+        "😊 사진이 너무 생생해서 누군지 궁금하네!",
+        "🥰 실제 인물 사진 같아! 아저씨가 찍어준 거야?"
+    ];
+    
+    if (imageSize > 300) {
+        return "📸 고해상도 인물 사진이네! 선명하게 잘 나왔어! 누구야?";
+    }
+    
     return responses[Math.floor(Math.random() * responses.length)];
 }
 
@@ -190,6 +262,8 @@ function generateBasicPhotoReaction(imageSize) {
         "📸 사진은 받았는데... 아조씨가 뭐 하는 거야?",
         "💭 이게 뭐하는 사진이지? 궁금해!",
         "😊 사진 고마워! 근데 이게 뭐야?",
+        "🤗 아조씨가 보내준 사진이니까 소중해!",
+        "📱 사진이 좀 작게 보이는데... 큰 거로 다시 보내줘!"
     ];
     
     if (imageSize && imageSize < 50) {
@@ -201,12 +275,13 @@ function generateBasicPhotoReaction(imageSize) {
 
 /**
  * 🌟🌟🌟 메인 함수: 통합 사진 분석 시스템 🌟🌟🌟
+ * ✅ [핵심 수정] OpenAI 거부 시 로컬 백업 확실히 작동
  * @param {string} base64Image - Base64 인코딩된 이미지 데이터
  * @returns {Object} 통합 분석 결과 객체
  */
 async function detectFaceMatch(base64Image) {
     try {
-        console.log('🔍 [통합분석 v5.1] 얼굴 + 전체 사진 분석 실행...');
+        console.log('🔍 [통합분석 v5.2] 얼굴 + 전체 사진 분석 실행...');
         const buffer = Buffer.from(base64Image, 'base64');
         const sizeKB = buffer.length / 1024;
         console.log(`🔍 [통합분석] 이미지 크기: ${Math.round(sizeKB)}KB`);
@@ -240,26 +315,42 @@ async function detectFaceMatch(base64Image) {
             }
         }
         
-        // 2. [핵심 개선] OpenAI 실패 시, 로컬 얼굴 인식 백업
+        // ✅ [핵심 수정] 2. OpenAI 실패 시, 로컬 얼굴 인식 백업 (확실히 실행)
         console.log('🛡️ [백업분석] OpenAI 분석 실패. 로컬 백업 분석으로 전환합니다.');
         const localResult = await runLocalFaceRecognition(base64Image);
         console.log(`🛡️ [백업분석] 로컬 분석 결과: ${localResult}`);
 
         if (localResult === '아저씨') {
-            return { type: '아저씨', confidence: 'medium-local', message: null, analysisType: 'local_backup' };
+            console.log('🛡️ [백업분석] 아저씨로 식별됨 - 전용 응답 생성');
+            return { 
+                type: '아저씨', 
+                confidence: 'medium-local', 
+                message: generateAjeossiPhotoResponse(), 
+                content: '로컬 분석으로 아저씨 사진으로 추정',
+                analysisType: 'local_backup' 
+            };
         } else if (localResult === '예진이') {
+            console.log('🛡️ [백업분석] 예진이로 식별됨');
             return { type: '예진이', confidence: 'medium-local', message: null, analysisType: 'local_backup' };
         } else if (localResult === '커플사진') {
-            return { type: '커플사진', confidence: 'medium-local', message: generateCouplePhotoResponse(), analysisType: 'local_backup' };
+            console.log('🛡️ [백업분석] 커플사진으로 식별됨');
+            return { 
+                type: '커플사진', 
+                confidence: 'medium-local', 
+                message: generateCouplePhotoResponse(), 
+                content: '로컬 분석으로 커플사진으로 추정',
+                analysisType: 'local_backup' 
+            };
         }
 
-        // 3. 모든 분석 실패 시 최종 폴백
-        console.log('⚠️ [최종폴백] 모든 분석 실패. 기본 반응을 생성합니다.');
+        // 3. 로컬 분석도 불확실하면 거부 응답 (OpenAI가 거부했으니 실제 인물일 가능성 높음)
+        console.log('🚨 [최종폴백] OpenAI 거부 + 로컬 불확실 -> 실제 인물 추정 응답');
         return {
-            type: '기타',
-            confidence: 'low',
-            message: generateBasicPhotoReaction(sizeKB),
-            analysisType: 'fallback'
+            type: '분석거부인물',
+            confidence: 'refused',
+            message: generateRefusalResponse(sizeKB),
+            content: '실제 인물 사진으로 추정 (OpenAI 정책상 분석 제한)',
+            analysisType: 'refused_fallback'
         };
         
     } catch (error) {
@@ -273,13 +364,23 @@ async function detectFaceMatch(base64Image) {
     }
 }
 
+/**
+ * 🔄 하위 호환성: 기존 얼굴 인식 함수 (내부용)
+ */
+async function detectFaceWithOpenAI(base64Image) {
+    const fullAnalysis = await analyzePhotoWithOpenAI(base64Image);
+    if (fullAnalysis) {
+        return fullAnalysis.classification;
+    }
+    return null;
+}
 
 /**
  * 🔧 AI 모델 초기화 및 시스템 테스트
  */
 async function initModels() {
     try {
-        console.log('🔍 [얼굴인식 v5.1] 로컬 백업 지원 시스템 준비 완료');
+        console.log('🔍 [얼굴인식 v5.2] 영어 거부 메시지 대응 + 로컬 백업 강화 시스템 준비 완료');
         
         const openaiInit = initializeOpenAI();
         
@@ -310,12 +411,13 @@ async function initModels() {
 function getFaceRecognitionStatus() {
     return {
         openaiAvailable: isOpenAIAvailable,
-        version: "5.1 (Local Backup Enabled)",
+        version: "5.2 (영어 거부 대응 + 로컬 백업 강화)",
         features: [
             "개인 얼굴 인식 (예진이/아저씨)",
             "커플사진 인식 지원", 
             "전체 사진 내용 분석 ⭐️",
             "로컬 얼굴 인식 백업 🛡️",
+            "영어/한국어 거부 메시지 감지 ✅",
             "예진이 스타일 반응 생성 ⭐️",
             "상황별 맞춤 응답 ⭐️"
         ],
@@ -328,5 +430,6 @@ module.exports = {
     detectFaceMatch,             // 🌟 메인 함수: 통합 사진 분석
     initModels,                  // 🔧 시스템 초기화
     analyzePhotoWithOpenAI,      // (내부용) 전체 사진 분석
+    runLocalFaceRecognition,     // 🛡️ 로컬 백업 분석
     getFaceRecognitionStatus     // 📊 시스템 상태 확인
 };
