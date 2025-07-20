@@ -1,9 +1,10 @@
 // ============================================================================
-// muku-advancedInitializer.js - 고급 시스템 초기화 (2/2)
+// muku-advancedInitializer.js - 고급 시스템 초기화 (2/2) 수정됨
 // ✅ AI 고도화 + 통합 최적화 + 동기화 + 모니터링 시스템 담당
 // 🔥 3시간차: AI 응답 고도화 시스템 초기화
 // ⚙️ 4시간차: 통합 & 최적화 시스템 초기화
 // ⏰ enhancedLogging v3.0 자동 상태 갱신 시작
+// 📖 diarySystem 초기화 문제 해결
 // ============================================================================
 
 const { colors } = require('./muku-moduleLoader');
@@ -141,11 +142,43 @@ function synchronizeEmotionalSystems(modules) {
         syncCount++;
     }
 
-    // 📖 일기장 시스템 동기화
+    // 📖⭐️⭐️⭐️ 일기장 시스템 동기화 (특별 처리!) ⭐️⭐️⭐️
     if (modules.diarySystem) {
-        console.log(`${colors.diary}    ✅ 일기장 시스템 동기화 완료 (누적 학습 내용 조회)${colors.reset}`);
-        console.log(`${colors.diary}    🔗 memoryManager ↔ diarySystem 완벽 연동${colors.reset}`);
-        syncCount++;
+        try {
+            console.log(`${colors.diary}📖 [일기장 동기화] diarySystem 초기화 시도...${colors.reset}`);
+            
+            // 초기화 함수 호출 시도
+            if (modules.diarySystem.initializeDiarySystem) {
+                console.log(`${colors.diary}🔧 [일기장 동기화] initializeDiarySystem() 호출...${colors.reset}`);
+                modules.diarySystem.initializeDiarySystem();
+                console.log(`${colors.diary}✅ [일기장 동기화] initializeDiarySystem() 성공!${colors.reset}`);
+            } else if (modules.diarySystem.initialize) {
+                console.log(`${colors.diary}🔧 [일기장 동기화] initialize() 호출...${colors.reset}`);
+                modules.diarySystem.initialize();
+                console.log(`${colors.diary}✅ [일기장 동기화] initialize() 성공!${colors.reset}`);
+            } else {
+                console.log(`${colors.diary}ℹ️ [일기장 동기화] 초기화 함수 없음 - 기본 상태로 유지${colors.reset}`);
+            }
+            
+            // 상태 확인
+            if (modules.diarySystem.getDiarySystemStatus) {
+                const diaryStatus = modules.diarySystem.getDiarySystemStatus();
+                console.log(`${colors.diary}📊 [일기장 동기화] 상태 확인:`, diaryStatus);
+            } else if (modules.diarySystem.getStatus) {
+                const diaryStatus = modules.diarySystem.getStatus();
+                console.log(`${colors.diary}📊 [일기장 동기화] 상태 확인:`, diaryStatus);
+            }
+            
+            console.log(`${colors.diary}    ✅ 일기장 시스템 동기화 완료 (누적 학습 내용 조회)${colors.reset}`);
+            console.log(`${colors.diary}    🔗 memoryManager ↔ diarySystem 완벽 연동${colors.reset}`);
+            syncCount++;
+            
+        } catch (error) {
+            console.log(`${colors.error}    ❌ 일기장 시스템 동기화 실패: ${error.message}${colors.reset}`);
+            console.log(`${colors.error}    🔧 일기장 에러 상세:`, error.stack);
+        }
+    } else {
+        console.log(`${colors.error}    ❌ 일기장 시스템 모듈 없음 - 동기화 건너뛰기${colors.reset}`);
     }
 
     // 🔥 3시간차: AI 응답 시스템들 간 동기화
@@ -182,7 +215,7 @@ function startAutoStatusUpdates(modules) {
             weatherManager: modules.weatherManager,
             nightWakeResponse: modules.nightWakeResponse,
             birthdayDetector: modules.birthdayDetector,
-            // 📖 일기장 시스템 (최신!)
+            // 📖⭐️⭐️⭐️ 일기장 시스템 (확실히 전달!) ⭐️⭐️⭐️
             diarySystem: modules.diarySystem,
             // 👥 사람 학습 시스템 (신규!)
             personLearning: modules.personLearning,
@@ -199,6 +232,14 @@ function startAutoStatusUpdates(modules) {
                 initializing: false
             }
         };
+        
+        // diarySystem 상태 특별 로깅
+        if (modules.diarySystem) {
+            console.log(`${colors.diary}📋 [자동갱신] diarySystem 모듈이 정상적으로 전달됩니다! ✅${colors.reset}`);
+            console.log(`${colors.diary}🔍 [자동갱신] diarySystem 함수들:`, Object.keys(modules.diarySystem));
+        } else {
+            console.log(`${colors.error}❌ [자동갱신] diarySystem 모듈이 null입니다!${colors.reset}`);
+        }
         
         try {
             modules.enhancedLogging.startAutoStatusUpdates(systemModules);
@@ -258,6 +299,25 @@ function generateSystemStatusReport(modules, initResults) {
     
     console.log(`${colors.intelligent}⚙️ 통합 최적화: 지능스케줄${integratedStatus.intelligent} 적응성격${integratedStatus.personality} 품질보증${integratedStatus.quality}${colors.reset}`);
     
+    // ⭐️ 일기장 시스템 특별 상태 확인 ⭐️
+    if (modules.diarySystem) {
+        console.log(`${colors.diary}📖 [일기장 특별확인] diarySystem 모듈 상태: 정상 로드됨 ✅${colors.reset}`);
+        
+        try {
+            if (modules.diarySystem.getDiarySystemStatus) {
+                const diaryStatus = modules.diarySystem.getDiarySystemStatus();
+                console.log(`${colors.diary}📊 [일기장 특별확인] 시스템 상태:`, diaryStatus);
+            } else if (modules.diarySystem.getStatus) {
+                const diaryStatus = modules.diarySystem.getStatus();
+                console.log(`${colors.diary}📊 [일기장 특별확인] 시스템 상태:`, diaryStatus);
+            }
+        } catch (error) {
+            console.log(`${colors.error}📖 [일기장 특별확인] 상태 확인 실패: ${error.message}${colors.reset}`);
+        }
+    } else {
+        console.log(`${colors.error}📖 [일기장 특별확인] diarySystem 모듈이 null입니다! ❌${colors.reset}`);
+    }
+    
     // 전체 성공률 계산
     const totalSystems = 13; // 핵심4 + 신규2 + AI3 + 통합3 + 로깅1
     const successfulSystems = Object.values({...coreSystemStatus, ...newSystemStatus, ...aiSystemStatus, ...integratedStatus}).filter(s => s === '✅').length + (modules.enhancedLogging ? 1 : 0);
@@ -277,10 +337,7 @@ function generateSystemStatusReport(modules, initResults) {
         coreSystemStatus,
         newSystemStatus,
         aiSystemStatus,
-        integratedStatus
-    };
-}
-
+        integratedStatus,
 // ================== 📤 모듈 내보내기 ==================
 module.exports = {
     initializeAIAdvancedSystems,
