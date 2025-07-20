@@ -8,7 +8,7 @@
 // 🔧 사진 전송 문제 완전 해결: URL 검증, 메시지 형식 개선, 재시도 로직
 // ✨ GPT 모델 버전 전환: 3문장 넘으면 GPT-3.5, 이하면 설정대로
 // ⭐️ 실제 통계 추적 시스템 + ultimateContext 연동 완성!
-// 🔧 analyzeMessageType 함수 누락 문제 해결!
+// 🔧 analyzeMessageType 함수 누락 문제 해결! 
 // ============================================================================
 
 const schedule = require('node-schedule');
