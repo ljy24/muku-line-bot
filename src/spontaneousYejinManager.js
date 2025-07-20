@@ -443,13 +443,19 @@ async function sendYejinSelfieWithComplimentReaction(userMessage) {
         const imageUrl = getYejinSelfieUrl();
         const caption = await generateStreetComplimentReaction(userMessage);
         
-        // 🔧 yejinSelfie.js 방식 적용: altText와 caption 동시 사용
+        // 🔧 [수정] 안정성을 위해 이미지와 캡션을 분리하여 전송
+        // 1. 이미지 메시지 전송
         await lineClient.pushMessage(USER_ID, {
             type: 'image',
             originalContentUrl: imageUrl,
             previewImageUrl: imageUrl,
-            altText: caption,
-            caption: caption
+            altText: '셀카가 도착했어요!'
+        });
+
+        // 2. 캡션(텍스트) 메시지 전송
+        await lineClient.pushMessage(USER_ID, {
+            type: 'text',
+            text: caption
         });
         
         spontaneousLog(`✅ 칭찬 받은 셀카 전송 성공: "${caption.substring(0, 30)}..."`);
@@ -517,13 +523,19 @@ async function sendOmoidePhoto() {
         spontaneousLog(`📸 omoide 사진 전송 시도: ${imageUrl}`);
         spontaneousLog(`💬 사진 메시지: "${caption.substring(0, 50)}..."`);
         
-        // 🔧 [핵심 수정] yejinSelfie.js 방식 완전 적용: 단일 메시지로 altText + caption 함께 전송
+        // 🔧 [수정] 안정적인 전송을 위해 이미지와 텍스트(캡션) 메시지를 분리하여 전송
+        // 1. 이미지 메시지 전송 (알림용 텍스트만 포함)
         await lineClient.pushMessage(USER_ID, {
             type: 'image',
             originalContentUrl: imageUrl,
             previewImageUrl: imageUrl,
-            altText: caption,
-            caption: caption
+            altText: '사진이 도착했어요!' // 푸시 알림 등에서 보일 대체 텍스트
+        });
+
+        // 2. 텍스트(캡션) 메시지를 이어서 전송
+        await lineClient.pushMessage(USER_ID, {
+            type: 'text',
+            text: caption
         });
         
         spontaneousLog(`✅ omoide 현재 사진 전송 완료: "${caption.substring(0, 30)}..."`);
