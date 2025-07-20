@@ -106,7 +106,7 @@ async function handleCommand(text, userId, client = null) {
                 
                 // 갈등 상태 확인
                 if (conflictManager.getConflictStatus) {
-                    const conflictStatus = conflictManager.getConflictStatus();
+                    const conflictStatus = conflictManager.getMukuConflictSystemStatus();
                     
                     let response = "💥 **갈등 상태 리포트**\n\n";
                     response += `📊 현재 갈등 레벨: ${conflictStatus.currentLevel}/4\n`;
