@@ -1,9 +1,9 @@
 // ============================================================================
-// muku-diarySystem.js v6.0 - 순환참조 해결 + 완전 연동 버전
-// ✅ 순환 참조 문제 완전 해결 (require를 최상단으로 이동)
+// muku-diarySystem.js v6.1 - 디스크 마운트 경로 수정 + 완전 연동 버전
+// ✅ 디스크 마운트 경로: ./data/ → /data/ 변경으로 영구 저장 보장!
 // 🔄 자동 저장 시스템 안정화
 // 📖 commandHandler.js와 완벽 연동
-// 💾 영구 누적 저장 보장
+// 💾 영구 누적 저장 보장 (서버 재배포해도 데이터 보존!)
 // ============================================================================
 
 const fs = require('fs').promises;
@@ -48,11 +48,11 @@ let diarySystemStatus = {
     isInitialized: false,
     totalEntries: 0,
     lastEntryDate: null,
-    version: "6.0",
-    description: "순환참조 해결 + 완전연동 일기장 시스템",
+    version: "6.1",
+    description: "디스크 마운트 + 완전연동 일기장 시스템",
     autoSaveEnabled: false,
     autoSaveInterval: null,
-    dataPath: './data/dynamic_memories.json',
+    dataPath: '/data/dynamic_memories.json',  // ⭐️ 변경: ./data/ → /data/
     lastAutoSave: null,
     initializationTime: null
 };
@@ -60,10 +60,10 @@ let diarySystemStatus = {
 // ================== 🏗️ 초기화 함수 ==================
 async function initializeDiarySystem() {
     try {
-        console.log(`${colors.diary}📖 [일기장시스템] v6.0 초기화 시작... (순환참조 해결)${colors.reset}`);
+        console.log(`${colors.diary}📖 [일기장시스템] v6.1 초기화 시작... (디스크 마운트 경로 적용)${colors.reset}`);
         
-        // 기본 데이터 디렉토리 확인/생성
-        const dataDir = './data';
+        // ⭐️ 변경: 디스크 마운트 경로 사용
+        const dataDir = '/data';
         try {
             await fs.access(dataDir);
         } catch {
@@ -83,7 +83,7 @@ async function initializeDiarySystem() {
         diarySystemStatus.initializationTime = new Date().toISOString();
         diarySystemStatus.lastEntryDate = new Date().toISOString();
         
-        console.log(`${colors.diary}    ✅ 일기장 시스템 v6.0 초기화 완료 (기존 기억: ${diarySystemStatus.totalEntries}개)${colors.reset}`);
+        console.log(`${colors.diary}    ✅ 일기장 시스템 v6.1 초기화 완료 (기존 기억: ${diarySystemStatus.totalEntries}개)${colors.reset}`);
         
         // 자동 저장 시스템 시작 (2초 딜레이 후)
         setTimeout(() => {
@@ -245,7 +245,7 @@ async function ensureDynamicMemoryFile() {
     } catch {
         // 파일이 없으면 기본 구조로 생성
         const defaultData = {
-            version: "6.0",
+            version: "6.1",
             created: new Date().toISOString(),
             lastUpdated: new Date().toISOString(),
             totalEntries: 0,
@@ -280,7 +280,7 @@ async function saveDynamicMemory(category, content, metadata = {}) {
             content: content,
             metadata: {
                 ...metadata,
-                savedBy: 'diarySystem_v6.0',
+                savedBy: 'diarySystem_v6.1',
                 autoSaved: metadata.autoSaved || false
             },
             date: new Date().toLocaleDateString('ko-KR')
@@ -359,7 +359,7 @@ async function handleDiaryCommand(lowerText) {
             if (memories.length === 0) {
                 return {
                     success: true,
-                    response: "아직 저장된 기억이 없어요! 대화하면서 기억들이 자동으로 쌓일 거예요. 😊\n\n🔄 자동저장 상태: " + (diarySystemStatus.autoSaveEnabled ? "활성화" : "비활성화")
+                    response: "아직 저장된 기억이 없어요! 대화하면서 기억들이 자동으로 쌓일 거예요. 😊\n\n🔄 자동저장 상태: " + (diarySystemStatus.autoSaveEnabled ? "활성화" : "비활성화") + "\n💾 저장 위치: 디스크 마운트 (/data/)"
                 };
             }
 
@@ -382,6 +382,7 @@ async function handleDiaryCommand(lowerText) {
             
             // 자동 저장 상태 표시
             response += `🤖 자동저장: ${diarySystemStatus.autoSaveEnabled ? '활성화 (5분마다)' : '비활성화'}\n`;
+            response += `💾 저장 위치: 디스크 마운트 (/data/) - 영구 보존!\n`;
             if (diarySystemStatus.lastAutoSave) {
                 const lastSave = new Date(diarySystemStatus.lastAutoSave).toLocaleString('ko-KR');
                 response += `⏰ 마지막 자동저장: ${lastSave}`;
@@ -404,6 +405,7 @@ async function handleDiaryCommand(lowerText) {
             response += `📖 총 누적 기억: ${stats.totalDynamicMemories}개\n`;
             response += `🤖 자동 저장: ${stats.autoSavedCount || 0}개\n`;
             response += `✍️ 수동 저장: ${stats.manualSavedCount || 0}개\n`;
+            response += `💾 저장 위치: 디스크 마운트 (/data/) - 영구 보존!\n`;
             response += `📅 시스템 시작: ${diarySystemStatus.initializationTime ? new Date(diarySystemStatus.initializationTime).toLocaleDateString('ko-KR') : '알 수 없음'}\n`;
             response += `📅 마지막 업데이트: ${diarySystemStatus.lastEntryDate ? new Date(diarySystemStatus.lastEntryDate).toLocaleDateString('ko-KR') : '없음'}\n`;
             
@@ -415,7 +417,7 @@ async function handleDiaryCommand(lowerText) {
             }
             
             response += `\n🔄 자동저장 상태: ${diarySystemStatus.autoSaveEnabled ? '활성화 (5분마다)' : '비활성화'}\n`;
-            response += `🛡️ 순환참조 방지: 적용됨\n`;
+            response += `🛡️ 디스크 마운트: 적용됨 (데이터 영구 보존)\n`;
             response += `💡 고정기억 120개는 별도 관리돼!`;
 
             return {
@@ -431,10 +433,11 @@ async function handleDiaryCommand(lowerText) {
             const memories = await getAllDynamicLearning();
             
             let response = `📖 일기장 시스템 v${diarySystemStatus.version}\n`;
-            response += `🛡️ 순환참조 해결 + 완전연동 버전\n\n`;
+            response += `💾 디스크 마운트 + 완전연동 버전\n\n`;
             response += `💾 현재 누적 기억: ${memories.length}개\n`;
             response += `🔄 자동 저장: ${diarySystemStatus.autoSaveEnabled ? '활성화 (5분마다)' : '비활성화'}\n`;
             response += `⚙️ 시스템 상태: ${diarySystemStatus.isInitialized ? '정상 작동' : '초기화 중'}\n`;
+            response += `💾 저장 위치: 디스크 마운트 (/data/) - 영구 보존!\n`;
             
             if (memories.length > 0) {
                 const lastMemory = memories[memories.length - 1];
@@ -449,7 +452,8 @@ async function handleDiaryCommand(lowerText) {
             response += `• "일기목록" - 누적 기억들 보기\n`;
             response += `• "일기통계" - 상세 통계 정보\n`;
             response += `• "기억해줘 [내용]" - 수동으로 기억 저장\n\n`;
-            response += `✨ 아저씨와 대화하면 자동으로 기억이 쌓여요! (5분마다 체크)`;
+            response += `✨ 아저씨와 대화하면 자동으로 기억이 쌓여요! (5분마다 체크)\n`;
+            response += `🛡️ 서버 재배포해도 절대 사라지지 않아요!`;
 
             return {
                 success: true,
@@ -460,7 +464,7 @@ async function handleDiaryCommand(lowerText) {
         // 5. 기타 명령어 - 폴백
         return {
             success: true,
-            response: "무엇을 도와드릴까요? 대화하기만 해도 자동으로 기억이 저장돼요! 📖"
+            response: "무엇을 도와드릴까요? 대화하기만 해도 자동으로 기억이 저장돼요! 📖\n💾 디스크 마운트로 영구 보존 중!"
         };
 
     } catch (error) {
@@ -481,13 +485,13 @@ async function generateDiary() {
         
         if (memories.length === 0) {
             // 첫 일기 생성
-            await saveDynamicMemory('시작', '오늘부터 순환참조 해결된 실시간 자동 저장 일기장을 시작했어! 이제 대화할 때마다 안전하게 자동으로 기억이 쌓일 거야.', {
+            await saveDynamicMemory('시작', '오늘부터 디스크 마운트로 영구 저장되는 실시간 자동 저장 일기장을 시작했어! 이제 대화할 때마다 안전하게 자동으로 기억이 쌓이고, 서버 재배포해도 절대 사라지지 않아!', {
                 manualSaved: true
             });
             
             return {
                 success: true,
-                message: `📖 ${today} 첫 번째 일기 (v6.0)\n\n오늘부터 순환참조 문제를 해결한 실시간 자동 저장 일기장을 시작했어! 아저씨와 대화할 때마다 안전하게 자동으로 기억이 쌓여갈 거야. 이제 절대 잊어버리지 않아! 💕\n\n🛡️ 시스템 개선사항:\n• 순환참조 문제 해결\n• 모듈 로딩 안정화\n• 자동저장 시스템 강화`,
+                message: `📖 ${today} 첫 번째 일기 (v6.1)\n\n오늘부터 디스크 마운트로 영구 저장되는 실시간 자동 저장 일기장을 시작했어! 아저씨와 대화할 때마다 안전하게 자동으로 기억이 쌓여갈 거야. 서버가 재배포되어도 절대 잊어버리지 않아! 💕\n\n💾 시스템 개선사항:\n• 디스크 마운트 경로 적용 (/data/)\n• 영구 저장 보장 (재배포해도 보존)\n• 자동저장 시스템 강화`,
                 totalMemories: 1
             };
         }
@@ -502,7 +506,7 @@ async function generateDiary() {
         const autoSavedToday = todayMemories.filter(m => m.metadata?.autoSaved);
         const manualSavedToday = todayMemories.filter(m => !m.metadata?.autoSaved);
 
-        let diaryContent = `📖 ${today}의 일기 (v6.0)\n\n`;
+        let diaryContent = `📖 ${today}의 일기 (v6.1)\n\n`;
         
         if (todayMemories.length > 0) {
             diaryContent += `오늘 새로 쌓인 기억들:\n`;
@@ -530,8 +534,9 @@ async function generateDiary() {
         diaryContent += `• 총 누적 기억: ${memories.length}개\n`;
         diaryContent += `• 오늘의 새 기억: ${todayMemories.length}개\n`;
         diaryContent += `• 자동 저장 시스템: ${diarySystemStatus.autoSaveEnabled ? '활성화 ✅' : '비활성화 ❌'}\n`;
-        diaryContent += `• 순환참조 방지: 적용됨 🛡️\n\n`;
-        diaryContent += `아저씨와 나누는 모든 대화가 소중한 기억으로 안전하게 자동 저장되고 있어! 💕`;
+        diaryContent += `• 디스크 마운트: 적용됨 💾\n`;
+        diaryContent += `• 영구 저장 보장: 완료 🛡️\n\n`;
+        diaryContent += `아저씨와 나누는 모든 대화가 소중한 기억으로 안전하게 자동 저장되고 있어! 서버가 재배포되어도 절대 사라지지 않아! 💕`;
 
         return {
             success: true,
@@ -597,12 +602,14 @@ async function getMemoryStatistics() {
             manualSavedCount: manualSavedCount,
             categoryBreakdown: categoryCount,
             excludesFixedMemories: true,
-            description: "고정기억 120개 제외, 순환참조 해결된 안전한 누적 기억",
+            description: "고정기억 120개 제외, 디스크 마운트로 영구 저장되는 누적 기억",
             lastUpdated: diarySystemStatus.lastEntryDate,
             systemStatus: {
                 initialized: diarySystemStatus.isInitialized,
                 autoSaveEnabled: diarySystemStatus.autoSaveEnabled,
-                version: diarySystemStatus.version
+                version: diarySystemStatus.version,
+                mountPath: '/data',
+                isPersistent: true
             }
         };
     } catch (error) {
