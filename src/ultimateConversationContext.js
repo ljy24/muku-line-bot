@@ -1,10 +1,12 @@
 // ============================================================================
-// ultimateConversationContext.js - v35.0 (실제 통계 추적 시스템 추가)
+// ultimateConversationContext.js - v35.1 (학습 시스템 완전 추가!)
 // 🗄️ 동적 기억과 대화 컨텍스트 전문 관리자
 // ✅ 중복 기능 완전 제거: 생리주기, 날씨, 고정기억, 시간관리
 // 🎯 핵심 역할에만 집중: 동적기억 + 대화흐름 + 컨텍스트 조합
 // ✨ GPT 모델 버전 전환: index.js의 설정에 따라 컨텍스트 최적화
 // ⭐️ getSpontaneousStats() 함수 추가 - 라인 상태 리포트용 자발적 메시지 통계
+// 📚 getAllDynamicLearning() 함수 추가 - 일기장 시스템용!
+// 🧠 자동 학습 시스템 강화 - 모든 대화에서 학습 내용 추출!
 // ============================================================================
 
 const fs = require('fs').promises;
@@ -64,13 +66,21 @@ function getWeatherManager() {
     return weatherManager;
 }
 
-// --- 핵심 상태 관리 (동적 기억 + 대화 컨텍스트 + ⭐️ 자발적 메시지 통계) ---
+// --- 핵심 상태 관리 (동적 기억 + 대화 컨텍스트 + ⭐️ 자발적 메시지 통계 + 📚 학습 데이터) ---
 let ultimateConversationState = {
     // 🧠 동적 기억 관리 (사용자가 추가/수정/삭제하는 기억들)
     dynamicMemories: {
         userMemories: [],           // 사용자가 직접 추가한 기억
         conversationMemories: [],   // 대화에서 자동 학습된 기억
         temporaryMemories: []       // 임시 기억 (세션별)
+    },
+    
+    // 📚 학습 데이터 (일기장용!) - 새로 추가!
+    learningData: {
+        dailyLearning: [],          // 일별 학습 내용
+        conversationLearning: [],   // 대화별 학습 내용
+        emotionLearning: [],        // 감정별 학습 내용
+        topicLearning: []           // 주제별 학습 내용
     },
     
     // 💬 대화 컨텍스트 관리
@@ -117,7 +127,11 @@ let ultimateConversationState = {
         totalConversationMemories: 0,
         todayMemoryCount: 0,
         lastDailyReset: null,
-        lastMemoryOperation: null
+        lastMemoryOperation: null,
+        // 📚 학습 통계 추가!
+        totalLearningEntries: 0,
+        todayLearningCount: 0,
+        lastLearningEntry: null
     }
 };
 
@@ -192,10 +206,244 @@ function getContextPriority(currentModel) {
     }
 }
 
-// ==================== 💬 대화 메시지 관리 ====================
+// ==================== 📚 학습 데이터 관리 (새로 추가!) ====================
 
 /**
- * 새로운 메시지를 대화 컨텍스트에 추가
+ * 📚 새로운 학습 내용 추가
+ */
+function addLearningEntry(content, category = '일반학습', context = {}) {
+    try {
+        const learningEntry = {
+            id: `learn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            timestamp: new Date().toISOString(),
+            date: moment().tz(TIMEZONE).format('YYYY-MM-DD'),
+            time: moment().tz(TIMEZONE).format('HH:mm'),
+            category: category,
+            content: content,
+            context: context,
+            source: 'auto_learning'
+        };
+        
+        // 해당 카테고리에 따라 분류하여 저장
+        switch(category) {
+            case '대화학습':
+                ultimateConversationState.learningData.conversationLearning.push(learningEntry);
+                break;
+            case '감정분석':
+                ultimateConversationState.learningData.emotionLearning.push(learningEntry);
+                break;
+            case '주제학습':
+                ultimateConversationState.learningData.topicLearning.push(learningEntry);
+                break;
+            default:
+                ultimateConversationState.learningData.dailyLearning.push(learningEntry);
+        }
+        
+        // 통계 업데이트
+        ultimateConversationState.memoryStats.totalLearningEntries++;
+        ultimateConversationState.memoryStats.todayLearningCount++;
+        ultimateConversationState.memoryStats.lastLearningEntry = Date.now();
+        
+        contextLog(`📚 학습 추가: [${category}] ${content.substring(0, 50)}...`);
+        
+        return learningEntry;
+    } catch (error) {
+        contextLog('학습 추가 실패:', error.message);
+        return null;
+    }
+}
+
+/**
+ * 📚 모든 학습 내용 조회 (일기장용!)
+ */
+async function getAllDynamicLearning() {
+    try {
+        // 모든 학습 데이터를 하나의 배열로 합치기
+        const allLearning = [
+            ...ultimateConversationState.learningData.dailyLearning,
+            ...ultimateConversationState.learningData.conversationLearning,
+            ...ultimateConversationState.learningData.emotionLearning,
+            ...ultimateConversationState.learningData.topicLearning
+        ];
+        
+        // 시간순으로 정렬
+        allLearning.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+        
+        contextLog(`📚 전체 학습 데이터 조회: ${allLearning.length}개`);
+        
+        return allLearning;
+    } catch (error) {
+        contextLog('학습 데이터 조회 실패:', error.message);
+        return [];
+    }
+}
+
+/**
+ * 📚 특정 카테고리 학습 내용 조회
+ */
+async function getLearningByCategory(category) {
+    try {
+        let targetArray = [];
+        
+        switch(category) {
+            case '대화학습':
+                targetArray = ultimateConversationState.learningData.conversationLearning;
+                break;
+            case '감정분석':
+                targetArray = ultimateConversationState.learningData.emotionLearning;
+                break;
+            case '주제학습':
+                targetArray = ultimateConversationState.learningData.topicLearning;
+                break;
+            default:
+                targetArray = ultimateConversationState.learningData.dailyLearning;
+        }
+        
+        return targetArray.slice(); // 복사본 반환
+    } catch (error) {
+        contextLog(`카테고리별 학습 조회 실패 (${category}):`, error.message);
+        return [];
+    }
+}
+
+/**
+ * 📚 오늘 학습 내용만 조회
+ */
+async function getTodayLearning() {
+    try {
+        const today = moment().tz(TIMEZONE).format('YYYY-MM-DD');
+        const allLearning = await getAllDynamicLearning();
+        
+        return allLearning.filter(item => item.date === today);
+    } catch (error) {
+        contextLog('오늘 학습 조회 실패:', error.message);
+        return [];
+    }
+}
+
+/**
+ * 📚 학습 통계 조회
+ */
+function getLearningStatistics() {
+    const total = ultimateConversationState.memoryStats.totalLearningEntries;
+    const today = ultimateConversationState.memoryStats.todayLearningCount;
+    
+    return {
+        totalEntries: total,
+        todayCount: today,
+        categories: {
+            daily: ultimateConversationState.learningData.dailyLearning.length,
+            conversation: ultimateConversationState.learningData.conversationLearning.length,
+            emotion: ultimateConversationState.learningData.emotionLearning.length,
+            topic: ultimateConversationState.learningData.topicLearning.length
+        },
+        lastEntry: ultimateConversationState.memoryStats.lastLearningEntry
+    };
+}
+
+// ==================== 🧠 강화된 자동 학습 시스템 ====================
+
+/**
+ * 🧠 메시지에서 새로운 정보 분석 및 추출
+ */
+function analyzeMessageForNewInfo(message) {
+    try {
+        const lowerMsg = message.toLowerCase();
+        let hasNewInfo = false;
+        let category = '일반학습';
+        let extractedInfo = '';
+        
+        // 1. 감정 관련 정보
+        if (lowerMsg.includes('기분') || lowerMsg.includes('느낌') || lowerMsg.includes('감정')) {
+            hasNewInfo = true;
+            category = '감정분석';
+            extractedInfo = `아저씨의 감정 표현: ${message}`;
+        }
+        // 2. 상태 관련 정보
+        else if (lowerMsg.includes('피곤') || lowerMsg.includes('아프') || lowerMsg.includes('힘들') || lowerMsg.includes('건강')) {
+            hasNewInfo = true;
+            category = '대화학습';
+            extractedInfo = `아저씨의 현재 상태: ${message}`;
+        }
+        // 3. 계획이나 일정 관련
+        else if (lowerMsg.includes('계획') || lowerMsg.includes('예정') || lowerMsg.includes('할 것') || lowerMsg.includes('하려고')) {
+            hasNewInfo = true;
+            category = '주제학습';
+            extractedInfo = `아저씨의 계획: ${message}`;
+        }
+        // 4. 선호도나 취향 관련
+        else if (lowerMsg.includes('좋아') || lowerMsg.includes('싫어') || lowerMsg.includes('선호') || lowerMsg.includes('취향')) {
+            hasNewInfo = true;
+            category = '대화학습';
+            extractedInfo = `아저씨의 선호도: ${message}`;
+        }
+        // 5. 기억 관련 명시적 요청
+        else if (lowerMsg.includes('기억') || lowerMsg.includes('잊지') || lowerMsg.includes('외워')) {
+            hasNewInfo = true;
+            category = '대화학습';
+            extractedInfo = `기억 요청사항: ${message}`;
+        }
+        // 6. 질문이나 궁금증
+        else if (message.includes('?') || lowerMsg.includes('궁금') || lowerMsg.includes('어떻게')) {
+            hasNewInfo = true;
+            category = '주제학습';
+            extractedInfo = `아저씨의 질문: ${message}`;
+        }
+        
+        return {
+            hasNewInfo,
+            category,
+            extractedInfo: extractedInfo || message,
+            originalMessage: message,
+            timestamp: new Date().toISOString()
+        };
+        
+    } catch (error) {
+        contextLog('메시지 분석 실패:', error.message);
+        return { hasNewInfo: false };
+    }
+}
+
+/**
+ * 🧠 메시지 기반 자동 학습 처리
+ */
+async function processAutoLearning(speaker, message) {
+    try {
+        // 사용자 메시지만 학습 대상으로 처리
+        if (speaker !== 'user' && speaker !== '아저씨') {
+            return false;
+        }
+        
+        const analysis = analyzeMessageForNewInfo(message);
+        
+        if (analysis.hasNewInfo) {
+            const learningEntry = addLearningEntry(
+                analysis.extractedInfo,
+                analysis.category,
+                {
+                    speaker: speaker,
+                    originalMessage: message,
+                    analysisTime: new Date().toISOString()
+                }
+            );
+            
+            if (learningEntry) {
+                contextLog(`🧠 자동 학습 완료: [${analysis.category}] ${analysis.extractedInfo.substring(0, 30)}...`);
+                return true;
+            }
+        }
+        
+        return false;
+    } catch (error) {
+        contextLog('자동 학습 처리 실패:', error.message);
+        return false;
+    }
+}
+
+// ==================== 💬 대화 메시지 관리 (학습 연동) ====================
+
+/**
+ * 새로운 메시지를 대화 컨텍스트에 추가 (학습 시스템 연동!)
  */
 async function addUltimateMessage(speaker, message) {
     const timestamp = Date.now();
@@ -224,7 +472,10 @@ async function addUltimateMessage(speaker, message) {
     
     contextLog(`메시지 추가: ${speaker} - "${message.substring(0, 30)}..."`);
     
-    // 대화에서 자동 학습
+    // 🧠 자동 학습 처리 (새로 추가!)
+    await processAutoLearning(speaker, message);
+    
+    // 대화에서 자동 학습 (기존)
     await learnFromConversation(speaker, message);
 }
 
@@ -245,6 +496,12 @@ function updateConversationTopic(topic) {
     ultimateConversationState.conversationContext.currentTopic = topic;
     ultimateConversationState.conversationContext.lastTopicChange = Date.now();
     contextLog(`대화 주제 업데이트: ${topic}`);
+    
+    // 🧠 주제 변경도 학습 대상으로 추가
+    addLearningEntry(`대화 주제가 "${topic}"으로 변경됨`, '주제학습', {
+        previousTopic: ultimateConversationState.conversationContext.currentTopic,
+        changeTime: Date.now()
+    });
 }
 
 // ==================== 🧠 동적 기억 관리 ====================
@@ -268,6 +525,13 @@ async function addUserMemory(content, category = 'general') {
     ultimateConversationState.memoryStats.lastMemoryOperation = Date.now();
     
     contextLog(`사용자 기억 추가: "${content.substring(0, 30)}..." (${category})`);
+    
+    // 🧠 기억 추가도 학습 데이터로 기록
+    addLearningEntry(`사용자가 기억 추가: ${content}`, '대화학습', {
+        memoryId: memoryObj.id,
+        category: category
+    });
+    
     return memoryObj.id;
 }
 
@@ -286,6 +550,14 @@ async function deleteUserMemory(content) {
     ultimateConversationState.memoryStats.lastMemoryOperation = Date.now();
     
     contextLog(`${deletedCount}개 사용자 기억 삭제`);
+    
+    // 🧠 기억 삭제도 학습 데이터로 기록
+    if (deletedCount > 0) {
+        addLearningEntry(`${deletedCount}개의 기억이 삭제됨: ${content}`, '대화학습', {
+            deletedCount: deletedCount
+        });
+    }
+    
     return deletedCount > 0;
 }
 
@@ -295,10 +567,19 @@ async function deleteUserMemory(content) {
 async function updateUserMemory(id, newContent) {
     const memory = ultimateConversationState.dynamicMemories.userMemories.find(m => m.id === id);
     if (memory) {
+        const oldContent = memory.content;
         memory.content = newContent;
         memory.lastModified = Date.now();
         ultimateConversationState.memoryStats.lastMemoryOperation = Date.now();
         contextLog(`기억 수정: ${id}`);
+        
+        // 🧠 기억 수정도 학습 데이터로 기록
+        addLearningEntry(`기억 수정: "${oldContent}" → "${newContent}"`, '대화학습', {
+            memoryId: id,
+            oldContent: oldContent,
+            newContent: newContent
+        });
+        
         return true;
     }
     return false;
@@ -338,7 +619,7 @@ function getAllMemories() {
     };
 }
 
-// ==================== ⭐️ 자발적 메시지 통계 관리 (새로 추가!) ====================
+// ==================== ⭐️ 자발적 메시지 통계 관리 ====================
 
 /**
  * ⭐️ 자발적 메시지 전송 기록
@@ -360,6 +641,13 @@ function recordSpontaneousMessage(messageType = 'casual') {
     }
     
     contextLog(`자발적 메시지 기록: ${messageType} (${timeString}) - 총 ${ultimateConversationState.spontaneousMessages.sentToday}건`);
+    
+    // 🧠 자발적 메시지도 학습 데이터로 기록
+    addLearningEntry(`자발적 메시지 전송: ${messageType} 타입`, '감정분석', {
+        messageType: messageType,
+        sentTime: timeString,
+        todayCount: ultimateConversationState.spontaneousMessages.sentToday
+    });
 }
 
 /**
@@ -500,17 +788,29 @@ async function getUltimateContextualPrompt(basePrompt) {
             }
         }
         
-        // 4. 현재 대화 주제 추가 (모든 모델에서 사용)
+        // 4. 🧠 최근 학습 내용 추가 (새로 추가!)
+        const recentLearning = await getAllDynamicLearning();
+        if (recentLearning.length > 0) {
+            const lastFewLearning = recentLearning.slice(-3); // 최근 3개만
+            const learningContext = lastFewLearning.map(l => `[${l.category}] ${l.content}`).join('. ');
+            
+            if (currentModel === '4.0') {
+                contextualPrompt += `\n📚 최근 학습: ${learningContext}\n`;
+            }
+        }
+        
+        // 5. 현재 대화 주제 추가 (모든 모델에서 사용)
         if (ultimateConversationState.conversationContext.currentTopic) {
             contextualPrompt += `\n🎯 현재 주제: ${ultimateConversationState.conversationContext.currentTopic}\n`;
         }
         
-        // 5. ✨ 모델별 추가 메타정보
+        // 6. ✨ 모델별 추가 메타정보
         if (currentModel === '4.0') {
             // GPT-4o에서만 상세한 메타정보 추가
             const messageCount = ultimateConversationState.conversationContext.recentMessages.length;
             const memoryCount = ultimateConversationState.dynamicMemories.userMemories.length;
-            contextualPrompt += `\n📊 컨텍스트: 메시지 ${messageCount}개, 기억 ${memoryCount}개\n`;
+            const learningCount = ultimateConversationState.memoryStats.totalLearningEntries;
+            contextualPrompt += `\n📊 컨텍스트: 메시지 ${messageCount}개, 기억 ${memoryCount}개, 학습 ${learningCount}개\n`;
         }
         
         contextLog(`컨텍스트 생성 완료 (${currentModel} 최적화, 길이: ${contextualPrompt.length}자)`);
@@ -583,25 +883,35 @@ function processTimeTick() {
 async function analyzeUserMood(message) {
     const lowerMsg = message.toLowerCase();
     
+    let mood = 'neutral';
+    
     if (lowerMsg.includes('힘들') || lowerMsg.includes('우울') || lowerMsg.includes('슬프')) {
-        return 'sad';
+        mood = 'sad';
     } else if (lowerMsg.includes('좋') || lowerMsg.includes('행복') || lowerMsg.includes('기뻐')) {
-        return 'happy';
+        mood = 'happy';
     } else if (lowerMsg.includes('화') || lowerMsg.includes('짜증') || lowerMsg.includes('빡쳐')) {
-        return 'angry';
+        mood = 'angry';
     } else if (lowerMsg.includes('보고싶') || lowerMsg.includes('그리워')) {
-        return 'missing';
+        mood = 'missing';
     } else if (lowerMsg.includes('사랑') || lowerMsg.includes('좋아해')) {
-        return 'loving';
+        mood = 'loving';
     }
     
-    return 'neutral';
+    // 🧠 감정 분석 결과도 학습 데이터로 기록
+    if (mood !== 'neutral') {
+        addLearningEntry(`아저씨 감정 상태: ${mood} - "${message}"`, '감정분석', {
+            detectedMood: mood,
+            confidence: 'medium'
+        });
+    }
+    
+    return mood;
 }
 
 // ==================== 🎓 학습 및 분석 ====================
 
 /**
- * 대화에서 자동 학습
+ * 대화에서 자동 학습 (기존)
  */
 async function learnFromConversation(speaker, message) {
     try {
@@ -621,6 +931,12 @@ async function learnFromConversation(speaker, message) {
                 ultimateConversationState.memoryStats.totalConversationMemories++;
                 
                 contextLog(`자동 학습: "${message.substring(0, 30)}..."`);
+                
+                // 🧠 기억에 추가된 것도 학습 데이터로 기록
+                addLearningEntry(`기억 요청사항이 자동 기억에 추가됨: ${message}`, '대화학습', {
+                    memoryId: learningMemory.id,
+                    type: 'auto_learned'
+                });
             }
         }
     } catch (error) {
@@ -629,7 +945,7 @@ async function learnFromConversation(speaker, message) {
 }
 
 /**
- * 사용자 메시지에서 학습
+ * 사용자 메시지에서 학습 (강화됨!)
  */
 async function learnFromUserMessage(message) {
     const mood = await analyzeUserMood(message);
@@ -638,6 +954,9 @@ async function learnFromUserMessage(message) {
     if (mood !== 'neutral') {
         contextLog(`사용자 감정 감지: ${mood} - "${message.substring(0, 30)}..."`);
     }
+    
+    // 🧠 추가 학습 처리
+    await processAutoLearning('아저씨', message);
 }
 
 // ==================== 📊 통계 및 상태 조회 ====================
@@ -648,6 +967,7 @@ async function learnFromUserMessage(message) {
 function getMemoryStatistics() {
     const currentModel = getCurrentModelSetting ? getCurrentModelSetting() : 'unknown';
     const contextLength = getOptimalContextLength();
+    const learningStats = getLearningStatistics();
     
     return {
         user: ultimateConversationState.memoryStats.totalUserMemories,
@@ -655,6 +975,8 @@ function getMemoryStatistics() {
         today: ultimateConversationState.memoryStats.todayMemoryCount,
         total: ultimateConversationState.memoryStats.totalUserMemories + 
                ultimateConversationState.memoryStats.totalConversationMemories,
+        // 📚 학습 통계 추가
+        learning: learningStats,
         // ✨ GPT 모델 정보 추가
         currentGptModel: currentModel,
         contextOptimization: {
@@ -712,14 +1034,15 @@ function getInternalState() {
         memoryStats: ultimateConversationState.memoryStats,
         timingContext: ultimateConversationState.timingContext,
         emotionalSync: ultimateConversationState.emotionalSync,
-        spontaneousMessages: ultimateConversationState.spontaneousMessages, // ⭐️ 추가!
+        spontaneousMessages: ultimateConversationState.spontaneousMessages,
+        learningData: ultimateConversationState.learningData, // 📚 학습 데이터 추가!
         currentTime: Date.now(),
         // ✨ GPT 모델 최적화 정보 추가
         gptOptimization: {
             currentModel,
             contextLength,
             priority,
-            version: 'v35.0-with-spontaneous-stats'
+            version: 'v35.1-with-learning-system'
         }
     };
 }
@@ -746,7 +1069,7 @@ function clearPendingAction() {
  * 감정 시스템 초기화 (호환성)
  */
 async function initializeEmotionalSystems() {
-    contextLog('동적 기억 및 대화 컨텍스트 시스템 초기화...');
+    contextLog('동적 기억, 대화 컨텍스트 및 학습 시스템 초기화...');
     
     // ✨ GPT 모델 정보 로그
     const currentModel = getCurrentModelSetting ? getCurrentModelSetting() : 'unknown';
@@ -766,6 +1089,7 @@ async function initializeEmotionalSystems() {
     const today = new Date().toDateString();
     if (ultimateConversationState.memoryStats.lastDailyReset !== today) {
         ultimateConversationState.memoryStats.todayMemoryCount = 0;
+        ultimateConversationState.memoryStats.todayLearningCount = 0; // 📚 학습 카운트 리셋
         ultimateConversationState.memoryStats.lastDailyReset = today;
     }
     
@@ -775,7 +1099,13 @@ async function initializeEmotionalSystems() {
         resetSpontaneousStats();
     }
     
-    contextLog(`초기화 완료 - 동적 기억과 대화 컨텍스트에 집중 (${currentModel} 최적화)`);
+    // 📚 시스템 초기화 학습 기록
+    addLearningEntry('시스템 초기화 완료', '시스템', {
+        initTime: new Date().toISOString(),
+        gptModel: currentModel
+    });
+    
+    contextLog(`초기화 완료 - 동적 기억, 대화 컨텍스트 및 학습 시스템 활성화 (${currentModel} 최적화)`);
 }
 
 // ==================== 🎁 유틸리티 함수들 ====================
@@ -804,7 +1134,7 @@ async function generateInitiatingPhrase() {
 }
 
 // ==================== 📤 모듈 내보내기 ==================
-contextLog('v35.0 로드 완료 (GPT 모델 버전 전환 + 자발적 메시지 통계 지원)');
+contextLog('v35.1 로드 완료 (GPT 모델 버전 전환 + 자발적 메시지 통계 + 학습 시스템 완전 지원)');
 
 module.exports = {
     // 초기화
@@ -831,7 +1161,16 @@ module.exports = {
     getAllMemories,
     getActiveMemoryPrompt,
     
-    // ⭐️ 자발적 메시지 통계 관리 (새로 추가!)
+    // 📚 학습 시스템 (새로 추가!)
+    getAllDynamicLearning,      // ⭐️ 일기장용 핵심 함수!
+    addLearningEntry,
+    getLearningByCategory,
+    getTodayLearning,
+    getLearningStatistics,
+    analyzeMessageForNewInfo,   // 메시지 분석 함수
+    processAutoLearning,        // 자동 학습 처리
+    
+    // ⭐️ 자발적 메시지 통계 관리
     recordSpontaneousMessage,
     setNextSpontaneousTime,
     getSpontaneousStats,        // ⭐️ 라인 상태 리포트용 핵심 함수!
