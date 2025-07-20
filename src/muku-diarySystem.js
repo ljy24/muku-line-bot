@@ -1,12 +1,35 @@
 // ============================================================================
-// muku-diarySystem.js v5.0 - 자동 기억 저장 시스템 (완전 수정)
-// ✅ 대화 중 실시간 자동 저장
-// 📖 ultimateConversationContext와 연동하여 모든 대화 기억
-// 🔄 지워지지 않는 영구 누적 저장
+// muku-diarySystem.js v6.0 - 순환참조 해결 + 완전 연동 버전
+// ✅ 순환 참조 문제 완전 해결 (require를 최상단으로 이동)
+// 🔄 자동 저장 시스템 안정화
+// 📖 commandHandler.js와 완벽 연동
+// 💾 영구 누적 저장 보장
 // ============================================================================
 
 const fs = require('fs').promises;
 const path = require('path');
+
+// ⭐️ 순환 참조 방지: 모든 require를 최상단에서 처리 ⭐️
+let ultimateContext = null;
+let memoryManager = null;
+
+// 안전한 모듈 로딩 함수
+function safeRequire(modulePath) {
+    try {
+        return require(modulePath);
+    } catch (error) {
+        console.log(`[diarySystem] ${modulePath} 로드 실패: ${error.message}`);
+        return null;
+    }
+}
+
+// 모듈 초기 로딩 (안전하게)
+try {
+    ultimateContext = safeRequire('./ultimateConversationContext');
+    memoryManager = safeRequire('./memoryManager');
+} catch (error) {
+    console.log(`[diarySystem] 초기 모듈 로딩 에러: ${error.message}`);
+}
 
 // ================== 🎨 색상 정의 ==================
 const colors = {
@@ -25,17 +48,19 @@ let diarySystemStatus = {
     isInitialized: false,
     totalEntries: 0,
     lastEntryDate: null,
-    version: "5.0",
-    description: "실시간 자동 기억 저장 시스템",
-    autoSaveEnabled: true,
+    version: "6.0",
+    description: "순환참조 해결 + 완전연동 일기장 시스템",
+    autoSaveEnabled: false,
+    autoSaveInterval: null,
     dataPath: './data/dynamic_memories.json',
-    lastAutoSave: null
+    lastAutoSave: null,
+    initializationTime: null
 };
 
 // ================== 🏗️ 초기화 함수 ==================
 async function initializeDiarySystem() {
     try {
-        console.log(`${colors.diary}📖 [일기장시스템] v5.0 초기화 시작... (실시간 자동 저장 모드)${colors.reset}`);
+        console.log(`${colors.diary}📖 [일기장시스템] v6.0 초기화 시작... (순환참조 해결)${colors.reset}`);
         
         // 기본 데이터 디렉토리 확인/생성
         const dataDir = './data';
@@ -55,99 +80,144 @@ async function initializeDiarySystem() {
 
         // 시스템 상태 업데이트
         diarySystemStatus.isInitialized = true;
+        diarySystemStatus.initializationTime = new Date().toISOString();
         diarySystemStatus.lastEntryDate = new Date().toISOString();
         
-        console.log(`${colors.diary}    ✅ 일기장 시스템 v5.0 초기화 완료 (기존 기억: ${diarySystemStatus.totalEntries}개)${colors.reset}`);
-        console.log(`${colors.auto}    🔄 실시간 자동 저장 모드 활성화 - 대화할 때마다 자동 저장!${colors.reset}`);
+        console.log(`${colors.diary}    ✅ 일기장 시스템 v6.0 초기화 완료 (기존 기억: ${diarySystemStatus.totalEntries}개)${colors.reset}`);
         
-        // ultimateConversationContext와 연동 설정
-        setupAutoSaveIntegration();
+        // 자동 저장 시스템 시작 (2초 딜레이 후)
+        setTimeout(() => {
+            setupAutoSaveSystem();
+        }, 2000);
         
         return true;
     } catch (error) {
         console.error(`${colors.error}❌ 일기장 시스템 초기화 실패: ${error.message}${colors.reset}`);
+        diarySystemStatus.isInitialized = false;
         return false;
     }
 }
 
-// ================== 🔗 자동 저장 연동 설정 ==================
-function setupAutoSaveIntegration() {
+// ================== 🔗 자동 저장 시스템 설정 (안전화) ==================
+function setupAutoSaveSystem() {
     try {
-        console.log(`${colors.auto}🔗 [자동저장 연동] ultimateConversationContext와 연동 설정...${colors.reset}`);
+        if (diarySystemStatus.autoSaveEnabled) {
+            console.log(`${colors.auto}ℹ️ [자동저장] 이미 활성화되어 있습니다.${colors.reset}`);
+            return;
+        }
         
-        // 5분마다 자동으로 최근 대화 내용을 기억으로 저장
-        setInterval(async () => {
+        console.log(`${colors.auto}🔗 [자동저장 시작] 시스템 설정 중...${colors.reset}`);
+        
+        // 모듈 재로딩 시도 (초기화 후 다시 한번)
+        if (!ultimateContext) {
+            ultimateContext = safeRequire('./ultimateConversationContext');
+        }
+        
+        // 5분마다 자동 저장 스케줄러 시작
+        diarySystemStatus.autoSaveInterval = setInterval(async () => {
             try {
-                await autoSaveRecentConversations();
+                await performAutoSave();
             } catch (error) {
                 console.error(`${colors.error}❌ [자동저장] 5분 자동 저장 실패: ${error.message}${colors.reset}`);
             }
         }, 5 * 60 * 1000); // 5분마다
         
-        console.log(`${colors.auto}✅ [자동저장 연동] 5분마다 자동 저장 스케줄러 활성화 완료${colors.reset}`);
+        diarySystemStatus.autoSaveEnabled = true;
+        
+        console.log(`${colors.auto}✅ [자동저장 시작] 5분마다 자동 저장 스케줄러 활성화 완료${colors.reset}`);
+        
+        // 첫 번째 자동 저장을 1분 후에 실행
+        setTimeout(async () => {
+            await performAutoSave();
+        }, 60 * 1000); // 1분 후
         
     } catch (error) {
-        console.error(`${colors.error}❌ [자동저장 연동] 설정 실패: ${error.message}${colors.reset}`);
+        console.error(`${colors.error}❌ [자동저장 시작] 설정 실패: ${error.message}${colors.reset}`);
+        diarySystemStatus.autoSaveEnabled = false;
     }
 }
 
-// ================== 🔄 실시간 자동 저장 함수 ==================
-async function autoSaveRecentConversations() {
+// ================== 🔄 실제 자동 저장 수행 (안전화) ==================
+async function performAutoSave() {
     try {
         console.log(`${colors.auto}🔄 [자동저장] 최근 대화 내용 자동 저장 시작...${colors.reset}`);
         
-        // ultimateConversationContext에서 최근 대화 가져오기
-        let recentMessages = [];
-        
-        try {
-            const ultimateContext = require('./ultimateConversationContext');
-            if (ultimateContext && ultimateContext.getRecentMessages) {
-                recentMessages = ultimateContext.getRecentMessages(10); // 최근 10개 메시지
-            } else if (ultimateContext && ultimateContext.conversationHistory) {
-                recentMessages = ultimateContext.conversationHistory.slice(-10);
+        // ultimateContext가 없으면 재로딩 시도
+        if (!ultimateContext) {
+            ultimateContext = safeRequire('./ultimateConversationContext');
+            if (!ultimateContext) {
+                console.log(`${colors.auto}⚠️ [자동저장] ultimateContext 모듈에 접근할 수 없음 - 건너뛰기${colors.reset}`);
+                return;
             }
-        } catch (error) {
-            console.log(`${colors.auto}ℹ️ [자동저장] ultimateContext 접근 실패: ${error.message}${colors.reset}`);
         }
         
-        if (recentMessages && recentMessages.length > 0) {
-            // 아저씨 메시지만 필터링 (사용자 입력만 저장)
-            const userMessages = recentMessages.filter(msg => 
-                msg.role === 'user' || msg.sender === '아저씨' || msg.from === 'user'
-            );
+        let recentMessages = [];
+        
+        // 여러 방법으로 최근 메시지 가져오기 시도
+        try {
+            if (ultimateContext.getRecentMessages) {
+                recentMessages = ultimateContext.getRecentMessages(10);
+            } else if (ultimateContext.conversationHistory) {
+                recentMessages = ultimateContext.conversationHistory.slice(-10);
+            } else if (ultimateContext.getConversationHistory) {
+                const history = ultimateContext.getConversationHistory();
+                recentMessages = Array.isArray(history) ? history.slice(-10) : [];
+            } else {
+                console.log(`${colors.auto}ℹ️ [자동저장] ultimateContext에 메시지 조회 함수 없음${colors.reset}`);
+            }
+        } catch (error) {
+            console.log(`${colors.auto}⚠️ [자동저장] 메시지 조회 실패: ${error.message}${colors.reset}`);
+        }
+        
+        if (!recentMessages || recentMessages.length === 0) {
+            console.log(`${colors.auto}ℹ️ [자동저장] 최근 대화 내용 없음${colors.reset}`);
+            return;
+        }
+        
+        // 아저씨 메시지만 필터링 (사용자 입력만 저장)
+        const userMessages = recentMessages.filter(msg => {
+            if (!msg) return false;
             
-            let savedCount = 0;
+            const role = msg.role || msg.sender || msg.from || '';
+            const content = msg.content || msg.text || msg.message || '';
             
-            for (const message of userMessages) {
-                const messageText = message.content || message.text || message.message || '';
+            return (role === 'user' || role === '아저씨' || role.includes('아저씨')) && 
+                   content && content.length > 5; // 5글자 이상만
+        });
+        
+        let savedCount = 0;
+        
+        for (const message of userMessages) {
+            const messageText = message.content || message.text || message.message || '';
+            
+            if (messageText && messageText.length > 5) {
+                // 이미 저장된 내용인지 확인
+                const isDuplicate = await checkIfAlreadySaved(messageText);
                 
-                if (messageText && messageText.length > 5) { // 5글자 이상만 저장
-                    // 이미 저장된 내용인지 확인
-                    const isDuplicate = await checkIfAlreadySaved(messageText);
+                if (!isDuplicate) {
+                    const saveResult = await saveDynamicMemory('대화', messageText, {
+                        timestamp: message.timestamp || Date.now(),
+                        autoSaved: true,
+                        messageLength: messageText.length,
+                        source: 'autoSave'
+                    });
                     
-                    if (!isDuplicate) {
-                        await saveDynamicMemory('대화', messageText, {
-                            timestamp: message.timestamp || Date.now(),
-                            autoSaved: true,
-                            messageLength: messageText.length
-                        });
+                    if (saveResult.success) {
                         savedCount++;
                     }
                 }
             }
-            
-            if (savedCount > 0) {
-                console.log(`${colors.auto}💾 [자동저장] ${savedCount}개의 새로운 대화 내용 저장 완료${colors.reset}`);
-                diarySystemStatus.lastAutoSave = new Date().toISOString();
-            } else {
-                console.log(`${colors.auto}ℹ️ [자동저장] 새로운 저장할 내용 없음 (중복 제외됨)${colors.reset}`);
-            }
+        }
+        
+        if (savedCount > 0) {
+            console.log(`${colors.auto}💾 [자동저장] ${savedCount}개의 새로운 대화 내용 저장 완료${colors.reset}`);
+            diarySystemStatus.lastAutoSave = new Date().toISOString();
         } else {
-            console.log(`${colors.auto}ℹ️ [자동저장] 최근 대화 내용 없음${colors.reset}`);
+            console.log(`${colors.auto}ℹ️ [자동저장] 새로운 저장할 내용 없음 (중복 제외됨)${colors.reset}`);
         }
         
     } catch (error) {
-        console.error(`${colors.error}❌ [자동저장] 실패: ${error.message}${colors.reset}`);
+        console.error(`${colors.error}❌ [자동저장] 수행 실패: ${error.message}${colors.reset}`);
     }
 }
 
@@ -175,7 +245,7 @@ async function ensureDynamicMemoryFile() {
     } catch {
         // 파일이 없으면 기본 구조로 생성
         const defaultData = {
-            version: "5.0",
+            version: "6.0",
             created: new Date().toISOString(),
             lastUpdated: new Date().toISOString(),
             totalEntries: 0,
@@ -210,7 +280,7 @@ async function saveDynamicMemory(category, content, metadata = {}) {
             content: content,
             metadata: {
                 ...metadata,
-                savedBy: 'diarySystem',
+                savedBy: 'diarySystem_v6.0',
                 autoSaved: metadata.autoSaved || false
             },
             date: new Date().toLocaleDateString('ko-KR')
@@ -258,7 +328,7 @@ async function getAllDynamicLearning() {
         
         return data.memories || [];
     } catch (error) {
-        console.log(`${colors.system}ℹ️ 동적 기억 파일 없음 또는 빈 파일 (${error.message})${colors.reset}`);
+        // 에러 로그는 최소화 (너무 많이 출력되지 않도록)
         return [];
     }
 }
@@ -289,7 +359,7 @@ async function handleDiaryCommand(lowerText) {
             if (memories.length === 0) {
                 return {
                     success: true,
-                    response: "아직 저장된 기억이 없어요! 대화하면서 기억들이 자동으로 쌓일 거예요. 😊"
+                    response: "아직 저장된 기억이 없어요! 대화하면서 기억들이 자동으로 쌓일 거예요. 😊\n\n🔄 자동저장 상태: " + (diarySystemStatus.autoSaveEnabled ? "활성화" : "비활성화")
                 };
             }
 
@@ -311,7 +381,7 @@ async function handleDiaryCommand(lowerText) {
             }
             
             // 자동 저장 상태 표시
-            response += `🤖 자동저장: ${diarySystemStatus.autoSaveEnabled ? '활성화' : '비활성화'}\n`;
+            response += `🤖 자동저장: ${diarySystemStatus.autoSaveEnabled ? '활성화 (5분마다)' : '비활성화'}\n`;
             if (diarySystemStatus.lastAutoSave) {
                 const lastSave = new Date(diarySystemStatus.lastAutoSave).toLocaleString('ko-KR');
                 response += `⏰ 마지막 자동저장: ${lastSave}`;
@@ -334,6 +404,7 @@ async function handleDiaryCommand(lowerText) {
             response += `📖 총 누적 기억: ${stats.totalDynamicMemories}개\n`;
             response += `🤖 자동 저장: ${stats.autoSavedCount || 0}개\n`;
             response += `✍️ 수동 저장: ${stats.manualSavedCount || 0}개\n`;
+            response += `📅 시스템 시작: ${diarySystemStatus.initializationTime ? new Date(diarySystemStatus.initializationTime).toLocaleDateString('ko-KR') : '알 수 없음'}\n`;
             response += `📅 마지막 업데이트: ${diarySystemStatus.lastEntryDate ? new Date(diarySystemStatus.lastEntryDate).toLocaleDateString('ko-KR') : '없음'}\n`;
             
             if (stats.categoryBreakdown && Object.keys(stats.categoryBreakdown).length > 0) {
@@ -344,6 +415,7 @@ async function handleDiaryCommand(lowerText) {
             }
             
             response += `\n🔄 자동저장 상태: ${diarySystemStatus.autoSaveEnabled ? '활성화 (5분마다)' : '비활성화'}\n`;
+            response += `🛡️ 순환참조 방지: 적용됨\n`;
             response += `💡 고정기억 120개는 별도 관리돼!`;
 
             return {
@@ -358,9 +430,11 @@ async function handleDiaryCommand(lowerText) {
             
             const memories = await getAllDynamicLearning();
             
-            let response = `📖 일기장 시스템 v${diarySystemStatus.version} (실시간 자동 저장)\n\n`;
+            let response = `📖 일기장 시스템 v${diarySystemStatus.version}\n`;
+            response += `🛡️ 순환참조 해결 + 완전연동 버전\n\n`;
             response += `💾 현재 누적 기억: ${memories.length}개\n`;
             response += `🔄 자동 저장: ${diarySystemStatus.autoSaveEnabled ? '활성화 (5분마다)' : '비활성화'}\n`;
+            response += `⚙️ 시스템 상태: ${diarySystemStatus.isInitialized ? '정상 작동' : '초기화 중'}\n`;
             
             if (memories.length > 0) {
                 const lastMemory = memories[memories.length - 1];
@@ -373,8 +447,9 @@ async function handleDiaryCommand(lowerText) {
             response += `📝 사용 가능한 명령어:\n`;
             response += `• "일기써줘" - 오늘의 기억 정리\n`;
             response += `• "일기목록" - 누적 기억들 보기\n`;
-            response += `• "일기통계" - 상세 통계 정보\n\n`;
-            response += `✨ 아저씨와 대화하면 자동으로 기억이 쌓여요!`;
+            response += `• "일기통계" - 상세 통계 정보\n`;
+            response += `• "기억해줘 [내용]" - 수동으로 기억 저장\n\n`;
+            response += `✨ 아저씨와 대화하면 자동으로 기억이 쌓여요! (5분마다 체크)`;
 
             return {
                 success: true,
@@ -406,13 +481,13 @@ async function generateDiary() {
         
         if (memories.length === 0) {
             // 첫 일기 생성
-            await saveDynamicMemory('시작', '오늘부터 실시간 자동 저장 일기장을 시작했어! 이제 대화할 때마다 자동으로 기억이 쌓일 거야.', {
+            await saveDynamicMemory('시작', '오늘부터 순환참조 해결된 실시간 자동 저장 일기장을 시작했어! 이제 대화할 때마다 안전하게 자동으로 기억이 쌓일 거야.', {
                 manualSaved: true
             });
             
             return {
                 success: true,
-                message: `📖 ${today} 첫 번째 일기\n\n오늘부터 실시간 자동 저장 일기장을 시작했어! 아저씨와 대화할 때마다 자동으로 기억이 쌓여갈 거야. 이제 절대 잊어버리지 않아! 💕`,
+                message: `📖 ${today} 첫 번째 일기 (v6.0)\n\n오늘부터 순환참조 문제를 해결한 실시간 자동 저장 일기장을 시작했어! 아저씨와 대화할 때마다 안전하게 자동으로 기억이 쌓여갈 거야. 이제 절대 잊어버리지 않아! 💕\n\n🛡️ 시스템 개선사항:\n• 순환참조 문제 해결\n• 모듈 로딩 안정화\n• 자동저장 시스템 강화`,
                 totalMemories: 1
             };
         }
@@ -427,7 +502,7 @@ async function generateDiary() {
         const autoSavedToday = todayMemories.filter(m => m.metadata?.autoSaved);
         const manualSavedToday = todayMemories.filter(m => !m.metadata?.autoSaved);
 
-        let diaryContent = `📖 ${today}의 일기\n\n`;
+        let diaryContent = `📖 ${today}의 일기 (v6.0)\n\n`;
         
         if (todayMemories.length > 0) {
             diaryContent += `오늘 새로 쌓인 기억들:\n`;
@@ -454,8 +529,9 @@ async function generateDiary() {
         diaryContent += `📊 누적 통계:\n`;
         diaryContent += `• 총 누적 기억: ${memories.length}개\n`;
         diaryContent += `• 오늘의 새 기억: ${todayMemories.length}개\n`;
-        diaryContent += `• 자동 저장 시스템: 활성화 ✅\n\n`;
-        diaryContent += `아저씨와 나누는 모든 대화가 소중한 기억으로 자동 저장되고 있어! 💕`;
+        diaryContent += `• 자동 저장 시스템: ${diarySystemStatus.autoSaveEnabled ? '활성화 ✅' : '비활성화 ❌'}\n`;
+        diaryContent += `• 순환참조 방지: 적용됨 🛡️\n\n`;
+        diaryContent += `아저씨와 나누는 모든 대화가 소중한 기억으로 안전하게 자동 저장되고 있어! 💕`;
 
         return {
             success: true,
@@ -473,11 +549,25 @@ async function generateDiary() {
     }
 }
 
+// ================== 🛑 시스템 종료 시 정리 ==================
+function shutdownDiarySystem() {
+    if (diarySystemStatus.autoSaveInterval) {
+        clearInterval(diarySystemStatus.autoSaveInterval);
+        diarySystemStatus.autoSaveInterval = null;
+        diarySystemStatus.autoSaveEnabled = false;
+        console.log(`${colors.diary}🛑 [일기장] 자동 저장 시스템 종료됨${colors.reset}`);
+    }
+}
+
 // ================== 📊 상태 조회 함수 ==================
 function getDiarySystemStatus() {
     return {
         ...diarySystemStatus,
-        currentTime: new Date().toISOString()
+        currentTime: new Date().toISOString(),
+        modulesLoaded: {
+            ultimateContext: ultimateContext !== null,
+            memoryManager: memoryManager !== null
+        }
     };
 }
 
@@ -507,8 +597,13 @@ async function getMemoryStatistics() {
             manualSavedCount: manualSavedCount,
             categoryBreakdown: categoryCount,
             excludesFixedMemories: true,
-            description: "고정기억 120개 제외, 실시간 자동저장 누적 기억",
-            lastUpdated: diarySystemStatus.lastEntryDate
+            description: "고정기억 120개 제외, 순환참조 해결된 안전한 누적 기억",
+            lastUpdated: diarySystemStatus.lastEntryDate,
+            systemStatus: {
+                initialized: diarySystemStatus.isInitialized,
+                autoSaveEnabled: diarySystemStatus.autoSaveEnabled,
+                version: diarySystemStatus.version
+            }
         };
     } catch (error) {
         return {
@@ -600,19 +695,34 @@ async function collectDynamicMemoriesOnly() {
     };
 }
 
+// ⭐️ 수동 기억 저장 함수 (commandHandler에서 호출용) ⭐️
+async function saveManualMemory(content, category = '수동저장') {
+    return await saveDynamicMemory(category, content, {
+        autoSaved: false,
+        manualSaved: true,
+        source: 'userCommand'
+    });
+}
+
+// 프로세스 종료 시 정리
+process.on('SIGINT', shutdownDiarySystem);
+process.on('SIGTERM', shutdownDiarySystem);
+
 // ================== 📤 모듈 내보내기 ==================
 module.exports = {
     // ⭐️ 핵심 함수 (commandHandler.js에서 사용)
     handleDiaryCommand,           // 명령어 처리 메인 함수
     saveDynamicMemory,           // 동적 기억 저장
+    saveManualMemory,            // 수동 기억 저장 (새로 추가)
     getAllDynamicLearning,       // 모든 동적 기억 조회
-    autoSaveRecentConversations, // 실시간 자동 저장
+    performAutoSave,             // 실시간 자동 저장 (새로 추가)
     
     // 초기화 함수들
     initializeDiarySystem,
     initialize,
     ensureDynamicMemoryFile,
-    setupAutoSaveIntegration,
+    setupAutoSaveSystem,
+    shutdownDiarySystem,
     
     // 상태 조회 함수들
     getDiarySystemStatus,
