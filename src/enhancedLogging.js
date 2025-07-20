@@ -507,9 +507,9 @@ function getLineConflictThought(unifiedConflictManager) {
                 } catch (error) {
                     console.log(`[라인로그] 갈등 상태 확인 실패: ${error.message}`);
                 }
-            } else if (unifiedConflictManager.getConflictStatus) {
-                try {
-                    const conflictStatus = unifiedConflictManager.getConflictStatus();
+                } else if (unifiedConflictManager.getMukuConflictSystemStatus) {
+                    try {
+                        const conflictStatus = unifiedConflictManager.getMukuConflictSystemStatus();
                     conflictLevel = conflictStatus.currentLevel || 0;
                     
                     if (conflictStatus.isActive && conflictLevel > 0) {
