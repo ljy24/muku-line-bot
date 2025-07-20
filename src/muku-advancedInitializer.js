@@ -158,7 +158,7 @@ function synchronizeEmotionalSystems(modules) {
             
             // 갈등 시스템 실시간 상태 확인
             if (modules.unifiedConflictManager.getConflictStatus) {
-                const conflictStatus = modules.unifiedConflictManager.getConflictStatus();
+                const conflictStatus = modules.unifiedConflictManager.getMukuConflictSystemStatus();
                 console.log(`${colors.conflict}📊 [갈등 동기화] 현재 갈등 상태: 레벨 ${conflictStatus.currentLevel}, 활성: ${conflictStatus.isActive}${colors.reset}`);
             }
             
@@ -355,7 +355,7 @@ function generateSystemStatusReport(modules, initResults) {
         
         try {
             if (modules.unifiedConflictManager.getConflictStatus) {
-                const conflictStatus = modules.unifiedConflictManager.getConflictStatus();
+                const conflictStatus = modules.unifiedConflictManager.getMukuConflictSystemStatus();
                 console.log(`${colors.conflict}📊 [갈등 특별확인] 갈등 상태:`, conflictStatus);
                 console.log(`${colors.conflict}📊 [갈등 특별확인] 현재 레벨: ${conflictStatus.currentLevel}, 활성: ${conflictStatus.isActive}${colors.reset}`);
             } else if (modules.unifiedConflictManager.getStatus) {
