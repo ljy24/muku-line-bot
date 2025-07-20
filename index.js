@@ -1,7 +1,7 @@
 // ============================================================================
 // index.js - v14.3 MODULAR + PersonLearning + DiarySystem (일기장 시스템 통합)
 // ✅ 모든 로직을 muku-* 모듈들로 분리
-// 🧠 systemInitializer: 시스템 초기화
+// 🧠 muku-systemInitializer: 시스템 초기화 (⭐️ 파일명 수정됨!)
 // 📊 statusReporter: 상태 리포트
 // 🎯 eventProcessor: 이벤트 처리  
 // 🌐 routeHandlers: 웹 라우트
@@ -107,8 +107,8 @@ function getVersionResponse(command) {
     }
 }
 
-// 무쿠 모듈들 임포트
-const systemInitializer = require('./src/muku-systemInitializer');
+// ⭐️⭐️⭐️ [v14.3 수정됨] 무쿠 모듈들 임포트 - 파일명 변경! ⭐️⭐️⭐️
+const systemInitializer = require('./src/muku-systemInitializer');  // ⭐️ 변경됨!
 const statusReporter = require('./src/muku-statusReporter');
 const eventProcessor = require('./src/muku-eventProcessor');
 const routeHandlers = require('./src/muku-routeHandlers');
@@ -501,6 +501,7 @@ app.listen(PORT, async () => {
     console.log(`  👥 기존: 투샷 + 장소 기억 시스템`);
     console.log(`  🚨 이미지 처리 안전성 강화 (벙어리 방지)`);
     console.log(`  💖 모든 기능 100% 유지 + 확장`);
+    console.log(`  ⭐️ systemInitializer → muku-systemInitializer 변경`);
     console.log(`==================================================\n`);
 
     await initMuku();
