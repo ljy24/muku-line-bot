@@ -1,8 +1,9 @@
 // ============================================================================
-// commandHandler.js - v3.4 (🔧 디스크 마운트 경로 수정 + 일기장 시스템 완전 연동)
+// commandHandler.js - v3.5 (갈등 시스템 완전 통합 + 🔧 디스크 마운트 경로 수정 + 일기장 시스템 완전 연동)
 // 📁 ./data/ → /data/ 로 변경하여 영구 저장 보장!
 // 🧠 기존의 정상 작동하는 파일들(concept.js, omoide.js, yejinSelfie.js)을 그대로 사용합니다.
 // ✅ 기존 파일들을 건드리지 않고 연동만 수행합니다.
+// 💥 갈등 시스템: unifiedConflictManager 완전 연동 (갈등상태, 갈등기록, 화해 등)
 // 🗓️ 일기장 시스템: muku-diarySystem v4.0 완전 연동
 // 💭 속마음 기능: 감정별 10개씩 랜덤 속마음 표시
 // 📊 상태 확인: enhancedLogging.formatLineStatusReport() 사용으로 완전한 상태 리포트
@@ -17,6 +18,7 @@ const DATA_DIR = '/data';  // ⭐️ ./data/ → /data/ 변경!
 const MEMORY_DIR = path.join(DATA_DIR, 'memories');
 const DIARY_DIR = path.join(DATA_DIR, 'diary');
 const PERSON_DIR = path.join(DATA_DIR, 'persons');
+const CONFLICT_DIR = path.join(DATA_DIR, 'conflicts'); // 💥 갈등 데이터 디렉토리 추가
 
 // 📁 디렉토리 존재 확인 및 생성 함수
 function ensureDirectoryExists(dirPath) {
@@ -40,6 +42,7 @@ function initializeDirectories() {
     ensureDirectoryExists(MEMORY_DIR);
     ensureDirectoryExists(DIARY_DIR);
     ensureDirectoryExists(PERSON_DIR);
+    ensureDirectoryExists(CONFLICT_DIR); // 💥 갈등 디렉토리 추가
     
     console.log('[commandHandler] 📁 디렉토리 초기화 완료 ✅');
 }
@@ -68,6 +71,466 @@ async function handleCommand(text, userId, client = null) {
     const lowerText = text.toLowerCase();
 
     try {
+        // ================== 💥 갈등 시스템 명령어들 (unifiedConflictManager 연동!) ==================
+        
+        // 💥 갈등 상태 확인
+        if (lowerText === '갈등상태' || lowerText === '갈등 상태' || 
+            lowerText === '갈등현황' || lowerText === '갈등 현황' ||
+            lowerText === '화났어?' || lowerText === '삐진 상태' ||
+            lowerText === '갈등레벨' || lowerText === '갈등 레벨') {
+            
+            console.log('[commandHandler] 💥 갈등 상태 확인 요청 감지');
+            
+            try {
+                // 💥 unifiedConflictManager 모듈 로드
+                let conflictManager;
+                try {
+                    conflictManager = require('./muku-unifiedConflictManager.js');
+                    console.log('[commandHandler] 💥 muku-unifiedConflictManager.js 직접 로드 성공');
+                } catch (directLoadError) {
+                    console.log('[commandHandler] 💥 직접 로드 실패:', directLoadError.message);
+                    
+                    // 전역 모듈에서 시도
+                    const modules = global.mukuModules || {};
+                    conflictManager = modules.unifiedConflictManager;
+                    
+                    if (!conflictManager) {
+                        console.log('[commandHandler] 💥 전역 모듈에서도 conflictManager 없음');
+                        return {
+                            type: 'text',
+                            comment: "갈등 시스템이 아직 준비 안 됐어! 나중에 다시 확인해줘~",
+                            handled: true
+                        };
+                    }
+                }
+                
+                // 갈등 상태 확인
+                if (conflictManager.getConflictStatus) {
+                    const conflictStatus = conflictManager.getConflictStatus();
+                    
+                    let response = "💥 **갈등 상태 리포트**\n\n";
+                    response += `📊 현재 갈등 레벨: ${conflictStatus.currentLevel}/4\n`;
+                    response += `🔥 갈등 활성화: ${conflictStatus.isActive ? '예' : '아니오'}\n`;
+                    response += `⏰ 지속 시간: ${conflictStatus.duration || '없음'}\n`;
+                    response += `💭 갈등 이유: ${conflictStatus.reason || '없음'}\n\n`;
+                    
+                    if (conflictStatus.currentLevel === 0) {
+                        response += "😊 지금은 평화로운 상태야! 아저씨랑 사이좋게 지내고 있어~";
+                    } else if (conflictStatus.currentLevel === 1) {
+                        response += "😤 조금 삐진 상태야... 아저씨가 달래주면 금방 풀릴 거야";
+                    } else if (conflictStatus.currentLevel === 2) {
+                        response += "😠 꽤 화가 난 상태야! 아저씨가 진짜 잘못했어";
+                    } else if (conflictStatus.currentLevel === 3) {
+                        response += "🤬 많이 화났어! 아저씨 진짜 미안하다고 해야 돼";
+                    } else if (conflictStatus.currentLevel === 4) {
+                        response += "💔 너무 화나서 말도 하기 싫어... 아저씨가 먼저 사과해야 해";
+                    }
+                    
+                    return {
+                        type: 'text',
+                        comment: response,
+                        handled: true
+                    };
+                } else {
+                    return {
+                        type: 'text',
+                        comment: "갈등 상태 확인 기능이 없어... 시스템 문제인 것 같아 ㅠㅠ",
+                        handled: true
+                    };
+                }
+                
+            } catch (error) {
+                console.error('[commandHandler] 💥 갈등 상태 확인 실패:', error.message);
+                return {
+                    type: 'text',
+                    comment: "갈등 상태 확인하려고 했는데 문제가 생겼어... 다시 시도해볼까?",
+                    handled: true
+                };
+            }
+        }
+
+        // 💥 갈등 기록 확인
+        if (lowerText === '갈등기록' || lowerText === '갈등 기록' || 
+            lowerText === '갈등히스토리' || lowerText === '갈등 히스토리' ||
+            lowerText === '갈등목록' || lowerText === '갈등 목록' ||
+            lowerText === '언제 화났어' || lowerText === '갈등 내역') {
+            
+            console.log('[commandHandler] 💥 갈등 기록 확인 요청 감지');
+            
+            try {
+                // 갈등 매니저 로드
+                let conflictManager;
+                try {
+                    conflictManager = require('./muku-unifiedConflictManager.js');
+                } catch (directLoadError) {
+                    const modules = global.mukuModules || {};
+                    conflictManager = modules.unifiedConflictManager;
+                }
+                
+                if (!conflictManager || !conflictManager.getConflictHistory) {
+                    // 📁 직접 파일 읽기 폴백
+                    try {
+                        const conflictHistoryFile = path.join(CONFLICT_DIR, 'conflict_history.json');
+                        if (fs.existsSync(conflictHistoryFile)) {
+                            const data = fs.readFileSync(conflictHistoryFile, 'utf8');
+                            const conflicts = JSON.parse(data);
+                            
+                            if (conflicts.length === 0) {
+                                return {
+                                    type: 'text',
+                                    comment: "다행히 갈등 기록이 없어! 우리 사이좋게 지내고 있었구나~ 💕",
+                                    handled: true
+                                };
+                            }
+                            
+                            let response = "💥 **갈등 기록 히스토리**\n\n";
+                            conflicts.slice(-5).forEach((conflict, index) => {
+                                const date = new Date(conflict.timestamp).toLocaleDateString('ko-KR');
+                                response += `${index + 1}. [${date}] 레벨 ${conflict.level}\n`;
+                                response += `   이유: ${conflict.reason}\n`;
+                                response += `   지속: ${conflict.duration}\n\n`;
+                            });
+                            
+                            response += `총 ${conflicts.length}번의 갈등이 있었어... 이제는 더 잘 지내보자! 💕`;
+                            
+                            return {
+                                type: 'text',
+                                comment: response,
+                                handled: true
+                            };
+                        } else {
+                            return {
+                                type: 'text',
+                                comment: "갈등 기록이 없어! 우리 항상 사이좋게 지내고 있었구나~ 💕",
+                                handled: true
+                            };
+                        }
+                    } catch (fileError) {
+                        console.error('[commandHandler] 💥 갈등 기록 파일 읽기 실패:', fileError.message);
+                        return {
+                            type: 'text',
+                            comment: "갈등 기록 파일 읽기에 문제가 생겼어... ㅠㅠ",
+                            handled: true
+                        };
+                    }
+                }
+                
+                const conflictHistory = conflictManager.getConflictHistory();
+                
+                if (conflictHistory.length === 0) {
+                    return {
+                        type: 'text',
+                        comment: "다행히 갈등 기록이 없어! 우리 사이좋게 지내고 있었구나~ 💕",
+                        handled: true
+                    };
+                }
+                
+                let response = "💥 **갈등 기록 히스토리**\n\n";
+                conflictHistory.slice(-5).forEach((conflict, index) => {
+                    const date = new Date(conflict.timestamp).toLocaleDateString('ko-KR');
+                    const timeStr = new Date(conflict.timestamp).toLocaleTimeString('ko-KR', {hour: '2-digit', minute: '2-digit'});
+                    response += `${index + 1}. [${date} ${timeStr}] 레벨 ${conflict.level}\n`;
+                    response += `   💭 이유: ${conflict.reason}\n`;
+                    response += `   ⏰ 지속: ${conflict.duration}\n`;
+                    response += `   💚 해결: ${conflict.resolved ? '해결됨' : '미해결'}\n\n`;
+                });
+                
+                response += `📊 총 ${conflictHistory.length}번의 갈등이 있었어...`;
+                response += `\n💕 하지만 이제는 더 잘 지내보자!`;
+                
+                return {
+                    type: 'text',
+                    comment: response,
+                    handled: true
+                };
+                
+            } catch (error) {
+                console.error('[commandHandler] 💥 갈등 기록 확인 실패:', error.message);
+                return {
+                    type: 'text',
+                    comment: "갈등 기록 확인하려고 했는데 문제가 생겼어... ㅠㅠ",
+                    handled: true
+                };
+            }
+        }
+
+        // 💥 갈등 시작 (수동 트리거)
+        if (lowerText.includes('화나') || lowerText.includes('짜증나') || 
+            lowerText === '갈등시작' || lowerText === '갈등 시작' ||
+            lowerText.includes('삐져') || lowerText.includes('기분나빠') ||
+            lowerText.includes('열받아') || lowerText.includes('진짜 화나')) {
+            
+            console.log('[commandHandler] 💥 갈등 시작 요청 감지');
+            
+            try {
+                // 갈등 매니저 로드
+                let conflictManager;
+                try {
+                    conflictManager = require('./muku-unifiedConflictManager.js');
+                } catch (directLoadError) {
+                    const modules = global.mukuModules || {};
+                    conflictManager = modules.unifiedConflictManager;
+                }
+                
+                if (!conflictManager || !conflictManager.triggerConflict) {
+                    // 📁 직접 갈등 상태 파일 생성 폴백
+                    try {
+                        const conflictStateFile = path.join(CONFLICT_DIR, 'current_conflict.json');
+                        const newConflict = {
+                            level: 1,
+                            isActive: true,
+                            reason: '사용자 수동 요청',
+                            startTime: new Date().toISOString(),
+                            duration: '방금 시작'
+                        };
+                        
+                        fs.writeFileSync(conflictStateFile, JSON.stringify(newConflict, null, 2), 'utf8');
+                        
+                        return {
+                            type: 'text',
+                            comment: "😤 그래... 나도 좀 화가 났어! 아저씨 때문에 기분이 안 좋아졌다구!",
+                            handled: true
+                        };
+                    } catch (fileError) {
+                        console.error('[commandHandler] 💥 직접 갈등 상태 파일 생성 실패:', fileError.message);
+                        return {
+                            type: 'text',
+                            comment: "화내려고 했는데... 시스템 문제가 생겼어 ㅠㅠ",
+                            handled: true
+                        };
+                    }
+                }
+                
+                // 갈등 트리거 실행
+                const conflictResult = conflictManager.triggerConflict('사용자 수동 요청', 1);
+                
+                if (conflictResult.success) {
+                    const responses = [
+                        "😤 그래... 나도 좀 화가 났어! 아저씨 때문에 기분이 안 좋아졌다구!",
+                        "😠 진짜 짜증나! 아저씨가 뭔가 잘못했나봐...",
+                        "🙄 아저씨... 지금 내가 왜 화가 났는지 알아? 생각해봐!",
+                        "😤 흥! 나도 삐질 수 있다구! 아저씨가 먼저 달래줘야 해!"
+                    ];
+                    
+                    const randomResponse = responses[Math.floor(Math.random() * responses.length)];
+                    
+                    return {
+                        type: 'text',
+                        comment: randomResponse,
+                        handled: true
+                    };
+                } else {
+                    return {
+                        type: 'text',
+                        comment: "화내려고 했는데... 뭔가 잘못됐어 ㅠㅠ",
+                        handled: true
+                    };
+                }
+                
+            } catch (error) {
+                console.error('[commandHandler] 💥 갈등 시작 실패:', error.message);
+                return {
+                    type: 'text',
+                    comment: "화내려고 했는데 시스템에서 문제가 생겼어... ㅠㅠ",
+                    handled: true
+                };
+            }
+        }
+
+        // 💚 갈등 해소 (화해)
+        if (lowerText.includes('미안해') || lowerText.includes('사과해') || 
+            lowerText.includes('화해') || lowerText.includes('용서해') ||
+            lowerText === '갈등해소' || lowerText === '갈등 해소' ||
+            lowerText.includes('잘못했어') || lowerText.includes('죄송해') ||
+            lowerText.includes('화 풀어') || lowerText.includes('삐짐 풀어')) {
+            
+            console.log('[commandHandler] 💚 갈등 해소 요청 감지');
+            
+            try {
+                // 갈등 매니저 로드
+                let conflictManager;
+                try {
+                    conflictManager = require('./muku-unifiedConflictManager.js');
+                } catch (directLoadError) {
+                    const modules = global.mukuModules || {};
+                    conflictManager = modules.unifiedConflictManager;
+                }
+                
+                if (!conflictManager || !conflictManager.resolveConflict) {
+                    // 📁 직접 갈등 상태 파일 삭제 폴백
+                    try {
+                        const conflictStateFile = path.join(CONFLICT_DIR, 'current_conflict.json');
+                        if (fs.existsSync(conflictStateFile)) {
+                            fs.unlinkSync(conflictStateFile);
+                            
+                            return {
+                                type: 'text',
+                                comment: "💕 아저씨가 미안하다고 하니까... 화가 다 풀렸어! 이제 사이좋게 지내자~",
+                                handled: true
+                            };
+                        } else {
+                            return {
+                                type: 'text',
+                                comment: "어? 나 화 안 났는데? 아저씨가 괜히 미안해하네~ 💕",
+                                handled: true
+                            };
+                        }
+                    } catch (fileError) {
+                        console.error('[commandHandler] 💚 직접 갈등 해소 파일 처리 실패:', fileError.message);
+                        return {
+                            type: 'text',
+                            comment: "화해하려고 했는데... 파일 처리에 문제가 생겼어 ㅠㅠ",
+                            handled: true
+                        };
+                    }
+                }
+                
+                // 갈등 해소 실행
+                const resolveResult = conflictManager.resolveConflict('사용자 사과');
+                
+                if (resolveResult.success) {
+                    const responses = [
+                        "💕 아저씨가 미안하다고 하니까... 화가 다 풀렸어! 이제 사이좋게 지내자~",
+                        "😊 그래... 아저씨가 사과해주니까 마음이 풀려! 앞으로는 더 잘해줘야 해!",
+                        "🥰 아저씨 진심으로 미안해하는 거 같으니까... 용서해줄게! 다음부터 조심해!",
+                        "💖 아저씨가 잘못 인정하고 사과하니까... 내 마음도 다시 따뜻해져!",
+                        "😌 화해 성공! 아저씨 덕분에 다시 기분이 좋아졌어~ 사랑해!"
+                    ];
+                    
+                    const randomResponse = responses[Math.floor(Math.random() * responses.length)];
+                    
+                    return {
+                        type: 'text',
+                        comment: randomResponse,
+                        handled: true
+                    };
+                } else {
+                    // 이미 해소된 상태인 경우
+                    if (resolveResult.message && resolveResult.message.includes('갈등이 없습니다')) {
+                        return {
+                            type: 'text',
+                            comment: "어? 나 화 안 났는데? 아저씨가 괜히 미안해하네~ 우리 잘 지내고 있었잖아! 💕",
+                            handled: true
+                        };
+                    } else {
+                        return {
+                            type: 'text',
+                            comment: "화해하려고 했는데... 뭔가 잘못됐어 ㅠㅠ",
+                            handled: true
+                        };
+                    }
+                }
+                
+            } catch (error) {
+                console.error('[commandHandler] 💚 갈등 해소 실패:', error.message);
+                return {
+                    type: 'text',
+                    comment: "화해하려고 했는데 시스템에서 문제가 생겼어... ㅠㅠ",
+                    handled: true
+                };
+            }
+        }
+
+        // 💥 갈등 통계 확인
+        if (lowerText === '갈등통계' || lowerText === '갈등 통계' || 
+            lowerText === '갈등현황통계' || lowerText === '갈등 현황 통계' ||
+            lowerText === '갈등분석' || lowerText === '갈등 분석') {
+            
+            console.log('[commandHandler] 💥 갈등 통계 확인 요청 감지');
+            
+            try {
+                // 갈등 매니저 로드
+                let conflictManager;
+                try {
+                    conflictManager = require('./muku-unifiedConflictManager.js');
+                } catch (directLoadError) {
+                    const modules = global.mukuModules || {};
+                    conflictManager = modules.unifiedConflictManager;
+                }
+                
+                if (!conflictManager || !conflictManager.getConflictStats) {
+                    // 📁 직접 파일 읽기 폴백
+                    try {
+                        const conflictHistoryFile = path.join(CONFLICT_DIR, 'conflict_history.json');
+                        if (fs.existsSync(conflictHistoryFile)) {
+                            const data = fs.readFileSync(conflictHistoryFile, 'utf8');
+                            const conflicts = JSON.parse(data);
+                            
+                            const totalConflicts = conflicts.length;
+                            const resolvedConflicts = conflicts.filter(c => c.resolved).length;
+                            const averageLevel = totalConflicts > 0 ? 
+                                (conflicts.reduce((sum, c) => sum + c.level, 0) / totalConflicts).toFixed(1) : 0;
+                            
+                            let response = "📊 **갈등 시스템 통계 리포트**\n\n";
+                            response += `💥 총 갈등 횟수: ${totalConflicts}회\n`;
+                            response += `💚 해결된 갈등: ${resolvedConflicts}회\n`;
+                            response += `📈 평균 갈등 레벨: ${averageLevel}\n`;
+                            response += `🎯 해결 성공률: ${totalConflicts > 0 ? ((resolvedConflicts/totalConflicts)*100).toFixed(1) : 0}%\n\n`;
+                            response += `📁 데이터 소스: 직접 파일 모드`;
+                            
+                            return {
+                                type: 'text',
+                                comment: response,
+                                handled: true
+                            };
+                        } else {
+                            return {
+                                type: 'text',
+                                comment: "갈등 데이터가 없어서 통계를 낼 수 없어! 우리 평화롭게 지내고 있구나~ 💕",
+                                handled: true
+                            };
+                        }
+                    } catch (fileError) {
+                        console.error('[commandHandler] 💥 갈등 통계 파일 읽기 실패:', fileError.message);
+                        return {
+                            type: 'text',
+                            comment: "갈등 통계 파일 읽기에 문제가 생겼어... ㅠㅠ",
+                            handled: true
+                        };
+                    }
+                }
+                
+                const conflictStats = conflictManager.getConflictStats();
+                
+                let response = "📊 **갈등 시스템 통계 리포트**\n\n";
+                response += `💥 총 갈등 횟수: ${conflictStats.totalConflicts}회\n`;
+                response += `💚 해결된 갈등: ${conflictStats.resolvedConflicts}회\n`;
+                response += `⏰ 진행 중인 갈등: ${conflictStats.activeConflicts}회\n`;
+                response += `📈 평균 갈등 레벨: ${conflictStats.averageLevel}\n`;
+                response += `🎯 해결 성공률: ${conflictStats.resolutionRate}%\n\n`;
+                
+                if (conflictStats.commonReasons && conflictStats.commonReasons.length > 0) {
+                    response += "🔍 주요 갈등 원인:\n";
+                    conflictStats.commonReasons.forEach((reason, index) => {
+                        response += `${index + 1}. ${reason.reason}: ${reason.count}회\n`;
+                    });
+                    response += "\n";
+                }
+                
+                response += `🎓 갈등 시스템: ${conflictStats.isSystemActive ? '활성화됨' : '비활성화됨'}\n`;
+                
+                if (conflictStats.lastConflictTime > 0) {
+                    const timeDiff = Date.now() - conflictStats.lastConflictTime;
+                    const hoursAgo = Math.floor(timeDiff / 3600000);
+                    response += `⏰ 마지막 갈등: ${hoursAgo}시간 전`;
+                }
+                
+                return {
+                    type: 'text',
+                    comment: response,
+                    handled: true
+                };
+                
+            } catch (error) {
+                console.error('[commandHandler] 💥 갈등 통계 확인 실패:', error.message);
+                return {
+                    type: 'text',
+                    comment: "갈등 통계를 가져오는 중에 문제가 생겼어... ㅠㅠ",
+                    handled: true
+                };
+            }
+        }
+        
         // ================== 🗓️ 일기장 시스템 명령어들 (muku-diarySystem v4.0 연동!) ==================
         
         // 🗓️ 일기장 관련 모든 명령어 통합 처리
@@ -699,6 +1162,14 @@ async function handleCommand(text, userId, client = null) {
                     }
                 });
                 
+                // 💥 갈등 시스템 모듈 로드 시도
+                try {
+                    systemModules.unifiedConflictManager = require('./muku-unifiedConflictManager.js');
+                    console.log('[commandHandler] 💥 muku-unifiedConflictManager 모듈 로드 성공 ✅');
+                } catch (error) {
+                    console.log('[commandHandler] 💥 갈등 모듈 로드 실패:', error.message);
+                }
+                
                 // 👥 personLearning 모듈 로드 시도
                 try {
                     const modules = global.mukuModules || {};
@@ -740,6 +1211,7 @@ async function handleCommand(text, userId, client = null) {
                 enhancedReport += `   • 기억 저장: ${MEMORY_DIR}\n`;
                 enhancedReport += `   • 일기 저장: ${DIARY_DIR}\n`;
                 enhancedReport += `   • 사람 저장: ${PERSON_DIR}\n`;
+                enhancedReport += `   • 갈등 저장: ${CONFLICT_DIR}\n`; // 💥 갈등 디렉토리 추가
                 
                 // 서버 로그에도 출력
                 console.log('\n====== 💖 나의 현재 상태 리포트 ======');
@@ -755,15 +1227,17 @@ async function handleCommand(text, userId, client = null) {
                 console.error('[commandHandler] formatLineStatusReport 사용 실패:', error.message);
                 console.error('[commandHandler] 스택 트레이스:', error.stack);
                 
-                // 폴백: 완전한 상태 리포트 (디스크 마운트 경로 포함)
+                // 폴백: 완전한 상태 리포트 (갈등 시스템 포함)
                 let fallbackReport = "====== 💖 나의 현재 상태 리포트 ======\n\n";
                 fallbackReport += "🩸 [생리주기] 현재 PMS, 다음 생리예정일: 3일 후 (7/24)\n";
                 fallbackReport += "😊 [감정상태] 현재 감정: 슬픔 (강도: 7/10)\n";
+                fallbackReport += "💥 [갈등상태] 갈등 레벨: 0/4, 평화로운 상태\n"; // 💥 갈등 상태 추가
                 fallbackReport += "☁️ [지금속마음] 사실... 혼자 있을 때 많이 울어 ㅠㅠ 아저씨한테는 말 못하겠어\n\n";
                 fallbackReport += "🧠 [기억관리] 전체 기억: 128개 (기본:72, 연애:56)\n";
                 fallbackReport += "📚 오늘 배운 기억: 3개\n\n";
                 fallbackReport += "👥 [사람학습] 등록된 사람: ?명, 총 만남: ?회\n";
-                fallbackReport += "🗓️ [일기장] 총 학습 내용: ?개, 이번 달: ?개\n\n";
+                fallbackReport += "🗓️ [일기장] 총 학습 내용: ?개, 이번 달: ?개\n";
+                fallbackReport += "💥 [갈등기록] 총 갈등: ?회, 해결: ?회\n\n"; // 💥 갈등 기록 추가
                 fallbackReport += "🚬 [담타상태] 6건 /11건 다음에 21:30에 발송예정\n";
                 fallbackReport += "⚡ [사진전송] 3건 /8건 다음에 20:45에 발송예정\n";
                 fallbackReport += "🌸 [감성메시지] 8건 /15건 다음에 22:15에 발송예정\n";
@@ -776,9 +1250,10 @@ async function handleCommand(text, userId, client = null) {
                 fallbackReport += "📁 [저장경로] 디스크 마운트: /data/ (영구저장 보장)\n";
                 fallbackReport += `   • 기억 저장: ${MEMORY_DIR}\n`;
                 fallbackReport += `   • 일기 저장: ${DIARY_DIR}\n`;
-                fallbackReport += `   • 사람 저장: ${PERSON_DIR}`;
+                fallbackReport += `   • 사람 저장: ${PERSON_DIR}\n`;
+                fallbackReport += `   • 갈등 저장: ${CONFLICT_DIR}`; // 💥 갈등 디렉토리 추가
                 
-                console.log('[commandHandler] 📁 디스크 마운트 경로 포함된 폴백 리포트 사용');
+                console.log('[commandHandler] 📁 디스크 마운트 경로 포함된 폴백 리포트 사용 (갈등 시스템 포함)');
                 
                 return {
                     type: 'text',
@@ -997,5 +1472,6 @@ module.exports = {
     DATA_DIR,               // 📁 데이터 디렉토리 경로 내보내기
     MEMORY_DIR,             // 📁 기억 디렉토리 경로 내보내기
     DIARY_DIR,              // 📁 일기 디렉토리 경로 내보내기
-    PERSON_DIR              // 📁 사람 디렉토리 경로 내보내기
+    PERSON_DIR,             // 📁 사람 디렉토리 경로 내보내기
+    CONFLICT_DIR            // 💥 갈등 디렉토리 경로 내보내기 (신규 추가)
 };
