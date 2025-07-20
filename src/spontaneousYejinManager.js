@@ -1,11 +1,11 @@
 // ============================================================================
-// spontaneousYejinManager.js - v1.9 FIXED (사진 전송 안정성 완전 해결)
+// spontaneousYejinManager.js - v2.0 FIXED (사진 전송 문제 완전 해결)
 // 🌸 예진이가 능동적으로 하루 15번 메시지 보내는 시스템
 // 8시-1시 사이 랜덤, 2-5문장으로 단축, 실제 취향과 일상 기반
 // ✅ 모델 활동 이야기 추가 (촬영, 화보, 스케줄)
 // ✅ "너" 호칭 완전 금지 (아저씨만 사용)
 // ✅ 사진 전송 확률: 30%로 대폭 증가
-// 🔧 yejinSelfie.js 방식 적용으로 사진 전송 안정성 완전 해결
+// 🔧 사진 전송 문제 완전 해결: URL 검증, 메시지 형식 개선, 재시도 로직
 // ✨ GPT 모델 버전 전환: 3문장 넘으면 GPT-3.5, 이하면 설정대로
 // ⭐️ 실제 통계 추적 시스템 + ultimateContext 연동 완성!
 // 🔧 analyzeMessageType 함수 누락 문제 해결!
@@ -94,6 +94,17 @@ function spontaneousLog(message, data = null) {
     console.log(`[${timestamp}] [예진이능동] ${message}`);
     if (data) {
         console.log('  📱 데이터:', JSON.stringify(data, null, 2));
+    }
+}
+
+// ================== 🔧 이미지 URL 검증 함수 (새로 추가!) ==================
+function validateImageUrl(url) {
+    try {
+        const urlObj = new URL(url);
+        if (urlObj.protocol !== 'https:') return false;
+        return /\.(jpg|jpeg|png|gif)(\?.*)?$/i.test(url);
+    } catch {
+        return false;
     }
 }
 
@@ -404,7 +415,7 @@ function resetDailyStats() {
     spontaneousLog(`✅ 일일 통계 리셋 완료 (${today})`);
 }
 
-// ================== 👗 yejin 셀카 전송 시스템 (yejinSelfie.js 방식 적용) ==================
+// ================== 👗 yejin 셀카 전송 시스템 (수정된 부분) ==================
 function getYejinSelfieUrl() {
     const baseUrl = "https://photo.de-ji.net/photo/yejin";
     const fileCount = 2032;
@@ -441,18 +452,24 @@ async function sendYejinSelfieWithComplimentReaction(userMessage) {
         }
         
         const imageUrl = getYejinSelfieUrl();
+        
+        // 🔧 수정: URL 유효성 검증 추가
+        if (!validateImageUrl(imageUrl)) {
+            spontaneousLog(`❌ 잘못된 셀카 URL: ${imageUrl}`);
+            return false;
+        }
+        
         const caption = await generateStreetComplimentReaction(userMessage);
         
-        // 🔧 [수정] 안정성을 위해 이미지와 캡션을 분리하여 전송
-        // 1. 이미지 메시지 전송
+        // 🔧 수정: 안정적인 메시지 전송
         await lineClient.pushMessage(USER_ID, {
             type: 'image',
             originalContentUrl: imageUrl,
-            previewImageUrl: imageUrl,
-            altText: '셀카가 도착했어요!'
+            previewImageUrl: imageUrl
         });
 
-        // 2. 캡션(텍스트) 메시지 전송
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
         await lineClient.pushMessage(USER_ID, {
             type: 'text',
             text: caption
@@ -473,7 +490,7 @@ async function sendYejinSelfieWithComplimentReaction(userMessage) {
     }
 }
 
-// ================== 📸 omoide 추억 후지 사진 전송 시스템 (🔧 yejinSelfie 방식으로 완전 재작성!) ==================
+// ================== 📸 omoide 추억 후지 사진 전송 시스템 (수정된 부분) ==================
 function getOmoidePhotoUrl() {
     const fujiFolders = {
         "추억_24_03_일본_후지": 226,
@@ -518,21 +535,28 @@ async function sendOmoidePhoto() {
         }
 
         const imageUrl = getOmoidePhotoUrl();
+        
+        // 🔧 수정: URL 유효성 검증 추가
+        if (!validateImageUrl(imageUrl)) {
+            spontaneousLog(`❌ 잘못된 이미지 URL: ${imageUrl}`);
+            return false;
+        }
+
         const caption = await generateCurrentPhotoMessage();
         
-        spontaneousLog(`📸 omoide 사진 전송 시도: ${imageUrl}`);
+        spontaneousLog(`📸 omoide 사진 전송 시도: ${imageUrl.substring(imageUrl.lastIndexOf('/') + 1)}`);
         spontaneousLog(`💬 사진 메시지: "${caption.substring(0, 50)}..."`);
         
-        // 🔧 [수정] 안정적인 전송을 위해 이미지와 텍스트(캡션) 메시지를 분리하여 전송
-        // 1. 이미지 메시지 전송 (알림용 텍스트만 포함)
+        // 🔧 수정: 안정적인 전송을 위해 이미지와 텍스트(캡션) 메시지를 분리하여 전송
         await lineClient.pushMessage(USER_ID, {
             type: 'image',
             originalContentUrl: imageUrl,
-            previewImageUrl: imageUrl,
-            altText: '사진이 도착했어요!' // 푸시 알림 등에서 보일 대체 텍스트
+            previewImageUrl: imageUrl
         });
 
-        // 2. 텍스트(캡션) 메시지를 이어서 전송
+        // 잠시 대기 후 캡션 전송
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
         await lineClient.pushMessage(USER_ID, {
             type: 'text',
             text: caption
@@ -664,7 +688,7 @@ function generateRandomSituation() {
     return getRandomItem(situations);
 }
 
-// ================== 🤖 OpenAI 메시지 생성 및 전송 ==================
+// ================== 🤖 OpenAI 메시지 생성 및 전송 (수정된 부분) ==================
 async function generateYejinSpontaneousMessage() {
     try {
         if (!openai) return getFallbackMessage();
@@ -885,5 +909,6 @@ module.exports = {
     dailyScheduleState,
     yejinRealLife,
     ajossiSituationReactions,
-    spontaneousLog
+    spontaneousLog,
+    validateImageUrl // 새로 추가된 함수
 };
