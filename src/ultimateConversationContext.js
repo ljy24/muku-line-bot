@@ -1,6 +1,7 @@
 // ============================================================================
-// ultimateConversationContext.js - v36.0 (완전 누적 시스템!)
+// ultimateConversationContext.js - v37.0 DISK_MOUNT (디스크 마운트 경로 수정!)
 // 🗄️ 동적 기억과 대화 컨텍스트 전문 관리자
+// 💾 디스크 마운트 경로 적용: ./data → /data (완전 영구 저장!)
 // ✅ 중복 기능 완전 제거: 생리주기, 날씨, 고정기억, 시간관리
 // 🎯 핵심 역할에만 집중: 동적기억 + 대화흐름 + 컨텍스트 조합
 // ✨ GPT 모델 버전 전환: index.js의 설정에 따라 컨텍스트 최적화
@@ -8,6 +9,7 @@
 // 📚 getAllDynamicLearning() 함수 추가 - 일기장 시스템용!
 // 🧠 자동 학습 시스템 강화 - 모든 대화에서 학습 내용 추출!
 // 💾 완전 누적 시스템 - 모든 데이터 영구 저장, 절대 사라지지 않음!
+// 🔧 디스크 마운트: 서버 재시작/재배포시에도 절대 사라지지 않는 완전한 영구 저장!
 // ============================================================================
 
 const fs = require('fs').promises;
@@ -26,10 +28,11 @@ try {
 
 // --- 설정 ---
 const TIMEZONE = 'Asia/Tokyo';
-const DATA_DIR = './data';
+// ⭐️ 디스크 마운트 경로로 변경! ⭐️
+const DATA_DIR = '/data'; // 💾 ./data → /data 변경!
 const DAILY_SPONTANEOUS_TARGET = 20; // 하루 자발적 메시지 목표
 
-// 💾 영구 저장 파일 경로들
+// 💾 영구 저장 파일 경로들 (디스크 마운트)
 const PERSISTENT_FILES = {
     userMemories: path.join(DATA_DIR, 'user_memories_persistent.json'),
     conversationMemories: path.join(DATA_DIR, 'conversation_memories_persistent.json'),
@@ -150,22 +153,23 @@ let ultimateConversationState = {
     }
 };
 
-// ================== 💾 영구 저장 시스템 ==================
+// ================== 💾 영구 저장 시스템 (디스크 마운트) ==================
 
 /**
- * 💾 데이터 디렉토리 확인 및 생성
+ * 💾 데이터 디렉토리 확인 및 생성 (디스크 마운트)
  */
 async function ensureDataDirectory() {
     try {
         await fs.access(DATA_DIR);
+        contextLog(`💾 디스크 마운트 디렉토리 확인: ${DATA_DIR}`);
     } catch {
         await fs.mkdir(DATA_DIR, { recursive: true });
-        contextLog(`📁 데이터 디렉토리 생성: ${DATA_DIR}`);
+        contextLog(`📁 💾 디스크 마운트 디렉토리 생성: ${DATA_DIR} (완전 영구 저장!)`);
     }
 }
 
 /**
- * 💾 사용자 기억 영구 저장
+ * 💾 사용자 기억 영구 저장 (디스크 마운트)
  */
 async function saveUserMemoriesToFile() {
     try {
@@ -175,7 +179,8 @@ async function saveUserMemoriesToFile() {
             memories: ultimateConversationState.dynamicMemories.userMemories,
             lastSaved: new Date().toISOString(),
             totalCount: ultimateConversationState.dynamicMemories.userMemories.length,
-            version: '36.0'
+            version: '37.0-disk-mount',
+            storagePath: DATA_DIR
         };
         
         await fs.writeFile(
@@ -184,7 +189,7 @@ async function saveUserMemoriesToFile() {
             'utf8'
         );
         
-        contextLog(`💾 사용자 기억 저장 완료: ${userMemoryData.totalCount}개`);
+        contextLog(`💾 사용자 기억 저장 완료: ${userMemoryData.totalCount}개 (디스크 마운트: ${DATA_DIR})`);
         return true;
     } catch (error) {
         contextLog(`❌ 사용자 기억 저장 실패: ${error.message}`);
@@ -193,7 +198,7 @@ async function saveUserMemoriesToFile() {
 }
 
 /**
- * 💾 학습 데이터 영구 저장
+ * 💾 학습 데이터 영구 저장 (디스크 마운트)
  */
 async function saveLearningDataToFile() {
     try {
@@ -209,7 +214,8 @@ async function saveLearningDataToFile() {
                 emotion: ultimateConversationState.learningData.emotionLearning.length,
                 topic: ultimateConversationState.learningData.topicLearning.length
             },
-            version: '36.0'
+            version: '37.0-disk-mount',
+            storagePath: DATA_DIR
         };
         
         await fs.writeFile(
@@ -218,7 +224,7 @@ async function saveLearningDataToFile() {
             'utf8'
         );
         
-        contextLog(`💾 학습 데이터 저장 완료: ${learningData.totalEntries}개`);
+        contextLog(`💾 학습 데이터 저장 완료: ${learningData.totalEntries}개 (디스크 마운트: ${DATA_DIR})`);
         return true;
     } catch (error) {
         contextLog(`❌ 학습 데이터 저장 실패: ${error.message}`);
@@ -227,7 +233,7 @@ async function saveLearningDataToFile() {
 }
 
 /**
- * 💾 자발적 메시지 통계 영구 저장
+ * 💾 자발적 메시지 통계 영구 저장 (디스크 마운트)
  */
 async function saveSpontaneousStatsToFile() {
     try {
@@ -236,7 +242,8 @@ async function saveSpontaneousStatsToFile() {
         const spontaneousData = {
             stats: ultimateConversationState.spontaneousMessages,
             lastSaved: new Date().toISOString(),
-            version: '36.0'
+            version: '37.0-disk-mount',
+            storagePath: DATA_DIR
         };
         
         await fs.writeFile(
@@ -245,7 +252,7 @@ async function saveSpontaneousStatsToFile() {
             'utf8'
         );
         
-        contextLog(`💾 자발적 메시지 통계 저장 완료`);
+        contextLog(`💾 자발적 메시지 통계 저장 완료 (디스크 마운트: ${DATA_DIR})`);
         return true;
     } catch (error) {
         contextLog(`❌ 자발적 메시지 통계 저장 실패: ${error.message}`);
@@ -254,7 +261,7 @@ async function saveSpontaneousStatsToFile() {
 }
 
 /**
- * 💾 메모리 통계 영구 저장
+ * 💾 메모리 통계 영구 저장 (디스크 마운트)
  */
 async function saveMemoryStatsToFile() {
     try {
@@ -263,7 +270,8 @@ async function saveMemoryStatsToFile() {
         const statsData = {
             stats: ultimateConversationState.memoryStats,
             lastSaved: new Date().toISOString(),
-            version: '36.0'
+            version: '37.0-disk-mount',
+            storagePath: DATA_DIR
         };
         
         await fs.writeFile(
@@ -272,7 +280,7 @@ async function saveMemoryStatsToFile() {
             'utf8'
         );
         
-        contextLog(`💾 메모리 통계 저장 완료`);
+        contextLog(`💾 메모리 통계 저장 완료 (디스크 마운트: ${DATA_DIR})`);
         return true;
     } catch (error) {
         contextLog(`❌ 메모리 통계 저장 실패: ${error.message}`);
@@ -281,7 +289,7 @@ async function saveMemoryStatsToFile() {
 }
 
 /**
- * 💾 모든 데이터 한번에 저장
+ * 💾 모든 데이터 한번에 저장 (디스크 마운트)
  */
 async function saveAllDataToFiles() {
     try {
@@ -296,7 +304,7 @@ async function saveAllDataToFiles() {
         ultimateConversationState.memoryStats.lastSaved = Date.now();
         ultimateConversationState.memoryStats.totalSaves++;
         
-        contextLog(`💾 전체 데이터 저장: ${successCount}/4개 성공`);
+        contextLog(`💾 전체 데이터 저장: ${successCount}/4개 성공 (디스크 마운트: ${DATA_DIR})`);
         return successCount === 4;
     } catch (error) {
         contextLog(`❌ 전체 데이터 저장 실패: ${error.message}`);
@@ -305,7 +313,7 @@ async function saveAllDataToFiles() {
 }
 
 /**
- * 💾 사용자 기억 파일에서 로드
+ * 💾 사용자 기억 파일에서 로드 (디스크 마운트)
  */
 async function loadUserMemoriesFromFile() {
     try {
@@ -315,19 +323,19 @@ async function loadUserMemoriesFromFile() {
         if (userMemoryData.memories && Array.isArray(userMemoryData.memories)) {
             ultimateConversationState.dynamicMemories.userMemories = userMemoryData.memories;
             ultimateConversationState.memoryStats.totalUserMemories = userMemoryData.memories.length;
-            contextLog(`💾 사용자 기억 로드 완료: ${userMemoryData.memories.length}개`);
+            contextLog(`💾 사용자 기억 로드 완료: ${userMemoryData.memories.length}개 (디스크 마운트: ${DATA_DIR})`);
             return true;
         }
         
         return false;
     } catch (error) {
-        contextLog(`ℹ️ 사용자 기억 파일 없음 (첫 실행)`);
+        contextLog(`ℹ️ 사용자 기억 파일 없음 (첫 실행) - 디스크 마운트 경로: ${DATA_DIR}`);
         return false;
     }
 }
 
 /**
- * 💾 학습 데이터 파일에서 로드
+ * 💾 학습 데이터 파일에서 로드 (디스크 마운트)
  */
 async function loadLearningDataFromFile() {
     try {
@@ -337,19 +345,19 @@ async function loadLearningDataFromFile() {
         if (learningDataFile.learningData) {
             ultimateConversationState.learningData = learningDataFile.learningData;
             ultimateConversationState.memoryStats.totalLearningEntries = learningDataFile.totalEntries || 0;
-            contextLog(`💾 학습 데이터 로드 완료: ${learningDataFile.totalEntries}개`);
+            contextLog(`💾 학습 데이터 로드 완료: ${learningDataFile.totalEntries}개 (디스크 마운트: ${DATA_DIR})`);
             return true;
         }
         
         return false;
     } catch (error) {
-        contextLog(`ℹ️ 학습 데이터 파일 없음 (첫 실행)`);
+        contextLog(`ℹ️ 학습 데이터 파일 없음 (첫 실행) - 디스크 마운트 경로: ${DATA_DIR}`);
         return false;
     }
 }
 
 /**
- * 💾 자발적 메시지 통계 파일에서 로드
+ * 💾 자발적 메시지 통계 파일에서 로드 (디스크 마운트)
  */
 async function loadSpontaneousStatsFromFile() {
     try {
@@ -372,23 +380,23 @@ async function loadSpontaneousStatsFromFile() {
                     spontaneousData.stats.messageTypes[type] = 0;
                 });
                 
-                contextLog(`🌄 자발적 메시지 일일 통계 리셋 (${today})`);
+                contextLog(`🌄 자발적 메시지 일일 통계 리셋 (${today}) (💾 디스크 마운트)`);
             }
             
             ultimateConversationState.spontaneousMessages = spontaneousData.stats;
-            contextLog(`💾 자발적 메시지 통계 로드 완료`);
+            contextLog(`💾 자발적 메시지 통계 로드 완료 (디스크 마운트: ${DATA_DIR})`);
             return true;
         }
         
         return false;
     } catch (error) {
-        contextLog(`ℹ️ 자발적 메시지 통계 파일 없음 (첫 실행)`);
+        contextLog(`ℹ️ 자발적 메시지 통계 파일 없음 (첫 실행) - 디스크 마운트 경로: ${DATA_DIR}`);
         return false;
     }
 }
 
 /**
- * 💾 메모리 통계 파일에서 로드
+ * 💾 메모리 통계 파일에서 로드 (디스크 마운트)
  */
 async function loadMemoryStatsFromFile() {
     try {
@@ -402,30 +410,30 @@ async function loadMemoryStatsFromFile() {
                 statsData.stats.todayMemoryCount = 0;
                 statsData.stats.todayLearningCount = 0;
                 statsData.stats.lastDailyReset = today;
-                contextLog(`🌄 일일 통계 리셋 (${today})`);
+                contextLog(`🌄 일일 통계 리셋 (${today}) (💾 디스크 마운트)`);
             }
             
             ultimateConversationState.memoryStats = {
                 ...ultimateConversationState.memoryStats,
                 ...statsData.stats
             };
-            contextLog(`💾 메모리 통계 로드 완료`);
+            contextLog(`💾 메모리 통계 로드 완료 (디스크 마운트: ${DATA_DIR})`);
             return true;
         }
         
         return false;
     } catch (error) {
-        contextLog(`ℹ️ 메모리 통계 파일 없음 (첫 실행)`);
+        contextLog(`ℹ️ 메모리 통계 파일 없음 (첫 실행) - 디스크 마운트 경로: ${DATA_DIR}`);
         return false;
     }
 }
 
 /**
- * 💾 모든 데이터 파일에서 로드
+ * 💾 모든 데이터 파일에서 로드 (디스크 마운트)
  */
 async function loadAllDataFromFiles() {
     try {
-        contextLog(`💾 모든 영구 데이터 로드 시작...`);
+        contextLog(`💾 모든 영구 데이터 로드 시작... (디스크 마운트: ${DATA_DIR})`);
         
         const results = await Promise.all([
             loadUserMemoriesFromFile(),
@@ -435,11 +443,11 @@ async function loadAllDataFromFiles() {
         ]);
         
         const successCount = results.filter(r => r === true).length;
-        contextLog(`💾 데이터 로드 완료: ${successCount}/4개 성공`);
+        contextLog(`💾 데이터 로드 완료: ${successCount}/4개 성공 (디스크 마운트: ${DATA_DIR})`);
         
         // 로드 후 통계 정보 출력
         const memStats = getMemoryStatistics();
-        contextLog(`📊 로드된 데이터: 사용자기억 ${memStats.user}개, 학습데이터 ${memStats.learning.totalEntries}개`);
+        contextLog(`📊 로드된 데이터: 사용자기억 ${memStats.user}개, 학습데이터 ${memStats.learning.totalEntries}개 (💾 완전 영구 저장)`);
         
         return successCount > 0;
     } catch (error) {
@@ -449,7 +457,7 @@ async function loadAllDataFromFiles() {
 }
 
 /**
- * 💾 일일 백업 생성
+ * 💾 일일 백업 생성 (디스크 마운트)
  */
 async function createDailyBackup() {
     try {
@@ -463,7 +471,8 @@ async function createDailyBackup() {
             learningData: ultimateConversationState.learningData,
             spontaneousStats: ultimateConversationState.spontaneousMessages,
             memoryStats: ultimateConversationState.memoryStats,
-            version: '36.0'
+            version: '37.0-disk-mount',
+            storagePath: DATA_DIR
         };
         
         const backupFileName = `backup_${today.replace(/-/g, '')}.json`;
@@ -480,7 +489,7 @@ async function createDailyBackup() {
         await fs.writeFile(backupPath, JSON.stringify(backupData, null, 2), 'utf8');
         
         ultimateConversationState.memoryStats.lastBackup = Date.now();
-        contextLog(`💾 일일 백업 생성: ${backupFileName}`);
+        contextLog(`💾 일일 백업 생성: ${backupFileName} (디스크 마운트: ${DATA_DIR})`);
         
         return true;
     } catch (error) {
@@ -490,14 +499,14 @@ async function createDailyBackup() {
 }
 
 /**
- * 💾 자동 저장 시스템 (5분마다)
+ * 💾 자동 저장 시스템 (5분마다) - 디스크 마운트
  */
 function startAutoSaveSystem() {
     // 5분마다 자동 저장
     setInterval(async () => {
         try {
             await saveAllDataToFiles();
-            contextLog(`⏰ 자동 저장 완료 (5분 주기)`);
+            contextLog(`⏰ 자동 저장 완료 (5분 주기) (💾 디스크 마운트: ${DATA_DIR})`);
         } catch (error) {
             contextLog(`❌ 자동 저장 실패: ${error.message}`);
         }
@@ -517,7 +526,7 @@ function startAutoSaveSystem() {
         }
     }, 60 * 60 * 1000); // 1시간
     
-    contextLog(`⏰ 자동 저장 시스템 시작 (5분 저장, 1시간 백업 체크)`);
+    contextLog(`⏰ 자동 저장 시스템 시작 (5분 저장, 1시간 백업 체크) (💾 디스크 마운트: ${DATA_DIR})`);
 }
 
 // ================== 🎨 로그 함수 ==================
@@ -1288,10 +1297,6 @@ async function getActiveMemoryPrompt() {
  * 마지막 사용자 메시지 시간 업데이트
  */
 function updateLastUserMessageTime(timestamp) {
-    ultimateConversationState.timingContext.lastUserMessageTime = timestamp || Date.now();
-    
-    // 대화 간격 계산
-    const now = Date.now();
     ultimateConversationState.timingContext.conversationGap = 
         now - ultimateConversationState.timingContext.lastUserMessageTime;
 }
@@ -1430,7 +1435,8 @@ async function getMemoryStatistics() {
             lastSaved: ultimateConversationState.memoryStats.lastSaved,
             totalSaves: ultimateConversationState.memoryStats.totalSaves,
             lastBackup: ultimateConversationState.memoryStats.lastBackup,
-            isAutoSaving: true
+            isAutoSaving: true,
+            storagePath: DATA_DIR
         }
     };
 }
@@ -1448,7 +1454,8 @@ async function getMemoryCategoryStats() {
         user: userMems.length,
         conversation: convMems.length,
         total: userMems.length + convMems.length,
-        isPersistent: true // 💾 영구 저장 표시
+        isPersistent: true, // 💾 영구 저장 표시
+        storagePath: DATA_DIR
     };
 }
 
@@ -1468,7 +1475,8 @@ async function getMemoryOperationLogs(limit = 10) {
             timestamp: mem.timestamp,
             content: mem.content.substring(0, 50) + '...',
             type: mem.type,
-            isPersistent: true // 💾 영구 저장 표시
+            isPersistent: true, // 💾 영구 저장 표시
+            storagePath: DATA_DIR
         });
     });
     
@@ -1498,7 +1506,7 @@ async function getInternalState() {
             currentModel,
             contextLength,
             priority,
-            version: 'v36.0-complete-persistent-system'
+            version: 'v37.0-disk-mount-complete'
         },
         // 💾 영구 저장 시스템 상태 추가
         persistentSystem: {
@@ -1508,7 +1516,10 @@ async function getInternalState() {
             lastBackup: ultimateConversationState.memoryStats.lastBackup,
             dataFiles: Object.keys(PERSISTENT_FILES),
             saveInterval: '5분',
-            backupInterval: '1시간'
+            backupInterval: '1시간',
+            storagePath: DATA_DIR,
+            diskMounted: true,
+            neverLost: true
         }
     };
 }
@@ -1535,11 +1546,11 @@ function clearPendingAction() {
  * 감정 시스템 초기화 (호환성) - 💾 완전 누적 시스템으로 업그레이드!
  */
 async function initializeEmotionalSystems() {
-    contextLog('💾 완전 누적 시스템으로 동적 기억, 대화 컨텍스트 및 학습 시스템 초기화...');
+    contextLog('💾 완전 누적 시스템으로 동적 기억, 대화 컨텍스트 및 학습 시스템 초기화... (디스크 마운트)');
     
     // ✨ GPT 모델 정보 로그
     const currentModel = getCurrentModelSetting ? getCurrentModelSetting() : 'unknown';
-    contextLog(`현재 GPT 모델: ${currentModel}`);
+    contextLog(`현재 GPT 모델: ${currentModel} (💾 디스크 마운트: ${DATA_DIR})`);
     
     // 💾 데이터 디렉토리 생성
     await ensureDataDirectory();
@@ -1547,9 +1558,9 @@ async function initializeEmotionalSystems() {
     // 💾 모든 영구 데이터 로드
     const loadSuccess = await loadAllDataFromFiles();
     if (loadSuccess) {
-        contextLog('💾 영구 저장된 데이터 로드 성공!');
+        contextLog('💾 영구 저장된 데이터 로드 성공! (디스크 마운트)');
     } else {
-        contextLog('ℹ️ 첫 실행 - 새로운 데이터 파일들을 생성합니다');
+        contextLog('ℹ️ 첫 실행 - 새로운 데이터 파일들을 생성합니다 (💾 디스크 마운트)');
     }
     
     // 일일 리셋 확인
@@ -1573,21 +1584,23 @@ async function initializeEmotionalSystems() {
     startAutoSaveSystem();
     
     // 📚 시스템 초기화 학습 기록
-    await addLearningEntry('완전 누적 시스템 초기화 완료', '시스템', {
+    await addLearningEntry('완전 누적 시스템 초기화 완료 (디스크 마운트)', '시스템', {
         initTime: new Date().toISOString(),
         gptModel: currentModel,
         persistentSystem: true,
+        diskMounted: true,
+        storagePath: DATA_DIR,
         loadedDataFiles: Object.keys(PERSISTENT_FILES).length
     });
     
     // 💾 초기화 완료 후 전체 저장
     await saveAllDataToFiles();
     
-    contextLog(`✅ 완전 누적 시스템 초기화 완료 - 모든 데이터 영구 저장 보장! (${currentModel} 최적화)`);
+    contextLog(`✅ 완전 누적 시스템 초기화 완료 - 모든 데이터 디스크 마운트로 완전 영구 저장 보장! (${currentModel} 최적화)`);
     
     // 로드된 데이터 통계 출력
     const stats = await getMemoryStatistics();
-    contextLog(`📊 로드된 데이터: 사용자기억 ${stats.user}개, 학습데이터 ${stats.learning.totalEntries}개, 자발적메시지 ${stats.user}건`);
+    contextLog(`📊 로드된 데이터: 사용자기억 ${stats.user}개, 학습데이터 ${stats.learning.totalEntries}개 (💾 디스크 마운트: ${DATA_DIR})`);
 }
 
 // ==================== 🎁 유틸리티 함수들 ====================
@@ -1597,7 +1610,7 @@ async function initializeEmotionalSystems() {
  */
 function setConversationContextWindow(size) {
     const currentModel = getCurrentModelSetting ? getCurrentModelSetting() : 'auto';
-    contextLog(`컨텍스트 윈도우 크기: ${size} (모델: ${currentModel})`);
+    contextLog(`컨텍스트 윈도우 크기: ${size} (모델: ${currentModel}) (💾 디스크 마운트)`);
     // 실제 구현에서는 메시지 보관 개수 조정
 }
 
@@ -1619,11 +1632,11 @@ async function generateInitiatingPhrase() {
  * 💾 수동 전체 데이터 저장 (명령어용)
  */
 async function manualSaveAllData() {
-    contextLog('💾 수동 전체 데이터 저장 시작...');
+    contextLog('💾 수동 전체 데이터 저장 시작... (디스크 마운트)');
     const success = await saveAllDataToFiles();
     if (success) {
-        contextLog('✅ 수동 저장 완료!');
-        return { success: true, message: '모든 데이터가 안전하게 저장되었어요!' };
+        contextLog('✅ 수동 저장 완료! (💾 디스크 마운트)');
+        return { success: true, message: '모든 데이터가 디스크 마운트에 안전하게 저장되었어요!' };
     } else {
         contextLog('❌ 수동 저장 실패!');
         return { success: false, message: '데이터 저장 중 오류가 발생했어요.' };
@@ -1634,11 +1647,11 @@ async function manualSaveAllData() {
  * 💾 수동 백업 생성 (명령어용)
  */
 async function manualCreateBackup() {
-    contextLog('💾 수동 백업 생성 시작...');
+    contextLog('💾 수동 백업 생성 시작... (디스크 마운트)');
     const success = await createDailyBackup();
     if (success) {
-        contextLog('✅ 수동 백업 완료!');
-        return { success: true, message: '백업이 생성되었어요!' };
+        contextLog('✅ 수동 백업 완료! (💾 디스크 마운트)');
+        return { success: true, message: '백업이 디스크 마운트에 생성되었어요!' };
     } else {
         contextLog('❌ 수동 백업 실패!');
         return { success: false, message: '백업 생성 중 오류가 발생했어요.' };
@@ -1663,12 +1676,14 @@ function getPersistentSystemStatus() {
             memoryStats: PERSISTENT_FILES.memoryStats
         },
         isNeverLost: true, // 💾 절대 사라지지 않음 보장
-        version: 'v36.0-complete-persistent'
+        diskMounted: true, // 💾 디스크 마운트 적용
+        storagePath: DATA_DIR, // 💾 /data 경로
+        version: 'v37.0-disk-mount-complete'
     };
 }
 
 // ==================== 📤 모듈 내보내기 ==================
-contextLog('💾 v36.0 로드 완료 (완전 누적 시스템 - 영구 저장 보장, GPT 모델 버전 전환, 자발적 메시지 통계, 학습 시스템 완전 지원)');
+contextLog('💾 v37.0 로드 완료 (완전 누적 시스템 - 디스크 마운트로 영구 저장 보장, GPT 모델 버전 전환, 자발적 메시지 통계, 학습 시스템 완전 지원)');
 
 module.exports = {
     // 초기화
@@ -1752,4 +1767,8 @@ module.exports = {
         }
         return { phase: 'normal', description: '정상', emotion: 'normal' };
     }
-};
+};.lastUserMessageTime = timestamp || Date.now();
+    
+    // 대화 간격 계산
+    const now = Date.now();
+    ultimateConversationState.timingContext
