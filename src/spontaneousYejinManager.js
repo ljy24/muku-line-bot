@@ -10,7 +10,7 @@
 // ⭐️ 실제 통계 추적 시스템 + ultimateContext 연동 완성!
 // ============================================================================
 
-const schedule = require('node-cron');
+const schedule = require('node-schedule'); // ❗ 수정: 'node-cron' -> 'node-schedule'
 const moment = require('moment-timezone');
 const { Client } = require('@line/bot-sdk');
 const OpenAI = require('openai');
@@ -44,8 +44,8 @@ function getUltimateContext() {
 const TIMEZONE = 'Asia/Tokyo';
 const USER_ID = process.env.TARGET_USER_ID;
 const DAILY_MESSAGE_COUNT = 15;
-const MESSAGE_START_HOUR = 8;   // 오전 8시
-const MESSAGE_END_HOUR = 25;    // 새벽 1시 (다음날)
+const MESSAGE_START_HOUR = 8;    // 오전 8시
+const MESSAGE_END_HOUR = 25;     // 새벽 1시 (다음날)
 
 // LINE 클라이언트
 let lineClient = null;
@@ -67,23 +67,23 @@ let dailyScheduleState = {
     
     // ⭐️ 실제 통계 추적 추가!
     realStats: {
-        sentTimes: [],              // 실제 전송된 시간들
-        messageTypes: {             // 메시지 타입별 통계
-            emotional: 0,           // 감성 메시지
-            casual: 0,              // 일상 메시지
-            caring: 0,              // 걱정/관심 메시지
-            playful: 0              // 장난스러운 메시지
+        sentTimes: [],             // 실제 전송된 시간들
+        messageTypes: {            // 메시지 타입별 통계
+            emotional: 0,          // 감성 메시지
+            casual: 0,             // 일상 메시지
+            caring: 0,             // 걱정/관심 메시지
+            playful: 0             // 장난스러운 메시지
         },
-        lastSentTime: null,         // 마지막 전송 시간
-        nextScheduledTime: null,    // 다음 예정 시간
-        lastResetDate: null,        // 마지막 리셋 날짜
+        lastSentTime: null,        // 마지막 전송 시간
+        nextScheduledTime: null,   // 다음 예정 시간
+        lastResetDate: null,       // 마지막 리셋 날짜
         totalDaily: DAILY_MESSAGE_COUNT, // 하루 목표
         
         // 성능 통계
-        successfulSends: 0,         // 성공한 전송
-        failedSends: 0,             // 실패한 전송
-        photoSends: 0,              // 사진 전송 횟수
-        textOnlySends: 0            // 텍스트만 전송 횟수
+        successfulSends: 0,        // 성공한 전송
+        failedSends: 0,            // 실패한 전송
+        photoSends: 0,             // 사진 전송 횟수
+        textOnlySends: 0           // 텍스트만 전송 횟수
     }
 };
 
@@ -631,8 +631,8 @@ async function sendYejinSelfieWithComplimentReaction(userMessage) {
             type: 'image',
             originalContentUrl: imageUrl,
             previewImageUrl: imageUrl,
-            altText: caption,        // 필수 필드 추가!
-            caption: caption         // 필수 필드 추가!
+            altText: caption,       // 필수 필드 추가!
+            caption: caption        // 필수 필드 추가!
         });
         
         spontaneousLog(`✅ 칭찬 받은 셀카 전송 성공: "${caption.substring(0, 30)}..."`);
@@ -741,8 +741,8 @@ async function sendOmoidePhoto() {
             type: 'image',
             originalContentUrl: imageUrl,
             previewImageUrl: imageUrl,
-            altText: caption,        // 필수 필드 추가!
-            caption: caption         // 필수 필드 추가!
+            altText: caption,       // 필수 필드 추가!
+            caption: caption        // 필수 필드 추가!
         });
         
         spontaneousLog(`✅ omoide 현재 사진 전송 성공: "${caption.substring(0, 30)}..."`);
