@@ -171,7 +171,7 @@ async function loadFaceMatcherSafely() {
     }
 }
 
-// 🚨🚨🚨 [긴급 추가] 안전한 이미지 처리 함수 🚨🚨🚨
+// 🚨🚨🚨 [v14.2 수정됨] 안전한 이미지 처리 함수 🚨🚨🚨
 async function handleImageMessageSafely(event, client) {
     console.log('📸 아저씨: 이미지 전송');
     
@@ -195,6 +195,7 @@ async function handleImageMessageSafely(event, client) {
     
     try {
         // 1. 필수 데이터 안전하게 추출
+        // ❗❗❗ [핵심 수정] event.message.id 로 올바르게 접근 ❗❗❗
         const messageId = event.message?.id;
         const userId = event.source?.userId;
         const replyToken = event.replyToken;
@@ -507,8 +508,7 @@ process.on('unhandledRejection', (error) => {
 
 /**
  * 🧠 사람 학습 시스템 상태 확인
- * 
- * @returns {Object} 사람 학습 시스템 상태
+ * * @returns {Object} 사람 학습 시스템 상태
  */
 function getPersonLearningStatus() {
     const modules = global.mukuModules || {};
@@ -537,8 +537,7 @@ function getPersonLearningStatus() {
 
 /**
  * 👥 사진에서 사람 분석 및 학습 처리
- * 
- * @param {string} base64Image - Base64 인코딩된 이미지
+ * * @param {string} base64Image - Base64 인코딩된 이미지
  * @param {string} userId - 사용자 ID
  * @returns {Object} 분석 및 학습 결과
  */
@@ -577,8 +576,7 @@ async function analyzePhotoForPersonLearning(base64Image, userId) {
 
 /**
  * 🎓 사용자 입력으로 사람 이름 학습
- * 
- * @param {string} userInput - 사용자 입력 텍스트
+ * * @param {string} userInput - 사용자 입력 텍스트
  * @param {string} userId - 사용자 ID
  * @returns {Object} 학습 결과
  */
