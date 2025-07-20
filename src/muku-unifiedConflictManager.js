@@ -749,5 +749,8 @@ module.exports = {
     
     // 분석 함수들 (다른 모듈에서 사용 가능)
     analyzeMukuMessageForConflict,
-    analyzeMukuMessageForReconciliation
+    analyzeMukuMessageForReconciliation,
+    
+    // ✅ 화해 기록 함수 추가!
+    recordMukuReconciliation
 };
