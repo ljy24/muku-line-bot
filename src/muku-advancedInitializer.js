@@ -1,10 +1,11 @@
 // ============================================================================
-// muku-advancedInitializer.js - 고급 시스템 초기화 (2/2) 수정됨
+// muku-advancedInitializer.js - 고급 시스템 초기화 (2/2) 문법 에러 수정
 // ✅ AI 고도화 + 통합 최적화 + 동기화 + 모니터링 시스템 담당
 // 🔥 3시간차: AI 응답 고도화 시스템 초기화
 // ⚙️ 4시간차: 통합 & 최적화 시스템 초기화
 // ⏰ enhancedLogging v3.0 자동 상태 갱신 시작
 // 📖 diarySystem 초기화 문제 해결
+// 🔧 문법 에러 완전 해결
 // ============================================================================
 
 const { colors } = require('./muku-moduleLoader');
@@ -338,6 +339,10 @@ function generateSystemStatusReport(modules, initResults) {
         newSystemStatus,
         aiSystemStatus,
         integratedStatus,
+        diarySystemLoaded: modules.diarySystem ? true : false
+    };
+}
+
 // ================== 📤 모듈 내보내기 ==================
 module.exports = {
     initializeAIAdvancedSystems,
