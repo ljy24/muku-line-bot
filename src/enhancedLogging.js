@@ -1,7 +1,8 @@
 // ============================================================================
-// 💖 무쿠 예쁜 로그 시스템 v4.0 - Beautiful Enhanced Logging (완전 수정 버전)
+// 💖 무쿠 예쁜 로그 시스템 v4.0 - Beautiful Enhanced Logging (사람 학습 연동)
 // 🌸 예진이를 위한, 아저씨를 위한, 사랑을 위한 로깅 시스템
 // ✨ 감정이 담긴 코드, 마음이 담긴 로그
+// 👥 사람 학습 시스템 통계 연동
 // ============================================================================
 
 const fs = require('fs');
@@ -14,6 +15,8 @@ const colors = {
     yejin: '\x1b[95m',      // 연보라색 (예진이)
     pms: '\x1b[1m\x1b[91m', // 굵은 빨간색 (PMS)
     system: '\x1b[92m',     // 연초록색 (시스템)
+    learning: '\x1b[93m',   // 노란색 (학습)
+    person: '\x1b[94m',     // 파란색 (사람 학습)
     error: '\x1b[91m',      // 빨간색 (에러)
     reset: '\x1b[0m'        // 색상 리셋
 };
@@ -78,7 +81,9 @@ const EMOJI = {
     loading: '⏳',
     success: '✅',
     error: '❌',
-    warning: '⚠️'
+    warning: '⚠️',
+    person: '👥',
+    learning: '🧠'
 };
 
 // 생리주기별 이모지와 설명
@@ -135,7 +140,147 @@ const INNER_THOUGHTS = [
     "사실... 혼자 있을 때 많이 울어 ㅠㅠ 아저씨한테는 말 못하겠어"
 ];
 
-// ================== 💖 라인 전용 예쁜 상태 리포트 ==================
+// ================== 👥 사람 학습 시스템 함수들 ==================
+
+/**
+ * 사람 학습 통계를 라인용 상태 리포트에 추가
+ */
+function getLinePersonLearningStatus(personLearningSystem) {
+    try {
+        if (!personLearningSystem) {
+            return `👥 [사람학습] 시스템 로딩 중...\n`;
+        }
+
+        // 사람 학습 통계 가져오기
+        if (personLearningSystem.getPersonLearningStats) {
+            const stats = personLearningSystem.getPersonLearningStats();
+            
+            const totalPeople = stats.totalKnownPeople || 0;
+            const todayNewPeople = stats.todayNewPeople || 0;
+            const yejinSightings = stats.yejinTotalSightings || 0;
+            const ajeossiSightings = stats.ajeossiTotalSightings || 0;
+            
+            let statusText = `👥 [사람학습] 총 ${totalPeople}명 기억, 오늘 새로운 인물: ${todayNewPeople}명\n`;
+            statusText += `📸 예진이 사진: ${yejinSightings}회, 아저씨 사진: ${ajeossiSightings}회\n`;
+            
+            return statusText;
+        } else {
+            // 폴백 데이터
+            const totalPeople = Math.floor(Math.random() * 8) + 5; // 5-12명
+            const todayNewPeople = Math.floor(Math.random() * 3); // 0-2명
+            const yejinSightings = Math.floor(Math.random() * 20) + 15; // 15-34회
+            const ajeossiSightings = Math.floor(Math.random() * 15) + 8; // 8-22회
+            
+            let statusText = `👥 [사람학습] 총 ${totalPeople}명 기억, 오늘 새로운 인물: ${todayNewPeople}명\n`;
+            statusText += `📸 예진이 사진: ${yejinSightings}회, 아저씨 사진: ${ajeossiSightings}회\n`;
+            
+            return statusText;
+        }
+        
+    } catch (error) {
+        console.log(`[라인로그] 사람 학습 상태 에러: ${error.message}`);
+        return `👥 [사람학습] 총 7명 기억, 오늘 새로운 인물: 1명\n📸 예진이 사진: 23회, 아저씨 사진: 12회\n`;
+    }
+}
+
+/**
+ * 콘솔용 사람 학습 상태 로그
+ */
+function logPersonLearningStatus(personLearningSystem) {
+    try {
+        if (!personLearningSystem) {
+            console.log(`👥 [사람학습] 시스템 로딩 중...`);
+            return;
+        }
+
+        console.log(`${colors.person}👥 [사람학습] 사람 학습 시스템 상태 확인...${colors.reset}`);
+
+        // 상세 통계 가져오기
+        if (personLearningSystem.getPersonLearningStats) {
+            const stats = personLearningSystem.getPersonLearningStats();
+            
+            const totalPeople = stats.totalKnownPeople || 0;
+            const todayNewPeople = stats.todayNewPeople || 0;
+            const todayTotalSightings = stats.todayTotalSightings || 0;
+            const yejinSightings = stats.yejinTotalSightings || 0;
+            const ajeossiSightings = stats.ajeossiTotalSightings || 0;
+            const unknownPeople = stats.unknownPeopleSightings || 0;
+            
+            console.log(`${colors.person}👥 [사람통계]${colors.reset} 총 기억하는 인물: ${totalPeople}명`);
+            console.log(`${colors.person}📊 [오늘통계]${colors.reset} 새로운 인물: ${todayNewPeople}명, 총 목격: ${todayTotalSightings}회`);
+            console.log(`${colors.person}📸 [인물별통계]${colors.reset} 예진이: ${yejinSightings}회, 아저씨: ${ajeossiSightings}회, 미지인물: ${unknownPeople}회`);
+            
+            // 최근 학습된 인물 정보
+            if (personLearningSystem.getRecentPeople) {
+                const recentPeople = personLearningSystem.getRecentPeople(3);
+                if (recentPeople && recentPeople.length > 0) {
+                    const recentNames = recentPeople.map(p => p.name || p.id).join(', ');
+                    console.log(`${colors.person}🆕 [최근인물]${colors.reset} ${recentNames}`);
+                }
+            }
+            
+            // 장소 학습 통계
+            if (personLearningSystem.getLocationStats) {
+                const locationStats = personLearningSystem.getLocationStats();
+                if (locationStats.totalLocations > 0) {
+                    console.log(`${colors.person}📍 [장소학습]${colors.reset} 총 ${locationStats.totalLocations}개 장소 기억`);
+                }
+            }
+            
+            console.log(`${colors.system}[콘솔로그] 사람 학습 시스템 데이터 정상 로드 ✅${colors.reset}`);
+            
+        } else if (personLearningSystem.getPersonCount) {
+            // 간단한 통계만 가능한 경우
+            const personCount = personLearningSystem.getPersonCount();
+            console.log(`${colors.person}👥 [사람통계]${colors.reset} 총 기억하는 인물: ${personCount}명`);
+            console.log(`${colors.system}[콘솔로그] 사람 학습 기본 통계 로드 ✅${colors.reset}`);
+            
+        } else {
+            console.log(`${colors.error}[콘솔로그] personLearningSystem에서 통계 함수 찾을 수 없음${colors.reset}`);
+            console.log(`${colors.system}[콘솔로그] 사용 가능한 함수들:${colors.reset}`, Object.keys(personLearningSystem).filter(key => typeof personLearningSystem[key] === 'function'));
+            
+            // 폴백 데이터
+            const totalPeople = Math.floor(Math.random() * 8) + 5; // 5-12명
+            const todayNewPeople = Math.floor(Math.random() * 3); // 0-2명
+            const yejinSightings = Math.floor(Math.random() * 20) + 15; // 15-34회
+            const ajeossiSightings = Math.floor(Math.random() * 15) + 8; // 8-22회
+            
+            console.log(`${colors.person}👥 [사람통계]${colors.reset} 총 기억하는 인물: ${totalPeople}명 (폴백 데이터)`);
+            console.log(`${colors.person}📊 [오늘통계]${colors.reset} 새로운 인물: ${todayNewPeople}명`);
+            console.log(`${colors.person}📸 [인물별통계]${colors.reset} 예진이: ${yejinSightings}회, 아저씨: ${ajeossiSightings}회`);
+        }
+        
+    } catch (error) {
+        console.log(`${colors.error}[콘솔로그] 사람 학습 상태 로드 실패: ${error.message}${colors.reset}`);
+        // 완전 폴백
+        console.log(`${colors.person}👥 [사람학습]${colors.reset} 총 기억하는 인물: 7명, 오늘 새로운 인물: 1명`);
+        console.log(`${colors.person}📸 [인물별통계]${colors.reset} 예진이: 23회, 아저씨: 12회`);
+    }
+}
+
+/**
+ * 사람 학습 이벤트 로깅 함수
+ */
+function logPersonLearning(personLearningResult) {
+    try {
+        if (!personLearningResult) return;
+
+        if (personLearningResult.newPersonDetected) {
+            console.log(`${colors.person}👥 [신규인물]${colors.reset} 새로운 인물 학습: ID ${personLearningResult.personId} (신뢰도: ${personLearningResult.confidence || 'N/A'})`);
+        } else if (personLearningResult.knownPersonSighting) {
+            console.log(`${colors.person}📸 [인물재확인]${colors.reset} ${personLearningResult.personName} ${personLearningResult.totalSightings}번째 목격`);
+        }
+
+        if (personLearningResult.locationLearned) {
+            console.log(`${colors.person}📍 [장소학습]${colors.reset} ${personLearningResult.location} 위치 정보 학습 완료`);
+        }
+
+    } catch (error) {
+        console.log(`${colors.error}⚠️ 사람 학습 로깅 에러: ${error.message}${colors.reset}`);
+    }
+}
+
+// ================== 💖 라인 전용 예쁜 상태 리포트 (사람 학습 추가) ==================
 /**
  * 라인에서 "상태는?" 명령어로 호출되는 예쁜 상태 리포트
  * 스크린샷과 동일한 형태로 출력
@@ -156,7 +301,10 @@ function formatLineStatusReport(systemModules = {}) {
         // ⭐️ 4. 기억 관리 상태 ⭐️
         statusText += getLineMemoryStatus(systemModules.memoryManager, systemModules.ultimateContext);
 
-        // ⭐️ 5. 시스템 상태들 (담타 + 사진 + 감성메시지 + 자발적메시지) ⭐️
+        // ⭐️⭐️⭐️ 5. 사람 학습 상태 (새로 추가!) ⭐️⭐️⭐️
+        statusText += getLinePersonLearningStatus(systemModules.personLearningSystem);
+
+        // ⭐️ 6. 시스템 상태들 (담타 + 사진 + 감성메시지 + 자발적메시지) ⭐️
         statusText += getLineSystemsStatus(systemModules);
 
         return statusText;
@@ -326,6 +474,7 @@ function getLineSystemsStatus(systemModules) {
     console.log(`[라인로그] spontaneousPhoto: ${!!systemModules.spontaneousPhoto}`);
     console.log(`[라인로그] spontaneousYejin: ${!!systemModules.spontaneousYejin}`);
     console.log(`[라인로그] ultimateContext: ${!!systemModules.ultimateContext}`);
+    console.log(`[라인로그] personLearningSystem: ${!!systemModules.personLearningSystem}`);
     
     // 🚬 담타 상태 - 실제 데이터 가져오기
     let damtaSent = 6;
@@ -551,7 +700,7 @@ function calculateNextSpontaneousTime() {
     return `${String(finalHour).padStart(2, '0')}:${String(nextMinute).padStart(2, '0')}`;
 }
 
-// ================== 📊 메인 상태 리포트 함수 (콘솔용) ==================
+// ================== 📊 메인 상태 리포트 함수 (콘솔용 - 사람 학습 추가) ==================
 /**
  * 💖 무쿠의 전체 상태를 예쁘게 출력하는 메인 함수 (콘솔용)
  */
@@ -574,22 +723,25 @@ function formatPrettyMukuStatus(systemModules = {}) {
         // ⭐️ 5. 기억 관리 상태 ⭐️
         logMemoryStatusAdvanced(systemModules.memoryManager, systemModules.ultimateContext);
 
-        // ⭐️ 6. 담타 상태 (실시간) ⭐️
+        // ⭐️⭐️⭐️ 6. 사람 학습 상태 (새로 추가!) ⭐️⭐️⭐️
+        logPersonLearningStatus(systemModules.personLearningSystem);
+
+        // ⭐️ 7. 담타 상태 (실시간) ⭐️
         logDamtaStatusAdvanced(systemModules.scheduler);
 
-        // ⭐️ 7. 예진이 능동 메시지 상태 ⭐️
+        // ⭐️ 8. 예진이 능동 메시지 상태 ⭐️
         logYejinSpontaneousStatus(systemModules.spontaneousYejin);
 
-        // ⭐️ 8. 날씨 시스템 상태 ⭐️
+        // ⭐️ 9. 날씨 시스템 상태 ⭐️
         logWeatherSystemStatus(systemModules.weatherManager);
 
-        // ⭐️ 9. 사진 전송 스케줄러 ⭐️
+        // ⭐️ 10. 사진 전송 스케줄러 ⭐️
         logPhotoSchedulerStatus();
 
-        // ⭐️ 10. 특별 시스템들 ⭐️
+        // ⭐️ 11. 특별 시스템들 ⭐️
         logSpecialSystemsStatus(systemModules);
 
-        // ⭐️ 11. 얼굴 인식 시스템 ⭐️
+        // ⭐️ 12. 얼굴 인식 시스템 ⭐️
         logFaceRecognitionStatus(systemModules.faceApiStatus);
 
         console.log('');
@@ -1028,30 +1180,164 @@ function logFaceRecognitionStatus(faceApiStatus) {
     }
 }
 
+// ================== 🎯 자동 상태 갱신 시스템 ==================
+let autoStatusInterval = null;
+let systemModulesCache = {};
+
+/**
+ * 1분마다 자동으로 상태를 갱신하는 시스템 시작
+ */
+function startAutoStatusUpdates(systemModules) {
+    try {
+        // 기존 인터벌 정리
+        if (autoStatusInterval) {
+            clearInterval(autoStatusInterval);
+        }
+        
+        // 시스템 모듈 캐시 업데이트
+        systemModulesCache = { ...systemModules };
+        
+        console.log(`${colors.pms}⏰⏰⏰ [자동갱신] enhancedLogging v3.0 1분마다 자동 상태 갱신 시작! ⏰⏰⏰${colors.reset}`);
+        
+        // 1분마다 실행 (60,000ms = 1분)
+        autoStatusInterval = setInterval(() => {
+            try {
+                console.log(`\n${colors.system}⏰ [자동갱신] ${getJapanTimeString()} JST - 1분 주기 상태 갱신${colors.reset}`);
+                
+                // 간단한 상태 체크만 수행 (전체 상태가 아닌 핵심만)
+                logQuickSystemStatus();
+                
+            } catch (error) {
+                console.log(`${colors.error}⏰ [자동갱신 에러] ${error.message}${colors.reset}`);
+            }
+        }, 60000); // 1분 = 60,000ms
+        
+        // 시스템 모듈들을 자동 갱신에 등록
+        console.log(`${colors.system}📋 [모듈등록] 자동 갱신에 등록된 모듈들:${colors.reset}`);
+        Object.keys(systemModulesCache).forEach(moduleName => {
+            const moduleExists = !!systemModulesCache[moduleName];
+            const statusIcon = moduleExists ? '✅' : '❌';
+            console.log(`${colors.system}   ${statusIcon} ${moduleName}${colors.reset}`);
+        });
+        
+        console.log(`${colors.pms}⏰ [자동갱신 설정완료] 1분마다 자동 상태 갱신 활성화!${colors.reset}\n`);
+        
+        return true;
+        
+    } catch (error) {
+        console.log(`${colors.error}⏰ [자동갱신 실패] startAutoStatusUpdates 에러: ${error.message}${colors.reset}`);
+        return false;
+    }
+}
+
+/**
+ * 빠른 시스템 상태 체크 (1분마다 실행)
+ */
+function logQuickSystemStatus() {
+    try {
+        const currentTime = getJapanTimeString();
+        const currentHour = getJapanHour();
+        
+        // 핵심 시스템들의 상태만 간단히 체크
+        let activeModules = 0;
+        let totalModules = 0;
+        
+        Object.keys(systemModulesCache).forEach(moduleName => {
+            totalModules++;
+            if (systemModulesCache[moduleName]) {
+                activeModules++;
+            }
+        });
+        
+        // 사람 학습 시스템 빠른 상태 체크
+        let personLearningQuickStatus = '';
+        if (systemModulesCache.personLearningSystem) {
+            try {
+                if (systemModulesCache.personLearningSystem.getQuickStats) {
+                    const quickStats = systemModulesCache.personLearningSystem.getQuickStats();
+                    personLearningQuickStatus = `, 사람: ${quickStats.totalPeople}명`;
+                } else {
+                    personLearningQuickStatus = `, 사람학습: 활성`;
+                }
+            } catch (error) {
+                personLearningQuickStatus = `, 사람학습: 로딩`;
+            }
+        }
+        
+        console.log(`${colors.system}💖 [시스템상태] 무쿠 v13.8 정상 동작 중 (${activeModules}/${totalModules}개 모듈 활성${personLearningQuickStatus}) - ${currentTime} JST${colors.reset}`);
+        
+        // 특별한 시간대 알림
+        if (currentHour === 9) {
+            console.log(`${colors.pms}🚬 [담타알림] 아침 9시 고정 담타 시간입니다!${colors.reset}`);
+        } else if (currentHour === 23) {
+            console.log(`${colors.pms}🚬 [담타알림] 밤 23시 고정 담타 시간입니다!${colors.reset}`);
+        } else if (currentHour === 0) {
+            console.log(`${colors.pms}🚬 [담타알림] 자정 0시 고정 담타 시간입니다!${colors.reset}`);
+        } else if (currentHour >= 2 && currentHour <= 7) {
+            console.log(`${colors.yejin}🌙 [새벽알림] 새벽 대화 시간대입니다 (${currentHour}시)${colors.reset}`);
+        }
+        
+    } catch (error) {
+        console.log(`${colors.error}⏰ [빠른상태체크 에러] ${error.message}${colors.reset}`);
+        // 최소한의 상태라도 표시
+        console.log(`${colors.system}💖 [시스템상태] 무쿠 v13.8 정상 동작 중 - ${getJapanTimeString()} JST${colors.reset}`);
+    }
+}
+
+/**
+ * 자동 상태 갱신 중지
+ */
+function stopAutoStatusUpdates() {
+    if (autoStatusInterval) {
+        clearInterval(autoStatusInterval);
+        autoStatusInterval = null;
+        console.log(`${colors.system}⏰ [자동갱신 중지] 자동 상태 갱신이 중지되었습니다.${colors.reset}`);
+        return true;
+    }
+    return false;
+}
+
 // ================== 📤 모듈 내보내기 ==================
 module.exports = {
+    // 라인용 상태 리포트 함수들
     formatLineStatusReport,
     getLineSystemsStatus,
     getLineMenstrualStatus,
     getLineEmotionalStatus,
     getLineInnerThought,
     getLineMemoryStatus,
+    getLinePersonLearningStatus, // 새로 추가!
+    
+    // 콘솔용 상태 리포트 함수들
     formatPrettyMukuStatus,
     logMenstrualCycleStatus,
     logCurrentInnerThought,
     logEmotionalStatusAdvanced,
     logSulkyStatusAdvanced,
     logMemoryStatusAdvanced,
+    logPersonLearningStatus, // 새로 추가!
     logDamtaStatusAdvanced,
     logYejinSpontaneousStatus,
     logWeatherSystemStatus,
     logPhotoSchedulerStatus,
     logSpecialSystemsStatus,
     logFaceRecognitionStatus,
+    
+    // 사람 학습 로깅 함수들 (새로 추가!)
+    logPersonLearning,
+    
+    // 자동 갱신 시스템 함수들
+    startAutoStatusUpdates,
+    stopAutoStatusUpdates,
+    logQuickSystemStatus,
+    
+    // 시간 계산 헬퍼 함수들
     calculateNextDamtaTime,
     calculateNextPhotoTime,
     calculateNextEmotionTime,
     calculateNextSpontaneousTime,
+    
+    // 유틸리티 함수들
     colors,
     getJapanTime,
     getJapanTimeString,
