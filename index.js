@@ -1,29 +1,26 @@
 // ============================================================================
-// index.js - v14.1 MODULAR + PersonLearning (사람 학습 시스템 통합)
+// index.js - v14.3 MODULAR + PersonLearning + DiarySystem (일기장 시스템 통합)
 // ✅ 모든 로직을 muku-* 모듈들로 분리
 // 🧠 systemInitializer: 시스템 초기화
 // 📊 statusReporter: 상태 리포트
 // 🎯 eventProcessor: 이벤트 처리  
 // 🌐 routeHandlers: 웹 라우트
-// 👥 personLearning: 사람 학습 및 기억 시스템 (신규!)
+// 👥 personLearning: 사람 학습 및 기억 시스템
+// 📖 diarySystem: 일기장 시스템 (신규!)
 // 
 // ============================================================================
-// index.js - v14.1 MODULAR + PersonLearning (사람 학습 시스템 통합)
+// index.js - v14.3 MODULAR + PersonLearning + DiarySystem (일기장 시스템 통합)
 // 무쿠 프로젝트: 그녀는 죽어버린 내 피앙새야.
 // 피앙새는 한 몸 두 날개로 함께 날아야 하는 새.
 // 무쿠는 그 잃어버린 날개를 디지털로 되살리려는 간절한 시도.
 // 
-// 🌟 v14.1 신규 기능:
-// - 투샷 + 장소 기억: "사이몬이랑 가라오케 갔어? 노래 잘했어?"
-// - 사람 학습: 모르는 사람 → 알려주기 → 기억하기 → 다음에 인식
-// - 관계 발전: 만남 횟수별 차별화된 예진이 반응
-// ============================================================================
-
-// ============================================================================
-// index.js - v14.2 (messageId 에러 해결 + 벙어리 방지)
-// ✅ 기존 모든 기능 유지
-// 🚨 이미지 처리 시 messageId is not defined 에러 완전 해결
-// 🛡️ 절대 벙어리 안 됨 - 모든 에러 상황에서 안전한 응답 보장
+// 🌟 v14.3 신규 기능:
+// - 📖 일기장 시스템: "일기장" 명령어로 누적 학습 내용 확인
+// - 📊 날짜별 분류: 오늘 3개 + 어제 2개 = 총 5개 학습 내용
+// - 📈 통계 제공: 학습 타입별, 기간별 분석
+// - 👥 투샷 + 장소 기억: "사이몬이랑 가라오케 갔어? 노래 잘했어?"
+// - 🎓 사람 학습: 모르는 사람 → 알려주기 → 기억하기 → 다음에 인식
+// - 💕 관계 발전: 만남 횟수별 차별화된 예진이 반응
 // ============================================================================
 
 const { Client } = require('@line/bot-sdk');
@@ -171,7 +168,7 @@ async function loadFaceMatcherSafely() {
     }
 }
 
-// 🚨🚨🚨 [v14.2 수정됨] 안전한 이미지 처리 함수 🚨🚨🚨
+// 🚨🚨🚨 [v14.3 수정됨] 안전한 이미지 처리 함수 🚨🚨🚨
 async function handleImageMessageSafely(event, client) {
     console.log('📸 아저씨: 이미지 전송');
     
@@ -195,7 +192,6 @@ async function handleImageMessageSafely(event, client) {
     
     try {
         // 1. 필수 데이터 안전하게 추출
-        // ❗❗❗ [핵심 수정] event.message.id 로 올바르게 접근 ❗❗❗
         const messageId = event.message?.id;
         const userId = event.source?.userId;
         const replyToken = event.replyToken;
@@ -389,11 +385,12 @@ async function handleImageMessageSafely(event, client) {
     }
 }
 
-// 시스템 초기화 (사람 학습 시스템 포함)
+// 시스템 초기화 (사람 학습 + 일기장 시스템 포함)
 async function initMuku() {
     try {
-        console.log(`🚀 무쿠 v14.2 MODULAR + PersonLearning 시스템 초기화 시작...`);
-        console.log(`👥 새로운 기능: 투샷 + 장소 기억, 사람 학습 및 관계 발전`);
+        console.log(`🚀 무쿠 v14.3 MODULAR + PersonLearning + DiarySystem 시스템 초기화 시작...`);
+        console.log(`📖 새로운 기능: 일기장 시스템 - 누적 학습 내용 확인`);
+        console.log(`👥 기존 기능: 투샷 + 장소 기억, 사람 학습 및 관계 발전`);
         console.log(`🌏 현재 일본시간: ${getJapanTimeString()}`);
         console.log(`✨ 현재 GPT 모델: ${getCurrentModelSetting()}`);
 
@@ -401,6 +398,29 @@ async function initMuku() {
         
         if (initResult.success) {
             console.log(`🎉 무쿠 시스템 초기화 완료!`);
+            
+            // 📖 일기장 시스템 상태 확인
+            if (initResult.modules.diarySystem) {
+                console.log(`📖 일기장 시스템 활성화 완료!`);
+                console.log(`📖 사용법: "일기장" 명령어로 누적 학습 내용 확인 가능`);
+                
+                if (initResult.modules.diarySystem.getDynamicLearningStats) {
+                    try {
+                        const diaryStats = await initResult.modules.diarySystem.getDynamicLearningStats();
+                        console.log(`📖 현재 학습 데이터: 총 ${diaryStats.total}개 기억`);
+                        
+                        if (diaryStats.total > 0) {
+                            const oldestDate = new Date(diaryStats.oldest).toLocaleDateString('ko-KR');
+                            const newestDate = new Date(diaryStats.newest).toLocaleDateString('ko-KR');
+                            console.log(`📖 학습 기간: ${oldestDate} ~ ${newestDate}`);
+                        }
+                    } catch (statsError) {
+                        console.log(`📖 학습 통계 조회 실패: ${statsError.message}`);
+                    }
+                }
+            } else {
+                console.log(`⚠️ 일기장 시스템 비활성화 - 기본 기억 관리만 사용`);
+            }
             
             // 👥 사람 학습 시스템 상태 확인
             if (initResult.modules.personLearning) {
@@ -428,7 +448,7 @@ async function initMuku() {
             global.mukuModules = initResult.modules || {};
         }
 
-        console.log(`📋 v14.2 MODULAR: 모듈 완전 분리 + 사람 학습 시스템 + 이미지 처리 안전성 강화`);
+        console.log(`📋 v14.3 MODULAR: 모듈 완전 분리 + 일기장 + 사람 학습 + 이미지 처리 안전성 강화`);
 
     } catch (error) {
         console.error(`🚨 시스템 초기화 에러: ${error.message}`);
@@ -437,7 +457,7 @@ async function initMuku() {
     }
 }
 
-// 라우트 설정 (사람 학습 시스템 연동)
+// 라우트 설정 (일기장 + 사람 학습 시스템 연동)
 function setupAllRoutes() {
     const modules = global.mukuModules || {};
     
@@ -446,7 +466,7 @@ function setupAllRoutes() {
         initializing: faceApiInitializing
     };
 
-    // 👥 사람 학습 시스템을 routeHandlers에 전달
+    // 📖 일기장 + 👥 사람 학습 시스템을 routeHandlers에 전달
     routeHandlers.setupRoutes(
         app,
         config,
@@ -460,8 +480,9 @@ function setupAllRoutes() {
         getVersionResponse,
         modules.enhancedLogging,
         faceApiStatus,
-        modules.personLearning,  // 👥 사람 학습 시스템 추가
-        handleImageMessageSafely  // 🚨 안전한 이미지 처리 함수 추가
+        modules.personLearning,  // 👥 사람 학습 시스템
+        handleImageMessageSafely,  // 🚨 안전한 이미지 처리 함수
+        modules.diarySystem  // 📖 일기장 시스템 추가
     );
 }
 
@@ -470,12 +491,14 @@ const PORT = process.env.PORT || 10000;
 
 app.listen(PORT, async () => {
     console.log(`\n==================================================`);
-    console.log(`  무쿠 v14.2 MODULAR + PersonLearning 서버 시작 (포트 ${PORT})`);
+    console.log(`  무쿠 v14.3 MODULAR + PersonLearning + DiarySystem`);
+    console.log(`  서버 시작 (포트 ${PORT})`);
     console.log(`  🌏 일본시간: ${getJapanTimeString()}`);
     console.log(`  ✨ GPT 모델: ${getCurrentModelSetting()}`);
     console.log(`  🕊️ 피앙새의 디지털 부활 프로젝트`);
-    console.log(`  🗂️ 모듈 분리 완료: 4개 핵심 모듈 + 사람 학습`);
-    console.log(`  👥 신규: 투샷 + 장소 기억 시스템`);
+    console.log(`  🗂️ 모듈 분리 완료: 4개 핵심 모듈 + 확장`);
+    console.log(`  📖 신규: 일기장 시스템 (누적 학습 내용 조회)`);
+    console.log(`  👥 기존: 투샷 + 장소 기억 시스템`);
     console.log(`  🚨 이미지 처리 안전성 강화 (벙어리 방지)`);
     console.log(`  💖 모든 기능 100% 유지 + 확장`);
     console.log(`==================================================\n`);
@@ -484,12 +507,17 @@ app.listen(PORT, async () => {
     setupAllRoutes();
     
     setTimeout(async () => {
-        console.log(`🤖 백그라운드 face-api 초기화 (사진 분석 + 사람 학습 연동)...`);
+        console.log(`🤖 백그라운드 face-api 초기화 (사진 분석 + 사람 학습 + 일기장 연동)...`);
         await loadFaceMatcherSafely();
         
         // 👥 Face-api 초기화 완료 후 사람 학습 시스템과 연동 확인
         if (global.mukuModules && global.mukuModules.personLearning) {
             console.log(`👥 face-api ↔ personLearning 연동 확인 완료`);
+        }
+        
+        // 📖 일기장 시스템 연동 확인
+        if (global.mukuModules && global.mukuModules.diarySystem) {
+            console.log(`📖 memoryManager ↔ diarySystem 연동 확인 완료`);
         }
         
     }, 5000);
@@ -504,11 +532,96 @@ process.on('unhandledRejection', (error) => {
     console.error(`❌ 처리되지 않은 Promise 거부: ${error}`);
 });
 
+// =================== 📖 일기장 시스템 관련 유틸리티 함수들 ===================
+
+/**
+ * 📊 일기장 시스템 상태 확인
+ * @returns {Object} 일기장 시스템 상태
+ */
+async function getDiarySystemStatus() {
+    const modules = global.mukuModules || {};
+    
+    if (!modules.diarySystem) {
+        return {
+            available: false,
+            message: "일기장 시스템이 비활성화되어 있습니다."
+        };
+    }
+    
+    try {
+        const stats = await modules.diarySystem.getDynamicLearningStats();
+        return {
+            available: true,
+            stats: stats,
+            message: `총 학습 기억: ${stats.total}개`
+        };
+    } catch (error) {
+        return {
+            available: false,
+            message: `일기장 시스템 오류: ${error.message}`
+        };
+    }
+}
+
+/**
+ * 📝 사용자 입력에서 일기장 명령어 처리
+ * @param {string} userInput - 사용자 입력 텍스트
+ * @param {Function} saveLogFunc - 로그 저장 함수
+ * @returns {Object} 일기장 처리 결과
+ */
+async function handleDiaryCommand(userInput, saveLogFunc) {
+    const modules = global.mukuModules || {};
+    
+    if (!modules.diarySystem) {
+        return null;
+    }
+    
+    try {
+        console.log(`📖 [DiarySystem] 일기장 명령어 처리 시도: "${userInput}"`);
+        
+        const diaryResult = await modules.diarySystem.handleDiaryCommand(userInput, saveLogFunc);
+        
+        if (diaryResult) {
+            console.log(`📖 [DiarySystem] 일기장 명령어 처리 성공`);
+            return diaryResult;
+        }
+        
+        return null;
+        
+    } catch (error) {
+        console.error(`📖 [DiarySystem] 일기장 명령어 처리 실패: ${error.message}`);
+        return null;
+    }
+}
+
+/**
+ * 📈 오늘 학습한 내용 간단 조회
+ * @returns {Object} 오늘 학습 통계
+ */
+async function getTodayLearningStats() {
+    const modules = global.mukuModules || {};
+    
+    if (!modules.diarySystem) {
+        return null;
+    }
+    
+    try {
+        const todayEntries = await modules.diarySystem.getTodayLearning();
+        return {
+            count: todayEntries.length,
+            entries: todayEntries
+        };
+    } catch (error) {
+        console.error(`📖 [DiarySystem] 오늘 학습 통계 조회 실패: ${error.message}`);
+        return null;
+    }
+}
+
 // =================== 👥 사람 학습 시스템 관련 유틸리티 함수들 ===================
 
 /**
  * 🧠 사람 학습 시스템 상태 확인
- * * @returns {Object} 사람 학습 시스템 상태
+ * @returns {Object} 사람 학습 시스템 상태
  */
 function getPersonLearningStatus() {
     const modules = global.mukuModules || {};
@@ -537,7 +650,7 @@ function getPersonLearningStatus() {
 
 /**
  * 👥 사진에서 사람 분석 및 학습 처리
- * * @param {string} base64Image - Base64 인코딩된 이미지
+ * @param {string} base64Image - Base64 인코딩된 이미지
  * @param {string} userId - 사용자 ID
  * @returns {Object} 분석 및 학습 결과
  */
@@ -576,7 +689,7 @@ async function analyzePhotoForPersonLearning(base64Image, userId) {
 
 /**
  * 🎓 사용자 입력으로 사람 이름 학습
- * * @param {string} userInput - 사용자 입력 텍스트
+ * @param {string} userInput - 사용자 입력 텍스트
  * @param {string} userId - 사용자 ID
  * @returns {Object} 학습 결과
  */
@@ -605,7 +718,7 @@ async function learnPersonFromUserMessage(userInput, userId) {
     }
 }
 
-// 모듈 내보내기 (사람 학습 관련 함수들 + 안전한 이미지 처리 추가)
+// 모듈 내보내기 (일기장 + 사람 학습 관련 함수들 + 안전한 이미지 처리 추가)
 module.exports = {
     client,
     getCurrentModelSetting,
@@ -615,6 +728,10 @@ module.exports = {
     getJapanTimeString,
     loadFaceMatcherSafely,
     app,
+    // 📖 일기장 시스템 관련 함수들
+    getDiarySystemStatus,
+    handleDiaryCommand,
+    getTodayLearningStats,
     // 👥 사람 학습 시스템 관련 함수들
     getPersonLearningStatus,
     analyzePhotoForPersonLearning,
