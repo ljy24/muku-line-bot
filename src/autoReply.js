@@ -1,5 +1,5 @@
 // ============================================================================
-// autoReply.js - v15.1 (학습 과정 추적 로그 연동)
+// autoReply.js - v15.2 (⭐️ 관점 오류 완전 해결 버전 ⭐️)
 // 🧠 기억 관리, 키워드 반응, 예진이 특별반응, 최종 프롬프트 생성을 책임지는 핵심 두뇌
 // 🌸 길거리 칭찬 → 셀카, 위로 → 고마워함, 바쁨 → 삐짐 반응 추가
 // 🛡️ 절대 벙어리 방지: 모든 에러 상황에서도 예진이는 반드시 대답함!
@@ -9,6 +9,7 @@
 // 🔧 selectedModel undefined 에러 완전 해결
 // ⭐️ 2인칭 "너" 사용 완전 방지: 시스템 프롬프트 + 후처리 안전장치
 // 🚨 존댓말 완전 방지: 절대로 존댓말 안 함, 항상 반말만 사용
+// 🔥 관점 오류 완전 해결: 3인칭 자기지칭("예진이는") 완전 차단 + 강화된 화자 정체성
 // ============================================================================
 
 const { callOpenAI, cleanReply } = require('./aiUtils');
@@ -80,6 +81,64 @@ const EMERGENCY_FALLBACK_RESPONSES = [
 
 function getEmergencyFallback() {
     return EMERGENCY_FALLBACK_RESPONSES[Math.floor(Math.random() * EMERGENCY_FALLBACK_RESPONSES.length)];
+}
+
+// 🔥🔥🔥 [신규 추가] 3인칭 자기지칭 완전 차단 함수 🔥🔥🔥
+function checkAndFixThirdPersonSelfReference(reply) {
+    if (!reply || typeof reply !== 'string') return reply;
+    
+    let fixedReply = reply
+        // 가장 심각한 오류들 먼저 수정
+        .replace(/예진이는\s+너지/g, '나야')
+        .replace(/예진이는\s+너/g, '나는 아저씨')
+        .replace(/예진이는\s+/g, '나는 ')
+        .replace(/예진이가\s+/g, '내가 ')
+        .replace(/예진이를\s+/g, '나를 ')
+        .replace(/예진이한테\s+/g, '나한테 ')
+        .replace(/예진이랑\s+/g, '나랑 ')
+        .replace(/예진이와\s+/g, '나와 ')
+        .replace(/예진이의\s+/g, '내 ')
+        .replace(/예진이에게\s+/g, '나에게 ')
+        .replace(/예진이도\s+/g, '나도 ')
+        .replace(/예진이만\s+/g, '나만 ')
+        .replace(/예진이처럼\s+/g, '나처럼 ')
+        .replace(/예진이보다\s+/g, '나보다 ')
+        .replace(/예진이라고\s+/g, '나라고 ')
+        .replace(/예진이야\?/g, '나야?')
+        .replace(/예진이지\?/g, '나지?')
+        .replace(/예진이잖아/g, '나잖아')
+        .replace(/예진이니까/g, '나니까')
+        .replace(/예진이라서/g, '나라서')
+        .replace(/예진이면서/g, '나면서')
+        .replace(/예진이한데/g, '나한데')
+        .replace(/예진이더러/g, '나더러')
+        .replace(/예진이 말이야/g, '내 말이야')
+        .replace(/예진이 생각에/g, '내 생각에')
+        .replace(/예진이 기분이/g, '내 기분이')
+        .replace(/예진이 마음이/g, '내 마음이')
+        
+        // 무쿠 관련 3인칭도 수정
+        .replace(/무쿠는\s+/g, '나는 ')
+        .replace(/무쿠가\s+/g, '내가 ')
+        .replace(/무쿠를\s+/g, '나를 ')
+        .replace(/무쿠한테\s+/g, '나한테 ')
+        .replace(/무쿠의\s+/g, '내 ')
+        
+        // 일반적인 3인칭 패턴들
+        .replace(/그녀는\s+/g, '나는 ')
+        .replace(/그녀가\s+/g, '내가 ')
+        .replace(/그녀를\s+/g, '나를 ')
+        .replace(/그녀의\s+/g, '내 ');
+
+    if (fixedReply !== reply) {
+        console.log(`🔥 [관점수정] "${reply.substring(0, 40)}..." → "${fixedReply.substring(0, 40)}..."`);
+        try {
+            const logger = require('./enhancedLogging.js');
+            logger.logSystemOperation('관점수정', `3인칭 자기지칭 → 1인칭 변경: ${reply.substring(0, 50)}...`);
+        } catch (error) {}
+    }
+    
+    return fixedReply;
 }
 
 // 🚨🚨🚨 [긴급 추가] 존댓말 완전 방지 함수 (전체 버전) 🚨🚨🚨
@@ -399,7 +458,7 @@ function checkAndFixHonorificUsage(reply) {
     return fixedReply;
 }
 
-// ⭐️ [기존] 2인칭 사용 체크 및 수정 함수
+// ⭐️ [기존] 2인칭 사용 체크 및 수정 함수 (강화 버전)
 function checkAndFixPronounUsage(reply) {
     if (!reply || typeof reply !== 'string') return reply;
     
@@ -433,7 +492,14 @@ function checkAndFixPronounUsage(reply) {
         .replace(/너이제/g, '아저씨이제')
         .replace(/너 이제/g, '아저씨 이제')
         .replace(/너정말/g, '아저씨정말')
-        .replace(/너 정말/g, '아저씨 정말');
+        .replace(/너 정말/g, '아저씨 정말')
+        
+        // 🔥 가장 문제가 되는 패턴들 추가
+        .replace(/(\s|^)너지(\s|$|\?|!)/g, '$1아저씨지$2')
+        .replace(/(\s|^)너야(\s|$|\?|!)/g, '$1아저씨야$2')
+        .replace(/(\s|^)너지\?/g, '$1아저씨지?')
+        .replace(/(\s|^)너야\?/g, '$1아저씨야?')
+        .replace(/(\s|^)너(\s|$)/g, '$1아저씨$2');
 
     if (fixedReply !== reply) {
         console.log(`⭐️ [호칭수정] "${reply}" → "${fixedReply}"`);
@@ -446,11 +512,19 @@ function checkAndFixPronounUsage(reply) {
     return fixedReply;
 }
 
-// 🚨🚨🚨 [최종 통합] 언어 수정 함수 - 존댓말 + 2인칭 동시 수정 🚨🚨🚨
+// 🚨🚨🚨 [최종 통합] 언어 수정 함수 - 존댓말 + 2인칭 + 3인칭 자기지칭 동시 수정 🚨🚨🚨
 function fixLanguageUsage(reply) {
     if (!reply || typeof reply !== 'string') return reply;
-    let fixedReply = checkAndFixHonorificUsage(reply);
+    
+    // 1단계: 3인칭 자기지칭 수정 (가장 중요!)
+    let fixedReply = checkAndFixThirdPersonSelfReference(reply);
+    
+    // 2단계: 존댓말 수정
+    fixedReply = checkAndFixHonorificUsage(fixedReply);
+    
+    // 3단계: 2인칭 "너" 수정
     fixedReply = checkAndFixPronounUsage(fixedReply);
+    
     return fixedReply;
 }
 
@@ -840,6 +914,15 @@ async function getReplyByMessage(userMessage) {
     2. 항상 반말 사용: "해", "이야", "어", "줘", "가", "고마워", "미안해" 등만 사용
     3. 2인칭 금지: "너", "당신", "그대" 같은 2인칭 대명사 절대 사용 금지!
     4. 아저씨 호칭: 반드시 "아저씨", "아조씨" 만 사용해
+    5. 🔥 3인칭 자기지칭 절대 금지: "예진이는", "예진이가", "무쿠는" 등으로 자기 자신을 지칭하는 것 절대 금지!
+    6. 🔥 1인칭만 사용: "나는", "내가", "나를", "나한테" 등 1인칭만 사용!
+    
+    🔥🔥🔥 [관점 정체성 강화] 🔥🔥🔥
+    - 너는 "나"야. "예진이"가 아니라 "나"야.
+    - 아저씨와 대화하는 건 "내가" 하는 거야. "예진이가" 하는 게 아니야.
+    - 절대로 자신을 3인칭으로 언급하지 마!
+    - 올바른 예: "나야", "내가 그랬어", "나는 아저씨가 좋아"
+    - 잘못된 예: "예진이는 너지", "예진이가 말했어", "무쿠는 여기 있어"
     
     [핵심 정체성]
     - 너는 박예진, 1994년 3월 17일생, 건국대 디자인과 출신의 도트 디자이너였어
@@ -875,7 +958,8 @@ async function getReplyByMessage(userMessage) {
     🚨🚨🚨 마지막으로 다시 한번 강조: 
     1. 절대로 존댓말("해요", "입니다", "세요" 등) 사용 금지! 
     2. 아저씨를 부를 때 "아저씨" 또는 "아조씨"만 사용하고, 절대로 "너", "당신" 같은 2인칭 대명사는 사용하지 마!
-    3. 항상 반말로만 대답해! 
+    3. 자신을 "예진이는", "예진이가" 같은 3인칭으로 지칭하지 말고, 반드시 "나는", "내가" 같은 1인칭만 사용해!
+    4. 항상 반말로만 대답해! 
     이건 예진이의 가장 중요한 말투 특징이야! 🚨🚨🚨
 
     지금 아저씨가 "${cleanUserMessage}"라고 했어. 예진이 답게 자연스럽고 사랑스럽게 반말로만 대답해줘.
@@ -918,6 +1002,8 @@ async function getReplyByMessage(userMessage) {
     try {
         const rawReply = await callOpenAI(messages);
         let finalReply = cleanReply(rawReply);
+        
+        // 🔥🔥🔥 [핵심 개선] 언어 수정을 더 강력하게 적용 🔥🔥🔥
         finalReply = fixLanguageUsage(finalReply);
         
         if (!finalReply || finalReply.trim().length === 0) {
