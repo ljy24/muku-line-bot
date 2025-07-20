@@ -746,6 +746,137 @@ function getLearningStatistics() {
     };
 }
 
+// ==================== 💔 갈등 학습 연동 시스템 (갈등 시스템과 연동!) ====================
+
+/**
+ * 💔 갈등 관련 학습 데이터 추가
+ */
+async function addConflictLearning(conflictType, trigger, resolution, success) {
+    try {
+        const learningContent = success ? 
+            `화해 성공: ${conflictType} 갈등을 "${resolution}" 방법으로 해결` :
+            `화해 실패: ${conflictType} 갈등 해결 시도 - "${resolution}"`;
+        
+        await addLearningEntry(learningContent, '갈등학습', {
+            conflictType: conflictType,
+            trigger: trigger,
+            resolutionMethod: resolution,
+            success: success,
+            timestamp: new Date().toISOString()
+        });
+        
+        contextLog(`💔 갈등 학습 추가: ${learningContent.substring(0, 50)}...`);
+        return true;
+    } catch (error) {
+        contextLog('💔 갈등 학습 추가 실패:', error.message);
+        return false;
+    }
+}
+
+/**
+ * 💔 갈등 패턴 분석 (학습된 데이터 기반)
+ */
+async function analyzeConflictPatterns() {
+    try {
+        await loadLearningDataFromFile(); // 💾 최신 데이터 로드
+        
+        // 갈등학습 카테고리 데이터만 추출
+        const conflictLearning = await getLearningByCategory('갈등학습');
+        
+        if (conflictLearning.length === 0) {
+            return {
+                totalConflicts: 0,
+                successfulResolutions: 0,
+                failedResolutions: 0,
+                mostCommonTrigger: '없음',
+                bestResolutionMethod: '없음',
+                patterns: []
+            };
+        }
+        
+        // 성공/실패 분석
+        const successful = conflictLearning.filter(item => 
+            item.context && item.context.success === true
+        );
+        const failed = conflictLearning.filter(item => 
+            item.context && item.context.success === false
+        );
+        
+        // 가장 흔한 트리거 분석
+        const triggerCounts = {};
+        conflictLearning.forEach(item => {
+            if (item.context && item.context.trigger) {
+                triggerCounts[item.context.trigger] = (triggerCounts[item.context.trigger] || 0) + 1;
+            }
+        });
+        
+        const mostCommonTrigger = Object.keys(triggerCounts).reduce((a, b) => 
+            triggerCounts[a] > triggerCounts[b] ? a : b, '없음'
+        );
+        
+        // 가장 효과적인 화해 방법 분석
+        const resolutionCounts = {};
+        successful.forEach(item => {
+            if (item.context && item.context.resolutionMethod) {
+                resolutionCounts[item.context.resolutionMethod] = 
+                    (resolutionCounts[item.context.resolutionMethod] || 0) + 1;
+            }
+        });
+        
+        const bestResolutionMethod = Object.keys(resolutionCounts).reduce((a, b) => 
+            resolutionCounts[a] > resolutionCounts[b] ? a : b, '없음'
+        );
+        
+        return {
+            totalConflicts: conflictLearning.length,
+            successfulResolutions: successful.length,
+            failedResolutions: failed.length,
+            successRate: conflictLearning.length > 0 ? 
+                Math.round((successful.length / conflictLearning.length) * 100) : 0,
+            mostCommonTrigger: mostCommonTrigger,
+            bestResolutionMethod: bestResolutionMethod,
+            triggerFrequency: triggerCounts,
+            resolutionFrequency: resolutionCounts,
+            patterns: conflictLearning.slice(-5) // 최근 5개 패턴
+        };
+        
+    } catch (error) {
+        contextLog('💔 갈등 패턴 분석 실패:', error.message);
+        return {
+            totalConflicts: 0,
+            successfulResolutions: 0,
+            failedResolutions: 0,
+            mostCommonTrigger: '분석 실패',
+            bestResolutionMethod: '분석 실패',
+            patterns: []
+        };
+    }
+}
+
+/**
+ * 💔 일기장용 갈등 데이터 조회
+ */
+async function getConflictLearningForDiary() {
+    try {
+        const conflictLearning = await getLearningByCategory('갈등학습');
+        
+        return conflictLearning.map(item => ({
+            date: item.date,
+            time: item.time,
+            content: item.content,
+            conflictType: item.context?.conflictType || '알 수 없음',
+            trigger: item.context?.trigger || '알 수 없음',
+            resolution: item.context?.resolutionMethod || '진행중',
+            success: item.context?.success || false
+        }));
+        
+    } catch (error) {
+        contextLog('💔 갈등 일기 데이터 조회 실패:', error.message);
+        return [];
+    }
+}
+
+
 // ==================== 🧠 강화된 자동 학습 시스템 ====================
 
 /**
@@ -1757,6 +1888,11 @@ module.exports = {
     // ✨ GPT 모델 최적화 함수들 추가
     getOptimalContextLength,
     getContextPriority,
+    
+   // 💔 갈등 학습 연동 (새로 추가!)
+    addConflictLearning,
+    analyzeConflictPatterns,
+    getConflictLearningForDiary,
     
     // 호환성 (기존 시스템과의 연동)
     addMemoryContext: addUserMemory,  // 별칭
