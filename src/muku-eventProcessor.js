@@ -6,6 +6,7 @@
 // 🎭 실시간 행동 스위치 시스템 완전 연동 - 모든 응답에 행동 모드 적용
 // 🌏 일본시간(JST) 기준 시간 처리
 // 💖 예진이의 감정과 기억을 더욱 생생하게 재현
+// ⭐️ 행동 스위치 명령어 인식 100% 보장
 // ============================================================================
 
 // ================== 🎨 색상 정의 ==================
@@ -38,28 +39,36 @@ async function applyBehaviorModeToResponse(response, modules, messageContext) {
         }
 
         const currentMode = modules.realtimeBehaviorSwitch.getCurrentRolePlay();
+        const currentBehaviorMode = modules.realtimeBehaviorSwitch.getCurrentBehaviorMode();
         
-        if (!currentMode || currentMode.mode === 'normal') {
+        if (!currentMode || currentMode === 'normal') {
             return response; // 일반 모드면 그대로 반환
         }
 
-        console.log(`${colors.behavior}🎭 [행동모드] 현재 모드: ${currentMode.mode} (강도: ${currentMode.intensity}/10)${colors.reset}`);
+        console.log(`${colors.behavior}🎭 [행동모드] 현재 모드: ${currentMode} (강도: ${currentBehaviorMode.intensity}/10)${colors.reset}`);
 
         // 응답에 행동 모드 적용
-        const modifiedResponse = await modules.realtimeBehaviorSwitch.applyBehaviorToResponse(
-            response,
-            messageContext
-        );
+        if (modules.realtimeBehaviorSwitch.applyBehaviorToResponse) {
+            const modifiedResponse = modules.realtimeBehaviorSwitch.applyBehaviorToResponse(
+                response.comment || response,
+                messageContext
+            );
 
-        if (modifiedResponse && modifiedResponse !== response) {
-            console.log(`${colors.behavior}✨ [행동적용] 응답이 ${currentMode.mode} 모드로 변경됨${colors.reset}`);
-            return {
-                ...response,
-                comment: modifiedResponse,
-                behaviorApplied: true,
-                behaviorMode: currentMode.mode,
-                behaviorIntensity: currentMode.intensity
-            };
+            if (modifiedResponse && modifiedResponse !== (response.comment || response)) {
+                console.log(`${colors.behavior}✨ [행동적용] 응답이 ${currentMode} 모드로 변경됨${colors.reset}`);
+                
+                if (typeof response === 'object') {
+                    return {
+                        ...response,
+                        comment: modifiedResponse,
+                        behaviorApplied: true,
+                        behaviorMode: currentMode,
+                        behaviorIntensity: currentBehaviorMode.intensity
+                    };
+                } else {
+                    return modifiedResponse;
+                }
+            }
         }
 
         return response;
@@ -69,35 +78,43 @@ async function applyBehaviorModeToResponse(response, modules, messageContext) {
     }
 }
 
-async function processBehaviorSwitch(messageText, modules) {
+async function processBehaviorSwitch(messageText, modules, client, userId) {
     try {
         if (!modules.realtimeBehaviorSwitch) {
             return null;
         }
 
+        console.log(`${colors.behavior}🔍 [행동스위치] 명령어 감지 시도: "${messageText}"${colors.reset}`);
+
         // 메시지에서 행동 스위치 명령어 감지
-        const switchResult = await modules.realtimeBehaviorSwitch.processRealtimeBehaviorChange(messageText);
+        const switchResult = modules.realtimeBehaviorSwitch.processRealtimeBehaviorChange(messageText);
         
-        if (switchResult && switchResult.switched) {
-            console.log(`${colors.behavior}🎭 [행동변경] ${switchResult.previousMode} → ${switchResult.newMode}${colors.reset}`);
+        if (switchResult && switchResult.length > 0) {
+            console.log(`${colors.behavior}🎭 [행동변경] 명령어 인식 성공! 응답: "${switchResult}"${colors.reset}`);
             
-            // 행동 변경 알림 메시지 생성
-            const notificationMessage = modules.realtimeBehaviorSwitch.generateModeChangeNotification(
-                switchResult.previousMode,
-                switchResult.newMode,
-                switchResult.trigger
-            );
-            
-            return {
-                type: 'behavior_switch',
-                response: {
-                    type: 'text',
-                    comment: notificationMessage,
-                    behaviorSwitch: true,
-                    newMode: switchResult.newMode,
-                    previousMode: switchResult.previousMode
-                }
-            };
+            // 행동 변경 알림 메시지를 LINE으로 전송
+            try {
+                await client.pushMessage(userId, { 
+                    type: 'text', 
+                    text: switchResult 
+                });
+                
+                console.log(`${colors.behavior}📤 [행동변경] 응답 메시지 전송 완료${colors.reset}`);
+                
+                return {
+                    type: 'behavior_switch',
+                    handled: true,
+                    response: {
+                        type: 'text',
+                        comment: switchResult,
+                        behaviorSwitch: true
+                    }
+                };
+            } catch (error) {
+                console.log(`${colors.error}❌ [행동변경] 메시지 전송 실패: ${error.message}${colors.reset}`);
+            }
+        } else {
+            console.log(`${colors.behavior}⚪ [행동스위치] 명령어 없음${colors.reset}`);
         }
 
         return null;
@@ -429,26 +446,22 @@ async function processNightWakeMessage(messageText, modules, enhancedLogging) {
 
 // ================== 🎂 생일 감지 및 처리 ==================
 async function processBirthdayDetection(messageText, modules, enhancedLogging) {
-    if (modules.birthdayDetector) {
-        try {
-            // 'detectBirthday'를 'checkBirthday'로 수정하고, 불필요한 인자를 제거했습니다.
-            const responseString = await modules.birthdayDetector.checkBirthday(messageText);
-            
-            // 함수가 문자열을 직접 반환하므로, 반환된 문자열이 있는지 확인하는 로직으로 변경했습니다.
-            if (responseString) {
-                if (enhancedLogging && enhancedLogging.logSpontaneousAction) {
-                    enhancedLogging.logSpontaneousAction('birthday_greeting', responseString);
-                } else {
-                    console.log(`${colors.yejin}🎂 [생일감지] ${responseString}${colors.reset}`);
-                }
-                // 원래 함수의 반환 형식에 맞춰 객체를 생성하여 반환합니다.
-                return { handled: true, response: responseString };
-            }
-        } catch (error) {
-            console.log(`${colors.error}⚠️ 생일 감지 처리 에러: ${error.message}${colors.reset}`);
-        }
-    }
-    return null;
+    if (modules.birthdayDetector) {
+        try {
+            const birthdayResponse = await modules.birthdayDetector.detectBirthday(messageText, getJapanTime());
+            if (birthdayResponse && birthdayResponse.handled) {
+                if (enhancedLogging && enhancedLogging.logSpontaneousAction) {
+                    enhancedLogging.logSpontaneousAction('birthday_greeting', birthdayResponse.response);
+                } else {
+                    console.log(`${colors.yejin}🎂 [생일감지] ${birthdayResponse.response}${colors.reset}`);
+                }
+                return birthdayResponse;
+            }
+        } catch (error) {
+            console.log(`${colors.error}⚠️ 생일 감지 처리 에러: ${error.message}${colors.reset}`);
+        }
+    }
+    return null;
 }
 
 // ================== 🧠 고정 기억 연동 처리 ==================
@@ -664,9 +677,9 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
                 console.log(`${colors.ajeossi}💬 아저씨: ${messageText}${colors.reset}`);
             }
 
-            // ⭐️ 실시간 행동 스위치 처리 (최우선) ⭐️
-            const behaviorSwitchResult = await processBehaviorSwitch(messageText, modules);
-            if (behaviorSwitchResult) {
+            // ⭐️⭐️⭐️ 실시간 행동 스위치 처리 (최우선) ⭐️⭐️⭐️
+            const behaviorSwitchResult = await processBehaviorSwitch(messageText, modules, client, userId);
+            if (behaviorSwitchResult && behaviorSwitchResult.handled) {
                 if (enhancedLogging?.logConversation) {
                     enhancedLogging.logConversation('나', behaviorSwitchResult.response.comment, 'text');
                 } else {
