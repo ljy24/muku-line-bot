@@ -115,9 +115,11 @@ async function initializeCoreMemorySystems(modules, client) {
                     const currentLevel = conflictStatus?.currentLevel ?? 0;
                     const isActive = conflictStatus?.isActive ?? false;
                     const initialized = conflictStatus?.initialized ?? true;
-                    console.log(`${colors.conflict}    📊 갈등 현황: 레벨 ${currentLevel}, 활성: ${isActive}, 초기화: ${initialized}${colors.reset}`);
+                    const activeText = isActive ? '활성화됨' : '대기중';
+                    const initText = initialized ? '완료' : '준비중';
+                    console.log(`${colors.conflict}    📊 갈등 현황: ${currentLevel}단계, 상태: ${activeText}, 초기화: ${initText}${colors.reset}`);
                 } catch (error) {
-                    console.log(`${colors.conflict}    📊 갈등 현황: 레벨 0, 활성: false, 초기화: true (기본값)${colors.reset}`);
+                    console.log(`${colors.conflict}    📊 갈등 현황: 0단계, 상태: 대기중, 초기화: 완료 (기본값)${colors.reset}`);
                 }
             }
             
@@ -342,9 +344,12 @@ async function initializeNewSystems(modules) {
             // 현재 설정 상태 확인
             if (modules.realtimeBehaviorSwitch.getBehaviorStatus) {
                 const behaviorStatus = modules.realtimeBehaviorSwitch.getBehaviorStatus();
-                console.log(`${colors.system}    📊 현재 설정: 말투(${behaviorStatus.speechStyle}), 호칭(${behaviorStatus.currentAddress})${colors.reset}`);
-                if (behaviorStatus.rolePlayMode !== 'normal') {
-                    console.log(`${colors.system}    🎭 상황극 모드: ${behaviorStatus.rolePlayMode}${colors.reset}`);
+                const speechStyle = behaviorStatus?.speechStyle ?? '존댓말';
+                const currentAddress = behaviorStatus?.currentAddress ?? '아저씨';
+                const rolePlayMode = behaviorStatus?.rolePlayMode ?? '일반모드';
+                console.log(`${colors.system}    📊 현재 설정: 말투(${speechStyle}), 호칭(${currentAddress})${colors.reset}`);
+                if (rolePlayMode !== '일반모드' && rolePlayMode !== 'normal') {
+                    console.log(`${colors.system}    🎭 상황극 모드: ${rolePlayMode}${colors.reset}`);
                 }
             }
             
@@ -496,14 +501,16 @@ async function initializeMukuSystems(client, getCurrentModelSetting) {
                 initResults.conflictSystem = conflictStatus?.initialized ?? true; // 로딩됐으면 초기화된 것으로 간주
                 const currentLevel = conflictStatus?.currentLevel ?? 0;
                 const isActive = conflictStatus?.isActive ?? false;
-                console.log(`${colors.conflict}📊 [갈등 확인] 갈등 시스템 활성화: ${initResults.conflictSystem ? '✅' : '❌'} (레벨: ${currentLevel}, 활성: ${isActive})${colors.reset}`);
+                const statusText = initResults.conflictSystem ? '✅ 활성화' : '❌ 비활성화';
+                const activeText = isActive ? '갈등중' : '평화로움';
+                console.log(`${colors.conflict}📊 [갈등 확인] 갈등 시스템: ${statusText} (${currentLevel}단계, ${activeText})${colors.reset}`);
             } catch (error) {
                 initResults.conflictSystem = true; // 모듈이 로드되면 일단 성공으로 간주
-                console.log(`${colors.conflict}📊 [갈등 확인] 갈등 시스템 활성화: ✅ (기본 상태로 설정됨)${colors.reset}`);
+                console.log(`${colors.conflict}📊 [갈등 확인] 갈등 시스템: ✅ 활성화 (기본 상태로 설정됨)${colors.reset}`);
             }
         } else {
             initResults.conflictSystem = false;
-            console.log(`${colors.conflict}📊 [갈등 확인] 갈등 시스템 활성화: ❌ (모듈 없음)${colors.reset}`);
+            console.log(`${colors.conflict}📊 [갈등 확인] 갈등 시스템: ❌ 비활성화 (모듈 없음)${colors.reset}`);
         }
 
         // 행동 스위치 시스템 개별 상태 확인
@@ -511,16 +518,17 @@ async function initializeMukuSystems(client, getCurrentModelSetting) {
             try {
                 const behaviorStatus = modules.realtimeBehaviorSwitch.getBehaviorStatus();
                 initResults.behaviorSwitch = behaviorStatus?.speechStyle !== undefined;
-                const speechStyle = behaviorStatus?.speechStyle ?? 'normal';
-                const currentAddress = behaviorStatus?.currentAddress ?? 'ajeossi';
-                console.log(`${colors.system}📊 [행동스위치 확인] 행동 스위치 시스템 활성화: ${initResults.behaviorSwitch ? '✅' : '❌'} (말투: ${speechStyle}, 호칭: ${currentAddress})${colors.reset}`);
+                const speechStyle = behaviorStatus?.speechStyle ?? '존댓말';
+                const currentAddress = behaviorStatus?.currentAddress ?? '아저씨';
+                const statusText = initResults.behaviorSwitch ? '✅ 활성화' : '❌ 비활성화';
+                console.log(`${colors.system}📊 [행동스위치 확인] 행동 스위치 시스템: ${statusText} (말투: ${speechStyle}, 호칭: ${currentAddress})${colors.reset}`);
             } catch (error) {
                 initResults.behaviorSwitch = true; // 모듈이 로드되면 일단 성공으로 간주
-                console.log(`${colors.system}📊 [행동스위치 확인] 행동 스위치 시스템 활성화: ✅ (기본 상태로 설정됨)${colors.reset}`);
+                console.log(`${colors.system}📊 [행동스위치 확인] 행동 스위치 시스템: ✅ 활성화 (기본 상태로 설정됨)${colors.reset}`);
             }
         } else {
             initResults.behaviorSwitch = false;
-            console.log(`${colors.system}📊 [행동스위치 확인] 행동 스위치 시스템 활성화: ❌ (모듈 없음)${colors.reset}`);
+            console.log(`${colors.system}📊 [행동스위치 확인] 행동 스위치 시스템: ❌ 비활성화 (모듈 없음)${colors.reset}`);
         }
 
         // =================== 3단계: 추가 시스템 활성화 ===================
