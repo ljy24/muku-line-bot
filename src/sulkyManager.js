@@ -163,30 +163,41 @@ function updateBotMessageTime(timestamp = null) {
  * 생리주기 기반 삐짐 배수 계산
  */
 function getSulkyMultiplier() {
-    try {
-        const emotionalManager = getEmotionalManager();
-        if (emotionalManager && emotionalManager.getCurrentEmotionState) {
-            const emotionState = emotionalManager.getCurrentEmotionState();
-            
-            // 생리주기별 배수 (PMS나 생리 중일 때 더 빨리 삐짐)
-            const multipliers = {
-                'menstruation': 0.6,  // 생리 중: 40% 빠르게 삐짐
-                'pms_start': 0.7,     // PMS 시작: 30% 빠르게 삐짐  
-                'pms_severe': 0.5,    // PMS 심화: 50% 빠르게 삐짐
-                'recovery': 1.2,      // 회복기: 20% 늦게 삐짐
-                'normal': 1.0         // 정상기: 기본
-            };
-            
-            const multiplier = multipliers[emotionState.phase] || 1.0;
-            console.log(`[sulkyManager] 생리주기 배수: ${emotionState.phase} (×${multiplier})`);
-            return multiplier;
-        }
-    } catch (error) {
-        console.log('⚠️ [sulkyManager] 생리주기 배수 계산 실패:', error.message);
-    }
-    return 1.0; // 기본값
+   try {
+       const emotionalManager = getEmotionalManager();
+       if (emotionalManager && emotionalManager.getCurrentEmotionState) {
+           const emotionState = emotionalManager.getCurrentEmotionState();
+           
+           // 생리주기별 배수 (PMS나 생리 중일 때 더 빨리 삐짐)
+           const multipliers = {
+               'menstruation': 0.6,  // 생리 중: 40% 빠르게 삐짐
+               'pms_start': 0.7,     // PMS 시작: 30% 빠르게 삐짐  
+               'pms_severe': 0.5,    // PMS 심화: 50% 빠르게 삐짐
+               'recovery': 1.2,      // 회복기: 20% 늦게 삐짐
+               'normal': 1.0         // 정상기: 기본
+           };
+           
+           const phase = emotionState.phase || 'normal';
+           const multiplier = multipliers[phase] || 1.0;
+           
+           // 한글 표시용 매핑
+           const phaseNames = {
+               'menstruation': '생리중',
+               'pms_start': 'PMS시작',  
+               'pms_severe': 'PMS심화',
+               'recovery': '회복기',
+               'normal': '정상기'
+           };
+           
+           const phaseName = phaseNames[phase] || '정상기';
+           console.log(`[sulkyManager] 생리주기 배수: ${phaseName} (×${multiplier})`);
+           return multiplier;
+       }
+   } catch (error) {
+       console.log('⚠️ [sulkyManager] 생리주기 배수 계산 실패:', error.message);
+   }
+   return 1.0; // 기본값
 }
-
 /**
  * 답장 지연 시간을 체크하여 삐짐 메시지 전송
  */
