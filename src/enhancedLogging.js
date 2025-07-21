@@ -162,10 +162,11 @@ function generateLineStatusReport(modules) {
         
         // ☁️ 지금속마음
         report += `☁️ [지금속마음] ${getRandomYejinHeart(modules)}\n\n`;
-        
-        // 🧠 기억관리
+    // 🧠 기억관리
         if (modules.memoryManager && typeof modules.memoryManager.getMemoryStatus === 'function') {
              const mem = modules.memoryManager.getMemoryStatus();
+             // ✅ [수정] totalMemories 변수를 여기서 직접 계산하도록 추가했습니다.
+             const totalMemories = (mem.fixedMemoriesCount || 0) + (mem.loveHistoryCount || 0);
              report += `🧠 [기억관리] 전체 기억: ${totalMemories}개 (기본:${mem.fixedMemoriesCount}, 연애:${mem.loveHistoryCount})\n`;
         }
         if (modules.ultimateContext && typeof modules.ultimateContext.getTodayLearnedCount === 'function') {
