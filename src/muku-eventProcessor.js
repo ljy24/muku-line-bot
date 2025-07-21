@@ -37,7 +37,7 @@ async function applyBehaviorModeToResponse(response, modules, messageContext) {
             return response;
         }
 
-        const currentMode = modules.realtimeBehaviorSwitch.getCurrentBehaviorMode();
+        const currentMode = modules.realtimeBehaviorSwitch.getCurrentRolePlay();
         
         if (!currentMode || currentMode.mode === 'normal') {
             return response; // 일반 모드면 그대로 반환
