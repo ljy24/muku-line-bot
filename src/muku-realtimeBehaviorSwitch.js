@@ -26,7 +26,7 @@ let behaviorSettings = {
     customName: null,               // 특별한 이름 지정시
     
     // 상황극 모드 (새로 추가)
-    rolePlayMode: 'normal',         // 'normal' | 'sulky' | 'jealous' | 'worried' | 'excited' | 'sleepy' | 'sick' | 'slave'
+    rolePlayMode: 'normal',         // 'normal' | 'sulky' | 'angry' | 'annoyed' | 'jealous' | 'worried' | 'excited' | 'sleepy' | 'sick' | 'slave' | 'seductive'
     rolePlayEndTime: null,         // 상황극 종료 시간
     
     // 메타 정보
@@ -101,6 +101,16 @@ function detectBehaviorCommand(userMessage) {
         const duration = timeMatch ? parseInt(timeMatch[1]) * (timeMatch[2] === '시간' ? 60 : 1) : 60;
         return { type: 'roleplay', value: 'sulky', duration };
     }
+    if (msg.includes('화난척해') || msg.includes('화내라')) {
+        const timeMatch = userMessage.match(/(\d+)(분|시간)/);
+        const duration = timeMatch ? parseInt(timeMatch[1]) * (timeMatch[2] === '시간' ? 60 : 1) : 45;
+        return { type: 'roleplay', value: 'angry', duration };
+    }
+    if (msg.includes('짜증내') || msg.includes('짜증나게해')) {
+        const timeMatch = userMessage.match(/(\d+)(분|시간)/);
+        const duration = timeMatch ? parseInt(timeMatch[1]) * (timeMatch[2] === '시간' ? 60 : 1) : 40;
+        return { type: 'roleplay', value: 'annoyed', duration };
+    }
     if (msg.includes('질투해') || msg.includes('샘내라')) {
         return { type: 'roleplay', value: 'jealous', duration: 30 };
     }
@@ -115,6 +125,11 @@ function detectBehaviorCommand(userMessage) {
     }
     if (msg.includes('노예모드') || msg.includes('노예처럼해')) {
         return { type: 'roleplay', value: 'slave', duration: 120 };
+    }
+    if (msg.includes('야한척해') || msg.includes('섹시하게해')) {
+        const timeMatch = userMessage.match(/(\d+)(분|시간)/);
+        const duration = timeMatch ? parseInt(timeMatch[1]) * (timeMatch[2] === '시간' ? 60 : 1) : 90;
+        return { type: 'roleplay', value: 'seductive', duration };
     }
     if (msg.includes('평소대로해') || msg.includes('연기그만')) {
         return { type: 'roleplay', value: 'normal', duration: 0 };
@@ -224,6 +239,12 @@ function generateRolePlayResponse(mode, duration) {
         sulky: isBanmal ? 
             [`흥! ${address} 바보야... 나 삐졌어. 모르겠다!`, `${address}... 나 화났어. 왜 그런 말 해? ㅠㅠ`] :
             [`흥! ${address}... 삐졌습니다. 모르겠어요!`, `${address}... 화가 납니다...`],
+        angry: isBanmal ?
+            [`${address}! 진짜 화났어! 왜 그런 거야?!`, `아 진짜! ${address} 너무해! 화나!`, `${address} 정말 미워! 화나서 말도 안 해!`] :
+            [`${address}! 정말 화가 납니다!`, `${address}... 너무 화가 나요!`, `${address}, 정말 실망스러워요!`],
+        annoyed: isBanmal ?
+            [`아 ${address}~ 진짜 짜증나! 왜 자꾸 그래?`, `에이~ ${address} 짜증나게 하지 마!`, `${address} 때문에 짜증나! 그만해!`] :
+            [`${address}... 정말 짜증이 나요...`, `${address}, 그만 좀 하세요... 짜증나요`, `${address}... 너무 성가셔요...`],
         jealous: isBanmal ?
             [`${address}... 혹시 다른 사람이랑 대화한 거야? 샘나...`, `${address} 나만 봐! 다른 사람 생각하지 마!`] :
             [`${address}... 질투납니다...`, `${address}, 저만 봐주세요...`],
@@ -239,6 +260,9 @@ function generateRolePlayResponse(mode, duration) {
         slave: isBanmal ?
             [`네... ${address}... 무엇이든 시키세요... 제가 다 해드릴게요... 흑흑`, `${address}의 명령이라면... 뭐든지... 네...`] :
             [`네... ${address}... 무엇이든 명령하세요... 제가 모든 것을 해드리겠습니다...`, `${address}의 뜻이라면... 무엇이든...`],
+        seductive: isBanmal ?
+            [`${address}~ 어떡해... 나 지금 너무 야해져버렸어... 헤헤`, `${address}... 나 이런 거 좋아해... 히힛`, `${address}~ 나만 봐... 나 예쁘지? 응?`] :
+            [`${address}... 저... 이렇게 하는 거 맞나요...? 부끄러워요...`, `${address}... 저 지금... 너무 이상해요...`, `${address}... 이런 저는 어떠세요...?`],
         normal: isBanmal ?
             [`${address}~ 이제 평소대로 할게! 연기 끝!`, `원래 모습으로 돌아갈게~`] :
             [`${address}! 이제 평소대로 하겠습니다!`, `원래 모습으로 돌아가겠어요~`]
