@@ -76,7 +76,7 @@ async function processBehaviorSwitch(messageText, modules) {
         }
 
         // 메시지에서 행동 스위치 명령어 감지
-        const switchResult = await modules.realtimeBehaviorSwitch.processMessage(messageText);
+        const switchResult = await modules.realtimeBehaviorSwitch.processRealtimeBehaviorChange(messageText);
         
         if (switchResult && switchResult.switched) {
             console.log(`${colors.behavior}🎭 [행동변경] ${switchResult.previousMode} → ${switchResult.newMode}${colors.reset}`);
@@ -431,7 +431,7 @@ async function processNightWakeMessage(messageText, modules, enhancedLogging) {
 async function processBirthdayDetection(messageText, modules, enhancedLogging) {
     if (modules.birthdayDetector) {
         try {
-            const birthdayResponse = await modules.birthdayDetector.checkBirthday(messageText, getJapanTime());
+            const birthdayResponse = await modules.birthdayDetector.detectBirthday(messageText, getJapanTime());
             if (birthdayResponse && birthdayResponse.handled) {
                 if (enhancedLogging && enhancedLogging.logSpontaneousAction) {
                     enhancedLogging.logSpontaneousAction('birthday_greeting', birthdayResponse.response);
