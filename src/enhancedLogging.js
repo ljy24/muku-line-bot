@@ -166,7 +166,7 @@ function generateLineStatusReport(modules) {
         // 🧠 기억관리
         if (modules.memoryManager && typeof modules.memoryManager.getMemoryStatus === 'function') {
              const mem = modules.memoryManager.getMemoryStatus();
-             report += `🧠 [기억관리] 전체 기억: ${mem.totalMemories}개 (기본:${mem.fixedMemoriesCount}, 연애:${mem.loveHistoryCount})\n`;
+             report += `🧠 [기억관리] 전체 기억: ${totalMemories}개 (기본:${mem.fixedMemoriesCount}, 연애:${mem.loveHistoryCount})\n`;
         }
         if (modules.ultimateContext && typeof modules.ultimateContext.getTodayLearnedCount === 'function') {
              report += `📚 오늘 배운 기억: ${modules.ultimateContext.getTodayLearnedCount()}개\n\n`;
