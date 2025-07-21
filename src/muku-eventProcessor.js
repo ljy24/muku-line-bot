@@ -429,22 +429,26 @@ async function processNightWakeMessage(messageText, modules, enhancedLogging) {
 
 // ================== 🎂 생일 감지 및 처리 ==================
 async function processBirthdayDetection(messageText, modules, enhancedLogging) {
-    if (modules.birthdayDetector) {
-        try {
-            const birthdayResponse = await modules.birthdayDetector.detectBirthday(messageText, getJapanTime());
-            if (birthdayResponse && birthdayResponse.handled) {
-                if (enhancedLogging && enhancedLogging.logSpontaneousAction) {
-                    enhancedLogging.logSpontaneousAction('birthday_greeting', birthdayResponse.response);
-                } else {
-                    console.log(`${colors.yejin}🎂 [생일감지] ${birthdayResponse.response}${colors.reset}`);
-                }
-                return birthdayResponse;
-            }
-        } catch (error) {
-            console.log(`${colors.error}⚠️ 생일 감지 처리 에러: ${error.message}${colors.reset}`);
-        }
-    }
-    return null;
+    if (modules.birthdayDetector) {
+        try {
+            // 'detectBirthday'를 'checkBirthday'로 수정하고, 불필요한 인자를 제거했습니다.
+            const responseString = await modules.birthdayDetector.checkBirthday(messageText);
+            
+            // 함수가 문자열을 직접 반환하므로, 반환된 문자열이 있는지 확인하는 로직으로 변경했습니다.
+            if (responseString) {
+                if (enhancedLogging && enhancedLogging.logSpontaneousAction) {
+                    enhancedLogging.logSpontaneousAction('birthday_greeting', responseString);
+                } else {
+                    console.log(`${colors.yejin}🎂 [생일감지] ${responseString}${colors.reset}`);
+                }
+                // 원래 함수의 반환 형식에 맞춰 객체를 생성하여 반환합니다.
+                return { handled: true, response: responseString };
+            }
+        } catch (error) {
+            console.log(`${colors.error}⚠️ 생일 감지 처리 에러: ${error.message}${colors.reset}`);
+        }
+    }
+    return null;
 }
 
 // ================== 🧠 고정 기억 연동 처리 ==================
