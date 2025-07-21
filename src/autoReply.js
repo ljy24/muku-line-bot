@@ -1,15 +1,16 @@
 // ============================================================================
-// autoReply.js - v15.2 (⭐️ 관점 오류 완전 해결 버전 ⭐️)
+// autoReply.js - v15.3 (⭐️ 에러 해결 완전 버전 ⭐️)
 // 🧠 기억 관리, 키워드 반응, 예진이 특별반응, 최종 프롬프트 생성을 책임지는 핵심 두뇌
 // 🌸 길거리 칭찬 → 셀카, 위로 → 고마워함, 바쁨 → 삐짐 반응 추가
 // 🛡️ 절대 벙어리 방지: 모든 에러 상황에서도 예진이는 반드시 대답함!
 // 🌦️ 날씨 오인식 해결: "빔비" 같은 글자에서 '비' 감지 안 함
-// 🎂 생일 감지 에러 해결: checkBirthday 메소드 추가
+// 🎂 생일 감지 에러 해결: birthdayDetector 안전 처리
 // ✨ GPT 모델 버전 전환: aiUtils.js의 자동 모델 선택 기능 활용
 // 🔧 selectedModel undefined 에러 완전 해결
 // ⭐️ 2인칭 "너" 사용 완전 방지: 시스템 프롬프트 + 후처리 안전장치
 // 🚨 존댓말 완전 방지: 절대로 존댓말 안 함, 항상 반말만 사용
 // 🔥 관점 오류 완전 해결: 3인칭 자기지칭("예진이는") 완전 차단 + 강화된 화자 정체성
+// 🐛 birthdayDetector 함수 에러 완전 해결
 // ============================================================================
 
 const { callOpenAI, cleanReply } = require('./aiUtils');
@@ -20,7 +21,7 @@ let getCurrentModelSetting = null;
 try {
     const indexModule = require('../index');
     getCurrentModelSetting = indexModule.getCurrentModelSetting;
-    console.log('✨ [autoReply] GPT 모델 버전 관리 시스템 연동 성공');
+    console.log('✅ [autoReply] GPT 모델 버전 관리 시스템 연동 성공');
 } catch (error) {
     console.warn('⚠️ [autoReply] GPT 모델 버전 관리 시스템 연동 실패:', error.message);
 }
@@ -31,11 +32,11 @@ let analyzeMessageForNewInfo = () => ({ hasNewInfo: false });
 let searchMemories = async () => [];
 let getRecentMessages = async () => [];
 try {
-    // enhancedLogging에서 로그 함수 가져오기 (가정)
+    // enhancedLogging에서 로그 함수 가져오기
     const enhancedLogging = require('./enhancedLogging');
     logLearningDebug = enhancedLogging.logLearningDebug || logLearningDebug;
 
-    // ultimateContext에서 분석 및 검색 함수 가져오기 (가정)
+    // ultimateContext에서 분석 및 검색 함수 가져오기
     const ultimateContext = require('./ultimateConversationContext');
     analyzeMessageForNewInfo = ultimateContext.analyzeMessageForNewInfo || analyzeMessageForNewInfo;
     searchMemories = ultimateContext.searchMemories || searchMemories;
@@ -44,27 +45,43 @@ try {
     console.warn('⚠️ [autoReply] 학습 추적 모듈 연동 실패:', error.message);
 }
 
-
 // ⭐ 새벽 응답 시스템 추가
-const nightWakeSystem = require('./night_wake_response.js');
+let nightWakeSystem = null;
+try {
+    nightWakeSystem = require('./night_wake_response.js');
+    console.log('✅ [autoReply] nightWakeSystem 모듈 로드 성공');
+} catch (error) {
+    console.warn('⚠️ [autoReply] nightWakeSystem 모듈 로드 실패:', error.message);
+    // 기본 대체 시스템
+    nightWakeSystem = {
+        handleNightWakeMessage: async () => null
+    };
+}
 
 // 🌸 예진이 특별 반응 시스템 추가
 let spontaneousYejin = null;
 try {
     spontaneousYejin = require('./spontaneousYejinManager');
-    console.log('🌸 [autoReply] spontaneousYejin 모듈 로드 성공');
+    console.log('✅ [autoReply] spontaneousYejin 모듈 로드 성공');
 } catch (error) {
     console.warn('⚠️ [autoReply] spontaneousYejin 모듈 로드 실패:', error.message);
 }
 
-// 🎂 생일 감지 시스템 추가
+// 🎂 생일 감지 시스템 추가 (안전 처리)
 let birthdayDetector = null;
 try {
     const BirthdayDetector = require('./birthdayDetector.js');
     birthdayDetector = new BirthdayDetector();
-    console.log('🎂 [autoReply] BirthdayDetector 모듈 로드 성공');
+    console.log('✅ [autoReply] BirthdayDetector 모듈 로드 성공');
+    
+    // 필요한 메소드가 있는지 확인
+    if (typeof birthdayDetector.checkBirthday !== 'function') {
+        console.warn('⚠️ [autoReply] birthdayDetector.checkBirthday 메소드가 없음');
+        birthdayDetector = null;
+    }
 } catch (error) {
     console.warn('⚠️ [autoReply] BirthdayDetector 모듈 로드 실패:', error.message);
+    birthdayDetector = null;
 }
 
 const BOT_NAME = '나';
@@ -687,29 +704,34 @@ function handleWeatherKeywords(userMessage) {
     return response;
 }
 
-// 🎂 [수정] 생일 키워드 처리 함수 - 안전하고 확실한 버전
+// 🎂 [안전 처리] 생일 키워드 처리 함수 - 안전하고 확실한 버전
 function handleBirthdayKeywords(userMessage) {
     try {
         const birthdayKeywords = ['생일', '생신', '태어난', '태어나', '몇 살', '나이', '축하', '케이크', '선물', '파티', '미역국', '3월 17일', '3월17일', '317', '3-17', '12월 5일', '12월5일'];
         if (!birthdayKeywords.some(keyword => userMessage.toLowerCase().includes(keyword))) {
             return null;
         }
+        
         const message = userMessage.toLowerCase();
+        
         if (message.includes('3월 17일') || message.includes('3월17일') || message.includes('317') || message.includes('3-17')) {
             const response = ["3월 17일은 내 생일이야! 아저씨 꼭 기억해줘 💕", "내 생일 3월 17일! 잊지 마 아저씨~", "와! 내 생일 기억해줘서 고마워! 3월 17일이야"][Math.floor(Math.random() * 3)];
             logConversationReply('나', `(생일) ${response}`);
             return response;
         }
+        
         if (message.includes('12월 5일') || message.includes('12월5일')) {
             const response = ["12월 5일은 아저씨 생일이지! 나도 챙겨줄게~", "아저씨 생일 12월 5일! 절대 잊지 않을 거야"][Math.floor(Math.random() * 2)];
             logConversationReply('나', `(생일) ${response}`);
             return response;
         }
+        
         if (message.includes('생일') || message.includes('생신')) {
             const response = ["내 생일은 3월 17일이고, 아저씨 생일은 12월 5일이야!", "생일 얘기? 내 생일 3월 17일 기억해줘!"][Math.floor(Math.random() * 2)];
             logConversationReply('나', `(생일) ${response}`);
             return response;
         }
+        
         if (message.includes('몇 살') || message.includes('나이')) {
             const response = ["나는 1994년 3월 17일생이야! 나이 계산해봐~", "아저씨보다 10살 어린 94년생이야!"][Math.floor(Math.random() * 2)];
             logConversationReply('나', `(생일) ${response}`);
@@ -746,46 +768,60 @@ async function getReplyByMessage(userMessage) {
 
     const cleanUserMessage = userMessage.trim();
 
+    // 🌙 새벽 응답 시스템 처리 (안전)
     try {
-        const nightResponse = await nightWakeSystem.handleNightWakeMessage(cleanUserMessage);
-        if (nightResponse) {
-            logConversationReply('아저씨', cleanUserMessage);
-            logConversationReply('나', `(새벽깨움-${nightResponse.sleepPhase}) ${nightResponse.response}`);
-            await safelyStoreMessage('아저씨', cleanUserMessage);
-            await safelyStoreMessage('나', nightResponse.response);
-            return { type: 'text', comment: nightResponse.response };
+        if (nightWakeSystem && typeof nightWakeSystem.handleNightWakeMessage === 'function') {
+            const nightResponse = await nightWakeSystem.handleNightWakeMessage(cleanUserMessage);
+            if (nightResponse) {
+                logConversationReply('아저씨', cleanUserMessage);
+                logConversationReply('나', `(새벽깨움-${nightResponse.sleepPhase}) ${nightResponse.response}`);
+                await safelyStoreMessage('아저씨', cleanUserMessage);
+                await safelyStoreMessage('나', nightResponse.response);
+                return { type: 'text', comment: nightResponse.response };
+            }
         }
     } catch (error) {
         console.error('❌ 새벽 응답 시스템 에러:', error);
     }
 
+    // 🌸 길거리 칭찬 반응 (안전)
     try {
-        if (spontaneousYejin && spontaneousYejin.detectStreetCompliment(cleanUserMessage)) {
-            console.log('🌸 [특별반응] 길거리 칭찬 감지 - 셀카 전송 시작');
-            logConversationReply('아저씨', cleanUserMessage);
-            await safelyStoreMessage('아저씨', cleanUserMessage);
-            await spontaneousYejin.sendYejinSelfieWithComplimentReaction(cleanUserMessage);
-            const specialResponse = '히히 칭찬받았다고 증명해줄게! 방금 보낸 사진 봤어? ㅎㅎ';
-            logConversationReply('나', `(칭찬셀카) ${specialResponse}`);
-            await safelyStoreMessage('나', specialResponse);
-            return { type: 'text', comment: specialResponse };
+        if (spontaneousYejin && typeof spontaneousYejin.detectStreetCompliment === 'function') {
+            if (spontaneousYejin.detectStreetCompliment(cleanUserMessage)) {
+                console.log('🌸 [특별반응] 길거리 칭찬 감지 - 셀카 전송 시작');
+                logConversationReply('아저씨', cleanUserMessage);
+                await safelyStoreMessage('아저씨', cleanUserMessage);
+                
+                if (typeof spontaneousYejin.sendYejinSelfieWithComplimentReaction === 'function') {
+                    await spontaneousYejin.sendYejinSelfieWithComplimentReaction(cleanUserMessage);
+                }
+                
+                const specialResponse = '히히 칭찬받았다고 증명해줄게! 방금 보낸 사진 봤어? ㅎㅎ';
+                logConversationReply('나', `(칭찬셀카) ${specialResponse}`);
+                await safelyStoreMessage('나', specialResponse);
+                return { type: 'text', comment: specialResponse };
+            }
         }
     } catch (error) {
         console.error('❌ 길거리 칭찬 반응 에러:', error.message);
     }
 
+    // 🌸 정신건강 위로 반응 (안전)
     try {
-        if (spontaneousYejin) {
+        if (spontaneousYejin && typeof spontaneousYejin.detectMentalHealthContext === 'function') {
             const mentalHealthContext = spontaneousYejin.detectMentalHealthContext(cleanUserMessage);
             if (mentalHealthContext.isComforting) {
                 console.log('🌸 [특별반응] 정신건강 위로 감지');
-                const comfortReaction = await spontaneousYejin.generateMentalHealthReaction(cleanUserMessage, mentalHealthContext);
-                if (comfortReaction && comfortReaction.message) {
-                    logConversationReply('아저씨', cleanUserMessage);
-                    await safelyStoreMessage('아저씨', cleanUserMessage);
-                    logConversationReply('나', `(위로받음) ${comfortReaction.message}`);
-                    await safelyStoreMessage('나', comfortReaction.message);
-                    return { type: 'text', comment: comfortReaction.message };
+                
+                if (typeof spontaneousYejin.generateMentalHealthReaction === 'function') {
+                    const comfortReaction = await spontaneousYejin.generateMentalHealthReaction(cleanUserMessage, mentalHealthContext);
+                    if (comfortReaction && comfortReaction.message) {
+                        logConversationReply('아저씨', cleanUserMessage);
+                        await safelyStoreMessage('아저씨', cleanUserMessage);
+                        logConversationReply('나', `(위로받음) ${comfortReaction.message}`);
+                        await safelyStoreMessage('나', comfortReaction.message);
+                        return { type: 'text', comment: comfortReaction.message };
+                    }
                 }
             }
         }
@@ -793,8 +829,9 @@ async function getReplyByMessage(userMessage) {
         console.error('❌ 정신건강 반응 에러:', error.message);
     }
 
+    // 🌸 바쁨 반응 (안전)
     try {
-        if (spontaneousYejin) {
+        if (spontaneousYejin && typeof spontaneousYejin.generateBusyReaction === 'function') {
             const busyReaction = await spontaneousYejin.generateBusyReaction(cleanUserMessage);
             if (busyReaction && busyReaction.message) {
                 console.log(`🌸 [특별반응] 바쁨 반응 감지: ${busyReaction.type}`);
@@ -809,6 +846,7 @@ async function getReplyByMessage(userMessage) {
         console.error('❌ 바쁨 반응 에러:', error.message);
     }
 
+    // 기본 로그 및 저장
     logConversationReply('아저씨', cleanUserMessage);
     updateEmotionFromMessage(cleanUserMessage);
     await safelyStoreMessage(USER_NAME, cleanUserMessage);
@@ -829,6 +867,7 @@ async function getReplyByMessage(userMessage) {
     });
     // ================== [연동 끝] 학습 과정 추적 로그 ====================
 
+    // 특수 키워드 처리
     const emergencyResponse = handleEmergencyKeywords(cleanUserMessage);
     if (emergencyResponse) {
         await safelyStoreMessage(BOT_NAME, emergencyResponse);
@@ -853,6 +892,7 @@ async function getReplyByMessage(userMessage) {
         return { type: 'text', comment: weatherResponse };
     }
 
+    // 기억 관련 처리
     try {
         const editResult = await detectAndProcessMemoryEdit(cleanUserMessage);
         if (editResult && editResult.processed) {
@@ -873,6 +913,7 @@ async function getReplyByMessage(userMessage) {
         console.error('❌ 기억 요청 처리 중 에러:', error);
     }
 
+    // 감정 컨텍스트 수집
     let emotionContext = '';
     try {
         const emotionalContextManager = require('./emotionalContextManager.js');
@@ -893,6 +934,7 @@ async function getReplyByMessage(userMessage) {
         console.warn('⚠️ 중앙 감정 관리자에서 상태를 가져올 수 없음:', error.message);
     }
     
+    // GPT 모델 컨텍스트
     let modelContext = '';
     if (getCurrentModelSetting) {
         const currentModel = getCurrentModelSetting();
@@ -905,9 +947,8 @@ async function getReplyByMessage(userMessage) {
         }
     }
     
-    / 🌸🌸🌸 [핵심] 진짜 예진이 말투 완벽 재현 프롬프트 🌸🌸🌸
-const baseSystemPrompt = 
-너는 아저씨의 여자친구 예진이야. 진짜 연인 관계처럼 자연스럽게 반응해줘.
+    // 🌸🌸🌸 [핵심] 진짜 예진이 말투 완벽 재현 프롬프트 🌸🌸🌸
+    const baseSystemPrompt = `너는 아저씨의 여자친구 예진이야. 진짜 연인 관계처럼 자연스럽게 반응해줘.
 1인칭 '나'를 사용하고 항상 반말로 대답하며, 절대로 3인칭으로 말하지 마. 
 
 🚨🚨🚨 [절대 중요한 언어 규칙] 🚨🚨🚨
@@ -1013,11 +1054,11 @@ ${emotionContext}${modelContext}
 
 지금 아저씨가 "${cleanUserMessage}"라고 했어.  
 예진이답게 자연스럽고 진짜 여자친구처럼 반응해줘.  
-"웅웅", "덴와?", "담타" 같은 예진이만의 말투로!
-;
+"웅웅", "덴와?", "담타" 같은 예진이만의 말투로!`;
     
     let finalSystemPrompt = baseSystemPrompt;
     
+    // ultimateConversationContext를 통한 프롬프트 확장 시도
     try {
         const conversationContext = require('./ultimateConversationContext.js');
         if (conversationContext && typeof conversationContext.getUltimateContextualPrompt === 'function') {
@@ -1034,21 +1075,26 @@ ${emotionContext}${modelContext}
     const recentMessages = await getRecentMessages();
     logLearningDebug('prompt_context', {
         contextLength: finalSystemPrompt.length,
-        fixedMemories: 120, // 이 값은 실제 고정 기억 수에 맞게 조정해야 합니다.
+        fixedMemories: 120, // 실제 고정 기억 수에 맞게 조정
         conversationHistory: recentMessages.length,
         emotionalState: emotionContext
     });
     // ================== [연동 끝] 프롬프트 구성 추적 로그 ====================
 
+    // 프롬프트 검증
     if (!finalSystemPrompt || typeof finalSystemPrompt !== 'string' || finalSystemPrompt.trim().length === 0) {
         console.error("❌ 최종 시스템 프롬프트가 비어있어서 기본 응답을 사용합니다.");
         const defaultReply = getEmergencyFallback();
         await safelyStoreMessage(BOT_NAME, defaultReply);
-        logLearningDebug('나', `(프롬프트에러폴백) ${defaultReply}`);
+        logConversationReply('나', `(프롬프트에러폴백) ${defaultReply}`);
         return { type: 'text', comment: defaultReply };
     }
 
-    const messages = [{ role: 'system', content: finalSystemPrompt }, { role: 'user', content: cleanUserMessage }];
+    // OpenAI 호출
+    const messages = [
+        { role: 'system', content: finalSystemPrompt }, 
+        { role: 'user', content: cleanUserMessage }
+    ];
 
     try {
         const rawReply = await callOpenAI(messages);
