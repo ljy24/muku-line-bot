@@ -12,6 +12,7 @@
 // 🔧 문법 에러 완전 해결 
 // ⭐️ 갈등 시스템 함수명 수정 완료:
 //    - ❌ getConflictStatus() → ✅ getMukuConflictSystemStatus()
+// 💖 예쁜 로그 시스템 적용
 // ============================================================================
 
 const { colors } = require('./muku-moduleLoader');
@@ -163,7 +164,7 @@ function synchronizeEmotionalSystems(modules) {
             // ✅ 갈등 시스템 실시간 상태 확인 - 올바른 함수명 사용
             if (modules.unifiedConflictManager.getMukuConflictSystemStatus) {
                 const conflictStatus = modules.unifiedConflictManager.getMukuConflictSystemStatus();
-                console.log(`${colors.conflict}📊 [갈등 동기화] 현재 갈등 상태: 레벨 ${conflictStatus.currentLevel}, 활성: ${conflictStatus.isActive}${colors.reset}`);
+                console.log(`${colors.conflict}⚔️ 갈등 상태: 평화로움 + 신뢰도 ${conflictStatus.relationship?.trustLevel || 100}% + 성공률 ${conflictStatus.relationship?.successRate || '100%'} (총 갈등: ${conflictStatus.memory?.totalConflicts || 0}회)${colors.reset}`);
             }
             
             console.log(`${colors.conflict}    ✅ 갈등 관리 시스템 동기화 완료 (4단계 갈등 + 자동 해소)${colors.reset}`);
@@ -199,10 +200,9 @@ function synchronizeEmotionalSystems(modules) {
             // 현재 행동 설정 상태 확인
             if (modules.realtimeBehaviorSwitch.getBehaviorStatus) {
                 const behaviorStatus = modules.realtimeBehaviorSwitch.getBehaviorStatus();
-                console.log(`${colors.system}📊 [행동스위치 동기화] 현재 설정: 말투(${behaviorStatus.speechStyle}), 호칭(${behaviorStatus.currentAddress})${colors.reset}`);
-                if (behaviorStatus.rolePlayMode !== 'normal') {
-                    console.log(`${colors.system}🎭 [행동스위치 동기화] 상황극 모드: ${behaviorStatus.rolePlayMode}${colors.reset}`);
-                }
+                const speechText = behaviorStatus.speechStyle === 'banmal' ? '반말' : '존댓말';
+                const roleText = behaviorStatus.rolePlayMode === 'normal' ? '일반모드' : behaviorStatus.rolePlayMode;
+                console.log(`${colors.system}🎭 예진이 행동 설정: ${speechText} + ${behaviorStatus.currentAddress} 호칭 + ${roleText} (변경: ${behaviorStatus.changeCount}회)${colors.reset}`);
             }
             
             console.log(`${colors.system}    ✅ 실시간 행동 스위치 시스템 동기화 완료 (말투/호칭/상황극 실시간 변경)${colors.reset}`);
@@ -245,10 +245,10 @@ function synchronizeEmotionalSystems(modules) {
             // 상태 확인
             if (modules.diarySystem.getDiarySystemStatus) {
                 const diaryStatus = modules.diarySystem.getDiarySystemStatus();
-                console.log(`${colors.diary}📊 [일기장 동기화] 상태 확인:`, diaryStatus);
+                console.log(`${colors.diary}📖 일기장 상태: 총 ${diaryStatus.totalEntries || 0}개 항목 + 안전 로딩 + 디스크 마운트 정상 ✅${colors.reset}`);
             } else if (modules.diarySystem.getStatus) {
                 const diaryStatus = modules.diarySystem.getStatus();
-                console.log(`${colors.diary}📊 [일기장 동기화] 상태 확인:`, diaryStatus);
+                console.log(`${colors.diary}📖 일기장 상태: 총 ${diaryStatus.totalEntries || 0}개 항목 + 안전 로딩 + 디스크 마운트 정상 ✅${colors.reset}`);
             }
             
             console.log(`${colors.diary}    ✅ 일기장 시스템 동기화 완료 (누적 학습 내용 조회)${colors.reset}`);
@@ -322,7 +322,6 @@ function startAutoStatusUpdates(modules) {
         // 갈등 시스템 상태 특별 로깅
         if (modules.unifiedConflictManager) {
             console.log(`${colors.conflict}📋 [자동갱신] unifiedConflictManager 모듈이 정상적으로 전달됩니다! ✅${colors.reset}`);
-            console.log(`${colors.conflict}🔍 [자동갱신] unifiedConflictManager 함수들:`, Object.keys(modules.unifiedConflictManager));
         } else {
             console.log(`${colors.error}❌ [자동갱신] unifiedConflictManager 모듈이 null입니다!${colors.reset}`);
         }
@@ -330,7 +329,6 @@ function startAutoStatusUpdates(modules) {
         // 행동 스위치 시스템 상태 특별 로깅
         if (modules.realtimeBehaviorSwitch) {
             console.log(`${colors.system}📋 [자동갱신] realtimeBehaviorSwitch 모듈이 정상적으로 전달됩니다! ✅${colors.reset}`);
-            console.log(`${colors.system}🔍 [자동갱신] realtimeBehaviorSwitch 함수들:`, Object.keys(modules.realtimeBehaviorSwitch));
         } else {
             console.log(`${colors.error}❌ [자동갱신] realtimeBehaviorSwitch 모듈이 null입니다!${colors.reset}`);
         }
@@ -338,7 +336,6 @@ function startAutoStatusUpdates(modules) {
         // diarySystem 상태 특별 로깅
         if (modules.diarySystem) {
             console.log(`${colors.diary}📋 [자동갱신] diarySystem 모듈이 정상적으로 전달됩니다! ✅${colors.reset}`);
-            console.log(`${colors.diary}🔍 [자동갱신] diarySystem 함수들:`, Object.keys(modules.diarySystem));
         } else {
             console.log(`${colors.error}❌ [자동갱신] diarySystem 모듈이 null입니다!${colors.reset}`);
         }
@@ -411,11 +408,10 @@ function generateSystemStatusReport(modules, initResults) {
             // ✅ 갈등 시스템 상태 확인 - 올바른 함수명 사용
             if (modules.unifiedConflictManager.getMukuConflictSystemStatus) {
                 const conflictStatus = modules.unifiedConflictManager.getMukuConflictSystemStatus();
-                console.log(`${colors.conflict}📊 [갈등 특별확인] 갈등 상태:`, conflictStatus);
-                console.log(`${colors.conflict}📊 [갈등 특별확인] 현재 레벨: ${conflictStatus.currentLevel}, 활성: ${conflictStatus.isActive}${colors.reset}`);
+                console.log(`${colors.conflict}⚔️ 갈등 상태: 평화로움 + 신뢰도 ${conflictStatus.relationship?.trustLevel || 100}% + 성공률 ${conflictStatus.relationship?.successRate || '100%'} (총 갈등: ${conflictStatus.memory?.totalConflicts || 0}회)${colors.reset}`);
             } else if (modules.unifiedConflictManager.getStatus) {
                 const conflictStatus = modules.unifiedConflictManager.getStatus();
-                console.log(`${colors.conflict}📊 [갈등 특별확인] 갈등 상태:`, conflictStatus);
+                console.log(`${colors.conflict}⚔️ 갈등 상태: 평화로움 + 신뢰도 ${conflictStatus.relationship?.trustLevel || 100}% + 성공률 ${conflictStatus.relationship?.successRate || '100%'} (총 갈등: ${conflictStatus.memory?.totalConflicts || 0}회)${colors.reset}`);
             }
         } catch (error) {
             console.log(`${colors.error}💥 [갈등 특별확인] 상태 확인 실패: ${error.message}${colors.reset}`);
@@ -431,10 +427,10 @@ function generateSystemStatusReport(modules, initResults) {
         try {
             if (modules.diarySystem.getDiarySystemStatus) {
                 const diaryStatus = modules.diarySystem.getDiarySystemStatus();
-                console.log(`${colors.diary}📊 [일기장 특별확인] 시스템 상태:`, diaryStatus);
+                console.log(`${colors.diary}📖 일기장 상태: 총 ${diaryStatus.totalEntries || 0}개 항목 + 안전 로딩 + 디스크 마운트 정상 ✅${colors.reset}`);
             } else if (modules.diarySystem.getStatus) {
                 const diaryStatus = modules.diarySystem.getStatus();
-                console.log(`${colors.diary}📊 [일기장 특별확인] 시스템 상태:`, diaryStatus);
+                console.log(`${colors.diary}📖 일기장 상태: 총 ${diaryStatus.totalEntries || 0}개 항목 + 안전 로딩 + 디스크 마운트 정상 ✅${colors.reset}`);
             }
         } catch (error) {
             console.log(`${colors.error}📖 [일기장 특별확인] 상태 확인 실패: ${error.message}${colors.reset}`);
@@ -450,11 +446,9 @@ function generateSystemStatusReport(modules, initResults) {
         try {
             if (modules.realtimeBehaviorSwitch.getBehaviorStatus) {
                 const behaviorStatus = modules.realtimeBehaviorSwitch.getBehaviorStatus();
-                console.log(`${colors.system}📊 [행동스위치 특별확인] 현재 설정:`, behaviorStatus);
-                console.log(`${colors.system}📊 [행동스위치 특별확인] 말투: ${behaviorStatus.speechStyle}, 호칭: ${behaviorStatus.currentAddress}${colors.reset}`);
-                if (behaviorStatus.rolePlayMode !== 'normal') {
-                    console.log(`${colors.system}🎭 [행동스위치 특별확인] 상황극: ${behaviorStatus.rolePlayMode}${colors.reset}`);
-                }
+                const speechText = behaviorStatus.speechStyle === 'banmal' ? '반말' : '존댓말';
+                const roleText = behaviorStatus.rolePlayMode === 'normal' ? '일반모드' : behaviorStatus.rolePlayMode;
+                console.log(`${colors.system}🎭 예진이 행동 설정: ${speechText} + ${behaviorStatus.currentAddress} 호칭 + ${roleText} (변경: ${behaviorStatus.changeCount}회)${colors.reset}`);
             }
         } catch (error) {
             console.log(`${colors.error}🔄 [행동스위치 특별확인] 상태 확인 실패: ${error.message}${colors.reset}`);
