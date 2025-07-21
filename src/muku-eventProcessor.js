@@ -1,6 +1,6 @@
 // ============================================================================
-// muku-eventProcessor.js - v2.1 (autoReply 완전 통합 버전)
-// ✅ commandHandler.js 호출을 비활성화하고, autoReply.js로 모든 처리를 일원화
+// muku-eventProcessor.js - 무쿠 이벤트 처리 전용 모듈 (모든 오류 수정됨)
+// ✅ 메시지 처리, 이미지 처리, 명령어 처리 로직 분리
 // 🔍 얼굴 인식, 새벽 대화, 생일 감지 등 모든 이벤트 처리
 // 🧠 실시간 학습 시스템 연동 - 대화 패턴 학습 및 개인화
 // 🌏 일본시간(JST) 기준 시간 처리
@@ -9,14 +9,14 @@
 
 // ================== 🎨 색상 정의 ==================
 const colors = {
-    ajeossi: '\x1b[96m',    // 하늘색 (아저씨)
-    yejin: '\x1b[95m',      // 연보라색 (예진이)
-    pms: '\x1b[1m\x1b[91m', // 굵은 빨간색 (PMS)
-    system: '\x1b[92m',     // 연초록색 (시스템)
-    learning: '\x1b[93m',   // 노란색 (학습)
-    person: '\x1b[94m',     // 파란색 (사람 학습)
-    error: '\x1b[91m',      // 빨간색 (에러)
-    reset: '\x1b[0m'        // 색상 리셋
+    ajeossi: '\x1b[96m',     // 하늘색 (아저씨)
+    yejin: '\x1b[95m',       // 연보라색 (예진이)
+    pms: '\x1b[1m\x1b[91m',  // 굵은 빨간색 (PMS)
+    system: '\x1b[92m',      // 연초록색 (시스템)
+    learning: '\x1b[93m',    // 노란색 (학습)
+    person: '\x1b[94m',      // 파란색 (사람 학습)
+    error: '\x1b[91m',       // 빨간색 (에러)
+    reset: '\x1b[0m'         // 색상 리셋
 };
 
 // ================== 🌏 일본시간 함수들 ==================
@@ -404,9 +404,7 @@ async function processGeneralChat(messageText, modules, enhancedLogging) {
         // 1. 기본 응답 생성
         let botResponse = null;
         if (modules.autoReply && modules.autoReply.getReplyByMessage) {
-            // userId를 전달하도록 수정 (통합된 autoReply는 userId를 사용함)
-            const userId = modules.userId; // userId를 modules 객체 등에서 가져와야 함
-            botResponse = await modules.autoReply.getReplyByMessage(messageText, userId);
+            botResponse = await modules.autoReply.getReplyByMessage(messageText);
         }
 
         // 2. 응답이 없으면 시스템 분석기를 통한 지능형 응답 생성
@@ -493,11 +491,13 @@ async function processImageMessage(messageId, client, faceMatcher, loadFaceMatch
         const base64 = buffer.toString('base64');
         console.log(`${colors.system}📐 이미지 크기: ${Math.round(buffer.length/1024)}KB${colors.reset}`);
 
+        // [수정된 로직 시작]
         const analysisResult = await detectFaceSafely(base64, faceMatcher, loadFaceMatcherSafely);
         console.log(`${colors.system}🎯 통합 분석 결과:`, (analysisResult ? `분류: ${analysisResult.type}`: '분석 실패'), `${colors.reset}`);
 
         let finalResponse;
 
+        // AI가 생성한 반응(message)이 있으면 최우선으로 사용
         if (analysisResult && analysisResult.message) {
             finalResponse = {
                 type: 'text',
@@ -505,6 +505,7 @@ async function processImageMessage(messageId, client, faceMatcher, loadFaceMatch
                 personalized: true
             };
         } else {
+            // AI 반응이 없다면, 분류(type)에 따라 기본 반응을 생성
             const faceType = analysisResult ? analysisResult.type : 'unknown';
             finalResponse = generateFaceRecognitionResponse(faceType, modules, {});
         }
@@ -513,6 +514,7 @@ async function processImageMessage(messageId, client, faceMatcher, loadFaceMatch
         await processPersonLearning(analysisResult?.type, imageMetadata, modules, enhancedLogging);
 
         return finalResponse;
+        // [수정된 로직 끝]
 
     } catch (error) {
         console.error(`${colors.error}❌ 이미지 처리 에러: ${error.message}${colors.reset}`);
@@ -538,7 +540,7 @@ function processOtherMessageType(messageType) {
     };
 }
 
-// ================== 🎯 메인 이벤트 처리 함수 (수정 완료) ==================
+// ================== 🎯 메인 이벤트 처리 함수 (학습 시스템 완전 연동) ==================
 async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherSafely, getVersionResponse, enhancedLogging) {
     if (event.type !== 'message') {
         return Promise.resolve(null);
@@ -576,18 +578,10 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
             const birthdayResponse = await processBirthdayDetection(messageText, modules, enhancedLogging);
             if (birthdayResponse) return { type: 'birthday_response', response: birthdayResponse.response };
             processFixedMemory(messageText, modules);
-            
-            // ▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼
-            // [핵심 수정] commandHandler.js를 호출하던 processCommand 함수를 주석 처리합니다.
-            // 이제 모든 텍스트 메시지는 아래의 processGeneralChat (autoReply.js)으로만 처리됩니다.
-            
-            // const commandResult = await processCommand(messageText, userId, client, modules);
-            // if (commandResult) return { type: 'command_response', response: commandResult };
-            
-            // [수정 완료] 이제 모든 텍스트 메시지는 processGeneralChat으로 처리됩니다.
-            const chatResponse = await processGeneralChat(messageText, {...modules, userId}, enhancedLogging);
-            // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
+            const commandResult = await processCommand(messageText, userId, client, modules);
+            if (commandResult) return { type: 'command_response', response: commandResult };
 
+            const chatResponse = await processGeneralChat(messageText, modules, enhancedLogging);
             if (chatResponse) {
                 const logMessage = chatResponse.personalized ? `${chatResponse.comment} [개인화됨]` : chatResponse.comment;
                 if (enhancedLogging?.logConversation) {
