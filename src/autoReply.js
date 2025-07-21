@@ -57,6 +57,15 @@ try {
     console.warn('⚠️ [autoReply] spontaneousYejin 모듈 로드 실패:', error.message);
 }
 
+// 🔄 실시간 행동 스위치 시스템 추가 (여기에 추가!)
+let realtimeBehaviorSwitch = null;
+try {
+    realtimeBehaviorSwitch = require('./muku-realtimeBehaviorSwitch');
+    console.log('🔄 [autoReply] realtimeBehaviorSwitch 모듈 로드 성공');
+} catch (error) {
+    console.warn('⚠️ [autoReply] realtimeBehaviorSwitch 모듈 로드 실패:', error.message);
+}
+
 // 🎂 생일 감지 시스템 추가
 let birthdayDetector = null;
 try {
@@ -526,6 +535,60 @@ function fixLanguageUsage(reply) {
     fixedReply = checkAndFixPronounUsage(fixedReply);
     
     return fixedReply;
+}
+
+// 🔄 현재 행동 설정을 응답에 적용하는 함수 (여기에 새로 추가!)
+function applyCurrentBehaviorSettings(reply) {
+    if (!reply || typeof reply !== 'string' || !realtimeBehaviorSwitch) {
+        return reply;
+    }
+    
+    try {
+        let modifiedReply = reply;
+        
+        // 현재 행동 설정 가져오기
+        const currentAddress = realtimeBehaviorSwitch.getCurrentAddress();
+        const currentSpeechStyle = realtimeBehaviorSwitch.getCurrentSpeechStyle();
+        
+        // 호칭 변경 적용
+        if (currentAddress !== '아저씨') {
+            modifiedReply = modifiedReply
+                .replace(/아저씨/g, currentAddress)
+                .replace(/아조씨/g, currentAddress);
+        }
+        
+        // 말투 변경 적용 (존댓말 모드인 경우)
+        if (currentSpeechStyle === 'jondaetmal') {
+            modifiedReply = modifiedReply
+                .replace(/해$/g, '해요')
+                .replace(/이야$/g, '이에요')
+                .replace(/야$/g, '예요')
+                .replace(/어$/g, '어요')
+                .replace(/줘$/g, '주세요')
+                .replace(/가$/g, '가요')
+                .replace(/와$/g, '와요')
+                .replace(/돼$/g, '돼요')
+                .replace(/그래$/g, '그래요')
+                .replace(/알겠어$/g, '알겠어요')
+                .replace(/고마워$/g, '감사해요')
+                .replace(/미안해$/g, '죄송해요')
+                .replace(/사랑해$/g, '사랑해요')
+                .replace(/좋아$/g, '좋아요')
+                .replace(/싫어$/g, '싫어요')
+                .replace(/괜찮아$/g, '괜찮아요')
+                .replace(/재밌어$/g, '재밌어요');
+        }
+        
+        if (modifiedReply !== reply) {
+            console.log(`🔄 [행동설정 적용] 호칭: ${currentAddress}, 말투: ${currentSpeechStyle}`);
+        }
+        
+        return modifiedReply;
+        
+    } catch (error) {
+        console.error('❌ 행동 설정 적용 중 에러:', error.message);
+        return reply;
+    }
 }
 
 // 예쁜 로그 시스템 사용
@@ -1057,6 +1120,8 @@ ${emotionContext}${modelContext}
         
         // 🔥🔥🔥 [핵심 개선] 언어 수정을 더 강력하게 적용 🔥🔥🔥
         finalReply = fixLanguageUsage(finalReply);
+         // 🔄 [신규 추가] 실시간 행동 설정 적용
+        finalReply = applyCurrentBehaviorSettings(finalReply);
         
         if (!finalReply || finalReply.trim().length === 0) {
             console.error("❌ OpenAI 응답이 비어있음");
