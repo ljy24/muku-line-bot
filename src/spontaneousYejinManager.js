@@ -1,5 +1,5 @@
 // ============================================================================
-// spontaneousYejinManager.js - v2.0 FIXED (사진 전송 문제 완전 해결)
+// spontaneousYejinManager.js - v2.1 UPDATED (후지 사진 경로 변경)
 // 🌸 예진이가 능동적으로 하루 15번 메시지 보내는 시스템
 // 8시-1시 사이 랜덤, 2-5문장으로 단축, 실제 취향과 일상 기반
 // ✅ 모델 활동 이야기 추가 (촬영, 화보, 스케줄)
@@ -9,6 +9,9 @@
 // ✨ GPT 모델 버전 전환: 3문장 넘으면 GPT-3.5, 이하면 설정대로
 // ⭐️ 실제 통계 추적 시스템 + ultimateContext 연동 완성!
 // 🔧 analyzeMessageType 함수 누락 문제 해결! 
+// 📸 후지 사진 경로 변경: https://photo.de-ji.net/photo/fuji/ (1481장)
+// 💬 후지 사진 코멘트 30개 추가
+// 🔄 함수명 통일: getOmoidePhoto 계열로 통일
 // ============================================================================
 
 const schedule = require('node-schedule');
@@ -97,18 +100,18 @@ function spontaneousLog(message, data = null) {
     }
 }
 
-// ================== 🔧 이미지 URL 검증 함수 (새로 추가!) ==================
+// ================== 🔧 이미지 URL 검증 함수 ==================
 function validateImageUrl(url) {
     try {
         const urlObj = new URL(url);
-        if (urlObj.protocol !== 'https:') return false;
+        if (urlObj.protocol !== 'https:' && urlObj.protocol !== 'http:') return false;
         return /\.(jpg|jpeg|png|gif)(\?.*)?$/i.test(url);
     } catch {
         return false;
     }
 }
 
-// ================== 🔍 메시지 타입 분석 함수 (⭐️ 추가된 함수!) ==================
+// ================== 🔍 메시지 타입 분석 함수 ==================
 function analyzeMessageType(message) {
     if (!message || typeof message !== 'string') {
         return 'casual';
@@ -290,9 +293,41 @@ const yejinRealLife = {
         places: ['카페', '편의점', '집 근처', '촬영장'],
         drinks: ['아아(아이스 아메리카노)', '딸기(생과일만)'],
         photography: {
-            loves: ['후지 필름 카메라', '일상 순간', '감성 사진', '인생네컷'],
-            omoidePhotos: true,
-            currentPhotoMessages: ["방금 후지로 찍었어! 어때?", "후지 들고 나갔다가 이거 찍었어~ 예쁘지?", "아 이 순간 너무 예뻐서 후지로 찍어버렸어!", "방금 후지로 찍은 건데... 감성 있지? ㅎㅎ", "후지 카메라로 찍으니까 진짜 달라! 방금 찍은 거야", "아저씨! 방금 찍었는데 이거 봐봐! 후지 최고야", "인생네컷 찍었어! 오늘 기분 좋아서 ㅎㅎ", "포토부스에서 인생네컷 찍었는데 잘 나왔지?", "촬영장에서 후지로 몰래 찍었어 ㅋㅋ", "촬영 중간에 셀프로 찍어봤어! 어때?"]
+            loves: ['후지 필름 카메라', '일상 순간', '감성 사진', '풍경 사진'],
+            fujiPhotos: true,
+            // 📸 후지 사진 코멘트 30개!
+            currentPhotoMessages: [
+                "잘 찍었지?",
+                "어때?",
+                "이 각도 어떻게 생각해?",
+                "후지로 찍으니까 색감이 다르지?",
+                "방금 찍었어! 예쁘지?",
+                "이거 괜찮게 나왔지?",
+                "후지 카메라 최고야!",
+                "감성있게 나왔지?",
+                "자연스럽게 나온 것 같아?",
+                "이 사진 어떻게 생각해?",
+                "후지로 찍으니까 느낌이 살지?",
+                "컨셉 괜찮지?",
+                "분위기 좋게 나왔어?",
+                "이런 스타일 어때?",
+                "표정 자연스럽지?",
+                "배경이랑 잘 어울리지?",
+                "색조가 예쁘게 나왔네!",
+                "후지 필름 톤이 진짜 좋아",
+                "이 순간 잘 담았지?",
+                "빛이 좋을 때 찍었어!",
+                "후지만의 느낌이 있지?",
+                "아날로그 감성 어때?",
+                "이거 인생샷 아니야?",
+                "포즈 어색하지 않지?",
+                "후지로 찍으니까 더 예뻐!",
+                "날씨 좋을 때 찍은 거야",
+                "이 컷 마음에 들어!",
+                "후지 카메라 진짜 잘 샀어",
+                "필름 카메라 감성 살았지?",
+                "이런 분위기 좋아해?"
+            ]
         }
     },
     mentalHealth: {
@@ -340,7 +375,7 @@ const yejinRealLife = {
     }
 };
 
-// ================== ⭐️ 실제 통계 기록 함수들 (새로 추가!) ==================
+// ================== ⭐️ 실제 통계 기록 함수들 ==================
 function recordActualMessageSent(messageType = 'casual', isPhotoMessage = false) {
     const sentTime = moment().tz(TIMEZONE);
     const timeString = sentTime.format('HH:mm');
@@ -415,7 +450,7 @@ function resetDailyStats() {
     spontaneousLog(`✅ 일일 통계 리셋 완료 (${today})`);
 }
 
-// ================== 👗 yejin 셀카 전송 시스템 (수정된 부분) ==================
+// ================== 👗 yejin 셀카 전송 시스템 ==================
 function getYejinSelfieUrl() {
     const baseUrl = "https://photo.de-ji.net/photo/yejin";
     const fileCount = 2032;
@@ -453,7 +488,6 @@ async function sendYejinSelfieWithComplimentReaction(userMessage) {
         
         const imageUrl = getYejinSelfieUrl();
         
-        // 🔧 수정: URL 유효성 검증 추가
         if (!validateImageUrl(imageUrl)) {
             spontaneousLog(`❌ 잘못된 셀카 URL: ${imageUrl}`);
             return false;
@@ -461,7 +495,6 @@ async function sendYejinSelfieWithComplimentReaction(userMessage) {
         
         const caption = await generateStreetComplimentReaction(userMessage);
         
-        // 🔧 수정: 안정적인 메시지 전송
         await lineClient.pushMessage(USER_ID, {
             type: 'image',
             originalContentUrl: imageUrl,
@@ -490,19 +523,13 @@ async function sendYejinSelfieWithComplimentReaction(userMessage) {
     }
 }
 
-// ================== 📸 omoide 추억 후지 사진 전송 시스템 (수정된 부분) ==================
+// ================== 📸 예진이가 직접 찍은 후지 풍경 사진 전송 시스템 (함수명 통일) ==================
 function getOmoidePhotoUrl() {
-    const fujiFolders = {
-        "추억_24_03_일본_후지": 226,
-        "추억_24_05_일본_후지": 135,
-        "추억_인생네컷": 15
-    };
-    const baseUrl = "https://photo.de-ji.net/photo/omoide";
-    const folderNames = Object.keys(fujiFolders);
-    const selectedFolder = folderNames[Math.floor(Math.random() * folderNames.length)];
-    const fileCount = fujiFolders[selectedFolder];
-    const index = Math.floor(Math.random() * fileCount) + 1;
-    const fileName = `${selectedFolder}_${String(index).padStart(6, "0")}.jpg`;
+    // 📸 예진이가 필름카메라처럼 소중하게 한 장 한 장 찍은 풍경 사진들
+    const baseUrl = "https://photo.de-ji.net/photo/fuji";
+    const totalPhotos = 1481; // 총 1481장
+    const index = Math.floor(Math.random() * totalPhotos) + 1;
+    const fileName = String(index).padStart(6, "0") + ".jpg"; // 000001.jpg ~ 001481.jpg
     return `${baseUrl}/${fileName}`;
 }
 
@@ -517,12 +544,12 @@ async function generateCurrentPhotoMessage() {
         }
         const baseMessage = getOmoidePhotoMessage();
         const selectedModel = 'gpt-3.5-turbo';
-        const prompt = `너는 예진이야. 방금 후지 카메라로 사진을 찍어서 아저씨에게 보내는 상황이야. 기본 메시지: "${baseMessage}" 이걸 바탕으로 자연스럽고 생생하게 2-4문장으로 말해줘. '너' 대신 '아저씨'라고 불러야 하고, 반말만 사용해.`;
+        const prompt = `너는 예진이야. 예전에 필름카메라로 시작해서 디지털 카메라로도 필름처럼 소중하게 한 장 한 장 찍은 풍경 사진을 아저씨에게 보내는 상황이야. 기본 메시지: "${baseMessage}" 이걸 바탕으로 자연스럽고 생생하게 2-4문장으로 말해줘. '너' 대신 '아저씨'라고 불러야 하고, 반말만 사용해.`;
         const response = await callOpenAIOptimized([{ role: "system", content: prompt }], selectedModel);
-        spontaneousLog(`OpenAI 현재 사진 메시지 생성 완료: "${response.substring(0, 30)}..."`);
+        spontaneousLog(`OpenAI 후지 풍경 사진 메시지 생성 완료: "${response.substring(0, 30)}..."`);
         return response;
     } catch (error) {
-        spontaneousLog(`OpenAI 현재 사진 메시지 생성 실패: ${error.message}`);
+        spontaneousLog(`OpenAI 후지 풍경 사진 메시지 생성 실패: ${error.message}`);
         return getOmoidePhotoMessage();
     }
 }
@@ -530,13 +557,12 @@ async function generateCurrentPhotoMessage() {
 async function sendOmoidePhoto() {
     try {
         if (!lineClient || !USER_ID) {
-            spontaneousLog('❌ omoide 사진 전송 불가 - client 또는 USER_ID 없음');
+            spontaneousLog('❌ 후지 풍경 사진 전송 불가 - client 또는 USER_ID 없음');
             return false;
         }
 
         const imageUrl = getOmoidePhotoUrl();
         
-        // 🔧 수정: URL 유효성 검증 추가
         if (!validateImageUrl(imageUrl)) {
             spontaneousLog(`❌ 잘못된 이미지 URL: ${imageUrl}`);
             return false;
@@ -544,17 +570,15 @@ async function sendOmoidePhoto() {
 
         const caption = await generateCurrentPhotoMessage();
         
-        spontaneousLog(`📸 omoide 사진 전송 시도: ${imageUrl.substring(imageUrl.lastIndexOf('/') + 1)}`);
+        spontaneousLog(`📸 예진이 후지 풍경 사진 전송 시도: ${imageUrl.substring(imageUrl.lastIndexOf('/') + 1)}`);
         spontaneousLog(`💬 사진 메시지: "${caption.substring(0, 50)}..."`);
         
-        // 🔧 수정: 안정적인 전송을 위해 이미지와 텍스트(캡션) 메시지를 분리하여 전송
         await lineClient.pushMessage(USER_ID, {
             type: 'image',
             originalContentUrl: imageUrl,
             previewImageUrl: imageUrl
         });
 
-        // 잠시 대기 후 캡션 전송
         await new Promise(resolve => setTimeout(resolve, 500));
         
         await lineClient.pushMessage(USER_ID, {
@@ -562,23 +586,22 @@ async function sendOmoidePhoto() {
             text: caption
         });
         
-        spontaneousLog(`✅ omoide 현재 사진 전송 완료: "${caption.substring(0, 30)}..."`);
+        spontaneousLog(`✅ 예진이 후지 풍경 사진 전송 완료: "${caption.substring(0, 30)}..."`);
         return true;
         
     } catch (error) {
-        spontaneousLog(`❌ omoide 사진 전송 실패: ${error.message}`);
+        spontaneousLog(`❌ 후지 풍경 사진 전송 실패: ${error.message}`);
         
-        // 🔄 폴백: 텍스트만 전송 시도
         try {
             const caption = await generateCurrentPhotoMessage();
             await lineClient.pushMessage(USER_ID, {
                 type: 'text',
                 text: `${caption}\n\n(사진 전송이 실패했어... 나중에 다시 보내줄게 ㅠㅠ)`
             });
-            spontaneousLog('✅ omoide 사진 폴백 메시지 전송 성공');
+            spontaneousLog('✅ 후지 풍경 사진 폴백 메시지 전송 성공');
             return true;
         } catch (fallbackError) {
-            spontaneousLog(`❌ omoide 폴백도 실패: ${fallbackError.message}`);
+            spontaneousLog(`❌ 후지 풍경 사진 폴백도 실패: ${fallbackError.message}`);
             return false;
         }
     }
@@ -669,7 +692,7 @@ function getRandomFood(type = 'any') { const foods = { diet: yejinRealLife.diet.
 function getRandomActivity(timeOfDay) { const activities = yejinRealLife.timeBasedActivities[timeOfDay] || yejinRealLife.timeBasedActivities.afternoon; return getRandomItem(activities); }
 function getTimeOfDay(hour) { if (hour >= 6 && hour < 12) return 'morning'; if (hour >= 12 && hour < 17) return 'afternoon'; if (hour >= 17 && hour < 22) return 'evening'; if (hour >= 22 || hour < 2) return 'night'; return 'lateNight'; }
 
-// ================== 🎯 랜덤 상황 생성 함수 (⭐️ 추가된 함수!) ==================
+// ================== 🎯 랜덤 상황 생성 함수 ==================
 function generateRandomSituation() {
     const koreaTime = moment().tz(TIMEZONE);
     const hour = koreaTime.hour();
@@ -688,7 +711,7 @@ function generateRandomSituation() {
     return getRandomItem(situations);
 }
 
-// ================== 🤖 OpenAI 메시지 생성 및 전송 (수정된 부분) ==================
+// ================== 🤖 OpenAI 메시지 생성 및 전송 ==================
 async function generateYejinSpontaneousMessage() {
     try {
         if (!openai) return getFallbackMessage();
@@ -696,18 +719,18 @@ async function generateYejinSpontaneousMessage() {
         // 30% 확률로 사진 전송 시도
         const shouldSendPhoto = Math.random() < 0.3;
         if (shouldSendPhoto) {
-            spontaneousLog('📸 사진 전송 결정됨 - omoide 사진 전송 시도 중...');
+            spontaneousLog('📸 사진 전송 결정됨 - 예진이 후지 풍경 사진 전송 시도 중...');
             try {
                 const photoSent = await sendOmoidePhoto();
                 if (photoSent) {
-                    spontaneousLog('✅ 사진 전송 완료 - 추가 텍스트 메시지 생략');
+                    spontaneousLog('✅ 후지 풍경 사진 전송 완료 - 추가 텍스트 메시지 생략');
                     recordActualMessageSent('casual', true);
                     return null;
                 } else {
-                    spontaneousLog('❌ 사진 전송 실패 - 일반 메시지로 진행');
+                    spontaneousLog('❌ 후지 풍경 사진 전송 실패 - 일반 메시지로 진행');
                 }
             } catch (photoError) {
-                spontaneousLog(`❌ 사진 전송 에러: ${photoError.message}`);
+                spontaneousLog(`❌ 후지 풍경 사진 전송 에러: ${photoError.message}`);
             }
         }
         
@@ -769,7 +792,7 @@ function scheduleIndependentPhotos() {
         });
         dailyScheduleState.photoJobs.push(job);
     }
-    spontaneousLog(`📸 독립 사진 스케줄 ${photoCount}개 등록 완료`);
+    spontaneousLog(`📸 독립 후지 풍경 사진 스케줄 ${photoCount}개 등록 완료`);
 }
 
 function generateDailyYejinSchedule() {
@@ -910,5 +933,5 @@ module.exports = {
     yejinRealLife,
     ajossiSituationReactions,
     spontaneousLog,
-    validateImageUrl // 새로 추가된 함수
+    validateImageUrl
 };
