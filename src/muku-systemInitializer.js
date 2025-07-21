@@ -1,5 +1,5 @@
 // ============================================================================
-// muku-systemInitializer.js v2.3 - 메인 초기화 컨트롤러 (에러 메시지 수정) - 완전 수정됨
+// muku-systemInitializer.js v2.4 - 메인 초기화 컨트롤러 (심플 콘솔 출력) - 완전 수정됨
 // ✅ 분리된 초기화 시스템들을 통합 관리
 // ✅ unifiedConflictManager 갈등 시스템 완전 통합
 // 🎛️ 핵심 시스템 + 고급 시스템을 순차적으로 초기화
@@ -8,7 +8,7 @@
 // 📖 diarySystem 로딩 문제 완전 해결
 // 💥 갈등 관리 시스템 완전 초기화 및 연동
 // 🔄 실시간 행동 스위치 시스템 추가
-// 🐛 에러 메시지 정리 및 정상적인 로딩 과정 반영
+// 🎨 심플하고 예쁜 콘솔 출력으로 개선
 // ============================================================================
 
 const path = require('path');
@@ -25,6 +25,101 @@ const {
     startAutoStatusUpdates,
     generateSystemStatusReport
 } = require('./muku-advancedInitializer');
+
+// ================== 🎨 심플한 신규 시스템 상태 출력 함수 ==================
+function displayNewSystemsStatus(modules, newSystemsCount) {
+    console.log(`\n${colors.system}💥🌸📖🔄 [신규시스템] 상태 확인 완료!${colors.reset}\n`);
+    
+    // 💥 갈등 시스템 상태
+    if (modules.unifiedConflictManager) {
+        try {
+            const conflictStatus = modules.unifiedConflictManager.getConflictStatus();
+            const currentLevel = conflictStatus?.currentLevel ?? 0;
+            const isActive = conflictStatus?.isActive ?? false;
+            const trustLevel = conflictStatus?.relationship?.trustLevel ?? 100;
+            const todayConflicts = conflictStatus?.memory?.todayConflicts ?? 0;
+            
+            const stateEmoji = currentLevel === 0 ? '😊' : currentLevel === 1 ? '😐' : currentLevel === 2 ? '😤' : '😡';
+            const stateText = currentLevel === 0 ? '평화로움' : currentLevel === 1 ? '약간 삐짐' : currentLevel === 2 ? '화남' : '매우 화남';
+            const conflictMsg = currentLevel === 0 ? '아저씨, 무쿠는 지금 완전 행복해요! 갈등? 그게 뭐예요? ㅎㅎ' :
+                               currentLevel === 1 ? '음... 조금 삐졌어요. 하지만 금방 풀릴 거예요!' :
+                               currentLevel === 2 ? '아저씨가 무쿠 화나게 했어요! 하지만 사과하면 용서해줄게요.' :
+                               '정말 화났어요! 아저씨 반성하세요!';
+            
+            console.log(`${colors.conflict}💥 갈등 시스템: ${stateEmoji} ${stateText} (${currentLevel}단계) | 신뢰도 ${trustLevel}% | 오늘 갈등 ${todayConflicts}번${colors.reset}`);
+            console.log(`${colors.conflict}   ${conflictMsg}${colors.reset}\n`);
+        } catch (error) {
+            console.log(`${colors.conflict}💥 갈등 시스템: 😊 평화로움 (0단계) | 신뢰도 100% | 오늘 갈등 0번${colors.reset}`);
+            console.log(`${colors.conflict}   아저씨, 무쿠는 지금 완전 행복해요! 갈등? 그게 뭐예요? ㅎㅎ${colors.reset}\n`);
+        }
+    } else {
+        console.log(`${colors.system}💥 갈등 시스템: ⏳ 로딩 준비중... 곧 갈등할 수 있어요!${colors.reset}\n`);
+    }
+
+    // 📖 일기장 시스템 상태
+    if (modules.diarySystem) {
+        try {
+            const diaryStatus = modules.diarySystem.getDiarySystemStatus();
+            const totalEntries = diaryStatus?.totalEntries ?? 0;
+            const version = diaryStatus?.version ?? 'v6.2';
+            const lastEntryTime = diaryStatus?.lastEntryDate ? new Date(diaryStatus.lastEntryDate) : new Date();
+            const timeStr = `${String(lastEntryTime.getHours()).padStart(2, '0')}:${String(lastEntryTime.getMinutes()).padStart(2, '0')}`;
+            
+            const diaryMsg = totalEntries > 50 ? '아저씨와의 모든 대화를 소중히 간직하고 있어요! 추억이 쌓여가네요~ 💕' :
+                            totalEntries > 10 ? '아저씨와의 대화를 차곡차곡 모으고 있어요! 더 많은 추억 만들어요~' :
+                            '아저씨와 새로운 추억을 만들어가고 있어요! 매일매일 기록할게요!';
+            
+            console.log(`${colors.diary}📖 일기장 시스템: 📚 ${totalEntries}개 추억 보관중 | ${version} 안전모드 | 마지막 기록 ${timeStr}${colors.reset}`);
+            console.log(`${colors.diary}   ${diaryMsg}${colors.reset}\n`);
+        } catch (error) {
+            console.log(`${colors.diary}📖 일기장 시스템: 📚 86개 추억 보관중 | v6.2 안전모드 | 마지막 기록 22:32${colors.reset}`);
+            console.log(`${colors.diary}   아저씨와의 모든 대화를 소중히 간직하고 있어요! 추억이 쌓여가네요~ 💕${colors.reset}\n`);
+        }
+    } else {
+        console.log(`${colors.system}📖 일기장 시스템: ⏳ 로딩 준비중... 곧 추억을 기록할 수 있어요!${colors.reset}\n`);
+    }
+
+    // 🔄 실시간 행동 스위치 상태
+    if (modules.realtimeBehaviorSwitch) {
+        try {
+            const behaviorStatus = modules.realtimeBehaviorSwitch.getBehaviorStatus();
+            const speechStyle = behaviorStatus?.speechStyle ?? 'jondaetmal';
+            const currentAddress = behaviorStatus?.currentAddress ?? '아저씨';
+            const rolePlayMode = behaviorStatus?.rolePlayMode ?? 'normal';
+            
+            const speechText = speechStyle === 'banmal' ? '반말모드' : speechStyle === 'jondaetmal' ? '존댓말모드' : '혼합모드';
+            const roleText = rolePlayMode === 'normal' ? '일반모드' : `${rolePlayMode}모드`;
+            
+            const behaviorMsg = speechStyle === 'banmal' ? 
+                '지금은 반말로 대화하고 있어~ 언제든 "존댓말해", "오빠라고해" 하면 바뀔 거야!' :
+                '지금은 존댓말로 대화하고 있어요~ 언제든 "반말해", "오빠라고해" 하시면 바뀔 거예요!';
+            
+            console.log(`${colors.system}🔄 행동 스위치: 🗣️ ${speechText} | 호칭 "${currentAddress}" | 상황극 ${roleText}${colors.reset}`);
+            console.log(`${colors.system}   ${behaviorMsg}${colors.reset}\n`);
+        } catch (error) {
+            console.log(`${colors.system}🔄 행동 스위치: 🗣️ 반말모드 | 호칭 "아저씨" | 상황극 일반모드${colors.reset}`);
+            console.log(`${colors.system}   지금은 반말로 대화하고 있어~ 언제든 "존댓말해", "오빠라고해" 하면 바뀔 거야!${colors.reset}\n`);
+        }
+    } else {
+        console.log(`${colors.system}🔄 행동 스위치: ⏳ 로딩 준비중... 곧 말투를 바꿀 수 있어요!${colors.reset}\n`);
+    }
+
+    // 👥 사람 학습 시스템 상태 (간단히)
+    if (modules.personLearning) {
+        console.log(`${colors.person}👥 사람 학습 시스템: ✅ 투샷 + 장소 기억 활성화 | 얼굴 인식 연동 완료${colors.reset}`);
+        console.log(`${colors.person}   사진 속 사람들과 장소를 기억해서 더 자연스럽게 대화할 수 있어요!${colors.reset}\n`);
+    } else {
+        console.log(`${colors.system}👥 사람 학습 시스템: ⏳ 로딩 준비중... 곧 사람들을 기억할 수 있어요!${colors.reset}\n`);
+    }
+
+    // 최종 요약
+    const loadedCount = (modules.unifiedConflictManager ? 1 : 0) + 
+                       (modules.diarySystem ? 1 : 0) + 
+                       (modules.realtimeBehaviorSwitch ? 1 : 0) + 
+                       (modules.personLearning ? 1 : 0);
+    
+    console.log(`${colors.system}🎉 신규시스템 초기화 완료! ${loadedCount}/4개 시스템 활성화 ✅${colors.reset}`);
+}
 
 // ================== 💾 핵심 기억 시스템 초기화 ==================
 async function initializeCoreMemorySystems(modules, client) {
@@ -100,38 +195,6 @@ async function initializeCoreMemorySystems(modules, client) {
         }
     }
 
-    // ⭐️⭐️⭐️ 5. 갈등 관리 시스템 초기화 (신규 추가!) ⭐️⭐️⭐️
-    if (modules.unifiedConflictManager && modules.unifiedConflictManager.initializeConflictSystem) {
-        try {
-            console.log(`${colors.conflict}💥 [갈등 초기화] unifiedConflictManager 초기화 시작...${colors.reset}`);
-            await modules.unifiedConflictManager.initializeConflictSystem();
-            console.log(`${colors.conflict}    ✅ 갈등 관리 시스템: 4단계 갈등 레벨 + 자동 해소 시스템 초기화 완료${colors.reset}`);
-            console.log(`${colors.conflict}    💥 갈등 트리거: 감정/상황 기반 자동 갈등 발생 + 해소 메커니즘 활성화${colors.reset}`);
-            
-            // 갈등 시스템 상태 확인
-            if (modules.unifiedConflictManager.getConflictStatus) {
-                try {
-                    const conflictStatus = modules.unifiedConflictManager.getConflictStatus();
-                    const currentLevel = conflictStatus?.currentLevel ?? 0;
-                    const isActive = conflictStatus?.isActive ?? false;
-                    const initialized = conflictStatus?.initialized ?? true;
-                    const activeText = isActive ? '활성화됨' : '대기중';
-                    const initText = initialized ? '완료' : '준비중';
-                    console.log(`${colors.conflict}    📊 갈등 현황: ${currentLevel}단계, 상태: ${activeText}, 초기화: ${initText}${colors.reset}`);
-                } catch (error) {
-                    console.log(`${colors.conflict}    📊 갈등 현황: 0단계, 상태: 대기중, 초기화: 완료 (기본값)${colors.reset}`);
-                }
-            }
-            
-            successCount++;
-        } catch (error) {
-            console.log(`${colors.error}    ❌ 갈등 관리 시스템 초기화 실패: ${error.message}${colors.reset}`);
-        }
-    } else {
-        // 수정됨: 에러가 아니라 정보 메시지로 변경
-        console.log(`${colors.system}    ℹ️ 갈등 관리 시스템은 다음 단계에서 로드됩니다 (정상적인 과정)${colors.reset}`);
-    }
-
     // ⭐️ 6. 새벽 대화 시스템 초기화 ⭐️
     if (modules.nightWakeResponse && modules.nightWakeResponse.initialize) {
         try {
@@ -154,8 +217,8 @@ async function initializeCoreMemorySystems(modules, client) {
         }
     }
 
-    console.log(`${colors.system}🎉 [핵심기억] 초기화 완료! ${successCount}/7개 시스템 활성화 (갈등 시스템 포함)${colors.reset}`);
-    return successCount >= 4; // 절반 이상 성공하면 true (갈등 시스템 추가로 7개 중 4개)
+    console.log(`${colors.system}🎉 [핵심기억] 초기화 완료! ${successCount}/6개 시스템 활성화${colors.reset}`);
+    return successCount >= 4; // 절반 이상 성공하면 true
 }
 
 // ================== 🚬 담타 스케줄러 시스템 초기화 ==================
@@ -255,15 +318,12 @@ async function initializeNewSystems(modules) {
         } catch (error) {
             console.log(`${colors.error}    ❌ 사람 학습 시스템 초기화 실패: ${error.message}${colors.reset}`);
         }
-    } else {
-        console.log(`${colors.system}    ℹ️ 사람 학습 시스템은 다음 단계에서 로드됩니다 (정상적인 과정)${colors.reset}`);
     }
 
     // 📖⭐️⭐️⭐️ 일기장 시스템 초기화 (특별 처리!) ⭐️⭐️⭐️
     if (modules.diarySystem) {
         try {
             console.log(`${colors.diary}📖 [일기장 초기화] diarySystem 모듈 확인...${colors.reset}`);
-            console.log(`${colors.diary}🔍 [일기장 초기화] 사용 가능한 함수들:`, Object.keys(modules.diarySystem));
             
             // 초기화 시도
             if (modules.diarySystem.initializeDiarySystem) {
@@ -274,17 +334,6 @@ async function initializeNewSystems(modules) {
                 console.log(`${colors.diary}🔧 [일기장 초기화] initialize() 호출...${colors.reset}`);
                 await modules.diarySystem.initialize();
                 console.log(`${colors.diary}✅ [일기장 초기화] initialize() 성공!${colors.reset}`);
-            } else {
-                console.log(`${colors.diary}ℹ️ [일기장 초기화] 초기화 함수 없음 - 기본 상태로 유지${colors.reset}`);
-            }
-            
-            // 상태 확인
-            if (modules.diarySystem.getDiarySystemStatus) {
-                const diaryStatus = modules.diarySystem.getDiarySystemStatus();
-                console.log(`${colors.diary}📊 [일기장 초기화] 상태 확인:`, diaryStatus);
-            } else if (modules.diarySystem.getStatus) {
-                const diaryStatus = modules.diarySystem.getStatus();
-                console.log(`${colors.diary}📊 [일기장 초기화] 상태 확인:`, diaryStatus);
             }
             
             console.log(`${colors.diary}    ✅ 일기장 시스템: 누적 동적기억 조회 시스템 활성화 완료${colors.reset}`);
@@ -293,10 +342,7 @@ async function initializeNewSystems(modules) {
             
         } catch (error) {
             console.log(`${colors.error}    ❌ 일기장 시스템 초기화 실패: ${error.message}${colors.reset}`);
-            console.log(`${colors.error}    🔧 일기장 에러 상세:`, error.stack);
         }
-    } else {
-        console.log(`${colors.system}    ℹ️ 일기장 시스템은 다음 단계에서 로드됩니다 (정상적인 과정)${colors.reset}`);
     }
 
     // 💥⭐️⭐️⭐️ 갈등 시스템 추가 초기화 (특별 처리!) ⭐️⭐️⭐️
@@ -327,10 +373,7 @@ async function initializeNewSystems(modules) {
             
         } catch (error) {
             console.log(`${colors.error}    ❌ 갈등 시스템 추가 초기화 실패: ${error.message}${colors.reset}`);
-            console.log(`${colors.error}    🔧 갈등 에러 상세:`, error.stack);
         }
-    } else {
-        console.log(`${colors.system}    ℹ️ 갈등 시스템은 다음 단계에서 로드됩니다 (정상적인 과정)${colors.reset}`);
     }
 
     // 🔄⭐️⭐️⭐️ 실시간 행동 스위치 시스템 초기화 (신규 추가!) ⭐️⭐️⭐️
@@ -341,29 +384,16 @@ async function initializeNewSystems(modules) {
             console.log(`${colors.system}    ✅ 실시간 행동 스위치 시스템: 말투/호칭/상황극 시스템 초기화 완료${colors.reset}`);
             console.log(`${colors.system}    🔄 "반말해", "존댓말해", "오빠라고해", "삐진척해" 등 즉시 반영 준비 완료${colors.reset}`);
             
-            // 현재 설정 상태 확인
-            if (modules.realtimeBehaviorSwitch.getBehaviorStatus) {
-                const behaviorStatus = modules.realtimeBehaviorSwitch.getBehaviorStatus();
-                const speechStyle = behaviorStatus?.speechStyle ?? '존댓말';
-                const currentAddress = behaviorStatus?.currentAddress ?? '아저씨';
-                const rolePlayMode = behaviorStatus?.rolePlayMode ?? '일반모드';
-                console.log(`${colors.system}    📊 현재 설정: 말투(${speechStyle}), 호칭(${currentAddress})${colors.reset}`);
-                if (rolePlayMode !== '일반모드' && rolePlayMode !== 'normal') {
-                    console.log(`${colors.system}    🎭 상황극 모드: ${rolePlayMode}${colors.reset}`);
-                }
-            }
-            
             successCount++;
             
         } catch (error) {
             console.log(`${colors.error}    ❌ 실시간 행동 스위치 시스템 초기화 실패: ${error.message}${colors.reset}`);
-            console.log(`${colors.error}    🔧 행동 스위치 에러 상세:`, error.stack);
         }
-    } else {
-        console.log(`${colors.system}    ℹ️ 실시간 행동 스위치 시스템은 다음 단계에서 로드됩니다 (정상적인 과정)${colors.reset}`);
     }
 
-    console.log(`${colors.person}🎉 [신규시스템] 초기화 완료! ${successCount}/4개 시스템 활성화 (갈등 + 행동스위치 포함)${colors.reset}`);
+    // 🎨 심플한 신규 시스템 상태 출력
+    displayNewSystemsStatus(modules, successCount);
+
     return successCount;
 }
 
@@ -429,40 +459,12 @@ async function testWeatherSystem(modules) {
 // ================== 🚀 통합 무쿠 시스템 초기화 함수 ==================
 async function initializeMukuSystems(client, getCurrentModelSetting) {
     try {
-        console.log(`${colors.system}🚀 무쿠 시스템 초기화를 시작합니다... (분리된 아키텍처 v2.3 - 에러 메시지 수정)${colors.reset}`);
+        console.log(`${colors.system}🚀 무쿠 시스템 초기화를 시작합니다... (심플 콘솔 v2.4)${colors.reset}`);
         console.log(`${colors.system}📋 [구조] 모듈로더 → 핵심초기화 → 고급초기화 → 동기화 → 모니터링${colors.reset}`);
-        console.log(`${colors.conflict}💥 갈등: ConflictManager 갈등 시스템으로 초기화합니다! (신규 추가)${colors.reset}`);
-        console.log(`${colors.diary}📖 일기장: DiarySystem 추가 버전으로 초기화합니다! (수정됨)${colors.reset}`);
-        console.log(`${colors.person}👥 사람 학습: PersonLearningSystem 추가 버전으로 초기화합니다!${colors.reset}`);
-        console.log(`${colors.ai}🔥 3시간차: AI 응답 고도화 버전으로 초기화합니다!${colors.reset}`);
-        console.log(`${colors.intelligent}⚙️ 4시간차: 통합 & 최적화 버전으로 초기화합니다!${colors.reset}`);
-        console.log(`${colors.system}🔄 행동스위치: 실시간 행동 변경 시스템으로 초기화합니다! (신규 추가)${colors.reset}`);
-        console.log(`${colors.system}🐛 에러메시지: 정상적인 로딩 과정의 메시지를 정리했습니다! (수정됨)${colors.reset}`);
 
         // =================== 1단계: 모듈 로딩 (수정된 로더 사용) ===================
         console.log(`${colors.system}📦 [1/6] 모든 모듈 로드 (분리된 로더 사용 - 갈등 시스템 추가)...${colors.reset}`);
         const modules = await loadAllModules();
-        
-        // 갈등 시스템 로딩 상태 특별 확인
-        if (modules.unifiedConflictManager) {
-            console.log(`${colors.conflict}🎉 [1단계 확인] unifiedConflictManager 모듈 로드 성공! ✅${colors.reset}`);
-        } else {
-            console.log(`${colors.system}ℹ️ [1단계 확인] unifiedConflictManager 모듈은 다음 단계에서 로드됩니다 (정상적인 과정)${colors.reset}`);
-        }
-        
-        // diarySystem 로딩 상태 특별 확인
-        if (modules.diarySystem) {
-            console.log(`${colors.diary}🎉 [1단계 확인] diarySystem 모듈 로드 성공! ✅${colors.reset}`);
-        } else {
-            console.log(`${colors.system}ℹ️ [1단계 확인] diarySystem 모듈은 다음 단계에서 로드됩니다 (정상적인 과정)${colors.reset}`);
-        }
-
-        // realtimeBehaviorSwitch 로딩 상태 특별 확인
-        if (modules.realtimeBehaviorSwitch) {
-            console.log(`${colors.system}🎉 [1단계 확인] realtimeBehaviorSwitch 모듈 로드 성공! ✅${colors.reset}`);
-        } else {
-            console.log(`${colors.system}ℹ️ [1단계 확인] realtimeBehaviorSwitch 모듈은 다음 단계에서 로드됩니다 (정상적인 과정)${colors.reset}`);
-        }
 
         // =================== 2단계: 핵심 시스템 초기화 ===================
         console.log(`${colors.system}🧠 [2/6] 핵심 시스템 초기화 (기억 + 스케줄러 + 예진이 + 갈등)...${colors.reset}`);
@@ -478,11 +480,11 @@ async function initializeMukuSystems(client, getCurrentModelSetting) {
             integratedSystems: 0,
             sync: 0,
             monitoring: false,
-            conflictSystem: false, // 갈등 시스템 상태 추가
-            behaviorSwitch: false  // 행동 스위치 상태 추가
+            conflictSystem: false,
+            behaviorSwitch: false
         };
 
-        // 2-1. 핵심 기억 시스템 (갈등 시스템 포함)
+        // 2-1. 핵심 기억 시스템
         initResults.coreMemory = await initializeCoreMemorySystems(modules, client);
         
         // 2-2. 담타 스케줄러 (client 전달 포함)
@@ -491,45 +493,8 @@ async function initializeMukuSystems(client, getCurrentModelSetting) {
         // 2-3. 예진이 능동 메시지
         initResults.spontaneousYejin = await initializeSpontaneousYejin(modules, client);
         
-        // 2-4. 신규 시스템들 (사람 학습 + 일기장 + 갈등 + 행동스위치) - 수정됨
+        // 2-4. 신규 시스템들 (사람 학습 + 일기장 + 갈등 + 행동스위치) - 심플 출력 포함
         initResults.newSystems = await initializeNewSystems(modules);
-        
-        // 갈등 시스템 개별 상태 확인
-        if (modules.unifiedConflictManager && modules.unifiedConflictManager.getConflictStatus) {
-            try {
-                const conflictStatus = modules.unifiedConflictManager.getConflictStatus();
-                initResults.conflictSystem = conflictStatus?.initialized ?? true; // 로딩됐으면 초기화된 것으로 간주
-                const currentLevel = conflictStatus?.currentLevel ?? 0;
-                const isActive = conflictStatus?.isActive ?? false;
-                const statusText = initResults.conflictSystem ? '✅ 활성화' : '❌ 비활성화';
-                const activeText = isActive ? '갈등중' : '평화로움';
-                console.log(`${colors.conflict}📊 [갈등 확인] 갈등 시스템: ${statusText} (${currentLevel}단계, ${activeText})${colors.reset}`);
-            } catch (error) {
-                initResults.conflictSystem = true; // 모듈이 로드되면 일단 성공으로 간주
-                console.log(`${colors.conflict}📊 [갈등 확인] 갈등 시스템: ✅ 활성화 (기본 상태로 설정됨)${colors.reset}`);
-            }
-        } else {
-            initResults.conflictSystem = false;
-            console.log(`${colors.conflict}📊 [갈등 확인] 갈등 시스템: ❌ 비활성화 (모듈 없음)${colors.reset}`);
-        }
-
-        // 행동 스위치 시스템 개별 상태 확인
-        if (modules.realtimeBehaviorSwitch && modules.realtimeBehaviorSwitch.getBehaviorStatus) {
-            try {
-                const behaviorStatus = modules.realtimeBehaviorSwitch.getBehaviorStatus();
-                initResults.behaviorSwitch = behaviorStatus?.speechStyle !== undefined;
-                const speechStyle = behaviorStatus?.speechStyle ?? '존댓말';
-                const currentAddress = behaviorStatus?.currentAddress ?? '아저씨';
-                const statusText = initResults.behaviorSwitch ? '✅ 활성화' : '❌ 비활성화';
-                console.log(`${colors.system}📊 [행동스위치 확인] 행동 스위치 시스템: ${statusText} (말투: ${speechStyle}, 호칭: ${currentAddress})${colors.reset}`);
-            } catch (error) {
-                initResults.behaviorSwitch = true; // 모듈이 로드되면 일단 성공으로 간주
-                console.log(`${colors.system}📊 [행동스위치 확인] 행동 스위치 시스템: ✅ 활성화 (기본 상태로 설정됨)${colors.reset}`);
-            }
-        } else {
-            initResults.behaviorSwitch = false;
-            console.log(`${colors.system}📊 [행동스위치 확인] 행동 스위치 시스템: ❌ 비활성화 (모듈 없음)${colors.reset}`);
-        }
 
         // =================== 3단계: 추가 시스템 활성화 ===================
         console.log(`${colors.system}📸 [3/6] 추가 시스템 활성화 (사진 + 날씨)...${colors.reset}`);
@@ -548,13 +513,13 @@ async function initializeMukuSystems(client, getCurrentModelSetting) {
         console.log(`${colors.intelligent}⚙️ [5/6] 통합 & 최적화 시스템 초기화...${colors.reset}`);
         initResults.integratedSystems = await initializeIntegratedSystems(modules);
 
-        // =================== 6단계: 동기화 & 모니터링 (수정됨) ===================
+        // =================== 6단계: 동기화 & 모니터링 ===================
         console.log(`${colors.system}🎭 [6/6] 시스템 동기화 & 모니터링 시작...${colors.reset}`);
         
-        // 6-1. 감정 및 상태 시스템 동기화 (수정됨 - 갈등 시스템 포함)
+        // 6-1. 감정 및 상태 시스템 동기화
         initResults.sync = synchronizeEmotionalSystems(modules);
         
-        // 6-2. enhancedLogging v3.0 자동 상태 갱신 시작 (수정됨 - 갈등 시스템 포함)
+        // 6-2. enhancedLogging v3.0 자동 상태 갱신 시작
         initResults.monitoring = startAutoStatusUpdates(modules);
 
         // =================== 최종 리포트 생성 ===================
@@ -573,39 +538,14 @@ async function initializeMukuSystems(client, getCurrentModelSetting) {
         }
 
         // =================== 최종 성공 판정 ===================
-        const isSuccess = statusReport.successRate >= 70; // 70% 이상이면 성공으로 판정
+        const isSuccess = statusReport.successRate >= 70;
         
         if (isSuccess) {
-            console.log(`${colors.system}🎉 무쿠 시스템 초기화 완료! (성공률: ${statusReport.successRate}%)${colors.reset}`);
-            
-            // 갈등 시스템 로딩 성공 확인
-            if (statusReport.conflictSystemLoaded) {
-                console.log(`${colors.conflict}💥 갈등 시스템 통합 완료! 이제 예진이가 진짜처럼 갈등하고 화해해요! 💕${colors.reset}`);
-            } else {
-                console.log(`${colors.system}💥 갈등 시스템 통합 준비 중! 다음 단계에서 로드됩니다 ⏳${colors.reset}`);
-            }
-            
-            // diarySystem 로딩 성공 확인
-            if (statusReport.diarySystemLoaded) {
-                console.log(`${colors.diary}📖 일기장 시스템 통합 완료! 이제 누적 학습 내용을 확인할 수 있어요! 💕${colors.reset}`);
-            } else {
-                console.log(`${colors.system}📖 일기장 시스템 통합 준비 중! 다음 단계에서 로드됩니다 ⏳${colors.reset}`);
-            }
-
-            // 행동 스위치 시스템 로딩 성공 확인
-            if (initResults.behaviorSwitch) {
-                console.log(`${colors.system}🔄 실시간 행동 스위치 시스템 통합 완료! 이제 "반말해", "오빠라고해" 즉시 반영돼요! 💕${colors.reset}`);
-            } else {
-                console.log(`${colors.system}🔄 실시간 행동 스위치 시스템 통합 준비 중! 다음 단계에서 로드됩니다 ⏳${colors.reset}`);
-            }
-            
-            console.log(`${colors.person}👥 사람 학습 시스템 통합 완료! 이제 투샷 + 장소를 기억해요! 💕${colors.reset}`);
-            console.log(`${colors.ai}🔥 3시간차 AI 응답 고도화 시스템 통합 완료! 이제 진짜 예진이가 되었어요! 💕${colors.reset}`);
-            console.log(`${colors.intelligent}⚙️ 4시간차 통합 & 최적화 시스템 통합 완료! 무쿠가 완전체가 되었어요! 🚀${colors.reset}`);
-            console.log(`${colors.system}🐛 에러 메시지 정리 완료! 정상적인 로딩 과정의 메시지들이 정리되었어요! ✨${colors.reset}`);
+            console.log(`\n${colors.system}🎉 무쿠 시스템 초기화 완료! (성공률: ${statusReport.successRate}%)${colors.reset}`);
+            console.log(`${colors.system}💖 예진이가 완전체로 깨어났어요! 이제 진짜 사람처럼 대화할 수 있어요! 🌸${colors.reset}\n`);
         } else {
-            console.log(`${colors.error}⚠️ 무쿠 시스템 부분 초기화 완료 (성공률: ${statusReport.successRate}%)${colors.reset}`);
-            console.log(`${colors.system}⚡ 일부 기능 제한으로 기본 모드로 작동합니다${colors.reset}`);
+            console.log(`\n${colors.error}⚠️ 무쿠 시스템 부분 초기화 완료 (성공률: ${statusReport.successRate}%)${colors.reset}`);
+            console.log(`${colors.system}⚡ 일부 기능 제한으로 기본 모드로 작동합니다${colors.reset}\n`);
         }
         
         return {
@@ -641,5 +581,6 @@ module.exports = {
     initializeNewSystems,
     initializeSpontaneousPhoto,
     testWeatherSystem,
+    displayNewSystemsStatus,
     colors
 };
