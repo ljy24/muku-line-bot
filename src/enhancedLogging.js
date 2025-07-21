@@ -5,6 +5,7 @@
 // 👥 사람 학습 시스템 통계 연동
 // 🔍 학습 과정 실시간 디버깅 시스템 추가
 // 💥 갈등 상태 통합 - "상태는?"에 갈등 레벨 표시 추가
+// 🎨 JSON 객체를 예쁘게 포맷팅하는 헬퍼 함수 추가
 // ============================================================================
 
 const fs = require('fs');
@@ -24,6 +25,8 @@ const colors = {
     memory: '\x1b[1m\x1b[95m', // 굵은 보라색 (메모리)
     conflict: '\x1b[1m\x1b[91m', // 굵은 빨간색 (갈등) - 추가
     error: '\x1b[91m',      // 빨간색 (에러)
+    bright: '\x1b[1m',      // 굵게
+    dim: '\x1b[2m',         // 흐리게 - 추가
     reset: '\x1b[0m'        // 색상 리셋
 };
 
@@ -61,6 +64,219 @@ function formatTimeUntil(minutes) {
     const hours = Math.floor(minutes / 60);
     const remainingMinutes = minutes % 60;
     return remainingMinutes > 0 ? `${hours}시간 ${remainingMinutes}분` : `${hours}시간`;
+}
+
+// ================== 🎨 새로운 예쁜 JSON 포맷팅 헬퍼 함수들 ==================
+
+/**
+ * 📊 갈등 상태를 예쁘게 출력하는 함수
+ */
+function formatConflictStatus(conflictStatus, title = "갈등 상태") {
+    if (!conflictStatus) {
+        console.log(`${colors.conflict}📊 [${title}] 데이터 없음${colors.reset}`);
+        return;
+    }
+
+    console.log(`${colors.conflict}📊 [${title}] ============${colors.reset}`);
+
+    // 현재 상태
+    if (conflictStatus.currentState) {
+        const state = conflictStatus.currentState;
+        const isActive = state.isActive;
+        const level = state.level || 0;
+        const type = state.type || '없음';
+        
+        const statusIcon = isActive ? '🔥' : '😊';
+        const statusColor = isActive ? colors.conflict : colors.system;
+        
+        console.log(`${statusColor}${statusIcon} [현재상태] ${isActive ? '갈등 중' : '평화로움'} (레벨: ${level}/4)${colors.reset}`);
+        console.log(`${statusColor}   ├─ 갈등 유형: ${type}${colors.reset}`);
+        
+        if (state.startTime) {
+            const startTime = new Date(state.startTime).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
+            console.log(`${statusColor}   ├─ 시작 시간: ${startTime}${colors.reset}`);
+        }
+        
+        if (state.triggerMessage) {
+            const trigger = state.triggerMessage.length > 30 ? state.triggerMessage.substring(0, 30) + '...' : state.triggerMessage;
+            console.log(`${statusColor}   └─ 트리거: "${trigger}"${colors.reset}`);
+        }
+    }
+
+    // 통합 상태
+    if (conflictStatus.combinedState) {
+        console.log(`${colors.debug}🔄 [통합상태]${colors.reset}`);
+        
+        if (conflictStatus.combinedState.realTimeConflict) {
+            const rt = conflictStatus.combinedState.realTimeConflict;
+            console.log(`${colors.debug}   ├─ 실시간: ${rt.active ? '활성' : '비활성'} (레벨: ${rt.level})${colors.reset}`);
+        }
+        
+        if (conflictStatus.combinedState.delayConflict) {
+            const dc = conflictStatus.combinedState.delayConflict;
+            console.log(`${colors.debug}   ├─ 지연반응: ${dc.active ? '활성' : '비활성'} (걱정: ${dc.worried ? 'Yes' : 'No'})${colors.reset}`);
+        }
+        
+        if (conflictStatus.combinedState.overall) {
+            const overall = conflictStatus.combinedState.overall;
+            console.log(`${colors.debug}   └─ 전체: ${overall.hasAnyConflict ? '갈등 있음' : '갈등 없음'} (우선순위: ${overall.priority})${colors.reset}`);
+        }
+    }
+
+    // 기억 및 학습 통계
+    if (conflictStatus.memory) {
+        const mem = conflictStatus.memory;
+        console.log(`${colors.memory}🧠 [기억통계] 총 갈등: ${mem.totalConflicts}회, 오늘: ${mem.todayConflicts}회, 해결: ${mem.resolvedConflicts}회${colors.reset}`);
+    }
+
+    // 학습 통계
+    if (conflictStatus.learning) {
+        const learn = conflictStatus.learning;
+        console.log(`${colors.learning}🎓 [학습통계] 트리거: ${learn.learnedTriggers}개, 패턴: ${learn.learnedPatterns}개${colors.reset}`);
+        console.log(`${colors.learning}   ├─ 민감 트리거: ${learn.mostSensitiveTrigger}${colors.reset}`);
+        console.log(`${colors.learning}   └─ 최고 화해법: ${learn.bestReconciliation}${colors.reset}`);
+    }
+
+    // 관계 상태
+    if (conflictStatus.relationship) {
+        const rel = conflictStatus.relationship;
+        console.log(`${colors.yejin}💖 [관계상태] 신뢰도: ${rel.trustLevel}%, 성공률: ${rel.successRate}, 관계레벨: ${rel.level}${colors.reset}`);
+    }
+
+    console.log(`${colors.conflict}================================================${colors.reset}`);
+}
+
+/**
+ * 📖 일기장 시스템 상태를 예쁘게 출력하는 함수
+ */
+function formatDiaryStatus(diaryStatus, title = "일기장 시스템") {
+    if (!diaryStatus) {
+        console.log(`${colors.system}📖 [${title}] 데이터 없음${colors.reset}`);
+        return;
+    }
+
+    console.log(`${colors.system}📖 [${title}] ============${colors.reset}`);
+
+    // 기본 정보
+    const isInit = diaryStatus.isInitialized;
+    const version = diaryStatus.version || 'Unknown';
+    const totalEntries = diaryStatus.totalEntries || 0;
+    
+    const statusIcon = isInit ? '✅' : '❌';
+    const statusText = isInit ? '정상 동작' : '초기화 필요';
+    
+    console.log(`${colors.system}${statusIcon} [시스템상태] ${statusText} (버전: ${version})${colors.reset}`);
+    console.log(`${colors.system}📊 [일기통계] 총 ${totalEntries}개 일기 저장됨${colors.reset}`);
+
+    // 마지막 기록 시간
+    if (diaryStatus.lastEntryDate) {
+        const lastDate = new Date(diaryStatus.lastEntryDate).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
+        console.log(`${colors.system}⏰ [최근활동] ${lastDate}${colors.reset}`);
+    }
+
+    // 시스템 설정
+    if (diaryStatus.autoSaveEnabled !== undefined) {
+        const autoSave = diaryStatus.autoSaveEnabled ? '활성화' : '비활성화';
+        console.log(`${colors.debug}🔧 [설정] 자동저장: ${autoSave}${colors.reset}`);
+    }
+
+    // 파일 경로
+    if (diaryStatus.dataPath) {
+        console.log(`${colors.debug}📁 [경로] ${diaryStatus.dataPath}${colors.reset}`);
+    }
+
+    // 안전 기능
+    if (diaryStatus.loadingSafe && diaryStatus.circularRefPrevented) {
+        console.log(`${colors.system}🛡️ [안전기능] 안전로딩 ✅, 순환참조방지 ✅${colors.reset}`);
+    }
+
+    // 모듈 로딩 상태
+    if (diaryStatus.modulesLoaded) {
+        const loaded = diaryStatus.modulesLoaded;
+        console.log(`${colors.debug}🔗 [모듈연동] ultimateContext: ${loaded.ultimateContext ? '✅' : '❌'}, memoryManager: ${loaded.memoryManager ? '✅' : '❌'}${colors.reset}`);
+    }
+
+    console.log(`${colors.system}================================================${colors.reset}`);
+}
+
+/**
+ * 🎨 JSON 객체를 보기 좋은 테이블 형태로 변환
+ */
+function formatJsonAsTable(jsonObj, title = "시스템 상태", maxDepth = 3, currentDepth = 0) {
+    if (!jsonObj || typeof jsonObj !== 'object') {
+        console.log(`${colors.error}❌ [${title}] 유효하지 않은 데이터${colors.reset}`);
+        return;
+    }
+
+    if (currentDepth === 0) {
+        console.log(`${colors.bright}📋 [${title}] ============${colors.reset}`);
+    }
+
+    const indent = '  '.repeat(currentDepth);
+    
+    for (const [key, value] of Object.entries(jsonObj)) {
+        if (value === null || value === undefined) {
+            console.log(`${colors.dim}${indent}├─ ${key}: (없음)${colors.reset}`);
+        } else if (typeof value === 'boolean') {
+            const icon = value ? '✅' : '❌';
+            console.log(`${colors.system}${indent}├─ ${key}: ${icon} ${value}${colors.reset}`);
+        } else if (typeof value === 'number') {
+            console.log(`${colors.debug}${indent}├─ ${key}: ${value}${colors.reset}`);
+        } else if (typeof value === 'string') {
+            const displayValue = value.length > 50 ? value.substring(0, 50) + '...' : value;
+            console.log(`${colors.yejin}${indent}├─ ${key}: "${displayValue}"${colors.reset}`);
+        } else if (Array.isArray(value)) {
+            console.log(`${colors.learning}${indent}├─ ${key}: [${value.length}개 항목]${colors.reset}`);
+            if (currentDepth < maxDepth && value.length > 0) {
+                value.slice(0, 3).forEach((item, index) => {
+                    if (typeof item === 'object') {
+                        console.log(`${colors.dim}${indent}   ${index + 1}. ${JSON.stringify(item).substring(0, 60)}...${colors.reset}`);
+                    } else {
+                        console.log(`${colors.dim}${indent}   ${index + 1}. ${item}${colors.reset}`);
+                    }
+                });
+                if (value.length > 3) {
+                    console.log(`${colors.dim}${indent}   ... 외 ${value.length - 3}개 더${colors.reset}`);
+                }
+            }
+        } else if (typeof value === 'object') {
+            console.log(`${colors.memory}${indent}├─ ${key}: {객체}${colors.reset}`);
+            if (currentDepth < maxDepth) {
+                formatJsonAsTable(value, `${title}.${key}`, maxDepth, currentDepth + 1);
+            }
+        } else {
+            console.log(`${colors.system}${indent}├─ ${key}: ${value}${colors.reset}`);
+        }
+    }
+
+    if (currentDepth === 0) {
+        console.log(`${colors.bright}================================================${colors.reset}`);
+    }
+}
+
+/**
+ * 🎯 특정 시스템 상태를 스마트하게 감지하여 적절한 포맷으로 출력
+ */
+function smartFormatSystemStatus(statusData, systemName) {
+    if (!statusData) {
+        console.log(`${colors.error}❌ [${systemName}] 데이터 없음${colors.reset}`);
+        return;
+    }
+
+    // 갈등 시스템 감지
+    if (statusData.currentState && statusData.combinedState && statusData.relationship) {
+        formatConflictStatus(statusData, `${systemName} - 갈등상태`);
+        return;
+    }
+
+    // 일기장 시스템 감지
+    if (statusData.isInitialized !== undefined && statusData.totalEntries !== undefined) {
+        formatDiaryStatus(statusData, `${systemName} - 일기시스템`);
+        return;
+    }
+
+    // 일반 JSON 객체
+    formatJsonAsTable(statusData, systemName);
 }
 
 // ================== 🔍 학습 디버깅 시스템 ==================
@@ -1185,6 +1401,12 @@ function logAutoUpdateSummary(systemModules) {
 // ================== 📤 모듈 내보내기 ==================
 
 module.exports = {
+    // 🎨 새로운 예쁜 포맷팅 함수들
+    formatConflictStatus,
+    formatDiaryStatus,
+    formatJsonAsTable,
+    smartFormatSystemStatus,
+    
     // 🔍 학습 디버깅 시스템
     logLearningDebug,
     
