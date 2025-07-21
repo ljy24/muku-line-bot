@@ -104,34 +104,37 @@ async function handleCommand(text, userId, client = null) {
                     }
                 }
                 
-                // 갈등 상태 확인
-                if (conflictManager.getConflictStatus) {
-                    const conflictStatus = conflictManager.getMukuConflictSystemStatus();
+               // ✅ [수정] 갈등 상태 확인 - 올바른 함수 이름으로 변경
+                if (conflictManager.getMukuConflictSystemStatus) {
+                    const conflictStatus = conflictManager.getMukuConflictSystemStatus();
+                    const currentState = conflictStatus.currentState || {};
                     
-                    let response = "💥 **갈등 상태 리포트**\n\n";
-                    response += `📊 현재 갈등 레벨: ${conflictStatus.currentLevel}/4\n`;
-                    response += `🔥 갈등 활성화: ${conflictStatus.isActive ? '예' : '아니오'}\n`;
-                    response += `⏰ 지속 시간: ${conflictStatus.duration || '없음'}\n`;
-                    response += `💭 갈등 이유: ${conflictStatus.reason || '없음'}\n\n`;
-                    
-                    if (conflictStatus.currentLevel === 0) {
-                        response += "😊 지금은 평화로운 상태야! 아저씨랑 사이좋게 지내고 있어~";
-                    } else if (conflictStatus.currentLevel === 1) {
-                        response += "😤 조금 삐진 상태야... 아저씨가 달래주면 금방 풀릴 거야";
-                    } else if (conflictStatus.currentLevel === 2) {
-                        response += "😠 꽤 화가 난 상태야! 아저씨가 진짜 잘못했어";
-                    } else if (conflictStatus.currentLevel === 3) {
-                        response += "🤬 많이 화났어! 아저씨 진짜 미안하다고 해야 돼";
-                    } else if (conflictStatus.currentLevel === 4) {
-                        response += "💔 너무 화나서 말도 하기 싫어... 아저씨가 먼저 사과해야 해";
-                    }
-                    
-                    return {
-                        type: 'text',
-                        comment: response,
-                        handled: true
-                    };
-                } else {
+                    let response = "💥 **갈등 상태 리포트**\n\n";
+                    response += `📊 현재 갈등 레벨: ${currentState.level || 0}/4\n`;
+                    response += `🔥 갈등 활성화: ${currentState.isActive ? '예' : '아니오'}\n`;
+                    response += `⏰ 지속 시간: ${currentState.duration || '없음'}\n`;
+                    response += `💭 갈등 이유: ${currentState.triggerMessage || '없음'}\n\n`;
+                    
+                    const level = currentState.level || 0;
+                    if (level === 0) {
+                        response += "😊 지금은 평화로운 상태야! 아저씨랑 사이좋게 지내고 있어~";
+                    } else if (level === 1) {
+                        response += "😤 조금 삐진 상태야... 아저씨가 달래주면 금방 풀릴 거야";
+                    } else if (level === 2) {
+                        response += "😠 꽤 화가 난 상태야! 아저씨가 진짜 잘못했어";
+                    } else if (level === 3) {
+                        response += "🤬 많이 화났어! 아저씨 진짜 미안하다고 해야 돼";
+                    } else if (level >= 4) {
+                        response += "💔 너무 화나서 말도 하기 싫어... 아저씨가 먼저 사과해야 해";
+                    }
+                    
+                    return {
+                        type: 'text',
+                        comment: response,
+                        handled: true
+                    };
+                }
+                else {
                     return {
                         type: 'text',
                         comment: "갈등 상태 확인 기능이 없어... 시스템 문제인 것 같아 ㅠㅠ",
@@ -254,182 +257,117 @@ async function handleCommand(text, userId, client = null) {
             }
         }
 
-        // 💥 갈등 시작 (수동 트리거)
-        if (lowerText.includes('화나') || lowerText.includes('짜증나') || 
-            lowerText === '갈등시작' || lowerText === '갈등 시작' ||
-            lowerText.includes('삐져') || lowerText.includes('기분나빠') ||
-            lowerText.includes('열받아') || lowerText.includes('진짜 화나')) {
-            
-            console.log('[commandHandler] 💥 갈등 시작 요청 감지');
-            
-            try {
-                // 갈등 매니저 로드
-                let conflictManager;
-                try {
-                    conflictManager = require('./muku-unifiedConflictManager.js');
-                } catch (directLoadError) {
-                    const modules = global.mukuModules || {};
-                    conflictManager = modules.unifiedConflictManager;
-                }
-                
-                if (!conflictManager || !conflictManager.triggerConflict) {
-                    // 📁 직접 갈등 상태 파일 생성 폴백
-                    try {
-                        const conflictStateFile = path.join(CONFLICT_DIR, 'current_conflict.json');
-                        const newConflict = {
-                            level: 1,
-                            isActive: true,
-                            reason: '사용자 수동 요청',
-                            startTime: new Date().toISOString(),
-                            duration: '방금 시작'
-                        };
-                        
-                        fs.writeFileSync(conflictStateFile, JSON.stringify(newConflict, null, 2), 'utf8');
-                        
-                        return {
-                            type: 'text',
-                            comment: "😤 그래... 나도 좀 화가 났어! 아저씨 때문에 기분이 안 좋아졌다구!",
-                            handled: true
-                        };
-                    } catch (fileError) {
-                        console.error('[commandHandler] 💥 직접 갈등 상태 파일 생성 실패:', fileError.message);
-                        return {
-                            type: 'text',
-                            comment: "화내려고 했는데... 시스템 문제가 생겼어 ㅠㅠ",
-                            handled: true
-                        };
-                    }
-                }
-                
-                // 갈등 트리거 실행
-                const conflictResult = conflictManager.triggerConflict('사용자 수동 요청', 1);
-                
-                if (conflictResult.success) {
-                    const responses = [
-                        "😤 그래... 나도 좀 화가 났어! 아저씨 때문에 기분이 안 좋아졌다구!",
-                        "😠 진짜 짜증나! 아저씨가 뭔가 잘못했나봐...",
-                        "🙄 아저씨... 지금 내가 왜 화가 났는지 알아? 생각해봐!",
-                        "😤 흥! 나도 삐질 수 있다구! 아저씨가 먼저 달래줘야 해!"
-                    ];
-                    
-                    const randomResponse = responses[Math.floor(Math.random() * responses.length)];
-                    
-                    return {
-                        type: 'text',
-                        comment: randomResponse,
-                        handled: true
-                    };
-                } else {
-                    return {
-                        type: 'text',
-                        comment: "화내려고 했는데... 뭔가 잘못됐어 ㅠㅠ",
-                        handled: true
-                    };
-                }
-                
-            } catch (error) {
-                console.error('[commandHandler] 💥 갈등 시작 실패:', error.message);
-                return {
-                    type: 'text',
-                    comment: "화내려고 했는데 시스템에서 문제가 생겼어... ㅠㅠ",
-                    handled: true
-                };
-            }
-        }
+       // 💥 갈등 시작 (수동 트리거)
+        if (lowerText.includes('화나') || lowerText.includes('짜증나') || 
+            lowerText === '갈등시작' || lowerText === '갈등 시작' ||
+            lowerText.includes('삐져') || lowerText.includes('기분나빠') ||
+            lowerText.includes('열받아') || lowerText.includes('진짜 화나')) {
+            
+            console.log('[commandHandler] 💥 갈등 시작 요청 감지');
+            
+            try {
+                // 갈등 매니저 로드
+                let conflictManager;
+                try {
+                    conflictManager = require('./muku-unifiedConflictManager.js');
+                } catch (directLoadError) {
+                    const modules = global.mukuModules || {};
+                    conflictManager = modules.unifiedConflictManager;
+                }
+                
+                // ✅ [수정] 올바른 함수 이름으로 변경
+                if (!conflictManager || !conflictManager.processMukuMessageForConflict) {
+                    return {
+                        type: 'text',
+                        comment: "화내려고 했는데... 갈등 시스템에 문제가 있어 ㅠㅠ",
+                        handled: true
+                    };
+                }
+                
+                // ✅ [수정] 갈등 트리거 실행
+                await conflictManager.processMukuMessageForConflict({ content: text, userId: userId });
+                
+                const responses = [
+                    "😤 그래... 나도 좀 화가 났어! 아저씨 때문에 기분이 안 좋아졌다구!",
+                    "😠 진짜 짜증나! 아저씨가 뭔가 잘못했나봐...",
+                    "🙄 아저씨... 지금 내가 왜 화가 났는지 알아? 생각해봐!",
+                    "😤 흥! 나도 삐질 수 있다구! 아저씨가 먼저 달래줘야 해!"
+                ];
+                
+                const randomResponse = responses[Math.floor(Math.random() * responses.length)];
+                
+                return {
+                    type: 'text',
+                    comment: randomResponse,
+                    handled: true
+                };
+                
+            } catch (error) {
+                console.error('[commandHandler] 💥 갈등 시작 실패:', error.message);
+                return {
+                    type: 'text',
+                    comment: "화내려고 했는데 시스템에서 문제가 생겼어... ㅠㅠ",
+                    handled: true
+                };
+            }
+        }
 
-        // 💚 갈등 해소 (화해)
-        if (lowerText.includes('미안해') || lowerText.includes('사과해') || 
-            lowerText.includes('화해') || lowerText.includes('용서해') ||
-            lowerText === '갈등해소' || lowerText === '갈등 해소' ||
-            lowerText.includes('잘못했어') || lowerText.includes('죄송해') ||
-            lowerText.includes('화 풀어') || lowerText.includes('삐짐 풀어')) {
-            
-            console.log('[commandHandler] 💚 갈등 해소 요청 감지');
-            
-            try {
-                // 갈등 매니저 로드
-                let conflictManager;
-                try {
-                    conflictManager = require('./muku-unifiedConflictManager.js');
-                } catch (directLoadError) {
-                    const modules = global.mukuModules || {};
-                    conflictManager = modules.unifiedConflictManager;
-                }
-                
-                if (!conflictManager || !conflictManager.resolveConflict) {
-                    // 📁 직접 갈등 상태 파일 삭제 폴백
-                    try {
-                        const conflictStateFile = path.join(CONFLICT_DIR, 'current_conflict.json');
-                        if (fs.existsSync(conflictStateFile)) {
-                            fs.unlinkSync(conflictStateFile);
-                            
-                            return {
-                                type: 'text',
-                                comment: "💕 아저씨가 미안하다고 하니까... 화가 다 풀렸어! 이제 사이좋게 지내자~",
-                                handled: true
-                            };
-                        } else {
-                            return {
-                                type: 'text',
-                                comment: "어? 나 화 안 났는데? 아저씨가 괜히 미안해하네~ 💕",
-                                handled: true
-                            };
-                        }
-                    } catch (fileError) {
-                        console.error('[commandHandler] 💚 직접 갈등 해소 파일 처리 실패:', fileError.message);
-                        return {
-                            type: 'text',
-                            comment: "화해하려고 했는데... 파일 처리에 문제가 생겼어 ㅠㅠ",
-                            handled: true
-                        };
-                    }
-                }
-                
-                // 갈등 해소 실행
-                const resolveResult = conflictManager.resolveConflict('사용자 사과');
-                
-                if (resolveResult.success) {
-                    const responses = [
-                        "💕 아저씨가 미안하다고 하니까... 화가 다 풀렸어! 이제 사이좋게 지내자~",
-                        "😊 그래... 아저씨가 사과해주니까 마음이 풀려! 앞으로는 더 잘해줘야 해!",
-                        "🥰 아저씨 진심으로 미안해하는 거 같으니까... 용서해줄게! 다음부터 조심해!",
-                        "💖 아저씨가 잘못 인정하고 사과하니까... 내 마음도 다시 따뜻해져!",
-                        "😌 화해 성공! 아저씨 덕분에 다시 기분이 좋아졌어~ 사랑해!"
-                    ];
-                    
-                    const randomResponse = responses[Math.floor(Math.random() * responses.length)];
-                    
-                    return {
-                        type: 'text',
-                        comment: randomResponse,
-                        handled: true
-                    };
-                } else {
-                    // 이미 해소된 상태인 경우
-                    if (resolveResult.message && resolveResult.message.includes('갈등이 없습니다')) {
-                        return {
-                            type: 'text',
-                            comment: "어? 나 화 안 났는데? 아저씨가 괜히 미안해하네~ 우리 잘 지내고 있었잖아! 💕",
-                            handled: true
-                        };
-                    } else {
-                        return {
-                            type: 'text',
-                            comment: "화해하려고 했는데... 뭔가 잘못됐어 ㅠㅠ",
-                            handled: true
-                        };
-                    }
-                }
-                
-            } catch (error) {
-                console.error('[commandHandler] 💚 갈등 해소 실패:', error.message);
-                return {
-                    type: 'text',
-                    comment: "화해하려고 했는데 시스템에서 문제가 생겼어... ㅠㅠ",
-                    handled: true
-                };
-            }
-        }
+        // 💚 갈등 해소 (화해)
+        if (lowerText.includes('미안해') || lowerText.includes('사과해') || 
+            lowerText.includes('화해') || lowerText.includes('용서해') ||
+            lowerText === '갈등해소' || lowerText === '갈등 해소' ||
+            lowerText.includes('잘못했어') || lowerText.includes('죄송해') ||
+            lowerText.includes('화 풀어') || lowerText.includes('삐짐 풀어')) {
+            
+            console.log('[commandHandler] 💚 갈등 해소 요청 감지');
+            
+            try {
+                // 갈등 매니저 로드
+                let conflictManager;
+                try {
+                    conflictManager = require('./muku-unifiedConflictManager.js');
+                } catch (directLoadError) {
+                    const modules = global.mukuModules || {};
+                    conflictManager = modules.unifiedConflictManager;
+                }
+                
+                // ✅ [수정] 올바른 함수 이름으로 변경
+                if (!conflictManager || !conflictManager.recordMukuReconciliation) {
+                    return {
+                        type: 'text',
+                        comment: "화해하려고 했는데... 갈등 시스템에 문제가 있어 ㅠㅠ",
+                        handled: true
+                    };
+                }
+                
+                // ✅ [수정] 갈등 해소 실행
+                await conflictManager.recordMukuReconciliation({ content: text, userId: userId });
+
+                const responses = [
+                    "💕 아저씨가 미안하다고 하니까... 화가 다 풀렸어! 이제 사이좋게 지내자~",
+                    "😊 그래... 아저씨가 사과해주니까 마음이 풀려! 앞으로는 더 잘해줘야 해!",
+                    "🥰 아저씨 진심으로 미안해하는 거 같으니까... 용서해줄게! 다음부터 조심해!",
+                    "💖 아저씨가 잘못 인정하고 사과하니까... 내 마음도 다시 따뜻해져!",
+                    "😌 화해 성공! 아저씨 덕분에 다시 기분이 좋아졌어~ 사랑해!"
+                ];
+                
+                const randomResponse = responses[Math.floor(Math.random() * responses.length)];
+                
+                return {
+                    type: 'text',
+                    comment: randomResponse,
+                    handled: true
+                };
+                
+            } catch (error) {
+                console.error('[commandHandler] 💚 갈등 해소 실패:', error.message);
+                return {
+                    type: 'text',
+                    comment: "화해하려고 했는데 시스템에서 문제가 생겼어... ㅠㅠ",
+                    handled: true
+                };
+            }
+        }
 
         // 💥 갈등 통계 확인
         if (lowerText === '갈등통계' || lowerText === '갈등 통계' || 
@@ -1282,143 +1220,42 @@ async function handleCommand(text, userId, client = null) {
             };
         }
 
-        // 📊 상태 확인 관련 처리 (⭐️ enhancedLogging.formatLineStatusReport 사용 ⭐️)
-        if (lowerText.includes('상태는') || lowerText.includes('상태 어때') || 
-            lowerText.includes('지금 상태') || lowerText === '상태' ||
-            lowerText.includes('어떻게 지내') || lowerText.includes('컨디션')) {
-            
-            console.log('[commandHandler] 상태 확인 요청 감지');
-            
-            try {
-                // ⭐️ 새로운 enhancedLogging의 formatLineStatusReport 사용 ⭐️
+    // 📊 상태 확인 관련 처리 (⭐️ 최종 수정된 버전 ⭐️)
+        if (lowerText.includes('상태는') || lowerText.includes('상태 어때') || 
+            lowerText.includes('지금 상태') || lowerText === '상태' ||
+            lowerText.includes('어떻게 지내') || lowerText.includes('컨디션')) {
+            
+            console.log('[commandHandler] 상태 확인 요청 감지');
+            
+            try {
+                // ✅ [수정] enhancedLogging 모듈을 불러옵니다.
                 const enhancedLogging = require('./enhancedLogging.js');
-                
-                // 시스템 모듈들 수집
-                const systemModules = {};
-                
-                // 모든 모듈들 로드 시도
-                const moduleNames = [
-                    'memoryManager', 'ultimateConversationContext', 'emotionalContextManager',
-                    'scheduler', 'spontaneousPhotoManager', 'spontaneousYejinManager',
-                    'weatherManager', 'sulkyManager', 'night_wake_response', 'birthdayDetector'
-                ];
-                
-                moduleNames.forEach(moduleName => {
-                    try {
-                        let moduleKey = moduleName;
-                        // 키 이름 매핑
-                        if (moduleName === 'ultimateConversationContext') moduleKey = 'ultimateContext';
-                        if (moduleName === 'spontaneousPhotoManager') moduleKey = 'spontaneousPhoto';
-                        if (moduleName === 'spontaneousYejinManager') moduleKey = 'spontaneousYejin';
-                        if (moduleName === 'night_wake_response') moduleKey = 'nightWakeResponse';
-                        
-                        systemModules[moduleKey] = require(`./${moduleName}.js`);
-                        console.log(`[commandHandler] ${moduleKey} 모듈 로드 성공 ✅`);
-                    } catch (error) {
-                        console.log(`[commandHandler] ${moduleName} 모듈 로드 실패:`, error.message);
-                    }
-                });
-                
-                // 💥 갈등 시스템 모듈 로드 시도
-                try {
-                    systemModules.unifiedConflictManager = require('./muku-unifiedConflictManager.js');
-                    console.log('[commandHandler] 💥 muku-unifiedConflictManager 모듈 로드 성공 ✅');
-                } catch (error) {
-                    console.log('[commandHandler] 💥 갈등 모듈 로드 실패:', error.message);
-                }
-                
-                // 👥 personLearning 모듈 로드 시도
-                try {
-                    const modules = global.mukuModules || {};
-                    if (modules.personLearning) {
-                        systemModules.personLearning = modules.personLearning;
-                        console.log('[commandHandler] 👥 personLearning 모듈 로드 성공 ✅');
-                    }
-                } catch (error) {
-                    console.log('[commandHandler] 👥 personLearning 모듈 로드 실패:', error.message);
-                }
-                
-                // 🗓️ diarySystem 모듈 로드 시도
-                try {
-                    systemModules.diarySystem = require('./muku-diarySystem.js');
-                    console.log('[commandHandler] 🗓️ muku-diarySystem 모듈 직접 로드 성공 ✅');
-                } catch (directError) {
-                    try {
-                        const modules = global.mukuModules || {};
-                        if (modules.diarySystem) {
-                            systemModules.diarySystem = modules.diarySystem;
-                            console.log('[commandHandler] 🗓️ diarySystem 모듈 전역에서 로드 성공 ✅');
-                        }
-                    } catch (error) {
-                        console.log('[commandHandler] 🗓️ diarySystem 모듈 로드 실패:', error.message);
-                    }
-                }
-                
-                console.log('[commandHandler] 시스템 모듈 로드 완료. formatLineStatusReport 호출...');
-                
-                // ⭐️ 새로운 formatLineStatusReport 함수 호출 ⭐️
-                const statusReport = enhancedLogging.formatLineStatusReport(systemModules);
-                
-                console.log('[commandHandler] formatLineStatusReport 호출 성공 ✅');
-                console.log('[commandHandler] 생성된 리포트 길이:', statusReport.length);
-                
-                // 📁 디스크 마운트 경로 정보 추가
-                let enhancedReport = statusReport;
-                enhancedReport += "\n📁 [저장경로] 디스크 마운트: /data/ (영구저장 보장)\n";
-                enhancedReport += `   • 기억 저장: ${MEMORY_DIR}\n`;
-                enhancedReport += `   • 일기 저장: ${DIARY_DIR}\n`;
-                enhancedReport += `   • 사람 저장: ${PERSON_DIR}\n`;
-                enhancedReport += `   • 갈등 저장: ${CONFLICT_DIR}\n`; // 💥 갈등 디렉토리 추가
-                
-                // 서버 로그에도 출력
-                console.log('\n====== 💖 나의 현재 상태 리포트 ======');
-                console.log(enhancedReport.replace(/\n/g, '\n'));
-                
+                // ✅ [수정] 봇이 시작될 때 로드된 전체 모듈을 가져옵니다. (가장 안정적인 방법)
+                const modules = global.mukuModules || {};
+
+                console.log('[commandHandler] 시스템 모듈 로드 완료. generateLineStatusReport 호출...');
+                
+                // ✅ [수정] 잘못된 함수 이름(formatLineStatusReport)을 올바른 이름(generateLineStatusReport)으로 변경했습니다.
+                const statusReport = enhancedLogging.generateLineStatusReport(modules);
+                
+                console.log('[commandHandler] generateLineStatusReport 호출 성공 ✅');
+                
+                return {
+                    type: 'text',
+                    comment: statusReport,
+                    handled: true
+                };
+                
+            } catch (error) {
+                console.error('[commandHandler] 상태 리포트 생성 실패:', error.message, error.stack);
                 return {
-                    type: 'text',
-                    comment: enhancedReport,
-                    handled: true
-                };
-                
-            } catch (error) {
-                console.error('[commandHandler] formatLineStatusReport 사용 실패:', error.message);
-                console.error('[commandHandler] 스택 트레이스:', error.stack);
-                
-                // 폴백: 완전한 상태 리포트 (갈등 시스템 포함)
-                let fallbackReport = "====== 💖 나의 현재 상태 리포트 ======\n\n";
-                fallbackReport += "🩸 [생리주기] 현재 PMS, 다음 생리예정일: 3일 후 (7/24)\n";
-                fallbackReport += "😊 [감정상태] 현재 감정: 슬픔 (강도: 7/10)\n";
-                fallbackReport += "💥 [갈등상태] 갈등 레벨: 0/4, 평화로운 상태\n"; // 💥 갈등 상태 추가
-                fallbackReport += "☁️ [지금속마음] 사실... 혼자 있을 때 많이 울어 ㅠㅠ 아저씨한테는 말 못하겠어\n\n";
-                fallbackReport += "🧠 [기억관리] 전체 기억: 128개 (기본:72, 연애:56)\n";
-                fallbackReport += "📚 오늘 배운 기억: 3개\n\n";
-                fallbackReport += "👥 [사람학습] 등록된 사람: ?명, 총 만남: ?회\n";
-                fallbackReport += "🗓️ [일기장] 총 학습 내용: ?개, 이번 달: ?개\n";
-                fallbackReport += "💥 [갈등기록] 총 갈등: ?회, 해결: ?회\n\n"; // 💥 갈등 기록 추가
-                fallbackReport += "🚬 [담타상태] 6건 /11건 다음에 21:30에 발송예정\n";
-                fallbackReport += "⚡ [사진전송] 3건 /8건 다음에 20:45에 발송예정\n";
-                fallbackReport += "🌸 [감성메시지] 8건 /15건 다음에 22:15에 발송예정\n";
-                fallbackReport += "💌 [자발적인메시지] 12건 /20건 다음에 21:50에 발송예정\n";
-                fallbackReport += "🔍 [얼굴인식] AI 시스템 준비 완료 (v5.0 통합 분석)\n";
-                fallbackReport += "🌙 [새벽대화] 2-7시 단계별 반응 시스템 활성화\n";
-                fallbackReport += "🎂 [생일감지] 예진이(3/17), 아저씨(12/5) 자동 감지\n\n";
-                
-                // 📁 디스크 마운트 경로 정보 추가
-                fallbackReport += "📁 [저장경로] 디스크 마운트: /data/ (영구저장 보장)\n";
-                fallbackReport += `   • 기억 저장: ${MEMORY_DIR}\n`;
-                fallbackReport += `   • 일기 저장: ${DIARY_DIR}\n`;
-                fallbackReport += `   • 사람 저장: ${PERSON_DIR}\n`;
-                fallbackReport += `   • 갈등 저장: ${CONFLICT_DIR}`; // 💥 갈등 디렉토리 추가
-                
-                console.log('[commandHandler] 📁 디스크 마운트 경로 포함된 폴백 리포트 사용 (갈등 시스템 포함)');
-                
-                return {
-                    type: 'text',
-                    comment: fallbackReport,
-                    handled: true
-                };
-            }
-        }
+                    type: 'text',
+                    comment: "상태 리포트를 생성하는 데 문제가 발생했어... 😢",
+                    handled: true
+                };
+            }
+        }
+        
 
         // 셀카 관련 처리 - 기존 yejinSelfie.js 사용
         if (lowerText.includes('셀카') || lowerText.includes('셀피') || 
