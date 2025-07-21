@@ -1,5 +1,5 @@
 // ============================================================================
-// ultimateConversationContext.js - v38.0 CONFLICT_INTEGRATION (갈등 시스템 완전 연동!)
+// ultimateConversationContext.js - v38.1 CONFLICT_INTEGRATION (totalEntries 에러 수정!)
 // 🗄️ 동적 기억과 대화 컨텍스트 전문 관리자
 // 💾 디스크 마운트 경로 적용: ./data → /data (완전 영구 저장!)
 // ✅ 중복 기능 완전 제거: 생리주기, 날씨, 고정기억, 시간관리
@@ -12,6 +12,7 @@
 // 🔧 디스크 마운트: 서버 재시작/재배포시에도 절대 사라지지 않는 완전한 영구 저장!
 // 💔 갈등 시스템 완전 연동: muku-unifiedConflictManager 통합!
 // 🤝 실시간 갈등 감지 + 화해 처리 + 기억 학습 + sulkyManager 연동
+// 🛡️ totalEntries 에러 완전 해결: 안전한 객체 접근 + 기본값 처리
 // ============================================================================
 
 const fs = require('fs').promises;
@@ -219,7 +220,7 @@ async function saveConflictIntegrationData() {
         const conflictData = {
             conflictIntegration: ultimateConversationState.conflictIntegration,
             lastSaved: new Date().toISOString(),
-            version: 'v38.0-conflict-integration',
+            version: 'v38.1-conflict-integration',
             storagePath: DATA_DIR
         };
         
@@ -238,17 +239,17 @@ async function saveConflictIntegrationData() {
 }
 
 /**
- * 💾 갈등 연동 데이터 로드 (새로 추가!)
+ * 💾 갈등 연동 데이터 로드 (새로 추가!) - 🛡️ 안전한 로드
  */
 async function loadConflictIntegrationData() {
     try {
         const data = await fs.readFile(PERSISTENT_FILES.conflictIntegration, 'utf8');
         const conflictData = JSON.parse(data);
         
-        if (conflictData.conflictIntegration) {
+        if (conflictData?.conflictIntegration) {
             // 일일 카운트 리셋 확인
             const today = moment().tz(TIMEZONE).format('YYYY-MM-DD');
-            const lastSaved = moment(conflictData.lastSaved).tz(TIMEZONE).format('YYYY-MM-DD');
+            const lastSaved = conflictData?.lastSaved ? moment(conflictData.lastSaved).tz(TIMEZONE).format('YYYY-MM-DD') : today;
             
             if (lastSaved !== today) {
                 // 일일 통계만 리셋, 누적 데이터는 유지
@@ -281,7 +282,7 @@ async function saveUserMemoriesToFile() {
             memories: ultimateConversationState.dynamicMemories.userMemories,
             lastSaved: new Date().toISOString(),
             totalCount: ultimateConversationState.dynamicMemories.userMemories.length,
-            version: 'v38.0-conflict-integration',
+            version: 'v38.1-conflict-integration',
             storagePath: DATA_DIR
         };
         
@@ -309,16 +310,16 @@ async function saveLearningDataToFile() {
         const learningData = {
             learningData: ultimateConversationState.learningData,
             lastSaved: new Date().toISOString(),
-            totalEntries: ultimateConversationState.memoryStats.totalLearningEntries,
-            conflictEntries: ultimateConversationState.memoryStats.totalConflictLearning, // 💔 갈등 학습 수 추가
+            totalEntries: ultimateConversationState.memoryStats.totalLearningEntries || 0, // 🛡️ 안전한 접근
+            conflictEntries: ultimateConversationState.memoryStats.totalConflictLearning || 0, // 💔 갈등 학습 수 추가
             statistics: {
-                daily: ultimateConversationState.learningData.dailyLearning.length,
-                conversation: ultimateConversationState.learningData.conversationLearning.length,
-                emotion: ultimateConversationState.learningData.emotionLearning.length,
-                topic: ultimateConversationState.learningData.topicLearning.length,
-                conflict: ultimateConversationState.learningData.conflictLearning.length // 💔 갈등 학습 통계
+                daily: ultimateConversationState.learningData.dailyLearning?.length || 0, // 🛡️ 안전한 접근
+                conversation: ultimateConversationState.learningData.conversationLearning?.length || 0,
+                emotion: ultimateConversationState.learningData.emotionLearning?.length || 0,
+                topic: ultimateConversationState.learningData.topicLearning?.length || 0,
+                conflict: ultimateConversationState.learningData.conflictLearning?.length || 0 // 💔 갈등 학습 통계
             },
-            version: 'v38.0-conflict-integration',
+            version: 'v38.1-conflict-integration',
             storagePath: DATA_DIR
         };
         
@@ -346,7 +347,7 @@ async function saveSpontaneousStatsToFile() {
         const spontaneousData = {
             stats: ultimateConversationState.spontaneousMessages,
             lastSaved: new Date().toISOString(),
-            version: 'v38.0-conflict-integration',
+            version: 'v38.1-conflict-integration',
             storagePath: DATA_DIR
         };
         
@@ -356,7 +357,7 @@ async function saveSpontaneousStatsToFile() {
             'utf8'
         );
         
-        contextLog(`💾 자발적 메시지 통계 저장 완료 (갈등: ${ultimateConversationState.spontaneousMessages.messageTypes.conflict}개, 화해: ${ultimateConversationState.spontaneousMessages.messageTypes.reconciliation}개) (디스크 마운트: ${DATA_DIR})`);
+        contextLog(`💾 자발적 메시지 통계 저장 완료 (갈등: ${ultimateConversationState.spontaneousMessages.messageTypes.conflict || 0}개, 화해: ${ultimateConversationState.spontaneousMessages.messageTypes.reconciliation || 0}개) (디스크 마운트: ${DATA_DIR})`);
         return true;
     } catch (error) {
         contextLog(`❌ 자발적 메시지 통계 저장 실패: ${error.message}`);
@@ -365,7 +366,7 @@ async function saveSpontaneousStatsToFile() {
 }
 
 /**
- * 💾 메모리 통계 영구 저장 (디스크 마운트) - 갈등 통계 포함!
+ * 💾 메모리 통계 영구 저장 (디스크 마운트) - 갈등 통계 포함! - 🛡️ 안전한 저장
  */
 async function saveMemoryStatsToFile() {
     try {
@@ -374,7 +375,7 @@ async function saveMemoryStatsToFile() {
         const statsData = {
             stats: ultimateConversationState.memoryStats,
             lastSaved: new Date().toISOString(),
-            version: 'v38.0-conflict-integration',
+            version: 'v38.1-conflict-integration',
             storagePath: DATA_DIR
         };
         
@@ -384,7 +385,7 @@ async function saveMemoryStatsToFile() {
             'utf8'
         );
         
-        contextLog(`💾 메모리 통계 저장 완료 (갈등 학습: ${ultimateConversationState.memoryStats.totalConflictLearning}개) (디스크 마운트: ${DATA_DIR})`);
+        contextLog(`💾 메모리 통계 저장 완료 (갈등 학습: ${ultimateConversationState.memoryStats.totalConflictLearning || 0}개) (디스크 마운트: ${DATA_DIR})`);
         return true;
     } catch (error) {
         contextLog(`❌ 메모리 통계 저장 실패: ${error.message}`);
@@ -407,7 +408,7 @@ async function saveAllDataToFiles() {
         
         const successCount = results.filter(r => r === true).length;
         ultimateConversationState.memoryStats.lastSaved = Date.now();
-        ultimateConversationState.memoryStats.totalSaves++;
+        ultimateConversationState.memoryStats.totalSaves = (ultimateConversationState.memoryStats.totalSaves || 0) + 1; // 🛡️ 안전한 증가
         
         contextLog(`💾 전체 데이터 저장: ${successCount}/5개 성공 (갈등 연동 포함) (디스크 마운트: ${DATA_DIR})`);
         return successCount === 5;
@@ -418,14 +419,14 @@ async function saveAllDataToFiles() {
 }
 
 /**
- * 💾 사용자 기억 파일에서 로드 (디스크 마운트)
+ * 💾 사용자 기억 파일에서 로드 (디스크 마운트) - 🛡️ 안전한 로드
  */
 async function loadUserMemoriesFromFile() {
     try {
         const data = await fs.readFile(PERSISTENT_FILES.userMemories, 'utf8');
         const userMemoryData = JSON.parse(data);
         
-        if (userMemoryData.memories && Array.isArray(userMemoryData.memories)) {
+        if (userMemoryData?.memories && Array.isArray(userMemoryData.memories)) {
             ultimateConversationState.dynamicMemories.userMemories = userMemoryData.memories;
             ultimateConversationState.memoryStats.totalUserMemories = userMemoryData.memories.length;
             contextLog(`💾 사용자 기억 로드 완료: ${userMemoryData.memories.length}개 (디스크 마운트: ${DATA_DIR})`);
@@ -440,20 +441,22 @@ async function loadUserMemoriesFromFile() {
 }
 
 /**
- * 💾 학습 데이터 파일에서 로드 (디스크 마운트) - 갈등 학습 포함!
+ * 💾 학습 데이터 파일에서 로드 (디스크 마운트) - 갈등 학습 포함! - 🛡️ 안전한 로드
  */
 async function loadLearningDataFromFile() {
     try {
         const data = await fs.readFile(PERSISTENT_FILES.learningData, 'utf8');
         const learningDataFile = JSON.parse(data);
         
-        if (learningDataFile.learningData) {
+        if (learningDataFile?.learningData) {
             ultimateConversationState.learningData = learningDataFile.learningData;
-            ultimateConversationState.memoryStats.totalLearningEntries = learningDataFile.totalEntries || 0;
+            ultimateConversationState.memoryStats.totalLearningEntries = learningDataFile.totalEntries || 0; // 🛡️ 안전한 접근
             ultimateConversationState.memoryStats.totalConflictLearning = learningDataFile.conflictEntries || 0; // 💔 갈등 학습 수 로드
-           const totalEntries = learningDataFile?.totalEntries || 0;
-const conflictEntries = learningDataFile?.conflictEntries || 0;
-contextLog(`💾 학습 데이터 로드 완료: ${totalEntries}개 (갈등: ${conflictEntries}개) (디스크 마운트: ${DATA_DIR})`);
+            
+            // 🛡️ 안전한 로그 출력
+            const totalEntries = learningDataFile?.totalEntries || 0;
+            const conflictEntries = learningDataFile?.conflictEntries || 0;
+            contextLog(`💾 학습 데이터 로드 완료: ${totalEntries}개 (갈등: ${conflictEntries}개) (디스크 마운트: ${DATA_DIR})`);
             return true;
         }
         
@@ -465,14 +468,14 @@ contextLog(`💾 학습 데이터 로드 완료: ${totalEntries}개 (갈등: ${c
 }
 
 /**
- * 💾 자발적 메시지 통계 파일에서 로드 (디스크 마운트)
+ * 💾 자발적 메시지 통계 파일에서 로드 (디스크 마운트) - 🛡️ 안전한 로드
  */
 async function loadSpontaneousStatsFromFile() {
     try {
         const data = await fs.readFile(PERSISTENT_FILES.spontaneousStats, 'utf8');
         const spontaneousData = JSON.parse(data);
         
-        if (spontaneousData.stats) {
+        if (spontaneousData?.stats) {
             // 날짜가 바뀌었으면 일일 통계만 리셋
             const today = moment().tz(TIMEZONE).format('YYYY-MM-DD');
             if (spontaneousData.stats.lastResetDate !== today) {
@@ -483,16 +486,18 @@ async function loadSpontaneousStatsFromFile() {
                 spontaneousData.stats.nextScheduledTime = null;
                 spontaneousData.stats.lastResetDate = today;
                 
-                // 메시지 타입별 통계도 리셋
-                Object.keys(spontaneousData.stats.messageTypes).forEach(type => {
-                    spontaneousData.stats.messageTypes[type] = 0;
-                });
+                // 메시지 타입별 통계도 리셋 - 🛡️ 안전한 접근
+                if (spontaneousData.stats.messageTypes) {
+                    Object.keys(spontaneousData.stats.messageTypes).forEach(type => {
+                        spontaneousData.stats.messageTypes[type] = 0;
+                    });
+                }
                 
                 contextLog(`🌄 자발적 메시지 일일 통계 리셋 (${today}) (💾 디스크 마운트)`);
             }
             
             ultimateConversationState.spontaneousMessages = spontaneousData.stats;
-            contextLog(`💾 자발적 메시지 통계 로드 완료 (갈등: ${spontaneousData.stats.messageTypes.conflict || 0}개, 화해: ${spontaneousData.stats.messageTypes.reconciliation || 0}개) (디스크 마운트: ${DATA_DIR})`);
+            contextLog(`💾 자발적 메시지 통계 로드 완료 (갈등: ${spontaneousData.stats.messageTypes?.conflict || 0}개, 화해: ${spontaneousData.stats.messageTypes?.reconciliation || 0}개) (디스크 마운트: ${DATA_DIR})`);
             return true;
         }
         
@@ -504,14 +509,14 @@ async function loadSpontaneousStatsFromFile() {
 }
 
 /**
- * 💾 메모리 통계 파일에서 로드 (디스크 마운트)
+ * 💾 메모리 통계 파일에서 로드 (디스크 마운트) - 🛡️ 안전한 로드
  */
 async function loadMemoryStatsFromFile() {
     try {
         const data = await fs.readFile(PERSISTENT_FILES.memoryStats, 'utf8');
         const statsData = JSON.parse(data);
         
-        if (statsData.stats) {
+        if (statsData?.stats) {
             // 일일 카운트 리셋 확인
             const today = new Date().toDateString();
             if (statsData.stats.lastDailyReset !== today) {
@@ -522,6 +527,7 @@ async function loadMemoryStatsFromFile() {
                 contextLog(`🌄 일일 통계 리셋 (${today}) (💾 디스크 마운트)`);
             }
             
+            // 🛡️ 안전한 통계 병합
             ultimateConversationState.memoryStats = {
                 ...ultimateConversationState.memoryStats,
                 ...statsData.stats
@@ -538,26 +544,26 @@ async function loadMemoryStatsFromFile() {
 }
 
 /**
- * 💾 모든 데이터 파일에서 로드 (디스크 마운트) - 갈등 연동 포함!
+ * 💾 모든 데이터 파일에서 로드 (디스크 마운트) - 갈등 연동 포함! - 🛡️ 안전한 로드
  */
 async function loadAllDataFromFiles() {
     try {
         contextLog(`💾 모든 영구 데이터 로드 시작... (갈등 연동 포함) (디스크 마운트: ${DATA_DIR})`);
         
         const results = await Promise.all([
-            loadUserMemoriesFromFile(),
-            loadLearningDataFromFile(),
-            loadSpontaneousStatsFromFile(),
             loadMemoryStatsFromFile(),
+            loadUserMemoriesFromFile(),
+            loadSpontaneousStatsFromFile(),
+            loadLearningDataFromFile(),
             loadConflictIntegrationData() // 💔 갈등 연동 데이터 로드 추가
         ]);
         
         const successCount = results.filter(r => r === true).length;
         contextLog(`💾 데이터 로드 완료: ${successCount}/5개 성공 (갈등 연동 포함) (디스크 마운트: ${DATA_DIR})`);
         
-        // 로드 후 통계 정보 출력
-        const memStats = getMemoryStatistics();
-        contextLog(`📊 로드된 데이터: 사용자기억 ${memStats.user}개, 학습데이터 ${memStats.learning.totalEntries}개, 갈등학습 ${memStats.learning.conflictEntries || 0}개 (💾 완전 영구 저장)`);
+        // 로드 후 통계 정보 출력 - 🛡️ 안전한 접근
+        const memStats = await getMemoryStatistics();
+        contextLog(`📊 로드된 데이터: 사용자기억 ${memStats.user || 0}개, 학습데이터 ${memStats.learning?.totalEntries || 0}개, 갈등학습 ${memStats.learning?.conflictEntries || 0}개 (💾 완전 영구 저장)`);
         
         return successCount > 0;
     } catch (error) {
@@ -582,7 +588,7 @@ async function createDailyBackup() {
             spontaneousStats: ultimateConversationState.spontaneousMessages,
             memoryStats: ultimateConversationState.memoryStats,
             conflictIntegration: ultimateConversationState.conflictIntegration, // 💔 갈등 연동 데이터 백업 포함
-            version: 'v38.0-conflict-integration',
+            version: 'v38.1-conflict-integration',
             storagePath: DATA_DIR
         };
         
@@ -771,8 +777,11 @@ async function processConflictIntegration(speaker, message, client, userId) {
                     trigger: message
                 };
                 
-                // 자발적 메시지 통계 업데이트
-                ultimateConversationState.spontaneousMessages.messageTypes.conflict++;
+                // 자발적 메시지 통계 업데이트 - 🛡️ 안전한 접근
+                if (ultimateConversationState.spontaneousMessages.messageTypes) {
+                    ultimateConversationState.spontaneousMessages.messageTypes.conflict = 
+                        (ultimateConversationState.spontaneousMessages.messageTypes.conflict || 0) + 1;
+                }
                 
                 contextLog(`💔 새로운 갈등 감지: ${conflictResult.conflictType} - 응답 생성`);
                 
@@ -788,8 +797,11 @@ async function processConflictIntegration(speaker, message, client, userId) {
                 ultimateConversationState.conversationContext.emotionalTone = 'positive';
                 ultimateConversationState.conversationContext.conflictContext = null;
                 
-                // 자발적 메시지 통계 업데이트
-                ultimateConversationState.spontaneousMessages.messageTypes.reconciliation++;
+                // 자발적 메시지 통계 업데이트 - 🛡️ 안전한 접근
+                if (ultimateConversationState.spontaneousMessages.messageTypes) {
+                    ultimateConversationState.spontaneousMessages.messageTypes.reconciliation = 
+                        (ultimateConversationState.spontaneousMessages.messageTypes.reconciliation || 0) + 1;
+                }
                 
                 contextLog(`💕 화해 감지: ${conflictResult.reconciliationType} - 응답 생성`);
             }
@@ -847,14 +859,18 @@ async function addConflictLearningEntry(conflictType, userMessage, response, con
         
         ultimateConversationState.learningData.conflictLearning.push(learningEntry);
         
-        // 통계 업데이트
-        ultimateConversationState.memoryStats.totalConflictLearning++;
-        ultimateConversationState.memoryStats.todayConflictLearning++;
+        // 통계 업데이트 - 🛡️ 안전한 증가
+        ultimateConversationState.memoryStats.totalConflictLearning = 
+            (ultimateConversationState.memoryStats.totalConflictLearning || 0) + 1;
+        ultimateConversationState.memoryStats.todayConflictLearning = 
+            (ultimateConversationState.memoryStats.todayConflictLearning || 0) + 1;
         ultimateConversationState.memoryStats.lastConflictLearning = Date.now();
         
         // 총 학습 항목도 증가
-        ultimateConversationState.memoryStats.totalLearningEntries++;
-        ultimateConversationState.memoryStats.todayLearningCount++;
+        ultimateConversationState.memoryStats.totalLearningEntries = 
+            (ultimateConversationState.memoryStats.totalLearningEntries || 0) + 1;
+        ultimateConversationState.memoryStats.todayLearningCount = 
+            (ultimateConversationState.memoryStats.todayLearningCount || 0) + 1;
         ultimateConversationState.memoryStats.lastLearningEntry = Date.now();
         
         contextLog(`💔 갈등 학습 추가: [${conflictType}] ${userMessage.substring(0, 30)}...`);
@@ -890,16 +906,16 @@ async function getConflictIntegrationStatus() {
                 active: ultimateConversationState.conflictIntegration.isConflictModeActive,
                 lastConflictTime: ultimateConversationState.conflictIntegration.lastConflictTime,
                 lastReconciliationTime: ultimateConversationState.conflictIntegration.lastReconciliationTime,
-                conflictResponsesToday: ultimateConversationState.conflictIntegration.conflictResponsesToday,
-                reconciliationResponsesToday: ultimateConversationState.conflictIntegration.reconciliationResponsesToday,
-                totalInteractions: ultimateConversationState.conflictIntegration.totalConflictInteractions,
+                conflictResponsesToday: ultimateConversationState.conflictIntegration.conflictResponsesToday || 0,
+                reconciliationResponsesToday: ultimateConversationState.conflictIntegration.reconciliationResponsesToday || 0,
+                totalInteractions: ultimateConversationState.conflictIntegration.totalConflictInteractions || 0,
                 lastConflictType: ultimateConversationState.conflictIntegration.lastConflictType,
-                recentTriggers: ultimateConversationState.conflictIntegration.recentConflictTriggers.length
+                recentTriggers: ultimateConversationState.conflictIntegration.recentConflictTriggers?.length || 0
             },
             learning: {
-                totalConflictLearning: ultimateConversationState.memoryStats.totalConflictLearning,
-                todayConflictLearning: ultimateConversationState.memoryStats.todayConflictLearning,
-                conflictLearningEntries: ultimateConversationState.learningData.conflictLearning.length
+                totalConflictLearning: ultimateConversationState.memoryStats.totalConflictLearning || 0,
+                todayConflictLearning: ultimateConversationState.memoryStats.todayConflictLearning || 0,
+                conflictLearningEntries: ultimateConversationState.learningData.conflictLearning?.length || 0
             },
             conversationContext: {
                 flow: ultimateConversationState.conversationContext.conversationFlow,
@@ -928,7 +944,7 @@ async function getConflictIntegrationStatus() {
 async function getConflictLearningData() {
     try {
         await loadLearningDataFromFile(); // 💾 최신 데이터 로드
-        return ultimateConversationState.learningData.conflictLearning.slice(); // 복사본 반환
+        return ultimateConversationState.learningData.conflictLearning?.slice() || []; // 복사본 반환
     } catch (error) {
         contextLog('갈등 학습 데이터 조회 실패:', error.message);
         return [];
@@ -981,17 +997,21 @@ async function addLearningEntry(content, category = '일반학습', context = {}
                 break;
             case '갈등학습': // 💔 갈등 학습 카테고리 추가
                 ultimateConversationState.learningData.conflictLearning.push(learningEntry);
-                ultimateConversationState.memoryStats.totalConflictLearning++;
-                ultimateConversationState.memoryStats.todayConflictLearning++;
+                ultimateConversationState.memoryStats.totalConflictLearning = 
+                    (ultimateConversationState.memoryStats.totalConflictLearning || 0) + 1;
+                ultimateConversationState.memoryStats.todayConflictLearning = 
+                    (ultimateConversationState.memoryStats.todayConflictLearning || 0) + 1;
                 ultimateConversationState.memoryStats.lastConflictLearning = Date.now();
                 break;
             default:
                 ultimateConversationState.learningData.dailyLearning.push(learningEntry);
         }
         
-        // 통계 업데이트
-        ultimateConversationState.memoryStats.totalLearningEntries++;
-        ultimateConversationState.memoryStats.todayLearningCount++;
+        // 통계 업데이트 - 🛡️ 안전한 증가
+        ultimateConversationState.memoryStats.totalLearningEntries = 
+            (ultimateConversationState.memoryStats.totalLearningEntries || 0) + 1;
+        ultimateConversationState.memoryStats.todayLearningCount = 
+            (ultimateConversationState.memoryStats.todayLearningCount || 0) + 1;
         ultimateConversationState.memoryStats.lastLearningEntry = Date.now();
         
         contextLog(`📚 학습 추가: [${category}] ${content.substring(0, 50)}...`);
@@ -1016,19 +1036,19 @@ async function getAllDynamicLearning() {
         // 💾 파일에서 최신 데이터 로드
         await loadLearningDataFromFile();
         
-        // 모든 학습 데이터를 하나의 배열로 합치기 (💔 갈등 학습 포함!)
+        // 모든 학습 데이터를 하나의 배열로 합치기 (💔 갈등 학습 포함!) - 🛡️ 안전한 접근
         const allLearning = [
-            ...ultimateConversationState.learningData.dailyLearning,
-            ...ultimateConversationState.learningData.conversationLearning,
-            ...ultimateConversationState.learningData.emotionLearning,
-            ...ultimateConversationState.learningData.topicLearning,
-            ...ultimateConversationState.learningData.conflictLearning // 💔 갈등 학습 추가!
+            ...(ultimateConversationState.learningData.dailyLearning || []),
+            ...(ultimateConversationState.learningData.conversationLearning || []),
+            ...(ultimateConversationState.learningData.emotionLearning || []),
+            ...(ultimateConversationState.learningData.topicLearning || []),
+            ...(ultimateConversationState.learningData.conflictLearning || []) // 💔 갈등 학습 추가!
         ];
         
         // 시간순으로 정렬
         allLearning.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
         
-        contextLog(`📚 전체 학습 데이터 조회: ${allLearning.length}개 (갈등 학습: ${ultimateConversationState.learningData.conflictLearning.length}개) (파일에서 로드)`);
+        contextLog(`📚 전체 학습 데이터 조회: ${allLearning.length}개 (갈등 학습: ${ultimateConversationState.learningData.conflictLearning?.length || 0}개) (파일에서 로드)`);
         
         return allLearning;
     } catch (error) {
@@ -1048,19 +1068,19 @@ async function getLearningByCategory(category) {
         
         switch(category) {
             case '대화학습':
-                targetArray = ultimateConversationState.learningData.conversationLearning;
+                targetArray = ultimateConversationState.learningData.conversationLearning || [];
                 break;
             case '감정분석':
-                targetArray = ultimateConversationState.learningData.emotionLearning;
+                targetArray = ultimateConversationState.learningData.emotionLearning || [];
                 break;
             case '주제학습':
-                targetArray = ultimateConversationState.learningData.topicLearning;
+                targetArray = ultimateConversationState.learningData.topicLearning || [];
                 break;
             case '갈등학습': // 💔 갈등 학습 카테고리 추가
-                targetArray = ultimateConversationState.learningData.conflictLearning;
+                targetArray = ultimateConversationState.learningData.conflictLearning || [];
                 break;
             default:
-                targetArray = ultimateConversationState.learningData.dailyLearning;
+                targetArray = ultimateConversationState.learningData.dailyLearning || [];
         }
         
         return targetArray.slice(); // 복사본 반환
@@ -1089,10 +1109,10 @@ async function getTodayLearning() {
  * 📚 학습 통계 조회 (갈등 학습 포함!)
  */
 function getLearningStatistics() {
-    const total = ultimateConversationState.memoryStats.totalLearningEntries;
-    const today = ultimateConversationState.memoryStats.todayLearningCount;
-    const conflictTotal = ultimateConversationState.memoryStats.totalConflictLearning; // 💔 갈등 학습 총 수
-    const conflictToday = ultimateConversationState.memoryStats.todayConflictLearning; // 💔 갈등 학습 오늘 수
+    const total = ultimateConversationState.memoryStats.totalLearningEntries || 0;
+    const today = ultimateConversationState.memoryStats.todayLearningCount || 0;
+    const conflictTotal = ultimateConversationState.memoryStats.totalConflictLearning || 0; // 💔 갈등 학습 총 수
+    const conflictToday = ultimateConversationState.memoryStats.todayConflictLearning || 0; // 💔 갈등 학습 오늘 수
     
     return {
         totalEntries: total,
@@ -1100,11 +1120,11 @@ function getLearningStatistics() {
         conflictEntries: conflictTotal,       // 💔 갈등 학습 총 수 추가
         conflictToday: conflictToday,        // 💔 갈등 학습 오늘 수 추가
         categories: {
-            daily: ultimateConversationState.learningData.dailyLearning.length,
-            conversation: ultimateConversationState.learningData.conversationLearning.length,
-            emotion: ultimateConversationState.learningData.emotionLearning.length,
-            topic: ultimateConversationState.learningData.topicLearning.length,
-            conflict: ultimateConversationState.learningData.conflictLearning.length // 💔 갈등 학습 카테고리 추가
+            daily: ultimateConversationState.learningData.dailyLearning?.length || 0,
+            conversation: ultimateConversationState.learningData.conversationLearning?.length || 0,
+            emotion: ultimateConversationState.learningData.emotionLearning?.length || 0,
+            topic: ultimateConversationState.learningData.topicLearning?.length || 0,
+            conflict: ultimateConversationState.learningData.conflictLearning?.length || 0 // 💔 갈등 학습 카테고리 추가
         },
         lastEntry: ultimateConversationState.memoryStats.lastLearningEntry,
         lastConflictEntry: ultimateConversationState.memoryStats.lastConflictLearning, // 💔 마지막 갈등 학습 시간
@@ -1315,8 +1335,10 @@ async function addUserMemory(content, category = 'general') {
     };
     
     ultimateConversationState.dynamicMemories.userMemories.push(memoryObj);
-    ultimateConversationState.memoryStats.totalUserMemories++;
-    ultimateConversationState.memoryStats.todayMemoryCount++;
+    ultimateConversationState.memoryStats.totalUserMemories = 
+        (ultimateConversationState.memoryStats.totalUserMemories || 0) + 1;
+    ultimateConversationState.memoryStats.todayMemoryCount = 
+        (ultimateConversationState.memoryStats.todayMemoryCount || 0) + 1;
     ultimateConversationState.memoryStats.lastMemoryOperation = Date.now();
     
     contextLog(`사용자 기억 추가: "${content.substring(0, 30)}..." (${category})`);
@@ -1441,16 +1463,24 @@ async function recordSpontaneousMessage(messageType = 'casual') {
     const sentTime = moment().tz(TIMEZONE);
     const timeString = sentTime.format('HH:mm');
     
-    // 전송 횟수 증가
-    ultimateConversationState.spontaneousMessages.sentToday++;
+    // 전송 횟수 증가 - 🛡️ 안전한 접근
+    ultimateConversationState.spontaneousMessages.sentToday = 
+        (ultimateConversationState.spontaneousMessages.sentToday || 0) + 1;
     
     // 전송 시간 기록
+    if (!ultimateConversationState.spontaneousMessages.sentTimes) {
+        ultimateConversationState.spontaneousMessages.sentTimes = [];
+    }
     ultimateConversationState.spontaneousMessages.sentTimes.push(timeString);
     ultimateConversationState.spontaneousMessages.lastSentTime = sentTime.valueOf();
     
-    // 메시지 타입별 통계 (💔 갈등/화해 타입 포함!)
+    // 메시지 타입별 통계 (💔 갈등/화해 타입 포함!) - 🛡️ 안전한 접근
+    if (!ultimateConversationState.spontaneousMessages.messageTypes) {
+        ultimateConversationState.spontaneousMessages.messageTypes = {};
+    }
     if (ultimateConversationState.spontaneousMessages.messageTypes[messageType] !== undefined) {
-        ultimateConversationState.spontaneousMessages.messageTypes[messageType]++;
+        ultimateConversationState.spontaneousMessages.messageTypes[messageType] = 
+            (ultimateConversationState.spontaneousMessages.messageTypes[messageType] || 0) + 1;
     }
     
     contextLog(`자발적 메시지 기록: ${messageType} (${timeString}) - 총 ${ultimateConversationState.spontaneousMessages.sentToday}건`);
@@ -1499,30 +1529,30 @@ async function getSpontaneousStats() {
     
     return {
         // 라인 상태 리포트용 핵심 정보
-        sentToday: ultimateConversationState.spontaneousMessages.sentToday,
-        totalDaily: ultimateConversationState.spontaneousMessages.totalDaily,
+        sentToday: ultimateConversationState.spontaneousMessages.sentToday || 0,
+        totalDaily: ultimateConversationState.spontaneousMessages.totalDaily || DAILY_SPONTANEOUS_TARGET,
         nextTime: nextTimeString,
         
         // 상세 정보
-        progress: `${ultimateConversationState.spontaneousMessages.sentToday}/${ultimateConversationState.spontaneousMessages.totalDaily}`,
-        sentTimes: ultimateConversationState.spontaneousMessages.sentTimes,
+        progress: `${ultimateConversationState.spontaneousMessages.sentToday || 0}/${ultimateConversationState.spontaneousMessages.totalDaily || DAILY_SPONTANEOUS_TARGET}`,
+        sentTimes: ultimateConversationState.spontaneousMessages.sentTimes || [],
         lastSentTime: ultimateConversationState.spontaneousMessages.lastSentTime ? 
             moment(ultimateConversationState.spontaneousMessages.lastSentTime).tz(TIMEZONE).format('HH:mm') : null,
         
-        // 메시지 타입별 통계 (💔 갈등/화해 포함!)
-        messageTypes: { ...ultimateConversationState.spontaneousMessages.messageTypes },
+        // 메시지 타입별 통계 (💔 갈등/화해 포함!) - 🛡️ 안전한 접근
+        messageTypes: { ...(ultimateConversationState.spontaneousMessages.messageTypes || {}) },
         
         // 갈등/화해 특별 통계 (💔 새로 추가!)
         conflictStats: {
-            conflictMessages: ultimateConversationState.spontaneousMessages.messageTypes.conflict || 0,
-            reconciliationMessages: ultimateConversationState.spontaneousMessages.messageTypes.reconciliation || 0,
-            total: (ultimateConversationState.spontaneousMessages.messageTypes.conflict || 0) + 
-                   (ultimateConversationState.spontaneousMessages.messageTypes.reconciliation || 0)
+            conflictMessages: ultimateConversationState.spontaneousMessages.messageTypes?.conflict || 0,
+            reconciliationMessages: ultimateConversationState.spontaneousMessages.messageTypes?.reconciliation || 0,
+            total: (ultimateConversationState.spontaneousMessages.messageTypes?.conflict || 0) + 
+                   (ultimateConversationState.spontaneousMessages.messageTypes?.reconciliation || 0)
         },
         
         // 시스템 상태
-        isActive: ultimateConversationState.spontaneousMessages.sentToday < ultimateConversationState.spontaneousMessages.totalDaily,
-        remainingToday: ultimateConversationState.spontaneousMessages.totalDaily - ultimateConversationState.spontaneousMessages.sentToday,
+        isActive: (ultimateConversationState.spontaneousMessages.sentToday || 0) < (ultimateConversationState.spontaneousMessages.totalDaily || DAILY_SPONTANEOUS_TARGET),
+        remainingToday: (ultimateConversationState.spontaneousMessages.totalDaily || DAILY_SPONTANEOUS_TARGET) - (ultimateConversationState.spontaneousMessages.sentToday || 0),
         
         // GPT 모델 정보
         currentGptModel: getCurrentModelSetting ? getCurrentModelSetting() : 'unknown',
@@ -1547,10 +1577,12 @@ async function resetSpontaneousStats() {
     ultimateConversationState.spontaneousMessages.nextScheduledTime = null;
     ultimateConversationState.spontaneousMessages.lastResetDate = today;
     
-    // 메시지 타입별 통계 리셋 (💔 갈등/화해 포함!)
-    Object.keys(ultimateConversationState.spontaneousMessages.messageTypes).forEach(type => {
-        ultimateConversationState.spontaneousMessages.messageTypes[type] = 0;
-    });
+    // 메시지 타입별 통계 리셋 (💔 갈등/화해 포함!) - 🛡️ 안전한 접근
+    if (ultimateConversationState.spontaneousMessages.messageTypes) {
+        Object.keys(ultimateConversationState.spontaneousMessages.messageTypes).forEach(type => {
+            ultimateConversationState.spontaneousMessages.messageTypes[type] = 0;
+        });
+    }
     
     contextLog(`✅ 자발적 메시지 통계 리셋 완료 (${today})`);
     
@@ -1694,8 +1726,8 @@ async function getUltimateContextualPrompt(basePrompt) {
             // GPT-4o에서만 상세한 메타정보 추가
             const messageCount = ultimateConversationState.conversationContext.recentMessages.length;
             const memoryCount = ultimateConversationState.dynamicMemories.userMemories.length;
-            const learningCount = ultimateConversationState.memoryStats.totalLearningEntries;
-            const conflictLearningCount = ultimateConversationState.memoryStats.totalConflictLearning;
+            const learningCount = ultimateConversationState.memoryStats.totalLearningEntries || 0;
+            const conflictLearningCount = ultimateConversationState.memoryStats.totalConflictLearning || 0;
             contextualPrompt += `\n📊 컨텍스트: 메시지 ${messageCount}개, 기억 ${memoryCount}개, 학습 ${learningCount}개 (갈등: ${conflictLearningCount}개) (💾영구저장)\n`;
         }
         
@@ -1821,7 +1853,8 @@ async function learnFromConversation(speaker, message) {
                 };
                 
                 ultimateConversationState.dynamicMemories.conversationMemories.push(learningMemory);
-                ultimateConversationState.memoryStats.totalConversationMemories++;
+                ultimateConversationState.memoryStats.totalConversationMemories = 
+                    (ultimateConversationState.memoryStats.totalConversationMemories || 0) + 1;
                 
                 contextLog(`자동 학습: "${message.substring(0, 30)}..."`);
                 
@@ -1866,17 +1899,17 @@ async function getMemoryStatistics() {
     const learningStats = getLearningStatistics();
     
     return {
-        user: ultimateConversationState.memoryStats.totalUserMemories,
-        conversation: ultimateConversationState.memoryStats.totalConversationMemories,
-        today: ultimateConversationState.memoryStats.todayMemoryCount,
-        total: ultimateConversationState.memoryStats.totalUserMemories + 
-               ultimateConversationState.memoryStats.totalConversationMemories,
+        user: ultimateConversationState.memoryStats.totalUserMemories || 0,
+        conversation: ultimateConversationState.memoryStats.totalConversationMemories || 0,
+        today: ultimateConversationState.memoryStats.todayMemoryCount || 0,
+        total: (ultimateConversationState.memoryStats.totalUserMemories || 0) + 
+               (ultimateConversationState.memoryStats.totalConversationMemories || 0),
         // 📚 학습 통계 추가 (갈등 학습 포함!)
         learning: learningStats,
         // 💔 갈등 통계 추가
         conflicts: {
-            totalConflictLearning: ultimateConversationState.memoryStats.totalConflictLearning,
-            todayConflictLearning: ultimateConversationState.memoryStats.todayConflictLearning,
+            totalConflictLearning: ultimateConversationState.memoryStats.totalConflictLearning || 0,
+            todayConflictLearning: ultimateConversationState.memoryStats.todayConflictLearning || 0,
             lastConflictLearning: ultimateConversationState.memoryStats.lastConflictLearning
         },
         // ✨ GPT 모델 정보 추가
@@ -1889,7 +1922,7 @@ async function getMemoryStatistics() {
         // 💾 영구 저장 상태 추가
         persistence: {
             lastSaved: ultimateConversationState.memoryStats.lastSaved,
-            totalSaves: ultimateConversationState.memoryStats.totalSaves,
+            totalSaves: ultimateConversationState.memoryStats.totalSaves || 0,
             lastBackup: ultimateConversationState.memoryStats.lastBackup,
             isAutoSaving: true,
             storagePath: DATA_DIR
@@ -1963,13 +1996,13 @@ async function getInternalState() {
             currentModel,
             contextLength,
             priority,
-            version: 'v38.0-conflict-integration-complete'
+            version: 'v38.1-conflict-integration-complete'
         },
         // 💾 영구 저장 시스템 상태 추가
         persistentSystem: {
             autoSaveActive: true,
             lastSaved: ultimateConversationState.memoryStats.lastSaved,
-            totalSaves: ultimateConversationState.memoryStats.totalSaves,
+            totalSaves: ultimateConversationState.memoryStats.totalSaves || 0,
             lastBackup: ultimateConversationState.memoryStats.lastBackup,
             dataFiles: Object.keys(PERSISTENT_FILES),
             saveInterval: '5분',
@@ -1977,7 +2010,8 @@ async function getInternalState() {
             storagePath: DATA_DIR,
             diskMounted: true,
             neverLost: true,
-            conflictIntegrated: true // 💔 갈등 시스템 연동 표시
+            conflictIntegrated: true, // 💔 갈등 시스템 연동 표시
+            totalEntriesFixed: true // 🛡️ totalEntries 에러 해결 표시
         }
     };
 }
@@ -2067,7 +2101,8 @@ async function initializeEmotionalSystems() {
         diskMounted: true,
         storagePath: DATA_DIR,
         loadedDataFiles: Object.keys(PERSISTENT_FILES).length,
-        conflictSystemIntegrated: true // 💔 갈등 시스템 연동 표시
+        conflictSystemIntegrated: true, // 💔 갈등 시스템 연동 표시
+        totalEntriesFixed: true // 🛡️ totalEntries 에러 해결 표시
     });
     
     // 💾 초기화 완료 후 전체 저장 (갈등 연동 포함!)
@@ -2144,7 +2179,7 @@ function getPersistentSystemStatus() {
         saveInterval: '5분',
         backupInterval: '1시간',
         lastSaved: ultimateConversationState.memoryStats.lastSaved,
-        totalSaves: ultimateConversationState.memoryStats.totalSaves,
+        totalSaves: ultimateConversationState.memoryStats.totalSaves || 0,
         lastBackup: ultimateConversationState.memoryStats.lastBackup,
         dataFiles: {
             userMemories: PERSISTENT_FILES.userMemories,
@@ -2157,12 +2192,13 @@ function getPersistentSystemStatus() {
         diskMounted: true, // 💾 디스크 마운트 적용
         storagePath: DATA_DIR, // 💾 /data 경로
         conflictSystemIntegrated: true, // 💔 갈등 시스템 연동 표시
-        version: 'v38.0-conflict-integration-complete'
+        totalEntriesFixed: true, // 🛡️ totalEntries 에러 해결 표시
+        version: 'v38.1-conflict-integration-complete'
     };
 }
 
 // ==================== 📤 모듈 내보내기 ==================
-contextLog('💾 v38.0 로드 완료 (완전 누적 시스템 + 갈등 시스템 완전 연동 - 디스크 마운트로 영구 저장 보장, GPT 모델 버전 전환, 자발적 메시지 통계, 학습 시스템, 갈등 시스템 완전 지원)');
+contextLog('💾 v38.1 로드 완료 (완전 누적 시스템 + 갈등 시스템 완전 연동 - 디스크 마운트로 영구 저장 보장, GPT 모델 버전 전환, 자발적 메시지 통계, 학습 시스템, 갈등 시스템 완전 지원, totalEntries 에러 해결)');
 
 module.exports = {
     // 초기화
