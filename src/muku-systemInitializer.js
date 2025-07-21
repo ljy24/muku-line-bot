@@ -7,6 +7,7 @@
 // 🚀 깔끔하고 관리하기 쉬운 구조로 재설계
 // 📖 diarySystem 로딩 문제 완전 해결
 // 💥 갈등 관리 시스템 완전 초기화 및 연동
+// 🔄 실시간 행동 스위치 시스템 추가
 // ============================================================================
 
 const path = require('path');
@@ -225,9 +226,9 @@ async function initializeSpontaneousYejin(modules, client) {
     }
 }
 
-// ================== 📖👥💥 신규 시스템들 초기화 (사람 학습 + 일기장 + 갈등) ==================
+// ================== 📖👥💥🔄 신규 시스템들 초기화 (사람 학습 + 일기장 + 갈등 + 실시간 행동 스위치) ==================
 async function initializeNewSystems(modules) {
-    console.log(`${colors.person}👥📖💥 [신규시스템] 사람 학습 + 일기장 + 갈등 시스템 초기화...${colors.reset}`);
+    console.log(`${colors.person}👥📖💥🔄 [신규시스템] 사람 학습 + 일기장 + 갈등 + 실시간 행동 스위치 시스템 초기화...${colors.reset}`);
     
     let successCount = 0;
 
@@ -323,7 +324,35 @@ async function initializeNewSystems(modules) {
         console.log(`${colors.error}    🔧 modules.unifiedConflictManager가 null입니다!${colors.reset}`);
     }
 
-    console.log(`${colors.person}🎉 [신규시스템] 초기화 완료! ${successCount}/3개 시스템 활성화 (갈등 시스템 포함)${colors.reset}`);
+    // 🔄⭐️⭐️⭐️ 실시간 행동 스위치 시스템 초기화 (신규 추가!) ⭐️⭐️⭐️
+    if (modules.realtimeBehaviorSwitch) {
+        try {
+            console.log(`${colors.system}🔄 [행동스위치 초기화] realtimeBehaviorSwitch 초기화 시작...${colors.reset}`);
+            await modules.realtimeBehaviorSwitch.initializeRealtimeBehaviorSwitch();
+            console.log(`${colors.system}    ✅ 실시간 행동 스위치 시스템: 말투/호칭/상황극 시스템 초기화 완료${colors.reset}`);
+            console.log(`${colors.system}    🔄 "반말해", "존댓말해", "오빠라고해", "삐진척해" 등 즉시 반영 준비 완료${colors.reset}`);
+            
+            // 현재 설정 상태 확인
+            if (modules.realtimeBehaviorSwitch.getBehaviorStatus) {
+                const behaviorStatus = modules.realtimeBehaviorSwitch.getBehaviorStatus();
+                console.log(`${colors.system}    📊 현재 설정: 말투(${behaviorStatus.speechStyle}), 호칭(${behaviorStatus.currentAddress})${colors.reset}`);
+                if (behaviorStatus.rolePlayMode !== 'normal') {
+                    console.log(`${colors.system}    🎭 상황극 모드: ${behaviorStatus.rolePlayMode}${colors.reset}`);
+                }
+            }
+            
+            successCount++;
+            
+        } catch (error) {
+            console.log(`${colors.error}    ❌ 실시간 행동 스위치 시스템 초기화 실패: ${error.message}${colors.reset}`);
+            console.log(`${colors.error}    🔧 행동 스위치 에러 상세:`, error.stack);
+        }
+    } else {
+        console.log(`${colors.error}    ❌ 실시간 행동 스위치 시스템 모듈이 로드되지 않음! (행동 변경 기능 비활성화)${colors.reset}`);
+        console.log(`${colors.error}    🔧 modules.realtimeBehaviorSwitch가 null입니다!${colors.reset}`);
+    }
+
+    console.log(`${colors.person}🎉 [신규시스템] 초기화 완료! ${successCount}/4개 시스템 활성화 (갈등 + 행동스위치 포함)${colors.reset}`);
     return successCount;
 }
 
@@ -396,6 +425,7 @@ async function initializeMukuSystems(client, getCurrentModelSetting) {
         console.log(`${colors.person}👥 사람 학습: PersonLearningSystem 추가 버전으로 초기화합니다!${colors.reset}`);
         console.log(`${colors.ai}🔥 3시간차: AI 응답 고도화 버전으로 초기화합니다!${colors.reset}`);
         console.log(`${colors.intelligent}⚙️ 4시간차: 통합 & 최적화 버전으로 초기화합니다!${colors.reset}`);
+        console.log(`${colors.system}🔄 행동스위치: 실시간 행동 변경 시스템으로 초기화합니다! (신규 추가)${colors.reset}`);
 
         // =================== 1단계: 모듈 로딩 (수정된 로더 사용) ===================
         console.log(`${colors.system}📦 [1/6] 모든 모듈 로드 (분리된 로더 사용 - 갈등 시스템 추가)...${colors.reset}`);
@@ -415,6 +445,13 @@ async function initializeMukuSystems(client, getCurrentModelSetting) {
             console.log(`${colors.error}❌ [1단계 확인] diarySystem 모듈 로드 실패! ❌${colors.reset}`);
         }
 
+        // realtimeBehaviorSwitch 로딩 상태 특별 확인
+        if (modules.realtimeBehaviorSwitch) {
+            console.log(`${colors.system}🎉 [1단계 확인] realtimeBehaviorSwitch 모듈 로드 성공! ✅${colors.reset}`);
+        } else {
+            console.log(`${colors.error}❌ [1단계 확인] realtimeBehaviorSwitch 모듈 로드 실패! ❌${colors.reset}`);
+        }
+
         // =================== 2단계: 핵심 시스템 초기화 ===================
         console.log(`${colors.system}🧠 [2/6] 핵심 시스템 초기화 (기억 + 스케줄러 + 예진이 + 갈등)...${colors.reset}`);
         
@@ -429,7 +466,8 @@ async function initializeMukuSystems(client, getCurrentModelSetting) {
             integratedSystems: 0,
             sync: 0,
             monitoring: false,
-            conflictSystem: false // 갈등 시스템 상태 추가
+            conflictSystem: false, // 갈등 시스템 상태 추가
+            behaviorSwitch: false  // 행동 스위치 상태 추가
         };
 
         // 2-1. 핵심 기억 시스템 (갈등 시스템 포함)
@@ -441,7 +479,7 @@ async function initializeMukuSystems(client, getCurrentModelSetting) {
         // 2-3. 예진이 능동 메시지
         initResults.spontaneousYejin = await initializeSpontaneousYejin(modules, client);
         
-        // 2-4. 신규 시스템들 (사람 학습 + 일기장 + 갈등) - 수정됨
+        // 2-4. 신규 시스템들 (사람 학습 + 일기장 + 갈등 + 행동스위치) - 수정됨
         initResults.newSystems = await initializeNewSystems(modules);
         
         // 갈등 시스템 개별 상태 확인
@@ -453,6 +491,18 @@ async function initializeMukuSystems(client, getCurrentModelSetting) {
             } catch (error) {
                 initResults.conflictSystem = false;
                 console.log(`${colors.error}📊 [갈등 확인] 갈등 상태 확인 실패: ${error.message}${colors.reset}`);
+            }
+        }
+
+        // 행동 스위치 시스템 개별 상태 확인
+        if (modules.realtimeBehaviorSwitch && modules.realtimeBehaviorSwitch.getBehaviorStatus) {
+            try {
+                const behaviorStatus = modules.realtimeBehaviorSwitch.getBehaviorStatus();
+                initResults.behaviorSwitch = behaviorStatus.speechStyle !== undefined;
+                console.log(`${colors.system}📊 [행동스위치 확인] 행동 스위치 시스템 활성화: ${initResults.behaviorSwitch ? '✅' : '❌'}${colors.reset}`);
+            } catch (error) {
+                initResults.behaviorSwitch = false;
+                console.log(`${colors.error}📊 [행동스위치 확인] 행동 스위치 상태 확인 실패: ${error.message}${colors.reset}`);
             }
         }
 
@@ -515,6 +565,13 @@ async function initializeMukuSystems(client, getCurrentModelSetting) {
                 console.log(`${colors.diary}📖 일기장 시스템 통합 완료! 이제 누적 학습 내용을 확인할 수 있어요! 💕${colors.reset}`);
             } else {
                 console.log(`${colors.error}📖 일기장 시스템 통합 실패! enhancedLogging에서 null로 표시될 예정 ❌${colors.reset}`);
+            }
+
+            // 행동 스위치 시스템 로딩 성공 확인
+            if (initResults.behaviorSwitch) {
+                console.log(`${colors.system}🔄 실시간 행동 스위치 시스템 통합 완료! 이제 "반말해", "오빠라고해" 즉시 반영돼요! 💕${colors.reset}`);
+            } else {
+                console.log(`${colors.error}🔄 실시간 행동 스위치 시스템 통합 실패! enhancedLogging에서 null로 표시될 예정 ❌${colors.reset}`);
             }
             
             console.log(`${colors.person}👥 사람 학습 시스템 통합 완료! 이제 투샷 + 장소를 기억해요! 💕${colors.reset}`);
