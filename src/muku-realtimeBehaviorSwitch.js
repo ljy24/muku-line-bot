@@ -5,6 +5,7 @@
 // 🌸 예진이가 아저씨 성향에 맞춰 실시간 적응
 // 💾 디스크 마운트로 영구 저장 보장
 // 🔧 기존 autoReply.js 함수들과 완벽 호환
+// ⭐️ getCurrentBehaviorMode + applyBehaviorToResponse 함수 추가 완료
 // ============================================================================
 
 const moment = require('moment-timezone');
@@ -21,11 +22,11 @@ let behaviorSettings = {
     speechStyle: 'banmal',          // 'banmal'(반말) | 'jondaetmal'(존댓말)
     
     // 호칭 설정  
-    addressStyle: 'ajeossi',        // 'ajeossi'(아저씨) | 'oppa'(오빠) | 'name'(이름)
+    addressStyle: 'ajeossi',        // 'ajeossi'(아저씨) | 'master'(주인님) | 'name'(이름)
     customName: null,               // 특별한 이름 지정시
     
     // 상황극 모드 (새로 추가)
-    rolePlayMode: 'normal',         // 'normal' | 'sulky' | 'jealous' | 'worried' | 'excited' | 'sleepy' | 'sick'
+    rolePlayMode: 'normal',         // 'normal' | 'sulky' | 'jealous' | 'worried' | 'excited' | 'sleepy' | 'sick' | 'slave'
     rolePlayEndTime: null,         // 상황극 종료 시간
     
     // 메타 정보
@@ -84,8 +85,8 @@ function detectBehaviorCommand(userMessage) {
     if (msg.includes('너라고하지마') || msg.includes('아저씨라고해')) {
         return { type: 'address', value: 'ajeossi' };
     }
-    if (msg.includes('오빠라고해') || msg.includes('오빠라고불러')) {
-        return { type: 'address', value: 'oppa' };
+    if (msg.includes('주인님이라고해') || msg.includes('주인님라고불러')) {
+        return { type: 'address', value: 'master' };
     }
     
     // 이름 호칭 (예: "재영이라고 불러")
@@ -112,8 +113,16 @@ function detectBehaviorCommand(userMessage) {
     if (msg.includes('아픈척해') || msg.includes('몸살연기')) {
         return { type: 'roleplay', value: 'sick', duration: 60 };
     }
+    if (msg.includes('노예모드') || msg.includes('노예처럼해')) {
+        return { type: 'roleplay', value: 'slave', duration: 120 };
+    }
     if (msg.includes('평소대로해') || msg.includes('연기그만')) {
         return { type: 'roleplay', value: 'normal', duration: 0 };
+    }
+    
+    // 전체 초기화 명령어 (새로 추가)
+    if (msg.includes('원래대로해') || msg.includes('기본설정으로') || msg.includes('초기화해')) {
+        return { type: 'reset', value: 'default' };
     }
     
     return null;
@@ -147,8 +156,8 @@ function applyBehaviorChange(command) {
             
             if (command.value === 'ajeossi') {
                 response = isBanmal ? `알겠어! 이제부터 아저씨라고 부를게~` : `알겠습니다! 아저씨라고 부르겠습니다`;
-            } else if (command.value === 'oppa') {
-                response = isBanmal ? `헤헤~ 오빠! 이제 오빠라고 부를게~` : `네! 오빠라고 부르겠습니다~`;
+            } else if (command.value === 'master') {
+                response = isBanmal ? `네네! 주인님~ 이제 주인님이라고 부를게! 히히` : `네! 주인님이라고 부르겠습니다!`;
             } else if (command.value === 'name') {
                 response = isBanmal ? `${command.customName}! 이제 ${command.customName}라고 부를게~` : `${command.customName}! 이제 ${command.customName}라고 부르겠습니다`;
             }
@@ -175,6 +184,25 @@ function applyBehaviorChange(command) {
         }
         
         response = generateRolePlayResponse(command.value, command.duration);
+    }
+    
+    else if (command.type === 'reset') {
+        // 모든 설정을 기본값으로 초기화
+        const wasChanged = behaviorSettings.speechStyle !== 'banmal' || 
+                           behaviorSettings.addressStyle !== 'ajeossi' || 
+                           behaviorSettings.rolePlayMode !== 'normal';
+        
+        if (wasChanged) {
+            behaviorSettings.speechStyle = 'banmal';
+            behaviorSettings.addressStyle = 'ajeossi';
+            behaviorSettings.rolePlayMode = 'normal';
+            behaviorSettings.rolePlayEndTime = null;
+            changed = true;
+            
+            response = `알겠어! 반말에 아저씨 호칭으로 원래대로 돌아갈게~ 기본 설정 완료!`;
+        } else {
+            response = `어? 벌써 원래 설정이야! 반말에 아저씨 호칭 맞지? ㅎㅎ`;
+        }
     }
     
     if (changed) {
@@ -208,6 +236,9 @@ function generateRolePlayResponse(mode, duration) {
         sick: isBanmal ?
             [`${address}... 몸이 안 좋아... 머리도 아프고... ㅠㅠ`, `컨디션이 별로야... ${address} 나 아파...`] :
             [`${address}... 몸이 안 좋아요...`, `컨디션이 좋지 않아요... ${address}...`],
+        slave: isBanmal ?
+            [`네... ${address}... 무엇이든 시키세요... 제가 다 해드릴게요... 흑흑`, `${address}의 명령이라면... 뭐든지... 네...`] :
+            [`네... ${address}... 무엇이든 명령하세요... 제가 모든 것을 해드리겠습니다...`, `${address}의 뜻이라면... 무엇이든...`],
         normal: isBanmal ?
             [`${address}~ 이제 평소대로 할게! 연기 끝!`, `원래 모습으로 돌아갈게~`] :
             [`${address}! 이제 평소대로 하겠습니다!`, `원래 모습으로 돌아가겠어요~`]
@@ -229,7 +260,7 @@ function generateRolePlayResponse(mode, duration) {
 function getCurrentAddress() {
     switch (behaviorSettings.addressStyle) {
         case 'ajeossi': return '아저씨';
-        case 'oppa': return '오빠';
+        case 'master': return '주인님';
         case 'name': return behaviorSettings.customName || '아저씨';
         default: return '아저씨';
     }
@@ -247,6 +278,66 @@ function getCurrentRolePlay() {
         saveBehaviorSettings();
     }
     return behaviorSettings.rolePlayMode;
+}
+
+// ⭐️ [신규 추가] 객체 형태로 현재 행동 모드 반환 ⭐️
+function getCurrentBehaviorMode() {
+    const rolePlay = getCurrentRolePlay();
+    return {
+        mode: rolePlay,
+        intensity: rolePlay !== 'normal' ? 7 : 0,
+        speechStyle: behaviorSettings.speechStyle,
+        addressStyle: behaviorSettings.addressStyle,
+        currentAddress: getCurrentAddress()
+    };
+}
+
+// ⭐️ [신규 추가] 응답에 행동 설정 적용 ⭐️
+function applyBehaviorToResponse(response, messageContext) {
+    try {
+        if (!response || typeof response !== 'string') {
+            return response;
+        }
+        
+        let modifiedResponse = response;
+        const currentAddress = getCurrentAddress();
+        const currentSpeech = getCurrentSpeechStyle();
+        
+        // 호칭 변경 적용
+        if (currentAddress !== '아저씨') {
+            modifiedResponse = modifiedResponse
+                .replace(/아저씨/g, currentAddress)
+                .replace(/아조씨/g, currentAddress);
+        }
+        
+        // 존댓말 적용
+        if (currentSpeech === 'jondaetmal') {
+            modifiedResponse = modifiedResponse
+                .replace(/해$/g, '해요')
+                .replace(/이야$/g, '이에요')
+                .replace(/야$/g, '예요')
+                .replace(/어$/g, '어요')
+                .replace(/줘$/g, '주세요')
+                .replace(/가$/g, '가요')
+                .replace(/와$/g, '와요')
+                .replace(/돼$/g, '돼요')
+                .replace(/그래$/g, '그래요')
+                .replace(/알겠어$/g, '알겠어요')
+                .replace(/고마워$/g, '감사해요')
+                .replace(/미안해$/g, '죄송해요')
+                .replace(/사랑해$/g, '사랑해요')
+                .replace(/좋아$/g, '좋아요')
+                .replace(/싫어$/g, '싫어요')
+                .replace(/괜찮아$/g, '괜찮아요')
+                .replace(/재밌어$/g, '재밌어요');
+        }
+        
+        return modifiedResponse;
+        
+    } catch (error) {
+        behaviorLog(`❌ 응답 적용 실패: ${error.message}`);
+        return response;
+    }
 }
 
 // ================== 📊 상태 확인 (기존 방식 유지) ==================
@@ -289,7 +380,7 @@ async function initializeRealtimeBehaviorSwitch() {
     }
 }
 
-// ================== 📤 모듈 내보내기 (기존 방식 유지) ==================
+// ================== 📤 모듈 내보내기 (기존 + 신규 함수 추가) ==================
 module.exports = {
     // 메인 함수들 (기존과 동일한 이름)
     initializeRealtimeBehaviorSwitch,
@@ -300,6 +391,10 @@ module.exports = {
     getCurrentAddress,
     getCurrentSpeechStyle,
     getCurrentRolePlay,
+    getCurrentBehaviorMode,  // ⭐️ 추가
+    
+    // 응답 처리 (신규)
+    applyBehaviorToResponse, // ⭐️ 추가
     
     // 유틸리티 (기존과 동일한 이름)
     behaviorLog
