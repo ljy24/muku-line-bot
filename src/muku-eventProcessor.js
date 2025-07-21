@@ -102,13 +102,10 @@ async function processBehaviorSwitch(messageText, modules, client, userId) {
                 console.log(`${colors.behavior}📤 [행동변경] 응답 메시지 전송 완료${colors.reset}`);
                 
                 return {
-                    type: 'behavior_switch',
+                    type: 'behavior_switch_handled',
                     handled: true,
-                    response: {
-                        type: 'text',
-                        comment: switchResult,
-                        behaviorSwitch: true
-                    }
+                    response: null,
+                    skipFurtherProcessing: true
                 };
             } catch (error) {
                 console.log(`${colors.error}❌ [행동변경] 메시지 전송 실패: ${error.message}${colors.reset}`);
@@ -681,11 +678,11 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
             const behaviorSwitchResult = await processBehaviorSwitch(messageText, modules, client, userId);
             if (behaviorSwitchResult && behaviorSwitchResult.handled) {
                 if (enhancedLogging?.logConversation) {
-                    enhancedLogging.logConversation('나', behaviorSwitchResult.response.comment, 'text');
+                    enhancedLogging.logConversation('나', '행동 설정 변경됨', 'text');
                 } else {
-                    console.log(`${colors.behavior}🎭 예진이 (행동변경): ${behaviorSwitchResult.response.comment}${colors.reset}`);
+                    console.log(`${colors.behavior}🎭 예진이: 행동 설정 변경 완료${colors.reset}`);
                 }
-                return behaviorSwitchResult;
+                return null; // 아무것도 반환하지 않아서 추가 처리 완전 중단
             }
 
             console.log(`${colors.learning}🧠 [학습시작] 메시지 학습 및 분석 시작...${colors.reset}`);
