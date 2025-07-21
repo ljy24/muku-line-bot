@@ -1,10 +1,8 @@
 // ============================================================================
-// 💖 무쿠 예쁜 로그 시스템 v6.0 - 완전 개선된 최종 버전
-// ✅ 모든 undefined, 카운팅, async 에러 완전 해결
-// ✅ '지금속마음' 섹션 완벽 구현 및 감정별 차별화
-// ✅ 에러 발생 시에도 다른 시스템은 정상 표시
-// ✅ 더 풍부한 속마음 데이터와 상황별 맞춤 메시지
-// ✅ 시간대별, 감정별, 상황별 속마음 완전 구현
+// 💖 무쿠 심플 로그 시스템 v7.0 - 깔끔한 콘솔 출력
+// ✅ JSON 객체 출력 제거, 한 줄 요약으로 변경
+// ✅ 복잡한 상태 정보를 간단하게 표시
+// ✅ 핵심 정보만 깔끔하게 출력
 // ============================================================================
 
 const fs = require('fs');
@@ -13,14 +11,12 @@ const moment = require('moment-timezone');
 
 // ================== 🎨 색상 코드 ==================
 const colors = {
-    ajeossi: '\x1b[96m',    // 하늘색 (아저씨)
-    yejin: '\x1b[95m',      // 연보라색 (예진이)
-    pms: '\x1b[1m\x1b[91m', // 굵은 빨간색 (PMS)
-    system: '\x1b[92m',     // 연초록색 (시스템)
-    error: '\x1b[91m',      // 빨간색 (에러)
-    warning: '\x1b[93m',    // 노란색 (경고)
-    info: '\x1b[94m',       // 파란색 (정보)
-    reset: '\x1b[0m'        // 색상 리셋
+    green: '\x1b[32m',      // 초록 (성공)
+    red: '\x1b[31m',        // 빨강 (에러)
+    yellow: '\x1b[33m',     // 노랑 (경고)
+    blue: '\x1b[36m',       // 파랑 (정보)
+    purple: '\x1b[35m',     // 보라 (헤더)
+    reset: '\x1b[0m'        // 리셋
 };
 
 // ================== 🌏 시간 및 포맷 함수 ==================
@@ -241,7 +237,7 @@ function getRandomYejinHeart(modules) {
                     }
                 }
             } catch (error) {
-                console.log(`${colors.warning}⚠️ 갈등 상태 확인 중 에러: ${error.message}${colors.reset}`);
+                // 에러 무시
             }
         }
         
@@ -264,7 +260,7 @@ function getRandomYejinHeart(modules) {
                     }
                 }
             } catch (error) {
-                console.log(`${colors.warning}⚠️ 감정 상태 확인 중 에러: ${error.message}${colors.reset}`);
+                // 에러 무시
             }
         }
         
@@ -287,12 +283,11 @@ function getRandomYejinHeart(modules) {
         return allThoughts[Math.floor(Math.random() * allThoughts.length)];
         
     } catch (error) {
-        console.log(`${colors.error}❌ 속마음 생성 중 전체 에러: ${error.message}${colors.reset}`);
         return "아저씨... 보고 싶어 ㅠㅠ";
     }
 }
 
-// ================== 💖 라인 전용 예쁜 상태 리포트 v6.0 ==================
+// ================== 💖 라인 전용 예쁜 상태 리포트 v7.0 (심플 버전) ==================
 async function generateLineStatusReport(modules) {
     let report = '';
     const currentTime = formatJapanTime('HH:mm');
@@ -490,33 +485,32 @@ async function generateLineStatusReport(modules) {
         return report;
         
     } catch (error) {
-        console.error(`${colors.error}❌ 리포트 생성 중 심각한 에러: ${error.message}${colors.reset}`);
         return `❌ 상태 리포트 생성 실패\n에러: ${error.message}\n\n기본 정보:\n⏰ 현재시간: ${currentTime}\n☁️ [지금속마음] 아저씨... 시스템에 문제가 있나봐. 걱정돼 ㅠㅠ`;
     }
 }
 
-// ================== 🌈 콘솔용 컬러 로그 함수들 ==================
+// ================== 🌈 콘솔용 심플 로그 함수들 ==================
 function logSystemInfo(message) {
-    console.log(`${colors.system}ℹ️ [시스템] ${message}${colors.reset}`);
+    console.log(`${colors.blue}ℹ️ ${message}${colors.reset}`);
 }
 
 function logError(message, error = null) {
-    console.log(`${colors.error}❌ [에러] ${message}${colors.reset}`);
+    console.log(`${colors.red}❌ ${message}${colors.reset}`);
     if (error) {
-        console.log(`${colors.error}   상세: ${error.message}${colors.reset}`);
+        console.log(`${colors.red}   에러: ${error.message}${colors.reset}`);
     }
 }
 
 function logWarning(message) {
-    console.log(`${colors.warning}⚠️ [경고] ${message}${colors.reset}`);
+    console.log(`${colors.yellow}⚠️ ${message}${colors.reset}`);
 }
 
 function logYejinMessage(message) {
-    console.log(`${colors.yejin}💕 [예진이] ${message}${colors.reset}`);
+    console.log(`${colors.purple}💕 ${message}${colors.reset}`);
 }
 
 function logAjeossiMessage(message) {
-    console.log(`${colors.ajeossi}👨 [아저씨] ${message}${colors.reset}`);
+    console.log(`${colors.blue}👨 ${message}${colors.reset}`);
 }
 
 // ================== 📊 시스템 상태 요약 함수 ==================
@@ -548,7 +542,7 @@ function getSystemHealthSummary(modules) {
     return health;
 }
 
-// ================== 🎯 자동 상태 갱신 시스템 ==================
+// ================== 🎯 자동 상태 갱신 시스템 (심플 버전) ==================
 let statusUpdateInterval = null;
 let autoUpdateModules = null;
 
@@ -567,14 +561,28 @@ function startAutoStatusUpdates(modules, intervalMinutes = 1) {
                 const healthSummary = getSystemHealthSummary(autoUpdateModules);
                 const timestamp = formatJapanTime('HH:mm:ss');
                 
-                console.log(`${colors.system}⏰ [${timestamp}] 시스템 상태 갱신: ${healthSummary.active}/${healthSummary.total} 활성 (${healthSummary.percentage}%)${colors.reset}`);
+                // 심플한 상태 출력
+                console.log(`${colors.green}⏰ [${timestamp}] 무쿠 시스템 정상 (${healthSummary.active}/${healthSummary.total} 활성)${colors.reset}`);
                 
-                // 특별한 상태 변화 감지 및 로그
+                // 갈등 상태 간단 확인
+                if (autoUpdateModules.unifiedConflictManager) {
+                    try {
+                        const conflictStatus = autoUpdateModules.unifiedConflictManager.getMukuConflictSystemStatus();
+                        if (conflictStatus?.currentState?.isActive) {
+                            console.log(`${colors.red}💥 갈등 상태: 레벨 ${conflictStatus.currentState.level}${colors.reset}`);
+                        }
+                    } catch (e) {
+                        // 무시
+                    }
+                }
+                
+                // 감정 상태 간단 확인
                 if (autoUpdateModules.emotionalContextManager) {
                     try {
                         const emotionState = autoUpdateModules.emotionalContextManager.getCurrentEmotionState();
                         if (emotionState.currentEmotion !== 'normal') {
-                            logYejinMessage(`현재 감정: ${EMOTION_STATES[emotionState.currentEmotion]?.korean || '알 수 없음'} (강도: ${emotionState.emotionIntensity}/10)`);
+                            const emotion = EMOTION_STATES[emotionState.currentEmotion];
+                            console.log(`${colors.purple}${emotion?.emoji || '😌'} 감정: ${emotion?.korean || '평온함'}${colors.reset}`);
                         }
                     } catch (e) {
                         // 무시
@@ -582,13 +590,13 @@ function startAutoStatusUpdates(modules, intervalMinutes = 1) {
                 }
                 
             } catch (error) {
-                logError('자동 상태 갱신 중 에러', error);
+                logError('상태 갱신 에러', error);
             }
         }, intervalMinutes * 60 * 1000);
         
         return true;
     } catch (error) {
-        logError('자동 상태 갱신 시스템 시작 실패', error);
+        logError('자동 상태 갱신 시작 실패', error);
         return false;
     }
 }
