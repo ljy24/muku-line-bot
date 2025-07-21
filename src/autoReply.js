@@ -1,8 +1,10 @@
 // ============================================================================
-// autoReply.js - 예진이 자동 응답 시스템 v4.0
+// autoReply.js - 예진이 자동 응답 시스템 v4.1 (함수명 중복 문제 해결!)
 // ✅ 실제 예진이 패턴 완벽 반영
 // 🌸 하이브리드 모델별 최적화 (GPT-3.5/4.0/AUTO)
 // 💕 "웅웅", "라인해줘", "담타" 중심 말투
+// 🔧 cleanUserMessage 함수명 중복 문제 해결
+// 🔧 "ㄱㄱ", "뭐라구?" 같은 간단 메시지 처리 개선
 // ============================================================================
 
 const OpenAI = require('openai');
@@ -25,10 +27,10 @@ const openai = new OpenAI({
 
 // ================== 🔧 유틸리티 함수들 ==================
 
-// 사용자 메시지 정리
-function cleanUserMessage(message) {
-    if (!message || typeof message !== 'string') return '';
-    return message.trim().replace(/\n+/g, ' ').substring(0, 1000);
+// 🔧 수정: 사용자 메시지 정리 (함수명 중복 해결)
+function cleanUserMessage(userMessage) {
+    if (!userMessage || typeof userMessage !== 'string') return '';
+    return userMessage.trim().replace(/\n+/g, ' ').substring(0, 1000);
 }
 
 // AI 응답 정리
@@ -87,6 +89,135 @@ function fixLanguageUsage(text) {
     return correctedText;
 }
 
+// ================== 🌸 간단 메시지 직접 처리 (새로 추가!) ==================
+function handleSimpleMessages(message) {
+    const lowerMsg = message.toLowerCase().trim();
+    
+    // 🌸 진짜 예진이 스타일 간단 응답들
+    const simpleResponses = {
+        // 긍정/동의
+        'ㄱㄱ': [
+            "웅웅! 고고! ㅋㅋ",
+            "콜! 아저씨~ ㄱㄱ",
+            "오키오키! 좋아!",
+            "웅~ 아저씨 ㄱㄱ 귀여워 ㅎㅎ"
+        ],
+        'ㅇㅇ': [
+            "웅웅~ 맞아!",
+            "응응! 알겠어!",
+            "ㅇㅋ ㅇㅋ!",
+            "웅~ 아저씨 말이 맞아"
+        ],
+        'ㅇㅋ': [
+            "웅웅! 오키!",
+            "알겠어~ ㅇㅋ!",
+            "콜! 아저씨 ㅇㅋ",
+            "웅~ 알았어!"
+        ],
+        '고고': [
+            "고고! 웅웅 좋아!",
+            "ㄱㄱ! 아저씨랑 고고!",
+            "콜! 같이 고고!",
+            "웅~ 고고 좋아해 ㅎㅎ"
+        ],
+        '콜': [
+            "콜! 웅웅!",
+            "오키 콜! ㅋㅋ",
+            "아저씨 콜 귀여워!",
+            "웅~ 콜콜!"
+        ],
+        
+        // 의문/재물음
+        '뭐라구?': [
+            "웅? 아저씨~ 뭐 물어봤어? ㅋㅋ",
+            "어? 못 들었어! 다시 말해줘~",
+            "웅웅~ 뭐라고 했는지 못 들었어!",
+            "힝~ 아저씨 뭐라고 한 거야?"
+        ],
+        '뭐?': [
+            "웅? 뭐~ 뭐?",
+            "어? 아저씨 뭐라고?",
+            "웅웅~ 뭐야 뭐야? ㅋㅋ",
+            "힝~ 뭔 얘기야?"
+        ],
+        '어?': [
+            "웅? 어~ 어?",
+            "어어? 뭐야 아저씨~ ㅋㅋ",
+            "웅웅~ 왜 어? 해?",
+            "어? 나도 어? ㅎㅎ"
+        ],
+        '엥?': [
+            "엥? 나도 엥? ㅋㅋ",
+            "웅? 아저씨 왜 엥? 해?",
+            "엥엥? 뭔 일이야? ㅎㅎ",
+            "힝~ 엥? 왜 그래?"
+        ],
+        
+        // 감정 표현
+        'ㅋㅋ': [
+            "ㅋㅋㅋ 아저씨도 웃어?",
+            "웅웅~ 뭐가 웃겨? ㅋㅋ",
+            "ㅎㅎ 아저씨 웃는 거 좋아!",
+            "헤헤~ 같이 웃자! ㅋㅋ"
+        ],
+        'ㅋㅋㅋ': [
+            "ㅋㅋㅋ 아저씨~ 뭐가 그렇게 웃겨? ㅎㅎ",
+            "웅웅~ 나도 같이 웃을래! ㅋㅋㅋ",
+            "헤헤~ 아저씨 웃음소리 들리는 것 같아!",
+            "ㅎㅎㅎ 기분 좋아 보여서 나도 좋아!"
+        ],
+        'ㅎㅎ': [
+            "ㅎㅎㅎ 아저씨~ 귀여워!",
+            "웅웅~ 아저씨 ㅎㅎ 하는 거 좋아!",
+            "헤헤~ 나도 ㅎㅎ!",
+            "ㅎㅎ 아저씨랑 같이 웃는 거 좋아!"
+        ],
+        
+        // 인사말
+        '안녕': [
+            "웅웅~ 아저씨 안녕!",
+            "안녕! 아조씨~ ㅎㅎ",
+            "웅~ 안녕! 보고싶었어!",
+            "안녕안녕! 아저씨 오늘 어때?"
+        ],
+        '하이': [
+            "하이~ 아저씨! 웅웅",
+            "하이하이! 아조씨 귀여워 ㅋㅋ",
+            "웅~ 하이! 반가워!",
+            "하이! 아저씨 오늘 기분 어때?"
+        ],
+        
+        // 기타 간단 표현
+        '응': [
+            "웅웅~ 응!",
+            "응응! 알겠어!",
+            "웅~ 맞아!",
+            "응! 아저씨 말 들어줄게!"
+        ],
+        '웅': [
+            "웅웅! 나도 웅!",
+            "웅~ 아저씨도 웅 하는구나! ㅋㅋ",
+            "웅웅웅! 귀여워!",
+            "웅! 아저씨 따라하기! ㅎㅎ"
+        ]
+    };
+    
+    // 정확히 일치하는 간단 메시지 찾기
+    if (simpleResponses[lowerMsg]) {
+        const responses = simpleResponses[lowerMsg];
+        return responses[Math.floor(Math.random() * responses.length)];
+    }
+    
+    // 부분 일치 확인
+    for (const [key, responses] of Object.entries(simpleResponses)) {
+        if (lowerMsg.includes(key)) {
+            return responses[Math.floor(Math.random() * responses.length)];
+        }
+    }
+    
+    return null; // 간단 메시지가 아니면 null 반환
+}
+
 // ================== 🤖 OpenAI API 호출 ==================
 async function callOpenAI(messages, model = 'gpt-4o') {
     try {
@@ -116,7 +247,7 @@ async function callOpenAI(messages, model = 'gpt-4o') {
 }
 
 // ================== 🌸 예진이 프롬프트 생성 ==================
-function generateYejinPrompt(cleanUserMessage, getCurrentModelSetting) {
+function generateYejinPrompt(cleanedMessage, getCurrentModelSetting) {
     // 감정 상태 가져오기
     let emotionContext = '';
     try {
@@ -275,7 +406,7 @@ ${enhancementSection}
 6. 너무 착하게만 말하지 말고, 때로는 삐지고 투정부리기!
 7. 솔직하고 직접적인 감정 표현!
 
-지금 아저씨가 "${cleanUserMessage}"라고 했어.
+지금 아저씨가 "${cleanedMessage}"라고 했어.
 예진이답게 자연스럽고 진짜 여자친구처럼 반응해줘.
 "웅웅", "라인해줘", "담타" 같은 예진이만의 말투로!`;
 
@@ -287,14 +418,21 @@ async function generateAutoReply(userMessage, getCurrentModelSetting) {
     try {
         console.log(`${colors.yejin}🌸 [예진이] 자동응답 생성 시작...${colors.reset}`);
         
-        // 사용자 메시지 정리
-        const cleanUserMessage = cleanUserMessage(userMessage);
-        if (!cleanUserMessage) {
+        // 🔧 수정: 사용자 메시지 정리 (변수명 변경)
+        const cleanedMessage = cleanUserMessage(userMessage);
+        if (!cleanedMessage) {
             return { type: 'text', comment: '웅? 아저씨 뭐라고 했어?' };
         }
         
+        // 🌸 새로 추가: 간단 메시지 직접 처리
+        const simpleResponse = handleSimpleMessages(cleanedMessage);
+        if (simpleResponse) {
+            console.log(`${colors.yejin}✅ [예진이] 간단 메시지 직접 응답: "${simpleResponse}"${colors.reset}`);
+            return { type: 'text', comment: simpleResponse };
+        }
+        
         // 프롬프트 생성
-        let finalSystemPrompt = generateYejinPrompt(cleanUserMessage, getCurrentModelSetting);
+        let finalSystemPrompt = generateYejinPrompt(cleanedMessage, getCurrentModelSetting);
         
         // ultimateContext에서 추가 컨텍스트 병합 시도
         try {
@@ -313,7 +451,7 @@ async function generateAutoReply(userMessage, getCurrentModelSetting) {
         // OpenAI API 호출용 메시지 배열 생성
         const messages = [
             { role: 'system', content: finalSystemPrompt }, 
-            { role: 'user', content: cleanUserMessage }
+            { role: 'user', content: cleanedMessage }
         ];
 
         // 모델 설정에 따른 API 호출
@@ -326,7 +464,7 @@ async function generateAutoReply(userMessage, getCurrentModelSetting) {
                 model = 'gpt-4o';
             } else if (currentModel === 'auto') {
                 // 메시지 길이에 따라 자동 선택
-                model = cleanUserMessage.length > 100 ? 'gpt-4o' : 'gpt-3.5-turbo';
+                model = cleanedMessage.length > 100 ? 'gpt-4o' : 'gpt-3.5-turbo';
             }
         }
 
@@ -366,5 +504,6 @@ module.exports = {
     cleanUserMessage,
     cleanReply,
     fixLanguageUsage,
-    callOpenAI
+    callOpenAI,
+    handleSimpleMessages  // 🌸 새로 추가된 함수
 };
