@@ -530,6 +530,163 @@ async function handleCommand(text, userId, client = null) {
                 };
             }
         }
+
+        // ================== 🔄 실시간 행동 스위치 시스템 명령어들 (muku-realtimeBehaviorSwitch 연동!) ==================
+        
+        // 🔄 행동 설정 확인
+        if (lowerText === '행동설정' || lowerText === '행동 설정' || 
+            lowerText === '설정확인' || lowerText === '설정 확인' ||
+            lowerText === '말투확인' || lowerText === '말투 확인' ||
+            lowerText === '호칭확인' || lowerText === '호칭 확인' ||
+            lowerText === '현재설정' || lowerText === '현재 설정') {
+            
+            console.log('[commandHandler] 🔄 행동 설정 확인 요청 감지');
+            
+            try {
+                // 🔄 realtimeBehaviorSwitch 모듈 로드
+                let behaviorSwitch;
+                try {
+                    behaviorSwitch = require('./muku-realtimeBehaviorSwitch.js');
+                    console.log('[commandHandler] 🔄 muku-realtimeBehaviorSwitch.js 직접 로드 성공');
+                } catch (directLoadError) {
+                    console.log('[commandHandler] 🔄 직접 로드 실패:', directLoadError.message);
+                    
+                    // 전역 모듈에서 시도
+                    const modules = global.mukuModules || {};
+                    behaviorSwitch = modules.realtimeBehaviorSwitch;
+                    
+                    if (!behaviorSwitch) {
+                        console.log('[commandHandler] 🔄 전역 모듈에서도 realtimeBehaviorSwitch 없음');
+                        return {
+                            type: 'text',
+                            comment: "행동 설정 시스템이 아직 준비 안 됐어! 나중에 다시 확인해줘~",
+                            handled: true
+                        };
+                    }
+                }
+                
+                // 현재 행동 설정 확인
+                if (behaviorSwitch.getBehaviorStatus) {
+                    const behaviorStatus = behaviorSwitch.getBehaviorStatus();
+                    
+                    let response = "🔄 **현재 행동 설정**\n\n";
+                    response += `💬 말투: ${behaviorStatus.speechStyle === 'banmal' ? '반말' : '존댓말'}\n`;
+                    response += `👤 호칭: ${behaviorStatus.currentAddress}\n`;
+                    
+                    if (behaviorStatus.rolePlayMode !== 'normal') {
+                        response += `🎭 상황극 모드: ${behaviorStatus.rolePlayMode}\n`;
+                    } else {
+                        response += `🎭 상황극 모드: 일반 모드\n`;
+                    }
+                    
+                    response += `\n📊 변경 횟수: ${behaviorStatus.changeCount}회\n`;
+                    
+                    if (behaviorStatus.lastChanged) {
+                        const lastChangedDate = new Date(behaviorStatus.lastChanged);
+                        response += `⏰ 마지막 변경: ${lastChangedDate.toLocaleString('ko-KR')}\n`;
+                    }
+                    
+                    response += `\n💡 **변경 가능한 명령어:**\n`;
+                    response += `• "반말해" / "존댓말해"\n`;
+                    response += `• "아저씨라고해" / "오빠라고해"\n`;
+                    response += `• "삐진척해" / "질투해" / "평소대로해"`;
+                    
+                    return {
+                        type: 'text',
+                        comment: response,
+                        handled: true
+                    };
+                } else {
+                    return {
+                        type: 'text',
+                        comment: "행동 설정 확인 기능이 없어... 시스템 문제인 것 같아 ㅠㅠ",
+                        handled: true
+                    };
+                }
+                
+            } catch (error) {
+                console.error('[commandHandler] 🔄 행동 설정 확인 실패:', error.message);
+                return {
+                    type: 'text',
+                    comment: "행동 설정 확인하려고 했는데 문제가 생겼어... 다시 시도해볼까?",
+                    handled: true
+                };
+            }
+        }
+
+        // 🔄 실시간 행동 변경 처리 (여러 패턴 감지)
+        if (lowerText.includes('반말해') || lowerText.includes('존댓말해') ||
+            lowerText.includes('아저씨라고해') || lowerText.includes('오빠라고해') ||
+            lowerText.includes('삐진척해') || lowerText.includes('질투해') ||
+            lowerText.includes('걱정해') || lowerText.includes('졸린척해') ||
+            lowerText.includes('아픈척해') || lowerText.includes('평소대로해') ||
+            lowerText.includes('너라고하지마') || lowerText.includes('편하게말해') ||
+            lowerText.includes('정중하게말해') || text.match(/(\w+)(이?라고|라고)\s*(불러|해)/)) {
+            
+            console.log('[commandHandler] 🔄 실시간 행동 변경 요청 감지:', lowerText);
+            
+            try {
+                // 🔄 realtimeBehaviorSwitch 모듈 로드
+                let behaviorSwitch;
+                try {
+                    behaviorSwitch = require('./muku-realtimeBehaviorSwitch.js');
+                    console.log('[commandHandler] 🔄 muku-realtimeBehaviorSwitch.js 직접 로드 성공');
+                } catch (directLoadError) {
+                    console.log('[commandHandler] 🔄 직접 로드 실패:', directLoadError.message);
+                    
+                    // 전역 모듈에서 시도
+                    const modules = global.mukuModules || {};
+                    behaviorSwitch = modules.realtimeBehaviorSwitch;
+                    
+                    if (!behaviorSwitch) {
+                        console.log('[commandHandler] 🔄 전역 모듈에서도 realtimeBehaviorSwitch 없음');
+                        return {
+                            type: 'text',
+                            comment: "행동 변경 시스템이 아직 준비 안 됐어! 나중에 다시 시도해줘~",
+                            handled: true
+                        };
+                    }
+                }
+                
+                // 실시간 행동 변경 처리
+                if (behaviorSwitch.processRealtimeBehaviorChange) {
+                    const changeResult = behaviorSwitch.processRealtimeBehaviorChange(text);
+                    
+                    if (changeResult) {
+                        console.log('[commandHandler] 🔄 행동 변경 성공:', changeResult);
+                        
+                        return {
+                            type: 'text',
+                            comment: changeResult,
+                            handled: true
+                        };
+                    } else {
+                        console.log('[commandHandler] 🔄 행동 변경 감지되지 않음');
+                        
+                        // 변경이 감지되지 않은 경우 null 반환하여 다른 처리기에서 처리하도록 함
+                        return null;
+                    }
+                } else {
+                    console.log('[commandHandler] 🔄 processRealtimeBehaviorChange 함수 없음');
+                    return {
+                        type: 'text',
+                        comment: "행동 변경 기능이 준비되지 않았어... 시스템을 확인해볼게!",
+                        handled: true
+                    };
+                }
+                
+            } catch (error) {
+                console.error('[commandHandler] 🔄 실시간 행동 변경 실패:', error.message);
+                console.error('[commandHandler] 🔄 스택 트레이스:', error.stack);
+                
+                return {
+                    type: 'text',
+                    comment: "행동 변경하려고 했는데 문제가 생겼어... 다시 시도해볼까? ㅠㅠ",
+                    handled: true
+                };
+            }
+        }
+        
         
         // ================== 🗓️ 일기장 시스템 명령어들 (muku-diarySystem v4.0 연동!) ==================
         
