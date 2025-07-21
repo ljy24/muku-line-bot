@@ -3,6 +3,7 @@
 // ✅ 메시지 처리, 이미지 처리, 명령어 처리 로직 분리
 // 🔍 얼굴 인식, 새벽 대화, 생일 감지 등 모든 이벤트 처리
 // 🧠 실시간 학습 시스템 연동 - 대화 패턴 학습 및 개인화
+// 🎭 실시간 행동 스위치 시스템 완전 연동 - 모든 응답에 행동 모드 적용
 // 🌏 일본시간(JST) 기준 시간 처리
 // 💖 예진이의 감정과 기억을 더욱 생생하게 재현
 // ============================================================================
@@ -15,6 +16,7 @@ const colors = {
     system: '\x1b[92m',      // 연초록색 (시스템)
     learning: '\x1b[93m',    // 노란색 (학습)
     person: '\x1b[94m',      // 파란색 (사람 학습)
+    behavior: '\x1b[35m',    // 마젠타색 (행동 스위치)
     error: '\x1b[91m',       // 빨간색 (에러)
     reset: '\x1b[0m'         // 색상 리셋
 };
@@ -26,6 +28,83 @@ function getJapanTime() {
 
 function getJapanHour() {
     return getJapanTime().getHours();
+}
+
+// ================== 🎭 실시간 행동 스위치 처리 함수 ==================
+async function applyBehaviorModeToResponse(response, modules, messageContext) {
+    try {
+        if (!modules.realtimeBehaviorSwitch) {
+            return response;
+        }
+
+        const currentMode = modules.realtimeBehaviorSwitch.getCurrentBehaviorMode();
+        
+        if (!currentMode || currentMode.mode === 'normal') {
+            return response; // 일반 모드면 그대로 반환
+        }
+
+        console.log(`${colors.behavior}🎭 [행동모드] 현재 모드: ${currentMode.mode} (강도: ${currentMode.intensity}/10)${colors.reset}`);
+
+        // 응답에 행동 모드 적용
+        const modifiedResponse = await modules.realtimeBehaviorSwitch.applyBehaviorToResponse(
+            response,
+            messageContext
+        );
+
+        if (modifiedResponse && modifiedResponse !== response) {
+            console.log(`${colors.behavior}✨ [행동적용] 응답이 ${currentMode.mode} 모드로 변경됨${colors.reset}`);
+            return {
+                ...response,
+                comment: modifiedResponse,
+                behaviorApplied: true,
+                behaviorMode: currentMode.mode,
+                behaviorIntensity: currentMode.intensity
+            };
+        }
+
+        return response;
+    } catch (error) {
+        console.log(`${colors.error}⚠️ 행동 모드 적용 에러: ${error.message}${colors.reset}`);
+        return response;
+    }
+}
+
+async function processBehaviorSwitch(messageText, modules) {
+    try {
+        if (!modules.realtimeBehaviorSwitch) {
+            return null;
+        }
+
+        // 메시지에서 행동 스위치 명령어 감지
+        const switchResult = await modules.realtimeBehaviorSwitch.processMessage(messageText);
+        
+        if (switchResult && switchResult.switched) {
+            console.log(`${colors.behavior}🎭 [행동변경] ${switchResult.previousMode} → ${switchResult.newMode}${colors.reset}`);
+            
+            // 행동 변경 알림 메시지 생성
+            const notificationMessage = modules.realtimeBehaviorSwitch.generateModeChangeNotification(
+                switchResult.previousMode,
+                switchResult.newMode,
+                switchResult.trigger
+            );
+            
+            return {
+                type: 'behavior_switch',
+                response: {
+                    type: 'text',
+                    comment: notificationMessage,
+                    behaviorSwitch: true,
+                    newMode: switchResult.newMode,
+                    previousMode: switchResult.previousMode
+                }
+            };
+        }
+
+        return null;
+    } catch (error) {
+        console.log(`${colors.error}⚠️ 행동 스위치 처리 에러: ${error.message}${colors.reset}`);
+        return null;
+    }
 }
 
 // ================== 👥 사람 학습 시스템 함수들 ==================
@@ -153,6 +232,7 @@ async function generatePersonalizedImageResponse(faceResult, personLearningResul
         return null;
     }
 }
+
 async function processLearningFromMessage(messageText, modules, enhancedLogging) {
     try {
         // 1. 대화 패턴 학습
@@ -283,6 +363,7 @@ async function analyzeConversationContext(messageText, modules) {
         return null;
     }
 }
+
 // ================== 🔍 얼굴 인식 관련 함수들 ==================
 async function detectFaceSafely(base64Image, faceMatcher, loadFaceMatcherSafely) {
     try {
@@ -399,7 +480,7 @@ async function processCommand(messageText, userId, client, modules) {
 }
 
 // ================== 💬 일반 대화 응답 처리 (학습 시스템 연동) ==================
-async function processGeneralChat(messageText, modules, enhancedLogging) {
+async function processGeneralChat(messageText, modules, enhancedLogging, messageContext = {}) {
     try {
         // 1. 기본 응답 생성
         let botResponse = null;
@@ -421,11 +502,18 @@ async function processGeneralChat(messageText, modules, enhancedLogging) {
         if (botResponse) {
             const personalizedResponse = await generatePersonalizedResponse(messageText, modules, botResponse);
             
+            // 4. ⭐️ 실시간 행동 스위치 적용 ⭐️
+            const behaviorAppliedResponse = await applyBehaviorModeToResponse(
+                personalizedResponse, 
+                modules, 
+                { messageText, ...messageContext }
+            );
+            
             if (personalizedResponse.personalized) {
                 console.log(`${colors.learning}💖 [개인화완료] 기본 응답 → 개인화된 응답으로 업그레이드${colors.reset}`);
             }
             
-            return personalizedResponse;
+            return behaviorAppliedResponse;
         }
 
         return null;
@@ -510,23 +598,33 @@ async function processImageMessage(messageId, client, faceMatcher, loadFaceMatch
             finalResponse = generateFaceRecognitionResponse(faceType, modules, {});
         }
         
+        // ⭐️ 이미지 응답에도 실시간 행동 스위치 적용 ⭐️
+        const behaviorAppliedResponse = await applyBehaviorModeToResponse(
+            finalResponse,
+            modules,
+            { messageType: 'image', faceResult: analysisResult?.type }
+        );
+        
         const imageMetadata = { base64, imageSize: buffer.length, timestamp: getJapanTime(), context: 'photo_sharing' };
         await processPersonLearning(analysisResult?.type, imageMetadata, modules, enhancedLogging);
 
-        return finalResponse;
+        return behaviorAppliedResponse;
         // [수정된 로직 끝]
 
     } catch (error) {
         console.error(`${colors.error}❌ 이미지 처리 에러: ${error.message}${colors.reset}`);
-        return {
+        const errorResponse = {
             type: 'text',
             comment: '사진이 잘 안 보여... 다시 보내줄래? ㅠㅠ'
         };
+        
+        // 에러 응답에도 행동 모드 적용 시도
+        return await applyBehaviorModeToResponse(errorResponse, modules, { messageType: 'image', error: true });
     }
 }
 
 // ================== 📝 기타 메시지 타입 처리 ==================
-function processOtherMessageType(messageType) {
+async function processOtherMessageType(messageType, modules) {
     const responses = [
         '아저씨가 뭔가 보냈는데... 나 이건 잘 못 봐 ㅠㅠ',
         '음? 뭘 보낸 거야? 나 잘 못 보겠어... 텍스트로 말해줄래?',
@@ -534,10 +632,14 @@ function processOtherMessageType(messageType) {
         '미안... 이 타입은 아직 내가 이해 못 해... 다시 말해줄래?',
         '아저씨가 보낸 건 알겠는데... 내가 아직 배우는 중이야 ㅠㅠ'
     ];
-    return {
+    
+    const baseResponse = {
         type: 'text',
         comment: responses[Math.floor(Math.random() * responses.length)]
     };
+    
+    // ⭐️ 기타 메시지에도 실시간 행동 스위치 적용 ⭐️
+    return await applyBehaviorModeToResponse(baseResponse, modules, { messageType: messageType });
 }
 
 // ================== 🎯 메인 이벤트 처리 함수 (학습 시스템 완전 연동) ==================
@@ -558,30 +660,67 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
                 console.log(`${colors.ajeossi}💬 아저씨: ${messageText}${colors.reset}`);
             }
 
+            // ⭐️ 실시간 행동 스위치 처리 (최우선) ⭐️
+            const behaviorSwitchResult = await processBehaviorSwitch(messageText, modules);
+            if (behaviorSwitchResult) {
+                if (enhancedLogging?.logConversation) {
+                    enhancedLogging.logConversation('나', behaviorSwitchResult.response.comment, 'text');
+                } else {
+                    console.log(`${colors.behavior}🎭 예진이 (행동변경): ${behaviorSwitchResult.response.comment}${colors.reset}`);
+                }
+                return behaviorSwitchResult;
+            }
+
             console.log(`${colors.learning}🧠 [학습시작] 메시지 학습 및 분석 시작...${colors.reset}`);
             const conversationContext = await analyzeConversationContext(messageText, modules);
             await processLearningFromMessage(messageText, modules, enhancedLogging);
 
             const versionResponse = processVersionCommand(messageText, getVersionResponse);
             if (versionResponse) {
+                // ⭐️ 버전 응답에도 행동 모드 적용 ⭐️
+                const behaviorVersionResponse = await applyBehaviorModeToResponse(
+                    { type: 'text', comment: versionResponse },
+                    modules,
+                    { messageText, responseType: 'version' }
+                );
+                
+                const finalVersionComment = behaviorVersionResponse.comment || versionResponse;
                 if (enhancedLogging?.logConversation) {
-                    enhancedLogging.logConversation('나', versionResponse, 'text');
+                    enhancedLogging.logConversation('나', finalVersionComment, 'text');
                 } else {
-                    console.log(`${colors.yejin}✨ 예진이 (버전응답): ${versionResponse}${colors.reset}`);
+                    console.log(`${colors.yejin}✨ 예진이 (버전응답): ${finalVersionComment}${colors.reset}`);
                 }
-                return { type: 'version_response', response: versionResponse };
+                return { type: 'version_response', response: finalVersionComment };
             }
 
             await processSulkyRelief(modules, enhancedLogging);
             const nightResponse = await processNightWakeMessage(messageText, modules, enhancedLogging);
-            if (nightResponse) return { type: 'night_response', response: nightResponse.response };
+            if (nightResponse) {
+                // ⭐️ 새벽 응답에도 행동 모드 적용 ⭐️
+                const behaviorNightResponse = await applyBehaviorModeToResponse(
+                    { type: 'text', comment: nightResponse.response },
+                    modules,
+                    { messageText, responseType: 'night', hour: getJapanHour() }
+                );
+                return { type: 'night_response', response: behaviorNightResponse.comment || nightResponse.response };
+            }
+            
             const birthdayResponse = await processBirthdayDetection(messageText, modules, enhancedLogging);
-            if (birthdayResponse) return { type: 'birthday_response', response: birthdayResponse.response };
+            if (birthdayResponse) {
+                // ⭐️ 생일 응답에도 행동 모드 적용 ⭐️
+                const behaviorBirthdayResponse = await applyBehaviorModeToResponse(
+                    { type: 'text', comment: birthdayResponse.response },
+                    modules,
+                    { messageText, responseType: 'birthday' }
+                );
+                return { type: 'birthday_response', response: behaviorBirthdayResponse.comment || birthdayResponse.response };
+            }
+            
             processFixedMemory(messageText, modules);
             const commandResult = await processCommand(messageText, userId, client, modules);
             if (commandResult) return { type: 'command_response', response: commandResult };
 
-            const chatResponse = await processGeneralChat(messageText, modules, enhancedLogging);
+            const chatResponse = await processGeneralChat(messageText, modules, enhancedLogging, { conversationContext });
             if (chatResponse) {
                 const logMessage = chatResponse.personalized ? `${chatResponse.comment} [개인화됨]` : chatResponse.comment;
                 if (enhancedLogging?.logConversation) {
@@ -591,7 +730,14 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
                 }
                 return { type: 'chat_response', response: chatResponse, conversationContext: conversationContext };
             }
-            return { type: 'fallback_response', response: { type: 'text', comment: '아저씨~ 나 지금 시스템 준비 중이야... 조금만 기다려줘! ㅎㅎ' } };
+            
+            // ⭐️ 폴백 응답에도 행동 모드 적용 ⭐️
+            const fallbackResponse = await applyBehaviorModeToResponse(
+                { type: 'text', comment: '아저씨~ 나 지금 시스템 준비 중이야... 조금만 기다려줘! ㅎㅎ' },
+                modules,
+                { messageText, responseType: 'fallback' }
+            );
+            return { type: 'fallback_response', response: fallbackResponse };
         }
         else if (userMessage.type === 'image') {
             if (enhancedLogging?.logConversation) {
@@ -613,7 +759,7 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
         }
         else {
             console.log(`${colors.ajeossi}📎 아저씨: ${userMessage.type} 메시지${colors.reset}`);
-            const otherResponse = processOtherMessageType(userMessage.type);
+            const otherResponse = await processOtherMessageType(userMessage.type, modules);
             return { type: 'other_response', response: otherResponse };
         }
 
@@ -626,7 +772,15 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
                 console.log(`${colors.error}⚠️ 에러 학습 실패: ${learningError.message}${colors.reset}`);
             }
         }
-        return { type: 'error_response', response: { type: 'text', comment: '아저씨... 나 지금 좀 멍해져서... 다시 말해줄래? ㅠㅠ' } };
+        
+        // ⭐️ 에러 응답에도 행동 모드 적용 ⭐️
+        const errorResponse = await applyBehaviorModeToResponse(
+            { type: 'text', comment: '아저씨... 나 지금 좀 멍해져서... 다시 말해줄래? ㅠㅠ' },
+            modules,
+            { error: true, errorMessage: error.message }
+        );
+        
+        return { type: 'error_response', response: errorResponse };
     }
 }
 
