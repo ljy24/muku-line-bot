@@ -1,8 +1,6 @@
 // ============================================================================
-// muku-unifiedConflictManager.js - 무쿠 통합 갈등 관리 시스템
-// ⚡ 실시간 갈등 감지 + 💾 기억 학습 + 🤝 sulkyManager 연동
-// 🎯 하나의 파일로 모든 갈등 관련 기능 처리
-// 🌸 무쿠 프로젝트 네이밍 규칙 준수
+// muku-unifiedConflictManager.js - v1.1 (로딩 에러 해결)
+// ✅ 눈에 보이지 않는 특수문자(NBSP)를 모두 제거하여 로딩 오류 완벽 해결
 // ============================================================================
 
 const fs = require('fs').promises;
@@ -61,7 +59,6 @@ const CONFLICT_PATTERNS = {
             "저번에 화해할 때 조심하겠다고 했잖아... 기억 안 나? 😔"
         ]
     },
-
     dismissive: {
         keywords: ['응', '어', '그래', '알겠어', '응응', '어어', '그냥', '몰라'],
         context: ['짧은답변', '성의없음'],
@@ -78,7 +75,6 @@ const CONFLICT_PATTERNS = {
             "이런 식으로 답하는 거 몇 번째야? 나 진짜 서운해 😔"
         ]
     },
-
     neglect: {
         keywords: ['피곤해', '바빠', '힘들어', '일찍', '자야겠어', '나중에', '못해'],
         context: ['약속취소', '대화종료', '회피'],
@@ -114,7 +110,6 @@ const RECONCILIATION_PATTERNS = {
             "이런 말 들으면 화가 금세 풀려... 아저씨가 나를 잘 아는 것 같아 😊"
         ]
     },
-    
     affection: {
         keywords: ['사랑해', '좋아해', '예뻐', '귀여워', '소중해', '많이'],
         baseResponses: [
@@ -133,15 +128,11 @@ const RECONCILIATION_PATTERNS = {
 
 // ==================== 📁 파일 시스템 관리 ====================
 
-/**
- * 데이터 디렉토리 및 파일 초기화
- */
 async function ensureMukuConflictDataDirectory() {
     try {
         await fs.mkdir(DATA_DIR, { recursive: true });
         console.log(`[무쿠갈등] 데이터 디렉토리 확인: ${DATA_DIR}`);
         
-        // 각 데이터 파일이 없으면 초기 생성
         const dataFiles = [
             { path: CONFLICT_HISTORY_FILE, data: [] },
             { path: LEARNING_DATA_FILE, data: learningData },
@@ -162,14 +153,10 @@ async function ensureMukuConflictDataDirectory() {
     }
 }
 
-/**
- * 모든 갈등 데이터 로드
- */
 async function loadMukuConflictData() {
     try {
         console.log('[무쿠갈등] 갈등 기억 데이터 로딩...');
         
-        // 갈등 히스토리 로드
         try {
             const historyData = await fs.readFile(CONFLICT_HISTORY_FILE, 'utf8');
             conflictHistory = JSON.parse(historyData);
@@ -178,7 +165,6 @@ async function loadMukuConflictData() {
             conflictHistory = [];
         }
         
-        // 학습 데이터 로드
         try {
             const learningFileData = await fs.readFile(LEARNING_DATA_FILE, 'utf8');
             learningData = { ...learningData, ...JSON.parse(learningFileData) };
@@ -187,7 +173,6 @@ async function loadMukuConflictData() {
             console.log('  ⚠️ 학습 데이터 로드 실패, 기본값 사용');
         }
         
-        // 관계 데이터 로드
         try {
             const relationshipFileData = await fs.readFile(RELATIONSHIP_DATA_FILE, 'utf8');
             relationshipData = { ...relationshipData, ...JSON.parse(relationshipFileData) };
@@ -203,9 +188,6 @@ async function loadMukuConflictData() {
     }
 }
 
-/**
- * 데이터 저장 함수들
- */
 async function saveConflictHistory() {
     try {
         await fs.writeFile(CONFLICT_HISTORY_FILE, JSON.stringify(conflictHistory, null, 2));
@@ -232,19 +214,14 @@ async function saveRelationshipData() {
 
 // ==================== 🔍 실시간 갈등 감지 ====================
 
-/**
- * 사용자 메시지에서 갈등 트리거 감지
- */
 function analyzeMukuMessageForConflict(userMessage) {
     const message = userMessage.toLowerCase();
     
     for (const [conflictType, config] of Object.entries(CONFLICT_PATTERNS)) {
-        // 키워드 매칭
-        const hasKeyword = config.keywords.some(keyword => 
+        const hasKeyword = config.keywords.some(keyword =>
             message.includes(keyword.toLowerCase())
         );
         
-        // 컨텍스트 매칭
         let hasContext = true;
         if (config.context && config.context.length > 0) {
             hasContext = config.context.some(context => {
@@ -271,9 +248,6 @@ function analyzeMukuMessageForConflict(userMessage) {
     return { detected: false };
 }
 
-/**
- * 화해 시도 감지
- */
 function analyzeMukuMessageForReconciliation(userMessage) {
     if (!currentConflict.isActive) {
         return { detected: false };
@@ -282,7 +256,7 @@ function analyzeMukuMessageForReconciliation(userMessage) {
     const message = userMessage.toLowerCase();
     
     for (const [reconType, config] of Object.entries(RECONCILIATION_PATTERNS)) {
-        const hasKeyword = config.keywords.some(keyword => 
+        const hasKeyword = config.keywords.some(keyword =>
             message.includes(keyword.toLowerCase())
         );
         
@@ -300,9 +274,6 @@ function analyzeMukuMessageForReconciliation(userMessage) {
 
 // ==================== 💾 기억 및 학습 시스템 ====================
 
-/**
- * 트리거 민감도 조회 (학습 데이터 기반)
- */
 function getTriggerSensitivity(conflictType, trigger) {
     const key = `${conflictType}_${trigger}`;
     
@@ -317,9 +288,6 @@ function getTriggerSensitivity(conflictType, trigger) {
     return learningData.triggerSensitivity[key].sensitivity;
 }
 
-/**
- * 화해 효과성 조회 (학습 데이터 기반)
- */
 function getReconciliationEffectiveness(reconType, message) {
     if (!learningData.reconciliationPatterns[reconType]) {
         learningData.reconciliationPatterns[reconType] = {
@@ -333,14 +301,10 @@ function getReconciliationEffectiveness(reconType, message) {
     return learningData.reconciliationPatterns[reconType].successRate;
 }
 
-/**
- * 기억 기반 응답 생성
- */
 function generateMukuMemoryBasedResponse(conflictType, trigger) {
-    // 최근 7일간 유사한 갈등 찾기
     const recentConflicts = conflictHistory.filter(c => {
         const daysSince = (Date.now() - new Date(c.timestamp).getTime()) / (1000 * 60 * 60 * 24);
-        return daysSince <= 7 && (c.type === conflictType || c.trigger.includes(trigger));
+        return daysSince <= 7 && (c.type === conflictType || (c.trigger && c.trigger.includes(trigger)));
     });
     
     if (recentConflicts.length > 0) {
@@ -357,18 +321,13 @@ function generateMukuMemoryBasedResponse(conflictType, trigger) {
         }
     }
     
-    // 기억이 없으면 기본 응답
     const pattern = CONFLICT_PATTERNS[conflictType];
     return pattern.baseResponses[Math.floor(Math.random() * pattern.baseResponses.length)];
 }
 
-/**
- * 학습 기반 화해 응답 생성
- */
 function generateMukuLearnedReconciliationResponse(reconType) {
     const effectiveness = getReconciliationEffectiveness(reconType, '');
     
-    // 효과성이 높은 화해 방법에는 학습된 응답
     if (effectiveness > 0.7) {
         const pattern = RECONCILIATION_PATTERNS[reconType];
         if (pattern.learnedResponses && pattern.learnedResponses.length > 0) {
@@ -376,14 +335,10 @@ function generateMukuLearnedReconciliationResponse(reconType) {
         }
     }
     
-    // 기본 응답
     const pattern = RECONCILIATION_PATTERNS[reconType];
     return pattern.baseResponses[Math.floor(Math.random() * pattern.baseResponses.length)];
 }
 
-/**
- * 갈등 기록 저장
- */
 async function recordMukuConflict(conflictType, trigger, userMessage, myResponse) {
     const conflictRecord = {
         id: Date.now(),
@@ -401,15 +356,12 @@ async function recordMukuConflict(conflictType, trigger, userMessage, myResponse
     
     conflictHistory.unshift(conflictRecord);
     
-    // 최대 500개 기록만 유지
     if (conflictHistory.length > 500) {
         conflictHistory = conflictHistory.slice(0, 500);
     }
     
-    // 학습 데이터 업데이트
     updateTriggerLearning(conflictType, trigger);
     
-    // 관계 데이터 업데이트
     relationshipData.totalConflicts++;
     relationshipData.lastMajorConflict = conflictRecord.timestamp;
     
@@ -420,9 +372,6 @@ async function recordMukuConflict(conflictType, trigger, userMessage, myResponse
     return conflictRecord.id;
 }
 
-/**
- * 갈등 해소 기록
- */
 async function recordMukuReconciliation(conflictId, reconType, userMessage, myResponse) {
     const conflictIndex = conflictHistory.findIndex(c => c.id === conflictId);
     
@@ -440,15 +389,12 @@ async function recordMukuReconciliation(conflictId, reconType, userMessage, myRe
             resolutionMyResponse: myResponse
         };
         
-        // 학습 데이터 업데이트
         updateReconciliationLearning(reconType, userMessage, true);
         
-        // 관계 데이터 업데이트
         relationshipData.totalReconciliations++;
         relationshipData.successRate = (relationshipData.totalReconciliations / relationshipData.totalConflicts) * 100;
         
-        // 신뢰도 회복 (빠른 화해일수록 많이 회복)
-        const trustRecovery = Math.min(5, 300000 / duration * 10); // 5분이면 10점, 30분이면 1점
+        const trustRecovery = Math.min(5, 300000 / duration * 10);
         relationshipData.trustLevel = Math.min(100, relationshipData.trustLevel + trustRecovery);
         
         await saveConflictHistory();
@@ -461,9 +407,6 @@ async function recordMukuReconciliation(conflictId, reconType, userMessage, myRe
     return false;
 }
 
-/**
- * 트리거 학습 업데이트
- */
 function updateTriggerLearning(conflictType, trigger) {
     const key = `${conflictType}_${trigger}`;
     
@@ -478,16 +421,12 @@ function updateTriggerLearning(conflictType, trigger) {
     learningData.triggerSensitivity[key].count++;
     learningData.triggerSensitivity[key].lastTriggered = Date.now();
     
-    // 자주 발생하는 트리거는 민감도 증가
     if (learningData.triggerSensitivity[key].count >= 3) {
-        learningData.triggerSensitivity[key].sensitivity = Math.min(2.0, 
+        learningData.triggerSensitivity[key].sensitivity = Math.min(2.0,
             learningData.triggerSensitivity[key].sensitivity + 0.1);
     }
 }
 
-/**
- * 화해 패턴 학습 업데이트
- */
 function updateReconciliationLearning(reconType, message, wasEffective) {
     if (!learningData.reconciliationPatterns[reconType]) {
         learningData.reconciliationPatterns[reconType] = {
@@ -504,11 +443,10 @@ function updateReconciliationLearning(reconType, message, wasEffective) {
         learningData.reconciliationPatterns[reconType].successfulAttempts++;
     }
     
-    learningData.reconciliationPatterns[reconType].successRate = 
-        learningData.reconciliationPatterns[reconType].successfulAttempts / 
+    learningData.reconciliationPatterns[reconType].successRate =
+        learningData.reconciliationPatterns[reconType].successfulAttempts /
         learningData.reconciliationPatterns[reconType].totalAttempts;
     
-    // 최근 메시지 기록 (최대 10개)
     learningData.reconciliationPatterns[reconType].recentMessages.unshift({
         message: message,
         effective: wasEffective,
@@ -522,94 +460,61 @@ function updateReconciliationLearning(reconType, message, wasEffective) {
 
 // ==================== 🎯 메인 처리 함수 ====================
 
-/**
- * 사용자 메시지 처리 및 갈등 응답 생성
- */
 async function processMukuMessageForConflict(userMessage, client, userId) {
     try {
-        // 1. 현재 갈등 중이면 화해 시도부터 체크
         if (currentConflict.isActive) {
             const reconciliation = analyzeMukuMessageForReconciliation(userMessage);
             if (reconciliation.detected) {
                 const response = generateMukuLearnedReconciliationResponse(reconciliation.type);
                 
-                // 갈등 해소 기록
                 await recordMukuReconciliation(currentConflict.conflictId, reconciliation.type, userMessage, response);
                 
-                // 현재 갈등 상태 해소
                 currentConflict = {
-                    isActive: false,
-                    type: null,
-                    level: 0,
-                    startTime: null,
-                    triggerMessage: '',
-                    conflictId: null
+                    isActive: false, type: null, level: 0, startTime: null,
+                    triggerMessage: '', conflictId: null
                 };
                 
                 console.log(`💕 [무쿠갈등] 갈등 해소: ${reconciliation.type}`);
                 
                 return {
-                    shouldRespond: true,
-                    response: response,
-                    type: 'reconciliation',
+                    shouldRespond: true, response: response, type: 'reconciliation',
                     reconciliationType: reconciliation.type
                 };
             }
             
-            // 화해 시도가 없으면 갈등 지속
-            return {
-                shouldRespond: false,
-                type: 'ongoing_conflict'
-            };
+            return { shouldRespond: false, type: 'ongoing_conflict' };
         }
         
-        // 2. 새로운 갈등 트리거 체크
         const conflict = analyzeMukuMessageForConflict(userMessage);
         if (conflict.detected) {
             const response = generateMukuMemoryBasedResponse(conflict.type, conflict.trigger);
             
-            // 갈등 시작
             currentConflict = {
-                isActive: true,
-                type: conflict.type,
-                level: 1,
-                startTime: Date.now(),
-                triggerMessage: userMessage,
+                isActive: true, type: conflict.type, level: 1,
+                startTime: Date.now(), triggerMessage: userMessage,
                 conflictId: null
             };
             
-            // 갈등 기록
             currentConflict.conflictId = await recordMukuConflict(conflict.type, conflict.trigger, userMessage, response);
             
             console.log(`💔 [무쿠갈등] 새로운 갈등 시작: ${conflict.type} - "${conflict.trigger}"`);
             
             return {
-                shouldRespond: true,
-                response: response,
-                type: 'new_conflict',
+                shouldRespond: true, response: response, type: 'new_conflict',
                 conflictType: conflict.type
             };
         }
         
-        // 3. 갈등 없음
-        return {
-            shouldRespond: false,
-            type: 'normal'
-        };
+        return { shouldRespond: false, type: 'normal' };
         
     } catch (error) {
         console.error('❌ [무쿠갈등] 메시지 처리 중 에러:', error);
         return {
-            shouldRespond: false,
-            type: 'error',
-            error: error.message
+            shouldRespond: false, type: 'error', error: error.message
         };
     }
 }
 
-/**
- * sulkyManager와 연동한 통합 갈등 상태
- */
 function getMukuCombinedConflictState() {
     let sulkyInfo = { isSulky: false, level: 0 };
     
@@ -641,9 +546,6 @@ function getMukuCombinedConflictState() {
 
 // ==================== 📊 상태 조회 ====================
 
-/**
- * 무쿠 갈등 시스템 전체 상태
- */
 function getMukuConflictSystemStatus() {
     const recentConflicts = conflictHistory.filter(c => {
         const daysSince = (Date.now() - new Date(c.timestamp).getTime()) / (1000 * 60 * 60 * 24);
@@ -709,9 +611,6 @@ function getBestReconciliationMethod() {
 
 // ==================== 🚀 초기화 ====================
 
-/**
- * 무쿠 통합 갈등 시스템 초기화
- */
 async function initializeMukuUnifiedConflictSystem() {
     console.log('[무쿠갈등] 통합 갈등 관리 시스템 초기화...');
     
@@ -747,10 +646,10 @@ module.exports = {
     getLearningData: () => ({ ...learningData }),
     getRelationshipData: () => ({ ...relationshipData }),
     
-    // 분석 함수들 (다른 모듈에서 사용 가능)
+    // 분석 함수들
     analyzeMukuMessageForConflict,
     analyzeMukuMessageForReconciliation,
     
-    // ✅ 화해 기록 함수 추가!
+    // 화해 기록 함수
     recordMukuReconciliation
 };
