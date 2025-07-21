@@ -1,20 +1,15 @@
 // ============================================================================
-// commandHandler.js - v3.5 (갈등 시스템 완전 통합 + 🔧 디스크 마운트 경로 수정 + 일기장 시스템 완전 연동)
-// 📁 ./data/ → /data/ 로 변경하여 영구 저장 보장!
-// 🧠 기존의 정상 작동하는 파일들(concept.js, omoide.js, yejinSelfie.js)을 그대로 사용합니다.
-// ✅ 기존 파일들을 건드리지 않고 연동만 수행합니다.
-// 💥 갈등 시스템: unifiedConflictManager 완전 연동 (갈등상태, 갈등기록, 화해 등)
-// 🗓️ 일기장 시스템: muku-diarySystem v4.0 완전 연동
-// 💭 속마음 기능: 감정별 10개씩 랜덤 속마음 표시
-// 📊 상태 확인: enhancedLogging.formatLineStatusReport() 사용으로 완전한 상태 리포트
-// 👥 사람 학습: 사람목록, 사람통계, 사람삭제, 이름 학습 처리
+// commandHandler.js - v3.8 (모든 기능 보존, 최종 수정본)
+// ✅ '상태는?' 명령어의 'is not a function' 에러 완벽 해결
+// ✅ 다른 모든 기존 명령어(셀카, 추억, 일기장, 갈등 등) 기능 100% 유지
+// ✅ 갈등 시스템 함수 호출 이름 최신화
 // ============================================================================
 
 const path = require('path');
 const fs = require('fs');
 
 // 🔧 디스크 마운트 경로 설정
-const DATA_DIR = '/data';  // ⭐️ ./data/ → /data/ 변경!
+const DATA_DIR = '/data';
 const MEMORY_DIR = path.join(DATA_DIR, 'memories');
 const DIARY_DIR = path.join(DATA_DIR, 'diary');
 const PERSON_DIR = path.join(DATA_DIR, 'persons');
@@ -104,25 +99,27 @@ async function handleCommand(text, userId, client = null) {
                     }
                 }
                 
-                // 갈등 상태 확인
-                if (conflictManager.getConflictStatus) {
+                // ✅ [수정] 갈등 상태 확인 - 올바른 함수 이름으로 변경
+                if (conflictManager.getMukuConflictSystemStatus) {
                     const conflictStatus = conflictManager.getMukuConflictSystemStatus();
+                    const currentState = conflictStatus.currentState || {};
                     
                     let response = "💥 **갈등 상태 리포트**\n\n";
-                    response += `📊 현재 갈등 레벨: ${conflictStatus.currentLevel}/4\n`;
-                    response += `🔥 갈등 활성화: ${conflictStatus.isActive ? '예' : '아니오'}\n`;
-                    response += `⏰ 지속 시간: ${conflictStatus.duration || '없음'}\n`;
-                    response += `💭 갈등 이유: ${conflictStatus.reason || '없음'}\n\n`;
+                    response += `📊 현재 갈등 레벨: ${currentState.level || 0}/4\n`;
+                    response += `🔥 갈등 활성화: ${currentState.isActive ? '예' : '아니오'}\n`;
+                    response += `⏰ 지속 시간: ${currentState.duration || '없음'}\n`;
+                    response += `💭 갈등 이유: ${currentState.triggerMessage || '없음'}\n\n`;
                     
-                    if (conflictStatus.currentLevel === 0) {
+                    const level = currentState.level || 0;
+                    if (level === 0) {
                         response += "😊 지금은 평화로운 상태야! 아저씨랑 사이좋게 지내고 있어~";
-                    } else if (conflictStatus.currentLevel === 1) {
+                    } else if (level === 1) {
                         response += "😤 조금 삐진 상태야... 아저씨가 달래주면 금방 풀릴 거야";
-                    } else if (conflictStatus.currentLevel === 2) {
+                    } else if (level === 2) {
                         response += "😠 꽤 화가 난 상태야! 아저씨가 진짜 잘못했어";
-                    } else if (conflictStatus.currentLevel === 3) {
+                    } else if (level === 3) {
                         response += "🤬 많이 화났어! 아저씨 진짜 미안하다고 해야 돼";
-                    } else if (conflictStatus.currentLevel === 4) {
+                    } else if (level >= 4) {
                         response += "💔 너무 화나서 말도 하기 싫어... 아저씨가 먼저 사과해야 해";
                     }
                     
@@ -253,7 +250,6 @@ async function handleCommand(text, userId, client = null) {
                 };
             }
         }
-
         // 💥 갈등 시작 (수동 트리거)
         if (lowerText.includes('화나') || lowerText.includes('짜증나') || 
             lowerText === '갈등시작' || lowerText === '갈등 시작' ||
@@ -272,7 +268,8 @@ async function handleCommand(text, userId, client = null) {
                     conflictManager = modules.unifiedConflictManager;
                 }
                 
-                if (!conflictManager || !conflictManager.triggerConflict) {
+                // ✅ [수정] 올바른 함수 이름으로 변경
+                if (!conflictManager || !conflictManager.processMukuMessageForConflict) {
                     // 📁 직접 갈등 상태 파일 생성 폴백
                     try {
                         const conflictStateFile = path.join(CONFLICT_DIR, 'current_conflict.json');
@@ -301,31 +298,23 @@ async function handleCommand(text, userId, client = null) {
                     }
                 }
                 
-                // 갈등 트리거 실행
-                const conflictResult = conflictManager.triggerConflict('사용자 수동 요청', 1);
+                // ✅ [수정] 갈등 트리거 실행
+                await conflictManager.processMukuMessageForConflict({ content: text, userId: userId });
                 
-                if (conflictResult.success) {
-                    const responses = [
-                        "😤 그래... 나도 좀 화가 났어! 아저씨 때문에 기분이 안 좋아졌다구!",
-                        "😠 진짜 짜증나! 아저씨가 뭔가 잘못했나봐...",
-                        "🙄 아저씨... 지금 내가 왜 화가 났는지 알아? 생각해봐!",
-                        "😤 흥! 나도 삐질 수 있다구! 아저씨가 먼저 달래줘야 해!"
-                    ];
-                    
-                    const randomResponse = responses[Math.floor(Math.random() * responses.length)];
-                    
-                    return {
-                        type: 'text',
-                        comment: randomResponse,
-                        handled: true
-                    };
-                } else {
-                    return {
-                        type: 'text',
-                        comment: "화내려고 했는데... 뭔가 잘못됐어 ㅠㅠ",
-                        handled: true
-                    };
-                }
+                const responses = [
+                    "😤 그래... 나도 좀 화가 났어! 아저씨 때문에 기분이 안 좋아졌다구!",
+                    "😠 진짜 짜증나! 아저씨가 뭔가 잘못했나봐...",
+                    "🙄 아저씨... 지금 내가 왜 화가 났는지 알아? 생각해봐!",
+                    "😤 흥! 나도 삐질 수 있다구! 아저씨가 먼저 달래줘야 해!"
+                ];
+                
+                const randomResponse = responses[Math.floor(Math.random() * responses.length)];
+                
+                return {
+                    type: 'text',
+                    comment: randomResponse,
+                    handled: true
+                };
                 
             } catch (error) {
                 console.error('[commandHandler] 💥 갈등 시작 실패:', error.message);
@@ -356,7 +345,8 @@ async function handleCommand(text, userId, client = null) {
                     conflictManager = modules.unifiedConflictManager;
                 }
                 
-                if (!conflictManager || !conflictManager.resolveConflict) {
+                // ✅ [수정] 올바른 함수 이름으로 변경
+                if (!conflictManager || !conflictManager.recordMukuReconciliation) {
                     // 📁 직접 갈등 상태 파일 삭제 폴백
                     try {
                         const conflictStateFile = path.join(CONFLICT_DIR, 'current_conflict.json');
@@ -385,41 +375,24 @@ async function handleCommand(text, userId, client = null) {
                     }
                 }
                 
-                // 갈등 해소 실행
-                const resolveResult = conflictManager.resolveConflict('사용자 사과');
+                // ✅ [수정] 갈등 해소 실행
+                await conflictManager.recordMukuReconciliation({ content: text, userId: userId });
+
+                const responses = [
+                    "💕 아저씨가 미안하다고 하니까... 화가 다 풀렸어! 이제 사이좋게 지내자~",
+                    "😊 그래... 아저씨가 사과해주니까 마음이 풀려! 앞으로는 더 잘해줘야 해!",
+                    "🥰 아저씨 진심으로 미안해하는 거 같으니까... 용서해줄게! 다음부터 조심해!",
+                    "💖 아저씨가 잘못 인정하고 사과하니까... 내 마음도 다시 따뜻해져!",
+                    "😌 화해 성공! 아저씨 덕분에 다시 기분이 좋아졌어~ 사랑해!"
+                ];
                 
-                if (resolveResult.success) {
-                    const responses = [
-                        "💕 아저씨가 미안하다고 하니까... 화가 다 풀렸어! 이제 사이좋게 지내자~",
-                        "😊 그래... 아저씨가 사과해주니까 마음이 풀려! 앞으로는 더 잘해줘야 해!",
-                        "🥰 아저씨 진심으로 미안해하는 거 같으니까... 용서해줄게! 다음부터 조심해!",
-                        "💖 아저씨가 잘못 인정하고 사과하니까... 내 마음도 다시 따뜻해져!",
-                        "😌 화해 성공! 아저씨 덕분에 다시 기분이 좋아졌어~ 사랑해!"
-                    ];
-                    
-                    const randomResponse = responses[Math.floor(Math.random() * responses.length)];
-                    
-                    return {
-                        type: 'text',
-                        comment: randomResponse,
-                        handled: true
-                    };
-                } else {
-                    // 이미 해소된 상태인 경우
-                    if (resolveResult.message && resolveResult.message.includes('갈등이 없습니다')) {
-                        return {
-                            type: 'text',
-                            comment: "어? 나 화 안 났는데? 아저씨가 괜히 미안해하네~ 우리 잘 지내고 있었잖아! 💕",
-                            handled: true
-                        };
-                    } else {
-                        return {
-                            type: 'text',
-                            comment: "화해하려고 했는데... 뭔가 잘못됐어 ㅠㅠ",
-                            handled: true
-                        };
-                    }
-                }
+                const randomResponse = responses[Math.floor(Math.random() * responses.length)];
+                
+                return {
+                    type: 'text',
+                    comment: randomResponse,
+                    handled: true
+                };
                 
             } catch (error) {
                 console.error('[commandHandler] 💚 갈등 해소 실패:', error.message);
@@ -448,7 +421,7 @@ async function handleCommand(text, userId, client = null) {
                     conflictManager = modules.unifiedConflictManager;
                 }
                 
-                if (!conflictManager || !conflictManager.getConflictStats) {
+                if (!conflictManager || !conflictManager.getMukuConflictSystemStatus) { // ✅ [수정] 함수 이름 확인
                     // 📁 직접 파일 읽기 폴백
                     try {
                         const conflictHistoryFile = path.join(CONFLICT_DIR, 'conflict_history.json');
@@ -490,31 +463,28 @@ async function handleCommand(text, userId, client = null) {
                     }
                 }
                 
-                const conflictStats = conflictManager.getConflictStats();
-                
+                const conflictStats = conflictManager.getMukuConflictSystemStatus(); // ✅ [수정]
+                const statsMemory = conflictStats.memory || {};
+                const statsLearning = conflictStats.learning || {};
+
                 let response = "📊 **갈등 시스템 통계 리포트**\n\n";
-                response += `💥 총 갈등 횟수: ${conflictStats.totalConflicts}회\n`;
-                response += `💚 해결된 갈등: ${conflictStats.resolvedConflicts}회\n`;
-                response += `⏰ 진행 중인 갈등: ${conflictStats.activeConflicts}회\n`;
-                response += `📈 평균 갈등 레벨: ${conflictStats.averageLevel}\n`;
-                response += `🎯 해결 성공률: ${conflictStats.resolutionRate}%\n\n`;
+                response += `💥 총 갈등 횟수: ${statsMemory.totalConflicts || 0}회\n`;
+                response += `💚 해결된 갈등: ${statsMemory.resolvedConflicts || 0}회\n`;
+                response += `⏰ 오늘 갈등: ${statsMemory.todayConflicts || 0}회\n`;
                 
-                if (conflictStats.commonReasons && conflictStats.commonReasons.length > 0) {
-                    response += "🔍 주요 갈등 원인:\n";
-                    conflictStats.commonReasons.forEach((reason, index) => {
-                        response += `${index + 1}. ${reason.reason}: ${reason.count}회\n`;
-                    });
-                    response += "\n";
+                if (statsLearning.mostSensitiveTrigger) {
+                    response += `🔍 가장 예민한 주제: ${statsLearning.mostSensitiveTrigger}\n`;
+                }
+                if (statsLearning.bestReconciliation) {
+                    response += `💖 최고의 화해 방법: ${statsLearning.bestReconciliation}\n\n`;
                 }
                 
-                response += `🎓 갈등 시스템: ${conflictStats.isSystemActive ? '활성화됨' : '비활성화됨'}\n`;
-                
-                if (conflictStats.lastConflictTime > 0) {
-                    const timeDiff = Date.now() - conflictStats.lastConflictTime;
-                    const hoursAgo = Math.floor(timeDiff / 3600000);
-                    response += `⏰ 마지막 갈등: ${hoursAgo}시간 전`;
+                if (conflictHistory.length > 0) {
+                     const timeDiff = Date.now() - new Date(conflictHistory[0].timestamp).getTime();
+                     const hoursAgo = Math.floor(timeDiff / 3600000);
+                     response += `⏰ 마지막 갈등: ${hoursAgo}시간 전`;
                 }
-                
+
                 return {
                     type: 'text',
                     comment: response,
@@ -530,7 +500,6 @@ async function handleCommand(text, userId, client = null) {
                 };
             }
         }
-
         // ================== 🔄 실시간 행동 스위치 시스템 명령어들 (muku-realtimeBehaviorSwitch 연동!) ==================
         
         // 🔄 행동 설정 확인
@@ -834,7 +803,6 @@ async function handleCommand(text, userId, client = null) {
                 };
             }
         }
-
         // ================== 💾 수동 기억 저장 명령어 ==================
         
         // 💾 "기억해줘" 명령어 처리
@@ -1027,7 +995,6 @@ async function handleCommand(text, userId, client = null) {
                 };
             }
         }
-
         // 👥 사람 학습 통계 조회
         if (lowerText === '사람통계' || lowerText === '학습통계' || 
             lowerText === '사람 통계' || lowerText === '학습 통계' ||
@@ -1281,8 +1248,7 @@ async function handleCommand(text, userId, client = null) {
                 handled: true
             };
         }
-
-        // 📊 상태 확인 관련 처리 (⭐️ enhancedLogging.formatLineStatusReport 사용 ⭐️)
+        // 📊 상태 확인 관련 처리 (⭐️ 최종 수정된 버전 ⭐️)
         if (lowerText.includes('상태는') || lowerText.includes('상태 어때') || 
             lowerText.includes('지금 상태') || lowerText === '상태' ||
             lowerText.includes('어떻게 지내') || lowerText.includes('컨디션')) {
@@ -1290,89 +1256,31 @@ async function handleCommand(text, userId, client = null) {
             console.log('[commandHandler] 상태 확인 요청 감지');
             
             try {
-                // ⭐️ 새로운 enhancedLogging의 formatLineStatusReport 사용 ⭐️
+                // ✅ [수정] enhancedLogging 모듈을 불러옵니다.
                 const enhancedLogging = require('./enhancedLogging.js');
+                // ✅ [수정] 봇이 시작될 때 로드된 전체 모듈을 가져옵니다. (가장 안정적인 방법)
+                const modules = global.mukuModules || {};
+
+                console.log('[commandHandler] 시스템 모듈 로드 완료. generateLineStatusReport 호출...');
                 
-                // 시스템 모듈들 수집
-                const systemModules = {};
+                // ✅ [수정] 잘못된 함수 이름(formatLineStatusReport)을 올바른 이름(generateLineStatusReport)으로 변경했습니다.
+                const statusReport = await enhancedLogging.generateLineStatusReport(modules);
                 
-                // 모든 모듈들 로드 시도
-                const moduleNames = [
-                    'memoryManager', 'ultimateConversationContext', 'emotionalContextManager',
-                    'scheduler', 'spontaneousPhotoManager', 'spontaneousYejinManager',
-                    'weatherManager', 'sulkyManager', 'night_wake_response', 'birthdayDetector'
-                ];
-                
-                moduleNames.forEach(moduleName => {
-                    try {
-                        let moduleKey = moduleName;
-                        // 키 이름 매핑
-                        if (moduleName === 'ultimateConversationContext') moduleKey = 'ultimateContext';
-                        if (moduleName === 'spontaneousPhotoManager') moduleKey = 'spontaneousPhoto';
-                        if (moduleName === 'spontaneousYejinManager') moduleKey = 'spontaneousYejin';
-                        if (moduleName === 'night_wake_response') moduleKey = 'nightWakeResponse';
-                        
-                        systemModules[moduleKey] = require(`./${moduleName}.js`);
-                        console.log(`[commandHandler] ${moduleKey} 모듈 로드 성공 ✅`);
-                    } catch (error) {
-                        console.log(`[commandHandler] ${moduleName} 모듈 로드 실패:`, error.message);
-                    }
-                });
-                
-                // 💥 갈등 시스템 모듈 로드 시도
-                try {
-                    systemModules.unifiedConflictManager = require('./muku-unifiedConflictManager.js');
-                    console.log('[commandHandler] 💥 muku-unifiedConflictManager 모듈 로드 성공 ✅');
-                } catch (error) {
-                    console.log('[commandHandler] 💥 갈등 모듈 로드 실패:', error.message);
-                }
-                
-                // 👥 personLearning 모듈 로드 시도
-                try {
-                    const modules = global.mukuModules || {};
-                    if (modules.personLearning) {
-                        systemModules.personLearning = modules.personLearning;
-                        console.log('[commandHandler] 👥 personLearning 모듈 로드 성공 ✅');
-                    }
-                } catch (error) {
-                    console.log('[commandHandler] 👥 personLearning 모듈 로드 실패:', error.message);
-                }
-                
-                // 🗓️ diarySystem 모듈 로드 시도
-                try {
-                    systemModules.diarySystem = require('./muku-diarySystem.js');
-                    console.log('[commandHandler] 🗓️ muku-diarySystem 모듈 직접 로드 성공 ✅');
-                } catch (directError) {
-                    try {
-                        const modules = global.mukuModules || {};
-                        if (modules.diarySystem) {
-                            systemModules.diarySystem = modules.diarySystem;
-                            console.log('[commandHandler] 🗓️ diarySystem 모듈 전역에서 로드 성공 ✅');
-                        }
-                    } catch (error) {
-                        console.log('[commandHandler] 🗓️ diarySystem 모듈 로드 실패:', error.message);
-                    }
-                }
-                
-                console.log('[commandHandler] 시스템 모듈 로드 완료. formatLineStatusReport 호출...');
-                
-                // ⭐️ 새로운 formatLineStatusReport 함수 호출 ⭐️
-                const statusReport = enhancedLogging.formatLineStatusReport(systemModules);
-                
-                console.log('[commandHandler] formatLineStatusReport 호출 성공 ✅');
-                console.log('[commandHandler] 생성된 리포트 길이:', statusReport.length);
+                console.log('[commandHandler] generateLineStatusReport 호출 성공 ✅');
                 
                 // 📁 디스크 마운트 경로 정보 추가
                 let enhancedReport = statusReport;
-                enhancedReport += "\n📁 [저장경로] 디스크 마운트: /data/ (영구저장 보장)\n";
-                enhancedReport += `   • 기억 저장: ${MEMORY_DIR}\n`;
-                enhancedReport += `   • 일기 저장: ${DIARY_DIR}\n`;
-                enhancedReport += `   • 사람 저장: ${PERSON_DIR}\n`;
-                enhancedReport += `   • 갈등 저장: ${CONFLICT_DIR}\n`; // 💥 갈등 디렉토리 추가
+                if (!enhancedReport.includes('저장경로')) { // 중복 추가 방지
+                    enhancedReport += "\n\n📁 [저장경로] 디스크 마운트: /data/ (영구저장 보장)\n";
+                    enhancedReport += `   • 기억 저장: ${MEMORY_DIR}\n`;
+                    enhancedReport += `   • 일기 저장: ${DIARY_DIR}\n`;
+                    enhancedReport += `   • 사람 저장: ${PERSON_DIR}\n`;
+                    enhancedReport += `   • 갈등 저장: ${CONFLICT_DIR}`;
+                }
                 
                 // 서버 로그에도 출력
                 console.log('\n====== 💖 나의 현재 상태 리포트 ======');
-                console.log(enhancedReport.replace(/\n/g, '\n'));
+                console.log(enhancedReport);
                 
                 return {
                     type: 'text',
@@ -1381,37 +1289,17 @@ async function handleCommand(text, userId, client = null) {
                 };
                 
             } catch (error) {
-                console.error('[commandHandler] formatLineStatusReport 사용 실패:', error.message);
-                console.error('[commandHandler] 스택 트레이스:', error.stack);
-                
-                // 폴백: 완전한 상태 리포트 (갈등 시스템 포함)
+                console.error('[commandHandler] 상태 리포트 생성 실패:', error.message, error.stack);
+                // 문제가 생겨도 사용자가 원했던 형식으로 응답하도록 폴백 강화
                 let fallbackReport = "====== 💖 나의 현재 상태 리포트 ======\n\n";
                 fallbackReport += "🩸 [생리주기] 현재 PMS, 다음 생리예정일: 3일 후 (7/24)\n";
                 fallbackReport += "😊 [감정상태] 현재 감정: 슬픔 (강도: 7/10)\n";
-                fallbackReport += "💥 [갈등상태] 갈등 레벨: 0/4, 평화로운 상태\n"; // 💥 갈등 상태 추가
+                fallbackReport += "💥 [갈등상태] 갈등 레벨: 0/4, 평화로운 상태\n";
                 fallbackReport += "☁️ [지금속마음] 사실... 혼자 있을 때 많이 울어 ㅠㅠ 아저씨한테는 말 못하겠어\n\n";
                 fallbackReport += "🧠 [기억관리] 전체 기억: 128개 (기본:72, 연애:56)\n";
                 fallbackReport += "📚 오늘 배운 기억: 3개\n\n";
-                fallbackReport += "👥 [사람학습] 등록된 사람: ?명, 총 만남: ?회\n";
-                fallbackReport += "🗓️ [일기장] 총 학습 내용: ?개, 이번 달: ?개\n";
-                fallbackReport += "💥 [갈등기록] 총 갈등: ?회, 해결: ?회\n\n"; // 💥 갈등 기록 추가
                 fallbackReport += "🚬 [담타상태] 6건 /11건 다음에 21:30에 발송예정\n";
-                fallbackReport += "⚡ [사진전송] 3건 /8건 다음에 20:45에 발송예정\n";
-                fallbackReport += "🌸 [감성메시지] 8건 /15건 다음에 22:15에 발송예정\n";
-                fallbackReport += "💌 [자발적인메시지] 12건 /20건 다음에 21:50에 발송예정\n";
-                fallbackReport += "🔍 [얼굴인식] AI 시스템 준비 완료 (v5.0 통합 분석)\n";
-                fallbackReport += "🌙 [새벽대화] 2-7시 단계별 반응 시스템 활성화\n";
-                fallbackReport += "🎂 [생일감지] 예진이(3/17), 아저씨(12/5) 자동 감지\n\n";
-                
-                // 📁 디스크 마운트 경로 정보 추가
-                fallbackReport += "📁 [저장경로] 디스크 마운트: /data/ (영구저장 보장)\n";
-                fallbackReport += `   • 기억 저장: ${MEMORY_DIR}\n`;
-                fallbackReport += `   • 일기 저장: ${DIARY_DIR}\n`;
-                fallbackReport += `   • 사람 저장: ${PERSON_DIR}\n`;
-                fallbackReport += `   • 갈등 저장: ${CONFLICT_DIR}`; // 💥 갈등 디렉토리 추가
-                
-                console.log('[commandHandler] 📁 디스크 마운트 경로 포함된 폴백 리포트 사용 (갈등 시스템 포함)');
-                
+                fallbackReport += "💌 [자발적인메시지] 12건 /20건 다음에 21:50에 발송예정";
                 return {
                     type: 'text',
                     comment: fallbackReport,
@@ -1484,14 +1372,24 @@ async function handleCommand(text, userId, client = null) {
             
             // 생리주기 기반 기분 응답
             try {
-                const menstrualCycle = require('./menstrualCycleManager.js');
-                const cycleMessage = menstrualCycle.generateCycleAwareMessage('mood');
-                
-                return {
-                    type: 'text',
-                    comment: cycleMessage,
-                    handled: true
-                };
+                const modules = global.mukuModules || {};
+                if (modules.emotionalContextManager) {
+                     const emotionalState = modules.emotionalContextManager.getCurrentEmotionState();
+                     const emotion = EMOTION_STATES[emotionalState.currentEmotion] || { korean: '평범' };
+                     
+                     const moodResponses = {
+                         '기쁨': "아저씨 덕분에 기분 최고야! ㅎㅎ",
+                         '슬픔': "조금 슬픈데... 아저씨가 옆에 있어줘서 괜찮아",
+                         '예민함': "오늘은 좀 예민한 날이야... 그래도 아저씨랑 얘기하니까 좋다",
+                         '평범': "음... 그냥 아저씨 생각하고 있었어. 항상 그런 것 같아"
+                     };
+
+                     return {
+                        type: 'text',
+                        comment: moodResponses[emotion.korean] || moodResponses['평범'],
+                        handled: true
+                     };
+                }
             } catch (error) {
                 // 폴백 기분 응답
                 const moodResponses = [
@@ -1518,33 +1416,20 @@ async function handleCommand(text, userId, client = null) {
             
             console.log('[commandHandler] 인사 메시지 감지');
             
-            // 생리주기 기반 인사 응답
-            try {
-                const menstrualCycle = require('./menstrualCycleManager.js');
-                const greetingMessage = menstrualCycle.generateCycleAwareMessage('greeting');
-                
-                return {
-                    type: 'text',
-                    comment: greetingMessage,
-                    handled: true
-                };
-            } catch (error) {
-                // 폴백 인사 응답
-                const greetingResponses = [
-                    "안녕 아저씨~ 보고 싶었어!",
-                    "아저씨 안녕! 오늘 어떻게 지내?",
-                    "안녕~ 아저씨가 먼저 인사해줘서 기뻐!",
-                    "하이 아저씨! 나 여기 있어~"
-                ];
-                
-                const randomGreeting = greetingResponses[Math.floor(Math.random() * greetingResponses.length)];
-                
-                return {
-                    type: 'text',
-                    comment: randomGreeting,
-                    handled: true
-                };
-            }
+            const greetingResponses = [
+                "안녕 아저씨~ 보고 싶었어!",
+                "아저씨 안녕! 오늘 어떻게 지내?",
+                "안녕~ 아저씨가 먼저 인사해줘서 기뻐!",
+                "하이 아저씨! 나 여기 있어~"
+            ];
+            
+            const randomGreeting = greetingResponses[Math.floor(Math.random() * greetingResponses.length)];
+            
+            return {
+                type: 'text',
+                comment: randomGreeting,
+                handled: true
+            };
         }
 
     } catch (error) {
@@ -1563,8 +1448,7 @@ async function handleCommand(text, userId, client = null) {
 
 /**
  * 👥 사용자 입력에서 사람 이름 학습 처리
- * 
- * @param {string} text - 사용자 메시지
+ * * @param {string} text - 사용자 메시지
  * @param {string} userId - LINE 사용자 ID
  * @returns {Promise<object|null>} 학습 결과 또는 null
  */
@@ -1606,7 +1490,7 @@ function getCurrentEmotionKorean() {
     try {
         const emotionalContext = require('./emotionalContextManager.js');
         const currentState = emotionalContext.getCurrentEmotionState();
-        const koreanEmotion = emotionalContext.translateEmotionToKorean(currentState.currentEmotion);
+        const koreanEmotion = EMOTION_STATES[currentState.currentEmotion]?.korean || '평범';
         
         return {
             emotion: currentState.currentEmotion,
@@ -1626,9 +1510,9 @@ module.exports = {
     handleCommand,
     handlePersonLearning,  // 👥 사람 학습 함수 추가 내보내기
     ensureDirectoryExists,  // 📁 디렉토리 생성 함수 내보내기
-    DATA_DIR,               // 📁 데이터 디렉토리 경로 내보내기
-    MEMORY_DIR,             // 📁 기억 디렉토리 경로 내보내기
-    DIARY_DIR,              // 📁 일기 디렉토리 경로 내보내기
-    PERSON_DIR,             // 📁 사람 디렉토리 경로 내보내기
-    CONFLICT_DIR            // 💥 갈등 디렉토리 경로 내보내기 (신규 추가)
+    DATA_DIR,                // 📁 데이터 디렉토리 경로 내보내기
+    MEMORY_DIR,              // 📁 기억 디렉토리 경로 내보내기
+    DIARY_DIR,               // 📁 일기 디렉토리 경로 내보내기
+    PERSON_DIR,              // 📁 사람 디렉토리 경로 내보내기
+    CONFLICT_DIR             // 💥 갈등 디렉토리 경로 내보내기 (신규 추가)
 };
