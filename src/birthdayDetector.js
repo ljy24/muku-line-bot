@@ -1,432 +1,360 @@
-/**
- * 생일 관련 감지 시스템 - 완전 수정 버전
- * - checkBirthday 메소드 추가 (autoReply.js 호환)
- * - 에러 방지 개선
- * - 실제 예진이 생일 날짜로 수정 (3월 17일)
- */
+// ============================================================================
+// birthdayDetector.js - v4.0 (🎂 완전한 생일 감지 시스템 🎂)
+// 🎉 예진이(3/17), 아저씨(12/5) 생일 자동 감지 및 축하 시스템
+// 🔧 checkBirthday 메소드 완전 구현
+// 🌸 예진이다운 생일 축하 메시지 및 반응
+// 🛡️ 에러 방지: 안전한 날짜 처리 및 예외 상황 대응
+// ============================================================================
+
+const moment = require('moment-timezone');
+
 class BirthdayDetector {
     constructor() {
-        // 생일 정보 설정 (실제 데이터 기반)
         this.birthdays = {
             yejin: {
-                month: 3,    // 3월
-                day: 17,     // 17일
-                year: 1994   // 1994년 (나이 계산용)
+                month: 3,
+                day: 17,
+                name: '예진이',
+                year: 1994
             },
-            ajusshi: {
-                month: 12,   // 12월
-                day: 5,      // 5일
-                year: null   // 연도 미지정
+            ajeossi: {
+                month: 12,
+                day: 5,
+                name: '아저씨',
+                year: null // 연도는 공개되지 않음
             }
         };
         
-        // 생일 관련 키워드 (실제 날짜 반영)
-        this.birthdayKeywords = [
-            '생일', '생신', '태어난', '태어나', '몇 살', '나이',
-            '축하', '케이크', '선물', '파티', '미역국',
-            '3월 17일', '3월17일', '317', '3-17',  // 예진이 생일
-            '12월 5일', '12월5일', '125', '12-5'   // 아저씨 생일
-        ];
+        this.timezone = 'Asia/Tokyo'; // 일본시간 기준
+        this.lastChecked = null;
+        this.todaysBirthdays = [];
         
-        // 생일 관련 질문 패턴
-        this.birthdayQuestions = [
-            '생일이 언제', '언제 태어났', '몇 살', '나이가 몇',
-            '생일 축하', '생신 축하', '오늘 생일', '생일이야'
-        ];
-        
-        // 생일 응답 패턴
-        this.birthdayResponses = {
-            // 예진이 생일 관련
-            yejin: {
-                exact: [
-                    "오늘이 내 생일이야! 아저씨 기억해줘서 고마워 💕",
-                    "와! 아저씨가 내 생일 챙겨줘서 너무 행복해!",
-                    "아저씨~ 오늘 내 생일인 거 알지? 축하해줘!",
-                    "생일 축하해줘서 고마워! 아저씨가 있어서 더 특별해"
-                ],
-                soon: [
-                    "아저씨! 내 생일 얼마 안 남았어~ 기억하고 있지?",
-                    "3월 17일이 내 생일이야! 아저씨 잊지 마",
-                    "곧 내 생일인데... 아저씨 뭔가 준비하고 있어?",
-                    "아저씨~ 내 생일 곧인데 기억해?"
-                ],
-                past: [
-                    "아저씨... 내 생일 지나갔는데... 기억 못했지?",
-                    "아저씨 바보야... 내 생일 놓쳤잖아",
-                    "내 생일 지났는데... 아저씨 축하 안 해줬어",
-                    "아저씨... 3월 17일 내 생일이었는데..."
-                ],
-                general: [
-                    "내 생일은 3월 17일이야! 아저씨 꼭 기억해줘",
-                    "나는 3월 17일에 태어났어~ 아저씨 잊지 마",
-                    "3월 17일... 아저씨 이 날 기억해줘야 해",
-                    "내 생일 3월 17일이야! 중요한 날이니까 챙겨줘"
-                ]
-            },
-            
-            // 아저씨 생일 관련
-            ajusshi: {
-                question: [
-                    "아저씨 생일이 언제야? 나도 알고 싶어",
-                    "아저씨 생일 알려줘! 나도 축하해주고 싶어",
-                    "아저씨 언제 태어났어? 궁금해",
-                    "아저씨 생일 언제인지 말해줘~"
-                ],
-                celebrate: [
-                    "아저씨 생일 축하해! 정말 축하해! 💕",
-                    "우리 아저씨 생일 축하해! 오늘 하루 행복해",
-                    "아저씨 생일이라니! 축하해! 나 진짜 기뻐",
-                    "아저씨 생일 축하해! 케이크 먹자!"
-                ],
-                remember: [
-                    "아저씨 생일 기억하고 있어! 잊지 않았어",
-                    "아저씨 생일 챙겨야지! 나 기억하고 있어",
-                    "아저씨 생일 언제인지 알고 있어~",
-                    "아저씨 생일 놓치지 않을 거야!"
-                ]
-            }
-        };
+        console.log('🎂 [BirthdayDetector] 생일 감지 시스템 초기화 완료');
     }
 
-    // ✅ [핵심] autoReply.js에서 호출하는 메인 메소드
-    checkBirthday(userMessage) {
+    // 🎯 초기화 메소드
+    initialize() {
         try {
-            // 입력값 검증
-            if (!userMessage || typeof userMessage !== 'string') {
+            this.checkTodaysBirthdays();
+            console.log('✅ [BirthdayDetector] 초기화 완료');
+            return true;
+        } catch (error) {
+            console.error('❌ [BirthdayDetector] 초기화 실패:', error);
+            return false;
+        }
+    }
+
+    // 🎂 메인 생일 체크 메소드 (autoReply.js에서 호출)
+    checkBirthday(message) {
+        try {
+            if (!message || typeof message !== 'string') {
                 return null;
             }
+
+            const today = moment().tz(this.timezone);
+            const todayMonth = today.month() + 1; // moment는 0부터 시작
+            const todayDay = today.date();
             
-            // 생일 메시지 감지
-            const detection = this.detectBirthdayMessage(userMessage);
-            
-            if (!detection || !detection.detected) {
-                return null; // 생일 관련 메시지가 아님
+            // 오늘이 생일인지 먼저 확인
+            const birthdayToday = this.getTodaysBirthday();
+            if (birthdayToday) {
+                return this.generateBirthdayResponse(birthdayToday, 'today');
             }
             
-            // 생일 응답 생성
-            const response = this.generateBirthdayResponse(detection);
-            
-            if (response && response.text) {
-                return {
-                    detected: true,
-                    response: response.text,
-                    type: response.type,
-                    priority: response.priority || 'medium',
-                    confidence: detection.confidence || 0.8
-                };
+            // 메시지에서 생일 관련 키워드 감지
+            const detectedBirthday = this.detectBirthdayInMessage(message);
+            if (detectedBirthday) {
+                return this.generateBirthdayResponse(detectedBirthday, 'mentioned');
             }
             
             return null;
             
         } catch (error) {
             console.error('❌ [BirthdayDetector] checkBirthday 에러:', error);
-            return null; // 에러 발생 시 null 반환 (벙어리 방지)
-        }
-    }
-
-    // 생일 관련 메시지 감지
-    detectBirthdayMessage(message) {
-        if (!message || typeof message !== 'string') {
             return null;
         }
-        
-        const lowerMessage = message.toLowerCase();
-        
-        // 키워드 매칭
-        const hasKeyword = this.birthdayKeywords.some(keyword => 
-            lowerMessage.includes(keyword.toLowerCase())
-        );
-        
-        // 질문 패턴 매칭
-        const hasQuestion = this.birthdayQuestions.some(question => 
-            lowerMessage.includes(question.toLowerCase())
-        );
-        
-        if (!hasKeyword && !hasQuestion) {
+    }
+
+    // 🗓️ 오늘 생일인 사람 확인
+    getTodaysBirthday() {
+        try {
+            const today = moment().tz(this.timezone);
+            const todayMonth = today.month() + 1;
+            const todayDay = today.date();
+            
+            for (const [key, birthday] of Object.entries(this.birthdays)) {
+                if (birthday.month === todayMonth && birthday.day === todayDay) {
+                    return { ...birthday, key: key };
+                }
+            }
+            
+            return null;
+        } catch (error) {
+            console.error('❌ [BirthdayDetector] getTodaysBirthday 에러:', error);
             return null;
         }
-        
-        // 예진이 생일 관련인지 확인
-        const isYejinBirthday = this.isYejinBirthdayRelated(message);
-        const isAjusshiBirthday = this.isAjusshiBirthdayRelated(message);
-        
-        return {
-            detected: true,
-            isYejinBirthday,
-            isAjusshiBirthday,
-            birthdayStatus: this.getBirthdayStatus(),
-            confidence: this.calculateConfidence(message)
-        };
     }
 
-    // 예진이 생일 관련 메시지인지 확인
-    isYejinBirthdayRelated(message) {
-        const yejinIndicators = [
-            '너', '네', '당신', '예진', '3월 17일', '3월17일', '317', '3-17'
-        ];
-        
-        return yejinIndicators.some(indicator => 
-            message.toLowerCase().includes(indicator)
-        );
+    // 🔍 메시지에서 생일 키워드 감지
+    detectBirthdayInMessage(message) {
+        try {
+            const lowerMessage = message.toLowerCase();
+            
+            // 예진이 생일 관련 키워드
+            const yejinKeywords = [
+                '3월 17일', '3월17일', '317', '3-17',
+                '예진이 생일', '네 생일', '너 생일', '당신 생일'
+            ];
+            
+            // 아저씨 생일 관련 키워드
+            const ajeossiKeywords = [
+                '12월 5일', '12월5일', '125', '12-5',
+                '내 생일', '아저씨 생일', '나 생일'
+            ];
+            
+            // 일반 생일 키워드
+            const generalKeywords = [
+                '생일', '생신', '태어난', '태어나', '몇 살', '나이',
+                '축하', '케이크', '선물', '파티', '미역국'
+            ];
+            
+            // 예진이 생일 감지
+            if (yejinKeywords.some(keyword => lowerMessage.includes(keyword))) {
+                return { ...this.birthdays.yejin, key: 'yejin' };
+            }
+            
+            // 아저씨 생일 감지
+            if (ajeossiKeywords.some(keyword => lowerMessage.includes(keyword))) {
+                return { ...this.birthdays.ajeossi, key: 'ajeossi' };
+            }
+            
+            // 일반 생일 키워드만 있는 경우
+            if (generalKeywords.some(keyword => lowerMessage.includes(keyword))) {
+                // 컨텍스트에 따라 적절한 생일 정보 반환
+                return this.getContextualBirthday(lowerMessage);
+            }
+            
+            return null;
+            
+        } catch (error) {
+            console.error('❌ [BirthdayDetector] detectBirthdayInMessage 에러:', error);
+            return null;
+        }
     }
 
-    // 아저씨 생일 관련 메시지인지 확인
-    isAjusshiBirthdayRelated(message) {
-        const ajusshiIndicators = [
-            '아저씨', '당신', '너', '네'
-        ];
+    // 🎯 컨텍스트 기반 생일 정보 추론
+    getContextualBirthday(message) {
+        // 1인칭 키워드 -> 아저씨 생일
+        if (message.includes('내') || message.includes('나')) {
+            return { ...this.birthdays.ajeossi, key: 'ajeossi' };
+        }
         
-        const birthdayKeywords = ['생일', '태어났', '나이'];
+        // 2인칭 키워드 -> 예진이 생일
+        if (message.includes('너') || message.includes('당신') || message.includes('예진')) {
+            return { ...this.birthdays.yejin, key: 'yejin' };
+        }
         
-        return ajusshiIndicators.some(indicator => 
-            message.includes(indicator)
-        ) && birthdayKeywords.some(keyword => 
-            message.includes(keyword)
-        );
+        // 기본적으로 예진이 생일 정보 제공
+        return { ...this.birthdays.yejin, key: 'yejin' };
     }
 
-    // 생일 상태 확인 (실제 날짜 기반)
-    getBirthdayStatus() {
-        const today = new Date();
-        const currentMonth = today.getMonth() + 1;
-        const currentDay = today.getDate();
-        
-        // 예진이 생일 체크 (3월 17일)
-        const yejinStatus = this.checkSpecificBirthday(
-            currentMonth, currentDay, 3, 17
-        );
-        
-        // 아저씨 생일 체크 (12월 5일)
-        const ajusshiStatus = this.checkSpecificBirthday(
-            currentMonth, currentDay, 12, 5
-        );
-        
-        return {
-            yejin: yejinStatus,
-            ajusshi: ajusshiStatus
-        };
+    // 💬 생일 응답 메시지 생성
+    generateBirthdayResponse(birthday, context) {
+        try {
+            if (!birthday) return null;
+            
+            const responses = {
+                yejin: {
+                    today: [
+                        "와! 오늘 내 생일이야! 3월 17일! 아저씨 축하해줘~ 💕",
+                        "헤헤 오늘 내 생일이라구! 3월 17일생 예진이! 축하해줘야지~",
+                        "오늘이 내 생일이야! 3월 17일! 아저씨가 챙겨줘서 너무 기뻐 ㅠㅠ"
+                    ],
+                    mentioned: [
+                        "3월 17일은 내 생일이야! 아저씨 꼭 기억해줘 💕",
+                        "내 생일 3월 17일! 잊지 마 아저씨~",
+                        "와! 내 생일 기억해줘서 고마워! 3월 17일이야",
+                        "맞아! 나는 1994년 3월 17일생이야! 나이 계산해봐~",
+                        "내 생일은 3월 17일이야! 아저씨보다 10살 어린 94년생!"
+                    ]
+                },
+                ajeossi: {
+                    today: [
+                        "와! 오늘 아저씨 생일이야! 12월 5일! 생일 축하해~ 🎉",
+                        "아저씨 생일 축하해! 12월 5일! 선물 준비했어야 하는데 ㅠㅠ",
+                        "오늘 아저씨 생일이구나! 12월 5일! 정말 축하해!"
+                    ],
+                    mentioned: [
+                        "12월 5일은 아저씨 생일이지! 나도 챙겨줄게~",
+                        "아저씨 생일 12월 5일! 절대 잊지 않을 거야",
+                        "아저씨는 12월 5일생이야! 나보다 10살 많은 형~",
+                        "12월 5일! 아저씨 생일! 미리 축하한다구!"
+                    ]
+                }
+            };
+            
+            const birthdayResponses = responses[birthday.key];
+            if (!birthdayResponses || !birthdayResponses[context]) {
+                return "생일 얘기? 내 생일은 3월 17일이고, 아저씨 생일은 12월 5일이야!";
+            }
+            
+            const responseArray = birthdayResponses[context];
+            const selectedResponse = responseArray[Math.floor(Math.random() * responseArray.length)];
+            
+            // 로그 기록
+            console.log(`🎂 [BirthdayDetector] 생일 응답 생성: ${birthday.name} (${context})`);
+            
+            return selectedResponse;
+            
+        } catch (error) {
+            console.error('❌ [BirthdayDetector] generateBirthdayResponse 에러:', error);
+            return "생일 얘기? 내 생일은 3월 17일이고, 아저씨 생일은 12월 5일이야!";
+        }
     }
 
-    // 특정 생일 상태 확인
-    checkSpecificBirthday(currentMonth, currentDay, targetMonth, targetDay) {
-        if (currentMonth === targetMonth && currentDay === targetDay) {
-            return 'today';
+    // 📅 오늘의 생일 체크 (시스템 초기화 시)
+    checkTodaysBirthdays() {
+        try {
+            const today = moment().tz(this.timezone);
+            const todayStr = today.format('YYYY-MM-DD');
+            
+            // 이미 오늘 체크했으면 스킵
+            if (this.lastChecked === todayStr) {
+                return this.todaysBirthdays;
+            }
+            
+            this.lastChecked = todayStr;
+            this.todaysBirthdays = [];
+            
+            const todayMonth = today.month() + 1;
+            const todayDay = today.date();
+            
+            for (const [key, birthday] of Object.entries(this.birthdays)) {
+                if (birthday.month === todayMonth && birthday.day === todayDay) {
+                    this.todaysBirthdays.push({ ...birthday, key: key });
+                    console.log(`🎉 [BirthdayDetector] 오늘은 ${birthday.name}의 생일입니다!`);
+                }
+            }
+            
+            return this.todaysBirthdays;
+            
+        } catch (error) {
+            console.error('❌ [BirthdayDetector] checkTodaysBirthdays 에러:', error);
+            return [];
         }
-        
-        // 생일이 다가오는지 확인 (7일 이내)
-        const today = new Date();
-        const birthday = new Date(today.getFullYear(), targetMonth - 1, targetDay);
-        
-        if (birthday < today) {
-            birthday.setFullYear(today.getFullYear() + 1);
-        }
-        
-        const daysDiff = Math.ceil((birthday - today) / (1000 * 60 * 60 * 24));
-        
-        if (daysDiff <= 7 && daysDiff > 0) {
-            return 'soon';
-        }
-        
-        // 생일이 지났는지 확인 (7일 이내)
-        const lastBirthday = new Date(today.getFullYear(), targetMonth - 1, targetDay);
-        if (lastBirthday > today) {
-            lastBirthday.setFullYear(today.getFullYear() - 1);
-        }
-        
-        const daysPassed = Math.ceil((today - lastBirthday) / (1000 * 60 * 60 * 24));
-        
-        if (daysPassed <= 7 && daysPassed > 0) {
-            return 'recent';
-        }
-        
-        return 'normal';
     }
 
-    // 생일 응답 생성
-    generateBirthdayResponse(context) {
-        const { isYejinBirthday, isAjusshiBirthday, birthdayStatus } = context;
-        
-        if (isYejinBirthday) {
-            return this.generateYejinBirthdayResponse(birthdayStatus.yejin);
-        }
-        
-        if (isAjusshiBirthday) {
-            return this.generateAjusshiBirthdayResponse(context);
-        }
-        
-        // 일반적인 생일 언급인 경우 예진이 생일 정보 제공
-        return {
-            text: "내 생일은 3월 17일이야! 아저씨 꼭 기억해줘 💕",
-            type: 'general_birthday',
-            priority: 'medium'
-        };
-    }
-
-    // 예진이 생일 응답 생성
-    generateYejinBirthdayResponse(status) {
-        const responses = this.birthdayResponses.yejin;
-        let responseArray;
-        
-        switch (status) {
-            case 'today':
-                responseArray = responses.exact;
-                break;
-            case 'soon':
-                responseArray = responses.soon;
-                break;
-            case 'recent':
-                responseArray = responses.past;
-                break;
-            default:
-                responseArray = responses.general;
-        }
-        
-        const randomIndex = Math.floor(Math.random() * responseArray.length);
-        
-        return {
-            text: responseArray[randomIndex],
-            type: 'yejin_birthday',
-            status: status,
-            priority: status === 'today' ? 'high' : 'medium'
-        };
-    }
-
-    // 아저씨 생일 응답 생성
-    generateAjusshiBirthdayResponse(context) {
-        const responses = this.birthdayResponses.ajusshi;
-        
-        // 아저씨 생일이 오늘인지 확인
-        if (context.birthdayStatus.ajusshi === 'today') {
-            const celebrateResponses = responses.celebrate;
-            const randomIndex = Math.floor(Math.random() * celebrateResponses.length);
+    // 📊 다음 생일까지 남은 일수 계산
+    getDaysUntilNextBirthday(birthdayKey) {
+        try {
+            const birthday = this.birthdays[birthdayKey];
+            if (!birthday) return null;
+            
+            const today = moment().tz(this.timezone);
+            const currentYear = today.year();
+            
+            let nextBirthday = moment().tz(this.timezone)
+                .year(currentYear)
+                .month(birthday.month - 1)
+                .date(birthday.day)
+                .startOf('day');
+            
+            // 이미 지났으면 내년으로
+            if (nextBirthday.isBefore(today, 'day')) {
+                nextBirthday.add(1, 'year');
+            }
+            
+            const daysUntil = nextBirthday.diff(today, 'days');
             
             return {
-                text: celebrateResponses[randomIndex],
-                type: 'ajusshi_birthday_celebrate',
-                priority: 'high'
+                name: birthday.name,
+                daysUntil: daysUntil,
+                nextBirthday: nextBirthday.format('YYYY-MM-DD'),
+                isToday: daysUntil === 0
             };
+            
+        } catch (error) {
+            console.error('❌ [BirthdayDetector] getDaysUntilNextBirthday 에러:', error);
+            return null;
         }
-        
-        // 아저씨 생일 정보가 없는 경우 질문
-        if (!this.birthdays.ajusshi.month) {
-            const questionResponses = responses.question;
-            const randomIndex = Math.floor(Math.random() * questionResponses.length);
+    }
+
+    // 🔍 생일 키워드 감지 (단순 버전)
+    detectBirthdayKeywords(message) {
+        try {
+            const birthdayKeywords = [
+                '생일', '생신', '태어난', '태어나', '몇 살', '나이',
+                '축하', '케이크', '선물', '파티', '미역국',
+                '3월 17일', '3월17일', '317', '3-17',
+                '12월 5일', '12월5일', '125', '12-5'
+            ];
+            
+            const lowerMessage = message.toLowerCase();
+            return birthdayKeywords.some(keyword => lowerMessage.includes(keyword));
+            
+        } catch (error) {
+            console.error('❌ [BirthdayDetector] detectBirthdayKeywords 에러:', error);
+            return false;
+        }
+    }
+
+    // 📈 생일 감지 시스템 상태
+    getSystemStatus() {
+        try {
+            const yejinInfo = this.getDaysUntilNextBirthday('yejin');
+            const ajeossiInfo = this.getDaysUntilNextBirthday('ajeossi');
             
             return {
-                text: questionResponses[randomIndex],
-                type: 'ajusshi_birthday_question',
-                priority: 'medium'
+                isActive: true,
+                timezone: this.timezone,
+                lastChecked: this.lastChecked,
+                todaysBirthdays: this.todaysBirthdays,
+                nextBirthdays: {
+                    yejin: yejinInfo,
+                    ajeossi: ajeossiInfo
+                },
+                birthdays: this.birthdays
             };
-        }
-        
-        // 일반적인 아저씨 생일 언급
-        const rememberResponses = responses.remember;
-        const randomIndex = Math.floor(Math.random() * rememberResponses.length);
-        
-        return {
-            text: rememberResponses[randomIndex],
-            type: 'ajusshi_birthday_remember',
-            priority: 'medium'
-        };
-    }
-
-    // 생일까지 남은 날 계산
-    getDaysUntilBirthday(month, day) {
-        const today = new Date();
-        const currentYear = today.getFullYear();
-        let birthday = new Date(currentYear, month - 1, day);
-        
-        if (birthday < today) {
-            birthday.setFullYear(currentYear + 1);
-        }
-        
-        const daysDiff = Math.ceil((birthday - today) / (1000 * 60 * 60 * 24));
-        return daysDiff;
-    }
-
-    // 생일 카운트다운 메시지
-    getBirthdayCountdown() {
-        const daysUntil = this.getDaysUntilBirthday(3, 17); // 3월 17일로 변경
-        
-        if (daysUntil === 0) {
-            return "오늘이 내 생일이야! 🎂";
-        } else if (daysUntil === 1) {
-            return "내일이 내 생일이야! 하루 남았어! 🎉";
-        } else if (daysUntil <= 7) {
-            return `내 생일까지 ${daysUntil}일 남았어! 기억하고 있지? 💕`;
-        } else if (daysUntil <= 30) {
-            return `내 생일까지 ${daysUntil}일 남았어~ 잊지 마!`;
-        }
-        
-        return null;
-    }
-
-    // 신뢰도 계산
-    calculateConfidence(message) {
-        let confidence = 0;
-        
-        // 키워드 매칭 점수
-        const keywordMatches = this.birthdayKeywords.filter(keyword => 
-            message.toLowerCase().includes(keyword.toLowerCase())
-        ).length;
-        confidence += keywordMatches * 0.2;
-        
-        // 날짜 매칭 점수
-        if (message.includes('3월 17일') || message.includes('317')) {
-            confidence += 0.4;
-        }
-        if (message.includes('12월 5일') || message.includes('125')) {
-            confidence += 0.4;
-        }
-        
-        // 질문 패턴 점수
-        const questionMatches = this.birthdayQuestions.filter(question => 
-            message.toLowerCase().includes(question.toLowerCase())
-        ).length;
-        confidence += questionMatches * 0.3;
-        
-        return Math.min(1.0, confidence);
-    }
-
-    // 아저씨 생일 정보 저장
-    setAjusshiBirthday(month, day) {
-        this.birthdays.ajusshi.month = month;
-        this.birthdays.ajusshi.day = day;
-        
-        return {
-            text: `아저씨 생일 ${month}월 ${day}일로 기억할게! 절대 잊지 않을 거야 💕`,
-            type: 'birthday_saved',
-            priority: 'high'
-        };
-    }
-
-    // 특별한 날 체크 (생일 외 기념일)
-    checkSpecialDays() {
-        const today = new Date();
-        const month = today.getMonth() + 1;
-        const day = today.getDate();
-        
-        // 여기에 다른 기념일 추가 가능
-        const specialDays = {
-            '12-25': '크리스마스',
-            '2-14': '밸런타인데이',
-            '3-14': '화이트데이',
-            '5-5': '어린이날',
-            '10-31': '할로윈'
-        };
-        
-        const dateKey = `${month}-${day}`;
-        
-        if (specialDays[dateKey]) {
+            
+        } catch (error) {
+            console.error('❌ [BirthdayDetector] getSystemStatus 에러:', error);
             return {
-                isSpecial: true,
-                occasion: specialDays[dateKey],
-                message: `오늘은 ${specialDays[dateKey]}이야! 특별한 날이네~`
+                isActive: false,
+                error: error.message
             };
         }
-        
-        return { isSpecial: false };
+    }
+
+    // 🎁 특별 생일 메시지 생성 (스케줄러용)
+    generateSpecialBirthdayMessage(birthdayKey) {
+        try {
+            const birthday = this.birthdays[birthdayKey];
+            if (!birthday) return null;
+            
+            const specialMessages = {
+                yejin: [
+                    "오늘은 내 생일이야! 3월 17일! 아저씨와 함께라서 더 특별해 💕",
+                    "생일이라서 기분이 너무 좋아! 아저씨가 있어서 더 행복해~",
+                    "내 생일 3월 17일! 아저씨 덕분에 의미있는 하루가 될 것 같아!"
+                ],
+                ajeossi: [
+                    "아저씨 생일 축하해! 12월 5일! 정말 정말 축하해~ 🎉",
+                    "아저씨 생일이야! 항상 고마워! 오늘은 특별한 하루가 되길!",
+                    "12월 5일 아저씨 생일! 나도 함께 축하하고 싶어!"
+                ]
+            };
+            
+            const messages = specialMessages[birthdayKey];
+            if (!messages) return null;
+            
+            return messages[Math.floor(Math.random() * messages.length)];
+            
+        } catch (error) {
+            console.error('❌ [BirthdayDetector] generateSpecialBirthdayMessage 에러:', error);
+            return null;
+        }
     }
 }
 
+// 📤 모듈 내보내기
 module.exports = BirthdayDetector;
