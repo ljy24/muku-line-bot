@@ -451,7 +451,9 @@ async function loadLearningDataFromFile() {
             ultimateConversationState.learningData = learningDataFile.learningData;
             ultimateConversationState.memoryStats.totalLearningEntries = learningDataFile.totalEntries || 0;
             ultimateConversationState.memoryStats.totalConflictLearning = learningDataFile.conflictEntries || 0; // 💔 갈등 학습 수 로드
-            contextLog(`💾 학습 데이터 로드 완료: ${learningDataFile.totalEntries}개 (갈등: ${learningDataFile.conflictEntries || 0}개) (디스크 마운트: ${DATA_DIR})`);
+           const totalEntries = learningDataFile?.totalEntries || 0;
+const conflictEntries = learningDataFile?.conflictEntries || 0;
+contextLog(`💾 학습 데이터 로드 완료: ${totalEntries}개 (갈등: ${conflictEntries}개) (디스크 마운트: ${DATA_DIR})`);
             return true;
         }
         
