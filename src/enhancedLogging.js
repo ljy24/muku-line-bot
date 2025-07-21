@@ -227,13 +227,15 @@ function getRandomYejinHeart(modules) {
         const now = getJapanTime();
         const hour = now.hour();
         
-        // 1. 갈등 상태 확인
-        if (modules.unifiedConflictManager && modules.unifiedConflictManager.getMukuConflictSystemStatus) {
+        // 1. 갈등 상태 확인 (안전하게)
+        if (modules && modules.unifiedConflictManager && modules.unifiedConflictManager.getMukuConflictSystemStatus) {
             try {
                 const conflictStatus = modules.unifiedConflictManager.getMukuConflictSystemStatus();
-                if (conflictStatus.currentState && conflictStatus.currentState.isActive) {
-                    const level = conflictStatus.currentState.level || 0;
-                    if (CONFLICT_THOUGHTS[level] && CONFLICT_THOUGHTS[level].length > 0) {
+                if (conflictStatus && conflictStatus.currentState) {
+                    const level = conflictStatus.currentState.level ?? 0;
+                    const isActive = conflictStatus.currentState.isActive ?? false;
+                    
+                    if (isActive && level > 0 && CONFLICT_THOUGHTS[level] && CONFLICT_THOUGHTS[level].length > 0) {
                         const thoughts = CONFLICT_THOUGHTS[level];
                         return thoughts[Math.floor(Math.random() * thoughts.length)];
                     }
