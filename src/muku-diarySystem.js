@@ -736,8 +736,8 @@ async function saveManualMemory(content, category = '수동저장') {
 }
 
 // 프로세스 종료 시 정리
-process.on('SIGINT', shutdownDiarySystem);
-process.on('SIGTERM', shutdownDiarySystem);
+//process.on('SIGINT', shutdownDiarySystem);
+//process.on('SIGTERM', shutdownDiarySystem);
 
 // ================== 📤 모듈 내보내기 ==================
 module.exports = {
