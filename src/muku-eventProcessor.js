@@ -1,8 +1,9 @@
 // ============================================================================
-// muku-eventProcessor.js - 무쿠 이벤트 처리 전용 모듈 (모든 오류 수정됨)
+// muku-eventProcessor.js - 무쿠 이벤트 처리 전용 모듈 + 실시간 학습 완전 연동
 // ✅ 메시지 처리, 이미지 처리, 명령어 처리 로직 분리
 // 🔍 얼굴 인식, 새벽 대화, 생일 감지 등 모든 이벤트 처리
 // 🧠 실시간 학습 시스템 연동 - 대화 패턴 학습 및 개인화
+// 🎓 대화 완료 후 자동 학습 호출 - 매번 대화마다 학습 진행 ⭐️ NEW!
 // 🎭 실시간 행동 스위치 시스템 완전 연동 - 모든 응답에 행동 모드 적용
 // 🌏 일본시간(JST) 기준 시간 처리
 // 💖 예진이의 감정과 기억을 더욱 생생하게 재현
@@ -16,6 +17,7 @@ const colors = {
     pms: '\x1b[1m\x1b[91m',  // 굵은 빨간색 (PMS)
     system: '\x1b[92m',      // 연초록색 (시스템)
     learning: '\x1b[93m',    // 노란색 (학습)
+    realtime: '\x1b[1m\x1b[93m', // 굵은 노란색 (실시간 학습) ⭐️ NEW!
     person: '\x1b[94m',      // 파란색 (사람 학습)
     behavior: '\x1b[35m',    // 마젠타색 (행동 스위치)
     error: '\x1b[91m',       // 빨간색 (에러)
@@ -29,6 +31,99 @@ function getJapanTime() {
 
 function getJapanHour() {
     return getJapanTime().getHours();
+}
+
+// ================== 🎓 실시간 학습 시스템 처리 함수 (NEW!) ==================
+async function processRealTimeLearning(userMessage, mukuResponse, context, modules, enhancedLogging) {
+    try {
+        if (!modules.learningSystem) {
+            console.log(`${colors.learning}🎓 [학습시스템] 비활성화 - 학습 건너뛰기${colors.reset}`);
+            return null;
+        }
+
+        console.log(`${colors.realtime}🎓 [실시간학습] 대화 학습 시작...${colors.reset}`);
+        console.log(`${colors.realtime}    📝 사용자: "${userMessage}"${colors.reset}`);
+        console.log(`${colors.realtime}    💬 무쿠: "${mukuResponse}"${colors.reset}`);
+
+        // 학습 컨텍스트 구성
+        const learningContext = {
+            ...context,
+            timestamp: new Date().toISOString(),
+            japanTime: getJapanTime().toLocaleString('ja-JP'),
+            japanHour: getJapanHour()
+        };
+
+        // 현재 감정 상태 추가
+        if (modules.emotionalContextManager && modules.emotionalContextManager.getCurrentEmotionalState) {
+            try {
+                const emotionalState = modules.emotionalContextManager.getCurrentEmotionalState();
+                learningContext.currentEmotion = emotionalState.currentEmotion;
+                learningContext.emotionalIntensity = emotionalState.intensity;
+                console.log(`${colors.realtime}    💭 감정 상태: ${emotionalState.currentEmotion} (강도: ${emotionalState.intensity})${colors.reset}`);
+            } catch (emotionError) {
+                console.warn(`${colors.learning}⚠️ 감정 상태 조회 실패: ${emotionError.message}${colors.reset}`);
+            }
+        }
+
+        // 삐짐 상태 추가
+        if (modules.sulkyManager && modules.sulkyManager.getSulkinessState) {
+            try {
+                const sulkyState = modules.sulkyManager.getSulkinessState();
+                learningContext.sulkyLevel = sulkyState.level;
+                learningContext.isSulky = sulkyState.isSulky;
+                console.log(`${colors.realtime}    😤 삐짐 상태: Level ${sulkyState.level} (${sulkyState.isSulky ? '삐짐' : '정상'})${colors.reset}`);
+            } catch (sulkyError) {
+                console.warn(`${colors.learning}⚠️ 삐짐 상태 조회 실패: ${sulkyError.message}${colors.reset}`);
+            }
+        }
+
+        // 생리주기 상태 추가
+        if (modules.emotionalContextManager && modules.emotionalContextManager.getCurrentCycleInfo) {
+            try {
+                const cycleInfo = modules.emotionalContextManager.getCurrentCycleInfo();
+                learningContext.cycleDay = cycleInfo.day;
+                learningContext.cyclePhase = cycleInfo.phase;
+                learningContext.isPms = cycleInfo.isPms;
+                console.log(`${colors.realtime}    🩸 생리주기: Day ${cycleInfo.day}, ${cycleInfo.phase}${cycleInfo.isPms ? ' (PMS)' : ''}${colors.reset}`);
+            } catch (cycleError) {
+                console.warn(`${colors.learning}⚠️ 생리주기 정보 조회 실패: ${cycleError.message}${colors.reset}`);
+            }
+        }
+
+        // 실시간 학습 실행
+        const learningResult = await modules.learningSystem.learnFromConversation(userMessage, mukuResponse, learningContext);
+
+        if (learningResult) {
+            console.log(`${colors.realtime}🎉 [학습완료] ${learningResult.improvements.length}개 개선사항 적용!${colors.reset}`);
+            
+            // 개선사항 상세 로그
+            learningResult.improvements.forEach(improvement => {
+                console.log(`${colors.realtime}    ✨ ${improvement.type}: ${improvement.reason || improvement.action || '개선됨'}${colors.reset}`);
+            });
+
+            // 학습 결과를 enhancedLogging에 기록
+            if (enhancedLogging && enhancedLogging.logSystemOperation) {
+                enhancedLogging.logSystemOperation('실시간학습완료', 
+                    `${learningResult.improvements.length}개 개선: ${learningResult.improvements.map(imp => imp.type).join(', ')}`
+                );
+            }
+
+            return learningResult;
+        } else {
+            console.log(`${colors.learning}⚪ [학습결과] 학습할 내용 없음${colors.reset}`);
+            return null;
+        }
+
+    } catch (error) {
+        console.error(`${colors.error}❌ [실시간학습] 학습 처리 실패: ${error.message}${colors.reset}`);
+        
+        // 학습 에러도 로깅
+        if (enhancedLogging && enhancedLogging.logSystemOperation) {
+            enhancedLogging.logSystemOperation('실시간학습실패', `${error.message}`);
+        }
+        
+        return null;
+    }
 }
 
 // ================== 🎭 실시간 행동 스위치 처리 함수 ==================
@@ -656,7 +751,7 @@ async function processOtherMessageType(messageType, modules) {
     return await applyBehaviorModeToResponse(baseResponse, modules, { messageType: messageType });
 }
 
-// ================== 🎯 메인 이벤트 처리 함수 (학습 시스템 완전 연동) ==================
+// ================== 🎯 메인 이벤트 처리 함수 (실시간 학습 시스템 완전 연동) ==================
 async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherSafely, getVersionResponse, enhancedLogging) {
     if (event.type !== 'message') {
         return Promise.resolve(null);
@@ -699,6 +794,24 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
                 );
                 
                 const finalVersionComment = behaviorVersionResponse.comment || versionResponse;
+                
+                // ⭐️⭐️ 버전 응답 후 실시간 학습 처리 ⭐️⭐️
+                try {
+                    await processRealTimeLearning(
+                        messageText, 
+                        finalVersionComment, 
+                        { 
+                            messageType: 'text', 
+                            responseType: 'version',
+                            conversationContext
+                        }, 
+                        modules, 
+                        enhancedLogging
+                    );
+                } catch (learningError) {
+                    console.warn(`${colors.learning}⚠️ 버전 응답 학습 실패: ${learningError.message}${colors.reset}`);
+                }
+                
                 if (enhancedLogging?.logConversation) {
                     enhancedLogging.logConversation('나', finalVersionComment, 'text');
                 } else {
@@ -716,7 +829,28 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
                     modules,
                     { messageText, responseType: 'night', hour: getJapanHour() }
                 );
-                return { type: 'night_response', response: behaviorNightResponse.comment || nightResponse.response };
+                
+                const finalNightComment = behaviorNightResponse.comment || nightResponse.response;
+                
+                // ⭐️⭐️ 새벽 응답 후 실시간 학습 처리 ⭐️⭐️
+                try {
+                    await processRealTimeLearning(
+                        messageText, 
+                        finalNightComment, 
+                        { 
+                            messageType: 'text', 
+                            responseType: 'night',
+                            hour: getJapanHour(),
+                            conversationContext
+                        }, 
+                        modules, 
+                        enhancedLogging
+                    );
+                } catch (learningError) {
+                    console.warn(`${colors.learning}⚠️ 새벽 응답 학습 실패: ${learningError.message}${colors.reset}`);
+                }
+                
+                return { type: 'night_response', response: finalNightComment };
             }
             
             const birthdayResponse = await processBirthdayDetection(messageText, modules, enhancedLogging);
@@ -727,7 +861,27 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
                     modules,
                     { messageText, responseType: 'birthday' }
                 );
-                return { type: 'birthday_response', response: behaviorBirthdayResponse.comment || birthdayResponse.response };
+                
+                const finalBirthdayComment = behaviorBirthdayResponse.comment || birthdayResponse.response;
+                
+                // ⭐️⭐️ 생일 응답 후 실시간 학습 처리 ⭐️⭐️
+                try {
+                    await processRealTimeLearning(
+                        messageText, 
+                        finalBirthdayComment, 
+                        { 
+                            messageType: 'text', 
+                            responseType: 'birthday',
+                            conversationContext
+                        }, 
+                        modules, 
+                        enhancedLogging
+                    );
+                } catch (learningError) {
+                    console.warn(`${colors.learning}⚠️ 생일 응답 학습 실패: ${learningError.message}${colors.reset}`);
+                }
+                
+                return { type: 'birthday_response', response: finalBirthdayComment };
             }
             
             processFixedMemory(messageText, modules);
@@ -736,7 +890,28 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
 
             const chatResponse = await processGeneralChat(messageText, modules, enhancedLogging, { conversationContext });
             if (chatResponse) {
-                const logMessage = chatResponse.personalized ? `${chatResponse.comment} [개인화됨]` : chatResponse.comment;
+                const finalChatComment = chatResponse.comment || chatResponse;
+                
+                // ⭐️⭐️⭐️ 일반 대화 응답 후 실시간 학습 처리 (가장 중요!) ⭐️⭐️⭐️
+                try {
+                    await processRealTimeLearning(
+                        messageText, 
+                        finalChatComment, 
+                        { 
+                            messageType: 'text', 
+                            responseType: 'chat',
+                            personalized: chatResponse.personalized,
+                            behaviorApplied: chatResponse.behaviorApplied,
+                            conversationContext
+                        }, 
+                        modules, 
+                        enhancedLogging
+                    );
+                } catch (learningError) {
+                    console.warn(`${colors.learning}⚠️ 일반 대화 학습 실패: ${learningError.message}${colors.reset}`);
+                }
+                
+                const logMessage = chatResponse.personalized ? `${finalChatComment} [개인화됨]` : finalChatComment;
                 if (enhancedLogging?.logConversation) {
                     enhancedLogging.logConversation('나', logMessage, 'text');
                 } else {
@@ -751,6 +926,26 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
                 modules,
                 { messageText, responseType: 'fallback' }
             );
+            
+            const finalFallbackComment = fallbackResponse.comment || fallbackResponse;
+            
+            // ⭐️⭐️ 폴백 응답 후에도 학습 처리 ⭐️⭐️
+            try {
+                await processRealTimeLearning(
+                    messageText, 
+                    finalFallbackComment, 
+                    { 
+                        messageType: 'text', 
+                        responseType: 'fallback',
+                        conversationContext
+                    }, 
+                    modules, 
+                    enhancedLogging
+                );
+            } catch (learningError) {
+                console.warn(`${colors.learning}⚠️ 폴백 응답 학습 실패: ${learningError.message}${colors.reset}`);
+            }
+            
             return { type: 'fallback_response', response: fallbackResponse };
         }
         else if (userMessage.type === 'image') {
@@ -763,7 +958,26 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
             const messageId = userMessage.id;
             const imageResponse = await processImageMessage(messageId, client, faceMatcher, loadFaceMatcherSafely, enhancedLogging, modules);
             
-            const logMessage = imageResponse.personalized ? `${imageResponse.comment} [개인화됨]` : imageResponse.comment;
+            const finalImageComment = imageResponse.comment || imageResponse;
+            
+            // ⭐️⭐️⭐️ 이미지 응답 후 실시간 학습 처리 ⭐️⭐️⭐️
+            try {
+                await processRealTimeLearning(
+                    '이미지 전송', 
+                    finalImageComment, 
+                    { 
+                        messageType: 'image', 
+                        personalized: imageResponse.personalized,
+                        behaviorApplied: imageResponse.behaviorApplied
+                    }, 
+                    modules, 
+                    enhancedLogging
+                );
+            } catch (learningError) {
+                console.warn(`${colors.learning}⚠️ 이미지 응답 학습 실패: ${learningError.message}${colors.reset}`);
+            }
+            
+            const logMessage = imageResponse.personalized ? `${finalImageComment} [개인화됨]` : finalImageComment;
             if (enhancedLogging?.logConversation) {
                 enhancedLogging.logConversation('나', logMessage, 'text');
             } else {
@@ -774,6 +988,25 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
         else {
             console.log(`${colors.ajeossi}📎 아저씨: ${userMessage.type} 메시지${colors.reset}`);
             const otherResponse = await processOtherMessageType(userMessage.type, modules);
+            
+            const finalOtherComment = otherResponse.comment || otherResponse;
+            
+            // ⭐️⭐️ 기타 메시지 응답 후에도 학습 처리 ⭐️⭐️
+            try {
+                await processRealTimeLearning(
+                    `${userMessage.type} 메시지`, 
+                    finalOtherComment, 
+                    { 
+                        messageType: userMessage.type,
+                        responseType: 'other'
+                    }, 
+                    modules, 
+                    enhancedLogging
+                );
+            } catch (learningError) {
+                console.warn(`${colors.learning}⚠️ 기타 메시지 학습 실패: ${learningError.message}${colors.reset}`);
+            }
+            
             return { type: 'other_response', response: otherResponse };
         }
 
@@ -794,11 +1027,32 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
             { error: true, errorMessage: error.message }
         );
         
+        const finalErrorComment = errorResponse.comment || errorResponse;
+        
+        // ⭐️⭐️ 에러 응답 후에도 학습 처리 (에러에서도 학습!) ⭐️⭐️
+        try {
+            await processRealTimeLearning(
+                event.message?.text || '에러 발생', 
+                finalErrorComment, 
+                { 
+                    messageType: event.message?.type || 'unknown',
+                    responseType: 'error',
+                    error: true,
+                    errorMessage: error.message
+                }, 
+                modules, 
+                enhancedLogging
+            );
+        } catch (learningError) {
+            console.warn(`${colors.learning}⚠️ 에러 응답 학습 실패: ${learningError.message}${colors.reset}`);
+        }
+        
         return { type: 'error_response', response: errorResponse };
     }
 }
 
 // ================== 📤 모듈 내보내기 ==================
 module.exports = {
-    handleEvent
+    handleEvent,
+    processRealTimeLearning // ⭐️ 실시간 학습 함수도 내보내기 (다른 모듈에서 사용 가능)
 };
