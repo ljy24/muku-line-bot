@@ -131,7 +131,7 @@ async function initializeIntegratedSystems(modules) {
 }
 
 // ================== 🎭 감정 상태 시스템 동기화 (갈등 + 행동스위치 + 실시간학습 시스템 포함) ==================
-function synchronizeEmotionalSystems(modules) {
+async function synchronizeEmotionalSystems(modules) {
     console.log(`${colors.system}🎭 [감정시스템] 동기화 (갈등 + 행동스위치 + 실시간학습 시스템 포함)...${colors.reset}`);
     
     let syncCount = 0;
