@@ -1,20 +1,27 @@
 // ============================================================================
-// scheduler.js v10 FINAL - "실제 통계 추적 + 정확한 시간 계산"
+// scheduler.js v10.1 PERFECT - "카운터 리셋 문제 완벽 해결 + 디스크 영구 저장"
 // 🌅 아침 9시: 100% | 🚬 담타 8번: 100% | 🌸 감성 3번: 100% | 📸 셀카 2번: 100% 
 // 🌙 밤 23시: 100% | 💤 자정 0시: 100% | ⭐️ 실시간 통계 추적 완벽 지원
-// ✨ getNextDamtaInfo()에 nextTime 필드 추가 + 정확한 다음 스케줄 시간 계산
+// ✨ 매개변수 방식으로 상황별 카운터 리셋 처리 완벽 구현
+// 💾 디스크 영구 저장으로 재시작해도 상태 유지
 // ============================================================================
 
 const schedule = require('node-schedule');
 const moment = require('moment-timezone');
 const { Client } = require('@line/bot-sdk');
 const OpenAI = require('openai');
+const fs = require('fs');
+const path = require('path');
 require('dotenv').config();
 
 // ================== 🌏 설정 ==================
 const TIMEZONE = 'Asia/Tokyo';
 const USER_ID = process.env.TARGET_USER_ID;
 const OPENAI_USAGE_RATE = 0.8; // 80% OpenAI 사용
+
+// 💾 디스크 저장 경로 설정 (commandHandler.js와 동일)
+const DATA_DIR = '/data';
+const SCHEDULE_STATE_FILE = path.join(DATA_DIR, 'schedule_status.json');
 
 // LINE 클라이언트 (index.js에서 받을 예정)
 let lineClient = null;
@@ -79,6 +86,135 @@ let scheduleStatus = {
         systemStartTime: Date.now()
     }
 };
+
+// ================== 💾 디스크 저장/로드 함수들 (⭐️ 새로 추가!) ==================
+
+/**
+ * 📁 디렉토리 생성 함수
+ */
+function ensureDataDirectory() {
+    try {
+        if (!fs.existsSync(DATA_DIR)) {
+            fs.mkdirSync(DATA_DIR, { recursive: true });
+            console.log(`[scheduler] 📁 데이터 디렉토리 생성: ${DATA_DIR}`);
+        }
+        return true;
+    } catch (error) {
+        console.error(`[scheduler] ❌ 디렉토리 생성 실패: ${error.message}`);
+        return false;
+    }
+}
+
+/**
+ * 💾 스케줄 상태를 디스크에 저장
+ */
+function saveScheduleStatusToDisk() {
+    try {
+        ensureDataDirectory();
+        
+        // jobs 제외하고 저장 (schedule 객체는 JSON으로 직렬화 불가)
+        const saveData = {
+            ...scheduleStatus,
+            damta: { ...scheduleStatus.damta, jobs: [] },
+            emotional: { ...scheduleStatus.emotional, jobs: [] },
+            selfie: { ...scheduleStatus.selfie, jobs: [] }
+        };
+        
+        fs.writeFileSync(SCHEDULE_STATE_FILE, JSON.stringify(saveData, null, 2), 'utf8');
+        console.log(`[scheduler] 💾 상태 저장 완료: ${SCHEDULE_STATE_FILE}`);
+        return true;
+    } catch (error) {
+        console.error(`[scheduler] ❌ 상태 저장 실패: ${error.message}`);
+        return false;
+    }
+}
+
+/**
+ * 📂 디스크에서 스케줄 상태 로드
+ */
+function loadScheduleStatusFromDisk() {
+    try {
+        if (!fs.existsSync(SCHEDULE_STATE_FILE)) {
+            console.log('[scheduler] 📂 저장된 상태 파일 없음. 새로 시작.');
+            return null;
+        }
+        
+        const data = fs.readFileSync(SCHEDULE_STATE_FILE, 'utf8');
+        const loadedStatus = JSON.parse(data);
+        
+        console.log('[scheduler] 📂 기존 상태 로드 성공');
+        console.log(`[scheduler] 📊 담타: ${loadedStatus.damta?.sent || 0}/${loadedStatus.damta?.total || 8}`);
+        console.log(`[scheduler] 📊 감성: ${loadedStatus.emotional?.sent || 0}/${loadedStatus.emotional?.total || 3}`);
+        console.log(`[scheduler] 📊 셀카: ${loadedStatus.selfie?.sent || 0}/${loadedStatus.selfie?.total || 2}`);
+        
+        return loadedStatus;
+    } catch (error) {
+        console.error(`[scheduler] ❌ 상태 로드 실패: ${error.message}`);
+        return null;
+    }
+}
+
+/**
+ * 📅 날짜가 바뀌었는지 확인
+ */
+function shouldResetDaily(lastResetDate) {
+    const today = moment().tz(TIMEZONE).format('YYYY-MM-DD');
+    return lastResetDate !== today;
+}
+
+/**
+ * 🔄 기존 상태 복원 또는 새로 시작
+ */
+function initializeScheduleStatus() {
+    try {
+        const loadedStatus = loadScheduleStatusFromDisk();
+        const today = moment().tz(TIMEZONE).format('YYYY-MM-DD');
+        
+        if (loadedStatus && !shouldResetDaily(loadedStatus.dailyStats?.lastResetDate)) {
+            // 같은 날이면 기존 상태 복원
+            console.log('[scheduler] 🔄 같은 날 상태 복원 시작...');
+            
+            // 카운터들 복원
+            scheduleStatus.damta.sent = loadedStatus.damta?.sent || 0;
+            scheduleStatus.emotional.sent = loadedStatus.emotional?.sent || 0;
+            scheduleStatus.selfie.sent = loadedStatus.selfie?.sent || 0;
+            
+            // 전송 기록들 복원
+            scheduleStatus.damta.sentTimes = loadedStatus.damta?.sentTimes || [];
+            scheduleStatus.emotional.sentTimes = loadedStatus.emotional?.sentTimes || [];
+            scheduleStatus.selfie.sentTimes = loadedStatus.selfie?.sentTimes || [];
+            
+            // 고정 스케줄 상태 복원
+            scheduleStatus.morning.sent = loadedStatus.morning?.sent || false;
+            scheduleStatus.morning.sentTime = loadedStatus.morning?.sentTime || null;
+            scheduleStatus.nightCare.sent = loadedStatus.nightCare?.sent || false;
+            scheduleStatus.nightCare.sentTime = loadedStatus.nightCare?.sentTime || null;
+            scheduleStatus.goodNight.sent = loadedStatus.goodNight?.sent || false;
+            scheduleStatus.goodNight.sentTime = loadedStatus.goodNight?.sentTime || null;
+            
+            // 통계 복원
+            scheduleStatus.dailyStats.totalSentToday = loadedStatus.dailyStats?.totalSentToday || 0;
+            scheduleStatus.dailyStats.lastResetDate = loadedStatus.dailyStats?.lastResetDate || today;
+            
+            console.log('[scheduler] ✅ 상태 복원 완료!');
+            console.log(`[scheduler] 📊 복원된 상태: 담타 ${scheduleStatus.damta.sent}/8, 감성 ${scheduleStatus.emotional.sent}/3, 셀카 ${scheduleStatus.selfie.sent}/2`);
+            
+            return { restored: true, resetCounters: false };
+        } else {
+            // 새로운 날이거나 첫 시작
+            console.log('[scheduler] 🌅 새로운 날 시작 또는 첫 실행');
+            scheduleStatus.dailyStats.lastResetDate = today;
+            scheduleStatus.dailyStats.systemStartTime = Date.now();
+            saveScheduleStatusToDisk(); // 새 상태 저장
+            
+            return { restored: false, resetCounters: true };
+        }
+        
+    } catch (error) {
+        console.error(`[scheduler] ❌ 상태 초기화 실패: ${error.message}`);
+        return { restored: false, resetCounters: true };
+    }
+}
 
 // ================== 🎨 로그 함수 ==================
 function forceLog(message, data = null) {
@@ -190,7 +326,7 @@ function calculateNextFixedSchedule() {
     };
 }
 
-// ================== 📊 실제 전송 기록 함수들 (⭐️ 새로 추가!) ==================
+// ================== 📊 실제 전송 기록 함수들 (⭐️ 디스크 저장 추가!) ==================
 
 /**
  * 메시지 전송 성공 시 호출하는 함수
@@ -225,10 +361,13 @@ function recordMessageSent(messageType, subType = null) {
     // 전체 통계 업데이트
     scheduleStatus.dailyStats.totalSentToday++;
     
+    // ⭐️ 상태 변경 후 즉시 디스크에 저장
+    saveScheduleStatusToDisk();
+    
     forceLog(`📊 메시지 전송 기록: ${messageType} (${timeString}) - 오늘 총 ${scheduleStatus.dailyStats.totalSentToday}건`);
 }
 
-// ================== 💬 메시지 생성 함수들 (기존과 동일, 전송 기록 추가) ==================
+// ================== 💬 메시지 생성 함수들 (기존과 동일) ==================
 
 // 아침 메시지 생성
 async function generateMorningMessage() {
@@ -524,10 +663,10 @@ function generateRandomTimes(count, startHour, endHour) {
     return times.sort((a, b) => (a.hour * 60 + a.minute) - (b.hour * 60 + b.minute));
 }
 
-// ================== 📅 스케줄 초기화 함수 (⭐️ 다음 시간 계산 추가!) ==================
-function initializeDailySchedules() {
+// ================== 📅 스케줄 초기화 함수 (⭐️ 매개변수 방식으로 완벽 해결!) ==================
+function initializeDailySchedules(resetCounters = true) {
     try {
-        forceLog('🔄 일일 랜덤 스케줄 초기화 시작...');
+        forceLog(`🔄 일일 랜덤 스케줄 초기화 시작... (카운터 리셋: ${resetCounters})`);
         
         // 기존 랜덤 스케줄들 모두 취소
         ['damta', 'emotional', 'selfie'].forEach(type => {
@@ -535,8 +674,15 @@ function initializeDailySchedules() {
                 if (job) job.cancel();
             });
             scheduleStatus[type].jobs = [];
-            scheduleStatus[type].sent = 0;
-            scheduleStatus[type].sentTimes = []; // ⭐️ 전송 기록 초기화
+            
+            // ⭐️ 매개변수에 따라 카운터 리셋 여부 결정
+            if (resetCounters) {
+                scheduleStatus[type].sent = 0;
+                scheduleStatus[type].sentTimes = [];
+                forceLog(`📊 ${type} 카운터 리셋됨`);
+            } else {
+                forceLog(`📊 ${type} 카운터 유지됨: ${scheduleStatus[type].sent}/${scheduleStatus[type].total}`);
+            }
         });
 
         // 🚬 담타 스케줄 생성 (10-18시, 8회)
@@ -582,6 +728,9 @@ function initializeDailySchedules() {
         // ⭐️ 다음 셀카 시간 계산
         scheduleStatus.selfie.nextScheduleTime = calculateNextScheduleTime('selfie');
         forceLog(`📸 셀카 랜덤 스케줄 2개 등록 완료: ${scheduleStatus.selfie.times.map(t => `${t.hour}:${String(t.minute).padStart(2, '0')}`).join(', ')}`);
+
+        // ⭐️ 상태 저장
+        saveScheduleStatusToDisk();
 
         forceLog('✅ 모든 일일 랜덤 스케줄 등록 완료!');
         
@@ -639,12 +788,16 @@ schedule.scheduleJob('0 0 * * *', async () => {
         scheduleStatus.goodNight.sent = false;
         scheduleStatus.goodNight.sentTime = null;
         
+        // 랜덤 메시지 카운터 초기화는 initializeDailySchedules(true)에서 처리
         scheduleStatus.dailyStats.totalSentToday = 0;
         scheduleStatus.dailyStats.lastResetDate = koreaTime.format('YYYY-MM-DD');
         
-        // 새로운 하루 랜덤 스케줄 생성
-        forceLog('🌄 새로운 하루 시작 - 랜덤 스케줄 재생성');
-        initializeDailySchedules();
+        // ⭐️ 하루 초기화 후 디스크에 저장
+        saveScheduleStatusToDisk();
+        
+        // ⭐️ 새로운 하루 랜덤 스케줄 생성 (카운터 리셋)
+        forceLog('🌄 새로운 하루 시작 - 랜덤 스케줄 재생성 (카운터 리셋)');
+        initializeDailySchedules(true); // 카운터 리셋
         
     } catch (error) {
         forceLog(`❌ 굿나잇 스케줄러 에러: ${error.message}`);
@@ -724,7 +877,7 @@ function getAllSchedulerStats() {
     const koreaTime = moment().tz(TIMEZONE);
     
     return {
-        systemStatus: '💯 모든 메시지 100% 보장 + 실시간 통계',
+        systemStatus: '💯 모든 메시지 100% 보장 + 실시간 통계 + 영구 저장',
         currentTime: koreaTime.format('YYYY-MM-DD HH:mm:ss'),
         timezone: TIMEZONE,
         openaiUsageRate: '80% (OpenAI) + 20% (고정패턴)',
@@ -770,12 +923,13 @@ function getAllSchedulerStats() {
         environment: {
             USER_ID: !!USER_ID ? '✅ OK' : '⚠️ MISSING',
             CHANNEL_ACCESS_TOKEN: !!process.env.CHANNEL_ACCESS_TOKEN ? '✅ OK' : '⚠️ MISSING',
-            OPENAI_API_KEY: !!process.env.OPENAI_API_KEY ? '✅ OK' : '⚠️ MISSING'
+            OPENAI_API_KEY: !!process.env.OPENAI_API_KEY ? '✅ OK' : '⚠️ MISSING',
+            DISK_STORAGE: fs.existsSync(SCHEDULE_STATE_FILE) ? '✅ OK' : '📝 NEW'
         }
     };
 }
 
-// ================== 🚀 시작 함수 ==================
+// ================== 🚀 시작 함수 (⭐️ 상태 복원 추가!) ==================
 function startAllSchedulers(client) {
     try {
         forceLog('🚀 스케줄러 시스템 시작...');
@@ -798,13 +952,15 @@ function startAllSchedulers(client) {
             return false;
         }
         
-        // ⭐️ 통계 초기화
-        const today = moment().tz(TIMEZONE).format('YYYY-MM-DD');
-        scheduleStatus.dailyStats.lastResetDate = today;
-        scheduleStatus.dailyStats.systemStartTime = Date.now();
+        // ⭐️ 기존 상태 복원 또는 새로 시작
+        const initResult = initializeScheduleStatus();
+        if (!initResult) {
+            forceLog('❌ 상태 초기화 실패');
+            return false;
+        }
         
-        // 일일 랜덤 스케줄 생성
-        initializeDailySchedules();
+        // ⭐️ 일일 랜덤 스케줄 생성 (상태 복원 결과에 따라 카운터 리셋 여부 결정)
+        initializeDailySchedules(initResult.resetCounters);
         
         forceLog('✅ 모든 스케줄러 활성화 완료!');
         forceLog('📋 활성화된 스케줄러:');
@@ -814,7 +970,13 @@ function startAllSchedulers(client) {
         forceLog('   📸 11-20시 랜덤 2번 - 셀카 전송');
         forceLog('   🌙 매일 23:00 - 밤 케어 메시지');
         forceLog('   💤 매일 00:00 - 굿나잇 메시지');
-        forceLog('✨ 실시간 통계 추적 시스템 활성화!');
+        forceLog('✨ 실시간 통계 추적 + 영구 저장 시스템 활성화!');
+        
+        if (initResult.restored) {
+            forceLog('🔄 이전 상태가 성공적으로 복원되었습니다!');
+        } else {
+            forceLog('🌅 새로운 날을 시작합니다!');
+        }
         
         return true;
         
@@ -861,7 +1023,7 @@ async function testGoodNightMessage() {
 }
 
 // ================== 📤 모듈 내보내기 ==================
-forceLog('💯 scheduler.js v10 FINAL 로드 완료 (실시간 통계 추적 + nextTime 지원)');
+forceLog('💯 scheduler.js v10.1 PERFECT 로드 완료 (카운터 리셋 문제 완벽 해결 + 영구 저장)');
 
 module.exports = {
     // 🚀 시작 함수
@@ -895,6 +1057,12 @@ module.exports = {
     recordMessageSent,
     calculateNextScheduleTime,
     calculateNextFixedSchedule,
+    
+    // ⭐️ 디스크 저장 관련 함수들
+    saveScheduleStatusToDisk,
+    loadScheduleStatusFromDisk,
+    initializeScheduleStatus,
+    ensureDataDirectory,
     
     // 내부 상태 접근 (디버깅용)
     getScheduleStatus: () => scheduleStatus
