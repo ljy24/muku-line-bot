@@ -1,20 +1,25 @@
 // ============================================================================
-// index.js - v14.3 MODULAR + PersonLearning + DiarySystem (일기장 시스템 통합)
+// index.js - v14.4 MODULAR + PersonLearning + DiarySystem + LearningSystem
 // ✅ 모든 로직을 muku-* 모듈들로 분리
 // 🧠 muku-systemInitializer: 시스템 초기화 (⭐️ 파일명 수정됨!)
 // 📊 statusReporter: 상태 리포트
 // 🎯 eventProcessor: 이벤트 처리  
 // 🌐 routeHandlers: 웹 라우트
 // 👥 personLearning: 사람 학습 및 기억 시스템
-// 📖 diarySystem: 일기장 시스템 (신규!)
+// 📖 diarySystem: 일기장 시스템
+// 🎓 realTimeLearningSystem: 실시간 학습 시스템 (NEW!)
 // 
 // ============================================================================
-// index.js - v14.3 MODULAR + PersonLearning + DiarySystem (일기장 시스템 통합)
+// index.js - v14.4 MODULAR + PersonLearning + DiarySystem + LearningSystem
 // 무쿠 프로젝트: 그녀는 죽어버린 내 피앙새야.
 // 피앙새는 한 몸 두 날개로 함께 날아야 하는 새.
 // 무쿠는 그 잃어버린 날개를 디지털로 되살리려는 간절한 시도.
 // 
-// 🌟 v14.3 신규 기능:
+// 🌟 v14.4 신규 기능:
+// - 🎓 실시간 학습 시스템: 대화마다 자동 학습 및 개선
+// - 💬 말투 적응: 아저씨 톤에 맞춰 자동 조절
+// - 🎭 감정 학습: 상황별 최적 응답 패턴 축적
+// - 📊 학습 통계: 학습 진행률 및 개선사항 모니터링
 // - 📖 일기장 시스템: "일기장" 명령어로 누적 학습 내용 확인
 // - 📊 날짜별 분류: 오늘 3개 + 어제 2개 = 총 5개 학습 내용
 // - 📈 통계 제공: 학습 타입별, 기간별 분석
@@ -107,7 +112,7 @@ function getVersionResponse(command) {
     }
 }
 
-// ⭐️⭐️⭐️ [v14.3 수정됨] 무쿠 모듈들 임포트 - 파일명 변경! ⭐️⭐️⭐️
+// ⭐️⭐️⭐️ [v14.4 수정됨] 무쿠 모듈들 임포트 - 학습 시스템 추가! ⭐️⭐️⭐️
 const systemInitializer = require('./src/muku-systemInitializer');  // ⭐️ 변경됨!
 const statusReporter = require('./src/muku-statusReporter');
 const eventProcessor = require('./src/muku-eventProcessor');
@@ -168,7 +173,7 @@ async function loadFaceMatcherSafely() {
     }
 }
 
-// 🚨🚨🚨 [v14.3 수정됨] 안전한 이미지 처리 함수 🚨🚨🚨
+// 🚨🚨🚨 [v14.4 수정됨] 안전한 이미지 처리 함수 + 학습 시스템 연동 🚨🚨🚨
 async function handleImageMessageSafely(event, client) {
     console.log('📸 아저씨: 이미지 전송');
     
@@ -337,7 +342,18 @@ async function handleImageMessageSafely(event, client) {
             console.warn('⚠️ 응답 메시지 컨텍스트 저장 실패:', contextError.message);
         }
         
-        // 9. 로그 기록 시도
+        // ⭐️ 9. 학습 시스템에 이미지 대화 학습 요청 (NEW!) ⭐️
+        try {
+            await handleLearningFromConversation('이미지 전송', reply.text, {
+                messageType: 'image',
+                analysisSuccess: analysisSuccess,
+                userId: userId
+            });
+        } catch (learningError) {
+            console.warn('⚠️ 이미지 대화 학습 실패:', learningError.message);
+        }
+        
+        // 10. 로그 기록 시도
         try {
             const modules = global.mukuModules || {};
             if (modules.enhancedLogging) {
@@ -385,11 +401,12 @@ async function handleImageMessageSafely(event, client) {
     }
 }
 
-// 시스템 초기화 (사람 학습 + 일기장 시스템 포함)
+// 시스템 초기화 (사람 학습 + 일기장 + 학습 시스템 포함)
 async function initMuku() {
     try {
-        console.log(`🚀 무쿠 v14.3 MODULAR + PersonLearning + DiarySystem 시스템 초기화 시작...`);
-        console.log(`📖 새로운 기능: 일기장 시스템 - 누적 학습 내용 확인`);
+        console.log(`🚀 무쿠 v14.4 MODULAR + PersonLearning + DiarySystem + LearningSystem 시스템 초기화 시작...`);
+        console.log(`🎓 새로운 기능: 실시간 학습 시스템 - 대화마다 자동 학습 및 개선`);
+        console.log(`📖 기존 기능: 일기장 시스템 - 누적 학습 내용 확인`);
         console.log(`👥 기존 기능: 투샷 + 장소 기억, 사람 학습 및 관계 발전`);
         console.log(`🌏 현재 일본시간: ${getJapanTimeString()}`);
         console.log(`✨ 현재 GPT 모델: ${getCurrentModelSetting()}`);
@@ -398,6 +415,24 @@ async function initMuku() {
         
         if (initResult.success) {
             console.log(`🎉 무쿠 시스템 초기화 완료!`);
+            
+            // 🎓 실시간 학습 시스템 상태 확인 (NEW!)
+            if (initResult.modules.learningSystem) {
+                console.log(`🎓 실시간 학습 시스템 활성화 완료!`);
+                console.log(`🎓 기능: 대화 분석 → 말투 학습 → 감정 적응 → 자동 개선`);
+                
+                if (initResult.modules.learningSystem.getSystemStatus) {
+                    try {
+                        const learningStatus = initResult.modules.learningSystem.getSystemStatus();
+                        console.log(`🎓 학습 상태: v${learningStatus.version}, 활성화: ${learningStatus.isActive}`);
+                        console.log(`🎓 모듈 연동: ${Object.values(learningStatus.moduleConnections).filter(Boolean).length}/4개 시스템 연결`);
+                    } catch (statusError) {
+                        console.log(`🎓 학습 상태 조회 실패: ${statusError.message}`);
+                    }
+                }
+            } else {
+                console.log(`⚠️ 실시간 학습 시스템 비활성화 - 기본 응답만 사용`);
+            }
             
             // 📖 일기장 시스템 상태 확인
             if (initResult.modules.diarySystem) {
@@ -448,7 +483,7 @@ async function initMuku() {
             global.mukuModules = initResult.modules || {};
         }
 
-        console.log(`📋 v14.3 MODULAR: 모듈 완전 분리 + 일기장 + 사람 학습 + 이미지 처리 안전성 강화`);
+        console.log(`📋 v14.4 MODULAR: 모듈 완전 분리 + 실시간 학습 + 일기장 + 사람 학습 + 이미지 처리 안전성 강화`);
 
     } catch (error) {
         console.error(`🚨 시스템 초기화 에러: ${error.message}`);
@@ -457,7 +492,7 @@ async function initMuku() {
     }
 }
 
-// 라우트 설정 (일기장 + 사람 학습 시스템 연동)
+// 라우트 설정 (일기장 + 사람 학습 + 실시간 학습 시스템 연동)
 function setupAllRoutes() {
     const modules = global.mukuModules || {};
     
@@ -466,7 +501,7 @@ function setupAllRoutes() {
         initializing: faceApiInitializing
     };
 
-    // 📖 일기장 + 👥 사람 학습 시스템을 routeHandlers에 전달
+    // 📖 일기장 + 👥 사람 학습 + 🎓 실시간 학습 시스템을 routeHandlers에 전달
     routeHandlers.setupRoutes(
         app,
         config,
@@ -482,7 +517,9 @@ function setupAllRoutes() {
         faceApiStatus,
         modules.personLearning,  // 👥 사람 학습 시스템
         handleImageMessageSafely,  // 🚨 안전한 이미지 처리 함수
-        modules.diarySystem  // 📖 일기장 시스템 추가
+        modules.diarySystem,  // 📖 일기장 시스템
+        modules.learningSystem,  // 🎓 실시간 학습 시스템 (NEW!)
+        handleLearningFromConversation  // 🎓 학습 처리 함수 (NEW!)
     );
 }
 
@@ -491,13 +528,14 @@ const PORT = process.env.PORT || 10000;
 
 app.listen(PORT, async () => {
     console.log(`\n==================================================`);
-    console.log(`  무쿠 v14.3 MODULAR + PersonLearning + DiarySystem`);
+    console.log(`  무쿠 v14.4 MODULAR + PersonLearning + DiarySystem + LearningSystem`);
     console.log(`  서버 시작 (포트 ${PORT})`);
     console.log(`  🌏 일본시간: ${getJapanTimeString()}`);
     console.log(`  ✨ GPT 모델: ${getCurrentModelSetting()}`);
     console.log(`  🕊️ 피앙새의 디지털 부활 프로젝트`);
     console.log(`  🗂️ 모듈 분리 완료: 4개 핵심 모듈 + 확장`);
-    console.log(`  📖 신규: 일기장 시스템 (누적 학습 내용 조회)`);
+    console.log(`  🎓 신규: 실시간 학습 시스템 (대화마다 자동 학습)`);
+    console.log(`  📖 기존: 일기장 시스템 (누적 학습 내용 조회)`);
     console.log(`  👥 기존: 투샷 + 장소 기억 시스템`);
     console.log(`  🚨 이미지 처리 안전성 강화 (벙어리 방지)`);
     console.log(`  💖 모든 기능 100% 유지 + 확장`);
@@ -508,7 +546,7 @@ app.listen(PORT, async () => {
     setupAllRoutes();
     
     setTimeout(async () => {
-        console.log(`🤖 백그라운드 face-api 초기화 (사진 분석 + 사람 학습 + 일기장 연동)...`);
+        console.log(`🤖 백그라운드 face-api 초기화 (사진 분석 + 사람 학습 + 일기장 + 실시간 학습 연동)...`);
         await loadFaceMatcherSafely();
         
         // 👥 Face-api 초기화 완료 후 사람 학습 시스템과 연동 확인
@@ -519,6 +557,11 @@ app.listen(PORT, async () => {
         // 📖 일기장 시스템 연동 확인
         if (global.mukuModules && global.mukuModules.diarySystem) {
             console.log(`📖 memoryManager ↔ diarySystem 연동 확인 완료`);
+        }
+        
+        // 🎓 실시간 학습 시스템 연동 확인 (NEW!)
+        if (global.mukuModules && global.mukuModules.learningSystem) {
+            console.log(`🎓 realTimeLearningSystem ↔ memoryManager ↔ ultimateContext 연동 확인 완료`);
         }
         
     }, 5000);
@@ -532,6 +575,132 @@ process.on('uncaughtException', (error) => {
 process.on('unhandledRejection', (error) => {
     console.error(`❌ 처리되지 않은 Promise 거부: ${error}`);
 });
+
+// =================== 🎓 실시간 학습 시스템 관련 유틸리티 함수들 (NEW!) ===================
+
+/**
+ * 🧠 실시간 학습 시스템 상태 확인
+ * @returns {Object} 학습 시스템 상태
+ */
+function getLearningSystemStatus() {
+    const modules = global.mukuModules || {};
+    
+    if (!modules.learningSystem) {
+        return {
+            available: false,
+            message: "실시간 학습 시스템이 비활성화되어 있습니다."
+        };
+    }
+    
+    try {
+        const status = modules.learningSystem.getSystemStatus();
+        return {
+            available: true,
+            status: status,
+            message: `학습 활성화: ${status.isActive}, 분석된 대화: ${status.stats.conversationsAnalyzed}개`
+        };
+    } catch (error) {
+        return {
+            available: false,
+            message: `실시간 학습 시스템 오류: ${error.message}`
+        };
+    }
+}
+
+/**
+ * 🎓 대화에서 실시간 학습 처리
+ * @param {string} userMessage - 사용자 메시지
+ * @param {string} mukuResponse - 무쿠 응답
+ * @param {Object} context - 대화 맥락 정보
+ * @returns {Object} 학습 결과
+ */
+async function handleLearningFromConversation(userMessage, mukuResponse, context = {}) {
+    const modules = global.mukuModules || {};
+    
+    if (!modules.learningSystem) {
+        console.log(`🎓 [LearningSystem] 시스템 비활성화 - 학습 건너뛰기`);
+        return null;
+    }
+    
+    try {
+        console.log(`🎓 [LearningSystem] 대화 학습 처리 시작...`);
+        
+        // 현재 감정 상태 정보 수집
+        const learningContext = {
+            ...context,
+            timestamp: new Date().toISOString(),
+            japanTime: getJapanTimeString()
+        };
+        
+        // 감정 컨텍스트 추가
+        if (modules.emotionalContextManager && modules.emotionalContextManager.getCurrentEmotionalState) {
+            try {
+                const emotionalState = modules.emotionalContextManager.getCurrentEmotionalState();
+                learningContext.currentEmotion = emotionalState.currentEmotion;
+                learningContext.emotionalIntensity = emotionalState.intensity;
+            } catch (emotionError) {
+                console.warn('🎓 감정 상태 조회 실패:', emotionError.message);
+            }
+        }
+        
+        // 삐짐 상태 추가
+        if (modules.sulkyManager && modules.sulkyManager.getSulkinessState) {
+            try {
+                const sulkyState = modules.sulkyManager.getSulkinessState();
+                learningContext.sulkyLevel = sulkyState.level;
+                learningContext.isSulky = sulkyState.isSulky;
+            } catch (sulkyError) {
+                console.warn('🎓 삐짐 상태 조회 실패:', sulkyError.message);
+            }
+        }
+        
+        const learningResult = await modules.learningSystem.learnFromConversation(userMessage, mukuResponse, learningContext);
+        
+        if (learningResult) {
+            console.log(`🎓 [LearningSystem] 학습 완료: ${learningResult.improvements.length}개 개선사항 적용`);
+            
+            // 학습 결과를 로그에 기록
+            if (modules.enhancedLogging) {
+                modules.enhancedLogging.logSystemOperation('실시간학습', `대화 학습 완료: ${learningResult.improvements.length}개 개선`);
+            }
+            
+            return learningResult;
+        }
+        
+        return null;
+        
+    } catch (error) {
+        console.error(`🎓 [LearningSystem] 대화 학습 실패: ${error.message}`);
+        return null;
+    }
+}
+
+/**
+ * 📊 학습 진행률 및 추천사항 조회
+ * @returns {Object} 학습 분석 결과
+ */
+function getLearningRecommendations() {
+    const modules = global.mukuModules || {};
+    
+    if (!modules.learningSystem) {
+        return null;
+    }
+    
+    try {
+        const recommendations = modules.learningSystem.getAdaptationRecommendations();
+        const status = modules.learningSystem.getSystemStatus();
+        
+        return {
+            learningProgress: status.learningData.successRate * 100,
+            userSatisfaction: status.learningData.userSatisfaction * 100,
+            recommendations: recommendations,
+            totalConversations: status.learningData.totalConversations
+        };
+    } catch (error) {
+        console.error(`🎓 [LearningSystem] 추천사항 조회 실패: ${error.message}`);
+        return null;
+    }
+}
 
 // =================== 📖 일기장 시스템 관련 유틸리티 함수들 ===================
 
@@ -719,7 +888,7 @@ async function learnPersonFromUserMessage(userInput, userId) {
     }
 }
 
-// 모듈 내보내기 (일기장 + 사람 학습 관련 함수들 + 안전한 이미지 처리 추가)
+// 모듈 내보내기 (실시간 학습 시스템 관련 함수들 추가)
 module.exports = {
     client,
     getCurrentModelSetting,
@@ -729,6 +898,10 @@ module.exports = {
     getJapanTimeString,
     loadFaceMatcherSafely,
     app,
+    // 🎓 실시간 학습 시스템 관련 함수들 (NEW!)
+    getLearningSystemStatus,
+    handleLearningFromConversation,
+    getLearningRecommendations,
     // 📖 일기장 시스템 관련 함수들
     getDiarySystemStatus,
     handleDiaryCommand,
