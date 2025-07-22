@@ -1,17 +1,17 @@
 // ============================================================================
-// muku-advancedInitializer.js v2.5 - 고급 시스템 초기화 (실시간 학습 시스템 추가) - 수정됨
+// muku-advancedInitializer.js v2.5 - 고급 시스템 초기화 (실시간 학습 시스템 수정 완료)
 // ✅ AI 고도화 + 통합 최적화 + 동기화 + 모니터링 시스템 담당
 // ✅ unifiedConflictManager 갈등 시스템 완전 통합
 // ✅ realtimeBehaviorSwitch 실시간 행동 변경 시스템 완전 통합
-// 🧠 realTimeLearningSystem 실시간 학습 시스템 완전 통합 (신규 추가!)
+// 🧠 realTimeLearningSystem 실시간 학습 시스템 완전 통합 (함수 호출 수정!)
 // 🔥 AI 응답 고도화 시스템 초기화
 // ⚙️ 통합 & 최적화 시스템 초기화
 // ⏰ enhancedLogging v3.0 자동 상태 갱신 시작
 // 📖 diarySystem 초기화 문제 해결
 // 💥 갈등 관리 시스템 완전 동기화 및 모니터링
 // 🔄 실시간 행동 스위치 시스템 완전 동기화 및 모니터링
-// 🧠 실시간 학습 시스템 완전 동기화 및 모니터링 - 🔥 모듈 연동 수정!
-// 🔧 문법 에러 완전 해결 
+// 🧠 실시간 학습 시스템 완전 동기화 및 모니터링 - 🔥 함수 호출 수정!
+// 🔧 mukuLearningSystem.getSystemStatus() 사용으로 변경
 // ⭐️ 갈등 시스템 함수명 수정 완료:
 // 💖 예쁜 로그 시스템 적용
 // ============================================================================
@@ -246,8 +246,8 @@ async function synchronizeEmotionalSystems(modules) {
                 console.log(`${colors.ai}🔗 [실시간학습 동기화] 모든 학습 대상 시스템들과 동기화 완료${colors.reset}`);
             }
             
-            // 🔥 학습 시스템 초기화 - 모든 모듈을 포함한 초기화
-            if (modules.realTimeLearningSystem.initialize) {
+            // 🔥 학습 시스템 초기화 - 모든 모듈을 포함한 초기화 (mukuLearningSystem 사용)
+            if (modules.realTimeLearningSystem.mukuLearningSystem && modules.realTimeLearningSystem.mukuLearningSystem.initialize) {
                 const initializeModules = {
                     memoryManager: modules.memoryManager,
                     ultimateContext: modules.ultimateContext,
@@ -255,8 +255,8 @@ async function synchronizeEmotionalSystems(modules) {
                     sulkyManager: modules.sulkyManager
                 };
                 
-                console.log(`${colors.ai}🔧 [실시간학습] 학습 시스템 초기화 시작 (모든 모듈 전달)...${colors.reset}`);
-                const initResult = await modules.realTimeLearningSystem.initialize(initializeModules);
+                console.log(`${colors.ai}🔧 [실시간학습] 학습 시스템 초기화 시작 (mukuLearningSystem 사용)...${colors.reset}`);
+                const initResult = await modules.realTimeLearningSystem.mukuLearningSystem.initialize(initializeModules);
                 
                 if (initResult) {
                     console.log(`${colors.ai}✅ [실시간학습] 학습 시스템 초기화 완료 - 모든 모듈 연동 성공!${colors.reset}`);
@@ -265,10 +265,14 @@ async function synchronizeEmotionalSystems(modules) {
                 }
             }
             
-            // 현재 학습 상태 확인
-            if (modules.realTimeLearningSystem.getLearningStatus) {
-                const learningStatus = modules.realTimeLearningSystem.getLearningStatus();
-                console.log(`${colors.ai}📊 학습 상태: 활성화 ${learningStatus.isActive ? '✅' : '❌'} + 총 학습: ${learningStatus.totalLearnings || 0}회 + 성공률: ${learningStatus.successRate || '100%'}${colors.reset}`);
+            // 🔥 현재 학습 상태 확인 (올바른 함수 호출)
+            if (modules.realTimeLearningSystem.mukuLearningSystem && modules.realTimeLearningSystem.mukuLearningSystem.getSystemStatus) {
+                const learningStatus = modules.realTimeLearningSystem.mukuLearningSystem.getSystemStatus();
+                const totalLearnings = learningStatus.stats?.conversationsAnalyzed || 0;
+                const successRate = learningStatus.learningData?.successRate || 1.0;
+                const successRatePercent = typeof successRate === 'number' ? `${(successRate * 100).toFixed(1)}%` : successRate;
+                
+                console.log(`${colors.ai}📊 학습 상태: 활성화 ${learningStatus.isActive ? '✅' : '❌'} + 총 학습: ${totalLearnings}회 + 성공률: ${successRatePercent}${colors.reset}`);
             }
             
             console.log(`${colors.ai}    ✅ 실시간 학습 시스템 동기화 완료 (자동 패턴 학습 + 감정 적응)${colors.reset}`);
@@ -533,14 +537,18 @@ function generateSystemStatusReport(modules, initResults) {
         console.log(`${colors.error}🔄 [행동스위치 특별확인] realtimeBehaviorSwitch 모듈이 null입니다! ❌${colors.reset}`);
     }
     
-    // ⭐️ 실시간 학습 시스템 특별 상태 확인 ⭐️
+    // ⭐️ 실시간 학습 시스템 특별 상태 확인 (🔥 수정된 부분!) ⭐️
     if (modules.realTimeLearningSystem) {
         console.log(`${colors.ai}🧠 [실시간학습 특별확인] realTimeLearningSystem 모듈 상태: 정상 로드됨 ✅${colors.reset}`);
         
         try {
-            if (modules.realTimeLearningSystem.getLearningStatus) {
-                const learningStatus = modules.realTimeLearningSystem.getLearningStatus();
-                console.log(`${colors.ai}📊 학습 상태: 활성화 ${learningStatus.isActive ? '✅' : '❌'} + 총 학습: ${learningStatus.totalLearnings || 0}회 + 성공률: ${learningStatus.successRate || '100%'}${colors.reset}`);
+            if (modules.realTimeLearningSystem.mukuLearningSystem && modules.realTimeLearningSystem.mukuLearningSystem.getSystemStatus) {
+                const learningStatus = modules.realTimeLearningSystem.mukuLearningSystem.getSystemStatus();
+                const totalLearnings = learningStatus.stats?.conversationsAnalyzed || 0;
+                const successRate = learningStatus.learningData?.successRate || 1.0;
+                const successRatePercent = typeof successRate === 'number' ? `${(successRate * 100).toFixed(1)}%` : successRate;
+                
+                console.log(`${colors.ai}📊 학습 상태: 활성화 ${learningStatus.isActive ? '✅' : '❌'} + 총 학습: ${totalLearnings}회 + 성공률: ${successRatePercent}${colors.reset}`);
             }
         } catch (error) {
             console.log(`${colors.error}🧠 [실시간학습 특별확인] 상태 확인 실패: ${error.message}${colors.reset}`);
