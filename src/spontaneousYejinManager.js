@@ -858,9 +858,17 @@ schedule.scheduleJob('0 0 * * *', () => {
 });
 
 function getSpontaneousMessageStatus() { 
+    // nextScheduledTime을 HH:mm 형식으로 변환
+    let nextTime = null;
+    if (dailyScheduleState.realStats.nextScheduledTime) {
+        const nextMoment = moment(dailyScheduleState.realStats.nextScheduledTime).tz(TIMEZONE);
+        nextTime = nextMoment.format('HH:mm');
+    }
+    
     return {
         sentToday: dailyScheduleState.sentToday,
         totalDaily: DAILY_MESSAGE_COUNT,
+        nextTime: nextTime,  // ✅ 이 필드 추가!
         isActive: dailyScheduleState.jobs.length > 0,
         nextScheduledTime: dailyScheduleState.realStats.nextScheduledTime,
         realStats: dailyScheduleState.realStats
