@@ -6,6 +6,7 @@
   "type": "commonjs",
   "scripts": {
     "start": "node index.js",
+    "build": "echo 'Build completed - No build step required'",
     "postinstall": "node setupModels.js"
   },
   "dependencies": {
