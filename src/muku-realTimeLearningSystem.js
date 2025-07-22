@@ -648,34 +648,65 @@ class MukuRealTimeLearningSystem {
         console.log(`${colors.success}📈 [통계] 분석된 대화: ${this.stats.conversationsAnalyzed}개, 학습된 패턴: ${this.stats.patternsLearned}개${colors.reset}`);
     }
 
-    // ================== 🎯 학습 추천 시스템 ==================
-    getAdaptationRecommendations() {
-        const recommendations = [];
-        
-        // 말투 패턴 분석
-        const speechPatterns = this.learningData.speechPatterns;
-        const worstPattern = Object.keys(speechPatterns).reduce((worst, current) => 
-            speechPatterns[current].success_rate < speechPatterns[worst].success_rate ? current : worst
-        );
-        
-        if (speechPatterns[worstPattern].success_rate < 0.7) {
-            recommendations.push({
-                type: 'speech_improvement',
-                pattern: worstPattern,
-                currentRate: speechPatterns[worstPattern].success_rate,
-                suggestion: `${worstPattern} 말투 패턴의 성공률이 낮습니다. 더 자연스러운 표현 필요.`
-          _rate < 0.7) {
-                recommendations.push({
-                    type: 'time_improvement',
-                    timeSlot: timeSlot,
-                    successRate: successRate,
-                    suggestion: `${timeSlot} 시간대의 응답 성공률이 낮습니다. 시간대 특성을 더 고려한 응답 필요.`
-                });
-            }
-        });
-        
-        return recommendations;
-    }
+애기야, 무쿠 코드의 바로 이 부분이 문제였어. 로그에서 봤던 SyntaxError가 여기서 발생하고 있었네.
+
+오류 원인
+코드에 문법적으로 맞지 않는 부분이 두 군데 있어.
+
+_rate < 0.7) {: 이 코드는 if나 다른 제어문 없이 단독으로 쓰여서 문법 오류가 나. 아마 다른 시간대 성공률을 체크하려던 코드의 일부가 잘못 들어간 것 같아.
+
+});: if 문이 끝난 뒤에 불필요한 );가 붙어있어. 이것도 문법 오류의 원인이야.
+
+수정된 코드
+아래 코드는 말투 패턴 분석과 시간대별 성공률 분석이 각각 독립적으로 실행되도록 수정한 거야. 기존 코드를 이걸로 바꾸면 돼.
+
+JavaScript
+
+// ================== 🎯 학습 추천 시스템 ==================
+getAdaptationRecommendations() {
+    const recommendations = [];
+
+    // ========================================================
+    // 1. 말투 패턴 분석 (이 부분은 원래 코드와 동일)
+    // ========================================================
+    const speechPatterns = this.learningData.speechPatterns;
+    if (Object.keys(speechPatterns).length > 0) {
+        const worstPattern = Object.keys(speechPatterns).reduce((worst, current) =>
+            speechPatterns[current].success_rate < speechPatterns[worst].success_rate ? current : worst
+        );
+
+        if (speechPatterns[worstPattern].success_rate < 0.7) {
+            recommendations.push({
+                type: 'speech_improvement',
+                pattern: worstPattern,
+                currentRate: speechPatterns[worstPattern].success_rate,
+                suggestion: `${worstPattern} 말투 패턴의 성공률이 낮습니다. 더 자연스러운 표현이 필요해요.`
+            });
+        }
+    }
+
+    // ========================================================
+    // 2. 시간대별 응답 성공률 분석 (오류 수정 및 로직 재구성)
+    // ========================================================
+    const timeAnalysis = this.learningData.timeAnalysis; // 'timeAnalysis'는 실제 데이터 구조에 맞게 변경해야 할 수도 있어.
+    for (const timeSlot in timeAnalysis) {
+        if (timeAnalysis.hasOwnProperty(timeSlot)) {
+            const successRate = timeAnalysis[timeSlot].success_rate;
+            // FIX: 'if' 조건문을 제대로 만들고, 성공률이 70% 미만일 때 추천을 추가하도록 수정
+            if (successRate < 0.7) {
+                recommendations.push({
+                    type: 'time_improvement',
+                    timeSlot: timeSlot,
+                    successRate: successRate,
+                    suggestion: `${timeSlot} 시간대의 응답 성공률이 낮아요. 시간대 특성을 더 고려한 응답이 필요해요.`
+                });
+            }
+        }
+    }
+    // FIX: 문법 오류를 일으키던 }); 를 삭제
+
+    return recommendations;
+}
 
     // ================== 📊 시스템 상태 조회 ==================
     getSystemStatus() {
