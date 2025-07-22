@@ -294,14 +294,14 @@ async function loadAllModules() {
                     console.log(`${colors.learning}🔍 [실시간학습] 사용 가능한 함수들:`, Object.keys(modules.realTimeLearningSystem));
                     
                     // 4단계: 필수 함수 확인
-                    const requiredFunctions = ['initialize', 'getLearningStatus', 'processRealtimeLearning', 'synchronizeWithSystems'];
+                    const requiredFunctions = ['MukuRealTimeLearningSystem', 'initializeMukuRealTimeLearning'];
                     let functionCheck = true;
                     
                     for (const func of requiredFunctions) {
-                        if (typeof modules.realTimeLearningSystem[func] === 'function') {
-                            console.log(`${colors.learning}✅ [실시간학습] ${func} 함수 확인 완료${colors.reset}`);
+                        if (typeof modules.realTimeLearningSystem[func] === 'function' || typeof modules.realTimeLearningSystem[func] === 'object') {
+                            console.log(`${colors.learning}✅ [실시간학습] ${func} 확인 완료${colors.reset}`);
                         } else {
-                            console.log(`${colors.error}❌ [실시간학습] ${func} 함수 없음!${colors.reset}`);
+                            console.log(`${colors.error}❌ [실시간학습] ${func} 없음!${colors.reset}`);
                             functionCheck = false;
                         }
                     }
