@@ -1,8 +1,10 @@
 // ============================================================================
-// 💖 무쿠 심플 로그 시스템 v7.0 - 깔끔한 콘솔 출력
+// 💖 무쿠 심플 로그 시스템 v7.1 - 짧은 구분선 + 실시간 학습 시스템 연동
 // ✅ JSON 객체 출력 제거, 한 줄 요약으로 변경
 // ✅ 복잡한 상태 정보를 간단하게 표시
 // ✅ 핵심 정보만 깔끔하게 출력
+// 🧠 실시간 학습 시스템 상태 표시 추가
+// ━━━ 구분선 짧게 변경 (LINE 최적화)
 // ============================================================================
 
 const fs = require('fs');
@@ -287,7 +289,7 @@ function getRandomYejinHeart(modules) {
     }
 }
 
-// ================== 💖 라인 전용 예쁜 상태 리포트 v7.0 (심플 버전) ==================
+// ================== 💖 라인 전용 예쁜 상태 리포트 v7.1 (짧은 구분선 + 실시간 학습) ==================
 async function generateLineStatusReport(modules) {
     let report = '';
     const currentTime = formatJapanTime('HH:mm');
@@ -296,9 +298,9 @@ async function generateLineStatusReport(modules) {
         report += `⏰ 현재시간: ${currentTime} (일본시간)\n\n`;
         
         // --- 감정 및 상태 섹션 ---
-        report += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+        report += `━━━\n`;
         report += `💖 예진이 현재 상태\n`;
-        report += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+        report += `━━━\n`;
         
         // 생리주기 및 감정상태
         try {
@@ -341,9 +343,9 @@ async function generateLineStatusReport(modules) {
         report += `☁️ [지금속마음] ${getRandomYejinHeart(modules)}\n\n`;
 
         // --- 기억 및 학습 섹션 ---
-        report += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+        report += `━━━\n`;
         report += `🧠 기억 및 학습 시스템\n`;
-        report += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+        report += `━━━\n`;
         
         // 기본 기억 관리
         try {
@@ -358,16 +360,25 @@ async function generateLineStatusReport(modules) {
             report += `🧠 [기억관리] 시스템 에러\n`;
         }
 
-        // 오늘 학습한 기억
+        // 🧠 실시간 학습 시스템 상태 (수정된 부분!)
         try {
-            if (modules.ultimateContext && modules.ultimateContext.getTodayLearnedCount) {
+            if (modules.realTimeLearningSystem && modules.realTimeLearningSystem.getLearningStatus) {
+                const learningStatus = modules.realTimeLearningSystem.getLearningStatus();
+                if (learningStatus.isActive) {
+                    const totalLearnings = learningStatus.totalLearnings || 0;
+                    const successRate = learningStatus.successRate || '100%';
+                    report += `📚 [실시간학습] 활성화 - 총 ${totalLearnings}회 학습 (성공률: ${successRate})\n`;
+                } else {
+                    report += `📚 [실시간학습] 시스템 비활성\n`;
+                }
+            } else if (modules.ultimateContext && modules.ultimateContext.getTodayLearnedCount) {
                 const todayLearned = modules.ultimateContext.getTodayLearnedCount();
                 report += `📚 [오늘학습] ${todayLearned}개의 새로운 기억\n`;
             } else {
-                report += `📚 [오늘학습] 학습 시스템 비활성\n`;
+                report += `📚 [학습시스템] 시스템 비활성\n`;
             }
         } catch (e) { 
-            report += `📚 [오늘학습] 정보 확인 불가\n`;
+            report += `📚 [학습시스템] 정보 확인 불가\n`;
         }
 
         // 사람 학습 통계
@@ -409,16 +420,15 @@ async function generateLineStatusReport(modules) {
         }
         
         // --- 스케줄러 및 자동 메시지 섹션 ---
-        report += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+        report += `━━━\n`;
         report += `🕐 스케줄러 및 자동 메시지\n`;
-        report += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+        report += `━━━\n`;
         
         // 담타 상태
         try {
             if (modules.scheduler && modules.scheduler.getDamtaStatus) {
                 const damta = modules.scheduler.getDamtaStatus();
                 report += `🚬 [담타상태] ${damta.sentToday}/${damta.totalDaily}건 완료\n`;
-                report += `   └ 다음 발송: ${damta.nextTime}\n`;
             } else {
                 report += `🚬 [담타상태] 스케줄러 비활성\n`;
             }
@@ -431,7 +441,6 @@ async function generateLineStatusReport(modules) {
             if (modules.spontaneousPhotoManager && modules.spontaneousPhotoManager.getStatus) {
                 const photo = modules.spontaneousPhotoManager.getStatus();
                 report += `📷 [사진전송] ${photo.sentToday}/${photo.dailyLimit}건 완료\n`;
-                report += `   └ 다음 발송: ${photo.nextSendTime}\n`;
             } else {
                 report += `📷 [사진전송] 시스템 비활성\n`;
             }
@@ -445,9 +454,7 @@ async function generateLineStatusReport(modules) {
                 const stats = modules.scheduler.getAllSchedulerStats();
                 const sent = stats.todayRealStats?.emotionalSent || 0;
                 const target = stats.todayRealStats?.emotionalTarget || 3;
-                const nextTime = stats.nextSchedules?.nextEmotional || '오늘 완료';
                 report += `🌸 [감성메시지] ${sent}/${target}건 완료\n`;
-                report += `   └ 다음 발송: ${nextTime}\n`;
             } else {
                 report += `🌸 [감성메시지] 시스템 비활성\n`;
             }
@@ -459,12 +466,7 @@ async function generateLineStatusReport(modules) {
         try {
             if (modules.spontaneousYejin && modules.spontaneousYejin.getSpontaneousMessageStatus) {
                 const yejin = modules.spontaneousYejin.getSpontaneousMessageStatus();
-                let nextTimeStr = '오늘 스케줄 완료';
-                if (yejin.nextScheduledTime) {
-                    nextTimeStr = moment(yejin.nextScheduledTime).tz(JAPAN_TIMEZONE).format('HH:mm');
-                }
-                report += `💌 [자발메시지] ${yejin.sentToday}/${yejin.totalDaily}건 완료\n`;
-                report += `   └ 다음 발송: ${nextTimeStr}\n\n`;
+                report += `💌 [자발메시지] ${yejin.sentToday}/${yejin.totalDaily}건 완료\n\n`;
             } else {
                 report += `💌 [자발메시지] 시스템 비활성\n\n`;
             }
@@ -473,9 +475,9 @@ async function generateLineStatusReport(modules) {
         }
 
         // --- 시스템 상태 섹션 ---
-        report += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+        report += `━━━\n`;
         report += `⚙️ 기타 시스템 상태\n`;
-        report += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+        report += `━━━\n`;
         report += `🔍 [얼굴인식] AI 시스템 준비 완료 (v6.0 통합 분석)\n`;
         report += `🌙 [새벽대화] 2-7시 단계별 반응 시스템 활성화\n`;
         report += `🎂 [생일감지] 예진이(3/17), 아저씨(12/5) 자동 감지\n`;
