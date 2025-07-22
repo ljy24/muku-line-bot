@@ -666,9 +666,7 @@ JavaScript
 getAdaptationRecommendations() {
     const recommendations = [];
 
-    // ========================================================
-    // 1. 말투 패턴 분석 (이 부분은 원래 코드와 동일)
-    // ========================================================
+    // 1. 말투 패턴 분석
     const speechPatterns = this.learningData.speechPatterns;
     if (Object.keys(speechPatterns).length > 0) {
         const worstPattern = Object.keys(speechPatterns).reduce((worst, current) =>
@@ -685,14 +683,11 @@ getAdaptationRecommendations() {
         }
     }
 
-    // ========================================================
-    // 2. 시간대별 응답 성공률 분석 (오류 수정 및 로직 재구성)
-    // ========================================================
-    const timeAnalysis = this.learningData.timeAnalysis; // 'timeAnalysis'는 실제 데이터 구조에 맞게 변경해야 할 수도 있어.
+    // 2. 시간대별 응답 성공률 분석
+    const timeAnalysis = this.learningData.conversationAnalytics.timeBasedPatterns;
     for (const timeSlot in timeAnalysis) {
         if (timeAnalysis.hasOwnProperty(timeSlot)) {
-            const successRate = timeAnalysis[timeSlot].success_rate;
-            // FIX: 'if' 조건문을 제대로 만들고, 성공률이 70% 미만일 때 추천을 추가하도록 수정
+            const successRate = timeAnalysis[timeSlot].successfulResponses / Math.max(timeAnalysis[timeSlot].totalResponses, 1);
             if (successRate < 0.7) {
                 recommendations.push({
                     type: 'time_improvement',
@@ -703,7 +698,6 @@ getAdaptationRecommendations() {
             }
         }
     }
-    // FIX: 문법 오류를 일으키던 }); 를 삭제
 
     return recommendations;
 }
