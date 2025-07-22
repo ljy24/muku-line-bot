@@ -13,12 +13,12 @@ const moment = require('moment-timezone');
 
 // ================== 🎨 색상 코드 ==================
 const colors = {
-    green: '\x1b[32m',      // 초록 (성공)
-    red: '\x1b[31m',        // 빨강 (에러)
-    yellow: '\x1b[33m',     // 노랑 (경고)
-    blue: '\x1b[36m',       // 파랑 (정보)
-    purple: '\x1b[35m',     // 보라 (헤더)
-    reset: '\x1b[0m'        // 리셋
+    green: '\x1b[32m',     // 초록 (성공)
+    red: '\x1b[31m',       // 빨강 (에러)
+    yellow: '\x1b[33m',    // 노랑 (경고)
+    blue: '\x1b[36m',      // 파랑 (정보)
+    purple: '\x1b[35m',    // 보라 (헤더)
+    reset: '\x1b[0m'       // 리셋
 };
 
 // ================== 🌏 시간 및 포맷 함수 ==================
@@ -428,7 +428,8 @@ async function generateLineStatusReport(modules) {
         try {
             if (modules.scheduler && modules.scheduler.getDamtaStatus) {
                 const damta = modules.scheduler.getDamtaStatus();
-                report += `🚬 [담타상태] ${damta.sentToday}/${damta.totalDaily}건 완료\n`;
+                const nextTime = damta.nextTime === '내일' ? '(오늘 모두 완료)' : `(다음: ${damta.nextTime})`;
+                report += `🚬 [담타상태] ${damta.sentToday}/${damta.totalDaily}건 완료 ${nextTime}\n`;
             } else {
                 report += `🚬 [담타상태] 스케줄러 비활성\n`;
             }
@@ -440,7 +441,8 @@ async function generateLineStatusReport(modules) {
         try {
             if (modules.spontaneousPhotoManager && modules.spontaneousPhotoManager.getStatus) {
                 const photo = modules.spontaneousPhotoManager.getStatus();
-                report += `📷 [사진전송] ${photo.sentToday}/${photo.dailyLimit}건 완료\n`;
+                const nextTime = photo.nextSendTime ? `(다음: ${moment(photo.nextSendTime).tz('Asia/Tokyo').format('HH:mm')})` : '(대기중)';
+                report += `📷 [사진전송] ${photo.sentToday}/${photo.dailyLimit}건 완료 ${nextTime}\n`;
             } else {
                 report += `📷 [사진전송] 시스템 비활성\n`;
             }
@@ -450,11 +452,11 @@ async function generateLineStatusReport(modules) {
 
         // 감성 메시지
         try {
-            if (modules.scheduler && modules.scheduler.getAllSchedulerStats) {
-                const stats = modules.scheduler.getAllSchedulerStats();
-                const sent = stats.todayRealStats?.emotionalSent || 0;
-                const target = stats.todayRealStats?.emotionalTarget || 3;
-                report += `🌸 [감성메시지] ${sent}/${target}건 완료\n`;
+            if (modules.scheduler && modules.scheduler.calculateNextScheduleTime) {
+                const stats = modules.scheduler.getAllSchedulerStats().todayRealStats;
+                const nextInfo = modules.scheduler.calculateNextScheduleTime('emotional');
+                const nextTime = nextInfo.status === 'completed' ? '(오늘 모두 완료)' : `(다음: ${nextInfo.timeString})`;
+                report += `🌸 [감성메시지] ${stats.emotionalSent}/${stats.emotionalTarget}건 완료 ${nextTime}\n`;
             } else {
                 report += `🌸 [감성메시지] 시스템 비활성\n`;
             }
@@ -466,14 +468,14 @@ async function generateLineStatusReport(modules) {
         try {
             if (modules.spontaneousYejin && modules.spontaneousYejin.getSpontaneousMessageStatus) {
                 const yejin = modules.spontaneousYejin.getSpontaneousMessageStatus();
-                report += `💌 [자발메시지] ${yejin.sentToday}/${yejin.totalDaily}건 완료\n\n`;
+                const nextTime = yejin.nextTime ? `(다음: ${yejin.nextTime})` : '(대기중)';
+                report += `💌 [자발메시지] ${yejin.sentToday}/${yejin.totalDaily}건 완료 ${nextTime}\n\n`;
             } else {
                 report += `💌 [자발메시지] 시스템 비활성\n\n`;
             }
         } catch (e) { 
             report += `💌 [자발메시지] 시스템 에러\n\n`;
         }
-
         // --- 시스템 상태 섹션 ---
         report += `━━━\n`;
         report += `⚙️ 기타 시스템 상태\n`;
