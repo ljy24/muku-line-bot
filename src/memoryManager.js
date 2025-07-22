@@ -4,6 +4,7 @@
 // ✅ 기억 데이터가 없으면 자동으로 기본 데이터를 생성합니다.
 // ✅ 에러 발생시에도 기본 데이터로 안전하게 폴백됩니다.
 // 💾 완전 영구 저장: 서버 재시작/재배포시에도 절대 사라지지 않음!
+// 🎓 실시간 학습 시스템 연동 추가 (v2.3)
 
 const fs = require('fs').promises;
 const path = require('path');
@@ -478,6 +479,76 @@ async function forceReloadMemories() {
     }
 }
 
+// ================== 🎓 실시간 학습 시스템 연동 함수 (NEW!) ==================
+
+/**
+ * 🎓 실시간 학습에서 동적 기억 추가 (muku-realTimeLearningSystem.js 연동용)
+ * @param {Object} memoryEntry - 학습된 기억 항목
+ * @param {string} memoryEntry.type - 기억 타입 (learned_pattern, emotional_response 등)
+ * @param {string} memoryEntry.content - 기억 내용
+ * @param {number} memoryEntry.timestamp - 생성 시간
+ * @param {number} memoryEntry.quality - 품질 점수 (0-1)
+ */
+async function addDynamicMemory(memoryEntry) {
+    try {
+        console.log(`[MemoryManager] 🎓 실시간 학습 기억 추가: "${memoryEntry.content?.substring(0, 30) || '알 수 없음'}..."`);
+        
+        // 안전한 기본값 설정
+        const safeMemoryEntry = {
+            type: memoryEntry.type || 'learned_pattern',
+            content: memoryEntry.content || '학습된 패턴',
+            timestamp: memoryEntry.timestamp || Date.now(),
+            quality: memoryEntry.quality || 0.7
+        };
+        
+        // SQLite 데이터베이스에 저장 (기존 방식)
+        if (db) {
+            const keywords = `realtime_learning,${safeMemoryEntry.type},quality_${Math.floor(safeMemoryEntry.quality * 10)}`;
+            const memoryId = await saveMemory(
+                safeMemoryEntry.type,
+                safeMemoryEntry.content,
+                safeMemoryEntry.timestamp,
+                keywords
+            );
+            
+            console.log(`[MemoryManager] ✅ 실시간 학습 기억 SQLite에 저장 완료 (ID: ${memoryId})`);
+        }
+        
+        // 품질이 높은 기억은 고정 기억에 추가 고려 (0.8 이상)
+        if (safeMemoryEntry.quality >= 0.8) {
+            // 중복 체크
+            const isDuplicate = fixedMemoriesDB.fixedMemories.some(memory => 
+                memory.includes(safeMemoryEntry.content.substring(0, 20))
+            );
+            
+            if (!isDuplicate) {
+                // 고품질 학습 기억을 고정 기억에 추가
+                const learningMemory = `[학습] ${safeMemoryEntry.content} (품질: ${safeMemoryEntry.quality})`;
+                fixedMemoriesDB.fixedMemories.push(learningMemory);
+                
+                // 파일에도 업데이트
+                try {
+                    await fs.writeFile(
+                        FIXED_MEMORIES_FILE, 
+                        JSON.stringify(fixedMemoriesDB.fixedMemories, null, 2), 
+                        'utf8'
+                    );
+                    console.log(`[MemoryManager] 🌟 고품질 학습 기억을 고정 기억에 추가 완료 (💾 /data/)`);
+                } catch (fileError) {
+                    console.error(`[MemoryManager] ⚠️ 고정 기억 파일 업데이트 실패: ${fileError.message}`);
+                }
+            }
+        }
+        
+        console.log(`[MemoryManager] 🎓 실시간 학습 기억 처리 완료: ${safeMemoryEntry.type} (품질: ${safeMemoryEntry.quality})`);
+        return true;
+        
+    } catch (error) {
+        console.error(`[MemoryManager] ❌ 실시간 학습 기억 추가 실패: ${error.message}`);
+        return false;
+    }
+}
+
 // ================== 기존 함수들 (그대로 유지) ==================
 
 /**
@@ -582,6 +653,9 @@ module.exports = {
     getMemoryStatus,
     getFixedMemoryCount,
     forceReloadMemories,
+    
+    // 🎓 실시간 학습 연동 함수 (NEW!)
+    addDynamicMemory,
     
     // 📦 데이터 객체
     fixedMemoriesDB,
