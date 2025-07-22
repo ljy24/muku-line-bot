@@ -13,6 +13,7 @@
 //    - ❌ getConflictStatus → ✅ getMukuConflictSystemStatus
 //    - ❌ triggerConflict → ✅ processMukuMessageForConflict
 //    - ❌ resolveConflict → ✅ recordMukuReconciliation
+// 🎓 실시간 학습 시스템 로딩 오류 처리 강화 (NEW!)
 // ============================================================================
 
 const path = require('path');
@@ -284,9 +285,12 @@ async function loadAllModules() {
                 const diskMountExists = fs.existsSync('/data');
                 console.log(`${colors.mount}💾 [실시간학습] 디스크 마운트 경로 확인: ${diskMountExists ? '✅ 존재' : '❌ 없음'}${colors.reset}`);
                 
-                // 2단계: 모듈 require
+                // 2단계: 모듈 require (강화된 오류 처리)
                 delete require.cache[learningModulePath]; // 캐시 삭제로 깨끗하게 로드
+                
+                console.log(`${colors.learning}🔄 [실시간학습] require 시도...${colors.reset}`);
                 modules.realTimeLearningSystem = require('./muku-realTimeLearningSystem');
+                console.log(`${colors.learning}✅ [실시간학습] require 성공!${colors.reset}`);
                 
                 // 3단계: 모듈 검증
                 if (modules.realTimeLearningSystem) {
@@ -298,12 +302,18 @@ async function loadAllModules() {
                     let functionCheck = true;
                     
                     for (const func of requiredFunctions) {
-                        if (typeof modules.realTimeLearningSystem[func] === 'function' || typeof modules.realTimeLearningSystem[func] === 'object') {
-                            console.log(`${colors.learning}✅ [실시간학습] ${func} 확인 완료${colors.reset}`);
+                        if (typeof modules.realTimeLearningSystem[func] === 'function' || 
+                            typeof modules.realTimeLearningSystem[func] === 'object') {
+                            console.log(`${colors.learning}✅ [실시간학습] ${func} 확인 완료 (타입: ${typeof modules.realTimeLearningSystem[func]})${colors.reset}`);
                         } else {
-                            console.log(`${colors.error}❌ [실시간학습] ${func} 없음!${colors.reset}`);
+                            console.log(`${colors.error}❌ [실시간학습] ${func} 없음! (사용가능: ${Object.keys(modules.realTimeLearningSystem).join(', ')})${colors.reset}`);
                             functionCheck = false;
                         }
+                    }
+                    
+                    // initializeMukuLearning 함수 특별 확인
+                    if (modules.realTimeLearningSystem.initializeMukuLearning) {
+                        console.log(`${colors.learning}🎯 [실시간학습] initializeMukuLearning 함수 확인 완료 (타입: ${typeof modules.realTimeLearningSystem.initializeMukuLearning})${colors.reset}`);
                     }
                     
                     if (functionCheck) {
@@ -321,7 +331,13 @@ async function loadAllModules() {
             
         } catch (error) {
             console.log(`${colors.error}❌ [11/27] realTimeLearningSystem 로드 실패: ${error.message}${colors.reset}`);
-            console.log(`${colors.error}🔧 [실시간학습] 상세 에러:`, error.stack);
+            console.log(`${colors.error}🔧 [실시간학습] 상세 에러:`, error.stack?.split('\n')[0] || '스택 정보 없음');
+            
+            // 파일 구문 오류인지 확인
+            if (error.message.includes('Unexpected token')) {
+                console.log(`${colors.error}💡 [실시간학습] 구문 오류 감지! 파일 문법을 확인해주세요.${colors.reset}`);
+            }
+            
             modules.realTimeLearningSystem = null;
         }
 
@@ -335,11 +351,11 @@ async function loadAllModules() {
         }
 
         try {
-            modules.spontaneousPhotoManager = require('./spontaneousPhotoManager')
+            modules.spontaneousPhotoManager = require('./spontaneousPhotoManager');
             console.log(`${colors.system}✅ [13/27] spontaneousPhotoManager: 자발적 사진 전송${colors.reset}`);
         } catch (error) {
             console.log(`${colors.error}❌ [13/27] spontaneousPhotoManager 로드 실패: ${error.message}${colors.reset}`);
-            modules.spontaneousPhoto = null;
+            modules.spontaneousPhotoManager = null;
         }
 
         try {
