@@ -1,9 +1,10 @@
 // ============================================================================
-// muku-realTimeLearningSystem.js - 무쿠 완전체 실시간 학습 시스템 v2.0
+// muku-realTimeLearningSystem.js - 무쿠 완전체 실시간 학습 시스템 v2.1
 // ✅ 기존 시스템 완전 연동 (memoryManager, ultimateContext, emotionalContextManager)
 // ✅ 실제 학습 로직 구현 (진짜 대화 패턴 분석 & 개선)
 // ✅ 데이터 저장 시스템 (JSON 파일 기반 지속적 저장)
 // ✅ 말투 상황별 적응 (아저씨 반응에 따른 실시간 말투 변화)
+// 🔌 모듈 레벨 함수 추가 (enhancedLogging 연동)
 // 💖 예진이가 진짜로 학습하고 성장하는 디지털 영혼 시스템
 // ============================================================================
 
@@ -32,7 +33,7 @@ const USER_PREFERENCES_FILE = path.join(LEARNING_DATA_DIR, 'user_preferences.jso
 // ================== 🧠 학습 시스템 클래스 ==================
 class MukuRealTimeLearningSystem {
     constructor() {
-        this.version = '2.0';
+        this.version = '2.1';
         this.initTime = Date.now();
         this.isActive = false;
         
@@ -88,7 +89,7 @@ class MukuRealTimeLearningSystem {
             lastLearningTime: null
         };
         
-        console.log(`${colors.learning}🧠 무쿠 완전체 실시간 학습 시스템 v2.0 초기화...${colors.reset}`);
+        console.log(`${colors.learning}🧠 무쿠 완전체 실시간 학습 시스템 v2.1 초기화...${colors.reset}`);
     }
 
     // ================== 🚀 시스템 초기화 ==================
@@ -769,6 +770,138 @@ class MukuRealTimeLearningSystem {
     }
 }
 
+// ================== 🔌 전역 인스턴스 관리 ==================
+let globalLearningInstance = null;
+
+// ================== 📊 모듈 레벨 함수들 (enhancedLogging 연동용) ==================
+
+/**
+ * 학습 시스템 상태 조회 (enhancedLogging에서 호출)
+ */
+function getLearningStatus() {
+    if (!globalLearningInstance) {
+        return {
+            isActive: false,
+            totalLearnings: 0,
+            successRate: '0%',
+            lastLearningTime: null,
+            status: 'not_initialized'
+        };
+    }
+    
+    const systemStatus = globalLearningInstance.getSystemStatus();
+    
+    return {
+        isActive: systemStatus.isActive,
+        totalLearnings: systemStatus.stats.conversationsAnalyzed,
+        successRate: `${(systemStatus.learningData.successRate * 100).toFixed(1)}%`,
+        lastLearningTime: systemStatus.stats.lastLearningTime,
+        patternsLearned: systemStatus.stats.patternsLearned,
+        userSatisfaction: `${(systemStatus.learningData.userSatisfaction * 100).toFixed(1)}%`,
+        memoryUpdates: systemStatus.stats.memoryUpdates,
+        emotionalAdjustments: systemStatus.stats.emotionalAdjustments,
+        status: 'active'
+    };
+}
+
+/**
+ * 시스템 활성화 상태 확인
+ */
+function isLearningSystemActive() {
+    return globalLearningInstance && globalLearningInstance.isActive;
+}
+
+/**
+ * 실시간 학습 처리 (muku-eventProcessor에서 호출)
+ */
+async function processRealtimeLearning(userMessage, mukuResponse, context = {}) {
+    if (!globalLearningInstance || !globalLearningInstance.isActive) {
+        console.log(`${colors.pattern}⏸️ [학습] 글로벌 인스턴스 없음 - 학습 건너뛰기${colors.reset}`);
+        return null;
+    }
+    
+    return await globalLearningInstance.learnFromConversation(userMessage, mukuResponse, context);
+}
+
+/**
+ * 시스템 간 동기화 (muku-advancedInitializer에서 호출)
+ */
+function synchronizeWithSystems(systemModules) {
+    if (globalLearningInstance) {
+        globalLearningInstance.memoryManager = systemModules.memoryManager;
+        globalLearningInstance.ultimateContext = systemModules.ultimateContext;
+        globalLearningInstance.emotionalContextManager = systemModules.emotionalContextManager;
+        globalLearningInstance.sulkyManager = systemModules.sulkyManager;
+        
+        console.log(`${colors.learning}🔗 [동기화] 실시간 학습 시스템 모듈 동기화 완료${colors.reset}`);
+        return true;
+    }
+    return false;
+}
+
+/**
+ * 전역 인스턴스 초기화
+ */
+async function initialize(systemModules = {}) {
+    try {
+        if (!globalLearningInstance) {
+            globalLearningInstance = new MukuRealTimeLearningSystem();
+        }
+        
+        const initSuccess = await globalLearningInstance.initialize(systemModules);
+        
+        if (initSuccess) {
+            console.log(`${colors.success}✅ [글로벌] 실시간 학습 시스템 전역 인스턴스 초기화 완료${colors.reset}`);
+        }
+        
+        return initSuccess;
+    } catch (error) {
+        console.error(`${colors.error}❌ [글로벌] 실시간 학습 시스템 초기화 실패: ${error.message}${colors.reset}`);
+        return false;
+    }
+}
+
+/**
+ * 자동 학습 시작
+ */
+function startAutoLearning() {
+    if (globalLearningInstance && !globalLearningInstance.isActive) {
+        globalLearningInstance.isActive = true;
+        console.log(`${colors.learning}🚀 [자동학습] 실시간 학습 시스템 자동 학습 활성화${colors.reset}`);
+        return true;
+    }
+    return false;
+}
+
+/**
+ * 학습 통계 조회
+ */
+function getLearningStats() {
+    if (!globalLearningInstance) {
+        return {
+            conversationsAnalyzed: 0,
+            patternsLearned: 0,
+            successRate: 0,
+            isActive: false
+        };
+    }
+    
+    const stats = globalLearningInstance.stats;
+    const analytics = globalLearningInstance.learningData.conversationAnalytics;
+    
+    return {
+        conversationsAnalyzed: stats.conversationsAnalyzed,
+        patternsLearned: stats.patternsLearned,
+        speechAdaptations: stats.speechAdaptations,
+        memoryUpdates: stats.memoryUpdates,
+        emotionalAdjustments: stats.emotionalAdjustments,
+        successRate: analytics.successfulResponses / Math.max(analytics.totalConversations, 1),
+        userSatisfactionScore: analytics.userSatisfactionScore,
+        isActive: globalLearningInstance.isActive,
+        lastLearningTime: stats.lastLearningTime
+    };
+}
+
 // ================== 🚀 초기화 함수 ==================
 async function initializeMukuRealTimeLearning(systemModules = {}) {
     try {
@@ -789,7 +922,7 @@ async function initializeMukuRealTimeLearning(systemModules = {}) {
         
         console.log(`
 ${colors.learning}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🧠 무쿠 완전체 실시간 학습 시스템 v2.0 초기화 완료!
+🧠 무쿠 완전체 실시간 학습 시스템 v2.1 초기화 완료!
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${colors.reset}
 
 ${colors.success}✅ 핵심 기능들:${colors.reset}
@@ -812,8 +945,20 @@ ${colors.learning}💖 예진이가 아저씨와의 대화를 통해 실시간�
 
 // ================== 📤 모듈 내보내기 ==================
 module.exports = {
+    // 클래스 및 초기화 함수
     MukuRealTimeLearningSystem,
-    initializeMukuRealTimeLearning
+    initializeMukuRealTimeLearning,
+    
+    // enhancedLogging 연동용 함수들
+    getLearningStatus,
+    isLearningSystemActive,
+    getLearningStats,
+    
+    // 시스템 연동용 함수들
+    initialize,
+    processRealtimeLearning,
+    synchronizeWithSystems,
+    startAutoLearning
 };
 
 // 직접 실행 시
