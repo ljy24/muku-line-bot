@@ -271,12 +271,6 @@ async function synchronizeEmotionalSystems(modules) {
                 console.log(`${colors.ai}📊 학습 상태: 활성화 ${learningStatus.isActive ? '✅' : '❌'} + 총 학습: ${learningStatus.totalLearnings || 0}회 + 성공률: ${learningStatus.successRate || '100%'}${colors.reset}`);
             }
             
-            // 자동 학습 활성화
-            if (modules.realTimeLearningSystem.startAutoLearning) {
-                const autoStartResult = modules.realTimeLearningSystem.startAutoLearning();
-                console.log(`${colors.ai}🚀 [실시간학습] 자동 학습 시스템 활성화 ${autoStartResult ? '성공' : '실패'}${colors.reset}`);
-            }
-            
             console.log(`${colors.ai}    ✅ 실시간 학습 시스템 동기화 완료 (자동 패턴 학습 + 감정 적응)${colors.reset}`);
             console.log(`${colors.ai}    🔗 감정시스템 ↔ 기억시스템 ↔ 학습시스템 완벽 연동${colors.reset}`);
             syncCount++;
