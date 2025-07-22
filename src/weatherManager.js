@@ -39,7 +39,7 @@ const WEATHER_BASE_URL = 'https://api.openweathermap.org/data/2.5';
 let lineClient = null;
 try {
     lineClient = new Client({
-        channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN
+        channelAccessToken: process.env.LINE_ACCESS_TOKEN
     });
     console.log('✅ [날씨시스템] LINE 클라이언트 초기화 완료');
 } catch (error) {
@@ -311,7 +311,7 @@ async function sendWeatherMessage(message) {
             return false;
         }
 
-        const userId = process.env.LINE_USER_ID;
+        const userId = process.env.LINE_TARGET_USER_ID;
         if (!userId) {
             console.error('❌ [날씨시스템] LINE_USER_ID 환경변수 없음');
             return false;
