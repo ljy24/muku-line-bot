@@ -1,13 +1,14 @@
 // ============================================================================
-// muku-eventProcessor.js - 무쿠 이벤트 처리 전용 모듈 + 실시간 학습 완전 연동
+// muku-eventProcessor.js - 무쿠 이벤트 처리 전용 모듈 + 실시간 학습 완전 연동 (수정)
 // ✅ 메시지 처리, 이미지 처리, 명령어 처리 로직 분리
 // 🔍 얼굴 인식, 새벽 대화, 생일 감지 등 모든 이벤트 처리
 // 🧠 실시간 학습 시스템 연동 - 대화 패턴 학습 및 개인화
-// 🎓 대화 완료 후 자동 학습 호출 - 매번 대화마다 학습 진행 ⭐️ NEW!
+// 🎓 대화 완료 후 자동 학습 호출 - 매번 대화마다 학습 진행 ⭐️ 수정됨!
 // 🎭 실시간 행동 스위치 시스템 완전 연동 - 모든 응답에 행동 모드 적용
 // 🌏 일본시간(JST) 기준 시간 처리
 // 💖 예진이의 감정과 기억을 더욱 생생하게 재현
 // ⭐️ 행동 스위치 명령어 인식 100% 보장
+// ⭐️ index.js의 handleLearningFromConversation() 함수와 연동 통일
 // ============================================================================
 
 // ================== 🎨 색상 정의 ==================
@@ -33,7 +34,19 @@ function getJapanHour() {
     return getJapanTime().getHours();
 }
 
-// ================== 🎓 실시간 학습 시스템 처리 함수 (NEW!) ==================
+function getJapanTimeString() {
+    return getJapanTime().toLocaleString('ja-JP', {
+        timeZone: 'Asia/Tokyo',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+    });
+}
+
+// ================== 🎓 실시간 학습 시스템 처리 함수 (index.js 연동 방식으로 수정!) ==================
 async function processRealTimeLearning(userMessage, mukuResponse, context, modules, enhancedLogging) {
     try {
         if (!modules.learningSystem) {
@@ -45,15 +58,16 @@ async function processRealTimeLearning(userMessage, mukuResponse, context, modul
         console.log(`${colors.realtime}    📝 사용자: "${userMessage}"${colors.reset}`);
         console.log(`${colors.realtime}    💬 무쿠: "${mukuResponse}"${colors.reset}`);
 
-        // 학습 컨텍스트 구성
+        // ⭐️ index.js의 handleLearningFromConversation() 방식으로 통일 ⭐️
+        // 학습 컨텍스트 구성 (index.js 스타일)
         const learningContext = {
             ...context,
             timestamp: new Date().toISOString(),
-            japanTime: getJapanTime().toLocaleString('ja-JP'),
+            japanTime: getJapanTimeString(), // index.js와 동일한 형식
             japanHour: getJapanHour()
         };
 
-        // 현재 감정 상태 추가
+        // 현재 감정 상태 추가 (index.js와 동일한 방식)
         if (modules.emotionalContextManager && modules.emotionalContextManager.getCurrentEmotionalState) {
             try {
                 const emotionalState = modules.emotionalContextManager.getCurrentEmotionalState();
@@ -65,7 +79,7 @@ async function processRealTimeLearning(userMessage, mukuResponse, context, modul
             }
         }
 
-        // 삐짐 상태 추가
+        // 삐짐 상태 추가 (index.js와 동일한 방식)
         if (modules.sulkyManager && modules.sulkyManager.getSulkinessState) {
             try {
                 const sulkyState = modules.sulkyManager.getSulkinessState();
@@ -90,7 +104,7 @@ async function processRealTimeLearning(userMessage, mukuResponse, context, modul
             }
         }
 
-        // 실시간 학습 실행
+        // ⭐️⭐️ 실시간 학습 실행 (index.js의 방식과 완전 동일!) ⭐️⭐️
         const learningResult = await modules.learningSystem.learnFromConversation(userMessage, mukuResponse, learningContext);
 
         if (learningResult) {
@@ -101,7 +115,7 @@ async function processRealTimeLearning(userMessage, mukuResponse, context, modul
                 console.log(`${colors.realtime}    ✨ ${improvement.type}: ${improvement.reason || improvement.action || '개선됨'}${colors.reset}`);
             });
 
-            // 학습 결과를 enhancedLogging에 기록
+            // 학습 결과를 enhancedLogging에 기록 (index.js 방식)
             if (enhancedLogging && enhancedLogging.logSystemOperation) {
                 enhancedLogging.logSystemOperation('실시간학습완료', 
                     `${learningResult.improvements.length}개 개선: ${learningResult.improvements.map(imp => imp.type).join(', ')}`
@@ -117,7 +131,7 @@ async function processRealTimeLearning(userMessage, mukuResponse, context, modul
     } catch (error) {
         console.error(`${colors.error}❌ [실시간학습] 학습 처리 실패: ${error.message}${colors.reset}`);
         
-        // 학습 에러도 로깅
+        // 학습 에러도 로깅 (index.js 방식)
         if (enhancedLogging && enhancedLogging.logSystemOperation) {
             enhancedLogging.logSystemOperation('실시간학습실패', `${error.message}`);
         }
