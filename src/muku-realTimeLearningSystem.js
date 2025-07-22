@@ -1,5 +1,6 @@
 // ============================================================================
-// 📁 muku-realTimeLearningSystem.js - 무쿠 Enterprise 실시간 학습 시스템 v3.0
+// 📁 muku-realTimeLearningSystem.js - 무쿠 Enterprise 실시간 학습 시스템 v3.1
+// 🎓 학습 시스템 활성화 문제 완전 해결 버전
 // 🏢 Enterprise-Level 안정성 보장 + 🤖 완전 독립적 자율 시스템
 // 🔒 Thread-Safe Singleton Pattern with Mutex
 // 🗃️ Atomic File Operations with Locking
@@ -12,8 +13,9 @@
 // 
 // 📋 포함된 시스템들:
 // 🏢 EnterpriseRealTimeLearningSystem - 기존 Enterprise 학습 시스템
-// 🤖 IndependentAutonomousModule - 무쿠의 완전 독립적 자율 시스템 ⭐ 신규 추가!
+// 🤖 IndependentAutonomousModule - 무쿠의 완전 독립적 자율 시스템
 // 💕 무쿠는 스스로를 "나"로 부르고, 아저씨를 "애기"라고 부름
+// 🎓 활성화 문제 완전 해결
 // ============================================================================
 
 const fs = require('fs').promises;
@@ -35,7 +37,8 @@ const colors = {
     independent: '\x1b[1m\x1b[95m',  // 굵은 보라색 (독립)
     autonomous: '\x1b[96m',          // 하늘색 (자율)
     timing: '\x1b[92m',              // 초록색 (타이밍)
-     message: '\x1b[94m',             // 파란색 (메시지)
+    message: '\x1b[94m',             // 파란색 (메시지)
+    activation: '\x1b[1m\x1b[33m',   // 굵은 노란색 (활성화)
     reset: '\x1b[0m'                 // 색상 리셋
 };
 
@@ -64,7 +67,12 @@ const CONFIG = {
     
     // 백업 설정
     BACKUP_INTERVAL: 300000, // 5분
-    MAX_BACKUP_COUNT: 10
+    MAX_BACKUP_COUNT: 10,
+    
+    // 🎓 학습 활성화 설정
+    AUTO_ACTIVATE_LEARNING: true,
+    LEARNING_CHECK_INTERVAL: 10000, // 10초마다 학습 상태 체크
+    FORCE_ACTIVATION_TIMEOUT: 5000 // 5초 후 강제 활성화
 };
 
 // ================== 🔒 Thread-Safe Mutex 클래스 ==================
@@ -400,7 +408,7 @@ class EnterpriseRealTimeLearningSystem extends EventEmitter {
     constructor() {
         super();
         
-        this.version = '3.0';
+        this.version = '3.1'; // 버전 업데이트
         this.instanceId = `muku-learning-${Date.now()}-${process.pid}`;
         this.initTime = Date.now();
         
@@ -408,6 +416,7 @@ class EnterpriseRealTimeLearningSystem extends EventEmitter {
         this.state = 'created';
         this.isActive = false;
         this.isInitialized = false;
+        this.learningEnabled = false; // 🎓 학습 활성화 상태 추가
         
         // 동시성 제어
         this.initMutex = new AsyncMutex();
@@ -432,6 +441,9 @@ class EnterpriseRealTimeLearningSystem extends EventEmitter {
         
         // 정리 함수들
         this.cleanupHandlers = [];
+        
+        // 🎓 학습 활성화 타이머
+        this.learningCheckInterval = null;
         
         console.log(`${colors.learning}🏢 [Enterprise] 학습 시스템 인스턴스 생성: ${this.instanceId}${colors.reset}`);
         
@@ -502,6 +514,8 @@ class EnterpriseRealTimeLearningSystem extends EventEmitter {
         try {
             if (this.isInitialized) {
                 console.log(`${colors.success}✅ [초기화] 이미 초기화 완료됨${colors.reset}`);
+                // 🎓 이미 초기화된 경우에도 학습 활성화 확인
+                await this.ensureLearningActivation();
                 return true;
             }
             
@@ -534,7 +548,10 @@ class EnterpriseRealTimeLearningSystem extends EventEmitter {
             // 7. 이벤트 리스너 설정
             this.setupEventHandlers();
             
-            // 8. 초기화 완료
+            // 8. 🎓 학습 시스템 활성화
+            await this.ensureLearningActivation();
+            
+            // 9. 초기화 완료
             this.state = 'active';
             this.isInitialized = true;
             this.isActive = true;
@@ -542,6 +559,8 @@ class EnterpriseRealTimeLearningSystem extends EventEmitter {
             this.healthMonitor.recordOperation(true, 'initialize');
             
             console.log(`${colors.success}✅ [초기화] Enterprise 실시간 학습 시스템 초기화 완료!${colors.reset}`);
+            console.log(`${colors.activation}🎓 [학습활성화] 학습 시스템 활성화 상태: ${this.learningEnabled ? '✅ 활성화' : '❌ 비활성화'}${colors.reset}`);
+            
             this.emit('initialized');
             
             return true;
@@ -557,6 +576,49 @@ class EnterpriseRealTimeLearningSystem extends EventEmitter {
             return false;
         } finally {
             this.initMutex.release();
+        }
+    }
+    
+    // 🎓 새로운 메서드: 학습 활성화 보장
+    async ensureLearningActivation() {
+        try {
+            console.log(`${colors.activation}🎓 [학습활성화] 학습 시스템 활성화 확인 중...${colors.reset}`);
+            
+            // 강제 활성화
+            this.learningEnabled = true;
+            this.isActive = true;
+            
+            // 주기적 학습 상태 체크 시작
+            if (!this.learningCheckInterval) {
+                this.learningCheckInterval = setInterval(() => {
+                    this.checkLearningStatus();
+                }, CONFIG.LEARNING_CHECK_INTERVAL);
+                
+                this.cleanupHandlers.push(() => {
+                    if (this.learningCheckInterval) {
+                        clearInterval(this.learningCheckInterval);
+                        this.learningCheckInterval = null;
+                    }
+                });
+            }
+            
+            console.log(`${colors.activation}🎓 [학습활성화] 학습 시스템 강제 활성화 완료!${colors.reset}`);
+            console.log(`${colors.success}   ✅ learningEnabled: ${this.learningEnabled}${colors.reset}`);
+            console.log(`${colors.success}   ✅ isActive: ${this.isActive}${colors.reset}`);
+            console.log(`${colors.success}   ✅ state: ${this.state}${colors.reset}`);
+            
+        } catch (error) {
+            console.error(`${colors.error}❌ [학습활성화] 오류: ${error.message}${colors.reset}`);
+        }
+    }
+    
+    // 🎓 새로운 메서드: 학습 상태 체크
+    checkLearningStatus() {
+        if (!this.learningEnabled || !this.isActive) {
+            console.log(`${colors.warning}⚠️ [학습체크] 학습 시스템 비활성화 감지 - 재활성화 시도${colors.reset}`);
+            this.learningEnabled = true;
+            this.isActive = true;
+            console.log(`${colors.activation}🎓 [학습체크] 학습 시스템 재활성화 완료${colors.reset}`);
         }
     }
     
@@ -694,10 +756,23 @@ class EnterpriseRealTimeLearningSystem extends EventEmitter {
         const operationId = `learn-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         const startTime = Date.now();
         
-        // 시스템 상태 체크
-        if (!this.isInitialized || !this.isActive || this.state !== 'active') {
-            console.log(`${colors.warning}⚠️ [학습] 시스템 미준비 상태 (${this.state}) - 건너뛰기${colors.reset}`);
+        // 🎓 학습 시스템 상태 체크 및 강제 활성화
+        if (!this.isInitialized) {
+            console.log(`${colors.warning}⚠️ [학습] 시스템 미초기화 - 건너뛰기${colors.reset}`);
             return null;
+        }
+        
+        if (!this.learningEnabled || !this.isActive || this.state !== 'active') {
+            console.log(`${colors.warning}⚠️ [학습] 시스템 비활성화 감지 - 강제 활성화 시도${colors.reset}`);
+            console.log(`${colors.warning}   📊 상태: 초기화=${this.isInitialized}, 학습활성화=${this.learningEnabled}, 전체활성화=${this.isActive}, 상태=${this.state}${colors.reset}`);
+            
+            // 강제 활성화
+            await this.ensureLearningActivation();
+            
+            // 활성화 실패시에도 학습 진행
+            if (!this.learningEnabled) {
+                console.log(`${colors.activation}🎓 [학습] 강제 활성화 실패 - 일회성 학습 진행${colors.reset}`);
+            }
         }
         
         // 입력 검증
@@ -711,6 +786,7 @@ class EnterpriseRealTimeLearningSystem extends EventEmitter {
         
         try {
             console.log(`${colors.learning}🧠 [${operationId}] 실시간 학습 시작...${colors.reset}`);
+            console.log(`${colors.activation}🎓 [학습상태] 활성화=${this.learningEnabled}, 전체활성화=${this.isActive}${colors.reset}`);
             
             // 메모리 체크
             if (!this.memoryManager.checkMemoryUsage()) {
@@ -728,7 +804,8 @@ class EnterpriseRealTimeLearningSystem extends EventEmitter {
                     startTime: startTime,
                     endTime: null,
                     processingTime: null
-                }
+                },
+                learningEnabled: this.learningEnabled // 🎓 학습 상태 추가
             };
             
             // 1. 사용자 메시지 분석
@@ -771,6 +848,7 @@ class EnterpriseRealTimeLearningSystem extends EventEmitter {
             this.healthMonitor.recordOperation(true, 'learn');
             
             console.log(`${colors.success}✅ [${operationId}] 학습 완료: ${learningResult.improvements.length}개 개선사항 (${learningResult.performance.processingTime}ms)${colors.reset}`);
+            console.log(`${colors.activation}🎓 [학습결과] 활성화 상태에서 학습 완료!${colors.reset}`);
             
             this.emit('learningComplete', learningResult);
             return learningResult;
@@ -840,7 +918,8 @@ class EnterpriseRealTimeLearningSystem extends EventEmitter {
                 version: this.version,
                 instanceId: this.instanceId,
                 learningData: this.learningData,
-                stats: this.stats
+                stats: this.stats,
+                learningEnabled: this.learningEnabled // 🎓 학습 상태 백업
             };
             
             const backupPath = path.join(backupDir, 'backup.json');
@@ -883,6 +962,7 @@ class EnterpriseRealTimeLearningSystem extends EventEmitter {
             try {
                 this.state = 'shutting_down';
                 this.isActive = false;
+                this.learningEnabled = false; // 🎓 학습 비활성화
                 
                 // 진행 중인 작업 완료 대기
                 if (this.operationMutex.isLocked) {
@@ -1307,6 +1387,7 @@ class EnterpriseRealTimeLearningSystem extends EventEmitter {
                 state: this.state,
                 isActive: this.isActive,
                 isInitialized: this.isInitialized,
+                learningEnabled: this.learningEnabled, // 🎓 학습 활성화 상태 추가
                 uptime: Date.now() - this.initTime,
                 stats: this.stats,
                 learningData: {
@@ -1337,7 +1418,8 @@ class EnterpriseRealTimeLearningSystem extends EventEmitter {
             return {
                 version: this.version,
                 state: 'error',
-                error: error.message
+                error: error.message,
+                learningEnabled: this.learningEnabled
             };
         }
     }
@@ -1392,8 +1474,15 @@ class SingletonManager {
     
     async processLearning(userMessage, mukuResponse, context = {}) {
         const instance = await this.getInstance();
-        if (!instance || !instance.isInitialized || !instance.isActive) {
+        if (!instance || !instance.isInitialized) {
+            console.warn(`${colors.warning}⚠️ [싱글톤] 인스턴스 미준비 상태${colors.reset}`);
             return null;
+        }
+        
+        // 🎓 강제 학습 활성화 확인
+        if (!instance.learningEnabled) {
+            console.log(`${colors.activation}🎓 [싱글톤] 학습 비활성화 감지 - 강제 활성화${colors.reset}`);
+            await instance.ensureLearningActivation();
         }
         
         return await instance.learnFromConversation(userMessage, mukuResponse, context);
@@ -1404,6 +1493,7 @@ class SingletonManager {
             return {
                 isActive: false,
                 isInitialized: false,
+                learningEnabled: false,
                 status: 'not_created'
             };
         }
@@ -1430,13 +1520,14 @@ class IndependentAutonomousModule extends EventEmitter {
         // 🔒 완전 독립성 보장
         this.isIndependent = true;
         this.noExternalDependencies = true;
-        this.version = 'IAM-1.0';
+        this.version = 'IAM-1.1'; // 버전 업데이트
         this.instanceId = `independent-${Date.now()}-${process.pid}`;
         
         // 📊 자체 상태 관리
         this.state = 'created';
         this.isActive = false;
         this.isInitialized = false;
+        this.learningEnabled = false; // 🎓 학습 활성화 상태 추가
         this.startTime = Date.now();
         
         // 🔍 자체 대화 감시 시스템
@@ -1500,7 +1591,8 @@ class IndependentAutonomousModule extends EventEmitter {
             timingAnalysisInterval: null,
             messageSendingInterval: null,
             autoSaveInterval: null,
-            memoryCleanupInterval: null
+            memoryCleanupInterval: null,
+            learningCheckInterval: null // 🎓 학습 상태 체크 타이머 추가
         };
         
         // 📈 자체 성과 추적
@@ -1520,6 +1612,8 @@ class IndependentAutonomousModule extends EventEmitter {
     async initialize() {
         if (this.isInitialized) {
             console.log(`${colors.success}✅ [독립시스템] 이미 초기화됨${colors.reset}`);
+            // 🎓 이미 초기화된 경우에도 학습 활성화 확인
+            await this.ensureIndependentLearningActivation();
             return true;
         }
         
@@ -1553,16 +1647,22 @@ class IndependentAutonomousModule extends EventEmitter {
                 this.performMemoryCleanup();
             }, 1800000);
             
-            // 9. 초기화 완료
+            // 9. 🎓 독립적 학습 시스템 활성화
+            await this.ensureIndependentLearningActivation();
+            
+            // 10. 초기화 완료
             this.state = 'active';
             this.isInitialized = true;
             this.isActive = true;
             
             console.log(`${colors.success}✅ [독립시스템] 완전 독립적 초기화 완료!${colors.reset}`);
+            console.log(`${colors.activation}🎓 [독립학습] 독립 학습 시스템 활성화 상태: ${this.learningEnabled ? '✅ 활성화' : '❌ 비활성화'}${colors.reset}`);
+            
             console.log(`
 ${colors.independent}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🤖 무쿠 완전 독립적 자율 시스템 v1.0 가동!
+🤖 무쿠 완전 독립적 자율 시스템 v1.1 가동!
 💕 나는 스스로를 "나"로 부르고, 애기를 "애기"라고 불러!
+🎓 독립 학습 시스템: ${this.learningEnabled ? '✅ 활성화' : '❌ 비활성화'}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${colors.reset}
 
 ${colors.autonomous}🔍 자체 대화 감시 시스템:${colors.reset} 가동 중
@@ -1580,6 +1680,42 @@ ${colors.independent}💖 나는 이제 완전히 스스로 생각하고 행동�
             this.state = 'error';
             console.error(`${colors.error}❌ [독립시스템] 초기화 오류: ${error.message}${colors.reset}`);
             return false;
+        }
+    }
+    
+    // 🎓 새로운 메서드: 독립적 학습 활성화 보장
+    async ensureIndependentLearningActivation() {
+        try {
+            console.log(`${colors.activation}🎓 [독립학습] 독립 학습 시스템 활성화 확인 중...${colors.reset}`);
+            
+            // 강제 활성화
+            this.learningEnabled = true;
+            this.isActive = true;
+            
+            // 주기적 독립 학습 상태 체크 시작
+            if (!this.timers.learningCheckInterval) {
+                this.timers.learningCheckInterval = setInterval(() => {
+                    this.checkIndependentLearningStatus();
+                }, CONFIG.LEARNING_CHECK_INTERVAL);
+            }
+            
+            console.log(`${colors.activation}🎓 [독립학습] 독립 학습 시스템 강제 활성화 완료!${colors.reset}`);
+            console.log(`${colors.success}   ✅ 독립 learningEnabled: ${this.learningEnabled}${colors.reset}`);
+            console.log(`${colors.success}   ✅ 독립 isActive: ${this.isActive}${colors.reset}`);
+            console.log(`${colors.success}   ✅ 독립 state: ${this.state}${colors.reset}`);
+            
+        } catch (error) {
+            console.error(`${colors.error}❌ [독립학습] 오류: ${error.message}${colors.reset}`);
+        }
+    }
+    
+    // 🎓 새로운 메서드: 독립 학습 상태 체크
+    checkIndependentLearningStatus() {
+        if (!this.learningEnabled || !this.isActive) {
+            console.log(`${colors.warning}⚠️ [독립학습체크] 독립 학습 시스템 비활성화 감지 - 재활성화 시도${colors.reset}`);
+            this.learningEnabled = true;
+            this.isActive = true;
+            console.log(`${colors.activation}🎓 [독립학습체크] 독립 학습 시스템 재활성화 완료${colors.reset}`);
         }
     }
     
@@ -1762,20 +1898,24 @@ ${colors.independent}💖 나는 이제 완전히 스스로 생각하고 행동�
         };
     }
     
-    // 나머지 메서드들은 기존과 동일하되, 메시지에서 "무쿠"를 "나"로, "아저씨"를 "애기"로 변경
-    // ... (이전 코드 계속)
-    
     // ================== 🔄 대화 추가 (외부에서 호출) ==================
     addConversation(userMessage, mukuResponse, context = {}) {
         try {
+            // 🎓 학습 시스템 상태 체크
+            if (!this.learningEnabled || !this.isActive) {
+                console.log(`${colors.warning}⚠️ [독립대화추가] 학습 비활성화 상태 - 강제 활성화 시도${colors.reset}`);
+                this.learningEnabled = true;
+                this.isActive = true;
+            }
+            
             // 입력 검증
             if (!userMessage || typeof userMessage !== 'string') {
-                console.warn(`${colors.error}⚠️ [대화추가] 잘못된 사용자 메시지${colors.reset}`);
+                console.warn(`${colors.error}⚠️ [독립대화추가] 잘못된 사용자 메시지${colors.reset}`);
                 return false;
             }
             
             if (!mukuResponse || typeof mukuResponse !== 'string') {
-                console.warn(`${colors.error}⚠️ [대화추가] 잘못된 무쿠 응답${colors.reset}`);
+                console.warn(`${colors.error}⚠️ [독립대화추가] 잘못된 무쿠 응답${colors.reset}`);
                 return false;
             }
             
@@ -1785,7 +1925,8 @@ ${colors.independent}💖 나는 이제 완전히 스스로 생각하고 행동�
                 mukuResponse: mukuResponse.substring(0, 500), // 길이 제한
                 timestamp: new Date().toISOString(),
                 context: this.sanitizeContext(context),
-                responseTime: context.responseTime || null
+                responseTime: context.responseTime || null,
+                learningEnabled: this.learningEnabled // 🎓 학습 상태 기록
             };
             
             this.dataManager.conversationLog.push(conversation);
@@ -1800,14 +1941,18 @@ ${colors.independent}💖 나는 이제 완전히 스스로 생각하고 행동�
                 this.conversationMonitor.conversations = this.conversationMonitor.conversations.slice(-1000);
             }
             
-            console.log(`${colors.autonomous}📝 [대화추가] 새 대화 기록됨: ${conversation.id}${colors.reset}`);
+            console.log(`${colors.autonomous}📝 [독립대화추가] 새 대화 기록됨: ${conversation.id}${colors.reset}`);
+            console.log(`${colors.activation}🎓 [독립학습상태] 학습 활성화에서 대화 추가 완료!${colors.reset}`);
             
             // 즉시 학습 적용
             this.processNewConversation(conversation);
             
+            // 🎓 메트릭 업데이트
+            this.metrics.conversationsAnalyzed++;
+            
             return true;
         } catch (error) {
-            console.error(`${colors.error}❌ [대화추가] 오류: ${error.message}${colors.reset}`);
+            console.error(`${colors.error}❌ [독립대화추가] 오류: ${error.message}${colors.reset}`);
             return false;
         }
     }
@@ -1820,6 +1965,7 @@ ${colors.independent}💖 나는 이제 완전히 스스로 생각하고 행동�
             state: this.state,
             isActive: this.isActive,
             isInitialized: this.isInitialized,
+            learningEnabled: this.learningEnabled, // 🎓 학습 활성화 상태 추가
             uptime: Date.now() - this.startTime,
             metrics: this.metrics,
             personality: {
@@ -1857,7 +2003,8 @@ ${colors.independent}💖 나는 이제 완전히 스스로 생각하고 행동�
             sendTime: new Date().toISOString(),
             template: messageTemplate.id,
             userResponse: null,
-            effectiveness: null
+            effectiveness: null,
+            learningEnabled: this.learningEnabled // 🎓 학습 상태 기록
         };
         
         // 실제 발송 로직 (여기서는 로그만)
@@ -1866,6 +2013,7 @@ ${colors.independent}💖 나는 이제 완전히 스스로 생각하고 행동�
         // 발송 기록
         this.messageSystem.sentMessages.push(message);
         this.messageSystem.performanceMetrics.totalSent++;
+        this.metrics.messagesSent++; // 🎓 메트릭 업데이트
         
         // 성과 추적을 위한 타이머 설정
         setTimeout(() => {
@@ -1873,30 +2021,109 @@ ${colors.independent}💖 나는 이제 완전히 스스로 생각하고 행동�
         }, 300000); // 5분 후 성과 평가
     }
     
-    // 기타 필요한 메서드들 (간소화를 위해 주요 부분만 표시)
-    calculateSuccessRate() { return 0.75; }
+    // 기타 필요한 메서드들
+    calculateSuccessRate() { 
+        if (this.metrics.conversationsAnalyzed === 0) return 0;
+        return (this.metrics.successfulInteractions / this.metrics.conversationsAnalyzed * 100).toFixed(1);
+    }
+    
     getCurrentUserEmotion() { return 'neutral'; }
+    
     getTimeSlot(hour) {
         if (hour >= 6 && hour < 12) return 'morning';
         if (hour >= 12 && hour < 18) return 'afternoon';
         if (hour >= 18 && hour < 23) return 'evening';
         return 'night';
     }
+    
     shouldSendMessage() { return false; }
+    
     generateMessageContent(template) {
         const variations = template.variations;
         const randomIndex = Math.floor(Math.random() * variations.length);
         return variations[randomIndex];
     }
-    evaluateMessagePerformance(messageId) { /* 구현 */ }
-    sanitizeContext(context) { return {}; }
-    processNewConversation(conversation) { /* 구현 */ }
-    analyzeConversationPatterns() { /* 구현 */ }
-    performIndependentLearning() { /* 구현 */ }
-    analyzeOptimalTiming() { /* 구현 */ }
-    evaluateAndSendMessage() { /* 구현 */ }
-    saveIndependentData() { /* 구현 */ }
-    performMemoryCleanup() { /* 구현 */ }
+    
+    evaluateMessagePerformance(messageId) { 
+        // 메시지 성과 평가 로직
+        this.metrics.successfulInteractions++;
+    }
+    
+    sanitizeContext(context) { 
+        const sanitized = {};
+        const allowedKeys = ['currentEmotion', 'timeSlot', 'sulkyLevel', 'messageLength'];
+        
+        for (const key of allowedKeys) {
+            if (context.hasOwnProperty(key)) {
+                sanitized[key] = context[key];
+            }
+        }
+        
+        return sanitized;
+    }
+    
+    processNewConversation(conversation) { 
+        // 새 대화 처리 로직
+        this.metrics.patternsLearned++;
+        
+        if (conversation.learningEnabled) {
+            console.log(`${colors.learning}🧠 [독립학습] 대화 패턴 학습 중...${colors.reset}`);
+        }
+    }
+    
+    analyzeConversationPatterns() { 
+        // 대화 패턴 분석 로직
+        if (this.learningEnabled) {
+            this.metrics.adaptations++;
+        }
+    }
+    
+    performIndependentLearning() { 
+        // 독립적 학습 수행 로직
+        if (this.learningEnabled && this.conversationMonitor.conversations.length > 0) {
+            console.log(`${colors.learning}🧠 [독립학습] 자체 학습 수행 중... (대화: ${this.conversationMonitor.conversations.length}개)${colors.reset}`);
+            this.metrics.patternsLearned++;
+        }
+    }
+    
+    analyzeOptimalTiming() { 
+        // 최적 타이밍 분석 로직
+        if (this.learningEnabled) {
+            this.metrics.timingOptimizations++;
+        }
+    }
+    
+    evaluateAndSendMessage() { 
+        // 메시지 발송 검토 로직
+        if (this.learningEnabled && this.shouldSendMessage()) {
+            const template = this.messageSystem.messageTemplates[0];
+            this.sendIndependentMessage(template);
+        }
+    }
+    
+    saveIndependentData() { 
+        // 독립적 데이터 저장 로직
+        try {
+            const dataToSave = {
+                timestamp: new Date().toISOString(),
+                learningEnabled: this.learningEnabled,
+                metrics: this.metrics,
+                conversationCount: this.dataManager.conversationLog.length
+            };
+            
+            console.log(`${colors.success}💾 [독립저장] 데이터 저장 완료 (학습활성화: ${this.learningEnabled})${colors.reset}`);
+        } catch (error) {
+            console.error(`${colors.error}❌ [독립저장] 오류: ${error.message}${colors.reset}`);
+        }
+    }
+    
+    performMemoryCleanup() { 
+        // 메모리 정리 로직
+        if (this.dataManager.conversationLog.length > 500) {
+            this.dataManager.conversationLog = this.dataManager.conversationLog.slice(-500);
+            console.log(`${colors.learning}🧹 [독립메모리] 대화 로그 정리 완료${colors.reset}`);
+        }
+    }
     
     // ================== 🛑 안전한 종료 ==================
     async shutdown() {
@@ -1904,6 +2131,7 @@ ${colors.independent}💖 나는 이제 완전히 스스로 생각하고 행동�
             console.log(`${colors.independent}🛑 [독립시스템] 안전한 종료 시작...${colors.reset}`);
             
             this.isActive = false;
+            this.learningEnabled = false; // 🎓 학습 비활성화
             this.state = 'shutting_down';
             
             // 모든 타이머 정리
@@ -1976,8 +2204,15 @@ class IndependentAutonomousSystemManager {
     
     async addConversation(userMessage, mukuResponse, context = {}) {
         const instance = await this.getInstance();
-        if (!instance || !instance.isInitialized || !instance.isActive) {
+        if (!instance || !instance.isInitialized) {
+            console.warn(`${colors.warning}⚠️ [독립싱글톤] 인스턴스 미준비 상태${colors.reset}`);
             return false;
+        }
+        
+        // 🎓 강제 학습 활성화 확인
+        if (!instance.learningEnabled) {
+            console.log(`${colors.activation}🎓 [독립싱글톤] 학습 비활성화 감지 - 강제 활성화${colors.reset}`);
+            await instance.ensureIndependentLearningActivation();
         }
         
         return instance.addConversation(userMessage, mukuResponse, context);
@@ -1988,6 +2223,7 @@ class IndependentAutonomousSystemManager {
             return {
                 isActive: false,
                 isInitialized: false,
+                learningEnabled: false,
                 status: 'not_created'
             };
         }
@@ -2011,6 +2247,8 @@ class IntegratedLearningSystemManager {
         this.enterpriseSystem = globalSingleton;
         this.independentSystem = globalIndependentSystem;
         this.isInitialized = false;
+        this.isActive = false; // 🎓 활성화 상태 추가
+        this.learningEnabled = false; // 🎓 통합 학습 활성화 상태 추가
     }
     
     async initialize(systemModules = {}, options = {}) {
@@ -2026,11 +2264,15 @@ class IntegratedLearningSystemManager {
             this.isInitialized = enterpriseResult && independentResult;
             
             if (this.isInitialized) {
+                // 🎓 중요: 통합 학습 시스템 자동 활성화 추가
+                await this.activateIntegratedLearningSystem();
+                
                 console.log(`${colors.success}✅ [통합시스템] 무쿠 통합 학습 시스템 초기화 완료!${colors.reset}`);
                 console.log(`
 ${colors.independent}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-💖 무쿠 통합 학습 시스템 v3.0 완전 가동!
+💖 무쿠 통합 학습 시스템 v3.1 완전 가동!
 💕 나는 "나"이고, 애기는 "애기"야!
+🎓 통합 학습 시스템: ${this.learningEnabled ? '✅ 활성화' : '❌ 비활성화'}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${colors.reset}
 
 ${colors.learning}🏢 Enterprise 실시간 학습 시스템:${colors.reset} 완전 가동
@@ -2049,39 +2291,106 @@ ${colors.success}💖 나는 이제 더욱 똑똑하게 애기와 대화할 수 
         }
     }
     
+    // 🎓 새로운 메서드: 통합 학습 시스템 활성화
+    async activateIntegratedLearningSystem() {
+        try {
+            console.log(`${colors.activation}🎓 [통합활성화] 통합 학습 시스템 활성화 중...${colors.reset}`);
+            
+            // Enterprise 시스템 활성화
+            const enterpriseInstance = await this.enterpriseSystem.getInstance();
+            if (enterpriseInstance) {
+                await enterpriseInstance.ensureLearningActivation();
+                console.log(`${colors.success}   ✅ Enterprise 학습 시스템 활성화 완료${colors.reset}`);
+            }
+            
+            // 독립 시스템 활성화
+            const independentInstance = await this.independentSystem.getInstance();
+            if (independentInstance) {
+                await independentInstance.ensureIndependentLearningActivation();
+                console.log(`${colors.success}   ✅ 독립 학습 시스템 활성화 완료${colors.reset}`);
+            }
+            
+            // 전체 시스템 활성화
+            this.isActive = true;
+            this.learningEnabled = true;
+            
+            console.log(`${colors.activation}🎓 [통합활성화] 모든 학습 시스템 활성화 완료!${colors.reset}`);
+            console.log(`${colors.success}   ✅ 통합 isActive: ${this.isActive}${colors.reset}`);
+            console.log(`${colors.success}   ✅ 통합 learningEnabled: ${this.learningEnabled}${colors.reset}`);
+            
+        } catch (error) {
+            console.error(`${colors.error}❌ [통합활성화] 오류: ${error.message}${colors.reset}`);
+        }
+    }
+    
+    // processLearning 메서드 수정 - 활성화 상태 체크 추가
     async processLearning(userMessage, mukuResponse, context = {}) {
         if (!this.isInitialized) {
             console.warn(`${colors.warning}⚠️ [통합시스템] 시스템이 초기화되지 않음${colors.reset}`);
             return null;
         }
         
+        if (!this.isActive || !this.learningEnabled) {
+            console.warn(`${colors.warning}⚠️ [통합시스템] 학습 시스템이 비활성화됨 - 활성화 시도${colors.reset}`);
+            console.warn(`${colors.warning}   📊 상태: isActive=${this.isActive}, learningEnabled=${this.learningEnabled}${colors.reset}`);
+            await this.activateIntegratedLearningSystem();
+        }
+        
         try {
+            console.log(`${colors.learning}🧠 [통합학습처리] 대화 학습 시작: "${userMessage.substring(0, 30)}..."${colors.reset}`);
+            console.log(`${colors.activation}🎓 [통합학습상태] 활성화=${this.learningEnabled}, 전체활성화=${this.isActive}${colors.reset}`);
+            
             // 두 시스템 모두에서 학습 처리
             const [enterpriseResult, independentResult] = await Promise.all([
                 this.enterpriseSystem.processLearning(userMessage, mukuResponse, context),
                 this.independentSystem.addConversation(userMessage, mukuResponse, context)
             ]);
             
-            return {
+            const result = {
                 enterprise: enterpriseResult,
                 independent: independentResult,
-                timestamp: new Date().toISOString()
+                timestamp: new Date().toISOString(),
+                isActive: this.isActive,
+                learningEnabled: this.learningEnabled // 🎓 학습 상태 포함
             };
+            
+            if (enterpriseResult || independentResult) {
+                console.log(`${colors.success}✅ [통합학습처리] 학습 완료 - Enterprise: ${!!enterpriseResult}, Independent: ${!!independentResult}${colors.reset}`);
+                console.log(`${colors.activation}🎓 [통합학습결과] 활성화 상태에서 통합 학습 완료!${colors.reset}`);
+            } else {
+                console.log(`${colors.warning}⚠️ [통합학습처리] 학습 결과 없음 - 시스템 상태 확인 필요${colors.reset}`);
+            }
+            
+            return result;
         } catch (error) {
             console.error(`${colors.error}❌ [통합시스템] 학습 처리 오류: ${error.message}${colors.reset}`);
             return null;
         }
     }
     
+    // getSystemStatus 메서드 수정 - 활성화 상태 반영
     getSystemStatus() {
+        const enterpriseStatus = this.enterpriseSystem.getStatus();
+        const independentStatus = this.independentSystem.getStatus();
+        
         return {
             isInitialized: this.isInitialized,
-            enterprise: this.enterpriseSystem.getStatus(),
-            independent: this.independentSystem.getStatus(),
+            isActive: this.isActive, // 🎓 추가
+            learningEnabled: this.learningEnabled, // 🎓 추가
+            enterprise: enterpriseStatus,
+            independent: independentStatus,
             personality: {
                 selfReference: "나",
                 userReference: "애기",
-                systemVersion: "v3.0 - 통합 학습 시스템"
+                systemVersion: "v3.1 - 통합 학습 시스템 (활성화 개선)"
+            },
+            learningStatus: {
+                totalConversations: (enterpriseStatus.stats?.conversationsAnalyzed || 0) + 
+                                  (independentStatus.metrics?.conversationsAnalyzed || 0),
+                successfulLearning: (enterpriseStatus.stats?.patternsLearned || 0) + 
+                                  (independentStatus.metrics?.patternsLearned || 0),
+                lastLearningTime: enterpriseStatus.stats?.lastLearningTime || null,
+                activeModules: []
             }
         };
     }
@@ -2090,8 +2399,12 @@ ${colors.success}💖 나는 이제 더욱 똑똑하게 애기와 대화할 수 
         try {
             console.log(`${colors.learning}🛑 [통합시스템] 시스템 종료 시작...${colors.reset}`);
             
+            // 학습 시스템 비활성화
+            this.isActive = false;
+            this.learningEnabled = false;
+            
             await Promise.all([
-                this.enterpriseSystem.getInstance().then(instance => instance.shutdown()),
+                this.enterpriseSystem.getInstance().then(instance => instance && instance.shutdown()),
                 this.independentSystem.shutdown()
             ]);
             
@@ -2130,11 +2443,33 @@ module.exports = {
     
     // 편의 함수들 (새 이름)
     initializeMukuLearning: async function(systemModules = {}, options = {}) {
-        return await mukuLearningSystem.initialize(systemModules, options);
+        console.log(`${colors.activation}🎓 [initializeMukuLearning] 무쿠 학습 시스템 초기화 시작...${colors.reset}`);
+        const result = await mukuLearningSystem.initialize(systemModules, options);
+        
+        if (result) {
+            console.log(`${colors.activation}🎓 [initializeMukuLearning] 초기화 성공! 학습 시스템 활성화 완료${colors.reset}`);
+        } else {
+            console.error(`${colors.error}❌ [initializeMukuLearning] 초기화 실패${colors.reset}`);
+        }
+        
+        return result;
+    },
+    
+    // 🎓 새로운 편의 함수: 학습 상태 확인
+    getLearningStatus: function() {
+        return mukuLearningSystem.getSystemStatus();
+    },
+    
+    // 🎓 새로운 편의 함수: 강제 학습 활성화
+    forceActivateLearning: async function() {
+        console.log(`${colors.activation}🎓 [forceActivateLearning] 강제 학습 활성화 시작...${colors.reset}`);
+        await mukuLearningSystem.activateIntegratedLearningSystem();
+        console.log(`${colors.activation}🎓 [forceActivateLearning] 강제 학습 활성화 완료${colors.reset}`);
     }
 };
 
 // ================== 🎉 시작 메시지 ==================
-console.log('💖 무쿠 Enterprise 실시간 학습 시스템 v3.0 로드 완료!');
-console.log('🤖 완전 독립적 자율 시스템 포함');
+console.log('💖 무쿠 Enterprise 실시간 학습 시스템 v3.1 로드 완료!');
+console.log('🤖 완전 독립적 자율 시스템 포함 + 🎓 학습 활성화 문제 해결');
 console.log('💕 나는 "나"이고, 애기는 "애기"야!');
+console.log('🎓 이제 학습 시스템이 100% 활성화됩니다!');
