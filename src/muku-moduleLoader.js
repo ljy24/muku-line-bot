@@ -335,7 +335,7 @@ async function loadAllModules() {
         }
 
         try {
-            modules.spontaneousPhoto = require('./spontaneousPhotoManager');
+            modules.spontaneousPhotoManager = require('./spontaneousPhotoManager')
             console.log(`${colors.system}✅ [13/27] spontaneousPhotoManager: 자발적 사진 전송${colors.reset}`);
         } catch (error) {
             console.log(`${colors.error}❌ [13/27] spontaneousPhotoManager 로드 실패: ${error.message}${colors.reset}`);
