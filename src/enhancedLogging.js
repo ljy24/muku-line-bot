@@ -3,7 +3,7 @@
 // ✅ JSON 객체 출력 제거, 한 줄 요약으로 변경
 // ✅ 복잡한 상태 정보를 간단하게 표시
 // ✅ 핵심 정보만 깔끔하게 출력
-// 🧠 실시간 학습 시스템 상태 표시 추가
+// 🧠 실시간 학습 시스템 상태 표시 추가 (mukuLearningSystem.getSystemStatus 호출)
 // ━━━ 구분선 짧게 변경 (LINE 최적화)
 // ============================================================================
 
@@ -362,11 +362,11 @@ async function generateLineStatusReport(modules) {
 
         // 🧠 실시간 학습 시스템 상태 (수정된 부분!)
         try {
-            if (modules.realTimeLearningSystem && modules.realTimeLearningSystem.getLearningStatus) {
-                const learningStatus = modules.realTimeLearningSystem.getLearningStatus();
+            if (modules.realTimeLearningSystem && modules.realTimeLearningSystem.mukuLearningSystem) {
+                const learningStatus = modules.realTimeLearningSystem.mukuLearningSystem.getSystemStatus();
                 if (learningStatus.isActive) {
-                    const totalLearnings = learningStatus.totalLearnings || 0;
-                    const successRate = learningStatus.successRate || '100%';
+                    const totalLearnings = learningStatus.stats?.conversationsAnalyzed || 0;
+                    const successRate = learningStatus.learningData?.successRate || '100%';
                     report += `📚 [실시간학습] 활성화 - 총 ${totalLearnings}회 학습 (성공률: ${successRate})\n`;
                 } else {
                     report += `📚 [실시간학습] 시스템 비활성\n`;
