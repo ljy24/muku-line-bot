@@ -294,7 +294,7 @@ async function loadAllModules() {
                     console.log(`${colors.learning}🔍 [실시간학습] 사용 가능한 함수들:`, Object.keys(modules.realTimeLearningSystem));
                     
                     // 4단계: 필수 함수 확인
-                    const requiredFunctions = ['MukuRealTimeLearningSystem', 'initializeMukuRealTimeLearning'];
+                    const requiredFunctions = ['mukuLearningSystem', 'initializeMukuLearning'];
                     let functionCheck = true;
                     
                     for (const func of requiredFunctions) {
