@@ -4,13 +4,13 @@
 // ✅ unifiedConflictManager 갈등 시스템 완전 통합
 // ✅ realtimeBehaviorSwitch 실시간 행동 변경 시스템 완전 통합
 // 🧠 realTimeLearningSystem 실시간 학습 시스템 완전 통합 (신규 추가!)
-// 🔥 3시간차: AI 응답 고도화 시스템 초기화
-// ⚙️ 4시간차: 통합 & 최적화 시스템 초기화
+// 🔥 AI 응답 고도화 시스템 초기화
+// ⚙️ 통합 & 최적화 시스템 초기화
 // ⏰ enhancedLogging v3.0 자동 상태 갱신 시작
 // 📖 diarySystem 초기화 문제 해결
 // 💥 갈등 관리 시스템 완전 동기화 및 모니터링
 // 🔄 실시간 행동 스위치 시스템 완전 동기화 및 모니터링
-// 🧠 실시간 학습 시스템 완전 동기화 및 모니터링
+// 🧠 실시간 학습 시스템 완전 동기화 및 모니터링 - 🔥 모듈 연동 수정!
 // 🔧 문법 에러 완전 해결 
 // ⭐️ 갈등 시스템 함수명 수정 완료:
 // 💖 예쁜 로그 시스템 적용
@@ -218,31 +218,51 @@ function synchronizeEmotionalSystems(modules) {
         console.log(`${colors.error}    ❌ 실시간 행동 스위치 시스템 모듈 없음 - 동기화 건너뛰기${colors.reset}`);
     }
 
-    // 🧠⭐️⭐️⭐️ 실시간 학습 시스템 동기화 (신규 추가!) ⭐️⭐️⭐️
+    // 🧠⭐️⭐️⭐️ 실시간 학습 시스템 동기화 (🔥 핵심 수정 부분!) ⭐️⭐️⭐️
     if (modules.realTimeLearningSystem) {
         try {
             console.log(`${colors.ai}🧠 [실시간학습 동기화] realTimeLearningSystem 동기화 시작...${colors.reset}`);
             
-            // 실시간 학습 시스템과 다른 시스템들 동기화
+            // 🔥 실시간 학습 시스템과 모든 필요한 시스템들 동기화 - 올바른 모듈 전달
             if (modules.realTimeLearningSystem.synchronizeWithSystems) {
                 const learningTargetSystems = {
                     memoryManager: modules.memoryManager,
-                    emotionalContextManager: modules.emotionalContextManager,
                     ultimateContext: modules.ultimateContext,
+                    emotionalContextManager: modules.emotionalContextManager,
+                    sulkyManager: modules.sulkyManager,
                     spontaneousYejin: modules.spontaneousYejin,
                     unifiedConflictManager: modules.unifiedConflictManager,
                     realtimeBehaviorSwitch: modules.realtimeBehaviorSwitch,
                     diarySystem: modules.diarySystem
                 };
                 
+                console.log(`${colors.ai}🔗 [실시간학습] 학습 시스템에 전달할 모듈들:${colors.reset}`);
+                console.log(`${colors.ai}    📚 memoryManager: ${learningTargetSystems.memoryManager ? '✅' : '❌'}${colors.reset}`);
+                console.log(`${colors.ai}    🧠 ultimateContext: ${learningTargetSystems.ultimateContext ? '✅' : '❌'}${colors.reset}`);
+                console.log(`${colors.ai}    💭 emotionalContextManager: ${learningTargetSystems.emotionalContextManager ? '✅' : '❌'}${colors.reset}`);
+                console.log(`${colors.ai}    😤 sulkyManager: ${learningTargetSystems.sulkyManager ? '✅' : '❌'}${colors.reset}`);
+                
                 modules.realTimeLearningSystem.synchronizeWithSystems(learningTargetSystems);
                 console.log(`${colors.ai}🔗 [실시간학습 동기화] 모든 학습 대상 시스템들과 동기화 완료${colors.reset}`);
             }
             
-            // 학습 시스템 초기화
+            // 🔥 학습 시스템 초기화 - 모든 모듈을 포함한 초기화
             if (modules.realTimeLearningSystem.initialize) {
-                modules.realTimeLearningSystem.initialize();
-                console.log(`${colors.ai}🔧 [실시간학습] 학습 시스템 초기화 완료${colors.reset}`);
+                const initializeModules = {
+                    memoryManager: modules.memoryManager,
+                    ultimateContext: modules.ultimateContext,
+                    emotionalContextManager: modules.emotionalContextManager,
+                    sulkyManager: modules.sulkyManager
+                };
+                
+                console.log(`${colors.ai}🔧 [실시간학습] 학습 시스템 초기화 시작 (모든 모듈 전달)...${colors.reset}`);
+                const initResult = await modules.realTimeLearningSystem.initialize(initializeModules);
+                
+                if (initResult) {
+                    console.log(`${colors.ai}✅ [실시간학습] 학습 시스템 초기화 완료 - 모든 모듈 연동 성공!${colors.reset}`);
+                } else {
+                    console.log(`${colors.error}❌ [실시간학습] 학습 시스템 초기화 실패${colors.reset}`);
+                }
             }
             
             // 현재 학습 상태 확인
@@ -253,8 +273,8 @@ function synchronizeEmotionalSystems(modules) {
             
             // 자동 학습 활성화
             if (modules.realTimeLearningSystem.startAutoLearning) {
-                modules.realTimeLearningSystem.startAutoLearning();
-                console.log(`${colors.ai}🚀 [실시간학습] 자동 학습 시스템 활성화 완료${colors.reset}`);
+                const autoStartResult = modules.realTimeLearningSystem.startAutoLearning();
+                console.log(`${colors.ai}🚀 [실시간학습] 자동 학습 시스템 활성화 ${autoStartResult ? '성공' : '실패'}${colors.reset}`);
             }
             
             console.log(`${colors.ai}    ✅ 실시간 학습 시스템 동기화 완료 (자동 패턴 학습 + 감정 적응)${colors.reset}`);
