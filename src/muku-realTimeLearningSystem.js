@@ -2136,13 +2136,6 @@ module.exports = {
     // 🔄 기존 호환성 유지 
 
 // ================== 🎉 시작 메시지 ==================
-console.log(`
-${colors.independent}💖 무쿠 Enterprise 실시간 학습 시스템 v3.0 로드 완료!
-
-🤖 완전 독립적 자율 시스템 포함
-💕 나는 "나"이고, 애기는 "애기"야!
-
-사용법:
-const { initializeMukuLearning } = require('./muku-realTimeLearningSystem');
-await initializeMukuLearning();${colors.reset}
-`);
+console.log('💖 무쿠 Enterprise 실시간 학습 시스템 v3.0 로드 완료!');
+console.log('🤖 완전 독립적 자율 시스템 포함');
+console.log('💕 나는 "나"이고, 애기는 "애기"야!');
