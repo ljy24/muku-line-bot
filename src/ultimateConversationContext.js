@@ -1,5 +1,5 @@
 // ============================================================================
-// ultimateConversationContext.js - v38.1 CONFLICT_INTEGRATION (totalEntries 에러 수정!)
+// ultimateConversationContext.js - v38.2 REALTIME_LEARNING_INTEGRATION
 // 🗄️ 동적 기억과 대화 컨텍스트 전문 관리자
 // 💾 디스크 마운트 경로 적용: ./data → /data (완전 영구 저장!)
 // ✅ 중복 기능 완전 제거: 생리주기, 날씨, 고정기억, 시간관리
@@ -13,6 +13,7 @@
 // 💔 갈등 시스템 완전 연동: muku-unifiedConflictManager 통합!
 // 🤝 실시간 갈등 감지 + 화해 처리 + 기억 학습 + sulkyManager 연동
 // 🛡️ totalEntries 에러 완전 해결: 안전한 객체 접근 + 기본값 처리
+// 🎓 실시간 학습 시스템 완전 연동: muku-realTimeLearningSystem 통합! (NEW!)
 // ============================================================================
 
 const fs = require('fs').promises;
@@ -220,7 +221,7 @@ async function saveConflictIntegrationData() {
         const conflictData = {
             conflictIntegration: ultimateConversationState.conflictIntegration,
             lastSaved: new Date().toISOString(),
-            version: 'v38.1-conflict-integration',
+            version: 'v38.2-realtime-learning-integration',
             storagePath: DATA_DIR
         };
         
@@ -282,7 +283,7 @@ async function saveUserMemoriesToFile() {
             memories: ultimateConversationState.dynamicMemories.userMemories,
             lastSaved: new Date().toISOString(),
             totalCount: ultimateConversationState.dynamicMemories.userMemories.length,
-            version: 'v38.1-conflict-integration',
+            version: 'v38.2-realtime-learning-integration',
             storagePath: DATA_DIR
         };
         
@@ -319,7 +320,7 @@ async function saveLearningDataToFile() {
                 topic: ultimateConversationState.learningData.topicLearning?.length || 0,
                 conflict: ultimateConversationState.learningData.conflictLearning?.length || 0 // 💔 갈등 학습 통계
             },
-            version: 'v38.1-conflict-integration',
+            version: 'v38.2-realtime-learning-integration',
             storagePath: DATA_DIR
         };
         
@@ -347,7 +348,7 @@ async function saveSpontaneousStatsToFile() {
         const spontaneousData = {
             stats: ultimateConversationState.spontaneousMessages,
             lastSaved: new Date().toISOString(),
-            version: 'v38.1-conflict-integration',
+            version: 'v38.2-realtime-learning-integration',
             storagePath: DATA_DIR
         };
         
@@ -375,7 +376,7 @@ async function saveMemoryStatsToFile() {
         const statsData = {
             stats: ultimateConversationState.memoryStats,
             lastSaved: new Date().toISOString(),
-            version: 'v38.1-conflict-integration',
+            version: 'v38.2-realtime-learning-integration',
             storagePath: DATA_DIR
         };
         
@@ -588,7 +589,7 @@ async function createDailyBackup() {
             spontaneousStats: ultimateConversationState.spontaneousMessages,
             memoryStats: ultimateConversationState.memoryStats,
             conflictIntegration: ultimateConversationState.conflictIntegration, // 💔 갈등 연동 데이터 백업 포함
-            version: 'v38.1-conflict-integration',
+            version: 'v38.2-realtime-learning-integration',
             storagePath: DATA_DIR
         };
         
@@ -964,6 +965,228 @@ async function getTodayConflictLearning() {
         contextLog('오늘 갈등 학습 조회 실패:', error.message);
         return [];
     }
+}
+
+// ==================== 🎓 실시간 학습 시스템 연동 함수들 (NEW!) ====================
+
+/**
+ * 🎓 대화 패턴 업데이트 (muku-eventProcessor.js 연동용)
+ * @param {Array} speechImprovements - 말투 개선사항 배열
+ */
+async function updateConversationPatterns(speechImprovements) {
+    try {
+        contextLog(`🎓 [패턴업데이트] ${speechImprovements.length}개 말투 개선사항 처리 중...`);
+        
+        for (const improvement of speechImprovements) {
+            // 말투 패턴 학습 데이터로 추가
+            await addLearningEntry(
+                `말투 패턴 개선: ${improvement.pattern} (조정: ${improvement.adjustment || '기본'})`,
+                '대화학습',
+                {
+                    type: 'speech_pattern_update',
+                    pattern: improvement.pattern,
+                    adjustment: improvement.adjustment,
+                    reason: improvement.reason,
+                    timestamp: new Date().toISOString(),
+                    source: 'realtime_learning_system'
+                }
+            );
+            
+            contextLog(`🎓 말투 패턴 학습: ${improvement.pattern} - ${improvement.reason || '개선됨'}`);
+        }
+        
+        // 대화 컨텍스트에도 반영
+        if (speechImprovements.length > 0) {
+            const lastImprovement = speechImprovements[speechImprovements.length - 1];
+            ultimateConversationState.conversationContext.emotionalTone = 
+                lastImprovement.pattern === 'formal' ? 'formal' : 
+                lastImprovement.pattern === 'caring' ? 'caring' : 'neutral';
+            
+            contextLog(`🎓 대화 톤 업데이트: ${ultimateConversationState.conversationContext.emotionalTone}`);
+        }
+        
+        return true;
+    } catch (error) {
+        contextLog(`❌ 대화 패턴 업데이트 실패: ${error.message}`);
+        return false;
+    }
+}
+
+/**
+ * 🎓 감정 학습 결과 반영 (emotionalContextManager.js 연동용)
+ * @param {Array} emotionalImprovements - 감정 개선사항 배열
+ */
+async function updateEmotionalLearning(emotionalImprovements) {
+    try {
+        contextLog(`🎓 [감정학습] ${emotionalImprovements.length}개 감정 개선사항 처리 중...`);
+        
+        for (const improvement of emotionalImprovements) {
+            // 감정 학습 데이터로 추가
+            await addLearningEntry(
+                `감정 응답 개선: ${improvement.emotion} 감정 (품질: ${improvement.quality || '기본'})`,
+                '감정분석',
+                {
+                    type: 'emotional_response_update',
+                    emotion: improvement.emotion,
+                    quality: improvement.quality,
+                    action: improvement.action,
+                    timestamp: new Date().toISOString(),
+                    source: 'realtime_learning_system'
+                }
+            );
+            
+            contextLog(`🎓 감정 학습: ${improvement.emotion} - ${improvement.action || '개선됨'}`);
+        }
+        
+        // 현재 감정 컨텍스트에도 반영
+        if (emotionalImprovements.length > 0) {
+            const lastImprovement = emotionalImprovements[emotionalImprovements.length - 1];
+            ultimateConversationState.conversationContext.emotionalTone = lastImprovement.emotion;
+            ultimateConversationState.emotionalSync.lastEmotionalUpdate = Date.now();
+            
+            contextLog(`🎓 감정 컨텍스트 업데이트: ${lastImprovement.emotion}`);
+        }
+        
+        return true;
+    } catch (error) {
+        contextLog(`❌ 감정 학습 업데이트 실패: ${error.message}`);
+        return false;
+    }
+}
+
+/**
+ * 🎓 동적 기억 추가 (memoryManager.js 연동용)
+ * @param {Object} memoryEntry - 기억 항목
+ */
+async function addDynamicMemory(memoryEntry) {
+    try {
+        contextLog(`🎓 [동적기억] 학습된 패턴을 기억에 추가: ${memoryEntry.content?.substring(0, 30) || '알 수 없음'}...`);
+        
+        // 동적 기억으로 추가
+        const dynamicMemoryObj = {
+            id: `dynamic_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+            content: memoryEntry.content || '학습된 패턴',
+            category: memoryEntry.type || 'learned_pattern',
+            timestamp: Date.now(),
+            type: 'auto_learned_from_realtime',
+            source: 'realtime_learning_system',
+            quality: memoryEntry.quality || 0.7,
+            importance: Math.min(10, Math.max(1, Math.floor((memoryEntry.quality || 0.7) * 10)))
+        };
+        
+        ultimateConversationState.dynamicMemories.conversationMemories.push(dynamicMemoryObj);
+        
+        // 통계 업데이트
+        ultimateConversationState.memoryStats.totalConversationMemories = 
+            (ultimateConversationState.memoryStats.totalConversationMemories || 0) + 1;
+        ultimateConversationState.memoryStats.lastMemoryOperation = Date.now();
+        
+        // 학습 데이터로도 기록
+        await addLearningEntry(
+            `실시간 학습으로 동적 기억 추가: ${memoryEntry.content}`,
+            '대화학습',
+            {
+                memoryId: dynamicMemoryObj.id,
+                originalType: memoryEntry.type,
+                quality: memoryEntry.quality,
+                timestamp: new Date().toISOString(),
+                source: 'realtime_learning_system'
+            }
+        );
+        
+        contextLog(`🎓 동적 기억 추가 완료: ID ${dynamicMemoryObj.id}`);
+        
+        // 💾 즉시 저장 (비동기)
+        saveAllDataToFiles().catch(err => 
+            contextLog(`❌ 동적 기억 저장 실패: ${err.message}`)
+        );
+        
+        return dynamicMemoryObj.id;
+    } catch (error) {
+        contextLog(`❌ 동적 기억 추가 실패: ${error.message}`);
+        return null;
+    }
+}
+
+/**
+ * 🎓 대화 컨텍스트 업데이트 (대화 분석 엔진 연동용)
+ * @param {Object} analysis - 대화 분석 결과
+ */
+async function updateConversationContext(analysis) {
+    try {
+        if (!analysis) return false;
+        
+        contextLog(`🎓 [컨텍스트] 대화 분석 결과 반영: 의도=${analysis.intent}, 감정=${analysis.emotion}, 주제=${analysis.topic}`);
+        
+        // 대화 주제 업데이트
+        if (analysis.topic && analysis.topic !== ultimateConversationState.conversationContext.currentTopic) {
+            await updateConversationTopic(analysis.topic);
+        }
+        
+        // 감정 톤 업데이트
+        if (analysis.emotion) {
+            ultimateConversationState.conversationContext.emotionalTone = analysis.emotion;
+        }
+        
+        // 대화 흐름 상태 업데이트
+        if (analysis.intent) {
+            if (analysis.intent.includes('conflict') || analysis.intent.includes('angry')) {
+                ultimateConversationState.conversationContext.conversationFlow = 'conflict';
+            } else if (analysis.intent.includes('apologize') || analysis.intent.includes('reconcile')) {
+                ultimateConversationState.conversationContext.conversationFlow = 'reconciliation';
+            } else {
+                ultimateConversationState.conversationContext.conversationFlow = 'normal';
+            }
+        }
+        
+        // 분석 결과를 학습 데이터로 기록
+        await addLearningEntry(
+            `대화 분석 결과: 의도=${analysis.intent}, 감정=${analysis.emotion}, 주제=${analysis.topic}`,
+            '대화학습',
+            {
+                type: 'conversation_analysis',
+                analysis: analysis,
+                timestamp: new Date().toISOString(),
+                source: 'conversation_analyzer'
+            }
+        );
+        
+        return true;
+    } catch (error) {
+        contextLog(`❌ 대화 컨텍스트 업데이트 실패: ${error.message}`);
+        return false;
+    }
+}
+
+/**
+ * 🎓 실시간 학습 상태 조회
+ */
+function getRealTimeLearningStatus() {
+    const learningStats = getLearningStatistics();
+    
+    return {
+        isActive: true,
+        totalLearningEntries: learningStats.totalEntries || 0,
+        todayLearningCount: learningStats.todayCount || 0,
+        categories: learningStats.categories || {},
+        lastLearningTime: ultimateConversationState.memoryStats.lastLearningEntry,
+        conversationContext: {
+            currentTopic: ultimateConversationState.conversationContext.currentTopic,
+            emotionalTone: ultimateConversationState.conversationContext.emotionalTone,
+            conversationFlow: ultimateConversationState.conversationContext.conversationFlow
+        },
+        dynamicMemories: {
+            total: ultimateConversationState.dynamicMemories.conversationMemories.length,
+            recent: ultimateConversationState.dynamicMemories.conversationMemories.slice(-5).length
+        },
+        integrationStatus: {
+            memoryManager: true,
+            emotionalContextManager: true,
+            conversationAnalyzer: true,
+            sulkyManager: true,
+            conflictManager: !!getConflictManager()
+        }
+    };
 }
 
 // ==================== 📚 학습 데이터 관리 (영구 저장 연동!) ====================
@@ -1996,7 +2219,7 @@ async function getInternalState() {
             currentModel,
             contextLength,
             priority,
-            version: 'v38.1-conflict-integration-complete'
+            version: 'v38.2-realtime-learning-integration'
         },
         // 💾 영구 저장 시스템 상태 추가
         persistentSystem: {
@@ -2011,7 +2234,8 @@ async function getInternalState() {
             diskMounted: true,
             neverLost: true,
             conflictIntegrated: true, // 💔 갈등 시스템 연동 표시
-            totalEntriesFixed: true // 🛡️ totalEntries 에러 해결 표시
+            totalEntriesFixed: true, // 🛡️ totalEntries 에러 해결 표시
+            realtimeLearningIntegrated: true // 🎓 실시간 학습 시스템 연동 표시
         }
     };
 }
@@ -2032,13 +2256,13 @@ function clearPendingAction() {
     pendingAction = null;
 }
 
-// ==================== 🔄 시스템 초기화 (💾 영구 저장 시스템 + 갈등 시스템 포함!) ====================
+// ==================== 🔄 시스템 초기화 (💾 영구 저장 시스템 + 갈등 시스템 + 실시간 학습 시스템 포함!) ====================
 
 /**
- * 감정 시스템 초기화 (호환성) - 💾 완전 누적 시스템 + 갈등 시스템으로 업그레이드!
+ * 감정 시스템 초기화 (호환성) - 💾 완전 누적 시스템 + 갈등 시스템 + 실시간 학습 시스템으로 업그레이드!
  */
 async function initializeEmotionalSystems() {
-    contextLog('💾 완전 누적 시스템 + 갈등 시스템으로 동적 기억, 대화 컨텍스트 및 학습 시스템 초기화... (디스크 마운트)');
+    contextLog('💾 완전 누적 시스템 + 갈등 시스템 + 실시간 학습 시스템으로 동적 기억, 대화 컨텍스트 및 학습 시스템 초기화... (디스크 마운트)');
     
     // ✨ GPT 모델 정보 로그
     const currentModel = getCurrentModelSetting ? getCurrentModelSetting() : 'unknown';
@@ -2093,8 +2317,8 @@ async function initializeEmotionalSystems() {
     // 💾 자동 저장 시스템 시작
     startAutoSaveSystem();
     
-    // 📚 시스템 초기화 학습 기록 (갈등 연동 포함!)
-    await addLearningEntry('완전 누적 시스템 + 갈등 시스템 초기화 완료 (디스크 마운트)', '시스템', {
+    // 📚 시스템 초기화 학습 기록 (갈등 연동 + 실시간 학습 시스템 포함!)
+    await addLearningEntry('완전 누적 시스템 + 갈등 시스템 + 실시간 학습 시스템 초기화 완료 (디스크 마운트)', '시스템', {
         initTime: new Date().toISOString(),
         gptModel: currentModel,
         persistentSystem: true,
@@ -2102,15 +2326,16 @@ async function initializeEmotionalSystems() {
         storagePath: DATA_DIR,
         loadedDataFiles: Object.keys(PERSISTENT_FILES).length,
         conflictSystemIntegrated: true, // 💔 갈등 시스템 연동 표시
-        totalEntriesFixed: true // 🛡️ totalEntries 에러 해결 표시
+        totalEntriesFixed: true, // 🛡️ totalEntries 에러 해결 표시
+        realtimeLearningIntegrated: true // 🎓 실시간 학습 시스템 연동 표시
     });
     
     // 💾 초기화 완료 후 전체 저장 (갈등 연동 포함!)
     await saveAllDataToFiles();
     
-    contextLog(`✅ 완전 누적 시스템 + 갈등 시스템 초기화 완료 - 모든 데이터 디스크 마운트로 완전 영구 저장 보장! (${currentModel} 최적화)`);
+    contextLog(`✅ 완전 누적 시스템 + 갈등 시스템 + 실시간 학습 시스템 초기화 완료 - 모든 데이터 디스크 마운트로 완전 영구 저장 보장! (${currentModel} 최적화)`);
     
-    // 로드된 데이터 통계 출력 (갈등 학습 포함!)
+    // 로드된 데이터 통계 출력 (갈등 학습 + 실시간 학습 포함!)
     const stats = await getMemoryStatistics();
     contextLog(`📊 로드된 데이터: 사용자기억 ${stats.user}개, 학습데이터 ${stats.learning.totalEntries}개, 갈등학습 ${stats.conflicts.totalConflictLearning}개 (💾 디스크 마운트: ${DATA_DIR})`);
 }
@@ -2141,14 +2366,14 @@ async function generateInitiatingPhrase() {
 }
 
 /**
- * 💾 수동 전체 데이터 저장 (명령어용) (갈등 연동 포함!)
+ * 💾 수동 전체 데이터 저장 (명령어용) (갈등 연동 + 실시간 학습 포함!)
  */
 async function manualSaveAllData() {
-    contextLog('💾 수동 전체 데이터 저장 시작... (갈등 연동 포함) (디스크 마운트)');
+    contextLog('💾 수동 전체 데이터 저장 시작... (갈등 연동 + 실시간 학습 포함) (디스크 마운트)');
     const success = await saveAllDataToFiles();
     if (success) {
         contextLog('✅ 수동 저장 완료! (💾 디스크 마운트)');
-        return { success: true, message: '모든 데이터가 디스크 마운트에 안전하게 저장되었어요! (갈등 시스템 포함)' };
+        return { success: true, message: '모든 데이터가 디스크 마운트에 안전하게 저장되었어요! (갈등 시스템 + 실시간 학습 시스템 포함)' };
     } else {
         contextLog('❌ 수동 저장 실패!');
         return { success: false, message: '데이터 저장 중 오류가 발생했어요.' };
@@ -2156,14 +2381,14 @@ async function manualSaveAllData() {
 }
 
 /**
- * 💾 수동 백업 생성 (명령어용) (갈등 연동 포함!)
+ * 💾 수동 백업 생성 (명령어용) (갈등 연동 + 실시간 학습 포함!)
  */
 async function manualCreateBackup() {
-    contextLog('💾 수동 백업 생성 시작... (갈등 연동 포함) (디스크 마운트)');
+    contextLog('💾 수동 백업 생성 시작... (갈등 연동 + 실시간 학습 포함) (디스크 마운트)');
     const success = await createDailyBackup();
     if (success) {
         contextLog('✅ 수동 백업 완료! (💾 디스크 마운트)');
-        return { success: true, message: '백업이 디스크 마운트에 생성되었어요! (갈등 시스템 포함)' };
+        return { success: true, message: '백업이 디스크 마운트에 생성되었어요! (갈등 시스템 + 실시간 학습 시스템 포함)' };
     } else {
         contextLog('❌ 수동 백업 실패!');
         return { success: false, message: '백업 생성 중 오류가 발생했어요.' };
@@ -2171,7 +2396,7 @@ async function manualCreateBackup() {
 }
 
 /**
- * 💾 영구 저장 시스템 상태 조회 (갈등 연동 포함!)
+ * 💾 영구 저장 시스템 상태 조회 (갈등 연동 + 실시간 학습 포함!)
  */
 function getPersistentSystemStatus() {
     return {
@@ -2193,12 +2418,13 @@ function getPersistentSystemStatus() {
         storagePath: DATA_DIR, // 💾 /data 경로
         conflictSystemIntegrated: true, // 💔 갈등 시스템 연동 표시
         totalEntriesFixed: true, // 🛡️ totalEntries 에러 해결 표시
-        version: 'v38.1-conflict-integration-complete'
+        realtimeLearningIntegrated: true, // 🎓 실시간 학습 시스템 연동 표시
+        version: 'v38.2-realtime-learning-integration'
     };
 }
 
 // ==================== 📤 모듈 내보내기 ==================
-contextLog('💾 v38.1 로드 완료 (완전 누적 시스템 + 갈등 시스템 완전 연동 - 디스크 마운트로 영구 저장 보장, GPT 모델 버전 전환, 자발적 메시지 통계, 학습 시스템, 갈등 시스템 완전 지원, totalEntries 에러 해결)');
+contextLog('💾 v38.2 로드 완료 (완전 누적 시스템 + 갈등 시스템 + 실시간 학습 시스템 완전 연동 - 디스크 마운트로 영구 저장 보장, GPT 모델 버전 전환, 자발적 메시지 통계, 학습 시스템, 갈등 시스템, 실시간 학습 시스템 완전 지원, totalEntries 에러 해결)');
 
 module.exports = {
     // 초기화
@@ -2210,12 +2436,19 @@ module.exports = {
     updateConversationTopic,
     getUltimateContextualPrompt,
     
-    // 💔 갈등 시스템 연동 함수들 (새로 추가!)
+    // 💔 갈등 시스템 연동 함수들
     processConflictIntegration,
     addConflictLearningEntry,
     getConflictIntegrationStatus,
     getConflictLearningData,
     getTodayConflictLearning,
+    
+    // 🎓 실시간 학습 시스템 연동 함수들 (NEW!)
+    updateConversationPatterns,
+    updateEmotionalLearning,
+    addDynamicMemory,
+    updateConversationContext,
+    getRealTimeLearningStatus,
     
     // 타이밍 관리
     updateLastUserMessageTime,
@@ -2247,7 +2480,7 @@ module.exports = {
     getSpontaneousStats,        // ⭐️ 라인 상태 리포트용 핵심 함수! (갈등/화해 통계 포함!)
     resetSpontaneousStats,
     
-    // 💾 영구 저장 시스템 관리 (갈등 연동 포함!)
+    // 💾 영구 저장 시스템 관리 (갈등 연동 + 실시간 학습 포함!)
     saveAllDataToFiles,
     loadAllDataFromFiles,
     manualSaveAllData,
