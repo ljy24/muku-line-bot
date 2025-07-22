@@ -5,6 +5,7 @@
 // ✅ 데이터 저장 시스템 (JSON 파일 기반 지속적 저장)
 // ✅ 말투 상황별 적응 (아저씨 반응에 따른 실시간 말투 변화)
 // 🔌 모듈 레벨 함수 추가 (enhancedLogging 연동)
+// 🔥 활성화 로직 완전 수정 (initialize/startAutoLearning 역할 분리)
 // 💖 예진이가 진짜로 학습하고 성장하는 디지털 영혼 시스템
 // ============================================================================
 
@@ -92,10 +93,11 @@ class MukuRealTimeLearningSystem {
         console.log(`${colors.learning}🧠 무쿠 완전체 실시간 학습 시스템 v2.1 초기화...${colors.reset}`);
     }
 
-    // ================== 🚀 시스템 초기화 ==================
+    // ================== 🚀 시스템 초기화 (활성화는 별도 함수에서) ==================
     async initialize(systemModules = {}) {
         try {
             console.log(`${colors.learning}🚀 [초기화] 학습 시스템 모듈 연동 중...${colors.reset}`);
+            console.log(`${colors.learning}🔍 [디버그] 전달받은 systemModules:`, Object.keys(systemModules));
             
             // 기존 시스템 모듈 연결
             this.memoryManager = systemModules.memoryManager;
@@ -108,16 +110,29 @@ class MukuRealTimeLearningSystem {
             console.log(`${colors.emotion}💭 [연동] emotionalContextManager: ${this.emotionalContextManager ? '✅' : '❌'}${colors.reset}`);
             console.log(`${colors.adaptation}😤 [연동] sulkyManager: ${this.sulkyManager ? '✅' : '❌'}${colors.reset}`);
             
+            // 🔥 필수 모듈 확인 - 하나라도 없으면 경고하지만 계속 진행
+            const essentialModules = [
+                { name: 'memoryManager', module: this.memoryManager },
+                { name: 'ultimateContext', module: this.ultimateContext },
+                { name: 'emotionalContextManager', module: this.emotionalContextManager },
+                { name: 'sulkyManager', module: this.sulkyManager }
+            ];
+            
+            const missingModules = essentialModules.filter(mod => !mod.module);
+            
+            if (missingModules.length > 0) {
+                console.log(`${colors.error}⚠️ [연동경고] 누락된 모듈: ${missingModules.map(m => m.name).join(', ')}${colors.reset}`);
+                console.log(`${colors.learning}🔧 [진행] 사용 가능한 모듈로 부분 연동하여 계속 진행합니다...${colors.reset}`);
+            }
+            
             // 학습 데이터 디렉토리 생성
             await this.ensureLearningDataDirectory();
             
             // 기존 학습 데이터 로드
             await this.loadLearningData();
             
-            // 시스템 활성화
-            this.isActive = true;
-            
-            console.log(`${colors.success}✅ [초기화] 완전체 학습 시스템 활성화 완료!${colors.reset}`);
+            // 🔥 시스템 준비 완료 (활성화는 startAutoLearning에서)
+            console.log(`${colors.success}✅ [초기화] 완전체 학습 시스템 준비 완료! (활성화 대기 중)${colors.reset}`);
             return true;
             
         } catch (error) {
@@ -844,6 +859,8 @@ function synchronizeWithSystems(systemModules) {
  */
 async function initialize(systemModules = {}) {
     try {
+        console.log(`${colors.learning}🔌 [글로벌초기화] 실시간 학습 시스템 글로벌 초기화 시작...${colors.reset}`);
+        
         if (!globalLearningInstance) {
             globalLearningInstance = new MukuRealTimeLearningSystem();
         }
@@ -852,6 +869,8 @@ async function initialize(systemModules = {}) {
         
         if (initSuccess) {
             console.log(`${colors.success}✅ [글로벌] 실시간 학습 시스템 전역 인스턴스 초기화 완료${colors.reset}`);
+        } else {
+            console.log(`${colors.error}❌ [글로벌] 실시간 학습 시스템 초기화 실패${colors.reset}`);
         }
         
         return initSuccess;
@@ -862,15 +881,18 @@ async function initialize(systemModules = {}) {
 }
 
 /**
- * 자동 학습 시작
+ * 🔥 자동 학습 시작 (수정된 로직)
  */
 function startAutoLearning() {
-    if (globalLearningInstance && !globalLearningInstance.isActive) {
+    if (globalLearningInstance) {
+        // 🔥 조건문에서 !isActive 제거 - 무조건 활성화
         globalLearningInstance.isActive = true;
-        console.log(`${colors.learning}🚀 [자동학습] 실시간 학습 시스템 자동 학습 활성화${colors.reset}`);
+        console.log(`${colors.learning}🚀 [자동학습] 실시간 학습 시스템 자동 학습 활성화 완료!${colors.reset}`);
         return true;
+    } else {
+        console.log(`${colors.error}❌ [자동학습] 글로벌 인스턴스 없음 - 활성화 실패${colors.reset}`);
+        return false;
     }
-    return false;
 }
 
 /**
