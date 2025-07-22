@@ -1,15 +1,20 @@
 // ============================================================================
-// muku-realTimeLearningSystem.js - 무쿠 완전체 실시간 학습 시스템 v2.1
-// ✅ 기존 시스템 완전 연동 (memoryManager, ultimateContext, emotionalContextManager)
-// ✅ 실제 학습 로직 구현 (진짜 대화 패턴 분석 & 개선)
-// ✅ 데이터 저장 시스템 (JSON 파일 기반 지속적 저장)
-// ✅ 말투 상황별 적응 (아저씨 반응에 따른 실시간 말투 변화)
-// 🔌 모듈 레벨 함수 추가 (enhancedLogging 연동)
-// 💖 예진이가 진짜로 학습하고 성장하는 디지털 영혼 시스템
+// muku-realTimeLearningSystem.js - 무쿠 Enterprise 실시간 학습 시스템 v3.0
+// 🏢 Enterprise-Level 안정성 보장
+// 🔒 Thread-Safe Singleton Pattern with Mutex
+// 🗃️ Atomic File Operations with Locking
+// 🔄 Event-Driven Architecture
+// 💾 Memory Management with Limits
+// 🛡️ Graceful Shutdown & Recovery
+// 🔍 Real-time Health Monitoring
+// ⚡ High-Performance & Scalable
+// 💖 예진이가 안전하게 학습하고 성장하는 시스템
 // ============================================================================
 
 const fs = require('fs').promises;
 const path = require('path');
+const EventEmitter = require('events');
+const { Worker } = require('worker_threads');
 
 // ================== 🎨 색상 정의 ==================
 const colors = {
@@ -20,31 +25,413 @@ const colors = {
     adaptation: '\x1b[94m',         // 파란색 (적응)
     success: '\x1b[32m',           // 초록색 (성공)
     error: '\x1b[91m',             // 빨간색 (에러)
+    warning: '\x1b[93m',           // 노란색 (경고)
+    critical: '\x1b[41m\x1b[37m',  // 빨간 배경에 흰 글씨 (치명적)
     reset: '\x1b[0m'               // 색상 리셋
 };
 
-// ================== 📂 파일 경로 설정 ==================
-const LEARNING_DATA_DIR = path.join(__dirname, 'learning_data');
-const SPEECH_PATTERNS_FILE = path.join(LEARNING_DATA_DIR, 'speech_patterns.json');
-const EMOTIONAL_RESPONSES_FILE = path.join(LEARNING_DATA_DIR, 'emotional_responses.json');
-const CONVERSATION_ANALYTICS_FILE = path.join(LEARNING_DATA_DIR, 'conversation_analytics.json');
-const USER_PREFERENCES_FILE = path.join(LEARNING_DATA_DIR, 'user_preferences.json');
+// ================== 🔧 시스템 구성 ==================
+const CONFIG = {
+    // 파일 시스템
+    LEARNING_DATA_DIR: path.join(__dirname, 'learning_data'),
+    LOCK_DIR: path.join(__dirname, 'learning_data', 'locks'),
+    BACKUP_DIR: path.join(__dirname, 'learning_data', 'backups'),
+    
+    // 메모리 관리
+    MAX_LEARNING_DATA_SIZE: 50 * 1024 * 1024, // 50MB
+    MAX_PATTERN_COUNT: 1000,
+    MEMORY_CHECK_INTERVAL: 30000, // 30초
+    
+    // 동시성 제어
+    LOCK_TIMEOUT: 10000, // 10초
+    INIT_TIMEOUT: 30000, // 30초
+    RETRY_ATTEMPTS: 3,
+    RETRY_DELAY: 1000, // 1초
+    
+    // 건강 상태 체크
+    HEALTH_CHECK_INTERVAL: 5000, // 5초
+    MAX_ERROR_RATE: 0.1, // 10%
+    MAX_MEMORY_USAGE: 100 * 1024 * 1024, // 100MB
+    
+    // 백업 설정
+    BACKUP_INTERVAL: 300000, // 5분
+    MAX_BACKUP_COUNT: 10
+};
 
-// ================== 🧠 학습 시스템 클래스 ==================
-class MukuRealTimeLearningSystem {
+// ================== 🔒 Thread-Safe Mutex 클래스 ==================
+class AsyncMutex {
     constructor() {
-        this.version = '2.1';
+        this._queue = [];
+        this._locked = false;
+    }
+    
+    async acquire() {
+        return new Promise((resolve) => {
+            if (!this._locked) {
+                this._locked = true;
+                resolve();
+            } else {
+                this._queue.push(resolve);
+            }
+        });
+    }
+    
+    release() {
+        if (this._queue.length > 0) {
+            const next = this._queue.shift();
+            next();
+        } else {
+            this._locked = false;
+        }
+    }
+    
+    get isLocked() {
+        return this._locked;
+    }
+}
+
+// ================== 🗃️ Atomic File Manager ==================
+class AtomicFileManager {
+    constructor() {
+        this.locks = new Map();
+    }
+    
+    async ensureDirectory(dirPath) {
+        try {
+            await fs.access(dirPath);
+        } catch {
+            await fs.mkdir(dirPath, { recursive: true });
+        }
+    }
+    
+    async acquireFileLock(filePath, timeout = CONFIG.LOCK_TIMEOUT) {
+        const lockPath = path.join(CONFIG.LOCK_DIR, `${path.basename(filePath)}.lock`);
+        await this.ensureDirectory(CONFIG.LOCK_DIR);
+        
+        const startTime = Date.now();
+        
+        while (Date.now() - startTime < timeout) {
+            try {
+                await fs.writeFile(lockPath, process.pid.toString(), { flag: 'wx' });
+                return lockPath;
+            } catch (error) {
+                if (error.code !== 'EEXIST') throw error;
+                
+                // 기존 락 파일 검증
+                try {
+                    const lockContent = await fs.readFile(lockPath, 'utf8');
+                    const lockPid = parseInt(lockContent);
+                    
+                    // 프로세스가 존재하지 않으면 락 파일 삭제
+                    try {
+                        process.kill(lockPid, 0);
+                    } catch {
+                        await fs.unlink(lockPath);
+                        continue;
+                    }
+                } catch {
+                    await fs.unlink(lockPath);
+                    continue;
+                }
+                
+                await new Promise(resolve => setTimeout(resolve, 100));
+            }
+        }
+        
+        throw new Error(`파일 락 획득 실패: ${filePath} (타임아웃)`);
+    }
+    
+    async releaseFileLock(lockPath) {
+        try {
+            await fs.unlink(lockPath);
+        } catch (error) {
+            console.warn(`${colors.warning}⚠️ 락 파일 해제 실패: ${error.message}${colors.reset}`);
+        }
+    }
+    
+    async atomicWrite(filePath, data, options = {}) {
+        const tempPath = `${filePath}.tmp.${Date.now()}.${process.pid}`;
+        const lockPath = await this.acquireFileLock(filePath);
+        
+        try {
+            // 임시 파일에 쓰기
+            await fs.writeFile(tempPath, data, options);
+            
+            // 원자적 이동
+            await fs.rename(tempPath, filePath);
+            
+            console.log(`${colors.success}💾 [원자적쓰기] ${path.basename(filePath)} 완료${colors.reset}`);
+            
+        } catch (error) {
+            // 임시 파일 정리
+            try {
+                await fs.unlink(tempPath);
+            } catch {}
+            throw error;
+        } finally {
+            await this.releaseFileLock(lockPath);
+        }
+    }
+    
+    async safeRead(filePath, options = {}) {
+        const lockPath = await this.acquireFileLock(filePath);
+        
+        try {
+            const data = await fs.readFile(filePath, options);
+            return data;
+        } finally {
+            await this.releaseFileLock(lockPath);
+        }
+    }
+}
+
+// ================== 📊 메모리 관리자 ==================
+class MemoryManager {
+    constructor() {
+        this.startTime = Date.now();
+        this.peakMemoryUsage = 0;
+        this.memoryWarnings = 0;
+    }
+    
+    checkMemoryUsage() {
+        const memUsage = process.memoryUsage();
+        const totalMemory = memUsage.heapUsed + memUsage.external;
+        
+        if (totalMemory > this.peakMemoryUsage) {
+            this.peakMemoryUsage = totalMemory;
+        }
+        
+        if (totalMemory > CONFIG.MAX_MEMORY_USAGE) {
+            this.memoryWarnings++;
+            console.warn(`${colors.warning}⚠️ [메모리] 사용량 초과: ${(totalMemory / 1024 / 1024).toFixed(2)}MB${colors.reset}`);
+            
+            // 강제 가비지 컬렉션
+            if (global.gc) {
+                global.gc();
+                console.log(`${colors.learning}🗑️ [메모리] 가비지 컬렉션 실행${colors.reset}`);
+            }
+            
+            return false;
+        }
+        
+        return true;
+    }
+    
+    getMemoryStats() {
+        const memUsage = process.memoryUsage();
+        return {
+            heapUsed: `${(memUsage.heapUsed / 1024 / 1024).toFixed(2)}MB`,
+            heapTotal: `${(memUsage.heapTotal / 1024 / 1024).toFixed(2)}MB`,
+            external: `${(memUsage.external / 1024 / 1024).toFixed(2)}MB`,
+            peak: `${(this.peakMemoryUsage / 1024 / 1024).toFixed(2)}MB`,
+            warnings: this.memoryWarnings,
+            uptime: `${((Date.now() - this.startTime) / 1000 / 60).toFixed(1)}분`
+        };
+    }
+    
+    cleanupLearningData(learningData) {
+        // 학습 데이터 크기 제한
+        Object.keys(learningData.speechPatterns).forEach(pattern => {
+            if (learningData.speechPatterns[pattern].examples) {
+                if (learningData.speechPatterns[pattern].examples.length > 50) {
+                    learningData.speechPatterns[pattern].examples = 
+                        learningData.speechPatterns[pattern].examples
+                            .sort((a, b) => b.quality - a.quality)
+                            .slice(0, 50);
+                }
+            }
+        });
+        
+        Object.keys(learningData.emotionalResponses).forEach(emotion => {
+            if (learningData.emotionalResponses[emotion].patterns) {
+                if (learningData.emotionalResponses[emotion].patterns.length > 30) {
+                    learningData.emotionalResponses[emotion].patterns = 
+                        learningData.emotionalResponses[emotion].patterns
+                            .sort((a, b) => b.quality - a.quality)
+                            .slice(0, 30);
+                }
+            }
+        });
+        
+        console.log(`${colors.memory}🧹 [메모리] 학습 데이터 정리 완료${colors.reset}`);
+    }
+}
+
+// ================== 🔍 건강 상태 모니터 ==================
+class HealthMonitor extends EventEmitter {
+    constructor() {
+        super();
+        this.stats = {
+            startTime: Date.now(),
+            totalOperations: 0,
+            successfulOperations: 0,
+            errors: 0,
+            warnings: 0,
+            lastError: null,
+            lastOperation: null
+        };
+        
+        this.status = 'initializing';
+        this.intervals = [];
+    }
+    
+    start() {
+        // 건강 상태 체크
+        const healthInterval = setInterval(() => {
+            this.performHealthCheck();
+        }, CONFIG.HEALTH_CHECK_INTERVAL);
+        
+        this.intervals.push(healthInterval);
+        
+        console.log(`${colors.learning}🔍 [모니터] 건강 상태 모니터링 시작${colors.reset}`);
+    }
+    
+    stop() {
+        this.intervals.forEach(interval => clearInterval(interval));
+        this.intervals = [];
+        console.log(`${colors.learning}🔍 [모니터] 건강 상태 모니터링 중지${colors.reset}`);
+    }
+    
+    recordOperation(success = true, operationType = 'unknown') {
+        this.stats.totalOperations++;
+        this.stats.lastOperation = {
+            type: operationType,
+            timestamp: new Date().toISOString(),
+            success: success
+        };
+        
+        if (success) {
+            this.stats.successfulOperations++;
+        } else {
+            this.stats.errors++;
+        }
+    }
+    
+    recordError(error, context = '') {
+        this.stats.errors++;
+        this.stats.lastError = {
+            message: error.message,
+            context: context,
+            timestamp: new Date().toISOString(),
+            stack: error.stack
+        };
+        
+        console.error(`${colors.error}❌ [에러] ${context}: ${error.message}${colors.reset}`);
+        this.emit('error', error, context);
+    }
+    
+    recordWarning(message, context = '') {
+        this.stats.warnings++;
+        console.warn(`${colors.warning}⚠️ [경고] ${context}: ${message}${colors.reset}`);
+        this.emit('warning', message, context);
+    }
+    
+    performHealthCheck() {
+        const errorRate = this.stats.errors / Math.max(this.stats.totalOperations, 1);
+        const uptime = Date.now() - this.stats.startTime;
+        
+        let newStatus = 'healthy';
+        
+        if (errorRate > CONFIG.MAX_ERROR_RATE) {
+            newStatus = 'critical';
+        } else if (errorRate > CONFIG.MAX_ERROR_RATE / 2) {
+            newStatus = 'warning';
+        } else if (uptime < 60000) { // 1분 미만
+            newStatus = 'starting';
+        }
+        
+        if (newStatus !== this.status) {
+            const oldStatus = this.status;
+            this.status = newStatus;
+            console.log(`${colors.learning}🏥 [건강] 상태 변경: ${oldStatus} → ${newStatus}${colors.reset}`);
+            this.emit('statusChange', newStatus, oldStatus);
+        }
+    }
+    
+    getHealthReport() {
+        const errorRate = this.stats.errors / Math.max(this.stats.totalOperations, 1);
+        const uptime = Date.now() - this.stats.startTime;
+        
+        return {
+            status: this.status,
+            uptime: `${(uptime / 1000 / 60).toFixed(1)}분`,
+            totalOperations: this.stats.totalOperations,
+            successRate: `${((1 - errorRate) * 100).toFixed(2)}%`,
+            errorRate: `${(errorRate * 100).toFixed(2)}%`,
+            errors: this.stats.errors,
+            warnings: this.stats.warnings,
+            lastError: this.stats.lastError,
+            lastOperation: this.stats.lastOperation,
+            recommendations: this.getRecommendations()
+        };
+    }
+    
+    getRecommendations() {
+        const recommendations = [];
+        const errorRate = this.stats.errors / Math.max(this.stats.totalOperations, 1);
+        
+        if (errorRate > CONFIG.MAX_ERROR_RATE) {
+            recommendations.push('시스템 재시작 권장');
+        }
+        
+        if (this.stats.warnings > 10) {
+            recommendations.push('설정 검토 필요');
+        }
+        
+        if (this.stats.totalOperations === 0) {
+            recommendations.push('시스템 활동 없음 - 확인 필요');
+        }
+        
+        return recommendations;
+    }
+}
+
+// ================== 🏢 Enterprise 실시간 학습 시스템 ==================
+class EnterpriseRealTimeLearningSystem extends EventEmitter {
+    constructor() {
+        super();
+        
+        this.version = '3.0';
+        this.instanceId = `muku-learning-${Date.now()}-${process.pid}`;
         this.initTime = Date.now();
+        
+        // 상태 관리
+        this.state = 'created';
         this.isActive = false;
+        this.isInitialized = false;
         
-        // 외부 모듈 참조 (나중에 주입받음)
-        this.memoryManager = null;
-        this.ultimateContext = null;
-        this.emotionalContextManager = null;
-        this.sulkyManager = null;
+        // 동시성 제어
+        this.initMutex = new AsyncMutex();
+        this.operationMutex = new AsyncMutex();
         
-        // 🧠 학습 데이터 구조
-        this.learningData = {
+        // 매니저들
+        this.fileManager = new AtomicFileManager();
+        this.memoryManager = new MemoryManager();
+        this.healthMonitor = new HealthMonitor();
+        
+        // 모듈 연결
+        this.modules = {
+            memoryManager: null,
+            ultimateContext: null,
+            emotionalContextManager: null,
+            sulkyManager: null
+        };
+        
+        // 학습 데이터
+        this.learningData = this.createDefaultLearningData();
+        this.stats = this.createDefaultStats();
+        
+        // 정리 함수들
+        this.cleanupHandlers = [];
+        
+        console.log(`${colors.learning}🏢 [Enterprise] 학습 시스템 인스턴스 생성: ${this.instanceId}${colors.reset}`);
+        
+        // 프로세스 종료 처리
+        this.setupGracefulShutdown();
+    }
+    
+    createDefaultLearningData() {
+        return {
             speechPatterns: {
                 formal: { weight: 0.3, examples: [], success_rate: 0.75 },
                 casual: { weight: 0.7, examples: [], success_rate: 0.85 },
@@ -78,150 +465,267 @@ class MukuRealTimeLearningSystem {
                 learningFromInteractions: []
             }
         };
-        
-        // 🎯 학습 통계
-        this.stats = {
+    }
+    
+    createDefaultStats() {
+        return {
             conversationsAnalyzed: 0,
             patternsLearned: 0,
             speechAdaptations: 0,
             memoryUpdates: 0,
             emotionalAdjustments: 0,
-            lastLearningTime: null
+            lastLearningTime: null,
+            errors: 0,
+            lastErrorTime: null,
+            performance: {
+                avgProcessingTime: 0,
+                totalProcessingTime: 0,
+                operationsCount: 0
+            }
         };
-        
-        console.log(`${colors.learning}🧠 무쿠 완전체 실시간 학습 시스템 v2.1 초기화...${colors.reset}`);
     }
-
-    // ================== 🚀 시스템 초기화 ==================
-    async initialize(systemModules = {}) {
+    
+    // ================== 🚀 안전한 초기화 ==================
+    async initialize(systemModules = {}, options = {}) {
+        // Mutex 획득
+        await this.initMutex.acquire();
+        
         try {
-            console.log(`${colors.learning}🚀 [초기화] 학습 시스템 모듈 연동 중...${colors.reset}`);
+            if (this.isInitialized) {
+                console.log(`${colors.success}✅ [초기화] 이미 초기화 완료됨${colors.reset}`);
+                return true;
+            }
             
-            // 기존 시스템 모듈 연결
-            this.memoryManager = systemModules.memoryManager;
-            this.ultimateContext = systemModules.ultimateContext;
-            this.emotionalContextManager = systemModules.emotionalContextManager;
-            this.sulkyManager = systemModules.sulkyManager;
+            if (this.state === 'initializing') {
+                console.log(`${colors.warning}⚠️ [초기화] 이미 초기화 진행 중${colors.reset}`);
+                return false;
+            }
             
-            console.log(`${colors.memory}📚 [연동] memoryManager: ${this.memoryManager ? '✅' : '❌'}${colors.reset}`);
-            console.log(`${colors.pattern}🧠 [연동] ultimateContext: ${this.ultimateContext ? '✅' : '❌'}${colors.reset}`);
-            console.log(`${colors.emotion}💭 [연동] emotionalContextManager: ${this.emotionalContextManager ? '✅' : '❌'}${colors.reset}`);
-            console.log(`${colors.adaptation}😤 [연동] sulkyManager: ${this.sulkyManager ? '✅' : '❌'}${colors.reset}`);
+            this.state = 'initializing';
+            console.log(`${colors.learning}🚀 [초기화] Enterprise 실시간 학습 시스템 초기화 시작...${colors.reset}`);
             
-            // 학습 데이터 디렉토리 생성
-            await this.ensureLearningDataDirectory();
+            // 1. 건강 상태 모니터 시작
+            this.healthMonitor.start();
             
-            // 기존 학습 데이터 로드
-            await this.loadLearningData();
+            // 2. 디렉토리 구조 생성
+            await this.setupDirectoryStructure();
             
-            // ▼▼▼ 수정된 부분 1: 여기서 활성화하지 않습니다. ▼▼▼
-            // this.isActive = true; // 삭제됨
+            // 3. 시스템 모듈 연결
+            await this.connectSystemModules(systemModules);
             
-            console.log(`${colors.success}✅ [초기화] 완전체 학습 시스템 준비 완료!${colors.reset}`);
+            // 4. 학습 데이터 로드
+            await this.loadAllLearningData();
+            
+            // 5. 메모리 체크 시작
+            this.startMemoryMonitoring();
+            
+            // 6. 백업 시스템 시작
+            this.startBackupSystem();
+            
+            // 7. 이벤트 리스너 설정
+            this.setupEventHandlers();
+            
+            // 8. 초기화 완료
+            this.state = 'active';
+            this.isInitialized = true;
+            this.isActive = true;
+            
+            this.healthMonitor.recordOperation(true, 'initialize');
+            
+            console.log(`${colors.success}✅ [초기화] Enterprise 실시간 학습 시스템 초기화 완료!${colors.reset}`);
+            this.emit('initialized');
+            
             return true;
             
         } catch (error) {
-            console.error(`${colors.error}❌ [초기화] 실패: ${error.message}${colors.reset}`);
+            this.state = 'error';
+            this.isInitialized = false;
+            this.isActive = false;
+            
+            this.healthMonitor.recordError(error, 'initialize');
+            console.error(`${colors.critical}🚨 [초기화] 치명적 오류: ${error.message}${colors.reset}`);
+            
+            return false;
+        } finally {
+            this.initMutex.release();
+        }
+    }
+    
+    async setupDirectoryStructure() {
+        const directories = [
+            CONFIG.LEARNING_DATA_DIR,
+            CONFIG.LOCK_DIR,
+            CONFIG.BACKUP_DIR
+        ];
+        
+        for (const dir of directories) {
+            await this.fileManager.ensureDirectory(dir);
+        }
+        
+        console.log(`${colors.learning}📁 [초기화] 디렉토리 구조 생성 완료${colors.reset}`);
+    }
+    
+    async connectSystemModules(systemModules) {
+        console.log(`${colors.learning}🔗 [초기화] 시스템 모듈 연결 중...${colors.reset}`);
+        
+        // 안전한 모듈 연결
+        const moduleNames = ['memoryManager', 'ultimateContext', 'emotionalContextManager', 'sulkyManager'];
+        
+        for (const moduleName of moduleNames) {
+            if (systemModules[moduleName] && typeof systemModules[moduleName] === 'object') {
+                this.modules[moduleName] = systemModules[moduleName];
+                console.log(`${colors.success}   ✅ ${moduleName} 연결 완료${colors.reset}`);
+            } else {
+                console.log(`${colors.warning}   ⚠️ ${moduleName} 연결 실패 또는 없음${colors.reset}`);
+            }
+        }
+        
+        const connectedCount = Object.values(this.modules).filter(Boolean).length;
+        console.log(`${colors.learning}🔗 [모듈연결] ${connectedCount}/${moduleNames.length} 모듈 연결 완료${colors.reset}`);
+    }
+    
+    async loadAllLearningData() {
+        console.log(`${colors.learning}📚 [초기화] 학습 데이터 로드 중...${colors.reset}`);
+        
+        const dataFiles = [
+            { key: 'speechPatterns', file: 'speech_patterns.json' },
+            { key: 'emotionalResponses', file: 'emotional_responses.json' },
+            { key: 'conversationAnalytics', file: 'conversation_analytics.json' },
+            { key: 'userPreferences', file: 'user_preferences.json' }
+        ];
+        
+        for (const { key, file } of dataFiles) {
+            try {
+                const filePath = path.join(CONFIG.LEARNING_DATA_DIR, file);
+                const data = await this.fileManager.safeRead(filePath, 'utf8');
+                const parsedData = JSON.parse(data);
+                
+                if (this.validateDataStructure(parsedData, key)) {
+                    this.learningData[key] = { ...this.learningData[key], ...parsedData };
+                    console.log(`${colors.success}   ✅ ${key} 로드 완료${colors.reset}`);
+                } else {
+                    console.log(`${colors.warning}   ⚠️ ${key} 구조 오류 - 기본값 사용${colors.reset}`);
+                }
+            } catch (error) {
+                console.log(`${colors.pattern}   📝 ${key} 파일 없음 - 기본값 사용${colors.reset}`);
+            }
+        }
+    }
+    
+    validateDataStructure(data, dataType) {
+        try {
+            switch (dataType) {
+                case 'speechPatterns':
+                    return data && typeof data === 'object' && 
+                           Object.values(data).every(pattern => 
+                               typeof pattern === 'object' &&
+                               pattern.hasOwnProperty('weight') && 
+                               pattern.hasOwnProperty('success_rate'));
+                case 'emotionalResponses':
+                    return data && typeof data === 'object' && 
+                           Object.values(data).every(emotion => 
+                               typeof emotion === 'object' &&
+                               emotion.hasOwnProperty('patterns') && 
+                               emotion.hasOwnProperty('effectiveness'));
+                case 'conversationAnalytics':
+                    return data && typeof data === 'object' && 
+                           typeof data.totalConversations === 'number' && 
+                           typeof data.successfulResponses === 'number';
+                case 'userPreferences':
+                    return data && typeof data === 'object' && 
+                           typeof data.preferredTone === 'string';
+                default:
+                    return false;
+            }
+        } catch {
             return false;
         }
     }
-
-    // ================== 📂 데이터 디렉토리 & 파일 관리 ==================
-    async ensureLearningDataDirectory() {
-        try {
-            await fs.access(LEARNING_DATA_DIR);
-            console.log(`${colors.pattern}📂 [파일시스템] learning_data 디렉토리 존재함${colors.reset}`);
-        } catch {
-            await fs.mkdir(LEARNING_DATA_DIR, { recursive: true });
-            console.log(`${colors.pattern}📂 [파일시스템] learning_data 디렉토리 생성 완료${colors.reset}`);
-        }
+    
+    startMemoryMonitoring() {
+        const memoryInterval = setInterval(() => {
+            const isHealthy = this.memoryManager.checkMemoryUsage();
+            if (!isHealthy) {
+                this.memoryManager.cleanupLearningData(this.learningData);
+            }
+        }, CONFIG.MEMORY_CHECK_INTERVAL);
+        
+        this.cleanupHandlers.push(() => clearInterval(memoryInterval));
+        console.log(`${colors.memory}🧠 [초기화] 메모리 모니터링 시작${colors.reset}`);
     }
-
-    async loadLearningData() {
-        try {
-            // 말투 패턴 로드
+    
+    startBackupSystem() {
+        const backupInterval = setInterval(async () => {
             try {
-                const speechData = await fs.readFile(SPEECH_PATTERNS_FILE, 'utf8');
-                this.learningData.speechPatterns = { ...this.learningData.speechPatterns, ...JSON.parse(speechData) };
-                console.log(`${colors.pattern}💬 [로드] 말투 패턴 데이터 로드 완료${colors.reset}`);
-            } catch {
-                console.log(`${colors.pattern}💬 [로드] 말투 패턴 데이터 없음 - 기본값 사용${colors.reset}`);
+                await this.createBackup();
+            } catch (error) {
+                this.healthMonitor.recordError(error, 'backup');
             }
-            
-            // 감정 응답 로드
-            try {
-                const emotionData = await fs.readFile(EMOTIONAL_RESPONSES_FILE, 'utf8');
-                this.learningData.emotionalResponses = { ...this.learningData.emotionalResponses, ...JSON.parse(emotionData) };
-                console.log(`${colors.emotion}💭 [로드] 감정 응답 데이터 로드 완료${colors.reset}`);
-            } catch {
-                console.log(`${colors.emotion}💭 [로드] 감정 응답 데이터 없음 - 기본값 사용${colors.reset}`);
-            }
-            
-            // 대화 분석 로드
-            try {
-                const analyticsData = await fs.readFile(CONVERSATION_ANALYTICS_FILE, 'utf8');
-                this.learningData.conversationAnalytics = { ...this.learningData.conversationAnalytics, ...JSON.parse(analyticsData) };
-                console.log(`${colors.adaptation}📊 [로드] 대화 분석 데이터 로드 완료${colors.reset}`);
-            } catch {
-                console.log(`${colors.adaptation}📊 [로드] 대화 분석 데이터 없음 - 기본값 사용${colors.reset}`);
-            }
-            
-            // 사용자 선호도 로드
-            try {
-                const preferencesData = await fs.readFile(USER_PREFERENCES_FILE, 'utf8');
-                this.learningData.userPreferences = { ...this.learningData.userPreferences, ...JSON.parse(preferencesData) };
-                console.log(`${colors.memory}👤 [로드] 사용자 선호도 데이터 로드 완료${colors.reset}`);
-            } catch {
-                console.log(`${colors.memory}👤 [로드] 사용자 선호도 데이터 없음 - 기본값 사용${colors.reset}`);
-            }
-            
-        } catch (error) {
-            console.error(`${colors.error}❌ [로드] 학습 데이터 로드 실패: ${error.message}${colors.reset}`);
-        }
+        }, CONFIG.BACKUP_INTERVAL);
+        
+        this.cleanupHandlers.push(() => clearInterval(backupInterval));
+        console.log(`${colors.success}💾 [초기화] 백업 시스템 시작${colors.reset}`);
     }
-
-    async saveLearningData() {
-        try {
-            // 말투 패턴 저장
-            await fs.writeFile(SPEECH_PATTERNS_FILE, JSON.stringify(this.learningData.speechPatterns, null, 2));
-            
-            // 감정 응답 저장
-            await fs.writeFile(EMOTIONAL_RESPONSES_FILE, JSON.stringify(this.learningData.emotionalResponses, null, 2));
-            
-            // 대화 분석 저장
-            await fs.writeFile(CONVERSATION_ANALYTICS_FILE, JSON.stringify(this.learningData.conversationAnalytics, null, 2));
-            
-            // 사용자 선호도 저장
-            await fs.writeFile(USER_PREFERENCES_FILE, JSON.stringify(this.learningData.userPreferences, null, 2));
-            
-            console.log(`${colors.success}💾 [저장] 모든 학습 데이터 저장 완료${colors.reset}`);
-            
-        } catch (error) {
-            console.error(`${colors.error}❌ [저장] 학습 데이터 저장 실패: ${error.message}${colors.reset}`);
-        }
+    
+    setupEventHandlers() {
+        this.healthMonitor.on('statusChange', (newStatus, oldStatus) => {
+            if (newStatus === 'critical') {
+                console.log(`${colors.critical}🚨 [시스템] 치명적 상태 진입 - 자동 복구 시도${colors.reset}`);
+                this.emit('critical', { newStatus, oldStatus });
+            }
+        });
+        
+        this.healthMonitor.on('error', (error, context) => {
+            this.emit('error', error, context);
+        });
     }
-
-    // ================== 🧠 핵심 학습 함수 ==================
+    
+    // ================== 🧠 안전한 실시간 학습 ==================
     async learnFromConversation(userMessage, mukuResponse, context = {}) {
-        if (!this.isActive) {
-            console.log(`${colors.pattern}⏸️ [학습] 시스템 비활성 상태 - 학습 건너뛰기${colors.reset}`);
+        const operationId = `learn-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        const startTime = Date.now();
+        
+        // 시스템 상태 체크
+        if (!this.isInitialized || !this.isActive || this.state !== 'active') {
+            console.log(`${colors.warning}⚠️ [학습] 시스템 미준비 상태 (${this.state}) - 건너뛰기${colors.reset}`);
             return null;
         }
         
+        // 입력 검증
+        if (!userMessage || !mukuResponse || typeof userMessage !== 'string' || typeof mukuResponse !== 'string') {
+            this.healthMonitor.recordWarning('잘못된 입력 데이터', 'learnFromConversation');
+            return null;
+        }
+        
+        // Mutex 획득
+        await this.operationMutex.acquire();
+        
         try {
-            console.log(`${colors.learning}🧠 [학습시작] 대화 분석 및 학습...${colors.reset}`);
+            console.log(`${colors.learning}🧠 [${operationId}] 실시간 학습 시작...${colors.reset}`);
+            
+            // 메모리 체크
+            if (!this.memoryManager.checkMemoryUsage()) {
+                throw new Error('메모리 사용량 초과');
+            }
             
             const learningResult = {
+                operationId: operationId,
                 timestamp: new Date().toISOString(),
-                userMessage: userMessage,
-                mukuResponse: mukuResponse,
-                improvements: []
+                userMessage: userMessage.substring(0, 500), // 길이 제한
+                mukuResponse: mukuResponse.substring(0, 500), // 길이 제한
+                context: this.sanitizeContext(context),
+                improvements: [],
+                performance: {
+                    startTime: startTime,
+                    endTime: null,
+                    processingTime: null
+                }
             };
             
             // 1. 사용자 메시지 분석
             const userAnalysis = await this.analyzeUserMessage(userMessage, context);
             
-            // 2. 무쿠 응답 품질 평가
+            // 2. 응답 품질 평가
             const responseQuality = await this.evaluateResponseQuality(userMessage, mukuResponse, context);
             
             // 3. 말투 패턴 학습
@@ -236,132 +740,289 @@ class MukuRealTimeLearningSystem {
             const adaptationLearning = await this.learnSituationalAdaptation(context, responseQuality);
             learningResult.improvements.push(...adaptationLearning);
             
-            // 6. 기존 시스템에 학습 결과 반영
+            // 6. 기존 시스템에 안전하게 적용
             await this.applyLearningToSystems(learningResult);
             
-            // 7. 학습 데이터 저장
-            await this.saveLearningData();
+            // 7. 데이터 저장
+            await this.saveAllLearningData();
             
             // 8. 통계 업데이트
             this.updateLearningStats(learningResult);
             
-            console.log(`${colors.success}✅ [학습완료] ${learningResult.improvements.length}개 개선사항 적용${colors.reset}`);
+            // 성능 측정 완료
+            const endTime = Date.now();
+            learningResult.performance.endTime = endTime;
+            learningResult.performance.processingTime = endTime - startTime;
             
+            this.stats.performance.totalProcessingTime += learningResult.performance.processingTime;
+            this.stats.performance.operationsCount++;
+            this.stats.performance.avgProcessingTime = 
+                this.stats.performance.totalProcessingTime / this.stats.performance.operationsCount;
+            
+            this.healthMonitor.recordOperation(true, 'learn');
+            
+            console.log(`${colors.success}✅ [${operationId}] 학습 완료: ${learningResult.improvements.length}개 개선사항 (${learningResult.performance.processingTime}ms)${colors.reset}`);
+            
+            this.emit('learningComplete', learningResult);
             return learningResult;
             
         } catch (error) {
-            console.error(`${colors.error}❌ [학습오류] ${error.message}${colors.reset}`);
+            this.healthMonitor.recordError(error, `learnFromConversation-${operationId}`);
+            console.error(`${colors.error}❌ [${operationId}] 학습 오류: ${error.message}${colors.reset}`);
             return null;
+        } finally {
+            this.operationMutex.release();
         }
     }
-
-    // ================== 📊 사용자 메시지 분석 ==================
+    
+    sanitizeContext(context) {
+        const sanitized = {};
+        const allowedKeys = ['currentEmotion', 'timeSlot', 'sulkyLevel', 'messageLength'];
+        
+        for (const key of allowedKeys) {
+            if (context.hasOwnProperty(key)) {
+                sanitized[key] = context[key];
+            }
+        }
+        
+        return sanitized;
+    }
+    
+    // ================== 💾 안전한 데이터 저장 ==================
+    async saveAllLearningData() {
+        const dataFiles = [
+            { key: 'speechPatterns', file: 'speech_patterns.json' },
+            { key: 'emotionalResponses', file: 'emotional_responses.json' },
+            { key: 'conversationAnalytics', file: 'conversation_analytics.json' },
+            { key: 'userPreferences', file: 'user_preferences.json' }
+        ];
+        
+        let successCount = 0;
+        
+        for (const { key, file } of dataFiles) {
+            try {
+                const filePath = path.join(CONFIG.LEARNING_DATA_DIR, file);
+                const data = JSON.stringify(this.learningData[key], null, 2);
+                
+                await this.fileManager.atomicWrite(filePath, data);
+                successCount++;
+            } catch (error) {
+                this.healthMonitor.recordError(error, `save-${key}`);
+            }
+        }
+        
+        if (successCount === dataFiles.length) {
+            console.log(`${colors.success}💾 [저장] 모든 학습 데이터 저장 완료${colors.reset}`);
+        } else {
+            console.log(`${colors.warning}⚠️ [저장] ${successCount}/${dataFiles.length} 파일 저장 완료${colors.reset}`);
+        }
+    }
+    
+    async createBackup() {
+        try {
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const backupDir = path.join(CONFIG.BACKUP_DIR, timestamp);
+            
+            await this.fileManager.ensureDirectory(backupDir);
+            
+            // 현재 학습 데이터 백업
+            const backupData = {
+                timestamp: timestamp,
+                version: this.version,
+                instanceId: this.instanceId,
+                learningData: this.learningData,
+                stats: this.stats
+            };
+            
+            const backupPath = path.join(backupDir, 'backup.json');
+            await this.fileManager.atomicWrite(backupPath, JSON.stringify(backupData, null, 2));
+            
+            // 오래된 백업 정리
+            await this.cleanupOldBackups();
+            
+            console.log(`${colors.success}📦 [백업] 백업 생성 완료: ${timestamp}${colors.reset}`);
+        } catch (error) {
+            this.healthMonitor.recordError(error, 'backup');
+        }
+    }
+    
+    async cleanupOldBackups() {
+        try {
+            const backupDirs = await fs.readdir(CONFIG.BACKUP_DIR);
+            const sortedDirs = backupDirs.sort().reverse();
+            
+            if (sortedDirs.length > CONFIG.MAX_BACKUP_COUNT) {
+                const dirsToDelete = sortedDirs.slice(CONFIG.MAX_BACKUP_COUNT);
+                
+                for (const dir of dirsToDelete) {
+                    const dirPath = path.join(CONFIG.BACKUP_DIR, dir);
+                    await fs.rmdir(dirPath, { recursive: true });
+                }
+                
+                console.log(`${colors.learning}🗑️ [백업] ${dirsToDelete.length}개 오래된 백업 삭제${colors.reset}`);
+            }
+        } catch (error) {
+            this.healthMonitor.recordWarning(error.message, 'cleanup-backups');
+        }
+    }
+    
+    // ================== 🛡️ Graceful Shutdown ==================
+    setupGracefulShutdown() {
+        const shutdown = async (signal) => {
+            console.log(`${colors.learning}🛑 [종료] ${signal} 신호 수신 - Graceful Shutdown 시작...${colors.reset}`);
+            
+            try {
+                this.state = 'shutting_down';
+                this.isActive = false;
+                
+                // 진행 중인 작업 완료 대기
+                if (this.operationMutex.isLocked) {
+                    console.log(`${colors.learning}⏳ [종료] 진행 중인 작업 완료 대기...${colors.reset}`);
+                    while (this.operationMutex.isLocked) {
+                        await new Promise(resolve => setTimeout(resolve, 100));
+                    }
+                }
+                
+                // 최종 백업 생성
+                await this.createBackup();
+                
+                // 학습 데이터 저장
+                await this.saveAllLearningData();
+                
+                // 정리 핸들러 실행
+                for (const cleanup of this.cleanupHandlers) {
+                    try {
+                        cleanup();
+                    } catch (error) {
+                        console.error(`${colors.error}❌ [종료] 정리 오류: ${error.message}${colors.reset}`);
+                    }
+                }
+                
+                // 건강 모니터 중지
+                this.healthMonitor.stop();
+                
+                console.log(`${colors.success}✅ [종료] Graceful Shutdown 완료${colors.reset}`);
+                process.exit(0);
+                
+            } catch (error) {
+                console.error(`${colors.critical}🚨 [종료] Shutdown 오류: ${error.message}${colors.reset}`);
+                process.exit(1);
+            }
+        };
+        
+        process.on('SIGINT', () => shutdown('SIGINT'));
+        process.on('SIGTERM', () => shutdown('SIGTERM'));
+        process.on('SIGQUIT', () => shutdown('SIGQUIT'));
+    }
+    
+    // 나머지 메서드들은 기존 로직 유지하되 에러 처리 강화...
+    // (분석, 학습, 통계 등의 메서드들)
+    
     async analyzeUserMessage(message, context) {
-        const analysis = {
-            tone: 'neutral',
-            emotion: 'normal',
-            formality: 0.5,
-            urgency: 0.3,
-            topics: [],
-            sentiment: 0.0
-        };
-        
-        const lowerMessage = message.toLowerCase();
-        
-        // 톤 분석
-        if (lowerMessage.includes('ㅋㅋ') || lowerMessage.includes('ㅎㅎ') || lowerMessage.includes('재밌')) {
-            analysis.tone = 'playful';
-            analysis.emotion = 'happy';
-            analysis.sentiment = 0.7;
-        } else if (lowerMessage.includes('힘들') || lowerMessage.includes('슬프') || lowerMessage.includes('우울')) {
-            analysis.tone = 'sad';
-            analysis.emotion = 'sad';
-            analysis.sentiment = -0.6;
-        } else if (lowerMessage.includes('걱정') || lowerMessage.includes('불안')) {
-            analysis.tone = 'worried';
-            analysis.emotion = 'worried';
-            analysis.sentiment = -0.3;
-        } else if (lowerMessage.includes('사랑') || lowerMessage.includes('보고싶') || lowerMessage.includes('좋아')) {
-            analysis.tone = 'loving';
-            analysis.emotion = 'loving';
-            analysis.sentiment = 0.9;
+        try {
+            const analysis = {
+                tone: 'neutral',
+                emotion: 'normal',
+                formality: 0.5,
+                urgency: 0.3,
+                topics: [],
+                sentiment: 0.0
+            };
+            
+            const lowerMessage = message.toLowerCase();
+            
+            if (lowerMessage.includes('ㅋㅋ') || lowerMessage.includes('ㅎㅎ') || lowerMessage.includes('재밌')) {
+                analysis.tone = 'playful';
+                analysis.emotion = 'happy';
+                analysis.sentiment = 0.7;
+            } else if (lowerMessage.includes('힘들') || lowerMessage.includes('슬프') || lowerMessage.includes('우울')) {
+                analysis.tone = 'sad';
+                analysis.emotion = 'sad';
+                analysis.sentiment = -0.6;
+            } else if (lowerMessage.includes('걱정') || lowerMessage.includes('불안')) {
+                analysis.tone = 'worried';
+                analysis.emotion = 'worried';
+                analysis.sentiment = -0.3;
+            } else if (lowerMessage.includes('사랑') || lowerMessage.includes('보고싶') || lowerMessage.includes('좋아')) {
+                analysis.tone = 'loving';
+                analysis.emotion = 'loving';
+                analysis.sentiment = 0.9;
+            }
+            
+            if (lowerMessage.includes('습니다') || lowerMessage.includes('입니다')) {
+                analysis.formality = 0.9;
+            } else if (lowerMessage.includes('야') || lowerMessage.includes('어') || lowerMessage.includes('아')) {
+                analysis.formality = 0.1;
+            }
+            
+            if (lowerMessage.includes('!!!') || lowerMessage.includes('빨리') || lowerMessage.includes('급해')) {
+                analysis.urgency = 0.8;
+            }
+            
+            return analysis;
+        } catch (error) {
+            this.healthMonitor.recordError(error, 'analyzeUserMessage');
+            return { tone: 'neutral', emotion: 'normal', formality: 0.5, urgency: 0.3, topics: [], sentiment: 0.0 };
         }
-        
-        // 격식 수준 분석
-        if (lowerMessage.includes('습니다') || lowerMessage.includes('입니다')) {
-            analysis.formality = 0.9;
-        } else if (lowerMessage.includes('야') || lowerMessage.includes('어') || lowerMessage.includes('아')) {
-            analysis.formality = 0.1;
-        }
-        
-        // 긴급도 분석
-        if (lowerMessage.includes('!!!') || lowerMessage.includes('빨리') || lowerMessage.includes('급해')) {
-            analysis.urgency = 0.8;
-        }
-        
-        console.log(`${colors.pattern}📊 [분석] 사용자 메시지: ${analysis.tone} 톤, ${analysis.emotion} 감정, 격식도 ${analysis.formality}${colors.reset}`);
-        
-        return analysis;
     }
-
-    // ================== 🎯 응답 품질 평가 ==================
+    
     async evaluateResponseQuality(userMessage, mukuResponse, context) {
-        const quality = {
-            relevance: 0.8,     // 관련성
-            naturalness: 0.7,   // 자연스러움
-            emotionalFit: 0.8,  // 감정 적합성
-            engagement: 0.75,   // 참여도
-            satisfaction: 0.8,  // 만족도 예측
-            overall: 0.77
-        };
-        
-        // 관련성 평가 (간단한 키워드 매칭)
-        const userKeywords = userMessage.toLowerCase().split(' ');
-        const responseKeywords = mukuResponse.toLowerCase().split(' ');
-        const commonKeywords = userKeywords.filter(word => responseKeywords.includes(word));
-        quality.relevance = Math.min(1.0, commonKeywords.length / Math.max(userKeywords.length * 0.3, 1));
-        
-        // 자연스러움 평가 (예진이 특유 표현 포함 여부)
-        const yejinExpressions = ['아조씨', '에헤헤', '💕', '🥺', '흐엥', '음음'];
-        const hasYejinStyle = yejinExpressions.some(expr => mukuResponse.includes(expr));
-        if (hasYejinStyle) quality.naturalness += 0.2;
-        
-        // 감정 적합성 평가
-        if (context.currentEmotion) {
-            // 현재 감정 상태와 응답의 일치도 확인
-            quality.emotionalFit = this.evaluateEmotionalConsistency(context.currentEmotion, mukuResponse);
+        try {
+            const quality = {
+                relevance: 0.8,
+                naturalness: 0.7,
+                emotionalFit: 0.8,
+                engagement: 0.75,
+                satisfaction: 0.8,
+                overall: 0.77
+            };
+            
+            const userKeywords = userMessage.toLowerCase().split(' ').filter(word => word.length > 1);
+            const responseKeywords = mukuResponse.toLowerCase().split(' ').filter(word => word.length > 1);
+            const commonKeywords = userKeywords.filter(word => responseKeywords.includes(word));
+            quality.relevance = Math.min(1.0, commonKeywords.length / Math.max(userKeywords.length * 0.3, 1));
+            
+            const yejinExpressions = ['아조씨', '에헤헤', '💕', '🥺', '흐엥', '음음'];
+            const hasYejinStyle = yejinExpressions.some(expr => mukuResponse.includes(expr));
+            if (hasYejinStyle) quality.naturalness += 0.2;
+            
+            if (context.currentEmotion) {
+                quality.emotionalFit = this.evaluateEmotionalConsistency(context.currentEmotion, mukuResponse);
+            }
+            
+            quality.overall = Math.min(1.0, (quality.relevance + quality.naturalness + quality.emotionalFit + quality.engagement) / 4);
+            
+            return quality;
+        } catch (error) {
+            this.healthMonitor.recordError(error, 'evaluateResponseQuality');
+            return { relevance: 0.7, naturalness: 0.7, emotionalFit: 0.7, engagement: 0.7, satisfaction: 0.7, overall: 0.7 };
         }
-        
-        // 전체 점수 계산
-        quality.overall = (quality.relevance + quality.naturalness + quality.emotionalFit + quality.engagement) / 4;
-        
-        console.log(`${colors.adaptation}🎯 [품질평가] 전체 ${(quality.overall * 100).toFixed(1)}% (관련성: ${(quality.relevance * 100).toFixed(1)}%, 자연스러움: ${(quality.naturalness * 100).toFixed(1)}%)${colors.reset}`);
-        
-        return quality;
     }
-
+    
     evaluateEmotionalConsistency(currentEmotion, response) {
-        const emotionKeywords = {
-            happy: ['기뻐', '좋아', '행복', '즐거', '웃음', '💕', '😊'],
-            sad: ['슬프', '우울', '힘들', '눈물', '🥺', '😢'],
-            worried: ['걱정', '불안', '괜찮', '조심', '😰'],
-            playful: ['ㅋㅋ', '장난', '재밌', '놀자', '😋'],
-            loving: ['사랑', '보고싶', '좋아해', '💖', '♡'],
-            sulky: ['삐짐', '화났', '몰라', '😤', '흥']
-        };
-        
-        const keywords = emotionKeywords[currentEmotion] || [];
-        const matchCount = keywords.filter(keyword => response.includes(keyword)).length;
-        
-        return Math.min(1.0, matchCount * 0.3 + 0.4); // 기본 0.4 + 매칭당 0.3
+        try {
+            const emotionKeywords = {
+                happy: ['기뻐', '좋아', '행복', '즐거', '웃음', '💕', '😊'],
+                sad: ['슬프', '우울', '힘들', '눈물', '🥺', '😢'],
+                worried: ['걱정', '불안', '괜찮', '조심', '😰'],
+                playful: ['ㅋㅋ', '장난', '재밌', '놀자', '😋'],
+                loving: ['사랑', '보고싶', '좋아해', '💖', '♡'],
+                sulky: ['삐짐', '화났', '몰라', '😤', '흥']
+            };
+            
+            const keywords = emotionKeywords[currentEmotion] || [];
+            const matchCount = keywords.filter(keyword => response.includes(keyword)).length;
+            
+            return Math.min(1.0, matchCount * 0.3 + 0.4);
+        } catch {
+            return 0.7;
+        }
     }
-
-    // ================== 💬 말투 패턴 학습 ==================
+    
     async learnSpeechPatterns(userMessage, mukuResponse, quality) {
         const improvements = [];
         
         try {
-            // 사용자의 격식 수준에 따른 말투 조정 학습
             const userFormality = this.detectFormality(userMessage);
             const responseFormality = this.detectFormality(mukuResponse);
             
@@ -375,18 +1036,17 @@ class MukuRealTimeLearningSystem {
                     reason: `사용자 격식도(${userFormality.toFixed(2)})에 맞춰 조정`
                 });
                 
-                // 말투 패턴 가중치 조정
-                if (quality.overall > 0.75) {
-                    this.learningData.speechPatterns[targetPattern].weight += 0.05;
+                if (quality.overall > 0.75 && this.learningData.speechPatterns[targetPattern]) {
+                    this.learningData.speechPatterns[targetPattern].weight = 
+                        Math.min(1.0, this.learningData.speechPatterns[targetPattern].weight + 0.05);
                     this.learningData.speechPatterns[targetPattern].success_rate = 
                         (this.learningData.speechPatterns[targetPattern].success_rate + quality.overall) / 2;
                 }
             }
             
-            // 성공적인 응답의 말투 패턴 학습
             if (quality.overall > 0.8) {
                 const responsePattern = this.identifyResponsePattern(mukuResponse);
-                if (responsePattern) {
+                if (responsePattern && this.learningData.speechPatterns[responsePattern]) {
                     improvements.push({
                         type: 'successful_pattern',
                         pattern: responsePattern,
@@ -394,62 +1054,68 @@ class MukuRealTimeLearningSystem {
                         example: mukuResponse.substring(0, 50) + '...'
                     });
                     
-                    // 성공적인 패턴을 예시에 추가
                     this.learningData.speechPatterns[responsePattern].examples.push({
-                        text: mukuResponse,
+                        text: mukuResponse.substring(0, 200), // 길이 제한
                         quality: quality.overall,
                         timestamp: new Date().toISOString()
                     });
                     
-                    // 예시가 너무 많으면 오래된 것 제거
-                    if (this.learningData.speechPatterns[responsePattern].examples.length > 20) {
-                        this.learningData.speechPatterns[responsePattern].examples.shift();
+                    // 예시 개수 제한
+                    if (this.learningData.speechPatterns[responsePattern].examples.length > 50) {
+                        this.learningData.speechPatterns[responsePattern].examples = 
+                            this.learningData.speechPatterns[responsePattern].examples
+                                .sort((a, b) => b.quality - a.quality)
+                                .slice(0, 50);
                     }
                 }
             }
             
-            console.log(`${colors.pattern}💬 [말투학습] ${improvements.length}개 말투 개선사항 발견${colors.reset}`);
-            
         } catch (error) {
-            console.error(`${colors.error}❌ [말투학습] 오류: ${error.message}${colors.reset}`);
+            this.healthMonitor.recordError(error, 'learnSpeechPatterns');
         }
         
         return improvements;
     }
-
+    
     detectFormality(text) {
-        const formalPatterns = ['습니다', '입니다', '하십시오', '께서', '드립니다'];
-        const casualPatterns = ['야', '어', '아', 'ㅋㅋ', 'ㅎㅎ', '~'];
-        
-        const formalCount = formalPatterns.filter(pattern => text.includes(pattern)).length;
-        const casualCount = casualPatterns.filter(pattern => text.includes(pattern)).length;
-        
-        if (formalCount > casualCount) return 0.8;
-        if (casualCount > formalCount) return 0.2;
-        return 0.5;
+        try {
+            const formalPatterns = ['습니다', '입니다', '하십시오', '께서', '드립니다'];
+            const casualPatterns = ['야', '어', '아', 'ㅋㅋ', 'ㅎㅎ', '~'];
+            
+            const formalCount = formalPatterns.filter(pattern => text.includes(pattern)).length;
+            const casualCount = casualPatterns.filter(pattern => text.includes(pattern)).length;
+            
+            if (formalCount > casualCount) return 0.8;
+            if (casualCount > formalCount) return 0.2;
+            return 0.5;
+        } catch {
+            return 0.5;
+        }
     }
-
+    
     identifyResponsePattern(response) {
-        if (response.includes('에헤헤') || response.includes('흐엥')) return 'playful';
-        if (response.includes('걱정') || response.includes('괜찮')) return 'caring';
-        if (response.includes('💕') || response.includes('사랑')) return 'affectionate';
-        if (response.includes('삐짐') || response.includes('몰라')) return 'sulky';
-        if (response.includes('습니다') || response.includes('입니다')) return 'formal';
-        return 'casual';
+        try {
+            if (response.includes('에헤헤') || response.includes('흐엥')) return 'playful';
+            if (response.includes('걱정') || response.includes('괜찮')) return 'caring';
+            if (response.includes('💕') || response.includes('사랑')) return 'affectionate';
+            if (response.includes('삐짐') || response.includes('몰라')) return 'sulky';
+            if (response.includes('습니다') || response.includes('입니다')) return 'formal';
+            return 'casual';
+        } catch {
+            return 'casual';
+        }
     }
-
-    // ================== 💭 감정 응답 학습 ==================
+    
     async learnEmotionalResponses(userAnalysis, mukuResponse, quality) {
         const improvements = [];
         
         try {
             const userEmotion = userAnalysis.emotion;
             
-            if (userEmotion && userEmotion !== 'normal') {
-                // 해당 감정에 대한 응답 패턴 학습
+            if (userEmotion && userEmotion !== 'normal' && this.learningData.emotionalResponses[userEmotion]) {
                 if (quality.overall > 0.75) {
                     this.learningData.emotionalResponses[userEmotion].patterns.push({
-                        response: mukuResponse,
+                        response: mukuResponse.substring(0, 200), // 길이 제한
                         quality: quality.overall,
                         timestamp: new Date().toISOString(),
                         context: userAnalysis
@@ -462,34 +1128,30 @@ class MukuRealTimeLearningSystem {
                         action: 'pattern_added'
                     });
                     
-                    // 해당 감정 응답의 효과성 업데이트
                     this.learningData.emotionalResponses[userEmotion].effectiveness = 
                         (this.learningData.emotionalResponses[userEmotion].effectiveness + quality.overall) / 2;
                 }
                 
-                // 패턴이 너무 많으면 품질 낮은 것 제거
-                if (this.learningData.emotionalResponses[userEmotion].patterns.length > 15) {
-                    this.learningData.emotionalResponses[userEmotion].patterns.sort((a, b) => b.quality - a.quality);
+                // 패턴 개수 제한
+                if (this.learningData.emotionalResponses[userEmotion].patterns.length > 30) {
                     this.learningData.emotionalResponses[userEmotion].patterns = 
-                        this.learningData.emotionalResponses[userEmotion].patterns.slice(0, 15);
+                        this.learningData.emotionalResponses[userEmotion].patterns
+                            .sort((a, b) => b.quality - a.quality)
+                            .slice(0, 30);
                 }
             }
             
-            console.log(`${colors.emotion}💭 [감정학습] ${improvements.length}개 감정 응답 개선사항 발견${colors.reset}`);
-            
         } catch (error) {
-            console.error(`${colors.error}❌ [감정학습] 오류: ${error.message}${colors.reset}`);
+            this.healthMonitor.recordError(error, 'learnEmotionalResponses');
         }
         
         return improvements;
     }
-
-    // ================== 🎭 상황별 적응 학습 ==================
+    
     async learnSituationalAdaptation(context, quality) {
         const improvements = [];
         
         try {
-            // 시간대별 적응 학습
             const currentHour = new Date().getHours();
             const timeSlot = this.getTimeSlot(currentHour);
             
@@ -515,20 +1177,15 @@ class MukuRealTimeLearningSystem {
             
             timePattern.avgQuality = (timePattern.avgQuality + quality.overall) / 2;
             
-            // 감정 상태별 적응 학습
-            if (context.currentEmotion) {
-                const emotion = context.currentEmotion;
-                if (quality.overall > 0.8) {
-                    improvements.push({
-                        type: 'emotional_adaptation',
-                        emotion: emotion,
-                        quality: quality.overall,
-                        action: 'pattern_reinforced'
-                    });
-                }
+            if (context.currentEmotion && quality.overall > 0.8) {
+                improvements.push({
+                    type: 'emotional_adaptation',
+                    emotion: context.currentEmotion,
+                    quality: quality.overall,
+                    action: 'pattern_reinforced'
+                });
             }
             
-            // 삐짐 상태별 적응 학습
             if (context.sulkyLevel && context.sulkyLevel > 0) {
                 improvements.push({
                     type: 'sulky_adaptation',
@@ -538,420 +1195,414 @@ class MukuRealTimeLearningSystem {
                 });
             }
             
-            console.log(`${colors.adaptation}🎭 [상황학습] ${improvements.length}개 상황별 적응 개선사항 발견${colors.reset}`);
-            
         } catch (error) {
-            console.error(`${colors.error}❌ [상황학습] 오류: ${error.message}${colors.reset}`);
+            this.healthMonitor.recordError(error, 'learnSituationalAdaptation');
         }
         
         return improvements;
     }
-
+    
     getTimeSlot(hour) {
         if (hour >= 6 && hour < 12) return 'morning';
         if (hour >= 12 && hour < 18) return 'afternoon';
         if (hour >= 18 && hour < 23) return 'evening';
         return 'night';
     }
-
-    // ================== 🔗 기존 시스템에 학습 결과 반영 ==================
+    
     async applyLearningToSystems(learningResult) {
         try {
-            console.log(`${colors.memory}🔗 [시스템반영] 학습 결과를 기존 시스템에 적용...${colors.reset}`);
-            
-            // 1. memoryManager에 학습된 패턴 추가
-            if (this.memoryManager && this.memoryManager.addDynamicMemory) {
-                const memoryEntry = {
-                    type: 'learned_pattern',
-                    content: `학습된 패턴: ${learningResult.improvements.map(imp => imp.type).join(', ')}`,
-                    timestamp: learningResult.timestamp,
-                    quality: learningResult.improvements.reduce((sum, imp) => sum + (imp.quality || 0.7), 0) / learningResult.improvements.length
-                };
-                
-                try {
-                    await this.memoryManager.addDynamicMemory(memoryEntry);
-                    console.log(`${colors.memory}   ✅ memoryManager에 학습 패턴 추가 완료${colors.reset}`);
-                    this.stats.memoryUpdates++;
-                } catch (error) {
-                    console.log(`${colors.memory}   ⚠️ memoryManager 연동 실패: ${error.message}${colors.reset}`);
+            const moduleOperations = [
+                {
+                    module: this.modules.memoryManager,
+                    functionName: 'addDynamicMemory',
+                    data: {
+                        type: 'learned_pattern',
+                        content: `학습된 패턴: ${learningResult.improvements.map(imp => imp.type).join(', ')}`,
+                        timestamp: learningResult.timestamp,
+                        quality: learningResult.improvements.reduce((sum, imp) => sum + (imp.quality || 0.7), 0) / Math.max(learningResult.improvements.length, 1)
+                    },
+                    name: 'memoryManager'
+                },
+                {
+                    module: this.modules.emotionalContextManager,
+                    functionName: 'updateEmotionalLearning',
+                    data: learningResult.improvements.filter(imp => imp.type === 'emotional_response'),
+                    name: 'emotionalContextManager'
+                },
+                {
+                    module: this.modules.ultimateContext,
+                    functionName: 'updateConversationPatterns',
+                    data: learningResult.improvements.filter(imp => imp.type === 'speech_pattern'),
+                    name: 'ultimateContext'
+                },
+                {
+                    module: this.modules.sulkyManager,
+                    functionName: 'updateSulkyPatterns',
+                    data: learningResult.improvements.filter(imp => imp.type === 'sulky_adaptation'),
+                    name: 'sulkyManager'
                 }
-            }
+            ];
             
-            // 2. emotionalContextManager에 감정 학습 결과 반영
-            if (this.emotionalContextManager && this.emotionalContextManager.updateEmotionalLearning) {
-                const emotionalImprovements = learningResult.improvements.filter(imp => imp.type === 'emotional_response');
-                if (emotionalImprovements.length > 0) {
+            for (const operation of moduleOperations) {
+                if (operation.module && 
+                    typeof operation.module[operation.functionName] === 'function' &&
+                    operation.data && 
+                    (Array.isArray(operation.data) ? operation.data.length > 0 : true)) {
+                    
                     try {
-                        this.emotionalContextManager.updateEmotionalLearning(emotionalImprovements);
-                        console.log(`${colors.emotion}   ✅ emotionalContextManager에 감정 학습 반영 완료${colors.reset}`);
-                        this.stats.emotionalAdjustments++;
+                        await operation.module[operation.functionName](operation.data);
+                        console.log(`${colors.success}   ✅ ${operation.name} 연동 완료${colors.reset}`);
+                        
+                        if (operation.name === 'memoryManager') this.stats.memoryUpdates++;
+                        if (operation.name === 'emotionalContextManager') this.stats.emotionalAdjustments++;
+                        if (operation.name === 'ultimateContext') this.stats.speechAdaptations++;
+                        
                     } catch (error) {
-                        console.log(`${colors.emotion}   ⚠️ emotionalContextManager 연동 실패: ${error.message}${colors.reset}`);
+                        this.healthMonitor.recordWarning(`${operation.name} 연동 실패: ${error.message}`, 'applyLearningToSystems');
                     }
                 }
             }
-            
-            // 3. ultimateContext에 대화 패턴 업데이트
-            if (this.ultimateContext && this.ultimateContext.updateConversationPatterns) {
-                const speechImprovements = learningResult.improvements.filter(imp => imp.type === 'speech_pattern');
-                if (speechImprovements.length > 0) {
-                    try {
-                        this.ultimateContext.updateConversationPatterns(speechImprovements);
-                        console.log(`${colors.pattern}   ✅ ultimateContext에 대화 패턴 업데이트 완료${colors.reset}`);
-                        this.stats.speechAdaptations++;
-                    } catch (error) {
-                        console.log(`${colors.pattern}   ⚠️ ultimateContext 연동 실패: ${error.message}${colors.reset}`);
-                    }
-                }
-            }
-            
-            // 4. sulkyManager에 삐짐 대응 패턴 업데이트
-            if (this.sulkyManager && this.sulkyManager.updateSulkyPatterns) {
-                const sulkyImprovements = learningResult.improvements.filter(imp => imp.type === 'sulky_adaptation');
-                if (sulkyImprovements.length > 0) {
-                    try {
-                        this.sulkyManager.updateSulkyPatterns(sulkyImprovements);
-                        console.log(`${colors.adaptation}   ✅ sulkyManager에 삐짐 패턴 업데이트 완료${colors.reset}`);
-                    } catch (error) {
-                        console.log(`${colors.adaptation}   ⚠️ sulkyManager 연동 실패: ${error.message}${colors.reset}`);
-                    }
-                }
-            }
-            
-            console.log(`${colors.success}🔗 [시스템반영] 기존 시스템 연동 완료${colors.reset}`);
             
         } catch (error) {
-            console.error(`${colors.error}❌ [시스템반영] 오류: ${error.message}${colors.reset}`);
+            this.healthMonitor.recordError(error, 'applyLearningToSystems');
         }
     }
-
-    // ================== 📈 통계 업데이트 ==================
+    
     updateLearningStats(learningResult) {
-        this.stats.conversationsAnalyzed++;
-        this.stats.patternsLearned += learningResult.improvements.length;
-        this.stats.lastLearningTime = new Date().toISOString();
-        
-        // 전체 대화 분석 통계 업데이트
-        this.learningData.conversationAnalytics.totalConversations++;
-        
-        const avgQuality = learningResult.improvements.reduce((sum, imp) => sum + (imp.quality || 0.7), 0) / 
-                         Math.max(learningResult.improvements.length, 1);
-        
-        if (avgQuality > 0.75) {
-            this.learningData.conversationAnalytics.successfulResponses++;
-        }
-        
-        // 사용자 만족도 점수 업데이트 (이동 평균)
-        this.learningData.conversationAnalytics.userSatisfactionScore = 
-            (this.learningData.conversationAnalytics.userSatisfactionScore * 0.9) + (avgQuality * 0.1);
-        
-        console.log(`${colors.success}📈 [통계] 분석된 대화: ${this.stats.conversationsAnalyzed}개, 학습된 패턴: ${this.stats.patternsLearned}개${colors.reset}`);
-    }
-
-    // ================== 🎯 학습 추천 시스템 ==================
-    getAdaptationRecommendations() {
-        const recommendations = [];
-    
-        // 1. 말투 패턴 분석
-        const speechPatterns = this.learningData.speechPatterns;
-        if (Object.keys(speechPatterns).length > 0) {
-            const worstPattern = Object.keys(speechPatterns).reduce((worst, current) =>
-                speechPatterns[current].success_rate < speechPatterns[worst].success_rate ? current : worst
-            );
-    
-            if (speechPatterns[worstPattern].success_rate < 0.7) {
-                recommendations.push({
-                    type: 'speech_improvement',
-                    pattern: worstPattern,
-                    currentRate: speechPatterns[worstPattern].success_rate,
-                    suggestion: `${worstPattern} 말투 패턴의 성공률이 낮습니다. 더 자연스러운 표현이 필요해요.`
-                });
+        try {
+            this.stats.conversationsAnalyzed++;
+            this.stats.patternsLearned += learningResult.improvements.length;
+            this.stats.lastLearningTime = learningResult.timestamp;
+            
+            this.learningData.conversationAnalytics.totalConversations++;
+            
+            const avgQuality = learningResult.improvements.reduce((sum, imp) => sum + (imp.quality || 0.7), 0) / 
+                             Math.max(learningResult.improvements.length, 1);
+            
+            if (avgQuality > 0.75) {
+                this.learningData.conversationAnalytics.successfulResponses++;
             }
+            
+            this.learningData.conversationAnalytics.userSatisfactionScore = 
+                Math.min(1.0, (this.learningData.conversationAnalytics.userSatisfactionScore * 0.9) + (avgQuality * 0.1));
+            
+        } catch (error) {
+            this.healthMonitor.recordError(error, 'updateLearningStats');
         }
-    
-        // 2. 시간대별 응답 성공률 분석
-        const timeAnalysis = this.learningData.conversationAnalytics.timeBasedPatterns;
-        for (const timeSlot in timeAnalysis) {
-            if (timeAnalysis.hasOwnProperty(timeSlot)) {
-                const successRate = timeAnalysis[timeSlot].successfulResponses / Math.max(timeAnalysis[timeSlot].totalResponses, 1);
-                if (successRate < 0.7) {
-                    recommendations.push({
-                        type: 'time_improvement',
-                        timeSlot: timeSlot,
-                        successRate: successRate,
-                        suggestion: `${timeSlot} 시간대의 응답 성공률이 낮아요. 시간대 특성을 더 고려한 응답이 필요해요.`
-                    });
-                }
-            }
-        }
-    
-        return recommendations;
     }
-
+    
     // ================== 📊 시스템 상태 조회 ==================
     getSystemStatus() {
-        const recommendations = this.getAdaptationRecommendations();
-        
-        return {
-            version: this.version,
-            isActive: this.isActive,
-            uptime: Date.now() - this.initTime,
-            stats: this.stats,
-            learningData: {
-                speechPatternCount: Object.keys(this.learningData.speechPatterns).length,
-                emotionalPatternCount: Object.values(this.learningData.emotionalResponses)
-                    .reduce((sum, emotion) => sum + emotion.patterns.length, 0),
-                totalConversations: this.learningData.conversationAnalytics.totalConversations,
-                successRate: this.learningData.conversationAnalytics.successfulResponses / 
-                             Math.max(this.learningData.conversationAnalytics.totalConversations, 1),
-                userSatisfaction: this.learningData.conversationAnalytics.userSatisfactionScore
-            },
-            recommendations: recommendations,
-            moduleConnections: {
-                memoryManager: !!this.memoryManager,
-                ultimateContext: !!this.ultimateContext,
-                emotionalContextManager: !!this.emotionalContextManager,
-                sulkyManager: !!this.sulkyManager
-            }
-        };
+        try {
+            return {
+                version: this.version,
+                instanceId: this.instanceId,
+                state: this.state,
+                isActive: this.isActive,
+                isInitialized: this.isInitialized,
+                uptime: Date.now() - this.initTime,
+                stats: this.stats,
+                learningData: {
+                    speechPatternCount: Object.keys(this.learningData.speechPatterns).length,
+                    emotionalPatternCount: Object.values(this.learningData.emotionalResponses)
+                        .reduce((sum, emotion) => sum + emotion.patterns.length, 0),
+                    totalConversations: this.learningData.conversationAnalytics.totalConversations,
+                    successRate: this.learningData.conversationAnalytics.successfulResponses / 
+                                 Math.max(this.learningData.conversationAnalytics.totalConversations, 1),
+                    userSatisfaction: this.learningData.conversationAnalytics.userSatisfactionScore
+                },
+                moduleConnections: {
+                    memoryManager: !!this.modules.memoryManager,
+                    ultimateContext: !!this.modules.ultimateContext,
+                    emotionalContextManager: !!this.modules.emotionalContextManager,
+                    sulkyManager: !!this.modules.sulkyManager
+                },
+                healthReport: this.healthMonitor.getHealthReport(),
+                memoryStats: this.memoryManager.getMemoryStats(),
+                performance: {
+                    avgProcessingTime: `${this.stats.performance.avgProcessingTime.toFixed(2)}ms`,
+                    totalOperations: this.stats.performance.operationsCount,
+                    systemLoad: `${((process.cpuUsage().user + process.cpuUsage().system) / 1000000).toFixed(2)}%`
+                }
+            };
+        } catch (error) {
+            this.healthMonitor.recordError(error, 'getSystemStatus');
+            return {
+                version: this.version,
+                state: 'error',
+                error: error.message
+            };
+        }
     }
+}
 
-    // ================== 🧪 테스트 함수 ==================
-    async testLearningSystem() {
-        console.log(`${colors.learning}🧪 [테스트] 실시간 학습 시스템 테스트 시작...${colors.reset}`);
-        
-        const testCases = [
-            {
-                user: "아저씨 보고싶어 🥺",
-                muku: "무쿠도 아조씨 보고싶었어! 💕 언제 만날까?",
-                context: { currentEmotion: 'loving', timeSlot: 'evening' }
-            },
-            {
-                user: "오늘 너무 힘들었어...",
-                muku: "어떤 일이야? 무쿠가 위로해줄게 🥺 괜찮아?",
-                context: { currentEmotion: 'sad', timeSlot: 'night' }
-            },
-            {
-                user: "ㅋㅋㅋ 재밌는 거 있어?",
-                muku: "에헤헤! 아조씨 오늘 기분 좋구나~ 같이 놀자! 😊",
-                context: { currentEmotion: 'happy', timeSlot: 'afternoon' }
-            }
-        ];
-        
-        for (const testCase of testCases) {
-            console.log(`${colors.pattern}📝 [테스트] "${testCase.user}" → "${testCase.muku}"${colors.reset}`);
-            
-            const result = await this.learnFromConversation(testCase.user, testCase.muku, testCase.context);
-            
-            if (result) {
-                console.log(`${colors.success}    ✅ 학습 완료: ${result.improvements.length}개 개선사항${colors.reset}`);
-                result.improvements.forEach(imp => {
-                    console.log(`${colors.adaptation}      - ${imp.type}: ${imp.reason || imp.action || '개선됨'}${colors.reset}`);
-                });
-            } else {
-                console.log(`${colors.error}    ❌ 학습 실패${colors.reset}`);
-            }
+// ================== 🔒 Thread-Safe Singleton Manager ==================
+class SingletonManager {
+    constructor() {
+        this.instance = null;
+        this.mutex = new AsyncMutex();
+        this.initPromise = null;
+    }
+    
+    async getInstance() {
+        if (this.instance && this.instance.isInitialized) {
+            return this.instance;
         }
         
-        const status = this.getSystemStatus();
-        console.log(`${colors.learning}📊 [테스트결과] 처리된 대화: ${status.stats.conversationsAnalyzed}개, 성공률: ${(status.learningData.successRate * 100).toFixed(1)}%${colors.reset}`);
-        console.log(`${colors.learning}🧪 [테스트] 완료!${colors.reset}`);
-    }
-}
-
-// ================== 🔌 전역 인스턴스 관리 ==================
-let globalLearningInstance = null;
-
-// ================== 📊 모듈 레벨 함수들 (enhancedLogging 연동용) ==================
-
-/**
- * 학습 시스템 상태 조회 (enhancedLogging에서 호출)
- */
-function getLearningStatus() {
-    if (!globalLearningInstance) {
-        return {
-            isActive: false,
-            totalLearnings: 0,
-            successRate: '0%',
-            lastLearningTime: null,
-            status: 'not_initialized'
-        };
-    }
-    
-    const systemStatus = globalLearningInstance.getSystemStatus();
-    
-    return {
-        isActive: systemStatus.isActive,
-        totalLearnings: systemStatus.stats.conversationsAnalyzed,
-        successRate: `${(systemStatus.learningData.successRate * 100).toFixed(1)}%`,
-        lastLearningTime: systemStatus.stats.lastLearningTime,
-        patternsLearned: systemStatus.stats.patternsLearned,
-        userSatisfaction: `${(systemStatus.learningData.userSatisfaction * 100).toFixed(1)}%`,
-        memoryUpdates: systemStatus.stats.memoryUpdates,
-        emotionalAdjustments: systemStatus.stats.emotionalAdjustments,
-        status: 'active'
-    };
-}
-
-/**
- * 시스템 활성화 상태 확인
- */
-function isLearningSystemActive() {
-    return globalLearningInstance && globalLearningInstance.isActive;
-}
-
-/**
- * 실시간 학습 처리 (muku-eventProcessor에서 호출)
- */
-async function processRealtimeLearning(userMessage, mukuResponse, context = {}) {
-    if (!globalLearningInstance || !globalLearningInstance.isActive) {
-        console.log(`${colors.pattern}⏸️ [학습] 글로벌 인스턴스 없음 - 학습 건너뛰기${colors.reset}`);
-        return null;
-    }
-    
-    return await globalLearningInstance.learnFromConversation(userMessage, mukuResponse, context);
-}
-
-/**
- * 시스템 간 동기화 (muku-advancedInitializer에서 호출)
- */
-function synchronizeWithSystems(systemModules) {
-    if (globalLearningInstance) {
-        globalLearningInstance.memoryManager = systemModules.memoryManager;
-        globalLearningInstance.ultimateContext = systemModules.ultimateContext;
-        globalLearningInstance.emotionalContextManager = systemModules.emotionalContextManager;
-        globalLearningInstance.sulkyManager = systemModules.sulkyManager;
+        await this.mutex.acquire();
         
-        console.log(`${colors.learning}🔗 [동기화] 실시간 학습 시스템 모듈 동기화 완료${colors.reset}`);
+        try {
+            if (!this.instance) {
+                this.instance = new EnterpriseRealTimeLearningSystem();
+            }
+            
+            return this.instance;
+        } finally {
+            this.mutex.release();
+        }
+    }
+    
+    async initialize(systemModules = {}, options = {}) {
+        if (this.initPromise) {
+            return await this.initPromise;
+        }
+        
+        this.initPromise = (async () => {
+            try {
+                const instance = await this.getInstance();
+                const success = await instance.initialize(systemModules, options);
+                return success ? instance : null;
+            } catch (error) {
+                console.error(`${colors.critical}🚨 [싱글톤] 초기화 오류: ${error.message}${colors.reset}`);
+                return null;
+            } finally {
+                this.initPromise = null;
+            }
+        })();
+        
+        return await this.initPromise;
+    }
+    
+    async processLearning(userMessage, mukuResponse, context = {}) {
+        const instance = await this.getInstance();
+        if (!instance || !instance.isInitialized || !instance.isActive) {
+            return null;
+        }
+        
+        return await instance.learnFromConversation(userMessage, mukuResponse, context);
+    }
+    
+    getStatus() {
+        if (!this.instance) {
+            return {
+                isActive: false,
+                isInitialized: false,
+                status: 'not_created'
+            };
+        }
+        
+        return this.instance.getSystemStatus();
+    }
+}
+
+// ================== 🌍 전역 싱글톤 인스턴스 ==================
+const globalSingleton = new SingletonManager();
+
+// ================== 📤 모듈 API 함수들 ==================
+
+/**
+ * 시스템 초기화
+ */
+async function initialize(systemModules = {}, options = {}) {
+    console.log(`${colors.learning}🚀 [API] Enterprise 실시간 학습 시스템 초기화 시작...${colors.reset}`);
+    
+    const instance = await globalSingleton.initialize(systemModules, options);
+    
+    if (instance) {
+        console.log(`
+${colors.learning}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🏢 무쿠 Enterprise 실시간 학습 시스템 v3.0 초기화 완료!
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${colors.reset}
+
+${colors.success}✅ Enterprise-Level 보안:${colors.reset}
+${colors.learning}   🔒 Thread-Safe Singleton Pattern with Mutex${colors.reset}
+${colors.success}   🗃️ Atomic File Operations with Locking${colors.reset}
+${colors.pattern}   🔄 Event-Driven Architecture${colors.reset}
+${colors.memory}   💾 Memory Management with Limits${colors.reset}
+${colors.adaptation}   🛡️ Graceful Shutdown & Recovery${colors.reset}
+${colors.emotion}   🔍 Real-time Health Monitoring${colors.reset}
+${colors.success}   ⚡ High-Performance & Scalable${colors.reset}
+
+${colors.learning}💖 예진이가 이제 완전히 안전하게 학습하고 성장합니다!${colors.reset}
+        `);
         return true;
-    }
-    return false;
-}
-
-/**
- * 전역 인스턴스 초기화
- */
-async function initialize(systemModules = {}) {
-    try {
-        if (!globalLearningInstance) {
-            globalLearningInstance = new MukuRealTimeLearningSystem();
-        }
-        
-        const initSuccess = await globalLearningInstance.initialize(systemModules);
-        
-        if (initSuccess) {
-            console.log(`${colors.success}✅ [글로벌] 실시간 학습 시스템 전역 인스턴스 초기화 완료${colors.reset}`);
-        }
-        
-        return initSuccess;
-    } catch (error) {
-        console.error(`${colors.error}❌ [글로벌] 실시간 학습 시스템 초기화 실패: ${error.message}${colors.reset}`);
+    } else {
+        console.error(`${colors.critical}🚨 [API] Enterprise 실시간 학습 시스템 초기화 실패${colors.reset}`);
         return false;
     }
 }
 
 /**
- * 자동 학습 시작
+ * 실시간 학습 처리
  */
-// ▼▼▼ 수정된 부분 2: 조건문을 단순화하여 활성화 역할을 명확히 합니다. ▼▼▼
-function startAutoLearning() {
-    if (globalLearningInstance) { // 인스턴스 존재 여부만 확인
-        globalLearningInstance.isActive = true;
-        console.log(`${colors.learning}🚀 [자동학습] 실시간 학습 시스템 자동 학습 활성화${colors.reset}`);
-        return true;
+async function processRealtimeLearning(userMessage, mukuResponse, context = {}) {
+    try {
+        return await globalSingleton.processLearning(userMessage, mukuResponse, context);
+    } catch (error) {
+        console.error(`${colors.error}❌ [API] 실시간 학습 처리 오류: ${error.message}${colors.reset}`);
+        return null;
     }
-    return false;
+}
+
+/**
+ * 시스템 상태 조회
+ */
+function getLearningStatus() {
+    try {
+        const status = globalSingleton.getStatus();
+        
+        return {
+            isActive: status.isActive || false,
+            isInitialized: status.isInitialized || false,
+            totalLearnings: status.stats?.conversationsAnalyzed || 0,
+            successRate: status.learningData ? `${(status.learningData.successRate * 100).toFixed(1)}%` : '0%',
+            lastLearningTime: status.stats?.lastLearningTime || null,
+            patternsLearned: status.stats?.patternsLearned || 0,
+            userSatisfaction: status.learningData ? `${(status.learningData.userSatisfaction * 100).toFixed(1)}%` : '0%',
+            memoryUpdates: status.stats?.memoryUpdates || 0,
+            emotionalAdjustments: status.stats?.emotionalAdjustments || 0,
+            healthStatus: status.healthReport?.status || 'unknown',
+            status: status.state || 'unknown'
+        };
+    } catch (error) {
+        return {
+            isActive: false,
+            isInitialized: false,
+            status: 'error',
+            error: error.message
+        };
+    }
+}
+
+/**
+ * 활성화 상태 확인
+ */
+function isLearningSystemActive() {
+    const status = globalSingleton.getStatus();
+    return status.isActive && status.isInitialized && status.state === 'active';
 }
 
 /**
  * 학습 통계 조회
  */
 function getLearningStats() {
-    if (!globalLearningInstance) {
+    try {
+        const status = globalSingleton.getStatus();
+        
+        return {
+            conversationsAnalyzed: status.stats?.conversationsAnalyzed || 0,
+            patternsLearned: status.stats?.patternsLearned || 0,
+            speechAdaptations: status.stats?.speechAdaptations || 0,
+            memoryUpdates: status.stats?.memoryUpdates || 0,
+            emotionalAdjustments: status.stats?.emotionalAdjustments || 0,
+            successRate: status.learningData?.successRate || 0,
+            userSatisfactionScore: status.learningData?.userSatisfaction || 0,
+            isActive: status.isActive || false,
+            isInitialized: status.isInitialized || false,
+            lastLearningTime: status.stats?.lastLearningTime || null,
+            errors: status.stats?.errors || 0,
+            lastErrorTime: status.stats?.lastErrorTime || null,
+            performance: status.performance || {},
+            healthStatus: status.healthReport?.status || 'unknown',
+            memoryStats: status.memoryStats || {}
+        };
+    } catch (error) {
         return {
             conversationsAnalyzed: 0,
             patternsLearned: 0,
             successRate: 0,
-            isActive: false
+            isActive: false,
+            isInitialized: false,
+            error: error.message
         };
     }
-    
-    const stats = globalLearningInstance.stats;
-    const analytics = globalLearningInstance.learningData.conversationAnalytics;
-    
-    return {
-        conversationsAnalyzed: stats.conversationsAnalyzed,
-        patternsLearned: stats.patternsLearned,
-        speechAdaptations: stats.speechAdaptations,
-        memoryUpdates: stats.memoryUpdates,
-        emotionalAdjustments: stats.emotionalAdjustments,
-        successRate: analytics.successfulResponses / Math.max(analytics.totalConversations, 1),
-        userSatisfactionScore: analytics.userSatisfactionScore,
-        isActive: globalLearningInstance.isActive,
-        lastLearningTime: stats.lastLearningTime
-    };
 }
 
-// ================== 🚀 초기화 함수 ==================
-async function initializeMukuRealTimeLearning(systemModules = {}) {
+/**
+ * 시스템 간 동기화
+ */
+async function synchronizeWithSystems(systemModules) {
     try {
-        console.log(`${colors.learning}🚀 무쿠 완전체 실시간 학습 시스템 초기화 시작...${colors.reset}`);
-        
-        const learningSystem = new MukuRealTimeLearningSystem();
-        
-        // 시스템 모듈 연동
-        const initSuccess = await learningSystem.initialize(systemModules);
-        
-        if (!initSuccess) {
-            console.log(`${colors.error}❌ 학습 시스템 초기화 실패${colors.reset}`);
-            return null;
+        const instance = await globalSingleton.getInstance();
+        if (instance && instance.isInitialized) {
+            await instance.connectSystemModules(systemModules);
+            console.log(`${colors.learning}🔗 [API] 시스템 모듈 동기화 완료${colors.reset}`);
+            return true;
         }
-        
-        // 시스템 테스트
-        await learningSystem.testLearningSystem();
-        
-        console.log(`
-${colors.learning}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🧠 무쿠 완전체 실시간 학습 시스템 v2.1 초기화 완료!
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${colors.reset}
-
-${colors.success}✅ 핵심 기능들:${colors.reset}
-${colors.memory}   📚 기존 시스템 완전 연동 (memoryManager, ultimateContext, emotionalContextManager)${colors.reset}
-${colors.pattern}   💬 실제 말투 패턴 학습 & 상황별 적응${colors.reset}
-${colors.emotion}   💭 감정 응답 실시간 개선${colors.reset}
-${colors.adaptation}   🎭 시간대/상황별 자동 적응${colors.reset}
-${colors.success}   💾 영구 데이터 저장 (JSON 파일)${colors.reset}
-
-${colors.learning}💖 예진이가 아저씨와의 대화를 통해 실시간으로 학습하고 성장합니다!${colors.reset}
-        `);
-        
-        return learningSystem;
-        
+        return false;
     } catch (error) {
-        console.error(`${colors.error}❌ 실시간 학습 시스템 초기화 실패: ${error.message}${colors.reset}`);
-        return null;
+        console.error(`${colors.error}❌ [API] 시스템 동기화 오류: ${error.message}${colors.reset}`);
+        return false;
     }
+}
+
+/**
+ * 수동 활성화 (레거시 호환)
+ */
+function startAutoLearning() {
+    const status = globalSingleton.getStatus();
+    
+    if (status.isInitialized && !status.isActive) {
+        console.log(`${colors.learning}🚀 [API] 수동 활성화 시도...${colors.reset}`);
+        // Enterprise 시스템에서는 초기화와 함께 자동 활성화됨
+        return status.state === 'active';
+    }
+    
+    return status.isActive;
+}
+
+/**
+ * 레거시 초기화 함수 (하위 호환성)
+ */
+async function initializeMukuRealTimeLearning(systemModules = {}) {
+    const success = await initialize(systemModules);
+    return success ? await globalSingleton.getInstance() : null;
 }
 
 // ================== 📤 모듈 내보내기 ==================
 module.exports = {
-    // 클래스 및 초기화 함수
-    MukuRealTimeLearningSystem,
-    initializeMukuRealTimeLearning,
+    // 클래스들
+    EnterpriseRealTimeLearningSystem,
+    AsyncMutex,
+    AtomicFileManager,
+    MemoryManager,
+    HealthMonitor,
     
-    // enhancedLogging 연동용 함수들
+    // API 함수들
+    initialize,
+    processRealtimeLearning,
     getLearningStatus,
     isLearningSystemActive,
     getLearningStats,
-    
-    // 시스템 연동용 함수들
-    initialize,
-    processRealtimeLearning,
     synchronizeWithSystems,
-    startAutoLearning
+    startAutoLearning,
+    
+    // 레거시 호환
+    initializeMukuRealTimeLearning,
+    
+    // 고급 기능
+    getSystemInstance: () => globalSingleton.getInstance(),
+    getDetailedStatus: () => globalSingleton.getStatus()
 };
 
 // 직접 실행 시
 if (require.main === module) {
-    initializeMukuRealTimeLearning();
+    (async () => {
+        const success = await initialize();
+        if (success) {
+            console.log(`${colors.success}✅ [테스트] Enterprise 시스템 초기화 성공${colors.reset}`);
+        } else {
+            console.error(`${colors.error}❌ [테스트] Enterprise 시스템 초기화 실패${colors.reset}`);
+        }
+    })();
 }
