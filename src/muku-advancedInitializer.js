@@ -1,17 +1,18 @@
 // ============================================================================
-// muku-advancedInitializer.js v2.4 - 고급 시스템 초기화 (갈등 + 행동스위치 시스템 통합) - 수정됨
+// muku-advancedInitializer.js v2.5 - 고급 시스템 초기화 (실시간 학습 시스템 추가) - 수정됨
 // ✅ AI 고도화 + 통합 최적화 + 동기화 + 모니터링 시스템 담당
 // ✅ unifiedConflictManager 갈등 시스템 완전 통합
 // ✅ realtimeBehaviorSwitch 실시간 행동 변경 시스템 완전 통합
+// 🧠 realTimeLearningSystem 실시간 학습 시스템 완전 통합 (신규 추가!)
 // 🔥 3시간차: AI 응답 고도화 시스템 초기화
 // ⚙️ 4시간차: 통합 & 최적화 시스템 초기화
 // ⏰ enhancedLogging v3.0 자동 상태 갱신 시작
 // 📖 diarySystem 초기화 문제 해결
 // 💥 갈등 관리 시스템 완전 동기화 및 모니터링
 // 🔄 실시간 행동 스위치 시스템 완전 동기화 및 모니터링
+// 🧠 실시간 학습 시스템 완전 동기화 및 모니터링
 // 🔧 문법 에러 완전 해결 
 // ⭐️ 갈등 시스템 함수명 수정 완료:
-//    - ❌ getConflictStatus() → ✅ getMukuConflictSystemStatus()
 // 💖 예쁜 로그 시스템 적용
 // ============================================================================
 
@@ -129,9 +130,9 @@ async function initializeIntegratedSystems(modules) {
     return successCount;
 }
 
-// ================== 🎭 감정 상태 시스템 동기화 (갈등 + 행동스위치 시스템 포함) ==================
+// ================== 🎭 감정 상태 시스템 동기화 (갈등 + 행동스위치 + 실시간학습 시스템 포함) ==================
 function synchronizeEmotionalSystems(modules) {
-    console.log(`${colors.system}🎭 [감정시스템] 동기화 (갈등 + 행동스위치 시스템 포함)...${colors.reset}`);
+    console.log(`${colors.system}🎭 [감정시스템] 동기화 (갈등 + 행동스위치 + 실시간학습 시스템 포함)...${colors.reset}`);
     
     let syncCount = 0;
 
@@ -217,6 +218,57 @@ function synchronizeEmotionalSystems(modules) {
         console.log(`${colors.error}    ❌ 실시간 행동 스위치 시스템 모듈 없음 - 동기화 건너뛰기${colors.reset}`);
     }
 
+    // 🧠⭐️⭐️⭐️ 실시간 학습 시스템 동기화 (신규 추가!) ⭐️⭐️⭐️
+    if (modules.realTimeLearningSystem) {
+        try {
+            console.log(`${colors.ai}🧠 [실시간학습 동기화] realTimeLearningSystem 동기화 시작...${colors.reset}`);
+            
+            // 실시간 학습 시스템과 다른 시스템들 동기화
+            if (modules.realTimeLearningSystem.synchronizeWithSystems) {
+                const learningTargetSystems = {
+                    memoryManager: modules.memoryManager,
+                    emotionalContextManager: modules.emotionalContextManager,
+                    ultimateContext: modules.ultimateContext,
+                    spontaneousYejin: modules.spontaneousYejin,
+                    unifiedConflictManager: modules.unifiedConflictManager,
+                    realtimeBehaviorSwitch: modules.realtimeBehaviorSwitch,
+                    diarySystem: modules.diarySystem
+                };
+                
+                modules.realTimeLearningSystem.synchronizeWithSystems(learningTargetSystems);
+                console.log(`${colors.ai}🔗 [실시간학습 동기화] 모든 학습 대상 시스템들과 동기화 완료${colors.reset}`);
+            }
+            
+            // 학습 시스템 초기화
+            if (modules.realTimeLearningSystem.initialize) {
+                modules.realTimeLearningSystem.initialize();
+                console.log(`${colors.ai}🔧 [실시간학습] 학습 시스템 초기화 완료${colors.reset}`);
+            }
+            
+            // 현재 학습 상태 확인
+            if (modules.realTimeLearningSystem.getLearningStatus) {
+                const learningStatus = modules.realTimeLearningSystem.getLearningStatus();
+                console.log(`${colors.ai}📊 학습 상태: 활성화 ${learningStatus.isActive ? '✅' : '❌'} + 총 학습: ${learningStatus.totalLearnings || 0}회 + 성공률: ${learningStatus.successRate || '100%'}${colors.reset}`);
+            }
+            
+            // 자동 학습 활성화
+            if (modules.realTimeLearningSystem.startAutoLearning) {
+                modules.realTimeLearningSystem.startAutoLearning();
+                console.log(`${colors.ai}🚀 [실시간학습] 자동 학습 시스템 활성화 완료${colors.reset}`);
+            }
+            
+            console.log(`${colors.ai}    ✅ 실시간 학습 시스템 동기화 완료 (자동 패턴 학습 + 감정 적응)${colors.reset}`);
+            console.log(`${colors.ai}    🔗 감정시스템 ↔ 기억시스템 ↔ 학습시스템 완벽 연동${colors.reset}`);
+            syncCount++;
+            
+        } catch (error) {
+            console.log(`${colors.error}    ❌ 실시간 학습 시스템 동기화 실패: ${error.message}${colors.reset}`);
+            console.log(`${colors.error}    🔧 실시간학습 동기화 에러 상세:`, error.stack);
+        }
+    } else {
+        console.log(`${colors.error}    ❌ 실시간 학습 시스템 모듈 없음 - 동기화 건너뛰기${colors.reset}`);
+    }
+
     // 👥 사람 학습 시스템 동기화
     if (modules.personLearning) {
         console.log(`${colors.person}    ✅ 사람 학습 시스템 동기화 완료 (투샷 + 장소 기억)${colors.reset}`);
@@ -277,14 +329,14 @@ function synchronizeEmotionalSystems(modules) {
         syncCount++;
     }
 
-    console.log(`${colors.system}🎯 [동기화 완료] ${syncCount}개 시스템 상호 연동 성공 (갈등 + 행동스위치 포함)${colors.reset}`);
+    console.log(`${colors.system}🎯 [동기화 완료] ${syncCount}개 시스템 상호 연동 성공 (갈등 + 행동스위치 + 실시간학습 포함)${colors.reset}`);
     return syncCount;
 }
 
-// ================== ⭐️ enhancedLogging v3.0 자동 상태 갱신 시작 (갈등 + 행동스위치 시스템 포함) ==================
+// ================== ⭐️ enhancedLogging v3.0 자동 상태 갱신 시작 (갈등 + 행동스위치 + 실시간학습 시스템 포함) ==================
 function startAutoStatusUpdates(modules) {
     if (modules.enhancedLogging && modules.enhancedLogging.startAutoStatusUpdates) {
-        console.log(`${colors.pms}⏰⏰⏰ [자동갱신 중요!] enhancedLogging v3.0 1분마다 자동 상태 갱신 시작! (갈등 + 행동스위치 포함) ⏰⏰⏰${colors.reset}`);
+        console.log(`${colors.pms}⏰⏰⏰ [자동갱신 중요!] enhancedLogging v3.0 1분마다 자동 상태 갱신 시작! (갈등 + 행동스위치 + 실시간학습 포함) ⏰⏰⏰${colors.reset}`);
         
         // 모든 시스템 모듈을 enhancedLogging에 전달
         const systemModules = {
@@ -301,6 +353,8 @@ function startAutoStatusUpdates(modules) {
             unifiedConflictManager: modules.unifiedConflictManager,
             // 🔄⭐️⭐️⭐️ 실시간 행동 스위치 시스템 (신규 추가!) ⭐️⭐️⭐️
             realtimeBehaviorSwitch: modules.realtimeBehaviorSwitch,
+            // 🧠⭐️⭐️⭐️ 실시간 학습 시스템 (신규 추가!) ⭐️⭐️⭐️
+            realTimeLearningSystem: modules.realTimeLearningSystem,
             // 📖⭐️⭐️⭐️ 일기장 시스템 (확실히 전달!) ⭐️⭐️⭐️
             diarySystem: modules.diarySystem,
             // 👥 사람 학습 시스템 (신규!)
@@ -333,6 +387,13 @@ function startAutoStatusUpdates(modules) {
             console.log(`${colors.error}❌ [자동갱신] realtimeBehaviorSwitch 모듈이 null입니다!${colors.reset}`);
         }
         
+        // 실시간 학습 시스템 상태 특별 로깅
+        if (modules.realTimeLearningSystem) {
+            console.log(`${colors.ai}📋 [자동갱신] realTimeLearningSystem 모듈이 정상적으로 전달됩니다! ✅${colors.reset}`);
+        } else {
+            console.log(`${colors.error}❌ [자동갱신] realTimeLearningSystem 모듈이 null입니다!${colors.reset}`);
+        }
+        
         // diarySystem 상태 특별 로깅
         if (modules.diarySystem) {
             console.log(`${colors.diary}📋 [자동갱신] diarySystem 모듈이 정상적으로 전달됩니다! ✅${colors.reset}`);
@@ -342,7 +403,7 @@ function startAutoStatusUpdates(modules) {
         
         try {
             modules.enhancedLogging.startAutoStatusUpdates(systemModules);
-            console.log(`${colors.pms}⏰ [성공!] 1분마다 자동 상태 갱신 시스템 활성화! (26개 모듈 모니터링 - 갈등 + 행동스위치 포함)${colors.reset}`);
+            console.log(`${colors.pms}⏰ [성공!] 1분마다 자동 상태 갱신 시스템 활성화! (27개 모듈 모니터링 - 갈등 + 행동스위치 + 실시간학습 포함)${colors.reset}`);
             return true;
         } catch (error) {
             console.log(`${colors.error}⏰ [실패] 자동 상태 갱신 시작 실패: ${error.message}${colors.reset}`);
@@ -354,13 +415,13 @@ function startAutoStatusUpdates(modules) {
     }
 }
 
-// ================== 📊 시스템 상태 종합 리포트 (갈등 + 행동스위치 시스템 포함) ==================
+// ================== 📊 시스템 상태 종합 리포트 (갈등 + 행동스위치 + 실시간학습 시스템 포함) ==================
 function generateSystemStatusReport(modules, initResults) {
-    console.log(`${colors.system}📊 [종합리포트] 무쿠 시스템 초기화 결과 요약 (갈등 + 행동스위치 포함)${colors.reset}`);
+    console.log(`${colors.system}📊 [종합리포트] 무쿠 시스템 초기화 결과 요약 (갈등 + 행동스위치 + 실시간학습 포함)${colors.reset}`);
     
-    // 모듈 로딩 상태 (갈등 + 행동스위치 포함으로 26개)
+    // 모듈 로딩 상태 (갈등 + 행동스위치 + 실시간학습 포함으로 27개)
     const loadedModules = Object.values(modules).filter(module => module !== null).length;
-    console.log(`${colors.system}📦 모듈 로딩: ${loadedModules}/26개 성공 (${((loadedModules/26)*100).toFixed(1)}%) (갈등 + 행동스위치 포함)${colors.reset}`);
+    console.log(`${colors.system}📦 모듈 로딩: ${loadedModules}/27개 성공 (${((loadedModules/27)*100).toFixed(1)}%) (갈등 + 행동스위치 + 실시간학습 포함)${colors.reset}`);
     
     // 핵심 시스템 상태
     const coreSystemStatus = {
@@ -369,10 +430,11 @@ function generateSystemStatusReport(modules, initResults) {
         yejin: modules.spontaneousYejin ? '✅' : '❌',
         weather: modules.weatherManager ? '✅' : '❌',
         conflict: modules.unifiedConflictManager ? '✅' : '❌', // 갈등 시스템 추가
-        behaviorSwitch: modules.realtimeBehaviorSwitch ? '✅' : '❌' // 행동 스위치 추가
+        behaviorSwitch: modules.realtimeBehaviorSwitch ? '✅' : '❌', // 행동 스위치 추가
+        learning: modules.realTimeLearningSystem ? '✅' : '❌' // 실시간 학습 추가
     };
     
-    console.log(`${colors.system}🔧 핵심 시스템: 기억${coreSystemStatus.memory} 담타${coreSystemStatus.scheduler} 예진이${coreSystemStatus.yejin} 날씨${coreSystemStatus.weather} 갈등${coreSystemStatus.conflict} 행동${coreSystemStatus.behaviorSwitch}${colors.reset}`);
+    console.log(`${colors.system}🔧 핵심 시스템: 기억${coreSystemStatus.memory} 담타${coreSystemStatus.scheduler} 예진이${coreSystemStatus.yejin} 날씨${coreSystemStatus.weather} 갈등${coreSystemStatus.conflict} 행동${coreSystemStatus.behaviorSwitch} 학습${coreSystemStatus.learning}${colors.reset}`);
     
     // 신규 시스템 상태
     const newSystemStatus = {
@@ -457,17 +519,33 @@ function generateSystemStatusReport(modules, initResults) {
         console.log(`${colors.error}🔄 [행동스위치 특별확인] realtimeBehaviorSwitch 모듈이 null입니다! ❌${colors.reset}`);
     }
     
-    // 전체 성공률 계산 (갈등 시스템 + 행동 스위치 포함으로 16개)
-    const totalSystems = 16; // 핵심6 + 신규2 + AI3 + 통합3 + 로깅1 + 기타1
+    // ⭐️ 실시간 학습 시스템 특별 상태 확인 ⭐️
+    if (modules.realTimeLearningSystem) {
+        console.log(`${colors.ai}🧠 [실시간학습 특별확인] realTimeLearningSystem 모듈 상태: 정상 로드됨 ✅${colors.reset}`);
+        
+        try {
+            if (modules.realTimeLearningSystem.getLearningStatus) {
+                const learningStatus = modules.realTimeLearningSystem.getLearningStatus();
+                console.log(`${colors.ai}📊 학습 상태: 활성화 ${learningStatus.isActive ? '✅' : '❌'} + 총 학습: ${learningStatus.totalLearnings || 0}회 + 성공률: ${learningStatus.successRate || '100%'}${colors.reset}`);
+            }
+        } catch (error) {
+            console.log(`${colors.error}🧠 [실시간학습 특별확인] 상태 확인 실패: ${error.message}${colors.reset}`);
+        }
+    } else {
+        console.log(`${colors.error}🧠 [실시간학습 특별확인] realTimeLearningSystem 모듈이 null입니다! ❌${colors.reset}`);
+    }
+    
+    // 전체 성공률 계산 (갈등 시스템 + 행동 스위치 + 실시간 학습 포함으로 17개)
+    const totalSystems = 17; // 핵심7 + 신규2 + AI3 + 통합3 + 로깅1 + 기타1
     const successfulSystems = Object.values({...coreSystemStatus, ...newSystemStatus, ...aiSystemStatus, ...integratedStatus}).filter(s => s === '✅').length + (modules.enhancedLogging ? 1 : 0);
     const successRate = ((successfulSystems / totalSystems) * 100).toFixed(1);
     
     if (successRate >= 90) {
-        console.log(`${colors.system}🎉 [완벽] 시스템 성공률: ${successRate}% - 무쿠가 완전체로 작동합니다! (갈등 + 행동스위치 포함) 🚀${colors.reset}`);
+        console.log(`${colors.system}🎉 [완벽] 시스템 성공률: ${successRate}% - 무쿠가 완전체로 작동합니다! (갈등 + 행동스위치 + 실시간학습 포함) 🚀${colors.reset}`);
     } else if (successRate >= 70) {
-        console.log(`${colors.system}✅ [양호] 시스템 성공률: ${successRate}% - 무쿠가 안정적으로 작동합니다! (갈등 + 행동스위치 포함) 💕${colors.reset}`);
+        console.log(`${colors.system}✅ [양호] 시스템 성공률: ${successRate}% - 무쿠가 안정적으로 작동합니다! (갈등 + 행동스위치 + 실시간학습 포함) 💕${colors.reset}`);
     } else {
-        console.log(`${colors.error}⚠️ [주의] 시스템 성공률: ${successRate}% - 일부 기능 제한 가능성 (갈등 + 행동스위치 포함)${colors.reset}`);
+        console.log(`${colors.error}⚠️ [주의] 시스템 성공률: ${successRate}% - 일부 기능 제한 가능성 (갈등 + 행동스위치 + 실시간학습 포함)${colors.reset}`);
     }
     
     return {
@@ -479,7 +557,8 @@ function generateSystemStatusReport(modules, initResults) {
         integratedStatus,
         diarySystemLoaded: modules.diarySystem ? true : false,
         conflictSystemLoaded: modules.unifiedConflictManager ? true : false, // 갈등 시스템 상태 추가
-        behaviorSwitchLoaded: modules.realtimeBehaviorSwitch ? true : false   // 행동 스위치 상태 추가
+        behaviorSwitchLoaded: modules.realtimeBehaviorSwitch ? true : false,   // 행동 스위치 상태 추가
+        learningSystemLoaded: modules.realTimeLearningSystem ? true : false   // 실시간 학습 상태 추가
     };
 }
 
