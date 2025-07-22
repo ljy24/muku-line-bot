@@ -622,6 +622,7 @@ module.exports = {
     
     // 📊 상태 조회 함수들 (⭐️ 라인 상태 리포트용!)
     getPhotoStatus,              // ⭐️ 라인에서 "상태는?" 명령어용 핵심 함수!
+    getStatus: getPhotoStatus, 
     getDetailedPhotoStats,
     getPhotoStatusSummary,
     
