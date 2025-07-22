@@ -2111,6 +2111,9 @@ module.exports = {
     mukuLearningSystem,
     IntegratedLearningSystemManager,
     
+    // 🔄 기존 호환성 유지
+    MukuRealTimeLearningSystem: mukuLearningSystem,
+    
     // 개별 시스템 (필요시 직접 접근)
     EnterpriseRealTimeLearningSystem,
     IndependentAutonomousModule,
@@ -2125,23 +2128,12 @@ module.exports = {
     CONFIG,
     colors,
     
-    // 편의 함수들
+    // 편의 함수들 (새 이름)
     async initializeMukuLearning(systemModules = {}, options = {}) {
         return await mukuLearningSystem.initialize(systemModules, options);
     },
     
-    async learnFromConversation(userMessage, mukuResponse, context = {}) {
-        return await mukuLearningSystem.processLearning(userMessage, mukuResponse, context);
-    },
-    
-    getMukuStatus() {
-        return mukuLearningSystem.getSystemStatus();
-    },
-    
-    async shutdownMuku() {
-        return await mukuLearningSystem.shutdown();
-    }
-};
+    // 🔄 기존 호환성 유지 
 
 // ================== 🎉 시작 메시지 ==================
 console.log(`
