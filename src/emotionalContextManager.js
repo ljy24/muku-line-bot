@@ -3,6 +3,7 @@
 // 🧠 감정 상태, 💬 말투, ❤️ 애정 표현을 계산하고 관리
 // 🩸 현실적인 28일 생리주기 직접 계산 (23일차 PMS로 수정)
 // 💬 설명충 해결: 간단명료한 로직으로 수정
+// 🎓 실시간 학습 시스템 연동 추가 (v8.2)
 // ============================================================================
 
 const fs = require('fs');
@@ -257,6 +258,93 @@ function getInternalState() {
     };
 }
 
+// ==================== 🎓 실시간 학습 시스템 연동 함수 (NEW!) ====================
+
+/**
+ * 🎓 실시간 학습에서 감정 학습 결과 반영 (muku-realTimeLearningSystem.js 연동용)
+ * @param {Array} emotionalImprovements - 감정 개선사항 배열
+ * @param {string} emotionalImprovements[].emotion - 개선된 감정 타입
+ * @param {string} emotionalImprovements[].action - 개선 내용
+ * @param {number} emotionalImprovements[].quality - 품질 점수 (0-1)
+ */
+function updateEmotionalLearning(emotionalImprovements) {
+    try {
+        console.log(`💖 [Emotion] 🎓 실시간 학습 감정 개선사항 ${emotionalImprovements.length}개 처리 중...`);
+        
+        let totalQuality = 0;
+        let processedCount = 0;
+        
+        for (const improvement of emotionalImprovements) {
+            // 안전한 기본값 설정
+            const safeImprovement = {
+                emotion: improvement.emotion || 'normal',
+                action: improvement.action || '개선됨',
+                quality: improvement.quality || 0.7
+            };
+            
+            // 감정 상태에 학습 결과 반영
+            if (safeImprovement.quality >= 0.8) {
+                // 고품질 학습은 즉시 감정 상태에 반영
+                if (emotionKoreanMap[safeImprovement.emotion]) {
+                    globalEmotionState.currentEmotion = safeImprovement.emotion;
+                    globalEmotionState.emotionIntensity = Math.min(10, globalEmotionState.emotionIntensity + 1);
+                    globalEmotionState.lastEmotionUpdate = Date.now();
+                    
+                    console.log(`💖 [Emotion] 🌟 고품질 감정 학습 반영: ${translateEmotionToKorean(safeImprovement.emotion)} (품질: ${safeImprovement.quality})`);
+                }
+            }
+            
+            // 대화 분위기 조정
+            switch (safeImprovement.emotion) {
+                case 'happy':
+                case 'loving':
+                case 'excited':
+                    globalEmotionState.conversationMood = 'playful';
+                    globalEmotionState.energyLevel = Math.min(10, globalEmotionState.energyLevel + 1);
+                    break;
+                    
+                case 'sad':
+                case 'worried':
+                case 'lonely':
+                    globalEmotionState.conversationMood = 'caring';
+                    globalEmotionState.needsComfort = true;
+                    break;
+                    
+                case 'sulky':
+                case 'angry':
+                    globalEmotionState.conversationMood = 'cautious';
+                    break;
+                    
+                default:
+                    globalEmotionState.conversationMood = 'neutral';
+            }
+            
+            totalQuality += safeImprovement.quality;
+            processedCount++;
+            
+            console.log(`💖 [Emotion] 🎓 감정 학습 적용: ${translateEmotionToKorean(safeImprovement.emotion)} - ${safeImprovement.action}`);
+        }
+        
+        // 전체적인 감정 시스템 안정성 조정
+        if (processedCount > 0) {
+            const averageQuality = totalQuality / processedCount;
+            
+            // 평균 품질이 높으면 전체적으로 안정적인 감정 상태로 조정
+            if (averageQuality >= 0.8) {
+                globalEmotionState.emotionIntensity = Math.max(1, Math.min(8, globalEmotionState.emotionIntensity));
+                console.log(`💖 [Emotion] 🎯 고품질 학습으로 감정 안정성 증가 (평균 품질: ${averageQuality.toFixed(2)})`);
+            }
+        }
+        
+        console.log(`💖 [Emotion] ✅ 실시간 감정 학습 완료: ${processedCount}개 처리됨`);
+        return true;
+        
+    } catch (error) {
+        console.error(`💖 [Emotion] ❌ 실시간 감정 학습 실패: ${error.message}`);
+        return false;
+    }
+}
+
 // ==================== 📤 모듈 내보내기 ====================
 module.exports = {
     // 초기화
@@ -269,6 +357,9 @@ module.exports = {
     updateSulkyState,
     getSelfieText,
     getInternalState,
+    
+    // 🎓 실시간 학습 연동 함수 (NEW!)
+    updateEmotionalLearning,
     
     // 생리주기 관련
     calculateMenstrualPhase: calculateMenstrualCycle,
