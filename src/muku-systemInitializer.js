@@ -346,14 +346,14 @@ async function initializeLearningSystem(modules) {
         return false;
     }
     
-if (!learningSystemModule.initializeMukuLearning) {
-        console.log(`${colors.error}🎓 [에러] initializeMukuLearning 함수가 없습니다!${colors.reset}`);
+if (!learningSystemModule.mukuLearningSystem) {
+        console.log(`${colors.error}🎓 [에러] mukuLearningSystem 함수가 없습니다!${colors.reset}`);
         console.log(`${colors.error}🎓 [디버그] learningSystemModule에서 사용 가능한 함수들:`, Object.keys(learningSystemModule));
         return false;
     }
     
     try {
-        console.log(`${colors.learning}🎓 [시작시도] initializeMukuLearning() 호출...${colors.reset}`);
+        console.log(`${colors.learning}🎓 [시작시도] mukuLearningSystem() 호출...${colors.reset}`);
         
         // 기존 시스템 모듈들을 학습 시스템에 전달
         const systemModules = {
@@ -363,8 +363,8 @@ if (!learningSystemModule.initializeMukuLearning) {
             sulkyManager: modules.sulkyManager
         };
         
-        const learningSystem = await learningSystemModule.initializeMukuLearning(systemModules);
-        
+        const learningSystem = await learningSystemModule.mukuLearningSystem.initialize(systemModules);
+            
         if (learningSystem) {
             console.log(`${colors.learning}🎓 [성공!] 실시간 학습 시스템 시작 완료!${colors.reset}`);
             console.log(`${colors.system}    ✅ 실시간 학습 시스템 활성화 완료! (대화 분석 + 말투 학습 + 감정 적응)${colors.reset}`);
