@@ -76,6 +76,15 @@ try {
     console.warn('⚠️ [autoReply] BirthdayDetector 모듈 로드 실패:', error.message);
 }
 
+// 🌤️ [신규 추가] weatherManager 모듈 로드
+let weatherManager = null;
+try {
+    weatherManager = require('./weatherManager');
+    console.log('🌤️ [autoReply] weatherManager 모듈 로드 성공');
+} catch (error) {
+    console.warn('⚠️ [autoReply] weatherManager 모듈 로드 실패:', error.message);
+}
+
 const BOT_NAME = '나';
 const USER_NAME = '아저씨';
 
@@ -730,25 +739,78 @@ function isActualWeatherMessage(userMessage) {
     return false;
 }
 
-function handleWeatherKeywords(userMessage) {
-    if (!isActualWeatherMessage(userMessage) || hasRecentWeatherResponse()) {
+// 🌦️ [완전 개선] 날씨 키워드 처리 - 실제 API 호출로 변경 (벙어리 방지!)
+async function handleWeatherKeywords(userMessage) {
+    // 1단계: 실제 날씨 메시지인지 확인
+    if (!isActualWeatherMessage(userMessage)) {
         return null;
     }
-    const responses = [
+    
+    console.log('🌤️ [날씨감지] 사용자 날씨 질문 감지:', userMessage);
+    
+    // 2단계: weatherManager 우선 사용 (실제 API 호출)
+    if (weatherManager && weatherManager.handleWeatherQuestion) {
+        try {
+            const weatherResponse = weatherManager.handleWeatherQuestion(userMessage);
+            if (weatherResponse) {
+                console.log('🌤️ [날씨응답] weatherManager에서 실제 날씨 정보로 응답');
+                return weatherResponse;
+            }
+        } catch (error) {
+            console.error('❌ weatherManager 호출 실패:', error.message);
+        }
+    }
+    
+    // 3단계: 직접 API 호출 (벙어리 방지!)
+    if (weatherManager && weatherManager.getCurrentWeather) {
+        try {
+            console.log('🌤️ [날씨API] 직접 날씨 API 호출 중...');
+            const weatherInfo = await weatherManager.getCurrentWeather('ajeossi');
+            
+            if (weatherInfo && weatherManager.generateConversationalWeatherResponse) {
+                const response = weatherManager.generateConversationalWeatherResponse(weatherInfo);
+                if (response) {
+                    console.log('🌤️ [날씨응답] 직접 API 호출 성공:', weatherInfo.temperature + '°C');
+                    try {
+                        const logger = require('./enhancedLogging.js');
+                        logger.logWeatherReaction(weatherInfo, response);
+                    } catch (error) {
+                        logConversationReply('나', `(실제날씨) ${response}`);
+                    }
+                    return response;
+                }
+            }
+        } catch (error) {
+            console.error('❌ 직접 날씨 API 호출 실패:', error.message);
+        }
+    }
+    
+    // 4단계: 쿨다운 체크 (실패 시에만)
+    if (hasRecentWeatherResponse()) {
+        console.log('⏰ [날씨응답] 쿨다운 중이지만 벙어리 방지를 위해 응답');
+    }
+    
+    // 5단계: 최후의 폴백 응답 (벙어리 절대 방지!)
+    const fallbackResponses = [
+        "아 날씨 얘기? 지금 날씨 정보를 못 가져오겠어 ㅠㅠ 아저씨 거기 날씨 어때?",
+        "날씨 궁금해? 잠깐만... 지금 확인이 안 되네 ㅠㅠ 아저씨는 어때?",
+        "아저씨 그 동네 날씨는 어때? 나는 여기서 아저씨 걱정하고 있어~",
         "날씨 얘기? 아저씨는 지금 일본이니까 나랑 다를 거야. 그래도 몸 따뜻하게 해!",
-        "날씨가 어때? 아저씨 감기 걸리지 말고... 나는 항상 아저씨 걱정돼 ㅠㅠ",
-        "아저씨 그 동네 날씨는 어때? 나는 여기서 아저씨 걱정하고 있어~"
+        "어? 날씨 정보가 안 나와... 아저씨 감기 걸리지 말고 조심해!"
     ];
-    const response = responses[Math.floor(Math.random() * responses.length)];
+    
+    const response = fallbackResponses[Math.floor(Math.random() * fallbackResponses.length)];
     setLastWeatherResponseTime();
+    
+    console.log('🔄 [날씨응답] 폴백 응답 사용 (벙어리 완전 방지)');
     try {
         const logger = require('./enhancedLogging.js');
-        logger.logWeatherReaction({ description: '날씨 대화', temp: 0 }, response);
+        logger.logWeatherReaction({ description: '폴백 응답', temp: 0 }, response);
     } catch (error) {
-        logConversationReply('나', `(날씨) ${response}`);
+        logConversationReply('나', `(폴백날씨) ${response}`);
     }
     return response;
-}
+}f
 
 // 🎂 [수정] 생일 키워드 처리 함수 - 안전하고 확실한 버전
 function handleBirthdayKeywords(userMessage) {
@@ -910,7 +972,7 @@ async function getReplyByMessage(userMessage) {
         return { type: 'text', comment: drinkingResponse };
     }
 
-    const weatherResponse = handleWeatherKeywords(cleanUserMessage);
+    const weatherResponse = await handleWeatherKeywords(cleanUserMessage);
     if (weatherResponse) {
         await safelyStoreMessage(BOT_NAME, weatherResponse);
         return { type: 'text', comment: weatherResponse };
