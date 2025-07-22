@@ -288,7 +288,7 @@ function scheduleNextPhoto() {
         photoLog(`📅 다음 사진 전송 예약: ${nextTime.format('YYYY-MM-DD HH:mm')} (${formatTimeUntil(nextTime)})`);
         
     } catch (error) {
-        photoLog(`❌ 스케줄링 실패: ${error.message}`);
+        photoLog(`❌스케줄링 실패: ${error.message}`);
     }
 }
 
@@ -379,7 +379,9 @@ function getPhotoStatus() {
         // 라인 상태 리포트용 핵심 정보
         sentToday: photoScheduleState.dailyStats.sentToday,
         totalDaily: photoScheduleState.dailyStats.totalDaily,
+        dailyLimit: photoScheduleState.dailyStats.totalDaily,  // ✅ 추가!
         nextTime: nextTimeString,
+        nextSendTime: photoScheduleState.schedule.nextScheduledTime, // ✅ 추가!
         
         // 상세 정보
         progress: `${photoScheduleState.dailyStats.sentToday}/${photoScheduleState.dailyStats.totalDaily}`,
