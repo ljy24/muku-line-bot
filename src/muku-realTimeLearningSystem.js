@@ -35,8 +35,8 @@ const colors = {
     independent: '\x1b[1m\x1b[95m',  // 굵은 보라색 (독립)
     autonomous: '\x1b[96m',          // 하늘색 (자율)
     timing: '\x1b[92m',              // 초록색 (타이밍)
-    message: '\x1b[94m',             // 파란색 (메시지)
-    reset: '\x1b[0m'               // 색상 리셋
+     message: '\x1b[94m',             // 파란색 (메시지)
+    reset: '\x1b[0m'                 // 색상 리셋
 };
 
 // ================== 🔧 시스템 구성 ==================
@@ -2129,8 +2129,7 @@ module.exports = {
     colors,
     
     // 편의 함수들 (새 이름)
-   // 편의 함수들 (새 이름)
-    async initializeMukuLearning(systemModules = {}, options = {}) {
+    initializeMukuLearning: async function(systemModules = {}, options = {}) {
         return await mukuLearningSystem.initialize(systemModules, options);
     }
 };
