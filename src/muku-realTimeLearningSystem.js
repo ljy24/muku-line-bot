@@ -2129,11 +2129,11 @@ module.exports = {
     colors,
     
     // 편의 함수들 (새 이름)
+   // 편의 함수들 (새 이름)
     async initializeMukuLearning(systemModules = {}, options = {}) {
         return await mukuLearningSystem.initialize(systemModules, options);
-    },
-    
-    // 🔄 기존 호환성 유지 
+    }
+};
 
 // ================== 🎉 시작 메시지 ==================
 console.log('💖 무쿠 Enterprise 실시간 학습 시스템 v3.0 로드 완료!');
