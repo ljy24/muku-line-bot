@@ -46,7 +46,7 @@ function getUltimateContext() {
 
 // ================== 🌏 설정 ==================
 const TIMEZONE = 'Asia/Tokyo';
-const USER_ID = process.env.TARGET_USER_ID;
+const USER_ID = process.env.LINE_TARGET_USER_ID;
 const DAILY_MESSAGE_COUNT = 15;
 const MESSAGE_START_HOUR = 8;    // 오전 8시
 const MESSAGE_END_HOUR = 25;     // 새벽 1시 (다음날)
@@ -880,8 +880,8 @@ function startSpontaneousYejinSystem(client) {
         spontaneousLog('🚀 예진이 능동 메시지 시스템 시작...');
         if (client) {
             lineClient = client;
-        } else if (process.env.CHANNEL_ACCESS_TOKEN) {
-            lineClient = new Client({ channelAccessToken: process.env.CHANNEL_ACCESS_TOKEN });
+        } else if (process.env.LINE_ACCESS_TOKEN) {
+            lineClient = new Client({ channelAccessToken: process.env.LINE_ACCESS_TOKEN });
         } else {
             spontaneousLog('❌ LINE 클라이언트 설정 실패');
             return false;
