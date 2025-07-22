@@ -810,7 +810,7 @@ async function handleWeatherKeywords(userMessage) {
         logConversationReply('나', `(폴백날씨) ${response}`);
     }
     return response;
-}f
+}
 
 // 🎂 [수정] 생일 키워드 처리 함수 - 안전하고 확실한 버전
 function handleBirthdayKeywords(userMessage) {
