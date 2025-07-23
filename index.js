@@ -9,7 +9,6 @@
 // 📖 diarySystem: 일기장 시스템
 // 🎓 realTimeLearningSystem: 실시간 학습 시스템 (NEW!)
 // 🔗 autoDataLinks: 무쿠 학습 데이터 자동 링크 시스템 (NEW!)
-// ⏳ 입력중 표시 시스템: LINE 기본 showLoadingAnimation 적용 (NEW!)
 // 
 // ============================================================================
 // index.js - v14.4 MODULAR + PersonLearning + DiarySystem + LearningSystem
@@ -29,10 +28,9 @@
 // - 🎓 사람 학습: 모르는 사람 → 알려주기 → 기억하기 → 다음에 인식
 // - 💕 관계 발전: 만남 횟수별 차별화된 예진이 반응
 // - 🔗 데이터 자동 링크: 배포 후 학습 데이터 영구 보존 (NEW!)
-// - ⏳ 입력중 표시: 자연스러운 대화 흐름 (NEW!)
 // ============================================================================
 
-const { Client, middleware } = require('@line/bot-sdk');
+const { Client } = require('@line/bot-sdk');
 const express = require('express');
 require('dotenv').config();
 
@@ -490,7 +488,6 @@ async function initMuku() {
         console.log(`📖 기존 기능: 일기장 시스템 - 누적 학습 내용 확인`);
         console.log(`👥 기존 기능: 투샷 + 장소 기억, 사람 학습 및 관계 발전`);
         console.log(`🔗 신규 기능: 학습 데이터 자동 링크 - 배포 후 영구 보존`);
-        console.log(`⏳ 신규 기능: 입력중 표시 - 자연스러운 대화 흐름`);
         console.log(`🌏 현재 일본시간: ${getJapanTimeString()}`);
         console.log(`✨ 현재 GPT 모델: ${getCurrentModelSetting()}`);
 
@@ -579,7 +576,7 @@ async function initMuku() {
             global.mukuModules = initResult.modules || {};
         }
 
-        console.log(`📋 v14.4 MODULAR: 모듈 완전 분리 + 실시간 학습 + 일기장 + 사람 학습 + 이미지 처리 안전성 강화 + 데이터 자동 링크 + 입력중 표시`);
+        console.log(`📋 v14.4 MODULAR: 모듈 완전 분리 + 실시간 학습 + 일기장 + 사람 학습 + 이미지 처리 안전성 강화 + 데이터 자동 링크`);
 
     } catch (error) {
         console.error(`🚨 시스템 초기화 에러: ${error.message}`);
@@ -588,79 +585,7 @@ async function initMuku() {
     }
 }
 
-// ⏳⏳⏳ [새로 추가] 입력중 표시 포함 웹훅 처리 함수 ⏳⏳⏳
-async function handleEventWithTypingIndicator(event) {
-    try {
-        // 텍스트 메시지인 경우에만 "입력 중..." 표시
-        if (event.type === 'message' && event.message.type === 'text') {
-            const userId = event.source?.userId;
-            
-            if (userId) {
-                try {
-                    // LINE 기본 "입력 중..." 표시
-                    await client.showLoadingAnimation(userId);
-                    console.log('⏳ [입력중] "내꺼가 입력 중입니다..." 표시 완료');
-                    
-                    // 1초 딜레이
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                    console.log('✅ [딜레이] 1초 대기 완료 - 응답 생성 시작');
-                    
-                } catch (typingError) {
-                    console.log('⚠️ [입력중] 표시 실패하지만 계속 진행:', typingError.message);
-                }
-            }
-        }
-        
-        // 이미지 메시지인 경우 별도 처리
-        if (event.type === 'message' && event.message.type === 'image') {
-            console.log('📸 [이미지처리] 이미지 메시지 감지 - 별도 처리 진행');
-            await handleImageMessageSafely(event, client);
-            return Promise.resolve(null);
-        }
-        
-        // 기존 eventProcessor로 모든 이벤트 처리 (무쿠 벙어리 방지 보장)
-        const modules = global.mukuModules || {};
-        return await eventProcessor.handleEvent(
-            event, 
-            modules, 
-            client, 
-            faceMatcher, 
-            loadFaceMatcherSafely, 
-            getVersionResponse, 
-            modules.enhancedLogging
-        );
-        
-    } catch (error) {
-        console.error('❌ [이벤트처리] 에러 발생:', error.message);
-        
-        // 🛡️ 완벽한 벙어리 방지 시스템
-        if (event.replyToken) {
-            try {
-                const emergencyResponses = [
-                    '아저씨! 나 잠깐 딴 생각했어~ 다시 말해줄래? ㅎㅎ',
-                    '어? 아저씨가 뭐라고 했지? 다시 한 번! 💕',
-                    '아저씨~ 내가 놓쳤나 봐! 다시 말해줘!',
-                    '음음? 아저씨 말을 다시 들려줄래? ㅋㅋ'
-                ];
-                
-                const emergencyReply = {
-                    type: 'text',
-                    text: emergencyResponses[Math.floor(Math.random() * emergencyResponses.length)]
-                };
-                
-                await client.replyMessage(event.replyToken, emergencyReply);
-                console.log('🛡️ [응급응답] 벙어리 방지 응답 전송 완료');
-                
-            } catch (emergencyError) {
-                console.error('🚨 [응급응답] 최종 응답마저 실패:', emergencyError.message);
-            }
-        }
-        
-        return Promise.resolve(null);
-    }
-}
-
-// 라우트 설정 (입력중 표시 포함 새로운 웹훅 + 기타 라우트들)
+// 라우트 설정 (일기장 + 사람 학습 + 실시간 학습 시스템 연동)
 function setupAllRoutes() {
     const modules = global.mukuModules || {};
     
@@ -669,85 +594,26 @@ function setupAllRoutes() {
         initializing: faceApiInitializing
     };
 
-    // ⏳⏳⏳ [신규] 입력중 표시 포함 웹훅 라우트 ⏳⏳⏳
-    app.post('/webhook', middleware(config), async (req, res) => {
-        try {
-            console.log('📨 [Webhook] 새로운 이벤트 수신');
-            
-            const events = req.body.events || [];
-            
-            const results = await Promise.all(events.map(handleEventWithTypingIndicator));
-            
-            res.json({
-                status: 'success',
-                processedEvents: results.length,
-                timestamp: getJapanTimeString()
-            });
-            
-        } catch (error) {
-            console.error('❌ [Webhook] 처리 중 에러:', error.message);
-            
-            // 🛡️ 웹훅 에러 시에도 응답은 보내기 (LINE 서버 에러 방지)
-            res.status(200).json({
-                status: 'error',
-                message: 'Internal processing error, but webhook acknowledged',
-                timestamp: getJapanTimeString()
-            });
-        }
-    });
-
-    // 🏠 홈페이지 라우트
-    app.get('/', (req, res) => {
-        // ⭐️ "상태는?" 명령어 처리 ⭐️
-        const query = req.query.cmd;
-        if (query === '상태는' || query === '상태') {
-            // enhancedLogging v3.0으로 상태 리포트 출력
-            statusReporter.formatPrettyStatus(modules, getCurrentModelSetting, faceApiStatus);
-            
-            const statusResponse = statusReporter.generateStatusReportResponse(modules, getCurrentModelSetting);
-            res.send(statusResponse);
-            return;
-        }
-
-        const homeResponse = statusReporter.generateHomePageResponse(modules, getCurrentModelSetting, faceApiStatus);
-        res.send(homeResponse);
-    });
-
-    // 🔍 헬스체크 라우트
-    app.get('/health', (req, res) => {
-        const healthResponse = statusReporter.generateHealthCheckResponse(modules, getCurrentModelSetting, faceApiStatus);
-        res.json(healthResponse);
-    });
-
-    // 📊 상태 조회 라우트
-    app.get('/status', (req, res) => {
-        // 콘솔에 예쁜 상태 출력
-        statusReporter.formatPrettyStatus(modules, getCurrentModelSetting, faceApiStatus);
-        
-        // 웹 응답으로 간단한 상태 정보 제공
-        const statusInfo = {
-            timestamp: statusReporter.getJapanTimeString(),
-            gptModel: getCurrentModelSetting ? getCurrentModelSetting() : 'unknown',
-            memory: statusReporter.getMemoryStatus(modules),
-            damta: statusReporter.getDamtaStatus(modules),
-            yejin: statusReporter.getYejinStatus(modules),
-            sulky: statusReporter.getSulkyStatus(modules),
-            weather: statusReporter.getWeatherStatus(modules),
-            faceApi: faceApiStatus && faceApiStatus.initialized ? 'ready' : 'loading',
-            typingIndicator: 'enabled' // 새로 추가된 기능 표시
-        };
-        
-        res.json({
-            message: '상태 리포트가 서버 콘솔에 출력되었습니다.',
-            status: statusInfo
-        });
-    });
-
-    console.log('🌐 [라우트설정] 입력중 표시 포함 웹 라우트 설정 완료');
-    console.log('    - POST /webhook: LINE 메시지 처리 (입력중 표시 포함)');
-    console.log('    - GET /: 홈페이지 (상태 확인)');
-    console.log('    - GET /health: 헬스체크 (JSON)');
-    console.log('    - GET /status: 상태 리포트 출력');
+    // 📖 일기장 + 👥 사람 학습 + 🎓 실시간 학습 시스템을 routeHandlers에 전달
+    routeHandlers.setupRoutes(
+        app,
+        config,
+        modules,
+        statusReporter,
+        eventProcessor,
+        client,
+        faceMatcher,
+        loadFaceMatcherSafely,
+        getCurrentModelSetting,
+        getVersionResponse,
+        modules.enhancedLogging,
+        faceApiStatus,
+        modules.personLearning,  // 👥 사람 학습 시스템
+        handleImageMessageSafely,  // 🚨 안전한 이미지 처리 함수
+        modules.diarySystem,  // 📖 일기장 시스템
+        modules.learningSystem,  // 🎓 실시간 학습 시스템 (수정됨!)
+        handleLearningFromConversation  // 🎓 학습 처리 함수 (수정됨!)
+    );
 }
 
 // 서버 시작
@@ -755,7 +621,7 @@ const PORT = process.env.PORT || 10000;
 
 app.listen(PORT, async () => {
     console.log(`\n==================================================`);
-    console.log(`  무쿠 v14.4 MODULAR + PersonLearning + DiarySystem + LearningSystem + TypingIndicator`);
+    console.log(`  무쿠 v14.4 MODULAR + PersonLearning + DiarySystem + LearningSystem`);
     console.log(`  서버 시작 (포트 ${PORT})`);
     console.log(`  🌏 일본시간: ${getJapanTimeString()}`);
     console.log(`  ✨ GPT 모델: ${getCurrentModelSetting()}`);
@@ -766,7 +632,6 @@ app.listen(PORT, async () => {
     console.log(`  👥 기존: 투샷 + 장소 기억 시스템`);
     console.log(`  🚨 이미지 처리 안전성 강화 (벙어리 방지)`);
     console.log(`  🔗 신규: 학습 데이터 자동 링크 (배포 후 영구 보존)`);
-    console.log(`  ⏳ 신규: 입력중 표시 시스템 (1초 딜레이 + 자연스러운 UX)`);
     console.log(`  💖 모든 기능 100% 유지 + 확장`);
     console.log(`  ⭐️ systemInitializer → muku-systemInitializer 변경`);
     console.log(`==================================================\n`);
@@ -797,10 +662,6 @@ app.listen(PORT, async () => {
         // 🔗 데이터 링크 최종 확인
         console.log(`🔗 학습 데이터 자동 링크 시스템 활성화 완료`);
         console.log(`💖 예진이의 모든 기억이 영구 보존됩니다`);
-        
-        // ⏳ 입력중 표시 시스템 확인
-        console.log(`⏳ 입력중 표시 시스템 활성화 완료`);
-        console.log(`💬 자연스러운 대화 흐름: 텍스트 메시지 → 입력중 1초 → 응답`);
         
     }, 5000);
 });
@@ -1166,7 +1027,5 @@ module.exports = {
     analyzePhotoForPersonLearning,
     learnPersonFromUserMessage,
     // 🚨 안전한 이미지 처리
-    handleImageMessageSafely,
-    // ⏳ 새로운 입력중 표시 이벤트 핸들러
-    handleEventWithTypingIndicator
+    handleImageMessageSafely
 };
