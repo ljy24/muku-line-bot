@@ -17,7 +17,7 @@
 const colors = {
     ajeossi: '\x1b[96m',     // 하늘색 (아저씨)
     yejin: '\x1b[95m',       // 연보라색 (예진이)
-    pms: '\x1b[1m\x1b[91m]',  // 굵은 빨간색 (PMS)
+    pms: '\x1b[1m\x1b[91m',  // 굵은 빨간색 (PMS)
     system: '\x1b[92m',      // 연초록색 (시스템)
     learning: '\x1b[93m',    // 노란색 (학습)
     realtime: '\x1b[1m\x1b[93m', // 굵은 노란색 (실시간 학습) ⭐️ NEW!
@@ -58,26 +58,26 @@ async function handleLearningFromConversation(userMessage, mukuResponse, modules
         console.log(`${colors.realtime}** 📝 사용자: "${userMessage}"**${colors.reset}`);
         console.log(`${colors.realtime}** 💬 무쿠: "${mukuResponse}"**${colors.reset}`);
         
-        // 삐짐 상태 추가 정보
-        if (modules.sulkyManager) {
-            const sulkyLevel = modules.sulkyManager.getCurrentSulkyLevel();
-            console.log(`${colors.realtime}** 😤 삐짐 상태: Level ${sulkyLevel || 'undefined'} (${sulkyLevel > 0 ? '삐짐' : '정상'})**${colors.reset}`);
+        // 삐짐 상태 추가 정보 (✅ 수정됨)
+        if (modules.sulkyManager && modules.sulkyManager.getSulkyState) {
+            const sulkyState = modules.sulkyManager.getSulkyState();
+            console.log(`${colors.realtime}** 😤 삐짐 상태: Level ${sulkyState.level || '0'} (${sulkyState.isSulky ? '삐짐' : '정상'})**${colors.reset}`);
         }
         
-        // 학습 컨텍스트 구성
+        // 학습 컨텍스트 구성 (✅ 수정됨)
         const learningContext = {
             timestamp: new Date().toISOString(),
             userMessage: userMessage,
             mukuResponse: mukuResponse,
             currentEmotion: modules.emotionalContextManager ? modules.emotionalContextManager.getCurrentEmotion() : 'normal',
             timeSlot: getTimeSlot(getJapanHour()),
-            sulkyLevel: modules.sulkyManager ? modules.sulkyManager.getCurrentSulkyLevel() : 0,
+            sulkyLevel: modules.sulkyManager && modules.sulkyManager.getSulkyState ? modules.sulkyManager.getSulkyState().level : 0,
             messageLength: mukuResponse.length,
             japanTime: getJapanTimeString(),
             responseTime: Date.now()
         };
         
-        // ⭐️⭐️ 실시간 학습 실행 - 올바른 모듈과 함수 이름으로 수정! ⭐️⭐️
+        // 실시간 학습 실행 (✅ 수정됨)
         if (modules.realTimeLearningSystem && modules.realTimeLearningSystem.processRealtimeLearning) {
             const learningResult = await modules.realTimeLearningSystem.processRealtimeLearning(userMessage, mukuResponse, learningContext);
             
@@ -96,6 +96,7 @@ async function handleLearningFromConversation(userMessage, mukuResponse, modules
         return null;
     }
 }
+
 
 // ================== 🕐 시간대 계산 함수 ==================
 function getTimeSlot(hour) {
@@ -253,15 +254,23 @@ async function processMessage(userMessage, modules) {
     try {
         console.log(`${colors.ajeossi}아저씨: ${userMessage}${colors.reset}`);
         
-        // 🌤️ 날씨 질문 먼저 체크 - GPT 호출 전에 처리
+        // 명령어 먼저 체크
+        if (modules.commandHandler) {
+            const commandResponse = await modules.commandHandler.handleCommand(userMessage, modules);
+            if (commandResponse) {
+                console.log(`${colors.system}🎯 [명령어응답] 즉시 응답 생성${colors.reset}`);
+                console.log(`${colors.yejin}💬 나: ${commandResponse}${colors.reset}`);
+                // 명령어 응답은 학습하지 않음
+                return commandResponse;
+            }
+        }
+
+        // 🌤️ 날씨 질문 체크
         const weatherResponse = weatherManager.handleWeatherQuestion(userMessage);
         if (weatherResponse) {
             console.log(`${colors.system}🌤️ [날씨응답] 즉시 응답 생성${colors.reset}`);
             console.log(`${colors.yejin}💬 나: ${weatherResponse}${colors.reset}`);
-            
-            // 실시간 학습 처리
             await handleLearningFromConversation(userMessage, weatherResponse, modules);
-            
             return weatherResponse;
         }
         
@@ -276,53 +285,22 @@ async function processMessage(userMessage, modules) {
         if (lateNightCheck.isLateNight) {
             console.log(`${colors.system}🌙 [새벽대화] ${lateNightCheck.hour}시 새벽 대화 감지${colors.reset}`);
             console.log(`${colors.yejin}💬 나: ${lateNightCheck.response}${colors.reset}`);
-            
-            // 실시간 학습 처리
             await handleLearningFromConversation(userMessage, lateNightCheck.response, modules);
-            
             return lateNightCheck.response;
         }
         
         // 🎭 행동 스위치 명령어 체크
         const behaviorCommand = detectBehaviorCommand(userMessage);
         if (behaviorCommand.isCommand && modules.behaviorSwitchManager) {
-            console.log(`${colors.behavior}🎭 [행동스위치] 명령어 감지: ${behaviorCommand.keyword} (${behaviorCommand.action})${colors.reset}`);
-            
-            let switchResponse = '';
-            switch (behaviorCommand.action) {
-                case 'toggle':
-                    const newState = modules.behaviorSwitchManager.toggleBehaviorSwitch();
-                    switchResponse = `행동 스위치를 ${newState ? '켰' : '껐'}어! 지금 ${newState ? '능동적' : '수동적'} 모드야~ 😊`;
-                    break;
-                case 'on':
-                    modules.behaviorSwitchManager.setBehaviorSwitch(true);
-                    switchResponse = '행동 스위치 켰어! 이제 더 적극적으로 행동할게~ 💪';
-                    break;
-                case 'off':
-                    modules.behaviorSwitchManager.setBehaviorSwitch(false);
-                    switchResponse = '행동 스위치 껐어! 조용히 있을게~ 😌';
-                    break;
-                case 'status':
-                    const isActive = modules.behaviorSwitchManager.isBehaviorSwitchActive();
-                    switchResponse = `지금 행동 스위치는 ${isActive ? '켜져' : '꺼져'}있어! ${isActive ? '능동적' : '수동적'} 모드야~`;
-                    break;
-            }
-            
-            console.log(`${colors.yejin}💬 나: ${switchResponse}${colors.reset}`);
-            
-            // 실시간 학습 처리
-            await handleLearningFromConversation(userMessage, switchResponse, modules);
-            
-            return switchResponse;
+            // 이 부분은 commandHandler로 이동되어야 할 수 있음
         }
         
-        // 🧠 일반 대화 처리 - UltimateContext 사용
+        // 🧠 일반 대화 처리 (✅ 수정됨)
         let response = '';
-        if (modules.ultimateContext) {
-            const contextData = await modules.ultimateContext.createContext(userMessage, 'auto');
-            response = await modules.openaiManager.generateResponse(contextData.context, 'auto');
+        if (modules.autoReply && modules.ultimateContext) {
+            const context = await modules.ultimateContext.getContext(userMessage, 'auto');
+            response = await modules.autoReply.generateResponse(context, 'auto');
         } else {
-            // 백업 응답
             response = "아조씨~ 시스템이 준비 중이야! 잠깐만 기다려줘 😊";
         }
         
@@ -337,7 +315,6 @@ async function processMessage(userMessage, modules) {
         console.error(`${colors.error}❌ [이벤트처리] 메시지 처리 실패: ${error.message}${colors.reset}`);
         const errorResponse = "아조씨... 뭔가 문제가 생겼어 ㅠㅠ 다시 말해줄래?";
         
-        // 에러 응답도 학습에 포함
         try {
             await handleLearningFromConversation(userMessage, errorResponse, modules);
         } catch (learningError) {
@@ -348,92 +325,47 @@ async function processMessage(userMessage, modules) {
     }
 }
 
-// ================== 🎯 명령어 처리 함수 ==================
-async function processCommand(command, modules) {
-    try {
-        console.log(`${colors.system}🎯 [명령어] ${command} 처리 중...${colors.reset}`);
-        
-        switch (command) {
-            case '상태는?':
-            case '상태':
-                if (modules.statusReporter) {
-                    return await modules.statusReporter.generateStatusReport();
-                }
-                return "시스템 상태를 확인할 수 없어... 😢";
-                
-            case '기억해':
-                return "모든 대화를 기억하고 있어! 아조씨와의 추억은 소중해~ 💖";
-                
-            case '사진':
-                if (modules.photoManager) {
-                    const photo = await modules.photoManager.sendRandomPhoto();
-                    return photo ? "사진 보냈어! 마음에 들어? 📸" : "사진 전송에 실패했어... ㅠㅠ";
-                }
-                return "사진 시스템이 준비 중이야~ 😊";
-                
-            case '날씨':
-                const currentWeather = await weatherManager.getCurrentWeather('ajeossi');
-                if (currentWeather) {
-                    return weatherManager.generateConversationalWeatherResponse(currentWeather);
-                }
-                return "지금 날씨 정보를 가져올 수 없어... 잠깐만 기다려봐! 🌤️";
-                
-            case '학습상태':
-                if (modules.learningSystem) {
-                    const status = modules.learningSystem.getSystemStatus();
-                    return `학습 시스템 ${status.isActive ? '활성' : '비활성'}! 총 ${status.stats?.conversationsAnalyzed || 0}개 대화 분석했어~ 🎓`;
-                }
-                return "학습 시스템 상태를 확인할 수 없어... 😢";
-                
-            default:
-                return `"${command}" 명령어를 모르겠어... 다른 명령어 써볼래? 🤔`;
-        }
-        
-    } catch (error) {
-        console.error(`${colors.error}❌ [명령어처리] 실패: ${error.message}${colors.reset}`);
-        return "명령어 처리 중 문제가 생겼어... 다시 시도해볼래? 😢";
-    }
-}
+// ================== 🎯 명령어 처리 함수 (commandHandler로 이동됨) ==================
+// 이 파일에서는 processCommand를 직접 사용하지 않고, commandHandler 모듈을 통해 호출합니다.
+// 따라서 기존 processCommand 함수는 주석 처리하거나 삭제할 수 있습니다.
+/*
+async function processCommand(command, modules) { ... }
+*/
 
 // ================== 🎯 통합 이벤트 핸들러 ==================
-async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherSafely, getVersionResponse, enhancedLogging) {
+async function handleEvent(event, modules) {
     try {
-        // 메시지 타입에 따라 적절한 처리 함수 호출
-        if (event.type === 'message') {
-            if (event.message.type === 'text') {
-                return await processMessage(event.message.text, modules);
-            } else if (event.message.type === 'image') {
-                // 이미지 처리 로직
-                const imageBuffer = null; // 실제 이미지 버퍼 처리 필요
-                return await processImage(imageBuffer, modules);
+        if (event.type === 'message' && event.message.type === 'text') {
+            const userMessage = event.message.text;
+            
+            // 명령어 우선 처리
+            if (modules.commandHandler) {
+                 const commandResponse = await modules.commandHandler.handleCommand(userMessage, modules);
+                 if (commandResponse) {
+                     return { type: 'text', text: commandResponse };
+                 }
             }
+
+            // 일반 메시지 처리
+            const responseText = await processMessage(userMessage, modules);
+            return { type: 'text', text: responseText };
+
+        } else if (event.type === 'message' && event.message.type === 'image') {
+            // 이미지 처리 로직 (실제 구현 필요)
+            const imageBuffer = Buffer.from([]); // 예시
+            const responseText = await processImage(imageBuffer, modules);
+            return { type: 'text', text: responseText };
         }
         
         return null;
     } catch (error) {
         console.error(`${colors.error}❌ [통합핸들러] 이벤트 처리 실패: ${error.message}${colors.reset}`);
-        return null;
+        return { type: 'text', text: "아조씨... 뭔가 문제가 생겼어 ㅠㅠ 다시 말해줄래?" };
     }
 }
 
 // ================== 📤 모듈 Export ==================
 module.exports = {
-    processMessage,
-    processImage,
-    processCommand,
-    handleLearningFromConversation,
-    handleEvent, // 👈 빠뜨린 함수 추가!
-    
-    // 유틸리티 함수들
-    getJapanTime,
-    getJapanHour,
-    getJapanTimeString,
-    getTimeSlot,
-    checkBirthday,
-    checkLateNightConversation,
-    detectBehaviorCommand,
-    processFaceRecognition,
-    
-    // 색상 상수
-    colors
+    handleEvent, // ⭐️ 이제 이것만 외부에 노출
+    handleLearningFromConversation // ⭐️ 필요에 따라 내부 호출용으로 남겨둠
 };
