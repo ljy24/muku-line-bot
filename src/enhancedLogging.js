@@ -295,7 +295,7 @@ function getRandomYejinHeart(modules) {
  */
 function getDirectLearningData() {
     try {
-        const analyticsPath = path.join(__dirname, '..', 'data', 'learning_data', 'conversation_analytics.json');
+        const analyticsPath = '/data/learning_data/conversation_analytics.json';
         
         if (fs.existsSync(analyticsPath)) {
             const analyticsData = JSON.parse(fs.readFileSync(analyticsPath, 'utf8'));
