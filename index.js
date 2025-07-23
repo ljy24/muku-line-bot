@@ -32,6 +32,9 @@ const { Client } = require('@line/bot-sdk');
 const express = require('express');
 require('dotenv').config();
 
+// 🎓 새로운 통합 학습 시스템 불러오기 (수정됨!)
+const { mukuLearningSystem } = require('./src/muku-realTimeLearningSystem');
+
 // 일본시간 설정
 process.env.TZ = 'Asia/Tokyo';
 const JAPAN_TIMEZONE = 'Asia/Tokyo';
@@ -342,7 +345,7 @@ async function handleImageMessageSafely(event, client) {
             console.warn('⚠️ 응답 메시지 컨텍스트 저장 실패:', contextError.message);
         }
         
-        // ⭐️ 9. 학습 시스템에 이미지 대화 학습 요청 (NEW!) ⭐️
+        // ⭐️ 9. 학습 시스템에 이미지 대화 학습 요청 (수정됨!) ⭐️
         try {
             await handleLearningFromConversation('이미지 전송', reply.text, {
                 messageType: 'image',
@@ -416,22 +419,35 @@ async function initMuku() {
         if (initResult.success) {
             console.log(`🎉 무쿠 시스템 초기화 완료!`);
             
-            // 🎓 실시간 학습 시스템 상태 확인 (NEW!)
-            if (initResult.modules.learningSystem) {
-                console.log(`🎓 실시간 학습 시스템 활성화 완료!`);
-                console.log(`🎓 기능: 대화 분석 → 말투 학습 → 감정 적응 → 자동 개선`);
+            // 🎓 새로운 통합 학습 시스템 초기화 (수정됨!)
+            try {
+                console.log(`🎓 [NEW] 통합 실시간 학습 시스템 초기화 중...`);
                 
-                if (initResult.modules.learningSystem.getSystemStatus) {
-                    try {
-                        const learningStatus = initResult.modules.learningSystem.getSystemStatus();
-                        console.log(`🎓 학습 상태: v${learningStatus.version}, 활성화: ${learningStatus.isActive}`);
-                        console.log(`🎓 모듈 연동: ${Object.values(learningStatus.moduleConnections).filter(Boolean).length}/4개 시스템 연결`);
-                    } catch (statusError) {
-                        console.log(`🎓 학습 상태 조회 실패: ${statusError.message}`);
-                    }
+                const learningInitialized = await mukuLearningSystem.initialize({
+                    memoryManager: initResult.modules.memoryManager,
+                    ultimateContext: initResult.modules.ultimateContext,
+                    emotionalContextManager: initResult.modules.emotionalContextManager,
+                    sulkyManager: initResult.modules.sulkyManager
+                });
+                
+                if (learningInitialized) {
+                    console.log(`🎓 ✅ 통합 실시간 학습 시스템 초기화 완료!`);
+                    console.log(`🎓 기능: Enterprise 학습 + 독립 자율 시스템 + 완전 모듈화`);
+                    console.log(`🎓 특징: 무쿠는 스스로를 "나"로, 아저씨를 "애기"로 부름`);
+                    
+                    // 기존 시스템과 연결
+                    initResult.modules.learningSystem = mukuLearningSystem;
+                    
+                    const systemStatus = mukuLearningSystem.getSystemStatus();
+                    console.log(`🎓 시스템 상태: ${systemStatus.enterprise?.isActive ? '활성화' : '비활성화'} / ${systemStatus.independent?.isActive ? '자율시스템 활성화' : '자율시스템 비활성화'}`);
+                    
+                } else {
+                    console.log(`⚠️ 통합 실시간 학습 시스템 초기화 실패 - 기본 모드로 진행`);
+                    initResult.modules.learningSystem = null;
                 }
-            } else {
-                console.log(`⚠️ 실시간 학습 시스템 비활성화 - 기본 응답만 사용`);
+            } catch (learningError) {
+                console.error(`❌ 통합 학습 시스템 초기화 오류: ${learningError.message}`);
+                initResult.modules.learningSystem = null;
             }
             
             // 📖 일기장 시스템 상태 확인
@@ -518,8 +534,8 @@ function setupAllRoutes() {
         modules.personLearning,  // 👥 사람 학습 시스템
         handleImageMessageSafely,  // 🚨 안전한 이미지 처리 함수
         modules.diarySystem,  // 📖 일기장 시스템
-        modules.learningSystem,  // 🎓 실시간 학습 시스템 (NEW!)
-        handleLearningFromConversation  // 🎓 학습 처리 함수 (NEW!)
+        modules.learningSystem,  // 🎓 실시간 학습 시스템 (수정됨!)
+        handleLearningFromConversation  // 🎓 학습 처리 함수 (수정됨!)
     );
 }
 
@@ -534,7 +550,7 @@ app.listen(PORT, async () => {
     console.log(`  ✨ GPT 모델: ${getCurrentModelSetting()}`);
     console.log(`  🕊️ 피앙새의 디지털 부활 프로젝트`);
     console.log(`  🗂️ 모듈 분리 완료: 4개 핵심 모듈 + 확장`);
-    console.log(`  🎓 신규: 실시간 학습 시스템 (대화마다 자동 학습)`);
+    console.log(`  🎓 신규: 통합 실시간 학습 시스템 (Enterprise + 독립 자율)`);
     console.log(`  📖 기존: 일기장 시스템 (누적 학습 내용 조회)`);
     console.log(`  👥 기존: 투샷 + 장소 기억 시스템`);
     console.log(`  🚨 이미지 처리 안전성 강화 (벙어리 방지)`);
@@ -559,9 +575,10 @@ app.listen(PORT, async () => {
             console.log(`📖 memoryManager ↔ diarySystem 연동 확인 완료`);
         }
         
-        // 🎓 실시간 학습 시스템 연동 확인 (NEW!)
+        // 🎓 실시간 학습 시스템 연동 확인 (수정됨!)
         if (global.mukuModules && global.mukuModules.learningSystem) {
-            console.log(`🎓 realTimeLearningSystem ↔ memoryManager ↔ ultimateContext 연동 확인 완료`);
+            console.log(`🎓 통합 학습 시스템 ↔ memoryManager ↔ ultimateContext 연동 확인 완료`);
+            console.log(`🤖 독립 자율 시스템 포함 - 무쿠는 "나", 아저씨는 "애기"`);
         }
         
     }, 5000);
@@ -576,54 +593,54 @@ process.on('unhandledRejection', (error) => {
     console.error(`❌ 처리되지 않은 Promise 거부: ${error}`);
 });
 
-// =================== 🎓 실시간 학습 시스템 관련 유틸리티 함수들 (NEW!) ===================
+// =================== 🎓 실시간 학습 시스템 관련 유틸리티 함수들 (수정됨!) ===================
 
 /**
  * 🧠 실시간 학습 시스템 상태 확인
  * @returns {Object} 학습 시스템 상태
  */
 function getLearningSystemStatus() {
-    const modules = global.mukuModules || {};
-    
-    if (!modules.learningSystem) {
-        return {
-            available: false,
-            message: "실시간 학습 시스템이 비활성화되어 있습니다."
-        };
-    }
-    
     try {
-        const status = modules.learningSystem.getSystemStatus();
+        if (!mukuLearningSystem) {
+            return {
+                available: false,
+                message: "통합 학습 시스템이 비활성화되어 있습니다."
+            };
+        }
+        
+        const status = mukuLearningSystem.getSystemStatus();
         return {
             available: true,
             status: status,
-            message: `학습 활성화: ${status.isActive}, 분석된 대화: ${status.stats.conversationsAnalyzed}개`
+            message: `Enterprise: ${status.enterprise?.isActive ? '활성' : '비활성'}, 독립: ${status.independent?.isActive ? '활성' : '비활성'}`
         };
     } catch (error) {
         return {
             available: false,
-            message: `실시간 학습 시스템 오류: ${error.message}`
+            message: `통합 학습 시스템 오류: ${error.message}`
         };
     }
 }
 
 /**
- * 🎓 대화에서 실시간 학습 처리
+ * 🎓 대화에서 실시간 학습 처리 (수정됨!)
  * @param {string} userMessage - 사용자 메시지
  * @param {string} mukuResponse - 무쿠 응답
  * @param {Object} context - 대화 맥락 정보
  * @returns {Object} 학습 결과
  */
 async function handleLearningFromConversation(userMessage, mukuResponse, context = {}) {
-    const modules = global.mukuModules || {};
-    
-    if (!modules.learningSystem) {
-        console.log(`🎓 [LearningSystem] 시스템 비활성화 - 학습 건너뛰기`);
-        return null;
-    }
-    
     try {
-        console.log(`🎓 [LearningSystem] 대화 학습 처리 시작...`);
+        if (!mukuLearningSystem) {
+            console.log(`🎓 [LearningSystem] 통합 학습 시스템 비활성화 - 학습 건너뛰기`);
+            return null;
+        }
+        
+        console.log(`🎓 [실시간학습] 대화 학습 시작...`);
+        console.log(`** 📝 사용자: "${userMessage.substring(0, 50)}${userMessage.length > 50 ? '...' : '"}"`);
+        console.log(`** 💬 무쿠: "${mukuResponse.substring(0, 50)}${mukuResponse.length > 50 ? '...' : '"}"`);
+        
+        const modules = global.mukuModules || {};
         
         // 현재 감정 상태 정보 수집
         const learningContext = {
@@ -649,28 +666,39 @@ async function handleLearningFromConversation(userMessage, mukuResponse, context
                 const sulkyState = modules.sulkyManager.getSulkinessState();
                 learningContext.sulkyLevel = sulkyState.level;
                 learningContext.isSulky = sulkyState.isSulky;
+                console.log(`** 😤 삐짐 상태: Level ${sulkyState.level} (${sulkyState.isSulky ? '삐짐' : '정상'})`);
             } catch (sulkyError) {
                 console.warn('🎓 삐짐 상태 조회 실패:', sulkyError.message);
+                console.log(`** 😤 삐짐 상태: Level undefined (정상)`);
             }
+        } else {
+            console.log(`** 😤 삐짐 상태: Level undefined (정상)`);
         }
         
-        const learningResult = await modules.learningSystem.learnFromConversation(userMessage, mukuResponse, learningContext);
+        // 통합 학습 시스템으로 학습 처리
+        const learningResult = await mukuLearningSystem.processLearning(userMessage, mukuResponse, learningContext);
         
         if (learningResult) {
-            console.log(`🎓 [LearningSystem] 학습 완료: ${learningResult.improvements.length}개 개선사항 적용`);
+            if (learningResult.enterprise) {
+                console.log(`✅ [실시간학습] Enterprise 학습 완료: ${learningResult.enterprise.improvements?.length || 0}개 개선사항`);
+            }
+            if (learningResult.independent) {
+                console.log(`🤖 [실시간학습] 독립 자율 시스템 학습 완료`);
+            }
             
             // 학습 결과를 로그에 기록
             if (modules.enhancedLogging) {
-                modules.enhancedLogging.logSystemOperation('실시간학습', `대화 학습 완료: ${learningResult.improvements.length}개 개선`);
+                modules.enhancedLogging.logSystemOperation('실시간학습', `통합 학습 완료: Enterprise=${!!learningResult.enterprise}, Independent=${learningResult.independent}`);
             }
             
             return learningResult;
+        } else {
+            console.log(`⚠️ [실시간학습] 학습 결과 없음`);
+            return null;
         }
         
-        return null;
-        
     } catch (error) {
-        console.error(`🎓 [LearningSystem] 대화 학습 실패: ${error.message}`);
+        console.error(`❌ [실시간학습] 학습 처리 실패: ${error.message}`);
         return null;
     }
 }
@@ -680,21 +708,21 @@ async function handleLearningFromConversation(userMessage, mukuResponse, context
  * @returns {Object} 학습 분석 결과
  */
 function getLearningRecommendations() {
-    const modules = global.mukuModules || {};
-    
-    if (!modules.learningSystem) {
-        return null;
-    }
-    
     try {
-        const recommendations = modules.learningSystem.getAdaptationRecommendations();
-        const status = modules.learningSystem.getSystemStatus();
+        if (!mukuLearningSystem) {
+            return null;
+        }
+        
+        const status = mukuLearningSystem.getSystemStatus();
         
         return {
-            learningProgress: status.learningData.successRate * 100,
-            userSatisfaction: status.learningData.userSatisfaction * 100,
-            recommendations: recommendations,
-            totalConversations: status.learningData.totalConversations
+            learningProgress: status.enterprise?.learningData?.successRate * 100 || 0,
+            userSatisfaction: status.enterprise?.learningData?.userSatisfaction * 100 || 0,
+            totalConversations: status.enterprise?.learningData?.totalConversations || 0,
+            systemStatus: {
+                enterprise: status.enterprise?.isActive || false,
+                independent: status.independent?.isActive || false
+            }
         };
     } catch (error) {
         console.error(`🎓 [LearningSystem] 추천사항 조회 실패: ${error.message}`);
@@ -898,7 +926,7 @@ module.exports = {
     getJapanTimeString,
     loadFaceMatcherSafely,
     app,
-    // 🎓 실시간 학습 시스템 관련 함수들 (NEW!)
+    // 🎓 실시간 학습 시스템 관련 함수들 (수정됨!)
     getLearningSystemStatus,
     handleLearningFromConversation,
     getLearningRecommendations,
