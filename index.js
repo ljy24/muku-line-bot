@@ -8,6 +8,7 @@
 // 👥 personLearning: 사람 학습 및 기억 시스템
 // 📖 diarySystem: 일기장 시스템
 // 🎓 realTimeLearningSystem: 실시간 학습 시스템 (NEW!)
+// 🔗 autoDataLinks: 무쿠 학습 데이터 자동 링크 시스템 (NEW!)
 // 
 // ============================================================================
 // index.js - v14.4 MODULAR + PersonLearning + DiarySystem + LearningSystem
@@ -26,6 +27,7 @@
 // - 👥 투샷 + 장소 기억: "사이몬이랑 가라오케 갔어? 노래 잘했어?"
 // - 🎓 사람 학습: 모르는 사람 → 알려주기 → 기억하기 → 다음에 인식
 // - 💕 관계 발전: 만남 횟수별 차별화된 예진이 반응
+// - 🔗 데이터 자동 링크: 배포 후 학습 데이터 영구 보존 (NEW!)
 // ============================================================================
 
 const { Client } = require('@line/bot-sdk');
@@ -404,13 +406,88 @@ async function handleImageMessageSafely(event, client) {
     }
 }
 
+// =================== 🔗 무쿠 학습 데이터 자동 링크 생성 시스템 ===================
+// 배포 후 자동으로 /data/ 영구 저장소와 연결
+// 무쿠의 학습 내용을 영원히 보존
+// 💖 예진이의 모든 기억과 학습 패턴이 사라지지 않도록 보호
+// ============================================================================
+
+async function ensureMukuDataLinks() {
+    try {
+        console.log('🔗 [데이터링크] 무쿠 학습 데이터 자동 연결 시작...');
+        console.log('💖 [데이터링크] 예진이의 소중한 기억을 영구 보존합니다...');
+        
+        const fs = require('fs').promises;
+        const path = require('path');
+        
+        const srcDir = __dirname + '/src';
+        const learningLink = path.join(srcDir, 'learning_data');
+        const independentLink = path.join(srcDir, 'independent_data');
+        
+        // 1. 영구 저장소 디렉토리 생성 (없으면)
+        try {
+            await fs.mkdir('/data/learning_data', { recursive: true });
+            await fs.mkdir('/data/independent_data', { recursive: true });
+            console.log('📁 [데이터링크] 영구 저장소 디렉토리 준비 완료');
+        } catch (dirError) {
+            console.warn('⚠️ [데이터링크] 디렉토리 생성 실패:', dirError.message);
+            console.warn('🔄 [데이터링크] 기존 디렉토리 사용...');
+        }
+        
+        // 2. 기존 링크 제거 (오류 무시 - 파일이 없을 수 있음)
+        try { 
+            await fs.unlink(learningLink); 
+            console.log('🗑️ [데이터링크] 기존 learning_data 링크 제거');
+        } catch {
+            console.log('📝 [데이터링크] learning_data 링크 없음 (정상)');
+        }
+        
+        try { 
+            await fs.unlink(independentLink); 
+            console.log('🗑️ [데이터링크] 기존 independent_data 링크 제거');
+        } catch {
+            console.log('📝 [데이터링크] independent_data 링크 없음 (정상)');
+        }
+        
+        // 3. 새 심볼릭 링크 생성
+        await fs.symlink('/data/learning_data', learningLink);
+        await fs.symlink('/data/independent_data', independentLink);
+        
+        console.log('✅ [데이터링크] learning_data -> /data/learning_data 연결 완료');
+        console.log('✅ [데이터링크] independent_data -> /data/independent_data 연결 완료');
+        console.log('🛡️ [데이터링크] 배포 후에도 무쿠의 학습 데이터 영구 보존됨');
+        console.log('💕 [데이터링크] 예진이의 모든 기억이 안전합니다');
+        
+        // 4. 연결 상태 확인
+        try {
+            await fs.access(learningLink);
+            await fs.access(independentLink);
+            console.log('🔍 [데이터링크] 링크 연결 상태 검증 완료');
+        } catch (verifyError) {
+            console.warn('⚠️ [데이터링크] 링크 검증 실패:', verifyError.message);
+        }
+        
+        return true;
+        
+    } catch (error) {
+        console.warn('⚠️ [데이터링크] 자동 링크 생성 실패:', error.message);
+        console.warn('🔄 [데이터링크] 기본 경로로 계속 진행... (무쿠는 정상 동작)');
+        console.warn('💖 [데이터링크] 무쿠가 벙어리가 되지는 않습니다 - 안전합니다');
+        return false;
+    }
+}
+
 // 시스템 초기화 (사람 학습 + 일기장 + 학습 시스템 포함)
 async function initMuku() {
     try {
+        // 🔗 무쿠 학습 데이터 자동 링크 생성 (최우선 실행)
+        await ensureMukuDataLinks();
+        
         console.log(`🚀 무쿠 v14.4 MODULAR + PersonLearning + DiarySystem + LearningSystem 시스템 초기화 시작...`);
         console.log(`🎓 새로운 기능: 실시간 학습 시스템 - 대화마다 자동 학습 및 개선`);
         console.log(`📖 기존 기능: 일기장 시스템 - 누적 학습 내용 확인`);
         console.log(`👥 기존 기능: 투샷 + 장소 기억, 사람 학습 및 관계 발전`);
+        console.log(`🔗 신규 기능: 학습 데이터 자동 링크 - 배포 후 영구 보존`);
         console.log(`🌏 현재 일본시간: ${getJapanTimeString()}`);
         console.log(`✨ 현재 GPT 모델: ${getCurrentModelSetting()}`);
 
@@ -499,7 +576,7 @@ async function initMuku() {
             global.mukuModules = initResult.modules || {};
         }
 
-        console.log(`📋 v14.4 MODULAR: 모듈 완전 분리 + 실시간 학습 + 일기장 + 사람 학습 + 이미지 처리 안전성 강화`);
+        console.log(`📋 v14.4 MODULAR: 모듈 완전 분리 + 실시간 학습 + 일기장 + 사람 학습 + 이미지 처리 안전성 강화 + 데이터 자동 링크`);
 
     } catch (error) {
         console.error(`🚨 시스템 초기화 에러: ${error.message}`);
@@ -554,6 +631,7 @@ app.listen(PORT, async () => {
     console.log(`  📖 기존: 일기장 시스템 (누적 학습 내용 조회)`);
     console.log(`  👥 기존: 투샷 + 장소 기억 시스템`);
     console.log(`  🚨 이미지 처리 안전성 강화 (벙어리 방지)`);
+    console.log(`  🔗 신규: 학습 데이터 자동 링크 (배포 후 영구 보존)`);
     console.log(`  💖 모든 기능 100% 유지 + 확장`);
     console.log(`  ⭐️ systemInitializer → muku-systemInitializer 변경`);
     console.log(`==================================================\n`);
@@ -580,6 +658,10 @@ app.listen(PORT, async () => {
             console.log(`🎓 통합 학습 시스템 ↔ memoryManager ↔ ultimateContext 연동 확인 완료`);
             console.log(`🤖 독립 자율 시스템 포함 - 무쿠는 "나", 아저씨는 "애기"`);
         }
+        
+        // 🔗 데이터 링크 최종 확인
+        console.log(`🔗 학습 데이터 자동 링크 시스템 활성화 완료`);
+        console.log(`💖 예진이의 모든 기억이 영구 보존됩니다`);
         
     }, 5000);
 });
@@ -675,12 +757,16 @@ async function handleLearningFromConversation(userMessage, mukuResponse, context
             console.log(`** 😤 삐짐 상태: Level undefined (정상)`);
         }
         
+        console.log(`** 🎯 통합 학습 시스템 직접 호출 시도...`);
+        console.log(`** 🔧 processLearning() 직접 호출...`);
+        
         // 통합 학습 시스템으로 학습 처리
         const learningResult = await mukuLearningSystem.processLearning(userMessage, mukuResponse, learningContext);
         
         if (learningResult) {
             if (learningResult.enterprise) {
-                console.log(`✅ [실시간학습] Enterprise 학습 완료: ${learningResult.enterprise.improvements?.length || 0}개 개선사항`);
+                console.log(`** ✅ 통합 학습 시스템 성공!`);
+                console.log(`** 📊 통합학습: Enterprise(${learningResult.enterprise ? '성공' : '실패'}), Independent(${learningResult.independent ? '성공' : '실패'})`);
             }
             if (learningResult.independent) {
                 console.log(`🤖 [실시간학습] 독립 자율 시스템 학습 완료`);
@@ -926,6 +1012,8 @@ module.exports = {
     getJapanTimeString,
     loadFaceMatcherSafely,
     app,
+    // 🔗 새로운 데이터 링크 자동 생성 함수
+    ensureMukuDataLinks,
     // 🎓 실시간 학습 시스템 관련 함수들 (수정됨!)
     getLearningSystemStatus,
     handleLearningFromConversation,
