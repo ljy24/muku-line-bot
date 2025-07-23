@@ -183,30 +183,26 @@ async function processRealTimeLearning(userMessage, mukuResponse, context, modul
         }
     }, '생리주기추가');
 
-    // ⭐️⭐️ 완벽한 학습 함수 호출 시스템 ⭐️⭐️
-    const learningMethods = [
+    // ⭐️⭐️ 완벽한 학습 함수 호출 시스템 (에러 기반 수정) ⭐️⭐️
+    let learningResult = null;
+    let methodUsed = null;
+
+    // 🎯 1단계: 직접적인 학습 함수들 시도
+    const directMethods = [
         {
             name: 'processLearning',
-            path: 'processLearning',
+            getter: () => safeModuleAccess(learningSystem, 'processLearning'),
             description: '기본 학습 함수'
         },
         {
-            name: 'mukuLearningSystem.processLearning',
-            path: 'mukuLearningSystem.processLearning',
-            description: '통합 학습 시스템'
-        },
-        {
             name: 'learnFromConversation',
-            path: 'learnFromConversation',
+            getter: () => safeModuleAccess(learningSystem, 'learnFromConversation'),
             description: '레거시 학습 함수'
         }
     ];
 
-    let learningResult = null;
-    let methodUsed = null;
-
-    for (const method of learningMethods) {
-        const learningFunction = safeModuleAccess(learningSystem, method.path, `학습함수-${method.name}`);
+    for (const method of directMethods) {
+        const learningFunction = method.getter();
         
         if (typeof learningFunction === 'function') {
             console.log(`${colors.realtime}    🎯 ${method.description} 시도...${colors.reset}`);
@@ -223,36 +219,122 @@ async function processRealTimeLearning(userMessage, mukuResponse, context, modul
         }
     }
 
-    // 🛡️ 학습 시스템 초기화 시도 (실패한 경우)
+    // 🎯 2단계: 중첩된 객체에서 함수 찾기 (mukuLearningSystem 등)
     if (!learningResult && !methodUsed) {
-        console.log(`${colors.realtime}    🔄 학습 시스템 초기화 시도...${colors.reset}`);
+        console.log(`${colors.realtime}    🔍 중첩 객체에서 학습 함수 탐색...${colors.reset}`);
         
-        const initializeFunction = safeModuleAccess(learningSystem, 'initialize', '학습시스템초기화');
-        if (typeof initializeFunction === 'function') {
-            const initialized = await safeAsyncCall(async () => {
-                return await initializeFunction(modules);
-            }, '학습시스템초기화');
+        const nestedPaths = [
+            'mukuLearningSystem.processLearning',
+            'mukuLearningSystem.learnFromConversation',
+            'IntegratedLearningSystemManager.processLearning',
+            'realTimeLearningSystem.processLearning'
+        ];
+        
+        for (const path of nestedPaths) {
+            const pathParts = path.split('.');
+            let current = learningSystem;
+            let valid = true;
             
-            if (initialized) {
-                console.log(`${colors.success}    ✅ 학습 시스템 초기화 성공!${colors.reset}`);
+            // 경로 따라 접근
+            for (const part of pathParts) {
+                if (current && typeof current === 'object' && part in current) {
+                    current = current[part];
+                } else {
+                    valid = false;
+                    break;
+                }
+            }
+            
+            if (valid && typeof current === 'function') {
+                console.log(`${colors.realtime}    🎯 ${path} 시도...${colors.reset}`);
                 
-                // 초기화 후 다시 시도
-                for (const method of learningMethods) {
-                    const learningFunction = safeModuleAccess(learningSystem, method.path, `초기화후학습함수-${method.name}`);
-                    
-                    if (typeof learningFunction === 'function') {
-                        learningResult = await safeAsyncCall(async () => {
-                            return await learningFunction(userMessage, mukuResponse, learningContext);
-                        }, `초기화후학습호출-${method.name}`);
-                        
-                        if (learningResult) {
-                            methodUsed = `${method.name} (초기화 후)`;
-                            break;
-                        }
-                    }
+                learningResult = await safeAsyncCall(async () => {
+                    return await current(userMessage, mukuResponse, learningContext);
+                }, `중첩학습호출-${path}`);
+                
+                if (learningResult) {
+                    methodUsed = path;
+                    console.log(`${colors.success}    ✅ ${path} 성공!${colors.reset}`);
+                    break;
                 }
             }
         }
+    }
+
+    // 🎯 3단계: 초기화 함수 시도 (isInitialized 에러 해결)
+    if (!learningResult && !methodUsed) {
+        console.log(`${colors.realtime}    🔄 학습 시스템 초기화 시도...${colors.reset}`);
+        
+        // 여러 가지 초기화 함수 이름 시도
+        const initMethods = [
+            'initialize',
+            'initializeMukuLearning', 
+            'init',
+            'setup'
+        ];
+        
+        for (const initMethod of initMethods) {
+            const initFunction = safeModuleAccess(learningSystem, initMethod, `초기화함수-${initMethod}`);
+            
+            if (typeof initFunction === 'function') {
+                console.log(`${colors.realtime}    🔧 ${initMethod}() 호출...${colors.reset}`);
+                
+                const initialized = await safeAsyncCall(async () => {
+                    return await initFunction(modules, {});
+                }, `초기화-${initMethod}`);
+                
+                if (initialized) {
+                    console.log(`${colors.success}    ✅ ${initMethod}() 성공!${colors.reset}`);
+                    
+                    // 초기화 후 다시 학습 함수 시도
+                    for (const method of directMethods) {
+                        const learningFunction = method.getter();
+                        
+                        if (typeof learningFunction === 'function') {
+                            learningResult = await safeAsyncCall(async () => {
+                                return await learningFunction(userMessage, mukuResponse, learningContext);
+                            }, `초기화후학습-${method.name}`);
+                            
+                            if (learningResult) {
+                                methodUsed = `${method.name} (${initMethod} 후)`;
+                                console.log(`${colors.success}    ✅ 초기화 후 학습 성공!${colors.reset}`);
+                                break;
+                            }
+                        }
+                    }
+                    
+                    if (learningResult) break;
+                }
+            }
+        }
+    }
+
+    // 🎯 4단계: 학습 시스템 구조 완전 분석 (디버깅용)
+    if (!learningResult && !methodUsed) {
+        console.log(`${colors.learning}📊 [디버깅] 학습 시스템 완전 분석...${colors.reset}`);
+        console.log(`${colors.learning}    learningSystem 타입: ${typeof learningSystem}${colors.reset}`);
+        
+        if (learningSystem && typeof learningSystem === 'object') {
+            console.log(`${colors.learning}    learningSystem 키들:${colors.reset}`);
+            Object.keys(learningSystem).forEach(key => {
+                const value = learningSystem[key];
+                const type = typeof value;
+                console.log(`${colors.learning}      - ${key}: ${type}${type === 'function' ? '()' : type === 'object' && value ? ` [${Object.keys(value).slice(0, 3).join(', ')}...]` : ''}${colors.reset}`);
+                
+                // 중첩 객체도 확인
+                if (type === 'object' && value && typeof value === 'object') {
+                    Object.keys(value).forEach(subKey => {
+                        const subValue = value[subKey];
+                        const subType = typeof subValue;
+                        if (subType === 'function') {
+                            console.log(`${colors.learning}        → ${key}.${subKey}: ${subType}()${colors.reset}`);
+                        }
+                    });
+                }
+            });
+        }
+        
+        console.log(`${colors.learning}⚪ [학습분석] 사용 가능한 학습 함수를 찾지 못했지만 대화는 정상 진행${colors.reset}`);
     }
 
     // 🎉 학습 결과 처리
