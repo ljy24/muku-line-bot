@@ -106,7 +106,7 @@ async function processRealTimeLearning(userMessage, mukuResponse, context, modul
         }
 
         // ⭐️⭐️ 실시간 학습 실행 (index.js의 방식과 완전 동일!) ⭐️⭐️
-        const learningResult = await modules.learningSystem.learnFromConversation(userMessage, mukuResponse, learningContext);
+        const learningResult = await modules.learningSystem.processLearning(userMessage, mukuResponse, learningContext);
 
         if (learningResult) {
             console.log(`${colors.realtime}🎉 [학습완료] ${learningResult.improvements.length}개 개선사항 적용!${colors.reset}`);
