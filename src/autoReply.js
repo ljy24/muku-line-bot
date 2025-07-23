@@ -1,5 +1,5 @@
 // ============================================================================
-// autoReply.js - v15.2 (⭐️ 관점 오류 완전 해결 버전 ⭐️)
+// autoReply.js - v15.3 (🌤️ 날씨 우선 처리 + 생일 마지막 순서 버전 🌤️)
 // 🧠 기억 관리, 키워드 반응, 예진이 특별반응, 최종 프롬프트 생성을 책임지는 핵심 두뇌
 // 🌸 길거리 칭찬 → 셀카, 위로 → 고마워함, 바쁨 → 삐짐 반응 추가
 // 🛡️ 절대 벙어리 방지: 모든 에러 상황에서도 예진이는 반드시 대답함!
@@ -10,6 +10,8 @@
 // ⭐️ 2인칭 "너" 사용 완전 방지: 시스템 프롬프트 + 후처리 안전장치
 // 🚨 존댓말 완전 방지: 절대로 존댓말 안 함, 항상 반말만 사용
 // 🔥 관점 오류 완전 해결: 3인칭 자기지칭("예진이는") 완전 차단 + 강화된 화자 정체성
+// 🌤️ 날씨 처리 우선순위 조정: 특별 반응 직후 2순위로 이동하여 확실한 처리
+// 🎂 생일 키워드 처리 순서: 가장 마지막으로 이동 (우선순위 최하위)
 // ============================================================================
 
 const { callOpenAI, cleanReply } = require('./aiUtils');
@@ -871,6 +873,9 @@ async function getReplyByMessage(userMessage) {
 
     const cleanUserMessage = userMessage.trim();
 
+    // ================== 🏃‍♀️ 처리 순서 변경: 새벽 → 특별반응 → 날씨(2순위) → 긴급 → 음주 → 기억 → 일반 → 생일(마지막) ==================
+
+    // 🌙 1순위: 새벽 응답 시스템
     try {
         const nightResponse = await nightWakeSystem.handleNightWakeMessage(cleanUserMessage);
         if (nightResponse) {
@@ -884,6 +889,7 @@ async function getReplyByMessage(userMessage) {
         console.error('❌ 새벽 응답 시스템 에러:', error);
     }
 
+    // 🌸 2순위: 예진이 특별 반응들 (길거리 칭찬, 정신건강 위로, 바쁨 반응)
     try {
         if (spontaneousYejin && spontaneousYejin.detectStreetCompliment(cleanUserMessage)) {
             console.log('🌸 [특별반응] 길거리 칭찬 감지 - 셀카 전송 시작');
@@ -954,30 +960,28 @@ async function getReplyByMessage(userMessage) {
     });
     // ================== [연동 끝] 학습 과정 추적 로그 ====================
 
-    const emergencyResponse = handleEmergencyKeywords(cleanUserMessage);
-    if (emergencyResponse) {
-        await safelyStoreMessage(BOT_NAME, emergencyResponse);
-        return { type: 'text', comment: emergencyResponse };
-    }
-
-    const birthdayResponse = handleBirthdayKeywords(cleanUserMessage);
-    if (birthdayResponse) {
-        await safelyStoreMessage(BOT_NAME, birthdayResponse);
-        return { type: 'text', comment: birthdayResponse };
-    }
-
-    const drinkingResponse = handleDrinkingKeywords(cleanUserMessage);
-    if (drinkingResponse) {
-        await safelyStoreMessage(BOT_NAME, drinkingResponse);
-        return { type: 'text', comment: drinkingResponse };
-    }
-
+    // 🌤️ 3순위: 날씨 키워드 처리 (우선 순위로 이동!)
     const weatherResponse = await handleWeatherKeywords(cleanUserMessage);
     if (weatherResponse) {
         await safelyStoreMessage(BOT_NAME, weatherResponse);
         return { type: 'text', comment: weatherResponse };
     }
 
+    // 🚨 4순위: 긴급 키워드 처리
+    const emergencyResponse = handleEmergencyKeywords(cleanUserMessage);
+    if (emergencyResponse) {
+        await safelyStoreMessage(BOT_NAME, emergencyResponse);
+        return { type: 'text', comment: emergencyResponse };
+    }
+
+    // 🍺 5순위: 음주 키워드 처리
+    const drinkingResponse = handleDrinkingKeywords(cleanUserMessage);
+    if (drinkingResponse) {
+        await safelyStoreMessage(BOT_NAME, drinkingResponse);
+        return { type: 'text', comment: drinkingResponse };
+    }
+
+    // 🧠 6순위: 기억 관련 처리
     try {
         const editResult = await detectAndProcessMemoryEdit(cleanUserMessage);
         if (editResult && editResult.processed) {
@@ -998,6 +1002,7 @@ async function getReplyByMessage(userMessage) {
         console.error('❌ 기억 요청 처리 중 에러:', error);
     }
 
+    // 💬 7순위: 일반 대화 처리 (AI 호출)
     let emotionContext = '';
     try {
         const emotionalContextManager = require('./emotionalContextManager.js');
@@ -1205,6 +1210,13 @@ ${emotionContext}${modelContext}
         await safelyStoreMessage(BOT_NAME, apiErrorReply);
         logConversationReply('나', `(API에러폴백) ${apiErrorReply}`);
         return { type: 'text', comment: apiErrorReply };
+    }
+
+    // 🎂 8순위 (마지막): 생일 키워드 처리 - 우선순위 최하위
+    const birthdayResponse = handleBirthdayKeywords(cleanUserMessage);
+    if (birthdayResponse) {
+        await safelyStoreMessage(BOT_NAME, birthdayResponse);
+        return { type: 'text', comment: birthdayResponse };
     }
 }
 
