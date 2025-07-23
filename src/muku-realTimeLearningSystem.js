@@ -45,9 +45,9 @@ const colors = {
 // ================== 🔧 시스템 구성 ==================
 const CONFIG = {
     // 파일 시스템
-    LEARNING_DATA_DIR: path.join(__dirname, 'learning_data'),
-    LOCK_DIR: path.join(__dirname, 'learning_data', 'locks'),
-    BACKUP_DIR: path.join(__dirname, 'learning_data', 'backups'),
+    LEARNING_DATA_DIR: '/data/learning_data',
+    LOCK_DIR: '/data/learning_data/locks',
+    BACKUP_DIR: '/data/learning_data/backups'
     
     // 메모리 관리
     MAX_LEARNING_DATA_SIZE: 50 * 1024 * 1024, // 50MB
