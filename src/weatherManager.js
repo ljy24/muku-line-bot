@@ -494,7 +494,30 @@ async function checkWeatherAndSend(scheduleType = 'auto') {
     }
 }
 
-// 🎯 사용자 질문 감지 및 응답
+// 🎯 사용자 메시지에서 위치 파싱 (올바른 매핑)
+function parseLocationFromMessage(userMessage) {
+    const msg = userMessage.toLowerCase();
+    
+    console.log(`🔍 [위치파싱] 메시지 분석: "${userMessage}"`);
+    
+    // "거기" = 고양시 (한국) 
+    if (msg.includes('거기') || msg.includes('고양') || msg.includes('한국')) {
+        console.log(`📍 [위치파싱] 결과: 고양시 (한국) - yejin`);
+        return 'yejin';
+    }
+    
+    // "여기" = 기타큐슈 (일본)
+    if (msg.includes('여기') || msg.includes('일본') || msg.includes('기타큐슈')) {
+        console.log(`📍 [위치파싱] 결과: 기타큐슈 (일본) - ajeossi`);
+        return 'ajeossi';
+    }
+    
+    // 기본값: 아저씨 위치 (기타큐슈)
+    console.log(`📍 [위치파싱] 기본값: 기타큐슈 (일본) - ajeossi`);
+    return 'ajeossi';
+}
+
+// 🎯 사용자 질문 감지 및 응답 ✅ 수정된 부분
 function handleWeatherQuestion(userMessage) {
     try {
         // 날씨 관련 키워드 감지
@@ -513,13 +536,16 @@ function handleWeatherQuestion(userMessage) {
         
         console.log('🎯 [날씨응답] 사용자 날씨 질문 감지 - 즉시 응답 생성');
         
+        // 🔧 핵심 수정: 위치 파싱 추가
+        const location = parseLocationFromMessage(userMessage);
+        
         // 현재 날씨 정보로 응답 생성
-        if (weatherSystemState.currentWeather) {
+        if (weatherSystemState.currentWeather && location === 'ajeossi') {
             weatherSystemState.statistics.conversationResponses++;
             return generateConversationalWeatherResponse(weatherSystemState.currentWeather);
         } else {
-            // 날씨 정보가 없으면 API 호출 후 응답
-            getCurrentWeather('ajeossi').then(weatherInfo => {
+            // 날씨 정보가 없거나 다른 위치면 API 호출
+            getCurrentWeather(location).then(weatherInfo => {
                 if (weatherInfo) {
                     const response = generateConversationalWeatherResponse(weatherInfo);
                     sendWeatherMessage(response);
