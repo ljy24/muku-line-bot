@@ -17,7 +17,7 @@
 const colors = {
     ajeossi: '\x1b[96m',     // 하늘색 (아저씨)
     yejin: '\x1b[95m',       // 연보라색 (예진이)
-    pms: '\x1b[1m\x1b[91m',  // 굵은 빨간색 (PMS)
+    pms: '\x1b[1m\x1b[91m]',  // 굵은 빨간색 (PMS)
     system: '\x1b[92m',      // 연초록색 (시스템)
     learning: '\x1b[93m',    // 노란색 (학습)
     realtime: '\x1b[1m\x1b[93m', // 굵은 노란색 (실시간 학습) ⭐️ NEW!
@@ -77,16 +77,19 @@ async function handleLearningFromConversation(userMessage, mukuResponse, modules
             responseTime: Date.now()
         };
         
-        // ⭐️⭐️ 실시간 학습 실행 - 함수명 수정! ⭐️⭐️
-        const learningResult = await modules.learningSystem.processLearning(userMessage, mukuResponse, learningContext);
-        
-        if (learningResult) {
-            console.log(`${colors.realtime}**✅ [실시간학습] 학습 완료: ${learningResult.improvements ? learningResult.improvements.length : 0}개 개선사항**${colors.reset}`);
+        // ⭐️⭐️ 실시간 학습 실행 - 올바른 모듈과 함수 이름으로 수정! ⭐️⭐️
+        if (modules.realTimeLearningSystem && modules.realTimeLearningSystem.processRealtimeLearning) {
+            const learningResult = await modules.realTimeLearningSystem.processRealtimeLearning(userMessage, mukuResponse, learningContext);
+            
+            if (learningResult) {
+                console.log(`${colors.realtime}**✅ [실시간학습] 학습 완료: ${learningResult.improvements ? learningResult.improvements.length : 0}개 개선사항**${colors.reset}`);
+            } else {
+                console.log(`${colors.realtime}**⚠️ [실시간학습] 학습 결과 없음**${colors.reset}`);
+            }
+            return learningResult;
         } else {
-            console.log(`${colors.realtime}**⚠️ [실시간학습] 학습 결과 없음**${colors.reset}`);
+             console.log(`${colors.realtime}**⚠️ [실시간학습] 학습 시스템이 없거나 함수를 찾을 수 없음**${colors.reset}`);
         }
-        
-        return learningResult;
         
     } catch (error) {
         console.error(`${colors.error}❌ [실시간학습] 학습 처리 실패: ${error.message}${colors.reset}`);
@@ -419,7 +422,7 @@ module.exports = {
     processImage,
     processCommand,
     handleLearningFromConversation,
-    handleEvent,  // 👈 빠뜨린 함수 추가!
+    handleEvent, // 👈 빠뜨린 함수 추가!
     
     // 유틸리티 함수들
     getJapanTime,
