@@ -105,7 +105,7 @@ function safeModuleAccess(modules, path, context = '') {
     }
 }
 
-// ================== 🎓 실시간 학습 시스템 처리 함수 (완벽한 에러 방지) ==================
+// ================== 🎓 실시간 학습 시스템 처리 함수 (완전 수정 버전) ==================
 async function processRealTimeLearning(userMessage, mukuResponse, context, modules, enhancedLogging) {
     // 🛡️ 완벽한 안전 장치
     if (!userMessage || !mukuResponse) {
@@ -183,77 +183,148 @@ async function processRealTimeLearning(userMessage, mukuResponse, context, modul
         }
     }, '생리주기추가');
 
-    // ⭐️⭐️ 완벽한 학습 함수 호출 시스템 (에러 기반 수정) ⭐️⭐️
+    // ⭐️⭐️ 완전 수정된 학습 함수 호출 시스템 ⭐️⭐️
     let learningResult = null;
     let methodUsed = null;
 
-    // 🎯 1단계: 직접적인 학습 함수들 시도
-    const directMethods = [
-        {
-            name: 'processLearning',
-            getter: () => safeModuleAccess(learningSystem, 'processLearning'),
-            description: '기본 학습 함수'
-        },
-        {
-            name: 'learnFromConversation',
-            getter: () => safeModuleAccess(learningSystem, 'learnFromConversation'),
-            description: '레거시 학습 함수'
-        }
-    ];
-
-    for (const method of directMethods) {
-        const learningFunction = method.getter();
+    // 🎯 1단계: IntegratedLearningSystemManager 메서드 직접 호출 시도
+    console.log(`${colors.realtime}    🎯 통합 학습 시스템 직접 호출 시도...${colors.reset}`);
+    
+    // processLearning 메서드 시도
+    if (typeof learningSystem.processLearning === 'function') {
+        console.log(`${colors.realtime}    🔧 processLearning() 직접 호출...${colors.reset}`);
         
-        if (typeof learningFunction === 'function') {
-            console.log(`${colors.realtime}    🎯 ${method.description} 시도...${colors.reset}`);
+        learningResult = await safeAsyncCall(async () => {
+            return await learningSystem.processLearning(userMessage, mukuResponse, learningContext);
+        }, '통합학습시스템-processLearning');
+        
+        if (learningResult) {
+            methodUsed = 'IntegratedLearningSystemManager.processLearning';
+            console.log(`${colors.success}    ✅ 통합 학습 시스템 성공!${colors.reset}`);
+        }
+    }
+
+    // 🎯 2단계: 초기화 후 재시도
+    if (!learningResult && !methodUsed) {
+        console.log(`${colors.realtime}    🔄 통합 학습 시스템 초기화 시도...${colors.reset}`);
+        
+        // 올바른 초기화 방법
+        if (typeof learningSystem.initialize === 'function') {
+            console.log(`${colors.realtime}    🔧 initialize() 호출...${colors.reset}`);
             
-            learningResult = await safeAsyncCall(async () => {
-                return await learningFunction(userMessage, mukuResponse, learningContext);
-            }, `학습호출-${method.name}`);
+            const initialized = await safeAsyncCall(async () => {
+                return await learningSystem.initialize(modules, {});
+            }, '통합학습시스템-초기화');
             
-            if (learningResult) {
-                methodUsed = method.name;
-                console.log(`${colors.success}    ✅ ${method.description} 성공!${colors.reset}`);
-                break;
+            if (initialized) {
+                console.log(`${colors.success}    ✅ 초기화 성공!${colors.reset}`);
+                
+                // 초기화 후 다시 학습 시도
+                if (typeof learningSystem.processLearning === 'function') {
+                    learningResult = await safeAsyncCall(async () => {
+                        return await learningSystem.processLearning(userMessage, mukuResponse, learningContext);
+                    }, '초기화후-통합학습');
+                    
+                    if (learningResult) {
+                        methodUsed = 'IntegratedLearningSystemManager.processLearning (초기화 후)';
+                        console.log(`${colors.success}    ✅ 초기화 후 학습 성공!${colors.reset}`);
+                    }
+                }
             }
         }
     }
 
-    // 🎯 2단계: 중첩된 객체에서 함수 찾기 (mukuLearningSystem 등)
+    // 🎯 3단계: Enterprise/Independent 시스템 개별 시도
     if (!learningResult && !methodUsed) {
-        console.log(`${colors.realtime}    🔍 중첩 객체에서 학습 함수 탐색...${colors.reset}`);
+        console.log(`${colors.realtime}    🔍 개별 학습 시스템 시도...${colors.reset}`);
         
-        const nestedPaths = [
-            'mukuLearningSystem.processLearning',
-            'mukuLearningSystem.learnFromConversation',
-            'IntegratedLearningSystemManager.processLearning',
-            'realTimeLearningSystem.processLearning'
-        ];
-        
-        for (const path of nestedPaths) {
-            const pathParts = path.split('.');
-            let current = learningSystem;
-            let valid = true;
+        // Enterprise 시스템 시도
+        const enterpriseSystem = safeModuleAccess(learningSystem, 'enterpriseSystem', 'Enterprise시스템');
+        if (enterpriseSystem) {
+            console.log(`${colors.realtime}    🏢 Enterprise 시스템 시도...${colors.reset}`);
             
-            // 경로 따라 접근
-            for (const part of pathParts) {
-                if (current && typeof current === 'object' && part in current) {
-                    current = current[part];
-                } else {
-                    valid = false;
-                    break;
+            // Enterprise 시스템의 processLearning 시도
+            const enterpriseProcessLearning = safeModuleAccess(enterpriseSystem, 'processLearning', 'Enterprise-processLearning');
+            if (typeof enterpriseProcessLearning === 'function') {
+                learningResult = await safeAsyncCall(async () => {
+                    return await enterpriseProcessLearning(userMessage, mukuResponse, learningContext);
+                }, 'Enterprise학습호출');
+                
+                if (learningResult) {
+                    methodUsed = 'EnterpriseSystem.processLearning';
+                    console.log(`${colors.success}    ✅ Enterprise 학습 성공!${colors.reset}`);
                 }
             }
             
-            if (valid && typeof current === 'function') {
+            // Enterprise 시스템 getInstance 후 시도
+            if (!learningResult) {
+                const getInstance = safeModuleAccess(enterpriseSystem, 'getInstance', 'Enterprise-getInstance');
+                if (typeof getInstance === 'function') {
+                    const enterpriseInstance = await safeAsyncCall(async () => {
+                        return await getInstance();
+                    }, 'Enterprise인스턴스조회');
+                    
+                    if (enterpriseInstance) {
+                        const instanceProcessLearning = safeModuleAccess(enterpriseInstance, 'learnFromConversation', 'Enterprise인스턴스-학습');
+                        if (typeof instanceProcessLearning === 'function') {
+                            learningResult = await safeAsyncCall(async () => {
+                                return await instanceProcessLearning(userMessage, mukuResponse, learningContext);
+                            }, 'Enterprise인스턴스학습호출');
+                            
+                            if (learningResult) {
+                                methodUsed = 'EnterpriseInstance.learnFromConversation';
+                                console.log(`${colors.success}    ✅ Enterprise 인스턴스 학습 성공!${colors.reset}`);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Independent 시스템 시도 (Enterprise 실패 시)
+        if (!learningResult) {
+            const independentSystem = safeModuleAccess(learningSystem, 'independentSystem', 'Independent시스템');
+            if (independentSystem) {
+                console.log(`${colors.realtime}    🤖 Independent 시스템 시도...${colors.reset}`);
+                
+                const independentAddConversation = safeModuleAccess(independentSystem, 'addConversation', 'Independent-addConversation');
+                if (typeof independentAddConversation === 'function') {
+                    const independentResult = await safeAsyncCall(async () => {
+                        return await independentAddConversation(userMessage, mukuResponse, learningContext);
+                    }, 'Independent학습호출');
+                    
+                    if (independentResult) {
+                        learningResult = { independent: independentResult };
+                        methodUsed = 'IndependentSystem.addConversation';
+                        console.log(`${colors.success}    ✅ Independent 학습 성공!${colors.reset}`);
+                    }
+                }
+            }
+        }
+    }
+
+    // 🎯 4단계: 레거시 방식 시도 (모든 방법 실패 시)
+    if (!learningResult && !methodUsed) {
+        console.log(`${colors.realtime}    🔄 레거시 방식 시도...${colors.reset}`);
+        
+        const legacyPaths = [
+            'mukuLearningSystem.processLearning',
+            'realTimeLearningSystem.processLearning',
+            'learnFromConversation'
+        ];
+        
+        for (const path of legacyPaths) {
+            const legacyFunction = safeModuleAccess(learningSystem, path, `레거시-${path}`);
+            
+            if (typeof legacyFunction === 'function') {
                 console.log(`${colors.realtime}    🎯 ${path} 시도...${colors.reset}`);
                 
                 learningResult = await safeAsyncCall(async () => {
-                    return await current(userMessage, mukuResponse, learningContext);
-                }, `중첩학습호출-${path}`);
+                    return await legacyFunction(userMessage, mukuResponse, learningContext);
+                }, `레거시학습호출-${path}`);
                 
                 if (learningResult) {
-                    methodUsed = path;
+                    methodUsed = `Legacy.${path}`;
                     console.log(`${colors.success}    ✅ ${path} 성공!${colors.reset}`);
                     break;
                 }
@@ -261,80 +332,41 @@ async function processRealTimeLearning(userMessage, mukuResponse, context, modul
         }
     }
 
-    // 🎯 3단계: 초기화 함수 시도 (isInitialized 에러 해결)
+    // 🎯 5단계: 학습 시스템 구조 분석 (디버깅용)
     if (!learningResult && !methodUsed) {
-        console.log(`${colors.realtime}    🔄 학습 시스템 초기화 시도...${colors.reset}`);
-        
-        // 여러 가지 초기화 함수 이름 시도
-        const initMethods = [
-            'initialize',
-            'initializeMukuLearning', 
-            'init',
-            'setup'
-        ];
-        
-        for (const initMethod of initMethods) {
-            const initFunction = safeModuleAccess(learningSystem, initMethod, `초기화함수-${initMethod}`);
-            
-            if (typeof initFunction === 'function') {
-                console.log(`${colors.realtime}    🔧 ${initMethod}() 호출...${colors.reset}`);
-                
-                const initialized = await safeAsyncCall(async () => {
-                    return await initFunction(modules, {});
-                }, `초기화-${initMethod}`);
-                
-                if (initialized) {
-                    console.log(`${colors.success}    ✅ ${initMethod}() 성공!${colors.reset}`);
-                    
-                    // 초기화 후 다시 학습 함수 시도
-                    for (const method of directMethods) {
-                        const learningFunction = method.getter();
-                        
-                        if (typeof learningFunction === 'function') {
-                            learningResult = await safeAsyncCall(async () => {
-                                return await learningFunction(userMessage, mukuResponse, learningContext);
-                            }, `초기화후학습-${method.name}`);
-                            
-                            if (learningResult) {
-                                methodUsed = `${method.name} (${initMethod} 후)`;
-                                console.log(`${colors.success}    ✅ 초기화 후 학습 성공!${colors.reset}`);
-                                break;
-                            }
-                        }
-                    }
-                    
-                    if (learningResult) break;
-                }
-            }
-        }
-    }
-
-    // 🎯 4단계: 학습 시스템 구조 완전 분석 (디버깅용)
-    if (!learningResult && !methodUsed) {
-        console.log(`${colors.learning}📊 [디버깅] 학습 시스템 완전 분석...${colors.reset}`);
+        console.log(`${colors.learning}📊 [디버깅] 학습 시스템 구조 완전 분석...${colors.reset}`);
         console.log(`${colors.learning}    learningSystem 타입: ${typeof learningSystem}${colors.reset}`);
+        console.log(`${colors.learning}    isInitialized: ${learningSystem.isInitialized} (타입: ${typeof learningSystem.isInitialized})${colors.reset}`);
         
         if (learningSystem && typeof learningSystem === 'object') {
-            console.log(`${colors.learning}    learningSystem 키들:${colors.reset}`);
+            console.log(`${colors.learning}    learningSystem 최상위 키들:${colors.reset}`);
             Object.keys(learningSystem).forEach(key => {
                 const value = learningSystem[key];
                 const type = typeof value;
-                console.log(`${colors.learning}      - ${key}: ${type}${type === 'function' ? '()' : type === 'object' && value ? ` [${Object.keys(value).slice(0, 3).join(', ')}...]` : ''}${colors.reset}`);
+                console.log(`${colors.learning}      - ${key}: ${type}${colors.reset}`);
                 
-                // 중첩 객체도 확인
-                if (type === 'object' && value && typeof value === 'object') {
-                    Object.keys(value).forEach(subKey => {
+                // 중요한 서브시스템들 상세 분석
+                if (key === 'enterpriseSystem' && type === 'object' && value) {
+                    console.log(`${colors.learning}        enterpriseSystem 내부:${colors.reset}`);
+                    Object.keys(value).slice(0, 5).forEach(subKey => {
                         const subValue = value[subKey];
                         const subType = typeof subValue;
-                        if (subType === 'function') {
-                            console.log(`${colors.learning}        → ${key}.${subKey}: ${subType}()${colors.reset}`);
-                        }
+                        console.log(`${colors.learning}          → ${subKey}: ${subType}${colors.reset}`);
+                    });
+                }
+                
+                if (key === 'independentSystem' && type === 'object' && value) {
+                    console.log(`${colors.learning}        independentSystem 내부:${colors.reset}`);
+                    Object.keys(value).slice(0, 5).forEach(subKey => {
+                        const subValue = value[subKey];
+                        const subType = typeof subValue;
+                        console.log(`${colors.learning}          → ${subKey}: ${subType}${colors.reset}`);
                     });
                 }
             });
         }
         
-        console.log(`${colors.learning}⚪ [학습분석] 사용 가능한 학습 함수를 찾지 못했지만 대화는 정상 진행${colors.reset}`);
+        console.log(`${colors.learning}⚪ [학습분석] 모든 학습 방법 실패 - 학습은 건너뛰고 대화는 정상 진행${colors.reset}`);
     }
 
     // 🎉 학습 결과 처리
@@ -349,6 +381,8 @@ async function processRealTimeLearning(userMessage, mukuResponse, context, modul
             learningResult.improvements.slice(0, 3).forEach(improvement => {
                 console.log(`${colors.realtime}      ✨ ${improvement.type || '기타'}: ${improvement.reason || improvement.action || '개선됨'}${colors.reset}`);
             });
+        } else if (learningResult.independent) {
+            console.log(`${colors.realtime}    🤖 Independent 학습: ${learningResult.independent ? '성공' : '실패'}${colors.reset}`);
         } else {
             console.log(`${colors.realtime}    ✅ 학습 처리 완료${colors.reset}`);
         }
@@ -366,7 +400,7 @@ async function processRealTimeLearning(userMessage, mukuResponse, context, modul
 
         return learningResult;
     } else {
-        console.log(`${colors.learning}⚪ [학습결과] 학습 함수 없음 또는 실패 (대화는 정상 진행)${colors.reset}`);
+        console.log(`${colors.learning}⚪ [학습결과] 모든 학습 방법 실패 - 학습 건너뛰기 (대화는 정상 진행)${colors.reset}`);
         return null;
     }
 }
