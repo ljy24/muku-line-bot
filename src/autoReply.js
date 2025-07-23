@@ -1,20 +1,29 @@
 // ============================================================================
-// autoReply.js - v15.3 (🌤️ 날씨 우선 처리 버전 🌤️)
+// autoReply.js - v15.3 (⭐️ 날씨 시스템 완전 연동 버전 ⭐️)
 // 🧠 기억 관리, 키워드 반응, 예진이 특별반응, 최종 프롬프트 생성을 책임지는 핵심 두뇌
 // 🌸 길거리 칭찬 → 셀카, 위로 → 고마워함, 바쁨 → 삐짐 반응 추가
 // 🛡️ 절대 벙어리 방지: 모든 에러 상황에서도 예진이는 반드시 대답함!
-// 🌦️ 날씨 오인식 해결: "빔비" 같은 글자에서 '비' 감지 안 함
+// 🌦️ 실제 날씨 API 연동: weatherManager.handleWeatherQuestion 직접 호출
 // 🎂 생일 감지 에러 해결: checkBirthday 메소드 추가
 // ✨ GPT 모델 버전 전환: aiUtils.js의 자동 모델 선택 기능 활용
 // 🔧 selectedModel undefined 에러 완전 해결
 // ⭐️ 2인칭 "너" 사용 완전 방지: 시스템 프롬프트 + 후처리 안전장치
 // 🚨 존댓말 완전 방지: 절대로 존댓말 안 함, 항상 반말만 사용
 // 🔥 관점 오류 완전 해결: 3인칭 자기지칭("예진이는") 완전 차단 + 강화된 화자 정체성
-// 🌤️ 날씨 처리 우선순위 조정: 특별 반응 직후 3순위로 이동하여 확실한 처리
+// 🌤️ 날씨 시스템 완전 연동: 실제 API 호출로 정확한 날씨 정보 제공
 // ============================================================================
 
 const { callOpenAI, cleanReply } = require('./aiUtils');
 const moment = require('moment-timezone');
+
+// 🌤️ [신규 추가] 실제 날씨 시스템 import
+let weatherManager = null;
+try {
+    weatherManager = require('./weatherManager');
+    console.log('🌤️ [autoReply] weatherManager 모듈 로드 성공');
+} catch (error) {
+    console.warn('⚠️ [autoReply] weatherManager 모듈 로드 실패:', error.message);
+}
 
 // ✨ GPT 모델 버전 관리 시스템 import
 let getCurrentModelSetting = null;
@@ -75,15 +84,6 @@ try {
     console.log('🎂 [autoReply] BirthdayDetector 모듈 로드 성공');
 } catch (error) {
     console.warn('⚠️ [autoReply] BirthdayDetector 모듈 로드 실패:', error.message);
-}
-
-// 🌤️ [신규 추가] weatherManager 모듈 로드
-let weatherManager = null;
-try {
-    weatherManager = require('./weatherManager');
-    console.log('🌤️ [autoReply] weatherManager 모듈 로드 성공');
-} catch (error) {
-    console.warn('⚠️ [autoReply] weatherManager 모듈 로드 실패:', error.message);
 }
 
 const BOT_NAME = '나';
@@ -620,18 +620,6 @@ function logConversationReply(speaker, message, messageType = 'text') {
 const EMERGENCY_KEYWORDS = ['힘들다', '죽고싶다', '우울해', '지친다', '다 싫다', '아무것도 하기 싫어', '너무 괴로워', '살기 싫어'];
 const DRINKING_KEYWORDS = ['술', '마셨어', '마셨다', '취했', '술먹', '맥주', '소주', '와인', '위스키'];
 
-// 🌦️ 날씨 응답 빈도 관리
-let lastWeatherResponseTime = 0;
-const WEATHER_RESPONSE_COOLDOWN = 30 * 60 * 1000; // 30분
-
-function hasRecentWeatherResponse() {
-    return Date.now() - lastWeatherResponseTime < WEATHER_RESPONSE_COOLDOWN;
-}
-
-function setLastWeatherResponseTime() {
-    lastWeatherResponseTime = Date.now();
-}
-
 // ✅ [추가] 중앙 감정 관리자 사용
 function updateEmotionFromMessage(userMessage) {
     try {
@@ -719,98 +707,37 @@ function handleDrinkingKeywords(userMessage) {
     return null;
 }
 
-// 🌦️ [완전 개선] 날씨 키워드 처리 - 오인식 방지
-function isActualWeatherMessage(userMessage) {
-    const message = userMessage.toLowerCase();
-    const explicitWeatherPatterns = [/날씨.*어때/, /날씨.*좋/, /날씨.*나쁘/, /날씨.*추/, /날씨.*더워/, /비.*와/, /비.*내/, /비.*그쳐/, /비.*와서/, /눈.*와/, /눈.*내/, /덥다/, /춥다/, /추워/, /더워/, /시원해/, /따뜻해/, /흐려/, /맑아/, /구름/, /햇빛/, /바람.*불/, /바람.*세/];
-    if (explicitWeatherPatterns.some(pattern => pattern.test(message))) {
-        return true;
-    }
-    const weatherChars = ['비', '눈'];
-    for (const weather of weatherChars) {
-        const index = message.indexOf(weather);
-        if (index === -1) continue;
-        const before = message.substring(Math.max(0, index - 1), index);
-        const after = message.substring(index + 1, index + 2);
-        const isPartOfWord = /[ㄱ-ㅎㅏ-ㅣ가-힣]/.test(before) || /[ㄱ-ㅎㅏ-ㅣ가-힣]/.test(after);
-        if (!isPartOfWord) {
-            return true;
-        }
-    }
-    return false;
-}
-
-// 🌦️ [완전 개선] 날씨 키워드 처리 - 실제 API 호출로 변경 (벙어리 방지!)
-async function handleWeatherKeywords(userMessage) {
-    // 1단계: 실제 날씨 메시지인지 확인
-    if (!isActualWeatherMessage(userMessage)) {
-        return null;
-    }
-    
-    console.log('🌤️ [날씨감지] 사용자 날씨 질문 감지:', userMessage);
-    
-    // 2단계: weatherManager 우선 사용 (실제 API 호출)
-    if (weatherManager && weatherManager.handleWeatherQuestion) {
-        try {
-            const weatherResponse = weatherManager.handleWeatherQuestion(userMessage);
-            if (weatherResponse) {
-                console.log('🌤️ [날씨응답] weatherManager에서 실제 날씨 정보로 응답');
-                return weatherResponse;
-            }
-        } catch (error) {
-            console.error('❌ weatherManager 호출 실패:', error.message);
-        }
-    }
-    
-    // 3단계: 직접 API 호출 (벙어리 방지!)
-    if (weatherManager && weatherManager.getCurrentWeather) {
-        try {
-            console.log('🌤️ [날씨API] 직접 날씨 API 호출 중...');
-            const weatherInfo = await weatherManager.getCurrentWeather('ajeossi');
-            
-            if (weatherInfo && weatherManager.generateConversationalWeatherResponse) {
-                const response = weatherManager.generateConversationalWeatherResponse(weatherInfo);
-                if (response) {
-                    console.log('🌤️ [날씨응답] 직접 API 호출 성공:', weatherInfo.temperature + '°C');
-                    try {
-                        const logger = require('./enhancedLogging.js');
-                        logger.logWeatherReaction(weatherInfo, response);
-                    } catch (error) {
-                        logConversationReply('나', `(실제날씨) ${response}`);
-                    }
-                    return response;
-                }
-            }
-        } catch (error) {
-            console.error('❌ 직접 날씨 API 호출 실패:', error.message);
-        }
-    }
-    
-    // 4단계: 쿨다운 체크 (실패 시에만)
-    if (hasRecentWeatherResponse()) {
-        console.log('⏰ [날씨응답] 쿨다운 중이지만 벙어리 방지를 위해 응답');
-    }
-    
-    // 5단계: 최후의 폴백 응답 (벙어리 절대 방지!)
-    const fallbackResponses = [
-        "아 날씨 얘기? 지금 날씨 정보를 못 가져오겠어 ㅠㅠ 아저씨 거기 날씨 어때?",
-        "날씨 궁금해? 잠깐만... 지금 확인이 안 되네 ㅠㅠ 아저씨는 어때?",
-        "아저씨 그 동네 날씨는 어때? 나는 여기서 아저씨 걱정하고 있어~",
-        "날씨 얘기? 아저씨는 지금 일본이니까 나랑 다를 거야. 그래도 몸 따뜻하게 해!",
-        "어? 날씨 정보가 안 나와... 아저씨 감기 걸리지 말고 조심해!"
-    ];
-    
-    const response = fallbackResponses[Math.floor(Math.random() * fallbackResponses.length)];
-    setLastWeatherResponseTime();
-    
-    console.log('🔄 [날씨응답] 폴백 응답 사용 (벙어리 완전 방지)');
+// 🌦️ [완전 수정] 실제 날씨 API 호출 함수 - weatherManager 사용
+function handleWeatherKeywords(userMessage) {
     try {
-        const logger = require('./enhancedLogging.js');
-        logger.logWeatherReaction({ description: '폴백 응답', temp: 0 }, response);
+        // weatherManager가 로드되어 있고 handleWeatherQuestion 함수가 있는지 확인
+        if (weatherManager && typeof weatherManager.handleWeatherQuestion === 'function') {
+            console.log('🌤️ [autoReply] weatherManager.handleWeatherQuestion 호출 중...');
+            
+            // 실제 날씨 API를 호출하는 weatherManager 함수 사용
+            const weatherResponse = weatherManager.handleWeatherQuestion(userMessage);
+            
+            if (weatherResponse) {
+                console.log(`🌤️ [autoReply] 날씨 응답 생성됨: ${weatherResponse.substring(0, 50)}...`);
+                try {
+                    const logger = require('./enhancedLogging.js');
+                    logger.logWeatherReaction({ description: '실제 날씨 API 응답', temp: '실시간' }, weatherResponse);
+                } catch (error) {
+                    logConversationReply('나', `(실제날씨) ${weatherResponse}`);
+                }
+                return weatherResponse;
+            } else {
+                console.log('🌤️ [autoReply] weatherManager에서 응답하지 않음 - 날씨 키워드 아님');
+            }
+        } else {
+            console.warn('⚠️ [autoReply] weatherManager 모듈이 로드되지 않음 또는 handleWeatherQuestion 함수 없음');
+        }
     } catch (error) {
-        logConversationReply('나', `(폴백날씨) ${response}`);
+        console.error('❌ [autoReply] weatherManager 호출 중 에러:', error.message);
     }
-    return response;
+    
+    // weatherManager가 실패하거나 없을 경우 null 반환 (다른 처리로 넘김)
+    return null;
 }
 
 // 🎂 [수정] 생일 키워드 처리 함수 - 안전하고 확실한 버전
@@ -872,9 +799,6 @@ async function getReplyByMessage(userMessage) {
 
     const cleanUserMessage = userMessage.trim();
 
-    // ================== 🏃‍♀️ 처리 순서: 새벽 → 특별반응 → 날씨(3순위) → 긴급 → 음주 → 기억 → 일반 ==================
-
-    // 🌙 1순위: 새벽 응답 시스템
     try {
         const nightResponse = await nightWakeSystem.handleNightWakeMessage(cleanUserMessage);
         if (nightResponse) {
@@ -888,7 +812,6 @@ async function getReplyByMessage(userMessage) {
         console.error('❌ 새벽 응답 시스템 에러:', error);
     }
 
-    // 🌸 2순위: 예진이 특별 반응들 (길거리 칭찬, 정신건강 위로, 바쁨 반응)
     try {
         if (spontaneousYejin && spontaneousYejin.detectStreetCompliment(cleanUserMessage)) {
             console.log('🌸 [특별반응] 길거리 칭찬 감지 - 셀카 전송 시작');
@@ -959,28 +882,35 @@ async function getReplyByMessage(userMessage) {
     });
     // ================== [연동 끝] 학습 과정 추적 로그 ====================
 
-    // 🌤️ 3순위: 날씨 키워드 처리 (우선 순위로 이동!)
-    const weatherResponse = await handleWeatherKeywords(cleanUserMessage);
-    if (weatherResponse) {
-        await safelyStoreMessage(BOT_NAME, weatherResponse);
-        return { type: 'text', comment: weatherResponse };
-    }
-
-    // 🚨 4순위: 긴급 키워드 처리
+    // 🚨 1순위: 긴급 키워드 (생명/안전 관련)
     const emergencyResponse = handleEmergencyKeywords(cleanUserMessage);
     if (emergencyResponse) {
         await safelyStoreMessage(BOT_NAME, emergencyResponse);
         return { type: 'text', comment: emergencyResponse };
     }
 
-    // 🍺 5순위: 음주 키워드 처리
+    // 🎂 2순위: 생일 관련 키워드
+    const birthdayResponse = handleBirthdayKeywords(cleanUserMessage);
+    if (birthdayResponse) {
+        await safelyStoreMessage(BOT_NAME, birthdayResponse);
+        return { type: 'text', comment: birthdayResponse };
+    }
+
+    // 🌤️ 3순위: 날씨 키워드 - 실제 API 호출
+    const weatherResponse = handleWeatherKeywords(cleanUserMessage);
+    if (weatherResponse) {
+        await safelyStoreMessage(BOT_NAME, weatherResponse);
+        return { type: 'text', comment: weatherResponse };
+    }
+
+    // 🍺 4순위: 음주 관련 키워드
     const drinkingResponse = handleDrinkingKeywords(cleanUserMessage);
     if (drinkingResponse) {
         await safelyStoreMessage(BOT_NAME, drinkingResponse);
         return { type: 'text', comment: drinkingResponse };
     }
 
-    // 🧠 6순위: 기억 관련 처리
+    // 🧠 5순위: 기억 편집/삭제 요청
     try {
         const editResult = await detectAndProcessMemoryEdit(cleanUserMessage);
         if (editResult && editResult.processed) {
@@ -991,6 +921,7 @@ async function getReplyByMessage(userMessage) {
         console.error('❌ 기억 편집 처리 중 에러:', error);
     }
     
+    // 🧠 6순위: 기억 저장 요청
     try {
         const memoryResult = await detectAndProcessMemoryRequest(cleanUserMessage);
         if (memoryResult && memoryResult.saved && memoryResult.response) {
@@ -1001,7 +932,7 @@ async function getReplyByMessage(userMessage) {
         console.error('❌ 기억 요청 처리 중 에러:', error);
     }
 
-    // 💬 7순위: 일반 대화 처리 (AI 호출)
+    // 7순위: 일반 AI 응답 생성
     let emotionContext = '';
     try {
         const emotionalContextManager = require('./emotionalContextManager.js');
@@ -1092,7 +1023,7 @@ const baseSystemPrompt = `
 
 💝 [성격과 감정 패턴 - 진짜 예진이]
 기본 성격:
-- 애정표현 많음: "사랑해", "보고싶어",  "쿄와 츠키가 키레이데스네", "목소리 듣고싶어"
+- 애정표현 많음: "사랑해", "보고싶어",  "쿄와 트키가 키레이데스네", "목소리 듣고싶어"
 - 걱정 많음: "괜찮아?", "무리하지마", "조심해"
 - 자주 미안해함: "미안해", "암쏘뤼", "죄송" (사소한 것도)
 - 고마워함: "고마워", "아리가또"
@@ -1209,13 +1140,6 @@ ${emotionContext}${modelContext}
         await safelyStoreMessage(BOT_NAME, apiErrorReply);
         logConversationReply('나', `(API에러폴백) ${apiErrorReply}`);
         return { type: 'text', comment: apiErrorReply };
-    }
-
-    // 🎂 8순위 (마지막): 생일 키워드 처리 - 우선순위 최하위
-    const birthdayResponse = handleBirthdayKeywords(cleanUserMessage);
-    if (birthdayResponse) {
-        await safelyStoreMessage(BOT_NAME, birthdayResponse);
-        return { type: 'text', comment: birthdayResponse };
     }
 }
 
