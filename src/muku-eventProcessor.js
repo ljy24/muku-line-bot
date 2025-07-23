@@ -903,25 +903,39 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
     const safeMessageType = userMessage.type || 'unknown';
 
     try {
-        // =============== 📝 텍스트 메시지 처리 ===============
-        if (safeMessageType === 'text') {
-            const messageText = String(userMessage.text || '').trim();
-            
-            if (!messageText) {
-                console.log(`${colors.warning}⚠️ [텍스트] 빈 메시지 - 기본 응답 생성${colors.reset}`);
-                const emptyResponse = await processGeneralChat('', modules, enhancedLogging, {});
-                return { type: 'empty_message_response', response: emptyResponse };
-            }
+       // =============== 📝 텍스트 메시지 처리 ===============
+if (safeMessageType === 'text') {
+    const messageText = String(userMessage.text || '').trim();
+    
+    if (!messageText) {
+        console.log(`${colors.warning}⚠️ [텍스트] 빈 메시지 - 기본 응답 생성${colors.reset}`);
+        const emptyResponse = await processGeneralChat('', modules, enhancedLogging, {});
+        return { type: 'empty_message_response', response: emptyResponse };
+    }
 
-            // 로깅
-            await safeAsyncCall(async () => {
-                const logFunction = safeModuleAccess(enhancedLogging, 'logConversation', '대화로깅');
-                if (typeof logFunction === 'function') {
-                    logFunction('아저씨', messageText, 'text');
-                } else {
-                    console.log(`${colors.ajeossi}💬 아저씨: ${messageText}${colors.reset}`);
-                }
-            }, '사용자메시지로깅');
+    // 🔥🔥🔥 [새로 추가] LINE 기본 "입력 중..." 표시 🔥🔥🔥
+    try {
+        await client.showLoadingAnimation(userId);
+        console.log(`${colors.system}[입력중] "내꺼가 입력 중입니다..." 표시 완료${colors.reset}`);
+        
+        // 1초 딜레이
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        console.log(`${colors.system}[딜레이] 1초 대기 완료 - 응답 생성 시작${colors.reset}`);
+        
+    } catch (typingError) {
+        console.log(`${colors.warning}[입력중] 표시 실패하지만 계속 진행: ${typingError.message}${colors.reset}`);
+    }
+    // 🔥🔥🔥 [추가 완료] 🔥🔥🔥
+
+    // 로깅 (기존 코드)
+    await safeAsyncCall(async () => {
+        const logFunction = safeModuleAccess(enhancedLogging, 'logConversation', '대화로깅');
+        if (typeof logFunction === 'function') {
+            logFunction('아저씨', messageText, 'text');
+        } else {
+            console.log(`${colors.ajeossi}💬 아저씨: ${messageText}${colors.reset}`);
+        }
+    }, '사용자메시지로깅');
 
             // ⭐️ 1순위: 행동 스위치 처리 (최우선)
             const behaviorSwitchResult = await processBehaviorSwitch(messageText, modules, client, safeUserId);
