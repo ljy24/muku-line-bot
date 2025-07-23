@@ -10,11 +10,8 @@
 // ⭐️ 행동 스위치 명령어 인식 100% 보장
 // ⭐️ index.js의 handleLearningFromConversation() 함수와 연동 통일
 // 🎂 생일 감지 오류 완전 수정 - detectBirthday → checkBirthday
-// 🌤️ 날씨 질문 즉시 응답 시스템 추가 ⭐️ NEW!
+// 🌤️ 날씨 질문 처리 추가 - weatherManager 연동
 // ============================================================================
-
-// ================== 📦 필수 모듈 imports ==================
-const weatherManager = require('./weatherManager.js'); // ⭐️ 날씨 처리 추가!
 
 // ================== 🎨 색상 정의 ==================
 const colors = {
@@ -26,10 +23,12 @@ const colors = {
     realtime: '\x1b[1m\x1b[93m', // 굵은 노란색 (실시간 학습) ⭐️ NEW!
     person: '\x1b[94m',      // 파란색 (사람 학습)
     behavior: '\x1b[35m',    // 마젠타색 (행동 스위치)
-    weather: '\x1b[96m',     // 하늘색 (날씨) ⭐️ NEW!
     error: '\x1b[91m',       // 빨간색 (에러)
     reset: '\x1b[0m'         // 색상 리셋
 };
+
+// ================== 📦 모듈 import ==================
+const weatherManager = require('./weatherManager.js'); // ⭐️ 날씨 처리 추가
 
 // ================== 🌏 일본시간 함수들 ==================
 function getJapanTime() {
@@ -78,7 +77,7 @@ async function handleLearningFromConversation(userMessage, mukuResponse, modules
             responseTime: Date.now()
         };
         
-        // ⭐️⭐️ 실시간 학습 실행 (index.js의 방식과 완전 동일!) ⭐️⭐️
+        // ⭐️⭐️ 실시간 학습 실행 - 함수명 수정! ⭐️⭐️
         const learningResult = await modules.learningSystem.processLearning(userMessage, mukuResponse, learningContext);
         
         if (learningResult) {
@@ -136,7 +135,7 @@ function checkLateNightConversation() {
     
     if (hour >= 2 && hour < 7) {
         const responses = [
-            "아조씨... 지금 몇 시인지 알아? 너무 늦었어... 😪",
+            "아조씨... 지금 몇 시인지 알어? 너무 늦었어... 😪",
             "왜 이렇게 늦게까지 안 자? 걱정돼... 🥺",
             "새벽에 뭐해? 빨리 자야지... 건강 나빠져 ㅠㅠ",
             "아조씨 불면증 또 시작된 거야? 따뜻한 우유 마시고 자...",
@@ -251,10 +250,10 @@ async function processMessage(userMessage, modules) {
     try {
         console.log(`${colors.ajeossi}아저씨: ${userMessage}${colors.reset}`);
         
-        // 🌤️ 날씨 질문 우선 처리 (GPT 호출 전)
+        // 🌤️ 날씨 질문 먼저 체크 - GPT 호출 전에 처리
         const weatherResponse = weatherManager.handleWeatherQuestion(userMessage);
         if (weatherResponse) {
-            console.log(`${colors.weather}🌤️ [날씨응답] 즉시 응답 생성${colors.reset}`);
+            console.log(`${colors.system}🌤️ [날씨응답] 즉시 응답 생성${colors.reset}`);
             console.log(`${colors.yejin}💬 나: ${weatherResponse}${colors.reset}`);
             
             // 실시간 학습 처리
@@ -370,7 +369,6 @@ async function processCommand(command, modules) {
                 return "사진 시스템이 준비 중이야~ 😊";
                 
             case '날씨':
-                // 🌤️ 날씨 명령어 처리
                 const currentWeather = await weatherManager.getCurrentWeather('ajeossi');
                 if (currentWeather) {
                     return weatherManager.generateConversationalWeatherResponse(currentWeather);
