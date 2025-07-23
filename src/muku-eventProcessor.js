@@ -906,7 +906,6 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
       // =============== 📝 텍스트 메시지 처리 ===============
         if (safeMessageType === 'text') {
             const messageText = String(userMessage.text || '').trim();
-
             if (!messageText) {
                 console.log(`${colors.warning}⚠️ [텍스트] 빈 메시지 - 기본 응답 생성${colors.reset}`);
                 const emptyResponse = await processGeneralChat('', modules, enhancedLogging, {});
@@ -918,9 +917,10 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
                 if (typeof logFunction === 'function') {
                     logFunction('아저씨', messageText, 'text');
                 } else {
-                    console.log(${colors.ajeossi}💬 아저씨: ${messageText}${colors.reset});
+                    console.log(`${colors.ajeossi}💬 아저씨: ${messageText}${colors.reset}`);
                 }
             }, '사용자메시지로깅');
+
 
             // ⭐️ 1순위: 행동 스위치 처리 (최우선)
             const behaviorSwitchResult = await processBehaviorSwitch(messageText, modules, client, safeUserId);
