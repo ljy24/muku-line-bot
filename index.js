@@ -637,8 +637,8 @@ async function handleLearningFromConversation(userMessage, mukuResponse, context
         }
         
         console.log(`🎓 [실시간학습] 대화 학습 시작...`);
-        console.log(`** 📝 사용자: "${userMessage.substring(0, 50)}${userMessage.length > 50 ? '...' : '"}"`);
-        console.log(`** 💬 무쿠: "${mukuResponse.substring(0, 50)}${mukuResponse.length > 50 ? '...' : '"}"`);
+        console.log('** 📝 사용자:', userMessage);
+        console.log('** 💬 무쿠:', mukuResponse.substring(0, 50) + (mukuResponse.length > 50 ? '...' : ''));
         
         const modules = global.mukuModules || {};
         
