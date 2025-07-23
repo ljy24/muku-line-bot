@@ -302,17 +302,30 @@ async function generateLineStatusReport(modules) {
         report += `💖 예진이 현재 상태\n`;
         report += `━━━\n`;
         
-        // 생리주기 및 감정상태
+      // 생리주기 및 감정상태
         try {
             if (modules.emotionalContextManager && modules.emotionalContextManager.getCurrentEmotionState) {
                 const state = modules.emotionalContextManager.getCurrentEmotionState();
-                const cycleDay = state.cycleDay || 0;
-                const daysUntilNext = 28 - cycleDay;
-                const nextPeriodDate = moment().tz(JAPAN_TIMEZONE).add(daysUntilNext, 'days').format('M/D');
                 const emotion = EMOTION_STATES[state.currentEmotion] || { korean: '평온함', emoji: '😌' };
                 
-                report += `🩸 [생리주기] 현재 ${state.description}\n`;
-                report += `📅 다음 생리예정일: ${daysUntilNext}일 후 (${nextPeriodDate})\n`;
+                // 🔥 수정: menstrualCycleManager 사용하여 정확한 계산
+                if (modules.menstrualCycleManager && modules.menstrualCycleManager.getCurrentMenstrualPhase) {
+                    const cycleInfo = modules.menstrualCycleManager.getCurrentMenstrualPhase();
+                    const daysUntilNext = Math.max(0, cycleInfo.daysUntilNextPeriod);
+                    const nextPeriodDate = moment().tz(JAPAN_TIMEZONE).add(daysUntilNext, 'days').format('M/D');
+                    
+                    report += `🩸 [생리주기] 현재 ${cycleInfo.description}\n`;
+                    report += `📅 다음 생리예정일: ${daysUntilNext}일 후 (${nextPeriodDate})\n`;
+                } else {
+                    // 폴백: menstrualCycleManager 없을 때
+                    const cycleDay = state.cycleDay || 0;
+                    const daysUntilNext = 28 - cycleDay;
+                    const nextPeriodDate = moment().tz(JAPAN_TIMEZONE).add(daysUntilNext, 'days').format('M/D');
+                    
+                    report += `🩸 [생리주기] 현재 ${state.description}\n`;
+                    report += `📅 다음 생리예정일: ${daysUntilNext}일 후 (${nextPeriodDate})\n`;
+                }
+                
                 report += `${emotion.emoji} [감정상태] ${emotion.korean} (강도: ${state.emotionIntensity}/10)\n`;
             } else {
                 report += `🩸 [생리주기] 정보를 불러올 수 없음\n`;
@@ -322,7 +335,6 @@ async function generateLineStatusReport(modules) {
             report += `🩸 [생리주기] 시스템 에러: ${e.message}\n`;
             report += `😌 [감정상태] 기본 모드\n`;
         }
-
         // 갈등상태
         try {
             if (modules.unifiedConflictManager && modules.unifiedConflictManager.getMukuConflictSystemStatus) {
