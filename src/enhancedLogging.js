@@ -365,8 +365,16 @@ async function generateLineStatusReport(modules) {
             if (modules.realTimeLearningSystem && modules.realTimeLearningSystem.mukuLearningSystem) {
                 const learningStatus = modules.realTimeLearningSystem.mukuLearningSystem.getSystemStatus();
                 if (learningStatus.isActive) {
-                    const totalLearnings = learningStatus.stats?.conversationsAnalyzed || 0;
-                    const successRate = learningStatus.learningData?.successRate || '100%';
+                    // 🔥 수정: 영구 저장된 학습 데이터를 직접 가져옴
+                    const analytics = learningStatus.learningData?.conversationAnalytics;
+                    const totalLearnings = analytics?.totalConversations || 0;
+                    const successfulLearnings = analytics?.successfulResponses || 0;
+                    
+                    let successRate = '100%';
+                    if (totalLearnings > 0) {
+                        successRate = ((successfulLearnings / totalLearnings) * 100).toFixed(1) + '%';
+                    }
+                    
                     report += `📚 [실시간학습] 활성화 - 총 ${totalLearnings}회 학습 (성공률: ${successRate})\n`;
                 } else {
                     report += `📚 [실시간학습] 시스템 비활성\n`;
