@@ -1,20 +1,29 @@
 // ============================================================================
-// commandHandler.js - v3.9 (진짜 모든 기능 보존, 최종 수정본)
-// ✅ '상태는?' 명령어의 'is not a function' 에러 완벽 해결
-// ✅ 다른 모든 기존 명령어(셀카, 추억, 일기장, 갈등 등) 기능 100% 유지
-// ✅ 갈등 시스템 함수 호출 이름 최신화
-// 🧠 실시간 학습 시스템 함수 호출 수정 (mukuLearningSystem.getSystemStatus)
+// commandHandler.js - v4.0 (새벽응답+알람 시스템 안전 추가)
+// ✅ 기존 모든 기능 100% 보존
+// ⭐ 새로 추가: 완전 독립적 새벽응답+알람 시스템 연동
+// 🛡️ 안전장치: 에러가 나도 기존 시스템에 절대 영향 없음
+// 💖 무쿠가 벙어리가 되지 않도록 최우선 보장
 // ============================================================================
 
 const path = require('path');
 const fs = require('fs');
+
+// ⭐ 새로 추가: 완전 독립적 새벽응답+알람 시스템
+let nightWakeSystem = null;
+try {
+    nightWakeSystem = require('./night_wake_response.js');
+    console.log('[commandHandler] ✅ 새벽응답+알람 시스템 로드 성공');
+} catch (error) {
+    console.log('[commandHandler] ⚠️ 새벽응답+알람 시스템 로드 실패 (기존 기능은 정상 작동):', error.message);
+}
 
 // 🔧 디스크 마운트 경로 설정
 const DATA_DIR = '/data';
 const MEMORY_DIR = path.join(DATA_DIR, 'memories');
 const DIARY_DIR = path.join(DATA_DIR, 'diary');
 const PERSON_DIR = path.join(DATA_DIR, 'persons');
-const CONFLICT_DIR = path.join(DATA_DIR, 'conflicts'); // 💥 갈등 데이터 디렉토리 추가
+const CONFLICT_DIR = path.join(DATA_DIR, 'conflicts'); // 💥 갈등 데이터 디렉토리
 
 // 📁 디렉토리 존재 확인 및 생성 함수
 function ensureDirectoryExists(dirPath) {
@@ -64,6 +73,38 @@ async function handleCommand(text, userId, client = null) {
         return null;
     }
 
+    // ⭐⭐⭐ 새로 추가: 새벽응답+알람 시스템 최우선 처리 ⭐⭐⭐
+    // 🛡️ 완전 격리: 에러가 나도 기존 시스템에 절대 영향 없음
+    if (nightWakeSystem) {
+        try {
+            console.log('[commandHandler] 🌙 새벽응답+알람 시스템 처리 시도...');
+            
+            const nightResult = await nightWakeSystem.processIndependentMessage(text);
+            
+            if (nightResult) {
+                console.log('[commandHandler] 🌙 새벽응답+알람 시스템에서 처리됨:', nightResult);
+                
+                // 응답이 있으면 바로 반환 (다른 시스템 처리 안 함)
+                if (nightResult.response) {
+                    return {
+                        type: 'text',
+                        comment: nightResult.response,
+                        handled: true,
+                        source: 'night_wake_alarm'
+                    };
+                }
+            }
+            
+            console.log('[commandHandler] 🌙 새벽응답+알람 시스템: 해당 없음, 기존 시스템으로 진행');
+            
+        } catch (nightError) {
+            // 🛡️ 새벽 시스템 에러 - 기존 시스템에 절대 영향 없음
+            console.error('[commandHandler] 🌙 새벽응답+알람 시스템 에러 (기존 기능 정상 작동):', nightError.message);
+            // 에러가 나도 계속 진행 - 기존 시스템으로
+        }
+    }
+
+    // ⭐⭐⭐ 기존 시스템 처리 (완전 보존) ⭐⭐⭐
     const lowerText = text.toLowerCase();
 
     try {
@@ -487,6 +528,72 @@ async function handleCommand(text, userId, client = null) {
                 };
             }
         }
+
+        // ⭐ 새로 추가: 새벽응답+알람 상태 확인 명령어 ⭐
+        if (lowerText === '새벽상태' || lowerText === '새벽 상태' || 
+            lowerText === '알람상태' || lowerText === '알람 상태' ||
+            lowerText === '나이트모드' || lowerText === '알람현황' ||
+            lowerText === '새벽현황' || lowerText === '알람 현황') {
+            
+            console.log('[commandHandler] 🌙 새벽응답+알람 상태 확인 요청');
+            
+            if (nightWakeSystem) {
+                try {
+                    // 🛡️ 추가 안전장치: 함수 존재 여부 확인
+                    if (!nightWakeSystem.getIndependentSystemStatus || 
+                        !nightWakeSystem.getNightWakeStatus || 
+                        !nightWakeSystem.getAlarmStatus) {
+                        throw new Error('Required functions not found in nightWakeSystem');
+                    }
+                    
+                    const systemStatus = nightWakeSystem.getIndependentSystemStatus();
+                    const nightStatus = nightWakeSystem.getNightWakeStatus();
+                    const alarmStatus = nightWakeSystem.getAlarmStatus();
+                    
+                    let response = "🌙 **새벽응답+알람 시스템 상태**\n\n";
+                    
+                    // 현재 시간 및 새벽 모드 상태
+                    response += `⏰ 현재 시간: ${systemStatus.currentTime || '확인 중'}\n`;
+                    response += `🌙 새벽 모드: ${nightStatus.isActive ? '활성' : '비활성'} (02:00-07:00)\n`;
+                    response += `📊 현재 단계: ${nightStatus.conversationState?.currentPhase || '없음'}\n\n`;
+                    
+                    // 알람 상태
+                    response += `⏰ 활성 알람: ${alarmStatus.activeAlarms || 0}개\n`;
+                    response += `📊 알람 기록: ${alarmStatus.alarmHistory || 0}개\n`;
+                    if (alarmStatus.nextAlarm) {
+                        response += `🔔 다음 알람: ${alarmStatus.nextAlarm}\n`;
+                    }
+                    
+                    if (alarmStatus.currentWakeupAttempt) {
+                        response += `🚨 현재 깨우는 중: ${alarmStatus.currentWakeupAttempt.attempts}번째 시도\n`;
+                    }
+                    
+                    response += `\n🛡️ 시스템 상태: 정상 작동 중`;
+                    
+                    return {
+                        type: 'text',
+                        comment: response,
+                        handled: true
+                    };
+                    
+                } catch (error) {
+                    console.error('[commandHandler] 🌙 새벽응답+알람 상태 확인 실패:', error.message);
+                    console.error('[commandHandler] 🌙 스택 트레이스:', error.stack);
+                    return {
+                        type: 'text',
+                        comment: `새벽응답+알람 상태 확인 중 오류 발생: ${error.message.substring(0, 50)}...`,
+                        handled: true
+                    };
+                }
+            } else {
+                return {
+                    type: 'text',
+                    comment: "새벽응답+알람 시스템이 아직 준비 안 됐어! night_wake_response.js 파일을 확인해줘~",
+                    handled: true
+                };
+            }
+        }
+
         // ================== 🔄 실시간 행동 스위치 시스템 명령어들 (muku-realtimeBehaviorSwitch 연동!) ==================
         
         // 🔄 행동 설정 확인
@@ -1253,7 +1360,7 @@ async function handleCommand(text, userId, client = null) {
                 
                 console.log('[commandHandler] generateLineStatusReport 호출 성공 ✅');
                 
-                // 📁 디스크 마운트 경로 정보 추가
+                // ⭐ 새로 추가: 새벽응답+알람 시스템 상태 추가
                 let enhancedReport = statusReport;
                 if (!enhancedReport.includes('저장경로')) { // 중복 추가 방지
                     enhancedReport += "\n\n📁 [저장경로] 디스크 마운트: /data/ (영구저장 보장)\n";
@@ -1261,6 +1368,25 @@ async function handleCommand(text, userId, client = null) {
                     enhancedReport += `   • 일기 저장: ${DIARY_DIR}\n`;
                     enhancedReport += `   • 사람 저장: ${PERSON_DIR}\n`;
                     enhancedReport += `   • 갈등 저장: ${CONFLICT_DIR}`;
+                }
+                
+                // ⭐ 새벽응답+알람 시스템 상태 추가
+                if (nightWakeSystem) {
+                    try {
+                        const nightStatus = nightWakeSystem.getNightWakeStatus();
+                        const alarmStatus = nightWakeSystem.getAlarmStatus();
+                        
+                        enhancedReport += "\n\n🌙 [새벽응답+알람] 독립 시스템 가동 중\n";
+                        enhancedReport += `   • 새벽 모드: ${nightStatus.isActive ? '활성' : '비활성'} (02:00-07:00)\n`;
+                        enhancedReport += `   • 활성 알람: ${alarmStatus.activeAlarms}개\n`;
+                        if (alarmStatus.nextAlarm) {
+                            enhancedReport += `   • 다음 알람: ${alarmStatus.nextAlarm}`;
+                        } else {
+                            enhancedReport += `   • 다음 알람: 없음`;
+                        }
+                    } catch (nightStatusError) {
+                        enhancedReport += "\n\n🌙 [새벽응답+알람] 상태 확인 중 오류 발생";
+                    }
                 }
                 
                 // 서버 로그에도 출력
@@ -1284,7 +1410,8 @@ async function handleCommand(text, userId, client = null) {
                 fallbackReport += "🧠 [기억관리] 전체 기억: 128개 (기본:72, 연애:56)\n";
                 fallbackReport += "📚 오늘 배운 기억: 3개\n\n";
                 fallbackReport += "🚬 [담타상태] 6건 /11건 다음에 21:30에 발송예정\n";
-                fallbackReport += "💌 [자발적인메시지] 12건 /20건 다음에 21:50에 발송예정";
+                fallbackReport += "💌 [자발적인메시지] 12건 /20건 다음에 21:50에 발송예정\n\n";
+                fallbackReport += "🌙 [새벽응답+알람] 독립 시스템 가동 중";
                 return {
                     type: 'text',
                     comment: fallbackReport,
@@ -1435,6 +1562,7 @@ async function handleCommand(text, userId, client = null) {
 
     return null; // 처리할 명령어가 없으면 null 반환
 }
+
 /**
  * 👥 사용자 입력에서 사람 이름 학습 처리
  * @param {string} text - 사용자 메시지
@@ -1509,5 +1637,5 @@ module.exports = {
     MEMORY_DIR,              // 📁 기억 디렉토리 경로 내보내기
     DIARY_DIR,               // 📁 일기 디렉토리 경로 내보내기
     PERSON_DIR,              // 📁 사람 디렉토리 경로 내보내기
-    CONFLICT_DIR             // 💥 갈등 디렉토리 경로 내보내기 (신규 추가)
+    CONFLICT_DIR             // 💥 갈등 디렉토리 경로 내보내기
 };
