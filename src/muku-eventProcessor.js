@@ -9,6 +9,7 @@
 // 💖 예진이의 감정과 기억을 더욱 생생하게 재현
 // ⭐️ 행동 스위치 명령어 인식 100% 보장
 // ⭐️ index.js의 handleLearningFromConversation() 함수와 연동 통일
+// 🎂 생일 감지 오류 완전 수정 - detectBirthday → checkBirthday
 // ============================================================================
 
 // ================== 🎨 색상 정의 ==================
@@ -550,24 +551,35 @@ async function processNightWakeMessage(messageText, modules, enhancedLogging) {
     return null;
 }
 
-// ================== 🎂 생일 감지 및 처리 ==================
+// ================== 🎂 생일 감지 및 처리 (오류 수정!) ==================
 async function processBirthdayDetection(messageText, modules, enhancedLogging) {
-    if (modules.birthdayDetector) {
-        try {
-            const birthdayResponse = await modules.birthdayDetector.detectBirthday(messageText, getJapanTime());
-            if (birthdayResponse && birthdayResponse.handled) {
-                if (enhancedLogging && enhancedLogging.logSpontaneousAction) {
-                    enhancedLogging.logSpontaneousAction('birthday_greeting', birthdayResponse.response);
-                } else {
-                    console.log(`${colors.yejin}🎂 [생일감지] ${birthdayResponse.response}${colors.reset}`);
-                }
-                return birthdayResponse;
-            }
-        } catch (error) {
-            console.log(`${colors.error}⚠️ 생일 감지 처리 에러: ${error.message}${colors.reset}`);
+    try {
+        if (!modules.birthdayDetector) {
+            console.log(`${colors.error}🎂 [생일감지] 시스템 비활성화 - 고정 기억 사용${colors.reset}`);
+            return null;
         }
+
+        // ✅ checkBirthday 함수 사용 (detectBirthday → checkBirthday 수정)
+        const birthdayResponse = modules.birthdayDetector.checkBirthday(messageText);
+        
+        if (birthdayResponse) {
+            console.log(`${colors.yejin}🎂 [생일감지] ${birthdayResponse}${colors.reset}`);
+            
+            if (enhancedLogging && enhancedLogging.logSpontaneousAction) {
+                enhancedLogging.logSpontaneousAction('birthday_greeting', birthdayResponse);
+            }
+            
+            return {
+                handled: true,
+                response: birthdayResponse
+            };
+        }
+        
+        return null;
+    } catch (error) {
+        console.log(`${colors.error}⚠️ 생일 감지 처리 에러: ${error.message}${colors.reset}`);
+        return null;
     }
-    return null;
 }
 
 // ================== 🧠 고정 기억 연동 처리 ==================
@@ -867,8 +879,9 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
                 return { type: 'night_response', response: finalNightComment };
             }
             
+            // ✅ 생일 감지 처리 (완전 수정됨!)
             const birthdayResponse = await processBirthdayDetection(messageText, modules, enhancedLogging);
-            if (birthdayResponse) {
+            if (birthdayResponse && birthdayResponse.handled) {
                 // ⭐️ 생일 응답에도 행동 모드 적용 ⭐️
                 const behaviorBirthdayResponse = await applyBehaviorModeToResponse(
                     { type: 'text', comment: birthdayResponse.response },
