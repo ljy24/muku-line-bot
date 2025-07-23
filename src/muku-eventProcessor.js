@@ -908,7 +908,7 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
             const messageText = String(userMessage.text || '').trim();
 
             if (!messageText) {
-                console.log(${colors.warning}⚠️ [텍스트] 빈 메시지 - 기본 응답 생성${colors.reset});
+                console.log(`${colors.warning}⚠️ [텍스트] 빈 메시지 - 기본 응답 생성${colors.reset}`);
                 const emptyResponse = await processGeneralChat('', modules, enhancedLogging, {});
                 return { type: 'empty_message_response', response: emptyResponse };
             }
