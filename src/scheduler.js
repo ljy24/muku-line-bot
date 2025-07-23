@@ -4,6 +4,7 @@
 // 🌙 밤 23시: 100% | 💤 자정 0시: 100% | ⭐️ 실시간 통계 추적 완벽 지원
 // ✨ 매개변수 방식으로 상황별 카운터 리셋 처리 완벽 구현
 // 💾 디스크 영구 저장으로 재시작해도 상태 유지
+// 🔧 담타 상태 표시 수정: 23시 약먹자 메시지와 구분
 // ============================================================================
 
 const schedule = require('node-schedule');
@@ -805,76 +806,143 @@ schedule.scheduleJob('0 0 * * *', async () => {
     }
 });
 
-// ================== 📊 상태 확인 함수들 (⭐️ 대폭 강화!) ==================
+// ================== 📊 상태 확인 함수들 (⭐️ 🔧 담타와 고정메시지 구분 수정!) ==================
 
 /**
- * ⭐️ 다음 담타 정보 가져오기 (nextTime 필드 추가!)
+ * ⭐️ 🔧 다음 담타 정보 가져오기 (담타 전용, 23시 약먹자 메시지와 완전 분리!)
  */
 function getNextDamtaInfo() {
-    const nextInfo = calculateNextScheduleTime('damta');
-    const fixedNext = calculateNextFixedSchedule();
+    const koreaTime = moment().tz(TIMEZONE);
+    const currentMinutes = koreaTime.hour() * 60 + koreaTime.minute();
     
-    // 담타와 고정 스케줄 중 더 빠른 시간 선택
-    let nextTime = nextInfo.timeString;
-    let nextType = '담타';
-    let status = nextInfo.status;
+    // 🚬 담타 전용 계산 (10-18시 담타만, 고정 스케줄과 완전 분리!)
+    const upcomingDamtaTimes = scheduleStatus.damta.times
+        .map(time => ({
+            minutes: time.hour * 60 + time.minute,
+            timeString: `${String(time.hour).padStart(2, '0')}:${String(time.minute).padStart(2, '0')}`
+        }))
+        .filter(time => time.minutes > currentMinutes); // 현재 시간 이후만
     
-    if (fixedNext.minutesUntil > 0 && 
-        (nextInfo.minutesUntil < 0 || fixedNext.minutesUntil < nextInfo.minutesUntil)) {
-        nextTime = fixedNext.timeString;
-        nextType = fixedNext.name;
-        status = fixedNext.status;
-    }
-    
-    return {
-        // ⭐️ 라인 상태 리포트용 정보
-        nextTime: nextTime,
-        text: status === 'completed' ? 
-            `오늘 담타 완료 (${scheduleStatus.damta.sent}/${scheduleStatus.damta.total}회)` :
-            `다음 ${nextType}: ${nextTime}`,
+    if (upcomingDamtaTimes.length > 0) {
+        // 다음 담타가 남아있음
+        const nextDamta = upcomingDamtaTimes[0];
+        const minutesUntil = nextDamta.minutes - currentMinutes;
         
-        // 상세 정보
-        damtaStatus: {
-            sent: scheduleStatus.damta.sent,
-            total: scheduleStatus.damta.total,
-            sentTimes: scheduleStatus.damta.sentTimes,
-            remainingTimes: scheduleStatus.damta.times
-                .filter(t => {
-                    const koreaTime = moment().tz(TIMEZONE);
-                    const currentMinutes = koreaTime.hour() * 60 + koreaTime.minute();
-                    const scheduleMinutes = t.hour * 60 + t.minute;
-                    return scheduleMinutes > currentMinutes;
-                })
-                .map(t => `${String(t.hour).padStart(2, '0')}:${String(t.minute).padStart(2, '0')}`)
-        },
-        status: status
-    };
+        return {
+            nextTime: nextDamta.timeString,
+            text: `다음 담타: ${nextDamta.timeString}`,
+            
+            damtaStatus: {
+                sent: scheduleStatus.damta.sent,
+                total: scheduleStatus.damta.total,
+                sentTimes: scheduleStatus.damta.sentTimes,
+                remainingTimes: upcomingDamtaTimes.map(t => t.timeString)
+            },
+            status: 'scheduled'
+        };
+    } else {
+        // 오늘 담타 시간 종료 (10-18시 끝)
+        const isAllCompleted = scheduleStatus.damta.sent >= scheduleStatus.damta.total;
+        
+        return {
+            nextTime: '내일',
+            text: isAllCompleted ? 
+                `오늘 담타 완료! (${scheduleStatus.damta.sent}/${scheduleStatus.damta.total}회)` :
+                `담타시간 종료 (${scheduleStatus.damta.sent}/${scheduleStatus.damta.total}회, 내일 재시작)`,
+            
+            damtaStatus: {
+                sent: scheduleStatus.damta.sent,
+                total: scheduleStatus.damta.total,
+                sentTimes: scheduleStatus.damta.sentTimes,
+                remainingTimes: []
+            },
+            status: 'completed'
+        };
+    }
 }
 
 /**
- * ⭐️ 담타 상태 상세 정보
+ * ⭐️ 🔧 담타 상태 상세 정보 (23시 약먹자와 완전 분리!)
  */
 function getDamtaStatus() {
     const koreaTime = moment().tz(TIMEZONE);
-    const nextInfo = getNextDamtaInfo();
+    const damtaInfo = getNextDamtaInfo();
     
     return {
         currentTime: koreaTime.format('HH:mm'),
         sentToday: scheduleStatus.damta.sent,
         totalDaily: scheduleStatus.damta.total,
-        nextDamta: nextInfo.text,
-        nextTime: nextInfo.nextTime, // ⭐️ 추가!
+        nextDamta: damtaInfo.text,
+        nextTime: damtaInfo.nextTime,
         sentTimes: scheduleStatus.damta.sentTimes,
         todaySchedule: scheduleStatus.damta.times.map(t => `${String(t.hour).padStart(2, '0')}:${String(t.minute).padStart(2, '0')}`),
-        status: nextInfo.status
+        status: damtaInfo.status,
+        
+        // 🔍 디버깅 정보
+        debug: {
+            damtaTimeRange: '10:00-18:00 (담타 전용)',
+            fixedSchedules: {
+                morning: '09:00 (평일 아침인사)',
+                nightCare: '23:00 (약먹자 메시지)',  // ⭐️ 담타가 아님!
+                goodNight: '00:00 (굿나잇)'
+            },
+            note: '⚠️ 담타는 10-18시에만, 23시는 별도 약먹자 메시지임!'
+        }
     };
 }
 
 /**
- * ⭐️ 전체 스케줄러 통계 (실제 데이터 기반)
+ * ⭐️ 고정 스케줄만을 위한 별도 함수 (담타와 완전 분리!)
+ */
+function getNextFixedScheduleInfo() {
+    const koreaTime = moment().tz(TIMEZONE);
+    const currentHour = koreaTime.hour();
+    const currentMinute = koreaTime.minute();
+    const currentMinutes = currentHour * 60 + currentMinute;
+    
+    const fixedSchedules = [
+        { hour: 9, minute: 0, name: '아침인사', sent: scheduleStatus.morning.sent, type: 'morning' },
+        { hour: 23, minute: 0, name: '약먹자', sent: scheduleStatus.nightCare.sent, type: 'nightCare' },  // ⭐️ 담타 아님!
+        { hour: 0, minute: 0, name: '굿나잇', sent: scheduleStatus.goodNight.sent, type: 'goodNight' }
+    ];
+    
+    // 오늘 남은 고정 스케줄 찾기
+    for (let schedule of fixedSchedules) {
+        const scheduleMinutes = schedule.hour * 60 + schedule.minute;
+        
+        // 자정(0시)의 경우 다음날로 처리
+        const adjustedScheduleMinutes = schedule.hour === 0 ? 
+            scheduleMinutes + 24 * 60 : scheduleMinutes;
+        
+        if (!schedule.sent && adjustedScheduleMinutes > currentMinutes) {
+            const minutesUntil = adjustedScheduleMinutes - currentMinutes;
+            return {
+                timeString: `${String(schedule.hour).padStart(2, '0')}:${String(schedule.minute).padStart(2, '0')}`,
+                minutesUntil: minutesUntil,
+                name: schedule.name,
+                type: schedule.type,
+                status: 'scheduled'
+            };
+        }
+    }
+    
+    // 오늘 고정 스케줄이 모두 끝남
+    return {
+        timeString: '09:00',
+        minutesUntil: (24 * 60) - currentMinutes + (9 * 60),
+        name: '아침인사',
+        type: 'morning',
+        status: 'next_day'
+    };
+}
+
+/**
+ * ⭐️ 전체 스케줄러 통계 (담타와 고정메시지 구분해서 표시!)
  */
 function getAllSchedulerStats() {
     const koreaTime = moment().tz(TIMEZONE);
+    const damtaInfo = getNextDamtaInfo();
+    const fixedInfo = getNextFixedScheduleInfo();
     
     return {
         systemStatus: '💯 모든 메시지 100% 보장 + 실시간 통계 + 영구 저장',
@@ -904,21 +972,21 @@ function getAllSchedulerStats() {
             goodNightSent: scheduleStatus.goodNight.sent
         },
         
-        // ⭐️ 다음 스케줄 정보
+        // ⭐️ 🔧 다음 스케줄 정보 (담타와 고정 구분!)
         nextSchedules: {
-            nextDamta: getNextDamtaInfo().nextTime,
+            nextDamta: damtaInfo.nextTime,  // ⭐️ 담타만
             nextEmotional: calculateNextScheduleTime('emotional').timeString,
             nextSelfie: calculateNextScheduleTime('selfie').timeString,
-            nextFixed: calculateNextFixedSchedule().timeString
+            nextFixed: `${fixedInfo.timeString} (${fixedInfo.name})`  // ⭐️ 고정 스케줄 구분
         },
         
         guaranteedSchedules: {
-            morningMessage: '평일 09:00 - 100% 보장',
-            damtaMessages: '10-18시 랜덤 8번 - 100% 보장',
-            emotionalMessages: '10-22시 랜덤 3번 - 100% 보장',
-            selfieMessages: '11-20시 랜덤 2번 - 100% 보장',
-            nightCareMessage: '매일 23:00 - 100% 보장',
-            goodNightMessage: '매일 00:00 - 100% 보장'
+            morningMessage: '평일 09:00 - 100% 보장 (아침인사)',
+            damtaMessages: '10-18시 랜덤 8번 - 100% 보장 (담타)',  // ⭐️ 담타 전용
+            emotionalMessages: '10-22시 랜덤 3번 - 100% 보장 (감성)',
+            selfieMessages: '11-20시 랜덤 2번 - 100% 보장 (셀카)',
+            nightCareMessage: '매일 23:00 - 100% 보장 (약먹자)',  // ⭐️ 담타 아님!
+            goodNightMessage: '매일 00:00 - 100% 보장 (굿나잇)'
         },
         environment: {
             USER_ID: !!USER_ID ? '✅ OK' : '⚠️ MISSING',
@@ -968,9 +1036,10 @@ function startAllSchedulers(client) {
         forceLog('   🚬 10-18시 랜덤 8번 - 담타 메시지');
         forceLog('   🌸 10-22시 랜덤 3번 - 감성 메시지');
         forceLog('   📸 11-20시 랜덤 2번 - 셀카 전송');
-        forceLog('   🌙 매일 23:00 - 밤 케어 메시지');
+        forceLog('   🌙 매일 23:00 - 밤 케어 메시지 (약먹자)');  // ⭐️ 담타 아님!
         forceLog('   💤 매일 00:00 - 굿나잇 메시지');
         forceLog('✨ 실시간 통계 추적 + 영구 저장 시스템 활성화!');
+        forceLog('🔧 담타와 고정메시지 구분 수정 완료!');
         
         if (initResult.restored) {
             forceLog('🔄 이전 상태가 성공적으로 복원되었습니다!');
@@ -1023,16 +1092,16 @@ async function testGoodNightMessage() {
 }
 
 // ================== 📤 모듈 내보내기 ==================
-forceLog('💯 scheduler.js v10.1 PERFECT 로드 완료 (카운터 리셋 문제 완벽 해결 + 영구 저장)');
+forceLog('💯 scheduler.js v10.1 PERFECT 로드 완료 (담타와 고정메시지 구분 수정!)');
 
 module.exports = {
     // 🚀 시작 함수
     startAllSchedulers,
     
-    // 📊 상태 확인 함수들 (⭐️ nextTime 추가!)
-    getNextDamtaInfo,      // ⭐️ nextTime 필드 포함!
-    getDamtaStatus,
-    getAllSchedulerStats,
+    // 📊 상태 확인 함수들 (⭐️ 🔧 수정됨!)
+    getNextDamtaInfo,      // ⭐️ 담타 전용으로 수정!
+    getDamtaStatus,        // ⭐️ 23시 약먹자와 구분!
+    getAllSchedulerStats,  // ⭐️ 담타/고정 구분 표시!
     
     // 🧪 테스트 함수들
     testDamtaMessage,
@@ -1057,6 +1126,7 @@ module.exports = {
     recordMessageSent,
     calculateNextScheduleTime,
     calculateNextFixedSchedule,
+    getNextFixedScheduleInfo,  // ⭐️ 새로 추가!
     
     // ⭐️ 디스크 저장 관련 함수들
     saveScheduleStatusToDisk,
