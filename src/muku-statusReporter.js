@@ -3,6 +3,7 @@
 // ✅ 예쁜 상태 리포트 출력 및 웹 응답 생성
 // 💖 enhancedLogging v3.0 연동
 // 🌏 일본시간(JST) 기준 상태 표시
+// 🚨 FIXED: nextMessageTime → nextTime 수정 (122번 라인)
 // ============================================================================
 
 // ================== 🎨 색상 정의 ==================
@@ -119,7 +120,8 @@ function getYejinStatus(modules) {
     if (modules.spontaneousYejin && modules.spontaneousYejin.getSpontaneousMessageStatus) {
         try {
             const status = modules.spontaneousYejin.getSpontaneousMessageStatus();
-            yejinStatus = `${status.sentToday}/${status.totalDaily}번 전송, 다음: ${status.nextMessageTime}`;
+            // 🚨 FIXED: nextMessageTime → nextTime (이게 undefined 원인이었음!)
+            yejinStatus = `${status.sentToday}/${status.totalDaily}번 전송, 다음: ${status.nextTime}`;
         } catch (error) {
             yejinStatus = '에러';
         }
