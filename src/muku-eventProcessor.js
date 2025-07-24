@@ -631,10 +631,8 @@ async function processCommand(messageText, userId, client, modules) {
                 
                 return {
                     handled: true,
-                    response: {
-                        type: 'text',
-                        comment: noLogResponse
-                    }
+                    response: noLogResponse,
+                    skipFurtherProcessing: true
                 };
             }
             
@@ -652,10 +650,8 @@ async function processCommand(messageText, userId, client, modules) {
             
             return {
                 handled: true,
-                response: {
-                    type: 'text',
-                    comment: summary
-                }
+                response: summary,
+                skipFurtherProcessing: true
             };
             
         } catch (error) {
@@ -664,10 +660,8 @@ async function processCommand(messageText, userId, client, modules) {
             
             return {
                 handled: true,
-                response: {
-                    type: 'text',
-                    comment: errorResponse
-                }
+                response: errorResponse,
+                skipFurtherProcessing: true
             };
         }
     }
@@ -1084,8 +1078,10 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
             if (commandResult && commandResult.handled) {
                 console.log(`${colors.success}✅ [명령어처리] 명령어 응답 처리 완료${colors.reset}`);
                 
-                // 응답 추출
-                const commandResponseText = commandResult.response?.comment || commandResult.response;
+                // 응답 추출 - response가 문자열이면 바로 사용
+                const commandResponseText = typeof commandResult.response === 'string' 
+                    ? commandResult.response 
+                    : (commandResult.response?.comment || commandResult.response);
                 
                 // 🚨 Memory Tape 명령어는 학습에서 제외 (무한 반복 방지)
                 const isMemoryCommand = messageText.includes('로그') || messageText.includes('기록') || messageText.includes('일지');
@@ -1112,6 +1108,18 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
                         console.log(`${colors.yejin}📼 예진이 (명령어): ${commandResponseText}${colors.reset}`);
                     }
                 }, '명령어응답로깅');
+                
+                // 🔧 skipFurtherProcessing이 있으면 즉시 반환
+                if (commandResult.skipFurtherProcessing) {
+                    console.log(`${colors.success}🛑 [명령어처리] 추가 처리 중단 - 명령어 응답 완료${colors.reset}`);
+                    return { 
+                        type: 'command_response', 
+                        response: {
+                            type: 'text',
+                            comment: commandResponseText
+                        }
+                    };
+                }
                 
                 return { type: 'command_response', response: commandResult };
             }
