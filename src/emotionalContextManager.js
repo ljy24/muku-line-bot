@@ -28,7 +28,7 @@ function translateEmotionToKorean(emotion) {
 // ==================== 🩸 현실적인 28일 생리주기 계산 ====================
 function calculateMenstrualCycle() {
     // 🩸 마지막 생리 시작일 (예시: 2024년 12월 1일)
-    const lastPeriodDate = new Date('2025-06-26');
+    const lastPeriodDate = new Date('2025-07-24');
     const currentDate = new Date();
     
     // 현재 몇 일차인지 계산
