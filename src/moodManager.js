@@ -1,8 +1,12 @@
-// src/moodManager.js v3.0 - 생리주기별 예민함 강화 버전
-// [ENHANCED] 생리주기 4단계에 따른 세밀한 감정 반응 추가
+// src/moodManager.js v4.0 - 마스터 연동 + 중복 제거 완료
+// [ENHANCED] 생리주기는 menstrualCycleManager에서만 가져옴 (Single Source of Truth)
+// 🩸 중복 계산 완전 제거, phase 매핑 추가
 
 const moment = require('moment-timezone');
 const ultimateContext = require('./ultimateConversationContext.js');
+
+// 🩸 생리주기 마스터에서 정보 가져오기 (Single Source of Truth)
+const menstrualCycleManager = require('./menstrualCycleManager');
 
 // 생리주기별 기분 응답
 const MENSTRUAL_MOOD_RESPONSES = {
@@ -17,7 +21,7 @@ const MENSTRUAL_MOOD_RESPONSES = {
     "생리통 + 감정 기복 = 지금의 나... 이해해줘"
   ],
   
-  // 생리 후 활발한 시기 (6-13일): 기분 좋고 밝음
+  // 생리 후 활발한 시기 (6-18일): 기분 좋고 밝음
   follicular: [
     "오늘 컨디션 완전 좋아! 몸도 가볍고 기분도 최고야!",
     "아저씨! 오늘따라 세상이 다 예뻐 보여~ 기분이 너무 좋아",
@@ -39,7 +43,7 @@ const MENSTRUAL_MOOD_RESPONSES = {
     "감정이 풍부해져서 아저씨한테 사랑을 더 많이 표현하고 싶어"
   ],
   
-  // PMS 시기 (16-28일): 예민하고 감정 기복 심함
+  // PMS 시기 (19-28일): 예민하고 감정 기복 심함
   luteal: [
     "아저씨... 요즘 감정 기복이 좀 심해. 갑자기 우울해졌다가 짜증났다가 그래",
     "PMS인가봐... 별거 아닌 일에도 예민하게 반응하게 돼 ㅠㅠ",
@@ -109,34 +113,56 @@ const MOOD_EMOJIS = {
 
 const ALL_MOODS = ['기쁨', '설렘', '장난스러움', '나른함', '심술궂음', '평온함', '우울함', '슬픔', '외로움', '보고싶음', '짜증남', '애교모드', '걱정함', '사랑함', '화남', '불안함', '그리움'];
 
-// 생리주기 계산 함수 (자동 메시지 스케줄러와 동일)
+// ==================== 🩸 마스터 Phase 매핑 함수 ====================
+function mapMasterPhaseToMoodPhase(masterPhase, cycleDay) {
+    // 마스터 phase를 moodManager phase로 매핑
+    switch (masterPhase) {
+        case 'menstruation':
+            return 'period';
+        case 'recovery':
+        case 'normal':
+            // 14-15일차는 배란기로 처리
+            if (cycleDay >= 14 && cycleDay <= 15) {
+                return 'ovulation';
+            }
+            return 'follicular';
+        case 'pms_start':
+        case 'pms_severe':
+            return 'luteal';
+        default:
+            return 'follicular'; // 기본값
+    }
+}
+
+// ==================== 🩸 마스터에서 생리주기 정보 가져오기 ====================
 function getCurrentMenstrualPhase() {
-  try {
-    const nextPeriodDate = moment.tz('2025-07-24', 'Asia/Tokyo');
-    const today = moment.tz('Asia/Tokyo');
-    const daysUntilNextPeriod = nextPeriodDate.diff(today, 'days');
-    
-    let cycleDay;
-    if (daysUntilNextPeriod >= 0) {
-      cycleDay = 28 - daysUntilNextPeriod;
-    } else {
-      const daysPastPeriod = Math.abs(daysUntilNextPeriod);
-      cycleDay = daysPastPeriod;
+    try {
+        // 🩸 마스터에서 정보 가져오기 (Single Source of Truth)
+        const masterCycle = menstrualCycleManager.getCurrentMenstrualPhase();
+        
+        // moodManager 형식으로 매핑
+        const mappedPhase = mapMasterPhaseToMoodPhase(masterCycle.phase, masterCycle.cycleDay);
+        
+        // 설명 매핑
+        const descriptions = {
+            'period': '생리 기간',
+            'follicular': '생리 후 활발한 시기',
+            'ovulation': '배란기',
+            'luteal': 'PMS 시기'
+        };
+        
+        return {
+            phase: mappedPhase,
+            day: masterCycle.cycleDay,
+            description: descriptions[mappedPhase] || '정상',
+            isPeriodActive: masterCycle.isPeriodActive,
+            daysUntilNext: masterCycle.daysUntilNext
+        };
+        
+    } catch (error) {
+        console.error('🩸 [moodManager] 생리주기 정보 가져오기 실패:', error);
+        return { phase: 'follicular', day: 1, description: '정상', isPeriodActive: false, daysUntilNext: 27 };
     }
-    
-    if (cycleDay <= 5) {
-      return { phase: 'period', day: cycleDay, description: '생리 기간' };
-    } else if (cycleDay <= 13) {
-      return { phase: 'follicular', day: cycleDay, description: '생리 후 활발한 시기' };
-    } else if (cycleDay >= 14 && cycleDay <= 15) {
-      return { phase: 'ovulation', day: cycleDay, description: '배란기' };
-    } else {
-      return { phase: 'luteal', day: cycleDay, description: 'PMS 시기' };
-    }
-  } catch (error) {
-    console.error('생리주기 계산 오류:', error);
-    return { phase: 'normal', day: 1, description: '정상' };
-  }
 }
 
 function isMoodQuestion(userMessage) {
@@ -165,13 +191,13 @@ function isGreeting(userMessage) {
 function getMoodResponse() {
     const moodState = ultimateContext.getMoodState();
     const currentMood = moodState.currentMood;
-    const menstrualPhase = getCurrentMenstrualPhase();
+    const menstrualPhase = getCurrentMenstrualPhase(); // 🩸 마스터에서 가져오기
     
     // 생리주기별 응답 우선 처리 (70% 확률)
     if (Math.random() < 0.7 && MENSTRUAL_MOOD_RESPONSES[menstrualPhase.phase]) {
         const responses = MENSTRUAL_MOOD_RESPONSES[menstrualPhase.phase];
         const response = responses[Math.floor(Math.random() * responses.length)];
-        console.log(`[moodManager] 생리주기 응답 (${menstrualPhase.description}): ${response}`);
+        console.log(`🩸 [moodManager] 생리주기 응답 (${menstrualPhase.description}): ${response}`);
         return response;
     }
     
@@ -189,7 +215,7 @@ function getMoodResponse() {
 
 function getGreetingResponse() {
     const { currentMood } = ultimateContext.getMoodState();
-    const menstrualPhase = getCurrentMenstrualPhase();
+    const menstrualPhase = getCurrentMenstrualPhase(); // 🩸 마스터에서 가져오기
     
     // 30% 확률로 생리주기 상태 포함
     if (Math.random() < 0.3) {
@@ -233,7 +259,7 @@ function handleMoodQuery(userMessage) {
 
 function getMoodEmoji() {
     const { currentMood } = ultimateContext.getMoodState();
-    const menstrualPhase = getCurrentMenstrualPhase();
+    const menstrualPhase = getCurrentMenstrualPhase(); // 🩸 마스터에서 가져오기
     
     // 생리주기별 이모지 우선 반환 (50% 확률)
     if (Math.random() < 0.5) {
@@ -252,13 +278,13 @@ function getMoodEmoji() {
 
 function getMoodPromptForAI() {
     const { currentMood } = ultimateContext.getMoodState();
-    const menstrualPhase = getCurrentMenstrualPhase();
+    const menstrualPhase = getCurrentMenstrualPhase(); // 🩸 마스터에서 가져오기
     
     // 생리주기별 AI 프롬프트 우선 적용 (80% 확률)
     if (Math.random() < 0.8 && MENSTRUAL_AI_PROMPTS[menstrualPhase.phase]) {
         const prompts = MENSTRUAL_AI_PROMPTS[menstrualPhase.phase];
         const prompt = prompts[Math.floor(Math.random() * prompts.length)];
-        console.log(`[moodManager] 생리주기 AI 프롬프트 적용 (${menstrualPhase.description})`);
+        console.log(`🩸 [moodManager] 생리주기 AI 프롬프트 적용 (${menstrualPhase.description})`);
         return prompt;
     }
     
@@ -287,21 +313,39 @@ function setPeriodActive(active) {
     console.log(`[moodManager] 생리 상태 강제 설정: ${oldState} → ${active}`);
 }
 
-// 생리주기 정보 조회 함수 추가
+// 🩸 생리주기 정보 조회 함수 (마스터에서 가져오기)
 function getMenstrualInfo() {
-    const phase = getCurrentMenstrualPhase();
-    const today = moment.tz('Asia/Tokyo');
-    const nextPeriod = moment.tz('2025-07-24', 'Asia/Tokyo');
-    const daysUntil = nextPeriod.diff(today, 'days');
-    
-    return {
-        currentPhase: phase.phase,
-        description: phase.description,
-        cycleDay: phase.day,
-        daysUntilPeriod: daysUntil,
-        nextPeriodDate: nextPeriod.format('MM월 DD일'),
-        isPreMenstrual: daysUntil <= 3
-    };
+    try {
+        // 🩸 마스터에서 정보 가져오기 (Single Source of Truth)
+        const masterCycle = menstrualCycleManager.getCurrentMenstrualPhase();
+        const mappedPhase = getCurrentMenstrualPhase();
+        
+        // moment.js를 사용한 날짜 형식 변환
+        const today = moment.tz('Asia/Tokyo');
+        const nextPeriodMoment = moment(today).add(masterCycle.daysUntilNext, 'days');
+        
+        return {
+            currentPhase: mappedPhase.phase,
+            description: mappedPhase.description,
+            cycleDay: masterCycle.cycleDay,
+            daysUntilPeriod: masterCycle.daysUntilNext,
+            nextPeriodDate: nextPeriodMoment.format('MM월 DD일'),
+            isPreMenstrual: masterCycle.daysUntilNext <= 3,
+            isPeriodActive: masterCycle.isPeriodActive
+        };
+        
+    } catch (error) {
+        console.error('🩸 [moodManager] 생리주기 정보 조회 실패:', error);
+        return {
+            currentPhase: 'follicular',
+            description: '정상',
+            cycleDay: 1,
+            daysUntilPeriod: 27,
+            nextPeriodDate: '다음달',
+            isPreMenstrual: false,
+            isPeriodActive: false
+        };
+    }
 }
 
 module.exports = {
@@ -310,6 +354,6 @@ module.exports = {
     getMoodEmoji,
     setMood,
     setPeriodActive,
-    getCurrentMenstrualPhase,  // 추가
-    getMenstrualInfo,          // 추가
+    getCurrentMenstrualPhase,  // 🩸 마스터 연동 완료
+    getMenstrualInfo,          // 🩸 마스터 연동 완료
 };
