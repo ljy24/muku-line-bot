@@ -3,9 +3,20 @@
 // ✅ 홈페이지, 헬스체크, 상태 조회 등 웹 응답 처리
 // 🌐 Express 라우트 핸들러들 분리
 // 📊 실시간 시스템 상태 표시
+// 📼 ChatGPT 스타일 간단 Memory Tape 연동
 // ============================================================================
 
 const { middleware } = require('@line/bot-sdk');
+
+// 📼 ChatGPT 스타일 Memory Tape 임포트
+let logToMemoryTape = null;
+try {
+    const memoryTape = require('./muku-memory-tape');
+    logToMemoryTape = memoryTape.logToMemoryTape;
+    console.log('📼 [Memory Tape] ChatGPT 스타일 연결 완료!');
+} catch (error) {
+    console.log('📼 [Memory Tape] 비활성화 (무쿠 정상 작동)');
+}
 
 // ================== 🎨 색상 정의 ==================
 const colors = {
@@ -14,6 +25,7 @@ const colors = {
     pms: '\x1b[1m\x1b[91m', // 굵은 빨간색 (PMS)
     system: '\x1b[92m',     // 연초록색 (시스템)
     error: '\x1b[91m',      // 빨간색 (에러)
+    tape: '\x1b[93m',       // 노란색 (Memory Tape)
     reset: '\x1b[0m'        // 색상 리셋
 };
 
@@ -51,6 +63,17 @@ async function sendReply(replyToken, botResponse, client, enhancedLogging) {
                         }
                     ]);
                     
+                    // 📼 ChatGPT 스타일 Memory Tape 기록 - 이미지 전송
+                    if (logToMemoryTape) {
+                        logToMemoryTape({
+                            type: 'reply-photo',
+                            message: `사진 전송: ${caption}`,
+                            image: imageUrl,
+                            emotion: '애정',
+                            source: 'sendReply-image'
+                        });
+                    }
+                    
                     console.log(`${colors.yejin}📸 예진이: 이미지 + 텍스트 전송 성공${colors.reset}`);
                     
                     // ⭐️ enhancedLogging v3.0으로 응답 로그 ⭐️
@@ -74,6 +97,17 @@ async function sendReply(replyToken, botResponse, client, enhancedLogging) {
             console.log(`🔄 [LINE전송] 메시지 타입: ${replyMessage.type}`);
             await client.replyMessage(replyToken, replyMessage);
             
+            // 📼 ChatGPT 스타일 Memory Tape 기록 - 텍스트 메시지
+            if (logToMemoryTape) {
+                const messageText = replyMessage.text || replyMessage.comment || '메시지 전송';
+                logToMemoryTape({
+                    type: 'reply-text',
+                    message: messageText,
+                    emotion: messageText.includes('ㅠㅠ') ? '슬픔' : messageText.includes('💕') ? '사랑' : '일반',
+                    source: 'sendReply-text'
+                });
+            }
+            
             if (replyMessage.type === 'text') {
                 // ⭐️ enhancedLogging v3.0으로 응답 로그 ⭐️
                 if (enhancedLogging && enhancedLogging.logConversation) {
@@ -93,6 +127,16 @@ async function sendReply(replyToken, botResponse, client, enhancedLogging) {
                 type: 'text',
                 text: '아저씨... 뭔가 문제가 생겼어. 다시 시도해볼래? ㅠㅠ'
             });
+            
+            // 📼 ChatGPT 스타일 Memory Tape 기록 - 에러 메시지
+            if (logToMemoryTape) {
+                logToMemoryTape({
+                    type: 'error-reply',
+                    message: '아저씨... 뭔가 문제가 생겼어. 다시 시도해볼래? ㅠㅠ',
+                    emotion: '걱정',
+                    source: 'sendReply-error'
+                });
+            }
             
             // ⭐️ enhancedLogging v3.0으로 에러 로그 ⭐️
             if (enhancedLogging && enhancedLogging.logConversation) {
@@ -163,7 +207,8 @@ function createStatusHandler(statusReporter, modules, getCurrentModelSetting, fa
             yejin: statusReporter.getYejinStatus(modules),
             sulky: statusReporter.getSulkyStatus(modules),
             weather: statusReporter.getWeatherStatus(modules),
-            faceApi: faceApiStatus && faceApiStatus.initialized ? 'ready' : 'loading'
+            faceApi: faceApiStatus && faceApiStatus.initialized ? 'ready' : 'loading',
+            memoryTape: logToMemoryTape ? 'active' : 'disabled'
         };
         
         res.json({
@@ -195,10 +240,22 @@ function createMainEventHandler(eventProcessor, modules, client, faceMatcher, lo
             switch (processedEvent.type) {
                 case 'version_response':
                     // ✅ 즉시 응답 후 종료
-                    return client.replyMessage(event.replyToken, {
+                    const versionReply = await client.replyMessage(event.replyToken, {
                         type: 'text',
                         text: processedEvent.response
                     });
+                    
+                    // 📼 ChatGPT 스타일 Memory Tape 기록 - 버전 응답
+                    if (logToMemoryTape) {
+                        logToMemoryTape({
+                            type: 'version-response',
+                            message: processedEvent.response,
+                            emotion: '정보전달',
+                            source: 'version-system'
+                        });
+                    }
+                    
+                    return versionReply;
 
                 case 'night_response':
                 case 'birthday_response':
@@ -215,6 +272,9 @@ function createMainEventHandler(eventProcessor, modules, client, faceMatcher, lo
                 case 'other_response':
                 case 'fallback_response':
                 case 'error_response':
+                case 'empty_message_response':
+                case 'ultimate_safe_response':
+                case 'emergency_response':
                     return sendReply(event.replyToken, processedEvent.response, client, enhancedLogging);
 
                 default:
@@ -271,6 +331,12 @@ function setupRoutes(app, config, modules, statusReporter, eventProcessor, clien
     console.log(`${colors.system}    - GET /: 홈페이지 (상태 확인)${colors.reset}`);
     console.log(`${colors.system}    - GET /health: 헬스체크 (JSON)${colors.reset}`);
     console.log(`${colors.system}    - GET /status: 상태 리포트 출력${colors.reset}`);
+    
+    if (logToMemoryTape) {
+        console.log(`${colors.tape}📼 [Memory Tape] ChatGPT 스타일 자동 기록 활성화!${colors.reset}`);
+    } else {
+        console.log(`${colors.tape}📼 [Memory Tape] 비활성화 (무쿠 정상 작동)${colors.reset}`);
+    }
 }
 
 // ================== 📤 모듈 내보내기 ==================
