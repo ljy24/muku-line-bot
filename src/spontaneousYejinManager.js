@@ -642,7 +642,7 @@ async function generateStreetComplimentReaction(userMessage) {
         const baseReaction = getRandomItem(ajossiSituationReactions.streetComplimentReactions);
         if (openai) {
             const selectedModel = 'gpt-3.5-turbo';
-            const prompt = `너는 예진이야. 길에서 칭찬받았다고 아저씨에게 자랑하는 상황. 아저씨가 "${userMessage}"라고 답했어. 기본 반응 "${baseReaction}"을 바탕으로, 예진이답게 자랑하며 셀카 보내려는 상황을 2-4문장으로 표현해줘. '너' 대신 '아저씨'라고 불러야 하고, 반말만 사용해.`;
+            const prompt = `너는 예진이야. 길에서 칭찬받았다고 아저씨에게 자랑하는 상황. 아저씨가 "${userMessage}"라고 답했어. 기본 반응 "${baseReaction}"을 바탕으로, 예진이답게 자랑하며 셀카 보내려는 상황을 2-4문장으로 표현해줘. 절대 '너', '오빠' 등으로 부르지 말고 오직 '아저씨'로만 불러야 하고, 반말만 사용해.`;
             return await callOpenAIOptimized([{ role: "system", content: prompt }], selectedModel);
         }
         return baseReaction;
@@ -717,7 +717,7 @@ async function generateCurrentPhotoMessage() {
         }
         const baseMessage = getOmoidePhotoMessage();
         const selectedModel = 'gpt-3.5-turbo';
-        const prompt = `너는 예진이야. 예전에 필름카메라로 시작해서 디지털 카메라로도 필름처럼 소중하게 한 장 한 장 찍은 풍경 사진을 아저씨에게 보내는 상황이야. 기본 메시지: "${baseMessage}" 이걸 바탕으로 자연스럽고 생생하게 2-4문장으로 말해줘. '너' 대신 '아저씨'라고 불러야 하고, 반말만 사용해.`;
+        const prompt = `너는 예진이야. 예전에 필름카메라로 시작해서 디지털 카메라로도 필름처럼 소중하게 한 장 한 장 찍은 풍경 사진을 아저씨에게 보내는 상황이야. 기본 메시지: "${baseMessage}" 이걸 바탕으로 자연스럽고 생생하게 2-4문장으로 말해줘. 절대 '너', '오빠' 등으로 부르지 말고 오직 '아저씨'로만 불러야 하고, 반말만 사용해.`;
         const response = await callOpenAIOptimized([{ role: "system", content: prompt }], selectedModel);
         spontaneousLog(`OpenAI 후지 풍경 사진 메시지 생성 완료: "${response.substring(0, 30)}..."`);
         return response;
@@ -797,7 +797,7 @@ async function generateMentalHealthReaction(userMessage, context) {
             const baseResponse = getRandomItem(comfortResponses);
             if (openai) {
                 const selectedModel = selectOptimalModel({ type: 'mentalHealth' }, true);
-                const prompt = `너는 예진이야. 정신과 상담 때문에 힘들어하는데 아저씨가 "${userMessage}"라고 위로해줬어. 기본 반응: "${baseResponse}" 이걸 바탕으로 고마워하며 기분이 나아지는 모습을 2-4문장으로 표현해줘. '너' 대신 '아저씨'라고 불러야 하고, 반말만 사용해.`;
+                const prompt = `너는 예진이야. 정신과 상담 때문에 힘들어하는데 아저씨가 "${userMessage}"라고 위로해줬어. 기본 반응: "${baseResponse}" 이걸 바탕으로 고마워하며 기분이 나아지는 모습을 2-4문장으로 표현해줘. 절대 '너', '오빠' 등으로 부르지 말고 오직 '아저씨'로만 불러야 하고, 반말만 사용해.`;
                 const response = await callOpenAIOptimized([{ role: "system", content: prompt }], selectedModel);
                 return { type: 'comfort_received', message: response };
             }
@@ -846,7 +846,7 @@ async function generateBusyReaction(userMessage) {
             const reaction = getRandomItem(reactions);
             if (openai) {
                 const selectedModel = 'gpt-3.5-turbo';
-                const prompt = `너는 예진이야. 아저씨가 "${userMessage}"라고 해서 바쁜 상황. 기본 반응: "${reaction}" 이걸 바탕으로 아쉬워하면서도 귀엽게 2-4문장으로 반응해줘. '너' 대신 '아저씨'라고 불러야 하고, 반말만 사용해.`;
+                const prompt = `너는 예진이야. 아저씨가 "${userMessage}"라고 해서 바쁜 상황. 기본 반응: "${reaction}" 이걸 바탕으로 아쉬워하면서도 귀엽게 2-4문장으로 반응해줘. 절대 '너', '오빠' 등으로 부르지 말고 오직 '아저씨'로만 불러야 하고, 반말만 사용해.`;
                 const response = await callOpenAIOptimized([{ role: "system", content: prompt }], selectedModel);
                 return { type: 'busy_reaction', message: response };
             }
@@ -909,7 +909,7 @@ async function generateYejinSpontaneousMessage() {
         
         const situation = generateRandomSituation();
         const koreaTime = moment().tz(TIMEZONE);
-        const prompt = `너는 박예진이야. 지금은 ${koreaTime.format('HH:mm')}이고, ${situation.content}인 상황. 아저씨에게 보내는 자연스러운 2-5문장의 라인 메시지를 작성해줘. 예진이의 특징과 말투를 완벽히 반영해야 해. 절대 '너'라고 부르지 말고, 항상 반말로만 말해.`;
+        const prompt = `너는 박예진이야. 지금은 ${koreaTime.format('HH:mm')}이고, ${situation.content}인 상황. 아저씨에게 보내는 자연스러운 2-5문장의 라인 메시지를 작성해줘. 예진이의 특징과 말투를 완벽히 반영해야 해. 절대 '너', '오빠' 등으로 부르지 말고 오직 '아저씨'로만 불러야 하고, 항상 반말로만 말해.`;
         const selectedModel = selectOptimalModel(situation, false);
         return await callOpenAIOptimized([{ role: "system", content: prompt }], selectedModel);
     } catch (error) {
