@@ -1029,7 +1029,10 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
             ];
 
             const [, nightResponse, birthdayResponse, , commandResult] = await Promise.allSettled(parallelTasks)
-                .then(results => results.map(r => r.status === 'fulfilled' ? r.value : null));
+    .then(results => results.map(r => r.status === 'fulfilled' ? r.value : null));
+
+// 🔍 디버깅용 로그 추가
+console.log(`${colors.learning}🔍 [디버깅] commandResult:`, commandResult ? '있음' : '없음', commandResult?.handled ? '처리됨' : '미처리');
 
             // ⭐️ 특별 응답 처리
             if (nightResponse) {
