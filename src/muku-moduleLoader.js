@@ -14,6 +14,7 @@
 //    - ❌ triggerConflict → ✅ processMukuMessageForConflict
 //    - ❌ resolveConflict → ✅ recordMukuReconciliation
 // 🎓 실시간 학습 시스템 로딩 오류 처리 강화 (NEW!)
+// 📷 spontaneousPhoto 모듈명 불일치 문제 해결 (NEW!)
 // ============================================================================
 
 const path = require('path');
@@ -353,6 +354,7 @@ async function loadAllModules() {
         try {
             modules.spontaneousPhotoManager = require('./spontaneousPhotoManager');
             console.log(`${colors.system}✅ [13/27] spontaneousPhotoManager: 자발적 사진 전송${colors.reset}`);
+            modules.spontaneousPhoto = modules.spontaneousPhotoManager; // 📷 모듈명 불일치 해결!
         } catch (error) {
             console.log(`${colors.error}❌ [13/27] spontaneousPhotoManager 로드 실패: ${error.message}${colors.reset}`);
             modules.spontaneousPhotoManager = null;
@@ -550,6 +552,13 @@ async function loadAllModules() {
             console.log(`${colors.diary}🎉🎉🎉 [일기장 성공!] diarySystem 모듈이 성공적으로 로드되었습니다! (💾 디스크 마운트 완전 연동) 🎉🎉🎉${colors.reset}`);
         } else {
             console.log(`${colors.error}💥💥💥 [일기장 실패!] diarySystem 모듈 로드 실패 - null 상태 💥💥💥${colors.reset}`);
+        }
+
+        // 📷 사진 전송 시스템 최종 확인 📷
+        if (modules.spontaneousPhoto && modules.spontaneousPhotoManager) {
+            console.log(`${colors.system}🎉📷🎉 [사진전송 성공!] spontaneousPhoto 모듈명 불일치 문제 해결 완료! 🎉📷🎉${colors.reset}`);
+        } else {
+            console.log(`${colors.error}❌📷❌ [사진전송 실패!] spontaneousPhoto 모듈 로드 실패 ❌📷❌${colors.reset}`);
         }
 
         // 💾 디스크 마운트 최종 상태 확인
