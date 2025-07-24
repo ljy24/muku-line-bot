@@ -35,7 +35,7 @@ let photoScheduleState = {
     dailyStats: {
         sentToday: 0,
         totalDaily: DAILY_PHOTO_TARGET,
-        lastResetDate: null,
+        lastResetDate: moment().tz(TIMEZONE).format('YYYY-MM-DD'),
     },
     
     // 스케줄 관리
@@ -72,26 +72,45 @@ function photoLog(message) {
 function savePhotoState() {
     try {
         const stateData = {
-            dailyStats: photoScheduleState.dailyStats,
-            sendHistory: photoScheduleState.sendHistory,
+            dailyStats: photoScheduleState.dailyStats || {
+                sentToday: 0,
+                totalDaily: DAILY_PHOTO_TARGET,
+                lastResetDate: moment().tz(TIMEZONE).format('YYYY-MM-DD')
+            },
+            sendHistory: photoScheduleState.sendHistory || {
+                sentPhotos: [],
+                lastSentTime: null
+            },
             schedule: {
-                isSystemActive: photoScheduleState.schedule.isSystemActive,
-                nextScheduledTime: photoScheduleState.schedule.nextScheduledTime,
+                isSystemActive: photoScheduleState.schedule?.isSystemActive || false,
+                nextScheduledTime: photoScheduleState.schedule?.nextScheduledTime || null,
                 // 🚨 FIX: 스케줄 저장 시 moment 객체를 JSON 호환 형태로 변환
-                dailySchedule: photoScheduleState.schedule.dailySchedule.map(item => ({
-                    index: item.index,
-                    time: item.time.valueOf(), // timestamp로 저장
-                    sent: item.sent
-                })),
+                dailySchedule: (photoScheduleState.schedule?.dailySchedule || []).map(item => {
+                    if (!item || typeof item !== 'object') return null;
+                    
+                    try {
+                        const timeValue = moment.isMoment(item.time) ? item.time.valueOf() : moment(item.time).valueOf();
+                        return {
+                            index: item.index || 0,
+                            time: timeValue, // timestamp로 저장
+                            sent: !!item.sent
+                        };
+                    } catch (error) {
+                        photoLog(`❌ 스케줄 저장 실패 (인덱스 ${item.index}): ${error.message}`);
+                        return null;
+                    }
+                }).filter(item => item !== null),
                 activeJobs: [] // 작업은 저장하지 않음 (재시작 시 재생성)
             },
             lastSaved: moment().tz(TIMEZONE).valueOf()
         };
         
         fs.writeFileSync(PHOTO_STATE_FILE, JSON.stringify(stateData, null, 2), 'utf8');
-        photoLog(`💾 사진 상태 저장 완료: ${photoScheduleState.dailyStats.sentToday}/${DAILY_PHOTO_TARGET}건`);
+        photoLog(`💾 사진 상태 저장 완료: ${stateData.dailyStats.sentToday}/${stateData.dailyStats.totalDaily}건`);
+        return true;
     } catch (error) {
         photoLog(`❌ 사진 상태 저장 실패: ${error.message}`);
+        return false;
     }
 }
 
@@ -116,8 +135,15 @@ function loadPhotoState() {
         }
         
         // 상태 복원
-        photoScheduleState.dailyStats = stateData.dailyStats;
-        photoScheduleState.sendHistory = stateData.sendHistory;
+        photoScheduleState.dailyStats = stateData.dailyStats || {
+            sentToday: 0,
+            totalDaily: DAILY_PHOTO_TARGET,
+            lastResetDate: today
+        };
+        photoScheduleState.sendHistory = stateData.sendHistory || {
+            sentPhotos: [],
+            lastSentTime: null
+        };
         
         // 🚨 FIX: 스케줄 복원 시 moment 객체 변환
         if (stateData.schedule && stateData.schedule.dailySchedule) {
@@ -215,23 +241,37 @@ function findNextPhotoToSend() {
     const now = moment().tz(TIMEZONE);
     
     // 오늘 스케줄이 없으면 생성
-    if (photoScheduleState.schedule.dailySchedule.length === 0) {
+    if (!photoScheduleState.schedule?.dailySchedule || photoScheduleState.schedule.dailySchedule.length === 0) {
         photoScheduleState.schedule.dailySchedule = generateDailyPhotoSchedule();
     }
     
     // 날짜가 바뀌었으면 리셋
     const today = now.format('YYYY-MM-DD');
-    if (photoScheduleState.dailyStats.lastResetDate !== today) {
+    if (photoScheduleState.dailyStats?.lastResetDate !== today) {
         resetDailyStats();
+        photoScheduleState.schedule.dailySchedule = generateDailyPhotoSchedule();
+    }
+    
+    // 배열 안전성 확인
+    if (!Array.isArray(photoScheduleState.schedule.dailySchedule)) {
+        photoLog('❌ dailySchedule이 배열이 아님 - 새로 생성');
         photoScheduleState.schedule.dailySchedule = generateDailyPhotoSchedule();
     }
     
     // 🚨 FIX: moment 객체 안전성 보장
     const nextPhoto = photoScheduleState.schedule.dailySchedule.find(item => {
+        if (!item || typeof item !== 'object') return false;
+        
         // moment 객체가 아니면 변환
         if (!moment.isMoment(item.time)) {
-            item.time = moment(item.time).tz(TIMEZONE);
+            try {
+                item.time = moment(item.time).tz(TIMEZONE);
+            } catch (error) {
+                photoLog(`❌ 시간 변환 실패: ${item.time}`);
+                return false;
+            }
         }
+        
         return !item.sent && item.time.isAfter(now);
     });
     
@@ -242,22 +282,44 @@ function findNextPhotoToSend() {
  * 다음 사진 시간 계산 (새로운 균등 분산 방식)
  */
 function calculateNextPhotoTime() {
-    const nextPhoto = findNextPhotoToSend();
-    
-    if (nextPhoto) {
-        photoLog(`🎯 다음 사진 예약: ${nextPhoto.time.format('HH:mm')} (${nextPhoto.index}번째)`);
-        return nextPhoto.time;
+    try {
+        const nextPhoto = findNextPhotoToSend();
+        
+        if (nextPhoto && nextPhoto.time) {
+            // moment 객체 안전성 확인
+            if (!moment.isMoment(nextPhoto.time)) {
+                try {
+                    nextPhoto.time = moment(nextPhoto.time).tz(TIMEZONE);
+                } catch (error) {
+                    photoLog(`❌ calculateNextPhotoTime: 시간 변환 실패: ${error.message}`);
+                    return null;
+                }
+            }
+            
+            // 시간 유효성 검증
+            if (!nextPhoto.time.isValid()) {
+                photoLog(`❌ calculateNextPhotoTime: 유효하지 않은 시간`);
+                return null;
+            }
+            
+            photoLog(`🎯 다음 사진 예약: ${nextPhoto.time.format('HH:mm')} (${nextPhoto.index}번째)`);
+            return nextPhoto.time;
+        }
+        
+        // 오늘 할당량 모두 소진되었으면 내일 첫 스케줄로
+        const tomorrowFirst = moment().tz(TIMEZONE)
+            .add(1, 'day')
+            .hour(PHOTO_START_HOUR)
+            .minute(0)
+            .second(0);
+        
+        photoLog(`📊 오늘 할당량(${DAILY_PHOTO_TARGET}건) 완료 - 내일 ${tomorrowFirst.format('HH:mm')}에 재시작`);
+        return tomorrowFirst;
+        
+    } catch (error) {
+        photoLog(`❌ calculateNextPhotoTime 실패: ${error.message}`);
+        return null;
     }
-    
-    // 오늘 할당량 모두 소진되었으면 내일 첫 스케줄로
-    const tomorrowFirst = moment().tz(TIMEZONE)
-        .add(1, 'day')
-        .hour(PHOTO_START_HOUR)
-        .minute(0)
-        .second(0);
-    
-    photoLog(`📊 오늘 할당량(${DAILY_PHOTO_TARGET}건) 완료 - 내일 ${tomorrowFirst.format('HH:mm')}에 재시작`);
-    return tomorrowFirst;
 }
 
 // ================== 📷 사진 전송 함수들 ==================
@@ -377,7 +439,23 @@ function recordPhotoSent(photoType, imageUrl, message) {
     const now = moment().tz(TIMEZONE);
     
     // 일일 통계 업데이트
+    if (!photoScheduleState.dailyStats) {
+        photoScheduleState.dailyStats = {
+            sentToday: 0,
+            totalDaily: DAILY_PHOTO_TARGET,
+            lastResetDate: now.format('YYYY-MM-DD')
+        };
+    }
+    
     photoScheduleState.dailyStats.sentToday++;
+    
+    if (!photoScheduleState.sendHistory) {
+        photoScheduleState.sendHistory = {
+            sentPhotos: [],
+            lastSentTime: null
+        };
+    }
+    
     photoScheduleState.sendHistory.lastSentTime = now.valueOf();
     
     // 전송 이력 기록
@@ -402,7 +480,14 @@ function recordPhotoSent(photoType, imageUrl, message) {
 
 function findCurrentScheduledPhoto() {
     const now = moment().tz(TIMEZONE);
+    
+    if (!photoScheduleState.schedule?.dailySchedule || !Array.isArray(photoScheduleState.schedule.dailySchedule)) {
+        return null;
+    }
+    
     return photoScheduleState.schedule.dailySchedule.find(item => {
+        if (!item || typeof item !== 'object') return false;
+        
         // 🚨 FIX: moment 객체 안전성 보장
         if (!moment.isMoment(item.time)) {
             item.time = moment(item.time).tz(TIMEZONE);
@@ -417,33 +502,62 @@ function findCurrentScheduledPhoto() {
 function scheduleNextPhoto() {
     try {
         // 오늘 할당량 체크
-        if (photoScheduleState.dailyStats.sentToday >= DAILY_PHOTO_TARGET) {
+        if ((photoScheduleState.dailyStats?.sentToday || 0) >= DAILY_PHOTO_TARGET) {
             photoLog('📊 오늘 목표 달성 - 스케줄링 중단');
-            photoScheduleState.schedule.nextScheduledTime = null;
+            if (photoScheduleState.schedule) {
+                photoScheduleState.schedule.nextScheduledTime = null;
+            }
             // 💾 상태 저장
             savePhotoState();
             return;
         }
         
         const nextTime = calculateNextPhotoTime();
-        if (!nextTime) return;
-        
-        // 🚨 FIX: moment 객체 안전성 보장
-        if (!moment.isMoment(nextTime)) {
-            photoLog(`❌ nextTime이 moment 객체가 아님: ${typeof nextTime}`);
+        if (!nextTime || !moment.isMoment(nextTime)) {
+            photoLog(`❌ nextTime이 유효하지 않음: ${nextTime}`);
             return;
+        }
+        
+        // 시간 유효성 검증
+        const now = moment().tz(TIMEZONE);
+        if (nextTime.isBefore(now)) {
+            photoLog(`❌ 다음 시간이 과거임: ${nextTime.format('YYYY-MM-DD HH:mm:ss')}`);
+            return;
+        }
+        
+        if (!photoScheduleState.schedule) {
+            photoScheduleState.schedule = {
+                isSystemActive: false,
+                nextScheduledTime: null,
+                activeJobs: [],
+                dailySchedule: []
+            };
         }
         
         photoScheduleState.schedule.nextScheduledTime = nextTime.valueOf();
         
         // 기존 스케줄 취소
-        photoScheduleState.schedule.activeJobs.forEach(job => {
-            if (job) job.cancel();
-        });
+        if (Array.isArray(photoScheduleState.schedule.activeJobs)) {
+            photoScheduleState.schedule.activeJobs.forEach(job => {
+                if (job && typeof job.cancel === 'function') {
+                    job.cancel();
+                }
+            });
+        }
         photoScheduleState.schedule.activeJobs = [];
         
-        // 새 스케줄 등록
-        const cronExpression = `${nextTime.minute()} ${nextTime.hour()} ${nextTime.date()} ${nextTime.month() + 1} *`;
+        // 크론 표현식 검증
+        const minute = nextTime.minute();
+        const hour = nextTime.hour();
+        const date = nextTime.date();
+        const month = nextTime.month() + 1;
+        
+        if (minute < 0 || minute > 59 || hour < 0 || hour > 23 || date < 1 || date > 31 || month < 1 || month > 12) {
+            photoLog(`❌ 잘못된 크론 시간: ${hour}:${minute} ${date}/${month}`);
+            return;
+        }
+        
+        const cronExpression = `${minute} ${hour} ${date} ${month} *`;
         
         photoLog(`🔧 [디버그] 다음 스케줄 크론: ${cronExpression}`);
         photoLog(`🔧 [디버그] 다음 스케줄 시간: ${nextTime.format('YYYY-MM-DD HH:mm:ss')}`);
@@ -476,8 +590,18 @@ function startPhotoScheduling() {
     try {
         photoLog('🚀 균등 분산 사진 스케줄링 시작');
         
+        // 스케줄 객체 안전성 확인
+        if (!photoScheduleState.schedule) {
+            photoScheduleState.schedule = {
+                isSystemActive: false,
+                nextScheduledTime: null,
+                activeJobs: [],
+                dailySchedule: []
+            };
+        }
+        
         // 일일 스케줄 생성 (기존에 없을 때만)
-        if (photoScheduleState.schedule.dailySchedule.length === 0) {
+        if (!Array.isArray(photoScheduleState.schedule.dailySchedule) || photoScheduleState.schedule.dailySchedule.length === 0) {
             photoScheduleState.schedule.dailySchedule = generateDailyPhotoSchedule();
         }
         
@@ -485,15 +609,38 @@ function startPhotoScheduling() {
         
         // 첫 번째 사진 스케줄링
         const nextPhoto = findNextPhotoToSend();
-        if (nextPhoto) {
+        if (nextPhoto && nextPhoto.time) {
             // 🚨 FIX: moment 객체 안전성 보장
             if (!moment.isMoment(nextPhoto.time)) {
-                nextPhoto.time = moment(nextPhoto.time).tz(TIMEZONE);
+                try {
+                    nextPhoto.time = moment(nextPhoto.time).tz(TIMEZONE);
+                } catch (error) {
+                    photoLog(`❌ 시간 변환 실패: ${error.message}`);
+                    return false;
+                }
+            }
+            
+            // 시간 유효성 검증
+            const now = moment().tz(TIMEZONE);
+            if (nextPhoto.time.isBefore(now)) {
+                photoLog(`❌ 첫 번째 사진 시간이 과거임: ${nextPhoto.time.format('YYYY-MM-DD HH:mm:ss')}`);
+                return false;
             }
             
             photoScheduleState.schedule.nextScheduledTime = nextPhoto.time.valueOf();
             
-            const cronExpression = `${nextPhoto.time.minute()} ${nextPhoto.time.hour()} ${nextPhoto.time.date()} ${nextPhoto.time.month() + 1} *`;
+            // 크론 표현식 검증
+            const minute = nextPhoto.time.minute();
+            const hour = nextPhoto.time.hour();
+            const date = nextPhoto.time.date();
+            const month = nextPhoto.time.month() + 1;
+            
+            if (minute < 0 || minute > 59 || hour < 0 || hour > 23) {
+                photoLog(`❌ 잘못된 첫 번째 사진 시간: ${hour}:${minute}`);
+                return false;
+            }
+            
+            const cronExpression = `${minute} ${hour} ${date} ${month} *`;
             
             photoLog(`🔧 [디버그] 크론 표현식: ${cronExpression}`);
             photoLog(`🔧 [디버그] 스케줄 시간: ${nextPhoto.time.format('YYYY-MM-DD HH:mm:ss')}`);
@@ -504,6 +651,9 @@ function startPhotoScheduling() {
             });
             
             if (job) {
+                if (!Array.isArray(photoScheduleState.schedule.activeJobs)) {
+                    photoScheduleState.schedule.activeJobs = [];
+                }
                 photoScheduleState.schedule.activeJobs.push(job);
                 photoLog(`📅 첫 번째 사진 예약: ${nextPhoto.time.format('HH:mm')} (${nextPhoto.index}번째, ${formatTimeUntil(nextPhoto.time)})`);
             } else {
@@ -527,14 +677,30 @@ function startPhotoScheduling() {
 function resetDailyStats() {
     const today = moment().tz(TIMEZONE).format('YYYY-MM-DD');
     
+    // 안전한 초기화
     photoScheduleState.dailyStats = {
         sentToday: 0,
         totalDaily: DAILY_PHOTO_TARGET,
         lastResetDate: today,
     };
     
+    if (!photoScheduleState.sendHistory) {
+        photoScheduleState.sendHistory = {};
+    }
     photoScheduleState.sendHistory.sentPhotos = [];
-    photoScheduleState.schedule.dailySchedule = [];
+    photoScheduleState.sendHistory.lastSentTime = null;
+    
+    if (!photoScheduleState.schedule) {
+        photoScheduleState.schedule = {
+            isSystemActive: false,
+            nextScheduledTime: null,
+            activeJobs: [],
+            dailySchedule: []
+        };
+    } else {
+        photoScheduleState.schedule.dailySchedule = [];
+        // activeJobs는 유지 (시스템이 활성화되어 있을 수 있음)
+    }
     
     photoLog(`🌅 일일 통계 리셋 완료: ${today}`);
     
@@ -544,17 +710,36 @@ function resetDailyStats() {
 
 // ================== 🕐 시간 유틸리티 함수들 ==================
 function formatTimeUntil(targetTime) {
-    const now = moment().tz(TIMEZONE);
-    const duration = moment.duration(targetTime.diff(now));
-    
-    if (duration.asMinutes() < 60) {
-        return `${Math.ceil(duration.asMinutes())}분 후`;
-    } else if (duration.asHours() < 24) {
-        const hours = Math.floor(duration.asHours());
-        const minutes = Math.ceil(duration.asMinutes() % 60);
-        return `${hours}시간 ${minutes}분 후`;
-    } else {
-        return `${Math.ceil(duration.asDays())}일 후`;
+    try {
+        if (!targetTime || !moment.isMoment(targetTime)) {
+            if (targetTime) {
+                targetTime = moment(targetTime).tz(TIMEZONE);
+            } else {
+                return '시간 불명';
+            }
+        }
+        
+        if (!targetTime.isValid()) {
+            return '유효하지 않은 시간';
+        }
+        
+        const now = moment().tz(TIMEZONE);
+        const duration = moment.duration(targetTime.diff(now));
+        
+        if (duration.asMinutes() < 1) {
+            return '곧';
+        } else if (duration.asMinutes() < 60) {
+            return `${Math.ceil(duration.asMinutes())}분 후`;
+        } else if (duration.asHours() < 24) {
+            const hours = Math.floor(duration.asHours());
+            const minutes = Math.ceil(duration.asMinutes() % 60);
+            return `${hours}시간 ${minutes}분 후`;
+        } else {
+            return `${Math.ceil(duration.asDays())}일 후`;
+        }
+    } catch (error) {
+        photoLog(`❌ formatTimeUntil 오류: ${error.message}`);
+        return '시간 계산 오류';
     }
 }
 
@@ -566,12 +751,12 @@ function getPhotoStatus() {
         : null;
     
     return {
-        sent: photoScheduleState.dailyStats.sentToday,
-        total: photoScheduleState.dailyStats.totalDaily,
+        sent: photoScheduleState.dailyStats?.sentToday || 0,
+        total: photoScheduleState.dailyStats?.totalDaily || DAILY_PHOTO_TARGET,
         nextTime: nextTime ? nextTime.format('HH:mm') : '예약없음',
         nextTimeFormatted: nextTime ? formatTimeUntil(nextTime) : '예약없음',
-        isActive: photoScheduleState.schedule.isSystemActive,
-        todaySchedule: photoScheduleState.schedule.dailySchedule.map(item => {
+        isActive: photoScheduleState.schedule?.isSystemActive || false,
+        todaySchedule: (photoScheduleState.schedule?.dailySchedule || []).map(item => {
             // 🚨 FIX: moment 객체 안전성 보장
             const timeObj = moment.isMoment(item.time) ? item.time : moment(item.time).tz(TIMEZONE);
             return {
@@ -589,13 +774,13 @@ function getDetailedPhotoStats() {
     
     return {
         현재시간: now.format('HH:mm'),
-        전송상태: `${status.sent}/${status.total}건 완료`,
-        다음전송: status.nextTime,
-        남은시간: status.nextTimeFormatted,
+        전송상태: `${status.sent || 0}/${status.total || DAILY_PHOTO_TARGET}건 완료`,
+        다음전송: status.nextTime || '예약없음',
+        남은시간: status.nextTimeFormatted || '예약없음',
         시스템상태: status.isActive ? '활성화' : '비활성화',
-        오늘스케줄: status.todaySchedule,
-        전송이력: photoScheduleState.sendHistory.sentPhotos.slice(-5),
-        오늘전송사진: photoScheduleState.sendHistory.sentPhotos,
+        오늘스케줄: status.todaySchedule || [],
+        전송이력: (photoScheduleState.sendHistory?.sentPhotos || []).slice(-5),
+        오늘전송사진: photoScheduleState.sendHistory?.sentPhotos || [],
     };
 }
 
@@ -603,10 +788,10 @@ function getPhotoStatusSummary() {
     const status = getPhotoStatus();
     
     return {
-        sent: status.sent,
-        total: status.total,
-        nextPhoto: status.nextTime,
-        isActive: status.isActive
+        sent: status.sent || 0,
+        total: status.total || DAILY_PHOTO_TARGET,
+        nextPhoto: status.nextTime || '예약없음',
+        isActive: status.isActive || false
     };
 }
 
@@ -669,7 +854,11 @@ function startSpontaneousPhotoScheduler(client, targetUserId, getLastUserMessage
         if (!stateRestored) {
             // 복원 실패 시 새로 시작
             const today = moment().tz(TIMEZONE).format('YYYY-MM-DD');
-            photoScheduleState.dailyStats.lastResetDate = today;
+            photoScheduleState.dailyStats = {
+                sentToday: 0,
+                totalDaily: DAILY_PHOTO_TARGET,
+                lastResetDate: today
+            };
             resetDailyStats();
         }
         
@@ -715,14 +904,24 @@ function stopSpontaneousPhotoScheduler() {
         photoLog('🛑 자발적 사진 전송 시스템 중지');
         
         // 모든 활성 작업 취소
-        photoScheduleState.schedule.activeJobs.forEach(job => {
-            if (job) {
-                job.cancel();
-                photoLog('📅 스케줄 작업 취소됨');
-            }
-        });
+        if (photoScheduleState.schedule && Array.isArray(photoScheduleState.schedule.activeJobs)) {
+            photoScheduleState.schedule.activeJobs.forEach((job, index) => {
+                if (job && typeof job.cancel === 'function') {
+                    try {
+                        job.cancel();
+                        photoLog(`📅 스케줄 작업 ${index + 1} 취소됨`);
+                    } catch (error) {
+                        photoLog(`❌ 스케줄 작업 ${index + 1} 취소 실패: ${error.message}`);
+                    }
+                }
+            });
+        }
         
-        // 상태 초기화
+        // 상태 안전 초기화
+        if (!photoScheduleState.schedule) {
+            photoScheduleState.schedule = {};
+        }
+        
         photoScheduleState.schedule.activeJobs = [];
         photoScheduleState.schedule.isSystemActive = false;
         photoScheduleState.schedule.nextScheduledTime = null;
@@ -744,7 +943,21 @@ async function forceSendPhoto() {
 // ================== 🔧 유틸리티 함수들 ==================
 function getInternalState() {
     return {
-        ...photoScheduleState,
+        dailyStats: photoScheduleState.dailyStats || {
+            sentToday: 0,
+            totalDaily: DAILY_PHOTO_TARGET,
+            lastResetDate: moment().tz(TIMEZONE).format('YYYY-MM-DD')
+        },
+        schedule: photoScheduleState.schedule || {
+            isSystemActive: false,
+            nextScheduledTime: null,
+            activeJobs: [],
+            dailySchedule: []
+        },
+        sendHistory: photoScheduleState.sendHistory || {
+            sentPhotos: [],
+            lastSentTime: null
+        },
         globalClient: !!globalClient,
         globalUserId: globalUserId,
         timezone: TIMEZONE
@@ -806,7 +1019,23 @@ module.exports = {
     loadPhotoState,
     
     // 📊 통계 관련
-    photoScheduleState: () => ({ ...photoScheduleState }), // 읽기 전용 복사본 제공
+    photoScheduleState: () => ({
+        dailyStats: photoScheduleState.dailyStats || {
+            sentToday: 0,
+            totalDaily: DAILY_PHOTO_TARGET,
+            lastResetDate: moment().tz(TIMEZONE).format('YYYY-MM-DD')
+        },
+        schedule: photoScheduleState.schedule || {
+            isSystemActive: false,
+            nextScheduledTime: null,
+            activeJobs: [],
+            dailySchedule: []
+        },
+        sendHistory: photoScheduleState.sendHistory || {
+            sentPhotos: [],
+            lastSentTime: null
+        }
+    }),
     
     // 로그 함수
     photoLog
