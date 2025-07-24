@@ -1,13 +1,16 @@
 // ============================================================================
-// emotionalContextManager.js - v8.1 FINAL (생리주기 현실화 + 간단명료)
+// emotionalContextManager.js - v8.2 FINAL (중복 제거 + 마스터 연동)
 // 🧠 감정 상태, 💬 말투, ❤️ 애정 표현을 계산하고 관리
-// 🩸 현실적인 28일 생리주기 직접 계산 (23일차 PMS로 수정)
+// 🩸 생리주기는 menstrualCycleManager에서만 가져옴 (중복 제거)
 // 💬 설명충 해결: 간단명료한 로직으로 수정
-// 🎓 실시간 학습 시스템 연동 추가 (v8.2)
+// 🎓 실시간 학습 시스템 연동 추가
 // ============================================================================
 
 const fs = require('fs');
 const path = require('path');
+
+// 🩸 생리주기 마스터에서 정보 가져오기 (Single Source of Truth)
+const menstrualCycleManager = require('./menstrualCycleManager');
 
 // 감정 데이터 파일 경로
 const EMOTIONAL_DATA_FILE = path.join(__dirname, '..', 'data', 'emotional_context.json');
@@ -23,61 +26,6 @@ const emotionKoreanMap = {
 
 function translateEmotionToKorean(emotion) {
     return emotionKoreanMap[emotion] || emotion;
-}
-
-// ==================== 🩸 현실적인 28일 생리주기 계산 ====================
-function calculateMenstrualCycle() {
-    // 🩸 마지막 생리 시작일 (예시: 2024년 12월 1일)
-    const lastPeriodDate = new Date('2025-07-24');
-    const currentDate = new Date();
-    
-    // 현재 몇 일차인지 계산
-    const daysSinceLastPeriod = Math.floor((currentDate - lastPeriodDate) / (1000 * 60 * 60 * 24));
-    const cycleDay = (daysSinceLastPeriod % 28) + 1; // 1-28일 순환
-    
-    // 🩸 현실적인 생리주기 단계 계산
-    let phase, description, emotion, isPeriodActive = false;
-    
-    if (cycleDay <= 5) {
-        // 1-5일차: 실제 생리 기간
-        phase = 'menstruation';
-        description = '생리 중';
-        emotion = 'sensitive';
-        isPeriodActive = true;
-    } else if (cycleDay <= 10) {
-        // 6-10일차: 생리 후 회복기
-        phase = 'recovery';
-        description = '생리 후 회복기';
-        emotion = 'calm';
-    } else if (cycleDay <= 18) {
-        // 11-18일차: 정상기 (가장 컨디션 좋음)
-        phase = 'normal';
-        description = '정상기';
-        emotion = 'energetic';
-    } else if (cycleDay <= 25) {
-        // 19-25일차: PMS 시작 ⭐️ 23일차는 여기!
-        phase = 'pms_start';
-        description = 'PMS 시작';
-        emotion = 'sensitive';
-    } else {
-        // 26-28일차: PMS 심화
-        phase = 'pms_severe';
-        description = 'PMS 심화';
-        emotion = 'unstable';
-    }
-    
-    // 다음 생리까지 남은 일수
-    const daysUntilNext = 28 - cycleDay;
-    
-    return {
-        cycleDay,
-        phase,
-        description,
-        emotion,
-        isPeriodActive,
-        daysUntilNext,
-        emotionKorean: translateEmotionToKorean(emotion)
-    };
 }
 
 // ==================== 📊 중앙 감정 상태 관리 ====================
@@ -102,8 +50,8 @@ function initializeEmotionalState() {
             fs.mkdirSync(dataDir, { recursive: true });
         }
         
-        // 🩸 생리주기 기반 초기 감정 설정
-        const cycle = calculateMenstrualCycle();
+        // 🩸 생리주기 기반 초기 감정 설정 (마스터에서 가져오기)
+        const cycle = menstrualCycleManager.getCurrentMenstrualPhase();
         globalEmotionState.currentEmotion = cycle.emotion;
         
         console.log(`💖 [Emotion] 감정 시스템 초기화 완료 - ${cycle.cycleDay}일차 (${cycle.description})`);
@@ -118,8 +66,8 @@ function initializeEmotionalState() {
 
 // ==================== 💧 감정 회복 로직 ====================
 function updateEmotionalRecovery() {
-    // 🩸 생리주기 업데이트
-    const cycle = calculateMenstrualCycle();
+    // 🩸 생리주기 업데이트 (마스터에서 가져오기)
+    const cycle = menstrualCycleManager.getCurrentMenstrualPhase();
     
     // 생리주기 기반 감정이 우선
     if (cycle.emotion !== 'normal') {
@@ -140,7 +88,8 @@ function updateEmotionalRecovery() {
  * 현재 감정 상태 조회 (다른 모듈에서 사용)
  */
 function getCurrentEmotionState() {
-    const cycle = calculateMenstrualCycle();
+    // 🩸 생리주기 정보는 마스터에서만 가져오기
+    const cycle = menstrualCycleManager.getCurrentMenstrualPhase();
     
     return {
         // 기본 감정 정보
@@ -148,7 +97,7 @@ function getCurrentEmotionState() {
         currentEmotionKorean: translateEmotionToKorean(globalEmotionState.currentEmotion),
         emotionIntensity: globalEmotionState.emotionIntensity,
         
-        // 🩸 생리주기 정보
+        // 🩸 생리주기 정보 (마스터에서 가져옴)
         cycleDay: cycle.cycleDay,
         description: cycle.description,
         isPeriodActive: cycle.isPeriodActive,
@@ -258,7 +207,7 @@ function getInternalState() {
     };
 }
 
-// ==================== 🎓 실시간 학습 시스템 연동 함수 (NEW!) ====================
+// ==================== 🎓 실시간 학습 시스템 연동 함수 ====================
 
 /**
  * 🎓 실시간 학습에서 감정 학습 결과 반영 (muku-realTimeLearningSystem.js 연동용)
@@ -358,11 +307,8 @@ module.exports = {
     getSelfieText,
     getInternalState,
     
-    // 🎓 실시간 학습 연동 함수 (NEW!)
+    // 🎓 실시간 학습 연동 함수
     updateEmotionalLearning,
-    
-    // 생리주기 관련
-    calculateMenstrualPhase: calculateMenstrualCycle,
     
     // 한글 번역
     translateEmotionToKorean,
