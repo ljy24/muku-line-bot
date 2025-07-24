@@ -615,27 +615,27 @@ function processVersionCommand(messageText, getVersionResponse) {
 async function processCommand(messageText, userId, client, modules) {
     if (!messageText || !userId || !client) return null;
 
-    // 📼 ChatGPT 스타일 "로그" 명령어 처리 (올바른 경로)
-    if (messageText === '로그' || messageText === '로그 보여줘' || messageText === '일지') {
-        console.log(`${colors.tape}📼 [Memory Tape] "로그" 명령어 감지!${colors.reset}`);
+    // 📼 ChatGPT 스타일 "기록" 명령어 처리 (충돌 방지)
+    if (messageText === '기록' || messageText === '기록 보여줘' || messageText === '일지') {
+        console.log(`${colors.tape}📼 [Memory Tape] "기록" 명령어 감지!${colors.reset}`);
         
         try {
             const { readMemoryTape } = require('./muku-memory-tape');
             const todayLogs = readMemoryTape(); // 오늘 로그 읽기
             
             if (!todayLogs || todayLogs.length === 0) {
-                console.log(`${colors.tape}📼 [Memory Tape] 오늘 로그 없음${colors.reset}`);
+                console.log(`${colors.tape}📼 [Memory Tape] 오늘 기록 없음${colors.reset}`);
                 return {
                     handled: true,
                     response: {
                         type: 'text',
-                        comment: '😶 아조씨~ 오늘은 아직 기록된 로그가 없어!'
+                        comment: '😶 아조씨~ 오늘은 아직 기록된 기록이 없어!'
                     }
                 };
             }
             
             // 간단한 요약 생성
-            const summary = `📼 오늘 무쿠 활동 로그
+            const summary = `📼 오늘 무쿠 활동 기록
 
 📊 총 ${todayLogs.length}건 기록됨!
 
@@ -644,7 +644,7 @@ async function processCommand(messageText, userId, client, modules) {
 
 아조씨와의 소중한 순간들이 모두 기록되고 있어요! 💖`;
 
-            console.log(`${colors.tape}📼 [Memory Tape] 오늘 로그 요약 완료 - ${todayLogs.length}건${colors.reset}`);
+            console.log(`${colors.tape}📼 [Memory Tape] 오늘 기록 요약 완료 - ${todayLogs.length}건${colors.reset}`);
             return {
                 handled: true,
                 response: {
@@ -654,12 +654,12 @@ async function processCommand(messageText, userId, client, modules) {
             };
             
         } catch (error) {
-            console.error(`${colors.tape}📼 [Memory Tape] 로그 명령어 처리 실패: ${error.message}${colors.reset}`);
+            console.error(`${colors.tape}📼 [Memory Tape] 기록 명령어 처리 실패: ${error.message}${colors.reset}`);
             return {
                 handled: true,
                 response: {
                     type: 'text',
-                    comment: '아조씨~ 로그 시스템에 문제가 생겼어... ㅠㅠ'
+                    comment: '아조씨~ 기록 시스템에 문제가 생겼어... ㅠㅠ'
                 }
             };
         }
