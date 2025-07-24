@@ -11,8 +11,6 @@
 // 🚨 완벽한 에러 방지 - 모든 가능한 에러 케이스 상정 및 처리
 // 💰 디플로이 최적화 - 한 번에 완벽한 동작 보장
 // 🎯 무쿠 정상 응답 100% 보장 - "아조씨! 무슨 일이야?" 같은 정상 대화
-// 📼 ChatGPT 스타일 "로그" 명령어 처리 추가
-// 🔧 로그 명령어 완벽 처리 - 중복 제거 및 올바른 응답 보장
 // ============================================================================
 
 // ================== 🎨 색상 정의 ==================
@@ -29,7 +27,6 @@ const colors = {
     success: '\x1b[32m',     // 초록색 (성공)
     warning: '\x1b[93m',     // 노란색 (경고)
     fallback: '\x1b[96m',    // 하늘색 (폴백)
-    tape: '\x1b[93m',        // 노란색 (Memory Tape)
     reset: '\x1b[0m'         // 색상 리셋
 };
 
@@ -613,60 +610,9 @@ function processVersionCommand(messageText, getVersionResponse) {
     }, '버전명령어처리');
 }
 
-// ================== 📼 완벽한 명령어 처리 함수 (로그 명령어 문제 해결) ==================
 async function processCommand(messageText, userId, client, modules) {
     if (!messageText || !userId || !client) return null;
 
-    // 📼 ChatGPT 스타일 "로그" 명령어 처리 (무한반복 방지 포함)
-    if (messageText === '로그' || messageText === '로그 보여줘' || messageText === '일지') {
-        console.log(`${colors.tape}📼 [Memory Tape] "로그" 명령어 감지!${colors.reset}`);
-        
-        try {
-            const { readMemoryTape } = require('./muku-memory-tape');
-            const todayLogs = readMemoryTape(); // 오늘 로그 읽기
-            
-            if (!todayLogs || todayLogs.length === 0) {
-                console.log(`${colors.tape}📼 [Memory Tape] 오늘 로그 없음${colors.reset}`);
-                const noLogResponse = '😶 아조씨~ 오늘은 아직 기록된 로그가 없어!';
-                
-                return {
-                    handled: true,
-                    response: noLogResponse,
-                    skipFurtherProcessing: true
-                };
-            }
-            
-            // 간단한 요약 생성
-            const summary = `📼 오늘 무쿠 활동 로그
-
-📊 총 ${todayLogs.length}건 기록됨!
-
-💕 최근 메시지:
-"${todayLogs[todayLogs.length - 1]?.message || '기록 없음'}"
-
-아조씨와의 소중한 순간들이 모두 기록되고 있어요! 💖`;
-
-            console.log(`${colors.tape}📼 [Memory Tape] 오늘 로그 요약 완료 - ${todayLogs.length}건${colors.reset}`);
-            
-            return {
-                handled: true,
-                response: summary,
-                skipFurtherProcessing: true
-            };
-            
-        } catch (error) {
-            console.error(`${colors.tape}📼 [Memory Tape] 로그 명령어 처리 실패: ${error.message}${colors.reset}`);
-            const errorResponse = '아조씨~ 로그 시스템에 문제가 생겼어... ㅠㅠ';
-            
-            return {
-                handled: true,
-                response: errorResponse,
-                skipFurtherProcessing: true
-            };
-        }
-    }
-
-    // 🛡️ 기타 명령어 처리
     return await safeAsyncCall(async () => {
         const commandHandler = safeModuleAccess(modules, 'commandHandler', '명령어핸들러');
         if (commandHandler) {
@@ -957,14 +903,16 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
     const safeMessageType = userMessage.type || 'unknown';
 
     try {
-      // =============== 📝 텍스트 메시지 처리 ===============
+        // =============== 📝 텍스트 메시지 처리 ===============
         if (safeMessageType === 'text') {
             const messageText = String(userMessage.text || '').trim();
+            
             if (!messageText) {
                 console.log(`${colors.warning}⚠️ [텍스트] 빈 메시지 - 기본 응답 생성${colors.reset}`);
                 const emptyResponse = await processGeneralChat('', modules, enhancedLogging, {});
                 return { type: 'empty_message_response', response: emptyResponse };
             }
+
             // 로깅
             await safeAsyncCall(async () => {
                 const logFunction = safeModuleAccess(enhancedLogging, 'logConversation', '대화로깅');
@@ -974,7 +922,6 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
                     console.log(`${colors.ajeossi}💬 아저씨: ${messageText}${colors.reset}`);
                 }
             }, '사용자메시지로깅');
-
 
             // ⭐️ 1순위: 행동 스위치 처리 (최우선)
             const behaviorSwitchResult = await processBehaviorSwitch(messageText, modules, client, safeUserId);
@@ -1018,15 +965,12 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
                 return { type: 'version_response', response: finalVersionComment };
             }
 
-            // ⭐️ 병렬 처리: 기타 시스템들 (에러가 나도 진행 계속) - 🔧 로그 명령어는 고정기억 검색에서 제외
+            // ⭐️ 병렬 처리: 기타 시스템들 (에러가 나도 진행 계속)
             const parallelTasks = [
                 processSulkyRelief(modules, enhancedLogging),
                 processNightWakeMessage(messageText, modules, enhancedLogging),
                 processBirthdayDetection(messageText, modules, enhancedLogging),
-                // 🔧 메모리 명령어는 고정기억 검색에서 제외
-                !['로그', '기록', '일지'].some(cmd => messageText.trim().includes(cmd)) 
-                    ? safeAsyncCall(() => processFixedMemory(messageText, modules), '고정기억처리')
-                    : null,
+                safeAsyncCall(() => processFixedMemory(messageText, modules), '고정기억처리'),
                 processCommand(messageText, safeUserId, client, modules)
             ];
 
@@ -1074,53 +1018,7 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
                 return { type: 'birthday_response', response: finalBirthdayComment };
             }
 
-            // 🔧 commandResult 처리 강화 - 로그 명령어 완벽 해결
-            if (commandResult && commandResult.handled) {
-                console.log(`${colors.success}✅ [명령어처리] 명령어 응답 처리 완료${colors.reset}`);
-                
-                // 응답 추출 - response가 문자열이면 바로 사용
-                const commandResponseText = typeof commandResult.response === 'string' 
-                    ? commandResult.response 
-                    : (commandResult.response?.comment || commandResult.response);
-                
-                // 🚨 Memory Tape 명령어는 학습에서 제외 (무한 반복 방지)
-                const isMemoryCommand = messageText.includes('로그') || messageText.includes('기록') || messageText.includes('일지');
-                
-                console.log(`${colors.tape}📼 [명령어분석] 메모리 명령어: ${isMemoryCommand ? 'YES' : 'NO'}${colors.reset}`);
-                
-                if (!isMemoryCommand) {
-                    // 일반 명령어만 학습 처리
-                    await processRealTimeLearning(
-                        messageText,
-                        commandResponseText,
-                        { messageType: 'text', responseType: 'command' },
-                        modules,
-                        enhancedLogging
-                    );
-                }
-                
-                // 로깅
-                await safeAsyncCall(async () => {
-                    const logFunction = safeModuleAccess(enhancedLogging, 'logConversation', '대화로깅');
-                    if (typeof logFunction === 'function') {
-                        logFunction('나', commandResponseText, isMemoryCommand ? 'system' : 'text');
-                    } else {
-                        console.log(`${colors.yejin}📼 예진이 (명령어): ${commandResponseText}${colors.reset}`);
-                    }
-                }, '명령어응답로깅');
-                
-                // 🔧 skipFurtherProcessing이 있으면 즉시 반환
-                if (commandResult.skipFurtherProcessing) {
-                    console.log(`${colors.success}🛑 [명령어처리] 추가 처리 중단 - 명령어 응답 완료${colors.reset}`);
-                    return { 
-                        type: 'command_response', 
-                        response: {
-                            type: 'text',
-                            comment: commandResponseText
-                        }
-                    };
-                }
-                
+            if (commandResult) {
                 return { type: 'command_response', response: commandResult };
             }
 
@@ -1130,32 +1028,27 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
             if (chatResponse) {
                 const finalChatComment = chatResponse.comment || chatResponse;
 
-                // 🚨 Memory Tape 명령어는 학습에서 제외 (무한 반복 방지)
-                const isMemoryCommand = messageText.includes('로그') || messageText.includes('기록') || messageText.includes('일지');
-                
-                if (!isMemoryCommand) {
-                    // 실시간 학습 처리
-                    await processRealTimeLearning(
-                        messageText,
-                        finalChatComment,
-                        {
-                            messageType: 'text',
-                            responseType: 'chat',
-                            personalized: chatResponse.personalized,
-                            behaviorApplied: chatResponse.behaviorApplied,
-                            fallbackType: chatResponse.fallbackType
-                        },
-                        modules,
-                        enhancedLogging
-                    );
-                }
+                // 실시간 학습 처리
+                await processRealTimeLearning(
+                    messageText,
+                    finalChatComment,
+                    {
+                        messageType: 'text',
+                        responseType: 'chat',
+                        personalized: chatResponse.personalized,
+                        behaviorApplied: chatResponse.behaviorApplied,
+                        fallbackType: chatResponse.fallbackType
+                    },
+                    modules,
+                    enhancedLogging
+                );
 
                 // 로깅
                 const logMessage = chatResponse.personalized ? `${finalChatComment} [개인화됨]` : finalChatComment;
                 await safeAsyncCall(async () => {
                     const logFunction = safeModuleAccess(enhancedLogging, 'logConversation', '대화로깅');
                     if (typeof logFunction === 'function') {
-                        logFunction('나', logMessage, isMemoryCommand ? 'system' : 'text');
+                        logFunction('나', logMessage, 'text');
                     } else {
                         console.log(`${colors.yejin}💖 예진이: ${logMessage}${colors.reset}`);
                     }
@@ -1173,18 +1066,13 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
                 ultimateFallback: true
             };
 
-            // 🚨 Memory Tape 명령어는 학습에서 제외 (무한 반복 방지)
-            const isMemoryCommand = messageText.includes('로그') || messageText.includes('기록') || messageText.includes('일지');
-            
-            if (!isMemoryCommand) {
-                await processRealTimeLearning(
-                    messageText,
-                    ultimateSafeResponse.comment,
-                    { messageType: 'text', responseType: 'ultimate_safe' },
-                    modules,
-                    enhancedLogging
-                );
-            }
+            await processRealTimeLearning(
+                messageText,
+                ultimateSafeResponse.comment,
+                { messageType: 'text', responseType: 'ultimate_safe' },
+                modules,
+                enhancedLogging
+            );
 
             return { type: 'ultimate_safe_response', response: ultimateSafeResponse };
         }
