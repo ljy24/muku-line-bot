@@ -1,19 +1,26 @@
 // ============================================================================
-// spontaneousPhotoManager.js - v2.0 실제 통계 추적 시스템 추가
+// spontaneousPhotoManager.js - v2.1 UPDATED (JSON 파일 저장 기능 추가)
 // 📸 자발적 사진 전송 + 실시간 통계 추적
 // ✨ getPhotoStatus() 함수 추가 - 라인 상태 리포트용
 // 🎯 다음 전송 시간 정확 계산 + 일일 전송 통계
+// 💾 JSON 파일 저장 기능 추가: 데이터 영구 저장으로 재시작 후에도 통계 유지
 // ============================================================================
 
 const schedule = require('node-schedule'); // ❗ 수정: 'node-cron' -> 'node-schedule'
 const moment = require('moment-timezone');
 const { Client } = require('@line/bot-sdk');
+const fs = require('fs').promises;
+const path = require('path');
 
 // ================== 🌏 설정 ==================
 const TIMEZONE = 'Asia/Tokyo';
 const DAILY_PHOTO_TARGET = 8;  // 하루 목표 사진 전송 횟수
 const MIN_INTERVAL_MINUTES = 45; // 최소 간격 (45분)
 const MAX_INTERVAL_MINUTES = 180; // 최대 간격 (3시간)
+
+// 💾 JSON 파일 경로 설정
+const DATA_DIR = path.join(__dirname, '..', 'data');
+const PHOTO_STATS_FILE = path.join(DATA_DIR, 'photo-stats.json');
 
 // ================== 📊 사진 전송 상태 관리 (⭐️ 실제 통계 추적!) ==================
 let photoScheduleState = {
@@ -52,6 +59,78 @@ let photoScheduleState = {
 let lineClient = null;
 let userId = null;
 let lastUserMessageTimeFunc = null;
+
+// ================== 💾 JSON 파일 저장/로딩 함수들 ==================
+async function ensureDataDirectory() {
+    try {
+        await fs.access(DATA_DIR);
+    } catch (error) {
+        await fs.mkdir(DATA_DIR, { recursive: true });
+        photoLog('📁 data 디렉토리 생성 완료');
+    }
+}
+
+async function savePhotoStatsToFile() {
+    try {
+        await ensureDataDirectory();
+        const today = moment().tz(TIMEZONE).format('YYYY-MM-DD');
+        const statsData = {
+            date: today,
+            dailyStats: { ...photoScheduleState.dailyStats },
+            sendHistory: { ...photoScheduleState.sendHistory },
+            schedule: {
+                nextScheduledTime: photoScheduleState.schedule.nextScheduledTime,
+                scheduleCount: photoScheduleState.schedule.scheduleCount,
+                isSystemActive: photoScheduleState.schedule.isSystemActive
+            },
+            settings: { ...photoScheduleState.settings },
+            lastSaved: moment().tz(TIMEZONE).valueOf()
+        };
+        await fs.writeFile(PHOTO_STATS_FILE, JSON.stringify(statsData, null, 2), 'utf8');
+        photoLog(`💾 사진 통계 데이터 저장 완료: ${today} (전송: ${photoScheduleState.dailyStats.sentToday}/${DAILY_PHOTO_TARGET})`);
+    } catch (error) {
+        photoLog(`❌ 사진 통계 저장 실패: ${error.message}`);
+    }
+}
+
+async function loadPhotoStatsFromFile() {
+    try {
+        const data = await fs.readFile(PHOTO_STATS_FILE, 'utf8');
+        const statsData = JSON.parse(data);
+        const today = moment().tz(TIMEZONE).format('YYYY-MM-DD');
+        
+        if (statsData.date === today) {
+            // 같은 날이면 데이터 복구
+            photoScheduleState.dailyStats = { 
+                ...photoScheduleState.dailyStats, 
+                ...statsData.dailyStats 
+            };
+            photoScheduleState.sendHistory = { 
+                ...photoScheduleState.sendHistory, 
+                ...statsData.sendHistory 
+            };
+            if (statsData.schedule) {
+                photoScheduleState.schedule.nextScheduledTime = statsData.schedule.nextScheduledTime;
+                photoScheduleState.schedule.scheduleCount = statsData.schedule.scheduleCount || 0;
+                photoScheduleState.schedule.isSystemActive = statsData.schedule.isSystemActive || false;
+            }
+            if (statsData.settings) {
+                photoScheduleState.settings = { 
+                    ...photoScheduleState.settings, 
+                    ...statsData.settings 
+                };
+            }
+            photoLog(`💾 사진 통계 데이터 복구 완료: ${today} (전송: ${photoScheduleState.dailyStats.sentToday}/${DAILY_PHOTO_TARGET})`);
+            return true;
+        } else {
+            photoLog(`📅 사진 날짜 변경 감지 (${statsData.date} → ${today}) - 새로운 하루 시작`);
+            return false;
+        }
+    } catch (error) {
+        photoLog(`📂 사진 통계 파일 없음 또는 로딩 실패: ${error.message} - 새로 시작`);
+        return false;
+    }
+}
 
 // ================== 🎨 로그 함수 ==================
 function photoLog(message, data = null) {
@@ -229,7 +308,7 @@ async function sendSpontaneousPhoto() {
 }
 
 /**
- * ⭐️ 사진 전송 기록 함수
+ * ⭐️ 사진 전송 기록 함수 (💾 JSON 저장 추가)
  */
 function recordPhotoSent(photoType, imageUrl, message) {
     const sentTime = moment().tz(TIMEZONE);
@@ -250,6 +329,11 @@ function recordPhotoSent(photoType, imageUrl, message) {
     photoScheduleState.sendHistory.lastSentTime = sentTime.valueOf();
     
     photoLog(`📊 사진 전송 기록 완료: ${photoType} (${timeString})`);
+    
+    // 💾 JSON 파일에 즉시 저장
+    savePhotoStatsToFile().catch(error => {
+        photoLog(`❌ 사진 전송 기록 저장 실패: ${error.message}`);
+    });
 }
 
 // ================== 📅 스케줄링 함수들 ==================
@@ -263,6 +347,10 @@ function scheduleNextPhoto() {
         if (photoScheduleState.dailyStats.sentToday >= photoScheduleState.dailyStats.totalDaily) {
             photoLog('📊 오늘 목표 달성 - 스케줄링 중단');
             photoScheduleState.schedule.nextScheduledTime = null;
+            // 💾 상태 변경 저장
+            savePhotoStatsToFile().catch(error => {
+                photoLog(`❌ 스케줄 상태 저장 실패: ${error.message}`);
+            });
             return;
         }
         
@@ -286,6 +374,11 @@ function scheduleNextPhoto() {
         photoScheduleState.schedule.scheduleCount++;
         
         photoLog(`📅 다음 사진 전송 예약: ${nextTime.format('YYYY-MM-DD HH:mm')} (${formatTimeUntil(nextTime)})`);
+        
+        // 💾 스케줄 변경 저장
+        savePhotoStatsToFile().catch(error => {
+            photoLog(`❌ 스케줄 저장 실패: ${error.message}`);
+        });
         
     } catch (error) {
         photoLog(`❌스케줄링 실패: ${error.message}`);
@@ -316,6 +409,11 @@ function startPhotoScheduling() {
         
         photoLog(`📅 첫 번째 사진 전송 예약: ${firstPhotoTime.format('HH:mm')} (${formatTimeUntil(firstPhotoTime)})`);
         
+        // 💾 스케줄 시작 저장
+        savePhotoStatsToFile().catch(error => {
+            photoLog(`❌ 스케줄 시작 저장 실패: ${error.message}`);
+        });
+        
         return true;
         
     } catch (error) {
@@ -332,7 +430,7 @@ function startPhotoScheduling() {
 function resetDailyStats() {
     const today = moment().tz(TIMEZONE).format('YYYY-MM-DD');
     
-    photoLog('🌄 일일 통계 리셋 시작');
+    photoLog('🌄 사진 일일 통계 리셋 시작');
     
     // 통계 리셋
     photoScheduleState.dailyStats.sentToday = 0;
@@ -350,7 +448,12 @@ function resetDailyStats() {
     photoScheduleState.schedule.activeJobs = [];
     photoScheduleState.schedule.scheduleCount = 0;
     
-    photoLog(`✅ 일일 리셋 완료 - 새로운 하루 시작 (${today})`);
+    photoLog(`✅ 사진 일일 리셋 완료 - 새로운 하루 시작 (${today})`);
+    
+    // 💾 리셋 상태 저장
+    savePhotoStatsToFile().catch(error => {
+        photoLog(`❌ 리셋 상태 저장 실패: ${error.message}`);
+    });
     
     // 새로운 하루 스케줄링 시작
     setTimeout(() => {
@@ -515,25 +618,55 @@ function startSpontaneousPhotoScheduler(client, targetUserId, getLastUserMessage
             return false;
         }
         
-        // 일일 리셋 확인
-        const today = moment().tz(TIMEZONE).format('YYYY-MM-DD');
-        if (photoScheduleState.dailyStats.lastResetDate !== today) {
-            resetDailyStats();
-        }
+        // 💾 기존 데이터 로딩 시도
+        loadPhotoStatsFromFile().then(loadResult => {
+            if (loadResult) {
+                photoLog('✅ 기존 사진 데이터 복구 완료');
+                // 스케줄이 있으면 복구
+                if (photoScheduleState.schedule.nextScheduledTime && photoScheduleState.schedule.isSystemActive) {
+                    const nextTime = moment(photoScheduleState.schedule.nextScheduledTime).tz(TIMEZONE);
+                    if (nextTime.isAfter(moment().tz(TIMEZONE))) {
+                        // 유효한 스케줄이면 복구
+                        const cronExpression = `${nextTime.minute()} ${nextTime.hour()} ${nextTime.date()} ${nextTime.month() + 1} *`;
+                        const job = schedule.scheduleJob(cronExpression, async () => {
+                            await sendSpontaneousPhoto();
+                        });
+                        photoScheduleState.schedule.activeJobs.push(job);
+                        photoLog(`📅 기존 스케줄 복구: ${nextTime.format('HH:mm')} (${formatTimeUntil(nextTime)})`);
+                    } else {
+                        // 만료된 스케줄이면 새로 생성
+                        startPhotoScheduling();
+                    }
+                } else {
+                    // 스케줄이 없으면 새로 생성
+                    startPhotoScheduling();
+                }
+            } else {
+                // 일일 리셋 확인
+                const today = moment().tz(TIMEZONE).format('YYYY-MM-DD');
+                if (photoScheduleState.dailyStats.lastResetDate !== today) {
+                    resetDailyStats();
+                } else {
+                    // 스케줄링 시작
+                    startPhotoScheduling();
+                }
+            }
+        }).catch(error => {
+            photoLog(`❌ 데이터 로딩 실패: ${error.message} - 새로 시작`);
+            const today = moment().tz(TIMEZONE).format('YYYY-MM-DD');
+            if (photoScheduleState.dailyStats.lastResetDate !== today) {
+                resetDailyStats();
+            } else {
+                startPhotoScheduling();
+            }
+        });
         
-        // 스케줄링 시작
-        const startResult = startPhotoScheduling();
+        photoLog('✅ 자발적 사진 전송 시스템 활성화 완료!');
+        photoLog(`📊 설정: 하루 ${DAILY_PHOTO_TARGET}회, ${MIN_INTERVAL_MINUTES}-${MAX_INTERVAL_MINUTES}분 간격`);
+        photoLog(`📋 사진 타입: ${photoScheduleState.settings.photoTypes.join(', ')}`);
+        photoLog(`🎯 오늘 목표: ${photoScheduleState.dailyStats.sentToday}/${photoScheduleState.dailyStats.totalDaily}`);
         
-        if (startResult) {
-            photoLog('✅ 자발적 사진 전송 시스템 활성화 완료!');
-            photoLog(`📊 설정: 하루 ${DAILY_PHOTO_TARGET}회, ${MIN_INTERVAL_MINUTES}-${MAX_INTERVAL_MINUTES}분 간격`);
-            photoLog(`📋 사진 타입: ${photoScheduleState.settings.photoTypes.join(', ')}`);
-            photoLog(`🎯 오늘 목표: ${photoScheduleState.dailyStats.sentToday}/${photoScheduleState.dailyStats.totalDaily}`);
-        } else {
-            photoLog('❌ 자발적 사진 전송 시스템 활성화 실패');
-        }
-        
-        return startResult;
+        return true;
         
     } catch (error) {
         photoLog(`❌ 시스템 초기화 실패: ${error.message}`);
@@ -557,6 +690,11 @@ function stopSpontaneousPhotoScheduler() {
         photoScheduleState.schedule.activeJobs = [];
         photoScheduleState.schedule.isSystemActive = false;
         photoScheduleState.schedule.nextScheduledTime = null;
+        
+        // 💾 중지 상태 저장
+        savePhotoStatsToFile().catch(error => {
+            photoLog(`❌ 중지 상태 저장 실패: ${error.message}`);
+        });
         
         photoLog('✅ 자발적 사진 전송 시스템 중지 완료');
         return true;
@@ -615,7 +753,7 @@ function getInternalState() {
 }
 
 // ================== 📤 모듈 내보내기 ==================
-photoLog('📸 spontaneousPhotoManager.js v2.0 로드 완료 (실시간 통계 추적 지원)');
+photoLog('📸 spontaneousPhotoManager.js v2.1 로드 완료 (JSON 파일 저장 지원)');
 
 module.exports = {
     // 🚀 메인 함수들
@@ -649,6 +787,10 @@ module.exports = {
     
     // 📊 통계 관련
     photoScheduleState: () => ({ ...photoScheduleState }), // 읽기 전용 복사본 제공
+    
+    // 💾 JSON 파일 관련 (새로 추가)
+    savePhotoStatsToFile,
+    loadPhotoStatsFromFile,
     
     // 로그 함수
     photoLog
