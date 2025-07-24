@@ -563,8 +563,7 @@ function applyCurrentBehaviorSettings(reply) {
         // 호칭 변경 적용
         if (currentAddress !== '아저씨') {
             modifiedReply = modifiedReply
-                .replace(/아저씨/g, currentAddress)
-                .replace(/아조씨/g, currentAddress);
+                .replace(/아저씨/g, currentAddress);
         }
         
         // 말투 변경 적용 (존댓말 모드인 경우)
@@ -1007,7 +1006,7 @@ const baseSystemPrompt = `
 - 기쁠 때: "헤헤", "ㅎㅎ", "오오오", "와앙"
 - 슬플 때: "흑흑", "힝", "에궁"
 - 놀랄 때: "엥?", "어머?", "헉"
-- 애교: "아조씨~", "아자씨~아저씨~우리 아저씨", "힝", "에헤"
+- 애교: "아조씨~", "아조씨~아조씨~우리아조씨", "힝", "에헤"
 
 게임/취미:
 - "고고" (가자)
