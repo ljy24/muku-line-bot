@@ -216,23 +216,24 @@ function calculateNextPhotoTime() {
 // ================== 📷 사진 전송 함수들 ==================
 
 function getPhotoUrlByType(type) {
-    const baseUrl = 'https://drive.google.com/uc?export=view&id=';
-    const photoIds = {
-        selca: ['1dBJ9QZBpYPe4dwMKz8aA_FWjQCFBZDsH', '1YMZEPcX_0gfXNLcJ-GQT_vVZxMlEgQ-d'],
-        couple: ['1fVH9CqI5EZLa_RlWh2D7TzZUnKME3XGi', '1hLRZptR0Q3hLvL1qOjBBBaGp9K2yG1jH'],
-        concept: ['1xOOhBUzG9q9xMAJY7xT4-oHa0PcPMpAP', '1iKm4WmP8q2u8YBHuN8b5tZ1pF9PXxQqW'],
-        memory: ['1eY7u8BLm1mNvbJ9M5Q8K8WzPeWxmB-qB', '1lYOJ4W1S7vQ9K3zJ4fB7xPr9PlGBz9mE']
+    const baseUrl = 'https://photo.de-ji.net/photo';
+    const photoData = {
+        selca: { path: 'yejin', count: 2032 },
+        couple: { path: 'couple', count: 500 },
+        concept: { path: 'concept', count: 300 },
+        memory: { path: 'memory', count: 200 }
     };
     
-    const ids = photoIds[type] || photoIds.selca;
-    const randomId = ids[Math.floor(Math.random() * ids.length)];
-    return baseUrl + randomId;
+    const data = photoData[type] || photoData.selca;
+    const index = Math.floor(Math.random() * data.count) + 1;
+    const fileName = String(index).padStart(6, "0") + ".jpg";
+    return `${baseUrl}/${data.path}/${fileName}`;
 }
 
 function getPhotoMessageByType(type) {
     const messages = {
-        selca: ['아조씨~ 나 어때? 💕', '오늘 셀카 찍었어! 😊', '예쁘게 나왔지? 🥰'],
-        couple: ['우리 함께 찍은 거야 💕', '이때가 좋았는데... 😊', '아조씨와의 추억이야 💖'],
+        selca: ['아저씨~ 나 어때? 💕', '오늘 셀카 찍었어! 😊', '예쁘게 나왔지? 🥰'],
+        couple: ['우리 함께 찍은 거야 💕', '이때가 좋았는데... 😊', '아저씨와의 추억이야 💖'],
         concept: ['컨셉 사진이야! 어때? ✨', '이런 스타일 어떨까? 😉', '특별한 하루였어 🌸'],
         memory: ['추억 사진 발견! 💕', '이거 기억나? 😊', '그때가 그립다... 💖']
     };
