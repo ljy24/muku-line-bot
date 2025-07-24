@@ -1021,7 +1021,10 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
                 processSulkyRelief(modules, enhancedLogging),
                 processNightWakeMessage(messageText, modules, enhancedLogging),
                 processBirthdayDetection(messageText, modules, enhancedLogging),
-                safeAsyncCall(() => processFixedMemory(messageText, modules), '고정기억처리'),
+                // 메모리 명령어는 고정기억 검색에서 제외
+                !['로그', '기록', '일지'].some(cmd => messageText.trim().includes(cmd)) 
+                    ? safeAsyncCall(() => processFixedMemory(messageText, modules), '고정기억처리')
+                    : null,
                 processCommand(messageText, safeUserId, client, modules)
             ];
 
