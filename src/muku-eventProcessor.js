@@ -11,6 +11,7 @@
 // 🚨 완벽한 에러 방지 - 모든 가능한 에러 케이스 상정 및 처리
 // 💰 디플로이 최적화 - 한 번에 완벽한 동작 보장
 // 🎯 무쿠 정상 응답 100% 보장 - "아조씨! 무슨 일이야?" 같은 정상 대화
+// 📼 ChatGPT 스타일 "로그" 명령어 처리 추가
 // ============================================================================
 
 // ================== 🎨 색상 정의 ==================
@@ -27,6 +28,7 @@ const colors = {
     success: '\x1b[32m',     // 초록색 (성공)
     warning: '\x1b[93m',     // 노란색 (경고)
     fallback: '\x1b[96m',    // 하늘색 (폴백)
+    tape: '\x1b[93m',        // 노란색 (Memory Tape)
     reset: '\x1b[0m'         // 색상 리셋
 };
 
@@ -612,6 +614,45 @@ function processVersionCommand(messageText, getVersionResponse) {
 
 async function processCommand(messageText, userId, client, modules) {
     if (!messageText || !userId || !client) return null;
+
+    // 📼 ChatGPT 스타일 "로그" 명령어 처리
+    if (messageText === '로그' || messageText === '로그 보여줘' || messageText === '일지') {
+        console.log(`${colors.tape}📼 [Memory Tape] "로그" 명령어 감지!${colors.reset}`);
+        
+        try {
+            const { summarizeTodayTape } = require('./tools/memory-tape-reader');
+            const result = summarizeTodayTape();
+            
+            if (result.success) {
+                console.log(`${colors.tape}📼 [Memory Tape] 오늘 로그 요약 성공 - ${result.data.totalLogs}건${colors.reset}`);
+                return {
+                    handled: true,
+                    response: {
+                        type: 'text',
+                        comment: result.data.lineOutput
+                    }
+                };
+            } else {
+                console.log(`${colors.tape}📼 [Memory Tape] 오늘 로그 없음${colors.reset}`);
+                return {
+                    handled: true,
+                    response: {
+                        type: 'text',
+                        comment: result.message
+                    }
+                };
+            }
+        } catch (error) {
+            console.error(`${colors.tape}📼 [Memory Tape] 로그 명령어 처리 실패: ${error.message}${colors.reset}`);
+            return {
+                handled: true,
+                response: {
+                    type: 'text',
+                    comment: '아조씨~ 로그 시스템에 문제가 생겼어... ㅠㅠ 나중에 다시 해줄래?'
+                }
+            };
+        }
+    }
 
     return await safeAsyncCall(async () => {
         const commandHandler = safeModuleAccess(modules, 'commandHandler', '명령어핸들러');
