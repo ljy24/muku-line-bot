@@ -1,9 +1,10 @@
 // ============================================================================
-// spontaneousPhotoManager.js - v2.1 UPDATED (JSON 파일 저장 기능 추가)
+// spontaneousPhotoManager.js - v2.2 UPDATED (조건부 즉시 전송 기능 추가)
 // 📸 자발적 사진 전송 + 실시간 통계 추적
 // ✨ getPhotoStatus() 함수 추가 - 라인 상태 리포트용
 // 🎯 다음 전송 시간 정확 계산 + 일일 전송 통계
 // 💾 JSON 파일 저장 기능 추가: 데이터 영구 저장으로 재시작 후에도 통계 유지
+// 🚀 조건부 즉시 전송: 목표 미달 시 배포 후 2-5분 내 전송 (스팸 방지)
 // ============================================================================
 
 const schedule = require('node-schedule'); // ❗ 수정: 'node-cron' -> 'node-schedule'
@@ -17,6 +18,10 @@ const TIMEZONE = 'Asia/Tokyo';
 const DAILY_PHOTO_TARGET = 8;  // 하루 목표 사진 전송 횟수
 const MIN_INTERVAL_MINUTES = 45; // 최소 간격 (45분)
 const MAX_INTERVAL_MINUTES = 180; // 최대 간격 (3시간)
+
+// 🚀 즉시 전송 설정
+const IMMEDIATE_MIN_DELAY = 2; // 즉시 전송 최소 지연 (2분)
+const IMMEDIATE_MAX_DELAY = 5; // 즉시 전송 최대 지연 (5분)
 
 // 💾 JSON 파일 경로 설정
 const DATA_DIR = path.join(__dirname, '..', 'data');
@@ -44,7 +49,8 @@ let photoScheduleState = {
         nextScheduledTime: null,   // 다음 예정 시간
         activeJobs: [],            // 활성 크론 작업들
         scheduleCount: 0,          // 예약된 스케줄 수
-        isSystemActive: false      // 시스템 활성화 상태
+        isSystemActive: false,     // 시스템 활성화 상태
+        isImmediateMode: false     // 즉시 전송 모드 상태
     },
     
     // 시스템 설정
@@ -81,7 +87,8 @@ async function savePhotoStatsToFile() {
             schedule: {
                 nextScheduledTime: photoScheduleState.schedule.nextScheduledTime,
                 scheduleCount: photoScheduleState.schedule.scheduleCount,
-                isSystemActive: photoScheduleState.schedule.isSystemActive
+                isSystemActive: photoScheduleState.schedule.isSystemActive,
+                isImmediateMode: photoScheduleState.schedule.isImmediateMode
             },
             settings: { ...photoScheduleState.settings },
             lastSaved: moment().tz(TIMEZONE).valueOf()
@@ -113,6 +120,7 @@ async function loadPhotoStatsFromFile() {
                 photoScheduleState.schedule.nextScheduledTime = statsData.schedule.nextScheduledTime;
                 photoScheduleState.schedule.scheduleCount = statsData.schedule.scheduleCount || 0;
                 photoScheduleState.schedule.isSystemActive = statsData.schedule.isSystemActive || false;
+                photoScheduleState.schedule.isImmediateMode = statsData.schedule.isImmediateMode || false;
             }
             if (statsData.settings) {
                 photoScheduleState.settings = { 
@@ -176,6 +184,20 @@ function calculateNextPhotoTime() {
         
         return nextTime;
     }
+}
+
+/**
+ * 🚀 즉시 전송 시간 계산 (2-5분 후)
+ */
+function calculateImmediatePhotoTime() {
+    const now = moment().tz(TIMEZONE);
+    const randomMinutes = IMMEDIATE_MIN_DELAY + 
+        Math.floor(Math.random() * (IMMEDIATE_MAX_DELAY - IMMEDIATE_MIN_DELAY + 1));
+    
+    const immediateTime = moment(now).add(randomMinutes, 'minutes');
+    
+    photoLog(`🚀 즉시 전송 시간 계산: ${randomMinutes}분 후 (${immediateTime.format('HH:mm')})`);
+    return immediateTime;
 }
 
 /**
@@ -290,6 +312,12 @@ async function sendSpontaneousPhoto() {
         photoLog(`✅ 자발적 사진 전송 성공: ${photoType} - "${message}"`);
         photoLog(`📊 진행상황: ${photoScheduleState.dailyStats.sentToday}/${photoScheduleState.dailyStats.totalDaily}`);
         
+        // 즉시 모드였다면 해제하고 정상 스케줄링으로 전환
+        if (photoScheduleState.schedule.isImmediateMode) {
+            photoScheduleState.schedule.isImmediateMode = false;
+            photoLog(`🚀 즉시 전송 모드 해제 - 정상 스케줄링으로 전환`);
+        }
+        
         // 다음 스케줄 예약
         scheduleNextPhoto();
         
@@ -324,11 +352,12 @@ function recordPhotoSent(photoType, imageUrl, message) {
         url: imageUrl,
         message: message,
         time: timeString,
-        timestamp: sentTime.valueOf()
+        timestamp: sentTime.valueOf(),
+        isImmediateMode: photoScheduleState.schedule.isImmediateMode
     });
     photoScheduleState.sendHistory.lastSentTime = sentTime.valueOf();
     
-    photoLog(`📊 사진 전송 기록 완료: ${photoType} (${timeString})`);
+    photoLog(`📊 사진 전송 기록 완료: ${photoType} (${timeString}) ${photoScheduleState.schedule.isImmediateMode ? '[즉시모드]' : ''}`);
     
     // 💾 JSON 파일에 즉시 저장
     savePhotoStatsToFile().catch(error => {
@@ -347,6 +376,7 @@ function scheduleNextPhoto() {
         if (photoScheduleState.dailyStats.sentToday >= photoScheduleState.dailyStats.totalDaily) {
             photoLog('📊 오늘 목표 달성 - 스케줄링 중단');
             photoScheduleState.schedule.nextScheduledTime = null;
+            photoScheduleState.schedule.isImmediateMode = false;
             // 💾 상태 변경 저장
             savePhotoStatsToFile().catch(error => {
                 photoLog(`❌ 스케줄 상태 저장 실패: ${error.message}`);
@@ -386,18 +416,73 @@ function scheduleNextPhoto() {
 }
 
 /**
- * 초기 스케줄링 시작
+ * 🚀 즉시 전송 스케줄링 (2-5분 후)
+ */
+function scheduleImmediatePhoto() {
+    try {
+        photoLog('🚀 즉시 사진 전송 스케줄링 시작 (목표 미달 감지)');
+        
+        const immediateTime = calculateImmediatePhotoTime();
+        photoScheduleState.schedule.nextScheduledTime = immediateTime.valueOf();
+        photoScheduleState.schedule.isImmediateMode = true;
+        
+        const cronExpression = `${immediateTime.minute()} ${immediateTime.hour()} * * *`;
+        
+        // 기존 스케줄 취소
+        photoScheduleState.schedule.activeJobs.forEach(job => {
+            if (job) job.cancel();
+        });
+        photoScheduleState.schedule.activeJobs = [];
+        
+        // 즉시 전송 스케줄 등록
+        const job = schedule.scheduleJob(cronExpression, async () => {
+            photoLog('🚀 즉시 전송 스케줄 실행됨!');
+            await sendSpontaneousPhoto();
+        });
+        
+        photoScheduleState.schedule.activeJobs.push(job);
+        
+        photoLog(`🚀 즉시 사진 전송 예약: ${immediateTime.format('HH:mm')} (${formatTimeUntil(immediateTime)})`);
+        
+        // 💾 즉시 모드 저장
+        savePhotoStatsToFile().catch(error => {
+            photoLog(`❌ 즉시 모드 저장 실패: ${error.message}`);
+        });
+        
+        return true;
+        
+    } catch (error) {
+        photoLog(`❌ 즉시 스케줄링 실패: ${error.message}`);
+        return false;
+    }
+}
+
+/**
+ * 초기 스케줄링 시작 (🚀 조건부 즉시 전송 로직 추가)
  */
 function startPhotoScheduling() {
     try {
         photoLog('🚀 자발적 사진 전송 스케줄링 시작');
         
-        // 첫 번째 사진은 1-2시간 후에
+        // 🎯 조건부 즉시 전송: 목표 미달 시에만
+        if (photoScheduleState.dailyStats.sentToday < photoScheduleState.dailyStats.totalDaily) {
+            photoLog(`📊 목표 미달 감지: ${photoScheduleState.dailyStats.sentToday}/${photoScheduleState.dailyStats.totalDaily}`);
+            photoLog('🚀 즉시 전송 모드 활성화!');
+            
+            // 즉시 전송 스케줄링
+            return scheduleImmediatePhoto();
+        } else {
+            photoLog(`✅ 목표 달성: ${photoScheduleState.dailyStats.sentToday}/${photoScheduleState.dailyStats.totalDaily}`);
+            photoLog('⏰ 일반 스케줄링 모드');
+        }
+        
+        // 🕐 일반 스케줄링 (60-120분 후)
         const firstPhotoDelay = 60 + Math.floor(Math.random() * 60); // 60-120분
         const firstPhotoTime = moment().tz(TIMEZONE).add(firstPhotoDelay, 'minutes');
         
         photoScheduleState.schedule.nextScheduledTime = firstPhotoTime.valueOf();
         photoScheduleState.schedule.isSystemActive = true;
+        photoScheduleState.schedule.isImmediateMode = false;
         
         const cronExpression = `${firstPhotoTime.minute()} ${firstPhotoTime.hour()} * * *`;
         
@@ -447,6 +532,7 @@ function resetDailyStats() {
     });
     photoScheduleState.schedule.activeJobs = [];
     photoScheduleState.schedule.scheduleCount = 0;
+    photoScheduleState.schedule.isImmediateMode = false;
     
     photoLog(`✅ 사진 일일 리셋 완료 - 새로운 하루 시작 (${today})`);
     
@@ -455,7 +541,7 @@ function resetDailyStats() {
         photoLog(`❌ 리셋 상태 저장 실패: ${error.message}`);
     });
     
-    // 새로운 하루 스케줄링 시작
+    // 새로운 하루 스케줄링 시작 (즉시 전송 모드로 시작)
     setTimeout(() => {
         startPhotoScheduling();
     }, 5000); // 5초 후 시작
@@ -485,6 +571,9 @@ function getPhotoStatus() {
         dailyLimit: photoScheduleState.dailyStats.totalDaily,  // ✅ 추가!
         nextTime: nextTimeString,
         nextSendTime: photoScheduleState.schedule.nextScheduledTime, // ✅ 추가!
+        
+        // 🚀 즉시 모드 정보 추가
+        isImmediateMode: photoScheduleState.schedule.isImmediateMode,
         
         // 상세 정보
         progress: `${photoScheduleState.dailyStats.sentToday}/${photoScheduleState.dailyStats.totalDaily}`,
@@ -516,19 +605,23 @@ function getDetailedPhotoStats() {
         settings: {
             minInterval: photoScheduleState.settings.minInterval,
             maxInterval: photoScheduleState.settings.maxInterval,
-            photoTypes: photoScheduleState.settings.photoTypes
+            photoTypes: photoScheduleState.settings.photoTypes,
+            immediateMinDelay: IMMEDIATE_MIN_DELAY,
+            immediateMaxDelay: IMMEDIATE_MAX_DELAY
         },
         
         schedule: {
             nextScheduledTime: nextTime ? moment(nextTime).tz(TIMEZONE).format('YYYY-MM-DD HH:mm:ss') : null,
             timeUntilNext: nextTime ? formatTimeUntil(moment(nextTime)) : null,
-            activeJobsCount: photoScheduleState.schedule.activeJobs.length
+            activeJobsCount: photoScheduleState.schedule.activeJobs.length,
+            isImmediateMode: photoScheduleState.schedule.isImmediateMode
         },
         
         history: {
             todayPhotos: photoScheduleState.sendHistory.sentPhotos,
             lastResetDate: photoScheduleState.dailyStats.lastResetDate,
-            systemStartTime: moment(photoScheduleState.dailyStats.systemStartTime).tz(TIMEZONE).format('YYYY-MM-DD HH:mm:ss')
+            systemStartTime: moment(photoScheduleState.dailyStats.systemStartTime).tz(TIMEZONE).format('YYYY-MM-DD HH:mm:ss'),
+            immediatePhotos: photoScheduleState.sendHistory.sentPhotos.filter(photo => photo.isImmediateMode)
         }
     };
 }
@@ -543,7 +636,8 @@ function getPhotoStatusSummary() {
         isActive: status.isActive,
         progress: status.progress,
         nextPhoto: status.nextTime,
-        status: status.sentToday >= status.totalDaily ? 'completed' : 'active'
+        status: status.sentToday >= status.totalDaily ? 'completed' : 'active',
+        isImmediateMode: status.isImmediateMode
     };
 }
 
@@ -561,6 +655,22 @@ async function testPhotoSending() {
         return result;
     } catch (error) {
         photoLog(`🧪 테스트 실패: ${error.message}`);
+        return false;
+    }
+}
+
+/**
+ * 즉시 전송 테스트
+ */
+async function testImmediatePhoto() {
+    photoLog('🧪 즉시 전송 테스트 시작');
+    
+    try {
+        const result = scheduleImmediatePhoto();
+        photoLog(`🧪 즉시 전송 테스트 결과: ${result ? '성공' : '실패'}`);
+        return result;
+    } catch (error) {
+        photoLog(`🧪 즉시 전송 테스트 실패: ${error.message}`);
         return false;
     }
 }
@@ -622,6 +732,8 @@ function startSpontaneousPhotoScheduler(client, targetUserId, getLastUserMessage
         loadPhotoStatsFromFile().then(loadResult => {
             if (loadResult) {
                 photoLog('✅ 기존 사진 데이터 복구 완료');
+                photoLog(`📊 복구된 상태: ${photoScheduleState.dailyStats.sentToday}/${photoScheduleState.dailyStats.totalDaily}건`);
+                
                 // 스케줄이 있으면 복구
                 if (photoScheduleState.schedule.nextScheduledTime && photoScheduleState.schedule.isSystemActive) {
                     const nextTime = moment(photoScheduleState.schedule.nextScheduledTime).tz(TIMEZONE);
@@ -632,22 +744,28 @@ function startSpontaneousPhotoScheduler(client, targetUserId, getLastUserMessage
                             await sendSpontaneousPhoto();
                         });
                         photoScheduleState.schedule.activeJobs.push(job);
-                        photoLog(`📅 기존 스케줄 복구: ${nextTime.format('HH:mm')} (${formatTimeUntil(nextTime)})`);
+                        
+                        const modeText = photoScheduleState.schedule.isImmediateMode ? '[즉시모드]' : '[일반모드]';
+                        photoLog(`📅 기존 스케줄 복구: ${nextTime.format('HH:mm')} (${formatTimeUntil(nextTime)}) ${modeText}`);
                     } else {
                         // 만료된 스케줄이면 새로 생성
+                        photoLog('⏰ 만료된 스케줄 감지 - 새 스케줄 생성');
                         startPhotoScheduling();
                     }
                 } else {
                     // 스케줄이 없으면 새로 생성
+                    photoLog('📅 스케줄 없음 - 새 스케줄 생성');
                     startPhotoScheduling();
                 }
             } else {
                 // 일일 리셋 확인
                 const today = moment().tz(TIMEZONE).format('YYYY-MM-DD');
                 if (photoScheduleState.dailyStats.lastResetDate !== today) {
+                    photoLog('🌄 날짜 변경 감지 - 일일 리셋 실행');
                     resetDailyStats();
                 } else {
                     // 스케줄링 시작
+                    photoLog('🚀 새로운 스케줄링 시작');
                     startPhotoScheduling();
                 }
             }
@@ -663,6 +781,7 @@ function startSpontaneousPhotoScheduler(client, targetUserId, getLastUserMessage
         
         photoLog('✅ 자발적 사진 전송 시스템 활성화 완료!');
         photoLog(`📊 설정: 하루 ${DAILY_PHOTO_TARGET}회, ${MIN_INTERVAL_MINUTES}-${MAX_INTERVAL_MINUTES}분 간격`);
+        photoLog(`🚀 즉시 전송: ${IMMEDIATE_MIN_DELAY}-${IMMEDIATE_MAX_DELAY}분 후 (목표 미달 시)`);
         photoLog(`📋 사진 타입: ${photoScheduleState.settings.photoTypes.join(', ')}`);
         photoLog(`🎯 오늘 목표: ${photoScheduleState.dailyStats.sentToday}/${photoScheduleState.dailyStats.totalDaily}`);
         
@@ -690,6 +809,7 @@ function stopSpontaneousPhotoScheduler() {
         photoScheduleState.schedule.activeJobs = [];
         photoScheduleState.schedule.isSystemActive = false;
         photoScheduleState.schedule.nextScheduledTime = null;
+        photoScheduleState.schedule.isImmediateMode = false;
         
         // 💾 중지 상태 저장
         savePhotoStatsToFile().catch(error => {
@@ -732,6 +852,22 @@ function forceReschedule() {
 }
 
 /**
+ * 🚀 즉시 전송 강제 활성화 (테스트용)
+ */
+function forceImmediateMode() {
+    photoLog('🚀 즉시 전송 모드 강제 활성화');
+    
+    // 기존 스케줄 취소
+    photoScheduleState.schedule.activeJobs.forEach(job => {
+        if (job) job.cancel();
+    });
+    photoScheduleState.schedule.activeJobs = [];
+    
+    // 즉시 전송 스케줄링
+    return scheduleImmediatePhoto();
+}
+
+/**
  * 내부 상태 조회 (디버깅용)
  */
 function getInternalState() {
@@ -753,7 +889,7 @@ function getInternalState() {
 }
 
 // ================== 📤 모듈 내보내기 ==================
-photoLog('📸 spontaneousPhotoManager.js v2.1 로드 완료 (JSON 파일 저장 지원)');
+photoLog('📸 spontaneousPhotoManager.js v2.2 로드 완료 (조건부 즉시 전송 지원)');
 
 module.exports = {
     // 🚀 메인 함수들
@@ -772,23 +908,27 @@ module.exports = {
     
     // 📅 스케줄링 함수들
     scheduleNextPhoto,
+    scheduleImmediatePhoto,      // 🚀 새로 추가
     forceReschedule,
+    forceImmediateMode,          // 🚀 새로 추가
     resetDailyStats,
     
     // 🧪 테스트 함수들
     testPhotoSending,
+    testImmediatePhoto,          // 🚀 새로 추가
     testScheduling,
     
     // 🔧 유틸리티 함수들
     getInternalState,
     calculateNextPhotoTime,
+    calculateImmediatePhotoTime, // 🚀 새로 추가
     formatTimeUntil,
     recordPhotoSent,
     
     // 📊 통계 관련
     photoScheduleState: () => ({ ...photoScheduleState }), // 읽기 전용 복사본 제공
     
-    // 💾 JSON 파일 관련 (새로 추가)
+    // 💾 JSON 파일 관련
     savePhotoStatsToFile,
     loadPhotoStatsFromFile,
     
