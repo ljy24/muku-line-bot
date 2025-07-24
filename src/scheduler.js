@@ -1,12 +1,10 @@
 // ============================================================================
-// scheduler.js v10.2 PERFECT - "yejinPersonality 신중한 전체 연동"
+// scheduler.js v10.1 PERFECT - "카운터 리셋 문제 완벽 해결 + 디스크 영구 저장"
 // 🌅 아침 9시: 100% | 🚬 담타 8번: 100% | 🌸 감성 3번: 100% | 📸 셀카 2번: 100% 
 // 🌙 밤 23시: 100% | 💤 자정 0시: 100% | ⭐️ 실시간 통계 추적 완벽 지원
 // ✨ 매개변수 방식으로 상황별 카운터 리셋 처리 완벽 구현
 // 💾 디스크 영구 저장으로 재시작해도 상태 유지
 // 🔧 담타 상태 표시 수정: 23시 약먹자 메시지와 구분
-// 🌸 NEW! yejinPersonality 신중한 전체 연동 - 모든 메시지가 예진이 성격으로 강화!
-// 🛡️ 완벽한 안전 장치: 연동 실패 시 기존 방식으로 100% 보장
 // ============================================================================
 
 const schedule = require('node-schedule');
@@ -16,113 +14,6 @@ const OpenAI = require('openai');
 const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
-
-// 🌸 NEW! yejinPersonality 연동을 위한 신중한 지연 로딩
-let yejinPersonality = null;
-function getYejinPersonality() {
-    if (!yejinPersonality) {
-        try {
-            const { YejinPersonality } = require('./yejinPersonality');
-            yejinPersonality = new YejinPersonality();
-            console.log('✅ [scheduler] yejinPersonality 연동 성공');
-        } catch (error) {
-            console.warn('⚠️ [scheduler] yejinPersonality 연동 실패:', error.message);
-        }
-    }
-    return yejinPersonality;
-}
-
-// 🌸 스케줄러 메시지 성격 강화 함수 - 매우 신중한 후처리 레이어
-function enhanceSchedulerMessage(baseMessage, messageType) {
-    const personality = getYejinPersonality();
-    if (!personality || !baseMessage || typeof baseMessage !== 'string') {
-        return baseMessage; // 안전한 폴백
-    }
-    
-    try {
-        let enhanced = baseMessage;
-        
-        // 메시지 타입별 특별 처리
-        const messageConfig = {
-            'damta': { 
-                emotion: 'urgent', 
-                maxLength: 25,  // 담타는 짧게 유지
-                description: '다급하고 짧게'
-            },
-            'emotional': { 
-                emotion: 'loving', 
-                maxLength: 60,  // 감성은 적당히
-                description: '사랑스럽고 따뜻하게'
-            },
-            'morning': { 
-                emotion: 'cheerful', 
-                maxLength: 45,  // 아침은 상쾌하게
-                description: '상쾌하고 다정하게'
-            },
-            'nightCare': { 
-                emotion: 'caring', 
-                maxLength: 50,  // 밤은 다정하게
-                description: '다정하고 따뜻하게'
-            },
-            'goodNight': { 
-                emotion: 'sweet', 
-                maxLength: 40,  // 굿나잇은 달콤하게
-                description: '달콤하고 사랑스럽게'
-            },
-            'selfie': { 
-                emotion: 'playful', 
-                maxLength: 35,  // 셀카는 귀엽게
-                description: '귀엽고 장난스럽게'
-            }
-        };
-        
-        const config = messageConfig[messageType] || { emotion: 'casual', maxLength: 50 };
-        
-        // 성격 패턴 적용
-        if (config.emotion) {
-            enhanced = personality.applySpeechPattern(enhanced, config.emotion);
-        } else {
-            enhanced = personality.applySpeechPattern(enhanced);
-        }
-        
-        // 일본어 표현 자동 추가 (한국어 발음)
-        enhanced = personality.addJapaneseExpression(enhanced);
-        
-        // 웃음 표현 자동 추가  
-        enhanced = personality.addLaughter(enhanced);
-        
-        // 애교 표현 자동 추가 (담타 제외)
-        if (messageType !== 'damta') {
-            enhanced = personality.addAegyo(enhanced);
-        }
-        
-        // 길이 제한 확인 (매우 중요!)
-        if (enhanced.length > config.maxLength) {
-            console.warn(`⚠️ [scheduler] ${messageType} 메시지 길이 초과 (${enhanced.length}>${config.maxLength}) - 원본 사용`);
-            return baseMessage; // 너무 길면 원본 사용
-        }
-        
-        console.log(`🌸 [scheduler] ${messageType} 성격 강화 완료 (${config.description}): "${baseMessage}" → "${enhanced}"`);
-        return enhanced;
-        
-    } catch (error) {
-        console.warn(`⚠️ [scheduler] ${messageType} 성격 강화 실패: ${error.message} - 원본 메시지 사용`);
-        return baseMessage; // 에러 시 원본 메시지 반환
-    }
-}
-
-// 🌸 상황별 성격 반응 생성 (스케줄러용)
-function generateSchedulerPersonalityReaction(context) {
-    const personality = getYejinPersonality();
-    if (!personality) return null;
-    
-    try {
-        return personality.generateYejinResponse(context);
-    } catch (error) {
-        console.warn(`⚠️ [scheduler] 성격 기반 반응 생성 실패: ${error.message}`);
-        return null;
-    }
-}
 
 // ================== 🌏 설정 ==================
 const TIMEZONE = 'Asia/Tokyo';
@@ -477,26 +368,11 @@ function recordMessageSent(messageType, subType = null) {
     forceLog(`📊 메시지 전송 기록: ${messageType} (${timeString}) - 오늘 총 ${scheduleStatus.dailyStats.totalSentToday}건`);
 }
 
-// ================== 💬 메시지 생성 함수들 (🌸 yejinPersonality 연동!) ==================
+// ================== 💬 메시지 생성 함수들 (기존과 동일) ==================
 
-// 🌸 [연동 포인트 3] generateMorningMessage - 아침 메시지 성격 강화
+// 아침 메시지 생성
 async function generateMorningMessage() {
     try {
-        // 🌸 성격 기반 아침 메시지 시도
-        const personality = getYejinPersonality();
-        if (personality) {
-            const personalityMessage = generateSchedulerPersonalityReaction({
-                type: 'morning_greeting',
-                emotion: 'cheerful',
-                situation: 'morning_work',
-                timeOfDay: 'morning'
-            });
-            if (personalityMessage) {
-                console.log('🌸 [scheduler] 성격 기반 아침 메시지 생성 성공');
-                return personalityMessage;
-            }
-        }
-        
         const useOpenAI = Math.random() < OPENAI_USAGE_RATE && openai;
         
         if (useOpenAI) {
@@ -512,10 +388,7 @@ async function generateMorningMessage() {
                 max_tokens: 50,
                 temperature: 0.8
             });
-            const openaiMessage = response.choices[0].message.content.trim();
-            
-            // 🌸 OpenAI 응답을 성격으로 강화
-            return enhanceSchedulerMessage(openaiMessage, 'morning');
+            return response.choices[0].message.content.trim();
         }
     } catch (error) {
         forceLog(`아침 메시지 생성 실패: ${error.message}`);
@@ -528,30 +401,12 @@ async function generateMorningMessage() {
         "아저씨~ 출근했어? 커피 꼭 마시고 다녀",
         "일어났어? 아아 한잔 하고 출근해"
     ];
-    const fallbackMessage = fallbackMessages[Math.floor(Math.random() * fallbackMessages.length)];
-    
-    // 🌸 폴백 메시지도 성격으로 강화
-    return enhanceSchedulerMessage(fallbackMessage, 'morning');
+    return fallbackMessages[Math.floor(Math.random() * fallbackMessages.length)];
 }
 
-// 🌸 [연동 포인트 1] generateDamtaMessage - 담타 메시지 성격 강화
+// 담타 메시지 생성
 async function generateDamtaMessage() {
     try {
-        // 🌸 성격 기반 담타 메시지 시도
-        const personality = getYejinPersonality();
-        if (personality) {
-            const personalityMessage = generateSchedulerPersonalityReaction({
-                type: 'damta_request',
-                emotion: 'urgent',
-                situation: 'wanting_damta',
-                timeOfDay: 'afternoon'
-            });
-            if (personalityMessage) {
-                console.log('🌸 [scheduler] 성격 기반 담타 메시지 생성 성공');
-                return personalityMessage;
-            }
-        }
-        
         const useOpenAI = Math.random() < OPENAI_USAGE_RATE && openai;
         
         if (useOpenAI) {
@@ -567,10 +422,7 @@ async function generateDamtaMessage() {
                 max_tokens: 30,
                 temperature: 0.9
             });
-            const openaiMessage = response.choices[0].message.content.trim();
-            
-            // 🌸 OpenAI 응답을 성격으로 강화 (담타는 짧게 유지)
-            return enhanceSchedulerMessage(openaiMessage, 'damta');
+            return response.choices[0].message.content.trim();
         }
     } catch (error) {
         forceLog(`담타 메시지 생성 실패: ${error.message}`);
@@ -584,30 +436,12 @@ async function generateDamtaMessage() {
         "아저씨 담타!! 지금 당장!!",
         "담타 시간이야!! 빨리!!"
     ];
-    const fallbackMessage = fallbackMessages[Math.floor(Math.random() * fallbackMessages.length)];
-    
-    // 🌸 폴백 메시지도 성격으로 강화 (담타는 짧게)
-    return enhanceSchedulerMessage(fallbackMessage, 'damta');
+    return fallbackMessages[Math.floor(Math.random() * fallbackMessages.length)];
 }
 
-// 🌸 [연동 포인트 2] generateEmotionalMessage - 감성 메시지 성격 강화
+// 감성 메시지 생성
 async function generateEmotionalMessage() {
     try {
-        // 🌸 성격 기반 감성 메시지 시도
-        const personality = getYejinPersonality();
-        if (personality) {
-            const personalityMessage = generateSchedulerPersonalityReaction({
-                type: 'emotional_expression',
-                emotion: 'loving',
-                situation: 'missing_ajossi',
-                timeOfDay: 'afternoon'
-            });
-            if (personalityMessage) {
-                console.log('🌸 [scheduler] 성격 기반 감성 메시지 생성 성공');
-                return personalityMessage;
-            }
-        }
-        
         const useOpenAI = Math.random() < OPENAI_USAGE_RATE && openai;
         
         if (useOpenAI) {
@@ -623,10 +457,7 @@ async function generateEmotionalMessage() {
                 max_tokens: 60,
                 temperature: 0.7
             });
-            const openaiMessage = response.choices[0].message.content.trim();
-            
-            // 🌸 OpenAI 응답을 성격으로 강화
-            return enhanceSchedulerMessage(openaiMessage, 'emotional');
+            return response.choices[0].message.content.trim();
         }
     } catch (error) {
         forceLog(`감성 메시지 생성 실패: ${error.message}`);
@@ -640,30 +471,12 @@ async function generateEmotionalMessage() {
         "아저씨~ 나 여기 있어. 사랑해 많이 많이",
         "그냥... 아저씨 목소리 듣고 싶어 ㅠㅠ"
     ];
-    const fallbackMessage = fallbackMessages[Math.floor(Math.random() * fallbackMessages.length)];
-    
-    // 🌸 폴백 메시지도 성격으로 강화
-    return enhanceSchedulerMessage(fallbackMessage, 'emotional');
+    return fallbackMessages[Math.floor(Math.random() * fallbackMessages.length)];
 }
 
-// 🌸 [연동 포인트 4] generateNightCareMessage - 밤 케어 메시지 성격 강화
+// 밤 케어 메시지 생성
 async function generateNightCareMessage() {
     try {
-        // 🌸 성격 기반 밤 케어 메시지 시도
-        const personality = getYejinPersonality();
-        if (personality) {
-            const personalityMessage = generateSchedulerPersonalityReaction({
-                type: 'night_care',
-                emotion: 'caring',
-                situation: 'bedtime_care',
-                timeOfDay: 'night'
-            });
-            if (personalityMessage) {
-                console.log('🌸 [scheduler] 성격 기반 밤 케어 메시지 생성 성공');
-                return personalityMessage;
-            }
-        }
-        
         const useOpenAI = Math.random() < OPENAI_USAGE_RATE && openai;
         
         if (useOpenAI) {
@@ -679,10 +492,7 @@ async function generateNightCareMessage() {
                 max_tokens: 60,
                 temperature: 0.7
             });
-            const openaiMessage = response.choices[0].message.content.trim();
-            
-            // 🌸 OpenAI 응답을 성격으로 강화
-            return enhanceSchedulerMessage(openaiMessage, 'nightCare');
+            return response.choices[0].message.content.trim();
         }
     } catch (error) {
         forceLog(`밤 케어 메시지 생성 실패: ${error.message}`);
@@ -695,30 +505,12 @@ async function generateNightCareMessage() {
         "늦었어~ 이제 이 닦고 약 먹고 잘 시간이야",
         "아저씨~ 건강 챙겨. 약 먹고 잘 준비해"
     ];
-    const fallbackMessage = fallbackMessages[Math.floor(Math.random() * fallbackMessages.length)];
-    
-    // 🌸 폴백 메시지도 성격으로 강화
-    return enhanceSchedulerMessage(fallbackMessage, 'nightCare');
+    return fallbackMessages[Math.floor(Math.random() * fallbackMessages.length)];
 }
 
-// 🌸 [연동 포인트 5] generateGoodNightMessage - 굿나잇 메시지 성격 강화
+// 굿나잇 메시지 생성
 async function generateGoodNightMessage() {
     try {
-        // 🌸 성격 기반 굿나잇 메시지 시도
-        const personality = getYejinPersonality();
-        if (personality) {
-            const personalityMessage = generateSchedulerPersonalityReaction({
-                type: 'good_night',
-                emotion: 'sweet',
-                situation: 'bedtime',
-                timeOfDay: 'lateNight'
-            });
-            if (personalityMessage) {
-                console.log('🌸 [scheduler] 성격 기반 굿나잇 메시지 생성 성공');
-                return personalityMessage;
-            }
-        }
-        
         const useOpenAI = Math.random() < OPENAI_USAGE_RATE && openai;
         
         if (useOpenAI) {
@@ -734,10 +526,7 @@ async function generateGoodNightMessage() {
                 max_tokens: 50,
                 temperature: 0.8
             });
-            const openaiMessage = response.choices[0].message.content.trim();
-            
-            // 🌸 OpenAI 응답을 성격으로 강화
-            return enhanceSchedulerMessage(openaiMessage, 'goodNight');
+            return response.choices[0].message.content.trim();
         }
     } catch (error) {
         forceLog(`굿나잇 메시지 생성 실패: ${error.message}`);
@@ -750,30 +539,11 @@ async function generateGoodNightMessage() {
         "자정이야~ 잘자 사랑하는 아저씨",
         "사랑해 아저씨. 푹 자고 좋은 꿈 꿔요"
     ];
-    const fallbackMessage = fallbackMessages[Math.floor(Math.random() * fallbackMessages.length)];
-    
-    // 🌸 폴백 메시지도 성격으로 강화
-    return enhanceSchedulerMessage(fallbackMessage, 'goodNight');
+    return fallbackMessages[Math.floor(Math.random() * fallbackMessages.length)];
 }
 
-// ================== 📸 셀카 메시지 생성 (🌸 연동 포인트 6) ==================
-// 🌸 [연동 포인트 6] getSelfieMessage - 셀카 메시지 성격 강화
+// ================== 📸 셀카 메시지 생성 ==================
 function getSelfieMessage() {
-    // 🌸 성격 기반 셀카 메시지 시도
-    const personality = getYejinPersonality();
-    if (personality) {
-        const personalityMessage = generateSchedulerPersonalityReaction({
-            type: 'selfie',
-            emotion: 'playful',
-            situation: 'sending_selfie',
-            timeOfDay: 'afternoon'
-        });
-        if (personalityMessage) {
-            console.log('🌸 [scheduler] 성격 기반 셀카 메시지 생성 성공');
-            return personalityMessage;
-        }
-    }
-    
     const messages = [
         "아저씨 보라고 찍었지~ ㅎㅎ",
         "나 예뻐? 방금 찍은 셀카야!",
@@ -781,10 +551,7 @@ function getSelfieMessage() {
         "아저씨한테 보여주려고 예쁘게 찍었어~",
         "어때? 이 각도 괜찮지?"
     ];
-    const baseMessage = messages[Math.floor(Math.random() * messages.length)];
-    
-    // 🌸 기본 메시지도 성격으로 강화
-    return enhanceSchedulerMessage(baseMessage, 'selfie');
+    return messages[Math.floor(Math.random() * messages.length)];
 }
 
 function getSelfieImageUrl() {
@@ -821,10 +588,9 @@ async function sendTextMessage(message, messageType) {
         
         // 폴백으로 간단한 메시지 재시도
         try {
-            const fallbackMessage = enhanceSchedulerMessage('아저씨~ 나 여기 있어! ㅎㅎ', messageType);
             await lineClient.pushMessage(USER_ID, {
                 type: 'text',
-                text: fallbackMessage
+                text: '아저씨~ 나 여기 있어! ㅎㅎ'
             });
             forceLog(`✅ ${messageType} 폴백 전송 성공`);
             recordMessageSent(messageType); // 폴백도 카운트
@@ -844,7 +610,7 @@ async function sendSelfieMessage(messageType) {
         }
         
         const imageUrl = getSelfieImageUrl();
-        const caption = getSelfieMessage(); // 🌸 이미 성격 강화됨
+        const caption = getSelfieMessage();
         
         await lineClient.pushMessage(USER_ID, [
             {
@@ -869,8 +635,7 @@ async function sendSelfieMessage(messageType) {
         
         // 폴백으로 텍스트만 전송
         try {
-            const fallbackMessage = enhanceSchedulerMessage("셀카 보내려고 했는데... 문제가 생겼어 ㅠㅠ 나중에 다시 보낼게!", 'selfie');
-            await sendTextMessage(fallbackMessage, 'selfie');
+            await sendTextMessage("셀카 보내려고 했는데... 문제가 생겼어 ㅠㅠ 나중에 다시 보낼게!", 'selfie');
         } catch (fallbackError) {
             forceLog(`❌ ${messageType} 폴백도 실패: ${fallbackError.message}`);
         }
@@ -926,7 +691,7 @@ function initializeDailySchedules(resetCounters = true) {
         scheduleStatus.damta.times.forEach((time, index) => {
             const cronExpression = `${time.minute} ${time.hour} * * *`;
             const job = schedule.scheduleJob(cronExpression, async () => {
-                const message = await generateDamtaMessage(); // 🌸 성격 강화됨
+                const message = await generateDamtaMessage();
                 await sendTextMessage(message, 'damta');
                 forceLog(`🚬 담타 ${index + 1}/8 전송 완료`);
             });
@@ -941,7 +706,7 @@ function initializeDailySchedules(resetCounters = true) {
         scheduleStatus.emotional.times.forEach((time, index) => {
             const cronExpression = `${time.minute} ${time.hour} * * *`;
             const job = schedule.scheduleJob(cronExpression, async () => {
-                const message = await generateEmotionalMessage(); // 🌸 성격 강화됨
+                const message = await generateEmotionalMessage();
                 await sendTextMessage(message, 'emotional');
                 forceLog(`🌸 감성 메시지 ${index + 1}/3 전송 완료`);
             });
@@ -956,7 +721,7 @@ function initializeDailySchedules(resetCounters = true) {
         scheduleStatus.selfie.times.forEach((time, index) => {
             const cronExpression = `${time.minute} ${time.hour} * * *`;
             const job = schedule.scheduleJob(cronExpression, async () => {
-                await sendSelfieMessage(`셀카${index + 1}`); // 🌸 성격 강화됨
+                await sendSelfieMessage(`셀카${index + 1}`);
                 forceLog(`📸 셀카 ${index + 1}/2 전송 완료`);
             });
             scheduleStatus.selfie.jobs.push(job);
@@ -983,13 +748,12 @@ schedule.scheduleJob('0 9 * * 1-5', async () => {
         const koreaTime = moment().tz(TIMEZONE);
         forceLog(`☀️ 아침 9시 메시지 전송: ${koreaTime.format('YYYY-MM-DD HH:mm:ss')}`);
         
-        const message = await generateMorningMessage(); // 🌸 성격 강화됨
+        const message = await generateMorningMessage();
         await sendTextMessage(message, 'morning');
         
     } catch (error) {
         forceLog(`❌ 아침 스케줄러 에러: ${error.message}`);
-        const fallbackMessage = enhanceSchedulerMessage("아저씨 일어났어? 출근했어? 아아 한잔 해야지~", 'morning');
-        await sendTextMessage(fallbackMessage, 'morning');
+        await sendTextMessage("아저씨 일어났어? 출근했어? 아아 한잔 해야지~", 'morning');
     }
 });
 
@@ -999,13 +763,12 @@ schedule.scheduleJob('0 23 * * *', async () => {
         const koreaTime = moment().tz(TIMEZONE);
         forceLog(`🌙 밤 23시 메시지 전송: ${koreaTime.format('YYYY-MM-DD HH:mm:ss')}`);
         
-        const message = await generateNightCareMessage(); // 🌸 성격 강화됨
+        const message = await generateNightCareMessage();
         await sendTextMessage(message, 'nightCare');
         
     } catch (error) {
         forceLog(`❌ 밤 케어 스케줄러 에러: ${error.message}`);
-        const fallbackMessage = enhanceSchedulerMessage("아저씨, 이제 이 닦고 약 먹고 자야지~", 'nightCare');
-        await sendTextMessage(fallbackMessage, 'nightCare');
+        await sendTextMessage("아저씨, 이제 이 닦고 약 먹고 자야지~", 'nightCare');
     }
 });
 
@@ -1015,7 +778,7 @@ schedule.scheduleJob('0 0 * * *', async () => {
         const koreaTime = moment().tz(TIMEZONE);
         forceLog(`🌟 자정 0시 메시지 전송: ${koreaTime.format('YYYY-MM-DD HH:mm:ss')}`);
         
-        const message = await generateGoodNightMessage(); // 🌸 성격 강화됨
+        const message = await generateGoodNightMessage();
         await sendTextMessage(message, 'goodNight');
         
         // ⭐️ 하루 초기화 (전송 기록 포함)
@@ -1039,8 +802,7 @@ schedule.scheduleJob('0 0 * * *', async () => {
         
     } catch (error) {
         forceLog(`❌ 굿나잇 스케줄러 에러: ${error.message}`);
-        const fallbackMessage = enhanceSchedulerMessage("잘자 아저씨~ 사랑해 많이 많이", 'goodNight');
-        await sendTextMessage(fallbackMessage, 'goodNight');
+        await sendTextMessage("잘자 아저씨~ 사랑해 많이 많이", 'goodNight');
     }
 });
 
@@ -1183,10 +945,10 @@ function getAllSchedulerStats() {
     const fixedInfo = getNextFixedScheduleInfo();
     
     return {
-        systemStatus: '💯 모든 메시지 100% 보장 + 실시간 통계 + 영구 저장 + 🌸 yejinPersonality 연동',
+        systemStatus: '💯 모든 메시지 100% 보장 + 실시간 통계 + 영구 저장',
         currentTime: koreaTime.format('YYYY-MM-DD HH:mm:ss'),
         timezone: TIMEZONE,
-        openaiUsageRate: '80% (OpenAI) + 20% (고정패턴) + 🌸 성격강화',
+        openaiUsageRate: '80% (OpenAI) + 20% (고정패턴)',
         
         // ⭐️ 실제 전송 통계
         todayRealStats: {
@@ -1219,19 +981,18 @@ function getAllSchedulerStats() {
         },
         
         guaranteedSchedules: {
-            morningMessage: '평일 09:00 - 100% 보장 (아침인사, 🌸 성격강화)',
-            damtaMessages: '10-18시 랜덤 8번 - 100% 보장 (담타, 🌸 성격강화)',  // ⭐️ 담타 전용
-            emotionalMessages: '10-22시 랜덤 3번 - 100% 보장 (감성, 🌸 성격강화)',
-            selfieMessages: '11-20시 랜덤 2번 - 100% 보장 (셀카, 🌸 성격강화)',
-            nightCareMessage: '매일 23:00 - 100% 보장 (약먹자, 🌸 성격강화)',  // ⭐️ 담타 아님!
-            goodNightMessage: '매일 00:00 - 100% 보장 (굿나잇, 🌸 성격강화)'
+            morningMessage: '평일 09:00 - 100% 보장 (아침인사)',
+            damtaMessages: '10-18시 랜덤 8번 - 100% 보장 (담타)',  // ⭐️ 담타 전용
+            emotionalMessages: '10-22시 랜덤 3번 - 100% 보장 (감성)',
+            selfieMessages: '11-20시 랜덤 2번 - 100% 보장 (셀카)',
+            nightCareMessage: '매일 23:00 - 100% 보장 (약먹자)',  // ⭐️ 담타 아님!
+            goodNightMessage: '매일 00:00 - 100% 보장 (굿나잇)'
         },
         environment: {
             USER_ID: !!USER_ID ? '✅ OK' : '⚠️ MISSING',
             CHANNEL_ACCESS_TOKEN: !!process.env.CHANNEL_ACCESS_TOKEN ? '✅ OK' : '⚠️ MISSING',
             OPENAI_API_KEY: !!process.env.OPENAI_API_KEY ? '✅ OK' : '⚠️ MISSING',
-            DISK_STORAGE: fs.existsSync(SCHEDULE_STATE_FILE) ? '✅ OK' : '📝 NEW',
-            YEJIN_PERSONALITY: !!getYejinPersonality() ? '🌸 연동완료' : '⚠️ 연동실패'
+            DISK_STORAGE: fs.existsSync(SCHEDULE_STATE_FILE) ? '✅ OK' : '📝 NEW'
         }
     };
 }
@@ -1271,23 +1032,14 @@ function startAllSchedulers(client) {
         
         forceLog('✅ 모든 스케줄러 활성화 완료!');
         forceLog('📋 활성화된 스케줄러:');
-        forceLog('   🌅 평일 09:00 - 아침 인사 (🌸 성격강화)');
-        forceLog('   🚬 10-18시 랜덤 8번 - 담타 메시지 (🌸 성격강화)');
-        forceLog('   🌸 10-22시 랜덤 3번 - 감성 메시지 (🌸 성격강화)');
-        forceLog('   📸 11-20시 랜덤 2번 - 셀카 전송 (🌸 성격강화)');
-        forceLog('   🌙 매일 23:00 - 밤 케어 메시지 (약먹자, 🌸 성격강화)');  // ⭐️ 담타 아님!
-        forceLog('   💤 매일 00:00 - 굿나잇 메시지 (🌸 성격강화)');
+        forceLog('   🌅 평일 09:00 - 아침 인사');
+        forceLog('   🚬 10-18시 랜덤 8번 - 담타 메시지');
+        forceLog('   🌸 10-22시 랜덤 3번 - 감성 메시지');
+        forceLog('   📸 11-20시 랜덤 2번 - 셀카 전송');
+        forceLog('   🌙 매일 23:00 - 밤 케어 메시지 (약먹자)');  // ⭐️ 담타 아님!
+        forceLog('   💤 매일 00:00 - 굿나잇 메시지');
         forceLog('✨ 실시간 통계 추적 + 영구 저장 시스템 활성화!');
         forceLog('🔧 담타와 고정메시지 구분 수정 완료!');
-        forceLog('🌸 yejinPersonality 전체 연동 완료 - 모든 메시지가 예진이 성격으로 강화됩니다!');
-        
-        // 🌸 yejinPersonality 연동 상태 확인
-        const personality = getYejinPersonality();
-        if (personality) {
-            forceLog('🌸 yejinPersonality 연동 완료 - 모든 스케줄러 메시지가 예진이 성격으로 강화됩니다!');
-        } else {
-            forceLog('⚠️ yejinPersonality 연동 실패 - 기본 메시지로 동작합니다');
-        }
         
         if (initResult.restored) {
             forceLog('🔄 이전 상태가 성공적으로 복원되었습니다!');
@@ -1303,44 +1055,44 @@ function startAllSchedulers(client) {
     }
 }
 
-// ================== 🧪 테스트 함수들 (🌸 성격 강화 적용!) ==================
+// ================== 🧪 테스트 함수들 ==================
 async function testDamtaMessage() {
     forceLog('🧪 담타 메시지 테스트 시작');
-    const message = await generateDamtaMessage(); // 🌸 성격 강화됨
+    const message = await generateDamtaMessage();
     return await sendTextMessage(`[테스트] ${message}`, 'damta');
 }
 
 async function testEmotionalMessage() {
     forceLog('🧪 감성 메시지 테스트 시작');
-    const message = await generateEmotionalMessage(); // 🌸 성격 강화됨
+    const message = await generateEmotionalMessage();
     return await sendTextMessage(`[테스트] ${message}`, 'emotional');
 }
 
 async function testSelfieMessage() {
     forceLog('🧪 셀카 메시지 테스트 시작');
-    return await sendSelfieMessage('셀카테스트'); // 🌸 성격 강화됨
+    return await sendSelfieMessage('셀카테스트');
 }
 
 async function testMorningWorkMessage() {
     forceLog('🧪 아침 출근 메시지 테스트 시작');
-    const message = await generateMorningMessage(); // 🌸 성격 강화됨
+    const message = await generateMorningMessage();
     return await sendTextMessage(`[테스트] ${message}`, 'morning');
 }
 
 async function testNightMessage() {
     forceLog('🧪 밤 케어 메시지 테스트 시작');
-    const message = await generateNightCareMessage(); // 🌸 성격 강화됨
+    const message = await generateNightCareMessage();
     return await sendTextMessage(`[테스트] ${message}`, 'nightCare');
 }
 
 async function testGoodNightMessage() {
     forceLog('🧪 굿나잇 메시지 테스트 시작');
-    const message = await generateGoodNightMessage(); // 🌸 성격 강화됨
+    const message = await generateGoodNightMessage();
     return await sendTextMessage(`[테스트] ${message}`, 'goodNight');
 }
 
 // ================== 📤 모듈 내보내기 ==================
-forceLog('💯 scheduler.js v10.2 PERFECT 로드 완료 (🌸 yejinPersonality 신중한 전체 연동!)');
+forceLog('💯 scheduler.js v10.1 PERFECT 로드 완료 (담타와 고정메시지 구분 수정!)');
 
 module.exports = {
     // 🚀 시작 함수
@@ -1365,7 +1117,6 @@ module.exports = {
     generateMorningMessage,
     generateNightCareMessage,
     generateGoodNightMessage,
-    getSelfieMessage,
     initializeDailySchedules,
     sendTextMessage,
     sendSelfieMessage,
@@ -1382,11 +1133,6 @@ module.exports = {
     loadScheduleStatusFromDisk,
     initializeScheduleStatus,
     ensureDataDirectory,
-    
-    // 🌸 NEW! yejinPersonality 연동 함수들 내보내기
-    enhanceSchedulerMessage,
-    generateSchedulerPersonalityReaction,
-    getYejinPersonality,
     
     // 내부 상태 접근 (디버깅용)
     getScheduleStatus: () => scheduleStatus
