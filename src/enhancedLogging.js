@@ -1,8 +1,8 @@
 // ============================================================================
-// 💖 무쿠 심플 로그 시스템 v7.2 FINAL - 완전 수정버전
+// 💖 무쿠 심플 로그 시스템 v7.3 FINAL - 생리주기 마스터 연동
 // ✅ 모듈 의존성 완전 제거 - 직접 파일 시스템 접근
 // ✅ 실시간 학습 통계 정확히 표시 (디스크 파일 직접 읽기)
-// ✅ 생리주기 정확한 계산 (하드코딩된 정확한 값)
+// 🩸 생리주기는 마스터에서 가져옴 (Single Source of Truth)
 // 🚫 더 이상 modules 의존성 없음 - 100% 확실한 동작 보장
 // ============================================================================
 
@@ -322,25 +322,23 @@ function getDirectLearningData() {
 }
 
 /**
- * 🔥 생리주기 직접 계산 (모듈 의존성 제거)
+ * 🩸 생리주기 정보 마스터에서 가져오기 (Single Source of Truth)
  */
 function getDirectMenstrualCycle() {
     try {
-        // 🔥 정확한 데이터: 다음 생리 예정일 2025-07-24
-        const nextPeriodDate = new Date('2025-07-24');
-        const today = new Date();
-        
-        // 정확한 일수 계산 (일본시간 기준)
-        const japanToday = new Date(today.toLocaleString("en-US", {timeZone: "Asia/Tokyo"}));
-        const daysUntilNext = Math.ceil((nextPeriodDate - japanToday) / (1000 * 60 * 60 * 24));
+        // 🩸 마스터에서 정보 가져오기 시도
+        const menstrualCycleManager = require('./menstrualCycleManager');
+        const cycle = menstrualCycleManager.getCurrentMenstrualPhase();
         
         return {
-            description: 'PMS 심화',
-            daysUntilNext: Math.max(0, daysUntilNext),
-            nextDate: '7/24'
+            description: cycle.description,
+            daysUntilNext: cycle.daysUntilNext,
+            nextDate: cycle.nextPeriodDate ? cycle.nextPeriodDate.slice(5) : '7/24'  // YYYY-MM-DD -> MM/DD
         };
+        
     } catch (error) {
-        console.error('🔥 [DIRECT] 생리주기 계산 오류:', error.message);
+        console.error('🩸 [DIRECT] 생리주기 마스터 연동 실패:', error.message);
+        // 실패 시 안전한 기본값
         return {
             description: 'PMS 심화',
             daysUntilNext: 1,
@@ -349,7 +347,7 @@ function getDirectMenstrualCycle() {
     }
 }
 
-// ================== 💖 라인 전용 예쁜 상태 리포트 v7.2 FINAL ==================
+// ================== 💖 라인 전용 예쁜 상태 리포트 v7.3 FINAL ==================
 async function generateLineStatusReport(modules) {
     let report = '';
     const currentTime = formatJapanTime('HH:mm');
@@ -362,7 +360,7 @@ async function generateLineStatusReport(modules) {
         report += `💖 예진이 현재 상태\n`;
         report += `━━━\n`;
         
-        // 🔥 생리주기 - 직접 계산 (모듈 의존성 제거)
+        // 🩸 생리주기 - 마스터에서 가져오기 (Single Source of Truth)
         const cycleInfo = getDirectMenstrualCycle();
         report += `🩸 [생리주기] 현재 ${cycleInfo.description}\n`;
         report += `📅 다음 생리예정일: ${cycleInfo.daysUntilNext}일 후 (${cycleInfo.nextDate})\n`;
@@ -668,7 +666,7 @@ module.exports = {
     // 속마음 관련
     getRandomYejinHeart,
     
-    // 🔥 직접 데이터 읽기 함수들 (NEW!)
+    // 🩸 마스터 연동 함수들 (업데이트)
     getDirectLearningData,
     getDirectMenstrualCycle,
     
