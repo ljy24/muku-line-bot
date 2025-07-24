@@ -561,10 +561,11 @@ function applyCurrentBehaviorSettings(reply) {
         const currentSpeechStyle = realtimeBehaviorSwitch.getCurrentSpeechStyle();
         
         // 호칭 변경 적용
-        if (currentAddress !== '아저씨') {
-            modifiedReply = modifiedReply
-                .replace(/아저씨/g, currentAddress);
-        }
+        //if (currentAddress !== '아저씨') {
+        //    modifiedReply = modifiedReply
+        //        .replace(/아저씨/g, currentAddress);
+        finalReply = finalReply.replace(/아조씨/g, '아저씨');
+        
         
         // 말투 변경 적용 (존댓말 모드인 경우)
         if (currentSpeechStyle === 'jondaetmal') {
