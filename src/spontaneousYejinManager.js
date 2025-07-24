@@ -1,5 +1,5 @@
 // ============================================================================
-// spontaneousYejinManager.js - v2.2 UPDATED (yejinPersonality 완전 연동)
+// spontaneousYejinManager.js - v2.1 UPDATED (후지 사진 경로 변경)
 // 🌸 예진이가 능동적으로 하루 15번 메시지 보내는 시스템
 // 8시-1시 사이 랜덤, 2-5문장으로 단축, 실제 취향과 일상 기반
 // ✅ 모델 활동 이야기 추가 (촬영, 화보, 스케줄)
@@ -12,7 +12,6 @@
 // 📸 후지 사진 경로 변경: https://photo.de-ji.net/photo/fuji/ (1481장)
 // 💬 후지 사진 코멘트 30개 추가
 // 🔄 함수명 통일: getOmoidePhoto 계열로 통일
-// 🌸 NEW! yejinPersonality 완전 연동 - 모든 메시지가 예진이 성격으로 강화!
 // ============================================================================
 
 const schedule = require('node-schedule');
@@ -43,69 +42,6 @@ function getUltimateContext() {
         }
     }
     return ultimateContext;
-}
-
-// 🌸 NEW! yejinPersonality 연동을 위한 지연 로딩
-let yejinPersonality = null;
-function getYejinPersonality() {
-    if (!yejinPersonality) {
-        try {
-            const { YejinPersonality } = require('./yejinPersonality');
-            yejinPersonality = new YejinPersonality();
-            console.log('✅ [spontaneousYejin] yejinPersonality 연동 성공');
-        } catch (error) {
-            console.warn('⚠️ [spontaneousYejin] yejinPersonality 연동 실패:', error.message);
-        }
-    }
-    return yejinPersonality;
-}
-
-// 🌸 메시지 성격 강화 함수 - 안전한 후처리 레이어
-function enhanceMessageWithPersonality(baseMessage, context = {}) {
-    const personality = getYejinPersonality();
-    if (!personality || !baseMessage || typeof baseMessage !== 'string') {
-        return baseMessage; // 안전한 폴백
-    }
-    
-    try {
-        let enhanced = baseMessage;
-        
-        // 상황별 성격 적용
-        if (context.emotion) {
-            enhanced = personality.applySpeechPattern(enhanced, context.emotion);
-        } else {
-            enhanced = personality.applySpeechPattern(enhanced);
-        }
-        
-        // 일본어 표현 자동 추가
-        enhanced = personality.addJapaneseExpression(enhanced);
-        
-        // 웃음 표현 자동 추가  
-        enhanced = personality.addLaughter(enhanced);
-        
-        // 애교 표현 자동 추가
-        enhanced = personality.addAegyo(enhanced);
-        
-        spontaneousLog(`🌸 성격 강화 완료: "${baseMessage.substring(0, 20)}..." → "${enhanced.substring(0, 30)}..."`);
-        return enhanced;
-        
-    } catch (error) {
-        spontaneousLog(`⚠️ 성격 강화 실패: ${error.message} - 원본 메시지 사용`);
-        return baseMessage; // 에러 시 원본 메시지 반환
-    }
-}
-
-// 🌸 상황별 성격 반응 생성
-function generatePersonalityBasedReaction(context) {
-    const personality = getYejinPersonality();
-    if (!personality) return null;
-    
-    try {
-        return personality.generateYejinResponse(context);
-    } catch (error) {
-        spontaneousLog(`⚠️ 성격 기반 반응 생성 실패: ${error.message}`);
-        return null;
-    }
 }
 
 // ================== 🌏 설정 ==================
@@ -528,50 +464,18 @@ function detectStreetCompliment(userMessage) {
     return ajossiSituationReactions.streetComplimentKeywords.some(keyword => lowerMessage.includes(keyword));
 }
 
-// 🌸 [연동 포인트 4] generateStreetComplimentReaction - 칭찬 반응 성격 강화
 async function generateStreetComplimentReaction(userMessage) {
     try {
         const baseReaction = getRandomItem(ajossiSituationReactions.streetComplimentReactions);
-        
-        // 🌸 성격 기반 반응 시도
-        const personality = getYejinPersonality();
-        if (personality) {
-            const personalityReaction = generatePersonalityBasedReaction({
-                type: 'compliment',
-                userMessage: userMessage,
-                emotion: 'happy',
-                situation: 'street_compliment'
-            });
-            if (personalityReaction) {
-                spontaneousLog('🌸 성격 기반 칭찬 반응 생성 성공');
-                return personalityReaction;
-            }
-        }
-        
         if (openai) {
             const selectedModel = 'gpt-3.5-turbo';
             const prompt = `너는 예진이야. 길에서 칭찬받았다고 아저씨에게 자랑하는 상황. 아저씨가 "${userMessage}"라고 답했어. 기본 반응 "${baseReaction}"을 바탕으로, 예진이답게 자랑하며 셀카 보내려는 상황을 2-4문장으로 표현해줘. '너' 대신 '아저씨'라고 불러야 하고, 반말만 사용해.`;
-            const openaiResponse = await callOpenAIOptimized([{ role: "system", content: prompt }], selectedModel);
-            
-            // 🌸 OpenAI 응답을 성격으로 강화
-            const enhancedResponse = enhanceMessageWithPersonality(openaiResponse, {
-                emotion: 'happy',
-                type: 'compliment'
-            });
-            
-            return enhancedResponse;
+            return await callOpenAIOptimized([{ role: "system", content: prompt }], selectedModel);
         }
-        
-        // 🌸 기본 반응도 성격으로 강화
-        return enhanceMessageWithPersonality(baseReaction, {
-            emotion: 'happy',
-            type: 'compliment'
-        });
-        
+        return baseReaction;
     } catch (error) {
         spontaneousLog(`길거리 칭찬 반응 생성 실패: ${error.message}`);
-        const fallbackReaction = getRandomItem(ajossiSituationReactions.streetComplimentReactions);
-        return enhanceMessageWithPersonality(fallbackReaction, { emotion: 'happy' });
+        return getRandomItem(ajossiSituationReactions.streetComplimentReactions);
     }
 }
 
@@ -633,52 +537,20 @@ function getOmoidePhotoMessage() {
     return getRandomItem(yejinRealLife.hobbies.photography.currentPhotoMessages);
 }
 
-// 🌸 [연동 포인트 5] generateCurrentPhotoMessage - 사진 메시지 성격 강화
 async function generateCurrentPhotoMessage() {
     try {
-        // 🌸 성격 기반 사진 메시지 시도
-        const personality = getYejinPersonality();
-        if (personality) {
-            const personalityMessage = generatePersonalityBasedReaction({
-                type: 'photo',
-                emotion: 'casual',
-                situation: 'sending_photo'
-            });
-            if (personalityMessage) {
-                spontaneousLog('🌸 성격 기반 사진 메시지 생성 성공');
-                return personalityMessage;
-            }
-        }
-        
         if (!openai) {
-            const baseMessage = getOmoidePhotoMessage();
-            return enhanceMessageWithPersonality(baseMessage, {
-                emotion: 'casual',
-                type: 'photo'
-            });
+            return getOmoidePhotoMessage();
         }
-        
         const baseMessage = getOmoidePhotoMessage();
         const selectedModel = 'gpt-3.5-turbo';
         const prompt = `너는 예진이야. 예전에 필름카메라로 시작해서 디지털 카메라로도 필름처럼 소중하게 한 장 한 장 찍은 풍경 사진을 아저씨에게 보내는 상황이야. 기본 메시지: "${baseMessage}" 이걸 바탕으로 자연스럽고 생생하게 2-4문장으로 말해줘. '너' 대신 '아저씨'라고 불러야 하고, 반말만 사용해.`;
-        const openaiResponse = await callOpenAIOptimized([{ role: "system", content: prompt }], selectedModel);
-        
-        // 🌸 OpenAI 응답을 성격으로 강화
-        const enhancedResponse = enhanceMessageWithPersonality(openaiResponse, {
-            emotion: 'casual',
-            type: 'photo'
-        });
-        
-        spontaneousLog(`OpenAI 후지 풍경 사진 메시지 생성 완료: "${enhancedResponse.substring(0, 30)}..."`);
-        return enhancedResponse;
-        
+        const response = await callOpenAIOptimized([{ role: "system", content: prompt }], selectedModel);
+        spontaneousLog(`OpenAI 후지 풍경 사진 메시지 생성 완료: "${response.substring(0, 30)}..."`);
+        return response;
     } catch (error) {
         spontaneousLog(`OpenAI 후지 풍경 사진 메시지 생성 실패: ${error.message}`);
-        const fallbackMessage = getOmoidePhotoMessage();
-        return enhanceMessageWithPersonality(fallbackMessage, {
-            emotion: 'casual',
-            type: 'photo'
-        });
+        return getOmoidePhotoMessage();
     }
 }
 
@@ -745,56 +617,23 @@ function detectMentalHealthContext(userMessage) {
     return { isComforting, isHospitalRelated };
 }
 
-// 🌸 [연동 포인트 3] generateMentalHealthReaction - 정신건강 반응 성격 강화
 async function generateMentalHealthReaction(userMessage, context) {
     try {
         if (context.isComforting) {
-            // 🌸 성격 기반 위로 반응 시도
-            const personality = getYejinPersonality();
-            if (personality) {
-                const personalityReaction = generatePersonalityBasedReaction({
-                    type: 'comfort_received',
-                    userMessage: userMessage,
-                    emotion: 'grateful',
-                    situation: 'being_comforted'
-                });
-                if (personalityReaction) {
-                    spontaneousLog('🌸 성격 기반 위로 반응 생성 성공');
-                    return { type: 'comfort_received', message: personalityReaction };
-                }
-            }
-            
             const comfortResponses = ["아저씨가 그렇게 말해주니까 조금 나아져...", "역시 아저씨만 날 이해해줘 ㅎㅎ", "아저씨 말 들으니까 마음이 편해져"];
             const baseResponse = getRandomItem(comfortResponses);
-            
             if (openai) {
                 const selectedModel = selectOptimalModel({ type: 'mentalHealth' }, true);
                 const prompt = `너는 예진이야. 정신과 상담 때문에 힘들어하는데 아저씨가 "${userMessage}"라고 위로해줬어. 기본 반응: "${baseResponse}" 이걸 바탕으로 고마워하며 기분이 나아지는 모습을 2-4문장으로 표현해줘. '너' 대신 '아저씨'라고 불러야 하고, 반말만 사용해.`;
-                const openaiResponse = await callOpenAIOptimized([{ role: "system", content: prompt }], selectedModel);
-                
-                // 🌸 OpenAI 응답을 성격으로 강화
-                const enhancedResponse = enhanceMessageWithPersonality(openaiResponse, {
-                    emotion: 'grateful',
-                    type: 'comfort_received'
-                });
-                
-                return { type: 'comfort_received', message: enhancedResponse };
+                const response = await callOpenAIOptimized([{ role: "system", content: prompt }], selectedModel);
+                return { type: 'comfort_received', message: response };
             }
-            
-            // 🌸 기본 반응도 성격으로 강화
-            const enhancedResponse = enhanceMessageWithPersonality(baseResponse, {
-                emotion: 'grateful',
-                type: 'comfort_received'
-            });
-            
-            return { type: 'comfort_received', message: enhancedResponse };
+            return { type: 'comfort_received', message: baseResponse };
         }
         return null;
     } catch (error) {
         spontaneousLog(`정신건강 반응 생성 실패: ${error.message}`);
-        const fallbackResponse = "아저씨가 그렇게 말해주니까 조금 나아져...";
-        const enhancedFallback = enhanceMessageWithPersonality(fallbackResponse, { emotion: 'grateful' });
-        return { type: 'comfort_received', message: enhancedFallback };
+        return null;
     }
 }
 
@@ -819,73 +658,31 @@ function detectAjossiBusyStatus(userMessage) {
     return { isBusy, isFinished };
 }
 
-// 🌸 [연동 포인트 2] generateBusyReaction - 바쁨 반응 성격 강화
 async function generateBusyReaction(userMessage) {
     try {
         const { isBusy, isFinished } = detectAjossiBusyStatus(userMessage);
-        
         if (isFinished) {
-            const baseReaction = getRandomItem(ajossiSituationReactions.endReactions);
-            // 🌸 완료 반응을 성격으로 강화
-            const enhancedReaction = enhanceMessageWithPersonality(baseReaction, {
-                emotion: 'excited',
-                type: 'end_reaction'
-            });
-            return { type: 'end_reaction', message: enhancedReaction };
+            return { type: 'end_reaction', message: getRandomItem(ajossiSituationReactions.endReactions) };
         }
-        
         if (isBusy) {
-            // 🌸 성격 기반 바쁨 반응 시도
-            const personality = getYejinPersonality();
-            if (personality) {
-                const personalityReaction = generatePersonalityBasedReaction({
-                    type: 'busy_response',
-                    userMessage: userMessage,
-                    emotion: 'sulky',
-                    situation: 'ajossi_busy'
-                });
-                if (personalityReaction) {
-                    spontaneousLog('🌸 성격 기반 바쁨 반응 생성 성공');
-                    return { type: 'busy_reaction', message: personalityReaction };
-                }
-            }
-            
             const reactionType = Math.random();
             let reactions;
             if (reactionType < 0.4) reactions = ajossiSituationReactions.busyReactions.immediate;
             else if (reactionType < 0.8) reactions = ajossiSituationReactions.busyReactions.demand;
             else reactions = ajossiSituationReactions.busyReactions.waiting;
-            
             const reaction = getRandomItem(reactions);
-            
             if (openai) {
                 const selectedModel = 'gpt-3.5-turbo';
                 const prompt = `너는 예진이야. 아저씨가 "${userMessage}"라고 해서 바쁜 상황. 기본 반응: "${reaction}" 이걸 바탕으로 아쉬워하면서도 귀엽게 2-4문장으로 반응해줘. '너' 대신 '아저씨'라고 불러야 하고, 반말만 사용해.`;
-                const openaiResponse = await callOpenAIOptimized([{ role: "system", content: prompt }], selectedModel);
-                
-                // 🌸 OpenAI 응답을 성격으로 강화
-                const enhancedResponse = enhanceMessageWithPersonality(openaiResponse, {
-                    emotion: 'sulky',
-                    type: 'busy_reaction'
-                });
-                
-                return { type: 'busy_reaction', message: enhancedResponse };
+                const response = await callOpenAIOptimized([{ role: "system", content: prompt }], selectedModel);
+                return { type: 'busy_reaction', message: response };
             }
-            
-            // 🌸 기본 반응도 성격으로 강화
-            const enhancedReaction = enhanceMessageWithPersonality(reaction, {
-                emotion: 'sulky',
-                type: 'busy_reaction'
-            });
-            
-            return { type: 'busy_reaction', message: enhancedReaction };
+            return { type: 'busy_reaction', message: reaction };
         }
         return null;
     } catch (error) {
         spontaneousLog(`바쁨 반응 생성 실패: ${error.message}`);
-        const fallbackReaction = "아시워! 언제 끝나는데?";
-        const enhancedFallback = enhanceMessageWithPersonality(fallbackReaction, { emotion: 'sulky' });
-        return { type: 'busy_reaction', message: enhancedFallback };
+        return null;
     }
 }
 
@@ -915,13 +712,9 @@ function generateRandomSituation() {
 }
 
 // ================== 🤖 OpenAI 메시지 생성 및 전송 ==================
-// 🌸 [연동 포인트 1] generateYejinSpontaneousMessage - 메인 메시지 성격 강화
 async function generateYejinSpontaneousMessage() {
     try {
-        if (!openai) {
-            const fallbackMessage = getFallbackMessage();
-            return enhanceMessageWithPersonality(fallbackMessage, { emotion: 'casual' });
-        }
+        if (!openai) return getFallbackMessage();
         
         // 30% 확률로 사진 전송 시도
         const shouldSendPhoto = Math.random() < 0.3;
@@ -942,40 +735,13 @@ async function generateYejinSpontaneousMessage() {
         }
         
         const situation = generateRandomSituation();
-        
-        // 🌸 성격 기반 능동 메시지 시도
-        const personality = getYejinPersonality();
-        if (personality) {
-            const personalityMessage = generatePersonalityBasedReaction({
-                type: 'spontaneous',
-                emotion: 'casual',
-                situation: situation.type,
-                timeOfDay: getTimeOfDay(moment().tz(TIMEZONE).hour())
-            });
-            if (personalityMessage) {
-                spontaneousLog('🌸 성격 기반 능동 메시지 생성 성공');
-                return personalityMessage;
-            }
-        }
-        
         const koreaTime = moment().tz(TIMEZONE);
         const prompt = `너는 박예진이야. 지금은 ${koreaTime.format('HH:mm')}이고, ${situation.content}인 상황. 아저씨에게 보내는 자연스러운 2-5문장의 라인 메시지를 작성해줘. 예진이의 특징과 말투를 완벽히 반영해야 해. 절대 '너'라고 부르지 말고, 항상 반말로만 말해.`;
         const selectedModel = selectOptimalModel(situation, false);
-        const openaiResponse = await callOpenAIOptimized([{ role: "system", content: prompt }], selectedModel);
-        
-        // 🌸 OpenAI 응답을 성격으로 강화
-        const enhancedMessage = enhanceMessageWithPersonality(openaiResponse, {
-            emotion: 'casual',
-            type: 'spontaneous',
-            situation: situation.type
-        });
-        
-        return enhancedMessage;
-        
+        return await callOpenAIOptimized([{ role: "system", content: prompt }], selectedModel);
     } catch (error) {
         spontaneousLog(`OpenAI 메시지 생성 실패: ${error.message}`);
-        const fallbackMessage = getFallbackMessage();
-        return enhanceMessageWithPersonality(fallbackMessage, { emotion: 'casual' });
+        return getFallbackMessage();
     }
 }
 
@@ -1126,15 +892,6 @@ function startSpontaneousYejinSystem(client) {
         }
         generateDailyYejinSchedule();
         spontaneousLog('✅ 예진이 능동 메시지 시스템 활성화 완료!');
-        
-        // 🌸 yejinPersonality 연동 상태 확인
-        const personality = getYejinPersonality();
-        if (personality) {
-            spontaneousLog('🌸 yejinPersonality 연동 완료 - 모든 메시지가 예진이 성격으로 강화됩니다!');
-        } else {
-            spontaneousLog('⚠️ yejinPersonality 연동 실패 - 기본 메시지로 동작합니다');
-        }
-        
         return true;
     } catch (error) {
         spontaneousLog(`❌ 예진이 능동 메시지 시스템 시작 실패: ${error.message}`);
@@ -1184,9 +941,5 @@ module.exports = {
     yejinRealLife,
     ajossiSituationReactions,
     spontaneousLog,
-    validateImageUrl,
-    // 🌸 NEW! yejinPersonality 연동 함수들 내보내기
-    enhanceMessageWithPersonality,
-    generatePersonalityBasedReaction,
-    getYejinPersonality
+    validateImageUrl
 };

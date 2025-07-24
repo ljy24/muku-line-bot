@@ -1,90 +1,13 @@
 // ============================================================================
-// spontaneousPhotoManager.js - v2.1 yejinPersonality 신중한 연동
+// spontaneousPhotoManager.js - v2.0 실제 통계 추적 시스템 추가
 // 📸 자발적 사진 전송 + 실시간 통계 추적
 // ✨ getPhotoStatus() 함수 추가 - 라인 상태 리포트용
 // 🎯 다음 전송 시간 정확 계산 + 일일 전송 통계
-// 🌸 NEW! yejinPersonality 신중한 연동 - 사진 메시지가 예진이 성격으로 강화!
-// 🛡️ 완벽한 안전 장치: 연동 실패 시 기존 시스템 100% 보장
 // ============================================================================
 
 const schedule = require('node-schedule'); // ❗ 수정: 'node-cron' -> 'node-schedule'
 const moment = require('moment-timezone');
 const { Client } = require('@line/bot-sdk');
-
-// 🌸 NEW! yejinPersonality 연동을 위한 신중한 지연 로딩
-let yejinPersonality = null;
-function getYejinPersonality() {
-    if (!yejinPersonality) {
-        try {
-            const { YejinPersonality } = require('./yejinPersonality');
-            yejinPersonality = new YejinPersonality();
-            console.log('✅ [spontaneousPhoto] yejinPersonality 연동 성공');
-        } catch (error) {
-            console.warn('⚠️ [spontaneousPhoto] yejinPersonality 연동 실패:', error.message);
-        }
-    }
-    return yejinPersonality;
-}
-
-// 🌸 사진 메시지 성격 강화 함수 - 매우 신중한 후처리 레이어
-function enhancePhotoMessage(baseMessage, photoType) {
-    const personality = getYejinPersonality();
-    if (!personality || !baseMessage || typeof baseMessage !== 'string') {
-        return baseMessage; // 안전한 폴백
-    }
-    
-    try {
-        let enhanced = baseMessage;
-        
-        // 사진 타입별 감정 매핑
-        const photoEmotionMap = {
-            'selfie': 'playful',     // 셀카: 귀엽고 장난스럽게
-            'memory': 'nostalgic',   // 추억: 그리워하고 감성적으로
-            'concept': 'confident',  // 컨셉: 자신감 있고 새로운 시도
-            'couple': 'loving'       // 커플: 사랑스럽고 행복하게
-        };
-        
-        const emotion = photoEmotionMap[photoType] || 'playful';
-        
-        // 성격 패턴 적용
-        enhanced = personality.applySpeechPattern(enhanced, emotion);
-        
-        // 일본어 표현 자동 추가 (한국어 발음)
-        enhanced = personality.addJapaneseExpression(enhanced);
-        
-        // 웃음 표현 자동 추가  
-        enhanced = personality.addLaughter(enhanced);
-        
-        // 애교 표현 자동 추가
-        enhanced = personality.addAegyo(enhanced);
-        
-        // 길이 제한 확인 (사진 메시지는 적당히)
-        if (enhanced.length > 80) {
-            console.warn(`⚠️ [spontaneousPhoto] ${photoType} 메시지 길이 초과 (${enhanced.length}>80) - 원본 사용`);
-            return baseMessage; // 너무 길면 원본 사용
-        }
-        
-        console.log(`🌸 [spontaneousPhoto] ${photoType} 성격 강화 완료: "${baseMessage}" → "${enhanced}"`);
-        return enhanced;
-        
-    } catch (error) {
-        console.warn(`⚠️ [spontaneousPhoto] ${photoType} 성격 강화 실패: ${error.message} - 원본 메시지 사용`);
-        return baseMessage; // 에러 시 원본 메시지 반환
-    }
-}
-
-// 🌸 상황별 성격 반응 생성 (사진용)
-function generatePhotoPersonalityReaction(context) {
-    const personality = getYejinPersonality();
-    if (!personality) return null;
-    
-    try {
-        return personality.generateYejinResponse(context);
-    } catch (error) {
-        console.warn(`⚠️ [spontaneousPhoto] 성격 기반 반응 생성 실패: ${error.message}`);
-        return null;
-    }
-}
 
 // ================== 🌏 설정 ==================
 const TIMEZONE = 'Asia/Tokyo';
@@ -205,26 +128,9 @@ function getPhotoUrlByType(type) {
 }
 
 /**
- * 🌸 [연동 포인트 1] getPhotoMessageByType - 사진 타입별 메시지 성격 강화
+ * 사진 타입별 메시지 생성
  */
 function getPhotoMessageByType(type) {
-    // 🌸 성격 기반 사진 메시지 시도
-    const personality = getYejinPersonality();
-    if (personality) {
-        const personalityMessage = generatePhotoPersonalityReaction({
-            type: 'photo_message',
-            photoType: type,
-            emotion: type === 'selfie' ? 'playful' : 
-                     type === 'memory' ? 'nostalgic' :
-                     type === 'concept' ? 'confident' : 'loving',
-            situation: `sending_${type}_photo`
-        });
-        if (personalityMessage) {
-            console.log(`🌸 [spontaneousPhoto] 성격 기반 ${type} 메시지 생성 성공`);
-            return personalityMessage;
-        }
-    }
-    
     const messages = {
         selfie: [
             "아저씨 보라고 찍었어~ ㅎㅎ",
@@ -253,10 +159,7 @@ function getPhotoMessageByType(type) {
     };
     
     const typeMessages = messages[type] || messages.selfie;
-    const baseMessage = typeMessages[Math.floor(Math.random() * typeMessages.length)];
-    
-    // 🌸 기본 메시지도 성격으로 강화
-    return enhancePhotoMessage(baseMessage, type);
+    return typeMessages[Math.floor(Math.random() * typeMessages.length)];
 }
 
 /**
@@ -270,7 +173,7 @@ function selectRandomPhotoType() {
 // ================== 📤 사진 전송 함수 (⭐️ 통계 기록 포함!) ==================
 
 /**
- * 🌸 [연동 포인트 2] sendSpontaneousPhoto - 자발적 사진 전송 메인 함수 (성격 강화)
+ * 자발적 사진 전송 메인 함수
  */
 async function sendSpontaneousPhoto() {
     try {
@@ -287,7 +190,7 @@ async function sendSpontaneousPhoto() {
         
         const photoType = selectRandomPhotoType();
         const imageUrl = getPhotoUrlByType(photoType);
-        const message = getPhotoMessageByType(photoType); // 🌸 이미 성격 강화됨
+        const message = getPhotoMessageByType(photoType);
         
         // 실제 전송
         await lineClient.pushMessage(userId, [
@@ -376,7 +279,7 @@ function scheduleNextPhoto() {
         
         // 새 스케줄 등록
         const job = schedule.scheduleJob(cronExpression, async () => {
-            await sendSpontaneousPhoto(); // 🌸 성격 강화됨
+            await sendSpontaneousPhoto();
         });
         
         photoScheduleState.schedule.activeJobs.push(job);
@@ -406,7 +309,7 @@ function startPhotoScheduling() {
         const cronExpression = `${firstPhotoTime.minute()} ${firstPhotoTime.hour()} * * *`;
         
         const job = schedule.scheduleJob(cronExpression, async () => {
-            await sendSpontaneousPhoto(); // 🌸 성격 강화됨
+            await sendSpontaneousPhoto();
         });
         
         photoScheduleState.schedule.activeJobs.push(job);
@@ -523,17 +426,6 @@ function getDetailedPhotoStats() {
             todayPhotos: photoScheduleState.sendHistory.sentPhotos,
             lastResetDate: photoScheduleState.dailyStats.lastResetDate,
             systemStartTime: moment(photoScheduleState.dailyStats.systemStartTime).tz(TIMEZONE).format('YYYY-MM-DD HH:mm:ss')
-        },
-        
-        // 🌸 성격 강화 정보
-        personalityEnhancement: {
-            isEnabled: !!getYejinPersonality(),
-            photoTypeEmotions: {
-                selfie: 'playful (귀엽고 장난스럽게)',
-                memory: 'nostalgic (그리워하고 감성적으로)',
-                concept: 'confident (자신감 있고 새로운 시도)',
-                couple: 'loving (사랑스럽고 행복하게)'
-            }
         }
     };
 }
@@ -552,7 +444,7 @@ function getPhotoStatusSummary() {
     };
 }
 
-// ================== 🧪 테스트 함수들 (🌸 성격 강화 적용!) ==================
+// ================== 🧪 테스트 함수들 ==================
 
 /**
  * 사진 전송 테스트
@@ -561,7 +453,7 @@ async function testPhotoSending() {
     photoLog('🧪 사진 전송 테스트 시작');
     
     try {
-        const result = await sendSpontaneousPhoto(); // 🌸 성격 강화됨
+        const result = await sendSpontaneousPhoto();
         photoLog(`🧪 테스트 결과: ${result ? '성공' : '실패'}`);
         return result;
     } catch (error) {
@@ -585,7 +477,7 @@ function testScheduling() {
         
         const job = schedule.scheduleJob(cronExpression, async () => {
             photoLog('🧪 테스트 스케줄 실행됨');
-            await sendSpontaneousPhoto(); // 🌸 성격 강화됨
+            await sendSpontaneousPhoto();
         });
         
         photoScheduleState.schedule.activeJobs.push(job);
@@ -637,14 +529,6 @@ function startSpontaneousPhotoScheduler(client, targetUserId, getLastUserMessage
             photoLog(`📊 설정: 하루 ${DAILY_PHOTO_TARGET}회, ${MIN_INTERVAL_MINUTES}-${MAX_INTERVAL_MINUTES}분 간격`);
             photoLog(`📋 사진 타입: ${photoScheduleState.settings.photoTypes.join(', ')}`);
             photoLog(`🎯 오늘 목표: ${photoScheduleState.dailyStats.sentToday}/${photoScheduleState.dailyStats.totalDaily}`);
-            
-            // 🌸 yejinPersonality 연동 상태 확인
-            const personality = getYejinPersonality();
-            if (personality) {
-                photoLog('🌸 yejinPersonality 연동 완료 - 모든 사진 메시지가 예진이 성격으로 강화됩니다!');
-            } else {
-                photoLog('⚠️ yejinPersonality 연동 실패 - 기본 메시지로 동작합니다');
-            }
         } else {
             photoLog('❌ 자발적 사진 전송 시스템 활성화 실패');
         }
@@ -690,7 +574,7 @@ function stopSpontaneousPhotoScheduler() {
  */
 async function forceSendPhoto() {
     photoLog('🔧 강제 사진 전송 시작');
-    return await sendSpontaneousPhoto(); // 🌸 성격 강화됨
+    return await sendSpontaneousPhoto();
 }
 
 /**
@@ -725,14 +609,13 @@ function getInternalState() {
         systemInfo: {
             hasLineClient: !!lineClient,
             hasUserId: !!userId,
-            hasMessageTimeFunc: !!lastUserMessageTimeFunc,
-            hasYejinPersonality: !!getYejinPersonality()  // 🌸 추가!
+            hasMessageTimeFunc: !!lastUserMessageTimeFunc
         }
     };
 }
 
 // ================== 📤 모듈 내보내기 ==================
-photoLog('📸 spontaneousPhotoManager.js v2.1 로드 완료 (🌸 yejinPersonality 신중한 연동!)');
+photoLog('📸 spontaneousPhotoManager.js v2.0 로드 완료 (실시간 통계 추적 지원)');
 
 module.exports = {
     // 🚀 메인 함수들
@@ -763,15 +646,9 @@ module.exports = {
     calculateNextPhotoTime,
     formatTimeUntil,
     recordPhotoSent,
-    getPhotoMessageByType,  // 🌸 성격 강화됨
     
     // 📊 통계 관련
     photoScheduleState: () => ({ ...photoScheduleState }), // 읽기 전용 복사본 제공
-    
-    // 🌸 NEW! yejinPersonality 연동 함수들 내보내기
-    enhancePhotoMessage,
-    generatePhotoPersonalityReaction,
-    getYejinPersonality,
     
     // 로그 함수
     photoLog
