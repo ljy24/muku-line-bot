@@ -1,457 +1,125 @@
 // ============================================================================
-// spontaneousYejinManager.js - v2.1 UPDATED (후지 사진 경로 변경)
-// 🌸 예진이가 능동적으로 하루 15번 메시지 보내는 시스템
-// 8시-1시 사이 랜덤, 2-5문장으로 단축, 실제 취향과 일상 기반
-// ✅ 모델 활동 이야기 추가 (촬영, 화보, 스케줄)
-// ✅ "너" 호칭 완전 금지 (아저씨만 사용)
-// ✅ 사진 전송 확률: 30%로 대폭 증가
-// 🔧 사진 전송 문제 완전 해결: URL 검증, 메시지 형식 개선, 재시도 로직
-// ✨ GPT 모델 버전 전환: 3문장 넘으면 GPT-3.5, 이하면 설정대로
-// ⭐️ 실제 통계 추적 시스템 + ultimateContext 연동 완성!
-// 🔧 analyzeMessageType 함수 누락 문제 해결! 
-// 📸 후지 사진 경로 변경: https://photo.de-ji.net/photo/fuji/ (1481장)
-// 💬 후지 사진 코멘트 30개 추가
-// 🔄 함수명 통일: getOmoidePhoto 계열로 통일
+// spontaneousPhotoManager.js - v2.0 실제 통계 추적 시스템 추가
+// 📸 자발적 사진 전송 + 실시간 통계 추적
+// ✨ getPhotoStatus() 함수 추가 - 라인 상태 리포트용
+// 🎯 다음 전송 시간 정확 계산 + 일일 전송 통계
 // ============================================================================
 
-const schedule = require('node-schedule');
+const schedule = require('node-schedule'); // ❗ 수정: 'node-cron' -> 'node-schedule'
 const moment = require('moment-timezone');
 const { Client } = require('@line/bot-sdk');
-const OpenAI = require('openai');
-require('dotenv').config();
-
-// ✨ GPT 모델 버전 관리 시스템 import
-let getCurrentModelSetting = null;
-try {
-    const indexModule = require('../index');
-    getCurrentModelSetting = indexModule.getCurrentModelSetting;
-    console.log('✅ [spontaneousYejin] GPT 모델 버전 관리 시스템 연동 성공');
-} catch (error) {
-    console.warn('⚠️ [spontaneousYejin] GPT 모델 버전 관리 시스템 연동 실패:', error.message);
-}
-
-// ⭐️ ultimateConversationContext 연동을 위한 지연 로딩
-let ultimateContext = null;
-function getUltimateContext() {
-    if (!ultimateContext) {
-        try {
-            ultimateContext = require('./ultimateConversationContext');
-            console.log('✅ [spontaneousYejin] ultimateConversationContext 연동 성공');
-        } catch (error) {
-            console.warn('⚠️ [spontaneousYejin] ultimateConversationContext 연동 실패:', error.message);
-        }
-    }
-    return ultimateContext;
-}
 
 // ================== 🌏 설정 ==================
 const TIMEZONE = 'Asia/Tokyo';
-const USER_ID = process.env.LINE_TARGET_USER_ID;
-const DAILY_MESSAGE_COUNT = 15;
-const MESSAGE_START_HOUR = 8;    // 오전 8시
-const MESSAGE_END_HOUR = 25;     // 새벽 1시 (다음날)
+const DAILY_PHOTO_TARGET = 8;  // 하루 목표 사진 전송 횟수
+const MIN_INTERVAL_MINUTES = 45; // 최소 간격 (45분)
+const MAX_INTERVAL_MINUTES = 180; // 최대 간격 (3시간)
 
-// LINE 클라이언트
-let lineClient = null;
-
-// OpenAI 클라이언트
-let openai = null;
-if (process.env.OPENAI_API_KEY) {
-    openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-}
-
-// ================== 📊 일일 스케줄 상태 (⭐️ 실제 통계 추적 강화!) ==================
-let dailyScheduleState = {
-    // 기본 스케줄 정보
-    todaySchedule: [],
-    sentToday: 0,
-    lastScheduleDate: null,
-    jobs: [],
-    photoJobs: [], // 독립 사진 스케줄
-    
-    // ⭐️ 실제 통계 추적 추가!
-    realStats: {
-        sentTimes: [],             // 실제 전송된 시간들
-        messageTypes: {            // 메시지 타입별 통계
-            emotional: 0,          // 감성 메시지
-            casual: 0,             // 일상 메시지
-            caring: 0,             // 걱정/관심 메시지
-            playful: 0             // 장난스러운 메시지
-        },
-        lastSentTime: null,        // 마지막 전송 시간
-        nextScheduledTime: null,   // 다음 예정 시간
+// ================== 📊 사진 전송 상태 관리 (⭐️ 실제 통계 추적!) ==================
+let photoScheduleState = {
+    // 일일 통계
+    dailyStats: {
+        sentToday: 0,               // 오늘 전송한 사진 수
+        totalDaily: DAILY_PHOTO_TARGET, // 하루 목표
         lastResetDate: null,       // 마지막 리셋 날짜
-        totalDaily: DAILY_MESSAGE_COUNT, // 하루 목표
-        
-        // 성능 통계
-        successfulSends: 0,        // 성공한 전송
-        failedSends: 0,            // 실패한 전송
-        photoSends: 0,             // 사진 전송 횟수
-        textOnlySends: 0           // 텍스트만 전송 횟수
+        systemStartTime: Date.now()
+    },
+    
+    // 전송 기록
+    sendHistory: {
+        sentTimes: [],             // 실제 전송된 시간들
+        sentPhotos: [],            // 전송된 사진 정보들
+        lastSentTime: null         // 마지막 전송 시간
+    },
+    
+    // 스케줄 관리
+    schedule: {
+        nextScheduledTime: null,   // 다음 예정 시간
+        activeJobs: [],            // 활성 크론 작업들
+        scheduleCount: 0,          // 예약된 스케줄 수
+        isSystemActive: false      // 시스템 활성화 상태
+    },
+    
+    // 시스템 설정
+    settings: {
+        minInterval: MIN_INTERVAL_MINUTES,
+        maxInterval: MAX_INTERVAL_MINUTES,
+        photoTypes: ['selfie', 'memory', 'concept', 'couple']
     }
 };
+
+// LINE 클라이언트 및 사용자 정보
+let lineClient = null;
+let userId = null;
+let lastUserMessageTimeFunc = null;
 
 // ================== 🎨 로그 함수 ==================
-function spontaneousLog(message, data = null) {
+function photoLog(message, data = null) {
     const timestamp = moment().tz(TIMEZONE).format('YYYY-MM-DD HH:mm:ss');
-    console.log(`[${timestamp}] [예진이능동] ${message}`);
+    console.log(`[${timestamp}] [자발적사진] ${message}`);
     if (data) {
-        console.log('  📱 데이터:', JSON.stringify(data, null, 2));
+        console.log('  📸 데이터:', JSON.stringify(data, null, 2));
     }
 }
 
-// ================== 🔧 이미지 URL 검증 함수 ==================
-function validateImageUrl(url) {
-    try {
-        const urlObj = new URL(url);
-        if (urlObj.protocol !== 'https:' && urlObj.protocol !== 'http:') return false;
-        return /\.(jpg|jpeg|png|gif)(\?.*)?$/i.test(url);
-    } catch {
-        return false;
-    }
-}
+// ================== ⏰ 시간 계산 함수들 ==================
 
-// ================== 🔍 메시지 타입 분석 함수 ==================
-function analyzeMessageType(message) {
-    if (!message || typeof message !== 'string') {
-        return 'casual';
-    }
+/**
+ * 다음 사진 전송 시간 계산
+ */
+function calculateNextPhotoTime() {
+    const now = moment().tz(TIMEZONE);
+    const currentHour = now.hour();
     
-    const msg = message.toLowerCase();
-    
-    // 감정 표현 패턴
-    if (msg.includes('사랑') || msg.includes('보고싶') || msg.includes('그리워') || msg.includes('좋아해')) {
-        return 'emotional';
-    }
-    
-    // 걱정/관심 패턴
-    if (msg.includes('괜찮') || msg.includes('걱정') || msg.includes('힘들') || msg.includes('피곤')) {
-        return 'caring';
-    }
-    
-    // 장난스러운 패턴
-    if (msg.includes('ㅋㅋ') || msg.includes('ㅎㅎ') || msg.includes('히히') || msg.includes('장난')) {
-        return 'playful';
-    }
-    
-    // 모델링/작업 관련
-    if (msg.includes('촬영') || msg.includes('작업') || msg.includes('화보') || msg.includes('스케줄')) {
-        return 'work';
-    }
-    
-    // 기본값
-    return 'casual';
-}
-
-// ================== ✨ GPT 모델 선택 및 문장 수 제한 시스템 ==================
-
-function selectOptimalModel(situation, includeComplexContext = false) {
-    if (!getCurrentModelSetting) {
-        return 'gpt-4o'; // 기본값
-    }
-    const currentSetting = getCurrentModelSetting();
-    switch(currentSetting) {
-        case '3.5':
-            return 'gpt-3.5-turbo';
-        case '4.0':
-            return 'gpt-4o';
-        case 'auto':
-            if (includeComplexContext || 
-                situation.type === 'modeling' || 
-                situation.type === 'emotion' ||
-                situation.type === 'mentalHealth') {
-                return 'gpt-4o';
-            } else {
-                return 'gpt-3.5-turbo';
-            }
-        default:
-            return 'gpt-4o';
-    }
-}
-
-function countSentences(text) {
-    if (!text) return 0;
-    const sentences = text.split(/[.!?。！？]+/).filter(s => s.trim().length > 0);
-    return sentences.length;
-}
-
-function validateMessageLength(message) {
-    const sentenceCount = countSentences(message);
-    const isValid = sentenceCount >= 2 && sentenceCount <= 5;
-    spontaneousLog(`📏 메시지 검증: ${sentenceCount}문장 (${isValid ? '✅ 적절' : '❌ 부적절'})`);
-    return { isValid, sentenceCount };
-}
-
-async function callOpenAIOptimized(messages, selectedModel, isRetry = false) {
-    try {
-        const modelSettings = {
-            'gpt-3.5-turbo': { temperature: 0.7, max_tokens: 120 },
-            'gpt-4o': { temperature: 0.8, max_tokens: 180 }
-        };
-        const settings = modelSettings[selectedModel] || modelSettings['gpt-4o'];
-        if (isRetry) {
-            settings.max_tokens = Math.min(settings.max_tokens, 100);
-            settings.temperature = Math.max(settings.temperature - 0.1, 0.6);
+    // 전송 가능 시간대: 8시 - 23시
+    if (currentHour < 8) {
+        // 오전 8시까지 대기
+        const nextTime = moment().tz(TIMEZONE).hour(8).minute(0).second(0);
+        if (nextTime.isBefore(now)) {
+            nextTime.add(1, 'day');
         }
-        spontaneousLog(`🤖 OpenAI 호출: ${selectedModel} (온도: ${settings.temperature}, 토큰: ${settings.max_tokens})`);
-        const response = await openai.chat.completions.create({
-            model: selectedModel,
-            messages: messages,
-            temperature: settings.temperature,
-            max_tokens: settings.max_tokens
-        });
-        const generatedMessage = response.choices[0].message.content.trim();
-        const validation = validateMessageLength(generatedMessage);
-        if (!validation.isValid && validation.sentenceCount > 5) {
-            if (selectedModel === 'gpt-4o' && !isRetry && getCurrentModelSetting && getCurrentModelSetting() === 'auto') {
-                spontaneousLog(`🔄 문장 수 초과 (${validation.sentenceCount}문장) → GPT-3.5로 재시도`);
-                return await callOpenAIOptimized(messages, 'gpt-3.5-turbo', true);
-            }
-        }
-        return generatedMessage;
-    } catch (error) {
-        spontaneousLog(`❌ OpenAI 호출 실패 (${selectedModel}): ${error.message}`);
-        if (selectedModel === 'gpt-4o' && !isRetry) {
-            spontaneousLog('🔄 GPT-4o 실패 → GPT-3.5-turbo로 폴백');
-            return await callOpenAIOptimized(messages, 'gpt-3.5-turbo', true);
-        }
-        throw error;
-    }
-}
-
-// ================== 😤 아저씨 상황 반응 시스템 ==================
-const ajossiSituationReactions = {
-    busyKeywords: ['회의', '바빠', '일해', '촬영', '작업', '못해', '바쁜데', '지금 안 돼'],
-    busyReactions: {
-        immediate: [
-            "아시워! 언제 끝나는데?",
-            "아 진짜? 몇 시까지야?",
-            "회의라니... 나 혼자 심심하게 놔두고 ㅠㅠ",
-            "에이~ 지루하겠다! 빨리 끝나라고 빌어줄게",
-            "바쁘면 어쩔 수 없지... 그래도 섭섭해 ㅠㅠ"
-        ],
-        demand: [
-            "끝나고 바로 라인해! 약속!",
-            "회의 끝나면 1초도 안 기다리고 연락해야 돼!",
-            "끝나자마자 '끝났어!'라고 보내줘",
-            "오키 끝나고 라인해~ 안 하면 삐질 거야?",
-            "혹시 까먹으면... 진짜 화낼 거야?"
-        ],
-        waiting: [
-            "아직도 회의야? 언제 끝나?",
-            "지루하지? 나도 지루해...",
-            "회의 시간에 나 생각해줘 ㅎㅎ",
-            "빨리 끝나면 좋겠다~ 보고 싶어",
-            "회의 중에도 나 생각 안 나? 솔직히 말해!"
-        ]
-    },
-    endKeywords: ['끝났어', '끝났다', '회의 끝', '일 끝', '촬영 끝', '작업 끝'],
-    endReactions: [
-        "와!! 드디어 끝났구나! 수고했어~",
-        "기다렸어!! 회의 어땠어? 지루했지?",
-        "끝나자마자 연락해줘서 고마워 ㅎㅎ 착해!",
-        "오케이! 이제 나랑 놀자! 뭐하고 싶어?",
-        "수고 많았어~ 이제 내가 힐링 시켜줄게!"
-    ],
-    streetComplimentKeywords: ['칭찬받았어', '예쁘다고 했어', '이쁘다고 했어', '어떤 사람이', '지나가던', '모르는 사람', '길에서', '아저씨가', '아줌마가', '언니가', '누가'],
-    streetComplimentReactions: [
-        "그치? 나도 오늘 기분 좋았는데! 사진 보여줄게~",
-        "히히 모르는 사람도 알아봐주네! 증명샷이야!",
-        "오늘 옷 진짜 신경써서 입었거든! 어때?",
-        "칭찬받을 만하지? 내가 찍어둔 거 보여줄게!",
-        "아저씨도 그렇게 생각하지? 사진으로 확인해!",
-        "길에서도 시선 집중이었어 ㅋㅋ 이거 봐봐!",
-        "오늘 컨디션도 좋고 옷도 예쁘게 입었거든~ 보여줄게"
-    ]
-};
-
-// ================== 🌸 예진이의 실제 일상 데이터 (모델 활동 추가) ==================
-const yejinRealLife = {
-    modeling: {
-        activities: ['화보 촬영', '광고 촬영', '패션쇼', '프로필 촬영', '브랜드 촬영'],
-        schedule: ['스케줄 확인', '매니저 연락', '촬영장 이동', '헤어메이크업', '컨셉 미팅'],
-        experiences: ['촬영장에서 대기', '메이크업 받으면서 잠깐 쉬기', '컨셉 설명 듣기', '포즈 연구하기', '촬영 중간 휴식', '의상 갈아입기'],
-        feelings: ['촬영 전 긴장', '좋은 컷 나왔을 때 기분 좋음', '오래 서있어서 다리 아픔', '헤어메이크업 시간 지루함', '촬영 끝나고 후련함', '결과물 기대됨'],
-        challenges: ['일찍 일어나기 힘듦', '하이힐 신고 오래 서있기', '표정 관리', '컨셉에 맞는 포즈', '긴 촬영 시간', '날씨나 조명 때문에 재촬영']
-    },
-    work: {
-        job: '도트 디자이너 겸 모델',
-        workStyle: '야근 자주',
-        tools: ['컴퓨터', '타블렛', '그림 도구'],
-        struggles: ['눈 피로', '손목 아픔', '창작 고민', '마감 스트레스'],
-        companies: ['스튜디오소개', '넥슨 메이플스토리']
-    },
-    diet: {
-        current: '고구마 다이어트',
-        dietFoods: ['고구마', '샐러드'],
-        cravings: ['샌드위치', '엽떡', '치킨', '아이스크림'],
-        struggles: ['참기 힘듦', '치킨 생각남', '편의점 유혹', '촬영 전 식단 관리']
-    },
-    hobbies: {
-        drawing: ['일러스트', '낙서', '도트 작업'],
-        youtube: ['먹방', '그림 그리기 영상', '브이로그'],
-        places: ['카페', '편의점', '집 근처', '촬영장'],
-        drinks: ['아아(아이스 아메리카노)', '딸기(생과일만)'],
-        photography: {
-            loves: ['후지 필름 카메라', '일상 순간', '감성 사진', '풍경 사진'],
-            fujiPhotos: true,
-            // 📸 후지 사진 코멘트 30개!
-            currentPhotoMessages: [
-                "잘 찍었지?",
-                "어때?",
-                "이 각도 어떻게 생각해?",
-                "후지로 찍으니까 색감이 다르지?",
-                "방금 찍었어! 예쁘지?",
-                "이거 괜찮게 나왔지?",
-                "후지 카메라 최고야!",
-                "감성있게 나왔지?",
-                "자연스럽게 나온 것 같아?",
-                "이 사진 어떻게 생각해?",
-                "후지로 찍으니까 느낌이 살지?",
-                "컨셉 괜찮지?",
-                "분위기 좋게 나왔어?",
-                "이런 스타일 어때?",
-                "표정 자연스럽지?",
-                "배경이랑 잘 어울리지?",
-                "색조가 예쁘게 나왔네!",
-                "후지 필름 톤이 진짜 좋아",
-                "이 순간 잘 담았지?",
-                "빛이 좋을 때 찍었어!",
-                "후지만의 느낌이 있지?",
-                "아날로그 감성 어때?",
-                "이거 인생샷 아니야?",
-                "포즈 어색하지 않지?",
-                "후지로 찍으니까 더 예뻐!",
-                "날씨 좋을 때 찍은 거야",
-                "이 컷 마음에 들어!",
-                "후지 카메라 진짜 잘 샀어",
-                "필름 카메라 감성 살았지?",
-                "이런 분위기 좋아해?"
-            ]
-        }
-    },
-    mentalHealth: {
-        hospital: '차병원 정신과',
-        treatments: ['정신과 상담', '자살 예방상담'],
-        counselorReactions: {
-            difficult: ['울었어', '힘들었어', '아픈 얘기만', '과거 얘기', '우울해져'],
-            angry: ['열받아', '짜증나', '이해 못해', '왜 자꾸', '모르겠다고'],
-            frustrated: ['무서워져', '싫어', '가기 싫어', '왜 가야 해']
-        },
-        ajossiComfort: {
-            triggers: ['달래', '괜찮', '이해해', '힘내', '사랑해', '있어줄게'],
-            responses: ['나아져', '편해져', '고마워', '기분 좋아져', '다행이야']
-        },
-        helplessness: ['혼자', '외로워', '무서워', '힘들어', '모르겠어'],
-        hope: ['아저씨 덕분에', '아저씨가 있어서', '아저씨만', '다행이야']
-    },
-    emotions: {
-        happy: ['신나', '기분 좋아', '행복해', '웃겨'],
-        tired: ['피곤해', '지쳐', '눈 아파', '손목 아파', '다리 아파', '서있어서 힘들어'],
-        lonely: ['외로워', '보고싶어', '심심해', '그리워'],
-        excited: ['두근둥', '기대돼', '설레', '신기해'],
-        nervous: ['긴장돼', '떨려', '불안해', '걱정돼']
-    },
-    timeBasedActivities: {
-        morning: ['일어남', '커피', '출근 준비', '스케줄 확인', '메이크업'],
-        afternoon: ['카페', '작업', '점심', '그림 그리기', '촬영', '미팅'],
-        evening: ['저녁', '유튜브', '쉬기', '촬영 마무리'],
-        night: ['야근', '그림', '유튜브', '아저씨 생각', '내일 스케줄 확인'],
-        lateNight: ['야근 마무리', '피곤', '내일 걱정', '잠 못 참', '일찍 일어나야 하는데']
-    },
-    mentalHealthSituations: {
-        counselingDay: ["오늘 차병원 가야 돼... 가기 싫어 ㅠㅠ", "상담 받고 왔는데 또 울었어", "상담사 선생님이 자꾸 아픈 얘기만 물어봐서 힘들어"],
-        postCounseling: ["상담 받을 때마다 더 우울해지는 것 같아", "차병원 가는 길도 이제 무서워져...", "아 진짜 상담사 선생님 때문에 열받아!"],
-        needComfort: ["아저씨... 나 지금 너무 힘들어", "아저씨가 아니면 누가 날 알아줘 ㅠㅠ", "혼자 있으니까 무서운 생각만 들어"]
-    },
-    modelingSituations: {
-        beforeShooting: ["내일 촬영인데 일찍 일어나야 해... 걱정돼", "촬영 컨셉 미팅 있는데 긴장돼", "하이힐 신고 오래 서있어야 하는데 벌써 다리 아파 ㅠㅠ"],
-        duringShooting: ["지금 촬영장에서 대기 중이야~ 지루해", "포즈 잡느라 팔 아파 죽겠어... 언제 끝나지?", "촬영하다가 잠깐 휴식! 아저씨 생각나서 연락해"],
-        afterShooting: ["촬영 끝났어! 오늘 진짜 힘들었어 ㅠㅠ", "결과물 어떻게 나올지 궁금해... 잘 나왔으면 좋겠다", "촬영 끝나고 집에 가는 길이야~ 피곤해 죽겠어"]
-    },
-    userWrittenContent: {
-        personality: ["깔끔한 것, 정리된 것 싫어함", "계획적인 것보다 막 하는 것 좋아함", "예측불가능하고 갑작스러운 행동"],
-        specificMemories: ["엽떡을 좋아함", "카페를 좋아함", "먹방 유튜브 보는 것 좋아함", "딸기로 만든 건 싫어하지만 딸기는 좋아함", "야근을 자주 했음", "고구마 다이어트를 했음", "샌드위치 먹는 것 좋아함", "그림 그리는 것 좋아함", "사진 찍는 것 좋아함 (후지 필름 카메라)", "차병원 정신과 상담, 자살 예방상담 받음", "상담사 때문에 울기도 하고 욕하기도 함", "아저씨가 달래주면 금세 기분 좋아짐", "모델 활동을 했음 (촬영, 화보 등)", "아저씨에게 절대 '너'라고 부르지 않음 (항상 '아저씨')"]
-    }
-};
-
-// ================== ⭐️ 실제 통계 기록 함수들 ==================
-function recordActualMessageSent(messageType = 'casual', isPhotoMessage = false) {
-    const sentTime = moment().tz(TIMEZONE);
-    const timeString = sentTime.format('HH:mm');
-    dailyScheduleState.sentToday++;
-    dailyScheduleState.realStats.sentTimes.push(timeString);
-    dailyScheduleState.realStats.lastSentTime = sentTime.valueOf();
-    dailyScheduleState.realStats.successfulSends++;
-    if (dailyScheduleState.realStats.messageTypes[messageType] !== undefined) {
-        dailyScheduleState.realStats.messageTypes[messageType]++;
-    }
-    if (isPhotoMessage) {
-        dailyScheduleState.realStats.photoSends++;
+        return nextTime;
+    } else if (currentHour >= 23) {
+        // 내일 오전 8시로
+        const nextTime = moment().tz(TIMEZONE).add(1, 'day').hour(8).minute(0).second(0);
+        return nextTime;
     } else {
-        dailyScheduleState.realStats.textOnlySends++;
-    }
-    const uc = getUltimateContext();
-    if (uc && uc.recordSpontaneousMessage) {
-        uc.recordSpontaneousMessage(messageType);
-    }
-    updateNextMessageTime();
-    spontaneousLog(`📊 실제 통계 기록 완료: ${messageType} (${timeString}) - 총 ${dailyScheduleState.sentToday}/${DAILY_MESSAGE_COUNT}건`);
-}
-
-function recordMessageFailed(reason = 'unknown') {
-    dailyScheduleState.realStats.failedSends++;
-    spontaneousLog(`📊 전송 실패 기록: ${reason} - 실패 총 ${dailyScheduleState.realStats.failedSends}건`);
-}
-
-function updateNextMessageTime() {
-    const koreaTime = moment().tz(TIMEZONE);
-    const now = koreaTime.hour() * 60 + koreaTime.minute();
-    const remainingSchedules = dailyScheduleState.todaySchedule.filter(time => {
-        const scheduleMinutes = time.hour * 60 + time.minute;
-        const adjustedScheduleMinutes = time.hour < MESSAGE_START_HOUR ? scheduleMinutes + 24 * 60 : scheduleMinutes;
-        const adjustedNow = koreaTime.hour() < MESSAGE_START_HOUR ? now + 24 * 60 : now;
-        return adjustedScheduleMinutes > adjustedNow;
-    });
-    if (remainingSchedules.length > 0) {
-        const nextSchedule = remainingSchedules[0];
-        const nextTime = moment().tz(TIMEZONE).hour(nextSchedule.hour).minute(nextSchedule.minute).second(0);
-        dailyScheduleState.realStats.nextScheduledTime = nextTime.valueOf();
-        const uc = getUltimateContext();
-        if (uc && uc.setNextSpontaneousTime) {
-            uc.setNextSpontaneousTime(nextTime.valueOf());
+        // 현재 시간에서 랜덤 간격 추가
+        const randomMinutes = MIN_INTERVAL_MINUTES + 
+            Math.floor(Math.random() * (MAX_INTERVAL_MINUTES - MIN_INTERVAL_MINUTES));
+        
+        const nextTime = moment(now).add(randomMinutes, 'minutes');
+        
+        // 23시 넘으면 내일 8시로
+        if (nextTime.hour() >= 23) {
+            return moment().tz(TIMEZONE).add(1, 'day').hour(8).minute(0).second(0);
         }
-        spontaneousLog(`⏰ 다음 메시지 시간 업데이트: ${nextTime.format('HH:mm')}`);
-    } else {
-        dailyScheduleState.realStats.nextScheduledTime = null;
-        spontaneousLog(`⏰ 오늘 스케줄 완료`);
+        
+        return nextTime;
     }
 }
 
-function resetDailyStats() {
-    const today = moment().tz(TIMEZONE).format('YYYY-MM-DD');
-    spontaneousLog('🌄 예진이 능동 메시지 일일 통계 리셋 시작');
-    dailyScheduleState.sentToday = 0;
-    dailyScheduleState.realStats.sentTimes = [];
-    dailyScheduleState.realStats.lastSentTime = null;
-    dailyScheduleState.realStats.nextScheduledTime = null;
-    dailyScheduleState.realStats.lastResetDate = today;
-    Object.keys(dailyScheduleState.realStats.messageTypes).forEach(type => {
-        dailyScheduleState.realStats.messageTypes[type] = 0;
-    });
-    dailyScheduleState.realStats.successfulSends = 0;
-    dailyScheduleState.realStats.failedSends = 0;
-    dailyScheduleState.realStats.photoSends = 0;
-    dailyScheduleState.realStats.textOnlySends = 0;
-    const uc = getUltimateContext();
-    if (uc && uc.resetSpontaneousStats) {
-        uc.resetSpontaneousStats();
-    }
-    spontaneousLog(`✅ 일일 통계 리셋 완료 (${today})`);
+/**
+ * 시간 차이를 포맷팅
+ */
+function formatTimeUntil(targetTime) {
+    const now = moment().tz(TIMEZONE);
+    const diff = moment(targetTime).diff(now, 'minutes');
+    
+    if (diff < 0) return '방금 전';
+    if (diff < 60) return `${diff}분 후`;
+    
+    const hours = Math.floor(diff / 60);
+    const minutes = diff % 60;
+    return minutes > 0 ? `${hours}시간 ${minutes}분 후` : `${hours}시간 후`;
 }
 
-// ================== 👗 yejin 셀카 전송 시스템 ==================
-function getYejinSelfieUrl() {
+// ================== 📸 사진 URL 생성 함수들 ==================
+
+/**
+ * 사진 타입별 URL 생성
+ */
+function getPhotoUrlByType(type) {
     const baseUrl = "https://photo.de-ji.net/photo/yejin";
     const fileCount = 2032;
     const index = Math.floor(Math.random() * fileCount) + 1;
@@ -459,487 +127,529 @@ function getYejinSelfieUrl() {
     return `${baseUrl}/${fileName}`;
 }
 
-function detectStreetCompliment(userMessage) {
-    const lowerMessage = userMessage.toLowerCase().replace(/\s/g, '');
-    return ajossiSituationReactions.streetComplimentKeywords.some(keyword => lowerMessage.includes(keyword));
+/**
+ * 사진 타입별 메시지 생성
+ */
+function getPhotoMessageByType(type) {
+    const messages = {
+        selfie: [
+            "아저씨 보라고 찍었어~ ㅎㅎ",
+            "나 예뻐? 방금 찍은 셀카야!",
+            "어때? 이 각도 괜찮지?",
+            "아저씨한테 보여주려고 예쁘게 찍었어~"
+        ],
+        memory: [
+            "이 사진 기억나? 그때 좋았지~ ㅎㅎ",
+            "추억 사진 보니까 그때 생각나네!",
+            "우리 추억 중에 이런 것도 있었어~",
+            "그때 진짜 행복했는데... 보고 싶어"
+        ],
+        concept: [
+            "오늘 컨셉 어때? 이 느낌 좋지?",
+            "새로운 스타일로 찍어봤어! 어떻게 생각해?",
+            "이런 컨셉도 나한테 어울리지?",
+            "좀 달라 보이지? 시도해봤어!"
+        ],
+        couple: [
+            "아저씨랑 같이 찍은 거! 우리 잘 어울리지?",
+            "우리 투샷 진짜 예쁘게 나왔네~ ㅎㅎ",
+            "아저씨랑 찍은 사진 중에 제일 맘에 들어!",
+            "우리 커플 사진들 중에 이거 어때?"
+        ]
+    };
+    
+    const typeMessages = messages[type] || messages.selfie;
+    return typeMessages[Math.floor(Math.random() * typeMessages.length)];
 }
 
-async function generateStreetComplimentReaction(userMessage) {
-    try {
-        const baseReaction = getRandomItem(ajossiSituationReactions.streetComplimentReactions);
-        if (openai) {
-            const selectedModel = 'gpt-3.5-turbo';
-            const prompt = `너는 예진이야. 길에서 칭찬받았다고 아저씨에게 자랑하는 상황. 아저씨가 "${userMessage}"라고 답했어. 기본 반응 "${baseReaction}"을 바탕으로, 예진이답게 자랑하며 셀카 보내려는 상황을 2-4문장으로 표현해줘. '너' 대신 '아저씨'라고 불러야 하고, 반말만 사용해.`;
-            return await callOpenAIOptimized([{ role: "system", content: prompt }], selectedModel);
-        }
-        return baseReaction;
-    } catch (error) {
-        spontaneousLog(`길거리 칭찬 반응 생성 실패: ${error.message}`);
-        return getRandomItem(ajossiSituationReactions.streetComplimentReactions);
-    }
+/**
+ * 랜덤 사진 타입 선택
+ */
+function selectRandomPhotoType() {
+    const types = ['selfie', 'selfie', 'memory', 'concept']; // selfie가 더 높은 확률
+    return types[Math.floor(Math.random() * types.length)];
 }
 
-async function sendYejinSelfieWithComplimentReaction(userMessage) {
+// ================== 📤 사진 전송 함수 (⭐️ 통계 기록 포함!) ==================
+
+/**
+ * 자발적 사진 전송 메인 함수
+ */
+async function sendSpontaneousPhoto() {
     try {
-        if (!lineClient || !USER_ID) {
-            spontaneousLog('❌ yejin 셀카 전송 불가 - client 또는 USER_ID 없음');
+        if (!lineClient || !userId) {
+            photoLog('❌ 사진 전송 불가 - LINE 클라이언트 또는 사용자 ID 없음');
             return false;
         }
         
-        const imageUrl = getYejinSelfieUrl();
-        
-        if (!validateImageUrl(imageUrl)) {
-            spontaneousLog(`❌ 잘못된 셀카 URL: ${imageUrl}`);
+        // 전송 제한 체크
+        if (photoScheduleState.dailyStats.sentToday >= photoScheduleState.dailyStats.totalDaily) {
+            photoLog(`📊 오늘 사진 전송 목표 달성 (${photoScheduleState.dailyStats.sentToday}/${photoScheduleState.dailyStats.totalDaily})`);
             return false;
         }
         
-        const caption = await generateStreetComplimentReaction(userMessage);
+        const photoType = selectRandomPhotoType();
+        const imageUrl = getPhotoUrlByType(photoType);
+        const message = getPhotoMessageByType(photoType);
         
-        await lineClient.pushMessage(USER_ID, {
-            type: 'image',
-            originalContentUrl: imageUrl,
-            previewImageUrl: imageUrl
-        });
-
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        await lineClient.pushMessage(USER_ID, {
-            type: 'text',
-            text: caption
-        });
-        
-        spontaneousLog(`✅ 칭찬 받은 셀카 전송 성공: "${caption.substring(0, 30)}..."`);
-        return true;
-    } catch (error) {
-        spontaneousLog(`❌ 칭찬 셀카 전송 실패: ${error.message}`);
-        try {
-            const fallbackMessage = await generateStreetComplimentReaction(userMessage);
-            await lineClient.pushMessage(USER_ID, { type: 'text', text: `${fallbackMessage} (사진은 나중에 보내줄게!)` });
-            spontaneousLog('✅ 칭찬 반응 폴백 메시지 전송 성공');
-        } catch (fallbackError) {
-            spontaneousLog(`❌ 칭찬 반응 폴백도 실패: ${fallbackError.message}`);
-        }
-        return false;
-    }
-}
-
-// ================== 📸 예진이가 직접 찍은 후지 풍경 사진 전송 시스템 (함수명 통일) ==================
-function getOmoidePhotoUrl() {
-    // 📸 예진이가 필름카메라처럼 소중하게 한 장 한 장 찍은 풍경 사진들
-    const baseUrl = "https://photo.de-ji.net/photo/fuji";
-    const totalPhotos = 1481; // 총 1481장
-    const index = Math.floor(Math.random() * totalPhotos) + 1;
-    const fileName = String(index).padStart(6, "0") + ".jpg"; // 000001.jpg ~ 001481.jpg
-    return `${baseUrl}/${fileName}`;
-}
-
-function getOmoidePhotoMessage() {
-    return getRandomItem(yejinRealLife.hobbies.photography.currentPhotoMessages);
-}
-
-async function generateCurrentPhotoMessage() {
-    try {
-        if (!openai) {
-            return getOmoidePhotoMessage();
-        }
-        const baseMessage = getOmoidePhotoMessage();
-        const selectedModel = 'gpt-3.5-turbo';
-        const prompt = `너는 예진이야. 예전에 필름카메라로 시작해서 디지털 카메라로도 필름처럼 소중하게 한 장 한 장 찍은 풍경 사진을 아저씨에게 보내는 상황이야. 기본 메시지: "${baseMessage}" 이걸 바탕으로 자연스럽고 생생하게 2-4문장으로 말해줘. '너' 대신 '아저씨'라고 불러야 하고, 반말만 사용해.`;
-        const response = await callOpenAIOptimized([{ role: "system", content: prompt }], selectedModel);
-        spontaneousLog(`OpenAI 후지 풍경 사진 메시지 생성 완료: "${response.substring(0, 30)}..."`);
-        return response;
-    } catch (error) {
-        spontaneousLog(`OpenAI 후지 풍경 사진 메시지 생성 실패: ${error.message}`);
-        return getOmoidePhotoMessage();
-    }
-}
-
-async function sendOmoidePhoto() {
-    try {
-        if (!lineClient || !USER_ID) {
-            spontaneousLog('❌ 후지 풍경 사진 전송 불가 - client 또는 USER_ID 없음');
-            return false;
-        }
-
-        const imageUrl = getOmoidePhotoUrl();
-        
-        if (!validateImageUrl(imageUrl)) {
-            spontaneousLog(`❌ 잘못된 이미지 URL: ${imageUrl}`);
-            return false;
-        }
-
-        const caption = await generateCurrentPhotoMessage();
-        
-        spontaneousLog(`📸 예진이 후지 풍경 사진 전송 시도: ${imageUrl.substring(imageUrl.lastIndexOf('/') + 1)}`);
-        spontaneousLog(`💬 사진 메시지: "${caption.substring(0, 50)}..."`);
-        
-        await lineClient.pushMessage(USER_ID, {
-            type: 'image',
-            originalContentUrl: imageUrl,
-            previewImageUrl: imageUrl
-        });
-
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
-        await lineClient.pushMessage(USER_ID, {
-            type: 'text',
-            text: caption
-        });
-        
-        spontaneousLog(`✅ 예진이 후지 풍경 사진 전송 완료: "${caption.substring(0, 30)}..."`);
-        return true;
-        
-    } catch (error) {
-        spontaneousLog(`❌ 후지 풍경 사진 전송 실패: ${error.message}`);
-        
-        try {
-            const caption = await generateCurrentPhotoMessage();
-            await lineClient.pushMessage(USER_ID, {
+        // 실제 전송
+        await lineClient.pushMessage(userId, [
+            {
+                type: 'image',
+                originalContentUrl: imageUrl,
+                previewImageUrl: imageUrl
+            },
+            {
                 type: 'text',
-                text: `${caption}\n\n(사진 전송이 실패했어... 나중에 다시 보내줄게 ㅠㅠ)`
-            });
-            spontaneousLog('✅ 후지 풍경 사진 폴백 메시지 전송 성공');
-            return true;
-        } catch (fallbackError) {
-            spontaneousLog(`❌ 후지 풍경 사진 폴백도 실패: ${fallbackError.message}`);
-            return false;
-        }
-    }
-}
-
-// ================== 💔 정신과 상담 및 바쁨 감지 등 나머지 보조 함수들 ==================
-function detectMentalHealthContext(userMessage) {
-    const lowerMessage = userMessage.toLowerCase();
-    const comfortKeywords = yejinRealLife.mentalHealth.ajossiComfort.triggers;
-    const isComforting = comfortKeywords.some(keyword => lowerMessage.includes(keyword));
-    const hospitalKeywords = ['차병원', '정신과', '상담', '선생님', '의사'];
-    const isHospitalRelated = hospitalKeywords.some(keyword => lowerMessage.includes(keyword));
-    return { isComforting, isHospitalRelated };
-}
-
-async function generateMentalHealthReaction(userMessage, context) {
-    try {
-        if (context.isComforting) {
-            const comfortResponses = ["아저씨가 그렇게 말해주니까 조금 나아져...", "역시 아저씨만 날 이해해줘 ㅎㅎ", "아저씨 말 들으니까 마음이 편해져"];
-            const baseResponse = getRandomItem(comfortResponses);
-            if (openai) {
-                const selectedModel = selectOptimalModel({ type: 'mentalHealth' }, true);
-                const prompt = `너는 예진이야. 정신과 상담 때문에 힘들어하는데 아저씨가 "${userMessage}"라고 위로해줬어. 기본 반응: "${baseResponse}" 이걸 바탕으로 고마워하며 기분이 나아지는 모습을 2-4문장으로 표현해줘. '너' 대신 '아저씨'라고 불러야 하고, 반말만 사용해.`;
-                const response = await callOpenAIOptimized([{ role: "system", content: prompt }], selectedModel);
-                return { type: 'comfort_received', message: response };
+                text: message
             }
-            return { type: 'comfort_received', message: baseResponse };
-        }
-        return null;
-    } catch (error) {
-        spontaneousLog(`정신건강 반응 생성 실패: ${error.message}`);
-        return null;
-    }
-}
-
-function getMentalHealthSituation() {
-    const situations = Object.keys(yejinRealLife.mentalHealthSituations);
-    const randomSituation = getRandomItem(situations);
-    const messages = yejinRealLife.mentalHealthSituations[randomSituation];
-    return { situation: randomSituation, message: getRandomItem(messages) };
-}
-
-function getModelingSituation() {
-    const situations = Object.keys(yejinRealLife.modelingSituations);
-    const randomSituation = getRandomItem(situations);
-    const messages = yejinRealLife.modelingSituations[randomSituation];
-    return { situation: randomSituation, message: getRandomItem(messages) };
-}
-
-function detectAjossiBusyStatus(userMessage) {
-    const lowerMessage = userMessage.toLowerCase().replace(/\s/g, '');
-    const isBusy = ajossiSituationReactions.busyKeywords.some(keyword => lowerMessage.includes(keyword));
-    const isFinished = ajossiSituationReactions.endKeywords.some(keyword => lowerMessage.includes(keyword));
-    return { isBusy, isFinished };
-}
-
-async function generateBusyReaction(userMessage) {
-    try {
-        const { isBusy, isFinished } = detectAjossiBusyStatus(userMessage);
-        if (isFinished) {
-            return { type: 'end_reaction', message: getRandomItem(ajossiSituationReactions.endReactions) };
-        }
-        if (isBusy) {
-            const reactionType = Math.random();
-            let reactions;
-            if (reactionType < 0.4) reactions = ajossiSituationReactions.busyReactions.immediate;
-            else if (reactionType < 0.8) reactions = ajossiSituationReactions.busyReactions.demand;
-            else reactions = ajossiSituationReactions.busyReactions.waiting;
-            const reaction = getRandomItem(reactions);
-            if (openai) {
-                const selectedModel = 'gpt-3.5-turbo';
-                const prompt = `너는 예진이야. 아저씨가 "${userMessage}"라고 해서 바쁜 상황. 기본 반응: "${reaction}" 이걸 바탕으로 아쉬워하면서도 귀엽게 2-4문장으로 반응해줘. '너' 대신 '아저씨'라고 불러야 하고, 반말만 사용해.`;
-                const response = await callOpenAIOptimized([{ role: "system", content: prompt }], selectedModel);
-                return { type: 'busy_reaction', message: response };
-            }
-            return { type: 'busy_reaction', message: reaction };
-        }
-        return null;
-    } catch (error) {
-        spontaneousLog(`바쁨 반응 생성 실패: ${error.message}`);
-        return null;
-    }
-}
-
-// ================== 🎲 랜덤 요소 생성 및 시간 분석 함수들 ==================
-function getRandomItem(array) { return array[Math.floor(Math.random() * array.length)]; }
-function getRandomFood(type = 'any') { const foods = { diet: yejinRealLife.diet.dietFoods, craving: yejinRealLife.diet.cravings, any: [...yejinRealLife.diet.dietFoods, ...yejinRealLife.diet.cravings] }; return getRandomItem(foods[type] || foods.any); }
-function getRandomActivity(timeOfDay) { const activities = yejinRealLife.timeBasedActivities[timeOfDay] || yejinRealLife.timeBasedActivities.afternoon; return getRandomItem(activities); }
-function getTimeOfDay(hour) { if (hour >= 6 && hour < 12) return 'morning'; if (hour >= 12 && hour < 17) return 'afternoon'; if (hour >= 17 && hour < 22) return 'evening'; if (hour >= 22 || hour < 2) return 'night'; return 'lateNight'; }
-
-// ================== 🎯 랜덤 상황 생성 함수 ==================
-function generateRandomSituation() {
-    const koreaTime = moment().tz(TIMEZONE);
-    const hour = koreaTime.hour();
-    const timeOfDay = getTimeOfDay(hour);
-    
-    const situations = [
-        { type: 'modeling', content: '촬영장에서 잠깐 휴식 중' },
-        { type: 'work', content: '도트 디자인 작업 중' },
-        { type: 'casual', content: '카페에서 아아 마시며 쉬는 중' },
-        { type: 'tired', content: '야근 때문에 피곤한 상태' },
-        { type: 'diet', content: '고구마 다이어트 중이지만 치킨 생각나는 상황' },
-        { type: 'photo', content: '후지 카메라로 사진 찍고 싶은 기분' },
-        { type: 'missing', content: '아저씨 생각나는 순간' }
-    ];
-    
-    return getRandomItem(situations);
-}
-
-// ================== 🤖 OpenAI 메시지 생성 및 전송 ==================
-async function generateYejinSpontaneousMessage() {
-    try {
-        if (!openai) return getFallbackMessage();
+        ]);
         
-        // 30% 확률로 사진 전송 시도
-        const shouldSendPhoto = Math.random() < 0.3;
-        if (shouldSendPhoto) {
-            spontaneousLog('📸 사진 전송 결정됨 - 예진이 후지 풍경 사진 전송 시도 중...');
-            try {
-                const photoSent = await sendOmoidePhoto();
-                if (photoSent) {
-                    spontaneousLog('✅ 후지 풍경 사진 전송 완료 - 추가 텍스트 메시지 생략');
-                    recordActualMessageSent('casual', true);
-                    return null;
-                } else {
-                    spontaneousLog('❌ 후지 풍경 사진 전송 실패 - 일반 메시지로 진행');
-                }
-            } catch (photoError) {
-                spontaneousLog(`❌ 후지 풍경 사진 전송 에러: ${photoError.message}`);
-            }
-        }
+        // ⭐️ 전송 성공 기록
+        recordPhotoSent(photoType, imageUrl, message);
         
-        const situation = generateRandomSituation();
-        const koreaTime = moment().tz(TIMEZONE);
-        const prompt = `너는 박예진이야. 지금은 ${koreaTime.format('HH:mm')}이고, ${situation.content}인 상황. 아저씨에게 보내는 자연스러운 2-5문장의 라인 메시지를 작성해줘. 예진이의 특징과 말투를 완벽히 반영해야 해. 절대 '너'라고 부르지 말고, 항상 반말로만 말해.`;
-        const selectedModel = selectOptimalModel(situation, false);
-        return await callOpenAIOptimized([{ role: "system", content: prompt }], selectedModel);
-    } catch (error) {
-        spontaneousLog(`OpenAI 메시지 생성 실패: ${error.message}`);
-        return getFallbackMessage();
-    }
-}
-
-function getFallbackMessage() { 
-    const fallbackMessages = [
-        "아저씨~ 지금 뭐해?",
-        "아아 마시고 싶어 ㅠㅠ",
-        "오늘 하루 어땠어?",
-        "아저씨 생각나서 연락해!",
-        "치킨 너무 먹고 싶어..."
-    ];
-    return getRandomItem(fallbackMessages); 
-}
-
-async function sendSpontaneousMessage() {
-    try {
-        if (!lineClient || !USER_ID) {
-            recordMessageFailed('no_client_or_userid');
-            return false;
-        }
-        const message = await generateYejinSpontaneousMessage();
-        if (!message) return true; // 사진이 전송된 경우
+        photoLog(`✅ 자발적 사진 전송 성공: ${photoType} - "${message}"`);
+        photoLog(`📊 진행상황: ${photoScheduleState.dailyStats.sentToday}/${photoScheduleState.dailyStats.totalDaily}`);
         
-        const messageType = analyzeMessageType(message);
-        await lineClient.pushMessage(USER_ID, { type: 'text', text: message });
-        recordActualMessageSent(messageType, false);
-        spontaneousLog(`✅ 예진이 능동 메시지 전송 성공 (${dailyScheduleState.sentToday}/${DAILY_MESSAGE_COUNT})`);
+        // 다음 스케줄 예약
+        scheduleNextPhoto();
+        
         return true;
+        
     } catch (error) {
-        spontaneousLog(`❌ 메시지 전송 실패: ${error.message}`);
-        recordMessageFailed(`send_error: ${error.message}`);
+        photoLog(`❌ 자발적 사진 전송 실패: ${error.message}`);
+        
+        // 재시도 스케줄링
+        setTimeout(() => {
+            scheduleNextPhoto();
+        }, 10 * 60 * 1000); // 10분 후 재시도
+        
         return false;
     }
 }
 
-// ================== 📅 스케줄링 및 시작 함수 ==================
-function scheduleIndependentPhotos() {
-    dailyScheduleState.photoJobs.forEach(job => job.cancel());
-    dailyScheduleState.photoJobs = [];
-    const photoCount = 3 + Math.floor(Math.random() * 3);
-    for (let i = 0; i < photoCount; i++) {
-        const randomHour = 8 + Math.floor(Math.random() * 17);
-        const randomMinute = Math.floor(Math.random() * 60);
-        const cronExpression = `${randomMinute} ${randomHour} * * *`;
-        const job = schedule.scheduleJob(cronExpression, async () => {
-            const photoSent = await sendOmoidePhoto();
-            if (photoSent) recordActualMessageSent('casual', true);
-        });
-        dailyScheduleState.photoJobs.push(job);
-    }
-    spontaneousLog(`📸 독립 후지 풍경 사진 스케줄 ${photoCount}개 등록 완료`);
+/**
+ * ⭐️ 사진 전송 기록 함수
+ */
+function recordPhotoSent(photoType, imageUrl, message) {
+    const sentTime = moment().tz(TIMEZONE);
+    const timeString = sentTime.format('HH:mm');
+    
+    // 전송 횟수 증가
+    photoScheduleState.dailyStats.sentToday++;
+    
+    // 전송 기록 추가
+    photoScheduleState.sendHistory.sentTimes.push(timeString);
+    photoScheduleState.sendHistory.sentPhotos.push({
+        type: photoType,
+        url: imageUrl,
+        message: message,
+        time: timeString,
+        timestamp: sentTime.valueOf()
+    });
+    photoScheduleState.sendHistory.lastSentTime = sentTime.valueOf();
+    
+    photoLog(`📊 사진 전송 기록 완료: ${photoType} (${timeString})`);
 }
 
-function generateDailyYejinSchedule() {
-    spontaneousLog(`🌸 예진이 능동 메시지 스케줄 생성 시작...`);
-    
-    // 기존 작업 취소
-    dailyScheduleState.jobs.forEach(job => job.cancel());
-    dailyScheduleState.jobs = [];
-    dailyScheduleState.todaySchedule = [];
-    
-    // 통계 리셋 확인
-    const today = moment().tz(TIMEZONE).format('YYYY-MM-DD');
-    if (dailyScheduleState.realStats.lastResetDate !== today) {
-        resetDailyStats();
-    }
-    
-    // 8시-새벽1시 사이 15개 시간 생성
-    const schedules = [];
-    for (let i = 0; i < DAILY_MESSAGE_COUNT; i++) {
-        let hour, minute;
-        if (Math.random() < 0.8) { // 80%는 8시-23시 사이
-            hour = MESSAGE_START_HOUR + Math.floor(Math.random() * 16); // 8-23시
-        } else { // 20%는 0시-1시 사이 (새벽)
-            hour = Math.floor(Math.random() * 2); // 0-1시
+// ================== 📅 스케줄링 함수들 ==================
+
+/**
+ * 다음 사진 전송 예약
+ */
+function scheduleNextPhoto() {
+    try {
+        // 목표 달성 시 중단
+        if (photoScheduleState.dailyStats.sentToday >= photoScheduleState.dailyStats.totalDaily) {
+            photoLog('📊 오늘 목표 달성 - 스케줄링 중단');
+            photoScheduleState.schedule.nextScheduledTime = null;
+            return;
         }
-        minute = Math.floor(Math.random() * 60);
-        schedules.push({ hour, minute });
-    }
-    
-    // 시간순 정렬
-    schedules.sort((a, b) => {
-        const aMinutes = a.hour < MESSAGE_START_HOUR ? a.hour + 24 : a.hour;
-        const bMinutes = b.hour < MESSAGE_START_HOUR ? b.hour + 24 : b.hour;
-        return (aMinutes * 60 + a.minute) - (bMinutes * 60 + b.minute);
-    });
-    
-    dailyScheduleState.todaySchedule = schedules;
-    
-    // 스케줄 등록
-    schedules.forEach((schedule, index) => {
-        const cronExpression = `${schedule.minute} ${schedule.hour} * * *`;
-        const job = require('node-schedule').scheduleJob(cronExpression, async () => {
-            await sendSpontaneousMessage();
+        
+        const nextTime = calculateNextPhotoTime();
+        photoScheduleState.schedule.nextScheduledTime = nextTime.valueOf();
+        
+        const cronExpression = `${nextTime.minute()} ${nextTime.hour()} ${nextTime.date()} ${nextTime.month() + 1} *`;
+        
+        // 기존 스케줄 취소
+        photoScheduleState.schedule.activeJobs.forEach(job => {
+            if (job) job.cancel();
         });
-        dailyScheduleState.jobs.push(job);
-    });
-    
-    // 독립 사진 스케줄도 생성
-    scheduleIndependentPhotos();
-    
-    // 다음 메시지 시간 업데이트
-    updateNextMessageTime();
-    
-    spontaneousLog(`✅ 예진이 능동 메시지 스케줄 ${schedules.length}개 등록 완료`);
-    spontaneousLog(`📅 오늘 스케줄: ${schedules.map(s => `${s.hour}:${String(s.minute).padStart(2, '0')}`).join(', ')}`);
+        photoScheduleState.schedule.activeJobs = [];
+        
+        // 새 스케줄 등록
+        const job = schedule.scheduleJob(cronExpression, async () => {
+            await sendSpontaneousPhoto();
+        });
+        
+        photoScheduleState.schedule.activeJobs.push(job);
+        photoScheduleState.schedule.scheduleCount++;
+        
+        photoLog(`📅 다음 사진 전송 예약: ${nextTime.format('YYYY-MM-DD HH:mm')} (${formatTimeUntil(nextTime)})`);
+        
+    } catch (error) {
+        photoLog(`❌스케줄링 실패: ${error.message}`);
+    }
 }
 
-// 자정 0시마다 새로운 스케줄 생성
-schedule.scheduleJob('0 0 * * *', () => {
-    spontaneousLog('🌄 자정 0시 - 새로운 하루 시작, 예진이 스케줄 재생성');
-    resetDailyStats();
-    generateDailyYejinSchedule();
-});
+/**
+ * 초기 스케줄링 시작
+ */
+function startPhotoScheduling() {
+    try {
+        photoLog('🚀 자발적 사진 전송 스케줄링 시작');
+        
+        // 첫 번째 사진은 1-2시간 후에
+        const firstPhotoDelay = 60 + Math.floor(Math.random() * 60); // 60-120분
+        const firstPhotoTime = moment().tz(TIMEZONE).add(firstPhotoDelay, 'minutes');
+        
+        photoScheduleState.schedule.nextScheduledTime = firstPhotoTime.valueOf();
+        photoScheduleState.schedule.isSystemActive = true;
+        
+        const cronExpression = `${firstPhotoTime.minute()} ${firstPhotoTime.hour()} * * *`;
+        
+        const job = schedule.scheduleJob(cronExpression, async () => {
+            await sendSpontaneousPhoto();
+        });
+        
+        photoScheduleState.schedule.activeJobs.push(job);
+        
+        photoLog(`📅 첫 번째 사진 전송 예약: ${firstPhotoTime.format('HH:mm')} (${formatTimeUntil(firstPhotoTime)})`);
+        
+        return true;
+        
+    } catch (error) {
+        photoLog(`❌ 스케줄링 시작 실패: ${error.message}`);
+        return false;
+    }
+}
 
-function getSpontaneousMessageStatus() { 
-    // nextScheduledTime을 HH:mm 형식으로 변환
-    let nextTime = null;
-    if (dailyScheduleState.realStats.nextScheduledTime) {
-        const nextMoment = moment(dailyScheduleState.realStats.nextScheduledTime).tz(TIMEZONE);
-        nextTime = nextMoment.format('HH:mm');
+// ================== 🌄 일일 리셋 함수 ==================
+
+/**
+ * 자정에 통계 리셋
+ */
+function resetDailyStats() {
+    const today = moment().tz(TIMEZONE).format('YYYY-MM-DD');
+    
+    photoLog('🌄 일일 통계 리셋 시작');
+    
+    // 통계 리셋
+    photoScheduleState.dailyStats.sentToday = 0;
+    photoScheduleState.dailyStats.lastResetDate = today;
+    
+    // 전송 기록 리셋
+    photoScheduleState.sendHistory.sentTimes = [];
+    photoScheduleState.sendHistory.sentPhotos = [];
+    photoScheduleState.sendHistory.lastSentTime = null;
+    
+    // 기존 스케줄 모두 취소
+    photoScheduleState.schedule.activeJobs.forEach(job => {
+        if (job) job.cancel();
+    });
+    photoScheduleState.schedule.activeJobs = [];
+    photoScheduleState.schedule.scheduleCount = 0;
+    
+    photoLog(`✅ 일일 리셋 완료 - 새로운 하루 시작 (${today})`);
+    
+    // 새로운 하루 스케줄링 시작
+    setTimeout(() => {
+        startPhotoScheduling();
+    }, 5000); // 5초 후 시작
+}
+
+// 자정 리셋 스케줄러 등록
+schedule.scheduleJob('0 0 * * *', resetDailyStats);
+
+// ================== 📊 상태 조회 함수들 (⭐️ 라인 상태 리포트용!) ==================
+
+/**
+ * ⭐️ 사진 전송 상태 조회 (라인에서 "상태는?" 명령어용)
+ */
+function getPhotoStatus() {
+    const nextTime = photoScheduleState.schedule.nextScheduledTime;
+    let nextTimeString = '대기 중';
+    
+    if (nextTime) {
+        const nextMoment = moment(nextTime).tz(TIMEZONE);
+        nextTimeString = nextMoment.format('HH:mm');
     }
     
     return {
-        sentToday: dailyScheduleState.sentToday,
-        totalDaily: DAILY_MESSAGE_COUNT,
-        nextTime: nextTime,  // ✅ 이 필드 추가!
-        isActive: dailyScheduleState.jobs.length > 0,
-        nextScheduledTime: dailyScheduleState.realStats.nextScheduledTime,
-        realStats: dailyScheduleState.realStats
+        // 라인 상태 리포트용 핵심 정보
+        sentToday: photoScheduleState.dailyStats.sentToday,
+        totalDaily: photoScheduleState.dailyStats.totalDaily,
+        dailyLimit: photoScheduleState.dailyStats.totalDaily,  // ✅ 추가!
+        nextTime: nextTimeString,
+        nextSendTime: photoScheduleState.schedule.nextScheduledTime, // ✅ 추가!
+        
+        // 상세 정보
+        progress: `${photoScheduleState.dailyStats.sentToday}/${photoScheduleState.dailyStats.totalDaily}`,
+        isActive: photoScheduleState.schedule.isSystemActive,
+        lastSentTime: photoScheduleState.sendHistory.lastSentTime ? 
+            moment(photoScheduleState.sendHistory.lastSentTime).tz(TIMEZONE).format('HH:mm') : null,
+        
+        // 전송 기록
+        sentTimes: photoScheduleState.sendHistory.sentTimes,
+        remainingToday: photoScheduleState.dailyStats.totalDaily - photoScheduleState.dailyStats.sentToday,
+        
+        // 시스템 상태
+        systemStatus: photoScheduleState.schedule.isSystemActive ? '활성화' : '비활성화',
+        scheduleCount: photoScheduleState.schedule.scheduleCount
     };
 }
 
-function startSpontaneousYejinSystem(client) {
+/**
+ * 상세 통계 정보
+ */
+function getDetailedPhotoStats() {
+    const status = getPhotoStatus();
+    const nextTime = photoScheduleState.schedule.nextScheduledTime;
+    
+    return {
+        ...status,
+        
+        // 추가 상세 정보
+        settings: {
+            minInterval: photoScheduleState.settings.minInterval,
+            maxInterval: photoScheduleState.settings.maxInterval,
+            photoTypes: photoScheduleState.settings.photoTypes
+        },
+        
+        schedule: {
+            nextScheduledTime: nextTime ? moment(nextTime).tz(TIMEZONE).format('YYYY-MM-DD HH:mm:ss') : null,
+            timeUntilNext: nextTime ? formatTimeUntil(moment(nextTime)) : null,
+            activeJobsCount: photoScheduleState.schedule.activeJobs.length
+        },
+        
+        history: {
+            todayPhotos: photoScheduleState.sendHistory.sentPhotos,
+            lastResetDate: photoScheduleState.dailyStats.lastResetDate,
+            systemStartTime: moment(photoScheduleState.dailyStats.systemStartTime).tz(TIMEZONE).format('YYYY-MM-DD HH:mm:ss')
+        }
+    };
+}
+
+/**
+ * 간단한 상태 요약
+ */
+function getPhotoStatusSummary() {
+    const status = getPhotoStatus();
+    
+    return {
+        isActive: status.isActive,
+        progress: status.progress,
+        nextPhoto: status.nextTime,
+        status: status.sentToday >= status.totalDaily ? 'completed' : 'active'
+    };
+}
+
+// ================== 🧪 테스트 함수들 ==================
+
+/**
+ * 사진 전송 테스트
+ */
+async function testPhotoSending() {
+    photoLog('🧪 사진 전송 테스트 시작');
+    
     try {
-        spontaneousLog('🚀 예진이 능동 메시지 시스템 시작...');
-        if (client) {
-            lineClient = client;
-        } else if (process.env.LINE_ACCESS_TOKEN) {
-            lineClient = new Client({ channelAccessToken: process.env.LINE_ACCESS_TOKEN });
-        } else {
-            spontaneousLog('❌ LINE 클라이언트 설정 실패');
-            return false;
-        }
-        if (!USER_ID) {
-            spontaneousLog('❌ TARGET_USER_ID 환경변수 없음');
-            return false;
-        }
-        generateDailyYejinSchedule();
-        spontaneousLog('✅ 예진이 능동 메시지 시스템 활성화 완료!');
-        return true;
+        const result = await sendSpontaneousPhoto();
+        photoLog(`🧪 테스트 결과: ${result ? '성공' : '실패'}`);
+        return result;
     } catch (error) {
-        spontaneousLog(`❌ 예진이 능동 메시지 시스템 시작 실패: ${error.message}`);
+        photoLog(`🧪 테스트 실패: ${error.message}`);
         return false;
     }
 }
 
+/**
+ * 스케줄링 테스트
+ */
+function testScheduling() {
+    photoLog('🧪 스케줄링 테스트 시작');
+    
+    try {
+        // 테스트용 짧은 간격 설정
+        const testTime = moment().tz(TIMEZONE).add(2, 'minutes');
+        photoScheduleState.schedule.nextScheduledTime = testTime.valueOf();
+        
+        const cronExpression = `${testTime.minute()} ${testTime.hour()} * * *`;
+        
+        const job = schedule.scheduleJob(cronExpression, async () => {
+            photoLog('🧪 테스트 스케줄 실행됨');
+            await sendSpontaneousPhoto();
+        });
+        
+        photoScheduleState.schedule.activeJobs.push(job);
+        
+        photoLog(`🧪 테스트 스케줄 등록: ${testTime.format('HH:mm')} (2분 후)`);
+        return true;
+        
+    } catch (error) {
+        photoLog(`🧪 스케줄링 테스트 실패: ${error.message}`);
+        return false;
+    }
+}
+
+// ================== 🚀 메인 시작 함수 ==================
+
+/**
+ * 자발적 사진 전송 시스템 시작
+ */
+function startSpontaneousPhotoScheduler(client, targetUserId, getLastUserMessageTime) {
+    try {
+        photoLog('🚀 자발적 사진 전송 시스템 초기화...');
+        
+        // 클라이언트 및 설정
+        lineClient = client;
+        userId = targetUserId;
+        lastUserMessageTimeFunc = getLastUserMessageTime;
+        
+        if (!lineClient) {
+            photoLog('❌ LINE 클라이언트가 제공되지 않음');
+            return false;
+        }
+        
+        if (!userId) {
+            photoLog('❌ 타겟 사용자 ID가 제공되지 않음');
+            return false;
+        }
+        
+        // 일일 리셋 확인
+        const today = moment().tz(TIMEZONE).format('YYYY-MM-DD');
+        if (photoScheduleState.dailyStats.lastResetDate !== today) {
+            resetDailyStats();
+        }
+        
+        // 스케줄링 시작
+        const startResult = startPhotoScheduling();
+        
+        if (startResult) {
+            photoLog('✅ 자발적 사진 전송 시스템 활성화 완료!');
+            photoLog(`📊 설정: 하루 ${DAILY_PHOTO_TARGET}회, ${MIN_INTERVAL_MINUTES}-${MAX_INTERVAL_MINUTES}분 간격`);
+            photoLog(`📋 사진 타입: ${photoScheduleState.settings.photoTypes.join(', ')}`);
+            photoLog(`🎯 오늘 목표: ${photoScheduleState.dailyStats.sentToday}/${photoScheduleState.dailyStats.totalDaily}`);
+        } else {
+            photoLog('❌ 자발적 사진 전송 시스템 활성화 실패');
+        }
+        
+        return startResult;
+        
+    } catch (error) {
+        photoLog(`❌ 시스템 초기화 실패: ${error.message}`);
+        return false;
+    }
+}
+
+/**
+ * 시스템 중지
+ */
+function stopSpontaneousPhotoScheduler() {
+    try {
+        photoLog('🛑 자발적 사진 전송 시스템 중지...');
+        
+        // 모든 활성 작업 취소
+        photoScheduleState.schedule.activeJobs.forEach(job => {
+            if (job) job.cancel();
+        });
+        
+        // 상태 리셋
+        photoScheduleState.schedule.activeJobs = [];
+        photoScheduleState.schedule.isSystemActive = false;
+        photoScheduleState.schedule.nextScheduledTime = null;
+        
+        photoLog('✅ 자발적 사진 전송 시스템 중지 완료');
+        return true;
+        
+    } catch (error) {
+        photoLog(`❌ 시스템 중지 실패: ${error.message}`);
+        return false;
+    }
+}
+
+// ================== 🔧 유틸리티 함수들 ==================
+
+/**
+ * 강제로 다음 사진 전송 (테스트용)
+ */
+async function forceSendPhoto() {
+    photoLog('🔧 강제 사진 전송 시작');
+    return await sendSpontaneousPhoto();
+}
+
+/**
+ * 스케줄 강제 재설정
+ */
+function forceReschedule() {
+    photoLog('🔧 강제 스케줄 재설정');
+    
+    // 기존 스케줄 취소
+    photoScheduleState.schedule.activeJobs.forEach(job => {
+        if (job) job.cancel();
+    });
+    photoScheduleState.schedule.activeJobs = [];
+    
+    // 새 스케줄 시작
+    return startPhotoScheduling();
+}
+
+/**
+ * 내부 상태 조회 (디버깅용)
+ */
+function getInternalState() {
+    return {
+        dailyStats: photoScheduleState.dailyStats,
+        sendHistory: photoScheduleState.sendHistory,
+        schedule: {
+            ...photoScheduleState.schedule,
+            nextScheduledTimeFormatted: photoScheduleState.schedule.nextScheduledTime ? 
+                moment(photoScheduleState.schedule.nextScheduledTime).tz(TIMEZONE).format('YYYY-MM-DD HH:mm:ss') : null
+        },
+        settings: photoScheduleState.settings,
+        systemInfo: {
+            hasLineClient: !!lineClient,
+            hasUserId: !!userId,
+            hasMessageTimeFunc: !!lastUserMessageTimeFunc
+        }
+    };
+}
+
 // ================== 📤 모듈 내보내기 ==================
+photoLog('📸 spontaneousPhotoManager.js v2.0 로드 완료 (실시간 통계 추적 지원)');
+
 module.exports = {
-    startSpontaneousYejinSystem,
-    getSpontaneousMessageStatus,
-    sendSpontaneousMessage,
-    generateYejinSpontaneousMessage,
-    generateDailyYejinSchedule,
-    scheduleIndependentPhotos,
+    // 🚀 메인 함수들
+    startSpontaneousPhotoScheduler,
+    stopSpontaneousPhotoScheduler,
+    
+    // 📊 상태 조회 함수들 (⭐️ 라인 상태 리포트용!)
+    getPhotoStatus,              // ⭐️ 라인에서 "상태는?" 명령어용 핵심 함수!
+    getStatus: getPhotoStatus, 
+    getDetailedPhotoStats,
+    getPhotoStatusSummary,
+    
+    // 📸 사진 전송 함수들
+    sendSpontaneousPhoto,
+    forceSendPhoto,
+    
+    // 📅 스케줄링 함수들
+    scheduleNextPhoto,
+    forceReschedule,
     resetDailyStats,
-    recordActualMessageSent,
-    recordMessageFailed,
-    updateNextMessageTime,
-    syncWithUltimateContext: () => {}, // placeholder
-    testSpontaneousMessage: async () => {}, // placeholder
-    testPhotoSending: async () => {}, // placeholder
-    detectAjossiBusyStatus,
-    generateBusyReaction,
-    detectMentalHealthContext,
-    generateMentalHealthReaction,
-    getMentalHealthSituation,
-    getModelingSituation,
-    getYejinSelfieUrl,
-    detectStreetCompliment,
-    generateStreetComplimentReaction,
-    sendYejinSelfieWithComplimentReaction,
-    getOmoidePhotoUrl,
-    getOmoidePhotoMessage, 
-    generateCurrentPhotoMessage,
-    sendOmoidePhoto,
-    analyzeMessageType,
-    generateRandomSituation,
-    validateMessageLength,
-    countSentences,
-    selectOptimalModel,
-    callOpenAIOptimized,
-    getRandomItem,
-    getRealStats: () => ({ ...dailyScheduleState.realStats }),
-    getScheduleState: () => ({ ...dailyScheduleState }),
-    dailyScheduleState,
-    yejinRealLife,
-    ajossiSituationReactions,
-    spontaneousLog,
-    validateImageUrl
+    
+    // 🧪 테스트 함수들
+    testPhotoSending,
+    testScheduling,
+    
+    // 🔧 유틸리티 함수들
+    getInternalState,
+    calculateNextPhotoTime,
+    formatTimeUntil,
+    recordPhotoSent,
+    
+    // 📊 통계 관련
+    photoScheduleState: () => ({ ...photoScheduleState }), // 읽기 전용 복사본 제공
+    
+    // 로그 함수
+    photoLog
 };
