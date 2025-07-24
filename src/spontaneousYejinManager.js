@@ -1,5 +1,5 @@
 // ============================================================================
-// spontaneousYejinManager.js - v2.1 UPDATED (후지 사진 경로 변경)
+// spontaneousYejinManager.js - v2.2 FIXED (스케줄링 문제 완전 해결)
 // 🌸 예진이가 능동적으로 하루 15번 메시지 보내는 시스템
 // 8시-1시 사이 랜덤, 2-5문장으로 단축, 실제 취향과 일상 기반
 // ✅ 모델 활동 이야기 추가 (촬영, 화보, 스케줄)
@@ -12,6 +12,7 @@
 // 📸 후지 사진 경로 변경: https://photo.de-ji.net/photo/fuji/ (1481장)
 // 💬 후지 사진 코멘트 30개 추가
 // 🔄 함수명 통일: getOmoidePhoto 계열로 통일
+// 🚨 FIXED: 스케줄링 문제 완전 해결 (nextTime undefined → 정상)
 // ============================================================================
 
 const schedule = require('node-schedule');
@@ -404,27 +405,72 @@ function recordMessageFailed(reason = 'unknown') {
     spontaneousLog(`📊 전송 실패 기록: ${reason} - 실패 총 ${dailyScheduleState.realStats.failedSends}건`);
 }
 
+// ================== 🚨 FIXED: 다음 메시지 시간 업데이트 함수 완전 개선 ==================
 function updateNextMessageTime() {
-    const koreaTime = moment().tz(TIMEZONE);
-    const now = koreaTime.hour() * 60 + koreaTime.minute();
-    const remainingSchedules = dailyScheduleState.todaySchedule.filter(time => {
-        const scheduleMinutes = time.hour * 60 + time.minute;
-        const adjustedScheduleMinutes = time.hour < MESSAGE_START_HOUR ? scheduleMinutes + 24 * 60 : scheduleMinutes;
-        const adjustedNow = koreaTime.hour() < MESSAGE_START_HOUR ? now + 24 * 60 : now;
-        return adjustedScheduleMinutes > adjustedNow;
-    });
-    if (remainingSchedules.length > 0) {
-        const nextSchedule = remainingSchedules[0];
-        const nextTime = moment().tz(TIMEZONE).hour(nextSchedule.hour).minute(nextSchedule.minute).second(0);
-        dailyScheduleState.realStats.nextScheduledTime = nextTime.valueOf();
-        const uc = getUltimateContext();
-        if (uc && uc.setNextSpontaneousTime) {
-            uc.setNextSpontaneousTime(nextTime.valueOf());
+    try {
+        const koreaTime = moment().tz(TIMEZONE);
+        const currentTimeMinutes = koreaTime.hour() * 60 + koreaTime.minute();
+        
+        spontaneousLog(`🔍 [디버그] 현재 시간: ${koreaTime.format('HH:mm')} (${currentTimeMinutes}분)`);
+        spontaneousLog(`🔍 [디버그] 오늘 스케줄: ${dailyScheduleState.todaySchedule.length}개`);
+        
+        if (!dailyScheduleState.todaySchedule || dailyScheduleState.todaySchedule.length === 0) {
+            spontaneousLog(`⚠️ [디버그] 스케줄이 비어있음`);
+            dailyScheduleState.realStats.nextScheduledTime = null;
+            return;
         }
-        spontaneousLog(`⏰ 다음 메시지 시간 업데이트: ${nextTime.format('HH:mm')}`);
-    } else {
+        
+        // 🚨 FIXED: 단순하고 정확한 로직으로 변경
+        const remainingSchedules = dailyScheduleState.todaySchedule.filter(schedule => {
+            const scheduleMinutes = schedule.hour * 60 + schedule.minute;
+            
+            // 새벽 시간대 처리 (0-7시는 다음날로 간주)
+            const adjustedScheduleMinutes = schedule.hour < 8 ? scheduleMinutes + 24 * 60 : scheduleMinutes;
+            const adjustedCurrentMinutes = koreaTime.hour() < 8 ? currentTimeMinutes + 24 * 60 : currentTimeMinutes;
+            
+            const isRemaining = adjustedScheduleMinutes > adjustedCurrentMinutes;
+            
+            spontaneousLog(`🔍 [디버그] 스케줄 ${schedule.hour}:${String(schedule.minute).padStart(2, '0')} (${scheduleMinutes}분) → 조정: ${adjustedScheduleMinutes}분, 남음: ${isRemaining}`);
+            
+            return isRemaining;
+        });
+        
+        spontaneousLog(`🔍 [디버그] 남은 스케줄: ${remainingSchedules.length}개`);
+        
+        if (remainingSchedules.length > 0) {
+            const nextSchedule = remainingSchedules[0];
+            
+            // 🚨 FIXED: 정확한 다음 시간 계산
+            let nextTime;
+            if (nextSchedule.hour < 8) {
+                // 새벽 시간대는 다음날
+                nextTime = moment().tz(TIMEZONE).add(1, 'day').hour(nextSchedule.hour).minute(nextSchedule.minute).second(0);
+            } else {
+                // 일반 시간대는 오늘
+                nextTime = moment().tz(TIMEZONE).hour(nextSchedule.hour).minute(nextSchedule.minute).second(0);
+                
+                // 만약 이미 지난 시간이면 다음날로
+                if (nextTime.isBefore(koreaTime)) {
+                    nextTime.add(1, 'day');
+                }
+            }
+            
+            dailyScheduleState.realStats.nextScheduledTime = nextTime.valueOf();
+            
+            const uc = getUltimateContext();
+            if (uc && uc.setNextSpontaneousTime) {
+                uc.setNextSpontaneousTime(nextTime.valueOf());
+            }
+            
+            spontaneousLog(`✅ [FIXED] 다음 메시지 시간 업데이트: ${nextTime.format('HH:mm')} (${nextTime.valueOf()})`);
+        } else {
+            dailyScheduleState.realStats.nextScheduledTime = null;
+            spontaneousLog(`⏰ 오늘 스케줄 완료`);
+        }
+        
+    } catch (error) {
+        spontaneousLog(`❌ [ERROR] 다음 시간 업데이트 실패: ${error.message}`);
         dailyScheduleState.realStats.nextScheduledTime = null;
-        spontaneousLog(`⏰ 오늘 스케줄 완료`);
     }
 }
 
@@ -795,11 +841,19 @@ function scheduleIndependentPhotos() {
     spontaneousLog(`📸 독립 후지 풍경 사진 스케줄 ${photoCount}개 등록 완료`);
 }
 
+// ================== 🚨 FIXED: 스케줄 생성 함수 완전 개선 ==================
 function generateDailyYejinSchedule() {
     spontaneousLog(`🌸 예진이 능동 메시지 스케줄 생성 시작...`);
     
     // 기존 작업 취소
-    dailyScheduleState.jobs.forEach(job => job.cancel());
+    dailyScheduleState.jobs.forEach(job => {
+        try {
+            job.cancel();
+            spontaneousLog(`🗑️ [디버그] 기존 job 취소됨`);
+        } catch (error) {
+            spontaneousLog(`⚠️ [디버그] job 취소 실패: ${error.message}`);
+        }
+    });
     dailyScheduleState.jobs = [];
     dailyScheduleState.todaySchedule = [];
     
@@ -831,23 +885,39 @@ function generateDailyYejinSchedule() {
     
     dailyScheduleState.todaySchedule = schedules;
     
-    // 스케줄 등록
+    // 🚨 FIXED: 스케줄 등록 개선 (에러 처리 강화)
     schedules.forEach((schedule, index) => {
-        const cronExpression = `${schedule.minute} ${schedule.hour} * * *`;
-        const job = require('node-schedule').scheduleJob(cronExpression, async () => {
-            await sendSpontaneousMessage();
-        });
-        dailyScheduleState.jobs.push(job);
+        try {
+            const cronExpression = `${schedule.minute} ${schedule.hour} * * *`;
+            
+            spontaneousLog(`🔧 [디버그] Job 등록 시도: ${schedule.hour}:${String(schedule.minute).padStart(2, '0')} (cron: ${cronExpression})`);
+            
+            const job = require('node-schedule').scheduleJob(cronExpression, async () => {
+                spontaneousLog(`🚀 [실행] 스케줄된 시간 도달: ${schedule.hour}:${String(schedule.minute).padStart(2, '0')}`);
+                await sendSpontaneousMessage();
+            });
+            
+            if (job) {
+                dailyScheduleState.jobs.push(job);
+                spontaneousLog(`✅ [디버그] Job 등록 성공: ${schedule.hour}:${String(schedule.minute).padStart(2, '0')}`);
+            } else {
+                spontaneousLog(`❌ [디버그] Job 등록 실패: ${schedule.hour}:${String(schedule.minute).padStart(2, '0')}`);
+            }
+            
+        } catch (error) {
+            spontaneousLog(`❌ [ERROR] 스케줄 등록 실패 (${index}번째): ${error.message}`);
+        }
     });
     
     // 독립 사진 스케줄도 생성
     scheduleIndependentPhotos();
     
-    // 다음 메시지 시간 업데이트
+    // 🚨 FIXED: 다음 메시지 시간 업데이트
     updateNextMessageTime();
     
-    spontaneousLog(`✅ 예진이 능동 메시지 스케줄 ${schedules.length}개 등록 완료`);
+    spontaneousLog(`✅ 예진이 능동 메시지 스케줄 ${schedules.length}개 등록 완료 (등록된 jobs: ${dailyScheduleState.jobs.length}개)`);
     spontaneousLog(`📅 오늘 스케줄: ${schedules.map(s => `${s.hour}:${String(s.minute).padStart(2, '0')}`).join(', ')}`);
+    spontaneousLog(`⏰ 다음 예정 시간: ${dailyScheduleState.realStats.nextScheduledTime ? moment(dailyScheduleState.realStats.nextScheduledTime).tz(TIMEZONE).format('HH:mm') : 'undefined'}`);
 }
 
 // 자정 0시마다 새로운 스케줄 생성
@@ -857,21 +927,37 @@ schedule.scheduleJob('0 0 * * *', () => {
     generateDailyYejinSchedule();
 });
 
+// ================== 🚨 FIXED: 상태 조회 함수 개선 ==================
 function getSpontaneousMessageStatus() { 
-    // nextScheduledTime을 HH:mm 형식으로 변환
+    // 🚨 FIXED: nextScheduledTime을 HH:mm 형식으로 정확히 변환
     let nextTime = null;
-    if (dailyScheduleState.realStats.nextScheduledTime) {
-        const nextMoment = moment(dailyScheduleState.realStats.nextScheduledTime).tz(TIMEZONE);
-        nextTime = nextMoment.format('HH:mm');
+    try {
+        if (dailyScheduleState.realStats.nextScheduledTime) {
+            const nextMoment = moment(dailyScheduleState.realStats.nextScheduledTime).tz(TIMEZONE);
+            nextTime = nextMoment.format('HH:mm');
+            spontaneousLog(`🔍 [디버그] nextTime 변환: ${dailyScheduleState.realStats.nextScheduledTime} → ${nextTime}`);
+        } else {
+            spontaneousLog(`🔍 [디버그] nextScheduledTime이 null임`);
+        }
+    } catch (error) {
+        spontaneousLog(`❌ [ERROR] nextTime 변환 실패: ${error.message}`);
+        nextTime = 'error';
     }
     
     return {
         sentToday: dailyScheduleState.sentToday,
         totalDaily: DAILY_MESSAGE_COUNT,
-        nextTime: nextTime,  // ✅ 이 필드 추가!
+        nextTime: nextTime,  // ✅ 이 필드가 중요!
         isActive: dailyScheduleState.jobs.length > 0,
         nextScheduledTime: dailyScheduleState.realStats.nextScheduledTime,
-        realStats: dailyScheduleState.realStats
+        realStats: dailyScheduleState.realStats,
+        // 🚨 FIXED: 디버깅 정보 추가
+        debug: {
+            schedulesCount: dailyScheduleState.todaySchedule.length,
+            jobsCount: dailyScheduleState.jobs.length,
+            nextScheduledTimeRaw: dailyScheduleState.realStats.nextScheduledTime,
+            currentTime: moment().tz(TIMEZONE).format('HH:mm:ss')
+        }
     };
 }
 
