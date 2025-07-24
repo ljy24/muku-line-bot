@@ -67,7 +67,7 @@ function calculateMenstrualCycle() {
     }
     
     // 🔄 다음 생리까지 남은 일수 계산
-    const daysUntilNext = 28 - cycleDay + 1;
+    const daysUntilNext = 28 - cycleDay;
     
     return {
         cycleDay,
