@@ -5,6 +5,7 @@
 // 🔄 시스템 재시작 시 남은 할당량에 맞춰 자동 조정
 // 💾 서버 리셋해도 진행상황 유지 (영구 저장)
 // ⏰ 스케줄: 8:00, 9:52, 11:44, 13:36, 15:28, 17:20, 19:12, 21:04
+// 🚨 FIX: undefined/undefined 문제 해결
 // ============================================================================
 
 const schedule = require('node-schedule');
@@ -750,9 +751,21 @@ function getPhotoStatus() {
         ? moment(photoScheduleState.schedule.nextScheduledTime).tz(TIMEZONE)
         : null;
     
+    // 🚨 FIX: dailyStats 안전성 보장 - undefined 문제 해결
+    if (!photoScheduleState.dailyStats) {
+        photoScheduleState.dailyStats = {
+            sentToday: 0,
+            totalDaily: DAILY_PHOTO_TARGET,
+            lastResetDate: moment().tz(TIMEZONE).format('YYYY-MM-DD')
+        };
+        photoLog('🔧 [자동수정] dailyStats 초기화됨');
+        // 초기화 후 저장
+        savePhotoState();
+    }
+    
     return {
-        sent: photoScheduleState.dailyStats?.sentToday || 0,
-        total: photoScheduleState.dailyStats?.totalDaily || DAILY_PHOTO_TARGET,
+        sent: photoScheduleState.dailyStats.sentToday || 0,
+        total: photoScheduleState.dailyStats.totalDaily || DAILY_PHOTO_TARGET,
         nextTime: nextTime ? nextTime.format('HH:mm') : '예약없음',
         nextTimeFormatted: nextTime ? formatTimeUntil(nextTime) : '예약없음',
         isActive: photoScheduleState.schedule?.isSystemActive || false,
@@ -970,7 +983,7 @@ function restartScheduling() {
 }
 
 // ================== 📤 모듈 내보내기 ==================
-photoLog('📸 spontaneousPhotoManager.js v4.0 로드 완료 (영구 저장 + 균등 분산 스케줄링)');
+photoLog('📸 spontaneousPhotoManager.js v4.0 로드 완료 (영구 저장 + 균등 분산 스케줄링) - undefined 문제 해결');
 
 // 🌄 자정 0시마다 새로운 스케줄 생성
 schedule.scheduleJob('0 0 * * *', () => {
