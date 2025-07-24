@@ -3,9 +3,13 @@
 // ✅ 홈페이지, 헬스체크, 상태 조회 등 웹 응답 처리
 // 🌐 Express 라우트 핸들러들 분리
 // 📊 실시간 시스템 상태 표시
+// 📼 Memory Tape 블랙박스 연동 - 모든 응답 메시지 자동 기록
 // ============================================================================
 
 const { middleware } = require('@line/bot-sdk');
+
+// 🎊 Memory Tape 블랙박스 시스템 임포트 (안전한 추가)
+const { recordMukuMoment } = require('../data/memory-tape/muku-memory-tape.js');
 
 // ================== 🎨 색상 정의 ==================
 const colors = {
@@ -14,6 +18,7 @@ const colors = {
     pms: '\x1b[1m\x1b[91m', // 굵은 빨간색 (PMS)
     system: '\x1b[92m',     // 연초록색 (시스템)
     error: '\x1b[91m',      // 빨간색 (에러)
+    tape: '\x1b[93m',       // 노란색 (Memory Tape)
     reset: '\x1b[0m'        // 색상 리셋
 };
 
@@ -51,6 +56,23 @@ async function sendReply(replyToken, botResponse, client, enhancedLogging) {
                         }
                     ]);
                     
+                    // 🎊 Memory Tape 블랙박스 기록 - 이미지 + 텍스트 전송 (안전하게 추가)
+                    try {
+                        recordMukuMoment({
+                            type: 'reply-image-message',
+                            response: caption,
+                            image: imageUrl,
+                            source: 'reply-system',
+                            emotional_tags: ['응답', '이미지', '대화'],
+                            memory_linked: true,
+                            remarkable: true // 이미지는 특별한 순간으로 표시
+                        }).catch(err => {
+                            console.log(`${colors.tape}📼 Memory Tape 기록 실패 (무쿠 정상 작동): ${err.message}${colors.reset}`);
+                        });
+                    } catch (error) {
+                        console.log(`${colors.tape}📼 Memory Tape 연결 오류 (무쿠 정상 작동): ${error.message}${colors.reset}`);
+                    }
+                    
                     console.log(`${colors.yejin}📸 예진이: 이미지 + 텍스트 전송 성공${colors.reset}`);
                     
                     // ⭐️ enhancedLogging v3.0으로 응답 로그 ⭐️
@@ -74,6 +96,46 @@ async function sendReply(replyToken, botResponse, client, enhancedLogging) {
             console.log(`🔄 [LINE전송] 메시지 타입: ${replyMessage.type}`);
             await client.replyMessage(replyToken, replyMessage);
             
+            // 🎊 Memory Tape 블랙박스 기록 - 메시지 전송 성공 직후 (안전하게 추가)
+            try {
+                // 전송된 메시지 정보 분석
+                const messageContent = replyMessage.text || replyMessage.comment || '메시지 전송';
+                const messageType = replyMessage.type || 'text';
+                
+                // 감정 태그 자동 분석
+                const emotionalTags = ['응답', '대화'];
+                if (messageContent.includes('💖') || messageContent.includes('💕') || messageContent.includes('사랑')) {
+                    emotionalTags.push('사랑');
+                }
+                if (messageContent.includes('ㅠㅠ') || messageContent.includes('ㅜㅜ') || messageContent.includes('슬프')) {
+                    emotionalTags.push('슬픔');
+                }
+                if (messageContent.includes('ㅎㅎ') || messageContent.includes('ㅋㅋ') || messageContent.includes('기뻐')) {
+                    emotionalTags.push('기쁨');
+                }
+                if (messageContent.includes('😤') || messageContent.includes('삐짐') || messageContent.includes('화')) {
+                    emotionalTags.push('삐짐');
+                }
+                
+                // Memory Tape에 기록 (비동기로 실행하여 메인 로직 방해 안 함)
+                recordMukuMoment({
+                    type: 'reply-message',
+                    response: messageContent,
+                    source: 'reply-system',
+                    emotional_tags: emotionalTags,
+                    memory_linked: true,
+                    message_type: messageType
+                }).catch(err => {
+                    console.log(`${colors.tape}📼 Memory Tape 기록 실패 (무쿠 정상 작동): ${err.message}${colors.reset}`);
+                });
+                
+                console.log(`${colors.tape}📼 [Memory Tape] 응답 메시지 기록 완료${colors.reset}`);
+                
+            } catch (error) {
+                // 기록 실패해도 무쿠는 정상 작동
+                console.log(`${colors.tape}📼 Memory Tape 연결 오류 (무쿠 정상 작동): ${error.message}${colors.reset}`);
+            }
+            
             if (replyMessage.type === 'text') {
                 // ⭐️ enhancedLogging v3.0으로 응답 로그 ⭐️
                 if (enhancedLogging && enhancedLogging.logConversation) {
@@ -93,6 +155,22 @@ async function sendReply(replyToken, botResponse, client, enhancedLogging) {
                 type: 'text',
                 text: '아저씨... 뭔가 문제가 생겼어. 다시 시도해볼래? ㅠㅠ'
             });
+            
+            // 🎊 Memory Tape 블랙박스 기록 - 폴백 메시지 (안전하게 추가)
+            try {
+                recordMukuMoment({
+                    type: 'reply-fallback-message',
+                    response: '아저씨... 뭔가 문제가 생겼어. 다시 시도해볼래? ㅠㅠ',
+                    source: 'fallback-system',
+                    emotional_tags: ['폴백', '에러복구', '걱정'],
+                    memory_linked: true,
+                    error_recovery: true
+                }).catch(err => {
+                    console.log(`${colors.tape}📼 Memory Tape 폴백 기록 실패 (무쿠 정상 작동): ${err.message}${colors.reset}`);
+                });
+            } catch (error) {
+                console.log(`${colors.tape}📼 Memory Tape 폴백 연결 오류 (무쿠 정상 작동): ${error.message}${colors.reset}`);
+            }
             
             // ⭐️ enhancedLogging v3.0으로 에러 로그 ⭐️
             if (enhancedLogging && enhancedLogging.logConversation) {
@@ -195,10 +273,27 @@ function createMainEventHandler(eventProcessor, modules, client, faceMatcher, lo
             switch (processedEvent.type) {
                 case 'version_response':
                     // ✅ 즉시 응답 후 종료
-                    return client.replyMessage(event.replyToken, {
+                    const versionReply = await client.replyMessage(event.replyToken, {
                         type: 'text',
                         text: processedEvent.response
                     });
+                    
+                    // 🎊 Memory Tape 블랙박스 기록 - 버전 응답 (안전하게 추가)
+                    try {
+                        recordMukuMoment({
+                            type: 'version-response',
+                            response: processedEvent.response,
+                            source: 'version-system',
+                            emotional_tags: ['정보', '버전', '시스템'],
+                            memory_linked: true
+                        }).catch(err => {
+                            console.log(`${colors.tape}📼 Memory Tape 버전응답 기록 실패 (무쿠 정상 작동): ${err.message}${colors.reset}`);
+                        });
+                    } catch (error) {
+                        console.log(`${colors.tape}📼 Memory Tape 버전응답 연결 오류 (무쿠 정상 작동): ${error.message}${colors.reset}`);
+                    }
+                    
+                    return versionReply;
 
                 case 'night_response':
                 case 'birthday_response':
@@ -215,6 +310,9 @@ function createMainEventHandler(eventProcessor, modules, client, faceMatcher, lo
                 case 'other_response':
                 case 'fallback_response':
                 case 'error_response':
+                case 'empty_message_response':
+                case 'ultimate_safe_response':
+                case 'emergency_response':
                     return sendReply(event.replyToken, processedEvent.response, client, enhancedLogging);
 
                 default:
@@ -271,6 +369,7 @@ function setupRoutes(app, config, modules, statusReporter, eventProcessor, clien
     console.log(`${colors.system}    - GET /: 홈페이지 (상태 확인)${colors.reset}`);
     console.log(`${colors.system}    - GET /health: 헬스체크 (JSON)${colors.reset}`);
     console.log(`${colors.system}    - GET /status: 상태 리포트 출력${colors.reset}`);
+    console.log(`${colors.tape}📼 [Memory Tape] 모든 응답 메시지 자동 기록 활성화!${colors.reset}`);
 }
 
 // ================== 📤 모듈 내보내기 ==================
