@@ -1,24 +1,18 @@
 // ============================================================================
-// spontaneousYejinManager.js - v2.2 FIXED (스케줄링 문제 완전 해결)
+// spontaneousYejinManager.js - v2.3 ENHANCED (영구저장 & 균등분산 스케줄링)
 // 🌸 예진이가 능동적으로 하루 15번 메시지 보내는 시스템
-// 8시-1시 사이 랜덤, 2-5문장으로 단축, 실제 취향과 일상 기반
-// ✅ 모델 활동 이야기 추가 (촬영, 화보, 스케줄)
-// ✅ "너" 호칭 완전 금지 (아저씨만 사용)
-// ✅ 사진 전송 확률: 30%로 대폭 증가
-// 🔧 사진 전송 문제 완전 해결: URL 검증, 메시지 형식 개선, 재시도 로직
-// ✨ GPT 모델 버전 전환: 3문장 넘으면 GPT-3.5, 이하면 설정대로
-// ⭐️ 실제 통계 추적 시스템 + ultimateContext 연동 완성!
-// 🔧 analyzeMessageType 함수 누락 문제 해결! 
-// 📸 후지 사진 경로 변경: https://photo.de-ji.net/photo/fuji/ (1481장)
-// 💬 후지 사진 코멘트 30개 추가
-// 🔄 함수명 통일: getOmoidePhoto 계열로 통일
-// 🚨 FIXED: 스케줄링 문제 완전 해결 (nextTime undefined → 정상)
+// 💾 NEW: 영구 저장 기능 (/data/message_status.json)
+// 📅 NEW: 균등 분산 스케줄링 (1시간 8분 간격 ±15분 랜덤)
+// ✅ 기존 기능 완전 보존 + 안전성 강화
+// 🔧 spontaneousPhotoManager.js v4.0과 동일한 구조 적용
 // ============================================================================
 
 const schedule = require('node-schedule');
 const moment = require('moment-timezone');
 const { Client } = require('@line/bot-sdk');
 const OpenAI = require('openai');
+const fs = require('fs').promises;
+const path = require('path');
 require('dotenv').config();
 
 // ✨ GPT 모델 버전 관리 시스템 import
@@ -51,6 +45,9 @@ const USER_ID = process.env.LINE_TARGET_USER_ID;
 const DAILY_MESSAGE_COUNT = 15;
 const MESSAGE_START_HOUR = 8;    // 오전 8시
 const MESSAGE_END_HOUR = 25;     // 새벽 1시 (다음날)
+
+// 💾 NEW: 영구 저장 경로
+const MESSAGE_STATUS_FILE = '/data/message_status.json';
 
 // LINE 클라이언트
 let lineClient = null;
@@ -99,6 +96,124 @@ function spontaneousLog(message, data = null) {
     if (data) {
         console.log('  📱 데이터:', JSON.stringify(data, null, 2));
     }
+}
+
+// ================== 💾 NEW: 영구 저장 기능 ==================
+async function saveMessageState() {
+    try {
+        // 디렉토리가 없으면 생성
+        const dir = path.dirname(MESSAGE_STATUS_FILE);
+        try {
+            await fs.access(dir);
+        } catch {
+            await fs.mkdir(dir, { recursive: true });
+            spontaneousLog('📁 /data 디렉토리 생성 완료');
+        }
+
+        const stateToSave = {
+            sentToday: dailyScheduleState.sentToday,
+            lastScheduleDate: dailyScheduleState.lastScheduleDate,
+            realStats: dailyScheduleState.realStats,
+            todaySchedule: dailyScheduleState.todaySchedule,
+            lastSaved: moment().tz(TIMEZONE).format('YYYY-MM-DD HH:mm:ss'),
+            version: '2.3'
+        };
+
+        await fs.writeFile(MESSAGE_STATUS_FILE, JSON.stringify(stateToSave, null, 2));
+        spontaneousLog(`💾 메시지 상태 저장 완료: ${dailyScheduleState.sentToday}/${DAILY_MESSAGE_COUNT}건`);
+        return true;
+    } catch (error) {
+        spontaneousLog(`❌ 메시지 상태 저장 실패: ${error.message}`);
+        return false;
+    }
+}
+
+async function loadMessageState() {
+    try {
+        const data = await fs.readFile(MESSAGE_STATUS_FILE, 'utf8');
+        const savedState = JSON.parse(data);
+        
+        const today = moment().tz(TIMEZONE).format('YYYY-MM-DD');
+        
+        // 오늘 날짜가 맞는지 확인
+        if (savedState.lastScheduleDate === today) {
+            // 오늘 데이터 복원
+            dailyScheduleState.sentToday = savedState.sentToday || 0;
+            dailyScheduleState.lastScheduleDate = savedState.lastScheduleDate;
+            if (savedState.realStats) {
+                dailyScheduleState.realStats = { ...dailyScheduleState.realStats, ...savedState.realStats };
+            }
+            if (savedState.todaySchedule) {
+                dailyScheduleState.todaySchedule = savedState.todaySchedule;
+            }
+            
+            spontaneousLog(`💾 메시지 상태 복원 성공: ${dailyScheduleState.sentToday}/${DAILY_MESSAGE_COUNT}건 (${savedState.lastSaved})`);
+            return true;
+        } else {
+            spontaneousLog(`📅 새로운 날 시작 - 이전 데이터: ${savedState.lastScheduleDate}, 오늘: ${today}`);
+            return false;
+        }
+    } catch (error) {
+        if (error.code === 'ENOENT') {
+            spontaneousLog('💾 저장된 메시지 상태 파일이 없음 - 새로 시작');
+        } else {
+            spontaneousLog(`❌ 메시지 상태 로딩 실패: ${error.message}`);
+        }
+        return false;
+    }
+}
+
+// ================== 📅 NEW: 균등 분산 스케줄링 함수 ==================
+function generateDailyMessageSchedule() {
+    spontaneousLog('📅 균등 분산 메시지 스케줄 생성 시작...');
+    
+    const schedules = [];
+    const startHour = MESSAGE_START_HOUR; // 8시
+    const totalHours = 17; // 8시-새벽1시 = 17시간
+    const intervalMinutes = Math.floor((totalHours * 60) / DAILY_MESSAGE_COUNT); // 약 68분
+    
+    spontaneousLog(`⏰ 계산된 기본 간격: ${intervalMinutes}분`);
+    
+    for (let i = 0; i < DAILY_MESSAGE_COUNT; i++) {
+        // 기본 시간 계산
+        const baseMinutes = i * intervalMinutes;
+        
+        // ±15분 랜덤 변동
+        const randomOffset = Math.floor(Math.random() * 31) - 15; // -15 ~ +15분
+        const totalMinutes = baseMinutes + randomOffset;
+        
+        // 시간 계산 (8시부터 시작)
+        const hour = startHour + Math.floor(totalMinutes / 60);
+        const minute = totalMinutes % 60;
+        
+        // 24시간 넘으면 다음날로 (새벽 시간대)
+        let finalHour = hour;
+        if (hour >= 24) {
+            finalHour = hour - 24;
+        }
+        
+        // 유효 시간 범위 체크 (8시-새벽1시)
+        if ((finalHour >= MESSAGE_START_HOUR) || (finalHour >= 0 && finalHour <= 1)) {
+            schedules.push({ 
+                hour: finalHour, 
+                minute: minute,
+                originalIndex: i,
+                calculatedTime: `${finalHour}:${String(minute).padStart(2, '0')}`
+            });
+        }
+    }
+    
+    // 시간순 정렬
+    schedules.sort((a, b) => {
+        const aMinutes = a.hour < MESSAGE_START_HOUR ? a.hour + 24 : a.hour;
+        const bMinutes = b.hour < MESSAGE_START_HOUR ? b.hour + 24 : b.hour;
+        return (aMinutes * 60 + a.minute) - (bMinutes * 60 + b.minute);
+    });
+    
+    spontaneousLog(`✅ 균등 분산 스케줄 ${schedules.length}개 생성 완료`);
+    spontaneousLog(`📋 생성된 시간: ${schedules.map(s => s.calculatedTime).join(', ')}`);
+    
+    return schedules;
 }
 
 // ================== 🔧 이미지 URL 검증 함수 ==================
@@ -397,11 +512,19 @@ function recordActualMessageSent(messageType = 'casual', isPhotoMessage = false)
         uc.recordSpontaneousMessage(messageType);
     }
     updateNextMessageTime();
+    
+    // 💾 NEW: 상태 저장
+    saveMessageState();
+    
     spontaneousLog(`📊 실제 통계 기록 완료: ${messageType} (${timeString}) - 총 ${dailyScheduleState.sentToday}/${DAILY_MESSAGE_COUNT}건`);
 }
 
 function recordMessageFailed(reason = 'unknown') {
     dailyScheduleState.realStats.failedSends++;
+    
+    // 💾 NEW: 실패도 저장
+    saveMessageState();
+    
     spontaneousLog(`📊 전송 실패 기록: ${reason} - 실패 총 ${dailyScheduleState.realStats.failedSends}건`);
 }
 
@@ -493,6 +616,10 @@ function resetDailyStats() {
     if (uc && uc.resetSpontaneousStats) {
         uc.resetSpontaneousStats();
     }
+    
+    // 💾 NEW: 리셋 후 저장
+    saveMessageState();
+    
     spontaneousLog(`✅ 일일 통계 리셋 완료 (${today})`);
 }
 
@@ -841,7 +968,7 @@ function scheduleIndependentPhotos() {
     spontaneousLog(`📸 독립 후지 풍경 사진 스케줄 ${photoCount}개 등록 완료`);
 }
 
-// ================== 🚨 FIXED: 스케줄 생성 함수 완전 개선 ==================
+// ================== 🚨 NEW: 균등 분산 스케줄 생성 함수 (기존 함수명 유지) ==================
 function generateDailyYejinSchedule() {
     spontaneousLog(`🌸 예진이 능동 메시지 스케줄 생성 시작...`);
     
@@ -862,30 +989,13 @@ function generateDailyYejinSchedule() {
     if (dailyScheduleState.realStats.lastResetDate !== today) {
         resetDailyStats();
     }
+    dailyScheduleState.lastScheduleDate = today;
     
-    // 8시-새벽1시 사이 15개 시간 생성
-    const schedules = [];
-    for (let i = 0; i < DAILY_MESSAGE_COUNT; i++) {
-        let hour, minute;
-        if (Math.random() < 0.8) { // 80%는 8시-23시 사이
-            hour = MESSAGE_START_HOUR + Math.floor(Math.random() * 16); // 8-23시
-        } else { // 20%는 0시-1시 사이 (새벽)
-            hour = Math.floor(Math.random() * 2); // 0-1시
-        }
-        minute = Math.floor(Math.random() * 60);
-        schedules.push({ hour, minute });
-    }
-    
-    // 시간순 정렬
-    schedules.sort((a, b) => {
-        const aMinutes = a.hour < MESSAGE_START_HOUR ? a.hour + 24 : a.hour;
-        const bMinutes = b.hour < MESSAGE_START_HOUR ? b.hour + 24 : b.hour;
-        return (aMinutes * 60 + a.minute) - (bMinutes * 60 + b.minute);
-    });
-    
+    // 📅 NEW: 균등 분산 스케줄 생성
+    const schedules = generateDailyMessageSchedule();
     dailyScheduleState.todaySchedule = schedules;
     
-    // 🚨 FIXED: 스케줄 등록 개선 (에러 처리 강화)
+    // 🚨 ENHANCED: 스케줄 등록 개선 (에러 처리 강화)
     schedules.forEach((schedule, index) => {
         try {
             const cronExpression = `${schedule.minute} ${schedule.hour} * * *`;
@@ -914,6 +1024,9 @@ function generateDailyYejinSchedule() {
     
     // 🚨 FIXED: 다음 메시지 시간 업데이트
     updateNextMessageTime();
+    
+    // 💾 NEW: 스케줄 생성 후 저장
+    saveMessageState();
     
     spontaneousLog(`✅ 예진이 능동 메시지 스케줄 ${schedules.length}개 등록 완료 (등록된 jobs: ${dailyScheduleState.jobs.length}개)`);
     spontaneousLog(`📅 오늘 스케줄: ${schedules.map(s => `${s.hour}:${String(s.minute).padStart(2, '0')}`).join(', ')}`);
@@ -957,11 +1070,17 @@ function getSpontaneousMessageStatus() {
             jobsCount: dailyScheduleState.jobs.length,
             nextScheduledTimeRaw: dailyScheduleState.realStats.nextScheduledTime,
             currentTime: moment().tz(TIMEZONE).format('HH:mm:ss')
+        },
+        // 💾 NEW: 저장 상태 정보 추가
+        saveStatus: {
+            lastScheduleDate: dailyScheduleState.lastScheduleDate,
+            hasSavedData: !!dailyScheduleState.lastScheduleDate
         }
     };
 }
 
-function startSpontaneousYejinSystem(client) {
+// ================== 💾 NEW: 시스템 시작 시 상태 복원 ==================
+async function startSpontaneousYejinSystem(client) {
     try {
         spontaneousLog('🚀 예진이 능동 메시지 시스템 시작...');
         if (client) {
@@ -976,7 +1095,18 @@ function startSpontaneousYejinSystem(client) {
             spontaneousLog('❌ TARGET_USER_ID 환경변수 없음');
             return false;
         }
-        generateDailyYejinSchedule();
+        
+        // 💾 NEW: 기존 상태 로딩 시도
+        const loadResult = await loadMessageState();
+        if (loadResult) {
+            spontaneousLog('✅ 기존 메시지 상태 복원 완료 - 스케줄 재구성 중...');
+            // 스케줄 재구성 (하지만 sentToday는 유지)
+            generateDailyYejinSchedule();
+        } else {
+            spontaneousLog('🆕 새로운 메시지 상태로 시작 - 스케줄 생성 중...');
+            generateDailyYejinSchedule();
+        }
+        
         spontaneousLog('✅ 예진이 능동 메시지 시스템 활성화 완료!');
         return true;
     } catch (error) {
@@ -1027,5 +1157,9 @@ module.exports = {
     yejinRealLife,
     ajossiSituationReactions,
     spontaneousLog,
-    validateImageUrl
+    validateImageUrl,
+    // 💾 NEW: 새로운 함수들 내보내기
+    saveMessageState,
+    loadMessageState,
+    generateDailyMessageSchedule
 };
