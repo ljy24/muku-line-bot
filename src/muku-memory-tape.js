@@ -4,7 +4,8 @@
 const fs = require('fs');
 const path = require('path');
 
-const LOG_DIR = path.join(__dirname, '../data/memory-tape');
+// 로그 파일을 영구 보존할 디렉토리 (/data/memory-tape)
+const LOG_DIR = path.resolve(__dirname, '../../data/memory-tape');
 if (!fs.existsSync(LOG_DIR)) fs.mkdirSync(LOG_DIR, { recursive: true });
 
 // 날짜별로 파일 이름 생성
