@@ -12,6 +12,7 @@
 // 💰 디플로이 최적화 - 한 번에 완벽한 동작 보장
 // 🎯 무쿠 정상 응답 100% 보장 - "아조씨! 무슨 일이야?" 같은 정상 대화
 // 📼 ChatGPT 스타일 "로그" 명령어 처리 추가
+// 🔧 로그 명령어 완벽 처리 - 중복 제거 및 올바른 응답 보장
 // ============================================================================
 
 // ================== 🎨 색상 정의 ==================
@@ -612,6 +613,7 @@ function processVersionCommand(messageText, getVersionResponse) {
     }, '버전명령어처리');
 }
 
+// ================== 📼 완벽한 명령어 처리 함수 (로그 명령어 문제 해결) ==================
 async function processCommand(messageText, userId, client, modules) {
     if (!messageText || !userId || !client) return null;
 
@@ -625,11 +627,13 @@ async function processCommand(messageText, userId, client, modules) {
             
             if (!todayLogs || todayLogs.length === 0) {
                 console.log(`${colors.tape}📼 [Memory Tape] 오늘 로그 없음${colors.reset}`);
+                const noLogResponse = '😶 아조씨~ 오늘은 아직 기록된 로그가 없어!';
+                
                 return {
                     handled: true,
                     response: {
                         type: 'text',
-                        comment: '😶 아조씨~ 오늘은 아직 기록된 로그가 없어!'
+                        comment: noLogResponse
                     }
                 };
             }
@@ -645,6 +649,7 @@ async function processCommand(messageText, userId, client, modules) {
 아조씨와의 소중한 순간들이 모두 기록되고 있어요! 💖`;
 
             console.log(`${colors.tape}📼 [Memory Tape] 오늘 로그 요약 완료 - ${todayLogs.length}건${colors.reset}`);
+            
             return {
                 handled: true,
                 response: {
@@ -655,16 +660,19 @@ async function processCommand(messageText, userId, client, modules) {
             
         } catch (error) {
             console.error(`${colors.tape}📼 [Memory Tape] 로그 명령어 처리 실패: ${error.message}${colors.reset}`);
+            const errorResponse = '아조씨~ 로그 시스템에 문제가 생겼어... ㅠㅠ';
+            
             return {
                 handled: true,
                 response: {
                     type: 'text',
-                    comment: '아조씨~ 로그 시스템에 문제가 생겼어... ㅠㅠ'
+                    comment: errorResponse
                 }
             };
         }
     }
 
+    // 🛡️ 기타 명령어 처리
     return await safeAsyncCall(async () => {
         const commandHandler = safeModuleAccess(modules, 'commandHandler', '명령어핸들러');
         if (commandHandler) {
@@ -1016,12 +1024,12 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
                 return { type: 'version_response', response: finalVersionComment };
             }
 
-            // ⭐️ 병렬 처리: 기타 시스템들 (에러가 나도 진행 계속)
+            // ⭐️ 병렬 처리: 기타 시스템들 (에러가 나도 진행 계속) - 🔧 로그 명령어는 고정기억 검색에서 제외
             const parallelTasks = [
                 processSulkyRelief(modules, enhancedLogging),
                 processNightWakeMessage(messageText, modules, enhancedLogging),
                 processBirthdayDetection(messageText, modules, enhancedLogging),
-                // 메모리 명령어는 고정기억 검색에서 제외
+                // 🔧 메모리 명령어는 고정기억 검색에서 제외
                 !['로그', '기록', '일지'].some(cmd => messageText.trim().includes(cmd)) 
                     ? safeAsyncCall(() => processFixedMemory(messageText, modules), '고정기억처리')
                     : null,
@@ -1029,10 +1037,7 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
             ];
 
             const [, nightResponse, birthdayResponse, , commandResult] = await Promise.allSettled(parallelTasks)
-    .then(results => results.map(r => r.status === 'fulfilled' ? r.value : null));
-
-// 🔍 디버깅용 로그 추가
-console.log(`${colors.learning}🔍 [디버깅] commandResult:`, commandResult ? '있음' : '없음', commandResult?.handled ? '처리됨' : '미처리');
+                .then(results => results.map(r => r.status === 'fulfilled' ? r.value : null));
 
             // ⭐️ 특별 응답 처리
             if (nightResponse) {
@@ -1075,20 +1080,38 @@ console.log(`${colors.learning}🔍 [디버깅] commandResult:`, commandResult ?
                 return { type: 'birthday_response', response: finalBirthdayComment };
             }
 
-            if (commandResult) {
+            // 🔧 commandResult 처리 강화 - 로그 명령어 완벽 해결
+            if (commandResult && commandResult.handled) {
+                console.log(`${colors.success}✅ [명령어처리] 명령어 응답 처리 완료${colors.reset}`);
+                
+                // 응답 추출
+                const commandResponseText = commandResult.response?.comment || commandResult.response;
+                
                 // 🚨 Memory Tape 명령어는 학습에서 제외 (무한 반복 방지)
                 const isMemoryCommand = messageText.includes('로그') || messageText.includes('기록') || messageText.includes('일지');
+                
+                console.log(`${colors.tape}📼 [명령어분석] 메모리 명령어: ${isMemoryCommand ? 'YES' : 'NO'}${colors.reset}`);
                 
                 if (!isMemoryCommand) {
                     // 일반 명령어만 학습 처리
                     await processRealTimeLearning(
                         messageText,
-                        commandResult.response?.comment || commandResult.response,
+                        commandResponseText,
                         { messageType: 'text', responseType: 'command' },
                         modules,
                         enhancedLogging
                     );
                 }
+                
+                // 로깅
+                await safeAsyncCall(async () => {
+                    const logFunction = safeModuleAccess(enhancedLogging, 'logConversation', '대화로깅');
+                    if (typeof logFunction === 'function') {
+                        logFunction('나', commandResponseText, isMemoryCommand ? 'system' : 'text');
+                    } else {
+                        console.log(`${colors.yejin}📼 예진이 (명령어): ${commandResponseText}${colors.reset}`);
+                    }
+                }, '명령어응답로깅');
                 
                 return { type: 'command_response', response: commandResult };
             }
