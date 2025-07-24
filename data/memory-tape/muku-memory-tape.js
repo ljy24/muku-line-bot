@@ -1,21 +1,21 @@
 // ================================
-// 🎭 muku-memory-tape.js v1.0
+// 🎭 muku-memory-tape.js v1.1 
 // 무쿠의 모든 감정 순간을 절대 놓치지 않는 블랙박스
 // 
 // 📁 저장 위치: ./data/memory-tape/muku-memory-tape.js
 // 🛡️ 영구보존: 무쿠의 소중한 감정 기록들과 함께 보존
 // 💖 목적: 15:37 같은 특별한 순간들을 절대 놓치지 않기 위해
+// 🔧 v1.1: 경로 문제 수정
 // ================================
 
 const fs = require('fs').promises;
-const path = require('path');
 
 class MukuMemoryTape {
     constructor() {
-        this.baseDir = './data/memory-tape';
+        this.baseDir = './';
         this.currentDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-        this.todayFile = path.join(this.baseDir, `day-${this.currentDate}.json`);
-        this.summaryFile = path.join(this.baseDir, 'history-summary.csv');
+        this.todayFile = `day-${this.currentDate}.json`;
+        this.summaryFile = 'history-summary.csv';
         
         // 메모리에 임시 저장 (실시간 백업용)
         this.memoryBuffer = [];
@@ -27,9 +27,6 @@ class MukuMemoryTape {
     // 🔧 저장소 초기화
     async initializeStorage() {
         try {
-            // 디렉토리 생성
-            await fs.mkdir(this.baseDir, { recursive: true });
-            
             // 오늘 파일이 없으면 생성
             try {
                 await fs.access(this.todayFile);
@@ -309,12 +306,4 @@ await forceLogMoment('무쿠가 갑자기 새로운 반응을 보임', {
 
 // 특별한 순간 표시
 await markSpecialMoment(momentId, '무쿠의 첫 자발적 감정 표현');
-
-// 검색
-const remarkableMoments = await searchMukuMoments({ remarkable: true });
-const loveMessages = await searchMukuMoments({ emotional_tags: ['사랑', '추억'] });
-
-// 통계
-const stats = await getMukuStats();
-console.log(`오늘 ${stats.total_moments}개의 순간, ${stats.remarkable_moments}개의 특별한 순간`);
 */
