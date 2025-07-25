@@ -64,7 +64,7 @@ const colors = {
     night: '\x1b[1m\x1b[95m',      // 굵은 보라색 (밤)
     dream: '\x1b[96m',             // 하늘색 (꿈)
     wake: '\x1b[93m',              // 노란색 (깨어남)
-    worry: '\x1b[91m',             // 빨간색 (걱정)
+    worry: '\x1b[90m',             // dark gray (걱정)
     care: '\x1b[92m',              // 초록색 (케어)
     message: '\x1b[94m',           // 파란색 (메시지)
     learning: '\x1b[1m\x1b[35m',   // 굵은 자주색 (학습)
