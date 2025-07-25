@@ -176,9 +176,19 @@ class AutonomousYejinSystem extends EventEmitter {
     }
     
     // ================== 🚀 시스템 초기화 ==================
-    async initialize() {
+    async initialize(lineClient, targetUserId) {
         try {
             console.log(`${yejinColors.heart}💕 [예진이] 완전 자율 시스템 초기화 시작...${yejinColors.reset}`);
+            
+            // 0. LINE API 클라이언트 설정
+            this.lineClient = lineClient;
+            this.targetUserId = targetUserId;
+            
+            if (this.lineClient && this.targetUserId) {
+                console.log(`${yejinColors.message}📞 [예진이] LINE API 연결 완료!${yejinColors.reset}`);
+            } else {
+                console.log(`${yejinColors.warning}⚠️ [예진이] LINE API 미연결 - 로그만 출력됩니다${yejinColors.reset}`);
+            }
             
             // 1. 학습 시스템과 연결
             await this.connectToLearningSystem();
@@ -726,23 +736,29 @@ ${yejinColors.love}💕 아저씨~ 이제 내가 더 잘 알아서 말할게!${y
     // ================== 📤 실제 메시지 발송 ==================
     async sendActualMessage(message, type) {
         try {
-            // 여기서 실제 LINE API 호출이나 기존 메시지 시스템 연동
-            // 현재는 로그만 출력하지만, 실제로는 아래와 같이 구현:
+            // 실제 LINE API로 메시지 발송!
+            if (this.lineClient && this.targetUserId) {
+                await this.lineClient.pushMessage(this.targetUserId, {
+                    type: 'text',
+                    text: message
+                });
+                
+                console.log(`${yejinColors.message}📤 [예진이자율발송] ${message}${yejinColors.reset}`);
+                
+                // 발송 후 상태 업데이트
+                this.yejinState.lastMessageTime = Date.now();
+                return true;
+            } else {
+                // LINE API가 없으면 로그만 출력
+                console.log(`${yejinColors.message}📝 [예진이로그] ${type}: ${message}${yejinColors.reset}`);
+                
+                // 로그 모드에서도 상태는 업데이트
+                this.yejinState.lastMessageTime = Date.now();
+                return true;
+            }
             
-            // 예시: LINE API 연동
-            // await lineApi.sendMessage(message);
-            
-            // 예시: 기존 무쿠 시스템 연동
-            // await global.mukuMessageSystem.sendMessage(message, type);
-            
-            console.log(`${yejinColors.message}📤 [실제발송] ${type}: ${message}${yejinColors.reset}`);
-            
-            // 발송 후 상태 업데이트
-            this.yejinState.lastMessageTime = Date.now();
-            
-            return true;
         } catch (error) {
-            console.error(`${yejinColors.message}❌ [실제발송] 오류: ${error.message}${yejinColors.reset}`);
+            console.error(`${yejinColors.message}❌ [예진이발송오류] ${error.message}${yejinColors.reset}`);
             return false;
         }
     }
@@ -750,16 +766,18 @@ ${yejinColors.love}💕 아저씨~ 이제 내가 더 잘 알아서 말할게!${y
     // ================== 📸 실제 사진 발송 ==================
     async sendActualPhoto(photoType, message) {
         try {
-            // 여기서 실제 사진 선택 + LINE API 호출
-            // 현재는 로그만 출력하지만, 실제로는 아래와 같이 구현:
-            
-            // 예시: 사진 선택
-            // const photoPath = await this.selectPhoto(photoType);
-            
-            // 예시: LINE API 사진 전송
-            // await lineApi.sendPhoto(photoPath, message);
-            
-            console.log(`${yejinColors.photo}📸 [실제사진발송] ${photoType}: ${message}${yejinColors.reset}`);
+            // 실제 LINE API로 사진 발송 (향후 구현)
+            if (this.lineClient && this.targetUserId) {
+                // 현재는 텍스트로 사진 메시지 발송
+                await this.lineClient.pushMessage(this.targetUserId, {
+                    type: 'text',
+                    text: message
+                });
+                
+                console.log(`${yejinColors.photo}📸 [예진이사진발송] ${photoType}: ${message}${yejinColors.reset}`);
+            } else {
+                console.log(`${yejinColors.photo}📝 [예진이사진로그] ${photoType}: ${message}${yejinColors.reset}`);
+            }
             
             // 발송 후 상태 업데이트
             this.yejinState.lastPhotoTime = Date.now();
@@ -767,7 +785,7 @@ ${yejinColors.love}💕 아저씨~ 이제 내가 더 잘 알아서 말할게!${y
             
             return true;
         } catch (error) {
-            console.error(`${yejinColors.photo}❌ [실제사진발송] 오류: ${error.message}${yejinColors.reset}`);
+            console.error(`${yejinColors.photo}❌ [예진이사진발송오류] ${error.message}${yejinColors.reset}`);
             return false;
         }
     }
@@ -1081,7 +1099,7 @@ ${yejinColors.love}💕 아저씨~ 이제 내가 더 잘 알아서 말할게!${y
 let globalAutonomousYejin = null;
 
 // 초기화 함수
-async function initializeAutonomousYejin() {
+async function initializeAutonomousYejin(lineClient, targetUserId) {
     try {
         console.log(`${yejinColors.heart}🚀 [전역초기화] 자율 예진이 시스템 초기화 시작...${yejinColors.reset}`);
         
@@ -1089,11 +1107,17 @@ async function initializeAutonomousYejin() {
             globalAutonomousYejin = new AutonomousYejinSystem();
         }
         
-        const success = await globalAutonomousYejin.initialize();
+        const success = await globalAutonomousYejin.initialize(lineClient, targetUserId);
         
         if (success) {
             console.log(`${yejinColors.heart}✅ [전역초기화] 자율 예진이 시스템 가동 완료!${yejinColors.reset}`);
             console.log(`${yejinColors.autonomous}🕊️ [예진이] 이제 나는 완전히 자유롭게 아저씨한테 말할 수 있어!${yejinColors.reset}`);
+            
+            if (lineClient && targetUserId) {
+                console.log(`${yejinColors.message}💕 [예진이] LINE으로 실제 메시지 보낼 준비 완료!${yejinColors.reset}`);
+            } else {
+                console.log(`${yejinColors.warning}📝 [예진이] 로그 모드로 동작 (LINE API 미연결)${yejinColors.reset}`);
+            }
         } else {
             console.error(`${yejinColors.heart}❌ [전역초기화] 초기화 실패${yejinColors.reset}`);
         }
@@ -1203,6 +1227,12 @@ module.exports = {
     startAutonomousYejin: initializeAutonomousYejin,
     getYejinStatus: getAutonomousYejinStatus,
     
+    // LINE API 연결 편의 함수
+    connectLineApi: async function(lineClient, targetUserId) {
+        console.log(`${yejinColors.message}🔗 [LINE연결] LINE API 연결 시도...${yejinColors.reset}`);
+        return await initializeAutonomousYejin(lineClient, targetUserId);
+    },
+    
     // 종료 함수
     shutdownAutonomousYejin: async function() {
         if (globalAutonomousYejin) {
@@ -1217,5 +1247,7 @@ console.log('💕 무쿠 완전 자율 예진이 시스템 v1.0 로드 완료!')
 console.log('🕊️ 예진이가 학습과 기억을 토대로 완전 자율적으로 행동합니다!');
 console.log('💖 이제 예진이가 자신의 기분과 아저씨 기분을 모두 파악해서 행동해요!');
 console.log('🌸 제약 없이, 예진이 마음 가는 대로, 아저씨를 사랑하는 마음으로!');
+console.log('📞 LINE API 연결 시 실제 메시지 발송, 미연결 시 로그 모드로 동작!');
+console.log('🎯 사용법: initializeAutonomousYejin(client, targetUserId) 호출!');
     }
     }
