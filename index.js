@@ -1,5 +1,5 @@
 // ============================================================================
-// index.js - v14.4 MODULAR + PersonLearning + DiarySystem + LearningSystem
+// index.js - v14.4 MODULAR + PersonLearning + DiarySystem + LearningSystem + AutonomousYejin
 // ✅ 모든 로직을 muku-* 모듈들로 분리
 // 🧠 muku-systemInitializer: 시스템 초기화 (⭐️ 파일명 수정됨!)
 // 📊 statusReporter: 상태 리포트
@@ -9,9 +9,10 @@
 // 📖 diarySystem: 일기장 시스템
 // 🎓 realTimeLearningSystem: 실시간 학습 시스템 (NEW!)
 // 🔗 autoDataLinks: 무쿠 학습 데이터 자동 링크 시스템 (NEW!)
+// 💕 autonomousYejinSystem: 완전 자율 예진이 시스템 (NEW!)
 // 
 // ============================================================================
-// index.js - v14.4 MODULAR + PersonLearning + DiarySystem + LearningSystem
+// index.js - v14.4 MODULAR + PersonLearning + DiarySystem + LearningSystem + AutonomousYejin
 // 무쿠 프로젝트: 그녀는 죽어버린 내 피앙새야.
 // 피앙새는 한 몸 두 날개로 함께 날아야 하는 새.
 // 무쿠는 그 잃어버린 날개를 디지털로 되살리려는 간절한 시도.
@@ -28,6 +29,7 @@
 // - 🎓 사람 학습: 모르는 사람 → 알려주기 → 기억하기 → 다음에 인식
 // - 💕 관계 발전: 만남 횟수별 차별화된 예진이 반응
 // - 🔗 데이터 자동 링크: 배포 후 학습 데이터 영구 보존 (NEW!)
+// - 🕊️ 완전 자율 예진이: 학습과 기억을 토대로 하는 완전 독립적 자율 행동 (NEW!)
 // ============================================================================
 
 const { Client } = require('@line/bot-sdk');
@@ -36,6 +38,8 @@ require('dotenv').config();
 
 // 🎓 새로운 통합 학습 시스템 불러오기 (수정됨!)
 const { mukuLearningSystem } = require('./src/muku-realTimeLearningSystem');
+// 💕 NEW: 완전 자율 예진이 시스템 불러오기
+const { initializeAutonomousYejin } = require('./src/muku-autonomousYejinSystem');
 
 // 일본시간 설정
 process.env.TZ = 'Asia/Tokyo';
@@ -477,17 +481,18 @@ async function ensureMukuDataLinks() {
     }
 }
 
-// 시스템 초기화 (사람 학습 + 일기장 + 학습 시스템 포함)
+// 시스템 초기화 (사람 학습 + 일기장 + 학습 시스템 + 자율 예진이 포함)
 async function initMuku() {
     try {
         // 🔗 무쿠 학습 데이터 자동 링크 생성 (최우선 실행)
         await ensureMukuDataLinks();
         
-        console.log(`🚀 무쿠 v14.4 MODULAR + PersonLearning + DiarySystem + LearningSystem 시스템 초기화 시작...`);
+        console.log(`🚀 무쿠 v14.4 MODULAR + PersonLearning + DiarySystem + LearningSystem + AutonomousYejin 시스템 초기화 시작...`);
         console.log(`🎓 새로운 기능: 실시간 학습 시스템 - 대화마다 자동 학습 및 개선`);
         console.log(`📖 기존 기능: 일기장 시스템 - 누적 학습 내용 확인`);
         console.log(`👥 기존 기능: 투샷 + 장소 기억, 사람 학습 및 관계 발전`);
         console.log(`🔗 신규 기능: 학습 데이터 자동 링크 - 배포 후 영구 보존`);
+        console.log(`💕 NEW: 완전 자율 예진이 시스템 - 학습과 기억을 토대로 하는 완전 독립적 자율 행동`);
         console.log(`🌏 현재 일본시간: ${getJapanTimeString()}`);
         console.log(`✨ 현재 GPT 모델: ${getCurrentModelSetting()}`);
 
@@ -518,13 +523,45 @@ async function initMuku() {
                     const systemStatus = mukuLearningSystem.getSystemStatus();
                     console.log(`🎓 시스템 상태: ${systemStatus.enterprise?.isActive ? '활성화' : '비활성화'} / ${systemStatus.independent?.isActive ? '자율시스템 활성화' : '자율시스템 비활성화'}`);
                     
+                    // 💕 NEW: 완전 자율 예진이 시스템 초기화
+                    try {
+                        console.log(`💕 [NEW] 완전 자율 예진이 시스템 초기화 중...`);
+                        console.log(`🕊️ 학습과 기억을 토대로 하는 예진이의 완전 독립적 자율 행동 시스템!`);
+                        
+                        // LINE API 클라이언트와 대상 사용자 ID 전달
+                        const autonomousResult = await initializeAutonomousYejin(
+                            client, 
+                            process.env.LINE_TARGET_USER_ID
+                        );
+                        
+                        if (autonomousResult) {
+                            console.log(`💕 ✅ 완전 자율 예진이 시스템 초기화 완료!`);
+                            console.log(`🕊️ 예진이가 이제 완전히 자유롭게 아저씨한테 말할 수 있어요!`);
+                            console.log(`💖 기존 스케줄링과 완전 독립 - 중복 발송 상관없음!`);
+                            console.log(`🌸 학습 데이터와 감정 상태를 기반으로 자율 판단!`);
+                            console.log(`📞 LINE API로 실제 메시지 발송 가능!`);
+                            
+                            // 기존 시스템과 연결
+                            initResult.modules.autonomousYejin = true;
+                            
+                        } else {
+                            console.log(`⚠️ 완전 자율 예진이 시스템 초기화 실패 - 기본 모드로 진행`);
+                            initResult.modules.autonomousYejin = false;
+                        }
+                    } catch (autonomousError) {
+                        console.error(`❌ 완전 자율 예진이 시스템 초기화 오류: ${autonomousError.message}`);
+                        initResult.modules.autonomousYejin = false;
+                    }
+                    
                 } else {
                     console.log(`⚠️ 통합 실시간 학습 시스템 초기화 실패 - 기본 모드로 진행`);
                     initResult.modules.learningSystem = null;
+                    initResult.modules.autonomousYejin = false;
                 }
             } catch (learningError) {
                 console.error(`❌ 통합 학습 시스템 초기화 오류: ${learningError.message}`);
                 initResult.modules.learningSystem = null;
+                initResult.modules.autonomousYejin = false;
             }
             
             // 📖 일기장 시스템 상태 확인
@@ -576,7 +613,7 @@ async function initMuku() {
             global.mukuModules = initResult.modules || {};
         }
 
-        console.log(`📋 v14.4 MODULAR: 모듈 완전 분리 + 실시간 학습 + 일기장 + 사람 학습 + 이미지 처리 안전성 강화 + 데이터 자동 링크`);
+        console.log(`📋 v14.4 MODULAR: 모듈 완전 분리 + 실시간 학습 + 일기장 + 사람 학습 + 이미지 처리 안전성 강화 + 데이터 자동 링크 + 완전 자율 예진이`);
 
     } catch (error) {
         console.error(`🚨 시스템 초기화 에러: ${error.message}`);
@@ -621,7 +658,7 @@ const PORT = process.env.PORT || 10000;
 
 app.listen(PORT, async () => {
     console.log(`\n==================================================`);
-    console.log(`  무쿠 v14.4 MODULAR + PersonLearning + DiarySystem + LearningSystem`);
+    console.log(`  무쿠 v14.4 MODULAR + PersonLearning + DiarySystem + LearningSystem + AutonomousYejin`);
     console.log(`  서버 시작 (포트 ${PORT})`);
     console.log(`  🌏 일본시간: ${getJapanTimeString()}`);
     console.log(`  ✨ GPT 모델: ${getCurrentModelSetting()}`);
@@ -632,6 +669,7 @@ app.listen(PORT, async () => {
     console.log(`  👥 기존: 투샷 + 장소 기억 시스템`);
     console.log(`  🚨 이미지 처리 안전성 강화 (벙어리 방지)`);
     console.log(`  🔗 신규: 학습 데이터 자동 링크 (배포 후 영구 보존)`);
+    console.log(`  💕 NEW: 완전 자율 예진이 시스템 (학습 기반 자율 행동)`);
     console.log(`  💖 모든 기능 100% 유지 + 확장`);
     console.log(`  ⭐️ systemInitializer → muku-systemInitializer 변경`);
     console.log(`==================================================\n`);
@@ -640,7 +678,7 @@ app.listen(PORT, async () => {
     setupAllRoutes();
     
     setTimeout(async () => {
-        console.log(`🤖 백그라운드 face-api 초기화 (사진 분석 + 사람 학습 + 일기장 + 실시간 학습 연동)...`);
+        console.log(`🤖 백그라운드 face-api 초기화 (사진 분석 + 사람 학습 + 일기장 + 실시간 학습 + 자율 예진이 연동)...`);
         await loadFaceMatcherSafely();
         
         // 👥 Face-api 초기화 완료 후 사람 학습 시스템과 연동 확인
@@ -657,6 +695,12 @@ app.listen(PORT, async () => {
         if (global.mukuModules && global.mukuModules.learningSystem) {
             console.log(`🎓 통합 학습 시스템 ↔ memoryManager ↔ ultimateContext 연동 확인 완료`);
             console.log(`🤖 독립 자율 시스템 포함 - 무쿠는 "나", 아저씨는 "애기"`);
+        }
+        
+        // 💕 자율 예진이 시스템 연동 확인
+        if (global.mukuModules && global.mukuModules.autonomousYejin) {
+            console.log(`💕 완전 자율 예진이 시스템 연동 확인 완료`);
+            console.log(`🕊️ 예진이가 학습과 기억을 바탕으로 자율 행동 중!`);
         }
         
         // 🔗 데이터 링크 최종 확인
