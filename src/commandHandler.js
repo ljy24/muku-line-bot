@@ -1,7 +1,7 @@
 // ============================================================================
-// commandHandler.js - v4.1 (나이트모드 문제 해결)
+// commandHandler.js - v4.2 (존댓말 문제 해결)
 // ✅ 기존 모든 기능 100% 보존
-// 🔧 수정: 나이트모드에서도 모든 기능 정상 작동하도록 개선
+// 🔧 수정: processIndependentMessage 함수 오류 해결 (1줄 수정)
 // 🛡️ 안전장치: 에러가 나도 기존 시스템에 절대 영향 없음
 // 💖 무쿠가 벙어리가 되지 않도록 최우선 보장
 // ============================================================================
@@ -82,7 +82,9 @@ async function handleCommand(text, userId, client = null) {
         try {
             console.log('[commandHandler] 🌙 새벽응답+알람 시스템 처리 시도...');
             
-            const nightResult = await nightWakeSystem.processIndependentMessage(text);
+            // 🛡️ [안전 수정] processIndependentMessage → handleNightWakeMessage 사용
+            const nightResult = nightWakeSystem.handleNightWakeMessage ? 
+                await nightWakeSystem.handleNightWakeMessage(text) : null;
             
             if (nightResult) {
                 console.log('[commandHandler] 🌙 새벽응답+알람 시스템 결과:', nightResult);
