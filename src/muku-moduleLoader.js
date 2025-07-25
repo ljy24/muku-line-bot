@@ -4,7 +4,7 @@
 // ✅ unifiedConflictManager 갈등 시스템 추가
 // 🔄 realtimeBehaviorSwitch 실시간 행동 스위치 시스템 추가
 // 🧠 realTimeLearningSystem 실시간 학습 시스템 추가
-// 🕊️ autonomousYejinSystem 자율 예진이 시스템 추가 (NEW!)
+// 🕊️ autonomousYejinSystem 자율 예진이 시스템 추가 (함수명 수정 완료!)
 // ❌ night_wake_response 모듈 제거 (불필요)
 // 📦 27개 모듈을 6단계로 안전하게 로딩
 // 🔄 초기화와 완전 분리하여 안정성 극대화
@@ -18,6 +18,7 @@
 // 🎓 실시간 학습 시스템 로딩 오류 처리 강화
 // 📷 spontaneousPhoto 모듈명 불일치 문제 해결
 // 🕊️ 자율 예진이 시스템 모듈 로딩 추가 - enhancedLogging 연동 완료!
+// 🔧 자율 시스템 함수명 수정 완료: initializeAutonomousYejin, getAutonomousYejinStatus, getGlobalInstance
 // ============================================================================
 
 const path = require('path');
@@ -372,7 +373,7 @@ async function loadAllModules() {
             modules.photoAnalyzer = null;
         }
 
-        // 🕊️🕊️🕊️ 자율 예진이 시스템 로딩! (💾 디스크 마운트 적용) 🕊️🕊️🕊️
+        // 🕊️🕊️🕊️ 자율 예진이 시스템 로딩! (💾 디스크 마운트 적용) - 함수명 수정! 🕊️🕊️🕊️
         console.log(`${colors.autonomous}🕊️🕊️🕊️ [자율시스템 추가] muku-autonomousYejinSystem 모듈 로드 시작! (💾 디스크 마운트 연동) 🕊️🕊️🕊️${colors.reset}`);
         
         try {
@@ -396,18 +397,25 @@ async function loadAllModules() {
                     console.log(`${colors.autonomous}✅ [자율시스템] 모듈 로드 성공! (💾 디스크 마운트 연동)${colors.reset}`);
                     console.log(`${colors.autonomous}🔍 [자율시스템] 사용 가능한 함수들:`, Object.keys(modules.autonomousYejinSystem));
                     
-                    // 4단계: 필수 함수 확인
-                    const requiredFunctions = ['initialize', 'isActive', 'sendActualMessage'];
+                    // 🔧 4단계: 실제 export되는 함수들로 확인 수정
+                    const requiredFunctions = ['initializeAutonomousYejin', 'getAutonomousYejinStatus', 'getGlobalInstance'];
                     let functionCheck = true;
                     
                     for (const func of requiredFunctions) {
-                        if (typeof modules.autonomousYejinSystem[func] === 'function' || 
-                            typeof modules.autonomousYejinSystem[func] === 'boolean') {
-                            console.log(`${colors.autonomous}✅ [자율시스템] ${func} 확인 완료 (타입: ${typeof modules.autonomousYejinSystem[func]})${colors.reset}`);
+                        if (typeof modules.autonomousYejinSystem[func] === 'function') {
+                            console.log(`${colors.autonomous}✅ [자율시스템] ${func} 함수 확인 완료${colors.reset}`);
                         } else {
-                            console.log(`${colors.error}❌ [자율시스템] ${func} 없음!${colors.reset}`);
+                            console.log(`${colors.error}❌ [자율시스템] ${func} 함수 없음! (사용가능: ${Object.keys(modules.autonomousYejinSystem).slice(0, 5).join(', ')})${colors.reset}`);
                             functionCheck = false;
                         }
+                    }
+                    
+                    // AutonomousYejinSystem 클래스 확인
+                    if (typeof modules.autonomousYejinSystem.AutonomousYejinSystem === 'function') {
+                        console.log(`${colors.autonomous}✅ [자율시스템] AutonomousYejinSystem 클래스 확인 완료${colors.reset}`);
+                    } else {
+                        console.log(`${colors.error}❌ [자율시스템] AutonomousYejinSystem 클래스 없음!${colors.reset}`);
+                        functionCheck = false;
                     }
                     
                     if (functionCheck) {
@@ -600,9 +608,9 @@ async function loadAllModules() {
             console.log(`${colors.error}🧠🧠🧠 [실시간학습 실패!] realTimeLearningSystem 모듈 로드 실패 - null 상태 🧠🧠🧠${colors.reset}`);
         }
 
-        // 🕊️ 자율 예진이 시스템 최종 확인 🕊️
+        // 🕊️ 자율 예진이 시스템 최종 확인 🕊️ - 함수명 수정 완료!
         if (modules.autonomousYejinSystem) {
-            console.log(`${colors.autonomous}🎉🎉🎉 [자율시스템 성공!] autonomousYejinSystem 모듈이 성공적으로 로드되었습니다! (💾 디스크 마운트 완전 연동) 🎉🎉🎉${colors.reset}`);
+            console.log(`${colors.autonomous}🎉🎉🎉 [자율시스템 성공!] autonomousYejinSystem 모듈이 성공적으로 로드되었습니다! (💾 디스크 마운트 완전 연동) (함수명 수정 완료!) 🎉🎉🎉${colors.reset}`);
         } else {
             console.log(`${colors.error}🕊️🕊️🕊️ [자율시스템 실패!] autonomousYejinSystem 모듈 로드 실패 - null 상태 🕊️🕊️🕊️${colors.reset}`);
         }
