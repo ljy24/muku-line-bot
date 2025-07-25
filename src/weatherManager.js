@@ -1,8 +1,9 @@
 // ============================================================================
-// weatherManager.js - 무쿠 스마트 독립 날씨 시스템 v4.0
+// weatherManager.js - 무쿠 스마트 독립 날씨 시스템 v4.1 🔧 수정됨
 // 🌤️ 랜덤 시간대 + 날씨 경보 감지 + 대화형 응답
 // 💖 완전 독립적 + 사용자 질문 즉시 응답
 // 🚨 날씨 경보/주의보 즉시 알림 + 자연스러운 대화
+// 🔧 수정: 과민반응 제거, 경보 전송 보장, 강제 날씨설명 제거
 // ============================================================================
 
 const axios = require('axios');
@@ -303,7 +304,7 @@ async function getCurrentWeather(location = 'ajeossi') {
     }
 }
 
-// 📱 LINE 메시지 전송
+// 📱 LINE 메시지 전송 (전송 보장 강화)
 async function sendWeatherMessage(message) {
     try {
         if (!lineClient) {
@@ -317,18 +318,38 @@ async function sendWeatherMessage(message) {
             return false;
         }
 
-        await lineClient.pushMessage(userId, {
-            type: 'text',
-            text: message
-        });
-
-        console.log(`💖 [날씨시스템] 메시지 전송 완료: ${message.substring(0, 50)}...`);
-        weatherSystemState.lastMessageTime = moment().tz('Asia/Tokyo').format();
-        weatherSystemState.statistics.totalSent++;
+        // 🔧 전송 재시도 로직 추가
+        let attempts = 0;
+        const maxAttempts = 3;
         
-        return true;
+        while (attempts < maxAttempts) {
+            try {
+                await lineClient.pushMessage(userId, {
+                    type: 'text',
+                    text: message
+                });
+
+                console.log(`💖 [날씨시스템] 메시지 전송 완료 (${attempts + 1}번째 시도): ${message.substring(0, 50)}...`);
+                weatherSystemState.lastMessageTime = moment().tz('Asia/Tokyo').format();
+                weatherSystemState.statistics.totalSent++;
+                
+                return true;
+            } catch (sendError) {
+                attempts++;
+                console.warn(`⚠️ [날씨시스템] 메시지 전송 실패 (${attempts}/${maxAttempts}): ${sendError.message}`);
+                
+                if (attempts < maxAttempts) {
+                    // 1초 대기 후 재시도
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                }
+            }
+        }
+        
+        console.error(`❌ [날씨시스템] 메시지 전송 최종 실패 (${maxAttempts}번 시도 후)`);
+        return false;
+        
     } catch (error) {
-        console.error(`❌ [날씨시스템] 메시지 전송 실패: ${error.message}`);
+        console.error(`❌ [날씨시스템] 메시지 전송 시스템 오류: ${error.message}`);
         return false;
     }
 }
@@ -363,7 +384,7 @@ function generateConversationalWeatherResponse(weatherInfo) {
     return response;
 }
 
-// 🚨 경보 메시지 생성
+// 🚨 경보 메시지 생성 (생성 보장 강화)
 function generateAlertMessage(weatherInfo) {
     if (!weatherInfo.alerts || weatherInfo.alerts.length === 0) return null;
 
@@ -371,13 +392,37 @@ function generateAlertMessage(weatherInfo) {
     
     weatherInfo.alerts.forEach(alert => {
         const reactions = WEATHER_ALERT_REACTIONS[alert.type];
-        if (reactions) {
+        if (reactions && reactions.length > 0) {
             const message = reactions[Math.floor(Math.random() * reactions.length)];
             alertMessages.push(message);
+        } else {
+            // 🔧 기본 경보 메시지 추가 (fallback)
+            switch(alert.type) {
+                case 'heat':
+                    alertMessages.push("아저씨!! 폭염이래! 완전 위험해! 밖에 나가지 마!");
+                    break;
+                case 'cold':
+                    alertMessages.push("한파 경보래! 아저씨 진짜 조심해! 따뜻하게 입어!");
+                    break;
+                case 'rain':
+                    alertMessages.push("호우 경보 떴어! 아저씨 물난리 조심해! 안전한 곳에 있어!");
+                    break;
+                case 'wind':
+                    alertMessages.push("강풍 경보래! 아저씨 바람 조심해! 위험한 곳 가지 마!");
+                    break;
+                case 'snow':
+                    alertMessages.push("대설 경보래! 아저씨 눈 진짜 많이 온다는데 조심해!");
+                    break;
+                default:
+                    alertMessages.push("날씨 경보가 떴어! 아저씨 조심해!");
+            }
         }
     });
 
-    if (alertMessages.length === 0) return null;
+    if (alertMessages.length === 0) {
+        // 🔧 최후의 fallback 메시지
+        return `날씨 경보가 ${weatherInfo.alerts.length}개 떴어! 아저씨 정말 조심해! 지금 ${weatherInfo.temperature}°C야!`;
+    }
 
     let finalMessage = alertMessages[0];
     finalMessage += `\n\n지금 ${weatherInfo.location} 날씨: ${weatherInfo.temperature}°C`;
@@ -386,7 +431,212 @@ function generateAlertMessage(weatherInfo) {
         finalMessage += `\n⚠️ 경보 단계라서 정말 조심해야 해!`;
     }
 
+    console.log(`🚨 [경보생성] 메시지 생성 완료: ${weatherInfo.alerts.length}개 경보`);
     return finalMessage;
+}
+
+// 🎯 사용자 메시지에서 위치 파싱 (올바른 매핑)
+function parseLocationFromMessage(userMessage) {
+    const msg = userMessage.toLowerCase();
+    
+    console.log(`🔍 [위치파싱] 메시지 분석: "${userMessage}"`);
+    
+    // "거기" = 고양시 (한국) 
+    if (msg.includes('거기') || msg.includes('고양') || msg.includes('한국')) {
+        console.log(`📍 [위치파싱] 결과: 고양시 (한국) - yejin`);
+        return 'yejin';
+    }
+    
+    // "여기" = 기타큐슈 (일본)
+    if (msg.includes('여기') || msg.includes('일본') || msg.includes('기타큐슈')) {
+        console.log(`📍 [위치파싱] 결과: 기타큐슈 (일본) - ajeossi`);
+        return 'ajeossi';
+    }
+    
+    // 기본값: 아저씨 위치 (기타큐슈)
+    console.log(`📍 [위치파싱] 기본값: 기타큐슈 (일본) - ajeossi`);
+    return 'ajeossi';
+}
+
+// 🎯 사용자 질문 감지 및 응답 ✅ 직접적 질문만 감지하도록 수정
+function handleWeatherQuestion(userMessage) {
+    try {
+        // 직접적인 날씨 질문만 감지 (과민반응 제거)
+        const directWeatherQuestions = [
+            '날씨', '기온', '온도', 
+            '비 와', '비와', '비 오', '비와?', '비 와?', '비 오?',
+            '눈 와', '눈와', '눈 오', '눈와?', '눈 와?', '눈 오?',
+            '춥지', '춥나', '춥어', '추워?', '춥지?',
+            '덥지', '덥나', '더워', '더워?', '덥지?',
+            '어때', '어떤지', '어떨까',
+            '맑아', '흐려', '구름',
+            '바람 불', '바람불'
+        ];
+        
+        // 질문 형태나 직접적 문의만 감지
+        const isDirectWeatherQuestion = directWeatherQuestions.some(question => 
+            userMessage.includes(question)
+        ) && (
+            userMessage.includes('?') || 
+            userMessage.includes('어때') || 
+            userMessage.includes('어떤지') || 
+            userMessage.includes('어떨까') ||
+            userMessage.includes('춥지') ||
+            userMessage.includes('덥지') ||
+            userMessage.includes('와?') ||
+            userMessage.includes('오?') ||
+            userMessage.includes('날씨')
+        );
+        
+        if (!isDirectWeatherQuestion) return null;
+        
+        console.log('🎯 [날씨응답] 사용자 날씨 질문 감지 - 즉시 응답 생성');
+        
+        // 🔧 핵심 수정: 위치 파싱 추가
+        const location = parseLocationFromMessage(userMessage);
+        
+        // 현재 날씨 정보로 응답 생성
+        if (weatherSystemState.currentWeather && location === 'ajeossi') {
+            weatherSystemState.statistics.conversationResponses++;
+            return generateConversationalWeatherResponse(weatherSystemState.currentWeather);
+        } else {
+            // 날씨 정보가 없거나 다른 위치면 API 호출
+            getCurrentWeather(location).then(weatherInfo => {
+                if (weatherInfo) {
+                    const response = generateConversationalWeatherResponse(weatherInfo);
+                    sendWeatherMessage(response);
+                    weatherSystemState.statistics.conversationResponses++;
+                }
+            });
+            return "아 잠깐! 지금 날씨 확인해볼게!";
+        }
+        
+    } catch (error) {
+        console.error(`❌ [날씨응답] 처리 실패: ${error.message}`);
+        return null;
+    }
+}
+
+// 🎯 메인 날씨 체크 및 메시지 전송
+async function checkWeatherAndSend(scheduleType = 'auto') {
+    try {
+        console.log(`🌤️ [날씨시스템] 날씨 체크 시작 (타입: ${scheduleType})...`);
+        
+        const weatherInfo = await getCurrentWeather('ajeossi');
+        if (!weatherInfo) return;
+
+        let messageSent = false;
+        
+        // 1. 경보 최우선 체크 (전송 보장 강화)
+        if (weatherInfo.alerts.length > 0) {
+            const alertMessage = generateAlertMessage(weatherInfo);
+            if (alertMessage) {
+                const alertKey = weatherInfo.alerts.map(a => a.type).join('_');
+                // 🔧 경보는 하루에 여러번 보낼 수 있도록 조건 완화
+                const lastAlertTime = weatherSystemState.lastAlertTime ? 
+                    moment(weatherSystemState.lastAlertTime) : null;
+                const now = moment().tz('Asia/Tokyo');
+                const hoursSinceLastAlert = lastAlertTime ? 
+                    now.diff(lastAlertTime, 'hours') : 999;
+                
+                // 같은 경보라도 3시간 후 재전송 허용
+                if (!weatherSystemState.sentToday.alerts.includes(alertKey) || hoursSinceLastAlert >= 3) {
+                    console.log(`🚨 [날씨경보] 경보 전송 시도: ${alertKey}`);
+                    const success = await sendWeatherMessage(alertMessage);
+                    if (success) {
+                        if (!weatherSystemState.sentToday.alerts.includes(alertKey)) {
+                            weatherSystemState.sentToday.alerts.push(alertKey);
+                        }
+                        weatherSystemState.statistics.alertMessages++;
+                        weatherSystemState.lastAlertTime = now.format();
+                        messageSent = true;
+                        console.log(`🚨 [날씨경보] 경보 메시지 전송 완료: ${alertKey}`);
+                    } else {
+                        console.error(`❌ [날씨경보] 경보 메시지 전송 실패: ${alertKey}`);
+                    }
+                } else {
+                    console.log(`⏸️ [날씨경보] 경보 중복 방지: ${alertKey} (마지막 전송: ${hoursSinceLastAlert}시간 전)`);
+                }
+            } else {
+                console.log(`⚠️ [날씨경보] 경보 메시지 생성 실패`);
+            }
+        }
+        
+        // 2. 시간대별 인사 (경보가 없을 때만, 날씨 정보 포함)
+        if (!messageSent && scheduleType !== 'weather') {
+            const timeSlot = scheduleType;
+            if (!weatherSystemState.sentToday[timeSlot]) {
+                const greetings = TIME_BASED_GREETINGS[timeSlot];
+                if (greetings) {
+                    let greeting = greetings[Math.floor(Math.random() * greetings.length)];
+                    // 아침인사에는 날씨 정보 포함 (요청사항 반영)
+                    greeting += ` 지금 ${weatherInfo.temperature}°C, ${weatherInfo.description}이야!`;
+                    
+                    const success = await sendWeatherMessage(greeting);
+                    if (success) {
+                        weatherSystemState.sentToday[timeSlot] = true;
+                        weatherSystemState.statistics.timeGreetings++;
+                        messageSent = true;
+                        console.log(`🕐 [시간인사] ${timeSlot} 인사 전송 완료`);
+                    }
+                }
+            }
+        }
+        
+        // 3. 일반 날씨 메시지 (둘 다 없을 때, 조건 강화)
+        if (!messageSent && scheduleType === 'weather') {
+            const shouldSend = shouldSendWeatherMessage(weatherInfo);
+            if (shouldSend) {
+                const weatherMessage = generateConversationalWeatherResponse(weatherInfo);
+                const success = await sendWeatherMessage(weatherMessage);
+                if (success) {
+                    const conditionKey = `${weatherInfo.condition}_${weatherInfo.temperature}`;
+                    weatherSystemState.sentToday.weather.push(conditionKey);
+                    weatherSystemState.statistics.weatherMessages++;
+                    messageSent = true;
+                    console.log(`🌤️ [날씨메시지] 일반 날씨 메시지 전송 완료`);
+                }
+            }
+        }
+        
+        if (!messageSent) {
+            console.log(`⚪ [날씨시스템] 전송 조건 미충족 (${scheduleType})`);
+        }
+        
+    } catch (error) {
+        console.error(`❌ [날씨시스템] 체크 및 전송 실패: ${error.message}`);
+    }
+}
+
+// 🎯 메시지 전송 여부 판단 (더 보수적으로 수정)
+function shouldSendWeatherMessage(weatherInfo) {
+    if (!weatherInfo) return false;
+    
+    const now = moment().tz('Asia/Tokyo');
+    const hour = now.hour();
+    
+    // 밤시간 (23시-6시) 제외
+    if (hour >= 23 || hour < 6) return false;
+    
+    // 오늘 이미 이 날씨 조건으로 보냈는지 확인
+    const conditionKey = `${weatherInfo.condition}_${weatherInfo.temperature}`;
+    if (weatherSystemState.sentToday.weather.includes(conditionKey)) {
+        return false;
+    }
+    
+    // 🔧 더 보수적인 전송 조건
+    // 극단적인 날씨만 높은 확률로 전송
+    const extremeConditions = ['hot', 'cold', 'rain', 'snow'];
+    if (extremeConditions.includes(weatherInfo.condition)) {
+        // 온도 기준 더 엄격하게
+        if (weatherInfo.condition === 'hot' && weatherInfo.temperature >= 32) return Math.random() < 0.7;
+        if (weatherInfo.condition === 'cold' && weatherInfo.temperature <= 3) return Math.random() < 0.7;
+        if (weatherInfo.condition === 'rain' || weatherInfo.condition === 'snow') return Math.random() < 0.6;
+        return Math.random() < 0.4; // 일반적인 극단날씨는 40%
+    }
+    
+    // 일반적인 날씨는 아주 낮은 확률로만
+    return Math.random() < 0.15; // 15%로 낮춤 (기존 30%에서)
 }
 
 // 🕐 랜덤 시간 생성
@@ -418,173 +668,6 @@ function generateRandomSchedule() {
     }
     
     return schedules;
-}
-
-// 🎯 메인 날씨 체크 및 메시지 전송
-async function checkWeatherAndSend(scheduleType = 'auto') {
-    try {
-        console.log(`🌤️ [날씨시스템] 날씨 체크 시작 (타입: ${scheduleType})...`);
-        
-        const weatherInfo = await getCurrentWeather('ajeossi');
-        if (!weatherInfo) return;
-
-        let messageSent = false;
-        
-        // 1. 경보 최우선 체크
-        if (weatherInfo.alerts.length > 0) {
-            const alertMessage = generateAlertMessage(weatherInfo);
-            if (alertMessage) {
-                const alertKey = weatherInfo.alerts.map(a => a.type).join('_');
-                if (!weatherSystemState.sentToday.alerts.includes(alertKey)) {
-                    const success = await sendWeatherMessage(alertMessage);
-                    if (success) {
-                        weatherSystemState.sentToday.alerts.push(alertKey);
-                        weatherSystemState.statistics.alertMessages++;
-                        weatherSystemState.lastAlertTime = moment().tz('Asia/Tokyo').format();
-                        messageSent = true;
-                        console.log(`🚨 [날씨경보] 경보 메시지 전송 완료: ${alertKey}`);
-                    }
-                }
-            }
-        }
-        
-        // 2. 시간대별 인사 (경보가 없을 때만)
-        if (!messageSent && scheduleType !== 'weather') {
-            const timeSlot = scheduleType;
-            if (!weatherSystemState.sentToday[timeSlot]) {
-                const greetings = TIME_BASED_GREETINGS[timeSlot];
-                if (greetings) {
-                    let greeting = greetings[Math.floor(Math.random() * greetings.length)];
-                    // 현재 날씨 정보 추가
-                    greeting += ` 지금 ${weatherInfo.temperature}°C, ${weatherInfo.description}이야!`;
-                    
-                    const success = await sendWeatherMessage(greeting);
-                    if (success) {
-                        weatherSystemState.sentToday[timeSlot] = true;
-                        weatherSystemState.statistics.timeGreetings++;
-                        messageSent = true;
-                        console.log(`🕐 [시간인사] ${timeSlot} 인사 전송 완료`);
-                    }
-                }
-            }
-        }
-        
-        // 3. 일반 날씨 메시지 (둘 다 없을 때)
-        if (!messageSent && scheduleType === 'weather') {
-            const shouldSend = shouldSendWeatherMessage(weatherInfo);
-            if (shouldSend) {
-                const weatherMessage = generateConversationalWeatherResponse(weatherInfo);
-                const success = await sendWeatherMessage(weatherMessage);
-                if (success) {
-                    const conditionKey = `${weatherInfo.condition}_${weatherInfo.temperature}`;
-                    weatherSystemState.sentToday.weather.push(conditionKey);
-                    weatherSystemState.statistics.weatherMessages++;
-                    messageSent = true;
-                    console.log(`🌤️ [날씨메시지] 일반 날씨 메시지 전송 완료`);
-                }
-            }
-        }
-        
-        if (!messageSent) {
-            console.log(`⚪ [날씨시스템] 전송 조건 미충족 (${scheduleType})`);
-        }
-        
-    } catch (error) {
-        console.error(`❌ [날씨시스템] 체크 및 전송 실패: ${error.message}`);
-    }
-}
-
-// 🎯 사용자 메시지에서 위치 파싱 (올바른 매핑)
-function parseLocationFromMessage(userMessage) {
-    const msg = userMessage.toLowerCase();
-    
-    console.log(`🔍 [위치파싱] 메시지 분석: "${userMessage}"`);
-    
-    // "거기" = 고양시 (한국) 
-    if (msg.includes('거기') || msg.includes('고양') || msg.includes('한국')) {
-        console.log(`📍 [위치파싱] 결과: 고양시 (한국) - yejin`);
-        return 'yejin';
-    }
-    
-    // "여기" = 기타큐슈 (일본)
-    if (msg.includes('여기') || msg.includes('일본') || msg.includes('기타큐슈')) {
-        console.log(`📍 [위치파싱] 결과: 기타큐슈 (일본) - ajeossi`);
-        return 'ajeossi';
-    }
-    
-    // 기본값: 아저씨 위치 (기타큐슈)
-    console.log(`📍 [위치파싱] 기본값: 기타큐슈 (일본) - ajeossi`);
-    return 'ajeossi';
-}
-
-// 🎯 사용자 질문 감지 및 응답 ✅ 수정된 부분
-function handleWeatherQuestion(userMessage) {
-    try {
-        // 날씨 관련 키워드 감지
-        const weatherKeywords = [
-            '날씨', '기온', '온도', '비', '눈', '바람', '구름',
-            '맑다', '흐리다', '춥다', '덥다', '시원하다', '따뜻하다',
-            '햇살', '햇빛', '태양', '우산', '장마', '폭우', '눈사람',
-            '더워', '추워', '시원해', '따뜻해'
-        ];
-        
-        const isWeatherQuestion = weatherKeywords.some(keyword => 
-            userMessage.includes(keyword)
-        );
-        
-        if (!isWeatherQuestion) return null;
-        
-        console.log('🎯 [날씨응답] 사용자 날씨 질문 감지 - 즉시 응답 생성');
-        
-        // 🔧 핵심 수정: 위치 파싱 추가
-        const location = parseLocationFromMessage(userMessage);
-        
-        // 현재 날씨 정보로 응답 생성
-        if (weatherSystemState.currentWeather && location === 'ajeossi') {
-            weatherSystemState.statistics.conversationResponses++;
-            return generateConversationalWeatherResponse(weatherSystemState.currentWeather);
-        } else {
-            // 날씨 정보가 없거나 다른 위치면 API 호출
-            getCurrentWeather(location).then(weatherInfo => {
-                if (weatherInfo) {
-                    const response = generateConversationalWeatherResponse(weatherInfo);
-                    sendWeatherMessage(response);
-                    weatherSystemState.statistics.conversationResponses++;
-                }
-            });
-            return "아 잠깐! 지금 날씨 확인해볼게!";
-        }
-        
-    } catch (error) {
-        console.error(`❌ [날씨응답] 처리 실패: ${error.message}`);
-        return null;
-    }
-}
-
-// 🎯 메시지 전송 여부 판단
-function shouldSendWeatherMessage(weatherInfo) {
-    if (!weatherInfo) return false;
-    
-    const now = moment().tz('Asia/Tokyo');
-    const hour = now.hour();
-    
-    // 밤시간 (23시-6시) 제외
-    if (hour >= 23 || hour < 6) return false;
-    
-    // 오늘 이미 이 날씨 조건으로 보냈는지 확인
-    const conditionKey = `${weatherInfo.condition}_${weatherInfo.temperature}`;
-    if (weatherSystemState.sentToday.weather.includes(conditionKey)) {
-        return false;
-    }
-    
-    // 극단적인 날씨는 높은 확률로 전송
-    const extremeConditions = ['hot', 'cold', 'rain', 'snow'];
-    if (extremeConditions.includes(weatherInfo.condition)) {
-        return Math.random() < 0.8; // 80% 확률
-    }
-    
-    // 일반적인 날씨는 낮은 확률
-    return Math.random() < 0.3; // 30% 확률
 }
 
 // 🔄 일일 리셋
