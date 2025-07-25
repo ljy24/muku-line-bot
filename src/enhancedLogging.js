@@ -4,6 +4,7 @@
 // ✅ 실시간 학습 통계 정확히 표시 (디스크 파일 직접 읽기)
 // 🩸 생리주기는 마스터에서 가져옴 (Single Source of Truth)
 // 🚫 더 이상 modules 의존성 없음 - 100% 확실한 동작 보장
+// 🕊️ 자율시스템 상태 표시 추가
 // ============================================================================
 
 const fs = require('fs');
@@ -453,12 +454,23 @@ async function generateLineStatusReport(modules) {
                 const stats = modules.unifiedConflictManager.getMukuConflictSystemStatus();
                 const totalConflicts = stats.memory?.totalConflicts || 0;
                 const resolvedConflicts = stats.memory?.resolvedConflicts || 0;
-                report += `💥 [갈등기록] 총 ${totalConflicts}회, 해결 ${resolvedConflicts}회\n\n`;
+                report += `💥 [갈등기록] 총 ${totalConflicts}회, 해결 ${resolvedConflicts}회\n`;
             } else {
-                report += `💥 [갈등기록] 총 0회, 해결 0회\n\n`;
+                report += `💥 [갈등기록] 총 0회, 해결 0회\n`;
             }
         } catch (e) { 
-            report += `💥 [갈등기록] 총 0회, 해결 0회\n\n`;
+            report += `💥 [갈등기록] 총 0회, 해결 0회\n`;
+        }
+
+        // 🕊️ 자율 시스템 상태 (modules 사용하되 안전하게)
+        try {
+            if (modules.autonomousYejinSystem && modules.autonomousYejinSystem.isActive) {
+                report += `🕊️ [자율시스템] 활성화\n\n`;
+            } else {
+                report += `🕊️ [자율시스템] 비활성화\n\n`;
+            }
+        } catch (e) { 
+            report += `🕊️ [자율시스템] 비활성화\n\n`;
         }
         
         // --- 스케줄러 및 자동 메시지 섹션 ---
