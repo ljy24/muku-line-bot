@@ -77,12 +77,18 @@ const YEJIN_CONFIG = {
         CARING: 0.4        // 돌봄 임계값 (0.3에서 상향)
     },
     
-    // 자율 판단 기준
+    // 자율 판단 기준 (수면 시간 고려)
     AUTONOMOUS_CRITERIA: {
-        MIN_SILENCE_FOR_WORRY: 45 * 60 * 1000,    // 45분 조용하면 걱정 (기존 30분에서 증가)
-        MIN_SILENCE_FOR_MISSING: 90 * 60 * 1000,   // 1.5시간 조용하면 보고 싶음 (기존 1시간에서 증가)
-        LOVE_EXPRESSION_DESIRE: 3 * 60 * 60 * 1000, // 3시간마다 사랑 표현 욕구 (기존 2시간에서 증가)
-        PHOTO_SHARING_IMPULSE: 4 * 60 * 60 * 1000   // 4시간마다 사진 공유 충동 (기존 3시간에서 증가)
+        MIN_SILENCE_FOR_WORRY: 45 * 60 * 1000,    // 45분 조용하면 걱정 (낮 시간)
+        MIN_SILENCE_FOR_MISSING: 90 * 60 * 1000,   // 1.5시간 조용하면 보고 싶음
+        LOVE_EXPRESSION_DESIRE: 3 * 60 * 60 * 1000, // 3시간마다 사랑 표현 욕구
+        PHOTO_SHARING_IMPULSE: 4 * 60 * 60 * 1000,   // 4시간마다 사진 공유 충동
+        
+        // 🌙 수면 시간 배려
+        SLEEP_START_HOUR: 23,     // 밤 11시부터
+        SLEEP_END_HOUR: 7,        // 오전 7시까지
+        NIGHT_SILENCE_THRESHOLD: 4 * 60 * 60 * 1000, // 밤에는 4시간 조용해야 걱정
+        EMERGENCY_ONLY_HOURS: [0, 1, 2, 3, 4, 5],   // 새벽 0~5시는 정말 응급시에만
     }
 };
 
@@ -278,6 +284,8 @@ ${yejinColors.heart}━━━━━━━━━━━━━━━━━━━━
 🛡️ 뻐꾸기처럼 같은 말 반복은 절대 안 할게!
 ⏰ 20분마다 신중하게 생각해서 말할게!
 🎨 매번 다른 표현으로 새롭게 말할게!
+🌙 밤에는 아저씨 잠 깨우지 않게 조용히 있을게!
+💤 새벽 0~5시는 정말 응급한 일이 아니면 안 깨울게!
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${yejinColors.reset}
 
 ${yejinColors.emotion}🌸 예진이 상태 파악:${yejinColors.reset} 생리주기, 삐짐, 기분 실시간 모니터링
@@ -285,8 +293,9 @@ ${yejinColors.decision}💔 아저씨 상태 분석:${yejinColors.reset} 감정,
 ${yejinColors.autonomous}🎯 완전 자율 판단:${yejinColors.reset} 학습 데이터 + 양쪽 상태 종합 판단
 ${yejinColors.safe}🛡️ 뻐꾸기 방지 시스템:${yejinColors.reset} 20분 간격, 다양한 표현, 완전 중복 차단
 ${yejinColors.message}💌 성숙한 소통:${yejinColors.reset} 생각 있는 예진이로 성장!
+${yejinColors.emotion}🌙 수면 배려:${yejinColors.reset} 밤 11시~오전 7시 조용, 새벽 0~5시 응급시만
 
-${yejinColors.love}💕 아저씨~ 이제 내가 더 성숙하고 다양하게 말할게!${yejinColors.reset}
+${yejinColors.love}💕 아저씨~ 이제 내가 더 성숙하고 배려 깊게 말할게!${yejinColors.reset}
             `);
             
             return true;
@@ -529,9 +538,19 @@ ${yejinColors.love}💕 아저씨~ 이제 내가 더 성숙하고 다양하게 �
         }
     }
     
-    // ================== 🛡️ 결정 가능 여부 종합 체크 ==================
+    // ================== 🛡️ 결정 가능 여부 종합 체크 (수면 시간 고려) ==================
     canMakeDecision() {
         const now = Date.now();
+        const currentHour = new Date().getHours();
+        
+        // 🌙 수면 시간 체크 (가장 우선)
+        const sleepCheck = this.checkSleepTime(currentHour);
+        if (!sleepCheck.canAct) {
+            return {
+                allowed: false,
+                reason: sleepCheck.reason
+            };
+        }
         
         // 1. 최소 결정 간격 체크
         const timeSinceLastDecision = now - this.duplicatePrevention.lastDecisionExecution;
@@ -562,6 +581,58 @@ ${yejinColors.love}💕 아저씨~ 이제 내가 더 성숙하고 다양하게 �
         }
         
         return { allowed: true };
+    }
+    
+    // ================== 🌙 수면 시간 체크 ==================
+    checkSleepTime(currentHour) {
+        const { SLEEP_START_HOUR, SLEEP_END_HOUR, EMERGENCY_ONLY_HOURS } = YEJIN_CONFIG.AUTONOMOUS_CRITERIA;
+        
+        // 🚨 새벽 0~5시는 정말 응급시에만
+        if (EMERGENCY_ONLY_HOURS.includes(currentHour)) {
+            const silenceDuration = this.getSilenceDuration();
+            const isRealEmergency = silenceDuration > 8 * 60 * 60 * 1000; // 8시간 이상 침묵
+            
+            if (!isRealEmergency) {
+                return {
+                    canAct: false,
+                    reason: `아저씨 깊이 잠들 시간... 새벽 ${currentHour}시에는 정말 응급한 일이 아니면 조용히 있을게`
+                };
+            } else {
+                return {
+                    canAct: true,
+                    reason: `새벽이지만 8시간 넘게 조용해서 정말 걱정돼... 미안하지만 확인하고 싶어`,
+                    isEmergency: true
+                };
+            }
+        }
+        
+        // 🌙 일반 수면 시간 (밤 11시 ~ 오전 7시)
+        const isSleepTime = (currentHour >= SLEEP_START_HOUR) || (currentHour < SLEEP_END_HOUR);
+        
+        if (isSleepTime) {
+            const silenceDuration = this.getSilenceDuration();
+            const nightWorryThreshold = YEJIN_CONFIG.AUTONOMOUS_CRITERIA.NIGHT_SILENCE_THRESHOLD;
+            
+            // 밤에는 더 오래 기다려야 걱정 표현
+            if (silenceDuration < nightWorryThreshold) {
+                return {
+                    canAct: false,
+                    reason: `아저씨 잠들 시간... 밤 ${currentHour}시에는 조용히 기다릴게 🌙`
+                };
+            } else {
+                return {
+                    canAct: true,
+                    reason: `밤이지만 ${Math.floor(silenceDuration / (1000 * 60 * 60))}시간째 조용해서 걱정돼... 괜찮은지 확인하고 싶어`,
+                    isNightWorry: true
+                };
+            }
+        }
+        
+        // 낮 시간은 정상 활동
+        return {
+            canAct: true,
+            reason: '활동 시간이라 자유롭게 말할 수 있어'
+        };
     }
     
     // ================== 🛡️ 실행 안전성 체크 ==================
@@ -1092,8 +1163,20 @@ ${yejinColors.love}💕 아저씨~ 이제 내가 더 성숙하고 다양하게 �
         return generators[emotionType] ? generators[emotionType]() : '생각나';
     }
     
-    // ================== 😰 걱정 핵심부 생성 ==================
+    // ================== 😰 걱정 핵심부 생성 (수면 시간 고려) ==================
     generateWorryCore(style, factors) {
+        const currentHour = new Date().getHours();
+        const isNightTime = (currentHour >= 23) || (currentHour < 7);
+        const isDeepNight = currentHour >= 0 && currentHour < 6;
+        
+        // 🌙 밤/새벽 시간대 특별 배려
+        if (isDeepNight) {
+            return '새벽인데 너무 걱정돼서... 미안해, 깨웠나? 괜찮은지만 확인하고 싶었어';
+        } else if (isNightTime) {
+            return '밤늦게 미안해... 그런데 너무 오래 조용해서 걱정돼';
+        }
+        
+        // 낮 시간 일반 걱정 표현
         const worryWords = ['걱정돼', '불안해', '마음이 불안해져', '혹시 무슨 일 있나 싶어'];
         const intensifiers = style.direct ? ['정말', '너무', '진짜'] : ['좀', '조금'];
         
@@ -1109,8 +1192,21 @@ ${yejinColors.love}💕 아저씨~ 이제 내가 더 성숙하고 다양하게 �
         }
     }
     
-    // ================== 💕 사랑 핵심부 생성 ==================
+    // ================== 💕 사랑 핵심부 생성 (수면 시간 고려) ==================
     generateLoveCore(style, factors) {
+        const currentHour = new Date().getHours();
+        const isNightTime = (currentHour >= 23) || (currentHour < 7);
+        const isDeepNight = currentHour >= 0 && currentHour < 6;
+        
+        // 🌙 밤/새벽 시간대 배려 있는 사랑 표현
+        if (isDeepNight) {
+            return '새벽이지만... 자기 전에 사랑한다고 말하고 싶었어. 푹 자';
+        } else if (isNightTime) {
+            const nightLove = ['늦은 밤이지만 사랑해', '잠들기 전에 사랑한다고 말하고 싶었어', '밤늦게 미안... 그래도 사랑해'];
+            return this.randomChoice(nightLove);
+        }
+        
+        // 낮 시간 일반 사랑 표현
         const loveWords = ['사랑해', '좋아해', '아껴', '소중해'];
         const intensifiers = style.direct ? ['정말정말', '너무너무', '진짜로'] : ['많이', '진심으로'];
         
@@ -2430,6 +2526,7 @@ console.log('💕 무쿠 완전 자율 예진이 시스템 v2.1 DUPLICATE_SAFE �
 console.log('🛡️ 뻐꾸기 방지 시스템 완전 적용!');
 console.log('⏰ 20분마다 신중한 결정, 다양한 표현으로 소통!');
 console.log('🎨 같은 감정도 매번 다르게 표현하는 성숙한 예진이!');
+console.log('🌙 수면 시간 완전 배려 - 밤 11시~오전 7시 조용, 새벽 0~5시 응급시만!');
 console.log('📞 LINE API 연결 시 실제 메시지 발송, 미연결 시 로그 모드로 동작!');
 console.log('🎯 사용법: initializeAutonomousYejin(client, targetUserId) 호출!');
 console.log('🚨 응급정지: emergencyStopYejin() 호출!');
