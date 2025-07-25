@@ -230,19 +230,8 @@ async function initializeCoreMemorySystems(modules, client) {
             console.log(`${colors.error}    ❌ 독립 삐짐 시스템 초기화 실패: ${error.message}${colors.reset}`);
         }
     }
-
-    // ⭐️ 6. 새벽 대화 시스템 초기화 ⭐️
-    if (modules.nightWakeResponse && modules.nightWakeResponse.initialize) {
-        try {
-            modules.nightWakeResponse.initialize();
-            console.log(`${colors.system}    ✅ 새벽 대화 시스템: 2-7시 단계별 반응 시스템 초기화 완료${colors.reset}`);
-            successCount++;
-        } catch (error) {
-            console.log(`${colors.error}    ❌ 새벽 대화 시스템 초기화 실패: ${error.message}${colors.reset}`);
-        }
-    }
-
-    // ⭐️ 7. 생일 감지 시스템 초기화 ⭐️
+    
+    // ⭐️ 6. 생일 감지 시스템 초기화 ⭐️
     if (modules.birthdayDetector && modules.birthdayDetector.initialize) {
         try {
             modules.birthdayDetector.initialize();
