@@ -365,7 +365,7 @@ function startAutoStatusUpdates(modules) {
             scheduler: modules.scheduler,
             spontaneousYejin: modules.spontaneousYejin,
             weatherManager: modules.weatherManager,
-            nightWakeResponse: modules.nightWakeResponse,
+            autonomousYejinSystem: modules.autonomousYejinSystem,
             birthdayDetector: modules.birthdayDetector,
             // 💥⭐️⭐️⭐️ 갈등 시스템 (신규 추가!) ⭐️⭐️⭐️
             unifiedConflictManager: modules.unifiedConflictManager,
