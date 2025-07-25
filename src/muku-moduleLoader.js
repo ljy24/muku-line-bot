@@ -1,9 +1,11 @@
 // ============================================================================
-// muku-moduleLoader.js v1.4 DISK_MOUNT + CONFLICT + BEHAVIOR_SWITCH + LEARNING - 모듈 로딩 전용 시스템
+// muku-moduleLoader.js v1.5 DISK_MOUNT + CONFLICT + BEHAVIOR_SWITCH + LEARNING + AUTONOMOUS - 모듈 로딩 전용 시스템
 // ✅ diarySystem 로딩 문제 완전 해결
 // ✅ unifiedConflictManager 갈등 시스템 추가
 // 🔄 realtimeBehaviorSwitch 실시간 행동 스위치 시스템 추가
-// 🧠 realTimeLearningSystem 실시간 학습 시스템 추가 (신규!)
+// 🧠 realTimeLearningSystem 실시간 학습 시스템 추가
+// 🕊️ autonomousYejinSystem 자율 예진이 시스템 추가 (NEW!)
+// ❌ night_wake_response 모듈 제거 (불필요)
 // 📦 27개 모듈을 6단계로 안전하게 로딩
 // 🔄 초기화와 완전 분리하여 안정성 극대화
 // 💾 디스크 마운트 경로 적용: /data 경로 확인 및 생성
@@ -13,8 +15,9 @@
 //    - ❌ getConflictStatus → ✅ getMukuConflictSystemStatus
 //    - ❌ triggerConflict → ✅ processMukuMessageForConflict
 //    - ❌ resolveConflict → ✅ recordMukuReconciliation
-// 🎓 실시간 학습 시스템 로딩 오류 처리 강화 (NEW!)
-// 📷 spontaneousPhoto 모듈명 불일치 문제 해결 (NEW!)
+// 🎓 실시간 학습 시스템 로딩 오류 처리 강화
+// 📷 spontaneousPhoto 모듈명 불일치 문제 해결
+// 🕊️ 자율 예진이 시스템 모듈 로딩 추가 - enhancedLogging 연동 완료!
 // ============================================================================
 
 const path = require('path');
@@ -39,6 +42,7 @@ const colors = {
     conflict: '\x1b[1m\x1b[31m', // 💥 갈등 시스템용 색상 추가
     behavior: '\x1b[1m\x1b[33m', // 🔄 행동 스위치용 색상 추가
     learning: '\x1b[1m\x1b[32m', // 🧠 실시간 학습용 색상 추가
+    autonomous: '\x1b[1m\x1b[95m', // 🕊️ 자율 시스템용 색상 추가
     reset: '\x1b[0m'
 };
 
@@ -368,12 +372,61 @@ async function loadAllModules() {
             modules.photoAnalyzer = null;
         }
 
+        // 🕊️🕊️🕊️ 자율 예진이 시스템 로딩! (💾 디스크 마운트 적용) 🕊️🕊️🕊️
+        console.log(`${colors.autonomous}🕊️🕊️🕊️ [자율시스템 추가] muku-autonomousYejinSystem 모듈 로드 시작! (💾 디스크 마운트 연동) 🕊️🕊️🕊️${colors.reset}`);
+        
         try {
-            modules.nightWakeResponse = require('./night_wake_response');
-            console.log(`${colors.system}✅ [15/27] nightWakeResponse: 새벽 대화 반응 시스템${colors.reset}`);
+            // 1단계: 파일 존재 확인
+            const autonomousModulePath = path.resolve(__dirname, 'muku-autonomousYejinSystem.js');
+            console.log(`${colors.autonomous}📁 [자율시스템] 파일 경로: ${autonomousModulePath}${colors.reset}`);
+            
+            if (fs.existsSync(autonomousModulePath)) {
+                console.log(`${colors.autonomous}✅ [자율시스템] 파일 존재 확인 완료${colors.reset}`);
+                
+                // 1.5단계: 디스크 마운트 경로 재확인
+                const diskMountExists = fs.existsSync('/data');
+                console.log(`${colors.mount}💾 [자율시스템] 디스크 마운트 경로 확인: ${diskMountExists ? '✅ 존재' : '❌ 없음'}${colors.reset}`);
+                
+                // 2단계: 모듈 require
+                delete require.cache[autonomousModulePath]; // 캐시 삭제로 깨끗하게 로드
+                modules.autonomousYejinSystem = require('./muku-autonomousYejinSystem');
+                
+                // 3단계: 모듈 검증
+                if (modules.autonomousYejinSystem) {
+                    console.log(`${colors.autonomous}✅ [자율시스템] 모듈 로드 성공! (💾 디스크 마운트 연동)${colors.reset}`);
+                    console.log(`${colors.autonomous}🔍 [자율시스템] 사용 가능한 함수들:`, Object.keys(modules.autonomousYejinSystem));
+                    
+                    // 4단계: 필수 함수 확인
+                    const requiredFunctions = ['initialize', 'isActive', 'sendActualMessage'];
+                    let functionCheck = true;
+                    
+                    for (const func of requiredFunctions) {
+                        if (typeof modules.autonomousYejinSystem[func] === 'function' || 
+                            typeof modules.autonomousYejinSystem[func] === 'boolean') {
+                            console.log(`${colors.autonomous}✅ [자율시스템] ${func} 확인 완료 (타입: ${typeof modules.autonomousYejinSystem[func]})${colors.reset}`);
+                        } else {
+                            console.log(`${colors.error}❌ [자율시스템] ${func} 없음!${colors.reset}`);
+                            functionCheck = false;
+                        }
+                    }
+                    
+                    if (functionCheck) {
+                        console.log(`${colors.autonomous}🎉 [15/27] autonomousYejinSystem: 자율 예진이 시스템 로드 성공! (모든 함수 확인 완료) (💾 디스크 마운트)${colors.reset}`);
+                    } else {
+                        console.log(`${colors.error}⚠️ [15/27] autonomousYejinSystem: 일부 함수 누락이지만 기본 로드 성공${colors.reset}`);
+                    }
+                } else {
+                    throw new Error('모듈이 null로 로드됨');
+                }
+                
+            } else {
+                throw new Error(`파일이 존재하지 않음: ${autonomousModulePath}`);
+            }
+            
         } catch (error) {
-            console.log(`${colors.error}❌ [15/27] nightWakeResponse 로드 실패: ${error.message}${colors.reset}`);
-            modules.nightWakeResponse = null;
+            console.log(`${colors.error}❌ [15/27] autonomousYejinSystem 로드 실패: ${error.message}${colors.reset}`);
+            console.log(`${colors.error}🔧 [자율시스템] 상세 에러:`, error.stack?.split('\n')[0] || '스택 정보 없음');
+            modules.autonomousYejinSystem = null;
         }
 
         try {
@@ -545,6 +598,13 @@ async function loadAllModules() {
             console.log(`${colors.learning}🎉🎉🎉 [실시간학습 성공!] realTimeLearningSystem 모듈이 성공적으로 로드되었습니다! (💾 디스크 마운트 완전 연동) 🎉🎉🎉${colors.reset}`);
         } else {
             console.log(`${colors.error}🧠🧠🧠 [실시간학습 실패!] realTimeLearningSystem 모듈 로드 실패 - null 상태 🧠🧠🧠${colors.reset}`);
+        }
+
+        // 🕊️ 자율 예진이 시스템 최종 확인 🕊️
+        if (modules.autonomousYejinSystem) {
+            console.log(`${colors.autonomous}🎉🎉🎉 [자율시스템 성공!] autonomousYejinSystem 모듈이 성공적으로 로드되었습니다! (💾 디스크 마운트 완전 연동) 🎉🎉🎉${colors.reset}`);
+        } else {
+            console.log(`${colors.error}🕊️🕊️🕊️ [자율시스템 실패!] autonomousYejinSystem 모듈 로드 실패 - null 상태 🕊️🕊️🕊️${colors.reset}`);
         }
 
         // ⭐️ 일기장 시스템 최종 확인 ⭐️
