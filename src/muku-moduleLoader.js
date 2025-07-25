@@ -11,10 +11,10 @@
 // 💾 디스크 마운트 경로 적용: /data 경로 확인 및 생성
 // 💥 갈등 관리 시스템 완전 통합
 // ⭐️ 갈등 시스템 함수명 수정 완료:
-//    - ❌ initializeConflictSystem → ✅ initializeMukuUnifiedConflictSystem
-//    - ❌ getConflictStatus → ✅ getMukuConflictSystemStatus
-//    - ❌ triggerConflict → ✅ processMukuMessageForConflict
-//    - ❌ resolveConflict → ✅ recordMukuReconciliation
+//    - initializeMukuUnifiedConflictSystem
+//    - getMukuConflictSystemStatus
+//    - processMukuMessageForConflict
+//    - recordMukuReconciliation
 // 🎓 실시간 학습 시스템 로딩 오류 처리 강화
 // 📷 spontaneousPhoto 모듈명 불일치 문제 해결
 // 🕊️ 자율 예진이 시스템 모듈 로딩 추가 - enhancedLogging 연동 완료!
