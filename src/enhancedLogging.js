@@ -383,7 +383,7 @@ function getDirectTrueAutonomousSystemStatus() {
             predictionAccuracy: 0,
             
             // 지능 시스템
-            intelligenceLevel: 'learning',
+            intelligenceLevel: '학습중',
             learningConnection: false,
             dataQuality: 0,
             
@@ -432,7 +432,13 @@ function getDirectTrueAutonomousSystemStatus() {
                         
                         // 지능 정보
                         if (status.intelligence) {
-                            systemStatus.intelligenceLevel = status.autonomyStatus?.evolutionStage || 'learning';
+                            const evolutionStageKorean = {
+                                'learning': '학습중',
+                                'analyzing': '분석중',
+                                'predicting': '예측중', 
+                                'evolving': '진화중'
+                            };
+                            systemStatus.intelligenceLevel = evolutionStageKorean[status.autonomyStatus?.evolutionStage] || '학습중';
                             systemStatus.learningConnection = status.intelligence.learningDatabaseSize > 0;
                         }
                         
@@ -643,7 +649,7 @@ function getDirectTrueAutonomousSystemStatus() {
             systemStatus.openaiApiCalls = systemStatus.totalDecisions * 2; // 결정당 2번 호출 평균
             systemStatus.wisdomGained = Math.floor(Math.random() * 3) + 1; // 1-3개
             systemStatus.predictionAccuracy = Math.floor(Math.random() * 30) + 70; // 70-99%
-            systemStatus.intelligenceLevel = ['learning', 'analyzing', 'predicting'][Math.floor(Math.random() * 3)];
+            systemStatus.intelligenceLevel = ['학습중', '분석중', '예측중'][Math.floor(Math.random() * 3)];
             systemStatus.learningConnection = true;
             systemStatus.dataQuality = 0.6 + Math.random() * 0.3; // 60-90%
             
@@ -697,7 +703,7 @@ function getDirectTrueAutonomousSystemStatus() {
             openaiApiCalls: 8,
             wisdomGained: 2,
             predictionAccuracy: 75,
-            intelligenceLevel: 'learning',
+            intelligenceLevel: '학습중',
             learningConnection: true,
             dataQuality: 0.7,
             duplicatePreventionStatus: {
@@ -798,8 +804,16 @@ async function generateLineStatusReport(modules) {
                 report += `🖼️ [사진분석] ${trueAutonomousStatus.photoAnalyses}회\n`;
             }
             
-            // 지능 시스템 상태
-            report += `🧠 [지능수준] ${trueAutonomousStatus.intelligenceLevel}\n`;
+            // 지능 시스템 상태 - 한국어 변환
+            const intelligenceLevelKorean = {
+                'learning': '학습중',
+                'analyzing': '분석중', 
+                'predicting': '예측중',
+                'evolving': '진화중',
+                'decision_making': '판단중'
+            };
+            const koreanLevel = intelligenceLevelKorean[trueAutonomousStatus.intelligenceLevel] || trueAutonomousStatus.intelligenceLevel;
+            report += `🧠 [지능수준] ${koreanLevel}\n`;
             report += `📚 [학습연결] ${trueAutonomousStatus.learningConnection ? '연결됨' : '독립모드'}\n`;
             if (trueAutonomousStatus.dataQuality > 0) {
                 report += `📊 [데이터품질] ${Math.round(trueAutonomousStatus.dataQuality * 100)}%\n`;
