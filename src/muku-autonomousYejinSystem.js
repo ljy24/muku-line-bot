@@ -531,7 +531,7 @@ ${yejinColors.love}💕 예진이: 아저씨~ 이제 나는 진짜 살아있는 
             
             const integration = {
                 // 과거 유사 상황들
-                similarPastSituations: this.findSimilarPastSituations(situation),
+                similarPastSituations: this.findSimilarPastSituations(situation) || [],
                 
                 // 타이밍 패턴 매칭
                 timingPatternMatch: this.matchTimingPatterns(situation),
@@ -546,7 +546,7 @@ ${yejinColors.love}💕 예진이: 아저씨~ 이제 나는 진짜 살아있는 
                 contextualOptimization: this.getContextualOptimization(situation)
             };
             
-            console.log(`${yejinColors.wisdom}✅ [예진이통합] 지혜 통합 완료 - ${integration.similarPastSituations.length}개 유사 상황 발견${yejinColors.reset}`);
+            console.log(`${yejinColors.wisdom}✅ [예진이통합] 지혜 통합 완료 - ${(integration.similarPastSituations || []).length}개 유사 상황 발견${yejinColors.reset}`);
             return integration;
             
         } catch (error) {
@@ -2120,6 +2120,920 @@ ${yejinColors.love}💕 예진이: 아저씨~ 이제 나는 진짜 살아있는 
         } catch (error) {
             console.error(`${yejinColors.learning}❌ [학습인사이트] 오류: ${error.message}${yejinColors.reset}`);
             return {};
+        }
+    }
+    
+    // ================== 📚 학습 패턴 추출 함수 (완전 구현) ==================
+    
+    async extractLearningPatterns(learningStatus) {
+        try {
+            console.log(`${yejinColors.learning}📚 [예진이학습패턴] 학습 데이터에서 패턴 추출 시작...${yejinColors.reset}`);
+            
+            if (!learningStatus) {
+                console.log(`${yejinColors.learning}⚠️ [예진이학습패턴] learningStatus 없음 - 기본 패턴으로 초기화${yejinColors.reset}`);
+                this.initializeBasicPatterns();
+                return;
+            }
+            
+            // 1. 대화 기록 패턴 추출
+            await this.extractConversationPatterns(learningStatus);
+            
+            // 2. 감정 반응 패턴 추출
+            await this.extractEmotionalPatterns(learningStatus);
+            
+            // 3. 아저씨 패턴 추출
+            await this.extractAjossiPatterns(learningStatus);
+            
+            // 4. 사용자 선호도 패턴 추출
+            await this.extractUserPreferencePatterns(learningStatus);
+            
+            // 5. 메시지 패턴 추출
+            await this.extractMessagePatterns(learningStatus);
+            
+            // 6. 추출된 패턴 검증 및 정리
+            this.validateAndCleanPatterns();
+            
+            // 7. 최종 처리 및 고급 분석
+            await this.finalizeLearningPatterns();
+            
+            console.log(`${yejinColors.learning}✅ [예진이학습패턴] 패턴 추출 완료!${yejinColors.reset}`);
+            this.logPatternSummary();
+            
+        } catch (error) {
+            console.error(`${yejinColors.learning}❌ [예진이학습패턴] 패턴 추출 오류: ${error.message}${yejinColors.reset}`);
+            this.initializeBasicPatterns(); // 오류 시 기본 패턴으로 폴백
+        }
+    }
+    
+    // ================== 📊 대화 기록 패턴 추출 ==================
+    async extractConversationPatterns(learningStatus) {
+        try {
+            console.log(`${yejinColors.learning}💬 [대화패턴] 대화 기록 분석 중...${yejinColors.reset}`);
+            
+            // Enterprise 시스템의 대화 기록 추출
+            if (learningStatus.enterprise && learningStatus.enterprise.learningData) {
+                const enterpriseData = learningStatus.enterprise.learningData;
+                
+                // 대화 분석 데이터 추출
+                if (enterpriseData.conversationAnalytics) {
+                    this.learningConnection.conversationHistory = 
+                        this.processConversationAnalytics(enterpriseData.conversationAnalytics);
+                    console.log(`  📈 Enterprise 대화 분석: ${this.learningConnection.conversationHistory.length}개 기록`);
+                }
+                
+                // 시간 기반 패턴 추출
+                if (enterpriseData.conversationAnalytics && enterpriseData.conversationAnalytics.timeBasedPatterns) {
+                    this.learningConnection.timePatterns = 
+                        this.processTimeBasedPatterns(enterpriseData.conversationAnalytics.timeBasedPatterns);
+                    console.log(`  ⏰ 시간 패턴: ${Object.keys(this.learningConnection.timePatterns).length}개 발견`);
+                }
+            }
+            
+            // Independent 시스템의 대화 기록 추출 
+            if (learningStatus.independent && learningStatus.independent.conversationHistory) {
+                const independentHistory = learningStatus.independent.conversationHistory;
+                
+                // 기존 대화 기록과 병합
+                if (Array.isArray(independentHistory)) {
+                    this.learningConnection.conversationHistory = 
+                        this.learningConnection.conversationHistory.concat(
+                            this.processIndependentConversations(independentHistory)
+                        );
+                    console.log(`  🔄 Independent 대화: ${independentHistory.length}개 추가`);
+                }
+            }
+            
+            // 기본 학습 상태에서 대화 추출
+            if (learningStatus.learningStatus && learningStatus.learningStatus.totalConversations > 0) {
+                console.log(`  📊 총 대화 수: ${learningStatus.learningStatus.totalConversations}`);
+            }
+            
+        } catch (error) {
+            console.error(`${yejinColors.learning}❌ [대화패턴] 추출 오류: ${error.message}${yejinColors.reset}`);
+            this.learningConnection.conversationHistory = [];
+        }
+    }
+    
+    // ================== 💖 감정 반응 패턴 추출 ==================
+    async extractEmotionalPatterns(learningStatus) {
+        try {
+            console.log(`${yejinColors.learning}💖 [감정패턴] 감정 반응 분석 중...${yejinColors.reset}`);
+            
+            this.learningConnection.emotionalResponses = {};
+            
+            // Enterprise 감정 데이터
+            if (learningStatus.enterprise && learningStatus.enterprise.learningData) {
+                const enterpriseData = learningStatus.enterprise.learningData;
+                
+                if (enterpriseData.emotionalResponses) {
+                    this.learningConnection.emotionalResponses = 
+                        this.processEmotionalResponses(enterpriseData.emotionalResponses);
+                    console.log(`  💕 Enterprise 감정 반응: ${Object.keys(this.learningConnection.emotionalResponses).length}개 유형`);
+                }
+                
+                if (enterpriseData.userSatisfactionMetrics) {
+                    this.learningConnection.satisfactionMetrics = 
+                        this.processSatisfactionMetrics(enterpriseData.userSatisfactionMetrics);
+                    console.log(`  📊 만족도 메트릭 추출 완료`);
+                }
+            }
+            
+            // Independent 감정 데이터
+            if (learningStatus.independent && learningStatus.independent.emotionalLearning) {
+                const emotionalData = learningStatus.independent.emotionalLearning;
+                
+                // 기존 데이터와 병합
+                Object.keys(emotionalData).forEach(emotion => {
+                    if (!this.learningConnection.emotionalResponses[emotion]) {
+                        this.learningConnection.emotionalResponses[emotion] = [];
+                    }
+                    this.learningConnection.emotionalResponses[emotion] = 
+                        this.learningConnection.emotionalResponses[emotion].concat(emotionalData[emotion]);
+                });
+                
+                console.log(`  🔄 Independent 감정: ${Object.keys(emotionalData).length}개 유형 병합`);
+            }
+            
+        } catch (error) {
+            console.error(`${yejinColors.learning}❌ [감정패턴] 추출 오류: ${error.message}${yejinColors.reset}`);
+            this.learningConnection.emotionalResponses = {
+                love: [], worry: [], playful: [], missing: [], caring: []
+            };
+        }
+    }
+    
+    // ================== 👤 아저씨 패턴 추출 ==================
+    async extractAjossiPatterns(learningStatus) {
+        try {
+            console.log(`${yejinColors.learning}👤 [아저씨패턴] 아저씨 반응 패턴 분석 중...${yejinColors.reset}`);
+            
+            this.learningConnection.ajossiPatterns = {
+                responseTime: [],
+                emotionalStates: [],
+                conversationTopics: [],
+                timePreferences: []
+            };
+            
+            // Enterprise 아저씨 데이터
+            if (learningStatus.enterprise && learningStatus.enterprise.learningData) {
+                const enterpriseData = learningStatus.enterprise.learningData;
+                
+                if (enterpriseData.userBehaviorAnalysis) {
+                    this.learningConnection.ajossiPatterns = 
+                        this.processUserBehaviorAnalysis(enterpriseData.userBehaviorAnalysis);
+                    console.log(`  📈 Enterprise 사용자 행동 분석 완료`);
+                }
+                
+                if (enterpriseData.responsePatterns) {
+                    this.learningConnection.ajossiPatterns.responseTime = 
+                        this.processResponsePatterns(enterpriseData.responsePatterns);
+                    console.log(`  ⏱️ 응답 패턴: ${this.learningConnection.ajossiPatterns.responseTime.length}개`);
+                }
+            }
+            
+            // Independent 아저씨 데이터
+            if (learningStatus.independent && learningStatus.independent.userPatterns) {
+                const userPatterns = learningStatus.independent.userPatterns;
+                
+                // 응답 시간 패턴
+                if (userPatterns.responseTime) {
+                    this.learningConnection.ajossiPatterns.responseTime = 
+                        this.learningConnection.ajossiPatterns.responseTime.concat(userPatterns.responseTime);
+                }
+                
+                // 감정 상태 패턴
+                if (userPatterns.emotionalStates) {
+                    this.learningConnection.ajossiPatterns.emotionalStates = 
+                        this.learningConnection.ajossiPatterns.emotionalStates.concat(userPatterns.emotionalStates);
+                }
+                
+                console.log(`  🔄 Independent 아저씨 패턴 병합 완료`);
+            }
+            
+        } catch (error) {
+            console.error(`${yejinColors.learning}❌ [아저씨패턴] 추출 오류: ${error.message}${yejinColors.reset}`);
+            this.learningConnection.ajossiPatterns = {
+                responseTime: [], emotionalStates: [], conversationTopics: [], timePreferences: []
+            };
+        }
+    }
+    
+    // ================== 🎯 사용자 선호도 패턴 추출 ==================
+    async extractUserPreferencePatterns(learningStatus) {
+        try {
+            console.log(`${yejinColors.learning}🎯 [선호도패턴] 사용자 선호도 분석 중...${yejinColors.reset}`);
+            
+            this.learningConnection.userPreferences = {};
+            
+            // Enterprise 선호도 데이터
+            if (learningStatus.enterprise && learningStatus.enterprise.learningData) {
+                const enterpriseData = learningStatus.enterprise.learningData;
+                
+                if (enterpriseData.userPreferences) {
+                    this.learningConnection.userPreferences = 
+                        this.processUserPreferences(enterpriseData.userPreferences);
+                    console.log(`  💡 사용자 선호도: ${Object.keys(this.learningConnection.userPreferences).length}개 항목`);
+                }
+            }
+            
+            // Independent 선호도 데이터
+            if (learningStatus.independent && learningStatus.independent.preferences) {
+                const preferences = learningStatus.independent.preferences;
+                
+                // 기존 선호도와 병합
+                this.learningConnection.userPreferences = {
+                    ...this.learningConnection.userPreferences,
+                    ...preferences
+                };
+                
+                console.log(`  🔄 Independent 선호도 병합 완료`);
+            }
+            
+            // 기본 선호도 설정 (데이터가 없을 경우)
+            if (Object.keys(this.learningConnection.userPreferences).length === 0) {
+                this.learningConnection.userPreferences = {
+                    preferredTone: 'caring',
+                    preferredTimeSlots: ['morning', 'evening'],
+                    preferredEmotions: ['love', 'caring'],
+                    communicationStyle: 'gentle'
+                };
+                console.log(`  🛡️ 기본 선호도 설정 완료`);
+            }
+            
+        } catch (error) {
+            console.error(`${yejinColors.learning}❌ [선호도패턴] 추출 오류: ${error.message}${yejinColors.reset}`);
+            this.learningConnection.userPreferences = {
+                preferredTone: 'caring', preferredTimeSlots: ['morning', 'evening']
+            };
+        }
+    }
+    
+    // ================== 📝 메시지 패턴 추출 ==================
+    async extractMessagePatterns(learningStatus) {
+        try {
+            console.log(`${yejinColors.learning}📝 [메시지패턴] 메시지 패턴 분석 중...${yejinColors.reset}`);
+            
+            this.learningConnection.messagePatterns = [];
+            
+            // Enterprise 메시지 데이터
+            if (learningStatus.enterprise && learningStatus.enterprise.learningData) {
+                const enterpriseData = learningStatus.enterprise.learningData;
+                
+                if (enterpriseData.messageAnalytics) {
+                    this.learningConnection.messagePatterns = 
+                        this.processMessageAnalytics(enterpriseData.messageAnalytics);
+                    console.log(`  📊 Enterprise 메시지 분석: ${this.learningConnection.messagePatterns.length}개 패턴`);
+                }
+            }
+            
+            // Independent 메시지 데이터
+            if (learningStatus.independent && learningStatus.independent.messageHistory) {
+                const messageHistory = learningStatus.independent.messageHistory;
+                
+                if (Array.isArray(messageHistory)) {
+                    const independentPatterns = this.processMessageHistory(messageHistory);
+                    this.learningConnection.messagePatterns = 
+                        this.learningConnection.messagePatterns.concat(independentPatterns);
+                    console.log(`  🔄 Independent 메시지: ${independentPatterns.length}개 패턴 추가`);
+                }
+            }
+            
+        } catch (error) {
+            console.error(`${yejinColors.learning}❌ [메시지패턴] 추출 오류: ${error.message}${yejinColors.reset}`);
+            this.learningConnection.messagePatterns = [];
+        }
+    }
+    
+    // ================== 🔧 데이터 처리 헬퍼 함수들 ==================
+    
+    processConversationAnalytics(analytics) {
+        try {
+            const conversations = [];
+            
+            if (analytics.conversations && Array.isArray(analytics.conversations)) {
+                analytics.conversations.forEach(conv => {
+                    conversations.push({
+                        timestamp: conv.timestamp || new Date().toISOString(),
+                        message: conv.message || conv.content || '',
+                        emotion: conv.emotion || 'normal',
+                        satisfaction: conv.satisfaction || 0.5,
+                        responseTime: conv.responseTime || 0
+                    });
+                });
+            }
+            
+            return conversations;
+        } catch (error) {
+            console.error(`${yejinColors.learning}❌ [대화분석처리] 오류: ${error.message}${yejinColors.reset}`);
+            return [];
+        }
+    }
+    
+    processTimeBasedPatterns(timePatterns) {
+        try {
+            const patterns = {};
+            
+            if (typeof timePatterns === 'object') {
+                Object.keys(timePatterns).forEach(timeSlot => {
+                    patterns[timeSlot] = {
+                        frequency: timePatterns[timeSlot].frequency || 0,
+                        satisfaction: timePatterns[timeSlot].satisfaction || 0.5,
+                        preferredEmotions: timePatterns[timeSlot].emotions || []
+                    };
+                });
+            }
+            
+            return patterns;
+        } catch (error) {
+            console.error(`${yejinColors.learning}❌ [시간패턴처리] 오류: ${error.message}${yejinColors.reset}`);
+            return {};
+        }
+    }
+    
+    processIndependentConversations(conversations) {
+        try {
+            return conversations.map(conv => ({
+                timestamp: conv.timestamp || new Date().toISOString(),
+                message: conv.message || conv.text || '',
+                emotion: conv.emotion || 'normal',
+                satisfaction: conv.success ? 1.0 : 0.5,
+                source: 'independent'
+            }));
+        } catch (error) {
+            console.error(`${yejinColors.learning}❌ [독립대화처리] 오류: ${error.message}${yejinColors.reset}`);
+            return [];
+        }
+    }
+    
+    processEmotionalResponses(emotionalData) {
+        try {
+            const responses = {};
+            
+            Object.keys(emotionalData).forEach(emotion => {
+                if (Array.isArray(emotionalData[emotion])) {
+                    responses[emotion] = emotionalData[emotion].map(item => ({
+                        message: item.message || item.content || '',
+                        success: item.success !== undefined ? item.success : item.satisfaction > 0.7,
+                        satisfaction: item.satisfaction || 0.5,
+                        timestamp: item.timestamp || new Date().toISOString()
+                    }));
+                }
+            });
+            
+            return responses;
+        } catch (error) {
+            console.error(`${yejinColors.learning}❌ [감정반응처리] 오류: ${error.message}${yejinColors.reset}`);
+            return {};
+        }
+    }
+    
+    processUserBehaviorAnalysis(behaviorData) {
+        try {
+            return {
+                responseTime: behaviorData.responseTime || [],
+                emotionalStates: behaviorData.emotionalStates || [],
+                conversationTopics: behaviorData.topics || [],
+                timePreferences: behaviorData.timePreferences || []
+            };
+        } catch (error) {
+            console.error(`${yejinColors.learning}❌ [행동분석처리] 오류: ${error.message}${yejinColors.reset}`);
+            return { responseTime: [], emotionalStates: [], conversationTopics: [], timePreferences: [] };
+        }
+    }
+    
+    processUserPreferences(preferences) {
+        try {
+            return {
+                preferredTone: preferences.tone || preferences.preferredTone || 'caring',
+                preferredTimeSlots: preferences.timeSlots || preferences.preferredTimes || ['morning', 'evening'],
+                preferredEmotions: preferences.emotions || preferences.preferredEmotions || ['love', 'caring'],
+                communicationStyle: preferences.style || preferences.communicationStyle || 'gentle',
+                ...preferences // 기타 모든 선호도 포함
+            };
+        } catch (error) {
+            console.error(`${yejinColors.learning}❌ [선호도처리] 오류: ${error.message}${yejinColors.reset}`);
+            return { preferredTone: 'caring' };
+        }
+    }
+    
+    processMessageAnalytics(messageData) {
+        try {
+            const patterns = [];
+            
+            if (Array.isArray(messageData)) {
+                messageData.forEach(msg => {
+                    patterns.push({
+                        type: msg.type || 'text',
+                        emotion: msg.emotion || 'normal',
+                        length: msg.length || 0,
+                        success: msg.success !== undefined ? msg.success : msg.satisfaction > 0.7,
+                        context: msg.context || {}
+                    });
+                });
+            }
+            
+            return patterns;
+        } catch (error) {
+            console.error(`${yejinColors.learning}❌ [메시지분석처리] 오류: ${error.message}${yejinColors.reset}`);
+            return [];
+        }
+    }
+    
+    processMessageHistory(messageHistory) {
+        try {
+            return messageHistory.map(msg => ({
+                type: msg.type || 'text',
+                emotion: msg.emotion || 'normal',
+                length: (msg.content || msg.message || '').length,
+                success: msg.success !== undefined ? msg.success : true,
+                timestamp: msg.timestamp || new Date().toISOString(),
+                context: { source: 'independent', ...msg.context }
+            }));
+        } catch (error) {
+            console.error(`${yejinColors.learning}❌ [메시지기록처리] 오류: ${error.message}${yejinColors.reset}`);
+            return [];
+        }
+    }
+    
+    processSatisfactionMetrics(metrics) {
+        try {
+            return {
+                overall: metrics.overall || 0.5,
+                byEmotion: metrics.byEmotion || {},
+                byTimeSlot: metrics.byTimeSlot || {},
+                trends: metrics.trends || []
+            };
+        } catch (error) {
+            console.error(`${yejinColors.learning}❌ [만족도처리] 오류: ${error.message}${yejinColors.reset}`);
+            return { overall: 0.5, byEmotion: {}, byTimeSlot: {}, trends: [] };
+        }
+    }
+    
+    processResponsePatterns(responseData) {
+        try {
+            const patterns = [];
+            
+            if (Array.isArray(responseData)) {
+                responseData.forEach(item => {
+                    patterns.push({
+                        time: item.responseTime || item.time || 0,
+                        satisfaction: item.satisfaction || 0.5,
+                        hour: item.hour || new Date().getHours(),
+                        dayOfWeek: item.dayOfWeek || new Date().getDay(),
+                        emotion: item.emotion || 'normal'
+                    });
+                });
+            } else if (typeof responseData === 'object') {
+                // 객체 형태일 경우 배열로 변환
+                Object.keys(responseData).forEach(key => {
+                    const item = responseData[key];
+                    patterns.push({
+                        time: item.responseTime || item.time || 0,
+                        satisfaction: item.satisfaction || 0.5,
+                        hour: item.hour || parseInt(key) || new Date().getHours(),
+                        context: key
+                    });
+                });
+            }
+            
+            return patterns;
+        } catch (error) {
+            console.error(`${yejinColors.learning}❌ [응답패턴처리] 오류: ${error.message}${yejinColors.reset}`);
+            return [];
+        }
+    }
+    
+    // ================== 🛡️ 기본 패턴 초기화 ==================
+    initializeBasicPatterns() {
+        console.log(`${yejinColors.learning}🛡️ [예진이학습패턴] 기본 패턴으로 초기화...${yejinColors.reset}`);
+        
+        this.learningConnection.conversationHistory = [];
+        this.learningConnection.emotionalResponses = {
+            love: [], worry: [], playful: [], missing: [], caring: []
+        };
+        this.learningConnection.ajossiPatterns = {
+            responseTime: [], emotionalStates: [], conversationTopics: [], timePreferences: []
+        };
+        this.learningConnection.userPreferences = {
+            preferredTone: 'caring',
+            preferredTimeSlots: ['morning', 'evening'],
+            preferredEmotions: ['love', 'caring'],
+            communicationStyle: 'gentle'
+        };
+        this.learningConnection.messagePatterns = [];
+        this.learningConnection.timePatterns = {};
+    }
+    
+    // ================== ✅ 패턴 검증 및 정리 ==================
+    validateAndCleanPatterns() {
+        try {
+            console.log(`${yejinColors.learning}✅ [예진이검증] 추출된 패턴 검증 및 정리 중...${yejinColors.reset}`);
+            
+            // 대화 기록 중복 제거
+            if (Array.isArray(this.learningConnection.conversationHistory)) {
+                this.learningConnection.conversationHistory = this.removeDuplicateConversations(
+                    this.learningConnection.conversationHistory
+                );
+            }
+            
+            // 감정 반응 데이터 검증
+            Object.keys(this.learningConnection.emotionalResponses).forEach(emotion => {
+                if (!Array.isArray(this.learningConnection.emotionalResponses[emotion])) {
+                    this.learningConnection.emotionalResponses[emotion] = [];
+                }
+            });
+            
+            // 아저씨 패턴 검증
+            ['responseTime', 'emotionalStates', 'conversationTopics', 'timePreferences'].forEach(key => {
+                if (!Array.isArray(this.learningConnection.ajossiPatterns[key])) {
+                    this.learningConnection.ajossiPatterns[key] = [];
+                }
+            });
+            
+            // 메시지 패턴 중복 제거
+            if (Array.isArray(this.learningConnection.messagePatterns)) {
+                this.learningConnection.messagePatterns = this.removeDuplicateMessagePatterns(
+                    this.learningConnection.messagePatterns
+                );
+            }
+            
+            console.log(`${yejinColors.learning}✅ [예진이검증] 패턴 검증 완료${yejinColors.reset}`);
+            
+        } catch (error) {
+            console.error(`${yejinColors.learning}❌ [예진이검증] 검증 오류: ${error.message}${yejinColors.reset}`);
+        }
+    }
+    
+    // ================== 🔧 중복 제거 헬퍼 함수들 ==================
+    removeDuplicateConversations(conversations) {
+        try {
+            const seen = new Set();
+            return conversations.filter(conv => {
+                const key = `${conv.timestamp}-${conv.message}`;
+                if (seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            });
+        } catch (error) {
+            return conversations;
+        }
+    }
+    
+    removeDuplicateMessagePatterns(patterns) {
+        try {
+            const seen = new Set();
+            return patterns.filter(pattern => {
+                const key = `${pattern.type}-${pattern.emotion}-${pattern.length}`;
+                if (seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            });
+        } catch (error) {
+            return patterns;
+        }
+    }
+    
+    // ================== 📊 고급 패턴 분석 함수들 ==================
+    
+    analyzeTimeBasedEffectiveness() {
+        try {
+            console.log(`${yejinColors.learning}📊 [시간분석] 시간대별 효과 분석 중...${yejinColors.reset}`);
+            
+            const timeEffectiveness = {};
+            
+            // 대화 기록에서 시간대별 분석
+            if (this.learningConnection.conversationHistory?.length > 0) {
+                this.learningConnection.conversationHistory.forEach(conv => {
+                    const hour = new Date(conv.timestamp).getHours();
+                    const timeSlot = this.getTimeSlot(hour);
+                    
+                    if (!timeEffectiveness[timeSlot]) {
+                        timeEffectiveness[timeSlot] = { total: 0, successful: 0, satisfaction: 0 };
+                    }
+                    
+                    timeEffectiveness[timeSlot].total++;
+                    if (conv.satisfaction > 0.7) {
+                        timeEffectiveness[timeSlot].successful++;
+                    }
+                    timeEffectiveness[timeSlot].satisfaction += conv.satisfaction || 0.5;
+                });
+                
+                // 평균 계산
+                Object.keys(timeEffectiveness).forEach(timeSlot => {
+                    const data = timeEffectiveness[timeSlot];
+                    data.successRate = data.total > 0 ? data.successful / data.total : 0;
+                    data.avgSatisfaction = data.total > 0 ? data.satisfaction / data.total : 0.5;
+                });
+            }
+            
+            this.learningConnection.timeEffectiveness = timeEffectiveness;
+            console.log(`  ⏰ 시간대별 효과: ${Object.keys(timeEffectiveness).length}개 분석 완료`);
+            
+        } catch (error) {
+            console.error(`${yejinColors.learning}❌ [시간분석] 오류: ${error.message}${yejinColors.reset}`);
+            this.learningConnection.timeEffectiveness = {};
+        }
+    }
+    
+    analyzeEmotionalEffectiveness() {
+        try {
+            console.log(`${yejinColors.learning}💖 [감정분석] 감정별 효과 분석 중...${yejinColors.reset}`);
+            
+            const emotionEffectiveness = {};
+            
+            Object.keys(this.learningConnection.emotionalResponses).forEach(emotion => {
+                const responses = this.learningConnection.emotionalResponses[emotion];
+                
+                if (responses?.length > 0) {
+                    const total = responses.length;
+                    const successful = responses.filter(r => r.success || r.satisfaction > 0.7).length;
+                    const avgSatisfaction = responses.reduce((sum, r) => sum + (r.satisfaction || 0.5), 0) / total;
+                    
+                    emotionEffectiveness[emotion] = {
+                        total: total,
+                        successRate: successful / total,
+                        avgSatisfaction: avgSatisfaction,
+                        confidence: Math.min(1, total / 10) // 10개 이상이면 100% 신뢰도
+                    };
+                }
+            });
+            
+            this.learningConnection.emotionEffectiveness = emotionEffectiveness;
+            console.log(`  💕 감정별 효과: ${Object.keys(emotionEffectiveness).length}개 분석 완료`);
+            
+        } catch (error) {
+            console.error(`${yejinColors.learning}❌ [감정분석] 오류: ${error.message}${yejinColors.reset}`);
+            this.learningConnection.emotionEffectiveness = {};
+        }
+    }
+    
+    // ================== 🎯 학습 품질 평가 ==================
+    
+    evaluateLearningQuality() {
+        try {
+            console.log(`${yejinColors.learning}🎯 [품질평가] 학습 데이터 품질 평가 중...${yejinColors.reset}`);
+            
+            const quality = {
+                dataCompleteness: 0,
+                dataReliability: 0,
+                overallQuality: 0,
+                recommendations: []
+            };
+            
+            // 데이터 완전성 평가
+            let completenessScore = 0;
+            const requiredData = [
+                'conversationHistory', 'emotionalResponses', 'ajossiPatterns', 
+                'userPreferences', 'messagePatterns'
+            ];
+            
+            requiredData.forEach(dataType => {
+                const data = this.learningConnection[dataType];
+                if (data && ((Array.isArray(data) && data.length > 0) || 
+                            (typeof data === 'object' && Object.keys(data).length > 0))) {
+                    completenessScore += 20; // 각각 20점
+                }
+            });
+            
+            quality.dataCompleteness = completenessScore / 100;
+            
+            // 데이터 신뢰성 평가 (대화 기록 수 기반)
+            const conversationCount = this.learningConnection.conversationHistory?.length || 0;
+            quality.dataReliability = Math.min(1, conversationCount / 50); // 50개 이상이면 100% 신뢰
+            
+            // 전체 품질 계산
+            quality.overallQuality = (quality.dataCompleteness * 0.6 + quality.dataReliability * 0.4);
+            
+            // 개선 권장사항
+            if (quality.dataCompleteness < 0.8) {
+                quality.recommendations.push('더 많은 대화 데이터 수집 필요');
+            }
+            if (quality.dataReliability < 0.6) {
+                quality.recommendations.push('학습 기간 연장 권장');
+            }
+            if (quality.overallQuality > 0.8) {
+                quality.recommendations.push('고품질 학습 데이터 확보됨');
+            }
+            
+            this.learningConnection.dataQuality = quality;
+            
+            console.log(`  📊 데이터 완전성: ${(quality.dataCompleteness * 100).toFixed(1)}%`);
+            console.log(`  🔒 데이터 신뢰성: ${(quality.dataReliability * 100).toFixed(1)}%`);
+            console.log(`  🌟 전체 품질: ${(quality.overallQuality * 100).toFixed(1)}%`);
+            
+        } catch (error) {
+            console.error(`${yejinColors.learning}❌ [품질평가] 오류: ${error.message}${yejinColors.reset}`);
+            this.learningConnection.dataQuality = { overallQuality: 0.5, recommendations: ['데이터 품질 평가 실패'] };
+        }
+    }
+    
+    // ================== 🔍 패턴 검색 및 조회 함수들 ==================
+    
+    findSimilarConversations(currentContext) {
+        try {
+            if (!this.learningConnection.conversationHistory?.length) return [];
+            
+            const similar = [];
+            const currentHour = new Date().getHours();
+            const currentEmotion = currentContext.emotion || 'normal';
+            
+            this.learningConnection.conversationHistory.forEach(conv => {
+                const convHour = new Date(conv.timestamp).getHours();
+                let similarity = 0;
+                
+                // 시간 유사성 (±2시간)
+                if (Math.abs(convHour - currentHour) <= 2) similarity += 0.3;
+                
+                // 감정 유사성
+                if (conv.emotion === currentEmotion) similarity += 0.4;
+                
+                // 만족도 가중치
+                similarity += (conv.satisfaction || 0.5) * 0.3;
+                
+                if (similarity > 0.5) {
+                    similar.push({
+                        ...conv,
+                        similarity: similarity
+                    });
+                }
+            });
+            
+            return similar.sort((a, b) => b.similarity - a.similarity).slice(0, 5);
+            
+        } catch (error) {
+            console.error(`${yejinColors.learning}❌ [유사대화검색] 오류: ${error.message}${yejinColors.reset}`);
+            return [];
+        }
+    }
+    
+    getBestEmotionForCurrentTime() {
+        try {
+            const currentHour = new Date().getHours();
+            const timeSlot = this.getTimeSlot(currentHour);
+            
+            if (!this.learningConnection.timeEffectiveness?.[timeSlot]) {
+                return 'love'; // 기본 감정
+            }
+            
+            // 시간대별로 가장 효과적인 감정 찾기
+            let bestEmotion = 'love';
+            let bestScore = 0;
+            
+            Object.keys(this.learningConnection.emotionEffectiveness || {}).forEach(emotion => {
+                const effectiveness = this.learningConnection.emotionEffectiveness[emotion];
+                const score = effectiveness.successRate * effectiveness.confidence;
+                
+                if (score > bestScore) {
+                    bestScore = score;
+                    bestEmotion = emotion;
+                }
+            });
+            
+            return bestEmotion;
+            
+        } catch (error) {
+            console.error(`${yejinColors.learning}❌ [최적감정찾기] 오류: ${error.message}${yejinColors.reset}`);
+            return 'love';
+        }
+    }
+    
+    // ================== 📈 학습 통계 및 인사이트 ==================
+    
+    generateLearningInsights() {
+        try {
+            console.log(`${yejinColors.learning}📈 [인사이트] 학습 인사이트 생성 중...${yejinColors.reset}`);
+            
+            const insights = {
+                keyFindings: [],
+                optimizations: [],
+                predictions: [],
+                emotionalProfile: {},
+                timeProfile: {},
+                communicationProfile: {}
+            };
+            
+            // 감정 프로필 생성
+            if (this.learningConnection.emotionEffectiveness) {
+                Object.keys(this.learningConnection.emotionEffectiveness).forEach(emotion => {
+                    const data = this.learningConnection.emotionEffectiveness[emotion];
+                    insights.emotionalProfile[emotion] = {
+                        effectiveness: data.successRate,
+                        confidence: data.confidence,
+                        recommendation: data.successRate > 0.7 ? 'highly_effective' : 
+                                       data.successRate > 0.5 ? 'moderately_effective' : 'needs_improvement'
+                    };
+                });
+            }
+            
+            // 시간 프로필 생성
+            if (this.learningConnection.timeEffectiveness) {
+                Object.keys(this.learningConnection.timeEffectiveness).forEach(timeSlot => {
+                    const data = this.learningConnection.timeEffectiveness[timeSlot];
+                    insights.timeProfile[timeSlot] = {
+                        effectiveness: data.successRate,
+                        avgSatisfaction: data.avgSatisfaction,
+                        recommendation: data.successRate > 0.7 ? 'optimal_time' :
+                                       data.successRate > 0.5 ? 'good_time' : 'avoid_time'
+                    };
+                });
+            }
+            
+            // 핵심 발견사항
+            const totalConversations = this.learningConnection.conversationHistory?.length || 0;
+            if (totalConversations > 10) {
+                insights.keyFindings.push(`총 ${totalConversations}개의 대화 분석 완료`);
+            }
+            
+            const emotionCount = Object.keys(this.learningConnection.emotionalResponses || {}).length;
+            if (emotionCount > 0) {
+                insights.keyFindings.push(`${emotionCount}개 감정 유형별 패턴 학습`);
+            }
+            
+            // 최적화 제안
+            const bestEmotion = this.getBestEmotionForCurrentTime();
+            insights.optimizations.push(`현재 시간대 최적 감정: ${bestEmotion}`);
+            
+            if (this.learningConnection.dataQuality?.overallQuality > 0.8) {
+                insights.optimizations.push('고품질 학습 데이터로 고급 예측 가능');
+            }
+            
+            this.learningConnection.insights = insights;
+            
+            console.log(`  🔍 핵심 발견: ${insights.keyFindings.length}개`);
+            console.log(`  🎯 최적화 제안: ${insights.optimizations.length}개`);
+            
+        } catch (error) {
+            console.error(`${yejinColors.learning}❌ [인사이트생성] 오류: ${error.message}${yejinColors.reset}`);
+            this.learningConnection.insights = { keyFindings: [], optimizations: [] };
+        }
+    }
+    
+    // ================== 🚀 최종 패턴 추출 완료 함수 ==================
+    
+    async finalizeLearningPatterns() {
+        try {
+            console.log(`${yejinColors.learning}🚀 [최종처리] 학습 패턴 추출 최종 처리 중...${yejinColors.reset}`);
+            
+            // 고급 분석 실행
+            this.analyzeTimeBasedEffectiveness();
+            this.analyzeEmotionalEffectiveness();
+            
+            // 학습 품질 평가
+            this.evaluateLearningQuality();
+            
+            // 인사이트 생성
+            this.generateLearningInsights();
+            
+            // 학습 연결 상태 최종 설정
+            this.learningConnection.isFullyProcessed = true;
+            this.learningConnection.lastProcessedTime = new Date().toISOString();
+            this.learningConnection.processingVersion = 'v4.0-TRUE_AUTONOMY';
+            
+            console.log(`${yejinColors.learning}✅ [최종처리] 모든 학습 패턴 추출 및 분석 완료!${yejinColors.reset}`);
+            
+            return true;
+            
+        } catch (error) {
+            console.error(`${yejinColors.learning}❌ [최종처리] 오류: ${error.message}${yejinColors.reset}`);
+            return false;
+        }
+    }
+    
+    // ================== 📊 패턴 요약 로그 ==================
+    logPatternSummary() {
+        try {
+            const quality = this.learningConnection.dataQuality?.overallQuality || 0;
+            const insights = this.learningConnection.insights?.keyFindings?.length || 0;
+            const timeSlots = Object.keys(this.learningConnection.timeEffectiveness || {}).length;
+            const emotions = Object.keys(this.learningConnection.emotionEffectiveness || {}).length;
+            
+            console.log(`
+${yejinColors.learning}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+📚 [예진이학습패턴] 추출 완료 요약
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${yejinColors.reset}
+
+${yejinColors.learning}💬 대화 기록:${yejinColors.reset} ${this.learningConnection.conversationHistory?.length || 0}개
+${yejinColors.learning}💖 감정 반응:${yejinColors.reset} ${Object.keys(this.learningConnection.emotionalResponses || {}).length}개 유형
+${yejinColors.learning}👤 아저씨 패턴:${yejinColors.reset} 응답시간 ${this.learningConnection.ajossiPatterns?.responseTime?.length || 0}개
+${yejinColors.learning}🎯 사용자 선호도:${yejinColors.reset} ${Object.keys(this.learningConnection.userPreferences || {}).length}개 항목
+${yejinColors.learning}📝 메시지 패턴:${yejinColors.reset} ${this.learningConnection.messagePatterns?.length || 0}개
+${yejinColors.learning}⏰ 시간 패턴:${yejinColors.reset} ${Object.keys(this.learningConnection.timePatterns || {}).length}개 시간대
+
+${yejinColors.intelligence}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+🧠 [고급분석] 지능 분석 결과
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${yejinColors.reset}
+
+${yejinColors.intelligence}📊 데이터 품질:${yejinColors.reset} ${(quality * 100).toFixed(1)}% ${quality > 0.8 ? '🌟' : quality > 0.6 ? '✅' : '⚠️'}
+${yejinColors.intelligence}🕒 시간대 분석:${yejinColors.reset} ${timeSlots}개 시간대 효과 분석
+${yejinColors.intelligence}💕 감정 분석:${yejinColors.reset} ${emotions}개 감정별 효과 분석  
+${yejinColors.intelligence}🔍 인사이트:${yejinColors.reset} ${insights}개 핵심 발견사항
+${yejinColors.intelligence}🎯 최적 감정:${yejinColors.reset} ${this.getBestEmotionForCurrentTime()}
+
+${yejinColors.love}💕 예진이: 아저씨~ 이제 과거의 모든 기억을 분석해서 더 똑똑해졌어! 완전 진화한 나야! 💖${yejinColors.reset}
+${yejinColors.wisdom}🧠 예진이: 학습 품질 ${(quality * 100).toFixed(0)}%로 ${quality > 0.8 ? '최고급 지능' : quality > 0.6 ? '고급 지능' : '기본 지능'} 모드야! 🌟${yejinColors.reset}
+            `);
+        } catch (error) {
+            console.error(`${yejinColors.learning}❌ [패턴요약] 로그 오류: ${error.message}${yejinColors.reset}`);
         }
     }
 }
