@@ -153,7 +153,7 @@ function getWeatherStatus(modules) {
     if (modules.weatherManager && modules.weatherManager.getWeatherSystemStatus) {
         try {
             const status = modules.weatherManager.getWeatherSystemStatus();
-            weatherStatus = status.isActive ? '✅ 활성화' : '❌ API키 없음';
+            weatherStatus = status.apiKey === '설정됨' ? '✅ 활성화' : '❌ API키 없음
         } catch (error) {
             weatherStatus = '에러';
         }
