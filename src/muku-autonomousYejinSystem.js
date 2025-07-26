@@ -1227,28 +1227,140 @@ function getTrueAutonomousYejinStatus() {
 
 // ================== 📤 외부 인터페이스 ==================
 module.exports = {
+    // 메인 클래스
     TrueAutonomousYejinSystem,
-    initializeTrueAutonomousYejin,
-    getTrueAutonomousYejinStatus,
+    AutonomousYejinSystem: TrueAutonomousYejinSystem, // 기존 이름 호환
     
-    // 편의 함수들
+    // 🔥 기존 함수 이름 호환성 보장
+    initializeAutonomousYejin: initializeTrueAutonomousYejin, // ✅ 기존 이름
+    initializeTrueAutonomousYejin,                          // 새로운 이름
+    
+    // 상태 조회 함수들
+    getAutonomousYejinStatus: getTrueAutonomousYejinStatus, // ✅ 기존 이름
+    getTrueAutonomousYejinStatus,                          // 새로운 이름
+    
+    // 편의 함수들 (기존 이름 유지)
+    startAutonomousYejin: initializeTrueAutonomousYejin,    // ✅ 기존 이름
     startTrueAutonomy: initializeTrueAutonomousYejin,
+    getYejinStatus: getTrueAutonomousYejinStatus,           // ✅ 기존 이름
     getYejinIntelligence: getTrueAutonomousYejinStatus,
+    
+    // 🛡️ 기존 함수들 호환성
+    updateYejinEmotion: async function(emotionType, value) {
+        if (!globalTrueAutonomousYejin) return false;
+        
+        try {
+            if (emotionType === 'love') {
+                globalTrueAutonomousYejin.yejinState.loveLevel = Math.max(0, Math.min(1, value));
+            } else if (emotionType === 'worry') {
+                globalTrueAutonomousYejin.yejinState.worryLevel = Math.max(0, Math.min(1, value));
+            } else if (emotionType === 'playful') {
+                globalTrueAutonomousYejin.yejinState.playfulLevel = Math.max(0, Math.min(1, value));
+            } else if (emotionType === 'missing') {
+                globalTrueAutonomousYejin.yejinState.missingLevel = Math.max(0, Math.min(1, value));
+            } else if (emotionType === 'caring') {
+                globalTrueAutonomousYejin.yejinState.caringLevel = Math.max(0, Math.min(1, value));
+            }
+            
+            console.log(`${yejinColors.emotion}🔄 [예진이감정] ${emotionType} 감정을 ${value}로 업데이트${yejinColors.reset}`);
+            return true;
+        } catch (error) {
+            console.error(`${yejinColors.emotion}❌ [예진이감정] 업데이트 오류: ${error.message}${yejinColors.reset}`);
+            return false;
+        }
+    },
+    
+    forceYejinAction: async function(actionType) {
+        if (!globalTrueAutonomousYejin) return false;
+        
+        try {
+            console.log(`${yejinColors.heart}💫 [예진이강제실행] ${actionType} 강제 실행 시도...${yejinColors.reset}`);
+            
+            // 안전 체크 (기본적인 것만)
+            if (!globalTrueAutonomousYejin.canSendMessage()) {
+                console.log(`${yejinColors.warning}⚠️ [예진이강제실행] 안전 한도로 실행 불가${yejinColors.reset}`);
+                return false;
+            }
+            
+            const situation = await globalTrueAutonomousYejin.performDeepSituationAnalysis();
+            
+            // 강제 실행
+            const actionDecision = {
+                type: actionType === 'photo' ? 'photo' : 'message',
+                emotionType: actionType === 'photo' ? 'love' : actionType,
+                confidence: 1.0,
+                reasoning: `사용자 강제 실행: ${actionType}`
+            };
+            
+            await globalTrueAutonomousYejin.executeAutonomousAction(actionDecision);
+            
+            console.log(`${yejinColors.heart}✅ [예진이강제실행] ${actionType} 실행 완료${yejinColors.reset}`);
+            return true;
+        } catch (error) {
+            console.error(`${yejinColors.heart}❌ [예진이강제실행] 오류: ${error.message}${yejinColors.reset}`);
+            return false;
+        }
+    },
+    
+    emergencyStopYejin: function() {
+        if (!globalTrueAutonomousYejin) return false;
+        
+        try {
+            // 진행 중인 결정 중단
+            globalTrueAutonomousYejin.autonomousDecision.decisionInProgress = false;
+            globalTrueAutonomousYejin.safetySystem.emergencyMode = true;
+            
+            console.log(`${yejinColors.warning}🚨 [예진이응급정지] 모든 자율 활동 즉시 중단됨${yejinColors.reset}`);
+            return true;
+        } catch (error) {
+            console.error(`${yejinColors.warning}❌ [예진이응급정지] 오류: ${error.message}${yejinColors.reset}`);
+            return false;
+        }
+    },
+    
+    // LINE API 연결
+    connectLineApi: async function(lineClient, targetUserId) {
+        console.log(`${yejinColors.message}🔗 [LINE연결] 진정한 자율 LINE API 연결 시도...${yejinColors.reset}`);
+        return await initializeTrueAutonomousYejin(lineClient, targetUserId);
+    },
+    
+    // 안전 종료 (기존 이름 호환)
+    shutdownAutonomousYejin: async function() {
+        if (globalTrueAutonomousYejin) {
+            await globalTrueAutonomousYejin.shutdown();
+            globalTrueAutonomousYejin = null;
+        }
+    },
+    shutdownTrueAutonomy: async function() {
+        if (globalTrueAutonomousYejin) {
+            await globalTrueAutonomousYejin.shutdown();
+            globalTrueAutonomousYejin = null;
+        }
+    },
     
     // 설정
     TRUE_AUTONOMY_CONFIG,
+    YEJIN_CONFIG: TRUE_AUTONOMY_CONFIG, // 기존 이름 호환
     PHOTO_CONFIG,
     yejinColors,
     
     // 전역 인스턴스
     getGlobalInstance: () => globalTrueAutonomousYejin,
     
-    // 안전 종료
-    shutdownTrueAutonomy: async function() {
-        if (globalTrueAutonomousYejin) {
-            await globalTrueAutonomousYejin.shutdown();
-            globalTrueAutonomousYejin = null;
-        }
+    // 🧠 새로운 지능 관련 함수들
+    getYejinIntelligenceLevel: function() {
+        if (!globalTrueAutonomousYejin) return 0;
+        return globalTrueAutonomousYejin.statistics.wisdomGained;
+    },
+    
+    getNextDecisionTime: function() {
+        if (!globalTrueAutonomousYejin) return null;
+        return globalTrueAutonomousYejin.autonomousDecision.nextDecisionTime;
+    },
+    
+    getPredictionAccuracy: function() {
+        if (!globalTrueAutonomousYejin) return 0;
+        return globalTrueAutonomousYejin.calculatePredictionAccuracy();
     }
 };
 
