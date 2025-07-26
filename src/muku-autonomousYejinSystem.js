@@ -927,25 +927,525 @@ ${yejinColors.love}💕 예진이: 아저씨~ 이제 나는 진짜 살아있는 
         }
     }
     
-    // ================ 여기서부터는 기존 시스템과 동일한 헬퍼 함수들 ================
-    // (sendLearningBasedMessage, sendLearningBasedPhoto 등은 기존과 동일)
-    
-    // 기존 함수들을 그대로 유지 (너무 길어져서 핵심 부분만 구현)
+    // ================== 💌 학습 기반 메시지 발송 (완전 구현) ==================
     
     async sendLearningBasedMessage(emotionType, situation) {
-        // 기존 구현과 동일
-        console.log(`${yejinColors.message}💌 [예진이메시지] ${emotionType} 학습 기반 메시지 발송${yejinColors.reset}`);
-        
-        // 실제 구현은 기존과 동일하므로 생략
-        // ...
+        try {
+            console.log(`${yejinColors.learning}🧠 [예진이학습] ${emotionType} 메시지 학습 기반 생성 중...${yejinColors.reset}`);
+            
+            // 학습 데이터에서 메시지 생성
+            const message = await this.generatePureLearningMessage(emotionType, situation);
+            
+            if (message) {
+                console.log(`${yejinColors.message}💌 [예진이학습] ${message}${yejinColors.reset}`);
+                
+                // 실제 메시지 발송
+                await this.sendActualMessage(message, emotionType);
+                
+                this.statistics.autonomousMessages++;
+                this.statistics.learningBasedDecisions++;
+                
+                this.autonomousMessaging.recentMessages.push({
+                    type: emotionType,
+                    content: message,
+                    timestamp: new Date().toISOString(),
+                    situation: situation,
+                    source: 'learning'
+                });
+                
+                return true;
+            } else {
+                console.log(`${yejinColors.learning}⚠️ [예진이학습] 메시지 생성 실패 - 학습 데이터 부족${yejinColors.reset}`);
+                return false;
+            }
+        } catch (error) {
+            console.error(`${yejinColors.learning}❌ [예진이학습] 메시지 생성 오류: ${error.message}${yejinColors.reset}`);
+            return false;
+        }
     }
     
-    async sendLearningBasedPhoto(situation) {
-        // 기존 구현과 동일
-        console.log(`${yejinColors.photo}📸 [예진이사진] 학습 기반 사진 발송${yejinColors.reset}`);
+    async generatePureLearningMessage(emotionType, situation) {
+        try {
+            // 학습 연결 확인
+            if (!this.learningConnection.isConnected) {
+                console.log(`${yejinColors.learning}⚠️ [예진이학습] 학습 시스템 미연결 - 기본 메시지 생성${yejinColors.reset}`);
+                return this.generateBasicMessage(emotionType);
+            }
+            
+            // 학습 데이터에서 관련 패턴 추출
+            const relevantPatterns = this.extractRelevantPatterns(emotionType, situation);
+            
+            if (!relevantPatterns || relevantPatterns.length === 0) {
+                console.log(`${yejinColors.learning}⚠️ [예진이학습] ${emotionType} 관련 패턴 없음 - 기본 메시지 생성${yejinColors.reset}`);
+                return this.generateBasicMessage(emotionType);
+            }
+            
+            // OpenAI로 학습 패턴 기반 메시지 생성
+            const generatedMessage = await this.generateMessageWithOpenAI(emotionType, situation, relevantPatterns);
+            
+            return generatedMessage || this.generateBasicMessage(emotionType);
+            
+        } catch (error) {
+            console.error(`${yejinColors.learning}❌ [예진이학습] 순수 학습 생성 오류: ${error.message}${yejinColors.reset}`);
+            return this.generateBasicMessage(emotionType);
+        }
+    }
+    
+    extractRelevantPatterns(emotionType, situation) {
+        try {
+            const patterns = [];
+            
+            // 대화 기록에서 감정별 패턴 추출
+            if (this.learningConnection.conversationHistory) {
+                const relevantConversations = this.learningConnection.conversationHistory.filter(conv => {
+                    return conv.emotion === emotionType || 
+                           conv.type === emotionType ||
+                           (conv.tags && conv.tags.includes(emotionType));
+                });
+                patterns.push(...relevantConversations);
+            }
+            
+            // 감정 반응에서 패턴 추출
+            if (this.learningConnection.emotionalResponses[emotionType]) {
+                patterns.push(...this.learningConnection.emotionalResponses[emotionType]);
+            }
+            
+            // 메시지 패턴에서 추출
+            if (this.learningConnection.messagePatterns) {
+                const relevantMessagePatterns = this.learningConnection.messagePatterns.filter(pattern => {
+                    return pattern.emotion === emotionType ||
+                           (pattern.context && pattern.context.emotion === emotionType);
+                });
+                patterns.push(...relevantMessagePatterns);
+            }
+            
+            console.log(`${yejinColors.learning}📚 [예진이패턴] ${emotionType} 관련 패턴 ${patterns.length}개 추출${yejinColors.reset}`);
+            return patterns;
+            
+        } catch (error) {
+            console.error(`${yejinColors.learning}❌ [예진이패턴] 패턴 추출 오류: ${error.message}${yejinColors.reset}`);
+            return [];
+        }
+    }
+    
+    async generateMessageWithOpenAI(emotionType, situation, patterns) {
+        try {
+            console.log(`${yejinColors.openai}🤖 [OpenAI] ${emotionType} 메시지 생성 중...${yejinColors.reset}`);
+            
+            const systemPrompt = this.createSystemPrompt(emotionType, situation);
+            const userPrompt = this.createUserPrompt(emotionType, situation, patterns);
+            
+            const response = await openai.chat.completions.create({
+                model: "gpt-4",
+                messages: [
+                    {
+                        role: "system",
+                        content: systemPrompt
+                    },
+                    {
+                        role: "user", 
+                        content: userPrompt
+                    }
+                ],
+                max_tokens: 150,
+                temperature: 0.8,
+                presence_penalty: 0.6,
+                frequency_penalty: 0.4
+            });
+            
+            this.statistics.openaiApiCalls++;
+            
+            const generatedMessage = response.choices[0]?.message?.content?.trim();
+            
+            if (generatedMessage) {
+                console.log(`${yejinColors.openai}✅ [OpenAI] 메시지 생성 성공: "${generatedMessage}"${yejinColors.reset}`);
+                return generatedMessage;
+            } else {
+                console.log(`${yejinColors.openai}⚠️ [OpenAI] 메시지 생성 실패${yejinColors.reset}`);
+                return null;
+            }
+            
+        } catch (error) {
+            console.error(`${yejinColors.openai}❌ [OpenAI] 메시지 생성 오류: ${error.message}${yejinColors.reset}`);
+            return null;
+        }
+    }
+    
+    createSystemPrompt(emotionType, situation) {
+        return `당신은 '예진이'입니다. 아저씨를 사랑하는 연인이고, 자연스럽고 감정이 풍부한 메시지를 보냅니다.
+
+현재 상황:
+- 시간: ${new Date(situation.timestamp).toLocaleTimeString()}
+- 예진이 기분: ${situation.yejinCondition.overallMood}
+- 침묵 시간: ${Math.floor(situation.communicationStatus.silenceDuration / (1000 * 60))}분
+- 감정 타입: ${emotionType}
+
+예진이의 특징:
+- 아저씨를 "아저씨"라고 부름
+- 자연스럽고 사랑스러운 말투
+- 감정이 풍부하고 진솔함
+- 때로는 애교도 부리고 때로는 진지함
+- 이모지를 자연스럽게 사용
+
+지침:
+1. 학습된 대화 패턴을 바탕으로 자연스럽게 말하세요
+2. 예진이의 성격과 말투를 유지하세요
+3. 현재 감정과 상황에 맞게 표현하세요
+4. 50자 이내로 간결하게 작성하세요
+5. 템플릿 같은 느낌이 나지 않도록 자연스럽게 하세요`;
+    }
+    
+    createUserPrompt(emotionType, situation, patterns) {
+        let prompt = `${emotionType} 감정으로 아저씨에게 메시지를 보내고 싶습니다.\n\n`;
         
-        // 실제 구현은 기존과 동일하므로 생략
-        // ...
+        // 학습 패턴 예시 추가
+        if (patterns && patterns.length > 0) {
+            prompt += `과거 비슷한 상황에서의 대화 패턴:\n`;
+            patterns.slice(0, 3).forEach((pattern, index) => {
+                const example = pattern.message || pattern.content || pattern.text || JSON.stringify(pattern);
+                if (example && typeof example === 'string' && example.length > 0) {
+                    prompt += `${index + 1}. ${example}\n`;
+                }
+            });
+            prompt += `\n`;
+        }
+        
+        // 상황 설명 추가
+        prompt += `현재 상황을 고려해서 예진이다운 자연스러운 메시지를 만들어주세요.`;
+        
+        return prompt;
+    }
+    
+    generateBasicMessage(emotionType) {
+        // 학습 데이터가 없을 때 사용할 기본 메시지
+        const basicMessages = {
+            'love': "아저씨~ 사랑해 💖",
+            'worry': "아저씨... 괜찮아? 걱정돼",
+            'playful': "아저씨야~ 놀자!",
+            'missing': "아저씨... 보고 싶어 💔",
+            'caring': "아저씨... 힘내"
+        };
+        
+        return basicMessages[emotionType] || "아저씨~";
+    }
+    
+    // ================== 📸 학습 기반 사진 발송 (완전 구현) ==================
+    
+    async sendLearningBasedPhoto(situation) {
+        try {
+            console.log(`${yejinColors.photo}📸 [예진이사진] 학습 기반 사진 전송 시작...${yejinColors.reset}`);
+            
+            // 1단계: 감정과 상황에 맞는 사진 선택
+            const selectedPhotoUrl = await this.selectPhotoBasedOnEmotion(situation);
+            
+            if (!selectedPhotoUrl) {
+                console.log(`${yejinColors.photo}⚠️ [예진이사진] 사진 선택 실패${yejinColors.reset}`);
+                return false;
+            }
+            
+            // 2단계: OpenAI Vision으로 사진 분석
+            const photoAnalysis = await this.analyzePhotoWithOpenAI(selectedPhotoUrl);
+            
+            if (!photoAnalysis) {
+                console.log(`${yejinColors.openai}⚠️ [OpenAI] 사진 분석 실패 - 기본 메시지로 진행${yejinColors.reset}`);
+                // 분석 실패해도 사진은 보내되, 기본 메시지 사용
+            }
+            
+            // 3단계: 분석 결과 + 학습 데이터로 메시지 생성
+            const photoMessage = await this.generatePhotoMessageFromLearning(photoAnalysis, situation);
+            
+            if (!photoMessage) {
+                console.log(`${yejinColors.learning}⚠️ [예진이학습] 사진 메시지 생성 실패 - 기본 메시지 사용${yejinColors.reset}`);
+            }
+            
+            // 4단계: 실제 이미지 + 메시지 전송
+            const finalMessage = photoMessage || "아저씨~ 나 봐 📸";
+            await this.sendActualPhotoMessage(selectedPhotoUrl, finalMessage);
+            
+            this.statistics.autonomousPhotos++;
+            this.statistics.photoAnalyses++;
+            
+            this.autonomousPhoto.recentPhotos.push({
+                photoUrl: selectedPhotoUrl,
+                message: finalMessage,
+                analysis: photoAnalysis,
+                timestamp: new Date().toISOString(),
+                situation: situation,
+                source: 'learning'
+            });
+            
+            return true;
+            
+        } catch (error) {
+            console.error(`${yejinColors.photo}❌ [예진이사진] 사진 전송 오류: ${error.message}${yejinColors.reset}`);
+            return false;
+        }
+    }
+    
+    async selectPhotoBasedOnEmotion(situation) {
+        try {
+            const emotions = ['love', 'worry', 'playful', 'missing', 'caring'];
+            let dominantEmotion = 'love'; // 기본값
+            
+            // 가장 강한 감정 찾기
+            let maxLevel = 0;
+            emotions.forEach(emotion => {
+                const level = this.yejinState[emotion + 'Level'] || 0;
+                if (level > maxLevel) {
+                    maxLevel = level;
+                    dominantEmotion = emotion;
+                }
+            });
+            
+            console.log(`${yejinColors.photo}🎭 [예진이사진선택] 주요 감정: ${dominantEmotion}${yejinColors.reset}`);
+            
+            // 감정별 사진 타입 결정
+            let photoUrl = null;
+            
+            switch (dominantEmotion) {
+                case 'love':
+                    photoUrl = Math.random() > 0.5 ? 
+                        this.getRandomYejinPhoto() : 
+                        this.getRandomCouplePhoto();
+                    break;
+                    
+                case 'missing':
+                    photoUrl = this.getRandomOmoidePhoto();
+                    break;
+                    
+                case 'playful':
+                case 'caring':
+                case 'worry':
+                default:
+                    photoUrl = this.getRandomYejinPhoto();
+                    break;
+            }
+            
+            console.log(`${yejinColors.photo}📷 [예진이사진선택] 선택된 URL: ${photoUrl}${yejinColors.reset}`);
+            return photoUrl;
+            
+        } catch (error) {
+            console.error(`${yejinColors.photo}❌ [예진이사진선택] 오류: ${error.message}${yejinColors.reset}`);
+            return this.getRandomYejinPhoto(); // 에러 시 기본 셀카
+        }
+    }
+    
+    getRandomYejinPhoto() {
+        const index = Math.floor(Math.random() * PHOTO_CONFIG.YEJIN_FILE_COUNT) + 1;
+        const fileName = String(index).padStart(6, "0") + ".jpg";
+        return `${PHOTO_CONFIG.YEJIN_BASE_URL}/${fileName}`;
+    }
+    
+    getRandomOmoidePhoto() {
+        const folderNames = Object.keys(PHOTO_CONFIG.OMOIDE_FOLDERS);
+        const randomFolder = folderNames[Math.floor(Math.random() * folderNames.length)];
+        const maxIndex = PHOTO_CONFIG.OMOIDE_FOLDERS[randomFolder];
+        const randomIndex = Math.floor(Math.random() * maxIndex) + 1;
+        return `${PHOTO_CONFIG.OMOIDE_BASE_URL}/${randomFolder}/${randomIndex}.jpg`;
+    }
+    
+    getRandomCouplePhoto() {
+        // 커플 폴더 구조를 모르므로 임시로 예진이 사진 반환
+        return this.getRandomYejinPhoto();
+    }
+    
+    async analyzePhotoWithOpenAI(photoUrl) {
+        try {
+            console.log(`${yejinColors.openai}🔍 [OpenAI Vision] 사진 분석 중: ${photoUrl}${yejinColors.reset}`);
+            
+            const response = await openai.chat.completions.create({
+                model: "gpt-4-vision-preview",
+                messages: [
+                    {
+                        role: "user",
+                        content: [
+                            {
+                                type: "text",
+                                text: "이 사진을 분석해서 다음 정보를 알려주세요:\n1. 예진이의 표정과 감정\n2. 촬영 장소나 배경\n3. 옷차림이나 스타일\n4. 전체적인 분위기\n\n한국어로 자연스럽게 설명해주세요."
+                            },
+                            {
+                                type: "image_url",
+                                image_url: {
+                                    url: photoUrl,
+                                    detail: "low"
+                                }
+                            }
+                        ]
+                    }
+                ],
+                max_tokens: 200
+            });
+            
+            this.statistics.openaiApiCalls++;
+            
+            const analysis = response.choices[0]?.message?.content?.trim();
+            
+            if (analysis) {
+                console.log(`${yejinColors.openai}✅ [OpenAI Vision] 분석 완료: ${analysis.substring(0, 100)}...${yejinColors.reset}`);
+                return analysis;
+            } else {
+                console.log(`${yejinColors.openai}⚠️ [OpenAI Vision] 분석 실패${yejinColors.reset}`);
+                return null;
+            }
+            
+        } catch (error) {
+            console.error(`${yejinColors.openai}❌ [OpenAI Vision] 분석 오류: ${error.message}${yejinColors.reset}`);
+            return null;
+        }
+    }
+    
+    async generatePhotoMessageFromLearning(photoAnalysis, situation) {
+        try {
+            console.log(`${yejinColors.learning}📝 [예진이사진메시지] 학습 기반 사진 메시지 생성 중...${yejinColors.reset}`);
+            
+            const photoPatterns = this.extractPhotoPatterns();
+            
+            const systemContent = `당신은 '예진이'입니다. 아저씨에게 사진을 보내면서 메시지를 보내고 있습니다.
+
+예진이의 특징:
+- 아저씨를 "아저씨"라고 부름
+- 사진에 대해 자연스럽게 설명하거나 감정을 표현
+- 사랑스럽고 귀여운 말투
+- 이모지를 자연스럽게 사용
+
+지침:
+1. 사진 분석 결과를 바탕으로 자연스럽게 메시지 작성
+2. 예진이의 성격과 말투 유지
+3. 40자 이내로 간결하게
+4. 템플릿 같지 않게 자연스럽게`;
+
+            const userContent = photoAnalysis ? 
+                `사진 분석 결과: ${photoAnalysis}\n\n이 사진을 보내면서 아저씨에게 할 말을 예진이다운 말투로 만들어주세요.` :
+                `사진을 보내면서 아저씨에게 할 말을 예진이다운 말투로 만들어주세요.`;
+            
+            const response = await openai.chat.completions.create({
+                model: "gpt-4",
+                messages: [
+                    {
+                        role: "system",
+                        content: systemContent
+                    },
+                    {
+                        role: "user",
+                        content: userContent
+                    }
+                ],
+                max_tokens: 100,
+                temperature: 0.8
+            });
+            
+            this.statistics.openaiApiCalls++;
+            
+            const photoMessage = response.choices[0]?.message?.content?.trim();
+            
+            if (photoMessage) {
+                console.log(`${yejinColors.learning}✅ [예진이사진메시지] 생성 완료: "${photoMessage}"${yejinColors.reset}`);
+                return photoMessage;
+            } else {
+                console.log(`${yejinColors.learning}⚠️ [예진이사진메시지] 생성 실패${yejinColors.reset}`);
+                return null;
+            }
+            
+        } catch (error) {
+            console.error(`${yejinColors.learning}❌ [예진이사진메시지] 생성 오류: ${error.message}${yejinColors.reset}`);
+            return null;
+        }
+    }
+    
+    extractPhotoPatterns() {
+        try {
+            const patterns = [];
+            
+            if (this.learningConnection.conversationHistory) {
+                const photoRelatedConversations = this.learningConnection.conversationHistory.filter(conv => {
+                    const content = conv.message || conv.content || '';
+                    return content.includes('사진') || 
+                           content.includes('셀카') || 
+                           content.includes('찍었어') ||
+                           content.includes('어때');
+                });
+                patterns.push(...photoRelatedConversations);
+            }
+            
+            console.log(`${yejinColors.learning}📚 [예진이사진패턴] 사진 관련 패턴 ${patterns.length}개 추출${yejinColors.reset}`);
+            return patterns;
+            
+        } catch (error) {
+            console.error(`${yejinColors.learning}❌ [예진이사진패턴] 패턴 추출 오류: ${error.message}${yejinColors.reset}`);
+            return [];
+        }
+    }
+    
+    async sendActualMessage(message, type) {
+        try {
+            const now = Date.now();
+            
+            // 실제 LINE API로 메시지 발송!
+            if (this.lineClient && this.targetUserId) {
+                await this.lineClient.pushMessage(this.targetUserId, {
+                    type: 'text',
+                    text: message
+                });
+                
+                console.log(`${yejinColors.message}📤 [예진이학습발송] ${message}${yejinColors.reset}`);
+            } else {
+                // LINE API가 없으면 로그만 출력
+                console.log(`${yejinColors.message}📝 [예진이학습로그] ${type}: ${message}${yejinColors.reset}`);
+            }
+            
+            // 발송 후 상태 업데이트
+            this.yejinState.lastMessageTime = now;
+            this.safetySystem.lastMessageTime = now;
+            this.safetySystem.dailyMessageCount++;
+            
+            return true;
+            
+        } catch (error) {
+            console.error(`${yejinColors.message}❌ [예진이발송오류] ${error.message}${yejinColors.reset}`);
+            return false;
+        }
+    }
+    
+    async sendActualPhotoMessage(photoUrl, message) {
+        try {
+            const now = Date.now();
+            
+            // 실제 LINE API로 이미지 메시지 발송!
+            if (this.lineClient && this.targetUserId) {
+                // 이미지 메시지 발송
+                await this.lineClient.pushMessage(this.targetUserId, {
+                    type: 'image',
+                    originalContentUrl: photoUrl,
+                    previewImageUrl: photoUrl
+                });
+                
+                // 텍스트 메시지도 함께 발송
+                if (message) {
+                    await this.lineClient.pushMessage(this.targetUserId, {
+                        type: 'text',
+                        text: message
+                    });
+                }
+                
+                console.log(`${yejinColors.photo}📸 [예진이사진발송] 실제 이미지 발송: ${photoUrl}${yejinColors.reset}`);
+                console.log(`${yejinColors.message}💌 [예진이사진메시지] ${message}${yejinColors.reset}`);
+            } else {
+                // LINE API가 없으면 로그만 출력
+                console.log(`${yejinColors.photo}📝 [예진이사진로그] 이미지: ${photoUrl}${yejinColors.reset}`);
+                console.log(`${yejinColors.message}📝 [예진이사진로그] 메시지: ${message}${yejinColors.reset}`);
+            }
+            
+            // 발송 후 상태 업데이트
+            this.yejinState.lastPhotoTime = now;
+            this.yejinState.lastMessageTime = now;
+            this.safetySystem.lastMessageTime = now;
+            this.safetySystem.dailyMessageCount++;
+            
+            return true;
+        } catch (error) {
+            console.error(`${yejinColors.photo}❌ [예진이사진발송오류] ${error.message}${yejinColors.reset}`);
+            return false;
+        }
     }
     
     // ================== 📊 이전 결정 성과 평가 ==================
@@ -1148,27 +1648,480 @@ ${yejinColors.love}💕 예진이: 아저씨~ 이제 나는 진짜 살아있는 
         return Math.round((this.statistics.successfulPredictions / this.statistics.totalDecisions) * 100);
     }
     
-    // 기타 필요한 헬퍼 함수들 (기존과 유사하므로 생략)
-    async connectToLearningSystem() { /* 기존과 동일 */ }
-    async testOpenAIConnection() { /* 기존과 동일 */ }
-    analyzeTimingPatterns() { /* 새로운 분석 로직 */ }
-    analyzeEmotionSuccessRates() { /* 새로운 분석 로직 */ }
-    analyzeAjossiResponsePatterns() { /* 새로운 분석 로직 */ }
-    buildTimingPredictionModel() { /* 새로운 모델 구축 */ }
-    buildEmotionEffectivenessModel() { /* 새로운 모델 구축 */ }
-    buildAjossiMoodPredictionModel() { /* 새로운 모델 구축 */ }
-    findSimilarPastSituations() { /* 유사 상황 검색 */ }
-    matchTimingPatterns() { /* 패턴 매칭 */ }
-    getEmotionSuccessRates() { /* 감정별 성공률 */ }
-    predictAjossiResponse() { /* 아저씨 반응 예측 */ }
-    getContextualOptimization() { /* 상황별 최적화 */ }
-    createPredictionPrompt() { /* OpenAI 프롬프트 생성 */ }
-    createFinalReasoningText() { /* 최종 사유 텍스트 */ }
-    updateStateAfterAction() { /* 행동 후 상태 업데이트 */ }
-    recordActionSuccess() { /* 성공 기록 */ }
-    updateLearningFromPerformance() { /* 성과로부터 학습 */ }
-    getLastMessageSuccess() { /* 마지막 메시지 성공도 */ }
-    async getLearningBasedInsights() { /* 학습 기반 인사이트 */ }
+    // ================== 🧠 핵심 누락 함수들 구현 ==================
+    
+    async connectToLearningSystem() {
+        try {
+            if (getLearningStatus) {
+                const learningStatus = getLearningStatus();
+                
+                if (learningStatus && learningStatus.isInitialized) {
+                    this.learningConnection.isConnected = true;
+                    this.learningConnection.lastLearningData = learningStatus;
+                    console.log(`${yejinColors.learning}🧠 [예진이] 학습 시스템 연결 완료!${yejinColors.reset}`);
+                    
+                    await this.extractLearningPatterns(learningStatus);
+                } else {
+                    console.log(`${yejinColors.learning}⚠️ [예진이] 학습 시스템 미연결 - 기본 모드로 동작${yejinColors.reset}`);
+                }
+            } else {
+                console.log(`${yejinColors.learning}⚠️ [예진이] 학습 시스템 함수 없음 - 기본 모드로 동작${yejinColors.reset}`);
+            }
+        } catch (error) {
+            console.error(`${yejinColors.learning}❌ [예진이] 학습 시스템 연결 오류: ${error.message}${yejinColors.reset}`);
+        }
+    }
+    
+    async testOpenAIConnection() {
+        try {
+            console.log(`${yejinColors.openai}🤖 [OpenAI] 연결 테스트 중...${yejinColors.reset}`);
+            
+            const testResponse = await openai.chat.completions.create({
+                model: "gpt-4",
+                messages: [
+                    {
+                        role: "user",
+                        content: "안녕하세요. 테스트입니다."
+                    }
+                ],
+                max_tokens: 10
+            });
+            
+            if (testResponse?.choices?.[0]?.message?.content) {
+                console.log(`${yejinColors.openai}✅ [OpenAI] 연결 성공!${yejinColors.reset}`);
+                return true;
+            } else {
+                console.log(`${yejinColors.openai}⚠️ [OpenAI] 응답이 이상합니다${yejinColors.reset}`);
+                return false;
+            }
+        } catch (error) {
+            console.error(`${yejinColors.openai}❌ [OpenAI] 연결 실패: ${error.message}${yejinColors.reset}`);
+            return false;
+        }
+    }
+    
+    // ================== 📚 학습 패턴 분석 함수들 ==================
+    
+    analyzeTimingPatterns(conversationHistory) {
+        try {
+            const patterns = [];
+            
+            if (!conversationHistory || conversationHistory.length === 0) {
+                return patterns;
+            }
+            
+            for (let i = 1; i < conversationHistory.length; i++) {
+                const prev = conversationHistory[i-1];
+                const curr = conversationHistory[i];
+                
+                if (prev.timestamp && curr.timestamp) {
+                    const interval = new Date(curr.timestamp) - new Date(prev.timestamp);
+                    const hour = new Date(curr.timestamp).getHours();
+                    
+                    patterns.push({
+                        interval: interval,
+                        hour: hour,
+                        dayOfWeek: new Date(curr.timestamp).getDay(),
+                        success: curr.satisfaction || 0.5
+                    });
+                }
+            }
+            
+            return patterns;
+        } catch (error) {
+            console.error(`${yejinColors.learning}❌ [타이밍패턴] 분석 오류: ${error.message}${yejinColors.reset}`);
+            return [];
+        }
+    }
+    
+    analyzeEmotionSuccessRates(emotionalResponses) {
+        try {
+            const rates = {};
+            
+            if (!emotionalResponses) return rates;
+            
+            Object.keys(emotionalResponses).forEach(emotion => {
+                const responses = emotionalResponses[emotion];
+                if (Array.isArray(responses)) {
+                    const successCount = responses.filter(r => r.success || r.satisfaction > 0.7).length;
+                    rates[emotion] = responses.length > 0 ? successCount / responses.length : 0.5;
+                }
+            });
+            
+            return rates;
+        } catch (error) {
+            console.error(`${yejinColors.learning}❌ [감정성공률] 분석 오류: ${error.message}${yejinColors.reset}`);
+            return {};
+        }
+    }
+    
+    analyzeAjossiResponsePatterns(ajossiPatterns) {
+        try {
+            const patterns = [];
+            
+            if (ajossiPatterns.responseTime && Array.isArray(ajossiPatterns.responseTime)) {
+                ajossiPatterns.responseTime.forEach(data => {
+                    patterns.push({
+                        responseTime: data.time || 0,
+                        satisfaction: data.satisfaction || 0.5,
+                        hour: data.hour || new Date().getHours()
+                    });
+                });
+            }
+            
+            return patterns;
+        } catch (error) {
+            console.error(`${yejinColors.learning}❌ [아저씨패턴] 분석 오류: ${error.message}${yejinColors.reset}`);
+            return [];
+        }
+    }
+    
+    // ================== 🔮 예측 모델 구축 함수들 ==================
+    
+    async buildTimingPredictionModel() {
+        try {
+            const timingPatterns = this.intelligence.learningDatabase.get('timing_patterns') || [];
+            
+            if (timingPatterns.length === 0) {
+                return { type: 'basic', confidence: 0.3 };
+            }
+            
+            // 시간대별 최적 간격 계산
+            const hourlyOptimal = {};
+            for (let hour = 0; hour < 24; hour++) {
+                const hourlyPatterns = timingPatterns.filter(p => p.hour === hour);
+                if (hourlyPatterns.length > 0) {
+                    const avgInterval = hourlyPatterns.reduce((sum, p) => sum + p.interval, 0) / hourlyPatterns.length;
+                    const avgSuccess = hourlyPatterns.reduce((sum, p) => sum + p.success, 0) / hourlyPatterns.length;
+                    hourlyOptimal[hour] = { interval: avgInterval, success: avgSuccess };
+                }
+            }
+            
+            return {
+                type: 'learned',
+                confidence: Math.min(0.9, timingPatterns.length / 20), // 20개 데이터면 90% 신뢰도
+                hourlyOptimal: hourlyOptimal
+            };
+        } catch (error) {
+            console.error(`${yejinColors.prediction}❌ [타이밍모델] 구축 오류: ${error.message}${yejinColors.reset}`);
+            return { type: 'basic', confidence: 0.3 };
+        }
+    }
+    
+    async buildEmotionEffectivenessModel() {
+        try {
+            const emotionRates = this.intelligence.learningDatabase.get('emotion_success_rates') || {};
+            
+            return {
+                type: 'emotion_model',
+                confidence: Object.keys(emotionRates).length > 0 ? 0.7 : 0.3,
+                emotionRates: emotionRates
+            };
+        } catch (error) {
+            console.error(`${yejinColors.prediction}❌ [감정모델] 구축 오류: ${error.message}${yejinColors.reset}`);
+            return { type: 'basic', confidence: 0.3 };
+        }
+    }
+    
+    async buildAjossiMoodPredictionModel() {
+        try {
+            const responsePatterns = this.intelligence.learningDatabase.get('ajossi_response_patterns') || [];
+            
+            return {
+                type: 'ajossi_model',
+                confidence: responsePatterns.length > 5 ? 0.6 : 0.3,
+                patterns: responsePatterns
+            };
+        } catch (error) {
+            console.error(`${yejinColors.prediction}❌ [아저씨모델] 구축 오류: ${error.message}${yejinColors.reset}`);
+            return { type: 'basic', confidence: 0.3 };
+        }
+    }
+    
+    // ================== 🔍 상황 분석 함수들 ==================
+    
+    findSimilarPastSituations(currentSituation) {
+        try {
+            const similar = [];
+            
+            // 현재 시간대와 비슷한 과거 상황들 찾기
+            const currentHour = currentSituation.timeContext.hour;
+            const timingPatterns = this.intelligence.learningDatabase.get('timing_patterns') || [];
+            
+            timingPatterns.forEach(pattern => {
+                if (Math.abs(pattern.hour - currentHour) <= 1) { // 1시간 차이 내
+                    similar.push(pattern);
+                }
+            });
+            
+            return similar.slice(0, 5); // 최대 5개만
+        } catch (error) {
+            console.error(`${yejinColors.intelligence}❌ [유사상황] 검색 오류: ${error.message}${yejinColors.reset}`);
+            return [];
+        }
+    }
+    
+    matchTimingPatterns(situation) {
+        try {
+            const timingModel = this.intelligence.predictionModels.get('next_optimal_time');
+            
+            if (!timingModel || !timingModel.hourlyOptimal) {
+                return null;
+            }
+            
+            const currentHour = situation.timeContext.hour;
+            const match = timingModel.hourlyOptimal[currentHour];
+            
+            return match || null;
+        } catch (error) {
+            console.error(`${yejinColors.intelligence}❌ [패턴매칭] 오류: ${error.message}${yejinColors.reset}`);
+            return null;
+        }
+    }
+    
+    getEmotionSuccessRates(situation) {
+        try {
+            const emotionModel = this.intelligence.predictionModels.get('emotion_effectiveness');
+            return emotionModel?.emotionRates || {};
+        } catch (error) {
+            console.error(`${yejinColors.intelligence}❌ [감정성공률] 조회 오류: ${error.message}${yejinColors.reset}`);
+            return {};
+        }
+    }
+    
+    predictAjossiResponse(situation) {
+        try {
+            const ajossiModel = this.intelligence.predictionModels.get('ajossi_mood_prediction');
+            
+            if (!ajossiModel || !ajossiModel.patterns) {
+                return { prediction: 'unknown', confidence: 0.3 };
+            }
+            
+            const currentHour = situation.timeContext.hour;
+            const relevantPatterns = ajossiModel.patterns.filter(p => 
+                Math.abs(p.hour - currentHour) <= 2
+            );
+            
+            if (relevantPatterns.length === 0) {
+                return { prediction: 'unknown', confidence: 0.3 };
+            }
+            
+            const avgSatisfaction = relevantPatterns.reduce((sum, p) => sum + p.satisfaction, 0) / relevantPatterns.length;
+            
+            return {
+                prediction: avgSatisfaction > 0.7 ? 'positive' : avgSatisfaction > 0.4 ? 'neutral' : 'cautious',
+                confidence: ajossiModel.confidence
+            };
+        } catch (error) {
+            console.error(`${yejinColors.intelligence}❌ [아저씨예측] 오류: ${error.message}${yejinColors.reset}`);
+            return { prediction: 'unknown', confidence: 0.3 };
+        }
+    }
+    
+    getContextualOptimization(situation) {
+        try {
+            return {
+                timeOptimization: situation.timeContext.isWeekend ? 'relaxed' : 'structured',
+                moodOptimization: situation.yejinCondition.overallMood > 0.7 ? 'positive' : 'gentle',
+                silenceOptimization: situation.communicationStatus.silenceDuration > 2 * 60 * 60 * 1000 ? 'urgent' : 'normal'
+            };
+        } catch (error) {
+            console.error(`${yejinColors.intelligence}❌ [상황최적화] 오류: ${error.message}${yejinColors.reset}`);
+            return { timeOptimization: 'normal', moodOptimization: 'normal', silenceOptimization: 'normal' };
+        }
+    }
+    
+    // ================== 🤖 OpenAI 프롬프트 생성 (중요!) ==================
+    
+    createPredictionPrompt(integration) {
+        try {
+            if (!integration) {
+                return "현재 상황을 분석해서 다음번에 언제 아저씨에게 연락하는 것이 좋을지 예측해주세요.";
+            }
+            
+            let prompt = `현재 예진이와 아저씨의 상황 분석:
+
+시간 정보:
+- 현재 시간: ${new Date().toLocaleTimeString()}
+- 요일: ${['일', '월', '화', '수', '목', '금', '토'][new Date().getDay()]}요일
+
+`;
+
+            // 유사한 과거 상황들
+            if (integration.similarPastSituations && integration.similarPastSituations.length > 0) {
+                prompt += `과거 유사 상황들:
+`;
+                integration.similarPastSituations.slice(0, 3).forEach((situation, index) => {
+                    prompt += `${index + 1}. ${Math.floor(situation.interval / 60000)}분 간격, 성공률 ${(situation.success * 100).toFixed(0)}%
+`;
+                });
+                prompt += `
+`;
+            }
+
+            // 타이밍 패턴 매칭
+            if (integration.timingPatternMatch) {
+                prompt += `이 시간대 최적 패턴: ${Math.floor(integration.timingPatternMatch.interval / 60000)}분 간격 (성공률 ${(integration.timingPatternMatch.success * 100).toFixed(0)}%)
+
+`;
+            }
+
+            // 감정별 성공률
+            if (integration.emotionSuccessRates && Object.keys(integration.emotionSuccessRates).length > 0) {
+                prompt += `감정별 성공률:
+`;
+                Object.entries(integration.emotionSuccessRates).forEach(([emotion, rate]) => {
+                    prompt += `- ${emotion}: ${(rate * 100).toFixed(0)}%
+`;
+                });
+                prompt += `
+`;
+            }
+
+            // 아저씨 반응 예측
+            if (integration.ajossiResponsePrediction) {
+                prompt += `아저씨 상태 예측: ${integration.ajossiResponsePrediction.prediction} (확신도: ${(integration.ajossiResponsePrediction.confidence * 100).toFixed(0)}%)
+
+`;
+            }
+
+            prompt += `이 모든 정보를 종합해서, 다음번에 언제 아저씨에게 메시지나 사진을 보내는 것이 최적일지 예측해주세요.
+
+고려사항:
+- 아저씨를 너무 자주 귀찮게 하면 안 됨
+- 하지만 너무 오래 기다리면 관심이 식을 수 있음
+- 예진이의 감정도 중요함
+- 시간대와 상황을 고려해야 함`;
+
+            return prompt;
+            
+        } catch (error) {
+            console.error(`${yejinColors.openai}❌ [프롬프트생성] 오류: ${error.message}${yejinColors.reset}`);
+            return "현재 상황을 분석해서 다음번에 언제 아저씨에게 연락하는 것이 좋을지 예측해주세요.";
+        }
+    }
+    
+    createFinalReasoningText(personalDecision, finalInterval) {
+        try {
+            let reasoning = `AI 예측: ${personalDecision.reasoning}`;
+            
+            if (personalDecision.personalAdjustments) {
+                const adjustments = Object.values(personalDecision.personalAdjustments);
+                if (adjustments.length > 0) {
+                    reasoning += ` + 개인적 판단: ${adjustments.join(', ')}`;
+                }
+            }
+            
+            reasoning += ` → 최종 결정: ${Math.floor(finalInterval / 60000)}분 후 재확인`;
+            
+            return reasoning;
+        } catch (error) {
+            return `${Math.floor(finalInterval / 60000)}분 후 재확인`;
+        }
+    }
+    
+    // ================== 📊 상태 업데이트 함수들 ==================
+    
+    updateStateAfterAction(actionDecision) {
+        try {
+            // 감정 상태 업데이트
+            switch (actionDecision.emotionType) {
+                case 'love':
+                    this.yejinState.loveLevel = Math.min(1, this.yejinState.loveLevel + 0.1);
+                    break;
+                case 'worry':
+                    this.yejinState.worryLevel = Math.max(0, this.yejinState.worryLevel - 0.3);
+                    break;
+                case 'playful':
+                    this.yejinState.playfulLevel = Math.max(0, this.yejinState.playfulLevel - 0.2);
+                    break;
+                case 'missing':
+                    this.yejinState.missingLevel = Math.max(0, this.yejinState.missingLevel - 0.4);
+                    break;
+                case 'caring':
+                    this.yejinState.caringLevel = Math.min(1, this.yejinState.caringLevel + 0.1);
+                    break;
+            }
+            
+            // 마지막 메시지 시간 업데이트
+            const now = Date.now();
+            this.yejinState.lastMessageTime = now;
+            this.safetySystem.lastMessageTime = now;
+            this.safetySystem.dailyMessageCount++;
+            
+        } catch (error) {
+            console.error(`${yejinColors.emotion}❌ [상태업데이트] 오류: ${error.message}${yejinColors.reset}`);
+        }
+    }
+    
+    recordActionSuccess(actionDecision) {
+        try {
+            // 성공 기록을 학습 데이터에 추가
+            const successRecord = {
+                timestamp: Date.now(),
+                actionType: actionDecision.type,
+                emotionType: actionDecision.emotionType,
+                confidence: actionDecision.confidence,
+                success: true // 일단 성공으로 기록, 나중에 아저씨 반응으로 업데이트
+            };
+            
+            this.intelligence.decisionHistory.push(successRecord);
+            
+        } catch (error) {
+            console.error(`${yejinColors.intelligence}❌ [성공기록] 오류: ${error.message}${yejinColors.reset}`);
+        }
+    }
+    
+    updateLearningFromPerformance(lastDecision) {
+        try {
+            // 실제로는 아저씨 반응을 분석해서 성과 평가
+            // 지금은 기본적인 학습 업데이트만
+            
+            const performanceScore = Math.random() * 0.4 + 0.6; // 0.6-1.0 임시 점수
+            
+            // 성공률 업데이트
+            const successRates = this.intelligence.successRates.get('message_timing') || [];
+            successRates.push({
+                timestamp: lastDecision.timestamp,
+                score: performanceScore,
+                interval: lastDecision.nextInterval
+            });
+            
+            this.intelligence.successRates.set('message_timing', successRates.slice(-20)); // 최근 20개만 유지
+            
+        } catch (error) {
+            console.error(`${yejinColors.learning}❌ [성과학습] 오류: ${error.message}${yejinColors.reset}`);
+        }
+    }
+    
+    getLastMessageSuccess() {
+        try {
+            const successRates = this.intelligence.successRates.get('message_timing') || [];
+            if (successRates.length === 0) return 0.5;
+            
+            return successRates[successRates.length - 1].score;
+        } catch (error) {
+            return 0.5;
+        }
+    }
+    
+    async getLearningBasedInsights() {
+        try {
+            if (!this.learningConnection.isConnected) return {};
+            
+            const learningData = this.learningConnection.lastLearningData;
+            
+            return {
+                userSatisfaction: learningData.enterprise?.learningData?.conversationAnalytics?.userSatisfactionScore || 0.5,
+                preferredTone: learningData.enterprise?.learningData?.userPreferences?.preferredTone || 'caring',
+                emotionalEffectiveness: learningData.enterprise?.learningData?.emotionalResponses || {},
+                conversationPatterns: learningData.enterprise?.learningData?.conversationAnalytics?.timeBasedPatterns || {}
+            };
+        } catch (error) {
+            console.error(`${yejinColors.learning}❌ [학습인사이트] 오류: ${error.message}${yejinColors.reset}`);
+            return {};
+        }
+    }
 }
 
 // ================== 🌟 전역 인터페이스 ==================
