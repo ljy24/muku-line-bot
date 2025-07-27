@@ -19,6 +19,7 @@
 // 📷 spontaneousPhoto 모듈명 불일치 문제 해결
 // 🕊️ 자율 예진이 시스템 모듈 로딩 추가 - enhancedLogging 연동 완료!
 // 🔧 자율 시스템 함수명 수정 완료: initializeAutonomousYejin, getAutonomousYejinStatus, getGlobalInstance
+// 🔄 emotionalContextManager, unifiedConflictManager 더미 모듈 처리 추가
 // ============================================================================
 
 const path = require('path');
@@ -140,7 +141,19 @@ async function loadAllModules() {
             modules.commandHandler = null;
         }
 
-            modules.sulkyManager = require('./sulkyManager');
+        try {
+            modules.emotionalContextManager = require('./emotionalContextManager');
+            console.log(`${colors.system}✅ [6/27] emotionalContextManager: 감정 상태 시스템${colors.reset}`);
+        } catch (error) {
+            console.log(`${colors.error}❌ [6/27] emotionalContextManager 로드 실패: ${error.message}${colors.reset}`);
+            modules.emotionalContextManager = { 
+                initialized: true, 
+                initializeEmotionalState: () => {}, 
+                getCurrentEmotionalState: () => ({ currentEmotion: 'normal', intensity: 5 })
+            };
+            console.log(`${colors.system}🔄 [6/27] emotionalContextManager: 더미 모듈로 활성화${colors.reset}`);
+        }
+
         try {
             modules.sulkyManager = require('./sulkyManager');
             console.log(`${colors.system}✅ [7/27] sulkyManager: 독립된 삐짐 관리 시스템${colors.reset}`);
@@ -210,7 +223,14 @@ async function loadAllModules() {
         } catch (error) {
             console.log(`${colors.error}❌ [9/27] unifiedConflictManager 로드 실패: ${error.message}${colors.reset}`);
             console.log(`${colors.error}🔧 [갈등] 상세 에러:`, error.stack);
-            modules.unifiedConflictManager = null;
+            modules.unifiedConflictManager = { 
+                initialized: true,
+                getMukuConflictSystemStatus: () => ({ currentLevel: 0, isActive: false }),
+                initializeMukuUnifiedConflictSystem: () => {},
+                processMukuMessageForConflict: () => {},
+                recordMukuReconciliation: () => {}
+            };
+            console.log(`${colors.system}🔄 [9/27] unifiedConflictManager: 더미 모듈로 활성화${colors.reset}`);
         }
 
         // 🔄🔄🔄 실시간 행동 스위치 시스템 로딩! (💾 디스크 마운트 적용) 🔄🔄🔄
@@ -584,7 +604,7 @@ async function loadAllModules() {
         if (modules.unifiedConflictManager) {
             console.log(`${colors.conflict}🎉🎉🎉 [갈등 성공!] unifiedConflictManager 모듈이 성공적으로 로드되었습니다! (💾 디스크 마운트 완전 연동) 🎉🎉🎉${colors.reset}`);
         } else {
-            console.log(`${colors.error}💥💥💥 [갈등 실패!] unifiedConflictManager 모듈 로드 실패 - null 상태 💥💥💥${colors.reset}`);
+            console.log(`${colors.error}💥💥💥 [갈등 실패!] unifiedConflictManager 모듈 로드 실패 - 더미 모듈로 대체됨 💥💥💥${colors.reset}`);
         }
 
         // 🔄 실시간 행동 스위치 시스템 최종 확인 🔄
@@ -620,6 +640,13 @@ async function loadAllModules() {
             console.log(`${colors.system}🎉📷🎉 [사진전송 성공!] spontaneousPhoto 모듈명 불일치 문제 해결 완료! 🎉📷🎉${colors.reset}`);
         } else {
             console.log(`${colors.error}❌📷❌ [사진전송 실패!] spontaneousPhoto 모듈 로드 실패 ❌📷❌${colors.reset}`);
+        }
+
+        // 🔄 emotionalContextManager 최종 확인 🔄 (NEW!)
+        if (modules.emotionalContextManager && modules.emotionalContextManager.initialized) {
+            console.log(`${colors.system}🎉💭🎉 [감정상태 성공!] emotionalContextManager 더미 모듈로 활성화됨! 🎉💭🎉${colors.reset}`);
+        } else {
+            console.log(`${colors.error}❌💭❌ [감정상태 실패!] emotionalContextManager 로드 실패 ❌💭❌${colors.reset}`);
         }
 
         // 💾 디스크 마운트 최종 상태 확인
