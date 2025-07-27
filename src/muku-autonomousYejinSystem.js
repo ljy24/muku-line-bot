@@ -29,11 +29,11 @@ try {
     mongoose = require('mongoose');
     Redis = require('ioredis');
     
-    // Redis 클라이언트 (선택적)
-    redis = new Redis({
-        host: process.env.REDIS_HOST || 'localhost',
-        port: process.env.REDIS_PORT || 6379,
-    });
+    // Redis 클라이언트
+    let redis = null;
+    if (process.env.REDIS_URL) {
+        redis = new Redis(process.env.REDIS_URL);
+    }
     
     // MongoDB 연결 (선택적)
     if (process.env.MONGO_URI) {
