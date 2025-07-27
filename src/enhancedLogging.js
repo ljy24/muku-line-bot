@@ -1202,13 +1202,6 @@ function getSystemHealthSummary(modules) {
         systems: {}
     };
     
-    console.log('🔍 [상세디버깅] spontaneousPhotoManager 체크:');
-    console.log('  - modules.spontaneousPhotoManager:', modules.spontaneousPhotoManager);
-    console.log('  - typeof:', typeof modules.spontaneousPhotoManager);
-    console.log('  - null 체크:', modules.spontaneousPhotoManager === null);
-    console.log('  - undefined 체크:', modules.spontaneousPhotoManager === undefined);
-    console.log('  - 조건 체크:', modules.spontaneousPhotoManager && typeof modules.spontaneousPhotoManager === 'object');
-    
     const systemChecks = [
         { name: 'memoryManager', key: 'memoryManager' },
         { name: 'emotionalContextManager', key: 'emotionalContextManager' },
@@ -1216,7 +1209,7 @@ function getSystemHealthSummary(modules) {
         { name: 'spontaneousYejin', key: 'spontaneousYejin' },
         { name: 'unifiedConflictManager', key: 'unifiedConflictManager' },
         { name: 'weatherManager', key: 'weatherManager' },
-        { name: 'spontaneousPhotoManager', key: 'spontaneousPhotoManager' }, // 🔍 다시 체크에 포함
+        { name: 'spontaneousPhoto', key: 'spontaneousPhoto' }, // 🔧 수정된 키! (Manager가 아니라 Photo)
         { name: 'autonomousYejinSystem', key: 'autonomousYejinSystem' }
     ];
     
