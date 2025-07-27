@@ -1194,7 +1194,7 @@ function logAjeossiMessage(message) {
     console.log(`${colors.blue}👨 ${message}${colors.reset}`);
 }
 
-// ================== 📊 시스템 상태 요약 함수 (🔍 디버깅 버전) ==================
+// ================== 📊 시스템 상태 요약 함수 ==================
 function getSystemHealthSummary(modules) {
     const health = {
         total: 0,
@@ -1202,9 +1202,12 @@ function getSystemHealthSummary(modules) {
         systems: {}
     };
     
-    // 🔍 실제 로드된 모듈 키들 출력 (디버깅용)
-    console.log('🔍 [디버깅] 실제 modules 객체의 키들:', Object.keys(modules));
-    console.log('🔍 [디버깅] null이 아닌 모듈들:', Object.keys(modules).filter(key => modules[key] !== null));
+    console.log('🔍 [상세디버깅] spontaneousPhotoManager 체크:');
+    console.log('  - modules.spontaneousPhotoManager:', modules.spontaneousPhotoManager);
+    console.log('  - typeof:', typeof modules.spontaneousPhotoManager);
+    console.log('  - null 체크:', modules.spontaneousPhotoManager === null);
+    console.log('  - undefined 체크:', modules.spontaneousPhotoManager === undefined);
+    console.log('  - 조건 체크:', modules.spontaneousPhotoManager && typeof modules.spontaneousPhotoManager === 'object');
     
     const systemChecks = [
         { name: 'memoryManager', key: 'memoryManager' },
@@ -1213,19 +1216,15 @@ function getSystemHealthSummary(modules) {
         { name: 'spontaneousYejin', key: 'spontaneousYejin' },
         { name: 'unifiedConflictManager', key: 'unifiedConflictManager' },
         { name: 'weatherManager', key: 'weatherManager' },
-        { name: 'spontaneousPhotoManager', key: 'spontaneousPhotoManager' },
-        { name: 'autonomousYejinSystem', key: 'autonomousYejinSystem' } // 🔧 수정된 키!
+        { name: 'spontaneousPhotoManager', key: 'spontaneousPhotoManager' }, // 🔍 다시 체크에 포함
+        { name: 'autonomousYejinSystem', key: 'autonomousYejinSystem' }
     ];
     
-    console.log('🔍 [디버깅] 체크할 시스템들:');
     systemChecks.forEach(system => {
         health.total++;
         const isActive = modules[system.key] && typeof modules[system.key] === 'object';
         health.systems[system.name] = isActive;
         if (isActive) health.active++;
-        
-        // 🔍 각 모듈별 상태 출력
-        console.log(`  - ${system.name}: ${isActive ? '✅' : '❌'} (키: ${system.key}, 값: ${modules[system.key] ? '존재' : 'null/undefined'})`);
     });
     
     // 진정한 자율시스템 별도 체크
@@ -1238,7 +1237,6 @@ function getSystemHealthSummary(modules) {
     }
     
     health.percentage = Math.round((health.active / health.total) * 100);
-    console.log(`🔍 [디버깅] 최종 결과: ${health.active}/${health.total} (${health.percentage}%)`);
     return health;
 }
 
