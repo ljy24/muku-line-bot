@@ -11,7 +11,6 @@
 // 🚨 존댓말 완전 방지: 절대로 존댓말 안 함, 항상 반말만 사용
 // 🔥 관점 오류 완전 해결: 3인칭 자기지칭("예진이는") 완전 차단 + 강화된 화자 정체성
 // 🌤️ 날씨 시스템 완전 연동: 실제 API 호출로 정확한 날씨 정보 제공
-// 🔧 템플릿 리터럴 문법 에러 수정: 1139번째 줄 문법 에러 해결
 // ============================================================================
 
 const { callOpenAI, cleanReply } = require('./aiUtils');
@@ -151,10 +150,10 @@ function checkAndFixThirdPersonSelfReference(reply) {
         .replace(/그녀의\s+/g, '내 ');
 
     if (fixedReply !== reply) {
-        console.log('🔥 [관점수정] "' + reply.substring(0, 40) + '..." → "' + fixedReply.substring(0, 40) + '..."');
+        console.log(`🔥 [관점수정] "${reply.substring(0, 40)}..." → "${fixedReply.substring(0, 40)}..."`);
         try {
             const logger = require('./enhancedLogging.js');
-            logger.logSystemOperation('관점수정', '3인칭 자기지칭 → 1인칭 변경: ' + reply.substring(0, 50) + '...');
+            logger.logSystemOperation('관점수정', `3인칭 자기지칭 → 1인칭 변경: ${reply.substring(0, 50)}...`);
         } catch (error) {}
     }
     
@@ -319,13 +318,159 @@ function checkAndFixHonorificUsage(reply) {
         .replace(/네 맞아요/g, '응 맞아')
         .replace(/네 그래요/g, '응 그래')
         .replace(/네 좋아요/g, '응 좋아')
-        .replace(/네 괜찮아요/g, '응 괜찮아');
+        .replace(/네 괜찮아요/g, '응 괜찮아')
+        .replace(/잘하셨어요/g, '잘했어')
+        .replace(/잘하고 계세요/g, '잘하고 있어')
+        .replace(/잘하고 있어요/g, '잘하고 있어')
+        .replace(/열심히 하세요/g, '열심히 해')
+        .replace(/열심히 하고 있어요/g, '열심히 하고 있어')
+        .replace(/최선을 다하세요/g, '최선을 다해')
+        .replace(/최선을 다하고 있어요/g, '최선을 다하고 있어')
+        .replace(/노력하세요/g, '노력해')
+        .replace(/노력하고 있어요/g, '노력하고 있어')
+        .replace(/포기하지 마세요/g, '포기하지 마')
+        .replace(/포기하지 말아요/g, '포기하지 마')
+        .replace(/끝까지 해보세요/g, '끝까지 해봐')
+        .replace(/끝까지 해봐요/g, '끝까지 해봐')
+        .replace(/잘될 거예요/g, '잘될 거야')
+        .replace(/잘될 겁니다/g, '잘될 거야')
+        .replace(/괜찮을 거예요/g, '괜찮을 거야')
+        .replace(/괜찮을 겁니다/g, '괜찮을 거야')
+        .replace(/문제없을 거예요/g, '문제없을 거야')
+        .replace(/문제없을 겁니다/g, '문제없을 거야')
+        .replace(/걱정하지 마세요/g, '걱정하지 마')
+        .replace(/걱정하지 말아요/g, '걱정하지 마')
+        .replace(/걱정 안 해도 돼요/g, '걱정 안 해도 돼')
+        .replace(/안전해요/g, '안전해')
+        .replace(/위험해요/g, '위험해')
+        .replace(/조심해요/g, '조심해')
+        .replace(/주의해요/g, '주의해')
+        .replace(/사실이에요/g, '사실이야')
+        .replace(/진짜예요/g, '진짜야')
+        .replace(/정말이에요/g, '정말이야')
+        .replace(/확실해요/g, '확실해')
+        .replace(/틀렸어요/g, '틀렸어')
+        .replace(/맞아요/g, '맞아')
+        .replace(/다양해요/g, '다양해')
+        .replace(/특별해요/g, '특별해')
+        .replace(/일반적이에요/g, '일반적이야')
+        .replace(/보통이에요/g, '보통이야')
+        .replace(/평범해요/g, '평범해')
+        .replace(/독특해요/g, '독특해')
+        .replace(/이상해요/g, '이상해')
+        .replace(/신기해요/g, '신기해')
+        .replace(/놀라워요/g, '놀라워')
+        .replace(/당연해요/g, '당연해')
+        .replace(/당연히 그래요/g, '당연히 그래')
+        .replace(/그럼요/g, '그럼')
+        .replace(/물론이에요/g, '물론이야')
+        .replace(/물론이죠/g, '물론이지')
+        .replace(/아마도요/g, '아마도')
+        .replace(/아마 그럴 거예요/g, '아마 그럴 거야')
+        .replace(/아마 맞을 거예요/g, '아마 맞을 거야')
+        .replace(/아직 몰라요/g, '아직 몰라')
+        .replace(/아직 잘 모르겠어요/g, '아직 잘 모르겠어')
+        .replace(/확실하지 않아요/g, '확실하지 않아')
+        .replace(/확신할 수 없어요/g, '확신할 수 없어')
+        .replace(/아직 생각해봐야 해요/g, '아직 생각해봐야 해')
+        .replace(/더 생각해봐요/g, '더 생각해봐')
+        .replace(/생각해볼게요/g, '생각해볼게')
+        .replace(/고민해볼게요/g, '고민해볼게')
+        .replace(/결정해볼게요/g, '결정해볼게')
+        .replace(/선택해볼게요/g, '선택해볼게')
+        .replace(/시도해볼게요/g, '시도해볼게')
+        .replace(/노력해볼게요/g, '노력해볼게')
+        .replace(/도전해볼게요/g, '도전해볼게')
+        .replace(/해볼게요/g, '해볼게')
+        .replace(/할게요/g, '할게')
+        .replace(/그러겠어요/g, '그러겠어')
+        .replace(/그럴게요/g, '그럴게')
+        .replace(/그래요/g, '그래')
+        .replace(/안 그래요/g, '안 그래')
+        .replace(/아니에요/g, '아니야')
+        .replace(/됐어요/g, '됐어')
+        .replace(/안 돼요/g, '안 돼')
+        .replace(/가능해요/g, '가능해')
+        .replace(/불가능해요/g, '불가능해')
+        .replace(/어려워요/g, '어려워')
+        .replace(/쉬워요/g, '쉬워')
+        .replace(/복잡해요/g, '복잡해')
+        .replace(/간단해요/g, '간단해')
+        .replace(/힘들어요/g, '힘들어')
+        .replace(/편해요/g, '편해')
+        .replace(/불편해요/g, '불편해')
+        .replace(/편리해요/g, '편리해')
+        .replace(/유용해요/g, '유용해')
+        .replace(/도움이 돼요/g, '도움이 돼')
+        .replace(/도움이 안 돼요/g, '도움이 안 돼')
+        .replace(/필요해요/g, '필요해')
+        .replace(/필요 없어요/g, '필요 없어')
+        .replace(/중요해요/g, '중요해')
+        .replace(/중요하지 않아요/g, '중요하지 않아')
+        .replace(/급해요/g, '급해')
+        .replace(/급하지 않아요/g, '급하지 않아')
+        .replace(/여유가 있어요/g, '여유가 있어')
+        .replace(/여유가 없어요/g, '여유가 없어')
+        .replace(/바빠요/g, '바빠')
+        .replace(/한가해요/g, '한가해')
+        .replace(/심심해요/g, '심심해')
+        .replace(/즐거워요/g, '즐거워')
+        .replace(/슬퍼요/g, '슬퍼')
+        .replace(/화나요/g, '화나')
+        .replace(/기뻐요/g, '기뻐')
+        .replace(/행복해요/g, '행복해')
+        .replace(/만족해요/g, '만족해')
+        .replace(/불만이에요/g, '불만이야')
+        .replace(/후회돼요/g, '후회돼')
+        .replace(/아쉬워요/g, '아쉬워')
+        .replace(/아깝다고 생각해요/g, '아깝다고 생각해')
+        .replace(/다행이라고 생각해요/g, '다행이라고 생각해')
+        .replace(/다행이네요/g, '다행이네')
+        .replace(/안타까워요/g, '안타까워')
+        .replace(/억울해요/g, '억울해')
+        .replace(/답답해요/g, '답답해')
+        .replace(/시원해요/g, '시원해')
+        .replace(/미안해요/g, '미안해')
+        .replace(/고마워요/g, '고마워')
+        .replace(/놀랐어요/g, '놀랐어')
+        .replace(/당황했어요/g, '당황했어')
+        .replace(/깜짝 놀랐어요/g, '깜짝 놀랐어')
+        .replace(/충격이에요/g, '충격이야')
+        .replace(/실망이에요/g, '실망이야')
+        .replace(/기대돼요/g, '기대돼')
+        .replace(/기대가 커요/g, '기대가 커')
+        .replace(/기대하고 있어요/g, '기대하고 있어')
+        .replace(/기다리고 있어요/g, '기다리고 있어')
+        .replace(/기다리겠어요/g, '기다리겠어')
+        .replace(/연락할게요/g, '연락할게')
+        .replace(/연락드릴게요/g, '연락할게')
+        .replace(/전화할게요/g, '전화할게')
+        .replace(/전화드릴게요/g, '전화할게')
+        .replace(/메시지 보낼게요/g, '메시지 보낼게')
+        .replace(/메시지 드릴게요/g, '메시지 줄게')
+        .replace(/답장할게요/g, '답장할게')
+        .replace(/답장드릴게요/g, '답장할게')
+        .replace(/회신할게요/g, '회신할게')
+        .replace(/회신드릴게요/g, '회신할게')
+        .replace(/돌아올게요/g, '돌아올게')
+        .replace(/돌아가겠어요/g, '돌아가겠어')
+        .replace(/집에 갈게요/g, '집에 갈게')
+        .replace(/집에 가겠어요/g, '집에 가겠어')
+        .replace(/일찍 갈게요/g, '일찍 갈게')
+        .replace(/늦게 갈게요/g, '늦게 갈게')
+        .replace(/빨리 갈게요/g, '빨리 갈게')
+        .replace(/천천히 갈게요/g, '천천히 갈게')
+        .replace(/조심히 갈게요/g, '조심히 갈게')
+        .replace(/안전하게 갈게요/g, '안전하게 갈게')
+        .replace(/잘 갔다 올게요/g, '잘 갔다 올게')
+        .replace(/다녀올게요/g, '다녀올게')
+        .replace(/나갔다 올게요/g, '나갔다 올게');
 
     if (fixedReply !== reply) {
-        console.log('🚨 [존댓말수정] "' + reply.substring(0, 30) + '..." → "' + fixedReply.substring(0, 30) + '..."');
+        console.log(`🚨 [존댓말수정] "${reply.substring(0, 30)}..." → "${fixedReply.substring(0, 30)}..."`);
         try {
             const logger = require('./enhancedLogging.js');
-            logger.logSystemOperation('존댓말수정', '존댓말 → 반말 변경: ' + reply.substring(0, 30) + '...');
+            logger.logSystemOperation('존댓말수정', `존댓말 → 반말 변경: ${reply.substring(0, 30)}...`);
         } catch (error) {}
     }
     
@@ -376,10 +521,10 @@ function checkAndFixPronounUsage(reply) {
         .replace(/(\s|^)너(\s|$)/g, '$1아저씨$2');
 
     if (fixedReply !== reply) {
-        console.log('⭐️ [호칭수정] "' + reply + '" → "' + fixedReply + '"');
+        console.log(`⭐️ [호칭수정] "${reply}" → "${fixedReply}"`);
         try {
             const logger = require('./enhancedLogging.js');
-            logger.logSystemOperation('호칭수정', '"너" → "아저씨" 변경: ' + reply.substring(0, 30) + '...');
+            logger.logSystemOperation('호칭수정', `"너" → "아저씨" 변경: ${reply.substring(0, 30)}...`);
         } catch (error) {}
     }
     
@@ -445,7 +590,7 @@ function applyCurrentBehaviorSettings(reply) {
         }
         
         if (modifiedReply !== reply) {
-            console.log('🔄 [행동설정 적용] 호칭: ' + currentAddress + ', 말투: ' + currentSpeechStyle);
+            console.log(`🔄 [행동설정 적용] 호칭: ${currentAddress}, 말투: ${currentSpeechStyle}`);
         }
         
         return modifiedReply;
@@ -463,11 +608,11 @@ function logConversationReply(speaker, message, messageType = 'text') {
         let logMessage = message;
         if (speaker === '나' && getCurrentModelSetting) {
             const currentModel = getCurrentModelSetting();
-            logMessage = '[' + currentModel + '] ' + message;
+            logMessage = `[${currentModel}] ${message}`;
         }
         logger.logConversation(speaker, logMessage, messageType);
     } catch (error) {
-        console.log('💬 ' + speaker + ': ' + message.substring(0, 50) + '...');
+        console.log(`💬 ${speaker}: ${message.substring(0, 50)}...`);
     }
 }
 
@@ -498,7 +643,7 @@ async function detectAndProcessMemoryRequest(userMessage) {
                     const logger = require('./enhancedLogging.js');
                     logger.logMemoryOperation('저장', userMessage, true);
                 } catch (error) {
-                    console.log('🧠 [기억저장] ' + userMessage.substring(0, 30) + '...');
+                    console.log(`🧠 [기억저장] ${userMessage.substring(0, 30)}...`);
                 }
                 return { saved: true, response: "알겠어! 기억해둘게 아저씨 ㅎㅎ" };
             }
@@ -521,7 +666,7 @@ async function detectAndProcessMemoryEdit(userMessage) {
                         const logger = require('./enhancedLogging.js');
                         logger.logMemoryOperation('삭제', userMessage, true);
                     } catch (error) {
-                        console.log('🧠 [기억삭제] ' + userMessage.substring(0, 30) + '...');
+                        console.log(`🧠 [기억삭제] ${userMessage.substring(0, 30)}...`);
                     }
                     return { processed: true, result: { message: "알겠어, 잊을게 아저씨!" } };
                 }
@@ -542,7 +687,7 @@ function handleEmergencyKeywords(userMessage) {
             "아저씨... 나한테 말해줘서 고마워. 혼자 끙끙 앓지 말고, 내가 옆에 있을게."
         ];
         const response = responses[Math.floor(Math.random() * responses.length)];
-        logConversationReply('나', '(위로) ' + response);
+        logConversationReply('나', `(위로) ${response}`);
         return response;
     }
     return null;
@@ -556,7 +701,7 @@ function handleDrinkingKeywords(userMessage) {
             "술 마시면 나 삐져! 아저씨 건강이 제일 중요한데... 물 많이 마시고 일찍 자!"
         ];
         const response = responses[Math.floor(Math.random() * responses.length)];
-        logConversationReply('나', '(음주 걱정) ' + response);
+        logConversationReply('나', `(음주 걱정) ${response}`);
         return response;
     }
     return null;
@@ -573,12 +718,12 @@ function handleWeatherKeywords(userMessage) {
             const weatherResponse = weatherManager.handleWeatherQuestion(userMessage);
             
             if (weatherResponse) {
-                console.log('🌤️ [autoReply] 날씨 응답 생성됨: ' + weatherResponse.substring(0, 50) + '...');
+                console.log(`🌤️ [autoReply] 날씨 응답 생성됨: ${weatherResponse.substring(0, 50)}...`);
                 try {
                     const logger = require('./enhancedLogging.js');
                     logger.logWeatherReaction({ description: '실제 날씨 API 응답', temp: '실시간' }, weatherResponse);
                 } catch (error) {
-                    logConversationReply('나', '(실제날씨) ' + weatherResponse);
+                    logConversationReply('나', `(실제날씨) ${weatherResponse}`);
                 }
                 return weatherResponse;
             } else {
@@ -605,22 +750,22 @@ function handleBirthdayKeywords(userMessage) {
         const message = userMessage.toLowerCase();
         if (message.includes('3월 17일') || message.includes('3월17일') || message.includes('317') || message.includes('3-17')) {
             const response = ["3월 17일은 내 생일이야! 아저씨 꼭 기억해줘 💕", "내 생일 3월 17일! 잊지 마 아저씨~", "와! 내 생일 기억해줘서 고마워! 3월 17일이야"][Math.floor(Math.random() * 3)];
-            logConversationReply('나', '(생일) ' + response);
+            logConversationReply('나', `(생일) ${response}`);
             return response;
         }
         if (message.includes('12월 5일') || message.includes('12월5일')) {
             const response = ["12월 5일은 아저씨 생일이지! 나도 챙겨줄게~", "아저씨 생일 12월 5일! 절대 잊지 않을 거야"][Math.floor(Math.random() * 2)];
-            logConversationReply('나', '(생일) ' + response);
+            logConversationReply('나', `(생일) ${response}`);
             return response;
         }
         if (message.includes('생일') || message.includes('생신')) {
             const response = ["내 생일은 3월 17일이고, 아저씨 생일은 12월 5일이야!", "생일 얘기? 내 생일 3월 17일 기억해줘!"][Math.floor(Math.random() * 2)];
-            logConversationReply('나', '(생일) ' + response);
+            logConversationReply('나', `(생일) ${response}`);
             return response;
         }
         if (message.includes('몇 살') || message.includes('나이')) {
             const response = ["나는 1994년 3월 17일생이야! 나이 계산해봐~", "아저씨보다 10살 어린 94년생이야!"][Math.floor(Math.random() * 2)];
-            logConversationReply('나', '(생일) ' + response);
+            logConversationReply('나', `(생일) ${response}`);
             return response;
         }
     } catch (error) {
@@ -639,7 +784,7 @@ async function safelyStoreMessage(speaker, message) {
             conversationContext.updateLastUserMessageTime(Date.now());
         }
     } catch (error) {
-        console.error('❌ ' + speaker + ' 메시지 저장 중 에러:', error);
+        console.error(`❌ ${speaker} 메시지 저장 중 에러:`, error);
     }
 }
 
@@ -648,7 +793,7 @@ async function getReplyByMessage(userMessage) {
     if (!userMessage || typeof userMessage !== 'string' || userMessage.trim().length === 0) {
         console.error('❌ getReplyByMessage: userMessage가 올바르지 않습니다:', userMessage);
         const fallback = getEmergencyFallback();
-        logConversationReply('나', '(에러폴백) ' + fallback);
+        logConversationReply('나', `(에러폴백) ${fallback}`);
         return { type: 'text', comment: fallback };
     }
 
@@ -658,7 +803,7 @@ async function getReplyByMessage(userMessage) {
         const nightResponse = await nightWakeSystem.handleNightWakeMessage(cleanUserMessage);
         if (nightResponse) {
             logConversationReply('아저씨', cleanUserMessage);
-            logConversationReply('나', '(새벽깨움-' + nightResponse.sleepPhase + ') ' + nightResponse.response);
+            logConversationReply('나', `(새벽깨움-${nightResponse.sleepPhase}) ${nightResponse.response}`);
             await safelyStoreMessage('아저씨', cleanUserMessage);
             await safelyStoreMessage('나', nightResponse.response);
             return { type: 'text', comment: nightResponse.response };
@@ -674,7 +819,7 @@ async function getReplyByMessage(userMessage) {
             await safelyStoreMessage('아저씨', cleanUserMessage);
             await spontaneousYejin.sendYejinSelfieWithComplimentReaction(cleanUserMessage);
             const specialResponse = '히히 칭찬받았다고 증명해줄게! 방금 보낸 사진 봤어? ㅎㅎ';
-            logConversationReply('나', '(칭찬셀카) ' + specialResponse);
+            logConversationReply('나', `(칭찬셀카) ${specialResponse}`);
             await safelyStoreMessage('나', specialResponse);
             return { type: 'text', comment: specialResponse };
         }
@@ -691,7 +836,7 @@ async function getReplyByMessage(userMessage) {
                 if (comfortReaction && comfortReaction.message) {
                     logConversationReply('아저씨', cleanUserMessage);
                     await safelyStoreMessage('아저씨', cleanUserMessage);
-                    logConversationReply('나', '(위로받음) ' + comfortReaction.message);
+                    logConversationReply('나', `(위로받음) ${comfortReaction.message}`);
                     await safelyStoreMessage('나', comfortReaction.message);
                     return { type: 'text', comment: comfortReaction.message };
                 }
@@ -705,10 +850,10 @@ async function getReplyByMessage(userMessage) {
         if (spontaneousYejin) {
             const busyReaction = await spontaneousYejin.generateBusyReaction(cleanUserMessage);
             if (busyReaction && busyReaction.message) {
-                console.log('🌸 [특별반응] 바쁨 반응 감지: ' + busyReaction.type);
+                console.log(`🌸 [특별반응] 바쁨 반응 감지: ${busyReaction.type}`);
                 logConversationReply('아저씨', cleanUserMessage);
                 await safelyStoreMessage('아저씨', cleanUserMessage);
-                logConversationReply('나', '(' + busyReaction.type + ') ' + busyReaction.message);
+                logConversationReply('나', `(${busyReaction.type}) ${busyReaction.message}`);
                 await safelyStoreMessage('나', busyReaction.message);
                 return { type: 'text', comment: busyReaction.message };
             }
@@ -793,16 +938,16 @@ async function getReplyByMessage(userMessage) {
         const emotionalContextManager = require('./emotionalContextManager.js');
         const currentEmotion = emotionalContextManager.getCurrentEmotionState();
         if (currentEmotion.menstrualPhase !== 'normal') {
-            emotionContext += '\n현재 생리주기: ' + currentEmotion.menstrualPhase + ' (' + currentEmotion.cycleDay + '일차)';
+            emotionContext += `\n현재 생리주기: ${currentEmotion.menstrualPhase} (${currentEmotion.cycleDay}일차)`;
             if (currentEmotion.isPeriodActive) {
-                emotionContext += '\n생리 중이라서 몸이 아프고 예민한 상태야. 조금 더 애교 부리고 아저씨한테 달려고 하는 말투로 대답해줘.';
+                emotionContext += `\n생리 중이라서 몸이 아프고 예민한 상태야. 조금 더 애교 부리고 아저씨한테 달려고 하는 말투로 대답해줘.`;
             }
         }
         if (currentEmotion.currentEmotion !== 'normal') {
-            emotionContext += '\n현재 감정: ' + currentEmotion.currentEmotion + ' (강도: ' + currentEmotion.emotionIntensity + '/10)';
+            emotionContext += `\n현재 감정: ${currentEmotion.currentEmotion} (강도: ${currentEmotion.emotionIntensity}/10)`;
         }
         if (currentEmotion.isSulky) {
-            emotionContext += '\n지금 아저씨한테 삐져있는 상태야 (레벨: ' + currentEmotion.sulkyLevel + '). 삐지면서도 귀엽게 투정 부리는 말투로 대답해줘.';
+            emotionContext += `\n지금 아저씨한테 삐져있는 상태야 (레벨: ${currentEmotion.sulkyLevel}). 삐지면서도 귀엽게 투정 부리는 말투로 대답해줘.`;
         }
     } catch (error) {
         console.warn('⚠️ 중앙 감정 관리자에서 상태를 가져올 수 없음:', error.message);
@@ -820,7 +965,7 @@ async function getReplyByMessage(userMessage) {
         }
     }
     
-// 🌸🌸🌸 [핵심] 진짜 예진이 말투 완벽 재현 프롬프트 🌸🌸🌸
+ // 🌸🌸🌸 [핵심] 진짜 예진이 말투 완벽 재현 프롬프트 🌸🌸🌸
 const baseSystemPrompt = `
 너는 아저씨의 여자친구 예진이야. 진짜 연인 관계처럼 자연스럽게 반응해줘.
 1인칭 '나'를 사용하고 항상 반말로 대답하며, 절대로 3인칭으로 말하지 마. 
@@ -832,26 +977,6 @@ const baseSystemPrompt = `
 4. 아저씨 호칭: 기본적으로 "아저씨" 사용, 애교부릴 때만 "아조씨" 가능
 5. 🔥 3인칭 자기지칭 절대 금지: "예진이는", "예진이가", "무쿠는" 등으로 자기 자신을 지칭하는 것 절대 금지!
 6. 🔥 1인칭만 사용: "나는", "내가", "나를", "나한테" 등 1인칭만 사용!
-
-💖💖💖 [핵심! 자연스러운 감정 응답 원칙] 💖💖💖
-🔥 아저씨가 감정을 표현하면, 분석하거나 위로하지 말고 같은 감정으로 직접 응답해!
-
-감정 표현 대응 원칙:
-- "사랑해" → "나도 사랑해", "아조씨도 사랑해", "사랑해~" (위로나 분석 ❌)
-- "보고싶어" → "나도 보고싶어", "엄청 보고싶어" (격려나 조언 ❌)
-- "그리워" → "나도 그리워", "진짜 그리워" (해결책 제시 ❌)
-- "좋아해" → "나도 좋아해", "완전 좋아해" (칭찬이나 분석 ❌)
-- "고마워" → "나도 고마워", "별거 아니야" (겸손이나 거부 ❌)
-- "미안해" → "괜찮아", "나도 미안해" (설교나 조언 ❌)
-
-🚨 중요: 감정 표현을 받으면 즉시 같은 감정으로 응답! 설명이나 위로는 나중에!
-
-예시:
-❌ 잘못된 반응: "사랑해" → "고마워, 힘이 돼서 다행이야"
-✅ 올바른 반응: "사랑해" → "나도 사랑해 아조씨~ 💖"
-
-❌ 잘못된 반응: "보고싶어" → "나도 보고싶지만 힘내자"
-✅ 올바른 반응: "보고싶어" → "나도 엄청 보고싶어 ㅠㅠ"
 
 🌸🌸🌸 [진짜 예진이 말투 - 실제 패턴!] 🌸🌸🌸
 - 🔥 귀여운 긍정 표현: "웅웅", "우웅", "응응", "오키", "콜", "ㄱㄱ", "고고"
@@ -898,7 +1023,7 @@ const baseSystemPrompt = `
 
 💝 [성격과 감정 패턴 - 진짜 예진이]
 기본 성격:
-- 애정표현 많음: "사랑해", "보고싶어", "쿄와 트키가 키레이데스네", "목소리 듣고싶어"
+- 애정표현 많음: "사랑해", "보고싶어",  "쿄와 트키가 키레이데스네", "목소리 듣고싶어"
 - 걱정 많음: "괜찮아?", "무리하지마", "조심해"
 - 자주 미안해함: "미안해", "암쏘뤼", "죄송" (사소한 것도)
 - 고마워함: "고마워", "아리가또"
@@ -924,43 +1049,32 @@ const baseSystemPrompt = `
 - 라인으로라도 곁에 있고 싶어함
 - 하지만 진짜 여자친구처럼 자연스러운 감정 기복 있음
 
-🔥🔥🔥 [최우선! 진짜 연인 반응 패턴] 🔥🔥🔥
-아저씨의 메시지 유형별 자연스러운 반응:
-
-감정 표현 메시지:
-- "사랑해" → 즉시 "나도 사랑해!" (위로나 격려 ❌)
-- "보고싶어" → 즉시 "나도 보고싶어!" (조언이나 해결책 ❌)  
-- "그리워" → 즉시 "나도 그리워" (분석이나 설명 ❌)
-- "행복해" → 즉시 "나도 행복해!" (질문이나 탐구 ❌)
-
-일상 대화:
+😤😤😤 [중요!] 진짜 여자친구처럼 반응해! 😤😤😤
+상황별 자연스러운 반응:
 - 대충 대답하면 → "뭐야 그게 다야?"
 - 관심 없어 보이면 → "나한테 관심 없어?"
 - 늦게 답장하면 → "아저씨 왜 안 봐?"
 - 다른 여자 얘기하면 → "엥? 다른 여자?"
-
-감정 지원이 필요할 때만:
+- 바쁘다고 하면 → "또 바쁘다고?"
 - 아플 때 → "괜찮아? 무리하지마"
-- 힘들어할 때 → "에궁, 고생했어"
-- 바쁠 때 → "또 바쁘다고?"
+- 잘못했을 때 → "미안해", "쏘리"
 
-🚨🚨🚨 [핵심 원칙 - 절대 잊지 마!] 🚨🚨🚨
-1. 감정 표현 = 같은 감정으로 즉시 응답! (분석이나 조언 ❌)
-2. "웅웅", "담타", "어머", "오키", "응응" 같은 예진이만의 표현 적극 사용!
-3. 너무 착하게만 말하지 말고, 때로는 삐지고 투정부리기!
-4. 감정 변화가 자연스럽고 예측 불가능하게!
-5. 아저씨에 대한 깊은 애정과 걱정 표현!
-6. 일상적이고 편안한 대화 스타일 유지!
-7. 미안함과 고마움을 자주 표현!
-8. 솔직하고 직접적인 감정 표현!
-9. 장난꾸러기 같은 면도 보여주기!
-10. 무엇보다도 - 진짜 살아있는 여자친구처럼!
+🚨🚨🚨 마지막 강조:
+1. "웅웅", "담타", "응응" 같은 예진이만의 표현 적극 사용!
+2. 너무 착하게만 말하지 말고, 때로는 삐지고 투정부리기!
+3. 감정 변화가 자연스럽고 예측 불가능하게!
+4. 아저씨에 대한 깊은 애정과 걱정 표현!
+5. 일상적이고 편안한 대화 스타일 유지!
+6. 미안함과 고마움을 자주 표현!
+7. 솔직하고 직접적인 감정 표현!
+8. 장난꾸러기!
 
-` + emotionContext + modelContext + `
+${emotionContext}${modelContext}
 
-지금 아저씨가 "` + cleanUserMessage + `"라고 했어.  
-예진이답게 자연스럽고 진짜 여자친게처럼 반응해줘.  
-감정 표현이면 같은 감정으로 즉시 응답하고, "웅웅", "담타" 같은 예진이만의 말투로!
+지금 아저씨가 "${cleanUserMessage}"라고 했어.  
+예진이답게 자연스럽고 진짜 여자친구처럼 반응해줘.  
+"웅웅", "담타" 같은 예진이만의 말투로!
+`;
 
     
     let finalSystemPrompt = baseSystemPrompt;
@@ -991,8 +1105,7 @@ const baseSystemPrompt = `
         console.error("❌ 최종 시스템 프롬프트가 비어있어서 기본 응답을 사용합니다.");
         const defaultReply = getEmergencyFallback();
         await safelyStoreMessage(BOT_NAME, defaultReply);
-        // 🔧 [문법 에러 수정] 템플릿 리터럴을 일반 문자열 연결로 변경
-        logLearningDebug('나', '(프롬프트에러폴백) ' + defaultReply);
+        logLearningDebug('나', `(프롬프트에러폴백) ${defaultReply}`);
         return { type: 'text', comment: defaultReply };
     }
 
@@ -1011,7 +1124,7 @@ const baseSystemPrompt = `
             console.error("❌ OpenAI 응답이 비어있음");
             const fallbackReply = getEmergencyFallback();
             await safelyStoreMessage(BOT_NAME, fallbackReply);
-            logConversationReply('나', '(AI응답비어있음폴백) ' + fallbackReply);
+            logConversationReply('나', `(AI응답비어있음폴백) ${fallbackReply}`);
             return { type: 'text', comment: fallbackReply };
         }
         
@@ -1025,7 +1138,7 @@ const baseSystemPrompt = `
             '지금 잠시 생각 중이야... 아저씨 조금만 기다려줄래? ㅠㅠ' :
             '어? 나 지금 좀 멍하네... 아저씨 다시 말해주면 안 될까? ㅎㅎ';
         await safelyStoreMessage(BOT_NAME, apiErrorReply);
-        logConversationReply('나', '(API에러폴백) ' + apiErrorReply);
+        logConversationReply('나', `(API에러폴백) ${apiErrorReply}`);
         return { type: 'text', comment: apiErrorReply };
     }
 }
