@@ -81,7 +81,14 @@ async function analyzePhoto(photoNumber) {
             temperature: 0.1  // 일관성을 위해 낮은 온도
         });
         
-        const analysisText = response.choices[0].message.content.trim();
+        let analysisText = response.choices[0].message.content.trim();
+        
+        // 🔧 FIX: JSON 코드 블록 제거
+        if (analysisText.startsWith('```json')) {
+            analysisText = analysisText.replace(/^```json\s*/, '').replace(/\s*```$/, '');
+        } else if (analysisText.startsWith('```')) {
+            analysisText = analysisText.replace(/^```\s*/, '').replace(/\s*```$/, '');
+        }
         
         // JSON 파싱 시도
         let analysis;
