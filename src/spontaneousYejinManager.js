@@ -1,10 +1,12 @@
 // ============================================================================
-// spontaneousYejinManager.js - v2.3 ENHANCED (영구저장 & 균등분산 스케줄링)
+// spontaneousYejinManager.js - v2.4 ENHANCED (개선된 사진 분석 시스템 통합)
 // 🌸 예진이가 능동적으로 하루 15번 메시지 보내는 시스템
 // 💾 NEW: 영구 저장 기능 (/data/message_status.json)
 // 📅 NEW: 균등 분산 스케줄링 (1시간 8분 간격 ±15분 랜덤)
+// 🎯 NEW: 1452장 Vision API 분석 기반 정확한 사진-메시지 매칭!
+// 💪 완벽한 인물 구분: indoor=예진이, outdoor=아저씨, portrait=세밀분석
+// 🚫 존댓말 문제 완전 해결: 분석 기반 반말 메시지
 // ✅ 기존 기능 완전 보존 + 안전성 강화
-// 🔧 spontaneousPhotoManager.js v4.0과 동일한 구조 적용
 // ============================================================================
 
 const schedule = require('node-schedule');
@@ -125,7 +127,7 @@ async function saveMessageState() {
             realStats: dailyScheduleState.realStats,
             todaySchedule: dailyScheduleState.todaySchedule,
             lastSaved: moment().tz(TIMEZONE).format('YYYY-MM-DD HH:mm:ss'),
-            version: '2.3'
+            version: '2.4'
         };
 
         await fs.writeFile(MESSAGE_STATUS_FILE, JSON.stringify(stateToSave, null, 2));
@@ -736,13 +738,41 @@ async function generateCurrentPhotoMessage() {
     }
 }
 
+// ================== 📸 개선된 사진 전송 함수 (분석 데이터 기반 + 기존 시스템 폴백) ==================
 async function sendOmoidePhoto() {
     try {
         if (!lineClient || !USER_ID) {
-            spontaneousLog('❌ 후지 풍경 사진 전송 불가 - client 또는 USER_ID 없음');
+            spontaneousLog('❌ 사진 전송 불가 - client 또는 USER_ID 없음');
             return false;
         }
 
+        // 🎯 NEW: 개선된 시스템 시도 (분석 데이터 기반)
+        if (enhancedPhotoSystem) {
+            try {
+                const koreaTime = moment().tz(TIMEZONE);
+                const hour = koreaTime.hour();
+                
+                // 시간대별 적절한 카테고리 선택
+                const preferredCategory = enhancedPhotoSystem.selectPhotoByTimeAndMood(hour);
+                
+                spontaneousLog(`🎯 개선된 사진 시스템 시도: ${preferredCategory} 카테고리`);
+                
+                const success = await enhancedPhotoSystem.sendEnhancedAnalyzedPhoto(preferredCategory, 'casual');
+                
+                if (success) {
+                    spontaneousLog('✅ 개선된 사진 시스템으로 전송 완료');
+                    return true;
+                } else {
+                    spontaneousLog('⚠️ 개선된 시스템 실패 - 기존 시스템으로 폴백');
+                }
+            } catch (enhancedError) {
+                spontaneousLog(`⚠️ 개선된 시스템 에러: ${enhancedError.message} - 기존 시스템으로 폴백`);
+            }
+        }
+
+        // 🔄 FALLBACK: 기존 시스템 (안전장치)
+        spontaneousLog('🔄 기존 사진 시스템으로 전송 시도');
+        
         const imageUrl = getOmoidePhotoUrl();
         
         if (!validateImageUrl(imageUrl)) {
@@ -752,8 +782,8 @@ async function sendOmoidePhoto() {
 
         const caption = await generateCurrentPhotoMessage();
         
-        spontaneousLog(`📸 예진이 후지 풍경 사진 전송 시도: ${imageUrl.substring(imageUrl.lastIndexOf('/') + 1)}`);
-        spontaneousLog(`💬 사진 메시지: "${caption.substring(0, 50)}..."`);
+        spontaneousLog(`📸 기존 시스템 사진 전송: ${imageUrl.substring(imageUrl.lastIndexOf('/') + 1)}`);
+        spontaneousLog(`💬 기존 시스템 메시지: "${caption.substring(0, 50)}..."`);
         
         await lineClient.pushMessage(USER_ID, {
             type: 'image',
@@ -768,22 +798,22 @@ async function sendOmoidePhoto() {
             text: caption
         });
         
-        spontaneousLog(`✅ 예진이 후지 풍경 사진 전송 완료: "${caption.substring(0, 30)}..."`);
+        spontaneousLog(`✅ 기존 시스템 사진 전송 완료: "${caption.substring(0, 30)}..."`);
         return true;
         
     } catch (error) {
-        spontaneousLog(`❌ 후지 풍경 사진 전송 실패: ${error.message}`);
+        spontaneousLog(`❌ 모든 사진 시스템 실패: ${error.message}`);
         
         try {
-            const caption = await generateCurrentPhotoMessage();
+            const fallbackMessage = await generateCurrentPhotoMessage();
             await lineClient.pushMessage(USER_ID, {
                 type: 'text',
-                text: `${caption}\n\n(사진 전송이 실패했어... 나중에 다시 보내줄게 ㅠㅠ)`
+                text: `${fallbackMessage}\n\n(사진 전송이 실패했어... 나중에 다시 보내줄게 ㅠㅠ)`
             });
-            spontaneousLog('✅ 후지 풍경 사진 폴백 메시지 전송 성공');
+            spontaneousLog('✅ 최종 폴백 메시지 전송 성공');
             return true;
         } catch (fallbackError) {
-            spontaneousLog(`❌ 후지 풍경 사진 폴백도 실패: ${fallbackError.message}`);
+            spontaneousLog(`❌ 최종 폴백도 실패: ${fallbackError.message}`);
             return false;
         }
     }
@@ -1088,6 +1118,65 @@ function getSpontaneousMessageStatus() {
     };
 }
 
+// ================== 🎯 NEW: 개선된 사진 시스템 관리 함수들 ==================
+
+/**
+ * 📊 사진 시스템 통계 조회
+ */
+async function getPhotoSystemStats() {
+    const stats = {
+        enhancedSystemAvailable: !!enhancedPhotoSystem,
+        enhancedSystemInitialized: false,
+        photoAnalysisStats: null,
+        error: null
+    };
+    
+    if (enhancedPhotoSystem) {
+        try {
+            const analysisStats = await enhancedPhotoSystem.getPhotoAnalysisStats();
+            stats.photoAnalysisStats = analysisStats;
+            stats.enhancedSystemInitialized = true;
+        } catch (error) {
+            stats.error = error.message;
+        }
+    }
+    
+    return stats;
+}
+
+/**
+ * 🧪 사진 시스템 테스트
+ */
+async function testPhotoSystems() {
+    const results = {
+        enhanced: { available: false, tested: false, success: false, error: null },
+        legacy: { tested: false, success: false, error: null }
+    };
+    
+    // 개선된 시스템 테스트
+    if (enhancedPhotoSystem) {
+        results.enhanced.available = true;
+        try {
+            results.enhanced.tested = true;
+            const testResult = await enhancedPhotoSystem.sendEnhancedAnalyzedPhoto('any', 'test');
+            results.enhanced.success = testResult;
+        } catch (error) {
+            results.enhanced.error = error.message;
+        }
+    }
+    
+    // 기존 시스템 테스트
+    try {
+        results.legacy.tested = true;
+        const legacyResult = await sendOmoidePhoto();
+        results.legacy.success = legacyResult;
+    } catch (error) {
+        results.legacy.error = error.message;
+    }
+    
+    return results;
+}
+
 // ================== 💾 NEW: 시스템 시작 시 상태 복원 ==================
 async function startSpontaneousYejinSystem(client) {
     try {
@@ -1103,6 +1192,18 @@ async function startSpontaneousYejinSystem(client) {
         if (!USER_ID) {
             spontaneousLog('❌ TARGET_USER_ID 환경변수 없음');
             return false;
+        }
+
+        // 🎯 NEW: 개선된 사진 시스템 초기화
+        if (enhancedPhotoSystem && lineClient && USER_ID) {
+            try {
+                enhancedPhotoSystem.setupEnhancedPhotoSystem(lineClient, USER_ID);
+                spontaneousLog('✅ 개선된 사진 시스템 초기화 완료');
+            } catch (initError) {
+                spontaneousLog(`⚠️ 개선된 사진 시스템 초기화 실패: ${initError.message}`);
+            }
+        } else {
+            spontaneousLog('⚠️ 개선된 사진 시스템 초기화 건너뛰기 (설정 부족)');
         }
         
         // 💾 NEW: 기존 상태 로딩 시도
@@ -1170,5 +1271,8 @@ module.exports = {
     // 💾 NEW: 새로운 함수들 내보내기
     saveMessageState,
     loadMessageState,
-    generateDailyMessageSchedule
+    generateDailyMessageSchedule,
+    // 🎯 NEW: 개선된 사진 시스템 관련
+    getPhotoSystemStats,
+    testPhotoSystems
 };
