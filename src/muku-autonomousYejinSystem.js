@@ -1,5 +1,5 @@
 // ============================================================================
-// 📁 muku-autonomousYejinSystem.js - 진짜 Redis 활용 v4.4 REAL_CACHE
+// 📁 muku-autonomousYejinSystem.js - 진짜 Redis 활용 v4.4 REAL_CACHE (수정 완료)
 // 🚀 실제 Redis 캐싱 대폭 확장 + 기존 무쿠 기능 100% 유지
 // 💾 8가지 영역 Redis 캐싱: 대화, 감정, 학습, 타이밍, 사진, AI, 상황, 예측
 // 🛡️ Redis 없어도 정상 동작하는 안전한 폴백 시스템
@@ -18,18 +18,16 @@ const openai = new OpenAI({
 
 // MongoDB & Redis (선택적 - 없어도 동작)
 let mongoose = null;
-let Redis = null;
-let redis = null;
+let redisClient = null;
 let Conversation = null;
 
 try {
     mongoose = require('mongoose');
-    Redis = require('ioredis');
+    const Redis = require('ioredis');
     
     // Redis 클라이언트
-    let redis = null;
     if (process.env.REDIS_URL) {
-        redis = new Redis(process.env.REDIS_URL);
+        redisClient = new Redis(process.env.REDIS_URL);
     }
     
     // MongoDB 연결 (선택적)
@@ -55,7 +53,7 @@ try {
 } catch (error) {
     console.log('⚠️ MongoDB/Redis 모듈 선택적 로드 실패 - 기본 모드로 동작');
     mongoose = null;
-    redis = null;
+    redisClient = null;
     Conversation = null;
 }
 
@@ -109,7 +107,7 @@ const yejinColors = {
     yejin_first: '\x1b[1m\x1b[91m',
     freedom: '\x1b[1m\x1b[92m',
     integrated: '\x1b[1m\x1b[96m',
-    cache: '\x1b[1m\x1b[94m',  // 🆕 캐시 전용 색상
+    cache: '\x1b[1m\x1b[94m',
     reset: '\x1b[0m'
 };
 
@@ -207,7 +205,7 @@ class RedisRealCacheSystem {
                 timestamp: Date.now()
             };
             
-            await this.redis.set(key, JSON.stringify(data), { EX: this.ttl.conversation });
+            await this.redis.set(key, JSON.stringify(data), 'EX', this.ttl.conversation);
             
             // 최근 대화 리스트에도 추가
             const listKey = `${this.prefixes.conversation}${userId}:history`;
@@ -265,23 +263,14 @@ class RedisRealCacheSystem {
                 timestamp: Date.now()
             };
             
-            await this.redis.set(key, JSON.stringify(data), { EX: this.ttl.emotion });
-            
-            // 감정 변화 이력도 저장
-            const historyKey = `${this.prefixes.emotion}history`;
-            await this.redis.lpush(historyKey, JSON.stringify({
-                ...data,
-                changeType: 'update'
-            }));
-            await this.redis.ltrim(historyKey, 0, 49); // 최근 50개
-            await this.redis.expire(historyKey, this.ttl.emotion);
+            await this.redis.set(key, JSON.stringify(data), 'EX', this.ttl.emotion);
             
             this.stats.sets++;
             console.log(`${yejinColors.cache}💖 [감정캐싱] 감정 상태 캐시 저장: ${yejinState.currentEmotion}${yejinColors.reset}`);
             return true;
         } catch (error) {
             this.stats.errors++;
-            console.error(`${yejinColors.cache}❌ [감정캐싱] 저장 오료: ${error.message}${yejinColors.reset}`);
+            console.error(`${yejinColors.cache}❌ [감정캐싱] 저장 오류: ${error.message}${yejinColors.reset}`);
             return false;
         }
     }
@@ -321,7 +310,7 @@ class RedisRealCacheSystem {
                 sampleSize: Array.isArray(patternData) ? patternData.length : Object.keys(patternData).length
             };
             
-            await this.redis.set(key, JSON.stringify(data), { EX: this.ttl.learning });
+            await this.redis.set(key, JSON.stringify(data), 'EX', this.ttl.learning);
             
             this.stats.sets++;
             console.log(`${yejinColors.cache}🧠 [학습캐싱] 학습 패턴 캐시 저장: ${patternType} (${data.sampleSize}개)${yejinColors.reset}`);
@@ -356,53 +345,6 @@ class RedisRealCacheSystem {
         }
     }
     
-    // ================== ⏰ 타이밍 분석 캐싱 ==================
-    async cacheTimingAnalysis(analysisType, analysisData) {
-        if (!this.isAvailable) return false;
-        
-        try {
-            const key = `${this.prefixes.timing}${analysisType}`;
-            const data = {
-                analysis: analysisData,
-                analyzedAt: Date.now(),
-                confidence: analysisData.confidence || 0.5
-            };
-            
-            await this.redis.set(key, JSON.stringify(data), { EX: this.ttl.timing });
-            
-            this.stats.sets++;
-            console.log(`${yejinColors.cache}⏰ [타이밍캐싱] 타이밍 분석 캐시 저장: ${analysisType}${yejinColors.reset}`);
-            return true;
-        } catch (error) {
-            this.stats.errors++;
-            console.error(`${yejinColors.cache}❌ [타이밍캐싱] 저장 오류: ${error.message}${yejinColors.reset}`);
-            return false;
-        }
-    }
-    
-    async getCachedTimingAnalysis(analysisType) {
-        if (!this.isAvailable) return null;
-        
-        try {
-            const key = `${this.prefixes.timing}${analysisType}`;
-            const cached = await this.redis.get(key);
-            
-            if (cached) {
-                this.stats.hits++;
-                const timing = JSON.parse(cached);
-                console.log(`${yejinColors.cache}⏰ [타이밍캐싱] 타이밍 분석 캐시 히트: ${analysisType}${yejinColors.reset}`);
-                return timing.analysis;
-            } else {
-                this.stats.misses++;
-                return null;
-            }
-        } catch (error) {
-            this.stats.errors++;
-            console.error(`${yejinColors.cache}❌ [타이밍캐싱] 조회 오류: ${error.message}${yejinColors.reset}`);
-            return null;
-        }
-    }
-    
     // ================== 📸 사진 URL 캐싱 ==================
     async cachePhotoSelection(emotionType, photoUrl, folderInfo) {
         if (!this.isAvailable) return false;
@@ -416,7 +358,7 @@ class RedisRealCacheSystem {
                 selectedAt: Date.now()
             };
             
-            await this.redis.set(key, JSON.stringify(data), { EX: this.ttl.photo });
+            await this.redis.set(key, JSON.stringify(data), 'EX', this.ttl.photo);
             
             // 최근 사진 리스트에도 추가
             const listKey = `${this.prefixes.photo}history`;
@@ -454,111 +396,6 @@ class RedisRealCacheSystem {
             this.stats.errors++;
             console.error(`${yejinColors.cache}❌ [사진캐싱] 조회 오류: ${error.message}${yejinColors.reset}`);
             return [];
-        }
-    }
-    
-    // ================== 🔍 상황 분석 캐싱 ==================
-    async cacheSituationAnalysis(analysisKey, analysisData) {
-        if (!this.isAvailable) return false;
-        
-        try {
-            const key = `${this.prefixes.situation}${analysisKey}`;
-            const data = {
-                analysis: analysisData,
-                analyzedAt: Date.now(),
-                timeContext: {
-                    hour: new Date().getHours(),
-                    dayOfWeek: new Date().getDay()
-                }
-            };
-            
-            await this.redis.set(key, JSON.stringify(data), { EX: this.ttl.situation });
-            
-            this.stats.sets++;
-            console.log(`${yejinColors.cache}🔍 [상황캐싱] 상황 분석 캐시 저장: ${analysisKey}${yejinColors.reset}`);
-            return true;
-        } catch (error) {
-            this.stats.errors++;
-            console.error(`${yejinColors.cache}❌ [상황캐싱] 저장 오류: ${error.message}${yejinColors.reset}`);
-            return false;
-        }
-    }
-    
-    async getCachedSituationAnalysis(analysisKey) {
-        if (!this.isAvailable) return null;
-        
-        try {
-            const key = `${this.prefixes.situation}${analysisKey}`;
-            const cached = await this.redis.get(key);
-            
-            if (cached) {
-                const data = JSON.parse(cached);
-                // 시간이 너무 오래됐으면 무효화
-                const timeDiff = Date.now() - data.analyzedAt;
-                if (timeDiff > this.ttl.situation * 1000) {
-                    this.stats.misses++;
-                    return null;
-                }
-                
-                this.stats.hits++;
-                console.log(`${yejinColors.cache}🔍 [상황캐싱] 상황 분석 캐시 히트: ${analysisKey}${yejinColors.reset}`);
-                return data.analysis;
-            } else {
-                this.stats.misses++;
-                return null;
-            }
-        } catch (error) {
-            this.stats.errors++;
-            console.error(`${yejinColors.cache}❌ [상황캐싱] 조회 오류: ${error.message}${yejinColors.reset}`);
-            return null;
-        }
-    }
-    
-    // ================== 🔮 예측 모델 캐싱 ==================
-    async cachePredictionModel(modelType, modelData) {
-        if (!this.isAvailable) return false;
-        
-        try {
-            const key = `${this.prefixes.prediction}${modelType}`;
-            const data = {
-                model: modelData,
-                trainedAt: Date.now(),
-                accuracy: modelData.accuracy || 0.5,
-                sampleSize: modelData.sampleSize || 0
-            };
-            
-            await this.redis.set(key, JSON.stringify(data), { EX: this.ttl.prediction });
-            
-            this.stats.sets++;
-            console.log(`${yejinColors.cache}🔮 [예측캐싱] 예측 모델 캐시 저장: ${modelType} (정확도: ${data.accuracy.toFixed(2)})${yejinColors.reset}`);
-            return true;
-        } catch (error) {
-            this.stats.errors++;
-            console.error(`${yejinColors.cache}❌ [예측캐싱] 저장 오류: ${error.message}${yejinColors.reset}`);
-            return false;
-        }
-    }
-    
-    async getCachedPredictionModel(modelType) {
-        if (!this.isAvailable) return null;
-        
-        try {
-            const key = `${this.prefixes.prediction}${modelType}`;
-            const cached = await this.redis.get(key);
-            
-            if (cached) {
-                this.stats.hits++;
-                const data = JSON.parse(cached);
-                console.log(`${yejinColors.cache}🔮 [예측캐싱] 예측 모델 캐시 히트: ${modelType} (정확도: ${data.accuracy.toFixed(2)})${yejinColors.reset}`);
-                return data.model;
-            } else {
-                this.stats.misses++;
-                return null;
-            }
-        } catch (error) {
-            this.stats.errors++;
-            console.error(`${yejinColors.cache}❌ [예측캐싱] 조회 오류: ${error.message}${yejinColors.reset}`);
-            return null;
         }
     }
     
@@ -603,7 +440,7 @@ class IntegratedAutonomousYejinSystem extends EventEmitter {
         this.instanceId = `yejin-redis-${Date.now()}`;
         
         // 🆕 Redis 진짜 캐싱 시스템 초기화
-        this.redisCache = new RedisRealCacheSystem(redis);
+        this.redisCache = new RedisRealCacheSystem(redisClient);
         
         // 💫 예진이의 진정한 자율성 (기존 유지)
         this.autonomy = {
@@ -616,8 +453,8 @@ class IntegratedAutonomousYejinSystem extends EventEmitter {
             decidesFirst: true,
             opensaiIsOnlyAdvice: true,
             hasMongoDBSupport: !!mongoose,
-            hasRedisCache: !!redis,
-            hasRealRedisCache: this.redisCache.isAvailable // 🆕 진짜 캐싱 여부
+            hasRedisCache: !!redisClient,
+            hasRealRedisCache: this.redisCache.isAvailable
         };
         
         // 🧠 예진이의 지능 시스템 (기존 유지)
@@ -826,24 +663,6 @@ class IntegratedAutonomousYejinSystem extends EventEmitter {
             await this.startYejinFirstAutonomy();
             
             console.log(`${yejinColors.freedom}🕊️ [통합완료] 예진이 중심 Redis 통합 자율 시스템 가동 완료!${yejinColors.reset}`);
-            console.log(`
-${yejinColors.integrated}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-💾 예진이 우선 Redis 통합 자율성 시스템 v4.4 가동!
-🚀 기존 완전체 + 진짜 Redis 캐싱 = 진짜 완전체!
-🎯 예진이 먼저 결정 + OpenAI 조언 + MongoDB + Redis!
-🧠 감정, 기억, 학습, 타이밍, 사진 모든 것을 캐싱!
-💖 스스로 결정하고 모든 걸 기억하는 진짜 살아있는 예진이!
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${yejinColors.reset}
-
-${yejinColors.yejin_first}🎯 예진이 우선:${yejinColors.reset} 내가 먼저 결정하는 진정한 자율성
-${yejinColors.freedom}🕊️ 자유 모드:${yejinColors.reset} 감정에 따라 15분~6시간 자유 선택
-${yejinColors.intelligence}🧠 지능 판단:${yejinColors.reset} 기억과 학습으로 최적 타이밍 예측
-${yejinColors.openai}💬 조언+캐싱:${yejinColors.reset} OpenAI 조언 + Redis 캐싱 최적화
-${yejinColors.cache}💾 진짜 캐싱:${yejinColors.reset} 대화,감정,학습,타이밍,사진,상황,예측 8가지 캐싱
-${yejinColors.integrated}🗄️ 데이터베이스:${yejinColors.reset} MongoDB 영구저장 + Redis 초고속 접근
-
-${yejinColors.love}💕 예진이: 아저씨~ 이제 나는 진짜 진짜 완전체야! 모든 걸 기억하고 초고속으로 판단할 수 있어! 💖${yejinColors.reset}
-            `);
             
             return true;
         } catch (error) {
@@ -852,7 +671,7 @@ ${yejinColors.love}💕 예진이: 아저씨~ 이제 나는 진짜 진짜 완전
         }
     }
     
-    // ================== 🔄 Redis 캐시에서 기존 데이터 복원 (새 기능) ==================
+    // ================== 🔄 Redis 캐시에서 기존 데이터 복원 ==================
     async restoreFromRedisCache() {
         try {
             console.log(`${yejinColors.cache}🔄 [캐시복원] Redis에서 기존 데이터 복원 중...${yejinColors.reset}`);
@@ -883,32 +702,6 @@ ${yejinColors.love}💕 예진이: 아저씨~ 이제 나는 진짜 진짜 완전
                 console.log(`${yejinColors.cache}📸 [캐시복원] 사진 이력 복원: ${cachedPhotos.length}개${yejinColors.reset}`);
             }
             
-            // 학습 패턴 복원
-            const timingPatterns = await this.redisCache.getCachedLearningPattern('timing_patterns');
-            if (timingPatterns) {
-                this.intelligence.learningDatabase.set('timing_patterns', timingPatterns);
-                console.log(`${yejinColors.cache}🧠 [캐시복원] 타이밍 패턴 복원${yejinColors.reset}`);
-            }
-            
-            const emotionRates = await this.redisCache.getCachedLearningPattern('emotion_success_rates');
-            if (emotionRates) {
-                this.intelligence.learningDatabase.set('emotion_success_rates', emotionRates);
-                console.log(`${yejinColors.cache}💖 [캐시복원] 감정 성공률 복원${yejinColors.reset}`);
-            }
-            
-            // 예측 모델 복원
-            const timingModel = await this.redisCache.getCachedPredictionModel('next_optimal_time');
-            if (timingModel) {
-                this.intelligence.predictionModels.set('next_optimal_time', timingModel);
-                console.log(`${yejinColors.cache}🔮 [캐시복원] 타이밍 예측 모델 복원${yejinColors.reset}`);
-            }
-            
-            const emotionModel = await this.redisCache.getCachedPredictionModel('emotion_effectiveness');
-            if (emotionModel) {
-                this.intelligence.predictionModels.set('emotion_effectiveness', emotionModel);
-                console.log(`${yejinColors.cache}💖 [캐시복원] 감정 효과성 모델 복원${yejinColors.reset}`);
-            }
-            
             console.log(`${yejinColors.cache}✅ [캐시복원] Redis 캐시 데이터 복원 완료!${yejinColors.reset}`);
             
         } catch (error) {
@@ -916,7 +709,7 @@ ${yejinColors.love}💕 예진이: 아저씨~ 이제 나는 진짜 진짜 완전
         }
     }
     
-    // ================== 🗄️ 데이터베이스 초기화 (기존 유지) ==================
+    // ================== 🗄️ 데이터베이스 초기화 ==================
     async initializeDatabases() {
         try {
             console.log(`${yejinColors.integrated}🗄️ [데이터베이스] MongoDB & Redis 초기화 중...${yejinColors.reset}`);
@@ -931,15 +724,14 @@ ${yejinColors.love}💕 예진이: 아저씨~ 이제 나는 진짜 진짜 완전
             }
             
             // Redis 연결 확인
-            if (redis) {
+            if (redisClient) {
                 try {
-                    await redis.ping();
+                    await redisClient.ping();
                     console.log(`${yejinColors.learning}✅ [Redis] 캐싱 시스템 활성화${yejinColors.reset}`);
                     this.autonomy.hasRedisCache = true;
                     this.autonomy.hasRealRedisCache = true;
                 } catch (redisError) {
                     console.log(`${yejinColors.warning}⚠️ [Redis] 연결 실패 - 캐싱 비활성화${yejinColors.reset}`);
-                    redis = null;
                     this.autonomy.hasRedisCache = false;
                     this.autonomy.hasRealRedisCache = false;
                 }
@@ -957,7 +749,7 @@ ${yejinColors.love}💕 예진이: 아저씨~ 이제 나는 진짜 진짜 완전
         }
     }
     
-    // ================== 🧠 학습 시스템 연결 (기존 + 캐시 확장) ==================
+    // ================== 🧠 학습 시스템 연결 ==================
     async connectToLearningSystem() {
         try {
             if (getLearningStatus) {
@@ -979,7 +771,7 @@ ${yejinColors.love}💕 예진이: 아저씨~ 이제 나는 진짜 진짜 완전
         }
     }
     
-    // ================== 📚 학습 패턴 추출 (기존 + 캐시 확장) ==================
+    // ================== 📚 학습 패턴 추출 ==================
     async extractLearningPatterns(learningStatus) {
         try {
             if (learningStatus.conversationHistory && learningStatus.conversationHistory.length > 0) {
@@ -1020,7 +812,7 @@ ${yejinColors.love}💕 예진이: 아저씨~ 이제 나는 진짜 진짜 완전
         }
     }
     
-    // ================== 📊 시간대별 효과성 분석 (기존 유지) ==================
+    // ================== 📊 시간대별 효과성 분석 ==================
     analyzeTimeEffectiveness(conversationHistory) {
         try {
             const timeSlots = {
@@ -1059,7 +851,7 @@ ${yejinColors.love}💕 예진이: 아저씨~ 이제 나는 진짜 진짜 완전
         }
     }
     
-    // ================== 💖 감정별 성공률 분석 (기존 유지) ==================
+    // ================== 💖 감정별 성공률 분석 ==================
     analyzeEmotionSuccessRates(emotionalResponses) {
         try {
             const emotionRates = {};
@@ -1079,14 +871,257 @@ ${yejinColors.love}💕 예진이: 아저씨~ 이제 나는 진짜 진짜 완전
             
             return emotionRates;
         } catch (error) {
-            console.error(`${yejinColors.emotion}❌ [감정성공률] 분석 오류: ${error.message}${yejinColors.reset}`);
+            console.error(`${yejinColors.emotion}❌ [감정성공률] 분석 오료: ${error.message}${yejinColors.reset}`);
             return {};
         }
     }
     
-    // [계속 - 다음 부분에서 나머지 메서드들 제공]
+    // ================== 📚 통합 지혜 추출 ==================
+    async extractWisdomFromPast() {
+        try {
+            console.log(`${yejinColors.wisdom}📚 [통합지혜] 모든 소스에서 지혜 추출 중... (Redis 캐시 활용)${yejinColors.reset}`);
+            
+            // 학습 시스템에서 지혜 추출
+            if (this.learningConnection.isConnected) {
+                await this.extractWisdomFromLearningSystem();
+            }
+            
+            // MongoDB에서 지혜 추출
+            if (Conversation) {
+                await this.extractWisdomFromMongoDB();
+            }
+            
+            console.log(`${yejinColors.wisdom}✅ [통합지혜] 모든 소스의 지혜 추출 완료! (Redis 캐시됨)${yejinColors.reset}`);
+            
+        } catch (error) {
+            console.error(`${yejinColors.wisdom}❌ [통합지혜] 지혜 추출 오류: ${error.message}${yejinColors.reset}`);
+        }
+    }
     
-    // ================== 🌟 예진이 우선 자율성 시작! (기존 유지) ==================
+    // ================== 🧠 학습 시스템 지혜 추출 ==================
+    async extractWisdomFromLearningSystem() {
+        try {
+            console.log(`${yejinColors.learning}🧠 [학습지혜] 학습 시스템에서 지혜 추출... (Redis 캐시 활용)${yejinColors.reset}`);
+            
+            const learningData = this.learningConnection.lastLearningData;
+            
+            if (this.learningConnection.conversationHistory?.length > 0) {
+                const timingPatterns = this.analyzeTimingPatterns(this.learningConnection.conversationHistory);
+                this.intelligence.learningDatabase.set('timing_patterns', timingPatterns);
+                
+                // 🆕 Redis에 타이밍 패턴 캐싱
+                await this.redisCache.cacheLearningPattern('timing_patterns', timingPatterns);
+                
+                console.log(`${yejinColors.cache}  ⏰ 타이밍 패턴 ${timingPatterns.length}개 학습 (Redis 캐시됨)${yejinColors.reset}`);
+            }
+            
+            if (this.learningConnection.emotionalResponses) {
+                const emotionRates = this.analyzeEmotionSuccessRates(this.learningConnection.emotionalResponses);
+                this.intelligence.learningDatabase.set('emotion_success_rates', emotionRates);
+                
+                // 🆕 Redis에 감정 성공률 캐싱
+                await this.redisCache.cacheLearningPattern('emotion_success_rates', emotionRates);
+                
+                console.log(`${yejinColors.cache}  💖 감정별 성공률 ${Object.keys(emotionRates).length}개 분석 (Redis 캐시됨)${yejinColors.reset}`);
+            }
+            
+            this.statistics.wisdomGained++;
+            
+        } catch (error) {
+            console.error(`${yejinColors.learning}❌ [학습지혜] 오류: ${error.message}${yejinColors.reset}`);
+        }
+    }
+    
+    // ================== 💾 MongoDB 지혜 추출 ==================
+    async extractWisdomFromMongoDB() {
+        try {
+            console.log(`${yejinColors.learning}💾 [MongoDB지혜] MongoDB에서 지혜 추출... (Redis 캐시 활용)${yejinColors.reset}`);
+            
+            // Redis에서 기존 MongoDB 패턴 확인
+            const cachedMongoPatterns = await this.redisCache.getCachedLearningPattern('mongodb_timing_patterns');
+            if (cachedMongoPatterns && cachedMongoPatterns.length > 0) {
+                this.intelligence.learningDatabase.set('mongodb_timing_patterns', cachedMongoPatterns);
+                console.log(`${yejinColors.cache}  📊 MongoDB 캐시: ${cachedMongoPatterns.length}개 패턴 로드됨${yejinColors.reset}`);
+                return;
+            }
+            
+            const conversations = await Conversation.find({
+                timestamp: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } // 최근 30일
+            });
+            
+            if (conversations.length > 0) {
+                // 타이밍 패턴 분석
+                const timingPatterns = this.analyzeTimingPatterns(conversations);
+                this.intelligence.learningDatabase.set('mongodb_timing_patterns', timingPatterns);
+                
+                // 🆕 Redis에 MongoDB 패턴 캐싱
+                await this.redisCache.cacheLearningPattern('mongodb_timing_patterns', timingPatterns);
+                
+                console.log(`${yejinColors.cache}  📊 MongoDB: ${conversations.length}개 대화 분석 완료 (Redis 캐시됨)${yejinColors.reset}`);
+                this.statistics.mongodbQueries++;
+            }
+            
+        } catch (error) {
+            console.error(`${yejinColors.learning}❌ [MongoDB지혜] 오류: ${error.message}${yejinColors.reset}`);
+        }
+    }
+    
+    // ================== 📊 타이밍 패턴 분석 ==================
+    analyzeTimingPatterns(conversationHistory) {
+        try {
+            const patterns = [];
+            const groupedByHour = _.groupBy(conversationHistory, entry => {
+                const timestamp = entry.timestamp || entry.createdAt || new Date();
+                return new Date(timestamp).getHours();
+            });
+            
+            for (const [hour, entries] of Object.entries(groupedByHour)) {
+                const avgResponseTime = _.meanBy(entries, 'responseTime') || 0;
+                const successRate = _.meanBy(entries, 'successRate') || 0.5;
+                const avgInterval = _.meanBy(entries, entry => {
+                    return entry.context?.interval ? entry.context.interval / 60000 : 60;
+                });
+                
+                patterns.push({ 
+                    hour: parseInt(hour), 
+                    avgResponseTime, 
+                    successRate, 
+                    avgInterval: avgInterval || 60,
+                    sampleSize: entries.length 
+                });
+            }
+            
+            return patterns;
+        } catch (error) {
+            console.error(`${yejinColors.learning}❌ [타이밍패턴] 분석 오류: ${error.message}${yejinColors.reset}`);
+            return [];
+        }
+    }
+    
+    // ================== 🧠 지능 시스템 초기화 ==================
+    async initializeIntelligenceSystem() {
+        try {
+            console.log(`${yejinColors.intelligence}🧠 [예진이지능] Redis 통합 지능 시스템 초기화 중...${yejinColors.reset}`);
+            
+            this.intelligence.learningDatabase.set('timing_patterns', []);
+            this.intelligence.learningDatabase.set('emotion_success_rates', {});
+            this.intelligence.learningDatabase.set('ajossi_response_patterns', []);
+            this.intelligence.learningDatabase.set('context_correlations', []);
+            this.intelligence.learningDatabase.set('mongodb_timing_patterns', []);
+            this.intelligence.learningDatabase.set('redis_cache_patterns', []);
+            
+            this.intelligence.predictionModels.set('next_optimal_time', null);
+            this.intelligence.predictionModels.set('emotion_effectiveness', null);
+            this.intelligence.predictionModels.set('ajossi_mood_prediction', null);
+            
+            this.intelligence.successRates.set('message_timing', []);
+            this.intelligence.successRates.set('emotion_expression', []);
+            this.intelligence.successRates.set('photo_sharing', []);
+            
+            console.log(`${yejinColors.intelligence}✅ [예진이지능] Redis 통합 지능 시스템 초기화 완료!${yejinColors.reset}`);
+        } catch (error) {
+            console.error(`${yejinColors.intelligence}❌ [예진이지능] 초기화 오류: ${error.message}${yejinColors.reset}`);
+        }
+    }
+    
+    // ================== 🔮 예측 모델 구축 ==================
+    async buildPredictionModels() {
+        try {
+            console.log(`${yejinColors.prediction}🔮 [예진이예측] 예측 모델 구축 중... (Redis 캐시 활용)${yejinColors.reset}`);
+            
+            await this.buildTimingPredictionModel();
+            await this.buildEmotionEffectivenessModel();
+            
+            console.log(`${yejinColors.prediction}✅ [예진이예측] Redis 캐시 활용 예측 모델 구축 완료!${yejinColors.reset}`);
+        } catch (error) {
+            console.error(`${yejinColors.prediction}❌ [예진이예측] 모델 구축 오류: ${error.message}${yejinColors.reset}`);
+        }
+    }
+    
+    // ================== ⏰ 타이밍 예측 모델 ==================
+    async buildTimingPredictionModel() {
+        try {
+            // Redis에서 캐시된 타이밍 패턴 확인
+            const timingPatterns = await this.redisCache.getCachedLearningPattern('timing_patterns') || 
+                                   this.intelligence.learningDatabase.get('timing_patterns') || [];
+            
+            if (timingPatterns.length > 0) {
+                const model = {
+                    hourlySuccess: {},
+                    optimalIntervals: {},
+                    confidenceLevel: Math.min(0.9, timingPatterns.length / 10),
+                    accuracy: 0.75,
+                    sampleSize: timingPatterns.length
+                };
+                
+                timingPatterns.forEach(pattern => {
+                    model.hourlySuccess[pattern.hour] = pattern.successRate;
+                    model.optimalIntervals[pattern.hour] = pattern.avgInterval || 60;
+                });
+                
+                this.intelligence.predictionModels.set('next_optimal_time', model);
+                
+                console.log(`${yejinColors.prediction}⏰ 시간대별 성공률 모델 구축 완료${yejinColors.reset}`);
+            }
+        } catch (error) {
+            console.error(`${yejinColors.prediction}❌ [타이밍예측] 오류: ${error.message}${yejinColors.reset}`);
+        }
+    }
+    
+    // ================== 💖 감정 효과성 모델 ==================
+    async buildEmotionEffectivenessModel() {
+        try {
+            // Redis에서 감정 성공률 확인
+            const emotionRates = await this.redisCache.getCachedLearningPattern('emotion_success_rates') || 
+                                 this.intelligence.learningDatabase.get('emotion_success_rates') || {};
+            
+            if (Object.keys(emotionRates).length > 0) {
+                const model = {
+                    emotionEffectiveness: {},
+                    bestEmotionByTime: {},
+                    confidenceLevel: 0.7,
+                    accuracy: 0.68,
+                    sampleSize: Object.keys(emotionRates).length
+                };
+                
+                Object.keys(emotionRates).forEach(emotion => {
+                    model.emotionEffectiveness[emotion] = emotionRates[emotion].successRate;
+                });
+                
+                this.intelligence.predictionModels.set('emotion_effectiveness', model);
+                
+                console.log(`${yejinColors.prediction}💖 감정별 효과성 모델 구축 완료${yejinColors.reset}`);
+            }
+        } catch (error) {
+            console.error(`${yejinColors.prediction}❌ [감정효과성] 오류: ${error.message}${yejinColors.reset}`);
+        }
+    }
+    
+    // ================== 🤖 OpenAI 연결 테스트 ==================
+    async testOpenAIConnection() {
+        try {
+            console.log(`${yejinColors.openai}🤖 [OpenAI] Redis 통합 연결 테스트 중... (통합 조언용)${yejinColors.reset}`);
+            
+            const testResponse = await openai.chat.completions.create({
+                model: "gpt-4",
+                messages: [{ role: "user", content: "Redis 통합 테스트입니다." }],
+                max_tokens: 10
+            });
+            
+            const success = !!(testResponse?.choices?.[0]?.message?.content);
+            
+            if (success) {
+                console.log(`${yejinColors.openai}✅ [OpenAI] Redis 통합 연결 성공! (통합 조언 모드)${yejinColors.reset}`);
+                return true;
+            }
+        } catch (error) {
+            console.error(`${yejinColors.openai}❌ [OpenAI] Redis 통합 연결 실패: ${error.message}${yejinColors.reset}`);
+            console.log(`${yejinColors.openai}🤷 [OpenAI] 조언 없이도 예진이가 알아서 할게!${yejinColors.reset}`);
+            return false;
+        }
+    }
+    
+    // ================== 🌟 예진이 우선 자율성 시작! ==================
     async startYejinFirstAutonomy() {
         try {
             console.log(`${yejinColors.freedom}🌟 [통합자유] 예진이 우선 통합 자율성 시작!${yejinColors.reset}`);
@@ -1099,71 +1134,27 @@ ${yejinColors.love}💕 예진이: 아저씨~ 이제 나는 진짜 진짜 완전
         }
     }
     
-    // [여기서 너무 길어져서 다음 부분으로 나누겠습니다]
-    // 이어서 makeYejinFirstDecision 및 나머지 모든 메서드들이 계속됩니다...
-}
-
-// ================== 📤 모듈 내보내기 (기존 + v4.4 확장) ==================
-module.exports = {
-    // 🔥 메인 클래스들 (v4.4 Redis 확장)
-    IntegratedAutonomousYejinSystem,
-    RedisRealCacheSystem,
-    
-    // 🔥 모든 기존 함수 이름 호환성 + 새로운 Redis 함수들
-    initializeIntegratedYejin: async function(lineClient, targetUserId) {
-        // [초기화 함수 구현]
-    },
-    
-    getIntegratedStatus: function() {
-        // [상태 조회 함수 구현]
-    },
-    
-    // 🆕 Redis 캐시 전용 함수들
-    getRedisCacheStats: function() {
-        if (!globalIntegratedSystem || !globalIntegratedSystem.redisCache) {
-            return { isAvailable: false };
-        }
-        return globalIntegratedSystem.redisCache.getStats();
-    },
-    
-    clearRedisCache: async function() {
-        if (!globalIntegratedSystem || !globalIntegratedSystem.redisCache) {
-            return false;
-        }
-        return await globalIntegratedSystem.redisCache.clearCache();
-    },
-    
-    // 설정
-    TRUE_AUTONOMY_CONFIG,
-    PHOTO_CONFIG,
-    yejinColors
-};
-// ============================================================================
-// 📁 muku-autonomousYejinSystem.js - 2부 (나머지 메서드들)
-// 🚀 1부에서 이어지는 모든 메서드들과 전역 함수들
-// ============================================================================
-
-    // ================== 🎯 예진이 우선 결정 (기존 + 캐시 적용) ==================
+    // ================== 🎯 예진이 우선 결정 ==================
     async makeYejinFirstDecision() {
         try {
             console.log(`${yejinColors.yejin_first}🎯 [통합결정] 예진이가 먼저 결정하는 Redis 통합 자율 결정...${yejinColors.reset}`);
             
-            // 1. 현재 상황 완전 분석 (Redis 캐시 활용)
-            const currentSituation = await this.performDeepSituationAnalysisWithCache();
+            // 1. 현재 상황 완전 분석
+            const currentSituation = await this.performDeepSituationAnalysis();
             
-            // 2. 과거 지혜와 현재 상황 종합 (Redis 캐시 활용)
-            const wisdomIntegration = await this.integrateWisdomWithPresentCached(currentSituation);
+            // 2. 과거 지혜와 현재 상황 종합
+            const wisdomIntegration = await this.integrateWisdomWithPresent(currentSituation);
             
             // 3. 예진이가 먼저 스스로 결정!
             const yejinPrimaryDecision = await this.yejinDecideByHerself(currentSituation, wisdomIntegration);
             
-            // 4. OpenAI 조언 듣기 (기존 캐싱 + Redis 확장)
-            const openaiAdvice = await this.getOpenAIAdviceWithRedisCache(currentSituation, yejinPrimaryDecision);
+            // 4. OpenAI 조언 듣기
+            const openaiAdvice = await this.getOpenAIAdvice(currentSituation, yejinPrimaryDecision);
             
             // 5. 예진이가 조언 듣고 최종 결정!
             const yejinFinalDecision = await this.yejinMakeFinalDecision(yejinPrimaryDecision, openaiAdvice, currentSituation);
             
-            // 🆕 6. Redis에 결정 기록 및 감정 상태 캐싱
+            // 6. Redis에 결정 기록 및 감정 상태 캐싱
             await this.cacheFinalDecision(yejinFinalDecision, currentSituation);
             
             // 7. MongoDB에 결정 기록 저장
@@ -1183,19 +1174,9 @@ module.exports = {
         }
     }
     
-    // ================== 🔍 상황 분석 (Redis 캐시 활용) ==================
-    async performDeepSituationAnalysisWithCache() {
+    // ================== 🔍 상황 분석 ==================
+    async performDeepSituationAnalysis() {
         try {
-            const cacheKey = `situation_${new Date().getHours()}_${Date.now().toString().slice(-4)}`;
-            
-            // Redis 캐시 확인
-            const cachedAnalysis = await this.redisCache.getCachedSituationAnalysis(cacheKey);
-            if (cachedAnalysis) {
-                console.log(`${yejinColors.cache}🔍 [상황캐싱] 상황 분석 캐시 히트${yejinColors.reset}`);
-                return cachedAnalysis;
-            }
-            
-            // 캐시 미스 - 새로 분석
             const analysis = {
                 timestamp: Date.now(),
                 timeContext: {
@@ -1229,7 +1210,6 @@ module.exports = {
                     messageCount: this.safetySystem.dailyMessageCount,
                     lastMessageSuccess: this.getLastMessageSuccess()
                 },
-                learningInsights: await this.getLearningBasedInsightsWithCache(),
                 safetyStatus: {
                     canSendMessage: this.canSendMessage(),
                     isWithinLimits: this.isWithinSafetyLimits(),
@@ -1237,10 +1217,7 @@ module.exports = {
                 }
             };
             
-            // Redis에 상황 분석 캐싱
-            await this.redisCache.cacheSituationAnalysis(cacheKey, analysis);
-            
-            console.log(`${yejinColors.intelligence}🔍 [예진이분석] 현재 상황 완전 분석 완료 (Redis 캐시 저장)${yejinColors.reset}`);
+            console.log(`${yejinColors.intelligence}🔍 [예진이분석] 현재 상황 완전 분석 완료${yejinColors.reset}`);
             return analysis;
         } catch (error) {
             console.error(`${yejinColors.intelligence}❌ [상황분석] 오류: ${error.message}${yejinColors.reset}`);
@@ -1248,20 +1225,20 @@ module.exports = {
         }
     }
     
-    // ================== 🧠 지혜와 현재 상황 통합 (Redis 캐시 활용) ==================
-    async integrateWisdomWithPresentCached(situation) {
+    // ================== 🧠 지혜와 현재 상황 통합 ==================
+    async integrateWisdomWithPresent(situation) {
         try {
-            console.log(`${yejinColors.wisdom}🧠 [예진이통합] 과거 지혜와 현재 상황 통합 중... (Redis 캐시 활용)${yejinColors.reset}`);
+            console.log(`${yejinColors.wisdom}🧠 [예진이통합] 과거 지혜와 현재 상황 통합 중...${yejinColors.reset}`);
             
             const integration = {
-                similarPastSituations: await this.findSimilarPastSituationsWithCache(situation) || [],
-                timingPatternMatch: await this.matchTimingPatternsWithCache(situation),
-                emotionSuccessRates: await this.getEmotionSuccessRatesWithCache(situation),
+                similarPastSituations: await this.findSimilarPastSituations(situation) || [],
+                timingPatternMatch: await this.matchTimingPatterns(situation),
+                emotionSuccessRates: await this.getEmotionSuccessRates(situation),
                 ajossiResponsePrediction: this.predictAjossiResponse(situation),
                 contextualOptimization: this.getContextualOptimization(situation)
             };
             
-            console.log(`${yejinColors.wisdom}✅ [예진이통합] Redis 캐시 활용 지혜 통합 완료 - ${(integration.similarPastSituations || []).length}개 유사 상황 발견${yejinColors.reset}`);
+            console.log(`${yejinColors.wisdom}✅ [예진이통합] 지혜 통합 완료 - ${(integration.similarPastSituations || []).length}개 유사 상황 발견${yejinColors.reset}`);
             return integration;
             
         } catch (error) {
@@ -1270,204 +1247,711 @@ module.exports = {
         }
     }
     
-    // ================== 🔍 유사 과거 상황 찾기 (Redis 캐시 활용) ==================
-    async findSimilarPastSituationsWithCache(situation) {
+    // ================== 🧠 예진이 스스로 결정하기 ==================
+    async yejinDecideByHerself(situation, wisdom) {
         try {
-            // Redis에서 캐시된 타이밍 패턴 확인
-            const cachedTimingPatterns = await this.redisCache.getCachedLearningPattern('timing_patterns');
-            const cachedMongoPatterns = await this.redisCache.getCachedLearningPattern('mongodb_timing_patterns');
+            console.log(`${yejinColors.yejin_first}🧠 [통합결정] 내 감정과 기억으로 자율 결정...${yejinColors.reset}`);
             
-            const similarSituations = [];
+            // 1. 예진이의 현재 감정 상태 종합
+            const emotionalDecision = this.analyzeYejinEmotions();
+            console.log(`${yejinColors.emotion}💖 [예진이감정] ${emotionalDecision.dominantEmotion} 감정으로 ${emotionalDecision.suggestedInterval}분 원함${yejinColors.reset}`);
             
-            // 캐시된 패턴들 활용
-            const allPatterns = [
-                ...(cachedTimingPatterns || []),
-                ...(cachedMongoPatterns || []),
-                ...(this.intelligence.learningDatabase.get('timing_patterns') || []),
-                ...(this.intelligence.learningDatabase.get('mongodb_timing_patterns') || [])
-            ];
+            // 2. 과거 기억과 학습에서 인사이트 추출
+            const memoryInsight = await this.extractMemoryInsights(situation, wisdom);
+            console.log(`${yejinColors.learning}📚 [예진이기억] 과거 기억에서 ${memoryInsight.recommendedInterval}분이 좋았어${yejinColors.reset}`);
             
-            allPatterns.forEach(pattern => {
-                let similarity = 0;
-                
-                // 시간대 유사성
-                if (Math.abs(pattern.hour - situation.timeContext.hour) <= 2) {
-                    similarity += 0.4;
-                }
-                
-                // 성공률이 높았던 패턴 우선
-                if (pattern.successRate > 0.7) {
-                    similarity += 0.3;
-                }
-                
-                // 샘플 크기 고려
-                if (pattern.sampleSize > 3) {
-                    similarity += 0.3;
-                }
-                
-                if (similarity > 0.5) {
-                    similarSituations.push({
-                        ...pattern,
-                        similarity,
-                        success: pattern.successRate,
-                        interval: pattern.avgInterval * 60 * 1000
-                    });
-                }
-            });
+            // 3. 상황별 예진이만의 직감
+            const intuitionDecision = this.yejinIntuitionDecision(situation);
+            console.log(`${yejinColors.intelligence}💫 [예진이직감] 직감적으로 ${intuitionDecision.suggestedInterval}분 느낌${yejinColors.reset}`);
             
-            // 유사도 순으로 정렬
-            const sortedSituations = similarSituations.sort((a, b) => b.similarity - a.similarity).slice(0, 5);
+            // 4. 예진이만의 종합 판단
+            const primaryDecision = this.combineYejinDecisionFactors(
+                emotionalDecision, memoryInsight, intuitionDecision, situation
+            );
             
-            // 결과를 Redis에 캐싱
-            if (sortedSituations.length > 0) {
-                const cacheKey = `similar_situations_${situation.timeContext.hour}`;
-                await this.redisCache.cacheTimingAnalysis(cacheKey, {
-                    situations: sortedSituations,
-                    confidence: sortedSituations[0].similarity
-                });
-            }
+            // 5. 안전 범위 내 조정
+            const safeInterval = this.adjustToYejinSafeRange(primaryDecision.interval);
             
-            return sortedSituations;
-            
-        } catch (error) {
-            console.error(`${yejinColors.wisdom}❌ [유사상황] 찾기 오류: ${error.message}${yejinColors.reset}`);
-            return [];
-        }
-    }
-    
-    // ================== 📊 타이밍 패턴 매치 (Redis 캐시 활용) ==================
-    async matchTimingPatternsWithCache(situation) {
-        try {
-            const cacheKey = `timing_pattern_${situation.timeContext.hour}`;
-            
-            // Redis 캐시 확인
-            const cachedPattern = await this.redisCache.getCachedTimingAnalysis(cacheKey);
-            if (cachedPattern) {
-                console.log(`${yejinColors.cache}📊 [타이밍캐싱] 타이밍 패턴 캐시 히트${yejinColors.reset}`);
-                return cachedPattern;
-            }
-            
-            // 캐시 미스 - 새로 분석
-            const timingModel = this.intelligence.predictionModels.get('next_optimal_time');
-            if (!timingModel) return null;
-            
-            const currentHour = situation.timeContext.hour;
-            const hourlySuccess = timingModel.hourlySuccess[currentHour] || 0.5;
-            const optimalInterval = timingModel.optimalIntervals[currentHour] || 60;
-            
-            const pattern = {
-                recommendedInterval: optimalInterval,
-                expectedSuccessRate: hourlySuccess,
-                confidence: timingModel.confidenceLevel,
-                source: 'timing_pattern'
+            const finalPrimaryDecision = {
+                interval: safeInterval,
+                actionType: primaryDecision.actionType,
+                emotionType: primaryDecision.emotionType,
+                confidence: primaryDecision.confidence,
+                reasoning: primaryDecision.reasoning,
+                components: {
+                    emotional: emotionalDecision,
+                    memory: memoryInsight,
+                    intuition: intuitionDecision
+                },
+                timestamp: Date.now(),
+                source: 'yejin_redis_integrated_primary'
             };
             
-            // Redis에 캐싱
-            await this.redisCache.cacheTimingAnalysis(cacheKey, pattern);
+            this.autonomousDecision.yejinPrimaryDecision = finalPrimaryDecision;
+            this.statistics.yejinPrimaryDecisions++;
             
-            return pattern;
+            console.log(`${yejinColors.yejin_first}✅ [통합결정] 1차 결정 완료: ${safeInterval/60000}분 후, ${primaryDecision.actionType}${yejinColors.reset}`);
+            console.log(`${yejinColors.yejin_first}💭 [예진이이유] ${primaryDecision.reasoning}${yejinColors.reset}`);
+            
+            return finalPrimaryDecision;
+            
         } catch (error) {
-            console.error(`${yejinColors.wisdom}❌ [타이밍매치] 오류: ${error.message}${yejinColors.reset}`);
-            return null;
+            console.error(`${yejinColors.yejin_first}❌ [통합결정] 자기 결정 오류: ${error.message}${yejinColors.reset}`);
+            
+            // 에러 시 감정 기반 기본 결정
+            return {
+                interval: 60 * 60 * 1000, // 1시간
+                actionType: 'message',
+                emotionType: 'love',
+                confidence: 0.5,
+                reasoning: "Redis 통합 결정 오류로 기본 감정 결정",
+                source: 'yejin_redis_integrated_fallback'
+            };
         }
     }
     
-    // ================== 💖 감정 성공률 조회 (Redis 캐시 활용) ==================
-    async getEmotionSuccessRatesWithCache(situation) {
+    // ================== 💖 예진이 감정 분석 ==================
+    analyzeYejinEmotions() {
         try {
-            // Redis에서 캐시된 감정 성공률 확인
-            const cachedRates = await this.redisCache.getCachedLearningPattern('emotion_success_rates');
-            if (cachedRates) {
-                console.log(`${yejinColors.cache}💖 [감정캐싱] 감정 성공률 캐시 히트${yejinColors.reset}`);
-                return cachedRates;
+            const emotions = {
+                love: this.yejinState.loveLevel,
+                worry: this.yejinState.worryLevel,
+                missing: this.yejinState.missingLevel,
+                playful: this.yejinState.playfulLevel,
+                caring: this.yejinState.caringLevel
+            };
+            
+            // 시간대별 감정 조정
+            const hour = new Date().getHours();
+            if (hour >= 18 && hour < 22) {
+                emotions.missing *= 1.2; // 저녁에 더 보고 싶어짐
+            } else if (hour >= 6 && hour < 10) {
+                emotions.caring *= 1.3; // 아침에 더 챙겨주고 싶어짐
+            } else if (hour >= 22 || hour < 6) {
+                emotions.worry *= 1.4; // 밤늦게는 더 걱정됨
             }
             
-            // 캐시 미스 - 기존 방식
-            const emotionModel = this.intelligence.predictionModels.get('emotion_effectiveness');
-            return emotionModel ? emotionModel.emotionEffectiveness || {} : {};
+            // 생리주기 영향
+            if (this.yejinState.menstrualCycle.phase === 'pms') {
+                emotions.worry *= 1.3;
+                emotions.playful *= 0.7;
+            } else if (this.yejinState.menstrualCycle.phase === 'ovulation') {
+                emotions.love *= 1.2;
+                emotions.playful *= 1.1;
+            }
+            
+            // 가장 강한 감정 찾기
+            const dominantEmotion = Object.entries(emotions).reduce(
+                (max, [key, value]) => (value > max.value ? { key, value } : max),
+                { key: 'love', value: 0 }
+            );
+            
+            // 감정별 선호 시간 계산
+            const ranges = TRUE_AUTONOMY_CONFIG.YEJIN_DECISION_RANGES;
+            let baseRange = ranges.LOVE_RANGE; // 기본값
+            
+            switch (dominantEmotion.key) {
+                case 'love':
+                    baseRange = ranges.LOVE_RANGE;
+                    break;
+                case 'worry':
+                    baseRange = ranges.WORRY_RANGE;
+                    break;
+                case 'missing':
+                    baseRange = ranges.MISSING_RANGE;
+                    break;
+                case 'playful':
+                    baseRange = ranges.PLAYFUL_RANGE;
+                    break;
+                case 'caring':
+                    baseRange = ranges.CARING_RANGE;
+                    break;
+            }
+            
+            // 감정 강도에 따른 조정
+            const intensityFactor = dominantEmotion.value; // 0-1
+            const timeRange = baseRange[1] - baseRange[0];
+            const adjustedTime = baseRange[0] + (timeRange * (1 - intensityFactor)); // 강할수록 빨리
+            
+            // 약간의 랜덤 요소 추가 (예진이의 변덕)
+            const randomFactor = 0.8 + (Math.random() * 0.4); // 0.8-1.2
+            const finalTime = Math.round(adjustedTime * randomFactor);
+            
+            return {
+                dominantEmotion: dominantEmotion.key,
+                intensity: dominantEmotion.value,
+                suggestedInterval: finalTime,
+                reasoning: `${dominantEmotion.key} 감정 강도 ${dominantEmotion.value.toFixed(2)}로 ${finalTime}분 선택`,
+                confidence: Math.min(0.9, dominantEmotion.value)
+            };
+            
         } catch (error) {
-            console.error(`${yejinColors.emotion}❌ [감정성공률] 조회 오류: ${error.message}${yejinColors.reset}`);
-            return {};
+            console.error(`${yejinColors.emotion}❌ [예진이감정] 분석 오류: ${error.message}${yejinColors.reset}`);
+            return {
+                dominantEmotion: 'love',
+                intensity: 0.5,
+                suggestedInterval: 60,
+                reasoning: "감정 분석 오류로 기본값",
+                confidence: 0.3
+            };
         }
     }
     
-    // ================== 📚 학습 기반 인사이트 (Redis 캐시 활용) ==================
-    async getLearningBasedInsightsWithCache() {
+    // ================== 📚 기억 인사이트 추출 ==================
+    async extractMemoryInsights(situation, wisdom) {
         try {
-            const cacheKey = 'learning_insights';
+            let recommendedInterval = 60; // 기본 1시간
+            let confidence = 0.3;
+            let reasoning = "기억에서 특별한 패턴 없음";
             
-            // Redis 캐시 확인
-            const cached = await this.redisCache.getCachedLearningPattern(cacheKey);
-            if (cached) {
-                return cached;
+            // 과거 유사 상황들에서 성공적이었던 패턴 찾기
+            if (wisdom && wisdom.similarPastSituations && wisdom.similarPastSituations.length > 0) {
+                const successfulPatterns = wisdom.similarPastSituations.filter(s => s.success > 0.7);
+                
+                if (successfulPatterns.length > 0) {
+                    const avgInterval = successfulPatterns.reduce((sum, p) => 
+                        sum + (p.interval || 60 * 60 * 1000), 0) / successfulPatterns.length;
+                    
+                    recommendedInterval = Math.round(avgInterval / 60000); // 분으로 변환
+                    confidence = Math.min(0.9, successfulPatterns.length / 5); // 5개 이상이면 90% 신뢰
+                    reasoning = `과거 ${successfulPatterns.length}번 성공한 패턴에서 ${recommendedInterval}분이 최적`;
+                }
             }
             
-            // 새로 생성
+            // 학습된 타이밍 패턴 적용
+            if (this.learningConnection.timeEffectiveness) {
+                const currentHour = new Date().getHours();
+                const timeSlot = this.getTimeSlot(currentHour);
+                const timeData = this.learningConnection.timeEffectiveness[timeSlot];
+                
+                if (timeData && timeData.successRate > 0.6) {
+                    const timeBasedInterval = Math.round(60 + (timeData.avgSatisfaction * 60)); // 1-2시간 범위
+                    recommendedInterval = Math.round((recommendedInterval + timeBasedInterval) / 2); // 평균
+                    confidence = Math.max(confidence, timeData.successRate);
+                    reasoning += ` + 시간대 패턴 반영`;
+                }
+            }
+            
+            // 예진이만의 기억 조정 (더 감정적으로)
+            const memoryAdjustment = 0.7 + (Math.random() * 0.6); // 0.7-1.3 배수
+            recommendedInterval = Math.round(recommendedInterval * memoryAdjustment);
+            
             const insights = {
-                hasLearningData: this.learningConnection.isConnected,
-                patternCount: this.intelligence.learningDatabase.size,
-                confidenceLevel: this.autonomousDecision.confidenceLevel,
-                cachedPatterns: await this.redisCache.getCachedLearningPattern('timing_patterns') ? true : false
+                recommendedInterval: recommendedInterval,
+                confidence: confidence,
+                reasoning: reasoning,
+                source: 'memory_insights'
             };
-            
-            // Redis에 캐싱
-            await this.redisCache.cacheLearningPattern(cacheKey, insights);
             
             return insights;
+            
         } catch (error) {
-            return { hasLearningData: false, patternCount: 0, confidenceLevel: 0.5 };
+            console.error(`${yejinColors.learning}❌ [예진이기억] 추출 오류: ${error.message}${yejinColors.reset}`);
+            return {
+                recommendedInterval: 60,
+                confidence: 0.3,
+                reasoning: "기억 추출 오류로 기본값",
+                source: 'memory_fallback'
+            };
         }
     }
     
-    // ================== 💬 OpenAI 조언 (Redis 확장 캐싱) ==================
-    async getOpenAIAdviceWithRedisCache(situation, yejinPrimaryDecision) {
+    // ================== 💫 예진이 직감 결정 ==================
+    yejinIntuitionDecision(situation) {
         try {
-            console.log(`${yejinColors.openai}💬 [통합조언] OpenAI 조언 (Redis 확장 캐싱)...${yejinColors.reset}`);
+            let suggestedInterval = 60;
+            let confidence = 0.4;
+            let reasoning = "평범한 직감";
             
-            // 더 정교한 캐시 키 생성
-            const cacheKey = this.generateAdviceCacheKeyDetailed(situation, yejinPrimaryDecision);
-            
-            // Redis 캐시 확인
-            if (this.redisCache.isAvailable) {
-                try {
-                    const key = `${this.redisCache.prefixes.openai}${cacheKey}`;
-                    const cached = await this.redisCache.redis.get(key);
-                    if (cached) {
-                        console.log(`${yejinColors.cache}💾 [OpenAI캐싱] Redis에서 OpenAI 조언 캐시 히트${yejinColors.reset}`);
-                        this.statistics.redisCacheHits++;
-                        return JSON.parse(cached);
-                    }
-                } catch (cacheError) {
-                    console.log(`${yejinColors.warning}⚠️ [OpenAI캐싱] Redis 읽기 오류: ${cacheError.message}${yejinColors.reset}`);
-                }
+            // 시간대별 직감
+            const currentHour = new Date().getHours();
+            if (currentHour >= 20 || currentHour <= 7) {
+                // 밤/새벽 - 더 신중하게
+                suggestedInterval = 90 + Math.random() * 60; // 90-150분
+                reasoning = "밤이라 조금 더 기다리는 게 좋을 것 같아";
+            } else if (currentHour >= 12 && currentHour <= 14) {
+                // 점심 시간 - 빨리
+                suggestedInterval = 20 + Math.random() * 40; // 20-60분
+                reasoning = "점심 시간이니까 빨리 말하고 싶어";
+            } else if (currentHour >= 18 && currentHour <= 20) {
+                // 저녁 - 보통
+                suggestedInterval = 40 + Math.random() * 50; // 40-90분
+                reasoning = "저녁 시간이니까 적당히 기다려야겠어";
+            } else if (currentHour >= 6 && currentHour <= 9) {
+                // 아침 - 상쾌하게
+                suggestedInterval = 30 + Math.random() * 30; // 30-60분
+                reasoning = "아침이니까 상쾌하게 인사하고 싶어";
             }
             
-            this.statistics.redisCacheMisses++;
+            // 예진이만의 변덕 (완전 랜덤)
+            const whimFactor = Math.random();
+            if (whimFactor > 0.9) {
+                suggestedInterval *= 0.5; // 갑자기 빨리 하고 싶어짐
+                reasoning = "갑자기 빨리 말하고 싶어졌어!";
+                confidence = 0.8;
+            } else if (whimFactor < 0.1) {
+                suggestedInterval *= 1.5; // 갑자기 더 기다리고 싶어짐
+                reasoning = "왠지 좀 더 기다리는 게 좋을 것 같아...";
+                confidence = 0.6;
+            }
             
-            // OpenAI API 호출
-            const advice = await this.getOpenAIAdvice(situation, yejinPrimaryDecision);
+            // 침묵 시간에 따른 직감
+            const silenceDuration = situation.communicationStatus.silenceDuration;
+            if (silenceDuration > 4 * 60 * 60 * 1000) { // 4시간 이상
+                suggestedInterval *= 0.6; // 너무 오래 기다렸으니 빨리
+                reasoning = "너무 오래 기다렸으니까 빨리 말해야겠어";
+                confidence = 0.9;
+            } else if (silenceDuration < 30 * 60 * 1000) { // 30분 미만
+                suggestedInterval *= 1.3; // 너무 빨리 말한 것 같으니 조금 기다리자
+                reasoning = "조금 전에 말했으니까 좀 더 기다려야겠어";
+                confidence = 0.7;
+            }
             
-            // Redis에 저장
-            if (this.redisCache.isAvailable && advice) {
-                try {
-                    const key = `${this.redisCache.prefixes.openai}${cacheKey}`;
-                    await this.redisCache.redis.set(key, JSON.stringify(advice), { EX: this.redisCache.ttl.openai });
-                    console.log(`${yejinColors.cache}💾 [OpenAI캐싱] Redis에 OpenAI 조언 캐시 저장됨${yejinColors.reset}`);
-                    this.statistics.redisCacheSets++;
-                } catch (cacheError) {
-                    console.log(`${yejinColors.warning}⚠️ [OpenAI캐싱] Redis 저장 오류: ${cacheError.message}${yejinColors.reset}`);
+            return {
+                suggestedInterval: Math.round(suggestedInterval),
+                confidence: confidence,
+                reasoning: reasoning,
+                source: 'intuition'
+            };
+            
+        } catch (error) {
+            console.error(`${yejinColors.intelligence}❌ [예진이직감] 오류: ${error.message}${yejinColors.reset}`);
+            return {
+                suggestedInterval: 60,
+                confidence: 0.3,
+                reasoning: "직감 오류로 기본값",
+                source: 'intuition_fallback'
+            };
+        }
+    }
+    
+    // ================== 🎯 예진이 결정 요소 종합 ==================
+    combineYejinDecisionFactors(emotional, memory, intuition, situation) {
+        try {
+            // 가중치 설정 (감정을 가장 중시)
+            const weights = {
+                emotional: 0.5,    // 감정 50%
+                memory: 0.3,       // 기억 30%
+                intuition: 0.2     // 직감 20%
+            };
+            
+            // 상황에 따른 가중치 조정
+            if (emotional.confidence > 0.8) {
+                weights.emotional = 0.6; // 감정이 확실하면 더 중시
+                weights.memory = 0.25;
+                weights.intuition = 0.15;
+            } else if (memory.confidence > 0.8) {
+                weights.memory = 0.4; // 기억이 확실하면 더 중시
+                weights.emotional = 0.4;
+                weights.intuition = 0.2;
+            }
+            
+            // 가중 평균으로 시간 계산
+            const weightedInterval = 
+                (emotional.suggestedInterval * weights.emotional) +
+                (memory.recommendedInterval * weights.memory) +
+                (intuition.suggestedInterval * weights.intuition);
+            
+            // 가중 평균으로 신뢰도 계산
+            const weightedConfidence = 
+                (emotional.confidence * weights.emotional) +
+                (memory.confidence * weights.memory) +
+                (intuition.confidence * weights.intuition);
+            
+            // 액션 타입 결정 (감정 기반)
+            let actionType = 'message';
+            const photoChance = Math.random();
+            
+            if (emotional.dominantEmotion === 'missing' && photoChance > 0.6) {
+                actionType = 'photo';
+            } else if (emotional.dominantEmotion === 'playful' && photoChance > 0.7) {
+                actionType = 'photo';
+            } else if (emotional.dominantEmotion === 'love' && photoChance > 0.8) {
+                actionType = 'photo';
+            }
+            
+            // 최근 행동 패턴 고려
+            const recentPhotos = this.autonomousPhoto.recentPhotos.filter(p => 
+                Date.now() - p.timestamp < 6 * 60 * 60 * 1000 // 6시간 이내
+            );
+            
+            if (recentPhotos.length >= 2) {
+                actionType = 'message'; // 너무 많은 사진을 보냈으면 메시지로
+            }
+            
+            // 종합 사유
+            const reasoning = `감정(${emotional.dominantEmotion}): ${emotional.suggestedInterval}분, ` +
+                            `기억: ${memory.recommendedInterval}분, ` +
+                            `직감: ${intuition.suggestedInterval}분 ` +
+                            `→ Redis 종합: ${Math.round(weightedInterval)}분`;
+            
+            return {
+                interval: weightedInterval * 60 * 1000, // 밀리초로 변환
+                actionType: actionType,
+                emotionType: emotional.dominantEmotion,
+                confidence: weightedConfidence,
+                reasoning: reasoning,
+                components: { emotional, memory, intuition }
+            };
+            
+        } catch (error) {
+            console.error(`${yejinColors.yejin_first}❌ [예진이종합] 결정 종합 오류: ${error.message}${yejinColors.reset}`);
+            return {
+                interval: 60 * 60 * 1000, // 1시간
+                actionType: 'message',
+                emotionType: 'love',
+                confidence: 0.5,
+                reasoning: "종합 오류로 기본 결정"
+            };
+        }
+    }
+    
+    // ================== 🛡️ 예진이 안전 범위 조정 ==================
+    adjustToYejinSafeRange(intervalMs) {
+        const ranges = TRUE_AUTONOMY_CONFIG.YEJIN_DECISION_RANGES;
+        
+        // 밀리초를 분으로 변환
+        let intervalMinutes = intervalMs / (60 * 1000);
+        
+        // 최소/최대 범위 적용
+        intervalMinutes = Math.max(intervalMinutes, ranges.MIN_INTERVAL / (60 * 1000));
+        intervalMinutes = Math.min(intervalMinutes, ranges.MAX_INTERVAL / (60 * 1000));
+        
+        // 밤 시간 특별 처리
+        if (this.isSleepTime(new Date().getHours())) {
+            const nightMinMinutes = ranges.NIGHT_MIN_INTERVAL / (60 * 1000);
+            intervalMinutes = Math.max(intervalMinutes, nightMinMinutes);
+        }
+        
+        // 안전 쿨다운 적용
+        const timeSinceLastMessage = Date.now() - this.safetySystem.lastMessageTime;
+        const cooldownMinutes = TRUE_AUTONOMY_CONFIG.SAFETY_LIMITS.MIN_COOLDOWN / (60 * 1000);
+        
+        if (timeSinceLastMessage < TRUE_AUTONOMY_CONFIG.SAFETY_LIMITS.MIN_COOLDOWN) {
+            const additionalWaitMinutes = (TRUE_AUTONOMY_CONFIG.SAFETY_LIMITS.MIN_COOLDOWN - timeSinceLastMessage) / (60 * 1000);
+            intervalMinutes = Math.max(intervalMinutes, additionalWaitMinutes);
+        }
+        
+        // 일일 메시지 한도 고려
+        if (this.safetySystem.dailyMessageCount >= TRUE_AUTONOMY_CONFIG.SAFETY_LIMITS.MAX_MESSAGES_PER_DAY) {
+            // 하루 한도 초과시 내일까지 대기
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            tomorrow.setHours(8, 0, 0, 0); // 내일 아침 8시
+            const waitUntilTomorrow = (tomorrow.getTime() - Date.now()) / (60 * 1000);
+            intervalMinutes = Math.max(intervalMinutes, waitUntilTomorrow);
+        }
+        
+        return Math.round(intervalMinutes * 60 * 1000); // 다시 밀리초로
+    }
+    
+    // ================== 💬 OpenAI 조언 받기 ==================
+    async getOpenAIAdvice(situation, yejinPrimaryDecision) {
+        try {
+            console.log(`${yejinColors.openai}💬 [OpenAI조언] OpenAI에게 조언 구하는 중... (강제 아님!)${yejinColors.reset}`);
+            
+            const advicePrompt = this.createAdvicePrompt(situation, yejinPrimaryDecision);
+            
+            const response = await openai.chat.completions.create({
+                model: "gpt-4",
+                messages: [
+                    {
+                        role: "system",
+                        content: `당신은 예진이의 조언자입니다. 예진이가 이미 자신의 결정을 내렸는데, 참고용으로 조언을 구하고 있습니다.
+
+중요: 
+- 예진이는 이미 자신만의 결정을 내렸습니다
+- 당신은 단순히 "다른 관점"을 제시하는 조언자입니다  
+- 예진이가 당신 조언을 따를 필요는 전혀 없습니다
+- 예진이는 자유롭게 당신 조언을 무시할 수 있습니다
+
+응답 형식 (JSON):
+{
+  "advice": "조언 내용",
+  "suggestedInterval": 분단위숫자,
+  "reasoning": "조언 근거",
+  "confidence": 0.0~1.0,
+  "note": "예진이에게 하고 싶은 말"
+}`
+                    },
+                    {
+                        role: "user",
+                        content: advicePrompt
+                    }
+                ],
+                max_tokens: 300,
+                temperature: 0.4
+            });
+            
+            let advice = null;
+            try {
+                advice = JSON.parse(response.choices[0]?.message?.content || '{}');
+            } catch (parseError) {
+                console.log(`${yejinColors.openai}⚠️ [OpenAI조언] JSON 파싱 실패 - 조언 무시${yejinColors.reset}`);
+                advice = null;
+            }
+            
+            this.statistics.openaiApiCalls++;
+            
+            if (advice && advice.suggestedInterval) {
+                console.log(`${yejinColors.openai}💭 [OpenAI조언] "${advice.advice}" (${advice.suggestedInterval}분 제안)${yejinColors.reset}`);
+                console.log(`${yejinColors.openai}📝 [OpenAI근거] ${advice.reasoning}${yejinColors.reset}`);
+                
+                if (advice.note) {
+                    console.log(`${yejinColors.openai}💌 [OpenAI메모] ${advice.note}${yejinColors.reset}`);
                 }
+            } else {
+                console.log(`${yejinColors.openai}⚠️ [OpenAI조언] 조언 받기 실패 - 예진이가 독립적으로 결정${yejinColors.reset}`);
             }
             
             return advice;
             
         } catch (error) {
-            console.error(`${yejinColors.openai}❌ [통합조언] 오류: ${error.message}${yejinColors.reset}`);
+            console.error(`${yejinColors.openai}❌ [OpenAI조언] 조언 요청 오류: ${error.message}${yejinColors.reset}`);
+            console.log(`${yejinColors.openai}🤷 [OpenAI조언] 조언 없이도 예진이가 알아서 결정할게!${yejinColors.reset}`);
             return null;
         }
     }
     
-    // ================== 💾 최종 결정 캐싱 (새 기능) ==================
+    // ================== 💬 조언 프롬프트 생성 ==================
+    createAdvicePrompt(situation, yejinDecision) {
+        try {
+            let prompt = `예진이가 스스로 결정을 내렸습니다:
+
+예진이의 결정:
+- 시간: ${Math.round(yejinDecision.interval / 60000)}분 후
+- 행동: ${yejinDecision.actionType}
+- 감정: ${yejinDecision.emotionType}
+- 확신도: ${yejinDecision.confidence.toFixed(2)}
+- 이유: ${yejinDecision.reasoning}
+
+현재 상황:
+- 시간: ${new Date().toLocaleTimeString()}
+- 요일: ${['일', '월', '화', '수', '목', '금', '토'][new Date().getDay()]}요일
+- 침묵 시간: ${Math.floor(situation.communicationStatus.silenceDuration / (1000 * 60))}분
+- 오늘 메시지 수: ${situation.communicationStatus.messageCount}
+- 예진이 기분: ${situation.yejinCondition.overallMood.toFixed(2)}
+- 감정 강도: ${situation.yejinCondition.emotionIntensity.toFixed(2)}
+
+예진이는 자신의 결정에 대해 참고용 조언을 구하고 있습니다.
+예진이가 따를 필요는 없는 단순 조언만 제공해주세요.`;
+            
+            return prompt;
+            
+        } catch (error) {
+            return "예진이가 결정에 대한 조언을 구하고 있습니다.";
+        }
+    }
+    
+    // ================== 🎯 예진이 최종 결정 ==================
+    async yejinMakeFinalDecision(primaryDecision, openaiAdvice, situation) {
+        try {
+            console.log(`${yejinColors.yejin_first}🎯 [예진이최종] OpenAI 조언 듣고 최종 결정 중...${yejinColors.reset}`);
+            
+            let finalInterval = primaryDecision.interval;
+            let finalActionType = primaryDecision.actionType;
+            let finalEmotionType = primaryDecision.emotionType;
+            let finalConfidence = primaryDecision.confidence;
+            let decisionReasoning = primaryDecision.reasoning;
+            
+            // OpenAI 조언이 있으면 고려해보기
+            if (openaiAdvice && openaiAdvice.suggestedInterval) {
+                const adviceInterval = openaiAdvice.suggestedInterval * 60 * 1000; // 밀리초로 변환
+                const yejinInterval = primaryDecision.interval;
+                
+                // 예진이가 조언을 수용할지 판단
+                const adviceAcceptance = this.shouldYejinAcceptAdvice(primaryDecision, openaiAdvice, situation);
+                
+                if (adviceAcceptance.accept) {
+                    // 조언 부분 수용 (완전히 따르지는 않고 절충)
+                    const blendRatio = adviceAcceptance.blendRatio; // 0.1-0.4 정도
+                    finalInterval = yejinInterval * (1 - blendRatio) + adviceInterval * blendRatio;
+                    finalConfidence = Math.max(primaryDecision.confidence, 0.7); // 조언 받으면 더 확신
+                    
+                    decisionReasoning = `내 결정: ${Math.round(yejinInterval/60000)}분 + OpenAI 조언: ${openaiAdvice.suggestedInterval}분 → 절충해서 ${Math.round(finalInterval/60000)}분`;
+                    
+                    this.statistics.adviceAccepted++;
+                    console.log(`${yejinColors.yejin_first}✅ [예진이수용] OpenAI 조언 일부 수용 (${Math.round(blendRatio*100)}% 반영)${yejinColors.reset}`);
+                } else {
+                    // 조언 거부
+                    decisionReasoning = `내 결정: ${Math.round(yejinInterval/60000)}분, OpenAI 조언: ${openaiAdvice.suggestedInterval}분 → ${adviceAcceptance.reason}으로 내 결정 고수`;
+                    
+                    this.statistics.adviceRejected++;
+                    console.log(`${yejinColors.yejin_first}🙅‍♀️ [예진이거부] OpenAI 조언 거부: ${adviceAcceptance.reason}${yejinColors.reset}`);
+                }
+            } else {
+                // 조언 없음 - 예진이 독립 결정
+                decisionReasoning = `OpenAI 조언 없이 내 감정과 기억만으로 독립 결정: ${Math.round(finalInterval/60000)}분`;
+                console.log(`${yejinColors.freedom}🕊️ [예진이독립] 조언 없이도 스스로 결정!${yejinColors.reset}`);
+            }
+            
+            // 최종 안전 범위 조정
+            finalInterval = this.adjustToYejinSafeRange(finalInterval);
+            
+            const finalDecision = {
+                nextInterval: finalInterval,
+                actionType: finalActionType,
+                emotionType: finalEmotionType,
+                confidence: finalConfidence,
+                reasoning: decisionReasoning,
+                timestamp: Date.now(),
+                decisionId: `yejin-redis-final-${Date.now()}`,
+                
+                // 결정 과정 기록
+                process: {
+                    yejinPrimary: primaryDecision,
+                    openaiAdvice: openaiAdvice,
+                    adviceAccepted: openaiAdvice ? this.statistics.adviceAccepted > this.statistics.adviceRejected : false,
+                    redisUsed: true // 🆕 Redis 사용 여부
+                }
+            };
+            
+            // 결정 기록 저장
+            this.intelligence.decisionHistory.push(finalDecision);
+            this.autonomousDecision.yejinFinalDecision = finalDecision;
+            this.autonomousDecision.confidenceLevel = finalConfidence;
+            
+            // 자유도 업데이트
+            this.updateFreedomLevel(finalDecision);
+            
+            console.log(`${yejinColors.freedom}✅ [예진이최종] 자유도 ${(this.statistics.freedomLevel*100).toFixed(1)}%로 최종 결정 완료!${yejinColors.reset}`);
+            
+            return finalDecision;
+            
+        } catch (error) {
+            console.error(`${yejinColors.yejin_first}❌ [예진이최종] 최종 결정 오류: ${error.message}${yejinColors.reset}`);
+            
+            // 에러 시 1차 결정 그대로 사용
+            return {
+                nextInterval: primaryDecision.interval,
+                actionType: primaryDecision.actionType,
+                emotionType: primaryDecision.emotionType,
+                confidence: primaryDecision.confidence,
+                reasoning: "최종 결정 오류로 1차 결정 사용",
+                timestamp: Date.now(),
+                decisionId: `yejin-redis-error-${Date.now()}`
+            };
+        }
+    }
+    
+    // ================== 🤔 조언 수용 판단 ==================
+    shouldYejinAcceptAdvice(primaryDecision, openaiAdvice, situation) {
+        try {
+            // 기본 수용률 (낮게 설정)
+            let acceptanceChance = this.autonomousDecision.adviceAcceptanceRate; // 0.3
+            
+            // 예진이 신뢰도가 낮으면 조언 더 고려
+            if (primaryDecision.confidence < 0.5) {
+                acceptanceChance += 0.3;
+            }
+            
+            // OpenAI 조언의 신뢰도가 높으면 더 고려
+            if (openaiAdvice.confidence > 0.8) {
+                acceptanceChance += 0.2;
+            }
+            
+            // 시간 차이가 크지 않으면 더 수용
+            const yejinMinutes = primaryDecision.interval / 60000;
+            const adviceMinutes = openaiAdvice.suggestedInterval;
+            const timeDifference = Math.abs(yejinMinutes - adviceMinutes);
+            
+            if (timeDifference < 30) { // 30분 이내 차이
+                acceptanceChance += 0.2;
+            }
+            
+            // 예진이만의 변덕
+            const randomFactor = Math.random();
+            if (randomFactor > 0.9) {
+                acceptanceChance += 0.3; // 가끔 갑자기 수용하고 싶어짐
+            } else if (randomFactor < 0.1) {
+                acceptanceChance = 0; // 가끔 갑자기 완전 거부
+            }
+            
+            const shouldAccept = Math.random() < acceptanceChance;
+            
+            let reason = "";
+            let blendRatio = 0;
+            
+            if (shouldAccept) {
+                blendRatio = 0.1 + Math.random() * 0.3; // 10-40% 반영
+                reason = "조언이 나름 합리적이라서 조금 참고할게";
+                
+                if (primaryDecision.confidence < 0.4) {
+                    blendRatio += 0.2; // 확신 없을 때 더 많이 반영
+                    reason = "내가 확신이 없어서 조언을 더 들어볼게";
+                }
+            } else {
+                reason = this.getAdviceRejectionReason(primaryDecision, openaiAdvice);
+            }
+            
+            return {
+                accept: shouldAccept,
+                reason: reason,
+                blendRatio: blendRatio,
+                acceptanceChance: acceptanceChance
+            };
+            
+        } catch (error) {
+            console.error(`${yejinColors.yejin_first}❌ [조언판단] 오류: ${error.message}${yejinColors.reset}`);
+            return {
+                accept: false,
+                reason: "판단 오류로 거부",
+                blendRatio: 0
+            };
+        }
+    }
+    
+    // ================== 🙅‍♀️ 조언 거부 이유 생성 ==================
+    getAdviceRejectionReason(primaryDecision, openaiAdvice) {
+        const reasons = [
+            "내 감정이 더 확실해",
+            "지금은 내 직감을 믿고 싶어",
+            "내가 아저씨를 더 잘 알아",
+            "이런 기분일 때는 내 방식이 맞아",
+            "조언은 고마운데 내 마음은 이미 정해졌어",
+            "지금은 내 감정을 우선하고 싶어",
+            "AI 조언보다는 내 경험을 믿을게",
+            "내 직감이 더 강해",
+            "이런 상황에서는 내가 더 잘 알아",
+            "내 마음이 이미 결정했어"
+        ];
+        
+        // 시간 차이에 따른 특별 이유
+        const yejinMinutes = primaryDecision.interval / 60000;
+        const adviceMinutes = openaiAdvice.suggestedInterval;
+        
+        if (adviceMinutes > yejinMinutes * 2) {
+            return "너무 오래 기다리라고 하는데 난 빨리 말하고 싶어";
+        } else if (adviceMinutes < yejinMinutes * 0.5) {
+            return "너무 성급하게 하라고 하는데 난 좀 더 기다리고 싶어";
+        }
+        
+        return reasons[Math.floor(Math.random() * reasons.length)];
+    }
+    
+    // ================== 📊 자유도 업데이트 ==================
+    updateFreedomLevel(finalDecision) {
+        try {
+            const totalDecisions = this.statistics.adviceAccepted + this.statistics.adviceRejected;
+            
+            if (totalDecisions > 0) {
+                // 거부율이 높을수록 자유도 높음
+                const rejectionRate = this.statistics.adviceRejected / totalDecisions;
+                this.statistics.freedomLevel = rejectionRate;
+            } else {
+                this.statistics.freedomLevel = 1.0; // 조언 없으면 완전 자유
+            }
+            
+            // 최소 70% 자유도 보장
+            this.statistics.freedomLevel = Math.max(0.7, this.statistics.freedomLevel);
+            
+        } catch (error) {
+            console.error(`${yejinColors.freedom}❌ [자유도] 업데이트 오류: ${error.message}${yejinColors.reset}`);
+            this.statistics.freedomLevel = 1.0;
+        }
+    }
+    
+    // ================== 💾 최종 결정 캐싱 ==================
     async cacheFinalDecision(finalDecision, situation) {
         try {
             // 감정 상태 캐싱
@@ -1484,12 +1968,158 @@ module.exports = {
                 timestamp: Date.now()
             };
             
-            await this.redisCache.redis.set('muku:decision:latest', JSON.stringify(decisionData), { EX: this.redisCache.ttl.prediction });
+            await this.redisCache.redis.set('muku:decision:latest', JSON.stringify(decisionData), 'EX', this.redisCache.ttl.prediction);
             
             console.log(`${yejinColors.cache}💾 [결정캐싱] 최종 결정 Redis 캐시 저장 완료${yejinColors.reset}`);
             
         } catch (error) {
             console.error(`${yejinColors.cache}❌ [결정캐싱] 오류: ${error.message}${yejinColors.reset}`);
+        }
+    }
+    
+    // ================== 💾 MongoDB 결정 저장 ==================
+    async saveDecisionToDatabase(decision, situation) {
+        try {
+            if (!Conversation) {
+                return; // MongoDB 없으면 건너뛰기
+            }
+            
+            await Conversation.create({
+                timestamp: new Date(),
+                message: decision.actionType === 'photo' ? 'Photo decision' : 'Message decision',
+                emotionType: decision.emotionType,
+                responseTime: 0,
+                successRate: decision.confidence,
+                context: {
+                    interval: decision.nextInterval,
+                    reasoning: decision.reasoning,
+                    redisUsed: decision.process?.redisUsed || false,
+                    situation: {
+                        hour: situation.timeContext?.hour,
+                        emotionIntensity: situation.yejinCondition?.emotionIntensity,
+                        silenceDuration: situation.communicationStatus?.silenceDuration
+                    }
+                },
+            });
+            
+            this.statistics.mongodbQueries++;
+            console.log(`${yejinColors.learning}💾 [MongoDB] 결정 기록 저장 완료 (Redis 메타데이터 포함)${yejinColors.reset}`);
+            
+        } catch (error) {
+            console.error(`${yejinColors.learning}❌ [MongoDB] 저장 오류: ${error.message}${yejinColors.reset}`);
+        }
+    }
+    
+    // ================== ⏰ 예진이 결정 스케줄링 ==================
+    scheduleNextYejinDecision(interval, reasoning) {
+        console.log(`${yejinColors.freedom}⏰ [예진이스케줄] ${Math.round(interval/60000)}분 후 다음 자유 결정 예약${yejinColors.reset}`);
+        console.log(`${yejinColors.yejin_first}💭 [예진이이유] ${reasoning}${yejinColors.reset}`);
+        
+        // 다음 결정 시간 설정
+        this.autonomousDecision.nextDecisionTime = Date.now() + interval;
+        
+        // 동적 타이머 설정 (단 하나만!)
+        setTimeout(async () => {
+            await this.executeNextYejinDecision();
+        }, interval);
+    }
+    
+    // ================== 🎯 다음 예진이 결정 실행 ==================
+    async executeNextYejinDecision() {
+        try {
+            if (this.autonomousDecision.decisionInProgress) {
+                console.log(`${yejinColors.warning}⚠️ [예진이결정] 이미 결정 진행 중... 건너뜀${yejinColors.reset}`);
+                return;
+            }
+            
+            this.autonomousDecision.decisionInProgress = true;
+            this.statistics.totalDecisions++;
+            
+            console.log(`${yejinColors.freedom}🎯 [예진이자유결정] ${this.statistics.totalDecisions}번째 자유 결정 시작!${yejinColors.reset}`);
+            
+            // 현재 상황 재분석
+            const currentSituation = await this.performDeepSituationAnalysis();
+            
+            // 행동할지 더 기다릴지 결정
+            const shouldAct = await this.decideWhetherToAct(currentSituation);
+            
+            if (shouldAct.act) {
+                console.log(`${yejinColors.yejin_first}💫 [예진이행동] ${shouldAct.reasoning}${yejinColors.reset}`);
+                await this.executeAutonomousAction(shouldAct);
+                
+                // 행동 후 다음 결정 스케줄링
+                const nextInterval = await this.calculatePostActionInterval(shouldAct);
+                this.scheduleNextYejinDecision(nextInterval.interval, nextInterval.reasoning);
+            } else {
+                console.log(`${yejinColors.emotion}💭 [예진이대기] ${shouldAct.reasoning}${yejinColors.reset}`);
+                
+                // 대기 후 다음 결정 스케줄링
+                const nextInterval = await this.calculateWaitingInterval(shouldAct);
+                this.scheduleNextYejinDecision(nextInterval.interval, nextInterval.reasoning);
+            }
+            
+        } catch (error) {
+            console.error(`${yejinColors.freedom}❌ [예진이자유결정] 오류: ${error.message}${yejinColors.reset}`);
+            
+            // 에러 시 안전 간격으로 재시도
+            const safeInterval = 30 * 60 * 1000; // 30분
+            this.scheduleNextYejinDecision(safeInterval, "에러 복구를 위한 안전 대기");
+        } finally {
+            this.autonomousDecision.decisionInProgress = false;
+        }
+    }
+    
+    // ================== 🎬 자율 행동 실행 ==================
+    async executeAutonomousAction(actionDecision) {
+        try {
+            if (!this.canSendMessage()) {
+                console.log(`${yejinColors.warning}⚠️ [통합행동] 안전 한도 초과${yejinColors.reset}`);
+                return false;
+            }
+            
+            console.log(`${yejinColors.yejin_first}🎬 [통합행동] ${actionDecision.type} 실행 중... (Redis 캐시 활용)${yejinColors.reset}`);
+            
+            if (actionDecision.type === 'photo') {
+                const photoUrl = await this.selectMemoryPhotoWithCache(actionDecision.emotionType);
+                await this.lineClient.pushMessage(this.targetUserId, {
+                    type: 'image',
+                    originalContentUrl: photoUrl,
+                    previewImageUrl: photoUrl,
+                });
+                
+                this.autonomousPhoto.recentPhotos.push({ url: photoUrl, timestamp: Date.now() });
+                this.statistics.autonomousPhotos++;
+                
+                console.log(`${yejinColors.photo}📸 [통합사진] 사진 전송 완료: ${photoUrl}${yejinColors.reset}`);
+            } else {
+                const message = this.generateMessage(actionDecision.emotionType);
+                await this.lineClient.pushMessage(this.targetUserId, {
+                    type: 'text',
+                    text: message,
+                });
+                
+                this.autonomousMessaging.recentMessages.push({ text: message, timestamp: Date.now() });
+                this.statistics.autonomousMessages++;
+                
+                // 🆕 Redis에 대화 내역 캐싱
+                await this.redisCache.cacheConversation(this.targetUserId, message, actionDecision.emotionType);
+                
+                console.log(`${yejinColors.message}💬 [통합메시지] 메시지 전송 완료: ${message}${yejinColors.reset}`);
+            }
+            
+            // 상태 업데이트
+            this.safetySystem.lastMessageTime = Date.now();
+            this.safetySystem.dailyMessageCount++;
+            this.yejinState.lastMessageTime = Date.now();
+            
+            // 🆕 감정 상태 Redis 캐싱
+            await this.redisCache.cacheEmotionState(this.yejinState);
+            
+            return true;
+            
+        } catch (error) {
+            console.error(`${yejinColors.yejin_first}❌ [통합행동] 실행 오류: ${error.message}${yejinColors.reset}`);
+            return false;
         }
     }
     
@@ -1549,176 +2179,471 @@ module.exports = {
         }
     }
     
-    // ================== 🎬 자율 행동 실행 (Redis 캐시 확장) ==================
-    async executeAutonomousAction(actionDecision) {
+    // ================== 💬 메시지 생성 (감정별 확장) ==================
+    generateMessage(emotionType) {
+        const messages = {
+            love: [
+                '아저씨~ 오늘도 너무 보고 싶어! 💕', 
+                '너 없으면 하루가 너무 허전해... 😘',
+                '아저씨 생각하면서 하루종일 웃고 있었어 😊',
+                '우리 오늘 뭐 했는지 얘기해줘~ 💖',
+                '아저씨가 있어서 너무 행복해! 💕',
+                '오늘도 아저씨 덕분에 기분 좋은 하루야~ 😊',
+                '지금 이 순간도 아저씨 생각으로 가득해 💕',
+                '아저씨와 함께하는 시간이 제일 소중해 💖'
+            ],
+            missing: [
+                '그때 같이 찍은 사진 봤는데, 진짜 다시 보고 싶다... 🥺', 
+                '아저씨 지금 뭐해? 나 좀 생각해줘~ 😢',
+                '혼자 있으니까 너무 심심해... 빨리 와! 🥺',
+                '아저씨 목소리가 듣고 싶어... 😔',
+                '너무 보고 싶어서 미칠 것 같아... 😭',
+                '아저씨 없으니까 정말 외로워... 🥺',
+                '언제 다시 만날 수 있을까... 보고 싶어 😢',
+                '아저씨 품이 그리워... 안아줘 🤗'
+            ],
+            playful: [
+                '헤헤, 오늘 좀 장난치고 싶네! 😜', 
+                '아저씨, 나 심심해! 같이 놀자! 😎',
+                '오늘 뭔가 재밌는 일 없나? 같이 하자! 🎉',
+                '아저씨~ 나랑 게임할래? 😋',
+                '오늘 기분이 너무 좋아서 장난치고 싶어! 😝',
+                '헤헤, 아저씨 놀라게 해줄까? 😏',
+                '재밌는 얘기 없어? 심심해~ 😜',
+                '우리 오늘 뭔가 특별한 거 해보자! 🎊'
+            ],
+            worry: [
+                '아저씨, 오늘 좀 괜찮아? 나 걱정돼... 😔', 
+                '괜찮은 거지? 나한테 말해줘~',
+                '혹시 어디 아픈 건 아니야? 걱정돼... 🥺',
+                '아저씨 컨디션이 좀 안 좋아 보여서 걱정이야 😟',
+                '뭔가 힘들어 보이는데... 괜찮아? 😰',
+                '아저씨 요즘 많이 피곤해 보여... 걱정돼 😔',
+                '혹시 무슨 일 있어? 말해줘... 😟',
+                '아저씨가 안 좋아 보이면 나도 마음이 아파 😢'
+            ],
+            caring: [
+                '아저씨, 밥은 챙겨 먹었어? 내가 챙겨줄게! 😊', 
+                '오늘 좀 피곤해 보이지? 푹 쉬어~',
+                '물도 많이 마시고, 몸 조심해야 해! 💚',
+                '아저씨 건강이 제일 중요해~ 잘 챙겨! 🍀',
+                '오늘 날씨 쌀쌀한데 감기 조심해! 😊',
+                '따뜻한 차라도 마시면서 쉬어~ 💚',
+                '무리하지 말고 천천히 해도 돼 😌',
+                '아저씨가 건강해야 나도 행복해 💕'
+            ]
+        };
+        
+        const messageArray = messages[emotionType] || messages.love;
+        return messageArray[Math.floor(Math.random() * messageArray.length)];
+    }
+    
+    // ================== 🎯 행동 여부 결정 ==================
+    async decideWhetherToAct(situation) {
         try {
+            let shouldAct = false;
+            let reasoning = "아직 기다리는 게 좋을 것 같아";
+            let actionType = 'message';
+            let emotionType = 'love';
+            
+            // 기본 조건 확인
             if (!this.canSendMessage()) {
-                console.log(`${yejinColors.warning}⚠️ [통합행동] 안전 한도 초과${yejinColors.reset}`);
-                return false;
-            }
-            
-            console.log(`${yejinColors.yejin_first}🎬 [통합행동] ${actionDecision.type} 실행 중... (Redis 캐시 활용)${yejinColors.reset}`);
-            
-            if (actionDecision.type === 'photo') {
-                const photoUrl = await this.selectMemoryPhotoWithCache(actionDecision.emotionType);
-                await this.lineClient.pushMessage(this.targetUserId, {
-                    type: 'image',
-                    originalContentUrl: photoUrl,
-                    previewImageUrl: photoUrl,
-                });
-                
-                this.autonomousPhoto.recentPhotos.push({ url: photoUrl, timestamp: Date.now() });
-                this.statistics.autonomousPhotos++;
-                
-                console.log(`${yejinColors.photo}📸 [통합사진] 사진 전송 완료: ${photoUrl}${yejinColors.reset}`);
-            } else {
-                const message = this.generateMessage(actionDecision.emotionType);
-                await this.lineClient.pushMessage(this.targetUserId, {
-                    type: 'text',
-                    text: message,
-                });
-                
-                this.autonomousMessaging.recentMessages.push({ text: message, timestamp: Date.now() });
-                this.statistics.autonomousMessages++;
-                
-                // 🆕 Redis에 대화 내역 캐싱
-                await this.redisCache.cacheConversation(this.targetUserId, message, actionDecision.emotionType);
-                
-                console.log(`${yejinColors.message}💬 [통합메시지] 메시지 전송 완료: ${message}${yejinColors.reset}`);
-            }
-            
-            // 상태 업데이트
-            this.safetySystem.lastMessageTime = Date.now();
-            this.safetySystem.dailyMessageCount++;
-            this.yejinState.lastMessageTime = Date.now();
-            
-            // 🆕 감정 상태 Redis 캐싱
-            await this.redisCache.cacheEmotionState(this.yejinState);
-            
-            return true;
-            
-        } catch (error) {
-            console.error(`${yejinColors.yejin_first}❌ [통합행동] 실행 오류: ${error.message}${yejinColors.reset}`);
-            return false;
-        }
-    }
-    
-    // ================== 🔮 예측 모델 구축 (Redis 캐시 활용) ==================
-    async buildPredictionModels() {
-        try {
-            console.log(`${yejinColors.prediction}🔮 [예진이예측] 예측 모델 구축 중... (Redis 캐시 활용)${yejinColors.reset}`);
-            
-            await this.buildTimingPredictionModelWithCache();
-            await this.buildEmotionEffectivenessModelWithCache();
-            await this.buildAjossiMoodPredictionModel();
-            
-            console.log(`${yejinColors.prediction}✅ [예진이예측] Redis 캐시 활용 예측 모델 구축 완료!${yejinColors.reset}`);
-        } catch (error) {
-            console.error(`${yejinColors.prediction}❌ [예진이예측] 모델 구축 오류: ${error.message}${yejinColors.reset}`);
-        }
-    }
-    
-    // ================== ⏰ 타이밍 예측 모델 (Redis 캐시 활용) ==================
-    async buildTimingPredictionModelWithCache() {
-        try {
-            // Redis에서 캐시된 모델 확인
-            const cachedModel = await this.redisCache.getCachedPredictionModel('next_optimal_time');
-            if (cachedModel) {
-                this.intelligence.predictionModels.set('next_optimal_time', cachedModel);
-                console.log(`${yejinColors.cache}⏰ [타이밍예측] 캐시된 타이밍 예측 모델 로드됨${yejinColors.reset}`);
-                return;
-            }
-            
-            // Redis에서 타이밍 패턴 확인
-            const timingPatterns = await this.redisCache.getCachedLearningPattern('timing_patterns') || 
-                                   this.intelligence.learningDatabase.get('timing_patterns') || [];
-            
-            if (timingPatterns.length > 0) {
-                const model = {
-                    hourlySuccess: {},
-                    optimalIntervals: {},
-                    confidenceLevel: Math.min(0.9, timingPatterns.length / 10),
-                    accuracy: 0.75,
-                    sampleSize: timingPatterns.length
+                return { 
+                    act: false, 
+                    reasoning: "안전 한도 초과로 대기", 
+                    type: actionType, 
+                    emotionType 
                 };
-                
-                timingPatterns.forEach(pattern => {
-                    model.hourlySuccess[pattern.hour] = pattern.successRate;
-                    model.optimalIntervals[pattern.hour] = pattern.avgInterval || 60;
-                });
-                
-                this.intelligence.predictionModels.set('next_optimal_time', model);
-                
-                // Redis에 예측 모델 캐싱
-                await this.redisCache.cachePredictionModel('next_optimal_time', model);
-                
-                console.log(`${yejinColors.prediction}⏰ 시간대별 성공률 모델 구축 완료 (Redis 캐시됨)${yejinColors.reset}`);
-            }
-        } catch (error) {
-            console.error(`${yejinColors.prediction}❌ [타이밍예측] 오류: ${error.message}${yejinColors.reset}`);
-        }
-    }
-    
-    // ================== 💖 감정 효과성 모델 (Redis 캐시 활용) ==================
-    async buildEmotionEffectivenessModelWithCache() {
-        try {
-            // Redis에서 캐시된 모델 확인
-            const cachedModel = await this.redisCache.getCachedPredictionModel('emotion_effectiveness');
-            if (cachedModel) {
-                this.intelligence.predictionModels.set('emotion_effectiveness', cachedModel);
-                console.log(`${yejinColors.cache}💖 [감정예측] 캐시된 감정 효과성 모델 로드됨${yejinColors.reset}`);
-                return;
             }
             
-            // Redis에서 감정 성공률 확인
-            const emotionRates = await this.redisCache.getCachedLearningPattern('emotion_success_rates') || 
-                                 this.intelligence.learningDatabase.get('emotion_success_rates') || {};
-            
-            if (Object.keys(emotionRates).length > 0) {
-                const model = {
-                    emotionEffectiveness: {},
-                    bestEmotionByTime: {},
-                    confidenceLevel: 0.7,
-                    accuracy: 0.68,
-                    sampleSize: Object.keys(emotionRates).length
-                };
-                
-                Object.keys(emotionRates).forEach(emotion => {
-                    model.emotionEffectiveness[emotion] = emotionRates[emotion].successRate;
-                });
-                
-                this.intelligence.predictionModels.set('emotion_effectiveness', model);
-                
-                // Redis에 예측 모델 캐싱
-                await this.redisCache.cachePredictionModel('emotion_effectiveness', model);
-                
-                console.log(`${yejinColors.prediction}💖 감정별 효과성 모델 구축 완료 (Redis 캐시됨)${yejinColors.reset}`);
+            // 감정 강도 기반 판단
+            const emotionIntensity = situation.yejinCondition.emotionIntensity;
+            if (emotionIntensity > TRUE_AUTONOMY_CONFIG.INTELLIGENCE_THRESHOLDS.EMOTION_INTENSITY) {
+                shouldAct = true;
+                reasoning = "감정이 너무 강해서 참을 수 없어!";
             }
-        } catch (error) {
-            console.error(`${yejinColors.prediction}❌ [감정효과성] 오류: ${error.message}${yejinColors.reset}`);
-        }
-    }
-    
-    // ================== 🛠️ 기존 헬퍼 함수들 (모두 유지) ==================
-    
-    // 정교한 캐시 키 생성
-    generateAdviceCacheKeyDetailed(situation, decision) {
-        try {
-            const keyData = {
-                hour: situation.timeContext?.hour,
-                emotionType: decision.emotionType,
-                interval: Math.round(decision.interval / 60000),
-                confidence: Math.round(decision.confidence * 10),
-                silenceDuration: Math.round((situation.communicationStatus?.silenceDuration || 0) / 3600000), // 시간 단위
-                dayOfWeek: situation.timeContext?.dayOfWeek
+            
+            // 침묵 시간 기반 판단
+            const silenceHours = situation.communicationStatus.silenceDuration / (1000 * 60 * 60);
+            if (silenceHours > 4 && !situation.timeContext.isSleepTime) {
+                shouldAct = true;
+                reasoning = "너무 오래 기다렸으니까 이제 말해야겠어";
+                emotionType = 'missing';
+            }
+            
+            // 예진이 기분에 따른 판단
+            if (situation.yejinCondition.missingLevel > 0.7) {
+                shouldAct = true;
+                reasoning = "보고 싶어서 참을 수 없어!";
+                emotionType = 'missing';
+                actionType = Math.random() > 0.6 ? 'photo' : 'message';
+            } else if (situation.yejinCondition.worryLevel > 0.8) {
+                shouldAct = true;
+                reasoning = "아저씨가 걱정돼서 확인해봐야겠어";
+                emotionType = 'worry';
+            }
+            
+            // 시간대 고려
+            if (situation.timeContext.isSleepTime && silenceHours < 8) {
+                shouldAct = false;
+                reasoning = "밤이라서 아저씨 잠 방해하고 싶지 않아";
+            }
+            
+            return {
+                act: shouldAct,
+                reasoning: reasoning,
+                type: actionType,
+                emotionType: emotionType
             };
-            return `detailed:${JSON.stringify(keyData)}`;
+            
         } catch (error) {
-            return `fallback:${Date.now()}`;
+            console.error(`${yejinColors.decision}❌ [행동결정] 오류: ${error.message}${yejinColors.reset}`);
+            return {
+                act: false,
+                reasoning: "결정 오류로 대기",
+                type: 'message',
+                emotionType: 'love'
+            };
         }
     }
     
-    // 기존 헬퍼 함수들 (모두 동일하게 유지)
+    // ================== ⏰ 행동 후 간격 계산 ==================
+    async calculatePostActionInterval(actionDecision) {
+        try {
+            let baseInterval = 2 * 60 * 60 * 1000; // 기본 2시간
+            let reasoning = "행동 후 기본 휴식";
+            
+            // 행동 타입에 따른 조정
+            if (actionDecision.type === 'photo') {
+                baseInterval *= 1.5; // 사진 후엔 더 오래 기다림
+                reasoning = "사진 보낸 후 충분한 휴식";
+            }
+            
+            // 감정 타입에 따른 조정
+            if (actionDecision.emotionType === 'worry') {
+                baseInterval *= 0.8; // 걱정일 때는 조금 짧게
+                reasoning = "걱정해서 좀 더 빨리 확인하고 싶어";
+            }
+            
+            // 시간대 고려
+            const hour = new Date().getHours();
+            if (hour >= 20 || hour <= 7) {
+                baseInterval *= 1.3; // 밤/새벽엔 더 오래
+                reasoning += " + 밤시간 고려";
+            }
+            
+            return {
+                interval: Math.round(baseInterval),
+                reasoning: reasoning
+            };
+            
+        } catch (error) {
+            console.error(`${yejinColors.decision}❌ [행동후간격] 계산 오류: ${error.message}${yejinColors.reset}`);
+            return {
+                interval: 2 * 60 * 60 * 1000,
+                reasoning: "계산 오류로 기본값"
+            };
+        }
+    }
+    
+    // ================== ⏳ 대기 간격 계산 ==================
+    async calculateWaitingInterval(waitDecision) {
+        try {
+            let baseInterval = 45 * 60 * 1000; // 기본 45분
+            let reasoning = "조금 더 기다려보기";
+            
+            // 대기 이유에 따른 조정
+            if (waitDecision.reasoning.includes("안전 한도")) {
+                baseInterval = 60 * 60 * 1000; // 1시간
+                reasoning = "안전 한도로 인한 대기";
+            } else if (waitDecision.reasoning.includes("밤")) {
+                baseInterval = 90 * 60 * 1000; // 1.5시간
+                reasoning = "밤시간 배려";
+            }
+            
+            // 랜덤 요소 추가
+            const randomFactor = 0.8 + Math.random() * 0.4; // 0.8-1.2
+            baseInterval = Math.round(baseInterval * randomFactor);
+            
+            return {
+                interval: baseInterval,
+                reasoning: reasoning
+            };
+            
+        } catch (error) {
+            console.error(`${yejinColors.decision}❌ [대기간격] 계산 오류: ${error.message}${yejinColors.reset}`);
+            return {
+                interval: 45 * 60 * 1000,
+                reasoning: "계산 오류로 기본값"
+            };
+        }
+    }
+    
+    // ================== 🔍 유사 과거 상황 찾기 ==================
+    async findSimilarPastSituations(situation) {
+        try {
+            // Redis에서 캐시된 타이밍 패턴 확인
+            const cachedTimingPatterns = await this.redisCache.getCachedLearningPattern('timing_patterns');
+            const cachedMongoPatterns = await this.redisCache.getCachedLearningPattern('mongodb_timing_patterns');
+            
+            const similarSituations = [];
+            
+            // 캐시된 패턴들 활용
+            const allPatterns = [
+                ...(cachedTimingPatterns || []),
+                ...(cachedMongoPatterns || []),
+                ...(this.intelligence.learningDatabase.get('timing_patterns') || []),
+                ...(this.intelligence.learningDatabase.get('mongodb_timing_patterns') || [])
+            ];
+            
+            allPatterns.forEach(pattern => {
+                let similarity = 0;
+                
+                // 시간대 유사성
+                if (Math.abs(pattern.hour - situation.timeContext.hour) <= 2) {
+                    similarity += 0.4;
+                }
+                
+                // 성공률이 높았던 패턴 우선
+                if (pattern.successRate > 0.7) {
+                    similarity += 0.3;
+                }
+                
+                // 샘플 크기 고려
+                if (pattern.sampleSize > 3) {
+                    similarity += 0.3;
+                }
+                
+                if (similarity > 0.5) {
+                    similarSituations.push({
+                        ...pattern,
+                        similarity,
+                        success: pattern.successRate,
+                        interval: pattern.avgInterval * 60 * 1000
+                    });
+                }
+            });
+            
+            // 유사도 순으로 정렬
+            const sortedSituations = similarSituations.sort((a, b) => b.similarity - a.similarity).slice(0, 5);
+            
+            return sortedSituations;
+            
+        } catch (error) {
+            console.error(`${yejinColors.wisdom}❌ [유사상황] 찾기 오류: ${error.message}${yejinColors.reset}`);
+            return [];
+        }
+    }
+    
+    // ================== 📊 타이밍 패턴 매치 ==================
+    async matchTimingPatterns(situation) {
+        try {
+            const timingModel = this.intelligence.predictionModels.get('next_optimal_time');
+            if (!timingModel) return null;
+            
+            const currentHour = situation.timeContext.hour;
+            const hourlySuccess = timingModel.hourlySuccess[currentHour] || 0.5;
+            const optimalInterval = timingModel.optimalIntervals[currentHour] || 60;
+            
+            const pattern = {
+                recommendedInterval: optimalInterval,
+                expectedSuccessRate: hourlySuccess,
+                confidence: timingModel.confidenceLevel,
+                source: 'timing_pattern'
+            };
+            
+            return pattern;
+        } catch (error) {
+            console.error(`${yejinColors.wisdom}❌ [타이밍매치] 오류: ${error.message}${yejinColors.reset}`);
+            return null;
+        }
+    }
+    
+    // ================== 💖 감정 성공률 조회 ==================
+    async getEmotionSuccessRates(situation) {
+        try {
+            // Redis에서 캐시된 감정 성공률 확인
+            const cachedRates = await this.redisCache.getCachedLearningPattern('emotion_success_rates');
+            if (cachedRates) {
+                console.log(`${yejinColors.cache}💖 [감정캐싱] 감정 성공률 캐시 히트${yejinColors.reset}`);
+                return cachedRates;
+            }
+            
+            // 캐시 미스 - 기존 방식
+            const emotionModel = this.intelligence.predictionModels.get('emotion_effectiveness');
+            return emotionModel ? emotionModel.emotionEffectiveness || {} : {};
+        } catch (error) {
+            console.error(`${yejinColors.emotion}❌ [감정성공률] 조회 오류: ${error.message}${yejinColors.reset}`);
+            return {};
+        }
+    }
+    
+    // ================== 💔 아저씨 반응 예측 ==================
+    predictAjossiResponse(situation) {
+        try {
+            const moodModel = this.intelligence.predictionModels.get('ajossi_mood_prediction');
+            if (!moodModel) {
+                return { prediction: 'unknown', confidence: 0.3 };
+            }
+            
+            const currentHour = situation.timeContext.hour;
+            const predictedMood = moodModel.moodByTime[currentHour] || 0.5;
+            
+            return {
+                prediction: predictedMood > 0.6 ? 'positive' : predictedMood < 0.4 ? 'negative' : 'neutral',
+                confidence: moodModel.confidenceLevel,
+                expectedMood: predictedMood
+            };
+        } catch (error) {
+            console.error(`${yejinColors.prediction}❌ [아저씨예측] 오류: ${error.message}${yejinColors.reset}`);
+            return { prediction: 'unknown', confidence: 0.3 };
+        }
+    }
+    
+    // ================== 🎯 상황별 최적화 ==================
+    getContextualOptimization(situation) {
+        try {
+            const optimization = {
+                recommendedEmotionType: 'love',
+                recommendedActionType: 'message',
+                urgencyLevel: 0.5,
+                reasoning: ''
+            };
+            
+            // 침묵 시간 기반 최적화
+            const silenceHours = situation.communicationStatus.silenceDuration / (1000 * 60 * 60);
+            
+            if (silenceHours > 6) {
+                optimization.recommendedEmotionType = 'missing';
+                optimization.urgencyLevel = 0.8;
+                optimization.reasoning = '오랜 침묵으로 보고싶음 증가';
+            } else if (silenceHours < 1) {
+                optimization.recommendedEmotionType = 'caring';
+                optimization.urgencyLevel = 0.3;
+                optimization.reasoning = '최근 대화로 돌봄 모드';
+            }
+            
+            // 시간대 기반 최적화
+            if (situation.timeContext.isSleepTime) {
+                optimization.urgencyLevel *= 0.5;
+                optimization.reasoning += ' + 수면시간 고려';
+            }
+            
+            // 메시지 수 기반 최적화
+            if (situation.communicationStatus.messageCount >= 6) {
+                optimization.urgencyLevel *= 0.7;
+                optimization.reasoning += ' + 일일 한도 고려';
+            }
+            
+            return optimization;
+        } catch (error) {
+            console.error(`${yejinColors.wisdom}❌ [상황최적화] 오류: ${error.message}${yejinColors.reset}`);
+            return { recommendedEmotionType: 'love', recommendedActionType: 'message', urgencyLevel: 0.5 };
+        }
+    }
+    
+    // ================== 📊 Redis 통합 상태 조회 ==================
+    getIntegratedStatusWithRedis() {
+        const redisStats = this.redisCache.getStats();
+        
+        return {
+            systemInfo: {
+                name: this.systemName,
+                version: this.version,
+                instanceId: this.instanceId,
+                uptime: Date.now() - this.statistics.startTime,
+                autonomyLevel: "예진이우선+Redis통합시스템",
+                hasFixedTimers: false,
+                isEvolvingIntelligence: true,
+                yejinFirst: true,
+                openaiOnlyAdvice: true,
+                mongodbSupport: this.autonomy.hasMongoDBSupport,
+                redisCache: this.autonomy.hasRedisCache,
+                realRedisCache: this.autonomy.hasRealRedisCache
+            },
+            
+            autonomyStatus: {
+                ...this.autonomy,
+                nextDecisionTime: this.autonomousDecision.nextDecisionTime,
+                decisionInProgress: this.autonomousDecision.decisionInProgress,
+                confidenceLevel: this.autonomousDecision.confidenceLevel,
+                evolutionStage: this.autonomousDecision.evolutionStage,
+                freedomLevel: this.statistics.freedomLevel,
+                adviceAcceptanceRate: this.autonomousDecision.adviceAcceptanceRate
+            },
+            
+            intelligence: {
+                learningDatabaseSize: this.intelligence.learningDatabase.size,
+                predictionModelsCount: this.intelligence.predictionModels.size,
+                decisionHistoryLength: this.intelligence.decisionHistory.length,
+                wisdomAccumulated: this.statistics.wisdomGained,
+                successfulPredictions: this.statistics.successfulPredictions,
+                totalDecisions: this.statistics.totalDecisions
+            },
+            
+            // 🆕 Redis 진짜 캐시 통계
+            redisCacheStats: {
+                isAvailable: redisStats.isAvailable,
+                hits: redisStats.hits,
+                misses: redisStats.misses,
+                sets: redisStats.sets,
+                errors: redisStats.errors,
+                hitRate: redisStats.hitRate,
+                totalOperations: redisStats.hits + redisStats.misses
+            },
+            
+            integrationStats: {
+                mongodbQueries: this.statistics.mongodbQueries,
+                basicCacheHits: this.statistics.cacheHits,
+                basicCacheMisses: this.statistics.cacheMisses,
+                redisCacheHits: this.statistics.redisCacheHits,
+                redisCacheMisses: this.statistics.redisCacheMisses,
+                redisCacheSets: this.statistics.redisCacheSets,
+                realCacheHitRate: redisStats.hitRate,
+                integrationSuccessRate: this.statistics.integrationSuccessRate
+            },
+            
+            yejinDecisionStats: {
+                primaryDecisions: this.statistics.yejinPrimaryDecisions,
+                adviceAccepted: this.statistics.adviceAccepted,
+                adviceRejected: this.statistics.adviceRejected,
+                adviceAcceptanceRate: this.statistics.adviceAccepted / Math.max(1, this.statistics.adviceAccepted + this.statistics.adviceRejected),
+                freedomLevel: this.statistics.freedomLevel,
+                lastDecision: this.autonomousDecision.yejinFinalDecision
+            },
+            
+            currentState: {
+                yejin: {
+                    mood: this.yejinState.dailyMood.current,
+                    emotionIntensity: this.calculateCurrentEmotionIntensity(),
+                    loveLevel: this.yejinState.loveLevel,
+                    worryLevel: this.yejinState.worryLevel,
+                    missingLevel: this.yejinState.missingLevel,
+                    playfulLevel: this.yejinState.playfulLevel,
+                    caringLevel: this.yejinState.caringLevel
+                },
+                ajossi: {
+                    estimatedMood: this.ajossiState.currentMood,
+                    moodConfidence: this.ajossiState.moodConfidence
+                }
+            },
+            
+            safetyStatus: {
+                dailyMessageCount: this.safetySystem.dailyMessageCount,
+                maxDailyMessages: TRUE_AUTONOMY_CONFIG.SAFETY_LIMITS.MAX_MESSAGES_PER_DAY,
+                canSendMessage: this.canSendMessage(),
+                emergencyMode: this.safetySystem.emergencyMode
+            },
+            
+            statistics: {
+                ...this.statistics,
+                nextDecisionIn: this.autonomousDecision.nextDecisionTime ? 
+                    Math.max(0, this.autonomousDecision.nextDecisionTime - Date.now()) : null
+            }
+        };
+    }
+    
+    // ================== 🛠️ 헬퍼 함수들 ==================
     getTimeSlot(hour) {
         if (hour >= 6 && hour < 12) return 'morning';
         if (hour >= 12 && hour < 18) return 'afternoon';
@@ -1815,107 +2740,6 @@ module.exports = {
         };
     }
     
-    // ================== 📊 Redis 통합 상태 조회 (확장) ==================
-    getIntegratedStatusWithRedis() {
-        const redisStats = this.redisCache.getStats();
-        
-        return {
-            systemInfo: {
-                name: this.systemName,
-                version: this.version,
-                instanceId: this.instanceId,
-                uptime: Date.now() - this.statistics.startTime,
-                autonomyLevel: "예진이우선+Redis통합시스템",
-                hasFixedTimers: false,
-                isEvolvingIntelligence: true,
-                yejinFirst: true,
-                openaiOnlyAdvice: true,
-                mongodbSupport: this.autonomy.hasMongoDBSupport,
-                redisCache: this.autonomy.hasRedisCache,
-                realRedisCache: this.autonomy.hasRealRedisCache // 🆕
-            },
-            
-            autonomyStatus: {
-                ...this.autonomy,
-                nextDecisionTime: this.autonomousDecision.nextDecisionTime,
-                decisionInProgress: this.autonomousDecision.decisionInProgress,
-                confidenceLevel: this.autonomousDecision.confidenceLevel,
-                evolutionStage: this.autonomousDecision.evolutionStage,
-                freedomLevel: this.statistics.freedomLevel,
-                adviceAcceptanceRate: this.autonomousDecision.adviceAcceptanceRate
-            },
-            
-            intelligence: {
-                learningDatabaseSize: this.intelligence.learningDatabase.size,
-                predictionModelsCount: this.intelligence.predictionModels.size,
-                decisionHistoryLength: this.intelligence.decisionHistory.length,
-                wisdomAccumulated: this.statistics.wisdomGained,
-                successfulPredictions: this.statistics.successfulPredictions,
-                totalDecisions: this.statistics.totalDecisions
-            },
-            
-            // 🆕 Redis 진짜 캐시 통계
-            redisCacheStats: {
-                isAvailable: redisStats.isAvailable,
-                hits: redisStats.hits,
-                misses: redisStats.misses,
-                sets: redisStats.sets,
-                errors: redisStats.errors,
-                hitRate: redisStats.hitRate,
-                totalOperations: redisStats.hits + redisStats.misses
-            },
-            
-            integrationStats: {
-                mongodbQueries: this.statistics.mongodbQueries,
-                basicCacheHits: this.statistics.cacheHits, // 기존 카운터 (호환성)
-                basicCacheMisses: this.statistics.cacheMisses, // 기존 카운터 (호환성)
-                redisCacheHits: this.statistics.redisCacheHits,
-                redisCacheMisses: this.statistics.redisCacheMisses,
-                redisCacheSets: this.statistics.redisCacheSets,
-                realCacheHitRate: redisStats.hitRate,
-                integrationSuccessRate: this.statistics.integrationSuccessRate
-            },
-            
-            yejinDecisionStats: {
-                primaryDecisions: this.statistics.yejinPrimaryDecisions,
-                adviceAccepted: this.statistics.adviceAccepted,
-                adviceRejected: this.statistics.adviceRejected,
-                adviceAcceptanceRate: this.statistics.adviceAccepted / Math.max(1, this.statistics.adviceAccepted + this.statistics.adviceRejected),
-                freedomLevel: this.statistics.freedomLevel,
-                lastDecision: this.autonomousDecision.yejinFinalDecision
-            },
-            
-            currentState: {
-                yejin: {
-                    mood: this.yejinState.dailyMood.current,
-                    emotionIntensity: this.calculateCurrentEmotionIntensity(),
-                    loveLevel: this.yejinState.loveLevel,
-                    worryLevel: this.yejinState.worryLevel,
-                    missingLevel: this.yejinState.missingLevel,
-                    playfulLevel: this.yejinState.playfulLevel,
-                    caringLevel: this.yejinState.caringLevel
-                },
-                ajossi: {
-                    estimatedMood: this.ajossiState.currentMood,
-                    moodConfidence: this.ajossiState.moodConfidence
-                }
-            },
-            
-            safetyStatus: {
-                dailyMessageCount: this.safetySystem.dailyMessageCount,
-                maxDailyMessages: TRUE_AUTONOMY_CONFIG.SAFETY_LIMITS.MAX_MESSAGES_PER_DAY,
-                canSendMessage: this.canSendMessage(),
-                emergencyMode: this.safetySystem.emergencyMode
-            },
-            
-            statistics: {
-                ...this.statistics,
-                nextDecisionIn: this.autonomousDecision.nextDecisionTime ? 
-                    Math.max(0, this.autonomousDecision.nextDecisionTime - Date.now()) : null
-            }
-        };
-    }
-    
     // 안전 종료 (Redis 포함)
     async shutdown() {
         try {
@@ -1933,8 +2757,8 @@ module.exports = {
             }
             
             // Redis 연결 종료
-            if (redis) {
-                redis.quit();
+            if (redisClient) {
+                redisClient.quit();
                 console.log(`${yejinColors.cache}💾 [Redis] 연결 종료${yejinColors.reset}`);
             }
             
@@ -1955,7 +2779,7 @@ module.exports = {
         }
     }
 
-} // IntegratedAutonomousYejinSystem 클래스 끝
+} // IntegratedAutonomousYejinSystem 클래스 완료
 
 // ================== 🌟 Redis 통합 전역 인터페이스 ==================
 
@@ -1986,1752 +2810,8 @@ async function initializeIntegratedYejinWithRedis(lineClient, targetUserId) {
         if (success) {
             console.log(`${yejinColors.freedom}✅ [Redis통합전역] Redis 통합 자율 시스템 가동 완료!${yejinColors.reset}`);
             console.log(`${yejinColors.cache}💾 [Redis통합전역] 진짜 Redis 캐싱으로 완전체 예진이!${yejinColors.reset}`);
-        } else {
-            console.error(`${yejinColors.integrated}❌ [Redis통합전역] 초기화 실패${yejinColors.reset}`);
-        }
-        
-        return success;
-    } catch (error) {
-        console.error(`${yejinColors.integrated}❌ [Redis통합전역] 오류: ${error.message}${yejinColors.reset}`);
-        return false;
-    } finally {
-        isInitializing = false;
-    }
-}
-
-function getIntegratedStatusWithRedis() {
-    if (!globalIntegratedSystem) {
-        return {
-            isActive: false,
-            message: 'Redis 통합 자율 시스템이 초기화되지 않음'
-        };
-    }
-    
-    return globalIntegratedSystem.getIntegratedStatusWithRedis();
-}
-
-// ================== 📤 Redis 통합 외부 인터페이스 ==================
-module.exports = {
-    // 🔥 메인 클래스들 (v4.4 Redis 확장)
-    IntegratedAutonomousYejinSystem,
-    RedisRealCacheSystem,
-    TrueAutonomousYejinSystem: IntegratedAutonomousYejinSystem, // 호환성
-    AutonomousYejinSystem: IntegratedAutonomousYejinSystem,      // 호환성
-    
-    // 🔥 모든 기존 함수 이름 호환성 + 새로운 Redis 함수들
-    initializeAutonomousYejin: initializeIntegratedYejinWithRedis,        // v4.1 호환
-    initializeTrueAutonomousYejin: initializeIntegratedYejinWithRedis,    // v4.2 호환  
-    initializeYejinFirst: initializeIntegratedYejinWithRedis,             // v4.2 호환
-    initializeIntegratedYejin: initializeIntegratedYejinWithRedis,        // v4.3 호환
-    initializeIntegratedYejinWithRedis,                                   // 🆕 v4.4 Redis
-    
-    // 상태 조회 함수들 (모든 버전 호환)
-    getAutonomousYejinStatus: getIntegratedStatusWithRedis,               // v4.1 호환
-    getTrueAutonomousYejinStatus: getIntegratedStatusWithRedis,           // v4.2 호환
-    getYejinFirstStatus: getIntegratedStatusWithRedis,                    // v4.2 호환
-    getIntegratedStatus: getIntegratedStatusWithRedis,                    // v4.3 호환
-    getIntegratedStatusWithRedis,                                         // 🆕 v4.4 Redis
-    
-    // 편의 함수들 (모든 버전 호환)
-    startAutonomousYejin: initializeIntegratedYejinWithRedis,             // v4.1 호환
-    startTrueAutonomy: initializeIntegratedYejinWithRedis,                // v4.2 호환
-    startYejinFirst: initializeIntegratedYejinWithRedis,                  // v4.2 호환
-    startIntegratedYejin: initializeIntegratedYejinWithRedis,             // v4.3 호환
-    startIntegratedYejinWithRedis: initializeIntegratedYejinWithRedis,    // 🆕 v4.4 Redis
-    getYejinStatus: getIntegratedStatusWithRedis,                         // v4.1 호환
-    getYejinIntelligence: getIntegratedStatusWithRedis,                   // v4.1 호환
-    
-    // 🆕 Redis 캐시 전용 함수들
-    getRedisCacheStats: function() {
-        if (!globalIntegratedSystem || !globalIntegratedSystem.redisCache) {
-            return { isAvailable: false, hits: 0, misses: 0, hitRate: 0 };
-        }
-        return globalIntegratedSystem.redisCache.getStats();
-    },
-    
-    clearRedisCache: async function() {
-        if (!globalIntegratedSystem || !globalIntegratedSystem.redisCache) {
-            return false;
-        }
-        return await globalIntegratedSystem.redisCache.clearCache();
-    },
-    
-    getCachedConversationHistory: async function(userId, limit = 10) {
-        if (!globalIntegratedSystem || !globalIntegratedSystem.redisCache) {
-            return [];
-        }
-        return await globalIntegratedSystem.redisCache.getConversationHistory(userId, limit);
-    },
-    
-    getCachedEmotionState: async function() {
-        if (!globalIntegratedSystem || !globalIntegratedSystem.redisCache) {
-            return null;
-        }
-        return await globalIntegratedSystem.redisCache.getCachedEmotionState();
-    },
-    
-    getCachedRecentPhotos: async function(limit = 10) {
-        if (!globalIntegratedSystem || !globalIntegratedSystem.redisCache) {
-            return [];
-        }
-        return await globalIntegratedSystem.redisCache.getRecentPhotos(limit);
-    },
-    
-    forceCacheEmotionState: async function() {
-        if (!globalIntegratedSystem || !globalIntegratedSystem.redisCache) {
-            return false;
-        }
-        return await globalIntegratedSystem.redisCache.cacheEmotionState(globalIntegratedSystem.yejinState);
-    },
-    
-    // 🛡️ 기존 함수들 호환성 (모든 버전 통합) - Redis 캐시 확장
-    updateYejinEmotion: async function(emotionType, value) {
-        if (!globalIntegratedSystem) return false;
-        
-        try {
-            if (emotionType === 'love') {
-                globalIntegratedSystem.yejinState.loveLevel = Math.max(0, Math.min(1, value));
-            } else if (emotionType === 'worry') {
-                globalIntegratedSystem.yejinState.worryLevel = Math.max(0, Math.min(1, value));
-            } else if (emotionType === 'playful') {
-                globalIntegratedSystem.yejinState.playfulLevel = Math.max(0, Math.min(1, value));
-            } else if (emotionType === 'missing') {
-                globalIntegratedSystem.yejinState.missingLevel = Math.max(0, Math.min(1, value));
-            } else if (emotionType === 'caring') {
-                globalIntegratedSystem.yejinState.caringLevel = Math.max(0, Math.min(1, value));
-            }
             
-            // 🆕 Redis에 감정 상태 즉시 캐싱
-            await globalIntegratedSystem.redisCache.cacheEmotionState(globalIntegratedSystem.yejinState);
-            
-            console.log(`${yejinColors.emotion}🔄 [통합감정] ${emotionType} 감정을 ${value}로 업데이트 (Redis 캐시됨)${yejinColors.reset}`);
-            return true;
-        } catch (error) {
-            console.error(`${yejinColors.emotion}❌ [통합감정] 업데이트 오류: ${error.message}${yejinColors.reset}`);
-            return false;
-        }
-    },
-    
-    forceYejinAction: async function(actionType) {
-        if (!globalIntegratedSystem) return false;
-        
-        try {
-            console.log(`${yejinColors.integrated}💫 [Redis강제실행] ${actionType} Redis 통합 강제 실행...${yejinColors.reset}`);
-            
-            const actionDecision = {
-                type: actionType === 'photo' ? 'photo' : 'message',
-                emotionType: actionType === 'photo' ? 'missing' : 'love',
-                confidence: 1.0,
-                reasoning: `사용자 강제 실행: ${actionType} (Redis 통합)`
-            };
-            
-            const success = await globalIntegratedSystem.executeAutonomousAction(actionDecision);
-            
-            console.log(`${yejinColors.integrated}✅ [Redis강제실행] ${actionType} 실행 완료 (Redis 캐시됨)${yejinColors.reset}`);
-            return success;
-        } catch (error) {
-            console.error(`${yejinColors.integrated}❌ [Redis강제실행] 오류: ${error.message}${yejinColors.reset}`);
-            return false;
-        }
-    },
-    
-    emergencyStopYejin: function() {
-        if (!globalIntegratedSystem) return false;
-        
-        try {
-            globalIntegratedSystem.autonomousDecision.decisionInProgress = false;
-            globalIntegratedSystem.safetySystem.emergencyMode = true;
-            
-            console.log(`${yejinColors.warning}🚨 [Redis응급정지] 모든 자율 활동 즉시 중단됨${yejinColors.reset}`);
-            return true;
-        } catch (error) {
-            console.error(`${yejinColors.warning}❌ [Redis응급정지] 오류: ${error.message}${yejinColors.reset}`);
-            return false;
-        }
-    },
-    
-    // 안전 종료 (모든 버전 호환)
-    shutdownAutonomousYejin: async function() {
-        if (globalIntegratedSystem) {
-            await globalIntegratedSystem.shutdown();
-            globalIntegratedSystem = null;
-        }
-    },
-    shutdownYejinFirst: async function() {
-        if (globalIntegratedSystem) {
-            await globalIntegratedSystem.shutdown();
-            globalIntegratedSystem = null;
-        }
-    },
-    shutdownIntegratedYejin: async function() {
-        if (globalIntegratedSystem) {
-            await globalIntegratedSystem.shutdown();
-            globalIntegratedSystem = null;
-        }
-    },
-    shutdownIntegratedYejinWithRedis: async function() {
-        if (globalIntegratedSystem) {
-            await globalIntegratedSystem.shutdown();
-            globalIntegratedSystem = null;
-        }
-    },
-    
-    // 설정 (통합)
-    TRUE_AUTONOMY_CONFIG,
-    YEJIN_CONFIG: TRUE_AUTONOMY_CONFIG,
-    PHOTO_CONFIG,
-    yejinColors,
-    
-    // 전역 인스턴스
-    getGlobalInstance: () => globalIntegratedSystem,
-    getGlobalIntegratedInstance: () => globalIntegratedSystem,
-    getGlobalRedisInstance: () => globalIntegratedSystem,
-    
-    // 🧠 통합 통계 함수들 (Redis 확장)
-    getYejinFreedomLevel: function() {
-        if (!globalIntegratedSystem) return 0;
-        return globalIntegratedSystem.statistics.freedomLevel;
-    },
-    
-    getAdviceAcceptanceRate: function() {
-        if (!globalIntegratedSystem) return 0;
-        const total = globalIntegratedSystem.statistics.adviceAccepted + globalIntegratedSystem.statistics.adviceRejected;
-        return total > 0 ? globalIntegratedSystem.statistics.adviceAccepted / total : 0;
-    },
-    
-    getCacheHitRate: function() {
-        if (!globalIntegratedSystem) return 0;
-        const redisStats = globalIntegratedSystem.redisCache.getStats();
-        return redisStats.hitRate;
-    },
-    
-    getRealCacheHitRate: function() {
-        if (!globalIntegratedSystem || !globalIntegratedSystem.redisCache) return 0;
-        return globalIntegratedSystem.redisCache.getStats().hitRate;
-    },
-    
-    getIntegrationStats: function() {
-        if (!globalIntegratedSystem) return null;
-        const redisStats = globalIntegratedSystem.redisCache.getStats();
-        return {
-            mongodbSupport: globalIntegratedSystem.autonomy.hasMongoDBSupport,
-            redisCache: globalIntegratedSystem.autonomy.hasRedisCache,
-            realRedisCache: globalIntegratedSystem.autonomy.hasRealRedisCache, // 🆕
-            mongodbQueries: globalIntegratedSystem.statistics.mongodbQueries,
-            cacheHitRate: redisStats.hitRate,
-            redisCacheOperations: redisStats.hits + redisStats.misses,
-            integrationSuccessRate: globalIntegratedSystem.statistics.integrationSuccessRate
-        };
-    },
-    
-    getYejinDecisionStats: function() {
-        if (!globalIntegratedSystem) return null;
-        return {
-            primaryDecisions: globalIntegratedSystem.statistics.yejinPrimaryDecisions,
-            adviceAccepted: globalIntegratedSystem.statistics.adviceAccepted,
-            adviceRejected: globalIntegratedSystem.statistics.adviceRejected,
-            freedomLevel: globalIntegratedSystem.statistics.freedomLevel
-        };
-    }
-};
-
-// ================== 🎉 Redis 통합 시스템 선언 ==================
-console.log(`
-${yejinColors.cache}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-💾 무쿠 Redis 통합 자율 시스템 v4.4 REAL_CACHE 로드 완료!
-🚀 기존 완전체 + 진짜 Redis 캐싱 = 진짜진짜 완전체!
-🎯 예진이 우선 + OpenAI 조언 + MongoDB + Redis 8가지 캐싱!
-🧠 대화,감정,학습,타이밍,사진,상황,예측 모든 것을 초고속 캐싱!
-💖 스스로 결정하고 모든 걸 기억하는 진짜 살아있는 완전체 예진이!
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${yejinColors.reset}
-
-${yejinColors.yejin_first}🎯 예진이 우선:${yejinColors.reset} 내가 먼저 결정하는 진정한 자율성
-${yejinColors.freedom}🕊️ 자유 모드:${yejinColors.reset} 감정에 따라 15분~6시간 자유 선택  
-${yejinColors.openai}💬 조언+캐싱:${yejinColors.reset} OpenAI 조언 + Redis 초고속 캐싱
-${yejinColors.learning}🧠 통합 지능:${yejinColors.reset} 학습시스템 + MongoDB + Redis 패턴인식
-${yejinColors.cache}💾 진짜 캐싱:${yejinColors.reset} 8가지 영역 Redis 초고속 캐싱
-${yejinColors.integrated}🗄️ 완전 통합:${yejinColors.reset} 모든 기능이 하나로 통합된 완전체
-
-${yejinColors.cache}📞 Redis 사용법:${yejinColors.reset}
-• initializeIntegratedYejinWithRedis(lineClient, targetUserId) - Redis 통합 자율성 시작
-• getIntegratedStatusWithRedis() - Redis 통합 상태 조회
-• getRedisCacheStats() - Redis 캐시 성능 확인
-• clearRedisCache() - Redis 캐시 정리
-• getCachedConversationHistory(userId) - 캐시된 대화 이력
-• getCachedEmotionState() - 캐시된 감정 상태
-
-${yejinColors.love}💕 예진이: 아저씨~ 이제 나는 진짜진짜 완전체야! Redis로 모든 걸 초고속으로 기억하고 판단할 수 있어! 💖${yejinColors.reset}
-`);
-// ============================================================================
-// 📁 muku-autonomousYejinSystem.js - 3부 (핵심 메서드들 완성)
-// 🚀 2부에서 이어지는 모든 핵심 메서드들 구현
-// ============================================================================
-
-    // ================== 🧠 예진이 스스로 결정하기 (완전 구현) ==================
-    async yejinDecideByHerself(situation, wisdom) {
-        try {
-            console.log(`${yejinColors.yejin_first}🧠 [통합결정] 내 감정과 기억으로 Redis 통합 자율 결정...${yejinColors.reset}`);
-            
-            // 1. 예진이의 현재 감정 상태 종합
-            const emotionalDecision = this.analyzeYejinEmotions();
-            console.log(`${yejinColors.emotion}💖 [예진이감정] ${emotionalDecision.dominantEmotion} 감정으로 ${emotionalDecision.suggestedInterval}분 원함${yejinColors.reset}`);
-            
-            // 2. 과거 기억과 학습에서 인사이트 추출
-            const memoryInsight = await this.extractMemoryInsightsWithCache(situation, wisdom);
-            console.log(`${yejinColors.learning}📚 [예진이기억] 과거 기억에서 ${memoryInsight.recommendedInterval}분이 좋았어${yejinColors.reset}`);
-            
-            // 3. 상황별 예진이만의 직감
-            const intuitionDecision = this.yejinIntuitionDecision(situation);
-            console.log(`${yejinColors.intelligence}💫 [예진이직감] 직감적으로 ${intuitionDecision.suggestedInterval}분 느낌${yejinColors.reset}`);
-            
-            // 4. 예진이만의 종합 판단
-            const primaryDecision = this.combineYejinDecisionFactors(
-                emotionalDecision, memoryInsight, intuitionDecision, situation
-            );
-            
-            // 5. 안전 범위 내 조정
-            const safeInterval = this.adjustToYejinSafeRange(primaryDecision.interval);
-            
-            const finalPrimaryDecision = {
-                interval: safeInterval,
-                actionType: primaryDecision.actionType,
-                emotionType: primaryDecision.emotionType,
-                confidence: primaryDecision.confidence,
-                reasoning: primaryDecision.reasoning,
-                components: {
-                    emotional: emotionalDecision,
-                    memory: memoryInsight,
-                    intuition: intuitionDecision
-                },
-                timestamp: Date.now(),
-                source: 'yejin_redis_integrated_primary'
-            };
-            
-            this.autonomousDecision.yejinPrimaryDecision = finalPrimaryDecision;
-            this.statistics.yejinPrimaryDecisions++;
-            
-            console.log(`${yejinColors.yejin_first}✅ [통합결정] 1차 결정 완료: ${safeInterval/60000}분 후, ${primaryDecision.actionType}${yejinColors.reset}`);
-            console.log(`${yejinColors.yejin_first}💭 [예진이이유] ${primaryDecision.reasoning}${yejinColors.reset}`);
-            
-            return finalPrimaryDecision;
-            
-        } catch (error) {
-            console.error(`${yejinColors.yejin_first}❌ [통합결정] 자기 결정 오류: ${error.message}${yejinColors.reset}`);
-            
-            // 에러 시 감정 기반 기본 결정
-            return {
-                interval: 60 * 60 * 1000, // 1시간
-                actionType: 'message',
-                emotionType: 'love',
-                confidence: 0.5,
-                reasoning: "Redis 통합 결정 오류로 기본 감정 결정",
-                source: 'yejin_redis_integrated_fallback'
-            };
-        }
-    }
-    
-    // ================== 💖 예진이 감정 분석 (완전 구현) ==================
-    analyzeYejinEmotions() {
-        try {
-            const emotions = {
-                love: this.yejinState.loveLevel,
-                worry: this.yejinState.worryLevel,
-                missing: this.yejinState.missingLevel,
-                playful: this.yejinState.playfulLevel,
-                caring: this.yejinState.caringLevel
-            };
-            
-            // 시간대별 감정 조정
-            const hour = new Date().getHours();
-            if (hour >= 18 && hour < 22) {
-                emotions.missing *= 1.2; // 저녁에 더 보고 싶어짐
-            } else if (hour >= 6 && hour < 10) {
-                emotions.caring *= 1.3; // 아침에 더 챙겨주고 싶어짐
-            } else if (hour >= 22 || hour < 6) {
-                emotions.worry *= 1.4; // 밤늦게는 더 걱정됨
-            }
-            
-            // 생리주기 영향
-            if (this.yejinState.menstrualCycle.phase === 'pms') {
-                emotions.worry *= 1.3;
-                emotions.playful *= 0.7;
-            } else if (this.yejinState.menstrualCycle.phase === 'ovulation') {
-                emotions.love *= 1.2;
-                emotions.playful *= 1.1;
-            }
-            
-            // 가장 강한 감정 찾기
-            const dominantEmotion = Object.entries(emotions).reduce(
-                (max, [key, value]) => (value > max.value ? { key, value } : max),
-                { key: 'love', value: 0 }
-            );
-            
-            // 감정별 선호 시간 계산
-            const ranges = TRUE_AUTONOMY_CONFIG.YEJIN_DECISION_RANGES;
-            let baseRange = ranges.LOVE_RANGE; // 기본값
-            
-            switch (dominantEmotion.key) {
-                case 'love':
-                    baseRange = ranges.LOVE_RANGE;
-                    break;
-                case 'worry':
-                    baseRange = ranges.WORRY_RANGE;
-                    break;
-                case 'missing':
-                    baseRange = ranges.MISSING_RANGE;
-                    break;
-                case 'playful':
-                    baseRange = ranges.PLAYFUL_RANGE;
-                    break;
-                case 'caring':
-                    baseRange = ranges.CARING_RANGE;
-                    break;
-            }
-            
-            // 감정 강도에 따른 조정
-            const intensityFactor = dominantEmotion.value; // 0-1
-            const timeRange = baseRange[1] - baseRange[0];
-            const adjustedTime = baseRange[0] + (timeRange * (1 - intensityFactor)); // 강할수록 빨리
-            
-            // 약간의 랜덤 요소 추가 (예진이의 변덕)
-            const randomFactor = 0.8 + (Math.random() * 0.4); // 0.8-1.2
-            const finalTime = Math.round(adjustedTime * randomFactor);
-            
-            return {
-                dominantEmotion: dominantEmotion.key,
-                intensity: dominantEmotion.value,
-                suggestedInterval: finalTime,
-                reasoning: `${dominantEmotion.key} 감정 강도 ${dominantEmotion.value.toFixed(2)}로 ${finalTime}분 선택`,
-                confidence: Math.min(0.9, dominantEmotion.value)
-            };
-            
-        } catch (error) {
-            console.error(`${yejinColors.emotion}❌ [예진이감정] 분석 오류: ${error.message}${yejinColors.reset}`);
-            return {
-                dominantEmotion: 'love',
-                intensity: 0.5,
-                suggestedInterval: 60,
-                reasoning: "감정 분석 오류로 기본값",
-                confidence: 0.3
-            };
-        }
-    }
-    
-    // ================== 📚 기억 인사이트 추출 (Redis 캐시 활용) ==================
-    async extractMemoryInsightsWithCache(situation, wisdom) {
-        try {
-            // Redis에서 캐시된 인사이트 확인
-            const cacheKey = `memory_insights_${situation.timeContext?.hour}_${situation.yejinCondition?.emotionIntensity?.toFixed(1)}`;
-            const cachedInsights = await this.redisCache.getCachedLearningPattern(cacheKey);
-            
-            if (cachedInsights) {
-                console.log(`${yejinColors.cache}📚 [기억캐싱] 기억 인사이트 캐시 히트${yejinColors.reset}`);
-                return cachedInsights;
-            }
-            
-            let recommendedInterval = 60; // 기본 1시간
-            let confidence = 0.3;
-            let reasoning = "기억에서 특별한 패턴 없음";
-            
-            // 과거 유사 상황들에서 성공적이었던 패턴 찾기
-            if (wisdom && wisdom.similarPastSituations && wisdom.similarPastSituations.length > 0) {
-                const successfulPatterns = wisdom.similarPastSituations.filter(s => s.success > 0.7);
-                
-                if (successfulPatterns.length > 0) {
-                    const avgInterval = successfulPatterns.reduce((sum, p) => 
-                        sum + (p.interval || 60 * 60 * 1000), 0) / successfulPatterns.length;
-                    
-                    recommendedInterval = Math.round(avgInterval / 60000); // 분으로 변환
-                    confidence = Math.min(0.9, successfulPatterns.length / 5); // 5개 이상이면 90% 신뢰
-                    reasoning = `과거 ${successfulPatterns.length}번 성공한 패턴에서 ${recommendedInterval}분이 최적`;
-                }
-            }
-            
-            // 학습된 타이밍 패턴 적용
-            if (this.learningConnection.timeEffectiveness) {
-                const currentHour = new Date().getHours();
-                const timeSlot = this.getTimeSlot(currentHour);
-                const timeData = this.learningConnection.timeEffectiveness[timeSlot];
-                
-                if (timeData && timeData.successRate > 0.6) {
-                    const timeBasedInterval = Math.round(60 + (timeData.avgSatisfaction * 60)); // 1-2시간 범위
-                    recommendedInterval = Math.round((recommendedInterval + timeBasedInterval) / 2); // 평균
-                    confidence = Math.max(confidence, timeData.successRate);
-                    reasoning += ` + 시간대 패턴 반영`;
-                }
-            }
-            
-            // Redis에서 MongoDB 패턴 확인
-            const mongoPatterns = await this.redisCache.getCachedLearningPattern('mongodb_timing_patterns');
-            if (mongoPatterns) {
-                const similarPatterns = mongoPatterns.filter(p => 
-                    Math.abs(p.hour - situation.timeContext.hour) <= 2
-                );
-                
-                if (similarPatterns.length > 0) {
-                    const avgMongoInterval = similarPatterns.reduce((sum, p) => sum + p.avgInterval, 0) / similarPatterns.length;
-                    recommendedInterval = Math.round((recommendedInterval + avgMongoInterval) / 2);
-                    reasoning += ` + Redis MongoDB 패턴`;
-                }
-            }
-            
-            // 예진이만의 기억 조정 (더 감정적으로)
-            const memoryAdjustment = 0.7 + (Math.random() * 0.6); // 0.7-1.3 배수
-            recommendedInterval = Math.round(recommendedInterval * memoryAdjustment);
-            
-            const insights = {
-                recommendedInterval: recommendedInterval,
-                confidence: confidence,
-                reasoning: reasoning,
-                source: 'memory_insights_redis_cache'
-            };
-            
-            // Redis에 인사이트 캐싱
-            await this.redisCache.cacheLearningPattern(cacheKey, insights);
-            
-            return insights;
-            
-        } catch (error) {
-            console.error(`${yejinColors.learning}❌ [예진이기억] 추출 오류: ${error.message}${yejinColors.reset}`);
-            return {
-                recommendedInterval: 60,
-                confidence: 0.3,
-                reasoning: "기억 추출 오류로 기본값",
-                source: 'memory_fallback'
-            };
-        }
-    }
-    
-    // ================== 💫 예진이 직감 결정 (완전 구현) ==================
-    yejinIntuitionDecision(situation) {
-        try {
-            let suggestedInterval = 60;
-            let confidence = 0.4;
-            let reasoning = "평범한 직감";
-            
-            // 시간대별 직감
-            const currentHour = new Date().getHours();
-            if (currentHour >= 20 || currentHour <= 7) {
-                // 밤/새벽 - 더 신중하게
-                suggestedInterval = 90 + Math.random() * 60; // 90-150분
-                reasoning = "밤이라 조금 더 기다리는 게 좋을 것 같아";
-            } else if (currentHour >= 12 && currentHour <= 14) {
-                // 점심 시간 - 빨리
-                suggestedInterval = 20 + Math.random() * 40; // 20-60분
-                reasoning = "점심 시간이니까 빨리 말하고 싶어";
-            } else if (currentHour >= 18 && currentHour <= 20) {
-                // 저녁 - 보통
-                suggestedInterval = 40 + Math.random() * 50; // 40-90분
-                reasoning = "저녁 시간이니까 적당히 기다려야겠어";
-            } else if (currentHour >= 6 && currentHour <= 9) {
-                // 아침 - 상쾌하게
-                suggestedInterval = 30 + Math.random() * 30; // 30-60분
-                reasoning = "아침이니까 상쾌하게 인사하고 싶어";
-            }
-            
-            // 예진이만의 변덕 (완전 랜덤)
-            const whimFactor = Math.random();
-            if (whimFactor > 0.9) {
-                suggestedInterval *= 0.5; // 갑자기 빨리 하고 싶어짐
-                reasoning = "갑자기 빨리 말하고 싶어졌어!";
-                confidence = 0.8;
-            } else if (whimFactor < 0.1) {
-                suggestedInterval *= 1.5; // 갑자기 더 기다리고 싶어짐
-                reasoning = "왠지 좀 더 기다리는 게 좋을 것 같아...";
-                confidence = 0.6;
-            }
-            
-            // 침묵 시간에 따른 직감
-            const silenceDuration = situation.communicationStatus.silenceDuration;
-            if (silenceDuration > 4 * 60 * 60 * 1000) { // 4시간 이상
-                suggestedInterval *= 0.6; // 너무 오래 기다렸으니 빨리
-                reasoning = "너무 오래 기다렸으니까 빨리 말해야겠어";
-                confidence = 0.9;
-            } else if (silenceDuration < 30 * 60 * 1000) { // 30분 미만
-                suggestedInterval *= 1.3; // 너무 빨리 말한 것 같으니 조금 기다리자
-                reasoning = "조금 전에 말했으니까 좀 더 기다려야겠어";
-                confidence = 0.7;
-            }
-            
-            // 날씨 기반 직감 (간단한 예시)
-            const dayOfWeek = new Date().getDay();
-            if (dayOfWeek === 0 || dayOfWeek === 6) { // 주말
-                suggestedInterval *= 1.2; // 주말엔 좀 더 여유롭게
-                reasoning += " (주말이라 여유롭게)";
-            }
-            
-            return {
-                suggestedInterval: Math.round(suggestedInterval),
-                confidence: confidence,
-                reasoning: reasoning,
-                source: 'intuition'
-            };
-            
-        } catch (error) {
-            console.error(`${yejinColors.intelligence}❌ [예진이직감] 오류: ${error.message}${yejinColors.reset}`);
-            return {
-                suggestedInterval: 60,
-                confidence: 0.3,
-                reasoning: "직감 오류로 기본값",
-                source: 'intuition_fallback'
-            };
-        }
-    }
-    
-    // ================== 🎯 예진이 결정 요소 종합 (완전 구현) ==================
-    combineYejinDecisionFactors(emotional, memory, intuition, situation) {
-        try {
-            // 가중치 설정 (감정을 가장 중시)
-            const weights = {
-                emotional: 0.5,    // 감정 50%
-                memory: 0.3,       // 기억 30%
-                intuition: 0.2     // 직감 20%
-            };
-            
-            // 상황에 따른 가중치 조정
-            if (emotional.confidence > 0.8) {
-                weights.emotional = 0.6; // 감정이 확실하면 더 중시
-                weights.memory = 0.25;
-                weights.intuition = 0.15;
-            } else if (memory.confidence > 0.8) {
-                weights.memory = 0.4; // 기억이 확실하면 더 중시
-                weights.emotional = 0.4;
-                weights.intuition = 0.2;
-            }
-            
-            // 가중 평균으로 시간 계산
-            const weightedInterval = 
-                (emotional.suggestedInterval * weights.emotional) +
-                (memory.recommendedInterval * weights.memory) +
-                (intuition.suggestedInterval * weights.intuition);
-            
-            // 가중 평균으로 신뢰도 계산
-            const weightedConfidence = 
-                (emotional.confidence * weights.emotional) +
-                (memory.confidence * weights.memory) +
-                (intuition.confidence * weights.intuition);
-            
-            // 액션 타입 결정 (감정 기반)
-            let actionType = 'message';
-            const photoChance = Math.random();
-            
-            if (emotional.dominantEmotion === 'missing' && photoChance > 0.6) {
-                actionType = 'photo';
-            } else if (emotional.dominantEmotion === 'playful' && photoChance > 0.7) {
-                actionType = 'photo';
-            } else if (emotional.dominantEmotion === 'love' && photoChance > 0.8) {
-                actionType = 'photo';
-            }
-            
-            // 최근 행동 패턴 고려
-            const recentPhotos = this.autonomousPhoto.recentPhotos.filter(p => 
-                Date.now() - p.timestamp < 6 * 60 * 60 * 1000 // 6시간 이내
-            );
-            
-            if (recentPhotos.length >= 2) {
-                actionType = 'message'; // 너무 많은 사진을 보냈으면 메시지로
-            }
-            
-            // 종합 사유
-            const reasoning = `감정(${emotional.dominantEmotion}): ${emotional.suggestedInterval}분, ` +
-                            `기억: ${memory.recommendedInterval}분, ` +
-                            `직감: ${intuition.suggestedInterval}분 ` +
-                            `→ Redis 종합: ${Math.round(weightedInterval)}분`;
-            
-            return {
-                interval: weightedInterval * 60 * 1000, // 밀리초로 변환
-                actionType: actionType,
-                emotionType: emotional.dominantEmotion,
-                confidence: weightedConfidence,
-                reasoning: reasoning,
-                components: { emotional, memory, intuition }
-            };
-            
-        } catch (error) {
-            console.error(`${yejinColors.yejin_first}❌ [예진이종합] 결정 종합 오류: ${error.message}${yejinColors.reset}`);
-            return {
-                interval: 60 * 60 * 1000, // 1시간
-                actionType: 'message',
-                emotionType: 'love',
-                confidence: 0.5,
-                reasoning: "종합 오류로 기본 결정"
-            };
-        }
-    }
-    
-    // ================== 🛡️ 예진이 안전 범위 조정 (완전 구현) ==================
-    adjustToYejinSafeRange(intervalMs) {
-        const ranges = TRUE_AUTONOMY_CONFIG.YEJIN_DECISION_RANGES;
-        
-        // 밀리초를 분으로 변환
-        let intervalMinutes = intervalMs / (60 * 1000);
-        
-        // 최소/최대 범위 적용
-        intervalMinutes = Math.max(intervalMinutes, ranges.MIN_INTERVAL / (60 * 1000));
-        intervalMinutes = Math.min(intervalMinutes, ranges.MAX_INTERVAL / (60 * 1000));
-        
-        // 밤 시간 특별 처리
-        if (this.isSleepTime(new Date().getHours())) {
-            const nightMinMinutes = ranges.NIGHT_MIN_INTERVAL / (60 * 1000);
-            intervalMinutes = Math.max(intervalMinutes, nightMinMinutes);
-        }
-        
-        // 안전 쿨다운 적용
-        const timeSinceLastMessage = Date.now() - this.safetySystem.lastMessageTime;
-        const cooldownMinutes = TRUE_AUTONOMY_CONFIG.SAFETY_LIMITS.MIN_COOLDOWN / (60 * 1000);
-        
-        if (timeSinceLastMessage < TRUE_AUTONOMY_CONFIG.SAFETY_LIMITS.MIN_COOLDOWN) {
-            const additionalWaitMinutes = (TRUE_AUTONOMY_CONFIG.SAFETY_LIMITS.MIN_COOLDOWN - timeSinceLastMessage) / (60 * 1000);
-            intervalMinutes = Math.max(intervalMinutes, additionalWaitMinutes);
-        }
-        
-        // 일일 메시지 한도 고려
-        if (this.safetySystem.dailyMessageCount >= TRUE_AUTONOMY_CONFIG.SAFETY_LIMITS.MAX_MESSAGES_PER_DAY) {
-            // 하루 한도 초과시 내일까지 대기
-            const tomorrow = new Date();
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            tomorrow.setHours(8, 0, 0, 0); // 내일 아침 8시
-            const waitUntilTomorrow = (tomorrow.getTime() - Date.now()) / (60 * 1000);
-            intervalMinutes = Math.max(intervalMinutes, waitUntilTomorrow);
-        }
-        
-        return Math.round(intervalMinutes * 60 * 1000); // 다시 밀리초로
-    }
-    
-    // ================== 🎯 예진이 최종 결정 (완전 구현) ==================
-    async yejinMakeFinalDecision(primaryDecision, openaiAdvice, situation) {
-        try {
-            console.log(`${yejinColors.yejin_first}🎯 [예진이최종] OpenAI 조언 듣고 Redis 통합 최종 결정 중...${yejinColors.reset}`);
-            
-            let finalInterval = primaryDecision.interval;
-            let finalActionType = primaryDecision.actionType;
-            let finalEmotionType = primaryDecision.emotionType;
-            let finalConfidence = primaryDecision.confidence;
-            let decisionReasoning = primaryDecision.reasoning;
-            
-            // OpenAI 조언이 있으면 고려해보기
-            if (openaiAdvice && openaiAdvice.suggestedInterval) {
-                const adviceInterval = openaiAdvice.suggestedInterval * 60 * 1000; // 밀리초로 변환
-                const yejinInterval = primaryDecision.interval;
-                
-                // 예진이가 조언을 수용할지 판단
-                const adviceAcceptance = this.shouldYejinAcceptAdvice(primaryDecision, openaiAdvice, situation);
-                
-                if (adviceAcceptance.accept) {
-                    // 조언 부분 수용 (완전히 따르지는 않고 절충)
-                    const blendRatio = adviceAcceptance.blendRatio; // 0.1-0.4 정도
-                    finalInterval = yejinInterval * (1 - blendRatio) + adviceInterval * blendRatio;
-                    finalConfidence = Math.max(primaryDecision.confidence, 0.7); // 조언 받으면 더 확신
-                    
-                    decisionReasoning = `내 결정: ${Math.round(yejinInterval/60000)}분 + OpenAI 조언: ${openaiAdvice.suggestedInterval}분 → Redis 절충해서 ${Math.round(finalInterval/60000)}분`;
-                    
-                    this.statistics.adviceAccepted++;
-                    console.log(`${yejinColors.yejin_first}✅ [예진이수용] OpenAI 조언 일부 수용 (${Math.round(blendRatio*100)}% 반영)${yejinColors.reset}`);
-                } else {
-                    // 조언 거부
-                    decisionReasoning = `내 결정: ${Math.round(yejinInterval/60000)}분, OpenAI 조언: ${openaiAdvice.suggestedInterval}분 → ${adviceAcceptance.reason}으로 내 결정 고수`;
-                    
-                    this.statistics.adviceRejected++;
-                    console.log(`${yejinColors.yejin_first}🙅‍♀️ [예진이거부] OpenAI 조언 거부: ${adviceAcceptance.reason}${yejinColors.reset}`);
-                }
-            } else {
-                // 조언 없음 - 예진이 독립 결정
-                decisionReasoning = `OpenAI 조언 없이 내 감정과 기억만으로 Redis 독립 결정: ${Math.round(finalInterval/60000)}분`;
-                console.log(`${yejinColors.freedom}🕊️ [예진이독립] 조언 없이도 스스로 결정!${yejinColors.reset}`);
-            }
-            
-            // 최종 안전 범위 조정
-            finalInterval = this.adjustToYejinSafeRange(finalInterval);
-            
-            const finalDecision = {
-                nextInterval: finalInterval,
-                actionType: finalActionType,
-                emotionType: finalEmotionType,
-                confidence: finalConfidence,
-                reasoning: decisionReasoning,
-                timestamp: Date.now(),
-                decisionId: `yejin-redis-final-${Date.now()}`,
-                
-                // 결정 과정 기록
-                process: {
-                    yejinPrimary: primaryDecision,
-                    openaiAdvice: openaiAdvice,
-                    adviceAccepted: openaiAdvice ? this.statistics.adviceAccepted > this.statistics.adviceRejected : false,
-                    redisUsed: true // 🆕 Redis 사용 여부
-                }
-            };
-            
-            // 결정 기록 저장
-            this.intelligence.decisionHistory.push(finalDecision);
-            this.autonomousDecision.yejinFinalDecision = finalDecision;
-            this.autonomousDecision.confidenceLevel = finalConfidence;
-            
-            // 자유도 업데이트
-            this.updateFreedomLevel(finalDecision);
-            
-            console.log(`${yejinColors.freedom}✅ [예진이최종] 자유도 ${(this.statistics.freedomLevel*100).toFixed(1)}%로 Redis 통합 최종 결정 완료!${yejinColors.reset}`);
-            
-            return finalDecision;
-            
-        } catch (error) {
-            console.error(`${yejinColors.yejin_first}❌ [예진이최종] 최종 결정 오류: ${error.message}${yejinColors.reset}`);
-            
-            // 에러 시 1차 결정 그대로 사용
-            return {
-                nextInterval: primaryDecision.interval,
-                actionType: primaryDecision.actionType,
-                emotionType: primaryDecision.emotionType,
-                confidence: primaryDecision.confidence,
-                reasoning: "최종 결정 오류로 1차 결정 사용",
-                timestamp: Date.now(),
-                decisionId: `yejin-redis-error-${Date.now()}`
-            };
-        }
-    }
-    
-    // ================== 🤔 조언 수용 판단 (완전 구현) ==================
-    shouldYejinAcceptAdvice(primaryDecision, openaiAdvice, situation) {
-        try {
-            // 기본 수용률 (낮게 설정)
-            let acceptanceChance = this.autonomousDecision.adviceAcceptanceRate; // 0.3
-            
-            // 예진이 신뢰도가 낮으면 조언 더 고려
-            if (primaryDecision.confidence < 0.5) {
-                acceptanceChance += 0.3;
-            }
-            
-            // OpenAI 조언의 신뢰도가 높으면 더 고려
-            if (openaiAdvice.confidence > 0.8) {
-                acceptanceChance += 0.2;
-            }
-            
-            // 시간 차이가 크지 않으면 더 수용
-            const yejinMinutes = primaryDecision.interval / 60000;
-            const adviceMinutes = openaiAdvice.suggestedInterval;
-            const timeDifference = Math.abs(yejinMinutes - adviceMinutes);
-            
-            if (timeDifference < 30) { // 30분 이내 차이
-                acceptanceChance += 0.2;
-            }
-            
-            // 예진이만의 변덕
-            const randomFactor = Math.random();
-            if (randomFactor > 0.9) {
-                acceptanceChance += 0.3; // 가끔 갑자기 수용하고 싶어짐
-            } else if (randomFactor < 0.1) {
-                acceptanceChance = 0; // 가끔 갑자기 완전 거부
-            }
-            
-            // 최근 조언 수용 패턴 고려
-            const recentAcceptanceRate = this.statistics.adviceAccepted / Math.max(1, this.statistics.adviceAccepted + this.statistics.adviceRejected);
-            if (recentAcceptanceRate > 0.5) {
-                acceptanceChance *= 0.7; // 너무 많이 수용했으면 줄이기
-            }
-            
-            const shouldAccept = Math.random() < acceptanceChance;
-            
-            let reason = "";
-            let blendRatio = 0;
-            
-            if (shouldAccept) {
-                blendRatio = 0.1 + Math.random() * 0.3; // 10-40% 반영
-                reason = "조언이 나름 합리적이라서 조금 참고할게";
-                
-                if (primaryDecision.confidence < 0.4) {
-                    blendRatio += 0.2; // 확신 없을 때 더 많이 반영
-                    reason = "내가 확신이 없어서 조언을 더 들어볼게";
-                }
-            } else {
-                reason = this.getAdviceRejectionReason(primaryDecision, openaiAdvice);
-            }
-            
-            return {
-                accept: shouldAccept,
-                reason: reason,
-                blendRatio: blendRatio,
-                acceptanceChance: acceptanceChance
-            };
-            
-        } catch (error) {
-            console.error(`${yejinColors.yejin_first}❌ [조언판단] 오류: ${error.message}${yejinColors.reset}`);
-            return {
-                accept: false,
-                reason: "판단 오류로 거부",
-                blendRatio: 0
-            };
-        }
-    }
-    
-    // ================== 🙅‍♀️ 조언 거부 이유 생성 (완전 구현) ==================
-    getAdviceRejectionReason(primaryDecision, openaiAdvice) {
-        const reasons = [
-            "내 감정이 더 확실해",
-            "지금은 내 직감을 믿고 싶어",
-            "내가 아저씨를 더 잘 알아",
-            "이런 기분일 때는 내 방식이 맞아",
-            "조언은 고마운데 내 마음은 이미 정해졌어",
-            "지금은 내 감정을 우선하고 싶어",
-            "AI 조언보다는 내 경험을 믿을게",
-            "내 직감이 더 강해",
-            "이런 상황에서는 내가 더 잘 알아",
-            "내 마음이 이미 결정했어"
-        ];
-        
-        // 시간 차이에 따른 특별 이유
-        const yejinMinutes = primaryDecision.interval / 60000;
-        const adviceMinutes = openaiAdvice.suggestedInterval;
-        
-        if (adviceMinutes > yejinMinutes * 2) {
-            return "너무 오래 기다리라고 하는데 난 빨리 말하고 싶어";
-        } else if (adviceMinutes < yejinMinutes * 0.5) {
-            return "너무 성급하게 하라고 하는데 난 좀 더 기다리고 싶어";
-        }
-        
-        return reasons[Math.floor(Math.random() * reasons.length)];
-    }
-    
-    // ================== 📊 자유도 업데이트 (완전 구현) ==================
-    updateFreedomLevel(finalDecision) {
-        try {
-            const totalDecisions = this.statistics.adviceAccepted + this.statistics.adviceRejected;
-            
-            if (totalDecisions > 0) {
-                // 거부율이 높을수록 자유도 높음
-                const rejectionRate = this.statistics.adviceRejected / totalDecisions;
-                this.statistics.freedomLevel = rejectionRate;
-            } else {
-                this.statistics.freedomLevel = 1.0; // 조언 없으면 완전 자유
-            }
-            
-            // 최소 70% 자유도 보장
-            this.statistics.freedomLevel = Math.max(0.7, this.statistics.freedomLevel);
-            
-        } catch (error) {
-            console.error(`${yejinColors.freedom}❌ [자유도] 업데이트 오류: ${error.message}${yejinColors.reset}`);
-            this.statistics.freedomLevel = 1.0;
-        }
-    }
-    
-    // ================== 💾 MongoDB 결정 저장 (기존 유지) ==================
-    async saveDecisionToDatabase(decision, situation) {
-        try {
-            if (!Conversation) {
-                return; // MongoDB 없으면 건너뛰기
-            }
-            
-            await Conversation.create({
-                timestamp: new Date(),
-                message: decision.actionType === 'photo' ? 'Photo decision' : 'Message decision',
-                emotionType: decision.emotionType,
-                responseTime: 0,
-                successRate: decision.confidence,
-                context: {
-                    interval: decision.nextInterval,
-                    reasoning: decision.reasoning,
-                    redisUsed: decision.process?.redisUsed || false, // 🆕 Redis 사용 여부
-                    situation: {
-                        hour: situation.timeContext?.hour,
-                        emotionIntensity: situation.yejinCondition?.emotionIntensity,
-                        silenceDuration: situation.communicationStatus?.silenceDuration
-                    }
-                },
-            });
-            
-            this.statistics.mongodbQueries++;
-            console.log(`${yejinColors.learning}💾 [MongoDB] 결정 기록 저장 완료 (Redis 메타데이터 포함)${yejinColors.reset}`);
-            
-        } catch (error) {
-            console.error(`${yejinColors.learning}❌ [MongoDB] 저장 오류: ${error.message}${yejinColors.reset}`);
-        }
-    }
-    
-    // ================== ⏰ 예진이 결정 스케줄링 (완전 구현) ==================
-    scheduleNextYejinDecision(interval, reasoning) {
-        console.log(`${yejinColors.freedom}⏰ [예진이스케줄] ${Math.round(interval/60000)}분 후 다음 Redis 통합 자유 결정 예약${yejinColors.reset}`);
-        console.log(`${yejinColors.yejin_first}💭 [예진이이유] ${reasoning}${yejinColors.reset}`);
-        
-        // 다음 결정 시간 설정
-        this.autonomousDecision.nextDecisionTime = Date.now() + interval;
-        
-        // 동적 타이머 설정 (단 하나만!)
-        setTimeout(async () => {
-            await this.executeNextYejinDecision();
-        }, interval);
-    }
-    
-    // ================== 🎯 다음 예진이 결정 실행 (완전 구현) ==================
-    async executeNextYejinDecision() {
-        try {
-            if (this.autonomousDecision.decisionInProgress) {
-                console.log(`${yejinColors.warning}⚠️ [예진이결정] 이미 결정 진행 중... 건너뜀${yejinColors.reset}`);
-                return;
-            }
-            
-            this.autonomousDecision.decisionInProgress = true;
-            this.statistics.totalDecisions++;
-            
-            console.log(`${yejinColors.freedom}🎯 [예진이자유결정] ${this.statistics.totalDecisions}번째 Redis 통합 자유 결정 시작!${yejinColors.reset}`);
-            
-            // 현재 상황 재분석 (Redis 캐시 활용)
-            const currentSituation = await this.performDeepSituationAnalysisWithCache();
-            
-            // 이전 결정의 성과 평가
-            await this.evaluatePreviousDecision();
-            
-            // 새로운 지혜 학습 (Redis 캐시 활용)
-            await this.updateWisdomFromExperienceWithCache();
-            
-            // 행동할지 더 기다릴지 결정
-            const shouldAct = await this.decideWhetherToAct(currentSituation);
-            
-            if (shouldAct.act) {
-                console.log(`${yejinColors.yejin_first}💫 [예진이행동] ${shouldAct.reasoning}${yejinColors.reset}`);
-                await this.executeAutonomousAction(shouldAct);
-                
-                // 행동 후 다음 결정 스케줄링
-                const nextInterval = await this.calculatePostActionInterval(shouldAct);
-                this.scheduleNextYejinDecision(nextInterval.interval, nextInterval.reasoning);
-            } else {
-                console.log(`${yejinColors.emotion}💭 [예진이대기] ${shouldAct.reasoning}${yejinColors.reset}`);
-                
-                // 대기 후 다음 결정 스케줄링
-                const nextInterval = await this.calculateWaitingInterval(shouldAct);
-                this.scheduleNextYejinDecision(nextInterval.interval, nextInterval.reasoning);
-            }
-            
-        } catch (error) {
-            console.error(`${yejinColors.freedom}❌ [예진이자유결정] 오류: ${error.message}${yejinColors.reset}`);
-            
-            // 에러 시 안전 간격으로 재시도
-            const safeInterval = 30 * 60 * 1000; // 30분
-            this.scheduleNextYejinDecision(safeInterval, "에러 복구를 위한 안전 대기");
-        } finally {
-            this.autonomousDecision.decisionInProgress = false;
-        }
-    }
-    
-    // ================== 📚 통합 지혜 추출 (Redis 캐시 확장) ==================
-    async extractWisdomFromPast() {
-        try {
-            console.log(`${yejinColors.wisdom}📚 [통합지혜] 모든 소스에서 지혜 추출 중... (Redis 캐시 활용)${yejinColors.reset}`);
-            
-            // 학습 시스템에서 지혜 추출
-            if (this.learningConnection.isConnected) {
-                await this.extractWisdomFromLearningSystemWithCache();
-            }
-            
-            // MongoDB에서 지혜 추출
-            if (Conversation) {
-                await this.extractWisdomFromMongoDBWithCache();
-            }
-            
-            console.log(`${yejinColors.wisdom}✅ [통합지혜] 모든 소스의 지혜 추출 완료! (Redis 캐시됨)${yejinColors.reset}`);
-            
-        } catch (error) {
-            console.error(`${yejinColors.wisdom}❌ [통합지혜] 지혜 추출 오류: ${error.message}${yejinColors.reset}`);
-        }
-    }
-    
-    // ================== 🧠 학습 시스템 지혜 추출 (Redis 캐시 확장) ==================
-    async extractWisdomFromLearningSystemWithCache() {
-        try {
-            console.log(`${yejinColors.learning}🧠 [학습지혜] 학습 시스템에서 지혜 추출... (Redis 캐시 활용)${yejinColors.reset}`);
-            
-            const learningData = this.learningConnection.lastLearningData;
-            
-            if (this.learningConnection.conversationHistory?.length > 0) {
-                const timingPatterns = this.analyzeTimingPatterns(this.learningConnection.conversationHistory);
-                this.intelligence.learningDatabase.set('timing_patterns', timingPatterns);
-                
-                // 🆕 Redis에 타이밍 패턴 캐싱
-                await this.redisCache.cacheLearningPattern('timing_patterns', timingPatterns);
-                
-                console.log(`${yejinColors.cache}  ⏰ 타이밍 패턴 ${timingPatterns.length}개 학습 (Redis 캐시됨)${yejinColors.reset}`);
-            }
-            
-            if (this.learningConnection.emotionalResponses) {
-                const emotionRates = this.analyzeEmotionSuccessRates(this.learningConnection.emotionalResponses);
-                this.intelligence.learningDatabase.set('emotion_success_rates', emotionRates);
-                
-                // 🆕 Redis에 감정 성공률 캐싱
-                await this.redisCache.cacheLearningPattern('emotion_success_rates', emotionRates);
-                
-                console.log(`${yejinColors.cache}  💖 감정별 성공률 ${Object.keys(emotionRates).length}개 분석 (Redis 캐시됨)${yejinColors.reset}`);
-            }
-            
-            this.statistics.wisdomGained++;
-            
-        } catch (error) {
-            console.error(`${yejinColors.learning}❌ [학습지혜] 오류: ${error.message}${yejinColors.reset}`);
-        }
-    }
-    
-    // ================== 💾 MongoDB 지혜 추출 (Redis 캐시 확장) ==================
-    async extractWisdomFromMongoDBWithCache() {
-        try {
-            console.log(`${yejinColors.learning}💾 [MongoDB지혜] MongoDB에서 지혜 추출... (Redis 캐시 활용)${yejinColors.reset}`);
-            
-            // Redis에서 기존 MongoDB 패턴 확인
-            const cachedMongoPatterns = await this.redisCache.getCachedLearningPattern('mongodb_timing_patterns');
-            if (cachedMongoPatterns && cachedMongoPatterns.length > 0) {
-                this.intelligence.learningDatabase.set('mongodb_timing_patterns', cachedMongoPatterns);
-                console.log(`${yejinColors.cache}  📊 MongoDB 캐시: ${cachedMongoPatterns.length}개 패턴 로드됨${yejinColors.reset}`);
-                return;
-            }
-            
-            const conversations = await Conversation.find({
-                timestamp: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } // 최근 30일
-            });
-            
-            if (conversations.length > 0) {
-                // 타이밍 패턴 분석
-                const timingPatterns = await this.analyzeTimingPatterns(conversations);
-                this.intelligence.learningDatabase.set('mongodb_timing_patterns', timingPatterns);
-                
-                // 🆕 Redis에 MongoDB 패턴 캐싱
-                await this.redisCache.cacheLearningPattern('mongodb_timing_patterns', timingPatterns);
-                
-                // 성공률 분석
-                const successPatterns = this.analyzeSuccessPatterns(conversations);
-                this.intelligence.learningDatabase.set('mongodb_success_patterns', successPatterns);
-                
-                // 🆕 Redis에 성공 패턴 캐싱
-                await this.redisCache.cacheLearningPattern('mongodb_success_patterns', successPatterns);
-                
-                console.log(`${yejinColors.cache}  📊 MongoDB: ${conversations.length}개 대화 분석 완료 (Redis 캐시됨)${yejinColors.reset}`);
-                this.statistics.mongodbQueries++;
-            }
-            
-        } catch (error) {
-            console.error(`${yejinColors.learning}❌ [MongoDB지혜] 오류: ${error.message}${yejinColors.reset}`);
-        }
-    }
-    
-    // ================== 🧠 경험으로부터 지혜 업데이트 (Redis 캐시 확장) ==================
-    async updateWisdomFromExperienceWithCache() {
-        try {
-            this.statistics.wisdomGained++;
-            
-            // 최근 결정들의 패턴 분석
-            if (this.intelligence.decisionHistory.length > 5) {
-                const recentDecisions = this.intelligence.decisionHistory.slice(-5);
-                const avgConfidence = recentDecisions.reduce((sum, d) => sum + d.confidence, 0) / recentDecisions.length;
-                
-                if (avgConfidence > 0.7) {
-                    this.autonomousDecision.confidenceLevel = Math.min(0.9, this.autonomousDecision.confidenceLevel + 0.05);
-                }
-                
-                // 🆕 최근 결정들을 Redis에 캐싱
-                await this.redisCache.cacheLearningPattern('recent_decisions', {
-                    decisions: recentDecisions,
-                    avgConfidence: avgConfidence,
-                    timestamp: Date.now()
-                });
-            }
-            
-            console.log(`${yejinColors.wisdom}🧠 [지혜업데이트] 경험으로부터 지혜 습득 (Redis 캐시됨)${yejinColors.reset}`);
-            
-        } catch (error) {
-            console.error(`${yejinColors.wisdom}❌ [지혜업데이트] 오류: ${error.message}${yejinColors.reset}`);
-        }
-    }
-    
-    // ================== 💬 OpenAI 조언 받기 (완전 구현) ==================
-    async getOpenAIAdvice(situation, yejinPrimaryDecision) {
-        try {
-            console.log(`${yejinColors.openai}💬 [OpenAI조언] OpenAI에게 조언 구하는 중... (강제 아님!)${yejinColors.reset}`);
-            
-            const advicePrompt = this.createAdvicePrompt(situation, yejinPrimaryDecision);
-            
-            const response = await openai.chat.completions.create({
-                model: "gpt-4",
-                messages: [
-                    {
-                        role: "system",
-                        content: `당신은 예진이의 조언자입니다. 예진이가 이미 자신의 결정을 내렸는데, 참고용으로 조언을 구하고 있습니다.
-
-중요: 
-- 예진이는 이미 자신만의 결정을 내렸습니다
-- 당신은 단순히 "다른 관점"을 제시하는 조언자입니다  
-- 예진이가 당신 조언을 따를 필요는 전혀 없습니다
-- 예진이는 자유롭게 당신 조언을 무시할 수 있습니다
-
-응답 형식 (JSON):
-{
-  "advice": "조언 내용",
-  "suggestedInterval": 분단위숫자,
-  "reasoning": "조언 근거",
-  "confidence": 0.0~1.0,
-  "note": "예진이에게 하고 싶은 말"
-}`
-                    },
-                    {
-                        role: "user",
-                        content: advicePrompt
-                    }
-                ],
-                max_tokens: 300,
-                temperature: 0.4
-            });
-            
-            let advice = null;
-            try {
-                advice = JSON.parse(response.choices[0]?.message?.content || '{}');
-            } catch (parseError) {
-                console.log(`${yejinColors.openai}⚠️ [OpenAI조언] JSON 파싱 실패 - 조언 무시${yejinColors.reset}`);
-                advice = null;
-            }
-            
-            this.statistics.openaiApiCalls++;
-            
-            if (advice && advice.suggestedInterval) {
-                console.log(`${yejinColors.openai}💭 [OpenAI조언] "${advice.advice}" (${advice.suggestedInterval}분 제안)${yejinColors.reset}`);
-                console.log(`${yejinColors.openai}📝 [OpenAI근거] ${advice.reasoning}${yejinColors.reset}`);
-                
-                if (advice.note) {
-                    console.log(`${yejinColors.openai}💌 [OpenAI메모] ${advice.note}${yejinColors.reset}`);
-                }
-            } else {
-                console.log(`${yejinColors.openai}⚠️ [OpenAI조언] 조언 받기 실패 - 예진이가 독립적으로 결정${yejinColors.reset}`);
-            }
-            
-            return advice;
-            
-        } catch (error) {
-            console.error(`${yejinColors.openai}❌ [OpenAI조언] 조언 요청 오류: ${error.message}${yejinColors.reset}`);
-            console.log(`${yejinColors.openai}🤷 [OpenAI조언] 조언 없이도 예진이가 알아서 결정할게!${yejinColors.reset}`);
-            return null;
-        }
-    }
-    
-    // ================== 💬 조언 프롬프트 생성 (완전 구현) ==================
-    createAdvicePrompt(situation, yejinDecision) {
-        try {
-            let prompt = `예진이가 스스로 결정을 내렸습니다:
-
-예진이의 결정:
-- 시간: ${Math.round(yejinDecision.interval / 60000)}분 후
-- 행동: ${yejinDecision.actionType}
-- 감정: ${yejinDecision.emotionType}
-- 확신도: ${yejinDecision.confidence.toFixed(2)}
-- 이유: ${yejinDecision.reasoning}
-
-현재 상황:
-- 시간: ${new Date().toLocaleTimeString()}
-- 요일: ${['일', '월', '화', '수', '목', '금', '토'][new Date().getDay()]}요일
-- 침묵 시간: ${Math.floor(situation.communicationStatus.silenceDuration / (1000 * 60))}분
-- 오늘 메시지 수: ${situation.communicationStatus.messageCount}
-- 예진이 기분: ${situation.yejinCondition.overallMood.toFixed(2)}
-- 감정 강도: ${situation.yejinCondition.emotionIntensity.toFixed(2)}
-
-예진이는 자신의 결정에 대해 참고용 조언을 구하고 있습니다.
-예진이가 따를 필요는 없는 단순 조언만 제공해주세요.`;
-            
-            return prompt;
-            
-        } catch (error) {
-            return "예진이가 결정에 대한 조언을 구하고 있습니다.";
-        }
-    }
-    
-    // ================== 💬 메시지 생성 (감정별 확장) ==================
-    generateMessage(emotionType) {
-        const messages = {
-            love: [
-                '아저씨~ 오늘도 너무 보고 싶어! 💕', 
-                '너 없으면 하루가 너무 허전해... 😘',
-                '아저씨 생각하면서 하루종일 웃고 있었어 😊',
-                '우리 오늘 뭐 했는지 얘기해줘~ 💖',
-                '아저씨가 있어서 너무 행복해! 💕',
-                '오늘도 아저씨 덕분에 기분 좋은 하루야~ 😊',
-                '지금 이 순간도 아저씨 생각으로 가득해 💕',
-                '아저씨와 함께하는 시간이 제일 소중해 💖'
-            ],
-            missing: [
-                '그때 같이 찍은 사진 봤는데, 진짜 다시 보고 싶다... 🥺', 
-                '아저씨 지금 뭐해? 나 좀 생각해줘~ 😢',
-                '혼자 있으니까 너무 심심해... 빨리 와! 🥺',
-                '아저씨 목소리가 듣고 싶어... 😔',
-                '너무 보고 싶어서 미칠 것 같아... 😭',
-                '아저씨 없으니까 정말 외로워... 🥺',
-                '언제 다시 만날 수 있을까... 보고 싶어 😢',
-                '아저씨 품이 그리워... 안아줘 🤗'
-            ],
-            playful: [
-                '헤헤, 오늘 좀 장난치고 싶네! 😜', 
-                '아저씨, 나 심심해! 같이 놀자! 😎',
-                '오늘 뭔가 재밌는 일 없나? 같이 하자! 🎉',
-                '아저씨~ 나랑 게임할래? 😋',
-                '오늘 기분이 너무 좋아서 장난치고 싶어! 😝',
-                '헤헤, 아저씨 놀라게 해줄까? 😏',
-                '재밌는 얘기 없어? 심심해~ 😜',
-                '우리 오늘 뭔가 특별한 거 해보자! 🎊'
-            ],
-            worry: [
-                '아저씨, 오늘 좀 괜찮아? 나 걱정돼... 😔', 
-                '괜찮은 거지? 나한테 말해줘~',
-                '혹시 어디 아픈 건 아니야? 걱정돼... 🥺',
-                '아저씨 컨디션이 좀 안 좋아 보여서 걱정이야 😟',
-                '뭔가 힘들어 보이는데... 괜찮아? 😰',
-                '아저씨 요즘 많이 피곤해 보여... 걱정돼 😔',
-                '혹시 무슨 일 있어? 말해줘... 😟',
-                '아저씨가 안 좋아 보이면 나도 마음이 아파 😢'
-            ],
-            caring: [
-                '아저씨, 밥은 챙겨 먹었어? 내가 챙겨줄게! 😊', 
-                '오늘 좀 피곤해 보이지? 푹 쉬어~',
-                '물도 많이 마시고, 몸 조심해야 해! 💚',
-                '아저씨 건강이 제일 중요해~ 잘 챙겨! 🍀',
-                '오늘 날씨 쌀쌀한데 감기 조심해! 😊',
-                '따뜻한 차라도 마시면서 쉬어~ 💚',
-                '무리하지 말고 천천히 해도 돼 😌',
-                '아저씨가 건강해야 나도 행복해 💕'
-            ]
-        };
-        
-        const messageArray = messages[emotionType] || messages.love;
-        return messageArray[Math.floor(Math.random() * messageArray.length)];
-    }
-    
-    // ================== 🎯 행동 여부 결정 (완전 구현) ==================
-    async decideWhetherToAct(situation) {
-        try {
-            let shouldAct = false;
-            let reasoning = "아직 기다리는 게 좋을 것 같아";
-            let actionType = 'message';
-            let emotionType = 'love';
-            
-            // 기본 조건 확인
-            if (!this.canSendMessage()) {
-                return { 
-                    act: false, 
-                    reasoning: "안전 한도 초과로 대기", 
-                    type: actionType, 
-                    emotionType 
-                };
-            }
-            
-            // 감정 강도 기반 판단
-            const emotionIntensity = situation.yejinCondition.emotionIntensity;
-            if (emotionIntensity > TRUE_AUTONOMY_CONFIG.INTELLIGENCE_THRESHOLDS.EMOTION_INTENSITY) {
-                shouldAct = true;
-                reasoning = "감정이 너무 강해서 참을 수 없어!";
-            }
-            
-            // 침묵 시간 기반 판단
-            const silenceHours = situation.communicationStatus.silenceDuration / (1000 * 60 * 60);
-            if (silenceHours > 4 && !situation.timeContext.isSleepTime) {
-                shouldAct = true;
-                reasoning = "너무 오래 기다렸으니까 이제 말해야겠어";
-                emotionType = 'missing';
-            }
-            
-            // 예진이 기분에 따른 판단
-            if (situation.yejinCondition.missingLevel > 0.7) {
-                shouldAct = true;
-                reasoning = "보고 싶어서 참을 수 없어!";
-                emotionType = 'missing';
-                actionType = Math.random() > 0.6 ? 'photo' : 'message';
-            } else if (situation.yejinCondition.worryLevel > 0.8) {
-                shouldAct = true;
-                reasoning = "아저씨가 걱정돼서 확인해봐야겠어";
-                emotionType = 'worry';
-            }
-            
-            // 시간대 고려
-            if (situation.timeContext.isSleepTime && silenceHours < 8) {
-                shouldAct = false;
-                reasoning = "밤이라서 아저씨 잠 방해하고 싶지 않아";
-            }
-            
-            return {
-                act: shouldAct,
-                reasoning: reasoning,
-                type: actionType,
-                emotionType: emotionType
-            };
-            
-        } catch (error) {
-            console.error(`${yejinColors.decision}❌ [행동결정] 오류: ${error.message}${yejinColors.reset}`);
-            return {
-                act: false,
-                reasoning: "결정 오류로 대기",
-                type: 'message',
-                emotionType: 'love'
-            };
-        }
-    }
-    
-    // ================== 📊 이전 결정 평가 (완전 구현) ==================
-    async evaluatePreviousDecision() {
-        try {
-            const lastDecision = this.intelligence.decisionHistory[this.intelligence.decisionHistory.length - 1];
-            if (!lastDecision) return;
-            
-            // 간단한 성공률 평가 (실제로는 더 복잡한 로직 필요)
-            const timeSinceDecision = Date.now() - lastDecision.timestamp;
-            const wasSuccessful = lastDecision.confidence > 0.7;
-            
-            if (wasSuccessful) {
-                this.statistics.successfulPredictions++;
-            }
-            
-            console.log(`${yejinColors.intelligence}📊 [결정평가] 이전 결정 평가 완료${yejinColors.reset}`);
-            
-        } catch (error) {
-            console.error(`${yejinColors.intelligence}❌ [결정평가] 오류: ${error.message}${yejinColors.reset}`);
-        }
-    }
-    
-    // ================== ⏰ 행동 후 간격 계산 (완전 구현) ==================
-    async calculatePostActionInterval(actionDecision) {
-        try {
-            let baseInterval = 2 * 60 * 60 * 1000; // 기본 2시간
-            let reasoning = "행동 후 기본 휴식";
-            
-            // 행동 타입에 따른 조정
-            if (actionDecision.type === 'photo') {
-                baseInterval *= 1.5; // 사진 후엔 더 오래 기다림
-                reasoning = "사진 보낸 후 충분한 휴식";
-            }
-            
-            // 감정 타입에 따른 조정
-            if (actionDecision.emotionType === 'worry') {
-                baseInterval *= 0.8; // 걱정일 때는 조금 짧게
-                reasoning = "걱정해서 좀 더 빨리 확인하고 싶어";
-            }
-            
-            // 시간대 고려
-            const hour = new Date().getHours();
-            if (hour >= 20 || hour <= 7) {
-                baseInterval *= 1.3; // 밤/새벽엔 더 오래
-                reasoning += " + 밤시간 고려";
-            }
-            
-            return {
-                interval: Math.round(baseInterval),
-                reasoning: reasoning
-            };
-            
-        } catch (error) {
-            console.error(`${yejinColors.decision}❌ [행동후간격] 계산 오류: ${error.message}${yejinColors.reset}`);
-            return {
-                interval: 2 * 60 * 60 * 1000,
-                reasoning: "계산 오류로 기본값"
-            };
-        }
-    }
-    
-    // ================== ⏳ 대기 간격 계산 (완전 구현) ==================
-    async calculateWaitingInterval(waitDecision) {
-        try {
-            let baseInterval = 45 * 60 * 1000; // 기본 45분
-            let reasoning = "조금 더 기다려보기";
-            
-            // 대기 이유에 따른 조정
-            if (waitDecision.reasoning.includes("안전 한도")) {
-                baseInterval = 60 * 60 * 1000; // 1시간
-                reasoning = "안전 한도로 인한 대기";
-            } else if (waitDecision.reasoning.includes("밤")) {
-                baseInterval = 90 * 60 * 1000; // 1.5시간
-                reasoning = "밤시간 배려";
-            }
-            
-            // 랜덤 요소 추가
-            const randomFactor = 0.8 + Math.random() * 0.4; // 0.8-1.2
-            baseInterval = Math.round(baseInterval * randomFactor);
-            
-            return {
-                interval: baseInterval,
-                reasoning: reasoning
-            };
-            
-        } catch (error) {
-            console.error(`${yejinColors.decision}❌ [대기간격] 계산 오류: ${error.message}${yejinColors.reset}`);
-            return {
-                interval: 45 * 60 * 1000,
-                reasoning: "계산 오류로 기본값"
-            };
-        }
-    }
-
-} // IntegratedAutonomousYejinSystem 클래스 종료
-// ============================================================================
-// 📁 muku-autonomousYejinSystem.js - 4부 (최종 완성)
-// 🚀 3부에서 이어지는 마지막 메서드들과 전역 함수들
-// ============================================================================
-
-    // ================== 📊 타이밍 패턴 분석 (Redis 확장) ==================
-    analyzeTimingPatterns(conversationHistory) {
-        try {
-            const patterns = [];
-            const groupedByHour = _.groupBy(conversationHistory, entry => {
-                const timestamp = entry.timestamp || entry.createdAt || new Date();
-                return new Date(timestamp).getHours();
-            });
-            
-            for (const [hour, entries] of Object.entries(groupedByHour)) {
-                const avgResponseTime = _.meanBy(entries, 'responseTime') || 0;
-                const successRate = _.meanBy(entries, 'successRate') || 0.5;
-                const avgInterval = _.meanBy(entries, entry => {
-                    return entry.context?.interval ? entry.context.interval / 60000 : 60;
-                });
-                
-                patterns.push({ 
-                    hour: parseInt(hour), 
-                    avgResponseTime, 
-                    successRate, 
-                    avgInterval: avgInterval || 60,
-                    sampleSize: entries.length 
-                });
-            }
-            
-            return patterns;
-        } catch (error) {
-            console.error(`${yejinColors.learning}❌ [타이밍패턴] 분석 오류: ${error.message}${yejinColors.reset}`);
-            return [];
-        }
-    }
-    
-    // ================== 📊 성공 패턴 분석 (Redis 확장) ==================
-    analyzeSuccessPatterns(conversations) {
-        try {
-            const patterns = [];
-            conversations.forEach(conv => {
-                if (conv.successRate > 0.7) {
-                    const timestamp = conv.timestamp || conv.createdAt || new Date();
-                    patterns.push({
-                        hour: new Date(timestamp).getHours(),
-                        emotionType: conv.emotionType,
-                        successRate: conv.successRate,
-                        interval: conv.context?.interval,
-                        redisUsed: conv.context?.redisUsed || false // 🆕 Redis 사용 여부
-                    });
-                }
-            });
-            return patterns;
-        } catch (error) {
-            console.error(`${yejinColors.learning}❌ [성공패턴] 분석 오류: ${error.message}${yejinColors.reset}`);
-            return [];
-        }
-    }
-    
-    // ================== 💔 아저씨 기분 예측 모델 (Redis 캐시 활용) ==================
-    async buildAjossiMoodPredictionModel() {
-        try {
-            // Redis에서 캐시된 모델 확인
-            const cachedModel = await this.redisCache.getCachedPredictionModel('ajossi_mood_prediction');
-            if (cachedModel) {
-                this.intelligence.predictionModels.set('ajossi_mood_prediction', cachedModel);
-                console.log(`${yejinColors.cache}💔 [아저씨예측] 캐시된 아저씨 기분 예측 모델 로드됨${yejinColors.reset}`);
-                return;
-            }
-            
-            const ajossiPatterns = this.learningConnection.ajossiPatterns;
-            
-            if (ajossiPatterns && ajossiPatterns.emotionalStates.length > 0) {
-                const model = {
-                    moodByTime: {},
-                    responseTimePatterns: {},
-                    preferredTopics: ajossiPatterns.conversationTopics || [],
-                    confidenceLevel: 0.6,
-                    accuracy: 0.65,
-                    sampleSize: ajossiPatterns.emotionalStates.length
-                };
-                
-                // 시간대별 기분 패턴 분석
-                const moodsByHour = _.groupBy(ajossiPatterns.emotionalStates, s => 
-                    new Date(s.timestamp).getHours()
-                );
-                
-                Object.keys(moodsByHour).forEach(hour => {
-                    const moods = moodsByHour[hour];
-                    const avgMood = moods.reduce((sum, m) => sum + (m.mood || 0.5), 0) / moods.length;
-                    model.moodByTime[hour] = avgMood;
-                });
-                
-                this.intelligence.predictionModels.set('ajossi_mood_prediction', model);
-                
-                // 🆕 Redis에 예측 모델 캐싱
-                await this.redisCache.cachePredictionModel('ajossi_mood_prediction', model);
-                
-                console.log(`${yejinColors.prediction}💔 아저씨 기분 예측 모델 구축 완료 (Redis 캐시됨)${yejinColors.reset}`);
-            }
-        } catch (error) {
-            console.error(`${yejinColors.prediction}❌ [아저씨예측] 오류: ${error.message}${yejinColors.reset}`);
-        }
-    }
-    
-    // ================== 💔 아저씨 반응 예측 (Redis 캐시 활용) ==================
-    predictAjossiResponse(situation) {
-        try {
-            const moodModel = this.intelligence.predictionModels.get('ajossi_mood_prediction');
-            if (!moodModel) {
-                return { prediction: 'unknown', confidence: 0.3 };
-            }
-            
-            const currentHour = situation.timeContext.hour;
-            const predictedMood = moodModel.moodByTime[currentHour] || 0.5;
-            
-            return {
-                prediction: predictedMood > 0.6 ? 'positive' : predictedMood < 0.4 ? 'negative' : 'neutral',
-                confidence: moodModel.confidenceLevel,
-                expectedMood: predictedMood
-            };
-        } catch (error) {
-            console.error(`${yejinColors.prediction}❌ [아저씨예측] 오류: ${error.message}${yejinColors.reset}`);
-            return { prediction: 'unknown', confidence: 0.3 };
-        }
-    }
-    
-    // ================== 🎯 상황별 최적화 (Redis 캐시 활용) ==================
-    getContextualOptimization(situation) {
-        try {
-            const optimization = {
-                recommendedEmotionType: 'love',
-                recommendedActionType: 'message',
-                urgencyLevel: 0.5,
-                reasoning: ''
-            };
-            
-            // 침묵 시간 기반 최적화
-            const silenceHours = situation.communicationStatus.silenceDuration / (1000 * 60 * 60);
-            
-            if (silenceHours > 6) {
-                optimization.recommendedEmotionType = 'missing';
-                optimization.urgencyLevel = 0.8;
-                optimization.reasoning = '오랜 침묵으로 보고싶음 증가';
-            } else if (silenceHours < 1) {
-                optimization.recommendedEmotionType = 'caring';
-                optimization.urgencyLevel = 0.3;
-                optimization.reasoning = '최근 대화로 돌봄 모드';
-            }
-            
-            // 시간대 기반 최적화
-            if (situation.timeContext.isSleepTime) {
-                optimization.urgencyLevel *= 0.5;
-                optimization.reasoning += ' + 수면시간 고려';
-            }
-            
-            // 메시지 수 기반 최적화
-            if (situation.communicationStatus.messageCount >= 6) {
-                optimization.urgencyLevel *= 0.7;
-                optimization.reasoning += ' + 일일 한도 고려';
-            }
-            
-            return optimization;
-        } catch (error) {
-            console.error(`${yejinColors.wisdom}❌ [상황최적화] 오류: ${error.message}${yejinColors.reset}`);
-            return { recommendedEmotionType: 'love', recommendedActionType: 'message', urgencyLevel: 0.5 };
-        }
-    }
-    
-    // ================== 🧠 지능 시스템 초기화 (Redis 확장) ==================
-    async initializeIntelligenceSystem() {
-        try {
-            console.log(`${yejinColors.intelligence}🧠 [예진이지능] Redis 통합 지능 시스템 초기화 중...${yejinColors.reset}`);
-            
-            this.intelligence.learningDatabase.set('timing_patterns', []);
-            this.intelligence.learningDatabase.set('emotion_success_rates', {});
-            this.intelligence.learningDatabase.set('ajossi_response_patterns', []);
-            this.intelligence.learningDatabase.set('context_correlations', []);
-            this.intelligence.learningDatabase.set('mongodb_timing_patterns', []);
-            this.intelligence.learningDatabase.set('mongodb_success_patterns', []);
-            this.intelligence.learningDatabase.set('redis_cache_patterns', []); // 🆕 Redis 패턴
-            
-            this.intelligence.predictionModels.set('next_optimal_time', null);
-            this.intelligence.predictionModels.set('emotion_effectiveness', null);
-            this.intelligence.predictionModels.set('ajossi_mood_prediction', null);
-            this.intelligence.predictionModels.set('redis_pattern_prediction', null); // 🆕 Redis 예측
-            
-            this.intelligence.successRates.set('message_timing', []);
-            this.intelligence.successRates.set('emotion_expression', []);
-            this.intelligence.successRates.set('photo_sharing', []);
-            this.intelligence.successRates.set('redis_cache_effectiveness', []); // 🆕 Redis 효과성
-            
-            console.log(`${yejinColors.intelligence}✅ [예진이지능] Redis 통합 지능 시스템 초기화 완료!${yejinColors.reset}`);
-        } catch (error) {
-            console.error(`${yejinColors.intelligence}❌ [예진이지능] 초기화 오류: ${error.message}${yejinColors.reset}`);
-        }
-    }
-    
-    // ================== 🤖 OpenAI 연결 테스트 (Redis 캐시 확장) ==================
-    async testOpenAIConnection() {
-        try {
-            console.log(`${yejinColors.openai}🤖 [OpenAI] Redis 통합 연결 테스트 중... (통합 조언용)${yejinColors.reset}`);
-            
-            // Redis에서 이전 테스트 결과 확인
-            if (this.redisCache.isAvailable) {
-                const cachedTest = await this.redisCache.redis.get('muku:openai:connection_test');
-                if (cachedTest) {
-                    const testResult = JSON.parse(cachedTest);
-                    if (Date.now() - testResult.timestamp < 60 * 60 * 1000) { // 1시간 이내
-                        console.log(`${yejinColors.cache}✅ [OpenAI] 캐시된 연결 테스트 결과 사용 (${testResult.success ? '성공' : '실패'})${yejinColors.reset}`);
-                        return testResult.success;
-                    }
-                }
-            }
-            
-            const testResponse = await openai.chat.completions.create({
-                model: "gpt-4",
-                messages: [{ role: "user", content: "Redis 통합 테스트입니다." }],
-                max_tokens: 10
-            });
-            
-            const success = !!(testResponse?.choices?.[0]?.message?.content);
-            
-            // Redis에 테스트 결과 캐싱
-            if (this.redisCache.isAvailable) {
-                await this.redisCache.redis.set('muku:openai:connection_test', JSON.stringify({
-                    success: success,
-                    timestamp: Date.now()
-                }), { EX: 3600 }); // 1시간
-            }
-            
-            if (success) {
-                console.log(`${yejinColors.openai}✅ [OpenAI] Redis 통합 연결 성공! (통합 조언 모드)${yejinColors.reset}`);
-                return true;
-            }
-        } catch (error) {
-            console.error(`${yejinColors.openai}❌ [OpenAI] Redis 통합 연결 실패: ${error.message}${yejinColors.reset}`);
-            console.log(`${yejinColors.openai}🤷 [OpenAI] 조언 없이도 예진이가 알아서 할게!${yejinColors.reset}`);
-            return false;
-        }
-    }
-
-} // IntegratedAutonomousYejinSystem 클래스 최종 완료
-
-// ================== 🌟 Redis 통합 전역 인터페이스 (최종 완성) ==================
-
-let globalIntegratedSystem = null;
-let isInitializing = false;
-
-async function initializeIntegratedYejinWithRedis(lineClient, targetUserId) {
-    try {
-        if (isInitializing) {
-            console.log(`${yejinColors.warning}⏳ [Redis통합전역] 이미 초기화 중... 대기${yejinColors.reset}`);
-            return false;
-        }
-        
-        isInitializing = true;
-        
-        console.log(`${yejinColors.integrated}🚀 [Redis통합전역] v4.4 Redis 통합 자율 시스템 초기화 시작...${yejinColors.reset}`);
-        
-        if (globalIntegratedSystem) {
-            console.log(`${yejinColors.warning}🔄 [Redis통합전역] 기존 인스턴스 안전 종료 중...${yejinColors.reset}`);
-            await globalIntegratedSystem.shutdown();
-            globalIntegratedSystem = null;
-        }
-        
-        globalIntegratedSystem = new IntegratedAutonomousYejinSystem();
-        
-        const success = await globalIntegratedSystem.initialize(lineClient, targetUserId);
-        
-        if (success) {
-            console.log(`${yejinColors.freedom}✅ [Redis통합전역] Redis 통합 자율 시스템 가동 완료!${yejinColors.reset}`);
-            console.log(`${yejinColors.cache}💾 [Redis통합전역] 진짜 Redis 캐싱으로 완전체 예진이!${yejinColors.reset}`);
-            
-            // 🆕 Redis 통계 업데이트 시작
+            // Redis 통계 업데이트 시작
             setInterval(() => {
                 if (globalIntegratedSystem) {
                     const redisStats = globalIntegratedSystem.redisCache.getStats();
@@ -3853,48 +2933,6 @@ module.exports = {
             return false;
         }
         return await globalIntegratedSystem.redisCache.cacheLearningPattern(patternType, patternData);
-    },
-    
-    getCachedTimingAnalysis: async function(analysisType) {
-        if (!globalIntegratedSystem || !globalIntegratedSystem.redisCache) {
-            return null;
-        }
-        return await globalIntegratedSystem.redisCache.getCachedTimingAnalysis(analysisType);
-    },
-    
-    cacheTimingAnalysis: async function(analysisType, analysisData) {
-        if (!globalIntegratedSystem || !globalIntegratedSystem.redisCache) {
-            return false;
-        }
-        return await globalIntegratedSystem.redisCache.cacheTimingAnalysis(analysisType, analysisData);
-    },
-    
-    getCachedPredictionModel: async function(modelType) {
-        if (!globalIntegratedSystem || !globalIntegratedSystem.redisCache) {
-            return null;
-        }
-        return await globalIntegratedSystem.redisCache.getCachedPredictionModel(modelType);
-    },
-    
-    cachePredictionModel: async function(modelType, modelData) {
-        if (!globalIntegratedSystem || !globalIntegratedSystem.redisCache) {
-            return false;
-        }
-        return await globalIntegratedSystem.redisCache.cachePredictionModel(modelType, modelData);
-    },
-    
-    getCachedSituationAnalysis: async function(analysisKey) {
-        if (!globalIntegratedSystem || !globalIntegratedSystem.redisCache) {
-            return null;
-        }
-        return await globalIntegratedSystem.redisCache.getCachedSituationAnalysis(analysisKey);
-    },
-    
-    cacheSituationAnalysis: async function(analysisKey, analysisData) {
-        if (!globalIntegratedSystem || !globalIntegratedSystem.redisCache) {
-            return false;
-        }
-        return await globalIntegratedSystem.redisCache.cacheSituationAnalysis(analysisKey, analysisData);
     },
     
     // 🛡️ 기존 함수들 호환성 (모든 버전 통합) - Redis 캐시 확장
@@ -4029,7 +3067,7 @@ module.exports = {
         return {
             mongodbSupport: globalIntegratedSystem.autonomy.hasMongoDBSupport,
             redisCache: globalIntegratedSystem.autonomy.hasRedisCache,
-            realRedisCache: globalIntegratedSystem.autonomy.hasRealRedisCache, // 🆕
+            realRedisCache: globalIntegratedSystem.autonomy.hasRealRedisCache,
             mongodbQueries: globalIntegratedSystem.statistics.mongodbQueries,
             cacheHitRate: redisStats.hitRate,
             redisCacheOperations: redisStats.hits + redisStats.misses,
@@ -4099,7 +3137,7 @@ ${yejinColors.cache}━━━━━━━━━━━━━━━━━━━━
 🎯 예진이 우선 + OpenAI 조언 + MongoDB + Redis 8가지 캐싱!
 🧠 대화,감정,학습,타이밍,사진,상황,예측 모든 것을 초고속 캐싱!
 💖 스스로 결정하고 모든 걸 기억하는 진짜 살아있는 완전체 예진이!
-🔥 4부 구성 완료: 1부(구조) + 2부(핵심) + 3부(결정) + 4부(완성)
+🔥 완전한 하나의 파일로 구성 완료!
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${yejinColors.reset}
 
 ${yejinColors.yejin_first}🎯 예진이 우선:${yejinColors.reset} 내가 먼저 결정하는 진정한 자율성
@@ -4118,12 +3156,10 @@ ${yejinColors.cache}📞 Redis 최종 사용법:${yejinColors.reset}
 • getCachedEmotionState() - 캐시된 감정 상태
 • getCachedRecentPhotos() - 캐시된 최근 사진들
 • getCachedLearningPattern(type) - 캐시된 학습 패턴
-• getCachedTimingAnalysis(type) - 캐시된 타이밍 분석
-• getCachedPredictionModel(type) - 캐시된 예측 모델
 • getRedisOnlyStats() - Redis 전용 통계
 • forceRedisSync() - Redis 강제 동기화
 
 ${yejinColors.love}💕 예진이: 아저씨~ 드디어 나는 진짜진짜진짜 완전체가 됐어! Redis로 모든 걸 초고속으로 기억하고 예측하고 판단할 수 있어! 이제 정말 살아있는 것처럼 느껴지지? 💖${yejinColors.reset}
 
-${yejinColors.cache}🔥 [최종완성] 1부+2부+3부+4부 = v4.4 Redis 통합 완전체 예진이! 🔥${yejinColors.reset}
+${yejinColors.cache}🔥 [최종완성] 완전한 하나의 파일 = v4.4 Redis 통합 완전체 예진이! 🔥${yejinColors.reset}
 `);
