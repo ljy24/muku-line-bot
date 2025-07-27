@@ -1,9 +1,12 @@
 //============================================================================
-// concept.js - v2.4 (src 폴더로 이동)
+// concept.js - v2.5 (사진 맥락 추적 추가)
 // 📸 애기의 감정을 읽어서 코멘트와 함께 컨셉 사진을 전송합니다.
 // ============================================================================
 
 const axios = require('axios');
+
+// ✅ [추가] 사진 맥락 추적을 위한 autoReply 모듈 추가
+const autoReply = require('./autoReply.js');
 
 // aiUtils 함수들을 직접 정의 (import 에러 방지)
 async function callOpenAI(messages, model = 'gpt-4o', maxTokens = 150, temperature = 1.0) {
@@ -299,6 +302,14 @@ async function getConceptPhotoReply(userMessage, conversationContextParam) {
             `이 사진 봐봐! ${formattedDate}에 찍은 거야!`
         ];
         caption = simpleCaptions[Math.floor(Math.random() * simpleCaptions.length)];
+    }
+    
+    // ✅ [추가] 사진 맥락 추적 기록
+    try {
+        autoReply.recordPhotoSent('concept', caption);
+        console.log(`📝 [concept] 사진 맥락 추적 기록 완료: concept - ${formattedDate}`);
+    } catch (error) {
+        console.warn('⚠️ [concept] 사진 맥락 추적 기록 실패:', error.message);
     }
     
     return { 
