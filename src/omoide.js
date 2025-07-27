@@ -1,5 +1,5 @@
 // ============================================================================
-// omoide.js - v2.3 (src 폴더로 이동)
+// omoide.js - v2.4 (사진 맥락 추적 추가)
 // 📸 애기의 감정을 읽어서 코멘트와 함께 추억 사진을 전송합니다.
 // ============================================================================
 
@@ -7,6 +7,9 @@ const axios = require('axios');
 
 // ✅ [수정] aiUtils를 같은 폴더에서 가져오기
 const { callOpenAI, cleanReply } = require('./aiUtils');
+
+// ✅ [추가] 사진 맥락 추적을 위한 autoReply 모듈 추가
+const autoReply = require('./autoReply.js');
 
 const OMOIDE_ALBUM_URL = 'https://photo.de-ji.net/photo/omoide/';
 
@@ -103,7 +106,17 @@ async function getOmoideReply(userMessage, conversationContextParam) {
                  const index = Math.floor(Math.random() * fileCount) + 1;
                  const fileName = String(index).padStart(6, "0") + ".jpg";
                  const imageUrl = encodeImageUrl(`${BASE_COUPLE_URL}/${fileName}`);
-                 return { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl, caption: "아저씨랑 나랑 같이 찍은 커플 사진이야! 예쁘지?" };
+                 const caption = "아저씨랑 나랑 같이 찍은 커플 사진이야! 예쁘지?";
+                 
+                 // ✅ [추가] 커플 사진 맥락 추적 기록
+                 try {
+                     autoReply.recordPhotoSent('couple', caption);
+                     console.log(`📝 [omoide] 커플 사진 맥락 추적 기록 완료`);
+                 } catch (error) {
+                     console.warn('⚠️ [omoide] 커플 사진 맥락 추적 기록 실패:', error.message);
+                 }
+                 
+                 return { type: 'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl, caption: caption };
             }
             selectedFolder = getRandomOmoideFolder();
         } else {
@@ -150,6 +163,15 @@ async function getOmoideReply(userMessage, conversationContextParam) {
         const messages = [{ role: 'system', content: prompt }];
         const rawReply = await callOpenAI(messages, 'gpt-4o', 150, 1.0);
         const cleanedReply = cleanReply(rawReply);
+        
+        // ✅ [추가] 추억 사진 맥락 추적 기록
+        try {
+            autoReply.recordPhotoSent('omoide', cleanedReply);
+            console.log(`📝 [omoide] 추억 사진 맥락 추적 기록 완료: ${folderDescription}`);
+        } catch (error) {
+            console.warn('⚠️ [omoide] 추억 사진 맥락 추적 기록 실패:', error.message);
+        }
+        
         return { type: 'image', originalContentUrl: encodedImageUrl, previewImageUrl: encodedImageUrl, altText: cleanedReply, caption: cleanedReply };
     } catch (error) {
         console.error('❌ [omoide.js Error] 추억 사진 코멘트 생성 실패:', error);
