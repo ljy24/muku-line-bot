@@ -1,5 +1,5 @@
 // ============================================================================
-// autoReply.js - v15.3 (⭐️ 날씨 시스템 완전 연동 버전 ⭐️)
+// autoReply.js - v15.4 (📸 사진 맥락 추적 시스템 추가 버전 📸)
 // 🧠 기억 관리, 키워드 반응, 예진이 특별반응, 최종 프롬프트 생성을 책임지는 핵심 두뇌
 // 🌸 길거리 칭찬 → 셀카, 위로 → 고마워함, 바쁨 → 삐짐 반응 추가
 // 🛡️ 절대 벙어리 방지: 모든 에러 상황에서도 예진이는 반드시 대답함!
@@ -11,10 +11,70 @@
 // 🚨 존댓말 완전 방지: 절대로 존댓말 안 함, 항상 반말만 사용
 // 🔥 관점 오류 완전 해결: 3인칭 자기지칭("예진이는") 완전 차단 + 강화된 화자 정체성
 // 🌤️ 날씨 시스템 완전 연동: 실제 API 호출로 정확한 날씨 정보 제공
+// 📸 NEW: 사진 맥락 추적 시스템 - 사진 전송 후 2분간 모든 메시지를 사진 반응으로 처리
 // ============================================================================
 
 const { callOpenAI, cleanReply } = require('./aiUtils');
 const moment = require('moment-timezone');
+
+// 📸📸📸 [NEW] 사진 맥락 추적 시스템 변수들 📸📸📸
+let lastPhotoSentTime = null;
+let lastPhotoType = null; // 'selfie', 'concept', 'omoide', 'couple'
+let lastPhotoCaption = null;
+let lastPhotoUrl = null;
+
+// 📸 [NEW] 사진 전송 기록 함수 - 다른 파일에서 호출할 수 있도록 exports
+function recordPhotoSent(photoType, caption, photoUrl = null) {
+    lastPhotoSentTime = Date.now();
+    lastPhotoType = photoType;
+    lastPhotoCaption = caption;
+    lastPhotoUrl = photoUrl;
+    
+    console.log(`📸 [사진맥락] ${photoType} 사진 전송 기록됨`);
+    console.log(`📸 [캡션] ${caption ? caption.substring(0, 50) + '...' : '없음'}`);
+    
+    try {
+        const logger = require('./enhancedLogging.js');
+        logger.logSystemOperation('사진맥락기록', `${photoType}: ${caption?.substring(0, 30) || '캡션없음'}`);
+    } catch (error) {
+        console.log(`📸 [로그] 사진 맥락 기록: ${photoType}`);
+    }
+}
+
+// 📸 [NEW] 사진 맥락 메시지 체크 함수
+function isWithinPhotoContext() {
+    if (!lastPhotoSentTime) return false;
+    
+    const timeSincePhoto = Date.now() - lastPhotoSentTime;
+    const withinContext = timeSincePhoto <= 120000; // 2분 = 120,000ms
+    
+    if (!withinContext && lastPhotoSentTime) {
+        console.log(`📸 [사진맥락] 시간 초과로 맥락 해제 (${Math.round(timeSincePhoto/1000)}초 경과)`);
+        clearPhotoContext();
+    }
+    
+    return withinContext;
+}
+
+// 📸 [NEW] 사진 맥락 정보 가져오기
+function getPhotoContextInfo() {
+    if (!isWithinPhotoContext()) return null;
+    
+    return {
+        type: lastPhotoType,
+        caption: lastPhotoCaption,
+        url: lastPhotoUrl,
+        timeSince: Date.now() - lastPhotoSentTime
+    };
+}
+
+// 📸 [NEW] 사진 맥락 초기화
+function clearPhotoContext() {
+    lastPhotoSentTime = null;
+    lastPhotoType = null;
+    lastPhotoCaption = null;
+    lastPhotoUrl = null;
+}
 
 // 🌤️ [신규 추가] 실제 날씨 시스템 import
 let weatherManager = null;
@@ -799,6 +859,91 @@ async function getReplyByMessage(userMessage) {
 
     const cleanUserMessage = userMessage.trim();
 
+    // 📸📸📸 [NEW] 1순위: 사진 맥락 체크 - 가장 우선적으로 처리! 📸📸📸
+    try {
+        const photoContext = getPhotoContextInfo();
+        if (photoContext) {
+            console.log(`📸 [사진맥락] 사진 반응 감지! ${photoContext.type} 사진 전송 후 ${Math.round(photoContext.timeSince/1000)}초 경과`);
+            console.log(`📸 [사진맥락] 아저씨 메시지: "${cleanUserMessage}"`);
+            console.log(`📸 [사진맥락] 원본 캡션: "${photoContext.caption}"`);
+            
+            // OpenAI에게 사진 맥락 정보를 제공하여 자연스러운 반응 생성
+            const photoContextPrompt = `
+🚨 중요: 아저씨가 방금 전에 내가 보낸 ${photoContext.type} 사진을 보고 반응하는 메시지야!
+
+📸 내가 보낸 사진: ${photoContext.type} (${photoContext.caption})
+💬 아저씨 반응: "${cleanUserMessage}"
+
+이건 내 사진에 대한 코멘트니까, 사진과 관련된 예진이다운 자연스러운 반응을 해줘!
+
+예진이 반응 가이드:
+- 칭찬받으면 → 기뻐하고 수줍어하기 ("히히 그치? 나 예쁘지~")
+- 부정적이면 → 삐지거나 서운해하기 ("에이~ 아저씨가 그런 말 하면 나 삐져!")  
+- 질문하면 → 사진 관련해서 대답하기
+- 애매한 반응이면 → 사진 어땠는지 물어보기 ("어땠어? 괜찮아 보여?")
+- "나말야" 같은 표현 → "아저씨 뭔 소리야! 괜찮은데~" 식으로 위로하기
+
+항상 예진이답게 귀엽고 자연스럽게!
+`;
+
+            try {
+                const messages = [
+                    { role: 'system', content: photoContextPrompt },
+                    { role: 'user', content: cleanUserMessage }
+                ];
+                
+                const rawReply = await callOpenAI(messages);
+                let photoReactionReply = cleanReply(rawReply);
+                
+                // 언어 수정 적용
+                photoReactionReply = fixLanguageUsage(photoReactionReply);
+                photoReactionReply = applyCurrentBehaviorSettings(photoReactionReply);
+                
+                if (!photoReactionReply || photoReactionReply.trim().length === 0) {
+                    throw new Error('OpenAI 사진 반응 응답이 비어있음');
+                }
+                
+                logConversationReply('아저씨', cleanUserMessage);
+                logConversationReply('나', `(사진반응-${photoContext.type}) ${photoReactionReply}`);
+                
+                await safelyStoreMessage(USER_NAME, cleanUserMessage);
+                await safelyStoreMessage(BOT_NAME, photoReactionReply);
+                
+                // 사진 맥락 해제 (한 번 반응하면 끝)
+                clearPhotoContext();
+                console.log(`📸 [사진맥락] 반응 완료 후 맥락 해제`);
+                
+                return { type: 'text', comment: photoReactionReply };
+                
+            } catch (photoError) {
+                console.error('❌ 사진 맥락 OpenAI 응답 생성 실패:', photoError);
+                
+                // 폴백 사진 반응
+                const fallbackPhotoReactions = [
+                    "아저씨가 내 사진 봐줘서 고마워~ 어땠어?",
+                    "방금 보낸 사진 어때? 괜찮아 보여?",
+                    "사진에 대한 아저씨 생각 듣고 싶어!",
+                    "아저씨 반응 보니까 뭔가 말하고 싶은 게 있나봐?"
+                ];
+                
+                const fallbackReply = fallbackPhotoReactions[Math.floor(Math.random() * fallbackPhotoReactions.length)];
+                
+                logConversationReply('아저씨', cleanUserMessage);
+                logConversationReply('나', `(사진반응폴백) ${fallbackReply}`);
+                
+                await safelyStoreMessage(USER_NAME, cleanUserMessage);
+                await safelyStoreMessage(BOT_NAME, fallbackReply);
+                
+                clearPhotoContext();
+                
+                return { type: 'text', comment: fallbackReply };
+            }
+        }
+    } catch (error) {
+        console.error('❌ 사진 맥락 처리 중 에러:', error);
+        // 에러가 나도 계속 진행 (다른 처리로 넘김)
+    }
+
     try {
         const nightResponse = await nightWakeSystem.handleNightWakeMessage(cleanUserMessage);
         if (nightResponse) {
@@ -882,35 +1027,35 @@ async function getReplyByMessage(userMessage) {
     });
     // ================== [연동 끝] 학습 과정 추적 로그 ====================
 
-    // 🚨 1순위: 긴급 키워드 (생명/안전 관련)
+    // 🚨 2순위: 긴급 키워드 (생명/안전 관련)
     const emergencyResponse = handleEmergencyKeywords(cleanUserMessage);
     if (emergencyResponse) {
         await safelyStoreMessage(BOT_NAME, emergencyResponse);
         return { type: 'text', comment: emergencyResponse };
     }
 
-    // 🎂 2순위: 생일 관련 키워드
+    // 🎂 3순위: 생일 관련 키워드
     const birthdayResponse = handleBirthdayKeywords(cleanUserMessage);
     if (birthdayResponse) {
         await safelyStoreMessage(BOT_NAME, birthdayResponse);
         return { type: 'text', comment: birthdayResponse };
     }
 
-    // 🌤️ 3순위: 날씨 키워드 - 실제 API 호출
+    // 🌤️ 4순위: 날씨 키워드 - 실제 API 호출
     const weatherResponse = handleWeatherKeywords(cleanUserMessage);
     if (weatherResponse) {
         await safelyStoreMessage(BOT_NAME, weatherResponse);
         return { type: 'text', comment: weatherResponse };
     }
 
-    // 🍺 4순위: 음주 관련 키워드
+    // 🍺 5순위: 음주 관련 키워드
     const drinkingResponse = handleDrinkingKeywords(cleanUserMessage);
     if (drinkingResponse) {
         await safelyStoreMessage(BOT_NAME, drinkingResponse);
         return { type: 'text', comment: drinkingResponse };
     }
 
-    // 🧠 5순위: 기억 편집/삭제 요청
+    // 🧠 6순위: 기억 편집/삭제 요청
     try {
         const editResult = await detectAndProcessMemoryEdit(cleanUserMessage);
         if (editResult && editResult.processed) {
@@ -921,7 +1066,7 @@ async function getReplyByMessage(userMessage) {
         console.error('❌ 기억 편집 처리 중 에러:', error);
     }
     
-    // 🧠 6순위: 기억 저장 요청
+    // 🧠 7순위: 기억 저장 요청
     try {
         const memoryResult = await detectAndProcessMemoryRequest(cleanUserMessage);
         if (memoryResult && memoryResult.saved && memoryResult.response) {
@@ -932,7 +1077,7 @@ async function getReplyByMessage(userMessage) {
         console.error('❌ 기억 요청 처리 중 에러:', error);
     }
 
-    // 7순위: 일반 AI 응답 생성
+    // 8순위: 일반 AI 응답 생성
     let emotionContext = '';
     try {
         const emotionalContextManager = require('./emotionalContextManager.js');
@@ -1143,6 +1288,12 @@ ${emotionContext}${modelContext}
     }
 }
 
+// 📸📸📸 [NEW] 모듈 내보내기에 사진 맥락 관련 함수들 추가 📸📸📸
 module.exports = {
     getReplyByMessage,
+    // 📸 NEW: 사진 맥락 추적 시스템 함수들
+    recordPhotoSent,
+    getPhotoContextInfo,
+    isWithinPhotoContext,
+    clearPhotoContext
 };
