@@ -1,7 +1,7 @@
 {
   "name": "muku-line-bot",
   "version": "1.0.0",
-  "description": "무쿠 LINE 메시지 자동 응답 봇",
+  "description": "무쿠 LINE 메시지 자동 응답 봇 - v4.3 통합 자율 시스템",
   "main": "index.js",
   "type": "commonjs",
   "scripts": {
@@ -17,7 +17,10 @@
     "canvas": "^3.1.2",
     "dotenv": "^16.3.1",
     "express": "^4.18.2",
+    "ioredis": "^5.3.2",
+    "lodash": "^4.17.21",
     "moment-timezone": "^0.5.44",
+    "mongoose": "^8.0.3",
     "node-cron": "^3.0.3",
     "node-schedule": "^2.1.1",
     "openai": "^4.30.0",
@@ -28,6 +31,14 @@
   "engines": {
     "node": ">=18.0.0"
   },
+  "keywords": [
+    "line-bot",
+    "chatbot",
+    "autonomous",
+    "ai",
+    "muku",
+    "yejin"
+  ],
   "author": "ljy24",
   "license": "MIT"
 }
