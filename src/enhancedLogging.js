@@ -1,5 +1,5 @@
 // ============================================================================
-// 💖 무쿠 심플 로그 시스템 v8.0 FINAL - 진정한 자율 예진이 시스템 v4.0 지원
+// 💖 무쿠 심플 로그 시스템 v8.1 FINAL - 진정한 자율 예진이 시스템 v4.0 지원
 // ✅ 모듈 의존성 완전 제거 - 직접 파일 시스템 접근
 // ✅ 실시간 학습 통계 정확히 표시 (디스크 파일 직접 읽기)
 // 🩸 생리주기는 마스터에서 가져옴 (Single Source of Truth) - 날짜 수정
@@ -7,6 +7,7 @@
 // 🚫 더 이상 modules 의존성 없음 - 100% 확실한 동작 보장
 // 📊 스케줄러 상세 정보 복구 - 이전 정상 버전 수준
 // 🇰🇷 완전 한국어 의도 변환 시스템 적용 - "caring" → "돌봄" 등
+// 🔧 시스템 상태 8/8 정상 표시 복구 - autonomousYejinSystem 키 수정으로 7/8 → 8/8 완료!
 // ============================================================================
 
 const fs = require('fs');
@@ -799,7 +800,7 @@ function getDirectTrueAutonomousSystemStatus() {
     }
 }
 
-// ================== 💖 라인 전용 예쁜 상태 리포트 v8.0 FINAL - 진정한 자율 예진이 시스템 v4.0 지원 ==================
+// ================== 💖 라인 전용 예쁜 상태 리포트 v8.1 FINAL - 진정한 자율 예진이 시스템 v4.0 지원 ==================
 async function generateLineStatusReport(modules) {
     let report = '';
     const currentTime = formatJapanTime('HH:mm');
@@ -1136,7 +1137,10 @@ async function generateLineStatusReport(modules) {
                 modules.emotionalContextManager,
                 modules.scheduler,
                 modules.spontaneousYejin,
-                modules.unifiedConflictManager
+                modules.unifiedConflictManager,
+                modules.weatherManager,
+                modules.spontaneousPhotoManager,
+                modules.autonomousYejinSystem // 🔧 수정된 키!
             ];
             
             moduleChecks.forEach(module => {
@@ -1190,13 +1194,17 @@ function logAjeossiMessage(message) {
     console.log(`${colors.blue}👨 ${message}${colors.reset}`);
 }
 
-// ================== 📊 시스템 상태 요약 함수 ==================
+// ================== 📊 시스템 상태 요약 함수 (🔍 디버깅 버전) ==================
 function getSystemHealthSummary(modules) {
     const health = {
         total: 0,
         active: 0,
         systems: {}
     };
+    
+    // 🔍 실제 로드된 모듈 키들 출력 (디버깅용)
+    console.log('🔍 [디버깅] 실제 modules 객체의 키들:', Object.keys(modules));
+    console.log('🔍 [디버깅] null이 아닌 모듈들:', Object.keys(modules).filter(key => modules[key] !== null));
     
     const systemChecks = [
         { name: 'memoryManager', key: 'memoryManager' },
@@ -1206,14 +1214,18 @@ function getSystemHealthSummary(modules) {
         { name: 'unifiedConflictManager', key: 'unifiedConflictManager' },
         { name: 'weatherManager', key: 'weatherManager' },
         { name: 'spontaneousPhotoManager', key: 'spontaneousPhotoManager' },
-        { name: 'trueAutonomousYejinSystem', key: 'muku-autonomousYejinSystem' } // 진정한 자율시스템 추가
+        { name: 'autonomousYejinSystem', key: 'autonomousYejinSystem' } // 🔧 수정된 키!
     ];
     
+    console.log('🔍 [디버깅] 체크할 시스템들:');
     systemChecks.forEach(system => {
         health.total++;
         const isActive = modules[system.key] && typeof modules[system.key] === 'object';
         health.systems[system.name] = isActive;
         if (isActive) health.active++;
+        
+        // 🔍 각 모듈별 상태 출력
+        console.log(`  - ${system.name}: ${isActive ? '✅' : '❌'} (키: ${system.key}, 값: ${modules[system.key] ? '존재' : 'null/undefined'})`);
     });
     
     // 진정한 자율시스템 별도 체크
@@ -1226,6 +1238,7 @@ function getSystemHealthSummary(modules) {
     }
     
     health.percentage = Math.round((health.active / health.total) * 100);
+    console.log(`🔍 [디버깅] 최종 결과: ${health.active}/${health.total} (${health.percentage}%)`);
     return health;
 }
 
