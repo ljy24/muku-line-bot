@@ -1209,7 +1209,7 @@ function getSystemHealthSummary(modules) {
         { name: 'spontaneousYejin', key: 'spontaneousYejin' },
         { name: 'unifiedConflictManager', key: 'unifiedConflictManager' },
         { name: 'weatherManager', key: 'weatherManager' },
-        { name: 'spontaneousPhoto', key: 'spontaneousPhoto' }, // 🔧 수정된 키! (Manager가 아니라 Photo)
+        { name: 'spontaneousPhotoManager', key: 'spontaneousPhotoManager' }, // 🔧 Manager 추가!
         { name: 'autonomousYejinSystem', key: 'autonomousYejinSystem' }
     ];
     
