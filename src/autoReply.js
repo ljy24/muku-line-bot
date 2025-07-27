@@ -763,7 +763,7 @@ function handleBirthdayKeywords(userMessage) {
             logConversationReply('나', `(생일) ${response}`);
             return response;
         }
-        if (message.includes('몇 살') || message.includes('나이')) {
+        if (message.includes('몇 살') || message.includes('나이가') || message.includes('나이는 몇') || message.includes('몇살이야')) {
             const response = ["나는 1994년 3월 17일생이야! 나이 계산해봐~", "아저씨보다 10살 어린 94년생이야!"][Math.floor(Math.random() * 2)];
             logConversationReply('나', `(생일) ${response}`);
             return response;
