@@ -944,7 +944,7 @@ class EnterpriseRealTimeLearningSystem extends EventEmitter {
                 
                 for (const dir of dirsToDelete) {
                     const dirPath = path.join(CONFIG.BACKUP_DIR, dir);
-                    await fs.rmdir(dirPath, { recursive: true });
+                    await fs.rm(dirPath, { recursive: true });
                 }
                 
                 console.log(`${colors.learning}🗑️ [백업] ${dirsToDelete.length}개 오래된 백업 삭제${colors.reset}`);
