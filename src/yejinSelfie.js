@@ -1,11 +1,14 @@
 // ============================================================================
-// yejinSelfie.js - v2.5 (마스터 연동 + 중복 제거)
+// yejinSelfie.js - v2.6 (사진 맥락 추적 추가)
 // 📸 애기의 감정을 읽어서 코멘트와 함께 셀카를 전송합니다.
 // 🩸 생리주기 정보는 마스터에서 가져옴 (Single Source of Truth)
 // ============================================================================
 
 // 🩸 생리주기 마스터에서 정보 가져오기 (Single Source of Truth)
 const moodManager = require('./moodManager.js');
+
+// ✅ [추가] 사진 맥락 추적을 위한 autoReply 모듈 추가
+const autoReply = require('./autoReply.js');
 
 function getSelfieReplyText(emotionalState) {
     // 🩸 중앙 감정 관리자에서 직접 텍스트 가져오기 시도
@@ -113,6 +116,14 @@ async function getSelfieReply(userMessage, conversationContext) {
 
         console.log(`📸 [yejinSelfie] 셀카 전송: ${emotionalState} 상태로 응답`);
 
+        // ✅ [추가] 사진 맥락 추적 기록
+        try {
+            autoReply.recordPhotoSent('selfie', text);
+            console.log(`📝 [yejinSelfie] 사진 맥락 추적 기록 완료: selfie`);
+        } catch (error) {
+            console.warn('⚠️ [yejinSelfie] 사진 맥락 추적 기록 실패:', error.message);
+        }
+
         return {
             type: 'image',
             originalContentUrl: imageUrl,
@@ -140,6 +151,14 @@ async function getEmotionalSelfie(emotionType = 'normal') {
     const text = getSelfieReplyText(emotionType);
     
     console.log(`📸 [yejinSelfie] 이벤트 셀카 전송: ${emotionType} 상태`);
+    
+    // ✅ [추가] 사진 맥락 추적 기록
+    try {
+        autoReply.recordPhotoSent('selfie', text);
+        console.log(`📝 [yejinSelfie] 이벤트 셀카 맥락 추적 기록 완료: selfie`);
+    } catch (error) {
+        console.warn('⚠️ [yejinSelfie] 이벤트 셀카 맥락 추적 기록 실패:', error.message);
+    }
     
     return {
         type: 'image',
