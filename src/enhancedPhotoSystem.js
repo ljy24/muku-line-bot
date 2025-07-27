@@ -1,5 +1,4 @@
 // ================== 🎯 무쿠 개선된 사진 시스템 v5.0 (실시간 Vision API) ==================
-// 💰 사진 보낼 때마다 실시간 분석 ($0.02/일, $0.6/월)
 // 🛡️ 100% 안전한 폴백 시스템 내장
 // 💖 무쿠가 절대 벙어리가 되지 않도록 보장
 
@@ -16,8 +15,6 @@ const openai = new OpenAI({
 // ================== 💾 시스템 상태 관리 ==================
 
 let systemReady = false;
-let totalCostToday = 0;
-let totalPhotosAnalyzed = 0;
 
 /**
  * 🚀 실시간 Vision API 시스템 초기화
@@ -46,7 +43,6 @@ async function initializeEnhancedPhotoSystem() {
         
         systemReady = true;
         console.log('[enhancedPhoto] ✅ 실시간 Vision API 시스템 초기화 완료');
-        console.log('[enhancedPhoto] 💰 예상 비용: 하루 $0.02, 월 $0.6');
         console.log('[enhancedPhoto] 🎯 인물 구분: 실내=예진이, 실외=아저씨+예진이');
         
         return true;
@@ -76,8 +72,7 @@ async function getEnhancedPhotoMessage(imageUrl, photoType = 'selfie') {
         }
         
         // Vision API 프롬프트 (예진이 인물 구분 규칙 포함)
-        const prompt = `
-이 사진을 보고 예진이가 아저씨에게 보낼 자연스러운 메시지를 한국어로 생성해줘.
+        const prompt = `이 사진을 보고 예진이가 아저씨에게 보낼 자연스러운 메시지를 한국어로 생성해줘.
 
 📋 인물 구분 규칙:
 - 실내/침실/집 사진의 사람 = 예진이 (나)
@@ -112,7 +107,7 @@ async function getEnhancedPhotoMessage(imageUrl, photoType = 'selfie') {
                         type: "image_url", 
                         image_url: { 
                             url: imageUrl,
-                            detail: "low" // 비용 절약
+                            detail: "low"
                         } 
                     }
                 ]
@@ -122,16 +117,9 @@ async function getEnhancedPhotoMessage(imageUrl, photoType = 'selfie') {
         });
 
         const generatedMessage = response.choices[0].message.content.trim();
-        const cost = calculateCost(response.usage);
-        
-        // 통계 업데이트
-        totalCostToday += cost;
-        totalPhotosAnalyzed++;
         
         console.log('[enhancedPhoto] ✅ Vision API 분석 완료');
         console.log('[enhancedPhoto] 💬 생성된 메시지:', generatedMessage);
-        console.log('[enhancedPhoto] 💰 이번 비용:', '$' + cost.toFixed(4));
-        console.log('[enhancedPhoto] 📊 오늘 총 비용:', '$' + totalCostToday.toFixed(4));
         
         return {
             success: true,
@@ -139,7 +127,6 @@ async function getEnhancedPhotoMessage(imageUrl, photoType = 'selfie') {
             category: 'realtime_analyzed',
             method: 'realtime_vision_api',
             tokenUsage: response.usage,
-            cost: cost,
             fallback: false,
             confidence: 'high'
         };
@@ -150,19 +137,6 @@ async function getEnhancedPhotoMessage(imageUrl, photoType = 'selfie') {
         
         return getBasicFallbackResult(photoType, error.message);
     }
-}
-
-/**
- * 💰 토큰 비용 계산
- */
-function calculateCost(usage) {
-    if (!usage) return 0;
-    
-    // GPT-4o Vision 가격 (2024년 기준)
-    const inputCost = (usage.prompt_tokens || 0) * 0.005 / 1000;  // $0.005 per 1K tokens
-    const outputCost = (usage.completion_tokens || 0) * 0.015 / 1000; // $0.015 per 1K tokens
-    
-    return inputCost + outputCost;
 }
 
 // ================== 🛡️ 폴백 시스템 ==================
@@ -203,19 +177,11 @@ function getBasicFallbackMessage(photoType) {
  * 🔧 시스템 상태 확인
  */
 function getSystemStatus() {
-    const costEstimate = getDailyCostEstimate();
-    
     return {
         system: 'Enhanced Photo System v5.0 (Realtime Vision API)',
         mode: systemReady ? 'realtime_vision_api' : 'fallback_safe',
         apiKey: process.env.OPENAI_API_KEY ? '설정됨' : '미설정',
         status: systemReady ? 'ready' : 'fallback_mode',
-        todayStats: {
-            totalCost: totalCostToday,
-            photosAnalyzed: totalPhotosAnalyzed,
-            avgCostPerPhoto: totalPhotosAnalyzed > 0 ? (totalCostToday / totalPhotosAnalyzed) : 0
-        },
-        costEstimate: costEstimate,
         features: [
             '실시간 이미지 분석',
             '예진이 인물 구분 규칙 적용',
@@ -227,31 +193,12 @@ function getSystemStatus() {
 }
 
 /**
- * 📊 하루 예상 비용 계산
- */
-function getDailyCostEstimate() {
-    const dailyPhotos = 8;
-    const avgTokensPerPhoto = 1000; // 추정
-    const costPerPhoto = avgTokensPerPhoto * 0.005 / 1000;
-    const dailyCost = dailyPhotos * costPerPhoto;
-    
-    return {
-        photosPerDay: dailyPhotos,
-        costPerPhoto: costPerPhoto,
-        dailyCost: dailyCost,
-        monthlyCost: dailyCost * 30,
-        currency: 'USD'
-    };
-}
-
-/**
  * 🧪 시스템 테스트
  */
 async function testEnhancedSystem() {
     try {
         console.log('[enhancedPhoto] 🧪 실시간 Vision API 시스템 테스트 시작');
         
-        // 초기화 테스트
         const initResult = await initializeEnhancedPhotoSystem();
         console.log('[enhancedPhoto] 초기화 결과:', initResult);
         
@@ -262,8 +209,11 @@ async function testEnhancedSystem() {
             return false;
         }
         
-        // 실제 테스트용 이미지 URL (간단한 테스트 이미지)
-        const testUrl = "https://via.placeholder.com/300x300/FF69B4/FFFFFF?text=Test";
+        const baseUrl = "https://photo.de-ji.net/photo/fuji";
+        const fileCount = 2032;
+        const index = Math.floor(Math.random() * fileCount) + 1;
+        const fileName = String(index).padStart(6, "0") + ".jpg";
+        const testUrl = `${baseUrl}/${fileName}`;
         
         console.log('[enhancedPhoto] 🧪 테스트 이미지로 Vision API 호출 시도...');
         const result = await getEnhancedPhotoMessage(testUrl, 'selfie');
@@ -272,7 +222,6 @@ async function testEnhancedSystem() {
         console.log('  성공:', result.success);
         console.log('  메시지:', result.message);
         console.log('  방식:', result.method);
-        console.log('  비용:', result.cost ? '$' + result.cost.toFixed(4) : '미산출');
         
         return result.success;
         
@@ -281,17 +230,6 @@ async function testEnhancedSystem() {
         return false;
     }
 }
-
-/**
- * 🔄 일일 통계 리셋
- */
-function resetDailyStats() {
-    totalCostToday = 0;
-    totalPhotosAnalyzed = 0;
-    console.log('[enhancedPhoto] 📊 일일 통계 리셋 완료');
-}
-
-// ================== 📤 모듈 내보내기 ==================
 
 // ================== 🔗 기존 spontaneousYejinManager.js 호환성 함수들 ==================
 
@@ -302,15 +240,14 @@ let setupUserId = null;
  * 🔗 기존 코드 호환성: 시간대별 카테고리 선택
  */
 function selectPhotoByTimeAndMood(hour) {
-    // 시간대별 선호 카테고리
     if (hour >= 6 && hour < 12) {
-        return 'indoor'; // 아침: 예진이 사진
+        return 'indoor';
     } else if (hour >= 12 && hour < 18) {
-        return 'outdoor'; // 오후: 커플 사진
+        return 'outdoor';
     } else if (hour >= 18 && hour < 22) {
-        return 'memory'; // 저녁: 추억 사진
+        return 'memory';
     } else {
-        return 'landscape'; // 밤/새벽: 풍경 사진
+        return 'landscape';
     }
 }
 
@@ -337,8 +274,7 @@ async function sendEnhancedAnalyzedPhoto(preferredCategory = 'indoor', mood = 'c
             return false;
         }
         
-        // 기본 사진 URL 생성 (기존 방식 활용)
-        const baseUrl = "https://photo.de-ji.net/photo/yejin";
+        const baseUrl = "https://photo.de-ji.net/photo/fuji";
         const fileCount = 2032;
         const index = Math.floor(Math.random() * fileCount) + 1;
         const fileName = String(index).padStart(6, "0") + ".jpg";
@@ -346,30 +282,17 @@ async function sendEnhancedAnalyzedPhoto(preferredCategory = 'indoor', mood = 'c
         
         console.log('[enhancedPhoto] 📸 생성된 이미지 URL:', imageUrl);
         
-        // 실시간 Vision API로 메시지 생성
         const result = await getEnhancedPhotoMessage(imageUrl, mapCategoryToPhotoType(preferredCategory));
         
         let message = result.message;
         
-        // 무드 반영해서 메시지 조정
         if (mood === 'cute' && result.success) {
             message = message.replace(/\?/g, '? ㅎㅎ').replace(/~/g, '~ 💕');
         }
         
         console.log('[enhancedPhoto] 💬 최종 메시지:', message);
         console.log('[enhancedPhoto] 🔧 사용된 방식:', result.method);
-        if (result.cost) {
-            console.log('[enhancedPhoto] 💰 이번 비용:', '
-
-// ================== 🚀 자동 초기화 ==================
-
-console.log('[enhancedPhoto] 🎯 개선된 사진 시스템 v5.0 (실시간 Vision API) 로드 완료');
-console.log('[enhancedPhoto] 💰 예상 비용: 하루 $0.02, 월 $0.6');
-console.log('[enhancedPhoto] 🛡️ 100% 안전한 폴백 시스템 내장');
-console.log('[enhancedPhoto] 🎯 인물 구분: 실내=예진이, 실외=아저씨+예진이'); + result.cost.toFixed(4));
-        }
         
-        // LINE으로 사진과 메시지 전송
         await setupLineClient.pushMessage(setupUserId, [
             {
                 type: 'image',
@@ -415,11 +338,9 @@ async function getPhotoAnalysisStats() {
     const status = getSystemStatus();
     
     return {
-        totalAnalyzed: status.todayStats.photosAnalyzed,
-        successRate: 100, // 폴백 보장으로 항상 성공
+        totalAnalyzed: 0,
+        successRate: 100,
         systemReady: systemReady,
-        todayCost: status.todayStats.totalCost,
-        avgCostPerPhoto: status.todayStats.avgCostPerPhoto,
         categories: ['indoor', 'outdoor', 'landscape', 'memory', 'portrait', 'concept'],
         preferredByTime: {
             morning: 'indoor',
@@ -431,32 +352,19 @@ async function getPhotoAnalysisStats() {
 }
 
 module.exports = {
-    // 메인 함수 (기존 enhancedPhotoSystem 인터페이스 유지)
     getEnhancedPhotoMessage,
     initializeEnhancedPhotoSystem,
     getSystemStatus,
     testEnhancedSystem,
-    
-    // 🔗 기존 spontaneousYejinManager.js 호환 함수들
     selectPhotoByTimeAndMood,
     setupEnhancedPhotoSystem,
     sendEnhancedAnalyzedPhoto,
     getPhotoAnalysisStats,
-    
-    // 추가 함수들
-    getDailyCostEstimate,
-    resetDailyStats,
-    
-    // 내부 함수들 (디버깅용)
-    calculateCost,
     getBasicFallbackMessage,
     getBasicFallbackResult,
     mapCategoryToPhotoType
 };
 
-// ================== 🚀 자동 초기화 ==================
-
 console.log('[enhancedPhoto] 🎯 개선된 사진 시스템 v5.0 (실시간 Vision API) 로드 완료');
-console.log('[enhancedPhoto] 💰 예상 비용: 하루 $0.02, 월 $0.6');
 console.log('[enhancedPhoto] 🛡️ 100% 안전한 폴백 시스템 내장');
 console.log('[enhancedPhoto] 🎯 인물 구분: 실내=예진이, 실외=아저씨+예진이');
