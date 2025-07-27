@@ -14,7 +14,8 @@ require('dotenv').config();
 const PHOTO_BASE_URL = "https://photo.de-ji.net/photo/fuji";
 const TOTAL_PHOTOS = 1481;
 const ANALYSIS_OUTPUT_FILE = '/data/photo-analysis.json';
-const TEST_MODE = true; // true: 5장만 테스트, false: 전체 1481장
+const TEST_MODE = false; // true: 5장만 테스트, false: 전체 1481장
+const FORCE_REANALYZE = true; // true: 기존 데이터 무시하고 재분석, false: 기존 데이터 건너뛰기
 const TEST_PHOTOS = [1, 250, 500, 750, 1000]; // 테스트용 사진 번호들
 
 // OpenAI 클라이언트
@@ -213,8 +214,9 @@ async function analyzeAllPhotos() {
     
     // 비용 안내
     const cost = calculateCost(photosToAnalyze.length);
-    log(`💰 예상 비용: $${cost.usd} (약 ${cost.krw}원)`);
+    log(`💰 예상 비용: ${cost.usd} (약 ${cost.krw}원)`);
     log(`📊 분석 대상: ${photosToAnalyze.length}장 ${TEST_MODE ? '(테스트 모드)' : '(전체 모드)'}`);
+    log(`🔄 재분석 모드: ${FORCE_REANALYZE ? 'ON (기존 데이터 무시)' : 'OFF (기존 데이터 건너뛰기)'}`);
     
     // 기존 분석 데이터 로딩
     let analysisData = await loadExistingAnalysis();
@@ -228,10 +230,12 @@ async function analyzeAllPhotos() {
         const photoNumber = photosToAnalyze[i];
         const fileName = String(photoNumber).padStart(6, "0");
         
-        // 이미 분석된 사진은 건너뛰기
-        if (analysisData[fileName]) {
+        // 이미 분석된 사진은 건너뛰기 (FORCE_REANALYZE가 false일 때만)
+        if (!FORCE_REANALYZE && analysisData[fileName]) {
             log(`⏭️ 건너뛰기: ${fileName}.jpg (이미 분석됨)`);
             continue;
+        } else if (FORCE_REANALYZE && analysisData[fileName]) {
+            log(`🔄 재분석: ${fileName}.jpg (강제 재분석 모드)`);
         }
         
         // 진행률 표시
@@ -312,8 +316,10 @@ function showUsage() {
   node photo-analyzer.js help            # 이 도움말 표시
 
 ⚙️ 설정 변경:
-  - TEST_MODE = true   : 5장만 테스트 (약 15원)
-  - TEST_MODE = false  : 전체 1481장 (약 4,600원)
+  - TEST_MODE = true        : 5장만 테스트 (약 15원)
+  - TEST_MODE = false       : 전체 1481장 (약 4,600원)
+  - FORCE_REANALYZE = true  : 기존 데이터 무시하고 재분석
+  - FORCE_REANALYZE = false : 기존 데이터 건너뛰기
 
 📁 출력 파일:
   - ${ANALYSIS_OUTPUT_FILE}
