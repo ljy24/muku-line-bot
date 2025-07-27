@@ -6,6 +6,7 @@
 // 🕊️ 진정한 자율시스템 v4.0 완전 지원 - 학습기반+예측+지능 탐지
 // 🚫 더 이상 modules 의존성 없음 - 100% 확실한 동작 보장
 // 📊 스케줄러 상세 정보 복구 - 이전 정상 버전 수준
+// 🇰🇷 완전 한국어 의도 변환 시스템 적용 - "caring" → "돌봄" 등
 // ============================================================================
 
 const fs = require('fs');
@@ -31,6 +32,81 @@ function getJapanTime() {
 
 function formatJapanTime(format = 'YYYY-MM-DD HH:mm:ss') {
     return getJapanTime().format(format);
+}
+
+// ================== 🇰🇷 의도 상태 한국어 변환 시스템 ==================
+const INTENT_TRANSLATIONS = {
+    // 기본 감정 의도
+    'caring': '돌봄',
+    'loving': '사랑',
+    'playful': '장난기', 
+    'sulky': '삐짐',
+    'worried': '걱정',
+    'affectionate': '애정',
+    'excited': '흥분',
+    'sad': '슬픔',
+    'happy': '기쁨',
+    'curious': '궁금함',
+    'lonely': '외로움',
+    'protective': '보호',
+    'jealous': '질투',
+    'grateful': '감사',
+    'apologetic': '미안함',
+    'needy': '응석',
+    'confident': '자신감',
+    'shy': '부끄러움',
+    'angry': '화남',
+    'frustrated': '답답함',
+    'content': '만족',
+    'nostalgic': '그리움',
+    'hopeful': '희망',
+    'anxious': '불안',
+    'missing': '그리워함',
+    'teasing': '놀림',
+    'comforting': '위로',
+    'encouraging': '격려',
+    'complaining': '투정',
+    'demanding': '요구',
+    'clingy': '끈적함',
+    'romantic': '로맨틱',
+    'mischievous': '장난꾸러기',
+    'serious': '진지함',
+    'relaxed': '편안함',
+    'energetic': '활발함',
+    'tired': '피곤함',
+    'sleepy': '졸림',
+    'bored': '심심함',
+    'entertained': '즐거움',
+    'surprised': '놀람',
+    'confused': '혼란',
+    'patient': '인내',
+    'impatient': '조급함',
+    'calm': '평온함',
+    'stressed': '스트레스',
+    'relieved': '안도',
+    
+    // 학습/AI 관련 의도
+    'learning': '학습중',
+    'analyzing': '분석중',
+    'predicting': '예측중',
+    'evolving': '진화중',
+    'thinking': '생각중',
+    'processing': '처리중',
+    'understanding': '이해중',
+    'remembering': '기억중',
+    
+    // 기본값
+    'none': '없음',
+    'unknown': '알수없음',
+    'normal': '평범함'
+};
+
+// 🔄 의도 상태 변환 함수
+function translateIntent(englishIntent) {
+    if (!englishIntent || typeof englishIntent !== 'string') {
+        return '알수없음';
+    }
+    return INTENT_TRANSLATIONS[englishIntent] || englishIntent;
 }
 
 // ================== 🎭 이모지 및 상태 정의 ==================
@@ -836,10 +912,11 @@ async function generateLineStatusReport(modules) {
                 }
             }
             
-            // 현재 욕구/의도
+            // 🇰🇷 현재 욕구/의도 - 한국어 변환 적용!
             const desires = trueAutonomousStatus.currentDesires;
             if (desires && desires.messaging !== 'none') {
-                report += `💭 [현재의도] ${desires.messaging}\n`;
+                const koreanIntent = translateIntent(desires.messaging);
+                report += `💭 [현재의도] ${koreanIntent}\n`;
             }
             
             // 다음 결정 시간
@@ -1177,7 +1254,14 @@ function startAutoStatusUpdates(modules, intervalMinutes = 1) {
                 // 🧠 진정한 자율시스템 상태 간단 확인
                 const trueAutonomousStatus = getDirectTrueAutonomousSystemStatus();
                 if (trueAutonomousStatus.exists && trueAutonomousStatus.isActive) {
+                    // 🇰🇷 의도 상태 한국어로 표시
+                    const koreanIntent = translateIntent(trueAutonomousStatus.currentDesires?.messaging || 'none');
                     console.log(`${colors.purple}🧠 진정한자율: 활성 (메시지:${trueAutonomousStatus.autonomousMessages}, 학습:${trueAutonomousStatus.learningBasedDecisions}, OpenAI:${trueAutonomousStatus.openaiApiCalls}) [${trueAutonomousStatus.detectionMethod}]${colors.reset}`);
+                    
+                    // 의도 상태가 '없음'이 아닌 경우에만 표시
+                    if (koreanIntent !== '없음' && koreanIntent !== 'none') {
+                        console.log(`${colors.purple}💭 [현재의도] ${koreanIntent}${colors.reset}`);
+                    }
                 }
                 
                 // 갈등 상태 간단 확인
@@ -1234,6 +1318,10 @@ module.exports = {
     
     // 속마음 관련
     getRandomYejinHeart,
+    
+    // 🇰🇷 한국어 변환 시스템
+    translateIntent,
+    INTENT_TRANSLATIONS,
     
     // 🩸 마스터 연동 및 로그기반 함수들 (업데이트)
     getDirectLearningData,
