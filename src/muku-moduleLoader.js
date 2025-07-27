@@ -140,14 +140,7 @@ async function loadAllModules() {
             modules.commandHandler = null;
         }
 
-        try {
-            modules.emotionalContextManager = require('./emotionalContextManager');
-            console.log(`${colors.system}✅ [6/27] emotionalContextManager: 감정 상태 시스템${colors.reset}`);
-        } catch (error) {
-            console.log(`${colors.error}❌ [6/27] emotionalContextManager 로드 실패: ${error.message}${colors.reset}`);
-            modules.emotionalContextManager = null;
-        }
-
+            modules.sulkyManager = require('./sulkyManager');
         try {
             modules.sulkyManager = require('./sulkyManager');
             console.log(`${colors.system}✅ [7/27] sulkyManager: 독립된 삐짐 관리 시스템${colors.reset}`);
