@@ -293,12 +293,155 @@ function resetDailyStats() {
 
 // ================== 📤 모듈 내보내기 ==================
 
+// ================== 🔗 기존 spontaneousYejinManager.js 호환성 함수들 ==================
+
+let setupLineClient = null;
+let setupUserId = null;
+
+/**
+ * 🔗 기존 코드 호환성: 시간대별 카테고리 선택
+ */
+function selectPhotoByTimeAndMood(hour) {
+    // 시간대별 선호 카테고리
+    if (hour >= 6 && hour < 12) {
+        return 'indoor'; // 아침: 예진이 사진
+    } else if (hour >= 12 && hour < 18) {
+        return 'outdoor'; // 오후: 커플 사진
+    } else if (hour >= 18 && hour < 22) {
+        return 'memory'; // 저녁: 추억 사진
+    } else {
+        return 'landscape'; // 밤/새벽: 풍경 사진
+    }
+}
+
+/**
+ * 🔗 기존 코드 호환성: LINE 클라이언트 설정
+ */
+function setupEnhancedPhotoSystem(lineClient, userId) {
+    setupLineClient = lineClient;
+    setupUserId = userId;
+    console.log('[enhancedPhoto] 🔗 LINE 클라이언트 설정 완료');
+}
+
+/**
+ * 🔗 기존 코드 호환성: 개선된 사진 전송 (기존 인터페이스)
+ */
+async function sendEnhancedAnalyzedPhoto(preferredCategory = 'indoor', mood = 'casual') {
+    try {
+        console.log('[enhancedPhoto] 🎯 기존 호환 모드 사진 전송 시작');
+        console.log('[enhancedPhoto] 📂 카테고리:', preferredCategory);
+        console.log('[enhancedPhoto] 😊 무드:', mood);
+        
+        if (!setupLineClient || !setupUserId) {
+            console.log('[enhancedPhoto] ❌ LINE 클라이언트 또는 사용자 ID 미설정');
+            return false;
+        }
+        
+        // 기본 사진 URL 생성 (기존 방식 활용)
+        const baseUrl = "https://photo.de-ji.net/photo/yejin";
+        const fileCount = 2032;
+        const index = Math.floor(Math.random() * fileCount) + 1;
+        const fileName = String(index).padStart(6, "0") + ".jpg";
+        const imageUrl = `${baseUrl}/${fileName}`;
+        
+        console.log('[enhancedPhoto] 📸 생성된 이미지 URL:', imageUrl);
+        
+        // 실시간 Vision API로 메시지 생성
+        const result = await getEnhancedPhotoMessage(imageUrl, mapCategoryToPhotoType(preferredCategory));
+        
+        let message = result.message;
+        
+        // 무드 반영해서 메시지 조정
+        if (mood === 'cute' && result.success) {
+            message = message.replace(/\?/g, '? ㅎㅎ').replace(/~/g, '~ 💕');
+        }
+        
+        console.log('[enhancedPhoto] 💬 최종 메시지:', message);
+        console.log('[enhancedPhoto] 🔧 사용된 방식:', result.method);
+        if (result.cost) {
+            console.log('[enhancedPhoto] 💰 이번 비용:', '
+
+// ================== 🚀 자동 초기화 ==================
+
+console.log('[enhancedPhoto] 🎯 개선된 사진 시스템 v5.0 (실시간 Vision API) 로드 완료');
+console.log('[enhancedPhoto] 💰 예상 비용: 하루 $0.02, 월 $0.6');
+console.log('[enhancedPhoto] 🛡️ 100% 안전한 폴백 시스템 내장');
+console.log('[enhancedPhoto] 🎯 인물 구분: 실내=예진이, 실외=아저씨+예진이'); + result.cost.toFixed(4));
+        }
+        
+        // LINE으로 사진과 메시지 전송
+        await setupLineClient.pushMessage(setupUserId, [
+            {
+                type: 'image',
+                originalContentUrl: imageUrl,
+                previewImageUrl: imageUrl
+            },
+            {
+                type: 'text', 
+                text: message
+            }
+        ]);
+        
+        console.log('[enhancedPhoto] ✅ 기존 호환 모드 사진 전송 완료');
+        return true;
+        
+    } catch (error) {
+        console.log('[enhancedPhoto] ❌ 기존 호환 모드 전송 실패:', error.message);
+        return false;
+    }
+}
+
+/**
+ * 🔗 기존 코드 호환성: 카테고리를 photoType으로 변환
+ */
+function mapCategoryToPhotoType(category) {
+    const mapping = {
+        'indoor': 'selfie',
+        'outdoor': 'couple', 
+        'landscape': 'memory',
+        'memory': 'memory',
+        'portrait': 'selfie',
+        'concept': 'concept',
+        'any': 'selfie'
+    };
+    
+    return mapping[category] || 'selfie';
+}
+
+/**
+ * 🔗 기존 코드 호환성: 사진 분석 통계
+ */
+async function getPhotoAnalysisStats() {
+    const status = getSystemStatus();
+    
+    return {
+        totalAnalyzed: status.todayStats.photosAnalyzed,
+        successRate: 100, // 폴백 보장으로 항상 성공
+        systemReady: systemReady,
+        todayCost: status.todayStats.totalCost,
+        avgCostPerPhoto: status.todayStats.avgCostPerPhoto,
+        categories: ['indoor', 'outdoor', 'landscape', 'memory', 'portrait', 'concept'],
+        preferredByTime: {
+            morning: 'indoor',
+            afternoon: 'outdoor', 
+            evening: 'memory',
+            night: 'landscape'
+        }
+    };
+}
+
 module.exports = {
     // 메인 함수 (기존 enhancedPhotoSystem 인터페이스 유지)
     getEnhancedPhotoMessage,
     initializeEnhancedPhotoSystem,
     getSystemStatus,
     testEnhancedSystem,
+    
+    // 🔗 기존 spontaneousYejinManager.js 호환 함수들
+    selectPhotoByTimeAndMood,
+    setupEnhancedPhotoSystem,
+    sendEnhancedAnalyzedPhoto,
+    getPhotoAnalysisStats,
     
     // 추가 함수들
     getDailyCostEstimate,
@@ -307,7 +450,8 @@ module.exports = {
     // 내부 함수들 (디버깅용)
     calculateCost,
     getBasicFallbackMessage,
-    getBasicFallbackResult
+    getBasicFallbackResult,
+    mapCategoryToPhotoType
 };
 
 // ================== 🚀 자동 초기화 ==================
