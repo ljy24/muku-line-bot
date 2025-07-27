@@ -39,6 +39,15 @@ function getUltimateContext() {
     return ultimateContext;
 }
 
+// 🎯 NEW: 개선된 사진 시스템 연동
+let enhancedPhotoSystem = null;
+try {
+    enhancedPhotoSystem = require('./enhancedPhotoSystem');
+    console.log('✅ [spontaneousYejin] 개선된 사진 시스템 로딩 성공');
+} catch (error) {
+    console.warn('⚠️ [spontaneousYejin] 개선된 사진 시스템 로딩 실패 - 기존 시스템 사용:', error.message);
+}
+
 // ================== 🌏 설정 ==================
 const TIMEZONE = 'Asia/Tokyo';
 const USER_ID = process.env.LINE_TARGET_USER_ID;
