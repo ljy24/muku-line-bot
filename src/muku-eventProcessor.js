@@ -1,5 +1,5 @@
 // ============================================================================
-// muku-eventProcessor.js - 무쿠 이벤트 처리 전용 모듈 (완벽한 에러 방지 버전)
+// muku-eventProcessor.js - 무쿠 이벤트 처리 전용 모듈 (하이브리드 대화 저장 버전)
 // ✅ 메시지 처리, 이미지 처리, 명령어 처리 로직 분리  
 // 🔍 얼굴 인식, 새벽 대화, 생일 감지 등 모든 이벤트 처리
 // 🧠 실시간 학습 시스템 연동 - 대화 패턴 학습 및 개인화
@@ -11,7 +11,32 @@
 // 🚨 완벽한 에러 방지 - 모든 가능한 에러 케이스 상정 및 처리
 // 💰 디플로이 최적화 - 한 번에 완벽한 동작 보장
 // 🎯 무쿠 정상 응답 100% 보장 - "아조씨! 무슨 일이야?" 같은 정상 대화
+// 🔥 하이브리드 대화 저장 - Redis + JSON 완전 기억 시스템
 // ============================================================================
+
+// ================== 🔥 하이브리드 대화 저장 시스템 Import ==================
+let redisConversationSystem = null;
+let ultimateConversationContext = null;
+
+// 💾 메모리 기반 임시 저장소 (최후의 보루)
+let memoryConversationStore = [];
+const MAX_MEMORY_CONVERSATIONS = 50;
+
+// Redis 시스템 (고속 캐싱)
+try {
+    redisConversationSystem = require('./muku-autonomousYejinSystem.js');
+    console.log('🚀 [하이브리드] Redis 대화 시스템 로드 성공');
+} catch (error) {
+    console.log('⚠️ [하이브리드] Redis 시스템 없음 - JSON만 사용');
+}
+
+// JSON 시스템 (영구 저장)
+try {
+    ultimateConversationContext = require('./ultimateConversationContext.js');
+    console.log('💾 [하이브리드] JSON 대화 시스템 로드 성공');
+} catch (error) {
+    console.log('⚠️ [하이브리드] JSON 시스템 없음 - Redis만 사용');
+}
 
 // ================== 🎨 색상 정의 ==================
 const colors = {
@@ -27,8 +52,240 @@ const colors = {
     success: '\x1b[32m',     // 초록색 (성공)
     warning: '\x1b[93m',     // 노란색 (경고)
     fallback: '\x1b[96m',    // 하늘색 (폴백)
+    hybrid: '\x1b[1m\x1b[96m', // 굵은 하늘색 (하이브리드)
+    redis: '\x1b[1m\x1b[91m',   // 굵은 빨간색 (Redis)
+    json: '\x1b[1m\x1b[32m',    // 굵은 초록색 (JSON)
     reset: '\x1b[0m'         // 색상 리셋
 };
+
+// ================== 🔥 하이브리드 대화 저장 함수 (핵심) ==================
+async function saveConversationHybrid(userId, userMessage, mukuResponse, messageType = 'text') {
+    const timestamp = getJapanTime();
+    let redisSuccess = false;
+    let jsonSuccess = false;
+    
+    console.log(`${colors.hybrid}🔥 [하이브리드저장] 대화 저장 시작...${colors.reset}`);
+    
+    // 🚀 1단계: Redis 고속 저장 시도
+    if (redisConversationSystem) {
+        try {
+            const responseText = typeof mukuResponse === 'object' ? mukuResponse.comment || mukuResponse.text || JSON.stringify(mukuResponse) : String(mukuResponse);
+            
+            // 정확한 Redis 함수들 시도
+            let redisAttempted = false;
+            
+            // 방법 1: 직접 전역 인스턴스 접근
+            const globalInstance = redisConversationSystem.getGlobalInstance?.() || redisConversationSystem.getGlobalRedisInstance?.();
+            if (globalInstance && globalInstance.redisCache && globalInstance.redisCache.cacheConversation) {
+                await globalInstance.redisCache.cacheConversation(userId, userMessage, 'user_input');
+                await globalInstance.redisCache.cacheConversation(userId, responseText, 'muku_response');
+                redisAttempted = true;
+            }
+            
+            // 방법 2: 내보낸 함수들 시도
+            if (!redisAttempted) {
+                if (typeof redisConversationSystem.forceCacheConversation === 'function') {
+                    await redisConversationSystem.forceCacheConversation(userId, userMessage);
+                    await redisConversationSystem.forceCacheConversation(userId, responseText);
+                    redisAttempted = true;
+                } else if (typeof redisConversationSystem.updateYejinEmotion === 'function') {
+                    // updateYejinEmotion이 있으면 다른 함수들도 있을 것
+                    const cacheHistory = redisConversationSystem.getCachedConversationHistory;
+                    if (typeof cacheHistory === 'function') {
+                        // Redis 시스템이 활성화된 상태로 가정하고 직접 접근
+                        const instance = redisConversationSystem.getGlobalInstance();
+                        if (instance && instance.redisCache) {
+                            await instance.redisCache.cacheConversation(userId, userMessage, 'user_input');
+                            await instance.redisCache.cacheConversation(userId, responseText, 'muku_response');
+                            redisAttempted = true;
+                        }
+                    }
+                }
+            }
+            
+            if (redisAttempted) {
+                redisSuccess = true;
+                console.log(`${colors.redis}🚀 [Redis저장] 성공! 초고속 대화 캐싱 완료${colors.reset}`);
+            } else {
+                console.log(`${colors.warning}⚠️ [Redis저장] 적절한 함수를 찾을 수 없음${colors.reset}`);
+            }
+            
+        } catch (error) {
+            console.log(`${colors.warning}⚠️ [Redis저장] 실패: ${error.message}${colors.reset}`);
+        }
+    }
+    
+    // 💾 2단계: JSON 영구 저장 시도
+    if (ultimateConversationContext) {
+        try {
+            const responseText = typeof mukuResponse === 'object' ? mukuResponse.comment || mukuResponse.text || JSON.stringify(mukuResponse) : String(mukuResponse);
+            
+            // addUltimateMessage 함수 시도
+            if (typeof ultimateConversationContext.addUltimateMessage === 'function') {
+                // 사용자 메시지 저장
+                await ultimateConversationContext.addUltimateMessage(
+                    '아저씨',
+                    userMessage,
+                    {
+                        timestamp: timestamp,
+                        messageType: messageType,
+                        source: 'user'
+                    }
+                );
+                
+                // 무쿠 응답 저장
+                await ultimateConversationContext.addUltimateMessage(
+                    '예진이',
+                    responseText,
+                    {
+                        timestamp: timestamp,
+                        messageType: 'text',
+                        source: 'muku_response'
+                    }
+                );
+                
+                jsonSuccess = true;
+            } else if (typeof ultimateConversationContext.addConversation === 'function') {
+                // 대체 함수 이름 시도
+                await ultimateConversationContext.addConversation(userMessage, responseText, {
+                    timestamp: timestamp,
+                    messageType: messageType,
+                    userId: userId
+                });
+                jsonSuccess = true;
+            } else if (typeof ultimateConversationContext.saveConversation === 'function') {
+                // 또 다른 대체 함수 시도
+                await ultimateConversationContext.saveConversation({
+                    user: userMessage,
+                    muku: responseText,
+                    timestamp: timestamp,
+                    messageType: messageType,
+                    userId: userId
+                });
+                jsonSuccess = true;
+            } else {
+                console.log(`${colors.warning}⚠️ [JSON저장] 적절한 저장 함수를 찾을 수 없음${colors.reset}`);
+            }
+            
+            if (jsonSuccess) {
+                console.log(`${colors.json}💾 [JSON저장] 성공! 영구 대화 기록 완료${colors.reset}`);
+            }
+            
+        } catch (error) {
+            console.log(`${colors.warning}⚠️ [JSON저장] 실패: ${error.message}${colors.reset}`);
+        }
+    }
+    
+    // 🎯 결과 리포트 및 메모리 백업
+    if (redisSuccess && jsonSuccess) {
+        console.log(`${colors.success}✅ [하이브리드완료] Redis + JSON 모두 성공! 완벽한 기억 시스템!${colors.reset}`);
+    } else if (redisSuccess) {
+        console.log(`${colors.redis}✅ [Redis만성공] 고속 캐싱 완료! (JSON 백업 실패)${colors.reset}`);
+    } else if (jsonSuccess) {
+        console.log(`${colors.json}✅ [JSON만성공] 영구 저장 완료! (Redis 캐시 실패)${colors.reset}`);
+    } else {
+        console.log(`${colors.warning}⚠️ [하이브리드실패] 모든 저장 시스템 실패 - 메모리 저장소 사용${colors.reset}`);
+        
+        // 🛡️ 최후의 보루: 메모리 저장소
+        try {
+            const responseText = typeof mukuResponse === 'object' ? mukuResponse.comment || mukuResponse.text || JSON.stringify(mukuResponse) : String(mukuResponse);
+            
+            memoryConversationStore.push({
+                timestamp: timestamp,
+                userId: userId,
+                userMessage: userMessage,
+                mukuResponse: responseText,
+                messageType: messageType
+            });
+            
+            // 메모리 저장소 크기 제한
+            if (memoryConversationStore.length > MAX_MEMORY_CONVERSATIONS) {
+                memoryConversationStore = memoryConversationStore.slice(-MAX_MEMORY_CONVERSATIONS);
+            }
+            
+            console.log(`${colors.success}💭 [메모리저장] 성공! 임시 저장소에 ${memoryConversationStore.length}개 대화 보관 중${colors.reset}`);
+        } catch (memoryError) {
+            console.log(`${colors.error}❌ [메모리저장] 마저 실패: ${memoryError.message}${colors.reset}`);
+        }
+    }
+    
+    return { redisSuccess, jsonSuccess, memoryFallback: !redisSuccess && !jsonSuccess };
+}
+
+// ================== 🧠 과거 대화 조회 함수 (하이브리드) ==================
+async function getConversationHistoryHybrid(userId, limit = 20) {
+    console.log(`${colors.hybrid}🔍 [하이브리드조회] 과거 대화 검색 중...${colors.reset}`);
+    
+    // 🚀 1단계: Redis에서 최근 대화 조회 (초고속)
+    if (redisConversationSystem) {
+        try {
+            let recentHistory = [];
+            
+            // 정확한 Redis 조회 함수들 시도
+            const globalInstance = redisConversationSystem.getGlobalInstance?.() || redisConversationSystem.getGlobalRedisInstance?.();
+            if (globalInstance && globalInstance.redisCache && globalInstance.redisCache.getConversationHistory) {
+                recentHistory = await globalInstance.redisCache.getConversationHistory(userId, limit);
+            } else if (typeof redisConversationSystem.getCachedConversationHistory === 'function') {
+                recentHistory = await redisConversationSystem.getCachedConversationHistory(userId, limit);
+            }
+            
+            if (recentHistory && recentHistory.length > 0) {
+                console.log(`${colors.redis}🚀 [Redis조회] ${recentHistory.length}개 최근 대화 발견!${colors.reset}`);
+                return recentHistory;
+            }
+        } catch (error) {
+            console.log(`${colors.warning}⚠️ [Redis조회] 실패: ${error.message}${colors.reset}`);
+        }
+    }
+    
+    // 💾 2단계: JSON에서 과거 대화 조회 (전체 기록)
+    if (ultimateConversationContext) {
+        try {
+            if (typeof ultimateConversationContext.getRecentConversations === 'function') {
+                const allHistory = await ultimateConversationContext.getRecentConversations(limit);
+                if (allHistory && allHistory.length > 0) {
+                    console.log(`${colors.json}💾 [JSON조회] ${allHistory.length}개 과거 대화 발견!${colors.reset}`);
+                    return allHistory;
+                }
+            } else if (typeof ultimateConversationContext.getConversationMemories === 'function') {
+                // 대체 함수 이름 시도
+                const allHistory = await ultimateConversationContext.getConversationMemories(limit);
+                if (allHistory && allHistory.length > 0) {
+                    console.log(`${colors.json}💾 [JSON조회] ${allHistory.length}개 과거 대화 발견!${colors.reset}`);
+                    return allHistory;
+                }
+            }
+        } catch (error) {
+            console.log(`${colors.warning}⚠️ [JSON조회] 실패: ${error.message}${colors.reset}`);
+        }
+    }
+    
+    // 💭 3단계: 메모리 저장소에서 조회 (최후의 보루)
+    if (memoryConversationStore.length > 0) {
+        try {
+            const memoryHistory = memoryConversationStore
+                .filter(conv => conv.userId === userId)
+                .slice(-limit)
+                .map(conv => ({
+                    timestamp: conv.timestamp,
+                    userMessage: conv.userMessage,
+                    mukuResponse: conv.mukuResponse,
+                    messageType: conv.messageType,
+                    source: 'memory'
+                }));
+            
+            if (memoryHistory.length > 0) {
+                console.log(`${colors.fallback}💭 [메모리조회] ${memoryHistory.length}개 메모리 대화 발견!${colors.reset}`);
+                return memoryHistory;
+            }
+        } catch (error) {
+            console.log(`${colors.warning}⚠️ [메모리조회] 실패: ${error.message}${colors.reset}`);
+        }
+    }
+    
+    console.log(`${colors.fallback}⚪ [하이브리드조회] 모든 저장소에서 과거 대화 없음${colors.reset}`);
+    return [];
+}
 
 // ================== 🌏 일본시간 함수들 (에러 방지) ==================
 function getJapanTime() {
@@ -883,7 +1140,7 @@ async function processOtherMessageType(messageType, modules) {
     return await applyBehaviorModeToResponse(baseResponse, modules, { messageType: messageType });
 }
 
-// ================== 🎯 메인 이벤트 처리 함수 (완벽한 에러 방지) ==================
+// ================== 🎯 메인 이벤트 처리 함수 (하이브리드 대화 저장 추가) ==================
 async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherSafely, getVersionResponse, enhancedLogging) {
     // 🛡️ 기본 검증
     if (!event || event.type !== 'message') {
@@ -943,6 +1200,9 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
 
                 const finalVersionComment = behaviorVersionResponse.comment || versionResponse;
 
+                // 🔥 하이브리드 대화 저장!
+                await saveConversationHybrid(safeUserId, messageText, finalVersionComment, 'text');
+
                 // 실시간 학습 처리
                 await processRealTimeLearning(
                     messageText,
@@ -987,6 +1247,9 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
 
                 const finalNightComment = behaviorNightResponse.comment || nightResponse.response;
 
+                // 🔥 하이브리드 대화 저장!
+                await saveConversationHybrid(safeUserId, messageText, finalNightComment, 'text');
+
                 await processRealTimeLearning(
                     messageText,
                     finalNightComment,
@@ -1006,6 +1269,9 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
                 );
 
                 const finalBirthdayComment = behaviorBirthdayResponse.comment || birthdayResponse.response;
+
+                // 🔥 하이브리드 대화 저장!
+                await saveConversationHybrid(safeUserId, messageText, finalBirthdayComment, 'text');
 
                 await processRealTimeLearning(
                     messageText,
@@ -1027,6 +1293,9 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
             
             if (chatResponse) {
                 const finalChatComment = chatResponse.comment || chatResponse;
+
+                // 🔥 하이브리드 대화 저장! (가장 중요!)
+                await saveConversationHybrid(safeUserId, messageText, finalChatComment, 'text');
 
                 // 실시간 학습 처리
                 await processRealTimeLearning(
@@ -1066,6 +1335,9 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
                 ultimateFallback: true
             };
 
+            // 🔥 최종 안전 응답도 저장!
+            await saveConversationHybrid(safeUserId, messageText, ultimateSafeResponse.comment, 'text');
+
             await processRealTimeLearning(
                 messageText,
                 ultimateSafeResponse.comment,
@@ -1093,6 +1365,9 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
             const imageResponse = await processImageMessage(messageId, client, faceMatcher, loadFaceMatcherSafely, enhancedLogging, modules);
 
             const finalImageComment = imageResponse.comment || imageResponse;
+
+            // 🔥 하이브리드 대화 저장! (이미지도 저장!)
+            await saveConversationHybrid(safeUserId, '이미지 전송', finalImageComment, 'image');
 
             // 실시간 학습 처리
             await processRealTimeLearning(
@@ -1129,6 +1404,9 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
             
             const otherResponse = await processOtherMessageType(safeMessageType, modules);
             const finalOtherComment = otherResponse.comment || otherResponse;
+
+            // 🔥 하이브리드 대화 저장! (기타 타입도 저장!)
+            await saveConversationHybrid(safeUserId, `${safeMessageType} 메시지`, finalOtherComment, safeMessageType);
 
             // 실시간 학습 처리
             await processRealTimeLearning(
@@ -1176,6 +1454,12 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
 
         const finalEmergencyComment = finalEmergencyResponse.comment || finalEmergencyResponse;
 
+        // 🔥 에러 상황에서도 하이브리드 저장 시도!
+        await safeAsyncCall(async () => {
+            const errorMessage = userMessage?.text || '에러 발생';
+            await saveConversationHybrid(safeUserId, errorMessage, finalEmergencyComment, safeMessageType);
+        }, '응급대화저장');
+
         // 에러 상황에서도 학습 시도
         await safeAsyncCall(async () => {
             await processRealTimeLearning(
@@ -1209,5 +1493,12 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
 // ================== 📤 모듈 내보내기 ==================
 module.exports = {
     handleEvent,
-    processRealTimeLearning
+    processRealTimeLearning,
+    // 🔥 하이브리드 대화 저장 함수들 추가!
+    saveConversationHybrid,
+    getConversationHistoryHybrid,
+    // 💭 메모리 저장소 관리 함수들
+    getMemoryConversations: () => memoryConversationStore,
+    clearMemoryConversations: () => { memoryConversationStore = []; },
+    getMemoryConversationCount: () => memoryConversationStore.length
 };
