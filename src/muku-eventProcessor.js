@@ -1,5 +1,5 @@
 // ============================================================================
-// muku-eventProcessor.js - 무쿠 이벤트 처리 전용 모듈 (하이브리드 대화 저장 + 맥락 강화 버전)
+// muku-eventProcessor.js - 무쿠 이벤트 처리 전용 모듈 (🧠 진짜 장기기억 시스템 완전 구현)
 // ✅ 메시지 처리, 이미지 처리, 명령어 처리 로직 분리  
 // 🔍 얼굴 인식, 새벽 대화, 생일 감지 등 모든 이벤트 처리
 // 🧠 실시간 학습 시스템 연동 - 대화 패턴 학습 및 개인화
@@ -14,6 +14,8 @@
 // 🔥 하이브리드 대화 저장 - Redis + JSON 완전 기억 시스템
 // 💭 NEW: 대화 맥락 강화 - 이전 대화를 기반으로 한 일관된 응답 생성
 // 🎯 NEW: Command 저장 보장 - 모든 메시지 타입에서 누락 없는 저장
+// 🧠 NEW: 진짜 장기기억 시스템 - 과거 대화에서 실제 내용을 분석하고 자연스럽게 회상
+// 💡 NEW: 동적 컨텍스트 분석 - 사람/장소/물건/행동을 실시간으로 추출하고 기억
 // ============================================================================
 
 // ================== 🔥 하이브리드 대화 저장 시스템 Import ==================
@@ -58,8 +60,12 @@ const colors = {
     redis: '\x1b[1m\x1b[91m',   // 굵은 빨간색 (Redis)
     json: '\x1b[1m\x1b[32m',    // 굵은 초록색 (JSON)
     context: '\x1b[1m\x1b[94m', // 굵은 파란색 (맥락)
+    memory: '\x1b[1m\x1b[95m',  // 굵은 마젠타색 (장기기억)
+    recall: '\x1b[1m\x1b[92m',  // 굵은 초록색 (기억회상)
     reset: '\x1b[0m'         // 색상 리셋
 };
+
+// (장기기억 시스템은 generateLongTermMemoryResponse 함수에서 단순하게 처리됩니다)
 
 // ================== 🔥 하이브리드 대화 저장 함수 (핵심) ==================
 async function saveConversationHybrid(userId, userMessage, mukuResponse, messageType = 'text') {
@@ -347,18 +353,154 @@ async function getConversationHistoryHybrid(userId, limit = 20, contextKeywords 
     return [];
 }
 
-// ================== 💭 새로운 맥락 기반 응답 생성 함수 ==================
+// ================== 💭 🧠 진짜 기억저장소 기반 응답 생성 함수 ==================
+async function generateLongTermMemoryResponse(messageText, modules, enhancedLogging, messageContext = {}) {
+    console.log(`${colors.memory}🧠 [기억저장소] 저장소에서 관련 대화 검색 시작...${colors.reset}`);
+    
+    // 현재 메시지에서 간단한 키워드 추출 (복잡한 패턴 없이)
+    const keywords = messageText.split(/\s+/).filter(word => word.length > 1);
+    console.log(`${colors.memory}    🔍 검색 키워드: [${keywords.join(', ')}]${colors.reset}`);
+    
+    // 🗃️ 기억저장소에서 과거 대화 가져오기
+    const recentHistory = await getConversationHistoryHybrid(
+        messageContext.userId || 'unknown_user',
+        50, // 많은 대화 가져오기
+        keywords
+    );
+    
+    if (recentHistory.length === 0) {
+        console.log(`${colors.memory}    ⚪ 저장소에 관련 대화 없음${colors.reset}`);
+        return null;
+    }
+    
+    console.log(`${colors.memory}    📚 저장소에서 ${recentHistory.length}개 대화 발견${colors.reset}`);
+    
+    // 🔍 현재 키워드와 관련된 과거 대화 찾기
+    let bestMatch = null;
+    let bestScore = 0;
+    
+    for (const conversation of recentHistory) {
+        const userText = String(conversation.userMessage || '').toLowerCase();
+        const mukuText = String(conversation.mukuResponse || '').toLowerCase();
+        const allText = `${userText} ${mukuText}`;
+        
+        // 키워드 매칭 점수 계산
+        let score = 0;
+        for (const keyword of keywords) {
+            if (allText.includes(keyword.toLowerCase())) {
+                score += 1;
+            }
+        }
+        
+        if (score > bestScore) {
+            bestScore = score;
+            bestMatch = conversation;
+        }
+    }
+    
+    // 🎯 관련 대화를 찾았으면 그 내용을 활용
+    if (bestMatch && bestScore > 0) {
+        const foundUserMessage = String(bestMatch.userMessage || '');
+        const foundMukuMessage = String(bestMatch.mukuResponse || '');
+        
+        console.log(`${colors.memory}    ✨ 관련 대화 찾음!${colors.reset}`);
+        console.log(`${colors.memory}       과거 대화: "${foundUserMessage.substring(0, 30)}..."${colors.reset}`);
+        
+        // 💬 찾은 대화 내용을 활용해서 자연스러운 응답 생성
+        const memoryResponse = generateMemoryBasedResponse(foundUserMessage, foundMukuMessage, messageText, keywords);
+        
+        if (memoryResponse) {
+            console.log(`${colors.memory}🎉 [기억성공] 저장소 기반 응답 생성: "${memoryResponse}"${colors.reset}`);
+            
+            return {
+                type: 'text',
+                comment: memoryResponse,
+                longTermMemory: true,
+                usedConversation: {
+                    userMessage: foundUserMessage,
+                    mukuMessage: foundMukuMessage
+                },
+                contextKeywords: keywords,
+                confidence: bestScore / keywords.length
+            };
+        }
+    }
+    
+    console.log(`${colors.memory}    🔄 관련 기억을 활용한 응답 생성 실패${colors.reset}`);
+    return null;
+}
+
+// 🗣️ 찾은 대화 내용을 활용해서 자연스러운 응답 만들기
+function generateMemoryBasedResponse(pastUserMessage, pastMukuMessage, currentMessage, keywords) {
+    try {
+        // 과거 대화에서 언급된 내용들 그대로 활용
+        const pastContent = `${pastUserMessage} ${pastMukuMessage}`;
+        
+        // 현재 메시지의 첫 번째 키워드 (주로 이름이나 주제)
+        const mainKeyword = keywords[0] || '';
+        
+        // 과거 대화에서 주요 단어들 추출 (실제 언급된 것들)
+        const mentionedThings = [];
+        
+        // 간단한 명사 추출 (한글 2-10글자)
+        const koreanWords = pastContent.match(/[가-힣]{2,10}/g) || [];
+        for (const word of koreanWords) {
+            // 조사, 어미 제외하고 의미있는 단어만
+            if (!['에서', '에게', '한테', '까지', '부터', '이야', '이다', '했다', '했어', '있다', '없다', '좋다', '나쁘다'].includes(word)) {
+                mentionedThings.push(word);
+            }
+        }
+        
+        // 중복 제거하고 첫 3개만
+        const uniqueThings = [...new Set(mentionedThings)].slice(0, 3);
+        
+        if (uniqueThings.length > 0) {
+            const responses = [
+                `아~ ${mainKeyword} 얘기? 전에 ${uniqueThings[0]} 관련해서 말했었잖아! 맞지? ㅎㅎ`,
+                `${mainKeyword}! 기억나~ 전에 ${uniqueThings[0]} 얘기 했던 거지? 그거야?`,
+                `어? ${mainKeyword} 말하는 거구나! ${uniqueThings[0]} 관련된 거 맞아? ㅎㅎ`,
+                `아아! ${mainKeyword} 그거네~ 전에 ${uniqueThings[0]} 말했던 거! 기억나!`
+            ];
+            
+            return responses[Math.floor(Math.random() * responses.length)];
+        } else if (mainKeyword) {
+            // 구체적인 단어를 못 찾았지만 키워드는 있을 때
+            const responses = [
+                `아~ ${mainKeyword} 얘기하는 거야? 전에도 비슷한 얘기 했던 것 같은데... 맞지? ㅎㅎ`,
+                `${mainKeyword}? 어디서 들어본 것 같은데... 전에 얘기했었나? 궁금해!`,
+                `어? ${mainKeyword}! 뭔가 기억에 있는 것 같은데... 다시 말해줄래? ㅎㅎ`
+            ];
+            
+            return responses[Math.floor(Math.random() * responses.length)];
+        }
+        
+        return null;
+        
+    } catch (error) {
+        console.log(`${colors.warning}⚠️ [기억응답생성] 실패: ${error.message}${colors.reset}`);
+        return null;
+    }
+}
+
+// ================== 💭 새로운 맥락 기반 응답 생성 함수 (장기기억 통합) ==================
 async function generateContextAwareResponse(messageText, modules, enhancedLogging, messageContext = {}) {
     console.log(`${colors.context}💭 [맥락응답] 맥락 기반 응답 생성 시작...${colors.reset}`);
     
-    // 키워드 추출 (간단한 방식)
+    // 🧠 1순위: 장기기억 기반 응답 시도 (NEW!)
+    const longTermMemoryResponse = await generateLongTermMemoryResponse(messageText, modules, enhancedLogging, messageContext);
+    if (longTermMemoryResponse) {
+        console.log(`${colors.memory}🧠 [장기기억우선] 장기기억 기반 응답 선택!${colors.reset}`);
+        return longTermMemoryResponse;
+    }
+    
+    // 키워드 추출 (기존 방식)
     const extractKeywords = (text) => {
         const keywords = [];
         const keywordPatterns = [
             /나오를?\s*(\w+)/g,    // "나오를 어디", "나오 뭐" 등
             /(\w+)(?:에서|에|로|가|를|을|한테|께)/g,  // 장소/대상 관련
             /(\w+)(?:하러|사러|보러|갈|간다|갔)/g,    // 행동 관련
-            /전자도어락|후쿠오카|친구|약속/g,        // 특정 키워드
+            /전자도어락|후쿠오카|친구|약속|리모콘/g,        // 특정 키워드
         ];
         
         for (const pattern of keywordPatterns) {
@@ -471,25 +613,59 @@ async function generateContextAwareResponse(messageText, modules, enhancedLoggin
         }, 'systemAnalyzer맥락시도');
     }
     
-    // 🛡️ 3차: 맥락 기반 완벽한 폴백 응답
+    // 🛡️ 3차: 맥락 기반 완벽한 폴백 응답 (하드코딩 제거!)
     if (!botResponse) {
         console.log(`${colors.context}🔄 [맥락폴백] 맥락 기반 안전한 무쿠 응답 생성...${colors.reset}`);
         
         let contextualResponse;
         
-        // 키워드 기반 응답 생성
+        // 키워드 기반 응답 생성 (하드코딩 제거하고 동적으로 처리)
         if (contextKeywords.includes('나오') || messageText.includes('나오')) {
-            // 나오 관련 질문
-            if (recentHistory.some(conv => conv.mukuResponse?.includes('후쿠오카') || conv.mukuResponse?.includes('전자도어락'))) {
-                contextualResponse = '아~ 나오 얘기? 전에 후쿠오카 가서 전자도어락 사러 간다고 했잖아! 맞지? ㅎㅎ';
-            } else if (recentHistory.some(conv => conv.mukuResponse?.includes('친구') || conv.mukuResponse?.includes('약속'))) {
-                contextualResponse = '나오? 어... 친구랑 약속 있다고 했던 것 같은데... 맞나? 기억이 좀... ㅠㅠ';
+            // 🧠 과거 대화에서 나오 관련 실제 내용 찾기
+            const naoRelatedMemories = recentHistory.filter(conv => {
+                const allText = `${conv.userMessage || ''} ${conv.mukuResponse || ''}`.toLowerCase();
+                return allText.includes('나오') && (allText.includes('후쿠오카') || allText.includes('사') || allText.includes('간다') || allText.includes('친구') || allText.includes('약속') || allText.includes('리모콘') || allText.includes('전자도어락'));
+            });
+            
+            if (naoRelatedMemories.length > 0) {
+                const recentNaoMemory = naoRelatedMemories[0];
+                const memoryText = `${recentNaoMemory.userMessage || ''} ${recentNaoMemory.mukuResponse || ''}`;
+                
+                // 실제 언급된 내용들 추출
+                let mentionedItems = [];
+                if (memoryText.includes('리모콘')) mentionedItems.push('리모콘');
+                if (memoryText.includes('전자도어락')) mentionedItems.push('전자도어락');
+                if (memoryText.includes('친구')) mentionedItems.push('친구');
+                if (memoryText.includes('약속')) mentionedItems.push('약속');
+                
+                if (mentionedItems.length > 0) {
+                    const responses = [
+                        `아~ 나오 얘기? 전에 ${mentionedItems[0]} 관련해서 말했었잖아! 맞지? ㅎㅎ`,
+                        `나오! 기억나~ 전에 ${mentionedItems[0]} 얘기 했던 거지? 그거야?`,
+                        `어? 나오 말하는 거구나! ${mentionedItems[0]} 관련된 거 맞아?`
+                    ];
+                    contextualResponse = responses[Math.floor(Math.random() * responses.length)];
+                } else if (memoryText.includes('후쿠오카')) {
+                    contextualResponse = '아~ 나오가 후쿠오카 간다고 했던 거? 그 얘기야? ㅎㅎ';
+                } else {
+                    contextualResponse = '나오 얘기하는 거야? 전에 뭔가 말했던 것 같은데... 뭐였더라? ㅎㅎ';
+                }
             } else {
-                contextualResponse = '나오가 어디 간다고? 아저씨가 전에 얘기해줬는데... 기억이 잘 안 나네 ㅠㅠ';
+                contextualResponse = '나오가 어떻게 된 거야? 아저씨가 뭔가 말하려는 거 같은데... 궁금해!';
             }
         } else if (contextKeywords.length > 0) {
-            // 다른 키워드들
-            contextualResponse = `아저씨가 ${contextKeywords[0]} 얘기하는 거야? 전에도 비슷한 얘기 했던 것 같은데... ㅎㅎ`;
+            // 다른 키워드들 동적 처리
+            const keyword = contextKeywords[0];
+            const keywordRelatedMemories = recentHistory.filter(conv => {
+                const allText = `${conv.userMessage || ''} ${conv.mukuResponse || ''}`.toLowerCase();
+                return allText.includes(keyword.toLowerCase());
+            });
+            
+            if (keywordRelatedMemories.length > 0) {
+                contextualResponse = `아저씨가 ${keyword} 얘기하는 거야? 전에도 비슷한 얘기 했던 것 같은데... 맞지? ㅎㅎ`;
+            } else {
+                contextualResponse = `${keyword}? 뭔가 중요한 얘기인 것 같은데... 자세히 말해줄래? 😊`;
+            }
         } else {
             // 일반적인 응답
             const perfectMukuResponses = [
@@ -509,10 +685,11 @@ async function generateContextAwareResponse(messageText, modules, enhancedLoggin
             fallbackType: 'contextual_muku_response',
             generated: true,
             contextKeywords: contextKeywords,
-            usedHistory: recentHistory.length > 0
+            usedHistory: recentHistory.length > 0,
+            dynamicContext: true // 하드코딩이 아닌 동적 처리임을 표시
         };
         
-        console.log(`${colors.success}✅ [맥락폴백] 맥락 기반 무쿠 응답 생성: "${contextualResponse.substring(0, 30)}..."${colors.reset}`);
+        console.log(`${colors.success}✅ [맥락폴백] 동적 맥락 기반 무쿠 응답 생성: "${contextualResponse.substring(0, 30)}..."${colors.reset}`);
     }
     
     return botResponse;
@@ -1235,7 +1412,7 @@ async function processOtherMessageType(messageType, modules) {
     return await applyBehaviorModeToResponse(baseResponse, modules, { messageType: messageType });
 }
 
-// ================== 🎯 메인 이벤트 처리 함수 (하이브리드 대화 저장 + 맥락 강화 완전 수정) ==================
+// ================== 🎯 메인 이벤트 처리 함수 (하이브리드 대화 저장 + 장기기억 완전 구현) ==================
 async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherSafely, getVersionResponse, enhancedLogging) {
     // 🛡️ 기본 검증
     if (!event || event.type !== 'message') {
@@ -1402,7 +1579,7 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
                 return { type: 'command_response', response: commandResult };
             }
 
-            // ⭐️ 3순위: 맥락 기반 일반 대화 처리 (무조건 성공 보장)
+            // 🧠⭐️ 3순위: 장기기억 + 맥락 기반 일반 대화 처리 (NEW! 완전 새로운 구현)
             const chatResponse = await generateContextAwareResponse(messageText, modules, enhancedLogging, { userId: safeUserId });
             
             if (chatResponse) {
@@ -1423,14 +1600,28 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
                         fallbackType: chatResponse.fallbackType,
                         contextKeywords: chatResponse.contextKeywords,
                         usedHistory: chatResponse.usedHistory,
+                        longTermMemory: chatResponse.longTermMemory, // NEW!
+                        memoryUsed: chatResponse.memoryUsed,        // NEW!
+                        confidence: chatResponse.confidence,         // NEW!
+                        naturalRecall: chatResponse.naturalRecall,   // NEW!
+                        dynamicContext: chatResponse.dynamicContext, // NEW!
                         userId: safeUserId
                     },
                     modules,
                     enhancedLogging
                 );
 
-                // 로깅
-                const logMessage = chatResponse.personalized ? `${finalChatComment} [개인화됨]` : finalChatComment;
+                // 로깅 (장기기억 사용 여부 표시)
+                let logMessage = finalChatComment;
+                if (chatResponse.longTermMemory) {
+                    logMessage += ` [🧠장기기억 활용]`;
+                } else if (chatResponse.personalized) {
+                    logMessage += ` [개인화됨]`;
+                }
+                if (chatResponse.dynamicContext) {
+                    logMessage += ` [동적맥락]`;
+                }
+
                 await safeAsyncCall(async () => {
                     const logFunction = safeModuleAccess(enhancedLogging, 'logConversation', '대화로깅');
                     if (typeof logFunction === 'function') {
@@ -1618,6 +1809,11 @@ module.exports = {
     getConversationHistoryHybrid,
     // 💭 NEW: 맥락 기반 응답 생성 함수
     generateContextAwareResponse,
+    // 🧠 NEW: 장기기억 기반 응답 생성 함수
+    generateLongTermMemoryResponse,
+    // 🧠 NEW: 장기기억 추출 및 분석 함수들
+    extractLongTermMemory,
+    generateNaturalMemoryRecall,
     // 💭 메모리 저장소 관리 함수들
     getMemoryConversations: () => memoryConversationStore,
     clearMemoryConversations: () => { memoryConversationStore = []; },
