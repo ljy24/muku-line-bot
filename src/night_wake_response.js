@@ -182,7 +182,7 @@ async function generatePhaseBasedNightResponse(userMessage, sleepPhase, conversa
     } catch (error) {
         nightWakeLog(`OpenAI 단계별 새벽 응답 생성 실패: ${error.message}`);
         
-        // 폴백 메시지 (부드러운 버전)
+        // 🔥 수정된 폴백 메시지 (존댓말 완전 제거)
         const fallbackMessages = {
             initial: {
                 deep_sleep: [
@@ -224,7 +224,7 @@ async function generatePhaseBasedNightResponse(userMessage, sleepPhase, conversa
                     "걱정돼... 무슨 일이야? 아무튼 푹 자야 해"
                 ],
                 early_morning: [
-                    "아저씨... 무슨 일 있어? 괜찮아? 잘 자요",
+                    "아저씨... 무슨 일 있어? 괜찮아? 잘 자",
                     "걱정돼... 아무튼 이제 푹 자야 해"
                 ]
             }
@@ -278,11 +278,11 @@ async function generateGoodNightResponse(userMessage) {
     } catch (error) {
         nightWakeLog(`OpenAI 잘자 인사 응답 생성 실패: ${error.message}`);
         
-        // 폴백 메시지
+        // 🔥 수정된 폴백 메시지 (존댓말 완전 제거)
         const fallbackMessages = [
             "사랑해 아저씨~ 아저씨도 잘 자",
             "나도 사랑해 아저씨. 푹 자고 좋은 꿈 꿔",
-            "사랑해 많이 많이~ 아저씨도 잘자요",
+            "사랑해 많이 많이~ 아저씨도 잘 자",
             "아저씨도 사랑해~ 좋은 꿈 꾸고 잘 자",
             "사랑해 아저씨. 내꿈에 나와줘~ 잘자"
         ];
@@ -378,32 +378,40 @@ async function generateContextualNightResponse(userMessage, sleepPhase) {
     }
 }
 
+// 🔥 에러 처리 강화된 메인 함수
 async function checkAndGenerateNightWakeResponse(userMessage) {
-    const timeCheck = isLateNightTime();
-    
-    if (!timeCheck.isSleepTime) {
-        nightWakeLog('잠자는 시간이 아님 - 일반 응답 처리');
-        if (nightConversationState.isInNightConversation) {
-            resetNightConversation();
+    try {
+        const timeCheck = isLateNightTime();
+        
+        if (!timeCheck.isSleepTime) {
+            nightWakeLog('잠자는 시간이 아님 - 일반 응답 처리');
+            if (nightConversationState.isInNightConversation) {
+                resetNightConversation();
+            }
+            return null;
         }
+        
+        const conversationPhase = updateNightConversationPhase(userMessage);
+        
+        nightWakeLog(`새벽 시간 감지 - ${timeCheck.sleepPhase} 단계, 대화 ${conversationPhase} 단계에서 응답 생성`);
+        
+        const wakeResponse = await generatePhaseBasedNightResponse(userMessage, timeCheck.sleepPhase, conversationPhase);
+        
+        return {
+            isNightWake: true,
+            sleepPhase: timeCheck.sleepPhase,
+            conversationPhase: conversationPhase,
+            messageCount: nightConversationState.messageCount,
+            currentHour: timeCheck.currentHour,
+            response: wakeResponse,
+            originalMessage: userMessage
+        };
+        
+    } catch (error) {
+        nightWakeLog(`새벽 응답 시스템 전체 에러: ${error.message}`);
+        // 에러 발생 시 null 반환하여 다른 시스템이 처리하도록
         return null;
     }
-    
-    const conversationPhase = updateNightConversationPhase(userMessage);
-    
-    nightWakeLog(`새벽 시간 감지 - ${timeCheck.sleepPhase} 단계, 대화 ${conversationPhase} 단계에서 응답 생성`);
-    
-    const wakeResponse = await generatePhaseBasedNightResponse(userMessage, timeCheck.sleepPhase, conversationPhase);
-    
-    return {
-        isNightWake: true,
-        sleepPhase: timeCheck.sleepPhase,
-        conversationPhase: conversationPhase,
-        messageCount: nightConversationState.messageCount,
-        currentHour: timeCheck.currentHour,
-        response: wakeResponse,
-        originalMessage: userMessage
-    };
 }
 
 // ==================== 테스트 함수 ====================
@@ -421,25 +429,35 @@ async function testNightWakeResponse(testMessage = "아저씨 잠깐만") {
 // ==================== 상태 확인 ====================
 
 function getNightWakeStatus() {
-    const timeCheck = isLateNightTime();
-    const now = moment().tz('Asia/Tokyo');
-    
-    return {
-        currentTime: now.format('YYYY-MM-DD HH:mm:ss'),
-        isSleepTime: timeCheck.isSleepTime,
-        sleepPhase: timeCheck.sleepPhase,
-        currentHour: timeCheck.currentHour,
-        sleepTimeRange: '02:00 - 07:00',
-        isActive: timeCheck.isSleepTime,
-        nextWakeTime: timeCheck.isSleepTime ? '07:00' : '내일 02:00',
-        conversationState: {
-            isInNightConversation: nightConversationState.isInNightConversation,
-            messageCount: nightConversationState.messageCount,
-            currentPhase: nightConversationState.phase,
-            startTime: nightConversationState.startTime ? 
-                moment(nightConversationState.startTime).tz('Asia/Tokyo').format('HH:mm:ss') : null
-        }
-    };
+    try {
+        const timeCheck = isLateNightTime();
+        const now = moment().tz('Asia/Tokyo');
+        
+        return {
+            currentTime: now.format('YYYY-MM-DD HH:mm:ss'),
+            isSleepTime: timeCheck.isSleepTime,
+            sleepPhase: timeCheck.sleepPhase,
+            currentHour: timeCheck.currentHour,
+            sleepTimeRange: '02:00 - 07:00',
+            isActive: timeCheck.isSleepTime,
+            nextWakeTime: timeCheck.isSleepTime ? '07:00' : '내일 02:00',
+            conversationState: {
+                isInNightConversation: nightConversationState.isInNightConversation,
+                messageCount: nightConversationState.messageCount,
+                currentPhase: nightConversationState.phase,
+                startTime: nightConversationState.startTime ? 
+                    moment(nightConversationState.startTime).tz('Asia/Tokyo').format('HH:mm:ss') : null
+            },
+            error: null
+        };
+    } catch (error) {
+        nightWakeLog(`상태 확인 중 에러: ${error.message}`);
+        return {
+            error: error.message,
+            currentTime: moment().tz('Asia/Tokyo').format('YYYY-MM-DD HH:mm:ss'),
+            isActive: false
+        };
+    }
 }
 
 // 초기화 로그
@@ -456,8 +474,8 @@ module.exports = {
     generateNightWakeResponse,
     generatePhaseBasedNightResponse,
     generateContextualNightResponse,
-    generateGoodNightResponse, // 추가
-    isGoodNightMessage, // 추가
+    generateGoodNightResponse,
+    isGoodNightMessage,
     isLateNightTime,
     testNightWakeResponse,
     getNightWakeStatus,
