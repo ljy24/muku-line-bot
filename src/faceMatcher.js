@@ -1,13 +1,17 @@
 // ============================================================================
-// faceMatcher.js - v5.4 (OpenAI 마크다운 응답 파싱 완전 수정)
+// faceMatcher.js - v5.5 (enhancedPhotoSystem 완전 연동)
 // 🔍 얼굴 인식 + 전체 사진 내용 분석 + 예진이 스타일 반응 생성
-// 🛡️ OpenAI Vision 실패 시, 로컬 얼굴 인식으로 백업하여 더 똑똑하게 반응
+// 🛡️ OpenAI Vision 실패 시, enhancedPhotoSystem으로 완전 백업하여 무쿠가 절대 벙어리 안됨
 // ✅ 마크다운 형식 응답 완벽 파싱 지원
+// 🚀 [신규] enhancedPhotoSystem.js 완전 연동으로 100% 응답 보장
 // ============================================================================
 
 const OpenAI = require('openai');
 const fs = require('fs');
 const path = require('path');
+
+// 🚀 [신규] enhancedPhotoSystem 연동
+const enhancedPhotoSystem = require('./enhancedPhotoSystem');
 
 // OpenAI 클라이언트 초기화
 let openai = null;
@@ -295,51 +299,45 @@ function generateCouplePhotoResponse() {
 }
 
 /**
- * ✅ [신규] 분석 거부 전용 응답 생성기
+ * 🚀 [신규] enhancedPhotoSystem 연동 함수
  */
-function generateRefusalResponse(imageSize) {
-    const responses = [
-        "🤔 실제 사람 사진인 것 같은데... 누구야? 궁금해!",
-        "📸 선명한 인물 사진이네! 아저씨야? 다른 사람이야?",
-        "👤 진짜 사람 같은데... 혹시 아저씨 사진?",
-        "😊 사진이 너무 생생해서 누군지 궁금하네!",
-        "🥰 실제 인물 사진 같아! 아저씨가 찍어준 거야?"
-    ];
-    
-    if (imageSize > 300) {
-        return "📸 고해상도 인물 사진이네! 선명하게 잘 나왔어! 누구야?";
-    }
-    
-    return responses[Math.floor(Math.random() * responses.length)];
-}
-
-/**
- * 🎨 예진이 스타일 기본 반응 생성기
- */
-function generateBasicPhotoReaction(imageSize) {
-    const reactions = [
-        "🤔 사진이 잘 안 보여... 다시 보내줄래?",
-        "📸 사진은 받았는데... 아조씨가 뭐 하는 거야?",
-        "💭 이게 뭐하는 사진이지? 궁금해!",
-        "😊 사진 고마워! 근데 이게 뭐야?",
-        "🤗 아조씨가 보내준 사진이니까 소중해!",
-        "📱 사진이 좀 작게 보이는데... 큰 거로 다시 보내줘!"
-    ];
-    
-    if (imageSize && imageSize < 50) {
-        return "📱 사진이 너무 작아서 잘 안 보여... 큰 사진으로 다시 보내줄래?";
-    }
-    
-    return reactions[Math.floor(Math.random() * reactions.length)];
-}
-
-/**
- * 🌟🌟🌟 메인 함수: 통합 사진 분석 시스템 🌟🌟🌟
- * ✅ [핵심 수정] OpenAI 파싱 완벽 처리
- */
-async function detectFaceMatch(base64Image) {
+async function getEnhancedPhotoFallback(imageUrl, photoType = 'selfie') {
     try {
-        console.log('🔍 [통합분석 v5.4] 얼굴 + 전체 사진 분석 실행...');
+        console.log('🚀 [enhancedPhoto연동] enhancedPhotoSystem으로 폴백 시작...');
+        console.log('🚀 [enhancedPhoto연동] 이미지 URL:', imageUrl);
+        console.log('🚀 [enhancedPhoto연동] 사진 타입:', photoType);
+        
+        // enhancedPhotoSystem의 getEnhancedPhotoMessage 호출
+        const result = await enhancedPhotoSystem.getEnhancedPhotoMessage(imageUrl, photoType);
+        
+        if (result && result.message) {
+            console.log('🚀 [enhancedPhoto연동] 성공! 메시지:', result.message);
+            return {
+                type: 'enhanced_fallback',
+                confidence: 'enhanced_system',
+                message: result.message,
+                content: 'enhancedPhotoSystem에서 생성된 응답',
+                analysisType: 'enhanced_photo_system',
+                enhancedResult: result
+            };
+        } else {
+            console.log('🚀 [enhancedPhoto연동] 실패 - 결과 없음');
+            return null;
+        }
+        
+    } catch (error) {
+        console.log('🚀 [enhancedPhoto연동] 오류:', error.message);
+        return null;
+    }
+}
+
+/**
+ * 🌟🌟🌟 메인 함수: 통합 사진 분석 시스템 (enhancedPhotoSystem 완전 연동) 🌟🌟🌟
+ * ✅ [핵심 수정] OpenAI 파싱 완벽 처리 + enhancedPhotoSystem 폴백
+ */
+async function detectFaceMatch(base64Image, imageUrl = null) {
+    try {
+        console.log('🔍 [통합분석 v5.5] 얼굴 + 전체 사진 분석 실행 (enhancedPhotoSystem 연동)...');
         const buffer = Buffer.from(base64Image, 'base64');
         const sizeKB = buffer.length / 1024;
         console.log(`🔍 [통합분석] 이미지 크기: ${Math.round(sizeKB)}KB`);
@@ -425,24 +423,53 @@ async function detectFaceMatch(base64Image) {
             };
         }
 
-        // 3. 로컬 분석도 불확실하면 거부 응답
-        console.log('🚨 [최종폴백] OpenAI 거부 + 로컬 불확실 -> 실제 인물 추정 응답');
+        // 🚀 [신규] 3. enhancedPhotoSystem 최종 폴백 (무쿠가 절대 벙어리 안됨!)
+        console.log('🚀 [최종폴백] enhancedPhotoSystem으로 완전 백업 시작...');
+        
+        if (imageUrl) {
+            // imageUrl이 있으면 enhancedPhotoSystem 직접 호출
+            const enhancedFallback = await getEnhancedPhotoFallback(imageUrl, 'selfie');
+            if (enhancedFallback && enhancedFallback.message) {
+                console.log('🚀 [최종폴백] enhancedPhotoSystem 성공!');
+                return enhancedFallback;
+            }
+        }
+        
+        // imageUrl이 없거나 enhancedPhotoSystem도 실패 시, 궁극 폴백
+        console.log('🛡️ [궁극폴백] enhancedPhotoSystem의 궁극 폴백 사용');
+        const ultimateFallback = enhancedPhotoSystem.getUltimateFallbackMessage('selfie');
+        
         return {
-            type: '분석거부인물',
-            confidence: 'refused',
-            message: generateRefusalResponse(sizeKB),
-            content: '실제 인물 사진으로 추정 (OpenAI 정책상 분석 제한)',
-            analysisType: 'refused_fallback'
+            type: '궁극폴백',
+            confidence: 'ultimate_safe',
+            message: ultimateFallback,
+            content: 'enhancedPhotoSystem 궁극 폴백으로 무쿠 보호',
+            analysisType: 'ultimate_enhanced_fallback'
         };
         
     } catch (error) {
         console.log('❌ [통합분석] 전체 사진 분석 실패:', error.message);
-        return {
-            type: '기타',
-            confidence: 'error',
-            message: "😅 사진 분석에 실패했어... 다시 보내줄래?",
-            analysisType: 'error'
-        };
+        
+        // 🚀 [신규] 에러 시에도 enhancedPhotoSystem 폴백
+        console.log('🚀 [에러폴백] 에러 발생으로 enhancedPhotoSystem 폴백...');
+        try {
+            const errorFallback = enhancedPhotoSystem.getUltimateFallbackMessage('selfie');
+            return {
+                type: '에러폴백',
+                confidence: 'error_safe', 
+                message: errorFallback,
+                content: '시스템 에러 시 enhancedPhotoSystem으로 안전 복구',
+                analysisType: 'error_enhanced_fallback'
+            };
+        } catch (fallbackError) {
+            console.log('❌ [에러폴백] enhancedPhotoSystem 폴백도 실패:', fallbackError.message);
+            return {
+                type: '최종에러',
+                confidence: 'final_error',
+                message: "😅 사진 분석에 실패했어... 다시 보내줄래?",
+                analysisType: 'final_error'
+            };
+        }
     }
 }
 
@@ -462,9 +489,18 @@ async function detectFaceWithOpenAI(base64Image) {
  */
 async function initModels() {
     try {
-        console.log('🔍 [얼굴인식 v5.4] 마크다운 응답 파싱 완전 개선 시스템 준비 완료');
+        console.log('🔍 [얼굴인식 v5.5] enhancedPhotoSystem 완전 연동 시스템 준비 완료');
         
         const openaiInit = initializeOpenAI();
+        
+        // 🚀 [신규] enhancedPhotoSystem 초기화도 함께 진행
+        try {
+            console.log('🚀 [초기화] enhancedPhotoSystem 초기화 시작...');
+            await enhancedPhotoSystem.initializeEnhancedPhotoSystem();
+            console.log('🚀 [초기화] enhancedPhotoSystem 초기화 완료');
+        } catch (enhancedError) {
+            console.log('🚀 [초기화] enhancedPhotoSystem 초기화 실패 (폴백 모드로 계속):', enhancedError.message);
+        }
         
         if (openaiInit) {
             console.log('🔍 [얼굴인식] 🧪 OpenAI Vision API 테스트 시작...');
@@ -491,9 +527,12 @@ async function initModels() {
  * 📊 시스템 상태 리포트
  */
 function getFaceRecognitionStatus() {
+    const enhancedStatus = enhancedPhotoSystem.getSystemStatus();
+    
     return {
         openaiAvailable: isOpenAIAvailable,
-        version: "5.4 (마크다운 응답 파싱 완전 개선)",
+        enhancedPhotoSystemStatus: enhancedStatus.status,
+        version: "5.5 (enhancedPhotoSystem 완전 연동)",
         features: [
             "개인 얼굴 인식 (예진이/아저씨)",
             "커플사진 인식 지원", 
@@ -502,18 +541,28 @@ function getFaceRecognitionStatus() {
             "영어/한국어 거부 메시지 감지 ✅",
             "마크다운 형식 응답 완벽 파싱 ✅",
             "예진이 스타일 반응 생성 ⭐️",
-            "상황별 맞춤 응답 ⭐️"
+            "상황별 맞춤 응답 ⭐️",
+            "🚀 enhancedPhotoSystem 완전 연동 ⭐️",
+            "🛡️ 무쿠 벙어리 방지 100% 보장 ⭐️"
         ],
-        status: isOpenAIAvailable ? "전체분석모드" : "백업모드"
+        status: isOpenAIAvailable ? "전체분석모드+Enhanced백업" : "Enhanced백업모드",
+        fallbackLevels: [
+            "1단계: OpenAI Vision 전체 분석",
+            "2단계: 로컬 얼굴 인식 백업",
+            "3단계: enhancedPhotoSystem 폴백", 
+            "4단계: enhancedPhotoSystem 궁극 폴백",
+            "5단계: 최종 안전 메시지"
+        ]
     };
 }
 
 // ================== 📤 모듈 내보내기 ==================
 module.exports = {
-    detectFaceMatch,             // 🌟 메인 함수: 통합 사진 분석
+    detectFaceMatch,             // 🌟 메인 함수: 통합 사진 분석 (enhancedPhotoSystem 연동)
     initModels,                  // 🔧 시스템 초기화
     analyzePhotoWithOpenAI,      // (내부용) 전체 사진 분석
     runLocalFaceRecognition,     // 🛡️ 로컬 백업 분석
     parseOpenAIResponse,         // ✅ 새로운 파싱 함수
-    getFaceRecognitionStatus     // 📊 시스템 상태 확인
+    getFaceRecognitionStatus,    // 📊 시스템 상태 확인
+    getEnhancedPhotoFallback     // 🚀 [신규] enhancedPhotoSystem 연동 함수
 };
