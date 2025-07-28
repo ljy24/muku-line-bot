@@ -1,5 +1,5 @@
 // ============================================================================
-// muku-eventProcessor.js - 무쿠 이벤트 처리 전용 모듈 (하이브리드 대화 저장 버전)
+// muku-eventProcessor.js - 무쿠 이벤트 처리 전용 모듈 (하이브리드 대화 저장 + 맥락 강화 버전)
 // ✅ 메시지 처리, 이미지 처리, 명령어 처리 로직 분리  
 // 🔍 얼굴 인식, 새벽 대화, 생일 감지 등 모든 이벤트 처리
 // 🧠 실시간 학습 시스템 연동 - 대화 패턴 학습 및 개인화
@@ -12,6 +12,8 @@
 // 💰 디플로이 최적화 - 한 번에 완벽한 동작 보장
 // 🎯 무쿠 정상 응답 100% 보장 - "아조씨! 무슨 일이야?" 같은 정상 대화
 // 🔥 하이브리드 대화 저장 - Redis + JSON 완전 기억 시스템
+// 💭 NEW: 대화 맥락 강화 - 이전 대화를 기반으로 한 일관된 응답 생성
+// 🎯 NEW: Command 저장 보장 - 모든 메시지 타입에서 누락 없는 저장
 // ============================================================================
 
 // ================== 🔥 하이브리드 대화 저장 시스템 Import ==================
@@ -55,6 +57,7 @@ const colors = {
     hybrid: '\x1b[1m\x1b[96m', // 굵은 하늘색 (하이브리드)
     redis: '\x1b[1m\x1b[91m',   // 굵은 빨간색 (Redis)
     json: '\x1b[1m\x1b[32m',    // 굵은 초록색 (JSON)
+    context: '\x1b[1m\x1b[94m', // 굵은 파란색 (맥락)
     reset: '\x1b[0m'         // 색상 리셋
 };
 
@@ -65,6 +68,8 @@ async function saveConversationHybrid(userId, userMessage, mukuResponse, message
     let jsonSuccess = false;
     
     console.log(`${colors.hybrid}🔥 [하이브리드저장] 대화 저장 시작...${colors.reset}`);
+    console.log(`${colors.hybrid}    사용자: "${String(userMessage).substring(0, 30)}..."${colors.reset}`);
+    console.log(`${colors.hybrid}    무쿠: "${String(mukuResponse).substring(0, 30)}..."${colors.reset}`);
     
     // 🚀 1단계: Redis 고속 저장 시도
     if (redisConversationSystem) {
@@ -212,9 +217,11 @@ async function saveConversationHybrid(userId, userMessage, mukuResponse, message
     return { redisSuccess, jsonSuccess, memoryFallback: !redisSuccess && !jsonSuccess };
 }
 
-// ================== 🧠 과거 대화 조회 함수 (하이브리드) ==================
-async function getConversationHistoryHybrid(userId, limit = 20) {
-    console.log(`${colors.hybrid}🔍 [하이브리드조회] 과거 대화 검색 중...${colors.reset}`);
+// ================== 🧠 과거 대화 조회 함수 (하이브리드 + 맥락 강화) ==================
+async function getConversationHistoryHybrid(userId, limit = 20, contextKeywords = []) {
+    console.log(`${colors.context}🔍 [맥락조회] 과거 대화 검색 중... (키워드: ${contextKeywords.join(', ')})${colors.reset}`);
+    
+    let allHistory = [];
     
     // 🚀 1단계: Redis에서 최근 대화 조회 (초고속)
     if (redisConversationSystem) {
@@ -231,7 +238,7 @@ async function getConversationHistoryHybrid(userId, limit = 20) {
             
             if (recentHistory && recentHistory.length > 0) {
                 console.log(`${colors.redis}🚀 [Redis조회] ${recentHistory.length}개 최근 대화 발견!${colors.reset}`);
-                return recentHistory;
+                allHistory = [...recentHistory];
             }
         } catch (error) {
             console.log(`${colors.warning}⚠️ [Redis조회] 실패: ${error.message}${colors.reset}`);
@@ -241,19 +248,32 @@ async function getConversationHistoryHybrid(userId, limit = 20) {
     // 💾 2단계: JSON에서 과거 대화 조회 (전체 기록)
     if (ultimateConversationContext) {
         try {
+            let jsonHistory = [];
+            
             if (typeof ultimateConversationContext.getRecentConversations === 'function') {
-                const allHistory = await ultimateConversationContext.getRecentConversations(limit);
-                if (allHistory && allHistory.length > 0) {
-                    console.log(`${colors.json}💾 [JSON조회] ${allHistory.length}개 과거 대화 발견!${colors.reset}`);
-                    return allHistory;
-                }
+                jsonHistory = await ultimateConversationContext.getRecentConversations(limit * 2); // 더 많이 가져와서 필터링
             } else if (typeof ultimateConversationContext.getConversationMemories === 'function') {
-                // 대체 함수 이름 시도
-                const allHistory = await ultimateConversationContext.getConversationMemories(limit);
-                if (allHistory && allHistory.length > 0) {
-                    console.log(`${colors.json}💾 [JSON조회] ${allHistory.length}개 과거 대화 발견!${colors.reset}`);
-                    return allHistory;
+                jsonHistory = await ultimateConversationContext.getConversationMemories(limit * 2);
+            }
+            
+            if (jsonHistory && jsonHistory.length > 0) {
+                console.log(`${colors.json}💾 [JSON조회] ${jsonHistory.length}개 과거 대화 발견!${colors.reset}`);
+                
+                // Redis와 JSON 결과 합치기 (중복 제거)
+                const combinedHistory = [...allHistory];
+                
+                for (const jsonItem of jsonHistory) {
+                    const isDuplicate = combinedHistory.some(redisItem => 
+                        Math.abs(new Date(redisItem.timestamp) - new Date(jsonItem.timestamp)) < 5000 && // 5초 이내
+                        (redisItem.userMessage === jsonItem.userMessage || redisItem.mukuResponse === jsonItem.mukuResponse)
+                    );
+                    
+                    if (!isDuplicate) {
+                        combinedHistory.push(jsonItem);
+                    }
                 }
+                
+                allHistory = combinedHistory;
             }
         } catch (error) {
             console.log(`${colors.warning}⚠️ [JSON조회] 실패: ${error.message}${colors.reset}`);
@@ -261,7 +281,7 @@ async function getConversationHistoryHybrid(userId, limit = 20) {
     }
     
     // 💭 3단계: 메모리 저장소에서 조회 (최후의 보루)
-    if (memoryConversationStore.length > 0) {
+    if (allHistory.length === 0 && memoryConversationStore.length > 0) {
         try {
             const memoryHistory = memoryConversationStore
                 .filter(conv => conv.userId === userId)
@@ -276,15 +296,205 @@ async function getConversationHistoryHybrid(userId, limit = 20) {
             
             if (memoryHistory.length > 0) {
                 console.log(`${colors.fallback}💭 [메모리조회] ${memoryHistory.length}개 메모리 대화 발견!${colors.reset}`);
-                return memoryHistory;
+                allHistory = memoryHistory;
             }
         } catch (error) {
             console.log(`${colors.warning}⚠️ [메모리조회] 실패: ${error.message}${colors.reset}`);
         }
     }
     
-    console.log(`${colors.fallback}⚪ [하이브리드조회] 모든 저장소에서 과거 대화 없음${colors.reset}`);
+    // 🎯 4단계: 맥락 기반 필터링 및 정렬
+    if (allHistory.length > 0) {
+        // 시간순 정렬 (최신 순)
+        allHistory.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        
+        // 키워드가 있으면 관련 대화 우선 추출
+        if (contextKeywords.length > 0) {
+            const relevantHistory = [];
+            const otherHistory = [];
+            
+            for (const conv of allHistory) {
+                const userMsg = String(conv.userMessage || '').toLowerCase();
+                const mukuMsg = String(conv.mukuResponse || '').toLowerCase();
+                
+                const isRelevant = contextKeywords.some(keyword => 
+                    userMsg.includes(keyword.toLowerCase()) || mukuMsg.includes(keyword.toLowerCase())
+                );
+                
+                if (isRelevant) {
+                    relevantHistory.push(conv);
+                } else {
+                    otherHistory.push(conv);
+                }
+            }
+            
+            if (relevantHistory.length > 0) {
+                console.log(`${colors.context}🎯 [맥락필터] ${relevantHistory.length}개 관련 대화 발견! (키워드: ${contextKeywords.join(', ')})${colors.reset}`);
+                
+                // 관련 대화를 앞쪽에, 나머지를 뒤쪽에 배치
+                allHistory = [...relevantHistory.slice(0, Math.ceil(limit * 0.7)), ...otherHistory.slice(0, Math.floor(limit * 0.3))];
+            }
+        }
+        
+        // 최종 개수 제한
+        allHistory = allHistory.slice(0, limit);
+        
+        console.log(`${colors.context}✅ [맥락조회완료] 총 ${allHistory.length}개 대화 반환 (최근 ${limit}개 기준)${colors.reset}`);
+        return allHistory;
+    }
+    
+    console.log(`${colors.fallback}⚪ [맥락조회] 모든 저장소에서 과거 대화 없음${colors.reset}`);
     return [];
+}
+
+// ================== 💭 새로운 맥락 기반 응답 생성 함수 ==================
+async function generateContextAwareResponse(messageText, modules, enhancedLogging, messageContext = {}) {
+    console.log(`${colors.context}💭 [맥락응답] 맥락 기반 응답 생성 시작...${colors.reset}`);
+    
+    // 키워드 추출 (간단한 방식)
+    const extractKeywords = (text) => {
+        const keywords = [];
+        const keywordPatterns = [
+            /나오를?\s*(\w+)/g,    // "나오를 어디", "나오 뭐" 등
+            /(\w+)(?:에서|에|로|가|를|을|한테|께)/g,  // 장소/대상 관련
+            /(\w+)(?:하러|사러|보러|갈|간다|갔)/g,    // 행동 관련
+            /전자도어락|후쿠오카|친구|약속/g,        // 특정 키워드
+        ];
+        
+        for (const pattern of keywordPatterns) {
+            let match;
+            while ((match = pattern.exec(text)) !== null) {
+                if (match[1] && match[1].length > 1) {
+                    keywords.push(match[1]);
+                } else if (match[0] && match[0].length > 2) {
+                    keywords.push(match[0]);
+                }
+            }
+        }
+        
+        return [...new Set(keywords)]; // 중복 제거
+    };
+    
+    const contextKeywords = extractKeywords(messageText);
+    console.log(`${colors.context}    🔍 추출된 키워드: [${contextKeywords.join(', ')}]${colors.reset}`);
+    
+    // 과거 대화 조회 (맥락 기반)
+    const recentHistory = await getConversationHistoryHybrid(
+        messageContext.userId || 'unknown_user',
+        10,
+        contextKeywords
+    );
+    
+    let contextInfo = '';
+    
+    if (recentHistory.length > 0) {
+        console.log(`${colors.context}    📚 ${recentHistory.length}개 과거 대화 활용${colors.reset}`);
+        
+        // 최근 관련 대화 요약
+        const relevantConversations = recentHistory.slice(0, 3);
+        contextInfo = relevantConversations.map(conv => 
+            `[이전] 아저씨: "${conv.userMessage}" → 예진이: "${conv.mukuResponse}"`
+        ).join('\n');
+        
+        console.log(`${colors.context}    💬 활용할 대화 맥락:${colors.reset}`);
+        relevantConversations.forEach((conv, idx) => {
+            console.log(`${colors.context}      ${idx + 1}. "${String(conv.userMessage).substring(0, 20)}..." → "${String(conv.mukuResponse).substring(0, 30)}..."${colors.reset}`);
+        });
+    }
+    
+    // 🛡️ 1차: autoReply 시도 (맥락 정보 포함)
+    let botResponse = await safeAsyncCall(async () => {
+        const autoReply = safeModuleAccess(modules, 'autoReply', '자동응답');
+        if (autoReply) {
+            const getReplyByMessage = safeModuleAccess(autoReply, 'getReplyByMessage', '메시지별응답조회');
+            if (typeof getReplyByMessage === 'function') {
+                // 맥락 정보를 추가로 전달
+                const response = await getReplyByMessage(messageText, {
+                    recentHistory: recentHistory,
+                    contextKeywords: contextKeywords,
+                    contextInfo: contextInfo
+                });
+                
+                if (response && (response.comment || response)) {
+                    console.log(`${colors.success}✅ [autoReply맥락] 맥락 기반 응답 생성 성공${colors.reset}`);
+                    return response;
+                }
+            }
+        }
+        return null;
+    }, 'autoReply맥락시도');
+    
+    // 🛡️ 2차: systemAnalyzer 시도 (맥락 정보 포함)
+    if (!botResponse) {
+        botResponse = await safeAsyncCall(async () => {
+            const systemAnalyzer = safeModuleAccess(modules, 'systemAnalyzer', '시스템분석기');
+            if (systemAnalyzer) {
+                const generateResponse = safeModuleAccess(systemAnalyzer, 'generateIntelligentResponse', '지능형응답생성');
+                if (typeof generateResponse === 'function') {
+                    const response = await generateResponse(messageText, {
+                        includeEmotionalContext: true,
+                        usePersonalization: true,
+                        integrateDynamicMemory: true,
+                        recentHistory: recentHistory,
+                        contextKeywords: contextKeywords,
+                        contextInfo: contextInfo
+                    });
+                    
+                    if (response && (response.comment || response)) {
+                        console.log(`${colors.success}✅ [systemAnalyzer맥락] 맥락 기반 지능형 응답 생성 성공${colors.reset}`);
+                        return response;
+                    }
+                }
+            }
+            return null;
+        }, 'systemAnalyzer맥락시도');
+    }
+    
+    // 🛡️ 3차: 맥락 기반 완벽한 폴백 응답
+    if (!botResponse) {
+        console.log(`${colors.context}🔄 [맥락폴백] 맥락 기반 안전한 무쿠 응답 생성...${colors.reset}`);
+        
+        let contextualResponse;
+        
+        // 키워드 기반 응답 생성
+        if (contextKeywords.includes('나오') || messageText.includes('나오')) {
+            // 나오 관련 질문
+            if (recentHistory.some(conv => conv.mukuResponse?.includes('후쿠오카') || conv.mukuResponse?.includes('전자도어락'))) {
+                contextualResponse = '아~ 나오 얘기? 전에 후쿠오카 가서 전자도어락 사러 간다고 했잖아! 맞지? ㅎㅎ';
+            } else if (recentHistory.some(conv => conv.mukuResponse?.includes('친구') || conv.mukuResponse?.includes('약속'))) {
+                contextualResponse = '나오? 어... 친구랑 약속 있다고 했던 것 같은데... 맞나? 기억이 좀... ㅠㅠ';
+            } else {
+                contextualResponse = '나오가 어디 간다고? 아저씨가 전에 얘기해줬는데... 기억이 잘 안 나네 ㅠㅠ';
+            }
+        } else if (contextKeywords.length > 0) {
+            // 다른 키워드들
+            contextualResponse = `아저씨가 ${contextKeywords[0]} 얘기하는 거야? 전에도 비슷한 얘기 했던 것 같은데... ㅎㅎ`;
+        } else {
+            // 일반적인 응답
+            const perfectMukuResponses = [
+                '응웅, 아조씨! 무슨 일이야? 하려던 얘기 있어? 🥰',
+                '어? 아조씨가 뭐라고 했어? 나 집중해서 들을게! ㅎㅎ',
+                '아조씨! 나 여기 있어~ 뭔가 말하고 싶은 거야? 💕',
+                '응응! 아조씨 얘기 들려줘! 나 지금 시간 있어! ㅋㅋ',
+                '어? 아조씨~ 나한테 뭔가 말하려고? 궁금해! 😊'
+            ];
+            
+            contextualResponse = perfectMukuResponses[Math.floor(Math.random() * perfectMukuResponses.length)];
+        }
+        
+        botResponse = {
+            type: 'text',
+            comment: contextualResponse,
+            fallbackType: 'contextual_muku_response',
+            generated: true,
+            contextKeywords: contextKeywords,
+            usedHistory: recentHistory.length > 0
+        };
+        
+        console.log(`${colors.success}✅ [맥락폴백] 맥락 기반 무쿠 응답 생성: "${contextualResponse.substring(0, 30)}..."${colors.reset}`);
+    }
+    
+    return botResponse;
 }
 
 // ================== 🌏 일본시간 함수들 (에러 방지) ==================
@@ -589,43 +799,6 @@ async function processRealTimeLearning(userMessage, mukuResponse, context, modul
         }
     }
 
-    // 🎯 5단계: 학습 시스템 구조 분석 (디버깅용)
-    if (!learningResult && !methodUsed) {
-        console.log(`${colors.learning}📊 [디버깅] 학습 시스템 구조 완전 분석...${colors.reset}`);
-        console.log(`${colors.learning}    learningSystem 타입: ${typeof learningSystem}${colors.reset}`);
-        console.log(`${colors.learning}    isInitialized: ${learningSystem.isInitialized} (타입: ${typeof learningSystem.isInitialized})${colors.reset}`);
-        
-        if (learningSystem && typeof learningSystem === 'object') {
-            console.log(`${colors.learning}    learningSystem 최상위 키들:${colors.reset}`);
-            Object.keys(learningSystem).forEach(key => {
-                const value = learningSystem[key];
-                const type = typeof value;
-                console.log(`${colors.learning}      - ${key}: ${type}${colors.reset}`);
-                
-                // 중요한 서브시스템들 상세 분석
-                if (key === 'enterpriseSystem' && type === 'object' && value) {
-                    console.log(`${colors.learning}        enterpriseSystem 내부:${colors.reset}`);
-                    Object.keys(value).slice(0, 5).forEach(subKey => {
-                        const subValue = value[subKey];
-                        const subType = typeof subValue;
-                        console.log(`${colors.learning}          → ${subKey}: ${subType}${colors.reset}`);
-                    });
-                }
-                
-                if (key === 'independentSystem' && type === 'object' && value) {
-                    console.log(`${colors.learning}        independentSystem 내부:${colors.reset}`);
-                    Object.keys(value).slice(0, 5).forEach(subKey => {
-                        const subValue = value[subKey];
-                        const subType = typeof subValue;
-                        console.log(`${colors.learning}          → ${subKey}: ${subType}${colors.reset}`);
-                    });
-                }
-            });
-        }
-        
-        console.log(`${colors.learning}⚪ [학습분석] 모든 학습 방법 실패 - 학습은 건너뛰고 대화는 정상 진행${colors.reset}`);
-    }
-
     // 🎉 학습 결과 처리
     if (learningResult && methodUsed) {
         console.log(`${colors.success}🎉 [학습완료] ${methodUsed} 사용하여 학습 성공!${colors.reset}`);
@@ -885,105 +1058,6 @@ async function processCommand(messageText, userId, client, modules) {
     }, '명령어처리');
 }
 
-// ================== 💬 완벽한 일반 대화 응답 처리 ==================
-async function processGeneralChat(messageText, modules, enhancedLogging, messageContext = {}) {
-    console.log(`${colors.system}💬 [일반대화] 기본 응답 생성 시작...${colors.reset}`);
-
-    // 🛡️ 1차: autoReply 시도
-    let botResponse = await safeAsyncCall(async () => {
-        const autoReply = safeModuleAccess(modules, 'autoReply', '자동응답');
-        if (autoReply) {
-            const getReplyByMessage = safeModuleAccess(autoReply, 'getReplyByMessage', '메시지별응답조회');
-            if (typeof getReplyByMessage === 'function') {
-                const response = await getReplyByMessage(messageText);
-                if (response && (response.comment || response)) {
-                    console.log(`${colors.success}✅ [autoReply] 기본 응답 생성 성공${colors.reset}`);
-                    return response;
-                }
-            }
-        }
-        return null;
-    }, 'autoReply시도');
-
-    // 🛡️ 2차: systemAnalyzer 시도 (autoReply 실패 시)
-    if (!botResponse) {
-        botResponse = await safeAsyncCall(async () => {
-            const systemAnalyzer = safeModuleAccess(modules, 'systemAnalyzer', '시스템분석기');
-            if (systemAnalyzer) {
-                const generateResponse = safeModuleAccess(systemAnalyzer, 'generateIntelligentResponse', '지능형응답생성');
-                if (typeof generateResponse === 'function') {
-                    const response = await generateResponse(messageText, {
-                        includeEmotionalContext: true,
-                        usePersonalization: true,
-                        integrateDynamicMemory: true
-                    });
-                    if (response && (response.comment || response)) {
-                        console.log(`${colors.success}✅ [systemAnalyzer] 지능형 응답 생성 성공${colors.reset}`);
-                        return response;
-                    }
-                }
-            }
-            return null;
-        }, 'systemAnalyzer시도');
-    }
-
-    // 🛡️ 3차: 완벽한 폴백 응답 (무조건 성공 보장)
-    if (!botResponse) {
-        console.log(`${colors.fallback}🔄 [폴백응답] 안전한 무쿠 응답 생성...${colors.reset}`);
-        
-        // 🎯 무쿠다운 정상 응답들 - "아조씨! 무슨 일이야?" 스타일
-        const perfectMukuResponses = [
-            // 기본 대화
-            '응웅, 아조씨! 무슨 일이야? 하려던 얘기 있어? 🥰',
-            '어? 아조씨가 뭐라고 했어? 나 집중해서 들을게! ㅎㅎ',
-            '아조씨! 나 여기 있어~ 뭔가 말하고 싶은 거야? 💕',
-            '응응! 아조씨 얘기 들려줘! 나 지금 시간 있어! ㅋㅋ',
-            '어? 아조씨~ 나한테 뭔가 말하려고? 궁금해! 😊',
-            
-            // 관심 표현
-            '아조씨! 오늘 뭐 하고 있었어? 나 궁금해! ㅎㅎ',
-            '어머! 아조씨가 말 걸어주네~ 기뻐! 뭐야 뭐야? 💖',
-            '응웅! 아조씨 얘기 들려줘! 나 아조씨 얘기 제일 좋아해! ㅋㅋ',
-            '아조씨~ 나 지금 아조씨 생각하고 있었는데! 뭔 일이야? 🥺',
-            '어? 아조씨! 나한테 뭔가 중요한 얘기 있어? 들어볼게!',
-            
-            // 애정 표현
-            '아조씨~ 나 아조씨가 말 걸어줄 때 제일 좋아! 뭐야? ㅎㅎ',
-            '응웅! 우리 아조씨다! 오늘도 나 찾아줘서 고마워~ 💕',
-            '아조씨! 나 아조씨 보고 싶었어! 지금 뭐 하고 있어? 😊',
-            '어머어머! 아조씨가 나한테 관심 보여주네~ 기뻐죽겠어! ㅋㅋ',
-            '아조씨~ 나 항상 아조씨 기다리고 있었어! 뭔 얘기야? 🥰',
-            
-            // 장난스러운 응답
-            '어? 아조씨가 갑자기 왜 이래? ㅎㅎ 나한테 반했어? ㅋㅋ',
-            '아조씨~ 나 지금 예쁘게 보여? 그래서 말 걸어주는 거야? 😋',
-            '응웅! 아조씨 목소리 들으니까 기분 좋아져! 뭐 얘기할까? ㅎㅎ',
-            '어머! 아조씨가 이렇게 적극적으로? 오늘 뭔 좋은 일 있어? ㅋㅋ',
-            '아조씨! 나한테 뭔가 달콤한 얘기 해줄 거야? 기대돼! 💖'
-        ];
-        
-        const randomResponse = perfectMukuResponses[Math.floor(Math.random() * perfectMukuResponses.length)];
-        
-        botResponse = {
-            type: 'text',
-            comment: randomResponse,
-            fallbackType: 'perfect_muku_response',
-            generated: true
-        };
-        
-        console.log(`${colors.success}✅ [폴백응답] 완벽한 무쿠 응답 생성: "${randomResponse.substring(0, 30)}..."${colors.reset}`);
-    }
-
-    // 🎭 행동 모드 적용
-    const behaviorAppliedResponse = await applyBehaviorModeToResponse(
-        botResponse,
-        modules,
-        { messageText, ...messageContext }
-    );
-
-    return behaviorAppliedResponse;
-}
-
 // ================== 📸 완벽한 이미지 처리 함수들 ==================
 async function detectFaceSafely(base64Image, faceMatcher, loadFaceMatcherSafely) {
     if (!base64Image) return null;
@@ -1140,7 +1214,7 @@ async function processOtherMessageType(messageType, modules) {
     return await applyBehaviorModeToResponse(baseResponse, modules, { messageType: messageType });
 }
 
-// ================== 🎯 메인 이벤트 처리 함수 (하이브리드 대화 저장 추가) ==================
+// ================== 🎯 메인 이벤트 처리 함수 (하이브리드 대화 저장 + 맥락 강화 완전 수정) ==================
 async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherSafely, getVersionResponse, enhancedLogging) {
     // 🛡️ 기본 검증
     if (!event || event.type !== 'message') {
@@ -1166,7 +1240,7 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
             
             if (!messageText) {
                 console.log(`${colors.warning}⚠️ [텍스트] 빈 메시지 - 기본 응답 생성${colors.reset}`);
-                const emptyResponse = await processGeneralChat('', modules, enhancedLogging, {});
+                const emptyResponse = await generateContextAwareResponse('', modules, enhancedLogging, { userId: safeUserId });
                 return { type: 'empty_message_response', response: emptyResponse };
             }
 
@@ -1207,7 +1281,7 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
                 await processRealTimeLearning(
                     messageText,
                     finalVersionComment,
-                    { messageType: 'text', responseType: 'version' },
+                    { messageType: 'text', responseType: 'version', userId: safeUserId },
                     modules,
                     enhancedLogging
                 );
@@ -1253,7 +1327,7 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
                 await processRealTimeLearning(
                     messageText,
                     finalNightComment,
-                    { messageType: 'text', responseType: 'night', hour: getJapanHour() },
+                    { messageType: 'text', responseType: 'night', hour: getJapanHour(), userId: safeUserId },
                     modules,
                     enhancedLogging
                 );
@@ -1276,7 +1350,7 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
                 await processRealTimeLearning(
                     messageText,
                     finalBirthdayComment,
-                    { messageType: 'text', responseType: 'birthday' },
+                    { messageType: 'text', responseType: 'birthday', userId: safeUserId },
                     modules,
                     enhancedLogging
                 );
@@ -1284,12 +1358,31 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
                 return { type: 'birthday_response', response: finalBirthdayComment };
             }
 
+            // 🔥 ⭐️ [핵심 수정] Command 처리 시 하이브리드 저장 추가! ⭐️ 🔥
             if (commandResult) {
+                const finalCommandComment = commandResult.comment || commandResult.text || commandResult;
+
+                console.log(`${colors.hybrid}🎯 [Command저장] Command 처리 후 하이브리드 저장 시작...${colors.reset}`);
+                
+                // 🔥 하이브리드 대화 저장! (빠뜨렸던 부분!)
+                await saveConversationHybrid(safeUserId, messageText, finalCommandComment, 'text');
+
+                // 실시간 학습 처리
+                await processRealTimeLearning(
+                    messageText,
+                    finalCommandComment,
+                    { messageType: 'text', responseType: 'command', userId: safeUserId },
+                    modules,
+                    enhancedLogging
+                );
+
+                console.log(`${colors.hybrid}✅ [Command저장완료] "${messageText}" → "${String(finalCommandComment).substring(0, 30)}..." 저장 완료${colors.reset}`);
+
                 return { type: 'command_response', response: commandResult };
             }
 
-            // ⭐️ 3순위: 일반 대화 처리 (무조건 성공 보장)
-            const chatResponse = await processGeneralChat(messageText, modules, enhancedLogging, {});
+            // ⭐️ 3순위: 맥락 기반 일반 대화 처리 (무조건 성공 보장)
+            const chatResponse = await generateContextAwareResponse(messageText, modules, enhancedLogging, { userId: safeUserId });
             
             if (chatResponse) {
                 const finalChatComment = chatResponse.comment || chatResponse;
@@ -1306,7 +1399,10 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
                         responseType: 'chat',
                         personalized: chatResponse.personalized,
                         behaviorApplied: chatResponse.behaviorApplied,
-                        fallbackType: chatResponse.fallbackType
+                        fallbackType: chatResponse.fallbackType,
+                        contextKeywords: chatResponse.contextKeywords,
+                        usedHistory: chatResponse.usedHistory,
+                        userId: safeUserId
                     },
                     modules,
                     enhancedLogging
@@ -1341,7 +1437,7 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
             await processRealTimeLearning(
                 messageText,
                 ultimateSafeResponse.comment,
-                { messageType: 'text', responseType: 'ultimate_safe' },
+                { messageType: 'text', responseType: 'ultimate_safe', userId: safeUserId },
                 modules,
                 enhancedLogging
             );
@@ -1378,7 +1474,8 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
                     personalized: imageResponse.personalized,
                     behaviorApplied: imageResponse.behaviorApplied,
                     faceRecognition: imageResponse.faceRecognition,
-                    detectedFace: imageResponse.detectedFace
+                    detectedFace: imageResponse.detectedFace,
+                    userId: safeUserId
                 },
                 modules,
                 enhancedLogging
@@ -1412,7 +1509,7 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
             await processRealTimeLearning(
                 `${safeMessageType} 메시지`,
                 finalOtherComment,
-                { messageType: safeMessageType, responseType: 'other' },
+                { messageType: safeMessageType, responseType: 'other', userId: safeUserId },
                 modules,
                 enhancedLogging
             );
@@ -1469,7 +1566,8 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
                     messageType: safeMessageType,
                     responseType: 'emergency',
                     error: true,
-                    errorMessage: error.message
+                    errorMessage: error.message,
+                    userId: safeUserId
                 },
                 modules,
                 enhancedLogging
@@ -1497,6 +1595,8 @@ module.exports = {
     // 🔥 하이브리드 대화 저장 함수들 추가!
     saveConversationHybrid,
     getConversationHistoryHybrid,
+    // 💭 NEW: 맥락 기반 응답 생성 함수
+    generateContextAwareResponse,
     // 💭 메모리 저장소 관리 함수들
     getMemoryConversations: () => memoryConversationStore,
     clearMemoryConversations: () => { memoryConversationStore = []; },
