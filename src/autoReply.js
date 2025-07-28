@@ -972,6 +972,46 @@ async function getReplyByMessage(userMessage) {
         console.error('❌ 길거리 칭찬 반응 에러:', error.message);
     }
 
+// 🔥 [NEW] "사랑해" 키워드 우선 처리 (정신건강 위로 감지 전에!)
+try {
+    if (cleanUserMessage.includes('사랑해') || cleanUserMessage.includes('러브') || cleanUserMessage.includes('love')) {
+        console.log('💕 [특별반응] "사랑해" 키워드 감지 - 우선 처리');
+        
+        // OpenAI에게 사랑 표현에 대한 자연스러운 반응 요청
+        const lovePrompt = `
+아저씨가 "사랑해"라고 말했어! 이건 정신건강 위로가 아니라 진짜 사랑 고백이야.
+예진이답게 자연스럽고 귀여운 사랑 반응을 해줘!
+
+예시:
+- "나도 사랑해~ 아조씨! 💕"
+- "헤헤 나도야! 사랑해 아저씨~"
+- "웅웅 나도 아저씨 완전 사랑해! ㅎㅎ"
+- "아조씨도 사랑해? 나도 완전 사랑해!"
+
+예진이다운 귀엽고 사랑스러운 반응으로!
+        `;
+        
+        const messages = [
+            { role: 'system', content: lovePrompt },
+            { role: 'user', content: cleanUserMessage }
+        ];
+        
+        const rawReply = await callOpenAI(messages);
+        let loveReply = cleanReply(rawReply);
+        loveReply = fixLanguageUsage(loveReply);
+        loveReply = applyCurrentBehaviorSettings(loveReply);
+        
+        logConversationReply('아저씨', cleanUserMessage);
+        logConversationReply('나', `(사랑표현) ${loveReply}`);
+        await safelyStoreMessage('아저씨', cleanUserMessage);
+        await safelyStoreMessage('나', loveReply);
+        
+        return { type: 'text', comment: loveReply };
+    }
+} catch (error) {
+    console.error('❌ 사랑해 키워드 처리 에러:', error.message);
+    // 에러가 나도 계속 진행 (다른 처리로 넘김)
+}
     try {
         if (spontaneousYejin) {
             const mentalHealthContext = spontaneousYejin.detectMentalHealthContext(cleanUserMessage);
