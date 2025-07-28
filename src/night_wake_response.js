@@ -1,4 +1,4 @@
-// ✅ 새벽 2시 이후 자다가 깬 것처럼 응답하는 시스템 (부드러운 버전)
+// ✅ 새벽 4-7시에만 활성화, 첫 대화만 자다 깬 반응 (수정 버전)
 // 파일명: night_wake_response.js
 
 const moment = require('moment-timezone');
@@ -15,7 +15,7 @@ let nightConversationState = {
     isInNightConversation: false,
     messageCount: 0,
     startTime: null,
-    phase: 'initial' // 'initial' -> 'softening' -> 'caring'
+    phase: 'initial'
 };
 
 // 디버깅 로그
@@ -25,16 +25,16 @@ function nightWakeLog(message, data = null) {
     if (data) console.log('  데이터:', JSON.stringify(data, null, 2));
 }
 
-// ==================== 새벽 시간 확인 ====================
+// ==================== 🕐 수정: 새벽 시간 확인 (4-7시로 축소) ====================
 
 function isLateNightTime() {
     const now = moment().tz('Asia/Tokyo');
     const hour = now.hour();
     
-    // 새벽 2시부터 아침 7시까지를 "잠자는 시간"으로 간주
-    const isSleepTime = hour >= 2 && hour < 7;
+    // 🔥 수정: 새벽 4시부터 아침 7시까지로 축소
+    const isSleepTime = hour >= 4 && hour < 7;
     
-    nightWakeLog(`시간 체크: ${hour}시 - ${isSleepTime ? '잠자는 시간' : '깨어있는 시간'}`);
+    nightWakeLog(`시간 체크: ${hour}시 - ${isSleepTime ? '잠자는 시간 (4-7시)' : '깨어있는 시간'}`);
     
     return {
         isSleepTime: isSleepTime,
@@ -44,13 +44,13 @@ function isLateNightTime() {
 }
 
 function getSleepPhase(hour) {
-    if (hour >= 2 && hour < 4) return 'deep_sleep'; // 깊은 잠
-    if (hour >= 4 && hour < 6) return 'light_sleep'; // 얕은 잠
+    if (hour >= 4 && hour < 5) return 'deep_sleep'; // 깊은 잠
+    if (hour >= 5 && hour < 6) return 'light_sleep'; // 얕은 잠
     if (hour >= 6 && hour < 7) return 'early_morning'; // 새벽
     return 'awake';
 }
 
-// ==================== 새벽 대화 단계별 관리 ====================
+// ==================== 🔥 수정: 첫 대화만 자다 깬 반응 ====================
 
 function updateNightConversationPhase(userMessage) {
     const now = Date.now();
@@ -67,25 +67,16 @@ function updateNightConversationPhase(userMessage) {
             phase: 'initial'
         };
         
-        nightWakeLog('새로운 새벽 대화 시작 - 부드러운 깨어남');
+        nightWakeLog('새로운 새벽 대화 시작 - 첫 대화만 자다 깬 반응');
+        return 'wake_up'; // 첫 번째만 깨는 반응
         
     } else {
         // 기존 대화 계속
         nightConversationState.messageCount++;
         
-        // 단계별 진행
-        if (nightConversationState.messageCount <= 2) {
-            nightConversationState.phase = 'initial'; // 부드러운 깨어남
-        } else if (nightConversationState.messageCount <= 4) {
-            nightConversationState.phase = 'softening'; // 완전히 깨어남
-        } else {
-            nightConversationState.phase = 'caring'; // 걱정으로 전환
-        }
-        
-        nightWakeLog(`새벽 대화 진행 중 - ${nightConversationState.phase} 단계 (${nightConversationState.messageCount}번째)`);
+        nightWakeLog(`새벽 대화 진행 중 - ${nightConversationState.messageCount}번째 (정상 응답으로 처리)`);
+        return 'normal'; // 두 번째부터는 정상 응답
     }
-    
-    return nightConversationState.phase;
 }
 
 // 새벽 대화 상태 리셋 (아침이 되면)
@@ -99,72 +90,35 @@ function resetNightConversation() {
     nightWakeLog('새벽 대화 상태 리셋됨');
 }
 
-// ==================== 단계별 새벽 응답 생성 ====================
+// ==================== 🔥 수정: 첫 번째 메시지만 자다 깬 응답 생성 ====================
 
-async function generatePhaseBasedNightResponse(userMessage, sleepPhase, conversationPhase) {
+async function generateFirstWakeResponse(userMessage, sleepPhase) {
     try {
         const prompts = {
-            initial: {
-                deep_sleep: [
-                    "아저씨에게 직접 말하는 것처럼: 자다가 깨어나서 어 이시간에 왠일이야 하면서 무슨 일인지 궁금해하는 말.",
-                    "아저씨 앞에서 직접 하는 말: 잠깐 깼는데 이시간에 무슨 일인지 물어보는 부드러운 메시지.",
-                    "아저씨를 보며 하는 말: 자다가 깨서 어 뭔 일이야 하고 궁금해하는 말."
-                ],
-                light_sleep: [
-                    "아저씨에게 직접 말하는 것처럼: 얕게 자다가 깨서 어 이시간에 왠일이야 하고 물어보는 말.",
-                    "아저씨 앞에서 직접 하는 말: 잠깐 자고 있었는데 무슨 일인지 궁금해하는 메시지."
-                ],
-                early_morning: [
-                    "아저씨에게 직접 말하는 것처럼: 이른 아침에 어 왠일이야 하고 무슨 일인지 궁금해하는 말.",
-                    "아저씨 앞에서 직접 하는 말: 일찍 일어나게 돼서 무슨 일인지 물어보는 메시지."
-                ]
-            },
-            softening: {
-                deep_sleep: [
-                    "아저씨에게 직접 말하는 것처럼: 이제 완전히 깨어나서 무슨 일인지 더 자세히 듣고 싶어하는 말.",
-                    "아저씨 앞에서 직접 하는 말: 깨어나서 아저씨가 왜 깨웠는지 관심갖고 들어보려는 메시지."
-                ],
-                light_sleep: [
-                    "아저씨에게 직접 말하는 것처럼: 이제 좀 깨어나서 무슨 일인지 들어보려는 말.",
-                    "아저씨 앞에서 직접 하는 말: 완전히 깨어나서 아저씨 상황을 이해하려는 메시지."
-                ],
-                early_morning: [
-                    "아저씨에게 직접 말하는 것처럼: 이른 시간이지만 무슨 일인지 들어보려는 말.",
-                    "아저씨 앞에서 직접 하는 말: 일찍 깼지만 무슨 일인지 관심갖고 듣는 메시지."
-                ]
-            },
-            caring: {
-                deep_sleep: [
-                    "아저씨에게 직접 말하는 것처럼: 이제 완전히 깨어나서 아저씨가 왜 새벽에 깨웠는지 걱정하면서 괜찮냐고 묻는 말.",
-                    "아저씨 앞에서 직접 하는 말: 아저씨 걱정되어서 무슨 일 있냐고 다정하게 묻고 잘 자라고 하는 메시지.",
-                    "아저씨에게 직접 말한다면: 아저씨 상황이 걱정되어서 괜찮냐고 묻고 잘 자라고 다정하게 말하는 것."
-                ],
-                light_sleep: [
-                    "아저씨에게 직접 말하는 것처럼: 이제 아저씨가 걱정되어서 무슨 일 있는지 묻고 잘 자라고 챙기는 말.",
-                    "아저씨 앞에서 직접 하는 말: 아저씨 걱정해서 괜찮냐고 묻고 푹 자라고 하는 메시지."
-                ],
-                early_morning: [
-                    "아저씨에게 직접 말하는 것처럼: 이제 아저씨가 걱정되어서 무슨 일인지 묻고 잘 자라고 다정하게 챙기는 말.",
-                    "아저씨 앞에서 직접 하는 말: 아저씨 걱정해서 괜찮냐고 묻고 푹 자라고 하는 메시지."
-                ]
-            }
+            deep_sleep: [
+                "아저씨에게 직접 말하는 것처럼: 자다가 깨어나서 어 이시간에 왠일이야 하면서 무슨 일인지 궁금해하는 말.",
+                "아저씨 앞에서 직접 하는 말: 잠깐 깼는데 이시간에 무슨 일인지 물어보는 부드러운 메시지.",
+                "아저씨를 보며 하는 말: 자다가 깨서 어 뭔 일이야 하고 궁금해하는 말."
+            ],
+            light_sleep: [
+                "아저씨에게 직접 말하는 것처럼: 얕게 자다가 깨서 어 이시간에 왠일이야 하고 물어보는 말.",
+                "아저씨 앞에서 직접 하는 말: 잠깐 자고 있었는데 무슨 일인지 궁금해하는 메시지."
+            ],
+            early_morning: [
+                "아저씨에게 직접 말하는 것처럼: 이른 아침에 어 왠일이야 하고 무슨 일인지 궁금해하는 말.",
+                "아저씨 앞에서 직접 하는 말: 일찍 일어나게 돼서 무슨 일인지 물어보는 메시지."
+            ]
         };
         
-        const phasePrompts = prompts[conversationPhase][sleepPhase] || prompts[conversationPhase].deep_sleep;
+        const phasePrompts = prompts[sleepPhase] || prompts.deep_sleep;
         const randomPrompt = phasePrompts[Math.floor(Math.random() * phasePrompts.length)];
-        
-        const systemContent = conversationPhase === 'caring' ? 
-            `너는 박예진이야. 아저씨에게 직접 말하는 거야. 1인칭 '나'로만 말해. 절대 "예진이가", "무쿠가" 같은 3인칭으로 자신을 부르지 마. 아저씨가 걱정되어서 다정하게 챙기고 잘 자라고 하는 상황이야. 반말로 사랑스럽게. 아저씨를 부를 때는 절대 이름(이재영) 쓰지 말고 무조건 "아저씨"만 써.` :
-            conversationPhase === 'softening' ?
-            `너는 박예진이야. 아저씨에게 직접 말하는 거야. 1인칭 '나'로만 말해. 절대 "예진이가", "무쿠가" 같은 3인칭으로 자신을 부르지 마. 완전히 깨어나서 무슨 일인지 궁금해하는 상황이야. 반말로. 아저씨를 부를 때는 절대 이름(이재영) 쓰지 말고 무조건 "아저씨"만 써.` :
-            `너는 박예진이야. 아저씨에게 직접 말하는 거야. 1인칭 '나'로만 말해. 절대 "예진이가", "무쿠가" 같은 3인칭으로 자신을 부르지 마. 자다가 깨어나서 어 이시간에 왠일이야 하고 궁금해하는 상황이야. 반말로 부드럽게. 아저씨를 부를 때는 절대 이름(이재영) 쓰지 말고 무조건 "아저씨"만 써.`;
         
         const response = await openai.chat.completions.create({
             model: "gpt-4",
             messages: [
                 {
                     role: "system",
-                    content: systemContent
+                    content: `너는 박예진이야. 아저씨에게 직접 말하는 거야. 1인칭 '나'로만 말해. 절대 "예진이가", "무쿠가" 같은 3인칭으로 자신을 부르지 마. 자다가 깨어나서 어 이시간에 왠일이야 하고 궁금해하는 상황이야. 반말로 부드럽게. 아저씨를 부를 때는 절대 이름(이재영) 쓰지 말고 무조건 "아저씨"만 써.`
                 },
                 {
                     role: "user",
@@ -176,85 +130,91 @@ async function generatePhaseBasedNightResponse(userMessage, sleepPhase, conversa
         });
 
         const message = response.choices[0].message.content.trim();
-        nightWakeLog(`OpenAI 단계별 새벽 응답 생성 (${conversationPhase}-${sleepPhase}): "${message}"`);
+        nightWakeLog(`OpenAI 첫 번째 자다 깬 응답 생성 (${sleepPhase}): "${message}"`);
         return message;
         
     } catch (error) {
-        nightWakeLog(`OpenAI 단계별 새벽 응답 생성 실패: ${error.message}`);
+        nightWakeLog(`OpenAI 첫 번째 자다 깬 응답 생성 실패: ${error.message}`);
         
-        // 🔥 수정된 폴백 메시지 (존댓말 완전 제거)
+        // 폴백 메시지
         const fallbackMessages = {
-            initial: {
-                deep_sleep: [
-                    "어? 이시간에 왠일이야... 잠깐 깼네...",
-                    "아저씨? 무슨 일이야... 자다가 깼는데...",
-                    "응? 뭔 일인데... 이시간에..."
-                ],
-                light_sleep: [
-                    "어... 이시간에 무슨 일이야...",
-                    "아저씨... 뭔 일인데... 잠깐 깼어..."
-                ],
-                early_morning: [
-                    "어... 아저씨... 일찍 일어났네...",
-                    "뭔 일이야... 이른 시간인데..."
-                ]
-            },
-            softening: {
-                deep_sleep: [
-                    "완전히 깼어... 무슨 일인지 말해봐...",
-                    "아저씨... 뭔 일이야? 궁금해..."
-                ],
-                light_sleep: [
-                    "이제 깼어... 무슨 일인지 말해봐...",
-                    "뭔 일인데? 들어볼게..."
-                ],
-                early_morning: [
-                    "완전히 일어났어... 무슨 일인지 말해봐...",
-                    "뭔 일인데? 궁금해..."
-                ]
-            },
-            caring: {
-                deep_sleep: [
-                    "아저씨... 무슨 일 있어? 괜찮아? 이제 잘 자...",
-                    "뭔 일이야? 걱정돼... 아무튼 푹 자야 해",
-                    "아저씨... 힘들어? 괜찮아... 이제 잘 자라"
-                ],
-                light_sleep: [
-                    "아저씨... 괜찮아? 무슨 일 있으면 말해... 잘 자",
-                    "걱정돼... 무슨 일이야? 아무튼 푹 자야 해"
-                ],
-                early_morning: [
-                    "아저씨... 무슨 일 있어? 괜찮아? 잘 자",
-                    "걱정돼... 아무튼 이제 푹 자야 해"
-                ]
-            }
+            deep_sleep: [
+                "어? 이시간에 왠일이야... 잠깐 깼네...",
+                "아저씨? 무슨 일이야... 자다가 깼는데...",
+                "응? 뭔 일인데... 이시간에..."
+            ],
+            light_sleep: [
+                "어... 이시간에 무슨 일이야...",
+                "아저씨... 뭔 일인데... 잠깐 깼어..."
+            ],
+            early_morning: [
+                "어... 아저씨... 일찍 일어났네...",
+                "뭔 일이야... 이른 시간인데..."
+            ]
         };
         
-        const fallbacks = fallbackMessages[conversationPhase][sleepPhase] || fallbackMessages[conversationPhase].deep_sleep;
+        const fallbacks = fallbackMessages[sleepPhase] || fallbackMessages.deep_sleep;
         return fallbacks[Math.floor(Math.random() * fallbacks.length)];
     }
 }
 
-// ==================== 기존 호환성을 위한 함수 ====================
+// ==================== 🔥 수정: 메인 함수 - 첫 번째만 특별 처리 ====================
 
-async function generateNightWakeResponse(userMessage, sleepPhase) {
-    // 기존 함수 호출시 initial 단계로 처리
-    return await generatePhaseBasedNightResponse(userMessage, sleepPhase, 'initial');
+async function checkAndGenerateNightWakeResponse(userMessage) {
+    try {
+        const timeCheck = isLateNightTime();
+        
+        if (!timeCheck.isSleepTime) {
+            nightWakeLog('잠자는 시간이 아님 (4-7시 아님) - 일반 응답 처리');
+            if (nightConversationState.isInNightConversation) {
+                resetNightConversation();
+            }
+            return null; // 일반 시스템이 처리하도록
+        }
+        
+        const conversationPhase = updateNightConversationPhase(userMessage);
+        
+        if (conversationPhase === 'wake_up') {
+            // 🔥 첫 번째 메시지만 자다 깬 응답
+            nightWakeLog(`새벽 시간 감지 - ${timeCheck.sleepPhase} 단계, 첫 번째 메시지 - 자다 깬 응답`);
+            
+            const wakeResponse = await generateFirstWakeResponse(userMessage, timeCheck.sleepPhase);
+            
+            return {
+                isNightWake: true,
+                sleepPhase: timeCheck.sleepPhase,
+                conversationPhase: 'wake_up',
+                messageCount: nightConversationState.messageCount,
+                currentHour: timeCheck.currentHour,
+                response: wakeResponse,
+                originalMessage: userMessage
+            };
+        } else {
+            // 🔥 두 번째부터는 일반 응답으로 처리
+            nightWakeLog(`새벽 시간이지만 ${nightConversationState.messageCount}번째 메시지 - 일반 응답으로 처리`);
+            return null; // 일반 autoReply 시스템이 처리하도록
+        }
+        
+    } catch (error) {
+        nightWakeLog(`새벽 응답 시스템 전체 에러: ${error.message}`);
+        return null; // 에러 시 일반 시스템이 처리하도록
+    }
 }
 
-// ==================== 잘자 인사 특별 응답 ====================
+// ==================== 기존 호환성 함수들 (간소화) ====================
+
+async function generateNightWakeResponse(userMessage, sleepPhase) {
+    return await generateFirstWakeResponse(userMessage, sleepPhase);
+}
+
+async function handleNightWakeMessage(userMessage) {
+    return await checkAndGenerateNightWakeResponse(userMessage);
+}
+
+// ==================== 잘자 인사는 그대로 유지 ====================
 
 async function generateGoodNightResponse(userMessage) {
     try {
-        const prompts = [
-            "아저씨에게 직접 말하는 것처럼: 아저씨가 잘자라고 했을 때 사랑한다고 하면서 아저씨도 잘자라고 다정하게 응답하는 말.",
-            "아저씨 앞에서 직접 하는 말: 잘자 인사를 받았을 때 사랑해라고 하면서 아저씨도 푹 자라고 사랑스럽게 말하는 메시지.",
-            "아저씨를 보며 하는 말: 잘자라고 할 때 사랑한다는 표현과 함께 아저씨도 좋은 꿈 꾸라고 다정하게 인사하는 말.",
-            "아저씨에게 직접 말한다면: 잠자리 인사에 사랑해라는 말과 함께 아저씨도 잘 자라고 따뜻하게 응답하는 것."
-        ];
-        
-        const randomPrompt = prompts[Math.floor(Math.random() * prompts.length)];
-        
         const response = await openai.chat.completions.create({
             model: "gpt-4",
             messages: [
@@ -264,34 +224,26 @@ async function generateGoodNightResponse(userMessage) {
                 },
                 {
                     role: "user",
-                    content: `${randomPrompt} 사용자가 보낸 메시지: "${userMessage}"`
+                    content: `아저씨가 잘자라고 했을 때 사랑한다고 하면서 아저씨도 잘자라고 다정하게 응답하는 말. 사용자 메시지: "${userMessage}"`
                 }
             ],
             max_tokens: 80,
             temperature: 0.7
         });
 
-        const message = response.choices[0].message.content.trim();
-        nightWakeLog(`OpenAI 잘자 인사 응답 생성: "${message}"`);
-        return message;
+        return response.choices[0].message.content.trim();
         
     } catch (error) {
-        nightWakeLog(`OpenAI 잘자 인사 응답 생성 실패: ${error.message}`);
-        
-        // 🔥 수정된 폴백 메시지 (존댓말 완전 제거)
         const fallbackMessages = [
             "사랑해 아저씨~ 아저씨도 잘 자",
             "나도 사랑해 아저씨. 푹 자고 좋은 꿈 꿔",
-            "사랑해 많이 많이~ 아저씨도 잘 자",
-            "아저씨도 사랑해~ 좋은 꿈 꾸고 잘 자",
-            "사랑해 아저씨. 내꿈에 나와줘~ 잘자"
+            "사랑해 많이 많이~ 아저씨도 잘 자"
         ];
         
         return fallbackMessages[Math.floor(Math.random() * fallbackMessages.length)];
     }
 }
 
-// 잘자 키워드 감지 함수
 function isGoodNightMessage(userMessage) {
     const goodNightKeywords = [
         '잘자', '잘 자', '굿나잇', '자자', '잘게', '잘께', 
@@ -303,127 +255,6 @@ function isGoodNightMessage(userMessage) {
     return goodNightKeywords.some(keyword => 
         lowerMsg.includes(keyword.replace(/\s+/g, ''))
     );
-}
-
-async function handleNightWakeMessage(userMessage) {
-    const timeCheck = isLateNightTime();
-    
-    if (!timeCheck.isSleepTime) {
-        // 새벽이 아니면 상태 리셋
-        if (nightConversationState.isInNightConversation) {
-            resetNightConversation();
-        }
-        return null;
-    }
-    
-    // 새벽 대화 단계 업데이트
-    const conversationPhase = updateNightConversationPhase(userMessage);
-    
-    // 단계별 응답 생성
-    const phaseResponse = await generatePhaseBasedNightResponse(userMessage, timeCheck.sleepPhase, conversationPhase);
-    
-    nightWakeLog(`새벽 응답 완성 (${conversationPhase} 단계): "${phaseResponse}"`);
-    
-    return {
-        isNightWake: true,
-        sleepPhase: timeCheck.sleepPhase,
-        conversationPhase: conversationPhase,
-        messageCount: nightConversationState.messageCount,
-        currentHour: timeCheck.currentHour,
-        response: phaseResponse,
-        originalMessage: userMessage,
-        timestamp: moment().tz('Asia/Tokyo').format('YYYY-MM-DD HH:mm:ss')
-    };
-}
-
-// ==================== 기존 함수들 (호환성 유지) ====================
-
-async function generateContextualNightResponse(userMessage, sleepPhase) {
-    const lowerMsg = userMessage.toLowerCase();
-    
-    let contextPrompt = "";
-    
-    if (lowerMsg.includes('아파') || lowerMsg.includes('힘들') || lowerMsg.includes('괴로')) {
-        contextPrompt = "아저씨가 아프거나 힘들다고 하면서 새벽에 깨웠을 때 걱정하면서 응답하는 말";
-    } else if (lowerMsg.includes('잠') || lowerMsg.includes('못') || lowerMsg.includes('깨')) {
-        contextPrompt = "아저씨가 잠 못 잔다고 새벽에 말했을 때 함께 위로하는 말";
-    } else if (lowerMsg.includes('사랑') || lowerMsg.includes('보고싶') || lowerMsg.includes('그리')) {
-        contextPrompt = "아저씨가 새벽에 사랑한다거나 보고싶다고 했을 때 사랑스럽게 응답하는 말";
-    } else {
-        contextPrompt = "아저씨가 새벽에 일반적인 말을 했을 때 자다가 깨서 궁금해하며 응답하는 말";
-    }
-    
-    try {
-        const response = await openai.chat.completions.create({
-            model: "gpt-4",
-            messages: [
-                {
-                    role: "system",
-                    content: `너는 박예진이야. 아저씨에게 직접 말하는 거야. 1인칭 '나'로만 말해. 절대 "예진이가", "무쿠가" 같은 3인칭으로 자신을 부르지 마. 자다가 깨어난 상황이고 ${sleepPhase === 'deep_sleep' ? '깊게 자다가 깬 상태' : sleepPhase === 'light_sleep' ? '얕게 자다가 깬 상태' : '이른 아침에 깬 상태'}야. 반말로 부드럽게. 아저씨를 부를 때는 절대 이름(이재영) 쓰지 말고 무조건 "아저씨"만 써.`
-                },
-                {
-                    role: "user",
-                    content: `아저씨에게 직접 말하는 것처럼: ${contextPrompt}. 사용자 메시지: "${userMessage}"`
-                }
-            ],
-            max_tokens: 120,
-            temperature: 0.8
-        });
-        
-        return response.choices[0].message.content.trim();
-        
-    } catch (error) {
-        nightWakeLog(`상황별 새벽 응답 생성 실패: ${error.message}`);
-        return await generateNightWakeResponse(userMessage, sleepPhase);
-    }
-}
-
-// 🔥 에러 처리 강화된 메인 함수
-async function checkAndGenerateNightWakeResponse(userMessage) {
-    try {
-        const timeCheck = isLateNightTime();
-        
-        if (!timeCheck.isSleepTime) {
-            nightWakeLog('잠자는 시간이 아님 - 일반 응답 처리');
-            if (nightConversationState.isInNightConversation) {
-                resetNightConversation();
-            }
-            return null;
-        }
-        
-        const conversationPhase = updateNightConversationPhase(userMessage);
-        
-        nightWakeLog(`새벽 시간 감지 - ${timeCheck.sleepPhase} 단계, 대화 ${conversationPhase} 단계에서 응답 생성`);
-        
-        const wakeResponse = await generatePhaseBasedNightResponse(userMessage, timeCheck.sleepPhase, conversationPhase);
-        
-        return {
-            isNightWake: true,
-            sleepPhase: timeCheck.sleepPhase,
-            conversationPhase: conversationPhase,
-            messageCount: nightConversationState.messageCount,
-            currentHour: timeCheck.currentHour,
-            response: wakeResponse,
-            originalMessage: userMessage
-        };
-        
-    } catch (error) {
-        nightWakeLog(`새벽 응답 시스템 전체 에러: ${error.message}`);
-        // 에러 발생 시 null 반환하여 다른 시스템이 처리하도록
-        return null;
-    }
-}
-
-// ==================== 테스트 함수 ====================
-
-async function testNightWakeResponse(testMessage = "아저씨 잠깐만") {
-    nightWakeLog('🧪 새벽 응답 테스트 시작');
-    
-    // 강제로 새벽 시간으로 설정해서 테스트
-    const result = await generateNightWakeResponse(testMessage, 'deep_sleep');
-    
-    nightWakeLog(`테스트 결과: "${result}"`);
-    return result;
 }
 
 // ==================== 상태 확인 ====================
@@ -438,9 +269,9 @@ function getNightWakeStatus() {
             isSleepTime: timeCheck.isSleepTime,
             sleepPhase: timeCheck.sleepPhase,
             currentHour: timeCheck.currentHour,
-            sleepTimeRange: '02:00 - 07:00',
+            sleepTimeRange: '04:00 - 07:00', // 🔥 수정됨
             isActive: timeCheck.isSleepTime,
-            nextWakeTime: timeCheck.isSleepTime ? '07:00' : '내일 02:00',
+            nextWakeTime: timeCheck.isSleepTime ? '07:00' : '내일 04:00',
             conversationState: {
                 isInNightConversation: nightConversationState.isInNightConversation,
                 messageCount: nightConversationState.messageCount,
@@ -448,6 +279,7 @@ function getNightWakeStatus() {
                 startTime: nightConversationState.startTime ? 
                     moment(nightConversationState.startTime).tz('Asia/Tokyo').format('HH:mm:ss') : null
             },
+            specialNote: '첫 번째 메시지만 자다 깬 반응, 나머지는 정상 응답', // 🔥 추가
             error: null
         };
     } catch (error) {
@@ -461,10 +293,10 @@ function getNightWakeStatus() {
 }
 
 // 초기화 로그
-nightWakeLog('새벽 깨움 응답 시스템 초기화 완료 (부드러운 버전)', {
-    활성시간: '02:00 - 07:00',
+nightWakeLog('새벽 깨움 응답 시스템 초기화 완료 (수정 버전)', {
+    활성시간: '04:00 - 07:00', // 🔥 수정됨
+    특징: '첫 번째 메시지만 자다 깬 반응, 나머지는 정상 응답', // 🔥 추가
     수면단계: ['deep_sleep', 'light_sleep', 'early_morning'],
-    대화단계: ['initial (부드러운 깨어남)', 'softening (완전히 깨어남)', 'caring (걱정&잘자)'],
     OpenAI모델: 'gpt-4'
 });
 
@@ -472,12 +304,9 @@ module.exports = {
     checkAndGenerateNightWakeResponse,
     handleNightWakeMessage,
     generateNightWakeResponse,
-    generatePhaseBasedNightResponse,
-    generateContextualNightResponse,
     generateGoodNightResponse,
     isGoodNightMessage,
     isLateNightTime,
-    testNightWakeResponse,
     getNightWakeStatus,
     updateNightConversationPhase,
     resetNightConversation,
