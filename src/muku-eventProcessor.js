@@ -390,37 +390,38 @@ async function generateContextAwareResponse(messageText, modules, enhancedLoggin
     if (recentHistory.length > 0) {
         console.log(`${colors.context}    📚 ${recentHistory.length}개 과거 대화 활용${colors.reset}`);
         
-      // 최근 관련 대화 요약
-const relevantConversations = recentHistory.slice(0, 6); // 더 많이 가져와서 쌍 맞추기
+        // 최근 관련 대화 요약
+        const relevantConversations = recentHistory.slice(0, 6); // 더 많이 가져와서 쌍 맞추기
 
-// Redis 데이터를 사용자-무쿠 대화 쌍으로 변환
-const conversationPairs = [];
-for (let i = 0; i < relevantConversations.length - 1; i++) {
-    const current = relevantConversations[i];
-    const next = relevantConversations[i + 1];
-    
-    // 무쿠 응답 다음에 사용자 입력이 오는 경우
-    if (current.emotionType === 'muku_response' && next.emotionType === 'user_input') {
-        conversationPairs.push({
-            userMessage: next.message,
-            mukuResponse: current.message,
-            timestamp: current.timestamp
+        // Redis 데이터를 사용자-무쿠 대화 쌍으로 변환
+        const conversationPairs = [];
+        for (let i = 0; i < relevantConversations.length - 1; i++) {
+            const current = relevantConversations[i];
+            const next = relevantConversations[i + 1];
+            
+            // 무쿠 응답 다음에 사용자 입력이 오는 경우
+            if (current.emotionType === 'muku_response' && next.emotionType === 'user_input') {
+                conversationPairs.push({
+                    userMessage: next.message,
+                    mukuResponse: current.message,
+                    timestamp: current.timestamp
+                });
+                i++; // 다음 항목도 처리했으므로 건너뛰기
+            }
+        }
+
+        // 최근 3개 대화쌍만 사용
+        const recentPairs = conversationPairs.slice(0, 3);
+
+        contextInfo = recentPairs.map(conv => 
+            `[이전] 아저씨: "${conv.userMessage}" → 예진이: "${conv.mukuResponse}"`
+        ).join('\n');
+
+        console.log(`${colors.context}    💬 활용할 대화 맥락:${colors.reset}`);
+        recentPairs.forEach((conv, idx) => {
+            console.log(`${colors.context}      ${idx + 1}. "${String(conv.userMessage).substring(0, 20)}..." → "${String(conv.mukuResponse).substring(0, 30)}..."${colors.reset}`);
         });
-        i++; // 다음 항목도 처리했으므로 건너뛰기
     }
-}
-
-// 최근 3개 대화쌍만 사용
-const recentPairs = conversationPairs.slice(0, 3);
-
-contextInfo = recentPairs.map(conv => 
-    `[이전] 아저씨: "${conv.userMessage}" → 예진이: "${conv.mukuResponse}"`
-).join('\n');
-
-console.log(`${colors.context}    💬 활용할 대화 맥락:${colors.reset}`);
-recentPairs.forEach((conv, idx) => {
-    console.log(`${colors.context}      ${idx + 1}. "${String(conv.userMessage).substring(0, 20)}..." → "${String(conv.mukuResponse).substring(0, 30)}..."${colors.reset}`);
-});
     
     // 🛡️ 1차: autoReply 시도 (맥락 정보 포함)
     let botResponse = await safeAsyncCall(async () => {
