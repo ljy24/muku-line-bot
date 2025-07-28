@@ -905,24 +905,56 @@ function getRandomActivity(timeOfDay) { const activities = yejinRealLife.timeBas
 function getTimeOfDay(hour) { if (hour >= 6 && hour < 12) return 'morning'; if (hour >= 12 && hour < 17) return 'afternoon'; if (hour >= 17 && hour < 22) return 'evening'; if (hour >= 22 || hour < 2) return 'night'; return 'lateNight'; }
 
 // ================== 🎯 랜덤 상황 생성 함수 ==================
+// ================== 🎯 랜덤 상황 생성 함수 (시간대별 수정) ==================
 function generateRandomSituation() {
     const koreaTime = moment().tz(TIMEZONE);
     const hour = koreaTime.hour();
     const timeOfDay = getTimeOfDay(hour);
     
-    const situations = [
-        { type: 'modeling', content: '촬영장에서 잠깐 휴식 중' },
-        { type: 'work', content: '도트 디자인 작업 중' },
-        { type: 'casual', content: '카페에서 아아 마시며 쉬는 중' },
-        { type: 'tired', content: '야근 때문에 피곤한 상태' },
-        { type: 'diet', content: '고구마 다이어트 중이지만 치킨 생각나는 상황' },
-        { type: 'photo', content: '후지 카메라로 사진 찍고 싶은 기분' },
-        { type: 'missing', content: '아저씨 생각나는 순간' }
-    ];
+    // 🔥 시간대별 적절한 상황만 선택하도록 수정
+    const situationsByTime = {
+        morning: [
+            { type: 'casual', content: '카페에서 아아 마시며 아침 시간 보내는 중' },
+            { type: 'work', content: '오전 작업 시작하려고 준비 중' },
+            { type: 'modeling', content: '오전 촬영 스케줄 확인하는 중' },
+            { type: 'photo', content: '아침 햇살이 예뻐서 사진 찍고 싶어' },
+            { type: 'missing', content: '아저씨 생각나는 아침 시간' }
+        ],
+        afternoon: [
+            { type: 'work', content: '도트 디자인 작업 중' },
+            { type: 'modeling', content: '촬영장에서 잠깐 휴식 중' },
+            { type: 'casual', content: '카페에서 아아 마시며 쉬는 중' },
+            { type: 'diet', content: '점심 먹고 나서 치킨 생각나는 상황' },
+            { type: 'photo', content: '후지 카메라로 사진 찍고 싶은 기분' },
+            { type: 'missing', content: '아저씨 생각나는 순간' }
+        ],
+        evening: [
+            { type: 'casual', content: '저녁 시간 유튜브 보면서 쉬는 중' },
+            { type: 'work', content: '저녁에 마무리 작업 하는 중' },
+            { type: 'modeling', content: '촬영 마무리하고 정리하는 중' },
+            { type: 'diet', content: '저녁 먹고 나서 디저트 유혹과 싸우는 중' },
+            { type: 'missing', content: '하루 마무리하며 아저씨 생각나는 시간' }
+        ],
+        night: [
+            { type: 'tired', content: '야근 때문에 피곤한 상태' },
+            { type: 'work', content: '밤늦게 그림 작업하는 중' },
+            { type: 'casual', content: '밤에 유튜브 보면서 쉬는 중' },
+            { type: 'missing', content: '밤에 아저씨 생각나서 연락하고 싶어' }
+        ],
+        lateNight: [
+            { type: 'tired', content: '야근 마무리하려는데 너무 피곤해' },
+            { type: 'work', content: '새벽까지 작업하느라 힘든 상태' },
+            { type: 'missing', content: '새벽에 아저씨 생각나서 잠 못 드는 중' }
+        ]
+    };
     
-    return getRandomItem(situations);
+    // 시간대에 맞는 상황들 중에서 랜덤 선택
+    const appropriateSituations = situationsByTime[timeOfDay] || situationsByTime.afternoon;
+    
+    console.log(`[spontaneous] 🕐 ${hour}시 (${timeOfDay}) - ${appropriateSituations.length}개 상황 중 선택`);
+    
+    return getRandomItem(appropriateSituations);
 }
-
 // ================== 🤖 OpenAI 메시지 생성 및 전송 ==================
 async function generateYejinSpontaneousMessage() {
     try {
