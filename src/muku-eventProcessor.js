@@ -390,31 +390,83 @@ function findRelevantConversations(conversations, keywords) {
     return relevantConversations;
 }
 
-// ================== 💬 현재 메시지에서 키워드 추출 ==================
+// ================== 💬 현재 메시지에서 의미있는 키워드만 추출 ==================
 function extractKeywordsFromMessage(message) {
     if (!message || typeof message !== 'string') return [];
     
     const keywords = [];
     
     try {
-        // 한글 키워드 추출
-        const koreanKeywords = message.match(/[가-힣]{2,}/g) || [];
+        // 🚨 일반적인 단어들 제외 리스트 (대폭 확장)
+        const excludeWords = [
+            // 일반적인 조사/어미
+            '에서', '에게', '한테', '까지', '부터', '이야', '이다', '했다', '했어', 
+            '있다', '없다', '좋다', '나쁘다', '그래', '그거', '이거', '저거',
+            // 일반적인 호칭/대명사
+            '아저씨', '예진이', '무쿠', '나', '너', '우리', '그들',
+            // 일반적인 시간 표현
+            '오늘', '어제', '내일', '지금', '그때', '이때', '예전에', '언제',
+            // 일반적인 장소 표현  
+            '여기', '거기', '저기', '집에서', '밖에서',
+            // 일반적인 동작
+            '했던', '하는', '할', '된', '되는', '될', '들었던', '듣는', '들을',
+            // 일반적인 감정/상태
+            '생각', '말', '얘기', '시간', '사람', '것', '때', '곳', '일', '거'
+        ];
+        
+        // 한글 키워드 추출 (3글자 이상만, 의미있는 명사만)
+        const koreanKeywords = message.match(/[가-힣]{3,}/g) || [];
         for (const keyword of koreanKeywords) {
-            if (keyword && keyword.length > 1 && !['아저씨', '예진이', '무쿠', '그래', '이거', '저거', '그거'].includes(keyword)) {
+            if (keyword && !excludeWords.includes(keyword)) {
                 keywords.push(keyword);
             }
         }
         
-        // 영어 키워드 추출
-        const englishKeywords = message.match(/[a-zA-Z]{2,}/g) || [];
+        // 영어 키워드 추출 (3글자 이상)
+        const englishKeywords = message.match(/[a-zA-Z]{3,}/g) || [];
+        const commonEnglishWords = ['the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'had'];
         for (const keyword of englishKeywords) {
-            if (keyword && keyword.length > 2) {
+            if (keyword && !commonEnglishWords.includes(keyword.toLowerCase())) {
                 keywords.push(keyword);
             }
         }
         
-        // 중복 제거하고 최대 5개
-        return [...new Set(keywords)].slice(0, 5);
+        // 🎯 핵심: 고유명사나 특별한 키워드 우선 추출
+        const specialKeywords = [];
+        const text = message.toLowerCase();
+        
+        // 장소명
+        if (text.includes('모지코')) specialKeywords.push('모지코');
+        if (text.includes('기타큐슈')) specialKeywords.push('기타큐슈');
+        
+        // 음악/노래
+        if (text.includes('음악')) specialKeywords.push('음악');
+        if (text.includes('노래')) specialKeywords.push('노래');
+        if (text.includes('키세키')) specialKeywords.push('키세키');
+        
+        // 물건/선물
+        if (text.includes('슈퍼타쿠마')) specialKeywords.push('슈퍼타쿠마');
+        if (text.includes('렌즈')) specialKeywords.push('렌즈');
+        if (text.includes('카메라')) specialKeywords.push('카메라');
+        
+        // 활동
+        if (text.includes('사진')) specialKeywords.push('사진');
+        if (text.includes('담배') || text.includes('담타')) specialKeywords.push('담타');
+        
+        // 특별한 키워드가 있으면 우선 사용
+        if (specialKeywords.length > 0) {
+            console.log(`🎯 [특별키워드] 발견: [${specialKeywords.join(', ')}]`);
+            return [...new Set([...specialKeywords, ...keywords])].slice(0, 3); // 최대 3개
+        }
+        
+        // 중복 제거하고 최대 3개 (너무 많으면 매칭 정확도 떨어짐)
+        const finalKeywords = [...new Set(keywords)].slice(0, 3);
+        
+        if (finalKeywords.length === 0) {
+            console.log(`⚠️ [키워드없음] "${message}" - 의미있는 키워드 없음`);
+        }
+        
+        return finalKeywords;
         
     } catch (error) {
         console.log(`⚠️ [키워드추출] 오류: ${error.message}`);
