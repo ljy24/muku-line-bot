@@ -1,18 +1,10 @@
 // ============================================================================
-// yejinSelfie.js - v2.7 (사진 맥락 추적 에러 해결)
+// yejinSelfie.js - v2.4 (함수명 확실히 export)
 // 📸 애기의 감정을 읽어서 코멘트와 함께 셀카를 전송합니다.
-// 🩸 생리주기 정보는 마스터에서 가져옴 (Single Source of Truth)
-// 🛡️ autoReply.recordPhotoSent 에러 해결: 해당 기능 주석처리로 안전성 확보
 // ============================================================================
 
-// 🩸 생리주기 마스터에서 정보 가져오기 (Single Source of Truth)
-const moodManager = require('./moodManager.js');
-
-// ✅ [주석처리] 사진 맥락 추적을 위한 autoReply 모듈 - recordPhotoSent 함수 없어서 에러 발생
-// const autoReply = require('./autoReply.js');
-
 function getSelfieReplyText(emotionalState) {
-    // 🩸 중앙 감정 관리자에서 직접 텍스트 가져오기 시도
+    // 중앙 감정 관리자에서 직접 텍스트 가져오기 시도
     try {
         const emotionalContext = require('./emotionalContextManager.js');
         return emotionalContext.getSelfieText();
@@ -63,70 +55,24 @@ async function getSelfieReply(userMessage, conversationContext) {
         const fileName = String(index).padStart(6, "0") + ".jpg";
         const imageUrl = `${baseUrl}/${fileName}`;
 
-        // ✅ [수정] 감정 상태 결정 로직
+        // ✅ [수정] 중앙 감정 관리자에서 감정 상태 가져오기
         let emotionalState = 'normal';
         
-        // 1순위: conversationContext에서 감정 상태 가져오기
-        if (conversationContext && typeof conversationContext.getInternalState === 'function') {
-            try {
-                const internalState = conversationContext.getInternalState();
-                if (internalState && internalState.emotionalEngine && internalState.emotionalEngine.currentToneState) {
-                    emotionalState = internalState.emotionalEngine.currentToneState;
-                    console.log(`[yejinSelfie] conversationContext에서 가져온 상태: ${emotionalState}`);
-                }
-            } catch (error) {
-                console.error('❌ conversationContext에서 감정 상태를 가져오는데 실패:', error);
-            }
-        }
-        
-        // 2순위: 중앙 감정 관리자에서 감정 상태 가져오기
-        if (emotionalState === 'normal') {
-            try {
-                const emotionalContext = require('./emotionalContextManager.js');
-                const currentEmotionState = emotionalContext.getCurrentEmotionState();
-                emotionalState = currentEmotionState.currentEmotion;
-                console.log(`[yejinSelfie] 중앙 감정 관리자에서 가져온 상태: ${emotionalState}`);
-            } catch (error) {
-                console.warn('⚠️ [yejinSelfie] 중앙 감정 관리자에서 상태를 가져올 수 없음:', error.message);
-            }
-        }
-        
-        // 3순위: 생리주기 기반 감정 상태 (마스터에서 매핑된 정보 사용)
-        if (emotionalState === 'normal') {
-            try {
-                // 🩸 moodManager에서 이미 매핑된 생리주기 정보 가져오기
-                const menstrualPhase = moodManager.getCurrentMenstrualPhase();
-                
-                // moodManager의 phase를 emotionalState로 매핑
-                const phaseToEmotion = {
-                    'period': 'sensitive',      // 생리 중 - 예민함
-                    'follicular': 'energetic',  // 활발한 시기 - 활기참
-                    'ovulation': 'romantic',    // 배란기 - 로맨틱
-                    'luteal': 'quiet'           // PMS - 조용함
-                };
-                
-                emotionalState = phaseToEmotion[menstrualPhase.phase] || 'normal';
-                console.log(`[yejinSelfie] 생리주기 기반 감정 상태: ${menstrualPhase.phase} -> ${emotionalState}`);
-            } catch (error) {
-                console.warn('⚠️ [yejinSelfie] 생리주기 정보를 가져올 수 없어서 기본 감정 상태 사용:', error.message);
-                emotionalState = 'normal';
-            }
+        try {
+            // emotionalContextManager에서 현재 감정 상태 가져오기
+            const emotionalContext = require('./emotionalContextManager.js');
+            const currentEmotionState = emotionalContext.getCurrentEmotionState();
+            emotionalState = currentEmotionState.currentEmotion;
+            
+            console.log(`[yejinSelfie] 중앙 감정 관리자에서 가져온 상태: ${emotionalState}`);
+        } catch (error) {
+            console.warn('⚠️ [yejinSelfie] 중앙 감정 관리자에서 상태를 가져올 수 없어서 기본값 사용:', error.message);
+            emotionalState = 'normal';
         }
 
         const text = getSelfieReplyText(emotionalState);
 
-        console.log(`📸 [yejinSelfie] 셀카 전송: ${emotionalState} 상태로 응답`);
-
-        // ✅ [주석처리] 사진 맥락 추적 기록 - autoReply.recordPhotoSent 함수 없어서 에러 발생
-        // 나중에 해당 함수가 구현되면 주석 해제하면 됨
-        /*
-        try {
-            autoReply.recordPhotoSent('selfie', text);
-            console.log(`📝 [yejinSelfie] 사진 맥락 추적 기록 완료: selfie`);
-        } catch (error) {
-            console.warn('⚠️ [yejinSelfie] 사진 맥락 추적 기록 실패:', error.message);
-        }
-        */
+        console.log(`[yejinSelfie] 셀카 전송: ${emotionalState} 상태로 응답`);
 
         return {
             type: 'image',
@@ -153,19 +99,6 @@ async function getEmotionalSelfie(emotionType = 'normal') {
     const imageUrl = `${baseUrl}/${fileName}`;
     
     const text = getSelfieReplyText(emotionType);
-    
-    console.log(`📸 [yejinSelfie] 이벤트 셀카 전송: ${emotionType} 상태`);
-    
-    // ✅ [주석처리] 사진 맥락 추적 기록 - autoReply.recordPhotoSent 함수 없어서 에러 발생
-    // 나중에 해당 함수가 구현되면 주석 해제하면 됨
-    /*
-    try {
-        autoReply.recordPhotoSent('selfie', text);
-        console.log(`📝 [yejinSelfie] 이벤트 셀카 맥락 추적 기록 완료: selfie`);
-    } catch (error) {
-        console.warn('⚠️ [yejinSelfie] 이벤트 셀카 맥락 추적 기록 실패:', error.message);
-    }
-    */
     
     return {
         type: 'image',
