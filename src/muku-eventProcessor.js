@@ -118,6 +118,47 @@ function safeModuleAccess(modules, path, context = '') {
     }
 }
 
+// ================== 🔍 문자열 유사도 계산 함수 ==================
+function calculateSimilarity(str1, str2) {
+    if (!str1 || !str2) return 0;
+    
+    const longer = str1.length > str2.length ? str1 : str2;
+    const shorter = str1.length > str2.length ? str2 : str1;
+    
+    if (longer.length === 0) return 1.0;
+    
+    const distance = levenshteinDistance(longer, shorter);
+    return (longer.length - distance) / longer.length;
+}
+
+function levenshteinDistance(str1, str2) {
+    const matrix = [];
+    
+    for (let i = 0; i <= str2.length; i++) {
+        matrix[i] = [i];
+    }
+    
+    for (let j = 0; j <= str1.length; j++) {
+        matrix[0][j] = j;
+    }
+    
+    for (let i = 1; i <= str2.length; i++) {
+        for (let j = 1; j <= str1.length; j++) {
+            if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+                matrix[i][j] = matrix[i - 1][j - 1];
+            } else {
+                matrix[i][j] = Math.min(
+                    matrix[i - 1][j - 1] + 1,
+                    matrix[i][j - 1] + 1,
+                    matrix[i - 1][j] + 1
+                );
+            }
+        }
+    }
+    
+    return matrix[str2.length][str1.length];
+}
+
 // ================== 🎯 "기억나?" 질문 판별 함수 ==================
 function isSpecificMemoryQuestion(messageText) {
     if (!messageText || typeof messageText !== 'string') {
@@ -212,13 +253,46 @@ async function generateMemoryResponseForExplicitQuestion(messageText, modules, e
             };
         }
         
+        // 🚨 강력한 앵무새 방지 - 현재 질문과 최근 5분 내 동일/유사 질문 완전 제외
+        const now = Date.now();
+        const filteredConversations = conversations.filter(conv => {
+            const userMsg = String(conv.userMessage || '').toLowerCase().trim();
+            const currentMsg = messageText.toLowerCase().trim();
+            
+            // 1. 완전 동일한 메시지 제외
+            if (userMsg === currentMsg) {
+                console.log(`🚫 [앵무새방지] 완전 동일 메시지 제외: "${userMsg}"`);
+                return false;
+            }
+            
+            // 2. 최근 5분 내 메시지는 제외 (현재 질문이 바로 저장되는 문제 해결)
+            const convTime = new Date(conv.timestamp).getTime();
+            if (now - convTime < 5 * 60 * 1000) { // 5분
+                console.log(`🚫 [앵무새방지] 최근 5분 내 메시지 제외: "${userMsg}"`);
+                return false;
+            }
+            
+            // 3. 핵심 키워드만 같고 문장 구조가 같으면 제외 (질문의 앵무새 방지)
+            if (currentMsg.includes('기억나') && userMsg.includes('기억나') && userMsg.includes('모지코')) {
+                const similarity = calculateSimilarity(userMsg, currentMsg);
+                if (similarity > 0.7) { // 70% 이상 유사하면 제외
+                    console.log(`🚫 [앵무새방지] 유사한 질문 제외 (${(similarity*100).toFixed(1)}%): "${userMsg}"`);
+                    return false;
+                }
+            }
+            
+            return true;
+        });
+        
+        console.log(`🛡️ [앵무새방지] ${conversations.length}개 → ${filteredConversations.length}개로 강력 필터링`);
+        
         // 키워드로 관련 대화 검색
-        const relevantConversations = findRelevantConversations(conversations, keywords);
+        const relevantConversations = findRelevantConversations(filteredConversations, keywords);
         
         if (relevantConversations.length === 0) {
             return {
                 type: 'text',
-                comment: '음... 그런 얘기 했었나? 내가 기억을 못하는 것 같아 ㅠㅠ 좀 더 자세히 말해줄래?',
+                comment: '음... 그거 언제 얘기했더라? 나 기억이 가물가물해 ㅠㅠ 다시 얘기해줄래?',
                 memoryNotFound: true
             };
         }
