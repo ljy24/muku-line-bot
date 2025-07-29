@@ -159,7 +159,7 @@ function levenshteinDistance(str1, str2) {
     return matrix[str2.length][str1.length];
 }
 
-// ================== 🎯 "기억나?" 질문 판별 함수 ==================
+// ================== 🎯 "기억나?" 질문 판별 함수 (더 엄격하게) ==================
 function isSpecificMemoryQuestion(messageText) {
     if (!messageText || typeof messageText !== 'string') {
         return false;
@@ -168,29 +168,46 @@ function isSpecificMemoryQuestion(messageText) {
     const message = messageText.toLowerCase().trim();
     console.log(`🔍 [기억질문판별] 메시지 분석: "${message}"`);
     
-    // 🔍 정말 명확한 기억 질문만 감지
-    const explicitMemoryPatterns = [
-        /기억.*나/, /기억.*해/, /기억.*못/, /기억.*안/,    // "기억나?", "기억해?", "기억 못해?", "기억 안 나?"
-        /말했.*거/, /얘기했.*거/, /했던.*거/,              // "말했던 거", "얘기했던 거", "했던 거"
-        /그때.*뭐/, /그날.*뭐/, /언제.*했/,                // "그때 뭐", "그날 뭐", "언제 했"
-        /어제.*뭐/, /그제.*뭐/, /지난.*뭐/,                // "어제 뭐", "그제 뭐", "지난 뭐"
-        /알고.*있/, /알아.*둬/, /잊어.*버/                  // "알고 있어?", "알아둬", "잊어버렸어?"
+    // 🚨 시스템 프롬프트에 이미 있는 중요한 추억들 - autoReply.js에서 처리하게 넘김
+    const importantMemories = [
+        '모지코', '키세키', '음악', '노래',
+        '담타', '담배', 
+        '슈퍼타쿠마', '렌즈', '카메라',
+        '약먹자', '이닦자', '11시',
+        '수족냉증', '손', '따뜻한',
+        '참 착해', '마지막'
+    ];
+    
+    // 중요한 추억 키워드가 포함되면 autoReply.js에서 처리하게 함
+    for (const memory of importantMemories) {
+        if (message.includes(memory)) {
+            console.log(`🎯 [중요추억감지] "${memory}" 키워드 발견 - autoReply.js에서 처리하도록 넘김`);
+            return false; // 장기기억 시스템 사용 안 함
+        }
+    }
+    
+    // 🔍 정말 구체적이고 시간 특정된 기억 질문만 처리
+    const specificMemoryPatterns = [
+        /어제.*뭐.*했/, /그제.*뭐.*했/, /오늘.*오전.*뭐/,  // 시간 특정
+        /지난주.*뭐/, /지난달.*뭐/, /며칠전.*뭐/,           // 시간 특정
+        /몇시에.*했/, /몇일에.*했/, /언제.*갔/,              // 시간 특정
+        /어디.*갔.*기억/, /누구.*만났.*기억/, /뭐.*샀.*기억/  // 구체적 행동
     ];
     
     // 패턴 매칭 확인
-    const isExplicitMemoryQuestion = explicitMemoryPatterns.some(pattern => {
+    const isSpecificMemoryQuestion = specificMemoryPatterns.some(pattern => {
         const match = pattern.test(message);
         if (match) {
-            console.log(`🔍 [기억질문판별] ✅ 명확한 기억 질문 패턴 매칭: ${pattern.source}`);
+            console.log(`🔍 [구체적기억질문] ✅ 시간/행동 특정 질문 패턴 매칭: ${pattern.source}`);
         }
         return match;
     });
     
-    if (isExplicitMemoryQuestion) {
-        console.log(`🔍 [기억질문판별] ✅ EXPLICIT MEMORY QUESTION: "${message}"`);
+    if (isSpecificMemoryQuestion) {
+        console.log(`🔍 [구체적기억질문] ✅ SPECIFIC MEMORY QUESTION: "${message}"`);
         return true;
     } else {
-        console.log(`🔍 [기억질문판별] ❌ NOT MEMORY QUESTION: "${message}" - autoReply.js로 위임`);
+        console.log(`🔍 [일반기억질문] ❌ NOT SPECIFIC: "${message}" - autoReply.js에서 처리`);
         return false;
     }
 }
