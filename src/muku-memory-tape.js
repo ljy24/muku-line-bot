@@ -83,13 +83,42 @@ function getJapanTimeString() {
 }
 
 function getDateString(date = null) {
-    const targetDate = date || getJapanTime();
+    let targetDate;
+    
+    if (!date) {
+        targetDate = getJapanTime();
+    } else if (date instanceof Date) {
+        targetDate = date;
+    } else if (typeof date === 'string') {
+        targetDate = new Date(date);
+    } else if (typeof date === 'number') {
+        targetDate = new Date(date);
+    } else {
+        console.warn(`${colors.warning}⚠️ [Memory Tape] 잘못된 날짜 형식: ${typeof date}, 현재 시간 사용${colors.reset}`);
+        targetDate = getJapanTime();
+    }
+    
+    // Date 객체 유효성 검사
+    if (isNaN(targetDate.getTime())) {
+        console.warn(`${colors.warning}⚠️ [Memory Tape] 무효한 날짜, 현재 시간 사용${colors.reset}`);
+        targetDate = getJapanTime();
+    }
+    
     return targetDate.toISOString().split('T')[0]; // YYYY-MM-DD 형식
 }
 
 // ================== 🔑 Redis 키 생성 함수들 ==================
-function getDailyLogKey(date) {
-    const dateString = getDateString(date);
+function getDailyLogKey(dateInput) {
+    let dateString;
+    
+    if (typeof dateInput === 'string' && dateInput.match(/^\d{4}-\d{2}-\d{2}$/)) {
+        // 이미 YYYY-MM-DD 형식인 경우
+        dateString = dateInput;
+    } else {
+        // Date 객체나 다른 형식인 경우 변환
+        dateString = getDateString(dateInput);
+    }
+    
     return `muku:conversation:daily:${dateString}`;
 }
 
@@ -197,10 +226,15 @@ async function recordMukuMoment(momentData) {
 // ================== 📖 메모리 테이프 읽기 함수 ==================
 async function readDailyMemories(targetDate = null) {
     try {
+        console.log(`${colors.info}📖 [Memory Tape] 날짜 파라미터 타입: ${typeof targetDate}, 값: ${targetDate}${colors.reset}`);
+        
         const dateString = getDateString(targetDate);
+        console.log(`${colors.info}📖 [Memory Tape] 처리된 날짜: ${dateString}${colors.reset}`);
         
         const dailyLog = await safeRedisOperation(async (redis) => {
             const dailyKey = getDailyLogKey(dateString);
+            console.log(`${colors.info}📖 [Memory Tape] Redis 키: ${dailyKey}${colors.reset}`);
+            
             const dailyLogStr = await redis.get(dailyKey);
             
             if (!dailyLogStr) {
@@ -220,6 +254,7 @@ async function readDailyMemories(targetDate = null) {
 
     } catch (error) {
         console.error(`${colors.error}❌ [Memory Tape] 읽기 실패: ${error.message}${colors.reset}`);
+        console.error(`${colors.error}❌ [Memory Tape] 오류 스택: ${error.stack}${colors.reset}`);
         return null;
     }
 }
