@@ -1,9 +1,10 @@
 // ============================================================================
-// ultimateConversationContext.js - v37.0 (Redis 통합 + 중복 해결 완성)
+// ultimateConversationContext.js - v37.1 (TypeError 해결 완성)
 // 🎯 핵심 고유 기능 보존: GPT모델 최적화 + 동적기억 + 주제관리 + 정교한프롬프트
 // 🔄 Redis 통합: 기존 시스템과 완전 연동하여 무쿠 벙어리 문제 해결
 // ✨ 중복 제거: 다른 시스템들과 역할 분담 명확화
 // 🛡️ 안전 우선: 기존 기능 100% 보존하면서 Redis 레이어 추가
+// 🔧 TypeError 해결: getMoodState() 함수 추가로 moodManager.js 호환성 완성
 // ============================================================================
 
 const moment = require('moment-timezone');
@@ -315,7 +316,7 @@ async function addUserCommandMemoryWithRedis(content, category = 'user_command')
         type: 'user_command',
         importance: 10,
         source: 'ultimate_context_user_command',
-        version: 'v37.0'
+        version: 'v37.1'
     };
     
     // 로컬에 추가
@@ -661,6 +662,44 @@ function detectConversationTopicAdvanced(message) {
 // ==================== 📊 시스템 상태 및 통계 ====================
 
 /**
+ * 🎭 moodManager.js 호환용 감정 상태 조회 (TypeError 해결)
+ */
+function getMoodState() {
+    try {
+        return {
+            currentEmotion: ultimateContextState.conversationTopic?.topic || 'normal',
+            intensity: ultimateContextState.conversationTopic?.confidence || 0.5,
+            timestamp: ultimateContextState.conversationTopic?.timestamp || Date.now(),
+            source: 'ultimate_context_v37',
+            isActive: true,
+            
+            // 추가 호환성 필드들
+            emotion: ultimateContextState.conversationTopic?.topic || 'normal',
+            level: ultimateContextState.conversationTopic?.confidence || 0.5,
+            reason: '대화 주제 기반 감정 추론',
+            lastUpdate: ultimateContextState.conversationTopic?.timestamp || Date.now(),
+            
+            // 메타 정보
+            integration: {
+                redisAvailable: !!redisCache?.isAvailable,
+                autonomousSystemConnected: !!autonomousYejinSystem,
+                userMemoriesCount: ultimateContextState.userCommandMemories.length
+            }
+        };
+    } catch (error) {
+        ultimateLog('getMoodState 오류:', error.message);
+        return {
+            currentEmotion: 'normal',
+            intensity: 0.5,
+            timestamp: Date.now(),
+            source: 'ultimate_context_fallback',
+            isActive: false,
+            error: error.message
+        };
+    }
+}
+
+/**
  * 📊 Ultimate Context 시스템 상태 조회
  */
 function getUltimateSystemStatus() {
@@ -669,7 +708,7 @@ function getUltimateSystemStatus() {
     
     return {
         // 시스템 정보
-        version: 'v37.0-ultimate-redis-integrated',
+        version: 'v37.1-ultimate-redis-integrated-typeerror-fixed',
         type: 'ultimate_context_system',
         
         // 핵심 고유 기능 상태
@@ -708,6 +747,13 @@ function getUltimateSystemStatus() {
             gptModelManagement: !!getCurrentModelSetting
         },
         
+        // 🔧 TypeError 해결 상태
+        errorFixes: {
+            getMoodStateAdded: true,
+            moodManagerCompatible: true,
+            typeErrorResolved: true
+        },
+        
         // 메타정보
         lastUpdate: Date.now(),
         uniqueFeatures: [
@@ -715,7 +761,8 @@ function getUltimateSystemStatus() {
             'Redis 통합 사용자 기억',
             '지능적 대화 주제 추적',
             '최강 통합 프롬프트 생성',
-            '고급 보류 액션 관리'
+            '고급 보류 액션 관리',
+            'moodManager.js TypeError 해결'
         ]
     };
 }
@@ -726,7 +773,7 @@ function getUltimateSystemStatus() {
  * 🚀 Ultimate Context 시스템 초기화
  */
 async function initializeUltimateContextSystem() {
-    ultimateLog('Ultimate Context v37.0 시스템 초기화 시작...');
+    ultimateLog('Ultimate Context v37.1 시스템 초기화 시작...');
     
     // GPT 모델 정보 확인
     const currentModel = getCurrentModelSetting ? getCurrentModelSetting() : 'unknown';
@@ -744,13 +791,13 @@ async function initializeUltimateContextSystem() {
     // GPT 모델 최적화 초기 수행
     optimizeForCurrentModel();
     
-    ultimateLog(`Ultimate Context v37.0 초기화 완료! (${currentModel} 최적화, Redis 통합)`);
+    ultimateLog(`Ultimate Context v37.1 초기화 완료! (${currentModel} 최적화, Redis 통합, TypeError 해결)`);
     
     return true;
 }
 
 // ==================== 📤 모듈 내보내기 ==================
-ultimateLog('Ultimate Context v37.0 로드 완료 (Redis 통합 + GPT 최적화 + 중복 해결)');
+ultimateLog('Ultimate Context v37.1 로드 완료 (Redis 통합 + GPT 최적화 + TypeError 해결)');
 
 module.exports = {
     // 🚀 초기화
@@ -778,6 +825,9 @@ module.exports = {
     
     // 🤖 Redis 통합 명령어 처리
     processUserCommandWithRedis,
+    
+    // 🔧 TypeError 해결 - moodManager.js 호환성
+    getMoodState,
     
     // 📊 상태 조회
     getUltimateSystemStatus,
