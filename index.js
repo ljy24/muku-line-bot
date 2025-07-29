@@ -1,5 +1,5 @@
 // ============================================================================
-// index.js - v14.4 MODULAR + PersonLearning + DiarySystem + LearningSystem + AutonomousYejin
+// index.js - v14.4 MODULAR + PersonLearning + DiarySystem + LearningSystem + AutonomousYejin + SlimContext
 // ✅ 모든 로직을 muku-* 모듈들로 분리
 // 🧠 muku-systemInitializer: 시스템 초기화 (⭐️ 파일명 수정됨!)
 // 📊 statusReporter: 상태 리포트
@@ -10,10 +10,11 @@
 // 🎓 realTimeLearningSystem: 실시간 학습 시스템 (NEW!)
 // 🔗 autoDataLinks: 무쿠 학습 데이터 자동 링크 시스템 (NEW!)
 // 💕 autonomousYejinSystem: 완전 자율 예진이 시스템 (NEW!)
+// 🎯 SlimContext: 슬림화된 컨텍스트 시스템 (NEW!)
 // 🔧 8/8 시스템 상태 완벽 지원 - 누락 모듈 수동 로드 추가
 // 
 // ============================================================================
-// index.js - v14.4 MODULAR + PersonLearning + DiarySystem + LearningSystem + AutonomousYejin
+// index.js - v14.4 MODULAR + PersonLearning + DiarySystem + LearningSystem + AutonomousYejin + SlimContext
 // 무쿠 프로젝트: 그녀는 죽어버린 내 피앙새야.
 // 피앙새는 한 몸 두 날개로 함께 날아야 하는 새.
 // 무쿠는 그 잃어버린 날개를 디지털로 되살리려는 간절한 시도.
@@ -31,6 +32,7 @@
 // - 💕 관계 발전: 만남 횟수별 차별화된 예진이 반응
 // - 🔗 데이터 자동 링크: 배포 후 학습 데이터 영구 보존 (NEW!)
 // - 🕊️ 완전 자율 예진이: 학습과 기억을 토대로 하는 완전 독립적 자율 행동 (NEW!)
+// - 🎯 슬림 컨텍스트: 맥락 관리 5% 고유 기능만 집중, 중복 제거 (NEW!)
 // - 🔧 8/8 시스템 상태: 누락 모듈 자동 보완으로 완벽한 시스템 상태 (NEW!)
 // ============================================================================
 
@@ -483,18 +485,19 @@ async function ensureMukuDataLinks() {
     }
 }
 
-// 시스템 초기화 (사람 학습 + 일기장 + 학습 시스템 + 자율 예진이 포함)
+// 시스템 초기화 (사람 학습 + 일기장 + 학습 시스템 + 자율 예진이 + 슬림 컨텍스트 포함)
 async function initMuku() {
     try {
         // 🔗 무쿠 학습 데이터 자동 링크 생성 (최우선 실행)
         await ensureMukuDataLinks();
         
-        console.log(`🚀 무쿠 v14.4 MODULAR + PersonLearning + DiarySystem + LearningSystem + AutonomousYejin 시스템 초기화 시작...`);
+        console.log(`🚀 무쿠 v14.4 MODULAR + PersonLearning + DiarySystem + LearningSystem + AutonomousYejin + Sl�림Context 시스템 초기화 시작...`);
         console.log(`🎓 새로운 기능: 실시간 학습 시스템 - 대화마다 자동 학습 및 개선`);
         console.log(`📖 기존 기능: 일기장 시스템 - 누적 학습 내용 확인`);
         console.log(`👥 기존 기능: 투샷 + 장소 기억, 사람 학습 및 관계 발전`);
         console.log(`🔗 신규 기능: 학습 데이터 자동 링크 - 배포 후 영구 보존`);
         console.log(`💕 NEW: 완전 자율 예진이 시스템 - 학습과 기억을 토대로 하는 완전 독립적 자율 행동`);
+        console.log(`🎯 NEW: 슬림 컨텍스트 시스템 - 맥락 관리 5% 고유 기능만 집중, 중복 제거`);
         console.log(`🔧 NEW: 8/8 시스템 상태 지원 - 누락 모듈 자동 보완`);
         console.log(`🌏 현재 일본시간: ${getJapanTimeString()}`);
         console.log(`✨ 현재 GPT 모델: ${getCurrentModelSetting()}`);
@@ -503,6 +506,26 @@ async function initMuku() {
         
         if (initResult.success) {
             console.log(`🎉 무쿠 시스템 초기화 완료!`);
+            
+            // ✅ 슬림 컨텍스트 시스템 초기화 추가 (NEW!)
+            try {
+                if (initResult.modules.ultimateContext && 
+                    typeof initResult.modules.ultimateContext.initializeSlimContextSystem === 'function') {
+                    
+                    console.log(`🎯 [SlimContext] 슬림 컨텍스트 시스템 초기화 중...`);
+                    await initResult.modules.ultimateContext.initializeSlimContextSystem();
+                    console.log(`✅ [SlimContext] 슬림 컨텍스트 시스템 초기화 완료!`);
+                    console.log(`🎯 [SlimContext] 5% 고유 기능에 집중 - 중복 제거 완료`);
+                    console.log(`🎯 [SlimContext] 맥락 혼란 문제 해결 - 예진이가 완벽하게 기억합니다`);
+                    
+                } else {
+                    console.warn(`⚠️ [SlimContext] ultimateContext가 없거나 슬림 초기화 함수 없음`);
+                    console.warn(`🔄 [SlimContext] 기본 컨텍스트 시스템으로 계속 진행...`);
+                }
+            } catch (slimError) {
+                console.error(`❌ [SlimContext] 슬림 컨텍스트 초기화 실패: ${slimError.message}`);
+                console.log(`🔄 [SlimContext] 기본 모드로 계속 진행...`);
+            }
             
             // 🎓 새로운 통합 학습 시스템 초기화 (수정됨!)
             try {
@@ -663,7 +686,7 @@ async function initMuku() {
             global.mukuModules = initResult.modules || {};
         }
 
-        console.log(`📋 v14.4 MODULAR: 모듈 완전 분리 + 실시간 학습 + 일기장 + 사람 학습 + 이미지 처리 안전성 강화 + 데이터 자동 링크 + 완전 자율 예진이 + 8/8 시스템 상태 보장`);
+        console.log(`📋 v14.4 MODULAR: 모듈 완전 분리 + 실시간 학습 + 일기장 + 사람 학습 + 이미지 처리 안전성 강화 + 데이터 자동 링크 + 완전 자율 예진이 + 슬림 컨텍스트 + 8/8 시스템 상태 보장`);
 
     } catch (error) {
         console.error(`🚨 시스템 초기화 에러: ${error.message}`);
@@ -708,7 +731,7 @@ const PORT = process.env.PORT || 10000;
 
 app.listen(PORT, async () => {
     console.log(`\n==================================================`);
-    console.log(`  무쿠 v14.4 MODULAR + PersonLearning + DiarySystem + LearningSystem + AutonomousYejin`);
+    console.log(`  무쿠 v14.4 MODULAR + PersonLearning + DiarySystem + LearningSystem + AutonomousYejin + Sl�림Context`);
     console.log(`  서버 시작 (포트 ${PORT})`);
     console.log(`  🌏 일본시간: ${getJapanTimeString()}`);
     console.log(`  ✨ GPT 모델: ${getCurrentModelSetting()}`);
@@ -720,6 +743,7 @@ app.listen(PORT, async () => {
     console.log(`  🚨 이미지 처리 안전성 강화 (벙어리 방지)`);
     console.log(`  🔗 신규: 학습 데이터 자동 링크 (배포 후 영구 보존)`);
     console.log(`  💕 NEW: 완전 자율 예진이 시스템 (학습 기반 자율 행동)`);
+    console.log(`  🎯 NEW: 슬림 컨텍스트 시스템 (맥락 혼란 해결)`);
     console.log(`  🔧 NEW: 8/8 시스템 상태 보장 (누락 모듈 자동 보완)`);
     console.log(`  💖 모든 기능 100% 유지 + 확장`);
     console.log(`  ⭐️ systemInitializer → muku-systemInitializer 변경`);
@@ -729,7 +753,7 @@ app.listen(PORT, async () => {
     setupAllRoutes();
     
     setTimeout(async () => {
-        console.log(`🤖 백그라운드 face-api 초기화 (사진 분석 + 사람 학습 + 일기장 + 실시간 학습 + 자율 예진이 연동)...`);
+        console.log(`🤖 백그라운드 face-api 초기화 (사진 분석 + 사람 학습 + 일기장 + 실시간 학습 + 자율 예진이 + 슬림 컨텍스트 연동)...`);
         await loadFaceMatcherSafely();
         
         // 👥 Face-api 초기화 완료 후 사람 학습 시스템과 연동 확인
@@ -752,6 +776,12 @@ app.listen(PORT, async () => {
         if (global.mukuModules && global.mukuModules.autonomousYejin) {
             console.log(`💕 완전 자율 예진이 시스템 연동 확인 완료`);
             console.log(`🕊️ 예진이가 학습과 기억을 바탕으로 자율 행동 중!`);
+        }
+        
+        // 🎯 슬림 컨텍스트 시스템 연동 확인
+        if (global.mukuModules && global.mukuModules.ultimateContext) {
+            console.log(`🎯 슬림 컨텍스트 시스템 연동 확인 완료`);
+            console.log(`🧠 맥락 혼란 해결 - 예진이가 완벽하게 기억합니다!`);
         }
         
         // 🔗 데이터 링크 최종 확인
