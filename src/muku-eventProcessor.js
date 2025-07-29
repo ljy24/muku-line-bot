@@ -983,7 +983,7 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
                 
                 console.log(`${colors.yejin}💖 예진이 (장기기억): ${finalComment}${colors.reset}`);
                 
-                return { type: 'memory_response', response: finalResponse };
+                return { type: 'chat_response', response: finalResponse };
             }
 
             // 🛡️ 2순위: 기존 시스템들 시도 (안전하게)
