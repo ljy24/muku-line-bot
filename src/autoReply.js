@@ -1,5 +1,5 @@
 // ============================================================================
-// autoReply.js - v15.4 (안전한 맥락 시스템 연동 추가)
+// autoReply.js - v15.5 (선택적 기억 시스템 적용)
 // 🧠 기억 관리, 키워드 반응, 예진이 특별반응, 최종 프롬프트 생성을 책임지는 핵심 두뇌
 // 🌸 길거리 칭찬 → 셀카, 위로 → 고마워함, 바쁨 → 삐짐 반응 추가
 // 🛡️ 절대 벙어리 방지: 모든 에러 상황에서도 예진이는 반드시 대답함!
@@ -11,7 +11,7 @@
 // 🚨 존댓말 완전 방지: 절대로 존댓말 안 함, 항상 반말만 사용
 // 🆕 NEW: commandHandler 호출 추가 - "셀카줘", "컨셉사진줘", "추억사진줘" 명령어 지원!
 // 💕 NEW: 애정표현 우선처리 - "사랑해"를 위로가 아닌 애정표현으로 올바르게 인식!
-// 🧠 NEW: 안전한 맥락 시스템 연동 - 실패해도 기존 기능 100% 보장!
+// 🧠 NEW: 선택적 맥락 시스템 - "기억나?", "생각나?" 등에만 기억 시스템 작동!
 // 📸 FIXED: 사진 명령어 직접 처리 - commandHandler 실패해도 100% 작동 보장!
 // ============================================================================
 
@@ -82,6 +82,34 @@ try {
 
 const BOT_NAME = '나';
 const USER_NAME = '아저씨';
+
+// 🧠 [NEW] 기억 질문 감지 함수 - 명확한 기억 질문에만 반응!
+function isMemoryQuestion(message) {
+    if (!message || typeof message !== 'string') return false;
+    
+    const msg = message.toLowerCase().trim();
+    console.log(`🧠 [기억질문감지] 입력: "${msg}"`);
+    
+    // 명확한 기억 질문 패턴들
+    const memoryPatterns = [
+        /기억나\?/, /기억나니\?/, /기억하니\?/, /기억해\?/,
+        /생각나\?/, /생각나니\?/, /생각하니\?/,
+        /알아\?/, /아니\?/, /맞아\?/, /맞지\?/,
+        /했잖아/, /말했잖아/, /그랬잖아/,
+        /전에.*말/, /예전에.*말/, /그때.*말/,
+        /기억.*있/, /생각.*있/, /알고.*있/
+    ];
+    
+    const isMemory = memoryPatterns.some(pattern => pattern.test(msg));
+    
+    if (isMemory) {
+        console.log(`🧠 [기억질문감지] ✅ 기억 질문으로 판단: "${msg}"`);
+    } else {
+        console.log(`🧠 [기억질문감지] ❌ 일반 대화로 판단: "${msg}"`);
+    }
+    
+    return isMemory;
+}
 
 // 🛡️ 절대 벙어리 방지 응답들 (모두 반말로!)
 const EMERGENCY_FALLBACK_RESPONSES = [
@@ -766,7 +794,7 @@ async function safelyAnalyzeContextAndSave(userMessage, finalResponse) {
     }
 }
 
-// 🧠 [NEW] 안전한 맥락 응답 시도 함수
+// 🧠 [NEW] 안전한 맥락 응답 시도 함수 - 기억 질문에만 사용!
 async function safelyTryContextResponse(userMessage) {
     try {
         if (!contextEngine) {
@@ -1065,29 +1093,34 @@ async function getReplyByMessage(userMessage) {
         console.error('❌ 기억 요청 처리 중 에러:', error);
     }
 
-    // 🧠🧠🧠 10.5순위: 맥락 분석 시스템 (NEW!) - 완전 안전 설계 🧠🧠🧠
-    try {
-        const contextResponse = await safelyTryContextResponse(cleanUserMessage);
-        if (contextResponse) {
-            console.log('🧠 [맥락엔진] 맥락 응답 채택 - 일반 AI 응답 건너뜀');
-            
-            // 언어 수정 적용
-            let finalContextResponse = fixLanguageUsage(contextResponse);
-            
-            await safelyStoreMessage(BOT_NAME, finalContextResponse);
-            logConversationReply('나', `(맥락) ${finalContextResponse}`);
-            
-            // 🧠 [NEW] 맥락 엔진에 대화 저장 (안전)
-            await safelyAnalyzeContextAndSave(cleanUserMessage, finalContextResponse);
-            
-            return { type: 'text', comment: finalContextResponse };
-        } else {
-            console.log('🧠 [맥락엔진] 맥락 응답 없음 - 일반 AI 응답으로 진행');
+    // 🧠🧠🧠 10.5순위: 선택적 맥락 분석 시스템 (NEW!) - 기억 질문에만 작동! 🧠🧠🧠
+    if (isMemoryQuestion(cleanUserMessage)) {
+        try {
+            console.log('🧠 [맥락엔진] 기억 질문 감지 - 맥락 분석 시작');
+            const contextResponse = await safelyTryContextResponse(cleanUserMessage);
+            if (contextResponse) {
+                console.log('🧠 [맥락엔진] 맥락 응답 채택 - 일반 AI 응답 건너뜀');
+                
+                // 언어 수정 적용
+                let finalContextResponse = fixLanguageUsage(contextResponse);
+                
+                await safelyStoreMessage(BOT_NAME, finalContextResponse);
+                logConversationReply('나', `(맥락) ${finalContextResponse}`);
+                
+                // 🧠 [NEW] 맥락 엔진에 대화 저장 (안전)
+                await safelyAnalyzeContextAndSave(cleanUserMessage, finalContextResponse);
+                
+                return { type: 'text', comment: finalContextResponse };
+            } else {
+                console.log('🧠 [맥락엔진] 맥락 응답 없음 - 일반 AI 응답으로 진행');
+            }
+        } catch (error) {
+            console.error('❌ [맥락엔진] 예상치 못한 에러:', error.message);
+            console.log('🔄 [맥락엔진] 에러로 인해 일반 AI 응답으로 fallback');
+            // 어떤 에러가 발생해도 조용히 넘어가서 기존 시스템 사용
         }
-    } catch (error) {
-        console.error('❌ [맥락엔진] 예상치 못한 에러:', error.message);
-        console.log('🔄 [맥락엔진] 에러로 인해 일반 AI 응답으로 fallback');
-        // 어떤 에러가 발생해도 조용히 넘어가서 기존 시스템 사용
+    } else {
+        console.log('🧠 [맥락엔진] 일반 대화 - 맥락 분석 건너뜀');
     }
 
     // 11순위: 일반 AI 응답 생성
