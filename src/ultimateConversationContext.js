@@ -1,5 +1,5 @@
 // ============================================================================
-// ultimateConversationContext_slim.js - v36.0 (슬림화된 5% 고유 기능만)
+// ultimateConversationContext.js - v36.0 (슬림화된 5% 고유 기능만)
 // 🎯 중복 제거 완료: muku-autonomousYejinSystem.js와 완벽 분업
 // ✨ 고유 기능만 집중: 동적기억 + GPT최적화 + 정교한프롬프트 + 주제관리 + 세부통계
 // 🔄 외부 데이터 연동: muku-autonomousYejinSystem.js에서 데이터 받아서 사용
