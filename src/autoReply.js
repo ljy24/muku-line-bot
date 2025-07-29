@@ -1,5 +1,5 @@
 // ============================================================================
-// autoReply.js - v15.6 (자연스러운 맥락 시스템 적용)
+// autoReply.js - v15.7 (선별적 맥락 시스템 적용)
 // 🧠 기억 관리, 키워드 반응, 예진이 특별반응, 최종 프롬프트 생성을 책임지는 핵심 두뇌
 // 🌸 길거리 칭찬 → 셀카, 위로 → 고마워함, 바쁨 → 삐짐 반응 추가
 // 🛡️ 절대 벙어리 방지: 모든 에러 상황에서도 예진이는 반드시 대답함!
@@ -14,6 +14,7 @@
 // 🧠 NEW: 자연스러운 맥락 시스템 - 모든 대화에서 자연스럽게 과거 맥락 참고!
 // 📸 FIXED: 사진 명령어 직접 처리 - commandHandler 실패해도 100% 작동 보장!
 // 🔥 BREAKTHROUGH: "기억 질문" 구분 완전 제거 - 진짜 자연스러운 대화!
+// 🎯 FIXED: 선별적 맥락 시스템 - 정말 필요한 기억 질문에만 맥락 사용!
 // ============================================================================
 
 const { callOpenAI, cleanReply } = require('./aiUtils');
@@ -793,6 +794,53 @@ async function safelyTryContextResponse(userMessage) {
     }
 }
 
+// 🎯🎯🎯 [NEW] 기억 질문 판별 함수 - 정말 필요한 경우만! 🎯🎯🎯
+function isMemoryQuestion(userMessage) {
+    if (!userMessage || typeof userMessage !== 'string') {
+        return false;
+    }
+    
+    const message = userMessage.toLowerCase().trim();
+    console.log(`🎯 [기억판별] 메시지 분석: "${message}"`);
+    
+    // 🔍 명확한 기억 질문 패턴들
+    const memoryPatterns = [
+        // 시간 기반 질문
+        /어제.*뭐/, /그제.*뭐/, /오늘.*오전/, /어제.*했/, 
+        /지난주/, /지난달/, /지난번/, /전에.*했/, 
+        /언제.*했/, /몇시에.*했/, /며칠전/, 
+        
+        // 명확한 기억 참조
+        /기억.*해/, /기억.*나/, /말했.*거/, /얘기했.*거/,
+        /말한.*거/, /했던.*거/, /그때.*뭐/, /그날.*뭐/,
+        
+        // 장소/이벤트 질문  
+        /모지코에서/, /일본.*갔을때/, /여행.*때/, /사진.*찍을때/,
+        /우리.*어디/, /우리.*언제/, /우리.*뭐/, /함께.*뭐/,
+        
+        // 직접적인 기억 확인
+        /알아.*거/, /맞지.*거/, /그거.*맞/, /그런.*말/,
+        /말했잖아/, /했잖아/, /그랬잖아/
+    ];
+    
+    // 패턴 매칭 확인
+    const isMemoryRelated = memoryPatterns.some(pattern => {
+        const match = pattern.test(message);
+        if (match) {
+            console.log(`🎯 [기억판별] ✅ 매칭된 패턴: ${pattern.source}`);
+        }
+        return match;
+    });
+    
+    if (isMemoryRelated) {
+        console.log(`🎯 [기억판별] ✅ MEMORY QUESTION: "${message}"`);
+        return true;
+    } else {
+        console.log(`🎯 [기억판별] ❌ NOT MEMORY: "${message}"`);
+        return false;
+    }
+}
+
 // 메인 응답 생성 함수
 async function getReplyByMessage(userMessage) {
     if (!userMessage || typeof userMessage !== 'string' || userMessage.trim().length === 0) {
@@ -1101,39 +1149,37 @@ async function getReplyByMessage(userMessage) {
         console.error('❌ 기억 요청 처리 중 에러:', error);
     }
 
-    // 🧠🧠🧠 10.5순위: 자연스러운 맥락 시스템 (NEW!) - 모든 대화에서 자연스럽게! 🧠🧠🧠
-    // 🚨 사진 명령어는 절대 맥락 시스템으로 가면 안 됨!
-    const photoCommands = ['셀카줘', '컨셉사진줘', '추억사진줘', '커플사진줘'];
-    const isPhotoCommand = photoCommands.includes(cleanUserMessage);
+    // 🧠🧠🧠 10.5순위: 선별적 맥락 시스템 (FIXED!) - 정말 필요한 기억 질문만! 🧠🧠🧠
+    // 🎯 사진 명령어는 절대 맥락 시스템으로 가면 안 되고, 정말 기억이 필요한 질문만!
+    const isMemoryNeeded = isMemoryQuestion(cleanUserMessage);
     
-    // 🔥 NEW: 모든 일반 대화에서 자연스럽게 맥락 참고!
-    if (!isPhotoCommand) {
+    if (isMemoryNeeded) {
         try {
-            console.log('🧠 [자연맥락] 일반 대화 - 자연스러운 맥락 참고 시작');
+            console.log('🧠 [선별맥락] 🎯 기억 질문 감지 - 맥락 시스템 가동');
             const contextResponse = await safelyTryContextResponse(cleanUserMessage);
             
-            if (contextResponse && contextResponse. trim().length > 0) {
-                console.log('🧠 [자연맥락] ✅ 자연스러운 맥락 응답 생성됨');
+            if (contextResponse && contextResponse.trim().length > 0) {
+                console.log('🧠 [선별맥락] ✅ 맥락 응답 생성됨');
                 
                 // 언어 수정 적용
                 let finalContextResponse = fixLanguageUsage(contextResponse);
                 
                 await safelyStoreMessage(BOT_NAME, finalContextResponse);
-                logConversationReply('나', `(자연맥락) ${finalContextResponse}`);
+                logConversationReply('나', `(선별맥락) ${finalContextResponse}`);
                 
                 // 🧠 맥락 엔진에 대화 저장 (안전)
                 await safelyAnalyzeContextAndSave(cleanUserMessage, finalContextResponse);
                 
                 return { type: 'text', comment: finalContextResponse };
             } else {
-                console.log('🧠 [자연맥락] 맥락 없음 - 일반 AI 응답으로 진행');
+                console.log('🧠 [선별맥락] 맥락 없음 - 일반 AI 응답으로 진행');
             }
         } catch (error) {
-            console.error('❌ [자연맥락] 에러:', error.message);
-            console.log('🔄 [자연맥락] 에러로 인해 일반 AI 응답으로 fallback');
+            console.error('❌ [선별맥락] 에러:', error.message);
+            console.log('🔄 [선별맥락] 에러로 인해 일반 AI 응답으로 fallback');
         }
     } else {
-        console.log('🚨 [자연맥락] 📸 사진 명령어 - 맥락 시스템 건너뜀');
+        console.log('🧠 [선별맥락] ❌ 기억 불필요 - 일반 AI 응답으로 진행');
     }
 
     // 11순위: 일반 AI 응답 생성
