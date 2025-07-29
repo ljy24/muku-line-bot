@@ -744,12 +744,19 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
                 if (autoReply) {
                     const getReplyByMessage = safeModuleAccess(autoReply, 'getReplyByMessage', '메시지별응답조회');
                     if (typeof getReplyByMessage === 'function') {
+                        console.log(`${colors.success}🎯 [autoReply호출] autoReply.js에 메시지 전달: "${messageText}"${colors.reset}`);
                         const response = await getReplyByMessage(messageText);
                         if (response && (response.comment || response)) {
-                            console.log(`${colors.success}✅ [autoReply위임] autoReply.js에서 처리 완료${colors.reset}`);
+                            console.log(`${colors.success}✅ [autoReply성공] autoReply.js에서 처리 완료${colors.reset}`);
                             return response;
+                        } else {
+                            console.log(`${colors.warning}⚠️ [autoReply실패] autoReply.js에서 빈 응답 반환${colors.reset}`);
                         }
+                    } else {
+                        console.log(`${colors.warning}⚠️ [autoReply실패] getReplyByMessage 함수 없음${colors.reset}`);
                     }
+                } else {
+                    console.log(`${colors.warning}⚠️ [autoReply실패] autoReply 모듈 없음${colors.reset}`);
                 }
                 return null;
             }, 'autoReply위임');
