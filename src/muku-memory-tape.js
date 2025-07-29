@@ -5,7 +5,7 @@
 // 🔒 Redis 활용으로 완전 영구 저장 보장
 // ============================================================================
 
-const Redis = require('redis');
+const Redis = require('ioredis');
 
 // ================== 🎨 색상 정의 ==================
 const colors = {
@@ -17,7 +17,7 @@ const colors = {
     reset: '\x1b[0m'        // 색상 리셋
 };
 
-// ================== 🔒 Redis 연결 설정 ==================
+// ================== 🔒 ioredis 연결 설정 ==================
 let redisClient = null;
 let isRedisConnected = false;
 
@@ -33,12 +33,9 @@ async function initializeRedis() {
             return null;
         }
 
-        redisClient = Redis.createClient({
-            url: redisUrl,
-            retry_strategy: (times) => {
-                const delay = Math.min(times * 50, 2000);
-                return delay;
-            }
+        redisClient = new Redis(redisUrl, {
+            retryDelayOnFailover: 100,
+            maxRetriesPerRequest: 3
         });
 
         redisClient.on('error', (err) => {
@@ -51,18 +48,24 @@ async function initializeRedis() {
             isRedisConnected = true;
         });
 
+        redisClient.on('ready', () => {
+            console.log(`${colors.success}🚀 [Redis] 준비 완료${colors.reset}`);
+            isRedisConnected = true;
+        });
+
         redisClient.on('reconnecting', () => {
             console.log(`${colors.warning}🔄 [Redis] 재연결 시도 중...${colors.reset}`);
         });
 
-        await redisClient.connect();
+        // ioredis는 자동으로 연결하므로 ping으로 테스트
+        await redisClient.ping();
         isRedisConnected = true;
         
-        console.log(`${colors.success}🚀 [Memory Tape] Redis 초기화 완료!${colors.reset}`);
+        console.log(`${colors.success}🚀 [Memory Tape] ioredis 초기화 완료!${colors.reset}`);
         return redisClient;
 
     } catch (error) {
-        console.error(`${colors.error}❌ [Memory Tape] Redis 초기화 실패: ${error.message}${colors.reset}`);
+        console.error(`${colors.error}❌ [Memory Tape] ioredis 초기화 실패: ${error.message}${colors.reset}`);
         isRedisConnected = false;
         return null;
     }
@@ -368,11 +371,11 @@ async function initializeMemoryTape() {
 async function cleanupRedisConnection() {
     try {
         if (redisClient && isRedisConnected) {
-            await redisClient.quit();
-            console.log(`${colors.info}👋 [Memory Tape] Redis 연결 정리 완료${colors.reset}`);
+            await redisClient.disconnect();
+            console.log(`${colors.info}👋 [Memory Tape] ioredis 연결 정리 완료${colors.reset}`);
         }
     } catch (error) {
-        console.warn(`${colors.warning}⚠️ [Memory Tape] Redis 연결 정리 중 오류: ${error.message}${colors.reset}`);
+        console.warn(`${colors.warning}⚠️ [Memory Tape] ioredis 연결 정리 중 오류: ${error.message}${colors.reset}`);
     }
 }
 
