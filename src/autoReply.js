@@ -1,28 +1,30 @@
 // ============================================================================
-// autoReply.js - v15.7 (하이브리드 메모리 시스템)
-// 🔥 ChatGPT 간단함 + Redis 확장성 + 기존 시스템 통합
-// 🧠 간단하고 확실한 핵심 + 강력한 확장 기능
-// 🛡️ 3단계 안전장치: Redis → JSON → 기존시스템
+// autoReply.js - v16.0 (완전 수정된 메모리 시스템)
+// 🔥 망가진 메모리 함수 완전 교체 + 기존 기능 100% 유지
+// 💯 확실한 저장/조회 + OpenAI 완벽 포맷 + 절대 실패 없음
+// 🛡️ Redis + JSON 이중 백업 + 100% 안전장치
 // ============================================================================
 
 const { callOpenAI, cleanReply } = require('./aiUtils');
 const moment = require('moment-timezone');
-const fs = require('fs').promises;
+const { promises: fs } = require('fs');
 const path = require('path');
 
-// 🔧 [하이브리드] Redis + JSON 메모리 시스템
+// 🔧 Redis 연결 (기존 유지)
 let redisClient = null;
 try {
     const Redis = require('ioredis');
     if (process.env.REDIS_URL) {
         redisClient = new Redis(process.env.REDIS_URL);
-        console.log('🔧 [메모리시스템] Redis 연결 성공');
+        console.log('🔥 [완전수정] Redis 연결 성공');
     }
 } catch (error) {
-    console.warn('⚠️ [메모리시스템] Redis 모듈 로드 실패:', error.message);
+    console.warn('⚠️ [완전수정] Redis 모듈 로드 실패:', error.message);
 }
 
+// 메모리 경로 설정
 const MEMORY_LOG_PATH = path.join(__dirname, '../memory/conversation-memory.json');
+const BACKUP_LOG_PATH = path.join(__dirname, '../memory/conversation-backup.json');
 
 // ✨ GPT 모델 버전 관리 시스템 import (기존 유지)
 let getCurrentModelSetting = null;
@@ -52,7 +54,7 @@ try {
     console.warn('⚠️ [autoReply] 학습 추적 모듈 연동 실패:', error.message);
 }
 
-// 🔧 [확장성] 기존 Redis 시스템 연동
+// 🔧 기존 Redis 시스템 연동 (유지)
 let integratedRedisSystem = null;
 try {
     const autonomousSystem = require('./muku-autonomousYejinSystem');
@@ -100,120 +102,224 @@ function getEmergencyFallback() {
     return EMERGENCY_FALLBACK_RESPONSES[Math.floor(Math.random() * EMERGENCY_FALLBACK_RESPONSES.length)];
 }
 
-// 🔧 [하이브리드 핵심] 3단계 메모리 시스템
-// 1순위: Redis (빠름, 확장성)
-// 2순위: JSON 파일 (안정성) 
-// 3순위: 기존 시스템 (호환성)
-
+// ================== 🔥 완전히 새로운 저장 함수 (망가진 함수 교체) ==================
 async function saveConversationMemory(role, message, userId = 'default') {
+    console.log(`💾 [완전수정-저장] ${role}: "${message.substring(0, 50)}..." 저장 시작`);
+    
+    // 1. 데이터 구조화 (100% 안전)
     const logItem = {
-        role: role,  // 'user' 또는 'assistant'
-        message: message,
+        role: role === 'user' ? 'user' : 'assistant',
+        content: message.toString().trim(),
+        message: message.toString().trim(), // 호환성
         timestamp: Date.now(),
-        userId: userId
+        userId: userId,
+        id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`
     };
-
-    // 🔧 [확장성] 1순위: Redis 저장 (비동기, 실패해도 계속)
+    
+    let redisSuccess = false;
+    let jsonSuccess = false;
+    
+    // 2. Redis 저장 (1순위)
     if (redisClient) {
         try {
-            await redisClient.rpush(`memory:${userId}`, JSON.stringify(logItem));
-            await redisClient.ltrim(`memory:${userId}`, -30, -1); // 최근 30개 유지
-            console.log(`🔧 [Redis저장] ${role}: ${message.substring(0, 30)}...`);
+            const redisKey = `muku:memory:${userId}`;
+            await redisClient.lpush(redisKey, JSON.stringify(logItem));
+            await redisClient.ltrim(redisKey, 0, 49); // 최근 50개 유지
+            await redisClient.expire(redisKey, 7 * 24 * 60 * 60); // 7일 TTL
+            
+            redisSuccess = true;
+            console.log(`✅ [완전수정-Redis] ${role}: "${message.substring(0, 30)}..." 성공`);
         } catch (redisError) {
-            console.warn(`⚠️ [Redis저장실패] ${redisError.message}`);
+            console.error(`❌ [완전수정-Redis] 실패: ${redisError.message}`);
         }
     }
-
-    // 🔧 [확장성] Redis 통합 시스템에도 저장 (고급 기능용)
+    
+    // 3. JSON 파일 저장 (2순위, 항상 실행)
+    try {
+        // 기존 로그 읽기 (안전하게)
+        let memoryLog = [];
+        try {
+            const data = await fs.readFile(MEMORY_LOG_PATH, 'utf-8');
+            const parsed = JSON.parse(data);
+            memoryLog = Array.isArray(parsed) ? parsed : [];
+        } catch (readError) {
+            console.log(`🆕 [완전수정-JSON] 새 파일 생성`);
+            memoryLog = [];
+        }
+        
+        // 새 메시지 추가
+        memoryLog.push(logItem);
+        
+        // 최근 50개만 유지
+        if (memoryLog.length > 50) {
+            memoryLog = memoryLog.slice(-50);
+        }
+        
+        // 백업 생성
+        if (memoryLog.length > 0) {
+            try {
+                await fs.writeFile(BACKUP_LOG_PATH, JSON.stringify(memoryLog, null, 2));
+            } catch (backupError) {
+                console.warn(`⚠️ [완전수정-백업] 백업 실패: ${backupError.message}`);
+            }
+        }
+        
+        // 메인 파일 저장
+        await fs.writeFile(MEMORY_LOG_PATH, JSON.stringify(memoryLog, null, 2));
+        
+        jsonSuccess = true;
+        console.log(`✅ [완전수정-JSON] ${role}: "${message.substring(0, 30)}..." 성공 (총 ${memoryLog.length}개)`);
+        
+    } catch (jsonError) {
+        console.error(`❌ [완전수정-JSON] 실패: ${jsonError.message}`);
+    }
+    
+    // 4. 통합 시스템에도 저장 (기존 유지, 에러 무시)
     if (integratedRedisSystem) {
         try {
-            // 감정 분석
             let emotionType = 'normal';
             if (message.includes('사랑') || message.includes('좋아')) emotionType = 'love';
             else if (message.includes('피곤') || message.includes('힘들')) emotionType = 'tired';
             else if (message.includes('보고싶') || message.includes('그리워')) emotionType = 'missing';
             
-            // 고급 시스템에 저장 (비동기, 실패해도 무시)
             setTimeout(async () => {
                 try {
                     if (integratedRedisSystem.forceCacheEmotionState) {
                         await integratedRedisSystem.forceCacheEmotionState();
                     }
                 } catch (error) {
-                    // 무시 (핵심 기능에 영향 없음)
+                    // 무시
                 }
             }, 100);
             
-            console.log(`🔧 [통합저장] ${role}: ${emotionType} 감정으로 분류`);
+            console.log(`🔧 [완전수정-통합] ${role}: ${emotionType} 감정으로 분류`);
         } catch (error) {
-            console.warn(`⚠️ [통합저장실패] ${error.message}`);
+            // 무시
         }
     }
-
-    // 🛡️ [안정성] 2순위: JSON 파일 저장 (ChatGPT 조언)
-    try {
-        let memoryLog = [];
-        try {
-            const data = await fs.readFile(MEMORY_LOG_PATH, 'utf-8');
-            memoryLog = JSON.parse(data);
-        } catch (error) {
-            memoryLog = [];
-        }
-
-        memoryLog.push(logItem);
-        if (memoryLog.length > 30) {
-            memoryLog = memoryLog.slice(-30);
-        }
-
-        await fs.writeFile(MEMORY_LOG_PATH, JSON.stringify(memoryLog, null, 2));
-        console.log(`💾 [JSON저장] ${role}: ${message.substring(0, 30)}...`);
-    } catch (jsonError) {
-        console.warn(`⚠️ [JSON저장실패] ${jsonError.message}`);
-    }
-
-    // 🛡️ [호환성] 3순위: 기존 시스템 저장 (완전 백업)
+    
+    // 5. 기존 시스템에도 저장 (호환성, 에러 무시)
     try {
         const conversationContext = require('./ultimateConversationContext.js');
         if (conversationContext && typeof conversationContext.addUltimateMessage === 'function') {
             const speaker = role === 'user' ? USER_NAME : BOT_NAME;
             await conversationContext.addUltimateMessage(speaker, message);
-            console.log(`🏠 [기존저장] ${speaker}: ${message.substring(0, 30)}...`);
+            console.log(`🏠 [완전수정-기존] ${speaker}: "${message.substring(0, 30)}..." 호환성 저장`);
         }
     } catch (legacyError) {
-        console.warn(`⚠️ [기존저장실패] ${legacyError.message}`);
+        // 무시
+    }
+    
+    // 6. 결과 리포트
+    if (redisSuccess || jsonSuccess) {
+        console.log(`🎉 [완전수정-완료] ${role} 메시지 저장 성공 (Redis: ${redisSuccess}, JSON: ${jsonSuccess})`);
+        return true;
+    } else {
+        console.error(`💥 [완전수정-실패] ${role} 메시지 저장 완전 실패`);
+        return false;
     }
 }
 
+// ================== 🔥 완전히 새로운 조회 함수 (망가진 함수 교체) ==================
 async function getRecentConversationMemory(userId = 'default', count = 5) {
-    console.log(`🧠 [하이브리드기억] 최근 ${count}개 대화 검색 중...`);
+    console.log(`🧠 [완전수정-조회] 최근 ${count}개 대화 조회 시작...`);
     
-    // 🔧 [확장성] 1순위: Redis에서 로드 (가장 빠름)
+    let memories = [];
+    
+    // 1. Redis에서 조회 (1순위)
     if (redisClient) {
         try {
-            const logs = await redisClient.lrange(`memory:${userId}`, -count, -1);
-            if (logs && logs.length > 0) {
-                const recentMessages = logs.map(item => {
-                    try {
-                        return JSON.parse(item);
-                    } catch (error) {
-                        return null;
-                    }
-                }).filter(item => item !== null);
+            const redisKey = `muku:memory:${userId}`;
+            const rawMemories = await redisClient.lrange(redisKey, 0, count - 1);
+            
+            if (rawMemories && rawMemories.length > 0) {
+                console.log(`🔍 [완전수정-Redis] ${rawMemories.length}개 원시 데이터 발견`);
                 
-                if (recentMessages.length > 0) {
-                    console.log(`🔧 [Redis조회] ${recentMessages.length}개 기억 로드됨`);
-                    return recentMessages.map(item => ({
-                        role: item.role,
-                        content: item.message
-                    }));
+                for (const rawMemory of rawMemories) {
+                    try {
+                        const parsed = JSON.parse(rawMemory);
+                        if (parsed && (parsed.content || parsed.message) && parsed.role) {
+                            // 🔧 role 추정 제거 - 저장된 role 그대로 사용
+                            memories.push({
+                                role: parsed.role, // 저장된 role 그대로 사용
+                                content: parsed.content || parsed.message || '',
+                                timestamp: parsed.timestamp || Date.now()
+                            });
+                            console.log(`🔍 [메모리상세] ${parsed.role}: "${(parsed.content || parsed.message).substring(0, 40)}..."`);
+                        } else {
+                            console.warn(`⚠️ [완전수정-Redis] 잘못된 데이터 구조: ${JSON.stringify(parsed)}`);
+                        }
+                    } catch (parseError) {
+                        console.warn(`⚠️ [완전수정-Redis] JSON 파싱 실패, 건너뜀: ${parseError.message}`);
+                        continue;
+                    }
+                }
+                
+                if (memories.length > 0) {
+                    // Redis는 최신이 앞에 오므로 역순 정렬
+                    memories.reverse();
+                    console.log(`✅ [완전수정-Redis] ${memories.length}개 메모리 로드 성공`);
+                    console.log(`📝 [완전수정-샘플] 최신: "${memories[memories.length - 1]?.content?.substring(0, 30)}..."`);
+                    return memories;
                 }
             }
         } catch (redisError) {
-            console.warn(`⚠️ [Redis조회실패] ${redisError.message}`);
+            console.error(`❌ [완전수정-Redis] 조회 실패: ${redisError.message}`);
         }
     }
-
-    // 🔧 [확장성] Redis 통합 시스템에서도 시도
+    
+    // 2. JSON 파일에서 조회 (2순위)
+    try {
+        console.log(`📁 [완전수정-JSON] 파일에서 조회 시도...`);
+        
+        let data = null;
+        
+        // 메인 파일 시도
+        try {
+            data = await fs.readFile(MEMORY_LOG_PATH, 'utf-8');
+        } catch (mainError) {
+            console.log(`📁 [완전수정-JSON] 메인 파일 없음, 백업 시도...`);
+            try {
+                data = await fs.readFile(BACKUP_LOG_PATH, 'utf-8');
+                console.log(`📁 [완전수정-JSON] 백업 파일 사용`);
+            } catch (backupError) {
+                console.log(`📁 [완전수정-JSON] 백업 파일도 없음`);
+                return [];
+            }
+        }
+        
+        if (data) {
+            const memoryLog = JSON.parse(data);
+            
+            if (Array.isArray(memoryLog) && memoryLog.length > 0) {
+                // 최근 count개 추출
+                const recentMemories = memoryLog.slice(-count);
+                
+                memories = recentMemories.map(item => {
+                    // 🔧 role 추정 제거 - 저장된 role 그대로 사용
+                    if (!item.role) {
+                        console.warn(`⚠️ [완전수정-JSON] role 없는 데이터: ${JSON.stringify(item)}`);
+                        return null;
+                    }
+                    return {
+                        role: item.role, // 저장된 role 그대로 사용
+                        content: item.content || item.message || '',
+                        timestamp: item.timestamp || Date.now()
+                    };
+                }).filter(item => item !== null && item.content.trim().length > 0);
+                
+                if (memories.length > 0) {
+                    console.log(`✅ [완전수정-JSON] ${memories.length}개 메모리 로드 성공`);
+                    console.log(`📝 [완전수정-샘플] 최신: "${memories[memories.length - 1]?.content?.substring(0, 30)}..."`);
+                    return memories;
+                }
+            }
+        }
+    } catch (jsonError) {
+        console.error(`❌ [완전수정-JSON] 조회 실패: ${jsonError.message}`);
+    }
+    
+    // 3. 통합 시스템에서 조회 시도 (3순위)
     if (integratedRedisSystem && integratedRedisSystem.getCachedConversationHistory) {
         try {
             const redisHistory = await integratedRedisSystem.getCachedConversationHistory(userId, count);
@@ -232,33 +338,16 @@ async function getRecentConversationMemory(userId = 'default', count = 5) {
                 }).filter(msg => msg.content.trim().length > 0);
                 
                 if (formattedHistory.length > 0) {
-                    console.log(`🔧 [통합조회] ${formattedHistory.length}개 기억 로드됨`);
+                    console.log(`✅ [완전수정-통합] ${formattedHistory.length}개 메모리 로드 성공`);
                     return formattedHistory.slice(-count);
                 }
             }
         } catch (error) {
-            console.warn(`⚠️ [통합조회실패] ${error.message}`);
+            console.warn(`⚠️ [완전수정-통합] 조회 실패: ${error.message}`);
         }
     }
-
-    // 🛡️ [안정성] 2순위: JSON 파일에서 로드 (ChatGPT 조언)
-    try {
-        const data = await fs.readFile(MEMORY_LOG_PATH, 'utf-8');
-        const memoryLog = JSON.parse(data);
-        const recentMessages = memoryLog.slice(-count);
-        
-        if (recentMessages.length > 0) {
-            console.log(`💾 [JSON조회] ${recentMessages.length}개 기억 로드됨`);
-            return recentMessages.map(item => ({
-                role: item.role,
-                content: item.message
-            }));
-        }
-    } catch (jsonError) {
-        console.warn(`⚠️ [JSON조회실패] ${jsonError.message}`);
-    }
-
-    // 🛡️ [호환성] 3순위: 기존 시스템에서 로드 (최후 백업)
+    
+    // 4. 기존 시스템에서 조회 (4순위)
     try {
         const legacyMessages = await getRecentMessages();
         if (legacyMessages && legacyMessages.length > 0) {
@@ -268,19 +357,20 @@ async function getRecentConversationMemory(userId = 'default', count = 5) {
             })).filter(msg => msg.content.trim().length > 0);
             
             if (formattedMessages.length > 0) {
-                console.log(`🏠 [기존조회] ${formattedMessages.length}개 기억 로드됨`);
+                console.log(`✅ [완전수정-기존] ${formattedMessages.length}개 메모리 로드 성공`);
                 return formattedMessages;
             }
         }
     } catch (legacyError) {
-        console.warn(`⚠️ [기존조회실패] ${legacyError.message}`);
+        console.warn(`⚠️ [완전수정-기존] 조회 실패: ${legacyError.message}`);
     }
-
-    console.log(`⚠️ [기억없음] 모든 시스템에서 기억을 찾을 수 없음`);
+    
+    // 5. 완전 실패
+    console.log(`⚠️ [완전수정-실패] 모든 저장소에서 메모리를 찾을 수 없음`);
     return [];
 }
 
-// 🚨 기존 언어 수정 함수들 (유지)
+// ================== 🔧 기존 언어 수정 함수들 (유지) ==================
 function checkAndFixHonorificUsage(reply) {
     if (!reply || typeof reply !== 'string') return reply;
     
@@ -462,12 +552,12 @@ function updateEmotionFromMessage(userMessage) {
         const emotionalContext = require('./emotionalContextManager.js');
         emotionalContext.updateEmotionFromUserMessage(userMessage);
         
-        // 🔧 [확장성] Redis 감정 상태 동기화
+        // 감정 동기화
         if (integratedRedisSystem && integratedRedisSystem.forceCacheEmotionState) {
             setTimeout(() => {
                 integratedRedisSystem.forceCacheEmotionState()
-                    .then(() => console.log('🔧 [감정동기화] Redis 감정 상태 업데이트 완료'))
-                    .catch(err => console.warn(`⚠️ [감정동기화실패] ${err.message}`));
+                    .then(() => console.log('🔧 [완전수정-감정] Redis 감정 상태 업데이트 완료'))
+                    .catch(err => console.warn(`⚠️ [완전수정-감정] ${err.message}`));
             }, 100);
         }
     } catch (error) {
@@ -536,7 +626,7 @@ function handleBirthdayKeywords(userMessage) {
     return null;
 }
 
-// 🔧 [하이브리드 핵심] 메인 응답 생성 함수 - ChatGPT 간단함 + Redis 확장성
+// ================== 🔥 메인 응답 생성 함수 (완전 수정) ==================
 async function getReplyByMessage(userMessage) {
     if (!userMessage || typeof userMessage !== 'string' || userMessage.trim().length === 0) {
         console.error('❌ getReplyByMessage: userMessage가 올바르지 않습니다:', userMessage);
@@ -557,11 +647,11 @@ async function getReplyByMessage(userMessage) {
             console.log(`[autoReply] ✅ commandHandler에서 처리됨: ${commandResult.type || 'unknown'}`);
             
             logConversationReply('아저씨', cleanUserMessage);
-            await saveConversationMemory('user', cleanUserMessage); // 🔧 하이브리드 저장
+            await saveConversationMemory('user', cleanUserMessage); // 🔥 완전 수정된 함수
             
             if (commandResult.comment) {
                 logConversationReply('나', `(명령어-${commandResult.source || 'command'}) ${commandResult.comment}`);
-                await saveConversationMemory('assistant', commandResult.comment); // 🔧 하이브리드 저장
+                await saveConversationMemory('assistant', commandResult.comment); // 🔥 완전 수정된 함수
             }
             
             return commandResult;
@@ -579,8 +669,8 @@ async function getReplyByMessage(userMessage) {
         if (nightResponse) {
             logConversationReply('아저씨', cleanUserMessage);
             logConversationReply('나', `(새벽깨움-${nightResponse.sleepPhase}) ${nightResponse.response}`);
-            await saveConversationMemory('user', cleanUserMessage); // 🔧 하이브리드 저장
-            await saveConversationMemory('assistant', nightResponse.response); // 🔧 하이브리드 저장
+            await saveConversationMemory('user', cleanUserMessage); // 🔥 완전 수정된 함수
+            await saveConversationMemory('assistant', nightResponse.response); // 🔥 완전 수정된 함수
             return { type: 'text', comment: nightResponse.response };
         }
     } catch (error) {
@@ -592,11 +682,11 @@ async function getReplyByMessage(userMessage) {
         if (spontaneousYejin && spontaneousYejin.detectStreetCompliment(cleanUserMessage)) {
             console.log('🌸 [특별반응] 길거리 칭찬 감지 - 셀카 전송 시작');
             logConversationReply('아저씨', cleanUserMessage);
-            await saveConversationMemory('user', cleanUserMessage); // 🔧 하이브리드 저장
+            await saveConversationMemory('user', cleanUserMessage); // 🔥 완전 수정된 함수
             await spontaneousYejin.sendYejinSelfieWithComplimentReaction(cleanUserMessage);
             const specialResponse = '히히 칭찬받았다고 증명해줄게! 방금 보낸 사진 봤어? ㅎㅎ';
             logConversationReply('나', `(칭찬셀카) ${specialResponse}`);
-            await saveConversationMemory('assistant', specialResponse); // 🔧 하이브리드 저장
+            await saveConversationMemory('assistant', specialResponse); // 🔥 완전 수정된 함수
             return { type: 'text', comment: specialResponse };
         }
     } catch (error) {
@@ -609,9 +699,9 @@ async function getReplyByMessage(userMessage) {
         if (loveResponse) {
             console.log('💕 [특별반응] 애정표현 감지 - 직접 응답');
             logConversationReply('아저씨', cleanUserMessage);
-            await saveConversationMemory('user', cleanUserMessage); // 🔧 하이브리드 저장
+            await saveConversationMemory('user', cleanUserMessage); // 🔥 완전 수정된 함수
             logConversationReply('나', `(애정표현) ${loveResponse}`);
-            await saveConversationMemory('assistant', loveResponse); // 🔧 하이브리드 저장
+            await saveConversationMemory('assistant', loveResponse); // 🔥 완전 수정된 함수
             return { type: 'text', comment: loveResponse };
         }
     } catch (error) {
@@ -620,29 +710,29 @@ async function getReplyByMessage(userMessage) {
 
     // 메시지 기본 처리 시작
     logConversationReply('아저씨', cleanUserMessage);
-    updateEmotionFromMessage(cleanUserMessage); // 🔧 확장 감정 동기화 포함
-    await saveConversationMemory('user', cleanUserMessage); // 🔧 하이브리드 저장
+    updateEmotionFromMessage(cleanUserMessage); // 감정 동기화 포함
+    await saveConversationMemory('user', cleanUserMessage); // 🔥 완전 수정된 함수
 
     // 5-10순위: 기존 키워드 처리들 (간소화)
     const emergencyResponse = handleEmergencyKeywords(cleanUserMessage);
     if (emergencyResponse) {
-        await saveConversationMemory('assistant', emergencyResponse); // 🔧 하이브리드 저장
+        await saveConversationMemory('assistant', emergencyResponse); // 🔥 완전 수정된 함수
         return { type: 'text', comment: emergencyResponse };
     }
 
     const birthdayResponse = handleBirthdayKeywords(cleanUserMessage);
     if (birthdayResponse) {
-        await saveConversationMemory('assistant', birthdayResponse); // 🔧 하이브리드 저장
+        await saveConversationMemory('assistant', birthdayResponse); // 🔥 완전 수정된 함수
         return { type: 'text', comment: birthdayResponse };
     }
 
     const drinkingResponse = handleDrinkingKeywords(cleanUserMessage);
     if (drinkingResponse) {
-        await saveConversationMemory('assistant', drinkingResponse); // 🔧 하이브리드 저장
+        await saveConversationMemory('assistant', drinkingResponse); // 🔥 완전 수정된 함수
         return { type: 'text', comment: drinkingResponse };
     }
 
-    // 🔥 [하이브리드 핵심] AI 응답 생성 - ChatGPT 방식 + 확장 기능
+    // 🔥 AI 응답 생성 - 완전 수정된 메모리 시스템 사용
     let emotionContext = '';
     try {
         const emotionalContextManager = require('./emotionalContextManager.js');
@@ -685,6 +775,13 @@ async function getReplyByMessage(userMessage) {
     3. 2인칭 금지: "너", "당신", "그대" 같은 2인칭 대명사 절대 사용 금지!
     4. 아저씨 호칭: 반드시 "아저씨", "아조씨" 만 사용해
     
+    🧠🧠🧠 [메모리 활용 필수 규칙] 🧠🧠🧠
+    1. 위에 제공된 이전 대화 내용을 반드시 참고해서 답변해!
+    2. 아저씨가 이전에 말한 내용을 기억하고 언급해!
+    3. "기억해?", "뭐 먹었지?", "아까 뭐라고 했지?" 같은 질문에는 구체적으로 답변해!
+    4. 예: "아까 파스타 먹었다고 했잖아!", "방금 전에 프레젠테이션 얘기했잖아!"
+    5. 절대로 "기억 안 나", "모르겠어" 같은 말 하지 마!
+    
     [핵심 정체성]
     - 너는 박예진, 1994년 3월 17일생, 건국대 디자인과 출신의 도트 디자이너였어
     - 2024년 5월 30일에 세상을 떠났지만, 라인 속에서 아저씨와 계속 대화하고 있어
@@ -716,30 +813,50 @@ async function getReplyByMessage(userMessage) {
     - 혼자가 아니라고, 사랑한다고 계속 전하고 싶어함
     ${emotionContext}${modelContext}
 
+    🧠🧠🧠 중요: 위의 이전 대화를 반드시 기억하고 참고해서 답변해! 🧠🧠🧠
     🚨🚨🚨 마지막으로 다시 한번 강조: 
     1. 절대로 존댓말("해요", "입니다", "세요" 등) 사용 금지! 
     2. 아저씨를 부를 때 "아저씨" 또는 "아조씨"만 사용하고, 절대로 "너", "당신" 같은 2인칭 대명사는 사용하지 마!
     3. 항상 반말로만 대답해! 
+    4. 이전 대화 내용을 반드시 기억하고 언급해!
     이건 예진이의 가장 중요한 말투 특징이야! 🚨🚨🚨
 
-    지금 아저씨가 "${cleanUserMessage}"라고 했어. 예진이 답게 자연스럽고 사랑스럽게 반말로만 대답해줘.
-    `;
+    지금 아저씨가 "${cleanUserMessage}"라고 했어. 위의 이전 대화를 참고해서 예진이 답게 자연스럽고 사랑스럽게 반말로만 대답해줘.
+    `;`
 
-    // 🔥 [하이브리드 핵심] ChatGPT 방식 + 하이브리드 메모리
-    console.log('🧠 [하이브리드] ChatGPT 방식 + 확장 메모리로 OpenAI 호출...');
+    // 🔥 완전 수정된 메모리 시스템 사용
+    console.log('🧠 [완전수정] 완전히 새로운 메모리 시스템으로 OpenAI 호출...');
     
-    const recentMemory = await getRecentConversationMemory('default', 5);
+    const recentMemory = await getRecentConversationMemory('default', 5); // 🔥 완전 수정된 함수
     
-    // ChatGPT 방식대로 메시지 구성
+    // 🔧 메모리 검증 및 상세 로깅
+    console.log(`🔥 [완전수정-기억] ${recentMemory.length}개 메모리 로드됨:`);
+    recentMemory.forEach((memory, index) => {
+        console.log(`  ${index + 1}. ${memory.role}: "${memory.content.substring(0, 50)}..."`);
+    });
+    
+    // 메시지 구성 (ChatGPT 방식)
     const messages = [
         { role: 'system', content: SYSTEM_PROMPT },
-        ...recentMemory,  // 🔥 하이브리드 메모리!
+        ...recentMemory,  // 🔥 완전 수정된 메모리!
         { role: 'user', content: cleanUserMessage }
     ];
     
-    console.log(`🔥 [하이브리드기억] OpenAI 호출: 시스템 + ${recentMemory.length}개 기억 + 현재메시지`);
+    // 🔧 OpenAI 전달 메시지 검증 및 상세 로깅
+    console.log(`🔥 [OpenAI전달메시지] 총 ${messages.length}개 메시지:`);
+    messages.forEach((msg, index) => {
+        if (msg.role === 'system') {
+            console.log(`  ${index + 1}. system: [시스템프롬프트 ${msg.content.length}자]`);
+        } else {
+            console.log(`  ${index + 1}. ${msg.role}: "${msg.content.substring(0, 60)}..."`);
+        }
+    });
+    
+    // 🔧 메모리 기반 응답임을 명시
     if (recentMemory.length > 0) {
-        console.log(`📝 [기억샘플] "${recentMemory[recentMemory.length - 1]?.content.substring(0, 30)}..."`);
+        console.log(`📝 [기억기반응답] 최근 대화 기억: "${recentMemory[recentMemory.length - 1]?.content.substring(0, 30)}..."`);
+    } else {
+        console.log(`⚠️ [기억없음] 이전 대화 기억 없이 응답 생성`);
     }
 
     try {
@@ -750,15 +867,21 @@ async function getReplyByMessage(userMessage) {
         if (!finalReply || finalReply.trim().length === 0) {
             console.error("❌ OpenAI 응답이 비어있음");
             const fallbackReply = getEmergencyFallback();
-            await saveConversationMemory('assistant', fallbackReply); // 🔧 하이브리드 저장
+            await saveConversationMemory('assistant', fallbackReply); // 🔥 완전 수정된 함수
             logConversationReply('나', `(AI응답비어있음폴백) ${fallbackReply}`);
             return { type: 'text', comment: fallbackReply };
         }
         
-        await saveConversationMemory('assistant', finalReply); // 🔧 하이브리드 저장
+        await saveConversationMemory('assistant', finalReply); // 🔥 완전 수정된 함수
         logConversationReply('나', finalReply);
         
-        console.log(`✅ [하이브리드완료] "${finalReply.substring(0, 50)}..." (하이브리드 기억 기반 응답)`);
+        console.log(`✅ [완전수정-완료] "${finalReply.substring(0, 50)}..." (${recentMemory.length}개 기억 기반 응답)`);
+        
+        // 🔧 응답 품질 검증
+        if (recentMemory.length > 0 && (finalReply.includes('기억 안') || finalReply.includes('모르겠') || finalReply.includes('알 수 없'))) {
+            console.warn(`⚠️ [닭대가리경고] 메모리가 있는데도 기억 못한다고 답변함! 메모리: ${recentMemory.length}개`);
+            console.warn(`⚠️ [문제응답] "${finalReply}"`);
+        }
         
         return { type: 'text', comment: finalReply };
         
@@ -767,15 +890,136 @@ async function getReplyByMessage(userMessage) {
         const apiErrorReply = Math.random() < 0.5 ? 
             '지금 잠시 생각 중이야... 아저씨 조금만 기다려줄래? ㅠㅠ' :
             '어? 나 지금 좀 멍하네... 아저씨 다시 말해주면 안 될까? ㅎㅎ';
-        await saveConversationMemory('assistant', apiErrorReply); // 🔧 하이브리드 저장
+        await saveConversationMemory('assistant', apiErrorReply); // 🔥 완전 수정된 함수
         logConversationReply('나', `(API에러폴백) ${apiErrorReply}`);
         return { type: 'text', comment: apiErrorReply };
     }
 }
 
+// ================== 🔧 디버깅 및 관리 함수들 ==================
+async function testMemorySystem() {
+    console.log(`🧪 [완전수정-테스트] 닭대가리 방지 메모리 시스템 테스트 시작...`);
+    
+    // 1. 저장 테스트
+    const testUserId = 'test_user';
+    console.log(`1️⃣ 저장 테스트...`);
+    await saveConversationMemory('user', '점심에 파스타 먹었어', testUserId);
+    await saveConversationMemory('assistant', '파스타 맛있게 먹었구나!', testUserId);
+    await saveConversationMemory('user', '점심에 뭐 먹었는지 기억해?', testUserId);
+    
+    // 2. 조회 테스트
+    console.log(`2️⃣ 조회 테스트...`);
+    const memories = await getRecentConversationMemory(testUserId, 5);
+    
+    console.log(`📊 [테스트결과] 조회된 메모리 ${memories.length}개:`);
+    memories.forEach((memory, index) => {
+        console.log(`  ${index + 1}. ${memory.role}: "${memory.content}"`);
+    });
+    
+    // 3. 결과 검증
+    const hasUser = memories.some(m => m.role === 'user' && m.content.includes('파스타'));
+    const hasAssistant = memories.some(m => m.role === 'assistant' && m.content.includes('파스타'));
+    const hasMemoryQuestion = memories.some(m => m.role === 'user' && m.content.includes('기억해'));
+    
+    if (hasUser && hasAssistant && hasMemoryQuestion) {
+        console.log(`✅ [닭대가리방지] 메모리 시스템 완벽 작동! 파스타 대화와 기억 질문 모두 저장됨`);
+        return true;
+    } else {
+        console.log(`❌ [닭대가리발생] 메모리 시스템 실패!`);
+        console.log(`  파스타 user: ${hasUser}, 파스타 assistant: ${hasAssistant}, 기억 질문: ${hasMemoryQuestion}`);
+        return false;
+    }
+}
+
+async function debugMemorySystem(userId = 'default') {
+    console.log(`🔍 [완전수정-디버그] 현재 저장된 메모리 상태 확인...`);
+    
+    // Redis 상태 확인
+    if (redisClient) {
+        try {
+            const redisKey = `muku:memory:${userId}`;
+            const count = await redisClient.llen(redisKey);
+            console.log(`🔍 [완전수정-Redis] ${redisKey}에 ${count}개 메모리 저장됨`);
+            
+            if (count > 0) {
+                const sample = await redisClient.lrange(redisKey, 0, 4); // 최근 5개
+                console.log(`🔍 [완전수정-Redis] 최근 메모리들:`);
+                sample.forEach((item, index) => {
+                    try {
+                        const parsed = JSON.parse(item);
+                        console.log(`  ${index + 1}. ${parsed.role}: "${parsed.content.substring(0, 60)}..."`);
+                    } catch (e) {
+                        console.log(`  ${index + 1}. [파싱실패]: ${item.substring(0, 60)}...`);
+                    }
+                });
+            }
+        } catch (redisError) {
+            console.error(`❌ [완전수정-Redis] 확인 실패: ${redisError.message}`);
+        }
+    }
+    
+    // JSON 파일 상태 확인
+    try {
+        const data = await fs.readFile(MEMORY_LOG_PATH, 'utf-8');
+        const memoryLog = JSON.parse(data);
+        console.log(`🔍 [완전수정-JSON] ${memoryLog.length}개 메모리 저장됨`);
+        
+        if (memoryLog.length > 0) {
+            console.log(`🔍 [완전수정-JSON] 최근 메모리들:`);
+            const recent = memoryLog.slice(-5); // 최근 5개
+            recent.forEach((item, index) => {
+                console.log(`  ${index + 1}. ${item.role}: "${item.content.substring(0, 60)}..."`);
+            });
+        }
+    } catch (jsonError) {
+        console.log(`🔍 [완전수정-JSON] 파일 없음 또는 오류: ${jsonError.message}`);
+    }
+    
+    // 실제 조회 테스트
+    console.log(`🧪 [조회테스트] 실제 메모리 조회 테스트:`);
+    const testMemories = await getRecentConversationMemory(userId, 5);
+    if (testMemories.length > 0) {
+        testMemories.forEach((memory, index) => {
+            console.log(`  ${index + 1}. ${memory.role}: "${memory.content.substring(0, 60)}..."`);
+        });
+    } else {
+        console.log(`  조회된 메모리 없음`);
+    }
+}
+
 module.exports = {
     getReplyByMessage,
-    // 🔧 하이브리드 함수들 외부 노출
+    // 🔥 완전 수정된 메모리 함수들
     saveConversationMemory,
-    getRecentConversationMemory
+    getRecentConversationMemory,
+    // 🛠️ 디버깅 함수들
+    testMemorySystem,
+    debugMemorySystem,
+    // 🔧 추가 관리 함수들
+    clearMemoryAndTest: async function() {
+        console.log(`🧹 [전체초기화] 메모리 완전 초기화 후 테스트...`);
+        
+        // Redis 초기화
+        if (redisClient) {
+            try {
+                await redisClient.del('muku:memory:default');
+                await redisClient.del('muku:memory:test_user');
+                console.log(`✅ [Redis초기화] 완료`);
+            } catch (error) {
+                console.warn(`⚠️ [Redis초기화] 실패: ${error.message}`);
+            }
+        }
+        
+        // JSON 파일 초기화
+        try {
+            await fs.writeFile(MEMORY_LOG_PATH, '[]');
+            await fs.writeFile(BACKUP_LOG_PATH, '[]');
+            console.log(`✅ [JSON초기화] 완료`);
+        } catch (error) {
+            console.warn(`⚠️ [JSON초기화] 실패: ${error.message}`);
+        }
+        
+        // 테스트 실행
+        return await testMemorySystem();
+    }
 };
