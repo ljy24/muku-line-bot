@@ -512,7 +512,7 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
                     
                     console.log(`${colors.yejin}💖 예진이 (기억): ${finalComment}${colors.reset}`);
                     
-                    return { type: 'memory_response', response: finalResponse };
+                    return { type: 'chat_response', response: finalResponse };
                 }
                 
                 console.log(`${colors.warning}⚠️ [장기기억실패] autoReply.js로 위임${colors.reset}`);
