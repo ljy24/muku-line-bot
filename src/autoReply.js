@@ -1,5 +1,5 @@
 // ============================================================================
-// autoReply.js - v15.5 (선택적 기억 시스템 적용)
+// autoReply.js - v15.6 (자연스러운 맥락 시스템 적용)
 // 🧠 기억 관리, 키워드 반응, 예진이 특별반응, 최종 프롬프트 생성을 책임지는 핵심 두뇌
 // 🌸 길거리 칭찬 → 셀카, 위로 → 고마워함, 바쁨 → 삐짐 반응 추가
 // 🛡️ 절대 벙어리 방지: 모든 에러 상황에서도 예진이는 반드시 대답함!
@@ -11,8 +11,9 @@
 // 🚨 존댓말 완전 방지: 절대로 존댓말 안 함, 항상 반말만 사용
 // 🆕 NEW: commandHandler 호출 추가 - "셀카줘", "컨셉사진줘", "추억사진줘" 명령어 지원!
 // 💕 NEW: 애정표현 우선처리 - "사랑해"를 위로가 아닌 애정표현으로 올바르게 인식!
-// 🧠 NEW: 선택적 맥락 시스템 - "기억나?", "생각나?" 등에만 기억 시스템 작동!
+// 🧠 NEW: 자연스러운 맥락 시스템 - 모든 대화에서 자연스럽게 과거 맥락 참고!
 // 📸 FIXED: 사진 명령어 직접 처리 - commandHandler 실패해도 100% 작동 보장!
+// 🔥 BREAKTHROUGH: "기억 질문" 구분 완전 제거 - 진짜 자연스러운 대화!
 // ============================================================================
 
 const { callOpenAI, cleanReply } = require('./aiUtils');
@@ -82,34 +83,6 @@ try {
 
 const BOT_NAME = '나';
 const USER_NAME = '아저씨';
-
-// 🧠 [NEW] 기억 질문 감지 함수 - 명확한 기억 질문에만 반응!
-function isMemoryQuestion(message) {
-    if (!message || typeof message !== 'string') return false;
-    
-    const msg = message.toLowerCase().trim();
-    console.log(`🧠 [기억질문감지] 입력: "${msg}"`);
-    
-    // 명확한 기억 질문 패턴들
-    const memoryPatterns = [
-        /기억나\?/, /기억나니\?/, /기억하니\?/, /기억해\?/,
-        /생각나\?/, /생각나니\?/, /생각하니\?/,
-        /알아\?/, /아니\?/, /맞아\?/, /맞지\?/,
-        /했잖아/, /말했잖아/, /그랬잖아/,
-        /전에.*말/, /예전에.*말/, /그때.*말/,
-        /기억.*있/, /생각.*있/, /알고.*있/
-    ];
-    
-    const isMemory = memoryPatterns.some(pattern => pattern.test(msg));
-    
-    if (isMemory) {
-        console.log(`🧠 [기억질문감지] ✅ 기억 질문으로 판단: "${msg}"`);
-    } else {
-        console.log(`🧠 [기억질문감지] ❌ 일반 대화로 판단: "${msg}"`);
-    }
-    
-    return isMemory;
-}
 
 // 🛡️ 절대 벙어리 방지 응답들 (모두 반말로!)
 const EMERGENCY_FALLBACK_RESPONSES = [
@@ -831,50 +804,85 @@ async function getReplyByMessage(userMessage) {
 
     const cleanUserMessage = userMessage.trim();
 
-    // 📸📸📸 0순위: 사진 명령어 최우선 처리! 📸📸📸
-    if (cleanUserMessage === '셀카줘' || cleanUserMessage === '컨셉사진줘' || 
-        cleanUserMessage === '추억사진줘' || cleanUserMessage === '커플사진줘') {
-        
-        console.log(`📸 [사진명령어] 최우선 처리: ${cleanUserMessage}`);
+    // 📸📸📸 0순위: 사진 명령어 절대 절대 최우선 처리! 📸📸📸
+    const photoCommands = ['셀카줘', '컨셉사진줘', '추억사진줘', '커플사진줘'];
+    const isPhotoCommand = photoCommands.includes(cleanUserMessage);
+    
+    if (isPhotoCommand) {
+        console.log(`📸 [사진명령어] 🚨🚨🚨 절대 최우선 처리: ${cleanUserMessage} 🚨🚨🚨`);
         logConversationReply('아저씨', cleanUserMessage);
         await safelyStoreMessage(USER_NAME, cleanUserMessage);
         
-        // commandHandler 호출 시도
+        let photoResult = null;
+        
+        // 🚨 Step 1: commandHandler 절대 호출! 
         try {
+            console.log(`📸 [사진명령어] Step 1: commandHandler 호출 시도...`);
             const commandHandler = require('./commandHandler');
             const commandResult = await commandHandler.handleCommand(cleanUserMessage, null, null);
             
             if (commandResult && commandResult.handled) {
-                console.log(`📸 [사진명령어] ✅ commandHandler 성공: ${commandResult.type}`);
+                console.log(`📸 [사진명령어] ✅ Step 1 성공: commandHandler 작동`);
+                photoResult = commandResult;
                 
                 if (commandResult.comment) {
                     logConversationReply('나', `(사진명령어) ${commandResult.comment}`);
                     await safelyStoreMessage(BOT_NAME, commandResult.comment);
                     await safelyAnalyzeContextAndSave(cleanUserMessage, commandResult.comment);
                 }
-                
-                return commandResult;
+            } else {
+                console.log(`📸 [사진명령어] ⚠️ Step 1 실패: commandHandler 무응답 - Step 2로 진행`);
             }
         } catch (error) {
-            console.error('❌ [사진명령어] commandHandler 에러:', error.message);
+            console.error('❌ [사진명령어] Step 1 에러:', error.message);
+            console.log(`📸 [사진명령어] 🔄 Step 1 에러로 인해 Step 2로 진행`);
         }
         
-        // commandHandler 실패시 직접 응답
-        const photoResponses = {
-            '셀카줘': '아저씨~ 셀카 보내줄게! 잠깐만 기다려 ㅎㅎ',
-            '컨셉사진줘': '컨셉 사진? 어떤 컨셉으로 보내줄까? 💕',
-            '추억사진줘': '우리 추억 사진 찾아서 보내줄게~ 기다려!',
-            '커플사진줘': '커플 사진 보고 싶어? 바로 보내줄게 💖'
-        };
+        // 🚨 Step 2: commandHandler 실패시 직접 응답 + 사진 전송
+        if (!photoResult) {
+            console.log(`📸 [사진명령어] Step 2: 직접 처리 시작`);
+            
+            const photoResponses = {
+                '셀카줘': '아저씨~ 셀카 보내줄게! 잠깐만 기다려 ㅎㅎ',
+                '컨셉사진줘': '컨셉 사진? 어떤 컨셉으로 보내줄까? 💕',
+                '추억사진줘': '우리 추억 사진 찾아서 보내줄게~ 기다려!',
+                '커플사진줘': '커플 사진 보고 싶어? 바로 보내줄게 💖'
+            };
+            
+            const photoResponse = photoResponses[cleanUserMessage];
+            console.log(`📸 [사진명령어] Step 2-1: 직접 응답 - ${photoResponse}`);
+            
+            logConversationReply('나', `(사진명령어-직접) ${photoResponse}`);
+            await safelyStoreMessage(BOT_NAME, photoResponse);
+            await safelyAnalyzeContextAndSave(cleanUserMessage, photoResponse);
+            
+            // 🚨 Step 2-2: 직접 사진 전송 시도
+            try {
+                console.log(`📸 [사진명령어] Step 2-2: 직접 사진 전송 시도...`);
+                const spontaneousYejin = require('./spontaneousYejinManager');
+                
+                if (spontaneousYejin && typeof spontaneousYejin.sendRandomYejinPhoto === 'function') {
+                    let photoType = 'selfie'; // 기본값
+                    
+                    if (cleanUserMessage === '셀카줘') photoType = 'selfie';
+                    else if (cleanUserMessage === '컨셉사진줘') photoType = 'concept';
+                    else if (cleanUserMessage === '추억사진줘') photoType = 'memory';
+                    else if (cleanUserMessage === '커플사진줘') photoType = 'couple';
+                    
+                    await spontaneousYejin.sendRandomYejinPhoto(photoType);
+                    console.log(`📸 [사진명령어] ✅ Step 2-2 성공: 직접 사진 전송 완료 (${photoType})`);
+                } else {
+                    console.warn(`⚠️ [사진명령어] Step 2-2 실패: spontaneousYejin 함수 없음`);
+                }
+            } catch (photoError) {
+                console.error(`❌ [사진명령어] Step 2-2 에러:`, photoError.message);
+            }
+            
+            photoResult = { type: 'text', comment: photoResponse };
+        }
         
-        const photoResponse = photoResponses[cleanUserMessage];
-        console.log(`📸 [사진명령어] 직접 응답: ${photoResponse}`);
-        
-        logConversationReply('나', `(사진명령어-직접) ${photoResponse}`);
-        await safelyStoreMessage(BOT_NAME, photoResponse);
-        await safelyAnalyzeContextAndSave(cleanUserMessage, photoResponse);
-        
-        return { type: 'text', comment: photoResponse };
+        console.log(`📸 [사진명령어] 🎉 최종 성공: ${cleanUserMessage} 처리 완료`);
+        return photoResult;
     }
 
     // 🆕🆕🆕 0.5순위: 기타 commandHandler 호출 🆕🆕🆕
@@ -1093,34 +1101,39 @@ async function getReplyByMessage(userMessage) {
         console.error('❌ 기억 요청 처리 중 에러:', error);
     }
 
-    // 🧠🧠🧠 10.5순위: 선택적 맥락 분석 시스템 (NEW!) - 기억 질문에만 작동! 🧠🧠🧠
-    if (isMemoryQuestion(cleanUserMessage)) {
+    // 🧠🧠🧠 10.5순위: 자연스러운 맥락 시스템 (NEW!) - 모든 대화에서 자연스럽게! 🧠🧠🧠
+    // 🚨 사진 명령어는 절대 맥락 시스템으로 가면 안 됨!
+    const photoCommands = ['셀카줘', '컨셉사진줘', '추억사진줘', '커플사진줘'];
+    const isPhotoCommand = photoCommands.includes(cleanUserMessage);
+    
+    // 🔥 NEW: 모든 일반 대화에서 자연스럽게 맥락 참고!
+    if (!isPhotoCommand) {
         try {
-            console.log('🧠 [맥락엔진] 기억 질문 감지 - 맥락 분석 시작');
+            console.log('🧠 [자연맥락] 일반 대화 - 자연스러운 맥락 참고 시작');
             const contextResponse = await safelyTryContextResponse(cleanUserMessage);
-            if (contextResponse) {
-                console.log('🧠 [맥락엔진] 맥락 응답 채택 - 일반 AI 응답 건너뜀');
+            
+            if (contextResponse && contextResponse. trim().length > 0) {
+                console.log('🧠 [자연맥락] ✅ 자연스러운 맥락 응답 생성됨');
                 
                 // 언어 수정 적용
                 let finalContextResponse = fixLanguageUsage(contextResponse);
                 
                 await safelyStoreMessage(BOT_NAME, finalContextResponse);
-                logConversationReply('나', `(맥락) ${finalContextResponse}`);
+                logConversationReply('나', `(자연맥락) ${finalContextResponse}`);
                 
-                // 🧠 [NEW] 맥락 엔진에 대화 저장 (안전)
+                // 🧠 맥락 엔진에 대화 저장 (안전)
                 await safelyAnalyzeContextAndSave(cleanUserMessage, finalContextResponse);
                 
                 return { type: 'text', comment: finalContextResponse };
             } else {
-                console.log('🧠 [맥락엔진] 맥락 응답 없음 - 일반 AI 응답으로 진행');
+                console.log('🧠 [자연맥락] 맥락 없음 - 일반 AI 응답으로 진행');
             }
         } catch (error) {
-            console.error('❌ [맥락엔진] 예상치 못한 에러:', error.message);
-            console.log('🔄 [맥락엔진] 에러로 인해 일반 AI 응답으로 fallback');
-            // 어떤 에러가 발생해도 조용히 넘어가서 기존 시스템 사용
+            console.error('❌ [자연맥락] 에러:', error.message);
+            console.log('🔄 [자연맥락] 에러로 인해 일반 AI 응답으로 fallback');
         }
     } else {
-        console.log('🧠 [맥락엔진] 일반 대화 - 맥락 분석 건너뜀');
+        console.log('🚨 [자연맥락] 📸 사진 명령어 - 맥락 시스템 건너뜀');
     }
 
     // 11순위: 일반 AI 응답 생성
