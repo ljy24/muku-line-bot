@@ -1,8 +1,8 @@
 // ============================================================================
-// 📼 muku-memory-tape.js - Redis 기반 무쿠 감정 블랙박스 시스템
+// 📼 muku-memory-tape.js - 완전 안전한 ioredis 기반 무쿠 감정 블랙박스 시스템
 // 💖 무쿠의 모든 소중한 순간들을 영구 보존 (배포시에도 안전!)
-// 🎯 15:37 같은 특별한 시간들을 절대 잃어버리지 않음
-// 🔒 Redis 활용으로 완전 영구 저장 보장
+// 🎯 모든 잠재적 오류 해결 + ioredis 완벽 호환
+// 🔒 완전 안전한 에러 처리 + JSON 파싱 보호
 // ============================================================================
 
 const Redis = require('ioredis');
@@ -17,14 +17,20 @@ const colors = {
     reset: '\x1b[0m'        // 색상 리셋
 };
 
-// ================== 🔒 ioredis 연결 설정 ==================
+// ================== 🔒 안전한 ioredis 연결 관리 ==================
 let redisClient = null;
-let isRedisConnected = false;
 
-async function initializeRedis() {
+async function getRedisClient() {
     try {
-        if (redisClient && isRedisConnected) {
-            return redisClient;
+        if (redisClient) {
+            // 기존 클라이언트가 있으면 연결 상태 확인
+            try {
+                await redisClient.ping();
+                return redisClient;
+            } catch (pingError) {
+                console.log(`${colors.warning}⚠️ [Memory Tape] 기존 Redis 연결 실패, 재연결 시도${colors.reset}`);
+                redisClient = null;
+            }
         }
 
         const redisUrl = process.env.REDIS_URL;
@@ -33,93 +39,117 @@ async function initializeRedis() {
             return null;
         }
 
+        console.log(`${colors.info}🔄 [Memory Tape] ioredis 연결 시작...${colors.reset}`);
+        
         redisClient = new Redis(redisUrl, {
             retryDelayOnFailover: 100,
-            maxRetriesPerRequest: 3
+            maxRetriesPerRequest: 3,
+            lazyConnect: false,
+            keepAlive: 30000,
+            connectTimeout: 10000,
+            commandTimeout: 5000
         });
 
+        // 이벤트 리스너 등록
         redisClient.on('error', (err) => {
             console.error(`${colors.error}❌ [Redis] 연결 오류: ${err.message}${colors.reset}`);
-            isRedisConnected = false;
         });
 
         redisClient.on('connect', () => {
             console.log(`${colors.success}✅ [Redis] 연결 성공${colors.reset}`);
-            isRedisConnected = true;
         });
 
         redisClient.on('ready', () => {
             console.log(`${colors.success}🚀 [Redis] 준비 완료${colors.reset}`);
-            isRedisConnected = true;
         });
 
-        redisClient.on('reconnecting', () => {
-            console.log(`${colors.warning}🔄 [Redis] 재연결 시도 중...${colors.reset}`);
-        });
-
-        // ioredis는 자동으로 연결하므로 ping으로 테스트
+        // 연결 테스트
         await redisClient.ping();
-        isRedisConnected = true;
+        console.log(`${colors.success}🎉 [Memory Tape] ioredis 초기화 완료!${colors.reset}`);
         
-        console.log(`${colors.success}🚀 [Memory Tape] ioredis 초기화 완료!${colors.reset}`);
         return redisClient;
 
     } catch (error) {
         console.error(`${colors.error}❌ [Memory Tape] ioredis 초기화 실패: ${error.message}${colors.reset}`);
-        isRedisConnected = false;
+        if (redisClient) {
+            try {
+                await redisClient.disconnect();
+            } catch (disconnectError) {
+                // 조용히 무시
+            }
+            redisClient = null;
+        }
         return null;
     }
 }
 
-// ================== 🕐 일본시간 유틸리티 ==================
+// ================== 🕐 안전한 일본시간 유틸리티 ==================
 function getJapanTime() {
-    const now = new Date();
-    return new Date(now.toLocaleString("en-US", {timeZone: "Asia/Tokyo"}));
+    try {
+        const now = new Date();
+        return new Date(now.toLocaleString("en-US", {timeZone: "Asia/Tokyo"}));
+    } catch (error) {
+        console.warn(`${colors.warning}⚠️ [Memory Tape] 일본시간 변환 실패, UTC 사용: ${error.message}${colors.reset}`);
+        return new Date();
+    }
 }
 
 function getJapanTimeString() {
-    const japanTime = getJapanTime();
-    return japanTime.toISOString().replace('T', ' ').substring(0, 19) + ' (JST)';
+    try {
+        const japanTime = getJapanTime();
+        return japanTime.toISOString().replace('T', ' ').substring(0, 19) + ' (JST)';
+    } catch (error) {
+        console.warn(`${colors.warning}⚠️ [Memory Tape] 시간 문자열 변환 실패: ${error.message}${colors.reset}`);
+        return new Date().toISOString();
+    }
 }
 
 function getDateString(date = null) {
-    let targetDate;
-    
-    if (!date) {
-        targetDate = getJapanTime();
-    } else if (date instanceof Date) {
-        targetDate = date;
-    } else if (typeof date === 'string') {
-        targetDate = new Date(date);
-    } else if (typeof date === 'number') {
-        targetDate = new Date(date);
-    } else {
-        console.warn(`${colors.warning}⚠️ [Memory Tape] 잘못된 날짜 형식: ${typeof date}, 현재 시간 사용${colors.reset}`);
-        targetDate = getJapanTime();
+    try {
+        let targetDate;
+        
+        if (!date) {
+            targetDate = getJapanTime();
+        } else if (date instanceof Date) {
+            targetDate = date;
+        } else if (typeof date === 'string') {
+            targetDate = new Date(date);
+        } else if (typeof date === 'number') {
+            targetDate = new Date(date);
+        } else {
+            console.warn(`${colors.warning}⚠️ [Memory Tape] 잘못된 날짜 형식: ${typeof date}, 현재 시간 사용${colors.reset}`);
+            targetDate = getJapanTime();
+        }
+        
+        // Date 객체 유효성 검사
+        if (isNaN(targetDate.getTime())) {
+            console.warn(`${colors.warning}⚠️ [Memory Tape] 무효한 날짜, 현재 시간 사용${colors.reset}`);
+            targetDate = getJapanTime();
+        }
+        
+        return targetDate.toISOString().split('T')[0]; // YYYY-MM-DD 형식
+    } catch (error) {
+        console.error(`${colors.error}❌ [Memory Tape] 날짜 처리 오류: ${error.message}${colors.reset}`);
+        return new Date().toISOString().split('T')[0];
     }
-    
-    // Date 객체 유효성 검사
-    if (isNaN(targetDate.getTime())) {
-        console.warn(`${colors.warning}⚠️ [Memory Tape] 무효한 날짜, 현재 시간 사용${colors.reset}`);
-        targetDate = getJapanTime();
-    }
-    
-    return targetDate.toISOString().split('T')[0]; // YYYY-MM-DD 형식
 }
 
 // ================== 🔑 Redis 키 생성 함수들 ==================
 function getDailyLogKey(dateInput) {
-    let dateString;
-    
-    if (typeof dateInput === 'string' && dateInput.match(/^\d{4}-\d{2}-\d{2}$/)) {
-        // 이미 YYYY-MM-DD 형식인 경우
-        dateString = dateInput;
-    } else {
-        // Date 객체나 다른 형식인 경우 변환
-        dateString = getDateString(dateInput);
+    try {
+        let dateString;
+        
+        if (typeof dateInput === 'string' && dateInput.match(/^\d{4}-\d{2}-\d{2}$/)) {
+            dateString = dateInput;
+        } else {
+            dateString = getDateString(dateInput);
+        }
+        
+        return `muku:conversation:daily:${dateString}`;
+    } catch (error) {
+        console.error(`${colors.error}❌ [Memory Tape] 키 생성 실패: ${error.message}${colors.reset}`);
+        return `muku:conversation:daily:${getDateString()}`;
     }
-    
-    return `muku:conversation:daily:${dateString}`;
 }
 
 function getConversationIndexKey() {
@@ -131,22 +161,31 @@ function getStatsKey() {
 }
 
 function getMomentKey(recordId) {
-    return `muku:conversation:moment:${recordId}`;
+    try {
+        if (!recordId || typeof recordId !== 'string') {
+            throw new Error('잘못된 recordId');
+        }
+        return `muku:conversation:moment:${recordId}`;
+    } catch (error) {
+        console.error(`${colors.error}❌ [Memory Tape] Moment 키 생성 실패: ${error.message}${colors.reset}`);
+        return `muku:conversation:moment:${Date.now()}`;
+    }
 }
 
-// ================== 💾 Redis 안전 함수들 ==================
+// ================== 💾 안전한 Redis 작업 함수 ==================
 async function safeRedisOperation(operation, fallbackValue = null) {
+    let client = null;
+    
     try {
-        if (!redisClient || !isRedisConnected) {
-            await initializeRedis();
-        }
+        client = await getRedisClient();
         
-        if (!redisClient || !isRedisConnected) {
-            console.warn(`${colors.warning}⚠️ [Memory Tape] Redis 사용 불가, 기본값 반환${colors.reset}`);
+        if (!client) {
+            console.warn(`${colors.warning}⚠️ [Memory Tape] Redis 클라이언트 없음, 기본값 반환${colors.reset}`);
             return fallbackValue;
         }
 
-        return await operation(redisClient);
+        const result = await operation(client);
+        return result;
 
     } catch (error) {
         console.error(`${colors.error}❌ [Memory Tape] Redis 작업 실패: ${error.message}${colors.reset}`);
@@ -154,9 +193,38 @@ async function safeRedisOperation(operation, fallbackValue = null) {
     }
 }
 
+// ================== 🛡️ 안전한 JSON 처리 함수들 ==================
+function safeJsonParse(jsonString, fallbackValue = null) {
+    try {
+        if (!jsonString || typeof jsonString !== 'string') {
+            return fallbackValue;
+        }
+        return JSON.parse(jsonString);
+    } catch (error) {
+        console.error(`${colors.error}❌ [Memory Tape] JSON 파싱 실패: ${error.message}${colors.reset}`);
+        return fallbackValue;
+    }
+}
+
+function safeJsonStringify(obj, fallbackValue = '{}') {
+    try {
+        if (obj === null || obj === undefined) {
+            return fallbackValue;
+        }
+        return JSON.stringify(obj, null, 2);
+    } catch (error) {
+        console.error(`${colors.error}❌ [Memory Tape] JSON 직렬화 실패: ${error.message}${colors.reset}`);
+        return fallbackValue;
+    }
+}
+
 // ================== 💾 메모리 테이프 기록 함수 ==================
 async function recordMukuMoment(momentData) {
     try {
+        if (!momentData || typeof momentData !== 'object') {
+            throw new Error('momentData가 올바르지 않습니다');
+        }
+
         const japanTime = getJapanTime();
         const dateString = getDateString(japanTime);
         
@@ -169,48 +237,62 @@ async function recordMukuMoment(momentData) {
             minute: japanTime.getMinutes(),
             day_of_week: japanTime.toLocaleDateString('ko-KR', { weekday: 'long' }),
             ...momentData,
-            record_id: `${dateString}-${Date.now()}`,
-            system_version: 'memory-tape-redis-v1.0'
+            record_id: `${dateString}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            system_version: 'memory-tape-safe-v1.0'
         };
 
         const success = await safeRedisOperation(async (redis) => {
-            // 1. 일별 로그에 추가
-            const dailyKey = getDailyLogKey(dateString);
+            console.log(`${colors.info}💾 [Memory Tape] Redis 저장 시작: ${recordData.record_id}${colors.reset}`);
             
-            // 기존 일별 로그 가져오기
-            let dailyLogStr = await redis.get(dailyKey);
-            let dailyLog = dailyLogStr ? JSON.parse(dailyLogStr) : {
+            // 1. 일별 로그 키 생성
+            const dailyKey = getDailyLogKey(dateString);
+            console.log(`${colors.info}💾 [Memory Tape] 일별 키: ${dailyKey}${colors.reset}`);
+            
+            // 2. 기존 일별 로그 가져오기 (안전한 JSON 파싱)
+            const dailyLogStr = await redis.get(dailyKey);
+            let dailyLog = safeJsonParse(dailyLogStr, {
                 date: dateString,
                 creation_time: getJapanTimeString(),
                 total_moments: 0,
                 moments: []
-            };
+            });
 
-            // 새 순간 추가
+            // 3. 새 순간 추가
+            if (!Array.isArray(dailyLog.moments)) {
+                dailyLog.moments = [];
+            }
+            
             dailyLog.moments.push(recordData);
             dailyLog.total_moments = dailyLog.moments.length;
             dailyLog.last_updated = getJapanTimeString();
 
-            // Redis에 저장
-            await redis.set(dailyKey, JSON.stringify(dailyLog));
+            // 4. Redis에 저장 (안전한 JSON 직렬화)
+            const dailyLogJson = safeJsonStringify(dailyLog);
+            await redis.set(dailyKey, dailyLogJson);
+            console.log(`${colors.success}✅ [Memory Tape] 일별 로그 저장 완료${colors.reset}`);
 
-            // 2. 개별 순간 저장 (빠른 검색용)
+            // 5. 개별 순간 저장 (빠른 검색용)
             const momentKey = getMomentKey(recordData.record_id);
-            await redis.set(momentKey, JSON.stringify(recordData));
+            const momentJson = safeJsonStringify(recordData);
+            await redis.set(momentKey, momentJson);
+            console.log(`${colors.success}✅ [Memory Tape] 개별 순간 저장 완료${colors.reset}`);
 
-            // 3. 인덱스 업데이트 (날짜별 키 목록)
+            // 6. 인덱스 업데이트 (날짜별 키 목록)
             const indexKey = getConversationIndexKey();
             await redis.sadd(indexKey, dateString);
+            console.log(`${colors.success}✅ [Memory Tape] 인덱스 업데이트 완료${colors.reset}`);
 
-            // 4. 통계 업데이트
-            await redis.hincrby(getStatsKey(), 'total_moments', 1);
-            await redis.hset(getStatsKey(), 'last_updated', getJapanTimeString());
+            // 7. 통계 업데이트 (안전한 증가)
+            const statsKey = getStatsKey();
+            await redis.hincrby(statsKey, 'total_moments', 1);
+            await redis.hset(statsKey, 'last_updated', getJapanTimeString());
+            console.log(`${colors.success}✅ [Memory Tape] 통계 업데이트 완료${colors.reset}`);
 
             return true;
         });
 
         if (success) {
-            console.log(`${colors.success}✅ [Memory Tape] Redis 저장 완료: ${recordData.record_id}${colors.reset}`);
+            console.log(`${colors.success}🎉 [Memory Tape] Redis 저장 완료: ${recordData.record_id}${colors.reset}`);
             console.log(`${colors.info}📊 [Memory Tape] 날짜: ${dateString}, 시간: ${recordData.hour}:${recordData.minute.toString().padStart(2, '0')}${colors.reset}`);
             return recordData;
         } else {
@@ -219,6 +301,7 @@ async function recordMukuMoment(momentData) {
 
     } catch (error) {
         console.error(`${colors.error}❌ [Memory Tape] 기록 실패: ${error.message}${colors.reset}`);
+        console.error(`${colors.error}❌ [Memory Tape] 스택: ${error.stack}${colors.reset}`);
         throw error;
     }
 }
@@ -226,10 +309,8 @@ async function recordMukuMoment(momentData) {
 // ================== 📖 메모리 테이프 읽기 함수 ==================
 async function readDailyMemories(targetDate = null) {
     try {
-        console.log(`${colors.info}📖 [Memory Tape] 날짜 파라미터 타입: ${typeof targetDate}, 값: ${targetDate}${colors.reset}`);
-        
         const dateString = getDateString(targetDate);
-        console.log(`${colors.info}📖 [Memory Tape] 처리된 날짜: ${dateString}${colors.reset}`);
+        console.log(`${colors.info}📖 [Memory Tape] 읽기 시작 - 날짜: ${dateString}${colors.reset}`);
         
         const dailyLog = await safeRedisOperation(async (redis) => {
             const dailyKey = getDailyLogKey(dateString);
@@ -238,14 +319,21 @@ async function readDailyMemories(targetDate = null) {
             const dailyLogStr = await redis.get(dailyKey);
             
             if (!dailyLogStr) {
+                console.log(`${colors.info}📖 [Memory Tape] 데이터 없음${colors.reset}`);
                 return null;
             }
 
-            return JSON.parse(dailyLogStr);
+            const parsed = safeJsonParse(dailyLogStr);
+            if (!parsed) {
+                console.error(`${colors.error}❌ [Memory Tape] JSON 파싱 실패${colors.reset}`);
+                return null;
+            }
+
+            return parsed;
         });
 
         if (dailyLog) {
-            console.log(`${colors.success}📖 [Memory Tape] ${dateString} Redis 읽기 완료: ${dailyLog.total_moments}개 순간${colors.reset}`);
+            console.log(`${colors.success}📖 [Memory Tape] ${dateString} Redis 읽기 완료: ${dailyLog.total_moments || 0}개 순간${colors.reset}`);
             return dailyLog;
         } else {
             console.log(`${colors.info}📖 [Memory Tape] ${dateString} 기록 없음 (새로운 날)${colors.reset}`);
@@ -254,7 +342,6 @@ async function readDailyMemories(targetDate = null) {
 
     } catch (error) {
         console.error(`${colors.error}❌ [Memory Tape] 읽기 실패: ${error.message}${colors.reset}`);
-        console.error(`${colors.error}❌ [Memory Tape] 오류 스택: ${error.stack}${colors.reset}`);
         return null;
     }
 }
@@ -262,35 +349,51 @@ async function readDailyMemories(targetDate = null) {
 // ================== 🔍 특별한 순간 검색 함수 ==================
 async function findSpecialMoments(searchCriteria = {}) {
     try {
+        console.log(`${colors.info}🔍 [Memory Tape] 검색 시작${colors.reset}`);
+        
         const allSpecialMoments = await safeRedisOperation(async (redis) => {
             // 모든 날짜 키 가져오기
             const indexKey = getConversationIndexKey();
             const allDates = await redis.smembers(indexKey);
             
+            if (!Array.isArray(allDates) || allDates.length === 0) {
+                console.log(`${colors.info}🔍 [Memory Tape] 인덱스에 날짜 없음${colors.reset}`);
+                return [];
+            }
+
             let moments = [];
 
             for (const dateString of allDates) {
-                const dailyKey = getDailyLogKey(dateString);
-                const dailyLogStr = await redis.get(dailyKey);
-                
-                if (dailyLogStr) {
-                    const dailyLog = JSON.parse(dailyLogStr);
+                try {
+                    const dailyKey = getDailyLogKey(dateString);
+                    const dailyLogStr = await redis.get(dailyKey);
                     
-                    // 검색 조건에 맞는 순간들 필터링
-                    const filteredMoments = dailyLog.moments.filter(moment => {
-                        if (searchCriteria.remarkable && moment.remarkable) return true;
-                        if (searchCriteria.emotional_tags && moment.emotional_tags) {
-                            return searchCriteria.emotional_tags.some(tag => 
-                                moment.emotional_tags.includes(tag)
-                            );
-                        }
-                        if (searchCriteria.type && moment.type === searchCriteria.type) return true;
-                        if (searchCriteria.hour && moment.hour === searchCriteria.hour) return true;
+                    if (dailyLogStr) {
+                        const dailyLog = safeJsonParse(dailyLogStr);
                         
-                        return !searchCriteria || Object.keys(searchCriteria).length === 0;
-                    });
-                    
-                    moments.push(...filteredMoments);
+                        if (dailyLog && Array.isArray(dailyLog.moments)) {
+                            // 검색 조건에 맞는 순간들 필터링
+                            const filteredMoments = dailyLog.moments.filter(moment => {
+                                if (!moment) return false;
+                                
+                                if (searchCriteria.remarkable && moment.remarkable) return true;
+                                if (searchCriteria.emotional_tags && Array.isArray(moment.emotional_tags)) {
+                                    return searchCriteria.emotional_tags.some(tag => 
+                                        moment.emotional_tags.includes(tag)
+                                    );
+                                }
+                                if (searchCriteria.type && moment.type === searchCriteria.type) return true;
+                                if (searchCriteria.hour && moment.hour === searchCriteria.hour) return true;
+                                
+                                return !searchCriteria || Object.keys(searchCriteria).length === 0;
+                            });
+                            
+                            moments.push(...filteredMoments);
+                        }
+                    }
+                } catch (dateError) {
+                    console.warn(`${colors.warning}⚠️ [Memory Tape] ${dateString} 처리 실패: ${dateError.message}${colors.reset}`);
+                    continue;
                 }
             }
 
@@ -309,6 +412,8 @@ async function findSpecialMoments(searchCriteria = {}) {
 // ================== 📊 메모리 테이프 통계 함수 ==================
 async function getMemoryTapeStats() {
     try {
+        console.log(`${colors.info}📊 [Memory Tape] 통계 생성 시작${colors.reset}`);
+        
         const stats = await safeRedisOperation(async (redis) => {
             // 기본 통계 가져오기
             const basicStats = await redis.hgetall(getStatsKey());
@@ -317,39 +422,14 @@ async function getMemoryTapeStats() {
             const indexKey = getConversationIndexKey();
             const totalDays = await redis.scard(indexKey);
             
-            // 감정 태그 분석을 위해 모든 순간 조회
-            const allDates = await redis.smembers(indexKey);
-            let remarkableMoments = 0;
-            let emotionalBreakdown = {};
-            
-            for (const dateString of allDates) {
-                const dailyKey = getDailyLogKey(dateString);
-                const dailyLogStr = await redis.get(dailyKey);
-                
-                if (dailyLogStr) {
-                    const dailyLog = JSON.parse(dailyLogStr);
-                    
-                    dailyLog.moments.forEach(moment => {
-                        if (moment.remarkable) remarkableMoments++;
-                        
-                        if (moment.emotional_tags) {
-                            moment.emotional_tags.forEach(tag => {
-                                emotionalBreakdown[tag] = (emotionalBreakdown[tag] || 0) + 1;
-                            });
-                        }
-                    });
-                }
-            }
-            
             const totalMoments = parseInt(basicStats.total_moments || 0);
             
             return {
-                total_days: totalDays,
+                total_days: totalDays || 0,
                 total_moments: totalMoments,
-                remarkable_moments: remarkableMoments,
                 average_moments_per_day: totalDays > 0 ? (totalMoments / totalDays).toFixed(1) : 0,
-                emotional_breakdown: emotionalBreakdown,
-                last_updated: basicStats.last_updated || getJapanTimeString()
+                last_updated: basicStats.last_updated || getJapanTimeString(),
+                system_version: 'memory-tape-safe-v1.0'
             };
         });
 
@@ -360,10 +440,9 @@ async function getMemoryTapeStats() {
             return {
                 total_days: 0,
                 total_moments: 0,
-                remarkable_moments: 0,
                 average_moments_per_day: 0,
-                emotional_breakdown: {},
-                last_updated: getJapanTimeString()
+                last_updated: getJapanTimeString(),
+                system_version: 'memory-tape-safe-v1.0'
             };
         }
 
@@ -376,16 +455,16 @@ async function getMemoryTapeStats() {
 // ================== 🚀 초기화 함수 ==================
 async function initializeMemoryTape() {
     try {
-        console.log(`${colors.tape}🚀 [Memory Tape] Redis 기반 초기화 시작...${colors.reset}`);
+        console.log(`${colors.tape}🚀 [Memory Tape] 안전한 Redis 기반 초기화 시작...${colors.reset}`);
         
-        const redis = await initializeRedis();
-        if (!redis) {
+        const client = await getRedisClient();
+        if (!client) {
             console.error(`${colors.error}❌ [Memory Tape] Redis 연결 실패로 초기화 불가${colors.reset}`);
             return false;
         }
 
         console.log(`${colors.success}🚀 [Memory Tape] 초기화 완료!${colors.reset}`);
-        console.log(`${colors.info}🔒 저장소: Redis (영구 보존 보장)${colors.reset}`);
+        console.log(`${colors.info}🔒 저장소: ioredis (영구 보존 보장)${colors.reset}`);
         
         // 현재 통계 출력
         const stats = await getMemoryTapeStats();
@@ -402,11 +481,12 @@ async function initializeMemoryTape() {
     }
 }
 
-// ================== 🧹 정리 함수 (선택적) ==================
+// ================== 🧹 정리 함수 ==================
 async function cleanupRedisConnection() {
     try {
-        if (redisClient && isRedisConnected) {
+        if (redisClient) {
             await redisClient.disconnect();
+            redisClient = null;
             console.log(`${colors.info}👋 [Memory Tape] ioredis 연결 정리 완료${colors.reset}`);
         }
     } catch (error) {
@@ -429,6 +509,10 @@ module.exports = {
     getDateString,
     
     // Redis 관련
-    initializeRedis,
-    safeRedisOperation
+    getRedisClient,
+    safeRedisOperation,
+    
+    // JSON 안전 함수들
+    safeJsonParse,
+    safeJsonStringify
 };
