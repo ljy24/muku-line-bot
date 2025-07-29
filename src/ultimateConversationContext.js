@@ -375,6 +375,32 @@ async function searchUserMemoriesWithRedis(keyword) {
     );
 }
 
+
+// ==================== 🎭 moodManager.js 호환성 함수 (수정 기능) ====================
+
+/**
+ * 🎭 moodManager.js 호환용 감정 상태 업데이트 (TypeError 해결)
+ */
+function updateMoodState(newMoodState) {
+    try {
+        if (!newMoodState || !newMoodState.currentEmotion) {
+            ultimateLog('⚠️ updateMoodState: 유효하지 않은 기분 상태', newMoodState);
+            return;
+        }
+        
+        const newTopic = newMoodState.currentEmotion;
+        const confidence = newMoodState.intensity || 0.7;
+        
+        // 기존의 지능적 주제 업데이트 함수를 재활용
+        updateConversationTopicIntelligently(newTopic, confidence);
+        
+        ultimateLog(`🎭 moodManager로부터 기분 업데이트 완료: "${newTopic}"`);
+        
+    } catch (error) {
+        ultimateLog('❌ updateMoodState 오류:', error.message);
+    }
+}
+
 // ==================== 🎯 대화 주제 & 액션 관리 (고유 기능 보존) ====================
 
 /**
@@ -828,6 +854,7 @@ module.exports = {
     
     // 🔧 TypeError 해결 - moodManager.js 호환성
     getMoodState,
+    updateMoodState, 
     
     // 📊 상태 조회
     getUltimateSystemStatus,
