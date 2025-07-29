@@ -1,5 +1,5 @@
 // ============================================================================
-// autoReply.js - v15.3 (애정표현 우선처리 추가 - "사랑해" 위로 오판 해결)
+// autoReply.js - v15.4 (안전한 맥락 시스템 연동 추가)
 // 🧠 기억 관리, 키워드 반응, 예진이 특별반응, 최종 프롬프트 생성을 책임지는 핵심 두뇌
 // 🌸 길거리 칭찬 → 셀카, 위로 → 고마워함, 바쁨 → 삐짐 반응 추가
 // 🛡️ 절대 벙어리 방지: 모든 에러 상황에서도 예진이는 반드시 대답함!
@@ -11,10 +11,21 @@
 // 🚨 존댓말 완전 방지: 절대로 존댓말 안 함, 항상 반말만 사용
 // 🆕 NEW: commandHandler 호출 추가 - "셀카줘", "컨셉사진줘", "추억사진줘" 명령어 지원!
 // 💕 NEW: 애정표현 우선처리 - "사랑해"를 위로가 아닌 애정표현으로 올바르게 인식!
+// 🧠 NEW: 안전한 맥락 시스템 연동 - 실패해도 기존 기능 100% 보장!
 // ============================================================================
 
 const { callOpenAI, cleanReply } = require('./aiUtils');
 const moment = require('moment-timezone');
+
+// 🧠 [NEW] 안전한 맥락 엔진 연동
+let contextEngine = null;
+try {
+    contextEngine = require('./muku-contextEngine');
+    console.log('🧠 [autoReply] 맥락 엔진 연동 성공 - 똑똑한 대화 시작!');
+} catch (error) {
+    console.log('⚠️ [autoReply] 맥락 엔진 없음 - 기본 모드로 작동');
+    console.warn('맥락 엔진 로드 실패:', error.message);
+}
 
 // ✨ GPT 모델 버전 관리 시스템 import
 let getCurrentModelSetting = null;
@@ -737,6 +748,55 @@ async function safelyStoreMessage(speaker, message) {
     }
 }
 
+// 🧠 [NEW] 안전한 맥락 분석 및 대화 저장 함수
+async function safelyAnalyzeContextAndSave(userMessage, finalResponse) {
+    try {
+        if (!contextEngine) {
+            // 맥락 엔진이 없으면 조용히 건너뜀
+            return;
+        }
+
+        // 1. 대화 저장 (실패해도 계속 진행)
+        try {
+            await contextEngine.saveConversation(userMessage, finalResponse);
+            console.log('🧠 [맥락엔진] 대화 저장 완료');
+        } catch (saveError) {
+            console.warn('⚠️ [맥락엔진] 대화 저장 실패:', saveError.message);
+            // 저장 실패해도 계속 진행
+        }
+
+    } catch (error) {
+        console.warn('⚠️ [맥락엔진] 전체 처리 실패:', error.message);
+        // 어떤 에러가 발생해도 조용히 넘어감
+    }
+}
+
+// 🧠 [NEW] 안전한 맥락 응답 시도 함수
+async function safelyTryContextResponse(userMessage) {
+    try {
+        if (!contextEngine) {
+            return null; // 맥락 엔진이 없으면 null 반환
+        }
+
+        console.log('🧠 [맥락엔진] 맥락 분석 시도...');
+        
+        const contextResponse = await contextEngine.analyzeContext(userMessage);
+        
+        if (contextResponse && typeof contextResponse === 'string' && contextResponse.trim().length > 0) {
+            console.log(`🧠 [맥락엔진] 맥락 응답 생성 성공: "${contextResponse.substring(0, 50)}..."`);
+            return contextResponse;
+        } else {
+            console.log('🧠 [맥락엔진] 맥락 응답 없음 - 일반 AI 응답으로 진행');
+            return null;
+        }
+
+    } catch (error) {
+        console.warn('⚠️ [맥락엔진] 분석 실패:', error.message);
+        console.log('🔄 [맥락엔진] 실패로 인해 일반 AI 응답으로 fallback');
+        return null; // 에러 발생시 null 반환하여 기존 시스템 사용
+    }
+}
+
 // 메인 응답 생성 함수
 async function getReplyByMessage(userMessage) {
     if (!userMessage || typeof userMessage !== 'string' || userMessage.trim().length === 0) {
@@ -764,6 +824,9 @@ async function getReplyByMessage(userMessage) {
             if (commandResult.comment) {
                 logConversationReply('나', `(명령어-${commandResult.source || 'command'}) ${commandResult.comment}`);
                 await safelyStoreMessage(BOT_NAME, commandResult.comment);
+                
+                // 🧠 [NEW] 맥락 엔진에 대화 저장 (안전)
+                await safelyAnalyzeContextAndSave(cleanUserMessage, commandResult.comment);
             }
             
             return commandResult;
@@ -784,6 +847,10 @@ async function getReplyByMessage(userMessage) {
             logConversationReply('나', `(새벽깨움-${nightResponse.sleepPhase}) ${nightResponse.response}`);
             await safelyStoreMessage('아저씨', cleanUserMessage);
             await safelyStoreMessage('나', nightResponse.response);
+            
+            // 🧠 [NEW] 맥락 엔진에 대화 저장 (안전)
+            await safelyAnalyzeContextAndSave(cleanUserMessage, nightResponse.response);
+            
             return { type: 'text', comment: nightResponse.response };
         }
     } catch (error) {
@@ -800,6 +867,10 @@ async function getReplyByMessage(userMessage) {
             const specialResponse = '히히 칭찬받았다고 증명해줄게! 방금 보낸 사진 봤어? ㅎㅎ';
             logConversationReply('나', `(칭찬셀카) ${specialResponse}`);
             await safelyStoreMessage('나', specialResponse);
+            
+            // 🧠 [NEW] 맥락 엔진에 대화 저장 (안전)
+            await safelyAnalyzeContextAndSave(cleanUserMessage, specialResponse);
+            
             return { type: 'text', comment: specialResponse };
         }
     } catch (error) {
@@ -815,6 +886,10 @@ async function getReplyByMessage(userMessage) {
             await safelyStoreMessage('아저씨', cleanUserMessage);
             logConversationReply('나', `(애정표현) ${loveResponse}`);
             await safelyStoreMessage('나', loveResponse);
+            
+            // 🧠 [NEW] 맥락 엔진에 대화 저장 (안전)
+            await safelyAnalyzeContextAndSave(cleanUserMessage, loveResponse);
+            
             return { type: 'text', comment: loveResponse };
         }
     } catch (error) {
@@ -833,6 +908,10 @@ async function getReplyByMessage(userMessage) {
                     await safelyStoreMessage('아저씨', cleanUserMessage);
                     logConversationReply('나', `(위로받음) ${comfortReaction.message}`);
                     await safelyStoreMessage('나', comfortReaction.message);
+                    
+                    // 🧠 [NEW] 맥락 엔진에 대화 저장 (안전)
+                    await safelyAnalyzeContextAndSave(cleanUserMessage, comfortReaction.message);
+                    
                     return { type: 'text', comment: comfortReaction.message };
                 }
             }
@@ -851,6 +930,10 @@ async function getReplyByMessage(userMessage) {
                 await safelyStoreMessage('아저씨', cleanUserMessage);
                 logConversationReply('나', `(${busyReaction.type}) ${busyReaction.message}`);
                 await safelyStoreMessage('나', busyReaction.message);
+                
+                // 🧠 [NEW] 맥락 엔진에 대화 저장 (안전)
+                await safelyAnalyzeContextAndSave(cleanUserMessage, busyReaction.message);
+                
                 return { type: 'text', comment: busyReaction.message };
             }
         }
@@ -883,6 +966,8 @@ async function getReplyByMessage(userMessage) {
     const emergencyResponse = handleEmergencyKeywords(cleanUserMessage);
     if (emergencyResponse) {
         await safelyStoreMessage(BOT_NAME, emergencyResponse);
+        // 🧠 [NEW] 맥락 엔진에 대화 저장 (안전)
+        await safelyAnalyzeContextAndSave(cleanUserMessage, emergencyResponse);
         return { type: 'text', comment: emergencyResponse };
     }
 
@@ -890,6 +975,8 @@ async function getReplyByMessage(userMessage) {
     const birthdayResponse = handleBirthdayKeywords(cleanUserMessage);
     if (birthdayResponse) {
         await safelyStoreMessage(BOT_NAME, birthdayResponse);
+        // 🧠 [NEW] 맥락 엔진에 대화 저장 (안전)
+        await safelyAnalyzeContextAndSave(cleanUserMessage, birthdayResponse);
         return { type: 'text', comment: birthdayResponse };
     }
 
@@ -897,6 +984,8 @@ async function getReplyByMessage(userMessage) {
     const drinkingResponse = handleDrinkingKeywords(cleanUserMessage);
     if (drinkingResponse) {
         await safelyStoreMessage(BOT_NAME, drinkingResponse);
+        // 🧠 [NEW] 맥락 엔진에 대화 저장 (안전)
+        await safelyAnalyzeContextAndSave(cleanUserMessage, drinkingResponse);
         return { type: 'text', comment: drinkingResponse };
     }
 
@@ -904,6 +993,8 @@ async function getReplyByMessage(userMessage) {
     const weatherResponse = handleWeatherKeywords(cleanUserMessage);
     if (weatherResponse) {
         await safelyStoreMessage(BOT_NAME, weatherResponse);
+        // 🧠 [NEW] 맥락 엔진에 대화 저장 (안전)
+        await safelyAnalyzeContextAndSave(cleanUserMessage, weatherResponse);
         return { type: 'text', comment: weatherResponse };
     }
 
@@ -912,6 +1003,8 @@ async function getReplyByMessage(userMessage) {
         const editResult = await detectAndProcessMemoryEdit(cleanUserMessage);
         if (editResult && editResult.processed) {
             await safelyStoreMessage(BOT_NAME, editResult.result.message);
+            // 🧠 [NEW] 맥락 엔진에 대화 저장 (안전)
+            await safelyAnalyzeContextAndSave(cleanUserMessage, editResult.result.message);
             return { type: 'text', comment: editResult.result.message };
         }
     } catch (error) {
@@ -923,10 +1016,37 @@ async function getReplyByMessage(userMessage) {
         const memoryResult = await detectAndProcessMemoryRequest(cleanUserMessage);
         if (memoryResult && memoryResult.saved && memoryResult.response) {
             await safelyStoreMessage(BOT_NAME, memoryResult.response);
+            // 🧠 [NEW] 맥락 엔진에 대화 저장 (안전)
+            await safelyAnalyzeContextAndSave(cleanUserMessage, memoryResult.response);
             return { type: 'text', comment: memoryResult.response };
         }
     } catch (error) {
         console.error('❌ 기억 요청 처리 중 에러:', error);
+    }
+
+    // 🧠🧠🧠 10.5순위: 맥락 분석 시스템 (NEW!) - 완전 안전 설계 🧠🧠🧠
+    try {
+        const contextResponse = await safelyTryContextResponse(cleanUserMessage);
+        if (contextResponse) {
+            console.log('🧠 [맥락엔진] 맥락 응답 채택 - 일반 AI 응답 건너뜀');
+            
+            // 언어 수정 적용
+            let finalContextResponse = fixLanguageUsage(contextResponse);
+            
+            await safelyStoreMessage(BOT_NAME, finalContextResponse);
+            logConversationReply('나', `(맥락) ${finalContextResponse}`);
+            
+            // 🧠 [NEW] 맥락 엔진에 대화 저장 (안전)
+            await safelyAnalyzeContextAndSave(cleanUserMessage, finalContextResponse);
+            
+            return { type: 'text', comment: finalContextResponse };
+        } else {
+            console.log('🧠 [맥락엔진] 맥락 응답 없음 - 일반 AI 응답으로 진행');
+        }
+    } catch (error) {
+        console.error('❌ [맥락엔진] 예상치 못한 에러:', error.message);
+        console.log('🔄 [맥락엔진] 에러로 인해 일반 AI 응답으로 fallback');
+        // 어떤 에러가 발생해도 조용히 넘어가서 기존 시스템 사용
     }
 
     // 11순위: 일반 AI 응답 생성
@@ -1041,6 +1161,8 @@ async function getReplyByMessage(userMessage) {
         const defaultReply = getEmergencyFallback();
         await safelyStoreMessage(BOT_NAME, defaultReply);
         logLearningDebug('나', `(프롬프트에러폴백) ${defaultReply}`);
+        // 🧠 [NEW] 맥락 엔진에 대화 저장 (안전)
+        await safelyAnalyzeContextAndSave(cleanUserMessage, defaultReply);
         return { type: 'text', comment: defaultReply };
     }
 
@@ -1056,11 +1178,17 @@ async function getReplyByMessage(userMessage) {
             const fallbackReply = getEmergencyFallback();
             await safelyStoreMessage(BOT_NAME, fallbackReply);
             logConversationReply('나', `(AI응답비어있음폴백) ${fallbackReply}`);
+            // 🧠 [NEW] 맥락 엔진에 대화 저장 (안전)
+            await safelyAnalyzeContextAndSave(cleanUserMessage, fallbackReply);
             return { type: 'text', comment: fallbackReply };
         }
         
         await safelyStoreMessage(BOT_NAME, finalReply);
         logConversationReply('나', finalReply);
+        
+        // 🧠 [NEW] 맥락 엔진에 대화 저장 (안전)
+        await safelyAnalyzeContextAndSave(cleanUserMessage, finalReply);
+        
         return { type: 'text', comment: finalReply };
         
     } catch (error) {
@@ -1070,6 +1198,10 @@ async function getReplyByMessage(userMessage) {
             '어? 나 지금 좀 멍하네... 아저씨 다시 말해주면 안 될까? ㅎㅎ';
         await safelyStoreMessage(BOT_NAME, apiErrorReply);
         logConversationReply('나', `(API에러폴백) ${apiErrorReply}`);
+        
+        // 🧠 [NEW] 맥락 엔진에 대화 저장 (안전)
+        await safelyAnalyzeContextAndSave(cleanUserMessage, apiErrorReply);
+        
         return { type: 'text', comment: apiErrorReply };
     }
 }
