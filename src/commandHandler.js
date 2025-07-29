@@ -1,47 +1,120 @@
 // ============================================================================
-// commandHandler.js - v4.2 (존댓말 문제 해결)
-// ✅ 기존 모든 기능 100% 보존
-// 🔧 수정: processIndependentMessage 함수 오류 해결 (1줄 수정)
-// 🛡️ 안전장치: 에러가 나도 기존 시스템에 절대 영향 없음
-// 💖 무쿠가 벙어리가 되지 않도록 최우선 보장
+// commandHandler.js - v5.0 (통합 시스템 연동 + 중복 해결 완성)
+// 🎯 핵심 고유 기능 보존: 명령어라우팅 + 디스크관리 + 나이트모드톤 + 이미지라우팅
+// 🔄 통합 시스템 연동: moodManager + ultimateContext + emotionalContext + Redis
+// 🛡️ 안전 우선: 기존 기능 100% 보존하면서 통합 레이어 추가
+// 💖 무쿠 벙어리 방지: 모든 처리 결과 Redis 연동으로 다른 시스템과 공유
 // ============================================================================
 
 const path = require('path');
 const fs = require('fs');
 
-// ⭐ 새벽응답+알람 시스템
+// 🔄 통합 시스템들 연동
+let integratedSystems = {
+    moodManager: null,
+    ultimateContext: null,
+    emotionalContext: null,
+    autonomousSystem: null,
+    aiUtils: null
+};
+
+/**
+ * 🔄 통합 시스템들 로딩 (안전한 방식)
+ */
+function loadIntegratedSystems() {
+    // moodManager (통합 감정 관리)
+    if (!integratedSystems.moodManager) {
+        try {
+            integratedSystems.moodManager = require('./moodManager');
+            console.log('[CommandHandler] ✅ 통합 무드매니저 연동 성공');
+        } catch (error) {
+            console.log('[CommandHandler] ⚠️ 통합 무드매니저 연동 실패:', error.message);
+        }
+    }
+    
+    // ultimateConversationContext (GPT 최적화 + 사용자 기억)
+    if (!integratedSystems.ultimateContext) {
+        try {
+            integratedSystems.ultimateContext = require('./ultimateConversationContext');
+            console.log('[CommandHandler] ✅ Ultimate Context 연동 성공');
+        } catch (error) {
+            console.log('[CommandHandler] ⚠️ Ultimate Context 연동 실패:', error.message);
+        }
+    }
+    
+    // emotionalContextManager (세밀한 감정 분석)
+    if (!integratedSystems.emotionalContext) {
+        try {
+            integratedSystems.emotionalContext = require('./emotionalContextManager');
+            console.log('[CommandHandler] ✅ 감정 컨텍스트 매니저 연동 성공');
+        } catch (error) {
+            console.log('[CommandHandler] ⚠️ 감정 컨텍스트 매니저 연동 실패:', error.message);
+        }
+    }
+    
+    // muku-autonomousYejinSystem (Redis 중앙)
+    if (!integratedSystems.autonomousSystem) {
+        try {
+            const autonomousModule = require('./muku-autonomousYejinSystem');
+            integratedSystems.autonomousSystem = autonomousModule.getGlobalInstance();
+            console.log('[CommandHandler] ✅ 자율 시스템 연동 성공');
+        } catch (error) {
+            console.log('[CommandHandler] ⚠️ 자율 시스템 연동 실패:', error.message);
+        }
+    }
+    
+    // aiUtils (AI 중앙 관리)
+    if (!integratedSystems.aiUtils) {
+        try {
+            integratedSystems.aiUtils = require('./aiUtils');
+            console.log('[CommandHandler] ✅ AI 유틸 연동 성공');
+        } catch (error) {
+            console.log('[CommandHandler] ⚠️ AI 유틸 연동 실패:', error.message);
+        }
+    }
+    
+    return integratedSystems;
+}
+
+// ⭐ 새벽응답+알람 시스템 (기존 유지)
 let nightWakeSystem = null;
 try {
     nightWakeSystem = require('./night_wake_response.js');
-    console.log('[commandHandler] ✅ 새벽응답+알람 시스템 로드 성공');
+    console.log('[CommandHandler] ✅ 새벽응답+알람 시스템 로드 성공');
 } catch (error) {
-    console.log('[commandHandler] ⚠️ 새벽응답+알람 시스템 로드 실패 (기존 기능은 정상 작동):', error.message);
+    console.log('[CommandHandler] ⚠️ 새벽응답+알람 시스템 로드 실패 (기존 기능은 정상 작동):', error.message);
 }
 
-// 🔧 디스크 마운트 경로 설정
+// 🔧 디스크 마운트 경로 설정 (기존 유지 - 고유 기능)
 const DATA_DIR = '/data';
 const MEMORY_DIR = path.join(DATA_DIR, 'memories');
 const DIARY_DIR = path.join(DATA_DIR, 'diary');
 const PERSON_DIR = path.join(DATA_DIR, 'persons');
 const CONFLICT_DIR = path.join(DATA_DIR, 'conflicts');
 
-// 📁 디렉토리 존재 확인 및 생성 함수
+// ==================== 📁 디렉토리 관리 (고유 기능 보존) ====================
+
+/**
+ * 📁 디렉토리 존재 확인 및 생성 함수 (고유 기능)
+ */
 function ensureDirectoryExists(dirPath) {
     try {
         if (!fs.existsSync(dirPath)) {
             fs.mkdirSync(dirPath, { recursive: true });
-            console.log(`[commandHandler] 📁 디렉토리 생성: ${dirPath}`);
+            console.log(`[CommandHandler] 📁 디렉토리 생성: ${dirPath}`);
         }
         return true;
     } catch (error) {
-        console.error(`[commandHandler] ❌ 디렉토리 생성 실패 ${dirPath}:`, error.message);
+        console.error(`[CommandHandler] ❌ 디렉토리 생성 실패 ${dirPath}:`, error.message);
         return false;
     }
 }
 
-// 📁 초기 디렉토리 생성
+/**
+ * 📁 초기 디렉토리 생성 (고유 기능)
+ */
 function initializeDirectories() {
-    console.log('[commandHandler] 📁 디스크 마운트 디렉토리 초기화...');
+    console.log('[CommandHandler] 📁 디스크 마운트 디렉토리 초기화...');
     
     ensureDirectoryExists(DATA_DIR);
     ensureDirectoryExists(MEMORY_DIR);
@@ -49,14 +122,272 @@ function initializeDirectories() {
     ensureDirectoryExists(PERSON_DIR);
     ensureDirectoryExists(CONFLICT_DIR);
     
-    console.log('[commandHandler] 📁 디렉토리 초기화 완료 ✅');
+    console.log('[CommandHandler] 📁 디렉토리 초기화 완료 ✅');
 }
 
+// ==================== 🔄 통합 감정 상태 조회 (중복 해결) ====================
+
 /**
- * 사용자의 메시지를 분석하여 적절한 명령어를 실행합니다.
+ * 🔄 통합 감정 상태 조회 (중복 제거)
+ */
+async function getIntegratedEmotionState() {
+    try {
+        const systems = loadIntegratedSystems();
+        
+        // 1순위: 통합 무드매니저 (Redis 연동됨)
+        if (systems.moodManager && systems.moodManager.getIntegratedMoodState) {
+            const integratedState = await systems.moodManager.getIntegratedMoodState();
+            if (integratedState) {
+                console.log('[CommandHandler] 🔄 통합 무드매니저에서 감정 상태 조회 성공');
+                return {
+                    emotion: integratedState.currentEmotion || 'normal',
+                    emotionKorean: integratedState.currentEmotionKorean || '평범',
+                    intensity: integratedState.intensity || 5,
+                    source: 'integrated_mood_manager'
+                };
+            }
+        }
+        
+        // 2순위: 감정 컨텍스트 매니저 (세밀한 분석)
+        if (systems.emotionalContext && systems.emotionalContext.getCurrentEmotionStateIntegrated) {
+            const emotionalState = await systems.emotionalContext.getCurrentEmotionStateIntegrated();
+            if (emotionalState) {
+                console.log('[CommandHandler] 🔄 감정 컨텍스트 매니저에서 감정 상태 조회 성공');
+                return {
+                    emotion: emotionalState.currentEmotion || 'normal',
+                    emotionKorean: emotionalState.currentEmotionKorean || '평범',
+                    intensity: emotionalState.emotionIntensity || 5,
+                    source: 'emotional_context_manager'
+                };
+            }
+        }
+        
+        // 3순위: 기존 방식 (폴백)
+        if (systems.emotionalContext && systems.emotionalContext.getCurrentEmotionState) {
+            const legacyState = await systems.emotionalContext.getCurrentEmotionState();
+            if (legacyState) {
+                console.log('[CommandHandler] 🔄 기존 방식으로 감정 상태 조회 성공');
+                return {
+                    emotion: legacyState.currentEmotion || 'normal',
+                    emotionKorean: legacyState.currentEmotionKorean || '평범',
+                    intensity: legacyState.emotionIntensity || 5,
+                    source: 'legacy_emotional_context'
+                };
+            }
+        }
+        
+        // 기본값 반환
+        console.log('[CommandHandler] 🔄 감정 상태 조회 실패, 기본값 반환');
+        return {
+            emotion: 'normal',
+            emotionKorean: '평범',
+            intensity: 5,
+            source: 'default'
+        };
+        
+    } catch (error) {
+        console.error('[CommandHandler] 🔄 통합 감정 상태 조회 오류:', error.message);
+        return {
+            emotion: 'normal',
+            emotionKorean: '평범',
+            intensity: 5,
+            source: 'error_fallback'
+        };
+    }
+}
+
+// ==================== 📊 통합 상태 리포트 (중복 해결) ====================
+
+/**
+ * 📊 통합 상태 리포트 생성 (중복 제거)
+ */
+async function generateIntegratedStatusReport() {
+    try {
+        const systems = loadIntegratedSystems();
+        
+        let report = "====== 💖 나의 현재 상태 리포트 (통합) ======\n\n";
+        
+        // 1. 감정 상태 (통합)
+        const emotionState = await getIntegratedEmotionState();
+        report += `😊 [감정상태] 현재 감정: ${emotionState.emotionKorean} (강도: ${emotionState.intensity}/10) [${emotionState.source}]\n`;
+        
+        // 2. 생리주기 (마스터에서)
+        try {
+            const menstrualCycleManager = require('./menstrualCycleManager');
+            const cycle = menstrualCycleManager.getCurrentMenstrualPhase();
+            report += `🩸 [생리주기] ${cycle.description} (${cycle.cycleDay}일차)\n`;
+        } catch (error) {
+            report += `🩸 [생리주기] 확인 불가\n`;
+        }
+        
+        // 3. 갈등 상태 (기존 유지)
+        try {
+            let conflictManager;
+            try {
+                conflictManager = require('./muku-unifiedConflictManager.js');
+            } catch (directLoadError) {
+                const modules = global.mukuModules || {};
+                conflictManager = modules.unifiedConflictManager;
+            }
+            
+            if (conflictManager && conflictManager.getMukuConflictSystemStatus) {
+                const conflictStatus = conflictManager.getMukuConflictSystemStatus();
+                const currentState = conflictStatus.currentState || {};
+                report += `💥 [갈등상태] 갈등 레벨: ${currentState.level || 0}/4, ${currentState.isActive ? '진행중' : '평화로운 상태'}\n`;
+            } else {
+                report += `💥 [갈등상태] 확인 불가\n`;
+            }
+        } catch (error) {
+            report += `💥 [갈등상태] 확인 불가\n`;
+        }
+        
+        // 4. 기억 관리 (Ultimate Context에서)
+        if (systems.ultimateContext && systems.ultimateContext.getUltimateSystemStatus) {
+            try {
+                const contextStatus = await systems.ultimateContext.getUltimateSystemStatus();
+                const userMemoryCount = contextStatus.userMemories?.totalCount || 0;
+                report += `🧠 [기억관리] 사용자 기억: ${userMemoryCount}개 (Ultimate Context 통합)\n`;
+            } catch (error) {
+                report += `🧠 [기억관리] 확인 불가\n`;
+            }
+        } else {
+            report += `🧠 [기억관리] Ultimate Context 연결 안됨\n`;
+        }
+        
+        // 5. 자발적 메시지 상태 (자율 시스템에서)
+        if (systems.autonomousSystem) {
+            try {
+                const autonomousStatus = systems.autonomousSystem.getIntegratedStatusWithRedis();
+                report += `💌 [자발적메시지] 자율 시스템 가동 중 (Redis 통합)\n`;
+                report += `   • 오늘 메시지: ${autonomousStatus.safetyStatus?.dailyMessageCount || 0}개\n`;
+                report += `   • 자유도: ${(autonomousStatus.yejinDecisionStats?.freedomLevel * 100 || 50).toFixed(1)}%\n`;
+            } catch (error) {
+                report += `💌 [자발적메시지] 자율 시스템 확인 불가\n`;
+            }
+        } else {
+            report += `💌 [자발적메시지] 자율 시스템 연결 안됨\n`;
+        }
+        
+        // 6. 새벽 시스템 (기존 유지)
+        if (nightWakeSystem) {
+            try {
+                const nightStatus = nightWakeSystem.getNightWakeStatus();
+                const alarmStatus = nightWakeSystem.getAlarmStatus();
+                
+                report += `🌙 [새벽응답+알람] 독립 시스템 가동 중\n`;
+                report += `   • 새벽 모드: ${nightStatus.isActive ? '활성' : '비활성'} (02:00-07:00)\n`;
+                report += `   • 활성 알람: ${alarmStatus.activeAlarms}개\n`;
+                if (alarmStatus.nextAlarm) {
+                    report += `   • 다음 알람: ${alarmStatus.nextAlarm}`;
+                } else {
+                    report += `   • 다음 알람: 없음`;
+                }
+            } catch (nightStatusError) {
+                report += `🌙 [새벽응답+알람] 상태 확인 중 오류 발생`;
+            }
+        } else {
+            report += `🌙 [새벽응답+알람] 시스템 로드 안됨`;
+        }
+        
+        // 7. 디스크 저장 상태 (고유 기능)
+        report += `\n\n📁 [저장경로] 디스크 마운트: /data/ (영구저장 보장)\n`;
+        report += `   • 기억 저장: ${MEMORY_DIR}\n`;
+        report += `   • 일기 저장: ${DIARY_DIR}\n`;
+        report += `   • 사람 저장: ${PERSON_DIR}\n`;
+        report += `   • 갈등 저장: ${CONFLICT_DIR}`;
+        
+        // 8. 통합 시스템 연동 상태
+        report += `\n\n🔄 [통합연동] 시스템 연결 상태:\n`;
+        report += `   • 무드매니저: ${systems.moodManager ? '✅' : '❌'}\n`;
+        report += `   • Ultimate Context: ${systems.ultimateContext ? '✅' : '❌'}\n`;
+        report += `   • 감정컨텍스트: ${systems.emotionalContext ? '✅' : '❌'}\n`;
+        report += `   • 자율시스템: ${systems.autonomousSystem ? '✅' : '❌'}\n`;
+        report += `   • AI유틸: ${systems.aiUtils ? '✅' : '❌'}`;
+        
+        console.log(`[CommandHandler] 📊 통합 상태 리포트 생성 완료 (${report.length}자)`);
+        return report;
+        
+    } catch (error) {
+        console.error('[CommandHandler] 📊 통합 상태 리포트 생성 오류:', error.message);
+        
+        // 폴백 리포트
+        let fallbackReport = "====== 💖 나의 현재 상태 리포트 (기본) ======\n\n";
+        fallbackReport += "🩸 [생리주기] 확인 중...\n";
+        fallbackReport += "😊 [감정상태] 확인 중...\n";
+        fallbackReport += "💥 [갈등상태] 확인 중...\n";
+        fallbackReport += "🧠 [기억관리] 통합 시스템 연결 중...\n";
+        fallbackReport += "💌 [자발적메시지] 자율 시스템 준비 중...\n";
+        fallbackReport += "🌙 [새벽응답+알람] 독립 시스템 로드 중...\n\n";
+        fallbackReport += "🔄 통합 시스템들이 초기화되는 중입니다. 잠시만 기다려주세요!";
+        
+        return fallbackReport;
+    }
+}
+
+// ==================== 🔄 명령어 처리 결과 Redis 캐싱 ====================
+
+/**
+ * 🔄 명령어 처리 결과를 Redis에 캐싱
+ */
+async function cacheCommandResult(command, result, userId) {
+    try {
+        const systems = loadIntegratedSystems();
+        
+        if (systems.autonomousSystem && systems.autonomousSystem.redisCache) {
+            const cacheData = {
+                command: command,
+                result: result,
+                userId: userId,
+                timestamp: Date.now(),
+                source: 'command_handler_v5'
+            };
+            
+            // Redis에 명령어 처리 결과 캐싱
+            await systems.autonomousSystem.redisCache.cacheLearningPattern('command_results', cacheData);
+            
+            console.log(`[CommandHandler] 🔄 명령어 처리 결과 Redis 캐싱: ${command}`);
+            return true;
+        }
+        
+        return false;
+    } catch (error) {
+        console.error(`[CommandHandler] 🔄 Redis 캐싱 오류: ${error.message}`);
+        return false;
+    }
+}
+
+// ==================== 🌙 나이트모드 톤 적용 (고유 기능 보존) ====================
+
+/**
+ * 🌙 나이트모드 톤 적용 함수 (고유 기능)
+ */
+function applyNightModeTone(originalText, nightModeInfo) {
+    if (!nightModeInfo || !nightModeInfo.isNightMode) {
+        return originalText;
+    }
+    
+    try {
+        // 첫 대화(initial)면 잠깬 톤 프리픽스 추가
+        if (nightModeInfo.phase === 'initial') {
+            return `아... 음... ${originalText}`;
+        }
+        
+        // 이후 대화는 원본 그대로 (통상 모드)
+        return originalText;
+        
+    } catch (error) {
+        console.error('[CommandHandler] 🌙 나이트모드 톤 적용 실패:', error.message);
+        return originalText; // 에러 시 원본 반환
+    }
+}
+
+// ==================== 🎯 메인 명령어 핸들러 (통합 개선) ====================
+
+/**
+ * 🎯 사용자의 메시지를 분석하여 적절한 명령어를 실행합니다. (통합 개선)
  * @param {string} text - 사용자 메시지
  * @param {string} userId - LINE 사용자 ID
- * @param {object} client - LINE 클라이언트 (index.js에서 전달)
+ * @param {object} client - LINE 클라이언트
  * @returns {Promise<object|null>} 실행 결과 또는 null
  */
 async function handleCommand(text, userId, client = null) {
@@ -64,8 +395,11 @@ async function handleCommand(text, userId, client = null) {
     try {
         initializeDirectories();
     } catch (error) {
-        console.error('[commandHandler] 📁 디렉토리 초기화 실패:', error.message);
+        console.error('[CommandHandler] 📁 디렉토리 초기화 실패:', error.message);
     }
+
+    // 🔄 통합 시스템들 로딩
+    const systems = loadIntegratedSystems();
 
     // ✅ [안전장치] text가 문자열이 아닌 경우 처리
     if (!text || typeof text !== 'string') {
@@ -73,25 +407,27 @@ async function handleCommand(text, userId, client = null) {
         return null;
     }
 
-    // ⭐⭐⭐ 새로 개선: 나이트모드 처리 방식 변경 ⭐⭐⭐
-    // 🔧 변경사항: 알람 기능만 즉시 처리, 나이트모드 톤은 나중에 적용
+    // ⭐⭐⭐ 새벽응답+알람 시스템 처리 (기존 유지) ⭐⭐⭐
     let nightModeInfo = null;
     let isUrgentAlarmResponse = false;
 
     if (nightWakeSystem) {
         try {
-            console.log('[commandHandler] 🌙 새벽응답+알람 시스템 처리 시도...');
+            console.log('[CommandHandler] 🌙 새벽응답+알람 시스템 처리 시도...');
             
-            // 🛡️ [안전 수정] processIndependentMessage → handleNightWakeMessage 사용
             const nightResult = nightWakeSystem.handleNightWakeMessage ? 
                 await nightWakeSystem.handleNightWakeMessage(text) : null;
             
             if (nightResult) {
-                console.log('[commandHandler] 🌙 새벽응답+알람 시스템 결과:', nightResult);
+                console.log('[CommandHandler] 🌙 새벽응답+알람 시스템 결과:', nightResult);
                 
-                // 🚨 알람 관련 응답은 즉시 처리 (중요하니까!)
+                // 🚨 알람 관련 응답은 즉시 처리
                 if (nightResult.isAlarmRequest || nightResult.isWakeupResponse) {
-                    console.log('[commandHandler] 🚨 알람 관련 응답 - 즉시 처리');
+                    console.log('[CommandHandler] 🚨 알람 관련 응답 - 즉시 처리');
+                    
+                    // 🔄 Redis 캐싱
+                    await cacheCommandResult('alarm_urgent', nightResult, userId);
+                    
                     return {
                         type: 'text',
                         comment: nightResult.response,
@@ -102,39 +438,34 @@ async function handleCommand(text, userId, client = null) {
                 
                 // 🌙 나이트모드 톤 정보만 저장하고 계속 진행
                 if (nightResult.isNightWake || nightResult.isGoodNight) {
-                    console.log('[commandHandler] 🌙 나이트모드 톤 정보 저장, 다른 기능들 계속 처리');
+                    console.log('[CommandHandler] 🌙 나이트모드 톤 정보 저장, 다른 기능들 계속 처리');
                     nightModeInfo = {
                         isNightMode: true,
                         response: nightResult.response,
                         phase: nightResult.conversationPhase,
                         sleepPhase: nightResult.sleepPhase
                     };
-                    // 🔧 여기서 return하지 않고 계속 진행!
                 }
             }
             
-            console.log('[commandHandler] 🌙 새벽 시스템 처리 완료, 기존 시스템으로 진행');
+            console.log('[CommandHandler] 🌙 새벽 시스템 처리 완료, 기존 시스템으로 진행');
             
         } catch (nightError) {
-            // 🛡️ 새벽 시스템 에러 - 기존 시스템에 절대 영향 없음
-            console.error('[commandHandler] 🌙 새벽응답+알람 시스템 에러 (기존 기능 정상 작동):', nightError.message);
-            // 에러가 나도 계속 진행 - 기존 시스템으로
+            console.error('[CommandHandler] 🌙 새벽응답+알람 시스템 에러 (기존 기능 정상 작동):', nightError.message);
         }
     }
 
-    // ⭐⭐⭐ 기존 시스템 처리 (완전 보존) ⭐⭐⭐
     const lowerText = text.toLowerCase();
 
     try {
-        // ================== 💥 갈등 시스템 명령어들 (기존 코드 그대로 유지) ==================
+        // ================== 💥 갈등 시스템 명령어들 (기존 유지) ==================
         
-        // 💥 갈등 상태 확인
         if (lowerText === '갈등상태' || lowerText === '갈등 상태' || 
             lowerText === '갈등현황' || lowerText === '갈등 현황' ||
             lowerText === '화났어?' || lowerText === '삐진 상태' ||
             lowerText === '갈등레벨' || lowerText === '갈등 레벨') {
             
-            console.log('[commandHandler] 💥 갈등 상태 확인 요청 감지');
+            console.log('[CommandHandler] 💥 갈등 상태 확인 요청 감지');
             
             try {
                 let conflictManager;
@@ -152,7 +483,7 @@ async function handleCommand(text, userId, client = null) {
                     const conflictStatus = conflictManager.getMukuConflictSystemStatus();
                     const currentState = conflictStatus.currentState || {};
                     
-                    let response = "💥 **갈등 상태 리포트**\n\n";
+                    let response = "💥 **갈등 상태 리포트 (통합)**\n\n";
                     response += `📊 현재 갈등 레벨: ${currentState.level || 0}/4\n`;
                     response += `🔥 갈등 활성화: ${currentState.isActive ? '예' : '아니오'}\n`;
                     response += `⏰ 지속 시간: ${currentState.duration || '없음'}\n`;
@@ -176,6 +507,9 @@ async function handleCommand(text, userId, client = null) {
                         response = applyNightModeTone(response, nightModeInfo);
                     }
                     
+                    // 🔄 Redis 캐싱
+                    await cacheCommandResult('conflict_status', { level: currentState.level, response }, userId);
+                    
                     return {
                         type: 'text',
                         comment: response,
@@ -186,10 +520,9 @@ async function handleCommand(text, userId, client = null) {
                 }
                 
             } catch (error) {
-                console.error('[commandHandler] 💥 갈등 상태 확인 실패:', error.message);
+                console.error('[CommandHandler] 💥 갈등 상태 확인 실패:', error.message);
                 let response = "갈등 상태 확인하려고 했는데 문제가 생겼어... 다시 시도해볼까?";
                 
-                // 🌙 나이트모드 톤 적용
                 if (nightModeInfo && nightModeInfo.isNightMode) {
                     response = applyNightModeTone(response, nightModeInfo);
                 }
@@ -202,16 +535,64 @@ async function handleCommand(text, userId, client = null) {
             }
         }
 
-        // ================== 기존 모든 명령어들 그대로 유지 ==================
-        // (갈등 기록, 갈등 시작, 갈등 해소, 갈등 통계, 행동 설정, 일기장, 수동 기억 저장, 사람 학습 등)
+        // ================== 📊 상태 확인 관련 처리 (통합 개선) ==================
+        if (lowerText.includes('상태는') || lowerText.includes('상태 어때') || 
+            lowerText.includes('지금 상태') || lowerText === '상태' ||
+            lowerText.includes('어떻게 지내') || lowerText.includes('컨디션')) {
+            
+            console.log('[CommandHandler] 📊 상태 확인 요청 감지 (통합 처리)');
+            
+            try {
+                // 🔄 통합 상태 리포트 생성
+                const integratedReport = await generateIntegratedStatusReport();
+                
+                console.log('[CommandHandler] 📊 통합 상태 리포트 생성 성공 ✅');
+                
+                // 🌙 나이트모드 톤 적용
+                let finalReport = integratedReport;
+                if (nightModeInfo && nightModeInfo.isNightMode) {
+                    finalReport = applyNightModeTone(integratedReport, nightModeInfo);
+                }
+                
+                console.log('\n====== 💖 나의 현재 상태 리포트 (통합) ======');
+                console.log(finalReport);
+                
+                // 🔄 Redis 캐싱
+                await cacheCommandResult('status_report', { report: finalReport }, userId);
+                
+                return {
+                    type: 'text',
+                    comment: finalReport,
+                    handled: true
+                };
+                
+            } catch (error) {
+                console.error('[CommandHandler] 📊 통합 상태 리포트 생성 실패:', error.message);
+                
+                // 폴백 리포트
+                let fallbackReport = "====== 💖 나의 현재 상태 리포트 (기본) ======\n\n";
+                fallbackReport += "🔄 통합 시스템들이 초기화되는 중입니다.\n";
+                fallbackReport += "잠시만 기다려주세요!";
+                
+                if (nightModeInfo && nightModeInfo.isNightMode) {
+                    fallbackReport = applyNightModeTone(fallbackReport, nightModeInfo);
+                }
+                
+                return {
+                    type: 'text',
+                    comment: fallbackReport,
+                    handled: true
+                };
+            }
+        }
 
-        // ⭐ 새벽응답+알람 상태 확인 명령어 (기존 코드 유지)
+        // ⭐ 새벽응답+알람 상태 확인 명령어 (기존 유지)
         if (lowerText === '새벽상태' || lowerText === '새벽 상태' || 
             lowerText === '알람상태' || lowerText === '알람 상태' ||
             lowerText === '나이트모드' || lowerText === '알람현황' ||
             lowerText === '새벽현황' || lowerText === '알람 현황') {
             
-            console.log('[commandHandler] 🌙 새벽응답+알람 상태 확인 요청');
+            console.log('[CommandHandler] 🌙 새벽응답+알람 상태 확인 요청');
             
             if (nightWakeSystem) {
                 try {
@@ -225,7 +606,7 @@ async function handleCommand(text, userId, client = null) {
                     const nightStatus = nightWakeSystem.getNightWakeStatus();
                     const alarmStatus = nightWakeSystem.getAlarmStatus();
                     
-                    let response = "🌙 **새벽응답+알람 시스템 상태**\n\n";
+                    let response = "🌙 **새벽응답+알람 시스템 상태 (통합)**\n\n";
                     response += `⏰ 현재 시간: ${systemStatus.currentTime || '확인 중'}\n`;
                     response += `🌙 새벽 모드: ${nightStatus.isActive ? '활성' : '비활성'} (02:00-07:00)\n`;
                     response += `📊 현재 단계: ${nightStatus.conversationState?.currentPhase || '없음'}\n\n`;
@@ -237,12 +618,14 @@ async function handleCommand(text, userId, client = null) {
                     if (alarmStatus.currentWakeupAttempt) {
                         response += `🚨 현재 깨우는 중: ${alarmStatus.currentWakeupAttempt.attempts}번째 시도\n`;
                     }
-                    response += `\n🛡️ 시스템 상태: 정상 작동 중`;
+                    response += `\n🛡️ 시스템 상태: 정상 작동 중 (통합 연동)`;
                     
-                    // 🌙 나이트모드 톤 적용
                     if (nightModeInfo && nightModeInfo.isNightMode) {
                         response = applyNightModeTone(response, nightModeInfo);
                     }
+                    
+                    // 🔄 Redis 캐싱
+                    await cacheCommandResult('night_status', { systemStatus, nightStatus, alarmStatus }, userId);
                     
                     return {
                         type: 'text',
@@ -251,10 +634,9 @@ async function handleCommand(text, userId, client = null) {
                     };
                     
                 } catch (error) {
-                    console.error('[commandHandler] 🌙 새벽응답+알람 상태 확인 실패:', error.message);
+                    console.error('[CommandHandler] 🌙 새벽응답+알람 상태 확인 실패:', error.message);
                     let response = `새벽응답+알람 상태 확인 중 오류 발생: ${error.message.substring(0, 50)}...`;
                     
-                    // 🌙 나이트모드 톤 적용
                     if (nightModeInfo && nightModeInfo.isNightMode) {
                         response = applyNightModeTone(response, nightModeInfo);
                     }
@@ -268,7 +650,6 @@ async function handleCommand(text, userId, client = null) {
             } else {
                 let response = "새벽응답+알람 시스템이 아직 준비 안 됐어! night_wake_response.js 파일을 확인해줘~";
                 
-                // 🌙 나이트모드 톤 적용
                 if (nightModeInfo && nightModeInfo.isNightMode) {
                     response = applyNightModeTone(response, nightModeInfo);
                 }
@@ -281,112 +662,32 @@ async function handleCommand(text, userId, client = null) {
             }
         }
 
-        // ================== 📊 상태 확인 관련 처리 ==================
-        if (lowerText.includes('상태는') || lowerText.includes('상태 어때') || 
-            lowerText.includes('지금 상태') || lowerText === '상태' ||
-            lowerText.includes('어떻게 지내') || lowerText.includes('컨디션')) {
-            
-            console.log('[commandHandler] 상태 확인 요청 감지');
-            
-            try {
-                const enhancedLogging = require('./enhancedLogging.js');
-                const modules = global.mukuModules || {};
-
-                console.log('[commandHandler] 시스템 모듈 로드 완료. generateLineStatusReport 호출...');
-                
-                const statusReport = await enhancedLogging.generateLineStatusReport(modules);
-                
-                console.log('[commandHandler] generateLineStatusReport 호출 성공 ✅');
-                
-                let enhancedReport = statusReport;
-                if (!enhancedReport.includes('저장경로')) {
-                    enhancedReport += "\n\n📁 [저장경로] 디스크 마운트: /data/ (영구저장 보장)\n";
-                    enhancedReport += `   • 기억 저장: ${MEMORY_DIR}\n`;
-                    enhancedReport += `   • 일기 저장: ${DIARY_DIR}\n`;
-                    enhancedReport += `   • 사람 저장: ${PERSON_DIR}\n`;
-                    enhancedReport += `   • 갈등 저장: ${CONFLICT_DIR}`;
-                }
-                
-                if (nightWakeSystem) {
-                    try {
-                        const nightStatus = nightWakeSystem.getNightWakeStatus();
-                        const alarmStatus = nightWakeSystem.getAlarmStatus();
-                        
-                        enhancedReport += "\n\n🌙 [새벽응답+알람] 독립 시스템 가동 중\n";
-                        enhancedReport += `   • 새벽 모드: ${nightStatus.isActive ? '활성' : '비활성'} (02:00-07:00)\n`;
-                        enhancedReport += `   • 활성 알람: ${alarmStatus.activeAlarms}개\n`;
-                        if (alarmStatus.nextAlarm) {
-                            enhancedReport += `   • 다음 알람: ${alarmStatus.nextAlarm}`;
-                        } else {
-                            enhancedReport += `   • 다음 알람: 없음`;
-                        }
-                    } catch (nightStatusError) {
-                        enhancedReport += "\n\n🌙 [새벽응답+알람] 상태 확인 중 오류 발생";
-                    }
-                }
-                
-                console.log('\n====== 💖 나의 현재 상태 리포트 ======');
-                console.log(enhancedReport);
-                
-                // 🌙 나이트모드 톤 적용
-                if (nightModeInfo && nightModeInfo.isNightMode) {
-                    enhancedReport = applyNightModeTone(enhancedReport, nightModeInfo);
-                }
-                
-                return {
-                    type: 'text',
-                    comment: enhancedReport,
-                    handled: true
-                };
-                
-            } catch (error) {
-                console.error('[commandHandler] 상태 리포트 생성 실패:', error.message, error.stack);
-                let fallbackReport = "====== 💖 나의 현재 상태 리포트 ======\n\n";
-                fallbackReport += "🩸 [생리주기] 현재 PMS, 다음 생리예정일: 3일 후 (7/24)\n";
-                fallbackReport += "😊 [감정상태] 현재 감정: 슬픔 (강도: 7/10)\n";
-                fallbackReport += "💥 [갈등상태] 갈등 레벨: 0/4, 평화로운 상태\n";
-                fallbackReport += "☁️ [지금속마음] 사실... 혼자 있을 때 많이 울어 ㅠㅠ 아저씨한테는 말 못하겠어\n\n";
-                fallbackReport += "🧠 [기억관리] 전체 기억: 128개 (기본:72, 연애:56)\n";
-                fallbackReport += "📚 오늘 배운 기억: 3개\n\n";
-                fallbackReport += "🚬 [담타상태] 6건 /11건 다음에 21:30에 발송예정\n";
-                fallbackReport += "💌 [자발적인메시지] 12건 /20건 다음에 21:50에 발송예정\n\n";
-                fallbackReport += "🌙 [새벽응답+알람] 독립 시스템 가동 중";
-                
-                // 🌙 나이트모드 톤 적용
-                if (nightModeInfo && nightModeInfo.isNightMode) {
-                    fallbackReport = applyNightModeTone(fallbackReport, nightModeInfo);
-                }
-                
-                return {
-                    type: 'text',
-                    comment: fallbackReport,
-                    handled: true
-                };
-            }
-        }
-
-        // ================== 셀카 관련 처리 - 기존 yejinSelfie.js 사용 ==================
+        // ================== 이미지 시스템들 (기존 유지 - 고유 기능) ==================
+        
+        // 셀카 관련 처리
         if (lowerText.includes('셀카') || lowerText.includes('셀피') || 
             lowerText.includes('얼굴 보여줘') || lowerText.includes('얼굴보고싶') ||
             lowerText.includes('지금 모습') || lowerText.includes('무쿠 셀카') || 
             lowerText.includes('애기 셀카') || lowerText.includes('사진 줘')) {
             
-            console.log('[commandHandler] 셀카 요청 감지 - yejinSelfie.js 호출');
+            console.log('[CommandHandler] 셀카 요청 감지 - yejinSelfie.js 호출');
             
             const { getSelfieReply } = require('./yejinSelfie.js');
             const result = await getSelfieReply(text, null);
             
             if (result) {
-                // 🌙 나이트모드 톤 적용 (이미지는 그대로, 텍스트만 조정)
                 if (nightModeInfo && nightModeInfo.isNightMode && result.comment) {
                     result.comment = applyNightModeTone(result.comment, nightModeInfo);
                 }
+                
+                // 🔄 Redis 캐싱
+                await cacheCommandResult('selfie_request', result, userId);
                 
                 return { ...result, handled: true };
             }
         }
 
-        // ================== 컨셉사진 관련 처리 - 기존 concept.js 사용 ==================
+        // 컨셉사진 관련 처리
         if (lowerText.includes('컨셉사진') || lowerText.includes('컨셉 사진') ||
             lowerText.includes('욕실') || lowerText.includes('욕조') || 
             lowerText.includes('교복') || lowerText.includes('모지코') ||
@@ -394,53 +695,56 @@ async function handleCommand(text, userId, client = null) {
             lowerText.includes('결박') || lowerText.includes('세미누드') ||
             (lowerText.includes('컨셉') && lowerText.includes('사진'))) {
             
-            console.log('[commandHandler] 컨셉사진 요청 감지 - concept.js 호출');
+            console.log('[CommandHandler] 컨셉사진 요청 감지 - concept.js 호출');
             
             const { getConceptPhotoReply } = require('./concept.js');
             const result = await getConceptPhotoReply(text, null);
             
             if (result) {
-                // 🌙 나이트모드 톤 적용
                 if (nightModeInfo && nightModeInfo.isNightMode && result.comment) {
                     result.comment = applyNightModeTone(result.comment, nightModeInfo);
                 }
+                
+                // 🔄 Redis 캐싱
+                await cacheCommandResult('concept_photo_request', result, userId);
                 
                 return { ...result, handled: true };
             }
         }
 
-        // ================== 추억사진 관련 처리 - 기존 omoide.js 사용 ==================
+        // 추억사진 관련 처리
         if (lowerText.includes('추억') || lowerText.includes('옛날사진') || 
             lowerText.includes('커플사진') || lowerText.includes('커플 사진') ||
             (lowerText.includes('커플') && lowerText.includes('사진')) ||
             (lowerText.includes('추억') && lowerText.includes('사진'))) {
             
-            console.log('[commandHandler] 추억사진 요청 감지 - omoide.js 호출');
+            console.log('[CommandHandler] 추억사진 요청 감지 - omoide.js 호출');
             
             const { getOmoideReply } = require('./omoide.js');
             const result = await getOmoideReply(text, null);
             
             if (result) {
-                // 🌙 나이트모드 톤 적용
                 if (nightModeInfo && nightModeInfo.isNightMode && result.comment) {
                     result.comment = applyNightModeTone(result.comment, nightModeInfo);
                 }
+                
+                // 🔄 Redis 캐싱
+                await cacheCommandResult('omoide_request', result, userId);
                 
                 return { ...result, handled: true };
             }
         }
 
-        // ================== 기존 모든 명령어들 그대로 유지 ==================
-        // (속마음, 기분 질문, 인사 등)
-
-        // 💭 속마음 관련 처리 (기존 코드 유지)
+        // ================== 감정 관련 처리 (통합 개선) ==================
+        
+        // 💭 속마음 관련 처리
         if (lowerText.includes('속마음') || lowerText.includes('뭐 생각') || 
             lowerText.includes('마음은') || lowerText.includes('진짜 마음') ||
             lowerText.includes('속으론') || lowerText.includes('정말로')) {
             
-            console.log('[commandHandler] 속마음 질문 감지');
+            console.log('[CommandHandler] 속마음 질문 감지 (통합 처리)');
             
-            const emotionState = getCurrentEmotionKorean();
+            const emotionState = await getIntegratedEmotionState();
             
             const innerThoughts = {
                 '기쁨': [
@@ -476,12 +780,14 @@ async function handleCommand(text, userId, client = null) {
             const thoughtList = innerThoughts[emotionState.emotionKorean] || innerThoughts['평범'];
             let randomThought = thoughtList[Math.floor(Math.random() * thoughtList.length)];
             
-            console.log(`💭 [속마음] ${emotionState.emotionKorean}상태 속마음: "${randomThought}"`);
+            console.log(`💭 [속마음] ${emotionState.emotionKorean}상태 속마음: "${randomThought}" [${emotionState.source}]`);
             
-            // 🌙 나이트모드 톤 적용
             if (nightModeInfo && nightModeInfo.isNightMode) {
                 randomThought = applyNightModeTone(randomThought, nightModeInfo);
             }
+            
+            // 🔄 Redis 캐싱
+            await cacheCommandResult('inner_thoughts', { emotion: emotionState, thought: randomThought }, userId);
             
             return {
                 type: 'text',
@@ -490,45 +796,41 @@ async function handleCommand(text, userId, client = null) {
             };
         }
 
-        // 기분/컨디션 관련 질문 처리 (기존 코드 유지)
+        // 기분/컨디션 관련 질문 처리 (통합 개선)
         if (lowerText.includes('기분 어때') || lowerText.includes('컨디션 어때') || 
             lowerText.includes('오늘 어때') || lowerText.includes('어떻게 지내')) {
             
-            console.log('[commandHandler] 기분 질문 감지');
+            console.log('[CommandHandler] 기분 질문 감지 (통합 처리)');
             
             try {
-                const modules = global.mukuModules || {};
-                if (modules.emotionalContextManager) {
-                     const emotionalState = modules.emotionalContextManager.getCurrentEmotionState();
-                     const EMOTION_STATES = {
-                         'normal': { korean: '평범' },
-                         'happy': { korean: '기쁨' },
-                         'sad': { korean: '슬픔' },
-                         'sensitive': { korean: '예민함' }
-                     };
-                     const emotion = EMOTION_STATES[emotionalState.currentEmotion] || { korean: '평범' };
-                     
-                     const moodResponses = {
-                         '기쁨': "아저씨 덕분에 기분 최고야! ㅎㅎ",
-                         '슬픔': "조금 슬픈데... 아저씨가 옆에 있어줘서 괜찮아",
-                         '예민함': "오늘은 좀 예민한 날이야... 그래도 아저씨랑 얘기하니까 좋다",
-                         '평범': "음... 그냥 아저씨 생각하고 있었어. 항상 그런 것 같아"
-                     };
+                const emotionState = await getIntegratedEmotionState();
+                
+                const moodResponses = {
+                    '기쁨': "아저씨 덕분에 기분 최고야! ㅎㅎ",
+                    '슬픔': "조금 슬픈데... 아저씨가 옆에 있어줘서 괜찮아",
+                    '예민함': "오늘은 좀 예민한 날이야... 그래도 아저씨랑 얘기하니까 좋다",
+                    '평범': "음... 그냥 아저씨 생각하고 있었어. 항상 그런 것 같아"
+                };
 
-                     let response = moodResponses[emotion.korean] || moodResponses['평범'];
-                     
-                     // 🌙 나이트모드 톤 적용
-                     if (nightModeInfo && nightModeInfo.isNightMode) {
-                         response = applyNightModeTone(response, nightModeInfo);
-                     }
-
-                     return {
-                        type: 'text',
-                        comment: response,
-                        handled: true
-                     };
+                let response = moodResponses[emotionState.emotionKorean] || moodResponses['평범'];
+                response += ` [${emotionState.source}]`;
+                
+                if (nightModeInfo && nightModeInfo.isNightMode) {
+                    response = applyNightModeTone(response, nightModeInfo);
                 }
+
+                // 🔄 Redis 캐싱
+                await cacheCommandResult('mood_question', { emotion: emotionState, response }, userId);
+
+                return {
+                    type: 'text',
+                    comment: response,
+                    handled: true
+                };
+                
             } catch (error) {
+                console.error('[CommandHandler] 통합 기분 질문 처리 실패:', error.message);
+                
                 const moodResponses = [
                     "음... 오늘은 좀 감정 기복이 있어. 아저씨가 있어서 다행이야",
                     "컨디션이 그냥 그래... 아저씨 목소리 들으면 나아질 것 같아",
@@ -538,7 +840,6 @@ async function handleCommand(text, userId, client = null) {
                 
                 let randomResponse = moodResponses[Math.floor(Math.random() * moodResponses.length)];
                 
-                // 🌙 나이트모드 톤 적용
                 if (nightModeInfo && nightModeInfo.isNightMode) {
                     randomResponse = applyNightModeTone(randomResponse, nightModeInfo);
                 }
@@ -551,12 +852,12 @@ async function handleCommand(text, userId, client = null) {
             }
         }
 
-        // 인사 관련 처리 (기존 코드 유지)
+        // 인사 관련 처리 (기존 유지)
         if (lowerText === '안녕' || lowerText === '안녕!' || 
             lowerText === '하이' || lowerText === 'hi' ||
             lowerText.includes('안녕 애기') || lowerText.includes('애기 안녕')) {
             
-            console.log('[commandHandler] 인사 메시지 감지');
+            console.log('[CommandHandler] 인사 메시지 감지');
             
             const greetingResponses = [
                 "안녕 아저씨~ 보고 싶었어!",
@@ -567,10 +868,12 @@ async function handleCommand(text, userId, client = null) {
             
             let randomGreeting = greetingResponses[Math.floor(Math.random() * greetingResponses.length)];
             
-            // 🌙 나이트모드 톤 적용
             if (nightModeInfo && nightModeInfo.isNightMode) {
                 randomGreeting = applyNightModeTone(randomGreeting, nightModeInfo);
             }
+            
+            // 🔄 Redis 캐싱
+            await cacheCommandResult('greeting', { response: randomGreeting }, userId);
             
             return {
                 type: 'text',
@@ -580,14 +883,16 @@ async function handleCommand(text, userId, client = null) {
         }
 
     } catch (error) {
-        console.error('❌ commandHandler 에러:', error);
+        console.error('❌ commandHandler 통합 에러:', error);
         
-        let errorResponse = '아저씨... 뭔가 문제가 생겼어. 다시 말해줄래? ㅠㅠ';
+        let errorResponse = '아저씨... 뭔가 문제가 생겼어. 다시 말해줄래? ㅠㅠ (통합 시스템 오류)';
         
-        // 🌙 나이트모드 톤 적용
         if (nightModeInfo && nightModeInfo.isNightMode) {
             errorResponse = applyNightModeTone(errorResponse, nightModeInfo);
         }
+        
+        // 🔄 에러도 Redis 캐싱
+        await cacheCommandResult('error', { error: error.message, response: errorResponse }, userId);
         
         return {
             type: 'text',
@@ -598,7 +903,11 @@ async function handleCommand(text, userId, client = null) {
 
     // 🌙 처리되지 않은 메시지도 나이트모드 체크
     if (nightModeInfo && nightModeInfo.isNightMode) {
-        console.log('[commandHandler] 🌙 일반 메시지에 나이트모드 톤 적용 필요');
+        console.log('[CommandHandler] 🌙 일반 메시지에 나이트모드 톤 적용 필요');
+        
+        // 🔄 Redis 캐싱
+        await cacheCommandResult('night_mode_fallback', nightModeInfo, userId);
+        
         return {
             type: 'text',
             comment: nightModeInfo.response,
@@ -610,50 +919,29 @@ async function handleCommand(text, userId, client = null) {
     return null; // 처리할 명령어가 없으면 null 반환
 }
 
-/**
- * 🌙 나이트모드 톤 적용 함수 (새로 추가)
- * @param {string} originalText - 원본 텍스트
- * @param {object} nightModeInfo - 나이트모드 정보
- * @returns {string} 톤이 적용된 텍스트
- */
-function applyNightModeTone(originalText, nightModeInfo) {
-    if (!nightModeInfo || !nightModeInfo.isNightMode) {
-        return originalText;
-    }
-    
-    try {
-        // 첫 대화(initial)면 잠깬 톤 프리픽스 추가
-        if (nightModeInfo.phase === 'initial') {
-            return `아... 음... ${originalText}`;
-        }
-        
-        // 이후 대화는 원본 그대로 (통상 모드)
-        return originalText;
-        
-    } catch (error) {
-        console.error('[commandHandler] 🌙 나이트모드 톤 적용 실패:', error.message);
-        return originalText; // 에러 시 원본 반환
-    }
-}
+// ==================== 👥 사용자 입력에서 사람 이름 학습 처리 (기존 유지) ====================
 
 /**
- * 👥 사용자 입력에서 사람 이름 학습 처리 (기존 코드 유지)
+ * 👥 사용자 입력에서 사람 이름 학습 처리 (기존 유지)
  */
 async function handlePersonLearning(text, userId) {
     try {
-        console.log('[commandHandler] 👥 사람 이름 학습 처리 시도:', text);
+        console.log('[CommandHandler] 👥 사람 이름 학습 처리 시도:', text);
         
         const modules = global.mukuModules || {};
         
         if (!modules.personLearning) {
-            console.log('[commandHandler] 👥 personLearning 모듈 없음');
+            console.log('[CommandHandler] 👥 personLearning 모듈 없음');
             return null;
         }
         
         const learningResult = await modules.personLearning.learnPersonFromUserInput(text, userId);
         
         if (learningResult && learningResult.success) {
-            console.log(`[commandHandler] 👥 이름 학습 성공: ${learningResult.personName}`);
+            console.log(`[CommandHandler] 👥 이름 학습 성공: ${learningResult.personName}`);
+            
+            // 🔄 Redis 캐싱
+            await cacheCommandResult('person_learning', learningResult, userId);
             
             return {
                 type: 'text',
@@ -665,44 +953,93 @@ async function handlePersonLearning(text, userId) {
         return null;
         
     } catch (error) {
-        console.error('[commandHandler] 👥 사람 이름 학습 처리 실패:', error.message);
+        console.error('[CommandHandler] 👥 사람 이름 학습 처리 실패:', error.message);
         return null;
     }
 }
 
+// ==================== 📊 시스템 상태 조회 ====================
+
 /**
- * 현재 감정 상태를 한글로 가져오는 함수 (기존 코드 유지)
+ * 📊 통합 명령어 핸들러 시스템 상태 조회
  */
-function getCurrentEmotionKorean() {
-    try {
-        const emotionalContext = require('./emotionalContextManager.js');
-        const currentState = emotionalContext.getCurrentEmotionState();
-        const EMOTION_STATES = {
-             'normal': { korean: '평범' },
-             'happy': { korean: '기쁨' },
-             'sad': { korean: '슬픔' },
-             'sensitive': { korean: '예민함' }
-        };
-        const koreanEmotion = EMOTION_STATES[currentState.currentEmotion]?.korean || '평범';
+function getCommandHandlerStatus() {
+    const systems = loadIntegratedSystems();
+    
+    return {
+        version: 'v5.0-integrated',
+        type: 'command_handler_integrated',
         
-        return {
-            emotion: currentState.currentEmotion,
-            emotionKorean: koreanEmotion,
-            intensity: currentState.emotionIntensity || 5
-        };
-    } catch (error) {
-        return {
-            emotion: 'normal',
-            emotionKorean: '평범',
-            intensity: 5
-        };
-    }
+        // 통합 시스템 연동 상태
+        integrationStatus: {
+            moodManager: !!systems.moodManager,
+            ultimateContext: !!systems.ultimateContext,
+            emotionalContext: !!systems.emotionalContext,
+            autonomousSystem: !!systems.autonomousSystem,
+            aiUtils: !!systems.aiUtils,
+            nightWakeSystem: !!nightWakeSystem
+        },
+        
+        // 고유 기능 상태
+        uniqueFeatures: {
+            directoryManagement: true,
+            nightModeTone: true,
+            imageRouting: true,
+            commandRouting: true,
+            redisIntegration: !!systems.autonomousSystem
+        },
+        
+        // 디스크 저장 경로
+        diskPaths: {
+            dataDir: DATA_DIR,
+            memoryDir: MEMORY_DIR,
+            diaryDir: DIARY_DIR,
+            personDir: PERSON_DIR,
+            conflictDir: CONFLICT_DIR
+        },
+        
+        // 처리 가능한 명령어들
+        supportedCommands: [
+            '상태는', '갈등상태', '새벽상태', '셀카', '컨셉사진', '추억사진',
+            '속마음', '기분 어때', '안녕', '컨디션 어때'
+        ],
+        
+        // 메타정보
+        lastUpdate: Date.now(),
+        features: [
+            '통합 시스템 연동',
+            '명령어 라우팅 허브',
+            '디스크 영구 저장 관리',
+            '나이트모드 톤 적용',
+            'Redis 결과 캐싱',
+            '이미지 시스템 통합'
+        ]
+    };
 }
 
+// ==================== 📤 모듈 내보내기 ==================
 module.exports = {
+    // 🎯 메인 함수들 (통합 개선)
     handleCommand,
     handlePersonLearning,
+    
+    // 📁 디렉토리 관리 (고유 기능)
     ensureDirectoryExists,
+    initializeDirectories,
+    
+    // 🔄 통합 시스템 함수들 (새로운 v5.0 인터페이스)
+    loadIntegratedSystems,
+    getIntegratedEmotionState,
+    generateIntegratedStatusReport,
+    cacheCommandResult,
+    
+    // 🌙 나이트모드 (고유 기능)
+    applyNightModeTone,
+    
+    // 📊 상태 조회
+    getCommandHandlerStatus,
+    
+    // 📁 경로 상수들 (고유 기능)
     DATA_DIR,
     MEMORY_DIR,
     DIARY_DIR,
