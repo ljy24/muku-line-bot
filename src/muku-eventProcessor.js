@@ -6,7 +6,7 @@
 // 🚨 절대 속이지 않음 - 실제 데이터만 사용하는 정직한 시스템
 // ⭐ 순환 의존성 완전 해결 - 안전한 지연 로딩 시스템
 // 🛡️ 무쿠 벙어리 방지 100% 보장
-// 📼 Memory Tape 연동 추가 - saveConversation 문제 해결
+// 📼 Memory Tape 연동 완벽 수정 - recordMukuMoment 함수 사용
 // ============================================================================
 
 const { promises: fs } = require('fs');
@@ -580,23 +580,37 @@ async function saveToRedis(userId, userMessage, mukuResponse) {
             return true;
         }
         
-        // 🔧 수정: Memory Tape 저장 함수 추가
-        const memoryTape = loadMemoryTape(); // Memory Tape 안전한 지연 로딩
-        
-        // 내보낸 함수들로 저장 시도 (Memory Tape 포함)
-        const saveFunction = redis.forceCacheConversation || redis.cacheConversation || 
-                             (memoryTape && memoryTape.saveConversation);
-        
+        // 내보낸 함수들로 저장 시도 (기존 방식)
+        const saveFunction = redis.forceCacheConversation || redis.cacheConversation;
         if (typeof saveFunction === 'function') {
-            if (saveFunction === memoryTape?.saveConversation) {
-                console.log(`${colors.tape}📼 [MemoryTape저장] Memory Tape으로 저장 시도...${colors.reset}`);
-                await saveFunction(userId, userMessage, mukuResponse);
-                console.log(`${colors.success}✅ [Redis안전저장] Memory Tape으로 저장 성공${colors.reset}`);
-            } else {
-                await saveFunction(userId, userMessage);
-                await saveFunction(userId, mukuResponse);
-                console.log(`${colors.success}✅ [Redis안전저장] 내보낸 함수로 저장 성공${colors.reset}`);
-            }
+            await saveFunction(userId, userMessage);
+            await saveFunction(userId, mukuResponse);
+            
+            console.log(`${colors.success}✅ [Redis안전저장] 내보낸 함수로 저장 성공${colors.reset}`);
+            return true;
+        }
+        
+        // 🔧 Memory Tape에 저장 시도 (recordMukuMoment 사용)
+        const memoryTape = loadMemoryTape(); // Memory Tape 안전한 지연 로딩
+        if (memoryTape && typeof memoryTape.recordMukuMoment === 'function') {
+            console.log(`${colors.tape}📼 [MemoryTape저장] Memory Tape으로 저장 시도...${colors.reset}`);
+            
+            // recordMukuMoment에 맞는 데이터 형식으로 변환
+            const momentData = {
+                type: 'conversation',
+                user_id: userId,
+                user_message: userMessage,
+                muku_response: mukuResponse,
+                remarkable: true,
+                emotional_tags: ['conversation', 'daily'],
+                context: {
+                    conversation_length: userMessage.length + mukuResponse.length,
+                    estimated_emotion: 'normal'
+                }
+            };
+            
+            await memoryTape.recordMukuMoment(momentData);
+            console.log(`${colors.success}✅ [Redis안전저장] Memory Tape으로 저장 성공${colors.reset}`);
             return true;
         }
         
