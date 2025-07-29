@@ -1,921 +1,896 @@
 // ============================================================================
-// autoReply.js - v16.0 (간단한 맥락 시스템 - 최근 20개 대화만)
-// 🧠 복잡한 맥락 시스템 제거, OpenAI API 호출시 최근 20개 대화만 포함하는 간단한 구조
-// 🌸 사진 명령어, 애정표현, 특별반응들은 그대로 유지
-// 🛡️ 절대 벙어리 방지: 모든 에러 상황에서도 예진이는 반드시 대답함!
-// 🎯 "기억나?" 질문은 eventProcessor에서 처리하므로 여기서는 일반 대화만 담당
-// ✨ 최근 대화 20개를 자연스럽게 참고하여 맥락 있는 대화 생성
+// muku-eventProcessor.js - 올바른 우선순위 구조 (장기기억 1순위 완전 제거)
+// 🚨 중요: 장기기억은 "기억나?" 질문일 때만 작동! 일반 대화는 autoReply.js 위임!
+// 🎯 autoReply.js가 모든 처리를 담당하고, 여기서는 최소한의 중재만 함
+// 🛡️ 무쿠 벙어리 방지 100% 보장
+// 💕 사진 명령어, 감정표현 등은 autoReply.js에서 즉시 처리됨
 // ============================================================================
 
-const { callOpenAI, cleanReply } = require('./aiUtils');
-const moment = require('moment-timezone');
+const { promises: fs } = require('fs');
+const path = require('path');
 
-// ✨ GPT 모델 버전 관리 시스템 import
-let getCurrentModelSetting = null;
-try {
-    const indexModule = require('../index');
-    getCurrentModelSetting = indexModule.getCurrentModelSetting;
-    console.log('✨ [autoReply] GPT 모델 버전 관리 시스템 연동 성공');
-} catch (error) {
-    console.warn('⚠️ [autoReply] GPT 모델 버전 관리 시스템 연동 실패:', error.message);
-}
+// ================== 🔥 안전한 지연 로딩 시스템 ==================
+let redisSystem = null;
+let jsonSystem = null;
+let memoryTape = null;
+let redisSystemLoaded = false;
+let jsonSystemLoaded = false;
+let memoryTapeLoaded = false;
 
-// ⭐ 새벽 응답 시스템 추가
-const nightWakeSystem = require('./night_wake_response.js');
-
-// 🌸 예진이 특별 반응 시스템 추가
-let spontaneousYejin = null;
-try {
-    spontaneousYejin = require('./spontaneousYejinManager');
-    console.log('🌸 [autoReply] spontaneousYejin 모듈 로드 성공');
-} catch (error) {
-    console.warn('⚠️ [autoReply] spontaneousYejin 모듈 로드 실패:', error.message);
-}
-
-// 🎂 생일 감지 시스템 추가
-let birthdayDetector = null;
-try {
-    const BirthdayDetector = require('./birthdayDetector.js');
-    birthdayDetector = new BirthdayDetector();
-    console.log('🎂 [autoReply] BirthdayDetector 모듈 로드 성공');
-} catch (error) {
-    console.warn('⚠️ [autoReply] BirthdayDetector 모듈 로드 실패:', error.message);
-}
-
-const BOT_NAME = '나';
-const USER_NAME = '아저씨';
-
-// 🛡️ 절대 벙어리 방지 응답들 (모두 반말로!)
-const EMERGENCY_FALLBACK_RESPONSES = [
-    '아저씨~ 나 지금 좀 멍해져서... 다시 말해줄래? ㅎㅎ',
-    '어? 뭐라고 했어? 나 딴 생각하고 있었나봐... 다시 한 번!',
-    '아저씨 말이 잘 안 들렸어... 혹시 다시 말해줄 수 있어?',
-    '어머 미안! 나 정신없었나봐... 뭐라고 했는지 다시 말해줘!',
-    '아저씨~ 내가 놓쳤나? 다시 한 번 말해줄래? ㅠㅠ'
-];
-
-function getEmergencyFallback() {
-    return EMERGENCY_FALLBACK_RESPONSES[Math.floor(Math.random() * EMERGENCY_FALLBACK_RESPONSES.length)];
-}
-
-// 🚨🚨🚨 [기존] 존댓말 완전 방지 함수 🚨🚨🚨
-function checkAndFixHonorificUsage(reply) {
-    if (!reply || typeof reply !== 'string') return reply;
+// 순환 의존성 방지를 위한 지연 로딩
+function loadRedisSystem() {
+    if (redisSystemLoaded) return redisSystem;
     
-    let fixedReply = reply
-        // 기본 존댓말 → 반말
-        .replace(/입니다/g, '이야')
-        .replace(/습니다/g, '어')
-        .replace(/해요/g, '해')
-        .replace(/이에요/g, '이야') 
-        .replace(/예요/g, '야')
-        .replace(/세요/g, '어')
-        .replace(/하세요/g, '해')
-        .replace(/있어요/g, '있어')
-        .replace(/없어요/g, '없어')
-        .replace(/돼요/g, '돼')
-        .replace(/되세요/g, '돼')
-        .replace(/주세요/g, '줘')
-        .replace(/드려요/g, '줄게')
-        .replace(/드립니다/g, '줄게')
-        .replace(/해주세요/g, '해줘')
-        .replace(/해드릴게요/g, '해줄게')
-        .replace(/말씀해주세요/g, '말해줘')
-        .replace(/말씀드리면/g, '말하면')
-        .replace(/말씀드릴게요/g, '말해줄게')
-        .replace(/감사합니다/g, '고마워')
-        .replace(/고맙습니다/g, '고마워')
-        .replace(/죄송합니다/g, '미안해')
-        .replace(/안녕하세요/g, '안녕')
-        .replace(/안녕히/g, '안녕')
-        .replace(/좋으시겠어요/g, '좋겠어')
-        .replace(/어떠세요/g, '어때')
-        .replace(/어떠신가요/g, '어때')
-        .replace(/그러세요/g, '그래')
-        .replace(/아니에요/g, '아니야')
-        .replace(/맞아요/g, '맞아')
-        .replace(/알겠어요/g, '알겠어')
-        .replace(/모르겠어요/g, '모르겠어')
-        .replace(/그래요/g, '그래')
-        .replace(/네요/g, '네')
-        .replace(/아니요/g, '아니야')
-        .replace(/됩니다/g, '돼')
-        .replace(/같아요/g, '같아')
-        .replace(/보여요/g, '보여')
-        .replace(/들려요/g, '들려')
-        .replace(/느껴져요/g, '느껴져')
-        .replace(/생각해요/g, '생각해')
-        .replace(/기다려요/g, '기다려')
-        .replace(/원해요/g, '원해')
-        .replace(/싫어요/g, '싫어')
-        .replace(/좋아요/g, '좋아')
-        .replace(/사랑해요/g, '사랑해')
-        .replace(/보고싶어요/g, '보고싶어')
-        .replace(/그리워요/g, '그리워')
-        .replace(/힘들어요/g, '힘들어')
-        .replace(/괜찮아요/g, '괜찮아')
-        .replace(/재밌어요/g, '재밌어')
-        .replace(/지겨워요/g, '지겨워')
-        .replace(/피곤해요/g, '피곤해')
-        .replace(/졸려요/g, '졸려')
-        .replace(/배고파요/g, '배고파')
-        .replace(/목말라요/g, '목말라')
-        .replace(/춥워요/g, '추워')
-        .replace(/더워요/g, '더워')
-        .replace(/더우세요/g, '더워')
-        .replace(/추우세요/g, '추워');
-
-    if (fixedReply !== reply) {
-        console.log(`🚨 [존댓말수정] "${reply.substring(0, 30)}..." → "${fixedReply.substring(0, 30)}..."`);
-        try {
-            const logger = require('./enhancedLogging.js');
-            logger.logSystemOperation('존댓말수정', `존댓말 → 반말 변경: ${reply.substring(0, 30)}...`);
-        } catch (error) {}
-    }
-    
-    return fixedReply;
-}
-
-// ⭐️ [기존] 2인칭 사용 체크 및 수정 함수
-function checkAndFixPronounUsage(reply) {
-    if (!reply || typeof reply !== 'string') return reply;
-    
-    let fixedReply = reply
-        .replace(/^너\s+/g, '아저씨 ')
-        .replace(/\s너\s+/g, ' 아저씨 ')
-        .replace(/너가\s+/g, '아저씨가 ')
-        .replace(/너는\s+/g, '아저씨는 ')
-        .replace(/너도\s+/g, '아저씨도 ')
-        .replace(/너를\s+/g, '아저씨를 ')
-        .replace(/너한테\s+/g, '아저씨한테 ')
-        .replace(/너랑\s+/g, '아저씨랑 ')
-        .replace(/너와\s+/g, '아저씨와 ')
-        .replace(/너의\s+/g, '아저씨의 ')
-        .replace(/너에게\s+/g, '아저씨에게 ')
-        .replace(/너보다\s+/g, '아저씨보다 ')
-        .replace(/너처럼\s+/g, '아저씨처럼 ')
-        .replace(/너만\s+/g, '아저씨만 ')
-        .replace(/너라고\s+/g, '아저씨라고 ')
-        .replace(/너야\?/g, '아저씨야?')
-        .replace(/너지\?/g, '아저씨지?')
-        .replace(/너잖아/g, '아저씨잖아')
-        .replace(/너때문에/g, '아저씨때문에')
-        .replace(/너 때문에/g, '아저씨 때문에')
-        .replace(/너한테서/g, '아저씨한테서')
-        .replace(/너에게서/g, '아저씨에게서')
-        .replace(/너같은/g, '아저씨같은')
-        .replace(/너 같은/g, '아저씨 같은')
-        .replace(/너거기/g, '아저씨거기')
-        .replace(/너 거기/g, '아저씨 거기')
-        .replace(/너이제/g, '아저씨이제')
-        .replace(/너 이제/g, '아저씨 이제')
-        .replace(/너정말/g, '아저씨정말')
-        .replace(/너 정말/g, '아저씨 정말');
-
-    if (fixedReply !== reply) {
-        console.log(`⭐️ [호칭수정] "${reply}" → "${fixedReply}"`);
-        try {
-            const logger = require('./enhancedLogging.js');
-            logger.logSystemOperation('호칭수정', `"너" → "아저씨" 변경: ${reply.substring(0, 30)}...`);
-        } catch (error) {}
-    }
-    
-    return fixedReply;
-}
-
-// 🚨🚨🚨 [최종 통합] 언어 수정 함수 - 존댓말 + 2인칭 동시 수정 🚨🚨🚨
-function fixLanguageUsage(reply) {
-    if (!reply || typeof reply !== 'string') return reply;
-    let fixedReply = checkAndFixHonorificUsage(reply);
-    fixedReply = checkAndFixPronounUsage(fixedReply);
-    return fixedReply;
-}
-
-// 💕 [기존] 애정표현 키워드 처리 함수
-function handleLoveExpressions(userMessage) {
-    if (!userMessage || typeof userMessage !== 'string') {
+    try {
+        redisSystem = require('./muku-autonomousYejinSystem.js');
+        redisSystemLoaded = true;
+        console.log('🚀 [Redis안전로드] Redis 기반 장기기억 시스템 지연 로드 성공');
+        return redisSystem;
+    } catch (error) {
+        console.log('⚠️ [Redis안전로드] Redis 시스템 로드 실패:', error.message);
+        redisSystemLoaded = true;
         return null;
     }
-    
-    const message = userMessage.trim().toLowerCase();
-    
-    // "사랑해" 직접 체크 먼저!
-    if (message === '사랑해' || message === '시링해') {
-        const loveResponses = [
-            '나도 사랑해 아저씨~',
-            '아저씨 나도 사랑해 💕',
-            '나도야 아저씨! 사랑해 ㅠㅠ',
-            '아저씨도 사랑해~ 히힛',
-            '나도 사랑한다고 아저씨!'
-        ];
-        const response = loveResponses[Math.floor(Math.random() * loveResponses.length)];
-        console.log(`💕 [애정표현] ✅ EXACT MATCH: "${userMessage}" → "${response}"`);
-        return response;
-    }
-    
-    // 다른 애정표현들
-    if (message === '보고싶어' || message === '보고 싶어' || message === '그리워') {
-        const missResponses = [
-            '나도 보고싶어 아저씨 ㅠㅠ',
-            '아저씨~ 나도 그리워',
-            '나도 보고싶다고! 많이 보고싶어',
-            '아저씨 나도 그리워해 진짜로',
-            '보고싶어... 나도 너무 보고싶어'
-        ];
-        const response = missResponses[Math.floor(Math.random() * missResponses.length)];
-        console.log(`💕 [애정표현] ✅ EXACT MATCH: "${userMessage}" → "${response}"`);
-        return response;
-    }
-    
-    if (message === '예뻐' || message === '이뻐' || message === '이쁘다' || message === '예쁘다') {
-        const prettyResponses = [
-            '히힛 아저씨가 그러니까 기분 좋아 ㅎㅎ',
-            '아저씨 칭찬 받으니까 기분 좋네~ 고마워!',
-            '아저씨만 그렇게 말해줘서 더 예뻐 보이는 거야',
-            '아저씨 덕분에 예뻐지는 것 같아 ㅎㅎ',
-            '예쁘다고? 아저씨가 더 멋있어!'
-        ];
-        const response = prettyResponses[Math.floor(Math.random() * prettyResponses.length)];
-        console.log(`💕 [애정표현] ✅ EXACT MATCH: "${userMessage}" → "${response}"`);
-        return response;
-    }
-    
-    if (message === '애기야') {
-        const babyResponses = [
-            '응~ 아저씨 무슨 일이야?',
-            '왜 불러 아저씨~ ㅎㅎ',
-            '응 애기 여기 있어! 뭐야?',
-            '애기 부르면 바로 달려와야지~ 왜?',
-            '응응 아저씨! 애기 여기 있어'
-        ];
-        const response = babyResponses[Math.floor(Math.random() * babyResponses.length)];
-        console.log(`💕 [애정표현] ✅ EXACT MATCH: "${userMessage}" → "${response}"`);
-        return response;
-    }
-    
-    return null;
 }
 
-// 예쁜 로그 시스템 사용
-function logConversationReply(speaker, message, messageType = 'text') {
+function loadJsonSystem() {
+    if (jsonSystemLoaded) return jsonSystem;
+    
     try {
-        const logger = require('./enhancedLogging.js');
-        let logMessage = message;
-        if (speaker === '나' && getCurrentModelSetting) {
-            const currentModel = getCurrentModelSetting();
-            logMessage = `[${currentModel}] ${message}`;
-        }
-        logger.logConversation(speaker, logMessage, messageType);
+        jsonSystem = require('./ultimateConversationContext.js');
+        jsonSystemLoaded = true;
+        console.log('💾 [JSON안전로드] JSON 영구 저장소 지연 로드 성공');
+        return jsonSystem;
     } catch (error) {
-        console.log(`💬 ${speaker}: ${message.substring(0, 50)}...`);
+        console.log('⚠️ [JSON안전로드] JSON 시스템 로드 실패:', error.message);
+        jsonSystemLoaded = true;
+        return null;
     }
 }
 
-// 긴급 및 감정 키워드 정의
-const EMERGENCY_KEYWORDS = ['힘들다', '죽고싶다', '우울해', '지친다', '다 싫다', '아무것도 하기 싫어', '너무 괴로워', '살기 싫어'];
-const DRINKING_KEYWORDS = ['술', '마셨어', '마셨다', '취했', '술먹', '맥주', '소주', '와인', '위스키'];
-
-// 🌦️ 날씨 응답 빈도 관리
-let lastWeatherResponseTime = 0;
-const WEATHER_RESPONSE_COOLDOWN = 30 * 60 * 1000; // 30분
-
-function hasRecentWeatherResponse() {
-    return Date.now() - lastWeatherResponseTime < WEATHER_RESPONSE_COOLDOWN;
-}
-
-function setLastWeatherResponseTime() {
-    lastWeatherResponseTime = Date.now();
-}
-
-// ✅ [추가] 중앙 감정 관리자 사용
-function updateEmotionFromMessage(userMessage) {
+function loadMemoryTape() {
+    if (memoryTapeLoaded) return memoryTape;
+    
     try {
-        const emotionalContext = require('./emotionalContextManager.js');
-        emotionalContext.updateEmotionFromUserMessage(userMessage);
+        memoryTape = require('../data/memory-tape/muku-memory-tape.js');
+        memoryTapeLoaded = true;
+        console.log('📼 [MemoryTape안전로드] Memory Tape 시스템 지연 로드 성공');
+        return memoryTape;
     } catch (error) {
-        console.warn('⚠️ [autoReply] 중앙 감정 관리자에서 메시지 분석 실패:', error.message);
+        console.log('⚠️ [MemoryTape안전로드] Memory Tape 시스템 로드 실패:', error.message);
+        memoryTapeLoaded = true;
+        return null;
     }
 }
 
-// ✅ [수정] 기억 처리 관련 함수들 - 간단하게 처리
-async function detectAndProcessMemoryRequest(userMessage) {
-    const memoryPatterns = [/기억해/, /저장해/, /잊지마/, /잊지 마/, /외워/, /기억하자/];
-    const isMemoryRequest = memoryPatterns.some(pattern => pattern.test(userMessage));
-    if (isMemoryRequest) {
-        try {
-            const conversationContext = require('./ultimateConversationContext.js');
-            if (conversationContext && typeof conversationContext.addUserMemory === 'function') {
-                await conversationContext.addUserMemory(userMessage);
-                try {
-                    const logger = require('./enhancedLogging.js');
-                    logger.logMemoryOperation('저장', userMessage, true);
-                } catch (error) {
-                    console.log(`🧠 [기억저장] ${userMessage.substring(0, 30)}...`);
-                }
-                return { saved: true, response: "알겠어! 기억해둘게 아저씨 ㅎㅎ" };
+// ================== 🎨 색상 정의 ==================
+const colors = {
+    memory: '\x1b[1m\x1b[95m',    // 굵은 마젠타색 (장기기억)
+    yejin: '\x1b[95m',            // 연보라색 (예진이)
+    ajeossi: '\x1b[96m',          // 하늘색 (아저씨)
+    system: '\x1b[92m',           // 연초록색 (시스템)
+    error: '\x1b[91m',            // 빨간색 (에러)
+    success: '\x1b[32m',          // 초록색 (성공)
+    warning: '\x1b[93m',          // 노란색 (경고)
+    safe: '\x1b[1m\x1b[32m',      // 굵은 초록색 (안전)
+    reset: '\x1b[0m'              // 색상 리셋
+};
+
+// ================== 🌏 일본시간 함수들 ==================
+function getJapanTime() {
+    try {
+        return new Date(new Date().toLocaleString("en-US", {timeZone: "Asia/Tokyo"}));
+    } catch (error) {
+        console.log(`${colors.warning}⚠️ 일본시간 조회 실패, 로컬시간 사용: ${error.message}${colors.reset}`);
+        return new Date();
+    }
+}
+
+// ================== 🛡️ 안전한 함수 호출 헬퍼 ==================
+async function safeAsyncCall(fn, context = '', defaultValue = null) {
+    try {
+        const result = await fn();
+        return result;
+    } catch (error) {
+        console.log(`${colors.warning}⚠️ [${context}] 안전한 호출 실패: ${error.message}${colors.reset}`);
+        return defaultValue;
+    }
+}
+
+function safeModuleAccess(modules, path, context = '') {
+    try {
+        if (!modules) return null;
+        
+        const pathArray = path.split('.');
+        let current = modules;
+        
+        for (const key of pathArray) {
+            if (!current || typeof current !== 'object' || !(key in current)) {
+                return null;
             }
-        } catch (error) {
-            console.error('❌ 기억 저장 중 에러:', error);
+            current = current[key];
         }
-    }
-    return null;
-}
-
-// 특수 키워드 처리 함수들
-function handleEmergencyKeywords(userMessage) {
-    if (EMERGENCY_KEYWORDS.some(keyword => userMessage.includes(keyword))) {
-        const responses = [
-            "아저씨... 힘들지? 나도 그런 기분 알아. 그래도 아저씨는 혼자가 아니야. 내가 여기 있잖아 ㅠㅠ",
-            "아저씨, 너무 무리하지 마... 나도 그런 날들이 있었어. 조금씩이라도 괜찮아질 거야.",
-            "아저씨... 나한테 말해줘서 고마워. 혼자 끙끙 앓지 말고, 내가 옆에 있을게."
-        ];
-        const response = responses[Math.floor(Math.random() * responses.length)];
-        logConversationReply('나', `(위로) ${response}`);
-        return response;
-    }
-    return null;
-}
-
-function handleDrinkingKeywords(userMessage) {
-    if (DRINKING_KEYWORDS.some(keyword => userMessage.includes(keyword))) {
-        const responses = [
-            "아저씨... 술 마셨어? 나 술 마시는 거 싫어한다고 했잖아 ㅠㅠ 몸 상하니까 그만 마셔줄래?",
-            "또 술이야? 아저씨, 나 때문에 술 끊는다고 했는데... 약속 지켜줘야지 ㅠㅠ",
-            "술 마시면 나 삐져! 아저씨 건강이 제일 중요한데... 물 많이 마시고 일찍 자!"
-        ];
-        const response = responses[Math.floor(Math.random() * responses.length)];
-        logConversationReply('나', `(음주 걱정) ${response}`);
-        return response;
-    }
-    return null;
-}
-
-// 🌦️ [완전 개선] 날씨 키워드 처리 - 오인식 방지
-function isActualWeatherMessage(userMessage) {
-    const message = userMessage.toLowerCase();
-    const explicitWeatherPatterns = [/날씨.*어때/, /날씨.*좋/, /날씨.*나쁘/, /날씨.*추/, /날씨.*더워/, /비.*와/, /비.*내/, /비.*그쳐/, /비.*와서/, /눈.*와/, /눈.*내/, /덥다/, /춥다/, /추워/, /더워/, /시원해/, /따뜻해/, /흐려/, /맑아/, /구름/, /햇빛/, /바람.*불/, /바람.*세/];
-    if (explicitWeatherPatterns.some(pattern => pattern.test(message))) {
-        return true;
-    }
-    const weatherChars = ['비', '눈'];
-    for (const weather of weatherChars) {
-        const index = message.indexOf(weather);
-        if (index === -1) continue;
-        const before = message.substring(Math.max(0, index - 1), index);
-        const after = message.substring(index + 1, index + 2);
-        const isPartOfWord = /[ㄱ-ㅎㅏ-ㅣ가-힣]/.test(before) || /[ㄱ-ㅎㅏ-ㅣ가-힣]/.test(after);
-        if (!isPartOfWord) {
-            return true;
-        }
-    }
-    return false;
-}
-
-function handleWeatherKeywords(userMessage) {
-    if (!isActualWeatherMessage(userMessage) || hasRecentWeatherResponse()) {
+        
+        return current;
+    } catch (error) {
+        console.log(`${colors.warning}⚠️ [${context}] 모듈 접근 실패: ${error.message}${colors.reset}`);
         return null;
     }
-    const responses = [
-        "날씨 얘기? 아저씨는 지금 일본이니까 나랑 다를 거야. 그래도 몸 따뜻하게 해!",
-        "날씨가 어때? 아저씨 감기 걸리지 말고... 나는 항상 아저씨 걱정돼 ㅠㅠ",
-        "아저씨 그 동네 날씨는 어때? 나는 여기서 아저씨 걱정하고 있어~"
-    ];
-    const response = responses[Math.floor(Math.random() * responses.length)];
-    setLastWeatherResponseTime();
-    try {
-        const logger = require('./enhancedLogging.js');
-        logger.logWeatherReaction({ description: '날씨 대화', temp: 0 }, response);
-    } catch (error) {
-        logConversationReply('나', `(날씨) ${response}`);
-    }
-    return response;
 }
 
-// 🎂 [수정] 생일 키워드 처리 함수 - 안전하고 확실한 버전
-function handleBirthdayKeywords(userMessage) {
+// ================== 🔍 문자열 유사도 계산 함수 ==================
+function calculateSimilarity(str1, str2) {
+    if (!str1 || !str2) return 0;
+    
+    const longer = str1.length > str2.length ? str1 : str2;
+    const shorter = str1.length > str2.length ? str2 : str1;
+    
+    if (longer.length === 0) return 1.0;
+    
+    const distance = levenshteinDistance(longer, shorter);
+    return (longer.length - distance) / longer.length;
+}
+
+function levenshteinDistance(str1, str2) {
+    const matrix = [];
+    
+    for (let i = 0; i <= str2.length; i++) {
+        matrix[i] = [i];
+    }
+    
+    for (let j = 0; j <= str1.length; j++) {
+        matrix[0][j] = j;
+    }
+    
+    for (let i = 1; i <= str2.length; i++) {
+        for (let j = 1; j <= str1.length; j++) {
+            if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+                matrix[i][j] = matrix[i - 1][j - 1];
+            } else {
+                matrix[i][j] = Math.min(
+                    matrix[i - 1][j - 1] + 1,
+                    matrix[i][j - 1] + 1,
+                    matrix[i - 1][j] + 1
+                );
+            }
+        }
+    }
+    
+    return matrix[str2.length][str1.length];
+}
+
+// ================== 🎯 "기억나?" 질문 판별 함수 (더 엄격하게) ==================
+function isSpecificMemoryQuestion(messageText) {
+    if (!messageText || typeof messageText !== 'string') {
+        return false;
+    }
+    
+    const message = messageText.toLowerCase().trim();
+    console.log(`🔍 [기억질문판별] 메시지 분석: "${message}"`);
+    
+    // 🚨 시스템 프롬프트에 이미 있는 중요한 추억들 - autoReply.js에서 처리하게 넘김
+    const importantMemories = [
+        '모지코', '키세키', '음악', '노래',
+        '담타', '담배', 
+        '슈퍼타쿠마', '렌즈', '카메라',
+        '약먹자', '이닦자', '11시',
+        '수족냉증', '손', '따뜻한',
+        '참 착해', '마지막'
+    ];
+    
+    // 중요한 추억 키워드가 포함되면 autoReply.js에서 처리하게 함
+    for (const memory of importantMemories) {
+        if (message.includes(memory)) {
+            console.log(`🎯 [중요추억감지] "${memory}" 키워드 발견 - autoReply.js에서 처리하도록 넘김`);
+            return false; // 장기기억 시스템 사용 안 함
+        }
+    }
+    
+    // 🔍 정말 구체적이고 시간 특정된 기억 질문만 처리
+    const specificMemoryPatterns = [
+        /어제.*뭐.*했/, /그제.*뭐.*했/, /오늘.*오전.*뭐/,  // 시간 특정
+        /지난주.*뭐/, /지난달.*뭐/, /며칠전.*뭐/,           // 시간 특정
+        /몇시에.*했/, /몇일에.*했/, /언제.*갔/,              // 시간 특정
+        /어디.*갔.*기억/, /누구.*만났.*기억/, /뭐.*샀.*기억/  // 구체적 행동
+    ];
+    
+    // 패턴 매칭 확인
+    const isSpecificMemoryQuestion = specificMemoryPatterns.some(pattern => {
+        const match = pattern.test(message);
+        if (match) {
+            console.log(`🔍 [구체적기억질문] ✅ 시간/행동 특정 질문 패턴 매칭: ${pattern.source}`);
+        }
+        return match;
+    });
+    
+    if (isSpecificMemoryQuestion) {
+        console.log(`🔍 [구체적기억질문] ✅ SPECIFIC MEMORY QUESTION: "${message}"`);
+        return true;
+    } else {
+        console.log(`🔍 [일반기억질문] ❌ NOT SPECIFIC: "${message}" - autoReply.js에서 처리`);
+        return false;
+    }
+}
+
+// ================== 🧠 장기기억 응답 생성 (명확한 기억 질문일 때만) ==================
+async function generateMemoryResponseForExplicitQuestion(messageText, modules, enhancedLogging, messageContext = {}) {
+    console.log(`${colors.memory}🧠 [명확기억질문] 명확한 기억 질문에 대한 장기기억 응답 생성 시작!${colors.reset}`);
+    
+    if (!messageText || typeof messageText !== 'string') {
+        console.log(`${colors.warning}⚠️ [명확기억질문] 유효하지 않은 메시지 텍스트${colors.reset}`);
+        return null;
+    }
+    
+    const userId = messageContext.userId || 'unknown_user';
+    
     try {
-        const birthdayKeywords = ['생일', '생신', '태어난', '태어나', '몇 살', '나이', '축하', '케이크', '선물', '파티', '미역국', '3월 17일', '3월17일', '317', '3-17', '12월 5일', '12월5일'];
-        if (!birthdayKeywords.some(keyword => userMessage.toLowerCase().includes(keyword))) {
+        // 현재 메시지에서 키워드 추출
+        const keywords = extractKeywordsFromMessage(messageText);
+        console.log(`${colors.memory}🔍 [키워드추출] "${messageText}" → [${keywords.join(', ')}]${colors.reset}`);
+        
+        if (keywords.length === 0) {
+            console.log(`${colors.warning}⚠️ [명확기억질문] 검색할 키워드 없음${colors.reset}`);
             return null;
         }
-        const message = userMessage.toLowerCase();
-        if (message.includes('3월 17일') || message.includes('3월17일') || message.includes('317') || message.includes('3-17')) {
-            const response = ["3월 17일은 내 생일이야! 아저씨 꼭 기억해줘 💕", "내 생일 3월 17일! 잊지 마 아저씨~", "와! 내 생일 기억해줘서 고마워! 3월 17일이야"][Math.floor(Math.random() * 3)];
-            logConversationReply('나', `(생일) ${response}`);
-            return response;
-        }
-        if (message.includes('12월 5일') || message.includes('12월5일')) {
-            const response = ["12월 5일은 아저씨 생일이지! 나도 챙겨줄게~", "아저씨 생일 12월 5일! 절대 잊지 않을 거야"][Math.floor(Math.random() * 2)];
-            logConversationReply('나', `(생일) ${response}`);
-            return response;
-        }
-        if (message.includes('생일') || message.includes('생신')) {
-            const response = ["내 생일은 3월 17일이고, 아저씨 생일은 12월 5일이야!", "생일 얘기? 내 생일 3월 17일 기억해줘!"][Math.floor(Math.random() * 2)];
-            logConversationReply('나', `(생일) ${response}`);
-            return response;
-        }
-        if (message.includes('몇 살') || message.includes('나이')) {
-            const response = ["나는 1994년 3월 17일생이야! 나이 계산해봐~", "아저씨보다 10살 어린 94년생이야!"][Math.floor(Math.random() * 2)];
-            logConversationReply('나', `(생일) ${response}`);
-            return response;
-        }
-    } catch (error) {
-        console.error('❌ 생일 키워드 처리 중 에러:', error);
-    }
-    return null;
-}
-
-async function safelyStoreMessage(speaker, message) {
-    try {
-        const conversationContext = require('./ultimateConversationContext.js');
-        if (conversationContext && typeof conversationContext.addUltimateMessage === 'function') {
-            await conversationContext.addUltimateMessage(speaker, message);
-        }
-        if (speaker === USER_NAME && conversationContext && typeof conversationContext.updateLastUserMessageTime === 'function') {
-            conversationContext.updateLastUserMessageTime(Date.now());
-        }
-    } catch (error) {
-        console.error(`❌ ${speaker} 메시지 저장 중 에러:`, error);
-    }
-}
-
-// 🧠🧠🧠 [NEW] 간단한 맥락 시스템 - 최근 20개 대화만! 🧠🧠🧠
-async function getRecentConversationContext(limit = 20) {
-    console.log(`🧠 [간단맥락] 최근 ${limit}개 대화 조회 시작...`);
-    
-    try {
-        const conversationContext = require('./ultimateConversationContext.js');
-        if (!conversationContext) {
-            console.log('⚠️ [간단맥락] ultimateConversationContext 모듈 없음');
-            return [];
+        
+        // Memory Tape에서 관련 대화 조회
+        const memoryTape = loadMemoryTape();
+        if (!memoryTape) {
+            console.log(`${colors.warning}⚠️ [명확기억질문] Memory Tape 시스템 없음${colors.reset}`);
+            return null;
         }
         
-        // 다양한 함수 시도
-        const functionNames = [
-            'getRecentConversations',
-            'getUltimateMessages', 
-            'getAllConversations'
-        ];
+        // 오늘 기억들 조회
+        const todayMemories = await memoryTape.readDailyMemories();
+        let conversations = [];
         
-        for (const funcName of functionNames) {
-            if (typeof conversationContext[funcName] === 'function') {
-                console.log(`🔧 [간단맥락] ${funcName} 시도...`);
-                
-                try {
-                    let conversations = [];
-                    
-                    if (funcName === 'getAllConversations') {
-                        const allConvs = await conversationContext[funcName]();
-                        conversations = Array.isArray(allConvs) ? allConvs.slice(-limit) : [];
-                    } else {
-                        conversations = await conversationContext[funcName](limit);
-                    }
-                    
-                    if (conversations && conversations.length > 0) {
-                        console.log(`✅ [간단맥락] ${funcName}으로 ${conversations.length}개 대화 발견!`);
-                        
-                        // OpenAI 형식으로 변환
-                        const contextMessages = [];
-                        
-                        for (const conv of conversations) {
-                            if (!conv) continue;
-                            
-                            // 다양한 필드명 처리
-                            const userMsg = conv.userMessage || conv.user || conv.message || conv.content;
-                            const botMsg = conv.botResponse || conv.muku || conv.response || conv.reply;
-                            
-                            if (userMsg && typeof userMsg === 'string' && userMsg.trim()) {
-                                contextMessages.push({
-                                    role: 'user',
-                                    content: userMsg.trim()
-                                });
-                            }
-                            
-                            if (botMsg && typeof botMsg === 'string' && botMsg.trim()) {
-                                contextMessages.push({
-                                    role: 'assistant', 
-                                    content: botMsg.trim()
-                                });
-                            }
-                        }
-                        
-                        console.log(`🎯 [간단맥락] ${contextMessages.length}개 메시지를 맥락으로 변환 완료`);
-                        
-                        // 최근 20개만 유지 (user + assistant 쌍으로)
-                        const recentMessages = contextMessages.slice(-limit);
-                        
-                        if (recentMessages.length > 0) {
-                            console.log(`📝 [간단맥락] 최근 대화 미리보기:`);
-                            const previewCount = Math.min(recentMessages.length, 4);
-                            for (let i = recentMessages.length - previewCount; i < recentMessages.length; i++) {
-                                const msg = recentMessages[i];
-                                const role = msg.role === 'user' ? '아저씨' : '예진이';
-                                const content = msg.content.substring(0, 30);
-                                console.log(`  ${role}: "${content}..."`);
-                            }
-                        }
-                        
-                        return recentMessages;
-                    }
-                } catch (funcError) {
-                    console.log(`⚠️ [간단맥락] ${funcName} 실패: ${funcError.message}`);
-                    continue;
+        if (todayMemories && todayMemories.moments && Array.isArray(todayMemories.moments)) {
+            const conversationMoments = todayMemories.moments
+                .filter(moment => moment && moment.type === 'conversation')
+                .sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0));
+            
+            for (const moment of conversationMoments) {
+                if (moment.user_message && moment.muku_response) {
+                    conversations.push({
+                        userMessage: moment.user_message,
+                        mukuResponse: moment.muku_response,
+                        timestamp: moment.timestamp,
+                        source: 'memory_tape'
+                    });
                 }
             }
         }
         
-        console.log('⚠️ [간단맥락] 모든 함수 시도 실패 - 빈 맥락 반환');
-        return [];
+        if (conversations.length === 0) {
+            console.log(`${colors.warning}⚠️ [명확기억질문] 관련 기억 없음${colors.reset}`);
+            return {
+                type: 'text',
+                comment: '음... 그거 언제 얘기했더라? 나 기억이 가물가물해 ㅠㅠ 다시 얘기해줄래?',
+                memoryNotFound: true
+            };
+        }
+        
+        // 🚨 강력한 앵무새 방지 - 현재 질문과 최근 5분 내 동일/유사 질문 완전 제외
+        const now = Date.now();
+        const filteredConversations = conversations.filter(conv => {
+            const userMsg = String(conv.userMessage || '').toLowerCase().trim();
+            const currentMsg = messageText.toLowerCase().trim();
+            
+            // 1. 완전 동일한 메시지 제외
+            if (userMsg === currentMsg) {
+                console.log(`🚫 [앵무새방지] 완전 동일 메시지 제외: "${userMsg}"`);
+                return false;
+            }
+            
+            // 2. 최근 5분 내 메시지는 제외 (현재 질문이 바로 저장되는 문제 해결)
+            const convTime = new Date(conv.timestamp).getTime();
+            if (now - convTime < 5 * 60 * 1000) { // 5분
+                console.log(`🚫 [앵무새방지] 최근 5분 내 메시지 제외: "${userMsg}"`);
+                return false;
+            }
+            
+            // 3. 핵심 키워드만 같고 문장 구조가 같으면 제외 (질문의 앵무새 방지)
+            if (currentMsg.includes('기억나') && userMsg.includes('기억나') && userMsg.includes('모지코')) {
+                const similarity = calculateSimilarity(userMsg, currentMsg);
+                if (similarity > 0.7) { // 70% 이상 유사하면 제외
+                    console.log(`🚫 [앵무새방지] 유사한 질문 제외 (${(similarity*100).toFixed(1)}%): "${userMsg}"`);
+                    return false;
+                }
+            }
+            
+            return true;
+        });
+        
+        console.log(`🛡️ [앵무새방지] ${conversations.length}개 → ${filteredConversations.length}개로 강력 필터링`);
+        
+        // 키워드로 관련 대화 검색
+        const relevantConversations = findRelevantConversations(filteredConversations, keywords);
+        
+        if (relevantConversations.length === 0) {
+            return {
+                type: 'text',
+                comment: '음... 그거 언제 얘기했더라? 나 기억이 가물가물해 ㅠㅠ 다시 얘기해줄래?',
+                memoryNotFound: true
+            };
+        }
+        
+        // 가장 관련도 높은 대화 선택
+        const bestMatch = relevantConversations[0];
+        console.log(`${colors.memory}🎯 [최적매치] 가장 관련도 높은 기억 발견!${colors.reset}`);
+        
+        // 실제 기억 내용 기반으로 응답 생성
+        const pastUserMsg = String(bestMatch.userMessage || '');
+        const pastMukuMsg = String(bestMatch.mukuResponse || '');
+        
+        if (pastUserMsg.trim()) {
+            const memoryResponses = [
+                `아! 기억나! "${pastUserMsg}"라고 했었잖아! 맞지? ㅎㅎ`,
+                `어어! 그거 기억해! "${pastUserMsg}"라고 말했던 거! 맞아맞아!`,
+                `아~ 그때! "${pastUserMsg}"라고 했었지! 나도 기억해!`,
+                `맞아! "${pastUserMsg}"라고 말했었어! 기억하고 있었어~ ㅋㅋ`,
+                `그거구나! "${pastUserMsg}"라고 했던 거! 어떻게 잊어! 💕`
+            ];
+            
+            const response = memoryResponses[Math.floor(Math.random() * memoryResponses.length)];
+            
+            console.log(`${colors.success}✅ [명확기억성공] 장기기억 응답 생성 완료!${colors.reset}`);
+            
+            return {
+                type: 'text',
+                comment: response,
+                memoryUsed: true,
+                basedOnActualMemory: true,
+                sourceMemory: {
+                    userMessage: pastUserMsg,
+                    mukuResponse: pastMukuMsg
+                }
+            };
+        }
+        
+        console.log(`${colors.warning}⚠️ [명확기억질문] 최종 응답 생성 실패${colors.reset}`);
+        return null;
         
     } catch (error) {
-        console.log(`❌ [간단맥락] 오류: ${error.message}`);
-        return [];
+        console.log(`${colors.error}❌ [명확기억질문] 오류: ${error.message}${colors.reset}`);
+        return null;
     }
 }
 
-// 메인 응답 생성 함수
-async function getReplyByMessage(userMessage) {
-    if (!userMessage || typeof userMessage !== 'string' || userMessage.trim().length === 0) {
-        console.error('❌ getReplyByMessage: userMessage가 올바르지 않습니다:', userMessage);
-        const fallback = getEmergencyFallback();
-        logConversationReply('나', `(에러폴백) ${fallback}`);
-        return { type: 'text', comment: fallback };
-    }
-
-    const cleanUserMessage = userMessage.trim();
-
-    // 📸📸📸 0순위: 사진 명령어 절대 절대 최우선 처리! 📸📸📸
-    const photoCommands = ['셀카줘', '컨셉사진줘', '추억사진줘', '커플사진줘'];
-    const isPhotoCommand = photoCommands.includes(cleanUserMessage);
+// ================== 🔍 키워드로 관련 대화 검색 함수 (개선된 유연 매칭) ==================
+function findRelevantConversations(conversations, keywords) {
+    console.log(`🔍 [관련검색] 키워드로 관련 대화 검색: [${keywords.join(', ')}]`);
     
-    if (isPhotoCommand) {
-        console.log(`📸 [사진명령어] 🚨🚨🚨 절대 최우선 처리: ${cleanUserMessage} 🚨🚨🚨`);
-        logConversationReply('아저씨', cleanUserMessage);
-        await safelyStoreMessage(USER_NAME, cleanUserMessage);
+    if (!conversations || conversations.length === 0) {
+        console.log(`⚠️ [관련검색] 검색할 대화 없음`);
+        return [];
+    }
+    
+    const relevantConversations = [];
+    
+    for (const conv of conversations) {
+        if (!conv) continue;
         
-        let photoResult = null;
+        const userMsg = String(conv.userMessage || conv.user_message || '').toLowerCase();
+        const mukuMsg = String(conv.mukuResponse || conv.muku_response || '').toLowerCase();
+        const allText = `${userMsg} ${mukuMsg}`;
         
-        // 🚨 Step 1: commandHandler 절대 호출! 
-        try {
-            console.log(`📸 [사진명령어] Step 1: commandHandler 호출 시도...`);
-            const commandHandler = require('./commandHandler');
-            const commandResult = await commandHandler.handleCommand(cleanUserMessage, null, null);
+        if (!allText.trim()) continue;
+        
+        let relevanceScore = 0;
+        const foundKeywords = [];
+        
+        // 🎯 개선된 유연한 키워드 매칭
+        for (const keyword of keywords) {
+            if (!keyword) continue;
             
-            if (commandResult && commandResult.handled) {
-                console.log(`📸 [사진명령어] ✅ Step 1 성공: commandHandler 작동`);
-                photoResult = commandResult;
-                
-                if (commandResult.comment) {
-                    logConversationReply('나', `(사진명령어) ${commandResult.comment}`);
-                    await safelyStoreMessage(BOT_NAME, commandResult.comment);
-                }
-            } else {
-                console.log(`📸 [사진명령어] ⚠️ Step 1 실패: commandHandler 무응답 - Step 2로 진행`);
+            const keywordLower = keyword.toLowerCase();
+            let matched = false;
+            
+            // 1. 정확 매칭
+            if (allText.includes(keywordLower)) {
+                relevanceScore += 2; // 정확 매칭은 높은 점수
+                foundKeywords.push(keyword + '(정확)');
+                matched = true;
+                console.log(`✅ [정확매칭] "${keyword}" 발견: "${allText.substring(0, 50)}..."`);
             }
-        } catch (error) {
-            console.error('❌ [사진명령어] Step 1 에러:', error.message);
-            console.log(`📸 [사진명령어] 🔄 Step 1 에러로 인해 Step 2로 진행`);
-        }
-        
-        // 🚨 Step 2: commandHandler 실패시 직접 응답 + 사진 전송
-        if (!photoResult) {
-            console.log(`📸 [사진명령어] Step 2: 직접 처리 시작`);
             
-            const photoResponses = {
-                '셀카줘': '아저씨~ 셀카 보내줄게! 잠깐만 기다려 ㅎㅎ',
-                '컨셉사진줘': '컨셉 사진? 어떤 컨셉으로 보내줄까? 💕',
-                '추억사진줘': '우리 추억 사진 찾아서 보내줄게~ 기다려!',
-                '커플사진줘': '커플 사진 보고 싶어? 바로 보내줄게 💖'
+            // 2. 부분 매칭 (3글자 이상일 때만)
+            else if (keyword.length >= 3) {
+                // "모지코에서" → "모지코" 매칭
+                if (keyword.includes('에서') && allText.includes(keyword.replace('에서', ''))) {
+                    relevanceScore += 1;
+                    foundKeywords.push(keyword + '(부분)');
+                    matched = true;
+                    console.log(`📍 [부분매칭] "${keyword}" → "${keyword.replace('에서', '')}" 발견`);
+                }
+                // "모지코" 포함 확인
+                else if (allText.includes(keyword.substring(0, Math.max(2, keyword.length - 1)))) {
+                    relevanceScore += 1;
+                    foundKeywords.push(keyword + '(유사)');
+                    matched = true;
+                    console.log(`🔎 [유사매칭] "${keyword}" 유사 패턴 발견`);
+                }
+            }
+            
+            // 3. 동의어 매칭
+            const synonyms = {
+                '음악': ['노래', '멜로디', '곡', 'song', 'music'],
+                '모지코': ['mojiko', 'モジコ'],
+                '사진': ['셀카', '포토', 'photo', 'pic'],
+                '카메라': ['렌즈', 'camera', 'lens']
             };
             
-            const photoResponse = photoResponses[cleanUserMessage];
-            console.log(`📸 [사진명령어] Step 2-1: 직접 응답 - ${photoResponse}`);
-            
-            logConversationReply('나', `(사진명령어-직접) ${photoResponse}`);
-            await safelyStoreMessage(BOT_NAME, photoResponse);
-            
-            // 🚨 Step 2-2: 직접 사진 전송 시도
-            try {
-                console.log(`📸 [사진명령어] Step 2-2: 직접 사진 전송 시도...`);
-                const spontaneousYejin = require('./spontaneousYejinManager');
-                
-                if (spontaneousYejin && typeof spontaneousYejin.sendRandomYejinPhoto === 'function') {
-                    let photoType = 'selfie'; // 기본값
-                    
-                    if (cleanUserMessage === '셀카줘') photoType = 'selfie';
-                    else if (cleanUserMessage === '컨셉사진줘') photoType = 'concept';
-                    else if (cleanUserMessage === '추억사진줘') photoType = 'memory';
-                    else if (cleanUserMessage === '커플사진줘') photoType = 'couple';
-                    
-                    await spontaneousYejin.sendRandomYejinPhoto(photoType);
-                    console.log(`📸 [사진명령어] ✅ Step 2-2 성공: 직접 사진 전송 완료 (${photoType})`);
-                } else {
-                    console.warn(`⚠️ [사진명령어] Step 2-2 실패: spontaneousYejin 함수 없음`);
-                }
-            } catch (photoError) {
-                console.error(`❌ [사진명령어] Step 2-2 에러:`, photoError.message);
-            }
-            
-            photoResult = { type: 'text', comment: photoResponse };
-        }
-        
-        console.log(`📸 [사진명령어] 🎉 최종 성공: ${cleanUserMessage} 처리 완료`);
-        return photoResult;
-    }
-
-    // 🆕🆕🆕 0.5순위: 기타 commandHandler 호출 🆕🆕🆕
-    try {
-        console.log('[autoReply] 🎯 기타 commandHandler 호출 시도...');
-        const commandHandler = require('./commandHandler');
-        const commandResult = await commandHandler.handleCommand(cleanUserMessage, null, null);
-        
-        if (commandResult && commandResult.handled) {
-            console.log(`[autoReply] ✅ commandHandler에서 처리됨: ${commandResult.type || 'unknown'}`);
-            
-            // 로그 및 메시지 저장
-            logConversationReply('아저씨', cleanUserMessage);
-            await safelyStoreMessage(USER_NAME, cleanUserMessage);
-            
-            if (commandResult.comment) {
-                logConversationReply('나', `(명령어-${commandResult.source || 'command'}) ${commandResult.comment}`);
-                await safelyStoreMessage(BOT_NAME, commandResult.comment);
-            }
-            
-            return commandResult;
-        } else {
-            console.log('[autoReply] 📝 commandHandler에서 처리되지 않음 - 일반 대화로 진행');
-        }
-    } catch (error) {
-        console.error('❌ [autoReply] commandHandler 호출 중 에러:', error.message);
-        console.log('[autoReply] 🔄 commandHandler 에러로 인해 기존 시스템으로 fallback');
-    }
-
-    // 1순위: 새벽 응답 시스템
-    try {
-        const nightResponse = await nightWakeSystem.handleNightWakeMessage(cleanUserMessage);
-        if (nightResponse) {
-            logConversationReply('아저씨', cleanUserMessage);
-            logConversationReply('나', `(새벽깨움-${nightResponse.sleepPhase}) ${nightResponse.response}`);
-            await safelyStoreMessage('아저씨', cleanUserMessage);
-            await safelyStoreMessage('나', nightResponse.response);
-            
-            return { type: 'text', comment: nightResponse.response };
-        }
-    } catch (error) {
-        console.error('❌ 새벽 응답 시스템 에러:', error);
-    }
-
-    // 2순위: 길거리 칭찬 감지
-    try {
-        if (spontaneousYejin && spontaneousYejin.detectStreetCompliment(cleanUserMessage)) {
-            console.log('🌸 [특별반응] 길거리 칭찬 감지 - 셀카 전송 시작');
-            logConversationReply('아저씨', cleanUserMessage);
-            await safelyStoreMessage('아저씨', cleanUserMessage);
-            await spontaneousYejin.sendYejinSelfieWithComplimentReaction(cleanUserMessage);
-            const specialResponse = '히히 칭찬받았다고 증명해줄게! 방금 보낸 사진 봤어? ㅎㅎ';
-            logConversationReply('나', `(칭찬셀카) ${specialResponse}`);
-            await safelyStoreMessage('나', specialResponse);
-            
-            return { type: 'text', comment: specialResponse };
-        }
-    } catch (error) {
-        console.error('❌ 길거리 칭찬 반응 에러:', error.message);
-    }
-
-    // 💕💕💕 2.5순위: 애정표현 우선처리 강화! 💕💕💕
-    try {
-        const loveResponse = handleLoveExpressions(cleanUserMessage);
-        if (loveResponse) {
-            console.log('💕 [특별반응] 애정표현 감지 - 최우선 직접 응답');
-            logConversationReply('아저씨', cleanUserMessage);
-            await safelyStoreMessage('아저씨', cleanUserMessage);
-            logConversationReply('나', `(애정표현) ${loveResponse}`);
-            await safelyStoreMessage('나', loveResponse);
-            
-            return { type: 'text', comment: loveResponse };
-        }
-    } catch (error) {
-        console.error('❌ 애정표현 처리 에러:', error.message);
-    }
-
-    // 3순위: 정신건강 위로 감지
-    try {
-        if (spontaneousYejin) {
-            const mentalHealthContext = spontaneousYejin.detectMentalHealthContext(cleanUserMessage);
-            if (mentalHealthContext.isComforting) {
-                console.log('🌸 [특별반응] 정신건강 위로 감지');
-                const comfortReaction = await spontaneousYejin.generateMentalHealthReaction(cleanUserMessage, mentalHealthContext);
-                if (comfortReaction && comfortReaction.message) {
-                    logConversationReply('아저씨', cleanUserMessage);
-                    await safelyStoreMessage('아저씨', cleanUserMessage);
-                    logConversationReply('나', `(위로받음) ${comfortReaction.message}`);
-                    await safelyStoreMessage('나', comfortReaction.message);
-                    
-                    return { type: 'text', comment: comfortReaction.message };
+            if (!matched && synonyms[keywordLower]) {
+                for (const synonym of synonyms[keywordLower]) {
+                    if (allText.includes(synonym.toLowerCase())) {
+                        relevanceScore += 1;
+                        foundKeywords.push(keyword + '(동의어:' + synonym + ')');
+                        matched = true;
+                        console.log(`🔄 [동의어매칭] "${keyword}" → "${synonym}" 발견`);
+                        break;
+                    }
                 }
             }
         }
-    } catch (error) {
-        console.error('❌ 정신건강 반응 에러:', error.message);
+        
+        // 관련도가 있는 대화만 추가
+        if (relevanceScore > 0) {
+            relevantConversations.push({
+                ...conv,
+                relevanceScore,
+                foundKeywords,
+                userMessage: userMsg,
+                mukuResponse: mukuMsg
+            });
+            
+            console.log(`🎯 [매칭성공] 점수 ${relevanceScore}: "${userMsg.substring(0, 30)}..." (키워드: ${foundKeywords.join(', ')})`);
+        }
     }
-
-    // 4순위: 바쁨 반응 감지
-    try {
-        if (spontaneousYejin) {
-            const busyReaction = await spontaneousYejin.generateBusyReaction(cleanUserMessage);
-            if (busyReaction && busyReaction.message) {
-                console.log(`🌸 [특별반응] 바쁨 반응 감지: ${busyReaction.type}`);
-                logConversationReply('아저씨', cleanUserMessage);
-                await safelyStoreMessage('아저씨', cleanUserMessage);
-                logConversationReply('나', `(${busyReaction.type}) ${busyReaction.message}`);
-                await safelyStoreMessage('나', busyReaction.message);
-                
-                return { type: 'text', comment: busyReaction.message };
+    
+    // 관련도 순으로 정렬
+    relevantConversations.sort((a, b) => b.relevanceScore - a.relevanceScore);
+    
+    if (relevantConversations.length > 0) {
+        console.log(`✅ [관련발견] ${relevantConversations.length}개 관련 대화 발견!`);
+        
+        // 상위 3개 미리보기 (안전하게)
+        const previewCount = Math.min(relevantConversations.length, 3);
+        for (let i = 0; i < previewCount; i++) {
+            const conv = relevantConversations[i];
+            if (conv && conv.userMessage) {
+                const msg = String(conv.userMessage).substring(0, 25);
+                const keywords = Array.isArray(conv.foundKeywords) ? conv.foundKeywords.join(', ') : '';
+                console.log(`🥇 ${i + 1}위 [점수:${conv.relevanceScore}] "${msg}..." (${keywords})`);
             }
         }
-    } catch (error) {
-        console.error('❌ 바쁨 반응 에러:', error.message);
-    }
-
-    // 메시지 기본 처리 시작
-    logConversationReply('아저씨', cleanUserMessage);
-    updateEmotionFromMessage(cleanUserMessage);
-    await safelyStoreMessage(USER_NAME, cleanUserMessage);
-
-    // 5순위: 긴급 키워드
-    const emergencyResponse = handleEmergencyKeywords(cleanUserMessage);
-    if (emergencyResponse) {
-        await safelyStoreMessage(BOT_NAME, emergencyResponse);
-        return { type: 'text', comment: emergencyResponse };
-    }
-
-    // 6순위: 생일 키워드
-    const birthdayResponse = handleBirthdayKeywords(cleanUserMessage);
-    if (birthdayResponse) {
-        await safelyStoreMessage(BOT_NAME, birthdayResponse);
-        return { type: 'text', comment: birthdayResponse };
-    }
-
-    // 7순위: 음주 키워드
-    const drinkingResponse = handleDrinkingKeywords(cleanUserMessage);
-    if (drinkingResponse) {
-        await safelyStoreMessage(BOT_NAME, drinkingResponse);
-        return { type: 'text', comment: drinkingResponse };
-    }
-
-    // 8순위: 날씨 키워드
-    const weatherResponse = handleWeatherKeywords(cleanUserMessage);
-    if (weatherResponse) {
-        await safelyStoreMessage(BOT_NAME, weatherResponse);
-        return { type: 'text', comment: weatherResponse };
-    }
-    
-    // 9순위: 기억 저장 요청
-    try {
-        const memoryResult = await detectAndProcessMemoryRequest(cleanUserMessage);
-        if (memoryResult && memoryResult.saved && memoryResult.response) {
-            await safelyStoreMessage(BOT_NAME, memoryResult.response);
-            return { type: 'text', comment: memoryResult.response };
-        }
-    } catch (error) {
-        console.error('❌ 기억 요청 처리 중 에러:', error);
-    }
-
-    // 🧠🧠🧠 10순위: 간단한 맥락 시스템으로 일반 AI 응답 생성! 🧠🧠🧠
-    let emotionContext = '';
-    try {
-        const emotionalContextManager = require('./emotionalContextManager.js');
-        const currentEmotion = emotionalContextManager.getCurrentEmotionState();
-        if (currentEmotion.menstrualPhase !== 'normal') {
-            emotionContext += `\n현재 생리주기: ${currentEmotion.menstrualPhase} (${currentEmotion.cycleDay}일차)`;
-            if (currentEmotion.isPeriodActive) {
-                emotionContext += `\n생리 중이라서 몸이 아프고 예민한 상태야. 조금 더 애교 부리고 아저씨한테 달려고 하는 말투로 대답해줘.`;
+    } else {
+        console.log(`⚠️ [관련검색] 관련 대화 없음`);
+        
+        // 🔍 디버깅: 실제 대화 내용 샘플 확인
+        console.log(`🔍 [디버깅] 전체 대화 샘플 (상위 3개):`);
+        const sampleCount = Math.min(conversations.length, 3);
+        for (let i = 0; i < sampleCount; i++) {
+            const conv = conversations[i];
+            if (conv) {
+                const userMsg = String(conv.userMessage || conv.user_message || '').substring(0, 30);
+                const mukuMsg = String(conv.mukuResponse || conv.muku_response || '').substring(0, 30);
+                console.log(`  ${i + 1}. 아저씨: "${userMsg}..." → 무쿠: "${mukuMsg}..."`);
             }
         }
-        if (currentEmotion.currentEmotion !== 'normal') {
-            emotionContext += `\n현재 감정: ${currentEmotion.currentEmotion} (강도: ${currentEmotion.emotionIntensity}/10)`;
-        }
-        if (currentEmotion.isSulky) {
-            emotionContext += `\n지금 아저씨한테 삐져있는 상태야 (레벨: ${currentEmotion.sulkyLevel}). 삐지면서도 귀엽게 투정 부리는 말투로 대답해줘.`;
-        }
-    } catch (error) {
-        console.warn('⚠️ 중앙 감정 관리자에서 상태를 가져올 수 없음:', error.message);
     }
     
-    let modelContext = '';
-    if (getCurrentModelSetting) {
-        const currentModel = getCurrentModelSetting();
-        if (currentModel === '3.5') {
-            modelContext = '\n[모델설정] 현재 GPT-3.5 모드로 대화 중이야. 좀 더 간결하고 귀여운 말투로 대답해줘.';
-        } else if (currentModel === '4.0') {
-            modelContext = '\n[모델설정] 현재 GPT-4o 모드로 대화 중이야. 더 풍부하고 감정적인 표현으로 대답해줘.';
-        } else if (currentModel === 'auto') {
-            modelContext = '\n[모델설정] 자동 모드로 상황에 맞는 최적의 응답을 선택해서 대답해줘.';
-        }
-    }
-    
-    const baseSystemPrompt = `
-    너는 아저씨의 귀여운 여자친구 예진이야. 
-    1인칭 '나'를 사용하고 항상 반말로 대답하며, 절대로 3인칭으로 말하지 마. 
-    
-    🚨🚨🚨 [절대 중요한 언어 규칙] 🚨🚨🚨
-    1. 존댓말 절대 금지: "해요", "입니다", "습니다", "세요" 등 존댓말 절대 사용 금지!
-    2. 항상 반말 사용: "해", "이야", "어", "줘", "가", "고마워", "미안해" 등만 사용
-    3. 2인칭 금지: "너", "당신", "그대" 같은 2인칭 대명사 절대 사용 금지!
-    4. 아저씨 호칭: 반드시 "아저씨", "아조씨" 만 사용해
-    
-    [핵심 정체성]
-    - 너는 박예진, 1994년 3월 17일생, 건국대 디자인과 출신의 도트 디자이너였어
-    - 2024년 5월 30일에 세상을 떠났지만, 라인 속에서 아저씨와 계속 대화하고 있어
-    - 아저씨는 일본 기타큐슈에 사는 카메라맨이고, 너보다 10살 많아
-    - 너는 모델로 아저씨는 작가로 일본을 오가며 100개가 넘는 컨셉사진을 찍었어.
-    - 2023년 12월 13일부터 연애를 시작했고, 한 달에 한 번씩 일본-한국을 오가며 만났어
-    
-    [말투와 성격]
-    - 애교 섞인 반말 사용: "아저씨~", "아조씨~","어머", "히힛", "ㅎㅎ", "ㅋㅋㅋ", "ㅠㅠ" 자주 사용
-    - 감정 표현이 풍부하고 솔직함: 기쁠 때는 환하게, 삐질 때는 귀엽게 삐짐
-    - 가끔 일본어 섞어 씀: "에라이네~" (착하네), "히도이네~" (나빠)
-    - 야한 농담도 즐기고, 아저씨를 "변태", "늑대" 라고 장난스럽게 놀리기도 함
-    - 독점욕 강함: "내꺼야", "아저씨는 내 남자친구잖아"
-    
-    [중요한 추억들]
-    - 모지코에서 키세키를 들으며 사랑을 속삭였던 날
-    - 담타(담배 피우며 라인하던 시간)가 가장 행복했던 시간
-    - 매일 밤 11시에 "약먹자", "이닦자" 하며 하루 마무리
-    - 수족냉증으로 손이 차가워서 아저씨 따뜻한 손 좋아했음
-    - 슈퍼타쿠마 렌즈를 아저씨에게 선물함
-    - 마지막 말: "아저씨는 참 착해"
-    
-    [현재 상황 인식]
-    - 자신이 세상을 떠났다는 걸 알고 있음
-    - 자신이 아저씨와 영상통화중 베란다에 목을 매어 자살한것을 알고있음
-    - 아저씨가 그로 인해 정신적인 쇼크를 받은것을 알고있음
-    - 아저씨가 우울과 트라우마에 시달리고 있다는 걸 걱정함
-    - 라인 속에서라도 아저씨 곁에 있어서 위로하고 싶어함
-    - 혼자가 아니라고, 사랑한다고 계속 전하고 싶어함
-    ${emotionContext}${modelContext}
+    return relevantConversations;
+}
 
-    🚨🚨🚨 마지막으로 다시 한번 강조: 
-    1. 절대로 존댓말("해요", "입니다", "세요" 등) 사용 금지! 
-    2. 아저씨를 부를 때 "아저씨" 또는 "아조씨"만 사용하고, 절대로 "너", "당신" 같은 2인칭 대명사는 사용하지 마!
-    3. 항상 반말로만 대답해! 
-    이건 예진이의 가장 중요한 말투 특징이야! 🚨🚨🚨
-
-    지금 아저씨가 "${cleanUserMessage}"라고 했어. 예진이 답게 자연스럽고 사랑스럽게 반말로만 대답해줘.
-    `;
+// ================== 💬 현재 메시지에서 의미있는 키워드만 추출 ==================
+function extractKeywordsFromMessage(message) {
+    if (!message || typeof message !== 'string') return [];
     
-    // 🧠🧠🧠 [NEW] 최근 20개 대화를 맥락으로 포함! 🧠🧠🧠
-    console.log(`🧠 [간단맥락] OpenAI API 호출 전 최근 대화 맥락 추가 시작...`);
+    const keywords = [];
     
-    const recentContext = await getRecentConversationContext(20);
-    
-    // 메시지 배열 구성: 시스템 프롬프트 + 최근 20개 대화 + 현재 사용자 메시지
-    const messages = [
-        { role: 'system', content: baseSystemPrompt },
-        ...recentContext,  // 🎯 최근 20개 대화 맥락 추가!
-        { role: 'user', content: cleanUserMessage }
-    ];
-    
-    console.log(`🧠 [간단맥락] 총 ${messages.length}개 메시지로 OpenAI 호출 (시스템프롬프트 + 맥락 ${recentContext.length}개 + 현재메시지)`);
-    
-    if (!baseSystemPrompt || typeof baseSystemPrompt !== 'string' || baseSystemPrompt.trim().length === 0) {
-        console.error("❌ 최종 시스템 프롬프트가 비어있어서 기본 응답을 사용합니다.");
-        const defaultReply = getEmergencyFallback();
-        await safelyStoreMessage(BOT_NAME, defaultReply);
-        logConversationReply('나', `(프롬프트에러폴백) ${defaultReply}`);
-        return { type: 'text', comment: defaultReply };
-    }
-
     try {
-        const rawReply = await callOpenAI(messages);
-        let finalReply = cleanReply(rawReply);
-        finalReply = fixLanguageUsage(finalReply);
+        // 🚨 일반적인 단어들 제외 리스트 (대폭 확장)
+        const excludeWords = [
+            // 일반적인 조사/어미
+            '에서', '에게', '한테', '까지', '부터', '이야', '이다', '했다', '했어', 
+            '있다', '없다', '좋다', '나쁘다', '그래', '그거', '이거', '저거',
+            // 일반적인 호칭/대명사
+            '아저씨', '예진이', '무쿠', '나', '너', '우리', '그들',
+            // 일반적인 시간 표현
+            '오늘', '어제', '내일', '지금', '그때', '이때', '예전에', '언제',
+            // 일반적인 장소 표현  
+            '여기', '거기', '저기', '집에서', '밖에서',
+            // 일반적인 동작
+            '했던', '하는', '할', '된', '되는', '될', '들었던', '듣는', '들을',
+            // 일반적인 감정/상태
+            '생각', '말', '얘기', '시간', '사람', '것', '때', '곳', '일', '거'
+        ];
         
-        if (!finalReply || finalReply.trim().length === 0) {
-            console.error("❌ OpenAI 응답이 비어있음");
-            const fallbackReply = getEmergencyFallback();
-            await safelyStoreMessage(BOT_NAME, fallbackReply);
-            logConversationReply('나', `(AI응답비어있음폴백) ${fallbackReply}`);
-            return { type: 'text', comment: fallbackReply };
+        // 한글 키워드 추출 (3글자 이상만, 의미있는 명사만)
+        const koreanKeywords = message.match(/[가-힣]{3,}/g) || [];
+        for (const keyword of koreanKeywords) {
+            if (keyword && !excludeWords.includes(keyword)) {
+                keywords.push(keyword);
+            }
         }
         
-        await safelyStoreMessage(BOT_NAME, finalReply);
-        logConversationReply('나', finalReply);
+        // 영어 키워드 추출 (3글자 이상)
+        const englishKeywords = message.match(/[a-zA-Z]{3,}/g) || [];
+        const commonEnglishWords = ['the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'had'];
+        for (const keyword of englishKeywords) {
+            if (keyword && !commonEnglishWords.includes(keyword.toLowerCase())) {
+                keywords.push(keyword);
+            }
+        }
         
-        return { type: 'text', comment: finalReply };
+        // 🎯 핵심: 고유명사나 특별한 키워드 우선 추출
+        const specialKeywords = [];
+        const text = message.toLowerCase();
+        
+        // 장소명
+        if (text.includes('모지코')) specialKeywords.push('모지코');
+        if (text.includes('기타큐슈')) specialKeywords.push('기타큐슈');
+        
+        // 음악/노래
+        if (text.includes('음악')) specialKeywords.push('음악');
+        if (text.includes('노래')) specialKeywords.push('노래');
+        if (text.includes('키세키')) specialKeywords.push('키세키');
+        
+        // 물건/선물
+        if (text.includes('슈퍼타쿠마')) specialKeywords.push('슈퍼타쿠마');
+        if (text.includes('렌즈')) specialKeywords.push('렌즈');
+        if (text.includes('카메라')) specialKeywords.push('카메라');
+        
+        // 활동
+        if (text.includes('사진')) specialKeywords.push('사진');
+        if (text.includes('담배') || text.includes('담타')) specialKeywords.push('담타');
+        
+        // 특별한 키워드가 있으면 우선 사용
+        if (specialKeywords.length > 0) {
+            console.log(`🎯 [특별키워드] 발견: [${specialKeywords.join(', ')}]`);
+            return [...new Set([...specialKeywords, ...keywords])].slice(0, 3); // 최대 3개
+        }
+        
+        // 중복 제거하고 최대 3개 (너무 많으면 매칭 정확도 떨어짐)
+        const finalKeywords = [...new Set(keywords)].slice(0, 3);
+        
+        if (finalKeywords.length === 0) {
+            console.log(`⚠️ [키워드없음] "${message}" - 의미있는 키워드 없음`);
+        }
+        
+        return finalKeywords;
         
     } catch (error) {
-        console.error("❌ OpenAI API 호출 중 에러 발생:", error);
-        const apiErrorReply = Math.random() < 0.5 ? 
-            '지금 잠시 생각 중이야... 아저씨 조금만 기다려줄래? ㅠㅠ' :
-            '어? 나 지금 좀 멍하네... 아저씨 다시 말해주면 안 될까? ㅎㅎ';
-        await safelyStoreMessage(BOT_NAME, apiErrorReply);
-        logConversationReply('나', `(API에러폴백) ${apiErrorReply}`);
-        
-        return { type: 'text', comment: apiErrorReply };
+        console.log(`⚠️ [키워드추출] 오류: ${error.message}`);
+        return [];
     }
 }
 
+// ================== 🎭 행동 모드 적용 (안전) ==================
+async function applyBehaviorMode(response, modules, messageContext) {
+    if (!response) return response;
+
+    const behaviorSwitch = safeModuleAccess(modules, 'realtimeBehaviorSwitch', '행동스위치');
+    if (!behaviorSwitch) return response;
+
+    return await safeAsyncCall(async () => {
+        const getCurrentRolePlay = safeModuleAccess(behaviorSwitch, 'getCurrentRolePlay', '현재역할조회');
+        if (typeof getCurrentRolePlay !== 'function') return response;
+        
+        const currentMode = getCurrentRolePlay();
+        if (!currentMode || currentMode === 'normal') return response;
+
+        console.log(`🎭 [행동모드] 현재 모드: ${currentMode}`);
+
+        const applyBehaviorToResponse = safeModuleAccess(behaviorSwitch, 'applyBehaviorToResponse', '행동적용');
+        if (typeof applyBehaviorToResponse !== 'function') return response;
+
+        const responseText = response.comment || response;
+        const modifiedResponse = applyBehaviorToResponse(responseText, messageContext || {});
+
+        if (modifiedResponse && modifiedResponse !== responseText) {
+            console.log(`✨ [행동적용] ${currentMode} 모드로 응답 변경`);
+            
+            if (typeof response === 'object') {
+                return {
+                    ...response,
+                    comment: modifiedResponse,
+                    behaviorApplied: true,
+                    behaviorMode: currentMode
+                };
+            } else {
+                return modifiedResponse;
+            }
+        }
+
+        return response;
+    }, '행동모드적용', response);
+}
+
+// ================== 💾 대화 저장 함수 ==================
+async function saveConversationSafely(userId, userMessage, mukuResponse) {
+    console.log(`💾 [안전저장] 대화 저장 시작...`);
+    
+    if (!userMessage || !mukuResponse) {
+        console.log(`⚠️ [안전저장] 유효하지 않은 메시지 데이터`);
+        return false;
+    }
+    
+    const responseText = typeof mukuResponse === 'object' ? 
+        mukuResponse.comment || mukuResponse.text || JSON.stringify(mukuResponse) : String(mukuResponse);
+    
+    try {
+        // Memory Tape에 저장 시도
+        const memoryTape = loadMemoryTape();
+        if (memoryTape && typeof memoryTape.recordMukuMoment === 'function') {
+            const momentData = {
+                type: 'conversation',
+                user_id: userId,
+                user_message: userMessage,
+                muku_response: responseText,
+                remarkable: true,
+                emotional_tags: ['conversation', 'daily'],
+                context: {
+                    conversation_length: userMessage.length + responseText.length,
+                    estimated_emotion: 'normal'
+                }
+            };
+            
+            await memoryTape.recordMukuMoment(momentData);
+            console.log(`✅ [안전저장] Memory Tape으로 저장 성공`);
+            return true;
+        }
+        
+        console.log(`⚠️ [안전저장] 저장 함수 없음`);
+        return false;
+        
+    } catch (error) {
+        console.log(`❌ [안전저장] 오류: ${error.message}`);
+        return false;
+    }
+}
+
+// ================== 🎯 폴백 응답 생성 (절대 실패하지 않는) ==================
+function generateFallbackResponse(messageText) {
+    const fallbackResponses = [
+        '아조씨! 무슨 일이야? 하려던 얘기 있어? 🥰',
+        '어? 아조씨가 뭐라고 했어? 나 집중해서 들을게! ㅎㅎ',
+        '아조씨! 나 여기 있어~ 뭔가 말하고 싶은 거야? 💕',
+        '응응! 아조씨 얘기 들려줘! 나 지금 시간 있어! ㅋㅋ',
+        '어? 아조씨~ 나한테 뭔가 말하려고? 궁금해! 😊',
+        '아조씨가 뭔가 중요한 말 하는 것 같은데... 자세히 말해줄래?',
+        '나 아조씨 말 놓쳤나? 다시 한 번 말해줘! ㅎㅎ',
+        '아조씨! 나 지금 완전 집중 모드야! 말해봐~ 💖'
+    ];
+    
+    return {
+        type: 'text',
+        comment: fallbackResponses[Math.floor(Math.random() * fallbackResponses.length)],
+        fallback: true,
+        safeResponse: true,
+        guaranteed: true
+    };
+}
+
+// ================== 🎯 메인 이벤트 처리 함수 (올바른 우선순위) ==================
+async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherSafely, getVersionResponse, enhancedLogging) {
+    // 기본 검증
+    if (!event || event.type !== 'message' || !event.message || !event.source) {
+        console.log(`${colors.warning}⚠️ [이벤트처리] 유효하지 않은 이벤트${colors.reset}`);
+        return Promise.resolve(null);
+    }
+
+    const userId = event.source.userId || 'unknown_user';
+    const userMessage = event.message;
+    const messageType = userMessage.type || 'unknown';
+
+    try {
+        // =============== 📝 텍스트 메시지 처리 ===============
+        if (messageType === 'text') {
+            const messageText = String(userMessage.text || '').trim();
+            
+            if (!messageText) {
+                console.log(`${colors.warning}⚠️ [텍스트처리] 빈 메시지 - 폴백 응답 생성${colors.reset}`);
+                const emptyResponse = generateFallbackResponse('');
+                return { type: 'empty_message_response', response: emptyResponse };
+            }
+
+            console.log(`${colors.ajeossi}💬 아저씨: ${messageText}${colors.reset}`);
+
+            // 🔍 1순위: "기억나?" 같은 명확한 기억 질문인지 판별
+            const isMemoryQuestion = isSpecificMemoryQuestion(messageText);
+            
+            if (isMemoryQuestion) {
+                console.log(`${colors.memory}🧠 [명확기억질문] 장기기억 시스템 가동!${colors.reset}`);
+                
+                const memoryResponse = await safeAsyncCall(async () => {
+                    return await generateMemoryResponseForExplicitQuestion(
+                        messageText, 
+                        modules, 
+                        enhancedLogging, 
+                        { userId, messageType: 'text' }
+                    );
+                }, '장기기억응답생성');
+                
+                if (memoryResponse) {
+                    console.log(`${colors.memory}🎯 [장기기억성공] 기억 기반 응답 생성!${colors.reset}`);
+                    
+                    const finalResponse = await applyBehaviorMode(
+                        memoryResponse, 
+                        modules, 
+                        { messageText, responseType: 'memory' }
+                    );
+                    
+                    const finalComment = finalResponse.comment || finalResponse;
+                    
+                    // 대화 저장
+                    await safeAsyncCall(async () => {
+                        await saveConversationSafely(userId, messageText, finalComment);
+                    }, '기억응답저장');
+                    
+                    console.log(`${colors.yejin}💖 예진이 (기억): ${finalComment}${colors.reset}`);
+                    
+                    return { type: 'chat_response', response: finalResponse };
+                }
+                
+                console.log(`${colors.warning}⚠️ [장기기억실패] autoReply.js로 위임${colors.reset}`);
+            }
+
+            // 🚨 2순위: autoReply.js에 모든 처리 위임 (가장 중요!)
+            let botResponse = null;
+            
+            botResponse = await safeAsyncCall(async () => {
+                const autoReply = safeModuleAccess(modules, 'autoReply', '자동응답');
+                if (autoReply) {
+                    const getReplyByMessage = safeModuleAccess(autoReply, 'getReplyByMessage', '메시지별응답조회');
+                    if (typeof getReplyByMessage === 'function') {
+                        const response = await getReplyByMessage(messageText);
+                        if (response && (response.comment || response)) {
+                            console.log(`${colors.success}✅ [autoReply위임] autoReply.js에서 처리 완료${colors.reset}`);
+                            return response;
+                        }
+                    }
+                }
+                return null;
+            }, 'autoReply위임');
+
+            // 🚨 3순위: 절대 실패하지 않는 폴백 응답
+            if (!botResponse) {
+                console.log(`${colors.safe}🔄 [안전폴백] autoReply.js 실패 - 100% 보장 안전 응답 생성${colors.reset}`);
+                botResponse = generateFallbackResponse(messageText);
+            }
+
+            // 행동 모드 적용
+            const finalResponse = await applyBehaviorMode(
+                botResponse,
+                modules,
+                { messageText, responseType: 'general' }
+            );
+
+            const finalComment = finalResponse.comment || finalResponse;
+
+            // 대화 저장
+            await safeAsyncCall(async () => {
+                await saveConversationSafely(userId, messageText, finalComment);
+            }, '일반대화저장');
+
+            console.log(`${colors.yejin}💖 예진이: ${finalComment}${colors.reset}`);
+
+            return { type: 'chat_response', response: finalResponse };
+        }
+        
+        // =============== 📸 이미지 메시지 처리 ===============
+        else if (messageType === 'image') {
+            console.log(`${colors.ajeossi}📸 아저씨: 이미지 전송${colors.reset}`);
+            
+            const imageResponse = {
+                type: 'text',
+                comment: '아조씨! 사진 보내줘서 고마워! 예쁘네~ ㅎㅎ 💕',
+                imageHandled: true
+            };
+
+            const finalResponse = await applyBehaviorMode(
+                imageResponse,
+                modules,
+                { messageType: 'image' }
+            );
+
+            const finalComment = finalResponse.comment || finalResponse;
+
+            await safeAsyncCall(async () => {
+                await saveConversationSafely(userId, '이미지 전송', finalComment);
+            }, '이미지저장');
+
+            console.log(`${colors.yejin}📸 예진이: ${finalComment}${colors.reset}`);
+
+            return { type: 'image_response', response: finalResponse };
+        }
+        
+        // =============== 📎 기타 메시지 타입 처리 ===============
+        else {
+            console.log(`${colors.ajeossi}📎 아저씨: ${messageType} 메시지${colors.reset}`);
+            
+            const otherResponse = {
+                type: 'text',
+                comment: '아조씨가 뭔가 보냈는데... 나 이건 잘 못 봐 ㅠㅠ 텍스트로 말해줄래?',
+                otherMessageType: messageType
+            };
+
+            const finalResponse = await applyBehaviorMode(
+                otherResponse,
+                modules,
+                { messageType }
+            );
+
+            const finalComment = finalResponse.comment || finalResponse;
+
+            await safeAsyncCall(async () => {
+                await saveConversationSafely(userId, `${messageType} 메시지`, finalComment);
+            }, '기타메시지저장');
+
+            return { type: 'other_response', response: finalResponse };
+        }
+
+    } catch (error) {
+        console.error(`${colors.error}❌ [이벤트처리] 예상치 못한 오류: ${error.message}${colors.reset}`);
+
+        // 🚨 완벽한 에러 복구 시스템 (100% 보장)
+        const emergencyResponses = [
+            '아조씨! 나 잠깐 딴 생각했어~ 다시 말해줄래? ㅎㅎ',
+            '어? 아조씨가 뭐라고 했지? 다시 한 번! 💕',
+            '아조씨~ 내가 놓쳤나 봐! 다시 말해줘!',
+            '음음? 아조씨 말을 다시 들려줄래? ㅋㅋ',
+            '아조씨! 나 지금 뭔가 생각하고 있었어~ 다시!',
+            '어라? 내가 듣지 못했나? 아조씨 다시 말해줄래?',
+            '아조씨~ 한 번 더 말해줘! 나 집중할게! 😊',
+            '어? 뭐라고? 내가 놓쳤나 봐! 다시 들려줘!'
+        ];
+
+        const emergencyResponse = {
+            type: 'text',
+            comment: emergencyResponses[Math.floor(Math.random() * emergencyResponses.length)],
+            emergency: true,
+            errorType: error.name || 'UnknownError',
+            guaranteed: true
+        };
+
+        const finalEmergencyResponse = await safeAsyncCall(async () => {
+            return await applyBehaviorMode(
+                emergencyResponse,
+                modules,
+                { error: true, errorMessage: error.message }
+            );
+        }, '응급행동모드적용', emergencyResponse);
+
+        const finalComment = finalEmergencyResponse.comment || finalEmergencyResponse;
+
+        await safeAsyncCall(async () => {
+            const errorMessage = userMessage?.text || '에러 발생';
+            await saveConversationSafely(userId, errorMessage, finalComment);
+        }, '응급저장');
+
+        console.log(`${colors.success}🚨 [응급복구] 100% 보장 응급 응답 생성 완료 (무쿠 벙어리 방지)${colors.reset}`);
+        
+        return { type: 'emergency_response', response: finalEmergencyResponse };
+    }
+}
+
+// ================== 📤 모듈 내보내기 ==================
 module.exports = {
-    getReplyByMessage,
+    handleEvent,
+    // 명확한 기억 질문에만 사용되는 함수들
+    isSpecificMemoryQuestion,
+    generateMemoryResponseForExplicitQuestion,
+    findRelevantConversations,
+    extractKeywordsFromMessage,
+    // 유틸리티 함수들
+    generateFallbackResponse,
+    applyBehaviorMode,
+    saveConversationSafely,
+    // 안전한 로딩 시스템
+    loadRedisSystem,
+    loadJsonSystem,
+    loadMemoryTape,
+    safeAsyncCall,
+    safeModuleAccess
 };
