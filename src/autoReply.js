@@ -1,10 +1,10 @@
 // ============================================================================
-// autoReply.js - v16.0 (간단한 맥락 시스템 - 최근 20개 대화만)
-// 🧠 복잡한 맥락 시스템 제거, OpenAI API 호출시 최근 20개 대화만 포함하는 간단한 구조
+// autoReply.js - v16.1 (Memory Tape Redis 연결로 단기기억 문제 해결!)
+// 🧠 Memory Tape Redis에서 직접 최근 대화 불러와서 맥락 생성
 // 🌸 사진 명령어, 애정표현, 특별반응들은 그대로 유지
 // 🛡️ 절대 벙어리 방지: 모든 에러 상황에서도 예진이는 반드시 대답함!
 // 🎯 "기억나?" 질문은 eventProcessor에서 처리하므로 여기서는 일반 대화만 담당
-// ✨ 최근 대화 20개를 자연스럽게 참고하여 맥락 있는 대화 생성
+// ✨ Memory Tape Redis 연결로 이틀치 대화 기억 가능!
 // ============================================================================
 
 const { callOpenAI, cleanReply } = require('./aiUtils');
@@ -439,96 +439,96 @@ async function safelyStoreMessage(speaker, message) {
     }
 }
 
-// 🧠🧠🧠 [NEW] 간단한 맥락 시스템 - 최근 20개 대화만! 🧠🧠🧠
+// 🧠🧠🧠 [수정] Memory Tape Redis 연결로 단기기억 해결! 🧠🧠🧠
 async function getRecentConversationContext(limit = 20) {
-    console.log(`🧠 [간단맥락] 최근 ${limit}개 대화 조회 시작...`);
+    console.log(`🧠 [Memory Tape 연결] 최근 ${limit}개 대화 조회 시작...`);
     
     try {
-        const conversationContext = require('./ultimateConversationContext.js');
-        if (!conversationContext) {
-            console.log('⚠️ [간단맥락] ultimateConversationContext 모듈 없음');
+        // 🔧 Memory Tape Redis 시스템 연결
+        const memoryTape = require('../data/memory-tape/muku-memory-tape.js');
+        if (!memoryTape) {
+            console.log('⚠️ [Memory Tape 연결] Memory Tape 모듈 없음');
             return [];
         }
         
-        // 다양한 함수 시도
-        const functionNames = [
-            'getRecentConversations',
-            'getUltimateMessages', 
-            'getAllConversations'
-        ];
+        // 🔍 오늘 기억들 조회
+        const todayMemories = await memoryTape.readDailyMemories();
+        let conversations = [];
         
-        for (const funcName of functionNames) {
-            if (typeof conversationContext[funcName] === 'function') {
-                console.log(`🔧 [간단맥락] ${funcName} 시도...`);
-                
-                try {
-                    let conversations = [];
+        if (todayMemories && todayMemories.moments && Array.isArray(todayMemories.moments)) {
+            // 대화 타입만 필터링하고 시간순 정렬
+            const conversationMoments = todayMemories.moments
+                .filter(moment => moment && moment.type === 'conversation')
+                .sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0))
+                .slice(0, limit); // 요청된 개수만큼만
+            
+            // OpenAI 형식으로 변환
+            for (const moment of conversationMoments) {
+                if (moment.user_message && moment.muku_response) {
+                    // 사용자 메시지
+                    conversations.push({
+                        role: 'user',
+                        content: String(moment.user_message).trim()
+                    });
                     
-                    if (funcName === 'getAllConversations') {
-                        const allConvs = await conversationContext[funcName]();
-                        conversations = Array.isArray(allConvs) ? allConvs.slice(-limit) : [];
-                    } else {
-                        conversations = await conversationContext[funcName](limit);
-                    }
-                    
-                    if (conversations && conversations.length > 0) {
-                        console.log(`✅ [간단맥락] ${funcName}으로 ${conversations.length}개 대화 발견!`);
-                        
-                        // OpenAI 형식으로 변환
-                        const contextMessages = [];
-                        
-                        for (const conv of conversations) {
-                            if (!conv) continue;
-                            
-                            // 다양한 필드명 처리
-                            const userMsg = conv.userMessage || conv.user || conv.message || conv.content;
-                            const botMsg = conv.botResponse || conv.muku || conv.response || conv.reply;
-                            
-                            if (userMsg && typeof userMsg === 'string' && userMsg.trim()) {
-                                contextMessages.push({
-                                    role: 'user',
-                                    content: userMsg.trim()
-                                });
-                            }
-                            
-                            if (botMsg && typeof botMsg === 'string' && botMsg.trim()) {
-                                contextMessages.push({
-                                    role: 'assistant', 
-                                    content: botMsg.trim()
-                                });
-                            }
-                        }
-                        
-                        console.log(`🎯 [간단맥락] ${contextMessages.length}개 메시지를 맥락으로 변환 완료`);
-                        
-                        // 최근 20개만 유지 (user + assistant 쌍으로)
-                        const recentMessages = contextMessages.slice(-limit);
-                        
-                        if (recentMessages.length > 0) {
-                            console.log(`📝 [간단맥락] 최근 대화 미리보기:`);
-                            const previewCount = Math.min(recentMessages.length, 4);
-                            for (let i = recentMessages.length - previewCount; i < recentMessages.length; i++) {
-                                const msg = recentMessages[i];
-                                const role = msg.role === 'user' ? '아저씨' : '예진이';
-                                const content = msg.content.substring(0, 30);
-                                console.log(`  ${role}: "${content}..."`);
-                            }
-                        }
-                        
-                        return recentMessages;
-                    }
-                } catch (funcError) {
-                    console.log(`⚠️ [간단맥락] ${funcName} 실패: ${funcError.message}`);
-                    continue;
+                    // 무쿠 응답
+                    conversations.push({
+                        role: 'assistant',
+                        content: String(moment.muku_response).trim()
+                    });
                 }
             }
         }
         
-        console.log('⚠️ [간단맥락] 모든 함수 시도 실패 - 빈 맥락 반환');
-        return [];
+        // 🔄 최신 순서로 정렬 (오래된 것부터)
+        conversations.reverse();
+        
+        console.log(`✅ [Memory Tape 연결] ${conversations.length}개 메시지를 맥락으로 변환 완료`);
+        
+        if (conversations.length > 0) {
+            console.log(`📝 [Memory Tape 연결] 최근 대화 미리보기:`);
+            const previewCount = Math.min(conversations.length, 4);
+            for (let i = conversations.length - previewCount; i < conversations.length; i++) {
+                const msg = conversations[i];
+                const role = msg.role === 'user' ? '아저씨' : '예진이';
+                const content = msg.content.substring(0, 30);
+                console.log(`  ${role}: "${content}..."`);
+            }
+        }
+        
+        return conversations;
         
     } catch (error) {
-        console.log(`❌ [간단맥락] 오류: ${error.message}`);
+        console.log(`❌ [Memory Tape 연결] 오류: ${error.message}`);
+        
+        // 🛡️ 안전장치: 기존 방식도 시도
+        try {
+            console.log('🔄 [Memory Tape 연결] 기존 방식으로 폴백 시도...');
+            const conversationContext = require('./ultimateConversationContext.js');
+            if (conversationContext) {
+                // 기존 함수들 시도
+                const functionNames = [
+                    'getRecentConversations',
+                    'getUltimateMessages', 
+                    'getAllConversations'
+                ];
+                
+                for (const funcName of functionNames) {
+                    if (typeof conversationContext[funcName] === 'function') {
+                        console.log(`🔧 [폴백] ${funcName} 시도...`);
+                        const result = await conversationContext[funcName](limit);
+                        if (result && result.length > 0) {
+                            console.log(`✅ [폴백 성공] ${funcName}으로 ${result.length}개 대화 발견!`);
+                            return result;
+                        }
+                    }
+                }
+            }
+        } catch (fallbackError) {
+            console.log(`⚠️ [폴백 실패] ${fallbackError.message}`);
+        }
+        
+        console.log('⚠️ [Memory Tape 연결] 모든 시도 실패 - 빈 맥락 반환');
         return [];
     }
 }
@@ -781,7 +781,7 @@ async function getReplyByMessage(userMessage) {
         console.error('❌ 기억 요청 처리 중 에러:', error);
     }
 
-    // 🧠🧠🧠 10순위: 간단한 맥락 시스템으로 일반 AI 응답 생성! 🧠🧠🧠
+    // 🧠🧠🧠 10순위: Memory Tape Redis 연결로 일반 AI 응답 생성! 🧠🧠🧠
     let emotionContext = '';
     try {
         const emotionalContextManager = require('./emotionalContextManager.js');
@@ -865,19 +865,19 @@ async function getReplyByMessage(userMessage) {
     지금 아저씨가 "${cleanUserMessage}"라고 했어. 예진이 답게 자연스럽고 사랑스럽게 반말로만 대답해줘.
     `;
     
-    // 🧠🧠🧠 [NEW] 최근 20개 대화를 맥락으로 포함! 🧠🧠🧠
-    console.log(`🧠 [간단맥락] OpenAI API 호출 전 최근 대화 맥락 추가 시작...`);
+    // 🧠🧠🧠 [NEW] Memory Tape Redis에서 최근 대화를 맥락으로 포함! 🧠🧠🧠
+    console.log(`🧠 [Memory Tape 맥락] OpenAI API 호출 전 최근 대화 맥락 추가 시작...`);
     
     const recentContext = await getRecentConversationContext(20);
     
     // 메시지 배열 구성: 시스템 프롬프트 + 최근 20개 대화 + 현재 사용자 메시지
     const messages = [
         { role: 'system', content: baseSystemPrompt },
-        ...recentContext,  // 🎯 최근 20개 대화 맥락 추가!
+        ...recentContext,  // 🎯 Memory Tape Redis에서 가져온 최근 대화 맥락 추가!
         { role: 'user', content: cleanUserMessage }
     ];
     
-    console.log(`🧠 [간단맥락] 총 ${messages.length}개 메시지로 OpenAI 호출 (시스템프롬프트 + 맥락 ${recentContext.length}개 + 현재메시지)`);
+    console.log(`🧠 [Memory Tape 맥락] 총 ${messages.length}개 메시지로 OpenAI 호출 (시스템프롬프트 + 맥락 ${recentContext.length}개 + 현재메시지)`);
     
     if (!baseSystemPrompt || typeof baseSystemPrompt !== 'string' || baseSystemPrompt.trim().length === 0) {
         console.error("❌ 최종 시스템 프롬프트가 비어있어서 기본 응답을 사용합니다.");
