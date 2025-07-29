@@ -1,34 +1,14 @@
 // ============================================================================
-// autoReply.js - v15.7 (선별적 맥락 시스템 적용)
-// 🧠 기억 관리, 키워드 반응, 예진이 특별반응, 최종 프롬프트 생성을 책임지는 핵심 두뇌
-// 🌸 길거리 칭찬 → 셀카, 위로 → 고마워함, 바쁨 → 삐짐 반응 추가
+// autoReply.js - v16.0 (간단한 맥락 시스템 - 최근 20개 대화만)
+// 🧠 복잡한 맥락 시스템 제거, OpenAI API 호출시 최근 20개 대화만 포함하는 간단한 구조
+// 🌸 사진 명령어, 애정표현, 특별반응들은 그대로 유지
 // 🛡️ 절대 벙어리 방지: 모든 에러 상황에서도 예진이는 반드시 대답함!
-// 🌦️ 날씨 오인식 해결: "빔비" 같은 글자에서 '비' 감지 안 함
-// 🎂 생일 감지 에러 해결: checkBirthday 메소드 추가
-// ✨ GPT 모델 버전 전환: aiUtils.js의 자동 모델 선택 기능 활용
-// 🔧 selectedModel undefined 에러 완전 해결
-// ⭐️ 2인칭 "너" 사용 완전 방지: 시스템 프롬프트 + 후처리 안전장치
-// 🚨 존댓말 완전 방지: 절대로 존댓말 안 함, 항상 반말만 사용
-// 🆕 NEW: commandHandler 호출 추가 - "셀카줘", "컨셉사진줘", "추억사진줘" 명령어 지원!
-// 💕 NEW: 애정표현 우선처리 - "사랑해"를 위로가 아닌 애정표현으로 올바르게 인식!
-// 🧠 NEW: 자연스러운 맥락 시스템 - 모든 대화에서 자연스럽게 과거 맥락 참고!
-// 📸 FIXED: 사진 명령어 직접 처리 - commandHandler 실패해도 100% 작동 보장!
-// 🔥 BREAKTHROUGH: "기억 질문" 구분 완전 제거 - 진짜 자연스러운 대화!
-// 🎯 FIXED: 선별적 맥락 시스템 - 정말 필요한 기억 질문에만 맥락 사용!
+// 🎯 "기억나?" 질문은 eventProcessor에서 처리하므로 여기서는 일반 대화만 담당
+// ✨ 최근 대화 20개를 자연스럽게 참고하여 맥락 있는 대화 생성
 // ============================================================================
 
 const { callOpenAI, cleanReply } = require('./aiUtils');
 const moment = require('moment-timezone');
-
-// 🧠 [NEW] 안전한 맥락 엔진 연동
-let contextEngine = null;
-try {
-    contextEngine = require('./muku-contextEngine');
-    console.log('🧠 [autoReply] 맥락 엔진 연동 성공 - 똑똑한 대화 시작!');
-} catch (error) {
-    console.log('⚠️ [autoReply] 맥락 엔진 없음 - 기본 모드로 작동');
-    console.warn('맥락 엔진 로드 실패:', error.message);
-}
 
 // ✨ GPT 모델 버전 관리 시스템 import
 let getCurrentModelSetting = null;
@@ -39,26 +19,6 @@ try {
 } catch (error) {
     console.warn('⚠️ [autoReply] GPT 모델 버전 관리 시스템 연동 실패:', error.message);
 }
-
-// 🧠 [추가] 학습 과정 추적을 위한 의존성
-let logLearningDebug = () => {}; // 기본 빈 함수
-let analyzeMessageForNewInfo = () => ({ hasNewInfo: false });
-let searchMemories = async () => [];
-let getRecentMessages = async () => [];
-try {
-    // enhancedLogging에서 로그 함수 가져오기 (가정)
-    const enhancedLogging = require('./enhancedLogging');
-    logLearningDebug = enhancedLogging.logLearningDebug || logLearningDebug;
-
-    // ultimateContext에서 분석 및 검색 함수 가져오기 (가정)
-    const ultimateContext = require('./ultimateConversationContext');
-    analyzeMessageForNewInfo = ultimateContext.analyzeMessageForNewInfo || analyzeMessageForNewInfo;
-    searchMemories = ultimateContext.searchMemories || searchMemories;
-    getRecentMessages = ultimateContext.getRecentMessages || getRecentMessages;
-} catch(error) {
-    console.warn('⚠️ [autoReply] 학습 추적 모듈 연동 실패:', error.message);
-}
-
 
 // ⭐ 새벽 응답 시스템 추가
 const nightWakeSystem = require('./night_wake_response.js');
@@ -98,7 +58,7 @@ function getEmergencyFallback() {
     return EMERGENCY_FALLBACK_RESPONSES[Math.floor(Math.random() * EMERGENCY_FALLBACK_RESPONSES.length)];
 }
 
-// 🚨🚨🚨 [긴급 추가] 존댓말 완전 방지 함수 (전체 버전) 🚨🚨🚨
+// 🚨🚨🚨 [기존] 존댓말 완전 방지 함수 🚨🚨🚨
 function checkAndFixHonorificUsage(reply) {
     if (!reply || typeof reply !== 'string') return reply;
     
@@ -163,246 +123,7 @@ function checkAndFixHonorificUsage(reply) {
         .replace(/춥워요/g, '추워')
         .replace(/더워요/g, '더워')
         .replace(/더우세요/g, '더워')
-        .replace(/추우세요/g, '추워')
-        .replace(/가세요/g, '가')
-        .replace(/오세요/g, '와')
-        .replace(/계세요/g, '있어')
-        .replace(/계십니다/g, '있어')
-        .replace(/있으세요/g, '있어')
-        .replace(/없으세요/g, '없어')
-        .replace(/드세요/g, '먹어')
-        .replace(/잡수세요/g, '먹어')
-        .replace(/주무세요/g, '자')
-        .replace(/일어나세요/g, '일어나')
-        .replace(/앉으세요/g, '앉아')
-        .replace(/서세요/g, '서')
-        .replace(/보세요/g, '봐')
-        .replace(/들어보세요/g, '들어봐')
-        .replace(/생각해보세요/g, '생각해봐')
-        .replace(/기억하세요/g, '기억해')
-        .replace(/알아보세요/g, '알아봐')
-        .replace(/찾아보세요/g, '찾아봐')
-        .replace(/확인해보세요/g, '확인해봐')
-        .replace(/연락하세요/g, '연락해')
-        .replace(/전화하세요/g, '전화해')
-        .replace(/메시지하세요/g, '메시지해')
-        .replace(/이해하세요/g, '이해해')
-        .replace(/참으세요/g, '참아')
-        .replace(/기다리세요/g, '기다려')
-        .replace(/조심하세요/g, '조심해')
-        .replace(/건강하세요/g, '건강해')
-        .replace(/잘하세요/g, '잘해')
-        .replace(/화이팅하세요/g, '화이팅해')
-        .replace(/힘내세요/g, '힘내')
-        .replace(/수고하세요/g, '수고해')
-        .replace(/잘자요/g, '잘자')
-        .replace(/잘 주무세요/g, '잘자')
-        .replace(/편안히 주무세요/g, '편안히 자')
-        .replace(/달콤한 꿈 꾸세요/g, '달콤한 꿈 꿔')
-        .replace(/고생하셨어요/g, '고생했어')
-        .replace(/괜찮으시면/g, '괜찮으면')
-        .replace(/괜찮으세요/g, '괜찮아')
-        .replace(/힘드시겠어요/g, '힘들겠어')
-        .replace(/피곤하시겠어요/g, '피곤하겠어')
-        .replace(/바쁘시겠어요/g, '바쁘겠어')
-        .replace(/바쁘세요/g, '바빠')
-        .replace(/시간 있으세요/g, '시간 있어')
-        .replace(/시간 되세요/g, '시간 돼')
-        .replace(/가능하세요/g, '가능해')
-        .replace(/불가능하세요/g, '불가능해')
-        .replace(/어려우세요/g, '어려워')
-        .replace(/쉬우세요/g, '쉬워')
-        .replace(/복잡하세요/g, '복잡해')
-        .replace(/간단하세요/g, '간단해')
-        .replace(/빠르세요/g, '빨라')
-        .replace(/느리세요/g, '느려')
-        .replace(/크세요/g, '커')
-        .replace(/작으세요/g, '작아')
-        .replace(/높으세요/g, '높아')
-        .replace(/낮으세요/g, '낮아')
-        .replace(/넓으세요/g, '넓어')
-        .replace(/좁으세요/g, '좁아')
-        .replace(/두꺼우세요/g, '두꺼워')
-        .replace(/얇으세요/g, '얇아')
-        .replace(/무거우세요/g, '무거워')
-        .replace(/가벼우세요/g, '가벼워')
-        .replace(/예쁘세요/g, '예뻐')
-        .replace(/멋있으세요/g, '멋있어')
-        .replace(/잘생기셨어요/g, '잘생겼어')
-        .replace(/귀여우세요/g, '귀여워')
-        .replace(/웃기세요/g, '웃겨')
-        .replace(/재미있어요/g, '재밌어')
-        .replace(/지루해요/g, '지루해')
-        .replace(/신나요/g, '신나')
-        .replace(/설레요/g, '설레')
-        .replace(/떨려요/g, '떨려')
-        .replace(/무서워요/g, '무서워')
-        .replace(/걱정돼요/g, '걱정돼')
-        .replace(/안심돼요/g, '안심돼')
-        .replace(/다행이에요/g, '다행이야')
-        .replace(/축하해요/g, '축하해')
-        .replace(/축하드려요/g, '축하해')
-        .replace(/축하드립니다/g, '축하해')
-        .replace(/생일 축하해요/g, '생일 축하해')
-        .replace(/생일 축하드려요/g, '생일 축하해')
-        .replace(/새해 복 많이 받으세요/g, '새해 복 많이 받아')
-        .replace(/메리 크리스마스에요/g, '메리 크리스마스')
-        .replace(/즐거운 하루 되세요/g, '즐거운 하루 돼')
-        .replace(/좋은 하루 되세요/g, '좋은 하루 돼')
-        .replace(/행복한 하루 되세요/g, '행복한 하루 돼')
-        .replace(/알겠습니다/g, '알겠어')
-        .replace(/네 알겠어요/g, '응 알겠어')
-        .replace(/네 알았어요/g, '응 알았어')
-        .replace(/네 맞아요/g, '응 맞아')
-        .replace(/네 그래요/g, '응 그래')
-        .replace(/네 좋아요/g, '응 좋아')
-        .replace(/네 괜찮아요/g, '응 괜찮아')
-        .replace(/잘하셨어요/g, '잘했어')
-        .replace(/잘하고 계세요/g, '잘하고 있어')
-        .replace(/잘하고 있어요/g, '잘하고 있어')
-        .replace(/열심히 하세요/g, '열심히 해')
-        .replace(/열심히 하고 있어요/g, '열심히 하고 있어')
-        .replace(/최선을 다하세요/g, '최선을 다해')
-        .replace(/최선을 다하고 있어요/g, '최선을 다하고 있어')
-        .replace(/노력하세요/g, '노력해')
-        .replace(/노력하고 있어요/g, '노력하고 있어')
-        .replace(/포기하지 마세요/g, '포기하지 마')
-        .replace(/포기하지 말아요/g, '포기하지 마')
-        .replace(/끝까지 해보세요/g, '끝까지 해봐')
-        .replace(/끝까지 해봐요/g, '끝까지 해봐')
-        .replace(/잘될 거예요/g, '잘될 거야')
-        .replace(/잘될 겁니다/g, '잘될 거야')
-        .replace(/괜찮을 거예요/g, '괜찮을 거야')
-        .replace(/괜찮을 겁니다/g, '괜찮을 거야')
-        .replace(/문제없을 거예요/g, '문제없을 거야')
-        .replace(/문제없을 겁니다/g, '문제없을 거야')
-        .replace(/걱정하지 마세요/g, '걱정하지 마')
-        .replace(/걱정하지 말아요/g, '걱정하지 마')
-        .replace(/걱정 안 해도 돼요/g, '걱정 안 해도 돼')
-        .replace(/안전해요/g, '안전해')
-        .replace(/위험해요/g, '위험해')
-        .replace(/조심해요/g, '조심해')
-        .replace(/주의해요/g, '주의해')
-        .replace(/사실이에요/g, '사실이야')
-        .replace(/진짜예요/g, '진짜야')
-        .replace(/정말이에요/g, '정말이야')
-        .replace(/확실해요/g, '확실해')
-        .replace(/틀렸어요/g, '틀렸어')
-        .replace(/맞아요/g, '맞아')
-        .replace(/다양해요/g, '다양해')
-        .replace(/특별해요/g, '특별해')
-        .replace(/일반적이에요/g, '일반적이야')
-        .replace(/보통이에요/g, '보통이야')
-        .replace(/평범해요/g, '평범해')
-        .replace(/독특해요/g, '독특해')
-        .replace(/이상해요/g, '이상해')
-        .replace(/신기해요/g, '신기해')
-        .replace(/놀라워요/g, '놀라워')
-        .replace(/당연해요/g, '당연해')
-        .replace(/당연히 그래요/g, '당연히 그래')
-        .replace(/그럼요/g, '그럼')
-        .replace(/물론이에요/g, '물론이야')
-        .replace(/물론이죠/g, '물론이지')
-        .replace(/아마도요/g, '아마도')
-        .replace(/아마 그럴 거예요/g, '아마 그럴 거야')
-        .replace(/아마 맞을 거예요/g, '아마 맞을 거야')
-        .replace(/아직 몰라요/g, '아직 몰라')
-        .replace(/아직 잘 모르겠어요/g, '아직 잘 모르겠어')
-        .replace(/확실하지 않아요/g, '확실하지 않아')
-        .replace(/확신할 수 없어요/g, '확신할 수 없어')
-        .replace(/아직 생각해봐야 해요/g, '아직 생각해봐야 해')
-        .replace(/더 생각해봐요/g, '더 생각해봐')
-        .replace(/생각해볼게요/g, '생각해볼게')
-        .replace(/고민해볼게요/g, '고민해볼게')
-        .replace(/결정해볼게요/g, '결정해볼게')
-        .replace(/선택해볼게요/g, '선택해볼게')
-        .replace(/시도해볼게요/g, '시도해볼게')
-        .replace(/노력해볼게요/g, '노력해볼게')
-        .replace(/도전해볼게요/g, '도전해볼게')
-        .replace(/해볼게요/g, '해볼게')
-        .replace(/할게요/g, '할게')
-        .replace(/그러겠어요/g, '그러겠어')
-        .replace(/그럴게요/g, '그럴게')
-        .replace(/그래요/g, '그래')
-        .replace(/안 그래요/g, '안 그래')
-        .replace(/아니에요/g, '아니야')
-        .replace(/됐어요/g, '됐어')
-        .replace(/안 돼요/g, '안 돼')
-        .replace(/가능해요/g, '가능해')
-        .replace(/불가능해요/g, '불가능해')
-        .replace(/어려워요/g, '어려워')
-        .replace(/쉬워요/g, '쉬워')
-        .replace(/복잡해요/g, '복잡해')
-        .replace(/간단해요/g, '간단해')
-        .replace(/힘들어요/g, '힘들어')
-        .replace(/편해요/g, '편해')
-        .replace(/불편해요/g, '불편해')
-        .replace(/편리해요/g, '편리해')
-        .replace(/유용해요/g, '유용해')
-        .replace(/도움이 돼요/g, '도움이 돼')
-        .replace(/도움이 안 돼요/g, '도움이 안 돼')
-        .replace(/필요해요/g, '필요해')
-        .replace(/필요 없어요/g, '필요 없어')
-        .replace(/중요해요/g, '중요해')
-        .replace(/중요하지 않아요/g, '중요하지 않아')
-        .replace(/급해요/g, '급해')
-        .replace(/급하지 않아요/g, '급하지 않아')
-        .replace(/여유가 있어요/g, '여유가 있어')
-        .replace(/여유가 없어요/g, '여유가 없어')
-        .replace(/바빠요/g, '바빠')
-        .replace(/한가해요/g, '한가해')
-        .replace(/심심해요/g, '심심해')
-        .replace(/즐거워요/g, '즐거워')
-        .replace(/슬퍼요/g, '슬퍼')
-        .replace(/화나요/g, '화나')
-        .replace(/기뻐요/g, '기뻐')
-        .replace(/행복해요/g, '행복해')
-        .replace(/만족해요/g, '만족해')
-        .replace(/불만이에요/g, '불만이야')
-        .replace(/후회돼요/g, '후회돼')
-        .replace(/아쉬워요/g, '아쉬워')
-        .replace(/아깝다고 생각해요/g, '아깝다고 생각해')
-        .replace(/다행이라고 생각해요/g, '다행이라고 생각해')
-        .replace(/다행이네요/g, '다행이네')
-        .replace(/안타까워요/g, '안타까워')
-        .replace(/억울해요/g, '억울해')
-        .replace(/답답해요/g, '답답해')
-        .replace(/시원해요/g, '시원해')
-        .replace(/미안해요/g, '미안해')
-        .replace(/고마워요/g, '고마워')
-        .replace(/놀랐어요/g, '놀랐어')
-        .replace(/당황했어요/g, '당황했어')
-        .replace(/깜짝 놀랐어요/g, '깜짝 놀랐어')
-        .replace(/충격이에요/g, '충격이야')
-        .replace(/실망이에요/g, '실망이야')
-        .replace(/기대돼요/g, '기대돼')
-        .replace(/기대가 커요/g, '기대가 커')
-        .replace(/기대하고 있어요/g, '기대하고 있어')
-        .replace(/기다리고 있어요/g, '기다리고 있어')
-        .replace(/기다리겠어요/g, '기다리겠어')
-        .replace(/연락할게요/g, '연락할게')
-        .replace(/연락드릴게요/g, '연락할게')
-        .replace(/전화할게요/g, '전화할게')
-        .replace(/전화드릴게요/g, '전화할게')
-        .replace(/메시지 보낼게요/g, '메시지 보낼게')
-        .replace(/메시지 드릴게요/g, '메시지 줄게')
-        .replace(/답장할게요/g, '답장할게')
-        .replace(/답장드릴게요/g, '답장할게')
-        .replace(/회신할게요/g, '회신할게')
-        .replace(/회신드릴게요/g, '회신할게')
-        .replace(/돌아올게요/g, '돌아올게')
-        .replace(/돌아가겠어요/g, '돌아가겠어')
-        .replace(/집에 갈게요/g, '집에 갈게')
-        .replace(/집에 가겠어요/g, '집에 가겠어')
-        .replace(/일찍 갈게요/g, '일찍 갈게')
-        .replace(/늦게 갈게요/g, '늦게 갈게')
-        .replace(/빨리 갈게요/g, '빨리 갈게')
-        .replace(/천천히 갈게요/g, '천천히 갈게')
-        .replace(/조심히 갈게요/g, '조심히 갈게')
-        .replace(/안전하게 갈게요/g, '안전하게 갈게')
-        .replace(/잘 갔다 올게요/g, '잘 갔다 올게')
-        .replace(/다녀올게요/g, '다녀올게')
-        .replace(/나갔다 올게요/g, '나갔다 올게');
+        .replace(/추우세요/g, '추워');
 
     if (fixedReply !== reply) {
         console.log(`🚨 [존댓말수정] "${reply.substring(0, 30)}..." → "${fixedReply.substring(0, 30)}..."`);
@@ -470,15 +191,13 @@ function fixLanguageUsage(reply) {
     return fixedReply;
 }
 
-// 💕 [FIXED] 애정표현 키워드 처리 함수 - "사랑해" 확실히 잡기!
+// 💕 [기존] 애정표현 키워드 처리 함수
 function handleLoveExpressions(userMessage) {
     if (!userMessage || typeof userMessage !== 'string') {
-        console.log('💕 [애정표현] 메시지 없음 또는 잘못된 타입');
         return null;
     }
     
     const message = userMessage.trim().toLowerCase();
-    console.log(`💕 [애정표현] 입력 메시지: "${message}"`);
     
     // "사랑해" 직접 체크 먼저!
     if (message === '사랑해' || message === '시링해') {
@@ -534,7 +253,6 @@ function handleLoveExpressions(userMessage) {
         return response;
     }
     
-    console.log(`💕 [애정표현] ❌ NO MATCH: "${message}" - 애정표현 아님`);
     return null;
 }
 
@@ -579,7 +297,7 @@ function updateEmotionFromMessage(userMessage) {
     }
 }
 
-// ✅ [수정] 기억 처리 관련 함수들 - ultimateConversationContext에 의존하지 않고 간단하게 처리
+// ✅ [수정] 기억 처리 관련 함수들 - 간단하게 처리
 async function detectAndProcessMemoryRequest(userMessage) {
     const memoryPatterns = [/기억해/, /저장해/, /잊지마/, /잊지 마/, /외워/, /기억하자/];
     const isMemoryRequest = memoryPatterns.some(pattern => pattern.test(userMessage));
@@ -598,30 +316,6 @@ async function detectAndProcessMemoryRequest(userMessage) {
             }
         } catch (error) {
             console.error('❌ 기억 저장 중 에러:', error);
-        }
-    }
-    return null;
-}
-
-async function detectAndProcessMemoryEdit(userMessage) {
-    const editPatterns = [/기억.*수정/, /기억.*바꿔/, /기억.*틀렸/, /잘못.*기억/, /기억.*삭제/, /잊어/];
-    const isEditRequest = editPatterns.some(pattern => pattern.test(userMessage));
-    if (isEditRequest) {
-        try {
-            const conversationContext = require('./ultimateConversationContext.js');
-            if (conversationContext && typeof conversationContext.deleteUserMemory === 'function') {
-                if (userMessage.includes('삭제') || userMessage.includes('잊어')) {
-                    try {
-                        const logger = require('./enhancedLogging.js');
-                        logger.logMemoryOperation('삭제', userMessage, true);
-                    } catch (error) {
-                        console.log(`🧠 [기억삭제] ${userMessage.substring(0, 30)}...`);
-                    }
-                    return { processed: true, result: { message: "알겠어, 잊을게 아저씨!" } };
-                }
-            }
-        } catch (error) {
-            console.error('❌ 기억 편집 중 에러:', error);
         }
     }
     return null;
@@ -745,99 +439,97 @@ async function safelyStoreMessage(speaker, message) {
     }
 }
 
-// 🧠 [NEW] 안전한 맥락 분석 및 대화 저장 함수
-async function safelyAnalyzeContextAndSave(userMessage, finalResponse) {
+// 🧠🧠🧠 [NEW] 간단한 맥락 시스템 - 최근 20개 대화만! 🧠🧠🧠
+async function getRecentConversationContext(limit = 20) {
+    console.log(`🧠 [간단맥락] 최근 ${limit}개 대화 조회 시작...`);
+    
     try {
-        if (!contextEngine) {
-            // 맥락 엔진이 없으면 조용히 건너뜀
-            return;
+        const conversationContext = require('./ultimateConversationContext.js');
+        if (!conversationContext) {
+            console.log('⚠️ [간단맥락] ultimateConversationContext 모듈 없음');
+            return [];
         }
-
-        // 1. 대화 저장 (실패해도 계속 진행)
-        try {
-            await contextEngine.saveConversation(userMessage, finalResponse);
-            console.log('🧠 [맥락엔진] 대화 저장 완료');
-        } catch (saveError) {
-            console.warn('⚠️ [맥락엔진] 대화 저장 실패:', saveError.message);
-            // 저장 실패해도 계속 진행
+        
+        // 다양한 함수 시도
+        const functionNames = [
+            'getRecentConversations',
+            'getUltimateMessages', 
+            'getAllConversations'
+        ];
+        
+        for (const funcName of functionNames) {
+            if (typeof conversationContext[funcName] === 'function') {
+                console.log(`🔧 [간단맥락] ${funcName} 시도...`);
+                
+                try {
+                    let conversations = [];
+                    
+                    if (funcName === 'getAllConversations') {
+                        const allConvs = await conversationContext[funcName]();
+                        conversations = Array.isArray(allConvs) ? allConvs.slice(-limit) : [];
+                    } else {
+                        conversations = await conversationContext[funcName](limit);
+                    }
+                    
+                    if (conversations && conversations.length > 0) {
+                        console.log(`✅ [간단맥락] ${funcName}으로 ${conversations.length}개 대화 발견!`);
+                        
+                        // OpenAI 형식으로 변환
+                        const contextMessages = [];
+                        
+                        for (const conv of conversations) {
+                            if (!conv) continue;
+                            
+                            // 다양한 필드명 처리
+                            const userMsg = conv.userMessage || conv.user || conv.message || conv.content;
+                            const botMsg = conv.botResponse || conv.muku || conv.response || conv.reply;
+                            
+                            if (userMsg && typeof userMsg === 'string' && userMsg.trim()) {
+                                contextMessages.push({
+                                    role: 'user',
+                                    content: userMsg.trim()
+                                });
+                            }
+                            
+                            if (botMsg && typeof botMsg === 'string' && botMsg.trim()) {
+                                contextMessages.push({
+                                    role: 'assistant', 
+                                    content: botMsg.trim()
+                                });
+                            }
+                        }
+                        
+                        console.log(`🎯 [간단맥락] ${contextMessages.length}개 메시지를 맥락으로 변환 완료`);
+                        
+                        // 최근 20개만 유지 (user + assistant 쌍으로)
+                        const recentMessages = contextMessages.slice(-limit);
+                        
+                        if (recentMessages.length > 0) {
+                            console.log(`📝 [간단맥락] 최근 대화 미리보기:`);
+                            const previewCount = Math.min(recentMessages.length, 4);
+                            for (let i = recentMessages.length - previewCount; i < recentMessages.length; i++) {
+                                const msg = recentMessages[i];
+                                const role = msg.role === 'user' ? '아저씨' : '예진이';
+                                const content = msg.content.substring(0, 30);
+                                console.log(`  ${role}: "${content}..."`);
+                            }
+                        }
+                        
+                        return recentMessages;
+                    }
+                } catch (funcError) {
+                    console.log(`⚠️ [간단맥락] ${funcName} 실패: ${funcError.message}`);
+                    continue;
+                }
+            }
         }
-
+        
+        console.log('⚠️ [간단맥락] 모든 함수 시도 실패 - 빈 맥락 반환');
+        return [];
+        
     } catch (error) {
-        console.warn('⚠️ [맥락엔진] 전체 처리 실패:', error.message);
-        // 어떤 에러가 발생해도 조용히 넘어감
-    }
-}
-
-// 🧠 [NEW] 안전한 맥락 응답 시도 함수 - 기억 질문에만 사용!
-async function safelyTryContextResponse(userMessage) {
-    try {
-        if (!contextEngine) {
-            return null; // 맥락 엔진이 없으면 null 반환
-        }
-
-        console.log('🧠 [맥락엔진] 맥락 분석 시도...');
-        
-        const contextResponse = await contextEngine.analyzeContext(userMessage);
-        
-        if (contextResponse && typeof contextResponse === 'string' && contextResponse.trim().length > 0) {
-            console.log(`🧠 [맥락엔진] 맥락 응답 생성 성공: "${contextResponse.substring(0, 50)}..."`);
-            return contextResponse;
-        } else {
-            console.log('🧠 [맥락엔진] 맥락 응답 없음 - 일반 AI 응답으로 진행');
-            return null;
-        }
-
-    } catch (error) {
-        console.warn('⚠️ [맥락엔진] 분석 실패:', error.message);
-        console.log('🔄 [맥락엔진] 실패로 인해 일반 AI 응답으로 fallback');
-        return null; // 에러 발생시 null 반환하여 기존 시스템 사용
-    }
-}
-
-// 🎯🎯🎯 [NEW] 기억 질문 판별 함수 - 정말 필요한 경우만! 🎯🎯🎯
-function isMemoryQuestion(userMessage) {
-    if (!userMessage || typeof userMessage !== 'string') {
-        return false;
-    }
-    
-    const message = userMessage.toLowerCase().trim();
-    console.log(`🎯 [기억판별] 메시지 분석: "${message}"`);
-    
-    // 🔍 명확한 기억 질문 패턴들
-    const memoryPatterns = [
-        // 시간 기반 질문
-        /어제.*뭐/, /그제.*뭐/, /오늘.*오전/, /어제.*했/, 
-        /지난주/, /지난달/, /지난번/, /전에.*했/, 
-        /언제.*했/, /몇시에.*했/, /며칠전/, 
-        
-        // 명확한 기억 참조
-        /기억.*해/, /기억.*나/, /말했.*거/, /얘기했.*거/,
-        /말한.*거/, /했던.*거/, /그때.*뭐/, /그날.*뭐/,
-        
-        // 장소/이벤트 질문  
-        /모지코에서/, /일본.*갔을때/, /여행.*때/, /사진.*찍을때/,
-        /우리.*어디/, /우리.*언제/, /우리.*뭐/, /함께.*뭐/,
-        
-        // 직접적인 기억 확인
-        /알아.*거/, /맞지.*거/, /그거.*맞/, /그런.*말/,
-        /말했잖아/, /했잖아/, /그랬잖아/
-    ];
-    
-    // 패턴 매칭 확인
-    const isMemoryRelated = memoryPatterns.some(pattern => {
-        const match = pattern.test(message);
-        if (match) {
-            console.log(`🎯 [기억판별] ✅ 매칭된 패턴: ${pattern.source}`);
-        }
-        return match;
-    });
-    
-    if (isMemoryRelated) {
-        console.log(`🎯 [기억판별] ✅ MEMORY QUESTION: "${message}"`);
-        return true;
-    } else {
-        console.log(`🎯 [기억판별] ❌ NOT MEMORY: "${message}"`);
-        return false;
+        console.log(`❌ [간단맥락] 오류: ${error.message}`);
+        return [];
     }
 }
 
@@ -876,7 +568,6 @@ async function getReplyByMessage(userMessage) {
                 if (commandResult.comment) {
                     logConversationReply('나', `(사진명령어) ${commandResult.comment}`);
                     await safelyStoreMessage(BOT_NAME, commandResult.comment);
-                    await safelyAnalyzeContextAndSave(cleanUserMessage, commandResult.comment);
                 }
             } else {
                 console.log(`📸 [사진명령어] ⚠️ Step 1 실패: commandHandler 무응답 - Step 2로 진행`);
@@ -902,7 +593,6 @@ async function getReplyByMessage(userMessage) {
             
             logConversationReply('나', `(사진명령어-직접) ${photoResponse}`);
             await safelyStoreMessage(BOT_NAME, photoResponse);
-            await safelyAnalyzeContextAndSave(cleanUserMessage, photoResponse);
             
             // 🚨 Step 2-2: 직접 사진 전송 시도
             try {
@@ -949,9 +639,6 @@ async function getReplyByMessage(userMessage) {
             if (commandResult.comment) {
                 logConversationReply('나', `(명령어-${commandResult.source || 'command'}) ${commandResult.comment}`);
                 await safelyStoreMessage(BOT_NAME, commandResult.comment);
-                
-                // 🧠 [NEW] 맥락 엔진에 대화 저장 (안전)
-                await safelyAnalyzeContextAndSave(cleanUserMessage, commandResult.comment);
             }
             
             return commandResult;
@@ -960,7 +647,6 @@ async function getReplyByMessage(userMessage) {
         }
     } catch (error) {
         console.error('❌ [autoReply] commandHandler 호출 중 에러:', error.message);
-        // 🛡️ 에러가 나도 절대 중단하지 않고 기존 시스템으로 계속 진행!
         console.log('[autoReply] 🔄 commandHandler 에러로 인해 기존 시스템으로 fallback');
     }
 
@@ -972,9 +658,6 @@ async function getReplyByMessage(userMessage) {
             logConversationReply('나', `(새벽깨움-${nightResponse.sleepPhase}) ${nightResponse.response}`);
             await safelyStoreMessage('아저씨', cleanUserMessage);
             await safelyStoreMessage('나', nightResponse.response);
-            
-            // 🧠 [NEW] 맥락 엔진에 대화 저장 (안전)
-            await safelyAnalyzeContextAndSave(cleanUserMessage, nightResponse.response);
             
             return { type: 'text', comment: nightResponse.response };
         }
@@ -993,9 +676,6 @@ async function getReplyByMessage(userMessage) {
             logConversationReply('나', `(칭찬셀카) ${specialResponse}`);
             await safelyStoreMessage('나', specialResponse);
             
-            // 🧠 [NEW] 맥락 엔진에 대화 저장 (안전)
-            await safelyAnalyzeContextAndSave(cleanUserMessage, specialResponse);
-            
             return { type: 'text', comment: specialResponse };
         }
     } catch (error) {
@@ -1011,9 +691,6 @@ async function getReplyByMessage(userMessage) {
             await safelyStoreMessage('아저씨', cleanUserMessage);
             logConversationReply('나', `(애정표현) ${loveResponse}`);
             await safelyStoreMessage('나', loveResponse);
-            
-            // 🧠 [NEW] 맥락 엔진에 대화 저장 (안전)
-            await safelyAnalyzeContextAndSave(cleanUserMessage, loveResponse);
             
             return { type: 'text', comment: loveResponse };
         }
@@ -1034,9 +711,6 @@ async function getReplyByMessage(userMessage) {
                     logConversationReply('나', `(위로받음) ${comfortReaction.message}`);
                     await safelyStoreMessage('나', comfortReaction.message);
                     
-                    // 🧠 [NEW] 맥락 엔진에 대화 저장 (안전)
-                    await safelyAnalyzeContextAndSave(cleanUserMessage, comfortReaction.message);
-                    
                     return { type: 'text', comment: comfortReaction.message };
                 }
             }
@@ -1056,9 +730,6 @@ async function getReplyByMessage(userMessage) {
                 logConversationReply('나', `(${busyReaction.type}) ${busyReaction.message}`);
                 await safelyStoreMessage('나', busyReaction.message);
                 
-                // 🧠 [NEW] 맥락 엔진에 대화 저장 (안전)
-                await safelyAnalyzeContextAndSave(cleanUserMessage, busyReaction.message);
-                
                 return { type: 'text', comment: busyReaction.message };
             }
         }
@@ -1071,28 +742,10 @@ async function getReplyByMessage(userMessage) {
     updateEmotionFromMessage(cleanUserMessage);
     await safelyStoreMessage(USER_NAME, cleanUserMessage);
 
-    // ================== [연동 시작] 학습 과정 추적 로그 ==================
-    const searchResults = await searchMemories(cleanUserMessage);
-
-    // 사용자 메시지 분석
-    const learningAnalysis = analyzeMessageForNewInfo(cleanUserMessage);
-    if (learningAnalysis.hasNewInfo) {
-        logLearningDebug('learning_check', learningAnalysis);
-    }
-    // 기억 검색 추적
-    logLearningDebug('memory_retrieve', {
-        query: cleanUserMessage,
-        foundCount: searchResults.length,
-        memories: searchResults
-    });
-    // ================== [연동 끝] 학습 과정 추적 로그 ====================
-
     // 5순위: 긴급 키워드
     const emergencyResponse = handleEmergencyKeywords(cleanUserMessage);
     if (emergencyResponse) {
         await safelyStoreMessage(BOT_NAME, emergencyResponse);
-        // 🧠 [NEW] 맥락 엔진에 대화 저장 (안전)
-        await safelyAnalyzeContextAndSave(cleanUserMessage, emergencyResponse);
         return { type: 'text', comment: emergencyResponse };
     }
 
@@ -1100,8 +753,6 @@ async function getReplyByMessage(userMessage) {
     const birthdayResponse = handleBirthdayKeywords(cleanUserMessage);
     if (birthdayResponse) {
         await safelyStoreMessage(BOT_NAME, birthdayResponse);
-        // 🧠 [NEW] 맥락 엔진에 대화 저장 (안전)
-        await safelyAnalyzeContextAndSave(cleanUserMessage, birthdayResponse);
         return { type: 'text', comment: birthdayResponse };
     }
 
@@ -1109,8 +760,6 @@ async function getReplyByMessage(userMessage) {
     const drinkingResponse = handleDrinkingKeywords(cleanUserMessage);
     if (drinkingResponse) {
         await safelyStoreMessage(BOT_NAME, drinkingResponse);
-        // 🧠 [NEW] 맥락 엔진에 대화 저장 (안전)
-        await safelyAnalyzeContextAndSave(cleanUserMessage, drinkingResponse);
         return { type: 'text', comment: drinkingResponse };
     }
 
@@ -1118,71 +767,21 @@ async function getReplyByMessage(userMessage) {
     const weatherResponse = handleWeatherKeywords(cleanUserMessage);
     if (weatherResponse) {
         await safelyStoreMessage(BOT_NAME, weatherResponse);
-        // 🧠 [NEW] 맥락 엔진에 대화 저장 (안전)
-        await safelyAnalyzeContextAndSave(cleanUserMessage, weatherResponse);
         return { type: 'text', comment: weatherResponse };
     }
-
-    // 9순위: 기억 편집/삭제 요청
-    try {
-        const editResult = await detectAndProcessMemoryEdit(cleanUserMessage);
-        if (editResult && editResult.processed) {
-            await safelyStoreMessage(BOT_NAME, editResult.result.message);
-            // 🧠 [NEW] 맥락 엔진에 대화 저장 (안전)
-            await safelyAnalyzeContextAndSave(cleanUserMessage, editResult.result.message);
-            return { type: 'text', comment: editResult.result.message };
-        }
-    } catch (error) {
-        console.error('❌ 기억 편집 처리 중 에러:', error);
-    }
     
-    // 10순위: 기억 저장 요청
+    // 9순위: 기억 저장 요청
     try {
         const memoryResult = await detectAndProcessMemoryRequest(cleanUserMessage);
         if (memoryResult && memoryResult.saved && memoryResult.response) {
             await safelyStoreMessage(BOT_NAME, memoryResult.response);
-            // 🧠 [NEW] 맥락 엔진에 대화 저장 (안전)
-            await safelyAnalyzeContextAndSave(cleanUserMessage, memoryResult.response);
             return { type: 'text', comment: memoryResult.response };
         }
     } catch (error) {
         console.error('❌ 기억 요청 처리 중 에러:', error);
     }
 
-    // 🧠🧠🧠 10.5순위: 선별적 맥락 시스템 (FIXED!) - 정말 필요한 기억 질문만! 🧠🧠🧠
-    // 🎯 사진 명령어는 절대 맥락 시스템으로 가면 안 되고, 정말 기억이 필요한 질문만!
-    const isMemoryNeeded = isMemoryQuestion(cleanUserMessage);
-    
-    if (isMemoryNeeded) {
-        try {
-            console.log('🧠 [선별맥락] 🎯 기억 질문 감지 - 맥락 시스템 가동');
-            const contextResponse = await safelyTryContextResponse(cleanUserMessage);
-            
-            if (contextResponse && contextResponse.trim().length > 0) {
-                console.log('🧠 [선별맥락] ✅ 맥락 응답 생성됨');
-                
-                // 언어 수정 적용
-                let finalContextResponse = fixLanguageUsage(contextResponse);
-                
-                await safelyStoreMessage(BOT_NAME, finalContextResponse);
-                logConversationReply('나', `(선별맥락) ${finalContextResponse}`);
-                
-                // 🧠 맥락 엔진에 대화 저장 (안전)
-                await safelyAnalyzeContextAndSave(cleanUserMessage, finalContextResponse);
-                
-                return { type: 'text', comment: finalContextResponse };
-            } else {
-                console.log('🧠 [선별맥락] 맥락 없음 - 일반 AI 응답으로 진행');
-            }
-        } catch (error) {
-            console.error('❌ [선별맥락] 에러:', error.message);
-            console.log('🔄 [선별맥락] 에러로 인해 일반 AI 응답으로 fallback');
-        }
-    } else {
-        console.log('🧠 [선별맥락] ❌ 기억 불필요 - 일반 AI 응답으로 진행');
-    }
-
-    // 11순위: 일반 AI 응답 생성
+    // 🧠🧠🧠 10순위: 간단한 맥락 시스템으로 일반 AI 응답 생성! 🧠🧠🧠
     let emotionContext = '';
     try {
         const emotionalContextManager = require('./emotionalContextManager.js');
@@ -1265,41 +864,27 @@ async function getReplyByMessage(userMessage) {
     지금 아저씨가 "${cleanUserMessage}"라고 했어. 예진이 답게 자연스럽고 사랑스럽게 반말로만 대답해줘.
     `;
     
-    let finalSystemPrompt = baseSystemPrompt;
+    // 🧠🧠🧠 [NEW] 최근 20개 대화를 맥락으로 포함! 🧠🧠🧠
+    console.log(`🧠 [간단맥락] OpenAI API 호출 전 최근 대화 맥락 추가 시작...`);
     
-    try {
-        const conversationContext = require('./ultimateConversationContext.js');
-        if (conversationContext && typeof conversationContext.getUltimateContextualPrompt === 'function') {
-            const contextualPrompt = await conversationContext.getUltimateContextualPrompt(baseSystemPrompt);
-            if (contextualPrompt && typeof contextualPrompt === 'string' && contextualPrompt.trim().length > 0) {
-                finalSystemPrompt = contextualPrompt;
-            }
-        }
-    } catch (error) {
-        console.error('❌ 컨텍스트 프롬프트 생성 중 에러:', error);
-    }
+    const recentContext = await getRecentConversationContext(20);
     
-    // ================== [연동 시작] 프롬프트 구성 추적 로그 ==================
-    const recentMessages = await getRecentMessages();
-    logLearningDebug('prompt_context', {
-        contextLength: finalSystemPrompt.length,
-        fixedMemories: 120, // 이 값은 실제 고정 기억 수에 맞게 조정해야 합니다.
-        conversationHistory: recentMessages.length,
-        emotionalState: emotionContext
-    });
-    // ================== [연동 끝] 프롬프트 구성 추적 로그 ====================
-
-    if (!finalSystemPrompt || typeof finalSystemPrompt !== 'string' || finalSystemPrompt.trim().length === 0) {
+    // 메시지 배열 구성: 시스템 프롬프트 + 최근 20개 대화 + 현재 사용자 메시지
+    const messages = [
+        { role: 'system', content: baseSystemPrompt },
+        ...recentContext,  // 🎯 최근 20개 대화 맥락 추가!
+        { role: 'user', content: cleanUserMessage }
+    ];
+    
+    console.log(`🧠 [간단맥락] 총 ${messages.length}개 메시지로 OpenAI 호출 (시스템프롬프트 + 맥락 ${recentContext.length}개 + 현재메시지)`);
+    
+    if (!baseSystemPrompt || typeof baseSystemPrompt !== 'string' || baseSystemPrompt.trim().length === 0) {
         console.error("❌ 최종 시스템 프롬프트가 비어있어서 기본 응답을 사용합니다.");
         const defaultReply = getEmergencyFallback();
         await safelyStoreMessage(BOT_NAME, defaultReply);
-        logLearningDebug('나', `(프롬프트에러폴백) ${defaultReply}`);
-        // 🧠 [NEW] 맥락 엔진에 대화 저장 (안전)
-        await safelyAnalyzeContextAndSave(cleanUserMessage, defaultReply);
+        logConversationReply('나', `(프롬프트에러폴백) ${defaultReply}`);
         return { type: 'text', comment: defaultReply };
     }
-
-    const messages = [{ role: 'system', content: finalSystemPrompt }, { role: 'user', content: cleanUserMessage }];
 
     try {
         const rawReply = await callOpenAI(messages);
@@ -1311,16 +896,11 @@ async function getReplyByMessage(userMessage) {
             const fallbackReply = getEmergencyFallback();
             await safelyStoreMessage(BOT_NAME, fallbackReply);
             logConversationReply('나', `(AI응답비어있음폴백) ${fallbackReply}`);
-            // 🧠 [NEW] 맥락 엔진에 대화 저장 (안전)
-            await safelyAnalyzeContextAndSave(cleanUserMessage, fallbackReply);
             return { type: 'text', comment: fallbackReply };
         }
         
         await safelyStoreMessage(BOT_NAME, finalReply);
         logConversationReply('나', finalReply);
-        
-        // 🧠 [NEW] 맥락 엔진에 대화 저장 (안전)
-        await safelyAnalyzeContextAndSave(cleanUserMessage, finalReply);
         
         return { type: 'text', comment: finalReply };
         
@@ -1331,9 +911,6 @@ async function getReplyByMessage(userMessage) {
             '어? 나 지금 좀 멍하네... 아저씨 다시 말해주면 안 될까? ㅎㅎ';
         await safelyStoreMessage(BOT_NAME, apiErrorReply);
         logConversationReply('나', `(API에러폴백) ${apiErrorReply}`);
-        
-        // 🧠 [NEW] 맥락 엔진에 대화 저장 (안전)
-        await safelyAnalyzeContextAndSave(cleanUserMessage, apiErrorReply);
         
         return { type: 'text', comment: apiErrorReply };
     }
