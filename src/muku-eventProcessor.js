@@ -339,7 +339,7 @@ async function generateMemoryResponseForExplicitQuestion(messageText, modules, e
     }
 }
 
-// ================== 🔍 키워드로 관련 대화 검색 함수 ==================
+// ================== 🔍 키워드로 관련 대화 검색 함수 (개선된 유연 매칭) ==================
 function findRelevantConversations(conversations, keywords) {
     console.log(`🔍 [관련검색] 키워드로 관련 대화 검색: [${keywords.join(', ')}]`);
     
@@ -353,8 +353,8 @@ function findRelevantConversations(conversations, keywords) {
     for (const conv of conversations) {
         if (!conv) continue;
         
-        const userMsg = String(conv.userMessage || '').toLowerCase();
-        const mukuMsg = String(conv.mukuResponse || '').toLowerCase();
+        const userMsg = String(conv.userMessage || conv.user_message || '').toLowerCase();
+        const mukuMsg = String(conv.mukuResponse || conv.muku_response || '').toLowerCase();
         const allText = `${userMsg} ${mukuMsg}`;
         
         if (!allText.trim()) continue;
@@ -362,19 +362,71 @@ function findRelevantConversations(conversations, keywords) {
         let relevanceScore = 0;
         const foundKeywords = [];
         
+        // 🎯 개선된 유연한 키워드 매칭
         for (const keyword of keywords) {
-            if (keyword && allText.includes(keyword.toLowerCase())) {
-                relevanceScore++;
-                foundKeywords.push(keyword);
+            if (!keyword) continue;
+            
+            const keywordLower = keyword.toLowerCase();
+            let matched = false;
+            
+            // 1. 정확 매칭
+            if (allText.includes(keywordLower)) {
+                relevanceScore += 2; // 정확 매칭은 높은 점수
+                foundKeywords.push(keyword + '(정확)');
+                matched = true;
+                console.log(`✅ [정확매칭] "${keyword}" 발견: "${allText.substring(0, 50)}..."`);
+            }
+            
+            // 2. 부분 매칭 (3글자 이상일 때만)
+            else if (keyword.length >= 3) {
+                // "모지코에서" → "모지코" 매칭
+                if (keyword.includes('에서') && allText.includes(keyword.replace('에서', ''))) {
+                    relevanceScore += 1;
+                    foundKeywords.push(keyword + '(부분)');
+                    matched = true;
+                    console.log(`📍 [부분매칭] "${keyword}" → "${keyword.replace('에서', '')}" 발견`);
+                }
+                // "모지코" 포함 확인
+                else if (allText.includes(keyword.substring(0, Math.max(2, keyword.length - 1)))) {
+                    relevanceScore += 1;
+                    foundKeywords.push(keyword + '(유사)');
+                    matched = true;
+                    console.log(`🔎 [유사매칭] "${keyword}" 유사 패턴 발견`);
+                }
+            }
+            
+            // 3. 동의어 매칭
+            const synonyms = {
+                '음악': ['노래', '멜로디', '곡', 'song', 'music'],
+                '모지코': ['mojiko', 'モジコ'],
+                '사진': ['셀카', '포토', 'photo', 'pic'],
+                '카메라': ['렌즈', 'camera', 'lens']
+            };
+            
+            if (!matched && synonyms[keywordLower]) {
+                for (const synonym of synonyms[keywordLower]) {
+                    if (allText.includes(synonym.toLowerCase())) {
+                        relevanceScore += 1;
+                        foundKeywords.push(keyword + '(동의어:' + synonym + ')');
+                        matched = true;
+                        console.log(`🔄 [동의어매칭] "${keyword}" → "${synonym}" 발견`);
+                        break;
+                    }
+                }
             }
         }
         
+        // 관련도가 있는 대화만 추가
         if (relevanceScore > 0) {
             relevantConversations.push({
                 ...conv,
                 relevanceScore,
-                foundKeywords
+                foundKeywords,
+                userMessage: userMsg,
+                mukuResponse: mukuMsg
             });
+            
+            console.log(`🎯 [매칭성공] 점수 ${relevanceScore}: "${userMsg.substring(0, 30)}..." (키워드: ${foundKeywords.join(', ')})`);
         }
     }
     
@@ -383,8 +435,31 @@ function findRelevantConversations(conversations, keywords) {
     
     if (relevantConversations.length > 0) {
         console.log(`✅ [관련발견] ${relevantConversations.length}개 관련 대화 발견!`);
+        
+        // 상위 3개 미리보기 (안전하게)
+        const previewCount = Math.min(relevantConversations.length, 3);
+        for (let i = 0; i < previewCount; i++) {
+            const conv = relevantConversations[i];
+            if (conv && conv.userMessage) {
+                const msg = String(conv.userMessage).substring(0, 25);
+                const keywords = Array.isArray(conv.foundKeywords) ? conv.foundKeywords.join(', ') : '';
+                console.log(`🥇 ${i + 1}위 [점수:${conv.relevanceScore}] "${msg}..." (${keywords})`);
+            }
+        }
     } else {
         console.log(`⚠️ [관련검색] 관련 대화 없음`);
+        
+        // 🔍 디버깅: 실제 대화 내용 샘플 확인
+        console.log(`🔍 [디버깅] 전체 대화 샘플 (상위 3개):`);
+        const sampleCount = Math.min(conversations.length, 3);
+        for (let i = 0; i < sampleCount; i++) {
+            const conv = conversations[i];
+            if (conv) {
+                const userMsg = String(conv.userMessage || conv.user_message || '').substring(0, 30);
+                const mukuMsg = String(conv.mukuResponse || conv.muku_response || '').substring(0, 30);
+                console.log(`  ${i + 1}. 아저씨: "${userMsg}..." → 무쿠: "${mukuMsg}..."`);
+            }
+        }
     }
     
     return relevantConversations;
