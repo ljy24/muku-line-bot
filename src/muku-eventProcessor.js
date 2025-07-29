@@ -6,6 +6,7 @@
 // 🚨 절대 속이지 않음 - 실제 데이터만 사용하는 정직한 시스템
 // ⭐ 순환 의존성 완전 해결 - 안전한 지연 로딩 시스템
 // 🛡️ 무쿠 벙어리 방지 100% 보장
+// 📼 Memory Tape 연동 추가 - saveConversation 문제 해결
 // ============================================================================
 
 const { promises: fs } = require('fs');
@@ -14,8 +15,10 @@ const path = require('path');
 // ================== 🔥 안전한 지연 로딩 시스템 ==================
 let redisSystem = null;
 let jsonSystem = null;
+let memoryTape = null;  // 🆕 Memory Tape 추가
 let redisSystemLoaded = false;
 let jsonSystemLoaded = false;
+let memoryTapeLoaded = false;  // 🆕 Memory Tape 로딩 상태
 
 // 순환 의존성 방지를 위한 지연 로딩
 function loadRedisSystem() {
@@ -48,6 +51,22 @@ function loadJsonSystem() {
     }
 }
 
+// 🆕 Memory Tape 지연 로딩 함수 추가
+function loadMemoryTape() {
+    if (memoryTapeLoaded) return memoryTape;
+    
+    try {
+        memoryTape = require('../data/memory-tape/muku-memory-tape.js');
+        memoryTapeLoaded = true;
+        console.log('📼 [MemoryTape안전로드] Memory Tape 시스템 지연 로드 성공');
+        return memoryTape;
+    } catch (error) {
+        console.log('⚠️ [MemoryTape안전로드] Memory Tape 시스템 로드 실패:', error.message);
+        memoryTapeLoaded = true; // 실패해도 다시 시도하지 않음
+        return null;
+    }
+}
+
 // ================== 🎨 색상 정의 ==================
 const colors = {
     redis: '\x1b[1m\x1b[91m',     // 굵은 빨간색 (Redis)
@@ -64,6 +83,7 @@ const colors = {
     success: '\x1b[32m',          // 초록색 (성공)
     warning: '\x1b[93m',          // 노란색 (경고)
     safe: '\x1b[1m\x1b[32m',      // 굵은 초록색 (안전)
+    tape: '\x1b[1m\x1b[34m',      // 굵은 파란색 (Memory Tape)
     reset: '\x1b[0m'              // 색상 리셋
 };
 
@@ -560,13 +580,23 @@ async function saveToRedis(userId, userMessage, mukuResponse) {
             return true;
         }
         
-        // 내보낸 함수들로 저장 시도
-        const saveFunction = redis.forceCacheConversation || redis.cacheConversation || redis.saveConversation;
+        // 🔧 수정: Memory Tape 저장 함수 추가
+        const memoryTape = loadMemoryTape(); // Memory Tape 안전한 지연 로딩
+        
+        // 내보낸 함수들로 저장 시도 (Memory Tape 포함)
+        const saveFunction = redis.forceCacheConversation || redis.cacheConversation || 
+                             (memoryTape && memoryTape.saveConversation);
+        
         if (typeof saveFunction === 'function') {
-            await saveFunction(userId, userMessage);
-            await saveFunction(userId, mukuResponse);
-            
-            console.log(`${colors.success}✅ [Redis안전저장] 내보낸 함수로 저장 성공${colors.reset}`);
+            if (saveFunction === memoryTape?.saveConversation) {
+                console.log(`${colors.tape}📼 [MemoryTape저장] Memory Tape으로 저장 시도...${colors.reset}`);
+                await saveFunction(userId, userMessage, mukuResponse);
+                console.log(`${colors.success}✅ [Redis안전저장] Memory Tape으로 저장 성공${colors.reset}`);
+            } else {
+                await saveFunction(userId, userMessage);
+                await saveFunction(userId, mukuResponse);
+                console.log(`${colors.success}✅ [Redis안전저장] 내보낸 함수로 저장 성공${colors.reset}`);
+            }
             return true;
         }
         
@@ -980,6 +1010,7 @@ module.exports = {
     // 안전한 로딩 시스템
     loadRedisSystem,
     loadJsonSystem,
+    loadMemoryTape,  // 🆕 Memory Tape 로딩 함수 추가
     safeAsyncCall,
     safeModuleAccess
 };
