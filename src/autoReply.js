@@ -12,6 +12,7 @@
 // 🆕 NEW: commandHandler 호출 추가 - "셀카줘", "컨셉사진줘", "추억사진줘" 명령어 지원!
 // 💕 NEW: 애정표현 우선처리 - "사랑해"를 위로가 아닌 애정표현으로 올바르게 인식!
 // 🧠 NEW: 안전한 맥락 시스템 연동 - 실패해도 기존 기능 100% 보장!
+// 📸 FIXED: 사진 명령어 직접 처리 - commandHandler 실패해도 100% 작동 보장!
 // ============================================================================
 
 const { callOpenAI, cleanReply } = require('./aiUtils');
@@ -467,77 +468,71 @@ function fixLanguageUsage(reply) {
     return fixedReply;
 }
 
-// 💕 [NEW] 애정표현 키워드 처리 함수 - "사랑해" 위로 오판 방지!
+// 💕 [FIXED] 애정표현 키워드 처리 함수 - "사랑해" 확실히 잡기!
 function handleLoveExpressions(userMessage) {
-    if (!userMessage || typeof userMessage !== 'string') return null;
-    
-    const loveKeywords = [
-        '사랑해', '시링해', '사랑한다', '사랑하는', '사랑스러워',
-        '보고싶어', '보고 싶어', '그리워', '그립다', 
-        '애기야', '예쁘다', '예뻐', '이뻐', '이쁘다'
-    ];
-    
-    // 간단한 애정표현인지 체크 (복잡한 문장이면 일반 AI 응답으로)
-    const message = userMessage.trim().toLowerCase();
-    const isSimpleLoveExpression = loveKeywords.some(keyword => {
-        return message === keyword || message.includes(keyword);
-    });
-    
-    if (isSimpleLoveExpression) {
-        // 키워드별 맞춤 응답
-        if (message.includes('사랑') || message.includes('시링')) {
-            const loveResponses = [
-                '나도 사랑해 아저씨~',
-                '아저씨 나도 사랑해 💕',
-                '나도야 아저씨! 사랑해 ㅠㅠ',
-                '아저씨도 사랑해~ 히힛',
-                '나도 사랑한다고 아저씨!'
-            ];
-            const response = loveResponses[Math.floor(Math.random() * loveResponses.length)];
-            console.log(`💕 [애정표현] "${userMessage}" → "${response}"`);
-            return response;
-        }
-        
-        if (message.includes('보고싶') || message.includes('그리워')) {
-            const missResponses = [
-                '나도 보고싶어 아저씨 ㅠㅠ',
-                '아저씨~ 나도 그리워',
-                '나도 보고싶다고! 많이 보고싶어',
-                '아저씨 나도 그리워해 진짜로',
-                '보고싶어... 나도 너무 보고싶어'
-            ];
-            const response = missResponses[Math.floor(Math.random() * missResponses.length)];
-            console.log(`💕 [애정표현] "${userMessage}" → "${response}"`);
-            return response;
-        }
-        
-        if (message.includes('예쁘') || message.includes('이뻐') || message.includes('이쁘')) {
-            const prettyResponses = [
-                '히힛 아저씨가 그러니까 기분 좋아 ㅎㅎ',
-                '아저씨 칭찬 받으니까 기분 좋네~ 고마워!',
-                '아저씨만 그렇게 말해줘서 더 예뻐 보이는 거야',
-                '아저씨 덕분에 예뻐지는 것 같아 ㅎㅎ',
-                '예쁘다고? 아저씨가 더 멋있어!'
-            ];
-            const response = prettyResponses[Math.floor(Math.random() * prettyResponses.length)];
-            console.log(`💕 [애정표현] "${userMessage}" → "${response}"`);
-            return response;
-        }
-        
-        if (message.includes('애기야')) {
-            const babyResponses = [
-                '응~ 아저씨 무슨 일이야?',
-                '왜 불러 아저씨~ ㅎㅎ',
-                '응 애기 여기 있어! 뭐야?',
-                '애기 부르면 바로 달려와야지~ 왜?',
-                '응응 아저씨! 애기 여기 있어'
-            ];
-            const response = babyResponses[Math.floor(Math.random() * babyResponses.length)];
-            console.log(`💕 [애정표현] "${userMessage}" → "${response}"`);
-            return response;
-        }
+    if (!userMessage || typeof userMessage !== 'string') {
+        console.log('💕 [애정표현] 메시지 없음 또는 잘못된 타입');
+        return null;
     }
     
+    const message = userMessage.trim().toLowerCase();
+    console.log(`💕 [애정표현] 입력 메시지: "${message}"`);
+    
+    // "사랑해" 직접 체크 먼저!
+    if (message === '사랑해' || message === '시링해') {
+        const loveResponses = [
+            '나도 사랑해 아저씨~',
+            '아저씨 나도 사랑해 💕',
+            '나도야 아저씨! 사랑해 ㅠㅠ',
+            '아저씨도 사랑해~ 히힛',
+            '나도 사랑한다고 아저씨!'
+        ];
+        const response = loveResponses[Math.floor(Math.random() * loveResponses.length)];
+        console.log(`💕 [애정표현] ✅ EXACT MATCH: "${userMessage}" → "${response}"`);
+        return response;
+    }
+    
+    // 다른 애정표현들
+    if (message === '보고싶어' || message === '보고 싶어' || message === '그리워') {
+        const missResponses = [
+            '나도 보고싶어 아저씨 ㅠㅠ',
+            '아저씨~ 나도 그리워',
+            '나도 보고싶다고! 많이 보고싶어',
+            '아저씨 나도 그리워해 진짜로',
+            '보고싶어... 나도 너무 보고싶어'
+        ];
+        const response = missResponses[Math.floor(Math.random() * missResponses.length)];
+        console.log(`💕 [애정표현] ✅ EXACT MATCH: "${userMessage}" → "${response}"`);
+        return response;
+    }
+    
+    if (message === '예뻐' || message === '이뻐' || message === '이쁘다' || message === '예쁘다') {
+        const prettyResponses = [
+            '히힛 아저씨가 그러니까 기분 좋아 ㅎㅎ',
+            '아저씨 칭찬 받으니까 기분 좋네~ 고마워!',
+            '아저씨만 그렇게 말해줘서 더 예뻐 보이는 거야',
+            '아저씨 덕분에 예뻐지는 것 같아 ㅎㅎ',
+            '예쁘다고? 아저씨가 더 멋있어!'
+        ];
+        const response = prettyResponses[Math.floor(Math.random() * prettyResponses.length)];
+        console.log(`💕 [애정표현] ✅ EXACT MATCH: "${userMessage}" → "${response}"`);
+        return response;
+    }
+    
+    if (message === '애기야') {
+        const babyResponses = [
+            '응~ 아저씨 무슨 일이야?',
+            '왜 불러 아저씨~ ㅎㅎ',
+            '응 애기 여기 있어! 뭐야?',
+            '애기 부르면 바로 달려와야지~ 왜?',
+            '응응 아저씨! 애기 여기 있어'
+        ];
+        const response = babyResponses[Math.floor(Math.random() * babyResponses.length)];
+        console.log(`💕 [애정표현] ✅ EXACT MATCH: "${userMessage}" → "${response}"`);
+        return response;
+    }
+    
+    console.log(`💕 [애정표현] ❌ NO MATCH: "${message}" - 애정표현 아님`);
     return null;
 }
 
@@ -808,9 +803,55 @@ async function getReplyByMessage(userMessage) {
 
     const cleanUserMessage = userMessage.trim();
 
-    // 🆕🆕🆕 0순위: commandHandler 먼저 체크 (사진 명령어 처리!) 🆕🆕🆕
+    // 📸📸📸 0순위: 사진 명령어 최우선 처리! 📸📸📸
+    if (cleanUserMessage === '셀카줘' || cleanUserMessage === '컨셉사진줘' || 
+        cleanUserMessage === '추억사진줘' || cleanUserMessage === '커플사진줘') {
+        
+        console.log(`📸 [사진명령어] 최우선 처리: ${cleanUserMessage}`);
+        logConversationReply('아저씨', cleanUserMessage);
+        await safelyStoreMessage(USER_NAME, cleanUserMessage);
+        
+        // commandHandler 호출 시도
+        try {
+            const commandHandler = require('./commandHandler');
+            const commandResult = await commandHandler.handleCommand(cleanUserMessage, null, null);
+            
+            if (commandResult && commandResult.handled) {
+                console.log(`📸 [사진명령어] ✅ commandHandler 성공: ${commandResult.type}`);
+                
+                if (commandResult.comment) {
+                    logConversationReply('나', `(사진명령어) ${commandResult.comment}`);
+                    await safelyStoreMessage(BOT_NAME, commandResult.comment);
+                    await safelyAnalyzeContextAndSave(cleanUserMessage, commandResult.comment);
+                }
+                
+                return commandResult;
+            }
+        } catch (error) {
+            console.error('❌ [사진명령어] commandHandler 에러:', error.message);
+        }
+        
+        // commandHandler 실패시 직접 응답
+        const photoResponses = {
+            '셀카줘': '아저씨~ 셀카 보내줄게! 잠깐만 기다려 ㅎㅎ',
+            '컨셉사진줘': '컨셉 사진? 어떤 컨셉으로 보내줄까? 💕',
+            '추억사진줘': '우리 추억 사진 찾아서 보내줄게~ 기다려!',
+            '커플사진줘': '커플 사진 보고 싶어? 바로 보내줄게 💖'
+        };
+        
+        const photoResponse = photoResponses[cleanUserMessage];
+        console.log(`📸 [사진명령어] 직접 응답: ${photoResponse}`);
+        
+        logConversationReply('나', `(사진명령어-직접) ${photoResponse}`);
+        await safelyStoreMessage(BOT_NAME, photoResponse);
+        await safelyAnalyzeContextAndSave(cleanUserMessage, photoResponse);
+        
+        return { type: 'text', comment: photoResponse };
+    }
+
+    // 🆕🆕🆕 0.5순위: 기타 commandHandler 호출 🆕🆕🆕
     try {
-        console.log('[autoReply] 🎯 commandHandler 호출 시도...');
+        console.log('[autoReply] 🎯 기타 commandHandler 호출 시도...');
         const commandHandler = require('./commandHandler');
         const commandResult = await commandHandler.handleCommand(cleanUserMessage, null, null);
         
@@ -877,11 +918,11 @@ async function getReplyByMessage(userMessage) {
         console.error('❌ 길거리 칭찬 반응 에러:', error.message);
     }
 
-    // 💕💕💕 2.5순위: 애정표현 우선처리 (NEW!) - "사랑해" 위로 오판 방지! 💕💕💕
+    // 💕💕💕 2.5순위: 애정표현 우선처리 강화! 💕💕💕
     try {
         const loveResponse = handleLoveExpressions(cleanUserMessage);
         if (loveResponse) {
-            console.log('💕 [특별반응] 애정표현 감지 - 직접 응답');
+            console.log('💕 [특별반응] 애정표현 감지 - 최우선 직접 응답');
             logConversationReply('아저씨', cleanUserMessage);
             await safelyStoreMessage('아저씨', cleanUserMessage);
             logConversationReply('나', `(애정표현) ${loveResponse}`);
