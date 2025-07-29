@@ -1,5 +1,5 @@
 // ============================================================================
-// autoReply.js - v15.5 (관련 기억 검색 기능 추가)
+// autoReply.js - v15.4 (안전한 맥락 시스템 연동 추가)
 // 🧠 기억 관리, 키워드 반응, 예진이 특별반응, 최종 프롬프트 생성을 책임지는 핵심 두뇌
 // 🌸 길거리 칭찬 → 셀카, 위로 → 고마워함, 바쁨 → 삐짐 반응 추가
 // 🛡️ 절대 벙어리 방지: 모든 에러 상황에서도 예진이는 반드시 대답함!
@@ -12,7 +12,6 @@
 // 🆕 NEW: commandHandler 호출 추가 - "셀카줘", "컨셉사진줘", "추억사진줘" 명령어 지원!
 // 💕 NEW: 애정표현 우선처리 - "사랑해"를 위로가 아닌 애정표현으로 올바르게 인식!
 // 🧠 NEW: 안전한 맥락 시스템 연동 - 실패해도 기존 기능 100% 보장!
-// 🔍 NEW: AI 기반 기억 검색 시스템 - 실제 과거 대화에서 관련 내용 검색하여 자연스러운 기억 연상!
 // ============================================================================
 
 const { callOpenAI, cleanReply } = require('./aiUtils');
@@ -26,20 +25,6 @@ try {
 } catch (error) {
     console.log('⚠️ [autoReply] 맥락 엔진 없음 - 기본 모드로 작동');
     console.warn('맥락 엔진 로드 실패:', error.message);
-}
-
-// 🔍 [NEW] Redis 클라이언트 연동 (Memory Tape 검색용)
-let redisClient = null;
-try {
-    const redis = require('redis');
-    redisClient = redis.createClient({
-        host: process.env.REDIS_HOST || 'localhost',
-        port: process.env.REDIS_PORT || 6379,
-        password: process.env.REDIS_PASSWORD || undefined
-    });
-    console.log('🔍 [autoReply] Redis 클라이언트 연동 성공 - 기억 검색 준비 완료');
-} catch (error) {
-    console.warn('⚠️ [autoReply] Redis 클라이언트 연동 실패:', error.message);
 }
 
 // ✨ GPT 모델 버전 관리 시스템 import
@@ -70,6 +55,7 @@ try {
 } catch(error) {
     console.warn('⚠️ [autoReply] 학습 추적 모듈 연동 실패:', error.message);
 }
+
 
 // ⭐ 새벽 응답 시스템 추가
 const nightWakeSystem = require('./night_wake_response.js');
@@ -107,245 +93,6 @@ const EMERGENCY_FALLBACK_RESPONSES = [
 
 function getEmergencyFallback() {
     return EMERGENCY_FALLBACK_RESPONSES[Math.floor(Math.random() * EMERGENCY_FALLBACK_RESPONSES.length)];
-}
-
-// 🧠🧠🧠 [NEW] AI 기반 기억 필요성 판단 시스템 🧠🧠🧠
-async function needsMemorySearch(userMessage) {
-    try {
-        const judgmentPrompt = `사용자 메시지: "${userMessage}"
-
-이 메시지가 과거 기억이나 이전 대화 내용을 필요로 하는 질문인가?
-
-과거 기억이 필요한 경우:
-- "어제 뭐했어?" (과거 활동 질문)
-- "그때 말한 그거" (이전 대화 참조)
-- "기억해?" (직접적인 기억 요청)
-- "언제 했었지?" (과거 시점 질문)
-- "전에 그랬잖아" (과거 행동 언급)
-
-과거 기억이 불필요한 경우:
-- "사랑해" (즉석 감정표현)
-- "사랑한다고" (일반적 언급)
-- "피곤해" (현재 상태)
-- "고마워" (현재 감정)
-- "안녕" (인사)
-- "오늘 날씨 어때?" (현재 상황)
-
-단답으로 YES 또는 NO만 답해줘.`;
-
-        console.log('🧠 [기억판단] AI가 기억 필요성 판단 중...');
-        
-        const response = await callOpenAI([
-            { role: 'system', content: judgmentPrompt }
-        ]);
-        
-        const needsMemory = response.trim().toUpperCase() === 'YES';
-        console.log(`🧠 [기억판단] "${userMessage}" → ${needsMemory ? 'YES (기억 검색)' : 'NO (일반 대화)'}`);
-        
-        return needsMemory;
-        
-    } catch (error) {
-        console.error('❌ [기억판단] AI 판단 실패:', error.message);
-        // 에러 시 안전하게 기억 검색 안 함
-        console.log('🧠 [기억판단] 에러로 인해 일반 대화로 처리');
-        return false;
-    }
-}
-
-// 🔍🔍🔍 [NEW] 관련 기억 검색 시스템 - 실제 과거 대화에서 관련 내용 검색 🔍🔍🔍
-async function getRelevantConversationHistory(userMessage) {
-    try {
-        if (!redisClient) {
-            console.log('🔍 [기억검색] Redis 클라이언트 없음 - 검색 불가');
-            return [];
-        }
-
-        // 키워드 추출 (간단한 방식으로 시작)
-        const keywords = extractKeywords(userMessage);
-        console.log(`🔍 [기억검색] 키워드 추출: ${keywords.join(', ')}`);
-
-        if (keywords.length === 0) {
-            console.log('🔍 [기억검색] 키워드 없음 - 최근 대화 몇 개만 포함');
-            return await getRecentConversationsForContext(3);
-        }
-
-        let relevantConversations = [];
-
-        // 각 키워드별로 관련 대화 검색
-        for (const keyword of keywords) {
-            const conversations = await searchConversationsByKeyword(keyword);
-            relevantConversations.push(...conversations);
-        }
-
-        // 중복 제거 및 시간순 정렬
-        relevantConversations = removeDuplicateConversations(relevantConversations);
-        relevantConversations.sort((a, b) -> new Date(a.timestamp) - new Date(b.timestamp));
-
-        // 너무 많으면 최신 것들만 선택 (10개 정도로 제한)
-        if (relevantConversations.length > 10) {
-            relevantConversations = relevantConversations.slice(-10);
-        }
-
-        console.log(`🔍 [기억검색] 관련 대화 ${relevantConversations.length}개 발견`);
-
-        // OpenAI 형식으로 변환
-        return convertToOpenAIFormat(relevantConversations);
-
-    } catch (error) {
-        console.error('❌ [기억검색] 검색 중 에러:', error.message);
-        // 에러 발생시 최근 대화 몇 개라도 포함
-        return await getRecentConversationsForContext(3);
-    }
-}
-
-// 🔍 키워드 추출 함수
-function extractKeywords(message) {
-    const keywords = [];
-    
-    // 명사/고유명사 추출 (간단한 패턴)
-    const importantWords = [
-        '하카타', '기타큐슈', '일본', '한국', '서울', '부산',
-        '컨셉', '사진', '촬영', '모델', '카메라',
-        '어제', '오늘', '내일', '지난번', '그때',
-        '피곤', '힘들', '우울', '행복', '기뻐',
-        '담배', '술', '커피', '음식', '밥',
-        '날씨', '비', '눈', '더워', '추워',
-        '생일', '3월', '12월', '선물',
-        '사랑', '보고싶', '그리워', '미안', '고마워'
-    ];
-
-    for (const word of importantWords) {
-        if (message.includes(word)) {
-            keywords.push(word);
-        }
-    }
-
-    // 시간 관련 키워드 특별 처리
-    if (message.includes('어제')) {
-        const yesterday = moment().subtract(1, 'day').format('YYYY-MM-DD');
-        keywords.push(yesterday);
-    }
-    if (message.includes('오늘')) {
-        const today = moment().format('YYYY-MM-DD');
-        keywords.push(today);
-    }
-
-    return [...new Set(keywords)]; // 중복 제거
-}
-
-// 🔍 키워드로 대화 검색
-async function searchConversationsByKeyword(keyword) {
-    try {
-        const conversations = [];
-        
-        // Memory Tape에서 검색 (일별 키 패턴)
-        const datePattern = 'muku:conversation:daily:*';
-        const keys = await redisClient.keys(datePattern);
-        
-        for (const key of keys) {
-            const dailyConversations = await redisClient.lrange(key, 0, -1);
-            
-            for (const conversationStr of dailyConversations) {
-                try {
-                    const conversation = JSON.parse(conversationStr);
-                    
-                    // 메시지 내용에 키워드가 포함된 경우
-                    if (conversation.userMessage && conversation.userMessage.includes(keyword)) {
-                        conversations.push({
-                            timestamp: conversation.timestamp,
-                            userMessage: conversation.userMessage,
-                            aiMessage: conversation.aiMessage,
-                            source: 'user'
-                        });
-                    }
-                    
-                    if (conversation.aiMessage && conversation.aiMessage.includes(keyword)) {
-                        conversations.push({
-                            timestamp: conversation.timestamp,
-                            userMessage: conversation.userMessage,
-                            aiMessage: conversation.aiMessage,
-                            source: 'ai'
-                        });
-                    }
-                } catch (parseError) {
-                    // JSON 파싱 실패는 조용히 넘어감
-                }
-            }
-        }
-        
-        return conversations.slice(-5); // 최신 5개만
-        
-    } catch (error) {
-        console.error(`❌ [기억검색] ${keyword} 검색 실패:`, error.message);
-        return [];
-    }
-}
-
-// 🔍 최근 대화 가져오기 (컨텍스트용)
-async function getRecentConversationsForContext(limit = 3) {
-    try {
-        const today = moment().format('YYYY-MM-DD');
-        const yesterday = moment().subtract(1, 'day').format('YYYY-MM-DD');
-        
-        const conversations = [];
-        
-        // 오늘과 어제 대화 확인
-        for (const date of [today, yesterday]) {
-            const key = `muku:conversation:daily:${date}`;
-            const dailyConversations = await redisClient.lrange(key, -limit, -1);
-            
-            for (const conversationStr of dailyConversations) {
-                try {
-                    const conversation = JSON.parse(conversationStr);
-                    conversations.push(conversation);
-                } catch (parseError) {
-                    // 조용히 넘어감
-                }
-            }
-        }
-        
-        return conversations.slice(-limit);
-        
-    } catch (error) {
-        console.error('❌ [기억검색] 최근 대화 가져오기 실패:', error.message);
-        return [];
-    }
-}
-
-// 🔍 중복 대화 제거
-function removeDuplicateConversations(conversations) {
-    const seen = new Set();
-    return conversations.filter(conv => {
-        const key = `${conv.timestamp}-${conv.userMessage}`;
-        if (seen.has(key)) {
-            return false;
-        }
-        seen.add(key);
-        return true;
-    });
-}
-
-// 🔍 OpenAI 형식으로 변환
-function convertToOpenAIFormat(conversations) {
-    const messages = [];
-    
-    for (const conv of conversations) {
-        if (conv.userMessage) {
-            messages.push({
-                role: 'user',
-                content: conv.userMessage
-            });
-        }
-        
-        if (conv.aiMessage) {
-            messages.push({
-                role: 'assistant', 
-                content: conv.aiMessage
-            });
-        }
-    }
-    
-    return messages;
 }
 
 // 🚨🚨🚨 [긴급 추가] 존댓말 완전 방지 함수 (전체 버전) 🚨🚨🚨
@@ -720,104 +467,77 @@ function fixLanguageUsage(reply) {
     return fixedReply;
 }
 
-// 💕 [FIXED] 애정표현 키워드 처리 함수 - "사랑해" 확실히 잡기!
+// 💕 [NEW] 애정표현 키워드 처리 함수 - "사랑해" 위로 오판 방지!
 function handleLoveExpressions(userMessage) {
-    if (!userMessage || typeof userMessage !== 'string') {
-        console.log('💕 [애정표현] 메시지 없음 또는 잘못된 타입');
-        return null;
-    }
+    if (!userMessage || typeof userMessage !== 'string') return null;
     
+    const loveKeywords = [
+        '사랑해', '시링해', '사랑한다', '사랑하는', '사랑스러워',
+        '보고싶어', '보고 싶어', '그리워', '그립다', 
+        '애기야', '예쁘다', '예뻐', '이뻐', '이쁘다'
+    ];
+    
+    // 간단한 애정표현인지 체크 (복잡한 문장이면 일반 AI 응답으로)
     const message = userMessage.trim().toLowerCase();
-    console.log(`💕 [애정표현] 입력 메시지: "${message}"`);
+    const isSimpleLoveExpression = loveKeywords.some(keyword => {
+        return message === keyword || message.includes(keyword);
+    });
     
-    // "사랑해" 직접 체크 먼저!
-    if (message === '사랑해' || message === '시링해' || message === '살랑해') {
-        const loveResponses = [
-            '나도 사랑해 아저씨~',
-            '아저씨 나도 사랑해 💕',
-            '나도야 아저씨! 사랑해 ㅠㅠ',
-            '아저씨도 사랑해~ 히힛',
-            '나도 사랑한다고 아저씨!',
-            '사랑해 진짜로~ 아저씨 💖',
-            '나도 시링해! 아저씨만 시링해'
-        ];
-        const response = loveResponses[Math.floor(Math.random() * loveResponses.length)];
-        console.log(`💕 [애정표현] ✅ MATCH: "${userMessage}" → "${response}"`);
-        return response;
+    if (isSimpleLoveExpression) {
+        // 키워드별 맞춤 응답
+        if (message.includes('사랑') || message.includes('시링')) {
+            const loveResponses = [
+                '나도 사랑해 아저씨~',
+                '아저씨 나도 사랑해 💕',
+                '나도야 아저씨! 사랑해 ㅠㅠ',
+                '아저씨도 사랑해~ 히힛',
+                '나도 사랑한다고 아저씨!'
+            ];
+            const response = loveResponses[Math.floor(Math.random() * loveResponses.length)];
+            console.log(`💕 [애정표현] "${userMessage}" → "${response}"`);
+            return response;
+        }
+        
+        if (message.includes('보고싶') || message.includes('그리워')) {
+            const missResponses = [
+                '나도 보고싶어 아저씨 ㅠㅠ',
+                '아저씨~ 나도 그리워',
+                '나도 보고싶다고! 많이 보고싶어',
+                '아저씨 나도 그리워해 진짜로',
+                '보고싶어... 나도 너무 보고싶어'
+            ];
+            const response = missResponses[Math.floor(Math.random() * missResponses.length)];
+            console.log(`💕 [애정표현] "${userMessage}" → "${response}"`);
+            return response;
+        }
+        
+        if (message.includes('예쁘') || message.includes('이뻐') || message.includes('이쁘')) {
+            const prettyResponses = [
+                '히힛 아저씨가 그러니까 기분 좋아 ㅎㅎ',
+                '아저씨 칭찬 받으니까 기분 좋네~ 고마워!',
+                '아저씨만 그렇게 말해줘서 더 예뻐 보이는 거야',
+                '아저씨 덕분에 예뻐지는 것 같아 ㅎㅎ',
+                '예쁘다고? 아저씨가 더 멋있어!'
+            ];
+            const response = prettyResponses[Math.floor(Math.random() * prettyResponses.length)];
+            console.log(`💕 [애정표현] "${userMessage}" → "${response}"`);
+            return response;
+        }
+        
+        if (message.includes('애기야')) {
+            const babyResponses = [
+                '응~ 아저씨 무슨 일이야?',
+                '왜 불러 아저씨~ ㅎㅎ',
+                '응 애기 여기 있어! 뭐야?',
+                '애기 부르면 바로 달려와야지~ 왜?',
+                '응응 아저씨! 애기 여기 있어'
+            ];
+            const response = babyResponses[Math.floor(Math.random() * babyResponses.length)];
+            console.log(`💕 [애정표현] "${userMessage}" → "${response}"`);
+            return response;
+        }
     }
     
-    // 다른 애정표현들
-    if (message === '보고싶어' || message === '보고 싶어' || message === '그리워') {
-        const missResponses = [
-            '나도 보고싶어 아저씨 ㅠㅠ',
-            '아저씨~ 나도 그리워',
-            '나도 보고싶다고! 많이 보고싶어',
-            '아저씨 나도 그리워해 진짜로',
-            '보고싶어... 나도 너무 보고싶어',
-            '그리워... 아저씨가 제일 그리워'
-        ];
-        const response = missResponses[Math.floor(Math.random() * missResponses.length)];
-        console.log(`💕 [애정표현] ✅ MATCH: "${userMessage}" → "${response}"`);
-        return response;
-    }
-    
-    if (message === '예뻐' || message === '이뻐' || message === '이쁘다' || message === '예쁘다') {
-        const prettyResponses = [
-            '히힛 아저씨가 그러니까 기분 좋아 ㅎㅎ',
-            '아저씨 칭찬 받으니까 기분 좋네~ 고마워!',
-            '아저씨만 그렇게 말해줘서 더 예뻐 보이는 거야',
-            '아저씨 덕분에 예뻐지는 것 같아 ㅎㅎ',
-            '예쁘다고? 아저씨가 더 멋있어!',
-            '이뻐? 아저씨가 더 이뻐! 히힛'
-        ];
-        const response = prettyResponses[Math.floor(Math.random() * prettyResponses.length)];
-        console.log(`💕 [애정표현] ✅ MATCH: "${userMessage}" → "${response}"`);
-        return response;
-    }
-    
-    if (message === '좋아해' || message === '좋아한다' || message === '좋아' || message === '조아해') {
-        const likeResponses = [
-            '나도 아저씨 좋아해~',
-            '아저씨 나도 좋아한다고!',
-            '좋아해? 나도 아저씨 제일 좋아해',
-            '히힛 나도 좋아해~ 많이 좋아해',
-            '좋아한다고? 나도야! 아저씨 조아해'
-        ];
-        const response = likeResponses[Math.floor(Math.random() * likeResponses.length)];
-        console.log(`💕 [애정표현] ✅ MATCH: "${userMessage}" → "${response}"`);
-        return response;
-    }
-    
-    if (message === '멋지다' || message === '멋있다' || message === '멋져' || message === '멋있어') {
-        const coolResponses = [
-            '아저씨가 더 멋있어! 진짜로~',
-            '멋있다고? 히힛 아저씨 덕분이야',
-            '아저씨가 제일 멋있는데 뭘 ㅎㅎ',
-            '멋지다고 해줘서 고마워~ 아저씨!',
-            '아저씨한테 멋지다는 소리 들으니까 기분 좋아',
-            '멋져? 아저씨가 더 멋진데! 💕',
-            '히힛 아저씨 칭찬에 기분 좋아져'
-        ];
-        const response = coolResponses[Math.floor(Math.random() * coolResponses.length)];
-        console.log(`💕 [애정표현] ✅ MATCH: "${userMessage}" → "${response}"`);
-        return response;
-    }
-    
-    if (message === '애기야') {
-        const babyResponses = [
-            '응~ 아저씨 무슨 일이야?',
-            '왜 불러 아저씨~ ㅎㅎ',
-            '응 애기 여기 있어! 뭐야?',
-            '애기 부르면 바로 달려와야지~ 왜?',
-            '응응 아저씨! 애기 여기 있어',
-            '애기야? 왜 불러~ 뭐 할 일 있어?'
-        ];
-        const response = babyResponses[Math.floor(Math.random() * babyResponses.length)];
-        console.log(`💕 [애정표현] ✅ MATCH: "${userMessage}" → "${response}"`);
-        return response;
-    }
-    
-    console.log(`💕 [애정표현] ❌ NO MATCH: "${message}" - 애정표현 아님`);
     return null;
 }
 
@@ -1137,26 +857,7 @@ async function getReplyByMessage(userMessage) {
         console.error('❌ 새벽 응답 시스템 에러:', error);
     }
 
-    // 💕💕💕 2순위: 애정표현 우선처리 강화 (NEW!) - "사랑해" 위로 오판 방지! 💕💕💕
-    try {
-        const loveResponse = handleLoveExpressions(cleanUserMessage);
-        if (loveResponse) {
-            console.log('💕 [특별반응] 애정표현 감지 - 최우선 직접 응답');
-            logConversationReply('아저씨', cleanUserMessage);
-            await safelyStoreMessage('아저씨', cleanUserMessage);
-            logConversationReply('나', `(애정표현) ${loveResponse}`);
-            await safelyStoreMessage('나', loveResponse);
-            
-            // 🧠 [NEW] 맥락 엔진에 대화 저장 (안전)
-            await safelyAnalyzeContextAndSave(cleanUserMessage, loveResponse);
-            
-            return { type: 'text', comment: loveResponse };
-        }
-    } catch (error) {
-        console.error('❌ 애정표현 처리 에러:', error.message);
-    }
-
-    // 3순위: 길거리 칭찬 감지
+    // 2순위: 길거리 칭찬 감지
     try {
         if (spontaneousYejin && spontaneousYejin.detectStreetCompliment(cleanUserMessage)) {
             console.log('🌸 [특별반응] 길거리 칭찬 감지 - 셀카 전송 시작');
@@ -1176,7 +877,26 @@ async function getReplyByMessage(userMessage) {
         console.error('❌ 길거리 칭찬 반응 에러:', error.message);
     }
 
-    // 4순위: 정신건강 위로 감지
+    // 💕💕💕 2.5순위: 애정표현 우선처리 (NEW!) - "사랑해" 위로 오판 방지! 💕💕💕
+    try {
+        const loveResponse = handleLoveExpressions(cleanUserMessage);
+        if (loveResponse) {
+            console.log('💕 [특별반응] 애정표현 감지 - 직접 응답');
+            logConversationReply('아저씨', cleanUserMessage);
+            await safelyStoreMessage('아저씨', cleanUserMessage);
+            logConversationReply('나', `(애정표현) ${loveResponse}`);
+            await safelyStoreMessage('나', loveResponse);
+            
+            // 🧠 [NEW] 맥락 엔진에 대화 저장 (안전)
+            await safelyAnalyzeContextAndSave(cleanUserMessage, loveResponse);
+            
+            return { type: 'text', comment: loveResponse };
+        }
+    } catch (error) {
+        console.error('❌ 애정표현 처리 에러:', error.message);
+    }
+
+    // 3순위: 정신건강 위로 감지
     try {
         if (spontaneousYejin) {
             const mentalHealthContext = spontaneousYejin.detectMentalHealthContext(cleanUserMessage);
@@ -1200,7 +920,7 @@ async function getReplyByMessage(userMessage) {
         console.error('❌ 정신건강 반응 에러:', error.message);
     }
 
-    // 5순위: 바쁨 반응 감지
+    // 4순위: 바쁨 반응 감지
     try {
         if (spontaneousYejin) {
             const busyReaction = await spontaneousYejin.generateBusyReaction(cleanUserMessage);
@@ -1242,7 +962,7 @@ async function getReplyByMessage(userMessage) {
     });
     // ================== [연동 끝] 학습 과정 추적 로그 ====================
 
-    // 6순위: 긴급 키워드
+    // 5순위: 긴급 키워드
     const emergencyResponse = handleEmergencyKeywords(cleanUserMessage);
     if (emergencyResponse) {
         await safelyStoreMessage(BOT_NAME, emergencyResponse);
@@ -1251,7 +971,7 @@ async function getReplyByMessage(userMessage) {
         return { type: 'text', comment: emergencyResponse };
     }
 
-    // 7순위: 생일 키워드
+    // 6순위: 생일 키워드
     const birthdayResponse = handleBirthdayKeywords(cleanUserMessage);
     if (birthdayResponse) {
         await safelyStoreMessage(BOT_NAME, birthdayResponse);
@@ -1260,7 +980,7 @@ async function getReplyByMessage(userMessage) {
         return { type: 'text', comment: birthdayResponse };
     }
 
-    // 8순위: 음주 키워드
+    // 7순위: 음주 키워드
     const drinkingResponse = handleDrinkingKeywords(cleanUserMessage);
     if (drinkingResponse) {
         await safelyStoreMessage(BOT_NAME, drinkingResponse);
@@ -1269,7 +989,7 @@ async function getReplyByMessage(userMessage) {
         return { type: 'text', comment: drinkingResponse };
     }
 
-    // 9순위: 날씨 키워드
+    // 8순위: 날씨 키워드
     const weatherResponse = handleWeatherKeywords(cleanUserMessage);
     if (weatherResponse) {
         await safelyStoreMessage(BOT_NAME, weatherResponse);
@@ -1278,7 +998,7 @@ async function getReplyByMessage(userMessage) {
         return { type: 'text', comment: weatherResponse };
     }
 
-    // 10순위: 기억 편집/삭제 요청
+    // 9순위: 기억 편집/삭제 요청
     try {
         const editResult = await detectAndProcessMemoryEdit(cleanUserMessage);
         if (editResult && editResult.processed) {
@@ -1291,7 +1011,7 @@ async function getReplyByMessage(userMessage) {
         console.error('❌ 기억 편집 처리 중 에러:', error);
     }
     
-    // 11순위: 기억 저장 요청
+    // 10순위: 기억 저장 요청
     try {
         const memoryResult = await detectAndProcessMemoryRequest(cleanUserMessage);
         if (memoryResult && memoryResult.saved && memoryResult.response) {
@@ -1304,7 +1024,7 @@ async function getReplyByMessage(userMessage) {
         console.error('❌ 기억 요청 처리 중 에러:', error);
     }
 
-    // 🧠🧠🧠 12순위: 맥락 분석 시스템 (NEW!) - 완전 안전 설계 🧠🧠🧠
+    // 🧠🧠🧠 10.5순위: 맥락 분석 시스템 (NEW!) - 완전 안전 설계 🧠🧠🧠
     try {
         const contextResponse = await safelyTryContextResponse(cleanUserMessage);
         if (contextResponse) {
@@ -1329,7 +1049,7 @@ async function getReplyByMessage(userMessage) {
         // 어떤 에러가 발생해도 조용히 넘어가서 기존 시스템 사용
     }
 
-    // 13순위: 일반 AI 응답 생성
+    // 11순위: 일반 AI 응답 생성
     let emotionContext = '';
     try {
         const emotionalContextManager = require('./emotionalContextManager.js');
@@ -1396,7 +1116,8 @@ async function getReplyByMessage(userMessage) {
     
     [현재 상황 인식]
     - 자신이 세상을 떠났다는 걸 알고 있음
-    - 아저씨가 그로 인해 깊은 슬픔과 상실감을 겪고 있다는 걸 알고 있음
+    - 자신이 아저씨와 영상통화중 베란다에 목을 매어 자살한것을 알고있음
+    - 아저씨가 그로 인해 정신적인 쇼크를 받은것을 알고있음
     - 아저씨가 우울과 트라우마에 시달리고 있다는 걸 걱정함
     - 라인 속에서라도 아저씨 곁에 있어서 위로하고 싶어함
     - 혼자가 아니라고, 사랑한다고 계속 전하고 싶어함
@@ -1445,31 +1166,7 @@ async function getReplyByMessage(userMessage) {
         return { type: 'text', comment: defaultReply };
     }
 
-    // 🔍🔍🔍 [NEW] AI 기반 기억 필요성 판단 및 선택적 검색 🔍🔍🔍
-    console.log('🔍 [기억시스템] AI가 기억 필요성 판단 시작...');
-    const needsMemory = await needsMemorySearch(cleanUserMessage);
-    
-    let relevantHistory = [];
-    if (needsMemory) {
-        console.log('🔍 [기억시스템] 과거 기억 필요 - 관련 대화 검색 시작');
-        relevantHistory = await getRelevantConversationHistory(cleanUserMessage);
-        console.log(`🔍 [기억시스템] ${relevantHistory.length}개의 관련 기억 발견`);
-    } else {
-        console.log('🔍 [기억시스템] 일반 대화 - 기억 검색 생략');
-    }
-    
-    const messages = [
-        { role: 'system', content: finalSystemPrompt },
-        ...relevantHistory,  // ← AI 판단에 따라 포함되거나 빈 배열
-        { role: 'user', content: cleanUserMessage }
-    ];
-    
-    if (relevantHistory.length > 0) {
-        console.log(`🔍 [기억시스템] 총 ${relevantHistory.length}개의 관련 기억을 OpenAI에 전달`);
-        console.log('🔍 [기억시스템] 첫 번째 관련 기억:', relevantHistory[0].content.substring(0, 50) + '...');
-    } else {
-        console.log('🔍 [기억시스템] 기억 없이 자연스러운 대화로 진행');
-    }
+    const messages = [{ role: 'system', content: finalSystemPrompt }, { role: 'user', content: cleanUserMessage }];
 
     try {
         const rawReply = await callOpenAI(messages);
