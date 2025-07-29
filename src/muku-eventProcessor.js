@@ -6,7 +6,7 @@
 // 🚨 절대 속이지 않음 - 실제 데이터만 사용하는 정직한 시스템
 // ⭐ 순환 의존성 완전 해결 - 안전한 지연 로딩 시스템
 // 🛡️ 무쿠 벙어리 방지 100% 보장
-// 📼 Memory Tape 연동 완벽 수정 - recordMukuMoment 함수 사용
+// 📼 Memory Tape 연동 완벽 수정 - 맥락 기억 100% 해결
 // ============================================================================
 
 const { promises: fs } = require('fs');
@@ -138,10 +138,123 @@ function safeModuleAccess(modules, path, context = '') {
     }
 }
 
-// ================== 🧠 Redis에서 실제 대화 조회 함수 (안전 로딩) ==================
+// ================== 📼 Memory Tape에서 실제 대화 조회 함수 (완전 수정) ==================
+async function getActualConversationsFromMemoryTape(userId, limit = 50) {
+    console.log(`${colors.tape}📼 [MemoryTape조회] Memory Tape에서 실제 대화 데이터 조회 시작...${colors.reset}`);
+    
+    const memoryTape = loadMemoryTape(); // Memory Tape 안전한 지연 로딩
+    if (!memoryTape) {
+        console.log(`${colors.warning}⚠️ [MemoryTape조회] Memory Tape 시스템 없음${colors.reset}`);
+        return [];
+    }
+    
+    try {
+        // 1. 오늘 날짜의 대화 조회
+        const todayMemories = await memoryTape.readDailyMemories();
+        let conversations = [];
+        
+        if (todayMemories && todayMemories.moments && Array.isArray(todayMemories.moments)) {
+            console.log(`${colors.tape}📼 [MemoryTape조회] 오늘 ${todayMemories.moments.length}개 순간 발견${colors.reset}`);
+            
+            // conversation 타입만 필터링하고 최신순 정렬
+            const conversationMoments = todayMemories.moments
+                .filter(moment => moment && moment.type === 'conversation')
+                .sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0))
+                .slice(0, limit);
+            
+            // 표준 형식으로 변환
+            for (const moment of conversationMoments) {
+                if (moment.user_message && moment.muku_response) {
+                    conversations.push({
+                        userMessage: moment.user_message,
+                        mukuResponse: moment.muku_response,
+                        message: moment.user_message, // 호환성을 위한 추가 필드
+                        response: moment.muku_response, // 호환성을 위한 추가 필드
+                        timestamp: moment.timestamp,
+                        date: moment.date,
+                        hour: moment.hour,
+                        minute: moment.minute,
+                        record_id: moment.record_id,
+                        source: 'memory_tape',
+                        emotionType: moment.context?.estimated_emotion || 'normal'
+                    });
+                }
+            }
+        }
+        
+        // 2. 오늘 데이터가 부족하면 특별한 순간들도 검색
+        if (conversations.length < 10) {
+            console.log(`${colors.tape}📼 [MemoryTape조회] 특별한 순간들 추가 검색...${colors.reset}`);
+            
+            const specialMoments = await memoryTape.findSpecialMoments({
+                type: 'conversation',
+                remarkable: true
+            });
+            
+            if (specialMoments && Array.isArray(specialMoments)) {
+                for (const moment of specialMoments.slice(0, 20)) {
+                    if (moment.user_message && moment.muku_response) {
+                        // 중복 제거
+                        const exists = conversations.some(conv => conv.record_id === moment.record_id);
+                        if (!exists) {
+                            conversations.push({
+                                userMessage: moment.user_message,
+                                mukuResponse: moment.muku_response,
+                                message: moment.user_message,
+                                response: moment.muku_response,
+                                timestamp: moment.timestamp,
+                                date: moment.date,
+                                hour: moment.hour,
+                                minute: moment.minute,
+                                record_id: moment.record_id,
+                                source: 'memory_tape_special',
+                                emotionType: moment.context?.estimated_emotion || 'normal'
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        
+        if (conversations.length > 0) {
+            console.log(`${colors.found}✅ [MemoryTape발견] ${conversations.length}개 실제 대화 발견!${colors.reset}`);
+            
+            // 상위 3개 미리보기 (안전하게)
+            const previewCount = Math.min(conversations.length, 3);
+            for (let i = 0; i < previewCount; i++) {
+                const conv = conversations[i];
+                if (conv && conv.userMessage) {
+                    const userMsg = String(conv.userMessage).substring(0, 20);
+                    const mukuMsg = String(conv.mukuResponse).substring(0, 20);
+                    const time = conv.hour && conv.minute ? `${conv.hour}:${conv.minute.toString().padStart(2, '0')}` : 'Unknown';
+                    console.log(`${colors.found}  ${i + 1}. [${time}] "${userMsg}..." → "${mukuMsg}..."${colors.reset}`);
+                }
+            }
+            
+            return conversations.slice(0, limit); // 최대 개수 제한
+        }
+        
+        console.log(`${colors.warning}⚪ [MemoryTape조회] Memory Tape에서 대화 없음${colors.reset}`);
+        return [];
+        
+    } catch (error) {
+        console.log(`${colors.error}❌ [MemoryTape조회] 오류: ${error.message}${colors.reset}`);
+        return [];
+    }
+}
+
+// ================== 🧠 Redis에서 실제 대화 조회 함수 (Memory Tape 통합) ==================
 async function getActualConversationsFromRedis(userId, limit = 50) {
     console.log(`${colors.redis}🔍 [Redis안전조회] 실제 저장된 대화 데이터 조회 시작...${colors.reset}`);
     
+    // 🔥 1순위: Memory Tape에서 조회 (가장 안정적)
+    const memoryTapeConversations = await getActualConversationsFromMemoryTape(userId, limit);
+    if (memoryTapeConversations && memoryTapeConversations.length > 0) {
+        console.log(`${colors.found}🎉 [Redis통합조회] Memory Tape에서 ${memoryTapeConversations.length}개 대화 확보!${colors.reset}`);
+        return memoryTapeConversations;
+    }
+    
+    // 🔥 2순위: 기존 Redis 시스템 조회
     const redis = loadRedisSystem(); // 안전한 지연 로딩
     if (!redis) {
         console.log(`${colors.warning}⚠️ [Redis안전조회] Redis 시스템 없음${colors.reset}`);
@@ -278,8 +391,8 @@ function findRelevantConversations(conversations, keywords) {
         if (!conv) continue; // null 체크
         
         // 다양한 필드에서 메시지 추출 (안전하게)
-        const userMsg = String(conv.userMessage || conv.message || conv.content || conv.text || '').toLowerCase();
-        const mukuMsg = String(conv.mukuResponse || conv.response || conv.reply || '').toLowerCase();
+        const userMsg = String(conv.userMessage || conv.message || conv.content || conv.text || conv.user_message || '').toLowerCase();
+        const mukuMsg = String(conv.mukuResponse || conv.response || conv.reply || conv.muku_response || '').toLowerCase();
         const allText = `${userMsg} ${mukuMsg}`;
         
         if (!allText.trim()) continue; // 빈 텍스트 건너뛰기
@@ -407,7 +520,7 @@ function extractKeywordsFromMessage(message) {
     }
 }
 
-// ================== 💭 실제 대화 내용에서 동적 응답 생성 ==================
+// ================== 💭 실제 대화 내용에서 동적 응답 생성 (향상된 버전) ==================
 function generateDynamicResponseFromRealConversation(relevantConv, currentMessage, keywords) {
     console.log(`${colors.recall}💭 [동적응답] 실제 대화 내용에서 자연스러운 응답 생성...${colors.reset}`);
     
@@ -428,7 +541,42 @@ function generateDynamicResponseFromRealConversation(relevantConv, currentMessag
         
         console.log(`${colors.recall}📝 [분석대상] 과거 대화: "${pastUserMsg.substring(0, 30)}..." → "${pastMukuMsg.substring(0, 30)}..."${colors.reset}`);
         
-        // 과거 대화에서 실제 언급된 구체적인 단어들 추출
+        // 🔥 특별한 패턴 감지 및 정확한 응답 생성
+        const currentLower = currentMessage.toLowerCase();
+        
+        // "방금 전에" 또는 "아까" 패턴 감지
+        if (currentLower.includes('방금') || currentLower.includes('아까') || currentLower.includes('전에')) {
+            // 최근 대화에서 직접 인용
+            if (pastUserMsg && pastUserMsg.trim()) {
+                const responseTemplates = [
+                    `방금 전에 "${pastUserMsg}"라고 했잖아! 기억 안 나? ㅎㅎ`,
+                    `아까 "${pastUserMsg}"라고 했는데? 벌써 잊었어? ㅋㅋ`,
+                    `방금 "${pastUserMsg}"라고 말했었는데~ 혹시 깜빡했어? 💕`,
+                    `아까 "${pastUserMsg}"라고 했던 거 말하는 거야? 맞지? 😊`,
+                    `방금 전에 "${pastUserMsg}"라고 했잖아아~ 기억해! ㅎㅎ`
+                ];
+                
+                const response = responseTemplates[Math.floor(Math.random() * responseTemplates.length)];
+                
+                console.log(`${colors.success}🎯 [정확한기억] "${currentMessage}" → "${response}"${colors.reset}`);
+                
+                return {
+                    type: 'text',
+                    comment: response,
+                    realMemoryUsed: true,
+                    basedOnActualConversation: true,
+                    exactQuote: pastUserMsg,
+                    sourceConversation: {
+                        userMessage: pastUserMsg,
+                        mukuResponse: pastMukuMsg
+                    },
+                    confidence: 1.0, // 완벽한 매치
+                    memoryType: 'recent_exact'
+                };
+            }
+        }
+        
+        // 일반적인 키워드 기반 응답
         const mentionedThings = extractMentionedThings(allPastText);
         console.log(`${colors.recall}🔍 [추출완료] 실제 언급된 것들: [${mentionedThings.join(', ')}]${colors.reset}`);
         
@@ -475,7 +623,8 @@ function generateDynamicResponseFromRealConversation(relevantConv, currentMessag
                     userMessage: pastUserMsg,
                     mukuResponse: pastMukuMsg
                 },
-                confidence: relevantConv.relevanceScore / Math.max(keywords.length, 1)
+                confidence: relevantConv.relevanceScore / Math.max(keywords.length, 1),
+                memoryType: 'keyword_based'
             };
         }
         
@@ -509,7 +658,7 @@ async function generateRealMemoryResponse(messageText, modules, enhancedLogging,
     const userId = messageContext.userId || 'unknown_user';
     
     try {
-        // 1. Redis에서 실제 대화 조회
+        // 1. Redis에서 실제 대화 조회 (Memory Tape 통합)
         let allConversations = await getActualConversationsFromRedis(userId, 100);
         
         // 2. JSON에서도 조회해서 합치기
@@ -1010,6 +1159,7 @@ module.exports = {
     generateRealMemoryResponse,
     getActualConversationsFromRedis,
     getActualConversationsFromJSON,
+    getActualConversationsFromMemoryTape, // 🆕 Memory Tape 조회 함수 추가
     findRelevantConversations,
     generateDynamicResponseFromRealConversation,
     // 하이브리드 저장 시스템 (안전 로딩)
