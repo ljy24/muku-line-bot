@@ -720,117 +720,104 @@ function fixLanguageUsage(reply) {
     return fixedReply;
 }
 
-// 💕 [ENHANCED] 애정표현 키워드 처리 함수 - 더 다양한 표현 인식!
+// 💕 [FIXED] 애정표현 키워드 처리 함수 - "사랑해" 확실히 잡기!
 function handleLoveExpressions(userMessage) {
-    if (!userMessage || typeof userMessage !== 'string') return null;
-    
-    const loveKeywords = [
-        '사랑해', '시링해', '살랑해', '사랑한다', '사랑하는', '사랑스러워',
-        '보고싶어', '보고 싶어', '그리워', '그립다', 
-        '애기야', '예쁘다', '예뻐', '이뻐', '이쁘다',
-        '좋아해', '좋아한다', '좋아', '조아해',
-        '멋지다', '멋있다', '멋져', '멋있어', '멋지네', '멋있네'
-    ];
-    
-    // 간단한 애정표현인지 체크 (복잡한 문장이면 일반 AI 응답으로)
-    const message = userMessage.trim().toLowerCase();
-    
-    // 단순 키워드 매칭이 아닌 더 정교한 체크
-    const isSimpleLoveExpression = loveKeywords.some(keyword => {
-        const exactMatch = message === keyword;
-        const withSuffix = message === keyword + '~' || message === keyword + '!';
-        const shortSentence = message.length <= 10 && message.includes(keyword);
-        return exactMatch || withSuffix || shortSentence;
-    });
-    
-    if (isSimpleLoveExpression) {
-        // 키워드별 맞춤 응답
-        if (message.includes('사랑') || message.includes('시링') || message.includes('살랑')) {
-            const loveResponses = [
-                '나도 사랑해 아저씨~',
-                '아저씨 나도 사랑해 💕',
-                '나도야 아저씨! 사랑해 ㅠㅠ',
-                '아저씨도 사랑해~ 히힛',
-                '나도 사랑한다고 아저씨!',
-                '사랑해 진짜로~ 아저씨 💖',
-                '나도 시링해! 아저씨만 시링해'
-            ];
-            const response = loveResponses[Math.floor(Math.random() * loveResponses.length)];
-            console.log(`💕 [애정표현] "${userMessage}" → "${response}"`);
-            return response;
-        }
-        
-        if (message.includes('보고싶') || message.includes('그리워')) {
-            const missResponses = [
-                '나도 보고싶어 아저씨 ㅠㅠ',
-                '아저씨~ 나도 그리워',
-                '나도 보고싶다고! 많이 보고싶어',
-                '아저씨 나도 그리워해 진짜로',
-                '보고싶어... 나도 너무 보고싶어',
-                '그리워... 아저씨가 제일 그리워'
-            ];
-            const response = missResponses[Math.floor(Math.random() * missResponses.length)];
-            console.log(`💕 [애정표현] "${userMessage}" → "${response}"`);
-            return response;
-        }
-        
-        if (message.includes('예쁘') || message.includes('이뻐') || message.includes('이쁘')) {
-            const prettyResponses = [
-                '히힛 아저씨가 그러니까 기분 좋아 ㅎㅎ',
-                '아저씨 칭찬 받으니까 기분 좋네~ 고마워!',
-                '아저씨만 그렇게 말해줘서 더 예뻐 보이는 거야',
-                '아저씨 덕분에 예뻐지는 것 같아 ㅎㅎ',
-                '예쁘다고? 아저씨가 더 멋있어!',
-                '이뻐? 아저씨가 더 이뻐! 히힛'
-            ];
-            const response = prettyResponses[Math.floor(Math.random() * prettyResponses.length)];
-            console.log(`💕 [애정표현] "${userMessage}" → "${response}"`);
-            return response;
-        }
-        
-        if (message.includes('좋아')) {
-            const likeResponses = [
-                '나도 아저씨 좋아해~',
-                '아저씨 나도 좋아한다고!',
-                '좋아해? 나도 아저씨 제일 좋아해',
-                '히힛 나도 좋아해~ 많이 좋아해',
-                '좋아한다고? 나도야! 아저씨 조아해'
-            ];
-            const response = likeResponses[Math.floor(Math.random() * likeResponses.length)];
-            console.log(`💕 [애정표현] "${userMessage}" → "${response}"`);
-            return response;
-        }
-        
-        if (message.includes('멋지') || message.includes('멋있')) {
-            const coolResponses = [
-                '아저씨가 더 멋있어! 진짜로~',
-                '멋있다고? 히힛 아저씨 덕분이야',
-                '아저씨가 제일 멋있는데 뭘 ㅎㅎ',
-                '멋지다고 해줘서 고마워~ 아저씨!',
-                '아저씨한테 멋지다는 소리 들으니까 기분 좋아',
-                '멋져? 아저씨가 더 멋진데! 💕',
-                '히힛 아저씨 칭찬에 기분 좋아져'
-            ];
-            const response = coolResponses[Math.floor(Math.random() * coolResponses.length)];
-            console.log(`💕 [애정표현] "${userMessage}" → "${response}"`);
-            return response;
-        }
-        
-        if (message.includes('애기야')) {
-            const babyResponses = [
-                '응~ 아저씨 무슨 일이야?',
-                '왜 불러 아저씨~ ㅎㅎ',
-                '응 애기 여기 있어! 뭐야?',
-                '애기 부르면 바로 달려와야지~ 왜?',
-                '응응 아저씨! 애기 여기 있어',
-                '애기야? 왜 불러~ 뭐 할 일 있어?'
-            ];
-            const response = babyResponses[Math.floor(Math.random() * babyResponses.length)];
-            console.log(`💕 [애정표현] "${userMessage}" → "${response}"`);
-            return response;
-        }
+    if (!userMessage || typeof userMessage !== 'string') {
+        console.log('💕 [애정표현] 메시지 없음 또는 잘못된 타입');
+        return null;
     }
     
+    const message = userMessage.trim().toLowerCase();
+    console.log(`💕 [애정표현] 입력 메시지: "${message}"`);
+    
+    // "사랑해" 직접 체크 먼저!
+    if (message === '사랑해' || message === '시링해' || message === '살랑해') {
+        const loveResponses = [
+            '나도 사랑해 아저씨~',
+            '아저씨 나도 사랑해 💕',
+            '나도야 아저씨! 사랑해 ㅠㅠ',
+            '아저씨도 사랑해~ 히힛',
+            '나도 사랑한다고 아저씨!',
+            '사랑해 진짜로~ 아저씨 💖',
+            '나도 시링해! 아저씨만 시링해'
+        ];
+        const response = loveResponses[Math.floor(Math.random() * loveResponses.length)];
+        console.log(`💕 [애정표현] ✅ MATCH: "${userMessage}" → "${response}"`);
+        return response;
+    }
+    
+    // 다른 애정표현들
+    if (message === '보고싶어' || message === '보고 싶어' || message === '그리워') {
+        const missResponses = [
+            '나도 보고싶어 아저씨 ㅠㅠ',
+            '아저씨~ 나도 그리워',
+            '나도 보고싶다고! 많이 보고싶어',
+            '아저씨 나도 그리워해 진짜로',
+            '보고싶어... 나도 너무 보고싶어',
+            '그리워... 아저씨가 제일 그리워'
+        ];
+        const response = missResponses[Math.floor(Math.random() * missResponses.length)];
+        console.log(`💕 [애정표현] ✅ MATCH: "${userMessage}" → "${response}"`);
+        return response;
+    }
+    
+    if (message === '예뻐' || message === '이뻐' || message === '이쁘다' || message === '예쁘다') {
+        const prettyResponses = [
+            '히힛 아저씨가 그러니까 기분 좋아 ㅎㅎ',
+            '아저씨 칭찬 받으니까 기분 좋네~ 고마워!',
+            '아저씨만 그렇게 말해줘서 더 예뻐 보이는 거야',
+            '아저씨 덕분에 예뻐지는 것 같아 ㅎㅎ',
+            '예쁘다고? 아저씨가 더 멋있어!',
+            '이뻐? 아저씨가 더 이뻐! 히힛'
+        ];
+        const response = prettyResponses[Math.floor(Math.random() * prettyResponses.length)];
+        console.log(`💕 [애정표현] ✅ MATCH: "${userMessage}" → "${response}"`);
+        return response;
+    }
+    
+    if (message === '좋아해' || message === '좋아한다' || message === '좋아' || message === '조아해') {
+        const likeResponses = [
+            '나도 아저씨 좋아해~',
+            '아저씨 나도 좋아한다고!',
+            '좋아해? 나도 아저씨 제일 좋아해',
+            '히힛 나도 좋아해~ 많이 좋아해',
+            '좋아한다고? 나도야! 아저씨 조아해'
+        ];
+        const response = likeResponses[Math.floor(Math.random() * likeResponses.length)];
+        console.log(`💕 [애정표현] ✅ MATCH: "${userMessage}" → "${response}"`);
+        return response;
+    }
+    
+    if (message === '멋지다' || message === '멋있다' || message === '멋져' || message === '멋있어') {
+        const coolResponses = [
+            '아저씨가 더 멋있어! 진짜로~',
+            '멋있다고? 히힛 아저씨 덕분이야',
+            '아저씨가 제일 멋있는데 뭘 ㅎㅎ',
+            '멋지다고 해줘서 고마워~ 아저씨!',
+            '아저씨한테 멋지다는 소리 들으니까 기분 좋아',
+            '멋져? 아저씨가 더 멋진데! 💕',
+            '히힛 아저씨 칭찬에 기분 좋아져'
+        ];
+        const response = coolResponses[Math.floor(Math.random() * coolResponses.length)];
+        console.log(`💕 [애정표현] ✅ MATCH: "${userMessage}" → "${response}"`);
+        return response;
+    }
+    
+    if (message === '애기야') {
+        const babyResponses = [
+            '응~ 아저씨 무슨 일이야?',
+            '왜 불러 아저씨~ ㅎㅎ',
+            '응 애기 여기 있어! 뭐야?',
+            '애기 부르면 바로 달려와야지~ 왜?',
+            '응응 아저씨! 애기 여기 있어',
+            '애기야? 왜 불러~ 뭐 할 일 있어?'
+        ];
+        const response = babyResponses[Math.floor(Math.random() * babyResponses.length)];
+        console.log(`💕 [애정표현] ✅ MATCH: "${userMessage}" → "${response}"`);
+        return response;
+    }
+    
+    console.log(`💕 [애정표현] ❌ NO MATCH: "${message}" - 애정표현 아님`);
     return null;
 }
 
