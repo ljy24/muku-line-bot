@@ -1,7 +1,21 @@
 // ============================================================================
-// yejinSelfie.js - v2.4 (함수명 확실히 export)
+// yejinSelfie.js - v2.5 (URL 인코딩 추가로 LINE API 호환성 확보)
 // 📸 애기의 감정을 읽어서 코멘트와 함께 셀카를 전송합니다.
+// 🔧 오모이데와 동일한 URL 인코딩 로직 추가
 // ============================================================================
+
+// ✅ [추가] URL 인코딩 함수 - 오모이데와 동일한 로직
+function encodeImageUrl(url) {
+    try {
+        const parsed = new URL(url);
+        parsed.pathname = parsed.pathname.split('/').map(segment => 
+            segment ? encodeURIComponent(decodeURIComponent(segment)) : segment
+        ).join('/');
+        return parsed.toString();
+    } catch (error) {
+        return url;
+    }
+}
 
 function getSelfieReplyText(emotionalState) {
     // 중앙 감정 관리자에서 직접 텍스트 가져오기 시도
@@ -53,7 +67,10 @@ async function getSelfieReply(userMessage, conversationContext) {
 
         const index = Math.floor(Math.random() * fileCount) + 1;
         const fileName = String(index).padStart(6, "0") + ".jpg";
-        const imageUrl = `${baseUrl}/${fileName}`;
+        const rawImageUrl = `${baseUrl}/${fileName}`;
+        
+        // ✅ [핵심 수정] URL 인코딩 추가 - 오모이데와 동일한 방식
+        const encodedImageUrl = encodeImageUrl(rawImageUrl);
 
         // ✅ [수정] 중앙 감정 관리자에서 감정 상태 가져오기
         let emotionalState = 'normal';
@@ -73,11 +90,12 @@ async function getSelfieReply(userMessage, conversationContext) {
         const text = getSelfieReplyText(emotionalState);
 
         console.log(`[yejinSelfie] 셀카 전송: ${emotionalState} 상태로 응답`);
+        console.log(`[yejinSelfie] URL 인코딩 완료: ${encodedImageUrl.substring(0, 50)}...`);
 
         return {
             type: 'image',
-            originalContentUrl: imageUrl,
-            previewImageUrl: imageUrl,
+            originalContentUrl: encodedImageUrl,  // ← 인코딩된 URL 사용
+            previewImageUrl: encodedImageUrl,     // ← 인코딩된 URL 사용
             altText: text,
             caption: text
         };
@@ -96,14 +114,19 @@ async function getEmotionalSelfie(emotionType = 'normal') {
     const fileCount = 2032;
     const index = Math.floor(Math.random() * fileCount) + 1;
     const fileName = String(index).padStart(6, "0") + ".jpg";
-    const imageUrl = `${baseUrl}/${fileName}`;
+    const rawImageUrl = `${baseUrl}/${fileName}`;
+    
+    // ✅ [핵심 수정] URL 인코딩 추가
+    const encodedImageUrl = encodeImageUrl(rawImageUrl);
     
     const text = getSelfieReplyText(emotionType);
     
+    console.log(`[yejinSelfie] 이벤트 셀카 URL 인코딩 완료: ${encodedImageUrl.substring(0, 50)}...`);
+    
     return {
         type: 'image',
-        originalContentUrl: imageUrl,
-        previewImageUrl: imageUrl,
+        originalContentUrl: encodedImageUrl,  // ← 인코딩된 URL 사용
+        previewImageUrl: encodedImageUrl,     // ← 인코딩된 URL 사용
         altText: text,
         caption: text
     };
