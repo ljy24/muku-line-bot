@@ -21,7 +21,14 @@ function getSelfieReplyText(emotionalState) {
     // 중앙 감정 관리자에서 직접 텍스트 가져오기 시도
     try {
         const emotionalContext = require('./emotionalContextManager.js');
-        return emotionalContext.getSelfieText();
+        const selfieText = emotionalContext.getSelfieText();
+        
+        // ✅ [안전장치] 문자열인지 확인
+        if (typeof selfieText === 'string' && selfieText.trim().length > 0) {
+            return selfieText;
+        } else {
+            console.warn('⚠️ [getSelfieReplyText] 중앙 감정 관리자에서 문자열이 아닌 값 반환:', typeof selfieText);
+        }
     } catch (error) {
         console.warn('⚠️ [getSelfieReplyText] 중앙 감정 관리자에서 텍스트를 가져올 수 없어서 기본 텍스트 사용');
     }
@@ -89,8 +96,23 @@ async function getSelfieReply(userMessage, conversationContext) {
 
         const text = getSelfieReplyText(emotionalState);
 
+        // ✅ [안전장치] caption이 문자열인지 확인
+        if (typeof text !== 'string') {
+            console.error('❌ [yejinSelfie] caption이 문자열이 아님:', typeof text, text);
+            const fallbackText = "아저씨 보여주려고 방금 찍은 셀카야. 어때?";
+            
+            return {
+                type: 'image',
+                originalContentUrl: encodedImageUrl,
+                previewImageUrl: encodedImageUrl,
+                altText: fallbackText,
+                caption: fallbackText
+            };
+        }
+
         console.log(`[yejinSelfie] 셀카 전송: ${emotionalState} 상태로 응답`);
         console.log(`[yejinSelfie] URL 인코딩 완료: ${encodedImageUrl.substring(0, 50)}...`);
+        console.log(`[yejinSelfie] Caption 확인: "${text}"`);
 
         return {
             type: 'image',
@@ -121,7 +143,22 @@ async function getEmotionalSelfie(emotionType = 'normal') {
     
     const text = getSelfieReplyText(emotionType);
     
+    // ✅ [안전장치] caption이 문자열인지 확인
+    if (typeof text !== 'string') {
+        console.error('❌ [yejinSelfie] 이벤트 셀카 caption이 문자열이 아님:', typeof text, text);
+        const fallbackText = "아저씨 보여주려고 방금 찍은 셀카야. 어때?";
+        
+        return {
+            type: 'image',
+            originalContentUrl: encodedImageUrl,
+            previewImageUrl: encodedImageUrl,
+            altText: fallbackText,
+            caption: fallbackText
+        };
+    }
+    
     console.log(`[yejinSelfie] 이벤트 셀카 URL 인코딩 완료: ${encodedImageUrl.substring(0, 50)}...`);
+    console.log(`[yejinSelfie] 이벤트 셀카 Caption 확인: "${text}"`);
     
     return {
         type: 'image',
