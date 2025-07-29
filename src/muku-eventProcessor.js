@@ -646,6 +646,20 @@ async function generateRealMemoryResponse(messageText, modules, enhancedLogging,
         return null;
     }
     
+    // 🚨 감정표현 우선 감지 - 장기기억보다 우선순위 높음
+    const emotionalExpressions = [
+        '사랑해', '좋아해', '보고싶어', '미안해', '고마워', '고맙다', 
+        '죄송해', '괜찮아', '힘들어', '슬퍼', '기뻐', '행복해'
+    ];
+    
+    const messageText_lower = messageText.toLowerCase();
+    for (const emotion of emotionalExpressions) {
+        if (messageText_lower.includes(emotion)) {
+            console.log(`${colors.warning}💕 [감정우선] "${emotion}" 감정표현 감지 - 장기기억 대신 감정 반응 우선${colors.reset}`);
+            return null; // autoReply의 감정 처리에 맡김
+        }
+    }
+    
     // 현재 메시지에서 키워드 추출
     const keywords = extractKeywordsFromMessage(messageText);
     console.log(`${colors.search}🔍 [키워드추출] "${messageText}" → [${keywords.join(', ')}]${colors.reset}`);
