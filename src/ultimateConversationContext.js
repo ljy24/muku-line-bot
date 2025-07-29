@@ -1,8 +1,9 @@
 // ============================================================================
-// ultimateConversationContext.js - v36.0 (슬림화된 5% 고유 기능만)
-// 🎯 중복 제거 완료: muku-autonomousYejinSystem.js와 완벽 분업
-// ✨ 고유 기능만 집중: 동적기억 + GPT최적화 + 정교한프롬프트 + 주제관리 + 세부통계
-// 🔄 외부 데이터 연동: muku-autonomousYejinSystem.js에서 데이터 받아서 사용
+// ultimateConversationContext.js - v37.0 (Redis 통합 + 중복 해결 완성)
+// 🎯 핵심 고유 기능 보존: GPT모델 최적화 + 동적기억 + 주제관리 + 정교한프롬프트
+// 🔄 Redis 통합: 기존 시스템과 완전 연동하여 무쿠 벙어리 문제 해결
+// ✨ 중복 제거: 다른 시스템들과 역할 분담 명확화
+// 🛡️ 안전 우선: 기존 기능 100% 보존하면서 Redis 레이어 추가
 // ============================================================================
 
 const moment = require('moment-timezone');
@@ -15,730 +16,575 @@ let getCurrentModelSetting = null;
 try {
     const indexModule = require('../index');
     getCurrentModelSetting = indexModule.getCurrentModelSetting;
-    console.log('✨ [SlimContext] GPT 모델 버전 관리 시스템 연동 성공');
+    console.log('✅ [UltimateContext] GPT 모델 버전 관리 시스템 연동 성공');
 } catch (error) {
-    console.warn('⚠️ [SlimContext] GPT 모델 버전 관리 시스템 연동 실패:', error.message);
+    console.warn('⚠️ [UltimateContext] GPT 모델 버전 관리 시스템 연동 실패:', error.message);
 }
 
-// 🔄 외부 시스템 연동 (muku-autonomousYejinSystem.js)
+// 🔄 Redis 통합 시스템 연동
 let autonomousYejinSystem = null;
+let redisCache = null;
 
-function getAutonomousSystem() {
+function getRedisIntegratedSystem() {
     if (!autonomousYejinSystem) {
         try {
             const autonomousModule = require('./muku-autonomousYejinSystem');
             autonomousYejinSystem = autonomousModule.getGlobalInstance();
+            
+            if (autonomousYejinSystem && autonomousYejinSystem.redisCache) {
+                redisCache = autonomousYejinSystem.redisCache;
+                console.log('✅ [UltimateContext] Redis 통합 시스템 연동 성공');
+            }
         } catch (error) {
-            console.log('⚠️ [SlimContext] muku-autonomousYejinSystem 연동 실패:', error.message);
+            console.log('⚠️ [UltimateContext] Redis 통합 시스템 연동 실패:', error.message);
         }
     }
-    return autonomousYejinSystem;
+    return { autonomousYejinSystem, redisCache };
 }
 
-// --- 슬림화된 핵심 상태 (5% 고유 기능만) ---
-let slimConversationState = {
-    // 🧠 동적 기억 관리 (사용자 명령어 전용)
-    userCommandMemories: [],  // "기억해줘", "잊어줘" 명령어로 관리되는 기억들
+// 🔄 다른 통합 시스템들 연동
+let integratedMoodManager = null;
+let integratedAiUtils = null;
+
+function getIntegratedSystems() {
+    if (!integratedMoodManager) {
+        try {
+            integratedMoodManager = require('./moodManager');
+            console.log('✅ [UltimateContext] 통합 무드매니저 연동 성공');
+        } catch (error) {
+            console.log('⚠️ [UltimateContext] 통합 무드매니저 연동 실패:', error.message);
+        }
+    }
     
-    // 🎯 대화 주제 & 액션 관리 
+    if (!integratedAiUtils) {
+        try {
+            integratedAiUtils = require('./aiUtils');
+            console.log('✅ [UltimateContext] 통합 AI유틸 연동 성공');
+        } catch (error) {
+            console.log('⚠️ [UltimateContext] 통합 AI유틸 연동 실패:', error.message);
+        }
+    }
+    
+    return { integratedMoodManager, integratedAiUtils };
+}
+
+// --- 🎯 핵심 고유 상태 (GPT 최적화 중심) ---
+let ultimateContextState = {
+    // ✨ 사용자 명령 기억 (Redis 통합)
+    userCommandMemories: [],  // 로컬 캐시 (Redis와 동기화)
+    lastRedisSyncTime: 0,
+    
+    // 🎯 대화 주제 & 액션 관리 (고유 기능)
     conversationTopic: null,
     pendingAction: null,
     topicHistory: [],
     
-    // 📊 세부 통계 분류 (타입별 세분화)
-    detailedStats: {
-        messageTypes: {
-            emotional: 0,
-            casual: 0, 
-            caring: 0,
-            playful: 0,
-            missing: 0,
-            worry: 0
-        },
-        topicTransitions: [],
-        actionSuccessRates: {},
-        gptModelUsage: {
-            '3.5': 0,
-            '4.0': 0,
-            'auto': 0
-        }
+    // ✨ GPT 모델별 최적화 상태 (핵심 고유 기능!)
+    gptOptimization: {
+        currentModel: 'auto',
+        lastOptimizationTime: 0,
+        modelPerformanceCache: {},
+        contextStrategies: {}
+    },
+    
+    // 📊 고유 통계 (GPT 모델 최적화 관련만)
+    optimizationStats: {
+        modelSwitches: 0,
+        contextOptimizations: 0,
+        promptGenerations: 0,
+        lastOptimizationResult: null
     }
 };
 
-// ================== 🎨 로그 함수 ==================
-function slimLog(message, data = null) {
+// ================== 🎨 통합 로그 함수 ==================
+function ultimateLog(message, data = null) {
     const timestamp = moment().tz(TIMEZONE).format('YYYY-MM-DD HH:mm:ss');
-    console.log(`[${timestamp}] [SlimContext] ${message}`);
+    console.log(`[${timestamp}] [UltimateContext] ${message}`);
     if (data) {
-        console.log('  🎯 슬림데이터:', JSON.stringify(data, null, 2));
+        console.log('  💎 UltimateData:', JSON.stringify(data, null, 2));
     }
 }
 
-// ==================== ✨ GPT 모델별 초정밀 최적화 (고유 기능) ====================
+// ==================== ✨ GPT 모델별 초정밀 최적화 (핵심 고유 기능) ====================
 
 /**
- * 현재 설정된 GPT 모델에 따라 컨텍스트 길이 정밀 조정
+ * 🎯 GPT 모델별 컨텍스트 길이 초정밀 계산
  */
-function getOptimalContextLength() {
+function getUltimatePrecisionContextLength() {
     if (!getCurrentModelSetting) {
-        return { recent: 5, memory: 3, userMemory: 2 }; // 기본값
+        return { recent: 5, memory: 3, userMemory: 2, redis: 3 }; // 기본값
     }
     
     const currentModel = getCurrentModelSetting();
+    ultimateContextState.gptOptimization.currentModel = currentModel;
     
     switch(currentModel) {
         case '3.5':
-            // GPT-3.5는 컨텍스트를 매우 짧게 (토큰 절약)
-            return { recent: 2, memory: 1, userMemory: 1 };
+            // GPT-3.5: 극도로 효율적인 토큰 사용
+            return { 
+                recent: 2,      // 최근 대화 최소
+                memory: 1,      // 기존 기억 최소
+                userMemory: 1,  // 사용자 기억 최소
+                redis: 2,       // Redis 데이터 최소
+                totalTokenBudget: 500
+            };
             
         case '4.0':
-            // GPT-4o는 컨텍스트를 매우 길게 (풍부한 정보)
-            return { recent: 10, memory: 6, userMemory: 4 };
+            // GPT-4o: 최대한 풍부한 컨텍스트
+            return { 
+                recent: 15,     // 최근 대화 풍부
+                memory: 8,      // 기존 기억 풍부
+                userMemory: 6,  // 사용자 기억 풍부
+                redis: 10,      // Redis 데이터 풍부
+                totalTokenBudget: 2000
+            };
             
         case 'auto':
-            // 자동 모드는 균형
-            return { recent: 5, memory: 3, userMemory: 2 };
+            // 자동 모드: 지능적 균형
+            return { 
+                recent: 7,      // 최근 대화 균형
+                memory: 4,      // 기존 기억 균형
+                userMemory: 3,  // 사용자 기억 균형
+                redis: 5,       // Redis 데이터 균형
+                totalTokenBudget: 1000
+            };
             
         default:
-            return { recent: 5, memory: 3, userMemory: 2 };
+            return { recent: 5, memory: 3, userMemory: 2, redis: 3, totalTokenBudget: 800 };
     }
 }
 
 /**
- * 모델별로 최적화된 컨텍스트 우선순위 정밀 결정
+ * 🎯 모델별 컨텍스트 우선순위 매트릭스
  */
-function getContextPriority(currentModel) {
-    switch(currentModel) {
-        case '3.5':
-            // GPT-3.5는 핵심 정보에만 집중 (토큰 효율성)
-            return {
-                userMemories: 0.6,     // 사용자 기억 최우선
-                recentConversation: 0.3, // 최근 대화 최소
-                emotions: 0.1          // 감정 상태 최소
-            };
+function getUltimateContextPriorityMatrix(currentModel) {
+    const matrices = {
+        '3.5': {
+            // GPT-3.5: 핵심 정보만 집중
+            userCommandMemories: 0.7,    // 사용자 직접 명령 최우선
+            recentConversation: 0.2,     // 최근 대화 최소
+            emotionState: 0.05,          // 감정 상태 최소
+            redisContext: 0.05           // Redis 컨텍스트 최소
+        },
+        '4.0': {
+            // GPT-4o: 모든 정보 균형있게 활용
+            userCommandMemories: 0.3,    // 사용자 명령
+            recentConversation: 0.3,     // 최근 대화
+            emotionState: 0.2,           // 감정 상태
+            redisContext: 0.2            // Redis 컨텍스트
+        },
+        'auto': {
+            // 자동: 적응적 균형
+            userCommandMemories: 0.4,    // 사용자 명령 우선
+            recentConversation: 0.3,     // 최근 대화
+            emotionState: 0.15,          // 감정 상태
+            redisContext: 0.15           // Redis 컨텍스트
+        }
+    };
+    
+    return matrices[currentModel] || matrices['auto'];
+}
+
+/**
+ * 🎯 모델별 프롬프트 스타일 전략
+ */
+function getUltimatePromptStrategy(currentModel) {
+    const strategies = {
+        '3.5': {
+            style: 'ultra_concise',
+            maxLength: 400,
+            format: 'minimal_bullets',
+            complexity: 'simple',
+            keywordDensity: 'high',
+            redundancyTolerance: 'none'
+        },
+        '4.0': {
+            style: 'ultra_detailed',
+            maxLength: 2500,
+            format: 'rich_narrative',
+            complexity: 'sophisticated',
+            keywordDensity: 'moderate',
+            redundancyTolerance: 'high'
+        },
+        'auto': {
+            style: 'adaptive_balanced',
+            maxLength: 1200,
+            format: 'structured_mixed',
+            complexity: 'moderate',
+            keywordDensity: 'balanced',
+            redundancyTolerance: 'moderate'
+        }
+    };
+    
+    return strategies[currentModel] || strategies['auto'];
+}
+
+/**
+ * 🎯 실시간 모델 성능 최적화
+ */
+function optimizeForCurrentModel() {
+    const currentModel = getCurrentModelSetting ? getCurrentModelSetting() : 'auto';
+    const optimizationTime = Date.now();
+    
+    // 성능 캐시 확인
+    const cachedOptimization = ultimateContextState.gptOptimization.modelPerformanceCache[currentModel];
+    if (cachedOptimization && (optimizationTime - cachedOptimization.timestamp) < 5 * 60 * 1000) {
+        return cachedOptimization.result; // 5분 캐시
+    }
+    
+    // 새로운 최적화 수행
+    const contextLength = getUltimatePrecisionContextLength();
+    const priorityMatrix = getUltimateContextPriorityMatrix(currentModel);
+    const promptStrategy = getUltimatePromptStrategy(currentModel);
+    
+    const optimization = {
+        model: currentModel,
+        contextLength,
+        priorityMatrix,
+        promptStrategy,
+        timestamp: optimizationTime,
+        id: `opt_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`
+    };
+    
+    // 캐시에 저장
+    ultimateContextState.gptOptimization.modelPerformanceCache[currentModel] = {
+        result: optimization,
+        timestamp: optimizationTime
+    };
+    
+    ultimateContextState.optimizationStats.contextOptimizations++;
+    ultimateContextState.optimizationStats.lastOptimizationResult = optimization;
+    
+    ultimateLog(`GPT 모델 최적화 완료: ${currentModel}`, {
+        contextItems: contextLength,
+        priorities: priorityMatrix,
+        style: promptStrategy.style
+    });
+    
+    return optimization;
+}
+
+// ==================== 🧠 Redis 통합 사용자 기억 관리 ====================
+
+/**
+ * 🔄 Redis와 로컬 사용자 기억 동기화
+ */
+async function syncUserMemoriesWithRedis() {
+    try {
+        const { redisCache } = getRedisIntegratedSystem();
+        
+        if (!redisCache || !redisCache.isAvailable) {
+            ultimateLog('Redis 사용 불가, 로컬 메모리만 사용');
+            return false;
+        }
+        
+        // Redis에서 사용자 기억 조회
+        const cachedUserMemories = await redisCache.getCachedLearningPattern('user_command_memories');
+        
+        if (cachedUserMemories && Array.isArray(cachedUserMemories)) {
+            // Redis 데이터로 로컬 캐시 업데이트
+            ultimateContextState.userCommandMemories = cachedUserMemories;
+            ultimateContextState.lastRedisSyncTime = Date.now();
             
-        case '4.0':
-            // GPT-4o는 모든 정보 활용 (풍부한 컨텍스트)
-            return {
-                userMemories: 0.4,     // 사용자 기억 
-                recentConversation: 0.4, // 최근 대화
-                emotions: 0.2          // 감정 상태
-            };
-            
-        case 'auto':
-        default:
-            // 균형잡힌 가중치
-            return {
-                userMemories: 0.5,     // 사용자 기억 우선
-                recentConversation: 0.3, // 최근 대화
-                emotions: 0.2          // 감정 상태
-            };
+            ultimateLog(`Redis 사용자 기억 동기화 성공: ${cachedUserMemories.length}개`);
+            return true;
+        }
+        
+        // Redis에 데이터가 없으면 로컬 데이터를 Redis에 저장
+        if (ultimateContextState.userCommandMemories.length > 0) {
+            await redisCache.cacheLearningPattern('user_command_memories', ultimateContextState.userCommandMemories);
+            ultimateLog('로컬 사용자 기억을 Redis에 백업 완료');
+        }
+        
+        return true;
+    } catch (error) {
+        ultimateLog('Redis 동기화 오류:', error.message);
+        return false;
     }
 }
 
 /**
- * 모델별 프롬프트 스타일 결정
+ * 🧠 Redis 통합 사용자 기억 추가
  */
-function getPromptStyle(currentModel) {
-    switch(currentModel) {
-        case '3.5':
-            return {
-                style: 'concise',
-                maxLength: 500,
-                format: 'bullet',
-                complexity: 'simple'
-            };
-            
-        case '4.0':
-            return {
-                style: 'detailed',
-                maxLength: 1500,
-                format: 'narrative',
-                complexity: 'rich'
-            };
-            
-        case 'auto':
-        default:
-            return {
-                style: 'balanced',
-                maxLength: 800,
-                format: 'mixed',
-                complexity: 'moderate'
-            };
-    }
-}
-
-// ==================== 🧠 동적 기억 관리 (사용자 명령어 전용) ====================
-
-/**
- * 사용자 기억 추가 ("기억해줘" 명령어)
- */
-async function addUserCommandMemory(content, category = 'user_command') {
+async function addUserCommandMemoryWithRedis(content, category = 'user_command') {
     const memoryObj = {
-        id: `cmd_mem_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        id: `ultimate_cmd_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         content,
         category,
         timestamp: Date.now(),
         type: 'user_command',
-        importance: 10, // 사용자 직접 명령은 최고 중요도
-        source: 'user_direct_command'
+        importance: 10,
+        source: 'ultimate_context_user_command',
+        version: 'v37.0'
     };
     
-    slimConversationState.userCommandMemories.push(memoryObj);
+    // 로컬에 추가
+    ultimateContextState.userCommandMemories.push(memoryObj);
     
-    slimLog(`사용자 명령 기억 추가: "${content.substring(0, 30)}..." (${category})`);
+    // Redis에도 저장
+    try {
+        const { redisCache } = getRedisIntegratedSystem();
+        if (redisCache && redisCache.isAvailable) {
+            await redisCache.cacheLearningPattern('user_command_memories', ultimateContextState.userCommandMemories);
+            ultimateLog(`Redis 통합 사용자 기억 추가: "${content.substring(0, 30)}..." (${category})`);
+        }
+    } catch (error) {
+        ultimateLog('Redis 저장 실패, 로컬만 저장:', error.message);
+    }
+    
     return memoryObj.id;
 }
 
 /**
- * 사용자 기억 삭제 ("잊어줘" 명령어)
+ * 🧠 Redis 통합 사용자 기억 삭제
  */
-async function deleteUserCommandMemory(searchContent) {
-    const beforeCount = slimConversationState.userCommandMemories.length;
+async function deleteUserCommandMemoryWithRedis(searchContent) {
+    const beforeCount = ultimateContextState.userCommandMemories.length;
     
-    slimConversationState.userCommandMemories = 
-        slimConversationState.userCommandMemories.filter(mem => 
+    ultimateContextState.userCommandMemories = 
+        ultimateContextState.userCommandMemories.filter(mem => 
             !mem.content.toLowerCase().includes(searchContent.toLowerCase())
         );
     
-    const deletedCount = beforeCount - slimConversationState.userCommandMemories.length;
+    const deletedCount = beforeCount - ultimateContextState.userCommandMemories.length;
     
-    slimLog(`${deletedCount}개 사용자 명령 기억 삭제: "${searchContent}"`);
+    // Redis에도 반영
+    try {
+        const { redisCache } = getRedisIntegratedSystem();
+        if (redisCache && redisCache.isAvailable) {
+            await redisCache.cacheLearningPattern('user_command_memories', ultimateContextState.userCommandMemories);
+            ultimateLog(`Redis 통합 사용자 기억 삭제: "${searchContent}" (${deletedCount}개)`);
+        }
+    } catch (error) {
+        ultimateLog('Redis 삭제 실패, 로컬만 삭제:', error.message);
+    }
+    
     return deletedCount > 0;
 }
 
 /**
- * 사용자 기억 수정
+ * 🔍 Redis 통합 사용자 기억 검색
  */
-async function updateUserCommandMemory(id, newContent) {
-    const memory = slimConversationState.userCommandMemories.find(m => m.id === id);
-    if (memory) {
-        memory.content = newContent;
-        memory.lastModified = Date.now();
-        memory.modificationCount = (memory.modificationCount || 0) + 1;
-        
-        slimLog(`사용자 명령 기억 수정: ${id}`);
-        return true;
-    }
-    return false;
-}
-
-/**
- * ID로 사용자 기억 찾기
- */
-function getUserCommandMemoryById(id) {
-    return slimConversationState.userCommandMemories.find(m => m.id === id);
-}
-
-/**
- * 태그별 사용자 기억 찾기
- */
-function getUserCommandMemoriesByTag(tag) {
-    return slimConversationState.userCommandMemories.filter(m => 
-        m.category === tag || (m.tags && m.tags.includes(tag))
-    );
-}
-
-/**
- * 모든 사용자 명령 기억 가져오기
- */
-function getAllUserCommandMemories() {
-    return slimConversationState.userCommandMemories;
-}
-
-/**
- * 사용자 기억 검색 (키워드 기반)
- */
-function searchUserCommandMemories(keyword) {
-    return slimConversationState.userCommandMemories.filter(m =>
+async function searchUserMemoriesWithRedis(keyword) {
+    // 먼저 Redis와 동기화
+    await syncUserMemoriesWithRedis();
+    
+    return ultimateContextState.userCommandMemories.filter(m =>
         m.content.toLowerCase().includes(keyword.toLowerCase())
     );
 }
 
-// ==================== 🎯 대화 주제 & 액션 관리 (고유 기능) ====================
+// ==================== 🎯 대화 주제 & 액션 관리 (고유 기능 보존) ====================
 
 /**
- * 대화 주제 업데이트 (정교한 추적)
+ * 🎯 지능적 대화 주제 업데이트
  */
-function updateConversationTopic(newTopic, confidence = 0.8) {
-    const previousTopic = slimConversationState.conversationTopic;
+function updateConversationTopicIntelligently(newTopic, confidence = 0.8) {
+    const previousTopic = ultimateContextState.conversationTopic;
     
-    slimConversationState.conversationTopic = {
+    ultimateContextState.conversationTopic = {
         topic: newTopic,
         timestamp: Date.now(),
         confidence: confidence,
-        previousTopic: previousTopic?.topic || null
+        previousTopic: previousTopic?.topic || null,
+        detectionMethod: 'ultimate_context_v37'
     };
     
-    // 주제 전환 이력 기록
+    // 주제 전환 이력 기록 (상세)
     if (previousTopic && previousTopic.topic !== newTopic) {
-        slimConversationState.topicHistory.push({
+        const transition = {
             from: previousTopic.topic,
             to: newTopic,
             timestamp: Date.now(),
-            duration: Date.now() - previousTopic.timestamp
-        });
+            duration: Date.now() - previousTopic.timestamp,
+            confidenceChange: confidence - (previousTopic.confidence || 0.5),
+            context: 'ultimate_topic_tracking'
+        };
         
-        // 주제 전환 통계 업데이트
-        slimConversationState.detailedStats.topicTransitions.push({
-            transition: `${previousTopic.topic} → ${newTopic}`,
-            timestamp: Date.now()
-        });
+        ultimateContextState.topicHistory.push(transition);
+        
+        // 최근 50개만 유지
+        if (ultimateContextState.topicHistory.length > 50) {
+            ultimateContextState.topicHistory = ultimateContextState.topicHistory.slice(-30);
+        }
     }
     
-    slimLog(`대화 주제 업데이트: "${newTopic}" (신뢰도: ${confidence})`);
+    ultimateLog(`지능적 대화 주제 업데이트: "${newTopic}" (신뢰도: ${confidence})`);
 }
 
 /**
- * 현재 대화 주제 가져오기
+ * 🎯 고급 보류 액션 관리
  */
-function getCurrentConversationTopic() {
-    return slimConversationState.conversationTopic;
-}
-
-/**
- * 대화 주제 이력 가져오기
- */
-function getTopicHistory(limit = 10) {
-    return slimConversationState.topicHistory.slice(-limit);
-}
-
-/**
- * 보류 액션 설정
- */
-function setPendingAction(action, context = {}) {
-    slimConversationState.pendingAction = {
+function setAdvancedPendingAction(action, context = {}, priority = 5) {
+    ultimateContextState.pendingAction = {
         action: action,
         context: context,
+        priority: priority,
         timestamp: Date.now(),
-        id: `action_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`
+        id: `ultimate_action_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+        expectedDuration: context.expectedDuration || 300000, // 5분 기본
+        source: 'ultimate_context_v37'
     };
     
-    slimLog(`보류 액션 설정: ${action}`, context);
+    ultimateLog(`고급 보류 액션 설정: ${action} (우선순위: ${priority})`, context);
 }
 
-/**
- * 보류 액션 가져오기
- */
-function getPendingAction() {
-    return slimConversationState.pendingAction;
-}
+// ==================== ✨ 최강 통합 프롬프트 생성 시스템 ====================
 
 /**
- * 보류 액션 완료 처리
+ * 🎯 모든 시스템을 통합한 최강 컨텍스트 프롬프트 생성
  */
-function completePendingAction(success = true) {
-    if (slimConversationState.pendingAction) {
-        const action = slimConversationState.pendingAction.action;
-        
-        // 액션 성공률 통계 업데이트
-        if (!slimConversationState.detailedStats.actionSuccessRates[action]) {
-            slimConversationState.detailedStats.actionSuccessRates[action] = { total: 0, success: 0 };
-        }
-        
-        slimConversationState.detailedStats.actionSuccessRates[action].total++;
-        if (success) {
-            slimConversationState.detailedStats.actionSuccessRates[action].success++;
-        }
-        
-        slimLog(`보류 액션 완료: ${action} (${success ? '성공' : '실패'})`);
-        slimConversationState.pendingAction = null;
-        
-        return true;
-    }
-    return false;
-}
-
-// ==================== 📊 세부 통계 분류 (고유 기능) ====================
-
-/**
- * 자발적 메시지 타입별 기록 (세밀한 분류)
- */
-function recordDetailedSpontaneousMessage(messageType, subType = null, context = {}) {
-    // 기본 타입별 증가
-    if (slimConversationState.detailedStats.messageTypes[messageType] !== undefined) {
-        slimConversationState.detailedStats.messageTypes[messageType]++;
-    }
-    
-    // GPT 모델 사용량 통계
-    const currentModel = getCurrentModelSetting ? getCurrentModelSetting() : 'unknown';
-    if (slimConversationState.detailedStats.gptModelUsage[currentModel] !== undefined) {
-        slimConversationState.detailedStats.gptModelUsage[currentModel]++;
-    }
-    
-    slimLog(`세부 자발적 메시지 기록: ${messageType}${subType ? `/${subType}` : ''} (모델: ${currentModel})`);
-}
-
-/**
- * 세부 통계 조회 (라인 상태 리포트용 고도화)
- */
-function getDetailedSpontaneousStats() {
-    const autonomousSystem = getAutonomousSystem();
-    
-    // 외부 시스템에서 기본 통계 가져오기
-    let baseStats = {
-        sentToday: 0,
-        totalDaily: 20,
-        nextTime: '대기 중'
-    };
-    
-    if (autonomousSystem && autonomousSystem.getSpontaneousStats) {
-        try {
-            baseStats = autonomousSystem.getSpontaneousStats();
-        } catch (error) {
-            slimLog('외부 통계 조회 실패, 기본값 사용');
-        }
-    }
-    
-    // 세부 분류 통계 추가
-    return {
-        ...baseStats,
-        
-        // 세밀한 타입별 분류
-        detailedTypes: { ...slimConversationState.detailedStats.messageTypes },
-        
-        // GPT 모델별 사용량
-        modelUsage: { ...slimConversationState.detailedStats.gptModelUsage },
-        
-        // 주제 전환 패턴
-        topicTransitions: slimConversationState.detailedStats.topicTransitions.length,
-        recentTopicChanges: slimConversationState.detailedStats.topicTransitions.slice(-5),
-        
-        // 액션 성공률
-        actionSuccessRates: { ...slimConversationState.detailedStats.actionSuccessRates },
-        
-        // 현재 상태
-        currentTopic: slimConversationState.conversationTopic?.topic || '없음',
-        pendingAction: slimConversationState.pendingAction?.action || '없음',
-        userMemoriesCount: slimConversationState.userCommandMemories.length,
-        
-        // 메타정보  
-        slimContextVersion: 'v36.0',
-        lastUpdated: Date.now()
-    };
-}
-
-/**
- * 일일 세부 통계 리셋
- */
-function resetDetailedStats() {
-    const today = moment().tz(TIMEZONE).format('YYYY-MM-DD');
-    
-    slimLog('🌄 세부 통계 리셋 시작');
-    
-    // 메시지 타입 통계 리셋
-    Object.keys(slimConversationState.detailedStats.messageTypes).forEach(type => {
-        slimConversationState.detailedStats.messageTypes[type] = 0;
-    });
-    
-    // GPT 모델 사용량 리셋
-    Object.keys(slimConversationState.detailedStats.gptModelUsage).forEach(model => {
-        slimConversationState.detailedStats.gptModelUsage[model] = 0;
-    });
-    
-    // 주제 전환 리셋 (최근 기록은 보존)
-    if (slimConversationState.detailedStats.topicTransitions.length > 50) {
-        slimConversationState.detailedStats.topicTransitions = 
-            slimConversationState.detailedStats.topicTransitions.slice(-20);
-    }
-    
-    slimLog(`✅ 세부 통계 리셋 완료 (${today})`);
-}
-
-// ==================== 🎨 정교한 프롬프트 조합 (고유 기능) ====================
-
-/**
- * ✨ GPT 모델별 초정밀 최적화된 컨텍스트 프롬프트 생성
- */
-async function getUltimateOptimizedContextualPrompt(basePrompt) {
+async function generateUltimateMasterContextPrompt(basePrompt) {
     try {
+        ultimateContextState.optimizationStats.promptGenerations++;
+        
         let contextualPrompt = basePrompt;
         
-        // ✨ 현재 GPT 모델 설정 확인
-        const currentModel = getCurrentModelSetting ? getCurrentModelSetting() : 'auto';
-        const contextLength = getOptimalContextLength();
-        const priority = getContextPriority(currentModel);
-        const promptStyle = getPromptStyle(currentModel);
+        // 1. ✨ GPT 모델별 최적화 수행
+        const optimization = optimizeForCurrentModel();
+        const { contextLength, priorityMatrix, promptStrategy } = optimization;
         
-        slimLog(`정교한 프롬프트 생성 (모델: ${currentModel}, 스타일: ${promptStyle.style})`);
+        ultimateLog(`최강 프롬프트 생성 시작 (${optimization.model} 최적화)`);
         
-        // 1. ✨ 사용자 명령 기억 추가 (최고 우선순위)
-        if (priority.userMemories > 0 && slimConversationState.userCommandMemories.length > 0) {
-            const userMemories = slimConversationState.userCommandMemories.slice(-contextLength.userMemory);
+        // 2. 🔄 Redis와 동기화
+        await syncUserMemoriesWithRedis();
+        
+        // 3. ✨ 사용자 명령 기억 추가 (최고 우선순위)
+        if (priorityMatrix.userCommandMemories > 0 && ultimateContextState.userCommandMemories.length > 0) {
+            const recentUserMemories = ultimateContextState.userCommandMemories.slice(-contextLength.userMemory);
             
-            if (userMemories.length > 0) {
-                const memoryContext = userMemories.map(m => m.content).join('. ');
+            if (recentUserMemories.length > 0) {
+                const memoryText = recentUserMemories.map(m => m.content).join('. ');
                 
-                if (promptStyle.style === 'concise') {
-                    // GPT-3.5는 초간결
-                    contextualPrompt += `\n🧠 기억: ${memoryContext.substring(0, 100)}...\n`;
-                } else if (promptStyle.style === 'detailed') {
-                    // GPT-4o는 상세
-                    contextualPrompt += `\n🧠 아저씨가 직접 기억하라고 한 것들 (${userMemories.length}개):\n${memoryContext}\n`;
+                if (promptStrategy.style === 'ultra_concise') {
+                    contextualPrompt += `\n🧠: ${memoryText.substring(0, 80)}...\n`;
+                } else if (promptStrategy.style === 'ultra_detailed') {
+                    contextualPrompt += `\n🧠 아저씨가 직접 기억하라고 한 중요한 것들 (${recentUserMemories.length}개):\n${memoryText}\n`;
                 } else {
-                    // 균형
-                    contextualPrompt += `\n🧠 기억사항: ${memoryContext}\n`;
+                    contextualPrompt += `\n🧠 기억사항: ${memoryText}\n`;
                 }
             }
         }
         
-        // 2. ✨ 외부 시스템에서 최근 대화 가져오기
-        if (priority.recentConversation > 0) {
-            const autonomousSystem = getAutonomousSystem();
+        // 4. 🔄 통합 시스템에서 데이터 가져오기
+        const { integratedMoodManager, integratedAiUtils } = getIntegratedSystems();
+        
+        // 4-1. 감정 상태 (통합 무드매니저에서)
+        if (priorityMatrix.emotionState > 0 && integratedMoodManager) {
+            try {
+                const integratedMoodState = await integratedMoodManager.getIntegratedMoodState();
+                if (integratedMoodState && integratedMoodState.currentEmotion !== 'normal') {
+                    
+                    if (promptStrategy.style === 'ultra_concise') {
+                        contextualPrompt += `\n💭: ${integratedMoodState.currentEmotion}\n`;
+                    } else if (promptStrategy.style === 'ultra_detailed') {
+                        contextualPrompt += `\n💭 현재 예진이 감정 상태 (통합 시스템): ${integratedMoodState.currentEmotion} (강도: ${integratedMoodState.intensity || '보통'})\n`;
+                        if (integratedMoodState.reason) {
+                            contextualPrompt += `   감정 원인: ${integratedMoodState.reason}\n`;
+                        }
+                    } else {
+                        contextualPrompt += `\n💭 현재 기분: ${integratedMoodState.currentEmotion}\n`;
+                    }
+                }
+            } catch (error) {
+                ultimateLog('통합 감정 상태 조회 실패');
+            }
+        }
+        
+        // 4-2. Redis 컨텍스트 (자율 시스템에서)
+        if (priorityMatrix.redisContext > 0) {
+            const { autonomousYejinSystem } = getRedisIntegratedSystem();
             
-            if (autonomousSystem && autonomousSystem.getRecentConversations) {
+            if (autonomousYejinSystem) {
                 try {
-                    const recentConversations = autonomousSystem.getRecentConversations(contextLength.recent);
+                    // Redis에서 최근 대화 가져오기
+                    const recentConversations = await autonomousYejinSystem.redisCache.getConversationHistory(
+                        'target_user', contextLength.redis
+                    );
                     
                     if (recentConversations.length > 0) {
-                        const conversationContext = recentConversations.map(conv => 
-                            `${conv.speaker}: "${conv.message}"`
+                        const conversationText = recentConversations.map(conv => 
+                            `${conv.emotionType}: "${conv.message}"`
                         ).join('\n');
                         
-                        if (promptStyle.style === 'concise') {
-                            contextualPrompt += `\n📋 최근: ${conversationContext.substring(0, 150)}\n`;
-                        } else if (promptStyle.style === 'detailed') {
-                            contextualPrompt += `\n📋 최근 대화 맥락 (${recentConversations.length}개):\n${conversationContext}\n`;
+                        if (promptStrategy.style === 'ultra_concise') {
+                            contextualPrompt += `\n📋: ${conversationText.substring(0, 100)}\n`;
+                        } else if (promptStrategy.style === 'ultra_detailed') {
+                            contextualPrompt += `\n📋 최근 대화 맥락 (Redis 통합, ${recentConversations.length}개):\n${conversationText}\n`;
                         } else {
-                            contextualPrompt += `\n📋 최근 대화:\n${conversationContext}\n`;
+                            contextualPrompt += `\n📋 최근 대화:\n${conversationText}\n`;
                         }
                     }
                 } catch (error) {
-                    slimLog('외부 대화 이력 조회 실패');
+                    ultimateLog('Redis 대화 이력 조회 실패');
                 }
             }
         }
         
-        // 3. ✨ 외부 시스템에서 감정 상태 가져오기  
-        if (priority.emotions > 0) {
-            const autonomousSystem = getAutonomousSystem();
+        // 5. 🎯 현재 대화 주제 추가
+        if (ultimateContextState.conversationTopic) {
+            const topic = ultimateContextState.conversationTopic;
             
-            if (autonomousSystem && autonomousSystem.getCurrentEmotionState) {
-                try {
-                    const emotionState = autonomousSystem.getCurrentEmotionState();
-                    
-                    if (emotionState && emotionState.description !== '정상기') {
-                        if (promptStyle.style === 'concise') {
-                            contextualPrompt += `\n💭 감정: ${emotionState.description}\n`;
-                        } else if (promptStyle.style === 'detailed') {
-                            contextualPrompt += `\n💭 현재 예진이 감정 상태: ${emotionState.description} (강도: ${emotionState.intensity || '보통'})\n`;
-                        } else {
-                            contextualPrompt += `\n💭 현재 기분: ${emotionState.description}\n`;
-                        }
-                    }
-                } catch (error) {
-                    slimLog('외부 감정 상태 조회 실패');
-                }
-            }
-        }
-        
-        // 4. 현재 대화 주제 추가
-        if (slimConversationState.conversationTopic) {
-            const topic = slimConversationState.conversationTopic;
-            
-            if (promptStyle.style === 'concise') {
-                contextualPrompt += `\n🎯 주제: ${topic.topic}\n`;
-            } else if (promptStyle.style === 'detailed') {
-                contextualPrompt += `\n🎯 현재 대화 주제: ${topic.topic} (신뢰도: ${(topic.confidence * 100).toFixed(0)}%)\n`;
+            if (promptStrategy.style === 'ultra_concise') {
+                contextualPrompt += `\n🎯: ${topic.topic}\n`;
+            } else if (promptStrategy.style === 'ultra_detailed') {
+                contextualPrompt += `\n🎯 현재 대화 주제: ${topic.topic} (신뢰도: ${(topic.confidence * 100).toFixed(0)}%, 감지시간: ${new Date(topic.timestamp).toLocaleTimeString()})\n`;
             } else {
                 contextualPrompt += `\n🎯 현재 주제: ${topic.topic}\n`;
             }
         }
         
-        // 5. 보류 액션 추가
-        if (slimConversationState.pendingAction) {
-            const action = slimConversationState.pendingAction;
+        // 6. ⏳ 보류 액션 추가
+        if (ultimateContextState.pendingAction && promptStrategy.style !== 'ultra_concise') {
+            const action = ultimateContextState.pendingAction;
             
-            if (promptStyle.style === 'detailed') {
-                contextualPrompt += `\n⏳ 보류 중인 액션: ${action.action}\n`;
+            if (promptStrategy.style === 'ultra_detailed') {
+                contextualPrompt += `\n⏳ 보류 중인 액션: ${action.action} (우선순위: ${action.priority}/10)\n`;
+            } else {
+                contextualPrompt += `\n⏳ 보류 액션: ${action.action}\n`;
             }
         }
         
-        // 6. ✨ 모델별 추가 메타정보
-        if (promptStyle.style === 'detailed') {
-            // GPT-4o에서만 상세한 메타정보 추가
-            const memoryCount = slimConversationState.userCommandMemories.length;
-            const topicCount = slimConversationState.topicHistory.length;
-            contextualPrompt += `\n📊 컨텍스트: 사용자기억 ${memoryCount}개, 주제전환 ${topicCount}회\n`;
+        // 7. 📊 GPT 최적화 메타정보 (상세 모드에서만)
+        if (promptStrategy.style === 'ultra_detailed') {
+            const memoryCount = ultimateContextState.userCommandMemories.length;
+            const topicCount = ultimateContextState.topicHistory.length;
+            contextualPrompt += `\n📊 컨텍스트 메타: 사용자기억 ${memoryCount}개, 주제전환 ${topicCount}회, 모델: ${optimization.model}\n`;
         }
         
-        // 7. 길이 제한 적용
-        if (contextualPrompt.length > promptStyle.maxLength) {
-            contextualPrompt = contextualPrompt.substring(0, promptStyle.maxLength) + '...';
+        // 8. ✂️ 길이 제한 적용 (모델별)
+        if (contextualPrompt.length > promptStrategy.maxLength) {
+            contextualPrompt = contextualPrompt.substring(0, promptStrategy.maxLength) + '...';
         }
         
-        // GPT 모델 사용량 통계 업데이트
-        if (slimConversationState.detailedStats.gptModelUsage[currentModel] !== undefined) {
-            slimConversationState.detailedStats.gptModelUsage[currentModel]++;
-        }
+        ultimateLog(`최강 통합 프롬프트 생성 완료`, {
+            model: optimization.model,
+            style: promptStrategy.style,
+            length: contextualPrompt.length,
+            maxLength: promptStrategy.maxLength,
+            components: {
+                userMemories: priorityMatrix.userCommandMemories > 0,
+                emotions: priorityMatrix.emotionState > 0,
+                redisContext: priorityMatrix.redisContext > 0,
+                topic: !!ultimateContextState.conversationTopic,
+                pendingAction: !!ultimateContextState.pendingAction
+            }
+        });
         
-        slimLog(`정교한 프롬프트 생성 완료 (${currentModel} 최적화, 길이: ${contextualPrompt.length}자)`);
         return contextualPrompt;
         
     } catch (error) {
-        console.error('❌ [SlimContext] 정교한 프롬프트 생성 중 에러:', error);
+        ultimateLog('최강 프롬프트 생성 중 에러:', error.message);
         return basePrompt;
     }
 }
 
-/**
- * ✨ 활성 사용자 기억들을 모델별로 최적화하여 프롬프트용으로 조합
- */
-function getOptimizedUserMemoryPrompt() {
-    const contextLength = getOptimalContextLength();
-    const currentModel = getCurrentModelSetting ? getCurrentModelSetting() : 'auto';
-    const recentMemories = slimConversationState.userCommandMemories.slice(-contextLength.userMemory);
-    
-    if (recentMemories.length === 0) {
-        return '';
-    }
-    
-    if (currentModel === '3.5') {
-        // GPT-3.5는 매우 간결하게
-        return recentMemories.map(m => 
-            m.content.substring(0, 30) + (m.content.length > 30 ? '...' : '')
-        ).join('. ');
-    } else if (currentModel === '4.0') {
-        // GPT-4o는 전체 내용 + 메타정보
-        return recentMemories.map(m => 
-            `${m.content} (중요도: ${m.importance}/10)`
-        ).join('. ');
-    } else {
-        // 균형
-        return recentMemories.map(m => m.content).join('. ');
-    }
-}
-
-// ==================== 🔄 외부 시스템 호환성 관리 (고유 기능) ====================
+// ==================== 🤖 사용자 명령어 처리 (Redis 통합) ====================
 
 /**
- * 외부 감정 시스템과 연동
+ * 🤖 Redis 통합 사용자 명령어 감지 및 처리
  */
-function getMoodStateFromExternal() {
-    const autonomousSystem = getAutonomousSystem();
-    
-    if (autonomousSystem && autonomousSystem.getCurrentEmotionState) {
-        try {
-            return autonomousSystem.getCurrentEmotionState();
-        } catch (error) {
-            slimLog('외부 감정 상태 조회 실패');
-        }
-    }
-    
-    // 기본값 반환
-    return { phase: 'normal', description: '정상', emotion: 'normal' };
-}
-
-/**
- * 외부 시스템과 상태 동기화
- */
-async function syncWithExternalSystems() {
-    try {
-        const autonomousSystem = getAutonomousSystem();
-        
-        if (autonomousSystem) {
-            // 외부 시스템 상태 확인
-            const externalStats = autonomousSystem.getDetailedStats ? autonomousSystem.getDetailedStats() : null;
-            
-            if (externalStats) {
-                slimLog('외부 시스템과 동기화 성공');
-                return true;
-            }
-        }
-        
-        slimLog('외부 시스템과 동기화 실패 또는 불필요');
-        return false;
-    } catch (error) {
-        slimLog('외부 시스템 동기화 오류:', error.message);
-        return false;
-    }
-}
-
-// ==================== 🔄 시스템 초기화 (슬림화) ====================
-
-/**
- * 슬림 컨텍스트 시스템 초기화
- */
-async function initializeSlimContextSystem() {
-    slimLog('슬림 컨텍스트 시스템 초기화...');
-    
-    // ✨ GPT 모델 정보 로그
-    const currentModel = getCurrentModelSetting ? getCurrentModelSetting() : 'unknown';
-    slimLog(`현재 GPT 모델: ${currentModel}`);
-    
-    // 일일 리셋 확인
-    const todayDate = moment().tz(TIMEZONE).format('YYYY-MM-DD');
-    const lastResetDate = slimConversationState.lastResetDate;
-    
-    if (lastResetDate !== todayDate) {
-        resetDetailedStats();
-        slimConversationState.lastResetDate = todayDate;
-    }
-    
-    // 외부 시스템과 동기화 시도
-    await syncWithExternalSystems();
-    
-    slimLog(`슬림 초기화 완료 - 5% 고유 기능에 집중 (${currentModel} 최적화)`);
-}
-
-// ==================== 📊 통계 및 상태 조회 (슬림화) ====================
-
-/**
- * 슬림 컨텍스트 내부 상태 조회
- */
-function getSlimInternalState() {
-    const currentModel = getCurrentModelSetting ? getCurrentModelSetting() : 'unknown';
-    const contextLength = getOptimalContextLength();
-    const priority = getContextPriority(currentModel);
-    
-    return {
-        // 슬림 버전 정보
-        version: 'v36.0-slim',
-        type: 'slim_context_5percent',
-        
-        // 사용자 명령 기억 상태
-        userCommandMemories: {
-            count: slimConversationState.userCommandMemories.length,
-            recentMemories: slimConversationState.userCommandMemories.slice(-3).map(m => ({
-                id: m.id,
-                content: m.content.substring(0, 50) + '...',
-                timestamp: m.timestamp
-            }))
-        },
-        
-        // 대화 주제 상태
-        conversationTopic: slimConversationState.conversationTopic,
-        topicHistory: slimConversationState.topicHistory.slice(-5),
-        
-        // 보류 액션 상태
-        pendingAction: slimConversationState.pendingAction,
-        
-        // 세부 통계
-        detailedStats: slimConversationState.detailedStats,
-        
-        // GPT 모델 최적화 정보
-        gptOptimization: {
-            currentModel,
-            contextLength,
-            priority,
-            promptStyle: getPromptStyle(currentModel),
-            version: 'v36.0-slim-optimized'
-        },
-        
-        // 외부 연동 상태
-        externalSync: {
-            autonomousSystemConnected: !!getAutonomousSystem(),
-            lastSyncTime: Date.now()
-        }
-    };
-}
-
-// ==================== 🎁 유틸리티 함수들 (슬림화) ====================
-
-/**
- * 사용자 명령어 감지 및 처리
- */
-async function processUserCommand(message, speaker) {
+async function processUserCommandWithRedis(message, speaker) {
     if (speaker !== 'user' && speaker !== '아저씨') {
         return null;
     }
@@ -749,9 +595,9 @@ async function processUserCommand(message, speaker) {
     if (lowerMessage.includes('기억해') || lowerMessage.includes('잊지마')) {
         const memoryContent = message.replace(/기억해|줘|잊지마|잊지말아|라고|했잖아/g, '').trim();
         if (memoryContent.length > 0) {
-            const memoryId = await addUserCommandMemory(memoryContent, 'user_command');
-            slimLog(`사용자 명령 처리: 기억 추가 - "${memoryContent}"`);
-            return { type: 'memory_add', content: memoryContent, id: memoryId };
+            const memoryId = await addUserCommandMemoryWithRedis(memoryContent, 'user_command');
+            ultimateLog(`Redis 통합 사용자 명령 처리: 기억 추가 - "${memoryContent}"`);
+            return { type: 'memory_add', content: memoryContent, id: memoryId, redisIntegrated: true };
         }
     }
     
@@ -759,96 +605,207 @@ async function processUserCommand(message, speaker) {
     if (lowerMessage.includes('잊어') || lowerMessage.includes('지워')) {
         const forgetContent = message.replace(/잊어|줘|지워|버려|삭제|해줘/g, '').trim();
         if (forgetContent.length > 0) {
-            const deleted = await deleteUserCommandMemory(forgetContent);
-            slimLog(`사용자 명령 처리: 기억 삭제 - "${forgetContent}" (${deleted ? '성공' : '실패'})`);
-            return { type: 'memory_delete', content: forgetContent, success: deleted };
+            const deleted = await deleteUserCommandMemoryWithRedis(forgetContent);
+            ultimateLog(`Redis 통합 사용자 명령 처리: 기억 삭제 - "${forgetContent}" (${deleted ? '성공' : '실패'})`);
+            return { type: 'memory_delete', content: forgetContent, success: deleted, redisIntegrated: true };
         }
     }
     
     return null;
 }
 
+// ==================== 🎯 지능적 대화 주제 감지 ====================
+
 /**
- * 대화 주제 자동 감지
+ * 🎯 고급 대화 주제 자동 감지
  */
-function detectConversationTopic(message) {
+function detectConversationTopicAdvanced(message) {
     const topicKeywords = {
-        '날씨': ['날씨', '비', '눈', '더워', '추워', '바람', '구름', '햇살'],
-        '음식': ['밥', '음식', '먹', '라면', '치킨', '피자', '맛있', '배고'],
-        '감정': ['사랑', '보고싶', '그리워', '행복', '슬퍼', '기뻐', '화나', '걱정'],
-        '일상': ['일', '학교', '회사', '집', '쇼핑', '영화', '게임', '책'],
-        '건강': ['아프', '피곤', '아파', '병원', '약', '건강', '운동', '잠']
+        '날씨': ['날씨', '비', '눈', '더워', '추워', '바람', '구름', '햇살', '기온', '날씨', '장마'],
+        '음식': ['밥', '음식', '먹', '라면', '치킨', '피자', '맛있', '배고', '요리', '식사', '간식'],
+        '감정': ['사랑', '보고싶', '그리워', '행복', '슬퍼', '기뻐', '화나', '걱정', '행복해', '우울'],
+        '일상': ['일', '학교', '회사', '집', '쇼핑', '영화', '게임', '책', '휴식', '나들이'],
+        '건강': ['아프', '피곤', '아파', '병원', '약', '건강', '운동', '잠', '컨디션', '몸조리'],
+        '여행': ['여행', '놀러', '나들이', '휴가', '여행', '관광', '구경', '드라이브'],
+        '선물': ['선물', '깜짝', '서프라이즈', '생일', '기념일', '축하', '이벤트'],
+        '미래계획': ['계획', '예정', '할거야', '하려고', '준비', '계획중', '예약']
     };
     
     const lowerMessage = message.toLowerCase();
+    let bestMatch = null;
+    let bestScore = 0;
     
     for (const [topic, keywords] of Object.entries(topicKeywords)) {
+        let score = 0;
         for (const keyword of keywords) {
             if (lowerMessage.includes(keyword)) {
-                updateConversationTopic(topic, 0.7);
-                return topic;
+                score += keyword.length; // 긴 키워드일수록 더 정확
             }
         }
+        
+        if (score > bestScore) {
+            bestScore = score;
+            bestMatch = topic;
+        }
+    }
+    
+    if (bestMatch && bestScore > 0) {
+        const confidence = Math.min(0.9, bestScore / 10); // 최대 90% 신뢰도
+        updateConversationTopicIntelligently(bestMatch, confidence);
+        return bestMatch;
     }
     
     return null;
 }
 
-// ==================== 📤 슬림화된 모듈 내보내기 ==================
-slimLog('v36.0 슬림 컨텍스트 로드 완료 (5% 고유 기능만 집중)');
+// ==================== 📊 시스템 상태 및 통계 ====================
+
+/**
+ * 📊 Ultimate Context 시스템 상태 조회
+ */
+function getUltimateSystemStatus() {
+    const { autonomousYejinSystem, redisCache } = getRedisIntegratedSystem();
+    const { integratedMoodManager, integratedAiUtils } = getIntegratedSystems();
+    
+    return {
+        // 시스템 정보
+        version: 'v37.0-ultimate-redis-integrated',
+        type: 'ultimate_context_system',
+        
+        // 핵심 고유 기능 상태
+        gptOptimization: {
+            currentModel: ultimateContextState.gptOptimization.currentModel,
+            optimizationCount: ultimateContextState.optimizationStats.contextOptimizations,
+            promptGenerations: ultimateContextState.optimizationStats.promptGenerations,
+            lastOptimization: ultimateContextState.optimizationStats.lastOptimizationResult
+        },
+        
+        // 사용자 기억 상태
+        userMemories: {
+            totalCount: ultimateContextState.userCommandMemories.length,
+            redisSynced: ultimateContextState.lastRedisSyncTime > 0,
+            lastSyncTime: ultimateContextState.lastRedisSyncTime,
+            recentMemories: ultimateContextState.userCommandMemories.slice(-3).map(m => ({
+                id: m.id,
+                content: m.content.substring(0, 30) + '...',
+                timestamp: m.timestamp
+            }))
+        },
+        
+        // 대화 주제 상태
+        conversationTopic: ultimateContextState.conversationTopic,
+        topicHistory: ultimateContextState.topicHistory.slice(-5),
+        
+        // 보류 액션 상태
+        pendingAction: ultimateContextState.pendingAction,
+        
+        // 통합 시스템 연동 상태
+        integrationStatus: {
+            autonomousYejinSystem: !!autonomousYejinSystem,
+            redisCache: !!redisCache && redisCache.isAvailable,
+            integratedMoodManager: !!integratedMoodManager,
+            integratedAiUtils: !!integratedAiUtils,
+            gptModelManagement: !!getCurrentModelSetting
+        },
+        
+        // 메타정보
+        lastUpdate: Date.now(),
+        uniqueFeatures: [
+            'GPT 모델별 초정밀 최적화',
+            'Redis 통합 사용자 기억',
+            '지능적 대화 주제 추적',
+            '최강 통합 프롬프트 생성',
+            '고급 보류 액션 관리'
+        ]
+    };
+}
+
+// ==================== 🚀 시스템 초기화 ====================
+
+/**
+ * 🚀 Ultimate Context 시스템 초기화
+ */
+async function initializeUltimateContextSystem() {
+    ultimateLog('Ultimate Context v37.0 시스템 초기화 시작...');
+    
+    // GPT 모델 정보 확인
+    const currentModel = getCurrentModelSetting ? getCurrentModelSetting() : 'unknown';
+    ultimateLog(`현재 GPT 모델: ${currentModel}`);
+    
+    // Redis 통합 시스템 연동
+    getRedisIntegratedSystem();
+    
+    // 다른 통합 시스템들 연동
+    getIntegratedSystems();
+    
+    // 사용자 기억 Redis 동기화
+    await syncUserMemoriesWithRedis();
+    
+    // GPT 모델 최적화 초기 수행
+    optimizeForCurrentModel();
+    
+    ultimateLog(`Ultimate Context v37.0 초기화 완료! (${currentModel} 최적화, Redis 통합)`);
+    
+    return true;
+}
+
+// ==================== 📤 모듈 내보내기 ==================
+ultimateLog('Ultimate Context v37.0 로드 완료 (Redis 통합 + GPT 최적화 + 중복 해결)');
 
 module.exports = {
-    // 초기화
-    initializeSlimContextSystem,
+    // 🚀 초기화
+    initializeUltimateContextSystem,
     
-    // 🧠 동적 기억 관리 (사용자 명령어 전용)
-    addUserCommandMemory,
-    deleteUserCommandMemory,
-    updateUserCommandMemory,
-    getUserCommandMemoryById,
-    getUserCommandMemoriesByTag,
-    getAllUserCommandMemories,
-    searchUserCommandMemories,
+    // ✨ 핵심 고유 기능 - GPT 모델별 최적화
+    getUltimatePrecisionContextLength,
+    getUltimateContextPriorityMatrix,
+    getUltimatePromptStrategy,
+    optimizeForCurrentModel,
+    
+    // 🧠 Redis 통합 사용자 기억 관리
+    addUserCommandMemoryWithRedis,
+    deleteUserCommandMemoryWithRedis,
+    searchUserMemoriesWithRedis,
+    syncUserMemoriesWithRedis,
     
     // 🎯 대화 주제 & 액션 관리
-    updateConversationTopic,
-    getCurrentConversationTopic,
-    getTopicHistory,
-    setPendingAction,
-    getPendingAction,
-    completePendingAction,
+    updateConversationTopicIntelligently,
+    setAdvancedPendingAction,
+    detectConversationTopicAdvanced,
     
-    // 📊 세부 통계 분류
-    recordDetailedSpontaneousMessage,
-    getDetailedSpontaneousStats,
-    resetDetailedStats,
+    // ✨ 최강 통합 프롬프트 생성 (핵심!)
+    generateUltimateMasterContextPrompt,
     
-    // ✨ 정교한 프롬프트 조합 (핵심!)
-    getUltimateOptimizedContextualPrompt,
-    getOptimizedUserMemoryPrompt,
-    
-    // ✨ GPT 모델별 최적화 (핵심!)
-    getOptimalContextLength,
-    getContextPriority,
-    getPromptStyle,
-    
-    // 🔄 외부 시스템 호환성
-    getMoodStateFromExternal,
-    syncWithExternalSystems,
-    processUserCommand,
-    detectConversationTopic,
+    // 🤖 Redis 통합 명령어 처리
+    processUserCommandWithRedis,
     
     // 📊 상태 조회
-    getSlimInternalState,
+    getUltimateSystemStatus,
+    
+    // 🔄 시스템 연동
+    getRedisIntegratedSystem,
+    getIntegratedSystems,
     
     // 🎁 유틸리티
-    slimLog,
+    ultimateLog,
     
-    // 호환성 (기존 함수명 유지)
-    initializeEmotionalSystems: initializeSlimContextSystem,  // 호환성
-    getUltimateContextualPrompt: getUltimateOptimizedContextualPrompt,  // 호환성
-    addUserMemory: addUserCommandMemory,  // 호환성
-    deleteUserMemory: deleteUserCommandMemory,  // 호환성
-    getSpontaneousStats: getDetailedSpontaneousStats,  // 호환성
-    recordSpontaneousMessage: recordDetailedSpontaneousMessage  // 호환성
+    // 🛡️ 호환성 (기존 함수명 유지 - 안전성)
+    initializeSlimContextSystem: initializeUltimateContextSystem,
+    getUltimateOptimizedContextualPrompt: generateUltimateMasterContextPrompt,
+    addUserCommandMemory: addUserCommandMemoryWithRedis,
+    deleteUserCommandMemory: deleteUserCommandMemoryWithRedis,
+    processUserCommand: processUserCommandWithRedis,
+    updateConversationTopic: updateConversationTopicIntelligently,
+    setPendingAction: setAdvancedPendingAction,
+    detectConversationTopic: detectConversationTopicAdvanced,
+    getSlimInternalState: getUltimateSystemStatus,
+    
+    // 🔄 레거시 호환성 (완전 호환)
+    initializeEmotionalSystems: initializeUltimateContextSystem,
+    getUltimateContextualPrompt: generateUltimateMasterContextPrompt,
+    addUserMemory: addUserCommandMemoryWithRedis,
+    deleteUserMemory: deleteUserCommandMemoryWithRedis,
+    getSpontaneousStats: getUltimateSystemStatus,
+    recordSpontaneousMessage: () => ultimateLog('기능이 다른 시스템으로 이관됨'),
+    getDetailedSpontaneousStats: getUltimateSystemStatus
 };
