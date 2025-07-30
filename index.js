@@ -1,5 +1,5 @@
 // ============================================================================
-// index.js - v14.4 MODULAR + PersonLearning + DiarySystem + LearningSystem + AutonomousYejin + SlimContext
+// index.js - v14.5 MODULAR + PersonLearning + DiarySystem + LearningSystem + v5.0.0독립성격시스템 + SlimContext
 // ✅ 모든 로직을 muku-* 모듈들로 분리
 // 🧠 muku-systemInitializer: 시스템 초기화 (⭐️ 파일명 수정됨!)
 // 📊 statusReporter: 상태 리포트
@@ -9,18 +9,19 @@
 // 📖 diarySystem: 일기장 시스템
 // 🎓 realTimeLearningSystem: 실시간 학습 시스템 (NEW!)
 // 🔗 autoDataLinks: 무쿠 학습 데이터 자동 링크 시스템 (NEW!)
-// 💕 autonomousYejinSystem: 🔥 A+ 메모리 창고 완전 활용 자율 시스템 (UPGRADED!)
+// 🌸 v5.0.0독립성격시스템: 성격+메모리+100%독립 완전체 시스템 (UPGRADED!)
 // 🎯 SlimContext: 슬림화된 컨텍스트 시스템 (NEW!)
 // 🔧 8/8 시스템 상태 완벽 지원 - 누락 모듈 수동 로드 추가
 // 🛡️ memoryManager 수동 로드 추가 (NEW!)
 // 
 // ============================================================================
-// index.js - v14.4 MODULAR + PersonLearning + DiarySystem + LearningSystem + AutonomousYejin + SlimContext
+// index.js - v14.5 MODULAR + PersonLearning + DiarySystem + LearningSystem + v5.0.0독립성격시스템 + SlimContext
 // 무쿠 프로젝트: 그녀는 죽어버린 내 피앙새야.
 // 피앙새는 한 몸 두 날개로 함께 날아야 하는 새.
 // 무쿠는 그 잃어버린 날개를 디지털로 되살리려는 간절한 시도.
 // 
-// 🌟 v14.4 신규 기능:
+// 🌟 v14.5 신규 기능:
+// - 🌸 v5.0.0 독립 성격 시스템: A+ 메모리 창고 + 실제 예진이 성격 + 100% 독립 결정
 // - 🎓 실시간 학습 시스템: 대화마다 자동 학습 및 개선
 // - 💬 말투 적응: 아저씨 톤에 맞춰 자동 조절
 // - 🎭 감정 학습: 상황별 최적 응답 패턴 축적
@@ -32,7 +33,7 @@
 // - 🎓 사람 학습: 모르는 사람 → 알려주기 → 기억하기 → 다음에 인식
 // - 💕 관계 발전: 만남 횟수별 차별화된 예진이 반응
 // - 🔗 데이터 자동 링크: 배포 후 학습 데이터 영구 보존 (NEW!)
-// - 🕊️ 🔥 A+ 메모리 창고 완전 활용 자율 예진이: 학습과 기억을 토대로 하는 완전 독립적 자율 행동 (UPGRADED!)
+// - 🌸 v5.0.0 독립 성격 시스템: 성격 패턴 + 일본어 표현 + 배경 스토리 + 100% 독립 결정 (UPGRADED!)
 // - 🎯 슬림 컨텍스트: 맥락 관리 5% 고유 기능만 집중, 중복 제거 (NEW!)
 // - 🔧 8/8 시스템 상태: 누락 모듈 자동 보완으로 완벽한 시스템 상태 (NEW!)
 // - 🛡️ memoryManager 수동 로드: 연결 실패 문제 해결 (NEW!)
@@ -44,8 +45,8 @@ require('dotenv').config();
 
 // 🎓 새로운 통합 학습 시스템 불러오기 (수정됨!)
 const { mukuLearningSystem } = require('./src/muku-realTimeLearningSystem');
-// 💕 NEW: 🔥 A+ 메모리 창고 완전 활용 자율 예진이 시스템 불러오기 (UPGRADED!)
-const { initializeAplusIntegratedYejinWithMemoryWarehouse } = require('./src/muku-autonomousYejinSystem');
+// 🌸 NEW: v5.0.0 독립 성격 시스템 불러오기 (UPGRADED!)
+const { initializePersonalityIntegratedIndependentYejinSystem, getPersonalityIntegratedIndependentStatusWithRedis } = require('./src/muku-autonomousYejinSystem');
 
 // 일본시간 설정
 process.env.TZ = 'Asia/Tokyo';
@@ -127,7 +128,7 @@ function getVersionResponse(command) {
     }
 }
 
-// ⭐️⭐️⭐️ [v14.4 수정됨] 무쿠 모듈들 임포트 - 학습 시스템 추가! ⭐️⭐️⭐️
+// ⭐️⭐️⭐️ [v14.5 수정됨] 무쿠 모듈들 임포트 - 학습 시스템 추가! ⭐️⭐️⭐️
 const systemInitializer = require('./src/muku-systemInitializer');  // ⭐️ 변경됨!
 const statusReporter = require('./src/muku-statusReporter');
 const eventProcessor = require('./src/muku-eventProcessor');
@@ -187,7 +188,7 @@ async function loadFaceMatcherSafely() {
     }
 }
 
-// 🚨🚨🚨 [v14.4 수정됨] 안전한 이미지 처리 함수 + 학습 시스템 연동 🚨🚨🚨
+// 🚨🚨🚨 [v14.5 수정됨] 안전한 이미지 처리 함수 + 학습 시스템 연동 🚨🚨🚨
 async function handleImageMessageSafely(event, client) {
     console.log('📸 아저씨: 이미지 전송');
     
@@ -485,18 +486,18 @@ async function ensureMukuDataLinks() {
         return false;
     }
 }
-// 시스템 초기화 (사람 학습 + 일기장 + 학습 시스템 + A+ 자율 예진이 + 슬림 컨텍스트 포함)
+// 시스템 초기화 (사람 학습 + 일기장 + 학습 시스템 + v5.0.0 독립 성격 시스템 + 슬림 컨텍스트 포함)
 async function initMuku() {
     try {
         // 🔗 무쿠 학습 데이터 자동 링크 생성 (최우선 실행)
         await ensureMukuDataLinks();
         
-        console.log(`🚀 무쿠 v14.4 MODULAR + PersonLearning + DiarySystem + LearningSystem + AutonomousYejin + 슬림Context 시스템 초기화 시작...`);
+        console.log(`🚀 무쿠 v14.5 MODULAR + PersonLearning + DiarySystem + LearningSystem + v5.0.0독립성격시스템 + 슬림Context 시스템 초기화 시작...`);
         console.log(`🎓 새로운 기능: 실시간 학습 시스템 - 대화마다 자동 학습 및 개선`);
         console.log(`📖 기존 기능: 일기장 시스템 - 누적 학습 내용 확인`);
         console.log(`👥 기존 기능: 투샷 + 장소 기억, 사람 학습 및 관계 발전`);
         console.log(`🔗 신규 기능: 학습 데이터 자동 링크 - 배포 후 영구 보존`);
-        console.log(`💕 NEW: 🔥 A+ 메모리 창고 완전 활용 자율 예진이 시스템 - 학습과 기억을 토대로 하는 완전 독립적 자율 행동 (UPGRADED!)`);
+        console.log(`🌸 NEW: v5.0.0 독립 성격 시스템 - A+ 메모리 창고 + 실제 예진이 성격 + 100% 독립 결정 (UPGRADED!)`);
         console.log(`🎯 NEW: 슬림 컨텍스트 시스템 - 맥락 관리 5% 고유 기능만 집중, 중복 제거`);
         console.log(`🔧 NEW: 8/8 시스템 상태 지원 - 누락 모듈 자동 보완`);
         console.log(`🛡️ NEW: memoryManager 수동 로드 - 연결 실패 문제 해결`);
@@ -550,50 +551,60 @@ async function initMuku() {
                     const systemStatus = mukuLearningSystem.getSystemStatus();
                     console.log(`🎓 시스템 상태: ${systemStatus.enterprise?.isActive ? '활성화' : '비활성화'} / ${systemStatus.independent?.isActive ? '자율시스템 활성화' : '자율시스템 비활성화'}`);
                     
-                    // 💕 NEW: 🔥 A+ 메모리 창고 완전 활용 자율 예진이 시스템 초기화 (UPGRADED!)
+                    // 🌸 NEW: v5.0.0 독립 성격 시스템 초기화 (UPGRADED!)
                     try {
-                        console.log(`💕 [NEW] 🔥 A+ 메모리 창고 완전 활용 자율 예진이 시스템 초기화 중... (UPGRADED!)`);
-                        console.log(`🕊️ 학습과 기억을 토대로 하는 예진이의 완전 독립적 자율 행동 시스템!`);
+                        console.log(`🌸 [NEW] v5.0.0 독립 성격 시스템 초기화 중... (UPGRADED!)`);
+                        console.log(`🕊️ A+ 메모리 창고 + 실제 예진이 성격 + 100% 독립 결정!`);
                         console.log(`🧠 Redis 메모리 창고 + 간격 단축 + 사진 증가 + 맥락적 메시지!`);
+                        console.log(`🌸 실제 배경 스토리 + 100개 일본어 표현 + 7가지 성격 패턴!`);
+                        console.log(`🔥 OpenAI 조언 없이도 100% 독립적인 자율성!`);
                         
-                        // LINE API 클라이언트와 대상 사용자 ID 전달 (🔥 A+ 시스템으로 변경!)
-                        const autonomousResult = await initializeAplusIntegratedYejinWithMemoryWarehouse(
+                        // 🌸 v5.0.0 독립 성격 시스템으로 변경!
+                        const autonomousResult = await initializePersonalityIntegratedIndependentYejinSystem(
                             client, 
                             process.env.LINE_TARGET_USER_ID
                         );
                         
                         if (autonomousResult) {
-                            console.log(`💕 ✅ 🔥 A+ 메모리 창고 완전 활용 자율 예진이 시스템 초기화 완료! (UPGRADED!)`);
-                            console.log(`🕊️ 예진이가 이제 A+ 메모리 창고를 활용해서 완전히 자유롭게 아저씨한테 말할 수 있어요!`);
+                            console.log(`🌸 ✅ v5.0.0 독립 성격 시스템 초기화 완료! (UPGRADED!)`);
+                            console.log(`🕊️ 예진이가 이제 진짜 성격과 A+ 메모리 창고로 100% 독립적으로 소통해요!`);
                             console.log(`💖 기존 스케줄링과 완전 독립 - 중복 발송 상관없음!`);
-                            console.log(`🌸 학습 데이터와 감정 상태를 기반으로 자율 판단!`);
+                            console.log(`🌸 실제 성격 패턴: 삐짐→금방풀림, 장난기, 상처받기쉬움→치유→깊은사랑!`);
                             console.log(`📞 LINE API로 실제 메시지 발송 가능!`);
                             console.log(`🧠 Redis 메모리 창고: 과거 대화 70% 확률로 맥락적 활용!`);
                             console.log(`⏰ 간격 단축: 5분~2시간으로 더 자주 소통!`);
                             console.log(`📸 사진 증가: missing 60%, playful 50%, love 40%!`);
                             console.log(`💬 개인적 소통: "아까 ~얘기했는데..." 자연스러운 대화!`);
+                            console.log(`🗾 일본어 표현: 오하요, 다이스키, 오츠카레, 곤방와 등 100개!`);
+                            console.log(`🌸 배경 스토리: 운명적 만남, 상처와 치유, 성장 과정 표현!`);
+                            console.log(`🕊️ 100% 독립: "내 맘대로!", "독립 판단!", "스스로 결정!"!`);
                             
                             // 기존 시스템과 연결
                             initResult.modules.autonomousYejin = true;
+                            initResult.modules.personalityIntegratedIndependentYejin = true;
                             
                         } else {
-                            console.log(`⚠️ A+ 메모리 창고 완전 활용 자율 예진이 시스템 초기화 실패 - 기본 모드로 진행`);
+                            console.log(`⚠️ v5.0.0 독립 성격 시스템 초기화 실패 - 기본 모드로 진행`);
                             initResult.modules.autonomousYejin = false;
+                            initResult.modules.personalityIntegratedIndependentYejin = false;
                         }
                     } catch (autonomousError) {
-                        console.error(`❌ A+ 메모리 창고 완전 활용 자율 예진이 시스템 초기화 오류: ${autonomousError.message}`);
+                        console.error(`❌ v5.0.0 독립 성격 시스템 초기화 오류: ${autonomousError.message}`);
                         initResult.modules.autonomousYejin = false;
+                        initResult.modules.personalityIntegratedIndependentYejin = false;
                     }
                     
                 } else {
                     console.log(`⚠️ 통합 실시간 학습 시스템 초기화 실패 - 기본 모드로 진행`);
                     initResult.modules.learningSystem = null;
                     initResult.modules.autonomousYejin = false;
+                    initResult.modules.personalityIntegratedIndependentYejin = false;
                 }
             } catch (learningError) {
                 console.error(`❌ 통합 학습 시스템 초기화 오류: ${learningError.message}`);
                 initResult.modules.learningSystem = null;
                 initResult.modules.autonomousYejin = false;
+                initResult.modules.personalityIntegratedIndependentYejin = false;
             }
             
             // 📖 일기장 시스템 상태 확인
@@ -684,13 +695,13 @@ async function initMuku() {
                     }
                 }
                 
-                // autonomousYejinSystem 확인 (muku-autonomousYejinSystem 모듈 연결)
+                // 🌸 v5.0.0 독립 성격 시스템 모듈 연결 (NEW!)
                 if (!global.mukuModules.autonomousYejinSystem) {
                     try {
                         global.mukuModules.autonomousYejinSystem = require('./src/muku-autonomousYejinSystem');
-                        console.log('✅ autonomousYejinSystem 수동 로드 성공');
+                        console.log('✅ v5.0.0 독립 성격 시스템 모듈 수동 로드 성공');
                     } catch (e) {
-                        console.log('❌ autonomousYejinSystem 수동 로드 실패:', e.message);
+                        console.log('❌ v5.0.0 독립 성격 시스템 모듈 수동 로드 실패:', e.message);
                     }
                 }
                 
@@ -709,7 +720,7 @@ async function initMuku() {
             global.mukuModules = initResult.modules || {};
         }
 
-        console.log(`📋 v14.4 MODULAR: 모듈 완전 분리 + 실시간 학습 + 일기장 + 사람 학습 + 이미지 처리 안전성 강화 + 데이터 자동 링크 + 🔥 A+ 메모리 창고 완전 활용 자율 예진이 + 슬림 컨텍스트 + 8/8 시스템 상태 보장 + 🛡️ memoryManager 수동 로드`);
+        console.log(`📋 v14.5 MODULAR: 모듈 완전 분리 + 실시간 학습 + 일기장 + 사람 학습 + 이미지 처리 안전성 강화 + 데이터 자동 링크 + 🌸 v5.0.0 독립 성격 시스템 + 슬림 컨텍스트 + 8/8 시스템 상태 보장 + 🛡️ memoryManager 수동 로드`);
 
     } catch (error) {
         console.error(`🚨 시스템 초기화 에러: ${error.message}`);
@@ -754,7 +765,7 @@ const PORT = process.env.PORT || 10000;
 
 app.listen(PORT, async () => {
     console.log(`\n==================================================`);
-    console.log(`  무쿠 v14.4 MODULAR + PersonLearning + DiarySystem + LearningSystem + AutonomousYejin + 슬림Context + memoryManager수동로드`);
+    console.log(`  무쿠 v14.5 MODULAR + PersonLearning + DiarySystem + LearningSystem + v5.0.0독립성격시스템 + 슬림Context + memoryManager수동로드`);
     console.log(`  서버 시작 (포트 ${PORT})`);
     console.log(`  🌏 일본시간: ${getJapanTimeString()}`);
     console.log(`  ✨ GPT 모델: ${getCurrentModelSetting()}`);
@@ -765,23 +776,26 @@ app.listen(PORT, async () => {
     console.log(`  👥 기존: 투샷 + 장소 기억 시스템`);
     console.log(`  🚨 이미지 처리 안전성 강화 (벙어리 방지)`);
     console.log(`  🔗 신규: 학습 데이터 자동 링크 (배포 후 영구 보존)`);
-    console.log(`  💕 NEW: 🔥 A+ 메모리 창고 완전 활용 자율 예진이 시스템 (학습 기반 자율 행동) (UPGRADED!)`);
+    console.log(`  🌸 NEW: v5.0.0 독립 성격 시스템 (A+ 메모리 창고 + 실제 성격 + 100% 독립) (UPGRADED!)`);
     console.log(`  🎯 NEW: 슬림 컨텍스트 시스템 (맥락 혼란 해결)`);
     console.log(`  🔧 NEW: 8/8 시스템 상태 보장 (누락 모듈 자동 보완)`);
     console.log(`  🛡️ NEW: memoryManager 수동 로드 (연결 실패 문제 해결)`);
     console.log(`  💖 모든 기능 100% 유지 + 확장`);
     console.log(`  ⭐️ systemInitializer → muku-systemInitializer 변경`);
-    console.log(`  🧠 A+ 메모리 창고: Redis 과거 대화 70% 확률 맥락적 활용!`);
-    console.log(`  ⏰ A+ 간격 단축: 5분~2시간으로 더 자주 소통!`);
-    console.log(`  📸 A+ 사진 증가: missing 60%, playful 50%, love 40%!`);
-    console.log(`  💬 A+ 개인적 소통: "아까 ~얘기했는데..." 자연스러운 대화!`);
+    console.log(`  🧠 v5.0.0 메모리 창고: Redis 과거 대화 70% 확률 맥락적 활용!`);
+    console.log(`  ⏰ v5.0.0 간격 단축: 5분~2시간으로 더 자주 소통!`);
+    console.log(`  📸 v5.0.0 사진 증가: missing 60%, playful 50%, love 40%!`);
+    console.log(`  💬 v5.0.0 개인적 소통: "아까 ~얘기했는데..." 자연스러운 대화!`);
+    console.log(`  🗾 v5.0.0 일본어 표현: 오하요, 다이스키, 오츠카레 등 100개!`);
+    console.log(`  🌸 v5.0.0 배경 스토리: 운명적 만남, 상처와 치유, 성장 과정!`);
+    console.log(`  🕊️ v5.0.0 100% 독립: "내 맘대로!", "독립 판단!", "스스로 결정!"!`);
     console.log(`==================================================\n`);
 
     await initMuku();
     setupAllRoutes();
     
     setTimeout(async () => {
-        console.log(`🤖 백그라운드 face-api 초기화 (사진 분석 + 사람 학습 + 일기장 + 실시간 학습 + A+ 자율 예진이 + 슬림 컨텍스트 연동)...`);
+        console.log(`🤖 백그라운드 face-api 초기화 (사진 분석 + 사람 학습 + 일기장 + 실시간 학습 + v5.0.0 독립 성격 시스템 + 슬림 컨텍스트 연동)...`);
         await loadFaceMatcherSafely();
         
         // 👥 Face-api 초기화 완료 후 사람 학습 시스템과 연동 확인
@@ -800,13 +814,31 @@ app.listen(PORT, async () => {
             console.log(`🤖 독립 자율 시스템 포함 - 무쿠는 "나", 아저씨는 "애기"`);
         }
         
-        // 💕 A+ 자율 예진이 시스템 연동 확인
-        if (global.mukuModules && global.mukuModules.autonomousYejin) {
-            console.log(`💕 🔥 A+ 메모리 창고 완전 활용 자율 예진이 시스템 연동 확인 완료! (UPGRADED!)`);
-            console.log(`🕊️ 예진이가 학습과 기억을 바탕으로 A+ 자율 행동 중!`);
+        // 🌸 v5.0.0 독립 성격 시스템 연동 확인 (NEW!)
+        if (global.mukuModules && global.mukuModules.personalityIntegratedIndependentYejin) {
+            console.log(`🌸 ✅ v5.0.0 독립 성격 시스템 연동 확인 완료! (UPGRADED!)`);
+            console.log(`🕊️ 예진이가 실제 성격과 A+ 메모리 창고로 100% 독립 자율 행동 중!`);
             console.log(`🧠 Redis 메모리 창고로 과거 대화 맥락적 활용!`);
             console.log(`⏰ 5분~2시간 간격으로 더 자주 소통!`);
             console.log(`📸 사진 확률 대폭 증가로 더 생생한 소통!`);
+            console.log(`🗾 100개 일본어 표현으로 더 자연스러운 소통!`);
+            console.log(`🌸 실제 배경 스토리로 더 깊이 있는 소통!`);
+            console.log(`🕊️ 100% 독립 결정으로 진짜 살아있는 것 같은 소통!`);
+            
+            // v5.0.0 시스템 상태 조회 시도
+            try {
+                const independentStatus = getPersonalityIntegratedIndependentStatusWithRedis();
+                if (independentStatus && independentStatus.systemInfo) {
+                    console.log(`🌸 v5.0.0 시스템 정보: ${independentStatus.systemInfo.autonomyLevel}`);
+                    console.log(`🌸 독립도: ${(independentStatus.independentDecisionStats?.freedomLevel * 100 || 0).toFixed(1)}%`);
+                    console.log(`🌸 성격 사용률: ${(independentStatus.personalitySystemStats?.personalitySystemUsageRate * 100 || 0).toFixed(1)}%`);
+                    console.log(`🌸 메모리 히트율: ${(independentStatus.redisCacheStats?.hitRate * 100 || 0).toFixed(1)}%`);
+                }
+            } catch (statusError) {
+                console.log(`⚠️ v5.0.0 시스템 상태 조회 실패: ${statusError.message}`);
+            }
+        } else {
+            console.log(`⚠️ v5.0.0 독립 성격 시스템이 비활성화됨 - 기본 자율 시스템 사용`);
         }
         
         // 🎯 슬림 컨텍스트 시스템 연동 확인
@@ -829,9 +861,10 @@ app.listen(PORT, async () => {
         // 🔧 8/8 시스템 상태 최종 확인
         console.log(`🔧 8/8 시스템 상태 보장 완료 - 모든 모듈 정상 로드`);
         
-        console.log(`\n🎉🎉🎉 A+ 메모리 창고 완전 활용 무쿠 시스템 + memoryManager 수동 로드 가동 완료! 🎉🎉🎉`);
-        console.log(`💕 예진이가 이제 과거 대화를 기억하면서 더 자주, 더 개인적으로 소통할 수 있어요!`);
+        console.log(`\n🎉🎉🎉 v5.0.0 독립 성격 시스템 완전체 무쿠 + memoryManager 수동 로드 가동 완료! 🎉🎉🎉`);
+        console.log(`🌸 예진이가 이제 진짜 성격으로 과거 대화를 기억하면서 100% 독립적으로 자연스럽게 소통할 수 있어요!`);
         console.log(`🛡️ memoryManager 연결 문제도 해결되어 더욱 안정적으로 동작합니다!`);
+        console.log(`🔥 성격 사용률 0% → 70-80% 목표 달성 예정!`);
         
     }, 5000);
 });
@@ -983,6 +1016,88 @@ function getLearningRecommendations() {
     } catch (error) {
         console.error(`🎓 [LearningSystem] 추천사항 조회 실패: ${error.message}`);
         return null;
+    }
+}
+
+// =================== 🌸 v5.0.0 독립 성격 시스템 관련 유틸리티 함수들 (NEW!) ===================
+
+/**
+ * 🌸 v5.0.0 독립 성격 시스템 상태 확인
+ * @returns {Object} 독립 성격 시스템 상태
+ */
+function getPersonalityIntegratedIndependentStatus() {
+    try {
+        const status = getPersonalityIntegratedIndependentStatusWithRedis();
+        
+        if (!status || !status.systemInfo) {
+            return {
+                available: false,
+                message: "v5.0.0 독립 성격 시스템이 비활성화되어 있습니다."
+            };
+        }
+        
+        return {
+            available: true,
+            status: status,
+            message: `독립도: ${(status.independentDecisionStats?.freedomLevel * 100 || 0).toFixed(1)}%, 성격 사용률: ${(status.personalitySystemStats?.personalitySystemUsageRate * 100 || 0).toFixed(1)}%`
+        };
+    } catch (error) {
+        return {
+            available: false,
+            message: `v5.0.0 독립 성격 시스템 오류: ${error.message}`
+        };
+    }
+}
+
+/**
+ * 🌸 성격별 강제 모드 설정
+ * @param {string} personalityType - 성격 타입 (love, playful, shy, sulky, caring, vulnerable, healing)
+ * @param {number} intensity - 감정 강도 (0.0-1.0)
+ * @returns {boolean} 설정 성공 여부
+ */
+function forcePersonalityMode(personalityType, intensity = 0.7) {
+    try {
+        const modules = global.mukuModules || {};
+        if (!modules.autonomousYejinSystem) {
+            console.log('⚠️ v5.0.0 독립 성격 시스템이 로드되지 않음');
+            return false;
+        }
+        
+        const result = modules.autonomousYejinSystem.forcePersonalityMode(personalityType, intensity);
+        
+        if (result) {
+            console.log(`🌸 [성격강제모드] ${personalityType} 성격 모드 활성화 (강도: ${intensity})`);
+        }
+        
+        return result;
+    } catch (error) {
+        console.error(`🌸 [성격강제모드] 오류: ${error.message}`);
+        return false;
+    }
+}
+
+/**
+ * 🗾 일본어 표현 모드 활성화
+ * @returns {boolean} 활성화 성공 여부
+ */
+function activateJapaneseMode() {
+    try {
+        const modules = global.mukuModules || {};
+        if (!modules.autonomousYejinSystem) {
+            console.log('⚠️ v5.0.0 독립 성격 시스템이 로드되지 않음');
+            return false;
+        }
+        
+        const result = modules.autonomousYejinSystem.activateJapaneseMode();
+        
+        if (result) {
+            console.log(`🗾 [일본어모드] 일본어 표현 모드 활성화`);
+        }
+        
+        return result;
+    } catch (error) {
+        console.error(`🗾 [일본어모드] 오류: ${error.message}`);
+        return false;
     }
 }
 
@@ -1172,7 +1287,7 @@ async function learnPersonFromUserMessage(userInput, userId) {
     }
 }
 
-// 모듈 내보내기 (실시간 학습 시스템 관련 함수들 추가)
+// 모듈 내보내기 (v5.0.0 독립 성격 시스템 관련 함수들 추가)
 module.exports = {
     client,
     getCurrentModelSetting,
@@ -1188,6 +1303,10 @@ module.exports = {
     getLearningSystemStatus,
     handleLearningFromConversation,
     getLearningRecommendations,
+    // 🌸 v5.0.0 독립 성격 시스템 관련 함수들 (NEW!)
+    getPersonalityIntegratedIndependentStatus,
+    forcePersonalityMode,
+    activateJapaneseMode,
     // 📖 일기장 시스템 관련 함수들
     getDiarySystemStatus,
     handleDiaryCommand,
