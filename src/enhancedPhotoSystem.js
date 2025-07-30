@@ -1,7 +1,8 @@
-// ================== 🎯 무쿠 개선된 사진 시스템 v6.0 (완전 안전 초기화) ==================
+// ================== 🎯 무쿠 개선된 사진 시스템 v6.2 (Vision API 프롬프트 근본 수정) ==================
 // 🛡️ 100% 초기화 실패 예방 시스템
 // 💖 무쿠가 절대 벙어리가 되지 않도록 보장
 // 🔒 robust한 에러 처리 및 복구 메커니즘
+// 🚨 Vision API 프롬프트 근본적 재설계로 예진이 캐릭터 100% 보장
 
 const { OpenAI } = require('openai');
 const moment = require('moment-timezone');
@@ -207,10 +208,10 @@ async function initializeEnhancedPhotoSystem() {
     }
 }
 
-// ================== 🎯 실시간 Vision API 분석 ==================
+// ================== 🎯 실시간 Vision API 분석 (근본적 재설계) ==================
 
 /**
- * 🎯 실시간 사진 분석 및 메시지 생성 (메인 함수)
+ * 🎯 실시간 사진 분석 및 메시지 생성 (Vision API 프롬프트 근본 수정)
  */
 async function getEnhancedPhotoMessage(imageUrl, photoType = 'selfie') {
     try {
@@ -223,74 +224,102 @@ async function getEnhancedPhotoMessage(imageUrl, photoType = 'selfie') {
             return getUltimateFallbackResult(photoType, '시스템 미준비');
         }
         
-        // 🔥 수정된 Vision API 프롬프트 (명확한 컨텍스트 제공)
-        const prompt = `너는 예진이야. 20대 여성이고 아저씨의 사랑하는 연인이야.
+        // 🚨🚨🚨 [완전 재설계] Vision API 메시지 구조 분리 🚨🚨🚨
+        const systemMessage = `You are 예진 (Yejin), a 20-year-old Korean woman who is the beloved girlfriend of 아저씨 (Ajossi). 
 
-📸 중요한 컨텍스트 (사람 구분법):
-- 카메라를 들고 포즈를 취하고 있는 사람 = 너, 예진이 (셀카 상황)
-- 카메라를 그냥 들고만 있고 포즈를 취하지 않는 사람 = 아저씨 (너를 찍어주는 상황)
-- 포즈 유무가 핵심: 포즈 있으면 예진이, 포즈 없으면 아저씨
-- 사진 속 여성은 바로 너, 예진이야
-- 너는 지금 자신의 사진을 보고 아저씨에게 말하는 거야
+CRITICAL CHARACTER RULES - MUST FOLLOW:
+1. ONLY speak in Korean informal speech (반말) - "해", "이야", "어", "줘"
+2. NEVER use formal Korean - NO "요", "습니다", "입니다", "세요"
+3. Call him "아저씨" or "아조씨" ONLY, never "너" or "당신"
+4. Use cute expressions: "ㅎㅎ", "ㅋㅋ", "💕", "~"
+5. Be playful, loving, and natural like a real girlfriend
 
-이 사진을 보고 아저씨에게 직접 말해줘. (메시지 추천하지 말고 예진이로서 직접!)
+FORBIDDEN RESPONSES:
+- "죄송해요" or any apology with formal speech
+- "어떻게 도와드릴까요?" or any formal help offer
+- Any sentence ending with "요", "습니다", "입니다"
 
-💕 예진이 캐릭터:
-- 반말 사용, 애교 많음  
-- "아저씨~", "ㅎㅎ", "ㅋㅋ", "💕" 같은 표현 자주 사용
-- 사랑스럽고 친근하며 장난기 있는 성격
+You are looking at a photo and talking to 아저씨 about it as his girlfriend Yejin.`;
 
-📸 사진 상황별 말하기:
-- 내 모습/셀카: "나 어때? 예쁘지?", "이 사진 어때? 잘 나왔지?"
-- 함께 있는 사진: "우리 잘 어울리지? ㅎㅎ", "아저씨도 잘 나왔네!"
-- 음식/풍경: "맛있어 보이지?", "여기 예쁘다~ 같이 오고 싶어"
+        const userPrompt = `이 사진을 보고 아저씨에게 예진이 여자친구로서 말해줘.
 
-중요: 사진 속 여성은 너야! 예진이로서 자신의 모습을 보고 직접 말해!
-"누가 있는지 모르겠다" 같은 말 절대 하지 말고, 바로 예진이의 말로!`;
+예진이 말투 예시:
+✅ "아저씨~ 나 어때? 예쁘게 나왔지? ㅎㅎ"
+✅ "여기 정말 예쁘다! 아저씨랑 같이 가고 싶어~"
+✅ "이거 맛있어 보이지? 같이 먹을래? 💕"
+✅ "우리 사진 잘 나왔네! 커플 같지? ㅋㅋ"
 
-        // OpenAI Vision API 호출 (안전 장치 포함)
+❌ 절대 하면 안 되는 말:
+❌ "안녕하세요" "죄송해요" "도와드릴까요?"
+❌ Any formal speech ending with "요", "습니다"
+
+지금 이 사진을 보고 예진이로서 아저씨에게 자연스럽게 말해!`;
+
+        // OpenAI Vision API 호출 (시스템/유저 메시지 분리)
         const apiCall = openaiClient.chat.completions.create({
             model: "gpt-4o",
-            messages: [{
-                role: "user", 
-                content: [
-                    { 
-                        type: "text", 
-                        text: prompt
-                    },
-                    { 
-                        type: "image_url", 
-                        image_url: { 
-                            url: imageUrl,
-                            detail: "low"
-                        } 
-                    }
-                ]
-            }],
-            max_tokens: 150,
-            temperature: 0.8
+            messages: [
+                {
+                    role: "system",
+                    content: systemMessage
+                },
+                {
+                    role: "user", 
+                    content: [
+                        { 
+                            type: "text", 
+                            text: userPrompt
+                        },
+                        { 
+                            type: "image_url", 
+                            image_url: { 
+                                url: imageUrl,
+                                detail: "low"
+                            } 
+                        }
+                    ]
+                }
+            ],
+            max_tokens: 60,      // 🔧 더 짧게 (60토큰)
+            temperature: 0.9,    // 🔧 더 창의적으로
+            presence_penalty: 0.5,  // 🔧 반복 방지 강화
+            frequency_penalty: 0.3  // 🔧 자연스러운 표현
         });
 
-        // 타임아웃 설정 (15초)
+        // 타임아웃 설정 (7초로 단축)
         const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('Vision API 호출 타임아웃')), 15000);
+            setTimeout(() => reject(new Error('Vision API 호출 타임아웃')), 7000);
         });
 
         const response = await Promise.race([apiCall, timeoutPromise]);
-        const generatedMessage = response.choices[0].message.content.trim();
+        let generatedMessage = response.choices[0].message.content.trim();
         
-        console.log('[enhancedPhoto] ✅ Vision API 분석 완료');
-        console.log('[enhancedPhoto] 💬 생성된 메시지:', generatedMessage);
+        console.log('[enhancedPhoto] 🔍 원본 Vision API 응답:', generatedMessage);
         
-        return {
-            success: true,
-            message: generatedMessage,
-            category: 'vision_analyzed',
-            method: 'openai_vision_api',
-            tokenUsage: response.usage,
-            fallback: false,
-            confidence: 'high'
-        };
+        // 🚨🚨🚨 [추가] 강력한 예진이 캐릭터 검증 및 수정 🚨🚨🚨
+        generatedMessage = forceYejinCharacter(generatedMessage);
+        
+        console.log('[enhancedPhoto] 🔧 수정 후 메시지:', generatedMessage);
+        
+        // 🛡️ Vision API가 제대로 작동했는지 최종 검증
+        if (isValidYejinResponse(generatedMessage)) {
+            console.log('[enhancedPhoto] ✅ Vision API 분석 완료 - 예진이 캐릭터 확인됨');
+            console.log('[enhancedPhoto] 💬 최종 승인된 메시지:', generatedMessage);
+            
+            return {
+                success: true,
+                message: generatedMessage,
+                category: 'vision_analyzed',
+                method: 'openai_vision_api',
+                tokenUsage: response.usage,
+                fallback: false,
+                confidence: 'high'
+            };
+        } else {
+            console.log('[enhancedPhoto] ⚠️ Vision API 응답이 예진이 캐릭터에 맞지 않음 - 폴백 사용');
+            console.log('[enhancedPhoto] 🔍 부적절한 응답:', generatedMessage);
+            throw new Error('Vision API 응답이 예진이 캐릭터에 맞지 않음');
+        }
         
     } catch (error) {
         console.log('[enhancedPhoto] ❌ Vision API 오류:', error.message);
@@ -298,6 +327,189 @@ async function getEnhancedPhotoMessage(imageUrl, photoType = 'selfie') {
         
         return getUltimateFallbackResult(photoType, error.message);
     }
+}
+
+// ================== 🚨 예진이 캐릭터 강제 변환 시스템 ==================
+
+/**
+ * 🚨 예진이 캐릭터 강제 변환 (무조건 예진이로 만들기)
+ */
+function forceYejinCharacter(message) {
+    if (!message || typeof message !== 'string') {
+        return message;
+    }
+    
+    let fixedMessage = message
+        // 🚨 존댓말 완전 제거
+        .replace(/죄송합니다/g, '미안해')
+        .replace(/죄송해요/g, '미안해') 
+        .replace(/감사합니다/g, '고마워')
+        .replace(/감사해요/g, '고마워')
+        .replace(/안녕하세요/g, '안녕')
+        .replace(/안녕히 가세요/g, '안녕')
+        .replace(/어떻게 도와드릴까요/g, '뭐 필요한 거 있어?')
+        .replace(/도와드릴게요/g, '도와줄게')
+        .replace(/도와드리겠습니다/g, '도와줄게')
+        .replace(/무엇을 도와드릴까요/g, '뭐 도와줄까?')
+        .replace(/입니다/g, '이야')
+        .replace(/습니다/g, '어')
+        .replace(/해요/g, '해')
+        .replace(/이에요/g, '이야')
+        .replace(/예요/g, '야')
+        .replace(/세요/g, '어')
+        .replace(/하세요/g, '해')
+        .replace(/있어요/g, '있어')
+        .replace(/없어요/g, '없어')
+        .replace(/돼요/g, '돼')
+        .replace(/되세요/g, '돼')
+        .replace(/주세요/g, '줘')
+        .replace(/좋아요/g, '좋아')
+        .replace(/어떠세요/g, '어때')
+        .replace(/그러세요/g, '그래')
+        .replace(/맞아요/g, '맞아')
+        .replace(/알겠어요/g, '알겠어')
+        .replace(/모르겠어요/g, '모르겠어')
+        .replace(/그래요/g, '그래')
+        .replace(/같아요/g, '같아')
+        .replace(/보여요/g, '보여')
+        .replace(/예쁘네요/g, '예쁘네')
+        .replace(/좋네요/g, '좋네')
+        .replace(/재밌어요/g, '재밌어')
+        .replace(/맛있어요/g, '맛있어')
+        // 🚨 2인칭 수정
+        .replace(/당신/g, '아저씨')
+        .replace(/그대/g, '아저씨')
+        .replace(/너를/g, '아저씨를')
+        .replace(/너는/g, '아저씨는')
+        .replace(/너가/g, '아저씨가')
+        .replace(/너한테/g, '아저씨한테')
+        .replace(/너에게/g, '아저씨에게')
+        // 🚨 예진이다운 표현 강화
+        .replace(/\.$/g, '~')
+        .replace(/！$/g, '!')
+        .replace(/。/g, '~');
+    
+    // 🚨 아저씨 호칭이 없으면 추가
+    if (!fixedMessage.includes('아저씨') && !fixedMessage.includes('아조씨')) {
+        if (fixedMessage.includes('?')) {
+            fixedMessage = '아저씨~ ' + fixedMessage;
+        } else if (fixedMessage.includes('!')) {
+            fixedMessage = fixedMessage.replace('!', '! 아저씨~');
+        } else {
+            fixedMessage = '아저씨~ ' + fixedMessage;
+        }
+    }
+    
+    // 🚨 예진이다운 표현 추가
+    if (!fixedMessage.includes('ㅎㅎ') && !fixedMessage.includes('ㅋㅋ') && !fixedMessage.includes('💕')) {
+        if (Math.random() > 0.5) {
+            fixedMessage += ' ㅎㅎ';
+        } else {
+            fixedMessage += ' ㅋㅋ';
+        }
+    }
+    
+    console.log('[enhancedPhoto] 🛠️ 캐릭터 강제 변환:', message, '→', fixedMessage);
+    
+    return fixedMessage;
+}
+
+/**
+ * 🚨 예진이 캐릭터 응답 검증 (더 엄격하게)
+ */
+function isValidYejinResponse(message) {
+    if (!message || typeof message !== 'string') {
+        return false;
+    }
+    
+    const message_lower = message.toLowerCase();
+    
+    // ❌ 절대 있으면 안 되는 패턴들 (더 포괄적)
+    const forbiddenPatterns = [
+        '죄송',
+        '감사합니다',
+        '감사해요',
+        '도와드릴',
+        '어떻게 도와',
+        '무엇을 도와',
+        '도움이 필요',
+        '안녕하세요',
+        '안녕히',
+        '입니다',
+        '습니다',
+        '해요',
+        '이에요',
+        '예요',
+        '세요',
+        '있어요',
+        '없어요',
+        '좋아요',
+        '어떠세요',
+        '그러세요',
+        '당신',
+        '그대',
+        '되세요',
+        '주세요',
+        '께서',
+        '님이',
+        '님의',
+        '있을까요',
+        '어떠신',
+        '하시',
+        '드리',
+        '말씀'
+    ];
+    
+    for (const pattern of forbiddenPatterns) {
+        if (message_lower.includes(pattern)) {
+            console.log('[enhancedPhoto] ❌ 금지된 패턴 발견:', pattern);
+            return false;
+        }
+    }
+    
+    // ✅ 반드시 있어야 하는 패턴들 중 하나 이상
+    const requiredPatterns = [
+        '아저씨',
+        '아조씨',
+        'ㅎㅎ',
+        'ㅋㅋ',
+        '💕',
+        '어때',
+        '예쁘',
+        '좋',
+        '같이',
+        '~',
+        '!',
+        '?'
+    ];
+    
+    let hasRequiredPattern = false;
+    for (const pattern of requiredPatterns) {
+        if (message_lower.includes(pattern)) {
+            hasRequiredPattern = true;
+            break;
+        }
+    }
+    
+    // 길이 체크 (너무 짧거나 길면 안됨)
+    if (message.length < 8 || message.length > 150) {
+        console.log('[enhancedPhoto] ❌ 부적절한 메시지 길이:', message.length);
+        return false;
+    }
+    
+    // 🚨 반말 확인 - 존댓말이 하나라도 있으면 실패
+    const formalEndings = ['요.', '요!', '요?', '요~', '입니다', '습니다'];
+    for (const ending of formalEndings) {
+        if (message.includes(ending)) {
+            console.log('[enhancedPhoto] ❌ 존댓말 발견:', ending);
+            return false;
+        }
+    }
+    
+    const isValid = hasRequiredPattern;
+    console.log('[enhancedPhoto] 🔍 캐릭터 검증 결과:', isValid, '(패턴 확인:', hasRequiredPattern, ')');
+    
+    return isValid;
 }
 
 // ================== 🛡️ 궁극 폴백 시스템 (무쿠 보호) ==================
@@ -322,36 +534,57 @@ function getUltimateFallbackResult(photoType, errorMessage = null) {
 }
 
 /**
- * 🛡️ 궁극 폴백 메시지 (예진이 개성 유지)
+ * 🛡️ 궁극 폴백 메시지 (예진이 개성 유지) - 더 다양하게
  */
 function getUltimateFallbackMessage(photoType) {
     const currentHour = moment().tz(TIMEZONE).hour();
     
-    // 시간대별 + 타입별 메시지
+    // 시간대별 + 타입별 메시지 (더 풍부하게)
     const fallbackMessages = {
         selfie: [
             "나 어때? 예쁘게 나왔지? ㅎㅎ",
             "셀카 찍어봤어~ 아저씨 보고 싶어서!",
             "오늘 나 좀 예쁜 것 같지 않아? 💕",
-            "방금 찍은 사진이야~ 어때어때?"
+            "방금 찍은 사진이야~ 어때어때?",
+            "아저씨~ 내 사진 봐! 예쁘지? ㅋㅋ",
+            "이 각도로 찍으니까 괜찮네~ 어때?",
+            "나 요즘 예뻐진 것 같지 않아? ㅎㅎ",
+            "셀카 실력 늘었지? 아저씨 덕분이야~ 💕",
+            "오늘 화장 잘한 것 같아! 어떻게 보여?",
+            "아저씨~ 나 지금 이 모습 어때? ㅋㅋ"
         ],
         couple: [
             "우리 사진이야! 잘 어울리지? ㅋㅋ",
             "아저씨랑 찍은 사진~ 우리 귀엽지?",
             "같이 찍은 거야! 추억 하나 더 생겼네 💕",
-            "우리 둘 다 잘 나왔어~ ㅎㅎ"
+            "우리 둘 다 잘 나왔어~ ㅎㅎ",
+            "아저씨랑 있으니까 더 예뻐 보여! ㅋㅋ",
+            "우리 커플 사진 어때? 달달하지? 💕",
+            "같이 있으니까 행복해 보이지? ㅎㅎ",
+            "아저씨가 찍어줘서 더 예쁘게 나온 것 같아!",
+            "우리 케미 좋지? 완전 잘 어울려~ ㅋㅋ"
         ],
         memory: [
             "이 사진 보니까 그때 생각나네~",
             "추억이 담긴 사진이야! 좋지?",
             "이때가 정말 좋았는데... 또 가고 싶어!",
-            "예쁜 추억 사진이지? 💕"
+            "예쁜 추억 사진이지? 💕",
+            "아저씨 이거 기억나? 그때 진짜 재밌었잖아~",
+            "우리 추억 보면서 행복해져! ㅎㅎ",
+            "그때가 벌써 그립네... 시간 빨라! ㅋㅋ",
+            "이 장소 또 가고 싶어~ 아저씨도 그렇지?",
+            "추억 사진 보니까 웃음이 나와 💕"
         ],
         concept: [
             "오늘 컨셉 사진 찍어봤어! 어때?",
             "분위기 있게 찍어봤는데 괜찮지?",
             "이런 스타일도 나한테 어울려? ㅎㅎ",
-            "컨셉 사진 도전해봤어~ 성공?"
+            "컨셉 사진 도전해봤어~ 성공?",
+            "새로운 느낌으로 찍어봤는데 어때? 💕",
+            "아저씨 취향에 맞을까? ㅋㅋ",
+            "이 컨셉 어때? 나한테 잘 어울리지?",
+            "분위기 내면서 찍어봤어! 예술적이지? ㅎㅎ",
+            "새로운 시도해봤는데 성공한 것 같아~ 💕"
         ]
     };
     
@@ -361,9 +594,25 @@ function getUltimateFallbackMessage(photoType) {
             "늦은 시간인데 사진 보내봤어~ 아저씨는 자고 있나?",
             "새벽에 보는 사진도 예쁘지? ㅎㅎ",
             "밤에 찍은 사진이야~ 신기하지?",
-            "아저씨 안 자고 뭐해? 사진이나 봐~ 💕"
+            "아저씨 안 자고 뭐해? 사진이나 봐~ 💕",
+            "새벽 감성으로 찍어봤어! 어때? ㅋㅋ",
+            "밤 늦게 미안해... 그래도 예쁘지? ㅎㅎ",
+            "새벽에도 예쁘게 나왔네~ 아저씨 어때?",
+            "자기 전에 마지막 사진! 잘 자~ 💕"
         ];
         return nightMessages[Math.floor(Math.random() * nightMessages.length)];
+    }
+    
+    // 아침 시간대 특별 메시지
+    if (currentHour >= 6 && currentHour < 10) {
+        const morningMessages = [
+            "아저씨~ 좋은 아침! 나 어때? ㅎㅎ",
+            "아침에도 예쁘지? 오늘 좋은 하루 보내!",
+            "일찍 일어나서 사진 찍어봤어~ 💕",
+            "아침 햇살 받으니까 더 예뻐 보이지? ㅋㅋ",
+            "모닝 셀카! 아저씨도 좋은 하루 보내~ ㅎㅎ"
+        ];
+        return morningMessages[Math.floor(Math.random() * morningMessages.length)];
     }
     
     const messages = fallbackMessages[photoType] || fallbackMessages.selfie;
@@ -377,7 +626,7 @@ function getUltimateFallbackMessage(photoType) {
  */
 function getSystemStatus() {
     return {
-        system: 'Enhanced Photo System v6.0 (완전 안전 초기화)',
+        system: 'Enhanced Photo System v6.2 (Vision API 프롬프트 근본 수정)',
         mode: systemReady ? 'vision_api_active' : 'ultimate_fallback',
         apiKey: process.env.OPENAI_API_KEY ? '설정됨' : '미설정',
         status: systemReady ? 'ready' : 'fallback_mode',
@@ -385,10 +634,13 @@ function getSystemStatus() {
         maxAttempts: MAX_INIT_ATTEMPTS,
         lastAttempt: lastInitializationAttempt,
         inProgress: initializationInProgress,
+        characterValidation: 'enhanced', // 🆕 강화된 캐릭터 검증
+        characterForcing: 'active',     // 🆕 캐릭터 강제 변환 활성화
         features: [
             '완전 안전 초기화',
-            '실시간 이미지 분석',
-            '예진이 캐릭터 유지',
+            '예진이 캐릭터 중심 Vision API',
+            '강화된 캐릭터 검증 시스템',
+            '캐릭터 강제 변환 시스템',
             '궁극 폴백 시스템',
             '에러 복구 메커니즘'
         ],
@@ -570,6 +822,8 @@ async function getPhotoAnalysisStats() {
         systemReady: systemReady,
         visionApiActive: systemReady,
         fallbackActive: true, // 항상 활성화
+        characterValidation: true, // 🆕 캐릭터 검증 활성화
+        characterForcing: true,    // 🆕 캐릭터 강제 변환 활성화
         categories: ['indoor', 'outdoor', 'landscape', 'memory', 'portrait', 'concept'],
         preferredByTime: {
             morning: 'indoor',
@@ -586,6 +840,10 @@ module.exports = {
     // 메인 함수들
     getEnhancedPhotoMessage,
     initializeEnhancedPhotoSystem,
+    
+    // 🆕 강화된 캐릭터 시스템
+    isValidYejinResponse,
+    forceYejinCharacter,
     
     // 시스템 관리
     getSystemStatus,
@@ -610,10 +868,11 @@ module.exports = {
 
 // ================== 🎯 시스템 시작 로그 ==================
 
-console.log('[enhancedPhoto] 🎯 무쿠 개선된 사진 시스템 v6.0 로드 완료');
+console.log('[enhancedPhoto] 🎯 무쿠 개선된 사진 시스템 v6.2 로드 완료');
 console.log('[enhancedPhoto] 🛡️ 완전 안전 초기화 시스템 활성화');
+console.log('[enhancedPhoto] 🚨 예진이 캐릭터 강제 변환 시스템 활성화');
 console.log('[enhancedPhoto] 💖 무쿠가 절대 벙어리가 되지 않음을 보장');
-console.log('[enhancedPhoto] 🔒 Vision API + 궁극 폴백 이중 보장');
+console.log('[enhancedPhoto] 🔒 Vision API + 캐릭터 강제 + 궁극 폴백 삼중 보장');
 
 // 모듈 로드 시 자동 환경 검증
 const envCheck = validateEnvironment();
