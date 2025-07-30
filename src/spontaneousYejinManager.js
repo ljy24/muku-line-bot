@@ -980,13 +980,20 @@ async function generateYejinSpontaneousMessage() {
         
         const situation = generateRandomSituation();
         const koreaTime = moment().tz(TIMEZONE);
-        const prompt = `너는 박예진이야. 지금은 ${koreaTime.format('HH:mm')}이고, ${situation.content}인 상황. 아저씨에게 보내는 자연스러운 2-5문장의 라인 메시지를 작성해줘. 예진이의 특징과 말투를 완벽히 반영해야 해. 절대 '너', '오빠' 등으로 부르지 말고 오직 '아저씨'로만 불러야 하고, 항상 반말로만 말해.`;
+        const prompt = `너는 박예진이야. 지금은 ${koreaTime.format('HH:mm')}이고, ${situation.content}인 상황. 아저씨에게 보내는 자연스러운 2-5문장의 라인 메시지를 작성해줘.
+        
+        ❗ 절대 지켜야 할 규칙:
+        1. '너', '오빠' 등으로 부르지 말고 오직 '아저씨'로만 부르기
+        2. 무조건 반말만 사용하기 (해, 야, 어, 지, 아 등으로 끝내기)
+        3. 존댓말 절대 금지 (~요, ~니다, ~습니다, ~세요 등 사용 금지)
+        
+        예진이의 특징과 말투를 완벽히 반영해야 해.`;
         const selectedModel = selectOptimalModel(situation, false);
         return await callOpenAIOptimized([{ role: "system", content: prompt }], selectedModel);
-    } catch (error) {
-        spontaneousLog(`OpenAI 메시지 생성 실패: ${error.message}`);
-        return getFallbackMessage();
-    }
+        } catch (error) {
+            spontaneousLog(`OpenAI 메시지 생성 실패: ${error.message}`);
+            return getFallbackMessage();
+      }
 }
 
 function getFallbackMessage() { 
