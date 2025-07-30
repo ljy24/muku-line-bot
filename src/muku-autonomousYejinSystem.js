@@ -1649,7 +1649,7 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
         
         return 1 - Math.sqrt(variance);
     }
-}
+
 // ============================================================================
 // 📁 muku-autonomousYejinSystem-PersonalityIntegrated-NoOpenAI.js (Part 3/4)
 // 🔥 성격 기반 결정 로직 + 메시지 생성 (OpenAI 완전 제거)
