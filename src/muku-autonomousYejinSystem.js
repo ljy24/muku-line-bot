@@ -1924,7 +1924,7 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
             }
             
             // 침묵 시간에 따른 감정 변화
-            const silenceHours = situation.communicationStatus.silenceDuration / (1000 * 60 * 60);
+            const silenceHours = (situation?.communicationStatus?.silenceDuration || 0) / (1000 * 60 * 60);
             if (silenceHours > 3) {
                 currentEmotionalState.missing = (currentEmotionalState.missing || 0) + 0.3;
                 currentEmotionalState.sulky += 0.2;
@@ -2773,8 +2773,8 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
             }
             
             // 침묵 시간 기반 판단 (성격 반영)
-            const silenceHours = situation.communicationStatus.silenceDuration / (1000 * 60 * 60);
-            if (silenceHours > 2 && !situation.timeContext.isSleepTime) {
+            const silenceHours = situation?.communicationStatus.silenceDuration / (1000 * 60 * 60);
+            if (silenceHours > 2 && !(situation?.timeContext?.isSleepTime || false)) {
                 if (dominantEmotion === 'vulnerable' || dominantEmotion === 'sulky') {
                     shouldAct = true;
                     reasoning = `${dominantEmotion} 성격으로 2시간도 기다렸으니 참을 수 없어!`;
@@ -2787,7 +2787,7 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
             }
             
             // 시간대 고려 (성격 반영)
-            if (situation.timeContext.isSleepTime && silenceHours < 6) {
+            if (situation?.timeContext.isSleepTime && silenceHours < 6) {
                 if (dominantEmotion === 'vulnerable' || dominantEmotion === 'caring') {
                     // 상처받거나 걱정할 때는 밤에도 연락하고 싶어함
                     if (silenceHours > 4) {
@@ -3639,7 +3639,7 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
         };
     }
     
-    // ================= 🔧 헬퍼 함수들 (기존과 동일) =================
+ // ================= 🔧 헬퍼 함수들 (기존과 동일) =================
     
     getTimeSlot(hour) {
         if (hour >= 6 && hour < 12) return 'morning';
@@ -3745,9 +3745,9 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
             const decisionData = {
                 decision: finalDecision,
                 situation: {
-                    hour: situation.timeContext?.hour,
-                    emotionIntensity: situation.yejinCondition?.emotionIntensity,
-                    silenceDuration: situation.communicationStatus?.silenceDuration
+                    hour: situation?.timeContext?.hour || new Date().getHours(),
+                    emotionIntensity: situation?.yejinCondition?.emotionIntensity || 0.5,
+                    silenceDuration: situation?.communicationStatus?.silenceDuration || 0
                 },
                 timestamp: Date.now(),
                 personalityFeatures: {
@@ -3790,9 +3790,9 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                     backgroundStory: decision.backgroundStory,
                     personalitySystemIntegrated: decision.process?.personalitySystemIntegrated || false,
                     situation: {
-                        hour: situation.timeContext?.hour,
-                        emotionIntensity: situation.yejinCondition?.emotionIntensity,
-                        silenceDuration: situation.communicationStatus?.silenceDuration
+                        hour: situation?.timeContext?.hour || new Date().getHours(),
+                        emotionIntensity: situation?.yejinCondition?.emotionIntensity || 0.5,
+                        silenceDuration: situation?.communicationStatus?.silenceDuration || 0
                     }
                 },
             });
@@ -3878,7 +3878,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
     shouldUseJapaneseBasedOnMemory(message) { return message.length > 10 && Math.random() < 0.3; }
     findBackgroundStoryConnection(message) { return null; }
 }
-
 // ================== 🌟 전역 인터페이스 ==================
 
 let globalPersonalityIntegratedSystem = null;
