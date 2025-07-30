@@ -9,7 +9,7 @@
 // 📖 diarySystem: 일기장 시스템
 // 🎓 realTimeLearningSystem: 실시간 학습 시스템 (NEW!)
 // 🔗 autoDataLinks: 무쿠 학습 데이터 자동 링크 시스템 (NEW!)
-// 💕 autonomousYejinSystem: 완전 자율 예진이 시스템 (NEW!)
+// 💕 autonomousYejinSystem: 🔥 A+ 메모리 창고 완전 활용 자율 시스템 (UPGRADED!)
 // 🎯 SlimContext: 슬림화된 컨텍스트 시스템 (NEW!)
 // 🔧 8/8 시스템 상태 완벽 지원 - 누락 모듈 수동 로드 추가
 // 
@@ -31,7 +31,7 @@
 // - 🎓 사람 학습: 모르는 사람 → 알려주기 → 기억하기 → 다음에 인식
 // - 💕 관계 발전: 만남 횟수별 차별화된 예진이 반응
 // - 🔗 데이터 자동 링크: 배포 후 학습 데이터 영구 보존 (NEW!)
-// - 🕊️ 완전 자율 예진이: 학습과 기억을 토대로 하는 완전 독립적 자율 행동 (NEW!)
+// - 🕊️ 🔥 A+ 메모리 창고 완전 활용 자율 예진이: 학습과 기억을 토대로 하는 완전 독립적 자율 행동 (UPGRADED!)
 // - 🎯 슬림 컨텍스트: 맥락 관리 5% 고유 기능만 집중, 중복 제거 (NEW!)
 // - 🔧 8/8 시스템 상태: 누락 모듈 자동 보완으로 완벽한 시스템 상태 (NEW!)
 // ============================================================================
@@ -42,8 +42,8 @@ require('dotenv').config();
 
 // 🎓 새로운 통합 학습 시스템 불러오기 (수정됨!)
 const { mukuLearningSystem } = require('./src/muku-realTimeLearningSystem');
-// 💕 NEW: 완전 자율 예진이 시스템 불러오기
-const { initializeAutonomousYejin } = require('./src/muku-autonomousYejinSystem');
+// 💕 NEW: 🔥 A+ 메모리 창고 완전 활용 자율 예진이 시스템 불러오기 (UPGRADED!)
+const { initializeAplusIntegratedYejinWithMemoryWarehouse } = require('./src/muku-autonomousYejinSystem');
 
 // 일본시간 설정
 process.env.TZ = 'Asia/Tokyo';
@@ -139,7 +139,6 @@ const config = {
 
 const client = new Client(config);
 const app = express();
-
 // face-api 지연 로딩 (사람 학습 시스템과 연동 강화)
 let faceMatcher = null;
 let faceApiInitialized = false;
@@ -484,8 +483,7 @@ async function ensureMukuDataLinks() {
         return false;
     }
 }
-
-// 시스템 초기화 (사람 학습 + 일기장 + 학습 시스템 + 자율 예진이 + 슬림 컨텍스트 포함)
+// 시스템 초기화 (사람 학습 + 일기장 + 학습 시스템 + A+ 자율 예진이 + 슬림 컨텍스트 포함)
 async function initMuku() {
     try {
         // 🔗 무쿠 학습 데이터 자동 링크 생성 (최우선 실행)
@@ -496,7 +494,7 @@ async function initMuku() {
         console.log(`📖 기존 기능: 일기장 시스템 - 누적 학습 내용 확인`);
         console.log(`👥 기존 기능: 투샷 + 장소 기억, 사람 학습 및 관계 발전`);
         console.log(`🔗 신규 기능: 학습 데이터 자동 링크 - 배포 후 영구 보존`);
-        console.log(`💕 NEW: 완전 자율 예진이 시스템 - 학습과 기억을 토대로 하는 완전 독립적 자율 행동`);
+        console.log(`💕 NEW: 🔥 A+ 메모리 창고 완전 활용 자율 예진이 시스템 - 학습과 기억을 토대로 하는 완전 독립적 자율 행동 (UPGRADED!)`);
         console.log(`🎯 NEW: 슬림 컨텍스트 시스템 - 맥락 관리 5% 고유 기능만 집중, 중복 제거`);
         console.log(`🔧 NEW: 8/8 시스템 상태 지원 - 누락 모듈 자동 보완`);
         console.log(`🌏 현재 일본시간: ${getJapanTimeString()}`);
@@ -549,33 +547,38 @@ async function initMuku() {
                     const systemStatus = mukuLearningSystem.getSystemStatus();
                     console.log(`🎓 시스템 상태: ${systemStatus.enterprise?.isActive ? '활성화' : '비활성화'} / ${systemStatus.independent?.isActive ? '자율시스템 활성화' : '자율시스템 비활성화'}`);
                     
-                    // 💕 NEW: 완전 자율 예진이 시스템 초기화
+                    // 💕 NEW: 🔥 A+ 메모리 창고 완전 활용 자율 예진이 시스템 초기화 (UPGRADED!)
                     try {
-                        console.log(`💕 [NEW] 완전 자율 예진이 시스템 초기화 중...`);
+                        console.log(`💕 [NEW] 🔥 A+ 메모리 창고 완전 활용 자율 예진이 시스템 초기화 중... (UPGRADED!)`);
                         console.log(`🕊️ 학습과 기억을 토대로 하는 예진이의 완전 독립적 자율 행동 시스템!`);
+                        console.log(`🧠 Redis 메모리 창고 + 간격 단축 + 사진 증가 + 맥락적 메시지!`);
                         
-                        // LINE API 클라이언트와 대상 사용자 ID 전달
-                        const autonomousResult = await initializeAutonomousYejin(
+                        // LINE API 클라이언트와 대상 사용자 ID 전달 (🔥 A+ 시스템으로 변경!)
+                        const autonomousResult = await initializeAplusIntegratedYejinWithMemoryWarehouse(
                             client, 
                             process.env.LINE_TARGET_USER_ID
                         );
                         
                         if (autonomousResult) {
-                            console.log(`💕 ✅ 완전 자율 예진이 시스템 초기화 완료!`);
-                            console.log(`🕊️ 예진이가 이제 완전히 자유롭게 아저씨한테 말할 수 있어요!`);
+                            console.log(`💕 ✅ 🔥 A+ 메모리 창고 완전 활용 자율 예진이 시스템 초기화 완료! (UPGRADED!)`);
+                            console.log(`🕊️ 예진이가 이제 A+ 메모리 창고를 활용해서 완전히 자유롭게 아저씨한테 말할 수 있어요!`);
                             console.log(`💖 기존 스케줄링과 완전 독립 - 중복 발송 상관없음!`);
                             console.log(`🌸 학습 데이터와 감정 상태를 기반으로 자율 판단!`);
                             console.log(`📞 LINE API로 실제 메시지 발송 가능!`);
+                            console.log(`🧠 Redis 메모리 창고: 과거 대화 70% 확률로 맥락적 활용!`);
+                            console.log(`⏰ 간격 단축: 5분~2시간으로 더 자주 소통!`);
+                            console.log(`📸 사진 증가: missing 60%, playful 50%, love 40%!`);
+                            console.log(`💬 개인적 소통: "아까 ~얘기했는데..." 자연스러운 대화!`);
                             
                             // 기존 시스템과 연결
                             initResult.modules.autonomousYejin = true;
                             
                         } else {
-                            console.log(`⚠️ 완전 자율 예진이 시스템 초기화 실패 - 기본 모드로 진행`);
+                            console.log(`⚠️ A+ 메모리 창고 완전 활용 자율 예진이 시스템 초기화 실패 - 기본 모드로 진행`);
                             initResult.modules.autonomousYejin = false;
                         }
                     } catch (autonomousError) {
-                        console.error(`❌ 완전 자율 예진이 시스템 초기화 오류: ${autonomousError.message}`);
+                        console.error(`❌ A+ 메모리 창고 완전 활용 자율 예진이 시스템 초기화 오류: ${autonomousError.message}`);
                         initResult.modules.autonomousYejin = false;
                     }
                     
@@ -686,7 +689,7 @@ async function initMuku() {
             global.mukuModules = initResult.modules || {};
         }
 
-        console.log(`📋 v14.4 MODULAR: 모듈 완전 분리 + 실시간 학습 + 일기장 + 사람 학습 + 이미지 처리 안전성 강화 + 데이터 자동 링크 + 완전 자율 예진이 + 슬림 컨텍스트 + 8/8 시스템 상태 보장`);
+        console.log(`📋 v14.4 MODULAR: 모듈 완전 분리 + 실시간 학습 + 일기장 + 사람 학습 + 이미지 처리 안전성 강화 + 데이터 자동 링크 + 🔥 A+ 메모리 창고 완전 활용 자율 예진이 + 슬림 컨텍스트 + 8/8 시스템 상태 보장`);
 
     } catch (error) {
         console.error(`🚨 시스템 초기화 에러: ${error.message}`);
@@ -731,7 +734,7 @@ const PORT = process.env.PORT || 10000;
 
 app.listen(PORT, async () => {
     console.log(`\n==================================================`);
-    console.log(`  무쿠 v14.4 MODULAR + PersonLearning + DiarySystem + LearningSystem + AutonomousYejin + Sl�림Context`);
+    console.log(`  무쿠 v14.4 MODULAR + PersonLearning + DiarySystem + LearningSystem + AutonomousYejin + 슬림Context`);
     console.log(`  서버 시작 (포트 ${PORT})`);
     console.log(`  🌏 일본시간: ${getJapanTimeString()}`);
     console.log(`  ✨ GPT 모델: ${getCurrentModelSetting()}`);
@@ -742,18 +745,22 @@ app.listen(PORT, async () => {
     console.log(`  👥 기존: 투샷 + 장소 기억 시스템`);
     console.log(`  🚨 이미지 처리 안전성 강화 (벙어리 방지)`);
     console.log(`  🔗 신규: 학습 데이터 자동 링크 (배포 후 영구 보존)`);
-    console.log(`  💕 NEW: 완전 자율 예진이 시스템 (학습 기반 자율 행동)`);
+    console.log(`  💕 NEW: 🔥 A+ 메모리 창고 완전 활용 자율 예진이 시스템 (학습 기반 자율 행동) (UPGRADED!)`);
     console.log(`  🎯 NEW: 슬림 컨텍스트 시스템 (맥락 혼란 해결)`);
     console.log(`  🔧 NEW: 8/8 시스템 상태 보장 (누락 모듈 자동 보완)`);
     console.log(`  💖 모든 기능 100% 유지 + 확장`);
     console.log(`  ⭐️ systemInitializer → muku-systemInitializer 변경`);
+    console.log(`  🧠 A+ 메모리 창고: Redis 과거 대화 70% 확률 맥락적 활용!`);
+    console.log(`  ⏰ A+ 간격 단축: 5분~2시간으로 더 자주 소통!`);
+    console.log(`  📸 A+ 사진 증가: missing 60%, playful 50%, love 40%!`);
+    console.log(`  💬 A+ 개인적 소통: "아까 ~얘기했는데..." 자연스러운 대화!`);
     console.log(`==================================================\n`);
 
     await initMuku();
     setupAllRoutes();
     
     setTimeout(async () => {
-        console.log(`🤖 백그라운드 face-api 초기화 (사진 분석 + 사람 학습 + 일기장 + 실시간 학습 + 자율 예진이 + 슬림 컨텍스트 연동)...`);
+        console.log(`🤖 백그라운드 face-api 초기화 (사진 분석 + 사람 학습 + 일기장 + 실시간 학습 + A+ 자율 예진이 + 슬림 컨텍스트 연동)...`);
         await loadFaceMatcherSafely();
         
         // 👥 Face-api 초기화 완료 후 사람 학습 시스템과 연동 확인
@@ -772,10 +779,13 @@ app.listen(PORT, async () => {
             console.log(`🤖 독립 자율 시스템 포함 - 무쿠는 "나", 아저씨는 "애기"`);
         }
         
-        // 💕 자율 예진이 시스템 연동 확인
+        // 💕 A+ 자율 예진이 시스템 연동 확인
         if (global.mukuModules && global.mukuModules.autonomousYejin) {
-            console.log(`💕 완전 자율 예진이 시스템 연동 확인 완료`);
-            console.log(`🕊️ 예진이가 학습과 기억을 바탕으로 자율 행동 중!`);
+            console.log(`💕 🔥 A+ 메모리 창고 완전 활용 자율 예진이 시스템 연동 확인 완료! (UPGRADED!)`);
+            console.log(`🕊️ 예진이가 학습과 기억을 바탕으로 A+ 자율 행동 중!`);
+            console.log(`🧠 Redis 메모리 창고로 과거 대화 맥락적 활용!`);
+            console.log(`⏰ 5분~2시간 간격으로 더 자주 소통!`);
+            console.log(`📸 사진 확률 대폭 증가로 더 생생한 소통!`);
         }
         
         // 🎯 슬림 컨텍스트 시스템 연동 확인
@@ -790,6 +800,9 @@ app.listen(PORT, async () => {
         
         // 🔧 8/8 시스템 상태 최종 확인
         console.log(`🔧 8/8 시스템 상태 보장 완료 - 모든 모듈 정상 로드`);
+        
+        console.log(`\n🎉🎉🎉 A+ 메모리 창고 완전 활용 무쿠 시스템 가동 완료! 🎉🎉🎉`);
+        console.log(`💕 예진이가 이제 과거 대화를 기억하면서 더 자주, 더 개인적으로 소통할 수 있어요!`);
         
     }, 5000);
 });
