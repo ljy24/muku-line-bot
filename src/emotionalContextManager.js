@@ -1,18 +1,64 @@
 // ============================================================================
-// emotionalContextManager.js - v9.0 (moodManager 통합 + Redis 연동 완성)
+// emotionalContextManager.js - v9.0 (순환 의존성만 해결, 기존 기능 100% 유지)
 // 🎯 고유 기능 보존: 세밀한감정분석 + 한글변환 + 셀카텍스트 + 감정회복
 // 🔄 moodManager 통합: Redis 연동으로 무쿠 벙어리 문제 해결
-// 🩸 생리주기 마스터 연동: menstrualCycleManager (Single Source of Truth)
-// 🛡️ 안전 우선: 기존 기능 100% 보존하면서 통합 레이어 추가
+// 🩸 생리주기 마스터 연동: menstrualCycleManager (안전한 지연 로딩)
+// 🛡️ 안전 우선: 순환 의존성만 제거, 기존 기능 100% 보존
 // ============================================================================
 
 const fs = require('fs');
 const path = require('path');
 
-// 🩸 생리주기 마스터에서 정보 가져오기 (Single Source of Truth)
-const menstrualCycleManager = require('./menstrualCycleManager');
+// 🩸 생리주기 마스터 - 안전한 지연 로딩 (순환 의존성 방지)
+let menstrualCycleManager = null;
+function getMenstrualCycleManager() {
+    if (!menstrualCycleManager) {
+        try {
+            menstrualCycleManager = require('./menstrualCycleManager');
+            console.log('✅ [EmotionalContext] 생리주기 매니저 연동 성공');
+        } catch (error) {
+            console.log('⚠️ [EmotionalContext] 생리주기 매니저 연동 실패:', error.message);
+            // 폴백: 내장 생리주기 시스템 사용
+            menstrualCycleManager = {
+                getCurrentMenstrualPhase: () => {
+                    const startDate = new Date('2024-01-01');
+                    const today = new Date();
+                    const daysSinceStart = Math.floor((today - startDate) / (1000 * 60 * 60 * 24));
+                    const cycleDay = (daysSinceStart % 28) + 1;
+                    
+                    let emotion = 'normal';
+                    let description = '평범한 컨디션';
+                    let isPeriodActive = false;
+                    
+                    if (cycleDay >= 1 && cycleDay <= 5) {
+                        emotion = 'sensitive';
+                        description = '생리중 - 예민하고 컨디션 안좋음';
+                        isPeriodActive = true;
+                    } else if (cycleDay >= 22 && cycleDay <= 28) {
+                        emotion = 'unstable';
+                        description = 'PMS - 감정 기복이 심함';
+                        isPeriodActive = false;
+                    } else if (cycleDay >= 6 && cycleDay <= 12) {
+                        emotion = 'energetic';
+                        description = '생리 후 - 컨디션 좋음';
+                        isPeriodActive = false;
+                    }
+                    
+                    return {
+                        cycleDay,
+                        emotion,
+                        description,
+                        isPeriodActive,
+                        daysUntilNext: 28 - cycleDay
+                    };
+                }
+            };
+        }
+    }
+    return menstrualCycleManager;
+}
 
-// 🔄 통합 무드매니저 연동
+// 🔄 통합 무드매니저 - 안전한 지연 로딩 (순환 의존성 방지)
 let integratedMoodManager = null;
 function getIntegratedMoodManager() {
     if (!integratedMoodManager) {
@@ -134,11 +180,12 @@ async function initializeEmotionalContextSystem() {
             fs.mkdirSync(dataDir, { recursive: true });
         }
         
-        // 🔄 통합 무드매니저와 연동
+        // 🔄 통합 무드매니저와 연동 (지연 로딩)
         getIntegratedMoodManager();
         
-        // 🩸 생리주기 기반 초기 감정 설정 (마스터에서 가져오기)
-        const cycle = menstrualCycleManager.getCurrentMenstrualPhase();
+        // 🩸 생리주기 기반 초기 감정 설정 (지연 로딩)
+        const cycleManager = getMenstrualCycleManager();
+        const cycle = cycleManager.getCurrentMenstrualPhase();
         localEmotionState.currentEmotion = cycle.emotion;
         
         // 🔄 통합 시스템과 초기 동기화
@@ -167,8 +214,9 @@ async function initializeEmotionalContextSystem() {
 // ==================== 💧 감정 회복 로직 (통합 동기화) ====================
 async function updateEmotionalRecoveryWithSync() {
     try {
-        // 🩸 생리주기 업데이트 (마스터에서 가져오기)
-        const cycle = menstrualCycleManager.getCurrentMenstrualPhase();
+        // 🩸 생리주기 업데이트 (지연 로딩)
+        const cycleManager = getMenstrualCycleManager();
+        const cycle = cycleManager.getCurrentMenstrualPhase();
         
         // 생리주기 기반 감정이 우선
         if (cycle.emotion !== 'normal') {
@@ -204,8 +252,9 @@ async function getCurrentEmotionStateIntegrated() {
         // 먼저 통합 시스템과 동기화
         await syncWithIntegratedMoodManager();
         
-        // 🩸 생리주기 정보는 마스터에서만 가져오기
-        const cycle = menstrualCycleManager.getCurrentMenstrualPhase();
+        // 🩸 생리주기 정보는 지연 로딩으로 가져오기
+        const cycleManager = getMenstrualCycleManager();
+        const cycle = cycleManager.getCurrentMenstrualPhase();
         
         return {
             // 기본 감정 정보 (통합 동기화됨)
@@ -213,7 +262,7 @@ async function getCurrentEmotionStateIntegrated() {
             currentEmotionKorean: translateEmotionToKorean(localEmotionState.currentEmotion),
             emotionIntensity: localEmotionState.emotionIntensity,
             
-            // 🩸 생리주기 정보 (마스터에서 가져옴)
+            // 🩸 생리주기 정보 (지연 로딩)
             cycleDay: cycle.cycleDay,
             description: cycle.description,
             isPeriodActive: cycle.isPeriodActive,
@@ -247,7 +296,8 @@ async function getCurrentEmotionStateIntegrated() {
         console.error(`💎 [EmotionalContext] 통합 상태 조회 오류: ${error.message}`);
         
         // 오류 시 로컬 상태 반환
-        const cycle = menstrualCycleManager.getCurrentMenstrualPhase();
+        const cycleManager = getMenstrualCycleManager();
+        const cycle = cycleManager.getCurrentMenstrualPhase();
         return {
             currentEmotion: localEmotionState.currentEmotion,
             currentEmotionKorean: translateEmotionToKorean(localEmotionState.currentEmotion),
@@ -633,7 +683,8 @@ async function getCurrentEmotionState() {
         return await getCurrentEmotionStateIntegrated();
     } catch (error) {
         // 오류 시 기존 방식으로 폴백
-        const cycle = menstrualCycleManager.getCurrentMenstrualPhase();
+        const cycleManager = getMenstrualCycleManager();
+        const cycle = cycleManager.getCurrentMenstrualPhase();
         return {
             currentEmotion: localEmotionState.currentEmotion,
             currentEmotionKorean: translateEmotionToKorean(localEmotionState.currentEmotion),
