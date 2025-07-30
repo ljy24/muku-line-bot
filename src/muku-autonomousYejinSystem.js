@@ -1862,7 +1862,8 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
             );
             
             // 6. OpenAI 조언 듣기 (기존)
-            const openaiAdvice = await this.getOpenAIAdvice(currentSituation, yejinPrimaryDecision);
+            //const openaiAdvice = await this.getOpenAIAdvice(currentSituation, yejinPrimaryDecision);
+            const openaiAdvice = null;
             
             // 7. 예진이가 성격을 반영해서 최종 결정!
             const yejinFinalDecision = await this.yejinMakePersonalityFinalDecision(
