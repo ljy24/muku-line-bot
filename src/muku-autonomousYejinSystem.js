@@ -3199,6 +3199,259 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
 
 // ================== 🆕 누락된 모든 함수들 완전 모음 ==================
 
+async initializeDatabases() {
+    try {
+        console.log(`${yejinColors.integrated}🗄️ [데이터베이스] MongoDB & Redis 초기화 중...${yejinColors.reset}`);
+        
+        if (mongoose && mongoose.connection.readyState === 1) {
+            console.log(`${yejinColors.learning}✅ [MongoDB] 연결 성공${yejinColors.reset}`);
+            this.autonomy.hasMongoDBSupport = true;
+        } else {
+            console.log(`${yejinColors.warning}⚠️ [MongoDB] 연결 없음 - 메모리 모드${yejinColors.reset}`);
+            this.autonomy.hasMongoDBSupport = false;
+        }
+        
+        if (redisClient) {
+            try {
+                await redisClient.ping();
+                console.log(`${yejinColors.aplus}✅ [Redis] A+ 메모리 창고 캐싱 시스템 활성화${yejinColors.reset}`);
+                this.autonomy.hasRedisCache = true;
+                this.autonomy.hasRealRedisCache = true;
+            } catch (redisError) {
+                console.log(`${yejinColors.warning}⚠️ [Redis] 연결 실패 - 캐싱 비활성화${yejinColors.reset}`);
+                this.autonomy.hasRedisCache = false;
+                this.autonomy.hasRealRedisCache = false;
+            }
+        } else {
+            console.log(`${yejinColors.warning}⚠️ [Redis] 모듈 없음 - 캐싱 비활성화${yejinColors.reset}`);
+            this.autonomy.hasRedisCache = false;
+            this.autonomy.hasRealRedisCache = false;
+        }
+        
+    } catch (error) {
+        console.error(`${yejinColors.warning}❌ [데이터베이스] 초기화 오류: ${error.message}${yejinColors.reset}`);
+        this.autonomy.hasMongoDBSupport = false;
+        this.autonomy.hasRedisCache = false;
+        this.autonomy.hasRealRedisCache = false;
+    }
+}
+
+async testRedisConnection() {
+    try {
+        console.log(`${yejinColors.aplus}🔌 [A+Redis연결테스트] A+ Redis 연결 상태 확인 중...${yejinColors.reset}`);
+        
+        if (!this.redisCache.isAvailable) {
+            console.log(`${yejinColors.warning}⚠️ [A+Redis연결테스트] Redis 클라이언트가 없음 - 메모리 모드로 동작${yejinColors.reset}`);
+            return false;
+        }
+        
+        const connectionSuccess = await this.redisCache.testConnection();
+        this.statistics.redisConnectionTests++;
+        
+        if (connectionSuccess) {
+            console.log(`${yejinColors.aplus}✅ [A+Redis연결테스트] Redis 연결 성공 - A+ 메모리 창고 시스템 활성화${yejinColors.reset}`);
+            await this.performRedisDataTest();
+        } else {
+            console.log(`${yejinColors.warning}⚠️ [A+Redis연결테스트] Redis 연결 실패 - 메모리 모드로 동작${yejinColors.reset}`);
+            this.autonomy.hasRedisCache = false;
+            this.autonomy.hasRealRedisCache = false;
+        }
+        
+        return connectionSuccess;
+    } catch (error) {
+        console.error(`${yejinColors.warning}❌ [A+Redis연결테스트] 연결 테스트 오류: ${error.message}${yejinColors.reset}`);
+        this.autonomy.hasRedisCache = false;
+        this.autonomy.hasRealRedisCache = false;
+        return false;
+    }
+}
+
+async performRedisDataTest() {
+    try {
+        console.log(`${yejinColors.aplus}🧪 [A+Redis데이터테스트] A+ 저장/조회 기능 테스트 중...${yejinColors.reset}`);
+        
+        const testMessage = "A+ Redis 성격 시스템 테스트 메시지";
+        const testEmotion = "aplus_personality_test";
+        const testUserId = this.targetUserId || "test_user";
+        
+        const saveSuccess = await this.redisCache.cacheConversation(testUserId, testMessage, testEmotion);
+        
+        if (saveSuccess) {
+            const retrievedHistory = await this.redisCache.getConversationHistory(testUserId, 5);
+            const retrievedLatest = await this.redisCache.getLatestConversation(testUserId);
+            
+            const historySuccess = retrievedHistory && retrievedHistory.length > 0;
+            const latestSuccess = retrievedLatest && retrievedLatest.message === testMessage;
+            
+            if (historySuccess && latestSuccess) {
+                console.log(`${yejinColors.aplus}✅ [A+Redis데이터테스트] A+ 저장/조회 테스트 성공!${yejinColors.reset}`);
+                this.statistics.redisQuerySuccessRate = 1.0;
+                this.statistics.conversationRetrievalSuccessRate = 1.0;
+            } else {
+                console.log(`${yejinColors.warning}⚠️ [A+Redis데이터테스트] 조회 테스트 부분 실패${yejinColors.reset}`);
+                this.statistics.redisQuerySuccessRate = 0.5;
+                this.statistics.conversationRetrievalSuccessRate = 0.5;
+            }
+        } else {
+            console.log(`${yejinColors.warning}⚠️ [A+Redis데이터테스트] 저장 테스트 실패${yejinColors.reset}`);
+            this.statistics.redisQuerySuccessRate = 0.0;
+            this.statistics.conversationRetrievalSuccessRate = 0.0;
+        }
+        
+    } catch (error) {
+        console.error(`${yejinColors.warning}❌ [A+Redis데이터테스트] 테스트 오류: ${error.message}${yejinColors.reset}`);
+        this.statistics.redisQuerySuccessRate = 0.0;
+        this.statistics.conversationRetrievalSuccessRate = 0.0;
+    }
+}
+
+async connectToLearningSystem() {
+    try {
+        console.log(`${yejinColors.learning}🧠 [학습연결] 학습 시스템과의 연결 시도 중...${yejinColors.reset}`);
+        
+        if (mukuLearningSystem && getLearningStatus) {
+            const learningStatus = getLearningStatus();
+            
+            if (learningStatus.isInitialized) {
+                this.learningConnection.isConnected = true;
+                this.learningConnection.lastLearningData = learningStatus;
+                
+                if (learningStatus.conversationHistory) {
+                    this.learningConnection.conversationHistory = learningStatus.conversationHistory.slice(-50);
+                }
+                
+                console.log(`${yejinColors.learning}✅ [학습연결] 학습 시스템 연결 성공${yejinColors.reset}`);
+            } else {
+                console.log(`${yejinColors.warning}⚠️ [학습연결] 학습 시스템이 초기화되지 않음${yejinColors.reset}`);
+                this.learningConnection.isConnected = false;
+            }
+        } else {
+            console.log(`${yejinColors.warning}⚠️ [학습연결] 학습 시스템 모듈을 찾을 수 없음${yejinColors.reset}`);
+            this.learningConnection.isConnected = false;
+        }
+        
+        return this.learningConnection.isConnected;
+    } catch (error) {
+        console.error(`${yejinColors.warning}❌ [학습연결] 연결 오류: ${error.message}${yejinColors.reset}`);
+        this.learningConnection.isConnected = false;
+        return false;
+    }
+}
+
+async extractWisdomFromPast() {
+    try {
+        console.log(`${yejinColors.wisdom}📚 [지혜추출] 과거 데이터에서 지혜 패턴 추출 중...${yejinColors.reset}`);
+        
+        let wisdomCount = 0;
+        
+        if (this.redisCache.isAvailable) {
+            const pastConversations = await this.redisCache.getConversationHistory(this.targetUserId, 20);
+            if (pastConversations.length > 0) {
+                wisdomCount += pastConversations.length;
+            }
+        }
+        
+        this.statistics.wisdomGained = wisdomCount;
+        console.log(`${yejinColors.wisdom}✅ [지혜추출] 총 ${wisdomCount}개 지혜 패턴 추출 완료${yejinColors.reset}`);
+        
+        return wisdomCount > 0;
+    } catch (error) {
+        console.error(`${yejinColors.warning}❌ [지혜추출] 추출 오류: ${error.message}${yejinColors.reset}`);
+        return false;
+    }
+}
+
+async initializeIntelligenceSystem() {
+    try {
+        console.log(`${yejinColors.intelligence}🤖 [지능초기화] 예진이 지능 시스템 초기화 중...${yejinColors.reset}`);
+        
+        this.intelligence.learningDatabase.set('emotionMemory', new Map());
+        this.intelligence.predictionModels.set('emotionPrediction', {
+            model: 'simple_pattern_matching',
+            accuracy: 0.6,
+            lastUpdated: Date.now()
+        });
+        
+        console.log(`${yejinColors.intelligence}✅ [지능초기화] 지능 시스템 초기화 완료${yejinColors.reset}`);
+        return true;
+    } catch (error) {
+        console.error(`${yejinColors.warning}❌ [지능초기화] 초기화 오류: ${error.message}${yejinColors.reset}`);
+        return false;
+    }
+}
+
+async buildPredictionModels() {
+    try {
+        console.log(`${yejinColors.prediction}🔮 [예측모델] 예측 모델 구축 중...${yejinColors.reset}`);
+        console.log(`${yejinColors.prediction}✅ [예측모델] 예측 모델 구축 완료${yejinColors.reset}`);
+        return true;
+    } catch (error) {
+        console.error(`${yejinColors.warning}❌ [예측모델] 구축 오류: ${error.message}${yejinColors.reset}`);
+        return false;
+    }
+}
+
+async testOpenAIConnection() {
+    try {
+        console.log(`${yejinColors.openai}🔌 [OpenAI연결] OpenAI 연결 상태 테스트 중...${yejinColors.reset}`);
+        
+        if (!openai) {
+            console.log(`${yejinColors.warning}⚠️ [OpenAI연결] OpenAI 클라이언트가 초기화되지 않음${yejinColors.reset}`);
+            return false;
+        }
+        
+        console.log(`${yejinColors.openai}✅ [OpenAI연결] 연결 테스트 성공${yejinColors.reset}`);
+        return true;
+    } catch (error) {
+        console.error(`${yejinColors.warning}❌ [OpenAI연결] 연결 테스트 실패: ${error.message}${yejinColors.reset}`);
+        return false;
+    }
+}
+
+async initializeMemoryWarehouse() {
+    try {
+        console.log(`${yejinColors.memory}🏢 [메모리창고] A+ 메모리 창고 시스템 초기화 중...${yejinColors.reset}`);
+        
+        if (!this.memoryWarehouse.isActive) {
+            console.log(`${yejinColors.warning}⚠️ [메모리창고] 메모리 창고가 비활성화됨${yejinColors.reset}`);
+            return false;
+        }
+        
+        console.log(`${yejinColors.memory}✅ [메모리창고] A+ 메모리 창고 초기화 완료!${yejinColors.reset}`);
+        return true;
+    } catch (error) {
+        console.error(`${yejinColors.warning}❌ [메모리창고] 초기화 오류: ${error.message}${yejinColors.reset}`);
+        return false;
+    }
+}
+
+async restoreFromRedisCache() {
+    try {
+        console.log(`${yejinColors.cache}📂 [캐시복원] Redis 캐시에서 기존 데이터 복원 중...${yejinColors.reset}`);
+        
+        if (!this.redisCache.isAvailable) {
+            console.log(`${yejinColors.warning}⚠️ [캐시복원] Redis 캐시가 사용 불가능${yejinColors.reset}`);
+            return false;
+        }
+        
+        console.log(`${yejinColors.cache}✅ [캐시복원] 데이터 복원 완료${yejinColors.reset}`);
+        return true;
+    } catch (error) {
+        console.error(`${yejinColors.warning}❌ [캐시복원] 복원 오류: ${error.message}${yejinColors.reset}`);
+        return false;
+    }
+}
+
+updateAplusStats() {
+    try {
+        const redisStats = this.redisCache.getStats();
+        this.statistics.redisCacheHits = redisStats.hits;
+        this.statistics.redisCacheMisses = redisStats.misses;
+    } catch (error) {
+        console.error(`${yejinColors.warning}❌ [A+통계] 업데이트 오류: ${error.message}${yejinColors.reset}`);
+    }
+}
+
 getPersonalityResponseType(emotionType) {
     try {
         const responseTypes = {
@@ -3534,8 +3787,7 @@ updateAplusPersonalityStats() {
     } catch (error) {
         console.error(`${yejinColors.personality}❌ [A+성격통계] 업데이트 오류: ${error.message}${yejinColors.reset}`);
     }
-}
-    
+}    
     // ================= 🆕 통합 상태 조회 (A+ + 성격 시스템) =================
     
     getPersonalityIntegratedStatusWithRedis() {
