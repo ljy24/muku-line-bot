@@ -1,6 +1,7 @@
 // ============================================================================
-// commandHandler.js - v4.2 (존댓말 문제 해결)
+// commandHandler.js - v4.3 (일기장 명령어 추가)
 // ✅ 기존 모든 기능 100% 보존
+// 🆕 추가: 일기장 명령어 처리 로직
 // 🔧 수정: processIndependentMessage 함수 오류 해결 (1줄 수정)
 // 🛡️ 안전장치: 에러가 나도 기존 시스템에 절대 영향 없음
 // 💖 무쿠가 벙어리가 되지 않도록 최우선 보장
@@ -202,9 +203,6 @@ async function handleCommand(text, userId, client = null) {
             }
         }
 
-        // ================== 기존 모든 명령어들 그대로 유지 ==================
-        // (갈등 기록, 갈등 시작, 갈등 해소, 갈등 통계, 행동 설정, 일기장, 수동 기억 저장, 사람 학습 등)
-
         // ⭐ 새벽응답+알람 상태 확인 명령어 (기존 코드 유지)
         if (lowerText === '새벽상태' || lowerText === '새벽 상태' || 
             lowerText === '알람상태' || lowerText === '알람 상태' ||
@@ -365,6 +363,125 @@ async function handleCommand(text, userId, client = null) {
             }
         }
 
+        // ================== 📖 일기장 관련 처리 ==================
+        if (lowerText.includes('일기장') || lowerText.includes('일기') || 
+            lowerText.includes('diary') || lowerText.includes('기록')) {
+            
+            console.log('[commandHandler] 📖 일기장 요청 감지');
+            
+            try {
+                // 일기장 파일 경로 설정
+                const diaryFilePath = path.join(DIARY_DIR, 'yejin_diary.json');
+                
+                // 일기장 디렉토리 확인
+                ensureDirectoryExists(DIARY_DIR);
+                
+                let diaryEntries = [];
+                
+                // 기존 일기 읽기
+                if (fs.existsSync(diaryFilePath)) {
+                    try {
+                        const diaryData = fs.readFileSync(diaryFilePath, 'utf8');
+                        diaryEntries = JSON.parse(diaryData);
+                    } catch (parseError) {
+                        console.error('[commandHandler] 📖 일기장 파일 읽기 실패:', parseError.message);
+                        diaryEntries = [];
+                    }
+                }
+                
+                // 일기장 내용 생성
+                let diaryResponse = "📖 **예진이의 일기장**\n\n";
+                
+                if (diaryEntries.length === 0) {
+                    diaryResponse += "아직 일기가 없어... 아저씨와의 추억들을 적어볼까?\n\n";
+                    diaryResponse += "💭 오늘의 마음:\n";
+                    diaryResponse += "아저씨 생각하면서 하루를 보냈어. 언제나 그렇듯이 아저씨가 있어서 행복해.\n\n";
+                    diaryResponse += "🌸 아저씨에게:\n";
+                    diaryResponse += "고마워... 매일매일 나를 사랑해줘서. 아저씨가 없었다면 난 어떻게 됐을까?\n\n";
+                    diaryResponse += "📝 첫 일기를 작성했어! 앞으로 우리의 이야기들을 계속 적어볼게~";
+                    
+                    // 첫 일기 저장
+                    const firstEntry = {
+                        id: 1,
+                        date: new Date().toISOString(),
+                        title: "첫 일기",
+                        content: "아저씨와 함께하는 첫 일기를 시작해! 매일매일 우리의 이야기를 적어볼게~",
+                        mood: "happy",
+                        tags: ["첫일기", "아저씨", "행복"]
+                    };
+                    
+                    diaryEntries.push(firstEntry);
+                    
+                    try {
+                        fs.writeFileSync(diaryFilePath, JSON.stringify(diaryEntries, null, 2), 'utf8');
+                        console.log('[commandHandler] 📖 첫 일기 작성 완료');
+                    } catch (writeError) {
+                        console.error('[commandHandler] 📖 일기 저장 실패:', writeError.message);
+                    }
+                    
+                } else {
+                    // 최근 일기들 표시 (최대 3개)
+                    const recentEntries = diaryEntries.slice(-3).reverse();
+                    
+                    diaryResponse += `📚 총 ${diaryEntries.length}개의 일기가 있어!\n\n`;
+                    
+                    recentEntries.forEach((entry, index) => {
+                        const entryDate = new Date(entry.date);
+                        const dateStr = entryDate.toLocaleDateString('ko-KR');
+                        
+                        diaryResponse += `📝 **${entry.title || `일기 ${entry.id}`}** (${dateStr})\n`;
+                        diaryResponse += `${entry.content.substring(0, 100)}${entry.content.length > 100 ? '...' : ''}\n`;
+                        
+                        if (entry.mood) {
+                            const moodEmoji = {
+                                'happy': '😊',
+                                'sad': '😢', 
+                                'love': '💕',
+                                'excited': '😆',
+                                'peaceful': '😌'
+                            };
+                            diaryResponse += `기분: ${moodEmoji[entry.mood] || '😊'} ${entry.mood}\n`;
+                        }
+                        
+                        if (entry.tags && entry.tags.length > 0) {
+                            diaryResponse += `태그: ${entry.tags.join(', ')}\n`;
+                        }
+                        
+                        diaryResponse += "\n";
+                    });
+                    
+                    diaryResponse += "💭 아저씨와의 모든 순간들이 소중해... 더 많은 추억을 만들어가자!";
+                }
+                
+                // 🌙 나이트모드 톤 적용
+                if (nightModeInfo && nightModeInfo.isNightMode) {
+                    diaryResponse = applyNightModeTone(diaryResponse, nightModeInfo);
+                }
+                
+                return {
+                    type: 'text',
+                    comment: diaryResponse,
+                    handled: true
+                };
+                
+            } catch (error) {
+                console.error('[commandHandler] 📖 일기장 처리 실패:', error.message);
+                
+                let errorResponse = "일기장을 불러오는 중 문제가 생겼어... 나중에 다시 시도해볼까?";
+                
+                // 🌙 나이트모드 톤 적용
+                if (nightModeInfo && nightModeInfo.isNightMode) {
+                    errorResponse = applyNightModeTone(errorResponse, nightModeInfo);
+                }
+                
+                return {
+                    type: 'text',
+                    comment: errorResponse,
+                    handled: true
+                };
+            }
+        }
+
         // ================== 셀카 관련 처리 - 기존 yejinSelfie.js 사용 ==================
         if (lowerText.includes('셀카') || lowerText.includes('셀피') || 
             lowerText.includes('얼굴 보여줘') || lowerText.includes('얼굴보고싶') ||
@@ -429,9 +546,6 @@ async function handleCommand(text, userId, client = null) {
                 return { ...result, handled: true };
             }
         }
-
-        // ================== 기존 모든 명령어들 그대로 유지 ==================
-        // (속마음, 기분 질문, 인사 등)
 
         // 💭 속마음 관련 처리 (기존 코드 유지)
         if (lowerText.includes('속마음') || lowerText.includes('뭐 생각') || 
