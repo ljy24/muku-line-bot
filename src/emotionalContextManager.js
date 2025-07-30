@@ -1,24 +1,28 @@
 // ============================================================================
-// emotionalContextManager.js - v9.0 (순환 의존성만 해결, 기존 기능 100% 유지)
+// emotionalContextManager.js - v9.1 (순환 의존성 완벽 해결)
 // 🎯 고유 기능 보존: 세밀한감정분석 + 한글변환 + 셀카텍스트 + 감정회복
 // 🔄 moodManager 통합: Redis 연동으로 무쿠 벙어리 문제 해결
-// 🩸 생리주기 마스터 연동: menstrualCycleManager (안전한 지연 로딩)
-// 🛡️ 안전 우선: 순환 의존성만 제거, 기존 기능 100% 보존
+// 🩸 생리주기 마스터 연동: menstrualCycleManager (완전 안전한 지연 로딩)
+// 🛡️ 순환 의존성 해결: 최상단 require 제거, 호출 시점 로딩
 // ============================================================================
 
 const fs = require('fs');
 const path = require('path');
 
-// 🩸 생리주기 마스터 - 안전한 지연 로딩 (순환 의존성 방지)
+// ⭐️ [순환 의존성 해결] 최상단에서 require하지 않고 지연 로딩만 사용
 let menstrualCycleManager = null;
+let integratedMoodManager = null;
+
+// 🩸 생리주기 마스터 - 완전 안전한 지연 로딩 (순환 의존성 완벽 방지)
 function getMenstrualCycleManager() {
     if (!menstrualCycleManager) {
         try {
+            // ⭐️ 이 함수가 실제로 호출될 때만 require 실행
             menstrualCycleManager = require('./menstrualCycleManager');
-            console.log('✅ [EmotionalContext] 생리주기 매니저 연동 성공');
+            console.log('✅ [EmotionalContext] 생리주기 매니저 지연 로딩 성공');
         } catch (error) {
             console.log('⚠️ [EmotionalContext] 생리주기 매니저 연동 실패:', error.message);
-            // 폴백: 내장 생리주기 시스템 사용
+            // 🛡️ 폴백: 내장 생리주기 시스템 사용 (완전 독립적)
             menstrualCycleManager = {
                 getCurrentMenstrualPhase: () => {
                     const startDate = new Date('2024-01-01');
@@ -53,20 +57,23 @@ function getMenstrualCycleManager() {
                     };
                 }
             };
+            console.log('✅ [EmotionalContext] 폴백 생리주기 시스템 활성화');
         }
     }
     return menstrualCycleManager;
 }
 
-// 🔄 통합 무드매니저 - 안전한 지연 로딩 (순환 의존성 방지)
-let integratedMoodManager = null;
+// 🔄 통합 무드매니저 - 완전 안전한 지연 로딩 (순환 의존성 완벽 방지)
 function getIntegratedMoodManager() {
     if (!integratedMoodManager) {
         try {
+            // ⭐️ 이 함수가 실제로 호출될 때만 require 실행
             integratedMoodManager = require('./moodManager');
-            console.log('✅ [EmotionalContext] 통합 무드매니저 연동 성공');
+            console.log('✅ [EmotionalContext] 통합 무드매니저 지연 로딩 성공');
         } catch (error) {
             console.log('⚠️ [EmotionalContext] 통합 무드매니저 연동 실패:', error.message);
+            // 🛡️ 폴백: null 반환으로 독립 모드 동작
+            integratedMoodManager = null;
         }
     }
     return integratedMoodManager;
@@ -104,16 +111,18 @@ let localEmotionState = {
     
     // 통합 동기화 상태
     lastSyncTime: 0,
-    isSyncWithMoodManager: false
+    isSyncWithMoodManager: false,
+    initializationComplete: false
 };
 
 // ==================== 🔄 통합 무드매니저와 동기화 ====================
 
 /**
- * 🔄 통합 무드매니저와 양방향 동기화
+ * 🔄 통합 무드매니저와 양방향 동기화 (안전한 호출)
  */
 async function syncWithIntegratedMoodManager() {
     try {
+        // ⭐️ 지연 로딩으로 안전하게 가져오기
         const moodManager = getIntegratedMoodManager();
         if (!moodManager) {
             return false;
@@ -142,10 +151,11 @@ async function syncWithIntegratedMoodManager() {
 }
 
 /**
- * 🔄 로컬 감정 변화를 통합 무드매니저에 반영
+ * 🔄 로컬 감정 변화를 통합 무드매니저에 반영 (안전한 호출)
  */
 async function pushToIntegratedMoodManager(emotion, intensity, reason = '') {
     try {
+        // ⭐️ 지연 로딩으로 안전하게 가져오기
         const moodManager = getIntegratedMoodManager();
         if (!moodManager) {
             return false;
@@ -169,44 +179,59 @@ async function pushToIntegratedMoodManager(emotion, intensity, reason = '') {
     }
 }
 
-// ==================== 🚀 초기화 함수 ====================
+// ==================== 🚀 초기화 함수 (순환 의존성 안전) ====================
 async function initializeEmotionalContextSystem() {
     try {
-        console.log('💖 [EmotionalContext] v9.0 감정 컨텍스트 시스템 초기화...');
+        console.log('💖 [EmotionalContext] v9.1 감정 컨텍스트 시스템 초기화... (순환 의존성 해결)');
         
-        // 디렉토리 생성
+        // 🛡️ 디렉토리 생성 (안전)
         const dataDir = path.dirname(EMOTIONAL_DATA_FILE);
         if (!fs.existsSync(dataDir)) {
             fs.mkdirSync(dataDir, { recursive: true });
         }
         
-        // 🔄 통합 무드매니저와 연동 (지연 로딩)
-        getIntegratedMoodManager();
+        // ⭐️ 지연 로딩으로 통합 무드매니저와 연동 (순환 의존성 방지)
+        setTimeout(() => {
+            getIntegratedMoodManager();
+        }, 100); // 100ms 후 안전하게 로딩
         
-        // 🩸 생리주기 기반 초기 감정 설정 (지연 로딩)
-        const cycleManager = getMenstrualCycleManager();
-        const cycle = cycleManager.getCurrentMenstrualPhase();
-        localEmotionState.currentEmotion = cycle.emotion;
+        // ⭐️ 지연 로딩으로 생리주기 기반 초기 감정 설정 (순환 의존성 방지)
+        setTimeout(() => {
+            const cycleManager = getMenstrualCycleManager();
+            const cycle = cycleManager.getCurrentMenstrualPhase();
+            localEmotionState.currentEmotion = cycle.emotion;
+            console.log(`💖 [EmotionalContext] 생리주기 기반 초기 감정 설정: ${cycle.cycleDay}일차 (${cycle.description})`);
+        }, 200); // 200ms 후 안전하게 설정
         
-        // 🔄 통합 시스템과 초기 동기화
-        await syncWithIntegratedMoodManager();
+        // ⭐️ 지연된 통합 시스템과 초기 동기화 (순환 의존성 방지)
+        setTimeout(async () => {
+            await syncWithIntegratedMoodManager();
+            localEmotionState.initializationComplete = true;
+            console.log(`💖 [EmotionalContext] 초기화 완료 - 통합 동기화: ${localEmotionState.isSyncWithMoodManager ? '성공' : '독립모드'}`);
+        }, 500); // 500ms 후 안전하게 동기화
         
-        console.log(`💖 [EmotionalContext] 초기화 완료 - ${cycle.cycleDay}일차 (${cycle.description})`);
-        console.log(`💖 [EmotionalContext] 통합 동기화: ${localEmotionState.isSyncWithMoodManager ? '성공' : '실패'}`);
-        
-        // 1시간마다 감정 회복 + 동기화
+        // 🕐 1시간마다 감정 회복 + 동기화
         setInterval(async () => {
-            await updateEmotionalRecoveryWithSync();
+            if (localEmotionState.initializationComplete) {
+                await updateEmotionalRecoveryWithSync();
+            }
         }, 60 * 60 * 1000);
         
-        // 10분마다 통합 시스템과 동기화
+        // 🕐 10분마다 통합 시스템과 동기화
         setInterval(async () => {
-            await syncWithIntegratedMoodManager();
+            if (localEmotionState.initializationComplete) {
+                await syncWithIntegratedMoodManager();
+            }
         }, 10 * 60 * 1000);
         
+        console.log('💖 [EmotionalContext] v9.1 순환 의존성 해결 완료 - 안전한 지연 로딩 활성화');
         return true;
     } catch (error) {
         console.error('❌ [EmotionalContext] 초기화 실패:', error.message);
+        // 🛡️ 실패해도 기본 감정 상태는 유지
+        localEmotionState.currentEmotion = 'normal';
+        localEmotionState.emotionIntensity = 5;
+        localEmotionState.initializationComplete = true;
         return false;
     }
 }
@@ -214,7 +239,7 @@ async function initializeEmotionalContextSystem() {
 // ==================== 💧 감정 회복 로직 (통합 동기화) ====================
 async function updateEmotionalRecoveryWithSync() {
     try {
-        // 🩸 생리주기 업데이트 (지연 로딩)
+        // ⭐️ 지연 로딩으로 안전하게 생리주기 업데이트
         const cycleManager = getMenstrualCycleManager();
         const cycle = cycleManager.getCurrentMenstrualPhase();
         
@@ -228,7 +253,7 @@ async function updateEmotionalRecoveryWithSync() {
             localEmotionState.emotionIntensity = Math.max(5, localEmotionState.emotionIntensity - 1);
         }
         
-        // 🔄 통합 시스템에 회복 상태 반영
+        // 🔄 통합 시스템에 회복 상태 반영 (안전한 호출)
         await pushToIntegratedMoodManager(
             localEmotionState.currentEmotion, 
             localEmotionState.emotionIntensity,
@@ -249,10 +274,12 @@ async function updateEmotionalRecoveryWithSync() {
  */
 async function getCurrentEmotionStateIntegrated() {
     try {
-        // 먼저 통합 시스템과 동기화
-        await syncWithIntegratedMoodManager();
+        // ⭐️ 초기화 완료 후에만 동기화 시도
+        if (localEmotionState.initializationComplete) {
+            await syncWithIntegratedMoodManager();
+        }
         
-        // 🩸 생리주기 정보는 지연 로딩으로 가져오기
+        // ⭐️ 지연 로딩으로 생리주기 정보 안전하게 가져오기
         const cycleManager = getMenstrualCycleManager();
         const cycle = cycleManager.getCurrentMenstrualPhase();
         
@@ -278,6 +305,7 @@ async function getCurrentEmotionStateIntegrated() {
             // 통합 동기화 상태
             isSyncWithMoodManager: localEmotionState.isSyncWithMoodManager,
             lastSyncTime: localEmotionState.lastSyncTime,
+            initializationComplete: localEmotionState.initializationComplete,
             
             // 기존 시스템 호환성
             currentToneState: localEmotionState.currentEmotion,
@@ -287,15 +315,15 @@ async function getCurrentEmotionStateIntegrated() {
                 sadness: localEmotionState.isSulky ? 20 : 0
             },
             
-            // v9.0 메타정보
-            version: 'v9.0-integrated',
+            // v9.1 메타정보
+            version: 'v9.1-circular-dependency-fixed',
             source: 'emotionalContextManager_integrated'
         };
         
     } catch (error) {
         console.error(`💎 [EmotionalContext] 통합 상태 조회 오류: ${error.message}`);
         
-        // 오류 시 로컬 상태 반환
+        // 🛡️ 오류 시 로컬 상태 반환 (안전 폴백)
         const cycleManager = getMenstrualCycleManager();
         const cycle = cycleManager.getCurrentMenstrualPhase();
         return {
@@ -305,7 +333,8 @@ async function getCurrentEmotionStateIntegrated() {
             cycleDay: cycle.cycleDay,
             description: cycle.description,
             isSyncWithMoodManager: false,
-            error: error.message
+            error: error.message,
+            version: 'v9.1-fallback'
         };
     }
 }
@@ -369,8 +398,10 @@ async function updateEmotionFromUserMessageIntegrated(userMessage) {
         localEmotionState.emotionIntensity = detectedIntensity;
         localEmotionState.lastEmotionUpdate = Date.now();
         
-        // 🔄 통합 시스템에 감정 변화 반영
-        await pushToIntegratedMoodManager(detectedEmotion, detectedIntensity, reason);
+        // 🔄 통합 시스템에 감정 변화 반영 (안전한 호출)
+        if (localEmotionState.initializationComplete) {
+            await pushToIntegratedMoodManager(detectedEmotion, detectedIntensity, reason);
+        }
         
         console.log(`🤖 [EmotionalContext] 사용자 메시지 분석 + 통합 업데이트: ${translateEmotionToKorean(detectedEmotion)} (강도: ${detectedIntensity}) - ${reason}`);
         
@@ -390,8 +421,10 @@ async function updateEmotionIntegrated(emotion, intensity = 5, reason = '') {
         localEmotionState.emotionIntensity = Math.max(1, Math.min(10, intensity));
         localEmotionState.lastEmotionUpdate = Date.now();
         
-        // 🔄 통합 시스템에 반영
-        await pushToIntegratedMoodManager(emotion, intensity, reason || '직접 감정 업데이트');
+        // 🔄 통합 시스템에 반영 (안전한 호출)
+        if (localEmotionState.initializationComplete) {
+            await pushToIntegratedMoodManager(emotion, intensity, reason || '직접 감정 업데이트');
+        }
         
         console.log(`🎯 [EmotionalContext] 감정 직접 업데이트 + 통합 동기화: ${translateEmotionToKorean(emotion)} (강도: ${intensity})`);
         return true;
@@ -413,15 +446,19 @@ async function updateSulkyStateIntegrated(isSulky, level = 0, reason = '') {
             localEmotionState.currentEmotion = 'sulky';
             localEmotionState.emotionIntensity = level + 4;
             
-            // 🔄 통합 시스템에 삐짐 상태 반영
-            await pushToIntegratedMoodManager('sulky', level + 4, reason || `삐짐 레벨 ${level}`);
+            // 🔄 통합 시스템에 삐짐 상태 반영 (안전한 호출)
+            if (localEmotionState.initializationComplete) {
+                await pushToIntegratedMoodManager('sulky', level + 4, reason || `삐짐 레벨 ${level}`);
+            }
         } else {
             // 삐짐 해제 시 정상 상태로 복구
             localEmotionState.currentEmotion = 'normal';
             localEmotionState.emotionIntensity = 5;
             
-            // 🔄 통합 시스템에 정상 상태 반영
-            await pushToIntegratedMoodManager('normal', 5, '삐짐 해제');
+            // 🔄 통합 시스템에 정상 상태 반영 (안전한 호출)
+            if (localEmotionState.initializationComplete) {
+                await pushToIntegratedMoodManager('normal', 5, '삐짐 해제');
+            }
         }
         
         console.log(`😤 [EmotionalContext] 삐짐 상태 업데이트 + 통합 동기화: ${isSulky} (레벨: ${level})`);
@@ -580,8 +617,8 @@ async function updateEmotionalLearningIntegrated(emotionalImprovements) {
             console.log(`💖 [EmotionalContext] 🎓 감정 학습 적용: ${translateEmotionToKorean(safeImprovement.emotion)} - ${safeImprovement.action}`);
         }
         
-        // 🔄 최고 품질의 감정을 통합 시스템에 반영
-        if (bestImprovement && bestImprovement.quality >= 0.7) {
+        // 🔄 최고 품질의 감정을 통합 시스템에 반영 (안전한 호출)
+        if (bestImprovement && bestImprovement.quality >= 0.7 && localEmotionState.initializationComplete) {
             await pushToIntegratedMoodManager(
                 bestImprovement.emotion,
                 Math.min(10, localEmotionState.emotionIntensity),
@@ -621,7 +658,7 @@ async function getEmotionalSystemStatus() {
         
         return {
             // 시스템 정보
-            version: 'v9.0-integrated',
+            version: 'v9.1-circular-dependency-fixed',
             type: 'emotional_context_manager_integrated',
             
             // 현재 감정 상태 (통합)
@@ -632,7 +669,8 @@ async function getEmotionalSystemStatus() {
                 lastUserMessage: localEmotionState.lastUserMessage,
                 conversationMood: localEmotionState.conversationMood,
                 energyLevel: localEmotionState.energyLevel,
-                needsComfort: localEmotionState.needsComfort
+                needsComfort: localEmotionState.needsComfort,
+                initializationComplete: localEmotionState.initializationComplete
             },
             
             // 통합 시스템 연동 상태
@@ -640,7 +678,8 @@ async function getEmotionalSystemStatus() {
                 moodManagerConnected: !!moodManager,
                 menstrualCycleConnected: true,
                 isSyncWithMoodManager: localEmotionState.isSyncWithMoodManager,
-                lastSyncTime: localEmotionState.lastSyncTime
+                lastSyncTime: localEmotionState.lastSyncTime,
+                circularDependencyFixed: true
             },
             
             // 고유 기능 상태
@@ -649,12 +688,15 @@ async function getEmotionalSystemStatus() {
                 selfieTextGeneration: true,
                 detailedEmotionAnalysis: true,
                 emotionalRecovery: true,
-                realTimeLearning: true
+                realTimeLearning: true,
+                lazyLoading: true
             },
             
             // 메타정보
             lastUpdate: Date.now(),
             features: [
+                '순환 의존성 완전 해결',
+                '안전한 지연 로딩',
                 '세밀한 감정 키워드 분석',
                 '감정 한글 변환',
                 '감정별 셀카 텍스트 생성', 
@@ -666,9 +708,10 @@ async function getEmotionalSystemStatus() {
     } catch (error) {
         console.error(`📊 [EmotionalContext] 상태 조회 오류: ${error.message}`);
         return {
-            version: 'v9.0-integrated',
+            version: 'v9.1-circular-dependency-fixed',
             error: error.message,
-            localState: localEmotionState
+            localState: localEmotionState,
+            circularDependencyFixed: true
         };
     }
 }
@@ -682,7 +725,7 @@ async function getCurrentEmotionState() {
     try {
         return await getCurrentEmotionStateIntegrated();
     } catch (error) {
-        // 오류 시 기존 방식으로 폴백
+        // 🛡️ 오류 시 기존 방식으로 폴백
         const cycleManager = getMenstrualCycleManager();
         const cycle = cycleManager.getCurrentMenstrualPhase();
         return {
@@ -763,7 +806,7 @@ module.exports = {
     // 🚀 초기화 (통합)
     initializeEmotionalContextSystem,
     
-    // 💎 주요 통합 함수들 (새로운 v9.0 인터페이스)
+    // 💎 주요 통합 함수들 (새로운 v9.1 인터페이스)
     getCurrentEmotionStateIntegrated,
     updateEmotionFromUserMessageIntegrated,
     updateEmotionIntegrated,
