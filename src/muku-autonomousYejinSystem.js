@@ -4962,7 +4962,7 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
         }
     }
 
-    // ================== 🔧 헬퍼 함수들 ==================
+ // ================== 🔧 헬퍼 함수들 ==================
     
     calculateDominantEmotion() {
         const emotions = {
@@ -5201,6 +5201,8 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
     getDefaultPhoto() {
         return `${PHOTO_CONFIG.YEJIN_BASE_URL}/000001.jpg`;
     }
+}  // ← ✅ 여기가 누락된 클래스 닫는 중괄호!
+
 // ================== 🌟 전역 인터페이스 ==================
 
 let globalPersonalityIntegratedSystem = null;
