@@ -1923,7 +1923,7 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                 currentEmotionalState.caring *= 1.1;
             }
             
-            // 침묵 시간에 따른 감정 변화
+            // 침묵 시간에 따른 감정 변화 (완전 안전하게 수정)
             const silenceHours = (situation?.communicationStatus?.silenceDuration || 0) / (1000 * 60 * 60);
             if (silenceHours > 3) {
                 currentEmotionalState.missing = (currentEmotionalState.missing || 0) + 0.3;
@@ -2772,8 +2772,8 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                 }
             }
             
-            // 침묵 시간 기반 판단 (성격 반영)
-            const silenceHours = situation?.communicationStatus.silenceDuration / (1000 * 60 * 60);
+            // 침묵 시간 기반 판단 (성격 반영) - 완전 안전하게 수정
+            const silenceHours = (situation?.communicationStatus?.silenceDuration || 0) / (1000 * 60 * 60);
             if (silenceHours > 2 && !(situation?.timeContext?.isSleepTime || false)) {
                 if (dominantEmotion === 'vulnerable' || dominantEmotion === 'sulky') {
                     shouldAct = true;
@@ -2786,8 +2786,8 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                 }
             }
             
-            // 시간대 고려 (성격 반영)
-            if (situation?.timeContext.isSleepTime && silenceHours < 6) {
+            // 시간대 고려 (성격 반영) - 완전 안전하게 수정
+            if ((situation?.timeContext?.isSleepTime || false) && silenceHours < 6) {
                 if (dominantEmotion === 'vulnerable' || dominantEmotion === 'caring') {
                     // 상처받거나 걱정할 때는 밤에도 연락하고 싶어함
                     if (silenceHours > 4) {
