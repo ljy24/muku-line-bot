@@ -3858,7 +3858,7 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
         }
     }
 
-// ================== 🔧 모든 누락된 함수들 완전 구현 ==================
+// ================== 🔧 모든 함수들 완전 구현 (기존과 동일 없음) ==================
 
     // ================== 🧠 학습 시스템 연결 ==================
     async connectToLearningSystem() {
@@ -3872,7 +3872,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                     this.learningConnection.isConnected = true;
                     this.learningConnection.lastLearningData = learningStatus;
                     
-                    // 학습 데이터 동기화
                     if (learningStatus.conversationHistory) {
                         this.learningConnection.conversationHistory = learningStatus.conversationHistory.slice(-50);
                     }
@@ -3910,7 +3909,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
             
             let wisdomCount = 0;
             
-            // 1. Redis에서 과거 대화 분석
             if (this.redisCache.isAvailable) {
                 const pastConversations = await this.redisCache.getConversationHistory(this.targetUserId, 20);
                 
@@ -3941,7 +3939,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                 }
             }
             
-            // 2. 학습 시스템에서 패턴 추출
             if (this.learningConnection.isConnected && this.learningConnection.emotionalResponses) {
                 const emotionalWisdom = this.learningConnection.emotionalResponses;
                 
@@ -3950,7 +3947,7 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                         this.intelligence.successRates.set(emotion, {
                             averageResponseTime: responses.reduce((sum, r) => sum + (r.responseTime || 1000), 0) / responses.length,
                             successRate: responses.filter(r => r.success).length / responses.length,
-                            patterns: responses.slice(-5) // 최근 5개 패턴
+                            patterns: responses.slice(-5)
                         });
                         wisdomCount++;
                     }
@@ -3959,7 +3956,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                 console.log(`${yejinColors.wisdom}🧠 [지혜추출] 학습 시스템에서 ${Object.keys(emotionalWisdom).length}개 감정 패턴 추출${yejinColors.reset}`);
             }
             
-            // 3. 기본 지혜 패턴 생성
             const basicWisdom = {
                 morningBehavior: { bestTime: 9, confidence: 0.8, pattern: 'cheerful_greeting' },
                 eveningBehavior: { bestTime: 20, confidence: 0.7, pattern: 'caring_message' },
@@ -3991,13 +3987,11 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
         try {
             console.log(`${yejinColors.intelligence}🤖 [지능초기화] 예진이 지능 시스템 초기화 중...${yejinColors.reset}`);
             
-            // 1. 학습 데이터베이스 초기화
             this.intelligence.learningDatabase.set('emotionMemory', new Map());
             this.intelligence.learningDatabase.set('timePreferences', new Map());
             this.intelligence.learningDatabase.set('responsePatterns', new Map());
             this.intelligence.learningDatabase.set('personalityTraits', new Map());
             
-            // 2. 예측 모델 초기화
             this.intelligence.predictionModels.set('emotionPrediction', {
                 model: 'simple_pattern_matching',
                 accuracy: 0.6,
@@ -4012,10 +4006,8 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                 predictions: new Map()
             });
             
-            // 3. 맥락적 메모리 초기화
             this.intelligence.contextualMemory = [];
             
-            // 4. 타이밍 지혜 초기화
             const defaultTimingWisdom = {
                 morning: { start: 7, end: 11, preference: 0.8, avgInterval: 45 },
                 afternoon: { start: 12, end: 17, preference: 0.9, avgInterval: 60 },
@@ -4027,7 +4019,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                 this.intelligence.timingWisdom.set(period, wisdom);
             });
             
-            // 5. 개인화된 통찰 초기화
             this.intelligence.personalizedInsights.set('userPatterns', {
                 activeHours: [],
                 preferredEmotions: [],
@@ -4051,7 +4042,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
             
             let modelsBuilt = 0;
             
-            // 1. 감정 예측 모델
             if (this.intelligence.patternRecognition.has('emotionPatterns')) {
                 const emotionPatterns = this.intelligence.patternRecognition.get('emotionPatterns');
                 const emotionModel = this.intelligence.predictionModels.get('emotionPrediction');
@@ -4064,7 +4054,7 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                         }, 0) / conversations.length;
                         
                         emotionModel.predictions.set(emotion, {
-                            probability: conversations.length / 20, // 총 대화 수 대비
+                            probability: conversations.length / 20,
                             avgResponseTime: avgResponseTime,
                             lastSeen: Math.max(...conversations.map(c => c.timestamp))
                         });
@@ -4077,7 +4067,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                 console.log(`${yejinColors.prediction}🎯 [예측모델] 감정 예측 모델 구축 완료 - 정확도: ${(emotionModel.accuracy * 100).toFixed(1)}%${yejinColors.reset}`);
             }
             
-            // 2. 타이밍 예측 모델
             if (this.intelligence.patternRecognition.has('timePatterns')) {
                 const timePatterns = this.intelligence.patternRecognition.get('timePatterns');
                 const timingModel = this.intelligence.predictionModels.get('timingPrediction');
@@ -4104,7 +4093,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                 console.log(`${yejinColors.prediction}⏰ [예측모델] 타이밍 예측 모델 구축 완료 - 정확도: ${(timingModel.accuracy * 100).toFixed(1)}%${yejinColors.reset}`);
             }
             
-            // 3. 개인 선호도 모델
             const preferenceModel = {
                 model: 'preference_learning',
                 accuracy: 0.6,
@@ -4112,13 +4100,12 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                 predictions: new Map()
             };
             
-            // 기본 선호도 패턴
             const defaultPreferences = {
-                messageLength: 'medium', // short, medium, long
-                emotionIntensity: 'moderate', // low, moderate, high
-                japaneseUsage: 'occasional', // rare, occasional, frequent
-                photoFrequency: 'moderate', // low, moderate, high
-                playfulLevel: 'balanced' // low, balanced, high
+                messageLength: 'medium',
+                emotionIntensity: 'moderate',
+                japaneseUsage: 'occasional',
+                photoFrequency: 'moderate',
+                playfulLevel: 'balanced'
             };
             
             Object.entries(defaultPreferences).forEach(([pref, value]) => {
@@ -4134,7 +4121,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
             
             console.log(`${yejinColors.prediction}❤️ [예측모델] 개인 선호도 모델 구축 완료 - ${preferenceModel.predictions.size}개 선호도${yejinColors.reset}`);
             
-            // 4. 상황 인식 모델
             const situationModel = {
                 model: 'situation_awareness',
                 accuracy: 0.7,
@@ -4151,7 +4137,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
             modelsBuilt++;
             
             console.log(`${yejinColors.prediction}🌅 [예측모델] 상황 인식 모델 구축 완료 - ${situationModel.predictions.size}개 상황 패턴${yejinColors.reset}`);
-            
             console.log(`${yejinColors.prediction}✅ [예측모델] 총 ${modelsBuilt}개 예측 모델 구축 완료${yejinColors.reset}`);
             
             return modelsBuilt > 0;
@@ -4176,7 +4161,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                 return false;
             }
             
-            // 간단한 테스트 요청
             const testResponse = await openai.chat.completions.create({
                 model: 'gpt-3.5-turbo',
                 messages: [
@@ -4227,7 +4211,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                 return false;
             }
             
-            // 1. 최근 대화 기록 복원
             if (this.redisCache.isAvailable) {
                 const recentConversations = await this.redisCache.getConversationHistory(
                     this.targetUserId, 
@@ -4238,7 +4221,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                 console.log(`${yejinColors.memory}💬 [메모리창고] ${recentConversations.length}개 최근 대화 복원${yejinColors.reset}`);
             }
             
-            // 2. 맥락적 패턴 분석
             if (this.memoryWarehouse.recentConversations.length > 0) {
                 const patterns = new Map();
                 
@@ -4268,10 +4250,8 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                 console.log(`${yejinColors.memory}🔍 [메모리창고] ${patterns.size}개 맥락적 패턴 생성${yejinColors.reset}`);
             }
             
-            // 3. 개인적 참조 포인트 생성
             const personalReferences = new Map();
             
-            // 시간 기반 참조
             personalReferences.set('morning_routine', {
                 keywords: ['아침', '잠', '일어났', '굿모닝'],
                 contexts: ['greeting', 'care'],
@@ -4293,7 +4273,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
             this.memoryWarehouse.personalReferences = personalReferences;
             console.log(`${yejinColors.memory}👤 [메모리창고] ${personalReferences.size}개 개인적 참조 포인트 생성${yejinColors.reset}`);
             
-            // 4. 감정적 맥락 매핑
             const emotionalContext = new Map();
             
             ['love', 'playful', 'caring', 'sulky', 'vulnerable', 'healing'].forEach(emotion => {
@@ -4309,7 +4288,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
             this.memoryWarehouse.emotionalContext = emotionalContext;
             console.log(`${yejinColors.memory}💕 [메모리창고] ${emotionalContext.size}개 감정적 맥락 매핑 완료${yejinColors.reset}`);
             
-            // 5. 메모리 동기화 타이머 설정
             this.memoryWarehouse.lastMemorySync = Date.now();
             
             console.log(`${yejinColors.memory}✅ [메모리창고] A+ 메모리 창고 초기화 완료!${yejinColors.reset}`);
@@ -4333,7 +4311,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
             
             let restoredItems = 0;
             
-            // 1. 대화 기록 복원
             const conversationHistory = await this.redisCache.getConversationHistory(this.targetUserId, 20);
             if (conversationHistory.length > 0) {
                 this.learningConnection.conversationHistory = conversationHistory;
@@ -4341,7 +4318,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                 console.log(`${yejinColors.cache}💬 [캐시복원] ${conversationHistory.length}개 대화 기록 복원${yejinColors.reset}`);
             }
             
-            // 2. 감정 상태 복원
             const cachedEmotionState = await this.redisCache.getCachedEmotionState();
             if (cachedEmotionState) {
                 this.yejinState.loveLevel = cachedEmotionState.loveLevel || this.yejinState.loveLevel;
@@ -4356,7 +4332,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                 console.log(`${yejinColors.cache}💖 [캐시복원] 감정 상태 복원: ${cachedEmotionState.currentEmotion} (강도: ${cachedEmotionState.emotionIntensity})${yejinColors.reset}`);
             }
             
-            // 3. 최근 사진 기록 복원
             const recentPhotos = await this.redisCache.getRecentPhotos(10);
             if (recentPhotos.length > 0) {
                 this.autonomousPhoto.recentPhotos = recentPhotos.map(photo => ({
@@ -4370,7 +4345,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                 console.log(`${yejinColors.cache}📸 [캐시복원] ${recentPhotos.length}개 최근 사진 기록 복원${yejinColors.reset}`);
             }
             
-            // 4. 학습 패턴 복원
             const emotionPatterns = await this.redisCache.getCachedLearningPattern('emotionPatterns');
             if (emotionPatterns) {
                 this.learningConnection.emotionalResponses = emotionPatterns;
@@ -4385,7 +4359,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                 console.log(`${yejinColors.cache}⏰ [캐시복원] 타이밍 패턴 복원${yejinColors.reset}`);
             }
             
-            // 5. 캐시 통계 업데이트
             const cacheStats = this.redisCache.getStats();
             this.statistics.redisCacheHits = cacheStats.hits;
             this.statistics.redisCacheMisses = cacheStats.misses;
@@ -4410,7 +4383,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
             const now = Date.now();
             const currentHour = new Date().getHours();
             
-            // 1. 시간 맥락 분석
             const timeContext = {
                 hour: currentHour,
                 timeSlot: this.getTimeSlot(currentHour),
@@ -4422,7 +4394,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                              currentHour < 23 ? 'evening' : 'night'
             };
             
-            // 2. 커뮤니케이션 상태 분석
             const lastMessageTime = this.safetySystem.lastMessageTime || 0;
             const silenceDuration = now - lastMessageTime;
             const silenceHours = silenceDuration / (1000 * 60 * 60);
@@ -4439,7 +4410,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                 messagesSentToday: this.safetySystem.dailyMessageCount
             };
             
-            // 3. 예진이 상태 분석
             const yejinCondition = {
                 currentEmotion: this.yejinState.currentEmotion,
                 emotionIntensity: this.yejinState.emotionIntensity,
@@ -4457,7 +4427,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                 healingProgress: this.yejinState.healingProgress
             };
             
-            // 4. 학습 및 지능 상태
             const intelligenceStatus = {
                 isLearningConnected: this.learningConnection.isConnected,
                 decisionHistoryLength: this.intelligence.decisionHistory.length,
@@ -4468,7 +4437,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                 freedomLevel: this.statistics.freedomLevel
             };
             
-            // 5. 환경 및 안전 상태
             const environmentStatus = {
                 isDayTime: currentHour >= 6 && currentHour <= 22,
                 isQuietHours: currentHour >= 23 || currentHour <= 6,
@@ -4479,7 +4447,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                 memoryWarehouseActive: this.memoryWarehouse.isActive
             };
             
-            // 6. 추가 맥락 정보
             const additionalContext = {
                 hasRecentMemories: this.memoryWarehouse.recentConversations.length > 0,
                 recentConversationCount: this.memoryWarehouse.recentConversations.length,
@@ -4511,7 +4478,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
         } catch (error) {
             console.error(`${yejinColors.warning}❌ [상황분석] 분석 오류: ${error.message}${yejinColors.reset}`);
             
-            // 기본 상황 반환
             return {
                 timestamp: Date.now(),
                 analysisId: `situation-error-${Date.now()}`,
@@ -4538,7 +4504,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                 confidence: 0.5
             };
             
-            // 1. 시간 기반 지혜 적용
             const timeSlot = situation.timeContext.timeSlot;
             if (this.intelligence.timingWisdom.has(timeSlot)) {
                 const timeWisdom = this.intelligence.timingWisdom.get(timeSlot);
@@ -4549,7 +4514,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                 };
             }
             
-            // 2. 감정 기반 지혜 적용
             const currentEmotion = situation.yejinCondition.currentEmotion;
             if (this.intelligence.successRates.has(currentEmotion)) {
                 const emotionWisdom = this.intelligence.successRates.get(currentEmotion);
@@ -4560,7 +4524,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                 };
             }
             
-            // 3. 패턴 기반 지혜 적용
             if (this.intelligence.patternRecognition.has('timePatterns')) {
                 const timePatterns = this.intelligence.patternRecognition.get('timePatterns');
                 const currentHourPatterns = timePatterns.get(situation.timeContext.hour);
@@ -4574,7 +4537,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                 }
             }
             
-            // 4. 개인화된 통찰 적용
             const basicWisdom = this.intelligence.personalizedInsights.get('basicWisdom');
             if (basicWisdom) {
                 const emotionCycle = basicWisdom.emotionCycles[currentEmotion];
@@ -4587,10 +4549,8 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                 }
             }
             
-            // 5. 종합 추천 생성
             integration.recommendations = this.generateIntegratedRecommendations(integration.wisdom, situation);
             
-            // 6. 신뢰도 계산
             const wisdomItems = Object.keys(integration.wisdom).length;
             integration.confidence = Math.min(0.9, 0.3 + (wisdomItems * 0.15));
             
@@ -4621,7 +4581,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                 return null;
             }
             
-            // 상황 요약 생성
             const situationSummary = `
 현재 상황:
 - 시간: ${situation.timeContext.hour}시 (${situation.timeContext.timeSlot})
@@ -4669,8 +4628,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
             
             if (response.choices && response.choices[0] && response.choices[0].message) {
                 const adviceText = response.choices[0].message.content;
-                
-                // 간단한 파싱으로 조언 추출
                 const advice = this.parseOpenAIAdvice(adviceText, yejinDecision);
                 
                 console.log(`${yejinColors.openai}💡 [OpenAI조언] 조언 받음: ${advice.suggestedInterval}분, ${advice.suggestedAction}, ${advice.suggestedEmotion}${yejinColors.reset}`);
@@ -4700,28 +4657,24 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
         try {
             console.log(`${yejinColors.photo}📸 [메모리사진] ${emotionType} 감정에 맞는 사진 선택 중...${yejinColors.reset}`);
             
-            // 1. 최근 사진 중복 확인
             const recentPhotos = this.autonomousPhoto.recentPhotos.filter(p => 
-                Date.now() - p.timestamp < 24 * 60 * 60 * 1000 // 24시간 이내
+                Date.now() - p.timestamp < 24 * 60 * 60 * 1000
             );
             
             const recentUrls = new Set(recentPhotos.map(p => p.url));
             
-            // 2. 감정별 사진 폴더 선택
             let selectedFolder;
             let selectedUrl;
             
             switch (emotionType) {
                 case 'playful':
                 case 'sulky':
-                    // 셀카 폴더에서 선택
                     selectedUrl = await this.selectFromYejinFolder(recentUrls);
                     selectedFolder = 'yejin_selca';
                     break;
                     
                 case 'love':
                 case 'caring':
-                    // 커플 사진이나 예쁜 셀카
                     if (Math.random() < 0.4) {
                         selectedUrl = await this.selectFromCoupleFolder(recentUrls);
                         selectedFolder = 'couple';
@@ -4733,7 +4686,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                     
                 case 'vulnerable':
                 case 'healing':
-                    // 추억 사진이나 부드러운 셀카
                     if (Math.random() < 0.6) {
                         selectedUrl = await this.selectFromOmoideFolder(recentUrls);
                         selectedFolder = 'omoide';
@@ -4744,17 +4696,14 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                     break;
                     
                 default:
-                    // 기본적으로 셀카
                     selectedUrl = await this.selectFromYejinFolder(recentUrls);
                     selectedFolder = 'yejin_selca';
                     break;
             }
             
-            // 3. Redis에 사진 선택 기록
             if (selectedUrl && selectedFolder) {
                 await this.redisCache.cachePhotoSelection(emotionType, selectedUrl, selectedFolder);
                 
-                // 4. 내부 기록 업데이트
                 this.autonomousPhoto.recentPhotos.push({
                     url: selectedUrl,
                     timestamp: Date.now(),
@@ -4762,7 +4711,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                     folderInfo: selectedFolder
                 });
                 
-                // 5. 최근 사진 기록 정리 (최대 20개 유지)
                 if (this.autonomousPhoto.recentPhotos.length > 20) {
                     this.autonomousPhoto.recentPhotos = this.autonomousPhoto.recentPhotos.slice(-20);
                 }
@@ -4788,19 +4736,17 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
         try {
             console.log(`${yejinColors.decision}⏰ [행동후간격] 행동 후 다음 간격 계산 중...${yejinColors.reset}`);
             
-            let baseInterval = 45; // 45분 기본
+            let baseInterval = 45;
             let reasoning = "행동 후 기본 휴식 시간";
             
-            // 행동 타입별 조정
             if (actionDecision.type === 'photo') {
-                baseInterval = 60; // 사진 후에는 1시간
+                baseInterval = 60;
                 reasoning = "사진 보낸 후 여유시간";
             } else if (actionDecision.type === 'message') {
-                baseInterval = 30; // 메시지 후에는 30분
+                baseInterval = 30;
                 reasoning = "메시지 보낸 후 적당한 간격";
             }
             
-            // 성격별 조정
             if (actionDecision.personalityType) {
                 switch (actionDecision.personalityType) {
                     case 'playful':
@@ -4834,7 +4780,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                 }
             }
             
-            // 시간대별 조정
             const currentHour = new Date().getHours();
             if (currentHour >= 23 || currentHour <= 6) {
                 baseInterval *= 2;
@@ -4844,7 +4789,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                 reasoning += " + 아침이라 상쾌하게";
             }
             
-            // 랜덤 변수 추가
             const randomFactor = 0.8 + Math.random() * 0.4;
             baseInterval *= randomFactor;
             
@@ -4879,10 +4823,9 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
         try {
             console.log(`${yejinColors.emotion}⏰ [대기간격] 대기 중 다음 간격 계산 중...${yejinColors.reset}`);
             
-            let baseInterval = 25; // 25분 기본
+            let baseInterval = 25;
             let reasoning = "대기 중 기본 재검토 시간";
             
-            // 대기 이유별 조정
             if (waitDecision.reasoning) {
                 if (waitDecision.reasoning.includes('밤')) {
                     baseInterval = 60;
@@ -4896,7 +4839,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                 }
             }
             
-            // 성격별 대기 시간 조정
             if (waitDecision.personalityType) {
                 switch (waitDecision.personalityType) {
                     case 'playful':
@@ -4930,7 +4872,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                 }
             }
             
-            // 시간대별 조정
             const currentHour = new Date().getHours();
             if (currentHour >= 23 || currentHour <= 6) {
                 baseInterval *= 3;
@@ -4940,7 +4881,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                 reasoning += " + 아침이라 활발해져";
             }
             
-            // 마지막 메시지 시간 고려
             const timeSinceLastMessage = Date.now() - (this.safetySystem.lastMessageTime || 0);
             const hoursSinceLastMessage = timeSinceLastMessage / (1000 * 60 * 60);
             
@@ -4952,7 +4892,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                 reasoning += " + 방금 연락했으니 조금 더 기다려야겠어";
             }
             
-            // 랜덤 변수 추가
             const randomFactor = 0.7 + Math.random() * 0.6;
             baseInterval *= randomFactor;
             
@@ -4987,7 +4926,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
     // ================== 📊 A+ 통계 업데이트 ==================
     updateAplusStats() {
         try {
-            // Redis 캐시 통계 업데이트
             const redisStats = this.redisCache.getStats();
             this.statistics.redisCacheHits = redisStats.hits;
             this.statistics.redisCacheMisses = redisStats.misses;
@@ -4995,17 +4933,14 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
             this.statistics.redisCacheErrors = redisStats.errors;
             this.statistics.realCacheHitRate = redisStats.hitRate;
             
-            // 메모리 창고 사용률 계산
             if (this.statistics.contextualMessages > 0 && this.statistics.autonomousMessages > 0) {
                 this.statistics.memoryWarehouseUsageRate = this.statistics.contextualMessages / this.statistics.autonomousMessages;
             }
             
-            // 개인적 참조율 계산
             if (this.statistics.memoryBasedMessages > 0 && this.statistics.autonomousMessages > 0) {
                 this.statistics.personalReferenceRate = this.statistics.memoryBasedMessages / this.statistics.autonomousMessages;
             }
             
-            // 평균 메시지 간격 계산
             if (this.autonomousMessaging.recentMessages.length > 1) {
                 const intervals = [];
                 for (let i = 1; i < this.autonomousMessaging.recentMessages.length; i++) {
@@ -5016,7 +4951,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                 this.statistics.averageMessageInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
             }
             
-            // 통합 성공률 계산
             const cacheEffectiveness = redisStats.hitRate || 0;
             const memoryEffectiveness = this.statistics.memoryWarehouseUsageRate || 0;
             const personalEffectiveness = this.statistics.personalReferenceRate || 0;
@@ -5054,7 +4988,7 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
         const avg = emotions.reduce((a, b) => a + b, 0) / emotions.length;
         const variance = emotions.reduce((sum, val) => sum + Math.pow(val - avg, 2), 0) / emotions.length;
         
-        return 1 - Math.sqrt(variance); // 0에 가까우면 불안정, 1에 가까우면 안정
+        return 1 - Math.sqrt(variance);
     }
     
     categorizeSituation(timeContext, communicationStatus, yejinCondition) {
@@ -5115,7 +5049,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
         let reasoning = '기본 대기';
         let confidence = 0.5;
         
-        // 지혜 기반 추천 생성
         const recommendations = [];
         
         if (wisdom.timing && wisdom.timing.recommendation === 'good_time') {
@@ -5134,7 +5067,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
             recommendations.push({ action: 'act', weight: 0.5, reason: '자주 느끼는 감정' });
         }
         
-        // 가중 평균으로 최종 결정
         if (recommendations.length > 0) {
             const totalWeight = recommendations.reduce((sum, rec) => sum + rec.weight, 0);
             const avgWeight = totalWeight / recommendations.length;
@@ -5151,7 +5083,7 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
     
     parseOpenAIAdvice(adviceText, yejinDecision) {
         const advice = {
-            suggestedInterval: Math.round(yejinDecision.interval / 60000), // 기본값
+            suggestedInterval: Math.round(yejinDecision.interval / 60000),
             suggestedAction: yejinDecision.actionType,
             suggestedEmotion: yejinDecision.emotionType,
             reasoning: "OpenAI 조언 파싱 실패",
@@ -5159,20 +5091,17 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
         };
         
         try {
-            // 간격 추출
             const intervalMatch = adviceText.match(/(\d+)분/);
             if (intervalMatch) {
                 advice.suggestedInterval = parseInt(intervalMatch[1]);
             }
             
-            // 행동 추출
             if (adviceText.includes('message') || adviceText.includes('메시지')) {
                 advice.suggestedAction = 'message';
             } else if (adviceText.includes('photo') || adviceText.includes('사진')) {
                 advice.suggestedAction = 'photo';
             }
             
-            // 감정 추출
             const emotions = ['love', 'playful', 'caring', 'sulky', 'vulnerable', 'healing'];
             for (const emotion of emotions) {
                 if (adviceText.toLowerCase().includes(emotion)) {
@@ -5181,7 +5110,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                 }
             }
             
-            // 신뢰도 추출
             const confidenceMatch = adviceText.match(/(\d\.?\d*)/);
             if (confidenceMatch) {
                 const conf = parseFloat(confidenceMatch[1]);
@@ -5190,7 +5118,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                 }
             }
             
-            // 이유 추출 (간단하게)
             const lines = adviceText.split('\n');
             for (const line of lines) {
                 if (line.includes('이유') || line.includes('reason')) {
@@ -5231,7 +5158,6 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
     
     async selectFromCoupleFolder(recentUrls) {
         try {
-            // 커플 폴더도 000001.jpg 형식으로 수정
             let attempts = 0;
             let selectedUrl;
             
@@ -5273,19 +5199,8 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
     }
     
     getDefaultPhoto() {
-        // 기본 사진 URL 반환 (000001.jpg 형식)
         return `${PHOTO_CONFIG.YEJIN_BASE_URL}/000001.jpg`;
     }
-
-    // 헬퍼 함수들 (필수)
-    getPersonalityResponseType(emotion) { return 'basic'; }
-    shouldTriggerBackgroundStory(emotion, hours) { return hours > 6 && Math.random() < 0.3; }
-    shouldUseJapaneseExpression(emotion, timeOfDay) { return Math.random() < 0.4; }
-    generateContextualMessageSuggestion(conv, emotion, hours) { return null; }
-    connectMemoryToPersonality(message, emotion) { return emotion; }
-    shouldUseJapaneseBasedOnMemory(message) { return message.length > 10 && Math.random() < 0.3; }
-    findBackgroundStoryConnection(message) { return null; }
-}
 // ================== 🌟 전역 인터페이스 ==================
 
 let globalPersonalityIntegratedSystem = null;
