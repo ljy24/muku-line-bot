@@ -1,3 +1,4 @@
+// ================== 🆕 누락된 필수 함수들 ==================
 // ============================================================================
 // 📁 muku-autonomousYejinSystem-PersonalityIntegrated.js
 // 🔥 A+ 메모리 창고 완전 활용 + 예진이 성격 시스템 완전 통합 v5.0.0
@@ -3195,26 +3196,7 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
         const rate = japaneseUsageRates[personalityType] || 0.2;
         return Math.random() < rate;
     }
-    ⚠️ 잠깐! 더 안전하게 하세요!
-기존 shouldUseJapaneseByPersonality 함수는 그대로 두고, 그 뒤에만 누락된 함수들을 추가하세요!
-🔧 정확한 방법:
-1단계: 기존 이 부분은 그대로 두세요
-javascriptshouldUseJapaneseByPersonality(personalityType) {
-    const japaneseUsageRates = {
-        playful: 0.6,    // 장난칠 때 자주 사용
-        love: 0.4,       // 사랑스러울 때 종종 사용
-        shy: 0.2,        // 수줍을 때 가끔 사용
-        caring: 0.3,     // 돌볼 때 가끔 사용
-        sulky: 0.1,      // 삐질 때 거의 안 사용
-        vulnerable: 0.1, // 상처받을 때 거의 안 사용
-        healing: 0.3     // 치유될 때 가끔 사용
-    };
-    
-    const rate = japaneseUsageRates[personalityType] || 0.2;
-    return Math.random() < rate;
-}
-2단계: 이 함수가 끝나는 } 바로 다음 줄에 이것만 추가하세요:
-javascript
+
 // ================== 🆕 누락된 필수 함수들 ==================
 
 getPersonalityResponseType(emotionType) {
