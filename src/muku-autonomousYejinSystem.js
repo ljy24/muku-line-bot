@@ -3955,6 +3955,11 @@ module.exports = {
     YejinPersonality,
     RedisRealCacheSystem,
     
+    // ▼▼▼ 이름 호환성을 위해 아래 3줄을 추가해주세요! ▼▼▼
+    TrueAutonomousYejinSystem: IntegratedAutonomousYejinSystemWithPersonality,
+    AutonomousYejinSystem: IntegratedAutonomousYejinSystemWithPersonality,
+    YejinFirstSystem: IntegratedAutonomousYejinSystemWithPersonality,
+    
     // 🔥 v5.0.0 성격 통합 함수들
     initializePersonalityIntegratedYejinSystem,
     getPersonalityIntegratedStatusWithRedis,
