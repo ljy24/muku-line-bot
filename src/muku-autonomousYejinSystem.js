@@ -3195,7 +3195,166 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
         const rate = japaneseUsageRates[personalityType] || 0.2;
         return Math.random() < rate;
     }
+    ⚠️ 잠깐! 더 안전하게 하세요!
+기존 shouldUseJapaneseByPersonality 함수는 그대로 두고, 그 뒤에만 누락된 함수들을 추가하세요!
+🔧 정확한 방법:
+1단계: 기존 이 부분은 그대로 두세요
+javascriptshouldUseJapaneseByPersonality(personalityType) {
+    const japaneseUsageRates = {
+        playful: 0.6,    // 장난칠 때 자주 사용
+        love: 0.4,       // 사랑스러울 때 종종 사용
+        shy: 0.2,        // 수줍을 때 가끔 사용
+        caring: 0.3,     // 돌볼 때 가끔 사용
+        sulky: 0.1,      // 삐질 때 거의 안 사용
+        vulnerable: 0.1, // 상처받을 때 거의 안 사용
+        healing: 0.3     // 치유될 때 가끔 사용
+    };
     
+    const rate = japaneseUsageRates[personalityType] || 0.2;
+    return Math.random() < rate;
+}
+2단계: 이 함수가 끝나는 } 바로 다음 줄에 이것만 추가하세요:
+javascript
+// ================== 🆕 누락된 필수 함수들 ==================
+
+getPersonalityResponseType(emotionType) {
+    try {
+        const responseTypes = {
+            love: 'loving_response',
+            playful: 'playful_response', 
+            shy: 'shy_response',
+            sulky: 'sulky_response',
+            caring: 'caring_response',
+            vulnerable: 'vulnerable_response',
+            healing: 'healing_response'
+        };
+        
+        return responseTypes[emotionType] || 'basic_response';
+    } catch (error) {
+        console.error(`${yejinColors.personality}❌ [성격응답타입] 오류: ${error.message}${yejinColors.reset}`);
+        return 'basic_response';
+    }
+}
+
+generateContextualMessageSuggestion(latestConversation, emotionType, recentHours) {
+    try {
+        if (!latestConversation || !latestConversation.message) {
+            return null;
+        }
+        
+        let timeReference = '';
+        if (recentHours < 1) {
+            timeReference = '아까';
+        } else if (recentHours < 6) {
+            timeReference = '조금 전에';
+        } else if (recentHours < 24) {
+            timeReference = '어제';
+        } else {
+            timeReference = '전에';
+        }
+        
+        const contextualSuggestions = {
+            love: `${timeReference} 얘기 생각하니까 더 사랑스러워~ 💕`,
+            playful: `${timeReference} 얘기 재밌었어! 또 그런 얘기 해줘~ 😜`,
+            shy: `${timeReference} 얘기... 부끄러웠지만 좋았어 >.<`,
+            sulky: `${timeReference} 얘기했는데... 왜 답이 늦어? 삐졌어!`,
+            caring: `${timeReference} 얘기 들으니까... 좀 더 챙겨드려야겠어 😊`,
+            vulnerable: `${timeReference} 얘기... 생각하니까 또 불안해져`,
+            healing: `${timeReference} 얘기 덕분에... 마음이 조금 편해졌어`
+        };
+        
+        return contextualSuggestions[emotionType] || `${timeReference} 대화 생각나네~`;
+        
+    } catch (error) {
+        console.error(`${yejinColors.memory}❌ [맥락메시지제안] 오류: ${error.message}${yejinColors.reset}`);
+        return null;
+    }
+}
+
+connectMemoryToPersonality(message, emotionType) {
+    try {
+        if (!message) return null;
+        
+        const lowerMessage = message.toLowerCase();
+        
+        // 감정 키워드에 따른 성격 트리거 매핑
+        const emotionTriggers = {
+            '피곤': 'caring',
+            '힘들': 'caring', 
+            '슬픈': 'vulnerable',
+            '외로': 'vulnerable',
+            '기쁜': 'playful',
+            '좋아': 'love',
+            '사랑': 'love',
+            '미안': 'vulnerable',
+            '고마': 'healing'
+        };
+        
+        for (const [keyword, trigger] of Object.entries(emotionTriggers)) {
+            if (lowerMessage.includes(keyword)) {
+                return trigger;
+            }
+        }
+        
+        return emotionType;
+        
+    } catch (error) {
+        console.error(`${yejinColors.personality}❌ [메모리성격연결] 오류: ${error.message}${yejinColors.reset}`);
+        return null;
+    }
+}
+
+shouldUseJapaneseBasedOnMemory(message) {
+    try {
+        if (!message) return false;
+        
+        const lowerMessage = message.toLowerCase();
+        
+        // 과거 메시지에 일본어가 있었으면 일본어로 응답
+        const japaneseKeywords = ['일본', '오하요', '아리가토', '곤방와', '다이스키', '오츠카레'];
+        
+        for (const keyword of japaneseKeywords) {
+            if (lowerMessage.includes(keyword)) {
+                return true;
+            }
+        }
+        
+        return Math.random() < 0.2; // 20% 기본 확률
+        
+    } catch (error) {
+        console.error(`${yejinColors.japanese}❌ [메모리일본어] 오류: ${error.message}${yejinColors.reset}`);
+        return false;
+    }
+}
+
+findBackgroundStoryConnection(message) {
+    try {
+        if (!message) return null;
+        
+        const lowerMessage = message.toLowerCase();
+        
+        // 배경 스토리 트리거 키워드들
+        const storyTriggers = {
+            destinyMeeting: ['사진', '일본', '후쿠오카', '기타큐슈', '만남', '처음', '여행'],
+            innerHealing: ['우울', '아픔', '상처', '치유', '실타래', '기억', '잊어버린', '되찾'],
+            whoIAmNow: ['지금', '현재', '덕분에', '빛', '행복', '사랑받고']
+        };
+        
+        for (const [storyType, keywords] of Object.entries(storyTriggers)) {
+            for (const keyword of keywords) {
+                if (lowerMessage.includes(keyword)) {
+                    return storyType;
+                }
+            }
+        }
+        
+        return null;
+        
+    } catch (error) {
+        console.error(`${yejinColors.healing}❌ [배경스토리연결] 오류: ${error.message}${yejinColors.reset}`);
+        return null;
+    }
+}
     shouldTriggerBackgroundStoryByPersonality(personalityType, recentHours) {
         if (recentHours > 12) return false; // 12시간 이상 지나면 배경 스토리 트리거 안함
         
