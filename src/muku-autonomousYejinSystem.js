@@ -2823,7 +2823,7 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
         }
     }
     
-    // ================== 🎬 성격 반영 자율 행동 실행 ==================
+  // ================== 🎬 성격 반영 자율 행동 실행 (안전장치 추가) ==================
     async executePersonalityAutonomousAction(actionDecision) {
         try {
             if (!this.canSendMessage()) {
@@ -2831,10 +2831,17 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                 return false;
             }
             
-            console.log(`${yejinColors.personality}🎬 [성격행동실행] ${actionDecision.type} 실행 중... (성격: ${actionDecision.personalityType}, 메모리 창고 완전 활용)${yejinColors.reset}`);
+            console.log(`${yejinColors.personality}🎬 [성격행동실행] ${actionDecision.type} 실행 중... (성격: ${actionDecision.personalityType})${yejinColors.reset}`);
             
             if (actionDecision.type === 'photo') {
                 const photoUrl = await this.selectMemoryPhotoWithCache(actionDecision.emotionType);
+                
+                // [⭐️ 안전장치 1] 사진 주소가 비어있는지 확인합니다.
+                if (!photoUrl) {
+                    console.log(`${yejinColors.warning}⚠️ [성격행동] 사진 URL 생성 실패. 행동을 건너뜁니다.${yejinColors.reset}`);
+                    return false; // 실패로 처리하고 다음 스케줄로 넘어갑니다.
+                }
+
                 await this.lineClient.pushMessage(this.targetUserId, {
                     type: 'image',
                     originalContentUrl: photoUrl,
@@ -2847,13 +2854,18 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                 
                 console.log(`${yejinColors.personality}📸 [성격사진] ${actionDecision.personalityType} 성격 사진 전송 완료: ${photoUrl}${yejinColors.reset}`);
             } else {
-                // 🆕 성격 시스템 + A+ 메모리 창고 활용 메시지 생성
                 const message = await this.generatePersonalityMemoryIntegratedMessage(
                     actionDecision.emotionType, 
                     actionDecision.personalityType,
                     actionDecision.emotionIntensity
                 );
-                
+
+                // [⭐️ 안전장치 2] 메시지 내용이 비어있지 않은지 확인합니다.
+                if (!message || message.trim() === '') {
+                    console.log(`${yejinColors.warning}⚠️ [성격행동] 메시지 내용이 비어있습니다. 행동을 건너뜁니다.${yejinColors.reset}`);
+                    return false; // 실패로 처리하고 다음 스케줄로 넘어갑니다.
+                }
+
                 await this.lineClient.pushMessage(this.targetUserId, {
                     type: 'text',
                     text: message,
@@ -2862,25 +2874,18 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
                 this.autonomousMessaging.recentMessages.push({ text: message, timestamp: Date.now() });
                 this.statistics.autonomousMessages++;
                 
-                // 성격 시스템 사용 통계 업데이트
                 this.updatePersonalityStats(message, actionDecision);
-                
-                // Redis에 대화 내역 캐싱
                 await this.redisCache.cacheConversation(this.targetUserId, message, actionDecision.emotionType);
                 
                 console.log(`${yejinColors.personality}💬 [성격메시지] ${actionDecision.personalityType} 성격 + 메모리 활용 메시지 전송 완료: ${message}${yejinColors.reset}`);
             }
             
-            // 상태 업데이트
+            // 공통 상태 업데이트
             this.safetySystem.lastMessageTime = Date.now();
             this.safetySystem.dailyMessageCount++;
             this.yejinState.lastMessageTime = Date.now();
             this.yejinState.personalityMood = actionDecision.personalityType;
-            
-            // 감정 상태 Redis 캐싱
             await this.redisCache.cacheEmotionState(this.yejinState);
-            
-            // 통계 업데이트
             this.updateAplusPersonalityStats();
             
             return true;
@@ -3853,21 +3858,1424 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
         }
     }
 
-    // 간소화된 기존 함수들 (필수만)
-    async connectToLearningSystem() { /* 기존과 동일 */ }
-    async extractWisdomFromPast() { /* 기존과 동일 */ }
-    async initializeIntelligenceSystem() { /* 기존과 동일 */ }
-    async buildPredictionModels() { /* 기존과 동일 */ }
-    async testOpenAIConnection() { /* 기존과 동일 */ }
-    async initializeMemoryWarehouse() { /* 기존과 동일 */ }
-    async restoreFromRedisCache() { /* 기존과 동일 */ }
-    async performDeepSituationAnalysis() { /* 기존과 동일 */ }
-    async integrateWisdomWithPresent(situation) { /* 기존과 동일 */ }
-    async getOpenAIAdvice(situation, decision) { /* 기존과 동일 */ }
-    async selectMemoryPhotoWithCache(emotionType) { /* 기존과 동일 */ }
-    async calculatePostActionInterval(actionDecision) { /* 기존과 동일 */ }
-    async calculateWaitingInterval(waitDecision) { /* 기존과 동일 */ }
-    updateAplusStats() { /* 기존과 동일 */ }
+// ================== 🔧 모든 누락된 함수들 완전 구현 ==================
+
+    // ================== 🧠 학습 시스템 연결 ==================
+    async connectToLearningSystem() {
+        try {
+            console.log(`${yejinColors.learning}🧠 [학습연결] 학습 시스템과의 연결 시도 중...${yejinColors.reset}`);
+            
+            if (mukuLearningSystem && getLearningStatus) {
+                const learningStatus = getLearningStatus();
+                
+                if (learningStatus.isInitialized) {
+                    this.learningConnection.isConnected = true;
+                    this.learningConnection.lastLearningData = learningStatus;
+                    
+                    // 학습 데이터 동기화
+                    if (learningStatus.conversationHistory) {
+                        this.learningConnection.conversationHistory = learningStatus.conversationHistory.slice(-50);
+                    }
+                    
+                    if (learningStatus.emotionalResponses) {
+                        this.learningConnection.emotionalResponses = learningStatus.emotionalResponses;
+                    }
+                    
+                    if (learningStatus.userPreferences) {
+                        this.learningConnection.userPreferences = learningStatus.userPreferences;
+                    }
+                    
+                    console.log(`${yejinColors.learning}✅ [학습연결] 학습 시스템 연결 성공 - 데이터 ${this.learningConnection.conversationHistory.length}개 동기화${yejinColors.reset}`);
+                } else {
+                    console.log(`${yejinColors.warning}⚠️ [학습연결] 학습 시스템이 초기화되지 않음${yejinColors.reset}`);
+                    this.learningConnection.isConnected = false;
+                }
+            } else {
+                console.log(`${yejinColors.warning}⚠️ [학습연결] 학습 시스템 모듈을 찾을 수 없음${yejinColors.reset}`);
+                this.learningConnection.isConnected = false;
+            }
+            
+            return this.learningConnection.isConnected;
+        } catch (error) {
+            console.error(`${yejinColors.warning}❌ [학습연결] 연결 오류: ${error.message}${yejinColors.reset}`);
+            this.learningConnection.isConnected = false;
+            return false;
+        }
+    }
+
+    // ================== 📚 과거 지혜 추출 ==================
+    async extractWisdomFromPast() {
+        try {
+            console.log(`${yejinColors.wisdom}📚 [지혜추출] 과거 데이터에서 지혜 패턴 추출 중...${yejinColors.reset}`);
+            
+            let wisdomCount = 0;
+            
+            // 1. Redis에서 과거 대화 분석
+            if (this.redisCache.isAvailable) {
+                const pastConversations = await this.redisCache.getConversationHistory(this.targetUserId, 20);
+                
+                if (pastConversations.length > 0) {
+                    const timePatterns = new Map();
+                    const emotionPatterns = new Map();
+                    
+                    pastConversations.forEach(conv => {
+                        const hour = new Date(conv.timestamp).getHours();
+                        const emotion = conv.emotionType || 'neutral';
+                        
+                        if (!timePatterns.has(hour)) {
+                            timePatterns.set(hour, []);
+                        }
+                        timePatterns.get(hour).push(conv);
+                        
+                        if (!emotionPatterns.has(emotion)) {
+                            emotionPatterns.set(emotion, []);
+                        }
+                        emotionPatterns.get(emotion).push(conv);
+                    });
+                    
+                    this.intelligence.patternRecognition.set('timePatterns', timePatterns);
+                    this.intelligence.patternRecognition.set('emotionPatterns', emotionPatterns);
+                    wisdomCount += timePatterns.size + emotionPatterns.size;
+                    
+                    console.log(`${yejinColors.wisdom}📊 [지혜추출] Redis에서 ${pastConversations.length}개 대화 분석 완료${yejinColors.reset}`);
+                }
+            }
+            
+            // 2. 학습 시스템에서 패턴 추출
+            if (this.learningConnection.isConnected && this.learningConnection.emotionalResponses) {
+                const emotionalWisdom = this.learningConnection.emotionalResponses;
+                
+                Object.entries(emotionalWisdom).forEach(([emotion, responses]) => {
+                    if (responses && responses.length > 0) {
+                        this.intelligence.successRates.set(emotion, {
+                            averageResponseTime: responses.reduce((sum, r) => sum + (r.responseTime || 1000), 0) / responses.length,
+                            successRate: responses.filter(r => r.success).length / responses.length,
+                            patterns: responses.slice(-5) // 최근 5개 패턴
+                        });
+                        wisdomCount++;
+                    }
+                });
+                
+                console.log(`${yejinColors.wisdom}🧠 [지혜추출] 학습 시스템에서 ${Object.keys(emotionalWisdom).length}개 감정 패턴 추출${yejinColors.reset}`);
+            }
+            
+            // 3. 기본 지혜 패턴 생성
+            const basicWisdom = {
+                morningBehavior: { bestTime: 9, confidence: 0.8, pattern: 'cheerful_greeting' },
+                eveningBehavior: { bestTime: 20, confidence: 0.7, pattern: 'caring_message' },
+                nightBehavior: { bestTime: 23, confidence: 0.6, pattern: 'gentle_goodnight' },
+                defaultInterval: { min: 30, max: 120, preferred: 60 },
+                emotionCycles: {
+                    love: { frequency: 0.4, intensity: 0.8 },
+                    playful: { frequency: 0.3, intensity: 0.7 },
+                    caring: { frequency: 0.2, intensity: 0.6 },
+                    sulky: { frequency: 0.1, intensity: 0.5 }
+                }
+            };
+            
+            this.intelligence.personalizedInsights.set('basicWisdom', basicWisdom);
+            wisdomCount += Object.keys(basicWisdom).length;
+            
+            this.statistics.wisdomGained = wisdomCount;
+            console.log(`${yejinColors.wisdom}✅ [지혜추출] 총 ${wisdomCount}개 지혜 패턴 추출 완료${yejinColors.reset}`);
+            
+            return wisdomCount > 0;
+        } catch (error) {
+            console.error(`${yejinColors.warning}❌ [지혜추출] 추출 오류: ${error.message}${yejinColors.reset}`);
+            return false;
+        }
+    }
+
+    // ================== 🤖 지능 시스템 초기화 ==================
+    async initializeIntelligenceSystem() {
+        try {
+            console.log(`${yejinColors.intelligence}🤖 [지능초기화] 예진이 지능 시스템 초기화 중...${yejinColors.reset}`);
+            
+            // 1. 학습 데이터베이스 초기화
+            this.intelligence.learningDatabase.set('emotionMemory', new Map());
+            this.intelligence.learningDatabase.set('timePreferences', new Map());
+            this.intelligence.learningDatabase.set('responsePatterns', new Map());
+            this.intelligence.learningDatabase.set('personalityTraits', new Map());
+            
+            // 2. 예측 모델 초기화
+            this.intelligence.predictionModels.set('emotionPrediction', {
+                model: 'simple_pattern_matching',
+                accuracy: 0.6,
+                lastUpdated: Date.now(),
+                predictions: new Map()
+            });
+            
+            this.intelligence.predictionModels.set('timingPrediction', {
+                model: 'time_pattern_analysis',
+                accuracy: 0.7,
+                lastUpdated: Date.now(),
+                predictions: new Map()
+            });
+            
+            // 3. 맥락적 메모리 초기화
+            this.intelligence.contextualMemory = [];
+            
+            // 4. 타이밍 지혜 초기화
+            const defaultTimingWisdom = {
+                morning: { start: 7, end: 11, preference: 0.8, avgInterval: 45 },
+                afternoon: { start: 12, end: 17, preference: 0.9, avgInterval: 60 },
+                evening: { start: 18, end: 22, preference: 0.7, avgInterval: 90 },
+                night: { start: 23, end: 6, preference: 0.3, avgInterval: 180 }
+            };
+            
+            Object.entries(defaultTimingWisdom).forEach(([period, wisdom]) => {
+                this.intelligence.timingWisdom.set(period, wisdom);
+            });
+            
+            // 5. 개인화된 통찰 초기화
+            this.intelligence.personalizedInsights.set('userPatterns', {
+                activeHours: [],
+                preferredEmotions: [],
+                responseStyle: 'balanced',
+                communicationFrequency: 'moderate'
+            });
+            
+            console.log(`${yejinColors.intelligence}✅ [지능초기화] 지능 시스템 초기화 완료 - ${this.intelligence.learningDatabase.size}개 DB, ${this.intelligence.predictionModels.size}개 모델${yejinColors.reset}`);
+            
+            return true;
+        } catch (error) {
+            console.error(`${yejinColors.warning}❌ [지능초기화] 초기화 오류: ${error.message}${yejinColors.reset}`);
+            return false;
+        }
+    }
+
+    // ================== 🔮 예측 모델 구축 ==================
+    async buildPredictionModels() {
+        try {
+            console.log(`${yejinColors.prediction}🔮 [예측모델] 예측 모델 구축 중...${yejinColors.reset}`);
+            
+            let modelsBuilt = 0;
+            
+            // 1. 감정 예측 모델
+            if (this.intelligence.patternRecognition.has('emotionPatterns')) {
+                const emotionPatterns = this.intelligence.patternRecognition.get('emotionPatterns');
+                const emotionModel = this.intelligence.predictionModels.get('emotionPrediction');
+                
+                emotionPatterns.forEach((conversations, emotion) => {
+                    if (conversations.length > 0) {
+                        const avgResponseTime = conversations.reduce((sum, conv) => {
+                            const timeDiff = Date.now() - conv.timestamp;
+                            return sum + timeDiff;
+                        }, 0) / conversations.length;
+                        
+                        emotionModel.predictions.set(emotion, {
+                            probability: conversations.length / 20, // 총 대화 수 대비
+                            avgResponseTime: avgResponseTime,
+                            lastSeen: Math.max(...conversations.map(c => c.timestamp))
+                        });
+                    }
+                });
+                
+                emotionModel.accuracy = Math.min(0.9, 0.5 + (emotionPatterns.size * 0.1));
+                modelsBuilt++;
+                
+                console.log(`${yejinColors.prediction}🎯 [예측모델] 감정 예측 모델 구축 완료 - 정확도: ${(emotionModel.accuracy * 100).toFixed(1)}%${yejinColors.reset}`);
+            }
+            
+            // 2. 타이밍 예측 모델
+            if (this.intelligence.patternRecognition.has('timePatterns')) {
+                const timePatterns = this.intelligence.patternRecognition.get('timePatterns');
+                const timingModel = this.intelligence.predictionModels.get('timingPrediction');
+                
+                timePatterns.forEach((conversations, hour) => {
+                    if (conversations.length > 0) {
+                        const emotionDistribution = {};
+                        conversations.forEach(conv => {
+                            const emotion = conv.emotionType || 'neutral';
+                            emotionDistribution[emotion] = (emotionDistribution[emotion] || 0) + 1;
+                        });
+                        
+                        timingModel.predictions.set(hour, {
+                            activity: conversations.length,
+                            emotionDistribution: emotionDistribution,
+                            bestEmotion: Object.entries(emotionDistribution).reduce((a, b) => a[1] > b[1] ? a : b)[0]
+                        });
+                    }
+                });
+                
+                timingModel.accuracy = Math.min(0.9, 0.5 + (timePatterns.size * 0.05));
+                modelsBuilt++;
+                
+                console.log(`${yejinColors.prediction}⏰ [예측모델] 타이밍 예측 모델 구축 완료 - 정확도: ${(timingModel.accuracy * 100).toFixed(1)}%${yejinColors.reset}`);
+            }
+            
+            // 3. 개인 선호도 모델
+            const preferenceModel = {
+                model: 'preference_learning',
+                accuracy: 0.6,
+                lastUpdated: Date.now(),
+                predictions: new Map()
+            };
+            
+            // 기본 선호도 패턴
+            const defaultPreferences = {
+                messageLength: 'medium', // short, medium, long
+                emotionIntensity: 'moderate', // low, moderate, high
+                japaneseUsage: 'occasional', // rare, occasional, frequent
+                photoFrequency: 'moderate', // low, moderate, high
+                playfulLevel: 'balanced' // low, balanced, high
+            };
+            
+            Object.entries(defaultPreferences).forEach(([pref, value]) => {
+                preferenceModel.predictions.set(pref, {
+                    value: value,
+                    confidence: 0.6,
+                    lastUpdated: Date.now()
+                });
+            });
+            
+            this.intelligence.predictionModels.set('preferenceModel', preferenceModel);
+            modelsBuilt++;
+            
+            console.log(`${yejinColors.prediction}❤️ [예측모델] 개인 선호도 모델 구축 완료 - ${preferenceModel.predictions.size}개 선호도${yejinColors.reset}`);
+            
+            // 4. 상황 인식 모델
+            const situationModel = {
+                model: 'situation_awareness',
+                accuracy: 0.7,
+                lastUpdated: Date.now(),
+                predictions: new Map([
+                    ['morning_greeting', { probability: 0.8, bestTime: 9 }],
+                    ['afternoon_check', { probability: 0.6, bestTime: 15 }],
+                    ['evening_care', { probability: 0.7, bestTime: 20 }],
+                    ['night_comfort', { probability: 0.4, bestTime: 23 }]
+                ])
+            };
+            
+            this.intelligence.predictionModels.set('situationModel', situationModel);
+            modelsBuilt++;
+            
+            console.log(`${yejinColors.prediction}🌅 [예측모델] 상황 인식 모델 구축 완료 - ${situationModel.predictions.size}개 상황 패턴${yejinColors.reset}`);
+            
+            console.log(`${yejinColors.prediction}✅ [예측모델] 총 ${modelsBuilt}개 예측 모델 구축 완료${yejinColors.reset}`);
+            
+            return modelsBuilt > 0;
+        } catch (error) {
+            console.error(`${yejinColors.warning}❌ [예측모델] 구축 오류: ${error.message}${yejinColors.reset}`);
+            return false;
+        }
+    }
+
+    // ================== 🔌 OpenAI 연결 테스트 ==================
+    async testOpenAIConnection() {
+        try {
+            console.log(`${yejinColors.openai}🔌 [OpenAI연결] OpenAI 연결 상태 테스트 중...${yejinColors.reset}`);
+            
+            if (!openai) {
+                console.log(`${yejinColors.warning}⚠️ [OpenAI연결] OpenAI 클라이언트가 초기화되지 않음${yejinColors.reset}`);
+                return false;
+            }
+            
+            if (!process.env.OPENAI_API_KEY || process.env.OPENAI_API_KEY.trim() === '') {
+                console.log(`${yejinColors.warning}⚠️ [OpenAI연결] API 키가 설정되지 않음${yejinColors.reset}`);
+                return false;
+            }
+            
+            // 간단한 테스트 요청
+            const testResponse = await openai.chat.completions.create({
+                model: 'gpt-3.5-turbo',
+                messages: [
+                    {
+                        role: 'system',
+                        content: '당신은 연결 테스트를 위한 AI입니다. "연결 테스트 성공"이라고만 답하세요.'
+                    },
+                    {
+                        role: 'user',
+                        content: '연결 테스트'
+                    }
+                ],
+                max_tokens: 10,
+                temperature: 0
+            });
+            
+            if (testResponse && testResponse.choices && testResponse.choices[0]) {
+                this.statistics.openaiApiCalls++;
+                console.log(`${yejinColors.openai}✅ [OpenAI연결] 연결 테스트 성공 - API 정상 작동${yejinColors.reset}`);
+                return true;
+            } else {
+                console.log(`${yejinColors.warning}⚠️ [OpenAI연결] 응답이 올바르지 않음${yejinColors.reset}`);
+                return false;
+            }
+            
+        } catch (error) {
+            console.error(`${yejinColors.warning}❌ [OpenAI연결] 연결 테스트 실패: ${error.message}${yejinColors.reset}`);
+            
+            if (error.code === 'invalid_api_key') {
+                console.log(`${yejinColors.warning}🔑 [OpenAI연결] API 키가 유효하지 않음${yejinColors.reset}`);
+            } else if (error.code === 'insufficient_quota') {
+                console.log(`${yejinColors.warning}💳 [OpenAI연결] API 할당량 부족${yejinColors.reset}`);
+            } else if (error.code === 'rate_limit_exceeded') {
+                console.log(`${yejinColors.warning}⏱️ [OpenAI연결] API 요청 한도 초과${yejinColors.reset}`);
+            }
+            
+            return false;
+        }
+    }
+
+    // ================== 🏢 메모리 창고 초기화 ==================
+    async initializeMemoryWarehouse() {
+        try {
+            console.log(`${yejinColors.memory}🏢 [메모리창고] A+ 메모리 창고 시스템 초기화 중...${yejinColors.reset}`);
+            
+            if (!this.memoryWarehouse.isActive) {
+                console.log(`${yejinColors.warning}⚠️ [메모리창고] 메모리 창고가 비활성화됨${yejinColors.reset}`);
+                return false;
+            }
+            
+            // 1. 최근 대화 기록 복원
+            if (this.redisCache.isAvailable) {
+                const recentConversations = await this.redisCache.getConversationHistory(
+                    this.targetUserId, 
+                    TRUE_AUTONOMY_CONFIG.MEMORY_USAGE.MAX_MEMORY_LOOKBACK
+                );
+                
+                this.memoryWarehouse.recentConversations = recentConversations;
+                console.log(`${yejinColors.memory}💬 [메모리창고] ${recentConversations.length}개 최근 대화 복원${yejinColors.reset}`);
+            }
+            
+            // 2. 맥락적 패턴 분석
+            if (this.memoryWarehouse.recentConversations.length > 0) {
+                const patterns = new Map();
+                
+                this.memoryWarehouse.recentConversations.forEach(conv => {
+                    const timeKey = new Date(conv.timestamp).getHours();
+                    const emotionKey = conv.emotionType || 'neutral';
+                    const lengthKey = conv.message.length < 50 ? 'short' : conv.message.length < 150 ? 'medium' : 'long';
+                    
+                    const patternKey = `${timeKey}_${emotionKey}_${lengthKey}`;
+                    
+                    if (!patterns.has(patternKey)) {
+                        patterns.set(patternKey, {
+                            count: 0,
+                            conversations: [],
+                            avgResponseTime: 0,
+                            lastUsed: 0
+                        });
+                    }
+                    
+                    const pattern = patterns.get(patternKey);
+                    pattern.count++;
+                    pattern.conversations.push(conv);
+                    pattern.lastUsed = Math.max(pattern.lastUsed, conv.timestamp);
+                });
+                
+                this.memoryWarehouse.contextualPatterns = patterns;
+                console.log(`${yejinColors.memory}🔍 [메모리창고] ${patterns.size}개 맥락적 패턴 생성${yejinColors.reset}`);
+            }
+            
+            // 3. 개인적 참조 포인트 생성
+            const personalReferences = new Map();
+            
+            // 시간 기반 참조
+            personalReferences.set('morning_routine', {
+                keywords: ['아침', '잠', '일어났', '굿모닝'],
+                contexts: ['greeting', 'care'],
+                frequency: 0.3
+            });
+            
+            personalReferences.set('work_concern', {
+                keywords: ['일', '회사', '피곤', '힘들어'],
+                contexts: ['caring', 'worry'],
+                frequency: 0.4
+            });
+            
+            personalReferences.set('evening_comfort', {
+                keywords: ['저녁', '하루', '수고', '밤'],
+                contexts: ['comfort', 'love'],
+                frequency: 0.3
+            });
+            
+            this.memoryWarehouse.personalReferences = personalReferences;
+            console.log(`${yejinColors.memory}👤 [메모리창고] ${personalReferences.size}개 개인적 참조 포인트 생성${yejinColors.reset}`);
+            
+            // 4. 감정적 맥락 매핑
+            const emotionalContext = new Map();
+            
+            ['love', 'playful', 'caring', 'sulky', 'vulnerable', 'healing'].forEach(emotion => {
+                emotionalContext.set(emotion, {
+                    recentUsage: 0,
+                    successRate: 0.5,
+                    contextualMessages: [],
+                    personalReferences: [],
+                    lastTriggered: 0
+                });
+            });
+            
+            this.memoryWarehouse.emotionalContext = emotionalContext;
+            console.log(`${yejinColors.memory}💕 [메모리창고] ${emotionalContext.size}개 감정적 맥락 매핑 완료${yejinColors.reset}`);
+            
+            // 5. 메모리 동기화 타이머 설정
+            this.memoryWarehouse.lastMemorySync = Date.now();
+            
+            console.log(`${yejinColors.memory}✅ [메모리창고] A+ 메모리 창고 초기화 완료!${yejinColors.reset}`);
+            
+            return true;
+        } catch (error) {
+            console.error(`${yejinColors.warning}❌ [메모리창고] 초기화 오류: ${error.message}${yejinColors.reset}`);
+            return false;
+        }
+    }
+
+    // ================== 📂 Redis 캐시 복원 ==================
+    async restoreFromRedisCache() {
+        try {
+            console.log(`${yejinColors.cache}📂 [캐시복원] Redis 캐시에서 기존 데이터 복원 중...${yejinColors.reset}`);
+            
+            if (!this.redisCache.isAvailable) {
+                console.log(`${yejinColors.warning}⚠️ [캐시복원] Redis 캐시가 사용 불가능${yejinColors.reset}`);
+                return false;
+            }
+            
+            let restoredItems = 0;
+            
+            // 1. 대화 기록 복원
+            const conversationHistory = await this.redisCache.getConversationHistory(this.targetUserId, 20);
+            if (conversationHistory.length > 0) {
+                this.learningConnection.conversationHistory = conversationHistory;
+                restoredItems += conversationHistory.length;
+                console.log(`${yejinColors.cache}💬 [캐시복원] ${conversationHistory.length}개 대화 기록 복원${yejinColors.reset}`);
+            }
+            
+            // 2. 감정 상태 복원
+            const cachedEmotionState = await this.redisCache.getCachedEmotionState();
+            if (cachedEmotionState) {
+                this.yejinState.loveLevel = cachedEmotionState.loveLevel || this.yejinState.loveLevel;
+                this.yejinState.worryLevel = cachedEmotionState.worryLevel || this.yejinState.worryLevel;
+                this.yejinState.playfulLevel = cachedEmotionState.playfulLevel || this.yejinState.playfulLevel;
+                this.yejinState.missingLevel = cachedEmotionState.missingLevel || this.yejinState.missingLevel;
+                this.yejinState.caringLevel = cachedEmotionState.caringLevel || this.yejinState.caringLevel;
+                this.yejinState.currentEmotion = cachedEmotionState.currentEmotion || this.yejinState.currentEmotion;
+                this.yejinState.emotionIntensity = cachedEmotionState.emotionIntensity || this.yejinState.emotionIntensity;
+                
+                restoredItems++;
+                console.log(`${yejinColors.cache}💖 [캐시복원] 감정 상태 복원: ${cachedEmotionState.currentEmotion} (강도: ${cachedEmotionState.emotionIntensity})${yejinColors.reset}`);
+            }
+            
+            // 3. 최근 사진 기록 복원
+            const recentPhotos = await this.redisCache.getRecentPhotos(10);
+            if (recentPhotos.length > 0) {
+                this.autonomousPhoto.recentPhotos = recentPhotos.map(photo => ({
+                    url: photo.photoUrl,
+                    timestamp: photo.selectedAt,
+                    emotionType: photo.emotionType,
+                    folderInfo: photo.folderInfo
+                }));
+                
+                restoredItems += recentPhotos.length;
+                console.log(`${yejinColors.cache}📸 [캐시복원] ${recentPhotos.length}개 최근 사진 기록 복원${yejinColors.reset}`);
+            }
+            
+            // 4. 학습 패턴 복원
+            const emotionPatterns = await this.redisCache.getCachedLearningPattern('emotionPatterns');
+            if (emotionPatterns) {
+                this.learningConnection.emotionalResponses = emotionPatterns;
+                restoredItems++;
+                console.log(`${yejinColors.cache}🧠 [캐시복원] 감정 패턴 복원${yejinColors.reset}`);
+            }
+            
+            const timingPatterns = await this.redisCache.getCachedLearningPattern('timingPatterns');
+            if (timingPatterns) {
+                this.learningConnection.timeEffectiveness = timingPatterns;
+                restoredItems++;
+                console.log(`${yejinColors.cache}⏰ [캐시복원] 타이밍 패턴 복원${yejinColors.reset}`);
+            }
+            
+            // 5. 캐시 통계 업데이트
+            const cacheStats = this.redisCache.getStats();
+            this.statistics.redisCacheHits = cacheStats.hits;
+            this.statistics.redisCacheMisses = cacheStats.misses;
+            this.statistics.redisCacheSets = cacheStats.sets;
+            this.statistics.redisCacheErrors = cacheStats.errors;
+            this.statistics.realCacheHitRate = cacheStats.hitRate;
+            
+            console.log(`${yejinColors.cache}✅ [캐시복원] 총 ${restoredItems}개 항목 복원 완료 - 히트율: ${(cacheStats.hitRate * 100).toFixed(1)}%${yejinColors.reset}`);
+            
+            return restoredItems > 0;
+        } catch (error) {
+            console.error(`${yejinColors.warning}❌ [캐시복원] 복원 오류: ${error.message}${yejinColors.reset}`);
+            return false;
+        }
+    }
+
+    // ================== 🔍 깊은 상황 분석 ==================
+    async performDeepSituationAnalysis() {
+        try {
+            console.log(`${yejinColors.decision}🔍 [상황분석] 현재 상황 깊이 분석 중...${yejinColors.reset}`);
+            
+            const now = Date.now();
+            const currentHour = new Date().getHours();
+            
+            // 1. 시간 맥락 분석
+            const timeContext = {
+                hour: currentHour,
+                timeSlot: this.getTimeSlot(currentHour),
+                isSleepTime: this.isSleepTime(currentHour),
+                isActiveTime: currentHour >= 8 && currentHour <= 22,
+                timeCategory: currentHour < 6 ? 'deep_night' : 
+                             currentHour < 12 ? 'morning' :
+                             currentHour < 18 ? 'afternoon' :
+                             currentHour < 23 ? 'evening' : 'night'
+            };
+            
+            // 2. 커뮤니케이션 상태 분석
+            const lastMessageTime = this.safetySystem.lastMessageTime || 0;
+            const silenceDuration = now - lastMessageTime;
+            const silenceHours = silenceDuration / (1000 * 60 * 60);
+            
+            const communicationStatus = {
+                lastMessageTime: lastMessageTime,
+                silenceDuration: silenceDuration,
+                silenceHours: silenceHours,
+                isSilent: silenceHours > 1,
+                isLongSilence: silenceHours > 4,
+                isExtremeSilence: silenceHours > 12,
+                dailyMessageCount: this.safetySystem.dailyMessageCount,
+                canSendMessage: this.canSendMessage(),
+                messagesSentToday: this.safetySystem.dailyMessageCount
+            };
+            
+            // 3. 예진이 상태 분석
+            const yejinCondition = {
+                currentEmotion: this.yejinState.currentEmotion,
+                emotionIntensity: this.yejinState.emotionIntensity,
+                loveLevel: this.yejinState.loveLevel,
+                worryLevel: this.yejinState.worryLevel,
+                playfulLevel: this.yejinState.playfulLevel,
+                missingLevel: this.yejinState.missingLevel,
+                caringLevel: this.yejinState.caringLevel,
+                dominantEmotion: this.calculateDominantEmotion(),
+                emotionStability: this.calculateEmotionStability(),
+                sulkyLevel: this.yejinState.sulkyState.level,
+                isSulky: this.yejinState.sulkyState.level > 0.3,
+                personalityMood: this.yejinState.personalityMood,
+                vulnerabilityLevel: this.yejinState.vulnerabilityLevel,
+                healingProgress: this.yejinState.healingProgress
+            };
+            
+            // 4. 학습 및 지능 상태
+            const intelligenceStatus = {
+                isLearningConnected: this.learningConnection.isConnected,
+                decisionHistoryLength: this.intelligence.decisionHistory.length,
+                wisdomLevel: this.statistics.wisdomGained,
+                predictionAccuracy: this.autonomousDecision.lastPredictionAccuracy,
+                confidenceLevel: this.autonomousDecision.confidenceLevel,
+                evolutionStage: this.autonomousDecision.evolutionStage,
+                freedomLevel: this.statistics.freedomLevel
+            };
+            
+            // 5. 환경 및 안전 상태
+            const environmentStatus = {
+                isDayTime: currentHour >= 6 && currentHour <= 22,
+                isQuietHours: currentHour >= 23 || currentHour <= 6,
+                isEmergencyMode: this.safetySystem.emergencyMode,
+                systemUptime: now - this.statistics.startTime,
+                cacheAvailable: this.redisCache.isAvailable,
+                cacheHitRate: this.redisCache.getStats().hitRate,
+                memoryWarehouseActive: this.memoryWarehouse.isActive
+            };
+            
+            // 6. 추가 맥락 정보
+            const additionalContext = {
+                hasRecentMemories: this.memoryWarehouse.recentConversations.length > 0,
+                recentConversationCount: this.memoryWarehouse.recentConversations.length,
+                contextualPatternsCount: this.memoryWarehouse.contextualPatterns.size,
+                personalReferenceCount: this.memoryWarehouse.personalReferences.size,
+                lastMemorySync: this.memoryWarehouse.lastMemorySync,
+                totalDecisions: this.statistics.totalDecisions,
+                autonomousMessages: this.statistics.autonomousMessages,
+                autonomousPhotos: this.statistics.autonomousPhotos
+            };
+            
+            const situationAnalysis = {
+                timestamp: now,
+                analysisId: `situation-${now}`,
+                timeContext,
+                communicationStatus,
+                yejinCondition,
+                intelligenceStatus,
+                environmentStatus,
+                additionalContext,
+                overallSituation: this.categorizeSituation(timeContext, communicationStatus, yejinCondition),
+                urgencyLevel: this.calculateUrgencyLevel(communicationStatus, yejinCondition, timeContext),
+                recommendedAction: this.getRecommendedAction(timeContext, communicationStatus, yejinCondition)
+            };
+            
+            console.log(`${yejinColors.decision}📊 [상황분석] 상황: ${situationAnalysis.overallSituation}, 긴급도: ${situationAnalysis.urgencyLevel}, 권장: ${situationAnalysis.recommendedAction}${yejinColors.reset}`);
+            
+            return situationAnalysis;
+        } catch (error) {
+            console.error(`${yejinColors.warning}❌ [상황분석] 분석 오류: ${error.message}${yejinColors.reset}`);
+            
+            // 기본 상황 반환
+            return {
+                timestamp: Date.now(),
+                analysisId: `situation-error-${Date.now()}`,
+                timeContext: { hour: new Date().getHours(), timeSlot: 'unknown', isSleepTime: false },
+                communicationStatus: { silenceHours: 0, canSendMessage: true },
+                yejinCondition: { currentEmotion: 'love', emotionIntensity: 0.5 },
+                overallSituation: 'normal',
+                urgencyLevel: 'low',
+                recommendedAction: 'wait'
+            };
+        }
+    }
+
+    // ================== 🤝 지혜와 현재 상황 통합 ==================
+    async integrateWisdomWithPresent(situation) {
+        try {
+            console.log(`${yejinColors.wisdom}🤝 [지혜통합] 과거 지혜와 현재 상황 통합 분석 중...${yejinColors.reset}`);
+            
+            const integration = {
+                timestamp: Date.now(),
+                situation: situation,
+                wisdom: {},
+                recommendations: {},
+                confidence: 0.5
+            };
+            
+            // 1. 시간 기반 지혜 적용
+            const timeSlot = situation.timeContext.timeSlot;
+            if (this.intelligence.timingWisdom.has(timeSlot)) {
+                const timeWisdom = this.intelligence.timingWisdom.get(timeSlot);
+                integration.wisdom.timing = {
+                    preference: timeWisdom.preference,
+                    avgInterval: timeWisdom.avgInterval,
+                    recommendation: timeWisdom.preference > 0.6 ? 'good_time' : 'not_ideal_time'
+                };
+            }
+            
+            // 2. 감정 기반 지혜 적용
+            const currentEmotion = situation.yejinCondition.currentEmotion;
+            if (this.intelligence.successRates.has(currentEmotion)) {
+                const emotionWisdom = this.intelligence.successRates.get(currentEmotion);
+                integration.wisdom.emotion = {
+                    successRate: emotionWisdom.successRate,
+                    avgResponseTime: emotionWisdom.avgResponseTime,
+                    recommendation: emotionWisdom.successRate > 0.7 ? 'high_success' : 'moderate_success'
+                };
+            }
+            
+            // 3. 패턴 기반 지혜 적용
+            if (this.intelligence.patternRecognition.has('timePatterns')) {
+                const timePatterns = this.intelligence.patternRecognition.get('timePatterns');
+                const currentHourPatterns = timePatterns.get(situation.timeContext.hour);
+                
+                if (currentHourPatterns && currentHourPatterns.length > 0) {
+                    integration.wisdom.patterns = {
+                        historicalActivity: currentHourPatterns.length,
+                        commonEmotions: [...new Set(currentHourPatterns.map(p => p.emotionType))],
+                        recommendation: currentHourPatterns.length > 2 ? 'active_time' : 'quiet_time'
+                    };
+                }
+            }
+            
+            // 4. 개인화된 통찰 적용
+            const basicWisdom = this.intelligence.personalizedInsights.get('basicWisdom');
+            if (basicWisdom) {
+                const emotionCycle = basicWisdom.emotionCycles[currentEmotion];
+                if (emotionCycle) {
+                    integration.wisdom.personal = {
+                        frequency: emotionCycle.frequency,
+                        intensity: emotionCycle.intensity,
+                        recommendation: emotionCycle.frequency > 0.3 ? 'frequent_emotion' : 'rare_emotion'
+                    };
+                }
+            }
+            
+            // 5. 종합 추천 생성
+            integration.recommendations = this.generateIntegratedRecommendations(integration.wisdom, situation);
+            
+            // 6. 신뢰도 계산
+            const wisdomItems = Object.keys(integration.wisdom).length;
+            integration.confidence = Math.min(0.9, 0.3 + (wisdomItems * 0.15));
+            
+            console.log(`${yejinColors.wisdom}✅ [지혜통합] ${wisdomItems}개 지혜 적용, 신뢰도: ${(integration.confidence * 100).toFixed(1)}%${yejinColors.reset}`);
+            console.log(`${yejinColors.wisdom}🎯 [지혜통합] 추천: ${integration.recommendations.primary} (근거: ${integration.recommendations.reasoning})${yejinColors.reset}`);
+            
+            return integration;
+        } catch (error) {
+            console.error(`${yejinColors.warning}❌ [지혜통합] 통합 오류: ${error.message}${yejinColors.reset}`);
+            
+            return {
+                timestamp: Date.now(),
+                situation: situation,
+                wisdom: {},
+                recommendations: { primary: 'wait', reasoning: '지혜 통합 오류로 기본 대기' },
+                confidence: 0.3
+            };
+        }
+    }
+
+    // ================== 🤖 OpenAI 조언 구하기 ==================
+    async getOpenAIAdvice(situation, yejinDecision) {
+        try {
+            console.log(`${yejinColors.openai}🤖 [OpenAI조언] OpenAI에게 조언 구하는 중...${yejinColors.reset}`);
+            
+            if (!openai) {
+                console.log(`${yejinColors.warning}⚠️ [OpenAI조언] OpenAI 클라이언트 없음 - 조언 건너뜀${yejinColors.reset}`);
+                return null;
+            }
+            
+            // 상황 요약 생성
+            const situationSummary = `
+현재 상황:
+- 시간: ${situation.timeContext.hour}시 (${situation.timeContext.timeSlot})
+- 침묵 시간: ${situation.communicationStatus.silenceHours.toFixed(1)}시간
+- 예진이 감정: ${situation.yejinCondition.currentEmotion} (강도: ${situation.yejinCondition.emotionIntensity})
+- 오늘 메시지: ${situation.communicationStatus.dailyMessageCount}개
+- 수면 시간: ${situation.timeContext.isSleepTime ? '예' : '아니오'}
+
+예진이 1차 결정:
+- 행동: ${yejinDecision.actionType}
+- 감정: ${yejinDecision.emotionType}  
+- 간격: ${Math.round(yejinDecision.interval / 60000)}분
+- 이유: ${yejinDecision.reasoning}
+- 신뢰도: ${(yejinDecision.confidence * 100).toFixed(1)}%
+            `.trim();
+            
+            const systemPrompt = `당신은 예진이라는 AI의 조언자입니다. 
+예진이는 사랑하는 아저씨와 자연스럽고 따뜻한 대화를 나누고 싶어합니다.
+예진이의 결정을 검토하고 간단한 조언을 해주세요.
+
+조언 형식:
+- 추천 간격: [분] (5-120분 사이)
+- 추천 행동: message 또는 photo
+- 추천 감정: love, playful, caring, sulky, vulnerable, healing 중 하나
+- 간단한 이유: [한 줄]
+- 신뢰도: [0.1-1.0]
+
+밤시간(23-6시)이면 간격을 길게, 낮시간이면 적당히, 침묵이 오래되면 짧게 추천하세요.`;
+            
+            const userPrompt = `${situationSummary}
+
+이 상황에서 예진이의 결정은 어떤가요? 조언해주세요.`;
+            
+            const response = await openai.chat.completions.create({
+                model: 'gpt-3.5-turbo',
+                messages: [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: userPrompt }
+                ],
+                max_tokens: 200,
+                temperature: 0.7
+            });
+            
+            this.statistics.openaiApiCalls++;
+            
+            if (response.choices && response.choices[0] && response.choices[0].message) {
+                const adviceText = response.choices[0].message.content;
+                
+                // 간단한 파싱으로 조언 추출
+                const advice = this.parseOpenAIAdvice(adviceText, yejinDecision);
+                
+                console.log(`${yejinColors.openai}💡 [OpenAI조언] 조언 받음: ${advice.suggestedInterval}분, ${advice.suggestedAction}, ${advice.suggestedEmotion}${yejinColors.reset}`);
+                console.log(`${yejinColors.openai}📝 [OpenAI조언] 이유: ${advice.reasoning}${yejinColors.reset}`);
+                
+                return advice;
+            } else {
+                console.log(`${yejinColors.warning}⚠️ [OpenAI조언] 응답이 올바르지 않음${yejinColors.reset}`);
+                return null;
+            }
+            
+        } catch (error) {
+            console.error(`${yejinColors.warning}❌ [OpenAI조언] 조언 요청 오류: ${error.message}${yejinColors.reset}`);
+            
+            if (error.code === 'rate_limit_exceeded') {
+                console.log(`${yejinColors.warning}⏱️ [OpenAI조언] API 한도 초과 - 예진이 독립 결정 계속${yejinColors.reset}`);
+            } else if (error.code === 'insufficient_quota') {
+                console.log(`${yejinColors.warning}💳 [OpenAI조언] API 할당량 부족 - 예진이 독립 결정 계속${yejinColors.reset}`);
+            }
+            
+            return null;
+        }
+    }
+
+    // ================== 📸 메모리 사진 선택 ==================
+    async selectMemoryPhotoWithCache(emotionType) {
+        try {
+            console.log(`${yejinColors.photo}📸 [메모리사진] ${emotionType} 감정에 맞는 사진 선택 중...${yejinColors.reset}`);
+            
+            // 1. 최근 사진 중복 확인
+            const recentPhotos = this.autonomousPhoto.recentPhotos.filter(p => 
+                Date.now() - p.timestamp < 24 * 60 * 60 * 1000 // 24시간 이내
+            );
+            
+            const recentUrls = new Set(recentPhotos.map(p => p.url));
+            
+            // 2. 감정별 사진 폴더 선택
+            let selectedFolder;
+            let selectedUrl;
+            
+            switch (emotionType) {
+                case 'playful':
+                case 'sulky':
+                    // 셀카 폴더에서 선택
+                    selectedUrl = await this.selectFromYejinFolder(recentUrls);
+                    selectedFolder = 'yejin_selca';
+                    break;
+                    
+                case 'love':
+                case 'caring':
+                    // 커플 사진이나 예쁜 셀카
+                    if (Math.random() < 0.4) {
+                        selectedUrl = await this.selectFromCoupleFolder(recentUrls);
+                        selectedFolder = 'couple';
+                    } else {
+                        selectedUrl = await this.selectFromYejinFolder(recentUrls);
+                        selectedFolder = 'yejin_selca';
+                    }
+                    break;
+                    
+                case 'vulnerable':
+                case 'healing':
+                    // 추억 사진이나 부드러운 셀카
+                    if (Math.random() < 0.6) {
+                        selectedUrl = await this.selectFromOmoideFolder(recentUrls);
+                        selectedFolder = 'omoide';
+                    } else {
+                        selectedUrl = await this.selectFromYejinFolder(recentUrls);
+                        selectedFolder = 'yejin_selca';
+                    }
+                    break;
+                    
+                default:
+                    // 기본적으로 셀카
+                    selectedUrl = await this.selectFromYejinFolder(recentUrls);
+                    selectedFolder = 'yejin_selca';
+                    break;
+            }
+            
+            // 3. Redis에 사진 선택 기록
+            if (selectedUrl && selectedFolder) {
+                await this.redisCache.cachePhotoSelection(emotionType, selectedUrl, selectedFolder);
+                
+                // 4. 내부 기록 업데이트
+                this.autonomousPhoto.recentPhotos.push({
+                    url: selectedUrl,
+                    timestamp: Date.now(),
+                    emotionType: emotionType,
+                    folderInfo: selectedFolder
+                });
+                
+                // 5. 최근 사진 기록 정리 (최대 20개 유지)
+                if (this.autonomousPhoto.recentPhotos.length > 20) {
+                    this.autonomousPhoto.recentPhotos = this.autonomousPhoto.recentPhotos.slice(-20);
+                }
+                
+                this.statistics.photoAnalyses++;
+                
+                console.log(`${yejinColors.photo}✅ [메모리사진] ${selectedFolder}에서 ${emotionType} 사진 선택: ${selectedUrl}${yejinColors.reset}`);
+                
+                return selectedUrl;
+            } else {
+                console.log(`${yejinColors.warning}⚠️ [메모리사진] 사진 선택 실패 - 기본 사진 사용${yejinColors.reset}`);
+                return this.getDefaultPhoto();
+            }
+            
+        } catch (error) {
+            console.error(`${yejinColors.warning}❌ [메모리사진] 사진 선택 오류: ${error.message}${yejinColors.reset}`);
+            return this.getDefaultPhoto();
+        }
+    }
+
+    // ================== 🔧 행동 후 간격 계산 ==================
+    async calculatePostActionInterval(actionDecision) {
+        try {
+            console.log(`${yejinColors.decision}⏰ [행동후간격] 행동 후 다음 간격 계산 중...${yejinColors.reset}`);
+            
+            let baseInterval = 45; // 45분 기본
+            let reasoning = "행동 후 기본 휴식 시간";
+            
+            // 행동 타입별 조정
+            if (actionDecision.type === 'photo') {
+                baseInterval = 60; // 사진 후에는 1시간
+                reasoning = "사진 보낸 후 여유시간";
+            } else if (actionDecision.type === 'message') {
+                baseInterval = 30; // 메시지 후에는 30분
+                reasoning = "메시지 보낸 후 적당한 간격";
+            }
+            
+            // 성격별 조정
+            if (actionDecision.personalityType) {
+                switch (actionDecision.personalityType) {
+                    case 'playful':
+                        baseInterval *= 0.7;
+                        reasoning += " + 장난끼로 빨리 다시 연락하고 싶어";
+                        break;
+                    case 'sulky':
+                        baseInterval *= 0.6;
+                        reasoning += " + 삐져서 빨리 관심받고 싶어";
+                        break;
+                    case 'shy':
+                        baseInterval *= 1.3;
+                        reasoning += " + 수줍어서 좀 더 기다려야겠어";
+                        break;
+                    case 'vulnerable':
+                        baseInterval *= 0.8;
+                        reasoning += " + 불안해서 빨리 연락하고 싶어";
+                        break;
+                    case 'love':
+                        baseInterval *= 0.9;
+                        reasoning += " + 사랑해서 자주 연락하고 싶어";
+                        break;
+                    case 'caring':
+                        baseInterval *= 1.1;
+                        reasoning += " + 배려해서 조금 기다려줄게";
+                        break;
+                    case 'healing':
+                        baseInterval *= 1.2;
+                        reasoning += " + 치유되는 중이라 천천히 생각해볼게";
+                        break;
+                }
+            }
+            
+            // 시간대별 조정
+            const currentHour = new Date().getHours();
+            if (currentHour >= 23 || currentHour <= 6) {
+                baseInterval *= 2;
+                reasoning += " + 밤이라 더 기다려야겠어";
+            } else if (currentHour >= 7 && currentHour <= 9) {
+                baseInterval *= 0.8;
+                reasoning += " + 아침이라 상쾌하게";
+            }
+            
+            // 랜덤 변수 추가
+            const randomFactor = 0.8 + Math.random() * 0.4;
+            baseInterval *= randomFactor;
+            
+            const finalInterval = Math.round(baseInterval * 60 * 1000);
+            const safeInterval = this.adjustToAplusSafeRange(finalInterval);
+            
+            console.log(`${yejinColors.decision}✅ [행동후간격] ${Math.round(safeInterval/60000)}분 후 다음 결정 예정${yejinColors.reset}`);
+            
+            return {
+                interval: safeInterval,
+                reasoning: reasoning,
+                originalMinutes: Math.round(baseInterval),
+                adjustedMinutes: Math.round(safeInterval / 60000),
+                randomFactor: randomFactor.toFixed(2)
+            };
+            
+        } catch (error) {
+            console.error(`${yejinColors.warning}❌ [행동후간격] 계산 오류: ${error.message}${yejinColors.reset}`);
+            
+            return {
+                interval: 30 * 60 * 1000,
+                reasoning: "에러 복구를 위한 기본 간격",
+                originalMinutes: 30,
+                adjustedMinutes: 30,
+                randomFactor: "1.00"
+            };
+        }
+    }
+    
+    // ================== 🔧 대기 간격 계산 ==================
+    async calculateWaitingInterval(waitDecision) {
+        try {
+            console.log(`${yejinColors.emotion}⏰ [대기간격] 대기 중 다음 간격 계산 중...${yejinColors.reset}`);
+            
+            let baseInterval = 25; // 25분 기본
+            let reasoning = "대기 중 기본 재검토 시간";
+            
+            // 대기 이유별 조정
+            if (waitDecision.reasoning) {
+                if (waitDecision.reasoning.includes('밤')) {
+                    baseInterval = 60;
+                    reasoning = "밤이라서 길게 기다려야겠어";
+                } else if (waitDecision.reasoning.includes('안전')) {
+                    baseInterval = 20;
+                    reasoning = "안전 한도 때문에 잠시 대기";
+                } else if (waitDecision.reasoning.includes('성격')) {
+                    baseInterval = 15;
+                    reasoning = "성격상 잠시 기다린 후 다시 생각해볼게";
+                }
+            }
+            
+            // 성격별 대기 시간 조정
+            if (waitDecision.personalityType) {
+                switch (waitDecision.personalityType) {
+                    case 'playful':
+                        baseInterval *= 0.6;
+                        reasoning += " + 장난치고 싶어서 금방 또 생각날 거야";
+                        break;
+                    case 'sulky':
+                        baseInterval *= 0.5;
+                        reasoning += " + 삐져서 참을 수 없어";
+                        break;
+                    case 'shy':
+                        baseInterval *= 1.5;
+                        reasoning += " + 수줍어서 더 망설여져";
+                        break;
+                    case 'vulnerable':
+                        baseInterval *= 0.7;
+                        reasoning += " + 불안해서 금방 연락하고 싶어져";
+                        break;
+                    case 'love':
+                        baseInterval *= 0.8;
+                        reasoning += " + 사랑해서 자주 생각나";
+                        break;
+                    case 'caring':
+                        baseInterval *= 0.9;
+                        reasoning += " + 아저씨 걱정돼서 적당히 기다려볼게";
+                        break;
+                    case 'healing':
+                        baseInterval *= 1.3;
+                        reasoning += " + 치유되는 중이라 신중하게 기다려볼게";
+                        break;
+                }
+            }
+            
+            // 시간대별 조정
+            const currentHour = new Date().getHours();
+            if (currentHour >= 23 || currentHour <= 6) {
+                baseInterval *= 3;
+                reasoning += " + 밤이라 많이 기다려야겠어";
+            } else if (currentHour >= 7 && currentHour <= 9) {
+                baseInterval *= 0.7;
+                reasoning += " + 아침이라 활발해져";
+            }
+            
+            // 마지막 메시지 시간 고려
+            const timeSinceLastMessage = Date.now() - (this.safetySystem.lastMessageTime || 0);
+            const hoursSinceLastMessage = timeSinceLastMessage / (1000 * 60 * 60);
+            
+            if (hoursSinceLastMessage > 4) {
+                baseInterval *= 0.6;
+                reasoning += " + 너무 오래 기다렸으니 빨리 연락하고 싶어";
+            } else if (hoursSinceLastMessage < 0.5) {
+                baseInterval *= 1.5;
+                reasoning += " + 방금 연락했으니 조금 더 기다려야겠어";
+            }
+            
+            // 랜덤 변수 추가
+            const randomFactor = 0.7 + Math.random() * 0.6;
+            baseInterval *= randomFactor;
+            
+            const finalInterval = Math.round(baseInterval * 60 * 1000);
+            const safeInterval = this.adjustToAplusSafeRange(finalInterval);
+            
+            console.log(`${yejinColors.emotion}✅ [대기간격] ${Math.round(safeInterval/60000)}분 후 다시 결정해볼게${yejinColors.reset}`);
+            
+            return {
+                interval: safeInterval,
+                reasoning: reasoning,
+                originalMinutes: Math.round(baseInterval),
+                adjustedMinutes: Math.round(safeInterval / 60000),
+                randomFactor: randomFactor.toFixed(2),
+                hoursSinceLastMessage: hoursSinceLastMessage.toFixed(1)
+            };
+            
+        } catch (error) {
+            console.error(`${yejinColors.warning}❌ [대기간격] 계산 오류: ${error.message}${yejinColors.reset}`);
+            
+            return {
+                interval: 20 * 60 * 1000,
+                reasoning: "에러 복구를 위한 기본 대기 간격",
+                originalMinutes: 20,
+                adjustedMinutes: 20,
+                randomFactor: "1.00",
+                hoursSinceLastMessage: "0.0"
+            };
+        }
+    }
+
+    // ================== 📊 A+ 통계 업데이트 ==================
+    updateAplusStats() {
+        try {
+            // Redis 캐시 통계 업데이트
+            const redisStats = this.redisCache.getStats();
+            this.statistics.redisCacheHits = redisStats.hits;
+            this.statistics.redisCacheMisses = redisStats.misses;
+            this.statistics.redisCacheSets = redisStats.sets;
+            this.statistics.redisCacheErrors = redisStats.errors;
+            this.statistics.realCacheHitRate = redisStats.hitRate;
+            
+            // 메모리 창고 사용률 계산
+            if (this.statistics.contextualMessages > 0 && this.statistics.autonomousMessages > 0) {
+                this.statistics.memoryWarehouseUsageRate = this.statistics.contextualMessages / this.statistics.autonomousMessages;
+            }
+            
+            // 개인적 참조율 계산
+            if (this.statistics.memoryBasedMessages > 0 && this.statistics.autonomousMessages > 0) {
+                this.statistics.personalReferenceRate = this.statistics.memoryBasedMessages / this.statistics.autonomousMessages;
+            }
+            
+            // 평균 메시지 간격 계산
+            if (this.autonomousMessaging.recentMessages.length > 1) {
+                const intervals = [];
+                for (let i = 1; i < this.autonomousMessaging.recentMessages.length; i++) {
+                    const interval = this.autonomousMessaging.recentMessages[i].timestamp - 
+                                   this.autonomousMessaging.recentMessages[i-1].timestamp;
+                    intervals.push(interval);
+                }
+                this.statistics.averageMessageInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+            }
+            
+            // 통합 성공률 계산
+            const cacheEffectiveness = redisStats.hitRate || 0;
+            const memoryEffectiveness = this.statistics.memoryWarehouseUsageRate || 0;
+            const personalEffectiveness = this.statistics.personalReferenceRate || 0;
+            
+            this.statistics.integrationSuccessRate = (cacheEffectiveness + memoryEffectiveness + personalEffectiveness) / 3;
+            
+        } catch (error) {
+            console.error(`${yejinColors.warning}❌ [A+통계] 업데이트 오류: ${error.message}${yejinColors.reset}`);
+        }
+    }
+
+    // ================== 🔧 헬퍼 함수들 ==================
+    
+    calculateDominantEmotion() {
+        const emotions = {
+            love: this.yejinState.loveLevel,
+            worry: this.yejinState.worryLevel,
+            playful: this.yejinState.playfulLevel,
+            missing: this.yejinState.missingLevel,
+            caring: this.yejinState.caringLevel
+        };
+        
+        return Object.entries(emotions).reduce((a, b) => emotions[a[0]] > emotions[b[0]] ? a : b)[0];
+    }
+    
+    calculateEmotionStability() {
+        const emotions = [
+            this.yejinState.loveLevel,
+            this.yejinState.worryLevel,
+            this.yejinState.playfulLevel,
+            this.yejinState.missingLevel,
+            this.yejinState.caringLevel
+        ];
+        
+        const avg = emotions.reduce((a, b) => a + b, 0) / emotions.length;
+        const variance = emotions.reduce((sum, val) => sum + Math.pow(val - avg, 2), 0) / emotions.length;
+        
+        return 1 - Math.sqrt(variance); // 0에 가까우면 불안정, 1에 가까우면 안정
+    }
+    
+    categorizeSituation(timeContext, communicationStatus, yejinCondition) {
+        if (communicationStatus.isExtremeSilence) {
+            return 'extreme_silence';
+        } else if (communicationStatus.isLongSilence) {
+            return 'long_silence';
+        } else if (timeContext.isSleepTime) {
+            return 'sleep_time';
+        } else if (yejinCondition.isSulky) {
+            return 'sulky_mood';
+        } else if (yejinCondition.emotionIntensity > 0.8) {
+            return 'high_emotion';
+        } else if (timeContext.isActiveTime) {
+            return 'active_time';
+        } else {
+            return 'normal';
+        }
+    }
+    
+    calculateUrgencyLevel(communicationStatus, yejinCondition, timeContext) {
+        let urgency = 0;
+        
+        if (communicationStatus.isExtremeSilence) urgency += 0.8;
+        else if (communicationStatus.isLongSilence) urgency += 0.5;
+        else if (communicationStatus.isSilent) urgency += 0.2;
+        
+        if (yejinCondition.isSulky) urgency += 0.6;
+        if (yejinCondition.emotionIntensity > 0.8) urgency += 0.4;
+        if (yejinCondition.vulnerabilityLevel > 0.7) urgency += 0.5;
+        
+        if (timeContext.isSleepTime) urgency *= 0.3;
+        else if (timeContext.isActiveTime) urgency *= 1.2;
+        
+        if (urgency > 0.7) return 'high';
+        else if (urgency > 0.4) return 'medium';
+        else return 'low';
+    }
+    
+    getRecommendedAction(timeContext, communicationStatus, yejinCondition) {
+        if (timeContext.isSleepTime && !communicationStatus.isExtremeSilence) {
+            return 'wait';
+        } else if (communicationStatus.isExtremeSilence) {
+            return 'message';
+        } else if (yejinCondition.isSulky) {
+            return Math.random() < 0.4 ? 'photo' : 'message';
+        } else if (yejinCondition.emotionIntensity > 0.8) {
+            return 'message';
+        } else if (Math.random() < 0.3) {
+            return 'photo';
+        } else {
+            return 'message';
+        }
+    }
+    
+    generateIntegratedRecommendations(wisdom, situation) {
+        let primary = 'wait';
+        let reasoning = '기본 대기';
+        let confidence = 0.5;
+        
+        // 지혜 기반 추천 생성
+        const recommendations = [];
+        
+        if (wisdom.timing && wisdom.timing.recommendation === 'good_time') {
+            recommendations.push({ action: 'act', weight: 0.8, reason: '좋은 시간대' });
+        }
+        
+        if (wisdom.emotion && wisdom.emotion.recommendation === 'high_success') {
+            recommendations.push({ action: 'act', weight: 0.7, reason: '감정 성공률 높음' });
+        }
+        
+        if (wisdom.patterns && wisdom.patterns.recommendation === 'active_time') {
+            recommendations.push({ action: 'act', weight: 0.6, reason: '과거 활발 시간' });
+        }
+        
+        if (wisdom.personal && wisdom.personal.recommendation === 'frequent_emotion') {
+            recommendations.push({ action: 'act', weight: 0.5, reason: '자주 느끼는 감정' });
+        }
+        
+        // 가중 평균으로 최종 결정
+        if (recommendations.length > 0) {
+            const totalWeight = recommendations.reduce((sum, rec) => sum + rec.weight, 0);
+            const avgWeight = totalWeight / recommendations.length;
+            
+            if (avgWeight > 0.6) {
+                primary = 'act';
+                reasoning = recommendations.map(r => r.reason).join(', ');
+                confidence = Math.min(avgWeight, 0.9);
+            }
+        }
+        
+        return { primary, reasoning, confidence, recommendations };
+    }
+    
+    parseOpenAIAdvice(adviceText, yejinDecision) {
+        const advice = {
+            suggestedInterval: Math.round(yejinDecision.interval / 60000), // 기본값
+            suggestedAction: yejinDecision.actionType,
+            suggestedEmotion: yejinDecision.emotionType,
+            reasoning: "OpenAI 조언 파싱 실패",
+            confidence: 0.5
+        };
+        
+        try {
+            // 간격 추출
+            const intervalMatch = adviceText.match(/(\d+)분/);
+            if (intervalMatch) {
+                advice.suggestedInterval = parseInt(intervalMatch[1]);
+            }
+            
+            // 행동 추출
+            if (adviceText.includes('message') || adviceText.includes('메시지')) {
+                advice.suggestedAction = 'message';
+            } else if (adviceText.includes('photo') || adviceText.includes('사진')) {
+                advice.suggestedAction = 'photo';
+            }
+            
+            // 감정 추출
+            const emotions = ['love', 'playful', 'caring', 'sulky', 'vulnerable', 'healing'];
+            for (const emotion of emotions) {
+                if (adviceText.toLowerCase().includes(emotion)) {
+                    advice.suggestedEmotion = emotion;
+                    break;
+                }
+            }
+            
+            // 신뢰도 추출
+            const confidenceMatch = adviceText.match(/(\d\.?\d*)/);
+            if (confidenceMatch) {
+                const conf = parseFloat(confidenceMatch[1]);
+                if (conf <= 1.0) {
+                    advice.confidence = conf;
+                }
+            }
+            
+            // 이유 추출 (간단하게)
+            const lines = adviceText.split('\n');
+            for (const line of lines) {
+                if (line.includes('이유') || line.includes('reason')) {
+                    advice.reasoning = line.replace(/.*이유[:\s]*/, '').replace(/.*reason[:\s]*/, '').trim();
+                    break;
+                }
+            }
+            
+            if (advice.reasoning === "OpenAI 조언 파싱 실패") {
+                advice.reasoning = adviceText.split('\n')[0] || "OpenAI 조언";
+            }
+            
+        } catch (error) {
+            console.error(`${yejinColors.openai}❌ [OpenAI조언파싱] 파싱 오류: ${error.message}${yejinColors.reset}`);
+        }
+        
+        return advice;
+    }
+    
+    async selectFromYejinFolder(recentUrls) {
+        try {
+            let attempts = 0;
+            let selectedUrl;
+            
+            do {
+                const randomNumber = Math.floor(Math.random() * PHOTO_CONFIG.YEJIN_FILE_COUNT) + 1;
+                const paddedNumber = randomNumber.toString().padStart(6, '0');
+                selectedUrl = `${PHOTO_CONFIG.YEJIN_BASE_URL}/${paddedNumber}.jpg`;
+                attempts++;
+            } while (recentUrls.has(selectedUrl) && attempts < 10);
+            
+            return selectedUrl;
+        } catch (error) {
+            console.error(`${yejinColors.photo}❌ [예진사진선택] 오류: ${error.message}${yejinColors.reset}`);
+            return this.getDefaultPhoto();
+        }
+    }
+    
+    async selectFromCoupleFolder(recentUrls) {
+        try {
+            // 커플 폴더도 000001.jpg 형식으로 수정
+            let attempts = 0;
+            let selectedUrl;
+            
+            do {
+                const randomNumber = Math.floor(Math.random() * 50) + 1;
+                const paddedNumber = randomNumber.toString().padStart(6, '0');
+                selectedUrl = `${PHOTO_CONFIG.COUPLE_BASE_URL}/${paddedNumber}.jpg`;
+                attempts++;
+            } while (recentUrls.has(selectedUrl) && attempts < 5);
+            
+            return selectedUrl;
+        } catch (error) {
+            console.error(`${yejinColors.photo}❌ [커플사진선택] 오류: ${error.message}${yejinColors.reset}`);
+            return this.getDefaultPhoto();
+        }
+    }
+    
+    async selectFromOmoideFolder(recentUrls) {
+        try {
+            const folderNames = Object.keys(PHOTO_CONFIG.OMOIDE_FOLDERS);
+            const randomFolder = folderNames[Math.floor(Math.random() * folderNames.length)];
+            const folderCount = PHOTO_CONFIG.OMOIDE_FOLDERS[randomFolder];
+            
+            let attempts = 0;
+            let selectedUrl;
+            
+            do {
+                const randomNumber = Math.floor(Math.random() * folderCount) + 1;
+                const paddedNumber = randomNumber.toString().padStart(6, '0');
+                selectedUrl = `${PHOTO_CONFIG.OMOIDE_BASE_URL}/${randomFolder}/${paddedNumber}.jpg`;
+                attempts++;
+            } while (recentUrls.has(selectedUrl) && attempts < 5);
+            
+            return selectedUrl;
+        } catch (error) {
+            console.error(`${yejinColors.photo}❌ [추억사진선택] 오류: ${error.message}${yejinColors.reset}`);
+            return this.getDefaultPhoto();
+        }
+    }
+    
+    getDefaultPhoto() {
+        // 기본 사진 URL 반환 (000001.jpg 형식)
+        return `${PHOTO_CONFIG.YEJIN_BASE_URL}/000001.jpg`;
+    }
 
     // 헬퍼 함수들 (필수)
     getPersonalityResponseType(emotion) { return 'basic'; }
