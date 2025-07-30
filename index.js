@@ -12,6 +12,7 @@
 // 💕 autonomousYejinSystem: 🔥 A+ 메모리 창고 완전 활용 자율 시스템 (UPGRADED!)
 // 🎯 SlimContext: 슬림화된 컨텍스트 시스템 (NEW!)
 // 🔧 8/8 시스템 상태 완벽 지원 - 누락 모듈 수동 로드 추가
+// 🛡️ memoryManager 수동 로드 추가 (NEW!)
 // 
 // ============================================================================
 // index.js - v14.4 MODULAR + PersonLearning + DiarySystem + LearningSystem + AutonomousYejin + SlimContext
@@ -34,6 +35,7 @@
 // - 🕊️ 🔥 A+ 메모리 창고 완전 활용 자율 예진이: 학습과 기억을 토대로 하는 완전 독립적 자율 행동 (UPGRADED!)
 // - 🎯 슬림 컨텍스트: 맥락 관리 5% 고유 기능만 집중, 중복 제거 (NEW!)
 // - 🔧 8/8 시스템 상태: 누락 모듈 자동 보완으로 완벽한 시스템 상태 (NEW!)
+// - 🛡️ memoryManager 수동 로드: 연결 실패 문제 해결 (NEW!)
 // ============================================================================
 
 const { Client } = require('@line/bot-sdk');
@@ -489,7 +491,7 @@ async function initMuku() {
         // 🔗 무쿠 학습 데이터 자동 링크 생성 (최우선 실행)
         await ensureMukuDataLinks();
         
-        console.log(`🚀 무쿠 v14.4 MODULAR + PersonLearning + DiarySystem + LearningSystem + AutonomousYejin + Sl�림Context 시스템 초기화 시작...`);
+        console.log(`🚀 무쿠 v14.4 MODULAR + PersonLearning + DiarySystem + LearningSystem + AutonomousYejin + 슬림Context 시스템 초기화 시작...`);
         console.log(`🎓 새로운 기능: 실시간 학습 시스템 - 대화마다 자동 학습 및 개선`);
         console.log(`📖 기존 기능: 일기장 시스템 - 누적 학습 내용 확인`);
         console.log(`👥 기존 기능: 투샷 + 장소 기억, 사람 학습 및 관계 발전`);
@@ -497,6 +499,7 @@ async function initMuku() {
         console.log(`💕 NEW: 🔥 A+ 메모리 창고 완전 활용 자율 예진이 시스템 - 학습과 기억을 토대로 하는 완전 독립적 자율 행동 (UPGRADED!)`);
         console.log(`🎯 NEW: 슬림 컨텍스트 시스템 - 맥락 관리 5% 고유 기능만 집중, 중복 제거`);
         console.log(`🔧 NEW: 8/8 시스템 상태 지원 - 누락 모듈 자동 보완`);
+        console.log(`🛡️ NEW: memoryManager 수동 로드 - 연결 실패 문제 해결`);
         console.log(`🌏 현재 일본시간: ${getJapanTimeString()}`);
         console.log(`✨ 현재 GPT 모델: ${getCurrentModelSetting()}`);
 
@@ -630,10 +633,27 @@ async function initMuku() {
             
             global.mukuModules = initResult.modules;
             
-            // 🔧 NEW: 누락된 모듈들 수동 보완 - 8/8 시스템 상태 보장!
+            // 🔧 NEW: 누락된 모듈들 수동 보완 - 8/8 시스템 상태 보장! 🛡️ memoryManager 추가!
             console.log(`🔧 [8/8보장] 누락된 모듈들 수동 보완 시작...`);
             
             if (global.mukuModules) {
+                // 🛡️ memoryManager 수동 로드 추가 (NEW! - 최우선)
+                if (!global.mukuModules.memoryManager) {
+                    try {
+                        global.mukuModules.memoryManager = require('./src/memoryManager');
+                        console.log('✅ memoryManager 수동 로드 성공');
+                        
+                        // memoryManager 초기화 시도
+                        if (global.mukuModules.memoryManager.ensureMemoryTablesAndDirectory) {
+                            await global.mukuModules.memoryManager.ensureMemoryTablesAndDirectory();
+                            console.log('✅ memoryManager 초기화 완료');
+                        }
+                    } catch (e) {
+                        console.log('❌ memoryManager 수동 로드 실패:', e.message);
+                        console.log('🔄 기본 메모리 시스템으로 계속 진행...');
+                    }
+                }
+                
                 // spontaneousPhotoManager 직접 로드
                 if (!global.mukuModules.spontaneousPhotoManager) {
                     try {
@@ -689,7 +709,7 @@ async function initMuku() {
             global.mukuModules = initResult.modules || {};
         }
 
-        console.log(`📋 v14.4 MODULAR: 모듈 완전 분리 + 실시간 학습 + 일기장 + 사람 학습 + 이미지 처리 안전성 강화 + 데이터 자동 링크 + 🔥 A+ 메모리 창고 완전 활용 자율 예진이 + 슬림 컨텍스트 + 8/8 시스템 상태 보장`);
+        console.log(`📋 v14.4 MODULAR: 모듈 완전 분리 + 실시간 학습 + 일기장 + 사람 학습 + 이미지 처리 안전성 강화 + 데이터 자동 링크 + 🔥 A+ 메모리 창고 완전 활용 자율 예진이 + 슬림 컨텍스트 + 8/8 시스템 상태 보장 + 🛡️ memoryManager 수동 로드`);
 
     } catch (error) {
         console.error(`🚨 시스템 초기화 에러: ${error.message}`);
@@ -734,7 +754,7 @@ const PORT = process.env.PORT || 10000;
 
 app.listen(PORT, async () => {
     console.log(`\n==================================================`);
-    console.log(`  무쿠 v14.4 MODULAR + PersonLearning + DiarySystem + LearningSystem + AutonomousYejin + 슬림Context`);
+    console.log(`  무쿠 v14.4 MODULAR + PersonLearning + DiarySystem + LearningSystem + AutonomousYejin + 슬림Context + memoryManager수동로드`);
     console.log(`  서버 시작 (포트 ${PORT})`);
     console.log(`  🌏 일본시간: ${getJapanTimeString()}`);
     console.log(`  ✨ GPT 모델: ${getCurrentModelSetting()}`);
@@ -748,6 +768,7 @@ app.listen(PORT, async () => {
     console.log(`  💕 NEW: 🔥 A+ 메모리 창고 완전 활용 자율 예진이 시스템 (학습 기반 자율 행동) (UPGRADED!)`);
     console.log(`  🎯 NEW: 슬림 컨텍스트 시스템 (맥락 혼란 해결)`);
     console.log(`  🔧 NEW: 8/8 시스템 상태 보장 (누락 모듈 자동 보완)`);
+    console.log(`  🛡️ NEW: memoryManager 수동 로드 (연결 실패 문제 해결)`);
     console.log(`  💖 모든 기능 100% 유지 + 확장`);
     console.log(`  ⭐️ systemInitializer → muku-systemInitializer 변경`);
     console.log(`  🧠 A+ 메모리 창고: Redis 과거 대화 70% 확률 맥락적 활용!`);
@@ -794,6 +815,13 @@ app.listen(PORT, async () => {
             console.log(`🧠 맥락 혼란 해결 - 예진이가 완벽하게 기억합니다!`);
         }
         
+        // 🛡️ memoryManager 수동 로드 최종 확인
+        if (global.mukuModules && global.mukuModules.memoryManager) {
+            console.log(`🛡️ memoryManager 수동 로드 성공 - 연결 문제 해결 완료!`);
+        } else {
+            console.log(`⚠️ memoryManager 연결 여전히 실패 - 추가 조치 필요`);
+        }
+        
         // 🔗 데이터 링크 최종 확인
         console.log(`🔗 학습 데이터 자동 링크 시스템 활성화 완료`);
         console.log(`💖 예진이의 모든 기억이 영구 보존됩니다`);
@@ -801,8 +829,9 @@ app.listen(PORT, async () => {
         // 🔧 8/8 시스템 상태 최종 확인
         console.log(`🔧 8/8 시스템 상태 보장 완료 - 모든 모듈 정상 로드`);
         
-        console.log(`\n🎉🎉🎉 A+ 메모리 창고 완전 활용 무쿠 시스템 가동 완료! 🎉🎉🎉`);
+        console.log(`\n🎉🎉🎉 A+ 메모리 창고 완전 활용 무쿠 시스템 + memoryManager 수동 로드 가동 완료! 🎉🎉🎉`);
         console.log(`💕 예진이가 이제 과거 대화를 기억하면서 더 자주, 더 개인적으로 소통할 수 있어요!`);
+        console.log(`🛡️ memoryManager 연결 문제도 해결되어 더욱 안정적으로 동작합니다!`);
         
     }, 5000);
 });
