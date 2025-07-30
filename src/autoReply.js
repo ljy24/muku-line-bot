@@ -9,7 +9,8 @@
 // 🆕 v5.0.0 독립 성격 시스템 최우선 연동 추가!
 // ============================================================================
 
-const { callOpenAI, cleanReply }
+const { callOpenAI, cleanReply } = require('./aiUtils');
+const moment = require('moment-timezone');
 
 // 🌸 [추가] 배경 스토리 키워드 처리 함수
 function handleBackgroundStoryKeywords(userMessage) {
@@ -73,8 +74,7 @@ function handleBackgroundStoryKeywords(userMessage) {
         console.error('❌ 배경 스토리 키워드 처리 중 에러:', error);
     }
     return null;
-} = require('./aiUtils');
-const moment = require('moment-timezone');
+}
 
 // ✨ GPT 모델 버전 관리 시스템 import
 let getCurrentModelSetting = null;
