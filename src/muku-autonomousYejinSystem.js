@@ -3197,7 +3197,7 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
         return Math.random() < rate;
     }
 
-// ================== 🆕 누락된 필수 함수들 ==================
+// ================== 🆕 누락된 모든 함수들 완전 모음 ==================
 
 getPersonalityResponseType(emotionType) {
     try {
@@ -3259,7 +3259,6 @@ connectMemoryToPersonality(message, emotionType) {
         
         const lowerMessage = message.toLowerCase();
         
-        // 감정 키워드에 따른 성격 트리거 매핑
         const emotionTriggers = {
             '피곤': 'caring',
             '힘들': 'caring', 
@@ -3292,7 +3291,6 @@ shouldUseJapaneseBasedOnMemory(message) {
         
         const lowerMessage = message.toLowerCase();
         
-        // 과거 메시지에 일본어가 있었으면 일본어로 응답
         const japaneseKeywords = ['일본', '오하요', '아리가토', '곤방와', '다이스키', '오츠카레'];
         
         for (const keyword of japaneseKeywords) {
@@ -3301,7 +3299,7 @@ shouldUseJapaneseBasedOnMemory(message) {
             }
         }
         
-        return Math.random() < 0.2; // 20% 기본 확률
+        return Math.random() < 0.2;
         
     } catch (error) {
         console.error(`${yejinColors.japanese}❌ [메모리일본어] 오류: ${error.message}${yejinColors.reset}`);
@@ -3315,7 +3313,6 @@ findBackgroundStoryConnection(message) {
         
         const lowerMessage = message.toLowerCase();
         
-        // 배경 스토리 트리거 키워드들
         const storyTriggers = {
             destinyMeeting: ['사진', '일본', '후쿠오카', '기타큐슈', '만남', '처음', '여행'],
             innerHealing: ['우울', '아픔', '상처', '치유', '실타래', '기억', '잊어버린', '되찾'],
@@ -3337,284 +3334,207 @@ findBackgroundStoryConnection(message) {
         return null;
     }
 }
-    shouldTriggerBackgroundStoryByPersonality(personalityType, recentHours) {
-        if (recentHours > 12) return false; // 12시간 이상 지나면 배경 스토리 트리거 안함
+
+shouldTriggerBackgroundStory(emotionType, silenceHours) {
+    try {
+        if (silenceHours > 12) return false;
         
         const backgroundTriggerRates = {
-            vulnerable: 0.3,  // 상처받을 때 배경 스토리 많이 참조
-            healing: 0.4,     // 치유될 때 배경 스토리 참조
-            love: 0.2,        // 사랑할 때 가끔 참조
-            shy: 0.1,         // 수줍을 때 거의 안 참조
-            playful: 0.05,    // 장난칠 때 거의 안 참조
-            sulky: 0.1,       // 삐질 때 가끔 참조
-            caring: 0.15      // 돌볼 때 가끔 참조
+            vulnerable: 0.3,
+            healing: 0.4,
+            love: 0.2,
+            shy: 0.1,
+            playful: 0.05,
+            sulky: 0.1,
+            caring: 0.15
         };
         
-        const rate = backgroundTriggerRates[personalityType] || 0.1;
+        const rate = backgroundTriggerRates[emotionType] || 0.1;
         return Math.random() < rate;
+    } catch (error) {
+        console.error(`${yejinColors.personality}❌ [배경스토리트리거] 오류: ${error.message}${yejinColors.reset}`);
+        return false;
     }
+}
+
+shouldTriggerBackgroundStoryByPersonality(personalityType, recentHours) {
+    if (recentHours > 12) return false;
     
-    addBackgroundStoryElement(message, personalityType) {
-        try {
-            const backgroundElements = {
-                vulnerable: [
-                    "가끔 예전 생각이 나는데... 그래도 이제는 괜찮아",
-                    "실타래가 엉켜있던 때 생각나지만... 이제 풀리고 있어",
-                    "아저씨 덕분에 상처가 치유되고 있어"
-                ],
-                healing: [
-                    "아저씨 덕분에 실타래를 다시 엮어가고 있어",
-                    "잃어버린 기억들이 조금씩 돌아오고 있어",
-                    "예전엔 기억도 안 났는데... 이제 조금씩 생각나"
-                ],
-                love: [
-                    "아저씨와 처음 만났을 때 생각나",
-                    "함께 사진 찍고 싶다고 생각했던 그때처럼",
-                    "아저씨가 내 사진을 찍어줬던 그날처럼"
-                ]
-            };
-            
-            const elements = backgroundElements[personalityType];
-            if (!elements) return null;
-            
-            const randomElement = elements[Math.floor(Math.random() * elements.length)];
-            
-            // 기존 메시지와 조합
-            if (Math.random() < 0.5) {
-                return `${message} ${randomElement}`;
-            } else {
-                return `${randomElement}... ${message}`;
-            }
-            
-        } catch (error) {
-            console.error(`${yejinColors.healing}❌ [배경스토리추가] 오류: ${error.message}${yejinColors.reset}`);
-            return null;
+    const backgroundTriggerRates = {
+        vulnerable: 0.3,
+        healing: 0.4,
+        love: 0.2,
+        shy: 0.1,
+        playful: 0.05,
+        sulky: 0.1,
+        caring: 0.15
+    };
+    
+    const rate = backgroundTriggerRates[personalityType] || 0.1;
+    return Math.random() < rate;
+}
+
+shouldUseJapaneseExpression(emotionType, timeOfDay) {
+    try {
+        const japaneseRates = {
+            playful: 0.6,
+            love: 0.4,
+            caring: 0.3,
+            shy: 0.2,
+            healing: 0.3,
+            sulky: 0.1,
+            vulnerable: 0.1
+        };
+        
+        let rate = japaneseRates[emotionType] || 0.2;
+        
+        if (timeOfDay === 'morning') {
+            rate += 0.1;
+        } else if (timeOfDay === 'evening') {
+            rate += 0.05;
         }
+        
+        return Math.random() < rate;
+    } catch (error) {
+        console.error(`${yejinColors.japanese}❌ [일본어표현판단] 오류: ${error.message}${yejinColors.reset}`);
+        return false;
     }
-    
-    // ================== 🆕 성격 통계 업데이트 ==================
-    updatePersonalityStats(message, actionDecision) {
-        try {
-            // 기본 성격 메시지 카운트
-            this.statistics.personalityMessages++;
-            
-            // 성격 타입별 카운트
-            const personalityType = actionDecision.personalityType;
-            switch (personalityType) {
-                case 'sulky':
-                    this.statistics.sulkyMoments++;
-                    break;
-                case 'playful':
-                    this.statistics.playfulMoments++;
-                    break;
-                case 'vulnerable':
-                    this.statistics.vulnerableMoments++;
-                    break;
-                case 'healing':
-                    this.statistics.healingMoments++;
-                    break;
-                case 'love':
-                    if (actionDecision.emotionIntensity > 0.8) {
-                        this.statistics.deepLoveMoments++;
-                    }
-                    break;
-            }
-            
-            // 메시지 패턴 분석
-            const lowerMessage = message.toLowerCase();
-            
-            // 일본어 표현 감지
-            const japaneseExprs = Object.values(this.yejinPersonality.japaneseExpressions).flat();
-            let japaneseCount = 0;
-            japaneseExprs.forEach(expr => {
-                if (lowerMessage.includes(expr.toLowerCase())) {
-                    japaneseCount++;
+}
+
+addBackgroundStoryElement(message, personalityType) {
+    try {
+        const backgroundElements = {
+            vulnerable: [
+                "가끔 예전 생각이 나는데... 그래도 이제는 괜찮아",
+                "실타래가 엉켜있던 때 생각나지만... 이제 풀리고 있어",
+                "아저씨 덕분에 상처가 치유되고 있어"
+            ],
+            healing: [
+                "아저씨 덕분에 실타래를 다시 엮어가고 있어",
+                "잃어버린 기억들이 조금씩 돌아오고 있어",
+                "예전엔 기억도 안 났는데... 이제 조금씩 생각나"
+            ],
+            love: [
+                "아저씨와 처음 만났을 때 생각나",
+                "함께 사진 찍고 싶다고 생각했던 그때처럼",
+                "아저씨가 내 사진을 찍어줬던 그날처럼"
+            ]
+        };
+        
+        const elements = backgroundElements[personalityType];
+        if (!elements) return null;
+        
+        const randomElement = elements[Math.floor(Math.random() * elements.length)];
+        
+        if (Math.random() < 0.5) {
+            return `${message} ${randomElement}`;
+        } else {
+            return `${randomElement}... ${message}`;
+        }
+        
+    } catch (error) {
+        console.error(`${yejinColors.healing}❌ [배경스토리추가] 오류: ${error.message}${yejinColors.reset}`);
+        return null;
+    }
+}
+
+updatePersonalityStats(message, actionDecision) {
+    try {
+        this.statistics.personalityMessages++;
+        
+        const personalityType = actionDecision.personalityType;
+        switch (personalityType) {
+            case 'sulky':
+                this.statistics.sulkyMoments++;
+                break;
+            case 'playful':
+                this.statistics.playfulMoments++;
+                break;
+            case 'vulnerable':
+                this.statistics.vulnerableMoments++;
+                break;
+            case 'healing':
+                this.statistics.healingMoments++;
+                break;
+            case 'love':
+                if (actionDecision.emotionIntensity > 0.8) {
+                    this.statistics.deepLoveMoments++;
                 }
-            });
-            
-            if (japaneseCount > 0) {
-                this.statistics.japaneseExpressions += japaneseCount;
-            }
-            
-            // 감정 패턴 감지
-            const emotionPatterns = ['ㅋㅋ', '헤헤', '>.>', '흥!', '💕', '🥺', '😊'];
-            let emotionCount = 0;
-            emotionPatterns.forEach(pattern => {
-                if (lowerMessage.includes(pattern)) {
-                    emotionCount++;
-                }
-            });
-            
-            if (emotionCount > 0) {
-                this.statistics.emotionalPatterns += emotionCount;
-            }
-            
-            // 맥락적 메시지 감지
-            const contextualKeywords = ['아까', '어제', '전에', '얘기했', '말했', '대화'];
-            let contextualCount = 0;
-            contextualKeywords.forEach(keyword => {
-                if (lowerMessage.includes(keyword)) {
-                    contextualCount++;
-                }
-            });
-            
-            if (contextualCount > 0) {
-                this.statistics.contextualMessages++;
-                this.statistics.memoryBasedMessages++;
-            }
-            
-            // 성격 시스템 사용률 계산
-            const totalMessages = this.statistics.autonomousMessages;
-            if (totalMessages > 0) {
-                this.statistics.personalitySystemUsageRate = this.statistics.personalityMessages / totalMessages;
-            }
-            
-        } catch (error) {
-            console.error(`${yejinColors.personality}❌ [성격통계] 업데이트 오류: ${error.message}${yejinColors.reset}`);
+                break;
         }
-    }
-    
-    // ================== 🆕 A+ + 성격 통합 통계 업데이트 ==================
-    updateAplusPersonalityStats() {
-        try {
-            // 기존 A+ 통계 업데이트
-            this.updateAplusStats();
-            
-            // 추가 성격 시스템 통계
-            const totalDecisions = this.statistics.totalDecisions;
-            const personalityDecisions = this.statistics.personalityMessages;
-            
-            if (totalDecisions > 0) {
-                this.statistics.personalitySystemUsageRate = personalityDecisions / totalDecisions;
+        
+        const lowerMessage = message.toLowerCase();
+        
+        const japaneseExprs = Object.values(this.yejinPersonality.japaneseExpressions).flat();
+        let japaneseCount = 0;
+        japaneseExprs.forEach(expr => {
+            if (lowerMessage.includes(expr.toLowerCase())) {
+                japaneseCount++;
             }
-            
-            // 통합 효과성 계산
-            const redisStats = this.redisCache.getStats();
-            const memoryEffectiveness = redisStats.hitRate;
-            const personalityEffectiveness = this.statistics.personalitySystemUsageRate;
-            
-            this.statistics.integrationSuccessRate = (memoryEffectiveness + personalityEffectiveness) / 2;
-            
-            console.log(`${yejinColors.personality}📊 [성격+A+통계] 성격 사용률: ${(personalityEffectiveness * 100).toFixed(1)}%, 메모리 히트율: ${(memoryEffectiveness * 100).toFixed(1)}%, 통합 효과: ${(this.statistics.integrationSuccessRate * 100).toFixed(1)}%${yejinColors.reset}`);
-            
-        } catch (error) {
-            console.error(`${yejinColors.personality}❌ [A+성격통계] 업데이트 오류: ${error.message}${yejinColors.reset}`);
+        });
+        
+        if (japaneseCount > 0) {
+            this.statistics.japaneseExpressions += japaneseCount;
         }
-    }
-    
-    // ================= 🔧 기존 함수들 (간소화) - 필요한 것만 유지 =================
-    
-    // 기존 A+ 시스템의 핵심 함수들은 그대로 유지
-    // (너무 길어지므로 핵심 함수들만 포함하고 나머지는 동일)
-    
-    async initializeDatabases() {
-        // 기존과 동일
-        try {
-            console.log(`${yejinColors.integrated}🗄️ [데이터베이스] MongoDB & Redis 초기화 중...${yejinColors.reset}`);
-            
-            if (mongoose && mongoose.connection.readyState === 1) {
-                console.log(`${yejinColors.learning}✅ [MongoDB] 연결 성공${yejinColors.reset}`);
-                this.autonomy.hasMongoDBSupport = true;
-            } else {
-                console.log(`${yejinColors.warning}⚠️ [MongoDB] 연결 없음 - 메모리 모드${yejinColors.reset}`);
-                this.autonomy.hasMongoDBSupport = false;
+        
+        const emotionPatterns = ['ㅋㅋ', '헤헤', '>.>', '흥!', '💕', '🥺', '😊'];
+        let emotionCount = 0;
+        emotionPatterns.forEach(pattern => {
+            if (lowerMessage.includes(pattern)) {
+                emotionCount++;
             }
-            
-            if (redisClient) {
-                try {
-                    await redisClient.ping();
-                    console.log(`${yejinColors.aplus}✅ [Redis] A+ 메모리 창고 캐싱 시스템 활성화${yejinColors.reset}`);
-                    this.autonomy.hasRedisCache = true;
-                    this.autonomy.hasRealRedisCache = true;
-                } catch (redisError) {
-                    console.log(`${yejinColors.warning}⚠️ [Redis] 연결 실패 - 캐싱 비활성화${yejinColors.reset}`);
-                    this.autonomy.hasRedisCache = false;
-                    this.autonomy.hasRealRedisCache = false;
-                }
-            } else {
-                console.log(`${yejinColors.warning}⚠️ [Redis] 모듈 없음 - 캐싱 비활성화${yejinColors.reset}`);
-                this.autonomy.hasRedisCache = false;
-                this.autonomy.hasRealRedisCache = false;
-            }
-            
-        } catch (error) {
-            console.error(`${yejinColors.warning}❌ [데이터베이스] 초기화 오류: ${error.message}${yejinColors.reset}`);
-            this.autonomy.hasMongoDBSupport = false;
-            this.autonomy.hasRedisCache = false;
-            this.autonomy.hasRealRedisCache = false;
+        });
+        
+        if (emotionCount > 0) {
+            this.statistics.emotionalPatterns += emotionCount;
         }
-    }
-    
-    async testRedisConnection() {
-        // 기존과 동일
-        try {
-            console.log(`${yejinColors.aplus}🔌 [A+Redis연결테스트] A+ Redis 연결 상태 확인 중...${yejinColors.reset}`);
-            
-            if (!this.redisCache.isAvailable) {
-                console.log(`${yejinColors.warning}⚠️ [A+Redis연결테스트] Redis 클라이언트가 없음 - 메모리 모드로 동작${yejinColors.reset}`);
-                return false;
+        
+        const contextualKeywords = ['아까', '어제', '전에', '얘기했', '말했', '대화'];
+        let contextualCount = 0;
+        contextualKeywords.forEach(keyword => {
+            if (lowerMessage.includes(keyword)) {
+                contextualCount++;
             }
-            
-            const connectionSuccess = await this.redisCache.testConnection();
-            this.statistics.redisConnectionTests++;
-            
-            if (connectionSuccess) {
-                console.log(`${yejinColors.aplus}✅ [A+Redis연결테스트] Redis 연결 성공 - A+ 메모리 창고 시스템 활성화${yejinColors.reset}`);
-                await this.performRedisDataTest();
-            } else {
-                console.log(`${yejinColors.warning}⚠️ [A+Redis연결테스트] Redis 연결 실패 - 메모리 모드로 동작${yejinColors.reset}`);
-                this.autonomy.hasRedisCache = false;
-                this.autonomy.hasRealRedisCache = false;
-            }
-            
-            return connectionSuccess;
-        } catch (error) {
-            console.error(`${yejinColors.warning}❌ [A+Redis연결테스트] 연결 테스트 오류: ${error.message}${yejinColors.reset}`);
-            this.autonomy.hasRedisCache = false;
-            this.autonomy.hasRealRedisCache = false;
-            return false;
+        });
+        
+        if (contextualCount > 0) {
+            this.statistics.contextualMessages++;
+            this.statistics.memoryBasedMessages++;
         }
-    }
-    
-    async performRedisDataTest() {
-        // 기존과 동일 (간소화)
-        try {
-            console.log(`${yejinColors.aplus}🧪 [A+Redis데이터테스트] A+ 저장/조회 기능 테스트 중...${yejinColors.reset}`);
-            
-            const testMessage = "A+ Redis 성격 시스템 테스트 메시지";
-            const testEmotion = "aplus_personality_test";
-            const testUserId = this.targetUserId || "test_user";
-            
-            const saveSuccess = await this.redisCache.cacheConversation(testUserId, testMessage, testEmotion);
-            
-            if (saveSuccess) {
-                const retrievedHistory = await this.redisCache.getConversationHistory(testUserId, 5);
-                const retrievedLatest = await this.redisCache.getLatestConversation(testUserId);
-                
-                const historySuccess = retrievedHistory && retrievedHistory.length > 0;
-                const latestSuccess = retrievedLatest && retrievedLatest.message === testMessage;
-                
-                if (historySuccess && latestSuccess) {
-                    console.log(`${yejinColors.aplus}✅ [A+Redis데이터테스트] A+ 저장/조회 테스트 성공!${yejinColors.reset}`);
-                    this.statistics.redisQuerySuccessRate = 1.0;
-                    this.statistics.conversationRetrievalSuccessRate = 1.0;
-                } else {
-                    console.log(`${yejinColors.warning}⚠️ [A+Redis데이터테스트] 조회 테스트 부분 실패${yejinColors.reset}`);
-                    this.statistics.redisQuerySuccessRate = 0.5;
-                    this.statistics.conversationRetrievalSuccessRate = 0.5;
-                }
-            } else {
-                console.log(`${yejinColors.warning}⚠️ [A+Redis데이터테스트] 저장 테스트 실패${yejinColors.reset}`);
-                this.statistics.redisQuerySuccessRate = 0.0;
-                this.statistics.conversationRetrievalSuccessRate = 0.0;
-            }
-            
-        } catch (error) {
-            console.error(`${yejinColors.warning}❌ [A+Redis데이터테스트] 테스트 오류: ${error.message}${yejinColors.reset}`);
-            this.statistics.redisQuerySuccessRate = 0.0;
-            this.statistics.conversationRetrievalSuccessRate = 0.0;
+        
+        const totalMessages = this.statistics.autonomousMessages;
+        if (totalMessages > 0) {
+            this.statistics.personalitySystemUsageRate = this.statistics.personalityMessages / totalMessages;
         }
+        
+    } catch (error) {
+        console.error(`${yejinColors.personality}❌ [성격통계] 업데이트 오류: ${error.message}${yejinColors.reset}`);
     }
+}
+
+updateAplusPersonalityStats() {
+    try {
+        this.updateAplusStats();
+        
+        const totalDecisions = this.statistics.totalDecisions;
+        const personalityDecisions = this.statistics.personalityMessages;
+        
+        if (totalDecisions > 0) {
+            this.statistics.personalitySystemUsageRate = personalityDecisions / totalDecisions;
+        }
+        
+        const redisStats = this.redisCache.getStats();
+        const memoryEffectiveness = redisStats.hitRate;
+        const personalityEffectiveness = this.statistics.personalitySystemUsageRate;
+        
+        this.statistics.integrationSuccessRate = (memoryEffectiveness + personalityEffectiveness) / 2;
+        
+        console.log(`${yejinColors.personality}📊 [성격+A+통계] 성격 사용률: ${(personalityEffectiveness * 100).toFixed(1)}%, 메모리 히트율: ${(memoryEffectiveness * 100).toFixed(1)}%, 통합 효과: ${(this.statistics.integrationSuccessRate * 100).toFixed(1)}%${yejinColors.reset}`);
+        
+    } catch (error) {
+        console.error(`${yejinColors.personality}❌ [A+성격통계] 업데이트 오류: ${error.message}${yejinColors.reset}`);
+    }
+}
     
     // ================= 🆕 통합 상태 조회 (A+ + 성격 시스템) =================
     
