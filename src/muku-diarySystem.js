@@ -87,30 +87,18 @@ function safeGetMemoryManager() {
     return memoryManager;
 }
 
-// 🔧 memoryTape 안전 로딩
+// 🔧 memoryTape 안전 로딩 (index.js를 통해)
 function safeGetMemoryTape() {
     if (!memoryTape) {
         try {
-            // 여러 경로 시도
-            const possiblePaths = [
-                './memoryTape',
-                '../memoryTape',
-                './muku-memoryTape',
-                '../muku-memoryTape'
-            ];
-            
-            for (const path of possiblePaths) {
-                try {
-                    memoryTape = require(path);
-                    console.log(`${colors.diary}🔧 [지연로딩] memoryTape 로딩 성공 (${path})${colors.reset}`);
-                    break;
-                } catch (e) {
-                    // 다음 경로 시도
-                }
-            }
-            
-            if (!memoryTape) {
-                console.log(`${colors.error}⚠️ [지연로딩] memoryTape 로딩 실패 - 모든 경로 시도함${colors.reset}`);
+            // [⭐️ 수정] index.js를 통해 이미 생성된 인스턴스를 가져옵니다.
+            // 이렇게 하면 경로 문제와 순환 의존성 문제를 모두 해결할 수 있습니다.
+            const indexModule = require('../index.js');
+            if (indexModule && indexModule.getMemoryTapeInstance) {
+                memoryTape = indexModule.getMemoryTapeInstance();
+                console.log(`${colors.diary}🔧 [지연로딩] index.js를 통해 memoryTape 로딩 성공${colors.reset}`);
+            } else {
+                console.log(`${colors.error}⚠️ [지연로딩] index.js에 getMemoryTapeInstance 함수가 없습니다.${colors.reset}`);
             }
         } catch (e) {
             console.log(`${colors.error}⚠️ [지연로딩] memoryTape 로딩 실패: ${e.message}${colors.reset}`);
