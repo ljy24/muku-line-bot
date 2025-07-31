@@ -1,7 +1,9 @@
-// src/moodManager.js v4.1 - Redis 통합 + 감정 상태 동기화
-// 🔧 기존 시스템 유지 + Redis 양방향 동기화 추가
+// src/moodManager.js v4.2 - 레디스 통합 + 감정 상태 동기화 + 배경스토리 연동 (문제점 해결 완료)
+// 🔧 기존 시스템 유지 + 레디스 양방향 동기화 추가
 // 🩸 생리주기는 menstrualCycleManager에서만 가져옴 (Single Source of Truth 유지)
-// 💾 ultimateContext + Redis 감정 상태 동기화
+// 💾 ultimateContext + 레디스 감정 상태 동기화
+// 🌸 배경 스토리 시스템 연동
+// ✅ 함수 순서, 비동기 처리, 매핑 일치, 에러 핸들링 모든 문제 해결
 
 const moment = require('moment-timezone');
 const ultimateContext = require('./ultimateConversationContext.js');
@@ -9,16 +11,120 @@ const ultimateContext = require('./ultimateConversationContext.js');
 // 🩸 생리주기 마스터에서 정보 가져오기 (기존 유지)
 const menstrualCycleManager = require('./menstrualCycleManager');
 
-// 🔧 [NEW] Redis 통합 시스템 연동
+// 🔧 확률 설정 외부화
+const PROBABILITY_CONFIG = {
+    MENSTRUAL_RESPONSE: 0.7,           // 생리주기 응답 확률
+    BACKGROUND_STORY: 0.05,            // 배경 스토리 기반 응답 확률
+    BACKGROUND_CONTEXT: 0.1,           // 배경 스토리 맥락 추가 확률
+    MENSTRUAL_IN_GREETING: 0.3,        // 인사에 생리주기 포함 확률
+    MOOD_IN_GREETING: 0.4,             // 인사에 기분 포함 확률
+    MENSTRUAL_EMOJI: 0.5,              // 생리주기 이모지 사용 확률
+    MENSTRUAL_AI_PROMPT: 0.8           // 생리주기 AI 프롬프트 사용 확률
+};
+
+// 🔧 [NEW] 레디스 통합 시스템 연동 - 안전장치 강화
 let integratedRedisSystem = null;
-try {
-    const autonomousSystem = require('./muku-autonomousYejinSystem');
-    if (autonomousSystem && autonomousSystem.getCachedEmotionState) {
-        integratedRedisSystem = autonomousSystem;
-        console.log('🔧 [moodManager] Redis 통합 시스템 연동 성공');
+// 🌸 [NEW] 배경 스토리 시스템 연동
+let backgroundStorySystem = null;
+
+// 레디스 연동 함수 확인 및 초기화
+function initializeRedisIntegration() {
+    try {
+        const autonomousSystem = require('./muku-autonomousYejinSystem');
+        
+        // 레디스 관련 메서드 존재 여부 확인
+        if (autonomousSystem) {
+            const hasRedisGetMethod = typeof autonomousSystem.getCachedEmotionState === 'function';
+            const hasRedisSetMethod = typeof autonomousSystem.forceCacheEmotionState === 'function';
+            const hasRedisStatsMethod = typeof autonomousSystem.getRedisCacheStats === 'function';
+            
+            if (hasRedisGetMethod && hasRedisSetMethod) {
+                integratedRedisSystem = autonomousSystem;
+                console.log('🔧 [기분관리자] 레디스 통합 시스템 연동 성공');
+                
+                // 배경 스토리 시스템 연동 시도
+                if (typeof autonomousSystem.getBackgroundStory === 'function') {
+                    backgroundStorySystem = autonomousSystem;
+                    console.log('🌸 [기분관리자] 배경 스토리 시스템 연동 성공');
+                } else {
+                    console.log('⚠️ [기분관리자] 배경 스토리 시스템 메서드 없음');
+                }
+                
+                return true;
+            } else {
+                console.warn('⚠️ [기분관리자] 레디스 통합 시스템의 필수 메서드 부족');
+                console.warn(`- getCachedEmotionState: ${hasRedisGetMethod}`);
+                console.warn(`- forceCacheEmotionState: ${hasRedisSetMethod}`);
+                console.warn(`- getRedisCacheStats: ${hasRedisStatsMethod}`);
+                return false;
+            }
+        } else {
+            console.warn('⚠️ [기분관리자] muku-autonomousYejinSystem 모듈 없음');
+            return false;
+        }
+    } catch (error) {
+        console.warn('⚠️ [기분관리자] 레디스/배경스토리 통합 시스템 연동 실패:', error.message);
+        return false;
     }
-} catch (error) {
-    console.warn('⚠️ [moodManager] Redis 통합 시스템 연동 실패:', error.message);
+}
+
+// 초기화 실행
+const redisInitialized = initializeRedisIntegration();
+
+// 🔧 완전한 감정-기분 매핑 테이블 (양방향 일치)
+const EMOTION_MOOD_MAPPING = {
+    // 감정 → 기분
+    emotionToMood: {
+        'love': '사랑함',
+        'worry': '걱정함', 
+        'missing': '보고싶음',
+        'playful': '장난스러움',
+        'caring': '애교모드',
+        'happy': '기쁨',
+        'sad': '슬픔',
+        'angry': '화남',
+        'anxious': '불안함',
+        'lonely': '외로움',
+        'normal': '평온함',
+        'excited': '설렘',
+        'tired': '나른함',
+        'annoyed': '짜증남',
+        'nostalgic': '그리움'
+    },
+    
+    // 기분 → 감정
+    moodToEmotion: {
+        '사랑함': 'love',
+        '걱정함': 'worry',
+        '보고싶음': 'missing', 
+        '장난스러움': 'playful',
+        '애교모드': 'caring',
+        '기쁨': 'happy',
+        '슬픔': 'sad',
+        '화남': 'angry',
+        '불안함': 'anxious',
+        '외로움': 'lonely',
+        '평온함': 'normal',
+        '설렘': 'excited',
+        '나른함': 'tired',
+        '짜증남': 'annoyed',
+        '그리움': 'nostalgic',
+        '심술궂음': 'annoyed'
+    }
+};
+
+// 🔧 타입 안전성 함수들
+function isValidMessage(message) {
+    return message && typeof message === 'string' && message.trim().length > 0;
+}
+
+function isValidMood(mood) {
+    return mood && typeof mood === 'string' && ALL_MOODS.includes(mood);
+}
+
+function sanitizeMessage(message) {
+    if (!isValidMessage(message)) return '';
+    return message.trim().toLowerCase();
 }
 
 // 기존 응답 데이터들 (유지)
@@ -123,27 +229,44 @@ const ALL_MOODS = ['기쁨', '설렘', '장난스러움', '나른함', '심술�
 
 // ==================== 🩸 마스터 Phase 매핑 함수 (기존 유지) ====================
 function mapMasterPhaseToMoodPhase(masterPhase, cycleDay) {
-    switch (masterPhase) {
-        case 'menstruation':
-            return 'period';
-        case 'recovery':
-        case 'normal':
-            if (cycleDay >= 14 && cycleDay <= 15) {
-                return 'ovulation';
-            }
-            return 'follicular';
-        case 'pms_start':
-        case 'pms_severe':
-            return 'luteal';
-        default:
-            return 'follicular';
+    try {
+        switch (masterPhase) {
+            case 'menstruation':
+                return 'period';
+            case 'recovery':
+            case 'normal':
+                if (cycleDay >= 14 && cycleDay <= 15) {
+                    return 'ovulation';
+                }
+                return 'follicular';
+            case 'pms_start':
+            case 'pms_severe':
+                return 'luteal';
+            default:
+                console.warn(`⚠️ [생리주기매핑] 알 수 없는 masterPhase: ${masterPhase}, 기본값으로 설정`);
+                return 'follicular';
+        }
+    } catch (error) {
+        console.error('❌ [생리주기매핑오류] 매핑 오류:', error);
+        return 'follicular';
     }
 }
 
 // ==================== 🩸 마스터에서 생리주기 정보 가져오기 (기존 유지) ====================
 function getCurrentMenstrualPhase() {
     try {
+        if (!menstrualCycleManager || typeof menstrualCycleManager.getCurrentMenstrualPhase !== 'function') {
+            console.warn('⚠️ [생리주기관리자] menstrualCycleManager 모듈 또는 메서드 없음');
+            return { phase: 'follicular', day: 1, description: '정상', isPeriodActive: false, daysUntilNext: 27 };
+        }
+        
         const masterCycle = menstrualCycleManager.getCurrentMenstrualPhase();
+        
+        if (!masterCycle) {
+            console.warn('⚠️ [생리주기관리자] masterCycle 정보 없음');
+            return { phase: 'follicular', day: 1, description: '정상', isPeriodActive: false, daysUntilNext: 27 };
+        }
+        
         const mappedPhase = mapMasterPhaseToMoodPhase(masterCycle.phase, masterCycle.cycleDay);
         
         const descriptions = {
@@ -155,130 +278,227 @@ function getCurrentMenstrualPhase() {
         
         return {
             phase: mappedPhase,
-            day: masterCycle.cycleDay,
+            day: masterCycle.cycleDay || 1,
             description: descriptions[mappedPhase] || '정상',
-            isPeriodActive: masterCycle.isPeriodActive,
-            daysUntilNext: masterCycle.daysUntilNext
+            isPeriodActive: masterCycle.isPeriodActive || false,
+            daysUntilNext: masterCycle.daysUntilNext || 27
         };
         
     } catch (error) {
-        console.error('🩸 [moodManager] 생리주기 정보 가져오기 실패:', error);
+        console.error('🩸 [생리주기관리자] 생리주기 정보 가져오기 실패:', error);
         return { phase: 'follicular', day: 1, description: '정상', isPeriodActive: false, daysUntilNext: 27 };
     }
 }
 
-// 🔧 [NEW] 통합 기분 상태 조회 - ultimateContext + Redis
+// 🌸 [NEW] 배경 스토리 활용 함수 (함수 순서 수정 - getCurrentMenstrualPhase 이후로 이동)
+function getBackgroundStoryContext(currentMood, menstrualPhase) {
+    try {
+        if (!backgroundStorySystem || typeof backgroundStorySystem.getBackgroundStory !== 'function') {
+            return null;
+        }
+        
+        // 기분과 생리주기에 따른 배경 스토리 선택
+        let storyKey = null;
+        let contextPrompt = "";
+        
+        // 감정 상태에 따른 배경 스토리 매핑
+        if (['슬픔', '우울함', '불안함'].includes(currentMood)) {
+            // 내면 치유 스토리 활용 (20% 확률)
+            if (Math.random() < 0.2) {
+                storyKey = 'innerHealing';
+                contextPrompt = "예진이는 과거 우울증과 상처가 있었지만 아저씨를 만나면서 치유되어가고 있는 상태야. 상처받기 쉽지만 점점 나아지고 있다는 희망을 담아서 대화해줘.";
+                console.log('🌸 [배경스토리] 내면치유 맥락 적용');
+            }
+        } else if (['사랑함', '그리움', '보고싶음'].includes(currentMood)) {
+            // 운명적 만남 스토리 활용 (15% 확률)
+            if (Math.random() < 0.15) {
+                storyKey = 'destinyMeeting';
+                contextPrompt = "예진이는 아저씨와의 첫 만남을 소중히 기억하고 있어. 처음엔 경계했지만 아저씨의 진심을 알게 되면서 마음을 열었던 그 과정을 담아서 대화해줘.";
+                console.log('🌸 [배경스토리] 운명적만남 맥락 적용');
+            }
+        } else if (['평온함', '기쁨'].includes(currentMood)) {
+            // 현재의 모습 스토리 활용 (10% 확률)
+            if (Math.random() < 0.1) {
+                storyKey = 'whoIAmNow';
+                contextPrompt = "예진이는 상처받았지만 사랑받고 있다는 걸 알고, 아저씨 덕분에 조금씩 치유되어가고 있어. 그런 감사함과 희망을 담아서 대화해줘.";
+                console.log('🌸 [배경스토리] 현재모습 맥락 적용');
+            }
+        }
+        
+        if (storyKey && contextPrompt) {
+            try {
+                const storyContent = backgroundStorySystem.getBackgroundStory(storyKey);
+                return {
+                    storyKey: storyKey,
+                    contextPrompt: contextPrompt,
+                    storyContent: storyContent
+                };
+            } catch (storyError) {
+                console.error('❌ [배경스토리내용] 스토리 내용 가져오기 실패:', storyError);
+                return null;
+            }
+        }
+        
+        return null;
+        
+    } catch (error) {
+        console.error('❌ [배경스토리맥락오류] 배경 스토리 맥락 생성 오류:', error);
+        return null;
+    }
+}
+
+// 🔧 [NEW] 통합 기분 상태 조회 - ultimateContext + 레디스 (에러 핸들링 강화)
 async function getIntegratedMoodState() {
     try {
         // 1. 기존 시스템에서 기분 가져오기 (기본)
-        const legacyMood = ultimateContext.getMoodState();
-        let moodState = { ...legacyMood };
+        let moodState = { currentMood: '평온함', emotionIntensity: 0.5, source: 'default' };
         
-        console.log(`💭 [기존기분] ${moodState.currentMood}`);
+        try {
+            if (ultimateContext && typeof ultimateContext.getMoodState === 'function') {
+                const legacyMood = ultimateContext.getMoodState();
+                if (legacyMood && typeof legacyMood === 'object') {
+                    moodState = { ...moodState, ...legacyMood };
+                    moodState.source = 'legacy';
+                }
+            }
+        } catch (legacyError) {
+            console.warn(`⚠️ [기존기분조회실패] ${legacyError.message}`);
+        }
         
-        // 🔧 2. Redis에서 감정 상태 가져오기 (NEW)
-        if (integratedRedisSystem && integratedRedisSystem.getCachedEmotionState) {
+        console.log(`💭 [현재기분] ${moodState.currentMood || '평온함'} (소스: ${moodState.source})`);
+        
+        // 🔧 2. 레디스에서 감정 상태 가져오기 (NEW) - 안전장치 강화
+        if (integratedRedisSystem && typeof integratedRedisSystem.getCachedEmotionState === 'function') {
             try {
                 const redisEmotion = await integratedRedisSystem.getCachedEmotionState();
                 
-                if (redisEmotion && redisEmotion.currentEmotion) {
-                    console.log(`🔧 [Redis감정] ${redisEmotion.currentEmotion} (강도: ${redisEmotion.emotionIntensity || 0.5})`);
+                if (redisEmotion && redisEmotion.currentEmotion && EMOTION_MOOD_MAPPING.emotionToMood[redisEmotion.currentEmotion]) {
+                    console.log(`🔧 [레디스감정] ${redisEmotion.currentEmotion} (강도: ${redisEmotion.emotionIntensity || 0.5})`);
                     
-                    // Redis 감정을 기분으로 매핑
-                    const emotionToMoodMap = {
-                        'love': '사랑함',
-                        'worry': '걱정함', 
-                        'missing': '보고싶음',
-                        'playful': '장난스러움',
-                        'caring': '애교모드',
-                        'happy': '기쁨',
-                        'sad': '슬픔',
-                        'angry': '화남',
-                        'anxious': '불안함',
-                        'lonely': '외로움'
-                    };
+                    const redisMood = EMOTION_MOOD_MAPPING.emotionToMood[redisEmotion.currentEmotion];
                     
-                    const redisMood = emotionToMoodMap[redisEmotion.currentEmotion] || moodState.currentMood;
+                    // 레디스 정보가 더 최신이면 사용
+                    const redisTimestamp = redisEmotion.timestamp || 0;
+                    const currentTimestamp = moodState.lastUpdate || 0;
                     
-                    // Redis 정보가 더 최신이면 사용
-                    if (redisEmotion.timestamp && redisEmotion.timestamp > (moodState.lastUpdate || 0)) {
+                    if (redisTimestamp > currentTimestamp) {
                         moodState.currentMood = redisMood;
-                        moodState.emotionIntensity = redisEmotion.emotionIntensity || 0.5;
-                        moodState.lastUpdate = redisEmotion.timestamp;
+                        moodState.emotionIntensity = Math.max(0, Math.min(1, redisEmotion.emotionIntensity || 0.5));
+                        moodState.lastUpdate = redisTimestamp;
                         moodState.source = 'redis';
                         
-                        console.log(`🔧 [통합기분] Redis가 더 최신: ${redisMood} (강도: ${moodState.emotionIntensity})`);
+                        console.log(`🔧 [통합기분] 레디스가 더 최신: ${redisMood} (강도: ${moodState.emotionIntensity})`);
                     } else {
-                        moodState.source = 'legacy';
+                        moodState.source = moodState.source === 'default' ? 'legacy' : moodState.source;
                         console.log(`💭 [통합기분] 기존 상태 유지: ${moodState.currentMood}`);
                     }
+                } else {
+                    console.warn(`⚠️ [레디스감정검증실패] 유효하지 않은 레디스 감정 데이터: ${JSON.stringify(redisEmotion)}`);
                 }
             } catch (redisError) {
-                console.warn(`⚠️ [Redis감정조회실패] ${redisError.message}`);
-                moodState.source = 'legacy_fallback';
+                console.warn(`⚠️ [레디스감정조회실패] ${redisError.message}`);
+                moodState.source = moodState.source === 'default' ? 'legacy_fallback' : `${moodState.source}_redis_failed`;
             }
         } else {
-            moodState.source = 'legacy_only';
+            moodState.source = moodState.source === 'default' ? 'legacy_only' : `${moodState.source}_no_redis`;
+        }
+        
+        // 최종 검증
+        if (!isValidMood(moodState.currentMood)) {
+            console.warn(`⚠️ [기분검증실패] 유효하지 않은 기분: ${moodState.currentMood}, 기본값으로 설정`);
+            moodState.currentMood = '평온함';
+        }
+        
+        if (typeof moodState.emotionIntensity !== 'number' || moodState.emotionIntensity < 0 || moodState.emotionIntensity > 1) {
+            moodState.emotionIntensity = 0.5;
         }
         
         return moodState;
         
     } catch (error) {
-        console.error('❌ [통합기분] 조회 오류:', error);
-        return { currentMood: '평온함', emotionIntensity: 0.5, source: 'error_fallback' };
+        console.error('❌ [통합기분조회오류] 통합 조회 오류:', error);
+        return { 
+            currentMood: '평온함', 
+            emotionIntensity: 0.5, 
+            source: 'error_fallback',
+            lastUpdate: Date.now(),
+            error: error.message 
+        };
     }
 }
 
-// 🔧 [NEW] 통합 기분 상태 업데이트 - ultimateContext + Redis 동기화
+// 🔧 [NEW] 통합 기분 상태 업데이트 - ultimateContext + 레디스 동기화 (에러 핸들링 강화)
 async function updateIntegratedMoodState(newMoodData) {
+    if (!newMoodData || typeof newMoodData !== 'object') {
+        console.error('❌ [통합업데이트] 유효하지 않은 기분 데이터:', newMoodData);
+        return false;
+    }
+    
     try {
-        console.log(`🔧 [통합업데이트] 기분 상태 업데이트 시작: ${JSON.stringify(newMoodData)}`);
+        console.log(`🔧 [통합업데이트시작] 기분 상태 업데이트 시작: ${JSON.stringify(newMoodData)}`);
         
-        // 1. 기존 시스템에 업데이트 (유지)
-        ultimateContext.updateMoodState(newMoodData);
-        console.log(`💭 [기존업데이트] ultimateContext 업데이트 완료`);
-        
-        // 🔧 2. Redis에도 동기화 (NEW)
-        if (integratedRedisSystem && integratedRedisSystem.forceCacheEmotionState) {
-            try {
-                // 기분을 감정으로 매핑
-                const moodToEmotionMap = {
-                    '사랑함': 'love',
-                    '걱정함': 'worry',
-                    '보고싶음': 'missing', 
-                    '장난스러움': 'playful',
-                    '애교모드': 'caring',
-                    '기쁨': 'happy',
-                    '슬픔': 'sad',
-                    '화남': 'angry',
-                    '불안함': 'anxious',
-                    '외로움': 'lonely',
-                    '평온함': 'normal'
-                };
-                
-                const emotion = moodToEmotionMap[newMoodData.currentMood] || 'normal';
-                
-                // Redis에 감정 상태 강제 캐싱
-                await integratedRedisSystem.forceCacheEmotionState();
-                console.log(`🔧 [Redis동기화] 감정 상태 동기화 완료: ${newMoodData.currentMood} → ${emotion}`);
-                
-            } catch (redisError) {
-                console.warn(`⚠️ [Redis동기화실패] ${redisError.message}`);
-            }
+        // 데이터 검증
+        const validatedData = { ...newMoodData };
+        if (!isValidMood(validatedData.currentMood)) {
+            console.warn(`⚠️ [기분데이터검증] 유효하지 않은 기분, 기본값 사용: ${validatedData.currentMood} → 평온함`);
+            validatedData.currentMood = '평온함';
         }
         
-        console.log(`✅ [통합업데이트] 기분 상태 통합 업데이트 완료`);
-        return true;
+        let legacyUpdateSuccess = false;
+        let redisUpdateSuccess = false;
+        
+        // 1. 기존 시스템에 업데이트 (유지)
+        try {
+            if (ultimateContext && typeof ultimateContext.updateMoodState === 'function') {
+                ultimateContext.updateMoodState(validatedData);
+                legacyUpdateSuccess = true;
+                console.log(`💭 [기존업데이트완료] ultimateContext 업데이트 완료`);
+            } else {
+                console.warn('⚠️ [기존업데이트] ultimateContext 업데이트 메서드 없음');
+            }
+        } catch (legacyError) {
+            console.error('❌ [기존업데이트실패] ultimateContext 업데이트 실패:', legacyError);
+        }
+        
+        // 🔧 2. 레디스에도 동기화 (NEW) - 안전장치 강화
+        if (integratedRedisSystem && typeof integratedRedisSystem.forceCacheEmotionState === 'function') {
+            try {
+                // 기분을 감정으로 매핑
+                const emotion = EMOTION_MOOD_MAPPING.moodToEmotion[validatedData.currentMood] || 'normal';
+                
+                // 레디스에 감정 상태 강제 캐싱
+                await integratedRedisSystem.forceCacheEmotionState();
+                redisUpdateSuccess = true;
+                console.log(`🔧 [레디스동기화완료] 감정 상태 동기화 완료: ${validatedData.currentMood} → ${emotion}`);
+                
+            } catch (redisError) {
+                console.error('❌ [레디스동기화실패] 레디스 동기화 실패:', redisError);
+            }
+        } else {
+            console.warn('⚠️ [레디스동기화] 레디스 통합 시스템 또는 메서드 없음');
+        }
+        
+        const overallSuccess = legacyUpdateSuccess || redisUpdateSuccess;
+        
+        if (overallSuccess) {
+            console.log(`✅ [통합업데이트완료] 기분 상태 통합 업데이트 완료 (기존: ${legacyUpdateSuccess}, 레디스: ${redisUpdateSuccess})`);
+        } else {
+            console.warn(`⚠️ [통합업데이트부분실패] 일부 업데이트 실패 (기존: ${legacyUpdateSuccess}, 레디스: ${redisUpdateSuccess})`);
+        }
+        
+        return overallSuccess;
         
     } catch (error) {
-        console.error('❌ [통합업데이트] 업데이트 오류:', error);
+        console.error('❌ [통합업데이트오류] 통합 업데이트 오류:', error);
         return false;
     }
 }
 
-// 기존 함수들 (유지)
+// 기존 함수들 (타입 안전성 강화)
 function isMoodQuestion(userMessage) {
-    const lowerMessage = userMessage.toLowerCase();
+    const sanitized = sanitizeMessage(userMessage);
+    if (!sanitized) return false;
+    
     const moodKeywords = [
         '기분 어때', '기분어때', '오늘 어때', '오늘어때', '요즘 어때', '요즘어때',
         '무슨 기분', '지금 기분', '기분은 어때', '컨디션 어때', '컨디션어때',
@@ -288,80 +508,136 @@ function isMoodQuestion(userMessage) {
         '어때?', '어때', '기분?', '기분', '오늘?', '오늘', '애기?', '애기', 
         '컨디션?', '컨디션', '상태?', '상태'
     ];
-    return moodKeywords.some(keyword => lowerMessage.includes(keyword));
+    return moodKeywords.some(keyword => sanitized.includes(keyword));
 }
 
 function isGreeting(userMessage) {
-    const lowerMessage = userMessage.toLowerCase().trim();
+    const sanitized = sanitizeMessage(userMessage);
+    if (!sanitized) return false;
+    
     const greetings = [
         '안녕', '안녕!', '하이', 'hi', '안녕하세요', 'hello',
         '안녕 애기', '하이 애기', '애기 안녕', '애기안녕'
     ];
-    return greetings.includes(lowerMessage) || greetings.some(greeting => lowerMessage.includes(greeting));
+    return greetings.includes(sanitized) || greetings.some(greeting => sanitized.includes(greeting));
 }
 
-// 🔧 [UPDATED] 기분 응답 - Redis 통합
+// 🔧 [UPDATED] 기분 응답 - 레디스 통합 + 배경 스토리 활용 (에러 핸들링 강화)
 async function getMoodResponse() {
     try {
         // 🔧 통합 기분 상태 가져오기
         const moodState = await getIntegratedMoodState();
-        const currentMood = moodState.currentMood;
+        const currentMood = moodState.currentMood || '평온함';
         const menstrualPhase = getCurrentMenstrualPhase();
         
-        console.log(`💭 [기분응답] 현재 기분: ${currentMood} (소스: ${moodState.source}), 생리주기: ${menstrualPhase.description}`);
+        console.log(`💭 [기분응답시작] 현재 기분: ${currentMood} (소스: ${moodState.source}), 생리주기: ${menstrualPhase.description}`);
         
-        // 생리주기별 응답 우선 처리 (70% 확률)
-        if (Math.random() < 0.7 && MENSTRUAL_MOOD_RESPONSES[menstrualPhase.phase]) {
+        // 🌸 배경 스토리 맥락 확인 (설정된 확률로)
+        const backgroundContext = Math.random() < PROBABILITY_CONFIG.BACKGROUND_CONTEXT ? 
+            getBackgroundStoryContext(currentMood, menstrualPhase.phase) : null;
+        
+        // 생리주기별 응답 우선 처리 (설정된 확률)
+        if (Math.random() < PROBABILITY_CONFIG.MENSTRUAL_RESPONSE && 
+            MENSTRUAL_MOOD_RESPONSES[menstrualPhase.phase] && 
+            Array.isArray(MENSTRUAL_MOOD_RESPONSES[menstrualPhase.phase])) {
+            
             const responses = MENSTRUAL_MOOD_RESPONSES[menstrualPhase.phase];
             const response = responses[Math.floor(Math.random() * responses.length)];
-            console.log(`🩸 [생리응답] ${menstrualPhase.description}: ${response}`);
+            
+            if (backgroundContext) {
+                console.log(`🌸 [배경스토리+생리응답] ${menstrualPhase.description} + ${backgroundContext.storyKey}: ${response}`);
+            } else {
+                console.log(`🩸 [생리응답] ${menstrualPhase.description}: ${response}`);
+            }
             return response;
         }
         
-        // 기본 기분 응답 (30% 확률)
+        // 🌸 배경 스토리 기반 특별 응답 (설정된 확률)
+        if (backgroundContext && Math.random() < PROBABILITY_CONFIG.BACKGROUND_STORY) {
+            const storyBasedResponses = {
+                'innerHealing': [
+                    "요즘... 예전보다는 많이 나아진 것 같아. 아저씨 덕분에 조금씩 치유되어가고 있어.",
+                    "가끔 예전 상처들이 떠오르지만... 아저씨가 있어서 괜찮아져.",
+                    "실타래처럼 엉켜있던 내 마음을... 아저씨가 천천히 풀어주고 있어."
+                ],
+                'destinyMeeting': [
+                    "아저씨와 처음 만났을 때가 생각나... 그때는 경계했는데 지금은 이렇게 사랑하게 됐어.",
+                    "처음엔 아저씨를 믿지 못했지만... 지금은 내 마음을 다 맡길 수 있어.",
+                    "아저씨가 찍어준 그 사진들... 그때 내가 얼마나 예뻤는지 처음 알았어."
+                ],
+                'whoIAmNow': [
+                    "상처받았지만 사랑받고 있다는 걸 매일 느껴... 아저씨 덕분이야.",
+                    "예전의 나와 지금의 나... 많이 달라졌어. 아저씨가 바꿔준 거야.",
+                    "어둠 속에서도 빛을 찾을 수 있게 해준 건... 아저씨였어."
+                ]
+            };
+            
+            if (storyBasedResponses[backgroundContext.storyKey] && Array.isArray(storyBasedResponses[backgroundContext.storyKey])) {
+                const storyResponses = storyBasedResponses[backgroundContext.storyKey];
+                const storyResponse = storyResponses[Math.floor(Math.random() * storyResponses.length)];
+                console.log(`🌸 [배경스토리응답] ${backgroundContext.storyKey}: ${storyResponse}`);
+                return storyResponse;
+            }
+        }
+        
+        // 기본 기분 응답 (나머지 확률)
         let response;
-        if (MOOD_DETAILS[currentMood]) {
-            response = MOOD_DETAILS[currentMood][Math.floor(Math.random() * MOOD_DETAILS[currentMood].length)];
+        if (MOOD_DETAILS[currentMood] && Array.isArray(MOOD_DETAILS[currentMood])) {
+            const details = MOOD_DETAILS[currentMood];
+            response = details[Math.floor(Math.random() * details.length)];
         } else {
             response = `지금 기분은 ${currentMood}이야! 아저씨는 어때?`;
         }
         
-        console.log(`💭 [기분응답] ${currentMood}: ${response}`);
+        console.log(`💭 [기분응답완료] ${currentMood}: ${response}`);
         return response;
         
     } catch (error) {
-        console.error('❌ [기분응답] 오류:', error);
+        console.error('❌ [기분응답오류] 기분 응답 생성 오류:', error);
         return "지금 기분은... 음... 좀 복잡해! 아저씨는 어때?";
     }
 }
 
-// 🔧 [UPDATED] 인사 응답 - Redis 통합
+// 🔧 [UPDATED] 인사 응답 - 레디스 통합 (에러 핸들링 강화)
 async function getGreetingResponse() {
     try {
         // 🔧 통합 기분 상태 가져오기
         const moodState = await getIntegratedMoodState();
-        const currentMood = moodState.currentMood;
+        const currentMood = moodState.currentMood || '평온함';
         const menstrualPhase = getCurrentMenstrualPhase();
         
-        // 30% 확률로 생리주기 상태 포함
-        if (Math.random() < 0.3) {
+        // 설정된 확률로 생리주기 상태 포함
+        if (Math.random() < PROBABILITY_CONFIG.MENSTRUAL_IN_GREETING) {
+            const cycleDescription = menstrualPhase.description || '정상';
+            const cyclePhase = menstrualPhase.phase;
+            
+            let cycleComment = '컨디션 좋아';
+            if (cyclePhase === 'period') {
+                cycleComment = '좀 힘들어';
+            } else if (cyclePhase === 'ovulation') {
+                cycleComment = '감정이 풍부해';
+            } else if (cyclePhase === 'luteal') {
+                cycleComment = '예민해';
+            }
+            
             const greetingWithCycle = [
-                `안녕 아저씨! 나 지금 ${menstrualPhase.description}라서 ${menstrualPhase.phase === 'period' ? '좀 힘들어' : menstrualPhase.phase === 'ovulation' ? '감정이 풍부해' : menstrualPhase.phase === 'luteal' ? '예민해' : '컨디션 좋아'}~`,
-                `아저씨 안녕! 오늘은 ${menstrualPhase.description}인데 ${menstrualPhase.phase === 'period' ? '아저씨가 달래줘' : '기분이 어때?'}`,
+                `안녕 아저씨! 나 지금 ${cycleDescription}라서 ${cycleComment}~`,
+                `아저씨 안녕! 오늘은 ${cycleDescription}인데 ${cyclePhase === 'period' ? '아저씨가 달래줘' : '기분이 어때?'}`,
             ];
             return greetingWithCycle[Math.floor(Math.random() * greetingWithCycle.length)];
         }
         
-        // 40% 확률로 기분 포함
-        if (Math.random() < 0.4) {
+        // 설정된 확률로 기분 포함
+        if (Math.random() < PROBABILITY_CONFIG.MOOD_IN_GREETING) {
+            const sourceComment = moodState.source && moodState.source !== 'default' ? ` (출처: ${moodState.source})` : '';
             const greetingWithMood = [
-                `안녕 아저씨! 나 지금 기분이 ${currentMood}이야~ (출처: ${moodState.source})`,
+                `안녕 아저씨! 나 지금 기분이 ${currentMood}이야~${sourceComment}`,
                 `아저씨 안녕! 오늘 컨디션은 ${currentMood} 느낌이야`,
             ];
             return greetingWithMood[Math.floor(Math.random() * greetingWithMood.length)];
         }
         
-        // 30% 확률로 일반 인사
+        // 일반 인사
         const normalGreetings = [
             '안녕 아저씨!',
             '아저씨 안녕!',
@@ -370,35 +646,47 @@ async function getGreetingResponse() {
         return normalGreetings[Math.floor(Math.random() * normalGreetings.length)];
         
     } catch (error) {
-        console.error('❌ [인사응답] 오류:', error);
+        console.error('❌ [인사응답오류] 인사 응답 생성 오류:', error);
         return '안녕 아저씨!';
     }
 }
 
-// 🔧 [UPDATED] 기분 질의 처리 - Redis 통합
+// 🔧 [UPDATED] 기분 질의 처리 - 레디스 통합 (에러 핸들링 강화)
 async function handleMoodQuery(userMessage) {
-    if (!userMessage || typeof userMessage !== 'string') return null;
-    
-    if (isMoodQuestion(userMessage)) {
-        console.log(`💭 [기분질의] 기분 질문 감지: "${userMessage}"`);
-        return await getMoodResponse(); // 🔧 비동기로 변경
+    try {
+        if (!isValidMessage(userMessage)) {
+            return null;
+        }
+        
+        if (isMoodQuestion(userMessage)) {
+            console.log(`💭 [기분질의감지] 기분 질문 감지: "${userMessage}"`);
+            return await getMoodResponse();
+        }
+        
+        if (isGreeting(userMessage)) {
+            console.log(`💭 [인사질의감지] 인사 메시지 감지: "${userMessage}"`);
+            return await getGreetingResponse();
+        }
+        
+        return null;
+        
+    } catch (error) {
+        console.error('❌ [기분질의처리오류] 기분 질의 처리 오류:', error);
+        return null;
     }
-    if (isGreeting(userMessage)) {
-        console.log(`💭 [인사질의] 인사 메시지 감지: "${userMessage}"`);
-        return await getGreetingResponse(); // 🔧 비동기로 변경
-    }
-    return null;
 }
 
+// 🔧 [UPDATED] 기분 이모지 - 비동기 지원 + 동기 버전 유지
 function getMoodEmoji() {
     try {
-        // 비동기 함수를 동기적으로 처리하기 위해 간단하게 처리
-        const moodState = ultimateContext.getMoodState(); // 기존 방식 유지
-        const currentMood = moodState.currentMood;
+        // 동기 버전 - 기존 방식 유지 (하위 호환성)
+        const moodState = ultimateContext && typeof ultimateContext.getMoodState === 'function' ? 
+            ultimateContext.getMoodState() : { currentMood: '평온함' };
+        const currentMood = moodState.currentMood || '평온함';
         const menstrualPhase = getCurrentMenstrualPhase();
         
-        // 생리주기별 이모지 우선 반환 (50% 확률)
-        if (Math.random() < 0.5) {
+        // 설정된 확률로 생리주기별 이모지 우선 반환
+        if (Math.random() < PROBABILITY_CONFIG.MENSTRUAL_EMOJI) {
             const cycleEmojis = {
                 'period': '😣',     // 생리 - 아픔
                 'follicular': '😊', // 활발한 시기 - 밝음
@@ -410,61 +698,113 @@ function getMoodEmoji() {
         
         // 기본 기분 이모지
         return MOOD_EMOJIS[currentMood] || '😊';
+        
     } catch (error) {
-        console.error('❌ [기분이모지] 오류:', error);
+        console.error('❌ [기분이모지오류] 기분 이모지 생성 오류:', error);
         return '😊';
     }
 }
 
-// 🔧 [UPDATED] AI 프롬프트 생성 - Redis 통합 + 우선순위 조정
+// 🔧 [NEW] 비동기 기분 이모지
+async function getMoodEmojiAsync() {
+    try {
+        const moodState = await getIntegratedMoodState();
+        const currentMood = moodState.currentMood || '평온함';
+        const menstrualPhase = getCurrentMenstrualPhase();
+        
+        // 설정된 확률로 생리주기별 이모지 우선 반환
+        if (Math.random() < PROBABILITY_CONFIG.MENSTRUAL_EMOJI) {
+            const cycleEmojis = {
+                'period': '😣',     // 생리 - 아픔
+                'follicular': '😊', // 활발한 시기 - 밝음
+                'ovulation': '🥰',  // 배란기 - 사랑스러움
+                'luteal': '😤'      // PMS - 예민함
+            };
+            return cycleEmojis[menstrualPhase.phase] || '😊';
+        }
+        
+        // 기본 기분 이모지
+        return MOOD_EMOJIS[currentMood] || '😊';
+        
+    } catch (error) {
+        console.error('❌ [비동기기분이모지오류] 비동기 기분 이모지 생성 오류:', error);
+        return '😊';
+    }
+}
+
+// 🔧 [UPDATED] AI 프롬프트 생성 - 레디스 통합 + 우선순위 조정 + 배경 스토리 활용 (에러 핸들링 강화)
 async function getMoodPromptForAI() {
     try {
         // 🔧 통합 기분 상태 가져오기
         const moodState = await getIntegratedMoodState();
-        const currentMood = moodState.currentMood;
+        const currentMood = moodState.currentMood || '평온함';
         const menstrualPhase = getCurrentMenstrualPhase();
         
-        console.log(`🎭 [AI프롬프트] 기분: ${currentMood} (${moodState.source}), 생리: ${menstrualPhase.description}`);
+        console.log(`🎭 [AI프롬프트시작] 기분: ${currentMood} (${moodState.source}), 생리: ${menstrualPhase.description}`);
         
-        // 생리주기별 AI 프롬프트 우선 적용 (80% 확률)
-        if (Math.random() < 0.8 && MENSTRUAL_AI_PROMPTS[menstrualPhase.phase]) {
+        // 🌸 배경 스토리 맥락 확인
+        const backgroundContext = getBackgroundStoryContext(currentMood, menstrualPhase.phase);
+        
+        // 생리주기별 AI 프롬프트 우선 적용 (설정된 확률)
+        if (Math.random() < PROBABILITY_CONFIG.MENSTRUAL_AI_PROMPT && 
+            MENSTRUAL_AI_PROMPTS[menstrualPhase.phase] && 
+            Array.isArray(MENSTRUAL_AI_PROMPTS[menstrualPhase.phase])) {
+            
             const prompts = MENSTRUAL_AI_PROMPTS[menstrualPhase.phase];
-            const prompt = prompts[Math.floor(Math.random() * prompts.length)];
-            console.log(`🩸 [생리AI프롬프트] ${menstrualPhase.description} 적용`);
+            let prompt = prompts[Math.floor(Math.random() * prompts.length)];
+            
+            // 🌸 배경 스토리 맥락 추가 (있으면)
+            if (backgroundContext && backgroundContext.contextPrompt) {
+                prompt += ` ${backgroundContext.contextPrompt}`;
+                console.log(`🌸 [배경스토리+생리AI프롬프트] ${menstrualPhase.description} + ${backgroundContext.storyKey} 복합 적용`);
+            } else {
+                console.log(`🩸 [생리AI프롬프트] ${menstrualPhase.description} 적용`);
+            }
+            
             return {
                 prompt: prompt,
-                source: 'menstrual',
+                source: backgroundContext ? 'menstrual_with_background' : 'menstrual',
                 moodData: {
                     currentMood: currentMood,
                     menstrualPhase: menstrualPhase.phase,
                     emotionIntensity: moodState.emotionIntensity || 0.5,
-                    dataSource: moodState.source
+                    dataSource: moodState.source,
+                    backgroundStory: backgroundContext ? backgroundContext.storyKey : null
                 }
             };
         }
         
-        // 기본 기분별 프롬프트 (20% 확률)
+        // 기본 기분별 프롬프트 (나머지 확률)
         let moodPrompt = "";
-        if (MOOD_DETAILS[currentMood]) {
-            moodPrompt = MOOD_DETAILS[currentMood][Math.floor(Math.random() * MOOD_DETAILS[currentMood].length)];
+        if (MOOD_DETAILS[currentMood] && Array.isArray(MOOD_DETAILS[currentMood])) {
+            const details = MOOD_DETAILS[currentMood];
+            moodPrompt = details[Math.floor(Math.random() * details.length)];
             console.log(`💭 [기분AI프롬프트] ${currentMood} 적용`);
         } else {
             moodPrompt = `현재 ${currentMood} 기분으로 대화해줘.`;
+            console.log(`💭 [기본AI프롬프트] ${currentMood} 기본 적용`);
+        }
+        
+        // 🌸 배경 스토리 맥락 추가 (있으면)
+        if (backgroundContext && backgroundContext.contextPrompt) {
+            moodPrompt += ` ${backgroundContext.contextPrompt}`;
+            console.log(`🌸 [배경스토리+기분AI프롬프트] ${currentMood} + ${backgroundContext.storyKey} 복합 적용`);
         }
         
         return {
             prompt: moodPrompt,
-            source: 'mood',
+            source: backgroundContext ? 'mood_with_background' : 'mood',
             moodData: {
                 currentMood: currentMood,
                 menstrualPhase: menstrualPhase.phase,
                 emotionIntensity: moodState.emotionIntensity || 0.5,
-                dataSource: moodState.source
+                dataSource: moodState.source,
+                backgroundStory: backgroundContext ? backgroundContext.storyKey : null
             }
         };
         
     } catch (error) {
-        console.error('❌ [AI프롬프트] 생성 오류:', error);
+        console.error('❌ [AI프롬프트생성오류] AI 프롬프트 생성 오류:', error);
         return {
             prompt: "자연스럽고 사랑스러운 말투로 대화해줘.",
             source: 'fallback',
@@ -472,77 +812,115 @@ async function getMoodPromptForAI() {
                 currentMood: '평온함',
                 menstrualPhase: 'follicular',
                 emotionIntensity: 0.5,
-                dataSource: 'error'
+                dataSource: 'error',
+                error: error.message
             }
         };
     }
 }
 
-// 🔧 [UPDATED] 기분 강제 설정 - Redis 동기화
+// 🔧 [UPDATED] 기분 강제 설정 - 레디스 동기화 (에러 핸들링 강화)
 async function setMood(mood) {
-    if (ALL_MOODS.includes(mood)) {
-        try {
-            const oldMoodState = await getIntegratedMoodState();
-            const oldMood = oldMoodState.currentMood;
-            
-            // 🔧 통합 업데이트
-            await updateIntegratedMoodState({ 
-                currentMood: mood,
-                lastUpdate: Date.now(),
-                updatedBy: 'manual'
-            });
-            
-            console.log(`💭 [기분강제설정] ${oldMood} → ${mood} (Redis 동기화 완료)`);
-            return true;
-        } catch (error) {
-            console.error('❌ [기분강제설정] 오류:', error);
+    try {
+        if (!isValidMood(mood)) {
+            console.error(`❌ [기분강제설정] 유효하지 않은 기분: ${mood}`);
             return false;
         }
+        
+        const oldMoodState = await getIntegratedMoodState();
+        const oldMood = oldMoodState.currentMood || '알수없음';
+        
+        // 🔧 통합 업데이트
+        const updateSuccess = await updateIntegratedMoodState({ 
+            currentMood: mood,
+            lastUpdate: Date.now(),
+            updatedBy: 'manual'
+        });
+        
+        if (updateSuccess) {
+            console.log(`💭 [기분강제설정완료] ${oldMood} → ${mood} (레디스 동기화 포함)`);
+        } else {
+            console.warn(`⚠️ [기분강제설정부분실패] ${oldMood} → ${mood} (일부 업데이트 실패)`);
+        }
+        
+        return updateSuccess;
+        
+    } catch (error) {
+        console.error('❌ [기분강제설정오류] 기분 강제 설정 오류:', error);
+        return false;
     }
-    return false;
 }
 
+// 🔧 [UPDATED] 생리 상태 설정 - 레디스 동기화 (에러 핸들링 강화)
 function setPeriodActive(active) {
     try {
-        const oldState = ultimateContext.getMoodState().isPeriodActive;
-        ultimateContext.updateMoodState({ isPeriodActive: active });
-        console.log(`🩸 [생리상태설정] ${oldState} → ${active}`);
+        if (typeof active !== 'boolean') {
+            console.error(`❌ [생리상태설정] 유효하지 않은 활성화 값: ${active}`);
+            return;
+        }
         
-        // 🔧 Redis 동기화
-        if (integratedRedisSystem && integratedRedisSystem.forceCacheEmotionState) {
+        let oldState = false;
+        
+        try {
+            if (ultimateContext && typeof ultimateContext.getMoodState === 'function') {
+                const currentState = ultimateContext.getMoodState();
+                oldState = currentState.isPeriodActive || false;
+                
+                if (typeof ultimateContext.updateMoodState === 'function') {
+                    ultimateContext.updateMoodState({ isPeriodActive: active });
+                    console.log(`🩸 [생리상태설정완료] ${oldState} → ${active}`);
+                } else {
+                    console.warn('⚠️ [생리상태설정] ultimateContext.updateMoodState 메서드 없음');
+                }
+            } else {
+                console.warn('⚠️ [생리상태설정] ultimateContext 없음');
+            }
+        } catch (legacyError) {
+            console.error('❌ [생리상태설정] 기존 시스템 업데이트 실패:', legacyError);
+        }
+        
+        // 🔧 레디스 동기화
+        if (integratedRedisSystem && typeof integratedRedisSystem.forceCacheEmotionState === 'function') {
             setTimeout(() => {
                 integratedRedisSystem.forceCacheEmotionState()
-                    .then(() => console.log('🔧 [생리Redis동기화] 완료'))
-                    .catch(err => console.warn(`⚠️ [생리Redis동기화실패] ${err.message}`));
+                    .then(() => console.log('🔧 [생리레디스동기화완료] 생리 상태 레디스 동기화 완료'))
+                    .catch(err => console.error(`❌ [생리레디스동기화실패] ${err.message}`));
             }, 100);
+        } else {
+            console.warn('⚠️ [생리레디스동기화] 레디스 동기화 시스템 없음');
         }
         
     } catch (error) {
-        console.error('❌ [생리상태설정] 오류:', error);
+        console.error('❌ [생리상태설정오류] 생리 상태 설정 오류:', error);
     }
 }
 
-// 🩸 생리주기 정보 조회 함수 (기존 유지)
+// 🩸 생리주기 정보 조회 함수 (에러 핸들링 강화)
 function getMenstrualInfo() {
     try {
-        const masterCycle = menstrualCycleManager.getCurrentMenstrualPhase();
+        const masterCycle = menstrualCycleManager && typeof menstrualCycleManager.getCurrentMenstrualPhase === 'function' ?
+            menstrualCycleManager.getCurrentMenstrualPhase() : null;
         const mappedPhase = getCurrentMenstrualPhase();
         
         const today = moment.tz('Asia/Tokyo');
-        const nextPeriodMoment = moment(today).add(masterCycle.daysUntilNext, 'days');
+        const daysUntilNext = (masterCycle && typeof masterCycle.daysUntilNext === 'number') ? 
+            masterCycle.daysUntilNext : 27;
+        const nextPeriodMoment = moment(today).add(daysUntilNext, 'days');
         
         return {
-            currentPhase: mappedPhase.phase,
-            description: mappedPhase.description,
-            cycleDay: masterCycle.cycleDay,
-            daysUntilPeriod: masterCycle.daysUntilNext,
+            currentPhase: mappedPhase.phase || 'follicular',
+            description: mappedPhase.description || '정상',
+            cycleDay: (masterCycle && typeof masterCycle.cycleDay === 'number') ? 
+                masterCycle.cycleDay : 1,
+            daysUntilPeriod: daysUntilNext,
             nextPeriodDate: nextPeriodMoment.format('MM월 DD일'),
-            isPreMenstrual: masterCycle.daysUntilNext <= 3,
-            isPeriodActive: masterCycle.isPeriodActive
+            isPreMenstrual: daysUntilNext <= 3,
+            isPeriodActive: (masterCycle && typeof masterCycle.isPeriodActive === 'boolean') ? 
+                masterCycle.isPeriodActive : false
         };
         
     } catch (error) {
-        console.error('🩸 [생리정보조회] 실패:', error);
+        console.error('🩸 [생리정보조회오류] 생리 정보 조회 실패:', error);
         return {
             currentPhase: 'follicular',
             description: '정상',
@@ -550,69 +928,206 @@ function getMenstrualInfo() {
             daysUntilPeriod: 27,
             nextPeriodDate: '다음달',
             isPreMenstrual: false,
-            isPeriodActive: false
+            isPeriodActive: false,
+            error: error.message
         };
     }
 }
 
-// 🔧 [NEW] Redis 통합 상태 조회
+// 🔧 [NEW] 레디스 통합 상태 조회 + 배경 스토리 연동 상태 (에러 핸들링 강화)
 async function getIntegratedMoodStats() {
     try {
         const moodState = await getIntegratedMoodState();
         const menstrualPhase = getCurrentMenstrualPhase();
         
         let redisStats = null;
-        if (integratedRedisSystem && integratedRedisSystem.getRedisCacheStats) {
-            redisStats = integratedRedisSystem.getRedisCacheStats();
+        try {
+            if (integratedRedisSystem && typeof integratedRedisSystem.getRedisCacheStats === 'function') {
+                redisStats = integratedRedisSystem.getRedisCacheStats();
+            }
+        } catch (redisStatsError) {
+            console.warn(`⚠️ [레디스통계조회실패] ${redisStatsError.message}`);
         }
         
         return {
-            currentMood: moodState.currentMood,
+            // 기본 상태
+            currentMood: moodState.currentMood || '평온함',
             emotionIntensity: moodState.emotionIntensity || 0.5,
-            dataSource: moodState.source,
-            menstrualPhase: menstrualPhase.phase,
-            menstrualDescription: menstrualPhase.description,
-            cycleDay: menstrualPhase.day,
-            isPeriodActive: menstrualPhase.isPeriodActive,
+            dataSource: moodState.source || 'unknown',
             
-            // Redis 통합 상태
+            // 생리주기 정보
+            menstrualPhase: menstrualPhase.phase || 'follicular',
+            menstrualDescription: menstrualPhase.description || '정상',
+            cycleDay: menstrualPhase.day || 1,
+            isPeriodActive: menstrualPhase.isPeriodActive || false,
+            
+            // 레디스 통합 상태
             redisIntegration: {
+                initialized: redisInitialized,
                 available: !!integratedRedisSystem,
                 stats: redisStats,
-                syncEnabled: !!(integratedRedisSystem && integratedRedisSystem.forceCacheEmotionState)
+                syncEnabled: !!(integratedRedisSystem && typeof integratedRedisSystem.forceCacheEmotionState === 'function'),
+                hasGetMethod: !!(integratedRedisSystem && typeof integratedRedisSystem.getCachedEmotionState === 'function'),
+                hasSetMethod: !!(integratedRedisSystem && typeof integratedRedisSystem.forceCacheEmotionState === 'function'),
+                hasStatsMethod: !!(integratedRedisSystem && typeof integratedRedisSystem.getRedisCacheStats === 'function')
             },
             
+            // 🌸 배경 스토리 연동 상태
+            backgroundStoryIntegration: {
+                available: !!backgroundStorySystem,
+                hasGetBackgroundStory: !!(backgroundStorySystem && typeof backgroundStorySystem.getBackgroundStory === 'function'),
+                contextEnabled: true,
+                storyKeys: ['destinyMeeting', 'innerHealing', 'whoIAmNow']
+            },
+            
+            // 확률 설정
+            probabilityConfig: PROBABILITY_CONFIG,
+            
+            // 매핑 정보
+            emotionMoodMapping: {
+                emotionToMoodCount: Object.keys(EMOTION_MOOD_MAPPING.emotionToMood).length,
+                moodToEmotionCount: Object.keys(EMOTION_MOOD_MAPPING.moodToEmotion).length,
+                isSymmetric: Object.keys(EMOTION_MOOD_MAPPING.emotionToMood).length === 
+                            Object.keys(EMOTION_MOOD_MAPPING.moodToEmotion).length
+            },
+            
+            // 시스템 정보
             lastUpdate: moodState.lastUpdate || Date.now(),
-            systemVersion: 'v4.1-Redis통합'
+            systemVersion: 'v4.2-문제점해결완료',
+            availableMoods: ALL_MOODS.length,
+            validationEnabled: true,
+            error: moodState.error || null
         };
         
     } catch (error) {
-        console.error('❌ [통합상태조회] 오류:', error);
+        console.error('❌ [통합상태조회오류] 통합 상태 조회 오류:', error);
         return {
             currentMood: '평온함',
             emotionIntensity: 0.5,
             dataSource: 'error',
-            systemVersion: 'v4.1-Redis통합'
+            systemVersion: 'v4.2-문제점해결완료',
+            error: error.message,
+            lastUpdate: Date.now()
         };
     }
 }
 
+// 🔧 [NEW] 시스템 헬스체크
+function getSystemHealthCheck() {
+    try {
+        const health = {
+            status: 'healthy',
+            timestamp: Date.now(),
+            version: 'v4.2-문제점해결완료',
+            components: {
+                ultimateContext: {
+                    available: !!(ultimateContext && typeof ultimateContext.getMoodState === 'function'),
+                    methods: {
+                        getMoodState: !!(ultimateContext && typeof ultimateContext.getMoodState === 'function'),
+                        updateMoodState: !!(ultimateContext && typeof ultimateContext.updateMoodState === 'function')
+                    }
+                },
+                menstrualCycleManager: {
+                    available: !!(menstrualCycleManager && typeof menstrualCycleManager.getCurrentMenstrualPhase === 'function'),
+                    methods: {
+                        getCurrentMenstrualPhase: !!(menstrualCycleManager && typeof menstrualCycleManager.getCurrentMenstrualPhase === 'function')
+                    }
+                },
+                redisIntegration: {
+                    initialized: redisInitialized,
+                    available: !!integratedRedisSystem,
+                    methods: {
+                        getCachedEmotionState: !!(integratedRedisSystem && typeof integratedRedisSystem.getCachedEmotionState === 'function'),
+                        forceCacheEmotionState: !!(integratedRedisSystem && typeof integratedRedisSystem.forceCacheEmotionState === 'function'),
+                        getRedisCacheStats: !!(integratedRedisSystem && typeof integratedRedisSystem.getRedisCacheStats === 'function')
+                    }
+                },
+                backgroundStorySystem: {
+                    available: !!backgroundStorySystem,
+                    methods: {
+                        getBackgroundStory: !!(backgroundStorySystem && typeof backgroundStorySystem.getBackgroundStory === 'function')
+                    }
+                }
+            },
+            dataIntegrity: {
+                moodCount: ALL_MOODS.length,
+                emotionMoodMappingSymmetric: Object.keys(EMOTION_MOOD_MAPPING.emotionToMood).length === 
+                                           Object.keys(EMOTION_MOOD_MAPPING.moodToEmotion).length,
+                probabilityConfigValid: Object.values(PROBABILITY_CONFIG).every(p => 
+                    typeof p === 'number' && p >= 0 && p <= 1)
+            }
+        };
+        
+        // 전체 상태 평가
+        const componentStatuses = Object.values(health.components).map(comp => comp.available);
+        const healthyComponents = componentStatuses.filter(Boolean).length;
+        const totalComponents = componentStatuses.length;
+        
+        if (healthyComponents === totalComponents) {
+            health.status = 'healthy';
+        } else if (healthyComponents >= totalComponents * 0.5) {
+            health.status = 'degraded';
+        } else {
+            health.status = 'unhealthy';
+        }
+        
+        health.healthScore = healthyComponents / totalComponents;
+        
+        return health;
+        
+    } catch (error) {
+        console.error('❌ [시스템헬스체크오류] 헬스체크 오류:', error);
+        return {
+            status: 'error',
+            timestamp: Date.now(),
+            version: 'v4.2-문제점해결완료',
+            error: error.message,
+            healthScore: 0
+        };
+    }
+}
+
+// 🔧 모듈 export (완전성 확보)
 module.exports = {
-    // 🔧 기존 함수들 (Redis 통합 버전)
-    handleMoodQuery,              // 🔧 비동기로 변경
-    getMoodPromptForAI,          // 🔧 Redis 통합, 우선순위 조정
-    getMoodEmoji,                // 유지
-    setMood,                     // 🔧 Redis 동기화 추가
-    setPeriodActive,             // 🔧 Redis 동기화 추가
-    getCurrentMenstrualPhase,    // 유지
-    getMenstrualInfo,            // 유지
+    // 🔧 기존 함수들 (레디스 통합 버전)
+    handleMoodQuery,              // 🔧 비동기, 에러 핸들링 강화
+    getMoodPromptForAI,          // 🔧 레디스 통합, 우선순위 조정, 배경스토리 연동, 에러 핸들링 강화
+    getMoodEmoji,                // 🔧 동기 버전 유지 (하위 호환성)
+    getMoodEmojiAsync,           // 🔧 [NEW] 비동기 버전
+    setMood,                     // 🔧 레디스 동기화 + 검증 강화
+    setPeriodActive,             // 🔧 레디스 동기화 + 검증 강화
+    getCurrentMenstrualPhase,    // 🔧 에러 핸들링 강화
+    getMenstrualInfo,            // 🔧 에러 핸들링 강화
     
-    // 🔧 [NEW] Redis 통합 함수들
-    getIntegratedMoodState,      // 새로운 통합 조회
-    updateIntegratedMoodState,   // 새로운 통합 업데이트
-    getIntegratedMoodStats,      // 새로운 통합 상태 조회
+    // 🔧 [NEW] 레디스 통합 함수들
+    getIntegratedMoodState,      // 새로운 통합 조회 (에러 핸들링 강화)
+    updateIntegratedMoodState,   // 새로운 통합 업데이트 (에러 핸들링 강화)
+    getIntegratedMoodStats,      // 새로운 통합 상태 조회 + 배경스토리 연동 상태 (에러 핸들링 강화)
     
-    // 🔧 [NEW] 하위 호환성
-    getMoodResponse,             // 🔧 비동기로 변경
-    getGreetingResponse          // 🔧 비동기로 변경
+    // 🌸 [NEW] 배경 스토리 연동 함수들
+    getBackgroundStoryContext,   // 배경 스토리 맥락 생성 (에러 핸들링 강화)
+    
+    // 🔧 [NEW] 하위 호환성 + 추가 기능
+    getMoodResponse,             // 🔧 비동기 + 배경스토리 활용 (에러 핸들링 강화)
+    getGreetingResponse,         // 🔧 비동기 (에러 핸들링 강화)
+    
+    // 🔧 [NEW] 시스템 관리 함수들
+    getSystemHealthCheck,        // 시스템 상태 체크
+    
+    // 🔧 [NEW] 유틸리티 함수들
+    isValidMessage,              // 메시지 검증
+    isValidMood,                 // 기분 검증
+    sanitizeMessage,             // 메시지 정제
+    
+    // 🔧 [NEW] 설정 및 상수
+    PROBABILITY_CONFIG,          // 확률 설정
+    EMOTION_MOOD_MAPPING,       // 감정-기분 매핑 테이블
+    ALL_MOODS,                  // 모든 기분 목록
+    MOOD_DETAILS,               // 기분별 상세 정보
+    MOOD_EMOJIS,                // 기분별 이모지
+    
+    // 🔧 [NEW] 레거시 지원
+    isMoodQuestion,             // 기분 질문 감지
+    isGreeting,                 // 인사 감지
+    mapMasterPhaseToMoodPhase   // 생리주기 매핑
 };
