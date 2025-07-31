@@ -1316,5 +1316,12 @@ module.exports = {
     analyzePhotoForPersonLearning,
     learnPersonFromUserMessage,
     // 🚨 안전한 이미지 처리
-    handleImageMessageSafely
+    handleImageMessageSafely,
+    getMemoryTapeInstance: () => memoryTape,
+    getLineClient: () => client,
+    getCurrentModelSetting: () => currentModel,
+    getSulkyManager: () => modules.sulkyManager,
+    getEmotionalContextManager: () => modules.emotionalContextManager,
+    getModules: () => modules
 };
+
