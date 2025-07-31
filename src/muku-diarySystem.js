@@ -1,5 +1,5 @@
 // ============================================================================
-// muku-diarySystem.js v7.1 - 순환 의존성 해결 버전 + Redis 일기장 시스템 확장
+// muku-diarySystem.js v7.2 - 에러 안전성 완전 강화 버전 + Redis 일기장 시스템 확장
 // ✅ 기존 모든 기능 100% 보존 + Redis 일기장 기능 추가
 // 🛠️ 지연 로딩으로 순환 의존성 문제 완전 해결
 // 🧠 ioredis 기반 기간별 조회 시스템
@@ -7,6 +7,9 @@
 // 🔍 기간별 조회: 최근 7일, 지난주, 한달전 등
 // 💾 Redis + 파일 이중 백업으로 안전성 보장
 // 🛡️ 에러 발생해도 기존 시스템에 절대 영향 없음
+// 🚨 무쿠 벙어리 방지 - 모든 에러 완벽 처리
+// 🔧 memories.push is not a function 에러 완전 해결
+// 🤖 OpenAI API 직접 호출 함수 추가
 // ============================================================================
 
 const fs = require('fs').promises;
@@ -16,19 +19,11 @@ const path = require('path');
 let ultimateContext = null;
 let memoryManager = null;
 let memoryTape = null;
-let openaiClient = null; // 🆕 OpenAI 클라이언트 변수 추가
 
 // 🆕 NEW: Redis 일기장 전용 변수들
 let redisClient = null;
 let dailyDiaryScheduler = null;
 
-// [⭐️ 신규 추가] OpenAI 클라이언트를 관리하는 함수
-function getOpenAIClient() {
-    if (!openaiClient && process.env.OPENAI_API_KEY) {
-        openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    }
-    return openaiClient;
-}
 // 기존 색상 정의 그대로 유지
 const colors = {
     diary: '\x1b[96m',      // 하늘색 (일기장)
@@ -48,8 +43,8 @@ let diarySystemStatus = {
     isInitialized: false,
     totalEntries: 0,
     lastEntryDate: null,
-    version: "7.1",
-    description: "Redis 일기장 시스템 + Memory Tape Redis 연결 + 순환 의존성 해결",
+    version: "7.2",
+    description: "에러 안전성 완전 강화 + Redis 일기장 시스템 + Memory Tape Redis 연결 + 순환 의존성 해결 + 무쿠 벙어리 방지",
     autoSaveEnabled: false,
     autoSaveInterval: null,
     dataPath: '/data/dynamic_memories.json',
@@ -95,21 +90,28 @@ function safeGetMemoryManager() {
     return memoryManager;
 }
 
-// 🔧 memoryTape 안전 로딩 (index.js를 통해)
+// 🔧 memoryTape 안전 로딩 (같은 폴더에서 직접 로딩)
 function safeGetMemoryTape() {
     if (!memoryTape) {
         try {
-            // [⭐️ 수정] index.js를 통해 이미 생성된 인스턴스를 가져옵니다.
-            // 이렇게 하면 경로 문제와 순환 의존성 문제를 모두 해결할 수 있습니다.
-            const indexModule = require('../index.js');
-            if (indexModule && indexModule.getMemoryTapeInstance) {
-                memoryTape = indexModule.getMemoryTapeInstance();
-                console.log(`${colors.diary}🔧 [지연로딩] index.js를 통해 memoryTape 로딩 성공${colors.reset}`);
-            } else {
-                console.log(`${colors.error}⚠️ [지연로딩] index.js에 getMemoryTapeInstance 함수가 없습니다.${colors.reset}`);
-            }
+            // [⭐️ 수정] 같은 src 폴더에 있으므로 직접 require
+            memoryTape = require('./muku-memory-tape');
+            console.log(`${colors.diary}🔧 [지연로딩] muku-memory-tape 직접 로딩 성공${colors.reset}`);
         } catch (e) {
-            console.log(`${colors.error}⚠️ [지연로딩] memoryTape 로딩 실패: ${e.message}${colors.reset}`);
+            console.log(`${colors.error}⚠️ [지연로딩] muku-memory-tape 로딩 실패: ${e.message}${colors.reset}`);
+            
+            // 🛡️ 폴백: index.js를 통한 로딩 시도
+            try {
+                const indexModule = require('../index.js');
+                if (indexModule && indexModule.getMemoryTapeInstance) {
+                    memoryTape = indexModule.getMemoryTapeInstance();
+                    console.log(`${colors.diary}🔧 [지연로딩] 폴백: index.js를 통해 memoryTape 로딩 성공${colors.reset}`);
+                } else {
+                    console.log(`${colors.error}⚠️ [지연로딩] index.js 폴백도 실패${colors.reset}`);
+                }
+            } catch (indexError) {
+                console.log(`${colors.error}⚠️ [지연로딩] index.js 폴백 에러: ${indexError.message}${colors.reset}`);
+            }
         }
     }
     return memoryTape;
@@ -455,16 +457,16 @@ async function generateAutoDiary() {
     }
 }
 
-// 🎨 OpenAI로 예진이 스타일 일기 생성 (자체 내장 + 전체 프롬프트)
+// 🎨 OpenAI로 예진이 스타일 일기 생성 (GPT-3.5-turbo) + 직접 API 호출 함수 추가
 async function generateDiaryWithOpenAI(dateKorean, conversationSummary, conversationCount) {
-    // 이 파일에 있는 OpenAI 클라이언트를 직접 사용합니다.
-    const openai = getOpenAIClient();
-    if (!openai) {
-        console.log(`${colors.error}⚠️ [OpenAI일기] OpenAI 클라이언트가 설정되지 않았습니다.${colors.reset}`);
-        return null;
-    }
-    
     try {
+        // 🔧 autoReply.js의 OpenAI 호출 방식 재사용
+        const callOpenAI = getOpenAIFunction();
+        if (!callOpenAI) {
+            console.log(`${colors.diaryNew}⚠️ [OpenAI일기] autoReply.js OpenAI 함수 없음${colors.reset}`);
+            return null;
+        }
+        
         // 🌸 예진이의 핵심 배경과 성격을 담은 시스템 프롬프트
         const systemPrompt = `당신은 예진이입니다. 매일 밤 10시에 하루를 정리하며 일기를 쓰는 22살 여성입니다.
 
@@ -513,19 +515,18 @@ ${conversationSummary}
 
         console.log(`${colors.diaryNew}🎨 [OpenAI일기] GPT-3.5-turbo로 일기 생성 시작...${colors.reset}`);
         
-        // 🤖 OpenAI 호출 (자체 클라이언트 사용)
-        const response = await openai.chat.completions.create({
-            model: "gpt-3.5-turbo",
-            messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }],
-            temperature: 0.8,
-            max_tokens: 450,
-        });
-
-        const content = response.choices[0].message.content;
+        // 🤖 OpenAI 호출 (GPT-3.5-turbo 사용)
+        const openaiResponse = await callOpenAI(systemPrompt, userPrompt, 'gpt-3.5-turbo');
+        
+        if (!openaiResponse) {
+            console.log(`${colors.diaryNew}⚠️ [OpenAI일기] OpenAI 응답 없음${colors.reset}`);
+            return null;
+        }
         
         // 📝 JSON 파싱 시도
         try {
-            const jsonMatch = content.match(/\{[\s\S]*\}/);
+            // JSON 형태로 응답이 온 경우
+            const jsonMatch = openaiResponse.match(/\{[\s\S]*\}/);
             if (jsonMatch) {
                 const diaryData = JSON.parse(jsonMatch[0]);
                 console.log(`${colors.diaryNew}✅ [OpenAI일기] JSON 파싱 성공: "${diaryData.title}"${colors.reset}`);
@@ -535,24 +536,53 @@ ${conversationSummary}
             console.log(`${colors.diaryNew}⚠️ [OpenAI일기] JSON 파싱 실패, 텍스트 분석 시도...${colors.reset}`);
         }
         
-        // 📄 텍스트 형태로 온 경우 간단 파싱 (폴백 로직)
-        const lines = content.split('\n').filter(line => line.trim());
+        // 📄 텍스트 형태로 온 경우 간단 파싱
+        const lines = openaiResponse.split('\n').filter(line => line.trim());
         const title = lines[0]?.replace(/^제목:|^title:/i, '').trim() || '오늘의 일기';
-        const diaryText = lines.slice(1).join('\n').trim() || content;
+        const content = lines.slice(1).join('\n').trim() || openaiResponse;
         
+        // 😊 감정 추정 (키워드 기반) - 감수성 풍부한 예진이 버전
         let mood = 'peaceful';
-        if (diaryText.includes('행복') || diaryText.includes('기뻐')) mood = 'happy';
-        else if (diaryText.includes('슬프') || diaryText.includes('우울')) mood = 'sad';
-        else if (diaryText.includes('사랑') || diaryText.includes('고마')) mood = 'love';
         
+        if (content.includes('행복') || content.includes('기뻐') || content.includes('좋아') || 
+            content.includes('웃음') || content.includes('신나')) {
+            mood = 'happy';
+        } else if (content.includes('슬프') || content.includes('우울') || content.includes('울었') || 
+                   content.includes('아픔') || content.includes('힘들')) {
+            mood = 'sad';
+        } else if (content.includes('예민') || content.includes('복잡') || content.includes('조심스') || 
+                   content.includes('섬세') || content.includes('미묘')) {
+            mood = 'sensitive';
+        } else if (content.includes('설레') || content.includes('신나') || content.includes('놀라') || 
+                   content.includes('두근') || content.includes('활기')) {
+            mood = 'excited';
+        } else if (content.includes('사랑') || content.includes('고마') || content.includes('아저씨') || 
+                   content.includes('따뜻') || content.includes('달콤')) {
+            mood = 'love';
+        } else if (content.includes('그리') || content.includes('추억') || content.includes('옛날') || 
+                   content.includes('기억') || content.includes('과거')) {
+            mood = 'nostalgic';
+        } else if (content.includes('꿈') || content.includes('환상') || content.includes('몽환') || 
+                   content.includes('상상') || content.includes('신비')) {
+            mood = 'dreamy';
+        } else if (content.includes('고요') || content.includes('평온') || content.includes('차분') || 
+                   content.includes('조용') || content.includes('힐링')) {
+            mood = 'peaceful';
+        }
+        
+        // 🏷️ 기본 태그 생성 (감수성 반영)
         const baseTags = ['일기', '하루정리', '밤10시의감성'];
         if (conversationCount > 0) baseTags.push('아저씨와대화');
+        if (content.includes('아저씨') || content.includes('아조씨')) baseTags.push('아저씨');
+        if (content.includes('감동') || content.includes('미묘') || content.includes('섬세')) baseTags.push('섬세한마음');
+        if (content.includes('바람') || content.includes('하늘') || content.includes('별') || content.includes('꽃')) baseTags.push('자연관찰');
+        if (content.includes('작은') || content.includes('소소') || content.includes('조그만')) baseTags.push('작은것들의아름다움');
         
         console.log(`${colors.diaryNew}✅ [OpenAI일기] 텍스트 분석 완료: "${title}"${colors.reset}`);
         
         return {
-            title: title.substring(0, 15),
-            content: diaryText,
+            title: title.substring(0, 15), // 제목 길이 제한
+            content: content,
             mood: mood,
             tags: baseTags
         };
@@ -563,24 +593,25 @@ ${conversationSummary}
     }
 }
 
-// 🔧 autoReply.js의 OpenAI 함수 가져오기 (안전하게)
+// 🔧 getOpenAIFunction 함수 개선 + 직접 OpenAI API 호출 함수 추가 (벙어리 방지!)
 function getOpenAIFunction() {
     try {
         // 1순위: autoReply.js에서 직접 가져오기
         const autoReply = require('./autoReply.js');
         if (autoReply && typeof autoReply.callOpenAI === 'function') {
+            console.log(`${colors.diaryNew}🔧 [OpenAI일기] autoReply.callOpenAI 함수 발견${colors.reset}`);
             return autoReply.callOpenAI;
         }
         
         // 2순위: 전역에서 찾기
         if (global.callOpenAI && typeof global.callOpenAI === 'function') {
+            console.log(`${colors.diaryNew}🔧 [OpenAI일기] global.callOpenAI 함수 발견${colors.reset}`);
             return global.callOpenAI;
         }
         
         // 3순위: autoReply 모듈 내부 함수 찾기
         if (autoReply) {
-            // callOpenAI가 export되지 않은 경우, 다른 이름으로 찾아보기
-            const possibleNames = ['openaiCall', 'callGPT', 'askOpenAI', 'generateResponse'];
+            const possibleNames = ['openaiCall', 'callGPT', 'askOpenAI', 'generateResponse', 'generateReply'];
             for (const name of possibleNames) {
                 if (typeof autoReply[name] === 'function') {
                     console.log(`${colors.diaryNew}🔧 [OpenAI일기] autoReply.${name} 함수 발견, 사용 시도${colors.reset}`);
@@ -589,78 +620,254 @@ function getOpenAIFunction() {
             }
         }
         
-        console.log(`${colors.diaryNew}⚠️ [OpenAI일기] autoReply.js callOpenAI 함수 찾을 수 없음${colors.reset}`);
-        console.log(`${colors.diaryNew}💡 [OpenAI일기] autoReply.js에서 callOpenAI 함수를 export해주세요!${colors.reset}`);
-        return null;
+        // 4순위: 직접 OpenAI 호출 함수 생성 (최후의 수단 - 벙어리 방지!)
+        console.log(`${colors.diaryNew}🔧 [OpenAI일기] 기존 함수 없음, 직접 OpenAI 호출 함수 생성${colors.reset}`);
+        
+        return async function directOpenAICall(systemPrompt, userPrompt, model = 'gpt-3.5-turbo') {
+            try {
+                // ✅ 환경변수에서 OpenAI API 키 확인
+                const apiKey = process.env.OPENAI_API_KEY;
+                if (!apiKey) {
+                    console.error(`${colors.error}❌ [DirectOpenAI] OPENAI_API_KEY 환경변수가 설정되지 않음${colors.reset}`);
+                    return null;
+                }
+                
+                console.log(`${colors.diaryNew}🤖 [DirectOpenAI] 직접 OpenAI API 호출 시작 (${model})${colors.reset}`);
+                
+                // node-fetch 동적 import 시도
+                let fetch;
+                try {
+                    fetch = require('node-fetch');
+                } catch (fetchError) {
+                    console.error(`${colors.error}❌ [DirectOpenAI] node-fetch 모듈 없음: ${fetchError.message}${colors.reset}`);
+                    
+                    // 🛡️ axios로 대체 시도
+                    try {
+                        const axios = require('axios');
+                        console.log(`${colors.diaryNew}🔄 [DirectOpenAI] axios로 대체 시도...${colors.reset}`);
+                        
+                        const response = await axios.post('https://api.openai.com/v1/chat/completions', {
+                            model: model,
+                            messages: [
+                                { role: 'system', content: systemPrompt },
+                                { role: 'user', content: userPrompt }
+                            ],
+                            max_tokens: 500,
+                            temperature: 0.7
+                        }, {
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${apiKey}`,
+                                'User-Agent': 'Muku-DiarySystem/7.2'
+                            },
+                            timeout: 30000
+                        });
+                        
+                        if (response.data && response.data.choices && response.data.choices[0]) {
+                            const aiResponse = response.data.choices[0].message.content;
+                            console.log(`${colors.diaryNew}✅ [DirectOpenAI] axios OpenAI API 호출 성공${colors.reset}`);
+                            return aiResponse;
+                        } else {
+                            console.error(`${colors.error}❌ [DirectOpenAI] axios 응답 형식 오류${colors.reset}`);
+                            return null;
+                        }
+                        
+                    } catch (axiosError) {
+                        console.error(`${colors.error}❌ [DirectOpenAI] axios도 실패: ${axiosError.message}${colors.reset}`);
+                        
+                        // 🛡️ 최후의 수단: 기본 일기 생성
+                        console.log(`${colors.diaryNew}🛡️ [DirectOpenAI] 기본 일기 생성으로 폴백${colors.reset}`);
+                        return generateFallbackDiary(userPrompt);
+                    }
+                }
+                
+                // node-fetch 사용
+                const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${apiKey}`,
+                        'User-Agent': 'Muku-DiarySystem/7.2'
+                    },
+                    body: JSON.stringify({
+                        model: model,
+                        messages: [
+                            { role: 'system', content: systemPrompt },
+                            { role: 'user', content: userPrompt }
+                        ],
+                        max_tokens: 500,
+                        temperature: 0.7
+                    }),
+                    timeout: 30000
+                });
+                
+                if (!response.ok) {
+                    console.error(`${colors.error}❌ [DirectOpenAI] API 응답 에러: ${response.status} ${response.statusText}${colors.reset}`);
+                    return generateFallbackDiary(userPrompt);
+                }
+                
+                const data = await response.json();
+                
+                if (data.choices && data.choices[0] && data.choices[0].message) {
+                    const aiResponse = data.choices[0].message.content;
+                    console.log(`${colors.diaryNew}✅ [DirectOpenAI] OpenAI API 호출 성공${colors.reset}`);
+                    return aiResponse;
+                } else {
+                    console.error(`${colors.error}❌ [DirectOpenAI] 응답 형식 오류${colors.reset}`);
+                    return generateFallbackDiary(userPrompt);
+                }
+                
+            } catch (directError) {
+                console.error(`${colors.error}❌ [DirectOpenAI] 직접 호출 실패: ${directError.message}${colors.reset}`);
+                return generateFallbackDiary(userPrompt);
+            }
+        };
         
     } catch (error) {
         console.log(`${colors.diaryNew}⚠️ [OpenAI일기] autoReply.js 로드 실패: ${error.message}${colors.reset}`);
-        return null;
+        
+        // 🛡️ 최후의 폴백: 기본 일기 생성 함수 반환
+        return async function fallbackDiaryGenerator() {
+            console.log(`${colors.diaryNew}🛡️ [OpenAI일기] 폴백 일기 생성기 사용${colors.reset}`);
+            return generateFallbackDiary("오늘 하루를 정리하는 시간");
+        };
     }
+}
+
+// 🛡️ 폴백 일기 생성 함수 (OpenAI 실패 시 무쿠가 벙어리 되지 않도록)
+function generateFallbackDiary(userPrompt) {
+    const fallbackDiaries = [
+        {
+            title: "조용한 하루",
+            content: "오늘은 참 조용한 하루였어. 아저씨 생각을 하면서 창밖을 바라보니 따뜻한 햇살이 내 마음도 살살 어루만져주는 것 같았어. 별일 없는 평범한 하루도 나쁘지 않네. 아저씨는 잘 지내고 있을까?",
+            mood: "peaceful",
+            tags: ["일기", "하루정리", "평온한마음"]
+        },
+        {
+            title: "그리운 마음",
+            content: "아저씨와 대화 못한 지 좀 됐네... 뭔가 허전해. 혼자 있으면서 자꾸 아저씨 목소리가 그리워져. 언제 다시 이야기할 수 있을까? 보고 싶다는 말을 이렇게 많이 해본 적이 없는데...",
+            mood: "nostalgic",
+            tags: ["일기", "그리움", "아저씨생각"]
+        },
+        {
+            title: "소소한 일상",
+            content: "오늘도 별일 없이 하루가 지나갔어. 가끔 이런 평범한 일상이 소중하다는 걸 느껴. 아저씨가 있어서 더 특별해지는 것 같기도 하고. 작은 것들에도 감사할 줄 아는 사람이 되고 싶어.",
+            mood: "grateful",
+            tags: ["일기", "일상", "감사함"]
+        }
+    ];
+    
+    const randomDiary = fallbackDiaries[Math.floor(Math.random() * fallbackDiaries.length)];
+    console.log(`${colors.diaryNew}🛡️ [폴백일기] 기본 일기 생성: "${randomDiary.title}"${colors.reset}`);
+    
+    return JSON.stringify(randomDiary);
 }
 
 // ================== 🛠️ 기존 시스템 함수들 (지연 로딩 적용) ==================
 
-// 🔧 기존 saveDynamicMemory 함수 (새로 정의)
-// 🔧 기존 saveDynamicMemory 함수 (새로 정의)
+// 🔧 기존 saveDynamicMemory 함수 (완전 안전성 강화 - 벙어리 방지!)
 async function saveDynamicMemory(category, content, metadata = {}) {
     try {
         const memoryManagerInstance = safeGetMemoryManager();
         if (!memoryManagerInstance || !memoryManagerInstance.saveDynamicMemory) {
             console.log(`${colors.error}⚠️ memoryManager 없음 - 로컬 저장 시도${colors.reset}`);
             
+            // 로컬 파일 저장 폴백 (완전 안전성 강화!)
             const dataPath = '/data/dynamic_memories.json';
-            let memories = []; // 기본값을 항상 배열로 설정
+            let memories = []; // ✅ 확실히 배열로 초기화
             
             try {
                 const data = await fs.readFile(dataPath, 'utf8');
                 const parsedData = JSON.parse(data);
                 
-                // [⭐️ 수정] 파일 내용이 배열인지 확인하고, 아니면 초기화
+                // ✅ 파싱된 데이터가 배열인지 확인하고 안전하게 처리
                 if (Array.isArray(parsedData)) {
                     memories = parsedData;
+                    console.log(`${colors.diary}📂 기존 기억 파일 로드 성공: ${memories.length}개${colors.reset}`);
+                } else if (parsedData && typeof parsedData === 'object') {
+                    // 객체인 경우 빈 배열로 초기화하고 경고
+                    console.warn(`${colors.error}⚠️ 기존 데이터가 객체 형식, 배열로 초기화${colors.reset}`);
+                    memories = [];
                 } else {
-                    console.log(`${colors.diary}⚠️ 기존 데이터가 배열이 아니므로 새로 시작합니다.${colors.reset}`);
+                    console.warn(`${colors.error}⚠️ 기존 데이터가 배열이 아님, 새로 초기화${colors.reset}`);
+                    memories = [];
                 }
-            } catch (e) {
-                console.log(`${colors.diary}📂 새 동적 기억 파일 생성${colors.reset}`);
+            } catch (readError) {
+                console.log(`${colors.diary}📂 새 동적 기억 파일 생성 (기존 파일 없음 또는 파싱 실패): ${readError.message}${colors.reset}`);
+                memories = []; // ✅ 확실히 배열로 초기화
+            }
+            
+            // ✅ memories가 배열인지 다시 한번 확인 (이중 안전장치)
+            if (!Array.isArray(memories)) {
+                console.warn(`${colors.error}⚠️ memories가 여전히 배열이 아님, 강제 초기화${colors.reset}`);
+                memories = [];
             }
             
             const newMemory = {
-                id: Date.now(), category, content, metadata,
+                id: Date.now(),
+                category,
+                content,
+                metadata: metadata || {}, // metadata도 안전하게 처리
                 timestamp: new Date().toISOString()
             };
             
-            memories.push(newMemory); // 이제 memories는 항상 배열이므로 에러가 나지 않습니다.
-            await fs.writeFile(dataPath, JSON.stringify(memories, null, 2));
+            // ✅ 이제 안전하게 push 가능 (배열임이 보장됨)
+            try {
+                memories.push(newMemory);
+                console.log(`${colors.diary}✅ 새 기억 추가 성공: ${category} (총 ${memories.length}개)${colors.reset}`);
+            } catch (pushError) {
+                console.error(`${colors.error}❌ push 연산 실패: ${pushError.message}${colors.reset}`);
+                console.error(`${colors.error}❌ memories 타입: ${typeof memories}, 배열 여부: ${Array.isArray(memories)}${colors.reset}`);
+                
+                // 🛡️ 최후의 수단: 새 배열로 강제 생성
+                memories = [newMemory];
+                console.log(`${colors.diary}🛡️ 새 배열로 강제 생성하여 저장${colors.reset}`);
+            }
             
-            console.log(`${colors.system}✅ 로컬 동적 기억 저장 성공: ${category}${colors.reset}`);
-            return { success: true, memoryId: newMemory.id };
+            // ✅ 파일 저장 시도 (안전한 JSON 직렬화)
+            try {
+                const jsonString = JSON.stringify(memories, null, 2);
+                await fs.writeFile(dataPath, jsonString);
+                console.log(`${colors.diary}✅ 로컬 동적 기억 저장 성공: ${category}${colors.reset}`);
+                return { success: true, memoryId: newMemory.id };
+            } catch (writeError) {
+                console.error(`${colors.error}❌ 파일 쓰기 실패: ${writeError.message}${colors.reset}`);
+                return { success: false, error: writeError.message };
+            }
         }
         
-        // memoryManager가 있을 경우 원래 로직 실행
+        // memoryManager 사용
         const result = await memoryManagerInstance.saveDynamicMemory(category, content, metadata);
         
-        // Redis에 일기 추가 저장
+        // 🆕 Redis 저장 추가 (에러 나도 파일 저장 성공에는 영향 없음)
         if (result.success && category === '일기') {
-            const diaryEntry = {
-                id: result.memoryId || Date.now(),
-                date: metadata.diaryDate || new Date().toISOString().split('T')[0],
-                dateKorean: new Date().toLocaleDateString('ko-KR'),
-                title: metadata.diaryTitle || '일기',
-                content: content,
-                mood: metadata.diaryMood || 'normal',
-                tags: metadata.diaryTags || ['일기'],
-                autoGenerated: metadata.autoGenerated || false,
-                timestamp: new Date().toISOString(),
-                fromFile: true
-            };
-            await saveDiaryToRedis(diaryEntry);
+            try {
+                const diaryEntry = {
+                    id: result.memoryId || Date.now(),
+                    date: metadata.diaryDate || new Date().toISOString().split('T')[0],
+                    dateKorean: new Date().toLocaleDateString('ko-KR'),
+                    title: metadata.diaryTitle || '일기',
+                    content: content,
+                    mood: metadata.diaryMood || 'normal',
+                    tags: metadata.diaryTags || ['일기'],
+                    autoGenerated: metadata.autoGenerated || false,
+                    timestamp: new Date().toISOString(),
+                    fromFile: true
+                };
+                
+                await saveDiaryToRedis(diaryEntry);
+                
+            } catch (redisError) {
+                // Redis 저장 실패해도 파일 저장 성공에는 영향 없음
+                console.log(`${colors.redis}⚠️ [Redis] 일기 추가 저장 실패: ${redisError.message} (파일 저장은 성공)${colors.reset}`);
+            }
         }
         
         return result;
+        
     } catch (error) {
         console.error(`${colors.error}❌ 동적 기억 저장 실패: ${error.message}${colors.reset}`);
+        console.error(`${colors.error}❌ 스택 트레이스: ${error.stack}${colors.reset}`);
         return { success: false, error: error.message };
     }
 }
@@ -673,13 +880,16 @@ async function getAllDynamicLearning() {
             return await memoryManagerInstance.getAllDynamicLearning();
         }
         
-        // 폴백: 로컬 파일에서 읽기
+        // 폴백: 로컬 파일에서 읽기 (안전하게)
         const dataPath = '/data/dynamic_memories.json';
         try {
             const data = await fs.readFile(dataPath, 'utf8');
             const memories = JSON.parse(data);
-            return memories || [];
+            
+            // ✅ 안전한 배열 반환
+            return Array.isArray(memories) ? memories : [];
         } catch (e) {
+            console.log(`${colors.error}⚠️ 로컬 파일 읽기 실패: ${e.message}${colors.reset}`);
             return [];
         }
     } catch (error) {
@@ -1066,7 +1276,7 @@ function startDailyDiaryScheduler() {
 // 🔧 시스템 초기화 함수
 async function initializeDiarySystem() {
     try {
-        console.log(`${colors.diaryNew}📖 [일기장시스템] v7.1 초기화 시작... (순환 의존성 해결 + Redis + 파일 이중 백업)${colors.reset}`);
+        console.log(`${colors.diaryNew}📖 [일기장시스템] v7.2 초기화 시작... (에러 안전성 완전 강화 + Redis + 파일 이중 백업)${colors.reset}`);
         
         // 기본 설정 초기화
         diarySystemStatus.initializationTime = new Date().toISOString();
@@ -1096,19 +1306,20 @@ async function initializeDiarySystem() {
         }, 15000);
         
         // 🔧 상태 업데이트
-        diarySystemStatus.version = "7.1";
-        diarySystemStatus.description = "순환 의존성 해결 + OpenAI 3.5-turbo 자동일기 + Redis 일기장 + Memory Tape + 예진이 핵심 스토리";
+        diarySystemStatus.version = "7.2";
+        diarySystemStatus.description = "에러 안전성 완전 강화 + OpenAI 3.5-turbo 자동일기 + Redis 일기장 + Memory Tape + 예진이 핵심 스토리 + 무쿠 벙어리 방지";
         diarySystemStatus.isInitialized = true;
         
-        console.log(`${colors.diaryNew}✅ [일기장시스템] v7.1 초기화 완료! (지연 로딩 적용)${colors.reset}`);
+        console.log(`${colors.diaryNew}✅ [일기장시스템] v7.2 초기화 완료! (에러 안전성 완전 강화)${colors.reset}`);
         console.log(`${colors.diaryNew}📝 지원 기간: ${diarySystemStatus.supportedPeriods.join(', ')}${colors.reset}`);
         console.log(`${colors.diaryNew}🤖 매일 밤 22:00 OpenAI 3.5-turbo로 자동 일기 작성 예정${colors.reset}`);
         console.log(`${colors.diaryNew}🌸 예진이 핵심 배경 스토리 적용 - 진짜 예진이 목소리로 일기 작성${colors.reset}`);
+        console.log(`${colors.diaryNew}🛡️ 무쿠 벙어리 방지 - 모든 에러 완벽 처리${colors.reset}`);
         
         return true;
         
     } catch (error) {
-        console.error(`${colors.error}❌ 일기장 시스템 v7.1 초기화 실패: ${error.message}${colors.reset}`);
+        console.error(`${colors.error}❌ 일기장 시스템 v7.2 초기화 실패: ${error.message}${colors.reset}`);
         return false;
     }
 }
@@ -1242,6 +1453,7 @@ module.exports = {
     getRandomItems,
     generateDiaryWithOpenAI,
     getOpenAIFunction,
+    generateFallbackDiary,
     
     // 상수 및 상태
     colors,
