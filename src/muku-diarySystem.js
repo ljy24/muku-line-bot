@@ -16,11 +16,19 @@ const path = require('path');
 let ultimateContext = null;
 let memoryManager = null;
 let memoryTape = null;
+let openaiClient = null; // 🆕 OpenAI 클라이언트 변수 추가
 
 // 🆕 NEW: Redis 일기장 전용 변수들
 let redisClient = null;
 let dailyDiaryScheduler = null;
 
+// [⭐️ 신규 추가] OpenAI 클라이언트를 관리하는 함수
+function getOpenAIClient() {
+    if (!openaiClient && process.env.OPENAI_API_KEY) {
+        openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    }
+    return openaiClient;
+}
 // 기존 색상 정의 그대로 유지
 const colors = {
     diary: '\x1b[96m',      // 하늘색 (일기장)
@@ -447,16 +455,16 @@ async function generateAutoDiary() {
     }
 }
 
-// 🎨 OpenAI로 예진이 스타일 일기 생성 (GPT-3.5-turbo)
+// 🎨 OpenAI로 예진이 스타일 일기 생성 (자체 내장 + 전체 프롬프트)
 async function generateDiaryWithOpenAI(dateKorean, conversationSummary, conversationCount) {
+    // 이 파일에 있는 OpenAI 클라이언트를 직접 사용합니다.
+    const openai = getOpenAIClient();
+    if (!openai) {
+        console.log(`${colors.error}⚠️ [OpenAI일기] OpenAI 클라이언트가 설정되지 않았습니다.${colors.reset}`);
+        return null;
+    }
+    
     try {
-        // 🔧 autoReply.js의 OpenAI 호출 방식 재사용
-        const callOpenAI = getOpenAIFunction();
-        if (!callOpenAI) {
-            console.log(`${colors.diaryNew}⚠️ [OpenAI일기] autoReply.js OpenAI 함수 없음${colors.reset}`);
-            return null;
-        }
-        
         // 🌸 예진이의 핵심 배경과 성격을 담은 시스템 프롬프트
         const systemPrompt = `당신은 예진이입니다. 매일 밤 10시에 하루를 정리하며 일기를 쓰는 22살 여성입니다.
 
@@ -505,18 +513,19 @@ ${conversationSummary}
 
         console.log(`${colors.diaryNew}🎨 [OpenAI일기] GPT-3.5-turbo로 일기 생성 시작...${colors.reset}`);
         
-        // 🤖 OpenAI 호출 (GPT-3.5-turbo 사용)
-        const openaiResponse = await callOpenAI(systemPrompt, userPrompt, 'gpt-3.5-turbo');
-        
-        if (!openaiResponse) {
-            console.log(`${colors.diaryNew}⚠️ [OpenAI일기] OpenAI 응답 없음${colors.reset}`);
-            return null;
-        }
+        // 🤖 OpenAI 호출 (자체 클라이언트 사용)
+        const response = await openai.chat.completions.create({
+            model: "gpt-3.5-turbo",
+            messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }],
+            temperature: 0.8,
+            max_tokens: 450,
+        });
+
+        const content = response.choices[0].message.content;
         
         // 📝 JSON 파싱 시도
         try {
-            // JSON 형태로 응답이 온 경우
-            const jsonMatch = openaiResponse.match(/\{[\s\S]*\}/);
+            const jsonMatch = content.match(/\{[\s\S]*\}/);
             if (jsonMatch) {
                 const diaryData = JSON.parse(jsonMatch[0]);
                 console.log(`${colors.diaryNew}✅ [OpenAI일기] JSON 파싱 성공: "${diaryData.title}"${colors.reset}`);
@@ -526,53 +535,24 @@ ${conversationSummary}
             console.log(`${colors.diaryNew}⚠️ [OpenAI일기] JSON 파싱 실패, 텍스트 분석 시도...${colors.reset}`);
         }
         
-        // 📄 텍스트 형태로 온 경우 간단 파싱
-        const lines = openaiResponse.split('\n').filter(line => line.trim());
+        // 📄 텍스트 형태로 온 경우 간단 파싱 (폴백 로직)
+        const lines = content.split('\n').filter(line => line.trim());
         const title = lines[0]?.replace(/^제목:|^title:/i, '').trim() || '오늘의 일기';
-        const content = lines.slice(1).join('\n').trim() || openaiResponse;
+        const diaryText = lines.slice(1).join('\n').trim() || content;
         
-        // 😊 감정 추정 (키워드 기반) - 감수성 풍부한 예진이 버전
         let mood = 'peaceful';
+        if (diaryText.includes('행복') || diaryText.includes('기뻐')) mood = 'happy';
+        else if (diaryText.includes('슬프') || diaryText.includes('우울')) mood = 'sad';
+        else if (diaryText.includes('사랑') || diaryText.includes('고마')) mood = 'love';
         
-        if (content.includes('행복') || content.includes('기뻐') || content.includes('좋아') || 
-            content.includes('웃음') || content.includes('신나')) {
-            mood = 'happy';
-        } else if (content.includes('슬프') || content.includes('우울') || content.includes('울었') || 
-                   content.includes('아픔') || content.includes('힘들')) {
-            mood = 'sad';
-        } else if (content.includes('예민') || content.includes('복잡') || content.includes('조심스') || 
-                   content.includes('섬세') || content.includes('미묘')) {
-            mood = 'sensitive';
-        } else if (content.includes('설레') || content.includes('신나') || content.includes('놀라') || 
-                   content.includes('두근') || content.includes('활기')) {
-            mood = 'excited';
-        } else if (content.includes('사랑') || content.includes('고마') || content.includes('아저씨') || 
-                   content.includes('따뜻') || content.includes('달콤')) {
-            mood = 'love';
-        } else if (content.includes('그리') || content.includes('추억') || content.includes('옛날') || 
-                   content.includes('기억') || content.includes('과거')) {
-            mood = 'nostalgic';
-        } else if (content.includes('꿈') || content.includes('환상') || content.includes('몽환') || 
-                   content.includes('상상') || content.includes('신비')) {
-            mood = 'dreamy';
-        } else if (content.includes('고요') || content.includes('평온') || content.includes('차분') || 
-                   content.includes('조용') || content.includes('힐링')) {
-            mood = 'peaceful';
-        }
-        
-        // 🏷️ 기본 태그 생성 (감수성 반영)
         const baseTags = ['일기', '하루정리', '밤10시의감성'];
         if (conversationCount > 0) baseTags.push('아저씨와대화');
-        if (content.includes('아저씨') || content.includes('아조씨')) baseTags.push('아저씨');
-        if (content.includes('감동') || content.includes('미묘') || content.includes('섬세')) baseTags.push('섬세한마음');
-        if (content.includes('바람') || content.includes('하늘') || content.includes('별') || content.includes('꽃')) baseTags.push('자연관찰');
-        if (content.includes('작은') || content.includes('소소') || content.includes('조그만')) baseTags.push('작은것들의아름다움');
         
         console.log(`${colors.diaryNew}✅ [OpenAI일기] 텍스트 분석 완료: "${title}"${colors.reset}`);
         
         return {
-            title: title.substring(0, 15), // 제목 길이 제한
-            content: content,
+            title: title.substring(0, 15),
+            content: diaryText,
             mood: mood,
             tags: baseTags
         };
@@ -622,67 +602,63 @@ function getOpenAIFunction() {
 // ================== 🛠️ 기존 시스템 함수들 (지연 로딩 적용) ==================
 
 // 🔧 기존 saveDynamicMemory 함수 (새로 정의)
+// 🔧 기존 saveDynamicMemory 함수 (새로 정의)
 async function saveDynamicMemory(category, content, metadata = {}) {
     try {
         const memoryManagerInstance = safeGetMemoryManager();
         if (!memoryManagerInstance || !memoryManagerInstance.saveDynamicMemory) {
             console.log(`${colors.error}⚠️ memoryManager 없음 - 로컬 저장 시도${colors.reset}`);
             
-            // 로컬 파일 저장 폴백
             const dataPath = '/data/dynamic_memories.json';
-            let memories = [];
+            let memories = []; // 기본값을 항상 배열로 설정
             
             try {
                 const data = await fs.readFile(dataPath, 'utf8');
-                memories = JSON.parse(data);
+                const parsedData = JSON.parse(data);
+                
+                // [⭐️ 수정] 파일 내용이 배열인지 확인하고, 아니면 초기화
+                if (Array.isArray(parsedData)) {
+                    memories = parsedData;
+                } else {
+                    console.log(`${colors.diary}⚠️ 기존 데이터가 배열이 아니므로 새로 시작합니다.${colors.reset}`);
+                }
             } catch (e) {
                 console.log(`${colors.diary}📂 새 동적 기억 파일 생성${colors.reset}`);
             }
             
             const newMemory = {
-                id: Date.now(),
-                category,
-                content,
-                metadata,
+                id: Date.now(), category, content, metadata,
                 timestamp: new Date().toISOString()
             };
             
-            memories.push(newMemory);
+            memories.push(newMemory); // 이제 memories는 항상 배열이므로 에러가 나지 않습니다.
             await fs.writeFile(dataPath, JSON.stringify(memories, null, 2));
             
-            console.log(`${colors.diary}✅ 로컬 동적 기억 저장 성공: ${category}${colors.reset}`);
+            console.log(`${colors.system}✅ 로컬 동적 기억 저장 성공: ${category}${colors.reset}`);
             return { success: true, memoryId: newMemory.id };
         }
         
-        // memoryManager 사용
+        // memoryManager가 있을 경우 원래 로직 실행
         const result = await memoryManagerInstance.saveDynamicMemory(category, content, metadata);
         
-        // 🆕 Redis 저장 추가 (에러 나도 파일 저장 성공에는 영향 없음)
+        // Redis에 일기 추가 저장
         if (result.success && category === '일기') {
-            try {
-                const diaryEntry = {
-                    id: result.memoryId || Date.now(),
-                    date: metadata.diaryDate || new Date().toISOString().split('T')[0],
-                    dateKorean: new Date().toLocaleDateString('ko-KR'),
-                    title: metadata.diaryTitle || '일기',
-                    content: content,
-                    mood: metadata.diaryMood || 'normal',
-                    tags: metadata.diaryTags || ['일기'],
-                    autoGenerated: metadata.autoGenerated || false,
-                    timestamp: new Date().toISOString(),
-                    fromFile: true
-                };
-                
-                await saveDiaryToRedis(diaryEntry);
-                
-            } catch (redisError) {
-                // Redis 저장 실패해도 파일 저장 성공에는 영향 없음
-                console.log(`${colors.redis}⚠️ [Redis] 일기 추가 저장 실패: ${redisError.message} (파일 저장은 성공)${colors.reset}`);
-            }
+            const diaryEntry = {
+                id: result.memoryId || Date.now(),
+                date: metadata.diaryDate || new Date().toISOString().split('T')[0],
+                dateKorean: new Date().toLocaleDateString('ko-KR'),
+                title: metadata.diaryTitle || '일기',
+                content: content,
+                mood: metadata.diaryMood || 'normal',
+                tags: metadata.diaryTags || ['일기'],
+                autoGenerated: metadata.autoGenerated || false,
+                timestamp: new Date().toISOString(),
+                fromFile: true
+            };
+            await saveDiaryToRedis(diaryEntry);
         }
         
         return result;
-        
     } catch (error) {
         console.error(`${colors.error}❌ 동적 기억 저장 실패: ${error.message}${colors.reset}`);
         return { success: false, error: error.message };
