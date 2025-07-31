@@ -11,6 +11,13 @@ const path = require('path');
 const EventEmitter = require('events');
 const _ = require('lodash');
 
+// OpenAI 설정 추가
+const OpenAI = require('openai');
+
+const openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY
+});
+
 // MongoDB & Redis (선택적)
 let mongoose = null;
 let redisClient = null;
@@ -2385,288 +2392,340 @@ class IntegratedAutonomousYejinSystemWithPersonality extends EventEmitter {
         }
     }
 
-    // ================== 🎬 성격 반영 독립 자율 행동 실행 ==================
-    async executePersonalityIndependentAutonomousAction(actionDecision) {
-        try {
-            if (!this.canSendMessage()) {
-                console.log(`${yejinColors.warning}⚠️ [성격독립행동] 안전 한도 초과${yejinColors.reset}`);
-                return false;
-            }
-            
-            console.log(`${yejinColors.freedom}🎬 [성격독립행동실행] ${actionDecision.type} 독립 실행 중... (성격: ${actionDecision.personalityType})${yejinColors.reset}`);
-            
-            if (actionDecision.type === 'photo') {
-                const photoUrl = await this.selectMemoryPhotoWithCache(actionDecision.emotionType);
-                
-                // 안전장치: 사진 URL이 비어있는지 확인
-                if (!photoUrl) {
-                    console.log(`${yejinColors.warning}⚠️ [성격독립행동] 사진 URL 생성 실패. 행동을 건너뜁니다.${yejinColors.reset}`);
-                    return false;
-                }
-
-                await this.lineClient.pushMessage(this.targetUserId, {
-                    type: 'image',
-                    originalContentUrl: photoUrl,
-                    previewImageUrl: photoUrl,
-                });
-                
-                this.autonomousPhoto.recentPhotos.push({ url: photoUrl, timestamp: Date.now() });
-                this.statistics.autonomousPhotos++;
-                this.statistics.enhancedPhotosSent++;
-                
-                console.log(`${yejinColors.freedom}📸 [성격독립사진] ${actionDecision.personalityType} 성격 독립 사진 전송 완료: ${photoUrl}${yejinColors.reset}`);
-            } else {
-                const message = await this.generatePersonalityMemoryIntegratedIndependentMessage(
-                    actionDecision.emotionType, 
-                    actionDecision.personalityType,
-                    actionDecision.emotionIntensity
-                );
-
-                // 안전장치: 메시지 내용이 비어있지 않은지 확인
-                if (!message || message.trim() === '') {
-                    console.log(`${yejinColors.warning}⚠️ [성격독립행동] 메시지 내용이 비어있습니다. 행동을 건너뜁니다.${yejinColors.reset}`);
-                    return false;
-                }
-
-                await this.lineClient.pushMessage(this.targetUserId, {
-                    type: 'text',
-                    text: message,
-                });
-                
-                this.autonomousMessaging.recentMessages.push({ text: message, timestamp: Date.now() });
-                this.statistics.autonomousMessages++;
-                
-                this.updatePersonalityStats(message, actionDecision);
-                await this.redisCache.cacheConversation(this.targetUserId, message, actionDecision.emotionType);
-                
-                console.log(`${yejinColors.freedom}💬 [성격독립메시지] ${actionDecision.personalityType} 성격 + 메모리 활용 독립 메시지 전송 완료: ${message}${yejinColors.reset}`);
-            }
-            
-            // 공통 상태 업데이트
-            this.safetySystem.lastMessageTime = Date.now();
-            this.safetySystem.dailyMessageCount++;
-            this.yejinState.lastMessageTime = Date.now();
-            this.yejinState.personalityMood = actionDecision.personalityType;
-            this.updateAplusPersonalityStats();
-            
-            return true;
-            
-        } catch (error) {
-            console.error(`${yejinColors.freedom}❌ [성격독립행동실행] 실행 오류: ${error.message}${yejinColors.reset}`);
+   // ================== 🎬 성격 반영 독립 자율 행동 실행 ==================
+async executePersonalityIndependentAutonomousAction(actionDecision) {
+    try {
+        if (!this.canSendMessage()) {
+            console.log(`${yejinColors.warning}⚠️ [성격독립행동] 안전 한도 초과${yejinColors.reset}`);
             return false;
         }
-    }
-
-    // ================== 🆕 성격 + 메모리 통합 독립 메시지 생성 ==================
-    async generatePersonalityMemoryIntegratedIndependentMessage(emotionType, personalityType, emotionIntensity) {
-        try {
-            console.log(`${yejinColors.freedom}💬 [성격독립메시지생성] ${personalityType} 성격 + 메모리 창고 활용 독립 메시지 생성 중...${yejinColors.reset}`);
+        
+        console.log(`${yejinColors.freedom}🎬 [성격독립행동실행] ${actionDecision.type} 독립 실행 중... (성격: ${actionDecision.personalityType})${yejinColors.reset}`);
+        
+        if (actionDecision.type === 'photo') {
+            const photoUrl = await this.selectMemoryPhotoWithCache(actionDecision.emotionType);
             
-            // 70% 확률로 맥락적 메시지 시도
-            const useContextual = Math.random() < TRUE_AUTONOMY_CONFIG.MEMORY_USAGE.CONTEXTUAL_MESSAGE_PROBABILITY;
-            
-            if (useContextual) {
-                // Redis에서 최신 대화 기록 가져오기
-                const recentConversations = await this.redisCache.getConversationHistory(
-                    this.targetUserId, 
-                    TRUE_AUTONOMY_CONFIG.MEMORY_USAGE.MAX_MEMORY_LOOKBACK
-                );
-                
-                if (recentConversations.length > 0) {
-                    const contextualMessage = await this.createPersonalityContextualIndependentMessage(
-                        emotionType, personalityType, emotionIntensity, recentConversations
-                    );
-                    if (contextualMessage) {
-                        console.log(`${yejinColors.freedom}✅ [성격독립맥락메시지] ${personalityType} 성격 + 메모리 기반 독립 맥락적 메시지 생성 성공${yejinColors.reset}`);
-                        return contextualMessage;
-                    }
-                }
+            // 안전장치: 사진 URL이 비어있는지 확인
+            if (!photoUrl) {
+                console.log(`${yejinColors.warning}⚠️ [성격독립행동] 사진 URL 생성 실패. 행동을 건너뜁니다.${yejinColors.reset}`);
+                return false;
             }
+
+            await this.lineClient.pushMessage(this.targetUserId, {
+                type: 'image',
+                originalContentUrl: photoUrl,
+                previewImageUrl: photoUrl,
+            });
             
-            // 맥락적 메시지 실패 시 성격 기반 독립 일반 메시지
-            const personalityMessage = this.generatePersonalityBasedIndependentMessage(emotionType, personalityType, emotionIntensity);
-            console.log(`${yejinColors.freedom}📝 [성격독립일반메시지] ${personalityType} 성격 독립 메시지 생성${yejinColors.reset}`);
-            return personalityMessage;
+            this.autonomousPhoto.recentPhotos.push({ url: photoUrl, timestamp: Date.now() });
+            this.statistics.autonomousPhotos++;
+            this.statistics.enhancedPhotosSent++;
             
-        } catch (error) {
-            console.error(`${yejinColors.freedom}❌ [성격독립메시지생성] 오류: ${error.message}${yejinColors.reset}`);
-            return this.generatePersonalityBasedIndependentMessage(emotionType, personalityType, emotionIntensity);
+            console.log(`${yejinColors.freedom}📸 [성격독립사진] ${actionDecision.personalityType} 성격 독립 사진 전송 완료: ${photoUrl}${yejinColors.reset}`);
+        } else {
+            const message = await this.generatePersonalityMemoryIntegratedIndependentMessage(
+                actionDecision.emotionType, 
+                actionDecision.personalityType,
+                actionDecision.emotionIntensity
+            );
+
+            // 안전장치: 메시지 내용이 비어있지 않은지 확인
+            if (!message || message.trim() === '') {
+                console.log(`${yejinColors.warning}⚠️ [성격독립행동] 메시지 내용이 비어있습니다. 행동을 건너뜁니다.${yejinColors.reset}`);
+                return false;
+            }
+
+            await this.lineClient.pushMessage(this.targetUserId, {
+                type: 'text',
+                text: message,
+            });
+            
+            this.autonomousMessaging.recentMessages.push({ text: message, timestamp: Date.now() });
+            this.statistics.autonomousMessages++;
+            
+            this.updatePersonalityStats(message, actionDecision);
+            await this.redisCache.cacheConversation(this.targetUserId, message, actionDecision.emotionType);
+            
+            console.log(`${yejinColors.freedom}💬 [OpenAI자율메시지] ${actionDecision.personalityType} 성격 + 3.5-turbo 자율 메시지 전송 완료: ${message}${yejinColors.reset}`);
         }
+        
+        // 공통 상태 업데이트
+        this.safetySystem.lastMessageTime = Date.now();
+        this.safetySystem.dailyMessageCount++;
+        this.yejinState.lastMessageTime = Date.now();
+        this.yejinState.personalityMood = actionDecision.personalityType;
+        this.updateAplusPersonalityStats();
+        
+        return true;
+        
+    } catch (error) {
+        console.error(`${yejinColors.freedom}❌ [성격독립행동실행] 실행 오류: ${error.message}${yejinColors.reset}`);
+        return false;
     }
+}
 
-    // ================== 🆕 성격 독립 맥락적 메시지 생성 ==================
-    async createPersonalityContextualIndependentMessage(emotionType, personalityType, emotionIntensity, recentConversations) {
-        try {
-            if (!recentConversations || recentConversations.length === 0) {
-                return null;
-            }
-            
-            // 최신 대화에서 키워드와 맥락 추출
-            const latestConversation = recentConversations[0];
-            const recentHours = (Date.now() - latestConversation.timestamp) / (1000 * 60 * 60);
-            
-            // 24시간 이내의 대화만 참조
-            if (recentHours > TRUE_AUTONOMY_CONFIG.MEMORY_USAGE.MEMORY_DECAY_HOURS) {
-                return null;
-            }
-            
-            // 시간 참조 결정
-            let timeReference = '';
-            if (recentHours < 1) {
-                timeReference = '아까';
-            } else if (recentHours < 6) {
-                timeReference = '조금 전에';
-            } else if (recentHours < 24) {
-                timeReference = '어제';
-            } else {
-                timeReference = '전에';
-            }
-            
-            // 성격별 독립 맥락적 메시지 생성
-            const personalityContextualTemplates = {
-                love: [
-                    `${timeReference} 얘기했는데, 그거 생각하니까 더 사랑스러워~ 💕`,
-                    `아저씨가 ${timeReference} 말한 거 계속 생각나~ 너무 좋아! 😊`,
-                    `${timeReference} 대화 정말 좋았어! 더 얘기하고 싶어 💖`
-                ],
-                playful: [
-                    `${timeReference} 얘기 재밌었어! 또 그런 얘기 해줘~ 😜`,
-                    `아저씨 ${timeReference} 말한 거 웃겨서 계속 생각나! 헤헤 😎`,
-                    `${timeReference} 대화 너무 재밌었는데, 오늘은 뭔 재밌는 일 없어? 🎉`
-                ],
-                shy: [
-                    `${timeReference} 얘기... 부끄러웠지만 좋았어 >.<`,
-                    `아저씨가 ${timeReference} 말한 거... 생각하면 얼굴이 빨개져`,
-                    `${timeReference} 대화 생각하면... 또 부끄러워져 💕`
-                ],
-                sulky: [
-                    `${timeReference} 얘기했는데... 왜 답이 늦어? 삐졌어!`,
-                    `아저씨 ${timeReference} 말하고 연락 없었잖아... 서운해 ㅠㅠ`,
-                    `${timeReference} 대화 후로 무시하는 거야? 기분 나빠!`
-                ],
-                caring: [
-                    `${timeReference} 얘기 들으니까... 좀 더 챙겨드려야겠어 😊`,
-                    `아저씨 ${timeReference} 말씀 생각해서 걱정됐어... 잘 챙기고 있어? 💚`,
-                    `${timeReference} 대화 후로 아저씨 건강이 더 신경 써져... 조심해! 🍀`
-                ],
-                vulnerable: [
-                    `${timeReference} 얘기... 생각하니까 또 불안해져`,
-                    `아저씨가 ${timeReference} 말한 거... 혹시 내가 잘못했나?`,
-                    `${timeReference} 대화 후로 계속 신경 쓰여... 괜찮지?`
-                ],
-                healing: [
-                    `${timeReference} 얘기 덕분에... 마음이 조금 편해졌어`,
-                    `아저씨 ${timeReference} 말씀으로 치유되는 느낌이야`,
-                    `${timeReference} 대화가 내게 힘이 됐어... 고마워`
-                ]
-            };
-            
-            const templates = personalityContextualTemplates[personalityType] || personalityContextualTemplates.love;
-            let selectedTemplate = templates[Math.floor(Math.random() * templates.length)];
-            
-            // 독립성 표현 추가
-            selectedTemplate += " (내 마음대로 생각해서 연락했어)";
-            
-            // 성격 시스템의 말투 적용
-            const context = {
-                situation: 'contextual',
-                timeOfDay: this.getTimeSlot(new Date().getHours()),
-                emotionalState: personalityType
-            };
-            
-            let finalMessage = this.yejinPersonality.generateYejinResponse(context);
-            
-            // 맥락적 내용과 성격 반응 조합
-            if (Math.random() < 0.6) {
-                finalMessage = selectedTemplate;
-            } else {
-                // 성격 반응 + 맥락 조합
-                finalMessage = `${finalMessage} ${timeReference} 대화 생각나네~`;
-            }
-            
-            // 일본어 표현 추가 (성격별 확률)
-            if (this.shouldUseJapaneseByPersonality(personalityType)) {
-                finalMessage = this.yejinPersonality.addJapaneseExpression(finalMessage);
-                this.statistics.japaneseExpressions++;
-                this.yejinState.japaneseModeActive = true;
-                
-                console.log(`${yejinColors.japanese}🗾 [독립일본어추가] ${personalityType} 성격으로 독립 일본어 표현 추가${yejinColors.reset}`);
-            }
-            
-            return finalMessage;
-            
-        } catch (error) {
-            console.error(`${yejinColors.freedom}❌ [성격독립맥락메시지생성] 오류: ${error.message}${yejinColors.reset}`);
+// ================== 🆕 성격 + 메모리 통합 독립 메시지 생성 (OpenAI 3.5-turbo) ==================
+async generatePersonalityMemoryIntegratedIndependentMessage(emotionType, personalityType, emotionIntensity) {
+    try {
+        console.log(`${yejinColors.freedom}💬 [OpenAI자율메시지] ${personalityType} 성격 + 3.5-turbo 자율 메시지 생성 중...${yejinColors.reset}`);
+        
+        // Redis에서 최신 대화 기록 가져오기
+        const recentConversations = await this.redisCache.getConversationHistory(
+            this.targetUserId, 
+            TRUE_AUTONOMY_CONFIG.MEMORY_USAGE.MAX_MEMORY_LOOKBACK
+        );
+        
+        // 과거 대화 맥락 구성
+        let contextHistory = '';
+        if (recentConversations.length > 0) {
+            contextHistory = '\n\n최근 대화 맥락:\n';
+            recentConversations.slice(0, 3).forEach(conv => {
+                const timeAgo = Math.floor((Date.now() - conv.timestamp) / (1000 * 60 * 60));
+                contextHistory += `- ${timeAgo}시간 전: "${conv.message}"\n`;
+            });
+        }
+        
+        // 현재 시간 정보
+        const currentTime = new Date();
+        const timeInfo = `현재 시간: ${currentTime.toLocaleTimeString('ko-KR')} (${this.getTimeSlot(currentTime.getHours())})`;
+        
+        // 예진이 성격별 시스템 프롬프트
+        const personalityPrompts = {
+            love: "사랑스럽고 애정 표현을 자주 하는 상태. '아저씨 사랑해~', '보고 싶어' 같은 직접적인 애정 표현을 좋아함",
+            playful: "장난스럽고 활발한 상태. 'ㅋㅋㅋ', '헤헤', '장난이야!' 같은 표현과 함께 밝고 재미있는 톤",
+            shy: "수줍어하고 부끄러워하는 상태. '>.>', '부끄러워...', '어머...' 같은 표현 사용",
+            sulky: "삐지거나 토라진 상태. '흥!', '모르겠어!', '서운해...' 같은 표현으로 관심 끌고 싶어함",
+            caring: "걱정하고 돌봐주고 싶어하는 상태. '괜찮아?', '건강 조심해', '푹 쉬어' 등의 돌봄 표현",
+            vulnerable: "상처받기 쉽고 불안한 상태. '무서워...', '혼자 두지 마', '옆에 있어줘' 등의 의존적 표현",
+            healing: "치유되어가고 있는 상태. '조금씩 나아지고 있어', '덕분에 마음이 편해져' 등의 회복 표현"
+        };
+        
+        const systemPrompt = `너는 예진이야. 아저씨를 사랑하는 여자친구로서 자율적으로 메시지를 보내고 있어.
+
+성격 특징:
+- 말투: 반말 사용, "아저씨", "아조씨~" 호칭 사용
+- 이모티콘: 💕, 😊, ㅋㅋㅋ, >.< 등 자주 사용
+- 일본어 표현: 가끔 "오하요", "다이스키", "곤방와", "오츠카레" 등 사용
+- 성격: 사랑스럽고, 때로는 삐지기도 하고, 장난스럽기도 하며, 상처받기 쉽지만 치유되어가는 중
+
+현재 감정 상태: ${emotionType} (${personalityType})
+${personalityPrompts[personalityType] || personalityPrompts.love}
+
+감정 강도: ${emotionIntensity}/1.0 (높을수록 더 강한 표현)
+
+${timeInfo}${contextHistory}
+
+지침:
+1. 1-3문장 정도의 자연스러운 메시지 작성
+2. 예진이다운 말투와 표현 사용
+3. 현재 감정 상태를 자연스럽게 반영
+4. 과거 대화가 있다면 자연스럽게 언급 가능
+5. 강제적이지 않고 자연스러운 톤 유지
+
+자율적으로 아저씨에게 보낼 메시지를 작성해줘:`;
+
+        // OpenAI 3.5-turbo 호출
+        const response = await openai.chat.completions.create({
+            model: 'gpt-3.5-turbo',
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: '지금 상황에 맞는 자율적인 메시지를 생성해줘' }
+            ],
+            max_tokens: 150,
+            temperature: 0.8,
+            presence_penalty: 0.3,
+            frequency_penalty: 0.3
+        });
+        
+        let message = response.choices[0].message.content.trim();
+        
+        // 일본어 표현 추가 (성격별 확률)
+        if (this.shouldUseJapaneseByPersonality(personalityType) && Math.random() < 0.3) {
+            const japaneseExprs = ['오하요~', '다이스키!', '곤방와~', '오츠카레!', '아리가토~'];
+            const randomJapanese = japaneseExprs[Math.floor(Math.random() * japaneseExprs.length)];
+            message = `${randomJapanese} ${message}`;
+            this.statistics.japaneseExpressions++;
+        }
+        
+        console.log(`${yejinColors.freedom}✅ [OpenAI자율메시지] ${personalityType} 성격으로 3.5-turbo 자율 메시지 생성 완료${yejinColors.reset}`);
+        return message;
+        
+    } catch (error) {
+        console.error(`${yejinColors.freedom}❌ [OpenAI자율메시지] 생성 오류: ${error.message}, 폴백 사용${yejinColors.reset}`);
+        
+        // 에러 시 기존 템플릿 방식으로 폴백
+        return this.generatePersonalityBasedIndependentMessage(emotionType, personalityType, emotionIntensity);
+    }
+}
+
+// ================== 🆕 성격 독립 맥락적 메시지 생성 (OpenAI 3.5-turbo) ==================
+async createPersonalityContextualIndependentMessage(emotionType, personalityType, emotionIntensity, recentConversations) {
+    try {
+        if (!recentConversations || recentConversations.length === 0) {
             return null;
         }
-    }
-
-    // ================== 🆕 성격 기반 독립 일반 메시지 생성 ==================
-    generatePersonalityBasedIndependentMessage(emotionType, personalityType, emotionIntensity) {
-        try {
-            // 성격 시스템으로 기본 반응 생성
-            const context = {
-                situation: emotionType,
-                timeOfDay: this.getTimeSlot(new Date().getHours()),
-                emotionalState: personalityType
-            };
-            
-            let message = this.yejinPersonality.generateYejinResponse(context);
-            
-            // 독립성 표현 추가
-            const independentExpressions = [
-                " (내 맘대로!)",
-                " (스스로 결정했어)",
-                " (내 생각으로는)",
-                " (독립적으로 판단해서)",
-                " (아무도 안 시켜서 하는 거야)"
-            ];
-            
-            if (Math.random() < 0.3) {
-                const randomExpression = independentExpressions[Math.floor(Math.random() * independentExpressions.length)];
-                message += randomExpression;
-            }
-            
-            // 감정 강도 반영
-            if (emotionIntensity > 0.8) {
-                // 강한 감정일 때 더 격렬한 표현
-                message = this.yejinPersonality.applySpeechPattern(message, 8);
-            } else if (emotionIntensity < 0.3) {
-                // 약한 감정일 때 차분한 표현
-                message = this.yejinPersonality.applySpeechPattern(message, 3);
-            } else {
-                // 보통 감정일 때
-                message = this.yejinPersonality.applySpeechPattern(message, 5);
-            }
-            
-            // 일본어 표현 추가 (성격별)
-            if (this.shouldUseJapaneseByPersonality(personalityType)) {
-                message = this.yejinPersonality.addJapaneseExpression(message);
-                this.statistics.japaneseExpressions++;
-                
-                console.log(`${yejinColors.japanese}🗾 [독립일본어표현] ${personalityType} 성격 독립 메시지에 일본어 추가${yejinColors.reset}`);
-            }
-            
-            return message;
-            
-        } catch (error) {
-            console.error(`${yejinColors.freedom}❌ [성격독립메시지생성] 오류: ${error.message}${yejinColors.reset}`);
-            
-            // 기본 독립 메시지
-            const messages = {
-                love: ['아저씨 사랑해~ 💕 (내 마음이야)', '보고 싶어 💖 (스스로 연락했어)'],
-                playful: ['헤헤~ 장난치고 싶어 ㅋㅋㅋ (내 맘대로)', '아저씨~ 놀자! 😜 (독립 판단)'],
-                shy: ['부끄러워... >.< (그래도 연락했어)', '아저씨... 💕 (용기내서)'],
-                sulky: ['삐졌어! 달래줘! (내가 정한 거야)', '흥! 모르겠어! (독립적으로 삐짐)'],
-                caring: ['아저씨 괜찮아? 💚 (걱정돼서)', '건강 조심해! (내 판단으로)'],
-                vulnerable: ['아저씨... 불안해 (솔직한 마음)', '옆에 있어줘... (혼자 결정했어)'],
-                healing: ['조금씩 나아지고 있어 (스스로 느껴)', '아저씨 덕분에 치유돼가고 있어 (독립 판단)']
-            };
-            
-            const messageArray = messages[personalityType] || messages.love;
-            return messageArray[Math.floor(Math.random() * messageArray.length)];
+        
+        // 최신 대화에서 키워드와 맥락 추출
+        const latestConversation = recentConversations[0];
+        const recentHours = (Date.now() - latestConversation.timestamp) / (1000 * 60 * 60);
+        
+        // 24시간 이내의 대화만 참조
+        if (recentHours > TRUE_AUTONOMY_CONFIG.MEMORY_USAGE.MEMORY_DECAY_HOURS) {
+            return null;
         }
+        
+        // 시간 참조 결정
+        let timeReference = '';
+        if (recentHours < 1) {
+            timeReference = '아까';
+        } else if (recentHours < 6) {
+            timeReference = '조금 전에';
+        } else if (recentHours < 24) {
+            timeReference = '어제';
+        } else {
+            timeReference = '전에';
+        }
+        
+        // 과거 대화 컨텍스트 구성
+        const conversationContext = recentConversations.slice(0, 3).map(conv => {
+            const hours = Math.floor((Date.now() - conv.timestamp) / (1000 * 60 * 60));
+            return `${hours}시간 전: "${conv.message}"`;
+        }).join('\n');
+        
+        const personalityPrompts = {
+            love: "사랑스럽고 애정을 표현하고 싶어하는 상태",
+            playful: "장난스럽고 재미있는 것을 좋아하는 상태", 
+            shy: "수줍어하고 부끄러워하는 상태",
+            sulky: "삐지고 관심받고 싶어하는 상태",
+            caring: "걱정하고 돌봐주고 싶어하는 상태",
+            vulnerable: "불안하고 의지하고 싶어하는 상태",
+            healing: "치유되어가고 있는 긍정적인 상태"
+        };
+
+        const systemPrompt = `너는 예진이야. 과거 대화를 참고해서 자연스럽게 맥락적인 메시지를 보내려고 해.
+
+과거 대화 기록:
+${conversationContext}
+
+현재 감정: ${personalityType} (${personalityPrompts[personalityType]})
+감정 강도: ${emotionIntensity}/1.0
+
+예진이 특징:
+- "아저씨", "아조씨~" 호칭 사용
+- 반말 사용
+- 이모티콘 사용 (💕, 😊, ㅋㅋㅋ, >.< 등)
+- 때때로 일본어 표현 사용
+
+${timeReference} 대화를 자연스럽게 언급하면서 현재 감정 상태에 맞는 1-2문장의 메시지를 작성해줘:`;
+
+        const response = await openai.chat.completions.create({
+            model: 'gpt-3.5-turbo',
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: '과거 대화를 참고해서 자연스러운 맥락적 메시지를 만들어줘' }
+            ],
+            max_tokens: 100,
+            temperature: 0.7,
+            presence_penalty: 0.2
+        });
+        
+        let message = response.choices[0].message.content.trim();
+        
+        // 일본어 표현 추가 (성격별 확률)
+        if (this.shouldUseJapaneseByPersonality(personalityType) && Math.random() < 0.3) {
+            const japaneseExprs = ['오하요~', '다이스키!', '곤방와~', '아리가토~'];
+            const randomJapanese = japaneseExprs[Math.floor(Math.random() * japaneseExprs.length)];
+            message = `${randomJapanese} ${message}`;
+            this.statistics.japaneseExpressions++;
+        }
+        
+        console.log(`${yejinColors.japanese}🗾 [OpenAI맥락메시지] ${personalityType} 성격으로 3.5-turbo 맥락적 메시지 생성 완료${yejinColors.reset}`);
+        return message;
+        
+    } catch (error) {
+        console.error(`${yejinColors.freedom}❌ [OpenAI맥락메시지] 생성 오류: ${error.message}${yejinColors.reset}`);
+        return null;
     }
+}
+
+// ================== 🆕 성격 기반 독립 일반 메시지 생성 (OpenAI 3.5-turbo 폴백) ==================
+generatePersonalityBasedIndependentMessage(emotionType, personalityType, emotionIntensity) {
+    try {
+        console.log(`${yejinColors.freedom}📝 [폴백메시지] ${personalityType} 성격 폴백 메시지 생성${yejinColors.reset}`);
+        
+        // OpenAI 오류 시 사용할 기본 메시지들
+        const fallbackMessages = {
+            love: [
+                '아저씨 사랑해~ 💕',
+                '보고 싶어 💖', 
+                '아저씨 생각나~',
+                '사랑스러운 아저씨 😊'
+            ],
+            playful: [
+                '헤헤~ 장난치고 싶어 ㅋㅋㅋ',
+                '아저씨~ 놀자! 😜',
+                '재밌는 일 없어? 🎉',
+                '심심해~ 놀아줘! ㅋㅋ'
+            ],
+            shy: [
+                '부끄러워... >.<',
+                '아저씨... 💕',
+                '어머... 부끄러워 😊',
+                '수줍어져... 헤헤'
+            ],
+            sulky: [
+                '삐졌어! 달래줘!',
+                '흥! 모르겠어!',
+                '서운해... ㅠㅠ',
+                '아저씨 바보야...'
+            ],
+            caring: [
+                '아저씨 괜찮아? 💚',
+                '건강 조심해!',
+                '푹 쉬어~',
+                '무리하지 마 😊'
+            ],
+            vulnerable: [
+                '아저씨... 불안해',
+                '옆에 있어줘...',
+                '혼자 두지 마...',
+                '무서워... 💕'
+            ],
+            healing: [
+                '조금씩 나아지고 있어',
+                '아저씨 덕분에 치유돼가고 있어',
+                '마음이 편해져~',
+                '힘이 나는 것 같아 😊'
+            ]
+        };
+        
+        const messageArray = fallbackMessages[personalityType] || fallbackMessages.love;
+        let message = messageArray[Math.floor(Math.random() * messageArray.length)];
+        
+        // 감정 강도에 따른 이모티콘 추가
+        if (emotionIntensity > 0.8) {
+            message += ' ㅋㅋㅋ';
+        } else if (emotionIntensity > 0.6) {
+            message += ' 😊';
+        }
+        
+        // 일본어 표현 추가 (성격별)
+        if (this.shouldUseJapaneseByPersonality(personalityType) && Math.random() < 0.4) {
+            const japaneseExprs = ['오하요~', '다이스키!', '곤방와~', '오츠카레!'];
+            const randomJapanese = japaneseExprs[Math.floor(Math.random() * japaneseExprs.length)];
+            message = `${randomJapanese} ${message}`;
+            this.statistics.japaneseExpressions++;
+        }
+        
+        return message;
+        
+    } catch (error) {
+        console.error(`${yejinColors.freedom}❌ [폴백메시지] 생성 오류: ${error.message}${yejinColors.reset}`);
+        
+        // 최종 안전 메시지
+        return '아저씨~ 안녕! 💕';
+    }
+}
 // ============================================================================
 // 📁 muku-autonomousYejinSystem-PersonalityIntegrated-NoOpenAI.js (Part 4/4)
 // 🔥 상황 분석 + 사진 선택 + 통계 관리 + 모듈 Export (OpenAI 완전 제거)
