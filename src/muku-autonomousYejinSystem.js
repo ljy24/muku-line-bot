@@ -2420,7 +2420,9 @@ async executePersonalityIndependentAutonomousAction(actionDecision) {
             this.autonomousPhoto.recentPhotos.push({ url: photoUrl, timestamp: Date.now() });
             this.statistics.autonomousPhotos++;
             this.statistics.enhancedPhotosSent++;
-            
+
+            this.updatePersonalityStats(`[사진전송: ${actionDecision.personalityType} 성격]`, actionDecision);
+            this.statistics.personalityMessages++;
             console.log(`${yejinColors.freedom}📸 [성격독립사진] ${actionDecision.personalityType} 성격 독립 사진 전송 완료: ${photoUrl}${yejinColors.reset}`);
         } else {
             const message = await this.generatePersonalityMemoryIntegratedIndependentMessage(
