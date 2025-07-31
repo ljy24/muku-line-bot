@@ -919,4 +919,5 @@ async function getReplyByMessage(userMessage) {
 
 module.exports = {
     getReplyByMessage,
+    callOpenAI
 };
