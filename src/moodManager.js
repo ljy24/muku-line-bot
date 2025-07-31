@@ -1,9 +1,13 @@
-// src/moodManager.js v4.2 - 레디스 통합 + 감정 상태 동기화 + 배경스토리 연동 (문제점 해결 완료)
+// src/moodManager.js v4.5 - 완전 방어막 시스템 (모든 예외상황 처리 + 오타 감지 + 유사도 매칭)
 // 🔧 기존 시스템 유지 + 레디스 양방향 동기화 추가
 // 🩸 생리주기는 menstrualCycleManager에서만 가져옴 (Single Source of Truth 유지)
 // 💾 ultimateContext + 레디스 감정 상태 동기화
 // 🌸 배경 스토리 시스템 연동
 // ✅ 함수 순서, 비동기 처리, 매핑 일치, 에러 핸들링 모든 문제 해결
+// 🆕 영어 감정 자동 변환 지원 (60개 이상 영어 감정 + 오타 매핑)
+// 🚀 문자열 직접 입력 지원 ("normal" → { currentMood: "평온함" } 자동 변환)
+// 🛡️ 완전 방어막: Boolean, 숫자, 배열, 함수, 대소문자, 공백, 특수문자, 오타 모두 처리
+// 🎯 유사도 매칭: "happpy" → "happy" → "기쁨" (70% 이상 유사도 자동 변환)
 
 const moment = require('moment-timezone');
 const ultimateContext = require('./ultimateConversationContext.js');
@@ -71,10 +75,11 @@ function initializeRedisIntegration() {
 // 초기화 실행
 const redisInitialized = initializeRedisIntegration();
 
-// 🔧 완전한 감정-기분 매핑 테이블 (양방향 일치)
+// 🔧 완전한 감정-기분 매핑 테이블 (양방향 일치 + 영어 감정 지원)
 const EMOTION_MOOD_MAPPING = {
-    // 감정 → 기분
+    // 감정 → 기분 (영어 감정 포함)
     emotionToMood: {
+        // 기본 감정들
         'love': '사랑함',
         'worry': '걱정함', 
         'missing': '보고싶음',
@@ -89,7 +94,31 @@ const EMOTION_MOOD_MAPPING = {
         'excited': '설렘',
         'tired': '나른함',
         'annoyed': '짜증남',
-        'nostalgic': '그리움'
+        'nostalgic': '그리움',
+        
+        // 🆕 추가 영어 감정들 (다른 시스템 호환성)
+        'calm': '평온함',           // calm → 평온함
+        'peaceful': '평온함',       // peaceful → 평온함
+        'relaxed': '나른함',        // relaxed → 나른함
+        'cheerful': '기쁨',         // cheerful → 기쁨
+        'joyful': '기쁨',           // joyful → 기쁨
+        'melancholy': '우울함',     // melancholy → 우울함
+        'depressed': '우울함',      // depressed → 우울함
+        'frustrated': '짜증남',     // frustrated → 짜증남
+        'irritated': '짜증남',      // irritated → 짜증남
+        'worried': '걱정함',        // worried → 걱정함
+        'concerned': '걱정함',      // concerned → 걱정함
+        'affectionate': '사랑함',   // affectionate → 사랑함
+        'loving': '사랑함',         // loving → 사랑함
+        'longing': '보고싶음',      // longing → 보고싶음
+        'yearning': '그리움',       // yearning → 그리움
+        'mischievous': '장난스러움', // mischievous → 장난스러움
+        'cute': '애교모드',         // cute → 애교모드
+        'sulky': '심술궂음',        // sulky → 심술궂음
+        'moody': '심술궂음',        // moody → 심술궂음
+        'thrilled': '설렘',         // thrilled → 설렘
+        'drowsy': '나른함',         // drowsy → 나른함
+        'sleepy': '나른함'          // sleepy → 나른함
     },
     
     // 기분 → 감정
@@ -104,27 +133,322 @@ const EMOTION_MOOD_MAPPING = {
         '화남': 'angry',
         '불안함': 'anxious',
         '외로움': 'lonely',
-        '평온함': 'normal',
+        '평온함': 'calm',           // 🔧 normal → calm으로 변경 (더 일반적)
         '설렘': 'excited',
         '나른함': 'tired',
         '짜증남': 'annoyed',
         '그리움': 'nostalgic',
-        '심술궂음': 'annoyed'
+        '심술궁음': 'sulky',        // 🔧 annoyed → sulky로 변경 (더 정확)
+        '우울함': 'melancholy'      // 🆕 우울함 추가
     }
 };
 
-// 🔧 타입 안전성 함수들
+// 🔧 타입 안전성 함수들 (영어 감정 지원 추가 + 문자열 직접 처리)
 function isValidMessage(message) {
     return message && typeof message === 'string' && message.trim().length > 0;
 }
 
 function isValidMood(mood) {
+    if (!mood || typeof mood !== 'string') return false;
+    
+    // 한국어 기분 확인
+    if (ALL_MOODS.includes(mood)) return true;
+    
+    // 🆕 영어 감정 확인
+    const lowerMood = mood.toLowerCase();
+    if (EMOTION_MOOD_MAPPING.emotionToMood[lowerMood]) return true;
+    
+    return false;
+}
+
+// 🆕 한국어 기분만 확인하는 함수 (영어 감정 제외)
+function isValidKoreanMood(mood) {
     return mood && typeof mood === 'string' && ALL_MOODS.includes(mood);
 }
 
 function sanitizeMessage(message) {
     if (!isValidMessage(message)) return '';
     return message.trim().toLowerCase();
+}
+
+// 🆕 영어 감정을 한국어 기분으로 변환하는 완전 강화 헬퍼 함수
+function convertEmotionToMood(emotion) {
+    try {
+        if (!emotion || typeof emotion !== 'string') {
+            console.log(`🔄 [감정변환] 빈 값 또는 비문자열 → 평온함`);
+            return '평온함';
+        }
+        
+        // 🆕 전처리: 공백 제거, 소문자 변환, 특수문자 필터링
+        let cleanEmotion = emotion.trim().toLowerCase();
+        
+        // 특수문자 및 숫자 제거 (알파벳과 하이픈만 유지)
+        cleanEmotion = cleanEmotion.replace(/[^a-z\s-]/g, '').trim();
+        
+        if (!cleanEmotion) {
+            console.warn(`⚠️ [감정변환] 정제 후 빈 문자열: "${emotion}" → 평온함`);
+            return '평온함';
+        }
+        
+        // 🆕 다중 단어의 경우 첫 번째 단어만 사용
+        const firstWord = cleanEmotion.split(/\s+/)[0];
+        
+        // 이미 한국어 기분이면 그대로 반환
+        if (ALL_MOODS.includes(firstWord)) {
+            console.log(`🔄 [감정변환] 한국어 기분 감지: ${emotion} → ${firstWord} (변환 없음)`);
+            return firstWord;
+        }
+        
+        // 🆕 직접 매핑 확인
+        const directMatch = EMOTION_MOOD_MAPPING.emotionToMood[firstWord];
+        if (directMatch) {
+            console.log(`🔄 [감정변환] 직접 매핑: ${emotion} → ${directMatch}`);
+            return directMatch;
+        }
+        
+        // 🆕 유사도 기반 매칭 (간단한 오타 처리)
+        const availableEmotions = Object.keys(EMOTION_MOOD_MAPPING.emotionToMood);
+        let bestMatch = null;
+        let bestScore = 0;
+        
+        for (const availableEmotion of availableEmotions) {
+            const score = calculateSimilarity(firstWord, availableEmotion);
+            if (score > bestScore && score > 0.7) { // 70% 이상 유사도
+                bestScore = score;
+                bestMatch = availableEmotion;
+            }
+        }
+        
+        if (bestMatch) {
+            const convertedMood = EMOTION_MOOD_MAPPING.emotionToMood[bestMatch];
+            console.log(`🔄 [감정변환] 유사도 매칭: ${emotion} → ${bestMatch} → ${convertedMood} (유사도: ${Math.round(bestScore * 100)}%)`);
+            return convertedMood;
+        }
+        
+        // 🆕 부분 매칭 (포함 관계)
+        for (const [availableEmotion, mood] of Object.entries(EMOTION_MOOD_MAPPING.emotionToMood)) {
+            if (firstWord.includes(availableEmotion) || availableEmotion.includes(firstWord)) {
+                if (Math.abs(firstWord.length - availableEmotion.length) <= 2) { // 길이 차이 2 이내
+                    console.log(`🔄 [감정변환] 부분 매칭: ${emotion} → ${availableEmotion} → ${mood}`);
+                    return mood;
+                }
+            }
+        }
+        
+        // 변환할 수 없으면 기본값
+        console.warn(`⚠️ [감정변환실패] 알 수 없는 감정: "${emotion}" (정제: "${firstWord}") → 평온함 (기본값)`);
+        return '평온함';
+        
+    } catch (error) {
+        console.error(`❌ [감정변환오류] 변환 중 오류: ${error.message}`);
+        return '평온함';
+    }
+}
+
+// 🆕 문자열 유사도 계산 함수 (간단한 Levenshtein 거리 기반)
+function calculateSimilarity(str1, str2) {
+    try {
+        if (!str1 || !str2) return 0;
+        if (str1 === str2) return 1;
+        
+        const maxLength = Math.max(str1.length, str2.length);
+        if (maxLength === 0) return 1;
+        
+        const distance = levenshteinDistance(str1, str2);
+        return 1 - (distance / maxLength);
+        
+    } catch (error) {
+        return 0;
+    }
+}
+
+// 🆕 Levenshtein 거리 계산 (오타 감지용)
+function levenshteinDistance(str1, str2) {
+    const matrix = [];
+    
+    for (let i = 0; i <= str2.length; i++) {
+        matrix[i] = [i];
+    }
+    
+    for (let j = 0; j <= str1.length; j++) {
+        matrix[0][j] = j;
+    }
+    
+    for (let i = 1; i <= str2.length; i++) {
+        for (let j = 1; j <= str1.length; j++) {
+            if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+                matrix[i][j] = matrix[i - 1][j - 1];
+            } else {
+                matrix[i][j] = Math.min(
+                    matrix[i - 1][j - 1] + 1,
+                    matrix[i][j - 1] + 1,
+                    matrix[i - 1][j] + 1
+                );
+            }
+        }
+    }
+    
+    return matrix[str2.length][str1.length];
+}
+
+// 🆕 입력 데이터 완전 자동 정규화 함수 (모든 예외 케이스 처리)
+function normalizeMoodInput(input) {
+    try {
+        // null, undefined 처리
+        if (!input) {
+            console.log(`🔄 [입력정규화] null/undefined 입력 → 기본값`);
+            return { currentMood: '평온함', source: 'default_null' };
+        }
+        
+        // 🆕 Boolean 처리
+        if (typeof input === 'boolean') {
+            const moodFromBoolean = input ? '기쁨' : '슬픔';
+            console.log(`🔄 [입력정규화] Boolean 입력 감지: ${input} → ${moodFromBoolean}`);
+            return { 
+                currentMood: moodFromBoolean, 
+                source: 'converted_from_boolean',
+                originalInput: input
+            };
+        }
+        
+        // 🆕 숫자 처리
+        if (typeof input === 'number') {
+            let moodFromNumber = '평온함';
+            if (input > 0.7) moodFromNumber = '기쁨';
+            else if (input < 0.3) moodFromNumber = '슬픔';
+            
+            console.log(`🔄 [입력정규화] 숫자 입력 감지: ${input} → ${moodFromNumber}`);
+            return { 
+                currentMood: moodFromNumber, 
+                source: 'converted_from_number',
+                originalInput: input
+            };
+        }
+        
+        // 🆕 배열 처리
+        if (Array.isArray(input)) {
+            if (input.length === 0) {
+                console.log(`🔄 [입력정규화] 빈 배열 입력 → 기본값`);
+                return { currentMood: '평온함', source: 'default_empty_array' };
+            }
+            
+            // 첫 번째 문자열 요소 사용
+            const firstStringElement = input.find(item => typeof item === 'string');
+            if (firstStringElement) {
+                console.log(`🔄 [입력정규화] 배열 입력 감지, 첫 번째 문자열 사용: [${input.join(', ')}] → "${firstStringElement}"`);
+                return normalizeMoodInput(firstStringElement);
+            }
+            
+            console.log(`🔄 [입력정규화] 문자열 없는 배열 입력 → 기본값`);
+            return { currentMood: '평온함', source: 'default_array_no_string', originalInput: input };
+        }
+        
+        // 문자열이 직접 들어온 경우 (강화된 처리)
+        if (typeof input === 'string') {
+            // 🆕 공백 제거 및 소문자 변환
+            let cleanString = input.trim().toLowerCase();
+            
+            if (!cleanString) {
+                console.log(`🔄 [입력정규화] 빈 문자열 입력 → 기본값`);
+                return { currentMood: '평온함', source: 'default_empty_string' };
+            }
+            
+            // 🆕 특수문자 및 숫자 필터링 (알파벳과 한글만 유지)
+            const filteredString = cleanString.replace(/[^a-z가-힣\s-]/g, '').trim();
+            
+            if (!filteredString) {
+                console.log(`🔄 [입력정규화] 특수문자만 있는 입력: "${input}" → 기본값`);
+                return { currentMood: '평온함', source: 'default_special_chars_only', originalInput: input };
+            }
+            
+            // 🆕 다중 단어 처리 ("happy but sad" → "happy" 사용)
+            const firstWord = filteredString.split(/\s+/)[0];
+            
+            console.log(`🔄 [입력정규화] 문자열 입력 처리: "${input}" → 정제: "${firstWord}"`);
+            
+            const convertedMood = convertEmotionToMood(firstWord);
+            return { 
+                currentMood: convertedMood, 
+                source: 'converted_from_string',
+                originalInput: input,
+                processedInput: firstWord
+            };
+        }
+        
+        // 객체인 경우 (강화된 처리)
+        if (typeof input === 'object') {
+            const result = { ...input };
+            
+            // 🆕 다양한 key 이름 지원
+            const possibleMoodKeys = ['currentMood', 'mood', 'emotion', 'feeling', 'state'];
+            let moodValue = null;
+            let usedKey = null;
+            
+            for (const key of possibleMoodKeys) {
+                if (result[key]) {
+                    moodValue = result[key];
+                    usedKey = key;
+                    break;
+                }
+            }
+            
+            if (!moodValue) {
+                console.log(`🔄 [입력정규화] 객체에 기분 키 없음: ${Object.keys(result).join(', ')} → 기본값`);
+                result.currentMood = '평온함';
+                result.source = 'default_no_mood_key';
+            } else {
+                console.log(`🔄 [입력정규화] 객체에서 ${usedKey} 키 사용: ${moodValue}`);
+                
+                // 문자열이 아닌 값도 처리
+                if (typeof moodValue !== 'string') {
+                    const normalizedValue = normalizeMoodInput(moodValue);
+                    result.currentMood = normalizedValue.currentMood;
+                    result.source = `converted_object_${usedKey}_${typeof moodValue}`;
+                } else {
+                    // 영어 감정이면 한국어로 변환
+                    if (!isValidKoreanMood(moodValue)) {
+                        const originalMood = moodValue;
+                        result.currentMood = convertEmotionToMood(moodValue);
+                        result.source = 'converted_object_english';
+                        result.originalMood = originalMood;
+                    } else {
+                        result.currentMood = moodValue;
+                        result.source = 'object_korean_mood';
+                    }
+                }
+                
+                // 사용한 키가 currentMood가 아니면 정리
+                if (usedKey !== 'currentMood') {
+                    delete result[usedKey];
+                }
+            }
+            
+            return result;
+        }
+        
+        // 🆕 함수 처리
+        if (typeof input === 'function') {
+            console.log(`🔄 [입력정규화] 함수 입력 감지 → 기본값`);
+            return { currentMood: '평온함', source: 'default_function', originalInput: 'function' };
+        }
+        
+        // 기타 타입은 기본값
+        console.warn(`⚠️ [입력정규화] 예상하지 못한 입력 타입: ${typeof input} → 기본값`);
+        return { 
+            currentMood: '평온함', 
+            source: 'default_unknown_type',
+            originalInput: input,
+            inputType: typeof input
+        };
+        
+    } catch (error) {
+        console.error(`❌ [입력정규화오류] 정규화 중 오류: ${error.message}`);
+        return { 
+            currentMood: '평온함', 
+            source: 'error_fallback',
+            error: error.message
+        };
+    }
 }
 
 // 기존 응답 데이터들 (유지)
@@ -427,20 +751,49 @@ async function getIntegratedMoodState() {
     }
 }
 
-// 🔧 [NEW] 통합 기분 상태 업데이트 - ultimateContext + 레디스 동기화 (에러 핸들링 강화)
+// 🔧 [NEW] 통합 기분 상태 업데이트 - ultimateContext + 레디스 동기화 (에러 핸들링 강화 + 영어 감정 자동 변환 + 문자열 직접 지원)
 async function updateIntegratedMoodState(newMoodData) {
+    // 🆕 문자열이 직접 들어온 경우 객체로 변환
+    if (typeof newMoodData === 'string') {
+        const moodString = newMoodData.trim();
+        console.log(`🔄 [문자열자동변환] 문자열 감정/기분 감지: "${moodString}" → 객체 변환`);
+        newMoodData = { currentMood: moodString };
+    }
+    
     if (!newMoodData || typeof newMoodData !== 'object') {
-        console.error('❌ [통합업데이트] 유효하지 않은 기분 데이터:', newMoodData);
+        console.error('❌ [통합업데이트] 유효하지 않은 기분 데이터 (null, undefined, 또는 비객체):', newMoodData);
         return false;
     }
     
     try {
         console.log(`🔧 [통합업데이트시작] 기분 상태 업데이트 시작: ${JSON.stringify(newMoodData)}`);
         
-        // 데이터 검증
+        // 데이터 검증 및 자동 변환
         const validatedData = { ...newMoodData };
-        if (!isValidMood(validatedData.currentMood)) {
-            console.warn(`⚠️ [기분데이터검증] 유효하지 않은 기분, 기본값 사용: ${validatedData.currentMood} → 평온함`);
+        
+        // currentMood가 없으면 기본값 설정
+        if (!validatedData.currentMood) {
+            console.warn(`⚠️ [기분데이터보완] currentMood 없음, 기본값 설정: 평온함`);
+            validatedData.currentMood = '평온함';
+        }
+        
+        // 🆕 영어 감정을 한국어 기분으로 자동 변환
+        if (validatedData.currentMood && !isValidKoreanMood(validatedData.currentMood)) {
+            const englishEmotion = validatedData.currentMood.toLowerCase();
+            
+            if (EMOTION_MOOD_MAPPING.emotionToMood[englishEmotion]) {
+                const convertedMood = EMOTION_MOOD_MAPPING.emotionToMood[englishEmotion];
+                console.log(`🔄 [영어감정변환] ${validatedData.currentMood} → ${convertedMood}`);
+                validatedData.currentMood = convertedMood;
+            } else {
+                console.warn(`⚠️ [기분데이터검증] 알 수 없는 감정/기분: ${validatedData.currentMood}, 기본값 사용 → 평온함`);
+                validatedData.currentMood = '평온함';
+            }
+        }
+        
+        // 최종 검증 (한국어 기분만)
+        if (!isValidKoreanMood(validatedData.currentMood)) {
+            console.warn(`⚠️ [기분데이터최종검증] 유효하지 않은 기분, 기본값 사용: ${validatedData.currentMood} → 평온함`);
             validatedData.currentMood = '평온함';
         }
         
@@ -452,7 +805,7 @@ async function updateIntegratedMoodState(newMoodData) {
             if (ultimateContext && typeof ultimateContext.updateMoodState === 'function') {
                 ultimateContext.updateMoodState(validatedData);
                 legacyUpdateSuccess = true;
-                console.log(`💭 [기존업데이트완료] ultimateContext 업데이트 완료`);
+                console.log(`💭 [기존업데이트완료] ultimateContext 업데이트 완료: ${validatedData.currentMood}`);
             } else {
                 console.warn('⚠️ [기존업데이트] ultimateContext 업데이트 메서드 없음');
             }
@@ -464,7 +817,7 @@ async function updateIntegratedMoodState(newMoodData) {
         if (integratedRedisSystem && typeof integratedRedisSystem.forceCacheEmotionState === 'function') {
             try {
                 // 기분을 감정으로 매핑
-                const emotion = EMOTION_MOOD_MAPPING.moodToEmotion[validatedData.currentMood] || 'normal';
+                const emotion = EMOTION_MOOD_MAPPING.moodToEmotion[validatedData.currentMood] || 'calm';
                 
                 // 레디스에 감정 상태 강제 캐싱
                 await integratedRedisSystem.forceCacheEmotionState();
@@ -481,7 +834,7 @@ async function updateIntegratedMoodState(newMoodData) {
         const overallSuccess = legacyUpdateSuccess || redisUpdateSuccess;
         
         if (overallSuccess) {
-            console.log(`✅ [통합업데이트완료] 기분 상태 통합 업데이트 완료 (기존: ${legacyUpdateSuccess}, 레디스: ${redisUpdateSuccess})`);
+            console.log(`✅ [통합업데이트완료] 기분 상태 통합 업데이트 완료: ${validatedData.currentMood} (기존: ${legacyUpdateSuccess}, 레디스: ${redisUpdateSuccess})`);
         } else {
             console.warn(`⚠️ [통합업데이트부분실패] 일부 업데이트 실패 (기존: ${legacyUpdateSuccess}, 레디스: ${redisUpdateSuccess})`);
         }
@@ -993,9 +1346,17 @@ async function getIntegratedMoodStats() {
             
             // 시스템 정보
             lastUpdate: moodState.lastUpdate || Date.now(),
-            systemVersion: 'v4.2-문제점해결완료',
+            systemVersion: 'v4.5-완전방어막시스템',
             availableMoods: ALL_MOODS.length,
+            supportedEmotions: Object.keys(EMOTION_MOOD_MAPPING.emotionToMood).length,
             validationEnabled: true,
+            englishEmotionSupport: true,     // 🆕 영어 감정 지원 표시
+            stringInputSupport: true,        // 🆕 문자열 직접 입력 지원 표시
+            autoNormalization: true,         // 🆕 자동 정규화 지원 표시
+            typoDetection: true,             // 🆕 오타 감지 지원 표시
+            similarityMatching: true,        // 🆕 유사도 매칭 지원 표시
+            multiTypeSupport: true,          // 🆕 다중 타입 지원 표시 (Boolean, 숫자, 배열 등)
+            specialCharFiltering: true,      // 🆕 특수문자 필터링 지원 표시
             error: moodState.error || null
         };
         
@@ -1005,7 +1366,7 @@ async function getIntegratedMoodStats() {
             currentMood: '평온함',
             emotionIntensity: 0.5,
             dataSource: 'error',
-            systemVersion: 'v4.2-문제점해결완료',
+            systemVersion: 'v4.4-완전자동화입력처리',
             error: error.message,
             lastUpdate: Date.now()
         };
@@ -1018,7 +1379,7 @@ function getSystemHealthCheck() {
         const health = {
             status: 'healthy',
             timestamp: Date.now(),
-            version: 'v4.2-문제점해결완료',
+            version: 'v4.4-완전자동화입력처리',
             components: {
                 ultimateContext: {
                     available: !!(ultimateContext && typeof ultimateContext.getMoodState === 'function'),
@@ -1080,7 +1441,7 @@ function getSystemHealthCheck() {
         return {
             status: 'error',
             timestamp: Date.now(),
-            version: 'v4.2-문제점해결완료',
+            version: 'v4.4-완전자동화입력처리',
             error: error.message,
             healthScore: 0
         };
@@ -1114,10 +1475,15 @@ module.exports = {
     // 🔧 [NEW] 시스템 관리 함수들
     getSystemHealthCheck,        // 시스템 상태 체크
     
-    // 🔧 [NEW] 유틸리티 함수들
+    // 🔧 [NEW] 유틸리티 함수들 (완전 강화)
     isValidMessage,              // 메시지 검증
-    isValidMood,                 // 기분 검증
+    isValidMood,                 // 기분 검증 (영어 감정 + 한국어 기분)
+    isValidKoreanMood,           // 🆕 한국어 기분만 검증
     sanitizeMessage,             // 메시지 정제
+    convertEmotionToMood,        // 🆕 영어 감정 → 한국어 기분 완전 강화 변환 (오타/유사도 처리)
+    normalizeMoodInput,          // 🆕 입력 데이터 완전 자동 정규화 (모든 타입 지원)
+    calculateSimilarity,         // 🆕 문자열 유사도 계산
+    levenshteinDistance,         // 🆕 편집 거리 계산 (오타 감지)
     
     // 🔧 [NEW] 설정 및 상수
     PROBABILITY_CONFIG,          // 확률 설정
