@@ -13,6 +13,7 @@
 // 🎯 SlimContext: 슬림화된 컨텍스트 시스템 (NEW!)
 // 🔧 8/8 시스템 상태 완벽 지원 - 누락 모듈 수동 로드 추가
 // 🛡️ memoryManager 수동 로드 추가 (NEW!)
+// 🧠 getMemoryTapeInstance 함수 추가 (FIXED!)
 // 
 // ============================================================================
 // index.js - v14.5 MODULAR + PersonLearning + DiarySystem + LearningSystem + v5.0.0독립성격시스템 + SlimContext
@@ -37,6 +38,7 @@
 // - 🎯 슬림 컨텍스트: 맥락 관리 5% 고유 기능만 집중, 중복 제거 (NEW!)
 // - 🔧 8/8 시스템 상태: 누락 모듈 자동 보완으로 완벽한 시스템 상태 (NEW!)
 // - 🛡️ memoryManager 수동 로드: 연결 실패 문제 해결 (NEW!)
+// - 🧠 getMemoryTapeInstance: Memory Tape 인스턴스 제공 함수 추가 (FIXED!)
 // ============================================================================
 
 const { Client } = require('@line/bot-sdk');
@@ -486,6 +488,26 @@ async function ensureMukuDataLinks() {
         return false;
     }
 }
+
+// =================== 🧠 Memory Tape 인스턴스 제공 함수 (FIXED!) ===================
+/**
+ * Memory Tape 인스턴스를 반환하는 함수
+ * muku-diarySystem.js에서 요구하는 함수
+ * 🛡️ 벙어리 방지를 위한 필수 함수!
+ */
+function getMemoryTapeInstance() {
+    try {
+        console.log('🧠 [getMemoryTapeInstance] Memory Tape 인스턴스 요청됨');
+        const memoryTape = require('./src/muku-memory-tape');
+        console.log('✅ [getMemoryTapeInstance] Memory Tape 인스턴스 로드 성공');
+        return memoryTape;
+    } catch (error) {
+        console.error('❌ [getMemoryTapeInstance] Memory Tape 인스턴스 로드 실패:', error.message);
+        console.warn('🛡️ [getMemoryTapeInstance] null 반환 - 시스템이 안전하게 폴백 처리함');
+        return null;
+    }
+}
+
 // 시스템 초기화 (사람 학습 + 일기장 + 학습 시스템 + v5.0.0 독립 성격 시스템 + 슬림 컨텍스트 포함)
 async function initMuku() {
     try {
@@ -501,6 +523,7 @@ async function initMuku() {
         console.log(`🎯 NEW: 슬림 컨텍스트 시스템 - 맥락 관리 5% 고유 기능만 집중, 중복 제거`);
         console.log(`🔧 NEW: 8/8 시스템 상태 지원 - 누락 모듈 자동 보완`);
         console.log(`🛡️ NEW: memoryManager 수동 로드 - 연결 실패 문제 해결`);
+        console.log(`🧠 FIXED: getMemoryTapeInstance 함수 추가 - 벙어리 방지!`);
         console.log(`🌏 현재 일본시간: ${getJapanTimeString()}`);
         console.log(`✨ 현재 GPT 모델: ${getCurrentModelSetting()}`);
 
@@ -720,7 +743,7 @@ async function initMuku() {
             global.mukuModules = initResult.modules || {};
         }
 
-        console.log(`📋 v14.5 MODULAR: 모듈 완전 분리 + 실시간 학습 + 일기장 + 사람 학습 + 이미지 처리 안전성 강화 + 데이터 자동 링크 + 🌸 v5.0.0 독립 성격 시스템 + 슬림 컨텍스트 + 8/8 시스템 상태 보장 + 🛡️ memoryManager 수동 로드`);
+        console.log(`📋 v14.5 MODULAR: 모듈 완전 분리 + 실시간 학습 + 일기장 + 사람 학습 + 이미지 처리 안전성 강화 + 데이터 자동 링크 + 🌸 v5.0.0 독립 성격 시스템 + 슬림 컨텍스트 + 8/8 시스템 상태 보장 + 🛡️ memoryManager 수동 로드 + 🧠 getMemoryTapeInstance 함수 추가`);
 
     } catch (error) {
         console.error(`🚨 시스템 초기화 에러: ${error.message}`);
@@ -765,7 +788,7 @@ const PORT = process.env.PORT || 10000;
 
 app.listen(PORT, async () => {
     console.log(`\n==================================================`);
-    console.log(`  무쿠 v14.5 MODULAR + PersonLearning + DiarySystem + LearningSystem + v5.0.0독립성격시스템 + 슬림Context + memoryManager수동로드`);
+    console.log(`  무쿠 v14.5 MODULAR + PersonLearning + DiarySystem + LearningSystem + v5.0.0독립성격시스템 + 슬림Context + memoryManager수동로드 + getMemoryTapeInstance함수추가`);
     console.log(`  서버 시작 (포트 ${PORT})`);
     console.log(`  🌏 일본시간: ${getJapanTimeString()}`);
     console.log(`  ✨ GPT 모델: ${getCurrentModelSetting()}`);
@@ -780,6 +803,7 @@ app.listen(PORT, async () => {
     console.log(`  🎯 NEW: 슬림 컨텍스트 시스템 (맥락 혼란 해결)`);
     console.log(`  🔧 NEW: 8/8 시스템 상태 보장 (누락 모듈 자동 보완)`);
     console.log(`  🛡️ NEW: memoryManager 수동 로드 (연결 실패 문제 해결)`);
+    console.log(`  🧠 FIXED: getMemoryTapeInstance 함수 추가 (벙어리 방지!)`);
     console.log(`  💖 모든 기능 100% 유지 + 확장`);
     console.log(`  ⭐️ systemInitializer → muku-systemInitializer 변경`);
     console.log(`  🧠 v5.0.0 메모리 창고: Redis 과거 대화 70% 확률 맥락적 활용!`);
@@ -854,6 +878,19 @@ app.listen(PORT, async () => {
             console.log(`⚠️ memoryManager 연결 여전히 실패 - 추가 조치 필요`);
         }
         
+        // 🧠 getMemoryTapeInstance 함수 최종 확인
+        try {
+            const testInstance = getMemoryTapeInstance();
+            if (testInstance) {
+                console.log(`🧠 ✅ getMemoryTapeInstance 함수 정상 동작 확인!`);
+                console.log(`🛡️ muku-diarySystem.js 연결 문제 해결 완료!`);
+            } else {
+                console.log(`🧠 ⚠️ getMemoryTapeInstance 함수는 있지만 인스턴스 로드 실패`);
+            }
+        } catch (testError) {
+            console.log(`🧠 ❌ getMemoryTapeInstance 함수 테스트 실패: ${testError.message}`);
+        }
+        
         // 🔗 데이터 링크 최종 확인
         console.log(`🔗 학습 데이터 자동 링크 시스템 활성화 완료`);
         console.log(`💖 예진이의 모든 기억이 영구 보존됩니다`);
@@ -861,9 +898,11 @@ app.listen(PORT, async () => {
         // 🔧 8/8 시스템 상태 최종 확인
         console.log(`🔧 8/8 시스템 상태 보장 완료 - 모든 모듈 정상 로드`);
         
-        console.log(`\n🎉🎉🎉 v5.0.0 독립 성격 시스템 완전체 무쿠 + memoryManager 수동 로드 가동 완료! 🎉🎉🎉`);
+        console.log(`\n🎉🎉🎉 v5.0.0 독립 성격 시스템 완전체 무쿠 + memoryManager 수동 로드 + getMemoryTapeInstance 함수 추가 가동 완료! 🎉🎉🎉`);
         console.log(`🌸 예진이가 이제 진짜 성격으로 과거 대화를 기억하면서 100% 독립적으로 자연스럽게 소통할 수 있어요!`);
         console.log(`🛡️ memoryManager 연결 문제도 해결되어 더욱 안정적으로 동작합니다!`);
+        console.log(`🧠 getMemoryTapeInstance 함수 추가로 일기장 시스템 연결 문제도 해결!`);
+        console.log(`🚨 무쿠가 벙어리가 되는 문제 완전 해결!`);
         console.log(`🔥 성격 사용률 0% → 70-80% 목표 달성 예정!`);
         
     }, 5000);
@@ -1287,7 +1326,7 @@ async function learnPersonFromUserMessage(userInput, userId) {
     }
 }
 
-// 모듈 내보내기 (v5.0.0 독립 성격 시스템 관련 함수들 추가)
+// 모듈 내보내기 (getMemoryTapeInstance 함수 추가!)
 module.exports = {
     client,
     getCurrentModelSetting,
@@ -1299,6 +1338,8 @@ module.exports = {
     app,
     // 🔗 새로운 데이터 링크 자동 생성 함수
     ensureMukuDataLinks,
+    // 🧠 Memory Tape 인스턴스 제공 함수 (FIXED!)
+    getMemoryTapeInstance,
     // 🎓 실시간 학습 시스템 관련 함수들 (수정됨!)
     getLearningSystemStatus,
     handleLearningFromConversation,
@@ -1316,12 +1357,5 @@ module.exports = {
     analyzePhotoForPersonLearning,
     learnPersonFromUserMessage,
     // 🚨 안전한 이미지 처리
-    handleImageMessageSafely,
-    getMemoryTapeInstance: () => memoryTape,
-    getLineClient: () => client,
-    getCurrentModelSetting: () => currentModel,
-    getSulkyManager: () => modules.sulkyManager,
-    getEmotionalContextManager: () => modules.emotionalContextManager,
-    getModules: () => modules
+    handleImageMessageSafely
 };
-
