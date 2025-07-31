@@ -1163,8 +1163,7 @@ function shutdownDiarySystem() {
 module.exports = {
     // ⭐️ 기존 핵심 함수들 (그대로 유지)
     handleDiaryCommand,           // 확장됨
-    saveDynamicMemory,           // 확장됨 
-    saveManualMemory,            
+    saveDynamicMemory,           // 확장됨            
     getAllDynamicLearning,       
     performAutoSave,             
     
