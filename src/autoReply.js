@@ -26,15 +26,10 @@ let redisConnected = false;
 // Redis 연결 초기화 함수
 async function initializeUserMemoryRedis() {
     try {
-        userMemoryRedis = new Redis({
-            host: process.env.REDIS_HOST || 'localhost',
-            port: process.env.REDIS_PORT || 6379,
-            password: process.env.REDIS_PASSWORD || null,
-            db: process.env.REDIS_DB || 0,
+        userMemoryRedis = new Redis(process.env.REDIS_URL, {
             retryDelayOnFailover: 100,
             maxRetriesPerRequest: 3,
-            connectTimeout: 10000,
-            // lazyConnect 제거 - 즉시 연결 시도
+            connectTimeout: 10000
         });
         
         userMemoryRedis.on('connect', () => {
