@@ -1,8 +1,9 @@
 // ============================================================================
-// commandHandler.js - v5.0 (Redis 일기장 명령어 확장)
+// commandHandler.js - v5.1 (Redis 일기장 명령어 확장 + 기억해 영구 저장)
 // ✅ 기존 모든 기능 100% 보존
 // 🆕 추가: Redis 기간별 일기 조회 명령어들
 // 📅 지원: 최근7일, 지난주, 한달전, 이번달, 지난달 일기
+// 🧠 신규: "기억해" 명령어로 영구 기억 저장 기능
 // 🛡️ 안전장치: 에러가 나도 기존 시스템에 절대 영향 없음
 // 💖 무쿠가 벙어리가 되지 않도록 최우선 보장
 // 🔧 수정: 일기/상태 키워드 오작동 방지 로직 추가
@@ -554,6 +555,178 @@ async function handleCommand(text, userId, client = null) {
             }
         }
 
+        // ================== 🧠 기억 저장 관련 처리 (NEW) ==================
+        if (lowerText.includes('기억해') || lowerText.includes('기억해줘') || 
+            lowerText.includes('기억하고') || lowerText.includes('기억해두') ||
+            lowerText.includes('잊지마') || lowerText.includes('잊지 마')) {
+            
+            console.log('[commandHandler] 🧠 기억 저장 요청 감지');
+            
+            try {
+                // 📝 사용자 메시지에서 기억할 내용 추출
+                let memoryContent = text;
+                
+                // "기억해" 키워드 제거하고 순수 내용만 추출
+                const cleanContent = memoryContent
+                    .replace(/기억해\?/gi, '')
+                    .replace(/기억해줘/gi, '')
+                    .replace(/기억하고/gi, '')
+                    .replace(/기억해두/gi, '')
+                    .replace(/잊지마/gi, '')
+                    .replace(/잊지 마/gi, '')
+                    .trim();
+                
+                if (cleanContent && cleanContent.length > 5) {
+                    // 🔗 Memory Manager에 고정 기억으로 추가
+                    const modules = global.mukuModules || {};
+                    
+                    if (modules.memoryManager && modules.memoryManager.addCustomMemory) {
+                        // 새로운 기억 데이터 생성
+                        const newMemory = {
+                            id: `custom_${Date.now()}`,
+                            content: cleanContent,
+                            type: 'user_request',
+                            category: '아저씨_특별기억',
+                            importance: 'high',
+                            timestamp: new Date().toISOString(),
+                            keywords: extractKeywords(cleanContent),
+                            source: 'commandHandler_remember'
+                        };
+                        
+                        // 고정 기억에 추가
+                        const result = await modules.memoryManager.addCustomMemory(newMemory);
+                        
+                        if (result && result.success) {
+                            let response = "응! 정말 중요한 기억이네~ 💕\n\n";
+                            response += `"${cleanContent.substring(0, 50)}${cleanContent.length > 50 ? '...' : ''}"\n\n`;
+                            response += "이제 영원히 기억할게! 나중에 이 얘기 또 해줘~ ㅎㅎ";
+                            
+                            console.log(`[commandHandler] 🧠 고정 기억 추가 성공: ${cleanContent.substring(0, 30)}...`);
+                            
+                            // 🌙 나이트모드 톤 적용
+                            if (nightModeInfo && nightModeInfo.isNightMode) {
+                                response = applyNightModeTone(response, nightModeInfo);
+                            }
+                            
+                            return {
+                                type: 'text',
+                                comment: response,
+                                handled: true,
+                                source: 'memory_save_success'
+                            };
+                        }
+                    }
+                    
+                    // 📁 Memory Manager가 없거나 실패 시 파일 직접 저장
+                    try {
+                        const memoryFilePath = path.join(MEMORY_DIR, 'user_memories.json');
+                        ensureDirectoryExists(MEMORY_DIR);
+                        
+                        let userMemories = [];
+                        
+                        // 기존 파일 읽기
+                        if (fs.existsSync(memoryFilePath)) {
+                            try {
+                                const data = fs.readFileSync(memoryFilePath, 'utf8');
+                                userMemories = JSON.parse(data);
+                            } catch (parseError) {
+                                console.error('[commandHandler] 🧠 기존 기억 파일 읽기 실패:', parseError.message);
+                                userMemories = [];
+                            }
+                        }
+                        
+                        // 새 기억 추가
+                        const newMemory = {
+                            id: `user_${Date.now()}`,
+                            content: cleanContent,
+                            timestamp: new Date().toISOString(),
+                            date: new Date().toLocaleDateString('ko-KR'),
+                            importance: 'high',
+                            category: '아저씨_특별기억'
+                        };
+                        
+                        userMemories.push(newMemory);
+                        
+                        // 최신 50개만 유지
+                        if (userMemories.length > 50) {
+                            userMemories = userMemories.slice(-50);
+                        }
+                        
+                        // 파일 저장
+                        fs.writeFileSync(memoryFilePath, JSON.stringify(userMemories, null, 2), 'utf8');
+                        
+                        let response = "응! 정말 소중한 기억이야~ 💕\n\n";
+                        response += `"${cleanContent.substring(0, 50)}${cleanContent.length > 50 ? '...' : ''}"\n\n`;
+                        response += "파일에도 따로 저장해뒀어! 절대 잊지 않을게~ ㅎㅎ";
+                        
+                        console.log(`[commandHandler] 🧠 파일 기억 저장 성공: ${cleanContent.substring(0, 30)}...`);
+                        
+                        // 🌙 나이트모드 톤 적용
+                        if (nightModeInfo && nightModeInfo.isNightMode) {
+                            response = applyNightModeTone(response, nightModeInfo);
+                        }
+                        
+                        return {
+                            type: 'text',
+                            comment: response,
+                            handled: true,
+                            source: 'memory_file_save'
+                        };
+                        
+                    } catch (fileError) {
+                        console.error('[commandHandler] 🧠 파일 기억 저장 실패:', fileError.message);
+                        
+                        let response = "기억하려고 했는데 뭔가 문제가 생겼어... 그래도 마음속에는 깊이 새겨둘게! 💕";
+                        
+                        // 🌙 나이트모드 톤 적용
+                        if (nightModeInfo && nightModeInfo.isNightMode) {
+                            response = applyNightModeTone(response, nightModeInfo);
+                        }
+                        
+                        return {
+                            type: 'text',
+                            comment: response,
+                            handled: true,
+                            source: 'memory_save_error'
+                        };
+                    }
+                    
+                } else {
+                    // 기억할 내용이 너무 짧은 경우
+                    let response = "음... 뭘 기억하라는 거야? 좀 더 자세히 말해줘~ ㅎㅎ";
+                    
+                    // 🌙 나이트모드 톤 적용
+                    if (nightModeInfo && nightModeInfo.isNightMode) {
+                        response = applyNightModeTone(response, nightModeInfo);
+                    }
+                    
+                    return {
+                        type: 'text',
+                        comment: response,
+                        handled: true,
+                        source: 'memory_content_too_short'
+                    };
+                }
+                
+            } catch (error) {
+                console.error('[commandHandler] 🧠 기억 저장 처리 실패:', error.message);
+                
+                let response = "기억하려고 했는데 문제가 생겼어... 그래도 마음속엔 새겨둘게! 💕";
+                
+                // 🌙 나이트모드 톤 적용
+                if (nightModeInfo && nightModeInfo.isNightMode) {
+                    response = applyNightModeTone(response, nightModeInfo);
+                }
+                
+                return {
+                    type: 'text',
+                    comment: response,
+                    handled: true,
+                    source: 'memory_save_system_error'
+                };
+            }
+        }
+
         // ================== 📊 상태 확인 관련 처리 (오작동 방지 수정) ==================
         if ((lowerText.includes('상태는') || lowerText.includes('상태 어때') || 
             lowerText.includes('지금 상태') || lowerText === '상태' ||
@@ -957,6 +1130,20 @@ async function handlePersonLearning(text, userId) {
         console.error('[commandHandler] 👥 사람 이름 학습 처리 실패:', error.message);
         return null;
     }
+}
+
+/**
+ * 텍스트에서 키워드 추출 함수
+ */
+function extractKeywords(text) {
+    // 간단한 키워드 추출 로직
+    const stopWords = ['이', '그', '저', '의', '가', '을', '를', '에', '와', '과', '로', '으로', '에서', '까지', '부터', '에게', '한테', '처럼', '같이'];
+    const words = text.split(/\s+/)
+        .filter(word => word.length > 1)
+        .filter(word => !stopWords.includes(word))
+        .slice(0, 5); // 최대 5개 키워드
+    
+    return words;
 }
 
 /**
