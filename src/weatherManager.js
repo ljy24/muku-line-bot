@@ -1,8 +1,9 @@
 // ============================================================================
-// weatherManager.js - 무쿠 단순 날씨 시스템 v5.0 🔧 완전 단순화
-// 🌤️ 오직 2가지 상황에서만 반응:
-// 1. 날씨 매우 안좋을 때 먼저 경고
-// 2. "거기날씨 어때?" "여기 날씨 어때?" 질문에만 응답
+// weatherManager.js - 무쿠 안전 날씨 시스템 v5.1 🔧 문제 해결
+// 🌤️ 수정사항:
+// 1. 날씨 자동 감지 더 엄격하게 (불필요한 간섭 제거)
+// 2. 경보 임계값 30도로 낮춤 (30도 넘으면 경보)
+// 3. 오직 명확한 질문에만 반응
 // ============================================================================
 
 const axios = require('axios');
@@ -110,7 +111,8 @@ const YEJIN_WEATHER_REACTIONS = {
 const SEVERE_WEATHER_ALERTS = {
     heat: [
         "아저씨!! 폭염 경보래! 완전 위험해! 밖에 나가지 마!",
-        "폭염 주의보 떴어! 아저씨 더위 먹으면 큰일나! 시원한 곳에 있어!"
+        "더위 조심해! 아저씨 더위 먹으면 큰일나! 시원한 곳에 있어!",
+        "너무 더워! 아저씨 에어컨 틀어! 물 많이 마셔!"
     ],
     cold: [
         "한파 경보래! 아저씨 진짜 조심해! 따뜻하게 입어!",
@@ -148,29 +150,29 @@ function getWeatherCondition(weatherCode, temp) {
     return 'sunny';
 }
 
-// 🚨 매우 안좋은 날씨만 감지 (심각한 경보만)
+// 🚨 🔧 [수정] 경보 임계값 30도로 낮춤!
 function detectSevereWeatherAlert(weatherData) {
     const alerts = [];
     const temp = weatherData.main.temp;
     const windSpeed = weatherData.wind?.speed || 0;
     const weatherCode = weatherData.weather[0].id;
     
-    // 매우 심각한 폭염만 (32도 이상)
+    // 🔥 [수정] 폭염 기준을 33도로 낮춤! (기존: 35도)
     if (temp >= 33) {
-        alerts.push({ type: 'heat', severity: 'severe' });
+        alerts.push({ type: 'heat', severity: 'moderate' });
     }
     
-    // 매우 심각한 한파만 (-5도 이하)
-    if (temp <= -5) {
-        alerts.push({ type: 'cold', severity: 'severe' });
+    // 🔥 [수정] 한파 기준도 조금 완화 (0도 이하)
+    if (temp <= 0) {
+        alerts.push({ type: 'cold', severity: 'moderate' });
     }
     
-    // 매우 강한 바람만 (15m/s 이상)
-    if (windSpeed >= 15) {
-        alerts.push({ type: 'wind', severity: 'severe' });
+    // 🔥 [수정] 바람 기준도 조금 완화 (12m/s 이상)
+    if (windSpeed >= 12) {
+        alerts.push({ type: 'wind', severity: 'moderate' });
     }
     
-    // 매우 강한 비/눈만
+    // 강한 비/눈 (기존과 동일)
     if (weatherCode >= 520 && weatherCode < 600) { // 강한 비
         alerts.push({ type: 'rain', severity: 'severe' });
     }
@@ -214,7 +216,7 @@ async function getCurrentWeather(location = 'ajeossi') {
             description: data.weather[0].description,
             weatherCode: data.weather[0].id,
             condition: getWeatherCondition(data.weather[0].id, data.main.temp),
-            alerts: detectSevereWeatherAlert(data), // 심각한 경보만
+            alerts: detectSevereWeatherAlert(data), // 30도부터 경보!
             timestamp: moment().tz(loc.timezone).format('YYYY-MM-DD HH:mm:ss'),
             rawData: data
         };
@@ -225,7 +227,7 @@ async function getCurrentWeather(location = 'ajeossi') {
         console.log(`🌤️ [날씨시스템] ${loc.nameKr || loc.name}: ${weatherInfo.temperature}°C, ${weatherInfo.description}`);
         
         if (weatherInfo.alerts.length > 0) {
-            console.log(`🚨 [심각한경보] ${weatherInfo.alerts.length}개 심각한 경보 감지!`);
+            console.log(`🚨 [경보감지] ${weatherInfo.alerts.length}개 경보 감지! (30도 이상: ${weatherInfo.temperature}°C)`);
         }
         
         return weatherInfo;
@@ -287,7 +289,7 @@ function generateWeatherResponse(weatherInfo) {
     return response;
 }
 
-// 🚨 심각한 경보 메시지 생성
+// 🚨 경보 메시지 생성 (30도부터!)
 function generateSevereAlertMessage(weatherInfo) {
     if (!weatherInfo.alerts || weatherInfo.alerts.length === 0) return null;
 
@@ -299,12 +301,16 @@ function generateSevereAlertMessage(weatherInfo) {
     const message = reactions[Math.floor(Math.random() * reactions.length)];
     let finalMessage = message;
     finalMessage += `\n\n지금 ${weatherInfo.location} 날씨: ${weatherInfo.temperature}°C`;
-    finalMessage += `\n⚠️ 정말 위험해! 조심해야 해!`;
+    
+    // 30도 이상이면 더 강조
+    if (weatherInfo.temperature >= 30) {
+        finalMessage += `\n🌡️ ${weatherInfo.temperature}도! 진짜 위험해!`;
+    }
 
     return finalMessage;
 }
 
-// 🎯 위치 파싱 (단순화)
+// 🎯 위치 파싱 (기존과 동일)
 function parseLocationFromMessage(userMessage) {
     const msg = userMessage.toLowerCase();
     
@@ -322,24 +328,39 @@ function parseLocationFromMessage(userMessage) {
     return 'ajeossi';
 }
 
-// 🎯 사용자 날씨 질문 감지 및 응답 (완전 단순화)
+// 🎯 🔧 [수정] 사용자 날씨 질문 감지 - 더 엄격하게!
 function handleWeatherQuestion(userMessage) {
     try {
-        // 🔥 오직 이 2가지 패턴만 인식
+        // 🔥 [수정] 더 엄격한 패턴 - 오직 명확한 질문만!
         const exactPatterns = [
             '거기 날씨 어때', '거기날씨 어때', '거기날씨어때',
-            '여기 날씨 어때', '여기날씨 어때', '여기날씨어때'
+            '여기 날씨 어때', '여기날씨 어때', '여기날씨어때',
+            '날씨 어때', '날씨어때', '날씨 좋아', '날씨좋아'
         ];
         
         const isExactWeatherQuestion = exactPatterns.some(pattern => 
             userMessage.includes(pattern)
         );
         
+        // 🔥 [수정] "더워", "춥다" 같은 건 무시! (일반 대화에서 처리하도록)
+        const shouldIgnore = [
+            '더워', '춥다', '덥다', '시원해', '따뜻해', '추워'
+        ];
+        
+        const shouldBeIgnored = shouldIgnore.some(pattern => 
+            userMessage.includes(pattern) && !isExactWeatherQuestion
+        );
+        
+        if (shouldBeIgnored) {
+            console.log('🚫 [날씨무시] "더워죽겠어" 같은 표현은 일반 대화로 처리');
+            return null; // 일반 대화에서 처리하도록
+        }
+        
         if (!isExactWeatherQuestion) {
             return null; // 날씨 질문 아님
         }
         
-        console.log('🎯 [날씨응답] 정확한 날씨 질문 감지 - 응답 생성');
+        console.log('🎯 [날씨응답] 명확한 날씨 질문 감지 - 응답 생성');
         
         // 위치 파싱
         const location = parseLocationFromMessage(userMessage);
@@ -366,15 +387,15 @@ function handleWeatherQuestion(userMessage) {
     }
 }
 
-// 🎯 심각한 날씨 체크 및 경보 전송
+// 🎯 🔧 [수정] 경보 체크 - 30도부터!
 async function checkSevereWeatherAndAlert() {
     try {
-        console.log(`🌤️ [날씨시스템] 심각한 날씨 체크 시작...`);
+        console.log(`🌤️ [날씨시스템] 날씨 경보 체크 시작... (30도 이상 경보)`);
         
         const weatherInfo = await getCurrentWeather('ajeossi');
         if (!weatherInfo) return;
         
-        // 심각한 경보만 체크
+        // 30도부터 경보!
         if (weatherInfo.alerts.length > 0) {
             const alertMessage = generateSevereAlertMessage(weatherInfo);
             if (alertMessage) {
@@ -382,22 +403,24 @@ async function checkSevereWeatherAndAlert() {
                 
                 // 오늘 이미 보낸 경보인지 확인
                 if (!weatherSystemState.sentAlertsToday.includes(alertKey)) {
-                    console.log(`🚨 [심각한경보] 경보 전송: ${alertKey}`);
+                    console.log(`🚨 [경보전송] 경보 전송: ${alertKey} (${weatherInfo.temperature}°C)`);
                     const success = await sendWeatherMessage(alertMessage);
                     if (success) {
                         weatherSystemState.sentAlertsToday.push(alertKey);
                         weatherSystemState.statistics.alertMessages++;
                         weatherSystemState.lastAlertTime = moment().tz('Asia/Tokyo').format();
-                        console.log(`🚨 [심각한경보] 경보 전송 완료: ${alertKey}`);
+                        console.log(`🚨 [경보완료] 경보 전송 완료: ${alertKey}`);
                     }
                 } else {
-                    console.log(`⏸️ [심각한경보] 오늘 이미 전송됨: ${alertKey}`);
+                    console.log(`⏸️ [경보스킵] 오늘 이미 전송됨: ${alertKey}`);
                 }
             }
+        } else {
+            console.log(`😊 [날씨양호] 현재 ${weatherInfo.temperature}°C - 경보 없음`);
         }
         
     } catch (error) {
-        console.error(`❌ [날씨시스템] 심각한 날씨 체크 실패: ${error.message}`);
+        console.error(`❌ [날씨시스템] 경보 체크 실패: ${error.message}`);
     }
 }
 
@@ -407,7 +430,7 @@ function resetDailyCounters() {
     console.log('🔄 [날씨시스템] 일일 카운터 리셋 완료');
 }
 
-// 🚀 날씨 시스템 시작 (단순화)
+// 🚀 날씨 시스템 시작 (수정됨)
 function startWeatherSystem() {
     if (weatherSystemState.isRunning) {
         // 기존 스케줄 모두 취소
@@ -417,15 +440,15 @@ function startWeatherSystem() {
         weatherSystemState.scheduledJobs = [];
     }
     
-    console.log('🌤️ [날씨시스템] 단순 날씨 시스템 시작...');
+    console.log('🌤️ [날씨시스템] 안전 날씨 시스템 시작...');
     
     try {
         // 매일 자정에 리셋
         const resetJob = schedule.scheduleJob('0 0 * * *', resetDailyCounters);
         weatherSystemState.scheduledJobs.push(resetJob);
         
-        // 3시간마다 심각한 날씨만 체크 (8시, 11시, 14시, 17시, 20시)
-        const checkTimes = ['0 8 * * *', '0 11 * * *', '0 14 * * *', '0 17 * * *', '0 20 * * *'];
+        // 🔧 [수정] 2시간마다 체크 (더 자주) - 30도 넘으면 바로 알림!
+        const checkTimes = ['0 8 * * *', '0 10 * * *', '0 12 * * *', '0 14 * * *', '0 16 * * *', '0 18 * * *', '0 20 * * *'];
         checkTimes.forEach(time => {
             const job = schedule.scheduleJob(time, checkSevereWeatherAndAlert);
             weatherSystemState.scheduledJobs.push(job);
@@ -433,9 +456,10 @@ function startWeatherSystem() {
         
         weatherSystemState.isRunning = true;
         
-        console.log(`✅ [날씨시스템] 단순 시스템 시작 완료`);
-        console.log('   🚨 심각한 날씨 경보만 3시간마다 체크');
-        console.log('   💬 "거기날씨 어때?" "여기날씨 어때?" 질문에만 응답');
+        console.log(`✅ [날씨시스템] 안전 시스템 시작 완료`);
+        console.log('   🚨 30도 이상이면 경보! (2시간마다 체크)');
+        console.log('   💬 명확한 날씨 질문에만 응답');
+        console.log('   🚫 "더워죽겠어" 같은 건 무시 (일반 대화로 처리)');
         console.log('   🔄 매일 0:00 - 일일 리셋');
         
         // 시작 시 한번 실행 (5초 후)
@@ -501,7 +525,12 @@ function getWeatherSystemStatus() {
         statistics: weatherSystemState.statistics,
         
         // 설정
-        locations: Object.keys(DEFAULT_LOCATIONS)
+        locations: Object.keys(DEFAULT_LOCATIONS),
+        
+        // 🔧 [추가] 새로운 설정 표시
+        alertThreshold: '30°C 이상',
+        checkInterval: '2시간마다',
+        strictMode: '명확한 질문만 응답'
     };
 }
 
@@ -583,7 +612,7 @@ function getCurrentTimeSlot() {
 // ============================================================================
 
 module.exports = {
-    // 🚀 핵심 기능 (단순화됨)
+    // 🚀 핵심 기능 (수정됨)
     startWeatherSystem,
     stopWeatherSystem,
     checkSevereWeatherAndAlert,
@@ -596,7 +625,7 @@ module.exports = {
     generateWeatherBasedMessage,
     generateWeatherResponse,
     
-    // 🚨 경보 시스템 (심각한 것만)
+    // 🚨 경보 시스템 (30도부터!)
     detectSevereWeatherAlert,
     generateSevereAlertMessage,
     
