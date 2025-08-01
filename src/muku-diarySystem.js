@@ -1147,7 +1147,7 @@ async function handleDiaryCommand(lowerText) {
             response += `📂 **파일 시스템**\n- 총 누적 기억: ${fileStats.totalDynamicMemories}개\n\n`;
             response += `⚙️ **시스템 상태**\n`;
             response += `- Redis 연결: ${diarySystemStatus.redisConnected ? '✅' : '❌'}\n`;
-            response += `- OpenAI 연결: ${diarySystemStatus.openaiConnected ? '✅' : '❌ API 키 확인 필요'}\n`;
+            response += `- OpenAI 연결: ${openaiStatus}\n`; // ← 수정된 부분
             response += `- 자동 일기: ${diarySystemStatus.dailyDiaryEnabled ? '✅ 활성화' : '❌ 비활성화'}\n`;
             response += `- 스케줄러 강제실행: ${diarySystemStatus.schedulerForced ? '✅ 강제활성화' : '❌ 비활성화'}\n`;
             response += `- 완전독립스케줄러: ${diarySystemStatus.independentSchedulerActive ? '✅ 활성화' : '❌ 비활성화'}\n`;
