@@ -18,38 +18,53 @@ const moment = require('moment-timezone');
 let userMemoryRedis = null;
 let redisConnected = false;
 
-try {
-    userMemoryRedis = new Redis({
-        host: process.env.REDIS_HOST || 'localhost',
-        port: process.env.REDIS_PORT || 6379,
-        password: process.env.REDIS_PASSWORD || null,
-        db: process.env.REDIS_DB || 0,
-        retryDelayOnFailover: 100,
-        maxRetriesPerRequest: 3,
-        connectTimeout: 10000,
-        lazyConnect: true
-    });
-    
-    userMemoryRedis.on('connect', () => {
-        console.log('✅ [commandHandler] Redis 사용자 기억 시스템 연결 성공');
+// Redis 연결 초기화 함수
+async function initializeRedisConnection() {
+    try {
+        userMemoryRedis = new Redis({
+            host: process.env.REDIS_HOST || 'localhost',
+            port: process.env.REDIS_PORT || 6379,
+            password: process.env.REDIS_PASSWORD || null,
+            db: process.env.REDIS_DB || 0,
+            retryDelayOnFailover: 100,
+            maxRetriesPerRequest: 3,
+            connectTimeout: 10000,
+            // lazyConnect 제거 - 즉시 연결 시도
+        });
+        
+        userMemoryRedis.on('connect', () => {
+            console.log('✅ [commandHandler] Redis 사용자 기억 시스템 연결 성공');
+            redisConnected = true;
+        });
+        
+        userMemoryRedis.on('error', (error) => {
+            console.error('❌ [commandHandler] Redis 사용자 기억 연결 오류:', error.message);
+            redisConnected = false;
+        });
+        
+        userMemoryRedis.on('close', () => {
+            console.warn('⚠️ [commandHandler] Redis 사용자 기억 연결 종료');
+            redisConnected = false;
+        });
+        
+        // 연결 테스트
+        await userMemoryRedis.ping();
         redisConnected = true;
-    });
-    
-    userMemoryRedis.on('error', (error) => {
-        console.error('❌ [commandHandler] Redis 사용자 기억 연결 오류:', error.message);
+        console.log('🧠 [commandHandler] Redis 사용자 기억 시스템 초기화 완료');
+        
+    } catch (error) {
+        console.error('❌ [commandHandler] Redis 사용자 기억 초기화 실패:', error.message);
+        userMemoryRedis = null;
         redisConnected = false;
-    });
-    
-    userMemoryRedis.on('close', () => {
-        console.warn('⚠️ [commandHandler] Redis 사용자 기억 연결 종료');
-        redisConnected = false;
-    });
-    
-    console.log('🧠 [commandHandler] Redis 사용자 기억 시스템 초기화 완료');
-} catch (error) {
-    console.error('❌ [commandHandler] Redis 사용자 기억 초기화 실패:', error.message);
-    redisConnected = false;
+    }
 }
+
+// Redis 연결 초기화 (비동기)
+setTimeout(() => {
+    initializeRedisConnection().catch(error => {
+        console.error('❌ [commandHandler] Redis 연결 재시도 실패:', error.message);
+    });
+}, 2000);
 
 // ⭐ 새벽응답+알람 시스템 (기존 그대로 유지)
 let nightWakeSystem = null;
