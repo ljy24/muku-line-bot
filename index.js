@@ -630,28 +630,63 @@ async function initMuku() {
                 initResult.modules.personalityIntegratedIndependentYejin = false;
             }
             
-            // 📖 일기장 시스템 상태 확인
-            if (initResult.modules.diarySystem) {
-                console.log(`📖 일기장 시스템 활성화 완료!`);
-                console.log(`📖 사용법: "일기장" 명령어로 누적 학습 내용 확인 가능`);
-                
-                if (initResult.modules.diarySystem.getDynamicLearningStats) {
-                    try {
-                        const diaryStats = await initResult.modules.diarySystem.getDynamicLearningStats();
-                        console.log(`📖 현재 학습 데이터: 총 ${diaryStats.total}개 기억`);
-                        
-                        if (diaryStats.total > 0) {
-                            const oldestDate = new Date(diaryStats.oldest).toLocaleDateString('ko-KR');
-                            const newestDate = new Date(diaryStats.newest).toLocaleDateString('ko-KR');
-                            console.log(`📖 학습 기간: ${oldestDate} ~ ${newestDate}`);
-                        }
-                    } catch (statsError) {
-                        console.log(`📖 학습 통계 조회 실패: ${statsError.message}`);
-                    }
-                }
+            // initMuku() 함수에서 일기장 시스템 상태 확인 부분을 이렇게 수정하세요:
+
+// 📖 일기장 시스템 상태 확인 및 강제 초기화 (수정됨!)
+if (initResult.modules.diarySystem) {
+    console.log(`📖 일기장 시스템 활성화 완료!`);
+    console.log(`📖 사용법: "일기장" 명령어로 누적 학습 내용 확인 가능`);
+    
+    // 🔧 강제 초기화 추가! (NEW!)
+    try {
+        console.log(`📖 [강제초기화] muku-diarySystem 초기화 시작...`);
+        
+        // initializeDiarySystem() 함수 직접 호출
+        if (initResult.modules.diarySystem.initializeDiarySystem) {
+            const diaryInitResult = await initResult.modules.diarySystem.initializeDiarySystem();
+            
+            if (diaryInitResult) {
+                console.log(`📖 ✅ [강제초기화] muku-diarySystem 초기화 성공!`);
+                console.log(`📖 ✅ 자동일기 스케줄러 활성화 완료!`);
+                console.log(`📖 ✅ 매일 밤 22:00 자동일기 작성 시작!`);
             } else {
-                console.log(`⚠️ 일기장 시스템 비활성화 - 기본 기억 관리만 사용`);
+                console.log(`📖 ⚠️ [강제초기화] muku-diarySystem 초기화 부분 실패`);
             }
+        } else {
+            console.log(`📖 ⚠️ [강제초기화] initializeDiarySystem 함수 없음`);
+        }
+        
+        // 추가: getDiarySystemStatus로 상태 확인
+        if (initResult.modules.diarySystem.getDiarySystemStatus) {
+            const diaryStatus = initResult.modules.diarySystem.getDiarySystemStatus();
+            console.log(`📖 [상태확인] Redis 연결: ${diaryStatus.redisConnected ? '✅' : '❌'}`);
+            console.log(`📖 [상태확인] 자동일기: ${diaryStatus.dailyDiaryEnabled ? '✅ 활성화' : '❌ 비활성화'}`);
+            console.log(`📖 [상태확인] 스케줄러: ${diaryStatus.schedulerForced ? '✅ 강제실행' : '❌ 미실행'}`);
+            console.log(`📖 [상태확인] 총 일기: ${diaryStatus.totalEntries}개`);
+        }
+        
+    } catch (diaryInitError) {
+        console.error(`📖 ❌ [강제초기화] muku-diarySystem 초기화 실패: ${diaryInitError.message}`);
+    }
+    
+    // 기존 통계 조회 코드는 그대로 유지
+    if (initResult.modules.diarySystem.getDynamicLearningStats) {
+        try {
+            const diaryStats = await initResult.modules.diarySystem.getDynamicLearningStats();
+            console.log(`📖 현재 학습 데이터: 총 ${diaryStats.total}개 기억`);
+            
+            if (diaryStats.total > 0) {
+                const oldestDate = new Date(diaryStats.oldest).toLocaleDateString('ko-KR');
+                const newestDate = new Date(diaryStats.newest).toLocaleDateString('ko-KR');
+                console.log(`📖 학습 기간: ${oldestDate} ~ ${newestDate}`);
+            }
+        } catch (statsError) {
+            console.log(`📖 학습 통계 조회 실패: ${statsError.message}`);
+        }
+    }
+} else {
+    console.log(`⚠️ 일기장 시스템 비활성화 - 기본 기억 관리만 사용`);
+}
             
             // 👥 사람 학습 시스템 상태 확인
             if (initResult.modules.personLearning) {
