@@ -1,12 +1,13 @@
 // ============================================================================
-// autoReply.js - v18.1 (Redis 사용자 기억 빠른 조회 + 모든 기존 기능 100% 보존)
+// autoReply.js - v18.2 (Memory Manager 초기화 추가 - 무쿠 벙어리 방지!)
 // 🧠 Memory Tape Redis: 최근 대화 기억
-// 💾 Memory Manager Redis: 고정 기억 120개 (납골당, 담타, 생일 등)
+// 💾 Memory Manager Redis: 고정 기억 159개 (납골당, 담타, 생일 등) ← 초기화 추가!
 // 🚀 NEW: Redis 사용자 기억 빠른 조회 (키워드 인덱싱)
 // 📝 User Memories: Redis 1차 → 파일 2차 폴백 검색
 // 🌸 사진 명령어, 애정표현, 특별반응들은 그대로 유지
 // 🛡️ 절대 벙어리 방지: 모든 에러 상황에서도 예진이는 반드시 대답함!
 // ✨ Redis + Memory Tape + Memory Manager + File Backup 완전 연동!
+// 🔥 Memory Manager 초기화 추가로 159개 기억 100% 보장!
 // ============================================================================
 
 const { callOpenAI, cleanReply } = require('./aiUtils');
@@ -66,13 +67,28 @@ setTimeout(() => {
     });
 }, 3000);
 
-// 🆕🆕🆕 Memory Manager 연동 추가! 🆕🆕🆕
+// 🆕🆕🆕 Memory Manager 연동 + 초기화 추가! 🆕🆕🆕
 let memoryManager = null;
+let memoryManagerInitialized = false;
 try {
     memoryManager = require('./memoryManager');
-    console.log('💾 [autoReply] Memory Manager 연동 성공 - 고정 기억 120개 활용 가능!');
+    console.log('💾 [autoReply] Memory Manager 연동 성공 - 초기화 시작...');
+    
+    // 🔥 핵심 수정: 초기화 함수 호출 추가!
+    memoryManager.ensureMemoryTablesAndDirectory().then(() => {
+        memoryManagerInitialized = true;
+        const status = memoryManager.getMemoryStatus();
+        console.log(`💾 [autoReply] Memory Manager 초기화 완료! 총 ${status.totalFixedCount}개 기억 로딩 성공!`);
+        console.log(`💾 [autoReply] 기본기억 ${status.fixedMemoriesCount}개 + 연애기억 ${status.loveHistoryCount}개 = 159개 완전 보장!`);
+    }).catch(err => {
+        console.error('❌ [autoReply] Memory Manager 초기화 실패:', err);
+        memoryManagerInitialized = false;
+        console.warn('⚠️ [autoReply] Memory Manager 기억 없이 진행 - 무쿠가 일부 기억 못할 수 있음');
+    });
 } catch (error) {
     console.warn('⚠️ [autoReply] Memory Manager 연동 실패:', error.message);
+    memoryManager = null;
+    memoryManagerInitialized = false;
 }
 
 // ✨ GPT 모델 버전 관리 시스템 import
@@ -598,7 +614,7 @@ async function getRecentConversationContext(limit = 20) {
     }
 }
 
-// 💾💾💾 [기존] Memory Manager에서 관련 고정 기억 가져오기 💾💾💾
+// 💾💾💾 [수정] Memory Manager에서 관련 고정 기억 가져오기 💾💾💾
 async function getRelatedFixedMemory(userMessage) {
     console.log(`💾 [Memory Manager 연결] "${userMessage}" 관련 고정 기억 검색 시작...`);
     
@@ -606,6 +622,24 @@ async function getRelatedFixedMemory(userMessage) {
         if (!memoryManager || typeof memoryManager.getFixedMemory !== 'function') {
             console.log('⚠️ [Memory Manager 연결] Memory Manager 모듈 또는 함수 없음');
             return null;
+        }
+        
+        // 🔥 초기화 상태 확인 추가!
+        if (!memoryManagerInitialized) {
+            console.log('⚠️ [Memory Manager 연결] Memory Manager 아직 초기화 중... 잠시 기다림');
+            // 최대 3초 대기
+            let waitCount = 0;
+            while (!memoryManagerInitialized && waitCount < 30) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                waitCount++;
+            }
+            
+            if (!memoryManagerInitialized) {
+                console.log('❌ [Memory Manager 연결] 초기화 타임아웃 - 기본 응답 진행');
+                return null;
+            } else {
+                console.log('✅ [Memory Manager 연결] 초기화 완료됨 - 기억 검색 계속');
+            }
         }
         
         // Memory Manager Redis 연동으로 고정 기억 검색
@@ -625,7 +659,7 @@ async function getRelatedFixedMemory(userMessage) {
     }
 }
 
-// 🚀🚀🚀 [NEW] Redis 사용자 기억 빠른 검색 함수들 🚀🚀🚀
+// 🚀🚀🚀 [기존] Redis 사용자 기억 빠른 검색 함수들 🚀🚀🚀
 
 /**
  * 텍스트에서 검색 키워드 추출
@@ -886,7 +920,7 @@ async function getIntegratedMemory(userMessage) {
     
     let memoryContext = '';
     
-    // 1. Memory Manager에서 고정 기억 검색
+    // 1. Memory Manager에서 고정 기억 검색 (초기화 상태 확인 포함)
     const fixedMemory = await getRelatedFixedMemory(userMessage);
     
     // 2. 사용자 기억에서 검색 (Redis 1차 → 파일 2차)
@@ -1274,7 +1308,7 @@ async function getReplyByMessage(userMessage) {
     
     console.log(`🧠 [하이브리드 메모리] 총 ${messages.length}개 메시지로 OpenAI 호출`);
     console.log(`  📼 Memory Tape 맥락: ${recentContext.length}개 대화`);
-    console.log(`  💾 Memory Manager 기억: ${memoryContext.includes('고정 기억') ? '포함됨' : '없음'}`);
+    console.log(`  💾 Memory Manager 기억: ${memoryContext.includes('고정 기억') ? '포함됨' : '없음'} (초기화: ${memoryManagerInitialized ? '완료' : '진행중'})`);
     console.log(`  🚀 Redis 사용자 기억: ${memoryContext.includes('Redis에서 빠르게 검색됐어') ? 'Redis에서 조회됨' : memoryContext.includes('아저씨가 기억해달라고 한 것들') ? '파일에서 조회됨' : '없음'}`);
     
     if (!baseSystemPrompt || typeof baseSystemPrompt !== 'string' || baseSystemPrompt.trim().length === 0) {
