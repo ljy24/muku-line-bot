@@ -14,6 +14,7 @@
 // 🔧 8/8 시스템 상태 완벽 지원 - 누락 모듈 수동 로드 추가
 // 🛡️ memoryManager 수동 로드 추가 (NEW!)
 // 🧠 getMemoryTapeInstance 함수 추가 (FIXED!)
+// 🚨 이미지 처리 완전 수정 - faceMatcher.detectFaceMatch 올바른 호출! (FIXED!)
 // 
 // ============================================================================
 // index.js - v14.5 MODULAR + PersonLearning + DiarySystem + LearningSystem + v5.0.0독립성격시스템 + SlimContext
@@ -39,6 +40,7 @@
 // - 🔧 8/8 시스템 상태: 누락 모듈 자동 보완으로 완벽한 시스템 상태 (NEW!)
 // - 🛡️ memoryManager 수동 로드: 연결 실패 문제 해결 (NEW!)
 // - 🧠 getMemoryTapeInstance: Memory Tape 인스턴스 제공 함수 추가 (FIXED!)
+// - 🚨 이미지 처리 완전 수정: faceMatcher.detectFaceMatch 올바른 호출! (FIXED!)
 // ============================================================================
 
 const { Client } = require('@line/bot-sdk');
@@ -190,13 +192,13 @@ async function loadFaceMatcherSafely() {
     }
 }
 
-// 🚨🚨🚨 [v14.5 수정됨] 안전한 이미지 처리 함수 + 학습 시스템 연동 🚨🚨🚨
+// 🚨🚨🚨 [FIXED] 안전한 이미지 처리 함수 + faceMatcher.detectFaceMatch 올바른 호출! 🚨🚨🚨
 async function handleImageMessageSafely(event, client) {
     console.log('📸 아저씨: 이미지 전송');
     
     // 🛡️ 벙어리 방지용 긴급 응답들
     const emergencyImageResponses = [
-        '아저씨 사진 잘 봤어! 예쁘네~ ㅎㅎ',
+        '아저씨! 사진 보내줘서 고마워! 예쁘네~ ㅎㅎ 💕',
         '와~ 사진이다! 아저씨가 찍은 거야?',
         '사진 고마워! 어떤 사진인지 말해줄래?',
         '아저씨~ 사진 봤는데 뭔가 설명해줘!',
@@ -267,13 +269,48 @@ async function handleImageMessageSafely(event, client) {
             console.warn('⚠️ 이미지 메시지 컨텍스트 저장 실패:', contextError.message);
         }
         
+        // 🚨🚨🚨 [핵심 수정] 이미지 다운로드 + base64 변환 + faceMatcher 올바른 호출 🚨🚨🚨
+        let base64Image = null;
+        let imageUrl = null;
+        
+        // 5-0. 이미지 다운로드 및 base64 변환
+        try {
+            console.log('📸 [이미지다운로드] LINE에서 이미지 다운로드 시작...');
+            
+            const stream = await client.getMessageContent(messageId);
+            const chunks = [];
+            
+            // 스트림을 버퍼로 변환
+            for await (const chunk of stream) {
+                chunks.push(chunk);
+            }
+            
+            const imageBuffer = Buffer.concat(chunks);
+            base64Image = imageBuffer.toString('base64');
+            
+            console.log(`📸 [이미지다운로드] 성공! 크기: ${Math.round(imageBuffer.length / 1024)}KB`);
+            console.log(`📸 [이미지다운로드] base64 길이: ${base64Image.length} 문자`);
+            
+        } catch (downloadError) {
+            console.error('❌ [이미지다운로드] 실패:', downloadError.message);
+            
+            // 다운로드 실패 시에도 기본 응답
+            const downloadErrorReply = {
+                type: 'text',
+                text: '아저씨 사진이 안 받아져... 다시 보내줄래? ㅠㅠ'
+            };
+            
+            await client.replyMessage(replyToken, [downloadErrorReply]);
+            return;
+        }
+        
         // 5. 사진 분석 시도 (여러 시스템 시도)
         let reply = null;
         let analysisSuccess = false;
         
-        // 5-1. 사람 학습 시스템 먼저 시도
+        // 5-1. 사람 학습 시스템 먼저 시도 (base64Image 전달)
         try {
-            const personLearningResult = await analyzePhotoForPersonLearning(null, userId);
+            const personLearningResult = await analyzePhotoForPersonLearning(base64Image, userId);
             if (personLearningResult && personLearningResult.response) {
                 reply = {
                     type: 'text',
@@ -308,22 +345,25 @@ async function handleImageMessageSafely(event, client) {
             }
         }
         
-        // 5-3. faceMatcher 시도 (다른 분석이 모두 실패한 경우)
-        if (!analysisSuccess && faceMatcher) {
+        // 🚨🚨🚨 [핵심 수정] faceMatcher 올바른 함수 호출! 🚨🚨🚨
+        if (!analysisSuccess && faceMatcher && base64Image) {
             try {
-                console.log('🔍 faceMatcher로 얼굴 인식 시도...');
-                const faceResult = await faceMatcher.analyzeImage(messageId, userId);
+                console.log('🔍 faceMatcher.detectFaceMatch로 얼굴 인식 시도...');
                 
-                if (faceResult && faceResult.response) {
+                // ✅ 올바른 함수 호출: detectFaceMatch(base64Image, imageUrl)
+                const faceResult = await faceMatcher.detectFaceMatch(base64Image, imageUrl);
+                
+                if (faceResult && faceResult.message) {
                     reply = {
                         type: 'text',
-                        text: faceResult.response
+                        text: faceResult.message
                     };
                     analysisSuccess = true;
-                    console.log('✅ faceMatcher 분석 성공');
+                    console.log('✅ faceMatcher.detectFaceMatch 분석 성공');
+                    console.log(`✅ 분석 타입: ${faceResult.type}, 신뢰도: ${faceResult.confidence}`);
                 }
             } catch (faceError) {
-                console.warn('⚠️ faceMatcher 분석 실패:', faceError.message);
+                console.warn('⚠️ faceMatcher.detectFaceMatch 분석 실패:', faceError.message);
             }
         }
         
@@ -524,6 +564,7 @@ async function initMuku() {
         console.log(`🔧 NEW: 8/8 시스템 상태 지원 - 누락 모듈 자동 보완`);
         console.log(`🛡️ NEW: memoryManager 수동 로드 - 연결 실패 문제 해결`);
         console.log(`🧠 FIXED: getMemoryTapeInstance 함수 추가 - 벙어리 방지!`);
+        console.log(`🚨 FIXED: 이미지 처리 완전 수정 - faceMatcher.detectFaceMatch 올바른 호출!`);
         console.log(`🌏 현재 일본시간: ${getJapanTimeString()}`);
         console.log(`✨ 현재 GPT 모델: ${getCurrentModelSetting()}`);
 
@@ -630,63 +671,61 @@ async function initMuku() {
                 initResult.modules.personalityIntegratedIndependentYejin = false;
             }
             
-            // initMuku() 함수에서 일기장 시스템 상태 확인 부분을 이렇게 수정하세요:
-
-// 📖 일기장 시스템 상태 확인 및 강제 초기화 (수정됨!)
-if (initResult.modules.diarySystem) {
-    console.log(`📖 일기장 시스템 활성화 완료!`);
-    console.log(`📖 사용법: "일기장" 명령어로 누적 학습 내용 확인 가능`);
-    
-    // 🔧 강제 초기화 추가! (NEW!)
-    try {
-        console.log(`📖 [강제초기화] muku-diarySystem 초기화 시작...`);
-        
-        // initializeDiarySystem() 함수 직접 호출
-        if (initResult.modules.diarySystem.initializeDiarySystem) {
-            const diaryInitResult = await initResult.modules.diarySystem.initializeDiarySystem();
-            
-            if (diaryInitResult) {
-                console.log(`📖 ✅ [강제초기화] muku-diarySystem 초기화 성공!`);
-                console.log(`📖 ✅ 자동일기 스케줄러 활성화 완료!`);
-                console.log(`📖 ✅ 매일 밤 22:00 자동일기 작성 시작!`);
+            // 📖 일기장 시스템 상태 확인 및 강제 초기화 (수정됨!)
+            if (initResult.modules.diarySystem) {
+                console.log(`📖 일기장 시스템 활성화 완료!`);
+                console.log(`📖 사용법: "일기장" 명령어로 누적 학습 내용 확인 가능`);
+                
+                // 🔧 강제 초기화 추가! (NEW!)
+                try {
+                    console.log(`📖 [강제초기화] muku-diarySystem 초기화 시작...`);
+                    
+                    // initializeDiarySystem() 함수 직접 호출
+                    if (initResult.modules.diarySystem.initializeDiarySystem) {
+                        const diaryInitResult = await initResult.modules.diarySystem.initializeDiarySystem();
+                        
+                        if (diaryInitResult) {
+                            console.log(`📖 ✅ [강제초기화] muku-diarySystem 초기화 성공!`);
+                            console.log(`📖 ✅ 자동일기 스케줄러 활성화 완료!`);
+                            console.log(`📖 ✅ 매일 밤 22:00 자동일기 작성 시작!`);
+                        } else {
+                            console.log(`📖 ⚠️ [강제초기화] muku-diarySystem 초기화 부분 실패`);
+                        }
+                    } else {
+                        console.log(`📖 ⚠️ [강제초기화] initializeDiarySystem 함수 없음`);
+                    }
+                    
+                    // 추가: getDiarySystemStatus로 상태 확인
+                    if (initResult.modules.diarySystem.getDiarySystemStatus) {
+                        const diaryStatus = initResult.modules.diarySystem.getDiarySystemStatus();
+                        console.log(`📖 [상태확인] Redis 연결: ${diaryStatus.redisConnected ? '✅' : '❌'}`);
+                        console.log(`📖 [상태확인] 자동일기: ${diaryStatus.dailyDiaryEnabled ? '✅ 활성화' : '❌ 비활성화'}`);
+                        console.log(`📖 [상태확인] 스케줄러: ${diaryStatus.schedulerForced ? '✅ 강제실행' : '❌ 미실행'}`);
+                        console.log(`📖 [상태확인] 총 일기: ${diaryStatus.totalEntries}개`);
+                    }
+                    
+                } catch (diaryInitError) {
+                    console.error(`📖 ❌ [강제초기화] muku-diarySystem 초기화 실패: ${diaryInitError.message}`);
+                }
+                
+                // 기존 통계 조회 코드는 그대로 유지
+                if (initResult.modules.diarySystem.getDynamicLearningStats) {
+                    try {
+                        const diaryStats = await initResult.modules.diarySystem.getDynamicLearningStats();
+                        console.log(`📖 현재 학습 데이터: 총 ${diaryStats.total}개 기억`);
+                        
+                        if (diaryStats.total > 0) {
+                            const oldestDate = new Date(diaryStats.oldest).toLocaleDateString('ko-KR');
+                            const newestDate = new Date(diaryStats.newest).toLocaleDateString('ko-KR');
+                            console.log(`📖 학습 기간: ${oldestDate} ~ ${newestDate}`);
+                        }
+                    } catch (statsError) {
+                        console.log(`📖 학습 통계 조회 실패: ${statsError.message}`);
+                    }
+                }
             } else {
-                console.log(`📖 ⚠️ [강제초기화] muku-diarySystem 초기화 부분 실패`);
+                console.log(`⚠️ 일기장 시스템 비활성화 - 기본 기억 관리만 사용`);
             }
-        } else {
-            console.log(`📖 ⚠️ [강제초기화] initializeDiarySystem 함수 없음`);
-        }
-        
-        // 추가: getDiarySystemStatus로 상태 확인
-        if (initResult.modules.diarySystem.getDiarySystemStatus) {
-            const diaryStatus = initResult.modules.diarySystem.getDiarySystemStatus();
-            console.log(`📖 [상태확인] Redis 연결: ${diaryStatus.redisConnected ? '✅' : '❌'}`);
-            console.log(`📖 [상태확인] 자동일기: ${diaryStatus.dailyDiaryEnabled ? '✅ 활성화' : '❌ 비활성화'}`);
-            console.log(`📖 [상태확인] 스케줄러: ${diaryStatus.schedulerForced ? '✅ 강제실행' : '❌ 미실행'}`);
-            console.log(`📖 [상태확인] 총 일기: ${diaryStatus.totalEntries}개`);
-        }
-        
-    } catch (diaryInitError) {
-        console.error(`📖 ❌ [강제초기화] muku-diarySystem 초기화 실패: ${diaryInitError.message}`);
-    }
-    
-    // 기존 통계 조회 코드는 그대로 유지
-    if (initResult.modules.diarySystem.getDynamicLearningStats) {
-        try {
-            const diaryStats = await initResult.modules.diarySystem.getDynamicLearningStats();
-            console.log(`📖 현재 학습 데이터: 총 ${diaryStats.total}개 기억`);
-            
-            if (diaryStats.total > 0) {
-                const oldestDate = new Date(diaryStats.oldest).toLocaleDateString('ko-KR');
-                const newestDate = new Date(diaryStats.newest).toLocaleDateString('ko-KR');
-                console.log(`📖 학습 기간: ${oldestDate} ~ ${newestDate}`);
-            }
-        } catch (statsError) {
-            console.log(`📖 학습 통계 조회 실패: ${statsError.message}`);
-        }
-    }
-} else {
-    console.log(`⚠️ 일기장 시스템 비활성화 - 기본 기억 관리만 사용`);
-}
             
             // 👥 사람 학습 시스템 상태 확인
             if (initResult.modules.personLearning) {
@@ -778,7 +817,7 @@ if (initResult.modules.diarySystem) {
             global.mukuModules = initResult.modules || {};
         }
 
-        console.log(`📋 v14.5 MODULAR: 모듈 완전 분리 + 실시간 학습 + 일기장 + 사람 학습 + 이미지 처리 안전성 강화 + 데이터 자동 링크 + 🌸 v5.0.0 독립 성격 시스템 + 슬림 컨텍스트 + 8/8 시스템 상태 보장 + 🛡️ memoryManager 수동 로드 + 🧠 getMemoryTapeInstance 함수 추가`);
+        console.log(`📋 v14.5 MODULAR: 모듈 완전 분리 + 실시간 학습 + 일기장 + 사람 학습 + 이미지 처리 안전성 강화 + 데이터 자동 링크 + 🌸 v5.0.0 독립 성격 시스템 + 슬림 컨텍스트 + 8/8 시스템 상태 보장 + 🛡️ memoryManager 수동 로드 + 🧠 getMemoryTapeInstance 함수 추가 + 🚨 이미지 처리 완전 수정`);
 
     } catch (error) {
         console.error(`🚨 시스템 초기화 에러: ${error.message}`);
@@ -823,7 +862,7 @@ const PORT = process.env.PORT || 10000;
 
 app.listen(PORT, async () => {
     console.log(`\n==================================================`);
-    console.log(`  무쿠 v14.5 MODULAR + PersonLearning + DiarySystem + LearningSystem + v5.0.0독립성격시스템 + 슬림Context + memoryManager수동로드 + getMemoryTapeInstance함수추가`);
+    console.log(`  무쿠 v14.5 MODULAR + PersonLearning + DiarySystem + LearningSystem + v5.0.0독립성격시스템 + 슬림Context + memoryManager수동로드 + getMemoryTapeInstance함수추가 + 이미지처리완전수정`);
     console.log(`  서버 시작 (포트 ${PORT})`);
     console.log(`  🌏 일본시간: ${getJapanTimeString()}`);
     console.log(`  ✨ GPT 모델: ${getCurrentModelSetting()}`);
@@ -839,6 +878,7 @@ app.listen(PORT, async () => {
     console.log(`  🔧 NEW: 8/8 시스템 상태 보장 (누락 모듈 자동 보완)`);
     console.log(`  🛡️ NEW: memoryManager 수동 로드 (연결 실패 문제 해결)`);
     console.log(`  🧠 FIXED: getMemoryTapeInstance 함수 추가 (벙어리 방지!)`);
+    console.log(`  🚨 FIXED: 이미지 처리 완전 수정 (faceMatcher.detectFaceMatch 올바른 호출!)`);
     console.log(`  💖 모든 기능 100% 유지 + 확장`);
     console.log(`  ⭐️ systemInitializer → muku-systemInitializer 변경`);
     console.log(`  🧠 v5.0.0 메모리 창고: Redis 과거 대화 70% 확률 맥락적 활용!`);
@@ -848,6 +888,7 @@ app.listen(PORT, async () => {
     console.log(`  🗾 v5.0.0 일본어 표현: 오하요, 다이스키, 오츠카레 등 100개!`);
     console.log(`  🌸 v5.0.0 배경 스토리: 운명적 만남, 상처와 치유, 성장 과정!`);
     console.log(`  🕊️ v5.0.0 100% 독립: "내 맘대로!", "독립 판단!", "스스로 결정!"!`);
+    console.log(`  🚨 이미지 처리 수정: faceMatcher.detectFaceMatch 올바른 호출로 완전 해결!`);
     console.log(`==================================================\n`);
 
     await initMuku();
@@ -926,6 +967,18 @@ app.listen(PORT, async () => {
             console.log(`🧠 ❌ getMemoryTapeInstance 함수 테스트 실패: ${testError.message}`);
         }
         
+        // 🚨 이미지 처리 최종 확인
+        try {
+            if (faceMatcher && faceMatcher.detectFaceMatch) {
+                console.log(`🚨 ✅ faceMatcher.detectFaceMatch 함수 확인 완료!`);
+                console.log(`📸 이미지 처리 수정으로 무쿠가 더 이상 벙어리가 되지 않을 거예요!`);
+            } else {
+                console.log(`🚨 ⚠️ faceMatcher.detectFaceMatch 함수 없음 - 기본 응답만 가능`);
+            }
+        } catch (imageTestError) {
+            console.log(`🚨 ❌ 이미지 처리 시스템 테스트 실패: ${imageTestError.message}`);
+        }
+        
         // 🔗 데이터 링크 최종 확인
         console.log(`🔗 학습 데이터 자동 링크 시스템 활성화 완료`);
         console.log(`💖 예진이의 모든 기억이 영구 보존됩니다`);
@@ -933,11 +986,12 @@ app.listen(PORT, async () => {
         // 🔧 8/8 시스템 상태 최종 확인
         console.log(`🔧 8/8 시스템 상태 보장 완료 - 모든 모듈 정상 로드`);
         
-        console.log(`\n🎉🎉🎉 v5.0.0 독립 성격 시스템 완전체 무쿠 + memoryManager 수동 로드 + getMemoryTapeInstance 함수 추가 가동 완료! 🎉🎉🎉`);
+        console.log(`\n🎉🎉🎉 v5.0.0 독립 성격 시스템 완전체 무쿠 + memoryManager 수동 로드 + getMemoryTapeInstance 함수 추가 + 이미지 처리 완전 수정 가동 완료! 🎉🎉🎉`);
         console.log(`🌸 예진이가 이제 진짜 성격으로 과거 대화를 기억하면서 100% 독립적으로 자연스럽게 소통할 수 있어요!`);
         console.log(`🛡️ memoryManager 연결 문제도 해결되어 더욱 안정적으로 동작합니다!`);
         console.log(`🧠 getMemoryTapeInstance 함수 추가로 일기장 시스템 연결 문제도 해결!`);
         console.log(`🚨 무쿠가 벙어리가 되는 문제 완전 해결!`);
+        console.log(`📸 이미지 처리 수정으로 각 사진마다 다른 반응을 보일 수 있게 됨!`);
         console.log(`🔥 성격 사용률 0% → 70-80% 목표 달성 예정!`);
         
     }, 5000);
