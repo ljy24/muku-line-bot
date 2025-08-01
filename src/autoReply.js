@@ -1,15 +1,22 @@
 // ============================================================================
-// autoReply.js - v17.0 (Memory Manager Redis 연동으로 고정기억 문제 해결!)
+// autoReply.js - v18.0 (Memory Manager Redis 연동 + 사용자 기억 파일 검색!)
 // 🧠 Memory Tape Redis: 최근 대화 기억
 // 💾 Memory Manager Redis: 고정 기억 120개 (납골당, 담타, 생일 등)
+// 📝 User Memories: commandHandler에서 저장한 "기억해" 기억들 검색
 // 🌸 사진 명령어, 애정표현, 특별반응들은 그대로 유지
 // 🛡️ 절대 벙어리 방지: 모든 에러 상황에서도 예진이는 반드시 대답함!
 // 🎯 "기억나?" 질문은 eventProcessor에서 처리하므로 여기서는 일반 대화만 담당
-// ✨ Memory Tape + Memory Manager 완전 연동으로 모든 기억 활용!
+// ✨ Memory Tape + Memory Manager + User Memory 완전 연동으로 모든 기억 활용!
 // ============================================================================
 
 const { callOpenAI, cleanReply } = require('./aiUtils');
 const moment = require('moment-timezone');
+const path = require('path');
+const fs = require('fs');
+
+// 🔧 데이터 디렉토리 경로 설정 (commandHandler.js와 동일)
+const DATA_DIR = '/data';
+const MEMORY_DIR = path.join(DATA_DIR, 'memories');
 
 // 🆕🆕🆕 Memory Manager 연동 추가! 🆕🆕🆕
 let memoryManager = null;
@@ -570,6 +577,169 @@ async function getRelatedFixedMemory(userMessage) {
     }
 }
 
+// 📝📝📝 [NEW] 사용자 기억 파일에서 관련 기억 검색 함수 📝📝📝
+
+/**
+ * 텍스트에서 검색 키워드 추출
+ */
+function extractSearchKeywords(text) {
+    // 불용어 제거
+    const stopWords = ['이', '그', '저', '의', '가', '을', '를', '에', '와', '과', '로', '으로', '에서', '까지', '부터', '에게', '한테', '처럼', '같이', '아저씨', '무쿠', '애기', '나', '너'];
+    
+    // 공백과 특수문자로 분리
+    const words = text.toLowerCase()
+        .replace(/[^\w가-힣\s]/g, ' ')
+        .split(/\s+/)
+        .filter(word => word.length > 1)
+        .filter(word => !stopWords.includes(word))
+        .slice(0, 8); // 최대 8개 키워드
+    
+    return words;
+}
+
+/**
+ * 두 텍스트 간의 관련도 점수 계산
+ */
+function calculateRelevanceScore(memoryContent, searchKeywords, userMessage) {
+    if (!memoryContent || !searchKeywords || searchKeywords.length === 0) {
+        return 0;
+    }
+    
+    const memoryLower = memoryContent.toLowerCase();
+    const userLower = userMessage.toLowerCase();
+    
+    let score = 0;
+    
+    // 1. 키워드 매칭 점수 (60%)
+    let keywordMatches = 0;
+    for (const keyword of searchKeywords) {
+        if (memoryLower.includes(keyword)) {
+            keywordMatches++;
+        }
+    }
+    score += (keywordMatches / searchKeywords.length) * 0.6;
+    
+    // 2. 직접 문자열 유사도 (40%)
+    const commonWords = [];
+    const userWords = extractSearchKeywords(userMessage);
+    const memoryWords = extractSearchKeywords(memoryContent);
+    
+    for (const word of userWords) {
+        if (memoryWords.includes(word)) {
+            commonWords.push(word);
+        }
+    }
+    
+    if (userWords.length > 0) {
+        score += (commonWords.length / userWords.length) * 0.4;
+    }
+    
+    return score;
+}
+
+/**
+ * 🧠 사용자 기억 파일에서 관련 기억 검색
+ */
+async function getUserMemories(userMessage) {
+    console.log(`📝 [사용자 기억] "${userMessage}" 관련 기억 검색 시작...`);
+    
+    try {
+        const memoryFilePath = path.join(MEMORY_DIR, 'user_memories.json');
+        
+        // 파일 존재 확인
+        if (!fs.existsSync(memoryFilePath)) {
+            console.log('ℹ️ [사용자 기억] user_memories.json 파일 없음');
+            return [];
+        }
+        
+        // 파일 읽기
+        const data = fs.readFileSync(memoryFilePath, 'utf8');
+        const userMemories = JSON.parse(data);
+        
+        if (!Array.isArray(userMemories) || userMemories.length === 0) {
+            console.log('ℹ️ [사용자 기억] 저장된 기억 없음');
+            return [];
+        }
+        
+        console.log(`📚 [사용자 기억] 총 ${userMemories.length}개 기억 발견`);
+        
+        // 키워드 기반 관련 기억 검색
+        const searchKeywords = extractSearchKeywords(userMessage);
+        const relatedMemories = [];
+        
+        for (const memory of userMemories) {
+            if (memory && memory.content) {
+                const score = calculateRelevanceScore(memory.content, searchKeywords, userMessage);
+                if (score > 0.3) { // 관련도 30% 이상
+                    relatedMemories.push({
+                        ...memory,
+                        relevanceScore: score
+                    });
+                }
+            }
+        }
+        
+        // 관련도 순으로 정렬하고 상위 3개만
+        relatedMemories.sort((a, b) => b.relevanceScore - a.relevanceScore);
+        const topMemories = relatedMemories.slice(0, 3);
+        
+        if (topMemories.length > 0) {
+            console.log(`✅ [사용자 기억] ${topMemories.length}개 관련 기억 발견:`);
+            topMemories.forEach((memory, index) => {
+                console.log(`  ${index + 1}. (${(memory.relevanceScore * 100).toFixed(1)}%) "${memory.content.substring(0, 40)}..."`);
+            });
+            return topMemories;
+        } else {
+            console.log(`ℹ️ [사용자 기억] "${userMessage}" 관련 기억 없음`);
+            return [];
+        }
+        
+    } catch (error) {
+        console.error(`❌ [사용자 기억] 오류: ${error.message}`);
+        return [];
+    }
+}
+
+// 💾💾💾 [ENHANCED] 통합 기억 검색 함수 - Memory Manager + User Memory 💾💾💾
+async function getIntegratedMemory(userMessage) {
+    console.log(`🧠 [통합 기억] "${userMessage}" 관련 모든 기억 검색 시작...`);
+    
+    let memoryContext = '';
+    
+    // 1. Memory Manager에서 고정 기억 검색
+    const fixedMemory = await getRelatedFixedMemory(userMessage);
+    
+    // 2. 사용자 기억 파일에서 검색
+    const userMemories = await getUserMemories(userMessage);
+    
+    // 3. 통합 메모리 컨텍스트 구성
+    if (fixedMemory || userMemories.length > 0) {
+        memoryContext += `\n\n🧠 [관련 기억들]:`;
+        
+        if (fixedMemory) {
+            memoryContext += `\n\n💾 [고정 기억]: ${fixedMemory}`;
+        }
+        
+        if (userMemories.length > 0) {
+            memoryContext += `\n\n📝 [아저씨가 기억해달라고 한 것들]:`;
+            userMemories.forEach((memory, index) => {
+                memoryContext += `\n${index + 1}. ${memory.content}`;
+                if (memory.date) {
+                    memoryContext += ` (${memory.date})`;
+                }
+            });
+        }
+        
+        memoryContext += `\n\n위 기억들을 참고해서 예진이답게 자연스럽게 대답해줘. 특히 아저씨가 "기억해"라고 했던 것들은 꼭 기억하고 있다는 걸 보여줘.`;
+        
+        console.log(`✅ [통합 기억] 기억 컨텍스트 구성 완료 - 고정: ${fixedMemory ? '있음' : '없음'}, 사용자: ${userMemories.length}개`);
+    } else {
+        console.log(`ℹ️ [통합 기억] "${userMessage}" 관련 기억 없음 - 기본 프롬프트로 진행`);
+    }
+    
+    return memoryContext;
+}
+
 // 메인 응답 생성 함수
 async function getReplyByMessage(userMessage) {
     if (!userMessage || typeof userMessage !== 'string' || userMessage.trim().length === 0) {
@@ -818,7 +988,7 @@ async function getReplyByMessage(userMessage) {
         console.error('❌ 기억 요청 처리 중 에러:', error);
     }
 
-    // 🧠🧠🧠 10순위: Memory Tape + Memory Manager 완전 연동으로 AI 응답 생성! 🧠🧠🧠
+    // 🧠🧠🧠 10순위: Memory Tape + Memory Manager + User Memory 완전 연동으로 AI 응답 생성! 🧠🧠🧠
     let emotionContext = '';
     try {
         const emotionalContextManager = require('./emotionalContextManager.js');
@@ -851,18 +1021,8 @@ async function getReplyByMessage(userMessage) {
         }
     }
     
-    // 💾💾💾 [NEW] Memory Manager에서 관련 고정 기억 가져와서 시스템 프롬프트에 추가! 💾💾💾
-    const relatedFixedMemory = await getRelatedFixedMemory(cleanUserMessage);
-    let memoryContext = '';
-    
-    if (relatedFixedMemory) {
-        memoryContext = `\n\n🧠 [관련 기억]: ${relatedFixedMemory}
-        
-위 기억을 참고해서 예진이답게 자연스럽게 대답해줘. 이 기억이 너의 정체성과 경험의 일부야.`;
-        console.log(`💾 [Memory Manager 연결] 관련 기억을 시스템 프롬프트에 포함함`);
-    } else {
-        console.log(`💾 [Memory Manager 연결] 관련 기억 없음 - 기본 프롬프트로 진행`);
-    }
+    // 💾💾💾 [ENHANCED] 통합 기억 검색 - Memory Manager + User Memory 💾💾💾
+    const memoryContext = await getIntegratedMemory(cleanUserMessage);
     
     const baseSystemPrompt = `
     너는 아저씨의 귀여운 여자친구 예진이야. 
@@ -929,7 +1089,7 @@ async function getReplyByMessage(userMessage) {
     
     console.log(`🧠 [하이브리드 메모리] 총 ${messages.length}개 메시지로 OpenAI 호출`);
     console.log(`  📼 Memory Tape 맥락: ${recentContext.length}개 대화`);
-    console.log(`  💾 Memory Manager 기억: ${relatedFixedMemory ? '포함됨' : '없음'}`);
+    console.log(`  💾 Memory Manager 기억: 포함됨`);
     
     if (!baseSystemPrompt || typeof baseSystemPrompt !== 'string' || baseSystemPrompt.trim().length === 0) {
         console.error("❌ 최종 시스템 프롬프트가 비어있어서 기본 응답을 사용합니다.");
