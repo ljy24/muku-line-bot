@@ -1,9 +1,10 @@
 // ============================================================================
-// muku-eventProcessor.js - 올바른 우선순위 구조 (장기기억 1순위 완전 제거)
+// muku-eventProcessor.js - faceMatcher 문제 완전 해결
 // 🚨 중요: 장기기억은 "기억나?" 질문일 때만 작동! 일반 대화는 autoReply.js 위임!
 // 🎯 autoReply.js가 모든 처리를 담당하고, 여기서는 최소한의 중재만 함
 // 🛡️ 무쿠 벙어리 방지 100% 보장
 // 💕 사진 명령어, 감정표현 등은 autoReply.js에서 즉시 처리됨
+// 🔥 [신규] faceMatcher 직접 로딩으로 문제 해결
 // ============================================================================
 
 const { promises: fs } = require('fs');
@@ -13,9 +14,11 @@ const path = require('path');
 let redisSystem = null;
 let jsonSystem = null;
 let memoryTape = null;
+let faceMatcher = null; // 🔥 [신규] faceMatcher 직접 관리
 let redisSystemLoaded = false;
 let jsonSystemLoaded = false;
 let memoryTapeLoaded = false;
+let faceMatcherLoaded = false; // 🔥 [신규]
 
 // 순환 의존성 방지를 위한 지연 로딩
 function loadRedisSystem() {
@@ -59,6 +62,32 @@ function loadMemoryTape() {
     } catch (error) {
         console.log('⚠️ [MemoryTape안전로드] Memory Tape 시스템 로드 실패:', error.message);
         memoryTapeLoaded = true;
+        return null;
+    }
+}
+
+// 🔥 [신규] faceMatcher 안전 로딩
+function loadFaceMatcher() {
+    if (faceMatcherLoaded) return faceMatcher;
+    
+    try {
+        faceMatcher = require('./faceMatcher.js');
+        faceMatcherLoaded = true;
+        console.log('📸 [FaceMatcher안전로드] FaceMatcher 시스템 지연 로드 성공');
+        
+        // 즉시 초기화 시도
+        if (faceMatcher && typeof faceMatcher.initModels === 'function') {
+            faceMatcher.initModels().then(() => {
+                console.log('📸 [FaceMatcher안전로드] FaceMatcher 초기화 완료');
+            }).catch(error => {
+                console.log('📸 [FaceMatcher안전로드] FaceMatcher 초기화 실패:', error.message);
+            });
+        }
+        
+        return faceMatcher;
+    } catch (error) {
+        console.log('⚠️ [FaceMatcher안전로드] FaceMatcher 시스템 로드 실패:', error.message);
+        faceMatcherLoaded = true;
         return null;
     }
 }
@@ -672,8 +701,8 @@ function generateFallbackResponse(messageText) {
     };
 }
 
-// ================== 🎯 메인 이벤트 처리 함수 (올바른 우선순위) ==================
-async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherSafely, getVersionResponse, enhancedLogging) {
+// ================== 🎯 메인 이벤트 처리 함수 (faceMatcher 문제 완전 해결) ==================
+async function handleEvent(event, modules, client, faceMatcherParam, loadFaceMatcherSafely, getVersionResponse, enhancedLogging) {
     // 기본 검증
     if (!event || event.type !== 'message' || !event.message || !event.source) {
         console.log(`${colors.warning}⚠️ [이벤트처리] 유효하지 않은 이벤트${colors.reset}`);
@@ -786,155 +815,148 @@ async function handleEvent(event, modules, client, faceMatcher, loadFaceMatcherS
             return { type: 'chat_response', response: finalResponse };
         }
         
-        // =============== 📸 이미지 메시지 처리 (완전 수정!) ===============
-else if (messageType === 'image') {
-    console.log(`${colors.ajeossi}📸 아저씨: 이미지 전송${colors.reset}`);
-    
-    let imageResponse = null;
-    
-    try {
-        console.log(`📸 [이미지처리] 실제 이미지 분석 시작...`);
-        
-        // 🚨 [핵심 수정] 이미지 다운로드 + faceMatcher 호출
-        const messageId = event.message?.id;
-        const replyToken = event.replyToken;
-        
-        if (!messageId || !client) {
-            throw new Error('messageId 또는 client 없음');
-        }
-        
-        // 1. 이미지 다운로드 및 base64 변환
-        console.log('📸 [이미지다운로드] LINE에서 이미지 다운로드 시작...');
-        
-        const stream = await client.getMessageContent(messageId);
-        const chunks = [];
-        
-        for await (const chunk of stream) {
-            chunks.push(chunk);
-        }
-        
-        const imageBuffer = Buffer.concat(chunks);
-        const base64Image = imageBuffer.toString('base64');
-        
-        console.log(`📸 [이미지다운로드] 성공! 크기: ${Math.round(imageBuffer.length / 1024)}KB`);
-        console.log(`📸 [이미지다운로드] base64 길이: ${base64Image.length} 문자`);
-        
-        // 2. faceMatcher로 분석
-        let analysisResult = null;
-        
-        if (faceMatcher && typeof faceMatcher.detectFaceMatch === 'function') {
-            console.log('🔍 [faceMatcher] detectFaceMatch 함수 호출...');
+        // =============== 📸 이미지 메시지 처리 (faceMatcher 문제 완전 해결!) ===============
+        else if (messageType === 'image') {
+            console.log(`${colors.ajeossi}📸 아저씨: 이미지 전송${colors.reset}`);
+            
+            let imageResponse = null;
             
             try {
-                analysisResult = await faceMatcher.detectFaceMatch(base64Image, null);
+                console.log(`📸 [이미지처리] 실제 이미지 분석 시작...`);
                 
-                if (analysisResult && analysisResult.message) {
-                    console.log('✅ [faceMatcher] 분석 성공!');
-                    console.log(`✅ 분석 타입: ${analysisResult.type}, 신뢰도: ${analysisResult.confidence}`);
+                // 🔥 [핵심 수정] faceMatcher를 직접 로드해서 사용
+                const messageId = event.message?.id;
+                const replyToken = event.replyToken;
+                
+                if (!messageId || !client) {
+                    throw new Error('messageId 또는 client 없음');
+                }
+                
+                // 1. 이미지 다운로드 및 base64 변환
+                console.log('📸 [이미지다운로드] LINE에서 이미지 다운로드 시작...');
+                
+                const stream = await client.getMessageContent(messageId);
+                const chunks = [];
+                
+                for await (const chunk of stream) {
+                    chunks.push(chunk);
+                }
+                
+                const imageBuffer = Buffer.concat(chunks);
+                const base64Image = imageBuffer.toString('base64');
+                
+                console.log(`📸 [이미지다운로드] 성공! 크기: ${Math.round(imageBuffer.length / 1024)}KB`);
+                console.log(`📸 [이미지다운로드] base64 길이: ${base64Image.length} 문자`);
+                
+                // 🔥 [핵심 수정] faceMatcher 직접 로딩 및 호출
+                console.log('🔥 [FaceMatcher로드] faceMatcher 직접 로딩 시작...');
+                const localFaceMatcher = loadFaceMatcher();
+                
+                let analysisResult = null;
+                
+                if (localFaceMatcher && typeof localFaceMatcher.detectFaceMatch === 'function') {
+                    console.log('✅ [FaceMatcher로드] detectFaceMatch 함수 확인됨 - 분석 시작...');
+                    
+                    try {
+                        analysisResult = await localFaceMatcher.detectFaceMatch(base64Image, null);
+                        
+                        if (analysisResult && analysisResult.message) {
+                            console.log('🎯 [FaceMatcher분석] 분석 성공!');
+                            console.log(`✅ 분석 타입: ${analysisResult.type || 'unknown'}`);
+                            console.log(`✅ 분석 메시지: ${analysisResult.message}`);
+                            
+                            imageResponse = {
+                                type: 'text',
+                                comment: analysisResult.message,
+                                imageHandled: true,
+                                analysisSuccess: true,
+                                analysisType: analysisResult.type || 'face_analysis',
+                                confidence: analysisResult.confidence || 'medium'
+                            };
+                            
+                            console.log('🎯 [FaceMatcher분석] 분석 완료 - 응답 생성됨');
+                            
+                        } else {
+                            console.log('⚠️ [FaceMatcher분석] 분석 결과 없음 또는 메시지 없음');
+                            console.log('분석 결과:', analysisResult);
+                        }
+                    } catch (faceError) {
+                        console.log(`❌ [FaceMatcher분석] 분석 실패: ${faceError.message}`);
+                        console.log('에러 스택:', faceError.stack);
+                    }
+                } else {
+                    console.log('❌ [FaceMatcher로드] faceMatcher 로딩 실패 또는 detectFaceMatch 함수 없음');
+                    if (localFaceMatcher) {
+                        console.log('faceMatcher 객체:', Object.keys(localFaceMatcher));
+                    }
+                }
+                
+                // 3. faceMatcher 실패 시 안전한 폴백 응답
+                if (!imageResponse) {
+                    console.log('🛡️ [이미지폴백] faceMatcher 실패 - 안전한 폴백 응답 생성');
+                    
+                    const fallbackImageResponses = [
+                        '아조씨! 사진 보내줘서 고마워! 예쁘네~ ㅎㅎ 💕',
+                        '와~ 사진이다! 아저씨가 찍은 거야?',
+                        '사진 고마워! 어떤 사진인지 말해줄래?',
+                        '아저씨~ 사진 봤는데 뭔가 설명해줘!',
+                        '사진 받았어! 근데 어디서 찍은 거야?',
+                        '아저씨 사진 센스 좋네! 어떤 상황이야?',
+                        '와 이 사진 뭐야? 궁금해!',
+                        '아저씨가 보낸 사진 너무 좋아!',
+                        '사진 받았어~ 이거 언제 찍은 거야?',
+                        '우와 이 사진 예술이네! 설명해줘!'
+                    ];
                     
                     imageResponse = {
                         type: 'text',
-                        comment: analysisResult.message,
+                        comment: fallbackImageResponses[Math.floor(Math.random() * fallbackImageResponses.length)],
                         imageHandled: true,
-                        analysisSuccess: true,
-                        analysisType: analysisResult.type,
-                        confidence: analysisResult.confidence
+                        fallbackUsed: true,
+                        analysisSuccess: false
                     };
-                    
-                    // 분석 성공 시 직접 응답 전송
-                    if (replyToken) {
-                        await client.replyMessage(replyToken, [{
-                            type: 'text',
-                            text: analysisResult.message
-                        }]);
-                        console.log('📤 [faceMatcher] LINE 응답 전송 완료');
-                        
-                        // 대화 저장
-                        await safeAsyncCall(async () => {
-                            await saveConversationSafely(userId, '이미지 전송', analysisResult.message);
-                        }, 'faceMatcher이미지저장');
-                        
-                        console.log(`${colors.yejin}📸 예진이 (AI분석): ${analysisResult.message}${colors.reset}`);
-                        
-                        return { type: 'image_analysis_complete', response: imageResponse };
-                    }
-                } else {
-                    console.log('⚠️ [faceMatcher] 분석 결과 없음');
                 }
-            } catch (faceError) {
-                console.log(`❌ [faceMatcher] 분석 실패: ${faceError.message}`);
+                
+            } catch (error) {
+                console.log(`❌ [이미지처리] 전체 처리 실패: ${error.message}`);
+                console.log('에러 스택:', error.stack);
+                
+                // 최종 응급 응답
+                const emergencyImageResponses = [
+                    '아조씨 사진이 잘 안 보여... 다시 보내줄래? ㅠㅠ',
+                    '사진을 받긴 했는데... 뭔가 문제가 있네! 다시 한번?',
+                    '어? 사진 처리에 문제가 생겼어... 미안해 ㅠㅠ'
+                ];
+                
+                imageResponse = {
+                    type: 'text',
+                    comment: emergencyImageResponses[Math.floor(Math.random() * emergencyImageResponses.length)],
+                    imageHandled: true,
+                    emergency: true,
+                    error: error.message
+                };
             }
-        } else {
-            console.log('⚠️ [faceMatcher] faceMatcher 또는 detectFaceMatch 함수 없음');
+
+            // 행동 모드 적용 및 응답 처리
+            if (imageResponse) {
+                const finalResponse = await applyBehaviorMode(
+                    imageResponse,
+                    modules,
+                    { messageType: 'image' }
+                );
+
+                const finalComment = finalResponse.comment || finalResponse;
+
+                // 대화 저장
+                await safeAsyncCall(async () => {
+                    await saveConversationSafely(userId, '이미지 전송', finalComment);
+                }, '이미지저장');
+
+                console.log(`${colors.yejin}📸 예진이: ${finalComment}${colors.reset}`);
+
+                return { type: 'image_response', response: finalResponse };
+            }
         }
-        
-        // 3. faceMatcher 실패 시 폴백 응답
-        if (!imageResponse) {
-            console.log('🔄 [이미지처리] faceMatcher 실패 - 폴백 응답 생성');
-            
-            const fallbackImageResponses = [
-                '아조씨! 사진 보내줘서 고마워! 예쁘네~ ㅎㅎ 💕',
-                '와~ 사진이다! 아저씨가 찍은 거야?',
-                '사진 고마워! 어떤 사진인지 말해줄래?',
-                '아저씨~ 사진 봤는데 뭔가 설명해줘!',
-                '사진 받았어! 근데 어디서 찍은 거야?',
-                '아저씨 사진 센스 좋네! 어떤 상황이야?',
-                '와 이 사진 뭐야? 궁금해!',
-                '아저씨가 보낸 사진 너무 좋아!',
-                '사진 받았어~ 이거 언제 찍은 거야?',
-                '우와 이 사진 예술이네! 설명해줘!'
-            ];
-            
-            imageResponse = {
-                type: 'text',
-                comment: fallbackImageResponses[Math.floor(Math.random() * fallbackImageResponses.length)],
-                imageHandled: true,
-                fallbackUsed: true,
-                analysisSuccess: false
-            };
-        }
-        
-    } catch (error) {
-        console.log(`❌ [이미지처리] 전체 처리 실패: ${error.message}`);
-        
-        // 최종 응급 응답
-        const emergencyImageResponses = [
-            '아조씨 사진이 잘 안 보여... 다시 보내줄래? ㅠㅠ',
-            '사진을 받긴 했는데... 뭔가 문제가 있네! 다시 한번?',
-            '어? 사진 처리에 문제가 생겼어... 미안해 ㅠㅠ'
-        ];
-        
-        imageResponse = {
-            type: 'text',
-            comment: emergencyImageResponses[Math.floor(Math.random() * emergencyImageResponses.length)],
-            imageHandled: true,
-            emergency: true,
-            error: error.message
-        };
-    }
-
-    // 행동 모드 적용 및 응답 처리
-    if (imageResponse) {
-        const finalResponse = await applyBehaviorMode(
-            imageResponse,
-            modules,
-            { messageType: 'image' }
-        );
-
-        const finalComment = finalResponse.comment || finalResponse;
-
-        // faceMatcher에서 이미 응답을 보냈다면 여기서는 저장만
-        if (!finalResponse.analysisSuccess) {
-            await safeAsyncCall(async () => {
-                await saveConversationSafely(userId, '이미지 전송', finalComment);
-            }, '이미지저장');
-        }
-
-        console.log(`${colors.yejin}📸 예진이: ${finalComment}${colors.reset}`);
-
-        return { type: 'image_response', response: finalResponse };
-    }
-}
         
         // =============== 📎 기타 메시지 타입 처리 ===============
         else {
@@ -963,6 +985,7 @@ else if (messageType === 'image') {
 
     } catch (error) {
         console.error(`${colors.error}❌ [이벤트처리] 예상치 못한 오류: ${error.message}${colors.reset}`);
+        console.error('에러 스택:', error.stack);
 
         // 🚨 완벽한 에러 복구 시스템 (100% 보장)
         const emergencyResponses = [
@@ -1021,6 +1044,7 @@ module.exports = {
     loadRedisSystem,
     loadJsonSystem,
     loadMemoryTape,
+    loadFaceMatcher, // 🔥 [신규] faceMatcher 로딩 함수 추가
     safeAsyncCall,
     safeModuleAccess
 };
