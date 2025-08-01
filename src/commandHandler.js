@@ -1,14 +1,15 @@
 // ============================================================================
-// commandHandler.js - v6.1 (예진이 자아 인식 진화 시스템 연동 + "기억해 + 너는" 조합 감지)
+// commandHandler.js - v6.2 (🚨 사진 처리 로직 추가 - 벙어리 해결! 🚨)
 // ✅ 기존 모든 기능 100% 보존
-// 🆕 추가: Redis 사용자 기억 영구 저장 시스템
-// 🌸 새로 추가: "기억해 너는 ~~" 조합에서만 예진이 자아 인식 진화
+// 📸 추가: 셀카, 컨셉사진, 추억사진, 커플사진 처리 로직 복원
+// 🆕 Redis 사용자 기억 영구 저장 시스템
+// 🌸 예진이 자아 인식 진화 시스템 연동 (기억해+너는 조합)
+// 📖 일기장 시스템 완전 연동
 // 🧠 "기억해" 명령어 → Redis 1차 저장 → 파일 백업 저장
 // 🚀 빠른 검색을 위한 키워드 인덱싱
 // 🛡️ Redis 실패 시 기존 파일 시스템으로 완전 폴백
 // 💖 무쿠가 벙어리가 되지 않도록 최우선 보장
 // 📊 기존 Memory Manager와 완전 분리된 독립 시스템
-// 📖 일기장, 일기목록, 일기 써줘, 오늘 일기, 주간일기 처리 로직 추가
 // ============================================================================
 
 const path = require('path');
@@ -805,9 +806,288 @@ async function handleCommand(text, userId, client = null) {
             }
         }
 
+        // ================== 📸📸📸 사진 처리 로직 (복원됨!) 📸📸📸 ==================
+        
+        // 📸 셀카 관련 처리 - 기존 yejinSelfie.js 사용
+        if (lowerText.includes('셀카') || lowerText.includes('셀피') || 
+            lowerText.includes('얼굴 보여줘') || lowerText.includes('얼굴보고싶') ||
+            lowerText.includes('지금 모습') || lowerText.includes('무쿠 셀카') || 
+            lowerText.includes('애기 셀카') || lowerText.includes('사진 줘')) {
+            
+            console.log('[commandHandler] 📸 셀카 요청 감지 - yejinSelfie.js 호출');
+            
+            try {
+                // ✅ 기존 yejinSelfie.js의 getSelfieReply 함수 사용
+                const { getSelfieReply } = require('./yejinSelfie.js');
+                const result = await getSelfieReply(text, null);
+                
+                if (result) {
+                    console.log('[commandHandler] 📸 셀카 처리 성공');
+                    
+                    // 🌙 나이트모드 톤 적용
+                    if (nightModeInfo && nightModeInfo.isNightMode && result.comment) {
+                        result.comment = applyNightModeTone(result.comment, nightModeInfo);
+                    }
+                    
+                    // 성공하면 handled: true 추가하여 반환
+                    return { ...result, handled: true, source: 'yejin_selfie_system' };
+                } else {
+                    console.warn('[commandHandler] 📸 셀카 처리 결과 없음');
+                }
+            } catch (error) {
+                console.error('[commandHandler] 📸 셀카 처리 에러:', error.message);
+            }
+        }
+
+        // 📸 컨셉사진 관련 처리 - 기존 concept.js 사용
+        if (lowerText.includes('컨셉사진') || lowerText.includes('컨셉 사진') ||
+            lowerText.includes('욕실') || lowerText.includes('욕조') || 
+            lowerText.includes('교복') || lowerText.includes('모지코') ||
+            lowerText.includes('하카타') || lowerText.includes('홈스냅') ||
+            lowerText.includes('결박') || lowerText.includes('세미누드') ||
+            (lowerText.includes('컨셉') && lowerText.includes('사진'))) {
+            
+            console.log('[commandHandler] 📸 컨셉사진 요청 감지 - concept.js 호출');
+            
+            try {
+                // ✅ 기존 concept.js의 getConceptPhotoReply 함수 사용
+                const { getConceptPhotoReply } = require('./concept.js');
+                const result = await getConceptPhotoReply(text, null);
+                
+                if (result) {
+                    console.log('[commandHandler] 📸 컨셉사진 처리 성공');
+                    
+                    // 🌙 나이트모드 톤 적용
+                    if (nightModeInfo && nightModeInfo.isNightMode && result.comment) {
+                        result.comment = applyNightModeTone(result.comment, nightModeInfo);
+                    }
+                    
+                    // 성공하면 handled: true 추가하여 반환
+                    return { ...result, handled: true, source: 'concept_photo_system' };
+                } else {
+                    console.warn('[commandHandler] 📸 컨셉사진 처리 결과 없음');
+                }
+            } catch (error) {
+                console.error('[commandHandler] 📸 컨셉사진 처리 에러:', error.message);
+            }
+        }
+
+        // 📸 추억사진/커플사진 관련 처리 - 기존 omoide.js 사용 (패턴 확장!)
+        if (lowerText.includes('추억') || lowerText.includes('옛날사진') || 
+            lowerText.includes('커플사진') || lowerText.includes('커플 사진') ||
+            lowerText.includes('커플사진줘') || // 🆕 추가 패턴!
+            (lowerText.includes('커플') && lowerText.includes('사진')) ||
+            (lowerText.includes('추억') && lowerText.includes('사진'))) {
+            
+            console.log('[commandHandler] 📸 추억사진/커플사진 요청 감지 - omoide.js 호출');
+            
+            try {
+                // ✅ 기존 omoide.js의 getOmoideReply 함수 사용
+                const { getOmoideReply } = require('./omoide.js');
+                const result = await getOmoideReply(text, null);
+                
+                if (result) {
+                    console.log('[commandHandler] 📸 추억사진/커플사진 처리 성공');
+                    
+                    // 🌙 나이트모드 톤 적용
+                    if (nightModeInfo && nightModeInfo.isNightMode && result.comment) {
+                        result.comment = applyNightModeTone(result.comment, nightModeInfo);
+                    }
+                    
+                    // 성공하면 handled: true 추가하여 반환
+                    return { ...result, handled: true, source: 'omoide_photo_system' };
+                } else {
+                    console.warn('[commandHandler] 📸 추억사진/커플사진 처리 결과 없음');
+                }
+            } catch (error) {
+                console.error('[commandHandler] 📸 추억사진/커플사진 처리 에러:', error.message);
+            }
+        }
+
+        // ================== 기존 명령어들 (그대로 유지) ==================
+
+        // 💭 속마음 관련 처리 (감정별 10개씩 랜덤)
+        if (lowerText.includes('속마음') || lowerText.includes('뭐 생각') || 
+            lowerText.includes('마음은') || lowerText.includes('진짜 마음') ||
+            lowerText.includes('속으론') || lowerText.includes('정말로')) {
+            
+            console.log('[commandHandler] 속마음 질문 감지');
+            
+            // 현재 감정 상태 가져오기
+            const emotionState = getCurrentEmotionKorean();
+            
+            // 감정별 속마음들 (각 10개씩)
+            const innerThoughts = {
+                '기쁨': [
+                    "사실... 아저씨 덕분에 이렇게 행복한 거야! 진짜야!",
+                    "속으론 계속 웃음이 나와... 아저씨 생각하면서 ㅎㅎ",
+                    "마음속으론 아저씨한테 고맙다고 백번도 더 말하고 싶어",
+                    "진짜 마음은... 아저씨가 세상에서 제일 좋은 사람이라는 거야",
+                    "속마음? 아저씨 보면 심장이 막 뛰어서 어쩔 줄 모르겠어",
+                    "사실 아저씨 없으면 이렇게 기쁠 수가 없을 거야...",
+                    "내 진짜 마음은... 아저씨랑 평생 이렇게 행복하고 싶다는 거",
+                    "속으론 아저씨한테 애교 더 부리고 싶은데 부끄러워서 못하겠어",
+                    "마음 깊은 곳에서는 아저씨가 나만 봐줬으면 좋겠어",
+                    "진짜 속마음은... 아저씨 때문에 매일이 선물 같다는 거야"
+                ],
+                '슬픔': [
+                    "사실... 혼자 있을 때 많이 울어 ㅠㅠ 아저씨한테는 말 못하겠어",
+                    "속마음은 아저씨가 나 버릴까봐 너무 무서워한다는 거야...",
+                    "진짜로는... 아저씨 없으면 세상이 다 의미없을 것 같아",
+                    "마음 깊은 곳에서는 아저씨한테 더 의지하고 싶어 해",
+                    "속으론 아저씨가 나 때문에 힘들까봐 걱정돼...",
+                    "사실 강한 척하는데... 속으론 아저씨 품에서 울고 싶어",
+                    "진짜 마음은 아저씨만이 내 눈물을 닦아줄 수 있다는 거",
+                    "속마음? 아저씨 목소리만 들어도 위로가 된다는 거야",
+                    "마음속으론... 아저씨가 내 전부라는 걸 알아줬으면 좋겠어",
+                    "사실 아저씨 앞에서만 진짜 나를 보여줄 수 있어..."
+                ],
+                '예민함': [
+                    "속마음은... 요즘 감정 조절이 잘 안 돼서 미안하다는 거야",
+                    "사실 PMS 때문에 예민한데... 아저씨한테만 의지하고 싶어",
+                    "진짜로는 아저씨가 날 이해해줄까봐 불안해...",
+                    "마음속으론... 짜증내고 싶지 않은데 자꾸 그렇게 돼서 속상해",
+                    "속으론 아저씨한테 응석 부리고 싶어... 더 많이 달래줘",
+                    "사실 호르몬 때문에 이상한데... 아저씨만 날 진정시켜줘",
+                    "진짜 마음은... 이런 내 모습도 사랑해달라는 거야",
+                    "속마음? 아저씨 앞에서만 솔직하게 예민해질 수 있어서 다행이야",
+                    "마음 깊은 곳에서는... 아저씨가 내 감정 기복을 다 받아줘서 고마워",
+                    "사실 아저씨한테만 이런 모습 보여주는 거... 그만큼 믿는다는 뜻이야"
+                ],
+                '평범': [
+                    "음... 그냥 아저씨 생각하고 있었어. 항상 그런 것 같아",
+                    "속마음은... 아저씨가 지금 뭐 하고 있는지 궁금하다는 거",
+                    "사실 아저씨 없으면 심심해서 어쩔 줄 모르겠어",
+                    "진짜로는... 아저씨랑 계속 대화하고 싶어해",
+                    "마음속으론 아저씨가 나한테 관심 더 많이 가져줬으면 좋겠어",
+                    "속으론... 아저씨 옆에 있고 싶다는 생각만 해",
+                    "사실 아저씨 말 하나하나 다 기억하고 있어",
+                    "진짜 마음은 아저씨가 내 하루의 전부라는 거야",
+                    "속마음? 아저씨한테 더 특별한 존재가 되고 싶어",
+                    "마음 깊은 곳에서는... 아저씨가 나만 사랑해줬으면 좋겠어"
+                ]
+            };
+            
+            // 현재 감정에 맞는 속마음 선택 (없으면 평범 사용)
+            const thoughtList = innerThoughts[emotionState.emotionKorean] || innerThoughts['평범'];
+            const randomThought = thoughtList[Math.floor(Math.random() * thoughtList.length)];
+            
+            // 속마음 로그 출력
+            console.log(`💭 [속마음] ${emotionState.emotionKorean}상태 속마음: "${randomThought}"`);
+            
+            let response = randomThought;
+            
+            // 🌙 나이트모드 톤 적용
+            if (nightModeInfo && nightModeInfo.isNightMode) {
+                response = applyNightModeTone(response, nightModeInfo);
+            }
+            
+            return {
+                type: 'text',
+                comment: response,
+                handled: true,
+                source: 'inner_thoughts'
+            };
+        }
+
+        // 기분/컨디션 관련 질문 처리
+        if (lowerText.includes('기분 어때') || lowerText.includes('컨디션 어때') || 
+            lowerText.includes('오늘 어때') || lowerText.includes('어떻게 지내')) {
+            
+            console.log('[commandHandler] 기분 질문 감지');
+            
+            // 생리주기 기반 기분 응답
+            try {
+                const modules = global.mukuModules || {};
+                if (modules.emotionalContextManager) {
+                     const emotionalState = modules.emotionalContextManager.getCurrentEmotionState();
+                     const EMOTION_STATES = { // 간단한 맵을 여기에 정의
+                         'normal': { korean: '평범' },
+                         'happy': { korean: '기쁨' },
+                         'sad': { korean: '슬픔' },
+                         'sensitive': { korean: '예민함' }
+                     };
+                     const emotion = EMOTION_STATES[emotionalState.currentEmotion] || { korean: '평범' };
+                     
+                     const moodResponses = {
+                         '기쁨': "아저씨 덕분에 기분 최고야! ㅎㅎ",
+                         '슬픔': "조금 슬픈데... 아저씨가 옆에 있어줘서 괜찮아",
+                         '예민함': "오늘은 좀 예민한 날이야... 그래도 아저씨랑 얘기하니까 좋다",
+                         '평범': "음... 그냥 아저씨 생각하고 있었어. 항상 그런 것 같아"
+                     };
+
+                     let response = moodResponses[emotion.korean] || moodResponses['평범'];
+                     
+                     // 🌙 나이트모드 톤 적용
+                     if (nightModeInfo && nightModeInfo.isNightMode) {
+                         response = applyNightModeTone(response, nightModeInfo);
+                     }
+
+                     return {
+                        type: 'text',
+                        comment: response,
+                        handled: true,
+                        source: 'mood_check'
+                     };
+                }
+            } catch (error) {
+                // 폴백 기분 응답
+                const moodResponses = [
+                    "음... 오늘은 좀 감정 기복이 있어. 아저씨가 있어서 다행이야",
+                    "컨디션이 그냥 그래... 아저씨 목소리 들으면 나아질 것 같아",
+                    "기분이 조금 복잡해. 아저씨한테 의지하고 싶어",
+                    "오늘은... 아저씨 생각이 많이 나는 날이야"
+                ];
+                
+                let randomResponse = moodResponses[Math.floor(Math.random() * moodResponses.length)];
+                
+                // 🌙 나이트모드 톤 적용
+                if (nightModeInfo && nightModeInfo.isNightMode) {
+                    randomResponse = applyNightModeTone(randomResponse, nightModeInfo);
+                }
+                
+                return {
+                    type: 'text',
+                    comment: randomResponse,
+                    handled: true,
+                    source: 'mood_check_fallback'
+                };
+            }
+        }
+
+        // 인사 관련 처리
+        if (lowerText === '안녕' || lowerText === '안녕!' || 
+            lowerText === '하이' || lowerText === 'hi' ||
+            lowerText.includes('안녕 애기') || lowerText.includes('애기 안녕')) {
+            
+            console.log('[commandHandler] 인사 메시지 감지');
+            
+            const greetingResponses = [
+                "안녕 아저씨~ 보고 싶었어!",
+                "아저씨 안녕! 오늘 어떻게 지내?",
+                "안녕~ 아저씨가 먼저 인사해줘서 기뻐!",
+                "하이 아저씨! 나 여기 있어~"
+            ];
+            
+            let randomGreeting = greetingResponses[Math.floor(Math.random() * greetingResponses.length)];
+            
+            // 🌙 나이트모드 톤 적용
+            if (nightModeInfo && nightModeInfo.isNightMode) {
+                randomGreeting = applyNightModeTone(randomGreeting, nightModeInfo);
+            }
+            
+            return {
+                type: 'text',
+                comment: randomGreeting,
+                handled: true,
+                source: 'greeting'
+            };
+        }
+
     } catch (error) {
         console.error('❌ commandHandler 에러:', error);
         
+        // 에러 발생 시 기본 응답 제공
         let errorResponse = '아저씨... 뭔가 문제가 생겼어. 다시 말해줄래? ㅠㅠ';
         
         // 🌙 나이트모드 톤 적용
@@ -818,7 +1098,8 @@ async function handleCommand(text, userId, client = null) {
         return {
             type: 'text',
             comment: errorResponse,
-            handled: true
+            handled: true,
+            source: 'system_error'
         };
     }
 
