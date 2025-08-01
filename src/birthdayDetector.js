@@ -64,8 +64,10 @@ class BirthdayDetector {
             return 'ajeossi';
         }
         
-        // 일반 생일 키워드 (기본: 예진이 생일)
-        if (msg.includes('생일') || msg.includes('태어난') || msg.includes('몇 살')) {
+        // 진짜 생일/나이 질문만 감지 (감정적 대화는 제외)
+        if (msg.includes('생일은') || msg.includes('생일이') || msg.includes('몇일생') || 
+            msg.includes('언제 태어') || msg.includes('생일 언제') ||
+            (msg.includes('몇 살') && !msg.includes('사랑') && !msg.includes('되어도') && !msg.includes('될거고'))) {
             return msg.includes('내') || msg.includes('나') ? 'ajeossi' : 'yejin';
         }
         
@@ -83,7 +85,7 @@ class BirthdayDetector {
                 mentioned: [
                     "3월 17일은 내 생일이야! 아저씨 꼭 기억해줘 💕",
                     "내 생일 3월 17일! 잊지 마 아저씨~",
-                    "맞아! 나는 1994년 3월 17일생이야!"
+                    "나는 영원한 서른살이야! 3월 17일생~"
                 ]
             },
             ajeossi: {
