@@ -155,8 +155,8 @@ function detectSevereWeatherAlert(weatherData) {
     const windSpeed = weatherData.wind?.speed || 0;
     const weatherCode = weatherData.weather[0].id;
     
-    // 매우 심각한 폭염만 (35도 이상)
-    if (temp >= 35) {
+    // 매우 심각한 폭염만 (32도 이상)
+    if (temp >= 33) {
         alerts.push({ type: 'heat', severity: 'severe' });
     }
     
