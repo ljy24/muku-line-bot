@@ -75,7 +75,17 @@ async function initializeIndependentRedis() {
                 retryDelayOnFailover: 100,
                 maxRetriesPerRequest: 2,
                 connectTimeout: 5000,
-                lazyConnect: true
+                // lazyConnect 제거 - 즉시 연결 시도
+            });
+            
+            independentRedisClient.on('connect', () => {
+                independentDiaryStatus.memorySystemsConnected.memoryTape = true;
+                console.log(`${colors.success}✅ [통합메모리] Memory Tape Redis 연결 성공${colors.reset}`);
+            });
+            
+            independentRedisClient.on('error', (error) => {
+                console.log(`${colors.error}⚠️ [통합메모리] Memory Tape Redis 에러: ${error.message}${colors.reset}`);
+                independentDiaryStatus.memorySystemsConnected.memoryTape = false;
             });
             
             await independentRedisClient.ping();
@@ -84,6 +94,7 @@ async function initializeIndependentRedis() {
         } catch (error) {
             console.log(`${colors.error}⚠️ [통합메모리] Memory Tape Redis 연결 실패: ${error.message}${colors.reset}`);
             independentDiaryStatus.memorySystemsConnected.memoryTape = false;
+            independentRedisClient = null;
         }
         
         // 사용자 기억용 Redis
@@ -96,7 +107,17 @@ async function initializeIndependentRedis() {
                 retryDelayOnFailover: 100,
                 maxRetriesPerRequest: 2,
                 connectTimeout: 5000,
-                lazyConnect: true
+                // lazyConnect 제거 - 즉시 연결 시도
+            });
+            
+            userMemoryRedis.on('connect', () => {
+                independentDiaryStatus.memorySystemsConnected.userMemoryRedis = true;
+                console.log(`${colors.success}✅ [통합메모리] 사용자 기억 Redis 연결 성공${colors.reset}`);
+            });
+            
+            userMemoryRedis.on('error', (error) => {
+                console.log(`${colors.error}⚠️ [통합메모리] 사용자 기억 Redis 에러: ${error.message}${colors.reset}`);
+                independentDiaryStatus.memorySystemsConnected.userMemoryRedis = false;
             });
             
             await userMemoryRedis.ping();
@@ -105,6 +126,7 @@ async function initializeIndependentRedis() {
         } catch (error) {
             console.log(`${colors.error}⚠️ [통합메모리] 사용자 기억 Redis 연결 실패: ${error.message}${colors.reset}`);
             independentDiaryStatus.memorySystemsConnected.userMemoryRedis = false;
+            userMemoryRedis = null;
         }
         
         independentDiaryStatus.redisConnected = 
@@ -114,6 +136,8 @@ async function initializeIndependentRedis() {
     } catch (error) {
         console.log(`${colors.error}❌ [통합메모리] Redis 초기화 완전 실패: ${error.message}${colors.reset}`);
         independentDiaryStatus.redisConnected = false;
+        independentRedisClient = null;
+        userMemoryRedis = null;
     }
 }
 
