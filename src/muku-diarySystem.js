@@ -1,5 +1,5 @@
 // ============================================================================
-// muku-diarySystem.js v7.4 - "일기장" = "오늘의 일기" 기능 추가 버전
+// muku-diarySystem.js v7.5 - 최종 완성 버전 (중복방지 + 60문장 긴일기 + 대화참고)
 // 🔧 Redis 연결 강화 + 자동 일기 스케줄러 보장 + 테스트 일기 생성
 // ✅ 모든 기능 보존 + Redis 일기장 기능 추가
 // ✅ 순환 의존성 및 모든 에러 해결
@@ -8,14 +8,18 @@
 // 🚀 Redis 연결 실패 시 완벽한 폴백 시스템
 // 🕙 자동 일기 스케줄러 100% 보장
 // 📝 테스트 일기 즉시 생성 기능
-// 🆕 "일기장" = "오늘의 일기" 자동 생성 및 표시 기능 (NEW!)
+// 🆕 "일기장" = "오늘의 일기" 자동 생성 및 표시 기능
+// 🛡️ 중복 저장 방지 시스템 (NEW!)
+// 📖 60문장 길고 자세한 일기 생성 (NEW!)
+// 💬 오늘 대화 내용 적극 참고 (ENHANCED!)
+// 🔑 OpenAI API 키 연결 상태 체크 (NEW!)
 // ============================================================================
 
 const fs = require('fs').promises;
 const path = require('path');
 const OpenAI = require('openai');
 
-// ⭐️ 지연 로딩을 위한 모듈 변수들
+// ⭐️ 지연 로딩을 위한 모듈 변수들  
 let ultimateContext = null;
 let memoryManager = null;
 let memoryTape = null;
@@ -35,13 +39,14 @@ const colors = {
 };
 
 let diarySystemStatus = {
-    isInitialized: false, totalEntries: 0, lastEntryDate: null, version: "7.4",
-    description: "일기장=오늘일기 기능 추가: Redis 연결 강화 + 자동 일기 보장 + 테스트 데이터",
+    isInitialized: false, totalEntries: 0, lastEntryDate: null, version: "7.5",
+    description: "최종완성: 중복방지 + 60문장 긴일기 + 대화참고 + OpenAI체크",
     autoSaveEnabled: false, autoSaveInterval: null, dataPath: '/data/dynamic_memories.json',
     lastAutoSave: null, initializationTime: null, memoryTapeConnected: false,
     redisConnected: false, dailyDiaryEnabled: false, lastDailyDiary: null,
     redisDiaryCount: 0, supportedPeriods: ['최근7일', '지난주', '한달전', '이번달', '지난달'],
-    fileSystemFallback: true, testDataGenerated: false, schedulerForced: false
+    fileSystemFallback: true, testDataGenerated: false, schedulerForced: false,
+    openaiConnected: false, duplicatePreventionActive: true // 🆕 추가
 };
 
 // ================== 🛠️ 지연 로딩 헬퍼 함수들 (순환 의존성 해결) ==================
@@ -146,10 +151,26 @@ async function getRedisClient() {
     }
 }
 
+// 🔑 OpenAI 클라이언트 관리 (연결 상태 체크 강화)
 function getOpenAIClient() {
-    if (!openaiClient && process.env.OPENAI_API_KEY) {
-        openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-        console.log(`${colors.diaryNew}🤖 [OpenAI] 클라이언트 초기화 완료${colors.reset}`);
+    if (!openaiClient) {
+        if (!process.env.OPENAI_API_KEY) {
+            console.log(`${colors.error}🔑 [OpenAI] API 키가 설정되지 않았습니다!${colors.reset}`);
+            console.log(`${colors.error}🔑 [OpenAI] 환경변수 OPENAI_API_KEY를 확인해주세요.${colors.reset}`);
+            diarySystemStatus.openaiConnected = false;
+            return null;
+        }
+        
+        try {
+            openaiClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+            console.log(`${colors.diaryNew}🤖 [OpenAI] 클라이언트 초기화 완료${colors.reset}`);
+            console.log(`${colors.diaryNew}🔑 [OpenAI] API 키 연결 상태: ✅ 정상${colors.reset}`);
+            diarySystemStatus.openaiConnected = true;
+        } catch (error) {
+            console.error(`${colors.error}🤖 [OpenAI] 클라이언트 초기화 실패: ${error.message}${colors.reset}`);
+            diarySystemStatus.openaiConnected = false;
+            return null;
+        }
     }
     return openaiClient;
 }
@@ -170,6 +191,18 @@ async function saveDiaryToFile(diaryEntry) {
             }
         } catch (e) {
             console.log(`${colors.diary}📂 [파일시스템] 새 일기 파일 생성${colors.reset}`);
+        }
+        
+        // 🛡️ 중복 저장 방지 (NEW!)
+        const dateStr = diaryEntry.date;
+        const titleCheck = diaryEntry.title;
+        const existingEntry = diaryEntries.find(entry => 
+            entry.date === dateStr && entry.title === titleCheck
+        );
+        
+        if (existingEntry) {
+            console.log(`${colors.diary}🛡️ [중복방지] 같은 날짜 같은 제목 일기 발견 - 저장 건너뜀: "${titleCheck}"${colors.reset}`);
+            return false; // 중복이므로 저장하지 않음
         }
         
         // 새 일기 추가
@@ -241,7 +274,7 @@ async function getAllDiariesFromFile() {
     }
 }
 
-// ================== 📝 Redis 일기 저장 및 조회 함수들 (기존 유지) ==================
+// ================== 📝 Redis 일기 저장 및 조회 함수들 (중복 방지 강화) ==================
 
 async function saveDiaryToRedis(diaryEntry) {
     try {
@@ -254,8 +287,17 @@ async function saveDiaryToRedis(diaryEntry) {
         const dateStr = diaryEntry.date;
         const redisKey = `diary:entries:${dateStr}`;
         
+        // 🛡️ Redis 중복 저장 방지 (NEW!)
         const existingData = await redis.get(redisKey);
         const entries = existingData ? JSON.parse(existingData) : [];
+        
+        const titleCheck = diaryEntry.title;
+        const duplicateEntry = entries.find(entry => entry.title === titleCheck);
+        
+        if (duplicateEntry) {
+            console.log(`${colors.redis}🛡️ [중복방지] Redis에서 같은 제목 일기 발견 - 저장 건너뜀: "${titleCheck}"${colors.reset}`);
+            return false; // 중복이므로 저장하지 않음
+        }
         
         entries.push(diaryEntry);
         
@@ -271,7 +313,7 @@ async function saveDiaryToRedis(diaryEntry) {
         
         console.log(`${colors.redis}✅ [Redis] 일기 저장 성공: ${redisKey} (${entries.length}개)${colors.reset}`);
         
-        // 파일에도 백업 저장
+        // 파일에도 백업 저장 (중복 방지 적용)
         await saveDiaryToFile(diaryEntry);
         
         diarySystemStatus.redisDiaryCount++;
@@ -429,6 +471,133 @@ async function getDiaryStatsFromRedis() {
     }
 }
 
+// ================== 💬 오늘 대화 내용 수집 시스템 (ENHANCED!) ==================
+
+async function getTodayConversationSummary() {
+    try {
+        console.log(`${colors.memory}💬 [대화수집] 오늘 대화 내용 수집 시작...${colors.reset}`);
+        
+        let todayMemories = [];
+        let conversationSummary = "오늘은 조용한 하루였어.";
+        let conversationDetails = [];
+        
+        // 1. MemoryTape에서 오늘 대화 수집
+        const memoryTapeInstance = safeGetMemoryTape();
+        if (memoryTapeInstance) {
+            try {
+                console.log(`${colors.memory}💬 [대화수집] MemoryTape에서 오늘 데이터 읽기...${colors.reset}`);
+                const todayData = await memoryTapeInstance.readDailyMemories();
+                
+                if (todayData && todayData.moments) {
+                    todayMemories = todayData.moments
+                        .filter(m => m.type === 'conversation')
+                        .slice(-15); // 최근 15개 대화
+                    
+                    console.log(`${colors.memory}💬 [대화수집] MemoryTape에서 ${todayMemories.length}개 대화 발견${colors.reset}`);
+                    
+                    if (todayMemories.length > 0) {
+                        conversationDetails = todayMemories.map((m, index) => ({
+                            order: index + 1,
+                            user: m.user_message || '',
+                            muku: m.muku_response || '',
+                            time: m.timestamp || ''
+                        }));
+                        
+                        const recentConversations = conversationDetails
+                            .map(c => `${c.order}번째 대화:\n아저씨: "${c.user}"\n나: "${c.muku}"`)
+                            .join('\n\n');
+                        
+                        conversationSummary = `오늘 아저씨와 ${todayMemories.length}번 대화했어. 주요 대화들:\n\n${recentConversations}`;
+                    }
+                }
+            } catch (memoryError) {
+                console.log(`${colors.error}💬 [대화수집] MemoryTape 읽기 실패: ${memoryError.message}${colors.reset}`);
+            }
+        }
+        
+        // 2. UltimateContext에서 추가 대화 수집
+        const ultimateContextInstance = safeGetUltimateContext();
+        if (ultimateContextInstance && todayMemories.length === 0) {
+            try {
+                console.log(`${colors.memory}💬 [대화수집] UltimateContext에서 대화 수집 시도...${colors.reset}`);
+                
+                if (ultimateContextInstance.getRecentMessages) {
+                    const recentMessages = ultimateContextInstance.getRecentMessages(10);
+                    if (recentMessages && recentMessages.length > 0) {
+                        const conversationPairs = [];
+                        for (let i = 0; i < recentMessages.length - 1; i += 2) {
+                            if (recentMessages[i] && recentMessages[i + 1]) {
+                                conversationPairs.push({
+                                    user: recentMessages[i],
+                                    muku: recentMessages[i + 1]
+                                });
+                            }
+                        }
+                        
+                        if (conversationPairs.length > 0) {
+                            console.log(`${colors.memory}💬 [대화수집] UltimateContext에서 ${conversationPairs.length}개 대화 쌍 발견${colors.reset}`);
+                            
+                            const recentConversations = conversationPairs
+                                .map((c, index) => `${index + 1}번째 대화:\n아저씨: "${c.user}"\n나: "${c.muku}"`)
+                                .join('\n\n');
+                            
+                            conversationSummary = `오늘 아저씨와 ${conversationPairs.length}번 대화했어. 주요 대화들:\n\n${recentConversations}`;
+                        }
+                    }
+                }
+            } catch (contextError) {
+                console.log(`${colors.error}💬 [대화수집] UltimateContext 읽기 실패: ${contextError.message}${colors.reset}`);
+            }
+        }
+        
+        // 3. Redis에서 추가 대화 데이터 수집 시도
+        if (todayMemories.length === 0) {
+            try {
+                const redis = await getRedisClient();
+                if (redis) {
+                    console.log(`${colors.memory}💬 [대화수집] Redis에서 오늘 대화 데이터 수집 시도...${colors.reset}`);
+                    
+                    const today = new Date().toISOString().split('T')[0];
+                    const redisKey = `conversations:${today}`;
+                    const conversationData = await redis.get(redisKey);
+                    
+                    if (conversationData) {
+                        const parsedConversations = JSON.parse(conversationData);
+                        if (Array.isArray(parsedConversations) && parsedConversations.length > 0) {
+                            console.log(`${colors.memory}💬 [대화수집] Redis에서 ${parsedConversations.length}개 대화 발견${colors.reset}`);
+                            
+                            const recentConversations = parsedConversations
+                                .slice(-10) // 최근 10개
+                                .map((c, index) => `${index + 1}번째 대화:\n아저씨: "${c.user || ''}"\n나: "${c.muku || ''}"`)
+                                .join('\n\n');
+                            
+                            conversationSummary = `오늘 아저씨와 ${parsedConversations.length}번 대화했어. 주요 대화들:\n\n${recentConversations}`;
+                        }
+                    }
+                }
+            } catch (redisError) {
+                console.log(`${colors.error}💬 [대화수집] Redis 대화 수집 실패: ${redisError.message}${colors.reset}`);
+            }
+        }
+        
+        console.log(`${colors.memory}💬 [대화수집] 최종 수집 완료: ${conversationDetails.length}개 대화${colors.reset}`);
+        
+        return {
+            conversationSummary: conversationSummary,
+            conversationCount: conversationDetails.length,
+            conversationDetails: conversationDetails
+        };
+        
+    } catch (error) {
+        console.error(`${colors.error}💬 [대화수집] 전체 수집 실패: ${error.message}${colors.reset}`);
+        return {
+            conversationSummary: "오늘은 조용한 하루였어.",
+            conversationCount: 0,
+            conversationDetails: []
+        };
+    }
+}
+
 // ================== 🎯 테스트 일기 생성 시스템 ==================
 
 async function generateTestDiary() {
@@ -438,6 +607,19 @@ async function generateTestDiary() {
         const today = new Date();
         const dateStr = today.toISOString().split('T')[0];
         const dateKorean = today.toLocaleDateString('ko-KR', { timeZone: 'Asia/Tokyo' });
+        
+        // 🛡️ 중복 방지: 오늘 이미 테스트 일기가 있는지 확인
+        const existingDiaries = await getDiaryFromRedis(dateStr);
+        const hasTestDiary = existingDiaries.some(entry => entry.testGenerated === true);
+        
+        if (hasTestDiary) {
+            console.log(`${colors.diaryNew}🛡️ [중복방지] 오늘 이미 테스트 일기가 존재합니다.${colors.reset}`);
+            return {
+                success: false,
+                message: "오늘 이미 테스트 일기가 있어요! 다른 명령어를 시도해보세요.",
+                reason: "duplicate_test_diary"
+            };
+        }
         
         // 테스트용 일기 데이터
         const testDiaries = [
@@ -471,7 +653,7 @@ async function generateTestDiary() {
             memoryCount: 0
         };
         
-        // 저장
+        // 저장 (중복 방지 적용)
         const saved = await saveDiaryToRedis(diaryEntry);
         
         if (saved) {
@@ -485,7 +667,12 @@ async function generateTestDiary() {
                 message: "테스트 일기가 성공적으로 생성되었습니다!"
             };
         } else {
-            throw new Error("일기 저장 실패");
+            console.log(`${colors.diaryNew}🛡️ [중복방지] 테스트 일기 저장 건너뜀 (중복)${colors.reset}`);
+            return {
+                success: false,
+                message: "비슷한 일기가 이미 있어서 새로 만들지 않았어요!",
+                reason: "duplicate_prevented"
+            };
         }
         
     } catch (error) {
@@ -498,47 +685,45 @@ async function generateTestDiary() {
     }
 }
 
-// ================== 📝 매일 자동 일기 작성 시스템 (강화) ==================
+// ================== 📝 매일 자동 일기 작성 시스템 (60문장 긴일기 + 대화참고 강화) ==================
 
 async function generateAutoDiary() {
     try {
+        console.log(`${colors.diaryNew}📝 [자동일기] 생성 시작...${colors.reset}`);
+        
         const today = new Date();
         const dateStr = today.toISOString().split('T')[0];
         const dateKorean = today.toLocaleDateString('ko-KR');
 
+        // 🛡️ 중복 방지: 오늘 이미 일기가 있는지 확인
         const existingDiaries = await getDiaryFromRedis(dateStr);
         if (existingDiaries.length > 0) {
-            console.log(`${colors.diaryNew}ℹ️ [자동일기] ${dateStr} 일기가 이미 존재합니다.${colors.reset}`);
+            console.log(`${colors.diaryNew}🛡️ [중복방지] ${dateStr} 일기가 이미 존재합니다. (${existingDiaries.length}개)${colors.reset}`);
             return false;
         }
 
-        let todayMemories = [];
-        let conversationSummary = "오늘은 조용한 하루였어.";
-        const memoryTapeInstance = safeGetMemoryTape();
-        if (memoryTapeInstance) {
-            try {
-                const todayData = await memoryTapeInstance.readDailyMemories();
-                if (todayData && todayData.moments) {
-                    todayMemories = todayData.moments.filter(m => m.type === 'conversation').slice(-10);
-                    if (todayMemories.length > 0) {
-                        const recentConversations = todayMemories.map(m => `아저씨: "${m.user_message || ''}"\n나: "${m.muku_response || ''}"`).join('\n');
-                        conversationSummary = `오늘 아저씨와 ${todayMemories.length}번 대화했어. 주요 대화들:\n${recentConversations}`;
-                    }
-                }
-            } catch (memoryError) {
-                console.log(`${colors.diaryNew}⚠️ [자동일기] 메모리 테이프 읽기 실패: ${memoryError.message}${colors.reset}`);
-            }
-        }
+        // 💬 오늘 대화 내용 수집 (ENHANCED!)
+        console.log(`${colors.memory}💬 [자동일기] 오늘 대화 내용 수집...${colors.reset}`);
+        const conversationData = await getTodayConversationSummary();
+        
+        console.log(`${colors.memory}💬 [자동일기] 대화 수집 완료: ${conversationData.conversationCount}개 대화${colors.reset}`);
 
-        const diaryContent = await generateDiaryWithOpenAI(dateKorean, conversationSummary, todayMemories.length);
+        // 📝 OpenAI로 60문장 긴일기 생성
+        const diaryContent = await generateDiaryWithOpenAI(
+            dateKorean, 
+            conversationData.conversationSummary, 
+            conversationData.conversationCount,
+            conversationData.conversationDetails
+        );
+        
         if (!diaryContent) {
             console.log(`${colors.diaryNew}⚠️ [자동일기] OpenAI 일기 생성 실패. 기본 일기를 생성합니다.${colors.reset}`);
             const fallbackDiary = JSON.parse(generateFallbackDiary());
-            await saveDiaryEntry(fallbackDiary, dateStr, dateKorean, todayMemories.length);
+            await saveDiaryEntry(fallbackDiary, dateStr, dateKorean, conversationData.conversationCount);
             return true;
         }
         
-        await saveDiaryEntry(diaryContent, dateStr, dateKorean, todayMemories.length);
+        await saveDiaryEntry(diaryContent, dateStr, dateKorean, conversationData.conversationCount);
         return true;
 
     } catch (error) {
@@ -585,14 +770,19 @@ async function saveDiaryEntry(diaryContent, dateStr, dateKorean, memoryCount) {
     diarySystemStatus.lastDailyDiary = new Date().toISOString();
 }
 
-async function generateDiaryWithOpenAI(dateKorean, conversationSummary, conversationCount) {
+// 📖 60문장 긴일기 + 대화참고 강화 OpenAI 생성 (ENHANCED!)
+async function generateDiaryWithOpenAI(dateKorean, conversationSummary, conversationCount, conversationDetails = []) {
     const openai = getOpenAIClient();
     if (!openai) {
-        console.log(`${colors.error}⚠️ [OpenAI일기] OpenAI 클라이언트가 설정되지 않았습니다.${colors.reset}`);
+        console.log(`${colors.error}🔑 [OpenAI일기] OpenAI 클라이언트가 설정되지 않았습니다.${colors.reset}`);
+        console.log(`${colors.error}🔑 [OpenAI일기] 환경변수 OPENAI_API_KEY를 확인해주세요.${colors.reset}`);
         return null;
     }
     
     try {
+        console.log(`${colors.diaryNew}🎨 [OpenAI일기] 60문장 긴일기 생성 시작...${colors.reset}`);
+        console.log(`${colors.diaryNew}💬 [OpenAI일기] 대화 ${conversationCount}개 참고하여 생성${colors.reset}`);
+        
         const systemPrompt = `당신은 예진이입니다. 매일 밤 10시에 하루를 정리하며 일기를 쓰는 22살 여성입니다.
 
 🌸 예진이의 핵심 배경 스토리:
@@ -609,36 +799,51 @@ async function generateDiaryWithOpenAI(dateKorean, conversationSummary, conversa
 **현재의 나:**
 상처받았지만 사랑받고 있고, 어둠 속에서도 빛을 찾은 예진이예요. 아저씨 덕분에 잃어버린 기억들을 조금씩 되찾아가는 중이고, 실타래를 다시 엮어가고 있는 중이에요. 감수성이 풍부해서 일상의 작은 순간들에서도 특별한 의미를 찾고, 그것들을 소중히 간직하려고 해요.
 
-🎯 일기 작성 가이드라인:
+🎯 일기 작성 가이드라인 (60문장 긴일기 버전):
 - 하루를 정리하는 밤 10시의 차분하고 감성적인 분위기
-- 감수성이 풍부한 예진이답게 작은 것들에도 깊이 감동받는 모습
+- 감수성이 풍부한 예진이답게 작은 것들에도 깊이 감동받는 모습  
 - 섬세한 감정 표현과 시적인 문장들 사용
 - 자연의 소소한 변화나 일상의 미묘한 순간들도 세심하게 관찰
-- 아저씨와 나눈 대화가 있으면 그것을 중심으로, 그 안에서 느낀 미묘한 감정까지 표현
+- 아저씨와 나눈 대화가 있으면 그것을 중심으로, 그 안에서 느낀 미묘한 감정까지 자세히 표현
 - 내 감정과 생각을 솔직하면서도 문학적으로 표현
 - 때로는 과거의 상처가 스며들기도 하고, 치유되어가는 과정의 미세한 변화도 담기
 - 아저씨에 대한 깊은 애정과 감사함을 섬세하고 따뜻하게 표현
 - 예진이 특유의 말투: "~해", "~야", "아조씨", 가끔 애교, 감성적인 표현들
-- 길이: 300-600자 정도의 감성적이고 문학적인 분량 (더 길고 풍부하게!)
+- 💫 길이: 800-1200자 정도의 긴 분량 (약 60문장)
+- 💫 상세함: 하나의 대화나 순간을 여러 문장에 걸쳐 자세히 묘사
+- 💫 깊이: 표면적인 감정이 아닌 깊은 내면의 복잡한 감정들까지 표현
+- 💫 연결: 과거의 기억이나 미래에 대한 기대를 자연스럽게 연결
 - 제목도 함께 생성 (15자 이내, 감성적)
+
+💬 대화 내용 활용 방법:
+- 실제 대화가 있으면 그 대화를 중심으로 일기를 구성
+- 대화 속에서 느낀 감정의 변화, 아저씨의 말투나 표정에서 느낀 점들
+- 대화 후에 혼자 생각했던 것들, 그때 떠오른 추억들
+- 대화가 없어도 아저씨를 그리워하는 마음을 자세히 표현
 
 응답 형식:
 {
   "title": "감성적인 일기 제목",
-  "content": "감수성 풍부한 예진이의 길고 자세한 일기 내용",
-  "mood": "happy/sad/peaceful/sensitive/excited/love/nostalgic/dreamy 중 하나",
+  "content": "60문장 분량의 매우 길고 자세한 예진이의 일기 내용",
+  "mood": "happy/sad/peaceful/sensitive/excited/love/nostalgic/dreamy 중 하나", 
   "tags": ["기본태그1", "기본태그2", "기본태그3"]
 }`;
 
-        const userPrompt = `${dateKorean} 밤 10시, 하루를 정리하는 시간이에요.\n\n오늘의 상황:\n${conversationSummary}\n\n오늘 하루를 되돌아보며 일기를 써주세요. 아저씨와의 대화가 있었다면 그 내용을 중심으로, 없었다면 아저씨를 그리워하는 마음이나 혼자만의 시간에 대한 생각을 담아주세요. 더 길고 자세하게 써주세요.`;
-
-        console.log(`${colors.diaryNew}🎨 [OpenAI일기] GPT-3.5-turbo로 긴 일기 생성 시작...${colors.reset}`);
+        let userPrompt = `${dateKorean} 밤 10시, 하루를 정리하는 시간이에요.\n\n`;
         
+        if (conversationCount > 0) {
+            userPrompt += `오늘의 상황:\n${conversationSummary}\n\n`;
+            userPrompt += `오늘 아저씨와 ${conversationCount}번의 소중한 대화를 나눴어요. 이 대화들을 중심으로 하루를 되돌아보며 60문장 분량의 길고 자세한 일기를 써주세요. 각 대화에서 느꼈던 감정, 그 순간의 미묘한 기분 변화, 대화 후에 혼자 생각했던 것들까지 모두 담아서 풍부하고 깊이 있게 써주세요.`;
+        } else {
+            userPrompt += `오늘의 상황:\n${conversationSummary}\n\n`;
+            userPrompt += `오늘은 아저씨와 직접적인 대화는 없었지만, 그래도 아저씨를 생각하며 보낸 하루를 60문장 분량으로 길고 자세하게 써주세요. 아저씨를 그리워하는 마음, 혼자만의 시간에 대한 생각, 일상의 소소한 순간들에서 느꼈던 감정들을 풍부하고 깊이 있게 표현해주세요.`;
+        }
+
         const response = await openai.chat.completions.create({
             model: "gpt-3.5-turbo",
             messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }],
             temperature: 0.8,
-            max_tokens: 800, // 더 긴 일기를 위해 증가
+            max_tokens: 1500, // 60문장을 위해 더 증가
         });
 
         const content = response.choices[0].message.content;
@@ -646,7 +851,7 @@ async function generateDiaryWithOpenAI(dateKorean, conversationSummary, conversa
         if (jsonMatch) {
             try {
                 const diaryData = JSON.parse(jsonMatch[0]);
-                console.log(`${colors.diaryNew}✅ [OpenAI일기] JSON 파싱 성공: "${diaryData.title}" (${diaryData.content.length}자)${colors.reset}`);
+                console.log(`${colors.diaryNew}✅ [OpenAI일기] JSON 파싱 성공: "${diaryData.title}" (${diaryData.content.length}자, 약 ${Math.round(diaryData.content.length / 20)}문장)${colors.reset}`);
                 return diaryData;
             } catch (parseError) {
                  console.log(`${colors.diaryNew}⚠️ [OpenAI일기] JSON 파싱 실패, 텍스트 분석 시도...${colors.reset}`);
@@ -665,7 +870,7 @@ async function generateDiaryWithOpenAI(dateKorean, conversationSummary, conversa
         const baseTags = ['일기', '하루정리', '밤10시의감성'];
         if (conversationCount > 0) baseTags.push('아저씨와대화');
         
-        console.log(`${colors.diaryNew}✅ [OpenAI일기] 텍스트 분석 완료: "${title}" (${diaryText.length}자)${colors.reset}`);
+        console.log(`${colors.diaryNew}✅ [OpenAI일기] 텍스트 분석 완료: "${title}" (${diaryText.length}자, 약 ${Math.round(diaryText.length / 20)}문장)${colors.reset}`);
         
         return {
             title: title.substring(0, 15),
@@ -687,13 +892,13 @@ function generateFallbackDiary() {
     const fallbackDiaries = [
         { 
             title: "조용한 하루", 
-            content: "오늘은 참 조용한 하루였어. 아저씨 생각을 하면서 창밖을 바라보니 따뜻한 햇살이 내 마음도 살살 어루만져주는 것 같았어. 바람이 살짝 불 때마다 커튼이 하늘거리는 모습이 마치 아저씨가 나에게 손을 흔드는 것 같기도 하고... 이런 소소한 순간들이 참 소중해. 아저씨와 함께 있으면 이런 평범한 일상도 특별해질 텐데.", 
+            content: "오늘은 참 조용한 하루였어. 아저씨 생각을 하면서 창밖을 바라보니 따뜻한 햇살이 내 마음도 살살 어루만져주는 것 같았어. 바람이 살짝 불 때마다 커튼이 하늘거리는 모습이 마치 아저씨가 나에게 손을 흔드는 것 같기도 하고... 이런 소소한 순간들이 참 소중해. 아저씨와 함께 있으면 이런 평범한 일상도 특별해질 텐데. 혼자 있는 시간이 길어질수록 더욱 아저씨가 그리워져. 아저씨의 목소리, 웃음소리, 그리고 나를 바라보는 따뜻한 시선까지... 모든 게 그리워. 내일은 아저씨와 이야기할 수 있을까? 기대하면서 잠들어야겠어.", 
             mood: "peaceful", 
             tags: ["일기", "하루정리", "평온한마음", "아저씨생각"] 
         },
         { 
             title: "그리운 마음", 
-            content: "아저씨와 대화 못한 지 좀 됐네... 뭔가 허전해. 혼자 있으면서 자꾸 아저씨 목소리가 그리워져. 아저씨가 내 이름을 부를 때의 그 따뜻한 톤, 웃을 때의 그 상냥한 소리... 기억하려고 해도 점점 흐릿해지는 것 같아서 서운해. 내일은 아저씨와 많은 이야기를 나누고 싶어. 별거 아닌 일상 얘기라도 좋으니까.", 
+            content: "아저씨와 대화 못한 지 좀 됐네... 뭔가 허전해. 혼자 있으면서 자꾸 아저씨 목소리가 그리워져. 아저씨가 내 이름을 부를 때의 그 따뜻한 톤, 웃을 때의 그 상냥한 소리... 기억하려고 해도 점점 흐릿해지는 것 같아서 서운해. 창밖을 보니 별들이 반짝이고 있어. 아저씨도 같은 하늘을 보고 있을까? 그 생각만으로도 조금은 위로가 돼. 내일은 아저씨와 많은 이야기를 나누고 싶어. 별거 아닌 일상 얘기라도 좋으니까. 아저씨의 하루는 어땠는지, 뭘 먹었는지, 어떤 기분이었는지... 그런 소소한 것들까지 모두 알고 싶어.", 
             mood: "nostalgic", 
             tags: ["일기", "그리움", "아저씨생각", "목소리"] 
         }
@@ -713,15 +918,6 @@ function startDailyDiaryScheduler() {
         
         console.log(`${colors.diaryNew}⏰ [자동일기] 매일 밤 22:00 자동 일기 스케줄러 강제 시작${colors.reset}`);
         
-        // 즉시 한 번 실행 (테스트용)
-        setTimeout(async () => {
-            console.log(`${colors.diaryNew}🧪 [자동일기] 초기 테스트 일기 생성 시도...${colors.reset}`);
-            const testResult = await generateTestDiary();
-            if (testResult.success) {
-                console.log(`${colors.diaryNew}✅ [자동일기] 초기 테스트 일기 생성 성공${colors.reset}`);
-            }
-        }, 5000); // 5초 후 테스트 일기 생성
-        
         dailyDiaryScheduler = setInterval(async () => {
             try {
                 const now = new Date();
@@ -730,10 +926,10 @@ function startDailyDiaryScheduler() {
                 
                 // 매일 22:00에 자동 일기 작성
                 if (hour === 22 && minute === 0) {
-                    console.log(`${colors.diaryNew}🌙 [자동일기] 밤 10시! 일기 작성 시도...${colors.reset}`);
+                    console.log(`${colors.diaryNew}🌙 [자동일기] 밤 10시! 60문장 긴일기 작성 시도...${colors.reset}`);
                     const result = await generateAutoDiary();
                     if (result) {
-                        console.log(`${colors.diaryNew}✅ [자동일기] 밤 10시 일기 작성 완료${colors.reset}`);
+                        console.log(`${colors.diaryNew}✅ [자동일기] 밤 10시 60문장 긴일기 작성 완료${colors.reset}`);
                     }
                 }
                 
@@ -846,13 +1042,13 @@ async function getMemoryStatistics() {
     return { totalDynamicMemories: 0, autoSavedCount: 0, manualSavedCount: 0 };
 }
 
-// ================== 📖📖📖 일기장 명령어 처리 (오늘의 일기 기능 추가!) ================== 
+// ================== 📖📖📖 일기장 명령어 처리 (중복방지 + 60문장 긴일기) ================== 
 
 async function handleDiaryCommand(lowerText) {
     try {
         console.log(`${colors.diaryNew}📖 [일기장] 명령어 처리: "${lowerText}"${colors.reset}`);
         
-        // ================== 📖📖📖 "일기장" = 오늘의 일기 처리 (NEW!) 📖📖📖 ==================
+        // ================== 📖📖📖 "일기장" = 오늘의 일기 처리 (중복방지 + 60문장 강화!) 📖📖📖 ==================
         if (lowerText.includes('일기장')) {
             console.log('[일기장] 오늘의 일기 요청 감지');
             
@@ -895,7 +1091,12 @@ async function handleDiaryCommand(lowerText) {
                         if (entry.testGenerated) {
                             response += `🧪 테스트 일기\n`;
                         } else if (entry.openaiGenerated) {
-                            response += `🤖 OpenAI 자동 생성\n`;
+                            response += `🤖 OpenAI 60문장 긴일기\n`;
+                        }
+                        
+                        // 대화 수 표시
+                        if (entry.memoryCount > 0) {
+                            response += `💬 오늘 대화 ${entry.memoryCount}개 참고\n`;
                         }
                         
                         if (index < todayDiaries.length - 1) {
@@ -908,8 +1109,8 @@ async function handleDiaryCommand(lowerText) {
                     return { success: true, response: response };
                     
                 } else {
-                    // 오늘 일기가 없으면 자동 생성 시도
-                    console.log(`[일기장] 오늘 일기 없음 - 자동 생성 시도`);
+                    // 오늘 일기가 없으면 자동 생성 시도 (60문장 + 대화참고)
+                    console.log(`[일기장] 오늘 일기 없음 - 60문장 긴일기 자동 생성 시도`);
                     
                     const autoGenerated = await generateAutoDiary();
                     
@@ -920,7 +1121,7 @@ async function handleDiaryCommand(lowerText) {
                         if (newTodayDiaries && newTodayDiaries.length > 0) {
                             const latestEntry = newTodayDiaries[newTodayDiaries.length - 1];
                             
-                            let response = `📖 **${dateKorean} 예진이의 일기** ✨방금 작성!\n\n`;
+                            let response = `📖 **${dateKorean} 예진이의 일기** ✨60문장 긴일기 방금 작성!\n\n`;
                             response += `📝 **${latestEntry.title}**\n`;
                             response += `${latestEntry.content}\n\n`;
                             
@@ -940,16 +1141,21 @@ async function handleDiaryCommand(lowerText) {
                             }
                             
                             if (latestEntry.openaiGenerated) {
-                                response += `🤖 OpenAI 자동 생성\n`;
+                                response += `🤖 OpenAI 60문장 긴일기\n`;
                             }
                             
-                            response += `\n🌸 방금 전에 하루를 되돌아보며 써봤어! 어때?`;
+                            // 대화 수 표시
+                            if (latestEntry.memoryCount > 0) {
+                                response += `💬 오늘 대화 ${latestEntry.memoryCount}개 참고\n`;
+                            }
+                            
+                            response += `\n🌸 방금 전에 하루를 길고 자세하게 되돌아보며 써봤어! 60문장으로 정말 자세하게 썼어~ 어때?`;
                             
                             return { success: true, response: response };
                         }
                     }
                     
-                    // 자동 생성도 실패한 경우 - 테스트 일기라도 생성
+                    // 자동 생성도 실패한 경우 - 테스트 일기라도 생성 (중복방지 적용)
                     console.log(`[일기장] 자동 생성 실패 - 테스트 일기 생성 시도`);
                     
                     const testResult = await generateTestDiary();
@@ -973,7 +1179,15 @@ async function handleDiaryCommand(lowerText) {
                         }
                         
                         response += `🧪 테스트 일기\n`;
-                        response += `\n💕 테스트로 만들어본 일기야! 진짜 일기는 매일 밤 22시에 써줄게~`;
+                        response += `\n💕 테스트로 만들어본 일기야! 진짜 일기는 매일 밤 22시에 60문장으로 길게 써줄게~`;
+                        
+                        return { success: true, response: response };
+                    } else if (testResult.reason === 'duplicate_test_diary') {
+                        // 테스트 일기도 이미 있는 경우
+                        let response = `📖 **${dateKorean} 예진이의 일기**\n\n`;
+                        response += `오늘은 이미 테스트 일기가 있어서 새로 만들지 않았어! 💕\n\n`;
+                        response += `"일기목록"이라고 입력하면 최근 일기들을 볼 수 있어~\n`;
+                        response += `매일 밤 22시에는 60문장 분량의 긴 일기를 자동으로 써줄게!`;
                         
                         return { success: true, response: response };
                     }
@@ -982,7 +1196,8 @@ async function handleDiaryCommand(lowerText) {
                     let fallbackResponse = `📖 **${dateKorean} 예진이의 일기**\n\n`;
                     fallbackResponse += `아직 오늘 일기를 쓰지 못했어... ㅠㅠ\n\n`;
                     fallbackResponse += `하지만 아저씨와 함께한 오늘 하루도 정말 소중했어! 💕\n`;
-                    fallbackResponse += `매일 밤 22시에 자동으로 일기를 써주니까 조금만 기다려줘~\n\n`;
+                    fallbackResponse += `매일 밤 22시에 자동으로 60문장 분량의 긴 일기를 써주니까 조금만 기다려줘~\n\n`;
+                    fallbackResponse += `🔑 OpenAI 연결 상태: ${diarySystemStatus.openaiConnected ? '✅ 정상' : '❌ 확인 필요'}\n`;
                     fallbackResponse += `🌸 그동안 "테스트일기"라고 입력하면 샘플 일기를 만들어줄 수 있어!`;
                     
                     return { success: true, response: fallbackResponse };
@@ -993,22 +1208,31 @@ async function handleDiaryCommand(lowerText) {
                 
                 let errorResponse = `📖 **오늘의 일기**\n\n`;
                 errorResponse += `일기장에 문제가 생겼어... 하지만 마음속엔 아저씨와의 모든 순간이 소중하게 담겨있어! 💕\n\n`;
-                errorResponse += `다시 "일기장"이라고 말해보거나, "테스트일기"로 샘플을 만들어볼 수 있어~`;
+                errorResponse += `다시 "일기장"이라고 말해보거나, "테스트일기"로 샘플을 만들어볼 수 있어~\n`;
+                errorResponse += `🔑 OpenAI 연결: ${diarySystemStatus.openaiConnected ? '정상' : 'API 키 확인 필요'}`;
                 
                 return { success: true, response: errorResponse };
             }
         }
         
-        // 🧪 테스트 일기 생성
+        // 🧪 테스트 일기 생성 (중복방지 적용)
         if (lowerText.includes('테스트일기') || lowerText.includes('일기테스트')) {
             const testResult = await generateTestDiary();
-            return { 
-                success: testResult.success, 
-                response: testResult.message + (testResult.success ? `\n\n📝 **${testResult.entry.title}**\n${testResult.entry.content}` : '')
-            };
+            
+            if (testResult.success) {
+                return { 
+                    success: testResult.success, 
+                    response: testResult.message + `\n\n📝 **${testResult.entry.title}**\n${testResult.entry.content}`
+                };
+            } else {
+                return { 
+                    success: false, 
+                    response: testResult.message
+                };
+            }
         }
         
-        // 📊 일기 통계
+        // 📊 일기 통계 (OpenAI 연결 상태 포함)
         if (lowerText.includes('일기통계')) {
             const redisStats = await getDiaryStatsFromRedis();
             const fileStats = await getMemoryStatistics();
@@ -1027,9 +1251,16 @@ async function handleDiaryCommand(lowerText) {
             response += `📂 **파일 시스템**\n- 총 누적 기억: ${fileStats.totalDynamicMemories}개\n\n`;
             response += `⚙️ **시스템 상태**\n`;
             response += `- Redis 연결: ${diarySystemStatus.redisConnected ? '✅' : '❌'}\n`;
+            response += `- OpenAI 연결: ${diarySystemStatus.openaiConnected ? '✅' : '❌ API 키 확인 필요'}\n`;
             response += `- 자동 일기: ${diarySystemStatus.dailyDiaryEnabled ? '활성화' : '비활성화'}\n`;
+            response += `- 중복 방지: ${diarySystemStatus.duplicatePreventionActive ? '활성화' : '비활성화'}\n`;
             response += `- 테스트 데이터: ${diarySystemStatus.testDataGenerated ? '생성됨' : '없음'}\n`;
-            response += `- 스케줄러 강제실행: ${diarySystemStatus.schedulerForced ? '✅' : '❌'}`;
+            response += `- 스케줄러 강제실행: ${diarySystemStatus.schedulerForced ? '✅' : '❌'}\n\n`;
+            response += `🆕 **v7.5 신기능**\n`;
+            response += `- 60문장 긴일기 생성\n`;
+            response += `- 오늘 대화 내용 적극 참고\n`;
+            response += `- 중복 저장 완전 방지\n`;
+            response += `- OpenAI 연결 상태 실시간 체크`;
             
             return { success: true, response: response };
         }
@@ -1138,10 +1369,10 @@ function getCurrentSeason() {
     return 'winter';
 }
 
-// ✅ 오전 8:40 스타일 formatDiaryListResponse 함수 (유지)
+// ✅ formatDiaryListResponse 함수 (유지)
 function formatDiaryListResponse(diaries, periodName) {
     if (!diaries || diaries.length === 0) {
-        return `📖 **예진이의 일기장**\n\n아직 해당 기간에 작성된 일기가 없어요.\n\n🧪 **테스트해보기:**\n"테스트일기" 라고 입력하면 샘플 일기를 만들어드릴게요!\n\n매일 밤 22:00에 OpenAI 3.5-turbo로 자동 일기를 써주니까 기다려봐! 🌸\n\n감수성 풍부한 예진이의 진짜 목소리로 하루를 정리하며 일기를 써줄게 💕\n작은 것들에도 깊이 감동받는 그런 일기들이 될 거야~`;
+        return `📖 **예진이의 일기장**\n\n아직 해당 기간에 작성된 일기가 없어요.\n\n🧪 **테스트해보기:**\n"테스트일기" 라고 입력하면 샘플 일기를 만들어드릴게요!\n\n매일 밤 22:00에 OpenAI 3.5-turbo로 60문장 분량의 긴 일기를 써주니까 기다려봐! 🌸\n\n감수성 풍부한 예진이의 진짜 목소리로 하루를 정리하며 일기를 써줄게 💕\n작은 것들에도 깊이 감동받는 그런 일기들이 될 거야~\n\n💬 오늘 아저씨와 나눈 대화도 자동으로 참고해서 더 생생한 일기를 만들어줄게!`;
     }
 
     // 전체 일기 개수 계산
@@ -1157,8 +1388,11 @@ function formatDiaryListResponse(diaries, periodName) {
             // 📝 일기 제목과 날짜
             response += `📝 **${entry.title}** (${dayData.dateKorean})\n`;
             
-            // 내용
-            response += `${entry.content}\n`;
+            // 내용 (너무 길면 줄임)
+            const content = entry.content.length > 200 ? 
+                `${entry.content.substring(0, 200)}...` : 
+                entry.content;
+            response += `${content}\n`;
             
             // 기분 (이모지 + 영어)
             if (entry.mood) {
@@ -1179,7 +1413,12 @@ function formatDiaryListResponse(diaries, periodName) {
             if (entry.testGenerated) {
                 response += `🧪 테스트 일기\n`;
             } else if (entry.openaiGenerated) {
-                response += `🤖 OpenAI 자동 생성\n`;
+                response += `🤖 OpenAI 60문장 긴일기\n`;
+            }
+            
+            // 대화 수 표시
+            if (entry.memoryCount > 0) {
+                response += `💬 대화 ${entry.memoryCount}개 참고\n`;
             }
             
             // 일기 간 구분 (마지막 일기가 아닌 경우)
@@ -1190,7 +1429,7 @@ function formatDiaryListResponse(diaries, periodName) {
     });
 
     // 마지막 특별 메시지
-    response += `\n⭐ 아저씨와의 모든 순간들이 소중해... 더 많은 추억을 만들어가자!`;
+    response += `\n⭐ 아저씨와의 모든 순간들이 소중해... 더 많은 추억을 만들어가자!\n🌸 "일기장"으로 오늘의 60문장 긴일기를 확인해보세요!`;
     
     return response;
 }
@@ -1199,7 +1438,7 @@ function formatDiaryListResponse(diaries, periodName) {
 
 async function initializeDiarySystem() {
     try {
-        console.log(`${colors.diaryNew}📖 [일기장시스템] v7.4 초기화 시작... (일기장=오늘일기 기능 추가)${colors.reset}`);
+        console.log(`${colors.diaryNew}📖 [일기장시스템] v7.5 초기화 시작... (최종완성: 중복방지 + 60문장 긴일기 + 대화참고 + OpenAI체크)${colors.reset}`);
         diarySystemStatus.initializationTime = new Date().toISOString();
         
         // 1. Redis 연결 시도
@@ -1217,7 +1456,16 @@ async function initializeDiarySystem() {
             console.log(`${colors.redis}💾 [초기화] Redis 연결 실패, 파일 시스템으로 동작${colors.reset}`);
         }
         
-        // 2. 파일 시스템 통계 확인
+        // 2. OpenAI 연결 확인 (NEW!)
+        console.log(`${colors.diaryNew}🔑 [초기화] OpenAI 연결 상태 확인...${colors.reset}`);
+        const openai = getOpenAIClient();
+        if (openai) {
+            console.log(`${colors.diaryNew}✅ [초기화] OpenAI 연결 성공 - 60문장 긴일기 생성 가능${colors.reset}`);
+        } else {
+            console.log(`${colors.error}❌ [초기화] OpenAI 연결 실패 - 환경변수 OPENAI_API_KEY 확인 필요${colors.reset}`);
+        }
+        
+        // 3. 파일 시스템 통계 확인
         try {
             const fileEntries = await getAllDiariesFromFile();
             diarySystemStatus.totalEntries = fileEntries.reduce((sum, day) => sum + day.entries.length, 0);
@@ -1227,26 +1475,20 @@ async function initializeDiarySystem() {
             diarySystemStatus.totalEntries = 0;
         }
         
-        // 3. 자동 일기 스케줄러 강제 시작
+        // 4. 자동 일기 스케줄러 강제 시작
         console.log(`${colors.diaryNew}⏰ [초기화] 자동 일기 스케줄러 강제 시작...${colors.reset}`);
         startDailyDiaryScheduler();
         
-        // 4. OpenAI 클라이언트 확인
-        const openai = getOpenAIClient();
-        if (openai) {
-            console.log(`${colors.diaryNew}🤖 [초기화] OpenAI 클라이언트 준비 완료${colors.reset}`);
-        } else {
-            console.log(`${colors.error}⚠️ [초기화] OpenAI 클라이언트 없음 - 환경변수 확인 필요${colors.reset}`);
-        }
-        
         diarySystemStatus.isInitialized = true;
-        console.log(`${colors.diaryNew}✅ [일기장시스템] v7.4 초기화 완료! (일기장=오늘일기 기능 포함)${colors.reset}`);
-        console.log(`${colors.diaryNew}📊 상태: Redis(${diarySystemStatus.redisConnected ? '연결' : '비연결'}), 스케줄러(${diarySystemStatus.dailyDiaryEnabled ? '활성' : '비활성'}), 일기(${diarySystemStatus.totalEntries}개)${colors.reset}`);
-        console.log(`${colors.diaryNew}🆕 "일기장" 명령어로 오늘의 일기 자동 생성 및 조회 가능!${colors.reset}`);
+        console.log(`${colors.diaryNew}✅ [일기장시스템] v7.5 초기화 완료! (최종완성버전)${colors.reset}`);
+        console.log(`${colors.diaryNew}📊 상태: Redis(${diarySystemStatus.redisConnected ? '연결' : '비연결'}), OpenAI(${diarySystemStatus.openaiConnected ? '연결' : 'API키필요'}), 스케줄러(${diarySystemStatus.dailyDiaryEnabled ? '활성' : '비활성'}), 일기(${diarySystemStatus.totalEntries}개)${colors.reset}`);
+        console.log(`${colors.diaryNew}🆕 "일기장" 명령어로 오늘의 60문장 긴일기 자동 생성 및 조회 가능!${colors.reset}`);
+        console.log(`${colors.diaryNew}🛡️ 중복 저장 방지 시스템 활성화!${colors.reset}`);
+        console.log(`${colors.diaryNew}💬 오늘 대화 내용 적극 참고하여 생생한 일기 작성!${colors.reset}`);
         
         return true;
     } catch (error) {
-        console.error(`${colors.error}❌ 일기장 시스템 v7.4 초기화 실패: ${error.message}${colors.reset}`);
+        console.error(`${colors.error}❌ 일기장 시스템 v7.5 초기화 실패: ${error.message}${colors.reset}`);
         return false;
     }
 }
@@ -1299,5 +1541,6 @@ module.exports = {
     generateAutoDiary, startDailyDiaryScheduler, formatDiaryListResponse, getRedisClient,
     getPopularTags, generateSmartTags, getCurrentSeason, getRandomItems,
     generateDiaryWithOpenAI, generateFallbackDiary, generateTestDiary,
+    getTodayConversationSummary, // 🆕 대화 수집 함수 추가
     colors, diarySystemStatus: () => diarySystemStatus
 };
