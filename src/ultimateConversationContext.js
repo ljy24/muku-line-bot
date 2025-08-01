@@ -383,18 +383,26 @@ async function searchUserMemoriesWithRedis(keyword) {
  */
 function updateMoodState(newMoodState) {
     try {
-        if (!newMoodState || !newMoodState.currentEmotion) {
+        if (!newMoodState) {
             ultimateLog('⚠️ updateMoodState: 유효하지 않은 기분 상태', newMoodState);
             return;
         }
         
-        const newTopic = newMoodState.currentEmotion;
+        // 🔧 두 가지 형태 모두 지원 (currentEmotion, currentMood)
+        const emotion = newMoodState.currentEmotion || newMoodState.currentMood;
+        
+        if (!emotion) {
+            ultimateLog('⚠️ updateMoodState: 감정 정보 없음', newMoodState);
+            return;
+        }
+        
+        const newTopic = emotion;
         const confidence = newMoodState.intensity || 0.7;
         
         // 기존의 지능적 주제 업데이트 함수를 재활용
         updateConversationTopicIntelligently(newTopic, confidence);
         
-        ultimateLog(`🎭 moodManager로부터 기분 업데이트 완료: "${newTopic}"`);
+        ultimateLog(`🎭 moodManager로부터 기분 업데이트 완료: "${newTopic}" (${newMoodState.currentMood ? 'currentMood' : 'currentEmotion'} 형태)`);
         
     } catch (error) {
         ultimateLog('❌ updateMoodState 오류:', error.message);
