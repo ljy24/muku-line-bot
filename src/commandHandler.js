@@ -5,6 +5,7 @@
 // 📅 지원: 최근7일, 지난주, 한달전, 이번달, 지난달 일기
 // 🛡️ 안전장치: 에러가 나도 기존 시스템에 절대 영향 없음
 // 💖 무쿠가 벙어리가 되지 않도록 최우선 보장
+// 🔧 수정: 일기/상태 키워드 오작동 방지 로직 추가
 // ============================================================================
 
 const path = require('path');
@@ -297,12 +298,13 @@ async function handleCommand(text, userId, client = null) {
             };
         }
 
-        // 🔧 기존 일기장 관련 처리 (개선됨 - Redis 통합)
-        if (lowerText.includes('일기장') || lowerText.includes('일기목록') || 
+        // 🔧 기존 일기장 관련 처리 (개선됨 - Redis 통합 + 오작동 방지)
+        if ((lowerText.includes('일기장') || lowerText.includes('일기목록') || 
             lowerText.includes('일기 목록') || lowerText.includes('일기통계') || 
             lowerText.includes('일기 통계') || lowerText.includes('일기써줘') ||
-            lowerText.includes('일기') || lowerText.includes('다이어리') || 
-            lowerText.includes('diary')) {
+            lowerText.includes('다이어리') || lowerText.includes('diary')) && 
+            !lowerText.includes('말이든') && !lowerText.includes('정말이지') && 
+            !(lowerText.includes('일기') && (lowerText.includes('약속') || lowerText.includes('해주고')))) {
             
             console.log('[commandHandler] 📖 일기장 요청 감지 (Redis 시스템)');
             
@@ -552,10 +554,12 @@ async function handleCommand(text, userId, client = null) {
             }
         }
 
-        // ================== 📊 상태 확인 관련 처리 ==================
-        if (lowerText.includes('상태는') || lowerText.includes('상태 어때') || 
+        // ================== 📊 상태 확인 관련 처리 (오작동 방지 수정) ==================
+        if ((lowerText.includes('상태는') || lowerText.includes('상태 어때') || 
             lowerText.includes('지금 상태') || lowerText === '상태' ||
-            lowerText.includes('어떻게 지내') || lowerText.includes('컨디션')) {
+            lowerText.includes('어떻게 지내')) && 
+            !lowerText.includes('상태도') && !lowerText.includes('상태가') && 
+            !lowerText.includes('컨디션이') && !lowerText.includes('컨디션을')) {
             
             console.log('[commandHandler] 상태 확인 요청 감지');
             
