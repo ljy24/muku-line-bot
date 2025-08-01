@@ -559,7 +559,10 @@ async function handleCommand(text, userId, client = null) {
         // ================== 📖📖📖 일기장 관련 처리 (muku-diarySystem.js 인터페이스 연동) 📖📖📖 ==================
         if (lowerText.includes('일기장') || lowerText.includes('일기목록') || 
             lowerText.includes('일기 써줘') || lowerText.includes('오늘 일기') ||
-            lowerText.includes('주간일기') || lowerText.includes('주간 일기')) {
+            lowerText.includes('주간일기') || lowerText.includes('주간 일기') ||
+            lowerText.includes('일기통계') || lowerText.includes('지난주일기') ||
+            lowerText.includes('한달전일기') || lowerText.includes('이번달일기') ||
+            lowerText.includes('지난달일기')) {
             
             console.log('[commandHandler] 📖 일기장 요청 감지');
             
