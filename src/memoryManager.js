@@ -1,20 +1,102 @@
-// src/memoryManager.js - v2.2 DISK_MOUNT (디스크 마운트 경로 수정!)
-// ✅ 디스크 마운트 경로 적용: ./memory → /data (완전 영구 저장!)
-// ✅ 고정기억 120개 완전 로드 보장: 65개 기본 + 55개 연애
-// ✅ 기억 데이터가 없으면 자동으로 기본 데이터를 생성합니다.
-// ✅ 에러 발생시에도 기본 데이터로 안전하게 폴백됩니다.
+// src/memoryManager.js - v3.0 REDIS_INTEGRATION (Redis 연동 완료!)
+// ✅ Redis 캐싱 레이어 추가: 모든 기억 120개 빠른 검색
+// ✅ 기존 SQLite + JSON 시스템 완전 보존: 안전성 우선
+// ✅ 키워드 → 기억 매핑: "납골당", "담타", "아저씨" 등 모든 키워드 즉시 검색
+// ✅ 무쿠 벙어리 방지: 완전 안전한 폴백 시스템
 // 💾 완전 영구 저장: 서버 재시작/재배포시에도 절대 사라지지 않음!
-// 🎓 실시간 학습 시스템 연동 추가 (v2.3)
 
 const fs = require('fs').promises;
 const path = require('path');
 const { Database } = require('sqlite3');
+const Redis = require('ioredis');
+
+// ================== 🎨 색상 정의 ==================
+const colors = {
+    info: '\x1b[36m',
+    warning: '\x1b[33m', 
+    error: '\x1b[31m',
+    success: '\x1b[32m',
+    redis: '\x1b[95m',      // 보라색 (Redis)
+    memory: '\x1b[94m',     // 파란색 (Memory)
+    reset: '\x1b[0m'
+};
 
 // ⭐️ 디스크 마운트 경로 적용: /data (완전 영구 저장!) ⭐️
-const MEMORY_BASE_PATH = '/data'; // 디스크 마운트 경로로 변경!
+const MEMORY_BASE_PATH = '/data';
 
 const dbPath = path.join(MEMORY_BASE_PATH, 'memories.db');
 let db;
+
+// ================== 🔒 안전한 Redis 연결 관리 ==================
+let redisClient = null;
+
+async function getRedisClient() {
+    try {
+        if (redisClient) {
+            try {
+                await redisClient.ping();
+                return redisClient;
+            } catch (pingError) {
+                console.log(`${colors.warning}⚠️ [MemoryManager] Redis 연결 실패, 재연결 시도${colors.reset}`);
+                redisClient = null;
+            }
+        }
+
+        if (process.env.REDIS_URL) {
+            console.log(`${colors.redis}🔄 [MemoryManager] Redis 연결 시작...${colors.reset}`);
+            
+            redisClient = new Redis(process.env.REDIS_URL, {
+                retryDelayOnFailover: 100,
+                maxRetriesPerRequest: 3,
+                lazyConnect: false,
+                keepAlive: 30000,
+                connectTimeout: 10000,
+                commandTimeout: 5000
+            });
+
+            redisClient.on('error', (err) => {
+                console.error(`${colors.error}❌ [Redis] 연결 오류: ${err.message}${colors.reset}`);
+            });
+
+            redisClient.on('connect', () => {
+                console.log(`${colors.success}✅ [Redis] 연결 성공${colors.reset}`);
+            });
+
+            await redisClient.ping();
+            console.log(`${colors.redis}🎉 [MemoryManager] Redis 연결 완료!${colors.reset}`);
+            return redisClient;
+        } else {
+            console.log(`${colors.warning}⚠️ [MemoryManager] REDIS_URL 없음 - SQLite/JSON만 사용${colors.reset}`);
+            return null;
+        }
+
+    } catch (error) {
+        console.error(`${colors.error}❌ [MemoryManager] Redis 연결 실패: ${error.message}${colors.reset}`);
+        if (redisClient) {
+            try {
+                await redisClient.disconnect();
+            } catch (disconnectError) {
+                // 조용히 무시
+            }
+            redisClient = null;
+        }
+        return null;
+    }
+}
+
+// ================== 🔧 안전한 Redis 작업 함수 ==================
+async function safeRedisOperation(operation, fallbackValue = null) {
+    try {
+        const client = await getRedisClient();
+        if (!client) {
+            return fallbackValue;
+        }
+        return await operation(client);
+    } catch (error) {
+        console.error(`${colors.error}❌ [MemoryManager] Redis 작업 실패: ${error.message}${colors.reset}`);
+        return fallbackValue;
+    }
+}
 
 // ⭐️ 기본 기억 데이터 (65개 기본 기억) ⭐️
 const DEFAULT_FIXED_MEMORIES = [
@@ -191,6 +273,234 @@ const fixedMemoriesDB = {
 const FIXED_MEMORIES_FILE = path.join(MEMORY_BASE_PATH, 'fixedMemories.json');
 const LOVE_HISTORY_FILE = path.join(MEMORY_BASE_PATH, 'love_history.json');
 
+// ================== 🚀 Redis 키워드 매핑 시스템 ==================
+
+// 키워드 → 기억 매핑을 위한 중요 키워드 추출
+function extractKeywords(memoryText) {
+    const keywords = [];
+    const text = memoryText.toLowerCase();
+    
+    // 핵심 키워드들 추출
+    const keywordMap = {
+        '납골당': ['납골당', '경주', '남산'],
+        '담타': ['담타', '담배', '라인'],
+        '아저씨': ['아저씨', '아조씨', '재영'],
+        '예진': ['예진', '애기', '박예진'],
+        '생일': ['생일', '3월 17일', '12월 5일'],
+        '모지코': ['모지코', '키세키'],
+        '일본': ['일본', '기타큐슈', '고쿠라', '하카타'],
+        '사진': ['사진', '카메라', '촬영', '모델'],
+        '슈퍼타쿠마': ['슈퍼타쿠마', '렌즈'],
+        '마지막말': ['참 착해', '마지막'],
+        '우울증': ['우울증', '자살', '정신과'],
+        '준기오빠': ['준기', '자함헌'],
+        '영상통화': ['영상통화', '11시', '약먹자', '이닦자']
+    };
+    
+    for (const [category, words] of Object.entries(keywordMap)) {
+        for (const word of words) {
+            if (text.includes(word)) {
+                keywords.push(category);
+                keywords.push(word);
+                break;
+            }
+        }
+    }
+    
+    // 추가 단어 추출 (2글자 이상)
+    const additionalWords = text.match(/[가-힣]{2,}/g) || [];
+    keywords.push(...additionalWords.slice(0, 5)); // 최대 5개만
+    
+    return [...new Set(keywords)]; // 중복 제거
+}
+
+// Redis에 키워드 매핑 저장
+async function buildRedisKeywordCache() {
+    try {
+        console.log(`${colors.redis}🔧 [MemoryManager] Redis 키워드 캐시 구축 시작...${colors.reset}`);
+        
+        const allMemories = [...fixedMemoriesDB.fixedMemories, ...fixedMemoriesDB.loveHistory];
+        let cacheCount = 0;
+        
+        await safeRedisOperation(async (redis) => {
+            // 기존 캐시 삭제
+            const pattern = 'muku:memory:keyword:*';
+            const keys = await redis.keys(pattern);
+            if (keys.length > 0) {
+                await redis.del(...keys);
+                console.log(`${colors.redis}🗑️ [MemoryManager] 기존 키워드 캐시 ${keys.length}개 삭제${colors.reset}`);
+            }
+            
+            // 새 캐시 구축
+            for (let i = 0; i < allMemories.length; i++) {
+                const memory = allMemories[i];
+                if (!memory || typeof memory !== 'string') continue;
+                
+                const keywords = extractKeywords(memory);
+                
+                for (const keyword of keywords) {
+                    if (keyword.length < 2) continue;
+                    
+                    const cacheKey = `muku:memory:keyword:${keyword}`;
+                    
+                    // 기존 값 가져오기
+                    const existing = await redis.get(cacheKey);
+                    let memoryList = [];
+                    
+                    if (existing) {
+                        try {
+                            memoryList = JSON.parse(existing);
+                        } catch (e) {
+                            memoryList = [];
+                        }
+                    }
+                    
+                    // 중복 방지하고 추가
+                    if (!memoryList.some(item => item.memory === memory)) {
+                        memoryList.push({
+                            memory: memory,
+                            index: i,
+                            relevance: keywords.indexOf(keyword) === 0 ? 1.0 : 0.8
+                        });
+                        
+                        await redis.setex(cacheKey, 3600, JSON.stringify(memoryList)); // 1시간 캐시
+                        cacheCount++;
+                    }
+                }
+            }
+        });
+        
+        console.log(`${colors.redis}✅ [MemoryManager] Redis 키워드 캐시 완료: ${cacheCount}개 매핑${colors.reset}`);
+        return true;
+        
+    } catch (error) {
+        console.error(`${colors.error}❌ [MemoryManager] Redis 캐시 구축 실패: ${error.message}${colors.reset}`);
+        return false;
+    }
+}
+
+// ================== ⚡ 개선된 기억 검색 함수 ==================
+
+/**
+ * ⭐️ Redis + SQLite/JSON 하이브리드 기억 검색 ⭐️
+ * "납골당" → "경주 남산 납골당" 즉시 검색
+ */
+async function getFixedMemory(userMessage) {
+    const lowerMessage = userMessage.toLowerCase();
+    console.log(`${colors.memory}🔍 [MemoryManager] 기억 검색: "${userMessage.substring(0, 30)}..."${colors.reset}`);
+
+    // 1. Redis 캐시에서 먼저 검색 (빠른 검색)
+    const redisResult = await safeRedisOperation(async (redis) => {
+        // 사용자 메시지에서 키워드 추출
+        const messageKeywords = extractKeywords(userMessage);
+        let bestMemories = [];
+        
+        for (const keyword of messageKeywords) {
+            if (keyword.length < 2) continue;
+            
+            const cacheKey = `muku:memory:keyword:${keyword}`;
+            const cached = await redis.get(cacheKey);
+            
+            if (cached) {
+                try {
+                    const memoryList = JSON.parse(cached);
+                    bestMemories.push(...memoryList);
+                } catch (e) {
+                    console.warn(`${colors.warning}⚠️ [MemoryManager] 캐시 파싱 실패: ${keyword}${colors.reset}`);
+                    continue;
+                }
+            }
+        }
+        
+        // 관련도 순으로 정렬하고 최고 점수 반환
+        if (bestMemories.length > 0) {
+            bestMemories.sort((a, b) => b.relevance - a.relevance);
+            const topMemory = bestMemories[0];
+            console.log(`${colors.redis}🚀 [MemoryManager] Redis 캐시 히트! 관련도: ${topMemory.relevance}${colors.reset}`);
+            return topMemory.memory;
+        }
+        
+        return null;
+    });
+
+    if (redisResult) {
+        console.log(`${colors.success}✅ [MemoryManager] Redis에서 즉시 검색 완료${colors.reset}`);
+        return redisResult;
+    }
+
+    // 2. 기존 방식으로 폴백 (SQLite + JSON) - 안전성 보장
+    console.log(`${colors.info}🔄 [MemoryManager] Redis 미스, SQLite/JSON 폴백 검색${colors.reset}`);
+    
+    let bestMatch = null;
+    let maxMatches = 0;
+
+    // fixedMemories 배열에서 검색 (기본 기억 65개)
+    for (const memoryText of fixedMemoriesDB.fixedMemories) {
+        if (typeof memoryText !== 'string') continue;
+        
+        const lowerMemory = memoryText.toLowerCase();
+        
+        // 정확한 일치 확인
+        if (lowerMessage.includes(lowerMemory.substring(0, 20)) || lowerMemory.includes(lowerMessage)) {
+            console.log(`${colors.success}🎯 [MemoryManager] 기본기억에서 정확한 일치 발견${colors.reset}`);
+            // Redis에 캐시 추가
+            await cacheMemoryResult(userMessage, memoryText);
+            return memoryText;
+        }
+        
+        // 부분 일치 점수 계산
+        const messageWords = lowerMessage.split(' ').filter(word => word.length > 1);
+        const currentMatches = messageWords.filter(word => lowerMemory.includes(word)).length;
+        if (currentMatches > maxMatches) {
+            maxMatches = currentMatches;
+            bestMatch = memoryText;
+        }
+    }
+
+    // loveHistory 배열에서 검색 (연애 기억 55개)
+    for (const memoryText of fixedMemoriesDB.loveHistory) {
+        if (typeof memoryText !== 'string') continue;
+        
+        const lowerMemory = memoryText.toLowerCase();
+        
+        // 정확한 일치 확인
+        if (lowerMessage.includes(lowerMemory.substring(0, 20)) || lowerMemory.includes(lowerMessage)) {
+            console.log(`${colors.success}💕 [MemoryManager] 연애기억에서 정확한 일치 발견${colors.reset}`);
+            // Redis에 캐시 추가
+            await cacheMemoryResult(userMessage, memoryText);
+            return memoryText;
+        }
+        
+        // 부분 일치 점수 계산
+        const messageWords = lowerMessage.split(' ').filter(word => word.length > 1);
+        const currentMatches = messageWords.filter(word => lowerMemory.includes(word)).length;
+        if (currentMatches > maxMatches) {
+            maxMatches = currentMatches;
+            bestMatch = memoryText;
+        }
+    }
+
+    if (maxMatches > 0) {
+        console.log(`${colors.success}✅ [MemoryManager] 부분 매칭 발견 (점수: ${maxMatches})${colors.reset}`);
+        // Redis에 캐시 추가
+        await cacheMemoryResult(userMessage, bestMatch);
+        return bestMatch;
+    }
+    
+    console.log(`${colors.warning}❌ [MemoryManager] 관련 기억을 찾을 수 없음${colors.reset}`);
+    return null;
+}
+
+// 검색 결과를 Redis에 캐시하는 함수
+async function cacheMemoryResult(userMessage, memory) {
+    await safeRedisOperation(async (redis) => {
+        const cacheKey = `muku:memory:search:${Buffer.from(userMessage.substring(0, 50)).toString('base64')}`;
+        await redis.setex(cacheKey, 1800, memory); // 30분 캐시
+    });
+}
+
+// ================== 기존 함수들 (그대로 유지) ==================
+
 /**
  * SQLite 데이터베이스 연결을 초기화하고 테이블을 생성합니다.
  */
@@ -345,6 +655,9 @@ async function loadAllMemories() {
         console.log('[MemoryManager] ✅ 모든 고정 기억 로딩 완료. (💾 디스크 마운트 경로)');
         console.log(`[MemoryManager] 💾 총 로드된 기억: 기본기억 ${fixedMemoriesDB.fixedMemories.length}개 + 연애기억 ${fixedMemoriesDB.loveHistory.length}개 = 총 ${fixedMemoriesDB.fixedMemories.length + fixedMemoriesDB.loveHistory.length}개 (완전 영구 저장!)`);
 
+        // Redis 키워드 캐시 구축
+        await buildRedisKeywordCache();
+
     } catch (error) {
         console.error('[MemoryManager] ❌ 고정 기억 로딩 중 치명적인 오류, 기본 데이터로 폴백:', error);
         // 완전 실패 시 기본 데이터로 폴백
@@ -369,13 +682,21 @@ async function ensureMemoryTablesAndDirectory() {
         await initializeDatabase();
         console.log(`[MemoryManager] ✅ SQLite 데이터베이스 초기화 완료 (💾 ${dbPath})`);
         
+        // Redis 연결 확인
+        const redisStatus = await getRedisClient();
+        if (redisStatus) {
+            console.log(`${colors.redis}✅ [MemoryManager] Redis 연결 확인됨${colors.reset}`);
+        } else {
+            console.log(`${colors.warning}⚠️ [MemoryManager] Redis 연결 없음, SQLite/JSON만 사용${colors.reset}`);
+        }
+        
         // 기억 파일들 로딩
         await loadAllMemories();
         
         // ⭐️ 로딩 결과 최종 확인 ⭐️
         const totalMemories = fixedMemoriesDB.fixedMemories.length + fixedMemoriesDB.loveHistory.length;
         if (totalMemories >= 120) {
-            console.log(`[MemoryManager] 🎉 💾 모든 메모리 시스템 초기화 완료! 총 ${totalMemories}개 기억 로드 성공 (디스크 마운트로 완전 영구 저장!)`);
+            console.log(`${colors.success}🎉 [MemoryManager] 완전 초기화 완료! 총 ${totalMemories}개 기억 (Redis 연동: ${redisStatus ? '✅' : '❌'})${colors.reset}`);
         } else {
             console.log(`[MemoryManager] ⚠️ 기억 로드 부족: ${totalMemories}개/120개 - 기본 데이터 재로딩 시도`);
             // 기본 데이터 강제 재로딩
@@ -395,68 +716,6 @@ async function ensureMemoryTablesAndDirectory() {
 }
 
 /**
- * ⭐️ 고정 기억 DB에서 특정 키워드에 해당하는 기억을 찾아 반환합니다. ⭐️
- * 사용자 메시지와 관련된 기억을 검색하여 AI 응답에 반영할 수 있도록 합니다.
- */
-function getFixedMemory(userMessage) {
-    const lowerMessage = userMessage.toLowerCase();
-    let bestMatch = null;
-    let maxMatches = 0;
-
-    console.log(`[MemoryManager] 💾 기억 검색 시작: "${userMessage.substring(0, 30)}..." (디스크 마운트 저장소)`);
-
-    // 1. fixedMemories 배열에서 검색 (기본 기억 65개)
-    for (const memoryText of fixedMemoriesDB.fixedMemories) {
-        if (typeof memoryText !== 'string') continue;
-        
-        const lowerMemory = memoryText.toLowerCase();
-        
-        // 정확한 일치 확인
-        if (lowerMessage.includes(lowerMemory.substring(0, 20)) || lowerMemory.includes(lowerMessage)) {
-            console.log(`[MemoryManager] 🎯 기본기억에서 정확한 일치 발견: "${memoryText.substring(0, 50)}..." (💾 /data/)`);
-            return memoryText;
-        }
-        
-        // 부분 일치 점수 계산
-        const messageWords = lowerMessage.split(' ').filter(word => word.length > 1);
-        const currentMatches = messageWords.filter(word => lowerMemory.includes(word)).length;
-        if (currentMatches > maxMatches) {
-            maxMatches = currentMatches;
-            bestMatch = memoryText;
-        }
-    }
-
-    // 2. loveHistory 배열에서 검색 (연애 기억 55개)
-    for (const memoryText of fixedMemoriesDB.loveHistory) {
-        if (typeof memoryText !== 'string') continue;
-        
-        const lowerMemory = memoryText.toLowerCase();
-        
-        // 정확한 일치 확인
-        if (lowerMessage.includes(lowerMemory.substring(0, 20)) || lowerMemory.includes(lowerMessage)) {
-            console.log(`[MemoryManager] 💕 연애기억에서 정확한 일치 발견: "${memoryText.substring(0, 50)}..." (💾 /data/)`);
-            return memoryText;
-        }
-        
-        // 부분 일치 점수 계산
-        const messageWords = lowerMessage.split(' ').filter(word => word.length > 1);
-        const currentMatches = messageWords.filter(word => lowerMemory.includes(word)).length;
-        if (currentMatches > maxMatches) {
-            maxMatches = currentMatches;
-            bestMatch = memoryText;
-        }
-    }
-
-    if (maxMatches > 0) {
-        console.log(`[MemoryManager] 🔍 "${userMessage}"에 대해 부분 매칭 기억 반환 (매칭점수: ${maxMatches}) (💾 디스크 마운트)`);
-        return bestMatch;
-    }
-    
-    console.log(`[MemoryManager] ❌ "${userMessage}" 관련 기억을 찾을 수 없음. (💾 /data/)`);
-    return null;
-}
-
-/**
  * ⭐️ 메모리 상태 확인 함수 (디버깅용 + 상태 리포트용) ⭐️
  */
 function getMemoryStatus() {
@@ -473,10 +732,13 @@ function getMemoryStatus() {
         storagePath: MEMORY_BASE_PATH,
         persistentStorage: true,
         diskMounted: true,
-        neverLost: true
+        neverLost: true,
+        // 🚀 Redis 정보 추가
+        redisConnected: redisClient !== null,
+        redisStatus: redisClient ? 'connected' : 'disconnected'
     };
     
-    console.log(`[MemoryManager] 📊 💾 메모리 상태: 기본${status.fixedMemoriesCount}개 + 연애${status.loveHistoryCount}개 = 총${status.totalFixedCount}개 (목표: ${status.expectedTotal}개) (디스크 마운트: ${MEMORY_BASE_PATH})`);
+    console.log(`${colors.memory}📊 [MemoryManager] 메모리 상태: 기본${status.fixedMemoriesCount}개 + 연애${status.loveHistoryCount}개 = 총${status.totalFixedCount}개 (Redis: ${status.redisStatus})${colors.reset}`);
     
     return status;
 }
@@ -539,6 +801,25 @@ async function addDynamicMemory(memoryEntry) {
             console.log(`[MemoryManager] ✅ 실시간 학습 기억 SQLite에 저장 완료 (ID: ${memoryId})`);
         }
         
+        // Redis에도 키워드 매핑 추가
+        await safeRedisOperation(async (redis) => {
+            const keywords = extractKeywords(safeMemoryEntry.content);
+            for (const keyword of keywords) {
+                if (keyword.length < 2) continue;
+                
+                const cacheKey = `muku:memory:keyword:${keyword}`;
+                const memoryData = {
+                    memory: safeMemoryEntry.content,
+                    index: -1, // 동적 기억 표시
+                    relevance: safeMemoryEntry.quality,
+                    type: 'dynamic'
+                };
+                
+                await redis.setex(cacheKey, 7200, JSON.stringify([memoryData])); // 2시간 캐시
+            }
+            console.log(`${colors.redis}✅ [MemoryManager] 학습 기억 Redis 캐시 추가${colors.reset}`);
+        });
+        
         // 품질이 높은 기억은 고정 기억에 추가 고려 (0.8 이상)
         if (safeMemoryEntry.quality >= 0.8) {
             // 중복 체크
@@ -573,6 +854,32 @@ async function addDynamicMemory(memoryEntry) {
         return false;
     }
 }
+
+// ================== 🧹 Redis 연결 정리 함수 ==================
+async function cleanupRedisConnection() {
+    try {
+        if (redisClient) {
+            await redisClient.disconnect();
+            redisClient = null;
+            console.log(`${colors.info}👋 [MemoryManager] Redis 연결 정리 완료${colors.reset}`);
+        }
+    } catch (error) {
+        console.warn(`${colors.warning}⚠️ [MemoryManager] Redis 연결 정리 중 오류: ${error.message}${colors.reset}`);
+    }
+}
+
+// graceful shutdown 처리
+process.on('SIGINT', async () => {
+    console.log(`${colors.info}🛑 [MemoryManager] SIGINT 신호 수신, Redis 정리 중...${colors.reset}`);
+    await cleanupRedisConnection();
+    process.exit(0);
+});
+
+process.on('SIGTERM', async () => {
+    console.log(`${colors.info}🛑 [MemoryManager] SIGTERM 신호 수신, Redis 정리 중...${colors.reset}`);
+    await cleanupRedisConnection();
+    process.exit(0);
+});
 
 // ================== 기존 함수들 (그대로 유지) ==================
 
@@ -674,13 +981,18 @@ module.exports = {
     // 🎯 주요 함수들
     ensureMemoryTablesAndDirectory,
     loadAllMemories,
-    getFixedMemory,
+    getFixedMemory,          // ⚡ Redis 연동 완료!
     getMemoryStatus,
     getFixedMemoryCount,
     forceReloadMemories,
     
     // 🎓 실시간 학습 연동 함수 (NEW!)
     addDynamicMemory,
+    
+    // 🚀 Redis 관련 함수들 (NEW!)
+    getRedisClient,
+    buildRedisKeywordCache,
+    cleanupRedisConnection,
     
     // 📦 데이터 객체
     fixedMemoriesDB,
