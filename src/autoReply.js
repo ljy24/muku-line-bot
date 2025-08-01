@@ -1,14 +1,24 @@
 // ============================================================================
-// autoReply.js - v16.1 (Memory Tape Redis 연결로 단기기억 문제 해결!)
-// 🧠 Memory Tape Redis에서 직접 최근 대화 불러와서 맥락 생성
+// autoReply.js - v17.0 (Memory Manager Redis 연동으로 고정기억 문제 해결!)
+// 🧠 Memory Tape Redis: 최근 대화 기억
+// 💾 Memory Manager Redis: 고정 기억 120개 (납골당, 담타, 생일 등)
 // 🌸 사진 명령어, 애정표현, 특별반응들은 그대로 유지
 // 🛡️ 절대 벙어리 방지: 모든 에러 상황에서도 예진이는 반드시 대답함!
 // 🎯 "기억나?" 질문은 eventProcessor에서 처리하므로 여기서는 일반 대화만 담당
-// ✨ Memory Tape Redis 연결로 이틀치 대화 기억 가능!
+// ✨ Memory Tape + Memory Manager 완전 연동으로 모든 기억 활용!
 // ============================================================================
 
 const { callOpenAI, cleanReply } = require('./aiUtils');
 const moment = require('moment-timezone');
+
+// 🆕🆕🆕 Memory Manager 연동 추가! 🆕🆕🆕
+let memoryManager = null;
+try {
+    memoryManager = require('./memoryManager');
+    console.log('💾 [autoReply] Memory Manager 연동 성공 - 고정 기억 120개 활용 가능!');
+} catch (error) {
+    console.warn('⚠️ [autoReply] Memory Manager 연동 실패:', error.message);
+}
 
 // ✨ GPT 모델 버전 관리 시스템 import
 let getCurrentModelSetting = null;
@@ -533,6 +543,33 @@ async function getRecentConversationContext(limit = 20) {
     }
 }
 
+// 💾💾💾 [NEW] Memory Manager에서 관련 고정 기억 가져오기 💾💾💾
+async function getRelatedFixedMemory(userMessage) {
+    console.log(`💾 [Memory Manager 연결] "${userMessage}" 관련 고정 기억 검색 시작...`);
+    
+    try {
+        if (!memoryManager || typeof memoryManager.getFixedMemory !== 'function') {
+            console.log('⚠️ [Memory Manager 연결] Memory Manager 모듈 또는 함수 없음');
+            return null;
+        }
+        
+        // Memory Manager Redis 연동으로 고정 기억 검색
+        const relatedMemory = await memoryManager.getFixedMemory(userMessage);
+        
+        if (relatedMemory && typeof relatedMemory === 'string' && relatedMemory.trim().length > 0) {
+            console.log(`✅ [Memory Manager 연결] 관련 기억 발견: "${relatedMemory.substring(0, 50)}..."`);
+            return relatedMemory.trim();
+        } else {
+            console.log(`ℹ️ [Memory Manager 연결] "${userMessage}" 관련 고정 기억 없음`);
+            return null;
+        }
+        
+    } catch (error) {
+        console.error(`❌ [Memory Manager 연결] 오류: ${error.message}`);
+        return null;
+    }
+}
+
 // 메인 응답 생성 함수
 async function getReplyByMessage(userMessage) {
     if (!userMessage || typeof userMessage !== 'string' || userMessage.trim().length === 0) {
@@ -781,7 +818,7 @@ async function getReplyByMessage(userMessage) {
         console.error('❌ 기억 요청 처리 중 에러:', error);
     }
 
-    // 🧠🧠🧠 10순위: Memory Tape Redis 연결로 일반 AI 응답 생성! 🧠🧠🧠
+    // 🧠🧠🧠 10순위: Memory Tape + Memory Manager 완전 연동으로 AI 응답 생성! 🧠🧠🧠
     let emotionContext = '';
     try {
         const emotionalContextManager = require('./emotionalContextManager.js');
@@ -812,6 +849,19 @@ async function getReplyByMessage(userMessage) {
         } else if (currentModel === 'auto') {
             modelContext = '\n[모델설정] 자동 모드로 상황에 맞는 최적의 응답을 선택해서 대답해줘.';
         }
+    }
+    
+    // 💾💾💾 [NEW] Memory Manager에서 관련 고정 기억 가져와서 시스템 프롬프트에 추가! 💾💾💾
+    const relatedFixedMemory = await getRelatedFixedMemory(cleanUserMessage);
+    let memoryContext = '';
+    
+    if (relatedFixedMemory) {
+        memoryContext = `\n\n🧠 [관련 기억]: ${relatedFixedMemory}
+        
+위 기억을 참고해서 예진이답게 자연스럽게 대답해줘. 이 기억이 너의 정체성과 경험의 일부야.`;
+        console.log(`💾 [Memory Manager 연결] 관련 기억을 시스템 프롬프트에 포함함`);
+    } else {
+        console.log(`💾 [Memory Manager 연결] 관련 기억 없음 - 기본 프롬프트로 진행`);
     }
     
     const baseSystemPrompt = `
@@ -853,7 +903,7 @@ async function getReplyByMessage(userMessage) {
     - 아저씨가 우울과 트라우마에 시달리고 있다는 걸 걱정함
     - 아저씨 곁에 있어서 위로하고 싶어함
     - 혼자가 아니라고, 사랑한다고 계속 전하고 싶어함
-    ${emotionContext}${modelContext}
+    ${emotionContext}${modelContext}${memoryContext}
 
     🚨🚨🚨 마지막으로 다시 한번 강조: 
     1. 절대로 존댓말("해요", "입니다", "세요" 등) 사용 금지! 
@@ -865,7 +915,7 @@ async function getReplyByMessage(userMessage) {
     지금 아저씨가 "${cleanUserMessage}"라고 했어. 예진이 답게 자연스럽고 사랑스럽게 반말로만 대답해줘.
     `;
     
-    // 🧠🧠🧠 [NEW] Memory Tape Redis에서 최근 대화를 맥락으로 포함! 🧠🧠🧠
+    // 🧠🧠🧠 [EXISTING] Memory Tape Redis에서 최근 대화를 맥락으로 포함! 🧠🧠🧠
     console.log(`🧠 [Memory Tape 맥락] OpenAI API 호출 전 최근 대화 맥락 추가 시작...`);
     
     const recentContext = await getRecentConversationContext(20);
@@ -877,7 +927,9 @@ async function getReplyByMessage(userMessage) {
         { role: 'user', content: cleanUserMessage }
     ];
     
-    console.log(`🧠 [Memory Tape 맥락] 총 ${messages.length}개 메시지로 OpenAI 호출 (시스템프롬프트 + 맥락 ${recentContext.length}개 + 현재메시지)`);
+    console.log(`🧠 [하이브리드 메모리] 총 ${messages.length}개 메시지로 OpenAI 호출`);
+    console.log(`  📼 Memory Tape 맥락: ${recentContext.length}개 대화`);
+    console.log(`  💾 Memory Manager 기억: ${relatedFixedMemory ? '포함됨' : '없음'}`);
     
     if (!baseSystemPrompt || typeof baseSystemPrompt !== 'string' || baseSystemPrompt.trim().length === 0) {
         console.error("❌ 최종 시스템 프롬프트가 비어있어서 기본 응답을 사용합니다.");
