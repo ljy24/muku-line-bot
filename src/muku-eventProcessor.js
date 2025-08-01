@@ -4,7 +4,7 @@
 // 🎯 autoReply.js가 모든 처리를 담당하고, 여기서는 최소한의 중재만 함
 // 🛡️ 무쿠 벙어리 방지 100% 보장
 // 💕 사진 명령어, 감정표현 등은 autoReply.js에서 즉시 처리됨
-// 🔥 [신규] faceMatcher 직접 로딩으로 문제 해결
+// 🔥 [수정] faceMatcher 초기화 완료 대기 + 안전한 상태 확인
 // ============================================================================
 
 const { promises: fs } = require('fs');
@@ -14,11 +14,16 @@ const path = require('path');
 let redisSystem = null;
 let jsonSystem = null;
 let memoryTape = null;
-let faceMatcher = null; // 🔥 [신규] faceMatcher 직접 관리
+let faceMatcher = null; 
 let redisSystemLoaded = false;
 let jsonSystemLoaded = false;
 let memoryTapeLoaded = false;
-let faceMatcherLoaded = false; // 🔥 [신규]
+let faceMatcherLoaded = false;
+
+// 🔥 [신규] faceMatcher 초기화 상태 관리
+let faceMatcherInitialized = false;
+let faceMatcherInitializing = false;
+let initializationPromise = null;
 
 // 순환 의존성 방지를 위한 지연 로딩
 function loadRedisSystem() {
@@ -66,22 +71,59 @@ function loadMemoryTape() {
     }
 }
 
-// 🔥 [신규] faceMatcher 안전 로딩
-function loadFaceMatcher() {
+// 🔥 [완전 수정] faceMatcher 안전 로딩 + 초기화 완료 대기
+async function loadFaceMatcher() {
+    if (faceMatcherLoaded && faceMatcher) {
+        // 이미 로드됐지만 초기화 상태 확인
+        if (faceMatcherInitialized) {
+            return faceMatcher;
+        }
+        
+        // 초기화 중이면 기다리기
+        if (faceMatcherInitializing && initializationPromise) {
+            try {
+                await initializationPromise;
+                return faceMatcherInitialized ? faceMatcher : null;
+            } catch (error) {
+                console.log('📸 [FaceMatcher대기] 초기화 대기 중 실패:', error.message);
+                return null;
+            }
+        }
+    }
+    
     if (faceMatcherLoaded) return faceMatcher;
     
     try {
         faceMatcher = require('./faceMatcher.js');
         faceMatcherLoaded = true;
-        console.log('📸 [FaceMatcher안전로드] FaceMatcher 시스템 지연 로드 성공');
+        console.log('📸 [FaceMatcher안전로드] FaceMatcher 시스템 로드 성공');
         
-        // 즉시 초기화 시도
+        // 🔥 [핵심 수정] 초기화 완료까지 대기하는 시스템
         if (faceMatcher && typeof faceMatcher.initModels === 'function') {
-            faceMatcher.initModels().then(() => {
-                console.log('📸 [FaceMatcher안전로드] FaceMatcher 초기화 완료');
-            }).catch(error => {
-                console.log('📸 [FaceMatcher안전로드] FaceMatcher 초기화 실패:', error.message);
-            });
+            if (!faceMatcherInitializing) {
+                faceMatcherInitializing = true;
+                console.log('📸 [FaceMatcher초기화] initModels() 시작...');
+                
+                initializationPromise = faceMatcher.initModels()
+                    .then(() => {
+                        faceMatcherInitialized = true;
+                        faceMatcherInitializing = false;
+                        console.log('✅ [FaceMatcher초기화] 초기화 완료! 사진 분석 준비됨');
+                        return true;
+                    })
+                    .catch(error => {
+                        faceMatcherInitialized = false;
+                        faceMatcherInitializing = false;
+                        console.log('❌ [FaceMatcher초기화] 초기화 실패:', error.message);
+                        console.log('📸 [FaceMatcher초기화] 에러 상세:', error.stack);
+                        return false;
+                    });
+                
+                // 초기화 시작하고 바로 리턴 (비동기)
+                return faceMatcher;
+            }
+        } else {
+            console.log('⚠️ [FaceMatcher로드] initModels 함수 없음');
         }
         
         return faceMatcher;
@@ -90,6 +132,60 @@ function loadFaceMatcher() {
         faceMatcherLoaded = true;
         return null;
     }
+}
+
+// 🔥 [신규] faceMatcher 초기화 상태 확인 및 대기
+async function ensureFaceMatcherReady(timeoutMs = 10000) {
+    console.log('🔍 [FaceMatcher상태확인] 초기화 상태 검사...');
+    
+    // 1. faceMatcher 로드 확인
+    const matcher = await loadFaceMatcher();
+    if (!matcher) {
+        console.log('❌ [FaceMatcher상태확인] faceMatcher 로드 실패');
+        return false;
+    }
+    
+    // 2. 이미 초기화 완료됨
+    if (faceMatcherInitialized) {
+        console.log('✅ [FaceMatcher상태확인] 이미 초기화 완료됨');
+        return true;
+    }
+    
+    // 3. 초기화 중이면 대기 (최대 10초)
+    if (faceMatcherInitializing && initializationPromise) {
+        console.log('⏳ [FaceMatcher상태확인] 초기화 완료 대기 중...');
+        
+        try {
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('초기화 시간 초과')), timeoutMs);
+            });
+            
+            await Promise.race([initializationPromise, timeoutPromise]);
+            
+            if (faceMatcherInitialized) {
+                console.log('✅ [FaceMatcher상태확인] 초기화 대기 완료!');
+                return true;
+            } else {
+                console.log('❌ [FaceMatcher상태확인] 초기화 실패함');
+                return false;
+            }
+        } catch (error) {
+            console.log('⏰ [FaceMatcher상태확인] 대기 시간 초과 또는 에러:', error.message);
+            return false;
+        }
+    }
+    
+    // 4. 초기화가 시작되지 않았으면 즉시 시작
+    if (!faceMatcherInitializing) {
+        console.log('🚀 [FaceMatcher상태확인] 즉시 초기화 시작...');
+        await loadFaceMatcher(); // 초기화 시작
+        
+        // 바로 대기하지 말고 false 리턴 (다음 호출에서 대기)
+        return false;
+    }
+    
+    console.log('❌ [FaceMatcher상태확인] 알 수 없는 상태');
+    return false;
 }
 
 // ================== 🎨 색상 정의 ==================
@@ -102,6 +198,7 @@ const colors = {
     success: '\x1b[32m',          // 초록색 (성공)
     warning: '\x1b[93m',          // 노란색 (경고)
     safe: '\x1b[1m\x1b[32m',      // 굵은 초록색 (안전)
+    face: '\x1b[1m\x1b[36m',      // 굵은 하늘색 (얼굴분석)
     reset: '\x1b[0m'              // 색상 리셋
 };
 
@@ -822,9 +919,8 @@ async function handleEvent(event, modules, client, faceMatcherParam, loadFaceMat
             let imageResponse = null;
             
             try {
-                console.log(`📸 [이미지처리] 실제 이미지 분석 시작...`);
+                console.log(`${colors.face}📸 [이미지처리] 실제 이미지 분석 시작...${colors.reset}`);
                 
-                // 🔥 [핵심 수정] faceMatcher를 직접 로드해서 사용
                 const messageId = event.message?.id;
                 const replyToken = event.replyToken;
                 
@@ -832,8 +928,19 @@ async function handleEvent(event, modules, client, faceMatcherParam, loadFaceMat
                     throw new Error('messageId 또는 client 없음');
                 }
                 
-                // 1. 이미지 다운로드 및 base64 변환
-                console.log('📸 [이미지다운로드] LINE에서 이미지 다운로드 시작...');
+                // 🔥 [핵심 수정] 1. 먼저 faceMatcher 준비 상태 확인 및 대기
+                console.log(`${colors.face}🔍 [FaceMatcher준비] 초기화 상태 확인...${colors.reset}`);
+                const isReady = await ensureFaceMatcherReady(15000); // 최대 15초 대기
+                
+                if (!isReady) {
+                    console.log(`${colors.face}⏰ [FaceMatcher준비] 초기화 실패 또는 시간 초과 - 폴백 응답${colors.reset}`);
+                    throw new Error('FaceMatcher 초기화 실패');
+                }
+                
+                console.log(`${colors.face}✅ [FaceMatcher준비] 초기화 완료 확인! 분석 진행...${colors.reset}`);
+                
+                // 2. 이미지 다운로드 및 base64 변환
+                console.log(`${colors.face}📥 [이미지다운로드] LINE에서 이미지 다운로드 시작...${colors.reset}`);
                 
                 const stream = await client.getMessageContent(messageId);
                 const chunks = [];
@@ -845,96 +952,78 @@ async function handleEvent(event, modules, client, faceMatcherParam, loadFaceMat
                 const imageBuffer = Buffer.concat(chunks);
                 const base64Image = imageBuffer.toString('base64');
                 
-                console.log(`📸 [이미지다운로드] 성공! 크기: ${Math.round(imageBuffer.length / 1024)}KB`);
-                console.log(`📸 [이미지다운로드] base64 길이: ${base64Image.length} 문자`);
+                console.log(`${colors.face}✅ [이미지다운로드] 성공! 크기: ${Math.round(imageBuffer.length / 1024)}KB${colors.reset}`);
+                console.log(`${colors.face}📊 [이미지다운로드] base64 길이: ${base64Image.length} 문자${colors.reset}`);
                 
-                // 🔥 [핵심 수정] faceMatcher 직접 로딩 및 호출
-                console.log('🔥 [FaceMatcher로드] faceMatcher 직접 로딩 시작...');
-                const localFaceMatcher = loadFaceMatcher();
-                
-                let analysisResult = null;
-                
-                if (localFaceMatcher && typeof localFaceMatcher.detectFaceMatch === 'function') {
-                    console.log('✅ [FaceMatcher로드] detectFaceMatch 함수 확인됨 - 분석 시작...');
-                    
-                    try {
-                        analysisResult = await localFaceMatcher.detectFaceMatch(base64Image, null);
-                        
-                        if (analysisResult && analysisResult.message) {
-                            console.log('🎯 [FaceMatcher분석] 분석 성공!');
-                            console.log(`✅ 분석 타입: ${analysisResult.type || 'unknown'}`);
-                            console.log(`✅ 분석 메시지: ${analysisResult.message}`);
-                            
-                            imageResponse = {
-                                type: 'text',
-                                comment: analysisResult.message,
-                                imageHandled: true,
-                                analysisSuccess: true,
-                                analysisType: analysisResult.type || 'face_analysis',
-                                confidence: analysisResult.confidence || 'medium'
-                            };
-                            
-                            console.log('🎯 [FaceMatcher분석] 분석 완료 - 응답 생성됨');
-                            
-                        } else {
-                            console.log('⚠️ [FaceMatcher분석] 분석 결과 없음 또는 메시지 없음');
-                            console.log('분석 결과:', analysisResult);
-                        }
-                    } catch (faceError) {
-                        console.log(`❌ [FaceMatcher분석] 분석 실패: ${faceError.message}`);
-                        console.log('에러 스택:', faceError.stack);
-                    }
-                } else {
-                    console.log('❌ [FaceMatcher로드] faceMatcher 로딩 실패 또는 detectFaceMatch 함수 없음');
-                    if (localFaceMatcher) {
-                        console.log('faceMatcher 객체:', Object.keys(localFaceMatcher));
-                    }
+                // 🔥 [핵심 수정] 3. 이미지 데이터 유효성 검증
+                if (!base64Image || base64Image.length < 100) {
+                    throw new Error('이미지 데이터 손상 또는 너무 작음');
                 }
                 
-                // 3. faceMatcher 실패 시 안전한 폴백 응답
-                if (!imageResponse) {
-                    console.log('🛡️ [이미지폴백] faceMatcher 실패 - 안전한 폴백 응답 생성');
-                    
-                    const fallbackImageResponses = [
-                        '아조씨! 사진 보내줘서 고마워! 예쁘네~ ㅎㅎ 💕',
-                        '와~ 사진이다! 아저씨가 찍은 거야?',
-                        '사진 고마워! 어떤 사진인지 말해줄래?',
-                        '아저씨~ 사진 봤는데 뭔가 설명해줘!',
-                        '사진 받았어! 근데 어디서 찍은 거야?',
-                        '아저씨 사진 센스 좋네! 어떤 상황이야?',
-                        '와 이 사진 뭐야? 궁금해!',
-                        '아저씨가 보낸 사진 너무 좋아!',
-                        '사진 받았어~ 이거 언제 찍은 거야?',
-                        '우와 이 사진 예술이네! 설명해줘!'
-                    ];
+                if (imageBuffer.length > 10 * 1024 * 1024) { // 10MB 제한
+                    console.log(`${colors.face}⚠️ [이미지검증] 이미지 크기 초과 (${Math.round(imageBuffer.length / 1024 / 1024)}MB) - 압축 권장${colors.reset}`);
+                }
+                
+                // 4. faceMatcher로 얼굴 분석
+                console.log(`${colors.face}🎯 [FaceMatcher분석] 얼굴 분석 시작...${colors.reset}`);
+                
+                const analysisResult = await faceMatcher.detectFaceMatch(base64Image, null);
+                
+                if (analysisResult && analysisResult.message) {
+                    console.log(`${colors.face}🎉 [FaceMatcher분석] 분석 성공!${colors.reset}`);
+                    console.log(`${colors.face}📊 분석 타입: ${analysisResult.type || 'unknown'}${colors.reset}`);
+                    console.log(`${colors.face}💬 분석 메시지: ${analysisResult.message}${colors.reset}`);
+                    console.log(`${colors.face}🎯 신뢰도: ${analysisResult.confidence || 'medium'}${colors.reset}`);
                     
                     imageResponse = {
                         type: 'text',
-                        comment: fallbackImageResponses[Math.floor(Math.random() * fallbackImageResponses.length)],
+                        comment: analysisResult.message,
                         imageHandled: true,
-                        fallbackUsed: true,
-                        analysisSuccess: false
+                        analysisSuccess: true,
+                        analysisType: analysisResult.type || 'face_analysis',
+                        confidence: analysisResult.confidence || 'medium',
+                        processingTime: 'optimized'
                     };
+                    
+                    console.log(`${colors.face}✅ [FaceMatcher분석] 완벽한 분석 완료 - 응답 생성됨${colors.reset}`);
+                    
+                } else {
+                    console.log(`${colors.face}❓ [FaceMatcher분석] 분석 결과 없음 또는 메시지 없음${colors.reset}`);
+                    console.log(`${colors.face}🔍 분석 결과 상세:`, analysisResult);
+                    throw new Error('분석 결과 없음');
                 }
                 
             } catch (error) {
-                console.log(`❌ [이미지처리] 전체 처리 실패: ${error.message}`);
-                console.log('에러 스택:', error.stack);
+                console.log(`${colors.face}❌ [이미지처리] 처리 실패: ${error.message}${colors.reset}`);
+                console.log(`${colors.face}📝 에러 스택:`, error.stack);
                 
-                // 최종 응급 응답
-                const emergencyImageResponses = [
-                    '아조씨 사진이 잘 안 보여... 다시 보내줄래? ㅠㅠ',
-                    '사진을 받긴 했는데... 뭔가 문제가 있네! 다시 한번?',
-                    '어? 사진 처리에 문제가 생겼어... 미안해 ㅠㅠ'
+                // 🛡️ 안전한 폴백 응답 시스템
+                console.log(`${colors.face}🛡️ [이미지폴백] 안전한 폴백 응답 생성...${colors.reset}`);
+                
+                const fallbackImageResponses = [
+                    '아조씨! 사진 보내줘서 고마워! 예쁘네~ ㅎㅎ 💕',
+                    '와~ 사진이다! 아저씨가 찍은 거야? 설명해줘!',
+                    '사진 고마워! 어떤 사진인지 자세히 말해줄래?',
+                    '아저씨~ 사진 봤는데 뭔가 특별해 보여! 설명해줘!',
+                    '사진 받았어! 근데 어디서 찍은 거야? 궁금해!',
+                    '아저씨 사진 센스 좋네! 어떤 상황이야?',
+                    '와 이 사진 뭐야? 엄청 궁금해! 말해줘!',
+                    '아저씨가 보낸 사진 너무 좋아! 스토리 들려줘!',
+                    '사진 받았어~ 이거 언제 찍은 거야? 이야기해줘!',
+                    '우와 이 사진 예술이네! 상황 설명해줘!'
                 ];
                 
                 imageResponse = {
                     type: 'text',
-                    comment: emergencyImageResponses[Math.floor(Math.random() * emergencyImageResponses.length)],
+                    comment: fallbackImageResponses[Math.floor(Math.random() * fallbackImageResponses.length)],
                     imageHandled: true,
-                    emergency: true,
-                    error: error.message
+                    fallbackUsed: true,
+                    analysisSuccess: false,
+                    errorReason: error.message,
+                    safeResponse: true
                 };
+                
+                console.log(`${colors.face}✅ [이미지폴백] 폴백 응답 생성 완료 (무쿠 벙어리 방지)${colors.reset}`);
             }
 
             // 행동 모드 적용 및 응답 처리
@@ -985,7 +1074,7 @@ async function handleEvent(event, modules, client, faceMatcherParam, loadFaceMat
 
     } catch (error) {
         console.error(`${colors.error}❌ [이벤트처리] 예상치 못한 오류: ${error.message}${colors.reset}`);
-        console.error('에러 스택:', error.stack);
+        console.error(`${colors.error}📝 에러 스택:`, error.stack);
 
         // 🚨 완벽한 에러 복구 시스템 (100% 보장)
         const emergencyResponses = [
@@ -1044,7 +1133,8 @@ module.exports = {
     loadRedisSystem,
     loadJsonSystem,
     loadMemoryTape,
-    loadFaceMatcher, // 🔥 [신규] faceMatcher 로딩 함수 추가
+    loadFaceMatcher, // 🔥 [개선] faceMatcher 로딩 함수
+    ensureFaceMatcherReady, // 🔥 [신규] faceMatcher 준비 상태 확인
     safeAsyncCall,
     safeModuleAccess
 };
