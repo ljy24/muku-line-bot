@@ -23,38 +23,53 @@ const MEMORY_DIR = path.join(DATA_DIR, 'memories');
 let userMemoryRedis = null;
 let redisConnected = false;
 
-try {
-    userMemoryRedis = new Redis({
-        host: process.env.REDIS_HOST || 'localhost',
-        port: process.env.REDIS_PORT || 6379,
-        password: process.env.REDIS_PASSWORD || null,
-        db: process.env.REDIS_DB || 0,
-        retryDelayOnFailover: 100,
-        maxRetriesPerRequest: 3,
-        connectTimeout: 10000,
-        lazyConnect: true
-    });
-    
-    userMemoryRedis.on('connect', () => {
-        console.log('✅ [autoReply] Redis 사용자 기억 시스템 연결 성공');
+// Redis 연결 초기화 함수
+async function initializeUserMemoryRedis() {
+    try {
+        userMemoryRedis = new Redis({
+            host: process.env.REDIS_HOST || 'localhost',
+            port: process.env.REDIS_PORT || 6379,
+            password: process.env.REDIS_PASSWORD || null,
+            db: process.env.REDIS_DB || 0,
+            retryDelayOnFailover: 100,
+            maxRetriesPerRequest: 3,
+            connectTimeout: 10000,
+            // lazyConnect 제거 - 즉시 연결 시도
+        });
+        
+        userMemoryRedis.on('connect', () => {
+            console.log('✅ [autoReply] Redis 사용자 기억 시스템 연결 성공');
+            redisConnected = true;
+        });
+        
+        userMemoryRedis.on('error', (error) => {
+            console.error('❌ [autoReply] Redis 사용자 기억 연결 오류:', error.message);
+            redisConnected = false;
+        });
+        
+        userMemoryRedis.on('close', () => {
+            console.warn('⚠️ [autoReply] Redis 사용자 기억 연결 종료');
+            redisConnected = false;
+        });
+        
+        // 연결 테스트
+        await userMemoryRedis.ping();
         redisConnected = true;
-    });
-    
-    userMemoryRedis.on('error', (error) => {
-        console.error('❌ [autoReply] Redis 사용자 기억 연결 오류:', error.message);
+        console.log('🧠 [autoReply] Redis 사용자 기억 시스템 초기화 완료');
+        
+    } catch (error) {
+        console.error('❌ [autoReply] Redis 사용자 기억 초기화 실패:', error.message);
+        userMemoryRedis = null;
         redisConnected = false;
-    });
-    
-    userMemoryRedis.on('close', () => {
-        console.warn('⚠️ [autoReply] Redis 사용자 기억 연결 종료');
-        redisConnected = false;
-    });
-    
-    console.log('🧠 [autoReply] Redis 사용자 기억 시스템 초기화 완료');
-} catch (error) {
-    console.error('❌ [autoReply] Redis 사용자 기억 초기화 실패:', error.message);
-    redisConnected = false;
+    }
 }
+
+// Redis 연결 초기화 (비동기)
+setTimeout(() => {
+    initializeUserMemoryRedis().catch(error => {
+        console.error('❌ [autoReply] Redis 연결 재시도 실패:', error.message);
+    });
+}, 3000);
 
 // 🆕🆕🆕 Memory Manager 연동 추가! 🆕🆕🆕
 let memoryManager = null;
