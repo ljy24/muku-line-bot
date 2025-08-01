@@ -1060,6 +1060,80 @@ async function handleDiaryCommand(lowerText) {
             }
         }
         
+        // ================== 📖 어제 일기 조회 기능 ==================
+        if (lowerText.includes('어제일기') || lowerText.includes('어제 일기') || lowerText.includes('yesterday')) {
+            console.log('[일기장] 어제 일기 요청 감지');
+            
+            try {
+                const yesterday = new Date();
+                yesterday.setDate(yesterday.getDate() - 1); // 어제 날짜 계산
+                
+                const dateStr = yesterday.toISOString().split('T')[0];
+                const dateKorean = yesterday.toLocaleDateString('ko-KR', { timeZone: 'Asia/Tokyo' });
+                
+                console.log(`[일기장] 어제 날짜: ${dateStr} (${dateKorean})`);
+                
+                // 어제 일기 조회
+                const yesterdayDiaries = await getDiaryFromRedis(dateStr);
+                
+                if (yesterdayDiaries && yesterdayDiaries.length > 0) {
+                    const entry = yesterdayDiaries[0]; // 하루에 1개만
+                    
+                    let response = `📖 **${dateKorean} 예진이의 어제 일기**\n\n`;
+                    response += `📝 **${entry.title}**\n`;
+                    response += `${entry.content}\n\n`;
+                    
+                    // 기분 표시
+                    if (entry.mood) {
+                        const moodEmoji = {
+                            'happy': '😊', 'sad': '😢', 'love': '💕',
+                            'excited': '😆', 'peaceful': '😌', 'sensitive': '😔',
+                            'nostalgic': '😌', 'dreamy': '✨', 'normal': '😐'
+                        };
+                        response += `기분: ${moodEmoji[entry.mood] || '😊'} ${entry.mood}\n`;
+                    }
+                    
+                    // 태그 표시
+                    if (entry.tags && entry.tags.length > 0) {
+                        response += `태그: ${entry.tags.join(', ')}\n`;
+                    }
+                    
+                    // 특별 표시
+                    if (entry.openaiGenerated) {
+                        response += `🤖 OpenAI 30문장 긴일기\n`;
+                    }
+                    
+                    // 대화 수 표시
+                    if (entry.memoryCount > 0) {
+                        response += `💬 어제 대화 ${entry.memoryCount}개 참고\n`;
+                    }
+                    
+                    response += `\n💭 어제도 아저씨와 함께한 소중한 하루였어... 그 기억들이 일기 속에 고스란히 담겨있어! 💕`;
+                    
+                    return { success: true, response: response };
+                    
+                } else {
+                    // 어제 일기가 없는 경우
+                    let response = `📖 **${dateKorean} 예진이의 어제 일기**\n\n`;
+                    response += `어제 일기가 없어... 아마 그때는 일기 시스템이 활성화되지 않았거나 문제가 있었나봐 ㅠㅠ\n\n`;
+                    response += `하지만 어제도 아저씨와의 소중한 시간들이 내 마음속에는 고스란히 남아있어 💕\n\n`;
+                    response += `📅 참고: 일기 시스템은 매일 밤 22시에 자동으로 하루 1개씩 30문장 일기를 써주고 있어!\n`;
+                    response += `🌸 "일기목록"으로 다른 날짜의 일기들을 확인해볼 수 있어~`;
+                    
+                    return { success: true, response: response };
+                }
+                
+            } catch (error) {
+                console.error(`[일기장] 어제 일기 처리 실패: ${error.message}`);
+                
+                let errorResponse = `📖 **어제의 일기**\n\n`;
+                errorResponse += `어제 일기를 불러오다가 문제가 생겼어... 하지만 어제도 아저씨와 함께한 소중한 하루였다는 건 변하지 않아! 💕\n\n`;
+                errorResponse += `다시 "어제일기"라고 말해보거나, "일기목록"으로 다른 일기들을 확인해봐~`;
+                
+                return { success: true, response: errorResponse };
+            }
+        }
+
         // 📊 일기 통계 (하루 1개 보장 상태 포함)
         if (lowerText.includes('일기통계')) {
             const redisStats = await getDiaryStatsFromRedis();
