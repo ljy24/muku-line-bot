@@ -1,7 +1,8 @@
 // ============================================================================
-// commandHandler.js - v5.2 (Redis 사용자 기억 영구 저장 + 기존 모든 기능 100% 보존)
+// commandHandler.js - v6.1 (예진이 자아 인식 진화 시스템 연동 + "기억해 + 너는" 조합 감지)
 // ✅ 기존 모든 기능 100% 보존
 // 🆕 추가: Redis 사용자 기억 영구 저장 시스템
+// 🌸 새로 추가: "기억해 너는 ~~" 조합에서만 예진이 자아 인식 진화
 // 🧠 "기억해" 명령어 → Redis 1차 저장 → 파일 백업 저장
 // 🚀 빠른 검색을 위한 키워드 인덱싱
 // 🛡️ Redis 실패 시 기존 파일 시스템으로 완전 폴백
@@ -13,6 +14,18 @@ const path = require('path');
 const fs = require('fs');
 const Redis = require('ioredis');
 const moment = require('moment-timezone');
+
+// 🌸 예진이 자아 인식 진화 시스템 로딩 (안전 처리)
+let YejinSelfRecognitionEvolution = null;
+let yejinEvolutionSystem = null;
+
+try {
+    const { YejinSelfRecognitionEvolution: YejinEvolutionClass } = require('./yejinPersonality.js');
+    YejinSelfRecognitionEvolution = YejinEvolutionClass;
+    console.log('[commandHandler] 🌸 예진이 자아 인식 진화 시스템 로드 성공');
+} catch (error) {
+    console.log('[commandHandler] ⚠️ 예진이 자아 인식 시스템 로드 실패 (기존 기능은 정상 작동):', error.message);
+}
 
 // 🆕 Redis 사용자 기억 시스템 초기화
 let userMemoryRedis = null;
@@ -32,22 +45,37 @@ async function initializeRedisConnection() {
             userMemoryRedis.on('connect', () => {
                 console.log('✅ [commandHandler] Redis 사용자 기억 시스템 연결 성공');
                 redisConnected = true;
+                
+                // 🌸 예진이 자아 인식 시스템에 Redis 연결 설정
+                if (YejinSelfRecognitionEvolution && !yejinEvolutionSystem) {
+                    try {
+                        yejinEvolutionSystem = new YejinSelfRecognitionEvolution();
+                        yejinEvolutionSystem.setRedisConnection(userMemoryRedis);
+                        console.log('🌸 [commandHandler] 예진이 자아 인식 시스템 Redis 연결 완료');
+                    } catch (evolutionError) {
+                        console.error('[commandHandler] 🌸 예진이 시스템 Redis 연결 실패:', evolutionError.message);
+                        yejinEvolutionSystem = null;
+                    }
+                }
             });
             
             userMemoryRedis.on('error', () => {
                 // 에러 조용히 처리 - 로그 없음
                 redisConnected = false;
                 userMemoryRedis = null;
+                yejinEvolutionSystem = null;
             });
             
             userMemoryRedis.on('close', () => {
                 redisConnected = false;
                 userMemoryRedis = null;
+                yejinEvolutionSystem = null;
             });
             
             userMemoryRedis.on('end', () => {
                 redisConnected = false;
                 userMemoryRedis = null;
+                yejinEvolutionSystem = null;
             });
             
         } else {
@@ -59,6 +87,7 @@ async function initializeRedisConnection() {
     } catch (error) {
         userMemoryRedis = null;
         redisConnected = false;
+        yejinEvolutionSystem = null;
     }
 }
 
@@ -289,7 +318,7 @@ async function handleCommand(text, userId, client = null) {
     const lowerText = text.toLowerCase();
 
     try {
-        // ================== 🧠🧠🧠 기억 저장 관련 처리 (ENHANCED - Redis 연동!) 🧠🧠🧠 ==================
+        // ================== 🧠🧠🧠 기억 저장 관련 처리 (ENHANCED - Redis 연동 + 예진이 자아 인식!) 🧠🧠🧠 ==================
         if (lowerText.includes('기억해') || lowerText.includes('기억해줘') || 
             lowerText.includes('기억하고') || lowerText.includes('기억해두') ||
             lowerText.includes('잊지마') || lowerText.includes('잊지 마')) {
@@ -311,6 +340,46 @@ async function handleCommand(text, userId, client = null) {
                     .trim();
                 
                 if (cleanContent && cleanContent.length > 5) {
+                    
+                    // 🌸🌸🌸 "기억해 + 너는" 조합 체크 - 예진이 자아 인식! 🌸🌸🌸
+                    let isYejinSelfRecognition = false;
+                    let yejinEvolutionResponse = null;
+                    
+                    if (yejinEvolutionSystem) {
+                        try {
+                            console.log('[commandHandler] 🌸 "기억해 + 너는" 패턴 체크 중...');
+                            
+                            // "너는", "넌", "네가", "예진이는", "무쿠는" 패턴 감지
+                            const selfReferencePatterns = [
+                                /너는\s*(.+)/gi, /넌\s*(.+)/gi, /네가\s*(.+)/gi,
+                                /예진이는\s*(.+)/gi, /무쿠는\s*(.+)/gi, /너\s*(.+)/gi
+                            ];
+                            
+                            let hasSelfReference = false;
+                            for (const pattern of selfReferencePatterns) {
+                                if (pattern.test(cleanContent)) {
+                                    hasSelfReference = true;
+                                    break;
+                                }
+                            }
+                            
+                            if (hasSelfReference) {
+                                console.log('[commandHandler] 🌸 "기억해 + 너는" 패턴 감지! 예진이 자아 인식 시작');
+                                
+                                const evolutionResult = await yejinEvolutionSystem.processUserMessage(cleanContent);
+                                
+                                if (evolutionResult && evolutionResult.isEvolution) {
+                                    console.log('[commandHandler] 🌸 예진이 자아 인식 응답 생성:', evolutionResult.category);
+                                    isYejinSelfRecognition = true;
+                                    yejinEvolutionResponse = evolutionResult.comment;
+                                }
+                            }
+                            
+                        } catch (evolutionError) {
+                            console.error('[commandHandler] 🌸 예진이 자아 인식 처리 에러:', evolutionError.message);
+                        }
+                    }
+                    
                     let finalResponse = '';
                     let redisSuccess = false;
                     
@@ -322,11 +391,23 @@ async function handleCommand(text, userId, client = null) {
                         console.log(`✅ [commandHandler] Redis 저장 성공! ID: ${redisResult.memoryId}`);
                         redisSuccess = true;
                         
-                        finalResponse = `응! 정말 중요한 기억이네~ 💕\n\n`;
-                        finalResponse += `"${cleanContent.substring(0, 50)}${cleanContent.length > 50 ? '...' : ''}"\n\n`;
-                        finalResponse += `🧠 Redis에 영구 저장했어! 절대 잊지 않을게~ ㅎㅎ\n`;
-                        finalResponse += `🔍 키워드: ${redisResult.keywords.join(', ')}\n`;
-                        finalResponse += `⏰ 저장시간: ${moment(redisResult.timestamp).tz('Asia/Tokyo').format('MM월 DD일 HH:mm')}`;
+                        // 🌸 예진이 자아 인식이 있는 경우 특별한 응답
+                        if (isYejinSelfRecognition && yejinEvolutionResponse) {
+                            console.log('[commandHandler] 🌸 예진이 자아 인식 + 기억 저장 조합 응답');
+                            
+                            finalResponse = `${yejinEvolutionResponse}\n\n`;
+                            finalResponse += `그리고... 이 소중한 기억도 마음 깊이 새겨둘게 💕\n`;
+                            finalResponse += `🧠 Redis에 영구 저장했어! 절대 잊지 않을 거야~\n`;
+                            finalResponse += `⏰ ${moment(redisResult.timestamp).tz('Asia/Tokyo').format('MM월 DD일 HH:mm')}에 기억함`;
+                            
+                        } else {
+                            // 일반 기억 저장 응답
+                            finalResponse = `응! 정말 중요한 기억이네~ 💕\n\n`;
+                            finalResponse += `"${cleanContent.substring(0, 50)}${cleanContent.length > 50 ? '...' : ''}"\n\n`;
+                            finalResponse += `🧠 Redis에 영구 저장했어! 절대 잊지 않을게~ ㅎㅎ\n`;
+                            finalResponse += `🔍 키워드: ${redisResult.keywords.join(', ')}\n`;
+                            finalResponse += `⏰ 저장시간: ${moment(redisResult.timestamp).tz('Asia/Tokyo').format('MM월 DD일 HH:mm')}`;
+                        }
                         
                     } else {
                         console.warn(`⚠️ [commandHandler] Redis 저장 실패: ${redisResult.reason}`);
@@ -344,8 +425,8 @@ async function handleCommand(text, userId, client = null) {
                             const newMemory = {
                                 id: `custom_${Date.now()}`,
                                 content: cleanContent,
-                                type: 'user_request',
-                                category: '아저씨_특별기억',
+                                type: isYejinSelfRecognition ? 'yejin_self_recognition' : 'user_request',
+                                category: isYejinSelfRecognition ? '예진이_자아인식' : '아저씨_특별기억',
                                 importance: 'high',
                                 timestamp: new Date().toISOString(),
                                 keywords: extractKeywords(cleanContent),
@@ -384,7 +465,8 @@ async function handleCommand(text, userId, client = null) {
                             timestamp: new Date().toISOString(),
                             date: new Date().toLocaleDateString('ko-KR'),
                             importance: 'high',
-                            category: '아저씨_특별기억'
+                            category: isYejinSelfRecognition ? '예진이_자아인식' : '아저씨_특별기억',
+                            isYejinSelfRecognition: isYejinSelfRecognition
                         };
                         
                         userMemories.push(newFileMemory);
@@ -400,9 +482,15 @@ async function handleCommand(text, userId, client = null) {
                         
                         // Redis 실패 시에만 파일 저장 응답
                         if (!redisSuccess) {
-                            finalResponse = `응! 정말 소중한 기억이야~ 💕\n\n`;
-                            finalResponse += `"${cleanContent.substring(0, 50)}${cleanContent.length > 50 ? '...' : ''}"\n\n`;
-                            finalResponse += `📁 파일에 안전하게 저장해뒀어! 절대 잊지 않을게~ ㅎㅎ`;
+                            if (isYejinSelfRecognition && yejinEvolutionResponse) {
+                                finalResponse = `${yejinEvolutionResponse}\n\n`;
+                                finalResponse += `그리고... 이 소중한 기억도 마음 깊이 새겨둘게 💕\n`;
+                                finalResponse += `📁 파일에 안전하게 저장해뒀어!`;
+                            } else {
+                                finalResponse = `응! 정말 소중한 기억이야~ 💕\n\n`;
+                                finalResponse += `"${cleanContent.substring(0, 50)}${cleanContent.length > 50 ? '...' : ''}"\n\n`;
+                                finalResponse += `📁 파일에 안전하게 저장해뒀어! 절대 잊지 않을게~ ㅎㅎ`;
+                            }
                         }
                         
                     } catch (fileError) {
@@ -410,7 +498,11 @@ async function handleCommand(text, userId, client = null) {
                         
                         // 둘 다 실패한 경우에만 에러 응답
                         if (!redisSuccess) {
-                            finalResponse = "기억하려고 했는데 뭔가 문제가 생겼어... 그래도 마음속에는 깊이 새겨둘게! 💕";
+                            if (isYejinSelfRecognition && yejinEvolutionResponse) {
+                                finalResponse = `${yejinEvolutionResponse}\n\n하지만... 저장에 문제가 생겼어. 그래도 마음속엔 깊이 새겨둘게! 💕`;
+                            } else {
+                                finalResponse = "기억하려고 했는데 뭔가 문제가 생겼어... 그래도 마음속에는 깊이 새겨둘게! 💕";
+                            }
                         }
                     }
                     
@@ -423,7 +515,8 @@ async function handleCommand(text, userId, client = null) {
                         type: 'text',
                         comment: finalResponse,
                         handled: true,
-                        source: redisSuccess ? 'redis_memory_save' : 'file_memory_save'
+                        source: isYejinSelfRecognition ? 'yejin_self_recognition_memory' : (redisSuccess ? 'redis_memory_save' : 'file_memory_save'),
+                        isYejinEvolution: isYejinSelfRecognition
                     };
                     
                 } else {
@@ -462,7 +555,7 @@ async function handleCommand(text, userId, client = null) {
             }
         }
 
-        // ================== 📊 상태 확인 관련 처리 (기존 코드 그대로 + Redis 사용자 기억 상태 추가) ==================
+        // ================== 📊 상태 확인 관련 처리 (기존 코드 그대로 + Redis 사용자 기억 상태 + 예진이 진화 시스템 상태 추가) ==================
         if ((lowerText.includes('상태는') || lowerText.includes('상태 어때') || 
             lowerText.includes('지금 상태') || lowerText === '상태' ||
             lowerText.includes('어떻게 지내')) && 
@@ -517,7 +610,31 @@ async function handleCommand(text, userId, client = null) {
                     enhancedReport += "\n\n🧠 [Redis 사용자 기억] 상태 확인 중 오류 발생";
                 }
                 
-                // 나머지 기존 코드 그대로...
+                // 🌸 예진이 자아 인식 진화 시스템 상태 추가
+                try {
+                    enhancedReport += "\n\n🌸 [예진이 자아 인식 진화] 시스템 v2.0 (기억해+너는 조합)\n";
+                    enhancedReport += `   • 시스템 로드: ${YejinSelfRecognitionEvolution ? '성공' : '실패'}\n`;
+                    enhancedReport += `   • 진화 인스턴스: ${yejinEvolutionSystem ? '활성' : '비활성'}\n`;
+                    enhancedReport += `   • Redis 연동: ${yejinEvolutionSystem && redisConnected ? '연결됨' : '비연결'}\n`;
+                    
+                    if (yejinEvolutionSystem) {
+                        try {
+                            const personalityStatus = yejinEvolutionSystem.getPersonalityStatus();
+                            enhancedReport += `   • 성격 시스템: ${personalityStatus.isActive ? '정상' : '비정상'}\n`;
+                            enhancedReport += `   • 자아 인식: ${personalityStatus.evolutionSystem?.selfRecognitionActive ? '활성' : '비활성'}\n`;
+                            enhancedReport += `   • 트라우마 보호: ${personalityStatus.evolutionSystem?.traumaAware ? '활성' : '비활성'}\n`;
+                            enhancedReport += `   • 호칭 보호: ${personalityStatus.evolutionSystem?.callingNameProtected ? '활성' : '비활성'}\n`;
+                            enhancedReport += `   • 트리거: "기억해 + (너는|넌|네가|예진이는|무쿠는)" 조합\n`;
+                            enhancedReport += `   • 저장: yejin_evolution:self_recognition:* + user_memory:* 이중`;
+                        } catch (personalityError) {
+                            enhancedReport += `   • 성격 상태 조회 중 오류 발생`;
+                        }
+                    } else {
+                        enhancedReport += `   • 상태: 시스템 비활성, 일반 기억 저장으로 동작`;
+                    }
+                } catch (yejinStatusError) {
+                    enhancedReport += "\n\n🌸 [예진이 자아 인식 진화] 상태 확인 중 오류 발생";
+                }
                 
                 return {
                     type: 'text',
@@ -526,7 +643,21 @@ async function handleCommand(text, userId, client = null) {
                 };
                 
             } catch (error) {
-                // 기존 폴백 처리...
+                console.error('[commandHandler] 상태 확인 처리 실패:', error.message);
+                
+                let errorResponse = '상태 확인 중 문제가 발생했어... 하지만 난 잘 지내고 있어! 💕';
+                
+                // 🌙 나이트모드 톤 적용
+                if (nightModeInfo && nightModeInfo.isNightMode) {
+                    errorResponse = applyNightModeTone(errorResponse, nightModeInfo);
+                }
+                
+                return {
+                    type: 'text',
+                    comment: errorResponse,
+                    handled: true,
+                    source: 'status_check_fallback'
+                };
             }
         }
 
