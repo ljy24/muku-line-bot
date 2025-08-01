@@ -8,6 +8,7 @@
 // 🛡️ Redis 실패 시 기존 파일 시스템으로 완전 폴백
 // 💖 무쿠가 벙어리가 되지 않도록 최우선 보장
 // 📊 기존 Memory Manager와 완전 분리된 독립 시스템
+// 📖 일기장, 일기목록, 일기 써줘, 오늘 일기, 주간일기 처리 로직 추가
 // ============================================================================
 
 const path = require('path');
@@ -555,6 +556,101 @@ async function handleCommand(text, userId, client = null) {
             }
         }
 
+        // ================== 📖📖📖 일기장 관련 처리 (새로 추가) 📖📖📖 ==================
+        if (lowerText.includes('일기장') || lowerText.includes('일기목록') || 
+            lowerText.includes('일기 써줘') || lowerText.includes('오늘 일기') ||
+            lowerText.includes('주간일기') || lowerText.includes('주간 일기')) {
+            
+            console.log('[commandHandler] 📖 일기장 요청 감지');
+            
+            try {
+                if (diarySystem) {
+                    let diaryResult = null;
+                    
+                    // 명령어별 처리
+                    if (lowerText.includes('일기장') || lowerText.includes('일기목록')) {
+                        console.log('[commandHandler] 📖 일기목록 요청');
+                        diaryResult = await diarySystem.getDiaryList(userId);
+                    } else if (lowerText.includes('일기 써줘') || lowerText.includes('오늘 일기')) {
+                        console.log('[commandHandler] 📖 오늘 일기 작성 요청');
+                        diaryResult = await diarySystem.writeTodayDiary(userId);
+                    } else if (lowerText.includes('주간일기') || lowerText.includes('주간 일기')) {
+                        console.log('[commandHandler] 📖 주간일기 요청');
+                        diaryResult = await diarySystem.getWeeklyDiary(userId);
+                    }
+                    
+                    if (diaryResult && diaryResult.success) {
+                        console.log('[commandHandler] 📖 일기장 처리 성공');
+                        
+                        let response = diaryResult.message || diaryResult.comment || "일기장 처리 완료!";
+                        
+                        // 🌙 나이트모드 톤 적용
+                        if (nightModeInfo && nightModeInfo.isNightMode) {
+                            response = applyNightModeTone(response, nightModeInfo);
+                        }
+                        
+                        return {
+                            type: diaryResult.type || 'text',
+                            comment: response,
+                            handled: true,
+                            source: 'diary_system',
+                            ...(diaryResult.flex && { flex: diaryResult.flex }),
+                            ...(diaryResult.quickReply && { quickReply: diaryResult.quickReply })
+                        };
+                    } else {
+                        console.warn('[commandHandler] 📖 일기장 처리 실패:', diaryResult?.error);
+                        
+                        let fallbackResponse = "일기장에 문제가 생겼어... 나중에 다시 써볼까? 💕";
+                        
+                        // 🌙 나이트모드 톤 적용
+                        if (nightModeInfo && nightModeInfo.isNightMode) {
+                            fallbackResponse = applyNightModeTone(fallbackResponse, nightModeInfo);
+                        }
+                        
+                        return {
+                            type: 'text',
+                            comment: fallbackResponse,
+                            handled: true,
+                            source: 'diary_system_fallback'
+                        };
+                    }
+                } else {
+                    console.warn('[commandHandler] 📖 일기장 시스템 로드되지 않음');
+                    
+                    let response = "일기장 기능이 아직 준비 중이야... 조금만 기다려줘! 💕";
+                    
+                    // 🌙 나이트모드 톤 적용
+                    if (nightModeInfo && nightModeInfo.isNightMode) {
+                        response = applyNightModeTone(response, nightModeInfo);
+                    }
+                    
+                    return {
+                        type: 'text',
+                        comment: response,
+                        handled: true,
+                        source: 'diary_system_not_loaded'
+                    };
+                }
+                
+            } catch (error) {
+                console.error('[commandHandler] 📖 일기장 처리 실패:', error.message);
+                
+                let response = "일기장에 문제가 생겼어... 나중에 다시 시도해줘! 💕";
+                
+                // 🌙 나이트모드 톤 적용
+                if (nightModeInfo && nightModeInfo.isNightMode) {
+                    response = applyNightModeTone(response, nightModeInfo);
+                }
+                
+                return {
+                    type: 'text',
+                    comment: response,
+                    handled: true,
+                    source: 'diary_system_error'
+                };
+            }
+        }
+
         // ================== 📊 상태 확인 관련 처리 (기존 코드 그대로 + Redis 사용자 기억 상태 + 예진이 진화 시스템 상태 추가) ==================
         if ((lowerText.includes('상태는') || lowerText.includes('상태 어때') || 
             lowerText.includes('지금 상태') || lowerText === '상태' ||
@@ -636,6 +732,22 @@ async function handleCommand(text, userId, client = null) {
                     enhancedReport += "\n\n🌸 [예진이 자아 인식 진화] 상태 확인 중 오류 발생";
                 }
                 
+                // 📖 일기장 시스템 상태 추가
+                try {
+                    enhancedReport += "\n\n📖 [일기장 시스템] v7.0\n";
+                    enhancedReport += `   • 시스템 로드: ${diarySystem ? '성공' : '실패'}\n`;
+                    
+                    if (diarySystem) {
+                        enhancedReport += `   • 지원 명령어: 일기장, 일기목록, 일기 써줘, 오늘 일기, 주간일기\n`;
+                        enhancedReport += `   • 저장 경로: ${DIARY_DIR}\n`;
+                        enhancedReport += `   • 상태: 정상 작동`;
+                    } else {
+                        enhancedReport += `   • 상태: 시스템 비활성, 로드 실패`;
+                    }
+                } catch (diaryStatusError) {
+                    enhancedReport += "\n\n📖 [일기장 시스템] 상태 확인 중 오류 발생";
+                }
+                
                 return {
                     type: 'text',
                     comment: enhancedReport,
@@ -660,8 +772,6 @@ async function handleCommand(text, userId, client = null) {
                 };
             }
         }
-
-        // ... 나머지 기존 코드들 모두 그대로 유지 ...
 
     } catch (error) {
         console.error('❌ commandHandler 에러:', error);
