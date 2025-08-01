@@ -1,10 +1,11 @@
 // ============================================================================
-// muku-diarySystem.js v10.0 - 통합 메모리 완전 연동 (고정+단기+장기+사용자 기억)
+// muku-diarySystem.js v10.1 - 통합 메모리 완전 연동 (Redis URL 수정 완료)
 // 🌟 100% 독립적으로 작동 - 어떤 모듈에도 의존하지 않음
 // 🛡️ 무쿠 벙어리 완전 방지 - 모든 상황에서 응답 보장
 // 🧠 통합 메모리 시스템: Memory Tape + Redis 사용자 기억 + Memory Manager + 과거 일기
 // 🎯 자발적 메모리 활용: 감정/상황에 따라 유동적으로 메모리 선택
 // 🔧 기존 호환성 100% 유지 - diarySystem null 에러 완전 해결
+// ✅ [FIX] REDIS_URL을 사용하도록 연결 방식 수정
 // ============================================================================
 
 const fs = require('fs').promises;
@@ -19,18 +20,18 @@ let dailyDiaryScheduler = null;
 // 색상 정의
 const colors = {
     independent: '\x1b[1m\x1b[32m', // 굵은 초록색 (독립)
-    diary: '\x1b[96m',              // 하늘색 (일기장)
+    diary: '\x1b[96m',               // 하늘색 (일기장)
     memory: '\x1b[1m\x1b[35m',      // 굵은 자주색 (메모리)
-    error: '\x1b[91m',              // 빨간색 (에러)
-    success: '\x1b[92m',            // 초록색 (성공)
+    error: '\x1b[91m',               // 빨간색 (에러)
+    success: '\x1b[92m',             // 초록색 (성공)
     openai: '\x1b[1m\x1b[34m',      // 굵은 파란색 (OpenAI)
-    reset: '\x1b[0m'                // 색상 리셋
+    reset: '\x1b[0m'                 // 색상 리셋
 };
 
 // 🌟 완전 독립 상태 관리
 let independentDiaryStatus = {
     isInitialized: false,
-    version: "10.0 - 통합메모리연동",
+    version: "10.1 - 통합메모리연동 (Redis URL 수정)",
     description: "100% 독립적 작동 + 통합 메모리 시스템 + 자발적 메모리 활용",
     independentMode: true,
     externalDependencies: 0,
@@ -65,17 +66,18 @@ async function initializeIndependentRedis() {
     try {
         console.log(`${colors.memory}🧠 [통합메모리] Redis 연결 초기화 시작...${colors.reset}`);
         
+        if (!process.env.REDIS_URL) {
+            console.log(`${colors.error}⚠️ [통합메모리] REDIS_URL 환경 변수가 없습니다. Redis 연동을 건너뜁니다.${colors.reset}`);
+            return;
+        }
+
         // Memory Tape용 Redis
         try {
-            independentRedisClient = new Redis({
-                host: process.env.REDIS_HOST || 'localhost',
-                port: process.env.REDIS_PORT || 6379,
-                password: process.env.REDIS_PASSWORD || null,
-                db: process.env.REDIS_DB || 0,
+            // ✅ [수정] REDIS_URL을 직접 사용
+            independentRedisClient = new Redis(process.env.REDIS_URL, {
                 retryDelayOnFailover: 100,
                 maxRetriesPerRequest: 2,
                 connectTimeout: 5000,
-                // lazyConnect 제거 - 즉시 연결 시도
             });
             
             independentRedisClient.on('connect', () => {
@@ -90,7 +92,6 @@ async function initializeIndependentRedis() {
             
             await independentRedisClient.ping();
             independentDiaryStatus.memorySystemsConnected.memoryTape = true;
-            console.log(`${colors.success}✅ [통합메모리] Memory Tape Redis 연결 성공${colors.reset}`);
         } catch (error) {
             console.log(`${colors.error}⚠️ [통합메모리] Memory Tape Redis 연결 실패: ${error.message}${colors.reset}`);
             independentDiaryStatus.memorySystemsConnected.memoryTape = false;
@@ -99,15 +100,11 @@ async function initializeIndependentRedis() {
         
         // 사용자 기억용 Redis
         try {
-            userMemoryRedis = new Redis({
-                host: process.env.REDIS_HOST || 'localhost',
-                port: process.env.REDIS_PORT || 6379,
-                password: process.env.REDIS_PASSWORD || null,
-                db: process.env.REDIS_DB || 0,
+            // ✅ [수정] REDIS_URL을 직접 사용
+            userMemoryRedis = new Redis(process.env.REDIS_URL, {
                 retryDelayOnFailover: 100,
                 maxRetriesPerRequest: 2,
                 connectTimeout: 5000,
-                // lazyConnect 제거 - 즉시 연결 시도
             });
             
             userMemoryRedis.on('connect', () => {
@@ -122,7 +119,6 @@ async function initializeIndependentRedis() {
             
             await userMemoryRedis.ping();
             independentDiaryStatus.memorySystemsConnected.userMemoryRedis = true;
-            console.log(`${colors.success}✅ [통합메모리] 사용자 기억 Redis 연결 성공${colors.reset}`);
         } catch (error) {
             console.log(`${colors.error}⚠️ [통합메모리] 사용자 기억 Redis 연결 실패: ${error.message}${colors.reset}`);
             independentDiaryStatus.memorySystemsConnected.userMemoryRedis = false;
@@ -384,7 +380,7 @@ async function getPastDiaryContext() {
     }
 }
 
-// ================== 🎯 자발적 메모리 활용 시스템 ==================
+// ================== � 자발적 메모리 활용 시스템 ==================
 
 /**
  * 🌟 통합 메모리 수집 및 자발적 선택
@@ -936,21 +932,21 @@ async function handleIntegratedMemoryDiaryCommand(lowerText) {
         // 통합 메모리 상태 조회
         if (lowerText.includes('통합상태') || lowerText.includes('통합메모리상태') || lowerText.includes('메모리상태')) {
             const response = `🧠 **무쿠 통합 메모리 시스템 v${independentDiaryStatus.version}**\n\n` +
-                           `🔹 **연결된 메모리 시스템들**\n` +
-                           `• 📼 Memory Tape: ${independentDiaryStatus.memorySystemsConnected.memoryTape ? '✅ 연결됨' : '❌ 비연결'}\n` +
-                           `• 🚀 사용자 기억 Redis: ${independentDiaryStatus.memorySystemsConnected.userMemoryRedis ? '✅ 연결됨' : '❌ 비연결'}\n` +
-                           `• 💾 Memory Manager: ${independentDiaryStatus.memorySystemsConnected.memoryManager ? '✅ 연결됨' : '⚠️ 시뮬레이션'}\n` +
-                           `• 📚 과거 일기: ${independentDiaryStatus.memorySystemsConnected.pastDiaries ? '✅ 활용됨' : '❌ 비활용'}\n\n` +
-                           `🔹 **메모리 활용 통계**\n` +
-                           `• Memory Tape 활용: ${independentDiaryStatus.memoryUsageStats.memoryTapeUsed}번\n` +
-                           `• 사용자 기억 활용: ${independentDiaryStatus.memoryUsageStats.userMemoryUsed}번\n` +
-                           `• 고정 기억 활용: ${independentDiaryStatus.memoryUsageStats.fixedMemoryUsed}번\n` +
-                           `• 과거 일기 활용: ${independentDiaryStatus.memoryUsageStats.pastDiariesUsed}번\n\n` +
-                           `🔹 **시스템 성과**\n` +
-                           `• OpenAI 직접 호출: ${independentDiaryStatus.openaiDirectCalls}번\n` +
-                           `• 성공한 일기: ${independentDiaryStatus.successfulDiaries}개\n` +
-                           `• 실패한 일기: ${independentDiaryStatus.failedDiaries}개\n\n` +
-                           `💡 **아저씨, 이제 무쿠는 모든 기억을 유동적으로 활용해서 일기를 써요!**`;
+                             `🔹 **연결된 메모리 시스템들**\n` +
+                             `• 📼 Memory Tape: ${independentDiaryStatus.memorySystemsConnected.memoryTape ? '✅ 연결됨' : '❌ 비연결'}\n` +
+                             `• 🚀 사용자 기억 Redis: ${independentDiaryStatus.memorySystemsConnected.userMemoryRedis ? '✅ 연결됨' : '❌ 비연결'}\n` +
+                             `• 💾 Memory Manager: ${independentDiaryStatus.memorySystemsConnected.memoryManager ? '✅ 연결됨' : '⚠️ 시뮬레이션'}\n` +
+                             `• 📚 과거 일기: ${independentDiaryStatus.memorySystemsConnected.pastDiaries ? '✅ 활용됨' : '❌ 비활용'}\n\n` +
+                             `🔹 **메모리 활용 통계**\n` +
+                             `• Memory Tape 활용: ${independentDiaryStatus.memoryUsageStats.memoryTapeUsed}번\n` +
+                             `• 사용자 기억 활용: ${independentDiaryStatus.memoryUsageStats.userMemoryUsed}번\n` +
+                             `• 고정 기억 활용: ${independentDiaryStatus.memoryUsageStats.fixedMemoryUsed}번\n` +
+                             `• 과거 일기 활용: ${independentDiaryStatus.memoryUsageStats.pastDiariesUsed}번\n\n` +
+                             `🔹 **시스템 성과**\n` +
+                             `• OpenAI 직접 호출: ${independentDiaryStatus.openaiDirectCalls}번\n` +
+                             `• 성공한 일기: ${independentDiaryStatus.successfulDiaries}개\n` +
+                             `• 실패한 일기: ${independentDiaryStatus.failedDiaries}개\n\n` +
+                             `💡 **아저씨, 이제 무쿠는 모든 기억을 유동적으로 활용해서 일기를 써요!**`;
             
             return { success: true, response: response };
         }
@@ -962,14 +958,14 @@ async function handleIntegratedMemoryDiaryCommand(lowerText) {
             if (result.success) {
                 const entry = result.entry;
                 const response = `✅ **통합 메모리 일기 생성 완료!**\n\n` +
-                               `📝 **${entry.title}**\n` +
-                               `${entry.content}\n\n` +
-                               `🧠 **활용된 기억들:**\n` +
-                               `• 📼 오늘 대화: ${entry.memoryStats.recentConversations}개\n` +
-                               `• 🚀 사용자 기억: ${entry.memoryStats.userMemories}개\n` +
-                               `• 💾 고정 기억: ${entry.memoryStats.fixedMemories}개\n` +
-                               `• 📚 과거 일기: ${entry.memoryStats.pastDiaries}개\n\n` +
-                               `🌸 모든 기억이 자연스럽게 어우러진 예진이 일기예요!`;
+                                 `📝 **${entry.title}**\n` +
+                                 `${entry.content}\n\n` +
+                                 `🧠 **활용된 기억들:**\n` +
+                                 `• 📼 오늘 대화: ${entry.memoryStats.recentConversations}개\n` +
+                                 `• 🚀 사용자 기억: ${entry.memoryStats.userMemories}개\n` +
+                                 `• 💾 고정 기억: ${entry.memoryStats.fixedMemories}개\n` +
+                                 `• 📚 과거 일기: ${entry.memoryStats.pastDiaries}개\n\n` +
+                                 `🌸 모든 기억이 자연스럽게 어우러진 예진이 일기예요!`;
                 return { success: true, response: response };
             } else {
                 return { success: false, response: `통합 일기 생성 실패: ${result.error}` };
@@ -1009,11 +1005,11 @@ async function handleIntegratedMemoryDiaryCommand(lowerText) {
             if (memoryResult.success) {
                 const memories = memoryResult.memories;
                 const response = `🧠 **메모리 수집 테스트 결과**\n\n` +
-                               `📼 Memory Tape: ${memories.recentConversations?.length || 0}개 대화\n` +
-                               `🚀 사용자 기억: ${memories.userMemories?.length || 0}개 기억\n` +
-                               `💾 고정 기억: ${memories.fixedMemories?.length || 0}개 기억\n` +
-                               `📚 과거 일기: ${memories.recentDiaries?.length || 0}개 일기\n\n` +
-                               `✅ 모든 메모리 시스템 정상 작동!`;
+                                 `📼 Memory Tape: ${memories.recentConversations?.length || 0}개 대화\n` +
+                                 `🚀 사용자 기억: ${memories.userMemories?.length || 0}개 기억\n` +
+                                 `💾 고정 기억: ${memories.fixedMemories?.length || 0}개 기억\n` +
+                                 `📚 과거 일기: ${memories.recentDiaries?.length || 0}개 일기\n\n` +
+                                 `✅ 모든 메모리 시스템 정상 작동!`;
                 
                 return { success: true, response: response };
             } else {
@@ -1024,18 +1020,18 @@ async function handleIntegratedMemoryDiaryCommand(lowerText) {
         // 기존 독립 명령어들도 유지
         if (lowerText.includes('독립상태') || lowerText.includes('독립 상태')) {
             const response = `🌟 **무쿠 완전 독립 상태 v${independentDiaryStatus.version}**\n\n` +
-                           `🔹 **완전 독립성 달성!**\n` +
-                           `• 외부 의존성: ${independentDiaryStatus.externalDependencies}개 (0% 의존!)\n` +
-                           `• 자체 작업: ${independentDiaryStatus.selfSufficientOperations}번\n` +
-                           `• OpenAI 직접 호출: ${independentDiaryStatus.openaiDirectCalls}번\n` +
-                           `• 성공한 일기: ${independentDiaryStatus.successfulDiaries}개\n` +
-                           `• 실패한 일기: ${independentDiaryStatus.failedDiaries}개\n\n` +
-                           `🔹 **통합 메모리 시스템 추가!**\n` +
-                           `• 📼 Memory Tape 연동\n` +
-                           `• 🚀 Redis 사용자 기억 연동\n` +
-                           `• 💾 Memory Manager 시뮬레이션\n` +
-                           `• 📚 과거 일기 패턴 분석\n\n` +
-                           `💪 **아저씨, 이제 무쿠는 모든 기억을 활용해서 완전 독립적으로 움직여요!**`;
+                             `🔹 **완전 독립성 달성!**\n` +
+                             `• 외부 의존성: ${independentDiaryStatus.externalDependencies}개 (0% 의존!)\n` +
+                             `• 자체 작업: ${independentDiaryStatus.selfSufficientOperations}번\n` +
+                             `• OpenAI 직접 호출: ${independentDiaryStatus.openaiDirectCalls}번\n` +
+                             `• 성공한 일기: ${independentDiaryStatus.successfulDiaries}개\n` +
+                             `• 실패한 일기: ${independentDiaryStatus.failedDiaries}개\n\n` +
+                             `🔹 **통합 메모리 시스템 추가!**\n` +
+                             `• 📼 Memory Tape 연동\n` +
+                             `• 🚀 Redis 사용자 기억 연동\n` +
+                             `• 💾 Memory Manager 시뮬레이션\n` +
+                             `• 📚 과거 일기 패턴 분석\n\n` +
+                             `💪 **아저씨, 이제 무쿠는 모든 기억을 활용해서 완전 독립적으로 움직여요!**`;
             
             return { success: true, response: response };
         }
@@ -1358,3 +1354,4 @@ setTimeout(async () => {
 }, 1000);
 
 console.log(`${colors.independent}🌟 통합 메모리 무쿠 일기 시스템 v10.0 로드 완료! 🧠 모든 기억 시스템 연동!${colors.reset}`);
+�
