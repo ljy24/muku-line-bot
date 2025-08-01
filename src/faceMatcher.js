@@ -1,17 +1,21 @@
 // ============================================================================
-// faceMatcher.js - v5.5 (enhancedPhotoSystem 완전 연동)
+// faceMatcher.js - v5.6 (DISABLE_FACE_API 환경변수 지원)
 // 🔍 얼굴 인식 + 전체 사진 내용 분석 + 예진이 스타일 반응 생성
 // 🛡️ OpenAI Vision 실패 시, enhancedPhotoSystem으로 완전 백업하여 무쿠가 절대 벙어리 안됨
 // ✅ 마크다운 형식 응답 완벽 파싱 지원
 // 🚀 [신규] enhancedPhotoSystem.js 완전 연동으로 100% 응답 보장
+// 🆕 [NEW] DISABLE_FACE_API 환경변수 지원으로 face-api.js 건너뛰기 가능
 // ============================================================================
 
 const OpenAI = require('openai');
 const fs = require('fs');
 const path = require('path');
 
-// 🚀 [신규] enhancedPhotoSystem 연동
+// 🚀 [기존] enhancedPhotoSystem 연동
 const enhancedPhotoSystem = require('./enhancedPhotoSystem');
+
+// 🆕 [NEW] 환경변수 체크
+const DISABLE_FACE_API = process.env.DISABLE_FACE_API === 'true';
 
 // OpenAI 클라이언트 초기화
 let openai = null;
@@ -25,6 +29,14 @@ function initializeOpenAI() {
             });
             isOpenAIAvailable = true;
             console.log('🔍 [얼굴인식] OpenAI Vision 시스템 시작 (API: ✅)');
+            
+            // 🆕 [NEW] 환경변수 상태 로깅
+            if (DISABLE_FACE_API) {
+                console.log('🔍 [얼굴인식] face-api.js 비활성화됨 (DISABLE_FACE_API=true)');
+            } else {
+                console.log('🔍 [얼굴인식] face-api.js 활성화됨');
+            }
+            
             return true;
         } else {
             console.log('🔍 [얼굴인식] OpenAI API 키 없음 - 기본 분류 모드');
@@ -39,7 +51,7 @@ function initializeOpenAI() {
 }
 
 /**
- * ✅ [핵심 수정] OpenAI 분석 거부 메시지 완벽 감지
+ * ✅ [기존] OpenAI 분석 거부 메시지 완벽 감지
  */
 function isOpenAIRefusal(responseText) {
     const refusalPatterns = [
@@ -69,7 +81,7 @@ function isOpenAIRefusal(responseText) {
 }
 
 /**
- * ⭐️⭐️⭐️ [완전 수정] OpenAI 응답 파싱 로직 - 마크다운 형식 완벽 지원 ⭐️⭐️⭐️
+ * ⭐️⭐️⭐️ [기존] OpenAI 응답 파싱 로직 - 마크다운 형식 완벽 지원 ⭐️⭐️⭐️
  */
 function parseOpenAIResponse(result) {
     console.log('🔍 [파싱] 원본 응답:', result);
@@ -159,7 +171,7 @@ function parseOpenAIResponse(result) {
 }
 
 /**
- * ⭐️⭐️⭐️ 핵심 기능: 전체 사진 분석 시스템 ⭐️⭐️⭐️
+ * ⭐️⭐️⭐️ [기존] 핵심 기능: 전체 사진 분석 시스템 ⭐️⭐️⭐️
  */
 async function analyzePhotoWithOpenAI(base64Image) {
     if (!isOpenAIAvailable || !openai) {
@@ -216,7 +228,7 @@ async function analyzePhotoWithOpenAI(base64Image) {
 
         console.log('🔍 [사진분석] OpenAI Vision 전체 분석 결과:', result);
         
-        // ✅ [핵심 수정] 새로운 파싱 로직 사용
+        // ✅ [기존] 새로운 파싱 로직 사용
         const parsed = parseOpenAIResponse(result);
         
         return {
@@ -232,11 +244,18 @@ async function analyzePhotoWithOpenAI(base64Image) {
     }
 }
 
-// ================== [강화] 로컬 백업 분석 함수 ==================
+// ================== [기존] 로컬 백업 분석 함수 ==================
 /**
- * 🛡️ 로컬 face-api.js를 이용한 백업 얼굴 인식 (개선된 추측 로직)
+ * 🛡️ [기존] 로컬 face-api.js를 이용한 백업 얼굴 인식 (개선된 추측 로직)
+ * 🆕 [NEW] 환경변수로 완전히 건너뛸 수 있음
  */
 async function runLocalFaceRecognition(base64Image) {
+    // 🆕 [NEW] 환경변수 체크
+    if (DISABLE_FACE_API) {
+        console.log('🛡️ [백업분석] face-api.js 비활성화됨 (DISABLE_FACE_API=true) - 건너뛰기');
+        return 'unknown';
+    }
+    
     console.log('🛡️ [백업분석] 로컬 face-api.js로 분석 시도...');
     
     try {
@@ -271,7 +290,7 @@ async function runLocalFaceRecognition(base64Image) {
 }
 
 /**
- * ⭐️ 아저씨 전용 응답 생성기 ⭐️
+ * ⭐️ [기존] 아저씨 전용 응답 생성기 ⭐️
  */
 function generateAjeossiPhotoResponse() {
     const responses = [
@@ -285,7 +304,7 @@ function generateAjeossiPhotoResponse() {
 }
 
 /**
- * ⭐️ 커플사진 대응 응답 생성기 ⭐️
+ * ⭐️ [기존] 커플사진 대응 응답 생성기 ⭐️
  */
 function generateCouplePhotoResponse() {
     const responses = [
@@ -299,7 +318,7 @@ function generateCouplePhotoResponse() {
 }
 
 /**
- * 🚀 [신규] enhancedPhotoSystem 연동 함수
+ * 🚀 [기존] enhancedPhotoSystem 연동 함수
  */
 async function getEnhancedPhotoFallback(imageUrl, photoType = 'selfie') {
     try {
@@ -332,17 +351,22 @@ async function getEnhancedPhotoFallback(imageUrl, photoType = 'selfie') {
 }
 
 /**
- * 🌟🌟🌟 메인 함수: 통합 사진 분석 시스템 (enhancedPhotoSystem 완전 연동) 🌟🌟🌟
- * ✅ [핵심 수정] OpenAI 파싱 완벽 처리 + enhancedPhotoSystem 폴백
+ * 🌟🌟🌟 [수정] 메인 함수: 통합 사진 분석 시스템 (DISABLE_FACE_API 지원) 🌟🌟🌟
+ * ✅ [핵심 수정] OpenAI 파싱 완벽 처리 + enhancedPhotoSystem 폴백 + 환경변수 지원
  */
 async function detectFaceMatch(base64Image, imageUrl = null) {
     try {
-        console.log('🔍 [통합분석 v5.5] 얼굴 + 전체 사진 분석 실행 (enhancedPhotoSystem 연동)...');
+        console.log('🔍 [통합분석 v5.6] 얼굴 + 전체 사진 분석 실행 (DISABLE_FACE_API 지원)...');
         const buffer = Buffer.from(base64Image, 'base64');
         const sizeKB = buffer.length / 1024;
         console.log(`🔍 [통합분석] 이미지 크기: ${Math.round(sizeKB)}KB`);
         
-        // 1. OpenAI Vision 전체 분석 우선 시도
+        // 🆕 [NEW] 환경변수 체크 로깅
+        if (DISABLE_FACE_API) {
+            console.log('🔍 [통합분석] face-api.js 건너뛰기 (DISABLE_FACE_API=true)');
+        }
+        
+        // 1. OpenAI Vision 전체 분석 우선 시도 (변경 없음)
         if (isOpenAIAvailable) {
             const fullAnalysis = await analyzePhotoWithOpenAI(base64Image);
             if (fullAnalysis) {
@@ -351,7 +375,7 @@ async function detectFaceMatch(base64Image, imageUrl = null) {
                 console.log(`   - 내용: ${fullAnalysis.content}`);
                 console.log(`   - 반응: ${fullAnalysis.reaction}`);
                 
-                // ✅ [핵심 수정] AI가 생성한 반응이 있으면 최우선으로 사용
+                // ✅ [기존] AI가 생성한 반응이 있으면 최우선으로 사용
                 if (fullAnalysis.reaction && fullAnalysis.reaction.length > 0) {
                     console.log('✨ [응답선택] OpenAI 생성 반응 사용');
                     return {
@@ -395,35 +419,38 @@ async function detectFaceMatch(base64Image, imageUrl = null) {
             }
         }
         
-        // 2. OpenAI 실패 시, 로컬 얼굴 인식 백업
+        // 2. OpenAI 실패 시, 로컬 얼굴 인식 백업 (환경변수 지원)
         console.log('🛡️ [백업분석] OpenAI 분석 실패. 로컬 백업 분석으로 전환합니다.');
         const localResult = await runLocalFaceRecognition(base64Image);
         console.log(`🛡️ [백업분석] 로컬 분석 결과: ${localResult}`);
 
-        if (localResult === '아저씨') {
-            console.log('🛡️ [백업분석] 아저씨로 식별됨 - 전용 응답 생성');
-            return { 
-                type: '아저씨', 
-                confidence: 'medium-local', 
-                message: generateAjeossiPhotoResponse(), 
-                content: '로컬 분석으로 아저씨 사진으로 추정',
-                analysisType: 'local_backup' 
-            };
-        } else if (localResult === '예진이') {
-            console.log('🛡️ [백업분석] 예진이로 식별됨');
-            return { type: '예진이', confidence: 'medium-local', message: null, analysisType: 'local_backup' };
-        } else if (localResult === '커플사진') {
-            console.log('🛡️ [백업분석] 커플사진으로 식별됨');
-            return { 
-                type: '커플사진', 
-                confidence: 'medium-local', 
-                message: generateCouplePhotoResponse(), 
-                content: '로컬 분석으로 커플사진으로 추정',
-                analysisType: 'local_backup' 
-            };
+        // 🆕 [NEW] 환경변수가 true면 로컬 분석도 건너뛰어짐
+        if (!DISABLE_FACE_API) {
+            if (localResult === '아저씨') {
+                console.log('🛡️ [백업분석] 아저씨로 식별됨 - 전용 응답 생성');
+                return { 
+                    type: '아저씨', 
+                    confidence: 'medium-local', 
+                    message: generateAjeossiPhotoResponse(), 
+                    content: '로컬 분석으로 아저씨 사진으로 추정',
+                    analysisType: 'local_backup' 
+                };
+            } else if (localResult === '예진이') {
+                console.log('🛡️ [백업분석] 예진이로 식별됨');
+                return { type: '예진이', confidence: 'medium-local', message: null, analysisType: 'local_backup' };
+            } else if (localResult === '커플사진') {
+                console.log('🛡️ [백업분석] 커플사진으로 식별됨');
+                return { 
+                    type: '커플사진', 
+                    confidence: 'medium-local', 
+                    message: generateCouplePhotoResponse(), 
+                    content: '로컬 분석으로 커플사진으로 추정',
+                    analysisType: 'local_backup' 
+                };
+            }
         }
 
-        // 🚀 [신규] 3. enhancedPhotoSystem 최종 폴백 (무쿠가 절대 벙어리 안됨!)
+        // 🚀 [기존] 3. enhancedPhotoSystem 최종 폴백 (무쿠가 절대 벙어리 안됨!)
         console.log('🚀 [최종폴백] enhancedPhotoSystem으로 완전 백업 시작...');
         
         if (imageUrl) {
@@ -450,7 +477,7 @@ async function detectFaceMatch(base64Image, imageUrl = null) {
     } catch (error) {
         console.log('❌ [통합분석] 전체 사진 분석 실패:', error.message);
         
-        // 🚀 [신규] 에러 시에도 enhancedPhotoSystem 폴백
+        // 🚀 [기존] 에러 시에도 enhancedPhotoSystem 폴백
         console.log('🚀 [에러폴백] 에러 발생으로 enhancedPhotoSystem 폴백...');
         try {
             const errorFallback = enhancedPhotoSystem.getUltimateFallbackMessage('selfie');
@@ -474,7 +501,7 @@ async function detectFaceMatch(base64Image, imageUrl = null) {
 }
 
 /**
- * 🔄 하위 호환성: 기존 얼굴 인식 함수 (내부용)
+ * 🔄 [기존] 하위 호환성: 기존 얼굴 인식 함수 (내부용)
  */
 async function detectFaceWithOpenAI(base64Image) {
     const fullAnalysis = await analyzePhotoWithOpenAI(base64Image);
@@ -485,15 +512,23 @@ async function detectFaceWithOpenAI(base64Image) {
 }
 
 /**
- * 🔧 AI 모델 초기화 및 시스템 테스트
+ * 🔧 [수정] AI 모델 초기화 및 시스템 테스트 (환경변수 지원)
  */
 async function initModels() {
     try {
-        console.log('🔍 [얼굴인식 v5.5] enhancedPhotoSystem 완전 연동 시스템 준비 완료');
+        console.log('🔍 [얼굴인식 v5.6] DISABLE_FACE_API 환경변수 지원 시스템 준비');
+        
+        // 🆕 [NEW] 환경변수 상태 확인 및 로깅
+        if (DISABLE_FACE_API) {
+            console.log('🔍 [얼굴인식] ⚠️ face-api.js 비활성화 모드 (DISABLE_FACE_API=true)');
+            console.log('🔍 [얼굴인식] ✅ OpenAI Vision + enhancedPhotoSystem만 사용');
+        } else {
+            console.log('🔍 [얼굴인식] ✅ 전체 시스템 활성화 (face-api.js 포함)');
+        }
         
         const openaiInit = initializeOpenAI();
         
-        // 🚀 [신규] enhancedPhotoSystem 초기화도 함께 진행
+        // 🚀 [기존] enhancedPhotoSystem 초기화도 함께 진행
         try {
             console.log('🚀 [초기화] enhancedPhotoSystem 초기화 시작...');
             await enhancedPhotoSystem.initializeEnhancedPhotoSystem();
@@ -502,7 +537,8 @@ async function initModels() {
             console.log('🚀 [초기화] enhancedPhotoSystem 초기화 실패 (폴백 모드로 계속):', enhancedError.message);
         }
         
-        if (openaiInit) {
+        // 🆕 [NEW] face-api.js 관련 초기화는 환경변수에 따라 건너뛰기
+        if (!DISABLE_FACE_API && openaiInit) {
             console.log('🔍 [얼굴인식] 🧪 OpenAI Vision API 테스트 시작...');
             try {
                 const testBase64 = '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQH/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAv/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFQEBAQAAAAAAAAAAAAAAAAAAAAX/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIRAxEAPwA/wA=';
@@ -515,7 +551,10 @@ async function initModels() {
             } catch (testError) {
                 console.log('🔍 [얼굴인식] ⚠️ OpenAI Vision API 테스트 실패 - 백업 모드로 운영');
             }
+        } else if (DISABLE_FACE_API) {
+            console.log('🔍 [얼굴인식] ✅ face-api.js 건너뛰기 완료 - OpenAI Vision + enhancedPhotoSystem 준비됨');
         }
+        
         return true;
     } catch (error) {
         console.log('🔍 [얼굴인식] 모델 초기화 실패:', error.message);
@@ -524,15 +563,16 @@ async function initModels() {
 }
 
 /**
- * 📊 시스템 상태 리포트
+ * 📊 [수정] 시스템 상태 리포트 (환경변수 상태 포함)
  */
 function getFaceRecognitionStatus() {
     const enhancedStatus = enhancedPhotoSystem.getSystemStatus();
     
     return {
         openaiAvailable: isOpenAIAvailable,
+        faceApiDisabled: DISABLE_FACE_API, // 🆕 [NEW] 환경변수 상태 표시
         enhancedPhotoSystemStatus: enhancedStatus.status,
-        version: "5.5 (enhancedPhotoSystem 완전 연동)",
+        version: "5.6 (DISABLE_FACE_API 환경변수 지원)", // 🆕 [NEW] 버전 업데이트
         features: [
             "개인 얼굴 인식 (예진이/아저씨)",
             "커플사진 인식 지원", 
@@ -543,10 +583,18 @@ function getFaceRecognitionStatus() {
             "예진이 스타일 반응 생성 ⭐️",
             "상황별 맞춤 응답 ⭐️",
             "🚀 enhancedPhotoSystem 완전 연동 ⭐️",
-            "🛡️ 무쿠 벙어리 방지 100% 보장 ⭐️"
+            "🛡️ 무쿠 벙어리 방지 100% 보장 ⭐️",
+            "🆕 DISABLE_FACE_API 환경변수 지원 ⭐️" // 🆕 [NEW] 신규 기능
         ],
-        status: isOpenAIAvailable ? "전체분석모드+Enhanced백업" : "Enhanced백업모드",
-        fallbackLevels: [
+        status: DISABLE_FACE_API ? 
+                (isOpenAIAvailable ? "OpenAI+Enhanced백업모드" : "Enhanced백업모드") :
+                (isOpenAIAvailable ? "전체분석모드+Enhanced백업" : "Enhanced백업모드"),
+        fallbackLevels: DISABLE_FACE_API ? [
+            "1단계: OpenAI Vision 전체 분석",
+            "2단계: enhancedPhotoSystem 폴백 (face-api.js 건너뛰기)", // 🆕 [NEW] 수정됨
+            "3단계: enhancedPhotoSystem 궁극 폴백",
+            "4단계: 최종 안전 메시지"
+        ] : [
             "1단계: OpenAI Vision 전체 분석",
             "2단계: 로컬 얼굴 인식 백업",
             "3단계: enhancedPhotoSystem 폴백", 
@@ -558,11 +606,11 @@ function getFaceRecognitionStatus() {
 
 // ================== 📤 모듈 내보내기 ==================
 module.exports = {
-    detectFaceMatch,             // 🌟 메인 함수: 통합 사진 분석 (enhancedPhotoSystem 연동)
-    initModels,                  // 🔧 시스템 초기화
+    detectFaceMatch,             // 🌟 메인 함수: 통합 사진 분석 (DISABLE_FACE_API 지원)
+    initModels,                  // 🔧 시스템 초기화 (환경변수 지원)
     analyzePhotoWithOpenAI,      // (내부용) 전체 사진 분석
-    runLocalFaceRecognition,     // 🛡️ 로컬 백업 분석
-    parseOpenAIResponse,         // ✅ 새로운 파싱 함수
-    getFaceRecognitionStatus,    // 📊 시스템 상태 확인
-    getEnhancedPhotoFallback     // 🚀 [신규] enhancedPhotoSystem 연동 함수
+    runLocalFaceRecognition,     // 🛡️ 로컬 백업 분석 (환경변수 지원)
+    parseOpenAIResponse,         // ✅ 기존 파싱 함수
+    getFaceRecognitionStatus,    // 📊 시스템 상태 확인 (환경변수 상태 포함)
+    getEnhancedPhotoFallback     // 🚀 기존 enhancedPhotoSystem 연동 함수
 };
