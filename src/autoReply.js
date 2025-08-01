@@ -1,22 +1,60 @@
 // ============================================================================
-// autoReply.js - v18.0 (Memory Manager Redis 연동 + 사용자 기억 파일 검색!)
+// autoReply.js - v18.1 (Redis 사용자 기억 빠른 조회 + 모든 기존 기능 100% 보존)
 // 🧠 Memory Tape Redis: 최근 대화 기억
 // 💾 Memory Manager Redis: 고정 기억 120개 (납골당, 담타, 생일 등)
-// 📝 User Memories: commandHandler에서 저장한 "기억해" 기억들 검색
+// 🚀 NEW: Redis 사용자 기억 빠른 조회 (키워드 인덱싱)
+// 📝 User Memories: Redis 1차 → 파일 2차 폴백 검색
 // 🌸 사진 명령어, 애정표현, 특별반응들은 그대로 유지
 // 🛡️ 절대 벙어리 방지: 모든 에러 상황에서도 예진이는 반드시 대답함!
-// 🎯 "기억나?" 질문은 eventProcessor에서 처리하므로 여기서는 일반 대화만 담당
-// ✨ Memory Tape + Memory Manager + User Memory 완전 연동으로 모든 기억 활용!
+// ✨ Redis + Memory Tape + Memory Manager + File Backup 완전 연동!
 // ============================================================================
 
 const { callOpenAI, cleanReply } = require('./aiUtils');
 const moment = require('moment-timezone');
 const path = require('path');
 const fs = require('fs');
+const Redis = require('ioredis');
 
 // 🔧 데이터 디렉토리 경로 설정 (commandHandler.js와 동일)
 const DATA_DIR = '/data';
 const MEMORY_DIR = path.join(DATA_DIR, 'memories');
+
+// 🆕🆕🆕 Redis 사용자 기억 시스템 초기화 🆕🆕🆕
+let userMemoryRedis = null;
+let redisConnected = false;
+
+try {
+    userMemoryRedis = new Redis({
+        host: process.env.REDIS_HOST || 'localhost',
+        port: process.env.REDIS_PORT || 6379,
+        password: process.env.REDIS_PASSWORD || null,
+        db: process.env.REDIS_DB || 0,
+        retryDelayOnFailover: 100,
+        maxRetriesPerRequest: 3,
+        connectTimeout: 10000,
+        lazyConnect: true
+    });
+    
+    userMemoryRedis.on('connect', () => {
+        console.log('✅ [autoReply] Redis 사용자 기억 시스템 연결 성공');
+        redisConnected = true;
+    });
+    
+    userMemoryRedis.on('error', (error) => {
+        console.error('❌ [autoReply] Redis 사용자 기억 연결 오류:', error.message);
+        redisConnected = false;
+    });
+    
+    userMemoryRedis.on('close', () => {
+        console.warn('⚠️ [autoReply] Redis 사용자 기억 연결 종료');
+        redisConnected = false;
+    });
+    
+    console.log('🧠 [autoReply] Redis 사용자 기억 시스템 초기화 완료');
+} catch (error) {
+    console.error('❌ [autoReply] Redis 사용자 기억 초기화 실패:', error.message);
+    redisConnected = false;
+}
 
 // 🆕🆕🆕 Memory Manager 연동 추가! 🆕🆕🆕
 let memoryManager = null;
@@ -456,7 +494,7 @@ async function safelyStoreMessage(speaker, message) {
     }
 }
 
-// 🧠🧠🧠 [수정] Memory Tape Redis 연결로 단기기억 해결! 🧠🧠🧠
+// 🧠🧠🧠 [기존] Memory Tape Redis 연결로 단기기억 해결! 🧠🧠🧠
 async function getRecentConversationContext(limit = 20) {
     console.log(`🧠 [Memory Tape 연결] 최근 ${limit}개 대화 조회 시작...`);
     
@@ -550,7 +588,7 @@ async function getRecentConversationContext(limit = 20) {
     }
 }
 
-// 💾💾💾 [NEW] Memory Manager에서 관련 고정 기억 가져오기 💾💾💾
+// 💾💾💾 [기존] Memory Manager에서 관련 고정 기억 가져오기 💾💾💾
 async function getRelatedFixedMemory(userMessage) {
     console.log(`💾 [Memory Manager 연결] "${userMessage}" 관련 고정 기억 검색 시작...`);
     
@@ -577,7 +615,7 @@ async function getRelatedFixedMemory(userMessage) {
     }
 }
 
-// 📝📝📝 [NEW] 사용자 기억 파일에서 관련 기억 검색 함수 📝📝📝
+// 🚀🚀🚀 [NEW] Redis 사용자 기억 빠른 검색 함수들 🚀🚀🚀
 
 /**
  * 텍스트에서 검색 키워드 추출
@@ -638,17 +676,115 @@ function calculateRelevanceScore(memoryContent, searchKeywords, userMessage) {
 }
 
 /**
- * 🧠 사용자 기억 파일에서 관련 기억 검색
+ * 🚀 Redis에서 사용자 기억 빠른 검색
  */
-async function getUserMemories(userMessage) {
-    console.log(`📝 [사용자 기억] "${userMessage}" 관련 기억 검색 시작...`);
+async function getUserMemoriesFromRedis(userMessage) {
+    console.log(`🚀 [Redis 사용자 기억] "${userMessage}" 관련 기억 검색 시작...`);
+    
+    try {
+        if (!userMemoryRedis || !redisConnected) {
+            console.log('⚠️ [Redis 사용자 기억] Redis 연결 없음 - 파일 검색으로 폴백');
+            return [];
+        }
+        
+        const searchKeywords = extractSearchKeywords(userMessage);
+        console.log(`🔍 [Redis 사용자 기억] 검색 키워드: ${searchKeywords.join(', ')}`);
+        
+        if (searchKeywords.length === 0) {
+            console.log('ℹ️ [Redis 사용자 기억] 검색 키워드 없음');
+            return [];
+        }
+        
+        // 키워드 인덱스에서 관련 memory ID들 수집
+        const pipeline = userMemoryRedis.pipeline();
+        for (const keyword of searchKeywords) {
+            pipeline.smembers(`user_memory:keyword_index:${keyword}`);
+        }
+        
+        const results = await pipeline.exec();
+        const memoryIds = new Set();
+        
+        if (results) {
+            for (const [error, memberIds] of results) {
+                if (!error && Array.isArray(memberIds)) {
+                    for (const id of memberIds) {
+                        memoryIds.add(id);
+                    }
+                }
+            }
+        }
+        
+        console.log(`🔍 [Redis 사용자 기억] 키워드 매칭된 기억 ID: ${memoryIds.size}개`);
+        
+        if (memoryIds.size === 0) {
+            console.log('ℹ️ [Redis 사용자 기억] 키워드 매칭 결과 없음');
+            return [];
+        }
+        
+        // 매칭된 기억들의 상세 데이터 조회
+        const memoryPipeline = userMemoryRedis.pipeline();
+        for (const memoryId of memoryIds) {
+            memoryPipeline.hgetall(`user_memory:content:${memoryId}`);
+        }
+        
+        const memoryResults = await memoryPipeline.exec();
+        const relatedMemories = [];
+        
+        if (memoryResults) {
+            for (const [error, memoryData] of memoryResults) {
+                if (!error && memoryData && memoryData.content) {
+                    // 관련도 점수 계산
+                    const score = calculateRelevanceScore(memoryData.content, searchKeywords, userMessage);
+                    if (score > 0.3) { // 관련도 30% 이상
+                        relatedMemories.push({
+                            id: memoryData.id,
+                            content: memoryData.content,
+                            timestamp: memoryData.timestamp,
+                            date: memoryData.date,
+                            dateKorean: memoryData.dateKorean,
+                            keywords: memoryData.keywords ? memoryData.keywords.split(',') : [],
+                            importance: memoryData.importance,
+                            category: memoryData.category,
+                            relevanceScore: score
+                        });
+                    }
+                }
+            }
+        }
+        
+        // 관련도 순으로 정렬하고 상위 3개만
+        relatedMemories.sort((a, b) => b.relevanceScore - a.relevanceScore);
+        const topMemories = relatedMemories.slice(0, 3);
+        
+        if (topMemories.length > 0) {
+            console.log(`✅ [Redis 사용자 기억] ${topMemories.length}개 관련 기억 발견:`);
+            topMemories.forEach((memory, index) => {
+                console.log(`  ${index + 1}. (${(memory.relevanceScore * 100).toFixed(1)}%) "${memory.content.substring(0, 40)}..."`);
+            });
+            return topMemories;
+        } else {
+            console.log(`ℹ️ [Redis 사용자 기억] "${userMessage}" 관련 기억 없음 (관련도 30% 미만)`);
+            return [];
+        }
+        
+    } catch (error) {
+        console.error(`❌ [Redis 사용자 기억] 오류: ${error.message}`);
+        return [];
+    }
+}
+
+/**
+ * 🗃️ [기존] 파일에서 사용자 기억 검색 (폴백용)
+ */
+async function getUserMemoriesFromFile(userMessage) {
+    console.log(`🗃️ [파일 사용자 기억] "${userMessage}" 관련 기억 검색 시작...`);
     
     try {
         const memoryFilePath = path.join(MEMORY_DIR, 'user_memories.json');
         
         // 파일 존재 확인
         if (!fs.existsSync(memoryFilePath)) {
-            console.log('ℹ️ [사용자 기억] user_memories.json 파일 없음');
+            console.log('ℹ️ [파일 사용자 기억] user_memories.json 파일 없음');
             return [];
         }
         
@@ -657,11 +793,11 @@ async function getUserMemories(userMessage) {
         const userMemories = JSON.parse(data);
         
         if (!Array.isArray(userMemories) || userMemories.length === 0) {
-            console.log('ℹ️ [사용자 기억] 저장된 기억 없음');
+            console.log('ℹ️ [파일 사용자 기억] 저장된 기억 없음');
             return [];
         }
         
-        console.log(`📚 [사용자 기억] 총 ${userMemories.length}개 기억 발견`);
+        console.log(`📚 [파일 사용자 기억] 총 ${userMemories.length}개 기억 발견`);
         
         // 키워드 기반 관련 기억 검색
         const searchKeywords = extractSearchKeywords(userMessage);
@@ -684,23 +820,57 @@ async function getUserMemories(userMessage) {
         const topMemories = relatedMemories.slice(0, 3);
         
         if (topMemories.length > 0) {
-            console.log(`✅ [사용자 기억] ${topMemories.length}개 관련 기억 발견:`);
+            console.log(`✅ [파일 사용자 기억] ${topMemories.length}개 관련 기억 발견:`);
             topMemories.forEach((memory, index) => {
                 console.log(`  ${index + 1}. (${(memory.relevanceScore * 100).toFixed(1)}%) "${memory.content.substring(0, 40)}..."`);
             });
             return topMemories;
         } else {
-            console.log(`ℹ️ [사용자 기억] "${userMessage}" 관련 기억 없음`);
+            console.log(`ℹ️ [파일 사용자 기억] "${userMessage}" 관련 기억 없음`);
             return [];
         }
         
     } catch (error) {
-        console.error(`❌ [사용자 기억] 오류: ${error.message}`);
+        console.error(`❌ [파일 사용자 기억] 오류: ${error.message}`);
         return [];
     }
 }
 
-// 💾💾💾 [ENHANCED] 통합 기억 검색 함수 - Memory Manager + User Memory 💾💾💾
+/**
+ * 🧠 [ENHANCED] 통합 사용자 기억 검색 - Redis 1차 → 파일 2차 폴백
+ */
+async function getUserMemories(userMessage) {
+    console.log(`🧠 [통합 사용자 기억] "${userMessage}" 관련 기억 검색 시작...`);
+    
+    // 1차: Redis 검색 시도
+    let redisMemories = [];
+    try {
+        redisMemories = await getUserMemoriesFromRedis(userMessage);
+        if (redisMemories.length > 0) {
+            console.log(`✅ [통합 사용자 기억] Redis에서 ${redisMemories.length}개 기억 발견 - 파일 검색 스킵`);
+            return redisMemories;
+        }
+    } catch (error) {
+        console.error(`⚠️ [통합 사용자 기억] Redis 검색 실패: ${error.message}`);
+    }
+    
+    // 2차: 파일 검색 폴백
+    console.log(`🔄 [통합 사용자 기억] Redis 결과 없음 - 파일 검색으로 폴백`);
+    try {
+        const fileMemories = await getUserMemoriesFromFile(userMessage);
+        if (fileMemories.length > 0) {
+            console.log(`✅ [통합 사용자 기억] 파일에서 ${fileMemories.length}개 기억 발견`);
+            return fileMemories;
+        }
+    } catch (error) {
+        console.error(`⚠️ [통합 사용자 기억] 파일 검색 실패: ${error.message}`);
+    }
+    
+    console.log(`ℹ️ [통합 사용자 기억] "${userMessage}" 관련 기억을 찾을 수 없음`);
+    return [];
+}
+
+// 💾💾💾 [ENHANCED] 통합 기억 검색 함수 - Memory Manager + Redis User Memory + File Backup 💾💾💾
 async function getIntegratedMemory(userMessage) {
     console.log(`🧠 [통합 기억] "${userMessage}" 관련 모든 기억 검색 시작...`);
     
@@ -709,7 +879,7 @@ async function getIntegratedMemory(userMessage) {
     // 1. Memory Manager에서 고정 기억 검색
     const fixedMemory = await getRelatedFixedMemory(userMessage);
     
-    // 2. 사용자 기억 파일에서 검색
+    // 2. 사용자 기억에서 검색 (Redis 1차 → 파일 2차)
     const userMemories = await getUserMemories(userMessage);
     
     // 3. 통합 메모리 컨텍스트 구성
@@ -724,10 +894,15 @@ async function getIntegratedMemory(userMessage) {
             memoryContext += `\n\n📝 [아저씨가 기억해달라고 한 것들]:`;
             userMemories.forEach((memory, index) => {
                 memoryContext += `\n${index + 1}. ${memory.content}`;
-                if (memory.date) {
-                    memoryContext += ` (${memory.date})`;
+                if (memory.dateKorean || memory.date) {
+                    memoryContext += ` (${memory.dateKorean || memory.date})`;
                 }
             });
+            
+            // Redis 출처 표시
+            if (userMemories.length > 0 && userMemories[0].id && userMemories[0].id.startsWith('user_memory_')) {
+                memoryContext += `\n\n💡 위 기억들은 Redis에서 빠르게 검색됐어!`;
+            }
         }
         
         memoryContext += `\n\n위 기억들을 참고해서 예진이답게 자연스럽게 대답해줘. 특히 아저씨가 "기억해"라고 했던 것들은 꼭 기억하고 있다는 걸 보여줘.`;
@@ -988,7 +1163,7 @@ async function getReplyByMessage(userMessage) {
         console.error('❌ 기억 요청 처리 중 에러:', error);
     }
 
-    // 🧠🧠🧠 10순위: Memory Tape + Memory Manager + User Memory 완전 연동으로 AI 응답 생성! 🧠🧠🧠
+    // 🧠🧠🧠 10순위: Redis User Memory + Memory Tape + Memory Manager 완전 연동으로 AI 응답 생성! 🧠🧠🧠
     let emotionContext = '';
     try {
         const emotionalContextManager = require('./emotionalContextManager.js');
@@ -1021,7 +1196,7 @@ async function getReplyByMessage(userMessage) {
         }
     }
     
-    // 💾💾💾 [ENHANCED] 통합 기억 검색 - Memory Manager + User Memory 💾💾💾
+    // 🚀🚀🚀 [ENHANCED] 통합 기억 검색 - Redis User Memory + Memory Manager + File Backup 🚀🚀🚀
     const memoryContext = await getIntegratedMemory(cleanUserMessage);
     
     const baseSystemPrompt = `
@@ -1089,7 +1264,8 @@ async function getReplyByMessage(userMessage) {
     
     console.log(`🧠 [하이브리드 메모리] 총 ${messages.length}개 메시지로 OpenAI 호출`);
     console.log(`  📼 Memory Tape 맥락: ${recentContext.length}개 대화`);
-    console.log(`  💾 Memory Manager 기억: 포함됨`);
+    console.log(`  💾 Memory Manager 기억: ${memoryContext.includes('고정 기억') ? '포함됨' : '없음'}`);
+    console.log(`  🚀 Redis 사용자 기억: ${memoryContext.includes('Redis에서 빠르게 검색됐어') ? 'Redis에서 조회됨' : memoryContext.includes('아저씨가 기억해달라고 한 것들') ? '파일에서 조회됨' : '없음'}`);
     
     if (!baseSystemPrompt || typeof baseSystemPrompt !== 'string' || baseSystemPrompt.trim().length === 0) {
         console.error("❌ 최종 시스템 프롬프트가 비어있어서 기본 응답을 사용합니다.");
