@@ -556,7 +556,7 @@ async function handleCommand(text, userId, client = null) {
             }
         }
 
-        // ================== 📖📖📖 일기장 관련 처리 (새로 추가) 📖📖📖 ==================
+        // ================== 📖📖📖 일기장 관련 처리 (muku-diarySystem.js 인터페이스 연동) 📖📖📖 ==================
         if (lowerText.includes('일기장') || lowerText.includes('일기목록') || 
             lowerText.includes('일기 써줘') || lowerText.includes('오늘 일기') ||
             lowerText.includes('주간일기') || lowerText.includes('주간 일기')) {
@@ -564,25 +564,16 @@ async function handleCommand(text, userId, client = null) {
             console.log('[commandHandler] 📖 일기장 요청 감지');
             
             try {
-                if (diarySystem) {
-                    let diaryResult = null;
+                if (diarySystem && diarySystem.handleDiaryCommand) {
+                    console.log('[commandHandler] 📖 muku-diarySystem.js 통합 메모리 시스템 연동');
                     
-                    // 명령어별 처리
-                    if (lowerText.includes('일기장') || lowerText.includes('일기목록')) {
-                        console.log('[commandHandler] 📖 일기목록 요청');
-                        diaryResult = await diarySystem.getDiaryList(userId);
-                    } else if (lowerText.includes('일기 써줘') || lowerText.includes('오늘 일기')) {
-                        console.log('[commandHandler] 📖 오늘 일기 작성 요청');
-                        diaryResult = await diarySystem.writeTodayDiary(userId);
-                    } else if (lowerText.includes('주간일기') || lowerText.includes('주간 일기')) {
-                        console.log('[commandHandler] 📖 주간일기 요청');
-                        diaryResult = await diarySystem.getWeeklyDiary(userId);
-                    }
+                    // 🌟 muku-diarySystem.js의 handleDiaryCommand (또는 handleIntegratedMemoryDiaryCommand) 호출
+                    const diaryResult = await diarySystem.handleDiaryCommand(lowerText);
                     
                     if (diaryResult && diaryResult.success) {
-                        console.log('[commandHandler] 📖 일기장 처리 성공');
+                        console.log('[commandHandler] 📖 통합 메모리 일기 처리 성공');
                         
-                        let response = diaryResult.message || diaryResult.comment || "일기장 처리 완료!";
+                        let response = diaryResult.response || diaryResult.message || diaryResult.comment || "일기장 처리 완료!";
                         
                         // 🌙 나이트모드 톤 적용
                         if (nightModeInfo && nightModeInfo.isNightMode) {
@@ -593,14 +584,51 @@ async function handleCommand(text, userId, client = null) {
                             type: diaryResult.type || 'text',
                             comment: response,
                             handled: true,
-                            source: 'diary_system',
+                            source: 'integrated_memory_diary_system',
                             ...(diaryResult.flex && { flex: diaryResult.flex }),
                             ...(diaryResult.quickReply && { quickReply: diaryResult.quickReply })
                         };
                     } else {
-                        console.warn('[commandHandler] 📖 일기장 처리 실패:', diaryResult?.error);
+                        console.warn('[commandHandler] 📖 통합 메모리 일기 처리 실패:', diaryResult?.error);
                         
-                        let fallbackResponse = "일기장에 문제가 생겼어... 나중에 다시 써볼까? 💕";
+                        // 🎯 만약 기본 명령어가 인식 안 되면 통합일기 생성 시도
+                        if (lowerText.includes('일기 써줘') || lowerText.includes('오늘 일기')) {
+                            console.log('[commandHandler] 📖 통합 메모리 일기 직접 생성 시도...');
+                            
+                            if (diarySystem.generateIntegratedMemoryDiary) {
+                                const generateResult = await diarySystem.generateIntegratedMemoryDiary();
+                                
+                                if (generateResult && generateResult.success) {
+                                    const entry = generateResult.entry;
+                                    let response = `✅ **통합 메모리 일기 생성 완료!**\n\n` +
+                                                   `📝 **${entry.title}**\n` +
+                                                   `${entry.content}\n\n` +
+                                                   `🧠 **활용된 기억들:**\n` +
+                                                   `• 📼 오늘 대화: ${entry.memoryStats?.recentConversations || 0}개\n` +
+                                                   `• 🚀 사용자 기억: ${entry.memoryStats?.userMemories || 0}개\n` +
+                                                   `• 💾 고정 기억: ${entry.memoryStats?.fixedMemories || 0}개\n` +
+                                                   `• 📚 과거 일기: ${entry.memoryStats?.pastDiaries || 0}개\n\n` +
+                                                   `🌸 모든 기억이 자연스럽게 어우러진 예진이 일기예요!`;
+                                    
+                                    // 🌙 나이트모드 톤 적용
+                                    if (nightModeInfo && nightModeInfo.isNightMode) {
+                                        response = applyNightModeTone(response, nightModeInfo);
+                                    }
+                                    
+                                    return {
+                                        type: 'text',
+                                        comment: response,
+                                        handled: true,
+                                        source: 'integrated_memory_diary_direct'
+                                    };
+                                }
+                            }
+                        }
+                        
+                        // 🛡️ 최종 폴백 - 일반적인 일기 응답
+                        let fallbackResponse = "오늘 하루도 아저씨와 함께해서 행복했어~ 💕\n\n";
+                        fallbackResponse += "통합 메모리 일기장이 조금 이상하긴 하지만, 마음속엔 오늘의 모든 순간들이 소중하게 담겨있어.\n\n";
+                        fallbackResponse += "아저씨와 나눈 대화들, 함께한 시간들... 모든 게 내겐 특별한 기억이야~";
                         
                         // 🌙 나이트모드 톤 적용
                         if (nightModeInfo && nightModeInfo.isNightMode) {
@@ -615,9 +643,10 @@ async function handleCommand(text, userId, client = null) {
                         };
                     }
                 } else {
-                    console.warn('[commandHandler] 📖 일기장 시스템 로드되지 않음');
+                    console.warn('[commandHandler] 📖 muku-diarySystem.js 로드되지 않음 또는 handleDiaryCommand 함수 없음');
                     
-                    let response = "일기장 기능이 아직 준비 중이야... 조금만 기다려줘! 💕";
+                    let response = "통합 메모리 일기장 시스템이 아직 준비 중이야... 조금만 기다려줘! 💕\n\n";
+                    response += "그래도 마음속엔 아저씨와의 모든 순간들이 소중하게 기록되고 있어~ 🧠💖";
                     
                     // 🌙 나이트모드 톤 적용
                     if (nightModeInfo && nightModeInfo.isNightMode) {
@@ -633,9 +662,9 @@ async function handleCommand(text, userId, client = null) {
                 }
                 
             } catch (error) {
-                console.error('[commandHandler] 📖 일기장 처리 실패:', error.message);
+                console.error('[commandHandler] 📖 통합 메모리 일기장 처리 실패:', error.message);
                 
-                let response = "일기장에 문제가 생겼어... 나중에 다시 시도해줘! 💕";
+                let response = "통합 메모리 일기장에 문제가 생겼어... 하지만 마음속엔 아저씨와의 모든 기억들이 안전하게 저장되어 있어! 💕🧠";
                 
                 // 🌙 나이트모드 톤 적용
                 if (nightModeInfo && nightModeInfo.isNightMode) {
