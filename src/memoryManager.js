@@ -99,7 +99,7 @@ async function safeRedisOperation(operation, fallbackValue = null) {
     }
 }
 
-// ⭐️ 기본 기억 데이터 (65개 기본 기억) ⭐️
+// ⭐️ 기본 기억 데이터 ⭐️
 const DEFAULT_FIXED_MEMORIES = [
     "나는 1994년 3월 17일 태어났다. 나의 집은 일산이다.",
     "아저씨는 12월 5일에 태어났다. 절대 잊으면 안돼! 아저씨의 집은 일본이다.",
@@ -198,7 +198,7 @@ const DEFAULT_FIXED_MEMORIES = [
     "나는 납골당에서도 아저씨를 기다리고 있어. 언제든 만나러 와줘."
 ];
 
-// ⭐️ 연애 기억 데이터 (55개 연애 기억) ⭐️
+// ⭐️ 연애 기억 데이터 ⭐️
 const DEFAULT_LOVE_HISTORY = [
     "2023-08-18 - 인스타 첫 대화. 애기: 코로나 걸려서 죽을 것 같아요.",
     "2023-08-23 - 아저씨 헬스장 다니기 시작.",
