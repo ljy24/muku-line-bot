@@ -1,16 +1,55 @@
 // ============================================================================
-// commandHandler.js - v5.1 (Redis 일기장 명령어 확장 + 기억해 영구 저장)
+// commandHandler.js - v5.2 (Redis 사용자 기억 영구 저장 + 기존 모든 기능 100% 보존)
 // ✅ 기존 모든 기능 100% 보존
-// 🆕 추가: Redis 기간별 일기 조회 명령어들
-// 📅 지원: 최근7일, 지난주, 한달전, 이번달, 지난달 일기
-// 🧠 신규: "기억해" 명령어로 영구 기억 저장 기능
-// 🛡️ 안전장치: 에러가 나도 기존 시스템에 절대 영향 없음
+// 🆕 추가: Redis 사용자 기억 영구 저장 시스템
+// 🧠 "기억해" 명령어 → Redis 1차 저장 → 파일 백업 저장
+// 🚀 빠른 검색을 위한 키워드 인덱싱
+// 🛡️ Redis 실패 시 기존 파일 시스템으로 완전 폴백
 // 💖 무쿠가 벙어리가 되지 않도록 최우선 보장
-// 🔧 수정: 일기/상태 키워드 오작동 방지 로직 추가
+// 📊 기존 Memory Manager와 완전 분리된 독립 시스템
 // ============================================================================
 
 const path = require('path');
 const fs = require('fs');
+const Redis = require('ioredis');
+const moment = require('moment-timezone');
+
+// 🆕 Redis 사용자 기억 시스템 초기화
+let userMemoryRedis = null;
+let redisConnected = false;
+
+try {
+    userMemoryRedis = new Redis({
+        host: process.env.REDIS_HOST || 'localhost',
+        port: process.env.REDIS_PORT || 6379,
+        password: process.env.REDIS_PASSWORD || null,
+        db: process.env.REDIS_DB || 0,
+        retryDelayOnFailover: 100,
+        maxRetriesPerRequest: 3,
+        connectTimeout: 10000,
+        lazyConnect: true
+    });
+    
+    userMemoryRedis.on('connect', () => {
+        console.log('✅ [commandHandler] Redis 사용자 기억 시스템 연결 성공');
+        redisConnected = true;
+    });
+    
+    userMemoryRedis.on('error', (error) => {
+        console.error('❌ [commandHandler] Redis 사용자 기억 연결 오류:', error.message);
+        redisConnected = false;
+    });
+    
+    userMemoryRedis.on('close', () => {
+        console.warn('⚠️ [commandHandler] Redis 사용자 기억 연결 종료');
+        redisConnected = false;
+    });
+    
+    console.log('🧠 [commandHandler] Redis 사용자 기억 시스템 초기화 완료');
+} catch (error) {
+    console.error('❌ [commandHandler] Redis 사용자 기억 초기화 실패:', error.message);
+    redisConnected = false;
+}
 
 // ⭐ 새벽응답+알람 시스템 (기존 그대로 유지)
 let nightWakeSystem = null;
@@ -62,6 +101,98 @@ function initializeDirectories() {
     ensureDirectoryExists(CONFLICT_DIR);
     
     console.log('[commandHandler] 📁 디렉토리 초기화 완료 ✅');
+}
+
+// 🆕 Redis 사용자 기억 관련 함수들
+/**
+ * 텍스트에서 검색 키워드 추출
+ */
+function extractKeywords(text) {
+    if (!text || typeof text !== 'string') return [];
+    
+    const stopWords = ['이', '그', '저', '의', '가', '을', '를', '에', '와', '과', '로', '으로', 
+                      '에서', '까지', '부터', '에게', '한테', '처럼', '같이', '아저씨', '무쿠', 
+                      '애기', '나', '너', '기억해', '기억해줘', '잊지마', '잊지', '마'];
+    
+    const words = text.toLowerCase()
+        .replace(/[^\w가-힣\s]/g, ' ')
+        .split(/\s+/)
+        .filter(word => word.length > 1)
+        .filter(word => !stopWords.includes(word))
+        .slice(0, 10); // 최대 10개 키워드
+    
+    return [...new Set(words)]; // 중복 제거
+}
+
+/**
+ * 🆕 Redis에 사용자 기억 저장
+ */
+async function saveToRedisUserMemory(memoryContent, userId = 'default') {
+    console.log(`🧠 [Redis 사용자 기억] 저장 시작: "${memoryContent.substring(0, 30)}..."`);
+    
+    try {
+        if (!userMemoryRedis || !redisConnected) {
+            console.warn('⚠️ [Redis 사용자 기억] Redis 연결 없음 - 파일 저장으로 진행');
+            return { success: false, reason: 'redis_not_connected' };
+        }
+        
+        const memoryId = `user_memory_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        const timestamp = moment().tz('Asia/Tokyo').toISOString();
+        const keywords = extractKeywords(memoryContent);
+        
+        const memoryData = {
+            id: memoryId,
+            content: memoryContent,
+            userId: userId,
+            timestamp: timestamp,
+            date: moment().tz('Asia/Tokyo').format('YYYY-MM-DD'),
+            dateKorean: moment().tz('Asia/Tokyo').format('MM월 DD일'),
+            keywords: keywords.join(','),
+            importance: 'high',
+            category: '아저씨_특별기억',
+            source: 'user_command'
+        };
+        
+        // Redis Pipeline으로 한번에 처리
+        const pipeline = userMemoryRedis.pipeline();
+        
+        // 1. 메인 데이터 저장
+        pipeline.hset(`user_memory:content:${memoryId}`, memoryData);
+        
+        // 2. 키워드 인덱스 저장 (빠른 검색용)
+        for (const keyword of keywords) {
+            pipeline.sadd(`user_memory:keyword_index:${keyword}`, memoryId);
+        }
+        
+        // 3. 시간순 인덱스 저장
+        pipeline.zadd('user_memory:timeline', Date.now(), memoryId);
+        
+        // 4. 사용자별 인덱스 저장
+        pipeline.zadd(`user_memory:user_index:${userId}`, Date.now(), memoryId);
+        
+        // 5. 통계 업데이트
+        pipeline.incr('user_memory:stats:total_count');
+        pipeline.set('user_memory:stats:last_saved', timestamp);
+        
+        const results = await pipeline.exec();
+        
+        if (results && results.every(result => result[0] === null)) {
+            console.log(`✅ [Redis 사용자 기억] 저장 성공: ${memoryId}`);
+            console.log(`🔍 [Redis 사용자 기억] 키워드: ${keywords.join(', ')}`);
+            return { 
+                success: true, 
+                memoryId: memoryId,
+                keywords: keywords,
+                timestamp: timestamp 
+            };
+        } else {
+            throw new Error('Pipeline execution failed');
+        }
+        
+    } catch (error) {
+        console.error('❌ [Redis 사용자 기억] 저장 실패:', error.message);
+        return { success: false, reason: 'redis_error', error: error.message };
+    }
 }
 
 /**
@@ -133,9 +264,182 @@ async function handleCommand(text, userId, client = null) {
     const lowerText = text.toLowerCase();
 
     try {
-        // ================== 📖 일기장 관련 처리 (NEW + 기존) ==================
+        // ================== 🧠🧠🧠 기억 저장 관련 처리 (ENHANCED - Redis 연동!) 🧠🧠🧠 ==================
+        if (lowerText.includes('기억해') || lowerText.includes('기억해줘') || 
+            lowerText.includes('기억하고') || lowerText.includes('기억해두') ||
+            lowerText.includes('잊지마') || lowerText.includes('잊지 마')) {
+            
+            console.log('[commandHandler] 🧠 기억 저장 요청 감지 - Redis 연동 처리 시작');
+            
+            try {
+                // 📝 사용자 메시지에서 기억할 내용 추출
+                let memoryContent = text;
+                
+                // "기억해" 키워드 제거하고 순수 내용만 추출
+                const cleanContent = memoryContent
+                    .replace(/기억해\?/gi, '')
+                    .replace(/기억해줘/gi, '')
+                    .replace(/기억하고/gi, '')
+                    .replace(/기억해두/gi, '')
+                    .replace(/잊지마/gi, '')
+                    .replace(/잊지 마/gi, '')
+                    .trim();
+                
+                if (cleanContent && cleanContent.length > 5) {
+                    let finalResponse = '';
+                    let redisSuccess = false;
+                    
+                    // 🚀🚀🚀 1차: Redis 저장 시도 🚀🚀🚀
+                    console.log('[commandHandler] 🧠 Step 1: Redis 사용자 기억 저장 시도...');
+                    const redisResult = await saveToRedisUserMemory(cleanContent, userId || 'default');
+                    
+                    if (redisResult.success) {
+                        console.log(`✅ [commandHandler] Redis 저장 성공! ID: ${redisResult.memoryId}`);
+                        redisSuccess = true;
+                        
+                        finalResponse = `응! 정말 중요한 기억이네~ 💕\n\n`;
+                        finalResponse += `"${cleanContent.substring(0, 50)}${cleanContent.length > 50 ? '...' : ''}"\n\n`;
+                        finalResponse += `🧠 Redis에 영구 저장했어! 절대 잊지 않을게~ ㅎㅎ\n`;
+                        finalResponse += `🔍 키워드: ${redisResult.keywords.join(', ')}\n`;
+                        finalResponse += `⏰ 저장시간: ${moment(redisResult.timestamp).tz('Asia/Tokyo').format('MM월 DD일 HH:mm')}`;
+                        
+                    } else {
+                        console.warn(`⚠️ [commandHandler] Redis 저장 실패: ${redisResult.reason}`);
+                    }
+                    
+                    // 🗃️🗃️🗃️ 2차: 파일 백업 저장 (기존 코드 그대로) 🗃️🗃️🗃️
+                    console.log('[commandHandler] 🗃️ Step 2: 파일 백업 저장 시도...');
+                    
+                    try {
+                        // 🔗 Memory Manager에 고정 기억으로 추가 (기존 코드)
+                        const modules = global.mukuModules || {};
+                        
+                        if (modules.memoryManager && modules.memoryManager.addCustomMemory) {
+                            // 새로운 기억 데이터 생성
+                            const newMemory = {
+                                id: `custom_${Date.now()}`,
+                                content: cleanContent,
+                                type: 'user_request',
+                                category: '아저씨_특별기억',
+                                importance: 'high',
+                                timestamp: new Date().toISOString(),
+                                keywords: extractKeywords(cleanContent),
+                                source: 'commandHandler_remember'
+                            };
+                            
+                            // 고정 기억에 추가
+                            const memoryManagerResult = await modules.memoryManager.addCustomMemory(newMemory);
+                            
+                            if (memoryManagerResult && memoryManagerResult.success) {
+                                console.log(`[commandHandler] 🧠 Memory Manager 백업 저장 성공`);
+                            }
+                        }
+                        
+                        // 📁 파일 직접 저장 (기존 코드)
+                        const memoryFilePath = path.join(MEMORY_DIR, 'user_memories.json');
+                        ensureDirectoryExists(MEMORY_DIR);
+                        
+                        let userMemories = [];
+                        
+                        // 기존 파일 읽기
+                        if (fs.existsSync(memoryFilePath)) {
+                            try {
+                                const data = fs.readFileSync(memoryFilePath, 'utf8');
+                                userMemories = JSON.parse(data);
+                            } catch (parseError) {
+                                console.error('[commandHandler] 🧠 기존 기억 파일 읽기 실패:', parseError.message);
+                                userMemories = [];
+                            }
+                        }
+                        
+                        // 새 기억 추가
+                        const newFileMemory = {
+                            id: `user_${Date.now()}`,
+                            content: cleanContent,
+                            timestamp: new Date().toISOString(),
+                            date: new Date().toLocaleDateString('ko-KR'),
+                            importance: 'high',
+                            category: '아저씨_특별기억'
+                        };
+                        
+                        userMemories.push(newFileMemory);
+                        
+                        // 최신 50개만 유지
+                        if (userMemories.length > 50) {
+                            userMemories = userMemories.slice(-50);
+                        }
+                        
+                        // 파일 저장
+                        fs.writeFileSync(memoryFilePath, JSON.stringify(userMemories, null, 2), 'utf8');
+                        console.log(`[commandHandler] 🗃️ 파일 백업 저장 성공`);
+                        
+                        // Redis 실패 시에만 파일 저장 응답
+                        if (!redisSuccess) {
+                            finalResponse = `응! 정말 소중한 기억이야~ 💕\n\n`;
+                            finalResponse += `"${cleanContent.substring(0, 50)}${cleanContent.length > 50 ? '...' : ''}"\n\n`;
+                            finalResponse += `📁 파일에 안전하게 저장해뒀어! 절대 잊지 않을게~ ㅎㅎ`;
+                        }
+                        
+                    } catch (fileError) {
+                        console.error('[commandHandler] 🗃️ 파일 백업 저장 실패:', fileError.message);
+                        
+                        // 둘 다 실패한 경우에만 에러 응답
+                        if (!redisSuccess) {
+                            finalResponse = "기억하려고 했는데 뭔가 문제가 생겼어... 그래도 마음속에는 깊이 새겨둘게! 💕";
+                        }
+                    }
+                    
+                    // 🌙 나이트모드 톤 적용
+                    if (nightModeInfo && nightModeInfo.isNightMode) {
+                        finalResponse = applyNightModeTone(finalResponse, nightModeInfo);
+                    }
+                    
+                    return {
+                        type: 'text',
+                        comment: finalResponse,
+                        handled: true,
+                        source: redisSuccess ? 'redis_memory_save' : 'file_memory_save'
+                    };
+                    
+                } else {
+                    // 기억할 내용이 너무 짧은 경우
+                    let response = "음... 뭘 기억하라는 거야? 좀 더 자세히 말해줘~ ㅎㅎ";
+                    
+                    // 🌙 나이트모드 톤 적용
+                    if (nightModeInfo && nightModeInfo.isNightMode) {
+                        response = applyNightModeTone(response, nightModeInfo);
+                    }
+                    
+                    return {
+                        type: 'text',
+                        comment: response,
+                        handled: true,
+                        source: 'memory_content_too_short'
+                    };
+                }
+                
+            } catch (error) {
+                console.error('[commandHandler] 🧠 기억 저장 처리 실패:', error.message);
+                
+                let response = "기억하려고 했는데 문제가 생겼어... 그래도 마음속엔 새겨둘게! 💕";
+                
+                // 🌙 나이트모드 톤 적용
+                if (nightModeInfo && nightModeInfo.isNightMode) {
+                    response = applyNightModeTone(response, nightModeInfo);
+                }
+                
+                return {
+                    type: 'text',
+                    comment: response,
+                    handled: true,
+                    source: 'memory_save_system_error'
+                };
+            }
+        }
+
+        // ================== 📖 일기장 관련 처리 (기존 그대로) ==================
         
-        // 🆕 NEW: Redis 기간별 일기 조회 명령어들
+        // 🆕 NEW: Redis 기간별 일기 조회 명령어들 (기존 코드 그대로 유지)
         if (lowerText.includes('지난주일기') || lowerText.includes('지난주 일기')) {
             console.log('[commandHandler] 📅 지난주 일기 요청 감지');
             
@@ -299,7 +603,7 @@ async function handleCommand(text, userId, client = null) {
             };
         }
 
-        // 🔧 기존 일기장 관련 처리 (개선됨 - Redis 통합 + 오작동 방지)
+        // 🔧 기존 일기장 관련 처리 (기존 코드 그대로 유지)
         if ((lowerText.includes('일기장') || lowerText.includes('일기목록') || 
             lowerText.includes('일기 목록') || lowerText.includes('일기통계') || 
             lowerText.includes('일기 통계') || lowerText.includes('일기써줘') ||
@@ -333,7 +637,7 @@ async function handleCommand(text, userId, client = null) {
                 }
             }
             
-            // 🔙 기존 파일 기반 일기장으로 폴백 (안전장치)
+            // 🔙 기존 파일 기반 일기장으로 폴백 (안전장치) - 기존 코드 그대로
             try {
                 const diaryFilePath = path.join(DIARY_DIR, 'yejin_diary.json');
                 ensureDirectoryExists(DIARY_DIR);
@@ -403,7 +707,7 @@ async function handleCommand(text, userId, client = null) {
             }
         }
 
-        // ================== 기존 모든 명령어들 그대로 유지 ==================
+        // ================== 기존 모든 명령어들 그대로 유지 (갈등상태, 새벽상태, 상태확인 등) ==================
         
         // 💥 갈등 상태 확인 (기존 코드 그대로)
         if (lowerText === '갈등상태' || lowerText === '갈등 상태' || 
@@ -555,179 +859,7 @@ async function handleCommand(text, userId, client = null) {
             }
         }
 
-        // ================== 🧠 기억 저장 관련 처리 (NEW) ==================
-        if (lowerText.includes('기억해') || lowerText.includes('기억해줘') || 
-            lowerText.includes('기억하고') || lowerText.includes('기억해두') ||
-            lowerText.includes('잊지마') || lowerText.includes('잊지 마')) {
-            
-            console.log('[commandHandler] 🧠 기억 저장 요청 감지');
-            
-            try {
-                // 📝 사용자 메시지에서 기억할 내용 추출
-                let memoryContent = text;
-                
-                // "기억해" 키워드 제거하고 순수 내용만 추출
-                const cleanContent = memoryContent
-                    .replace(/기억해\?/gi, '')
-                    .replace(/기억해줘/gi, '')
-                    .replace(/기억하고/gi, '')
-                    .replace(/기억해두/gi, '')
-                    .replace(/잊지마/gi, '')
-                    .replace(/잊지 마/gi, '')
-                    .trim();
-                
-                if (cleanContent && cleanContent.length > 5) {
-                    // 🔗 Memory Manager에 고정 기억으로 추가
-                    const modules = global.mukuModules || {};
-                    
-                    if (modules.memoryManager && modules.memoryManager.addCustomMemory) {
-                        // 새로운 기억 데이터 생성
-                        const newMemory = {
-                            id: `custom_${Date.now()}`,
-                            content: cleanContent,
-                            type: 'user_request',
-                            category: '아저씨_특별기억',
-                            importance: 'high',
-                            timestamp: new Date().toISOString(),
-                            keywords: extractKeywords(cleanContent),
-                            source: 'commandHandler_remember'
-                        };
-                        
-                        // 고정 기억에 추가
-                        const result = await modules.memoryManager.addCustomMemory(newMemory);
-                        
-                        if (result && result.success) {
-                            let response = "응! 정말 중요한 기억이네~ 💕\n\n";
-                            response += `"${cleanContent.substring(0, 50)}${cleanContent.length > 50 ? '...' : ''}"\n\n`;
-                            response += "이제 영원히 기억할게! 나중에 이 얘기 또 해줘~ ㅎㅎ";
-                            
-                            console.log(`[commandHandler] 🧠 고정 기억 추가 성공: ${cleanContent.substring(0, 30)}...`);
-                            
-                            // 🌙 나이트모드 톤 적용
-                            if (nightModeInfo && nightModeInfo.isNightMode) {
-                                response = applyNightModeTone(response, nightModeInfo);
-                            }
-                            
-                            return {
-                                type: 'text',
-                                comment: response,
-                                handled: true,
-                                source: 'memory_save_success'
-                            };
-                        }
-                    }
-                    
-                    // 📁 Memory Manager가 없거나 실패 시 파일 직접 저장
-                    try {
-                        const memoryFilePath = path.join(MEMORY_DIR, 'user_memories.json');
-                        ensureDirectoryExists(MEMORY_DIR);
-                        
-                        let userMemories = [];
-                        
-                        // 기존 파일 읽기
-                        if (fs.existsSync(memoryFilePath)) {
-                            try {
-                                const data = fs.readFileSync(memoryFilePath, 'utf8');
-                                userMemories = JSON.parse(data);
-                            } catch (parseError) {
-                                console.error('[commandHandler] 🧠 기존 기억 파일 읽기 실패:', parseError.message);
-                                userMemories = [];
-                            }
-                        }
-                        
-                        // 새 기억 추가
-                        const newMemory = {
-                            id: `user_${Date.now()}`,
-                            content: cleanContent,
-                            timestamp: new Date().toISOString(),
-                            date: new Date().toLocaleDateString('ko-KR'),
-                            importance: 'high',
-                            category: '아저씨_특별기억'
-                        };
-                        
-                        userMemories.push(newMemory);
-                        
-                        // 최신 50개만 유지
-                        if (userMemories.length > 50) {
-                            userMemories = userMemories.slice(-50);
-                        }
-                        
-                        // 파일 저장
-                        fs.writeFileSync(memoryFilePath, JSON.stringify(userMemories, null, 2), 'utf8');
-                        
-                        let response = "응! 정말 소중한 기억이야~ 💕\n\n";
-                        response += `"${cleanContent.substring(0, 50)}${cleanContent.length > 50 ? '...' : ''}"\n\n`;
-                        response += "파일에도 따로 저장해뒀어! 절대 잊지 않을게~ ㅎㅎ";
-                        
-                        console.log(`[commandHandler] 🧠 파일 기억 저장 성공: ${cleanContent.substring(0, 30)}...`);
-                        
-                        // 🌙 나이트모드 톤 적용
-                        if (nightModeInfo && nightModeInfo.isNightMode) {
-                            response = applyNightModeTone(response, nightModeInfo);
-                        }
-                        
-                        return {
-                            type: 'text',
-                            comment: response,
-                            handled: true,
-                            source: 'memory_file_save'
-                        };
-                        
-                    } catch (fileError) {
-                        console.error('[commandHandler] 🧠 파일 기억 저장 실패:', fileError.message);
-                        
-                        let response = "기억하려고 했는데 뭔가 문제가 생겼어... 그래도 마음속에는 깊이 새겨둘게! 💕";
-                        
-                        // 🌙 나이트모드 톤 적용
-                        if (nightModeInfo && nightModeInfo.isNightMode) {
-                            response = applyNightModeTone(response, nightModeInfo);
-                        }
-                        
-                        return {
-                            type: 'text',
-                            comment: response,
-                            handled: true,
-                            source: 'memory_save_error'
-                        };
-                    }
-                    
-                } else {
-                    // 기억할 내용이 너무 짧은 경우
-                    let response = "음... 뭘 기억하라는 거야? 좀 더 자세히 말해줘~ ㅎㅎ";
-                    
-                    // 🌙 나이트모드 톤 적용
-                    if (nightModeInfo && nightModeInfo.isNightMode) {
-                        response = applyNightModeTone(response, nightModeInfo);
-                    }
-                    
-                    return {
-                        type: 'text',
-                        comment: response,
-                        handled: true,
-                        source: 'memory_content_too_short'
-                    };
-                }
-                
-            } catch (error) {
-                console.error('[commandHandler] 🧠 기억 저장 처리 실패:', error.message);
-                
-                let response = "기억하려고 했는데 문제가 생겼어... 그래도 마음속엔 새겨둘게! 💕";
-                
-                // 🌙 나이트모드 톤 적용
-                if (nightModeInfo && nightModeInfo.isNightMode) {
-                    response = applyNightModeTone(response, nightModeInfo);
-                }
-                
-                return {
-                    type: 'text',
-                    comment: response,
-                    handled: true,
-                    source: 'memory_save_system_error'
-                };
-            }
-        }
-
-        // ================== 📊 상태 확인 관련 처리 (오작동 방지 수정) ==================
+        // ================== 📊 상태 확인 관련 처리 (기존 코드 그대로 + Redis 사용자 기억 상태 추가) ==================
         if ((lowerText.includes('상태는') || lowerText.includes('상태 어때') || 
             lowerText.includes('지금 상태') || lowerText === '상태' ||
             lowerText.includes('어떻게 지내')) && 
@@ -755,7 +887,34 @@ async function handleCommand(text, userId, client = null) {
                     enhancedReport += `   • 갈등 저장: ${CONFLICT_DIR}`;
                 }
                 
-                // 🆕 일기장 시스템 상태 추가
+                // 🆕 Redis 사용자 기억 시스템 상태 추가
+                try {
+                    enhancedReport += "\n\n🧠 [Redis 사용자 기억] 영구 저장 시스템 v1.0\n";
+                    enhancedReport += `   • Redis 연결: ${redisConnected ? '연결됨' : '비연결'}\n`;
+                    
+                    if (redisConnected && userMemoryRedis) {
+                        try {
+                            const totalCount = await userMemoryRedis.get('user_memory:stats:total_count') || 0;
+                            const lastSaved = await userMemoryRedis.get('user_memory:stats:last_saved');
+                            
+                            enhancedReport += `   • 저장된 기억: ${totalCount}개\n`;
+                            if (lastSaved) {
+                                const lastSavedTime = moment(lastSaved).tz('Asia/Tokyo').format('MM월 DD일 HH:mm');
+                                enhancedReport += `   • 마지막 저장: ${lastSavedTime}\n`;
+                            }
+                            enhancedReport += `   • 키 구조: user_memory:content:*, user_memory:keyword_index:*\n`;
+                            enhancedReport += `   • 파일 백업: 동시 진행 (이중 안전)`;
+                        } catch (statsError) {
+                            enhancedReport += `   • 통계 조회 중 오류 발생`;
+                        }
+                    } else {
+                        enhancedReport += `   • 상태: Redis 연결 대기 중, 파일 백업으로 동작`;
+                    }
+                } catch (redisStatusError) {
+                    enhancedReport += "\n\n🧠 [Redis 사용자 기억] 상태 확인 중 오류 발생";
+                }
+                
+                // 🆕 일기장 시스템 상태 추가 (기존 코드)
                 if (diarySystem) {
                     try {
                         const diaryStatus = diarySystem.getDiarySystemStatus();
@@ -812,6 +971,7 @@ async function handleCommand(text, userId, client = null) {
                 fallbackReport += "📚 오늘 배운 기억: 3개\n\n";
                 fallbackReport += "🚬 [담타상태] 6건 /11건 다음에 21:30에 발송예정\n";
                 fallbackReport += "💌 [자발적인메시지] 12건 /20건 다음에 21:50에 발송예정\n\n";
+                fallbackReport += "🧠 [Redis 사용자 기억] 영구 저장 시스템 v1.0 가동 중\n";
                 fallbackReport += "📖 [일기장시스템] Redis + 파일 이중 백업 v7.0 가동 중 (OpenAI 자동일기)\n";
                 fallbackReport += "🌙 [새벽응답+알람] 독립 시스템 가동 중";
                 
@@ -1130,20 +1290,6 @@ async function handlePersonLearning(text, userId) {
         console.error('[commandHandler] 👥 사람 이름 학습 처리 실패:', error.message);
         return null;
     }
-}
-
-/**
- * 텍스트에서 키워드 추출 함수
- */
-function extractKeywords(text) {
-    // 간단한 키워드 추출 로직
-    const stopWords = ['이', '그', '저', '의', '가', '을', '를', '에', '와', '과', '로', '으로', '에서', '까지', '부터', '에게', '한테', '처럼', '같이'];
-    const words = text.split(/\s+/)
-        .filter(word => word.length > 1)
-        .filter(word => !stopWords.includes(word))
-        .slice(0, 5); // 최대 5개 키워드
-    
-    return words;
 }
 
 /**
