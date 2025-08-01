@@ -21,8 +21,11 @@ let nightConversationState = {
 // 디버깅 로그
 function nightWakeLog(message, data = null) {
     const timestamp = moment().tz('Asia/Tokyo').format('YYYY-MM-DD HH:mm:ss');
-    console.log(`[${timestamp}] [새벽깨움] ${message}`);
-    if (data) console.log('  데이터:', JSON.stringify(data, null, 2));
+    // 🔥 중요한 로그만 출력 (에러, 새 대화 시작, 상태 변경)
+    if (message.includes('에러') || message.includes('시작') || message.includes('리셋') || message.includes('초기화')) {
+        console.log(`[${timestamp}] [새벽깨움] ${message}`);
+        if (data) console.log('  데이터:', JSON.stringify(data, null, 2));
+    }
 }
 
 // ==================== 🕐 수정: 새벽 시간 확인 (4-7시로 축소) ====================
@@ -32,9 +35,9 @@ function isLateNightTime() {
     const hour = now.hour();
     
     // 🔥 수정: 새벽 4시부터 아침 7시까지로 축소
-    const isSleepTime = hour >= 4 && hour < 7;
+    const isSleepTime = hour >= 2 && hour < 8;
     
-    nightWakeLog(`시간 체크: ${hour}시 - ${isSleepTime ? '잠자는 시간 (4-7시)' : '깨어있는 시간'}`);
+    nightWakeLog(`시간 체크: ${hour}시 - ${isSleepTime ? '잠자는 시간 (2-8시)' : '깨어있는 시간'}`);
     
     return {
         isSleepTime: isSleepTime,
@@ -44,9 +47,9 @@ function isLateNightTime() {
 }
 
 function getSleepPhase(hour) {
-    if (hour >= 4 && hour < 5) return 'deep_sleep'; // 깊은 잠
-    if (hour >= 5 && hour < 6) return 'light_sleep'; // 얕은 잠
-    if (hour >= 6 && hour < 7) return 'early_morning'; // 새벽
+    if (hour >= 2 && hour < 4) return 'deep_sleep'; // 깊은 잠
+    if (hour >= 4 && hour < 6) return 'light_sleep'; // 얕은 잠
+    if (hour >= 6 && hour < 8) return 'early_morning'; // 새벽
     return 'awake';
 }
 
@@ -269,7 +272,7 @@ function getNightWakeStatus() {
             isSleepTime: timeCheck.isSleepTime,
             sleepPhase: timeCheck.sleepPhase,
             currentHour: timeCheck.currentHour,
-            sleepTimeRange: '04:00 - 07:00', // 🔥 수정됨
+            sleepTimeRange: '02:00 - 08:00', // 🔥 수정됨
             isActive: timeCheck.isSleepTime,
             nextWakeTime: timeCheck.isSleepTime ? '07:00' : '내일 04:00',
             conversationState: {
