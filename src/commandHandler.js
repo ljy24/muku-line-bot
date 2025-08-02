@@ -320,6 +320,266 @@ async function handleCommand(text, userId, client = null) {
     const lowerText = text.toLowerCase();
 
     try {
+        // ================== 🔍🔍🔍 기억 검색 관련 처리 (기억해? - 물음표가 핵심!) 🔍🔍🔍 ==================
+if (lowerText.includes('기억해?') || lowerText.includes('기억하니?') || 
+    lowerText.includes('기억해 ?') || lowerText.includes('기억나?') ||
+    lowerText.endsWith('기억해?') || lowerText.endsWith('기억하니?')) {
+    
+    console.log('[commandHandler] 🔍 기억 검색 요청 감지 - Redis 검색 시작');
+    
+    try {
+        // 📝 사용자 메시지에서 검색할 키워드 추출
+        let searchKeyword = text;
+        
+        // "기억해?" 키워드 제거하고 순수 검색어만 추출
+        const cleanKeyword = searchKeyword
+            .replace(/기억해\?/gi, '')
+            .replace(/기억하니\?/gi, '')
+            .replace(/기억해 \?/gi, '')
+            .replace(/기억나\?/gi, '')
+            .trim();
+        
+        if (cleanKeyword && cleanKeyword.length > 1) {
+            console.log(`[commandHandler] 🔍 검색 키워드: "${cleanKeyword}"`);
+            
+            let searchResults = [];
+            let totalFound = 0;
+            
+            // 🚀🚀🚀 1차: Redis 사용자 기억 검색 🚀🚀🚀
+            if (redisConnected && userMemoryRedis) {
+                console.log('[commandHandler] 🔍 Step 1: Redis 사용자 기억 검색...');
+                
+                try {
+                    // 키워드로 Redis 검색
+                    const keywords = extractKeywords(cleanKeyword);
+                    console.log(`[commandHandler] 🔍 추출된 키워드: ${keywords.join(', ')}`);
+                    
+                    for (const keyword of keywords) {
+                        const keywordKey = `muku:memory:keyword:${keyword}`;
+                        const memoryIds = await userMemoryRedis.smembers(keywordKey);
+                        
+                        for (const memoryId of memoryIds) {
+                            try {
+                                const memoryData = await userMemoryRedis.hgetall(memoryId);
+                                if (memoryData && memoryData.content) {
+                                    searchResults.push({
+                                        content: memoryData.content,
+                                        source: 'redis_user_memory',
+                                        timestamp: memoryData.timestamp,
+                                        type: memoryData.type || 'user_memory'
+                                    });
+                                    totalFound++;
+                                }
+                            } catch (memoryError) {
+                                console.warn(`[commandHandler] 🔍 Redis 기억 로드 실패: ${memoryId}`);
+                            }
+                        }
+                    }
+                    
+                    console.log(`[commandHandler] 🔍 Redis 사용자 기억 검색 결과: ${totalFound}개`);
+                    
+                } catch (redisSearchError) {
+                    console.warn(`[commandHandler] 🔍 Redis 검색 실패: ${redisSearchError.message}`);
+                }
+            }
+            
+            // 🚀🚀🚀 2차: Redis 고정 기억 검색 (마이그레이션된 159개) 🚀🚀🚀
+            if (redisConnected && userMemoryRedis) {
+                console.log('[commandHandler] 🔍 Step 2: Redis 고정 기억 검색...');
+                
+                try {
+                    // 고정 기억 키워드 검색
+                    const keywords = extractKeywords(cleanKeyword);
+                    
+                    for (const keyword of keywords) {
+                        const keywordKey = `muku:memory:keyword:${keyword}`;
+                        const memoryIds = await userMemoryRedis.smembers(keywordKey);
+                        
+                        for (const memoryId of memoryIds) {
+                            // 고정 기억인지 확인 (muku:memory:fixed: 또는 muku:memory:love: 패턴)
+                            if (memoryId.includes('muku:memory:fixed:') || memoryId.includes('muku:memory:love:')) {
+                                try {
+                                    const memoryJson = await userMemoryRedis.get(memoryId);
+                                    if (memoryJson) {
+                                        const memoryData = JSON.parse(memoryJson);
+                                        if (memoryData && memoryData.content) {
+                                            searchResults.push({
+                                                content: memoryData.content,
+                                                source: 'redis_fixed_memory',
+                                                timestamp: memoryData.timestamp,
+                                                type: memoryData.type || 'fixed_memory'
+                                            });
+                                            totalFound++;
+                                        }
+                                    }
+                                } catch (fixedMemoryError) {
+                                    console.warn(`[commandHandler] 🔍 Redis 고정 기억 로드 실패: ${memoryId}`);
+                                }
+                            }
+                        }
+                    }
+                    
+                    console.log(`[commandHandler] 🔍 Redis 고정 기억 검색 결과: 추가 ${totalFound - searchResults.filter(r => r.source === 'redis_user_memory').length}개`);
+                    
+                } catch (fixedSearchError) {
+                    console.warn(`[commandHandler] 🔍 Redis 고정 기억 검색 실패: ${fixedSearchError.message}`);
+                }
+            }
+            
+            // 🗃️🗃️🗃️ 3차: 파일 백업 검색 (Redis 실패 시 또는 추가 결과용) 🗃️🗃️🗃️
+            console.log('[commandHandler] 🔍 Step 3: 파일 백업 검색...');
+            
+            try {
+                // Memory Manager를 통한 검색
+                const modules = global.mukuModules || {};
+                
+                if (modules.memoryManager && modules.memoryManager.getFixedMemory) {
+                    const fixedMemoryResult = await modules.memoryManager.getFixedMemory(cleanKeyword);
+                    
+                    if (fixedMemoryResult) {
+                        searchResults.push({
+                            content: fixedMemoryResult,
+                            source: 'memory_manager',
+                            timestamp: new Date().toISOString(),
+                            type: 'fixed_memory'
+                        });
+                        totalFound++;
+                        console.log(`[commandHandler] 🔍 Memory Manager 검색 성공`);
+                    }
+                }
+                
+                // 사용자 기억 파일 직접 검색
+                const memoryFilePath = path.join(MEMORY_DIR, 'user_memories.json');
+                if (fs.existsSync(memoryFilePath)) {
+                    try {
+                        const data = fs.readFileSync(memoryFilePath, 'utf8');
+                        const userMemories = JSON.parse(data);
+                        
+                        for (const memory of userMemories) {
+                            if (memory.content && memory.content.toLowerCase().includes(cleanKeyword.toLowerCase())) {
+                                searchResults.push({
+                                    content: memory.content,
+                                    source: 'file_user_memory',
+                                    timestamp: memory.timestamp,
+                                    type: memory.type || 'user_memory'
+                                });
+                                totalFound++;
+                            }
+                        }
+                        
+                        console.log(`[commandHandler] 🔍 파일 사용자 기억 검색 완료`);
+                    } catch (fileError) {
+                        console.warn(`[commandHandler] 🔍 파일 검색 실패: ${fileError.message}`);
+                    }
+                }
+                
+            } catch (fileSearchError) {
+                console.warn(`[commandHandler] 🔍 파일 백업 검색 실패: ${fileSearchError.message}`);
+            }
+            
+            // 🎯🎯🎯 검색 결과 응답 생성 🎯🎯🎯
+            console.log(`[commandHandler] 🔍 총 검색 결과: ${totalFound}개`);
+            
+            let finalResponse = '';
+            
+            if (totalFound > 0) {
+                // 중복 제거 (내용 기준)
+                const uniqueResults = [];
+                const seenContents = new Set();
+                
+                for (const result of searchResults) {
+                    const contentKey = result.content.substring(0, 50);
+                    if (!seenContents.has(contentKey)) {
+                        seenContents.add(contentKey);
+                        uniqueResults.push(result);
+                    }
+                }
+                
+                // 최신순 정렬
+                uniqueResults.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                
+                // 최대 3개까지만 표시
+                const topResults = uniqueResults.slice(0, 3);
+                
+                finalResponse = `🔍 "${cleanKeyword}" 관련 기억을 찾았어!\n\n`;
+                
+                for (let i = 0; i < topResults.length; i++) {
+                    const result = topResults[i];
+                    const sourceIcon = {
+                        'redis_user_memory': '🧠',
+                        'redis_fixed_memory': '💾', 
+                        'memory_manager': '📚',
+                        'file_user_memory': '📁'
+                    }[result.source] || '📝';
+                    
+                    finalResponse += `${sourceIcon} **기억 ${i + 1}:**\n`;
+                    finalResponse += `"${result.content.length > 100 ? result.content.substring(0, 100) + '...' : result.content}"\n\n`;
+                }
+                
+                if (uniqueResults.length > 3) {
+                    finalResponse += `💡 다른 관련 기억이 ${uniqueResults.length - 3}개 더 있어! 더 구체적으로 물어보면 찾아줄게~`;
+                }
+                
+            } else {
+                // 검색 결과 없음
+                finalResponse = `🤔 "${cleanKeyword}" 관련 기억을 찾을 수 없어...\n\n`;
+                finalResponse += `혹시 다른 키워드로 물어볼래? 아니면 새로 기억해달라고 하면 저장해줄게! 💕\n\n`;
+                finalResponse += `💡 검색 팁:\n`;
+                finalResponse += `• "담타 기억해?" - 담배 관련 기억\n`;
+                finalResponse += `• "납골당 기억해?" - 납골당 관련 기억\n`;
+                finalResponse += `• "플레이엑스포 기억해?" - 게임행사 관련 기억`;
+            }
+            
+            // 🌙 나이트모드 톤 적용
+            if (nightModeInfo && nightModeInfo.isNightMode) {
+                finalResponse = applyNightModeTone(finalResponse, nightModeInfo);
+            }
+            
+            return {
+                type: 'text',
+                comment: finalResponse,
+                handled: true,
+                source: totalFound > 0 ? 'memory_search_success' : 'memory_search_no_results',
+                searchResults: totalFound
+            };
+            
+        } else {
+            // 검색어가 너무 짧은 경우
+            let response = "뭘 기억해달라는 거야? 좀 더 구체적으로 말해줘~ ㅎㅎ\n\n";
+            response += "예: '담타 기억해?', '납골당 기억해?', '플레이엑스포 기억해?' 같이!";
+            
+            // 🌙 나이트모드 톤 적용
+            if (nightModeInfo && nightModeInfo.isNightMode) {
+                response = applyNightModeTone(response, nightModeInfo);
+            }
+            
+            return {
+                type: 'text',
+                comment: response,
+                handled: true,
+                source: 'memory_search_keyword_too_short'
+            };
+        }
+        
+    } catch (error) {
+        console.error('[commandHandler] 🔍 기억 검색 처리 실패:', error.message);
+        
+        let response = "기억을 찾으려고 했는데 문제가 생겼어... 다시 물어볼래? 💕";
+        
+        // 🌙 나이트모드 톤 적용
+        if (nightModeInfo && nightModeInfo.isNightMode) {
+            response = applyNightModeTone(response, nightModeInfo);
+        }
+        
+        return {
+            type: 'text',
+            comment: response,
+            handled: true,
+            source: 'memory_search_system_error'
+        };
+    }
+}
+
         // ================== 🧠🧠🧠 기억 저장 관련 처리 (ENHANCED - Redis 연동 + 예진이 자아 인식!) 🧠🧠🧠 ==================
         if (lowerText.includes('기억해') || lowerText.includes('기억해줘') || 
             lowerText.includes('기억하고') || lowerText.includes('기억해두') ||
