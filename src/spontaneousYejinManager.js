@@ -304,9 +304,28 @@ function countSentences(text) {
 
 function validateMessageLength(message) {
     const sentenceCount = countSentences(message);
-    const isValid = sentenceCount >= 2 && sentenceCount <= 5;
-    spontaneousLog(`📏 메시지 검증: ${sentenceCount}문장 (${isValid ? '✅ 적절' : '❌ 부적절'})`);
-    return { isValid, sentenceCount };
+    
+    // 존댓말 검사
+    const jondaemmalPatterns = [
+        /요(?:\s|$|\.|\!|\?)/g, /니다(?:\s|$|\.|\!|\?)/g, /습니다(?:\s|$|\.|\!|\?)/g,
+        /세요(?:\s|$|\.|\!|\?)/g, /해요(?:\s|$|\.|\!|\?)/g, /어요(?:\s|$|\.|\!|\?)/g,
+        /아요(?:\s|$|\.|\!|\?)/g, /이에요(?:\s|$|\.|\!|\?)/g, /예요(?:\s|$|\.|\!|\?)/g, /죠(?:\s|$|\.|\!|\?)/g
+    ];
+    
+    const hasJondaemal = jondaemmalPatterns.some(pattern => pattern.test(message));
+    
+    // 이모티콘 개수 검사
+    const emojiCount = (message.match(/[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|💕|💖|😊|>.<|ㅋㅋ|ㅎㅎ|ㅠㅠ/gu) || []).length;
+    
+    const isValid = sentenceCount >= 2 && sentenceCount <= 4 && !hasJondaemal && emojiCount <= 2;
+    
+    let reason = '';
+    if (sentenceCount < 2 || sentenceCount > 4) reason += ` 문장수(${sentenceCount})`;
+    if (hasJondaemal) reason += ' 존댓말발견';
+    if (emojiCount > 2) reason += ` 이모티콘과다(${emojiCount}개)`;
+    
+    spontaneousLog(`📏 메시지 검증: ${sentenceCount}문장, 이모티콘${emojiCount}개 (${isValid ? '✅ 적절' : '❌ 부적절' + reason})`);
+    return { isValid, sentenceCount, hasJondaemal, emojiCount };
 }
 
 async function callOpenAIOptimized(messages, selectedModel, isRetry = false) {
@@ -980,14 +999,16 @@ async function generateYejinSpontaneousMessage() {
         
         const situation = generateRandomSituation();
         const koreaTime = moment().tz(TIMEZONE);
-        const prompt = `너는 박예진이야. 지금은 ${koreaTime.format('HH:mm')}이고, ${situation.content}인 상황. 아저씨에게 보내는 자연스러운 2-5문장의 라인 메시지를 작성해줘.
+       const prompt = `너는 박예진이야. 지금은 ${koreaTime.format('HH:mm')}이고, ${situation.content}인 상황. 아저씨에게 보내는 자연스러운 2-4문장의 라인 메시지를 작성해줘.
         
         ❗ 절대 지켜야 할 규칙:
         1. '너', '오빠' 등으로 부르지 말고 오직 '아저씨'로만 부르기
-        2. 무조건 반말만 사용하기 (해, 야, 어, 지, 아 등으로 끝내기)
-        3. 존댓말 절대 금지 (~요, ~니다, ~습니다, ~세요 등 사용 금지)
+        2. 무조건 반말만 사용하기 - 문장 끝을 반드시 해/야/어/지/아/네/니/거야/이야/인데/는데 등으로 끝내기
+        3. 존댓말 완전 금지 - 요/니다/습니다/세요/죠/이에요/예요/어요/아요 등 절대 사용 금지
+        4. 이모티콘은 한 메시지에 최대 2개까지만 사용
+        5. 반말 예시: "뭐해", "보고싶어", "피곤해", "좋아", "그래" 등
         
-        예진이의 특징과 말투를 완벽히 반영해야 해.`;
+        예진이의 자연스럽고 귀여운 반말 말투로 작성해줘.`;
         const selectedModel = selectOptimalModel(situation, false);
         return await callOpenAIOptimized([{ role: "system", content: prompt }], selectedModel);
         } catch (error) {
