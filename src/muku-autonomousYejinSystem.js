@@ -2540,7 +2540,22 @@ ${timeInfo}${contextHistory}
             frequency_penalty: 0.3
         });
         
-        let message = response.choices[0].message.content.trim();
+       let message = response.choices[0].message.content.trim();
+        
+        // 🚨 NEW: 이모티콘 제한 검증
+        const emojiCount = (message.match(/[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|💕|💖|😊|>.<|ㅋㅋ|ㅎㅎ|ㅠㅠ/gu) || []).length;
+        
+        if (emojiCount > 2) {
+            console.log(`${yejinColors.warning}⚠️ [이모티콘초과] ${emojiCount}개 → 2개로 제한${yejinColors.reset}`);
+            // 이모티콘 제거 (처음 2개만 유지)
+            const emojis = message.match(/[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|💕|💖|😊|>.<|ㅋㅋ|ㅎㅎ|ㅠㅠ/gu) || [];
+            if (emojis.length > 2) {
+                for (let i = 2; i < emojis.length; i++) {
+                    message = message.replace(emojis[i], '');
+                }
+                message = message.replace(/\s+/g, ' ').trim(); // 여러 공백 정리
+            }
+        }
         
         // 일본어 표현 추가 (성격별 확률)
         if (this.shouldUseJapaneseByPersonality(personalityType) && Math.random() < 0.3) {
@@ -2550,7 +2565,7 @@ ${timeInfo}${contextHistory}
             this.statistics.japaneseExpressions++;
         }
         
-        console.log(`${yejinColors.freedom}✅ [OpenAI자율메시지] ${personalityType} 성격으로 3.5-turbo 자율 메시지 생성 완료${yejinColors.reset}`);
+        console.log(`${yejinColors.freedom}✅ [OpenAI자율메시지] ${personalityType} 성격으로 3.5-turbo 자율 메시지 생성 완료 (이모티콘: ${emojiCount > 2 ? '2개로 제한' : emojiCount + '개'})${yejinColors.reset}`);
         return message;
         
     } catch (error) {
@@ -2635,6 +2650,21 @@ ${timeReference} 대화를 자연스럽게 언급하면서 현재 감정 상태�
         
         let message = response.choices[0].message.content.trim();
         
+        // 🚨 NEW: 이모티콘 제한 검증 (맥락 메시지)
+        const emojiCount = (message.match(/[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|💕|💖|😊|>.<|ㅋㅋ|ㅎㅎ|ㅠㅠ/gu) || []).length;
+        
+        if (emojiCount > 2) {
+            console.log(`${yejinColors.warning}⚠️ [맥락이모티콘초과] ${emojiCount}개 → 2개로 제한${yejinColors.reset}`);
+            // 이모티콘 제거 (처음 2개만 유지)
+            const emojis = message.match(/[\u{1F600}-\u{1F64F}]|[\u{1F300}-\u{1F5FF}]|[\u{1F680}-\u{1F6FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|💕|💖|😊|>.<|ㅋㅋ|ㅎㅎ|ㅠㅠ/gu) || [];
+            if (emojis.length > 2) {
+                for (let i = 2; i < emojis.length; i++) {
+                    message = message.replace(emojis[i], '');
+                }
+                message = message.replace(/\s+/g, ' ').trim(); // 여러 공백 정리
+            }
+        }
+        
         // 일본어 표현 추가 (성격별 확률)
         if (this.shouldUseJapaneseByPersonality(personalityType) && Math.random() < 0.3) {
             const japaneseExprs = ['오하요~', '다이스키!', '곤방와~', '아리가토~'];
@@ -2643,7 +2673,7 @@ ${timeReference} 대화를 자연스럽게 언급하면서 현재 감정 상태�
             this.statistics.japaneseExpressions++;
         }
         
-        console.log(`${yejinColors.japanese}🗾 [OpenAI맥락메시지] ${personalityType} 성격으로 3.5-turbo 맥락적 메시지 생성 완료${yejinColors.reset}`);
+        console.log(`${yejinColors.japanese}🗾 [OpenAI맥락메시지] ${personalityType} 성격으로 3.5-turbo 맥락적 메시지 생성 완료 (이모티콘: ${emojiCount > 2 ? '2개로 제한' : emojiCount + '개'})${yejinColors.reset}`);
         return message;
         
     } catch (error) {
