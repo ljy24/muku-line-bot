@@ -493,7 +493,8 @@ function handleBirthdayKeywords(userMessage) {
             logConversationReply('나', `(생일) ${response}`);
             return response;
         }
-        if (message.includes('생일') || message.includes('생신')) {
+        // 🎯 최종 제한: "생일이 언제야?" 하나만 생일 응답
+        if (message === '생일이 언제야' || message === '생일이 언제야?') {
             const response = ["내 생일은 3월 17일이고, 아저씨 생일은 12월 5일이야!", "생일 얘기? 내 생일 3월 17일 기억해줘!"][Math.floor(Math.random() * 2)];
             logConversationReply('나', `(생일) ${response}`);
             return response;
