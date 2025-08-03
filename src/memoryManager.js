@@ -1,4 +1,4 @@
-// src/memoryManager.js - v3.0 REDIS_INTEGRATION (Redis 연동 완료!)
+// src/memoryManager.js - v3.2 COMPLETE_HANDLER_COMPATIBLE (memoryHandler.js 완전 호환!)
 // ✅ Redis 캐싱 레이어 추가: 모든 기억 120개 빠른 검색
 // ✅ 기존 SQLite + JSON 시스템 완전 보존: 안전성 우선
 // ✅ 키워드 → 기억 매핑: "납골당", "담타", "아저씨" 등 모든 키워드 즉시 검색
@@ -6,6 +6,7 @@
 // 💾 완전 영구 저장: 서버 재시작/재배포시에도 절대 사라지지 않음!
 // 🔧 구문 오류 완전 수정 및 누락 함수 추가 완료
 // 🆕 saveUserMemory 함수 추가: "기억해" 명령어 화자 구분 기능
+// 🔥 NEW! memoryHandler.js 완전 호환: deleteUserMemory, setMemoryReminder, getFirstDialogueMemory 완전 구현!
 
 const fs = require('fs').promises;
 const path = require('path');
@@ -20,6 +21,7 @@ const colors = {
     success: '\x1b[32m',
     redis: '\x1b[95m',      // 보라색 (Redis)
     memory: '\x1b[94m',     // 파란색 (Memory)
+    handler: '\x1b[93m',    // 노란색 (Handler 호환)
     reset: '\x1b[0m'
 };
 
@@ -899,6 +901,162 @@ async function addDynamicMemory(memoryEntry) {
     }
 }
 
+// ================== 🔥 NEW! memoryHandler.js 완전 호환 함수들 ==================
+
+/**
+ * 🗑️ 사용자 기억 삭제 함수 (memoryHandler.js 호환)
+ * @param {string} content - 삭제할 기억 내용 (부분 문자열 포함)
+ * @returns {Promise<boolean>} 삭제 성공 여부
+ */
+async function deleteUserMemory(content) {
+    try {
+        console.log(`${colors.handler}🗑️ [MemoryHandler 호환] 기억 삭제: "${content}"${colors.reset}`);
+        
+        if (!db) {
+            console.log(`${colors.warning}⚠️ [MemoryManager] 데이터베이스 없음 - 삭제 건너뛰기${colors.reset}`);
+            return false;
+        }
+        
+        // SQLite에서 사용자 기억 삭제 (LIKE 검색으로)
+        return new Promise((resolve, reject) => {
+            const stmt = db.prepare("DELETE FROM memories WHERE content LIKE ? AND type != 'fixed_memory'");
+            stmt.run(`%${content}%`, function(err) {
+                if (err) {
+                    console.error(`${colors.error}❌ [MemoryManager] 기억 삭제 오류: ${err.message}${colors.reset}`);
+                    resolve(false);
+                } else {
+                    const deletedCount = this.changes;
+                    console.log(`${colors.success}✅ [MemoryManager] ${deletedCount}개 기억 삭제 완료${colors.reset}`);
+                    
+                    // Redis에서도 관련 캐시 삭제
+                    safeRedisOperation(async (redis) => {
+                        const keywords = extractKeywords(content);
+                        for (const keyword of keywords) {
+                            const cacheKey = `muku:memory:keyword:${keyword}`;
+                            await redis.del(cacheKey);
+                        }
+                        console.log(`${colors.redis}🗑️ [MemoryManager] Redis 캐시에서도 삭제 완료${colors.reset}`);
+                    });
+                    
+                    resolve(deletedCount > 0);
+                }
+            });
+            stmt.finalize();
+        });
+        
+    } catch (error) {
+        console.error(`${colors.error}❌ [MemoryManager] deleteUserMemory 실패: ${error.message}${colors.reset}`);
+        return false;
+    }
+}
+
+/**
+ * ⏰ 리마인더 설정 함수 (memoryHandler.js 호환)
+ * @param {string} content - 리마인더 내용
+ * @param {string} timeString - ISO 시간 문자열 또는 파싱 가능한 시간
+ * @returns {Promise<number>} 리마인더 ID (실패시 0)
+ */
+async function setMemoryReminder(content, timeString) {
+    try {
+        console.log(`${colors.handler}⏰ [MemoryHandler 호환] 리마인더 설정: "${content}" at ${timeString}${colors.reset}`);
+        
+        if (!db) {
+            console.log(`${colors.warning}⚠️ [MemoryManager] 데이터베이스 없음 - 리마인더 설정 건너뛰기${colors.reset}`);
+            return 0;
+        }
+        
+        // 시간 파싱 (ISO 문자열 → timestamp)
+        let dueTime;
+        try {
+            dueTime = new Date(timeString).getTime();
+            if (isNaN(dueTime)) {
+                throw new Error('Invalid date format');
+            }
+        } catch (timeError) {
+            console.error(`${colors.error}❌ [MemoryManager] 시간 파싱 실패: ${timeString}${colors.reset}`);
+            return 0;
+        }
+        
+        // reminders 테이블에 저장
+        return new Promise((resolve, reject) => {
+            const stmt = db.prepare("INSERT INTO reminders (due_time, message, is_sent) VALUES (?, ?, 0)");
+            stmt.run(dueTime, content, function(err) {
+                if (err) {
+                    console.error(`${colors.error}❌ [MemoryManager] 리마인더 저장 오류: ${err.message}${colors.reset}`);
+                    resolve(0);
+                } else {
+                    const reminderId = this.lastID;
+                    console.log(`${colors.success}✅ [MemoryManager] 리마인더 저장 완료 (ID: ${reminderId})${colors.reset}`);
+                    
+                    // Redis에도 임시 캐시 (리마인더는 1시간만)
+                    safeRedisOperation(async (redis) => {
+                        const reminderKey = `muku:reminder:${reminderId}`;
+                        const reminderData = { id: reminderId, content, dueTime, isSent: false };
+                        await redis.setex(reminderKey, 3600, JSON.stringify(reminderData));
+                        console.log(`${colors.redis}⏰ [MemoryManager] Redis에 리마인더 캐시 추가${colors.reset}`);
+                    });
+                    
+                    resolve(reminderId);
+                }
+            });
+            stmt.finalize();
+        });
+        
+    } catch (error) {
+        console.error(`${colors.error}❌ [MemoryManager] setMemoryReminder 실패: ${error.message}${colors.reset}`);
+        return 0;
+    }
+}
+
+/**
+ * 💭 첫 대화 기억 반환 함수 (memoryHandler.js 호환)
+ * @returns {Promise<string|null>} 첫 대화 관련 기억 또는 null
+ */
+async function getFirstDialogueMemory() {
+    try {
+        console.log(`${colors.handler}💭 [MemoryHandler 호환] 첫 대화 기억 검색${colors.reset}`);
+        
+        // 첫 만남 관련 키워드들
+        const firstMeetingKeywords = [
+            '하카타', '처음 만났', '12월 12일', '12월 13일', 
+            '고백', '연애 시작', '첫 대화', '첫 영상통화',
+            '모지코', '키세키', '첫 영상통화'
+        ];
+        
+        // 고정 기억에서 첫 만남 관련 기억 검색
+        for (const keyword of firstMeetingKeywords) {
+            // loveHistory에서 먼저 검색 (연애 기억이 더 구체적)
+            const loveMemory = fixedMemoriesDB.loveHistory.find(memory => 
+                memory.toLowerCase().includes(keyword.toLowerCase())
+            );
+            
+            if (loveMemory) {
+                console.log(`${colors.success}💕 [MemoryManager] 연애 기억에서 첫 대화 기억 발견: "${keyword}"${colors.reset}`);
+                return loveMemory;
+            }
+            
+            // fixedMemories에서도 검색
+            const fixedMemory = fixedMemoriesDB.fixedMemories.find(memory => 
+                memory.toLowerCase().includes(keyword.toLowerCase())
+            );
+            
+            if (fixedMemory) {
+                console.log(`${colors.success}🧠 [MemoryManager] 고정 기억에서 첫 대화 기억 발견: "${keyword}"${colors.reset}`);
+                return fixedMemory;
+            }
+        }
+        
+        // 키워드로 찾지 못했으면 기본 첫 만남 기억 반환
+        const defaultFirstMemory = "우리는 하카타에서 2023년 12월 12일 처음 만났고, 12월 13일 사귀기 시작했다.";
+        console.log(`${colors.info}💭 [MemoryManager] 기본 첫 만남 기억 반환${colors.reset}`);
+        return defaultFirstMemory;
+        
+    } catch (error) {
+        console.error(`${colors.error}❌ [MemoryManager] getFirstDialogueMemory 실패: ${error.message}${colors.reset}`);
+        return null;
+    }
+}
+
 // ================== 🧹 Redis 연결 정리 함수 ==================
 async function cleanupRedisConnection() {
     try {
@@ -1069,6 +1227,11 @@ module.exports = {
     getRedisClient,
     buildRedisKeywordCache,
     cleanupRedisConnection,
+    
+    // 🔥 NEW! memoryHandler.js 완전 호환 함수들 (완전 구현!)
+    deleteUserMemory,        // ✅ 사용자 기억 삭제
+    setMemoryReminder,       // ✅ 리마인더 설정  
+    getFirstDialogueMemory,  // ✅ 첫 대화 기억 반환
     
     // 📦 데이터 객체
     fixedMemoriesDB,
