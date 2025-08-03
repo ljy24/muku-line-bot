@@ -1,12 +1,9 @@
-// src/memoryManager.js - v3.2 COMPLETE_HANDLER_COMPATIBLE (memoryHandler.js 완전 호환!)
-// ✅ Redis 캐싱 레이어 추가: 모든 기억 120개 빠른 검색
-// ✅ 기존 SQLite + JSON 시스템 완전 보존: 안전성 우선
-// ✅ 키워드 → 기억 매핑: "납골당", "담타", "아저씨" 등 모든 키워드 즉시 검색
-// ✅ 무쿠 벙어리 방지: 완전 안전한 폴백 시스템
+// src/memoryManager.js - v3.3 CONTEXT_AWARE_MEMORY (맥락 인식 기억 시스템)
+// ✅ 부적절한 기억 출력 완전 방지: 직접 질문 vs 맥락적 언급 구분
+// ✅ "생일이 언제야?" → 정상 답변, "생일파티 기억해?" → 자연스러운 응답 또는 null
+// ✅ Redis 캐싱 레이어 + 기존 SQLite + JSON 시스템 완전 보존
+// 🔧 getFixedMemory 함수 핵심 수정: 맥락 인식 + 부적절한 응답 차단
 // 💾 완전 영구 저장: 서버 재시작/재배포시에도 절대 사라지지 않음!
-// 🔧 구문 오류 완전 수정 및 누락 함수 추가 완료
-// 🆕 saveUserMemory 함수 추가: "기억해" 명령어 화자 구분 기능
-// 🔥 NEW! memoryHandler.js 완전 호환: deleteUserMemory, setMemoryReminder, getFirstDialogueMemory 완전 구현!
 
 const fs = require('fs').promises;
 const path = require('path');
@@ -22,6 +19,7 @@ const colors = {
     redis: '\x1b[95m',      // 보라색 (Redis)
     memory: '\x1b[94m',     // 파란색 (Memory)
     handler: '\x1b[93m',    // 노란색 (Handler 호환)
+    context: '\x1b[96m',    // 청록색 (맥락 인식)
     reset: '\x1b[0m'
 };
 
@@ -384,23 +382,150 @@ async function buildRedisKeywordCache() {
     }
 }
 
-// ================== ⚡ 개선된 기억 검색 함수 ==================
+// ================== ⚡ 맥락 인식 기억 검색 함수 (핵심 수정!) ==================
 
 /**
- * ⭐️ Redis + SQLite/JSON 하이브리드 기억 검색 ⭐️
- * "납골당" → "경주 남산 납골당" 즉시 검색
+ * 🧠 맥락을 고려한 기억 검색 함수 (부적절한 출력 방지)
+ * @param {string} userMessage - 사용자 메시지
+ * @returns {string|null} - 적절한 기억 또는 null
  */
 async function getFixedMemory(userMessage) {
     const lowerMessage = userMessage.toLowerCase();
-    console.log(`${colors.memory}🔍 [MemoryManager] 기억 검색: "${userMessage.substring(0, 30)}..."${colors.reset}`);
+    console.log(`${colors.context}🧠 [MemoryManager] 맥락 인식 기억 검색: "${userMessage.substring(0, 30)}..."${colors.reset}`);
 
-    // 1. Redis 캐시에서 먼저 검색 (빠른 검색)
-    const redisResult = await safeRedisOperation(async (redis) => {
-        // 사용자 메시지에서 키워드 추출
-        const messageKeywords = extractKeywords(userMessage);
-        let bestMemories = [];
+    // ================== 🚫 부적절한 응답 방지 로직 ==================
+    
+    /**
+     * 직접 질문인지 판단하는 함수
+     */
+    function isDirectQuestion(message) {
+        const directQuestionPatterns = [
+            /생일.*언제/i, /언제.*생일/i, /몇월.*몇일/i,
+            /이름.*뭐/i, /뭐.*이름/i,
+            /어디.*사는/i, /어디.*살/i,
+            /누구.*아저씨/i, /아저씨.*누구/i,
+            /몇살/i, /나이.*몇/i,
+            /어떻게.*만났/i, /언제.*만났/i,
+            /담타.*뭐/i, /뭐.*담타/i
+        ];
         
-        for (const keyword of messageKeywords) {
+        return directQuestionPatterns.some(pattern => pattern.test(message));
+    }
+    
+    /**
+     * 부적절한 맥락인지 판단하는 함수
+     */
+    function isInappropriateContext(message, memoryContent) {
+        const messageWords = message.toLowerCase().split(/\s+/);
+        const memoryWords = memoryContent.toLowerCase().split(/\s+/);
+        
+        // 생일 관련 부적절한 맥락
+        if (messageWords.some(word => ['파티', '축하', '케이크', '선물'].includes(word)) &&
+            memoryWords.some(word => ['1994년', '3월', '17일', '태어났다'].includes(word))) {
+            console.log(`${colors.context}🚫 [MemoryManager] 생일 파티 맥락에서 출생 정보 차단${colors.reset}`);
+            return true;
+        }
+        
+        // 담배/외모 관련 부적절한 맥락
+        if (messageWords.some(word => ['멋있어', '잘생겨', '외모', '모습'].includes(word)) &&
+            memoryWords.some(word => ['담타', '담배', '라인'].includes(word))) {
+            console.log(`${colors.context}🚫 [MemoryManager] 외모 칭찬에서 담타 기억 차단${colors.reset}`);
+            return true;
+        }
+        
+        // 나이/젊음 관련 부적절한 맥락
+        if (messageWords.some(word => ['젊', '아까운', '어려', '나이'].includes(word)) &&
+            memoryWords.some(word => ['1994년', '생일', '태어났다'].includes(word))) {
+            console.log(`${colors.context}🚫 [MemoryManager] 나이 언급에서 출생 정보 차단${colors.reset}`);
+            return true;
+        }
+        
+        // 일반적인 대화에서 너무 구체적인 기억 차단
+        if (!isDirectQuestion(message) && 
+            memoryWords.some(word => ['1994년', '12월 5일', '3월 17일'].includes(word))) {
+            console.log(`${colors.context}🚫 [MemoryManager] 일반 대화에서 구체적 정보 차단${colors.reset}`);
+            return true;
+        }
+        
+        return false;
+    }
+    
+    /**
+     * 맥락에 적합한 키워드 변환
+     */
+    function getContextualKeywords(message) {
+        const contextualMap = {
+            '생일파티': ['파티', '축하', '기념일'],
+            '생일 축하': ['축하', '기념일', '파티'],
+            '담배 멋있': ['담배', '모습', '외모'],
+            '아까운 나이': ['젊음', '나이', '어려'],
+            '젊은': ['젊음', '나이'],
+            '어려서': ['젊음', '나이']
+        };
+        
+        for (const [context, keywords] of Object.entries(contextualMap)) {
+            if (message.includes(context)) {
+                return keywords;
+            }
+        }
+        
+        // 기본 키워드 추출
+        return extractKeywords(message);
+    }
+
+    // ================== 🎯 개선된 검색 로직 ==================
+
+    // 1. 직접 질문인 경우 - 정확한 정보 제공
+    if (isDirectQuestion(lowerMessage)) {
+        console.log(`${colors.context}❓ [MemoryManager] 직접 질문 감지 - 정확한 정보 제공${colors.reset}`);
+        
+        // Redis 캐시에서 검색
+        const redisResult = await safeRedisOperation(async (redis) => {
+            const messageKeywords = extractKeywords(userMessage);
+            let bestMemories = [];
+            
+            for (const keyword of messageKeywords) {
+                if (keyword.length < 2) continue;
+                
+                const cacheKey = `muku:memory:keyword:${keyword}`;
+                const cached = await redis.get(cacheKey);
+                
+                if (cached) {
+                    try {
+                        const memoryList = JSON.parse(cached);
+                        bestMemories.push(...memoryList);
+                    } catch (e) {
+                        continue;
+                    }
+                }
+            }
+            
+            if (bestMemories.length > 0) {
+                bestMemories.sort((a, b) => b.relevance - a.relevance);
+                return bestMemories[0].memory;
+            }
+            
+            return null;
+        });
+
+        if (redisResult) {
+            console.log(`${colors.success}✅ [MemoryManager] 직접 질문 - Redis에서 정확한 답변 제공${colors.reset}`);
+            return redisResult;
+        }
+
+        // SQLite/JSON 폴백 (직접 질문이므로 정확한 정보 제공)
+        return await searchInMemoryDatabase(lowerMessage, true);
+    }
+
+    // 2. 일반 대화인 경우 - 맥락 고려 검색
+    console.log(`${colors.context}💬 [MemoryManager] 일반 대화 - 맥락 고려 검색${colors.reset}`);
+    
+    // Redis 캐시에서 맥락 고려 검색
+    const contextualResult = await safeRedisOperation(async (redis) => {
+        const contextualKeywords = getContextualKeywords(userMessage);
+        let candidateMemories = [];
+        
+        for (const keyword of contextualKeywords) {
             if (keyword.length < 2) continue;
             
             const cacheKey = `muku:memory:keyword:${keyword}`;
@@ -409,47 +534,87 @@ async function getFixedMemory(userMessage) {
             if (cached) {
                 try {
                     const memoryList = JSON.parse(cached);
-                    bestMemories.push(...memoryList);
+                    candidateMemories.push(...memoryList);
                 } catch (e) {
-                    console.warn(`${colors.warning}⚠️ [MemoryManager] 캐시 파싱 실패: ${keyword}${colors.reset}`);
                     continue;
                 }
             }
         }
         
-        // 관련도 순으로 정렬하고 최고 점수 반환
-        if (bestMemories.length > 0) {
-            bestMemories.sort((a, b) => b.relevance - a.relevance);
-            const topMemory = bestMemories[0];
-            console.log(`${colors.redis}🚀 [MemoryManager] Redis 캐시 히트! 관련도: ${topMemory.relevance}${colors.reset}`);
-            return topMemory.memory;
+        // 맥락에 적합한 기억만 필터링
+        const appropriateMemories = candidateMemories.filter(item => 
+            !isInappropriateContext(userMessage, item.memory)
+        );
+        
+        if (appropriateMemories.length > 0) {
+            appropriateMemories.sort((a, b) => b.relevance - a.relevance);
+            return appropriateMemories[0].memory;
         }
         
         return null;
     });
 
-    if (redisResult) {
-        console.log(`${colors.success}✅ [MemoryManager] Redis에서 즉시 검색 완료${colors.reset}`);
-        return redisResult;
+    if (contextualResult) {
+        console.log(`${colors.success}✅ [MemoryManager] 일반 대화 - 맥락에 적합한 기억 제공${colors.reset}`);
+        return contextualResult;
     }
 
-    // 2. 기존 방식으로 폴백 (SQLite + JSON) - 안전성 보장
-    console.log(`${colors.info}🔄 [MemoryManager] Redis 미스, SQLite/JSON 폴백 검색${colors.reset}`);
+    // 3. SQLite/JSON 폴백 (맥락 고려)
+    return await searchInMemoryDatabase(lowerMessage, false);
+}
+
+/**
+ * 메모리 데이터베이스에서 검색하는 헬퍼 함수
+ */
+async function searchInMemoryDatabase(lowerMessage, isDirectQuestion) {
+    console.log(`${colors.info}🔄 [MemoryManager] SQLite/JSON 검색 (직접질문: ${isDirectQuestion})${colors.reset}`);
     
     let bestMatch = null;
     let maxMatches = 0;
 
-    // fixedMemories 배열에서 검색 (기본 기억 65개)
+    /**
+     * 부적절한 맥락 체크 함수 (헬퍼)
+     */
+    function isInappropriateContext(message, memoryContent) {
+        const messageWords = message.toLowerCase().split(/\s+/);
+        const memoryWords = memoryContent.toLowerCase().split(/\s+/);
+        
+        // 생일 관련 부적절한 맥락
+        if (messageWords.some(word => ['파티', '축하', '케이크', '선물'].includes(word)) &&
+            memoryWords.some(word => ['1994년', '3월', '17일', '태어났다'].includes(word))) {
+            return true;
+        }
+        
+        // 담배/외모 관련 부적절한 맥락
+        if (messageWords.some(word => ['멋있어', '잘생겨', '외모', '모습'].includes(word)) &&
+            memoryWords.some(word => ['담타', '담배', '라인'].includes(word))) {
+            return true;
+        }
+        
+        // 나이/젊음 관련 부적절한 맥락
+        if (messageWords.some(word => ['젊', '아까운', '어려', '나이'].includes(word)) &&
+            memoryWords.some(word => ['1994년', '생일', '태어났다'].includes(word))) {
+            return true;
+        }
+        
+        return false;
+    }
+
+    // fixedMemories 배열에서 검색
     for (const memoryText of fixedMemoriesDB.fixedMemories) {
         if (typeof memoryText !== 'string') continue;
         
         const lowerMemory = memoryText.toLowerCase();
         
+        // 직접 질문이 아닌 경우 부적절한 맥락 체크
+        if (!isDirectQuestion && isInappropriateContext(lowerMessage, memoryText)) {
+            continue;
+        }
+        
         // 정확한 일치 확인
         if (lowerMessage.includes(lowerMemory.substring(0, 20)) || lowerMemory.includes(lowerMessage)) {
-            console.log(`${colors.success}🎯 [MemoryManager] 기본기억에서 정확한 일치 발견${colors.reset}`);
-            // Redis에 캐시 추가
-            await cacheMemoryResult(userMessage, memoryText);
+            console.log(`${colors.success}🎯 [MemoryManager] 기본기억에서 적절한 일치 발견${colors.reset}`);
+            await cacheMemoryResult(lowerMessage, memoryText);
             return memoryText;
         }
         
@@ -462,17 +627,21 @@ async function getFixedMemory(userMessage) {
         }
     }
 
-    // loveHistory 배열에서 검색 (연애 기억 55개)
+    // loveHistory 배열에서 검색
     for (const memoryText of fixedMemoriesDB.loveHistory) {
         if (typeof memoryText !== 'string') continue;
         
         const lowerMemory = memoryText.toLowerCase();
         
+        // 직접 질문이 아닌 경우 부적절한 맥락 체크
+        if (!isDirectQuestion && isInappropriateContext(lowerMessage, memoryText)) {
+            continue;
+        }
+        
         // 정확한 일치 확인
         if (lowerMessage.includes(lowerMemory.substring(0, 20)) || lowerMemory.includes(lowerMessage)) {
-            console.log(`${colors.success}💕 [MemoryManager] 연애기억에서 정확한 일치 발견${colors.reset}`);
-            // Redis에 캐시 추가
-            await cacheMemoryResult(userMessage, memoryText);
+            console.log(`${colors.success}💕 [MemoryManager] 연애기억에서 적절한 일치 발견${colors.reset}`);
+            await cacheMemoryResult(lowerMessage, memoryText);
             return memoryText;
         }
         
@@ -485,14 +654,19 @@ async function getFixedMemory(userMessage) {
         }
     }
 
-    if (maxMatches > 0) {
-        console.log(`${colors.success}✅ [MemoryManager] 부분 매칭 발견 (점수: ${maxMatches})${colors.reset}`);
-        // Redis에 캐시 추가
-        await cacheMemoryResult(userMessage, bestMatch);
+    // 최종 맥락 체크
+    if (maxMatches > 0 && bestMatch) {
+        if (!isDirectQuestion && isInappropriateContext(lowerMessage, bestMatch)) {
+            console.log(`${colors.context}🚫 [MemoryManager] 최종 맥락 체크에서 부적절한 기억 차단${colors.reset}`);
+            return null;
+        }
+        
+        console.log(`${colors.success}✅ [MemoryManager] 맥락에 적합한 기억 발견 (점수: ${maxMatches})${colors.reset}`);
+        await cacheMemoryResult(lowerMessage, bestMatch);
         return bestMatch;
     }
     
-    console.log(`${colors.warning}❌ [MemoryManager] 관련 기억을 찾을 수 없음${colors.reset}`);
+    console.log(`${colors.warning}❌ [MemoryManager] 적절한 기억을 찾을 수 없음${colors.reset}`);
     return null;
 }
 
@@ -781,10 +955,13 @@ function getMemoryStatus() {
         neverLost: true,
         // 🚀 Redis 정보 추가
         redisConnected: redisClient !== null,
-        redisStatus: redisClient ? 'connected' : 'disconnected'
+        redisStatus: redisClient ? 'connected' : 'disconnected',
+        // 🧠 맥락 인식 추가
+        contextAware: true,
+        inappropriateResponsesPrevented: true
     };
     
-    console.log(`${colors.memory}📊 [MemoryManager] 메모리 상태: 기본${status.fixedMemoriesCount}개 + 연애${status.loveHistoryCount}개 = 총${status.totalFixedCount}개 (Redis: ${status.redisStatus})${colors.reset}`);
+    console.log(`${colors.memory}📊 [MemoryManager] 메모리 상태: 기본${status.fixedMemoriesCount}개 + 연애${status.loveHistoryCount}개 = 총${status.totalFixedCount}개 (Redis: ${status.redisStatus}, 맥락인식: ✅)${colors.reset}`);
     
     return status;
 }
@@ -1211,7 +1388,7 @@ module.exports = {
     // 🎯 주요 함수들
     ensureMemoryTablesAndDirectory,
     loadAllMemories,
-    getFixedMemory,          // ⚡ Redis 연동 완료!
+    getFixedMemory,          // ⚡ Redis 연동 + 맥락 인식 완료!
     getMemoryStatus,
     getFixedMemoryCount,
     forceReloadMemories,
