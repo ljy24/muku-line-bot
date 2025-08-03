@@ -498,7 +498,11 @@ function handleBirthdayKeywords(userMessage) {
             logConversationReply('나', `(생일) ${response}`);
             return response;
         }
-        if (message.includes('몇 살') || message.includes('나이')) {
+        // 🎯 최종 수정: "애기는 몇살이야?" 이 패턴에만 나이 응답
+        if (message === '애기는 몇살이야' || message === '애기는 몇살이야?' || 
+            message === '애기 몇살이야' || message === '애기 몇살이야?' ||
+            message === '무쿠는 몇살이야' || message === '무쿠는 몇살이야?' ||
+            message === '무쿠 몇살이야' || message === '무쿠 몇살이야?') {
             const response = ["나는 1994년 3월 17일생이야! 나이 계산해봐~", "아저씨보다 10살 어린 94년생이야!"][Math.floor(Math.random() * 2)];
             logConversationReply('나', `(생일) ${response}`);
             return response;
