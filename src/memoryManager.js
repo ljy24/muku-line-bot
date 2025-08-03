@@ -5,6 +5,7 @@
 // ✅ 무쿠 벙어리 방지: 완전 안전한 폴백 시스템
 // 💾 완전 영구 저장: 서버 재시작/재배포시에도 절대 사라지지 않음!
 // 🔧 구문 오류 완전 수정 및 누락 함수 추가 완료
+// 🆕 saveUserMemory 함수 추가: "기억해" 명령어 화자 구분 기능
 
 const fs = require('fs').promises;
 const path = require('path');
@@ -924,6 +925,34 @@ process.on('SIGTERM', async () => {
     process.exit(0);
 });
 
+// ================== 🆕 화자 구분 기능 추가 ==================
+
+/**
+ * 🆕 화자 구분 기능이 포함된 사용자 기억 저장 함수
+ * "기억해" 명령어에서만 사용됨
+ */
+async function saveUserMemory(content) {
+    console.log(`[MemoryManager] 📝 사용자 기억 저장: "${content}"`);
+    
+    let memoryType = 'general_memory';
+    let processedContent = content;
+    
+    // 화자 구분 로직 (기억해 명령어에서만 적용)
+    if (content.includes('내가') || content.includes('나는') || content.includes('나')) {
+        memoryType = 'ajeossi_memory';
+        processedContent = `[아저씨] ${content}`;
+        console.log('[MemoryManager] 👨 아저씨 기억으로 저장');
+    } else if (content.includes('네가') || content.includes('너는') || content.includes('너')) {
+        memoryType = 'yejin_memory'; 
+        processedContent = `[예진이] ${content}`;
+        console.log('[MemoryManager] 👧 예진이 기억으로 저장');
+    } else {
+        console.log('[MemoryManager] 📝 일반 기억으로 저장');
+    }
+    
+    return await saveMemory(memoryType, processedContent, Date.now());
+}
+
 // ================== 기존 함수들 (그대로 유지) ==================
 
 /**
@@ -1051,6 +1080,7 @@ module.exports = {
     
     // 🔧 기존 함수들
     saveMemory,
+    saveUserMemory,        // 🆕 화자 구분 함수 추가!
     searchMemories,
     clearMemory,
     extractAndSaveMemory,
