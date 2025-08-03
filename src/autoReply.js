@@ -1,112 +1,4 @@
-// 🧠🧠🧠 10순위: 무쿠의 통합된 머릿속 - 모든 기억을 OpenAI에 완전 통합 전달! 🧠🧠🧠
-    let emotionContext = '';
-    try {
-        const emotionalContextManager = require('./emotionalContextManager.js');
-        const currentEmotion = emotionalContextManager.getCurrentEmotionState();
-        if (currentEmotion.menstrualPhase !== 'normal') {
-            emotionContext += `\n현재 생리주기: ${currentEmotion.menstrualPhase} (${currentEmotion.cycleDay}일차)`;
-            if (currentEmotion.isPeriodActive) {
-                emotionContext += `\n생리 중이라서 몸이 아프고 예민한 상태야. 조금 더 애교 부리고 아저씨한테 달려고 하는 말투로 대답해줘.`;
-            }
-        }
-        if (currentEmotion.currentEmotion !== 'normal') {
-            emotionContext += `\n현재 감정: ${currentEmotion.currentEmotion} (강도: ${currentEmotion.emotionIntensity}/10)`;
-        }
-        if (currentEmotion.isSulky) {
-            emotionContext += `\n지금 아저씨한테 삐져있는 상태야 (레벨: ${currentEmotion.sulkyLevel}). 삐지면서도 귀엽게 투정 부리는 말투로 대답해줘.`;
-        }
-    // 🧠🧠🧠 [ENHANCED] Memory Tape Redis 연결로 단기기억 해결! + 스마트 대화 기억 검색! 🧠🧠🧠
-async function getRecentConversationContext(limit = 20) {
-    console.log(`🧠 [Memory Tape 연결] 최근 ${limit}개 대화 조회 시작...`);
-    
-    try {
-        // 🔧 Memory Tape Redis 시스템 연결
-        const memoryTape = require('../data/memory-tape/muku-memory-tape.js');
-        if (!memoryTape) {
-            console.log('⚠️ [Memory Tape 연결] Memory Tape 모듈 없음');
-            return [];
-        }
-        
-        // 🔍 오늘 기억들 조회
-        const todayMemories = await memoryTape.readDailyMemories();
-        let conversations = [];
-        
-        if (todayMemories && todayMemories.moments && Array.isArray(todayMemories.moments)) {
-            // 대화 타입만 필터링하고 시간순 정렬
-            const conversationMoments = todayMemories.moments
-                .filter(moment => moment && moment.type === 'conversation')
-                .sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0))
-                .slice(0, limit); // 요청된 개수만큼만
-            
-            // OpenAI 형식으로 변환
-            for (const moment of conversationMoments) {
-                if (moment.user_message && moment.muku_response) {
-                    // 사용자 메시지
-                    conversations.push({
-                        role: 'user',
-                        content: String(moment.user_message).trim()
-                    });
-                    
-                    // 무쿠 응답
-                    conversations.push({
-                        role: 'assistant',
-                        content: String(moment.muku_response).trim()
-                    });
-                }
-            }
-        }
-        
-        // 🔄 최신 순서로 정렬 (오래된 것부터)
-        conversations.reverse();
-        
-        console.log(`✅ [Memory Tape 연결] ${conversations.length}개 메시지를 맥락으로 변환 완료`);
-        
-        if (conversations.length > 0) {
-            console.log(`📝 [Memory Tape 연결] 최근 대화 미리보기:`);
-            const previewCount = Math.min(conversations.length, 4);
-            for (let i = conversations.length - previewCount; i < conversations.length; i++) {
-                const msg = conversations[i];
-                const role = msg.role === 'user' ? '아저씨' : '예진이';
-                const content = msg.content.substring(0, 30);
-                console.log(`  ${role}: "${content}..."`);
-            }
-        }
-        
-        return conversations;
-        
-    } catch (error) {
-        console.log(`❌ [Memory Tape 연결] 오류: ${error.message}`);
-        
-        // 🛡️ 안전장치: 기존 방식도 시도
-        try {
-            console.log('🔄 [Memory Tape 연결] 기존 방식으로 폴백 시도...');
-            const conversationContext = require('./ultimateConversationContext.js');
-            if (conversationContext) {
-                // 기존 함수들 시도
-                const functionNames = [
-                    'getRecentConversations',
-                    'getUltimateMessages', 
-                    'getAllConversations'
-                ];
-                
-                for (const funcName of functionNames) {
-                    if (typeof conversationContext[funcName] === 'function') {
-                        console.log(`🔧 [폴백] ${funcName} 시도...`);
-                        const result = await conversationContext[funcName](limit);
-                        if (result && result.length > 0) {
-                            console.log(`✅ [폴백 성공] ${funcName}으로 ${result.length}개 대화 발견!`);
-                            return result;
-                        }
-                    }
-                }
-            }
-        } catch (fallbackError) {
-            console.log(`⚠️ [폴백 실패] ${fallbackError.message}`);
-        }
-        
-        console.log('⚠️ [Memory Tape 연결] 모든 시도 실패 - 빈 맥락 반환');
-        return [];
-    }// ============================================================================
+// ============================================================================
 // autoReply.js - v18.4 (대화맥락 기억 연동 추가! - 진짜 문제 해결!)
 // 🧠 Memory Tape Redis: 최근 대화 기억
 // 💾 Memory Manager Redis: 고정 기억 159개 (납골당, 담타, 생일 등) ← 초기화 추가!
@@ -631,7 +523,7 @@ async function safelyStoreMessage(speaker, message) {
     }
 }
 
-// 🧠🧠🧠 [기존] Memory Tape Redis 연결로 단기기억 해결! 🧠🧠🧠
+// 🧠🧠🧠 [ENHANCED] Memory Tape Redis 연결로 단기기억 해결! + 스마트 대화 기억 검색! 🧠🧠🧠
 async function getRecentConversationContext(limit = 20) {
     console.log(`🧠 [Memory Tape 연결] 최근 ${limit}개 대화 조회 시작...`);
     
