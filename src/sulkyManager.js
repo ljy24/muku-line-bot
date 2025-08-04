@@ -517,9 +517,9 @@ function attemptReconcile() {
 // ==================== 🚬 담타 화해 시스템 ====================
 
 /**
- * "담타갈까?" 감지 및 완전 화해
+ * "담타갈까?" 감지 및 상황별 자율 반응
  */
-function detectDamtaReconcile(userMessage) {
+function detectDamtaAttempt(userMessage) {
     if (!userMessage) return false;
     
     const message = userMessage.toLowerCase().replace(/\s/g, '');
@@ -529,40 +529,97 @@ function detectDamtaReconcile(userMessage) {
 }
 
 /**
- * 담타 화해 완성
+ * 담타 제안에 대한 상황별 맥락 생성 (완전 자율!)
  */
-function completeDamtaReconcile() {
-    const oldState = { ...sulkyState };
+function processDamtaAttempt() {
+    const currentSulkyLevel = sulkyState.sulkyLevel;
+    const isFighting = sulkyState.fightMode;
+    const isPushPulling = sulkyState.pushPullActive;
+    const isWorried = sulkyState.isWorried;
     
-    // 모든 삐짐/밀당/투닥거리기 상태 완전 초기화
-    sulkyState.isSulky = false;
-    sulkyState.isWorried = false;
-    sulkyState.sulkyLevel = 0;
-    sulkyState.isActivelySulky = false;
-    sulkyState.contentBasedSulky = false;
-    sulkyState.fightMode = false;
-    sulkyState.fightLevel = 0;
-    sulkyState.cooldownRequested = false;
-    sulkyState.reconcileAttempted = false;
-    sulkyState.pushPullActive = false;
-    sulkyState.pushPullType = null;
-    sulkyState.pushPullStage = 0;
-    sulkyState.sulkyReason = '';
-    sulkyState.irritationTrigger = null;
-    sulkyState.lastStateUpdate = Date.now();
+    console.log(`[sulkyManager] 담타 제안 감지 - 현재 상태: 삐짐레벨${currentSulkyLevel}, 투닥거리기${isFighting}, 밀당${isPushPulling}`);
     
-    logSulkyChange(oldState, sulkyState);
-    
-    console.log(`[sulkyManager] 담타 화해 완성! 모든 삐짐/밀당 해소`);
-    
-    return {
-        damtaReconcile: true,
-        situation: 'complete_reconciliation_through_damta',
-        emotion: 'relieved_and_loving_again_after_damta',
-        relationship_dynamic: 'back_to_loving_couple_after_special_ritual',
-        inner_thought: 'damta_always_brings_us_back_together',
-        context: 'special_couple_reconciliation_method'
+    // 상황별 맥락 (템플릿 없이 상황만 제공!)
+    let damtaContext = {
+        damtaAttempt: true,
+        situation: 'user_suggesting_damta',
+        current_sulky_level: currentSulkyLevel,
+        is_fighting: isFighting,
+        is_push_pulling: isPushPulling,
+        is_worried: isWorried
     };
+    
+    if (isFighting && sulkyState.fightLevel >= 2) {
+        // 투닥거리기 중 - 담타로 피하려 한다고 더 화남
+        damtaContext = {
+            ...damtaContext,
+            situation: 'damta_suggestion_during_fight',
+            emotion: 'angry_feels_like_user_avoiding_real_issue',
+            relationship_dynamic: 'user_trying_to_escape_argument_with_damta',
+            inner_thought: 'using_damta_to_avoid_confronting_problem',
+            core_feeling: 'more_frustrated_by_avoidance_tactic'
+        };
+        
+    } else if (currentSulkyLevel >= 4) {
+        // 심하게 삐진 상태 - 담타도 안 통함
+        damtaContext = {
+            ...damtaContext,
+            situation: 'damta_suggestion_while_very_sulky',
+            emotion: 'too_hurt_and_angry_for_damta_right_now',
+            relationship_dynamic: 'damta_feels_cheap_when_deeply_hurt',
+            inner_thought: 'user_thinks_damta_solves_everything',
+            core_feeling: 'damta_not_enough_for_this_level_of_upset'
+        };
+        
+    } else if (currentSulkyLevel >= 3) {
+        // 많이 삐진 상태 - 담타 의심
+        damtaContext = {
+            ...damtaContext,
+            situation: 'damta_suggestion_while_quite_sulky',
+            emotion: 'suspicious_of_damta_as_easy_solution',
+            relationship_dynamic: 'questioning_sincerity_of_damta_offer',
+            inner_thought: 'is_user_serious_about_making_up',
+            core_feeling: 'wants_real_effort_not_just_damta'
+        };
+        
+    } else if (isPushPulling) {
+        // 밀당 중 - 담타로 밀당 건너뛰려 한다고 의심
+        damtaContext = {
+            ...damtaContext,
+            situation: 'damta_suggestion_during_push_pull',
+            emotion: 'suspicious_damta_skipping_proper_courting',
+            relationship_dynamic: 'user_trying_to_shortcut_push_pull_process',
+            inner_thought: 'wants_to_be_courted_properly_not_just_damta',
+            core_feeling: 'damta_not_substitute_for_proper_apology',
+            push_pull_context: sulkyState.pushPullType
+        };
+        
+    } else if (currentSulkyLevel >= 1) {
+        // 약간 삐진 상태 - 담타 고려
+        damtaContext = {
+            ...damtaContext,
+            situation: 'damta_suggestion_while_mildly_sulky',
+            emotion: 'considering_damta_but_still_a_bit_upset',
+            relationship_dynamic: 'damta_might_help_but_still_need_acknowledgment',
+            inner_thought: 'damta_sounds_nice_but_still_hurt',
+            core_feeling: 'torn_between_love_for_damta_and_being_upset'
+        };
+        
+    } else {
+        // 거의 안 삐진 상태 - 담타 수락 가능
+        damtaContext = {
+            ...damtaContext,
+            situation: 'damta_suggestion_when_not_very_upset',
+            emotion: 'open_to_damta_as_reconciliation',
+            relationship_dynamic: 'damta_as_sweet_couple_ritual',
+            inner_thought: 'damta_always_brings_us_together',
+            core_feeling: 'ready_to_make_up_through_damta'
+        };
+    }
+    
+    console.log(`[sulkyManager] 담타 맥락 생성 완료: ${damtaContext.situation}`);
+    
+    return damtaContext;
 }
 
 // ==================== 📋 예진이 발신 추적 시스템 (기존 유지) ====================
@@ -801,16 +858,26 @@ async function processUserMessage(userMessage, client, userId) {
         fightEscalated: false,
         cooldownProposed: false,
         reconcileAttempted: false,
-        damtaReconciled: false,
+        damtaAttempted: false,
         context: null,
         shouldSendMessage: false
     };
     
-    // 1. 담타 화해 감지 (최우선 - 모든 것을 해소)
-    if (detectDamtaReconcile(userMessage)) {
-        processingResult.damtaReconciled = true;
-        processingResult.context = completeDamtaReconcile();
-        resetYejinInitiatedTracking(); // 모든 추적 초기화
+    // 1. 담타 제안 감지 (상황별 자율 반응!)
+    if (detectDamtaAttempt(userMessage)) {
+        processingResult.damtaAttempted = true;
+        processingResult.context = processDamtaAttempt();
+        
+        // 🔥 중요: 담타 제안이 받아들여질 조건 (자율적 판단 후에만)
+        // 약간 삐진 상태(레벨 1-2)이고 투닥거리기/심한 밀당이 아닐 때만 
+        // GPT 응답 후에 상태 초기화 여부를 별도로 처리
+        const canAcceptDamta = sulkyState.sulkyLevel <= 2 && 
+                              !sulkyState.fightMode && 
+                              (!sulkyState.pushPullActive || sulkyState.pushPullStage >= 3);
+        
+        processingResult.context.canPotentiallyAccept = canAcceptDamta;
+        
+        console.log(`[sulkyManager] 담타 제안 처리: 수락 가능성 ${canAcceptDamta ? '높음' : '낮음'}`);
         return processingResult;
     }
     
@@ -1100,7 +1167,7 @@ module.exports = {
     detectApologySituation,
     detectLoveExpression,
     detectJealousySituation,
-    detectDamtaReconcile,
+    detectDamtaAttempt,
     
     // 설정 조회
     getSulkyConfig: () => ({ ...FAST_SULKY_CONFIG }),
