@@ -26,6 +26,22 @@ function getMoodManager() {
     return moodManager;
 }
 
+// --- 🔧 moodManager 통합 연동 ---
+let moodManager = null;
+function getMoodManager() {
+    if (!moodManager) {
+        try {
+            moodManager = require('./moodManager');
+            console.log('🔧 [무드매니저] moodManager 연동 성공');
+        } catch (error) {
+            console.log('⚠️ [무드매니저] moodManager 로드 실패:', error.message);
+        }
+    }
+    return moodManager;
+}
+
+
+
 // --- 외부 모듈 지연 로딩 (기존 유지) ---
 let ultimateContext = null;
 let emotionalContextManager = null;
