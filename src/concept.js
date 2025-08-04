@@ -1,12 +1,16 @@
 //============================================================================
-// concept.js - v4.0 (국가별 + 월별 랜덤 지원!)
+// concept.js - v4.1 (Vision API 연동 + 국가별 + 월별 랜덤 지원!)
 // 📸 애기의 감정을 읽어서 코멘트와 함께 컨셉 사진을 전송합니다.
-// ============================================================================
+// 🔥 NEW: Vision API 연동으로 지능형 메시지 생성 지원
+//============================================================================
 
 const axios = require('axios');
 
 // ✅ [추가] 사진 맥락 추적을 위한 autoReply 모듈 추가
 const autoReply = require('./autoReply.js');
+
+// 🔥 NEW: Vision API 지능형 메시지 시스템 연동
+const enhancedPhotoSystem = require('./enhancedPhotoSystem');
 
 // aiUtils 함수들을 직접 정의 (import 에러 방지)
 async function callOpenAI(messages, model = 'gpt-4o', maxTokens = 150, temperature = 1.0) {
@@ -214,6 +218,57 @@ function formatFolderNameToDate(folderName) {
         return `${year}년 ${parseInt(month)}월 ${parseInt(day)}일 ${concept}`;
     }
     return folderName;
+}
+
+// 🔥 NEW: concept-index.json 기반 폴백 메시지 생성 함수
+function generateFallbackCaption(selectedFolder, formattedDate, emotionalState) {
+    // ✅ concept-index.json에서 해당 사진의 에피소드 가져오기
+    let personalMemory = null;
+    try {
+        const conceptIndex = require('./concept-index.json');
+        
+        // 폴더명을 concept-index.json의 키 형식과 매칭
+        const dateKey = formattedDate.replace(/년|월|일/g, '').replace(/\s+/g, '_');
+        for (const [key, value] of Object.entries(conceptIndex)) {
+            if (key.includes(dateKey) || selectedFolder.includes(key.replace(/\s/g, '_'))) {
+                personalMemory = value;
+                break;
+            }
+        }
+    } catch (error) {
+        console.warn('⚠️ [concept] concept-index.json을 읽을 수 없습니다:', error.message);
+    }
+
+    // 개인적인 에피소드가 있으면 사용, 없으면 기본 캡션
+    let caption;
+    if (personalMemory) {
+        // 감정 상태에 따라 mood나 episode 선택
+        if (emotionalState === 'romantic' || emotionalState === 'loving') {
+            caption = personalMemory.episode || personalMemory.mood;
+        } else if (emotionalState === 'sad' || emotionalState === 'sensitive') {
+            caption = personalMemory.mood || personalMemory.episode;
+        } else {
+            // 랜덤하게 mood나 episode 선택
+            caption = Math.random() < 0.5 ? personalMemory.mood : personalMemory.episode;
+        }
+        
+        // 너무 길면 줄이기
+        if (caption && caption.length > 100) {
+            caption = caption.substring(0, 97) + '...';
+        }
+    } else {
+        // 기본 캡션
+        const simpleCaptions = [
+            `${formattedDate} 컨셉 사진이야! 어때?`,
+            `이거 ${formattedDate}에 찍은 건데... 예쁘지?`,
+            `아저씨 보여주려고 가져온 ${formattedDate} 사진!`,
+            `${formattedDate} 추억 사진~ 그때 생각나?`,
+            `이 사진 봐봐! ${formattedDate}에 찍은 거야!`
+        ];
+        caption = simpleCaptions[Math.floor(Math.random() * simpleCaptions.length)];
+    }
+    
+    return caption;
 }
 
 async function getConceptPhotoReply(userMessage, conversationContextParam) {
@@ -556,59 +611,40 @@ async function getConceptPhotoReply(userMessage, conversationContextParam) {
         emotionalState = 'normal';
     }
 
-    // ✅ [추가] concept-index.json에서 해당 사진의 에피소드 가져오기
-    let personalMemory = null;
-    try {
-        const conceptIndex = require('./concept-index.json');
-        
-        // 폴더명을 concept-index.json의 키 형식과 매칭
-        const dateKey = formattedDate.replace(/년|월|일/g, '').replace(/\s+/g, '_');
-        for (const [key, value] of Object.entries(conceptIndex)) {
-            if (key.includes(dateKey) || selectedFolder.includes(key.replace(/\s/g, '_'))) {
-                personalMemory = value;
-                break;
-            }
-        }
-    } catch (error) {
-        console.warn('⚠️ [concept] concept-index.json을 읽을 수 없습니다:', error.message);
-    }
-
-    // 개인적인 에피소드가 있으면 사용, 없으면 기본 캡션
+    // 🔥 NEW: Vision API로 지능형 메시지 생성 (완벽한 안전장치 포함)
     let caption;
-    if (personalMemory) {
-        // 감정 상태에 따라 mood나 episode 선택
-        if (emotionalState === 'romantic' || emotionalState === 'loving') {
-            caption = personalMemory.episode || personalMemory.mood;
-        } else if (emotionalState === 'sad' || emotionalState === 'sensitive') {
-            caption = personalMemory.mood || personalMemory.episode;
-        } else {
-            // 랜덤하게 mood나 episode 선택
-            caption = Math.random() < 0.5 ? personalMemory.mood : personalMemory.episode;
-        }
+    let isVisionUsed = false;
+    
+    try {
+        console.log(`✨ [concept] Vision API 분석 시작: ${selectedFolder}`);
+        const analysisResult = await enhancedPhotoSystem.getEnhancedPhotoMessage(photoUrl, 'concept');
+        caption = analysisResult.message;
+        isVisionUsed = true;
         
-        // 너무 길면 줄이기
-        if (caption && caption.length > 100) {
-            caption = caption.substring(0, 97) + '...';
-        }
-    } else {
-        // 기본 캡션
-        const simpleCaptions = [
-            `${formattedDate} 컨셉 사진이야! 어때?`,
-            `이거 ${formattedDate}에 찍은 건데... 예쁘지?`,
-            `아저씨 보여주려고 가져온 ${formattedDate} 사진!`,
-            `${formattedDate} 추억 사진~ 그때 생각나?`,
-            `이 사진 봐봐! ${formattedDate}에 찍은 거야!`
-        ];
-        caption = simpleCaptions[Math.floor(Math.random() * simpleCaptions.length)];
+        console.log(`✨ [concept] Vision API 분석 완료: "${caption.substring(0, 50)}${caption.length > 50 ? '...' : ''}"`);
+        
+    } catch (error) {
+        // 🛡️ 안전장치: Vision API 실패 시 기존 concept-index.json 기반 메시지 사용
+        caption = generateFallbackCaption(selectedFolder, formattedDate, emotionalState);
+        isVisionUsed = false;
+        
+        console.log(`⚠️ [concept] Vision API 실패, concept-index.json 기반 폴백 사용: ${error.message}`);
+        console.log(`🔄 [concept] 폴백 메시지: "${caption}"`);
     }
     
-    // ✅ [추가] 사진 맥락 추적 기록
+    // ✅ [추가] 사진 맥락 추적 기록 (Vision API 사용 여부 포함)
     try {
-        autoReply.recordPhotoSent('concept', caption);
-        console.log(`📝 [concept] 사진 맥락 추적 기록 완료: concept - ${formattedDate}`);
+        const contextInfo = isVisionUsed ? `concept[Vision AI] - ${formattedDate}` : `concept[기본] - ${formattedDate}`;
+        autoReply.recordPhotoSent('concept', contextInfo);
+        console.log(`📝 [concept] 사진 맥락 추적 기록 완료: ${contextInfo}`);
     } catch (error) {
         console.warn('⚠️ [concept] 사진 맥락 추적 기록 실패:', error.message);
     }
+    
+    // 🎯 로그 출력 (Vision API 사용 여부 표시)
+    const visionStatus = isVisionUsed ? '[Vision AI]' : '[concept-index.json]';
+    console.log(`✅ [concept] 컨셉 사진 전송 준비 완료 ${visionStatus}: ${selectedFolder}`);
+    console.log(`📸 [concept] 메시지: "${caption.substring(0, 80)}${caption.length > 80 ? '...' : ''}"`);
     
     return { 
         type: 'image', 
