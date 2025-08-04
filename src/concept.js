@@ -646,12 +646,17 @@ async function getConceptPhotoReply(userMessage, conversationContextParam) {
     console.log(`✅ [concept] 컨셉 사진 전송 준비 완료 ${visionStatus}: ${selectedFolder}`);
     console.log(`📸 [concept] 메시지: "${caption.substring(0, 80)}${caption.length > 80 ? '...' : ''}"`);
     
+    // 🔥 NEW: 날짜 정보 먼저 전송, 그 다음에 사진과 코멘트 전송
     return { 
-        type: 'image', 
-        originalContentUrl: photoUrl, 
-        previewImageUrl: photoUrl, 
-        altText: caption, 
-        caption: caption 
+        type: 'concept_with_title',
+        title: formattedDate,           // 먼저 전송할 제목 (예: "2024년 12월 14일 일본 나르시스트")
+        image: {
+            type: 'image',
+            originalContentUrl: photoUrl, 
+            previewImageUrl: photoUrl, 
+            altText: caption, 
+            caption: caption 
+        }
     };
 }
 
