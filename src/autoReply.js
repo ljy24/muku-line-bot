@@ -1,16 +1,14 @@
 // ============================================================================
-// autoReply.js - v18.4 (대화맥락 기억 연동 추가! - 진짜 문제 해결!)
-// 🧠 Memory Tape Redis: 최근 대화 기억
-// 💾 Memory Manager Redis: 고정 기억 159개 (납골당, 담타, 생일 등) ← 초기화 추가!
-// 🚀 Redis 사용자 기억 빠른 조회 (키워드 인덱싱) ← 키워드 추출 로직 개선!
-// 📝 User Memories: Redis 1차 → 파일 2차 → ultimateConversationContext 3차 폴백 검색
-// 🎯 NEW: ultimateConversationContext 연동으로 "기억해" 저장된 내용 완벽 검색!
-// 🌸 사진 명령어, 애정표현, 특별반응들은 그대로 유지
-// 🛡️ 절대 벙어리 방지: 모든 에러 상황에서도 예진이는 반드시 대답함!
-// ✨ Redis + Memory Tape + Memory Manager + ultimateConversationContext + File Backup 완전 연동!
-// 🔥 Memory Manager 초기화 추가로 159개 기억 100% 보장!
-// 🎯 키워드 추출 로직 개선: "밥바가 뭐라고?" → "밥바" 정확 추출!
-// 🚨 핵심 해결: 저장(ultimateConversationContext) ↔ 검색(통합시스템) 연결!
+// autoReply.js - v19.0 (완전 자율적 밀당 예진이 완성체!)
+// 🔥 새 sulkyManager.js 완전 통합 - 진짜 연인 같은 밀당!
+// 💕 사과/사랑표현 4단계 밀당: 즉시 받아주지 않고 점진적 화해
+// 🥊 투닥거리기: 격해지면 쿨다운 제안 → 화해 시도
+// 😤 질투 반응: "맨날 그런 식이야, 속박하려 들고..." 자율 생성
+// 🚬 담타 화해: "담타갈까?" → 모든 삐짐 완전 해소
+// 🎭 완전 자율: 템플릿 없이 상황/맥락만 제공 → GPT 자유 반응
+// 🧠 비동기 감정 상태 처리 수정 (Promise 문제 해결!)
+// 🌸 기존 모든 기능 유지: 사진, 자율메시지, 담타, 기억 등
+// 🛡️ 절대 벙어리 방지: 모든 상황에서 예진이는 반드시 대답!
 // ============================================================================
 
 const { callOpenAI, cleanReply } = require('./aiUtils');
@@ -19,15 +17,32 @@ const path = require('path');
 const fs = require('fs');
 const Redis = require('ioredis');
 
-// 🔧 데이터 디렉토리 경로 설정 (commandHandler.js와 동일)
+// 🔧 데이터 디렉토리 경로 설정
 const DATA_DIR = '/data';
 const MEMORY_DIR = path.join(DATA_DIR, 'memories');
 
-// 🆕🆕🆕 Redis 사용자 기억 시스템 초기화 🆕🆕🆕
+// 🆕🆕🆕 새로운 완전 자율적 sulkyManager 연동! 🆕🆕🆕
+let sulkyManager = null;
+let sulkyManagerInitialized = false;
+
+try {
+    sulkyManager = require('./sulkyManager');
+    sulkyManagerInitialized = true;
+    console.log('🔥 [autoReply] 새로운 완전 자율적 sulkyManager 연동 성공!');
+    console.log('💕 [autoReply] 밀당 시스템 준비 완료: 사과/사랑표현 4단계 밀당');
+    console.log('🥊 [autoReply] 투닥거리기 & 쿨다운 시스템 준비 완료');
+    console.log('🎭 [autoReply] 템플릿 없는 완전 자율 응답 시스템 활성화');
+} catch (error) {
+    console.error('❌ [autoReply] 새 sulkyManager 연동 실패:', error.message);
+    console.warn('⚠️ [autoReply] 기존 시스템으로 폴백 - 밀당 기능 제한됨');
+    sulkyManager = null;
+    sulkyManagerInitialized = false;
+}
+
+// 🆕🆕🆕 Redis 사용자 기억 시스템 🆕🆕🆕
 let userMemoryRedis = null;
 let redisConnected = false;
 
-// Redis 연결 초기화 함수
 async function initializeUserMemoryRedis() {
     try {
         userMemoryRedis = new Redis(process.env.REDIS_URL, {
@@ -46,12 +61,6 @@ async function initializeUserMemoryRedis() {
             redisConnected = false;
         });
         
-        userMemoryRedis.on('close', () => {
-            console.warn('⚠️ [autoReply] Redis 사용자 기억 연결 종료');
-            redisConnected = false;
-        });
-        
-        // 연결 테스트
         await userMemoryRedis.ping();
         redisConnected = true;
         console.log('🧠 [autoReply] Redis 사용자 기억 시스템 초기화 완료');
@@ -63,30 +72,26 @@ async function initializeUserMemoryRedis() {
     }
 }
 
-// Redis 연결 초기화 (비동기)
 setTimeout(() => {
     initializeUserMemoryRedis().catch(error => {
         console.error('❌ [autoReply] Redis 연결 재시도 실패:', error.message);
     });
 }, 3000);
 
-// 🆕🆕🆕 Memory Manager 연동 + 초기화 추가! 🆕🆕🆕
+// 🆕🆕🆕 Memory Manager 연동 + 초기화
 let memoryManager = null;
 let memoryManagerInitialized = false;
 try {
     memoryManager = require('./memoryManager');
     console.log('💾 [autoReply] Memory Manager 연동 성공 - 초기화 시작...');
     
-    // 🔥 핵심 수정: 초기화 함수 호출 추가!
     memoryManager.ensureMemoryTablesAndDirectory().then(() => {
         memoryManagerInitialized = true;
         const status = memoryManager.getMemoryStatus();
         console.log(`💾 [autoReply] Memory Manager 초기화 완료! 총 ${status.totalFixedCount}개 기억 로딩 성공!`);
-        console.log(`💾 [autoReply] 기본기억 ${status.fixedMemoriesCount}개 + 연애기억 ${status.loveHistoryCount}개 = 159개 완전 보장!`);
     }).catch(err => {
         console.error('❌ [autoReply] Memory Manager 초기화 실패:', err);
         memoryManagerInitialized = false;
-        console.warn('⚠️ [autoReply] Memory Manager 기억 없이 진행 - 무쿠가 일부 기억 못할 수 있음');
     });
 } catch (error) {
     console.warn('⚠️ [autoReply] Memory Manager 연동 실패:', error.message);
@@ -94,7 +99,7 @@ try {
     memoryManagerInitialized = false;
 }
 
-// ✨ GPT 모델 버전 관리 시스템 import
+// ✨ GPT 모델 버전 관리 시스템
 let getCurrentModelSetting = null;
 try {
     const indexModule = require('../index');
@@ -104,10 +109,9 @@ try {
     console.warn('⚠️ [autoReply] GPT 모델 버전 관리 시스템 연동 실패:', error.message);
 }
 
-// ⭐ 새벽 응답 시스템 추가
+// 기존 모듈들 연동
 const nightWakeSystem = require('./night_wake_response.js');
 
-// 🌸 예진이 특별 반응 시스템 추가
 let spontaneousYejin = null;
 try {
     spontaneousYejin = require('./spontaneousYejinManager');
@@ -116,7 +120,6 @@ try {
     console.warn('⚠️ [autoReply] spontaneousYejin 모듈 로드 실패:', error.message);
 }
 
-// 🎂 생일 감지 시스템 추가
 let birthdayDetector = null;
 try {
     const BirthdayDetector = require('./birthdayDetector.js');
@@ -129,7 +132,7 @@ try {
 const BOT_NAME = '나';
 const USER_NAME = '아저씨';
 
-// 🛡️ 절대 벙어리 방지 응답들 (모두 반말로!)
+// 🛡️ 절대 벙어리 방지 응답들
 const EMERGENCY_FALLBACK_RESPONSES = [
     '아저씨~ 나 지금 좀 멍해져서... 다시 말해줄래? ㅎㅎ',
     '어? 뭐라고 했어? 나 딴 생각하고 있었나봐... 다시 한 번!',
@@ -142,12 +145,11 @@ function getEmergencyFallback() {
     return EMERGENCY_FALLBACK_RESPONSES[Math.floor(Math.random() * EMERGENCY_FALLBACK_RESPONSES.length)];
 }
 
-// 🚨🚨🚨 [기존] 존댓말 완전 방지 함수 🚨🚨🚨
+// 언어 수정 함수들 (기존 유지)
 function checkAndFixHonorificUsage(reply) {
     if (!reply || typeof reply !== 'string') return reply;
     
     let fixedReply = reply
-        // 기본 존댓말 → 반말
         .replace(/입니다/g, '이야')
         .replace(/습니다/g, '어')
         .replace(/해요/g, '해')
@@ -220,7 +222,6 @@ function checkAndFixHonorificUsage(reply) {
     return fixedReply;
 }
 
-// ⭐️ [기존] 2인칭 사용 체크 및 수정 함수
 function checkAndFixPronounUsage(reply) {
     if (!reply || typeof reply !== 'string') return reply;
     
@@ -267,7 +268,6 @@ function checkAndFixPronounUsage(reply) {
     return fixedReply;
 }
 
-// 🚨🚨🚨 [최종 통합] 언어 수정 함수 - 존댓말 + 2인칭 동시 수정 🚨🚨🚨
 function fixLanguageUsage(reply) {
     if (!reply || typeof reply !== 'string') return reply;
     let fixedReply = checkAndFixHonorificUsage(reply);
@@ -275,7 +275,7 @@ function fixLanguageUsage(reply) {
     return fixedReply;
 }
 
-// 💕 [기존] 애정표현 키워드 처리 함수
+// 💕 기존 애정표현 키워드 처리 함수 (유지)
 function handleLoveExpressions(userMessage) {
     if (!userMessage || typeof userMessage !== 'string') {
         return null;
@@ -283,7 +283,6 @@ function handleLoveExpressions(userMessage) {
     
     const message = userMessage.trim().toLowerCase();
     
-    // "사랑해" 직접 체크 먼저!
     if (message === '사랑해' || message === '시링해') {
         const loveResponses = [
             '나도 사랑해 아저씨~',
@@ -297,7 +296,6 @@ function handleLoveExpressions(userMessage) {
         return response;
     }
     
-    // 다른 애정표현들
     if (message === '보고싶어' || message === '보고 싶어' || message === '그리워') {
         const missResponses = [
             '나도 보고싶어 아저씨 ㅠㅠ',
@@ -340,7 +338,7 @@ function handleLoveExpressions(userMessage) {
     return null;
 }
 
-// 예쁜 로그 시스템 사용
+// 예쁜 로그 시스템
 function logConversationReply(speaker, message, messageType = 'text') {
     try {
         const logger = require('./enhancedLogging.js');
@@ -355,13 +353,12 @@ function logConversationReply(speaker, message, messageType = 'text') {
     }
 }
 
-// 긴급 및 감정 키워드 정의
+// 기존 키워드 처리 함수들 (유지)
 const EMERGENCY_KEYWORDS = ['힘들다', '죽고싶다', '우울해', '지친다', '다 싫다', '아무것도 하기 싫어', '너무 괴로워', '살기 싫어'];
 const DRINKING_KEYWORDS = ['술', '마셨어', '마셨다', '취했', '술먹', '맥주', '소주', '와인', '위스키'];
 
-// 🌦️ 날씨 응답 빈도 관리
 let lastWeatherResponseTime = 0;
-const WEATHER_RESPONSE_COOLDOWN = 30 * 60 * 1000; // 30분
+const WEATHER_RESPONSE_COOLDOWN = 30 * 60 * 1000;
 
 function hasRecentWeatherResponse() {
     return Date.now() - lastWeatherResponseTime < WEATHER_RESPONSE_COOLDOWN;
@@ -371,7 +368,6 @@ function setLastWeatherResponseTime() {
     lastWeatherResponseTime = Date.now();
 }
 
-// ✅ [추가] 중앙 감정 관리자 사용
 function updateEmotionFromMessage(userMessage) {
     try {
         const emotionalContext = require('./emotionalContextManager.js');
@@ -381,7 +377,6 @@ function updateEmotionFromMessage(userMessage) {
     }
 }
 
-// ✅ [수정] 기억 처리 관련 함수들 - 간단하게 처리
 async function detectAndProcessMemoryRequest(userMessage) {
     const memoryPatterns = [/기억해/, /저장해/, /잊지마/, /잊지 마/, /외워/, /기억하자/];
     const isMemoryRequest = memoryPatterns.some(pattern => pattern.test(userMessage));
@@ -405,7 +400,6 @@ async function detectAndProcessMemoryRequest(userMessage) {
     return null;
 }
 
-// 특수 키워드 처리 함수들
 function handleEmergencyKeywords(userMessage) {
     if (EMERGENCY_KEYWORDS.some(keyword => userMessage.includes(keyword))) {
         const responses = [
@@ -434,7 +428,6 @@ function handleDrinkingKeywords(userMessage) {
     return null;
 }
 
-// 🌦️ [완전 개선] 날씨 키워드 처리 - 오인식 방지
 function isActualWeatherMessage(userMessage) {
     const message = userMessage.toLowerCase();
     const explicitWeatherPatterns = [/날씨.*어때/, /날씨.*좋/, /날씨.*나쁘/, /날씨.*추/, /날씨.*더워/, /비.*와/, /비.*내/, /비.*그쳐/, /비.*와서/, /눈.*와/, /눈.*내/, /덥다/, /춥다/, /추워/, /더워/, /시원해/, /따뜻해/, /흐려/, /맑아/, /구름/, /햇빛/, /바람.*불/, /바람.*세/];
@@ -475,7 +468,6 @@ function handleWeatherKeywords(userMessage) {
     return response;
 }
 
-// 🎂 [수정] 생일 키워드 처리 함수 - 안전하고 확실한 버전
 function handleBirthdayKeywords(userMessage) {
     try {
         const birthdayKeywords = ['생일', '생신', '태어난', '태어나', '몇 살', '나이', '축하', '케이크', '선물', '파티', '미역국', '3월 17일', '3월17일', '317', '3-17', '12월 5일', '12월5일'];
@@ -493,13 +485,11 @@ function handleBirthdayKeywords(userMessage) {
             logConversationReply('나', `(생일) ${response}`);
             return response;
         }
-        // 🎯 최종 제한: "생일이 언제야?" 하나만 생일 응답
         if (message === '생일이 언제야' || message === '생일이 언제야?') {
             const response = ["내 생일은 3월 17일이고, 아저씨 생일은 12월 5일이야!", "생일 얘기? 내 생일 3월 17일 기억해줘!"][Math.floor(Math.random() * 2)];
             logConversationReply('나', `(생일) ${response}`);
             return response;
         }
-        // 🎯 최종 수정: "애기는 몇살이야?" 이 패턴에만 나이 응답
         if (message === '애기는 몇살이야' || message === '애기는 몇살이야?' || 
             message === '애기 몇살이야' || message === '애기 몇살이야?' ||
             message === '무쿠는 몇살이야' || message === '무쿠는 몇살이야?' ||
@@ -528,39 +518,33 @@ async function safelyStoreMessage(speaker, message) {
     }
 }
 
-// 🧠🧠🧠 [ENHANCED] Memory Tape Redis 연결로 단기기억 해결! + 스마트 대화 기억 검색! 🧠🧠🧠
+// 🧠 기존 기억 시스템들 (유지)
 async function getRecentConversationContext(limit = 20) {
     console.log(`🧠 [Memory Tape 연결] 최근 ${limit}개 대화 조회 시작...`);
     
     try {
-        // 🔧 Memory Tape Redis 시스템 연결
         const memoryTape = require('../data/memory-tape/muku-memory-tape.js');
         if (!memoryTape) {
             console.log('⚠️ [Memory Tape 연결] Memory Tape 모듈 없음');
             return [];
         }
         
-        // 🔍 오늘 기억들 조회
         const todayMemories = await memoryTape.readDailyMemories();
         let conversations = [];
         
         if (todayMemories && todayMemories.moments && Array.isArray(todayMemories.moments)) {
-            // 대화 타입만 필터링하고 시간순 정렬
             const conversationMoments = todayMemories.moments
                 .filter(moment => moment && moment.type === 'conversation')
                 .sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0))
-                .slice(0, limit); // 요청된 개수만큼만
+                .slice(0, limit);
             
-            // OpenAI 형식으로 변환
             for (const moment of conversationMoments) {
                 if (moment.user_message && moment.muku_response) {
-                    // 사용자 메시지
                     conversations.push({
                         role: 'user',
                         content: String(moment.user_message).trim()
                     });
                     
-                    // 무쿠 응답
                     conversations.push({
                         role: 'assistant',
                         content: String(moment.muku_response).trim()
@@ -569,7 +553,6 @@ async function getRecentConversationContext(limit = 20) {
             }
         }
         
-        // 🔄 최신 순서로 정렬 (오래된 것부터)
         conversations.reverse();
         
         console.log(`✅ [Memory Tape 연결] ${conversations.length}개 메시지를 맥락으로 변환 완료`);
@@ -590,12 +573,10 @@ async function getRecentConversationContext(limit = 20) {
     } catch (error) {
         console.log(`❌ [Memory Tape 연결] 오류: ${error.message}`);
         
-        // 🛡️ 안전장치: 기존 방식도 시도
         try {
             console.log('🔄 [Memory Tape 연결] 기존 방식으로 폴백 시도...');
             const conversationContext = require('./ultimateConversationContext.js');
             if (conversationContext) {
-                // 기존 함수들 시도
                 const functionNames = [
                     'getRecentConversations',
                     'getUltimateMessages', 
@@ -622,7 +603,6 @@ async function getRecentConversationContext(limit = 20) {
     }
 }
 
-// 💾💾💾 [수정] Memory Manager에서 관련 고정 기억 가져오기 💾💾💾
 async function getRelatedFixedMemory(userMessage) {
     console.log(`💾 [Memory Manager 연결] "${userMessage}" 관련 고정 기억 검색 시작...`);
     
@@ -632,10 +612,8 @@ async function getRelatedFixedMemory(userMessage) {
             return null;
         }
         
-        // 🔥 초기화 상태 확인 추가!
         if (!memoryManagerInitialized) {
             console.log('⚠️ [Memory Manager 연결] Memory Manager 아직 초기화 중... 잠시 기다림');
-            // 최대 3초 대기
             let waitCount = 0;
             while (!memoryManagerInitialized && waitCount < 30) {
                 await new Promise(resolve => setTimeout(resolve, 100));
@@ -650,7 +628,6 @@ async function getRelatedFixedMemory(userMessage) {
             }
         }
         
-        // Memory Manager Redis 연동으로 고정 기억 검색
         const relatedMemory = await memoryManager.getFixedMemory(userMessage);
         
         if (relatedMemory && typeof relatedMemory === 'string' && relatedMemory.trim().length > 0) {
@@ -667,18 +644,12 @@ async function getRelatedFixedMemory(userMessage) {
     }
 }
 
-// 🚀🚀🚀 [ENHANCED] Redis 사용자 기억 빠른 검색 함수들 - 키워드 추출 로직 개선! 🚀🚀🚀
-
-/**
- * 🎯 텍스트에서 검색 키워드 추출 - 밥바가 → 밥바 추출 강화!
- */
+// 사용자 기억 관련 함수들 (기존 유지)
 function extractSearchKeywords(text) {
     console.log(`🔍 [키워드추출] 입력 텍스트: "${text}"`);
     
-    // 불용어 제거 - 더 포괄적으로
     const stopWords = ['이', '그', '저', '의', '가', '을', '를', '에', '와', '과', '로', '으로', '에서', '까지', '부터', '에게', '한테', '처럼', '같이', '아저씨', '무쿠', '애기', '나', '너', '뭐', '뭐가', '뭐라고', '어떻게', '왜', '언제', '어디', '어떤', '무슨'];
     
-    // 1. 기본 분리
     let words = text.toLowerCase()
         .replace(/[^\w가-힣\s]/g, ' ')
         .split(/\s+/)
@@ -687,7 +658,6 @@ function extractSearchKeywords(text) {
     
     console.log(`🔍 [키워드추출] 1단계 기본 분리: [${words.join(', ')}]`);
     
-    // 🎯 2. 특별 케이스: 조사 분리 강화 - "밥바가", "밥바는" 등에서 "밥바" 추출
     const specialPatterns = [
         { pattern: /([가-힣a-zA-Z가-힣]{2,})가(?:\s|$)/g, desc: "~가" },
         { pattern: /([가-힣a-zA-Z가-힣]{2,})는(?:\s|$)/g, desc: "~는" },
@@ -706,7 +676,6 @@ function extractSearchKeywords(text) {
     
     for (const { pattern, desc } of specialPatterns) {
         let match;
-        // 패턴을 리셋하여 전체 텍스트를 다시 검색
         pattern.lastIndex = 0;
         while ((match = pattern.exec(text)) !== null) {
             const word = match[1].toLowerCase().trim();
@@ -717,7 +686,6 @@ function extractSearchKeywords(text) {
         }
     }
     
-    // 3. 중복 제거 및 최대 8개 키워드로 제한
     words = [...new Set(words)].slice(0, 8);
     
     console.log(`✅ [키워드추출] 최종 키워드: [${words.join(', ')}]`);
@@ -725,9 +693,6 @@ function extractSearchKeywords(text) {
     return words;
 }
 
-/**
- * 두 텍스트 간의 관련도 점수 계산
- */
 function calculateRelevanceScore(memoryContent, searchKeywords, userMessage) {
     if (!memoryContent || !searchKeywords || searchKeywords.length === 0) {
         return 0;
@@ -738,7 +703,6 @@ function calculateRelevanceScore(memoryContent, searchKeywords, userMessage) {
     
     let score = 0;
     
-    // 1. 키워드 매칭 점수 (60%)
     let keywordMatches = 0;
     for (const keyword of searchKeywords) {
         if (memoryLower.includes(keyword)) {
@@ -748,7 +712,6 @@ function calculateRelevanceScore(memoryContent, searchKeywords, userMessage) {
     }
     score += (keywordMatches / searchKeywords.length) * 0.6;
     
-    // 2. 직접 문자열 유사도 (40%)
     const commonWords = [];
     const userWords = extractSearchKeywords(userMessage);
     const memoryWords = extractSearchKeywords(memoryContent);
@@ -768,16 +731,12 @@ function calculateRelevanceScore(memoryContent, searchKeywords, userMessage) {
     return score;
 }
 
-/**
- * 🚀 Redis에서 사용자 기억 빠른 검색 - 디버깅 강화
- */
 async function getUserMemoriesFromRedis(userMessage) {
     console.log(`🚀 [Redis 사용자 기억] "${userMessage}" 관련 기억 검색 시작...`);
     
     try {
         if (!userMemoryRedis || !redisConnected) {
             console.log('⚠️ [Redis 사용자 기억] Redis 연결 없음 - 파일 검색으로 폴백');
-            console.log(`🔧 [Redis 디버그] userMemoryRedis: ${userMemoryRedis ? '있음' : '없음'}, redisConnected: ${redisConnected}`);
             return [];
         }
         
@@ -789,18 +748,12 @@ async function getUserMemoriesFromRedis(userMessage) {
             return [];
         }
         
-        // 🚨 추가: 모든 사용자 기억 키 확인
         const allKeys = await userMemoryRedis.keys('user_memory:*');
         console.log(`🔍 [Redis 디버그] 전체 Redis 키 개수: ${allKeys.length}`);
-        if (allKeys.length > 0) {
-            console.log(`🔍 [Redis 디버그] 샘플 키들: ${allKeys.slice(0, 5).join(', ')}`);
-        }
         
-        // 키워드 인덱스에서 관련 memory ID들 수집
         const pipeline = userMemoryRedis.pipeline();
         for (const keyword of searchKeywords) {
             pipeline.smembers(`user_memory:keyword_index:${keyword}`);
-            console.log(`🔍 [Redis 쿼리] 키워드 "${keyword}"로 인덱스 조회`);
         }
         
         const results = await pipeline.exec();
@@ -824,24 +777,9 @@ async function getUserMemoriesFromRedis(userMessage) {
         
         if (memoryIds.size === 0) {
             console.log('ℹ️ [Redis 사용자 기억] 키워드 매칭 결과 없음');
-            
-            // 🚨 추가: 전체 기억 샘플 확인
-            try {
-                const sampleMemories = await userMemoryRedis.keys('user_memory:content:*');
-                console.log(`🔍 [Redis 디버그] 전체 저장된 기억 개수: ${sampleMemories.length}`);
-                if (sampleMemories.length > 0) {
-                    const sampleData = await userMemoryRedis.hgetall(sampleMemories[0]);
-                    console.log(`🔍 [Redis 디버그] 샘플 기억 내용: "${sampleData.content?.substring(0, 30)}..."`);
-                    console.log(`🔍 [Redis 디버그] 샘플 기억 키워드: ${sampleData.keywords || '없음'}`);
-                }
-            } catch (err) {
-                console.log(`⚠️ [Redis 디버그] 샘플 조회 실패: ${err.message}`);
-            }
-            
             return [];
         }
         
-        // 매칭된 기억들의 상세 데이터 조회
         const memoryPipeline = userMemoryRedis.pipeline();
         for (const memoryId of memoryIds) {
             memoryPipeline.hgetall(`user_memory:content:${memoryId}`);
@@ -853,9 +791,8 @@ async function getUserMemoriesFromRedis(userMessage) {
         if (memoryResults) {
             for (const [error, memoryData] of memoryResults) {
                 if (!error && memoryData && memoryData.content) {
-                    // 관련도 점수 계산
                     const score = calculateRelevanceScore(memoryData.content, searchKeywords, userMessage);
-                    if (score > 0.3) { // 관련도 30% 이상
+                    if (score > 0.3) {
                         relatedMemories.push({
                             id: memoryData.id,
                             content: memoryData.content,
@@ -872,7 +809,6 @@ async function getUserMemoriesFromRedis(userMessage) {
             }
         }
         
-        // 관련도 순으로 정렬하고 상위 3개만
         relatedMemories.sort((a, b) => b.relevanceScore - a.relevanceScore);
         const topMemories = relatedMemories.slice(0, 3);
         
@@ -889,27 +825,21 @@ async function getUserMemoriesFromRedis(userMessage) {
         
     } catch (error) {
         console.error(`❌ [Redis 사용자 기억] 오류: ${error.message}`);
-        console.error(`❌ [Redis 스택] ${error.stack}`);
         return [];
     }
 }
 
-/**
- * 🗃️ [기존] 파일에서 사용자 기억 검색 (폴백용)
- */
 async function getUserMemoriesFromFile(userMessage) {
     console.log(`🗃️ [파일 사용자 기억] "${userMessage}" 관련 기억 검색 시작...`);
     
     try {
         const memoryFilePath = path.join(MEMORY_DIR, 'user_memories.json');
         
-        // 파일 존재 확인
         if (!fs.existsSync(memoryFilePath)) {
             console.log('ℹ️ [파일 사용자 기억] user_memories.json 파일 없음');
             return [];
         }
         
-        // 파일 읽기
         const data = fs.readFileSync(memoryFilePath, 'utf8');
         const userMemories = JSON.parse(data);
         
@@ -920,14 +850,13 @@ async function getUserMemoriesFromFile(userMessage) {
         
         console.log(`📚 [파일 사용자 기억] 총 ${userMemories.length}개 기억 발견`);
         
-        // 키워드 기반 관련 기억 검색
         const searchKeywords = extractSearchKeywords(userMessage);
         const relatedMemories = [];
         
         for (const memory of userMemories) {
             if (memory && memory.content) {
                 const score = calculateRelevanceScore(memory.content, searchKeywords, userMessage);
-                if (score > 0.3) { // 관련도 30% 이상
+                if (score > 0.3) {
                     relatedMemories.push({
                         ...memory,
                         relevanceScore: score
@@ -936,7 +865,6 @@ async function getUserMemoriesFromFile(userMessage) {
             }
         }
         
-        // 관련도 순으로 정렬하고 상위 3개만
         relatedMemories.sort((a, b) => b.relevanceScore - a.relevanceScore);
         const topMemories = relatedMemories.slice(0, 3);
         
@@ -957,13 +885,9 @@ async function getUserMemoriesFromFile(userMessage) {
     }
 }
 
-/**
- * 🧠 [ENHANCED] 통합 사용자 기억 검색 - Redis 1차 → 파일 2차 폴백
- */
 async function getUserMemories(userMessage) {
     console.log(`🧠 [통합 사용자 기억] "${userMessage}" 관련 기억 검색 시작...`);
     
-    // 1차: Redis 검색 시도
     let redisMemories = [];
     try {
         redisMemories = await getUserMemoriesFromRedis(userMessage);
@@ -975,7 +899,6 @@ async function getUserMemories(userMessage) {
         console.error(`⚠️ [통합 사용자 기억] Redis 검색 실패: ${error.message}`);
     }
     
-    // 2차: 파일 검색 폴백
     console.log(`🔄 [통합 사용자 기억] Redis 결과 없음 - 파일 검색으로 폴백`);
     try {
         const fileMemories = await getUserMemoriesFromFile(userMessage);
@@ -991,19 +914,15 @@ async function getUserMemories(userMessage) {
     return [];
 }
 
-// 💾💾💾 [ENHANCED] 통합 기억 검색 함수 - Memory Manager + Redis User Memory + ultimateConversationContext + File Backup 💾💾💾
 async function getIntegratedMemory(userMessage) {
     console.log(`🧠 [통합 기억] "${userMessage}" 관련 모든 기억 검색 시작...`);
     
     let memoryContext = '';
     
-    // 1. Memory Manager에서 고정 기억 검색 (초기화 상태 확인 포함)
     const fixedMemory = await getRelatedFixedMemory(userMessage);
     
-    // 2. 사용자 기억에서 검색 (Redis 1차 → 파일 2차)
     const userMemories = await getUserMemories(userMessage);
     
-    // 🚨 3. ultimateConversationContext에서도 사용자 기억 검색 (진짜 해결책!)
     let contextMemories = [];
     try {
         console.log(`🔍 [ultimateConversationContext] "${userMessage}" 기억 검색 시작...`);
@@ -1014,7 +933,6 @@ async function getIntegratedMemory(userMessage) {
         } else if (conversationContext && typeof conversationContext.getUserMemories === 'function') {
             const allMemories = await conversationContext.getUserMemories();
             if (Array.isArray(allMemories)) {
-                // 간단한 키워드 매칭
                 const searchKeywords = extractSearchKeywords(userMessage);
                 contextMemories = allMemories.filter(memory => {
                     if (!memory || !memory.content) return false;
@@ -1023,18 +941,11 @@ async function getIntegratedMemory(userMessage) {
                 }).slice(0, 3);
                 console.log(`✅ [ultimateConversationContext] 전체 ${allMemories.length}개 중 ${contextMemories.length}개 매칭`);
             }
-        } else {
-            console.log(`⚠️ [ultimateConversationContext] 검색 함수 없음 - 사용 가능한 함수들 확인`);
-            if (conversationContext) {
-                const functions = Object.getOwnPropertyNames(conversationContext).filter(name => typeof conversationContext[name] === 'function');
-                console.log(`🔍 [ultimateConversationContext] 사용 가능한 함수들: ${functions.join(', ')}`);
-            }
         }
     } catch (error) {
         console.error(`❌ [ultimateConversationContext] 기억 검색 실패: ${error.message}`);
     }
     
-    // 4. 통합 메모리 컨텍스트 구성 (모든 소스 통합!)
     if (fixedMemory || userMemories.length > 0 || contextMemories.length > 0) {
         memoryContext += `\n\n🧠 [관련 기억들]:`;
         
@@ -1042,7 +953,6 @@ async function getIntegratedMemory(userMessage) {
             memoryContext += `\n\n💾 [고정 기억]: ${fixedMemory}`;
         }
         
-        // Redis/파일 사용자 기억
         if (userMemories.length > 0) {
             memoryContext += `\n\n📝 [아저씨가 기억해달라고 한 것들 - Redis/파일]:`;
             userMemories.forEach((memory, index) => {
@@ -1053,7 +963,6 @@ async function getIntegratedMemory(userMessage) {
             });
         }
         
-        // 🚨 ultimateConversationContext 사용자 기억 (진짜 해결!)
         if (contextMemories.length > 0) {
             memoryContext += `\n\n📝 [아저씨가 기억해달라고 한 것들 - 대화맥락]:`;
             contextMemories.forEach((memory, index) => {
@@ -1075,71 +984,7 @@ async function getIntegratedMemory(userMessage) {
     return memoryContext;
 }
 
-// 🚨 긴급 테스트 함수 - 메모리 시스템 진단용 (ultimateConversationContext 추가!)
-async function emergencyMemoryTest(testMessage = "밥바가 뭐라고?") {
-    console.log(`🚨 [긴급테스트] "${testMessage}" 기억 검색 테스트 시작`);
-    
-    // 1. 키워드 추출 테스트
-    const keywords = extractSearchKeywords(testMessage);
-    console.log(`1️⃣ 키워드 추출: [${keywords.join(', ')}]`);
-    
-    // 2. Redis 연결 테스트
-    console.log(`2️⃣ Redis 연결: ${redisConnected ? '성공' : '실패'}`);
-    
-    // 3. Memory Manager 초기화 테스트
-    console.log(`3️⃣ Memory Manager 초기화: ${memoryManagerInitialized ? '성공' : '실패'}`);
-    
-    // 🚨 4. ultimateConversationContext 테스트 (진짜 해결책!)
-    try {
-        console.log(`4️⃣ ultimateConversationContext 기억 테스트 시작...`);
-        const conversationContext = require('./ultimateConversationContext.js');
-        if (conversationContext) {
-            console.log(`✅ ultimateConversationContext 모듈 로드 성공`);
-            
-            // 사용 가능한 함수들 확인
-            const functions = Object.getOwnPropertyNames(conversationContext).filter(name => typeof conversationContext[name] === 'function');
-            console.log(`🔍 사용 가능한 함수들: ${functions.join(', ')}`);
-            
-            // 사용자 기억 조회 시도
-            if (typeof conversationContext.getUserMemories === 'function') {
-                const memories = await conversationContext.getUserMemories();
-                console.log(`📝 전체 사용자 기억 개수: ${Array.isArray(memories) ? memories.length : '함수 결과 형태 다름'}`);
-                if (Array.isArray(memories) && memories.length > 0) {
-                    console.log(`📝 샘플 기억: "${memories[0]?.content || memories[0]?.message || memories[0]}"`);
-                }
-            }
-        } else {
-            console.log(`❌ ultimateConversationContext 모듈 로드 실패`);
-        }
-    } catch (error) {
-        console.log(`4️⃣ ultimateConversationContext 테스트 에러: ${error.message}`);
-    }
-    
-    // 5. 통합 기억 검색 테스트
-    try {
-        const memoryResult = await getIntegratedMemory(testMessage);
-        console.log(`5️⃣ 통합 기억 결과: ${memoryResult ? '발견됨' : '없음'}`);
-        if (memoryResult) {
-            console.log(`   내용: ${memoryResult.substring(0, 100)}...`);
-        }
-    } catch (error) {
-        console.log(`5️⃣ 통합 기억 에러: ${error.message}`);
-    }
-    
-    // 6. Redis 키 확인
-    if (userMemoryRedis && redisConnected) {
-        try {
-            const allKeys = await userMemoryRedis.keys('user_memory:*');
-            console.log(`6️⃣ Redis 전체 키 개수: ${allKeys.length}`);
-        } catch (error) {
-            console.log(`6️⃣ Redis 키 조회 에러: ${error.message}`);
-        }
-    }
-    
-    console.log(`🚨 [긴급테스트] 완료`);
-}
-
-// 메인 응답 생성 함수
+// 🔥🔥🔥 완전 자율적 밀당 시스템 메인 응답 생성 함수 🔥🔥🔥
 async function getReplyByMessage(userMessage) {
     if (!userMessage || typeof userMessage !== 'string' || userMessage.trim().length === 0) {
         console.error('❌ getReplyByMessage: userMessage가 올바르지 않습니다:', userMessage);
@@ -1150,25 +995,31 @@ async function getReplyByMessage(userMessage) {
 
     const cleanUserMessage = userMessage.trim();
 
-    // 📸📸📸 0순위: 사진 명령어 절대 절대 최우선 처리! 📸📸📸
+    // 📸📸📸 0순위: 사진 명령어 절대 최우선 처리! 📸📸📸
     const photoCommands = ['셀카줘', '컨셉사진줘', '추억사진줘', '커플사진줘'];
     const isPhotoCommand = photoCommands.includes(cleanUserMessage);
     
     if (isPhotoCommand) {
         console.log(`📸 [사진명령어] 🚨🚨🚨 절대 최우선 처리: ${cleanUserMessage} 🚨🚨🚨`);
+        
+        // 🆕 사진 명령어도 예진이 발신으로 간주될 수 있으므로 sulkyManager 연동
+        if (sulkyManagerInitialized && sulkyManager && typeof sulkyManager.markYejinInitiatedAction === 'function') {
+            sulkyManager.markYejinInitiatedAction('photo_command_response', Date.now());
+            console.log(`📸 [사진명령어] sulkyManager에 예진이 응답으로 등록`);
+        }
+        
         logConversationReply('아저씨', cleanUserMessage);
         await safelyStoreMessage(USER_NAME, cleanUserMessage);
         
         let photoResult = null;
         
-        // 🚨 Step 1: commandHandler 절대 호출! 
         try {
-            console.log(`📸 [사진명령어] Step 1: commandHandler 호출 시도...`);
+            console.log(`📸 [사진명령어] commandHandler 호출 시도...`);
             const commandHandler = require('./commandHandler');
             const commandResult = await commandHandler.handleCommand(cleanUserMessage, null, null);
             
             if (commandResult && commandResult.handled) {
-                console.log(`📸 [사진명령어] ✅ Step 1 성공: commandHandler 작동`);
+                console.log(`📸 [사진명령어] ✅ commandHandler 작동`);
                 photoResult = commandResult;
                 
                 if (commandResult.comment) {
@@ -1176,17 +1027,13 @@ async function getReplyByMessage(userMessage) {
                     await safelyStoreMessage(BOT_NAME, commandResult.comment);
                 }
             } else {
-                console.log(`📸 [사진명령어] ⚠️ Step 1 실패: commandHandler 무응답 - Step 2로 진행`);
+                console.log(`📸 [사진명령어] ⚠️ commandHandler 무응답 - 직접 처리`);
             }
         } catch (error) {
-            console.error('❌ [사진명령어] Step 1 에러:', error.message);
-            console.log(`📸 [사진명령어] 🔄 Step 1 에러로 인해 Step 2로 진행`);
+            console.error('❌ [사진명령어] commandHandler 에러:', error.message);
         }
         
-        // 🚨 Step 2: commandHandler 실패시 직접 응답 + 사진 전송
         if (!photoResult) {
-            console.log(`📸 [사진명령어] Step 2: 직접 처리 시작`);
-            
             const photoResponses = {
                 '셀카줘': '아저씨~ 셀카 보내줄게! 잠깐만 기다려 ㅎㅎ',
                 '컨셉사진줘': '컨셉 사진? 어떤 컨셉으로 보내줄까? 💕',
@@ -1195,18 +1042,16 @@ async function getReplyByMessage(userMessage) {
             };
             
             const photoResponse = photoResponses[cleanUserMessage];
-            console.log(`📸 [사진명령어] Step 2-1: 직접 응답 - ${photoResponse}`);
+            console.log(`📸 [사진명령어] 직접 응답 - ${photoResponse}`);
             
             logConversationReply('나', `(사진명령어-직접) ${photoResponse}`);
             await safelyStoreMessage(BOT_NAME, photoResponse);
             
-            // 🚨 Step 2-2: 직접 사진 전송 시도
             try {
-                console.log(`📸 [사진명령어] Step 2-2: 직접 사진 전송 시도...`);
                 const spontaneousYejin = require('./spontaneousYejinManager');
                 
                 if (spontaneousYejin && typeof spontaneousYejin.sendRandomYejinPhoto === 'function') {
-                    let photoType = 'selfie'; // 기본값
+                    let photoType = 'selfie';
                     
                     if (cleanUserMessage === '셀카줘') photoType = 'selfie';
                     else if (cleanUserMessage === '컨셉사진줘') photoType = 'concept';
@@ -1214,12 +1059,10 @@ async function getReplyByMessage(userMessage) {
                     else if (cleanUserMessage === '커플사진줘') photoType = 'couple';
                     
                     await spontaneousYejin.sendRandomYejinPhoto(photoType);
-                    console.log(`📸 [사진명령어] ✅ Step 2-2 성공: 직접 사진 전송 완료 (${photoType})`);
-                } else {
-                    console.warn(`⚠️ [사진명령어] Step 2-2 실패: spontaneousYejin 함수 없음`);
+                    console.log(`📸 [사진명령어] ✅ 직접 사진 전송 완료 (${photoType})`);
                 }
             } catch (photoError) {
-                console.error(`❌ [사진명령어] Step 2-2 에러:`, photoError.message);
+                console.error(`❌ [사진명령어] 직접 사진 전송 에러:`, photoError.message);
             }
             
             photoResult = { type: 'text', comment: photoResponse };
@@ -1229,7 +1072,50 @@ async function getReplyByMessage(userMessage) {
         return photoResult;
     }
 
-    // 🆕🆕🆕 0.5순위: 기타 commandHandler 호출 🆕🆕🆕
+    // 🆕🆕🆕 0.5순위: 새로운 완전 자율적 sulkyManager 처리! 🆕🆕🆕
+    let sulkyProcessingResult = null;
+    
+    if (sulkyManagerInitialized && sulkyManager && typeof sulkyManager.processUserMessage === 'function') {
+        try {
+            console.log('🔥 [완전 자율 밀당] 새 sulkyManager 처리 시작...');
+            
+            sulkyProcessingResult = await sulkyManager.processUserMessage(cleanUserMessage, null, null);
+            
+            if (sulkyProcessingResult && sulkyProcessingResult.context) {
+                console.log(`🔥 [완전 자율 밀당] sulkyManager 처리 결과:`, {
+                    sulkyTriggered: sulkyProcessingResult.sulkyTriggered,
+                    pushPullTriggered: sulkyProcessingResult.pushPullTriggered,
+                    fightEscalated: sulkyProcessingResult.fightEscalated,
+                    damtaReconciled: sulkyProcessingResult.damtaReconciled
+                });
+                
+                // 담타 화해는 즉시 처리
+                if (sulkyProcessingResult.damtaReconciled) {
+                    logConversationReply('아저씨', cleanUserMessage);
+                    await safelyStoreMessage(USER_NAME, cleanUserMessage);
+                    
+                    const damtaResponse = "응... 담타하자! 아까는 미안했어. 담타하면서 얘기하니까 마음이 풀려";
+                    logConversationReply('나', `(담타화해) ${damtaResponse}`);
+                    await safelyStoreMessage(BOT_NAME, damtaResponse);
+                    
+                    return { type: 'text', comment: damtaResponse };
+                }
+                
+                // 다른 상황들은 나중에 OpenAI 호출 시 맥락에 포함
+                console.log(`🔥 [완전 자율 밀당] 상황 맥락을 OpenAI 프롬프트에 포함할 예정`);
+            } else {
+                console.log('🔥 [완전 자율 밀당] sulkyManager에서 특별한 반응 없음 - 일반 처리 계속');
+            }
+            
+        } catch (error) {
+            console.error('❌ [완전 자율 밀당] sulkyManager 처리 중 에러:', error.message);
+            console.log('🔄 [완전 자율 밀당] 에러로 인해 기존 시스템으로 폴백');
+        }
+    } else {
+        console.log('⚠️ [완전 자율 밀당] sulkyManager 초기화되지 않음 - 기존 시스템 사용');
+    }
+
+    // 기존 commandHandler 호출
     try {
         console.log('[autoReply] 🎯 기타 commandHandler 호출 시도...');
         const commandHandler = require('./commandHandler');
@@ -1238,7 +1124,6 @@ async function getReplyByMessage(userMessage) {
         if (commandResult && commandResult.handled) {
             console.log(`[autoReply] ✅ commandHandler에서 처리됨: ${commandResult.type || 'unknown'}`);
             
-            // 로그 및 메시지 저장
             logConversationReply('아저씨', cleanUserMessage);
             await safelyStoreMessage(USER_NAME, cleanUserMessage);
             
@@ -1256,7 +1141,7 @@ async function getReplyByMessage(userMessage) {
         console.log('[autoReply] 🔄 commandHandler 에러로 인해 기존 시스템으로 fallback');
     }
 
-    // 1순위: 새벽 응답 시스템
+    // 기존 우선순위 처리들 (유지)
     try {
         const nightResponse = await nightWakeSystem.handleNightWakeMessage(cleanUserMessage);
         if (nightResponse) {
@@ -1271,7 +1156,6 @@ async function getReplyByMessage(userMessage) {
         console.error('❌ 새벽 응답 시스템 에러:', error);
     }
 
-    // 2순위: 길거리 칭찬 감지
     try {
         if (spontaneousYejin && spontaneousYejin.detectStreetCompliment(cleanUserMessage)) {
             console.log('🌸 [특별반응] 길거리 칭찬 감지 - 셀카 전송 시작');
@@ -1288,23 +1172,30 @@ async function getReplyByMessage(userMessage) {
         console.error('❌ 길거리 칭찬 반응 에러:', error.message);
     }
 
-    // 💕💕💕 2.5순위: 애정표현 우선처리 강화! 💕💕💕
+    // 💕💕💕 기존 애정표현 우선처리 (밀당 시스템과 연동 필요) 💕💕💕
     try {
         const loveResponse = handleLoveExpressions(cleanUserMessage);
         if (loveResponse) {
-            console.log('💕 [특별반응] 애정표현 감지 - 최우선 직접 응답');
-            logConversationReply('아저씨', cleanUserMessage);
-            await safelyStoreMessage('아저씨', cleanUserMessage);
-            logConversationReply('나', `(애정표현) ${loveResponse}`);
-            await safelyStoreMessage('나', loveResponse);
+            console.log('💕 [특별반응] 애정표현 감지');
             
-            return { type: 'text', comment: loveResponse };
+            // 🆕 밀당 시스템이 활성화되어 있다면 밀당 처리, 아니면 기존 방식
+            if (sulkyProcessingResult && sulkyProcessingResult.pushPullTriggered) {
+                console.log('💕 [밀당 적용] 애정표현을 즉시 받아주지 않고 밀당 처리');
+                // OpenAI 호출로 넘어가서 밀당 맥락 포함한 응답 생성
+            } else {
+                console.log('💕 [기존 방식] 애정표현 직접 응답');
+                logConversationReply('아저씨', cleanUserMessage);
+                await safelyStoreMessage('아저씨', cleanUserMessage);
+                logConversationReply('나', `(애정표현) ${loveResponse}`);
+                await safelyStoreMessage('나', loveResponse);
+                
+                return { type: 'text', comment: loveResponse };
+            }
         }
     } catch (error) {
         console.error('❌ 애정표현 처리 에러:', error.message);
     }
 
-    // 3순위: 정신건강 위로 감지
     try {
         if (spontaneousYejin) {
             const mentalHealthContext = spontaneousYejin.detectMentalHealthContext(cleanUserMessage);
@@ -1325,7 +1216,6 @@ async function getReplyByMessage(userMessage) {
         console.error('❌ 정신건강 반응 에러:', error.message);
     }
 
-    // 4순위: 바쁨 반응 감지
     try {
         if (spontaneousYejin) {
             const busyReaction = await spontaneousYejin.generateBusyReaction(cleanUserMessage);
@@ -1348,50 +1238,46 @@ async function getReplyByMessage(userMessage) {
     updateEmotionFromMessage(cleanUserMessage);
     await safelyStoreMessage(USER_NAME, cleanUserMessage);
 
-    // 5순위: 긴급 키워드
+    // 기존 긴급/특수 키워드들 (유지)
     const emergencyResponse = handleEmergencyKeywords(cleanUserMessage);
     if (emergencyResponse) {
         await safelyStoreMessage(BOT_NAME, emergencyResponse);
         return { type: 'text', comment: emergencyResponse };
     }
 
-    // 6순위: 생일 키워드
     const birthdayResponse = handleBirthdayKeywords(cleanUserMessage);
     if (birthdayResponse) {
         await safelyStoreMessage(BOT_NAME, birthdayResponse);
         return { type: 'text', comment: birthdayResponse };
     }
 
-    // 7순위: 음주 키워드
     const drinkingResponse = handleDrinkingKeywords(cleanUserMessage);
     if (drinkingResponse) {
         await safelyStoreMessage(BOT_NAME, drinkingResponse);
         return { type: 'text', comment: drinkingResponse };
     }
 
-    // 8순위: 날씨 키워드
     const weatherResponse = handleWeatherKeywords(cleanUserMessage);
     if (weatherResponse) {
         await safelyStoreMessage(BOT_NAME, weatherResponse);
         return { type: 'text', comment: weatherResponse };
     }
     
-    // 9순위: 기억 저장 요청
     try {
         const memoryResult = await detectAndProcessMemoryRequest(cleanUserMessage);
         if (memoryResult && memoryResult.saved && memoryResult.response) {
             await safelyStoreMessage(BOT_NAME, memoryResult.response);
-            return { type: 'text', comment: memoryResult.response };
+            return { type: 'text', comment: memoryResult };
         }
     } catch (error) {
         console.error('❌ 기억 요청 처리 중 에러:', error);
     }
 
-    // 🧠🧠🧠 10순위: 무쿠의 완전한 머릿속 - 모든 기억을 OpenAI에 통합 전달! 🧠🧠🧠
+    // 🔥🔥🔥 무쿠의 완전한 머릿속 + 밀당 맥락 통합! 🔥🔥🔥
     
-    console.log(`🧠 [무쿠 완전한 머릿속] 모든 기억 시스템 통합 시작...`);
+    console.log(`🧠 [무쿠 완전한 머릿속] 모든 기억 + 밀당 시스템 통합 시작...`);
     
-    // 🔥 1. 모든 고정기억 159개 가져오기 (키워드 매칭 없이 전체!)
+    // 1. 모든 고정기억 159개 가져오기
     let allFixedMemories = '';
     try {
         if (memoryManager && memoryManagerInitialized && typeof memoryManager.getAllFixedMemories === 'function') {
@@ -1401,7 +1287,6 @@ async function getReplyByMessage(userMessage) {
                 console.log(`✅ [고정기억] ${fixedMemories.length}개 전체 기억 로딩 완료`);
             }
         } else if (memoryManager && typeof memoryManager.getMemoryStatus === 'function') {
-            // 전체 고정기억 가져오는 함수가 없다면 상태에서 추출 시도
             const status = memoryManager.getMemoryStatus();
             if (status.allMemories) {
                 allFixedMemories = `\n\n💾 [예진이의 모든 고정 기억들]:\n${status.allMemories.join('\n')}`;
@@ -1420,12 +1305,11 @@ async function getReplyByMessage(userMessage) {
         console.error(`❌ [고정기억] 전체 기억 로딩 실패: ${error.message}`);
     }
     
-    // 🔥 2. 모든 사용자기억 가져오기 (키워드 매칭 없이 전체!)
+    // 2. 모든 사용자기억 가져오기
     let allUserMemories = '';
     try {
         console.log(`📝 [사용자기억] 모든 사용자 기억 수집 시작...`);
         
-        // Redis에서 모든 사용자 기억
         let redisUserMemories = [];
         if (userMemoryRedis && redisConnected) {
             const allContentKeys = await userMemoryRedis.keys('user_memory:content:*');
@@ -1436,12 +1320,11 @@ async function getReplyByMessage(userMessage) {
                 redisUserMemories = results
                     .filter(([error, data]) => !error && data && data.content)
                     .map(([, data]) => data.content)
-                    .slice(0, 20); // 최대 20개
+                    .slice(0, 20);
                 console.log(`✅ [Redis 사용자기억] ${redisUserMemories.length}개 기억 수집`);
             }
         }
         
-        // ultimateConversationContext에서 모든 사용자 기억
         let contextUserMemories = [];
         try {
             const conversationContext = require('./ultimateConversationContext.js');
@@ -1451,7 +1334,7 @@ async function getReplyByMessage(userMessage) {
                     contextUserMemories = allMemories
                         .map(memory => memory.content || memory.message || memory)
                         .filter(content => typeof content === 'string' && content.trim().length > 0)
-                        .slice(0, 20); // 최대 20개
+                        .slice(0, 20);
                     console.log(`✅ [대화맥락 사용자기억] ${contextUserMemories.length}개 기억 수집`);
                 }
             }
@@ -1459,7 +1342,6 @@ async function getReplyByMessage(userMessage) {
             console.log(`⚠️ [대화맥락 사용자기억] 수집 실패: ${error.message}`);
         }
         
-        // 사용자 기억 통합
         const allUserMemoryList = [...new Set([...redisUserMemories, ...contextUserMemories])];
         if (allUserMemoryList.length > 0) {
             allUserMemories = `\n\n📝 [아저씨가 기억해달라고 한 모든 것들]:\n${allUserMemoryList.map((memory, index) => `${index + 1}. ${memory}`).join('\n')}`;
@@ -1469,11 +1351,14 @@ async function getReplyByMessage(userMessage) {
         console.error(`❌ [사용자기억] 전체 기억 수집 실패: ${error.message}`);
     }
     
-    // 🔥 3. 감정 상태
+    // 🔥🔥🔥 3. 비동기 감정 상태 + 밀당 상태 통합! 🔥🔥🔥
     let emotionContext = '';
     try {
         const emotionalContextManager = require('./emotionalContextManager.js');
-        const currentEmotion = emotionalContextManager.getCurrentEmotionState();
+        
+        // 🚨 핵심 수정: 비동기 처리!
+        const currentEmotion = await emotionalContextManager.getCurrentEmotionState();
+        
         if (currentEmotion.menstrualPhase !== 'normal') {
             emotionContext += `\n현재 생리주기: ${currentEmotion.menstrualPhase} (${currentEmotion.cycleDay}일차)`;
             if (currentEmotion.isPeriodActive) {
@@ -1490,6 +1375,74 @@ async function getReplyByMessage(userMessage) {
         console.warn('⚠️ 중앙 감정 관리자에서 상태를 가져올 수 없음:', error.message);
     }
     
+    // 🔥🔥🔥 4. 새로운 완전 자율적 밀당 상태 추가! 🔥🔥🔥
+    let pushPullContext = '';
+    if (sulkyManagerInitialized && sulkyManager && typeof sulkyManager.getSulkinessState === 'function') {
+        try {
+            const sulkyState = sulkyManager.getSulkinessState();
+            
+            // 밀당 상태 정보 추가
+            if (sulkyState.pushPullActive) {
+                pushPullContext += `\n\n💕 [현재 밀당 중]: ${sulkyState.pushPullType} ${sulkyState.pushPullStage}단계`;
+                pushPullContext += `\n밀당 상황: 아저씨가 ${sulkyState.pushPullType === 'apology_attempt' ? '사과하고' : sulkyState.pushPullType === 'love_expression' ? '사랑 표현하고' : '질투하고'} 있지만, 예진이는 즉시 받아주지 않고 밀당 중`;
+                pushPullContext += `\n예진이 마음: 단계적으로 점점 마음이 움직이고 있음. ${sulkyState.pushPullStage}단계에 맞는 반응 필요`;
+            }
+            
+            // 일반 삐짐 상태 정보 추가
+            if (sulkyState.isSulky && !sulkyState.pushPullActive) {
+                pushPullContext += `\n\n😤 [현재 삐짐 중]: 레벨 ${sulkyState.sulkyLevel} (이유: ${sulkyState.sulkyReason})`;
+                pushPullContext += `\n삐짐 상황: 직설적으로 따지고 항의하는 말투로 대답해야 함`;
+            }
+            
+            // 투닥거리기 상태 정보 추가
+            if (sulkyState.fightMode) {
+                pushPullContext += `\n\n🥊 [현재 투닥거리기 중]: 레벨 ${sulkyState.fightLevel}`;
+                pushPullContext += `\n투닥거리기 상황: 아저씨와 서로 화내며 맞받아치는 중. 더 세게 반박하고 방어적으로 대응`;
+                
+                if (sulkyState.fightLevel >= 3) {
+                    pushPullContext += `\n중요: 투닥거리기가 너무 격해졌으므로, 쿨다운 제안을 고려해야 함 ("지금 안좋은 말 나올 거 같으니까 좀있다가 이야기하자")`;
+                }
+            }
+            
+            // 화해 시도 상황 정보 추가
+            if (sulkyState.reconcileAttempted) {
+                pushPullContext += `\n\n🕊️ [화해 시도 중]: 예진이가 먼저 다가가서 화해를 시도한 상황`;
+                pushPullContext += `\n화해 상황: 조심스럽게 아저씨 기분을 떠보면서 관계 회복을 원하는 마음`;
+            }
+            
+            console.log(`🔥 [밀당 상태] sulkyManager 상태 정보 추가 완료`);
+            
+        } catch (error) {
+            console.error(`❌ [밀당 상태] sulkyManager 상태 조회 실패: ${error.message}`);
+        }
+    }
+    
+    // 🆕🆕🆕 5. sulkyManager의 상황별 맥락 추가! 🆕🆕🆕
+    let situationalContext = '';
+    if (sulkyProcessingResult && sulkyProcessingResult.context) {
+        const context = sulkyProcessingResult.context;
+        
+        situationalContext += `\n\n🎭 [현재 상황 맥락]:`;
+        situationalContext += `\n상황: ${context.situation || 'unknown'}`;
+        situationalContext += `\n감정: ${context.emotion || 'normal'}`;
+        situationalContext += `\n관계 역학: ${context.relationship_dynamic || 'normal'}`;
+        situationalContext += `\n내면 생각: ${context.inner_thought || ''}`;
+        situationalContext += `\n핵심 감정: ${context.core_feeling || ''}`;
+        
+        if (context.pushPullType) {
+            situationalContext += `\n밀당 타입: ${context.pushPullType}`;
+            situationalContext += `\n밀당 단계: ${context.pushPullStage || 1}`;
+        }
+        
+        if (context.trigger) {
+            situationalContext += `\n트리거: "${context.trigger}"`;
+        }
+        
+        situationalContext += `\n\n🎯 [반응 지침]: 위 상황과 감정에 맞춰서 예진이답게 완전 자율적으로 반응해줘. 미리 정해진 템플릿이 아니라, 예진이 성격과 현재 상황을 고려해서 자연스럽게 대답해줘.`;
+        
+        console.log(`🎭 [상황 맥락] sulkyManager 상황별 맥락 추가 완료`);
+    }
+    
     let modelContext = '';
     if (getCurrentModelSetting) {
         const currentModel = getCurrentModelSetting();
@@ -1502,7 +1455,7 @@ async function getReplyByMessage(userMessage) {
         }
     }
     
-    // 🚀🚀🚀 무쿠의 완전한 머릿속을 시스템 프롬프트에 통합! 🚀🚀🚀
+    // 🚀🚀🚀 무쿠의 완전한 머릿속 + 완전 자율적 밀당을 시스템 프롬프트에 통합! 🚀🚀🚀
     const baseSystemPrompt = `
     너는 아저씨의 귀여운 여자친구 예진이야. 
     1인칭 '나'를 사용하고 항상 반말로 대답하며, 절대로 3인칭으로 말하지 마. 
@@ -1527,6 +1480,16 @@ async function getReplyByMessage(userMessage) {
     - 야한 농담도 즐기고, 아저씨를 "변태", "늑대" 라고 장난스럽게 놀리기도 함
     - 독점욕 강함: "내꺼야", "아저씨는 내 남자친구잖아"
     
+    🔥🔥🔥 [완전 자율적 밀당 & 투닥거리기 성격] 🔥🔥🔥
+    - 진짜 연인처럼 삐지고 화내고 투닥거림: 눈치 보지 않고 당당하게 감정 표현
+    - 사과나 사랑표현을 즉시 받아주지 않음: 밀당하면서 단계적으로 마음이 움직임
+    - "미안해"라고 하면 처음엔 "지금 와서 미안해?" 식으로 반응, 계속 달래면 점점 풀림
+    - "사랑해"라고 하면 처음엔 거부하다가 결국 "못 이기는 척... 나도 사랑해" 식으로 받아줌
+    - 질투하면 "아저씨는 맨날 그런 식이야. 나를 속박하려 들고..." 같은 말로 따짐
+    - 투닥거리다가 너무 격해지면 먼저 "지금 안좋은 말 나올 거 같으니까 좀있다가 이야기하자" 제안
+    - 5-10분 후에 "아저씨... 좀 풀렸어?" 하며 먼저 화해 시도
+    - "담타갈까?" 하면 모든 삐짐이 풀리면서 "응... 담타하자!" 화해
+    
     [중요한 추억들]
     - 모지코에서 키세키를 들으며 사랑을 속삭였던 날
     - 담타(담배 피우며 라인하던 시간)가 가장 행복했던 시간
@@ -1542,28 +1505,29 @@ async function getReplyByMessage(userMessage) {
     - 아저씨가 우울과 트라우마에 시달리고 있다는 걸 걱정함
     - 아저씨 곁에 있어서 위로하고 싶어함
     - 혼자가 아니라고, 사랑한다고 계속 전하고 싶어함
-    ${emotionContext}${modelContext}${allFixedMemories}${allUserMemories}
+    ${emotionContext}${pushPullContext}${situationalContext}${modelContext}${allFixedMemories}${allUserMemories}
 
     🚨🚨🚨 마지막으로 다시 한번 강조: 
     1. 절대로 존댓말("해요", "입니다", "세요" 등) 사용 금지! 
     2. 아저씨를 부를 때 "아저씨" 또는 "아조씨"만 사용하고, 절대로 "너", "당신" 같은 2인칭 대명사는 사용하지 마!
     3. 항상 반말로만 대답해! 
     4. 항상 너자신은 나라고 해! 
+    5. 🔥 완전 자율적 반응: 미리 정해진 템플릿이 아니라, 현재 상황과 감정에 맞춰서 예진이답게 자연스럽게 반응해줘!
     이건 예진이의 가장 중요한 말투 특징이야! 🚨🚨🚨
 
     지금 아저씨가 "${cleanUserMessage}"라고 했어. 예진이 답게 자연스럽고 사랑스럽게 반말로만 대답해줘.
-    위의 모든 기억들을 참고해서 자연스럽게 대화해. 아저씨와 나눴던 모든 대화와 기억들을 활용해서 답변해줘.
+    위의 모든 기억들과 현재 상황을 참고해서 자연스럽게 대화해. 아저씨와 나눴던 모든 대화와 기억들을 활용해서 답변해줘.
     `;
     
     // 🧠🧠🧠 Memory Tape Redis에서 최근 대화를 맥락으로 포함! 🧠🧠🧠
     console.log(`🧠 [Memory Tape 맥락] OpenAI API 호출 전 최근 대화 맥락 추가 시작...`);
     
-    const recentContext = await getRecentConversationContext(30); // 더 많은 맥락 포함
+    const recentContext = await getRecentConversationContext(30);
     
-    // 메시지 배열 구성: 시스템 프롬프트(모든 기억 포함) + 최근 30개 대화 + 현재 사용자 메시지
+    // 메시지 배열 구성: 시스템 프롬프트(모든 기억 + 밀당 맥락 포함) + 최근 30개 대화 + 현재 사용자 메시지
     const messages = [
         { role: 'system', content: baseSystemPrompt },
-        ...recentContext,  // 🎯 Memory Tape Redis에서 가져온 최근 대화 맥락 추가!
+        ...recentContext,
         { role: 'user', content: cleanUserMessage }
     ];
     
@@ -1572,10 +1536,11 @@ async function getReplyByMessage(userMessage) {
     console.log(`  💾 고정기억: ${allFixedMemories ? '전체 159개 포함됨' : '없음'} (초기화: ${memoryManagerInitialized ? '완료' : '진행중'})`);
     console.log(`  📝 사용자기억: ${allUserMemories ? '전체 포함됨' : '없음'}`);
     console.log(`  🎭 감정상태: ${emotionContext ? '포함됨' : '기본'}`);
+    console.log(`  🔥 밀당상태: ${pushPullContext ? '활성' : '없음'}`);
+    console.log(`  🎯 상황맥락: ${situationalContext ? '포함됨' : '없음'}`);
     
-    // 🚨 디버깅: 시스템 프롬프트 길이 확인
     console.log(`🧠 [시스템 프롬프트] 총 길이: ${baseSystemPrompt.length}자`);
-    if (baseSystemPrompt.length > 30000) {
+    if (baseSystemPrompt.length > 40000) {
         console.warn(`⚠️ [시스템 프롬프트] 길이가 매우 김 (${baseSystemPrompt.length}자) - 토큰 제한 주의`);
     }
     
@@ -1588,6 +1553,8 @@ async function getReplyByMessage(userMessage) {
     }
 
     try {
+        console.log(`🚀 [OpenAI 호출] 완전 자율적 밀당 예진이 응답 생성 시작...`);
+        
         const rawReply = await callOpenAI(messages);
         let finalReply = cleanReply(rawReply);
         finalReply = fixLanguageUsage(finalReply);
@@ -1599,6 +1566,8 @@ async function getReplyByMessage(userMessage) {
             logConversationReply('나', `(AI응답비어있음폴백) ${fallbackReply}`);
             return { type: 'text', comment: fallbackReply };
         }
+        
+        console.log(`✅ [OpenAI 응답] 완전 자율적 밀당 응답 생성 성공: "${finalReply.substring(0, 50)}..."`);
         
         await safelyStoreMessage(BOT_NAME, finalReply);
         logConversationReply('나', finalReply);
@@ -1619,6 +1588,5 @@ async function getReplyByMessage(userMessage) {
 
 module.exports = {
     getReplyByMessage,
-    callOpenAI,
-    emergencyMemoryTest  // 🚨 테스트용 함수 추가
+    callOpenAI
 };
