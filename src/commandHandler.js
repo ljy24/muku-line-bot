@@ -1,6 +1,7 @@
 // ============================================================================
-// commandHandler.js - v6.3 CONTEXT_AWARE_MEMORY (맥락 인식 기억 시스템)
+// commandHandler.js - v6.4 CONTEXT_AWARE_MEMORY + MODEL_SWITCH_SYSTEM
 // ✅ 기존 모든 기능 100% 보존
+// 🆕 모델 전환 시스템 추가: "3.5", "4.0", "버전", "자동" 명령어
 // 🚫 부적절한 기억 출력 완전 방지: Memory Manager와 연동하여 맥락 고려
 // 🔧 "기억해?" 검색 로직 개선: 자연스러운 대화형 응답으로 변경
 // 📸 사진 처리 로직 완전 보존: 셀카, 컨셉사진, 추억사진, 커플사진
@@ -8,6 +9,11 @@
 // 🌸 예진이 자아 인식 진화 시스템 연동 유지
 // 📖 일기장 시스템 완전 연동 유지
 // 💖 무쿠가 벙어리가 되지 않도록 최우선 보장
+// ✨ Redis + Memory Tape + Memory Manager + ultimateConversationContext + File Backup 완전 연동!
+// 🔥 Memory Manager 초기화 추가로 159개 기억 100% 보장!
+// 🎯 키워드 추출 로직 개선: "밥바가 뭐라고?" → "밥바" 정확 추출!
+// 🚨 핵심 해결: 저장(ultimateConversationContext) ↔ 검색(통합시스템) 연결!
+// 🔄 [NEW] 모델 전환 시스템: 파일 기반 전역 모델 관리
 // ============================================================================
 
 const path = require('path');
@@ -318,6 +324,217 @@ async function handleCommand(text, userId, client = null) {
     const lowerText = text.toLowerCase();
 
     try {
+        // ================== 🔄🔄🔄 [NEW] 모델 전환 시스템 🔄🔄🔄 ==================
+        
+        // 🔄 GPT-3.5 모델로 전환
+        if (lowerText === '3.5' || lowerText === 'gpt-3.5' || lowerText === '3.5터보' || 
+            lowerText === 'gpt-3.5-turbo' || lowerText === '모델 3.5') {
+            
+            console.log('[commandHandler] 🔄 GPT-3.5 모델 전환 요청 감지');
+            
+            try {
+                const modelConfig = { 
+                    forcedModel: 'gpt-3.5-turbo', 
+                    lastUpdated: new Date().toISOString(),
+                    updatedBy: 'commandHandler'
+                };
+                
+                fs.writeFileSync('/data/globalModel.json', JSON.stringify(modelConfig, null, 2));
+                console.log('[commandHandler] ✅ globalModel.json 파일에 3.5 모델 설정 저장 완료');
+                
+                let response = '응! 이제 3.5버전으로 말할게! 속도가 더 빨라질 거야~ ㅎㅎ';
+                
+                // 🌙 나이트모드 톤 적용
+                if (nightModeInfo && nightModeInfo.isNightMode) {
+                    response = applyNightModeTone(response, nightModeInfo);
+                }
+                
+                return {
+                    type: 'text',
+                    comment: response,
+                    handled: true,
+                    source: 'model_switch_3.5'
+                };
+                
+            } catch (error) {
+                console.error('[commandHandler] ❌ 3.5 모델 전환 실패:', error.message);
+                
+                let errorResponse = '모델 변경에 문제가 생겼어... 그래도 열심히 대답할게! 💕';
+                
+                if (nightModeInfo && nightModeInfo.isNightMode) {
+                    errorResponse = applyNightModeTone(errorResponse, nightModeInfo);
+                }
+                
+                return {
+                    type: 'text', 
+                    comment: errorResponse,
+                    handled: true,
+                    source: 'model_switch_error'
+                };
+            }
+        }
+
+        // 🔄 GPT-4o 모델로 전환
+        if (lowerText === '4.0' || lowerText === 'gpt-4' || lowerText === '4오' || 
+            lowerText === 'gpt-4o' || lowerText === '모델 4.0') {
+            
+            console.log('[commandHandler] 🔄 GPT-4o 모델 전환 요청 감지');
+            
+            try {
+                const modelConfig = { 
+                    forcedModel: 'gpt-4o', 
+                    lastUpdated: new Date().toISOString(),
+                    updatedBy: 'commandHandler'
+                };
+                
+                fs.writeFileSync('/data/globalModel.json', JSON.stringify(modelConfig, null, 2));
+                console.log('[commandHandler] ✅ globalModel.json 파일에 4o 모델 설정 저장 완료');
+                
+                let response = '알겠어! 이제 4.0버전으로 말할게! 더 똑똑해질 거야~ 💕';
+                
+                // 🌙 나이트모드 톤 적용
+                if (nightModeInfo && nightModeInfo.isNightMode) {
+                    response = applyNightModeTone(response, nightModeInfo);
+                }
+                
+                return {
+                    type: 'text',
+                    comment: response,
+                    handled: true,
+                    source: 'model_switch_4.0'
+                };
+                
+            } catch (error) {
+                console.error('[commandHandler] ❌ 4o 모델 전환 실패:', error.message);
+                
+                let errorResponse = '모델 변경에 문제가 생겼어... 그래도 열심히 대답할게! 💕';
+                
+                if (nightModeInfo && nightModeInfo.isNightMode) {
+                    errorResponse = applyNightModeTone(errorResponse, nightModeInfo);
+                }
+                
+                return {
+                    type: 'text',
+                    comment: errorResponse,
+                    handled: true,
+                    source: 'model_switch_error'
+                };
+            }
+        }
+
+        // 🔄 자동 모드로 전환
+        if (lowerText === 'auto' || lowerText === '자동' || lowerText === '모델자동' || 
+            lowerText === '자동모드' || lowerText === '모델 자동') {
+            
+            console.log('[commandHandler] 🔄 자동 모델 전환 요청 감지');
+            
+            try {
+                const modelConfig = { 
+                    forcedModel: null, 
+                    lastUpdated: new Date().toISOString(),
+                    updatedBy: 'commandHandler'
+                };
+                
+                fs.writeFileSync('/data/globalModel.json', JSON.stringify(modelConfig, null, 2));
+                console.log('[commandHandler] ✅ globalModel.json 파일에 자동 모델 설정 저장 완료');
+                
+                let response = '이제 자동으로 모델을 선택할게! 아저씨랑 더 편하게 이야기할 수 있을 거야~ ㅎㅎ';
+                
+                // 🌙 나이트모드 톤 적용
+                if (nightModeInfo && nightModeInfo.isNightMode) {
+                    response = applyNightModeTone(response, nightModeInfo);
+                }
+                
+                return {
+                    type: 'text',
+                    comment: response,
+                    handled: true,
+                    source: 'model_switch_auto'
+                };
+                
+            } catch (error) {
+                console.error('[commandHandler] ❌ 자동 모델 전환 실패:', error.message);
+                
+                let errorResponse = '모델 변경에 문제가 생겼어... 그래도 열심히 대답할게! 💕';
+                
+                if (nightModeInfo && nightModeInfo.isNightMode) {
+                    errorResponse = applyNightModeTone(errorResponse, nightModeInfo);
+                }
+                
+                return {
+                    type: 'text',
+                    comment: errorResponse,
+                    handled: true,
+                    source: 'model_switch_error'
+                };
+            }
+        }
+
+        // 🔄 현재 모델 버전 확인
+        if (lowerText === '버전' || lowerText === '모델버전' || lowerText === '지금모델' || 
+            lowerText === '현재버전' || lowerText === '현재모델' || lowerText.includes('버전')) {
+            
+            console.log('[commandHandler] 🔄 현재 모델 버전 확인 요청 감지');
+            
+            try {
+                let currentModel = 'gpt-4o'; // 기본값
+                let lastUpdated = null;
+                
+                if (fs.existsSync('/data/globalModel.json')) {
+                    const data = fs.readFileSync('/data/globalModel.json', 'utf8');
+                    const config = JSON.parse(data);
+                    currentModel = config.forcedModel || 'auto';
+                    lastUpdated = config.lastUpdated;
+                }
+                
+                let modelName;
+                if (currentModel === 'gpt-3.5-turbo') {
+                    modelName = '3.5 터보';
+                } else if (currentModel === 'gpt-4o') {
+                    modelName = '4.0';
+                } else {
+                    modelName = '자동';
+                }
+                
+                let response = `지금 무쿠는 ${modelName} 버전으로 말하고 있어! 아저씨~ `;
+                
+                if (lastUpdated) {
+                    const updateTime = moment(lastUpdated).tz('Asia/Tokyo').format('MM월 DD일 HH:mm');
+                    response += `\n(${updateTime}에 설정됨)`;
+                }
+                
+                response += '\n\n💡 바꾸고 싶으면: "3.5", "4.0", "자동" 이라고 말해줘!';
+                
+                // 🌙 나이트모드 톤 적용
+                if (nightModeInfo && nightModeInfo.isNightMode) {
+                    response = applyNightModeTone(response, nightModeInfo);
+                }
+                
+                return {
+                    type: 'text',
+                    comment: response,
+                    handled: true,
+                    source: 'model_version_check'
+                };
+                
+            } catch (error) {
+                console.error('[commandHandler] ❌ 모델 버전 확인 실패:', error.message);
+                
+                let errorResponse = '버전 확인에 문제가 생겼어... 그래도 열심히 대답하고 있어! 💕';
+                
+                if (nightModeInfo && nightModeInfo.isNightMode) {
+                    errorResponse = applyNightModeTone(errorResponse, nightModeInfo);
+                }
+                
+                return {
+                    type: 'text',
+                    comment: errorResponse,
+                    handled: true,
+                    source: 'model_version_error'
+                };
+            }
+        }
+
         // ================== 🔍🔍🔍 기억 검색 관련 처리 (맥락 인식 개선!) 🔍🔍🔍 ==================
         if (lowerText.includes('기억해?') || lowerText.includes('기억하니?') || 
             lowerText.includes('기억해 ?') || lowerText.includes('기억나?') ||
@@ -875,6 +1092,44 @@ async function handleCommand(text, userId, client = null) {
                 enhancedReport += `   • 직접 질문 vs 일반 대화 구분: 활성화\n`;
                 enhancedReport += `   • Memory Manager 연동: ✅\n`;
                 enhancedReport += `   • 자연스러운 대화형 응답: ✅`;
+                
+                // 🔄 모델 전환 시스템 상태 추가
+                try {
+                    enhancedReport += "\n\n🔄 [모델 전환] 시스템 v1.0\n";
+                    
+                    let currentModel = 'gpt-4o'; // 기본값
+                    let lastUpdated = null;
+                    
+                    if (fs.existsSync('/data/globalModel.json')) {
+                        const data = fs.readFileSync('/data/globalModel.json', 'utf8');
+                        const config = JSON.parse(data);
+                        currentModel = config.forcedModel || 'auto';
+                        lastUpdated = config.lastUpdated;
+                    }
+                    
+                    let modelName;
+                    if (currentModel === 'gpt-3.5-turbo') {
+                        modelName = '3.5 터보';
+                    } else if (currentModel === 'gpt-4o') {
+                        modelName = '4.0';
+                    } else {
+                        modelName = '자동';
+                    }
+                    
+                    enhancedReport += `   • 현재 모델: ${modelName}\n`;
+                    enhancedReport += `   • 설정 파일: /data/globalModel.json\n`;
+                    
+                    if (lastUpdated) {
+                        const updateTime = moment(lastUpdated).tz('Asia/Tokyo').format('MM월 DD일 HH:mm');
+                        enhancedReport += `   • 마지막 변경: ${updateTime}\n`;
+                    }
+                    
+                    enhancedReport += `   • 명령어: "3.5", "4.0", "자동", "버전"\n`;
+                    enhancedReport += `   • 전역 적용: aiUtils.js, autoReply.js 연동 대기`;
+                    
+                } catch (modelStatusError) {
+                    enhancedReport += "\n\n🔄 [모델 전환] 상태 확인 중 오류 발생";
+                }
                 
                 // Redis 사용자 기억 시스템 상태 추가 (기존 코드)
                 try {
