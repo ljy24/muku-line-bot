@@ -131,7 +131,7 @@ async function getOmoideReply(userMessage, conversationContextParam) {
     if (!selectedFolder) {
         if (lowerMsg.includes("추억") || lowerMsg.includes("옛날사진") || lowerMsg.includes("커플")) {
             if (lowerMsg.includes("커플")) {
-                const fileCount = 500;
+                const fileCount = 993;
                 const index = Math.floor(Math.random() * fileCount) + 1;
                 const fileName = String(index).padStart(6, "0") + ".jpg";
                 const imageUrl = encodeImageUrl(`${BASE_COUPLE_URL}/${fileName}`);
