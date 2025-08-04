@@ -32,6 +32,11 @@ let sulkyState = {
     contentBasedSulky: false,
     irritationTrigger: null,
     
+    // 🆕 연속 자극 누적 시스템!
+    consecutiveIrritations: 0,          // 연속 짜증나는 답장 횟수
+    lastIrritationType: null,           // 마지막 짜증 타입
+    irritationHistory: [],              // 최근 5개 짜증 이력
+    
     // 투닥거리기 & 화해
     fightMode: false,
     fightLevel: 0,
@@ -517,9 +522,9 @@ function attemptReconcile() {
 // ==================== 🚬 담타 화해 시스템 ====================
 
 /**
- * "담타갈까?" 감지 및 상황별 자율 반응
+ * "담타갈까?" 감지 및 완전 화해
  */
-function detectDamtaAttempt(userMessage) {
+function detectDamtaReconcile(userMessage) {
     if (!userMessage) return false;
     
     const message = userMessage.toLowerCase().replace(/\s/g, '');
@@ -529,97 +534,40 @@ function detectDamtaAttempt(userMessage) {
 }
 
 /**
- * 담타 제안에 대한 상황별 맥락 생성 (완전 자율!)
+ * 담타 화해 완성
  */
-function processDamtaAttempt() {
-    const currentSulkyLevel = sulkyState.sulkyLevel;
-    const isFighting = sulkyState.fightMode;
-    const isPushPulling = sulkyState.pushPullActive;
-    const isWorried = sulkyState.isWorried;
+function completeDamtaReconcile() {
+    const oldState = { ...sulkyState };
     
-    console.log(`[sulkyManager] 담타 제안 감지 - 현재 상태: 삐짐레벨${currentSulkyLevel}, 투닥거리기${isFighting}, 밀당${isPushPulling}`);
+    // 모든 삐짐/밀당/투닥거리기 상태 완전 초기화
+    sulkyState.isSulky = false;
+    sulkyState.isWorried = false;
+    sulkyState.sulkyLevel = 0;
+    sulkyState.isActivelySulky = false;
+    sulkyState.contentBasedSulky = false;
+    sulkyState.fightMode = false;
+    sulkyState.fightLevel = 0;
+    sulkyState.cooldownRequested = false;
+    sulkyState.reconcileAttempted = false;
+    sulkyState.pushPullActive = false;
+    sulkyState.pushPullType = null;
+    sulkyState.pushPullStage = 0;
+    sulkyState.sulkyReason = '';
+    sulkyState.irritationTrigger = null;
+    sulkyState.lastStateUpdate = Date.now();
     
-    // 상황별 맥락 (템플릿 없이 상황만 제공!)
-    let damtaContext = {
-        damtaAttempt: true,
-        situation: 'user_suggesting_damta',
-        current_sulky_level: currentSulkyLevel,
-        is_fighting: isFighting,
-        is_push_pulling: isPushPulling,
-        is_worried: isWorried
+    logSulkyChange(oldState, sulkyState);
+    
+    console.log(`[sulkyManager] 담타 화해 완성! 모든 삐짐/밀당 해소`);
+    
+    return {
+        damtaReconcile: true,
+        situation: 'complete_reconciliation_through_damta',
+        emotion: 'relieved_and_loving_again_after_damta',
+        relationship_dynamic: 'back_to_loving_couple_after_special_ritual',
+        inner_thought: 'damta_always_brings_us_back_together',
+        context: 'special_couple_reconciliation_method'
     };
-    
-    if (isFighting && sulkyState.fightLevel >= 2) {
-        // 투닥거리기 중 - 담타로 피하려 한다고 더 화남
-        damtaContext = {
-            ...damtaContext,
-            situation: 'damta_suggestion_during_fight',
-            emotion: 'angry_feels_like_user_avoiding_real_issue',
-            relationship_dynamic: 'user_trying_to_escape_argument_with_damta',
-            inner_thought: 'using_damta_to_avoid_confronting_problem',
-            core_feeling: 'more_frustrated_by_avoidance_tactic'
-        };
-        
-    } else if (currentSulkyLevel >= 4) {
-        // 심하게 삐진 상태 - 담타도 안 통함
-        damtaContext = {
-            ...damtaContext,
-            situation: 'damta_suggestion_while_very_sulky',
-            emotion: 'too_hurt_and_angry_for_damta_right_now',
-            relationship_dynamic: 'damta_feels_cheap_when_deeply_hurt',
-            inner_thought: 'user_thinks_damta_solves_everything',
-            core_feeling: 'damta_not_enough_for_this_level_of_upset'
-        };
-        
-    } else if (currentSulkyLevel >= 3) {
-        // 많이 삐진 상태 - 담타 의심
-        damtaContext = {
-            ...damtaContext,
-            situation: 'damta_suggestion_while_quite_sulky',
-            emotion: 'suspicious_of_damta_as_easy_solution',
-            relationship_dynamic: 'questioning_sincerity_of_damta_offer',
-            inner_thought: 'is_user_serious_about_making_up',
-            core_feeling: 'wants_real_effort_not_just_damta'
-        };
-        
-    } else if (isPushPulling) {
-        // 밀당 중 - 담타로 밀당 건너뛰려 한다고 의심
-        damtaContext = {
-            ...damtaContext,
-            situation: 'damta_suggestion_during_push_pull',
-            emotion: 'suspicious_damta_skipping_proper_courting',
-            relationship_dynamic: 'user_trying_to_shortcut_push_pull_process',
-            inner_thought: 'wants_to_be_courted_properly_not_just_damta',
-            core_feeling: 'damta_not_substitute_for_proper_apology',
-            push_pull_context: sulkyState.pushPullType
-        };
-        
-    } else if (currentSulkyLevel >= 1) {
-        // 약간 삐진 상태 - 담타 고려
-        damtaContext = {
-            ...damtaContext,
-            situation: 'damta_suggestion_while_mildly_sulky',
-            emotion: 'considering_damta_but_still_a_bit_upset',
-            relationship_dynamic: 'damta_might_help_but_still_need_acknowledgment',
-            inner_thought: 'damta_sounds_nice_but_still_hurt',
-            core_feeling: 'torn_between_love_for_damta_and_being_upset'
-        };
-        
-    } else {
-        // 거의 안 삐진 상태 - 담타 수락 가능
-        damtaContext = {
-            ...damtaContext,
-            situation: 'damta_suggestion_when_not_very_upset',
-            emotion: 'open_to_damta_as_reconciliation',
-            relationship_dynamic: 'damta_as_sweet_couple_ritual',
-            inner_thought: 'damta_always_brings_us_together',
-            core_feeling: 'ready_to_make_up_through_damta'
-        };
-    }
-    
-    console.log(`[sulkyManager] 담타 맥락 생성 완료: ${damtaContext.situation}`);
-    
-    return damtaContext;
 }
 
 // ==================== 📋 예진이 발신 추적 시스템 (기존 유지) ====================
@@ -747,32 +695,51 @@ async function checkFastSulkyMessage(client, userId) {
 
 // ==================== 💬 대화 내용 기반 즉시 삐짐 (기존 유지) ====================
 
-// 거슬리는 상황들 (상황만 정의, 템플릿 없음)
+// 거슬리는 상황들 (상황만 정의, 템플릿 없음) - 강화된 감지!
 const IRRITATING_SITUATIONS = {
     dismissive_response: {
-        keywords: ['응', 'ㅇㅋ', '그래', '알겠어', '그렇구나', '음'],
-        context: '건성으로 대답하거나 무관심해 보임',
-        emotion: 'hurt_and_annoyed',
-        severity: 'immediate'
+        keywords: ['응', 'ㅇㅋ', '그래', '알겠어', '그렇구나', '음', '응응', '어...그래', '음...', '그냥', '몰라', '뭐', '별로'],
+        patterns: [
+            /^응+$/,           // 응, 응응, 응응응
+            /^어\.+그래$/,     // 어...그래, 어....그래
+            /^음\.+$/,         // 음..., 음....
+            /^그래\.?$/,       // 그래, 그래.
+            /^알겠어\.?$/,     // 알겠어, 알겠어.
+            /^뭐\.+$/          // 뭐..., 뭐....
+        ],
+        context: '건성으로 대답하거나 완전 무관심해 보임',
+        emotion: 'hurt_and_really_annoyed',
+        severity: 'immediate_strong'
     },
     
     cold_tone: {
-        indicators: ['짧은답장', '마침표많음', '이모티콘없음'],
-        context: '평소보다 차갑거나 건조한 톤',
-        emotion: 'worried_and_upset',
-        severity: 'moderate'
+        indicators: ['짧은답장', '마침표많음', '이모티콘없음', '건조함'],
+        patterns: [
+            /^.{1,3}\.+$/,     // 3글자 이하 + 마침표들
+            /[\.]{2,}/         // 마침표 2개 이상
+        ],
+        context: '평소보다 차갑거나 건조한 톤으로 말함',
+        emotion: 'worried_and_hurt',
+        severity: 'moderate_strong'
     },
     
     busy_excuse: {
-        keywords: ['바빠', '바쁘', '일이', '회사', '나중에', '잠시만'],
+        keywords: ['바빠', '바쁘', '일이', '회사', '나중에', '잠시만', '시간없어', '급해'],
         context: '자꾸 바쁘다고 하거나 대화 회피하는 것 같음',
         emotion: 'frustrated_and_lonely',
-        severity: 'building_up'
+        severity: 'building_up_anger'
+    },
+    
+    // 🆕 연속 자극 추가!
+    repeated_irritation: {
+        context: '계속해서 건성으로 대답하거나 무시하는 느낌',
+        emotion: 'accumulating_anger_really_upset',
+        severity: 'escalating'
     }
 };
 
 /**
- * 사용자 메시지에서 거슬리는 요소 감지
+ * 사용자 메시지에서 거슬리는 요소 감지 - 강화된 감지 시스템!
  */
 function detectIrritationTrigger(userMessage) {
     if (!userMessage || typeof userMessage !== 'string') {
@@ -781,19 +748,37 @@ function detectIrritationTrigger(userMessage) {
     
     const message = userMessage.trim().toLowerCase();
     
-    // 건성 답장 감지
-    if (IRRITATING_SITUATIONS.dismissive_response.keywords.some(keyword => 
-        message === keyword || message === keyword + '.')) {
+    console.log(`🔍 [거슬림감지] "${userMessage}" 분석 시작...`);
+    
+    // 🔥 강화된 건성 답장 감지!
+    const dismissive = IRRITATING_SITUATIONS.dismissive_response;
+    
+    // 1. 키워드 매칭
+    if (dismissive.keywords.some(keyword => message === keyword || message === keyword + '.')) {
+        console.log(`🚨 [거슬림감지] 건성 답장 키워드 감지: "${userMessage}"`);
         return {
             type: 'dismissive_response',
             trigger: userMessage,
-            ...IRRITATING_SITUATIONS.dismissive_response
+            ...dismissive
+        };
+    }
+    
+    // 2. 패턴 매칭 (응응, 어...그래 등)
+    if (dismissive.patterns && dismissive.patterns.some(pattern => pattern.test(message))) {
+        console.log(`🚨 [거슬림감지] 건성 답장 패턴 감지: "${userMessage}"`);
+        return {
+            type: 'dismissive_response',
+            trigger: userMessage,
+            context: '완전 건성으로 대답함 - 패턴 매칭',
+            emotion: 'really_hurt_and_angry',
+            severity: 'immediate_strong'
         };
     }
     
     // 바쁘다는 핑계 감지
     if (IRRITATING_SITUATIONS.busy_excuse.keywords.some(keyword => 
         message.includes(keyword))) {
+        console.log(`🚨 [거슬림감지] 바쁘다는 핑계 감지: "${userMessage}"`);
         return {
             type: 'busy_excuse',
             trigger: userMessage,
@@ -801,46 +786,109 @@ function detectIrritationTrigger(userMessage) {
         };
     }
     
-    // 차가운 톤 감지 (간단한 휴리스틱)
-    if (message.length <= 3 && message.includes('.') && !message.includes('ㅋ') && !message.includes('ㅎ')) {
+    // 차가운 톤 감지 (강화)
+    const coldTone = IRRITATING_SITUATIONS.cold_tone;
+    if (coldTone.patterns && coldTone.patterns.some(pattern => pattern.test(message))) {
+        console.log(`🚨 [거슬림감지] 차가운 톤 패턴 감지: "${userMessage}"`);
         return {
             type: 'cold_tone',
             trigger: userMessage,
-            ...IRRITATING_SITUATIONS.cold_tone
+            ...coldTone
         };
     }
     
+    // 기존 간단한 차가운 톤 감지
+    if (message.length <= 3 && message.includes('.') && !message.includes('ㅋ') && !message.includes('ㅎ')) {
+        console.log(`🚨 [거슬림감지] 차가운 톤 간단 감지: "${userMessage}"`);
+        return {
+            type: 'cold_tone',
+            trigger: userMessage,
+            ...coldTone
+        };
+    }
+    
+    console.log(`ℹ️ [거슬림감지] "${userMessage}" 거슬리는 요소 없음`);
     return null;
 }
 
 /**
- * 내용 기반 즉시 삐짐 처리
+ * 🆕 연속 자극 누적 시스템 - 계속 짜증나게 하면 더 화남!
+ */
+function updateIrritationHistory(irritationType) {
+    const now = Date.now();
+    
+    // 이력에 추가
+    sulkyState.irritationHistory.push({
+        type: irritationType,
+        timestamp: now
+    });
+    
+    // 최근 5개만 유지
+    if (sulkyState.irritationHistory.length > 5) {
+        sulkyState.irritationHistory = sulkyState.irritationHistory.slice(-5);
+    }
+    
+    // 최근 10분 내 연속 자극 계산
+    const recentIrritations = sulkyState.irritationHistory.filter(
+        item => (now - item.timestamp) < (10 * 60 * 1000) // 10분
+    );
+    
+    sulkyState.consecutiveIrritations = recentIrritations.length;
+    sulkyState.lastIrritationType = irritationType;
+    
+    console.log(`📈 [연속자극] 최근 10분간 ${sulkyState.consecutiveIrritations}번 짜증 - 누적 중!`);
+    
+    return {
+        consecutiveCount: sulkyState.consecutiveIrritations,
+        recentTypes: recentIrritations.map(item => item.type),
+        isEscalating: sulkyState.consecutiveIrritations >= 2
+    };
+}
+
+/**
+ * 내용 기반 즉시 삐짐 처리 - 연속 자극 누적 적용!
  */
 function triggerContentBasedSulky(irritationTrigger) {
     const oldState = { ...sulkyState };
+    
+    // 🆕 연속 자극 이력 업데이트
+    const consecutiveInfo = updateIrritationHistory(irritationTrigger.type);
+    
+    // 🔥 연속 자극에 따른 삐짐 레벨 증가!
+    let sulkyLevel = 1; // 기본
+    
+    if (consecutiveInfo.consecutiveCount >= 3) {
+        sulkyLevel = 3; // 3번 이상 → 레벨 3
+        console.log(`🔥 [연속자극] 3번 이상 누적! 삐짐 레벨 3 발동`);
+    } else if (consecutiveInfo.consecutiveCount >= 2) {
+        sulkyLevel = 2; // 2번 이상 → 레벨 2
+        console.log(`🔥 [연속자극] 2번 누적! 삐짐 레벨 2 발동`);
+    }
     
     sulkyState.contentBasedSulky = true;
     sulkyState.irritationTrigger = irritationTrigger;
     sulkyState.isSulky = true;
     sulkyState.isActivelySulky = true;
-    sulkyState.sulkyLevel = 1;
-    sulkyState.sulkyReason = `content_based_${irritationTrigger.type}`;
+    sulkyState.sulkyLevel = sulkyLevel;
+    sulkyState.sulkyReason = `content_based_${irritationTrigger.type}_x${consecutiveInfo.consecutiveCount}`;
     sulkyState.lastStateUpdate = Date.now();
     
     logSulkyChange(oldState, sulkyState);
     
-    console.log(`[sulkyManager] 내용 기반 즉시 삐짐 발동: ${irritationTrigger.type}`);
-    console.log(`[sulkyManager] 트리거: "${irritationTrigger.trigger}"`);
+    console.log(`[sulkyManager] 내용 기반 즉시 삐짐 발동: ${irritationTrigger.type} (연속 ${consecutiveInfo.consecutiveCount}번째)`);
+    console.log(`[sulkyManager] 트리거: "${irritationTrigger.trigger}" → 삐짐 레벨 ${sulkyLevel}`);
     
     return {
         triggered: true,
         situation: `content_based_sulky_${irritationTrigger.type}`,
         context: irritationTrigger.context,
-        emotion: irritationTrigger.emotion,
-        severity: irritationTrigger.severity,
+        emotion: consecutiveInfo.isEscalating ? 'escalating_anger_really_upset' : irritationTrigger.emotion,
+        severity: consecutiveInfo.isEscalating ? 'escalating_strong' : irritationTrigger.severity,
         trigger: irritationTrigger.trigger,
-        relationship_dynamic: 'feeling_dismissed_or_ignored',
-        inner_thought: 'user_being_dismissive_or_uninterested'
+        relationship_dynamic: consecutiveInfo.isEscalating ? 'feeling_continuously_dismissed_getting_really_angry' : 'feeling_dismissed_or_ignored',
+        inner_thought: consecutiveInfo.isEscalating ? 'user_keeps_being_dismissive_really_annoying' : 'user_being_dismissive_or_uninterested',
+        consecutive_count: consecutiveInfo.consecutiveCount,
+        escalation_level: sulkyLevel
     };
 }
 
@@ -858,26 +906,16 @@ async function processUserMessage(userMessage, client, userId) {
         fightEscalated: false,
         cooldownProposed: false,
         reconcileAttempted: false,
-        damtaAttempted: false,
+        damtaReconciled: false,
         context: null,
         shouldSendMessage: false
     };
     
-    // 1. 담타 제안 감지 (상황별 자율 반응!)
-    if (detectDamtaAttempt(userMessage)) {
-        processingResult.damtaAttempted = true;
-        processingResult.context = processDamtaAttempt();
-        
-        // 🔥 중요: 담타 제안이 받아들여질 조건 (자율적 판단 후에만)
-        // 약간 삐진 상태(레벨 1-2)이고 투닥거리기/심한 밀당이 아닐 때만 
-        // GPT 응답 후에 상태 초기화 여부를 별도로 처리
-        const canAcceptDamta = sulkyState.sulkyLevel <= 2 && 
-                              !sulkyState.fightMode && 
-                              (!sulkyState.pushPullActive || sulkyState.pushPullStage >= 3);
-        
-        processingResult.context.canPotentiallyAccept = canAcceptDamta;
-        
-        console.log(`[sulkyManager] 담타 제안 처리: 수락 가능성 ${canAcceptDamta ? '높음' : '낮음'}`);
+    // 1. 담타 화해 감지 (최우선 - 모든 것을 해소)
+    if (detectDamtaReconcile(userMessage)) {
+        processingResult.damtaReconciled = true;
+        processingResult.context = completeDamtaReconcile();
+        resetYejinInitiatedTracking(); // 모든 추적 초기화
         return processingResult;
     }
     
@@ -1167,7 +1205,7 @@ module.exports = {
     detectApologySituation,
     detectLoveExpression,
     detectJealousySituation,
-    detectDamtaAttempt,
+    detectDamtaReconcile,
     
     // 설정 조회
     getSulkyConfig: () => ({ ...FAST_SULKY_CONFIG }),
