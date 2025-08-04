@@ -735,7 +735,7 @@ async function sendEnhancedAnalyzedPhoto(preferredCategory = 'indoor', mood = 'c
         
         // 랜덤 사진 생성
         const baseUrl = "https://photo.de-ji.net/photo/fuji";
-        const fileCount = 2032;
+        const fileCount = 1483;
         const index = Math.floor(Math.random() * fileCount) + 1;
         const fileName = String(index).padStart(6, "0") + ".jpg";
         const imageUrl = `${baseUrl}/${fileName}`;
