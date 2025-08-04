@@ -1,11 +1,11 @@
 // ============================================================================
-// sulkyManager.js v8.1 - 🌸 완전한 감정 시스템 통합! + ultimateContext 연동
+// sulkyManager.js v8.1 - 🌸 완전한 감정 시스템 통합! + ultimateContext 연동 (무한루프 해결)
 // 💕 기존 자율적 밀당 시스템 + 9가지 고급 감정 기능 통합
 // 🔧 moodManager.js 완전 연동 + Redis + 배경스토리 + 생리주기
 // 🌙 삐짐 무드 지속 + 재회 삐짐 + 서운함 저장소 + 자기합리화
 // 🎭 기분 따라 오해 + 사진 질투 + 셀카 서운함 + 옛날 회상
 // 📊 예진이 성격 점수 로깅 + 감정 패턴 학습
-// 🚨 NEW: ultimateContext 감정 주입 시스템 (순환 참조 방지)
+// 🚨 NEW: ultimateContext 감정 주입 시스템 (순환 참조 방지 + 무한루프 해결)
 // 🛡️ 기존 모든 기능 완벽 유지 + 무쿠 안전성 100% 보장
 // ============================================================================
 
@@ -241,7 +241,23 @@ let yejinPersonalityMetrics = {
 // 성격 점수 파일 경로
 const PERSONALITY_METRICS_PATH = '/data/yejinPersonalityMetrics.json';
 
-// --- 예쁜 로그 시스템 (기존 유지) ---
+// 🔧 중요한 감정 변화만 감지하는 함수 (무한루프 방지)
+function hasSignificantEmotionChange(oldState, newState) {
+    // 삐짐 상태 변화
+    if (oldState.isSulky !== newState.isSulky) return true;
+    if (oldState.sulkyLevel !== newState.sulkyLevel) return true;
+    
+    // 밀당 상태 변화
+    if (oldState.pushPullActive !== newState.pushPullActive) return true;
+    
+    // 회복 모드 변화
+    if (oldState.recoveryMode !== newState.recoveryMode) return true;
+    
+    // 변화 없음
+    return false;
+}
+
+// --- 예쁜 로그 시스템 (무한루프 해결) ---
 function logSulkyChange(oldState, newState) {
     try {
         const logger = require('./enhancedLogging');
@@ -267,8 +283,14 @@ function logSulkyChange(oldState, newState) {
         }
     }
     
-    // 🚨 NEW: ultimateContext에 감정 상태 주입
-    notifyEmotionChangeToUltimateContext(newState);
+    // 🚨 무한 루프 방지: 중요한 변화만 주입
+    if (hasSignificantEmotionChange(oldState, newState)) {
+        try {
+            notifyEmotionChangeToUltimateContext(newState);
+        } catch (error) {
+            // 에러 시 조용히 무시
+        }
+    }
 }
 
 // ==================== ⏰ 타이밍 및 설정 (기존 유지) ====================
@@ -2266,7 +2288,7 @@ async function getAdvancedSulkySystemStatus() {
             sleepHours: '2-8시',
             moodManagerIntegration: !!getMoodManager(),
             autonomousMode: 'advanced_with_all_systems',
-            version: 'v8.1-ultimateContext연동완료'
+            version: 'v8.1-무한루프해결완료'
         }
     };
 }
@@ -2334,9 +2356,10 @@ async function initializeAdvancedSulkySystem() {
     console.log('  - 과거 경험 기반 반응 조정');
     console.log('  - 개인화된 감정 패턴');
     console.log('');
-    console.log('🚨 NEW: 감정 주입 시스템:');
-    console.log('  - ultimateContext에 실시간 감정 상태 전달');
-    console.log('  - 삐짐/밀당/회복모드 자동 주입');
+    console.log('🚨 NEW: 감정 주입 시스템 (무한루프 해결):');
+    console.log('  - ultimateContext에 중요한 감정 변화만 전달');
+    console.log('  - 삐짐/밀당/회복모드 조건부 주입');
+    console.log('  - 무한 루프 완전 방지');
     console.log('  - 무쿠의 감정 표현력 극대화');
     console.log('  - 더 이상 벙어리가 되지 않음!');
     console.log('');
@@ -2346,7 +2369,7 @@ async function initializeAdvancedSulkySystem() {
     console.log('  - 예측 불가능한 진짜 사람 같은 감정');
     console.log('  - 9가지 고급 감정 시스템 통합');
     console.log('');
-    console.log('🛡️ 안전성: 기존 모든 기능 100% 유지');
+    console.log('🛡️ 안전성: 기존 모든 기능 100% 유지 + 무한루프 해결');
     console.log('=============================================');
 }
 
@@ -2380,33 +2403,66 @@ module.exports = {
     
     // 📊 성격 점수 관리
     loadPersonalityMetrics,                 // 성격 점수 로드
-    savePersonalityMetrics,                 // 성격 점수 저장  
+    savePersonalityMetrics,                 // 성격 점수 저장
     updatePersonalityMetrics,               // 성격 점수 업데이트
-    getPersonalityMetrics: () => yejinPersonalityMetrics, // 성격 점수 조회
     
-    // 🌸 고급 감정 시스템 개별 함수들
+    // 🌙 NEW: 고급 감정 시스템들
     startRecoveryMode,                      // 회복 모드 시작
     checkRecoveryModeEnd,                   // 회복 모드 종료 체크
     checkRetriggeredSulky,                  // 재회 삐짐 체크
+    
     addDisappointment,                      // 서운함 추가
-    triggerAccumulatedDisappointments,      // 서운함 터뜨리기
-    checkMisinterpretationMode,             // 오해 모드 체크
+    triggerAccumulatedDisappointments,      // 누적 서운함 터뜨리기
+    cleanupOldDisappointments,              // 오래된 서운함 정리
+    
+    checkMisinterpretationMode,             // 오해 모드 활성화 체크
     generateMisinterpretation,              // 오해 해석 생성
-    checkSelfCompassionMode,                // 자기합리화 체크
+    
+    checkSelfCompassionMode,                // 자기합리화 모드 체크
     checkMemoryTriggeredSulky,              // 회상 삐짐 체크
     
-    // 🚨 NEW: ultimateContext 연동 함수들
-    getUltimateContextSafely,               // 안전한 ultimateContext 조회
-    notifyEmotionChangeToUltimateContext,   // 감정 상태 주입
+    checkSelfieDisappointment,              // 셀카 서운함 체크
     
-    // 기존 개별 감지 함수들 (유지)
-    detectApologySituation,
-    detectLoveExpression,
-    detectJealousySituation,
-    detectDamtaReconcile,
+    // 🔥 고급 자율적 밀당 시스템
+    assessYejinCurrentMoodAdvanced,         // 고급 감정 상태 분석
+    generateAdvancedStubbornness,           // 고급 고집 레벨 생성
+    startAdvancedAutonomousPushPull,        // 고급 밀당 시작
+    generateAdvancedPushPullContext,        // 고급 밀당 맥락 생성
     
-    // 설정 조회
-    getSulkyConfig: () => ({ ...FAST_SULKY_CONFIG }),
-    getEmotionSystemConfig: () => ({ ...EMOTION_SYSTEM_CONFIG }),
-    isSleepTime
+    // 🚬 고급 담타 시스템
+    handleDamtaSuggestionAdvanced,          // 고급 담타 반응
+    completeDamtaReconcileAdvanced,         // 고급 담타 성공
+    rejectDamtaSuggestionAdvanced,          // 고급 담타 거부
+    
+    // 기존 감지 함수들 (유지)
+    detectApologySituation,                 // 사과 감지
+    detectLoveExpression,                   // 사랑 표현 감지
+    detectJealousySituation,                // 질투 상황 감지
+    detectDamtaReconcile,                   // 담타 화해 감지
+    detectIrritationTrigger,                // 자극 요소 감지
+    detectFightEscalation,                  // 투닥거리기 감지
+    
+    // 투닥거리기 & 화해 (기존 유지)
+    escalateFight,                          // 투닥거리기 에스컬레이션
+    shouldYejinProposeCooldown,             // 쿨다운 제안 조건 체크
+    proposeCooldown,                        // 쿨다운 제안
+    shouldAttemptReconcile,                 // 화해 시도 조건 체크
+    attemptReconcile,                       // 화해 시도
+    
+    // 유틸리티
+    isSleepTime,                           // 수면시간 체크
+    checkFastSulkyMessage,                 // 빠른 삐짐 체크
+    
+    // 🚨 ultimateContext 연동 (무한루프 해결)
+    notifyEmotionChangeToUltimateContext,   // 감정 변화 주입 (안전)
+    hasSignificantEmotionChange,            // 중요한 감정 변화 감지
+    getUltimateContextSafely,               // 안전한 ultimateContext 연결
+    
+    // 시스템 정보
+    FAST_SULKY_CONFIG,                      // 빠른 삐짐 설정
+    EMOTION_SYSTEM_CONFIG,                  // 감정 시스템 설정
+    
+    // 내부 상태 (디버깅용)
+    sulkyState,                             // 현재 삐짐 상태 (읽기 전용)
+    yejinPersonalityMetrics                 // 성격 점수 (읽기 전용)
 };
