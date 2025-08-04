@@ -257,7 +257,7 @@ You are looking at a photo and talking to 아저씨 about it as his girlfriend Y
 
         // OpenAI Vision API 호출 (시스템/유저 메시지 분리)
         const apiCall = openaiClient.chat.completions.create({
-            model: "gpt-4o",
+            model: "gpt-4o-mini",
             messages: [
                 {
                     role: "system",
