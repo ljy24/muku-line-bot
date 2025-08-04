@@ -229,7 +229,7 @@ async function getSelfieReply(userMessage, conversationContext) {
         lowerMsg.includes("사진 줘")) {
 
         const baseUrl = "https://photo.de-ji.net/photo/yejin";
-        const fileCount = 2032;
+        const fileCount = 2689;
 
         const index = Math.floor(Math.random() * fileCount) + 1;
         const fileName = String(index).padStart(6, "0") + ".jpg";
