@@ -304,7 +304,7 @@ async function getSelfieReply(userMessage, conversationContext) {
  */
 async function getEmotionalSelfie(emotionType = 'normal') {
     const baseUrl = "https://photo.de-ji.net/photo/yejin";
-    const fileCount = 2032;
+    const fileCount = 2689;
     const index = Math.floor(Math.random() * fileCount) + 1;
     const fileName = String(index).padStart(6, "0") + ".jpg";
     const rawImageUrl = `${baseUrl}/${fileName}`;
