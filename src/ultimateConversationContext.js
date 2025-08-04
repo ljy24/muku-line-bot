@@ -1,17 +1,85 @@
 // ============================================================================
-// ultimateConversationContext.js - v37.3 (순환 참조 완전 제거!)
+// ultimateConversationContext.js - v37.4 (무한루프 완전 해결!)
 // 🎯 핵심 고유 기능 보존: GPT모델 최적화 + 동적기억 + 주제관리 + 정교한프롬프트
 // 🔄 Redis 통합: 기존 시스템과 완전 연동하여 무쿠 벙어리 문제 해결
 // ✨ 중복 제거: 다른 시스템들과 역할 분담 명확화
 // 🛡️ 안전 우선: 기존 기능 100% 보존하면서 Redis 레이어 추가
 // 🔧 감정 우선순위: 외부주입 > moodManager > ultimateContext 순서로 적용
-// 🚨 핵심 수정: 순환 참조 완전 제거 + 외부 감정 주입 방식으로 변경
+// 🚨 NEW: 호출 중 플래그로 무한루프 완전 차단 + 스택 추적
 // ============================================================================
 
 const moment = require('moment-timezone');
 
 // --- 설정 ---
 const TIMEZONE = 'Asia/Tokyo';
+
+// 🚨 NEW: 무한루프 방지 시스템
+let callInProgress = {
+    getMoodState: false,           // getMoodState 호출 중 플래그
+    moodManagerCheck: false,       // moodManager 체크 중 플래그
+    priorityCheck: false,          // 우선순위 체크 중 플래그
+    callStack: [],                 // 호출 스택 추적
+    maxStackDepth: 5,              // 최대 스택 깊이
+    lastResetTime: 0               // 마지막 리셋 시간
+};
+
+/**
+ * 🚨 호출 스택 안전성 체크
+ */
+function checkCallSafety(functionName) {
+    const now = Date.now();
+    
+    // 10초마다 스택 초기화 (안전장치)
+    if (now - callInProgress.lastResetTime > 10000) {
+        callInProgress.getMoodState = false;
+        callInProgress.moodManagerCheck = false;
+        callInProgress.priorityCheck = false;
+        callInProgress.callStack = [];
+        callInProgress.lastResetTime = now;
+    }
+    
+    // 스택 깊이 체크
+    if (callInProgress.callStack.length >= callInProgress.maxStackDepth) {
+        console.log(`🚨 [호출안전성] ${functionName} 스택 깊이 초과! 무한루프 방지 작동`);
+        return false;
+    }
+    
+    // 동일 함수 중복 호출 체크
+    if (callInProgress.callStack.includes(functionName)) {
+        console.log(`🚨 [호출안전성] ${functionName} 순환 호출 감지! 무한루프 방지 작동`);
+        return false;
+    }
+    
+    return true;
+}
+
+/**
+ * 🚨 함수 호출 시작 기록
+ */
+function markFunctionStart(functionName) {
+    if (!checkCallSafety(functionName)) {
+        return false;
+    }
+    
+    callInProgress.callStack.push(functionName);
+    callInProgress[`${functionName}InProgress`] = true;
+    
+    console.log(`🔄 [호출추적] ${functionName} 시작 (스택: ${callInProgress.callStack.length})`);
+    return true;
+}
+
+/**
+ * 🚨 함수 호출 종료 기록
+ */
+function markFunctionEnd(functionName) {
+    const index = callInProgress.callStack.indexOf(functionName);
+    if (index !== -1) {
+        callInProgress.callStack.splice(index, 1);
+    }
+    callInProgress[`${functionName}InProgress`] = false;
+    
+    console.log(`✅ [호출추적] ${functionName} 종료 (스택: ${callInProgress.callStack.length})`);
+}
 
 // ✨ GPT 모델 버전 관리 시스템 import
 let getCurrentModelSetting = null;
@@ -363,7 +431,7 @@ async function addUserCommandMemoryWithRedis(content, category = 'user_command')
         type: 'user_command',
         importance: 10,
         source: 'ultimate_context_user_command',
-        version: 'v37.3'
+        version: 'v37.4'
     };
     
     ultimateContextState.userCommandMemories.push(memoryObj);
@@ -478,9 +546,15 @@ function checkExternalEmotionState() {
 }
 
 /**
- * 🔧 안전한 무드매니저 상태 체크 (순환 참조 없음)
+ * 🔧 안전한 무드매니저 상태 체크 (무한루프 완전 방지)
  */
 async function getMoodManagerStateSafe() {
+    // 🚨 NEW: 무한루프 방지 체크
+    if (!markFunctionStart('moodManagerCheck')) {
+        ultimateLog('🚨 [무드체크] 무한루프 방지: moodManager 체크 중단');
+        return null;
+    }
+    
     try {
         const { integratedMoodManager } = getIntegratedSystems();
         
@@ -489,28 +563,41 @@ async function getMoodManagerStateSafe() {
             return null;
         }
         
-        if (typeof integratedMoodManager.getIntegratedMoodState === 'function') {
-            const moodState = await integratedMoodManager.getIntegratedMoodState();
+        // 🚨 순환 참조 완전 방지: moodManager에 직접 접근하지 않고 필요시 다른 방법 사용
+        if (typeof integratedMoodManager.getCurrentMoodStateDirect === 'function') {
+            // 직접 상태 조회 (ultimateContext 호출하지 않는 함수)
+            const moodState = await integratedMoodManager.getCurrentMoodStateDirect();
             
             if (moodState && moodState.currentMood && moodState.currentMood !== '평온함') {
                 ultimateLog(`🎭 [무드감지] ${moodState.currentMood} (강도: ${moodState.emotionIntensity})`);
                 return moodState;
             }
+        } else {
+            // 🚨 getIntegratedMoodState는 ultimateContext를 호출할 수 있으므로 사용하지 않음
+            ultimateLog('⚠️ [무드체크] getCurrentMoodStateDirect 함수 없음 - 안전을 위해 생략');
         }
         
-        ultimateLog('✅ [무드체크] 평온한 상태');
+        ultimateLog('✅ [무드체크] 평온한 상태 또는 직접 접근 불가');
         return null;
         
     } catch (error) {
         recordEmotionSystemError('moodManager', error, { function: 'getMoodManagerStateSafe' });
         return null;
+    } finally {
+        markFunctionEnd('moodManagerCheck');
     }
 }
 
 /**
- * 🔧 순환 참조 방지 우선순위 감정 시스템 체크
+ * 🔧 순환 참조 방지 우선순위 감정 시스템 체크 (무한루프 완전 방지)
  */
 async function checkPriorityEmotionSystemsSafe() {
+    // 🚨 NEW: 무한루프 방지 체크
+    if (!markFunctionStart('priorityCheck')) {
+        ultimateLog('🚨 [감정우선순위] 무한루프 방지: 우선순위 체크 중단');
+        return null;
+    }
+    
     const now = Date.now();
     
     try {
@@ -535,7 +622,7 @@ async function checkPriorityEmotionSystemsSafe() {
         
         ultimateLog('✅ [감정우선순위] 1순위 완료 - 외부 주입 감정 없음');
         
-        // 🔧 2순위: moodManager 체크 (안전한 방식)
+        // 🔧 2순위: moodManager 체크 (안전한 방식 - 무한루프 방지)
         ultimateLog('🔍 [감정우선순위] 2순위 moodManager 체크 시작...');
         ultimateContextState.emotionPriority.lastMoodCheck = now;
         
@@ -581,6 +668,8 @@ async function checkPriorityEmotionSystemsSafe() {
     } catch (error) {
         recordEmotionSystemError('priorityCheckSafe', error, { function: 'checkPriorityEmotionSystemsSafe' });
         ultimateLog('❌ [감정우선순위] 체크 중 에러 발생, 기본값 사용');
+    } finally {
+        markFunctionEnd('priorityCheck');
     }
     
     ultimateLog('✅ [감정우선순위] 모든 우선순위 시스템 체크 완료 - 특별한 상태 없음');
@@ -611,11 +700,40 @@ function recordEmotionPriority(emotionData) {
 // ==================== 🎭 완전 개선된 moodManager.js 호환성 함수 ====================
 
 /**
- * 🔧 순환 참조 방지 감정 상태 조회 (안전한 버전)
+ * 🔧 순환 참조 방지 감정 상태 조회 (무한루프 완전 방지)
  */
 async function getMoodState() {
+    // 🚨 NEW: 무한루프 방지 체크
+    if (!markFunctionStart('getMoodState')) {
+        ultimateLog('🚨 [getMoodState] 무한루프 방지: getMoodState 호출 중단');
+        
+        // 안전한 폴백 반환
+        return {
+            currentEmotion: 'normal',
+            intensity: 0.5,
+            timestamp: Date.now(),
+            source: 'ultimate_context_loop_prevention',
+            isActive: false,
+            priority: 99,
+            reason: 'infinite_loop_prevention',
+            
+            // 호환성 필드들
+            emotion: 'normal',
+            level: 0.5,
+            lastUpdate: Date.now(),
+            
+            // 무한루프 방지 정보
+            integration: {
+                loopPrevention: true,
+                callStackDepth: callInProgress.callStack.length,
+                preventedInfiniteLoop: true,
+                circularReferenceProtection: true
+            }
+        };
+    }
+    
     try {
-        ultimateLog('🔍 [getMoodState] 감정 상태 조회 시작 (순환 참조 방지)...');
+        ultimateLog('🔍 [getMoodState] 감정 상태 조회 시작 (무한루프 완전 방지)...');
         
         // 🚨 1단계: 안전한 우선순위 감정 시스템 체크
         const priorityEmotion = await checkPriorityEmotionSystemsSafe();
@@ -652,7 +770,9 @@ async function getMoodState() {
                     prioritySystemActive: true,
                     priorityCheckSuccessful: true,
                     moodManagerConnected: !!getIntegratedSystems().integratedMoodManager,
-                    circularReferenceProtection: true
+                    circularReferenceProtection: true,
+                    infiniteLoopPrevention: true,
+                    callStackDepth: callInProgress.callStack.length
                 }
             };
         }
@@ -686,7 +806,9 @@ async function getMoodState() {
                 priorityCheckSuccessful: true,
                 checkedSystems: ['externalInjection', 'moodManager', 'ultimateContext'],
                 fallbackUsed: true,
-                circularReferenceProtection: true
+                circularReferenceProtection: true,
+                infiniteLoopPrevention: true,
+                callStackDepth: callInProgress.callStack.length
             }
         };
         
@@ -713,9 +835,13 @@ async function getMoodState() {
                 errorOccurred: true,
                 errorMessage: error.message,
                 prioritySystemActive: false,
-                circularReferenceProtection: true
+                circularReferenceProtection: true,
+                infiniteLoopPrevention: true,
+                callStackDepth: callInProgress.callStack.length
             }
         };
+    } finally {
+        markFunctionEnd('getMoodState');
     }
 }
 
@@ -774,7 +900,7 @@ function updateConversationTopicIntelligently(newTopic, confidence = 0.8) {
         timestamp: Date.now(),
         confidence: confidence,
         previousTopic: previousTopic?.topic || null,
-        detectionMethod: 'ultimate_context_v37.3'
+        detectionMethod: 'ultimate_context_v37.4'
     };
     
     if (previousTopic && previousTopic.topic !== newTopic) {
@@ -808,7 +934,7 @@ function setAdvancedPendingAction(action, context = {}, priority = 5) {
         timestamp: Date.now(),
         id: `ultimate_action_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
         expectedDuration: context.expectedDuration || 300000,
-        source: 'ultimate_context_v37.3'
+        source: 'ultimate_context_v37.4'
     };
     
     ultimateLog(`고급 보류 액션 설정: ${action} (우선순위: ${priority})`, context);
@@ -936,7 +1062,8 @@ async function generateUltimateMasterContextPrompt(basePrompt) {
             const topicCount = ultimateContextState.topicHistory.length;
             const emotionSource = ultimateContextState.emotionPriority.lastEmotionSource || 'none';
             const errorCount = ultimateContextState.emotionPriority.emotionSystemErrors.length;
-            contextualPrompt += `\n📊 컨텍스트 메타: 사용자기억 ${memoryCount}개, 주제전환 ${topicCount}회, 모델: ${optimization.model}, 감정소스: ${emotionSource}, 에러: ${errorCount}개\n`;
+            const loopPreventionStatus = callInProgress.callStack.length === 0 ? '정상' : `활성(${callInProgress.callStack.length})`;
+            contextualPrompt += `\n📊 컨텍스트 메타: 사용자기억 ${memoryCount}개, 주제전환 ${topicCount}회, 모델: ${optimization.model}, 감정소스: ${emotionSource}, 에러: ${errorCount}개, 루프방지: ${loopPreventionStatus}\n`;
         }
         
         if (contextualPrompt.length > promptStrategy.maxLength) {
@@ -954,7 +1081,8 @@ async function generateUltimateMasterContextPrompt(basePrompt) {
                 redisContext: priorityMatrix.redisContext > 0,
                 topic: !!ultimateContextState.conversationTopic,
                 pendingAction: !!ultimateContextState.pendingAction
-            }
+            },
+            infiniteLoopPrevention: callInProgress.callStack.length === 0
         });
         
         return contextualPrompt;
@@ -1045,15 +1173,27 @@ function detectConversationTopicAdvanced(message) {
 // ==================== 📊 시스템 상태 및 통계 ====================
 
 /**
- * 📊 Ultimate Context 시스템 상태 조회 (순환 참조 방지 버전)
+ * 📊 Ultimate Context 시스템 상태 조회 (무간루프 방지 버전)
  */
 function getUltimateSystemStatus() {
     const { autonomousYejinSystem, redisCache } = getRedisIntegratedSystem();
     const { integratedMoodManager, integratedAiUtils } = getIntegratedSystems();
     
     return {
-        version: 'v37.3-circular-reference-elimination',
+        version: 'v37.4-infinite-loop-elimination',
         type: 'ultimate_context_system',
+        
+        infiniteLoopPrevention: {
+            active: true,
+            currentCallStack: [...callInProgress.callStack],
+            callStackDepth: callInProgress.callStack.length,
+            maxStackDepth: callInProgress.maxStackDepth,
+            getMoodStateInProgress: callInProgress.getMoodState,
+            moodManagerCheckInProgress: callInProgress.moodManagerCheck,
+            priorityCheckInProgress: callInProgress.priorityCheck,
+            lastResetTime: callInProgress.lastResetTime,
+            safetyChecksActive: true
+        },
         
         gptOptimization: {
             currentModel: ultimateContextState.gptOptimization.currentModel,
@@ -1078,7 +1218,8 @@ function getUltimateSystemStatus() {
                 currentExternalEmotion: ultimateContextState.emotionPriority.externalEmotionState?.currentEmotion || null
             },
             
-            circularReferenceProtection: true
+            circularReferenceProtection: true,
+            infiniteLoopProtection: true
         },
         
         userMemories: {
@@ -1104,10 +1245,12 @@ function getUltimateSystemStatus() {
             gptModelManagement: !!getCurrentModelSetting,
             
             circularReferenceProtection: true,
+            infiniteLoopProtection: true,
             externalEmotionInjectionSupported: true,
             
             moodManagerFunctions: integratedMoodManager ? {
-                getIntegratedMoodState: typeof integratedMoodManager.getIntegratedMoodState === 'function'
+                getIntegratedMoodState: typeof integratedMoodManager.getIntegratedMoodState === 'function',
+                getCurrentMoodStateDirect: typeof integratedMoodManager.getCurrentMoodStateDirect === 'function'
             } : null
         },
         
@@ -1121,7 +1264,10 @@ function getUltimateSystemStatus() {
             safeCallWrappingAdded: true,
             circularReferenceEliminated: true,
             externalEmotionInjectionAdded: true,
-            sulkyManagerCircularReferenceFixed: true
+            sulkyManagerCircularReferenceFixed: true,
+            infiniteLoopPreventionAdded: true,
+            callStackTrackingAdded: true,
+            safetyChecksEnhanced: true
         },
         
         lastUpdate: Date.now(),
@@ -1135,7 +1281,10 @@ function getUltimateSystemStatus() {
             '외부 감정 상태 주입 지원',
             'moodManager 안전 연동',
             '감정 시스템 에러 처리 및 로깅',
-            '완전한 순환 참조 해결'
+            '완전한 순환 참조 해결',
+            '무한루프 완전 방지 시스템',
+            '호출 스택 추적 및 안전성 보장',
+            '자동 스택 리셋 안전장치'
         ]
     };
 }
@@ -1143,10 +1292,17 @@ function getUltimateSystemStatus() {
 // ==================== 🚀 시스템 초기화 ====================
 
 /**
- * 🚀 Ultimate Context 시스템 초기화 (순환 참조 방지)
+ * 🚀 Ultimate Context 시스템 초기화 (무한루프 방지)
  */
 async function initializeUltimateContextSystem() {
-    ultimateLog('Ultimate Context v37.3 시스템 초기화 시작 (순환 참조 완전 제거)...');
+    ultimateLog('Ultimate Context v37.4 시스템 초기화 시작 (무한루프 완전 방지)...');
+    
+    // 🚨 NEW: 무한루프 방지 시스템 초기화
+    callInProgress.getMoodState = false;
+    callInProgress.moodManagerCheck = false;
+    callInProgress.priorityCheck = false;
+    callInProgress.callStack = [];
+    callInProgress.lastResetTime = Date.now();
     
     const currentModel = getCurrentModelSetting ? getCurrentModelSetting() : 'unknown';
     ultimateLog(`현재 GPT 모델: ${currentModel}`);
@@ -1161,7 +1317,7 @@ async function initializeUltimateContextSystem() {
     
     const moodStatus = systems.integratedMoodManager ? '✅ 연동됨' : '❌ 미연동';
     
-    ultimateLog(`Ultimate Context v37.3 초기화 완료!`);
+    ultimateLog(`Ultimate Context v37.4 초기화 완료!`);
     ultimateLog(`📊 시스템 연동 상태:`);
     ultimateLog(`  - GPT 모델: ${currentModel}`);
     ultimateLog(`  - Redis 통합: ${redisCache ? '✅ 활성' : '❌ 비활성'}`);
@@ -1169,13 +1325,15 @@ async function initializeUltimateContextSystem() {
     ultimateLog(`  - 순환 참조 방지 감정 우선순위: ✅ 활성`);
     ultimateLog(`  - 외부 감정 주입 시스템: ✅ 활성`);
     ultimateLog(`  - 감정 시스템 에러 처리: ✅ 활성`);
-    ultimateLog(`  - sulkyManager 순환 참조: ✅ 해결됨`);
+    ultimateLog(`  - 무한루프 방지 시스템: ✅ 활성`);
+    ultimateLog(`  - 호출 스택 추적: ✅ 활성`);
+    ultimateLog(`  - 자동 안전장치: ✅ 활성 (10초마다 리셋)`);
     
     return true;
 }
 
 // ==================== 📤 모듈 내보내기 ==================
-ultimateLog('Ultimate Context v37.3 로드 완료 (순환 참조 완전 제거)');
+ultimateLog('Ultimate Context v37.4 로드 완료 (무한루프 완전 방지)');
 
 module.exports = {
     // 🚀 초기화
@@ -1204,14 +1362,19 @@ module.exports = {
     // 🤖 Redis 통합 명령어 처리
     processUserCommandWithRedis,
     
-    // 🔧 순환 참조 방지 감정 시스템 (v37.3)
+    // 🔧 순환 참조 방지 감정 시스템 (v37.4)
     injectExternalEmotionState,         // 외부 감정 상태 주입 (sulkyManager용)
     checkExternalEmotionState,          // 외부 주입 감정 상태 체크
     getMoodManagerStateSafe,            // 안전한 무드매니저 상태 체크
     checkPriorityEmotionSystemsSafe,    // 순환 참조 방지 우선순위 체크
     
-    // 🔧 호환성 함수들 (순환 참조 방지)
-    getMoodState,        // ← 순환 참조 방지 완료!
+    // 🚨 NEW: 무한루프 방지 함수들
+    checkCallSafety,                    // 호출 안전성 체크
+    markFunctionStart,                  // 함수 호출 시작 기록
+    markFunctionEnd,                    // 함수 호출 종료 기록
+    
+    // 🔧 호환성 함수들 (무한루프 방지)
+    getMoodState,        // ← 무한루프 완전 방지!
     updateMoodState,     // ← 우선순위 존중하도록 개선됨
     
     // 🔧 감정 상태 관리
