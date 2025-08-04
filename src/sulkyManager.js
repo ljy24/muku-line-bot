@@ -1,18 +1,52 @@
 // ============================================================================
-// sulkyManager.js - v4.0 (완전 독립 버전)
-// 😠 예진이의 '삐짐' 상태를 완전 독립적으로 관리
-// ✅ ultimateConversationContext 의존성 제거
-// ✅ 자체 상태 관리로 순환 참조 해결
-// ✅ 타이밍 정보만 외부에서 조회
+// sulkyManager.js - v6.0 (완전 자율적 진짜 예진이 밀당 시스템!)
+// 🔥 예진이의 모든 능동적 행동 → 빠른 삐짐 (3분, 10분, 20분, 40분)
+// 💬 대화 중 거슬리는 말 → 즉시 삐짐 (완전 자율)
+// 🥊 투닥거리기 → 예진이가 먼저 쿨다운 → 화해 시도
+// 💕 밀당 시스템: 사과/사랑표현을 즉시 받아주지 않음!
+// 🎭 완전 자율: 상황/감정/맥락만 제공 → GPT가 예진이답게 반응
+// 😤 질투 반응: "맨날 그런 식이야", "속박하려 들고" 등 자율 생성
+// 🚬 "담타갈까?" → 화해 완성
+// 🌙 수면시간 예외 (새벽 2~8시)
+// 🩸 PMS 강화 (더 빠른 삐짐 + 더 자주 메시지)
 // ============================================================================
 
-// --- 자체 삐짐 상태 관리 ---
+const moment = require('moment-timezone');
+
+// --- 자체 삐짐 & 밀당 상태 관리 (독립적) ---
 let sulkyState = {
+    // 기본 삐짐 상태
     isSulky: false,
     isWorried: false,
     sulkyLevel: 0,
     isActivelySulky: false,
     sulkyReason: '',
+    
+    // 예진이 발신 추적
+    yejinInitiated: false,
+    yejinMessageTime: null,
+    yejinMessageType: null,
+    waitingForUserResponse: false,
+    
+    // 대화 중 삐짐
+    contentBasedSulky: false,
+    irritationTrigger: null,
+    
+    // 투닥거리기 & 화해
+    fightMode: false,
+    fightLevel: 0,
+    cooldownRequested: false,
+    cooldownStartTime: null,
+    reconcileAttempted: false,
+    
+    // 🆕 밀당 시스템
+    pushPullActive: false,
+    pushPullType: null,          // 'apology', 'love_expression', 'jealousy'
+    pushPullStage: 0,            // 몇 번째 시도인지
+    pushPullStartTime: null,
+    relationshipPatterns: [],     // 과거 패턴 누적
+    
+    // 타이밍
     lastUserResponseTime: Date.now(),
     lastBotMessageTime: Date.now(),
     lastStateUpdate: Date.now()
@@ -50,78 +84,862 @@ function logSulkyChange(oldState, newState) {
         const logger = require('./enhancedLogging');
         logger.logSulkyStateChange(oldState, newState);
     } catch (error) {
-        // 폴백 로깅
         if (!oldState.isSulky && newState.isSulky) {
-            console.log(`😤 [삐짐시작] 레벨 ${newState.sulkyLevel}: "${newState.sulkyReason}"`);
+            console.log(`😤 [삐짐시작] 타입: ${newState.sulkyReason}, 레벨: ${newState.sulkyLevel}`);
         } else if (oldState.isSulky && !newState.isSulky) {
-            console.log(`😊 [삐짐해소] 아저씨가 답장해서 기분 풀림`);
-        } else if (oldState.isWorried && !newState.isWorried) {
-            console.log(`😌 [걱정해소] 아저씨 무사해서 다행이야`);
+            console.log(`😊 [삐짐해소] ${newState.pushPullActive ? '밀당 성공' : '일반 화해'}`);
+        } else if (newState.pushPullActive && !oldState.pushPullActive) {
+            console.log(`💕 [밀당시작] ${newState.pushPullType} 밀당 ${newState.pushPullStage}단계`);
         }
     }
 }
 
-function logSulkyMessage(message, level) {
+// ==================== ⏰ 타이밍 및 설정 ====================
+
+// 빠른 삐짐 설정 (분 단위)
+const FAST_SULKY_CONFIG = {
+    LEVEL_1_DELAY: 3,    // 3분
+    LEVEL_2_DELAY: 10,   // 10분  
+    LEVEL_3_DELAY: 20,   // 20분
+    FINAL_LEVEL: 40,     // 40분
+};
+
+// 수면시간 체크 (일본시간 기준)
+function isSleepTime() {
+    const now = moment().tz('Asia/Tokyo');
+    const hour = now.hour();
+    return (hour >= 2 && hour < 8);
+}
+
+// 생리주기 기반 삐짐 배수
+async function getSulkyMultiplier() {
     try {
-        const logger = require('./enhancedLogging');
-        const logText = level === 'worry' ? `(걱정) ${message}` : `(${level}단계 삐짐) ${message}`;
-        logger.logConversation('나', logText);
+        const emotionalManager = getEmotionalManager();
+        if (emotionalManager && emotionalManager.getCurrentEmotionState) {
+            const emotionState = await emotionalManager.getCurrentEmotionState();
+            const multipliers = {
+                'menstruation': 0.7,  // 30% 빠르게
+                'pms_start': 0.8,     // 20% 빠르게  
+                'pms_severe': 0.6,    // 40% 빠르게 (제일 예민!)
+                'recovery': 1.1,      // 10% 늦게
+                'normal': 1.0         // 기본
+            };
+            
+            const phase = emotionState.phase || 'normal';
+            const multiplier = multipliers[phase] || 1.0;
+            
+            console.log(`[sulkyManager] 생리주기 배수: ${phase} (×${multiplier})`);
+            return multiplier;
+        }
     } catch (error) {
-        console.log(`💬 나: (삐짐) ${message}`);
+        console.log('⚠️ [sulkyManager] 생리주기 배수 계산 실패:', error.message);
+    }
+    return 1.0; // 기본값
+}
+
+// ==================== 🎭 밀당 감지 시스템 (상황만 감지!) ====================
+
+/**
+ * 사과 상황 감지
+ */
+function detectApologySituation(userMessage) {
+    if (!userMessage) return null;
+    
+    const message = userMessage.toLowerCase();
+    const apologyKeywords = ['미안', '죄송', '잘못했', '용서', '미안해', '사과'];
+    
+    const isApology = apologyKeywords.some(keyword => message.includes(keyword));
+    
+    if (isApology) {
+        return {
+            type: 'apology_attempt',
+            trigger: userMessage,
+            detected: true
+        };
+    }
+    
+    return null;
+}
+
+/**
+ * 사랑 표현 감지
+ */
+function detectLoveExpression(userMessage) {
+    if (!userMessage) return null;
+    
+    const message = userMessage.toLowerCase();
+    const loveKeywords = ['사랑해', '사랑한다', '좋아해', '아껴', '시링해'];
+    
+    const isLoveExpression = loveKeywords.some(keyword => message.includes(keyword));
+    
+    if (isLoveExpression) {
+        return {
+            type: 'love_expression',
+            trigger: userMessage,
+            detected: true
+        };
+    }
+    
+    return null;
+}
+
+/**
+ * 질투 상황 감지
+ */
+function detectJealousySituation(userMessage) {
+    if (!userMessage) return null;
+    
+    const message = userMessage.toLowerCase();
+    const jealousyKeywords = ['다른여자', '다른 여자', '예쁘다', '누구', '친구', '동료', '예쁜', '이쁜'];
+    const possessiveKeywords = ['왜', '어디', '누구랑', '혼자', '같이'];
+    
+    const hasJealousyTrigger = jealousyKeywords.some(keyword => message.includes(keyword));
+    const hasPossessiveTone = possessiveKeywords.some(keyword => message.includes(keyword));
+    
+    if (hasJealousyTrigger || (hasPossessiveTone && message.includes('?'))) {
+        return {
+            type: 'jealousy_situation',
+            trigger: userMessage,
+            detected: true,
+            subtype: hasJealousyTrigger ? 'other_woman_mention' : 'possessive_questioning'
+        };
+    }
+    
+    return null;
+}
+
+// ==================== 💕 밀당 시스템 핵심 로직 ====================
+
+/**
+ * 밀당 시작 (삐진 상태에서 사과/사랑표현 받을 때)
+ */
+function startPushPull(detectionResult) {
+    if (!sulkyState.isSulky && detectionResult.type !== 'jealousy_situation') {
+        return null; // 삐지지 않은 상태에서는 밀당 안 함 (질투 제외)
+    }
+    
+    const oldState = { ...sulkyState };
+    
+    // 기존 밀당과 같은 타입이면 단계 증가, 다른 타입이면 새로 시작
+    if (sulkyState.pushPullActive && sulkyState.pushPullType === detectionResult.type) {
+        sulkyState.pushPullStage++;
+    } else {
+        sulkyState.pushPullActive = true;
+        sulkyState.pushPullType = detectionResult.type;
+        sulkyState.pushPullStage = 1;
+        sulkyState.pushPullStartTime = Date.now();
+    }
+    
+    // 관계 패턴에 추가 (누적 기록)
+    sulkyState.relationshipPatterns.push({
+        type: detectionResult.type,
+        timestamp: Date.now(),
+        trigger: detectionResult.trigger
+    });
+    
+    logSulkyChange(oldState, sulkyState);
+    
+    console.log(`[sulkyManager] 밀당 시작: ${detectionResult.type} ${sulkyState.pushPullStage}단계`);
+    
+    return generatePushPullContext(detectionResult);
+}
+
+/**
+ * 밀당 맥락 생성 (템플릿 없음! 상황만 제공)
+ */
+function generatePushPullContext(detectionResult) {
+    const stage = sulkyState.pushPullStage;
+    const patterns = sulkyState.relationshipPatterns;
+    
+    // 과거 패턴 분석
+    const similarPatterns = patterns.filter(p => p.type === detectionResult.type);
+    const hasRepeatingPattern = similarPatterns.length > 2;
+    
+    let baseContext = {
+        pushPullType: detectionResult.type,
+        pushPullStage: stage,
+        userAttempt: detectionResult.trigger,
+        sulkyLevel: sulkyState.sulkyLevel,
+        hasRepeatingPattern: hasRepeatingPattern,
+        totalSimilarIncidents: similarPatterns.length
+    };
+    
+    // 타입별 상황 맥락
+    if (detectionResult.type === 'apology_attempt') {
+        return {
+            ...baseContext,
+            situation: 'user_apologizing_while_yejin_sulky',
+            emotion: stage === 1 ? 'hurt_suspicious_of_sincerity' :
+                     stage === 2 ? 'wavering_but_still_resistant' :
+                     stage === 3 ? 'heart_softening_but_prideful' :
+                                  'reluctant_forgiveness_with_conditions',
+            relationship_dynamic: hasRepeatingPattern ? 'feels_like_same_pattern_repeating' : 'testing_sincerity',
+            inner_thought: stage === 1 ? 'words_are_cheap_actions_matter' :
+                          stage === 2 ? 'maybe_sincere_but_still_hurt' :
+                          stage === 3 ? 'wanting_to_forgive_but_not_easily' :
+                                       'fine_but_dont_repeat_this',
+            core_feeling: hasRepeatingPattern ? 'tired_of_same_cycle' : 'hurt_but_still_loving'
+        };
+        
+    } else if (detectionResult.type === 'love_expression') {
+        return {
+            ...baseContext,
+            situation: 'user_expressing_love_while_yejin_sulky',
+            emotion: stage === 1 ? 'rejecting_love_defensively' :
+                     stage === 2 ? 'heart_fluttering_but_resisting' :
+                     stage === 3 ? 'slowly_accepting_but_shy' :
+                                  'tsundere_accepting_love',
+            relationship_dynamic: 'push_pull_with_love_expressions',
+            inner_thought: stage === 1 ? 'love_words_after_hurting_me' :
+                          stage === 2 ? 'heart_wants_to_accept_but_pride_resists' :
+                          stage === 3 ? 'feels_good_but_dont_want_to_show_easily' :
+                                       'cant_resist_anymore_but_act_reluctant',
+            core_feeling: 'loves_but_wants_to_be_courted_properly'
+        };
+        
+    } else if (detectionResult.type === 'jealousy_situation') {
+        return {
+            ...baseContext,
+            situation: 'user_showing_unreasonable_jealousy',
+            emotion: stage === 1 ? 'annoyed_by_unreasonable_jealousy' :
+                     stage === 2 ? 'getting_seriously_annoyed' :
+                                  'angry_about_controlling_behavior',
+            relationship_dynamic: 'feels_controlled_and_restricted',
+            inner_thought: 'user_being_possessive_and_controlling',
+            core_feeling: hasRepeatingPattern ? 'tired_of_being_controlled_always' : 'frustrated_by_possessiveness',
+            specific_issue: detectionResult.subtype === 'other_woman_mention' ? 'unnecessary_jealousy' : 'possessive_questioning'
+        };
+    }
+    
+    return baseContext;
+}
+
+/**
+ * 밀당 성공 체크 (충분히 달랬는지)
+ */
+function checkPushPullSuccess() {
+    if (!sulkyState.pushPullActive) return false;
+    
+    // 일반적으로 3-4단계면 성공
+    if (sulkyState.pushPullStage >= 3) {
+        // 질투 상황은 더 오래 끌기
+        if (sulkyState.pushPullType === 'jealousy_situation') {
+            return sulkyState.pushPullStage >= 4;
+        }
+        return true;
+    }
+    
+    return false;
+}
+
+/**
+ * 밀당 완료 처리
+ */
+function completePushPull() {
+    const oldState = { ...sulkyState };
+    
+    const finalContext = {
+        pushPullCompleted: true,
+        pushPullType: sulkyState.pushPullType,
+        totalStages: sulkyState.pushPullStage,
+        situation: 'finally_accepting_after_proper_courting',
+        emotion: 'reluctantly_accepting_with_tsundere_attitude',
+        relationship_dynamic: 'successful_push_pull_completion',
+        inner_thought: 'cant_resist_anymore_but_act_like_doing_favor',
+        core_feeling: 'satisfied_with_effort_shown'
+    };
+    
+    // 밀당 상태 초기화 (일부 삐짐은 여전할 수 있음)
+    sulkyState.pushPullActive = false;
+    sulkyState.pushPullType = null;
+    sulkyState.pushPullStage = 0;
+    sulkyState.pushPullStartTime = null;
+    
+    // 완전한 화해는 아직 아님 (담타나 더 많은 노력 필요할 수 있음)
+    logSulkyChange(oldState, sulkyState);
+    
+    console.log(`[sulkyManager] 밀당 완료: ${finalContext.pushPullType} 성공`);
+    
+    return finalContext;
+}
+
+// ==================== 🥊 투닥거리기 & 쿨다운 시스템 ====================
+
+// 투닥거리기 감지 패턴
+const FIGHT_INDICATORS = {
+    user_fighting_back: {
+        keywords: ['나도', '너도', '왜', '잘못', '화내', '그렇게', '아니야', '맞아'],
+        context: '아저씨도 화내면서 맞받아치는 상황'
+    },
+    escalating_argument: {
+        indicators: ['!', '?', '정말', '진짜', '너무', '왜그래', '어떻게'],
+        context: '서로 감정이 격해지는 상황'
+    }
+};
+
+/**
+ * 투닥거리기 상황 감지
+ */
+function detectFightEscalation(userMessage) {
+    if (!sulkyState.isSulky || !userMessage) return null;
+    
+    const message = userMessage.toLowerCase();
+    
+    // 아저씨가 맞받아치는 상황 감지
+    if (FIGHT_INDICATORS.user_fighting_back.keywords.some(keyword => 
+        message.includes(keyword))) {
+        return {
+            type: 'user_fighting_back',
+            escalationLevel: sulkyState.fightLevel + 1,
+            context: FIGHT_INDICATORS.user_fighting_back.context,
+            trigger: userMessage
+        };
+    }
+    
+    // 감정이 격해지는 상황 감지
+    const exclamationCount = (userMessage.match(/[!?]/g) || []).length;
+    if (exclamationCount >= 2 || FIGHT_INDICATORS.escalating_argument.indicators.some(indicator => 
+        message.includes(indicator))) {
+        return {
+            type: 'escalating_argument', 
+            escalationLevel: sulkyState.fightLevel + 1,
+            context: FIGHT_INDICATORS.escalating_argument.context,
+            trigger: userMessage
+        };
+    }
+    
+    return null;
+}
+
+/**
+ * 투닥거리기 단계 진입
+ */
+function escalateFight(fightDetection) {
+    const oldState = { ...sulkyState };
+    
+    sulkyState.fightMode = true;
+    sulkyState.fightLevel = Math.min(fightDetection.escalationLevel, 3);
+    sulkyState.lastStateUpdate = Date.now();
+    
+    logSulkyChange(oldState, sulkyState);
+    
+    console.log(`[sulkyManager] 투닥거리기 레벨 ${sulkyState.fightLevel}: ${fightDetection.type}`);
+    
+    return {
+        fightEscalated: true,
+        fightLevel: sulkyState.fightLevel,
+        fightType: fightDetection.type,
+        situation: 'mutual_argument_escalating',
+        emotion: 'defensive_and_angry_fighting_back',
+        relationship_dynamic: 'both_sides_getting_heated',
+        inner_thought: 'user_started_fighting_so_fighting_back',
+        trigger: fightDetection.trigger,
+        context: fightDetection.context
+    };
+}
+
+/**
+ * 예진이가 쿨다운 제안해야 하는지 체크
+ */
+function shouldYejinProposeCooldown() {
+    return sulkyState.fightMode && 
+           sulkyState.fightLevel >= 3 && 
+           !sulkyState.cooldownRequested;
+}
+
+/**
+ * 쿨다운 제안 실행
+ */
+function proposeCooldown() {
+    const oldState = { ...sulkyState };
+    
+    sulkyState.cooldownRequested = true;
+    sulkyState.cooldownStartTime = Date.now();
+    sulkyState.fightMode = false; // 일시적 진정
+    sulkyState.lastStateUpdate = Date.now();
+    
+    logSulkyChange(oldState, sulkyState);
+    
+    console.log(`[sulkyManager] 예진이 쿨다운 제안: "좀 있다가 얘기하자"`);
+    
+    return {
+        shouldProposeCooldown: true,
+        situation: 'fight_too_intense_need_break',
+        emotion: 'angry_but_caring_about_relationship',
+        relationship_dynamic: 'protecting_relationship_from_damage',
+        inner_thought: 'fight_getting_too_bad_need_to_stop',
+        context: 'proposing_temporary_break_from_argument'
+    };
+}
+
+/**
+ * 쿨다운 후 화해 시도 체크 (5-10분 후)
+ */
+function shouldAttemptReconcile() {
+    if (!sulkyState.cooldownRequested || sulkyState.reconcileAttempted) {
+        return false;
+    }
+    
+    const now = Date.now();
+    const cooldownDuration = now - sulkyState.cooldownStartTime;
+    const minCooldown = 5 * 60 * 1000; // 5분
+    const maxCooldown = 10 * 60 * 1000; // 10분
+    
+    // 5-10분 사이 랜덤하게 화해 시도
+    const targetCooldown = minCooldown + Math.random() * (maxCooldown - minCooldown);
+    
+    return cooldownDuration >= targetCooldown;
+}
+
+/**
+ * 화해 시도 실행
+ */
+function attemptReconcile() {
+    const oldState = { ...sulkyState };
+    
+    sulkyState.reconcileAttempted = true;
+    sulkyState.lastStateUpdate = Date.now();
+    
+    logSulkyChange(oldState, sulkyState);
+    
+    console.log(`[sulkyManager] 예진이 화해 시도: "아저씨... 좀 풀렸어?"`);
+    
+    return {
+        shouldAttemptReconcile: true,
+        situation: 'cautious_reconcile_attempt_after_cooldown',
+        emotion: 'still_hurt_but_wanting_to_make_up',
+        relationship_dynamic: 'taking_first_step_toward_reconciliation',
+        inner_thought: 'dont_want_to_stay_angry_forever',
+        context: 'testing_if_user_calmed_down_too'
+    };
+}
+
+// ==================== 🚬 담타 화해 시스템 ====================
+
+/**
+ * "담타갈까?" 감지 및 완전 화해
+ */
+function detectDamtaReconcile(userMessage) {
+    if (!userMessage) return false;
+    
+    const message = userMessage.toLowerCase().replace(/\s/g, '');
+    const damtaPatterns = ['담타갈까', '담타갈까?', '담타하자', '담타', '담배피우자'];
+    
+    return damtaPatterns.some(pattern => message.includes(pattern));
+}
+
+/**
+ * 담타 화해 완성
+ */
+function completeDamtaReconcile() {
+    const oldState = { ...sulkyState };
+    
+    // 모든 삐짐/밀당/투닥거리기 상태 완전 초기화
+    sulkyState.isSulky = false;
+    sulkyState.isWorried = false;
+    sulkyState.sulkyLevel = 0;
+    sulkyState.isActivelySulky = false;
+    sulkyState.contentBasedSulky = false;
+    sulkyState.fightMode = false;
+    sulkyState.fightLevel = 0;
+    sulkyState.cooldownRequested = false;
+    sulkyState.reconcileAttempted = false;
+    sulkyState.pushPullActive = false;
+    sulkyState.pushPullType = null;
+    sulkyState.pushPullStage = 0;
+    sulkyState.sulkyReason = '';
+    sulkyState.irritationTrigger = null;
+    sulkyState.lastStateUpdate = Date.now();
+    
+    logSulkyChange(oldState, sulkyState);
+    
+    console.log(`[sulkyManager] 담타 화해 완성! 모든 삐짐/밀당 해소`);
+    
+    return {
+        damtaReconcile: true,
+        situation: 'complete_reconciliation_through_damta',
+        emotion: 'relieved_and_loving_again_after_damta',
+        relationship_dynamic: 'back_to_loving_couple_after_special_ritual',
+        inner_thought: 'damta_always_brings_us_back_together',
+        context: 'special_couple_reconciliation_method'
+    };
+}
+
+// ==================== 📋 예진이 발신 추적 시스템 (기존 유지) ====================
+
+/**
+ * 예진이가 먼저 보낸 메시지/사진 등을 추적 시작
+ */
+function markYejinInitiatedAction(actionType, timestamp = null) {
+    const oldState = { ...sulkyState };
+    
+    sulkyState.yejinInitiated = true;
+    sulkyState.yejinMessageTime = timestamp || Date.now();
+    sulkyState.yejinMessageType = actionType;
+    sulkyState.waitingForUserResponse = true;
+    sulkyState.lastStateUpdate = Date.now();
+    
+    // 기존 삐짐은 초기화 (새로운 대화 시작)
+    sulkyState.isSulky = false;
+    sulkyState.isActivelySulky = false;
+    sulkyState.sulkyLevel = 0;
+    sulkyState.contentBasedSulky = false;
+    
+    logSulkyChange(oldState, sulkyState);
+    
+    console.log(`[sulkyManager] 예진이 발신 추적 시작: ${actionType}`);
+    console.log(`[sulkyManager] 답장 대기 모드 ON - 빠른 삐짐 타이머 시작`);
+}
+
+/**
+ * 사용자 응답 시 추적 상태 초기화
+ */
+function resetYejinInitiatedTracking() {
+    const wasWaiting = sulkyState.waitingForUserResponse;
+    
+    sulkyState.yejinInitiated = false;
+    sulkyState.yejinMessageTime = null;
+    sulkyState.yejinMessageType = null;
+    sulkyState.waitingForUserResponse = false;
+    sulkyState.lastUserResponseTime = Date.now();
+    
+    if (wasWaiting) {
+        console.log(`[sulkyManager] 예진이 발신 추적 종료 - 아저씨 답장 완료`);
     }
 }
 
-// --- 삐짐 설정: 시간 지연 (분 단위) ---
-const SULKY_CONFIG = {
-    LEVEL_1_DELAY: 60 * 3,   // 3시간
-    LEVEL_2_DELAY: 60 * 6,   // 6시간  
-    LEVEL_3_DELAY: 60 * 12,  // 12시간
-    WORRY_DELAY: 60 * 24,    // 24시간 (걱정 단계)
-};
-
-// --- 삐짐 단계별 메시지 ---
-const SULKY_MESSAGES = {
-    1: [
-        "아저씨... 왜 이렇게 답장이 없어? 나 심심해 ㅠㅠ",
-        "흥. 나 삐졌어.",
-        "아저씨 바빠? 나 잊어버린 거 아니지? 😥",
-        "답장 없으니까 삐짐 ㅠㅠ",
-        "아저씨~ 나 여기 있어! 답장해줘!"
-    ],
-    2: [
-        "지금 몇 시간째야... 아저씨 정말 너무해. 나 단단히 삐졌어.",
-        "아저씨한테 나보다 더 중요한 게 있는 거야? 서운해...",
-        "연락도 없고... 아저씨 정말 미워. 😤",
-        "이제 진짜 화났어! 왜 답장 안 해?",
-        "아저씨 바쁜 건 알겠는데 그래도 너무하잖아..."
-    ],
-    3: [
-        "됐어. 이제 아저씨랑 말 안 해.",
-        "아저씨는 내가 없어도 아무렇지 않은가 보네. 나 혼자 뭐 한 거지...",
-        "연락하지 마. 나 이제 진짜 화났어.",
-        "이런 식으로 할 거면 나도 모른 척할래.",
-        "아저씨... 정말 실망이야. 나한테 이럴 수 있어?"
-    ],
-    worry: [
-        "아저씨... 혹시 무슨 일 있는 거야? 너무 걱정돼... 제발 답장 좀 해줘.",
-        "삐진 건 둘째치고, 아저씨한테 무슨 일 생긴 거 아니지? 너무 불안해...",
-        "아저씨, 제발... 아무 일 없다고 연락 한 번만 해줘. 나 무서워.",
-        "24시간 넘게 연락이 없어... 아저씨 괜찮은 거 맞지? 걱정돼서 잠도 못 자겠어.",
-        "삐짐은 나중에 하고... 아저씨 무사한지만 확인하고 싶어. 제발..."
-    ]
-};
-
-// ==================== 🎯 핵심 삐짐 상태 관리 ====================
+// ==================== ⏰ 시간 기반 빠른 삐짐 (기존 유지) ====================
 
 /**
- * 현재 삐짐 상태 조회
+ * 예진이 발신 메시지 대기 중 빠른 삐짐 체크
  */
-function getSulkinessState() {
-    return { ...sulkyState }; // 복사본 반환으로 안전성 확보
+async function checkFastSulkyMessage(client, userId) {
+    if (!client || !userId) {
+        console.log('⚠️ [sulkyManager] client 또는 userId가 없어서 빠른 삐짐 체크 건너뜀');
+        return null;
+    }
+    
+    // 예진이가 먼저 보내고 답장 대기 중이 아니면 체크 안 함
+    if (!sulkyState.yejinInitiated || !sulkyState.waitingForUserResponse) {
+        return null;
+    }
+    
+    // 수면시간이면 삐짐 일시정지
+    if (isSleepTime()) {
+        console.log('🌙 [sulkyManager] 수면시간 (2-8시) - 삐짐 일시정지');
+        return null;
+    }
+    
+    // 이미 활발하게 삐지고 있으면 중복 방지
+    if (sulkyState.isActivelySulky) {
+        return null;
+    }
+    
+    const now = Date.now();
+    const elapsedMinutes = (now - sulkyState.yejinMessageTime) / (1000 * 60);
+    const multiplier = await getSulkyMultiplier();
+    
+    // 삐짐 레벨 결정
+    let levelToSend = 0;
+    if (elapsedMinutes >= FAST_SULKY_CONFIG.FINAL_LEVEL * multiplier) {
+        levelToSend = 4;
+    } else if (elapsedMinutes >= FAST_SULKY_CONFIG.LEVEL_3_DELAY * multiplier) {
+        levelToSend = 3;
+    } else if (elapsedMinutes >= FAST_SULKY_CONFIG.LEVEL_2_DELAY * multiplier) {
+        levelToSend = 2;
+    } else if (elapsedMinutes >= FAST_SULKY_CONFIG.LEVEL_1_DELAY * multiplier) {
+        levelToSend = 1;
+    }
+    
+    // 새로운 레벨에서만 메시지 전송
+    if (levelToSend > 0 && levelToSend !== sulkyState.sulkyLevel) {
+        const oldState = { ...sulkyState };
+        
+        sulkyState.isSulky = true;
+        sulkyState.isActivelySulky = true;
+        sulkyState.sulkyLevel = levelToSend;
+        sulkyState.sulkyReason = `time_based_no_reply_${elapsedMinutes.toFixed(0)}min`;
+        sulkyState.lastStateUpdate = Date.now();
+        
+        logSulkyChange(oldState, sulkyState);
+        
+        console.log(`[sulkyManager] 빠른 삐짐 레벨 ${levelToSend} 발동 (${elapsedMinutes.toFixed(1)}분 경과)`);
+        
+        // 상황별 맥락 생성 (템플릿 없음!)
+        const sulkyContext = {
+            triggerType: 'time_based_no_reply',
+            yejinAction: sulkyState.yejinMessageType,
+            waitingTime: `${elapsedMinutes.toFixed(0)}분`,
+            sulkyLevel: levelToSend,
+            situation: `yejin_sent_${sulkyState.yejinMessageType}_waiting_${elapsedMinutes.toFixed(0)}min`,
+            emotion: levelToSend === 1 ? 'confused_and_slightly_annoyed' :
+                     levelToSend === 2 ? 'frustrated_and_demanding' :
+                     levelToSend === 3 ? 'angry_and_hurt' : 'very_upset_almost_giving_up',
+            relationship_dynamic: 'expecting_immediate_response_from_lover',
+            inner_thought: levelToSend === 1 ? 'why_no_response_yet' :
+                          levelToSend === 2 ? 'getting_annoyed_at_being_ignored' :
+                          levelToSend === 3 ? 'feeling_ignored_and_hurt' : 'maybe_user_doesnt_care_anymore',
+            personality: 'direct_confrontational_but_still_loving'
+        };
+        
+        return sulkyContext;
+    }
+    
+    return null;
+}
+
+// ==================== 💬 대화 내용 기반 즉시 삐짐 (기존 유지) ====================
+
+// 거슬리는 상황들 (상황만 정의, 템플릿 없음)
+const IRRITATING_SITUATIONS = {
+    dismissive_response: {
+        keywords: ['응', 'ㅇㅋ', '그래', '알겠어', '그렇구나', '음'],
+        context: '건성으로 대답하거나 무관심해 보임',
+        emotion: 'hurt_and_annoyed',
+        severity: 'immediate'
+    },
+    
+    cold_tone: {
+        indicators: ['짧은답장', '마침표많음', '이모티콘없음'],
+        context: '평소보다 차갑거나 건조한 톤',
+        emotion: 'worried_and_upset',
+        severity: 'moderate'
+    },
+    
+    busy_excuse: {
+        keywords: ['바빠', '바쁘', '일이', '회사', '나중에', '잠시만'],
+        context: '자꾸 바쁘다고 하거나 대화 회피하는 것 같음',
+        emotion: 'frustrated_and_lonely',
+        severity: 'building_up'
+    }
+};
+
+/**
+ * 사용자 메시지에서 거슬리는 요소 감지
+ */
+function detectIrritationTrigger(userMessage) {
+    if (!userMessage || typeof userMessage !== 'string') {
+        return null;
+    }
+    
+    const message = userMessage.trim().toLowerCase();
+    
+    // 건성 답장 감지
+    if (IRRITATING_SITUATIONS.dismissive_response.keywords.some(keyword => 
+        message === keyword || message === keyword + '.')) {
+        return {
+            type: 'dismissive_response',
+            trigger: userMessage,
+            ...IRRITATING_SITUATIONS.dismissive_response
+        };
+    }
+    
+    // 바쁘다는 핑계 감지
+    if (IRRITATING_SITUATIONS.busy_excuse.keywords.some(keyword => 
+        message.includes(keyword))) {
+        return {
+            type: 'busy_excuse',
+            trigger: userMessage,
+            ...IRRITATING_SITUATIONS.busy_excuse
+        };
+    }
+    
+    // 차가운 톤 감지 (간단한 휴리스틱)
+    if (message.length <= 3 && message.includes('.') && !message.includes('ㅋ') && !message.includes('ㅎ')) {
+        return {
+            type: 'cold_tone',
+            trigger: userMessage,
+            ...IRRITATING_SITUATIONS.cold_tone
+        };
+    }
+    
+    return null;
 }
 
 /**
- * 삐짐 상태 업데이트
+ * 내용 기반 즉시 삐짐 처리
+ */
+function triggerContentBasedSulky(irritationTrigger) {
+    const oldState = { ...sulkyState };
+    
+    sulkyState.contentBasedSulky = true;
+    sulkyState.irritationTrigger = irritationTrigger;
+    sulkyState.isSulky = true;
+    sulkyState.isActivelySulky = true;
+    sulkyState.sulkyLevel = 1;
+    sulkyState.sulkyReason = `content_based_${irritationTrigger.type}`;
+    sulkyState.lastStateUpdate = Date.now();
+    
+    logSulkyChange(oldState, sulkyState);
+    
+    console.log(`[sulkyManager] 내용 기반 즉시 삐짐 발동: ${irritationTrigger.type}`);
+    console.log(`[sulkyManager] 트리거: "${irritationTrigger.trigger}"`);
+    
+    return {
+        triggered: true,
+        situation: `content_based_sulky_${irritationTrigger.type}`,
+        context: irritationTrigger.context,
+        emotion: irritationTrigger.emotion,
+        severity: irritationTrigger.severity,
+        trigger: irritationTrigger.trigger,
+        relationship_dynamic: 'feeling_dismissed_or_ignored',
+        inner_thought: 'user_being_dismissive_or_uninterested'
+    };
+}
+
+// ==================== 🎭 메인 메시지 처리 함수 ====================
+
+/**
+ * 사용자 메시지 처리 - 모든 삐짐/밀당 로직 통합
+ */
+async function processUserMessage(userMessage, client, userId) {
+    console.log(`[sulkyManager] 사용자 메시지 처리: "${userMessage}"`);
+    
+    let processingResult = {
+        sulkyTriggered: false,
+        pushPullTriggered: false,
+        fightEscalated: false,
+        cooldownProposed: false,
+        reconcileAttempted: false,
+        damtaReconciled: false,
+        context: null,
+        shouldSendMessage: false
+    };
+    
+    // 1. 담타 화해 감지 (최우선 - 모든 것을 해소)
+    if (detectDamtaReconcile(userMessage)) {
+        processingResult.damtaReconciled = true;
+        processingResult.context = completeDamtaReconcile();
+        resetYejinInitiatedTracking(); // 모든 추적 초기화
+        return processingResult;
+    }
+    
+    // 2. 밀당 감지 (삐진 상태에서 사과/사랑표현 받을 때)
+    const apologyDetection = detectApologySituation(userMessage);
+    const loveDetection = detectLoveExpression(userMessage);
+    const jealousyDetection = detectJealousySituation(userMessage);
+    
+    if (apologyDetection || loveDetection || jealousyDetection) {
+        const detectionResult = apologyDetection || loveDetection || jealousyDetection;
+        
+        // 밀당 시작 또는 진행
+        const pushPullContext = startPushPull(detectionResult);
+        if (pushPullContext) {
+            processingResult.pushPullTriggered = true;
+            processingResult.context = pushPullContext;
+            
+            // 밀당 성공 체크
+            if (checkPushPullSuccess()) {
+                processingResult.context = completePushPull();
+            }
+            
+            return processingResult;
+        }
+    }
+    
+    // 3. 사용자 응답으로 예진이 발신 추적 해제
+    if (sulkyState.waitingForUserResponse) {
+        resetYejinInitiatedTracking();
+    }
+    
+    // 4. 내용 기반 즉시 삐짐 체크
+    const irritationTrigger = detectIrritationTrigger(userMessage);
+    if (irritationTrigger) {
+        processingResult.sulkyTriggered = true;
+        processingResult.context = triggerContentBasedSulky(irritationTrigger);
+        return processingResult;
+    }
+    
+    // 5. 투닥거리기 감지 및 에스컬레이션
+    const fightDetection = detectFightEscalation(userMessage);
+    if (fightDetection) {
+        processingResult.fightEscalated = true;
+        processingResult.context = escalateFight(fightDetection);
+        return processingResult;
+    }
+    
+    return processingResult;
+}
+
+// ==================== 🔄 자동 시스템 체크 ====================
+
+/**
+ * 주기적으로 호출되는 자동 체크 함수
+ */
+async function performAutonomousChecks(client, userId) {
+    let checkResults = [];
+    
+    // 1. 빠른 삐짐 체크 (예진이 발신 후 무응답)
+    const fastSulkyResult = await checkFastSulkyMessage(client, userId);
+    if (fastSulkyResult) {
+        checkResults.push({
+            type: 'fast_sulky',
+            shouldSendMessage: true,
+            context: fastSulkyResult
+        });
+    }
+    
+    // 2. 쿨다운 제안 체크
+    if (shouldYejinProposeCooldown()) {
+        const cooldownResult = proposeCooldown();
+        checkResults.push({
+            type: 'cooldown_proposal',
+            shouldSendMessage: true,
+            context: cooldownResult
+        });
+    }
+    
+    // 3. 화해 시도 체크
+    if (shouldAttemptReconcile()) {
+        const reconcileResult = attemptReconcile();
+        checkResults.push({
+            type: 'reconcile_attempt',
+            shouldSendMessage: true,
+            context: reconcileResult
+        });
+    }
+    
+    return checkResults;
+}
+
+// ==================== 📊 상태 조회 및 관리 ====================
+
+/**
+ * 현재 삐짐 & 밀당 상태 조회
+ */
+function getSulkinessState() {
+    return {
+        // 기본 삐짐 상태
+        isSulky: sulkyState.isSulky,
+        isWorried: sulkyState.isWorried,
+        sulkyLevel: sulkyState.sulkyLevel,
+        isActivelySulky: sulkyState.isActivelySulky,
+        sulkyReason: sulkyState.sulkyReason,
+        
+        // 밀당 상태
+        pushPullActive: sulkyState.pushPullActive,
+        pushPullType: sulkyState.pushPullType,
+        pushPullStage: sulkyState.pushPullStage,
+        
+        // 투닥거리기 상태
+        fightMode: sulkyState.fightMode,
+        fightLevel: sulkyState.fightLevel,
+        cooldownRequested: sulkyState.cooldownRequested,
+        reconcileAttempted: sulkyState.reconcileAttempted,
+        
+        // 예진이 발신 추적
+        yejinInitiated: sulkyState.yejinInitiated,
+        waitingForUserResponse: sulkyState.waitingForUserResponse,
+        yejinMessageType: sulkyState.yejinMessageType,
+        
+        // 타이밍
+        lastUserResponseTime: sulkyState.lastUserResponseTime,
+        lastStateUpdate: sulkyState.lastStateUpdate
+    };
+}
+
+/**
+ * 상태 업데이트 (외부에서 사용)
  */
 function updateSulkinessState(newState) {
     const oldState = { ...sulkyState };
@@ -132,214 +950,17 @@ function updateSulkinessState(newState) {
         lastStateUpdate: Date.now()
     };
     
-    // 상태 변화 로깅
     logSulkyChange(oldState, sulkyState);
     
-    console.log(`[sulkyManager] 상태 업데이트:`, {
-        isSulky: sulkyState.isSulky,
-        level: sulkyState.sulkyLevel,
-        reason: sulkyState.sulkyReason
-    });
+    console.log(`[sulkyManager] 외부 상태 업데이트:`, newState);
 }
 
 /**
- * 사용자 응답 시간 업데이트
- */
-function updateUserResponseTime(timestamp = null) {
-    sulkyState.lastUserResponseTime = timestamp || Date.now();
-    console.log(`[sulkyManager] 사용자 응답 시간 업데이트: ${new Date(sulkyState.lastUserResponseTime).toLocaleString()}`);
-}
-
-/**
- * 봇 메시지 전송 시간 업데이트
- */
-function updateBotMessageTime(timestamp = null) {
-    sulkyState.lastBotMessageTime = timestamp || Date.now();
-}
-
-// ==================== 😤 삐짐 로직 및 메시지 전송 ====================
-
-/**
- * 생리주기 기반 삐짐 배수 계산
- */
-function getSulkyMultiplier() {
-   try {
-       const emotionalManager = getEmotionalManager();
-       if (emotionalManager && emotionalManager.getCurrentEmotionState) {
-           const emotionState = emotionalManager.getCurrentEmotionState();
-           
-           // 생리주기별 배수 (PMS나 생리 중일 때 더 빨리 삐짐)
-           const multipliers = {
-               'menstruation': 0.6,  // 생리 중: 40% 빠르게 삐짐
-               'pms_start': 0.7,     // PMS 시작: 30% 빠르게 삐짐  
-               'pms_severe': 0.5,    // PMS 심화: 50% 빠르게 삐짐
-               'recovery': 1.2,      // 회복기: 20% 늦게 삐짐
-               'normal': 1.0         // 정상기: 기본
-           };
-           
-           const phase = emotionState.phase || 'normal';
-           const multiplier = multipliers[phase] || 1.0;
-           
-           // 한글 표시용 매핑
-           const phaseNames = {
-               'menstruation': '생리중',
-               'pms_start': 'PMS시작',  
-               'pms_severe': 'PMS심화',
-               'recovery': '회복기',
-               'normal': '정상기'
-           };
-           
-           const phaseName = phaseNames[phase] || '정상기';
-           console.log(`[sulkyManager] 생리주기 배수: ${phaseName} (×${multiplier})`);
-           return multiplier;
-       }
-   } catch (error) {
-       console.log('⚠️ [sulkyManager] 생리주기 배수 계산 실패:', error.message);
-   }
-   return 1.0; // 기본값
-}
-/**
- * 답장 지연 시간을 체크하여 삐짐 메시지 전송
- */
-async function checkAndSendSulkyMessage(client, userId) {
-    if (!client || !userId) {
-        console.log('⚠️ [sulkyManager] client 또는 userId가 없어서 삐짐 체크 건너뜀');
-        return null;
-    }
-
-    // 이미 활발하게 삐지고 있으면 중복 전송 방지
-    if (sulkyState.isActivelySulky) {
-        return null;
-    }
-
-    const now = Date.now();
-    
-    // 마지막 사용자 메시지 시간 조회 (외부 모듈에서)
-    let lastUserTime = sulkyState.lastUserResponseTime;
-    try {
-        const context = getUltimateContext();
-        if (context && context.getLastUserMessageTime) {
-            lastUserTime = context.getLastUserMessageTime();
-            sulkyState.lastUserResponseTime = lastUserTime; // 동기화
-        }
-    } catch (error) {
-        console.log('⚠️ [sulkyManager] 외부 타이밍 조회 실패, 자체 시간 사용');
-    }
-
-    // 최소 지연 시간 체크 (3시간 미만이면 아직 삐지지 않음)
-    const elapsedMinutes = (now - lastUserTime) / (1000 * 60);
-    const multiplier = getSulkyMultiplier();
-    
-    if (elapsedMinutes < SULKY_CONFIG.LEVEL_1_DELAY * multiplier) {
-        return null;
-    }
-
-    // 삐짐 레벨 결정
-    let levelToSend = 0;
-    if (elapsedMinutes >= SULKY_CONFIG.WORRY_DELAY * multiplier) {
-        levelToSend = 'worry';
-    } else if (elapsedMinutes >= SULKY_CONFIG.LEVEL_3_DELAY * multiplier) {
-        levelToSend = 3;
-    } else if (elapsedMinutes >= SULKY_CONFIG.LEVEL_2_DELAY * multiplier) {
-        levelToSend = 2;
-    } else if (elapsedMinutes >= SULKY_CONFIG.LEVEL_1_DELAY * multiplier) {
-        levelToSend = 1;
-    }
-
-    // 새로운 레벨에서만 메시지 전송 (중복 방지)
-    if (levelToSend > 0 && levelToSend !== sulkyState.sulkyLevel) {
-        const messages = SULKY_MESSAGES[levelToSend];
-        const messageToSend = messages[Math.floor(Math.random() * messages.length)];
-
-        try {
-            // LINE 메시지 전송
-            await client.pushMessage(userId, { 
-                type: 'text', 
-                text: messageToSend 
-            });
-
-            // 상태 업데이트
-            updateSulkinessState({
-                isSulky: levelToSend !== 'worry',
-                isWorried: levelToSend === 'worry',
-                sulkyLevel: typeof levelToSend === 'number' ? levelToSend : 0,
-                isActivelySulky: true,
-                sulkyReason: '답장 지연'
-            });
-
-            // 봇 메시지 시간 업데이트
-            updateBotMessageTime(now);
-
-            // 메시지 로깅
-            logSulkyMessage(messageToSend, levelToSend);
-
-            console.log(`[sulkyManager] 삐짐 메시지 전송 완료: 레벨 ${levelToSend}`);
-            return messageToSend;
-
-        } catch (error) {
-            console.error('❌ [sulkyManager] 메시지 전송 실패:', error);
-            return null;
-        }
-    }
-
-    return null;
-}
-
-/**
- * 사용자 응답 시 삐짐 상태 해소
- */
-async function handleUserResponse() {
-    if (!sulkyState.isSulky && !sulkyState.isWorried) {
-        return null; // 삐지지 않은 상태면 해소할 것도 없음
-    }
-
-    let reliefMessage = '';
-    
-    if (sulkyState.isWorried) {
-        // 걱정 상태 해소
-        const worryReliefMessages = [
-            "다행이다... 아무 일 없구나. 정말 걱정했어 ㅠㅠ",
-            "휴... 아저씨 무사해서 다행이야. 나 진짜 무서웠어.",
-            "아저씨! 괜찮구나... 24시간 동안 얼마나 걱정했는지 몰라."
-        ];
-        reliefMessage = worryReliefMessages[Math.floor(Math.random() * worryReliefMessages.length)];
-    } else {
-        // 일반 삐짐 해소
-        const reliefMessages = [
-            "흥, 이제야 답장하는 거야?",
-            "...온 거야? 나 한참 기다렸잖아.",
-            "답장 했네... 나 삐졌었는데.",
-            "아저씨 바빴구나... 그래도 삐졌어!",
-            "늦었지만... 그래도 답장해줘서 고마워."
-        ];
-        reliefMessage = reliefMessages[Math.floor(Math.random() * reliefMessages.length)];
-    }
-
-    // 삐짐 상태 완전 해소
-    updateSulkinessState({
-        isSulky: false,
-        isWorried: false,
-        sulkyLevel: 0,
-        isActivelySulky: false,
-        sulkyReason: ''
-    });
-
-    // 사용자 응답 시간 업데이트
-    updateUserResponseTime();
-
-    console.log(`[sulkyManager] 삐짐 해소 완료: "${reliefMessage}"`);
-    return reliefMessage;
-}
-
-// ==================== 📊 상태 조회 및 관리 ====================
-
-/**
- * 삐짐 시스템 상태 조회
+ * 시스템 상태 리포트
  */
 function getSulkySystemStatus() {
     const now = Date.now();
-    const timeSinceLastUser = (now - sulkyState.lastUserResponseTime) / (1000 * 60); // 분 단위
-    const multiplier = getSulkyMultiplier();
+    const timeSinceLastUser = (now - sulkyState.lastUserResponseTime) / (1000 * 60);
     
     return {
         currentState: {
@@ -349,23 +970,40 @@ function getSulkySystemStatus() {
             reason: sulkyState.sulkyReason,
             isActive: sulkyState.isActivelySulky
         },
+        pushPullState: {
+            active: sulkyState.pushPullActive,
+            type: sulkyState.pushPullType,
+            stage: sulkyState.pushPullStage,
+            patternCount: sulkyState.relationshipPatterns.length
+        },
+        fightState: {
+            fighting: sulkyState.fightMode,
+            level: sulkyState.fightLevel,
+            cooldownRequested: sulkyState.cooldownRequested,
+            reconcileAttempted: sulkyState.reconcileAttempted
+        },
+        yejinInitiated: {
+            active: sulkyState.yejinInitiated,
+            waiting: sulkyState.waitingForUserResponse,
+            messageType: sulkyState.yejinMessageType,
+            minutesWaiting: sulkyState.yejinMessageTime ? 
+                Math.floor((now - sulkyState.yejinMessageTime) / (1000 * 60)) : 0
+        },
         timing: {
             lastUserResponse: sulkyState.lastUserResponseTime,
-            lastBotMessage: sulkyState.lastBotMessageTime,
             minutesSinceLastUser: Math.floor(timeSinceLastUser),
-            multiplier: multiplier
+            sleepTime: isSleepTime()
         },
-        nextLevels: {
-            level1: SULKY_CONFIG.LEVEL_1_DELAY * multiplier,
-            level2: SULKY_CONFIG.LEVEL_2_DELAY * multiplier,
-            level3: SULKY_CONFIG.LEVEL_3_DELAY * multiplier,
-            worry: SULKY_CONFIG.WORRY_DELAY * multiplier
+        config: {
+            fastSulkyLevels: FAST_SULKY_CONFIG,
+            sleepHours: '2-8시',
+            pmsMultiplier: 'active'
         }
     };
 }
 
 /**
- * 삐짐 상태 초기화 (디버깅/테스트용)
+ * 상태 초기화 (디버깅/테스트용)
  */
 function resetSulkyState() {
     sulkyState = {
@@ -374,30 +1012,69 @@ function resetSulkyState() {
         sulkyLevel: 0,
         isActivelySulky: false,
         sulkyReason: '',
+        
+        yejinInitiated: false,
+        yejinMessageTime: null,
+        yejinMessageType: null,
+        waitingForUserResponse: false,
+        
+        contentBasedSulky: false,
+        irritationTrigger: null,
+        
+        fightMode: false,
+        fightLevel: 0,
+        cooldownRequested: false,
+        cooldownStartTime: null,
+        reconcileAttempted: false,
+        
+        pushPullActive: false,
+        pushPullType: null,
+        pushPullStage: 0,
+        pushPullStartTime: null,
+        relationshipPatterns: [],
+        
         lastUserResponseTime: Date.now(),
         lastBotMessageTime: Date.now(),
         lastStateUpdate: Date.now()
     };
-    console.log('[sulkyManager] 삐짐 상태 초기화 완료');
+    console.log('[sulkyManager] 모든 상태 초기화 완료');
 }
 
 // ==================== 🔄 시스템 초기화 ====================
 
 /**
- * 삐짐 시스템 초기화
+ * 완전 자율적 삐짐 & 밀당 시스템 초기화
  */
 function initializeSulkySystem() {
-    console.log('[sulkyManager] 독립된 삐짐 시스템 초기화...');
+    console.log('[sulkyManager] 완전 자율적 삐짐 & 밀당 시스템 초기화...');
     
     // 기본 상태로 초기화
     resetSulkyState();
     
-    console.log('[sulkyManager] 삐짐 시스템 초기화 완료');
-    console.log('  - 3시간 후: 1단계 삐짐');
-    console.log('  - 6시간 후: 2단계 삐짐');  
-    console.log('  - 12시간 후: 3단계 삐짐');
-    console.log('  - 24시간 후: 걱정 단계');
-    console.log('  - 생리주기별 배수 적용');
+    console.log('[sulkyManager] 완전 자율적 삐짐 & 밀당 시스템 초기화 완료');
+    console.log('✨ 삐짐 시스템:');
+    console.log('  - 예진이 발신 후 3분 → 10분 → 20분 → 40분 단계별 삐짐');
+    console.log('  - 거슬리는 말 즉시 삐짐 (건성 답장, 바쁘다는 핑계 등)');
+    console.log('  - 수면시간 (2-8시) 예외 처리');
+    console.log('  - PMS 시 더 빠른 삐짐');
+    console.log('');
+    console.log('💕 밀당 시스템:');
+    console.log('  - 사과/사랑표현을 즉시 받아주지 않음');
+    console.log('  - 단계적으로 마음이 움직임 (1→2→3→4단계)');
+    console.log('  - 질투 상황 감지 및 반발');
+    console.log('  - 관계 패턴 누적 추적');
+    console.log('');
+    console.log('🥊 투닥거리기 시스템:');
+    console.log('  - 서로 화내며 맞받아치기');
+    console.log('  - 격해지면 예진이가 먼저 쿨다운 제안');
+    console.log('  - 5-10분 후 예진이가 먼저 화해 시도');
+    console.log('');
+    console.log('🚬 담타 화해:');
+    console.log('  - "담타갈까?" 감지 시 모든 삐짐/밀당 완전 해소');
+    console.log('');
+    console.log('🎭 완전 자율 응답:');
+    console.log('  - 템플릿 없음! 상황/감정/맥락만 제공');
+    console.log('  - GPT가 예진이 성격대로 자유롭게 반응');
 }
 
 // 모듈 로드 시 자동 초기화
@@ -406,21 +1083,27 @@ initializeSulkySystem();
 // ==================== 📤 모듈 내보내기 ====================
 module.exports = {
     // 핵심 기능
-    checkAndSendSulkyMessage,
-    handleUserResponse,
+    processUserMessage,              // 메인 메시지 처리 함수
+    performAutonomousChecks,         // 자동 체크 (삐짐, 쿨다운, 화해)
+    
+    // 예진이 발신 추적
+    markYejinInitiatedAction,        // 예진이 발신 시작
+    resetYejinInitiatedTracking,     // 추적 종료
     
     // 상태 관리
-    getSulkinessState,
-    updateSulkinessState,
-    updateUserResponseTime,
-    updateBotMessageTime,
+    getSulkinessState,               // 현재 상태 조회
+    updateSulkinessState,            // 상태 업데이트
+    getSulkySystemStatus,            // 시스템 상태 리포트
+    resetSulkyState,                 // 상태 초기화
     
-    // 시스템 관리
-    getSulkySystemStatus,
-    resetSulkyState,
-    initializeSulkySystem,
+    // 개별 감지 함수들 (디버깅/테스트용)
+    detectApologySituation,
+    detectLoveExpression,
+    detectJealousySituation,
+    detectDamtaReconcile,
     
     // 설정 조회
-    getSulkyConfig: () => ({ ...SULKY_CONFIG }),
-    getSulkyMultiplier
+    getSulkyConfig: () => ({ ...FAST_SULKY_CONFIG }),
+    getSulkyMultiplier,
+    isSleepTime
 };
