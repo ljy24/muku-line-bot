@@ -104,7 +104,7 @@ async function detectFaceMatch(base64Image, options = {}) {
         console.log(`${colors.vision}🎯 [OpenAI Vision] GPT-4 Vision 분석 시작...${colors.reset}`);
         
         const response = await openaiClient.chat.completions.create({
-            model: "gpt-4o",
+            model: "gpt-4o-mini",
             messages: [
                 {
                     role: "user",
