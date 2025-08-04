@@ -9,6 +9,31 @@
 // 🔥 NEW: Vision API 지능형 메시지 시스템 연동
 const enhancedPhotoSystem = require('./enhancedPhotoSystem');
 
+// aiUtils 함수들을 직접 정의 (import 에러 방지)
+async function callOpenAI(messages, model = 'gpt-4o-mini', maxTokens = 150, temperature = 1.0) {
+    try {
+        const { OpenAI } = require('openai');
+        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+        
+        const response = await openai.chat.completions.create({
+            model: model,
+            messages: messages,
+            max_tokens: maxTokens,
+            temperature: temperature,
+        });
+        
+        return response.choices[0].message.content.trim();
+    } catch (error) {
+        console.error('❌ OpenAI API 호출 실패:', error);
+        return '아저씨~ 지금 생각이 잘 안 나... 다시 말해줄래?';
+    }
+}
+
+function cleanReply(text) {
+    if (!text || typeof text !== 'string') return '아저씨~ 뭔가 이상해...';
+    return text.trim().replace(/^["']|["']$/g, '');
+}
+
 // ✅ [추가] URL 인코딩 함수 - 오모이데와 동일한 로직 (기존 유지)
 function encodeImageUrl(url) {
     try {
