@@ -594,7 +594,7 @@ async function getConceptPhotoReply(userMessage, conversationContextParam) {
     }
 
     if (!photoUrl) {
-        return [{ type: 'text', text: '아저씨... 해당하는 컨셉 사진을 못 찾겠어 ㅠㅠ' }];
+        return { type: 'text', text: '아저씨... 해당하는 컨셉 사진을 못 찾겠어 ㅠㅠ' };
     }
 
     const formattedDate = formatFolderNameToDate(selectedFolder);
@@ -635,8 +635,13 @@ async function getConceptPhotoReply(userMessage, conversationContextParam) {
     // ✅ [추가] 사진 맥락 추적 기록 (Vision API 사용 여부 포함)
     try {
         const contextInfo = isVisionUsed ? `concept[Vision AI] - ${formattedDate}` : `concept[기본] - ${formattedDate}`;
-        autoReply.recordPhotoSent('concept', contextInfo);
-        console.log(`📝 [concept] 사진 맥락 추적 기록 완료: ${contextInfo}`);
+        // autoReply.recordPhotoSent 함수 존재 여부 확인
+        if (autoReply && typeof autoReply.recordPhotoSent === 'function') {
+            autoReply.recordPhotoSent('concept', contextInfo);
+            console.log(`📝 [concept] 사진 맥락 추적 기록 완료: ${contextInfo}`);
+        } else {
+            console.log(`📝 [concept] 사진 맥락 추적 기록 스킵: recordPhotoSent 함수 없음`);
+        }
     } catch (error) {
         console.warn('⚠️ [concept] 사진 맥락 추적 기록 실패:', error.message);
     }
@@ -647,20 +652,16 @@ async function getConceptPhotoReply(userMessage, conversationContextParam) {
     console.log(`📸 [concept] 제목: "${formattedDate}"`);
     console.log(`📸 [concept] 메시지: "${caption.substring(0, 80)}${caption.length > 80 ? '...' : ''}"`);
     
-    // 🔥 NEW: 제목과 사진을 배열로 반환 (순차 전송용)
-    return [
-        {
-            type: 'text',
-            text: formattedDate    // 먼저 전송할 제목: "2024년 12월 14일 일본 나르시스트"
-        },
-        { 
-            type: 'image', 
-            originalContentUrl: photoUrl, 
-            previewImageUrl: photoUrl, 
-            altText: caption, 
-            caption: caption      // Vision API 또는 폴백 코멘트
-        }
-    ];
+    // 🔥 NEW: 제목을 메시지 앞에 포함하여 하나의 응답으로 전송
+    const finalMessage = `${formattedDate}\n\n${caption}`;
+    
+    return { 
+        type: 'image', 
+        originalContentUrl: photoUrl, 
+        previewImageUrl: photoUrl, 
+        altText: finalMessage, 
+        caption: finalMessage      // 제목 + Vision API 코멘트를 하나로 합침
+    };
 }
 
 module.exports = {
