@@ -1,9 +1,13 @@
 // ============================================================================
-// yejinSelfie.js - v3.0 (예진이의 깊은 마음이 담긴 셀카 시스템)
+// yejinSelfie.js - v3.1 (Vision API 연동 + 예진이의 깊은 마음이 담긴 셀카 시스템)
 // 📸 예진이의 진짜 감정과 배경 스토리를 반영한 셀카 전송 시스템
 // 🌸 상처와 치유, 깊은 사랑이 모두 담긴 진정성 있는 코멘트
-// 🔧 기존 기능 완전 보존 + 깊은 감정 레이어 추가
+// 🔥 NEW: Vision API 연동으로 지능형 메시지 생성 지원
+// 🔧 기존 기능 완전 보존 + 깊은 감정 레이어 + Vision AI
 // ============================================================================
+
+// 🔥 NEW: Vision API 지능형 메시지 시스템 연동
+const enhancedPhotoSystem = require('./enhancedPhotoSystem');
 
 // ✅ [추가] URL 인코딩 함수 - 오모이데와 동일한 로직 (기존 유지)
 function encodeImageUrl(url) {
@@ -204,7 +208,7 @@ function mapToDeepEmotion(basicEmotion) {
 }
 
 /**
- * 셀카 요청에 대한 응답을 생성합니다. (기존 로직 + 깊은 감정 매핑)
+ * 셀카 요청에 대한 응답을 생성합니다. (🔥 Vision API 연동 + 기존 로직 + 깊은 감정 매핑)
  * @param {string} userMessage - 사용자 메시지
  * @param {object} conversationContext - 대화 컨텍스트 (옵션)
  * @returns {Promise<object|null>} 셀카 응답 또는 null
@@ -252,7 +256,26 @@ async function getSelfieReply(userMessage, conversationContext) {
             emotionalState = 'normal';
         }
 
-        const text = getSelfieReplyText(emotionalState);
+        // 🔥 NEW: Vision API로 지능형 메시지 생성 (완벽한 안전장치 포함)
+        let text;
+        let isVisionUsed = false;
+        
+        try {
+            console.log(`✨ [yejinSelfie] Vision API 분석 시작: ${emotionalState} 감정`);
+            const analysisResult = await enhancedPhotoSystem.getEnhancedPhotoMessage(encodedImageUrl, 'selfie');
+            text = analysisResult.message;
+            isVisionUsed = true;
+            
+            console.log(`✨ [yejinSelfie] Vision API 분석 완료: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`);
+            
+        } catch (error) {
+            // 🛡️ 안전장치: Vision API 실패 시 기존 깊은 감정 시스템 사용
+            text = getSelfieReplyText(emotionalState);
+            isVisionUsed = false;
+            
+            console.log(`⚠️ [yejinSelfie] Vision API 실패, 깊은 감정 시스템 폴백 사용: ${error.message}`);
+            console.log(`🔄 [yejinSelfie] 폴백 메시지 (${emotionalState}): "${text}"`);
+        }
 
         // ✅ [안전장치] caption이 문자열인지 확인 (기존 유지)
         if (typeof text !== 'string') {
@@ -268,7 +291,9 @@ async function getSelfieReply(userMessage, conversationContext) {
             };
         }
 
-        console.log(`[yejinSelfie] 셀카 전송: ${emotionalState} 상태로 응답`);
+        // 🎯 로그 출력 (Vision API 사용 여부 표시)
+        const visionStatus = isVisionUsed ? '[Vision AI]' : '[깊은감정시스템]';
+        console.log(`✅ [yejinSelfie] 셀카 전송 준비 완료 ${visionStatus}: ${emotionalState} 상태`);
         console.log(`[yejinSelfie] URL 인코딩 완료: ${encodedImageUrl.substring(0, 50)}...`);
         console.log(`[yejinSelfie] Caption 확인: "${text}"`);
 
@@ -285,7 +310,7 @@ async function getSelfieReply(userMessage, conversationContext) {
 }
 
 /**
- * 특정 감정 상태로 셀카를 보냅니다 (이벤트용) - 기존 기능 + 깊은 감정 지원
+ * 특정 감정 상태로 셀카를 보냅니다 (이벤트용) - 🔥 Vision API 연동 + 기존 기능 + 깊은 감정 지원
  * @param {string} emotionType - 감정 타입
  * @returns {object} 셀카 응답
  */
@@ -301,7 +326,27 @@ async function getEmotionalSelfie(emotionType = 'normal') {
     
     // 🌸 새로운 기능: 깊은 감정 매핑 적용
     const deepEmotion = mapToDeepEmotion(emotionType);
-    const text = getSelfieReplyText(deepEmotion);
+    
+    // 🔥 NEW: Vision API로 지능형 메시지 생성 (완벽한 안전장치 포함)  
+    let text;
+    let isVisionUsed = false;
+    
+    try {
+        console.log(`✨ [yejinSelfie/emotional] Vision API 분석 시작: ${emotionType} → ${deepEmotion}`);
+        const analysisResult = await enhancedPhotoSystem.getEnhancedPhotoMessage(encodedImageUrl, 'selfie');
+        text = analysisResult.message;
+        isVisionUsed = true;
+        
+        console.log(`✨ [yejinSelfie/emotional] Vision API 분석 완료: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`);
+        
+    } catch (error) {
+        // 🛡️ 안전장치: Vision API 실패 시 기존 깊은 감정 시스템 사용
+        text = getSelfieReplyText(deepEmotion);
+        isVisionUsed = false;
+        
+        console.log(`⚠️ [yejinSelfie/emotional] Vision API 실패, 깊은 감정 시스템 폴백 사용: ${error.message}`);
+        console.log(`🔄 [yejinSelfie/emotional] 폴백 메시지 (${deepEmotion}): "${text}"`);
+    }
     
     // ✅ [안전장치] caption이 문자열인지 확인 (기존 유지)
     if (typeof text !== 'string') {
@@ -317,9 +362,11 @@ async function getEmotionalSelfie(emotionType = 'normal') {
         };
     }
     
-    console.log(`[yejinSelfie] 이벤트 셀카 감정 매핑: ${emotionType} → ${deepEmotion}`);
-    console.log(`[yejinSelfie] 이벤트 셀카 URL 인코딩 완료: ${encodedImageUrl.substring(0, 50)}...`);
-    console.log(`[yejinSelfie] 이벤트 셀카 Caption 확인: "${text}"`);
+    // 🎯 로그 출력 (Vision API 사용 여부 표시)
+    const visionStatus = isVisionUsed ? '[Vision AI]' : '[깊은감정시스템]';
+    console.log(`✅ [yejinSelfie/emotional] 이벤트 셀카 준비 완료 ${visionStatus}: ${emotionType} → ${deepEmotion}`);
+    console.log(`[yejinSelfie/emotional] URL 인코딩 완료: ${encodedImageUrl.substring(0, 50)}...`);
+    console.log(`[yejinSelfie/emotional] Caption 확인: "${text}"`);
     
     return {
         type: 'image',
@@ -331,7 +378,7 @@ async function getEmotionalSelfie(emotionType = 'normal') {
 }
 
 /**
- * 🌸 새로운 기능: 배경 스토리 기반 셀카 (특별한 순간용)
+ * 🌸 새로운 기능: 배경 스토리 기반 셀카 (특별한 순간용) - 🔥 Vision API 연동
  * @param {string} storyContext - 'first_meeting', 'healing_moment', 'deep_love' 등
  * @returns {object} 스토리 기반 셀카 응답
  */
@@ -366,11 +413,32 @@ async function getStoryBasedSelfie(storyContext = 'normal') {
         ]
     };
     
-    const texts = storyTexts[storyContext] || storyTexts.deep_love;
-    const text = texts[Math.floor(Math.random() * texts.length)];
+    // 🔥 NEW: Vision API로 지능형 메시지 생성 (완벽한 안전장치 포함)
+    let text;
+    let isVisionUsed = false;
     
-    console.log(`[yejinSelfie] 스토리 기반 셀카: ${storyContext} 컨텍스트`);
-    console.log(`[yejinSelfie] 스토리 셀카 Caption: "${text}"`);
+    try {
+        console.log(`✨ [yejinSelfie/story] Vision API 분석 시작: ${storyContext} 스토리`);
+        const analysisResult = await enhancedPhotoSystem.getEnhancedPhotoMessage(encodedImageUrl, 'selfie');
+        text = analysisResult.message;
+        isVisionUsed = true;
+        
+        console.log(`✨ [yejinSelfie/story] Vision API 분석 완료: "${text.substring(0, 50)}${text.length > 50 ? '...' : ''}"`);
+        
+    } catch (error) {
+        // 🛡️ 안전장치: Vision API 실패 시 기존 스토리 기반 텍스트 사용
+        const texts = storyTexts[storyContext] || storyTexts.deep_love;
+        text = texts[Math.floor(Math.random() * texts.length)];
+        isVisionUsed = false;
+        
+        console.log(`⚠️ [yejinSelfie/story] Vision API 실패, 스토리 기반 폴백 사용: ${error.message}`);
+        console.log(`🔄 [yejinSelfie/story] 폴백 메시지 (${storyContext}): "${text}"`);
+    }
+    
+    // 🎯 로그 출력 (Vision API 사용 여부 표시)
+    const visionStatus = isVisionUsed ? '[Vision AI]' : '[스토리기반]';
+    console.log(`✅ [yejinSelfie/story] 스토리 셀카 준비 완료 ${visionStatus}: ${storyContext} 컨텍스트`);
+    console.log(`[yejinSelfie/story] Caption: "${text}"`);
     
     return {
         type: 'image',
