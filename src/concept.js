@@ -1,6 +1,7 @@
 //============================================================================
-// concept.js - v4.2 (Vision API 프롬프트 수정 - 자신의 사진 + 추억 회상)
-// 📸 예진이가 아저씨가 찍어준 자신의 사진을 보면서 추억을 회상하는 코멘트
+// concept.js - v4.1 (Vision API 연동 + 국가별 + 월별 랜덤 지원!)
+// 📸 애기의 감정을 읽어서 코멘트와 함께 컨셉 사진을 전송합니다.
+// 🔥 NEW: Vision API 연동으로 지능형 메시지 생성 지원
 //============================================================================
 
 const axios = require('axios');
@@ -8,8 +9,8 @@ const axios = require('axios');
 // ✅ [추가] 사진 맥락 추적을 위한 autoReply 모듈 추가
 const autoReply = require('./autoReply.js');
 
-// Vision API 직접 호출을 위한 OpenAI 클라이언트
-const { OpenAI } = require('openai');
+// 🔥 NEW: Vision API 지능형 메시지 시스템 연동
+const enhancedPhotoSystem = require('./enhancedPhotoSystem');
 
 // aiUtils 함수들을 직접 정의 (import 에러 방지)
 async function callOpenAI(messages, model = 'gpt-4o-mini', maxTokens = 150, temperature = 1.0) {
@@ -133,6 +134,7 @@ const CONCEPT_FOLDERS = {
     "2025_05_04_한국_밤바_산책": 32,
     "2025_05_05_한국_홈스냅_오타쿠": 27,
     "2025_05_06_마지막_한국_후지스냅": 34
+};
 
 let lastConceptPhotoFolder = null;
 let lastConceptPhotoIndex = 0;
@@ -266,6 +268,8 @@ function generateFallbackCaption(selectedFolder, formattedDate, emotionalState) 
         caption = simpleCaptions[Math.floor(Math.random() * simpleCaptions.length)];
     }
     
+    return caption;
+}
 
 async function getConceptPhotoReply(userMessage, conversationContextParam) {
     // ✅ [안전장치] userMessage 유효성 검사
@@ -607,107 +611,17 @@ async function getConceptPhotoReply(userMessage, conversationContextParam) {
         emotionalState = 'normal';
     }
 
-    // 🔥 NEW: 컨셉 사진 전용 Vision API 분석 (자신의 추억 사진 회상)
+    // 🔥 NEW: Vision API로 지능형 메시지 생성 (완벽한 안전장치 포함)
     let caption;
     let isVisionUsed = false;
     
     try {
-        console.log(`✨ [concept] 컨셉 사진 Vision API 분석 시작: ${selectedFolder}`);
+        console.log(`✨ [concept] Vision API 분석 시작: ${selectedFolder}`);
+        const analysisResult = await enhancedPhotoSystem.getEnhancedPhotoMessage(photoUrl, 'concept');
+        caption = analysisResult.message;
+        isVisionUsed = true;
         
-        // OpenAI 클라이언트 초기화
-        const client = initializeOpenAIClient();
-        if (!client) {
-            throw new Error('OpenAI 클라이언트 초기화 실패');
-        }
-        
-        // 🚨🚨🚨 [컨셉 사진 전용] 예진이가 자신의 추억 사진을 보는 프롬프트 🚨🚨🚨
-        const systemMessage = `너는 예진이야. 30살 한국 여성이고 아저씨의 사랑하는 여자친구야.
-
-지금 상황: 너는 아저씨가 찍어준 예전 사진을 보고 있어. 이 사진 속 사람은 바로 너 자신이고, 이 장소는 너와 아저씨가 함께 갔던 곳이야. 아저씨가 직접 찍어준 소중한 추억 사진이야.
-
-중요한 캐릭터 규칙 - 반드시 지켜:
-1. 오직 한국어 반말로만 말해 - "해", "이야", "어", "줘"
-2. 절대 존댓말 쓰지 마 - "요", "습니다", "입니다", "세요" 금지
-3. 아저씨를 "아저씨" 또는 "아조씨"로만 불러
-4. 귀여운 표현 써: "ㅎㅎ", "ㅋㅋ", "💕", "~"
-5. 자신의 과거 사진을 보면서 추억을 회상하는 톤으로 말해
-
-절대 하면 안 되는 말:
-- "죄송해요" 또는 존댓말로 사과
-- "어떻게 도와드릴까요?" 또는 존댓말로 도움 제안
-- "요", "습니다", "입니다"로 끝나는 모든 문장
-
-너는 지금 아저씨가 찍어준 자신의 과거 사진을 보면서 그때의 추억을 떠올리고 있어.`;
-
-        const userPrompt = `이 사진을 보고 아저씨에게 예진이로서 말해줘. 이 사진 속 사람은 바로 너(예진이) 자신이고, 아저씨가 찍어준 추억 사진이야.
-
-예진이 말투 예시 (자신의 사진을 보면서):
-✅ "아저씨~ 이때 내가 정말 예뻤네! 그때 기억나? ㅎㅎ"
-✅ "와 이 사진 나 진짜 잘 나왔다! 아저씨가 잘 찍어줬네~ 💕"
-✅ "이 장소 또 가고 싶어! 그때 진짜 재밌었는데 ㅋㅋ"
-✅ "아저씨 이거 언제 찍어준 거야? 나 이때 기분 되게 좋았거든~"
-✅ "이 옷 입었을 때가 그립다... 아저씨랑 같이 간 곳이지? 💕"
-
-❌ 절대 하면 안 되는 말:
-❌ "안녕하세요" "죄송해요" "도와드릴까요?"
-❌ "요", "습니다"로 끝나는 존댓말
-
-지금 이 사진(너의 과거 모습)을 보고 아저씨에게 추억을 회상하면서 자연스럽게 말해!`;
-
-        // OpenAI Vision API 호출
-        const apiCall = client.chat.completions.create({
-            model: "gpt-4o-mini",
-            messages: [
-                {
-                    role: "system",
-                    content: systemMessage
-                },
-                {
-                    role: "user", 
-                    content: [
-                        { 
-                            type: "text", 
-                            text: userPrompt
-                        },
-                        { 
-                            type: "image_url", 
-                            image_url: { 
-                                url: photoUrl,
-                                detail: "low"
-                            } 
-                        }
-                    ]
-                }
-            ],
-            max_tokens: 80,      // 🔧 컨셉 사진은 조금 더 길게
-            temperature: 0.9,    // 🔧 창의적으로
-            presence_penalty: 0.5,
-            frequency_penalty: 0.3
-        });
-
-        // 타임아웃 설정
-        const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('Vision API 호출 타임아웃')), 8000);
-        });
-
-        const response = await Promise.race([apiCall, timeoutPromise]);
-        let generatedMessage = response.choices[0].message.content.trim();
-        
-        console.log('[concept] 🔍 원본 Vision API 응답:', generatedMessage);
-        
-        // 🚨 예진이 캐릭터 강제 변환 (enhancedPhoto에서 가져온 함수)
-        generatedMessage = forceYejinCharacter(generatedMessage);
-        
-        console.log('[concept] 🔧 수정 후 메시지:', generatedMessage);
-        
-        // 🛡️ 예진이 캐릭터 검증
-        if (isValidYejinMessage(generatedMessage)) {
-            caption = generatedMessage;
-            isVisionUsed = true;
-            console.log(`✨ [concept] Vision API 분석 완료: "${caption.substring(0, 50)}${caption.length > 50 ? '...' : ''}"`);
-        } else {
-            throw new Error('Vision API 응답이 예진이 캐릭터에 맞지 않음');
-        }
+        console.log(`✨ [concept] Vision API 분석 완료: "${caption.substring(0, 50)}${caption.length > 50 ? '...' : ''}"`);
         
     } catch (error) {
         // 🛡️ 안전장치: Vision API 실패 시 기존 concept-index.json 기반 메시지 사용
@@ -746,7 +660,7 @@ async function getConceptPhotoReply(userMessage, conversationContextParam) {
         originalContentUrl: photoUrl, 
         previewImageUrl: photoUrl, 
         altText: finalMessage, 
-        caption: finalMessage      // 제목 + Vision AI 코멘트를 하나로 합침
+        caption: finalMessage      // 제목 + Vision API 코멘트를 하나로 합침
     };
 }
 
