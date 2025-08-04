@@ -103,7 +103,7 @@ async function generateFallbackMessage(folderDescription, emotionalState, imageU
 
     try {
         const messages = [{ role: 'system', content: prompt }];
-        const rawReply = await callOpenAI(messages, 'gpt-4o', 150, 1.0);
+        const rawReply = await callOpenAI(messages, 'gpt-4o-mini', 150, 1.0);
         return cleanReply(rawReply);
     } catch (error) {
         console.error('❌ [omoide] 폴백 메시지 생성 실패:', error);
