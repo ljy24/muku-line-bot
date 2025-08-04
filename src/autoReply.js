@@ -1086,19 +1086,14 @@ async function getReplyByMessage(userMessage) {
                     sulkyTriggered: sulkyProcessingResult.sulkyTriggered,
                     pushPullTriggered: sulkyProcessingResult.pushPullTriggered,
                     fightEscalated: sulkyProcessingResult.fightEscalated,
-                    damtaReconciled: sulkyProcessingResult.damtaReconciled
+                    damtaAttempted: sulkyProcessingResult.damtaAttempted
                 });
                 
-                // 담타 화해는 즉시 처리
-                if (sulkyProcessingResult.damtaReconciled) {
-                    logConversationReply('아저씨', cleanUserMessage);
-                    await safelyStoreMessage(USER_NAME, cleanUserMessage);
-                    
-                    const damtaResponse = "응... 담타하자! 아까는 미안했어. 담타하면서 얘기하니까 마음이 풀려";
-                    logConversationReply('나', `(담타화해) ${damtaResponse}`);
-                    await safelyStoreMessage(BOT_NAME, damtaResponse);
-                    
-                    return { type: 'text', comment: damtaResponse };
+                // 🆕 담타 제안은 상황별 자율 반응 (무조건 화해 아님!)
+                if (sulkyProcessingResult.damtaAttempted) {
+                    console.log('🚬 [담타 제안] 상황별 자율 반응 - OpenAI가 예진이 상태에 맞게 판단');
+                    // 담타 맥락을 포함해서 OpenAI 호출로 넘어감
+                    // GPT가 예진이 상태에 따라 담타를 받아줄지 거부할지 자율 결정
                 }
                 
                 // 다른 상황들은 나중에 OpenAI 호출 시 맥락에 포함
