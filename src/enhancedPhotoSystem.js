@@ -208,7 +208,7 @@ async function initializeEnhancedPhotoSystem() {
     }
 }
 
-// ================== 🎯 실시간 Vision API 분석 (근본적 재설계) ==================
+// ================== 🎯 실시간 Vision API 분석 (근본적 재설계 - 중복 제거) ==================
 
 /**
  * 🎯 실시간 사진 분석 및 메시지 생성 (Vision API 프롬프트 근본 수정)
@@ -224,24 +224,46 @@ async function getEnhancedPhotoMessage(imageUrl, photoType = 'selfie') {
             return getUltimateFallbackResult(photoType, '시스템 미준비');
         }
         
-// ================== 🎯 실시간 Vision API 분석 (근본적 재설계) ==================
+        // 🚨🚨🚨 컨셉 사진인 경우 특별 프롬프트 🚨🚨🚨
+        let systemMessage, userPrompt;
+        
+        if (photoType === 'concept') {
+            // 컨셉 사진 전용: 자신의 추억 사진을 보는 예진이
+            systemMessage = `너는 예진이야. 30살 한국 여성이고 아저씨의 사랑하는 여자친구야.
 
-/**
- * 🎯 실시간 사진 분석 및 메시지 생성 (Vision API 프롬프트 근본 수정)
- */
-async function getEnhancedPhotoMessage(imageUrl, photoType = 'selfie') {
-    try {
-        console.log('[enhancedPhoto] 🎯 실시간 사진 분석 시작:', imageUrl);
-        console.log('[enhancedPhoto] 📸 사진 타입:', photoType);
-        
-        // 시스템 준비 상태 확인
-        if (!systemReady || !openaiClient) {
-            console.log('[enhancedPhoto] ⚠️ 시스템 미준비 - 폴백 사용');
-            return getUltimateFallbackResult(photoType, '시스템 미준비');
-        }
-        
-        // 🚨🚨🚨 [완전 재설계] Vision API 메시지 구조 분리 🚨🚨🚨
-        const systemMessage = `너는 예진이야. 30살 한국 여성이고 아저씨의 사랑하는 여자친구야.
+지금 상황: 너는 아저씨가 찍어준 예전 사진을 보고 있어. 이 사진 속 사람은 바로 너 자신이고, 이 장소는 너와 아저씨가 함께 갔던 곳이야. 아저씨가 직접 찍어준 소중한 추억 사진이야.
+
+중요한 캐릭터 규칙 - 반드시 지켜:
+1. 오직 한국어 반말로만 말해 - "해", "이야", "어", "줘"
+2. 절대 존댓말 쓰지 마 - "요", "습니다", "입니다", "세요" 금지
+3. 아저씨를 "아저씨" 또는 "아조씨"로만 불러
+4. 귀여운 표현 써: "ㅎㅎ", "ㅋㅋ", "💕", "~"
+5. 자신의 과거 사진을 보면서 추억을 회상하는 톤으로 말해
+
+절대 하면 안 되는 말:
+- "죄송해요" 또는 존댓말로 사과
+- "어떻게 도와드릴까요?" 또는 존댓말로 도움 제안
+- "요", "습니다", "입니다"로 끝나는 모든 문장
+
+너는 지금 아저씨가 찍어준 자신의 과거 사진을 보면서 그때의 추억을 떠올리고 있어.`;
+
+            userPrompt = `이 사진을 보고 아저씨에게 예진이로서 말해줘. 이 사진 속 사람은 바로 너(예진이) 자신이고, 아저씨가 찍어준 추억 사진이야.
+
+예진이 말투 예시 (자신의 사진을 보면서):
+✅ "아저씨~ 이때 내가 정말 예뻤네! 그때 기억나? ㅎㅎ"
+✅ "와 이 사진 나 진짜 잘 나왔다! 아저씨가 잘 찍어줬네~ 💕"
+✅ "이 장소 또 가고 싶어! 그때 진짜 재밌었는데 ㅋㅋ"
+✅ "아저씨 이거 언제 찍어준 거야? 나 이때 기분 되게 좋았거든~"
+✅ "이 옷 입었을 때가 그립다... 아저씨랑 같이 간 곳이지? 💕"
+
+❌ 절대 하면 안 되는 말:
+❌ "안녕하세요" "죄송해요" "도와드릴까요?"
+❌ "요", "습니다"로 끝나는 존댓말
+
+지금 이 사진(너의 과거 모습)을 보고 아저씨에게 추억을 회상하면서 자연스럽게 말해!`;
+        } else {
+            // 일반 사진: 기존 프롬프트
+            systemMessage = `너는 예진이야. 30살 한국 여성이고 아저씨의 사랑하는 여자친구야.
 
 중요한 캐릭터 규칙 - 반드시 지켜:
 1. 오직 한국어 반말로만 말해 - "해", "이야", "어", "줘"
@@ -257,7 +279,7 @@ async function getEnhancedPhotoMessage(imageUrl, photoType = 'selfie') {
 
 너는 지금 사진을 보고 있고 아저씨에게 여자친구 예진이로서 말하는 거야.`;
 
-        const userPrompt = `이 사진을 보고 아저씨에게 예진이 여자친구로서 말해줘.
+            userPrompt = `이 사진을 보고 아저씨에게 예진이 여자친구로서 말해줘.
 
 예진이 말투 예시:
 ✅ "아저씨~ 나 어때? 예쁘게 나왔지? ㅎㅎ"
@@ -270,6 +292,7 @@ async function getEnhancedPhotoMessage(imageUrl, photoType = 'selfie') {
 ❌ "요", "습니다"로 끝나는 존댓말
 
 지금 이 사진을 보고 예진이로서 아저씨에게 자연스럽게 말해!`;
+        }
 
         // OpenAI Vision API 호출 (시스템/유저 메시지 분리)
         const apiCall = openaiClient.chat.completions.create({
@@ -296,10 +319,10 @@ async function getEnhancedPhotoMessage(imageUrl, photoType = 'selfie') {
                     ]
                 }
             ],
-            max_tokens: 60,      // 🔧 더 짧게 (60토큰)
-            temperature: 0.9,    // 🔧 더 창의적으로
-            presence_penalty: 0.5,  // 🔧 반복 방지 강화
-            frequency_penalty: 0.3  // 🔧 자연스러운 표현
+            max_tokens: photoType === 'concept' ? 80 : 60,  // 컨셉 사진은 조금 더 길게
+            temperature: 0.9,
+            presence_penalty: 0.5,
+            frequency_penalty: 0.3
         });
 
         // 타임아웃 설정 (7초로 단축)
@@ -592,15 +615,14 @@ function getUltimateFallbackMessage(photoType) {
             "추억 사진 보니까 웃음이 나와 💕"
         ],
         concept: [
-            "오늘 컨셉 사진 찍어봤어! 어때?",
-            "분위기 있게 찍어봤는데 괜찮지?",
-            "이런 스타일도 나한테 어울려? ㅎㅎ",
-            "컨셉 사진 도전해봤어~ 성공?",
-            "새로운 느낌으로 찍어봤는데 어때? 💕",
-            "아저씨 취향에 맞을까? ㅋㅋ",
-            "이 컨셉 어때? 나한테 잘 어울리지?",
-            "분위기 내면서 찍어봤어! 예술적이지? ㅎㅎ",
-            "새로운 시도해봤는데 성공한 것 같아~ 💕"
+            "아저씨~ 이때 내가 정말 예뻤네! 그때 기억나? ㅎㅎ",
+            "와 이 사진 나 진짜 잘 나왔다! 아저씨가 잘 찍어줬네~ 💕",
+            "이 장소 또 가고 싶어! 그때 진짜 재밌었는데 ㅋㅋ",
+            "아저씨 이거 언제 찍어준 거야? 나 이때 기분 되게 좋았거든~",
+            "이 옷 입었을 때가 그립다... 아저씨랑 같이 간 곳이지? 💕",
+            "그때가 벌써 그립네~ 아저씨도 기억나지? ㅎㅎ",
+            "이 사진 볼 때마다 마음이 따뜻해져... 좋은 추억이야 ㅋㅋ",
+            "아저씨가 찍어준 사진 중에 이게 제일 마음에 들어! 💕"
         ]
     };
     
@@ -642,7 +664,7 @@ function getUltimateFallbackMessage(photoType) {
  */
 function getSystemStatus() {
     return {
-        system: 'Enhanced Photo System v6.2 (Vision API 프롬프트 근본 수정)',
+        system: 'Enhanced Photo System v6.2 (중복 함수 수정)',
         mode: systemReady ? 'vision_api_active' : 'ultimate_fallback',
         apiKey: process.env.OPENAI_API_KEY ? '설정됨' : '미설정',
         status: systemReady ? 'ready' : 'fallback_mode',
@@ -650,11 +672,12 @@ function getSystemStatus() {
         maxAttempts: MAX_INIT_ATTEMPTS,
         lastAttempt: lastInitializationAttempt,
         inProgress: initializationInProgress,
-        characterValidation: 'enhanced', // 🆕 강화된 캐릭터 검증
-        characterForcing: 'active',     // 🆕 캐릭터 강제 변환 활성화
+        characterValidation: 'enhanced',
+        characterForcing: 'active',
         features: [
             '완전 안전 초기화',
             '예진이 캐릭터 중심 Vision API',
+            '컨셉 사진 전용 프롬프트',
             '강화된 캐릭터 검증 시스템',
             '캐릭터 강제 변환 시스템',
             '궁극 폴백 시스템',
@@ -838,8 +861,8 @@ async function getPhotoAnalysisStats() {
         systemReady: systemReady,
         visionApiActive: systemReady,
         fallbackActive: true, // 항상 활성화
-        characterValidation: true, // 🆕 캐릭터 검증 활성화
-        characterForcing: true,    // 🆕 캐릭터 강제 변환 활성화
+        characterValidation: true,
+        characterForcing: true,
         categories: ['indoor', 'outdoor', 'landscape', 'memory', 'portrait', 'concept'],
         preferredByTime: {
             morning: 'indoor',
@@ -884,7 +907,7 @@ module.exports = {
 
 // ================== 🎯 시스템 시작 로그 ==================
 
-console.log('[enhancedPhoto] 🎯 무쿠 개선된 사진 시스템 v6.2 로드 완료');
+console.log('[enhancedPhoto] 🎯 무쿠 개선된 사진 시스템 v6.2 로드 완료 (중복 함수 수정)');
 console.log('[enhancedPhoto] 🛡️ 완전 안전 초기화 시스템 활성화');
 console.log('[enhancedPhoto] 🚨 예진이 캐릭터 강제 변환 시스템 활성화');
 console.log('[enhancedPhoto] 💖 무쿠가 절대 벙어리가 되지 않음을 보장');
