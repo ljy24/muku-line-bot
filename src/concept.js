@@ -13,7 +13,7 @@ const autoReply = require('./autoReply.js');
 const enhancedPhotoSystem = require('./enhancedPhotoSystem');
 
 // aiUtils 함수들을 직접 정의 (import 에러 방지)
-async function callOpenAI(messages, model = 'gpt-4o', maxTokens = 150, temperature = 1.0) {
+async function callOpenAI(messages, model = 'gpt-4o-mini', maxTokens = 150, temperature = 1.0) {
     try {
         const { OpenAI } = require('openai');
         const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
