@@ -1,10 +1,11 @@
 // ============================================================================
-// spontaneousPhotoManager.js - v2.2 UPDATED (조건부 즉시 전송 기능 추가)
-// 📸 자발적 사진 전송 + 실시간 통계 추적
+// spontaneousPhotoManager.js - v2.3 UPDATED (Vision API 연동 + 조건부 즉시 전송)
+// 📸 자발적 사진 전송 + 실시간 통계 추적 + ✨ Vision API 지능형 메시지
 // ✨ getPhotoStatus() 함수 추가 - 라인 상태 리포트용
 // 🎯 다음 전송 시간 정확 계산 + 일일 전송 통계
 // 💾 JSON 파일 저장 기능 추가: 데이터 영구 저장으로 재시작 후에도 통계 유지
 // 🚀 조건부 즉시 전송: 목표 미달 시 배포 후 2-5분 내 전송 (스팸 방지)
+// 🔥 NEW: Vision API 연동으로 사진별 맞춤 메시지 생성
 // ============================================================================
 
 const schedule = require('node-schedule'); // ❗ 수정: 'node-cron' -> 'node-schedule'
@@ -12,6 +13,9 @@ const moment = require('moment-timezone');
 const { Client } = require('@line/bot-sdk');
 const fs = require('fs').promises;
 const path = require('path');
+
+// 🔥 NEW: Vision API 지능형 메시지 시스템 연동
+const enhancedPhotoSystem = require('./enhancedPhotoSystem');
 
 // ================== 🌏 설정 ==================
 const TIMEZONE = 'Asia/Tokyo';
@@ -34,7 +38,9 @@ let photoScheduleState = {
         sentToday: 0,               // 오늘 전송한 사진 수
         totalDaily: DAILY_PHOTO_TARGET, // 하루 목표
         lastResetDate: null,       // 마지막 리셋 날짜
-        systemStartTime: Date.now()
+        systemStartTime: Date.now(),
+        visionApiUsed: 0,          // 🔥 NEW: Vision API 사용 횟수
+        visionApiFailed: 0         // 🔥 NEW: Vision API 실패 횟수
     },
     
     // 전송 기록
@@ -229,7 +235,7 @@ function getPhotoUrlByType(type) {
 }
 
 /**
- * 사진 타입별 메시지 생성
+ * 사진 타입별 메시지 생성 (기본 폴백용)
  */
 function getPhotoMessageByType(type) {
     const messages = {
@@ -271,10 +277,10 @@ function selectRandomPhotoType() {
     return types[Math.floor(Math.random() * types.length)];
 }
 
-// ================== 📤 사진 전송 함수 (⭐️ 통계 기록 포함!) ==================
+// ================== 📤 사진 전송 함수 (⭐️ 통계 기록 + 🔥 Vision API 연동!) ==================
 
 /**
- * 자발적 사진 전송 메인 함수
+ * 자발적 사진 전송 메인 함수 (🔥 Vision API 연동 완료!)
  */
 async function sendSpontaneousPhoto() {
     try {
@@ -291,7 +297,33 @@ async function sendSpontaneousPhoto() {
         
         const photoType = selectRandomPhotoType();
         const imageUrl = getPhotoUrlByType(photoType);
-        const message = getPhotoMessageByType(photoType);
+        
+        // 🔥 NEW: Vision API로 지능형 메시지 생성 (안전장치 포함)
+        let message;
+        let isVisionUsed = false;
+        
+        try {
+            photoLog(`✨ Vision API 분석 시작: ${photoType} 타입`);
+            const analysisResult = await enhancedPhotoSystem.getEnhancedPhotoMessage(imageUrl, photoType);
+            message = analysisResult.message;
+            isVisionUsed = true;
+            
+            // Vision API 성공 통계
+            photoScheduleState.dailyStats.visionApiUsed++;
+            
+            photoLog(`✨ Vision API 분석 완료: "${message.substring(0, 50)}${message.length > 50 ? '...' : ''}"`);
+            
+        } catch (error) {
+            // 🛡️ 안전장치: Vision API 실패 시 기본 메시지 사용
+            message = getPhotoMessageByType(photoType);
+            isVisionUsed = false;
+            
+            // Vision API 실패 통계
+            photoScheduleState.dailyStats.visionApiFailed++;
+            
+            photoLog(`⚠️ Vision API 실패, 기본 메시지 사용: ${error.message}`);
+            photoLog(`🔄 폴백 메시지: "${message}"`);
+        }
         
         // 실제 전송
         await lineClient.pushMessage(userId, [
@@ -306,11 +338,16 @@ async function sendSpontaneousPhoto() {
             }
         ]);
         
-        // ⭐️ 전송 성공 기록
-        recordPhotoSent(photoType, imageUrl, message);
+        // ⭐️ 전송 성공 기록 (Vision API 사용 여부 포함)
+        recordPhotoSent(photoType, imageUrl, message, isVisionUsed);
         
-        photoLog(`✅ 자발적 사진 전송 성공: ${photoType} - "${message}"`);
+        const visionStatus = isVisionUsed ? '[Vision AI]' : '[기본메시지]';
+        photoLog(`✅ 자발적 사진 전송 성공: ${photoType} ${visionStatus} - "${message.substring(0, 30)}..."`);
         photoLog(`📊 진행상황: ${photoScheduleState.dailyStats.sentToday}/${photoScheduleState.dailyStats.totalDaily}`);
+        
+        // Vision API 통계 로그
+        const visionStats = `(Vision: ${photoScheduleState.dailyStats.visionApiUsed}성공/${photoScheduleState.dailyStats.visionApiFailed}실패)`;
+        photoLog(`🤖 AI 분석 통계: ${visionStats}`);
         
         // 즉시 모드였다면 해제하고 정상 스케줄링으로 전환
         if (photoScheduleState.schedule.isImmediateMode) {
@@ -336,16 +373,16 @@ async function sendSpontaneousPhoto() {
 }
 
 /**
- * ⭐️ 사진 전송 기록 함수 (💾 JSON 저장 추가)
+ * ⭐️ 사진 전송 기록 함수 (💾 JSON 저장 + 🔥 Vision API 통계 추가)
  */
-function recordPhotoSent(photoType, imageUrl, message) {
+function recordPhotoSent(photoType, imageUrl, message, isVisionUsed = false) {
     const sentTime = moment().tz(TIMEZONE);
     const timeString = sentTime.format('HH:mm');
     
     // 전송 횟수 증가
     photoScheduleState.dailyStats.sentToday++;
     
-    // 전송 기록 추가
+    // 전송 기록 추가 (Vision API 정보 포함)
     photoScheduleState.sendHistory.sentTimes.push(timeString);
     photoScheduleState.sendHistory.sentPhotos.push({
         type: photoType,
@@ -353,11 +390,15 @@ function recordPhotoSent(photoType, imageUrl, message) {
         message: message,
         time: timeString,
         timestamp: sentTime.valueOf(),
-        isImmediateMode: photoScheduleState.schedule.isImmediateMode
+        isImmediateMode: photoScheduleState.schedule.isImmediateMode,
+        isVisionUsed: isVisionUsed  // 🔥 NEW: Vision API 사용 여부
     });
     photoScheduleState.sendHistory.lastSentTime = sentTime.valueOf();
     
-    photoLog(`📊 사진 전송 기록 완료: ${photoType} (${timeString}) ${photoScheduleState.schedule.isImmediateMode ? '[즉시모드]' : ''}`);
+    const visionStatus = isVisionUsed ? '[Vision AI]' : '[기본]';
+    const modeStatus = photoScheduleState.schedule.isImmediateMode ? '[즉시모드]' : '';
+    
+    photoLog(`📊 사진 전송 기록 완료: ${photoType} ${visionStatus} (${timeString}) ${modeStatus}`);
     
     // 💾 JSON 파일에 즉시 저장
     savePhotoStatsToFile().catch(error => {
@@ -517,9 +558,11 @@ function resetDailyStats() {
     
     photoLog('🌄 사진 일일 통계 리셋 시작');
     
-    // 통계 리셋
+    // 통계 리셋 (Vision API 통계 포함)
     photoScheduleState.dailyStats.sentToday = 0;
     photoScheduleState.dailyStats.lastResetDate = today;
+    photoScheduleState.dailyStats.visionApiUsed = 0;      // 🔥 NEW: Vision API 통계 리셋
+    photoScheduleState.dailyStats.visionApiFailed = 0;    // 🔥 NEW: Vision API 통계 리셋
     
     // 전송 기록 리셋
     photoScheduleState.sendHistory.sentTimes = [];
@@ -550,10 +593,10 @@ function resetDailyStats() {
 // 자정 리셋 스케줄러 등록
 schedule.scheduleJob('0 0 * * *', resetDailyStats);
 
-// ================== 📊 상태 조회 함수들 (⭐️ 라인 상태 리포트용!) ==================
+// ================== 📊 상태 조회 함수들 (⭐️ 라인 상태 리포트용! + 🔥 Vision API 통계) ==================
 
 /**
- * ⭐️ 사진 전송 상태 조회 (라인에서 "상태는?" 명령어용)
+ * ⭐️ 사진 전송 상태 조회 (라인에서 "상태는?" 명령어용 + Vision API 통계)
  */
 function getPhotoStatus() {
     const nextTime = photoScheduleState.schedule.nextScheduledTime;
@@ -575,6 +618,13 @@ function getPhotoStatus() {
         // 🚀 즉시 모드 정보 추가
         isImmediateMode: photoScheduleState.schedule.isImmediateMode,
         
+        // 🔥 NEW: Vision API 통계 추가
+        visionApiUsed: photoScheduleState.dailyStats.visionApiUsed,
+        visionApiFailed: photoScheduleState.dailyStats.visionApiFailed,
+        visionApiSuccessRate: photoScheduleState.dailyStats.visionApiUsed + photoScheduleState.dailyStats.visionApiFailed > 0 
+            ? Math.round((photoScheduleState.dailyStats.visionApiUsed / (photoScheduleState.dailyStats.visionApiUsed + photoScheduleState.dailyStats.visionApiFailed)) * 100) 
+            : 0,
+        
         // 상세 정보
         progress: `${photoScheduleState.dailyStats.sentToday}/${photoScheduleState.dailyStats.totalDaily}`,
         isActive: photoScheduleState.schedule.isSystemActive,
@@ -592,7 +642,7 @@ function getPhotoStatus() {
 }
 
 /**
- * 상세 통계 정보
+ * 상세 통계 정보 (Vision API 통계 포함)
  */
 function getDetailedPhotoStats() {
     const status = getPhotoStatus();
@@ -621,7 +671,16 @@ function getDetailedPhotoStats() {
             todayPhotos: photoScheduleState.sendHistory.sentPhotos,
             lastResetDate: photoScheduleState.dailyStats.lastResetDate,
             systemStartTime: moment(photoScheduleState.dailyStats.systemStartTime).tz(TIMEZONE).format('YYYY-MM-DD HH:mm:ss'),
-            immediatePhotos: photoScheduleState.sendHistory.sentPhotos.filter(photo => photo.isImmediateMode)
+            immediatePhotos: photoScheduleState.sendHistory.sentPhotos.filter(photo => photo.isImmediateMode),
+            visionPhotos: photoScheduleState.sendHistory.sentPhotos.filter(photo => photo.isVisionUsed) // 🔥 NEW
+        },
+        
+        // 🔥 NEW: Vision API 상세 통계
+        visionApiStats: {
+            totalUsed: photoScheduleState.dailyStats.visionApiUsed,
+            totalFailed: photoScheduleState.dailyStats.visionApiFailed,
+            successRate: status.visionApiSuccessRate,
+            todayVisionPhotos: photoScheduleState.sendHistory.sentPhotos.filter(photo => photo.isVisionUsed).length
         }
     };
 }
@@ -637,7 +696,8 @@ function getPhotoStatusSummary() {
         progress: status.progress,
         nextPhoto: status.nextTime,
         status: status.sentToday >= status.totalDaily ? 'completed' : 'active',
-        isImmediateMode: status.isImmediateMode
+        isImmediateMode: status.isImmediateMode,
+        visionApiEnabled: true  // 🔥 NEW: Vision API 활성화 상태
     };
 }
 
@@ -655,6 +715,24 @@ async function testPhotoSending() {
         return result;
     } catch (error) {
         photoLog(`🧪 테스트 실패: ${error.message}`);
+        return false;
+    }
+}
+
+/**
+ * Vision API 테스트
+ */
+async function testVisionApi() {
+    photoLog('🧪 Vision API 테스트 시작');
+    
+    try {
+        const testUrl = getPhotoUrlByType('selfie');
+        const result = await enhancedPhotoSystem.getEnhancedPhotoMessage(testUrl, 'selfie');
+        
+        photoLog(`🧪 Vision API 테스트 성공: "${result.message.substring(0, 50)}..."`);
+        return true;
+    } catch (error) {
+        photoLog(`🧪 Vision API 테스트 실패: ${error.message}`);
         return false;
     }
 }
@@ -734,6 +812,10 @@ function startSpontaneousPhotoScheduler(client, targetUserId, getLastUserMessage
                 photoLog('✅ 기존 사진 데이터 복구 완료');
                 photoLog(`📊 복구된 상태: ${photoScheduleState.dailyStats.sentToday}/${photoScheduleState.dailyStats.totalDaily}건`);
                 
+                // 🔥 Vision API 통계 로그
+                const visionStats = `(Vision: ${photoScheduleState.dailyStats.visionApiUsed}성공/${photoScheduleState.dailyStats.visionApiFailed}실패)`;
+                photoLog(`🤖 복구된 AI 분석 통계: ${visionStats}`);
+                
                 // 스케줄이 있으면 복구
                 if (photoScheduleState.schedule.nextScheduledTime && photoScheduleState.schedule.isSystemActive) {
                     const nextTime = moment(photoScheduleState.schedule.nextScheduledTime).tz(TIMEZONE);
@@ -782,6 +864,7 @@ function startSpontaneousPhotoScheduler(client, targetUserId, getLastUserMessage
         photoLog('✅ 자발적 사진 전송 시스템 활성화 완료!');
         photoLog(`📊 설정: 하루 ${DAILY_PHOTO_TARGET}회, ${MIN_INTERVAL_MINUTES}-${MAX_INTERVAL_MINUTES}분 간격`);
         photoLog(`🚀 즉시 전송: ${IMMEDIATE_MIN_DELAY}-${IMMEDIATE_MAX_DELAY}분 후 (목표 미달 시)`);
+        photoLog(`🔥 NEW: Vision API 연동으로 지능형 메시지 생성 지원`);
         photoLog(`📋 사진 타입: ${photoScheduleState.settings.photoTypes.join(', ')}`);
         photoLog(`🎯 오늘 목표: ${photoScheduleState.dailyStats.sentToday}/${photoScheduleState.dailyStats.totalDaily}`);
         
@@ -883,13 +966,14 @@ function getInternalState() {
         systemInfo: {
             hasLineClient: !!lineClient,
             hasUserId: !!userId,
-            hasMessageTimeFunc: !!lastUserMessageTimeFunc
+            hasMessageTimeFunc: !!lastUserMessageTimeFunc,
+            visionApiEnabled: true  // 🔥 NEW
         }
     };
 }
 
 // ================== 📤 모듈 내보내기 ==================
-photoLog('📸 spontaneousPhotoManager.js v2.2 로드 완료 (조건부 즉시 전송 지원)');
+photoLog('📸 spontaneousPhotoManager.js v2.3 로드 완료 (Vision API 연동 + 조건부 즉시 전송 지원)');
 
 module.exports = {
     // 🚀 메인 함수들
@@ -915,6 +999,7 @@ module.exports = {
     
     // 🧪 테스트 함수들
     testPhotoSending,
+    testVisionApi,               // 🔥 NEW: Vision API 테스트
     testImmediatePhoto,          // 🚀 새로 추가
     testScheduling,
     
