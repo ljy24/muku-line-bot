@@ -730,7 +730,7 @@ async function sendYejinSelfieWithComplimentReaction(userMessage) {
 function getOmoidePhotoUrl() {
     // 📸 예진이가 필름카메라처럼 소중하게 한 장 한 장 찍은 풍경 사진들
     const baseUrl = "https://photo.de-ji.net/photo/fuji";
-    const totalPhotos = 1481; // 총 1481장
+    const totalPhotos = 1483; // 총 1483장
     const index = Math.floor(Math.random() * totalPhotos) + 1;
     const fileName = String(index).padStart(6, "0") + ".jpg"; // 000001.jpg ~ 001481.jpg
     return `${baseUrl}/${fileName}`;
