@@ -1,37 +1,11 @@
-/**
- * 🔧 순환 참조 방지 무드매니저 상태 체크
- */
-async function getMoodManagerState() {
-    try {
-        // 🛡️ 순환 참조 방지: 필요할 때만 안전하게 로드
-        if (!integratedMoodManager) {
-            integratedMoodManager = safeLazyLoadModule('moodManager');
-        }
-        
-        if (!integratedMoodManager) {
-            ultimateLog('⚠️ [무드체크] moodManager 모듈 로드 실패 (순환 참조 가능성)');
-            return null;
-        }
-        
-        // getIntegratedMoodState 함수 호출
-        if (typeof integratedMoodManager.getIntegratedMoodState === 'function') {
-            try {
-                const moodState = await integratedMoodManager.getIntegratedMoodState();
-                
-                if (moodState && moodState.currentMood && moodState.currentMood !== '평온함') {
-                    ultimateLog(`🎭 [무드감지] ${moodState.currentMood} (강도: ${moodState.emotionIntensity})`);
-                    return moodState;
-                }
-            } catch (error) {
-                ultimateLog('// ============================================================================
-// ultimateConversationContext.js - v37.3 (감정 시스템 충돌 완전 해결!)
+// ============================================================================
+// ultimateConversationContext.js - v37.3 (순환 참조 완전 제거!)
 // 🎯 핵심 고유 기능 보존: GPT모델 최적화 + 동적기억 + 주제관리 + 정교한프롬프트
 // 🔄 Redis 통합: 기존 시스템과 완전 연동하여 무쿠 벙어리 문제 해결
 // ✨ 중복 제거: 다른 시스템들과 역할 분담 명확화
 // 🛡️ 안전 우선: 기존 기능 100% 보존하면서 Redis 레이어 추가
-// 🔧 감정 우선순위: sulkyManager > moodManager > ultimateContext 순서로 적용
-// 🚨 핵심 수정: getMoodState()가 다른 감정 시스템들을 확실히 우선 존중하도록 완전 개선
-// 💪 v37.3 개선사항: 감정 시스템 연동 강화 + 에러 처리 완벽화 + 삐짐 상태 확실 감지
+// 🔧 감정 우선순위: 외부주입 > moodManager > ultimateContext 순서로 적용
+// 🚨 핵심 수정: 순환 참조 완전 제거 + 외부 감정 주입 방식으로 변경
 // ============================================================================
 
 const moment = require('moment-timezone');
@@ -53,15 +27,6 @@ try {
 let autonomousYejinSystem = null;
 let redisCache = null;
 
-// 🔄 Redis 통합 시스템 연동 (moodManager만 - 순환 참조 방지)
-let autonomousYejinSystem = null;
-let redisCache = null;
-let integratedMoodManager = null;
-let integratedAiUtils = null;
-
-// 🚨 중요: sulkyManager는 순환 참조 방지를 위해 직접 연동하지 않음
-// 대신 외부에서 감정 상태를 주입받는 방식으로 처리
-
 function getRedisIntegratedSystem() {
     if (!autonomousYejinSystem) {
         try {
@@ -78,6 +43,10 @@ function getRedisIntegratedSystem() {
     }
     return { autonomousYejinSystem, redisCache };
 }
+
+// 🔄 안전한 시스템들만 연동 (순환 참조 방지)
+let integratedMoodManager = null;
+let integratedAiUtils = null;
 
 function getIntegratedSystems() {
     // 🛡️ 순환 참조 방지: moodManager만 안전하게 로드
@@ -131,7 +100,7 @@ let ultimateContextState = {
         lastOptimizationResult: null
     },
     
-    // 🔧 강화된 감정 상태 우선순위 관리 (순환 참조 방지)
+    // 🔧 순환 참조 방지 감정 상태 우선순위 관리
     emotionPriority: {
         lastEmotionSource: null,
         lastEmotionTime: 0,
@@ -208,7 +177,6 @@ function getUltimatePrecisionContextLength() {
     
     switch(currentModel) {
         case '3.5':
-            // GPT-3.5: 극도로 효율적인 토큰 사용
             return { 
                 recent: 2,      // 최근 대화 최소
                 memory: 1,      // 기존 기억 최소
@@ -218,7 +186,6 @@ function getUltimatePrecisionContextLength() {
             };
             
         case '4.0':
-            // GPT-4o: 최대한 풍부한 컨텍스트
             return { 
                 recent: 15,     // 최근 대화 풍부
                 memory: 8,      // 기존 기억 풍부
@@ -228,7 +195,6 @@ function getUltimatePrecisionContextLength() {
             };
             
         case 'auto':
-            // 자동 모드: 지능적 균형
             return { 
                 recent: 7,      // 최근 대화 균형
                 memory: 4,      // 기존 기억 균형
@@ -248,21 +214,18 @@ function getUltimatePrecisionContextLength() {
 function getUltimateContextPriorityMatrix(currentModel) {
     const matrices = {
         '3.5': {
-            // GPT-3.5: 핵심 정보만 집중
             userCommandMemories: 0.7,    // 사용자 직접 명령 최우선
             recentConversation: 0.2,     // 최근 대화 최소
             emotionState: 0.05,          // 감정 상태 최소
             redisContext: 0.05           // Redis 컨텍스트 최소
         },
         '4.0': {
-            // GPT-4o: 모든 정보 균형있게 활용
             userCommandMemories: 0.3,    // 사용자 명령
             recentConversation: 0.3,     // 최근 대화
             emotionState: 0.2,           // 감정 상태
             redisContext: 0.2            // Redis 컨텍스트
         },
         'auto': {
-            // 자동: 적응적 균형
             userCommandMemories: 0.4,    // 사용자 명령 우선
             recentConversation: 0.3,     // 최근 대화
             emotionState: 0.15,          // 감정 상태
@@ -366,11 +329,9 @@ async function syncUserMemoriesWithRedis() {
             return false;
         }
         
-        // Redis에서 사용자 기억 조회
         const cachedUserMemories = await redisCache.getCachedLearningPattern('user_command_memories');
         
         if (cachedUserMemories && Array.isArray(cachedUserMemories)) {
-            // Redis 데이터로 로컬 캐시 업데이트
             ultimateContextState.userCommandMemories = cachedUserMemories;
             ultimateContextState.lastRedisSyncTime = Date.now();
             
@@ -378,7 +339,6 @@ async function syncUserMemoriesWithRedis() {
             return true;
         }
         
-        // Redis에 데이터가 없으면 로컬 데이터를 Redis에 저장
         if (ultimateContextState.userCommandMemories.length > 0) {
             await redisCache.cacheLearningPattern('user_command_memories', ultimateContextState.userCommandMemories);
             ultimateLog('로컬 사용자 기억을 Redis에 백업 완료');
@@ -406,10 +366,8 @@ async function addUserCommandMemoryWithRedis(content, category = 'user_command')
         version: 'v37.3'
     };
     
-    // 로컬에 추가
     ultimateContextState.userCommandMemories.push(memoryObj);
     
-    // Redis에도 저장
     try {
         const { redisCache } = getRedisIntegratedSystem();
         if (redisCache && redisCache.isAvailable) {
@@ -436,7 +394,6 @@ async function deleteUserCommandMemoryWithRedis(searchContent) {
     
     const deletedCount = beforeCount - ultimateContextState.userCommandMemories.length;
     
-    // Redis에도 반영
     try {
         const { redisCache } = getRedisIntegratedSystem();
         if (redisCache && redisCache.isAvailable) {
@@ -454,7 +411,6 @@ async function deleteUserCommandMemoryWithRedis(searchContent) {
  * 🔍 Redis 통합 사용자 기억 검색
  */
 async function searchUserMemoriesWithRedis(keyword) {
-    // 먼저 Redis와 동기화
     await syncUserMemoriesWithRedis();
     
     return ultimateContextState.userCommandMemories.filter(m =>
@@ -462,111 +418,69 @@ async function searchUserMemoriesWithRedis(keyword) {
     );
 }
 
-// ==================== 🔧 완전 강화된 감정 시스템 우선순위 관리 ====================
+// ==================== 🔧 순환 참조 방지 감정 시스템 관리 ====================
 
 /**
- * 🚨 순환 참조 방지 삐짐매니저 상태 체크
+ * 🚨 외부 감정 상태 주입 (순환 참조 방지)
  */
-function getSulkyManagerState() {
+function injectExternalEmotionState(emotionState) {
     try {
-        // 🛡️ 순환 참조 방지: 필요할 때만 안전하게 로드
-        if (!integratedSulkyManager) {
-            integratedSulkyManager = safeLazyLoadModule('sulkyManager');
+        if (!emotionState) {
+            ultimateLog('⚠️ [외부감정주입] 유효하지 않은 감정 상태');
+            return false;
         }
         
-        if (!integratedSulkyManager) {
-            ultimateLog('🚨 [삐짐체크] sulkyManager 모듈 로드 실패 (순환 참조 가능성)');
-            return null;
-        }
+        ultimateContextState.emotionPriority.externalEmotionState = {
+            ...emotionState,
+            injectedAt: Date.now(),
+            source: emotionState.source || 'external_injection'
+        };
         
-        // 여러 방법으로 상태 조회 시도
-        let sulkyState = null;
+        ultimateContextState.emotionPriority.lastExternalUpdate = Date.now();
         
-        // 방법 1: getSulkinessState 함수
-        if (typeof integratedSulkyManager.getSulkinessState === 'function') {
-            try {
-                sulkyState = integratedSulkyManager.getSulkinessState();
-                ultimateLog('🔍 [삐짐체크] getSulkinessState 호출 성공', { hasSulkyState: !!sulkyState });
-            } catch (error) {
-                ultimateLog('⚠️ [삐짐체크] getSulkinessState 호출 실패:', error.message);
-            }
-        }
-        
-        // 방법 2: getSulkySystemStatus 함수
-        if (!sulkyState && typeof integratedSulkyManager.getSulkySystemStatus === 'function') {
-            try {
-                const systemStatus = integratedSulkyManager.getSulkySystemStatus();
-                if (systemStatus && systemStatus.currentState) {
-                    sulkyState = systemStatus.currentState;
-                    ultimateLog('🔍 [삐짐체크] getSulkySystemStatus 호출 성공', { hasSulkyState: !!sulkyState });
-                }
-            } catch (error) {
-                ultimateLog('⚠️ [삐짐체크] getSulkySystemStatus 호출 실패:', error.message);
-            }
-        }
-        
-        if (!sulkyState) {
-            ultimateLog('⚠️ [삐짐체크] 모든 방법으로 상태 조회 실패');
-            return null;
-        }
-        
-        // 삐짐 상태 확인
-        if (sulkyState.isSulky === true || sulkyState.sulkyLevel > 0 || sulkyState.isActivelySulky === true) {
-            ultimateLog(`🚨 [삐짐감지!] 레벨: ${sulkyState.sulkyLevel}, 활성: ${sulkyState.isActivelySulky}, 이유: ${sulkyState.sulkyReason}`);
-            
-            return {
-                isSulky: true,
-                level: sulkyState.sulkyLevel || 1,
-                isActive: sulkyState.isActivelySulky || false,
-                reason: sulkyState.sulkyReason || 'unknown',
-                pushPullActive: sulkyState.pushPullActive || false,
-                recoveryMode: sulkyState.recoveryMode || false,
-                fullState: sulkyState
-            };
-        }
-        
-        // 다른 특별한 상태들도 체크
-        if (sulkyState.pushPullActive === true) {
-            ultimateLog('💕 [밀당감지] 자율적 밀당 활성');
-            return {
-                isSulky: false,
-                pushPullActive: true,
-                pushPullType: sulkyState.pushPullType,
-                stubbornness: sulkyState.stubbornnessLevel || 5,
-                fullState: sulkyState
-            };
-        }
-        
-        if (sulkyState.recoveryMode === true) {
-            ultimateLog('🌙 [회복모드감지] 삐짐 해소 후 회복 중');
-            return {
-                isSulky: false,
-                recoveryMode: true,
-                coldTone: sulkyState.coldToneActive || false,
-                fullState: sulkyState
-            };
-        }
-        
-        ultimateLog('✅ [삐짐체크] 정상 상태 - 삐짐/밀당/회복 모두 비활성');
-        return { isSulky: false, normal: true, fullState: sulkyState };
+        ultimateLog(`✅ [외부감정주입] 감정 상태 주입 성공: ${emotionState.currentEmotion} (${emotionState.source})`);
+        return true;
         
     } catch (error) {
-        // 순환 참조 특별 처리
-        if (error.message.includes('Maximum call stack') || error.message.includes('circular')) {
-            ultimateLog('🚨 [삐짐체크] 순환 참조 감지됨, 삐짐 체크 비활성화');
-            systemLoadAttempts.sulkyManager = 999; // 더 이상 시도하지 않음
+        ultimateLog('❌ [외부감정주입] 주입 실패:', error.message);
+        return false;
+    }
+}
+
+/**
+ * 🔧 외부 주입 감정 상태 체크
+ */
+function checkExternalEmotionState() {
+    try {
+        const externalState = ultimateContextState.emotionPriority.externalEmotionState;
+        
+        if (!externalState) {
             return null;
         }
         
-        recordEmotionSystemError('sulkyManager', error, { function: 'getSulkyManagerState' });
+        // 5분 이상 오래된 외부 상태는 무효화
+        const now = Date.now();
+        const stateAge = now - (externalState.injectedAt || 0);
+        
+        if (stateAge > 5 * 60 * 1000) { // 5분
+            ultimateLog('⏰ [외부감정체크] 외부 감정 상태 만료됨 (5분 초과)');
+            ultimateContextState.emotionPriority.externalEmotionState = null;
+            return null;
+        }
+        
+        ultimateLog(`✅ [외부감정체크] 유효한 외부 감정 상태: ${externalState.currentEmotion}`);
+        return externalState;
+        
+    } catch (error) {
+        ultimateLog('❌ [외부감정체크] 체크 실패:', error.message);
         return null;
     }
 }
 
 /**
- * 🔧 강화된 무드매니저 상태 체크
+ * 🔧 안전한 무드매니저 상태 체크 (순환 참조 없음)
  */
-async function getMoodManagerState() {
+async function getMoodManagerStateSafe() {
     try {
         const { integratedMoodManager } = getIntegratedSystems();
         
@@ -575,7 +489,6 @@ async function getMoodManagerState() {
             return null;
         }
         
-        // getIntegratedMoodState 함수 호출
         if (typeof integratedMoodManager.getIntegratedMoodState === 'function') {
             const moodState = await integratedMoodManager.getIntegratedMoodState();
             
@@ -589,89 +502,44 @@ async function getMoodManagerState() {
         return null;
         
     } catch (error) {
-        recordEmotionSystemError('moodManager', error, { function: 'getMoodManagerState' });
+        recordEmotionSystemError('moodManager', error, { function: 'getMoodManagerStateSafe' });
         return null;
     }
 }
 
 /**
- * 🔧 완전 강화된 우선순위 감정 시스템 체크
+ * 🔧 순환 참조 방지 우선순위 감정 시스템 체크
  */
-async function checkPriorityEmotionSystems() {
+async function checkPriorityEmotionSystemsSafe() {
     const now = Date.now();
     
     try {
-        // 🚨 1순위: sulkyManager 체크 (완전 확실하게!)
-        ultimateLog('🔍 [감정우선순위] 1순위 sulkyManager 체크 시작...');
-        ultimateContextState.emotionPriority.lastSulkyCheck = now;
+        // 🚨 1순위: 외부 주입 감정 상태 (sulkyManager에서 주입)
+        ultimateLog('🔍 [감정우선순위] 1순위 외부 주입 감정 상태 체크...');
         
-        const sulkyManagerState = getSulkyManagerState();
-        
-        if (sulkyManagerState) {
-            if (sulkyManagerState.isSulky) {
-                // 삐짐 상태 감지!
-                const emotionMapping = {
-                    1: 'slightly_annoyed',
-                    2: 'annoyed', 
-                    3: 'upset',
-                    4: 'very_upset',
-                    5: 'extremely_upset'
-                };
-                
-                const currentEmotion = emotionMapping[sulkyManagerState.level] || 'sulky';
-                const intensity = Math.min(1.0, sulkyManagerState.level / 4);
-                
-                ultimateLog(`🚨 [감정우선순위] ✅ SULKY 상태 확정! ${currentEmotion} (레벨: ${sulkyManagerState.level})`);
-                
-                return {
-                    currentEmotion: currentEmotion,
-                    intensity: intensity,
-                    source: 'sulky_manager_priority',
-                    timestamp: now,
-                    originalState: sulkyManagerState.fullState,
-                    priority: 1,
-                    reason: sulkyManagerState.reason || 'unknown_sulky_reason',
-                    isActive: sulkyManagerState.isActive,
-                    detected: 'sulky_state_confirmed'
-                };
-            }
+        const externalEmotion = checkExternalEmotionState();
+        if (externalEmotion) {
+            ultimateLog(`🚨 [감정우선순위] ✅ 외부 감정 상태 확정! ${externalEmotion.currentEmotion}`);
             
-            if (sulkyManagerState.pushPullActive) {
-                ultimateLog(`💕 [감정우선순위] ✅ 밀당 상태 확정!`);
-                return {
-                    currentEmotion: 'push_pull_active',
-                    intensity: 0.7,
-                    source: 'sulky_manager_push_pull',
-                    timestamp: now,
-                    priority: 1,
-                    reason: 'autonomous_push_pull_session',
-                    pushPullType: sulkyManagerState.pushPullType,
-                    detected: 'push_pull_confirmed'
-                };
-            }
-            
-            if (sulkyManagerState.recoveryMode) {
-                ultimateLog(`🌙 [감정우선순위] ✅ 회복 모드 확정!`);
-                return {
-                    currentEmotion: 'recovery_mode',
-                    intensity: 0.5,
-                    source: 'sulky_manager_recovery',
-                    timestamp: now,
-                    priority: 1,
-                    reason: 'post_conflict_recovery',
-                    coldTone: sulkyManagerState.coldTone,
-                    detected: 'recovery_mode_confirmed'
-                };
-            }
+            return {
+                currentEmotion: externalEmotion.currentEmotion,
+                intensity: externalEmotion.intensity || 0.7,
+                source: externalEmotion.source + '_external_injection',
+                timestamp: now,
+                priority: 1,
+                reason: externalEmotion.reason || 'external_emotion_state',
+                detected: 'external_injection_confirmed',
+                originalState: externalEmotion
+            };
         }
         
-        ultimateLog('✅ [감정우선순위] 1순위 완료 - sulkyManager 특별 상태 없음');
+        ultimateLog('✅ [감정우선순위] 1순위 완료 - 외부 주입 감정 없음');
         
-        // 🔧 2순위: moodManager 체크
+        // 🔧 2순위: moodManager 체크 (안전한 방식)
         ultimateLog('🔍 [감정우선순위] 2순위 moodManager 체크 시작...');
         ultimateContextState.emotionPriority.lastMoodCheck = now;
         
-        const moodManagerState = await getMoodManagerState();
+        const moodManagerState = await getMoodManagerStateSafe();
         
         if (moodManagerState && moodManagerState.currentMood && moodManagerState.currentMood !== '평온함') {
             ultimateLog(`🎭 [감정우선순위] ✅ 특별 기분 상태 확정: ${moodManagerState.currentMood}`);
@@ -711,12 +579,12 @@ async function checkPriorityEmotionSystems() {
         ultimateLog('✅ [감정우선순위] 2순위 완료 - moodManager 특별 상태 없음');
         
     } catch (error) {
-        recordEmotionSystemError('priorityCheck', error, { function: 'checkPriorityEmotionSystems' });
+        recordEmotionSystemError('priorityCheckSafe', error, { function: 'checkPriorityEmotionSystemsSafe' });
         ultimateLog('❌ [감정우선순위] 체크 중 에러 발생, 기본값 사용');
     }
     
     ultimateLog('✅ [감정우선순위] 모든 우선순위 시스템 체크 완료 - 특별한 상태 없음');
-    return null; // 다른 시스템에서 특별한 감정 상태가 없음
+    return null;
 }
 
 /**
@@ -726,7 +594,6 @@ function recordEmotionPriority(emotionData) {
     ultimateContextState.emotionPriority.lastEmotionSource = emotionData.source;
     ultimateContextState.emotionPriority.lastEmotionTime = Date.now();
     
-    // 최근 감정 오버라이드 기록 (최대 10개)
     ultimateContextState.emotionPriority.emotionOverrides.push({
         emotion: emotionData.currentEmotion,
         source: emotionData.source,
@@ -785,7 +652,7 @@ async function getMoodState() {
                     prioritySystemActive: true,
                     priorityCheckSuccessful: true,
                     moodManagerConnected: !!getIntegratedSystems().integratedMoodManager,
-                    circularReferenceProtection: true  // NEW: 순환 참조 보호 활성
+                    circularReferenceProtection: true
                 }
             };
         }
@@ -819,7 +686,7 @@ async function getMoodState() {
                 priorityCheckSuccessful: true,
                 checkedSystems: ['externalInjection', 'moodManager', 'ultimateContext'],
                 fallbackUsed: true,
-                circularReferenceProtection: true  // NEW: 순환 참조 보호 활성
+                circularReferenceProtection: true
             }
         };
         
@@ -862,7 +729,6 @@ function updateMoodState(newMoodState) {
             return false;
         }
         
-        // 🔧 다양한 형태 지원 (currentEmotion, currentMood, emotion)
         const emotion = newMoodState.currentEmotion || newMoodState.currentMood || newMoodState.emotion;
         
         if (!emotion) {
@@ -873,14 +739,12 @@ function updateMoodState(newMoodState) {
         const intensity = newMoodState.intensity || newMoodState.level || 0.7;
         const source = newMoodState.source || 'external_update';
         
-        // 🔧 우선순위 체크: 현재 상태가 더 높은 우선순위인지 확인
         const currentPriority = ultimateContextState.emotionPriority.lastEmotionSource?.includes('sulky') ? 1 :
                                ultimateContextState.emotionPriority.lastEmotionSource?.includes('mood') ? 2 : 3;
         
         const newPriority = source.includes('sulky') ? 1 : source.includes('mood') ? 2 : 3;
         
         if (newPriority <= currentPriority) {
-            // 같거나 더 높은 우선순위이면 업데이트
             const newTopic = emotion;
             updateConversationTopicIntelligently(newTopic, intensity);
             
@@ -913,7 +777,6 @@ function updateConversationTopicIntelligently(newTopic, confidence = 0.8) {
         detectionMethod: 'ultimate_context_v37.3'
     };
     
-    // 주제 전환 이력 기록 (상세)
     if (previousTopic && previousTopic.topic !== newTopic) {
         const transition = {
             from: previousTopic.topic,
@@ -926,7 +789,6 @@ function updateConversationTopicIntelligently(newTopic, confidence = 0.8) {
         
         ultimateContextState.topicHistory.push(transition);
         
-        // 최근 50개만 유지
         if (ultimateContextState.topicHistory.length > 50) {
             ultimateContextState.topicHistory = ultimateContextState.topicHistory.slice(-30);
         }
@@ -945,7 +807,7 @@ function setAdvancedPendingAction(action, context = {}, priority = 5) {
         priority: priority,
         timestamp: Date.now(),
         id: `ultimate_action_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-        expectedDuration: context.expectedDuration || 300000, // 5분 기본
+        expectedDuration: context.expectedDuration || 300000,
         source: 'ultimate_context_v37.3'
     };
     
@@ -963,16 +825,13 @@ async function generateUltimateMasterContextPrompt(basePrompt) {
         
         let contextualPrompt = basePrompt;
         
-        // 1. ✨ GPT 모델별 최적화 수행
         const optimization = optimizeForCurrentModel();
         const { contextLength, priorityMatrix, promptStrategy } = optimization;
         
         ultimateLog(`최강 프롬프트 생성 시작 (${optimization.model} 최적화)`);
         
-        // 2. 🔄 Redis와 동기화
         await syncUserMemoriesWithRedis();
         
-        // 3. ✨ 사용자 명령 기억 추가 (최고 우선순위)
         if (priorityMatrix.userCommandMemories > 0 && ultimateContextState.userCommandMemories.length > 0) {
             const recentUserMemories = ultimateContextState.userCommandMemories.slice(-contextLength.userMemory);
             
@@ -989,7 +848,6 @@ async function generateUltimateMasterContextPrompt(basePrompt) {
             }
         }
         
-        // 4. 🔧 안전한 우선순위 감정 상태 추가!
         if (priorityMatrix.emotionState > 0) {
             try {
                 const priorityEmotionState = await checkPriorityEmotionSystemsSafe();
@@ -1014,7 +872,6 @@ async function generateUltimateMasterContextPrompt(basePrompt) {
                         contextualPrompt += `\n💭 현재 감정: ${priorityEmotionState.currentEmotion} (${priorityEmotionState.source}, 우선순위: ${priorityEmotionState.priority})\n`;
                     }
                 } else {
-                    // 우선순위 시스템에서 감정이 없으면 명시적으로 표기
                     if (promptStrategy.style !== 'ultra_concise') {
                         contextualPrompt += `\n💭 감정상태: 평온함 (우선순위 시스템 체크 완료, 특별한 상태 없음)\n`;
                     }
@@ -1024,13 +881,11 @@ async function generateUltimateMasterContextPrompt(basePrompt) {
             }
         }
         
-        // 5. 🔄 Redis 컨텍스트 (자율 시스템에서)
         if (priorityMatrix.redisContext > 0) {
             const { autonomousYejinSystem } = getRedisIntegratedSystem();
             
             if (autonomousYejinSystem) {
                 try {
-                    // Redis에서 최근 대화 가져오기
                     const recentConversations = await autonomousYejinSystem.redisCache.getConversationHistory(
                         'target_user', contextLength.redis
                     );
@@ -1054,7 +909,6 @@ async function generateUltimateMasterContextPrompt(basePrompt) {
             }
         }
         
-        // 6. 🎯 현재 대화 주제 추가
         if (ultimateContextState.conversationTopic) {
             const topic = ultimateContextState.conversationTopic;
             
@@ -1067,7 +921,6 @@ async function generateUltimateMasterContextPrompt(basePrompt) {
             }
         }
         
-        // 7. ⏳ 보류 액션 추가
         if (ultimateContextState.pendingAction && promptStrategy.style !== 'ultra_concise') {
             const action = ultimateContextState.pendingAction;
             
@@ -1078,7 +931,6 @@ async function generateUltimateMasterContextPrompt(basePrompt) {
             }
         }
         
-        // 8. 📊 GPT 최적화 메타정보 (상세 모드에서만)
         if (promptStrategy.style === 'ultra_detailed') {
             const memoryCount = ultimateContextState.userCommandMemories.length;
             const topicCount = ultimateContextState.topicHistory.length;
@@ -1087,7 +939,6 @@ async function generateUltimateMasterContextPrompt(basePrompt) {
             contextualPrompt += `\n📊 컨텍스트 메타: 사용자기억 ${memoryCount}개, 주제전환 ${topicCount}회, 모델: ${optimization.model}, 감정소스: ${emotionSource}, 에러: ${errorCount}개\n`;
         }
         
-        // 9. ✂️ 길이 제한 적용 (모델별)
         if (contextualPrompt.length > promptStrategy.maxLength) {
             contextualPrompt = contextualPrompt.substring(0, promptStrategy.maxLength) + '...';
         }
@@ -1099,7 +950,7 @@ async function generateUltimateMasterContextPrompt(basePrompt) {
             maxLength: promptStrategy.maxLength,
             components: {
                 userMemories: priorityMatrix.userCommandMemories > 0,
-                priorityEmotions: true,  // 강화된 우선순위 시스템
+                priorityEmotions: true,
                 redisContext: priorityMatrix.redisContext > 0,
                 topic: !!ultimateContextState.conversationTopic,
                 pendingAction: !!ultimateContextState.pendingAction
@@ -1126,7 +977,6 @@ async function processUserCommandWithRedis(message, speaker) {
     
     const lowerMessage = message.toLowerCase().trim();
     
-    // "기억해줘" 명령어 처리
     if (lowerMessage.includes('기억해') || lowerMessage.includes('잊지마')) {
         const memoryContent = message.replace(/기억해|줘|잊지마|잊지말아|라고|했잖아/g, '').trim();
         if (memoryContent.length > 0) {
@@ -1136,7 +986,6 @@ async function processUserCommandWithRedis(message, speaker) {
         }
     }
     
-    // "잊어줘" 명령어 처리
     if (lowerMessage.includes('잊어') || lowerMessage.includes('지워')) {
         const forgetContent = message.replace(/잊어|줘|지워|버려|삭제|해줘/g, '').trim();
         if (forgetContent.length > 0) {
@@ -1174,7 +1023,7 @@ function detectConversationTopicAdvanced(message) {
         let score = 0;
         for (const keyword of keywords) {
             if (lowerMessage.includes(keyword)) {
-                score += keyword.length; // 긴 키워드일수록 더 정확
+                score += keyword.length;
             }
         }
         
@@ -1185,7 +1034,7 @@ function detectConversationTopicAdvanced(message) {
     }
     
     if (bestMatch && bestScore > 0) {
-        const confidence = Math.min(0.9, bestScore / 10); // 최대 90% 신뢰도
+        const confidence = Math.min(0.9, bestScore / 10);
         updateConversationTopicIntelligently(bestMatch, confidence);
         return bestMatch;
     }
@@ -1196,18 +1045,16 @@ function detectConversationTopicAdvanced(message) {
 // ==================== 📊 시스템 상태 및 통계 ====================
 
 /**
- * 📊 Ultimate Context 시스템 상태 조회 (강화)
+ * 📊 Ultimate Context 시스템 상태 조회 (순환 참조 방지 버전)
  */
 function getUltimateSystemStatus() {
     const { autonomousYejinSystem, redisCache } = getRedisIntegratedSystem();
-    const { integratedMoodManager, integratedAiUtils, integratedSulkyManager } = getIntegratedSystems();
+    const { integratedMoodManager, integratedAiUtils } = getIntegratedSystems();
     
     return {
-        // 시스템 정보
         version: 'v37.3-circular-reference-elimination',
         type: 'ultimate_context_system',
         
-        // 핵심 고유 기능 상태
         gptOptimization: {
             currentModel: ultimateContextState.gptOptimization.currentModel,
             optimizationCount: ultimateContextState.optimizationStats.contextOptimizations,
@@ -1215,28 +1062,25 @@ function getUltimateSystemStatus() {
             lastOptimization: ultimateContextState.optimizationStats.lastOptimizationResult
         },
         
-        // 🔧 순환 참조 방지 감정 우선순위 시스템 상태
         emotionPrioritySystem: {
             active: ultimateContextState.emotionPriority.prioritySystemsActive,
             lastEmotionSource: ultimateContextState.emotionPriority.lastEmotionSource,
             lastEmotionTime: ultimateContextState.emotionPriority.lastEmotionTime,
             recentOverrides: ultimateContextState.emotionPriority.emotionOverrides.slice(-3),
-            priorityOrder: ['externalInjection', 'moodManager', 'ultimateContext'],  // UPDATE
+            priorityOrder: ['externalInjection', 'moodManager', 'ultimateContext'],
             lastMoodCheck: ultimateContextState.emotionPriority.lastMoodCheck,
             errorCount: ultimateContextState.emotionPriority.emotionSystemErrors.length,
             recentErrors: ultimateContextState.emotionPriority.emotionSystemErrors.slice(-3),
             
-            // 🚨 NEW: 외부 주입 시스템 정보
             externalEmotionInjection: {
                 hasExternalState: !!ultimateContextState.emotionPriority.externalEmotionState,
                 lastExternalUpdate: ultimateContextState.emotionPriority.lastExternalUpdate,
                 currentExternalEmotion: ultimateContextState.emotionPriority.externalEmotionState?.currentEmotion || null
             },
             
-            circularReferenceProtection: true  // NEW
+            circularReferenceProtection: true
         },
         
-        // 사용자 기억 상태
         userMemories: {
             totalCount: ultimateContextState.userCommandMemories.length,
             redisSynced: ultimateContextState.lastRedisSyncTime > 0,
@@ -1248,46 +1092,38 @@ function getUltimateSystemStatus() {
             }))
         },
         
-        // 대화 주제 상태
         conversationTopic: ultimateContextState.conversationTopic,
         topicHistory: ultimateContextState.topicHistory.slice(-5),
-        
-        // 보류 액션 상태
         pendingAction: ultimateContextState.pendingAction,
         
-    // 통합 시스템 연동 상태 (순환 참조 방지)
-    integrationStatus: {
-        autonomousYejinSystem: !!autonomousYejinSystem,
-        redisCache: !!redisCache && redisCache.isAvailable,
-        integratedMoodManager: !!integratedMoodManager,
-        integratedAiUtils: !!integratedAiUtils,
-        gptModelManagement: !!getCurrentModelSetting,
+        integrationStatus: {
+            autonomousYejinSystem: !!autonomousYejinSystem,
+            redisCache: !!redisCache && redisCache.isAvailable,
+            integratedMoodManager: !!integratedMoodManager,
+            integratedAiUtils: !!integratedAiUtils,
+            gptModelManagement: !!getCurrentModelSetting,
+            
+            circularReferenceProtection: true,
+            externalEmotionInjectionSupported: true,
+            
+            moodManagerFunctions: integratedMoodManager ? {
+                getIntegratedMoodState: typeof integratedMoodManager.getIntegratedMoodState === 'function'
+            } : null
+        },
         
-        // 🚨 순환 참조 방지 상태
-        circularReferenceProtection: true,
-        externalEmotionInjectionSupported: true,
+        emotionConflictResolution: {
+            getMoodStateFixed: true,
+            emotionPrioritySystemAdded: true,
+            moodManagerRespected: true,
+            typeErrorResolved: true,
+            priorityCheckEnhanced: true,
+            errorHandlingAdded: true,
+            safeCallWrappingAdded: true,
+            circularReferenceEliminated: true,
+            externalEmotionInjectionAdded: true,
+            sulkyManagerCircularReferenceFixed: true
+        },
         
-        // moodManager 연동 테스트 결과
-        moodManagerFunctions: integratedMoodManager ? {
-            getIntegratedMoodState: typeof integratedMoodManager.getIntegratedMoodState === 'function'
-        } : null
-    },
-    
-    // 🔧 감정 시스템 문제 해결 상태 (v37.3 업데이트)
-    emotionConflictResolution: {
-        getMoodStateFixed: true,
-        emotionPrioritySystemAdded: true,
-        moodManagerRespected: true,
-        typeErrorResolved: true,
-        priorityCheckEnhanced: true,
-        errorHandlingAdded: true,
-        safeCallWrappingAdded: true,
-        circularReferenceEliminated: true,  // NEW
-        externalEmotionInjectionAdded: true,  // NEW
-        sulkyManagerCircularReferenceFixed: true  // NEW
-    },
-        
-        // 메타정보
         lastUpdate: Date.now(),
         uniqueFeatures: [
             'GPT 모델별 초정밀 최적화',
@@ -1295,11 +1131,11 @@ function getUltimateSystemStatus() {
             '지능적 대화 주제 추적',
             '최강 통합 프롬프트 생성',
             '고급 보류 액션 관리',
-            '순환 참조 방지 감정 시스템',  // UPDATE
-            '외부 감정 상태 주입 지원',      // NEW
-            'moodManager 안전 연동',        // UPDATE
+            '순환 참조 방지 감정 시스템',
+            '외부 감정 상태 주입 지원',
+            'moodManager 안전 연동',
             '감정 시스템 에러 처리 및 로깅',
-            '완전한 순환 참조 해결'         // NEW
+            '완전한 순환 참조 해결'
         ]
     };
 }
@@ -1312,26 +1148,17 @@ function getUltimateSystemStatus() {
 async function initializeUltimateContextSystem() {
     ultimateLog('Ultimate Context v37.3 시스템 초기화 시작 (순환 참조 완전 제거)...');
     
-    // GPT 모델 정보 확인
     const currentModel = getCurrentModelSetting ? getCurrentModelSetting() : 'unknown';
     ultimateLog(`현재 GPT 모델: ${currentModel}`);
     
-    // Redis 통합 시스템 연동
     getRedisIntegratedSystem();
-    
-    // 안전한 시스템들만 연동 (순환 참조 방지)
     const systems = getIntegratedSystems();
     
-    // 사용자 기억 Redis 동기화
     await syncUserMemoriesWithRedis();
-    
-    // GPT 모델 최적화 초기 수행
     optimizeForCurrentModel();
     
-    // 🔧 감정 우선순위 시스템 초기화
     ultimateContextState.emotionPriority.prioritySystemsActive = true;
     
-    // 🔧 연결된 감정 시스템들 상태 체크 (안전한 것만)
     const moodStatus = systems.integratedMoodManager ? '✅ 연동됨' : '❌ 미연동';
     
     ultimateLog(`Ultimate Context v37.3 초기화 완료!`);
