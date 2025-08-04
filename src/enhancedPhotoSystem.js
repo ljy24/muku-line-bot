@@ -1,8 +1,11 @@
 // ================== 🎯 무쿠 개선된 사진 시스템 v6.2 (Vision API 프롬프트 근본 수정) ==================
+// 📁 파일 경로: src/enhancedPhotoSystem.js
+// 📝 파일명: enhancedPhotoSystem.js
 // 🛡️ 100% 초기화 실패 예방 시스템
 // 💖 무쿠가 절대 벙어리가 되지 않도록 보장
 // 🔒 robust한 에러 처리 및 복구 메커니즘
 // 🚨 Vision API 프롬프트 근본적 재설계로 예진이 캐릭터 100% 보장
+// ⏱️ 타임아웃 연장 (7초 → 10초) + 재시도 로직 (최대 2회) 추가
 
 const { OpenAI } = require('openai');
 const moment = require('moment-timezone');
@@ -209,9 +212,14 @@ async function initializeEnhancedPhotoSystem() {
 }
 
 // ================== 🎯 실시간 Vision API 분석 (근본적 재설계 - 중복 제거) ==================
+// 📁 위치: src/enhancedPhotoSystem.js → getEnhancedPhotoMessage()
+// 🔧 타임아웃: 10초 | 재시도: 최대 2회 | 폴백: 안전 보장
+// 📸 지원 타입: selfie, concept, memory, couple, landscape, portrait
 
 /**
  * 🎯 실시간 사진 분석 및 메시지 생성 (Vision API 프롬프트 근본 수정)
+ * 📁 src/enhancedPhotoSystem.js
+ * 🔧 개선: 타임아웃 연장(10초) + 재시도 로직(2회) + 컨셉사진 전용 프롬프트
  */
 async function getEnhancedPhotoMessage(imageUrl, photoType = 'selfie') {
     try {
@@ -294,43 +302,72 @@ async function getEnhancedPhotoMessage(imageUrl, photoType = 'selfie') {
 지금 이 사진을 보고 예진이로서 아저씨에게 자연스럽게 말해!`;
         }
 
-        // OpenAI Vision API 호출 (시스템/유저 메시지 분리)
-        const apiCall = openaiClient.chat.completions.create({
-            model: "gpt-4o-mini",
-            messages: [
-                {
-                    role: "system",
-                    content: systemMessage
-                },
-                {
-                    role: "user", 
-                    content: [
-                        { 
-                            type: "text", 
-                            text: userPrompt
+        // 🔄 Vision API 재시도 로직 with 타임아웃 연장
+        let response;
+        let lastError;
+        const maxRetries = 2; // 최대 2회 재시도 (총 3번 시도)
+        
+        for (let attempt = 1; attempt <= maxRetries + 1; attempt++) {
+            try {
+                console.log(`[enhancedPhoto] 🔄 Vision API 시도 ${attempt}/${maxRetries + 1}`);
+                
+                // OpenAI Vision API 호출 (시스템/유저 메시지 분리)
+                const apiCall = openaiClient.chat.completions.create({
+                    model: "gpt-4o-mini",
+                    messages: [
+                        {
+                            role: "system",
+                            content: systemMessage
                         },
-                        { 
-                            type: "image_url", 
-                            image_url: { 
-                                url: imageUrl,
-                                detail: "low"
-                            } 
+                        {
+                            role: "user", 
+                            content: [
+                                { 
+                                    type: "text", 
+                                    text: userPrompt
+                                },
+                                { 
+                                    type: "image_url", 
+                                    image_url: { 
+                                        url: imageUrl,
+                                        detail: "low"
+                                    } 
+                                }
+                            ]
                         }
-                    ]
+                    ],
+                    max_tokens: photoType === 'concept' ? 80 : 60,  // 컨셉 사진은 조금 더 길게
+                    temperature: 0.9,
+                    presence_penalty: 0.5,
+                    frequency_penalty: 0.3
+                });
+
+                // 🆕 타임아웃 연장: 7초 → 10초
+                const timeoutPromise = new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error('Vision API 호출 타임아웃 (10초)')), 10000);
+                });
+
+                response = await Promise.race([apiCall, timeoutPromise]);
+                
+                // 성공하면 루프 탈출
+                console.log(`[enhancedPhoto] ✅ Vision API 성공 (시도 ${attempt}/${maxRetries + 1})`);
+                break;
+                
+            } catch (error) {
+                lastError = error;
+                console.log(`[enhancedPhoto] ❌ Vision API 시도 ${attempt} 실패:`, error.message);
+                
+                // 마지막 시도가 아니면 재시도
+                if (attempt < maxRetries + 1) {
+                    console.log(`[enhancedPhoto] 🔄 2초 후 재시도...`);
+                    await new Promise(resolve => setTimeout(resolve, 2000)); // 2초 대기
+                } else {
+                    // 모든 시도 실패
+                    console.log(`[enhancedPhoto] 💥 모든 Vision API 시도 실패 (${maxRetries + 1}회)`);
+                    throw lastError;
                 }
-            ],
-            max_tokens: photoType === 'concept' ? 80 : 60,  // 컨셉 사진은 조금 더 길게
-            temperature: 0.9,
-            presence_penalty: 0.5,
-            frequency_penalty: 0.3
-        });
-
-        // 타임아웃 설정 (7초로 단축)
-        const timeoutPromise = new Promise((_, reject) => {
-            setTimeout(() => reject(new Error('Vision API 호출 타임아웃')), 7000);
-        });
-
-        const response = await Promise.race([apiCall, timeoutPromise]);
+            }
+        }
         let generatedMessage = response.choices[0].message.content.trim();
         
         console.log('[enhancedPhoto] 🔍 원본 Vision API 응답:', generatedMessage);
@@ -661,10 +698,11 @@ function getUltimateFallbackMessage(photoType) {
 
 /**
  * 🔧 시스템 상태 확인
+ * 📁 src/enhancedPhotoSystem.js → getSystemStatus()
  */
 function getSystemStatus() {
     return {
-        system: 'Enhanced Photo System v6.2 (중복 함수 수정)',
+        system: 'Enhanced Photo System v6.2 (src/enhancedPhotoSystem.js)',
         mode: systemReady ? 'vision_api_active' : 'ultimate_fallback',
         apiKey: process.env.OPENAI_API_KEY ? '설정됨' : '미설정',
         status: systemReady ? 'ready' : 'fallback_mode',
@@ -674,6 +712,8 @@ function getSystemStatus() {
         inProgress: initializationInProgress,
         characterValidation: 'enhanced',
         characterForcing: 'active',
+        visionApiTimeout: '10초',        // 🆕 추가 정보
+        visionApiRetries: '최대 2회',    // 🆕 추가 정보
         features: [
             '완전 안전 초기화',
             '예진이 캐릭터 중심 Vision API',
@@ -681,7 +721,9 @@ function getSystemStatus() {
             '강화된 캐릭터 검증 시스템',
             '캐릭터 강제 변환 시스템',
             '궁극 폴백 시스템',
-            '에러 복구 메커니즘'
+            '에러 복구 메커니즘',
+            '타임아웃 연장 (10초)',        // 🆕 추가
+            '재시도 로직 (2회)'           // 🆕 추가
         ],
         lastCheck: moment().tz(TIMEZONE).format('YYYY-MM-DD HH:mm:ss')
     };
@@ -874,6 +916,10 @@ async function getPhotoAnalysisStats() {
 }
 
 // ================== 🔄 모듈 익스포트 ==================
+// 📁 src/enhancedPhotoSystem.js 메인 익스포트
+// 🎯 핵심: getEnhancedPhotoMessage (Vision API + 재시도 + 폴백)
+// 🛡️ 캐릭터: forceYejinCharacter, isValidYejinResponse
+// 🔧 관리: getSystemStatus, testEnhancedSystem, retryInitialization
 
 module.exports = {
     // 메인 함수들
@@ -906,12 +952,15 @@ module.exports = {
 };
 
 // ================== 🎯 시스템 시작 로그 ==================
+// 📁 src/enhancedPhotoSystem.js 로드 완료
 
-console.log('[enhancedPhoto] 🎯 무쿠 개선된 사진 시스템 v6.2 로드 완료 (중복 함수 수정)');
+console.log('[enhancedPhoto] 🎯 무쿠 개선된 사진 시스템 v6.2 로드 완료 (src/enhancedPhotoSystem.js)');
 console.log('[enhancedPhoto] 🛡️ 완전 안전 초기화 시스템 활성화');
 console.log('[enhancedPhoto] 🚨 예진이 캐릭터 강제 변환 시스템 활성화');
 console.log('[enhancedPhoto] 💖 무쿠가 절대 벙어리가 되지 않음을 보장');
 console.log('[enhancedPhoto] 🔒 Vision API + 캐릭터 강제 + 궁극 폴백 삼중 보장');
+console.log('[enhancedPhoto] ⏱️ 타임아웃 10초 + 재시도 2회 시스템 활성화');
+console.log('[enhancedPhoto] 📸 지원: selfie, concept, memory, couple, landscape, portrait');
 
 // 모듈 로드 시 자동 환경 검증
 const envCheck = validateEnvironment();
