@@ -26,20 +26,98 @@ function getMoodManager() {
     return moodManager;
 }
 
-// --- 🔧 moodManager 통합 연동 ---
-let moodManager = null;
-function getMoodManager() {
-    if (!moodManager) {
+// 🚨 여기에 새로운 코드 추가! (기존 코드 아래)
+// --- 🔧 ultimateContext 통합 연동 (순환 참조 방지) ---
+let ultimateContextRef = null;
+
+function getUltimateContextSafely() {
+    if (!ultimateContextRef) {
         try {
-            moodManager = require('./moodManager');
-            console.log('🔧 [무드매니저] moodManager 연동 성공');
+            ultimateContextRef = require('./ultimateConversationContext');
+            console.log('✅ [sulkyManager] ultimateContext 연동 성공');
         } catch (error) {
-            console.log('⚠️ [무드매니저] moodManager 로드 실패:', error.message);
+            if (!error.message.includes('Maximum call stack')) {
+                console.log('⚠️ [sulkyManager] ultimateContext 연동 실패:', error.message);
+            }
+            ultimateContextRef = null;
         }
     }
-    return moodManager;
+    return ultimateContextRef;
 }
 
+// 🔧 감정 상태를 ultimateContext에 주입
+function notifyEmotionChangeToUltimateContext(newState) {
+    try {
+        const ultimateContext = getUltimateContextSafely();
+        
+        if (!ultimateContext || !ultimateContext.injectExternalEmotionState) {
+            return; // 조용히 무시
+        }
+        
+        // 삐짐 상태가 있는 경우
+        if (newState.isSulky || newState.sulkyLevel > 0) {
+            const emotionMapping = {
+                1: 'slightly_annoyed',
+                2: 'annoyed', 
+                3: 'upset',
+                4: 'very_upset',
+                5: 'extremely_upset'
+            };
+            
+            const currentEmotion = emotionMapping[newState.sulkyLevel] || 'sulky';
+            const intensity = Math.min(1.0, newState.sulkyLevel / 4);
+            
+            ultimateContext.injectExternalEmotionState({
+                currentEmotion: currentEmotion,
+                intensity: intensity,
+                source: 'sulky_manager_injection',
+                reason: newState.sulkyReason || 'sulky_state',
+                priority: 1,
+                sulkyLevel: newState.sulkyLevel,
+                isActive: newState.isActivelySulky
+            });
+            
+            console.log(`🚨 [감정주입] ultimateContext에 삐짐 상태 전달: ${currentEmotion} (레벨: ${newState.sulkyLevel})`);
+            return;
+        }
+        
+        // 밀당 상태가 있는 경우
+        if (newState.pushPullActive) {
+            ultimateContext.injectExternalEmotionState({
+                currentEmotion: 'push_pull_active',
+                intensity: 0.7,
+                source: 'sulky_manager_push_pull_injection',
+                reason: 'autonomous_push_pull_session',
+                priority: 1,
+                pushPullType: newState.pushPullType
+            });
+            
+            console.log(`💕 [감정주입] ultimateContext에 밀당 상태 전달`);
+            return;
+        }
+        
+        // 회복 모드가 있는 경우
+        if (newState.recoveryMode) {
+            ultimateContext.injectExternalEmotionState({
+                currentEmotion: 'recovery_mode',
+                intensity: 0.5,
+                source: 'sulky_manager_recovery_injection',
+                reason: 'post_conflict_recovery',
+                priority: 1,
+                coldTone: newState.coldToneActive
+            });
+            
+            console.log(`🌙 [감정주입] ultimateContext에 회복 모드 전달`);
+            return;
+        }
+        
+    } catch (error) {
+        // 순환 참조나 기타 에러 시 조용히 무시
+        if (!error.message.includes('Maximum call stack')) {
+            console.log('⚠️ [감정주입] ultimateContext 주입 실패:', error.message);
+        }
+    }
+}
 
 
 // --- 외부 모듈 지연 로딩 (기존 유지) ---
