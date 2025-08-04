@@ -594,7 +594,7 @@ async function getConceptPhotoReply(userMessage, conversationContextParam) {
     }
 
     if (!photoUrl) {
-        return { type: 'text', comment: '아저씨... 해당하는 컨셉 사진을 못 찾겠어 ㅠㅠ' };
+        return [{ type: 'text', text: '아저씨... 해당하는 컨셉 사진을 못 찾겠어 ㅠㅠ' }];
     }
 
     const formattedDate = formatFolderNameToDate(selectedFolder);
@@ -644,20 +644,23 @@ async function getConceptPhotoReply(userMessage, conversationContextParam) {
     // 🎯 로그 출력 (Vision API 사용 여부 표시)
     const visionStatus = isVisionUsed ? '[Vision AI]' : '[concept-index.json]';
     console.log(`✅ [concept] 컨셉 사진 전송 준비 완료 ${visionStatus}: ${selectedFolder}`);
+    console.log(`📸 [concept] 제목: "${formattedDate}"`);
     console.log(`📸 [concept] 메시지: "${caption.substring(0, 80)}${caption.length > 80 ? '...' : ''}"`);
     
-    // 🔥 NEW: 날짜 정보 먼저 전송, 그 다음에 사진과 코멘트 전송
-    return { 
-        type: 'concept_with_title',
-        title: formattedDate,           // 먼저 전송할 제목 (예: "2024년 12월 14일 일본 나르시스트")
-        image: {
-            type: 'image',
+    // 🔥 NEW: 제목과 사진을 배열로 반환 (순차 전송용)
+    return [
+        {
+            type: 'text',
+            text: formattedDate    // 먼저 전송할 제목: "2024년 12월 14일 일본 나르시스트"
+        },
+        { 
+            type: 'image', 
             originalContentUrl: photoUrl, 
             previewImageUrl: photoUrl, 
             altText: caption, 
-            caption: caption 
+            caption: caption      // Vision API 또는 폴백 코멘트
         }
-    };
+    ];
 }
 
 module.exports = {
