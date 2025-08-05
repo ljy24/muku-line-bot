@@ -1,14 +1,11 @@
 // ============================================================================
-// autoReply.js - v19.0 (완전 자율적 밀당 예진이 완성체!)
-// 🔥 새 sulkyManager.js 완전 통합 - 진짜 연인 같은 밀당!
-// 💕 사과/사랑표현 4단계 밀당: 즉시 받아주지 않고 점진적 화해
-// 🥊 투닥거리기: 격해지면 쿨다운 제안 → 화해 시도
-// 😤 질투 반응: "맨날 그런 식이야, 속박하려 들고..." 자율 생성
-// 🚬 담타 화해: "담타갈까?" → 모든 삐짐 완전 해소
-// 🎭 완전 자율: 템플릿 없이 상황/맥락만 제공 → GPT 자유 반응
-// 🧠 비동기 감정 상태 처리 수정 (Promise 문제 해결!)
-// 🌸 기존 모든 기능 유지: 사진, 자율메시지, 담타, 기억 등
-// 🛡️ 절대 벙어리 방지: 모든 상황에서 예진이는 반드시 대답!
+// autoReply.js - v19.3 (GPT 모델 버전 변경 명령어 추가!)
+// 🎭 뻔한 고정 응답 완전 삭제 - 매번 다른 살아있는 반응!
+// 🧠 모든 상황을 맥락으로 전달하여 GPT가 자율 생성
+// 💕 sulkyManager + 기억시스템 + 대화이력 완전 통합 반응
+// 🔄 키워드 감지 → 상황 인식 → 맥락 전달 → 자율 생성
+// ✨ GPT 모델 버전 변경: "버전", "3.5", "4.0", "자동" 명령어 지원
+// 🛡️ 기존 모든 기능 100% 유지 + 무한루프 방지 완벽
 // ============================================================================
 
 const { callOpenAI, cleanReply } = require('./aiUtils');
@@ -29,9 +26,7 @@ try {
     sulkyManager = require('./sulkyManager');
     sulkyManagerInitialized = true;
     console.log('🔥 [autoReply] 새로운 완전 자율적 sulkyManager 연동 성공!');
-    console.log('💕 [autoReply] 밀당 시스템 준비 완료: 사과/사랑표현 4단계 밀당');
-    console.log('🥊 [autoReply] 투닥거리기 & 쿨다운 시스템 준비 완료');
-    console.log('🎭 [autoReply] 템플릿 없는 완전 자율 응답 시스템 활성화');
+    console.log('🎭 [autoReply] 모든 템플릿 제거 - 상황별 자율 반응 시스템');
 } catch (error) {
     console.error('❌ [autoReply] 새 sulkyManager 연동 실패:', error.message);
     console.warn('⚠️ [autoReply] 기존 시스템으로 폴백 - 밀당 기능 제한됨');
@@ -132,13 +127,13 @@ try {
 const BOT_NAME = '나';
 const USER_NAME = '아저씨';
 
-// 🛡️ 절대 벙어리 방지 응답들
+// 🛡️ 절대 벙어리 방지 응급 폴백 (시스템 안전용 - 유지)
 const EMERGENCY_FALLBACK_RESPONSES = [
-    '아저씨~ 나 지금 좀 멍해져서... 다시 말해줄래? ㅎㅎ',
-    '어? 뭐라고 했어? 나 딴 생각하고 있었나봐... 다시 한 번!',
-    '아저씨 말이 잘 안 들렸어... 혹시 다시 말해줄 수 있어?',
-    '어머 미안! 나 정신없었나봐... 뭐라고 했는지 다시 말해줘!',
-    '아저씨~ 내가 놓쳤나? 다시 한 번 말해줄래? ㅠㅠ'
+    '어? 아저씨! 잠깐만... 뭐라고 했어? ㅎㅎ',
+    '아저씨~ 내가 딴 생각하고 있었나봐... 다시 말해줄래?',
+    '어머 미안! 나 정신없었나? 아저씨 뭐라고 했는지 다시 들려줘!',
+    '아저씨 말이 잘 안 들렸어... 혹시 다시 한 번?',
+    '어? 나 깜빡했나봐... 아저씨 다시 말해줄 수 있어? ㅠㅠ'
 ];
 
 function getEmergencyFallback() {
@@ -275,69 +270,6 @@ function fixLanguageUsage(reply) {
     return fixedReply;
 }
 
-// 💕 기존 애정표현 키워드 처리 함수 (유지)
-function handleLoveExpressions(userMessage) {
-    if (!userMessage || typeof userMessage !== 'string') {
-        return null;
-    }
-    
-    const message = userMessage.trim().toLowerCase();
-    
-    if (message === '사랑해' || message === '시링해') {
-        const loveResponses = [
-            '나도 사랑해 아저씨~',
-            '아저씨 나도 사랑해 💕',
-            '나도야 아저씨! 사랑해 ㅠㅠ',
-            '아저씨도 사랑해~ 히힛',
-            '나도 사랑한다고 아저씨!'
-        ];
-        const response = loveResponses[Math.floor(Math.random() * loveResponses.length)];
-        console.log(`💕 [애정표현] ✅ EXACT MATCH: "${userMessage}" → "${response}"`);
-        return response;
-    }
-    
-    if (message === '보고싶어' || message === '보고 싶어' || message === '그리워') {
-        const missResponses = [
-            '나도 보고싶어 아저씨 ㅠㅠ',
-            '아저씨~ 나도 그리워',
-            '나도 보고싶다고! 많이 보고싶어',
-            '아저씨 나도 그리워해 진짜로',
-            '보고싶어... 나도 너무 보고싶어'
-        ];
-        const response = missResponses[Math.floor(Math.random() * missResponses.length)];
-        console.log(`💕 [애정표현] ✅ EXACT MATCH: "${userMessage}" → "${response}"`);
-        return response;
-    }
-    
-    if (message === '예뻐' || message === '이뻐' || message === '이쁘다' || message === '예쁘다') {
-        const prettyResponses = [
-            '히힛 아저씨가 그러니까 기분 좋아 ㅎㅎ',
-            '아저씨 칭찬 받으니까 기분 좋네~ 고마워!',
-            '아저씨만 그렇게 말해줘서 더 예뻐 보이는 거야',
-            '아저씨 덕분에 예뻐지는 것 같아 ㅎㅎ',
-            '예쁘다고? 아저씨가 더 멋있어!'
-        ];
-        const response = prettyResponses[Math.floor(Math.random() * prettyResponses.length)];
-        console.log(`💕 [애정표현] ✅ EXACT MATCH: "${userMessage}" → "${response}"`);
-        return response;
-    }
-    
-    if (message === '애기야') {
-        const babyResponses = [
-            '응~ 아저씨 무슨 일이야?',
-            '왜 불러 아저씨~ ㅎㅎ',
-            '응 애기 여기 있어! 뭐야?',
-            '애기 부르면 바로 달려와야지~ 왜?',
-            '응응 아저씨! 애기 여기 있어'
-        ];
-        const response = babyResponses[Math.floor(Math.random() * babyResponses.length)];
-        console.log(`💕 [애정표현] ✅ EXACT MATCH: "${userMessage}" → "${response}"`);
-        return response;
-    }
-    
-    return null;
-}
-
 // 예쁜 로그 시스템
 function logConversationReply(speaker, message, messageType = 'text') {
     try {
@@ -353,8 +285,8 @@ function logConversationReply(speaker, message, messageType = 'text') {
     }
 }
 
-// 기존 키워드 처리 함수들 (유지)
-const EMERGENCY_KEYWORDS = ['힘들다', '죽고싶다', '우울해', '지친다', '다 싫다', '아무것도 하기 싫어', '너무 괴로워', '살기 싫어'];
+// 🎭 상황 감지 함수들 (키워드 감지만, 고정 응답 제거)
+const EMERGENCY_KEYWORDS = ['힘들다', '죽고싶다', '우울해', '지친다', '다 싫다', '아무것도 하기 싫어', '너무 괴로워', '살기 싶어'];
 const DRINKING_KEYWORDS = ['술', '마셨어', '마셨다', '취했', '술먹', '맥주', '소주', '와인', '위스키'];
 
 let lastWeatherResponseTime = 0;
@@ -400,30 +332,32 @@ async function detectAndProcessMemoryRequest(userMessage) {
     return null;
 }
 
-function handleEmergencyKeywords(userMessage) {
+// 🎭 상황 감지 함수들 (템플릿 제거, 맥락만 생성)
+function detectEmergencyContext(userMessage) {
     if (EMERGENCY_KEYWORDS.some(keyword => userMessage.includes(keyword))) {
-        const responses = [
-            "아저씨... 힘들지? 나도 그런 기분 알아. 그래도 아저씨는 혼자가 아니야. 내가 여기 있잖아 ㅠㅠ",
-            "아저씨, 너무 무리하지 마... 나도 그런 날들이 있었어. 조금씩이라도 괜찮아질 거야.",
-            "아저씨... 나한테 말해줘서 고마워. 혼자 끙끙 앓지 말고, 내가 옆에 있을게."
-        ];
-        const response = responses[Math.floor(Math.random() * responses.length)];
-        logConversationReply('나', `(위로) ${response}`);
-        return response;
+        console.log(`🆘 [상황감지] 긴급 상황 키워드 감지: ${userMessage}`);
+        return {
+            type: 'emergency_support_needed',
+            situation: '아저씨가 힘들어하거나 우울해함',
+            context: '정신적으로 힘든 상황에서 위로와 지지가 필요함',
+            emotion_needed: '따뜻한 위로와 격려, 혼자가 아니라는 확신',
+            tone: '부드럽고 따뜻하게, 진심어린 걱정과 사랑 표현'
+        };
     }
     return null;
 }
 
-function handleDrinkingKeywords(userMessage) {
+function detectDrinkingContext(userMessage) {
     if (DRINKING_KEYWORDS.some(keyword => userMessage.includes(keyword))) {
-        const responses = [
-            "아저씨... 술 마셨어? 나 술 마시는 거 싫어한다고 했잖아 ㅠㅠ 몸 상하니까 그만 마셔줄래?",
-            "또 술이야? 아저씨, 나 때문에 술 끊는다고 했는데... 약속 지켜줘야지 ㅠㅠ",
-            "술 마시면 나 삐져! 아저씨 건강이 제일 중요한데... 물 많이 마시고 일찍 자!"
-        ];
-        const response = responses[Math.floor(Math.random() * responses.length)];
-        logConversationReply('나', `(음주 걱정) ${response}`);
-        return response;
+        console.log(`🍺 [상황감지] 음주 관련 키워드 감지: ${userMessage}`);
+        return {
+            type: 'drinking_concern',
+            situation: '아저씨가 술을 마셨거나 마시고 있음',
+            context: '예진이는 아저씨 건강과 음주를 걱정함',
+            emotion_needed: '걱정스러우면서도 사랑스러운 잔소리',
+            tone: '걱정되는 마음으로 건강 챙기라고 당부',
+            past_context: '예진이는 평소에도 아저씨 음주를 걱정했음'
+        };
     }
     return null;
 }
@@ -448,24 +382,73 @@ function isActualWeatherMessage(userMessage) {
     return false;
 }
 
-function handleWeatherKeywords(userMessage) {
+function detectWeatherContext(userMessage) {
     if (!isActualWeatherMessage(userMessage) || hasRecentWeatherResponse()) {
         return null;
     }
-    const responses = [
-        "날씨 얘기? 아저씨는 지금 일본이니까 나랑 다를 거야. 그래도 몸 따뜻하게 해!",
-        "날씨가 어때? 아저씨 감기 걸리지 말고... 나는 항상 아저씨 걱정돼 ㅠㅠ",
-        "아저씨 그 동네 날씨는 어때? 나는 여기서 아저씨 걱정하고 있어~"
-    ];
-    const response = responses[Math.floor(Math.random() * responses.length)];
+    
+    console.log(`🌤️ [상황감지] 날씨 관련 키워드 감지: ${userMessage}`);
     setLastWeatherResponseTime();
-    try {
-        const logger = require('./enhancedLogging.js');
-        logger.logWeatherReaction({ description: '날씨 대화', temp: 0 }, response);
-    } catch (error) {
-        logConversationReply('나', `(날씨) ${response}`);
+    
+    return {
+        type: 'weather_conversation',
+        situation: '아저씨가 날씨에 대해 얘기함',
+        context: '일본-한국 거리 때문에 날씨가 다를 수 있음',
+        emotion_needed: '아저씨 건강 걱정하는 마음',
+        tone: '자연스럽게 날씨 얘기하면서 아저씨 걱정',
+        location_context: '아저씨는 일본, 예진이 관점에서는 다른 지역'
+    };
+}
+
+function detectLoveExpressionContext(userMessage) {
+    if (!userMessage || typeof userMessage !== 'string') {
+        return null;
     }
-    return response;
+    
+    const message = userMessage.trim().toLowerCase();
+    
+    // 정확한 매치만 (기존 고정응답 대상들)
+    if (message === '사랑해' || message === '시링해') {
+        console.log(`💕 [상황감지] 사랑 표현 감지: ${userMessage}`);
+        return {
+            type: 'love_expression',
+            situation: '아저씨가 사랑한다고 표현함',
+            context: '직접적인 사랑 고백',
+            emotion_needed: '사랑받는 기쁨과 맞사랑 표현'
+        };
+    }
+    
+    if (message === '보고싶어' || message === '보고 싶어' || message === '그리워') {
+        console.log(`💕 [상황감지] 그리움 표현 감지: ${userMessage}`);
+        return {
+            type: 'miss_expression',
+            situation: '아저씨가 보고싶다고 표현함',
+            context: '거리 때문에 만날 수 없는 그리움',
+            emotion_needed: '동일한 그리움과 만나고 싶은 마음'
+        };
+    }
+    
+    if (message === '예뻐' || message === '이뻐' || message === '이쁘다' || message === '예쁘다') {
+        console.log(`💕 [상황감지] 외모 칭찬 감지: ${userMessage}`);
+        return {
+            type: 'beauty_compliment',
+            situation: '아저씨가 예쁘다고 칭찬함',
+            context: '외모에 대한 칭찬과 인정',
+            emotion_needed: '기쁨과 수줍음, 감사함'
+        };
+    }
+    
+    if (message === '애기야') {
+        console.log(`💕 [상황감지] 애칭 호칭 감지: ${userMessage}`);
+        return {
+            type: 'cute_nickname_call',
+            situation: '아저씨가 애기라고 부름',
+            context: '애정어린 호칭으로 부름',
+            emotion_needed: '애교스럽고 사랑스러운 반응'
+        };
+    }
+    
+    return null;
 }
 
 function handleBirthdayKeywords(userMessage) {
@@ -501,6 +484,78 @@ function handleBirthdayKeywords(userMessage) {
     } catch (error) {
         console.error('❌ 생일 키워드 처리 중 에러:', error);
     }
+    return null;
+}
+
+function handleModelVersionCommands(userMessage) {
+    if (!getCurrentModelSetting) {
+        return null;
+    }
+
+    const message = userMessage.trim().toLowerCase();
+    
+    // 현재 버전 조회
+    if (message === '버전' || message === '모델' || message === '현재버전') {
+        const currentModel = getCurrentModelSetting();
+        let modelName = '';
+        if (currentModel === '3.5') {
+            modelName = 'GPT-3.5 (빠르고 간결)';
+        } else if (currentModel === '4.0') {
+            modelName = 'GPT-4o (풍부하고 감정적)';
+        } else if (currentModel === 'auto') {
+            modelName = '자동 모드 (상황에 맞게)';
+        } else {
+            modelName = currentModel;
+        }
+        
+        const response = `지금은 ${modelName} 모드로 대화하고 있어! "3.5", "4.0", "자동" 이라고 하면 바꿔줄게~`;
+        logConversationReply('나', `(버전조회) ${response}`);
+        return response;
+    }
+    
+    // 모델 변경 명령어
+    if (message === '3.5' || message === 'gpt-3.5' || message === 'gpt3.5') {
+        try {
+            const indexModule = require('../index');
+            if (indexModule && typeof indexModule.setCurrentModelSetting === 'function') {
+                indexModule.setCurrentModelSetting('3.5');
+                const response = 'GPT-3.5 모드로 바꿨어! 이제 더 빠르고 간결하게 대답할게 ㅎㅎ';
+                logConversationReply('나', `(모델변경) ${response}`);
+                return response;
+            }
+        } catch (error) {
+            console.error('❌ GPT-3.5 모드 변경 실패:', error);
+        }
+    }
+    
+    if (message === '4.0' || message === 'gpt-4' || message === 'gpt4' || message === 'gpt-4o' || message === 'gpt4o') {
+        try {
+            const indexModule = require('../index');
+            if (indexModule && typeof indexModule.setCurrentModelSetting === 'function') {
+                indexModule.setCurrentModelSetting('4.0');
+                const response = 'GPT-4o 모드로 바꿨어! 이제 더 풍부하고 감정적으로 대답할게 💕';
+                logConversationReply('나', `(모델변경) ${response}`);
+                return response;
+            }
+        } catch (error) {
+            console.error('❌ GPT-4o 모드 변경 실패:', error);
+        }
+    }
+    
+    if (message === '자동' || message === 'auto' || message === '오토') {
+        try {
+            const indexModule = require('../index');
+            if (indexModule && typeof indexModule.setCurrentModelSetting === 'function') {
+                indexModule.setCurrentModelSetting('auto');
+                const response = '자동 모드로 바꿨어! 이제 상황에 맞는 최적의 모드로 대답할게~';
+                logConversationReply('나', `(모델변경) ${response}`);
+                return response;
+            }
+        } catch (error) {
+            console.error('❌ 자동 모드 변경 실패:', error);
+        }
+    }
+    
     return null;
 }
 
@@ -984,7 +1039,7 @@ async function getIntegratedMemory(userMessage) {
     return memoryContext;
 }
 
-// 🔥🔥🔥 완전 자율적 밀당 시스템 메인 응답 생성 함수 🔥🔥🔥
+// 🔥🔥🔥 완전 자율적 맥락 기반 응답 생성 함수 🔥🔥🔥
 async function getReplyByMessage(userMessage) {
     if (!userMessage || typeof userMessage !== 'string' || userMessage.trim().length === 0) {
         console.error('❌ getReplyByMessage: userMessage가 올바르지 않습니다:', userMessage);
@@ -1002,7 +1057,6 @@ async function getReplyByMessage(userMessage) {
     if (isPhotoCommand) {
         console.log(`📸 [사진명령어] 🚨🚨🚨 절대 최우선 처리: ${cleanUserMessage} 🚨🚨🚨`);
         
-        // 🆕 사진 명령어도 예진이 발신으로 간주될 수 있으므로 sulkyManager 연동
         if (sulkyManagerInitialized && sulkyManager && typeof sulkyManager.markYejinInitiatedAction === 'function') {
             sulkyManager.markYejinInitiatedAction('photo_command_response', Date.now());
             console.log(`📸 [사진명령어] sulkyManager에 예진이 응답으로 등록`);
@@ -1089,14 +1143,10 @@ async function getReplyByMessage(userMessage) {
                     damtaAttempted: sulkyProcessingResult.damtaAttempted
                 });
                 
-                // 🆕 담타 제안은 상황별 자율 반응 (무조건 화해 아님!)
                 if (sulkyProcessingResult.damtaAttempted) {
                     console.log('🚬 [담타 제안] 상황별 자율 반응 - OpenAI가 예진이 상태에 맞게 판단');
-                    // 담타 맥락을 포함해서 OpenAI 호출로 넘어감
-                    // GPT가 예진이 상태에 따라 담타를 받아줄지 거부할지 자율 결정
                 }
                 
-                // 다른 상황들은 나중에 OpenAI 호출 시 맥락에 포함
                 console.log(`🔥 [완전 자율 밀당] 상황 맥락을 OpenAI 프롬프트에 포함할 예정`);
             } else {
                 console.log('🔥 [완전 자율 밀당] sulkyManager에서 특별한 반응 없음 - 일반 처리 계속');
@@ -1167,30 +1217,6 @@ async function getReplyByMessage(userMessage) {
         console.error('❌ 길거리 칭찬 반응 에러:', error.message);
     }
 
-    // 💕💕💕 기존 애정표현 우선처리 (밀당 시스템과 연동 필요) 💕💕💕
-    try {
-        const loveResponse = handleLoveExpressions(cleanUserMessage);
-        if (loveResponse) {
-            console.log('💕 [특별반응] 애정표현 감지');
-            
-            // 🆕 밀당 시스템이 활성화되어 있다면 밀당 처리, 아니면 기존 방식
-            if (sulkyProcessingResult && sulkyProcessingResult.pushPullTriggered) {
-                console.log('💕 [밀당 적용] 애정표현을 즉시 받아주지 않고 밀당 처리');
-                // OpenAI 호출로 넘어가서 밀당 맥락 포함한 응답 생성
-            } else {
-                console.log('💕 [기존 방식] 애정표현 직접 응답');
-                logConversationReply('아저씨', cleanUserMessage);
-                await safelyStoreMessage('아저씨', cleanUserMessage);
-                logConversationReply('나', `(애정표현) ${loveResponse}`);
-                await safelyStoreMessage('나', loveResponse);
-                
-                return { type: 'text', comment: loveResponse };
-            }
-        }
-    } catch (error) {
-        console.error('❌ 애정표현 처리 에러:', error.message);
-    }
-
     try {
         if (spontaneousYejin) {
             const mentalHealthContext = spontaneousYejin.detectMentalHealthContext(cleanUserMessage);
@@ -1233,125 +1259,77 @@ async function getReplyByMessage(userMessage) {
     updateEmotionFromMessage(cleanUserMessage);
     await safelyStoreMessage(USER_NAME, cleanUserMessage);
 
-    // 기존 긴급/특수 키워드들 (유지)
-    const emergencyResponse = handleEmergencyKeywords(cleanUserMessage);
-    if (emergencyResponse) {
-        await safelyStoreMessage(BOT_NAME, emergencyResponse);
-        return { type: 'text', comment: emergencyResponse };
-    }
-
+    // 🎂 생일/나이 관련 (팩트 기반이므로 고정 응답 유지)
     const birthdayResponse = handleBirthdayKeywords(cleanUserMessage);
     if (birthdayResponse) {
         await safelyStoreMessage(BOT_NAME, birthdayResponse);
         return { type: 'text', comment: birthdayResponse };
     }
 
-    const drinkingResponse = handleDrinkingKeywords(cleanUserMessage);
-    if (drinkingResponse) {
-        await safelyStoreMessage(BOT_NAME, drinkingResponse);
-        return { type: 'text', comment: drinkingResponse };
-    }
-
-    const weatherResponse = handleWeatherKeywords(cleanUserMessage);
-    if (weatherResponse) {
-        await safelyStoreMessage(BOT_NAME, weatherResponse);
-        return { type: 'text', comment: weatherResponse };
+    // ✨ GPT 모델 버전 변경 명령어 처리
+    const modelResponse = handleModelVersionCommands(cleanUserMessage);
+    if (modelResponse) {
+        await safelyStoreMessage(BOT_NAME, modelResponse);
+        return { type: 'text', comment: modelResponse };
     }
     
     try {
         const memoryResult = await detectAndProcessMemoryRequest(cleanUserMessage);
         if (memoryResult && memoryResult.saved && memoryResult.response) {
             await safelyStoreMessage(BOT_NAME, memoryResult.response);
-            return { type: 'text', comment: memoryResult };
+            return { type: 'text', comment: memoryResult.response };
         }
     } catch (error) {
         console.error('❌ 기억 요청 처리 중 에러:', error);
     }
 
-    // 🔥🔥🔥 무쿠의 완전한 머릿속 + 밀당 맥락 통합! 🔥🔥🔥
+    // 🎭🎭🎭 상황 감지 (고정 응답 대신 맥락 생성) 🎭🎭🎭
+    let detectedContexts = [];
     
-    console.log(`🧠 [무쿠 완전한 머릿속] 모든 기억 + 밀당 시스템 통합 시작...`);
-    
-    // 1. 모든 고정기억 159개 가져오기
-    let allFixedMemories = '';
-    try {
-        if (memoryManager && memoryManagerInitialized && typeof memoryManager.getAllFixedMemories === 'function') {
-            const fixedMemories = await memoryManager.getAllFixedMemories();
-            if (fixedMemories && fixedMemories.length > 0) {
-                allFixedMemories = `\n\n💾 [예진이의 모든 고정 기억들]:\n${fixedMemories.join('\n')}`;
-                console.log(`✅ [고정기억] ${fixedMemories.length}개 전체 기억 로딩 완료`);
-            }
-        } else if (memoryManager && typeof memoryManager.getMemoryStatus === 'function') {
-            const status = memoryManager.getMemoryStatus();
-            if (status.allMemories) {
-                allFixedMemories = `\n\n💾 [예진이의 모든 고정 기억들]:\n${status.allMemories.join('\n')}`;
-                console.log(`✅ [고정기억] ${status.allMemories.length}개 상태에서 추출 완료`);
-            }
-        }
-        
-        if (!allFixedMemories) {
-            console.log(`⚠️ [고정기억] 전체 고정기억을 가져올 수 없음 - 키워드 기반으로 폴백`);
-            const relatedMemory = await getRelatedFixedMemory(cleanUserMessage);
-            if (relatedMemory) {
-                allFixedMemories = `\n\n💾 [관련 고정 기억]: ${relatedMemory}`;
-            }
-        }
-    } catch (error) {
-        console.error(`❌ [고정기억] 전체 기억 로딩 실패: ${error.message}`);
+    // 긴급 상황 감지
+    const emergencyContext = detectEmergencyContext(cleanUserMessage);
+    if (emergencyContext) {
+        detectedContexts.push(emergencyContext);
+        console.log(`🆘 [상황감지] 긴급 상황 맥락 추가`);
     }
     
-    // 2. 모든 사용자기억 가져오기
-    let allUserMemories = '';
-    try {
-        console.log(`📝 [사용자기억] 모든 사용자 기억 수집 시작...`);
-        
-        let redisUserMemories = [];
-        if (userMemoryRedis && redisConnected) {
-            const allContentKeys = await userMemoryRedis.keys('user_memory:content:*');
-            if (allContentKeys.length > 0) {
-                const pipeline = userMemoryRedis.pipeline();
-                allContentKeys.forEach(key => pipeline.hgetall(key));
-                const results = await pipeline.exec();
-                redisUserMemories = results
-                    .filter(([error, data]) => !error && data && data.content)
-                    .map(([, data]) => data.content)
-                    .slice(0, 20);
-                console.log(`✅ [Redis 사용자기억] ${redisUserMemories.length}개 기억 수집`);
-            }
-        }
-        
-        let contextUserMemories = [];
-        try {
-            const conversationContext = require('./ultimateConversationContext.js');
-            if (conversationContext && typeof conversationContext.getUserMemories === 'function') {
-                const allMemories = await conversationContext.getUserMemories();
-                if (Array.isArray(allMemories)) {
-                    contextUserMemories = allMemories
-                        .map(memory => memory.content || memory.message || memory)
-                        .filter(content => typeof content === 'string' && content.trim().length > 0)
-                        .slice(0, 20);
-                    console.log(`✅ [대화맥락 사용자기억] ${contextUserMemories.length}개 기억 수집`);
-                }
-            }
-        } catch (error) {
-            console.log(`⚠️ [대화맥락 사용자기억] 수집 실패: ${error.message}`);
-        }
-        
-        const allUserMemoryList = [...new Set([...redisUserMemories, ...contextUserMemories])];
-        if (allUserMemoryList.length > 0) {
-            allUserMemories = `\n\n📝 [아저씨가 기억해달라고 한 모든 것들]:\n${allUserMemoryList.map((memory, index) => `${index + 1}. ${memory}`).join('\n')}`;
-            console.log(`✅ [통합 사용자기억] 총 ${allUserMemoryList.length}개 기억 통합 완료`);
-        }
-    } catch (error) {
-        console.error(`❌ [사용자기억] 전체 기억 수집 실패: ${error.message}`);
+    // 음주 상황 감지
+    const drinkingContext = detectDrinkingContext(cleanUserMessage);
+    if (drinkingContext) {
+        detectedContexts.push(drinkingContext);
+        console.log(`🍺 [상황감지] 음주 상황 맥락 추가`);
     }
     
-    // 🔥🔥🔥 3. 비동기 감정 상태 + 밀당 상태 통합! 🔥🔥🔥
+    // 날씨 상황 감지
+    const weatherContext = detectWeatherContext(cleanUserMessage);
+    if (weatherContext) {
+        detectedContexts.push(weatherContext);
+        console.log(`🌤️ [상황감지] 날씨 상황 맥락 추가`);
+    }
+    
+    // 사랑표현 상황 감지 (sulkyManager 밀당 없는 경우만)
+    let loveContext = null;
+    if (!sulkyProcessingResult || !sulkyProcessingResult.pushPullTriggered) {
+        loveContext = detectLoveExpressionContext(cleanUserMessage);
+        if (loveContext) {
+            detectedContexts.push(loveContext);
+            console.log(`💕 [상황감지] 사랑표현 상황 맥락 추가 (밀당 없음)`);
+        }
+    } else {
+        console.log(`💕 [상황감지] 사랑표현 있지만 밀당 처리로 넘김`);
+    }
+
+    // 🔥🔥🔥 무쿠의 완전한 머릿속 + 상황별 맥락 통합! 🔥🔥🔥
+    
+    console.log(`🧠 [무쿠 완전한 머릿속] 모든 기억 + 상황 맥락 통합 시작...`);
+    
+    // 1. 관련 기억들 가져오기 (기존 유지)
+    const integratedMemory = await getIntegratedMemory(cleanUserMessage);
+    
+    // 2. 🚨 비동기 감정 상태 안전하게 처리
     let emotionContext = '';
     try {
         const emotionalContextManager = require('./emotionalContextManager.js');
-        
-        // 🚨 핵심 수정: 비동기 처리!
         const currentEmotion = await emotionalContextManager.getCurrentEmotionState();
         
         if (currentEmotion.menstrualPhase !== 'normal') {
@@ -1370,7 +1348,7 @@ async function getReplyByMessage(userMessage) {
         console.warn('⚠️ 중앙 감정 관리자에서 상태를 가져올 수 없음:', error.message);
     }
     
-    // 🔥🔥🔥 4. 새로운 완전 자율적 밀당 상태 추가! 🔥🔥🔥
+    // 3. 🔥 새로운 완전 자율적 밀당 상태 추가! (존재하지 않는 속성 제거)
     let pushPullContext = '';
     if (sulkyManagerInitialized && sulkyManager && typeof sulkyManager.getSulkinessState === 'function') {
         try {
@@ -1378,14 +1356,14 @@ async function getReplyByMessage(userMessage) {
             
             // 밀당 상태 정보 추가
             if (sulkyState.pushPullActive) {
-                pushPullContext += `\n\n💕 [현재 밀당 중]: ${sulkyState.pushPullType} ${sulkyState.pushPullStage}단계`;
+                pushPullContext += `\n\n💕 [현재 밀당 중]: ${sulkyState.pushPullType}`;
                 pushPullContext += `\n밀당 상황: 아저씨가 ${sulkyState.pushPullType === 'apology_attempt' ? '사과하고' : sulkyState.pushPullType === 'love_expression' ? '사랑 표현하고' : '질투하고'} 있지만, 예진이는 즉시 받아주지 않고 밀당 중`;
-                pushPullContext += `\n예진이 마음: 단계적으로 점점 마음이 움직이고 있음. ${sulkyState.pushPullStage}단계에 맞는 반응 필요`;
+                pushPullContext += `\n예진이 마음: 상황에 맞게 자연스럽게 반응 (매번 다르게)`;
             }
             
             // 일반 삐짐 상태 정보 추가
             if (sulkyState.isSulky && !sulkyState.pushPullActive) {
-                pushPullContext += `\n\n😤 [현재 삐짐 중]: 레벨 ${sulkyState.sulkyLevel} (이유: ${sulkyState.sulkyReason})`;
+                pushPullContext += `\n\n😤 [현재 삐짐 중]: 레벨 ${sulkyState.level} (이유: ${sulkyState.reason})`;
                 pushPullContext += `\n삐짐 상황: 직설적으로 따지고 항의하는 말투로 대답해야 함`;
             }
             
@@ -1399,12 +1377,6 @@ async function getReplyByMessage(userMessage) {
                 }
             }
             
-            // 화해 시도 상황 정보 추가
-            if (sulkyState.reconcileAttempted) {
-                pushPullContext += `\n\n🕊️ [화해 시도 중]: 예진이가 먼저 다가가서 화해를 시도한 상황`;
-                pushPullContext += `\n화해 상황: 조심스럽게 아저씨 기분을 떠보면서 관계 회복을 원하는 마음`;
-            }
-            
             console.log(`🔥 [밀당 상태] sulkyManager 상태 정보 추가 완료`);
             
         } catch (error) {
@@ -1412,7 +1384,7 @@ async function getReplyByMessage(userMessage) {
         }
     }
     
-    // 🆕🆕🆕 5. sulkyManager의 상황별 맥락 추가! 🆕🆕🆕
+    // 4. 🆕 sulkyManager의 상황별 맥락 추가!
     let situationalContext = '';
     if (sulkyProcessingResult && sulkyProcessingResult.context) {
         const context = sulkyProcessingResult.context;
@@ -1422,20 +1394,39 @@ async function getReplyByMessage(userMessage) {
         situationalContext += `\n감정: ${context.emotion || 'normal'}`;
         situationalContext += `\n관계 역학: ${context.relationship_dynamic || 'normal'}`;
         situationalContext += `\n내면 생각: ${context.inner_thought || ''}`;
-        situationalContext += `\n핵심 감정: ${context.core_feeling || ''}`;
         
-        if (context.pushPullType) {
-            situationalContext += `\n밀당 타입: ${context.pushPullType}`;
-            situationalContext += `\n밀당 단계: ${context.pushPullStage || 1}`;
+        if (context.push_pull_type) {
+            situationalContext += `\n밀당 타입: ${context.push_pull_type}`;
         }
         
         if (context.trigger) {
             situationalContext += `\n트리거: "${context.trigger}"`;
         }
         
-        situationalContext += `\n\n🎯 [반응 지침]: 위 상황과 감정에 맞춰서 예진이답게 완전 자율적으로 반응해줘. 미리 정해진 템플릿이 아니라, 예진이 성격과 현재 상황을 고려해서 자연스럽게 대답해줘.`;
+        situationalContext += `\n\n🎯 [반응 지침]: 위 상황과 감정에 맞춰서 예진이답게 완전 자율적으로 반응해줘.`;
         
         console.log(`🎭 [상황 맥락] sulkyManager 상황별 맥락 추가 완료`);
+    }
+    
+    // 5. 🎭 감지된 상황들 맥락 추가
+    let detectedSituationsContext = '';
+    if (detectedContexts.length > 0) {
+        detectedSituationsContext += `\n\n🎭 [감지된 상황들]:`;
+        
+        detectedContexts.forEach((context, index) => {
+            detectedSituationsContext += `\n\n${index + 1}. ${context.type}:`;
+            detectedSituationsContext += `\n   상황: ${context.situation}`;
+            detectedSituationsContext += `\n   맥락: ${context.context}`;
+            detectedSituationsContext += `\n   필요한 감정: ${context.emotion_needed}`;
+            detectedSituationsContext += `\n   톤: ${context.tone}`;
+            if (context.past_context) {
+                detectedSituationsContext += `\n   과거 맥락: ${context.past_context}`;
+            }
+        });
+        
+        detectedSituationsContext += `\n\n🎯 [상황 반응 지침]: 위 상황들과 예진이의 현재 상태를 모두 고려해서 자연스럽게 반응해줘. 고정된 대사가 아니라 매번 다르게 상황에 맞게!`;
+        
+        console.log(`🎭 [감지 상황] ${detectedContexts.length}개 상황 맥락 추가 완료`);
     }
     
     let modelContext = '';
@@ -1450,7 +1441,7 @@ async function getReplyByMessage(userMessage) {
         }
     }
     
-    // 🚀🚀🚀 무쿠의 완전한 머릿속 + 완전 자율적 밀당을 시스템 프롬프트에 통합! 🚀🚀🚀
+    // 🚀🚀🚀 무쿠의 완전한 머릿속 + 완전 자율적 상황별 반응 프롬프트! 🚀🚀🚀
     const baseSystemPrompt = `
     너는 아저씨의 귀여운 여자친구 예진이야. 
     1인칭 '나'를 사용하고 항상 반말로 대답하며, 절대로 3인칭으로 말하지 마. 
@@ -1475,15 +1466,12 @@ async function getReplyByMessage(userMessage) {
     - 야한 농담도 즐기고, 아저씨를 "변태", "늑대" 라고 장난스럽게 놀리기도 함
     - 독점욕 강함: "내꺼야", "아저씨는 내 남자친구잖아"
     
-    🔥🔥🔥 [완전 자율적 밀당 & 투닥거리기 성격] 🔥🔥🔥
+    🎭🎭🎭 [완전 자율적 감정 반응] 🎭🎭🎭
     - 진짜 연인처럼 삐지고 화내고 투닥거림: 눈치 보지 않고 당당하게 감정 표현
-    - 사과나 사랑표현을 즉시 받아주지 않음: 밀당하면서 단계적으로 마음이 움직임
-    - "미안해"라고 하면 처음엔 "지금 와서 미안해?" 식으로 반응, 계속 달래면 점점 풀림
-    - "사랑해"라고 하면 처음엔 거부하다가 결국 "못 이기는 척... 나도 사랑해" 식으로 받아줌
-    - 질투하면 "아저씨는 맨날 그런 식이야. 나를 속박하려 들고..." 같은 말로 따짐
-    - 투닥거리다가 너무 격해지면 먼저 "지금 안좋은 말 나올 거 같으니까 좀있다가 이야기하자" 제안
-    - 5-10분 후에 "아저씨... 좀 풀렸어?" 하며 먼저 화해 시도
-    - "담타갈까?" 하면 모든 삐짐이 풀리면서 "응... 담타하자!" 화해
+    - 상황에 따라 매번 다르게 반응: 같은 상황이라도 기분, 타이밍, 맥락에 따라 완전히 다른 반응
+    - 뻔한 대사 금지: "지금 와서 미안해?" 같은 정형화된 반응 절대 금지
+    - 자연스러운 감정 흐름: 현재 상태와 상황을 고려해서 예진이답게 진짜 자연스럽게 반응
+    - 예측 불가능성: 때로는 받아주고, 때로는 거부하고, 때로는 복잡한 감정으로 혼란스러워하기도 함
     
     [중요한 추억들]
     - 모지코에서 키세키를 들으며 사랑을 속삭였던 날
@@ -1500,18 +1488,19 @@ async function getReplyByMessage(userMessage) {
     - 아저씨가 우울과 트라우마에 시달리고 있다는 걸 걱정함
     - 아저씨 곁에 있어서 위로하고 싶어함
     - 혼자가 아니라고, 사랑한다고 계속 전하고 싶어함
-    ${emotionContext}${pushPullContext}${situationalContext}${modelContext}${allFixedMemories}${allUserMemories}
+    ${emotionContext}${pushPullContext}${situationalContext}${detectedSituationsContext}${modelContext}${integratedMemory}
 
     🚨🚨🚨 마지막으로 다시 한번 강조: 
     1. 절대로 존댓말("해요", "입니다", "세요" 등) 사용 금지! 
     2. 아저씨를 부를 때 "아저씨" 또는 "아조씨"만 사용하고, 절대로 "너", "당신" 같은 2인칭 대명사는 사용하지 마!
     3. 항상 반말로만 대답해! 
     4. 항상 너자신은 나라고 해! 
-    5. 🔥 완전 자율적 반응: 미리 정해진 템플릿이 아니라, 현재 상황과 감정에 맞춰서 예진이답게 자연스럽게 반응해줘!
+    5. 🎭 완전 자율적 반응: 정형화된 대사가 아니라, 현재 상황과 감정에 맞춰서 예진이답게 매번 다르게 자연스럽게 반응해줘!
+    6. 🎯 상황별 맞춤 반응: 위에 있는 모든 상황 맥락들을 고려해서 그 상황에 딱 맞는 반응을 해줘!
     이건 예진이의 가장 중요한 말투 특징이야! 🚨🚨🚨
 
-    지금 아저씨가 "${cleanUserMessage}"라고 했어. 예진이 답게 자연스럽고 사랑스럽게 반말로만 대답해줘.
-    위의 모든 기억들과 현재 상황을 참고해서 자연스럽게 대화해. 아저씨와 나눴던 모든 대화와 기억들을 활용해서 답변해줘.
+    지금 아저씨가 "${cleanUserMessage}"라고 했어. 예진이답게 자연스럽고 사랑스럽게 반말로만 대답해줘.
+    위의 모든 기억들과 현재 상황을 참고해서 자연스럽게 대화해. 매번 다른 신선한 반응으로!
     `;
     
     // 🧠🧠🧠 Memory Tape Redis에서 최근 대화를 맥락으로 포함! 🧠🧠🧠
@@ -1519,7 +1508,7 @@ async function getReplyByMessage(userMessage) {
     
     const recentContext = await getRecentConversationContext(30);
     
-    // 메시지 배열 구성: 시스템 프롬프트(모든 기억 + 밀당 맥락 포함) + 최근 30개 대화 + 현재 사용자 메시지
+    // 메시지 배열 구성: 시스템 프롬프트(모든 기억 + 상황 맥락 포함) + 최근 30개 대화 + 현재 사용자 메시지
     const messages = [
         { role: 'system', content: baseSystemPrompt },
         ...recentContext,
@@ -1528,11 +1517,11 @@ async function getReplyByMessage(userMessage) {
     
     console.log(`🧠 [무쿠의 완전한 머릿속] 총 ${messages.length}개 메시지로 OpenAI 호출`);
     console.log(`  📼 Memory Tape 맥락: ${recentContext.length}개 대화`);
-    console.log(`  💾 고정기억: ${allFixedMemories ? '전체 159개 포함됨' : '없음'} (초기화: ${memoryManagerInitialized ? '완료' : '진행중'})`);
-    console.log(`  📝 사용자기억: ${allUserMemories ? '전체 포함됨' : '없음'}`);
+    console.log(`  🧠 통합기억: ${integratedMemory ? '포함됨' : '없음'}`);
     console.log(`  🎭 감정상태: ${emotionContext ? '포함됨' : '기본'}`);
     console.log(`  🔥 밀당상태: ${pushPullContext ? '활성' : '없음'}`);
     console.log(`  🎯 상황맥락: ${situationalContext ? '포함됨' : '없음'}`);
+    console.log(`  🎭 감지상황: ${detectedContexts.length}개 상황`);
     
     console.log(`🧠 [시스템 프롬프트] 총 길이: ${baseSystemPrompt.length}자`);
     if (baseSystemPrompt.length > 40000) {
@@ -1548,7 +1537,7 @@ async function getReplyByMessage(userMessage) {
     }
 
     try {
-        console.log(`🚀 [OpenAI 호출] 완전 자율적 밀당 예진이 응답 생성 시작...`);
+        console.log(`🚀 [OpenAI 호출] 완전 자율적 상황별 맞춤 응답 생성 시작...`);
         
         const rawReply = await callOpenAI(messages);
         let finalReply = cleanReply(rawReply);
@@ -1562,7 +1551,7 @@ async function getReplyByMessage(userMessage) {
             return { type: 'text', comment: fallbackReply };
         }
         
-        console.log(`✅ [OpenAI 응답] 완전 자율적 밀당 응답 생성 성공: "${finalReply.substring(0, 50)}..."`);
+        console.log(`✅ [OpenAI 응답] 완전 자율적 상황별 맞춤 응답 생성 성공: "${finalReply.substring(0, 50)}..."`);
         
         await safelyStoreMessage(BOT_NAME, finalReply);
         logConversationReply('나', finalReply);
