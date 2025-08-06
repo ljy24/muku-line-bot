@@ -986,7 +986,7 @@ async function handleCommand(text, userId, client = null) {
 
         // ================== 기존 모든 시스템들 그대로 유지 ==================
 
-        // 📖 일기장 관련 처리 (기존 코드 그대로)
+       // 📖 일기장 관련 처리 (🔧 주간일기 완전 표시 추가!)
         if (lowerText.includes('일기장') || lowerText.includes('일기목록') || 
             lowerText.includes('일기 써줘') || lowerText.includes('일기써') ||
             lowerText.includes('오늘 일기') ||
@@ -997,7 +997,37 @@ async function handleCommand(text, userId, client = null) {
             
             console.log('[commandHandler] 📖 일기장 요청 감지');
             
-            // 일기장 처리 로직 (기존 코드 그대로 유지)
+            // 🔥 주간일기 요청 특별 처리 - 누락없이 소략없이!
+            if (lowerText.includes('주간일기') || lowerText.includes('주간 일기')) {
+                console.log('[commandHandler] 📖 주간일기 특별 처리 - 완전한 표시로 전환');
+                
+                try {
+                    // 새로 만든 완전한 주간일기 조회 함수 호출!
+                    const completeWeeklyResult = await handleCompleteWeeklyDiary();
+                    
+                    if (completeWeeklyResult && completeWeeklyResult.comment) {
+                        console.log(`[commandHandler] ✅ 완전한 주간일기 처리 성공: ${completeWeeklyResult.diaryCount || 0}개 일기`);
+                        
+                        // 🌙 나이트모드 톤 적용
+                        if (nightModeInfo && nightModeInfo.isNightMode) {
+                            completeWeeklyResult.comment = applyNightModeTone(completeWeeklyResult.comment, nightModeInfo);
+                        }
+                        
+                        return {
+                            type: 'text',
+                            comment: completeWeeklyResult.comment,
+                            handled: true,
+                            source: 'complete_weekly_diary_special'
+                        };
+                    }
+                    
+                } catch (weeklyError) {
+                    console.error('[commandHandler] ❌ 완전한 주간일기 처리 실패:', weeklyError.message);
+                    // 실패 시 기존 시스템으로 폴백
+                }
+            }
+            
+            // 🔧 기존 일기장 처리 (주간일기 외의 다른 요청들)
             try {
                 if (diarySystem && diarySystem.handleDiaryCommand) {
                     console.log('[commandHandler] 📖 muku-diarySystem.js 통합 메모리 시스템 연동');
@@ -1026,7 +1056,7 @@ async function handleCommand(text, userId, client = null) {
                 
                 // 폴백 응답
                 let fallbackResponse = "오늘 하루도 아저씨와 함께해서 행복했어~ 💕\n\n";
-                fallbackResponse += "통합 메모리 일기장이 조금 이상하긴 하지만, 마음속엔 오늘의 모든 순간들이 소중하게 담겨있어.";
+                fallbackResponse += "일기장에 문제가 생겼지만, 마음속엔 아저씨와의 모든 기억들이 안전하게 저장되어 있어.";
                 
                 if (nightModeInfo && nightModeInfo.isNightMode) {
                     fallbackResponse = applyNightModeTone(fallbackResponse, nightModeInfo);
