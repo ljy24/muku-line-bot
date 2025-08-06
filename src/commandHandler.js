@@ -20,6 +20,7 @@ const path = require('path');
 const fs = require('fs');
 const Redis = require('ioredis');
 const moment = require('moment-timezone');
+const { handleCompleteWeeklyDiary } = require('./muku-diarySystem.js');
 
 // 🌸 예진이 자아 인식 진화 시스템 로딩 (안전 처리)
 let YejinSelfRecognitionEvolution = null;
