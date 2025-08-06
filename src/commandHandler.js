@@ -988,7 +988,8 @@ async function handleCommand(text, userId, client = null) {
 
         // 📖 일기장 관련 처리 (기존 코드 그대로)
         if (lowerText.includes('일기장') || lowerText.includes('일기목록') || 
-            lowerText.includes('일기 써줘') || lowerText.includes('오늘 일기') ||
+            lowerText.includes('일기 써줘') || lowerText.includes('일기써') ||
+            lowerText.includes('오늘 일기') ||
             lowerText.includes('주간일기') || lowerText.includes('주간 일기') ||
             lowerText.includes('일기통계') || lowerText.includes('지난주일기') ||
             lowerText.includes('한달전일기') || lowerText.includes('이번달일기') ||
