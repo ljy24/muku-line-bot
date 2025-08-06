@@ -694,10 +694,10 @@ ${conversationSummary}
         }
 
         const response = await openai.chat.completions.create({
-            model: "gpt-3.5-turbo",
+            model: "gpt-4o-mini",
             messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }],
             temperature: 0.8,
-            max_tokens: 1000, // 토큰 수 증가로 더 긴 내용 보장
+            max_tokens: 1000,
         });
 
         const content = response.choices[0].message.content.trim();
