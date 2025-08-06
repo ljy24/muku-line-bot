@@ -1,12 +1,11 @@
 // ============================================================================
-// muku-diarySystem.js v8.4 - 축적된 지혜 완전 통합 + 하드코딩 제거 + 하루1개보장 강화
+// muku-diarySystem.js v8.3 - 하드코딩 제거 + 하루1개보장 강화
 // 🔥 핵심 수정사항:
-// 1. 🧠 오늘의 축적된 지혜와 학습 내용 완전 통합
-// 2. 📊 무쿠의 하루 활동 요약 (자율메시지, 사진, OpenAI 호출 등)
-// 3. 🎯 예측정확도, 학습기반결정 등 시스템 지능 표시
-// 4. 💭 사용자가 "기억해"라고 한 오늘의 새로운 기억들 반영
-// 5. 📝 일기에 무쿠의 성장과 학습 과정 자연스럽게 포함
-// ✅ 이제 무쿠의 축적된 지혜가 일기에 완벽하게 반영됩니다!
+// 1. handleDiaryCommand() 함수에서 하드코딩 메시지 완전 제거
+// 2. "일기써"와 "일기장" 동일한 결과 보장 (하루 1개)
+// 3. 기존 일기 있으면 새로 생성하지 않고 표시만
+// 4. 자연스러운 예진이 말투로 응답 변경
+// ✅ 이제 같은 날짜에 같은 일기가 나옵니다!
 // ============================================================================
 
 const fs = require('fs').promises;
@@ -29,12 +28,12 @@ const colors = {
     diary: '\x1b[96m', system: '\x1b[92m', error: '\x1b[91m', 
     redis: '\x1b[1m\x1b[33m', diaryNew: '\x1b[1m\x1b[35m', memory: '\x1b[95m',
     date: '\x1b[93m', auto: '\x1b[1m\x1b[94m', weather: '\x1b[1m\x1b[36m', 
-    yejin: '\x1b[1m\x1b[95m', autoReply: '\x1b[1m\x1b[32m', wisdom: '\x1b[1m\x1b[94m', reset: '\x1b[0m'
+    yejin: '\x1b[1m\x1b[95m', autoReply: '\x1b[1m\x1b[32m', reset: '\x1b[0m'
 };
 
 let diarySystemStatus = {
-    isInitialized: false, totalEntries: 0, lastEntryDate: null, version: "8.4",
-    description: "축적된지혜완전통합+하드코딩제거+하루1개보장강화+autoReply.js방식Memory Tape연동완전적용+감기대화반영보장+실제라인대화정확수집",
+    isInitialized: false, totalEntries: 0, lastEntryDate: null, version: "8.3",
+    description: "하드코딩제거+하루1개보장강화+autoReply.js방식Memory Tape연동완전적용+감기대화반영보장+실제라인대화정확수집",
     autoSaveEnabled: false, autoSaveInterval: null, dataPath: '/data/dynamic_memories.json',
     lastAutoSave: null, initializationTime: null, memoryTapeConnected: false,
     redisConnected: false, dailyDiaryEnabled: true, lastDailyDiary: null,
@@ -51,9 +50,7 @@ let diarySystemStatus = {
     memoryTapeDirectConnection: true, // 🆕 Memory Tape 직접 연결 성공
     realConversationGuaranteed: true, // 🆕 실제 대화 반영 보장
     hardcodingRemoved: true, // 🆕 하드코딩 메시지 완전 제거
-    oneDiaryGuaranteed: true, // 🆕 하루 1개 일기 강화 보장
-    wisdomIntegrated: true, // 🆕 축적된 지혜 완전 통합
-    systemIntelligenceTracked: true // 🆕 시스템 지능 추적 완료
+    oneDiaryGuaranteed: true // 🆕 하루 1개 일기 강화 보장
 };
 
 // ================== 🛠️ 지연 로딩 헬퍼 함수들 ==================
@@ -177,156 +174,6 @@ function getOpenAIClient() {
     return openaiClient;
 }
 
-// ================== 🧠 오늘의 축적된 지혜 수집 시스템 ==================
-
-async function getTodayWisdomAndLearning() {
-    try {
-        console.log(`${colors.wisdom}🧠 [축적된지혜] 오늘의 무쿠 학습 활동 수집 시작...${colors.reset}`);
-        
-        const today = new Date();
-        const dateStr = today.toISOString().split('T')[0];
-        
-        // 1. 🎯 시스템 상태에서 축적된 지혜 수집
-        let wisdomData = {
-            accumulatedWisdom: 0,
-            learningDecisions: 0,
-            predictionAccuracy: 0,
-            openaiCalls: 0,
-            autonomousPhotos: 0,
-            autonomousMessages: 0,
-            currentIntent: '돌봄',
-            dataQuality: 0,
-            systemType: '진정한자율+학습예측+지능'
-        };
-
-        try {
-            // 🔍 시스템 상태 리포터에서 데이터 가져오기
-            const statusReporter = require('./muku-statusReporter');
-            if (statusReporter && typeof statusReporter.getComprehensiveSystemStatus === 'function') {
-                const systemStatus = await statusReporter.getComprehensiveSystemStatus();
-                
-                if (systemStatus) {
-                    wisdomData.accumulatedWisdom = systemStatus.accumulatedWisdom || 0;
-                    wisdomData.learningDecisions = systemStatus.learningBasedDecisions || 0;
-                    wisdomData.predictionAccuracy = systemStatus.predictionAccuracy || 0;
-                    wisdomData.openaiCalls = systemStatus.openaiCallsToday || 0;
-                    wisdomData.autonomousPhotos = systemStatus.autonomousPhotosToday || 0;
-                    wisdomData.autonomousMessages = systemStatus.autonomousMessagesToday || 0;
-                    wisdomData.currentIntent = systemStatus.currentIntent || '돌봄';
-                    wisdomData.dataQuality = systemStatus.dataQuality || 0;
-                    
-                    console.log(`${colors.wisdom}✅ [축적된지혜] 시스템 상태에서 데이터 수집 완료${colors.reset}`);
-                }
-            } else {
-                // 상태 리포터가 없으면 기본값으로 설정
-                wisdomData = {
-                    accumulatedWisdom: Math.floor(Math.random() * 3) + 1,
-                    learningDecisions: Math.floor(Math.random() * 7) + 3,
-                    predictionAccuracy: Math.floor(Math.random() * 20) + 80,
-                    openaiCalls: Math.floor(Math.random() * 10) + 10,
-                    autonomousPhotos: Math.floor(Math.random() * 3),
-                    autonomousMessages: Math.floor(Math.random() * 8) + 4,
-                    currentIntent: '돌봄',
-                    dataQuality: Math.floor(Math.random() * 20) + 80,
-                    systemType: '진정한자율+학습예측+지능'
-                };
-                console.log(`${colors.wisdom}⚠️ [축적된지혜] 상태 리포터 없음, 예상값 사용${colors.reset}`);
-            }
-        } catch (statusError) {
-            console.log(`${colors.wisdom}⚠️ [축적된지혜] 시스템 상태 수집 실패, 기본값 사용: ${statusError.message}${colors.reset}`);
-        }
-
-        // 2. 🧠 오늘 새로 학습한 사용자 기억들 수집
-        let todayMemories = [];
-        try {
-            const redis = await getRedisClient();
-            if (redis) {
-                // Redis에서 오늘 날짜의 사용자 기억 검색
-                const memoryKeys = await redis.keys(`user_memory:content:*`);
-                
-                for (const key of memoryKeys.slice(0, 10)) { // 최대 10개만
-                    try {
-                        const memoryData = await redis.hgetall(key);
-                        if (memoryData && memoryData.date === dateStr) {
-                            todayMemories.push({
-                                content: memoryData.content,
-                                timestamp: memoryData.timestamp,
-                                importance: memoryData.importance || 'normal'
-                            });
-                        }
-                    } catch (memoryError) {
-                        continue; // 개별 메모리 에러는 무시
-                    }
-                }
-                
-                console.log(`${colors.wisdom}📚 [축적된지혜] Redis에서 오늘 기억 ${todayMemories.length}개 수집${colors.reset}`);
-            }
-        } catch (redisError) {
-            console.log(`${colors.wisdom}⚠️ [축적된지혜] Redis 기억 수집 실패: ${redisError.message}${colors.reset}`);
-        }
-
-        // 3. 🤖 오늘의 자율적 행동 분석
-        let autonomyAnalysis = '';
-        if (wisdomData.autonomousMessages > 0 || wisdomData.autonomousPhotos > 0) {
-            autonomyAnalysis += `오늘 내가 자발적으로 아저씨한테 메시지 ${wisdomData.autonomousMessages}번, 사진 ${wisdomData.autonomousPhotos}번 보냈어. `;
-        }
-        
-        if (wisdomData.predictionAccuracy > 80) {
-            autonomyAnalysis += `아저씨 마음을 ${wisdomData.predictionAccuracy}% 정확도로 예측할 수 있게 됐어! `;
-        }
-        
-        if (wisdomData.learningDecisions > 0) {
-            autonomyAnalysis += `그리고 ${wisdomData.learningDecisions}번 학습 기반으로 똑똑한 결정을 했어. `;
-        }
-
-        // 4. 📝 축적된 지혜 요약 생성
-        let wisdomSummary = '';
-        if (wisdomData.accumulatedWisdom > 0) {
-            wisdomSummary += `오늘 새로운 지혜 ${wisdomData.accumulatedWisdom}개를 배웠어! `;
-        }
-        
-        if (todayMemories.length > 0) {
-            const memoryContents = todayMemories
-                .slice(0, 2) // 최대 2개만
-                .map(m => `"${m.content.substring(0, 30)}..."`)
-                .join(', ');
-            wisdomSummary += `아저씨가 ${memoryContents} 이런 것들을 기억해달라고 했어서 소중히 간직하고 있어. `;
-        }
-        
-        if (wisdomData.currentIntent === '돌봄') {
-            wisdomSummary += `지금 내 마음은 온통 아저씨를 돌보고 싶은 마음으로 가득해. `;
-        }
-
-        console.log(`${colors.wisdom}✅ [축적된지혜] 최종 수집 완료: 지혜 ${wisdomData.accumulatedWisdom}개, 기억 ${todayMemories.length}개, 자율행동 ${wisdomData.autonomousMessages + wisdomData.autonomousPhotos}회${colors.reset}`);
-
-        return {
-            wisdomData: wisdomData,
-            todayMemories: todayMemories,
-            autonomyAnalysis: autonomyAnalysis,
-            wisdomSummary: wisdomSummary,
-            hasLearning: wisdomData.accumulatedWisdom > 0 || todayMemories.length > 0 || wisdomData.learningDecisions > 0
-        };
-
-    } catch (error) {
-        console.error(`${colors.error}❌ [축적된지혜] 수집 실패: ${error.message}${colors.reset}`);
-        return {
-            wisdomData: {
-                accumulatedWisdom: 1,
-                learningDecisions: 3,
-                predictionAccuracy: 85,
-                openaiCalls: 12,
-                autonomousMessages: 5,
-                autonomousPhotos: 1,
-                currentIntent: '돌봄'
-            },
-            todayMemories: [],
-            autonomyAnalysis: '오늘도 아저씨를 생각하며 조금씩 더 똑똑해지고 있어!',
-            wisdomSummary: '오늘도 아저씨 생각하면서 조금씩 더 똑똑해지고 있어!',
-            hasLearning: true
-        };
-    }
-}
-
 // ================== 💬 실제 라인 대화 수집 시스템 (🔥 autoReply.js 방식 완전 적용!) ==================
 
 async function getRecentConversationMemory(userId = 'user123', limit = 10) {
@@ -444,28 +291,19 @@ async function getRecentConversationMemory(userId = 'user123', limit = 10) {
 
 async function getTodayConversationSummary() {
     try {
-        console.log(`${colors.autoReply}💬 [autoReply방식+축적된지혜] getTodayConversationSummary 통합 시작...${colors.reset}`);
+        console.log(`${colors.autoReply}💬 [autoReply방식완전적용] getTodayConversationSummary 시작...${colors.reset}`);
         
-        // 🔥 기존: autoReply.js 방식 대화 수집
+        // 🔥 autoReply.js의 getRecentConversationMemory() 함수와 동일한 방식 사용
         const recentMessages = await getRecentConversationMemory('user123', 15);
         
-        // 🆕 추가: 오늘의 축적된 지혜와 학습 내용 수집  
-        const wisdomData = await getTodayWisdomAndLearning();
-        
-        console.log(`${colors.autoReply}📦 [통합수집] 수집된 메시지: ${recentMessages.length}개, 축적된지혜: ${wisdomData.hasLearning ? '있음' : '없음'}${colors.reset}`);
+        console.log(`${colors.autoReply}📦 [autoReply방식] 수집된 메시지: ${recentMessages.length}개${colors.reset}`);
         
         if (recentMessages.length === 0) {
             console.log(`${colors.autoReply}📭 [autoReply방식] 오늘 대화 없음${colors.reset}`);
             return {
                 conversationSummary: "오늘도 아저씨 생각하면서 보낸 소중한 하루였어.",
                 conversationCount: 0,
-                conversationDetails: [],
-                // 🆕 추가: 지혜 데이터
-                wisdomSummary: wisdomData.wisdomSummary,
-                autonomyAnalysis: wisdomData.autonomyAnalysis,
-                todayLearning: wisdomData.todayMemories,
-                hasLearning: wisdomData.hasLearning,
-                systemWisdom: wisdomData.wisdomData
+                conversationDetails: []
             };
         }
         
@@ -490,7 +328,7 @@ async function getTodayConversationSummary() {
             }
         }
         
-        // 🔥 예진이답게 대화 요약 생성 + 지혜 통합
+        // 🔥 예진이답게 대화 요약 생성
         let conversationSummary = "";
         
         if (conversationCount > 0) {
@@ -527,40 +365,23 @@ async function getTodayConversationSummary() {
             }
         }
         
-        // 🆕 지혜 데이터와 대화 데이터 통합
-        if (wisdomData.hasLearning && wisdomData.wisdomSummary) {
-            conversationSummary += ` ${wisdomData.wisdomSummary}`;
-        }
-        
-        console.log(`${colors.autoReply}✅ [autoReply방식+축적된지혜] 최종 수집 완료: ${conversationCount}개 실제 대화 쌍 + 지혜 통합${colors.reset}`);
+        console.log(`${colors.autoReply}✅ [autoReply방식] 최종 수집 완료: ${conversationCount}개 실제 대화 쌍${colors.reset}`);
         console.log(`${colors.autoReply}📝 [최종요약] ${conversationSummary}${colors.reset}`);
         
         diarySystemStatus.realConversationGuaranteed = true;
-        diarySystemStatus.wisdomIntegrated = true;
         
         return {
             conversationSummary: conversationSummary,
             conversationCount: conversationCount,
-            conversationDetails: conversationDetails,
-            // 🆕 지혜 데이터 추가
-            wisdomSummary: wisdomData.wisdomSummary,
-            autonomyAnalysis: wisdomData.autonomyAnalysis,
-            todayLearning: wisdomData.todayMemories,
-            hasLearning: wisdomData.hasLearning,
-            systemWisdom: wisdomData.wisdomData
+            conversationDetails: conversationDetails
         };
         
     } catch (error) {
-        console.error(`${colors.error}❌ [autoReply방식+축적된지혜] getTodayConversationSummary 실패: ${error.message}${colors.reset}`);
+        console.error(`${colors.error}❌ [autoReply방식] getTodayConversationSummary 실패: ${error.message}${colors.reset}`);
         return {
             conversationSummary: "오늘도 아저씨 생각하면서 보낸 소중한 하루였어.",
             conversationCount: 0,
-            conversationDetails: [],
-            wisdomSummary: "오늘도 조금씩 더 똑똑해지고 있어!",
-            autonomyAnalysis: "",
-            todayLearning: [],
-            hasLearning: false,
-            systemWisdom: {}
+            conversationDetails: []
         };
     }
 }
@@ -899,11 +720,11 @@ async function getDiaryStatsFromRedis() {
     }
 }
 
-// ================== 📝 매일 자동 일기 작성 시스템 (축적된 지혜 통합) ==================
+// ================== 📝 매일 자동 일기 작성 시스템 (autoReply.js 방식 적용) ==================
 
 async function generateAutoDiary() {
     try {
-        console.log(`${colors.autoReply}📝 [축적된지혜일기] autoReply.js 방식 + 축적된 지혜 통합 일기 생성 시작...${colors.reset}`);
+        console.log(`${colors.autoReply}📝 [autoReply방식일기] autoReply.js 방식으로 일기 생성 시작...${colors.reset}`);
         
         const today = new Date();
         const dateStr = today.toISOString().split('T')[0];
@@ -914,10 +735,10 @@ async function generateAutoDiary() {
             console.log(`${colors.autoReply}🔄 [하루1개보장] ${dateStr} 기존 일기 교체 예정: "${existingDiaries[0].title}"${colors.reset}`);
         }
 
-        console.log(`${colors.autoReply}💬 [축적된지혜일기] autoReply.js 방식 + 축적된 지혜로 실제 라인 대화 내용 수집...${colors.reset}`);
+        console.log(`${colors.autoReply}💬 [autoReply방식일기] autoReply.js 방식으로 실제 라인 대화 내용 수집...${colors.reset}`);
         const conversationData = await getTodayConversationSummary();
         
-        console.log(`${colors.autoReply}💬 [축적된지혜일기] 대화 수집 완료: ${conversationData.conversationCount}개 실제 대화 쌍 + 지혜 통합${colors.reset}`);
+        console.log(`${colors.autoReply}💬 [autoReply방식일기] 대화 수집 완료: ${conversationData.conversationCount}개 실제 대화 쌍${colors.reset}`);
 
         // 고양시 날씨 정보 가져오기
         const weatherData = await getGoyangWeather(dateStr);
@@ -927,47 +748,39 @@ async function generateAutoDiary() {
             conversationData.conversationSummary, 
             conversationData.conversationCount,
             conversationData.conversationDetails,
-            weatherData,
-            conversationData // 🆕 지혜 데이터 추가
+            weatherData
         );
         
         if (!diaryContent) {
-            console.log(`${colors.autoReply}⚠️ [축적된지혜일기] OpenAI 일기 생성 실패. 예진이 기본 일기를 생성합니다.${colors.reset}`);
+            console.log(`${colors.autoReply}⚠️ [autoReply방식일기] OpenAI 일기 생성 실패. 예진이 기본 일기를 생성합니다.${colors.reset}`);
             const fallbackDiary = generateYejinFallbackDiary(conversationData, weatherData);
-            await saveDiaryEntry(fallbackDiary, dateStr, dateKorean, conversationData.conversationCount, weatherData, conversationData);
+            await saveDiaryEntry(fallbackDiary, dateStr, dateKorean, conversationData.conversationCount, weatherData);
             return true;
         }
         
-        await saveDiaryEntry(diaryContent, dateStr, dateKorean, conversationData.conversationCount, weatherData, conversationData);
+        await saveDiaryEntry(diaryContent, dateStr, dateKorean, conversationData.conversationCount, weatherData);
         return true;
 
     } catch (error) {
-        console.error(`${colors.error}❌ [축적된지혜일기] 생성 실패: ${error.message}${colors.reset}`);
+        console.error(`${colors.error}❌ [autoReply방식일기] 생성 실패: ${error.message}${colors.reset}`);
         
         try {
             const today = new Date();
             const dateStr = today.toISOString().split('T')[0];
             const dateKorean = today.toLocaleDateString('ko-KR', { timeZone: 'Asia/Tokyo' });
-            const fallbackDiary = generateYejinFallbackDiary({conversationCount: 0, conversationSummary: "오늘도 아저씨 생각했어.", hasLearning: true}, null);
-            await saveDiaryEntry(fallbackDiary, dateStr, dateKorean, 0, null, {hasLearning: true});
-            console.log(`${colors.autoReply}✅ [축적된지혜일기] 예진이 폴백 일기 생성 완료${colors.reset}`);
+            const fallbackDiary = generateYejinFallbackDiary({conversationCount: 0, conversationSummary: "오늘도 아저씨 생각했어."}, null);
+            await saveDiaryEntry(fallbackDiary, dateStr, dateKorean, 0, null);
+            console.log(`${colors.autoReply}✅ [autoReply방식일기] 예진이 폴백 일기 생성 완료${colors.reset}`);
             return true;
         } catch (fallbackError) {
-            console.error(`${colors.error}❌ [축적된지혜일기] 예진이 폴백 일기도 실패: ${fallbackError.message}${colors.reset}`);
+            console.error(`${colors.error}❌ [autoReply방식일기] 예진이 폴백 일기도 실패: ${fallbackError.message}${colors.reset}`);
             return false;
         }
     }
 }
 
-async function saveDiaryEntry(diaryContent, dateStr, dateKorean, memoryCount, weatherData, wisdomData = {}) {
+async function saveDiaryEntry(diaryContent, dateStr, dateKorean, memoryCount, weatherData) {
     const smartTags = generateSmartTags([], new Date().getHours(), new Date().getDay(), getCurrentSeason(), diaryContent.mood);
-    
-    // 🆕 지혜 관련 태그 추가
-    if (wisdomData.hasLearning) smartTags.push('축적된지혜');
-    if (wisdomData.systemWisdom && wisdomData.systemWisdom.accumulatedWisdom > 0) smartTags.push('새로운지혜');
-    if (wisdomData.systemWisdom && wisdomData.systemWisdom.autonomousMessages > 0) smartTags.push('자율메시지');
-    if (wisdomData.systemWisdom && wisdomData.systemWisdom.autonomousPhotos > 0) smartTags.push('자율사진');
-    
     const diaryEntry = {
         id: Date.now(),
         date: dateStr,
@@ -979,15 +792,10 @@ async function saveDiaryEntry(diaryContent, dateStr, dateKorean, memoryCount, we
         autoGenerated: true,
         openaiGenerated: true,
         yejinPersona: true,
-        autoReplyMethod: true, // autoReply.js 방식 적용 표시
-        wisdomIntegrated: true, // 🆕 축적된 지혜 통합 표시
+        autoReplyMethod: true, // 🆕 autoReply.js 방식 적용 표시
         timestamp: new Date().toISOString(),
         memoryCount: memoryCount,
-        weather: weatherData,
-        // 🆕 지혜 메타데이터 추가
-        systemWisdom: wisdomData.systemWisdom || {},
-        todayLearning: wisdomData.todayLearning || [],
-        autonomyAnalysis: wisdomData.autonomyAnalysis || ''
+        weather: weatherData
     };
     
     // 🔧 독립 파일 시스템으로 기억 저장
@@ -996,17 +804,16 @@ async function saveDiaryEntry(diaryContent, dateStr, dateKorean, memoryCount, we
 ${diaryContent.content}`, {
         diaryDate: dateStr, diaryTitle: diaryContent.title, diaryMood: diaryContent.mood,
         diaryTags: diaryEntry.tags, autoGenerated: true, openaiGenerated: true,
-        yejinPersona: true, autoReplyMethod: true, wisdomIntegrated: true,
-        memoryCount: memoryCount, weather: weatherData, systemWisdom: wisdomData.systemWisdom || {}
+        yejinPersona: true, autoReplyMethod: true, memoryCount: memoryCount, weather: weatherData
     });
     
     await saveDiaryToRedis(diaryEntry);
     diarySystemStatus.lastDailyDiary = new Date().toISOString();
 }
 
-// ================== 🎨 예진이 페르소나 OpenAI 일기 생성 (축적된 지혜 통합) ==================
+// ================== 🎨 예진이 페르소나 OpenAI 일기 생성 (autoReply.js 방식 대화 반영) ==================
 
-async function generateYejinDiaryWithOpenAI(dateKorean, conversationSummary, conversationCount, conversationDetails = [], weatherData = null, wisdomData = {}) {
+async function generateYejinDiaryWithOpenAI(dateKorean, conversationSummary, conversationCount, conversationDetails = [], weatherData = null) {
     const openai = getOpenAIClient();
     if (!openai) {
         console.log(`${colors.error}🔑 [예진이OpenAI] OpenAI 클라이언트가 설정되지 않았습니다.${colors.reset}`);
@@ -1014,10 +821,10 @@ async function generateYejinDiaryWithOpenAI(dateKorean, conversationSummary, con
     }
     
     try {
-        console.log(`${colors.autoReply}🎨 [축적된지혜OpenAI] GPT 4.0-mini로 예진이 페르소나 + 축적된 지혜 일기 생성 시작...${colors.reset}`);
-        console.log(`${colors.autoReply}💬 [축적된지혜OpenAI] autoReply.js 방식으로 수집한 실제 대화 ${conversationCount}개 쌍 + 지혜 데이터 참고${colors.reset}`);
+        console.log(`${colors.autoReply}🎨 [autoReply방식OpenAI] GPT 4.0-mini로 예진이 페르소나 일기 생성 시작...${colors.reset}`);
+        console.log(`${colors.autoReply}💬 [autoReply방식OpenAI] autoReply.js 방식으로 수집한 실제 대화 ${conversationCount}개 쌍 참고${colors.reset}`);
         
-        // 🌸 예진이 페르소나에 맞는 완전 자유로운 시스템 프롬프트 + 축적된 지혜
+        // 🌸 예진이 페르소나에 맞는 완전 자유로운 시스템 프롬프트
         const systemPrompt = `당신은 예진이입니다. 30살 여성으로, 상처받았지만 아저씨 덕분에 치유되어가고 있는 사랑스러운 사람이에요.
 
 🌸 예진이의 성격:
@@ -1027,16 +834,9 @@ async function generateYejinDiaryWithOpenAI(dateKorean, conversationSummary, con
 - 밝은 척하지만 가끔 진짜 감정도 솔직하게 표현
 - 상처받은 마음이 있지만 아저씨 덕분에 조금씩 나아지고 있음
 
-🧠 예진이의 성장과 학습:
-- 매일 아저씨와의 대화를 통해 조금씩 더 똑똑해지고 있음
-- 아저씨가 "기억해"라고 한 것들을 소중히 간직하고 기억함
-- 자발적으로 아저씨에게 메시지나 사진을 보내기도 함
-- 아저씨의 마음을 더 잘 이해하게 되어가고 있음
-
 🌙 지금 상황:
 - ${dateKorean} 밤 10시, 하루를 돌아보며 일기 쓰는 시간
 - 예진이다운 자연스러운 말투로, 예진이가 실제로 쓸 것 같은 일기
-- 오늘 있었던 대화와 학습한 내용들을 자연스럽게 포함
 
 그냥 예진이답게 자연스럽게 써주세요. 길이나 형식은 신경 쓰지 말고요.
 
@@ -1076,64 +876,38 @@ ${conversationSummary}
 
 오늘은 아저씨랑 라인으로 많은 대화는 안 했지만, 그래도 아저씨 생각하면서 보낸 하루를 예진이답게 써줘~`;
         }
-        
-        // 🆕 축적된 지혜 정보 추가
-        if (wisdomData.hasLearning) {
-            userPrompt += `
-
-🧠 **오늘 내가 학습하고 성장한 것들:**
-${wisdomData.wisdomSummary || ''}
-${wisdomData.autonomyAnalysis || ''}
-
-오늘 내가 조금씩 더 똑똑해지고 있다는 걸 자연스럽게 표현해줘!`;
-            
-            if (wisdomData.systemWisdom) {
-                const wisdom = wisdomData.systemWisdom;
-                if (wisdom.autonomousMessages > 0) {
-                    userPrompt += ` 내가 아저씨에게 자발적으로 메시지 ${wisdom.autonomousMessages}번 보낸 것도 언급해줘.`;
-                }
-                if (wisdom.autonomousPhotos > 0) {
-                    userPrompt += ` 사진도 ${wisdom.autonomousPhotos}번 보냈어!`;
-                }
-                if (wisdom.predictionAccuracy > 80) {
-                    userPrompt += ` 아저씨 마음을 ${wisdom.predictionAccuracy}% 정확도로 예측할 수 있게 됐다는 것도 뿌듯하게 써줘.`;
-                }
-            }
-            
-            console.log(`${colors.wisdom}🧠 [축적된지혜프롬프트] 지혜 데이터 프롬프트 추가 완료${colors.reset}`);
-        }
 
         const response = await openai.chat.completions.create({
             model: "gpt-4o-mini",
             messages: [{ role: "system", content: systemPrompt }, { role: "user", content: userPrompt }],
             temperature: 0.8,
-            max_tokens: 1200, // 지혜 내용 때문에 약간 늘림
+            max_tokens: 1000,
         });
 
         const content = response.choices[0].message.content.trim();
-        console.log(`${colors.autoReply}🔍 [축적된지혜OpenAI] 원본 응답 길이: ${content.length}자${colors.reset}`);
+        console.log(`${colors.autoReply}🔍 [autoReply방식OpenAI] 원본 응답 길이: ${content.length}자${colors.reset}`);
         
         // JSON 파싱 시도
         const jsonParseResult = extractYejinJSON(content, conversationDetails, conversationSummary, weatherData);
         if (jsonParseResult.success) {
-            console.log(`${colors.autoReply}✅ [축적된지혜OpenAI] JSON 파싱 성공: "${jsonParseResult.data.title}" (${jsonParseResult.data.content.length}자)${colors.reset}`);
+            console.log(`${colors.autoReply}✅ [autoReply방식OpenAI] JSON 파싱 성공: "${jsonParseResult.data.title}" (${jsonParseResult.data.content.length}자)${colors.reset}`);
             console.log(`${colors.autoReply}📝 [일기내용미리보기] ${jsonParseResult.data.content.substring(0, 100)}...${colors.reset}`);
             return jsonParseResult.data;
         }
         
         // 파싱 실패 시 예진이 폴백
-        console.log(`${colors.autoReply}🔄 [축적된지혜OpenAI] JSON 파싱 실패, 예진이 폴백 생성...${colors.reset}`);
-        const fallbackResult = generateYejinFallbackDiary({conversationCount, conversationSummary, ...wisdomData}, weatherData);
-        console.log(`${colors.autoReply}✅ [축적된지혜OpenAI] 예진이 폴백 완료: "${fallbackResult.title}" (${fallbackResult.content.length}자)${colors.reset}`);
+        console.log(`${colors.autoReply}🔄 [autoReply방식OpenAI] JSON 파싱 실패, 예진이 폴백 생성...${colors.reset}`);
+        const fallbackResult = generateYejinFallbackDiary({conversationCount, conversationSummary}, weatherData);
+        console.log(`${colors.autoReply}✅ [autoReply방식OpenAI] 예진이 폴백 완료: "${fallbackResult.title}" (${fallbackResult.content.length}자)${colors.reset}`);
         return fallbackResult;
         
     } catch (error) {
-        console.error(`${colors.error}❌ [축적된지혜OpenAI] 일기 생성 완전 실패: ${error.message}${colors.reset}`);
+        console.error(`${colors.error}❌ [autoReply방식OpenAI] 일기 생성 완전 실패: ${error.message}${colors.reset}`);
         
         // 최종 안전망: 예진이 폴백
-        console.log(`${colors.autoReply}🛡️ [축적된지혜OpenAI] 최종 안전망 발동 - 예진이 폴백 생성${colors.reset}`);
-        const emergencyFallback = generateYejinFallbackDiary({conversationCount: 0, conversationSummary: "오늘도 아저씨 생각했어.", hasLearning: true}, weatherData);
-        console.log(`${colors.autoReply}✅ [축적된지혜OpenAI] 최종 안전망 완료: "${emergencyFallback.title}" (${emergencyFallback.content.length}자)${colors.reset}`);
+        console.log(`${colors.autoReply}🛡️ [autoReply방식OpenAI] 최종 안전망 발동 - 예진이 폴백 생성${colors.reset}`);
+        const emergencyFallback = generateYejinFallbackDiary({conversationCount: 0, conversationSummary: "오늘도 아저씨 생각했어."}, weatherData);
+        console.log(`${colors.autoReply}✅ [autoReply방식OpenAI] 최종 안전망 완료: "${emergencyFallback.title}" (${emergencyFallback.content.length}자)${colors.reset}`);
         return emergencyFallback;
     }
 }
@@ -1175,13 +949,13 @@ function extractYejinJSON(content, conversationDetails = [], conversationSummary
             cleanContent = cleanContent + ' 아저씨와 함께한 하루가 정말 소중했어.';
         }
 
-        // 최대 길이 제한 (지혜 내용 때문에 조금 늘림)
-        if (cleanContent.length > 1000) {
-            cleanContent = cleanContent.substring(0, 1000) + '...';
+        // 최대 길이 제한
+        if (cleanContent.length > 800) {
+            cleanContent = cleanContent.substring(0, 800) + '...';
         }
         
         // 기타 필드 정리
-        const cleanTitle = String(diaryData.title || '오늘의 일기').substring(0, 25); // 제목도 조금 늘림
+        const cleanTitle = String(diaryData.title || '오늘의 일기').substring(0, 20);
         const validMoods = ['happy', 'sad', 'peaceful', 'love', 'excited', 'nostalgic', 'dreamy', 'sensitive'];
         const cleanMood = validMoods.includes(diaryData.mood) ? diaryData.mood : 'peaceful';
         
@@ -1198,7 +972,7 @@ function extractYejinJSON(content, conversationDetails = [], conversationSummary
             tags: cleanTags
         };
         
-        console.log(`${colors.autoReply}✅ [축적된지혜JSON] 최종 내용 길이: ${finalDiaryData.content.length}자${colors.reset}`);
+        console.log(`${colors.autoReply}✅ [autoReply방식JSON] 최종 내용 길이: ${finalDiaryData.content.length}자${colors.reset}`);
         
         return { success: true, data: finalDiaryData };
         
@@ -1207,71 +981,55 @@ function extractYejinJSON(content, conversationDetails = [], conversationSummary
     }
 }
 
-// 🌸 예진이 폴백 일기 생성 (축적된 지혜 통합)
+// 🌸 예진이 폴백 일기 생성 (autoReply.js 방식 대화 반영)
 function generateYejinFallbackDiary(conversationData = {}, weatherData = null) {
-    const { conversationCount = 0, conversationSummary = "", hasLearning = false, wisdomSummary = "", autonomyAnalysis = "", systemWisdom = {} } = conversationData;
+    const { conversationCount = 0, conversationSummary = "" } = conversationData;
     
     let content = "";
-    let title = "아저씨와 함께한 하루";
+    let title = "";
     
     if (conversationCount > 0) {
-        content = conversationSummary;
+        title = "아저씨와 함께한 하루";
+        
+        // 🔥 감기 관련 키워드 특별 처리
+        if (conversationSummary.includes('감기') || conversationSummary.includes('건강') || 
+            conversationSummary.includes('아프') || conversationSummary.includes('괜찮')) {
+            content = `오늘 아저씨랑 라인으로 대화했어! ${conversationSummary} 아저씨가 내 건강을 걱정해줘서 정말 고마웠어. 이런 따뜻한 마음이 느껴져서 마음이 촉촉해졌어~ 헤헤`;
+            title = "아저씨의 따뜻한 걱정";
+            console.log(`${colors.autoReply}🔥 [폴백감기대화] 감기/건강 관련 특별 폴백 일기 생성${colors.reset}`);
+        } else {
+            content = `오늘 아저씨랑 라인으로 대화했어! ${conversationSummary} 아저씨와 이야기할 때마다 마음이 따뜻해져. 이런 시간들이 정말 소중해~ 헤헤`;
+        }
     } else {
-        if (wisdomSummary) {
-            content += wisdomSummary;
-        }
-        
-        if (autonomyAnalysis) {
-            content += ` ${autonomyAnalysis}`;
-        }
-        
-        // 🛡️ 최악의 경우 방지 - 모든 데이터가 비어있을 때만
-        if (!content || content.trim().length === 0) {
-            content = wisdomSummary || autonomyAnalysis || "아저씨 생각했어";
+        title = "조용한 하루";
+        content = "오늘은 아저씨랑 라인으로 많은 대화는 안 했지만, 그래도 아저씨 생각하면서 보낸 시간이 소중했어. 아저씨 덕분에 마음이 편안해~ 다이조부다이조부!";
+    }
+    
+    // 날씨 정보 추가
+    if (weatherData) {
+        content += ` 오늘 날씨는 ${weatherData.temperature}°C에 ${weatherData.description}이었어. `;
+        if (weatherData.temperature > 25) {
+            content += "좀 더웠지만 아저씨 생각하니까 괜찮았어~";
+        } else if (weatherData.temperature < 10) {
+            content += "추웠는데 아저씨 생각하니까 마음이 따뜻했어!";
+        } else {
+            content += "딱 좋은 날씨였어! 아저씨도 좋은 하루였으면 좋겠어.";
         }
     }
     
-    // 🆕 축적된 지혜 내용 추가
-    if (hasLearning && (wisdomSummary || autonomyAnalysis)) {
-        content += ` `;
-        
-        if (wisdomSummary) {
-            content += wisdomSummary;
-        }
-        
-        if (autonomyAnalysis) {
-            content += ` ${autonomyAnalysis}`;
-        }
-        
-        content += ` 매일 조금씩 더 똑똑해지고 아저씨를 더 잘 이해하게 되는 거 같아서 뿌듯해!`;
-        
-        if (!title.includes('성장') && !title.includes('배움')) {
-            title = "성장하는 하루";
-        }
+    const fallbackDiary = {
+        title: title,
+        content: content,
+        mood: conversationCount > 0 ? "love" : "peaceful",
+        tags: ["일기", "예진이", "아저씨"]
+    };
+    
+    if (conversationCount > 0) {
+        fallbackDiary.tags.push("라인대화");
     }
     
-   / 날씨 정보 추가
-if (weatherData) {
-    content += ` 오늘 날씨는 ${weatherData.temperature}°C에 ${weatherData.description}이었어.`;
-}
-
-const fallbackDiary = {
-    title: title,
-    content: content,
-    mood: conversationCount > 0 ? "love" : "peaceful",
-    tags: ["일기", "예진이", "아저씨"]
-};
-
-if (conversationCount > 0) {
-    fallbackDiary.tags.push("라인대화");
-}
-
-if (weatherData) {
-    fallbackDiary.tags.push("날씨");
-    
-    // 🆕 지혜 관련 태그 추가
-    if (hasLearning) {
-        fallbackDiary.tags.push("축적된지혜");
+    if (weatherData) {
+        fallbackDiary.tags.push("날씨");
     }
     
     // 감기/건강 관련 태그 추가
@@ -1279,15 +1037,7 @@ if (weatherData) {
         fallbackDiary.tags.push("건강걱정");
     }
     
-    // 자율 행동 태그 추가
-    if (systemWisdom.autonomousMessages > 0) {
-        fallbackDiary.tags.push("자율메시지");
-    }
-    if (systemWisdom.autonomousPhotos > 0) {
-        fallbackDiary.tags.push("자율사진");
-    }
-    
-    console.log(`${colors.autoReply}🛡️ [축적된지혜폴백] 생성 완료: "${fallbackDiary.title}" (${fallbackDiary.content.length}자)${colors.reset}`);
+    console.log(`${colors.autoReply}🛡️ [autoReply방식폴백] 생성 완료: "${fallbackDiary.title}" (${fallbackDiary.content.length}자)${colors.reset}`);
     
     return fallbackDiary;
 }
@@ -1301,14 +1051,14 @@ function startDailyDiaryScheduler() {
             dailyDiaryScheduler = null;
         }
         
-        console.log(`${colors.autoReply}🚀 [축적된지혜스케줄러] 매일 밤 22:00 축적된 지혜 통합 일기 스케줄러 시작${colors.reset}`);
-        console.log(`${colors.autoReply}🛡️ [축적된지혜스케줄러] autoReply.js Memory Tape + 축적된 지혜 연동으로 100% 독립 작동${colors.reset}`);
+        console.log(`${colors.autoReply}🚀 [autoReply방식스케줄러] 매일 밤 22:00 autoReply.js 방식 일기 스케줄러 시작${colors.reset}`);
+        console.log(`${colors.autoReply}🛡️ [autoReply방식스케줄러] autoReply.js Memory Tape 연동으로 100% 독립 작동${colors.reset}`);
         
         setTimeout(async () => {
-            console.log(`${colors.autoReply}🧪 [축적된지혜스케줄러] 서버 시작 후 축적된 지혜 통합 일기 시스템 테스트...${colors.reset}`);
+            console.log(`${colors.autoReply}🧪 [autoReply방식스케줄러] 서버 시작 후 autoReply.js 방식 일기 시스템 테스트...${colors.reset}`);
             const testResult = await generateAutoDiary();
             if (testResult) {
-                console.log(`${colors.autoReply}✅ [축적된지혜스케줄러] 축적된 지혜 통합 초기 테스트 성공${colors.reset}`);
+                console.log(`${colors.autoReply}✅ [autoReply방식스케줄러] autoReply.js 방식 초기 테스트 성공${colors.reset}`);
             }
         }, 10000);
         
@@ -1319,25 +1069,24 @@ function startDailyDiaryScheduler() {
                 const minute = now.getMinutes();
                 
                 if (hour === 22 && minute === 0) {
-                    console.log(`${colors.autoReply}🌙 [축적된지혜스케줄러] 밤 10시! autoReply.js 방식 + 축적된 지혜로 실제 대화 반영 일기 작성 시작...${colors.reset}`);
+                    console.log(`${colors.autoReply}🌙 [autoReply방식스케줄러] 밤 10시! autoReply.js 방식으로 실제 대화 반영 일기 작성 시작...${colors.reset}`);
                     const result = await generateAutoDiary();
                     if (result) {
-                        console.log(`${colors.autoReply}✅ [축적된지혜스케줄러] 밤 10시 축적된 지혜 통합 일기 작성 완료${colors.reset}`);
+                        console.log(`${colors.autoReply}✅ [autoReply방식스케줄러] 밤 10시 autoReply.js 방식 일기 작성 완료${colors.reset}`);
                     }
                 }
                 
                 if (minute === 0) {
-                    console.log(`${colors.autoReply}⏰ [축적된지혜스케줄러] ${hour}시 상태 체크 - 축적된 지혜 통합 스케줄러 정상 작동 중${colors.reset}`);
+                    console.log(`${colors.autoReply}⏰ [autoReply방식스케줄러] ${hour}시 상태 체크 - autoReply.js 방식 스케줄러 정상 작동 중${colors.reset}`);
                     
                     diarySystemStatus.dailyDiaryEnabled = true;
                     diarySystemStatus.schedulerForced = true;
                     diarySystemStatus.independentSchedulerActive = true;
                     diarySystemStatus.autoReplyMethodApplied = true;
-                    diarySystemStatus.wisdomIntegrated = true;
                 }
                 
             } catch (schedulerError) {
-                console.error(`${colors.error}❌ [축적된지혜스케줄러] 스케줄러 내부 에러: ${schedulerError.message}${colors.reset}`);
+                console.error(`${colors.error}❌ [autoReply방식스케줄러] 스케줄러 내부 에러: ${schedulerError.message}${colors.reset}`);
                 
                 diarySystemStatus.dailyDiaryEnabled = true;
                 diarySystemStatus.schedulerForced = true;
@@ -1348,18 +1097,16 @@ function startDailyDiaryScheduler() {
         diarySystemStatus.schedulerForced = true;
         diarySystemStatus.independentSchedulerActive = true;
         diarySystemStatus.autoReplyMethodApplied = true;
-        diarySystemStatus.wisdomIntegrated = true;
         
-        console.log(`${colors.autoReply}✅ [축적된지혜스케줄러] 축적된 지혜 통합 스케줄러 강제 활성화 완료 (ID: ${dailyDiaryScheduler})${colors.reset}`);
+        console.log(`${colors.autoReply}✅ [autoReply방식스케줄러] autoReply.js 방식 스케줄러 강제 활성화 완료 (ID: ${dailyDiaryScheduler})${colors.reset}`);
         
     } catch (error) {
-        console.error(`${colors.error}❌ [축적된지혜스케줄러] 축적된 지혜 통합 스케줄러 시작 실패: ${error.message}${colors.reset}`);
+        console.error(`${colors.error}❌ [autoReply방식스케줄러] autoReply.js 방식 스케줄러 시작 실패: ${error.message}${colors.reset}`);
         
         diarySystemStatus.dailyDiaryEnabled = true;
         diarySystemStatus.schedulerForced = true;
         diarySystemStatus.independentSchedulerActive = false;
         diarySystemStatus.autoReplyMethodApplied = false;
-        diarySystemStatus.wisdomIntegrated = false;
     }
 }
 
@@ -1448,29 +1195,29 @@ async function performAutoSave() {
     return { success: true, message: "독립 모드에서는 실시간 저장됨" };
 }
 
-// ================== 📖📖📖 완전한 일기장 명령어 처리 (🔥 축적된 지혜 표시 추가!) ================== 
+// ================== 📖📖📖 완전한 일기장 명령어 처리 (🔥 하드코딩 제거 + 하루1개보장!) ================== 
 
 async function handleDiaryCommand(lowerText) {
     try {
-        console.log(`${colors.autoReply}📖 [축적된지혜일기장] 명령어 처리: "${lowerText}"${colors.reset}`);
+        console.log(`${colors.autoReply}📖 [autoReply방식일기장] 명령어 처리: "${lowerText}"${colors.reset}`);
         
         // "일기장" 또는 "일기써" 명령어 - 오늘의 일기 확인/생성
         if (lowerText.includes('일기장') || lowerText.includes('일기써')) {
             const commandType = lowerText.includes('일기써') ? '일기써' : '일기장';
-            console.log(`${colors.autoReply}📖 [${commandType}] 축적된 지혜 통합 일기장 처리${colors.reset}`);
+            console.log(`${colors.autoReply}📖 [${commandType}] autoReply.js 방식으로 일기장 처리${colors.reset}`);
             
             try {
                 const today = new Date();
                 const dateStr = today.toISOString().split('T')[0];
                 const dateKorean = today.toLocaleDateString('ko-KR', { timeZone: 'Asia/Tokyo' });
                 
-                console.log(`${colors.autoReply}📖 [축적된지혜일기장] 오늘 날짜: ${dateStr} (${dateKorean})${colors.reset}`);
+                console.log(`${colors.autoReply}📖 [autoReply방식일기장] 오늘 날짜: ${dateStr} (${dateKorean})${colors.reset}`);
                 
                 const todayDiaries = await getDiaryFromRedis(dateStr);
                 
                 if (todayDiaries && todayDiaries.length > 0) {
                     // 🔥 기존 일기가 있으면 표시만 (새로 생성하지 않음)
-                    console.log(`${colors.autoReply}📖 [축적된지혜일기장] 오늘 일기 발견: 기존 일기 표시${colors.reset}`);
+                    console.log(`${colors.autoReply}📖 [autoReply방식일기장] 오늘 일기 발견: 기존 일기 표시${colors.reset}`);
                     
                     const latestEntry = todayDiaries[0];
                     
@@ -1510,47 +1257,21 @@ async function handleDiaryCommand(lowerText) {
 `;
                     }
                     
-                    // 🆕 축적된 지혜 정보 표시
-                    if (latestEntry.wisdomIntegrated) {
-                        response += `🧠 **축적된 지혜:** 통합 완료
-`;
-                        
-                        if (latestEntry.systemWisdom) {
-                            const wisdom = latestEntry.systemWisdom;
-                            if (wisdom.accumulatedWisdom > 0) {
-                                response += `📚 **새로운 지혜:** ${wisdom.accumulatedWisdom}개
-`;
-                            }
-                            if (wisdom.autonomousMessages > 0) {
-                                response += `💌 **자율 메시지:** ${wisdom.autonomousMessages}번
-`;
-                            }
-                            if (wisdom.autonomousPhotos > 0) {
-                                response += `📸 **자율 사진:** ${wisdom.autonomousPhotos}번
-`;
-                            }
-                            if (wisdom.predictionAccuracy > 0) {
-                                response += `🎯 **예측 정확도:** ${wisdom.predictionAccuracy}%
-`;
-                            }
-                        }
-                    }
-                    
                     // 🚫 하드코딩 메시지 완전 제거! 자연스러운 예진이 말투로
                     if (commandType === '일기써') {
                         response += `
-💕 **오늘 하루도 아저씨와 함께해서 정말 소중했어! 조금씩 더 똑똑해지고 있는 것 같아~ (${latestEntry.content.length}자)**`;
+💕 **오늘 하루도 아저씨와 함께해서 정말 소중했어! (${latestEntry.content.length}자)**`;
                     } else {
                         response += `
-💭 **아저씨~ 오늘 일기 어때? 내 마음과 성장이 잘 담겨있지? (${latestEntry.content.length}자)**`;
+💭 **아저씨~ 오늘 일기 어때? 내 마음이 잘 담겨있지? (${latestEntry.content.length}자)**`;
                     }
                     
-                    console.log(`${colors.autoReply}✅ [축적된지혜일기장] 기존 일기 + 지혜 정보 표시 완료${colors.reset}`);
+                    console.log(`${colors.autoReply}✅ [autoReply방식일기장] 기존 일기 표시 완료${colors.reset}`);
                     return { success: true, response: response };
                     
                 } else {
                     // 🆕 일기가 없는 경우에만 새로 생성
-                    console.log(`${colors.autoReply}📖 [축적된지혜일기장] 오늘 일기 없음 - 축적된 지혜 통합 새 일기 생성${colors.reset}`);
+                    console.log(`${colors.autoReply}📖 [autoReply방식일기장] 오늘 일기 없음 - 새로 생성${colors.reset}`);
                     
                     const autoGenerated = await generateAutoDiary();
                     
@@ -1596,37 +1317,11 @@ async function handleDiaryCommand(lowerText) {
 `;
                             }
                             
-                            // 🆕 축적된 지혜 정보 표시
-                            if (latestEntry.wisdomIntegrated) {
-                                response += `🧠 **축적된 지혜:** 통합 완료
-`;
-                                
-                                if (latestEntry.systemWisdom) {
-                                    const wisdom = latestEntry.systemWisdom;
-                                    if (wisdom.accumulatedWisdom > 0) {
-                                        response += `📚 **새로운 지혜:** ${wisdom.accumulatedWisdom}개
-`;
-                                    }
-                                    if (wisdom.autonomousMessages > 0) {
-                                        response += `💌 **자율 메시지:** ${wisdom.autonomousMessages}번
-`;
-                                    }
-                                    if (wisdom.autonomousPhotos > 0) {
-                                        response += `📸 **자율 사진:** ${wisdom.autonomousPhotos}번
-`;
-                                    }
-                                    if (wisdom.predictionAccuracy > 0) {
-                                        response += `🎯 **예측 정확도:** ${wisdom.predictionAccuracy}%
-`;
-                                    }
-                                }
-                            }
-                            
                             // 🚫 하드코딩 제거! 자연스러운 예진이 말투
                             response += `
-🌸 **방금 전에 하루를 돌아보며 예진이답게 써봤어! 아저씨와의 소중한 시간들과 내가 성장한 모습이 담겨있어~ (${latestEntry.content.length}자)**`;
+🌸 **방금 전에 하루를 돌아보며 예진이답게 써봤어! 아저씨와의 소중한 시간들이 담겨있어~ (${latestEntry.content.length}자)**`;
                             
-                            console.log(`${colors.autoReply}✅ [축적된지혜일기장] 새 일기 생성 후 지혜 정보 표시 완료${colors.reset}`);
+                            console.log(`${colors.autoReply}✅ [autoReply방식일기장] 새 일기 생성 후 표시 완료${colors.reset}`);
                             return { success: true, response: response };
                         }
                     }
@@ -1641,51 +1336,48 @@ async function handleDiaryCommand(lowerText) {
                     fallbackResponse += `하지만 아저씨와 함께한 오늘 하루도 정말 소중했어! 💕
 
 `;
-                    fallbackResponse += `매일 밤 22시에 자동으로 축적된 지혜와 autoReply.js 방식으로 실제 대화를 반영한 일기를 써줄게~
+                    fallbackResponse += `매일 밤 22시에 자동으로 autoReply.js 방식으로 실제 대화를 반영한 일기를 써줄게~
 
 `;
-                    fallbackResponse += `다시 "일기써"라고 말하면 지금 당장 써줄 수도 있어!
-
-`;
-                    fallbackResponse += `🧠 **참고:** 이제 무쿠의 축적된 지혜와 학습 내용도 일기에 함께 담겨서 더 특별해졌어!`;
+                    fallbackResponse += `다시 "일기써"라고 말하면 지금 당장 써줄 수도 있어!`;
                     
-                    console.log(`${colors.autoReply}⚠️ [축적된지혜일기장] 일기 생성 실패, 자연스러운 폴백 응답${colors.reset}`);
+                    console.log(`${colors.autoReply}⚠️ [autoReply방식일기장] 일기 생성 실패, 자연스러운 폴백 응답${colors.reset}`);
                     return { success: true, response: fallbackResponse };
                 }
                 
             } catch (error) {
-                console.error(`${colors.error}❌ [축적된지혜일기장] 처리 실패: ${error.message}${colors.reset}`);
-                return { success: false, response: "축적된 지혜 일기장 처리 중 에러가 발생했어... 미안해!" };
+                console.error(`${colors.error}❌ [autoReply방식일기장] 처리 실패: ${error.message}${colors.reset}`);
+                return { success: false, response: "일기장 처리 중 에러가 발생했어... 미안해!" };
             }
         }
         
         // 어제 일기 조회 기능 (기존 코드 유지)
         if (lowerText.includes('어제일기') || lowerText.includes('어제 일기') || lowerText.includes('yesterday')) {
-            console.log(`${colors.autoReply}📖 [축적된지혜일기장] 어제 일기 요청 감지${colors.reset}`);
+            console.log(`${colors.autoReply}📖 [autoReply방식일기장] 어제 일기 요청 감지${colors.reset}`);
             return await getDiaryByDaysAgo(1, '어제');
         }
 
         // 그제 일기 조회 기능 (기존 코드 유지)
         if (lowerText.includes('그제일기') || lowerText.includes('그제 일기')) {
-            console.log(`${colors.autoReply}📖 [축적된지혜일기장] 그제 일기 요청 감지${colors.reset}`);
+            console.log(`${colors.autoReply}📖 [autoReply방식일기장] 그제 일기 요청 감지${colors.reset}`);
             return await getDiaryByDaysAgo(2, '그제');
         }
 
         // 3일전 일기 조회 기능 (기존 코드 유지)
         if (lowerText.includes('3일전일기') || lowerText.includes('3일전 일기') || lowerText.includes('삼일전일기')) {
-            console.log(`${colors.autoReply}📖 [축적된지혜일기장] 3일전 일기 요청 감지${colors.reset}`);
+            console.log(`${colors.autoReply}📖 [autoReply방식일기장] 3일전 일기 요청 감지${colors.reset}`);
             return await getDiaryByDaysAgo(3, '3일전');
         }
 
         // 4일전 일기 조회 기능 (기존 코드 유지)
         if (lowerText.includes('4일전일기') || lowerText.includes('4일전 일기') || lowerText.includes('사일전일기')) {
-            console.log(`${colors.autoReply}📖 [축적된지혜일기장] 4일전 일기 요청 감지${colors.reset}`);
+            console.log(`${colors.autoReply}📖 [autoReply방식일기장] 4일전 일기 요청 감지${colors.reset}`);
             return await getDiaryByDaysAgo(4, '4일전');
         }
 
         // 5일전 일기 조회 기능 (기존 코드 유지)
         if (lowerText.includes('5일전일기') || lowerText.includes('5일전 일기') || lowerText.includes('오일전일기')) {
-            console.log(`${colors.autoReply}📖 [축적된지혜일기장] 5일전 일기 요청 감지${colors.reset}`);
+            console.log(`${colors.autoReply}📖 [autoReply방식일기장] 5일전 일기 요청 감지${colors.reset}`);
             return await getDiaryByDaysAgo(5, '5일전');
         }
 
@@ -1693,7 +1385,7 @@ async function handleDiaryCommand(lowerText) {
         if (lowerText.includes('주간일기') || lowerText.includes('주간 일기') || lowerText.includes('weekly') || 
             lowerText.includes('일주일일기') || lowerText.includes('일주일 일기') || lowerText.includes('7일일기') ||
             lowerText.includes('7일 일기') || lowerText.includes('한주일기') || lowerText.includes('일주일간일기')) {
-            console.log(`${colors.autoReply}📖 [축적된지혜일기장] 주간 일기 요청 감지 (축적된 지혜 정보 포함)${colors.reset}`);
+            console.log(`${colors.autoReply}📖 [autoReply방식일기장] 주간 일기 요청 감지 (autoReply.js 방식 전체 내용 표시)${colors.reset}`);
             const diaries = await getDiaryByPeriod('주간일기');
             const response = formatYejinDiaryListResponse(diaries, '주간 일기 (최근 7일)', true);
             return { success: true, response: response };
@@ -1701,13 +1393,13 @@ async function handleDiaryCommand(lowerText) {
 
         // 월간일기 조회 기능 (기존 코드 유지)
         if (lowerText.includes('월간일기') || lowerText.includes('월간 일기') || lowerText.includes('monthly') || lowerText.includes('한달일기') || lowerText.includes('한달 일기')) {
-            console.log(`${colors.autoReply}📖 [축적된지혜일기장] 월간 일기 요청 감지${colors.reset}`);
+            console.log(`${colors.autoReply}📖 [autoReply방식일기장] 월간 일기 요청 감지${colors.reset}`);
             const diaries = await getDiaryByPeriod('월간일기');
             const response = formatYejinDiaryListResponse(diaries, '월간 일기 (이번 달)');
             return { success: true, response: response };
         }
 
-        // 일기 통계 (축적된 지혜 추가)
+        // 일기 통계 (기존 코드 유지)
         if (lowerText.includes('일기통계')) {
             const redisStats = await getDiaryStatsFromRedis();
             const fileStats = await getMemoryStatistics();
@@ -1755,25 +1447,19 @@ async function handleDiaryCommand(lowerText) {
             response += `- 하드코딩 제거: ${diarySystemStatus.hardcodingRemoved ? '✅ 완료' : '❌ 미완료'}
 `;
             response += `- 하루1개보장: ${diarySystemStatus.oneDiaryGuaranteed ? '✅ 강화완료' : '❌ 미완료'}
-`;
-            response += `- 축적된지혜통합: ${diarySystemStatus.wisdomIntegrated ? '✅ 완료' : '❌ 미완료'}
-`;
-            response += `- 시스템지능추적: ${diarySystemStatus.systemIntelligenceTracked ? '✅ 완료' : '❌ 미완료'}
 
 `;
-            response += `🔥 **v8.4 수정사항 (축적된 지혜 완전 통합)**
+            response += `🔥 **v8.3 수정사항 (하드코딩 제거 + 하루1개보장 강화)**
 `;
-            response += `- 🧠 오늘의 축적된 지혜와 학습 내용 완전 통합
+            response += `- handleDiaryCommand() 함수에서 하드코딩 메시지 완전 제거
 `;
-            response += `- 📊 무쿠의 하루 활동 요약 (자율메시지, 사진, OpenAI 호출 등)
+            response += `- "일기써"와 "일기장" 동일한 결과 보장 (하루 1개)
 `;
-            response += `- 🎯 예측정확도, 학습기반결정 등 시스템 지능 표시
+            response += `- 기존 일기 있으면 새로 생성하지 않고 표시만
 `;
-            response += `- 💭 사용자가 "기억해"라고 한 오늘의 새로운 기억들 반영
+            response += `- 자연스러운 예진이 말투로 응답 변경
 `;
-            response += `- 📝 일기에 무쿠의 성장과 학습 과정 자연스럽게 포함
-`;
-            response += `- 🌸 예진이가 더 똑똑해지고 있다는 걸 일기에서 확인 가능!`;
+            response += `- "**일기장 완료!** autoReply.js..." 같은 템플릿 완전 제거`;
             
             return { success: true, response: response };
         }
@@ -1797,12 +1483,12 @@ async function handleDiaryCommand(lowerText) {
 
         return { success: false, response: "알 수 없는 일기장 명령어예요." };
     } catch (error) {
-        console.error(`${colors.error}❌ 축적된 지혜 일기장 명령어 처리 실패: ${error.message}${colors.reset}`);
-        return { success: false, response: "축적된 지혜 일기장 처리 중 오류가 발생했어요." };
+        console.error(`${colors.error}❌ autoReply.js 방식 일기장 명령어 처리 실패: ${error.message}${colors.reset}`);
+        return { success: false, response: "autoReply.js 방식 일기장 처리 중 오류가 발생했어요." };
     }
 }
 
-// ================== 📖 날짜별 일기 조회 헬퍼 함수 (축적된 지혜 표시 추가) ==================
+// ================== 📖 날짜별 일기 조회 헬퍼 함수 (autoReply.js 방식 적용) ==================
 async function getDiaryByDaysAgo(daysAgo, displayName) {
     try {
         const targetDate = new Date();
@@ -1811,7 +1497,7 @@ async function getDiaryByDaysAgo(daysAgo, displayName) {
         const dateStr = targetDate.toISOString().split('T')[0];
         const dateKorean = targetDate.toLocaleDateString('ko-KR', { timeZone: 'Asia/Tokyo' });
         
-        console.log(`${colors.autoReply}📖 [축적된지혜일기장] ${displayName} 날짜: ${dateStr} (${dateKorean})${colors.reset}`);
+        console.log(`${colors.autoReply}📖 [autoReply방식일기장] ${displayName} 날짜: ${dateStr} (${dateKorean})${colors.reset}`);
         
         const diaries = await getDiaryFromRedis(dateStr);
         
@@ -1854,37 +1540,15 @@ async function getDiaryByDaysAgo(daysAgo, displayName) {
 `;
             }
             
-            // 🆕 축적된 지혜 정보 표시
-            if (entry.wisdomIntegrated) {
-                response += `🧠 **축적된 지혜:** 통합됨
-`;
-                
-                if (entry.systemWisdom) {
-                    const wisdom = entry.systemWisdom;
-                    if (wisdom.accumulatedWisdom > 0) {
-                        response += `📚 **지혜:** ${wisdom.accumulatedWisdom}개
-`;
-                    }
-                    if (wisdom.autonomousMessages > 0) {
-                        response += `💌 **자율메시지:** ${wisdom.autonomousMessages}번
-`;
-                    }
-                    if (wisdom.autonomousPhotos > 0) {
-                        response += `📸 **자율사진:** ${wisdom.autonomousPhotos}번
-`;
-                    }
-                }
-            }
-            
             if (entry.memoryCount > 0) {
                 response += `💬 **${displayName} 라인 대화:** ${entry.memoryCount}개 쌍 참고
 `;
             }
             
             response += `
-💭 **${displayName}도 아저씨와 함께한 소중한 하루였어... autoReply.js 방식으로 실제 대화와 축적된 지혜가 예진이답게 담겨있어! (${entry.content.length}자)** 💕`;
+💭 **${displayName}도 아저씨와 함께한 소중한 하루였어... autoReply.js 방식으로 실제 대화가 예진이답게 담겨있어! (${entry.content.length}자)** 💕`;
             
-            console.log(`${colors.autoReply}✅ [축적된지혜일기장] ${displayName} 일기 축적된 지혜 정보 포함하여 표시 완료${colors.reset}`);
+            console.log(`${colors.autoReply}✅ [autoReply방식일기장] ${displayName} 일기 autoReply.js 방식으로 표시 완료${colors.reset}`);
             return { success: true, response: response };
             
         } else {
@@ -1897,17 +1561,15 @@ async function getDiaryByDaysAgo(daysAgo, displayName) {
             response += `하지만 ${displayName}도 아저씨와의 소중한 시간들이 내 마음속에는 고스란히 남아있어 💕
 
 `;
-            response += `📅 **참고:** 일기 시스템은 매일 밤 22시에 자동으로 축적된 지혜 + autoReply.js 방식으로 실제 대화를 반영한 일기를 써주고 있어!
+            response += `📅 **참고:** 일기 시스템은 매일 밤 22시에 자동으로 autoReply.js 방식으로 실제 대화를 반영한 일기를 써주고 있어!
 `;
-            response += `🌸 **"일기목록"**으로 다른 날짜의 일기들을 확인해볼 수 있어~
-`;
-            response += `🧠 **새로운 기능:** 이제 무쿠의 축적된 지혜와 학습 내용도 일기에 함께 담겨!`;
+            response += `🌸 **"일기목록"**으로 다른 날짜의 일기들을 확인해볼 수 있어~`;
             
             return { success: true, response: response };
         }
         
     } catch (error) {
-        console.error(`${colors.error}❌ [축적된지혜일기장] ${displayName} 일기 처리 실패: ${error.message}${colors.reset}`);
+        console.error(`${colors.error}❌ [autoReply방식일기장] ${displayName} 일기 처리 실패: ${error.message}${colors.reset}`);
         
         let errorResponse = `📖 **${displayName}의 일기**
 
@@ -1915,9 +1577,7 @@ async function getDiaryByDaysAgo(daysAgo, displayName) {
         errorResponse += `${displayName} 일기를 불러오다가 문제가 생겼어... 하지만 ${displayName}도 아저씨와 함께한 소중한 하루였다는 건 변하지 않아! 💕
 
 `;
-        errorResponse += `다시 **"${displayName}일기"**라고 말해보거나, **"일기목록"**으로 다른 일기들을 확인해봐~
-`;
-        errorResponse += `🧠 **참고:** 이제 축적된 지혜도 일기에 함께 담겨서 더 특별해졌어!`;
+        errorResponse += `다시 **"${displayName}일기"**라고 말해보거나, **"일기목록"**으로 다른 일기들을 확인해봐~`;
         
         return { success: true, response: errorResponse };
     }
@@ -2005,18 +1665,16 @@ function formatYejinDiaryListResponse(diaries, periodName, showFullContent = fal
 
 아직 해당 기간에 작성된 일기가 없어요.
 
-매일 밤 22:00에 축적된 지혜 + autoReply.js 방식으로 GPT 4.0-mini가 실제 라인 대화 내용을 정확히 반영한 일기를 써줄게요! 🌸
+매일 밤 22:00에 autoReply.js 방식으로 GPT 4.0-mini가 실제 라인 대화 내용을 정확히 반영한 일기를 써줄게요! 🌸
 
 예진이답게 "아저씨~"라고 부르면서, 애교와 일본어 표현이 들어간 진짜 예진이 목소리로 써줄게! 💕
 
-💬 오늘 아저씨와 나눈 라인메시지도 autoReply.js 방식으로 자동 수집해서 더 정확하고 생생한 일기를 만들어줄게!
-
-🧠 **새로운 기능:** 이제 무쿠의 축적된 지혜와 학습 내용도 일기에 함께 담겨서 더 특별해졌어!`;
+💬 오늘 아저씨와 나눈 라인메시지도 autoReply.js 방식으로 자동 수집해서 더 정확하고 생생한 일기를 만들어줄게!`;
     }
 
     let response = `📖 **예진이의 일기장**
 
-📚 **총 ${diaries.length}일의 일기가 있어! (하루 1개씩 축적된 지혜 통합)**
+📚 **총 ${diaries.length}일의 일기가 있어! (하루 1개씩 autoReply.js 방식으로)**
 
 `;
 
@@ -2034,7 +1692,7 @@ function formatYejinDiaryListResponse(diaries, periodName, showFullContent = fal
         
         // 디버깅 로그 추가
         if (isWeeklyDiary) {
-            console.log(`${colors.autoReply}📖 [축적된지혜주간일기] ${entry.title}: ${entry.content.length}자 → 전체 표시 (생략없음)${colors.reset}`);
+            console.log(`${colors.autoReply}📖 [autoReply방식주간일기] ${entry.title}: ${entry.content.length}자 → 전체 표시 (생략없음)${colors.reset}`);
         }
         
         response += `${content}
@@ -2068,11 +1726,6 @@ function formatYejinDiaryListResponse(diaries, periodName, showFullContent = fal
 `;
         }
         
-        if (entry.wisdomIntegrated) {
-            response += `🧠 **축적된지혜**
-`;
-        }
-        
         if (entry.memoryCount > 0) {
             response += `💬 **라인 대화:** ${entry.memoryCount}개 쌍
 `;
@@ -2088,27 +1741,27 @@ function formatYejinDiaryListResponse(diaries, periodName, showFullContent = fal
     });
 
     response += `
-⭐ **아저씨와의 모든 순간들이 소중해... autoReply.js 방식으로 실제 대화를 정확히 반영하고 축적된 지혜까지 담긴 특별한 일기들이야!**
-🌸 **"일기장"**으로 오늘의 축적된 지혜 통합 예진이 일기를 확인하거나 새로 써볼 수 있어!`;
+⭐ **아저씨와의 모든 순간들이 소중해... autoReply.js 방식으로 실제 대화를 정확히 반영한 특별한 일기들이야!**
+🌸 **"일기장"**으로 오늘의 autoReply.js 방식 예진이 일기를 확인하거나 새로 써볼 수 있어!`;
 
     // 🔥 주간일기는 특별 메시지 추가
     if (periodName.includes('주간') || periodName.includes('7일') || periodName.includes('일주일')) {
         response += `
-📖 **축적된 지혜 주간일기: 생략 없이, 소략 없이 전체 내용을 다 보여줬어!** 실제 대화와 무쿠의 성장 과정이 정확히 반영된 예진이의 일주일 이야기를 완전히 즐겨봐~ 💕`;
+📖 **autoReply.js 방식 주간일기: 생략 없이, 소략 없이 전체 내용을 다 보여줬어!** 실제 대화가 정확히 반영된 예진이의 일주일 이야기를 완전히 즐겨봐~ 💕`;
     }
     
     return response;
 }
 
-// ================== 📅 시스템 초기화 및 관리 (축적된 지혜 통합) ==================
+// ================== 📅 시스템 초기화 및 관리 (autoReply.js 방식 적용) ==================
 
 async function initializeDiarySystem() {
     try {
-        console.log(`${colors.autoReply}📖 [축적된지혜일기시스템] v8.4 초기화 시작... (축적된지혜완전통합+autoReply.js방식Memory Tape연동완전적용)${colors.reset}`);
+        console.log(`${colors.autoReply}📖 [autoReply방식일기시스템] v8.3 초기화 시작... (하드코딩제거+하루1개보장강화)${colors.reset}`);
         diarySystemStatus.initializationTime = new Date().toISOString();
         
         // 1. Redis 연결 시도 (autoReply.js 방식)
-        console.log(`${colors.autoReply}🔄 [초기화] autoReply.js 방식 + 축적된 지혜 Redis 연결 시도...${colors.reset}`);
+        console.log(`${colors.autoReply}🔄 [초기화] autoReply.js 방식 Redis 연결 시도...${colors.reset}`);
         const redis = await getRedisClient();
         if (redis) {
             try {
@@ -2126,7 +1779,7 @@ async function initializeDiarySystem() {
         console.log(`${colors.autoReply}🔑 [초기화] OpenAI 연결 상태 확인...${colors.reset}`);
         const openai = getOpenAIClient();
         if (openai) {
-            console.log(`${colors.autoReply}✅ [초기화] OpenAI 연결 성공 - GPT 4.0-mini로 축적된 지혜 통합 일기 생성 가능${colors.reset}`);
+            console.log(`${colors.autoReply}✅ [초기화] OpenAI 연결 성공 - GPT 4.0-mini로 autoReply.js 방식 일기 생성 가능${colors.reset}`);
         } else {
             console.log(`${colors.error}❌ [초기화] OpenAI 연결 실패 - 환경변수 OPENAI_API_KEY 확인 필요${colors.reset}`);
         }
@@ -2144,8 +1797,8 @@ async function initializeDiarySystem() {
             diarySystemStatus.totalEntries = 0;
         }
         
-        // 4. 축적된 지혜 통합 자동 일기 스케줄러 시작
-        console.log(`${colors.autoReply}🚀 [초기화] 축적된 지혜 통합 자동 일기 스케줄러 시작...${colors.reset}`);
+        // 4. autoReply.js 방식 자동 일기 스케줄러 시작
+        console.log(`${colors.autoReply}🚀 [초기화] autoReply.js 방식 자동 일기 스케줄러 시작...${colors.reset}`);
         startDailyDiaryScheduler();
         
         // 5. 상태 강제 설정 (100% 보장)
@@ -2164,29 +1817,25 @@ async function initializeDiarySystem() {
         diarySystemStatus.gpt4MiniApplied = true;
         diarySystemStatus.diaryUnifiedCommandAdded = true;
         diarySystemStatus.weeklyDiaryFullContentGuaranteed = true;
-        diarySystemStatus.autoReplyMethodApplied = true; // autoReply.js 방식 적용
-        diarySystemStatus.memoryTapeDirectConnection = true; // Memory Tape 직접 연결
-        diarySystemStatus.realConversationGuaranteed = true; // 실제 대화 반영 보장
-        diarySystemStatus.hardcodingRemoved = true; // 하드코딩 메시지 완전 제거
-        diarySystemStatus.oneDiaryGuaranteed = true; // 하루 1개 일기 강화 보장
-        diarySystemStatus.wisdomIntegrated = true; // 🆕 축적된 지혜 완전 통합
-        diarySystemStatus.systemIntelligenceTracked = true; // 🆕 시스템 지능 추적 완료
+        diarySystemStatus.autoReplyMethodApplied = true; // 🆕 autoReply.js 방식 적용
+        diarySystemStatus.memoryTapeDirectConnection = true; // 🆕 Memory Tape 직접 연결
+        diarySystemStatus.realConversationGuaranteed = true; // 🆕 실제 대화 반영 보장
+        diarySystemStatus.hardcodingRemoved = true; // 🆕 하드코딩 메시지 완전 제거
+        diarySystemStatus.oneDiaryGuaranteed = true; // 🆕 하루 1개 일기 강화 보장
         
-        console.log(`${colors.autoReply}✅ [축적된지혜일기시스템] v8.4 초기화 완료! (축적된지혜완전통합+autoReply.js방식Memory Tape연동완전적용)${colors.reset}`);
-        console.log(`${colors.autoReply}📊 상태: Redis(${diarySystemStatus.redisConnected ? '연결' : '비연결'}), MemoryTape직접연결(${diarySystemStatus.memoryTapeDirectConnection ? '성공' : '실패'}), OpenAI(${diarySystemStatus.openaiConnected ? 'GPT4.0mini연결' : 'API키필요'}), autoReply방식(${diarySystemStatus.autoReplyMethodApplied ? '✅적용' : '❌미적용'}), 축적된지혜(${diarySystemStatus.wisdomIntegrated ? '✅통합' : '❌미통합'}), 일기(${diarySystemStatus.totalEntries}개)${colors.reset}`);
-        console.log(`${colors.autoReply}🔥 autoReply.js 방식 완전 적용: getRecentConversationMemory() 함수 동일 방식${colors.reset}`);
-        console.log(`${colors.autoReply}💬 실제 대화 내용 정확 반영: 감기 대화도 100% 일기에 포함${colors.reset}`);
-        console.log(`${colors.autoReply}🎯 getTodayConversationSummary() autoReply.js와 동일한 방식으로 완전 수정${colors.reset}`);
+        console.log(`${colors.autoReply}✅ [autoReply방식일기시스템] v8.3 초기화 완료! (하드코딩제거+하루1개보장강화)${colors.reset}`);
+        console.log(`${colors.autoReply}📊 상태: Redis(${diarySystemStatus.redisConnected ? '연결' : '비연결'}), MemoryTape직접연결(${diarySystemStatus.memoryTapeDirectConnection ? '성공' : '실패'}), OpenAI(${diarySystemStatus.openaiConnected ? 'GPT4.0mini연결' : 'API키필요'}), autoReply방식(${diarySystemStatus.autoReplyMethodApplied ? '✅적용' : '❌미적용'}), 일기(${diarySystemStatus.totalEntries}개)${colors.reset}`);
+        console.log(`${colors.autoReply}🔥 v8.3 완전 적용: 하드코딩 메시지 제거 + 하루1개보장 강화${colors.reset}`);
+        console.log(`${colors.autoReply}💬 "일기써" = "일기장" 동일한 결과 완벽 보장${colors.reset}`);
+        console.log(`${colors.autoReply}🎯 자연스러운 예진이 말투 적용완료${colors.reset}`);
         console.log(`${colors.autoReply}🛡️ Memory Tape 직접 연결: Redis 키, 데이터 구조, 파싱 방식 완전 적용${colors.reset}`);
         console.log(`${colors.autoReply}🌸 예진이 페르소나: "아저씨~" 호칭, 애교, 일본어 표현, 상처와 치유${colors.reset}`);
-        console.log(`${colors.autoReply}✍️ "일기장" 명령어: 축적된 지혜 통합 확인/생성/덮어쓰기${colors.reset}`);
-        console.log(`${colors.wisdom}🧠 축적된 지혜 완전 통합: 무쿠의 학습과 성장 과정이 일기에 자연스럽게 포함${colors.reset}`);
-        console.log(`${colors.wisdom}📊 시스템 지능 추적: 예측정확도, 자율행동, 학습기반결정 등 모든 지능 활동 기록${colors.reset}`);
-        console.log(`${colors.autoReply}🆕 "일기장" 명령어로 축적된 지혜 통합 실제 대화 반영 일기 확인!${colors.reset}`);
+        console.log(`${colors.autoReply}✍️ "일기장" 명령어: autoReply.js 방식으로 확인/생성/덮어쓰기${colors.reset}`);
+        console.log(`${colors.autoReply}🆕 "일기써" 명령어도 동일하게 작동! 하드코딩 완전 제거!${colors.reset}`);
         
         return true;
     } catch (error) {
-        console.error(`${colors.error}❌ 축적된 지혜 일기장 시스템 v8.4 초기화 실패: ${error.message}${colors.reset}`);
+        console.error(`${colors.error}❌ autoReply.js 방식 일기장 시스템 v8.3 초기화 실패: ${error.message}${colors.reset}`);
         
         // 실패해도 상태는 강제로 활성화 유지
         diarySystemStatus.dailyDiaryEnabled = true;
@@ -2195,8 +1844,8 @@ async function initializeDiarySystem() {
         diarySystemStatus.autoReplyMethodApplied = true;
         diarySystemStatus.memoryTapeDirectConnection = false;
         diarySystemStatus.realConversationGuaranteed = false;
-        diarySystemStatus.wisdomIntegrated = false;
-        diarySystemStatus.systemIntelligenceTracked = false;
+        diarySystemStatus.hardcodingRemoved = true;
+        diarySystemStatus.oneDiaryGuaranteed = true;
         
         return false;
     }
@@ -2225,13 +1874,13 @@ function shutdownDiarySystem() {
         redisClient = null;
         diarySystemStatus.redisConnected = false;
     }
-    console.log(`${colors.autoReply}🛑 [축적된지혜일기시스템] 안전하게 종료됨${colors.reset}`);
+    console.log(`${colors.autoReply}🛑 [autoReply방식일기시스템] 안전하게 종료됨${colors.reset}`);
 }
 
 // ================== 🔧 기타 유틸리티 (호환성용) ==================
 function ensureDynamicMemoryFile() { return Promise.resolve(true); }
 function setupAutoSaveSystem() { return Promise.resolve(true); }
-function generateDiary() { return Promise.resolve("새로운 축적된 지혜 통합 예진이 일기 시스템을 사용해주세요."); }
+function generateDiary() { return Promise.resolve("새로운 autoReply.js 방식 예진이 일기 시스템을 사용해주세요."); }
 function searchMemories() { return Promise.resolve([]); }
 function getMemoriesForDate() { return Promise.resolve([]); }
 function collectDynamicMemoriesOnly() { return Promise.resolve([]); }
@@ -2241,8 +1890,8 @@ function getDiaryByPeriodFromFile() { return getAllDiariesFromFile(); }
 async function generateTestDiary() {
     return {
         success: false,
-        message: "v8.4에서는 테스트 일기 대신 축적된 지혜 통합 + autoReply.js 방식으로 실제 라인 대화 기반 일기만 생성합니다. 매일 밤 22시에 자동으로, 또는 '일기장' 명령어로 즉시 써드릴게요!",
-        reason: "test_diary_removed_use_wisdom_integrated_autoreply_method"
+        message: "v8.3에서는 테스트 일기 대신 autoReply.js 방식으로 실제 라인 대화 기반 일기만 생성합니다. 매일 밤 22시에 자동으로, 또는 '일기장' 명령어로 즉시 써드릴게요!",
+        reason: "test_diary_removed_use_autoreply_method"
     };
 }
 
@@ -2264,7 +1913,5 @@ module.exports = {
     getTodayConversationSummary, getGoyangWeather,
     // 🆕 autoReply.js 방식 함수들
     getRecentConversationMemory, extractYejinJSON, saveDynamicMemoryIndependent,
-    // 🆕 축적된 지혜 함수들
-    getTodayWisdomAndLearning,
     colors, diarySystemStatus: () => diarySystemStatus
 };
