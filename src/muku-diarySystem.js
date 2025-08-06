@@ -2453,6 +2453,7 @@ async function generateTestDiary() {
 // ================== 📤 모듈 내보내기 ==================
 module.exports = {
     handleDiaryCommand,
+    handleCompleteWeeklyDiary,
     saveDynamicMemory: saveDynamicMemoryIndependent,
     getAllDynamicLearning, performAutoSave,
     initializeDiarySystem, initialize: initializeDiarySystem,
