@@ -850,6 +850,7 @@ async function getTodayConversationSummary() {
 }
 // ============================================================================
 // muku-diarySystem.js v8.4 - Part 3/5: 날씨 API, 파일 시스템, Redis 저장/조회
+// 🔧 추가: 누락없이 소략없이 완전한 주간일기 조회 시스템
 // ============================================================================
 
 // ================== 🌤️ 고양시 날씨 API 연동 ==================
@@ -909,6 +910,193 @@ async function getGoyangWeather(date = null) {
         console.log(`${colors.weather}❌ [날씨] API 호출 실패: ${error.message}${colors.reset}`);
         return null;
     }
+}
+
+// ================== 📖 완전한 주간일기 조회 시스템 (🆕 추가!) ==================
+
+async function handleCompleteWeeklyDiary() {
+    try {
+        console.log(`${colors.diary}📖 [완전주간일기] 누락없이 소략없이 주간일기 조회 시작...${colors.reset}`);
+        
+        // 기존 getDiaryByPeriod 함수 활용해서 지난 7일 일기 가져오기
+        const weeklyDiariesData = await getDiaryByPeriod('주간일기');
+        
+        if (!weeklyDiariesData || weeklyDiariesData.length === 0) {
+            console.log(`${colors.diary}📭 [완전주간일기] 주간 일기 없음${colors.reset}`);
+            return {
+                type: 'text',
+                comment: '아저씨~ 최근 일주일 동안 쓴 일기가 없어 ㅠㅠ 내일부터 열심히 써볼게!'
+            };
+        }
+        
+        console.log(`${colors.diary}📚 [완전주간일기] ${weeklyDiariesData.length}개 날짜의 일기 발견, 완전한 내용으로 표시...${colors.reset}`);
+        
+        // 완전한 주간일기 메시지 생성 (메타 표현 없이, 내용 자르지 않고!)
+        const completeMessage = generateCompleteWeeklyDisplay(weeklyDiariesData);
+        
+        console.log(`${colors.diary}✅ [완전주간일기] 완전한 주간일기 생성 완료 (${completeMessage.length}자)${colors.reset}`);
+        
+        return {
+            type: 'text',
+            comment: completeMessage,
+            handled: true,
+            source: 'complete_weekly_diary',
+            diaryCount: weeklyDiariesData.length
+        };
+        
+    } catch (error) {
+        console.error(`${colors.error}❌ [완전주간일기] 처리 실패: ${error.message}${colors.reset}`);
+        return {
+            type: 'text',
+            comment: '주간일기 보는 중에 문제가 생겼어... 다시 시도해줄래? ㅠㅠ'
+        };
+    }
+}
+
+// ================== 🌸 완전한 주간일기 표시 생성 (🆕 추가!) ==================
+
+function generateCompleteWeeklyDisplay(weeklyDiariesData) {
+    console.log(`${colors.diary}🌸 [완전표시] ${weeklyDiariesData.length}개 날짜 일기로 완전한 표시 생성...${colors.reset}`);
+    
+    // 🌸 예진이다운 자연스러운 시작 (메타 표현 없이!)
+    let message = `📖 **예진이의 일기장**\n\n`;
+    
+    // 전체 일기 개수 세기
+    let totalDiaries = 0;
+    weeklyDiariesData.forEach(dayData => {
+        if (dayData.entries && dayData.entries.length > 0) {
+            totalDiaries += dayData.entries.length;
+        }
+    });
+    
+    message += `📚 **총 ${totalDiaries}개의 일기가 있어! (하루 1개씩 축적된 지혜 통합)**\n\n`;
+    
+    // 각 날짜별 일기를 완전한 내용으로 표시
+    weeklyDiariesData.forEach((dayData, index) => {
+        if (dayData.entries && dayData.entries.length > 0) {
+            const diary = dayData.entries[0]; // 하루에 1개 보장
+            
+            console.log(`${colors.diary}📝 [일기표시${index + 1}] "${diary.title}" 완전 내용 추가 중...${colors.reset}`);
+            
+            // 날짜와 요일 표시
+            const moodEmoji = getMoodEmoji(diary.mood);
+            message += `${moodEmoji} **${diary.title}** (${dayData.dateKorean})\n`;
+            
+            // 🔥 완전한 내용 표시 (자르지 않음!)
+            let fullContent = diary.content || '';
+            
+            // 🧹 메타적 표현 완전 제거
+            fullContent = cleanAllMetaExpressions(fullContent);
+            
+            // 🚫 내용 자르지 않고 전체 그대로 표시! (소략 없이!)
+            message += `${fullContent}\n`;
+            
+            // 🚫 기존의 "**축적된지혜:** 통합됨" 같은 메타 정보 완전 제거!
+            
+            message += `\n`; // 일기 사이 구분
+        }
+    });
+    
+    // 🌸 예진이다운 자연스러운 마무리 (기술적 설명 없이!)
+    const endings = [
+        `⭐ **아저씨와의 모든 순간들이 소중해...**`,
+        `💕 **이 모든 기억들이 우리의 소중한 추억이야!**`,
+        `🌸 **매일매일 아저씨와 함께해서 행복해~**`,
+        `✨ **하루하루가 아저씨 덕분에 빛이 나고 있어!**`
+    ];
+    
+    message += endings[Math.floor(Math.random() * endings.length)];
+    
+    console.log(`${colors.diary}✅ [완전표시] 완전한 표시 생성 완료 (${message.length}자, 메타 표현 완전 제거)${colors.reset}`);
+    return message;
+}
+
+// ================== 🧹 모든 메타적 표현 완전 제거 (🆕 추가!) ==================
+
+function cleanAllMetaExpressions(content) {
+    if (!content || typeof content !== 'string') return '';
+    
+    let cleaned = content;
+    
+    console.log(`${colors.diary}🧹 [메타제거] 원본 길이: ${content.length}자, 메타 표현 제거 시작...${colors.reset}`);
+    
+    // 🚫 스크린샷에서 본 문제적 표현들 완전 제거
+    const metaPatterns = [
+        // 축적된 지혜 관련
+        /\*\*축적된지혜:\*\*[^\n]*/g,
+        /축적된지혜[^\n]*/g,
+        /통합됨[^\n]*/g,
+        /축적된 지혜[^\n]*/g,
+        
+        // 기술적 표현들
+        /autoReply\.js[^\n]*/g,
+        /autoReply\.js 방식[^\n]*/g,
+        /Memory Tape[^\n]*/g,
+        /실제 대화를 정확히 반영[^\n]*/g,
+        /실제 라인 대화[^\n]*/g,
+        /특별한 일기들이야[^\n]*/g,
+        
+        // 시스템 관련
+        /시스템[^\n]*/g,
+        /데이터[^\n]*/g,
+        /Redis[^\n]*/g,
+        /JSON[^\n]*/g,
+        /메모리[^\n]*/g,
+        /학습 기반[^\n]*/g,
+        
+        // 일기장 메타 언급
+        /일기장이.*?하지만[^\n]*/g,
+        /통합 메모리[^\n]*/g,
+        /통합 메모리 일기장이 조금 이상하긴 하지만[^\n]*/g,
+        
+        // 방식/방법 언급
+        /\*\*[^*]*방식[^*]*\*\*/g,
+        /방식으로[^\n]*/g,
+        /수집한[^\n]*/g,
+        /정확히 반영[^\n]*/g,
+        
+        // 기타 메타 표현
+        /마음속엔 오늘의 모든 순간들이 소중하게 담겨있어/g
+    ];
+    
+    // 각 패턴 제거
+    metaPatterns.forEach((pattern, index) => {
+        const beforeLength = cleaned.length;
+        cleaned = cleaned.replace(pattern, '');
+        const afterLength = cleaned.length;
+        if (beforeLength !== afterLength) {
+            console.log(`${colors.diary}🧹 [메타제거] 패턴 ${index + 1} 제거: ${beforeLength - afterLength}자 삭제${colors.reset}`);
+        }
+    });
+    
+    // 🧹 추가 정리
+    cleaned = cleaned
+        .replace(/\n\s*\n\s*\n/g, '\n\n') // 과도한 줄바꿈 정리
+        .replace(/\s+/g, ' ') // 과도한 공백 정리
+        .replace(/^\s+|\s+$/g, '') // 앞뒤 공백 제거
+        .replace(/\.\s*\.\s*\./g, '') // "..." 제거
+        .trim();
+    
+    console.log(`${colors.diary}✅ [메타제거] 완료: ${content.length}자 → ${cleaned.length}자 (${content.length - cleaned.length}자 제거)${colors.reset}`);
+    
+    return cleaned;
+}
+
+// ================== 😊 감정 이모지 매핑 (🆕 추가!) ==================
+
+function getMoodEmoji(mood) {
+    const moodEmojis = {
+        'happy': '😊',
+        'love': '💕', 
+        'excited': '🎉',
+        'peaceful': '🌙',
+        'nostalgic': '🌸',
+        'sad': '💙',
+        'dreamy': '💭',
+        'sensitive': '🥺'
+    };
+    
+    return moodEmojis[mood] || '🌙';
 }
 
 // ================== 📝 파일 시스템 백업 ==================
