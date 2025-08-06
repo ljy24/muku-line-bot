@@ -1202,10 +1202,10 @@ async function handleDiaryCommand(lowerText) {
     try {
         console.log(`${colors.yejin}📖 [예진이일기장] 명령어 처리: "${lowerText}"${colors.reset}`);
         
-        // "일기장" 명령어 - 오늘의 일기 확인/생성 (기존 기능 유지)
-        // 🆕 덮어쓰기 기능도 "일기장"으로 통합
-        if (lowerText.includes('일기장')) {
-            console.log(`${colors.yejin}📖 [일기장] 오늘의 예진이 일기 요청 감지 (확인/생성/덮어쓰기 통합)${colors.reset}`);
+        // "일기장" 또는 "일기써" 명령어 - 오늘의 일기 확인/생성/덮어쓰기
+        if (lowerText.includes('일기장') || lowerText.includes('일기써')) {
+            const commandType = lowerText.includes('일기써') ? '일기써' : '일기장';
+            console.log(`${colors.yejin}📖 [${commandType}] 명령어 감지 - 일기장에 저장하는 통합 처리${colors.reset}`);
             
             try {
                 const today = new Date();
