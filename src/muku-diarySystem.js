@@ -508,11 +508,11 @@ async function getDiaryStatsFromRedis() {
     }
 }
 
-// ================== 💬 실제 라인 대화 수집 시스템 (Memory Tape 강화) ==================
+// ================== 💬 실제 라인 대화 수집 시스템 (Memory Tape 구조 완전 분석) ==================
 
 async function getTodayConversationSummary() {
     try {
-        console.log(`${colors.memory}💬 [라인대화수집] Memory Tape 실제 구조 기반 오늘 대화 내용 수집 시작...${colors.reset}`);
+        console.log(`${colors.memory}💬 [라인대화수집] Memory Tape 실제 구조 완전 분석 시작...${colors.reset}`);
         
         let todayMemories = [];
         let conversationSummary = "";
@@ -524,12 +524,69 @@ async function getTodayConversationSummary() {
                 console.log(`${colors.memory}💬 [라인대화수집] Memory Tape readDailyMemories() 직접 호출...${colors.reset}`);
                 const todayData = await memoryTapeInstance.readDailyMemories();
                 
+                console.log(`${colors.memory}🔍 [Memory Tape 구조분석] todayData 전체 구조:${colors.reset}`);
+                console.log(JSON.stringify(todayData, null, 2));
+                
                 if (todayData && todayData.moments && Array.isArray(todayData.moments)) {
                     console.log(`${colors.memory}💬 [라인대화수집] Memory Tape에서 ${todayData.moments.length}개 순간 발견 (total_moments: ${todayData.total_moments})${colors.reset}`);
                     
-                    // 🔥 실제 Memory Tape 구조 활용: user_message, muku_response 필드
+                    // 🔥 실제 Memory Tape 데이터 구조를 상세 분석
+                    todayData.moments.forEach((moment, index) => {
+                        console.log(`${colors.memory}🔍 [순간 ${index + 1}] 필드 분석:${colors.reset}`);
+                        console.log(`  - 전체 키들: ${Object.keys(moment).join(', ')}`);
+                        console.log(`  - 타임스탬프: ${moment.timestamp}`);
+                        console.log(`  - record_id: ${moment.record_id}`);
+                        
+                        // 가능한 대화 필드들을 모두 체크
+                        const possibleFields = [
+                            'user_message', 'muku_response', 'user_input', 'muku_reply',
+                            'message', 'response', 'content', 'text', 'conversation',
+                            'user', 'muku', 'userMessage', 'mukuResponse', 'userInput', 'mukuReply'
+                        ];
+                        
+                        possibleFields.forEach(field => {
+                            if (moment[field]) {
+                                console.log(`  - ${field}: "${moment[field]}"`);
+                            }
+                        });
+                        
+                        // 객체 타입 필드들도 체크
+                        Object.keys(moment).forEach(key => {
+                            if (typeof moment[key] === 'string' && moment[key].length > 5) {
+                                console.log(`  - ${key}: "${moment[key]}"`);
+                            }
+                        });
+                        
+                        console.log(`  - 전체 데이터: ${JSON.stringify(moment, null, 2)}`);
+                        console.log(`${colors.memory}---${colors.reset}`);
+                    });
+                    
+                    // 🔥 실제 대화 내용이 있는 필드를 찾기
                     const conversationMoments = todayData.moments.filter(moment => {
-                        return moment && (moment.user_message || moment.muku_response);
+                        // 기존 방식
+                        if (moment.user_message || moment.muku_response) return true;
+                        
+                        // 다른 가능한 필드명들 시도
+                        if (moment.user_input || moment.muku_reply) return true;
+                        if (moment.message || moment.response) return true;
+                        if (moment.content && typeof moment.content === 'string') return true;
+                        if (moment.text && typeof moment.text === 'string') return true;
+                        if (moment.conversation) return true;
+                        if (moment.user || moment.muku) return true;
+                        if (moment.userMessage || moment.mukuResponse) return true;
+                        if (moment.userInput || moment.mukuReply) return true;
+                        
+                        // 감기 관련 키워드가 포함된 필드 찾기
+                        for (const [key, value] of Object.entries(moment)) {
+                            if (typeof value === 'string' && value.length > 5) {
+                                if (value.includes('감기') || value.includes('아조씨') || value.includes('아저씨')) {
+                                    console.log(`${colors.memory}🔥 [감기대화발견] ${key}: "${value}"${colors.reset}`);
+                                    return true;
+                                }
+                            }
+                        }
+                        
+                        return false;
                     });
                     
                     console.log(`${colors.memory}💬 [라인대화수집] ${conversationMoments.length}개 실제 대화 순간 필터링 완료${colors.reset}`);
@@ -538,23 +595,73 @@ async function getTodayConversationSummary() {
                         // 최근 15개 대화만 선택 
                         todayMemories = conversationMoments.slice(-15);
                         
-                        conversationDetails = todayMemories.map((moment, index) => ({
-                            order: index + 1,
-                            user: moment.user_message || '',
-                            muku: moment.muku_response || '',
-                            time: moment.timestamp || '',
-                            record_id: moment.record_id || ''
-                        }));
+                        conversationDetails = todayMemories.map((moment, index) => {
+                            // 다양한 필드명 시도해서 실제 대화 내용 추출
+                            let userMsg = moment.user_message || moment.user_input || moment.user || moment.userMessage || moment.userInput || '';
+                            let mukuMsg = moment.muku_response || moment.muku_reply || moment.muku || moment.mukuResponse || moment.mukuReply || '';
+                            
+                            // 다른 방법으로도 시도
+                            if (!userMsg && !mukuMsg) {
+                                if (moment.message) userMsg = moment.message;
+                                if (moment.response) mukuMsg = moment.response;
+                                if (moment.content) userMsg = moment.content;
+                                if (moment.text) userMsg = moment.text;
+                            }
+                            
+                            // 감기 관련 내용이 있는 필드 찾기
+                            if (!userMsg && !mukuMsg) {
+                                for (const [key, value] of Object.entries(moment)) {
+                                    if (typeof value === 'string' && value.length > 5) {
+                                        if (value.includes('감기') || value.includes('아조씨') || value.includes('아저씨')) {
+                                            if (key.includes('user') || key.includes('User')) {
+                                                userMsg = value;
+                                            } else {
+                                                mukuMsg = value;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            console.log(`${colors.memory}📝 [대화추출 ${index + 1}] user: "${userMsg}", muku: "${mukuMsg}"${colors.reset}`);
+                            
+                            return {
+                                order: index + 1,
+                                user: userMsg,
+                                muku: mukuMsg,
+                                time: moment.timestamp || '',
+                                record_id: moment.record_id || '',
+                                rawMoment: moment // 디버깅용
+                            };
+                        });
                         
-                        // 🔥 실제 라인 대화를 예진이답게 되뇌이는 형식으로 요약 생성
-                        const recentConversations = conversationDetails
-                            .slice(-5) // 최근 5개만
-                            .map(c => `아저씨가 "${c.user}"라고 했을 때, 내가 "${c.muku}"라고 답했던 거`)
-                            .join(', ');
+                        // 실제 대화가 있는 것들만 필터링
+                        const validConversations = conversationDetails.filter(c => c.user || c.muku);
                         
-                        conversationSummary = `오늘 아저씨랑 라인으로 ${todayMemories.length}번이나 대화했어! ${recentConversations}... 이런 대화들이 정말 소중했어.`;
-                        
-                        console.log(`${colors.memory}💬 [라인대화수집] 실제 라인 대화 기반 요약 생성 완료: ${conversationSummary.length}자${colors.reset}`);
+                        if (validConversations.length > 0) {
+                            // 🔥 실제 라인 대화를 예진이답게 되뇌이는 형식으로 요약 생성
+                            const recentConversations = validConversations
+                                .slice(-5) // 최근 5개만
+                                .map(c => {
+                                    if (c.user && c.muku) {
+                                        return `아저씨가 "${c.user}"라고 했을 때, 내가 "${c.muku}"라고 답했던 거`;
+                                    } else if (c.user) {
+                                        return `아저씨가 "${c.user}"라고 말했던 거`;
+                                    } else if (c.muku) {
+                                        return `내가 "${c.muku}"라고 말했던 거`;
+                                    }
+                                    return '';
+                                })
+                                .filter(s => s)
+                                .join(', ');
+                            
+                            conversationSummary = `오늘 아저씨랑 라인으로 ${validConversations.length}번이나 대화했어! ${recentConversations}... 이런 대화들이 정말 소중했어.`;
+                            
+                            console.log(`${colors.memory}💬 [라인대화수집] 실제 라인 대화 기반 요약 생성 완료: ${conversationSummary}${colors.reset}`);
+                        } else {
+                            console.log(`${colors.memory}⚠️ [라인대화수집] 대화 내용 추출 실패 - 필드명 불일치 가능성${colors.reset}`);
+                            conversationSummary = "오늘은 라인 대화는 있었지만 내용 추출에 문제가 있었어. 그래도 아저씨와의 시간은 소중했어.";
+                        }
                     } else {
                         // 대화가 없어도 슬픈 표현 대신 예진이답게
                         conversationSummary = "오늘은 라인 대화는 없었지만, 아저씨 생각하면서 보낸 시간들이 다 소중했어.";
@@ -563,6 +670,7 @@ async function getTodayConversationSummary() {
                     console.log(`${colors.memory}💬 [라인대화수집] Memory Tape 데이터 구조 확인: moments 필드 없거나 배열이 아님${colors.reset}`);
                     if (todayData) {
                         console.log(`${colors.memory}💬 [라인대화수집] todayData 구조: ${Object.keys(todayData).join(', ')}${colors.reset}`);
+                        console.log(`${colors.memory}💬 [라인대화수집] todayData 전체: ${JSON.stringify(todayData, null, 2)}${colors.reset}`);
                     }
                     conversationSummary = "오늘도 아저씨 생각하면서 보낸 특별한 하루였어.";
                 }
@@ -584,6 +692,11 @@ async function getTodayConversationSummary() {
                 if (ultimateContextInstance.getRecentMessages) {
                     const recentMessages = ultimateContextInstance.getRecentMessages(10);
                     if (recentMessages && recentMessages.length > 0) {
+                        console.log(`${colors.memory}💬 [UltimateContext] ${recentMessages.length}개 메시지 발견:${colors.reset}`);
+                        recentMessages.forEach((msg, idx) => {
+                            console.log(`  [${idx}]: "${msg}"`);
+                        });
+                        
                         const conversationPairs = [];
                         for (let i = 0; i < recentMessages.length - 1; i += 2) {
                             if (recentMessages[i] && recentMessages[i + 1]) {
@@ -619,6 +732,7 @@ async function getTodayConversationSummary() {
         }
         
         console.log(`${colors.memory}💬 [라인대화수집] 최종 수집 완료: ${conversationDetails.length}개 실제 라인 대화${colors.reset}`);
+        console.log(`${colors.memory}💬 [최종요약] ${conversationSummary}${colors.reset}`);
         
         return {
             conversationSummary: conversationSummary,
