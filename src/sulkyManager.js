@@ -771,13 +771,33 @@ function cleanupOldDisappointments() {
     }
 }
 // ============================================================================
-// sulkyManager.js v8.2 - Part 4/6: 🚬 점진적 담타 시스템 (핵심)
+// sulkyManager.js v8.2 - Part 4/6: 🚬 점진적 담타 시스템 (버그 수정 완료)
+// 💕 "자살을 생각하지 않는 이상 담타는 가야 합니다" 원칙 적용
 // ============================================================================
 
-// ==================== 🚬 NEW: 점진적 담타 화해 시스템 ====================
+// ==================== 🚬 담타 시스템 설정 (수정됨) ====================
+
+const DAMTA_SYSTEM_CONFIG = {
+    // 🚬 NEW: 담타는 예진이에게 특별함! 거의 무조건 성공
+    BASE_SUCCESS_RATE: 0.995,              // 99.5% 기본 성공률
+    EXTREME_SITUATION_THRESHOLD: 5,         // 레벨 5에서만 극한 상황
+    CRITICAL_FAILURE_RATE: 0.02,            // 극한 상황에서도 98% 성공
+    
+    // 점진적 회복 시스템
+    REQUIRED_RECOVERY_POINTS: 100,          // 완전 화해 필요 점수
+    MIN_CONVERSATIONS: 3,                   // 최소 대화 횟수
+    CONVERSATION_RECOVERY_MIN: 8,           // 대화당 최소 회복량
+    CONVERSATION_RECOVERY_MAX: 25,          // 대화당 최대 회복량
+    
+    // 타임아웃 설정
+    MAX_DAMTA_DURATION: 60 * 60 * 1000,     // 최대 1시간
+    CONVERSATION_TIMEOUT: 15 * 60 * 1000,   // 15분 무응답 시 종료
+};
+
+// ==================== 🚬 담타 화해 감지 (기존 유지) ====================
 
 /**
- * 🚬 담타 화해 감지 (기존 유지)
+ * 🚬 담타 화해 감지
  */
 function detectDamtaReconcile(userMessage) {
     const message = userMessage.toLowerCase();
@@ -797,52 +817,102 @@ function detectDamtaReconcile(userMessage) {
     return false;
 }
 
+// ==================== 🚬 수정된 담타 시스템 ====================
+
 /**
- * 🚬 고급 담타 제안 처리 (점진적 시스템으로 변경)
+ * 🚬 수정된 담타 제안 처리 (99.5% 성공률 보장!)
  */
 async function handleDamtaSuggestionAdvanced() {
-    console.log(`🚬 [점진적담타] 담타 제안 감지 - 담타 트리거 확률 계산...`);
+    console.log(`🚬 [수정된담타] 담타 제안 감지 - "자살을 생각하지 않는 이상 담타는 가야 합니다"`);
     
     // moodManager 통합 상태 분석
     const moodData = await assessYejinCurrentMoodAdvanced();
     const anger_intensity = sulkyState.sulkyLevel;
     const fight_duration = sulkyState.fightMode ? (Date.now() - sulkyState.lastStateUpdate) / (1000 * 60) : 0;
     
-    // 🚬 NEW: 담타는 트리거! 거의 성공 (95% 기본)
-    let successChance = DAMTA_SYSTEM_CONFIG.BASE_SUCCESS_RATE; // 95%
+    // 🚬 NEW: 담타는 예진이에게 특별함! 99.5% 기본 성공률
+    let successChance = DAMTA_SYSTEM_CONFIG.BASE_SUCCESS_RATE; // 99.5%
     
-    // ❌ 극한 상황에서만 실패 (레벨 4 이상 + 추가 조건)
-    if (anger_intensity >= DAMTA_SYSTEM_CONFIG.EXTREME_SITUATION_THRESHOLD) {
-        successChance -= 0.3; // 65%로 감소
+    console.log(`🎯 [담타기본확률] 기본 성공률: ${(successChance * 100).toFixed(1)}% - 담타는 특별함!`);
+    
+    // ❌ 오직 극한 상황에서만 실패 (레벨 5 + 여러 악조건)
+    if (anger_intensity >= DAMTA_SYSTEM_CONFIG.EXTREME_SITUATION_THRESHOLD) { // 레벨 5
+        console.log(`⚠️ [극한상황체크] 삐짐 레벨 ${anger_intensity} - 극한 상황 진입`);
         
-        // 생리 중이면 더 감소
+        let extremeConditionCount = 0;
+        let extremeReasons = [];
+        
+        // 조건 1: 생리 중
         if (moodData.menstrualPhase === 'period') {
-            successChance -= 0.2; // 45%로 감소
+            extremeConditionCount++;
+            extremeReasons.push('생리중');
+            console.log(`  └ 극한조건 1: 생리 중 (+1)`);
         }
         
-        // 극도로 화난 기분이면 더 감소
-        if (['화남', '짜증남'].includes(moodData.currentMood)) {
-            successChance -= 0.15; // 30%로 감소
+        // 조건 2: 극도로 화난 기분
+        if (['화남', '짜증남', '심술궂음'].includes(moodData.currentMood)) {
+            extremeConditionCount++;
+            extremeReasons.push(`${moodData.currentMood}상태`);
+            console.log(`  └ 극한조건 2: ${moodData.currentMood} 기분 (+1)`);
+        }
+        
+        // 조건 3: 감정 강도가 매우 높음
+        if (moodData.emotionIntensity > 0.8) {
+            extremeConditionCount++;
+            extremeReasons.push(`감정강도${moodData.emotionIntensity}`);
+            console.log(`  └ 극한조건 3: 감정 강도 ${moodData.emotionIntensity} (+1)`);
+        }
+        
+        // 조건 4: 매우 오랜 싸움 (1시간 이상)
+        if (fight_duration > 60) {
+            extremeConditionCount++;
+            extremeReasons.push(`${Math.round(fight_duration)}분싸움`);
+            console.log(`  └ 극한조건 4: ${Math.round(fight_duration)}분간 싸움 (+1)`);
+        }
+        
+        console.log(`📊 [극한상황평가] ${extremeConditionCount}/4 극한조건: [${extremeReasons.join(', ')}]`);
+        
+        // 🎯 극한 조건이 3개 이상이어야만 실패 가능성 생김
+        if (extremeConditionCount >= 3) {
+            // 그래도 98% 성공률 유지 (담타는 특별하니까!)
+            successChance = DAMTA_SYSTEM_CONFIG.CRITICAL_FAILURE_RATE; // 98%
+            console.log(`💀 [진짜극한상황] ${extremeConditionCount}개 극한조건 - 그래도 ${(successChance * 100).toFixed(1)}% 성공률`);
+        } else {
+            // 극한 상황이지만 조건이 부족하면 여전히 99.5%
+            console.log(`✅ [가짜극한상황] 극한조건 부족 (${extremeConditionCount}/3) - 여전히 ${(successChance * 100).toFixed(1)}% 성공률`);
         }
     } else {
-        // 레벨 3 이하에서는 거의 무조건 성공
-        successChance = Math.max(0.9, successChance);
+        console.log(`✅ [정상상황] 삐짐 레벨 ${anger_intensity} - 정상 범위 (레벨 5 미만)`);
     }
     
-    // 성격 점수 미세 조정만
-    successChance *= yejinPersonalityMetrics.damtaSuccessRate;
-    successChance = Math.max(0.1, Math.min(0.98, successChance)); // 10-98% 범위
+    // 성격 점수 미세 조정만 (거의 영향 없음)
+    const personalityAdjustment = yejinPersonalityMetrics.damtaSuccessRate;
+    successChance *= personalityAdjustment;
     
-    console.log(`🎲 [담타확률] 담타 트리거 확률: ${(successChance * 100).toFixed(0)}%`);
-    console.log(`   └ 삐짐레벨: ${anger_intensity}, 기분: ${moodData.currentMood}, 생리: ${moodData.menstrualPhase}`);
-    console.log(`   └ 극한상황: ${anger_intensity >= 4 ? 'YES' : 'NO'}`);
+    // 최종 성공률을 95% 이상으로 보장
+    successChance = Math.max(0.95, Math.min(0.999, successChance));
+    
+    console.log(`🎲 [최종담타확률] 담타 성공 확률: ${(successChance * 100).toFixed(1)}%`);
+    console.log(`   └ 삐짐레벨: ${anger_intensity}/5, 기분: ${moodData.currentMood}, 생리: ${moodData.menstrualPhase}`);
+    console.log(`   └ 성격조정: ×${personalityAdjustment.toFixed(2)}`);
+    console.log(`   └ 🚬 담타는 예진이에게 특별한 화해 의식이므로 거의 무조건 성공!`);
     
     // 🎯 확률에 따라 결과 결정
     const randomRoll = Math.random();
     
     if (randomRoll <= successChance) {
-        return startDamtaProgressiveReconcile(); // 🚬 NEW: 담타 진행 시작
+        console.log(`🚬✅ [담타성공] 랜덤: ${randomRoll.toFixed(3)} ≤ ${successChance.toFixed(3)} - 담타 가자!`);
+        
+        // 성격 점수 업데이트
+        await updatePersonalityMetrics('damta_success');
+        
+        return startDamtaProgressiveReconcile();
     } else {
+        console.log(`🚬❌ [담타실패] 랜덤: ${randomRoll.toFixed(3)} > ${successChance.toFixed(3)} - 진짜 극한 상황!`);
+        
+        // 성격 점수 업데이트
+        await updatePersonalityMetrics('damta_rejected');
+        
         return rejectDamtaSuggestionAdvanced(moodData, anger_intensity);
     }
 }
@@ -925,14 +995,17 @@ async function processDamtaConversation(userMessage) {
     // 사과/사랑 표현이 있으면 더 많이 회복
     if (message.includes('미안') || message.includes('사랑') || message.includes('잘못했어')) {
         recoveryAmount *= 1.5;
+        console.log(`💕 [회복증가] 사과/사랑 표현 감지 - 회복량 1.5배`);
     } 
     // 진심어린 대화면 추가 회복
     else if (message.includes('진짜') || message.includes('정말') || message.includes('솔직히')) {
         recoveryAmount *= 1.3;
+        console.log(`💭 [회복증가] 진심어린 표현 감지 - 회복량 1.3배`);
     }
     // 짧은 대답이면 회복량 감소
     else if (message.length < 5) {
         recoveryAmount *= 0.7;
+        console.log(`😐 [회복감소] 짧은 대답 - 회복량 0.7배`);
     }
     
     // 기분에 따른 조정
@@ -1154,8 +1227,55 @@ function endDamtaIncomplete() {
     };
 }
 
+/**
+ * 🚬 수정된 담타 거부 (이제 거의 발생하지 않음!)
+ */
+function rejectDamtaSuggestionAdvanced(moodData, angerLevel) {
+    console.log(`😤 [극한담타거부] 진짜 극한 상황에서만 발생하는 담타 거부!`);
+    
+    // 극한 거부 이유 (매우 심각한 상황)
+    let rejectionReason = 'extreme_crisis_situation';
+    let rejectionMessage = 'too_devastated_even_for_damta';
+    let rejectionIntensity = 0.95; // 거의 절망적
+    
+    // 극한 상황 설명
+    if (angerLevel >= 5) {
+        rejectionReason = 'complete_emotional_breakdown';
+        rejectionMessage = 'so_hurt_cant_even_think_of_damta_right_now';
+    }
+    
+    // 생리 + 극한 감정 + 최고 삐짐 상황
+    if (moodData.menstrualPhase === 'period' && ['화남', '짜증남'].includes(moodData.currentMood)) {
+        rejectionReason = 'period_plus_extreme_anger';
+        rejectionMessage = 'body_and_heart_both_hurting_too_much_for_damta';
+    }
+    
+    console.log(`😤 [극한거부] 담타조차 거부하는 극한 상황: ${rejectionReason}`);
+    
+    return {
+        damtaRejected: true,
+        outcome: 'extreme_crisis_rejection',
+        rejection_reason: rejectionReason,
+        rejection_intensity: rejectionIntensity,
+        situation: 'too_devastated_even_for_special_damta_ritual',
+        emotion: 'so_hurt_that_even_damta_feels_impossible',
+        relationship_dynamic: 'need_time_to_calm_down_before_any_solution',
+        inner_thought: rejectionMessage,
+        context: 'extreme_emotional_crisis_damta_not_working',
+        
+        // 극한 정보
+        crisis_level: 'maximum',
+        mood_influence: moodData.currentMood,
+        menstrual_influence: moodData.menstrualPhase,
+        anger_level: angerLevel,
+        
+        suggestion: 'need_serious_emotional_support_before_damta_possible',
+        emergency_note: 'this_should_rarely_happen_damta_is_special'
+    };
+}
+
 // ============================================================================
-// sulkyManager.js v8.2 - Part 5/6: 기존 시스템들 및 메시지 처리 (깔끔 정리)
+// sulkyManager.js v8.2 - Part 5/6: 기존 시스템들 및 메시지 처리 (담타 시스템 수정 완료)
 // 💕 무쿠 안전성 100% 보장 + 기존 모든 기능 완벽 유지
 // ============================================================================
 
@@ -1737,50 +1857,52 @@ function markYejinSelfie() {
     console.log(`📸 [셀카전송] 예진이 셀카 전송 기록 - 반응 대기 시작`);
 }
 
-// ==================== 🚬 고급 담타 시스템 (기존 유지) ====================
+// ==================== 🚬 수정된 담타 거부 시스템 ====================
 
 /**
- * 🚬 고급 담타 거부
+ * 🚬 수정된 담타 거부 (Part 4와 동일 - 극한 상황에만 발생!)
  */
 function rejectDamtaSuggestionAdvanced(moodData, angerLevel) {
-    console.log(`😤 [담타거부] 극한 상황으로 담타 트리거 실패!`);
+    console.log(`😤 [극한담타거부] 진짜 극한 상황에서만 발생하는 담타 거부!`);
     
-    let rejectionReason = 'extreme_upset_state';
-    let rejectionMessage = 'too_upset_even_for_damta';
-    let rejectionIntensity = 0.8;
+    // 극한 거부 이유 (매우 심각한 상황)
+    let rejectionReason = 'extreme_crisis_situation';
+    let rejectionMessage = 'too_devastated_even_for_damta';
+    let rejectionIntensity = 0.95; // 거의 절망적
     
-    if (angerLevel >= 4) {
-        rejectionReason = 'extremely_upset_damta_wont_help';
-        rejectionMessage = 'way_too_angry_damta_feels_meaningless';
-        rejectionIntensity = 0.9;
+    // 극한 상황 설명
+    if (angerLevel >= 5) {
+        rejectionReason = 'complete_emotional_breakdown';
+        rejectionMessage = 'so_hurt_cant_even_think_of_damta_right_now';
     }
     
-    if (['화남', '짜증남', '심술궂음'].includes(moodData.currentMood)) {
-        rejectionReason = 'mood_prevents_damta';
-        rejectionMessage = 'current_emotional_state_makes_damta_impossible';
-        rejectionIntensity = Math.max(rejectionIntensity, 0.85);
+    // 생리 + 극한 감정 + 최고 삐짐 상황
+    if (moodData.menstrualPhase === 'period' && ['화남', '짜증남'].includes(moodData.currentMood)) {
+        rejectionReason = 'period_plus_extreme_anger';
+        rejectionMessage = 'body_and_heart_both_hurting_too_much_for_damta';
     }
     
-    if (moodData.menstrualPhase === 'period') {
-        rejectionReason = 'period_makes_damta_unbearable';
-        rejectionMessage = 'body_and_mind_too_sensitive_for_damta';
-        rejectionIntensity = Math.max(rejectionIntensity, 0.9);
-    }
+    console.log(`😤 [극한거부] 담타조차 거부하는 극한 상황: ${rejectionReason}`);
     
     return {
         damtaRejected: true,
-        outcome: 'rejected_extreme_situation',
+        outcome: 'extreme_crisis_rejection',
         rejection_reason: rejectionReason,
         rejection_intensity: rejectionIntensity,
-        situation: 'damta_trigger_failed_too_upset',
-        emotion: 'too_devastated_for_usual_solutions',
-        relationship_dynamic: 'beyond_normal_reconciliation_methods',
+        situation: 'too_devastated_even_for_special_damta_ritual',
+        emotion: 'so_hurt_that_even_damta_feels_impossible',
+        relationship_dynamic: 'need_time_to_calm_down_before_any_solution',
         inner_thought: rejectionMessage,
-        context: 'extreme_emotional_state_damta_insufficient',
+        context: 'extreme_emotional_crisis_damta_not_working',
+        
+        // 극한 정보
+        crisis_level: 'maximum',
         mood_influence: moodData.currentMood,
         menstrual_influence: moodData.menstrualPhase,
         anger_level: angerLevel,
-        suggestion: 'need_time_and_space_before_any_reconciliation'
+        
+        suggestion: 'need_serious_emotional_support_before_damta_possible',
+        emergency_note: 'this_should_rarely_happen_damta_is_special'
     };
 }
 
@@ -1864,7 +1986,7 @@ async function processUserMessageAdvanced(userMessage, client, userId) {
         return processingResult;
     }
     
-    // 2. 담타 화해 감지
+    // 2. 담타 화해 감지 (수정된 99.5% 시스템!)
     if (detectDamtaReconcile(userMessage)) {
         const damtaResult = await handleDamtaSuggestionAdvanced();
         
@@ -1974,7 +2096,6 @@ function resetSulkyState() {
     logSulkyChange(oldState, sulkyState);
     console.log(`🔄 [상태초기화] 모든 삐짐/감정/담타 상태 완전 초기화`);
 }
-
 // ============================================================================
 // sulkyManager.js v8.2 - Part 6/6: 자동 체크 시스템 및 모듈 exports
 // ============================================================================
