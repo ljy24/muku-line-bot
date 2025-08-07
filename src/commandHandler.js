@@ -39,6 +39,10 @@ let redisConnected = false;
 let redisConnectionAttempts = 0;
 const maxRedisAttempts = 5;
 
+// 🔧 전역 상태 초기화
+global.mukuRedisReady = false;
+global.mukuRedisInstance = null;
+
 /**
  * 🚀 Redis 연결 관리자 (재시도 로직 + 상태 모니터링)
  */
@@ -62,6 +66,10 @@ async function initializeRedisConnection() {
                 console.log(`${colors.success}✅ [Redis] 사용자 기억 시스템 연결 성공!${colors.reset}`);
                 redisConnected = true;
                 
+                // 🔧 전역 변수에도 저장 (YejinEvolution에서 사용)
+                global.mukuRedisInstance = userMemoryRedis;
+                console.log(`${colors.redis}🔧 [Redis] 전역 mukuRedisInstance 설정 완료${colors.reset}`);
+                
                 // 🌸 예진이 자아 인식 시스템에 Redis 연결 설정
                 if (yejinEvolutionSystem && typeof yejinEvolutionSystem.setRedisConnection === 'function') {
                     try {
@@ -79,6 +87,11 @@ async function initializeRedisConnection() {
             userMemoryRedis.on('error', (error) => {
                 redisConnected = false;
                 
+                // 🔧 전역 상태도 정리
+                global.mukuRedisReady = false;
+                global.mukuRedisInstance = null;
+                console.log(`${colors.redis}🔧 [Redis] 에러로 인한 전역 상태 정리${colors.reset}`);
+                
                 // 재연결 시도
                 if (redisConnectionAttempts < maxRedisAttempts) {
                     setTimeout(() => {
@@ -89,6 +102,11 @@ async function initializeRedisConnection() {
             
             userMemoryRedis.on('close', () => {
                 redisConnected = false;
+                
+                // 🔧 전역 상태도 정리
+                global.mukuRedisReady = false;
+                global.mukuRedisInstance = null;
+                
                 if (yejinEvolutionSystem) {
                     console.log(`${colors.warning}🌸 [YejinEvolution] Redis 연결 종료로 인한 비활성화${colors.reset}`);
                 }
@@ -96,6 +114,11 @@ async function initializeRedisConnection() {
             
             userMemoryRedis.on('end', () => {
                 redisConnected = false;
+                
+                // 🔧 전역 상태도 정리
+                global.mukuRedisReady = false;
+                global.mukuRedisInstance = null;
+                
                 if (yejinEvolutionSystem) {
                     console.log(`${colors.warning}🌸 [YejinEvolution] Redis 연결 종료${colors.reset}`);
                 }
@@ -115,6 +138,10 @@ async function initializeRedisConnection() {
         
         userMemoryRedis = null;
         redisConnected = false;
+        
+        // 🔧 전역 상태도 정리
+        global.mukuRedisReady = false;
+        global.mukuRedisInstance = null;
         
         // 재시도 로직
         if (redisConnectionAttempts < maxRedisAttempts) {
@@ -151,6 +178,7 @@ async function loadYejinEvolutionSystem() {
         // 🚨 무한 루프 방지: 30번 재시도 후 더미 모드로 전환
         if (evolutionRetryAttempts > maxEvolutionRetryAttempts) {
             console.log(`${colors.error}🌸 [YejinEvolution] 최대 재시도 횟수(${maxEvolutionRetryAttempts}) 초과, 더미 모드로 전환${colors.reset}`);
+            console.log(`${colors.warning}🔧 [YejinEvolution] Redis 상태 요약: userMemoryRedis=${!!userMemoryRedis}, redisConnected=${redisConnected}, 전역=${!!global.mukuRedisReady}${colors.reset}`);
             
             // 더미 모드 생성
             YejinSelfRecognitionEvolution = class {
@@ -174,10 +202,18 @@ async function loadYejinEvolutionSystem() {
         }
         
         if (!userMemoryRedis || !redisConnected) {
-            console.log(`${colors.warning}🌸 [YejinEvolution] Redis 상태 체크 (시도 ${evolutionRetryAttempts}/${maxEvolutionRetryAttempts}): userMemoryRedis=${!!userMemoryRedis}, redisConnected=${redisConnected}${colors.reset}`);
+            console.log(`${colors.warning}🌸 [YejinEvolution] Redis 상태 체크 (시도 ${evolutionRetryAttempts}/${maxEvolutionRetryAttempts}): userMemoryRedis=${!!userMemoryRedis}, redisConnected=${redisConnected}, 전역상태=${!!global.mukuRedisReady}${colors.reset}`);
             
+            // 🔧 전역 상태 확인 및 복구
+            if (global.mukuRedisReady && global.mukuRedisInstance) {
+                console.log(`${colors.evolution}🔧 [YejinEvolution] 전역 상태 발견! 로컬 변수 복구 시도${colors.reset}`);
+                userMemoryRedis = global.mukuRedisInstance;
+                redisConnected = true;
+                console.log(`${colors.success}🔧 [YejinEvolution] 로컬 변수 복구 완료! 진행 계속${colors.reset}`);
+                // 복구 성공하면 다음 단계로 진행
+            }
             // Redis 연결이 성공했지만 변수가 설정되지 않은 경우 강제 재설정
-            if (redisConnected && !userMemoryRedis) {
+            else if (redisConnected && !userMemoryRedis) {
                 console.log(`${colors.evolution}🌸 [YejinEvolution] Redis 연결됐지만 변수 미설정, 전역에서 찾기 시도${colors.reset}`);
                 
                 // 전역 Redis 인스턴스 찾기
@@ -401,6 +437,7 @@ ${colors.memory}   📁 완전한 디렉토리 관리 시스템 유지${colors.r
 ${colors.success}💖 이제 Redis 중복 선언 문제가 완전히 해결됩니다!${colors.reset}
 ${colors.evolution}🌸 예진이 자아 인식 시스템이 안전하게 로드됩니다!${colors.reset}
 `);
+
 // ============================================================================
 // commandHandler.js - Part 2/8: 🔄 모델 전환 시스템 (3.5, 4.0, 자동, 버전)
 // ✅ 기존 모든 기능 100% 보존
