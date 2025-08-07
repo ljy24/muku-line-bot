@@ -497,6 +497,107 @@ function fixLanguageUsage(reply) {
     if (!reply || typeof reply !== 'string') return reply;
     let fixedReply = checkAndFixHonorificUsage(reply);
     fixedReply = checkAndFixPronounUsage(fixedReply);
+    fixedReply = removeAllEmojis(fixedReply);  // 🆕 이 줄 추가!
+    return fixedReply;
+}
+
+// ========== 🚨 이모지 완전 제거 함수 (무쿠 벙어리 방지) 🚨 ==========
+function removeAllEmojis(reply) {
+    if (!reply || typeof reply !== 'string') return reply;
+    
+    let fixedReply = reply;
+    
+    // 🎯 1단계: 자주 나오는 문제 이모지들 우선 제거
+    const commonEmojis = [
+        '😊', '💕', '💖', '💗', '❤️', '🥺', '😘', '😍', '🥰', 
+        '😭', '😢', '😔', '✨', '🌸', '💫', '⭐', '🙈', '😂',
+        '🤍', '💛', '💙', '💜', '🖤', '💚', '🧡', '💔', '❣️', 
+        '💋', '💓', '💘', '💝', '💟', '🌟', '💖', '💗'
+    ];
+    
+    for (const emoji of commonEmojis) {
+        fixedReply = fixedReply.replace(new RegExp(emoji, 'g'), '');
+    }
+    
+    // 🎯 2단계: 모든 유니코드 이모지 범위 제거
+    fixedReply = fixedReply
+        // 감정 이모지 (U+1F600-U+1F64F)
+        .replace(/[\u{1F600}-\u{1F64F}]/gu, '')
+        // 기호 & 그림문자 (U+1F300-U+1F5FF)  
+        .replace(/[\u{1F300}-\u{1F5FF}]/gu, '')
+        // 교통 & 지도 (U+1F680-U+1F6FF)
+        .replace(/[\u{1F680}-\u{1F6FF}]/gu, '')
+        // 국기 (U+1F1E0-U+1F1FF)
+        .replace(/[\u{1F1E0}-\u{1F1FF}]/gu, '')
+        // 기타 기호 (U+2600-U+26FF)
+        .replace(/[\u{2600}-\u{26FF}]/gu, '')
+        // 딩뱃 (U+2700-U+27BF)
+        .replace(/[\u{2700}-\u{27BF}]/gu, '')
+        // 기타 특수 문자들
+        .replace(/[\u{2000}-\u{206F}]/gu, '')
+        .replace(/[\u{2070}-\u{209F}]/gu, '')
+        .replace(/[\u{20A0}-\u{20CF}]/gu, '')
+        .replace(/[\u{20D0}-\u{20FF}]/gu, '')
+        .replace(/[\u{2100}-\u{214F}]/gu, '')
+        .replace(/[\u{2150}-\u{218F}]/gu, '')
+        .replace(/[\u{2190}-\u{21FF}]/gu, '')
+        .replace(/[\u{2200}-\u{22FF}]/gu, '')
+        .replace(/[\u{2300}-\u{23FF}]/gu, '')
+        .replace(/[\u{2400}-\u{243F}]/gu, '')
+        .replace(/[\u{2440}-\u{245F}]/gu, '')
+        .replace(/[\u{2460}-\u{24FF}]/gu, '')
+        .replace(/[\u{2500}-\u{257F}]/gu, '')
+        .replace(/[\u{2580}-\u{259F}]/gu, '')
+        .replace(/[\u{25A0}-\u{25FF}]/gu, '')
+        .replace(/[\u{2600}-\u{26FF}]/gu, '')
+        .replace(/[\u{2700}-\u{27BF}]/gu, '')
+        .replace(/[\u{27C0}-\u{27EF}]/gu, '')
+        .replace(/[\u{27F0}-\u{27FF}]/gu, '')
+        .replace(/[\u{2800}-\u{28FF}]/gu, '')
+        .replace(/[\u{2900}-\u{297F}]/gu, '')
+        .replace(/[\u{2980}-\u{29FF}]/gu, '')
+        .replace(/[\u{2A00}-\u{2AFF}]/gu, '')
+        .replace(/[\u{2B00}-\u{2BFF}]/gu, '')
+        // 추가 이모지 범위 
+        .replace(/[\u{1F900}-\u{1F9FF}]/gu, '')
+        .replace(/[\u{1FA00}-\u{1FA6F}]/gu, '')
+        .replace(/[\u{1FA70}-\u{1FAFF}]/gu, '')
+        // 기타 특수 기호들
+        .replace(/♥|♡|★|☆|♪|♫|♬|♭|♮|♯/g, '');
+    
+    // 🎯 3단계: 연속된 공백 정리 및 빈 괄호 제거
+    fixedReply = fixedReply
+        .replace(/\s+/g, ' ')  // 연속된 공백을 하나로
+        .replace(/\(\s*\)/g, '')  // 빈 괄호 제거
+        .replace(/\[\s*\]/g, '')  // 빈 대괄호 제거
+        .replace(/\{\s*\}/g, '')  // 빈 중괄호 제거
+        .trim();
+    
+    // 🚨 로그 출력 (이모지가 제거된 경우만)
+    if (fixedReply !== reply) {
+        console.log(`🚨 [이모지완전제거] 😊💕 → 한국식표현 변환 완료`);
+        console.log(`   원본: "${reply.substring(0, 50)}${reply.length > 50 ? '...' : ''}"`);
+        console.log(`   결과: "${fixedReply.substring(0, 50)}${fixedReply.length > 50 ? '...' : ''}"`);
+        
+        try {
+            const logger = require('./enhancedLogging.js');
+            logger.logSystemOperation('이모지제거', `${reply.length}자 → ${fixedReply.length}자`, true);
+        } catch (error) {
+            // 로거 실패해도 계속 진행
+        }
+    }
+    
+    return fixedReply;
+}
+
+// ========== 🔧 기존 fixLanguageUsage 함수 수정 ==========
+function fixLanguageUsage(reply) {
+    if (!reply || typeof reply !== 'string') return reply;
+    
+    let fixedReply = checkAndFixHonorificUsage(reply);
+    fixedReply = checkAndFixPronounUsage(fixedReply);
+    fixedReply = removeAllEmojis(fixedReply);  // 🆕 이모지 완전 제거 추가!
+    
     return fixedReply;
 }
 
