@@ -803,8 +803,7 @@ function detectDamtaReconcile(userMessage) {
     const message = userMessage.toLowerCase();
     
     const damtaKeywords = [
-        '담배', '담타', '흡연', '피우자', '피워', '니코틴',
-        '연기', 'smoke', 'cigarette', '한대만', '한개피'
+        '담배', '담타', '흡연', '담타고?', 'ㄷㅌ'
     ];
     
     for (const keyword of damtaKeywords) {
