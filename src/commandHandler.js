@@ -134,7 +134,9 @@ async function initializeRedisConnection() {
 let YejinSelfRecognitionEvolution = null;
 let yejinEvolutionSystem = null;
 let evolutionLoadAttempts = 0;
+let evolutionRetryAttempts = 0; // 🆕 재시도 횟수 추가
 const maxEvolutionLoadAttempts = 3;
+const maxEvolutionRetryAttempts = 30; // 🆕 최대 30번 재시도 후 포기
 
 /**
  * 🌸 예진이 자아 인식 진화 시스템 안전 로딩 (Redis 중복 선언 문제 완전 해결)
@@ -143,11 +145,55 @@ async function loadYejinEvolutionSystem() {
     console.log(`${colors.evolution}🌸 [YejinEvolution] 자아 인식 진화 시스템 로딩 시도 ${evolutionLoadAttempts + 1}/${maxEvolutionLoadAttempts}${colors.reset}`);
     
     try {
-        // 🔧 Step 1: Redis 준비 확인
-        if (!userMemoryRedis) {
-            console.log(`${colors.warning}🌸 [YejinEvolution] Redis 미준비, 2초 후 재시도${colors.reset}`);
-            setTimeout(() => loadYejinEvolutionSystem(), 2000);
-            return false;
+        // 🔧 Step 1: Redis 준비 확인 (연결 상태와 변수 상태 모두 체크)
+        evolutionRetryAttempts++; // 재시도 횟수 증가
+        
+        // 🚨 무한 루프 방지: 30번 재시도 후 더미 모드로 전환
+        if (evolutionRetryAttempts > maxEvolutionRetryAttempts) {
+            console.log(`${colors.error}🌸 [YejinEvolution] 최대 재시도 횟수(${maxEvolutionRetryAttempts}) 초과, 더미 모드로 전환${colors.reset}`);
+            
+            // 더미 모드 생성
+            YejinSelfRecognitionEvolution = class {
+                constructor() {
+                    console.log(`${colors.warning}🌸 [YejinEvolution] 더미 모드로 생성됨 (Redis 연결 실패)${colors.reset}`);
+                    this.isActive = false;
+                }
+                
+                processUserMessage() {
+                    return { comment: "지금 시스템에 작은 문제가 있어서... 일반 기억 저장으로 처리할게요!" };
+                }
+                
+                setRedisConnection() {
+                    console.log(`${colors.warning}🌸 [YejinEvolution] 더미 모드에서는 Redis 연결 설정 스킵${colors.reset}`);
+                }
+            };
+            
+            yejinEvolutionSystem = new YejinSelfRecognitionEvolution();
+            console.log(`${colors.success}🌸 [YejinEvolution] 더미 모드 로딩 완료! 무쿠는 정상 작동합니다 💕${colors.reset}`);
+            return true; // 더미 모드라도 성공으로 처리
+        }
+        
+        if (!userMemoryRedis || !redisConnected) {
+            console.log(`${colors.warning}🌸 [YejinEvolution] Redis 상태 체크 (시도 ${evolutionRetryAttempts}/${maxEvolutionRetryAttempts}): userMemoryRedis=${!!userMemoryRedis}, redisConnected=${redisConnected}${colors.reset}`);
+            
+            // Redis 연결이 성공했지만 변수가 설정되지 않은 경우 강제 재설정
+            if (redisConnected && !userMemoryRedis) {
+                console.log(`${colors.evolution}🌸 [YejinEvolution] Redis 연결됐지만 변수 미설정, 전역에서 찾기 시도${colors.reset}`);
+                
+                // 전역 Redis 인스턴스 찾기
+                if (global.mukuRedisInstance) {
+                    userMemoryRedis = global.mukuRedisInstance;
+                    console.log(`${colors.success}🌸 [YejinEvolution] 전역 Redis 인스턴스 발견 및 설정 완료${colors.reset}`);
+                } else {
+                    console.log(`${colors.warning}🌸 [YejinEvolution] 전역 Redis도 없음, 2초 후 재시도 (${evolutionRetryAttempts}/${maxEvolutionRetryAttempts})${colors.reset}`);
+                    setTimeout(() => loadYejinEvolutionSystem(), 2000);
+                    return false;
+                }
+            } else {
+                console.log(`${colors.warning}🌸 [YejinEvolution] Redis 미준비, 2초 후 재시도 (${evolutionRetryAttempts}/${maxEvolutionRetryAttempts})${colors.reset}`);
+                setTimeout(() => loadYejinEvolutionSystem(), 2000);
+                return false;
+            }
         }
         
         // 🔧 Step 2: 전역 Redis 인스턴스 설정 (yejinPersonality.js에서 사용)
