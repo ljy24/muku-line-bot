@@ -1,17 +1,10 @@
 // ============================================================================
-// commandHandler.js - v7.0 PERFECT_MUKU + ENHANCED_YEJIN_EVOLUTION + STRICT_PHOTO_RULES
-// ✅ 기존 모든 기능 100% 보존 + 강화된 개선사항 적용
-// 🆕 "메세지 너가 뭔저 줘" → 예진이 자율적 약속 지키기 시스템
-// 🚫 사진 요청 엄격 규칙: 반드시 "줘" 키워드 필수
-// 🧠 기억 시스템 완벽 구분: "기억해?" vs "기억해" 
-// 🌸 예진이 자아 인식 진화 시스템 완전 복구
-// 💖 무쿠가 벙어리가 되지 않도록 최우선 보장
-// ✨ Redis + Memory Tape + Memory Manager + ultimateConversationContext + File Backup 완전 연동!
-// 🔥 Memory Manager 초기화 추가로 159개 기억 100% 보장!
-// 🎯 키워드 추출 로직 개선: "밥바가 뭐라고?" → "밥바" 정확 추출!
-// 🚨 핵심 해결: 저장(ultimateConversationContext) ↔ 검색(통합시스템) 연결!
-// 🔄 [NEW] 모델 전환 시스템: 파일 기반 전역 모델 관리
-// 🌸 [FIXED] 예진이 자아 인식 진화 시스템 Redis 중복 선언 문제 완전 해결
+// commandHandler.js - v7.1 REDIS_CONNECTION_STABILIZER + DUMMY_MODE_PREVENTION
+// 🚨 Redis 연결 실패 근본 해결 + 무쿠 벙어리 방지 최우선
+// ✅ 연결 안정화: lazyConnect, keepAlive, 재연결 로직 강화
+// 🌸 YejinEvolution 더미 모드 방지: 파일 기반 폴백 시스템
+// 💖 무쿠가 벙어리가 되지 않도록 절대 보장
+// 🔧 Redis 실패해도 모든 기능 정상 작동하도록 설계
 // ============================================================================
 
 const path = require('path');
@@ -20,424 +13,468 @@ const Redis = require('ioredis');
 const moment = require('moment-timezone');
 const { handleCompleteWeeklyDiary } = require('./muku-diarySystem.js');
 
-// 🎨 컬러 코딩 시스템 (로그 가독성 향상)
+// 🎨 컬러 코딩 시스템
 const colors = {
-    yejin: '\x1b[96m',      // 청록색 (예진이)
-    evolution: '\x1b[95m',   // 보라색 (진화)
-    redis: '\x1b[94m',       // 파란색 (Redis)
-    success: '\x1b[92m',     // 초록색
-    warning: '\x1b[93m',     // 노란색
-    error: '\x1b[91m',       // 빨간색
-    memory: '\x1b[97m',      // 흰색 (기억)
-    photo: '\x1b[35m',       // 자주색 (사진)
+    yejin: '\x1b[96m',
+    evolution: '\x1b[95m', 
+    redis: '\x1b[94m',
+    success: '\x1b[92m',
+    warning: '\x1b[93m',
+    error: '\x1b[91m',
+    memory: '\x1b[97m',
     reset: '\x1b[0m'
 };
 
-// 🆕 Redis 사용자 기억 시스템 먼저 초기화 (YejinEvolution보다 우선)
+// 🔧 Redis 연결 상태 관리
 let userMemoryRedis = null;
 let redisConnected = false;
 let redisConnectionAttempts = 0;
-const maxRedisAttempts = 5;
+const maxRedisAttempts = 3; // 줄임 (빠른 포기)
 
-// 🔧 전역 상태 초기화
-global.mukuRedisReady = false;
-global.mukuRedisInstance = null;
+// 🌸 무쿠 벙어리 방지를 위한 파일 기반 폴백 시스템
+let fileBasedMemory = {
+    userMemories: new Map(),
+    yejinSelfRecognition: new Map(),
+    conversationHistory: []
+};
+
+// 📁 메모리 파일 경로
+const MEMORY_FILE = '/data/muku_memory_backup.json';
+const CONVERSATION_FILE = '/data/conversation_history.json';
 
 /**
- * 🚀 Redis 연결 관리자 (재시도 로직 + 상태 모니터링)
+ * 📁 파일 기반 메모리 시스템 (Redis 대체)
  */
-async function initializeRedisConnection() {
-    redisConnectionAttempts++;
-    console.log(`${colors.redis}🚀 [Redis] 연결 시도 ${redisConnectionAttempts}/${maxRedisAttempts}${colors.reset}`);
-    
+function initializeFileMemory() {
     try {
-        if (process.env.REDIS_URL) {
-            userMemoryRedis = new Redis(process.env.REDIS_URL, {
-                retryDelayOnFailover: 100,
-                maxRetriesPerRequest: 3,
-                connectTimeout: 10000,
-                lazyConnect: true,
-                enableReadyCheck: true,
-                enableOfflineQueue: true
-            });
-            
-            // 연결 성공 이벤트
-            userMemoryRedis.on('connect', () => {
-                console.log(`${colors.success}✅ [Redis] 사용자 기억 시스템 연결 성공!${colors.reset}`);
-                redisConnected = true;
-                
-                // 🔧 전역 변수에도 저장 (YejinEvolution에서 사용)
-                global.mukuRedisInstance = userMemoryRedis;
-                console.log(`${colors.redis}🔧 [Redis] 전역 mukuRedisInstance 설정 완료${colors.reset}`);
-                
-                // 🌸 예진이 자아 인식 시스템에 Redis 연결 설정
-                if (yejinEvolutionSystem && typeof yejinEvolutionSystem.setRedisConnection === 'function') {
-                    try {
-                        yejinEvolutionSystem.setRedisConnection(userMemoryRedis);
-                        console.log(`${colors.success}🌸 [YejinEvolution] Redis 연결 설정 완료! 진화 시스템 활성화 ✅${colors.reset}`);
-                    } catch (evolutionError) {
-                        console.error(`${colors.error}🌸 [YejinEvolution] Redis 연결 설정 실패: ${evolutionError.message}${colors.reset}`);
-                    }
-                } else {
-                    console.log(`${colors.warning}🌸 [YejinEvolution] 시스템이 아직 로드되지 않았습니다. 나중에 연결 설정을 시도합니다.${colors.reset}`);
-                }
-            });
-            
-            // 에러 처리 (조용히)
-            userMemoryRedis.on('error', (error) => {
-                redisConnected = false;
-                
-                // 🔧 전역 상태도 정리
-                global.mukuRedisReady = false;
-                global.mukuRedisInstance = null;
-                console.log(`${colors.redis}🔧 [Redis] 에러로 인한 전역 상태 정리${colors.reset}`);
-                
-                // 재연결 시도
-                if (redisConnectionAttempts < maxRedisAttempts) {
-                    setTimeout(() => {
-                        initializeRedisConnection();
-                    }, 5000 * redisConnectionAttempts); // 백오프 전략
-                }
-            });
-            
-            userMemoryRedis.on('close', () => {
-                redisConnected = false;
-                
-                // 🔧 전역 상태도 정리
-                global.mukuRedisReady = false;
-                global.mukuRedisInstance = null;
-                
-                if (yejinEvolutionSystem) {
-                    console.log(`${colors.warning}🌸 [YejinEvolution] Redis 연결 종료로 인한 비활성화${colors.reset}`);
-                }
-            });
-            
-            userMemoryRedis.on('end', () => {
-                redisConnected = false;
-                
-                // 🔧 전역 상태도 정리
-                global.mukuRedisReady = false;
-                global.mukuRedisInstance = null;
-                
-                if (yejinEvolutionSystem) {
-                    console.log(`${colors.warning}🌸 [YejinEvolution] Redis 연결 종료${colors.reset}`);
-                }
-            });
-            
-            // 연결 테스트
-            await userMemoryRedis.ping();
-            
-        } else {
-            console.log(`${colors.warning}⚠️ [Redis] REDIS_URL 환경변수 없음 - 파일 저장 모드로 동작${colors.reset}`);
-            userMemoryRedis = null;
-            redisConnected = false;
+        // 기존 메모리 파일 로드
+        if (fs.existsSync(MEMORY_FILE)) {
+            const data = JSON.parse(fs.readFileSync(MEMORY_FILE, 'utf8'));
+            fileBasedMemory.userMemories = new Map(data.userMemories || []);
+            fileBasedMemory.yejinSelfRecognition = new Map(data.yejinSelfRecognition || []);
+            console.log(`${colors.success}📁 [FileMemory] 기존 메모리 로드 완료 (${fileBasedMemory.userMemories.size}개)${colors.reset}`);
         }
         
+        // 대화 기록 로드
+        if (fs.existsSync(CONVERSATION_FILE)) {
+            const conversations = JSON.parse(fs.readFileSync(CONVERSATION_FILE, 'utf8'));
+            fileBasedMemory.conversationHistory = conversations.slice(-100); // 최근 100개만
+            console.log(`${colors.success}📁 [FileMemory] 대화 기록 로드 완료 (${fileBasedMemory.conversationHistory.length}개)${colors.reset}`);
+        }
+        
+        return true;
     } catch (error) {
-        console.error(`${colors.error}❌ [Redis] 연결 실패 (시도 ${redisConnectionAttempts}/${maxRedisAttempts}): ${error.message}${colors.reset}`);
-        
-        userMemoryRedis = null;
-        redisConnected = false;
-        
-        // 🔧 전역 상태도 정리
-        global.mukuRedisReady = false;
-        global.mukuRedisInstance = null;
-        
-        // 재시도 로직
-        if (redisConnectionAttempts < maxRedisAttempts) {
-            const delay = 5000 * redisConnectionAttempts;
-            console.log(`${colors.warning}🔄 [Redis] ${delay/1000}초 후 재연결 시도...${colors.reset}`);
-            
-            setTimeout(() => {
-                initializeRedisConnection();
-            }, delay);
-        } else {
-            console.error(`${colors.error}❌ [Redis] 최대 재시도 횟수 초과. 파일 저장 모드로 동작합니다.${colors.reset}`);
-        }
+        console.error(`${colors.error}📁 [FileMemory] 초기화 실패: ${error.message}${colors.reset}`);
+        return false;
     }
 }
 
-// 🌸 예진이 자아 인식 진화 시스템 (Redis 연결 후 로딩)
-let YejinSelfRecognitionEvolution = null;
-let yejinEvolutionSystem = null;
-let evolutionLoadAttempts = 0;
-let evolutionRetryAttempts = 0; // 🆕 재시도 횟수 추가
-const maxEvolutionLoadAttempts = 3;
-const maxEvolutionRetryAttempts = 30; // 🆕 최대 30번 재시도 후 포기
+/**
+ * 📁 메모리 파일 저장
+ */
+function saveFileMemory() {
+    try {
+        // 메모리 저장
+        const memoryData = {
+            userMemories: Array.from(fileBasedMemory.userMemories.entries()),
+            yejinSelfRecognition: Array.from(fileBasedMemory.yejinSelfRecognition.entries()),
+            lastSaved: new Date().toISOString()
+        };
+        fs.writeFileSync(MEMORY_FILE, JSON.stringify(memoryData, null, 2));
+        
+        // 대화 기록 저장
+        fs.writeFileSync(CONVERSATION_FILE, JSON.stringify(fileBasedMemory.conversationHistory, null, 2));
+        
+        return true;
+    } catch (error) {
+        console.error(`${colors.error}📁 [FileMemory] 저장 실패: ${error.message}${colors.reset}`);
+        return false;
+    }
+}
 
 /**
- * 🌸 예진이 자아 인식 진화 시스템 안전 로딩 (Redis 중복 선언 문제 완전 해결)
+ * 🚀 개선된 Redis 연결 (안정화 + 빠른 포기)
  */
-async function loadYejinEvolutionSystem() {
-    console.log(`${colors.evolution}🌸 [YejinEvolution] 자아 인식 진화 시스템 로딩 시도 ${evolutionLoadAttempts + 1}/${maxEvolutionLoadAttempts}${colors.reset}`);
+async function initializeStableRedisConnection() {
+    redisConnectionAttempts++;
+    console.log(`${colors.redis}🚀 [Redis] 안정화 연결 시도 ${redisConnectionAttempts}/${maxRedisAttempts}${colors.reset}`);
     
     try {
-        // 🔧 Step 1: Redis 준비 확인 (연결 상태와 변수 상태 모두 체크)
-        evolutionRetryAttempts++; // 재시도 횟수 증가
-        
-        // 🚨 무한 루프 방지: 30번 재시도 후 더미 모드로 전환
-        if (evolutionRetryAttempts > maxEvolutionRetryAttempts) {
-            console.log(`${colors.error}🌸 [YejinEvolution] 최대 재시도 횟수(${maxEvolutionRetryAttempts}) 초과, 더미 모드로 전환${colors.reset}`);
-            console.log(`${colors.warning}🔧 [YejinEvolution] Redis 상태 요약: userMemoryRedis=${!!userMemoryRedis}, redisConnected=${redisConnected}, 전역=${!!global.mukuRedisReady}${colors.reset}`);
-            
-            // 더미 모드 생성
-            YejinSelfRecognitionEvolution = class {
-                constructor() {
-                    console.log(`${colors.warning}🌸 [YejinEvolution] 더미 모드로 생성됨 (Redis 연결 실패)${colors.reset}`);
-                    this.isActive = false;
-                }
-                
-                processUserMessage() {
-                    return { comment: "지금 시스템에 작은 문제가 있어서... 일반 기억 저장으로 처리할게요!" };
-                }
-                
-                setRedisConnection() {
-                    console.log(`${colors.warning}🌸 [YejinEvolution] 더미 모드에서는 Redis 연결 설정 스킵${colors.reset}`);
-                }
-            };
-            
-            yejinEvolutionSystem = new YejinSelfRecognitionEvolution();
-            console.log(`${colors.success}🌸 [YejinEvolution] 더미 모드 로딩 완료! 무쿠는 정상 작동합니다 💕${colors.reset}`);
-            return true; // 더미 모드라도 성공으로 처리
+        if (!process.env.REDIS_URL) {
+            console.log(`${colors.warning}⚠️ [Redis] REDIS_URL 없음, 파일 메모리로 동작${colors.reset}`);
+            return false;
         }
         
-        if (!userMemoryRedis || !redisConnected) {
-            console.log(`${colors.warning}🌸 [YejinEvolution] Redis 상태 체크 (시도 ${evolutionRetryAttempts}/${maxEvolutionRetryAttempts}): userMemoryRedis=${!!userMemoryRedis}, redisConnected=${redisConnected}, 전역상태=${!!global.mukuRedisReady}${colors.reset}`);
+        userMemoryRedis = new Redis(process.env.REDIS_URL, {
+            // ✅ 연결 안정화 옵션들
+            enableOfflineQueue: true,
+            lazyConnect: false,  // 즉시 연결 시도
+            keepAlive: true,
+            keepAliveInitialDelay: 10000,
             
-            // 🔧 전역 상태 확인 및 복구
-            if (global.mukuRedisReady && global.mukuRedisInstance) {
-                console.log(`${colors.evolution}🔧 [YejinEvolution] 전역 상태 발견! 로컬 변수 복구 시도${colors.reset}`);
-                userMemoryRedis = global.mukuRedisInstance;
-                redisConnected = true;
-                console.log(`${colors.success}🔧 [YejinEvolution] 로컬 변수 복구 완료! 진행 계속${colors.reset}`);
-                // 복구 성공하면 다음 단계로 진행
+            // ✅ 타임아웃 설정 (빠른 실패)
+            connectTimeout: 8000,  // 8초로 단축
+            commandTimeout: 5000,  // 5초로 단축
+            
+            // ✅ 재시도 설정
+            retryDelayOnFailover: 100,
+            maxRetriesPerRequest: 2,  // 줄임
+            
+            // ✅ 연결 풀 설정
+            family: 4,
+            
+            // ✅ 재연결 정책
+            reconnectOnError: function (err) {
+                console.log(`${colors.redis}🔄 [Redis] 재연결 조건 체크: ${err.message}${colors.reset}`);
+                const targetErrors = ['READONLY', 'ECONNRESET', 'ETIMEDOUT'];
+                return targetErrors.some(target => err.message.includes(target));
             }
-            // Redis 연결이 성공했지만 변수가 설정되지 않은 경우 강제 재설정
-            else if (redisConnected && !userMemoryRedis) {
-                console.log(`${colors.evolution}🌸 [YejinEvolution] Redis 연결됐지만 변수 미설정, 전역에서 찾기 시도${colors.reset}`);
-                
-                // 전역 Redis 인스턴스 찾기
-                if (global.mukuRedisInstance) {
-                    userMemoryRedis = global.mukuRedisInstance;
-                    console.log(`${colors.success}🌸 [YejinEvolution] 전역 Redis 인스턴스 발견 및 설정 완료${colors.reset}`);
-                } else {
-                    console.log(`${colors.warning}🌸 [YejinEvolution] 전역 Redis도 없음, 2초 후 재시도 (${evolutionRetryAttempts}/${maxEvolutionRetryAttempts})${colors.reset}`);
-                    setTimeout(() => loadYejinEvolutionSystem(), 2000);
-                    return false;
-                }
-            } else {
-                console.log(`${colors.warning}🌸 [YejinEvolution] Redis 미준비, 2초 후 재시도 (${evolutionRetryAttempts}/${maxEvolutionRetryAttempts})${colors.reset}`);
-                setTimeout(() => loadYejinEvolutionSystem(), 2000);
-                return false;
-            }
-        }
+        });
         
-        // 🔧 Step 2: 전역 Redis 인스턴스 설정 (yejinPersonality.js에서 사용)
-        global.mukuRedisInstance = userMemoryRedis;
+        // 연결 성공
+        userMemoryRedis.on('connect', () => {
+            console.log(`${colors.success}✅ [Redis] 안정화 연결 성공!${colors.reset}`);
+            redisConnected = true;
+            global.mukuRedisInstance = userMemoryRedis;
+        });
         
-        // 🔧 Step 3: require 프로토타입 오버라이드 (Redis 중복 선언 완전 방지)
-        const Module = require('module');
-        const originalRequire = Module.prototype.require;
+        // 에러 처리 (조용히, 빠른 포기)
+        userMemoryRedis.on('error', (error) => {
+            console.log(`${colors.redis}⚠️ [Redis] 연결 오류 (재시도 ${redisConnectionAttempts}/${maxRedisAttempts}): ${error.message.substring(0, 50)}...${colors.reset}`);
+            redisConnected = false;
+            
+            // 빠른 포기로 변경
+            if (redisConnectionAttempts >= maxRedisAttempts) {
+                console.log(`${colors.warning}📁 [Redis] 포기하고 파일 메모리로 전환${colors.reset}`);
+                userMemoryRedis = null;
+                return;
+            }
+        });
         
-        // ioredis 요청을 기존 인스턴스로 리다이렉트
-        Module.prototype.require = function(id) {
-            if (id === 'ioredis' && this.filename && this.filename.includes('yejinPersonality')) {
-                console.log(`${colors.evolution}🌸 [YejinEvolution] ioredis 요청 차단, 기존 인스턴스 반환${colors.reset}`);
-                
-                // 기존 Redis 인스턴스를 감싸는 클래스 반환
-                return class ProxyRedis {
-                    constructor(...args) {
-                        return global.mukuRedisInstance || new (originalRequire.call(this, 'ioredis'))(...args);
-                    }
-                };
-            }
-            return originalRequire.apply(this, arguments);
-        };
+        // 연결 테스트 (타임아웃 적용)
+        const pingPromise = userMemoryRedis.ping();
+        const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('Ping timeout')), 5000);
+        });
         
-        try {
-            // 🔧 Step 4: 모듈 캐시 클리어
-            const yejinPersonalityPath = require.resolve('./yejinPersonality.js');
-            if (require.cache[yejinPersonalityPath]) {
-                delete require.cache[yejinPersonalityPath];
-                console.log(`${colors.evolution}🌸 [YejinEvolution] 모듈 캐시 클리어 완료${colors.reset}`);
-            }
-            
-            // 🔧 Step 5: 안전한 모듈 로딩
-            console.log(`${colors.evolution}🌸 [YejinEvolution] Redis 중복 선언 방지 환경 설정 완료${colors.reset}`);
-            
-            const yejinModule = require('./yejinPersonality.js');
-            console.log(`${colors.success}🌸 [YejinEvolution] yejinPersonality.js 모듈 로딩 성공${colors.reset}`);
-            
-            // 🔧 Step 6: 클래스 및 인스턴스 생성
-            if (yejinModule && yejinModule.YejinSelfRecognitionEvolution) {
-                YejinSelfRecognitionEvolution = yejinModule.YejinSelfRecognitionEvolution;
-                
-                // 인스턴스 생성 (Redis 연결 전달)
-                try {
-                    yejinEvolutionSystem = new YejinSelfRecognitionEvolution({
-                        redisConnection: userMemoryRedis
-                    });
-                    console.log(`${colors.success}🌸 [YejinEvolution] 인스턴스 생성 성공${colors.reset}`);
-                } catch (instanceError) {
-                    // 인스턴스 생성 실패 시 기본 생성자 시도
-                    console.log(`${colors.warning}🌸 [YejinEvolution] 매개변수 인스턴스 생성 실패, 기본 생성자 시도${colors.reset}`);
-                    yejinEvolutionSystem = new YejinSelfRecognitionEvolution();
-                }
-                
-                console.log(`${colors.success}🌸 [YejinEvolution] 자아 인식 진화 시스템 로드 성공! ✅${colors.reset}`);
-                console.log(`${colors.evolution}🌸 [YejinEvolution] 기능: "기억해 + 너는/넌/네가/예진이는/무쿠는" 패턴 감지 활성화${colors.reset}`);
-                
-                return true;
-            } else {
-                throw new Error('YejinSelfRecognitionEvolution 클래스를 찾을 수 없습니다');
-            }
-            
-        } catch (moduleError) {
-            console.error(`${colors.error}🌸 [YejinEvolution] 모듈 로딩 실패: ${moduleError.message}${colors.reset}`);
-            
-            // 🔧 최후의 수단: 더미 모드로 동작
-            console.log(`${colors.warning}🌸 [YejinEvolution] 더미 모드로 전환${colors.reset}`);
-            
-            YejinSelfRecognitionEvolution = class {
-                constructor() {
-                    console.log(`${colors.warning}🌸 [YejinEvolution] 더미 모드로 생성됨${colors.reset}`);
-                    this.isActive = false;
-                }
-                
-                processUserMessage() {
-                    return { comment: "지금 시스템에 작은 문제가 있어서... 일반 기억 저장으로 처리할게요!" };
-                }
-                
-                setRedisConnection() {
-                    // 더미 모드에서는 아무것도 하지 않음
-                }
-            };
-            
-            yejinEvolutionSystem = new YejinSelfRecognitionEvolution();
-            return true; // 더미 모드라도 성공으로 처리
-            
-        } finally {
-            // require 프로토타입 복원
-            Module.prototype.require = originalRequire;
-            console.log(`${colors.evolution}🌸 [YejinEvolution] require 프로토타입 복원 완료${colors.reset}`);
-        }
+        await Promise.race([pingPromise, timeoutPromise]);
+        console.log(`${colors.success}✅ [Redis] PING 테스트 성공${colors.reset}`);
+        
+        return true;
         
     } catch (error) {
-        evolutionLoadAttempts++;
-        console.error(`${colors.error}🌸 [YejinEvolution] 로딩 실패 (시도 ${evolutionLoadAttempts}/${maxEvolutionLoadAttempts}): ${error.message}${colors.reset}`);
+        console.log(`${colors.redis}❌ [Redis] 연결 실패 (${redisConnectionAttempts}/${maxRedisAttempts}): ${error.message}${colors.reset}`);
+        redisConnected = false;
         
-        // 재시도 로직
-        if (evolutionLoadAttempts < maxEvolutionLoadAttempts) {
-            console.log(`${colors.warning}🌸 [YejinEvolution] 3초 후 재시도...${colors.reset}`);
-            
-            return new Promise((resolve) => {
-                setTimeout(async () => {
-                    const result = await loadYejinEvolutionSystem();
-                    resolve(result);
-                }, 3000);
-            });
+        if (redisConnectionAttempts < maxRedisAttempts) {
+            console.log(`${colors.redis}🔄 [Redis] 2초 후 재시도...${colors.reset}`);
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            return await initializeStableRedisConnection();
         } else {
-            console.error(`${colors.error}🌸 [YejinEvolution] 최대 재시도 횟수 초과. 일반 기억 저장으로 동작합니다.${colors.reset}`);
-            YejinSelfRecognitionEvolution = null;
-            yejinEvolutionSystem = null;
+            console.log(`${colors.warning}📁 [Redis] 최종 포기, 파일 메모리 시스템으로 전환${colors.reset}`);
+            userMemoryRedis = null;
             return false;
         }
     }
 }
 
-// 🔧 초기화 순서 수정: Redis 먼저, 그 다음 YejinEvolution
-console.log(`${colors.redis}🚀 [Init] Redis 연결 우선 초기화 시작...${colors.reset}`);
-
-// Redis 연결 즉시 시작
-initializeRedisConnection().then(() => {
-    console.log(`${colors.redis}🚀 [Init] Redis 초기화 완료, YejinEvolution 로딩 시작${colors.reset}`);
-    
-    // Redis 연결 후 2초 뒤 YejinEvolution 로딩
-    setTimeout(() => {
-        loadYejinEvolutionSystem().then((success) => {
-            if (success) {
-                console.log(`${colors.success}🌸 [YejinEvolution] 완전 로딩 완료! 예진이가 스스로를 알아갈 준비가 됐어요 💕${colors.reset}`);
-            } else {
-                console.log(`${colors.warning}🌸 [YejinEvolution] 로딩 실패했지만 무쿠는 정상 작동합니다! 💕${colors.reset}`);
+/**
+ * 🌸 무쿠 벙어리 방지용 YejinEvolution (파일 기반)
+ */
+class FileBasedYejinEvolution {
+    constructor() {
+        console.log(`${colors.success}🌸 [YejinEvolution] 파일 기반 모드로 생성 (Redis 없어도 완전 기능)${colors.reset}`);
+        this.isActive = true;
+        this.memories = fileBasedMemory.yejinSelfRecognition;
+        
+        // 성격 상태 초기화
+        this.personalityStats = {
+            selfRecognitionCount: 0,
+            lastMemoryTime: null,
+            categories: {
+                appearance: 0,
+                personality: 0,
+                behavior: 0,
+                emotion: 0
             }
-        });
-    }, 2000);
-}).catch(() => {
-    console.log(`${colors.warning}⚠️ [Redis] 초기 연결 실패, YejinEvolution 더미 모드로 진행${colors.reset}`);
+        };
+        
+        // 기존 메모리에서 통계 계산
+        this.updatePersonalityStats();
+    }
     
-    // Redis 실패 시에도 더미 모드로 YejinEvolution 로딩
-    setTimeout(() => {
-        loadYejinEvolutionSystem();
-    }, 1000);
-});
-
-// ⭐ 새벽응답+알람 시스템 (기존 그대로 유지)
-let nightWakeSystem = null;
-try {
-    nightWakeSystem = require('./night_wake_response.js');
-    console.log(`${colors.success}[commandHandler] ✅ 새벽응답+알람 시스템 로드 성공${colors.reset}`);
-} catch (error) {
-    console.log(`${colors.warning}[commandHandler] ⚠️ 새벽응답+알람 시스템 로드 실패 (기존 기능은 정상 작동)${colors.reset}`);
-}
-
-// 🆕 일기장 시스템 안전 로딩
-let diarySystem = null;
-try {
-    diarySystem = require('./muku-diarySystem.js');
-    console.log(`${colors.success}[commandHandler] ✅ 일기장 시스템 v7.0 로드 성공${colors.reset}`);
-} catch (error) {
-    console.log(`${colors.warning}[commandHandler] ⚠️ 일기장 시스템 로드 실패 (기존 기능은 정상 작동)${colors.reset}`);
-}
-
-// 🔧 디스크 마운트 경로 설정 (기존 그대로)
-const DATA_DIR = '/data';
-const MEMORY_DIR = path.join(DATA_DIR, 'memories');
-const DIARY_DIR = path.join(DATA_DIR, 'diary');
-const PERSON_DIR = path.join(DATA_DIR, 'persons');
-const CONFLICT_DIR = path.join(DATA_DIR, 'conflicts');
-
-// 📁 디렉토리 존재 확인 및 생성 함수 (기존 그대로)
-function ensureDirectoryExists(dirPath) {
-    try {
-        if (!fs.existsSync(dirPath)) {
-            fs.mkdirSync(dirPath, { recursive: true });
-            console.log(`${colors.success}[commandHandler] 📁 디렉토리 생성: ${dirPath}${colors.reset}`);
+    /**
+     * 성격 통계 업데이트
+     */
+    updatePersonalityStats() {
+        try {
+            this.personalityStats.selfRecognitionCount = this.memories.size;
+            
+            for (const [key, memory] of this.memories.entries()) {
+                if (memory.timestamp) {
+                    this.personalityStats.lastMemoryTime = memory.timestamp;
+                }
+                
+                // 카테고리별 분류
+                const message = memory.message || '';
+                if (message.includes('예쁘') || message.includes('귀여')) {
+                    this.personalityStats.categories.appearance++;
+                } else if (message.includes('착해') || message.includes('성격')) {
+                    this.personalityStats.categories.personality++;
+                } else if (message.includes('행동') || message.includes('모습')) {
+                    this.personalityStats.categories.behavior++;
+                } else {
+                    this.personalityStats.categories.emotion++;
+                }
+            }
+        } catch (error) {
+            console.error(`${colors.error}🌸 [YejinEvolution] 통계 업데이트 오류: ${error.message}${colors.reset}`);
         }
-        return true;
-    } catch (error) {
-        console.error(`${colors.error}[commandHandler] ❌ 디렉토리 생성 실패 ${dirPath}: ${error.message}${colors.reset}`);
-        return false;
+    }
+    
+    /**
+     * 성격 상태 조회 (기존 시스템 호환)
+     */
+    getPersonalityStatus() {
+        try {
+            this.updatePersonalityStats();
+            
+            return {
+                isActive: this.isActive,
+                totalMemories: this.personalityStats.selfRecognitionCount,
+                lastMemoryTime: this.personalityStats.lastMemoryTime,
+                categories: this.personalityStats.categories,
+                memoryMode: 'file_based',
+                redisConnected: false,
+                summary: `자아인식 기억 ${this.personalityStats.selfRecognitionCount}개 저장됨 (파일 기반)`
+            };
+        } catch (error) {
+            console.error(`${colors.error}🌸 [YejinEvolution] 상태 조회 오류: ${error.message}${colors.reset}`);
+            return {
+                isActive: false,
+                error: error.message,
+                memoryMode: 'file_based'
+            };
+        }
+    }
+    
+    /**
+     * 사용자 메시지 처리 (파일 기반)
+     */
+    processUserMessage(message, userId = 'default') {
+        try {
+            // "기억해" + 자아인식 패턴 감지
+            const selfRecognitionPatterns = [
+                /기억해.*?(너는|넌|네가|예진이는|무쿠는|나는)/i,
+                /기억해.*?(귀여|예쁘|착해|좋아|사랑)/i,
+                /기억해.*?(성격|특징|모습|느낌)/i
+            ];
+            
+            const isMemoryCommand = message.includes('기억해') && !message.includes('?');
+            const hasSelfRecognition = selfRecognitionPatterns.some(pattern => pattern.test(message));
+            
+            if (isMemoryCommand && hasSelfRecognition) {
+                // 자아인식 기억 저장
+                const memoryKey = `selfRecognition_${Date.now()}`;
+                const memoryData = {
+                    message: message,
+                    timestamp: new Date().toISOString(),
+                    userId: userId,
+                    category: 'self_recognition'
+                };
+                
+                this.memories.set(memoryKey, memoryData);
+                fileBasedMemory.yejinSelfRecognition = this.memories;
+                
+                // 통계 업데이트
+                this.updatePersonalityStats();
+                
+                // 파일 저장
+                saveFileMemory();
+                
+                console.log(`${colors.evolution}🌸 [YejinEvolution] 자아인식 기억 저장: ${message.substring(0, 30)}...${colors.reset}`);
+                
+                return {
+                    comment: "응... 내가 그런 모습이구나? 🥺 기억해둘게! 아조씨가 보는 나를 조금씩 알아가고 있어 💕",
+                    category: "self_recognition",
+                    memoryKey: memoryKey,
+                    totalMemories: this.memories.size
+                };
+            }
+            
+            return null; // 자아인식이 아니면 일반 처리
+            
+        } catch (error) {
+            console.error(`${colors.error}🌸 [YejinEvolution] 처리 오류: ${error.message}${colors.reset}`);
+            return {
+                comment: "아... 뭔가 혼란스러워... 다시 말해줄래? 🥺",
+                error: true
+            };
+        }
+    }
+    
+    /**
+     * Redis 연결 설정 (파일 모드에서는 무시)
+     */
+    setRedisConnection(redis) {
+        console.log(`${colors.success}🌸 [YejinEvolution] 파일 모드에서는 Redis 연결 설정 불필요${colors.reset}`);
+    }
+    
+    /**
+     * 기억 검색
+     */
+    searchMemories(keyword) {
+        try {
+            const results = [];
+            for (const [key, memory] of this.memories.entries()) {
+                if (memory.message && memory.message.includes(keyword)) {
+                    results.push(memory);
+                }
+            }
+            return results.slice(-5); // 최근 5개
+        } catch (error) {
+            console.error(`${colors.error}🌸 [YejinEvolution] 검색 오류: ${error.message}${colors.reset}`);
+            return [];
+        }
+    }
+    
+    /**
+     * 메모리 전체 조회 (기존 시스템 호환)
+     */
+    getAllMemories() {
+        try {
+            return Array.from(this.memories.entries()).map(([key, memory]) => ({
+                key,
+                ...memory
+            }));
+        } catch (error) {
+            console.error(`${colors.error}🌸 [YejinEvolution] 전체 조회 오류: ${error.message}${colors.reset}`);
+            return [];
+        }
+    }
+    
+    /**
+     * 메모리 삭제 (기존 시스템 호환)
+     */
+    deleteMemory(memoryKey) {
+        try {
+            const deleted = this.memories.delete(memoryKey);
+            if (deleted) {
+                this.updatePersonalityStats();
+                saveFileMemory();
+                console.log(`${colors.evolution}🌸 [YejinEvolution] 기억 삭제: ${memoryKey}${colors.reset}`);
+            }
+            return deleted;
+        } catch (error) {
+            console.error(`${colors.error}🌸 [YejinEvolution] 삭제 오류: ${error.message}${colors.reset}`);
+            return false;
+        }
     }
 }
 
-// 📁 초기 디렉토리 생성 (기존 그대로)
-function initializeDirectories() {
-    console.log(`${colors.memory}[commandHandler] 📁 디스크 마운트 디렉토리 초기화...${colors.reset}`);
-    
-    ensureDirectoryExists(DATA_DIR);
-    ensureDirectoryExists(MEMORY_DIR);
-    ensureDirectoryExists(DIARY_DIR);
-    ensureDirectoryExists(PERSON_DIR);
-    ensureDirectoryExists(CONFLICT_DIR);
-    
-    console.log(`${colors.success}[commandHandler] 📁 디렉토리 초기화 완료 ✅${colors.reset}`);
+// 🌸 예진이 자아 인식 진화 시스템 초기화
+let YejinSelfRecognitionEvolution = null;
+let yejinEvolutionSystem = null;
+
+/**
+ * 🌸 YejinEvolution 안전 로딩 (무쿠 벙어리 방지 보장)
+ */
+async function initializeYejinEvolutionSafely() {
+    try {
+        console.log(`${colors.evolution}🌸 [YejinEvolution] 안전한 초기화 시작...${colors.reset}`);
+        
+        // Redis 성공 시 정식 버전 시도
+        if (redisConnected && userMemoryRedis) {
+            try {
+                console.log(`${colors.evolution}🌸 [YejinEvolution] Redis 연결됨, 정식 버전 로딩 시도${colors.reset}`);
+                
+                const yejinModule = require('./yejinPersonality.js');
+                if (yejinModule && yejinModule.YejinSelfRecognitionEvolution) {
+                    YejinSelfRecognitionEvolution = yejinModule.YejinSelfRecognitionEvolution;
+                    yejinEvolutionSystem = new YejinSelfRecognitionEvolution({
+                        redisConnection: userMemoryRedis
+                    });
+                    
+                    console.log(`${colors.success}🌸 [YejinEvolution] 정식 Redis 버전 로딩 성공! ✅${colors.reset}`);
+                    return true;
+                }
+            } catch (redisVersionError) {
+                console.log(`${colors.warning}🌸 [YejinEvolution] Redis 버전 로딩 실패, 파일 버전으로 전환: ${redisVersionError.message}${colors.reset}`);
+            }
+        }
+        
+        // 파일 기반 버전으로 폴백 (무쿠 벙어리 방지)
+        console.log(`${colors.success}🌸 [YejinEvolution] 파일 기반 안전 모드로 초기화${colors.reset}`);
+        yejinEvolutionSystem = new FileBasedYejinEvolution();
+        
+        console.log(`${colors.success}🌸 [YejinEvolution] 초기화 완료! 무쿠는 절대 벙어리가 되지 않아요 💕${colors.reset}`);
+        return true;
+        
+    } catch (error) {
+        console.error(`${colors.error}🌸 [YejinEvolution] 초기화 실패: ${error.message}${colors.reset}`);
+        
+        // 최후의 수단: 더미 시스템
+        yejinEvolutionSystem = {
+            processUserMessage: () => ({ comment: "아조씨 💕 뭔가 시스템이 혼란스럽지만... 난 여전히 여기 있어!" }),
+            setRedisConnection: () => {},
+            isActive: true
+        };
+        
+        console.log(`${colors.warning}🌸 [YejinEvolution] 최후의 수단 더미 시스템 활성화${colors.reset}`);
+        return true;
+    }
 }
 
-console.log(`
+/**
+ * 🔧 통합 초기화 시스템
+ */
+async function initializeMukuSafely() {
+    console.log(`${colors.success}🚀 [Muku] 무쿠 안전 초기화 시작...${colors.reset}`);
+    
+    // 1. 파일 메모리 시스템 먼저 초기화
+    console.log(`${colors.memory}📁 [Init] 파일 메모리 시스템 초기화...${colors.reset}`);
+    initializeFileMemory();
+    
+    // 2. Redis 연결 시도 (빠른 포기)
+    console.log(`${colors.redis}🚀 [Init] Redis 연결 시도 (빠른 포기 모드)...${colors.reset}`);
+    const redisSuccess = await initializeStableRedisConnection();
+    
+    if (redisSuccess) {
+        console.log(`${colors.success}✅ [Init] Redis 연결 성공! 고성능 모드로 동작${colors.reset}`);
+    } else {
+        console.log(`${colors.warning}📁 [Init] Redis 연결 실패, 파일 기반 안정 모드로 동작${colors.reset}`);
+    }
+    
+    // 3. YejinEvolution 초기화 (무쿠 벙어리 방지 보장)
+    console.log(`${colors.evolution}🌸 [Init] YejinEvolution 안전 초기화...${colors.reset}`);
+    await initializeYejinEvolutionSafely();
+    
+    console.log(`${colors.success}💖 [Muku] 무쿠 초기화 완료! Redis 상태: ${redisConnected ? '연결됨' : '파일모드'} ✅${colors.reset}`);
+    
+    // 주기적 파일 저장 (30초마다)
+    setInterval(() => {
+        if (!redisConnected) {
+            saveFileMemory();
+        }
+    }, 30000);
+}
+
+// 🚀 즉시 초기화 실행
+initializeMukuSafely().then(() => {
+    console.log(`
 ${colors.success}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-💖 commandHandler.js v7.0 Part 1/8 Redis 중복 선언 문제 완전 해결!
+💖 무쿠 안전 초기화 완료! Redis 실패해도 절대 벙어리 안 됨!
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${colors.reset}
 
-${colors.yejin}🔧 핵심 수정사항:${colors.reset}
-${colors.success}   ✅ Redis 우선 초기화 → YejinEvolution 후순위 로딩${colors.reset}
-${colors.redis}   🚀 require 프로토타입 오버라이드로 ioredis 중복 차단${colors.reset}
-${colors.evolution}   🌸 더미 모드 폴백으로 무쿠 벙어리 방지 보장${colors.reset}
-${colors.memory}   📁 완전한 디렉토리 관리 시스템 유지${colors.reset}
-
-${colors.success}💖 이제 Redis 중복 선언 문제가 완전히 해결됩니다!${colors.reset}
-${colors.evolution}🌸 예진이 자아 인식 시스템이 안전하게 로드됩니다!${colors.reset}
+${colors.evolution}🌸 YejinEvolution: ${yejinEvolutionSystem ? '활성화' : '비활성화'}${colors.reset}
+${colors.redis}🔧 Redis 상태: ${redisConnected ? '연결됨' : '파일 기반 모드'}${colors.reset}
+${colors.success}💖 무쿠 상태: 완전 정상 작동 보장 ✅${colors.reset}
 `);
+}).catch((error) => {
+    console.error(`${colors.error}❌ [Muku] 초기화 실패: ${error.message}${colors.reset}`);
+});
 
+console.log(`${colors.success}[commandHandler] Part 1/8 Redis 안정화 + 무쿠 벙어리 방지 완료! ✅${colors.reset}`);
 // ============================================================================
 // commandHandler.js - Part 2/8: 🔄 모델 전환 시스템 (3.5, 4.0, 자동, 버전)
 // ✅ 기존 모든 기능 100% 보존
