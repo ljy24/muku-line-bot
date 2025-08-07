@@ -1483,7 +1483,7 @@ async function getReplyByMessage(userMessage) {
                     await safelyStoreMessage(USER_NAME, cleanUserMessage);
                     
                     // sulkyManager에서 이미 응답 생성했으므로 그것을 사용
-                    const damtaResponse = sulkyProcessingResult.context?.message || 
+                    const damtaResponse = sulkyProcessingResult.context?.comment ||
                         (sulkyProcessingResult.damtaReconciled ? "좋아! 담타 고고! ㅎㅎ" : "지금은 담타 별로야...");
                         
                     logConversationReply('나', `(담타-${sulkyProcessingResult.damtaReconciled ? '성공' : '실패'}) ${damtaResponse}`);
