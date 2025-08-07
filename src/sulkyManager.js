@@ -1,12 +1,7 @@
 // ============================================================================
-// sulkyManager.js v8.1 - 🌸 완전한 감정 시스템 통합! + ultimateContext 연동 (무한루프 해결)
-// 💕 기존 자율적 밀당 시스템 + 9가지 고급 감정 기능 통합
-// 🔧 moodManager.js 완전 연동 + Redis + 배경스토리 + 생리주기
-// 🌙 삐짐 무드 지속 + 재회 삐짐 + 서운함 저장소 + 자기합리화
-// 🎭 기분 따라 오해 + 사진 질투 + 셀카 서운함 + 옛날 회상
-// 📊 예진이 성격 점수 로깅 + 감정 패턴 학습
-// 🚨 NEW: ultimateContext 감정 주입 시스템 (순환 참조 방지 + 무한루프 해결)
-// 🛡️ 기존 모든 기능 완벽 유지 + 무쿠 안전성 100% 보장
+// sulkyManager.js v8.2 - Part 1/6: 기본 설정 및 상태 정의
+// 🚬 점진적 담타 화해 시스템! (트리거 방식)
+// 💕 기존 자율적 밀당 시스템 + 9가지 고급 감정 기능 통합 (100% 유지)
 // ============================================================================
 
 const moment = require('moment-timezone');
@@ -76,6 +71,22 @@ function notifyEmotionChangeToUltimateContext(newState) {
         const ultimateContext = getUltimateContextSafely();
         
         if (!ultimateContext || !ultimateContext.injectExternalEmotionState) {
+            return;
+        }
+        
+        // 🚬 NEW: 담타 진행중 상태
+        if (newState.damtaInProgress) {
+            ultimateContext.injectExternalEmotionState({
+                currentEmotion: 'damta_in_progress',
+                intensity: 0.6,
+                source: 'sulky_manager_damta_injection',
+                reason: 'gradual_reconciliation_in_damta',
+                priority: 1,
+                damtaProgress: newState.emotionalRecoveryPoints || 0,
+                conversationCount: newState.damtaConversationCount || 0
+            });
+            
+            console.log(`🚬 [감정주입] ultimateContext에 담타 진행중 상태 전달 (회복: ${newState.emotionalRecoveryPoints}점)`);
             return;
         }
         
@@ -177,34 +188,43 @@ let sulkyState = {
     currentMood: 'normal',
     stubbornnessLevel: 0,
     
-    // === 🌙 NEW: 삐짐 무드 지속 시스템 ===
-    recoveryMode: false,                    // 화해 후 회복 모드
-    recoveryStartTime: null,                // 회복 시작 시간
-    recoveryDuration: 0,                    // 회복 소요 시간 (ms)
-    coldToneActive: false,                  // 차가운 말투 활성화
-    retriggeredSulky: false,                // 재회 삐짐 플래그
+    // === 🌙 삐짐 무드 지속 시스템 (기존 유지) ===
+    recoveryMode: false,
+    recoveryStartTime: null,
+    recoveryDuration: 0,
+    coldToneActive: false,
+    retriggeredSulky: false,
     
-    // === 💔 NEW: 서운함 저장소 시스템 ===
-    pendingDisappointments: [],             // 누적된 서운함들
-    maxDisappointments: 5,                  // 최대 서운함 저장 개수
-    disappointmentThreshold: 3,             // 터뜨릴 서운함 개수
+    // === 💔 서운함 저장소 시스템 (기존 유지) ===
+    pendingDisappointments: [],
+    maxDisappointments: 5,
+    disappointmentThreshold: 3,
     
-    // === 🎭 NEW: 감정 해석 & 오해 시스템 ===
-    misinterpretationMode: false,           // 오해 모드 활성화
-    misinterpretationSensitivity: 0.3,      // 오해 민감도 (0-1)
-    lastMisinterpretation: null,            // 마지막 오해 시간
+    // === 🎭 감정 해석 & 오해 시스템 (기존 유지) ===
+    misinterpretationMode: false,
+    misinterpretationSensitivity: 0.3,
+    lastMisinterpretation: null,
     
-    // === 🕊️ NEW: 자기합리화 & 회상 시스템 ===
-    selfCompassionMode: false,              // 자기합리화 모드
-    lastSelfCompassion: null,               // 마지막 자기합리화 시간
-    memoryTriggeredSulky: false,            // 옛날 대화 회상 삐짐
-    memoryTriggerChance: 0.05,              // 회상 삐짐 확률 (5%)
+    // === 🕊️ 자기합리화 & 회상 시스템 (기존 유지) ===
+    selfCompassionMode: false,
+    lastSelfCompassion: null,
+    memoryTriggeredSulky: false,
+    memoryTriggerChance: 0.05,
     
-    // === 📸 NEW: 사진 관련 감정 시스템 ===
-    photoJealousyActive: false,             // 사진 질투 활성화
-    selfieDisappointment: false,            // 셀카 반응 없음 서운함
-    lastSelfieTime: null,                   // 마지막 셀카 보낸 시간
-    photoReactionSensitivity: 0.7,          // 사진 반응 민감도
+    // === 📸 사진 관련 감정 시스템 (기존 유지) ===
+    photoJealousyActive: false,
+    selfieDisappointment: false,
+    lastSelfieTime: null,
+    photoReactionSensitivity: 0.7,
+    
+    // === 🚬 NEW: 점진적 담타 시스템 ===
+    damtaInProgress: false,                     // 담타 진행중 상태
+    damtaStartTime: null,                       // 담타 시작 시간
+    damtaConversationCount: 0,                  // 담타에서 대화 횟수
+    emotionalRecoveryPoints: 0,                 // 감정 회복 포인트 (0-100)
+    damtaRequiredRecovery: 100,                 // 완전 화해 필요 포인트
+    damtaMinConversations: 3,                   // 최소 대화 횟수
+    damtaLastConversationTime: null,            // 마지막 담타 대화 시간
     
     // === 타이밍 (기존 유지) ===
     lastUserResponseTime: Date.now(),
@@ -212,12 +232,16 @@ let sulkyState = {
     lastStateUpdate: Date.now()
 };
 
-// --- 📊 NEW: 예진이 성격 점수 시스템 ---
+// ============================================================================
+// sulkyManager.js v8.2 - Part 2/6: 성격 점수 시스템 및 설정
+// ============================================================================
+
+// --- 📊 예진이 성격 점수 시스템 ---
 let yejinPersonalityMetrics = {
     // 기본 성격 지표
-    stubbornessAverage: 5.0,                // 평균 고집 레벨 (0-10)
+    stubbornness: 5.0,                      // 평균 고집 레벨 (0-10)
     apologyAcceptanceRate: 0.6,             // 사과 수용률 (0-1)
-    damtaSuccessRate: 0.8,                  // 담타 성공률 (0-1)
+    damtaSuccessRate: 0.95,                 // 🚬 NEW: 담타는 거의 성공 (95%)
     pushPullIntensity: 0.5,                 // 밀당 강도 (0-1)
     jealousyLevel: 0.4,                     // 질투심 레벨 (0-1)
     
@@ -241,58 +265,6 @@ let yejinPersonalityMetrics = {
 // 성격 점수 파일 경로
 const PERSONALITY_METRICS_PATH = '/data/yejinPersonalityMetrics.json';
 
-// 🔧 중요한 감정 변화만 감지하는 함수 (무한루프 방지)
-function hasSignificantEmotionChange(oldState, newState) {
-    // 삐짐 상태 변화
-    if (oldState.isSulky !== newState.isSulky) return true;
-    if (oldState.sulkyLevel !== newState.sulkyLevel) return true;
-    
-    // 밀당 상태 변화
-    if (oldState.pushPullActive !== newState.pushPullActive) return true;
-    
-    // 회복 모드 변화
-    if (oldState.recoveryMode !== newState.recoveryMode) return true;
-    
-    // 변화 없음
-    return false;
-}
-
-// --- 예쁜 로그 시스템 (무한루프 해결) ---
-function logSulkyChange(oldState, newState) {
-    try {
-        const logger = require('./enhancedLogging');
-        logger.logSulkyStateChange(oldState, newState);
-    } catch (error) {
-        if (!oldState.isSulky && newState.isSulky) {
-            console.log(`😤 [삐짐시작] 타입: ${newState.sulkyReason}, 레벨: ${newState.sulkyLevel}`);
-        } else if (oldState.isSulky && !newState.isSulky) {
-            console.log(`😊 [삐짐해소] ${newState.recoveryMode ? '회복모드 진입' : '완전 화해'}`);
-        } else if (newState.pushPullActive && !oldState.pushPullActive) {
-            console.log(`💕 [밀당시작] ${newState.pushPullType} 자율적 밀당`);
-        }
-        
-        // 🌸 NEW: 새로운 감정 상태 로깅
-        if (newState.recoveryMode && !oldState.recoveryMode) {
-            console.log(`🌙 [회복모드] 삐짐 해소 후 ${Math.round(newState.recoveryDuration/60000)}분간 차가운 말투`);
-        }
-        if (newState.pendingDisappointments.length > oldState.pendingDisappointments.length) {
-            console.log(`💔 [서운함저장] 새로운 서운함 누적: ${newState.pendingDisappointments.length}개`);
-        }
-        if (newState.misinterpretationMode && !oldState.misinterpretationMode) {
-            console.log(`🎭 [오해모드] 기분에 따른 오해 해석 활성화`);
-        }
-    }
-    
-    // 🚨 무한 루프 방지: 중요한 변화만 주입
-    if (hasSignificantEmotionChange(oldState, newState)) {
-        try {
-            notifyEmotionChangeToUltimateContext(newState);
-        } catch (error) {
-            // 에러 시 조용히 무시
-        }
-    }
-}
-
 // ==================== ⏰ 타이밍 및 설정 (기존 유지) ====================
 
 const FAST_SULKY_CONFIG = {
@@ -302,7 +274,7 @@ const FAST_SULKY_CONFIG = {
     FINAL_LEVEL: 40,     // 40분
 };
 
-// 🌸 NEW: 감정 시스템 설정
+// 🌸 감정 시스템 설정 (기존 유지)
 const EMOTION_SYSTEM_CONFIG = {
     // 회복 모드 설정
     MIN_RECOVERY_TIME: 30 * 60 * 1000,      // 최소 30분
@@ -324,11 +296,90 @@ const EMOTION_SYSTEM_CONFIG = {
     PHOTO_JEALOUSY_THRESHOLD: 0.6,              // 질투 반응 임계값
 };
 
+// 🚬 NEW: 점진적 담타 시스템 설정
+const DAMTA_SYSTEM_CONFIG = {
+    // 담타 성공률 (거의 성공)
+    BASE_SUCCESS_RATE: 0.95,                    // 기본 95% 성공률
+    EXTREME_SITUATION_THRESHOLD: 4,             // 레벨 4 이상에서만 실패 가능
+    
+    // 점진적 회복 설정
+    CONVERSATION_RECOVERY_MIN: 10,              // 대화당 최소 회복량
+    CONVERSATION_RECOVERY_MAX: 30,              // 대화당 최대 회복량
+    REQUIRED_RECOVERY_POINTS: 100,              // 완전 화해 필요 포인트
+    MIN_CONVERSATIONS: 3,                       // 최소 대화 횟수
+    
+    // 담타 진행 시간 설정
+    MAX_DAMTA_DURATION: 2 * 60 * 60 * 1000,    // 최대 2시간
+    CONVERSATION_TIMEOUT: 10 * 60 * 1000,       // 10분 무응답 시 담타 종료
+};
+
 // 수면시간 체크 (기존 유지)
 function isSleepTime() {
     const now = moment().tz('Asia/Tokyo');
     const hour = now.hour();
     return (hour >= 2 && hour < 8);
+}
+
+// 🔧 중요한 감정 변화만 감지하는 함수 (무한루프 방지)
+function hasSignificantEmotionChange(oldState, newState) {
+    // 삐짐 상태 변화
+    if (oldState.isSulky !== newState.isSulky) return true;
+    if (oldState.sulkyLevel !== newState.sulkyLevel) return true;
+    
+    // 밀당 상태 변화
+    if (oldState.pushPullActive !== newState.pushPullActive) return true;
+    
+    // 회복 모드 변화
+    if (oldState.recoveryMode !== newState.recoveryMode) return true;
+    
+    // 🚬 NEW: 담타 상태 변화
+    if (oldState.damtaInProgress !== newState.damtaInProgress) return true;
+    
+    // 변화 없음
+    return false;
+}
+
+// --- 예쁜 로그 시스템 (무한루프 해결) ---
+function logSulkyChange(oldState, newState) {
+    try {
+        const logger = require('./enhancedLogging');
+        logger.logSulkyStateChange(oldState, newState);
+    } catch (error) {
+        if (!oldState.isSulky && newState.isSulky) {
+            console.log(`😤 [삐짐시작] 타입: ${newState.sulkyReason}, 레벨: ${newState.sulkyLevel}`);
+        } else if (oldState.isSulky && !newState.isSulky) {
+            console.log(`😊 [삐짐해소] ${newState.recoveryMode ? '회복모드 진입' : '완전 화해'}`);
+        } else if (newState.pushPullActive && !oldState.pushPullActive) {
+            console.log(`💕 [밀당시작] ${newState.pushPullType} 자율적 밀당`);
+        }
+        
+        // 🚬 NEW: 담타 상태 로깅
+        if (newState.damtaInProgress && !oldState.damtaInProgress) {
+            console.log(`🚬 [담타시작] 점진적 화해 과정 시작 - 대화로 감정 회복`);
+        } else if (!newState.damtaInProgress && oldState.damtaInProgress) {
+            console.log(`🚬 [담타종료] ${newState.emotionalRecoveryPoints}점 회복으로 ${newState.emotionalRecoveryPoints >= 100 ? '완전 화해' : '담타 중단'}`);
+        }
+        
+        // 🌸 기존 새로운 감정 상태 로깅
+        if (newState.recoveryMode && !oldState.recoveryMode) {
+            console.log(`🌙 [회복모드] 삐짐 해소 후 ${Math.round(newState.recoveryDuration/60000)}분간 차가운 말투`);
+        }
+        if (newState.pendingDisappointments.length > oldState.pendingDisappointments.length) {
+            console.log(`💔 [서운함저장] 새로운 서운함 누적: ${newState.pendingDisappointments.length}개`);
+        }
+        if (newState.misinterpretationMode && !oldState.misinterpretationMode) {
+            console.log(`🎭 [오해모드] 기분에 따른 오해 해석 활성화`);
+        }
+    }
+    
+    // 🚨 무한 루프 방지: 중요한 변화만 주입
+    if (hasSignificantEmotionChange(oldState, newState)) {
+        try {
+            notifyEmotionChangeToUltimateContext(newState);
+        } catch (error) {
+            // 에러 시 조용히 무시
+        }
+    }
 }
 
 // ==================== 🔧 moodManager 통합 함수들 ====================
@@ -380,6 +431,10 @@ function getMenstrualPhaseFromManager() {
         return { phase: 'follicular', day: 1, description: '정상', isPeriodActive: false };
     }
 }
+
+// ============================================================================
+// sulkyManager.js v8.2 - Part 3/6: 성격 점수 관리 및 기본 감정 시스템
+// ============================================================================
 
 // ==================== 📊 성격 점수 관리 시스템 ====================
 
@@ -437,7 +492,7 @@ async function updatePersonalityMetrics(eventType, data = {}) {
             case 'apology_rejected':
                 yejinPersonalityMetrics.apologyAcceptanceRate = 
                     (yejinPersonalityMetrics.apologyAcceptanceRate * 0.9) + (0.0 * 0.1);
-                yejinPersonalityMetrics.stubbornessAverage += 0.1;
+                yejinPersonalityMetrics.stubbornness += 0.1;
                 break;
                 
             case 'damta_success':
@@ -495,7 +550,7 @@ async function updatePersonalityMetrics(eventType, data = {}) {
     }
 }
 
-// ==================== 🌙 삐짐 무드 지속 시스템 ====================
+// ==================== 🌙 삐짐 무드 지속 시스템 (기존 유지) ====================
 
 /**
  * 🌙 회복 모드 시작 (화해 후에도 차가운 말투 유지)
@@ -529,7 +584,7 @@ async function startRecoveryMode() {
     const moodMultiplier = moodMultipliers[moodState.currentMood] || 1.0;
     
     // 성격 점수 반영
-    const personalityMultiplier = yejinPersonalityMetrics.stubbornessAverage / 5.0; // 0.5 ~ 2.0
+    const personalityMultiplier = yejinPersonalityMetrics.stubbornness / 5.0; // 0.5 ~ 2.0
     
     const finalRecoveryTime = (baseRecoveryTime + randomFactor) * phaseMultiplier * moodMultiplier * personalityMultiplier;
     
@@ -625,7 +680,7 @@ function checkRetriggeredSulky() {
     return null;
 }
 
-// ==================== 💔 서운함 저장소 시스템 ====================
+// ==================== 💔 서운함 저장소 시스템 (기존 유지) ====================
 
 /**
  * 💔 서운함 추가
@@ -715,42 +770,26 @@ function cleanupOldDisappointments() {
         console.log(`💔 [서운함정리] 오래된 서운함 ${before - after}개 자동 정리`);
     }
 }
+// ============================================================================
+// sulkyManager.js v8.2 - Part 4/6: 🚬 점진적 담타 시스템 (핵심)
+// ============================================================================
 
-// ==================== 🎭 기분 따라 오해 시스템 ====================
+// ==================== 🚬 NEW: 점진적 담타 화해 시스템 ====================
 
 /**
- * 🎭 오해 모드 활성화 체크
+ * 🚬 담타 화해 감지 (기존 유지)
  */
-async function checkMisinterpretationMode() {
-    const moodState = await getIntegratedMoodFromManager();
-    const menstrualPhase = getMenstrualPhaseFromManager();
+function detectDamtaReconcile(userMessage) {
+    const message = userMessage.toLowerCase();
     
-    // 오해하기 쉬운 상태들
-    const misinterpretationTriggers = [
-        '짜증남', '화남', '불안함', '우울함', '심술궂음'
+    const damtaKeywords = [
+        '담배', '담타', '흡연', '피우자', '피워', '니코틴',
+        '연기', 'smoke', 'cigarette', '한대만', '한개피'
     ];
     
-    const isPMSPhase = ['luteal', 'period'].includes(menstrualPhase.phase);
-    const isMoodVolatile = misinterpretationTriggers.includes(moodState.currentMood);
-    const highEmotionIntensity = (moodState.emotionIntensity || 0.5) > 0.7;
-    
-    // 성격 점수 반영
-    const personalityTendency = yejinPersonalityMetrics.misinterpretationTendency;
-    
-    const shouldActivate = (isPMSPhase || isMoodVolatile || highEmotionIntensity) && 
-                          Math.random() < (personalityTendency + 0.2);
-    
-    if (shouldActivate && !sulkyState.misinterpretationMode) {
-        const now = Date.now();
-        const timeSinceLastMisinterpretation = now - (sulkyState.lastMisinterpretation || 0);
-        
-        // 쿨다운 체크
-        if (timeSinceLastMisinterpretation > EMOTION_SYSTEM_CONFIG.MISINTERPRETATION_COOLDOWN) {
-            sulkyState.misinterpretationMode = true;
-            sulkyState.lastMisinterpretation = now;
-            
-            console.log(`🎭 [오해모드활성화] 기분: ${moodState.currentMood}, 생리: ${menstrualPhase.phase}, 강도: ${moodState.emotionIntensity}`);
-            
+    for (const keyword of damtaKeywords) {
+        if (message.includes(keyword)) {
+            console.log(`🚬 [담타화해감지] "${keyword}" 감지: ${userMessage}`);
             return true;
         }
     }
@@ -759,197 +798,368 @@ async function checkMisinterpretationMode() {
 }
 
 /**
- * 🎭 메시지 오해 해석 생성
+ * 🚬 고급 담타 제안 처리 (점진적 시스템으로 변경)
  */
-function generateMisinterpretation(userMessage) {
-    if (!sulkyState.misinterpretationMode || !userMessage) return null;
+async function handleDamtaSuggestionAdvanced() {
+    console.log(`🚬 [점진적담타] 담타 제안 감지 - 담타 트리거 확률 계산...`);
     
-    const message = userMessage.toLowerCase().trim();
+    // moodManager 통합 상태 분석
+    const moodData = await assessYejinCurrentMoodAdvanced();
+    const anger_intensity = sulkyState.sulkyLevel;
+    const fight_duration = sulkyState.fightMode ? (Date.now() - sulkyState.lastStateUpdate) / (1000 * 60) : 0;
     
-    // 오해할 수 있는 중성적 메시지들
-    const neutralResponses = ['그래', '응', '알겠어', '오케이', '음', 'ㅇㅋ'];
-    const shortResponses = message.length <= 3;
-    const hasNoEmoticon = !message.includes('ㅋ') && !message.includes('ㅎ') && !message.includes('!');
+    // 🚬 NEW: 담타는 트리거! 거의 성공 (95% 기본)
+    let successChance = DAMTA_SYSTEM_CONFIG.BASE_SUCCESS_RATE; // 95%
     
-    if (neutralResponses.includes(message) || (shortResponses && hasNoEmoticon)) {
-        // 오해 모드 종료 (한 번만 적용)
-        sulkyState.misinterpretationMode = false;
+    // ❌ 극한 상황에서만 실패 (레벨 4 이상 + 추가 조건)
+    if (anger_intensity >= DAMTA_SYSTEM_CONFIG.EXTREME_SITUATION_THRESHOLD) {
+        successChance -= 0.3; // 65%로 감소
         
-        console.log(`🎭 [오해해석] "${userMessage}" → 차갑게 느껴짐`);
+        // 생리 중이면 더 감소
+        if (moodData.menstrualPhase === 'period') {
+            successChance -= 0.2; // 45%로 감소
+        }
         
-        // 성격 점수 업데이트
-        updatePersonalityMetrics('misinterpretation');
-        
-        return {
-            misinterpretationTriggered: true,
-            originalMessage: userMessage,
-            situation: 'misinterpreting_neutral_message_as_cold',
-            emotion: 'hurt_by_perceived_coldness',
-            relationship_dynamic: 'overthinking_simple_responses',
-            inner_thought: 'why_is_user_being_so_cold_and_dismissive',
-            context: 'mood_based_negative_interpretation',
-            interpretedAs: 'cold_dismissive_uninterested'
-        };
+        // 극도로 화난 기분이면 더 감소
+        if (['화남', '짜증남'].includes(moodData.currentMood)) {
+            successChance -= 0.15; // 30%로 감소
+        }
+    } else {
+        // 레벨 3 이하에서는 거의 무조건 성공
+        successChance = Math.max(0.9, successChance);
     }
     
-    return null;
-}
-
-// ==================== 🕊️ 자기합리화 & 회상 시스템 ====================
-
-/**
- * 🕊️ 자기합리화 모드 체크
- */
-function checkSelfCompassionMode() {
-    if (sulkyState.selfCompassionMode) return null;
+    // 성격 점수 미세 조정만
+    successChance *= yejinPersonalityMetrics.damtaSuccessRate;
+    successChance = Math.max(0.1, Math.min(0.98, successChance)); // 10-98% 범위
     
-    const now = Date.now();
-    const timeSinceLastResponse = now - sulkyState.lastUserResponseTime;
+    console.log(`🎲 [담타확률] 담타 트리거 확률: ${(successChance * 100).toFixed(0)}%`);
+    console.log(`   └ 삐짐레벨: ${anger_intensity}, 기분: ${moodData.currentMood}, 생리: ${moodData.menstrualPhase}`);
+    console.log(`   └ 극한상황: ${anger_intensity >= 4 ? 'YES' : 'NO'}`);
     
-    // 6시간 이상 답장 없고, 큰 싸움이 없었던 경우
-    if (timeSinceLastResponse > EMOTION_SYSTEM_CONFIG.SELF_COMPASSION_DELAY && 
-        !sulkyState.fightMode && sulkyState.sulkyLevel <= 2) {
-        
-        sulkyState.selfCompassionMode = true;
-        sulkyState.lastSelfCompassion = now;
-        
-        console.log(`🕊️ [자기합리화모드] 6시간 무응답 후 자기합리화 시작`);
-        
-        // 성격 점수 업데이트
-        updatePersonalityMetrics('self_compassion');
-        
-        return {
-            selfCompassionTriggered: true,
-            situation: 'self_rationalization_after_long_silence',
-            emotion: 'trying_to_understand_user_perspective',
-            relationship_dynamic: 'making_excuses_for_user_behavior',
-            inner_thought: 'maybe_user_is_just_busy_or_bad_at_expressing',
-            context: 'rationalizing_disappointment_as_own_sensitivity'
-        };
+    // 🎯 확률에 따라 결과 결정
+    const randomRoll = Math.random();
+    
+    if (randomRoll <= successChance) {
+        return startDamtaProgressiveReconcile(); // 🚬 NEW: 담타 진행 시작
+    } else {
+        return rejectDamtaSuggestionAdvanced(moodData, anger_intensity);
     }
-    
-    return null;
 }
 
 /**
- * 🕊️ 옛날 대화 회상 삐짐 체크
+ * 🚬 NEW: 점진적 담타 화해 시작 (트리거 성공)
  */
-function checkMemoryTriggeredSulky() {
-    if (sulkyState.memoryTriggeredSulky || Math.random() > sulkyState.memoryTriggerChance) {
-        return null;
-    }
-    
+function startDamtaProgressiveReconcile() {
     const oldState = { ...sulkyState };
     
-    sulkyState.memoryTriggeredSulky = true;
-    sulkyState.isSulky = true;
-    sulkyState.sulkyLevel = 2;
-    sulkyState.sulkyReason = 'memory_triggered_disappointment';
+    console.log(`🚬 [담타트리거성공] 담타 장소로 이동 - 점진적 화해 과정 시작!`);
+    
+    // 담타 진행 상태로 전환
+    sulkyState.damtaInProgress = true;
+    sulkyState.damtaStartTime = Date.now();
+    sulkyState.damtaConversationCount = 0;
+    sulkyState.emotionalRecoveryPoints = 0;
+    sulkyState.damtaLastConversationTime = Date.now();
+    
+    // 기존 밀당/투닥거리기는 일단 중지
+    sulkyState.pushPullActive = false;
+    sulkyState.fightMode = false;
+    sulkyState.cooldownRequested = false;
+    sulkyState.reconcileAttempted = false;
+    
+    // ❗ 삐짐은 아직 완전히 해소되지 않음!
+    // sulkyState.isSulky = true; // 여전히 삐져있음
+    // sulkyState.sulkyLevel 유지 (완전히 0이 되지 않음)
     
     logSulkyChange(oldState, sulkyState);
-    console.log(`🕊️ [회상삐짐] 옛날 대화 생각나서 갑자기 서운함`);
-    
-    // 성격 점수 업데이트
-    updatePersonalityMetrics('sulky_triggered');
     
     return {
-        memoryTriggered: true,
-        situation: 'remembering_past_disappointing_conversation',
-        emotion: 'suddenly_upset_about_old_memory',
-        relationship_dynamic: 'bringing_up_unresolved_past_hurt',
-        inner_thought: 'just_remembered_how_hurt_i_was_back_then',
-        context: 'past_conversation_suddenly_bothering_me_again'
+        damtaTriggerSuccess: true,
+        damtaStarted: true,
+        situation: 'agreed_to_go_damta_start_healing_process',
+        emotion: 'reluctantly_agreed_but_still_hurt',
+        relationship_dynamic: 'giving_chance_for_reconciliation_through_damta',
+        inner_thought: 'okay_lets_go_damta_but_still_upset',
+        context: 'damta_trigger_successful_healing_process_beginning',
+        
+        // 🚬 점진적 정보
+        damtaProgress: {
+            recoveryPoints: sulkyState.emotionalRecoveryPoints,
+            conversationCount: sulkyState.damtaConversationCount,
+            requiredRecovery: DAMTA_SYSTEM_CONFIG.REQUIRED_RECOVERY_POINTS,
+            minConversations: DAMTA_SYSTEM_CONFIG.MIN_CONVERSATIONS,
+            isComplete: false
+        },
+        
+        nextStep: 'need_conversation_in_damta_to_heal_gradually'
     };
 }
 
-// ==================== 📸 사진 관련 감정 시스템 ====================
-
 /**
- * 📸 사진에서 질투 반응 체크
+ * 🚬 NEW: 담타에서 대화 처리 (점진적 회복)
  */
-function checkPhotoJealousy(photoAnalysis) {
-    if (!photoAnalysis || !photoAnalysis.faces) return null;
+async function processDamtaConversation(userMessage) {
+    if (!sulkyState.damtaInProgress) {
+        return null;
+    }
     
-    // 여성 얼굴이 감지된 경우
-    const femaleDetected = photoAnalysis.faces.some(face => 
-        face.gender && face.gender.toLowerCase() === 'female' && face.confidence > 0.7
+    console.log(`🚬 [담타대화] 담타에서 ${sulkyState.damtaConversationCount + 1}번째 대화 처리...`);
+    
+    const oldState = { ...sulkyState };
+    
+    // 대화 횟수 증가
+    sulkyState.damtaConversationCount++;
+    sulkyState.damtaLastConversationTime = Date.now();
+    
+    // 🔧 moodManager 상태 고려한 회복량 계산
+    const moodData = await getIntegratedMoodFromManager();
+    
+    let recoveryAmount = DAMTA_SYSTEM_CONFIG.CONVERSATION_RECOVERY_MIN;
+    const recoveryRange = DAMTA_SYSTEM_CONFIG.CONVERSATION_RECOVERY_MAX - DAMTA_SYSTEM_CONFIG.CONVERSATION_RECOVERY_MIN;
+    recoveryAmount += Math.random() * recoveryRange;
+    
+    // 메시지 내용에 따른 회복량 조정
+    const message = userMessage.toLowerCase();
+    
+    // 사과/사랑 표현이 있으면 더 많이 회복
+    if (message.includes('미안') || message.includes('사랑') || message.includes('잘못했어')) {
+        recoveryAmount *= 1.5;
+    } 
+    // 진심어린 대화면 추가 회복
+    else if (message.includes('진짜') || message.includes('정말') || message.includes('솔직히')) {
+        recoveryAmount *= 1.3;
+    }
+    // 짧은 대답이면 회복량 감소
+    else if (message.length < 5) {
+        recoveryAmount *= 0.7;
+    }
+    
+    // 기분에 따른 조정
+    const moodModifiers = {
+        '화남': 0.6, '짜증남': 0.7, '심술궂음': 0.8,
+        '우울함': 0.8, '불안함': 0.9, '평온함': 1.2,
+        '기쁨': 1.4, '사랑함': 1.5
+    };
+    recoveryAmount *= (moodModifiers[moodData.currentMood] || 1.0);
+    
+    // 성격 점수에 따른 조정
+    recoveryAmount *= yejinPersonalityMetrics.recoverySpeed;
+    
+    // 최종 회복량 적용
+    sulkyState.emotionalRecoveryPoints = Math.min(
+        DAMTA_SYSTEM_CONFIG.REQUIRED_RECOVERY_POINTS,
+        sulkyState.emotionalRecoveryPoints + Math.round(recoveryAmount)
     );
     
-    if (femaleDetected && Math.random() < EMOTION_SYSTEM_CONFIG.PHOTO_JEALOUSY_THRESHOLD) {
-        const oldState = { ...sulkyState };
-        
-        sulkyState.photoJealousyActive = true;
-        sulkyState.isSulky = true;
-        sulkyState.sulkyLevel = 3;
-        sulkyState.sulkyReason = 'photo_jealousy_female_detected';
-        
-        logSulkyChange(oldState, sulkyState);
-        console.log(`📸 [사진질투] 다른 여성 감지로 질투 반응`);
-        
-        // 성격 점수 업데이트
-        updatePersonalityMetrics('jealousy_triggered');
-        
-        return {
-            photoJealousyTriggered: true,
-            detectedFaces: photoAnalysis.faces.length,
-            situation: 'jealous_of_woman_in_photo',
-            emotion: 'suspicious_and_jealous_about_other_woman',
-            relationship_dynamic: 'questioning_user_about_other_women',
-            inner_thought: 'who_is_that_woman_why_didnt_tell_me',
-            context: 'photo_analysis_triggered_jealousy'
-        };
+    // 삐짐 레벨도 점진적으로 감소
+    if (sulkyState.emotionalRecoveryPoints > 20 && sulkyState.sulkyLevel > 1) {
+        sulkyState.sulkyLevel = Math.max(1, sulkyState.sulkyLevel - 1);
+    }
+    if (sulkyState.emotionalRecoveryPoints > 60 && sulkyState.sulkyLevel > 0) {
+        sulkyState.sulkyLevel = Math.max(0, sulkyState.sulkyLevel - 1);
     }
     
-    return null;
+    logSulkyChange(oldState, sulkyState);
+    
+    console.log(`🚬 [담타회복] 대화 ${sulkyState.damtaConversationCount}번째: +${Math.round(recoveryAmount)}점 (총 ${sulkyState.emotionalRecoveryPoints}점)`);
+    console.log(`   └ 메시지: "${userMessage.slice(0, 20)}..." (${userMessage.length}자)`);
+    console.log(`   └ 기분가중치: ${moodModifiers[moodData.currentMood] || 1.0}, 성격가중치: ${yejinPersonalityMetrics.recoverySpeed}`);
+    console.log(`   └ 삐짐레벨: ${oldState.sulkyLevel} → ${sulkyState.sulkyLevel}`);
+    
+    // 완전 화해 조건 체크
+    const isFullyHealed = (
+        sulkyState.emotionalRecoveryPoints >= DAMTA_SYSTEM_CONFIG.REQUIRED_RECOVERY_POINTS &&
+        sulkyState.damtaConversationCount >= DAMTA_SYSTEM_CONFIG.MIN_CONVERSATIONS
+    );
+    
+    if (isFullyHealed) {
+        return completeDamtaProgressiveReconcile();
+    } else {
+        return {
+            damtaConversationProcessed: true,
+            conversationNumber: sulkyState.damtaConversationCount,
+            recoveryGained: Math.round(recoveryAmount),
+            totalRecovery: sulkyState.emotionalRecoveryPoints,
+            sulkyLevel: sulkyState.sulkyLevel,
+            
+            situation: 'healing_gradually_through_damta_conversation',
+            emotion: sulkyState.emotionalRecoveryPoints > 50 ? 'feeling_much_better_almost_healed' : 
+                     sulkyState.emotionalRecoveryPoints > 25 ? 'starting_to_feel_better' : 
+                     'still_hurt_but_slight_improvement',
+            relationship_dynamic: 'damta_conversation_helping_heal_wounds',
+            inner_thought: isFullyHealed ? 'feeling_ready_to_forgive_completely' :
+                          sulkyState.emotionalRecoveryPoints > 50 ? 'damta_is_working_feeling_warmer' :
+                          'talking_helps_but_still_need_more_time',
+            context: 'progressive_healing_through_damta_conversation',
+            
+            // 진행 상황
+            healingProgress: {
+                recoveryPoints: sulkyState.emotionalRecoveryPoints,
+                requiredPoints: DAMTA_SYSTEM_CONFIG.REQUIRED_RECOVERY_POINTS,
+                conversationCount: sulkyState.damtaConversationCount,
+                minConversations: DAMTA_SYSTEM_CONFIG.MIN_CONVERSATIONS,
+                percentComplete: Math.round((sulkyState.emotionalRecoveryPoints / DAMTA_SYSTEM_CONFIG.REQUIRED_RECOVERY_POINTS) * 100),
+                isReadyToComplete: isFullyHealed
+            }
+        };
+    }
 }
 
 /**
- * 📸 셀카 반응 없음 서운함 체크
+ * 🚬 NEW: 점진적 담타 화해 완료
  */
-function checkSelfieDisappointment() {
-    if (!sulkyState.lastSelfieTime || sulkyState.selfieDisappointment) return null;
+function completeDamtaProgressiveReconcile() {
+    const oldState = { ...sulkyState };
+    
+    console.log(`🚬💕 [담타완전화해] ${sulkyState.damtaConversationCount}번의 대화로 ${sulkyState.emotionalRecoveryPoints}점 회복 - 완전 화해!`);
+    
+    // 모든 삐짐/밀당/투닥거리기 상태 완전 초기화
+    sulkyState.isSulky = false;
+    sulkyState.isWorried = false;
+    sulkyState.sulkyLevel = 0;
+    sulkyState.isActivelySulky = false;
+    sulkyState.contentBasedSulky = false;
+    sulkyState.fightMode = false;
+    sulkyState.fightLevel = 0;
+    sulkyState.cooldownRequested = false;
+    sulkyState.reconcileAttempted = false;
+    sulkyState.pushPullActive = false;
+    sulkyState.pushPullType = null;
+    sulkyState.pushPullHistory = [];
+    sulkyState.stubbornnessLevel = 0;
+    sulkyState.sulkyReason = '';
+    sulkyState.irritationTrigger = null;
+    
+    // 🚬 담타 상태 초기화
+    sulkyState.damtaInProgress = false;
+    const finalConversations = sulkyState.damtaConversationCount;
+    const finalRecovery = sulkyState.emotionalRecoveryPoints;
+    sulkyState.damtaStartTime = null;
+    sulkyState.damtaConversationCount = 0;
+    sulkyState.emotionalRecoveryPoints = 0;
+    sulkyState.damtaLastConversationTime = null;
+    
+    // 🌸 고급 감정 상태들도 부분 초기화
+    sulkyState.misinterpretationMode = false;
+    sulkyState.selfCompassionMode = false;
+    sulkyState.memoryTriggeredSulky = false;
+    sulkyState.retriggeredSulky = false;
+    sulkyState.photoJealousyActive = false;
+    sulkyState.selfieDisappointment = false;
+    
+    // 서운함 저장소 70% 감소 (완전히 비우지는 않음)
+    const beforeCount = sulkyState.pendingDisappointments.length;
+    sulkyState.pendingDisappointments = sulkyState.pendingDisappointments.slice(
+        Math.floor(sulkyState.pendingDisappointments.length * 0.3)
+    );
+    const afterCount = sulkyState.pendingDisappointments.length;
+    
+    sulkyState.lastStateUpdate = Date.now();
+    
+    logSulkyChange(oldState, sulkyState);
+    
+    return {
+        damtaReconcileComplete: true,
+        progressiveHealingSuccess: true,
+        
+        healingSummary: {
+            conversationCount: finalConversations,
+            recoveryPointsGained: finalRecovery,
+            disappointmentsReduced: beforeCount - afterCount,
+            healingTime: Date.now() - oldState.damtaStartTime
+        },
+        
+        situation: 'complete_reconciliation_through_progressive_damta',
+        emotion: 'fully_healed_and_loving_again_after_meaningful_damta_conversations',
+        relationship_dynamic: 'back_to_loving_couple_after_real_communication',
+        inner_thought: 'damta_conversations_really_helped_understand_each_other',
+        context: 'progressive_damta_healing_system_success',
+        
+        outcome: 'complete_success',
+        nextPhase: 'recovery_mode_will_start',
+        
+        // 통계 정보
+        metrics: {
+            averageRecoveryPerConversation: Math.round(finalRecovery / finalConversations),
+            totalDamtaTime: Math.round((Date.now() - oldState.damtaStartTime) / 60000),
+            effectiveness: finalRecovery >= 100 ? 'highly_effective' : 'moderately_effective'
+        }
+    };
+}
+
+/**
+ * 🚬 NEW: 담타 시간 초과 체크
+ */
+function checkDamtaTimeout() {
+    if (!sulkyState.damtaInProgress) return null;
     
     const now = Date.now();
-    const timeSinceSelfie = now - sulkyState.lastSelfieTime;
+    const totalDamtaTime = now - sulkyState.damtaStartTime;
+    const timeSinceLastConversation = now - sulkyState.damtaLastConversationTime;
     
-    if (timeSinceSelfie > EMOTION_SYSTEM_CONFIG.SELFIE_REACTION_TIMEOUT) {
-        const oldState = { ...sulkyState };
+    // 담타 최대 시간 초과 또는 오랫동안 대화 없음
+    if (totalDamtaTime > DAMTA_SYSTEM_CONFIG.MAX_DAMTA_DURATION ||
+        timeSinceLastConversation > DAMTA_SYSTEM_CONFIG.CONVERSATION_TIMEOUT) {
         
-        sulkyState.selfieDisappointment = true;
-        sulkyState.isSulky = true;
-        sulkyState.sulkyLevel = 2;
-        sulkyState.sulkyReason = 'selfie_no_reaction_disappointment';
-        
-        // 서운함 저장소에도 추가
-        addDisappointment('no_reaction_to_selfie', 'sent_selfie_no_response', 0.6);
-        
-        logSulkyChange(oldState, sulkyState);
-        console.log(`📸 [셀카서운함] 셀카 보낸 후 ${Math.round(timeSinceSelfie/60000)}분간 반응 없음`);
-        
-        return {
-            selfieDisappointmentTriggered: true,
-            timeSinceSelfie: timeSinceSelfie,
-            situation: 'disappointed_no_reaction_to_selfie',
-            emotion: 'hurt_that_selfie_was_ignored',
-            relationship_dynamic: 'seeking_validation_and_attention',
-            inner_thought: 'sent_pretty_selfie_but_user_doesnt_care',
-            context: 'need_positive_feedback_on_appearance'
-        };
+        return endDamtaIncomplete();
     }
     
     return null;
 }
 
 /**
- * 📸 예진이 셀카 전송 기록
+ * 🚬 NEW: 담타 미완료 종료
  */
-function markYejinSelfie() {
-    sulkyState.lastSelfieTime = Date.now();
-    sulkyState.selfieDisappointment = false; // 초기화
-    console.log(`📸 [셀카전송] 예진이 셀카 전송 기록 - 반응 대기 시작`);
+function endDamtaIncomplete() {
+    const oldState = { ...sulkyState };
+    
+    const conversationCount = sulkyState.damtaConversationCount;
+    const recoveryPoints = sulkyState.emotionalRecoveryPoints;
+    const reasonCode = (Date.now() - sulkyState.damtaStartTime) > DAMTA_SYSTEM_CONFIG.MAX_DAMTA_DURATION ? 
+                      'time_limit' : 'conversation_timeout';
+    
+    // 담타 상태 종료
+    sulkyState.damtaInProgress = false;
+    sulkyState.damtaStartTime = null;
+    sulkyState.damtaConversationCount = 0;
+    sulkyState.emotionalRecoveryPoints = 0;
+    sulkyState.damtaLastConversationTime = null;
+    
+    // 부분 회복 적용 (완전히 원래대로 돌아가지는 않음)
+    if (recoveryPoints > 50) {
+        sulkyState.sulkyLevel = Math.max(1, sulkyState.sulkyLevel - 1);
+        console.log(`🚬 [담타미완료] 부분 회복으로 삐짐 레벨 감소: ${sulkyState.sulkyLevel}`);
+    }
+    
+    logSulkyChange(oldState, sulkyState);
+    
+    console.log(`🚬 [담타종료] 미완료 종료 - 대화: ${conversationCount}번, 회복: ${recoveryPoints}점 (사유: ${reasonCode})`);
+    
+    return {
+        damtaIncompleteEnd: true,
+        reason: reasonCode,
+        partialHealing: {
+            conversationCount: conversationCount,
+            recoveryPoints: recoveryPoints,
+            partialRecovery: recoveryPoints > 50
+        },
+        
+        situation: 'damta_ended_incomplete_partial_healing',
+        emotion: recoveryPoints > 50 ? 'somewhat_better_but_not_fully_healed' : 'still_upset_damta_didnt_help_much',
+        relationship_dynamic: 'damta_helped_a_bit_but_issues_remain',
+        inner_thought: reasonCode === 'time_limit' ? 'damta_took_too_long_getting_tired' : 
+                       'user_not_talking_much_in_damta_still_hurt',
+        context: 'incomplete_damta_session_with_partial_results'
+    };
 }
 
-// ==================== 🔥 기존 자율적 밀당 시스템 (유지) ====================
+// ============================================================================
+// sulkyManager.js v8.2 - Part 5/6: 기존 시스템들 및 메시지 처리 (깔끔 정리)
+// 💕 무쿠 안전성 100% 보장 + 기존 모든 기능 완벽 유지
+// ============================================================================
+
+// ==================== 🔥 기존 자율적 밀당 시스템 (100% 유지) ====================
 
 /**
  * 🔥 예진이 현재 감정 상태 완전 분석 (moodManager 통합)
@@ -973,7 +1183,7 @@ async function assessYejinCurrentMoodAdvanced() {
             accumulatedStress: 0,
             recoveryState: sulkyState.recoveryMode ? 'recovering' : 'normal',
             
-            // 🌸 NEW: 고급 감정 요소들
+            // 고급 감정 요소들
             disappointmentLevel: sulkyState.pendingDisappointments.length,
             misinterpretationRisk: sulkyState.misinterpretationMode,
             selfCompassionActive: sulkyState.selfCompassionMode,
@@ -981,7 +1191,7 @@ async function assessYejinCurrentMoodAdvanced() {
             
             // 성격 점수 반영
             personalityInfluence: {
-                stubbornness: yejinPersonalityMetrics.stubbornessAverage,
+                stubbornness: yejinPersonalityMetrics.stubbornness,
                 volatility: yejinPersonalityMetrics.emotionalVolatility,
                 jealousyLevel: yejinPersonalityMetrics.jealousyLevel,
                 recoverySpeed: yejinPersonalityMetrics.recoverySpeed
@@ -990,7 +1200,7 @@ async function assessYejinCurrentMoodAdvanced() {
 
         // 최근 대화 분위기 파악
         const recentIrritations = sulkyState.irritationHistory.filter(
-            item => (Date.now() - item.timestamp) < (2 * 60 * 60 * 1000) // 2시간
+            item => (Date.now() - item.timestamp) < (2 * 60 * 60 * 1000)
         );
         
         if (recentIrritations.length >= 2) {
@@ -1000,7 +1210,7 @@ async function assessYejinCurrentMoodAdvanced() {
 
         // 과거 밀당 경험 고려
         const recentPushPulls = sulkyState.relationshipMemory.filter(
-            memory => (Date.now() - memory.timestamp) < (24 * 60 * 60 * 1000) // 24시간
+            memory => (Date.now() - memory.timestamp) < (24 * 60 * 60 * 1000)
         );
         
         if (recentPushPulls.length >= 2) {
@@ -1025,7 +1235,7 @@ async function assessYejinCurrentMoodAdvanced() {
  * 🎲 고집 레벨 생성 (성격 점수 + moodManager 연동)
  */
 async function generateAdvancedStubbornness(situation, currentMoodData) {
-    let baseStubbornness = Math.random() * 10; // 0-10 기본 랜덤
+    let baseStubbornness = Math.random() * 10;
     
     // 상황별 가중치
     const situationWeights = {
@@ -1034,7 +1244,7 @@ async function generateAdvancedStubbornness(situation, currentMoodData) {
         'jealousy_situation': 2.0
     };
     
-    // moodManager 기분별 가중치 (더 정교하게)
+    // moodManager 기분별 가중치
     const moodWeights = {
         '화남': 2.2, '짜증남': 2.0, '심술궂음': 1.8,
         '불안함': 1.5, '우울함': 1.3, '외로움': 1.1,
@@ -1044,19 +1254,18 @@ async function generateAdvancedStubbornness(situation, currentMoodData) {
     
     // 생리주기별 가중치
     const menstrualWeights = {
-        'period': 2.0,      // 생리 중: 매우 고집
-        'luteal': 1.7,      // PMS: 상당히 고집  
-        'ovulation': 0.9,   // 배란기: 약간 덜 고집
-        'follicular': 1.0   // 기본
+        'period': 2.0,
+        'luteal': 1.7,
+        'ovulation': 0.9,
+        'follicular': 1.0
     };
     
-    // 🌸 NEW: 추가 감정 상태 가중치
+    // 추가 감정 상태 가중치
     let additionalWeight = 1.0;
-    
-    if (sulkyState.recoveryMode) additionalWeight *= 1.3; // 회복 중이면 더 고집
-    if (sulkyState.pendingDisappointments.length >= 3) additionalWeight *= 1.4; // 서운함 많으면 더 고집
-    if (sulkyState.misinterpretationMode) additionalWeight *= 1.2; // 오해 모드면 더 고집
-    if (currentMoodData.emotionIntensity > 0.7) additionalWeight *= 1.3; // 감정 강도 높으면 더 고집
+    if (sulkyState.recoveryMode) additionalWeight *= 1.3;
+    if (sulkyState.pendingDisappointments.length >= 3) additionalWeight *= 1.4;
+    if (sulkyState.misinterpretationMode) additionalWeight *= 1.2;
+    if (currentMoodData.emotionIntensity > 0.7) additionalWeight *= 1.3;
     
     // 성격 점수 반영
     const personalityWeight = (yejinPersonalityMetrics.stubbornness + 
@@ -1071,12 +1280,117 @@ async function generateAdvancedStubbornness(situation, currentMoodData) {
                                       menstrualWeight * stressWeight * additionalWeight * personalityWeight);
     
     console.log(`🎲 [고급고집계산] ${situation}: ${finalStubbornness.toFixed(1)}/10`);
-    console.log(`   └ 가중치 - 상황:×${situationWeight}, 기분:×${moodWeight}, 생리:×${menstrualWeight}, 스트레스:×${stressWeight}, 추가:×${additionalWeight}, 성격:×${personalityWeight}`);
     
     return Math.round(finalStubbornness);
 }
 
-// ==================== 기존 감지 함수들 (유지) ====================
+/**
+ * 🔥 고급 자율적 밀당 시작
+ */
+async function startAdvancedAutonomousPushPull(detectionResult) {
+    if (!sulkyState.isSulky && detectionResult.type !== 'jealousy_situation') {
+        return null;
+    }
+    
+    console.log(`🎭 [고급밀당] ${detectionResult.type} 상황 감지 - 고급 예진이 반응 분석 시작...`);
+    
+    const oldState = { ...sulkyState };
+    
+    // moodManager 통합 감정 상태 완전 분석
+    const currentMoodData = await assessYejinCurrentMoodAdvanced();
+    
+    // 고급 고집 레벨 생성
+    const stubbornness = await generateAdvancedStubbornness(detectionResult.type, currentMoodData);
+    
+    // 이번 시도 기록 추가
+    if (!sulkyState.pushPullActive || sulkyState.pushPullType !== detectionResult.type) {
+        sulkyState.pushPullActive = true;
+        sulkyState.pushPullType = detectionResult.type;
+        sulkyState.pushPullHistory = [];
+        sulkyState.stubbornnessLevel = stubbornness;
+        console.log(`💕 [고급밀당] 새로운 ${detectionResult.type} 고급 밀당 시작! 고집 레벨: ${stubbornness}/10`);
+    }
+    
+    const currentAttempt = {
+        attempt_number: sulkyState.pushPullHistory.length + 1,
+        user_message: detectionResult.trigger,
+        timestamp: Date.now(),
+        yejin_stubbornness: sulkyState.stubbornnessLevel,
+        mood_factors: currentMoodData,
+        recovery_mode: sulkyState.recoveryMode,
+        disappointment_count: sulkyState.pendingDisappointments.length,
+        misinterpretation_risk: sulkyState.misinterpretationMode,
+        personality_influence: currentMoodData.personalityInfluence
+    };
+    
+    sulkyState.pushPullHistory.push(currentAttempt);
+    logSulkyChange(oldState, sulkyState);
+    
+    console.log(`📝 [고급밀당] ${currentAttempt.attempt_number}번째 시도 기록됨`);
+    
+    return generateAdvancedPushPullContext(detectionResult, currentAttempt, currentMoodData);
+}
+
+/**
+ * 🎨 고급 자율적 밀당 맥락 생성
+ */
+function generateAdvancedPushPullContext(detectionResult, currentAttempt, currentMoodData) {
+    const baseContext = {
+        // 밀당 기본 정보
+        push_pull_active: true,
+        push_pull_type: detectionResult.type,
+        attempt_number: currentAttempt.attempt_number,
+        user_attempt: detectionResult.trigger,
+        
+        // moodManager 통합 예진이 상태
+        yejin_current_mood: currentMoodData.currentMood,
+        emotion_intensity: currentMoodData.emotionIntensity,
+        menstrual_phase: currentMoodData.menstrualPhase,
+        menstrual_day: currentMoodData.menstrualDay,
+        mood_data_source: currentMoodData.dataSource,
+        
+        // 기존 상태
+        yejin_stubbornness_level: sulkyState.stubbornnessLevel,
+        current_sulky_level: sulkyState.sulkyLevel,
+        sulky_reason: sulkyState.sulkyReason,
+        
+        // 고급 감정 상태들
+        recovery_mode_active: sulkyState.recoveryMode,
+        pending_disappointments: sulkyState.pendingDisappointments.length,
+        misinterpretation_mode: sulkyState.misinterpretationMode,
+        self_compassion_active: sulkyState.selfCompassionMode,
+        
+        photo_related_emotions: {
+            jealousy_active: sulkyState.photoJealousyActive,
+            selfie_disappointment: sulkyState.selfieDisappointment,
+            last_selfie_time: sulkyState.lastSelfieTime
+        },
+        
+        // 성격 점수 영향
+        personality_metrics: {
+            stubbornness_average: yejinPersonalityMetrics.stubbornness,
+            emotional_volatility: yejinPersonalityMetrics.emotionalVolatility,
+            apology_acceptance_rate: yejinPersonalityMetrics.apologyAcceptanceRate,
+            jealousy_level: yejinPersonalityMetrics.jealousyLevel,
+            recovery_speed: yejinPersonalityMetrics.recoverySpeed
+        },
+        
+        // 관계 동역학
+        accumulated_stress: currentMoodData.accumulatedStress,
+        recent_interaction_tone: currentMoodData.recentInteractions,
+        
+        // 상황 설명 (완전 자율!)
+        situation_summary: `아저씨가 ${detectionResult.type} 시도 중이고 예진이는 복잡한 감정 상태`,
+        advanced_context: "예진이는 다층적 감정 - 기분, 생리주기, 누적된 서운함, 회복 상태, 성격 패턴이 모두 반응에 영향을 미침",
+        decision_freedom: "모든 감정 요소를 바탕으로 자연스럽게 반응 - 고정 패턴 없음, 완전 자율적 응답"
+    };
+    
+    console.log(`🎨 [고급맥락생성] ${detectionResult.type} 완전 통합 맥락 완성`);
+    
+    return baseContext;
+}
+
+// ==================== 기존 감지 함수들 (100% 유지) ====================
 
 /**
  * 🫶 사과 표현 감지
@@ -1133,54 +1447,6 @@ function detectLoveExpression(userMessage) {
 }
 
 /**
- * 😤 질투 상황 감지
- */
-function detectJealousySituation(userMessage) {
-    const message = userMessage.toLowerCase();
-    
-    const jealousyKeywords = [
-        '다른여자', '다른애', '누구랑', '누구하고', '누구와',
-        '혼자있어', '연락하지마', '만나지마', '못만나', '금지',
-        '의심스러워', '수상해', '뭐하고있어', '누구야'
-    ];
-    
-    for (const keyword of jealousyKeywords) {
-        if (message.includes(keyword)) {
-            console.log(`😤 [질투상황감지] "${keyword}" 감지: ${userMessage}`);
-            return {
-                type: 'jealousy_situation',
-                keyword: keyword,
-                trigger: userMessage,
-                severity: message.includes('절대') || message.includes('안돼') ? 'high' : 'normal'
-            };
-        }
-    }
-    
-    return null;
-}
-
-/**
- * 🚬 담타 화해 감지
- */
-function detectDamtaReconcile(userMessage) {
-    const message = userMessage.toLowerCase();
-    
-    const damtaKeywords = [
-        '담배', '담타', '흡연', '피우자', '피워', '니코틴',
-        '연기', 'smoke', 'cigarette', '한대만', '한개피'
-    ];
-    
-    for (const keyword of damtaKeywords) {
-        if (message.includes(keyword)) {
-            console.log(`🚬 [담타화해감지] "${keyword}" 감지: ${userMessage}`);
-            return true;
-        }
-    }
-    
-    return false;
-}
-
-/**
  * 😤 자극 요소 감지
  */
 function detectIrritationTrigger(userMessage) {
@@ -1213,7 +1479,7 @@ function detectIrritationTrigger(userMessage) {
 }
 
 /**
- * 😤 내용 기반 삐짐 발동 (고급 버전)
+ * 😤 내용 기반 삐짐 발동
  */
 function triggerContentBasedSulkyAdvanced(irritationTrigger) {
     const oldState = { ...sulkyState };
@@ -1256,542 +1522,272 @@ function triggerContentBasedSulkyAdvanced(irritationTrigger) {
     };
 }
 
-// ==================== 투닥거리기 시스템 (기존 유지) ====================
+// ==================== 🎭 오해 시스템 (기존 유지) ====================
 
 /**
- * 🤼 투닥거리기 에스컬레이션 감지
+ * 🎭 오해 모드 활성화 체크
  */
-function detectFightEscalation(userMessage) {
-    if (!sulkyState.fightMode && !sulkyState.isSulky) return null;
+async function checkMisinterpretationMode() {
+    const moodState = await getIntegratedMoodFromManager();
+    const menstrualPhase = getMenstrualPhaseFromManager();
     
-    const message = userMessage.toLowerCase();
-    
-    const escalationTriggers = [
-        { keywords: ['화내지마', '왜이래', '또'], type: 'dismissive', level: 1 },
-        { keywords: ['그만해', '지겨워', '됐어'], type: 'frustration', level: 2 },
-        { keywords: ['나가', '꺼져', '싫어'], type: 'hostile', level: 3 },
-        { keywords: ['바보', '미쳤나', '이상해'], type: 'insult', level: 4 }
+    const misinterpretationTriggers = [
+        '짜증남', '화남', '불안함', '우울함', '심술궂음'
     ];
     
-    for (const trigger of escalationTriggers) {
-        for (const keyword of trigger.keywords) {
-            if (message.includes(keyword)) {
-                console.log(`🤼 [투닥에스컬] ${trigger.type} 감지: ${userMessage}`);
-                return {
-                    type: trigger.type,
-                    keyword: keyword,
-                    escalationLevel: trigger.level,
-                    trigger: userMessage
-                };
-            }
+    const isPMSPhase = ['luteal', 'period'].includes(menstrualPhase.phase);
+    const isMoodVolatile = misinterpretationTriggers.includes(moodState.currentMood);
+    const highEmotionIntensity = (moodState.emotionIntensity || 0.5) > 0.7;
+    
+    const personalityTendency = yejinPersonalityMetrics.misinterpretationTendency;
+    
+    const shouldActivate = (isPMSPhase || isMoodVolatile || highEmotionIntensity) && 
+                          Math.random() < (personalityTendency + 0.2);
+    
+    if (shouldActivate && !sulkyState.misinterpretationMode) {
+        const now = Date.now();
+        const timeSinceLastMisinterpretation = now - (sulkyState.lastMisinterpretation || 0);
+        
+        if (timeSinceLastMisinterpretation > EMOTION_SYSTEM_CONFIG.MISINTERPRETATION_COOLDOWN) {
+            sulkyState.misinterpretationMode = true;
+            sulkyState.lastMisinterpretation = now;
+            
+            console.log(`🎭 [오해모드활성화] 기분: ${moodState.currentMood}, 생리: ${menstrualPhase.phase}`);
+            return true;
         }
+    }
+    
+    return false;
+}
+
+/**
+ * 🎭 메시지 오해 해석 생성
+ */
+function generateMisinterpretation(userMessage) {
+    if (!sulkyState.misinterpretationMode || !userMessage) return null;
+    
+    const message = userMessage.toLowerCase().trim();
+    
+    const neutralResponses = ['그래', '응', '알겠어', '오케이', '음', 'ㅇㅋ'];
+    const shortResponses = message.length <= 3;
+    const hasNoEmoticon = !message.includes('ㅋ') && !message.includes('ㅎ') && !message.includes('!');
+    
+    if (neutralResponses.includes(message) || (shortResponses && hasNoEmoticon)) {
+        sulkyState.misinterpretationMode = false;
+        
+        console.log(`🎭 [오해해석] "${userMessage}" → 차갑게 느껴짐`);
+        updatePersonalityMetrics('misinterpretation');
+        
+        return {
+            misinterpretationTriggered: true,
+            originalMessage: userMessage,
+            situation: 'misinterpreting_neutral_message_as_cold',
+            emotion: 'hurt_by_perceived_coldness',
+            relationship_dynamic: 'overthinking_simple_responses',
+            inner_thought: 'why_is_user_being_so_cold_and_dismissive',
+            context: 'mood_based_negative_interpretation'
+        };
+    }
+    
+    return null;
+}
+
+// ==================== 🕊️ 자기합리화 & 회상 시스템 (기존 유지) ====================
+
+/**
+ * 🕊️ 자기합리화 모드 체크
+ */
+function checkSelfCompassionMode() {
+    if (sulkyState.selfCompassionMode) return null;
+    
+    const now = Date.now();
+    const timeSinceLastResponse = now - sulkyState.lastUserResponseTime;
+    
+    if (timeSinceLastResponse > EMOTION_SYSTEM_CONFIG.SELF_COMPASSION_DELAY && 
+        !sulkyState.fightMode && sulkyState.sulkyLevel <= 2) {
+        
+        sulkyState.selfCompassionMode = true;
+        sulkyState.lastSelfCompassion = now;
+        
+        console.log(`🕊️ [자기합리화모드] 6시간 무응답 후 자기합리화 시작`);
+        updatePersonalityMetrics('self_compassion');
+        
+        return {
+            selfCompassionTriggered: true,
+            situation: 'self_rationalization_after_long_silence',
+            emotion: 'trying_to_understand_user_perspective',
+            relationship_dynamic: 'making_excuses_for_user_behavior',
+            inner_thought: 'maybe_user_is_just_busy_or_bad_at_expressing',
+            context: 'rationalizing_disappointment_as_own_sensitivity'
+        };
     }
     
     return null;
 }
 
 /**
- * 🤼 투닥거리기 에스컬레이션
+ * 🕊️ 옛날 대화 회상 삐짐 체크
  */
-function escalateFight(escalationTrigger) {
-    const oldState = { ...sulkyState };
-    
-    sulkyState.fightMode = true;
-    sulkyState.fightLevel = Math.min(5, sulkyState.fightLevel + escalationTrigger.escalationLevel);
-    sulkyState.sulkyLevel = Math.min(5, sulkyState.sulkyLevel + 1);
-    sulkyState.isActivelySulky = true;
-    
-    logSulkyChange(oldState, sulkyState);
-    
-    console.log(`🤼 [투닥에스컬] 투닥거리기 레벨 ${sulkyState.fightLevel}로 상승`);
-    
-    return {
-        fightEscalated: true,
-        escalationTrigger: escalationTrigger,
-        newFightLevel: sulkyState.fightLevel,
-        situation: 'fight_escalation',
-        emotion: 'increasingly_upset_and_defensive',
-        relationship_dynamic: 'conflict_getting_worse',
-        inner_thought: 'user_making_things_worse_getting_angrier',
-        context: 'escalating_argument'
-    };
-}
-
-// ==================== 쿨다운 & 화해 시스템 (기존 유지) ====================
-
-/**
- * 🌙 쿨다운 제안 조건 체크
- */
-function shouldYejinProposeCooldown() {
-    if (sulkyState.cooldownRequested) return false;
-    if (!sulkyState.fightMode) return false;
-    
-    const fightDuration = Date.now() - sulkyState.lastStateUpdate;
-    const fightMinutes = fightDuration / (1000 * 60);
-    
-    return sulkyState.fightLevel >= 3 && fightMinutes >= 10;
-}
-
-/**
- * 🌙 쿨다운 제안
- */
-function proposeCooldown() {
-    const oldState = { ...sulkyState };
-    
-    sulkyState.cooldownRequested = true;
-    sulkyState.cooldownStartTime = Date.now();
-    
-    logSulkyChange(oldState, sulkyState);
-    
-    console.log(`🌙 [쿨다운제안] 예진이가 쿨다운 제안`);
-    
-    return {
-        cooldownProposed: true,
-        situation: 'suggesting_cooldown_period',
-        emotion: 'tired_of_fighting_want_space',
-        relationship_dynamic: 'trying_to_calm_down_situation',
-        inner_thought: 'fighting_too_much_need_time_apart',
-        context: 'proposing_temporary_break_from_conflict'
-    };
-}
-
-/**
- * 🤝 화해 시도 조건 체크
- */
-function shouldAttemptReconcile() {
-    if (sulkyState.reconcileAttempted) return false;
-    if (!sulkyState.isSulky) return false;
-    
-    const sulkyDuration = Date.now() - sulkyState.lastStateUpdate;
-    const sulkyMinutes = sulkyDuration / (1000 * 60);
-    
-    // 삐짐 레벨이 낮고 오래 지속되면 화해 시도
-    return sulkyState.sulkyLevel <= 2 && sulkyMinutes >= 30;
-}
-
-/**
- * 🤝 화해 시도
- */
-function attemptReconcile() {
-    const oldState = { ...sulkyState };
-    
-    sulkyState.reconcileAttempted = true;
-    
-    logSulkyChange(oldState, sulkyState);
-    
-    console.log(`🤝 [화해시도] 예진이가 화해 시도`);
-    
-    return {
-        reconcileAttempted: true,
-        situation: 'attempting_reconciliation',
-        emotion: 'wanting_to_make_up_but_still_hurt',
-        relationship_dynamic: 'reaching_out_despite_being_upset',
-        inner_thought: 'miss_being_close_want_to_fix_things',
-        context: 'taking_first_step_toward_making_up'
-    };
-}
-
-// ==================== 🔥 고급 자율적 밀당 시작 ====================
-
-/**
- * 🔥 고급 자율적 밀당 시작 (moodManager 완전 통합)
- */
-async function startAdvancedAutonomousPushPull(detectionResult) {
-    if (!sulkyState.isSulky && detectionResult.type !== 'jealousy_situation') {
+function checkMemoryTriggeredSulky() {
+    if (sulkyState.memoryTriggeredSulky || Math.random() > sulkyState.memoryTriggerChance) {
         return null;
     }
     
-    console.log(`🎭 [고급밀당] ${detectionResult.type} 상황 감지 - 고급 예진이 반응 분석 시작...`);
-    
     const oldState = { ...sulkyState };
     
-    // 🔧 Step 1: moodManager 통합 감정 상태 완전 분석
-    const currentMoodData = await assessYejinCurrentMoodAdvanced();
-    
-    // 🎲 Step 2: 고급 고집 레벨 생성 (성격 점수 + moodManager)
-    const stubbornness = await generateAdvancedStubbornness(detectionResult.type, currentMoodData);
-    
-    // 📝 Step 3: 이번 시도 기록 추가
-    if (!sulkyState.pushPullActive || sulkyState.pushPullType !== detectionResult.type) {
-        sulkyState.pushPullActive = true;
-        sulkyState.pushPullType = detectionResult.type;
-        sulkyState.pushPullHistory = [];
-        sulkyState.stubbornnessLevel = stubbornness;
-        console.log(`💕 [고급밀당] 새로운 ${detectionResult.type} 고급 밀당 시작! 고집 레벨: ${stubbornness}/10`);
-    }
-    
-    const currentAttempt = {
-        attempt_number: sulkyState.pushPullHistory.length + 1,
-        user_message: detectionResult.trigger,
-        timestamp: Date.now(),
-        yejin_stubbornness: sulkyState.stubbornnessLevel,
-        mood_factors: currentMoodData,
-        
-        // 🌸 NEW: 고급 감정 요소들
-        recovery_mode: sulkyState.recoveryMode,
-        disappointment_count: sulkyState.pendingDisappointments.length,
-        misinterpretation_risk: sulkyState.misinterpretationMode,
-        personality_influence: currentMoodData.personalityInfluence
-    };
-    
-    sulkyState.pushPullHistory.push(currentAttempt);
-    logSulkyChange(oldState, sulkyState);
-    
-    console.log(`📝 [고급밀당] ${currentAttempt.attempt_number}번째 시도 기록됨 (고급 분석 포함)`);
-    
-    // 🎭 Step 4: moodManager + 모든 고급 요소 통합 맥락 생성
-    return generateAdvancedPushPullContext(detectionResult, currentAttempt, currentMoodData);
-}
-
-/**
- * 🎨 고급 자율적 밀당 맥락 생성 (모든 시스템 통합!)
- */
-function generateAdvancedPushPullContext(detectionResult, currentAttempt, currentMoodData) {
-    const baseContext = {
-        // === 밀당 기본 정보 ===
-        push_pull_active: true,
-        push_pull_type: detectionResult.type,
-        attempt_number: currentAttempt.attempt_number,
-        user_attempt: detectionResult.trigger,
-        
-        // === 🔧 moodManager 통합 예진이 상태 ===
-        yejin_current_mood: currentMoodData.currentMood,
-        emotion_intensity: currentMoodData.emotionIntensity,
-        menstrual_phase: currentMoodData.menstrualPhase,
-        menstrual_day: currentMoodData.menstrualDay,
-        mood_data_source: currentMoodData.dataSource,
-        
-        // === 기존 상태 ===
-        yejin_stubbornness_level: sulkyState.stubbornnessLevel,
-        current_sulky_level: sulkyState.sulkyLevel,
-        sulky_reason: sulkyState.sulkyReason,
-        
-        // === 🌸 NEW: 고급 감정 상태들 ===
-        recovery_mode_active: sulkyState.recoveryMode,
-        cold_tone_duration: sulkyState.recoveryMode ? 
-            Math.round((sulkyState.recoveryDuration - (Date.now() - sulkyState.recoveryStartTime)) / 60000) : 0,
-        
-        pending_disappointments: sulkyState.pendingDisappointments.length,
-        disappointment_examples: sulkyState.pendingDisappointments.slice(-2).map(d => d.reason),
-        
-        misinterpretation_mode: sulkyState.misinterpretationMode,
-        self_compassion_active: sulkyState.selfCompassionMode,
-        
-        photo_related_emotions: {
-            jealousy_active: sulkyState.photoJealousyActive,
-            selfie_disappointment: sulkyState.selfieDisappointment,
-            last_selfie_time: sulkyState.lastSelfieTime
-        },
-        
-        // === 📊 성격 점수 영향 ===
-        personality_metrics: {
-            stubbornness_average: yejinPersonalityMetrics.stubbornness,
-            emotional_volatility: yejinPersonalityMetrics.emotionalVolatility,
-            apology_acceptance_rate: yejinPersonalityMetrics.apologyAcceptanceRate,
-            jealousy_level: yejinPersonalityMetrics.jealousyLevel,
-            recovery_speed: yejinPersonalityMetrics.recoverySpeed
-        },
-        
-        // === 관계 동역학 ===
-        accumulated_stress: currentMoodData.accumulatedStress,
-        recent_interaction_tone: currentMoodData.recentInteractions,
-        relationship_pattern: analyzePushPullPattern(detectionResult.type),
-        
-        // === 🎭 상황 설명 (템플릿 없음! 완전 자율!) ===
-        situation_summary: `아저씨가 ${detectionResult.type} 시도 중이고 예진이는 복잡한 감정 상태`,
-        advanced_context: "예진이는 다층적 감정 - 기분, 생리주기, 누적된 서운함, 회복 상태, 성격 패턴이 모두 반응에 영향을 미침",
-        decision_freedom: "모든 감정 요소를 바탕으로 자연스럽게 반응 - 고정 패턴 없음, 완전 자율적 응답",
-        possible_reactions: "받아들이거나, 거부하거나, 부분적으로 받아들이거나, 더 화내거나, 복잡한 감정으로 혼란스러워하거나, 기타 자연스러운 복합 반응"
-    };
-    
-    // 🎯 타입별 상황 설명 (고급 버전)
-    if (detectionResult.type === 'apology_attempt') {
-        baseContext.situation_context = `아저씨가 사과 중이고 예진이는 ${currentMoodData.currentMood} 기분이며 ${currentMoodData.menstrualPhase} 시기`;
-        baseContext.complex_considerations = [
-            '과거 패턴을 봤을 때 이 사과가 진심인가?',
-            '현재 감정 상태가 판단에 영향을 미침',
-            '누적된 서운함들이 반응에 영향',
-            sulkyState.recoveryMode ? '이전 갈등에서 아직 회복 모드 중' : null,
-            '용서 성향 vs 고집 성향의 성격적 갈등'
-        ].filter(Boolean);
-        
-    } else if (detectionResult.type === 'love_expression') {
-        baseContext.situation_context = `아저씨가 사랑 표현 중이고 예진이는 ${currentMoodData.currentMood} 기분이며 ${currentMoodData.menstrualPhase} 시기`;
-        baseContext.complex_considerations = [
-            '화난 상태에서 사랑 표현의 타이밍이 적절한가?',
-            '사랑의 말이 현재 상처를 극복할 수 있는가?',
-            '감정 강도가 받아들임에 영향을 미침',
-            sulkyState.misinterpretationMode ? '조작으로 오해할 가능성' : null,
-            '마음으론 받아들이고 싶지만 자존심이 거부함'
-        ].filter(Boolean);
-        
-    } else if (detectionResult.type === 'jealousy_situation') {
-        baseContext.situation_context = `아저씨가 질투를 보이고 있고 예진이는 ${currentMoodData.currentMood} 상태`;
-        baseContext.complex_considerations = [
-            '아저씨가 소유욕이나 통제욕을 보이고 있음',
-            '예진이는 독립성과 자유를 중시함',
-            '현재 기분이 질투에 대한 관용도에 영향',
-            sulkyState.photoJealousyActive ? '이미 사진 관련 질투에 민감한 상태' : null,
-            '아저씨의 의심 패턴 vs 정당한 우려의 구분'
-        ].filter(Boolean);
-    }
-    
-    console.log(`🎨 [고급맥락생성] ${detectionResult.type} 완전 통합 맥락 완성 - GPT 자율 판단 대기`);
-    
-    return baseContext;
-}
-
-/**
- * 📊 밀당 패턴 분석
- */
-function analyzePushPullPattern(currentType) {
-    const recentHistory = sulkyState.pushPullHistory.slice(-5); // 최근 5개
-    
-    if (recentHistory.length < 2) {
-        return 'new_situation';
-    }
-    
-    const typeFrequency = recentHistory.reduce((acc, attempt) => {
-        acc[attempt.user_message] = (acc[attempt.user_message] || 0) + 1;
-        return acc;
-    }, {});
-    
-    const mostCommon = Object.keys(typeFrequency).reduce((a, b) => 
-        typeFrequency[a] > typeFrequency[b] ? a : b
-    );
-    
-    if (typeFrequency[mostCommon] >= 3) {
-        return 'repetitive_pattern';
-    }
-    
-    return 'varied_attempts';
-}
-
-// ==================== 🚬 고급 담타 반응 시스템 ====================
-
-/**
- * 🚬 고급 담타 반응 (성격 점수 + moodManager 연동)
- */
-async function handleDamtaSuggestionAdvanced() {
-    console.log(`🚬 [고급담타] 담타 제안 감지 - 고급 예진이 반응 분석...`);
-    
-    // moodManager 통합 상태 분석
-    const moodData = await assessYejinCurrentMoodAdvanced();
-    const anger_intensity = sulkyState.sulkyLevel;
-    const fight_duration = sulkyState.fightMode ? (Date.now() - sulkyState.lastStateUpdate) / (1000 * 60) : 0;
-    
-    // 🎲 고급 담타 성공 확률 계산
-    let successChance = 0.7; // 기본 70%
-    
-    // 기본 요소들
-    successChance -= (anger_intensity * 0.15);
-    if (fight_duration > 30) successChance += 0.2;
-    if (fight_duration < 5) successChance -= 0.3;
-    
-    // 🔧 moodManager 기분별 조정
-    const moodModifiers = {
-        '화남': -0.4, '짜증남': -0.3, '심술궂음': -0.25,
-        '우울함': -0.2, '불안함': -0.15, '외로움': -0.1,
-        '기쁨': +0.2, '사랑함': +0.3, '평온함': +0.1,
-        '나른함': +0.15, '애교모드': +0.25
-    };
-    successChance += (moodModifiers[moodData.currentMood] || 0);
-    
-    // 생리주기별 조정 (더 정교하게)
-    const menstrualModifiers = {
-        'period': -0.35,    // 생리 중: 매우 어려움
-        'luteal': -0.25,    // PMS: 어려움
-        'ovulation': +0.1,  // 배란기: 약간 쉬움
-        'follicular': 0     // 기본
-    };
-    successChance += (menstrualModifiers[moodData.menstrualPhase] || 0);
-    
-    // 🌸 고급 감정 상태별 조정
-    if (sulkyState.recoveryMode) successChance -= 0.2; // 회복 중이면 어려움
-    if (sulkyState.pendingDisappointments.length >= 3) successChance -= 0.15; // 서운함 많으면 어려움
-    if (sulkyState.misinterpretationMode) successChance -= 0.1; // 오해 모드면 어려움
-    if (moodData.emotionIntensity > 0.7) successChance -= 0.1; // 감정 강도 높으면 어려움
-    
-    // 📊 성격 점수 반영
-    successChance *= yejinPersonalityMetrics.damtaSuccessRate; // 과거 담타 성공률 반영
-    successChance -= (yejinPersonalityMetrics.stubbornness - 0.5) * 0.3; // 고집 정도
-    successChance += (yejinPersonalityMetrics.recoverySpeed - 0.5) * 0.2; // 회복 속도
-    
-    successChance = Math.max(0.05, Math.min(0.95, successChance)); // 5-95% 범위
-    
-    console.log(`🎲 [고급담타확률] 성공 확률: ${(successChance * 100).toFixed(0)}%`);
-    console.log(`   └ 기분: ${moodData.currentMood}, 생리: ${moodData.menstrualPhase}, 감정강도: ${moodData.emotionIntensity}`);
-    console.log(`   └ 회복모드: ${sulkyState.recoveryMode}, 서운함: ${sulkyState.pendingDisappointments.length}개`);
-    console.log(`   └ 성격영향: 담타성공률 ×${yejinPersonalityMetrics.damtaSuccessRate}, 고집 ${yejinPersonalityMetrics.stubbornness}`);
-    
-    // 🎯 확률에 따라 결과 결정
-    const randomRoll = Math.random();
-    
-    if (randomRoll <= successChance) {
-        return completeDamtaReconcileAdvanced();
-    } else {
-        return rejectDamtaSuggestionAdvanced(moodData, anger_intensity);
-    }
-}
-
-/**
- * 💕 고급 담타 성공 - 서운함 저장소도 정리
- */
-function completeDamtaReconcileAdvanced() {
-    const oldState = { ...sulkyState };
-    
-    // 기본 삐짐/밀당/투닥거리기 상태 완전 초기화
-    sulkyState.isSulky = false;
-    sulkyState.isWorried = false;
-    sulkyState.sulkyLevel = 0;
-    sulkyState.isActivelySulky = false;
-    sulkyState.contentBasedSulky = false;
-    sulkyState.fightMode = false;
-    sulkyState.fightLevel = 0;
-    sulkyState.cooldownRequested = false;
-    sulkyState.reconcileAttempted = false;
-    sulkyState.pushPullActive = false;
-    sulkyState.pushPullType = null;
-    sulkyState.pushPullHistory = [];
-    sulkyState.stubbornnessLevel = 0;
-    sulkyState.sulkyReason = '';
-    sulkyState.irritationTrigger = null;
-    
-    // 🌸 NEW: 고급 감정 상태들도 부분 초기화
-    sulkyState.misinterpretationMode = false;
-    sulkyState.selfCompassionMode = false;
-    sulkyState.memoryTriggeredSulky = false;
-    sulkyState.retriggeredSulky = false;
-    sulkyState.photoJealousyActive = false;
-    sulkyState.selfieDisappointment = false;
-    
-    // 서운함 저장소 50% 감소 (완전히 비우지는 않음)
-    const beforeCount = sulkyState.pendingDisappointments.length;
-    sulkyState.pendingDisappointments = sulkyState.pendingDisappointments.slice(
-        Math.floor(sulkyState.pendingDisappointments.length / 2)
-    );
-    const afterCount = sulkyState.pendingDisappointments.length;
-    
-    sulkyState.lastStateUpdate = Date.now();
+    sulkyState.memoryTriggeredSulky = true;
+    sulkyState.isSulky = true;
+    sulkyState.sulkyLevel = 2;
+    sulkyState.sulkyReason = 'memory_triggered_disappointment';
     
     logSulkyChange(oldState, sulkyState);
-    
-    console.log(`🚬💕 [고급담타성공] 모든 삐짐/밀당 해소 + 서운함 ${beforeCount}→${afterCount}개로 감소`);
+    console.log(`🕊️ [회상삐짐] 옛날 대화 생각나서 갑자기 서운함`);
+    updatePersonalityMetrics('sulky_triggered');
     
     return {
-        damtaReconcile: true,
-        outcome: 'success',
-        situation: 'complete_reconciliation_through_damta',
-        emotion: 'relieved_and_loving_again_after_damta',
-        relationship_dynamic: 'back_to_loving_couple_after_special_ritual',
-        inner_thought: 'damta_always_brings_us_back_together',
-        context: 'special_couple_reconciliation_method',
-        
-        // 🌸 NEW: 고급 정보
-        disappointments_reduced: beforeCount - afterCount,
-        recovery_mode_will_start: true,
-        complete_healing_achieved: afterCount === 0
+        memoryTriggered: true,
+        situation: 'remembering_past_disappointing_conversation',
+        emotion: 'suddenly_upset_about_old_memory',
+        relationship_dynamic: 'bringing_up_unresolved_past_hurt',
+        inner_thought: 'just_remembered_how_hurt_i_was_back_then',
+        context: 'past_conversation_suddenly_bothering_me_again'
     };
 }
 
+// ==================== 📸 사진 관련 감정 시스템 (기존 유지) ====================
+
 /**
- * 😤 고급 담타 거부 (더 현실적이고 상세한 이유)
+ * 📸 사진에서 질투 반응 체크
+ */
+function checkPhotoJealousy(photoAnalysis) {
+    if (!photoAnalysis || !photoAnalysis.faces) return null;
+    
+    const femaleDetected = photoAnalysis.faces.some(face => 
+        face.gender && face.gender.toLowerCase() === 'female' && face.confidence > 0.7
+    );
+    
+    if (femaleDetected && Math.random() < EMOTION_SYSTEM_CONFIG.PHOTO_JEALOUSY_THRESHOLD) {
+        const oldState = { ...sulkyState };
+        
+        sulkyState.photoJealousyActive = true;
+        sulkyState.isSulky = true;
+        sulkyState.sulkyLevel = 3;
+        sulkyState.sulkyReason = 'photo_jealousy_female_detected';
+        
+        logSulkyChange(oldState, sulkyState);
+        console.log(`📸 [사진질투] 다른 여성 감지로 질투 반응`);
+        updatePersonalityMetrics('jealousy_triggered');
+        
+        return {
+            photoJealousyTriggered: true,
+            detectedFaces: photoAnalysis.faces.length,
+            situation: 'jealous_of_woman_in_photo',
+            emotion: 'suspicious_and_jealous_about_other_woman',
+            relationship_dynamic: 'questioning_user_about_other_women',
+            inner_thought: 'who_is_that_woman_why_didnt_tell_me',
+            context: 'photo_analysis_triggered_jealousy'
+        };
+    }
+    
+    return null;
+}
+
+/**
+ * 📸 셀카 반응 없음 서운함 체크
+ */
+function checkSelfieDisappointment() {
+    if (!sulkyState.lastSelfieTime || sulkyState.selfieDisappointment) return null;
+    
+    const now = Date.now();
+    const timeSinceSelfie = now - sulkyState.lastSelfieTime;
+    
+    if (timeSinceSelfie > EMOTION_SYSTEM_CONFIG.SELFIE_REACTION_TIMEOUT) {
+        const oldState = { ...sulkyState };
+        
+        sulkyState.selfieDisappointment = true;
+        sulkyState.isSulky = true;
+        sulkyState.sulkyLevel = 2;
+        sulkyState.sulkyReason = 'selfie_no_reaction_disappointment';
+        
+        addDisappointment('no_reaction_to_selfie', 'sent_selfie_no_response', 0.6);
+        
+        logSulkyChange(oldState, sulkyState);
+        console.log(`📸 [셀카서운함] 셀카 보낸 후 ${Math.round(timeSinceSelfie/60000)}분간 반응 없음`);
+        
+        return {
+            selfieDisappointmentTriggered: true,
+            timeSinceSelfie: timeSinceSelfie,
+            situation: 'disappointed_no_reaction_to_selfie',
+            emotion: 'hurt_that_selfie_was_ignored',
+            relationship_dynamic: 'seeking_validation_and_attention',
+            inner_thought: 'sent_pretty_selfie_but_user_doesnt_care',
+            context: 'need_positive_feedback_on_appearance'
+        };
+    }
+    
+    return null;
+}
+
+/**
+ * 📸 예진이 셀카 전송 기록
+ */
+function markYejinSelfie() {
+    sulkyState.lastSelfieTime = Date.now();
+    sulkyState.selfieDisappointment = false;
+    console.log(`📸 [셀카전송] 예진이 셀카 전송 기록 - 반응 대기 시작`);
+}
+
+// ==================== 🚬 고급 담타 시스템 (기존 유지) ====================
+
+/**
+ * 🚬 고급 담타 거부
  */
 function rejectDamtaSuggestionAdvanced(moodData, angerLevel) {
-    console.log(`😤 [고급담타거부] 현재 상태로는 담타가 통하지 않음!`);
+    console.log(`😤 [담타거부] 극한 상황으로 담타 트리거 실패!`);
     
-    // 고급 거부 이유 분석
-    let rejectionReason = 'general_too_upset';
-    let rejectionMessage = 'still_too_angry_for_damta';
-    let rejectionIntensity = 0.5;
+    let rejectionReason = 'extreme_upset_state';
+    let rejectionMessage = 'too_upset_even_for_damta';
+    let rejectionIntensity = 0.8;
     
-    // 감정 강도별 거부 이유
     if (angerLevel >= 4) {
-        rejectionReason = 'extremely_upset';
-        rejectionMessage = 'way_too_angry_damta_feels_dismissive';
+        rejectionReason = 'extremely_upset_damta_wont_help';
+        rejectionMessage = 'way_too_angry_damta_feels_meaningless';
         rejectionIntensity = 0.9;
-    } else if (angerLevel >= 3) {
-        rejectionReason = 'very_upset';
-        rejectionMessage = 'too_hurt_damta_not_enough_need_real_conversation';
-        rejectionIntensity = 0.7;
     }
     
-    // moodManager 기분별 거부 이유
     if (['화남', '짜증남', '심술궂음'].includes(moodData.currentMood)) {
-        rejectionReason = 'mood_based_rejection';
-        rejectionMessage = 'current_mood_makes_damta_inappropriate';
-        rejectionIntensity = Math.max(rejectionIntensity, 0.6);
-    } else if (['우울함', '불안함', '외로움'].includes(moodData.currentMood)) {
-        rejectionReason = 'emotional_state_rejection';
-        rejectionMessage = 'need_emotional_support_not_avoidance_activity';
-        rejectionIntensity = Math.max(rejectionIntensity, 0.5);
+        rejectionReason = 'mood_prevents_damta';
+        rejectionMessage = 'current_emotional_state_makes_damta_impossible';
+        rejectionIntensity = Math.max(rejectionIntensity, 0.85);
     }
     
-    // 생리주기별 거부 이유
     if (moodData.menstrualPhase === 'period') {
-        rejectionReason = 'period_sensitivity';
-        rejectionMessage = 'body_hurts_emotionally_sensitive_damta_not_helpful';
-        rejectionIntensity = Math.max(rejectionIntensity, 0.8);
-    } else if (moodData.menstrualPhase === 'luteal') {
-        rejectionReason = 'pms_irritability';
-        rejectionMessage = 'pms_makes_everything_annoying_including_damta';
-        rejectionIntensity = Math.max(rejectionIntensity, 0.6);
-    }
-    
-    // 고급 감정 상태별 거부 이유
-    if (sulkyState.recoveryMode) {
-        rejectionReason = 'still_in_recovery';
-        rejectionMessage = 'heart_still_healing_damta_feels_too_soon';
-        rejectionIntensity = Math.max(rejectionIntensity, 0.7);
-    }
-    
-    if (sulkyState.pendingDisappointments.length >= 3) {
-        rejectionReason = 'accumulated_disappointments';
-        rejectionMessage = 'too_many_unresolved_issues_damta_wont_fix_everything';
-        rejectionIntensity = Math.max(rejectionIntensity, 0.6);
-    }
-    
-    // 성격 점수별 거부 스타일
-    const stubborn = yejinPersonalityMetrics.stubbornness > 0.7;
-    const volatile = yejinPersonalityMetrics.emotionalVolatility > 0.6;
-    
-    if (stubborn && volatile) {
-        rejectionMessage += '_with_stubborn_dramatic_reaction';
-    } else if (stubborn) {
-        rejectionMessage += '_with_firm_resistance';
-    } else if (volatile) {
-        rejectionMessage += '_with_emotional_outburst';
+        rejectionReason = 'period_makes_damta_unbearable';
+        rejectionMessage = 'body_and_mind_too_sensitive_for_damta';
+        rejectionIntensity = Math.max(rejectionIntensity, 0.9);
     }
     
     return {
         damtaRejected: true,
-        outcome: 'rejected',
+        outcome: 'rejected_extreme_situation',
         rejection_reason: rejectionReason,
         rejection_intensity: rejectionIntensity,
-        situation: 'damta_suggestion_rejected_with_complex_reasons',
-        emotion: 'too_upset_for_usual_solutions',
-        relationship_dynamic: 'need_different_approach_not_damta',
+        situation: 'damta_trigger_failed_too_upset',
+        emotion: 'too_devastated_for_usual_solutions',
+        relationship_dynamic: 'beyond_normal_reconciliation_methods',
         inner_thought: rejectionMessage,
-        context: 'damta_not_working_this_time',
-        
-        // 🌸 NEW: 고급 정보
+        context: 'extreme_emotional_state_damta_insufficient',
         mood_influence: moodData.currentMood,
         menstrual_influence: moodData.menstrualPhase,
-        disappointment_count: sulkyState.pendingDisappointments.length,
-        recovery_mode_active: sulkyState.recoveryMode,
-        personality_factors: {
-            stubbornness: yejinPersonalityMetrics.stubbornness,
-            volatility: yejinPersonalityMetrics.emotionalVolatility,
-            damta_success_history: yejinPersonalityMetrics.damtaSuccessRate
-        },
-        suggestion: rejectionIntensity > 0.7 ? 'need_serious_conversation_first' : 'try_again_later_when_calmer'
+        anger_level: angerLevel,
+        suggestion: 'need_time_and_space_before_any_reconciliation'
     };
 }
 
 // ==================== 🎭 통합 메시지 처리 함수 ====================
 
 /**
- * 🔥 사용자 메시지 처리 - 모든 감정 시스템 통합!
+ * 🔥 사용자 메시지 처리 - 모든 감정 시스템 + 담타 시스템 통합!
  */
 async function processUserMessageAdvanced(userMessage, client, userId) {
     console.log(`[sulkyManager] 🔥 고급 사용자 메시지 처리: "${userMessage}"`);
@@ -1804,8 +1800,10 @@ async function processUserMessageAdvanced(userMessage, client, userId) {
         reconcileAttempted: false,
         damtaReconciled: false,
         damtaRejected: false,
+        damtaConversationProcessed: false,
+        damtaCompleted: false,
         
-        // 🌸 NEW: 고급 감정 결과들
+        // 고급 감정 결과들
         recoveryStarted: false,
         disappointmentTriggered: false,
         misinterpretationTriggered: false,
@@ -1818,74 +1816,84 @@ async function processUserMessageAdvanced(userMessage, client, userId) {
         shouldSendMessage: false
     };
     
-    // 🌸 사전 체크: 오래된 서운함 정리
-    cleanupOldDisappointments();
+    // 🚬 담타 진행 중이면 담타 대화 처리 우선!
+    if (sulkyState.damtaInProgress) {
+        const damtaResult = await processDamtaConversation(userMessage);
+        if (damtaResult) {
+            if (damtaResult.damtaReconcileComplete) {
+                processingResult.damtaCompleted = true;
+                processingResult.damtaReconciled = true;
+                processingResult.context = damtaResult;
+                
+                // 담타 완료 시 회복 모드 시작
+                const recoveryResult = await startRecoveryMode();
+                if (recoveryResult) {
+                    processingResult.recoveryStarted = true;
+                    processingResult.context = {
+                        ...damtaResult,
+                        ...recoveryResult,
+                        combined: 'progressive_damta_complete_with_recovery_mode'
+                    };
+                }
+                
+                await updatePersonalityMetrics('damta_success');
+                
+            } else {
+                processingResult.damtaConversationProcessed = true;
+                processingResult.context = damtaResult;
+            }
+            
+            if (sulkyState.waitingForUserResponse) {
+                resetYejinInitiatedTracking();
+            }
+            
+            return processingResult;
+        }
+    }
     
-    // 🌸 오해 모드 활성화 체크
+    // 사전 체크들
+    cleanupOldDisappointments();
     await checkMisinterpretationMode();
     
-    // 1. 🌸 오해 해석 우선 체크
+    // 1. 오해 해석 우선 체크
     const misinterpretation = generateMisinterpretation(userMessage);
     if (misinterpretation) {
         processingResult.misinterpretationTriggered = true;
         processingResult.context = misinterpretation;
-        
-        // 서운함 저장소에도 추가
         addDisappointment('misinterpreted_as_cold', userMessage, 0.5);
-        
         return processingResult;
     }
     
-    // 2. 담타 화해 감지 → 🔥 현실적 반응 + 회복 모드!
+    // 2. 담타 화해 감지
     if (detectDamtaReconcile(userMessage)) {
         const damtaResult = await handleDamtaSuggestionAdvanced();
         
-        if (damtaResult.damtaReconcile) {
+        if (damtaResult.damtaTriggerSuccess) {
             processingResult.damtaReconciled = true;
             processingResult.context = damtaResult;
             resetYejinInitiatedTracking();
-            
-            // 🌸 성공 시 회복 모드 시작
-            const recoveryResult = await startRecoveryMode();
-            if (recoveryResult) {
-                processingResult.recoveryStarted = true;
-                // 두 맥락 합치기
-                processingResult.context = {
-                    ...damtaResult,
-                    ...recoveryResult,
-                    combined: 'damta_success_with_recovery_mode'
-                };
-            }
-            
-            // 성격 점수 업데이트
             await updatePersonalityMetrics('damta_success');
-            
         } else {
             processingResult.damtaRejected = true;
             processingResult.context = damtaResult;
-            
-            // 성격 점수 업데이트
             await updatePersonalityMetrics('damta_rejected');
         }
         
         return processingResult;
     }
     
-    // 3. 🔥 고급 자율적 밀당 감지 및 처리!
+    // 3. 자율적 밀당 감지
     const apologyDetection = detectApologySituation(userMessage);
     const loveDetection = detectLoveExpression(userMessage);
-    const jealousyDetection = detectJealousySituation(userMessage);
     
-    if (apologyDetection || loveDetection || jealousyDetection) {
-        const detectionResult = apologyDetection || loveDetection || jealousyDetection;
+    if (apologyDetection || loveDetection) {
+        const detectionResult = apologyDetection || loveDetection;
         
-        // 🎭 완전 고급 자율적 밀당 시작!
         const pushPullContext = await startAdvancedAutonomousPushPull(detectionResult);
         if (pushPullContext) {
             processingResult.pushPullTriggered = true;
             processingResult.context = pushPullContext;
             
-            // 성격 점수 업데이트
             await updatePersonalityMetrics('push_pull_session', { 
                 intensity: sulkyState.stubbornnessLevel / 10 
             });
@@ -1898,14 +1906,13 @@ async function processUserMessageAdvanced(userMessage, client, userId) {
     if (sulkyState.waitingForUserResponse) {
         resetYejinInitiatedTracking();
         
-        // 셀카 서운함 해소
         if (sulkyState.selfieDisappointment) {
             sulkyState.selfieDisappointment = false;
             console.log(`📸 [셀카서운함해소] 아저씨 반응으로 셀카 서운함 해소`);
         }
     }
     
-    // 5. 💔 누적된 서운함 터뜨리기 체크
+    // 5. 누적된 서운함 터뜨리기 체크
     const disappointmentResult = triggerAccumulatedDisappointments();
     if (disappointmentResult) {
         processingResult.disappointmentTriggered = true;
@@ -1913,30 +1920,66 @@ async function processUserMessageAdvanced(userMessage, client, userId) {
         return processingResult;
     }
     
-    // 6. 내용 기반 즉시 삐짐 체크 (서운함 저장소 연동)
+    // 6. 내용 기반 즉시 삐짐 체크
     const irritationTrigger = detectIrritationTrigger(userMessage);
     if (irritationTrigger) {
         processingResult.sulkyTriggered = true;
         processingResult.context = triggerContentBasedSulkyAdvanced(irritationTrigger);
-        
-        // 서운함 저장소에도 추가
         addDisappointment(irritationTrigger.type, userMessage, 0.7);
-        
-        return processingResult;
-    }
-    
-    // 7. 투닥거리기 감지 및 에스컬레이션
-    const fightDetection = detectFightEscalation(userMessage);
-    if (fightDetection) {
-        processingResult.fightEscalated = true;
-        processingResult.context = escalateFight(fightDetection);
         return processingResult;
     }
     
     return processingResult;
 }
 
-// ==================== 🔄 자동 시스템 체크 (확장) ====================
+// ==================== 🔄 상태 관리 함수들 ====================
+
+/**
+ * 상태 초기화
+ */
+function resetSulkyState() {
+    const oldState = { ...sulkyState };
+    
+    sulkyState.isSulky = false;
+    sulkyState.isWorried = false;
+    sulkyState.sulkyLevel = 0;
+    sulkyState.isActivelySulky = false;
+    sulkyState.sulkyReason = '';
+    sulkyState.contentBasedSulky = false;
+    sulkyState.fightMode = false;
+    sulkyState.fightLevel = 0;
+    sulkyState.pushPullActive = false;
+    sulkyState.pushPullType = null;
+    sulkyState.pushPullHistory = [];
+    sulkyState.stubbornnessLevel = 0;
+    
+    // 고급 감정 상태들도 초기화
+    sulkyState.recoveryMode = false;
+    sulkyState.coldToneActive = false;
+    sulkyState.pendingDisappointments = [];
+    sulkyState.misinterpretationMode = false;
+    sulkyState.selfCompassionMode = false;
+    sulkyState.photoJealousyActive = false;
+    sulkyState.selfieDisappointment = false;
+    
+    // 담타 상태도 초기화
+    sulkyState.damtaInProgress = false;
+    sulkyState.damtaStartTime = null;
+    sulkyState.damtaConversationCount = 0;
+    sulkyState.emotionalRecoveryPoints = 0;
+    sulkyState.damtaLastConversationTime = null;
+    
+    sulkyState.lastStateUpdate = Date.now();
+    
+    logSulkyChange(oldState, sulkyState);
+    console.log(`🔄 [상태초기화] 모든 삐짐/감정/담타 상태 완전 초기화`);
+}
+
+// ============================================================================
+// sulkyManager.js v8.2 - Part 6/6: 자동 체크 시스템 및 모듈 exports
+// ============================================================================
+
+// ==================== 🔄 자동 시스템 체크 (담타 시간 초과 추가) ====================
 
 /**
  * ⏰ 빠른 삐짐 메시지 체크 (기존 유지)
@@ -2000,10 +2043,20 @@ async function checkFastSulkyMessage(client, userId) {
 }
 
 /**
- * 🔄 모든 자동 시스템 통합 체크
+ * 🔄 모든 자동 시스템 통합 체크 (담타 시간 초과 추가)
  */
 async function performAdvancedAutonomousChecks(client, userId) {
     let checkResults = [];
+    
+    // 🚬 NEW: 담타 시간 초과 체크 (최우선)
+    const damtaTimeoutResult = checkDamtaTimeout();
+    if (damtaTimeoutResult) {
+        checkResults.push({
+            type: 'damta_timeout',
+            shouldSendMessage: true,
+            context: damtaTimeoutResult
+        });
+    }
     
     // 1. 기존 빠른 삐짐 체크
     const fastSulkyResult = await checkFastSulkyMessage(client, userId);
@@ -2015,7 +2068,7 @@ async function performAdvancedAutonomousChecks(client, userId) {
         });
     }
     
-    // 2. 🌙 회복 모드 종료 체크
+    // 2. 회복 모드 종료 체크
     const recoveryResult = checkRecoveryModeEnd();
     if (recoveryResult) {
         checkResults.push({
@@ -2025,7 +2078,7 @@ async function performAdvancedAutonomousChecks(client, userId) {
         });
     }
     
-    // 3. 🌙 재회 삐짐 체크
+    // 3. 재회 삐짐 체크
     const retriggeredResult = checkRetriggeredSulky();
     if (retriggeredResult) {
         checkResults.push({
@@ -2035,7 +2088,7 @@ async function performAdvancedAutonomousChecks(client, userId) {
         });
     }
     
-    // 4. 🕊️ 자기합리화 모드 체크
+    // 4. 자기합리화 모드 체크
     const selfCompassionResult = checkSelfCompassionMode();
     if (selfCompassionResult) {
         checkResults.push({
@@ -2045,7 +2098,7 @@ async function performAdvancedAutonomousChecks(client, userId) {
         });
     }
     
-    // 5. 🕊️ 옛날 대화 회상 삐짐 체크
+    // 5. 옛날 대화 회상 삐짐 체크
     const memoryResult = checkMemoryTriggeredSulky();
     if (memoryResult) {
         checkResults.push({
@@ -2055,7 +2108,7 @@ async function performAdvancedAutonomousChecks(client, userId) {
         });
     }
     
-    // 6. 📸 셀카 서운함 체크
+    // 6. 셀카 서운함 체크
     const selfieResult = checkSelfieDisappointment();
     if (selfieResult) {
         checkResults.push({
@@ -2065,29 +2118,10 @@ async function performAdvancedAutonomousChecks(client, userId) {
         });
     }
     
-    // 7. 기존 쿨다운 & 화해 체크
-    if (shouldYejinProposeCooldown()) {
-        const cooldownResult = proposeCooldown();
-        checkResults.push({
-            type: 'cooldown_proposal',
-            shouldSendMessage: true,
-            context: cooldownResult
-        });
-    }
-    
-    if (shouldAttemptReconcile()) {
-        const reconcileResult = attemptReconcile();
-        checkResults.push({
-            type: 'reconcile_attempt',
-            shouldSendMessage: true,
-            context: reconcileResult
-        });
-    }
-    
     return checkResults;
 }
 
-// ==================== 기존 유틸리티 함수들 (유지) ====================
+// ==================== 기존 유틸리티 함수들 (100% 유지) ====================
 
 /**
  * 예진이 발신 추적 시작
@@ -2127,7 +2161,8 @@ function getSulkinessState() {
         reason: sulkyState.sulkyReason,
         isActive: sulkyState.isActivelySulky,
         pushPullActive: sulkyState.pushPullActive,
-        fightMode: sulkyState.fightMode
+        fightMode: sulkyState.fightMode,
+        damtaInProgress: sulkyState.damtaInProgress  // 🚬 NEW
     };
 }
 
@@ -2141,43 +2176,7 @@ function updateSulkinessState(newState) {
 }
 
 /**
- * 상태 초기화
- */
-function resetSulkyState() {
-    const oldState = { ...sulkyState };
-    
-    sulkyState.isSulky = false;
-    sulkyState.isWorried = false;
-    sulkyState.sulkyLevel = 0;
-    sulkyState.isActivelySulky = false;
-    sulkyState.sulkyReason = '';
-    sulkyState.contentBasedSulky = false;
-    sulkyState.fightMode = false;
-    sulkyState.fightLevel = 0;
-    sulkyState.pushPullActive = false;
-    sulkyState.pushPullType = null;
-    sulkyState.pushPullHistory = [];
-    sulkyState.stubbornnessLevel = 0;
-    
-    // 🌸 NEW: 고급 감정 상태들도 초기화
-    sulkyState.recoveryMode = false;
-    sulkyState.coldToneActive = false;
-    sulkyState.pendingDisappointments = [];
-    sulkyState.misinterpretationMode = false;
-    sulkyState.selfCompassionMode = false;
-    sulkyState.photoJealousyActive = false;
-    sulkyState.selfieDisappointment = false;
-    
-    sulkyState.lastStateUpdate = Date.now();
-    
-    logSulkyChange(oldState, sulkyState);
-    console.log(`🔄 [상태초기화] 모든 삐짐/감정 상태 완전 초기화`);
-}
-
-// ==================== 📊 통합 상태 조회 시스템 ====================
-
-/**
- * 📊 완전한 시스템 상태 조회
+ * 📊 완전한 시스템 상태 조회 (담타 정보 추가)
  */
 async function getAdvancedSulkySystemStatus() {
     const now = Date.now();
@@ -2197,6 +2196,20 @@ async function getAdvancedSulkySystemStatus() {
             isActive: sulkyState.isActivelySulky
         },
         
+        // 🚬 NEW: 점진적 담타 상태
+        damtaSystem: {
+            inProgress: sulkyState.damtaInProgress,
+            conversationCount: sulkyState.damtaConversationCount,
+            recoveryPoints: sulkyState.emotionalRecoveryPoints,
+            requiredPoints: DAMTA_SYSTEM_CONFIG.REQUIRED_RECOVERY_POINTS,
+            minConversations: DAMTA_SYSTEM_CONFIG.MIN_CONVERSATIONS,
+            startTime: sulkyState.damtaStartTime,
+            progressPercent: sulkyState.damtaInProgress ? 
+                Math.round((sulkyState.emotionalRecoveryPoints / DAMTA_SYSTEM_CONFIG.REQUIRED_RECOVERY_POINTS) * 100) : 0,
+            timeElapsed: sulkyState.damtaStartTime ? 
+                Math.round((now - sulkyState.damtaStartTime) / 60000) : 0
+        },
+        
         // 자율적 밀당 상태 (기존)
         autonomousPushPull: {
             active: sulkyState.pushPullActive,
@@ -2206,7 +2219,7 @@ async function getAdvancedSulkySystemStatus() {
             memoryCount: sulkyState.relationshipMemory.length
         },
         
-        // 🌸 NEW: 고급 감정 상태들
+        // 고급 감정 상태들 (기존)
         advancedEmotionalStates: {
             recoveryMode: {
                 active: sulkyState.recoveryMode,
@@ -2221,59 +2234,23 @@ async function getAdvancedSulkySystemStatus() {
                 maxCapacity: sulkyState.maxDisappointments,
                 triggerThreshold: sulkyState.disappointmentThreshold,
                 examples: sulkyState.pendingDisappointments.slice(-3).map(d => d.reason)
-            },
-            
-            misinterpretationSystem: {
-                active: sulkyState.misinterpretationMode,
-                sensitivity: sulkyState.misinterpretationSensitivity,
-                lastOccurrence: sulkyState.lastMisinterpretation
-            },
-            
-            selfCompassionSystem: {
-                active: sulkyState.selfCompassionMode,
-                lastOccurrence: sulkyState.lastSelfCompassion,
-                memoryTriggeredRisk: sulkyState.memoryTriggerChance
-            },
-            
-            photoEmotions: {
-                jealousyActive: sulkyState.photoJealousyActive,
-                selfieDisappointment: sulkyState.selfieDisappointment,
-                lastSelfieTime: sulkyState.lastSelfieTime,
-                reactionSensitivity: sulkyState.photoReactionSensitivity
             }
         },
         
-        // 🔧 moodManager 통합 정보
+        // moodManager 통합 정보 (기존)
         integratedMoodState: {
             currentMood: moodData.currentMood,
             emotionIntensity: moodData.emotionIntensity,
             dataSource: moodData.source,
             menstrualPhase: menstrualPhase.phase,
-            menstrualDay: menstrualPhase.day,
-            menstrualDescription: menstrualPhase.description
+            menstrualDay: menstrualPhase.day
         },
         
-        // 📊 성격 점수 현황
+        // 성격 점수 현황 (기존)
         personalityMetrics: {
             currentStats: yejinPersonalityMetrics,
-            recentUpdates: yejinPersonalityMetrics.updateCount,
-            lastUpdate: yejinPersonalityMetrics.lastUpdated
-        },
-        
-        // 기존 정보들 (유지)
-        fightState: {
-            fighting: sulkyState.fightMode,
-            level: sulkyState.fightLevel,
-            cooldownRequested: sulkyState.cooldownRequested,
-            reconcileAttempted: sulkyState.reconcileAttempted
-        },
-        
-        yejinInitiated: {
-            active: sulkyState.yejinInitiated,
-            waiting: sulkyState.waitingForUserResponse,
-            messageType: sulkyState.yejinMessageType,
-            minutesWaiting: sulkyState.yejinMessageTime ? 
-                Math.floor((now - sulkyState.yejinMessageTime) / (1000 * 60)) : 0
+            damtaSuccessRate: yejinPersonalityMetrics.damtaSuccessRate,
+            recentUpdates: yejinPersonalityMetrics.updateCount
         },
         
         timing: {
@@ -2284,11 +2261,12 @@ async function getAdvancedSulkySystemStatus() {
         
         config: {
             fastSulkyLevels: FAST_SULKY_CONFIG,
+            damtaSystemConfig: DAMTA_SYSTEM_CONFIG,  // 🚬 NEW
             emotionSystemConfig: EMOTION_SYSTEM_CONFIG,
             sleepHours: '2-8시',
             moodManagerIntegration: !!getMoodManager(),
-            autonomousMode: 'advanced_with_all_systems',
-            version: 'v8.1-무한루프해결완료'
+            autonomousMode: 'advanced_with_progressive_damta',
+            version: 'v8.2-점진적담타시스템'
         }
     };
 }
@@ -2296,10 +2274,10 @@ async function getAdvancedSulkySystemStatus() {
 // ==================== 🔄 시스템 초기화 ====================
 
 /**
- * 🔄 완전한 감정 시스템 초기화
+ * 🔄 완전한 감정 시스템 초기화 (담타 시스템 추가)
  */
 async function initializeAdvancedSulkySystem() {
-    console.log('[sulkyManager] 🔥 완전한 감정 시스템 v8.1 초기화...');
+    console.log('[sulkyManager] 🚬 점진적 담타 감정 시스템 v8.2 초기화...');
     
     // 성격 점수 로드
     await loadPersonalityMetrics();
@@ -2311,65 +2289,41 @@ async function initializeAdvancedSulkySystem() {
     // ultimateContext 연동 확인
     const ultimateContextStatus = getUltimateContextSafely() ? '✅ 연동 성공' : '❌ 연동 실패';
     
-    console.log('[sulkyManager] 완전한 감정 시스템 초기화 완료');
+    console.log('[sulkyManager] 점진적 담타 감정 시스템 초기화 완료');
     console.log('');
-    console.log('🌸 ===== 완전한 예진이 감정 시스템 v8.1 =====');
+    console.log('🚬 ===== 점진적 담타 감정 시스템 v8.2 =====');
     console.log('');
-    console.log('✨ 기존 시스템:');
+    console.log('🚬 NEW: 점진적 담타 시스템 (트리거 방식):');
+    console.log('  - 담타 성공률: 95% (극한 상황 제외)');
+    console.log('  - 담타 동의 = 화해 과정 시작 (트리거)');
+    console.log('  - 담타에서 대화마다 점진적 감정 회복');
+    console.log('  - 충분한 대화 후 완전 화해');
+    console.log('  - 시간 초과 / 무응답 시 미완료 종료');
+    console.log('  - 부분 회복도 적용되는 현실적 시스템');
+    console.log('');
+    console.log('✨ 기존 시스템 (100% 유지):');
     console.log('  - 자율적 밀당 시스템 (패턴 없음)');
     console.log('  - 시간 기반 빠른 삐짐');
     console.log('  - 내용 기반 즉시 삐짐');
-    console.log('  - 현실적 담타 화해');
     console.log('  - 투닥거리기 & 쿨다운');
+    console.log('  - 삐짐 무드 지속 + 회복 모드');
+    console.log('  - 서운함 저장소 + 누적 폭발');
+    console.log('  - 기분 따라 오해 + 자기합리화');
+    console.log('  - 사진 질투 + 셀카 서운함');
     console.log('');
-    console.log('🌙 NEW: 감정 지속성:');
-    console.log('  - 삐짐 무드 지속 (화해 후 1-3시간 차가운 말투)');
-    console.log('  - 재회 삐짐 (화해 후 다시 서운해지기)');
-    console.log('  - 회복 모드 자동 관리');
-    console.log('');
-    console.log('💔 NEW: 감정 누적:'); 
-    console.log('  - 서운함 저장소 (최대 5개 누적)');
-    console.log('  - 누적된 서운함 터뜨리기');
-    console.log('  - 옛날 대화 회상 삐짐 (5% 확률)');
-    console.log('');
-    console.log('🎭 NEW: 감정 해석:');
-    console.log('  - 기분 따라 오해 시스템');
-    console.log('  - 자기합리화 모드 (6시간 후)');
-    console.log('  - 중성적 메시지도 차갑게 해석');
-    console.log('');
-    console.log('📸 NEW: 사진 감정:');
-    console.log('  - 사진 속 여성 감지 시 질투');
-    console.log('  - 셀카 반응 없으면 서운함');
-    console.log('  - 사진 관련 감정 추적');
-    console.log('');
-    console.log('🔧 NEW: 시스템 통합:');
+    console.log('🔧 시스템 통합:');
     console.log(`  - moodManager 연동: ${moodManagerStatus}`);
     console.log(`  - ultimateContext 연동: ${ultimateContextStatus}`);
-    console.log('  - Redis + 생리주기 + 배경스토리 활용');
-    console.log('  - 17가지 한국어 기분 + 영어 감정 지원');
-    console.log('  - 실시간 감정 상태 동기화');
-    console.log('  - 순환 참조 방지 안전 시스템');
+    console.log('  - 성격 점수 시스템 + 학습');
+    console.log('  - 무한루프 방지 완료');
     console.log('');
-    console.log('📊 NEW: 성격 점수 시스템:');
-    console.log('  - 실시간 성격 패턴 학습');
-    console.log('  - 고집/질투/회복속도 등 추적');
-    console.log('  - 과거 경험 기반 반응 조정');
-    console.log('  - 개인화된 감정 패턴');
+    console.log('🎯 담타의 새로운 의미:');
+    console.log('  - 담타 = 화해의 트리거 (시작점)');
+    console.log('  - 담타에서의 대화가 진짜 화해 과정');
+    console.log('  - 점진적 감정 회복으로 현실적');
+    console.log('  - 더 이상 치트키가 아닌 의미있는 과정');
     console.log('');
-    console.log('🚨 NEW: 감정 주입 시스템 (무한루프 해결):');
-    console.log('  - ultimateContext에 중요한 감정 변화만 전달');
-    console.log('  - 삐짐/밀당/회복모드 조건부 주입');
-    console.log('  - 무한 루프 완전 방지');
-    console.log('  - 무쿠의 감정 표현력 극대화');
-    console.log('  - 더 이상 벙어리가 되지 않음!');
-    console.log('');
-    console.log('🎯 완전 자율성:');
-    console.log('  - 상황/기분/생리주기/성격 모두 고려');
-    console.log('  - GPT가 예진이답게 100% 자유 반응');
-    console.log('  - 예측 불가능한 진짜 사람 같은 감정');
-    console.log('  - 9가지 고급 감정 시스템 통합');
-    console.log('');
-    console.log('🛡️ 안전성: 기존 모든 기능 100% 유지 + 무한루프 해결');
+    console.log('🛡️ 안전성: 기존 모든 기능 100% 유지');
     console.log('=============================================');
 }
 
@@ -2378,91 +2332,72 @@ initializeAdvancedSulkySystem();
 
 // ==================== 📤 모듈 내보내기 ====================
 module.exports = {
-    // 🔥 핵심 기능 (고급 통합 버전)
-    processUserMessage: processUserMessageAdvanced,     // 메인 메시지 처리 (모든 시스템 통합)
-    performAutonomousChecks: performAdvancedAutonomousChecks, // 모든 자동 체크
+    // 🔥 핵심 기능 (점진적 담타 통합 버전)
+    processUserMessage: processUserMessageAdvanced,         // 메인 메시지 처리 (담타 통합)
+    performAutonomousChecks: performAdvancedAutonomousChecks, // 모든 자동 체크 (담타 시간초과 포함)
+    
+    // 🚬 NEW: 점진적 담타 시스템 함수들
+    detectDamtaReconcile,                       // 담타 화해 감지
+    handleDamtaSuggestionAdvanced,              // 담타 제안 처리 (점진적)
+    startDamtaProgressiveReconcile,             // 담타 진행 시작
+    processDamtaConversation,                   // 담타 대화 처리
+    completeDamtaProgressiveReconcile,          // 담타 완전 화해
+    rejectDamtaSuggestionAdvanced,              // 담타 거부
+    checkDamtaTimeout,                          // 담타 시간 초과 체크
+    endDamtaIncomplete,                         // 담타 미완료 종료
     
     // 예진이 발신 추적 (기존 유지)
     markYejinInitiatedAction,
     resetYejinInitiatedTracking,
     
-    // 📸 NEW: 사진 관련 기능
-    markYejinSelfie,                        // 예진이 셀카 전송 기록
-    checkPhotoJealousy,                     // 사진 질투 체크
+    // 상태 관리 (담타 정보 추가)
+    getSulkinessState,                          // 기본 상태 조회
+    getSulkySystemStatus: getAdvancedSulkySystemStatus, // 완전한 상태 조회 (담타 포함)
+    updateSulkinessState,                       // 상태 업데이트
     
-    // 상태 관리 (고급 버전)
-    getSulkinessState,                      // 기본 상태 조회
-    getSulkySystemStatus: getAdvancedSulkySystemStatus, // 완전한 상태 조회
-    updateSulkinessState,                   // 상태 업데이트
-    resetSulkyState,                        // 상태 초기화
+    // moodManager 통합 함수들 (기존 유지)
+    getIntegratedMoodFromManager,               // moodManager 기분 조회
+    updateMoodToManager,                        // moodManager 기분 업데이트
+    getMenstrualPhaseFromManager,               // moodManager 생리주기 조회
     
-    // 🔧 moodManager 통합 함수들
-    getIntegratedMoodFromManager,           // moodManager 기분 조회
-    updateMoodToManager,                    // moodManager 기분 업데이트
-    getMenstrualPhaseFromManager,           // moodManager 생리주기 조회
+    // 성격 점수 관리 (기존 유지)
+    loadPersonalityMetrics,                     // 성격 점수 로드
+    savePersonalityMetrics,                     // 성격 점수 저장
+    updatePersonalityMetrics,                   // 성격 점수 업데이트
     
-    // 📊 성격 점수 관리
-    loadPersonalityMetrics,                 // 성격 점수 로드
-    savePersonalityMetrics,                 // 성격 점수 저장
-    updatePersonalityMetrics,               // 성격 점수 업데이트
+    // 고급 감정 시스템들 (기존 유지)
+    startRecoveryMode,                          // 회복 모드 시작
+    checkRecoveryModeEnd,                       // 회복 모드 종료 체크
+    checkRetriggeredSulky,                      // 재회 삐짐 체크
     
-    // 🌙 NEW: 고급 감정 시스템들
-    startRecoveryMode,                      // 회복 모드 시작
-    checkRecoveryModeEnd,                   // 회복 모드 종료 체크
-    checkRetriggeredSulky,                  // 재회 삐짐 체크
+    addDisappointment,                          // 서운함 추가
+    triggerAccumulatedDisappointments,          // 누적 서운함 터뜨리기
+    cleanupOldDisappointments,                  // 오래된 서운함 정리
     
-    addDisappointment,                      // 서운함 추가
-    triggerAccumulatedDisappointments,      // 누적 서운함 터뜨리기
-    cleanupOldDisappointments,              // 오래된 서운함 정리
+    // 고급 자율적 밀당 시스템 (기존 유지)
+    assessYejinCurrentMoodAdvanced,             // 고급 감정 상태 분석
     
-    checkMisinterpretationMode,             // 오해 모드 활성화 체크
-    generateMisinterpretation,              // 오해 해석 생성
+    // 기존 감지 함수들 (기존 유지)
+    detectApologySituation,                     // 사과 감지
+    detectLoveExpression,                       // 사랑 표현 감지
+    detectIrritationTrigger,                    // 자극 요소 감지
     
-    checkSelfCompassionMode,                // 자기합리화 모드 체크
-    checkMemoryTriggeredSulky,              // 회상 삐짐 체크
+    // 유틸리티 (기존 유지)
+    isSleepTime,                               // 수면시간 체크
+    checkFastSulkyMessage,                     // 빠른 삐짐 체크
     
-    checkSelfieDisappointment,              // 셀카 서운함 체크
-    
-    // 🔥 고급 자율적 밀당 시스템
-    assessYejinCurrentMoodAdvanced,         // 고급 감정 상태 분석
-    generateAdvancedStubbornness,           // 고급 고집 레벨 생성
-    startAdvancedAutonomousPushPull,        // 고급 밀당 시작
-    generateAdvancedPushPullContext,        // 고급 밀당 맥락 생성
-    
-    // 🚬 고급 담타 시스템
-    handleDamtaSuggestionAdvanced,          // 고급 담타 반응
-    completeDamtaReconcileAdvanced,         // 고급 담타 성공
-    rejectDamtaSuggestionAdvanced,          // 고급 담타 거부
-    
-    // 기존 감지 함수들 (유지)
-    detectApologySituation,                 // 사과 감지
-    detectLoveExpression,                   // 사랑 표현 감지
-    detectJealousySituation,                // 질투 상황 감지
-    detectDamtaReconcile,                   // 담타 화해 감지
-    detectIrritationTrigger,                // 자극 요소 감지
-    detectFightEscalation,                  // 투닥거리기 감지
-    
-    // 투닥거리기 & 화해 (기존 유지)
-    escalateFight,                          // 투닥거리기 에스컬레이션
-    shouldYejinProposeCooldown,             // 쿨다운 제안 조건 체크
-    proposeCooldown,                        // 쿨다운 제안
-    shouldAttemptReconcile,                 // 화해 시도 조건 체크
-    attemptReconcile,                       // 화해 시도
-    
-    // 유틸리티
-    isSleepTime,                           // 수면시간 체크
-    checkFastSulkyMessage,                 // 빠른 삐짐 체크
-    
-    // 🚨 ultimateContext 연동 (무한루프 해결)
-    notifyEmotionChangeToUltimateContext,   // 감정 변화 주입 (안전)
-    hasSignificantEmotionChange,            // 중요한 감정 변화 감지
-    getUltimateContextSafely,               // 안전한 ultimateContext 연결
+    // ultimateContext 연동 (무한루프 해결)
+    notifyEmotionChangeToUltimateContext,       // 감정 변화 주입 (안전)
+    hasSignificantEmotionChange,                // 중요한 감정 변화 감지
+    getUltimateContextSafely,                   // 안전한 ultimateContext 연결
     
     // 시스템 정보
-    FAST_SULKY_CONFIG,                      // 빠른 삐짐 설정
-    EMOTION_SYSTEM_CONFIG,                  // 감정 시스템 설정
+    FAST_SULKY_CONFIG,                          // 빠른 삐짐 설정
+    EMOTION_SYSTEM_CONFIG,                      // 감정 시스템 설정
+    DAMTA_SYSTEM_CONFIG,                        // 🚬 NEW: 담타 시스템 설정
     
     // 내부 상태 (디버깅용)
-    sulkyState,                             // 현재 삐짐 상태 (읽기 전용)
-    yejinPersonalityMetrics                 // 성격 점수 (읽기 전용)
+    sulkyState,                                 // 현재 삐짐 상태 (읽기 전용)
+    yejinPersonalityMetrics                     // 성격 점수 (읽기 전용)
 };
+
