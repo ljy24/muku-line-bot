@@ -1457,7 +1457,7 @@ async function getReplyByMessage(userMessage) {
         return photoResult;
     }
 
-    // 🆕🆕🆕 0.5순위: 새로운 완전 자율적 sulkyManager 처리! 🆕🆕🆕
+   // 🆕🆕🆕 0.5순위: 새로운 완전 자율적 sulkyManager 처리! 🆕🆕🆕
     let sulkyProcessingResult = null;
     
     if (sulkyManagerInitialized && sulkyManager && typeof sulkyManager.processUserMessage === 'function') {
@@ -1471,8 +1471,26 @@ async function getReplyByMessage(userMessage) {
                     sulkyTriggered: sulkyProcessingResult.sulkyTriggered,
                     pushPullTriggered: sulkyProcessingResult.pushPullTriggered,
                     fightEscalated: sulkyProcessingResult.fightEscalated,
-                    damtaAttempted: sulkyProcessingResult.damtaAttempted
+                    damtaReconciled: sulkyProcessingResult.damtaReconciled,
+                    damtaRejected: sulkyProcessingResult.damtaRejected
                 });
+                
+                // 🚬🚬🚬 담타 성공/실패 시 즉시 응답 반환! 🚬🚬🚬
+                if (sulkyProcessingResult.damtaReconciled || sulkyProcessingResult.damtaRejected) {
+                    console.log(`🚬 [담타 즉시응답] ${sulkyProcessingResult.damtaReconciled ? '성공' : '실패'} - 즉시 응답 반환`);
+                    
+                    logConversationReply('아저씨', cleanUserMessage);
+                    await safelyStoreMessage(USER_NAME, cleanUserMessage);
+                    
+                    // sulkyManager에서 이미 응답 생성했으므로 그것을 사용
+                    const damtaResponse = sulkyProcessingResult.context?.message || 
+                        (sulkyProcessingResult.damtaReconciled ? "좋아! 담타 고고! ㅎㅎ" : "지금은 담타 별로야...");
+                        
+                    logConversationReply('나', `(담타-${sulkyProcessingResult.damtaReconciled ? '성공' : '실패'}) ${damtaResponse}`);
+                    await safelyStoreMessage(BOT_NAME, damtaResponse);
+                    
+                    return { type: 'text', comment: damtaResponse };
+                }
                 
                 if (sulkyProcessingResult.damtaAttempted) {
                     console.log('🚬 [담타 제안] 상황별 자율 반응 - OpenAI가 예진이 상태에 맞게 판단');
@@ -1490,7 +1508,6 @@ async function getReplyByMessage(userMessage) {
     } else {
         console.log('⚠️ [완전 자율 밀당] sulkyManager 초기화되지 않음 - 기존 시스템 사용');
     }
-
     // 기존 commandHandler 호출
     try {
         console.log('[autoReply] 🎯 기타 commandHandler 호출 시도...');
