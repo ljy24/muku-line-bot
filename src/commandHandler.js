@@ -58,7 +58,7 @@ async function initializeRedisConnection() {
                 connectTimeout: 10000,
                 lazyConnect: true,
                 enableReadyCheck: true,
-                enableOfflineQueue: false
+                enableOfflineQueue: true
             });
             
             // 연결 성공 이벤트
