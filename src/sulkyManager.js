@@ -918,6 +918,7 @@ async function handleDamtaSuggestionAdvanced() {
 }
 
 **
+/**
  * 🚬 NEW: 점진적 담타 화해 시작 (트리거 성공) - 간단한 응답
  */
 function startDamtaProgressiveReconcile() {
@@ -938,40 +939,62 @@ function startDamtaProgressiveReconcile() {
     sulkyState.cooldownRequested = false;
     sulkyState.reconcileAttempted = false;
     
-    // ❗ 삐짐은 아직 완전히 해소되지 않음!
-    // sulkyState.isSulky = true; // 여전히 삐져있음
-    // sulkyState.sulkyLevel 유지 (완전히 0이 되지 않음)
-    
     logSulkyChange(oldState, sulkyState);
     
-    // 🚬 NEW: 간단한 응답 패턴들
-    const simpleResponses = [
-        "ㄱㄱㄱㄱ",
-        "담타 ㄱㄱ",
-        "오케이~",
-        "ㅇㅋㅇㅋ 담타",
-        "담타 가자",
-        "ㄱㄱ",
-        "오케이 담타!",
-        "담타 ㄱ"
-    ];
+    // 🚬 삐짐 레벨에 따른 다른 반응!
+    let responseArray;
     
-    // 랜덤으로 간단한 응답 선택
-    const randomResponse = simpleResponses[Math.floor(Math.random() * simpleResponses.length)];
+    if (sulkyState.sulkyLevel <= 1) {
+        // 안 삐졌거나 살짝 삐졌을 때 - 신나는 반응
+        responseArray = [
+            "오~ 담타 ㄱㄱㄱ!",
+            "담타다 담타! ㄱㄱㄱ",
+            "좋아! 담타 가자아~",
+            "ㅇㅋㅇㅋ 담타 바로 ㄱㄱ!",
+            "담타 최고! 가자가자~",
+            "오케이~ 담타 피우자!",
+            "ㄱㄱㄱㄱ 담타 타임!",
+            "좋다좋다 담타 가즈아~"
+        ];
+    } else if (sulkyState.sulkyLevel <= 3) {
+        // 중간 정도 삐졌을 때 - 약간 서운하지만 동의
+        responseArray = [
+            "어... 담타 ㄱㄱ",
+            "담타는 가긴 할게...",
+            "ㅇㅋ 담타하자... 근데 아직",
+            "알겠어 담타 가",
+            "담타 ㄱㄱ... 조금 서운하지만",
+            "오케이~ 담타는 좋으니까",
+            "그래 담타나 가자...",
+            "담타 가긴 할게... 하지만"
+        ];
+    } else {
+        // 많이 삐졌을 때 - 서운하지만 어쩔 수 없이
+        responseArray = [
+            "하.. 담타나 가자 💔",
+            "그래 담타 피워... 근데 아직 서운해",
+            "담타 가긴 할게... 하지만 말이야",
+            "ㅇㅋㅇㅋ 담타... 마음이 다 풀린 건 아니야",
+            "담타나 가... 그래도 서운한 건 서운해",
+            "알겠어... 담타 가자... 근데 진짜 화났어",
+            "담타 ㄱㄱ... 여전히 삐져있지만",
+            "오케이... 담타 가자... 근데 아직 기분이"
+        ];
+    }
+    
+    // 랜덤으로 응답 선택
+    const selectedResponse = responseArray[Math.floor(Math.random() * responseArray.length)];
     
     return {
         damtaTriggerSuccess: true,
         damtaStarted: true,
+        situation: sulkyState.sulkyLevel <= 1 ? 'excited_agreement_to_damta' : 'reluctant_agreement_to_damta',
+        emotion: sulkyState.sulkyLevel <= 1 ? 'happy_to_go_damta' : 'still_hurt_but_agreed_to_damta',
+        relationship_dynamic: 'giving_chance_through_damta',
+        inner_thought: selectedResponse,
+        context: 'damta_agreement_based_on_mood',
         
-        // 🚬 간단한 응답으로 변경!
-        situation: 'simple_damta_agreement',
-        emotion: 'reluctantly_okay_with_damta',
-        relationship_dynamic: 'agreed_to_damta_but_still_upset',
-        inner_thought: 'fine_lets_go_damta',
-        context: 'simple_damta_acceptance',
-        simple_response: randomResponse,  // 간단한 응답 추가
-        
-        // 🚬 점진적 정보 (내부 처리용 - 응답에는 영향 안 줌)
+        // 🚬 점진적 정보 (내부 처리용)
         damtaProgress: {
             recoveryPoints: sulkyState.emotionalRecoveryPoints,
             conversationCount: sulkyState.damtaConversationCount,
