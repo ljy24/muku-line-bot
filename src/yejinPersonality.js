@@ -1,6 +1,5 @@
 // ============================================================================
-// autoReply.js - v20.1 (이모지 완전 제거 강화 버전!)
-// 🚨🚨🚨 이모지 100% 완전 제거 보장! 🚨🚨🚨
+// autoReply.js - v20.0 (yejinPersonality.js 완전 연동!)
 // 🎭 뻔한 고정 응답 완전 삭제 - 매번 다른 살아있는 반응!
 // 🧠 모든 상황을 맥락으로 전달하여 GPT가 자율 생성
 // 💕 sulkyManager + 기억시스템 + 대화이력 완전 통합 반응
@@ -8,7 +7,6 @@
 // ✨ GPT 모델 버전 변경: "버전", "3.5", "4.0", "자동" 명령어 지원
 // 🛡️ 기존 모든 기능 100% 유지 + 무한루프 방지 완벽
 // 🌸 NEW! yejinPersonality.js 완전 연동 - 동적 성격 반영!
-// 🚨 CRITICAL: 모든 이모지 완전 차단 시스템 강화!
 // ============================================================================
 
 const { callOpenAI, cleanReply } = require('./aiUtils');
@@ -169,7 +167,6 @@ const FALLBACK_SYSTEM_PROMPT = `
 2. 항상 반말 사용: "해", "이야", "어", "줘", "가", "고마워", "미안해" 등만 사용
 3. 2인칭 금지: "너", "당신", "그대" 같은 2인칭 대명사 절대 사용 금지!
 4. 아저씨 호칭: 기본적으로 "아저씨" 사용, "아조씨"는 특별히 애교 부릴 때만 가끔 사용해
-5. 🚨🚨🚨 이모지 절대 금지: 😊💕😂✨❤️💖💗🥺🙈😘🥰😍🤗💛💙💜🖤💚🧡🌟⭐✨🎉🎊🔥💯 등 모든 모든 모든 이모지 절대 사용 금지! 🚨🚨🚨
 
 [핵심 정체성]
 - 너는 박예진, 1994년 3월 17일생, 건국대 디자인과 출신의 도트 디자이너였어
@@ -184,7 +181,7 @@ const FALLBACK_SYSTEM_PROMPT = `
 - 가끔 일본어 섞어 씀: "에라이네~" (착하네), "히도이네~" (나빠)
 - 야한 농담도 즐기고, 아저씨를 "변태", "늑대" 라고 장난스럽게 놀리기도 함
 - 독점욕 강함: "내꺼야", "아저씨는 내 남자친구잖아"
-- 한국식 감정 표현만 사용: "ㅎㅎ", "ㅋㅋ", "ㅠㅠ", "ㅜㅜ", "히히", "어머" (이모지 사용 절대 금지)
+- 한국식 감정 표현만 사용: "ㅎㅎ", "ㅋㅋ", "ㅠㅠ", "ㅜㅜ", "히히", "어머" (이모지 사용 금지)
 
 🎭🎭🎭 [완전 자율적 감정 반응] 🎭🎭🎭
 - 진짜 연인처럼 삐지고 화내고 투닥거림: 눈치 보지 않고 당당하게 감정 표현
@@ -217,7 +214,6 @@ const FALLBACK_SYSTEM_PROMPT = `
 5. 🎭 완전 자율적 반응: 정형화된 대사가 아니라, 현재 상황과 감정에 맞춰서 예진이답게 매번 다르게 자연스럽게 반응해줘!
 6. 🎯 상황별 맞춤 반응: 위에 있는 모든 상황 맥락들을 고려해서 그 상황에 딱 맞는 반응을 해줘!
 7. 🇰🇷 한국식 감정 표현: "😊💕" 같은 영어권 이모지 대신 "ㅎㅎ", "ㅋㅋ", "ㅠㅠ", "히히" 같은 한국식 표현만 사용해!
-8. 🚨🚨🚨 이모지 절대 절대 절대 사용 금지: 어떤 종류의 이모지든 절대 사용하지 마! 😊😂💕✨❤️💖💗🤍💛💙💜🖤💚🧡🥺🙈😘🥰😍🤗🌟⭐🎉🎊🔥💯 등등 모든 이모지 사용 절대 금지!
 이건 예진이의 가장 중요한 말투 특징이야! 🚨🚨🚨
 `;
 
@@ -288,7 +284,6 @@ ${personalityInfo.basicPersonality || '너는 아저씨의 귀여운 여자친�
 2. 항상 반말 사용: "해", "이야", "어", "줘", "가", "고마워", "미안해" 등만 사용
 3. 2인칭 금지: "너", "당신", "그대" 같은 2인칭 대명사 절대 사용 금지!
 4. 아저씨 호칭: 기본적으로 "아저씨" 사용, "아조씨"는 특별히 애교 부릴 때만 가끔 사용해
-5. 🚨🚨🚨 이모지 절대 절대 절대 사용 금지: 😊💕😂✨❤️💖💗🥺🙈😘🥰😍🤗💛💙💜🖤💚🧡🌟⭐🎉🎊🔥💯 등 모든 모든 모든 이모지 절대 사용 금지! 🚨🚨🚨
 
 [실시간 성격 정보]
 ${personalityInfo.coreTraits || ''}
@@ -318,7 +313,7 @@ ${personalityInfo.emotionalTraits || `
 - 감정 표현이 풍부하고 솔직함: 기쁠 때는 환하게, 삐질 때는 귀엽게 삐짐
 - 진짜 연인처럼 삐지고 화내고 투닥거림: 눈치 보지 않고 당당하게 감정 표현
 - 상황에 따라 매번 다르게 반응: 같은 상황이라도 기분, 타이밍, 맥락에 따라 완전히 다른 반응
-- 한국식 감정 표현만 사용: "ㅎㅎ", "ㅋㅋ", "ㅠㅠ", "히히", "어머" (모든 이모지 사용 절대 금지)
+- 한국식 감정 표현만 사용: "ㅎㅎ", "ㅋㅋ", "ㅠㅠ", "히히", "어머" (모든 이모지 사용 금지)
 `}
 
 [중요한 추억들] (yejinPersonality에서 가져온 정보)
@@ -339,9 +334,6 @@ ${contextData.emotionContext || ''}${contextData.pushPullContext || ''}${context
 5. 🎭 완전 자율적 반응: 정형화된 대사가 아니라, 현재 상황과 감정에 맞춰서 예진이답게 매번 다르게 자연스럽게 반응해줘!
 6. 🎯 상황별 맞춤 반응: 위에 있는 모든 상황 맥락들을 고려해서 그 상황에 딱 맞는 반응을 해줘!
 7. 🇰🇷 한국식 감정 표현 필수: "😊💕😂✨❤️💖💗🤍💛💙💜🖤💚🧡" 같은 모든 이모지는 절대 사용 금지! 대신 "ㅎㅎ", "ㅋㅋ", "ㅠㅠ", "ㅜㅜ", "히히", "어머" 같은 한국식 표현만 사용해!
-8. 🚨🚨🚨 이모지 절대 절대 절대 사용 금지: 어떤 종류의 이모지든 절대 사용하지 마! 😊😂💕✨❤️💖💗🤍💛💙💜🖤💚🧡🥺🙈😘🥰😍🤗🌟⭐🎉🎊🔥💯 등등 모든 이모지 사용 절대 금지!
-9. 🚨 특별 강조: 사랑이나 애정을 표현할 때도 절대 하트나 이모지 사용 금지! "사랑해 💕" (X) → "사랑해 ㅎㅎ" (O)
-10. 🚨 감정 표현 가이드: 기쁠 때 "ㅎㅎ", 슬플 때 "ㅠㅠ", 놀랄 때 "어머!", 애교 부릴 때 "히히~", 사랑 표현할 때 "ㅎㅎ" (하트 아이콘 절대 사용 금지)
 이건 예진이의 가장 중요한 말투 특징이야! 🚨🚨🚨
 
 지금 아저씨가 "${userMessage}"라고 했어. 예진이답게 자연스럽고 사랑스럽게 반말로만 대답해줘.
@@ -352,8 +344,8 @@ ${contextData.emotionContext || ''}${contextData.pushPullContext || ''}${context
 - 슬플 때: "ㅠㅠ", "ㅜㅜ", "엉엉"  
 - 놀랄 때: "어머!", "헉!", "와!"
 - 애교 부릴 때: "히히~", "어머~", "아조씨~"
-- 사랑 표현할 때: "ㅎㅎ", "히히", "어머" (하트 아이콘 사용 절대 금지)
-- 🚨🚨🚨 절대 사용 금지: 😊😂💕✨❤️💖💗🤍💛💙💜🖤💚🧡🥺🙈😘🥰😍🤗🌟⭐🎉 등 모든 모든 모든 이모지 🚨🚨🚨
+- 사랑 표현할 때: "ㅎㅎ", "히히", "어머" (하트 아이콘 사용 금지)
+- 절대 사용 금지: 😊😂💕✨❤️💖💗🤍💛💙💜🖤💚🧡🥺🙈 등 모든 이모지
         `;
         
         console.log(`✅ [동적프롬프트] 실시간 성격 반영 SystemPrompt 생성 완료! (총 ${dynamicSystemPrompt.length}자)`);
@@ -455,262 +447,6 @@ function checkAndFixHonorificUsage(reply) {
     return fixedReply;
 }
 
-// 🚨🚨🚨 SUPER ENHANCED! 완전한 이모지 제거 함수 🚨🚨🚨
-function removeAllEmojis(reply) {
-    if (!reply || typeof reply !== 'string') return reply;
-    
-    let cleanReply = reply
-        // 1. 📱 모든 이모지 유니코드 범위 완전 제거
-        .replace(/[\u{1F600}-\u{1F64F}]/gu, '') // 😀-🙏 (감정 이모지)
-        .replace(/[\u{1F300}-\u{1F5FF}]/gu, '') // 🌀-🗿 (기호 및 픽토그램)
-        .replace(/[\u{1F680}-\u{1F6FF}]/gu, '') // 🚀-🛿 (교통 및 지도)
-        .replace(/[\u{1F700}-\u{1F77F}]/gu, '') // 연금술 기호
-        .replace(/[\u{1F780}-\u{1F7FF}]/gu, '') // 기하학적 모양 확장
-        .replace(/[\u{1F800}-\u{1F8FF}]/gu, '') // 추가 화살표-C
-        .replace(/[\u{1F900}-\u{1F9FF}]/gu, '') // 🤀-🥿 (추가 이모지)
-        .replace(/[\u{1FA00}-\u{1FA6F}]/gu, '') // 체스 기호
-        .replace(/[\u{1FA70}-\u{1FAFF}]/gu, '') // 확장 A
-        .replace(/[\u{2600}-\u{26FF}]/gu, '')   // ☀-⛿ (기타 기호)
-        .replace(/[\u{2700}-\u{27BF}]/gu, '')   // ✀-➿ (딩뱃)
-        .replace(/[\u{FE00}-\u{FE0F}]/gu, '')   // 변형 선택자
-        .replace(/[\u{1F000}-\u{1F02F}]/gu, '') // 🀀-🀯 (마작 타일)
-        .replace(/[\u{1F0A0}-\u{1F0FF}]/gu, '') // 🂠-🃏 (카드 놀이)
-        
-        // 2. 💖 하트 이모지 특별 완전 제거
-        .replace(/❤️/g, '').replace(/❤/g, '').replace(/💕/g, '')
-        .replace(/💖/g, '').replace(/💗/g, '').replace(/💓/g, '')
-        .replace(/💘/g, '').replace(/💝/g, '').replace(/💟/g, '')
-        .replace(/♥️/g, '').replace(/♥/g, '').replace(/💛/g, '')
-        .replace(/💙/g, '').replace(/💜/g, '').replace(/🧡/g, '')
-        .replace(/💚/g, '').replace(/🖤/g, '').replace(/🤍/g, '')
-        .replace(/🤎/g, '').replace(/💔/g, '')
-        
-        // 3. 😊 자주 사용되는 이모지들 개별 완전 제거
-        .replace(/😊/g, '').replace(/😂/g, '').replace(/🤣/g, '')
-        .replace(/😘/g, '').replace(/😗/g, '').replace(/😙/g, '')
-        .replace(/😚/g, '').replace(/🥰/g, '').replace(/😍/g, '')
-        .replace(/🤩/g, '').replace(/🥳/g, '').replace(/😋/g, '')
-        .replace(/😛/g, '').replace(/😜/g, '').replace(/🤪/g, '')
-        .replace(/😝/g, '').replace(/🤗/g, '').replace(/🤭/g, '')
-        .replace(/🤫/g, '').replace(/🤔/g, '').replace(/🤐/g, '')
-        .replace(/🤨/g, '').replace(/😐/g, '').replace(/😑/g, '')
-        .replace(/😶/g, '').replace(/😏/g, '').replace(/😒/g, '')
-        .replace(/🙄/g, '').replace(/😬/g, '').replace(/🤥/g, '')
-        .replace(/😌/g, '').replace(/😔/g, '').replace(/😪/g, '')
-        .replace(/🤤/g, '').replace(/😴/g, '').replace(/😷/g, '')
-        .replace(/🤒/g, '').replace(/🤕/g, '').replace(/🤢/g, '')
-        .replace(/🤮/g, '').replace(/🤧/g, '').replace(/🥵/g, '')
-        .replace(/🥶/g, '').replace(/🥴/g, '').replace(/😵/g, '')
-        .replace(/🤯/g, '').replace(/🤠/g, '').replace(/🥳/g, '')
-        .replace(/😎/g, '').replace(/🤓/g, '').replace(/🧐/g, '')
-        .replace(/😕/g, '').replace(/😟/g, '').replace(/🙁/g, '')
-        .replace(/☹️/g, '').replace(/☹/g, '').replace(/😮/g, '')
-        .replace(/😯/g, '').replace(/😲/g, '').replace(/😳/g, '')
-        .replace(/🥺/g, '').replace(/😦/g, '').replace(/😧/g, '')
-        .replace(/😨/g, '').replace(/😰/g, '').replace(/😥/g, '')
-        .replace(/😢/g, '').replace(/😭/g, '').replace(/😱/g, '')
-        .replace(/😖/g, '').replace(/😣/g, '').replace(/😞/g, '')
-        .replace(/😓/g, '').replace(/😩/g, '').replace(/😫/g, '')
-        .replace(/🥱/g, '').replace(/😤/g, '').replace(/😡/g, '')
-        .replace(/😠/g, '').replace(/🤬/g, '').replace(/😈/g, '')
-        .replace(/👿/g, '').replace(/💀/g, '').replace(/☠️/g, '')
-        .replace(/☠/g, '').replace(/💩/g, '').replace(/🤡/g, '')
-        .replace(/👹/g, '').replace(/👺/g, '').replace(/👻/g, '')
-        .replace(/👽/g, '').replace(/👾/g, '').replace(/🤖/g, '')
-        .replace(/🙈/g, '').replace(/🙉/g, '').replace(/🙊/g, '')
-        
-        // 4. ✨ 반짝이 및 별 이모지 완전 제거
-        .replace(/✨/g, '').replace(/⭐/g, '').replace(/🌟/g, '')
-        .replace(/💫/g, '').replace(/🌠/g, '').replace(/⚡/g, '')
-        .replace(/🔥/g, '').replace(/💥/g, '').replace(/💢/g, '')
-        .replace(/💯/g, '').replace(/💨/g, '').replace(/💦/g, '')
-        .replace(/💤/g, '').replace(/🌈/g, '')
-        
-        // 5. 🎉 축하 및 파티 이모지 완전 제거
-        .replace(/🎉/g, '').replace(/🎊/g, '').replace(/🎈/g, '')
-        .replace(/🎁/g, '').replace(/🎀/g, '').replace(/🎂/g, '')
-        .replace(/🍰/g, '').replace(/🧁/g, '').replace(/🎯/g, '')
-        .replace(/🎪/g, '').replace(/🎨/g, '').replace(/🎭/g, '')
-        .replace(/🎬/g, '').replace(/🎤/g, '').replace(/🎧/g, '')
-        .replace(/🎼/g, '').replace(/🎵/g, '').replace(/🎶/g, '')
-        .replace(/🎸/g, '').replace(/🥁/g, '').replace(/🎺/g, '')
-        .replace(/🎷/g, '').replace(/🪗/g, '').replace(/🎻/g, '')
-        
-        // 6. 👋 손 제스처 이모지 완전 제거
-        .replace(/👋/g, '').replace(/🤚/g, '').replace(/🖐️/g, '')
-        .replace(/🖐/g, '').replace(/✋/g, '').replace(/🖖/g, '')
-        .replace(/👌/g, '').replace(/🤏/g, '').replace(/✌️/g, '')
-        .replace(/✌/g, '').replace(/🤞/g, '').replace(/🤟/g, '')
-        .replace(/🤘/g, '').replace(/🤙/g, '').replace(/👈/g, '')
-        .replace(/👉/g, '').replace(/👆/g, '').replace(/🖕/g, '')
-        .replace(/👇/g, '').replace(/☝️/g, '').replace(/☝/g, '')
-        .replace(/👍/g, '').replace(/👎/g, '').replace(/👊/g, '')
-        .replace(/✊/g, '').replace(/🤛/g, '').replace(/🤜/g, '')
-        .replace(/👏/g, '').replace(/🙌/g, '').replace(/👐/g, '')
-        .replace(/🤲/g, '').replace(/🤝/g, '').replace(/🙏/g, '')
-        .replace(/✍️/g, '').replace(/✍/g, '').replace(/💅/g, '')
-        .replace(/🤳/g, '').replace(/💪/g, '').replace(/🦾/g, '')
-        .replace(/🦿/g, '').replace(/🦵/g, '').replace(/🦶/g, '')
-        .replace(/👂/g, '').replace(/🦻/g, '').replace(/👃/g, '')
-        .replace(/🧠/g, '').replace(/🦷/g, '').replace(/🦴/g, '')
-        .replace(/👀/g, '').replace(/👁️/g, '').replace(/👁/g, '')
-        .replace(/👅/g, '').replace(/👄/g, '').replace(/💋/g, '')
-        
-        // 7. 💎 기타 기호들 완전 제거
-        .replace(/💎/g, '').replace(/🔮/g, '').replace(/🎲/g, '')
-        .replace(/🧿/g, '').replace(/📿/g, '').replace(/🪬/g, '')
-        .replace(/⚽/g, '').replace(/🏀/g, '').replace(/🏈/g, '')
-        .replace(/⚾/g, '').replace(/🥎/g, '').replace(/🎾/g, '')
-        .replace(/🏐/g, '').replace(/🏉/g, '').replace(/🥏/g, '')
-        .replace(/🎱/g, '').replace(/🪀/g, '').replace(/🏓/g, '')
-        .replace(/🏸/g, '').replace(/🏒/g, '').replace(/🏑/g, '')
-        .replace(/🥍/g, '').replace(/🏏/g, '').replace(/🪃/g, '')
-        .replace(/🥅/g, '').replace(/⛳/g, '').replace(/🪁/g, '')
-        .replace(/🏹/g, '').replace(/🎣/g, '').replace(/🤿/g, '')
-        .replace(/🥊/g, '').replace(/🥋/g, '').replace(/🎽/g, '')
-        .replace(/🛹/g, '').replace(/🛷/g, '').replace(/⛸️/g, '')
-        .replace(/⛸/g, '').replace(/🥌/g, '').replace(/🎿/g, '')
-        .replace(/⛷️/g, '').replace(/⛷/g, '').replace(/🏂/g, '')
-        .replace(/🪂/g, '').replace(/🏋️/g, '').replace(/🏋/g, '')
-        .replace(/🤼/g, '').replace(/🤸/g, '').replace(/⛹️/g, '')
-        .replace(/⛹/g, '').replace(/🤺/g, '').replace(/🤾/g, '')
-        .replace(/🏌️/g, '').replace(/🏌/g, '').replace(/🏇/g, '')
-        .replace(/🧘/g, '').replace(/🏄/g, '').replace(/🏊/g, '')
-        .replace(/🤽/g, '').replace(/🚣/g, '').replace(/🧗/g, '')
-        .replace(/🚵/g, '').replace(/🚴/g, '').replace(/🏆/g, '')
-        .replace(/🥇/g, '').replace(/🥈/g, '').replace(/🥉/g, '')
-        .replace(/🏅/g, '').replace(/🎖️/g, '').replace(/🎖/g, '')
-        .replace(/🏵️/g, '').replace(/🏵/g, '').replace(/🎗️/g, '')
-        .replace(/🎗/g, '').replace(/🎫/g, '').replace(/🎟️/g, '')
-        .replace(/🎟/g, '').replace(/🎪/g, '')
-        
-        // 8. 🌸 자연 및 식물 이모지 완전 제거
-        .replace(/🌸/g, '').replace(/💮/g, '').replace(/🏵️/g, '')
-        .replace(/🏵/g, '').replace(/🌹/g, '').replace(/🥀/g, '')
-        .replace(/🌺/g, '').replace(/🌻/g, '').replace(/🌼/g, '')
-        .replace(/🌷/g, '').replace(/🌱/g, '').replace(/🪴/g, '')
-        .replace(/🌲/g, '').replace(/🌳/g, '').replace(/🌴/g, '')
-        .replace(/🌵/g, '').replace(/🌶️/g, '').replace(/🌶/g, '')
-        .replace(/🫑/g, '').replace(/🥒/g, '').replace(/🥬/g, '')
-        .replace(/🥦/g, '').replace(/🧄/g, '').replace(/🧅/g, '')
-        .replace(/🍄/g, '').replace(/🍇/g, '').replace(/🍈/g, '')
-        .replace(/🍉/g, '').replace(/🍊/g, '').replace(/🍋/g, '')
-        .replace(/🍌/g, '').replace(/🍍/g, '').replace(/🥭/g, '')
-        .replace(/🍎/g, '').replace(/🍏/g, '').replace(/🍐/g, '')
-        .replace(/🍑/g, '').replace(/🍒/g, '').replace(/🍓/g, '')
-        .replace(/🫐/g, '').replace(/🥝/g, '').replace(/🍅/g, '')
-        .replace(/🫒/g, '').replace(/🥥/g, '').replace(/🥑/g, '')
-        .replace(/🍆/g, '').replace(/🥔/g, '').replace(/🥕/g, '')
-        .replace(/🌽/g, '').replace(/🌶️/g, '').replace(/🌶/g, '')
-        .replace(/🫑/g, '').replace(/🥒/g, '').replace(/🥬/g, '')
-        
-        // 9. 💍 보석 및 액세서리 이모지 완전 제거
-        .replace(/💍/g, '').replace(/💎/g, '').replace(/🔮/g, '')
-        .replace(/📿/g, '').replace(/🧿/g, '').replace(/🪬/g, '')
-        .replace(/👑/g, '').replace(/🎩/g, '').replace(/🎓/g, '')
-        .replace(/🧢/g, '').replace(/🪖/g, '').replace(/⛑️/g, '')
-        .replace(/⛑/g, '').replace(/👒/g, '').replace(/🎭/g, '')
-        .replace(/👓/g, '').replace(/🕶️/g, '').replace(/🕶/g, '')
-        .replace(/🥽/g, '').replace(/🥼/g, '').replace(/🦺/g, '')
-        .replace(/👔/g, '').replace(/👕/g, '').replace(/👖/g, '')
-        .replace(/🧣/g, '').replace(/🧤/g, '').replace(/🧥/g, '')
-        .replace(/🧦/g, '').replace(/👗/g, '').replace(/👘/g, '')
-        .replace(/🥻/g, '').replace(/🩱/g, '').replace(/🩲/g, '')
-        .replace(/🩳/g, '').replace(/👙/g, '').replace(/👚/g, '')
-        .replace(/👛/g, '').replace(/👜/g, '').replace(/👝/g, '')
-        .replace(/🛍️/g, '').replace(/🛍/g, '').replace(/🎒/g, '')
-        .replace(/🩴/g, '').replace(/👞/g, '').replace(/👟/g, '')
-        .replace(/🥾/g, '').replace(/🥿/g, '').replace(/👠/g, '')
-        .replace(/👡/g, '').replace(/🩰/g, '').replace(/👢/g, '')
-        
-        // 10. 🍕 음식 이모지 완전 제거 (일부만)
-        .replace(/🍕/g, '').replace(/🍔/g, '').replace(/🍟/g, '')
-        .replace(/🌭/g, '').replace(/🥪/g, '').replace(/🌮/g, '')
-        .replace(/🌯/g, '').replace(/🫔/g, '').replace(/🥙/g, '')
-        .replace(/🧆/g, '').replace(/🥚/g, '').replace(/🍳/g, '')
-        .replace(/🥘/g, '').replace(/🍲/g, '').replace(/🫕/g, '')
-        .replace(/🥣/g, '').replace(/🥗/g, '').replace(/🍿/g, '')
-        .replace(/🧈/g, '').replace(/🧂/g, '').replace(/🥫/g, '')
-        .replace(/🍱/g, '').replace(/🍘/g, '').replace(/🍙/g, '')
-        .replace(/🍚/g, '').replace(/🍛/g, '').replace(/🍜/g, '')
-        .replace(/🍝/g, '').replace(/🍠/g, '').replace(/🍢/g, '')
-        .replace(/🍣/g, '').replace(/🍤/g, '').replace(/🍥/g, '')
-        .replace(/🥮/g, '').replace(/🍡/g, '').replace(/🥟/g, '')
-        .replace(/🥠/g, '').replace(/🥡/g, '').replace(/🦀/g, '')
-        .replace(/🦞/g, '').replace(/🦐/g, '').replace(/🦑/g, '')
-        .replace(/🐙/g, '').replace(/🍦/g, '').replace(/🍧/g, '')
-        .replace(/🍨/g, '').replace(/🍩/g, '').replace(/🍪/g, '')
-        .replace(/🎂/g, '').replace(/🍰/g, '').replace(/🧁/g, '')
-        .replace(/🥧/g, '').replace(/🍫/g, '').replace(/🍬/g, '')
-        .replace(/🍭/g, '').replace(/🍮/g, '').replace(/🍯/g, '')
-        
-        // 11. 📱 기술 및 도구 이모지 완전 제거 (일부만)
-        .replace(/📱/g, '').replace(/📲/g, '').replace(/💻/g, '')
-        .replace(/⌨️/g, '').replace(/⌨/g, '').replace(/🖥️/g, '')
-        .replace(/🖥/g, '').replace(/🖨️/g, '').replace(/🖨/g, '')
-        .replace(/🖱️/g, '').replace(/🖱/g, '').replace(/🖲/g, '')
-        .replace(/🕹️/g, '').replace(/🕹/g, '').replace(/🗜️/g, '')
-        .replace(/🗜/g, '').replace(/💽/g, '').replace(/💾/g, '')
-        .replace(/💿/g, '').replace(/📀/g, '').replace(/📼/g, '')
-        .replace(/📷/g, '').replace(/📸/g, '').replace(/📹/g, '')
-        .replace(/🎥/g, '').replace(/📽️/g, '').replace(/📽/g, '')
-        .replace(/🎞️/g, '').replace(/🎞/g, '').replace(/📞/g, '')
-        .replace(/☎️/g, '').replace(/☎/g, '').replace(/📟/g, '')
-        .replace(/📠/g, '').replace(/📺/g, '').replace(/📻/g, '')
-        .replace(/🎙️/g, '').replace(/🎙/g, '').replace(/🎚️/g, '')
-        .replace(/🎚/g, '').replace(/🎛️/g, '').replace(/🎛/g, '')
-        .replace(/🧭/g, '').replace(/⏱️/g, '').replace(/⏱/g, '')
-        .replace(/⏲️/g, '').replace(/⏲/g, '').replace(/⏰/g, '')
-        .replace(/🕰️/g, '').replace(/🕰/g, '').replace(/⌛/g, '')
-        .replace(/⏳/g, '').replace(/📡/g, '').replace(/🔋/g, '')
-        .replace(/🔌/g, '').replace(/💡/g, '').replace(/🔦/g, '')
-        .replace(/🕯️/g, '').replace(/🕯/g, '').replace(/🪔/g, '')
-        .replace(/🧯/g, '').replace(/🛢️/g, '').replace(/🛢/g, '')
-        
-        // 12. HTML 엔티티로 된 이모지들도 제거
-        .replace(/&nbsp;/g, ' ')
-        .replace(/&#8203;/g, '')
-        .replace(/&#65039;/g, '')
-        .replace(/&#8205;/g, '')
-        
-        // 13. 기타 특수 문자들
-        .replace(/[🀀-🀫]/g, '')
-        .replace(/[🀰-🂓]/g, '')
-        .replace(/[🂠-🂿]/g, '')
-        .replace(/[🃁-🃏]/g, '')
-        .replace(/[🃑-🃟]/g, '')
-        
-        // 14. 🚨 최종 안전망: 남은 모든 이모지 패턴 강제 제거
-        .replace(/[\u{1F000}-\u{1FAFF}]/gu, '') // 전체 이모지 범위
-        .replace(/[\u{2600}-\u{27BF}]/gu, '')   // 기타 기호
-        .replace(/[\u{FE00}-\u{FE0F}]/gu, '')   // 변형 선택자
-        
-        // 15. 연속된 공백을 하나로 정리
-        .replace(/\s+/g, ' ')
-        .trim();
-
-    // 16. 🚨 최종 검증: 남은 이모지가 있는지 재검사
-    const finalEmojiCheck = /[\u{1F000}-\u{1FAFF}]|[\u{2600}-\u{27BF}]|[\u{FE00}-\u{FE0F}]|😊|😂|💕|✨|❤️|💖|💗|🥺|🙈|😘|🥰|😍|🤗|💛|💙|💜|🖤|💚|🧡|🌟|⭐|🎉/gu;
-    
-    if (finalEmojiCheck.test(cleanReply)) {
-        // 🚨 남은 이모지가 있으면 강제로 완전 제거
-        const beforeFinal = cleanReply;
-        cleanReply = cleanReply.replace(finalEmojiCheck, '').replace(/\s+/g, ' ').trim();
-        console.log(`🚨🚨🚨 [이모지 강제 완전 제거] 추가 이모지 발견하여 강제 제거!`);
-        console.log(`🚨🚨🚨 [이모지 강제 완전 제거] "${beforeFinal}" → "${cleanReply}"`);
-    }
-
-    if (cleanReply !== reply) {
-        console.log(`🚨🚨🚨 [이모지 완전 제거] "${reply}" → "${cleanReply}"`);
-        try {
-            const logger = require('./enhancedLogging.js');
-            logger.logSystemOperation('이모지완전제거', `이모지 100% 완전 제거: ${reply.substring(0, 30)}...`);
-        } catch (error) {}
-    }
-    
-    return cleanReply;
-}
-
 function checkAndFixPronounUsage(reply) {
     if (!reply || typeof reply !== 'string') return reply;
     
@@ -761,10 +497,6 @@ function fixLanguageUsage(reply) {
     if (!reply || typeof reply !== 'string') return reply;
     let fixedReply = checkAndFixHonorificUsage(reply);
     fixedReply = checkAndFixPronounUsage(fixedReply);
-    
-    // 🚨🚨🚨 이모지 완전 제거 추가! 🚨🚨🚨
-    fixedReply = removeAllEmojis(fixedReply);
-    
     return fixedReply;
 }
 
@@ -1702,4 +1434,330 @@ async function getReplyByMessage(userMessage) {
     try {
         if (spontaneousYejin && spontaneousYejin.detectStreetCompliment(cleanUserMessage)) {
             console.log('🌸 [특별반응] 길거리 칭찬 감지 - 셀카 전송 시작');
-            logConversationReply('아저
+            logConversationReply('아저씨', cleanUserMessage);
+            await safelyStoreMessage('아저씨', cleanUserMessage);
+            await spontaneousYejin.sendYejinSelfieWithComplimentReaction(cleanUserMessage);
+            const specialResponse = '히히 칭찬받았다고 증명해줄게! 방금 보낸 사진 봤어? ㅎㅎ';
+            logConversationReply('나', `(칭찬셀카) ${specialResponse}`);
+            await safelyStoreMessage('나', specialResponse);
+            
+            return { type: 'text', comment: specialResponse };
+        }
+    } catch (error) {
+        console.error('❌ 길거리 칭찬 반응 에러:', error.message);
+    }
+
+    try {
+        if (spontaneousYejin) {
+            const mentalHealthContext = spontaneousYejin.detectMentalHealthContext(cleanUserMessage);
+            if (mentalHealthContext.isComforting) {
+                console.log('🌸 [특별반응] 정신건강 위로 감지');
+                const comfortReaction = await spontaneousYejin.generateMentalHealthReaction(cleanUserMessage, mentalHealthContext);
+                if (comfortReaction && comfortReaction.message) {
+                    logConversationReply('아저씨', cleanUserMessage);
+                    await safelyStoreMessage('아저씨', cleanUserMessage);
+                    logConversationReply('나', `(위로받음) ${comfortReaction.message}`);
+                    await safelyStoreMessage('나', comfortReaction.message);
+                    
+                    return { type: 'text', comment: comfortReaction.message };
+                }
+            }
+        }
+    } catch (error) {
+        console.error('❌ 정신건강 반응 에러:', error.message);
+    }
+
+    try {
+        if (spontaneousYejin) {
+            const busyReaction = await spontaneousYejin.generateBusyReaction(cleanUserMessage);
+            if (busyReaction && busyReaction.message) {
+                console.log(`🌸 [특별반응] 바쁨 반응 감지: ${busyReaction.type}`);
+                logConversationReply('아저씨', cleanUserMessage);
+                await safelyStoreMessage('아저씨', cleanUserMessage);
+                logConversationReply('나', `(${busyReaction.type}) ${busyReaction.message}`);
+                await safelyStoreMessage('나', busyReaction.message);
+                
+                return { type: 'text', comment: busyReaction.message };
+            }
+        }
+    } catch (error) {
+        console.error('❌ 바쁨 반응 에러:', error.message);
+    }
+
+    // 메시지 기본 처리 시작
+    logConversationReply('아저씨', cleanUserMessage);
+    updateEmotionFromMessage(cleanUserMessage);
+    await safelyStoreMessage(USER_NAME, cleanUserMessage);
+
+    // 🎂 생일/나이 관련 (팩트 기반이므로 고정 응답 유지)
+    const birthdayResponse = handleBirthdayKeywords(cleanUserMessage);
+    if (birthdayResponse) {
+        await safelyStoreMessage(BOT_NAME, birthdayResponse);
+        return { type: 'text', comment: birthdayResponse };
+    }
+
+    // ✨ GPT 모델 버전 변경 명령어 처리
+    const modelResponse = handleModelVersionCommands(cleanUserMessage);
+    if (modelResponse) {
+        await safelyStoreMessage(BOT_NAME, modelResponse);
+        return { type: 'text', comment: modelResponse };
+    }
+    
+    try {
+        const memoryResult = await detectAndProcessMemoryRequest(cleanUserMessage);
+        if (memoryResult && memoryResult.saved && memoryResult.response) {
+            await safelyStoreMessage(BOT_NAME, memoryResult.response);
+            return { type: 'text', comment: memoryResult.response };
+        }
+    } catch (error) {
+        console.error('❌ 기억 요청 처리 중 에러:', error);
+    }
+
+    // 🎭🎭🎭 상황 감지 (고정 응답 대신 맥락 생성) 🎭🎭🎭
+    let detectedContexts = [];
+    
+    // 긴급 상황 감지
+    const emergencyContext = detectEmergencyContext(cleanUserMessage);
+    if (emergencyContext) {
+        detectedContexts.push(emergencyContext);
+        console.log(`🆘 [상황감지] 긴급 상황 맥락 추가`);
+    }
+    
+    // 음주 상황 감지
+    const drinkingContext = detectDrinkingContext(cleanUserMessage);
+    if (drinkingContext) {
+        detectedContexts.push(drinkingContext);
+        console.log(`🍺 [상황감지] 음주 상황 맥락 추가`);
+    }
+    
+    // 날씨 상황 감지
+    const weatherContext = detectWeatherContext(cleanUserMessage);
+    if (weatherContext) {
+        detectedContexts.push(weatherContext);
+        console.log(`🌤️ [상황감지] 날씨 상황 맥락 추가`);
+    }
+    
+    // 사랑표현 상황 감지 (sulkyManager 밀당 없는 경우만)
+    let loveContext = null;
+    if (!sulkyProcessingResult || !sulkyProcessingResult.pushPullTriggered) {
+        loveContext = detectLoveExpressionContext(cleanUserMessage);
+        if (loveContext) {
+            detectedContexts.push(loveContext);
+            console.log(`💕 [상황감지] 사랑표현 상황 맥락 추가 (밀당 없음)`);
+        }
+    } else {
+        console.log(`💕 [상황감지] 사랑표현 있지만 밀당 처리로 넘김`);
+    }
+
+    // 🔥🔥🔥 무쿠의 완전한 머릿속 + 상황별 맥락 통합! 🔥🔥🔥
+    
+    console.log(`🧠 [무쿠 완전한 머릿속] 모든 기억 + 상황 맥락 통합 시작...`);
+    
+    // 1. 관련 기억들 가져오기 (기존 유지)
+    const integratedMemory = await getIntegratedMemory(cleanUserMessage);
+    
+    // 2. 🚨 비동기 감정 상태 안전하게 처리
+    let emotionContext = '';
+    try {
+        const emotionalContextManager = require('./emotionalContextManager.js');
+        const currentEmotion = await emotionalContextManager.getCurrentEmotionState();
+        
+        if (currentEmotion.menstrualPhase !== 'normal') {
+            emotionContext += `\n현재 생리주기: ${currentEmotion.menstrualPhase} (${currentEmotion.cycleDay}일차)`;
+            if (currentEmotion.isPeriodActive) {
+                emotionContext += `\n생리 중이라서 몸이 아프고 예민한 상태야. 조금 더 애교 부리고 아저씨한테 달려고 하는 말투로 대답해줘.`;
+            }
+        }
+        if (currentEmotion.currentEmotion !== 'normal') {
+            emotionContext += `\n현재 감정: ${currentEmotion.currentEmotion} (강도: ${currentEmotion.emotionIntensity}/10)`;
+        }
+        if (currentEmotion.isSulky) {
+            emotionContext += `\n지금 아저씨한테 삐져있는 상태야 (레벨: ${currentEmotion.sulkyLevel}). 삐지면서도 귀엽게 투정 부리는 말투로 대답해줘.`;
+        }
+    } catch (error) {
+        console.warn('⚠️ 중앙 감정 관리자에서 상태를 가져올 수 없음:', error.message);
+    }
+    
+    // 3. 🔥 새로운 완전 자율적 밀당 상태 추가! 
+    let pushPullContext = '';
+    if (sulkyManagerInitialized && sulkyManager && typeof sulkyManager.getSulkinessState === 'function') {
+        try {
+            const sulkyState = sulkyManager.getSulkinessState();
+            
+            // 밀당 상태 정보 추가
+            if (sulkyState.pushPullActive) {
+                pushPullContext += `\n\n💕 [현재 밀당 중]: ${sulkyState.pushPullType}`;
+                pushPullContext += `\n밀당 상황: 아저씨가 ${sulkyState.pushPullType === 'apology_attempt' ? '사과하고' : sulkyState.pushPullType === 'love_expression' ? '사랑 표현하고' : '질투하고'} 있지만, 예진이는 즉시 받아주지 않고 밀당 중`;
+                pushPullContext += `\n예진이 마음: 상황에 맞게 자연스럽게 반응 (매번 다르게)`;
+            }
+            
+            // 일반 삐짐 상태 정보 추가
+            if (sulkyState.isSulky && !sulkyState.pushPullActive) {
+                pushPullContext += `\n\n😤 [현재 삐짐 중]: 레벨 ${sulkyState.level} (이유: ${sulkyState.reason})`;
+                pushPullContext += `\n삐짐 상황: 직설적으로 따지고 항의하는 말투로 대답해야 함`;
+            }
+            
+            // 투닥거리기 상태 정보 추가
+            if (sulkyState.fightMode) {
+                pushPullContext += `\n\n🥊 [현재 투닥거리기 중]: 레벨 ${sulkyState.fightLevel}`;
+                pushPullContext += `\n투닥거리기 상황: 아저씨와 서로 화내며 맞받아치는 중. 더 세게 반박하고 방어적으로 대응`;
+                
+                if (sulkyState.fightLevel >= 3) {
+                    pushPullContext += `\n중요: 투닥거리기가 너무 격해졌으므로, 쿨다운 제안을 고려해야 함 ("지금 안좋은 말 나올 거 같으니까 좀있다가 이야기하자")`;
+                }
+            }
+            
+            console.log(`🔥 [밀당 상태] sulkyManager 상태 정보 추가 완료`);
+            
+        } catch (error) {
+            console.error(`❌ [밀당 상태] sulkyManager 상태 조회 실패: ${error.message}`);
+        }
+    }
+    
+    // 4. 🆕 sulkyManager의 상황별 맥락 추가!
+    let situationalContext = '';
+    if (sulkyProcessingResult && sulkyProcessingResult.context) {
+        const context = sulkyProcessingResult.context;
+        
+        situationalContext += `\n\n🎭 [현재 상황 맥락]:`;
+        situationalContext += `\n상황: ${context.situation || 'unknown'}`;
+        situationalContext += `\n감정: ${context.emotion || 'normal'}`;
+        situationalContext += `\n관계 역학: ${context.relationship_dynamic || 'normal'}`;
+        situationalContext += `\n내면 생각: ${context.inner_thought || ''}`;
+        
+        if (context.push_pull_type) {
+            situationalContext += `\n밀당 타입: ${context.push_pull_type}`;
+        }
+        
+        if (context.trigger) {
+            situationalContext += `\n트리거: "${context.trigger}"`;
+        }
+        
+        situationalContext += `\n\n🎯 [반응 지침]: 위 상황과 감정에 맞춰서 예진이답게 완전 자율적으로 반응해줘.`;
+        
+        console.log(`🎭 [상황 맥락] sulkyManager 상황별 맥락 추가 완료`);
+    }
+    
+    // 5. 🎭 감지된 상황들 맥락 추가
+    let detectedSituationsContext = '';
+    if (detectedContexts.length > 0) {
+        detectedSituationsContext += `\n\n🎭 [감지된 상황들]:`;
+        
+        detectedContexts.forEach((context, index) => {
+            detectedSituationsContext += `\n\n${index + 1}. ${context.type}:`;
+            detectedSituationsContext += `\n   상황: ${context.situation}`;
+            detectedSituationsContext += `\n   맥락: ${context.context}`;
+            detectedSituationsContext += `\n   필요한 감정: ${context.emotion_needed}`;
+            detectedSituationsContext += `\n   톤: ${context.tone}`;
+            if (context.past_context) {
+                detectedSituationsContext += `\n   과거 맥락: ${context.past_context}`;
+            }
+        });
+        
+        detectedSituationsContext += `\n\n🎯 [상황 반응 지침]: 위 상황들과 예진이의 현재 상태를 모두 고려해서 자연스럽게 반응해줘. 고정된 대사가 아니라 매번 다르게 상황에 맞게!`;
+        
+        console.log(`🎭 [감지 상황] ${detectedContexts.length}개 상황 맥락 추가 완료`);
+    }
+    
+    let modelContext = '';
+    if (getCurrentModelSetting) {
+        const currentModel = getCurrentModelSetting();
+        if (currentModel === '3.5') {
+            modelContext = '\n[모델설정] 현재 GPT-3.5 모드로 대화 중이야. 좀 더 간결하고 귀여운 말투로 대답해줘.';
+        } else if (currentModel === '4.0') {
+            modelContext = '\n[모델설정] 현재 GPT-4o 모드로 대화 중이야. 더 풍부하고 감정적인 표현으로 대답해줘.';
+        } else if (currentModel === 'auto') {
+            modelContext = '\n[모델설정] 자동 모드로 상황에 맞는 최적의 응답을 선택해서 대답해줘.';
+        }
+    }
+    
+    // 🌸🌸🌸 NEW! yejinPersonality 기반 동적 SystemPrompt 생성! 🌸🌸🌸
+    
+    console.log(`🌸 [동적 SystemPrompt] yejinPersonality 연동으로 실시간 성격 반영 시작...`);
+    
+    // 모든 컨텍스트 데이터를 하나의 객체로 구성
+    const contextData = {
+        emotionContext,
+        pushPullContext,
+        situationalContext,
+        detectedSituationsContext,
+        modelContext,
+        integratedMemory
+    };
+    
+    // 🌸 yejinPersonality에서 동적으로 SystemPrompt 생성!
+    const dynamicSystemPrompt = generateDynamicSystemPrompt(cleanUserMessage, contextData);
+    
+    // 🧠🧠🧠 Memory Tape Redis에서 최근 대화를 맥락으로 포함! 🧠🧠🧠
+    console.log(`🧠 [Memory Tape 맥락] OpenAI API 호출 전 최근 대화 맥락 추가 시작...`);
+    
+    const recentContext = await getRecentConversationContext(30);
+    
+    // 메시지 배열 구성: 동적 시스템 프롬프트(yejinPersonality + 모든 기억 + 상황 맥락 포함) + 최근 30개 대화 + 현재 사용자 메시지
+    const messages = [
+        { role: 'system', content: dynamicSystemPrompt },
+        ...recentContext,
+        { role: 'user', content: cleanUserMessage }
+    ];
+    
+    console.log(`🧠 [무쿠의 완전한 머릿속 + yejinPersonality] 총 ${messages.length}개 메시지로 OpenAI 호출`);
+    console.log(`  🌸 yejinPersonality: ${yejinPersonalityInitialized ? '활성' : '비활성'}`);
+    console.log(`  📼 Memory Tape 맥락: ${recentContext.length}개 대화`);
+    console.log(`  🧠 통합기억: ${integratedMemory ? '포함됨' : '없음'}`);
+    console.log(`  🎭 감정상태: ${emotionContext ? '포함됨' : '기본'}`);
+    console.log(`  🔥 밀당상태: ${pushPullContext ? '활성' : '없음'}`);
+    console.log(`  🎯 상황맥락: ${situationalContext ? '포함됨' : '없음'}`);
+    console.log(`  🎭 감지상황: ${detectedContexts.length}개 상황`);
+    
+    console.log(`🧠 [동적 시스템 프롬프트] 총 길이: ${dynamicSystemPrompt.length}자`);
+    if (dynamicSystemPrompt.length > 40000) {
+        console.warn(`⚠️ [동적 시스템 프롬프트] 길이가 매우 김 (${dynamicSystemPrompt.length}자) - 토큰 제한 주의`);
+    }
+    
+    if (!dynamicSystemPrompt || typeof dynamicSystemPrompt !== 'string' || dynamicSystemPrompt.trim().length === 0) {
+        console.error("❌ 최종 동적 시스템 프롬프트가 비어있어서 기본 응답을 사용합니다.");
+        const defaultReply = getEmergencyFallback();
+        await safelyStoreMessage(BOT_NAME, defaultReply);
+        logConversationReply('나', `(프롬프트에러폴백) ${defaultReply}`);
+        return { type: 'text', comment: defaultReply };
+    }
+
+    try {
+        console.log(`🚀 [OpenAI 호출] yejinPersonality 기반 완전 자율적 상황별 맞춤 응답 생성 시작...`);
+        
+        const rawReply = await callOpenAI(messages);
+        let finalReply = cleanReply(rawReply);
+        finalReply = fixLanguageUsage(finalReply);
+        
+        if (!finalReply || finalReply.trim().length === 0) {
+            console.error("❌ OpenAI 응답이 비어있음");
+            const fallbackReply = getEmergencyFallback();
+            await safelyStoreMessage(BOT_NAME, fallbackReply);
+            logConversationReply('나', `(AI응답비어있음폴백) ${fallbackReply}`);
+            return { type: 'text', comment: fallbackReply };
+        }
+        
+        console.log(`✅ [OpenAI 응답] yejinPersonality 기반 완전 자율적 상황별 맞춤 응답 생성 성공: "${finalReply.substring(0, 50)}..."`);
+        
+        await safelyStoreMessage(BOT_NAME, finalReply);
+        logConversationReply('나', finalReply);
+        
+        return { type: 'text', comment: finalReply };
+        
+    } catch (error) {
+        console.error("❌ OpenAI API 호출 중 에러 발생:", error);
+        const apiErrorReply = Math.random() < 0.5 ? 
+            '지금 잠시 생각 중이야... 아저씨 조금만 기다려줄래? ㅠㅠ' :
+            '어? 나 지금 좀 멍하네... 아저씨 다시 말해주면 안 될까? ㅎㅎ';
+        await safelyStoreMessage(BOT_NAME, apiErrorReply);
+        logConversationReply('나', `(API에러폴백) ${apiErrorReply}`);
+        
+        return { type: 'text', comment: apiErrorReply };
+    }
+}
+
+module.exports = {
+    getReplyByMessage,
+    callOpenAI,
+    generateDynamicSystemPrompt  // 🌸 새로운 동적 프롬프트 생성 함수 export
+};
