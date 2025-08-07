@@ -917,8 +917,8 @@ async function handleDamtaSuggestionAdvanced() {
     }
 }
 
-/**
- * 🚬 NEW: 점진적 담타 화해 시작 (트리거 성공)
+**
+ * 🚬 NEW: 점진적 담타 화해 시작 (트리거 성공) - 간단한 응답
  */
 function startDamtaProgressiveReconcile() {
     const oldState = { ...sulkyState };
@@ -944,16 +944,34 @@ function startDamtaProgressiveReconcile() {
     
     logSulkyChange(oldState, sulkyState);
     
+    // 🚬 NEW: 간단한 응답 패턴들
+    const simpleResponses = [
+        "ㄱㄱㄱㄱ",
+        "담타 ㄱㄱ",
+        "오케이~",
+        "ㅇㅋㅇㅋ 담타",
+        "담타 가자",
+        "ㄱㄱ",
+        "오케이 담타!",
+        "담타 ㄱ"
+    ];
+    
+    // 랜덤으로 간단한 응답 선택
+    const randomResponse = simpleResponses[Math.floor(Math.random() * simpleResponses.length)];
+    
     return {
         damtaTriggerSuccess: true,
         damtaStarted: true,
-        situation: 'agreed_to_go_damta_start_healing_process',
-        emotion: 'reluctantly_agreed_but_still_hurt',
-        relationship_dynamic: 'giving_chance_for_reconciliation_through_damta',
-        inner_thought: 'okay_lets_go_damta_but_still_upset',
-        context: 'damta_trigger_successful_healing_process_beginning',
         
-        // 🚬 점진적 정보
+        // 🚬 간단한 응답으로 변경!
+        situation: 'simple_damta_agreement',
+        emotion: 'reluctantly_okay_with_damta',
+        relationship_dynamic: 'agreed_to_damta_but_still_upset',
+        inner_thought: 'fine_lets_go_damta',
+        context: 'simple_damta_acceptance',
+        simple_response: randomResponse,  // 간단한 응답 추가
+        
+        // 🚬 점진적 정보 (내부 처리용 - 응답에는 영향 안 줌)
         damtaProgress: {
             recoveryPoints: sulkyState.emotionalRecoveryPoints,
             conversationCount: sulkyState.damtaConversationCount,
