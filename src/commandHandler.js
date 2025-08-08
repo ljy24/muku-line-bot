@@ -338,7 +338,7 @@ async function initializeYejinEvolutionSafely() {
     try {
         if (redisConnected && userMemoryRedis) {
             try {
-                const yejinModule = require('./src/yejinPersonality.js');
+                const yejinModule = require('./yejinPersonality.js');
                 if (yejinModule && yejinModule.YejinSelfRecognitionEvolution) {
                     YejinSelfRecognitionEvolution = yejinModule.YejinSelfRecognitionEvolution;
                     yejinEvolutionSystem = new YejinSelfRecognitionEvolution({
