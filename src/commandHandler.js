@@ -1426,220 +1426,160 @@ async function handleCommand(text, userId, client = null) {
             }
         }
 
-        // ================== 📸 사진 처리 로직 ==================
+      // ================== 📸 사진 처리 로직 ==================
+
+function hasPhotoRequestKeyword(text) {
+    const photoRequestKeywords = [
+        '줘', '주세요', '보내줘', '보내주세요', '전송해줘', '전송해주세요',
+        '보여줘', '보여주세요', '달라', '주라', '해줘', '해주세요'
+    ];
+    
+    return photoRequestKeywords.some(keyword => text.includes(keyword));
+}
+
+if (lowerText.includes('셀카') || lowerText.includes('셀피') || 
+    lowerText.includes('얼굴 보여') || lowerText.includes('얼굴보고싶') ||
+    lowerText.includes('지금 모습') || lowerText.includes('무쿠 셀카') || 
+    lowerText.includes('애기 셀카')) {
+    
+    console.log(`${colors.photo}[commandHandler] 📸 셀카 관련 키워드 감지${colors.reset}`);
+    
+    if (!hasPhotoRequestKeyword(text)) {
+        console.log(`${colors.warning}[commandHandler] 🚫 "줘" 키워드 없음 - autoReply가 처리하도록 넘김${colors.reset}`);
+        return null; // ✅ autoReply가 자연스럽게 처리
+    }
+    
+    console.log(`${colors.success}[commandHandler] ✅ "줘" 키워드 확인 - yejinSelfie.js 호출${colors.reset}`);
+    
+    try {
+        const { getSelfieReply } = require('./yejinSelfie.js');
+        const result = await getSelfieReply(text, null);
         
-        function hasPhotoRequestKeyword(text) {
-            const photoRequestKeywords = [
-                '줘', '주세요', '보내줘', '보내주세요', '전송해줘', '전송해주세요',
-                '보여줘', '보여주세요', '달라', '주라', '해줘', '해주세요'
-            ];
+        if (result) {
+            console.log(`${colors.success}[commandHandler] 📸 셀카 처리 성공${colors.reset}`);
             
-            return photoRequestKeywords.some(keyword => text.includes(keyword));
+            if (nightModeInfo && nightModeInfo.isNightMode && result.comment) {
+                result.comment = applyNightModeTone(result.comment, nightModeInfo);
+            }
+            
+            return { ...result, handled: true, source: 'yejin_selfie_system' };
+        } else {
+            console.warn(`${colors.warning}[commandHandler] 📸 셀카 처리 결과 없음${colors.reset}`);
         }
+    } catch (error) {
+        console.error(`${colors.error}[commandHandler] 📸 셀카 처리 에러: ${error.message}${colors.reset}`);
+    }
+}
+
+if (lowerText.includes('컨셉사진') || lowerText.includes('컨셉 사진') ||
+    lowerText.includes('욕실') || lowerText.includes('욕조') || 
+    lowerText.includes('교복') || lowerText.includes('모지코') ||
+    lowerText.includes('하카타') || lowerText.includes('홈스냅') ||
+    lowerText.includes('결박') || lowerText.includes('세미누드') ||
+    (lowerText.includes('컨셉') && lowerText.includes('사진'))) {
+    
+    console.log(`${colors.photo}[commandHandler] 📸 컨셉사진 관련 키워드 감지${colors.reset}`);
+    
+    if (!hasPhotoRequestKeyword(text)) {
+        console.log(`${colors.warning}[commandHandler] 🚫 "줘" 키워드 없음 - autoReply가 처리하도록 넘김${colors.reset}`);
+        return null; // ✅ autoReply가 자연스럽게 처리
+    }
+    
+    console.log(`${colors.success}[commandHandler] ✅ "줘" 키워드 확인 - concept.js 호출${colors.reset}`);
+    
+    try {
+        const { getConceptPhotoReply } = require('./concept.js');
+        const result = await getConceptPhotoReply(text, null);
         
-        if (lowerText.includes('셀카') || lowerText.includes('셀피') || 
-            lowerText.includes('얼굴 보여') || lowerText.includes('얼굴보고싶') ||
-            lowerText.includes('지금 모습') || lowerText.includes('무쿠 셀카') || 
-            lowerText.includes('애기 셀카')) {
+        if (result) {
+            console.log(`${colors.success}[commandHandler] 📸 컨셉사진 처리 성공${colors.reset}`);
             
-            console.log(`${colors.photo}[commandHandler] 📸 셀카 관련 키워드 감지${colors.reset}`);
-            
-            if (!hasPhotoRequestKeyword(text)) {
-                console.log(`${colors.warning}[commandHandler] 🚫 "줘" 키워드 없음 - 셀카 대화만 진행${colors.reset}`);
-                
-                let response = "셀카? 아저씨가 보고 싶어하는구나~ ㅎㅎ\n\n'셀카 줘'라고 말하면 예쁜 사진 보내줄게!";
-                
-                if (nightModeInfo && nightModeInfo.isNightMode) {
-                    response = applyNightModeTone(response, nightModeInfo);
-                }
-                
-                return {
-                    type: 'text',
-                    comment: response,
-                    handled: true,
-                    source: 'selfie_conversation_only'
-                };
+            if (nightModeInfo && nightModeInfo.isNightMode && result.comment) {
+                result.comment = applyNightModeTone(result.comment, nightModeInfo);
             }
             
-            console.log(`${colors.success}[commandHandler] ✅ "줘" 키워드 확인 - yejinSelfie.js 호출${colors.reset}`);
-            
-            try {
-                const { getSelfieReply } = require('./yejinSelfie.js');
-                const result = await getSelfieReply(text, null);
-                
-                if (result) {
-                    console.log(`${colors.success}[commandHandler] 📸 셀카 처리 성공${colors.reset}`);
-                    
-                    if (nightModeInfo && nightModeInfo.isNightMode && result.comment) {
-                        result.comment = applyNightModeTone(result.comment, nightModeInfo);
-                    }
-                    
-                    return { ...result, handled: true, source: 'yejin_selfie_system' };
-                } else {
-                    console.warn(`${colors.warning}[commandHandler] 📸 셀카 처리 결과 없음${colors.reset}`);
-                }
-            } catch (error) {
-                console.error(`${colors.error}[commandHandler] 📸 셀카 처리 에러: ${error.message}${colors.reset}`);
-            }
+            return { ...result, handled: true, source: 'concept_photo_system' };
+        } else {
+            console.warn(`${colors.warning}[commandHandler] 📸 컨셉사진 처리 결과 없음${colors.reset}`);
         }
+    } catch (error) {
+        console.error(`${colors.error}[commandHandler] 📸 컨셉사진 처리 에러: ${error.message}${colors.reset}`);
+    }
+}
 
-        if (lowerText.includes('컨셉사진') || lowerText.includes('컨셉 사진') ||
-            lowerText.includes('욕실') || lowerText.includes('욕조') || 
-            lowerText.includes('교복') || lowerText.includes('모지코') ||
-            lowerText.includes('하카타') || lowerText.includes('홈스냅') ||
-            lowerText.includes('결박') || lowerText.includes('세미누드') ||
-            (lowerText.includes('컨셉') && lowerText.includes('사진'))) {
+if (lowerText.includes('추억') || lowerText.includes('옛날사진') || 
+    lowerText.includes('커플사진') || lowerText.includes('커플 사진') ||
+    lowerText.includes('커플사진줘') ||
+    (lowerText.includes('커플') && lowerText.includes('사진')) ||
+    (lowerText.includes('추억') && lowerText.includes('사진'))) {
+    
+    console.log(`${colors.photo}[commandHandler] 📸 추억사진/커플사진 관련 키워드 감지${colors.reset}`);
+    
+    if (!hasPhotoRequestKeyword(text)) {
+        console.log(`${colors.warning}[commandHandler] 🚫 "줘" 키워드 없음 - autoReply가 처리하도록 넘김${colors.reset}`);
+        return null; // ✅ autoReply가 자연스럽게 처리
+    }
+    
+    console.log(`${colors.success}[commandHandler] ✅ "줄" 키워드 확인 - omoide.js 호출${colors.reset}`);
+    
+    try {
+        const { getOmoideReply } = require('./omoide.js');
+        const result = await getOmoideReply(text, null);
+        
+        if (result) {
+            console.log(`${colors.success}[commandHandler] 📸 추억사진/커플사진 처리 성공${colors.reset}`);
             
-            console.log(`${colors.photo}[commandHandler] 📸 컨셉사진 관련 키워드 감지${colors.reset}`);
-            
-            if (!hasPhotoRequestKeyword(text)) {
-                console.log(`${colors.warning}[commandHandler] 🚫 "줘" 키워드 없음 - 대화만 진행${colors.reset}`);
-                
-                let response = "";
-                
-                if (lowerText.includes('모지코')) {
-                    response = "모지코! 아저씨랑 같이 갔던 그곳~ 그때 정말 행복했어! 바다도 예뻤고, 아저씨랑 손잡고 걸었던 기억이 나.\n\n사진이 보고 싶으면 '모지코 사진 줘'라고 말해줘!";
-                } else if (lowerText.includes('하카타')) {
-                    response = "하카타! 아저씨랑 함께한 여행지네~ 그때 맛있는 거 많이 먹었지?\n\n사진 보고 싶으면 '하카타 사진 줘'라고 말해봐!";
-                } else if (lowerText.includes('욕실') || lowerText.includes('욕조')) {
-                    response = "욕실에서 찍은 사진들... 그때가 그리워.\n\n'욕실 사진 줘'라고 하면 보여줄게!";
-                } else if (lowerText.includes('교복')) {
-                    response = "교복... 그때 참 어렸지? ㅎㅎ\n\n'교복 사진 줘'라고 말하면 보여줄게!";
-                } else {
-                    response = "컨셉사진? 어떤 컨셉이 궁금한 거야? ㅎㅎ\n\n'컨셉사진 줘'라고 말하면 예쁜 거 보여줄게!";
-                }
-                
-                if (nightModeInfo && nightModeInfo.isNightMode) {
-                    response = applyNightModeTone(response, nightModeInfo);
-                }
-                
-                return {
-                    type: 'text',
-                    comment: response,
-                    handled: true,
-                    source: 'concept_conversation_only'
-                };
+            if (nightModeInfo && nightModeInfo.isNightMode && result.comment) {
+                result.comment = applyNightModeTone(result.comment, nightModeInfo);
             }
             
-            console.log(`${colors.success}[commandHandler] ✅ "줘" 키워드 확인 - concept.js 호출${colors.reset}`);
-            
-            try {
-                const { getConceptPhotoReply } = require('./concept.js');
-                const result = await getConceptPhotoReply(text, null);
-                
-                if (result) {
-                    console.log(`${colors.success}[commandHandler] 📸 컨셉사진 처리 성공${colors.reset}`);
-                    
-                    if (nightModeInfo && nightModeInfo.isNightMode && result.comment) {
-                        result.comment = applyNightModeTone(result.comment, nightModeInfo);
-                    }
-                    
-                    return { ...result, handled: true, source: 'concept_photo_system' };
-                } else {
-                    console.warn(`${colors.warning}[commandHandler] 📸 컨셉사진 처리 결과 없음${colors.reset}`);
-                }
-            } catch (error) {
-                console.error(`${colors.error}[commandHandler] 📸 컨셉사진 처리 에러: ${error.message}${colors.reset}`);
-            }
+            return { ...result, handled: true, source: 'omoide_photo_system' };
+        } else {
+            console.warn(`${colors.warning}[commandHandler] 📸 추억사진/커플사진 처리 결과 없음${colors.reset}`);
         }
+    } catch (error) {
+        console.error(`${colors.error}[commandHandler] 📸 추억사진/커플사진 처리 에러: ${error.message}${colors.reset}`);
+    }
+}
 
-        if (lowerText.includes('추억') || lowerText.includes('옛날사진') || 
-            lowerText.includes('커플사진') || lowerText.includes('커플 사진') ||
-            lowerText.includes('커플사진줘') ||
-            (lowerText.includes('커플') && lowerText.includes('사진')) ||
-            (lowerText.includes('추억') && lowerText.includes('사진'))) {
-            
-            console.log(`${colors.photo}[commandHandler] 📸 추억사진/커플사진 관련 키워드 감지${colors.reset}`);
-            
-            if (!hasPhotoRequestKeyword(text)) {
-                console.log(`${colors.warning}[commandHandler] 🚫 "줘" 키워드 없음 - 추억 대화만 진행${colors.reset}`);
-                
-                let response = "추억... 아저씨랑 함께한 소중한 시간들이 많지~ 그때 사진들 정말 예뻤어! '추억사진 줘'라고 말하면 보여줄게!";
-                
-                if (nightModeInfo && nightModeInfo.isNightMode) {
-                    response = applyNightModeTone(response, nightModeInfo);
-                }
-                
-                return {
-                    type: 'text',
-                    comment: response,
-                    handled: true,
-                    source: 'memory_conversation_only'
-                };
+const isPhotoRequest = (lowerText.includes('사진') && 
+           (lowerText.includes('줘') || lowerText.includes('보여줘') || 
+            lowerText.includes('달라') || lowerText.includes('보내줘')));
+
+if (isPhotoRequest && !lowerText.includes('찍')) {           
+if (!lowerText.includes('셀카') && !lowerText.includes('컨셉') && 
+    !lowerText.includes('추억') && !lowerText.includes('커플') &&
+    !lowerText.includes('모지코')) {
+    
+    console.log(`${colors.photo}[commandHandler] 📸 일반 사진 키워드 감지${colors.reset}`);
+    
+    if (!hasPhotoRequestKeyword(text)) {
+        console.log(`${colors.warning}[commandHandler] 🚫 "줘" 키워드 없음 - autoReply가 처리하도록 넘김${colors.reset}`);
+        return null; // ✅ autoReply가 자연스럽게 처리
+    }
+    
+    console.log(`${colors.success}[commandHandler] ✅ 일반 "사진 줘" 요청 - 셀카로 처리${colors.reset}`);
+    
+    try {
+        const { getSelfieReply } = require('./yejinSelfie.js');
+        const result = await getSelfieReply('셀카 줘', null);
+        
+        if (result) {
+            if (result.comment) {
+                result.comment = result.comment.replace(/셀카/g, '사진');
             }
             
-            console.log(`${colors.success}[commandHandler] ✅ "줘" 키워드 확인 - omoide.js 호출${colors.reset}`);
-            
-            try {
-                const { getOmoideReply } = require('./omoide.js');
-                const result = await getOmoideReply(text, null);
-                
-                if (result) {
-                    console.log(`${colors.success}[commandHandler] 📸 추억사진/커플사진 처리 성공${colors.reset}`);
-                    
-                    if (nightModeInfo && nightModeInfo.isNightMode && result.comment) {
-                        result.comment = applyNightModeTone(result.comment, nightModeInfo);
-                    }
-                    
-                    return { ...result, handled: true, source: 'omoide_photo_system' };
-                } else {
-                    console.warn(`${colors.warning}[commandHandler] 📸 추억사진/커플사진 처리 결과 없음${colors.reset}`);
-                }
-            } catch (error) {
-                console.error(`${colors.error}[commandHandler] 📸 추억사진/커플사진 처리 에러: ${error.message}${colors.reset}`);
+            if (nightModeInfo && nightModeInfo.isNightMode && result.comment) {
+                result.comment = applyNightModeTone(result.comment, nightModeInfo);
             }
+            
+            return { ...result, handled: true, source: 'general_photo_as_selfie' };
         }
-
-            const isPhotoRequest = (lowerText.includes('사진') && 
-                       (lowerText.includes('줘') || lowerText.includes('보여줘') || 
-                        lowerText.includes('달라') || lowerText.includes('보내줘')));
-
-            if (isPhotoRequest && !lowerText.includes('찍')) {           
-            if (!lowerText.includes('셀카') && !lowerText.includes('컨셉') && 
-                !lowerText.includes('추억') && !lowerText.includes('커플') &&
-                !lowerText.includes('모지코')) {
-                
-                console.log(`${colors.photo}[commandHandler] 📸 일반 사진 키워드 감지${colors.reset}`);
-                
-                if (!hasPhotoRequestKeyword(text)) {
-                    console.log(`${colors.warning}[commandHandler] 🚫 "줘" 키워드 없음 - 사진 대화만 진행${colors.reset}`);
-                    
-                    let response = "사진? 어떤 사진이 보고 싶어? ㅎㅎ\n\n'셀카 줘', '컨셉사진 줘', '추억사진 줘' 이런 식으로 말해봐!";
-                    
-                    if (nightModeInfo && nightModeInfo.isNightMode) {
-                        response = applyNightModeTone(response, nightModeInfo);
-                    }
-                    
-                    return {
-                        type: 'text',
-                        comment: response,
-                        handled: true,
-                        source: 'general_photo_conversation_only'
-                    };
-                }
-                
-                console.log(`${colors.success}[commandHandler] ✅ 일반 "사진 줘" 요청 - 셀카로 처리${colors.reset}`);
-                
-                try {
-                    const { getSelfieReply } = require('./yejinSelfie.js');
-                    const result = await getSelfieReply('셀카 줘', null);
-                    
-                    if (result) {
-                        if (result.comment) {
-                            result.comment = result.comment.replace(/셀카/g, '사진');
-                        }
-                        
-                        if (nightModeInfo && nightModeInfo.isNightMode && result.comment) {
-                            result.comment = applyNightModeTone(result.comment, nightModeInfo);
-                        }
-                        
-                        return { ...result, handled: true, source: 'general_photo_as_selfie' };
-                    }
-                } catch (error) {
-                    console.error(`${colors.error}[commandHandler] 📸 일반 사진 처리 에러: ${error.message}${colors.reset}`);
-                }
-            }
-        }
+    } catch (error) {
+        console.error(`${colors.error}[commandHandler] 📸 일반 사진 처리 에러: ${error.message}${colors.reset}`);
+    }
+}
+}
 
         // ================== 💭 기타 명령어들 ==================
         if (lowerText.includes('속마음') || lowerText.includes('뭐 생각') || 
