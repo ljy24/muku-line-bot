@@ -1374,7 +1374,7 @@ async function handleCommand(text, userId, client = null) {
                             const personalityStatus = yejinEvolutionSystem.getPersonalityStatus();
                             
                             if (personalityStatus) {
-                                enhancedReport += `   • 성격 시스템: ${personalityStatus.isActive ? '정상 ✅' : '비정상 ❌'}\n`;
+                                enhancedReport += `   • 성격 시스템: ${personalityStatus.status === 'active' ? '정상 ✅' : '비정상 ❌'}\n`;
                                 
                                 if (personalityStatus.evolutionSystem) {
                                     enhancedReport += `   • 자아 인식: ${personalityStatus.evolutionSystem.selfRecognitionActive ? '활성 ✅' : '비활성 ❌'}\n`;
