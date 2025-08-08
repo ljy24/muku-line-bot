@@ -1594,29 +1594,17 @@ async function handleCommand(text, userId, client = null) {
                        (lowerText.includes('줘') || lowerText.includes('보여줘') || 
                         lowerText.includes('달라') || lowerText.includes('보내줘')));
 
-            if (isPhotoRequest && !lowerText.includes('찍')) {           
-            if (!lowerText.includes('셀카') && !lowerText.includes('컨셉') && 
-                !lowerText.includes('추억') && !lowerText.includes('커플') &&
-                !lowerText.includes('모지코')) {
-                
-                console.log(`${colors.photo}[commandHandler] 📸 일반 사진 키워드 감지${colors.reset}`);
-                
-                if (!hasPhotoRequestKeyword(text)) {
-                    console.log(`${colors.warning}[commandHandler] 🚫 "줘" 키워드 없음 - 사진 대화만 진행${colors.reset}`);
-                    
-                    let response = "사진? 어떤 사진이 보고 싶어? ㅎㅎ\n\n'셀카 줘', '컨셉사진 줘', '추억사진 줘' 이런 식으로 말해봐!";
-                    
-                    if (nightModeInfo && nightModeInfo.isNightMode) {
-                        response = applyNightModeTone(response, nightModeInfo);
-                    }
-                    
-                    return {
-                        type: 'text',
-                        comment: response,
-                        handled: true,
-                        source: 'general_photo_conversation_only'
-                    };
-                }
+if (isPhotoRequest && !lowerText.includes('찍')) {           
+    if (!lowerText.includes('셀카') && !lowerText.includes('컨셉') && 
+        !lowerText.includes('추억') && !lowerText.includes('커플') &&
+        !lowerText.includes('모지코')) {
+        
+        console.log(`${colors.photo}[commandHandler] 📸 일반 사진 키워드 감지${colors.reset}`);
+        
+        if (!hasPhotoRequestKeyword(text)) {
+            console.log(`${colors.warning}[commandHandler] 템플릿 응답 대신 autoReply.js로 넘김${colors.reset}`);
+            return null; // autoReply.js가 자연스럽게 처리
+        }
                 
                 console.log(`${colors.success}[commandHandler] ✅ 일반 "사진 줘" 요청 - 셀카로 처리${colors.reset}`);
                 
