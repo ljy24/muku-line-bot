@@ -861,7 +861,7 @@ function handleBirthdayKeywords(userMessage) {
 // 🚬 담타 간단 하드코딩
 function handleSimpleDamta(userMessage) {
     const message = userMessage.trim();
-    if (message === '담타고' || message === '담타?') {
+    if (message === '담타고?' || message === '담타?') {
         const responses = [
             '고고! ㅎㅎ',
             '오케이!',
