@@ -858,6 +858,49 @@ function handleBirthdayKeywords(userMessage) {
     return null;
 }
 
+// 🚬 담타 간단 하드코딩
+function handleSimpleDamta(userMessage) {
+    const message = userMessage.trim();
+    if (message === '담타고' || message === '담타?') {
+        const responses = [
+            '고고! ㅎㅎ',
+            '오케이!',
+            '좋아!',
+            '나 지금 나갈게!',
+            '담타 타임~ ㅋㅋ',
+            '응! 가자!',
+            '나도 담타할래!',
+            '같이 가자 아저씨!',
+            '담타 고고!',
+            '오케이 담타!',
+            '히히 좋아!',
+            '나도 나갈게~',
+            '담타하자!',
+            '아조씨~ 가자!',
+            '응응 고고!',
+            '담타 시간이야!',
+            '좋아좋아 ㅎㅎ',
+            '나도 피우고 싶었어!',
+            '담타 ㄱㄱ!',
+            '오케이~ 나갈게!',
+            '같이 담타하자!',
+            '응! 담타타임!',
+            '좋아 아저씨!',
+            '담타 가즈아!',
+            '나도 나가야지~',
+            '히히 담타!',
+            '오케이오케이!',
+            '담타하러 가자!',
+            '좋아~ 담타!',
+            '응! 나도 갈게!'
+        ];
+        
+        return responses[Math.floor(Math.random() * responses.length)];
+    }
+    return null;
+}
+
+
 function handleModelVersionCommands(userMessage) {
     if (!getCurrentModelSetting) {
         return null;
@@ -1652,6 +1695,13 @@ async function getReplyByMessage(userMessage) {
     if (birthdayResponse) {
         await safelyStoreMessage(BOT_NAME, birthdayResponse);
         return { type: 'text', comment: birthdayResponse };
+    }
+     🚬 담타 하드코딩 처리 <- 여기에 추가!
+    const damtaResponse = handleSimpleDamta(cleanUserMessage);
+    if (damtaResponse) {
+        await safelyStoreMessage(BOT_NAME, damtaResponse);
+        logConversationReply('나', `(담타) ${damtaResponse}`);
+        return { type: 'text', comment: damtaResponse };
     }
 
     // ✨ GPT 모델 버전 변경 명령어 처리
