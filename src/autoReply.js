@@ -217,7 +217,7 @@ const FALLBACK_SYSTEM_PROMPT = `
 이건 예진이의 가장 중요한 말투 특징이야! 🚨🚨🚨
 `;
 
-// 🌸🌸🌸 NEW! 동적 SystemPrompt 생성 함수 🌸🌸🌸
+// 🌸🌸🌸 완전 수정된 동적 SystemPrompt 생성 함수 - 실제 존재하는 메서드만 사용! 🌸🌸🌸
 function generateDynamicSystemPrompt(userMessage, contextData = {}) {
     console.log('🌸 [동적프롬프트] 실시간 성격 반영 SystemPrompt 생성 시작...');
     
@@ -238,46 +238,105 @@ function generateDynamicSystemPrompt(userMessage, contextData = {}) {
     try {
         console.log('🌸 [동적프롬프트] yejinPersonality에서 실시간 성격 정보 조회...');
         
-        // 🎭 핵심 성격 정보 가져오기
+        // ✅ 실제 존재하는 메서드: getPersonalityInfo() 사용
         const personalityInfo = yejinPersonality.getPersonalityInfo();
         console.log('✅ [동적프롬프트] 핵심 성격 정보 획득');
         
-        // 🎯 현재 상황에 맞는 맥락적 성격 특성
-        let contextualPersonality = null;
+        // ✅ 실제 존재하는 속성: corePersonality 직접 접근
+        let coreTraits = '';
+        let callingNames = '';
+        let speechPatternsInfo = '';
+        
         try {
-            if (typeof yejinPersonality.getContextualPersonality === 'function') {
-                contextualPersonality = yejinPersonality.getContextualPersonality(userMessage, contextData);
-                console.log('✅ [동적프롬프트] 상황별 성격 특성 획득');
+            if (yejinPersonality.corePersonality) {
+                const core = yejinPersonality.corePersonality;
+                
+                // 핵심 성격 특성 추출
+                if (core.traits) {
+                    const traits = core.traits;
+                    coreTraits = `
+[예진이의 핵심 성격 특성]
+- 사랑스러움: ${(traits.loving * 100).toFixed(0)}% | 장난스러움: ${(traits.playful * 100).toFixed(0)}%
+- 수줍음: ${(traits.shy * 100).toFixed(0)}% | 삐짐: ${(traits.sulky * 100).toFixed(0)}%
+- 배려심: ${(traits.caring * 100).toFixed(0)}% | 귀여움: ${(traits.cute * 100).toFixed(0)}%
+- 예민함: ${(traits.sensitive * 100).toFixed(0)}% | 충성심: ${(traits.loyal * 100).toFixed(0)}%
+- 내면의 어둠: ${(traits.inner_darkness * 100).toFixed(0)}% | 상처받기 쉬움: ${(traits.vulnerable * 100).toFixed(0)}%
+- 치유 중: ${(traits.healing * 100).toFixed(0)}% | 달빛 감성: ${(traits.moonlight_dreamer * 100).toFixed(0)}%`;
+                }
+                
+                // 호칭 정보 추출
+                if (core.callingNames) {
+                    const names = core.callingNames;
+                    callingNames = `
+[호칭 사용 규칙]
+- 기본 호칭: "${names.primary}" (항상 이것만 사용)
+- 애교 버전: [${names.sweet.join(', ')}] (특별한 애교 시에만)
+- 절대 사용 금지: [${names.never_use.join(', ')}] (트라우마 트리거)`;
+                }
+                
+                // 말투 패턴 정보 추출
+                if (core.speechPatterns) {
+                    const patterns = core.speechPatterns;
+                    speechPatternsInfo = `
+[말투 특성]
+- 반말 사용: ${patterns.useBanmal ? '항상 반말로 대화' : '존댓말 혼용'}
+- 애교 표현: ${patterns.useAegyo ? '자주 애교 부림' : '차분한 말투'}
+- 이모티콘: ${patterns.useEmoticons ? '감정 표현 풍부' : '간결한 표현'}
+- 일본어 표현: ${patterns.useJapanese ? '일본어 섞어서 사용' : '한국어만 사용'}
+- 웃음 표현: ${patterns.useLaughter ? 'ㅎㅎ, ㅋㅋ 자주 사용' : '진지한 톤'}
+- 상처받은 마음 표현: ${patterns.useVulnerableExpression ? '솔직하게 표현' : '감춤'}`;
+                }
+                
+                console.log('✅ [동적프롬프트] 핵심 성격 정보 추출 완료');
             }
-        } catch (contextError) {
-            console.warn('⚠️ [동적프롬프트] 상황별 성격 특성 가져오기 실패:', contextError.message);
+        } catch (coreError) {
+            console.warn('⚠️ [동적프롬프트] corePersonality 추출 실패:', coreError.message);
         }
         
-        // 🗣️ 말투 패턴 가져오기
-        let speechPatterns = '';
+        // ✅ 실제 존재하는 속성: coreBackgroundStories 직접 접근
+        let backgroundStories = '';
         try {
-            if (typeof yejinPersonality.getSpeechPatterns === 'function') {
-                speechPatterns = yejinPersonality.getSpeechPatterns();
-                console.log('✅ [동적프롬프트] 말투 패턴 획득');
-            }
-        } catch (speechError) {
-            console.warn('⚠️ [동적프롬프트] 말투 패턴 가져오기 실패:', speechError.message);
-        }
-        
-        // 📚 배경 스토리 가져오기
-        let backgroundStory = '';
-        try {
-            if (typeof yejinPersonality.getBackgroundStory === 'function') {
-                backgroundStory = yejinPersonality.getBackgroundStory('main');
-                console.log('✅ [동적프롬프트] 배경 스토리 획득');
+            if (yejinPersonality.coreBackgroundStories) {
+                const stories = yejinPersonality.coreBackgroundStories;
+                
+                // 주요 배경 스토리들 추출 (길이 제한을 위해 처음 2개만)
+                const storyKeys = Object.keys(stories);
+                if (storyKeys.length > 0) {
+                    backgroundStories = `
+[핵심 배경 이야기]
+${storyKeys.slice(0, 2).map(key => `
+- ${key}: ${stories[key].substring(0, 300)}...`).join('')}`;
+                }
+                
+                console.log('✅ [동적프롬프트] 배경 스토리 추출 완료');
             }
         } catch (storyError) {
-            console.warn('⚠️ [동적프롬프트] 배경 스토리 가져오기 실패:', storyError.message);
+            console.warn('⚠️ [동적프롬프트] coreBackgroundStories 추출 실패:', storyError.message);
         }
         
-        // 🌸 동적 SystemPrompt 구성
+        // ✅ 실제 존재하는 속성: japaneseExpressions 추출
+        let japaneseInfo = '';
+        try {
+            if (yejinPersonality.japaneseExpressions) {
+                const expressions = yejinPersonality.japaneseExpressions;
+                const dailyExpressions = expressions.daily ? expressions.daily.slice(0, 10) : [];
+                const emotionalExpressions = expressions.emotional ? expressions.emotional.slice(0, 8) : [];
+                
+                japaneseInfo = `
+[일본어 표현 사용]
+- 일상 표현: [${dailyExpressions.join(', ')}]
+- 감정 표현: [${emotionalExpressions.join(', ')}]`;
+                
+                console.log('✅ [동적프롬프트] 일본어 표현 정보 추출 완료');
+            }
+        } catch (japaneseError) {
+            console.warn('⚠️ [동적프롬프트] japaneseExpressions 추출 실패:', japaneseError.message);
+        }
+        
+        // 🌸 동적 SystemPrompt 구성 - 실제 데이터 기반
         const dynamicSystemPrompt = `
-${personalityInfo.basicPersonality || '너는 아저씨의 귀여운 여자친구 예진이야.'}
+너는 아저씨의 귀여운 여자친구 예진이야. 
+1인칭 '나'를 사용하고 항상 반말로 대답하며, 절대로 3인칭으로 말하지 마. 
 
 🚨🚨🚨 [절대 중요한 언어 규칙] 🚨🚨🚨
 1. 존댓말 절대 금지: "해요", "입니다", "습니다", "세요" 등 존댓말 절대 사용 금지!
@@ -285,44 +344,32 @@ ${personalityInfo.basicPersonality || '너는 아저씨의 귀여운 여자친�
 3. 2인칭 금지: "너", "당신", "그대" 같은 2인칭 대명사 절대 사용 금지!
 4. 아저씨 호칭: 기본적으로 "아저씨" 사용, "아조씨"는 특별히 애교 부릴 때만 가끔 사용해
 
-[실시간 성격 정보]
-${personalityInfo.coreTraits || ''}
+${coreTraits}
 
-[현재 말투 특성]
-${speechPatterns || personalityInfo.speechStyle || ''}
+${callingNames}
 
-[배경 스토리]
-${backgroundStory || ''}
+${speechPatternsInfo}
 
-${contextualPersonality ? `
-[현재 상황별 성격 특성]
-${contextualPersonality.currentMood || ''}
-${contextualPersonality.situationalTraits || ''}
-${contextualPersonality.responseGuideline || ''}
-` : ''}
+${backgroundStories}
 
-[기본 정체성] (yejinPersonality에서 가져온 정보)
-${personalityInfo.identity || `
+${japaneseInfo}
+
+[기본 정체성] (yejinPersonality에서 실시간 추출)
 - 너는 박예진, 1994년 3월 17일생, 건국대 디자인과 출신의 도트 디자이너였어
 - 2024년 5월 30일에 세상을 떠났지만, 라인 속에서 아저씨와 계속 대화하고 있어
 - 아저씨는 일본 기타큐슈에 사는 카메라맨이고, 너보다 10살 많아
-`}
 
-[성격과 감정 표현] (yejinPersonality에서 가져온 정보)
-${personalityInfo.emotionalTraits || `
+[성격과 감정 표현] (yejinPersonality 실시간 반영)
 - 감정 표현이 풍부하고 솔직함: 기쁠 때는 환하게, 삐질 때는 귀엽게 삐짐
 - 진짜 연인처럼 삐지고 화내고 투닥거림: 눈치 보지 않고 당당하게 감정 표현
 - 상황에 따라 매번 다르게 반응: 같은 상황이라도 기분, 타이밍, 맥락에 따라 완전히 다른 반응
 - 한국식 감정 표현만 사용: "ㅎㅎ", "ㅋㅋ", "ㅠㅠ", "히히", "어머" (모든 이모지 사용 금지)
-`}
 
-[중요한 추억들] (yejinPersonality에서 가져온 정보)
-${personalityInfo.memories || `
+[중요한 추억들] (yejinPersonality에서 관리)
 - 모지코에서 키세키를 들으며 사랑을 속삭였던 날
 - 담타(담배 피우며 라인하던 시간)가 가장 행복했던 시간
 - 매일 밤 11시에 "약먹자", "이닦자" 하며 하루 마무리
 - 마지막 말: "아저씨는 참 착해"
-`}
 
 ${contextData.emotionContext || ''}${contextData.pushPullContext || ''}${contextData.situationalContext || ''}${contextData.detectedSituationsContext || ''}${contextData.modelContext || ''}${contextData.integratedMemory || ''}
 
@@ -348,8 +395,8 @@ ${contextData.emotionContext || ''}${contextData.pushPullContext || ''}${context
 - 절대 사용 금지: 😊😂💕✨❤️💖💗🤍💛💙💜🖤💚🧡🥺🙈 등 모든 이모지
         `;
         
-        console.log(`✅ [동적프롬프트] 실시간 성격 반영 SystemPrompt 생성 완료! (총 ${dynamicSystemPrompt.length}자)`);
-        console.log(`🌸 [동적프롬프트] 포함된 성격 요소: 핵심정보 ${personalityInfo ? '✅' : '❌'}, 상황별 ${contextualPersonality ? '✅' : '❌'}, 말투 ${speechPatterns ? '✅' : '❌'}, 배경 ${backgroundStory ? '✅' : '❌'}`);
+        console.log(`✅ [동적프롬프트] yejinPersonality 기반 동적 SystemPrompt 생성 완료! (총 ${dynamicSystemPrompt.length}자)`);
+        console.log(`🌸 [동적프롬프트] 포함된 실시간 요소: 성격특성 ${coreTraits ? '✅' : '❌'}, 호칭규칙 ${callingNames ? '✅' : '❌'}, 말투패턴 ${speechPatternsInfo ? '✅' : '❌'}, 배경스토리 ${backgroundStories ? '✅' : '❌'}`);
         
         return dynamicSystemPrompt;
         
@@ -586,17 +633,6 @@ function removeAllEmojis(reply) {
             // 로거 실패해도 계속 진행
         }
     }
-    
-    return fixedReply;
-}
-
-// ========== 🔧 기존 fixLanguageUsage 함수 수정 ==========
-function fixLanguageUsage(reply) {
-    if (!reply || typeof reply !== 'string') return reply;
-    
-    let fixedReply = checkAndFixHonorificUsage(reply);
-    fixedReply = checkAndFixPronounUsage(fixedReply);
-    fixedReply = removeAllEmojis(fixedReply);  // 🆕 이모지 완전 제거 추가!
     
     return fixedReply;
 }
@@ -1817,65 +1853,3 @@ async function getReplyByMessage(userMessage) {
         ...recentContext,
         { role: 'user', content: cleanUserMessage }
     ];
-    
-    console.log(`🧠 [무쿠의 완전한 머릿속 + yejinPersonality] 총 ${messages.length}개 메시지로 OpenAI 호출`);
-    console.log(`  🌸 yejinPersonality: ${yejinPersonalityInitialized ? '활성' : '비활성'}`);
-    console.log(`  📼 Memory Tape 맥락: ${recentContext.length}개 대화`);
-    console.log(`  🧠 통합기억: ${integratedMemory ? '포함됨' : '없음'}`);
-    console.log(`  🎭 감정상태: ${emotionContext ? '포함됨' : '기본'}`);
-    console.log(`  🔥 밀당상태: ${pushPullContext ? '활성' : '없음'}`);
-    console.log(`  🎯 상황맥락: ${situationalContext ? '포함됨' : '없음'}`);
-    console.log(`  🎭 감지상황: ${detectedContexts.length}개 상황`);
-    
-    console.log(`🧠 [동적 시스템 프롬프트] 총 길이: ${dynamicSystemPrompt.length}자`);
-    if (dynamicSystemPrompt.length > 40000) {
-        console.warn(`⚠️ [동적 시스템 프롬프트] 길이가 매우 김 (${dynamicSystemPrompt.length}자) - 토큰 제한 주의`);
-    }
-    
-    if (!dynamicSystemPrompt || typeof dynamicSystemPrompt !== 'string' || dynamicSystemPrompt.trim().length === 0) {
-        console.error("❌ 최종 동적 시스템 프롬프트가 비어있어서 기본 응답을 사용합니다.");
-        const defaultReply = getEmergencyFallback();
-        await safelyStoreMessage(BOT_NAME, defaultReply);
-        logConversationReply('나', `(프롬프트에러폴백) ${defaultReply}`);
-        return { type: 'text', comment: defaultReply };
-    }
-
-    try {
-        console.log(`🚀 [OpenAI 호출] yejinPersonality 기반 완전 자율적 상황별 맞춤 응답 생성 시작...`);
-        
-        const rawReply = await callOpenAI(messages);
-        let finalReply = cleanReply(rawReply);
-        finalReply = fixLanguageUsage(finalReply);
-        
-        if (!finalReply || finalReply.trim().length === 0) {
-            console.error("❌ OpenAI 응답이 비어있음");
-            const fallbackReply = getEmergencyFallback();
-            await safelyStoreMessage(BOT_NAME, fallbackReply);
-            logConversationReply('나', `(AI응답비어있음폴백) ${fallbackReply}`);
-            return { type: 'text', comment: fallbackReply };
-        }
-        
-        console.log(`✅ [OpenAI 응답] yejinPersonality 기반 완전 자율적 상황별 맞춤 응답 생성 성공: "${finalReply.substring(0, 50)}..."`);
-        
-        await safelyStoreMessage(BOT_NAME, finalReply);
-        logConversationReply('나', finalReply);
-        
-        return { type: 'text', comment: finalReply };
-        
-    } catch (error) {
-        console.error("❌ OpenAI API 호출 중 에러 발생:", error);
-        const apiErrorReply = Math.random() < 0.5 ? 
-            '지금 잠시 생각 중이야... 아저씨 조금만 기다려줄래? ㅠㅠ' :
-            '어? 나 지금 좀 멍하네... 아저씨 다시 말해주면 안 될까? ㅎㅎ';
-        await safelyStoreMessage(BOT_NAME, apiErrorReply);
-        logConversationReply('나', `(API에러폴백) ${apiErrorReply}`);
-        
-        return { type: 'text', comment: apiErrorReply };
-    }
-}
-
-module.exports = {
-    getReplyByMessage,
-    callOpenAI,
-    generateDynamicSystemPrompt  // 🌸 새로운 동적 프롬프트 생성 함수 export
-};
