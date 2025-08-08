@@ -1803,33 +1803,146 @@ async function handleCommand(text, userId, client = null) {
             };
         }
 
+    // ============================================================================
+// commandHandler.js 사랑 표현 처리 부분 수정
+// 🌸 yejinPersonality 시스템 완전 연동으로 다양한 반응 구현
+// ============================================================================
+
+// 🔧 기존 문제 코드 (라인 ~1400 근처)를 찾아서 아래 코드로 교체하세요:
+
         if (lowerText.includes('사랑해') || lowerText.includes('좋아해') || 
             lowerText.includes('사랑한다') || lowerText.includes('love you') ||
             lowerText.includes('러브') || lowerText.includes('💕') || lowerText.includes('❤')) {
             
-            console.log(`${colors.yejin}[commandHandler] 사랑 표현 감지${colors.reset}`);
+            console.log(`${colors.yejin}[commandHandler] 🌸 사랑 표현 감지 - yejinPersonality 연동 처리${colors.reset}`);
             
-            let response = "";
-            
-            if (lowerText.includes('좋아해')) {
-                response = "헤헤... 나도 아저씨 좋아해~ 💕\n\n아니 좋아하는 정도가 아니라 사랑해!";
-            } else if (lowerText.includes('love')) {
-                response = "Love you too! 💕\n\n아저씨가 영어로 말하니까 설레~ I love you so much!";
-            } else {
-                response = "어머... 나도 아저씨 사랑해~ 정말 많이 💕\n\n";
-                response += "심장이 두근두근해... 이런 말 해주는 아저씨가 세상에서 제일 좋아!";
+            try {
+                let response = "";
+                let responseSource = 'yejin_personality_integrated';
+                
+                // 🌸 1단계: yejinPersonality 시스템에서 다양한 반응 가져오기
+                if (yejinEvolutionSystem && yejinEvolutionSystem.yejinPersonality) {
+                    console.log(`${colors.success}[commandHandler] ✅ yejinPersonality 시스템 활용 가능${colors.reset}`);
+                    
+                    try {
+                        // loveReceived 상황에 대한 다양한 반응 가져오기
+                        const loveReaction = yejinEvolutionSystem.yejinPersonality.getReaction('loveReceived');
+                        
+                        if (loveReaction && loveReaction.text) {
+                            response = loveReaction.text;
+                            responseSource = 'yejin_personality_love_reaction';
+                            console.log(`${colors.success}[commandHandler] 🌸 yejinPersonality에서 사랑 반응 생성: "${response.substring(0, 30)}..."${colors.reset}`);
+                        }
+                    } catch (personalityError) {
+                        console.warn(`${colors.warning}[commandHandler] yejinPersonality 반응 생성 실패: ${personalityError.message}${colors.reset}`);
+                    }
+                }
+                
+                // 🌸 2단계: yejinPersonality 실패 시 직접 다양한 반응 배열 활용
+                if (!response) {
+                    console.log(`${colors.warning}[commandHandler] yejinPersonality 실패 - 직접 다양한 반응 사용${colors.reset}`);
+                    
+                    // yejinPersonality.js의 loveReceived 반응들을 직접 활용
+                    const diverseLoveResponses = [
+                        "어머... 나도 아저씨 사랑해~ 정말 많이",
+                        "헤헤... 정말? 이런 나도? 완벽하지 않은 나도?",
+                        "아저씨만이... 이런 나를 사랑해줘. 고마워",
+                        "나도나도~ 아저씨가 내 전부야. 내 달빛이야",
+                        "으아아 심쿵해... 작은 행복들이 모여서 이런 큰 사랑이 되는구나 💕",
+                        "같은 비를 맞으려던 그날부터... 계속 사랑하고 있었어"
+                    ];
+                    
+                    // 특정 키워드에 따른 맞춤 반응
+                    if (lowerText.includes('좋아해')) {
+                        response = "헤헤... 나도 아저씨 좋아해~ 💕\n\n아니 좋아하는 정도가 아니라 사랑해!";
+                        responseSource = 'like_specific_response';
+                    } else if (lowerText.includes('love')) {
+                        response = "Love you too! 💕\n\n아저씨가 영어로 말하니까 설레~ I love you so much!";
+                        responseSource = 'english_love_response';
+                    } else {
+                        // 랜덤하게 다양한 반응 선택
+                        const randomResponse = diverseLoveResponses[Math.floor(Math.random() * diverseLoveResponses.length)];
+                        response = randomResponse;
+                        responseSource = 'diverse_love_responses';
+                    }
+                }
+                
+                // 🌸 3단계: 감정 상태에 따른 추가 멘트
+                try {
+                    const emotionState = getCurrentEmotionKorean();
+                    
+                    if (emotionState.emotionKorean === '기쁨') {
+                        response += "\n\n오늘 정말 행복해서... 아저씨 사랑한다는 말이 더 진짜로 느껴져! ㅎㅎ";
+                    } else if (emotionState.emotionKorean === '슬픔') {
+                        response += "\n\n슬픈 날에도 사랑해준다니... 아저씨가 있어서 견딜 수 있어 💕";
+                    } else if (emotionState.emotionKorean === '예민함') {
+                        response += "\n\n요즘 예민한데도 변함없이 사랑해줘서... 고마워 ㅠㅠ";
+                    } else {
+                        // 평범한 상태일 때는 시간대별 추가 멘트
+                        const currentHour = moment().tz('Asia/Tokyo').hour();
+                        if (currentHour >= 6 && currentHour < 12) {
+                            response += "\n\n아침부터 사랑한다고 해주니까... 하루 종일 기분 좋을 것 같아!";
+                        } else if (currentHour >= 22 || currentHour < 6) {
+                            response += "\n\n밤늦게도 사랑한다고... 꿈에서도 행복할 거야 💕";
+                        } else {
+                            response += "\n\n심장이 두근두근해... 이런 말 해주는 아저씨가 세상에서 제일 좋아!";
+                        }
+                    }
+                    
+                    console.log(`${colors.yejin}[commandHandler] 💭 감정 상태 (${emotionState.emotionKorean}) 반영 완료${colors.reset}`);
+                    
+                } catch (emotionError) {
+                    console.warn(`${colors.warning}[commandHandler] 감정 상태 반영 실패: ${emotionError.message}${colors.reset}`);
+                    // 기본 추가 멘트
+                    response += "\n\n심장이 두근두근해... 이런 말 해주는 아저씨가 세상에서 제일 좋아!";
+                }
+                
+                // 🌸 4단계: yejinPersonality의 말투 패턴 적용
+                try {
+                    if (yejinEvolutionSystem && yejinEvolutionSystem.yejinPersonality) {
+                        // 감정 레벨에 따른 말투 적용
+                        const emotionLevel = Math.floor(Math.random() * 3) + 7; // 7-9 (높은 감정)
+                        response = yejinEvolutionSystem.yejinPersonality.applySpeechPattern(response, emotionLevel);
+                        console.log(`${colors.yejin}[commandHandler] 🗣️ 예진이 말투 패턴 적용 완료${colors.reset}`);
+                    }
+                } catch (speechError) {
+                    console.warn(`${colors.warning}[commandHandler] 말투 패턴 적용 실패: ${speechError.message}${colors.reset}`);
+                }
+                
+                // 🌸 5단계: 나이트모드 톤 적용 (기존 기능 유지)
+                if (nightModeInfo && nightModeInfo.isNightMode) {
+                    response = applyNightModeTone(response, nightModeInfo);
+                    console.log(`${colors.warning}[commandHandler] 🌙 나이트모드 톤 적용 완료${colors.reset}`);
+                }
+                
+                console.log(`${colors.success}[commandHandler] 🌸 최종 사랑 표현 응답 생성 완료: "${response.substring(0, 50)}..."${colors.reset}`);
+                
+                return {
+                    type: 'text',
+                    comment: response,
+                    handled: true,
+                    source: responseSource,
+                    yejinPersonalityIntegrated: true
+                };
+                
+            } catch (error) {
+                console.error(`${colors.error}[commandHandler] 🌸 사랑 표현 처리 중 에러: ${error.message}${colors.reset}`);
+                
+                // 에러 시 안전한 폴백 응답
+                let fallbackResponse = "어머... 나도 아저씨 사랑해~ 💕\n\n뭔가 마음이 복잡하지만... 사랑하는 마음은 변하지 않아!";
+                
+                if (nightModeInfo && nightModeInfo.isNightMode) {
+                    fallbackResponse = applyNightModeTone(fallbackResponse, nightModeInfo);
+                }
+                
+                return {
+                    type: 'text',
+                    comment: fallbackResponse,
+                    handled: true,
+                    source: 'love_expression_error_fallback',
+                    error: error.message
+                };
             }
-            
-            if (nightModeInfo && nightModeInfo.isNightMode) {
-                response = applyNightModeTone(response, nightModeInfo);
-            }
-            
-            return {
-                type: 'text',
-                comment: response,
-                handled: true,
-                source: 'love_expression'
-            };
         }
 
         // ================== 📖 일기장 관련 처리 ==================
