@@ -1622,10 +1622,17 @@ if (!lowerText.includes('셀카') && !lowerText.includes('컨셉') &&
             };
         }
 
+        // 긴급상황 우선 체크
+        if (lowerText.includes('힘들어 죽겠') || lowerText.includes('죽겠다') || 
+            lowerText.includes('힘들어서') || lowerText.includes('우울해')) {
+            // 긴급상황 처리
+            return;
+        }
+        
         if (lowerText.includes('기분 어때') || lowerText.includes('컨디션 어때') || 
             lowerText.includes('오늘 어때') || lowerText.includes('어떻게 지내') ||
             lowerText.includes('몸은 어때') || lowerText.includes('상태 어때') ||
-            lowerText.includes('괜찮아') || lowerText.includes('힘들어')) {
+            lowerText.includes('괜찮아')) {
             
             console.log(`${colors.yejin}[commandHandler] 기분 질문 감지${colors.reset}`);
             
