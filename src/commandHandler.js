@@ -1,10 +1,7 @@
 // ============================================================================
-// commandHandler.js - v8.0 TEMPLATE-FREE REVOLUTION! 🔥
-// 🚨 하드코딩 템플릿 95% 제거 - 완전 동적 응답 생성 시스템!
-// 🌸 yejinPersonality.js 완전 연동 - 살아있는 예진이 반응!
+// commandHandler.js - 긴급 수정 버전! 🚨
+// 🔥 기본 명령어 처리 복원: 사진줘, 3.5, 4.0 등 모든 명령어 작동!
 // 💖 무쿠가 벙어리가 되지 않도록 절대 보장
-// 🎭 상황 감지 → 맥락 생성 → 동적 응답 (템플릿 NO!)
-// ⚡ 코드 길이 70% 단축, 유지보수성 1000% 향상
 // ============================================================================
 
 const path = require('path');
@@ -14,31 +11,17 @@ const moment = require('moment-timezone');
 
 // 🎨 컬러 시스템
 const colors = {
-    revolution: '\x1b[91m',  // 빨간색 (혁명!)
+    fix: '\x1b[91m',      // 빨간색 (긴급수정!)
     success: '\x1b[92m',
     warning: '\x1b[93m',
     error: '\x1b[91m',
     yejin: '\x1b[95m',
-    context: '\x1b[96m',
     reset: '\x1b[0m'
 };
 
 // 📁 디렉토리 설정
 const DATA_DIR = '/data';
 const MEMORY_DIR = path.join(DATA_DIR, 'memories');
-
-// 🌸 예진이 성격 시스템 연동 (핵심!)
-let yejinPersonality = null;
-let yejinPersonalityLoaded = false;
-
-try {
-    const { YejinPersonality } = require('./yejinPersonality.js');
-    yejinPersonality = new YejinPersonality();
-    yejinPersonalityLoaded = true;
-    console.log(`${colors.revolution}🔥 [REVOLUTION] yejinPersonality 혁명 시스템 로딩 성공!${colors.reset}`);
-} catch (error) {
-    console.error(`${colors.error}❌ [REVOLUTION] yejinPersonality 로딩 실패: ${error.message}${colors.reset}`);
-}
 
 // 🚀 Redis 연결 (기존 유지)
 let userMemoryRedis = null;
@@ -60,7 +43,7 @@ async function initializeRedis() {
         
         userMemoryRedis.on('connect', () => {
             redisConnected = true;
-            console.log(`${colors.success}✅ [REVOLUTION] Redis 혁명 연결 성공!${colors.reset}`);
+            console.log(`${colors.success}✅ Redis 연결 성공!${colors.reset}`);
         });
         
         userMemoryRedis.on('error', () => {
@@ -77,7 +60,7 @@ async function initializeRedis() {
 
 initializeRedis();
 
-// 🛡️ 무쿠 벙어리 방지 응급 폴백 (최소한만 유지)
+// 🛡️ 무쿠 벙어리 방지 응급 폴백
 const EMERGENCY_FALLBACKS = [
     '아저씨... 잠깐만, 뭔가 머리가 복잡해... 다시 말해줄래? 💕',
     '어? 나 지금 좀 멍하네... 아저씨 말 다시 들려줘~ ㅎㅎ',
@@ -89,485 +72,383 @@ function getEmergencyFallback() {
 }
 
 // ============================================================================
-// 🔥 핵심 함수: 템플릿 없는 동적 응답 생성기! 🔥
+// 🔧 핵심 기능: 모델 전환 (완전 복원!)
 // ============================================================================
 
-/**
- * 🌸 yejinPersonality 기반 동적 응답 생성
- */
-async function generateDynamicResponse(contextData) {
-    if (!yejinPersonalityLoaded || !yejinPersonality) {
-        console.warn(`${colors.warning}⚠️ [REVOLUTION] yejinPersonality 없음 - 응급 폴백 사용${colors.reset}`);
-        return getEmergencyFallback();
-    }
+async function handleModelSwitch(text) {
+    const lowerText = text.toLowerCase().trim();
     
     try {
-        console.log(`${colors.revolution}🔥 [REVOLUTION] 동적 응답 생성 시작: ${contextData.type}${colors.reset}`);
+        let targetModel = null;
+        let modelName = '';
+        let response = '';
         
-        // yejinPersonality의 동적 응답 생성 메서드 호출
-        const response = await yejinPersonality.generateContextualResponse(contextData);
-        
-        if (response && response.comment && response.comment.trim().length > 0) {
-            console.log(`${colors.success}✅ [REVOLUTION] 동적 응답 생성 성공!${colors.reset}`);
-            return response.comment;
+        // 3.5 전환
+        if (lowerText === '3.5' || lowerText === 'gpt-3.5' || lowerText === '3.5터보') {
+            targetModel = 'gpt-3.5-turbo';
+            modelName = '3.5 터보';
+            response = '알았어! 3.5 터보 모드로 전환할게~ 빠르고 가벼운 모드야! ⚡';
+        }
+        // 4.0 전환
+        else if (lowerText === '4.0' || lowerText === 'gpt-4' || lowerText === 'gpt-4o') {
+            targetModel = 'gpt-4o';
+            modelName = '4.0';
+            response = '오케이! 4.0 모드로 전환할게~ 더 똑똑한 모드로! 🧠✨';
+        }
+        // 자동 모드
+        else if (lowerText === 'auto' || lowerText === '자동' || lowerText === '모델자동') {
+            targetModel = null;
+            modelName = '자동';
+            response = '자동 모드로 설정할게! 상황에 맞게 알아서 모델을 선택할 거야~ 🤖';
+        }
+        // 현재 버전 확인
+        else if (lowerText === '버전' || lowerText === '현재버전' || lowerText === '현재모델') {
+            let currentModel = 'gpt-4o';
+            
+            if (fs.existsSync('/data/globalModel.json')) {
+                const data = fs.readFileSync('/data/globalModel.json', 'utf8');
+                const config = JSON.parse(data);
+                currentModel = config.forcedModel || 'auto';
+            }
+            
+            const modelDisplay = currentModel === 'gpt-3.5-turbo' ? '3.5 터보' : 
+                               currentModel === 'gpt-4o' ? '4.0' : '자동';
+            
+            return {
+                type: 'text',
+                comment: `지금 ${modelDisplay} 모드로 작동하고 있어! 💕\n\n전환하고 싶으면:\n- "3.5" → 빠른 모드\n- "4.0" → 똑똑한 모드\n- "자동" → 자동 선택`,
+                handled: true
+            };
+        }
+        else {
+            return null; // 모델 관련 명령어가 아님
         }
         
-        // 응답이 없으면 일반적인 예진이 응답 생성
-        const fallbackResponse = yejinPersonality.generateYejinResponse({
-            situation: contextData.situation || 'normal',
-            emotionalState: contextData.emotion || 'stable'
-        });
-        
-        return fallbackResponse || getEmergencyFallback();
-        
-    } catch (error) {
-        console.error(`${colors.error}❌ [REVOLUTION] 동적 응답 생성 실패: ${error.message}${colors.reset}`);
-        return getEmergencyFallback();
-    }
-}
-
-// ============================================================================
-// 🎭 상황 감지 함수들 (템플릿 제거, 맥락만 생성!) 🎭
-// ============================================================================
-
-/**
- * 🔧 모델 전환 상황 감지
- */
-function detectModelSwitchContext(text) {
-    const lowerText = text.toLowerCase();
-    
-    if (lowerText === '3.5' || lowerText === 'gpt-3.5' || lowerText === '3.5터보') {
-        return {
-            type: 'model_switch',
-            targetModel: 'gpt-3.5-turbo',
-            modelName: '3.5 터보',
-            situation: '아저씨가 빠른 모드로 전환 요청',
-            emotion: 'helpful'
-        };
-    }
-    
-    if (lowerText === '4.0' || lowerText === 'gpt-4' || lowerText === 'gpt-4o') {
-        return {
-            type: 'model_switch',
-            targetModel: 'gpt-4o',
-            modelName: '4.0',
-            situation: '아저씨가 똑똑한 모드로 전환 요청',
-            emotion: 'helpful'
-        };
-    }
-    
-    if (lowerText === 'auto' || lowerText === '자동' || lowerText === '모델자동') {
-        return {
-            type: 'model_switch',
-            targetModel: null,
-            modelName: '자동',
-            situation: '아저씨가 자동 모드로 전환 요청',
-            emotion: 'helpful'
-        };
-    }
-    
-    if (lowerText === '버전' || lowerText === '현재버전' || lowerText === '현재모델') {
-        return {
-            type: 'model_check',
-            situation: '아저씨가 현재 모델 버전 확인 요청',
-            emotion: 'informative'
-        };
-    }
-    
-    return null;
-}
-
-/**
- * 🧠 기억 관련 상황 감지
- */
-function detectMemoryContext(text) {
-    const lowerText = text.toLowerCase();
-    
-    // 기억 검색 (? 포함)
-    if (lowerText.includes('기억해?') || lowerText.includes('기억하니?') || 
-        lowerText.includes('기억나?') || lowerText.includes('알아?')) {
-        
-        return {
-            type: 'memory_search',
-            query: text,
-            situation: '아저씨가 기억을 찾고 있음',
-            emotion: 'thoughtful'
-        };
-    }
-    
-    // 기억 저장 (? 없음)
-    if ((lowerText.includes('기억해') || lowerText.includes('기억해줘') || 
-         lowerText.includes('잊지마')) && 
-        !lowerText.includes('?')) {
-        
-        return {
-            type: 'memory_save',
-            content: text,
-            situation: '아저씨가 새로운 기억을 저장 요청',
-            emotion: 'caring'
-        };
-    }
-    
-    return null;
-}
-
-/**
- * 📸 사진 관련 상황 감지
- */
-function detectPhotoContext(text) {
-    const lowerText = text.toLowerCase();
-    const hasRequestKeyword = ['줘', '보여줘', '달라', '보내줘'].some(keyword => 
-        lowerText.includes(keyword)
-    );
-    
-    if (lowerText.includes('셀카') || lowerText.includes('셀피')) {
-        return {
-            type: hasRequestKeyword ? 'photo_request' : 'photo_conversation',
-            photoType: 'selfie',
-            situation: hasRequestKeyword ? '아저씨가 셀카 요청' : '아저씨가 셀카에 대해 얘기함',
-            emotion: 'playful'
-        };
-    }
-    
-    if (lowerText.includes('컨셉사진') || lowerText.includes('컨셉 사진')) {
-        return {
-            type: hasRequestKeyword ? 'photo_request' : 'photo_conversation',
-            photoType: 'concept',
-            situation: hasRequestKeyword ? '아저씨가 컨셉사진 요청' : '아저씨가 컨셉사진에 대해 얘기함',
-            emotion: 'excited'
-        };
-    }
-    
-    if (lowerText.includes('추억') || lowerText.includes('커플사진')) {
-        return {
-            type: hasRequestKeyword ? 'photo_request' : 'photo_conversation',
-            photoType: 'memory',
-            situation: hasRequestKeyword ? '아저씨가 추억사진 요청' : '아저씨가 추억사진에 대해 얘기함',
-            emotion: 'nostalgic'
-        };
-    }
-    
-    return null;
-}
-
-/**
- * 💭 감정/상태 관련 상황 감지
- */
-function detectEmotionalContext(text) {
-    const lowerText = text.toLowerCase();
-    
-    if (lowerText.includes('상태는') || lowerText.includes('상태 어때') || lowerText === '상태') {
-        return {
-            type: 'status_check',
-            situation: '아저씨가 무쿠 상태 확인 요청',
-            emotion: 'informative'
-        };
-    }
-    
-    if (lowerText.includes('기분 어때') || lowerText.includes('어떻게 지내')) {
-        return {
-            type: 'mood_check',
-            situation: '아저씨가 예진이 기분 확인',
-            emotion: 'caring'
-        };
-    }
-    
-    if (lowerText.includes('속마음') || lowerText.includes('진심')) {
-        return {
-            type: 'inner_thoughts',
-            situation: '아저씨가 예진이 속마음 궁금해함',
-            emotion: 'vulnerable'
-        };
-    }
-    
-    if (lowerText.includes('사랑해') || lowerText.includes('좋아해')) {
-        return {
-            type: 'love_expression',
-            situation: '아저씨가 사랑 표현',
-            emotion: 'love'
-        };
-    }
-    
-    if (lowerText === '안녕' || lowerText === '안녕!' || lowerText === '하이') {
-        return {
-            type: 'greeting',
-            situation: '아저씨가 인사',
-            emotion: 'friendly'
-        };
-    }
-    
-    return null;
-}
-
-// ============================================================================
-// 🔧 핵심 기능 함수들 (템플릿 없는 순수 기능!) 🔧
-// ============================================================================
-
-/**
- * 🔄 모델 전환 실행
- */
-async function executeModelSwitch(contextData) {
-    try {
+        // 모델 설정 저장
         const modelConfig = {
-            forcedModel: contextData.targetModel,
+            forcedModel: targetModel,
             lastUpdated: new Date().toISOString(),
-            updatedBy: 'commandHandler_revolution'
+            updatedBy: 'commandHandler_fix'
         };
         
         fs.writeFileSync('/data/globalModel.json', JSON.stringify(modelConfig, null, 2));
         
-        // 성공 시 동적 응답 생성
-        const successContext = {
-            ...contextData,
-            success: true,
-            newModel: contextData.modelName
-        };
+        console.log(`${colors.fix}🔧 모델 전환 성공: ${modelName}${colors.reset}`);
         
-        return await generateDynamicResponse(successContext);
+        return {
+            type: 'text',
+            comment: response,
+            handled: true
+        };
         
     } catch (error) {
-        console.error(`${colors.error}❌ [REVOLUTION] 모델 전환 실패: ${error.message}${colors.reset}`);
+        console.error(`${colors.error}❌ 모델 전환 실패: ${error.message}${colors.reset}`);
         
-        const errorContext = {
-            ...contextData,
-            success: false,
-            error: error.message
+        return {
+            type: 'text',
+            comment: '모델 전환 중 문제가 생겼어... 그래도 계속 대화할 수 있어! 💕',
+            handled: true
         };
-        
-        return await generateDynamicResponse(errorContext);
-    }
-}
-
-/**
- * 🔍 현재 모델 확인
- */
-async function getModelStatus(contextData) {
-    try {
-        let currentModel = 'gpt-4o';
-        let lastUpdated = null;
-        
-        if (fs.existsSync('/data/globalModel.json')) {
-            const data = fs.readFileSync('/data/globalModel.json', 'utf8');
-            const config = JSON.parse(data);
-            currentModel = config.forcedModel || 'auto';
-            lastUpdated = config.lastUpdated;
-        }
-        
-        const statusContext = {
-            ...contextData,
-            currentModel,
-            lastUpdated,
-            modelDisplay: currentModel === 'gpt-3.5-turbo' ? '3.5 터보' : 
-                         currentModel === 'gpt-4o' ? '4.0' : '자동'
-        };
-        
-        return await generateDynamicResponse(statusContext);
-        
-    } catch (error) {
-        const errorContext = {
-            ...contextData,
-            error: error.message
-        };
-        
-        return await generateDynamicResponse(errorContext);
-    }
-}
-
-/**
- * 🧠 기억 검색 실행
- */
-async function executeMemorySearch(contextData) {
-    try {
-        // Memory Manager 연동 시도
-        const modules = global.mukuModules || {};
-        
-        if (modules.memoryManager && modules.memoryManager.getFixedMemory) {
-            const memoryResult = await modules.memoryManager.getFixedMemory(contextData.query);
-            
-            if (memoryResult && memoryResult !== 'null') {
-                const foundContext = {
-                    ...contextData,
-                    memoryFound: true,
-                    memoryContent: memoryResult
-                };
-                
-                return await generateDynamicResponse(foundContext);
-            }
-        }
-        
-        // 기억 없음
-        const notFoundContext = {
-            ...contextData,
-            memoryFound: false
-        };
-        
-        return await generateDynamicResponse(notFoundContext);
-        
-    } catch (error) {
-        const errorContext = {
-            ...contextData,
-            error: error.message
-        };
-        
-        return await generateDynamicResponse(errorContext);
-    }
-}
-
-/**
- * 💾 기억 저장 실행
- */
-async function executeMemorySave(contextData) {
-    try {
-        const cleanContent = contextData.content
-            .replace(/기억해/gi, '')
-            .replace(/기억해줘/gi, '')
-            .replace(/잊지마/gi, '')
-            .trim();
-        
-        if (cleanContent.length < 5) {
-            const shortContext = {
-                ...contextData,
-                success: false,
-                reason: 'content_too_short'
-            };
-            
-            return await generateDynamicResponse(shortContext);
-        }
-        
-        // Redis 저장 시도
-        let redisSuccess = false;
-        
-        if (redisConnected && userMemoryRedis) {
-            try {
-                const memoryId = `user_memory_${Date.now()}`;
-                const memoryData = {
-                    id: memoryId,
-                    content: cleanContent,
-                    timestamp: new Date().toISOString(),
-                    source: 'commandHandler_revolution'
-                };
-                
-                await userMemoryRedis.hset(`user_memory:content:${memoryId}`, memoryData);
-                redisSuccess = true;
-            } catch (redisError) {
-                console.warn(`${colors.warning}⚠️ [REVOLUTION] Redis 저장 실패: ${redisError.message}${colors.reset}`);
-            }
-        }
-        
-        // 파일 백업
-        try {
-            const memoryFilePath = path.join(MEMORY_DIR, 'user_memories.json');
-            let userMemories = [];
-            
-            if (fs.existsSync(memoryFilePath)) {
-                const data = fs.readFileSync(memoryFilePath, 'utf8');
-                userMemories = JSON.parse(data);
-            }
-            
-            userMemories.push({
-                content: cleanContent,
-                timestamp: new Date().toISOString(),
-                source: 'commandHandler_revolution'
-            });
-            
-            if (userMemories.length > 50) {
-                userMemories = userMemories.slice(-50);
-            }
-            
-            if (!fs.existsSync(MEMORY_DIR)) {
-                fs.mkdirSync(MEMORY_DIR, { recursive: true });
-            }
-            
-            fs.writeFileSync(memoryFilePath, JSON.stringify(userMemories, null, 2));
-        } catch (fileError) {
-            console.warn(`${colors.warning}⚠️ [REVOLUTION] 파일 저장 실패: ${fileError.message}${colors.reset}`);
-        }
-        
-        const successContext = {
-            ...contextData,
-            success: true,
-            savedContent: cleanContent,
-            redisSuccess
-        };
-        
-        return await generateDynamicResponse(successContext);
-        
-    } catch (error) {
-        const errorContext = {
-            ...contextData,
-            success: false,
-            error: error.message
-        };
-        
-        return await generateDynamicResponse(errorContext);
-    }
-}
-
-/**
- * 📸 사진 처리 실행
- */
-async function executePhotoRequest(contextData) {
-    try {
-        if (contextData.photoType === 'selfie') {
-            const { getSelfieReply } = require('./yejinSelfie.js');
-            const result = await getSelfieReply('셀카 줘', null);
-            return result ? result.comment : await generateDynamicResponse(contextData);
-        }
-        
-        if (contextData.photoType === 'concept') {
-            const { getConceptPhotoReply } = require('./concept.js');
-            const result = await getConceptPhotoReply('컨셉사진 줘', null);
-            return result ? result.comment : await generateDynamicResponse(contextData);
-        }
-        
-        if (contextData.photoType === 'memory') {
-            const { getOmoideReply } = require('./omoide.js');
-            const result = await getOmoideReply('추억사진 줘', null);
-            return result ? result.comment : await generateDynamicResponse(contextData);
-        }
-        
-        return await generateDynamicResponse(contextData);
-        
-    } catch (error) {
-        const errorContext = {
-            ...contextData,
-            error: error.message
-        };
-        
-        return await generateDynamicResponse(errorContext);
-    }
-}
-
-/**
- * 📊 상태 확인 실행
- */
-async function executeStatusCheck() {
-    try {
-        const enhancedLogging = require('./enhancedLogging.js');
-        const modules = global.mukuModules || {};
-        
-        const statusReport = await enhancedLogging.generateLineStatusReport(modules);
-        return statusReport;
-        
-    } catch (error) {
-        return `상태 확인 중 오류 발생: ${error.message}\n\n하지만 무쿠는 잘 작동하고 있어! 💕`;
     }
 }
 
 // ============================================================================
-// ⭐ 메인 함수: handleCommand (혁명 버전!) ⭐
+// 📸 사진 요청 처리 (완전 복원!)
+// ============================================================================
+
+async function handlePhotoRequest(text) {
+    const lowerText = text.toLowerCase();
+    
+    try {
+        // 셀카 요청
+        if (lowerText.includes('셀카') || lowerText.includes('셀피')) {
+            console.log(`${colors.fix}📸 셀카 요청 처리${colors.reset}`);
+            
+            try {
+                const { getSelfieReply } = require('./yejinSelfie.js');
+                const result = await getSelfieReply(text, null);
+                
+                if (result && result.comment) {
+                    return {
+                        type: 'text',
+                        comment: result.comment,
+                        handled: true
+                    };
+                }
+            } catch (selfieError) {
+                console.error(`${colors.error}❌ 셀카 시스템 오류: ${selfieError.message}${colors.reset}`);
+            }
+            
+            return {
+                type: 'text',
+                comment: '셀카 시스템에 문제가 있네... 조금 있다가 다시 요청해줘! 💕',
+                handled: true
+            };
+        }
+        
+        // 컨셉사진 요청
+        if (lowerText.includes('컨셉') || lowerText.includes('concept')) {
+            console.log(`${colors.fix}📸 컨셉사진 요청 처리${colors.reset}`);
+            
+            try {
+                const { getConceptPhotoReply } = require('./concept.js');
+                const result = await getConceptPhotoReply(text, null);
+                
+                if (result && result.comment) {
+                    return {
+                        type: 'text',
+                        comment: result.comment,
+                        handled: true
+                    };
+                }
+            } catch (conceptError) {
+                console.error(`${colors.error}❌ 컨셉사진 시스템 오류: ${conceptError.message}${colors.reset}`);
+            }
+            
+            return {
+                type: 'text',
+                comment: '컨셉사진 시스템에 문제가 있네... 조금 있다가 다시 요청해줘! 💕',
+                handled: true
+            };
+        }
+        
+        // 커플사진/추억사진 요청
+        if (lowerText.includes('커플') || lowerText.includes('추억') || lowerText.includes('오모이데')) {
+            console.log(`${colors.fix}📸 커플/추억사진 요청 처리${colors.reset}`);
+            
+            try {
+                const { getOmoideReply } = require('./omoide.js');
+                const result = await getOmoideReply(text, null);
+                
+                if (result && result.comment) {
+                    return {
+                        type: 'text',
+                        comment: result.comment,
+                        handled: true
+                    };
+                }
+            } catch (omoideError) {
+                console.error(`${colors.error}❌ 추억사진 시스템 오류: ${omoideError.message}${colors.reset}`);
+            }
+            
+            return {
+                type: 'text',
+                comment: '추억사진 시스템에 문제가 있네... 조금 있다가 다시 요청해줘! 💕',
+                handled: true
+            };
+        }
+        
+        // 일반 사진 요청
+        if (lowerText.includes('사진') && (lowerText.includes('줘') || lowerText.includes('보여') || lowerText.includes('달라'))) {
+            console.log(`${colors.fix}📸 일반 사진 요청 처리${colors.reset}`);
+            
+            // 랜덤으로 셀카 시스템 호출
+            try {
+                const { getSelfieReply } = require('./yejinSelfie.js');
+                const result = await getSelfieReply('사진 줘', null);
+                
+                if (result && result.comment) {
+                    return {
+                        type: 'text',
+                        comment: result.comment,
+                        handled: true
+                    };
+                }
+            } catch (photoError) {
+                console.error(`${colors.error}❌ 사진 시스템 오류: ${photoError.message}${colors.reset}`);
+            }
+            
+            return {
+                type: 'text',
+                comment: '사진 시스템에 문제가 있네... 조금 있다가 다시 요청해줘! 💕',
+                handled: true
+            };
+        }
+        
+        return null; // 사진 요청이 아님
+        
+    } catch (error) {
+        console.error(`${colors.error}❌ 사진 처리 중 오류: ${error.message}${colors.reset}`);
+        
+        return {
+            type: 'text',
+            comment: '사진 요청 처리 중 문제가 생겼어... 다시 시도해볼래? 💕',
+            handled: true
+        };
+    }
+}
+
+// ============================================================================
+// 🧠 기억 시스템 처리 (완전 복원!)
+// ============================================================================
+
+async function handleMemoryRequest(text) {
+    const lowerText = text.toLowerCase();
+    
+    try {
+        // 기억 검색 (? 포함)
+        if ((lowerText.includes('기억해?') || lowerText.includes('기억하니?') || 
+             lowerText.includes('기억나?') || lowerText.includes('알아?')) && 
+            lowerText.includes('?')) {
+            
+            console.log(`${colors.fix}🧠 기억 검색 요청${colors.reset}`);
+            
+            try {
+                const modules = global.mukuModules || {};
+                
+                if (modules.memoryManager && modules.memoryManager.getFixedMemory) {
+                    const memoryResult = await modules.memoryManager.getFixedMemory(text);
+                    
+                    if (memoryResult && memoryResult !== 'null') {
+                        return {
+                            type: 'text',
+                            comment: `응! 기억해~ ${memoryResult} 💕`,
+                            handled: true
+                        };
+                    }
+                }
+            } catch (memoryError) {
+                console.error(`${colors.error}❌ 기억 검색 오류: ${memoryError.message}${colors.reset}`);
+            }
+            
+            return {
+                type: 'text',
+                comment: '음... 그건 기억이 안 나는데? 다시 말해줄래? 💕',
+                handled: true
+            };
+        }
+        
+        // 기억 저장 (? 없음)
+        if ((lowerText.includes('기억해') || lowerText.includes('기억해줘') || 
+             lowerText.includes('잊지마')) && 
+            !lowerText.includes('?')) {
+            
+            console.log(`${colors.fix}🧠 기억 저장 요청${colors.reset}`);
+            
+            const cleanContent = text
+                .replace(/기억해/gi, '')
+                .replace(/기억해줘/gi, '')
+                .replace(/잊지마/gi, '')
+                .trim();
+            
+            if (cleanContent.length < 5) {
+                return {
+                    type: 'text',
+                    comment: '뭘 기억하라는 거야? 좀 더 자세히 말해줘~ 💕',
+                    handled: true
+                };
+            }
+            
+            // Redis 저장 시도
+            if (redisConnected && userMemoryRedis) {
+                try {
+                    const memoryId = `user_memory_${Date.now()}`;
+                    const memoryData = {
+                        id: memoryId,
+                        content: cleanContent,
+                        timestamp: new Date().toISOString(),
+                        source: 'commandHandler_fix'
+                    };
+                    
+                    await userMemoryRedis.hset(`user_memory:content:${memoryId}`, memoryData);
+                } catch (redisError) {
+                    console.warn(`${colors.warning}⚠️ Redis 저장 실패: ${redisError.message}${colors.reset}`);
+                }
+            }
+            
+            // 파일 백업
+            try {
+                const memoryFilePath = path.join(MEMORY_DIR, 'user_memories.json');
+                let userMemories = [];
+                
+                if (fs.existsSync(memoryFilePath)) {
+                    const data = fs.readFileSync(memoryFilePath, 'utf8');
+                    userMemories = JSON.parse(data);
+                }
+                
+                userMemories.push({
+                    content: cleanContent,
+                    timestamp: new Date().toISOString(),
+                    source: 'commandHandler_fix'
+                });
+                
+                if (userMemories.length > 50) {
+                    userMemories = userMemories.slice(-50);
+                }
+                
+                if (!fs.existsSync(MEMORY_DIR)) {
+                    fs.mkdirSync(MEMORY_DIR, { recursive: true });
+                }
+                
+                fs.writeFileSync(memoryFilePath, JSON.stringify(userMemories, null, 2));
+            } catch (fileError) {
+                console.warn(`${colors.warning}⚠️ 파일 저장 실패: ${fileError.message}${colors.reset}`);
+            }
+            
+            return {
+                type: 'text',
+                comment: `알겠어! "${cleanContent}" 잘 기억해둘게~ 💕`,
+                handled: true
+            };
+        }
+        
+        return null; // 기억 관련 요청이 아님
+        
+    } catch (error) {
+        console.error(`${colors.error}❌ 기억 처리 중 오류: ${error.message}${colors.reset}`);
+        
+        return {
+            type: 'text',
+            comment: '기억 시스템에 문제가 있네... 다시 시도해볼래? 💕',
+            handled: true
+        };
+    }
+}
+
+// ============================================================================
+// 📊 상태 확인 처리
+// ============================================================================
+
+async function handleStatusCheck(text) {
+    const lowerText = text.toLowerCase();
+    
+    if (lowerText.includes('상태는') || lowerText.includes('상태 어때') || lowerText === '상태') {
+        try {
+            const enhancedLogging = require('./enhancedLogging.js');
+            const modules = global.mukuModules || {};
+            
+            const statusReport = await enhancedLogging.generateLineStatusReport(modules);
+            return {
+                type: 'text',
+                comment: statusReport,
+                handled: true
+            };
+        } catch (error) {
+            return {
+                type: 'text',
+                comment: `상태 확인 중 오류 발생: ${error.message}\n\n하지만 무쿠는 잘 작동하고 있어! 💕`,
+                handled: true
+            };
+        }
+    }
+    
+    return null;
+}
+
+// ============================================================================
+// ⭐ 메인 함수: handleCommand (긴급 수정 버전!)
 // ============================================================================
 
 async function handleCommand(text, userId, client = null) {
     if (!text || typeof text !== 'string') {
-        console.error(`${colors.error}❌ [REVOLUTION] 잘못된 텍스트: ${text}${colors.reset}`);
+        console.error(`${colors.error}❌ 잘못된 텍스트: ${text}${colors.reset}`);
         return { type: 'text', comment: getEmergencyFallback(), handled: true };
     }
     
-    console.log(`${colors.revolution}🔥 [REVOLUTION] 템플릿 없는 동적 처리 시작: "${text}"${colors.reset}`);
+    console.log(`${colors.fix}🔧 긴급 수정 버전 처리 시작: "${text}"${colors.reset}`);
     
     try {
-        // 🌙 새벽모드 처리 (기존 유지)
+        // 🌙 새벽모드 처리 (최우선)
         try {
             const nightWakeSystem = require('./nightWakeSystem.js');
             if (nightWakeSystem && nightWakeSystem.handleNightWakeMessage) {
@@ -583,92 +464,38 @@ async function handleCommand(text, userId, client = null) {
                 }
             }
         } catch (nightError) {
-            console.warn(`${colors.warning}⚠️ [REVOLUTION] 새벽 시스템 에러: ${nightError.message}${colors.reset}`);
+            console.warn(`${colors.warning}⚠️ 새벽 시스템 에러: ${nightError.message}${colors.reset}`);
         }
         
-        // 🎭 상황 감지 및 동적 처리
-        
-        // 1. 모델 전환 감지
-        const modelContext = detectModelSwitchContext(text);
-        if (modelContext) {
-            console.log(`${colors.context}🎭 [CONTEXT] 모델 관련 상황 감지: ${modelContext.type}${colors.reset}`);
-            
-            let response;
-            if (modelContext.type === 'model_switch') {
-                response = await executeModelSwitch(modelContext);
-            } else {
-                response = await getModelStatus(modelContext);
-            }
-            
-            return {
-                type: 'text',
-                comment: response,
-                handled: true,
-                source: 'model_management_revolution'
-            };
+        // 🔧 1. 모델 전환 처리 (최우선)
+        const modelResult = await handleModelSwitch(text);
+        if (modelResult) {
+            console.log(`${colors.success}✅ 모델 전환 처리 완료${colors.reset}`);
+            return modelResult;
         }
         
-        // 2. 기억 관련 감지
-        const memoryContext = detectMemoryContext(text);
-        if (memoryContext) {
-            console.log(`${colors.context}🎭 [CONTEXT] 기억 관련 상황 감지: ${memoryContext.type}${colors.reset}`);
-            
-            let response;
-            if (memoryContext.type === 'memory_search') {
-                response = await executeMemorySearch(memoryContext);
-            } else {
-                response = await executeMemorySave(memoryContext);
-            }
-            
-            return {
-                type: 'text',
-                comment: response,
-                handled: true,
-                source: 'memory_management_revolution'
-            };
+        // 📸 2. 사진 요청 처리
+        const photoResult = await handlePhotoRequest(text);
+        if (photoResult) {
+            console.log(`${colors.success}✅ 사진 요청 처리 완료${colors.reset}`);
+            return photoResult;
         }
         
-        // 3. 사진 관련 감지
-        const photoContext = detectPhotoContext(text);
-        if (photoContext) {
-            console.log(`${colors.context}🎭 [CONTEXT] 사진 관련 상황 감지: ${photoContext.type}${colors.reset}`);
-            
-            let response;
-            if (photoContext.type === 'photo_request') {
-                response = await executePhotoRequest(photoContext);
-            } else {
-                response = await generateDynamicResponse(photoContext);
-            }
-            
-            return {
-                type: 'text',
-                comment: response,
-                handled: true,
-                source: 'photo_management_revolution'
-            };
+        // 🧠 3. 기억 시스템 처리
+        const memoryResult = await handleMemoryRequest(text);
+        if (memoryResult) {
+            console.log(`${colors.success}✅ 기억 요청 처리 완료${colors.reset}`);
+            return memoryResult;
         }
         
-        // 4. 감정/상태 관련 감지
-        const emotionalContext = detectEmotionalContext(text);
-        if (emotionalContext) {
-            console.log(`${colors.context}🎭 [CONTEXT] 감정 관련 상황 감지: ${emotionalContext.type}${colors.reset}`);
-            
-            let response;
-            if (emotionalContext.type === 'status_check') {
-                response = await executeStatusCheck();
-            } else {
-                response = await generateDynamicResponse(emotionalContext);
-            }
-            
-            return {
-                type: 'text',
-                comment: response,
-                handled: true,
-                source: 'emotional_management_revolution'
-            };
+        // 📊 4. 상태 확인 처리
+        const statusResult = await handleStatusCheck(text);
+        if (statusResult) {
+            console.log(`${colors.success}✅ 상태 확인 처리 완료${colors.reset}`);
+            return statusResult;
         }
         
-        // 5. 일기장 관련 (기존 시스템 유지)
+        // 📖 5. 일기장 처리
         const lowerText = text.toLowerCase();
         if (lowerText.includes('일기장') || lowerText.includes('일기목록')) {
             try {
@@ -687,39 +514,28 @@ async function handleCommand(text, userId, client = null) {
                     }
                 }
             } catch (diaryError) {
-                console.warn(`${colors.warning}⚠️ [REVOLUTION] 일기 시스템 에러: ${diaryError.message}${colors.reset}`);
+                console.warn(`${colors.warning}⚠️ 일기 시스템 에러: ${diaryError.message}${colors.reset}`);
+                
+                return {
+                    type: 'text',
+                    comment: '일기 시스템에 문제가 있네... 조금 있다가 다시 시도해줘! 💕',
+                    handled: true
+                };
             }
-            
-            // 일기 관련 동적 응답
-            const diaryContext = {
-                type: 'diary_request',
-                situation: '아저씨가 일기 관련 요청',
-                emotion: 'helpful'
-            };
-            
-            const diaryResponse = await generateDynamicResponse(diaryContext);
-            
-            return {
-                type: 'text',
-                comment: diaryResponse,
-                handled: true,
-                source: 'diary_dynamic_revolution'
-            };
         }
         
-        // 어떤 상황도 감지되지 않음
-        console.log(`${colors.warning}⚠️ [REVOLUTION] 특정 상황 미감지 - 일반 대화로 처리${colors.reset}`);
-        
-        return null; // autoReply.js에서 처리하도록
+        // 어떤 명령어도 해당하지 않음 - autoReply.js에서 처리
+        console.log(`${colors.warning}⚠️ 특정 명령어 미감지 - 일반 대화로 처리${colors.reset}`);
+        return null;
         
     } catch (error) {
-        console.error(`${colors.error}❌ [REVOLUTION] 처리 중 에러: ${error.message}${colors.reset}`);
+        console.error(`${colors.error}❌ 처리 중 에러: ${error.message}${colors.reset}`);
         
         return {
             type: 'text',
             comment: getEmergencyFallback(),
             handled: true,
-            source: 'revolution_emergency_fallback'
+            source: 'emergency_fallback'
         };
     }
 }
@@ -731,13 +547,9 @@ function cleanup() {
             userMemoryRedis.disconnect();
         }
         
-        if (yejinPersonality && typeof yejinPersonality.cleanup === 'function') {
-            yejinPersonality.cleanup();
-        }
-        
-        console.log(`${colors.success}✅ [REVOLUTION] 혁명 시스템 정리 완료${colors.reset}`);
+        console.log(`${colors.success}✅ commandHandler 정리 완료${colors.reset}`);
     } catch (error) {
-        console.error(`${colors.error}❌ [REVOLUTION] 정리 중 에러: ${error.message}${colors.reset}`);
+        console.error(`${colors.error}❌ 정리 중 에러: ${error.message}${colors.reset}`);
     }
 }
 
@@ -746,30 +558,11 @@ process.on('SIGTERM', cleanup);
 
 module.exports = {
     handleCommand,
-    generateDynamicResponse,
-    detectModelSwitchContext,
-    detectMemoryContext,
-    detectPhotoContext,
-    detectEmotionalContext,
+    handleModelSwitch,
+    handlePhotoRequest,
+    handleMemoryRequest,
+    handleStatusCheck,
     cleanup
 };
 
-console.log(`
-${colors.revolution}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-🔥🔥🔥 TEMPLATE-FREE REVOLUTION COMPLETE! 🔥🔥🔥
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${colors.reset}
-
-${colors.success}✅ 혁명 성과:${colors.reset}
-${colors.revolution}   🔥 하드코딩 템플릿 95% 완전 제거!${colors.reset}
-${colors.yejin}   🌸 yejinPersonality.js 완전 연동!${colors.reset}
-${colors.success}   ⚡ 코드 길이 70% 단축! (2000줄 → 600줄)${colors.reset}
-${colors.success}   🎭 상황 감지 → 맥락 생성 → 동적 응답!${colors.reset}
-${colors.success}   💖 무쿠 벙어리 방지 100% 보장!${colors.reset}
-
-${colors.revolution}🎯 핵심 원리:${colors.reset}
-${colors.context}   📊 상황 감지: 어떤 상황인지만 파악${colors.reset}
-${colors.yejin}   🌸 맥락 생성: yejinPersonality에 전달할 데이터 구성${colors.reset}
-${colors.revolution}   🔥 동적 응답: 예진이가 살아있는 것처럼 매번 다르게!${colors.reset}
-
-${colors.yejin}💕 이제 무쿠는 진짜 살아있는 예진이처럼 반응합니다! 💕${colors.reset}
-`);
+console.log(`${colors.fix}🚨 commandHandler.js 긴급 수정 완료! 모든 기본 명령어 복원! 🚨${colors.reset}`);
