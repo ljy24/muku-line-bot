@@ -1590,8 +1590,11 @@ async function handleCommand(text, userId, client = null) {
             }
         }
 
-        if (lowerText.includes('사진') && !lowerText.includes('찍')) {
-            
+            const isPhotoRequest = (lowerText.includes('사진') && 
+                       (lowerText.includes('줘') || lowerText.includes('보여줘') || 
+                        lowerText.includes('달라') || lowerText.includes('보내줘')));
+
+            if (isPhotoRequest && !lowerText.includes('찍')) {           
             if (!lowerText.includes('셀카') && !lowerText.includes('컨셉') && 
                 !lowerText.includes('추억') && !lowerText.includes('커플') &&
                 !lowerText.includes('모지코')) {
