@@ -518,12 +518,68 @@ async function processMukuMessageForConflict(userMessage, client, userId) {
 function getMukuCombinedConflictState() {
     let sulkyInfo = { isSulky: false, level: 0 };
     
-    try {
-        const sulkyManager = require('./sulkyManager');
-        sulkyInfo = sulkyManager.getSulkinessState();
-    } catch (error) {
-        console.log('⚠️ [무쿠갈등] sulkyManager 연동 실패');
+   // ✅ 완전 수정된 안전한 코드로 교체:
+try {
+    // sulkyManager 모듈 로드 시도
+    const sulkyManager = require('./sulkyManager');
+    
+    // 모듈이 제대로 로드되었는지 확인
+    if (!sulkyManager) {
+        throw new Error('sulkyManager 모듈이 null입니다');
     }
+    
+    // getSulkinessState 메서드가 존재하는지 확인
+    if (typeof sulkyManager.getSulkinessState !== 'function') {
+        console.log('⚠️ [무쿠갈등] sulkyManager.getSulkinessState 메서드 없음 - 기본값 사용');
+        sulkyInfo = { 
+            isSulky: false, 
+            level: 0, 
+            isWorried: false, 
+            sulkyLevel: 0 
+        };
+    } else {
+        // 메서드 호출 시도
+        try {
+            sulkyInfo = sulkyManager.getSulkinessState();
+            
+            // 반환값이 유효한지 확인
+            if (!sulkyInfo || typeof sulkyInfo !== 'object') {
+                throw new Error('getSulkinessState가 유효하지 않은 값을 반환했습니다');
+            }
+            
+            // 기본 속성들이 있는지 확인하고 없으면 기본값 설정
+            sulkyInfo = {
+                isSulky: sulkyInfo.isSulky || false,
+                level: sulkyInfo.level || 0,
+                isWorried: sulkyInfo.isWorried || false,
+                sulkyLevel: sulkyInfo.sulkyLevel || 0,
+                ...sulkyInfo  // 나머지 속성들도 유지
+            };
+            
+            // 성공적으로 로드됨을 로그 (조용하게)
+            // console.log('✅ [무쿠갈등] sulkyManager 연동 성공');
+            
+        } catch (methodError) {
+            console.log('⚠️ [무쿠갈등] sulkyManager 메서드 호출 실패 - 기본값 사용');
+            sulkyInfo = { 
+                isSulky: false, 
+                level: 0, 
+                isWorried: false, 
+                sulkyLevel: 0 
+            };
+        }
+    }
+    
+} catch (requireError) {
+    // require 자체가 실패한 경우
+    console.log('⚠️ [무쿠갈등] sulkyManager 모듈 로드 실패 - 기본값으로 계속 진행');
+    sulkyInfo = { 
+        isSulky: false, 
+        level: 0, 
+        isWorried: false, 
+        sulkyLevel: 0 
+    };
+}
     
     return {
         realTimeConflict: {
