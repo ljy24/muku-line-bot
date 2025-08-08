@@ -1696,7 +1696,7 @@ async function getReplyByMessage(userMessage) {
         await safelyStoreMessage(BOT_NAME, birthdayResponse);
         return { type: 'text', comment: birthdayResponse };
     }
-     🚬 담타 하드코딩 처리 <- 여기에 추가!
+    // 🚬 담타 하드코딩 처리 <- 여기에 추가!
     const damtaResponse = handleSimpleDamta(cleanUserMessage);
     if (damtaResponse) {
         await safelyStoreMessage(BOT_NAME, damtaResponse);
