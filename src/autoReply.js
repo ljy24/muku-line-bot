@@ -992,7 +992,7 @@ async function getRecentConversationContext(limit = 20) {
     console.log(`🧠 [Memory Tape 연결] 최근 ${limit}개 대화 조회 시작...`);
     
     try {
-        const memoryTape = require('../data/memory-tape/muku-memory-tape.js');
+        const memoryTape = require('./muku-memory-tape.js');
         if (!memoryTape) {
             console.log('⚠️ [Memory Tape 연결] Memory Tape 모듈 없음');
             return [];
