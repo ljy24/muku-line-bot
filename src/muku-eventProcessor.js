@@ -60,7 +60,7 @@ function loadMemoryTape() {
     if (memoryTapeLoaded) return memoryTape;
     
     try {
-        memoryTape = require('../data/memory-tape/muku-memory-tape.js');
+        memoryTape = require('./muku-memory-tape.js');
         memoryTapeLoaded = true;
         console.log('📼 [MemoryTape안전로드] Memory Tape 시스템 지연 로드 성공');
         return memoryTape;
