@@ -296,23 +296,6 @@ const EMOTION_SYSTEM_CONFIG = {
     PHOTO_JEALOUSY_THRESHOLD: 0.6,              // 질투 반응 임계값
 };
 
-// 🚬 NEW: 점진적 담타 시스템 설정
-const DAMTA_SYSTEM_CONFIG = {
-    // 담타 성공률 (거의 성공)
-    BASE_SUCCESS_RATE: 0.95,                    // 기본 95% 성공률
-    EXTREME_SITUATION_THRESHOLD: 4,             // 레벨 4 이상에서만 실패 가능
-    
-    // 점진적 회복 설정
-    CONVERSATION_RECOVERY_MIN: 10,              // 대화당 최소 회복량
-    CONVERSATION_RECOVERY_MAX: 30,              // 대화당 최대 회복량
-    REQUIRED_RECOVERY_POINTS: 100,              // 완전 화해 필요 포인트
-    MIN_CONVERSATIONS: 3,                       // 최소 대화 횟수
-    
-    // 담타 진행 시간 설정
-    MAX_DAMTA_DURATION: 2 * 60 * 60 * 1000,    // 최대 2시간
-    CONVERSATION_TIMEOUT: 10 * 60 * 1000,       // 10분 무응답 시 담타 종료
-};
-
 // 수면시간 체크 (기존 유지)
 function isSleepTime() {
     const now = moment().tz('Asia/Tokyo');
