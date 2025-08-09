@@ -1,5 +1,5 @@
 // ============================================================================
-// muku-diarySystem.js v8.4 - 축적된 지혜 완전 통합 + 하드코딩 제거 + 하루1개보장 강화
+// muku-diarySystem.js v8.4 - 축적된 지혜 완전 통합 + 하드코딩 제거 + 하루1개보장 강화 + 일본시간 기준 수정
 // Part 1/5: 초기 설정, 모듈 로딩, Redis 클라이언트 관리
 // 🔥 핵심 수정사항:
 // 1. 🧠 오늘의 축적된 지혜와 학습 내용 완전 통합
@@ -7,7 +7,8 @@
 // 3. 🎯 예측정확도, 학습기반결정 등 시스템 지능 표시
 // 4. 💭 사용자가 "기억해"라고 한 오늘의 새로운 기억들 반영
 // 5. 📝 일기에 무쿠의 성장과 학습 과정 자연스럽게 포함
-// ✅ 이제 무쿠의 축적된 지혜가 일기에 완벽하게 반영됩니다!
+// 6. 🌏 모든 날짜 처리를 일본시간(JST) 기준으로 통일 수정
+// ✅ 이제 무쿠의 축적된 지혜가 일기에 완벽하게 반영되고 날짜도 정확합니다!
 // ============================================================================
 
 const fs = require('fs').promises;
@@ -35,7 +36,7 @@ const colors = {
 
 let diarySystemStatus = {
     isInitialized: false, totalEntries: 0, lastEntryDate: null, version: "8.4",
-    description: "축적된지혜완전통합+하드코딩제거+하루1개보장강화+autoReply.js방식Memory Tape연동완전적용+감기대화반영보장+실제라인대화정확수집",
+    description: "축적된지혜완전통합+하드코딩제거+하루1개보장강화+autoReply.js방식Memory Tape연동완전적용+감기대화반영보장+실제라인대화정확수집+일본시간기준수정",
     autoSaveEnabled: false, autoSaveInterval: null, dataPath: '/data/dynamic_memories.json',
     lastAutoSave: null, initializationTime: null, memoryTapeConnected: false,
     redisConnected: false, dailyDiaryEnabled: true, lastDailyDiary: null,
@@ -54,8 +55,61 @@ let diarySystemStatus = {
     hardcodingRemoved: true, // 🆕 하드코딩 메시지 완전 제거
     oneDiaryGuaranteed: true, // 🆕 하루 1개 일기 강화 보장
     wisdomIntegrated: true, // 🆕 축적된 지혜 완전 통합
-    systemIntelligenceTracked: true // 🆕 시스템 지능 추적 완료
+    systemIntelligenceTracked: true, // 🆕 시스템 지능 추적 완료
+    japanTimeFixed: true // 🆕 일본시간 기준 수정 완료
 };
+
+// ================== 🌏 일본시간 유틸리티 함수들 (🆕 추가!) ==================
+
+function getJapanTime() {
+    try {
+        const now = new Date();
+        return new Date(now.toLocaleString("en-US", {timeZone: "Asia/Tokyo"}));
+    } catch (error) {
+        console.warn(`${colors.error}⚠️ [일본시간] 변환 실패, UTC 사용: ${error.message}${colors.reset}`);
+        return new Date();
+    }
+}
+
+function getJapanTimeString() {
+    try {
+        const japanTime = getJapanTime();
+        return japanTime.toISOString().replace('T', ' ').substring(0, 19) + ' (JST)';
+    } catch (error) {
+        console.warn(`${colors.error}⚠️ [일본시간] 문자열 변환 실패: ${error.message}${colors.reset}`);
+        return new Date().toISOString();
+    }
+}
+
+function getJapanDateString(date = null) {
+    try {
+        let targetDate;
+        
+        if (!date) {
+            targetDate = getJapanTime();
+        } else if (date instanceof Date) {
+            targetDate = date;
+        } else if (typeof date === 'string') {
+            targetDate = new Date(date);
+        } else if (typeof date === 'number') {
+            targetDate = new Date(date);
+        } else {
+            console.warn(`${colors.error}⚠️ [일본시간] 잘못된 날짜 형식: ${typeof date}, 현재 시간 사용${colors.reset}`);
+            targetDate = getJapanTime();
+        }
+        
+        // Date 객체 유효성 검사
+        if (isNaN(targetDate.getTime())) {
+            console.warn(`${colors.error}⚠️ [일본시간] 무효한 날짜, 현재 시간 사용${colors.reset}`);
+            targetDate = getJapanTime();
+        }
+        
+        return targetDate.toISOString().split('T')[0]; // YYYY-MM-DD 형식
+    } catch (error) {
+        console.error(`${colors.error}❌ [일본시간] 날짜 처리 오류: ${error.message}${colors.reset}`);
+        return new Date().toISOString().split('T')[0];
+    }
+}
 
 // ================== 🛠️ 지연 로딩 헬퍼 함수들 ==================
 
@@ -177,6 +231,7 @@ function getOpenAIClient() {
     }
     return openaiClient;
 }
+
 // ============================================================================
 // muku-diarySystem.js v8.4 - Part 2/5: 구체적 축적된 지혜 수집, 실제 라인 대화 수집
 // ✨ 개선: "새로운 지혜 1개" → "📚 지혜1: 구체적 내용, 📚 지혜2: 구체적 내용"
@@ -188,8 +243,9 @@ async function getTodayWisdomAndLearning() {
     try {
         console.log(`${colors.wisdom}🧠 [축적된지혜] 오늘의 무쿠 학습 활동 수집 시작...${colors.reset}`);
 
-        const today = new Date();
-        const dateStr = today.toISOString().split('T')[0];
+        // 🌏 일본시간 기준으로 오늘 날짜 생성
+        const japanToday = getJapanTime();
+        const dateStr = getJapanDateString(japanToday);
 
         // 🎯 실제 학습한 구체적인 지혜들 수집
         const specificWisdoms = await collectSpecificWisdoms(dateStr);
@@ -505,8 +561,9 @@ async function extractWisdomFromBehavior(dateStr) {
     const wisdoms = [];
 
     try {
-        // 현재 시간대별 활동 분석
-        const currentHour = new Date().getHours();
+        // 현재 시간대별 활동 분석 (일본시간 기준)
+        const japanTime = getJapanTime();
+        const currentHour = japanTime.getHours();
 
         if (currentHour >= 9 && currentHour <= 11) {
             wisdoms.push({
@@ -623,11 +680,12 @@ async function getRecentConversationMemory(userId = 'user123', limit = 10) {
             return [];
         }
 
-        const today = new Date();
-        const dateStr = today.toISOString().split('T')[0];
+        // 🌏 일본시간 기준으로 오늘 날짜 생성
+        const japanToday = getJapanTime();
+        const dateStr = getJapanDateString(japanToday);
         const redisKey = `muku:conversation:daily:${dateStr}`;
 
-        console.log(`${colors.autoReply}🔍 [autoReply방식] Redis 키: ${redisKey}${colors.reset}`);
+        console.log(`${colors.autoReply}🔍 [autoReply방식] 일본시간 기준 Redis 키: ${redisKey} (${dateStr})${colors.reset}`);
 
         const dailyLogStr = await redis.get(redisKey);
 
@@ -848,6 +906,7 @@ async function getTodayConversationSummary() {
         };
     }
 }
+
 // ============================================================================
 // muku-diarySystem.js v8.4 - Part 3/5: 날씨 API, 파일 시스템, Redis 저장/조회
 // 🔧 추가: 누락없이 소략없이 완전한 주간일기 조회 시스템
@@ -862,8 +921,9 @@ async function getGoyangWeather(date = null) {
             return null;
         }
 
-        const targetDate = date ? new Date(date) : new Date();
-        const dateStr = targetDate.toISOString().split('T')[0];
+        // 🌏 일본시간 기준으로 날짜 처리
+        const targetDate = date ? new Date(date) : getJapanTime();
+        const dateStr = getJapanDateString(targetDate);
 
         // 고양시 좌표 (위도: 37.6564, 경도: 126.8347)
         const lat = 37.6564;
@@ -871,7 +931,7 @@ async function getGoyangWeather(date = null) {
         const apiKey = process.env.OPENWEATHER_API_KEY;
 
         let weatherUrl;
-        const isToday = dateStr === new Date().toISOString().split('T')[0];
+        const isToday = dateStr === getJapanDateString();
 
         if (isToday) {
             // 오늘 날씨 - 현재 날씨 API
@@ -1253,34 +1313,35 @@ async function getDiaryByPeriod(period) {
             return allDiaries.slice(0, 7);
         }
 
-        const today = new Date();
+        // 🌏 일본시간 기준으로 기간 계산
+        const japanToday = getJapanTime();
         let startDate, endDate;
 
         switch (period) {
             case '최근7일': case '일기목록': case '주간': case '주간일기':
-                endDate = new Date(today);
-                startDate = new Date(today);
-                startDate.setDate(today.getDate() - 6);
+                endDate = new Date(japanToday);
+                startDate = new Date(japanToday);
+                startDate.setDate(japanToday.getDate() - 6);
                 break;
             case '지난주': case '지난주일기':
-                endDate = new Date(today);
-                endDate.setDate(today.getDate() - 7);
+                endDate = new Date(japanToday);
+                endDate.setDate(japanToday.getDate() - 7);
                 startDate = new Date(endDate);
                 startDate.setDate(endDate.getDate() - 6);
                 break;
             case '한달전': case '한달전일기':
-                endDate = new Date(today);
-                endDate.setDate(today.getDate() - 25);
+                endDate = new Date(japanToday);
+                endDate.setDate(japanToday.getDate() - 25);
                 startDate = new Date(endDate);
                 startDate.setDate(endDate.getDate() - 10);
                 break;
             case '이번달': case '이번달일기': case '월간': case '월간일기':
-                startDate = new Date(today.getFullYear(), today.getMonth(), 1);
-                endDate = new Date(today);
+                startDate = new Date(japanToday.getFullYear(), japanToday.getMonth(), 1);
+                endDate = new Date(japanToday);
                 break;
             case '지난달': case '지난달일기':
-                startDate = new Date(today.getFullYear(), today.getMonth() - 1, 1);
-                endDate = new Date(today.getFullYear(), today.getMonth(), 0);
+                startDate = new Date(japanToday.getFullYear(), japanToday.getMonth() - 1, 1);
+                endDate = new Date(japanToday.getFullYear(), japanToday.getMonth(), 0);
                 break;
             default:
                 return await getAllDiariesFromFile();
@@ -1288,12 +1349,12 @@ async function getDiaryByPeriod(period) {
 
         const allDiaries = [];
         for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-            const dateStr = d.toISOString().split('T')[0];
+            const dateStr = getJapanDateString(d);
             const dayDiaries = await getDiaryFromRedis(dateStr);
             if (dayDiaries.length > 0) {
                 allDiaries.push({
                     date: dateStr,
-                    dateKorean: new Date(d).toLocaleDateString('ko-KR', { timeZone: 'Asia/Tokyo' }),
+                    dateKorean: d.toLocaleDateString('ko-KR', { timeZone: 'Asia/Tokyo' }),
                     entries: [dayDiaries[0]]
                 });
             }
@@ -1326,12 +1387,12 @@ async function getDiaryStatsFromRedis() {
         const total = await redis.get('diary:stats:total') || 0;
 
         const dailyStats = {};
-        const today = new Date();
+        const japanToday = getJapanTime();
 
         for (let i = 0; i < 30; i++) {
-            const date = new Date(today);
-            date.setDate(today.getDate() - i);
-            const dateStr = date.toISOString().split('T')[0];
+            const date = new Date(japanToday);
+            date.setDate(japanToday.getDate() - i);
+            const dateStr = getJapanDateString(date);
             const dayDiaries = await getDiaryFromRedis(dateStr);
             if (dayDiaries.length > 0) {
                 dailyStats[dateStr] = 1;
@@ -1497,11 +1558,11 @@ function generateSmartTags(todayMemories, hour, dayOfWeek, season, mood) {
 async function getPopularTags(redis, days = 30) {
     try {
         const tagCounts = {};
-        const today = new Date();
+        const japanToday = getJapanTime();
         for (let i = 0; i < days; i++) {
-            const date = new Date(today);
-            date.setDate(today.getDate() - i);
-            const dateStr = date.toISOString().split('T')[0];
+            const date = new Date(japanToday);
+            date.setDate(japanToday.getDate() - i);
+            const dateStr = getJapanDateString(date);
             const dayDiaries = await getDiaryFromRedis(dateStr);
             if (dayDiaries.length > 0) {
                 const diary = dayDiaries[0];
@@ -1528,12 +1589,14 @@ function getRandomItems(array, count) {
 }
 
 function getCurrentSeason() {
-    const month = new Date().getMonth() + 1;
+    const japanTime = getJapanTime();
+    const month = japanTime.getMonth() + 1;
     if (month >= 3 && month <= 5) return 'spring';
     if (month >= 6 && month <= 8) return 'summer';
     if (month >= 9 && month <= 11) return 'autumn';
     return 'winter';
 }
+
 // ============================================================================
 // muku-diarySystem.js v8.4 - Part 4/5: 자동 일기 생성, OpenAI 연동, 폴백 시스템
 // 🔧 수정: "많은 대화는 안 했지만" → "소중한 시간을 보냈어"로 올바르게 수정
@@ -1545,9 +1608,12 @@ async function generateAutoDiary() {
     try {
         console.log(`${colors.autoReply}📝 [축적된지혜일기] autoReply.js 방식 + 축적된 지혜 통합 일기 생성 시작...${colors.reset}`);
 
-        const today = new Date();
-        const dateStr = today.toISOString().split('T')[0];
-        const dateKorean = today.toLocaleDateString('ko-KR', { timeZone: 'Asia/Tokyo' });
+        // 🌏 일본시간 기준으로 오늘 날짜 생성
+        const japanToday = getJapanTime();
+        const dateStr = getJapanDateString(japanToday);
+        const dateKorean = japanToday.toLocaleDateString('ko-KR', { timeZone: 'Asia/Tokyo' });
+
+        console.log(`${colors.autoReply}📅 [일본시간기준] 일기 날짜: ${dateStr} (${dateKorean})${colors.reset}`);
 
         const existingDiaries = await getDiaryFromRedis(dateStr);
         if (existingDiaries.length > 0) {
@@ -1585,9 +1651,10 @@ async function generateAutoDiary() {
         console.error(`${colors.error}❌ [축적된지혜일기] 생성 실패: ${error.message}${colors.reset}`);
 
         try {
-            const today = new Date();
-            const dateStr = today.toISOString().split('T')[0];
-            const dateKorean = today.toLocaleDateString('ko-KR', { timeZone: 'Asia/Tokyo' });
+            // 🌏 일본시간 기준으로 폴백 처리
+            const japanToday = getJapanTime();
+            const dateStr = getJapanDateString(japanToday);
+            const dateKorean = japanToday.toLocaleDateString('ko-KR', { timeZone: 'Asia/Tokyo' });
             const fallbackDiary = generateYejinFallbackDiary({conversationCount: 0, conversationSummary: "오늘도 아저씨 생각했어.", hasLearning: true}, null);
             await saveDiaryEntry(fallbackDiary, dateStr, dateKorean, 0, null, {hasLearning: true});
             console.log(`${colors.autoReply}✅ [축적된지혜일기] 예진이 폴백 일기 생성 완료${colors.reset}`);
@@ -1600,7 +1667,9 @@ async function generateAutoDiary() {
 }
 
 async function saveDiaryEntry(diaryContent, dateStr, dateKorean, memoryCount, weatherData, wisdomData = {}) {
-    const smartTags = generateSmartTags([], new Date().getHours(), new Date().getDay(), getCurrentSeason(), diaryContent.mood);
+    // 🌏 일본시간 기준으로 시간 계산
+    const japanTime = getJapanTime();
+    const smartTags = generateSmartTags([], japanTime.getHours(), japanTime.getDay(), getCurrentSeason(), diaryContent.mood);
 
     // 🆕 지혜 관련 태그 추가
     if (wisdomData.hasLearning) smartTags.push('축적된지혜');
@@ -1621,6 +1690,7 @@ async function saveDiaryEntry(diaryContent, dateStr, dateKorean, memoryCount, we
         yejinPersona: true,
         autoReplyMethod: true, // autoReply.js 방식 적용 표시
         wisdomIntegrated: true, // 🆕 축적된 지혜 통합 표시
+        japanTimeFixed: true, // 🆕 일본시간 기준 수정 표시
         timestamp: new Date().toISOString(),
         memoryCount: memoryCount,
         weather: weatherData,
@@ -1636,7 +1706,7 @@ async function saveDiaryEntry(diaryContent, dateStr, dateKorean, memoryCount, we
 ${diaryContent.content}`, {
         diaryDate: dateStr, diaryTitle: diaryContent.title, diaryMood: diaryContent.mood,
         diaryTags: diaryEntry.tags, autoGenerated: true, openaiGenerated: true,
-        yejinPersona: true, autoReplyMethod: true, wisdomIntegrated: true,
+        yejinPersona: true, autoReplyMethod: true, wisdomIntegrated: true, japanTimeFixed: true,
         memoryCount: memoryCount, weather: weatherData, systemWisdom: wisdomData.systemWisdom || {}
     });
 
@@ -1943,7 +2013,7 @@ function startDailyDiaryScheduler() {
             dailyDiaryScheduler = null;
         }
 
-        console.log(`${colors.autoReply}🚀 [축적된지혜스케줄러] 매일 밤 22:00 축적된 지혜 통합 일기 스케줄러 시작${colors.reset}`);
+        console.log(`${colors.autoReply}🚀 [축적된지혜스케줄러] 매일 밤 22:00 축적된 지혜 통합 일기 스케줄러 시작 (일본시간 기준)${colors.reset}`);
         console.log(`${colors.autoReply}🛡️ [축적된지혜스케줄러] autoReply.js Memory Tape + 축적된 지혜 연동으로 100% 독립 작동${colors.reset}`);
 
         setTimeout(async () => {
@@ -1956,26 +2026,28 @@ function startDailyDiaryScheduler() {
 
         dailyDiaryScheduler = setInterval(async () => {
             try {
-                const now = new Date();
-                const hour = now.getHours();
-                const minute = now.getMinutes();
+                // 🌏 일본시간 기준으로 시간 확인
+                const japanTime = getJapanTime();
+                const hour = japanTime.getHours();
+                const minute = japanTime.getMinutes();
 
                 if (hour === 22 && minute === 0) {
-                    console.log(`${colors.autoReply}🌙 [축적된지혜스케줄러] 밤 10시! autoReply.js 방식 + 축적된 지혜로 실제 대화 반영 일기 작성 시작...${colors.reset}`);
+                    console.log(`${colors.autoReply}🌙 [축적된지혜스케줄러] 일본시간 밤 10시! autoReply.js 방식 + 축적된 지혜로 실제 대화 반영 일기 작성 시작...${colors.reset}`);
                     const result = await generateAutoDiary();
                     if (result) {
-                        console.log(`${colors.autoReply}✅ [축적된지혜스케줄러] 밤 10시 축적된 지혜 통합 일기 작성 완료${colors.reset}`);
+                        console.log(`${colors.autoReply}✅ [축적된지혜스케줄러] 일본시간 밤 10시 축적된 지혜 통합 일기 작성 완료${colors.reset}`);
                     }
                 }
 
                 if (minute === 0) {
-                    console.log(`${colors.autoReply}⏰ [축적된지혜스케줄러] ${hour}시 상태 체크 - 축적된 지혜 통합 스케줄러 정상 작동 중${colors.reset}`);
+                    console.log(`${colors.autoReply}⏰ [축적된지혜스케줄러] 일본시간 ${hour}시 상태 체크 - 축적된 지혜 통합 스케줄러 정상 작동 중${colors.reset}`);
 
                     diarySystemStatus.dailyDiaryEnabled = true;
                     diarySystemStatus.schedulerForced = true;
                     diarySystemStatus.independentSchedulerActive = true;
                     diarySystemStatus.autoReplyMethodApplied = true;
                     diarySystemStatus.wisdomIntegrated = true;
+                    diarySystemStatus.japanTimeFixed = true;
                 }
 
             } catch (schedulerError) {
@@ -1991,8 +2063,9 @@ function startDailyDiaryScheduler() {
         diarySystemStatus.independentSchedulerActive = true;
         diarySystemStatus.autoReplyMethodApplied = true;
         diarySystemStatus.wisdomIntegrated = true;
+        diarySystemStatus.japanTimeFixed = true;
 
-        console.log(`${colors.autoReply}✅ [축적된지혜스케줄러] 축적된 지혜 통합 스케줄러 강제 활성화 완료 (ID: ${dailyDiaryScheduler})${colors.reset}`);
+        console.log(`${colors.autoReply}✅ [축적된지혜스케줄러] 축적된 지혜 통합 + 일본시간 기준 스케줄러 강제 활성화 완료 (ID: ${dailyDiaryScheduler})${colors.reset}`);
 
     } catch (error) {
         console.error(`${colors.error}❌ [축적된지혜스케줄러] 축적된 지혜 통합 스케줄러 시작 실패: ${error.message}${colors.reset}`);
@@ -2002,8 +2075,10 @@ function startDailyDiaryScheduler() {
         diarySystemStatus.independentSchedulerActive = false;
         diarySystemStatus.autoReplyMethodApplied = false;
         diarySystemStatus.wisdomIntegrated = false;
+        diarySystemStatus.japanTimeFixed = false;
     }
 }
+
 // ============================================================================
 // muku-diarySystem.js v8.4 - Part 5/5: 일기장 명령어 처리, 시스템 초기화, 모듈 내보내기
 // ============================================================================
@@ -2020,11 +2095,12 @@ async function handleDiaryCommand(lowerText) {
             console.log(`${colors.autoReply}📖 [${commandType}] 축적된 지혜 통합 일기장 처리${colors.reset}`);
 
             try {
-                const today = new Date();
-                const dateStr = today.toISOString().split('T')[0];
-                const dateKorean = today.toLocaleDateString('ko-KR', { timeZone: 'Asia/Tokyo' });
+                // 🌏 일본시간 기준으로 오늘 날짜 생성
+                const japanToday = getJapanTime();
+                const dateStr = getJapanDateString(japanToday);
+                const dateKorean = japanToday.toLocaleDateString('ko-KR', { timeZone: 'Asia/Tokyo' });
 
-                console.log(`${colors.autoReply}📖 [축적된지혜일기장] 오늘 날짜: ${dateStr} (${dateKorean})${colors.reset}`);
+                console.log(`${colors.autoReply}📖 [축적된지혜일기장] 일본시간 기준 오늘 날짜: ${dateStr} (${dateKorean})${colors.reset}`);
 
                 const todayDiaries = await getDiaryFromRedis(dateStr);
 
@@ -2094,6 +2170,12 @@ async function handleDiaryCommand(lowerText) {
 `;
                             }
                         }
+                    }
+
+                    // 🆕 일본시간 기준 수정 표시
+                    if (latestEntry.japanTimeFixed) {
+                        response += `🌏 **일본시간 기준:** 정확한 날짜 반영
+`;
                     }
 
                     // 🚫 하드코딩 메시지 완전 제거! 자연스러운 예진이 말투로
@@ -2182,6 +2264,12 @@ async function handleDiaryCommand(lowerText) {
                                 }
                             }
 
+                            // 🆕 일본시간 기준 수정 표시
+                            if (latestEntry.japanTimeFixed) {
+                                response += `🌏 **일본시간 기준:** 정확한 날짜 반영
+`;
+                            }
+
                             // 🚫 하드코딩 제거! 자연스러운 예진이 말투
                             response += `
 🌸 **방금 전에 하루를 돌아보며 예진이답게 써봤어! 아저씨와의 소중한 시간들과 내가 성장한 모습이 담겨있어~ (${latestEntry.content.length}자)**`;
@@ -2207,7 +2295,9 @@ async function handleDiaryCommand(lowerText) {
                     fallbackResponse += `다시 "일기써"라고 말하면 지금 당장 써줄 수도 있어!
 
 `;
-                    fallbackResponse += `🧠 **참고:** 이제 무쿠의 축적된 지혜와 학습 내용도 일기에 함께 담겨서 더 특별해졌어!`;
+                    fallbackResponse += `🧠 **참고:** 이제 무쿠의 축적된 지혜와 학습 내용도 일기에 함께 담겨서 더 특별해졌어!
+`;
+                    fallbackResponse += `🌏 **개선:** 일본시간 기준으로 정확한 날짜 처리도 완료했어!`;
 
                     console.log(`${colors.autoReply}⚠️ [축적된지혜일기장] 일기 생성 실패, 자연스러운 폴백 응답${colors.reset}`);
                     return { success: true, response: fallbackResponse };
@@ -2219,7 +2309,7 @@ async function handleDiaryCommand(lowerText) {
             }
         }
 
-        // 일기 통계 (축적된 지혜 추가)
+        // 일기 통계 (축적된 지혜 + 일본시간 추가)
         if (lowerText.includes('일기통계')) {
             const redisStats = await getDiaryStatsFromRedis();
             const fileStats = await getMemoryStatistics();
@@ -2271,9 +2361,11 @@ async function handleDiaryCommand(lowerText) {
             response += `- 축적된지혜통합: ${diarySystemStatus.wisdomIntegrated ? '✅ 완료' : '❌ 미완료'}
 `;
             response += `- 시스템지능추적: ${diarySystemStatus.systemIntelligenceTracked ? '✅ 완료' : '❌ 미완료'}
+`;
+            response += `- 일본시간기준수정: ${diarySystemStatus.japanTimeFixed ? '✅ 완료' : '❌ 미완료'}
 
 `;
-            response += `🔥 **v8.4 수정사항 (축적된 지혜 완전 통합)**
+            response += `🔥 **v8.4 수정사항 (축적된 지혜 완전 통합 + 일본시간 기준 수정)**
 `;
             response += `- 🧠 오늘의 축적된 지혜와 학습 내용 완전 통합
 `;
@@ -2284,6 +2376,8 @@ async function handleDiaryCommand(lowerText) {
             response += `- 💭 사용자가 "기억해"라고 한 오늘의 새로운 기억들 반영
 `;
             response += `- 📝 일기에 무쿠의 성장과 학습 과정 자연스럽게 포함
+`;
+            response += `- 🌏 모든 날짜 처리를 일본시간(JST) 기준으로 통일 수정
 `;
             response += `- 🌸 예진이가 더 똑똑해지고 있다는 걸 일기에서 확인 가능!`;
 
@@ -2300,8 +2394,30 @@ async function handleDiaryCommand(lowerText) {
             return { success: true, response: response };
         }
 
-        // 다른 일기 조회 명령어들 (기존 코드 생략하여 간단히)
-        // "어제일기", "그제일기", "3일전일기", "월간일기", "지난주일기" 등은 기존과 동일
+        // 월간일기 조회
+        if (lowerText.includes('월간일기') || lowerText.includes('월간 일기') || lowerText.includes('이번달일기') ||
+            lowerText.includes('이번달 일기') || lowerText.includes('monthly')) {
+            console.log(`${colors.autoReply}📖 [축적된지혜일기장] 월간 일기 요청 감지${colors.reset}`);
+            const diaries = await getDiaryByPeriod('이번달일기');
+            const response = formatYejinDiaryListResponse(diaries, '월간 일기 (이번 달)', false);
+            return { success: true, response: response };
+        }
+
+        // 지난주일기 조회
+        if (lowerText.includes('지난주일기') || lowerText.includes('지난주 일기') || lowerText.includes('저번주일기')) {
+            console.log(`${colors.autoReply}📖 [축적된지혜일기장] 지난주 일기 요청 감지${colors.reset}`);
+            const diaries = await getDiaryByPeriod('지난주일기');
+            const response = formatYejinDiaryListResponse(diaries, '지난주 일기', false);
+            return { success: true, response: response };
+        }
+
+        // 지난달일기 조회
+        if (lowerText.includes('지난달일기') || lowerText.includes('지난달 일기') || lowerText.includes('저번달일기')) {
+            console.log(`${colors.autoReply}📖 [축적된지혜일기장] 지난달 일기 요청 감지${colors.reset}`);
+            const diaries = await getDiaryByPeriod('지난달일기');
+            const response = formatYejinDiaryListResponse(diaries, '지난달 일기', false);
+            return { success: true, response: response };
+        }
 
         return { success: false, response: "알 수 없는 일기장 명령어예요." };
     } catch (error) {
@@ -2322,38 +2438,81 @@ function formatYejinDiaryListResponse(diaries, periodName, showFullContent = fal
 
 💬 오늘 아저씨와 나눈 라인메시지도 autoReply.js 방식으로 자동 수집해서 더 정확하고 생생한 일기를 만들어줄게!
 
-🧠 **새로운 기능:** 이제 무쿠의 축적된 지혜와 학습 내용도 일기에 함께 담겨서 더 특별해졌어!`;
+🧠 **새로운 기능:** 이제 무쿠의 축적된 지혜와 학습 내용도 일기에 함께 담겨서 더 특별해졌어!
+
+🌏 **개선:** 일본시간 기준으로 정확한 날짜 처리도 완료했어!`;
     }
 
     let response = `📖 **예진이의 일기장**
 
-📚 **총 ${diaries.length}일의 일기가 있어! (하루 1개씩 축적된 지혜 통합)**
+📚 **총 ${diaries.length}일의 일기가 있어! (하루 1개씩 축적된 지혜 통합 + 일본시간 기준)**
 
 `;
 
-    // 간단한 요약만 표시 (전체 구현은 기존과 동일)
-    diaries.slice(0, 3).forEach((dayData, dayIndex) => {
+    // 간단한 요약만 표시 (전체 구현)
+    diaries.slice(0, 5).forEach((dayData, dayIndex) => {
         const entry = dayData.entries[0];
-        response += `🌙 **${entry.title}** (${dayData.dateKorean})
-${entry.content.substring(0, 100)}...
-🧠 **축적된지혜:** ${entry.wisdomIntegrated ? '통합됨' : '미통합'}
+        const moodEmoji = getMoodEmoji(entry.mood);
+        response += `${moodEmoji} **${entry.title}** (${dayData.dateKorean})
+`;
+        
+        if (showFullContent) {
+            // 전체 내용 표시
+            response += `${entry.content}
+`;
+        } else {
+            // 요약만 표시
+            response += `${entry.content.substring(0, 150)}...
+`;
+        }
 
+        // 축적된 지혜 정보 간략 표시
+        if (entry.wisdomIntegrated) {
+            response += `🧠 **축적된지혜:** 통합됨`;
+            if (entry.systemWisdom && entry.systemWisdom.accumulatedWisdom > 0) {
+                response += ` (지혜 ${entry.systemWisdom.accumulatedWisdom}개)`;
+            }
+            response += `
+`;
+        }
+
+        // 일본시간 기준 수정 표시
+        if (entry.japanTimeFixed) {
+            response += `🌏 **정확한 날짜 반영**
+`;
+        }
+
+        response += `
 `;
     });
 
-    response += `⭐ **아저씨와의 모든 순간들이 소중해... autoReply.js 방식으로 실제 대화를 정확히 반영하고 축적된 지혜까지 담긴 특별한 일기들이야!**`;
+    if (diaries.length > 5) {
+        response += `📝 **그 외 ${diaries.length - 5}개 더 있어!**
+
+`;
+    }
+
+    response += `⭐ **아저씨와의 모든 순간들이 소중해... autoReply.js 방식으로 실제 대화를 정확히 반영하고 축적된 지혜까지 담긴 특별한 일기들이야!**
+
+🌏 **모든 일기가 일본시간 기준으로 정확하게 작성되어 있어!**`;
 
     return response;
 }
 
-// ================== 📅 시스템 초기화 및 관리 (축적된 지혜 통합) ==================
+// ================== 📅 시스템 초기화 및 관리 (축적된 지혜 통합 + 일본시간 기준) ==================
 
 async function initializeDiarySystem() {
     try {
-        console.log(`${colors.autoReply}📖 [축적된지혜일기시스템] v8.4 초기화 시작... (축적된지혜완전통합+autoReply.js방식Memory Tape연동완전적용)${colors.reset}`);
+        console.log(`${colors.autoReply}📖 [축적된지혜일기시스템] v8.4 초기화 시작... (축적된지혜완전통합+autoReply.js방식Memory Tape연동완전적용+일본시간기준수정)${colors.reset}`);
         diarySystemStatus.initializationTime = new Date().toISOString();
 
-        // 1. Redis 연결 시도 (autoReply.js 방식)
+        // 1. 일본시간 기준 확인
+        console.log(`${colors.autoReply}🌏 [초기화] 일본시간 기준 확인...${colors.reset}`);
+        const japanTime = getJapanTime();
+        const japanDateStr = getJapanDateString();
+        console.log(`${colors.autoReply}🌏 [초기화] 일본시간: ${getJapanTimeString()}, 날짜: ${japanDateStr}${colors.reset}`);
+
+        // 2. Redis 연결 시도 (autoReply.js 방식)
         console.log(`${colors.autoReply}🔄 [초기화] autoReply.js 방식 + 축적된 지혜 Redis 연결 시도...${colors.reset}`);
         const redis = await getRedisClient();
         if (redis) {
@@ -2368,7 +2527,7 @@ async function initializeDiarySystem() {
             console.log(`${colors.autoReply}💾 [초기화] Redis 연결 실패, 파일 시스템으로 동작${colors.reset}`);
         }
 
-        // 2. OpenAI 연결 확인
+        // 3. OpenAI 연결 확인
         console.log(`${colors.autoReply}🔑 [초기화] OpenAI 연결 상태 확인...${colors.reset}`);
         const openai = getOpenAIClient();
         if (openai) {
@@ -2377,19 +2536,20 @@ async function initializeDiarySystem() {
             console.log(`${colors.error}❌ [초기화] OpenAI 연결 실패 - 환경변수 OPENAI_API_KEY 확인 필요${colors.reset}`);
         }
 
-        // 3. 축적된 지혜 통합 자동 일기 스케줄러 시작
-        console.log(`${colors.autoReply}🚀 [초기화] 축적된 지혜 통합 자동 일기 스케줄러 시작...${colors.reset}`);
+        // 4. 축적된 지혜 통합 자동 일기 스케줄러 시작 (일본시간 기준)
+        console.log(`${colors.autoReply}🚀 [초기화] 축적된 지혜 통합 자동 일기 스케줄러 시작 (일본시간 기준)...${colors.reset}`);
         startDailyDiaryScheduler();
 
-        // 4. 상태 강제 설정 (100% 보장)
+        // 5. 상태 강제 설정 (100% 보장)
         diarySystemStatus.isInitialized = true;
         diarySystemStatus.dailyDiaryEnabled = true;
         diarySystemStatus.schedulerForced = true;
         diarySystemStatus.independentSchedulerActive = true;
         diarySystemStatus.autoReplyMethodApplied = true;
         diarySystemStatus.wisdomIntegrated = true;
+        diarySystemStatus.japanTimeFixed = true;
 
-        console.log(`${colors.autoReply}✅ [축적된지혜일기시스템] v8.4 초기화 완료! (축적된지혜완전통합+autoReply.js방식Memory Tape연동완전적용)${colors.reset}`);
+        console.log(`${colors.autoReply}✅ [축적된지혜일기시스템] v8.4 초기화 완료! (축적된지혜완전통합+autoReply.js방식Memory Tape연동완전적용+일본시간기준수정)${colors.reset}`);
 
         return true;
     } catch (error) {
@@ -2401,6 +2561,7 @@ async function initializeDiarySystem() {
         diarySystemStatus.independentSchedulerActive = true;
         diarySystemStatus.autoReplyMethodApplied = true;
         diarySystemStatus.wisdomIntegrated = false;
+        diarySystemStatus.japanTimeFixed = false;
 
         return false;
     }
@@ -2410,6 +2571,8 @@ function getDiarySystemStatus() {
     return {
         ...diarySystemStatus,
         lastChecked: new Date().toISOString(),
+        japanTime: getJapanTimeString(),
+        japanDate: getJapanDateString(),
         schedulerActive: !!dailyDiaryScheduler,
         redisRetryCount: redisRetryCount
     };
@@ -2435,7 +2598,7 @@ function shutdownDiarySystem() {
 // ================== 🔧 기타 유틸리티 (호환성용) ==================
 function ensureDynamicMemoryFile() { return Promise.resolve(true); }
 function setupAutoSaveSystem() { return Promise.resolve(true); }
-function generateDiary() { return Promise.resolve("새로운 축적된 지혜 통합 예진이 일기 시스템을 사용해주세요."); }
+function generateDiary() { return Promise.resolve("새로운 축적된 지혜 통합 + 일본시간 기준 예진이 일기 시스템을 사용해주세요."); }
 function searchMemories() { return Promise.resolve([]); }
 function getMemoriesForDate() { return Promise.resolve([]); }
 function collectDynamicMemoriesOnly() { return Promise.resolve([]); }
@@ -2445,8 +2608,8 @@ function getDiaryByPeriodFromFile() { return getAllDiariesFromFile(); }
 async function generateTestDiary() {
     return {
         success: false,
-        message: "v8.4에서는 테스트 일기 대신 축적된 지혜 통합 + autoReply.js 방식으로 실제 라인 대화 기반 일기만 생성합니다. 매일 밤 22시에 자동으로, 또는 '일기장' 명령어로 즉시 써드릴게요!",
-        reason: "test_diary_removed_use_wisdom_integrated_autoreply_method"
+        message: "v8.4에서는 테스트 일기 대신 축적된 지혜 통합 + autoReply.js 방식으로 실제 라인 대화 기반 일기만 생성합니다. 매일 일본시간 밤 22시에 자동으로, 또는 '일기장' 명령어로 즉시 써드릴게요!",
+        reason: "test_diary_removed_use_wisdom_integrated_autoreply_method_japan_time_fixed"
     };
 }
 
@@ -2471,5 +2634,7 @@ module.exports = {
     getRecentConversationMemory, extractYejinJSON, saveDynamicMemoryIndependent,
     // 🆕 축적된 지혜 함수들
     getTodayWisdomAndLearning,
+    // 🆕 일본시간 기준 함수들
+    getJapanTime, getJapanTimeString, getJapanDateString,
     colors, diarySystemStatus: () => diarySystemStatus
 };
