@@ -220,7 +220,7 @@ async function saveConversationToRedis(userId, role, content) {
         };
         
         await conversationMemoryRedis.lpush(conversationKey, JSON.stringify(messageData));
-        await conversationMemoryRedis.ltrim(conversationKey, 0, 99); // 최대 100개 유지
+        await conversationMemoryRedis.ltrim(conversationKey, 0, 199); // 최대 100개 유지
         
         return true;
     } catch (error) {
