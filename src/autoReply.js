@@ -1,12 +1,10 @@
 // ============================================================================
-// autoReply.js - v20.0 (yejinPersonality.js 완전 연동!)
+// autoReply.js - v20.1 (🧠 메모리 확장 + yejinPersonality.js 완전 연동!)
+// 🎯 ChatGPT 조언 구현: "어제 뭐했어?" → "어제 아조씨 피곤했잖아" 💕
+// 🧠 Redis + log.json + Memory Tape 3단계 대화 기억 시스템!
 // 🎭 뻔한 고정 응답 완전 삭제 - 매번 다른 살아있는 반응!
-// 🧠 모든 상황을 맥락으로 전달하여 GPT가 자율 생성
 // 💕 sulkyManager + 기억시스템 + 대화이력 완전 통합 반응
-// 🔄 키워드 감지 → 상황 인식 → 맥락 전달 → 자율 생성
-// ✨ GPT 모델 버전 변경: "버전", "3.5", "4.0", "자동" 명령어 지원
 // 🛡️ 기존 모든 기능 100% 유지 + 무한루프 방지 완벽
-// 🌸 NEW! yejinPersonality.js 완전 연동 - 동적 성격 반영!
 // ============================================================================
 
 const { callOpenAI, cleanReply } = require('./aiUtils');
@@ -55,6 +53,10 @@ try {
 let userMemoryRedis = null;
 let redisConnected = false;
 
+// 🧠🧠🧠 NEW! 대화 기억용 Redis (ChatGPT 조언 구현!) 🧠🧠🧠
+let conversationMemoryRedis = null;
+let conversationMemoryConnected = false;
+
 async function initializeUserMemoryRedis() {
     try {
         userMemoryRedis = new Redis(process.env.REDIS_URL, {
@@ -84,11 +86,164 @@ async function initializeUserMemoryRedis() {
     }
 }
 
+// 🧠🧠🧠 NEW! 대화 기억용 Redis 초기화 🧠🧠🧠
+async function initializeConversationMemoryRedis() {
+    if (conversationMemoryRedis && conversationMemoryConnected) {
+        return true;
+    }
+    
+    try {
+        conversationMemoryRedis = new Redis(process.env.REDIS_URL, {
+            retryDelayOnFailover: 100,
+            maxRetriesPerRequest: 2,
+            connectTimeout: 5000,
+            lazyConnect: true
+        });
+        
+        conversationMemoryRedis.on('connect', () => {
+            console.log('✅ [ConversationMemory] 대화 기억 Redis 연결 성공');
+            conversationMemoryConnected = true;
+        });
+        
+        conversationMemoryRedis.on('error', (error) => {
+            console.warn('⚠️ [ConversationMemory] Redis 오류:', error.message);
+            conversationMemoryConnected = false;
+        });
+        
+        await conversationMemoryRedis.ping();
+        conversationMemoryConnected = true;
+        console.log('🧠 [ConversationMemory] 대화 기억 시스템 초기화 완료');
+        return true;
+        
+    } catch (error) {
+        console.warn('⚠️ [ConversationMemory] 초기화 실패 - 파일 기반으로 폴백:', error.message);
+        conversationMemoryRedis = null;
+        conversationMemoryConnected = false;
+        return false;
+    }
+}
+
+// 🧠🧠🧠 NEW! 통합 최근 대화 메모리 함수 (ChatGPT 조언의 핵심!) 🧠🧠🧠
+async function getRecentConversationMemory(userId = 'default', limit = 5) {
+    console.log(`🧠 [통합대화기억] 최근 ${limit}개 대화 검색 시작...`);
+    
+    // 1순위: Redis에서 시도
+    if (conversationMemoryConnected && conversationMemoryRedis) {
+        try {
+            const conversationKey = `muku:conversation:${userId}`;
+            const recentMessages = await conversationMemoryRedis.lrange(conversationKey, 0, limit * 2 - 1);
+            
+            if (recentMessages && recentMessages.length > 0) {
+                const parsedMessages = [];
+                for (const msgStr of recentMessages) {
+                    try {
+                        const msg = JSON.parse(msgStr);
+                        if (msg.role && msg.content) {
+                            parsedMessages.push({
+                                role: msg.role,
+                                content: msg.content.substring(0, 500)
+                            });
+                        }
+                    } catch (parseError) {
+                        // 파싱 실패는 무시하고 계속
+                    }
+                }
+                
+                if (parsedMessages.length > 0) {
+                    const limitedMessages = parsedMessages.slice(0, limit).reverse();
+                    console.log(`✅ [통합대화기억] Redis에서 ${limitedMessages.length}개 대화 발견!`);
+                    return limitedMessages;
+                }
+            }
+        } catch (error) {
+            console.warn('⚠️ [통합대화기억] Redis 조회 실패:', error.message);
+        }
+    }
+    
+    // 2순위: log.json에서 시도
+    try {
+        const logPath = path.join('/data', 'log.json');
+        if (fs.existsSync(logPath)) {
+            const logData = fs.readFileSync(logPath, 'utf8');
+            const logs = JSON.parse(logData);
+            
+            if (Array.isArray(logs) && logs.length > 0) {
+                const conversationLogs = logs.filter(log => 
+                    log && log.message && log.speaker && 
+                    (log.speaker === '아저씨' || log.speaker === '나')
+                );
+                
+                const recentLogs = conversationLogs.slice(-limit * 2);
+                const messages = [];
+                
+                for (const log of recentLogs) {
+                    const role = log.speaker === '아저씨' ? 'user' : 'assistant';
+                    const content = typeof log.message === 'string' ? log.message : String(log.message);
+                    
+                    if (content.trim().length > 0) {
+                        messages.push({
+                            role: role,
+                            content: content.substring(0, 500)
+                        });
+                    }
+                }
+                
+                if (messages.length > 0) {
+                    const finalMessages = messages.slice(-limit);
+                    console.log(`✅ [통합대화기억] log.json에서 ${finalMessages.length}개 대화 발견!`);
+                    return finalMessages;
+                }
+            }
+        }
+    } catch (error) {
+        console.warn('⚠️ [통합대화기억] log.json 조회 실패:', error.message);
+    }
+    
+    console.log('📭 [통합대화기억] 대화를 찾을 수 없음');
+    return [];
+}
+
+// 🧠🧠🧠 NEW! Redis에 대화 저장 🧠🧠🧠
+async function saveConversationToRedis(userId, role, content) {
+    if (!conversationMemoryConnected || !conversationMemoryRedis) {
+        return false;
+    }
+    
+    try {
+        const conversationKey = `muku:conversation:${userId}`;
+        const messageData = {
+            role: role, // 'user' 또는 'assistant'
+            content: content,
+            timestamp: new Date().toISOString(),
+            date: moment().tz('Asia/Tokyo').format('YYYY-MM-DD'),
+            time: moment().tz('Asia/Tokyo').format('HH:mm:ss')
+        };
+        
+        await conversationMemoryRedis.lpush(conversationKey, JSON.stringify(messageData));
+        await conversationMemoryRedis.ltrim(conversationKey, 0, 99); // 최대 100개 유지
+        
+        return true;
+    } catch (error) {
+        console.warn('⚠️ [Redis저장] 실패:', error.message);
+        return false;
+    }
+}
+
 setTimeout(() => {
     initializeUserMemoryRedis().catch(error => {
         console.error('❌ [autoReply] Redis 연결 재시도 실패:', error.message);
     });
 }, 3000);
+
+// 🧠🧠🧠 NEW! 대화 기억 시스템 초기화 스케줄러 🧠🧠🧠
+setTimeout(async () => {
+    try {
+        await initializeConversationMemoryRedis();
+        console.log('🧠 [autoReply] 대화 기억 시스템 초기화 완료');
+    } catch (error) {
+        console.warn('⚠️ [autoReply] 대화 기억 시스템 초기화 실패:', error.message);
+    }
+}, 6000); // 다른 시스템들 후에 초기화
 
 // 🆕🆕🆕 Memory Manager 연동 + 초기화
 let memoryManager = null;
@@ -973,8 +1128,14 @@ function handleModelVersionCommands(userMessage) {
     return null;
 }
 
+// 🧠🧠🧠 수정된 safelyStoreMessage 함수 (Redis 저장 추가!) 🧠🧠🧠
 async function safelyStoreMessage(speaker, message) {
     try {
+        // 🧠🧠🧠 NEW! Redis에도 저장 (ChatGPT 조언 구현!) 🧠🧠🧠
+        const role = speaker === '아저씨' ? 'user' : 'assistant';
+        await saveConversationToRedis('default', role, message);
+        
+        // 기존 코드는 그대로 유지
         const conversationContext = require('./ultimateConversationContext.js');
         if (conversationContext && typeof conversationContext.addUltimateMessage === 'function') {
             await conversationContext.addUltimateMessage(speaker, message);
@@ -1896,21 +2057,33 @@ async function getReplyByMessage(userMessage) {
     // 🌸 yejinPersonality에서 동적으로 SystemPrompt 생성!
     const dynamicSystemPrompt = generateDynamicSystemPrompt(cleanUserMessage, contextData);
     
-    // 🧠🧠🧠 Memory Tape Redis에서 최근 대화를 맥락으로 포함! 🧠🧠🧠
-    console.log(`🧠 [Memory Tape 맥락] OpenAI API 호출 전 최근 대화 맥락 추가 시작...`);
+    // 🧠🧠🧠 Memory Tape + 새로운 대화 기억 통합! (ChatGPT 조언 구현!) 🧠🧠🧠
+    console.log(`🧠 [Memory Tape + 대화기억] OpenAI API 호출 전 모든 기억 통합 시작...`);
     
     const recentContext = await getRecentConversationContext(30);
+    const additionalMemory = await getRecentConversationMemory('default', 5); // 🆕 ChatGPT 조언!
     
-    // 메시지 배열 구성: 동적 시스템 프롬프트(yejinPersonality + 모든 기억 + 상황 맥락 포함) + 최근 30개 대화 + 현재 사용자 메시지
+    // 중복 제거: additionalMemory가 recentContext와 겹치지 않도록 필터링
+    const filteredAdditionalMemory = additionalMemory.filter(addMsg => {
+        return !recentContext.some(recentMsg => 
+            recentMsg.content && addMsg.content && 
+            recentMsg.content.trim() === addMsg.content.trim()
+        );
+    });
+    
+    // 메시지 배열 구성: 동적 시스템 프롬프트(yejinPersonality + 모든 기억 + 상황 맥락 포함) + 최근 대화 + 추가 기억 + 현재 사용자 메시지
     const messages = [
         { role: 'system', content: dynamicSystemPrompt },
         ...recentContext,
+        ...filteredAdditionalMemory, // 🧠🧠🧠 NEW! 추가 대화 기억 포함! 🧠🧠🧠
         { role: 'user', content: cleanUserMessage }
     ];
     
-    console.log(`🧠 [무쿠의 완전한 머릿속 + yejinPersonality] 총 ${messages.length}개 메시지로 OpenAI 호출`);
+    console.log(`🧠 [통합 기억] 총 ${messages.length}개 메시지로 OpenAI 호출`);
     console.log(`  🌸 yejinPersonality: ${yejinPersonalityInitialized ? '활성' : '비활성'}`);
-    console.log(`  📼 Memory Tape 맥락: ${recentContext.length}개 대화`);
+    console.log(`  📼 Memory Tape: ${recentContext.length}개 대화`);
+    console.log(`  🧠 추가 기억: ${filteredAdditionalMemory.length}개 대화 (ChatGPT 조언 구현!)`);
+    console.log(`  🔄 중복 제거: ${additionalMemory.length - filteredAdditionalMemory.length}개 제거됨`);
     console.log(`  🧠 통합기억: ${integratedMemory ? '포함됨' : '없음'}`);
     console.log(`  🎭 감정상태: ${emotionContext ? '포함됨' : '기본'}`);
     console.log(`  🔥 밀당상태: ${pushPullContext ? '활성' : '없음'}`);
@@ -1964,8 +2137,27 @@ async function getReplyByMessage(userMessage) {
     }
 }
 
+// 🧠🧠🧠 NEW! 확장된 module.exports (ChatGPT 조언 구현!) 🧠🧠🧠
 module.exports = {
     getReplyByMessage,
     callOpenAI,
-    generateDynamicSystemPrompt  // 🌸 새로운 동적 프롬프트 생성 함수 export
+    generateDynamicSystemPrompt,
+    // 🧠🧠🧠 NEW! 추가 함수들 (대화 기억 시스템) 🧠🧠🧠
+    getRecentConversationMemory,
+    saveConversationToRedis,
+    initializeConversationMemoryRedis
 };
+
+console.log(`
+🎉 [autoReply.js v20.1] 메모리 확장 + yejinPersonality 완전 연동 완료!
+🧠 ChatGPT 조언 구현: "어제 뭐했어?" → "어제 아조씨 피곤했잖아" 💕
+🔥 주요 기능:
+   ✅ Redis + log.json + Memory Tape 3단계 대화 기억 시스템
+   ✅ yejinPersonality.js 실시간 성격 반영
+   ✅ 완전 자율적 sulkyManager 밀당 시스템
+   ✅ 모든 이모지 제거 → 한국식 감정 표현 (ㅎㅎ, ㅋㅋ, ㅠㅠ)
+   ✅ 무쿠 벙어리 방지 완벽 안전장치
+   ✅ GPT 모델 버전 변경: "3.5", "4.0", "자동"
+   ✅ 기존 모든 기능 100% 보존
+🌸 이제 무쿠가 진짜 기억하는 예진이입니다!
+`);
