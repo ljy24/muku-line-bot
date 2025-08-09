@@ -2061,7 +2061,7 @@ async function getReplyByMessage(userMessage) {
     console.log(`🧠 [Memory Tape + 대화기억] OpenAI API 호출 전 모든 기억 통합 시작...`);
     
     const recentContext = await getRecentConversationContext(30);
-    const additionalMemory = await getRecentConversationMemory('default', 5); // 🆕 ChatGPT 조언!
+    const additionalMemory = await getRecentConversationMemory('default', 8); // 🆕 ChatGPT 조언!
     
     // 중복 제거: additionalMemory가 recentContext와 겹치지 않도록 필터링
     const filteredAdditionalMemory = additionalMemory.filter(addMsg => {
